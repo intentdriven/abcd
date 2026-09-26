@@ -1,7 +1,8 @@
 ---
 name: capture
-description: Capture issues to the structured per-repo ledger and query them, by invoking the abcd binary. Bare invocation is a read-only status render; disposition/link/list/promote/resolve/wontfix act on the ledger, and migrate rewrites retired back-links.
-argument-hint: "[text] | list --open|--resolved|--wontfix|--all | link <iss-N> [--blocked-by <iss-M,...>] [--unblock <iss-M,...>] | promote <iss-N> --grounds \"<token>: <text>\" [--intent <itd-N>] | promote <rdi-N> [--intent <itd-N>] | resolve <iss-N> <note> --impact <additive|breaking|fix|internal> --grounds \"<token>: <text>\" [--intent <itd-N>] [--spec <spc-N>] [--commit <sha>] | wontfix <iss-N> <reason> | disposition <rdi-N> --state <accepted|rejected|declined|held> | migrate [--apply]"
+description: "File an issue from quoted text, or render the ledger's status bare: Writes one record under open/; refuses a lone word and any folder outside a checkout."
+argument-hint: "[text] | list --open|--resolved|--wontfix|--all | link <iss-N> [--blocked-by <iss-M,...>] [--unblock <iss-M,...>] | promote <iss-N> --grounds \"<token>: <text>\" [--intent <itd-N>] | promote <rdi-N> [--intent <itd-N>] | resolve <iss-N> <note> --impact <additive|breaking|fix|internal> --grounds \"<token>: <text>\" [--intent <itd-N>] [--spec <spc-N>] [--commit <sha>] | wontfix <iss-N> <reason> | defer <iss-N> --after <vX.Y.Z> --reason <text> | disposition <rdi-N> --state <accepted|rejected|declined|held> | migrate [--apply]"
+block: people
 ---
 
 # `/abcd:capture` — issue ledger
@@ -21,6 +22,12 @@ names it on stderr and leaves it exactly where it is; report that line to the
 user, because the records under it reach no gate and no release cut, and only
 they can tell a deliberate fixture store from one a stray capture left behind.
 
+Every verb also names the ledger it addressed: in the plain render, one stderr
+line `abcd capture: ledger of <checkout> on branch <branch>`; with `--json`, a
+`ledger` member carrying `checkout` and `branch`. The ledger is per checkout, so
+a record filed in another worktree is not found here; when a verb reports an id
+missing, relay which checkout and branch it looked in.
+
 ## Status (bare)
 
 To render recent captures and counts:
@@ -32,6 +39,21 @@ To render recent captures and counts:
 Summarise the JSON for the user: `open_count` / `resolved_count` /
 `wontfix_count`, and for each entry in `recent_open` its `id`, `severity`, and
 `slug`. No `iss-*.md` file is created, moved, or mutated by this invocation.
+
+When `uncommitted_count` is non-zero, say how many records are not committed
+and name the `recent_open` entries carrying `uncommitted: true`: an untracked or
+changed record file is in no state to any other branch, worktree or gate until it
+is committed.
+
+When `skipped_count` is non-zero, say so: those are files that claim to be
+records and that none of the three totals counts, because the reader refused
+them. Each entry in `skipped` carries its `path`, the `layer` that refused it
+and the `error`. The layer tells the user which side to fix: `filename` (the
+name is not a well-formed record name), `read` (the guarded read refused the
+file itself, such as a symlink or an oversize body), `frontmatter` (the bytes do
+not parse), `schema` (a key or value the issue schema does not accept) or
+`invariant` (the record disagrees with its filename or with the folder holding
+it).
 
 **Which ledger?** A half-formed observation, question, or nitpick goes to
 `/abcd:capture "…"`; a user-facing change you want to ship goes to
@@ -60,9 +82,18 @@ write-up), `--slug` (overrides the slug derived from the text), `--blocked-by`
 the ledger, and an edge to a record captured later is written afterwards with
 `link`, below), `--production-mode`
 (`hand-written|dictated-and-formatted|scribe-transcribed`, default: the repo's
-declared mode, else `hand-written`). Report the new `id`, `status`, and `path` from the JSON. Report `redacted`
+declared mode, else `hand-written`). `--severity`, `--category` and `--source`
+are closed sets, and their help names every member; a value outside one is
+refused (exit 2, nothing written) with a message naming the flag and the values
+it accepts, so relay the set and pick from it rather than guessing again. Report the new `id`, `status`, and `path` from the JSON. Report `redacted`
 too whenever it is non-zero: it counts the spans rewritten before the text was
-written, and the user needs to know their wording was changed.
+written, and the user needs to know their wording was changed. When
+`uncommitted` is true, say that the record is not in git yet: until it is
+committed no other branch, worktree or gate can see it. When `no_location` is
+true, no `--found-at` was given: the record is written all the same, and the
+verb says (on stderr in the plain render) that it names no location in this
+checkout. Relay that, because a finding about another repository has exactly
+that shape.
 
 `--category lapse` takes `--lapsed-at`, which has no default: a lapse capture
 that omits it records no instant, never the write-up time. The refusal on an
@@ -95,9 +126,11 @@ absent flag takes the repo's declared default from `.abcd/config/identity.json`,
 falling back to `hand-written`. On `capture resolve` and `capture wontfix` the
 flag **restamps** the record — a resolution note is new text with its own mode —
 and an absent flag leaves the record's existing stamp alone. A restamp of a
-record that predates disclosure (one carrying no `origin`) is refused before
-anything is written, because the pair is written together or not at all; re-run
-without the flag. Such a record still resolves normally.
+record that predates disclosure (one carrying no `origin`), or of one whose
+`origin` is outside the vocabulary, is refused before anything is written,
+because the pair is written together or not at all; re-run without the flag. A
+record carrying a valid `origin` and no `production_mode` is completed into the
+pair by the restamp. Such a record still resolves normally.
 
 Neither key touches authorship: they are disclosure at field granularity, on the
 same footing as the `Assisted-by:` trailer at commit granularity. Population is
@@ -282,6 +315,15 @@ whenever it is non-zero: these paths redact the note exactly as `capture` does,
 but their human render stays silent, so the caller learns their wording was
 rewritten only if you relay it.
 
+Moving the issue repoints every relative markdown link in the tree that named
+it in `open/` — an ADR, a draft intent, a sibling issue — and the moved issue's
+own links, which were written from `open/`. The JSON lists each rewrite under
+`relinked` (`file`, `line`, `from`, `to`) and the text render prints them;
+report them, because they are files the verb changed beyond the issue. A link
+that never resolved is left as written. A repoint that fails part-way leaves
+the transition standing and warns on stderr; record-lint's `links_resolve`
+then names each link left behind.
+
 An id this checkout's ledger does not hold is refused. When a peer holds it —
 a sibling worktree or a local branch (see `/abcd:peers`) — the refusal names
 the peer's branch, path and folder instead of answering not found: the record
@@ -319,6 +361,29 @@ With no provenance flags the record is byte-identical to a
 plain resolve: provenance is optional, never guessed. The written members come
 back in the JSON as `resolved_by`. `wontfix` takes no provenance — a non-action
 points at nothing.
+
+## Defer a finding past the current release cut
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" capture defer <iss-N> --after <vX.Y.Z> --reason "<why it is carried past this cut>" --json
+```
+
+The release cut refuses to ship past a `major` or `critical` record captured
+since the last release and still open, and one sanctioned way past it is a
+deferral stated out loud. `defer` writes it: `deferred_after` (the anchor tag)
+and `deferral_reason` in the record's frontmatter, and a dated
+`## Deferral <date>` section appended to its body. The record stays in `open/`.
+Report the `id`, `deferred_after` and `deferral_reason` from the JSON, and tell
+the user that the waiver lapses when the next release re-anchors, so it must be
+renewed then or the finding fixed. Report `redacted` whenever it is non-zero.
+
+`--after` must be the checkout's newest `vX.Y.Z` release tag, which is the anchor
+the cut measures from; any other tag is refused, because the cut would not honour
+it. Both flags are required. Everything the cut would not honour is refused and
+nothing is written: an empty reason, a record that is not open, and a record
+whose severity is neither `major` nor `critical`, since the guard never blocks on
+one. Offer the user the other routes too — fix and resolve it, or `wontfix` it —
+rather than defaulting to a deferral.
 
 ## Answer a reading item
 
@@ -442,8 +507,12 @@ signal is the keyed disposition, and it has no folder to name.
 minting, writing both halves — the record into the draft's `related_issues`, the
 draft into the record's `related_intents` — the repair path when a stamp failed after the mint (the error
 names the orphan draft and this exact remedy, the promotion's own `--grounds`
-included, so it runs as printed), and the path for "I already
-filed the intent by hand; link them". Report the `issue_id`, the minted (or
+included when it was given any, so it runs as printed; the remedy is a code span
+whose fence the grounds cannot close, so copy everything between the fences), and
+the path for "I already filed the intent by hand; link them". When the stamp
+failed because a concurrent promotion of the same record got there first, the
+error names the intent that won and says to delete the duplicate draft instead:
+linking it would be refused as already promoted. Report the `issue_id`, the minted (or
 linked) `intent_id`, and both paths from the JSON.
 
 Link mode never touches the draft's `origin`, which was stamped at mint — a

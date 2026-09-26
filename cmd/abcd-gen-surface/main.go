@@ -1,11 +1,13 @@
-// Command abcd-gen-surface writes the two artefacts derived from one walk of the
-// abcd command tree: the committed compatibility snapshot, and the generated
-// appendix at the end of every brief surface chapter (itd-147). It is the write
-// half of both drift-checked artefacts: `go generate ./internal/surface/cli` runs
-// it to refresh .abcd/development/release/surface.json and the appendices under
-// .abcd/development/brief/04-surfaces/, and tests
-// (internal/surface/cli/surface_test.go, brief_appendix_test.go) fail the build if
-// either ever diverges from the tree. It holds no rendering logic of its own —
+// Command abcd-gen-surface writes the three artefacts derived from one walk of
+// the abcd command tree: the committed compatibility snapshot, the description
+// of every plugin command page (each verb's sentence, itd-2609212113220149), and
+// the generated appendix at the end of every brief surface chapter (itd-147). It
+// is the write half of those drift-checked artefacts: `go generate
+// ./internal/surface/cli` runs it to refresh
+// .abcd/development/release/surface.json, the commands/*.md descriptions and the
+// appendices under .abcd/development/brief/04-surfaces/, and tests
+// (internal/surface/cli/surface_test.go, sentences_test.go,
+// brief_appendix_test.go) fail the build if any ever diverges from the tree. It holds no rendering logic of its own —
 // the walk, the encoding and the composition live in cli.GenerateSurface and
 // cli.SurfaceChapters, so the generator and the drift tests render
 // byte-for-byte identically. The snapshot is written first. A chapter that
@@ -56,6 +58,23 @@ func run() error {
 		return err
 	}
 	fmt.Println("wrote", cli.SurfaceSnapshotPath)
+
+	// The plugin pages' descriptions are each verb's sentence from the surface
+	// manifest (itd-2609212113220149). A page that cannot carry one is an
+	// error naming it, and nothing is written for any page.
+	pages, err := cli.SentencePages(root)
+	if err != nil {
+		return err
+	}
+	for _, p := range pages {
+		if p.Committed == p.Want {
+			continue
+		}
+		if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(p.File)), []byte(p.Want), 0o644); err != nil {
+			return err
+		}
+		fmt.Println("wrote", p.File)
+	}
 
 	chapters, refused := cli.SurfaceChapters(root)
 	if chapters == nil && refused != nil {

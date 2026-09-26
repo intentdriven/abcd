@@ -1,7 +1,8 @@
 ---
 name: identity
-description: Show this repo's canonical identity block — title, tagline, pitch — and every rendered surface held to it, and print the proposed correction for any that drifted, by invoking the abcd binary. The bare and render forms perform zero writes; init records the block and the pointer to it.
+description: "Record the identity block and propose drift corrections: Writes nothing bare, only the block and its pointer; refuses bare, naming `abcd lint identity`."
 argument-hint: "[render|init]"
+block: agents
 ---
 
 # `/abcd:identity` repo positioning
@@ -9,30 +10,15 @@ argument-hint: "[render|init]"
 A project's positioning fragments silently: the README strapline, the package or
 plugin manifest description, and the conventions file's opening line are each
 edited at different moments, until three surfaces tell three stories. This
-command shows the one canonical identity block the repo records, and which
-surfaces still say it.
+command records the one canonical identity block and proposes the correction for
+every surface that no longer says it.
 
-## Bare — what this repo says about itself
+## The report — what this repo says about itself
 
-```bash
-"${CLAUDE_PLUGIN_ROOT}/abcd" identity --json
-```
-
-emits `{ "block": …, "severity": …, "surfaces": [ … ] }`:
-
-- `block` — the canonical `title`, `tagline`, and optional `pitch`, plus the
-  `file` and `line` they are recorded at.
-- `severity` — the family's weight, `warn` (the default) or `blocker`.
-- `surfaces` — one entry per registered surface: its `id`, the `file` and `line`
-  checked, and a `status` of `ok`, `drifted`, `absent` (no such file in this
-  repo — not a fault), or `unlocatable` (the file is there but the locator
-  matches nothing, so drift would go unseen). A `drifted` entry carries `found`
-  (the exact text the surface says), `missing` (which block fields it no longer
-  carries), and `canonical` (what the block says it should).
-
-Report the block first, then any surface that is not `ok`, naming the file, the
-line, what it says, and what the block says. It exits `0` even when it reports
-drift: this form is a status render, and the gate is `abcd lint`.
+The block and every surface held to it is `/abcd:lint identity` — run `abcd lint
+identity --json`. It is a status render: it exits `0` even when it reports
+drift, and bare `abcd lint` is the gate. This page proposes the correction and
+records the block.
 
 ## `render` — the proposed correction
 

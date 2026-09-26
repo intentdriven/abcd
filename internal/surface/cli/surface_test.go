@@ -3,6 +3,7 @@ package cli
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core/surface"
@@ -91,11 +92,11 @@ func TestSurfaceSnapshotRecordsFlagDetail(t *testing.T) {
 		t.Fatalf("--json recorded as required")
 	}
 
-	version, ok := findCommand(snap, "abcd version")
+	update, ok := findCommand(snap, "abcd update")
 	if !ok {
-		t.Fatalf("`abcd version` missing")
+		t.Fatalf("`abcd update` missing")
 	}
-	if _, inherited := findFlag(version, "json"); inherited {
+	if _, inherited := findFlag(update, "json"); inherited {
 		t.Fatalf("inherited persistent flag recorded on a subcommand; it must be recorded only where it is declared")
 	}
 }
@@ -210,9 +211,22 @@ func TestSurfaceSnapshotMatchesCommittedBaseline(t *testing.T) {
 		t.Fatalf("GenerateSurface: %v", err)
 	}
 	if string(committed) != string(want) {
+		// A regroup changes no invocation, so name each moved verb rather than
+		// leave it to a line and column (itd-146 criterion 4).
+		var moved string
+		if base, err := surface.Decode(committed); err == nil {
+			if now, err := surface.Decode(want); err == nil {
+				if lines := surface.PlacementChanges(base, now); len(lines) > 0 {
+					moved = "\nhelp placement moved without regenerating:\n  - " + strings.Join(lines, "\n  - ")
+				}
+				if lines := surface.SentenceChanges(base, now); len(lines) > 0 {
+					moved += "\nsentence reworded without regenerating:\n  - " + strings.Join(lines, "\n  - ")
+				}
+			}
+		}
 		t.Fatalf("%s is stale: the committed surface no longer matches the command tree and manifests.\n"+
 			"Regenerate it with `go generate ./internal/surface/cli` and commit the result.\n"+
-			"first difference at %s", SurfaceSnapshotPath, firstDiff(string(committed), string(want)))
+			"first difference at %s%s", SurfaceSnapshotPath, firstDiff(string(committed), string(want)), moved)
 	}
 }
 

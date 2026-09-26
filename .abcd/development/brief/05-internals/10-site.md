@@ -2,7 +2,7 @@
 
 > **One passage below is a design target; the rest describes what the binary
 > and the workflows do.** `abcd site build` renders the whole site, `abcd
-> site check` gates it, and the deploy workflow rides the release chain — but
+> lint site` gates it, and the deploy workflow rides the release chain — but
 > abcdev.app still serves the MkDocs rendering of `docs/` at its root, and
 > the first production deploy from a tag is what moves it. Both halves rest on
 > [adr-47](../../decisions/adrs/0047-abcdev-app-rendered-from-this-repository-alone.md)
@@ -51,8 +51,9 @@ intents:
   the body verbatim, typed links phrased from that record's own side, and the
   forge links to the file and to its commit history), `/record/graph/` (the
   chart's stage and its list twin, driven by `site-src/record.js`, reading
-  `?focus=<id>`), `/record/timeline/` (the five-lane genealogy as one static SVG
-  emitted in Go), `/record/foundations/` (principles and disciplines as cards
+  `?focus=<id>`), the genealogy (one static SVG emitted in Go, folded shut into
+  the `/record/` dashboard rather than served as a page of its own),
+  `/record/foundations/` (principles and disciplines as cards
   that list and link), `/contributors/` and `/references/`. The bibliography is
   rendered by a stdlib CSL-JSON formatter and numbered identically to
   `ACKNOWLEDGEMENTS.md`, with a build check that the two agree entry for entry.
@@ -68,7 +69,7 @@ intents:
   record actually writes: nested lists, blockquotes with structure inside them,
   reference links, setext headings, rules, autolinks and CommonMark emphasis;
   anything still outside it is a build failure naming file and line.
-- **`abcd site check`** runs seven independent gates over a rendered tree —
+- **`abcd lint site`** runs seven independent gates over a rendered tree —
   the provenance audit over every rendered text node, the hero against the
   Identity block, docs-lint's banned tokens over composed text (the verbatim
   record rendering under `/record/` exempt, the attribution escape a
@@ -79,6 +80,16 @@ intents:
   audit is CI's optional, non-gating job; static and rendered gates are
   complementary, and the audit's first run caught an overflow the static
   gate cannot see.
+- **`abcd site setup`** lays the site into a repository abcd manages: the
+  composition derived from the identity block and the documentation, the
+  static inputs seeded from abcd's own `site-src/` (byte copies, held equal by
+  a test), a render-on-release workflow whose action pins follow abcd's own
+  site workflow by test, and the provider's host configuration — written
+  through the launch scaffold's shared writer. The forge environments go
+  through `gh` as the invoking person, and the host through the hosting
+  adapter seam (`internal/adapter/hosting`, one provider). The manifest's
+  `pages` block is the closed page set's switches, resolved once and consulted
+  by the explorer wherever it adds a page, a tab or a link.
 - **The generic/specific boundary** of the verb family is governed by the
   itd-140 discipline: repo-agnostic input contract, genericity demonstrated
   on a sparse second instance before it is claimed, working-tier ledger

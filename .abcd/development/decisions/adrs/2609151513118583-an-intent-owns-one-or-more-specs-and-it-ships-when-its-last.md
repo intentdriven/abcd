@@ -46,7 +46,7 @@ being a fact about delivery and becomes a claim the tool asserted on the
 operator's behalf.
 
 The adjacent finding is the same seam from the other side.
-[iss-2609091732329046](../../../work/issues/open/iss-2609091732329046-closing-a-spec-moves-its-intent-but-leaves-every-link-that-n.md)
+[iss-2609091732329046](../../../work/issues/resolved/iss-2609091732329046-closing-a-spec-moves-its-intent-but-leaves-every-link-that-n.md)
 reports that the close moves the intent and leaves every link written against
 the intent's old folder pointing at nothing — three closes in one sitting
 produced eight dead links and a red gate immediately afterwards. Both records

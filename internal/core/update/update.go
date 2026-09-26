@@ -233,7 +233,7 @@ func Plan(t ahoy.UpdateTarget) *Refusal {
 // pointed at the verb; every other shape is pointed at the mechanism that owns
 // its binary, taken verbatim from Plan's refusal so the remedy text lives in
 // exactly one place. This is the canonical "what do I run next" primitive:
-// `version --check` and every schema-too-new refusal render through it
+// `update --check` and every schema-too-new refusal render through it
 // (itd-130 / iss-2609012111168872).
 func NextStep(t ahoy.UpdateTarget) string {
 	if r := Plan(t); r != nil {
@@ -296,7 +296,7 @@ type Updater struct {
 }
 
 // releaseOrigin is the one place releases come from — the same origin
-// `version --check` and hooks/bootstrap.sh resolve against, deliberately.
+// `update --check` and hooks/bootstrap.sh resolve against, deliberately.
 const releaseOrigin = "https://github.com/intentdriven/abcd"
 
 // NewGitHubUpdater builds the updater as it ships: the pinned origin, the
@@ -323,6 +323,23 @@ func NewGitHubUpdater() *Updater {
 // variable an attacker set.
 func newUpdater(origin string, blocked func(net.IP) bool, assetName string, allowHTTP bool, latest vintage.ReleaseFetcher) *Updater {
 	ignored := scrubEnv()
+	// Load the root pool now, from the already-scrubbed environment, and pin it
+	// explicitly so verification does not depend on the process-global lazy
+	// load. A nil pool (SystemCertPool error) falls back to the platform
+	// default, which is still env-free because the scrub already ran.
+	var rootCAs *x509.CertPool
+	if pool, err := x509.SystemCertPool(); err == nil {
+		rootCAs = pool
+	}
+	return buildUpdater(origin, blocked, assetName, allowHTTP, latest, ignored, rootCAs)
+}
+
+// buildUpdater assembles an updater around a client that honours no transport
+// override: its proxy is nil by construction and its root pool is the one
+// handed in, which the caller loaded with the CA overrides out of the
+// environment. ignored names the overrides that were set, for the receipt.
+func buildUpdater(origin string, blocked func(net.IP) bool, assetName string, allowHTTP bool, latest vintage.ReleaseFetcher,
+	ignored []string, rootCAs *x509.CertPool) *Updater {
 	parsed, _ := url.Parse(origin)
 	hosts := map[string]bool{}
 	if parsed != nil {
@@ -340,14 +357,6 @@ func newUpdater(origin string, blocked func(net.IP) bool, assetName string, allo
 	dialer := &net.Dialer{Timeout: fetchTimeout}
 	if blocked != nil {
 		dialer.Control = urlguard.DialControl(blocked)
-	}
-	// Load the root pool now, from the already-scrubbed environment, and pin it
-	// explicitly so verification does not depend on the process-global lazy
-	// load. A nil pool (SystemCertPool error) falls back to the platform
-	// default, which is still env-free because the scrub already ran.
-	var rootCAs *x509.CertPool
-	if pool, err := x509.SystemCertPool(); err == nil {
-		rootCAs = pool
 	}
 	u.client = &http.Client{
 		Timeout: fetchTimeout,
@@ -642,6 +651,48 @@ func scrubEnv() []string {
 		}
 	}
 	return ignored
+}
+
+// setOverrides names the transport-override variables that are set, leaving
+// every one of them in place.
+func setOverrides() []string {
+	var set []string
+	for _, name := range scrubbedEnv {
+		if _, ok := os.LookupEnv(name); ok {
+			set = append(set, name)
+		}
+	}
+	return set
+}
+
+// caOverrides are the scrubbed variables crypto/x509 reads when it loads the
+// system root pool.
+var caOverrides = []string{"SSL_CERT_FILE", "SSL_CERT_DIR"}
+
+// overrideFreeRoots loads the system root pool with the CA overrides out of
+// the environment for the load alone, then puts back exactly what it took out,
+// so a caller that is not the updater leaves its process environment as it
+// found it. crypto/x509 loads that pool once per process: when this is the
+// first load, the process's default pool ignores the overrides from then on
+// too, while the variables stay set for anything the process starts. A nil
+// pool (SystemCertPool error) falls back to the platform default.
+func overrideFreeRoots() *x509.CertPool {
+	taken := map[string]string{}
+	for _, name := range caOverrides {
+		if v, ok := os.LookupEnv(name); ok {
+			taken[name] = v
+			os.Unsetenv(name)
+		}
+	}
+	defer func() {
+		for name, v := range taken {
+			os.Setenv(name, v)
+		}
+	}()
+	if pool, err := x509.SystemCertPool(); err == nil {
+		return pool
+	}
+	return nil
 }
 
 func (u *Updater) assetURL(tag, name string) string {

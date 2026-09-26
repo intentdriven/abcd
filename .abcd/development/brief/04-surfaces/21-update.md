@@ -1,15 +1,15 @@
 # `/abcd:update` — Complete a Chosen Update
 
-The online check of `abcd version` says a newer release exists. `/abcd:update` is the one
+The verb's check says whether a newer release exists, and `/abcd:update` is the one
 command that acts on that: it fetches the release, verifies the platform binary
 against that release's own checksums, and swaps the installed copy atomically. A
 person types one verb and either has the new version or has a refusal that names
 the command that owns the file instead.
 
 The verb is the explicit ask. abcd never checks for or applies updates on its own
-([adr-38](../../decisions/adrs/0038-implicit-checks-are-disk-only.md)); this verb
-and the online version check are the only two **commands** that reach the release origin,
-each only when invoked
+([adr-38](../../decisions/adrs/0038-implicit-checks-are-disk-only.md)); this verb,
+with its check, is the only **command** that reaches the release origin, and only
+when invoked
 ([itd-130](../../intents/shipped/itd-130-abcd-update-completes-a-chosen-update-in-one-verb-it-fetches.md),
 spc-32).
 
@@ -20,9 +20,12 @@ root holds no binary, so it reaches the origin without the user naming a network
 action in that moment. adr-38 admits it as a tier of its own: provisioning
 completes a chosen update, it never discovers one.
 
-The online version check hands over to this verb: when an update is available, its
-`next:` line names the command to type, chosen by the same on-disk classification
-this verb dispatches on ([`12-version.md`](12-version.md)).
+The check is a flag of this verb (itd-2609212130136102): it prints the
+version report [`12-version.md`](12-version.md) describes, fetches the latest
+release's tag once, compares, and names its source, swapping nothing and taking
+no tag. When an update is available, its `next:` line names the command to type,
+chosen by the same on-disk classification this verb dispatches on, so the check
+never constructs the updater that swaps a binary.
 
 ## Sub-verbs
 
@@ -38,7 +41,7 @@ this verb dispatches on ([`12-version.md`](12-version.md)).
 |---|---|---|
 
 The table is empty: the verb registers no sub-command. Its one argument is an
-optional release tag.
+optional release tag, and the check is a flag.
 
 ## Behaviour
 
@@ -139,6 +142,7 @@ Sub-verbs: none.
 
 | Flag | Type |
 |---|---|
+| `--check` | bool |
 | `--yes` | bool |
 
 <!-- surface-appendix:end -->

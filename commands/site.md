@@ -1,7 +1,8 @@
 ---
 name: site
-description: Render this repository's website — the landing page composed from repository text under the single-source rule, and the record export derived from the record, git history and the changelog — by invoking the abcd binary. The bare form performs zero writes; build and check write only inside the output directory (check renders the site first when the directory has no index.html).
-argument-hint: "[build|check]"
+description: "Report what the website declares and what was built: Writes nothing; refuses any argument."
+argument-hint: "[build|setup]"
+block: agents
 ---
 
 # `/abcd:site` the website as a surface of the record
@@ -85,59 +86,58 @@ rendered subset is reported as `file:line`, and so is an image the page names
 that the repository does not carry. Neither is a rendering bug to work around —
 the fix is an edit to the page.
 
-## `check` — say whether what was rendered may be published
+## `setup` — take a managed repository's site to a live address
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/abcd" site check --out site
+"${CLAUDE_PLUGIN_ROOT}/abcd" site setup --json
 ```
 
-reads the built output directory and the repository it came from, and runs seven
-independent gates. Each reports EVERY failure it finds rather than the first, so
-one run is one review round. An output directory with no `index.html` is
-rendered first: a caller who has not built yet is asking the same question as
-one who has. It writes nothing except that render, and reaches no network.
+sets up the site of a repository abcd manages, in three stages, and emits
+`{ "status": …, "files": […], "environments": […], "host": {…}, "remaining": […], "notes": […] }`:
 
-- `provenance` — every visible word on a composed surface sits inside an element
-  whose `data-src` names a repository span that RESOLVES (the file exists, and
-  the heading anchor exists in it), or is an interface string, a number, a date,
-  a file name or an asset name. The `<title>` and `<meta name="description">`
-  carry Identity text with no attribute to name it, and are checked against the
-  Identity block rather than skipped; a page that names itself reads
-  `<page> · <project>`, and both halves are held up.
-- `hero` — the rendered hero's eyebrow, tagline and pitch equal the Identity
-  block, read through the same parser the positioning surfaces use.
-- `banned-tokens` — the documentation lint's banned tokens, over the text every
-  composed surface publishes, whichever tree the span came from. The escape is
-  read source-side: a token is exempt where the source line it was selected from
-  declares it legitimate. Credit is the one place naming a tool is the sanctioned
-  use, so a span selected from the acknowledgement file, and the attribution
-  page's own authorship data, are exempt from the naming bans — never from
-  provenance, which still matches every name against the history that carries it.
-- `snippets` — every `abcd …` command the site shows names a command the
-  generated CLI reference documents, with flags that reference documents for it.
-- `baseline` — an unresolved cross-reference outside the committed ratchet
-  fails; a ratchet entry whose reference now resolves is reported as shrinkable
-  and fails nothing. Growing is refused, shrinking is invited.
-- `mobile` — over every page this build writes, the record rendering included
-  (the `/docs/` tree is the documentation generator's own output and is dropped
-  before any gate walks it, so no gate here examines it): the viewport
-  meta, an overflow container above every table and command block, a max-width
-  rule for images in the linked stylesheet (resolved from the served root, which
-  is where a root-absolute href points), no picture wider than the content
-  column, and no inline fixed width above 390 px. The rendered-overflow audit
-  needs a browser and runs in CI.
-- `figure-labels` — every text label in a lifted diagram is a phrase on the page
-  it illustrates, where the manifest asks for it.
+- `files` — the repository half, each `written`, `current`, `kept` or
+  `refused`: `.abcd/site.json` (derived from the identity block and
+  `docs/README.md`), the static inputs under `site-src/`, the workflow
+  `.github/workflows/site.yml` (render on each published release with abcd's
+  verified binary, deploy from the rendered archive) and `wrangler.jsonc`. The
+  composition and the static inputs are the repository's own once they exist
+  and are `kept`; a workflow or host configuration that differs from what setup
+  writes is `refused`, the whole run writes nothing, and `--confirm` replaces it.
+- `environments` — the forge's `site-render` and `site` deployment
+  environments, each admitting only the default branch and tags `v*`, created
+  through `gh` as you. An existing environment is never rewritten (the forge's
+  write would replace its required reviewers): one on named rules and no rule
+  beyond those two gains the rules it lacks, and one that admits more, through
+  its protection mode or a rule of its own such as branch `*`, is
+  `unrestricted`, with restricting it listed in `remaining`.
+- `host` — with a hosting credential stored on this machine, the host is
+  created and the domain routed to it, and `address` is the live address.
+  Without one, `status` is `no_credential` and nothing is contacted.
+- `remaining` — the exact steps left for you: committing the written files,
+  storing the credential, and one `gh secret set … --env site` command for
+  each deploy secret the environment does not hold yet. abcd never reads or
+  sets a secret's value.
 
-Report the gates that passed, then every finding under the gate that raised it,
-each with the file and the `data-src` span a reader's next edit goes to. Exit is
-`0` when nothing failed, `1` when something did, and `2` when the check could
-not run at all (no composition manifest, an unreadable input). A shrinkable
-baseline entry is printed as a note and does not change the exit code.
+Both remote stages ask before they write, naming each change. An unanswered
+run declines them and exits `1`; `--yes` confirms in advance — pass it only
+when the user has asked for the forge and host changes. A second run over an
+unchanged repository reports `no_change` and writes nothing.
 
-The fix for a finding is always at its SOURCE — the page, the record, the
-manifest or the stylesheet — never in the generated output, which the next build
-overwrites.
+The first run names the host after the repository; `--name` and `--domain`
+choose the host name and the custom domain, and are recorded in the
+composition's `hosting` block. The composition's `pages` block switches pages of
+the closed set (`landing`, `explorer`, `record_pages`, `graph`, `timeline`,
+`glossary`, `status`) off; it cannot add one.
+
+Report each stage's outcome, then the remaining steps in order. Never paste a
+credential into the conversation: the store is the file `~/.abcd/credentials.json`
+(mode `0600`), which the user writes themselves.
+
+## The gate over what was rendered
+
+Whether a build may be published is `/abcd:lint site` — run `abcd lint site
+--out site`. It runs the site's gates over the built output directory and names
+every finding at its source.
 
 **Binary resolution.** Run `"${CLAUDE_PLUGIN_ROOT}/abcd"` — a plugin install
 provisions the binary into the plugin root, so this is the rung that fires for a

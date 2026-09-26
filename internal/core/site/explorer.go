@@ -36,7 +36,6 @@ import (
 const (
 	routeDashboard    = "record/"
 	routeGraph        = "record/graph/"
-	routeTimeline     = "record/timeline/"
 	routeFoundations  = "record/foundations/"
 	routeDevelopment  = "record/development/"
 	routeHealth       = "record/health/"
@@ -92,6 +91,8 @@ type explorer struct {
 	eyebrow, eyebrowSrc string
 	// bib is the bibliography, or nil where the repository keeps none.
 	bib *Bibliography
+	// pages is the page set the manifest's switches leave on.
+	pages pageSet
 }
 
 // newExplorer indexes the export for the pages.
@@ -110,10 +111,17 @@ func newExplorer(c *composer, export RecordExport, bib *Bibliography, recordRoot
 		mentions:       map[string][]string{},
 		stubs:          map[string][]ExportEdge{},
 		glossaryByPath: map[string]glossaryEntry{},
+		pages:          c.manifest.Pages.resolve(),
 	}
-	entries, err := loadGlossaryEntries(c.root)
-	if err != nil {
-		return nil, err
+	// A glossary switched off is a glossary the explorer never loads: no pages,
+	// no navigation entry and no term links, the same graceful absence a
+	// repository that keeps none gets.
+	var entries []glossaryEntry
+	if e.pages.glossary {
+		var err error
+		if entries, err = loadGlossaryEntries(c.root); err != nil {
+			return nil, err
+		}
 	}
 	e.glossary = entries
 	for _, en := range entries {
@@ -171,6 +179,9 @@ func (e *explorer) hasReferences() bool { return e.bib != nil && len(e.bib.Entri
 // Pages renders every explorer page, keyed by its output path.
 func (e *explorer) Pages() (map[string]string, error) {
 	pages := map[string]string{}
+	if !e.pages.explorer {
+		return pages, nil
+	}
 	add := func(route string, render func() (string, error)) error {
 		html, err := render()
 		if err != nil {
@@ -182,8 +193,10 @@ func (e *explorer) Pages() (map[string]string, error) {
 	if err := add(routeDashboard, e.dashboard); err != nil {
 		return nil, err
 	}
-	if err := add(routeGraph, e.graphPage); err != nil {
-		return nil, err
+	if e.pages.graph {
+		if err := add(routeGraph, e.graphPage); err != nil {
+			return nil, err
+		}
 	}
 	if err := add(routeContributors, e.contributorsPage); err != nil {
 		return nil, err
@@ -281,7 +294,9 @@ func (e *explorer) subnav(active string) string {
 	if e.hasDevelopment() {
 		tabs = append(tabs, tab{routeDevelopment, e.c.ui.RecordNav.Development})
 	}
-	tabs = append(tabs, tab{routeGraph, e.c.ui.RecordNav.Graph})
+	if e.pages.graph {
+		tabs = append(tabs, tab{routeGraph, e.c.ui.RecordNav.Graph})
+	}
 	if e.hasHealth() {
 		tabs = append(tabs, tab{routeHealth, e.c.ui.RecordNav.Health})
 	}
@@ -471,8 +486,10 @@ func (e *explorer) dashboard() (string, error) {
 
 	// The genealogy sits directly under the counts, folded shut: it is how the
 	// record got where it is, which a reader asks for rather than arrives at.
-	b.WriteString(panelDisclosure("c12", ui.RecordNav.Timeline, "",
-		strconv.Itoa(len(e.export.Releases))+" "+ui.Tiles.Releases, e.genealogy()))
+	if e.pages.timeline {
+		b.WriteString(panelDisclosure("c12", ui.RecordNav.Timeline, "",
+			strconv.Itoa(len(e.export.Releases))+" "+ui.Tiles.Releases, e.genealogy()))
+	}
 
 	// State bars, one per store that grades its records at all.
 	for _, typ := range e.storeOrder() {

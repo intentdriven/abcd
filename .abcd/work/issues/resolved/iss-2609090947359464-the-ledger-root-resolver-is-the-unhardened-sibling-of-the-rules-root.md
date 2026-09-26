@@ -1,0 +1,29 @@
+---
+schema_version: 1
+id: "iss-2609090947359464"
+slug: "the-ledger-root-resolver-is-the-unhardened-sibling-of-the-rules-root"
+severity: "minor"
+category: "security"
+source: "agent-finding"
+found_during: "adversarial-review"
+origin: researcher-authored
+production_mode: hand-written
+found_at: "internal/core/capture/roots.go"
+related_issues: ["iss-2609090951291524"]
+resolution: "The marker walk is deleted: discoverRepoRoot delegates to gitutil.CheckoutRoot and resolves no root where git names none, so an empty .git marker or a foreign-owned repository in an ancestor can no longer bound the ledger root; a test pins the empty-marker case through discoverRepoRoot and resolveRoots."
+impact: internal
+resolved_by:
+  commit: "93bea0df"
+---
+
+discoverRepoRoot is the unhardened twin of the rules-root resolver that was hardened in the same batch. Its git call is properly isolated, and its own comment explains why: an inherited GIT_WORK_TREE or GIT_DIR would redirect discovery at a different tree. The fallback beneath that call has neither guard the sibling grew. Where git will not answer, the loop walks upward accepting any directory whose git entry merely exists, with no shape check of the kind plausibleRepository performs and no ownership check of the kind foreignOwnerRefusal performs, so an empty directory named for the marker in a shared ancestor, or a real repository another uid laid there, would bound the ledger root exactly as it bounded the rules root before that fix.
+
+CORRECTED 2026-09-09, major to minor, on reachability. This record first asserted a live harm path, that a capture made beneath such a plant could be written with the attacker's redaction rules and into the attacker's tree, and that is false. What stops it is reachability rather than the walk: every front door supplies an explicit repo root, so the fallback branch is dead in shipped code. The CLI hands its working directory verbatim to every capture request and the reading verbs resolve the toplevel themselves before they call, so nothing shipped leaves the root empty for the discovery helper to answer. Reproduced against the plant the first draft described: with an empty marker directory and a populated ledger planted in a shared ancestor, the status verb run from a directory beneath it reported open 0 rather than reading the planted ledger. The redaction limb fell with it, because the scanner is built from the root the surface passed, which is the working directory and never the planted one.
+
+What remains, and why this is still worth a record: the gap in the walk is real, and the tree treats this function as the fixed exemplar of repo-root discovery, cited by name in the resolution of iss-311 as the shape two other resolvers were corrected to match, so the next surface that leaves the root empty inherits an unhardened walk with nothing saying so. That the branch is unreachable is a property of today's callers rather than of the function, and no test pins it. Fix direction: route the fallback through the same shape and ownership gate the rules resolver uses, reusing plausibleRepository and the ownership refusal rather than restating them, and honour the same explicit opt-in so a container bind mount and a shared CI checkout keep working; or delete the walk and refuse outright when git cannot answer. Detector: with git unable to answer, a walk reaching a directory that carries only an empty git marker must resolve no repo root, and a marker root owned by another uid must be refused unless the caller has declared it. The separate defect that the front doors never call this helper at all is recorded as iss-2609090951291524.
+
+AMENDED 2026-09-09, in the change that fixed iss-2609090951291524. The verdict above stands and the mechanism holding it has moved, so the sentence that carried it is restated here rather than left to read as current. The capture front doors no longer hand their working directory to the core: every capture verb resolves the checkout root through capture.LedgerRoot, which asks git and refuses BOTH remaining states — a repo-shaped tree git will not answer for, and no repository above at all — instead of falling through to the walk this record is about. The fallback branch is therefore still dead in shipped code, now because the one resolver that could have reached it declines to and says by name that it declines, rather than because no caller resolves anything. Nothing this record asks for is done: the walk still accepts any directory carrying the marker name, still has neither the shape check nor the ownership gate its rules-root sibling grew, is still the exemplar cited in the resolution of iss-311, and still has no test pinning either gap.
+
+## Grounds
+
+- pursued: no ledger root is ever resolved from a directory git will not answer for; a resolveRoots call succeeding beneath an empty planted marker would show it wrong

@@ -1,6 +1,6 @@
 ---
 name: abcd
-description: Top-level where-am-i status board and record-id dispatch. Bare `/abcd` renders a read-only snapshot of the current directory; `/abcd <record-id>` (iss-N, itd-N, spc-N, adr-N) reports what that record is and the next move. Strictly read-only.
+description: "Render the status board, or say what one record id is and its next move: Writes nothing; refuses any other positional argument."
 argument-hint: "[<record-id>]"
 ---
 
@@ -72,7 +72,10 @@ Summarise the `id`, `family`, `status`, `title`, `path`, the `links` edges
 present), and each entry in `next_moves` — the concrete lifecycle move
 (e.g. a draft intent points at the planning interview and `intent plan`; an
 open issue points at `capture promote` / `resolve` / `wontfix`; decisions are
-read). A shape-matching id found in no store exits non-zero naming the stores
+read). For an issue id the JSON also carries `ledger` — the `checkout` and
+`branch` whose ledger was read — because the same id can sit in another
+worktree's ledger in another state; name it when you report. A shape-matching id
+found in no store exits non-zero naming the stores
 searched — unless a peer holds it (a sibling worktree or a local branch, see
 `/abcd:peers`), in which case the refusal names that peer's branch, path and
 folder instead; relay it, and do not recreate the record here. An issue whose

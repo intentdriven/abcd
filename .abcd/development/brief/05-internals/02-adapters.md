@@ -70,6 +70,25 @@ workspace's root-path field, and matches against `git rev-parse --show-toplevel`
 `~/`-relative path normalisation. Source layout:
 `~/Library/Application Support/RepoPrompt/Workspaces/<id>/workspace.json`.
 
+## Hosting providers
+
+`abcd site setup` routes a rendered site through a provider seam,
+`internal/adapter/hosting`, which is not one of the five capability seams: no
+dropped dependency stands behind it, and there is no native default, because a
+site is served by somebody. An adapter has two halves. The repository half is
+data — the deploy step, the secret names that step reads, and the host
+configuration file it deploys from — rendered into files the verb writes. The
+host half connects with the person's credential and creates the host, routes a
+domain to it and reports the address, after a read that writes nothing.
+
+One provider ships: an assets-only Cloudflare Worker, the host abcd's own site
+uses. A second is one implementation of the interface and one entry in the
+site package's provider list; the verb does not change. The credential is
+resolved by name through `internal/core/credential`, whose interim source is
+`~/.abcd/credentials.json` until the credential store (itd-2609221017023290)
+replaces it; the connected adapter holds it, and it is scrubbed from every host
+message before one can reach an error.
+
 ## Lifeboat source readers
 
 Disembark reads a repo's **own settled artefacts** into the lifeboat through a set

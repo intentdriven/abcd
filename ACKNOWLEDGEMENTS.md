@@ -42,6 +42,25 @@ Ideas and methodologies that shaped the design — not code abcd depends on.
   normalised modes, stored uncompressed), because its digest is committed by the
   ship and must be reproduced from the tagged commit before the release can
   publish (adr-2609231048308186).
+- **The grouped command lists of kubectl and Terraform** — kubectl's help lists
+  its commands under labelled sections (beginner, intermediate, deploy, cluster
+  management) and Terraform's separates its main commands from all the others.
+  abcd's help takes the same shape (itd-146, `internal/surface/cli/helpgroups.go`):
+  the person's verbs under five labelled groups, and the verbs agents and hosts
+  call in a second block behind one flag. The mechanism is the command groups
+  of the CLI framework abcd already uses, so the pattern arrives with no new
+  dependency.
+- **The Command Line Interface Guidelines (<https://clig.dev>)** — their advice
+  that a command's help opens with a concise description of what the command
+  does. abcd holds that line to one form (itd-2609212113220149,
+  `internal/core/surface/sentences.go`): what the verb does, what it writes, and
+  when it refuses, declared once and rendered on the command list, the verb's
+  `--help` and its plugin page, so the line an agent chooses a verb by answers
+  the questions it asks before the call. Their standard flag names and their
+  advice to warn before removing a spelling shape the verb consolidation
+  (itd-2609212130136102): the version is the root's `--version`, a mode of one
+  action is a flag rather than a sub-verb, and every moved spelling answers
+  with its successor for one release before it goes.
 - **The NO_COLOR convention (<https://no-color.org>)** — the environment
   variable that asks a program to emit no colour, and specifically its rule
   that the variable counts when *present and not empty*, whatever its value.
@@ -90,6 +109,11 @@ Ideas and methodologies that shaped the design — not code abcd depends on.
   outright instead of shipped, and the enforcing control sits at the execution
   layer.
   <https://code.claude.com/docs/en/permissions>
+- **Cloudflare Workers and its v4 API (Cloudflare)** — the host the one
+  provider behind `abcd site setup`'s hosting seam targets: an assets-only
+  Worker deployed by the pinned `wrangler-action`, created, routed and
+  addressed through the Workers, domains and subdomain endpoints
+  (itd-2609061543533170). <https://developers.cloudflare.com/api/>
 - **Conftest (Open Policy Agent)** — the severity→exit-code convention (`0`
   clean / `1` warnings / `2` any error) the `abcd lint` verb adopts for its
   tri-state exit, taken as vocabulary without adopting the Rego engine (itd-85).
@@ -220,6 +244,15 @@ Ideas and methodologies that shaped the design — not code abcd depends on.
   `scan.deep` recommendation keys on when the binary is present
   (`internal/core/ahoy`); integrated as an opt-in engine, never bundled.
   <https://github.com/trufflesecurity/trufflehog>
+- **Shape Up (Ryan Singer, Basecamp, 2019, <https://basecamp.com/shapeup>)
+  and the Kubernetes enhancement proposals' graduation criteria
+  (<https://github.com/kubernetes/enhancements>)** — the two precedents for
+  keeping the pieces of a piece of work inside its own record rather than in a
+  child record family: Shape Up's scopes live in the pitch, and a KEP's
+  graduation criteria in the proposal. abcd's steps follow them
+  (adr-2609212115255771, decision 4; itd-2609212103565953): a spec lists its
+  steps under a `## Steps` section (`internal/core/spec/steps.go`), and a
+  remainder carries forward the steps not yet landed.
 
 ## References & sources
 

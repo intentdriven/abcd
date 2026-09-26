@@ -56,7 +56,7 @@ All inter-agent data is JSON; markdown is a render step at the end of each pass.
 
 **A design target: no shipped verb writes such a pair yet.** Every command emits `<command>-report.json` (full structured detail) and `<command>-report.md` (human skim summary, rendered from JSON). Both stored in `.abcd/.work.local/logs/<command>/<timestamp>/`.
 
-What ships today is narrower. Most verbs write no report at all: `lint`, `capture`, `intent`, `guard`, `version`, `changelog`, `rules`, `spec`, `identity`, `banlist` and `docs lint` are read-only renders, and `abcd lint` in particular is documented as performing zero writes. Where run output exists it lands in the local ephemeral tier under `.abcd/.work.local/logs/<area>/<run>/`, which is the shape the pattern generalises.
+What ships today is narrower. Most verbs write no report at all: `lint` and its targets, `capture`, `intent`, `guard`, `--version`, `changelog`, `rules`, `spec`, `identity` and `banlist` are read-only renders, and `abcd lint` in particular is documented as performing zero writes. Where run output exists it lands in the local ephemeral tier under `.abcd/.work.local/logs/<area>/<run>/`, which is the shape the pattern generalises.
 
 ## 6. `.abcd/.work.local/logs/` layout
 

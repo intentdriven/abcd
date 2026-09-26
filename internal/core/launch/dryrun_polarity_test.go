@@ -85,7 +85,10 @@ func TestDryRunVersionComesFromTheCaller(t *testing.T) {
 	writeFile(t, root, "README.md", "clean readme\n")
 	writeLockstepTree(t, root, "", "", "")
 
-	report, err := DryRun(DryRunRequest{RepoRoot: root, Version: "2.5.0"})
+	// The tag set is injected: this test is about where the VERSION comes from,
+	// and the fixture is not a repository, so a real tag listing would fail —
+	// which the retention preview reports as a refusal (iss-194).
+	report, err := DryRun(DryRunRequest{RepoRoot: root, Version: "2.5.0", ExistingTags: []Semver{}})
 	if err != nil {
 		t.Fatalf("dry-run preflight must succeed: %v", err)
 	}

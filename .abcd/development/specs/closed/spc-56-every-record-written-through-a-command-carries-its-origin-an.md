@@ -99,6 +99,15 @@ remedy: re-run without `--production-mode`. The refusal is about the RESTAMP and
 never about the transition — an unstamped record stays resolvable, because
 forward-only population must not strand a record nobody can close.
 
+The gate reads the `origin` through the vocabulary's parser, not as a
+presence test (iss-2608300941548519): a record carrying an `origin` outside
+the closed set refuses the restamp on the same terms, because writing a mode
+beside it produces a pair no command writes. The converse is a deliberate
+write inside the lint's declared residual: a record carrying a valid `origin`
+and no `production_mode`, itself a `record_provenance` blocker, is repaired
+into a clean pair by a restamp, since that pair is exactly what a command
+writes.
+
 **The attribution seam is extended, not duplicated.** `identity.Pin` gains an
 optional `ProductionMode` member; `LoadPin` validates it against the vocabulary
 and returns an error on an unknown value, exactly as it already errors on a

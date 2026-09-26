@@ -2,9 +2,10 @@ package capture
 
 import (
 	"fmt"
-	"github.com/intentdriven/abcd/internal/core/frontmatter"
 	"strconv"
 	"strings"
+
+	"github.com/intentdriven/abcd/internal/core/frontmatter"
 )
 
 // parseFrontmatterAndBody splits text into a frontmatter map and a body,
@@ -192,11 +193,24 @@ func parseFrontmatterBlock(lines []string) (map[string]any, error) {
 		if str, isStr := val.(string); isStr && !quotedScalar(rest) && frontmatter.IsNull(str) {
 			val = ""
 		}
+		// A key the committed-ledger gate judges on its RAW scalar keeps its raw
+		// token when quoted, so the validator judges the bytes the gate judges.
+		// impact is written bare by every verb, and the gate refuses any quoted
+		// spelling — "fix" and "" included — because the release derivation reads
+		// the raw scalar too; unquoted here, those two were accepted by the reader
+		// while record-lint blocked the same record (iss-2608261133218490).
+		if rawScalarKeys[key] && quotedScalar(rest) {
+			val = rest
+		}
 		fm[key] = val
 		i++
 	}
 	return fm, nil
 }
+
+// rawScalarKeys are the keys a reader downstream of the ledger judges on the
+// raw scalar — quotes included — rather than on its decoded string.
+var rawScalarKeys = map[string]bool{"impact": true}
 
 // parseScalarOrList decodes one YAML value into string, int, or []string.
 func parseScalarOrList(s string) (any, error) {

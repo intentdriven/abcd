@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -19,12 +20,12 @@ import (
 // declared (the composition manifest, the interface-string allowlist, the
 // reference baseline) and what the last build left in the output directory.
 // `site build` renders: the landing page and record.json from repository text
-// and committed assets, into a directory the repository does not track.
+// and committed assets, into a directory the repository does not track. The
+// gate over what it rendered is `abcd lint site`.
 func newSiteCommand(asJSON *bool) *cobra.Command {
 	siteCmd := &cobra.Command{
-		Use:   "site",
-		Short: "The website rendered from this repository: what is declared, and what was built (read-only)",
-		Args:  cobra.NoArgs,
+		Use:  "site",
+		Args: cobra.NoArgs,
 	}
 
 	var statusOut string
@@ -47,9 +48,8 @@ func newSiteCommand(asJSON *bool) *cobra.Command {
 	var version, commit, stampDate string
 	var preview bool
 	buildCmd := &cobra.Command{
-		Use:   "build",
-		Short: "Render the site into the output directory (writes nothing outside it)",
-		Args:  cobra.NoArgs,
+		Use:  "build",
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cwd, err := os.Getwd()
 			if err != nil {
@@ -76,11 +76,23 @@ func newSiteCommand(asJSON *bool) *cobra.Command {
 	buildCmd.MarkFlagsMutuallyExclusive("preview", "version")
 	siteCmd.AddCommand(buildCmd)
 
+	siteCmd.AddCommand(newSiteSetupCommand(asJSON))
+
+	// The gate over the built site is `abcd lint site` (itd-2609212130136102);
+	// `site check` answers with it for one release.
+	siteCmd.AddCommand(movedStub("check", "abcd lint site"))
+
+	return siteCmd
+}
+
+// newLintSiteCommand builds `lint site`: the gates adr-47 decision 3 arms, run
+// over a built output directory, rendering it first when it holds no
+// index.html. It exits 1 when any gate fails, so a release job can stop on it.
+func newLintSiteCommand(asJSON *bool) *cobra.Command {
 	var checkOut string
 	checkCmd := &cobra.Command{
-		Use:   "check",
-		Short: "Gate the built site: provenance, hero drift, banned tokens, snippets, the reference ratchet, mobile and figure labels",
-		Args:  cobra.NoArgs,
+		Use:  "site",
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cwd, err := os.Getwd()
 			if err != nil {
@@ -88,7 +100,7 @@ func newSiteCommand(asJSON *bool) *cobra.Command {
 			}
 			res, err := site.Check(site.CheckRequest{RepoRoot: cwd, OutDir: checkOut})
 			if err != nil {
-				return &exitError{Code: 2, Msg: "abcd site check: " + scrubPaths(err)}
+				return &exitError{Code: 2, Msg: "abcd lint site: " + scrubPaths(err)}
 			}
 			if rerr := render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
 				renderSiteCheck(w, res)
@@ -102,15 +114,14 @@ func newSiteCommand(asJSON *bool) *cobra.Command {
 		},
 	}
 	checkCmd.Flags().StringVar(&checkOut, "out", site.DefaultOutDir, "built output directory to check (rendered first if absent)")
-	siteCmd.AddCommand(checkCmd)
 
-	return siteCmd
+	return checkCmd
 }
 
 // renderSiteCheck prints every failure, grouped by the gate that raised it, and
 // the shrink invitations that are news rather than failures.
 func renderSiteCheck(w io.Writer, res site.CheckResult) {
-	fmt.Fprintf(w, "abcd site check — %s\n", termsafe.Sanitize(res.OutDir))
+	fmt.Fprintf(w, "abcd lint site — %s\n", termsafe.Sanitize(res.OutDir))
 	if res.Built {
 		fmt.Fprintf(w, "  (rendered first: the output directory held no index.html)\n")
 	}
@@ -229,4 +240,111 @@ func publishedWord(on bool) string {
 		return "published"
 	}
 	return "not published"
+}
+
+// newSiteSetupCommand builds `site setup` (itd-2609061543533170): the verb that
+// takes a managed repository's site from the checkout to a live address. It
+// writes the repository half, and — each only once confirmed (adr-44) — the
+// forge's deployment environments and, with a hosting credential on this
+// machine, the host. An unanswered run declines both remote writes, so a script
+// that pipes nothing changes nothing remote; --yes says yes in advance.
+func newSiteSetupCommand(asJSON *bool) *cobra.Command {
+	var name, domain string
+	var confirm, yes bool
+	cmd := &cobra.Command{
+		Use:  "setup",
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			cwd, err := os.Getwd()
+			if err != nil {
+				return err
+			}
+			var asker site.Asker = newPrompter(cmd)
+			if yes {
+				asker = alwaysConfirm{}
+			}
+			res, err := site.Setup(site.SetupRequest{
+				RepoRoot: cwd, Name: name, Domain: domain, Confirm: confirm, Asker: asker,
+				Context: cmd.Context(),
+			})
+			if err != nil {
+				return &exitError{Code: 2, Msg: "abcd site setup: " + scrubPaths(err)}
+			}
+			if rerr := render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
+				renderSiteSetup(w, res)
+			}); rerr != nil {
+				return rerr
+			}
+			// A run that did not do what it set out to exits non-zero, the reason
+			// on stdout above: a declined confirmation reads EOF in a script, and
+			// exiting 0 there would be indistinguishable from a write that landed.
+			if res.Status == site.StatusRefused || res.Status == site.StatusDeclined {
+				return &exitError{Code: 1, Msg: "abcd site setup: " + res.Status + " — see the result above"}
+			}
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&name, "name", "", "host name when the composition names none (default: the repository's name)")
+	cmd.Flags().StringVar(&domain, "domain", "", "custom domain to route to the host when the composition names none")
+	cmd.Flags().BoolVar(&confirm, "confirm", false, "replace a workflow or host configuration that differs from what setup writes")
+	cmd.Flags().BoolVar(&yes, "yes", false, "confirm the forge and host changes without being asked; without it an unanswered run declines them")
+	return cmd
+}
+
+// renderSiteSetup prints the three stages and what remains.
+func renderSiteSetup(w io.Writer, res site.SetupResult) {
+	fmt.Fprintf(w, "abcd site setup — %s\n", termsafe.Sanitize(res.Status))
+	// One status column for files and environments, as wide as the longest
+	// status in this result (`unrestricted` is twelve characters), so every
+	// name starts in one column and a change line sits under its name.
+	width := 8
+	for _, f := range res.Files {
+		width = max(width, len(f.Status))
+	}
+	for _, e := range res.Environments {
+		width = max(width, len(e.Status))
+	}
+	under := strings.Repeat(" ", 4+width+1)
+	fmt.Fprintf(w, "  repository\n")
+	for _, f := range res.Files {
+		line := fmt.Sprintf("    %-*s %s", width, f.Status, f.Path)
+		if f.Detail != "" && f.Status != "kept" {
+			line += " (" + f.Detail + ")"
+		}
+		fmt.Fprintln(w, termsafe.Sanitize(line))
+	}
+	repo := res.Repo
+	if repo == "" {
+		repo = "no forge"
+	}
+	fmt.Fprintf(w, "  forge (%s)\n", termsafe.Sanitize(repo))
+	for _, e := range res.Environments {
+		fmt.Fprintf(w, "    %-*s %s\n", width, termsafe.Sanitize(e.Status), termsafe.Sanitize(e.Name))
+		for _, c := range e.Changes {
+			fmt.Fprintf(w, "%s%s\n", under, termsafe.Sanitize(c))
+		}
+	}
+	h := res.Host
+	fmt.Fprintf(w, "  host (%s: %s)\n", termsafe.Sanitize(h.Provider), termsafe.Sanitize(h.Name))
+	fmt.Fprintf(w, "    %s\n", termsafe.Sanitize(h.Status))
+	for _, c := range h.Changes {
+		fmt.Fprintf(w, "             %s\n", termsafe.Sanitize(c))
+	}
+	if h.Address != "" {
+		fmt.Fprintf(w, "    live at %s\n", termsafe.Sanitize(h.Address))
+	}
+	if h.Detail != "" {
+		fmt.Fprintf(w, "    %s\n", termsafe.Sanitize(h.Detail))
+	}
+	for _, n := range res.Notes {
+		fmt.Fprintf(w, "  note: %s\n", termsafe.Sanitize(n))
+	}
+	if len(res.Remaining) == 0 {
+		fmt.Fprintf(w, "nothing remains for you to do\n")
+		return
+	}
+	fmt.Fprintf(w, "remaining:\n")
+	for i, r := range res.Remaining {
+		fmt.Fprintf(w, "  %d. %s\n", i+1, termsafe.Sanitize(r))
+	}
 }

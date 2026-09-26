@@ -62,7 +62,7 @@ func TestCleanOrphanPlaceholdersStillSweepsAgedOrphan(t *testing.T) {
 	if err := os.Chtimes(orphan, old, old); err != nil {
 		t.Fatal(err)
 	}
-	if err := cleanOrphanPlaceholders(ir); err != nil {
+	if err := cleanOrphanPlaceholders(repo, ir); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Lstat(orphan); !os.IsNotExist(err) {

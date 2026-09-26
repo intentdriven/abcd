@@ -22,9 +22,9 @@ func TestAhoyRemoteRefusesAnUnmanagedFolderFromTheCLI(t *testing.T) {
 
 	// The read is reachable and reports the refusal without exiting non-zero: it is
 	// abcd's bare-render convention, and looking is never an error.
-	out := string(runCLI(t, "ahoy", "remote"))
+	out := string(runCLI(t, "ahoy", "--remote"))
 	if !strings.Contains(out, "refused") {
-		t.Fatalf("`ahoy remote` did not refuse a folder abcd does not manage:\n%s", out)
+		t.Fatalf("`ahoy --remote` did not refuse a folder abcd does not manage:\n%s", out)
 	}
 	if !strings.Contains(out, "note:") {
 		t.Errorf("the refusal carries no reason on stdout:\n%s", out)

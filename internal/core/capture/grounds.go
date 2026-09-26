@@ -67,7 +67,9 @@ func optionalGrounds(repoRoot, verb, raw string) (g *grounds.Grounds, redacted i
 // from the reason it already takes, or the caller's own text when the conjecture
 // is worth stating separately from the user-facing reason.
 //
-// The reason-derived form deliberately SKIPS the substance floor. A wontfix
+// The reason-derived form deliberately SKIPS the substance floor, and only the
+// floor: it passes the same control-character check and hidden-rune encoding a
+// supplied value does (grounds.NewDerived). A wontfix
 // reason is already a required, non-empty value with its own contract, and
 // putting a new length rule on it here would refuse records the ledger has
 // always accepted — a refusal this change was never asked for. The floor governs
@@ -87,15 +89,24 @@ func wontfixGrounds(repoRoot, raw, reason string) (g grounds.Grounds, redacted i
 				"wontfix: %w: wontfix_reason must be a non-empty string; nothing written", ErrGroundsRefused)
 		}
 		redText, _, deg := redactLedgerText(repoRoot, reason)
-		folded := grounds.Fold(redText)
-		if folded == "" {
+		if grounds.Fold(redText) == "" {
 			return grounds.Grounds{}, 0, "", fmt.Errorf(
 				"wontfix: %w: the reason is empty after redaction; nothing written", ErrGroundsRefused)
+		}
+		// Through core/grounds's derived-value constructor, not a struct literal:
+		// the control-character refusal a supplied value meets is met here too,
+		// at the grounds boundary and before any write, rather than by the
+		// frontmatter serialiser under the ledger lock (iss-2608301244450106);
+		// and hidden runes are encoded as every written grounds text is. Only
+		// the substance floor is left off, for the reason given above.
+		g, err := grounds.NewDerived(grounds.Declined, redText)
+		if err != nil {
+			return grounds.Grounds{}, 0, "", fmt.Errorf("wontfix: %w: %v; nothing written", ErrGroundsRefused, err)
 		}
 		// The count is deliberately dropped, not added: the derived grounds ARE the
 		// reason, and transition redacts and counts that same operand on its way to
 		// the note field. Returning it here made one redactable span report as two.
-		return grounds.Grounds{Token: grounds.Declined, Text: folded}, 0, deg, nil
+		return g, 0, deg, nil
 	}
 	g, redacted, degraded, err = requireGrounds(repoRoot, "wontfix", raw)
 	if err != nil {

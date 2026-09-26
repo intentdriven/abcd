@@ -1,33 +1,40 @@
-# Release 0.10.0 (2026-09-24)
+# Release 0.11.0 (2026-09-26)
 
-Every feature release now arrives with its own press release. When a release is cut, abcd writes a short announcement to `RELEASE.md` at the top of the repository: the headline features told as the moment a person notices them, the rest listed by name, each in the words its own press release already uses, quotes included. The previous page moves to the release archive, so the top of the repository always shows the latest feature release, and a release of fixes alone leaves the page as it is and says why. (itd-2609231013154443)
+abcd's command list loses its modes-as-verbs and its five spellings of "check this repository": `abcd lint` is the check, with `lint docs`, `lint outbound`, `lint site` and `lint identity` as its targets, `ahoy` has the flags `--dry-run`, `--identity` and `--remote` instead of sub-verbs for its modes, and `--version` is where every tool keeps it. This is the release's break: the old spellings stop with exit 2 and name the new form, and `intent new` is gone. (itd-2609212130136102)
 
-> "I used to work out what a release was for by reading forty changelog lines," said Iris, a product thinker. "Now the first page I open tells me, in the words I used when I asked for each piece." (itd-2609231013154443)
+> "Twenty-four verbs, and three of them were the same check wearing different hats," said a product thinker reading `abcd --help`. "Now `lint` is the check, `ahoy` has flags instead of sub-verbs for its modes, and `--version` is where every tool keeps it. I can hold the list." (itd-2609212130136102)
 
-Before a session captures, fixes or files anything, it can see what every peer already holds. `abcd peers` lists, read-only, the issues and intent drafts that sibling worktrees and local branches hold and this tree does not, uncommitted captures included; `capture resolve`, the record dispatcher and `intent audit` name the peer that holds a record instead of answering not found, and the status board carries one line whenever a peer holds something. Nothing is written: no claim, no lease, no session key. (itd-2609091416295622)
+`abcd --help` reads as a map instead of an alphabet: the person's verbs sit under five labelled headings (set-up, records, checks, portability, release), `--help --agent` adds the verbs agents and hosts call, and every verb's help opens with one sentence saying what it does, what it writes and when it refuses, identical on the list, the verb's `--help` and its page. The grouping and the sentences are gated, so a verb added without them fails a test. (itd-146, itd-2609212113220149)
 
-> "I had two sessions running in sibling worktrees, and one of them was about to capture an issue the other had captured an hour earlier, unpushed," said Maya, an autonomous-development practitioner who runs several agent sessions against one record. "The file was sitting on the disk the whole time, two directories over. Now the resolve tells me who has it, before I have done anything." (itd-2609091416295622)
+> "I inherited the repo and typed `abcd --help` on day one," said Henry, a new hire. "I could read every line, so nothing was broken. What I could not do was tell which three of them I needed that morning, because alphabetical order puts `ahoy` next to `banlist` and tells you nothing about either." (itd-146)
 
-A maintainer who lands the work an intent promised and forgets to close its spec finds out while the change is still in their hands. The commit says which intent it delivers, the way it already says which issue it resolves; the gate reads that line and refuses to let the change land with the intent still planned, naming the command that closes it. (itd-2609111003026787)
+> "The part I care about is that it cannot rot," said Kira, who maintains the surface. "If I add a verb and forget its group, the test tells me. If a group changes, the snapshot diff shows it. That is the same bar every other claim about this surface is already held to." (itd-146)
 
-> "I do not need a new verb. I need to be told, at the moment it matters, that I forgot the one I already had," said Kira, an open-source maintainer. (itd-2609111003026787)
+> "I read one line per verb before I decide whether to call it," said a technical facilitator watching an agent choose. "When that line says what the verb does, what it writes and when it refuses, the agent calls the right one. When it says 'manage things', it grep's the binary." (itd-2609212113220149)
 
-A repository abcd manages files an enhancement proposal or a defect report against an abcd-issued template, into an inbox in the user account, and abcd says at its next start how many wait and from how many repositories. The reports wait there to be read; nothing reaches abcd's ledger until a person or a session promotes one. (itd-2609221656361680)
+Before a release is published, `abcd launch` renders the exact public payload through a default-deny filter that proves `.abcd/` never leaks, diffs it against the previously published release, smoke-tests every shipped command, skill and hook from the rendered snapshot, and runs the full pre-flight gate suite (identity layer, marker blocks, `plugin.json` and `marketplace.json`, dirty tree, documentation and hook compliance), so a publish is blocked on a finding, not merely previewed. (itd-65, itd-66)
 
-> "Every useful thing my managed repositories learned about abcd reached me because an agent happened to mention it in a message, and I filed it by hand at midnight," said a product thinker running abcd on three repositories. "Now the repository files it, the report waits in my own account, and abcd greets me with one line saying three are waiting. I read them when I choose; nothing files itself." (itd-2609221656361680)
+> "The dry-run already tells me a home-directory path or a broken plugin.json *would* be a problem," said a maintainer. "But 'would' isn't 'does' — ship has to actually hard-fail on it. I don't want to hand-audit the payload before every snapshot; the gate suite should." (itd-65)
 
-A second orchestrator session joins an autonomous run in the same account without the first waiting on it. Work is divided one of three ways a window at a time, by a claim per record, by batch, or with the second session reviewing and landing, and the run's log carries what each way cost, so its report compares them on lanes landed, collisions and minutes spent. (itd-2609221656373558)
+> "Before I publish the release I want to see the actual file list, be certain none of my development knowledge or flow state rode along, and know the plugin still works once it's just the shipped files," said a maintainer. "A preview I have to trust isn't enough — render it and prove it." (itd-66)
 
-> "A third of the pilot's clock was a lane waiting for a slot, and the obvious answer, another pair of hands, was the one thing nobody had measured," said a technical facilitator. "Now a second session joins for a window, takes work by a claim, then by batch, then as the one that reviews and lands, and the log says what each cost: lanes landed, collisions, minutes wasted. The first session never waits for it, and if it dies the run does not notice." (itd-2609221656373558)
+A repository abcd manages gets a release process that is correct the day it goes public: `abcd launch scaffold` lands a changelog-driven release gate armed against the reviewed content commit, and a `workflow_dispatch` rehearsal arms the full gate against a simulated release and publishes nothing, so a green rehearsal proves the gate works before it is trusted with a real tag. (itd-93)
 
-Type the id, get your next move. `abcd <id>` answers what a record is and what happens next: every issue, intent, spec and decision names its own next verb, and nobody needs to know which verb family moves a record on. (itd-121)
+> "I flipped my repo public and cut a release the same afternoon — it just worked," said Alice, a solo founder. "I didn't have to discover, the hard way, that my release gate could never be satisfied. abcd gave me the version abcd itself only reached after a day of untangling." (itd-93)
 
-> "I stopped keeping the lifecycle in my head — the record tells me where it stands and what I'd do next," says Nia, facilitator. (itd-121)
+The conventions that are yours rather than abcd's now live once in `~/.abcd/rules.json` and inject into every repository abcd manages on that machine: the bundled opinions are the floor, your machine conventions refine them, and a repository override still wins. (itd-117)
+
+> "I had the same three rules copy-pasted into several repos, and they'd already drifted — one spelled the trailer one way, another another," said Carol, maintaining a set of sibling projects. "The bundled defaults covered most of it, but the places where my house style differs from the tool's were exactly the places I was repeating myself. Now the delta lives in one file. When I change how we word a rule, I change it once, and the repo that genuinely needs to differ still overrides it locally." (itd-117)
+
+Before abcd runs its own tests on your machine, it looks at what is already running: a program that has run flat out for over half an hour, or a machine loaded far beyond its cores, is named before the run starts (your own strays by name with how to stop them, other people's only as a count), and then the run carries on, because the choice to stop is yours. (itd-2609231434459890)
+
+> "Two days of leftover busy loops took my machine down and nothing said a word," said Maya, an autonomous-development practitioner. "Now the first test run after I leave something burning tells me what it is and how to stop it." (itd-2609231434459890)
+
+Type `abcd` in a terminal and it greets you with the a-b-c-d signal-flag hoist in colour, the version beside it and the tagline underneath, readable on light and dark terminals, in tmux and over SSH; pipe it into a file or a CI log and there is no banner and no escape byte. (itd-112)
 
 Also in this release:
 
-- Nothing You Notice Gets Lost (itd-4)
-- The brief's surface chapters are a generated reflection of the shipped surface, so a shape claim cannot drift (itd-147)
-- abcd Speaks One Word for a Specced Block of Work, and That Word Is "Spec" (itd-43)
+- The Registry Cannot Wave Its Hands (itd-122)
+- A scope condition is dispositioned from a reading run, keyed to the condition's identity and joined to the item that occasioned it (itd-2609020625405251)
 
 The line-by-line record of this release is its section in CHANGELOG.md.

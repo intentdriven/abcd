@@ -32,10 +32,9 @@ import (
 // SHA resolved from cwd.
 func newHistoryCommand(asJSON *bool) *cobra.Command {
 	historyCmd := &cobra.Command{
-		Use:   "history",
-		Short: "Manage the native session-transcript store",
-		Args:  cobra.NoArgs,
-		RunE:  helpRunE,
+		Use:  "history",
+		Args: cobra.NoArgs,
+		RunE: helpRunE,
 	}
 
 	// capture — the redacting write path: read a raw transcript from a file
@@ -45,8 +44,7 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 	var session, kind string
 	var captureAll bool
 	captureCmd := &cobra.Command{
-		Use:   "capture [<transcript-file> | - | --session <id> --all <path>...]",
-		Short: "Redact and store a raw session transcript (reads a file or stdin), or a whole session with --all",
+		Use: "capture [<transcript-file> | - | --session <id> --all <path>...]",
 		Args: func(cmd *cobra.Command, args []string) error {
 			if captureAll {
 				return nil // --all takes any number of source paths
@@ -124,9 +122,8 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 	// a gap.
 	var listSession string
 	listCmd := &cobra.Command{
-		Use:   "list",
-		Short: "List stored transcripts for this repo, newest first",
-		Args:  cobra.NoArgs,
+		Use:  "list",
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			repoRoot, rootSHA, err := historyStore(cmd)
 			if err != nil {
@@ -181,9 +178,8 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 	// could tell them apart. A staged entry says exactly one thing.
 	var stagedAllRepos bool
 	stagedCmd := &cobra.Command{
-		Use:   "staged",
-		Short: "List transcripts that ended but are not yet redacted into the store",
-		Args:  cobra.NoArgs,
+		Use:  "staged",
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			// --all-repos answers the question no per-repo listing can
 			// (iss-2609090722466403): the repository whose raw transcripts grow
@@ -318,9 +314,8 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 	// interactive budget exists to protect a session start, and this verb is the
 	// explicit ask, so it runs the backlog to completion.
 	historyCmd.AddCommand(&cobra.Command{
-		Use:   "drain",
-		Short: "Redact and store every staged transcript for this repo",
-		Args:  cobra.NoArgs,
+		Use:  "drain",
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			repoRoot, rootSHA, err := historyStore(cmd)
 			if err != nil {
@@ -368,9 +363,8 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 
 	// show <session-id-or-filename> — metadata + redacted body of one record.
 	historyCmd.AddCommand(&cobra.Command{
-		Use:   "show <session-id-or-filename>",
-		Short: "Show one stored transcript's metadata and redacted body",
-		Args:  cobra.ExactArgs(1),
+		Use:  "show <session-id-or-filename>",
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			repoRoot, rootSHA, err := historyStore(cmd)
 			if err != nil {
@@ -440,9 +434,8 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 	// person typing this.
 	var discardYes bool
 	discardCmd := &cobra.Command{
-		Use:   "discard <staged-filename>",
-		Short: "Permanently delete one staged or quarantined raw transcript (requires --yes)",
-		Args:  cobra.ExactArgs(1),
+		Use:  "discard <staged-filename>",
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			repoRoot, rootSHA, err := historyStore(cmd)
 			if err != nil {

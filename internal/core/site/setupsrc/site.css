@@ -1,0 +1,717 @@
+/* abcdev.app — the stylesheet the site build copies into the output tree.
+ *
+ * Light is the base; dark redefines TOKENS ONLY, twice: once for the reader
+ * whose system asks for it, once for the reader who chose it explicitly. No
+ * colour is ever defined only inside a media query, so a page can never come up
+ * half-themed.
+ *
+ * Committed SVG assets are inlined by the build and paint themselves with
+ * var(--token, fallback), so the artwork follows the theme with the type.
+ */
+
+/* One rule family here is still not exercised by any page: the `[data-theme]`
+ * blocks. Nothing sets the attribute yet — system preference is what decides
+ * today — and they are kept DEFERRED for the theme toggle. The convention
+ * mirrors the manifest's: a thing carried for a named later consumer says so,
+ * rather than looking like dead code.
+ */
+
+/* ---------- tokens ---------- */
+:root{
+  --ground:#f2f4f7; --surface:#ffffff; --surface-2:#e9edf3; --ink:#161a22; --ink-2:#4b5260; --ink-3:#7d8594;
+  --rule:#d9dee6; --rule-2:#c5ccd7;
+  --accent:#2b5fae; --accent-ink:#ffffff; --accent-soft:#dbe6f7;
+  --la:#2b5fae; --lb:#c63e3b; --lc:#e39a2e; --ld:#3e9a45;
+  --hazard:#e0a83a; --hazard-ink:#5a3d05; --hazard-soft:#fbf0d6;
+  --code-bg:#1b1f27; --code-ink:#e9edf3; --code-accent:#9cc4ff;
+  --s-adr:#2a78d6; --s-intent:#eb6834; --s-spec:#1baf7a; --s-issue:#b4bac5; --s-neutral:#161a22; --s-discipline:#8256c4;
+  --seq-1:#86b6ef; --seq-2:#3987e5; --seq-3:#1c5cab;
+  --gh-open:#1a7f37; --gh-done:#8250df; --gh-muted:#59636e; --gh-critical:#cf222e; --gh-high:#bc4c00; --gh-moderate:#9a6700;
+  --good:#0ca30c;
+  --shadow:0 1px 2px rgba(22,26,34,.06),0 8px 24px -12px rgba(22,26,34,.18);
+  --radius:6px;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --ground:#0f1217; --surface:#171b22; --surface-2:#1f242d; --ink:#edeff3; --ink-2:#a7aebb; --ink-3:#7d8594;
+    --rule:#2a303a; --rule-2:#384050;
+    --accent:#7fa8ea; --accent-ink:#0f1217; --accent-soft:#1d2a42;
+    --la:#6f9de6; --lb:#e4706c; --lc:#ecb557; --ld:#6fc276;
+    --hazard:#d9a23a; --hazard-ink:#f6e3b4; --hazard-soft:#2e2612;
+    --code-bg:#0b0d12; --code-ink:#e9edf3; --code-accent:#9cc4ff;
+    --s-adr:#3987e5; --s-intent:#d95926; --s-spec:#199e70; --s-issue:#4a515e; --s-neutral:#edeff3; --s-discipline:#a684e0;
+    --seq-1:#1c5cab; --seq-2:#3987e5; --seq-3:#86b6ef;
+    --gh-open:#3fb950; --gh-done:#a371f7; --gh-muted:#9198a1; --gh-critical:#f85149; --gh-high:#db6d28; --gh-moderate:#d29922;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px -12px rgba(0,0,0,.6);
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#0f1217; --surface:#171b22; --surface-2:#1f242d; --ink:#edeff3; --ink-2:#a7aebb; --ink-3:#7d8594;
+  --rule:#2a303a; --rule-2:#384050;
+  --accent:#7fa8ea; --accent-ink:#0f1217; --accent-soft:#1d2a42;
+  --la:#6f9de6; --lb:#e4706c; --lc:#ecb557; --ld:#6fc276;
+  --hazard:#d9a23a; --hazard-ink:#f6e3b4; --hazard-soft:#2e2612;
+  --code-bg:#0b0d12; --code-ink:#e9edf3; --code-accent:#9cc4ff;
+  --s-adr:#3987e5; --s-intent:#d95926; --s-spec:#199e70; --s-issue:#4a515e; --s-neutral:#edeff3; --s-discipline:#a684e0;
+  --seq-1:#1c5cab; --seq-2:#3987e5; --seq-3:#86b6ef;
+  --gh-open:#3fb950; --gh-done:#a371f7; --gh-muted:#9198a1; --gh-critical:#f85149; --gh-high:#db6d28; --gh-moderate:#d29922;
+  --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px -12px rgba(0,0,0,.6);
+  color-scheme:dark;
+}
+
+/* ---------- base ---------- */
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:"Newsreader",Georgia,"Times New Roman",serif;font-size:18px;line-height:1.55;font-optical-sizing:auto}
+a{color:var(--accent);text-decoration-thickness:1px;text-underline-offset:.15em}
+a:hover{text-decoration-thickness:2px}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:3px}
+img{max-width:100%;height:auto;display:block}
+h1,h2,h3,h4{font-family:"Bricolage Grotesque","Helvetica Neue",Arial,sans-serif;line-height:1.08;margin:0;text-wrap:balance;letter-spacing:-.01em;font-optical-sizing:auto}
+h1{font-size:clamp(2.4rem,5.2vw,4.2rem);font-weight:700;font-variation-settings:"wdth" 92}
+h2{font-size:clamp(1.7rem,3vw,2.4rem);font-weight:650}
+h3{font-size:1.25rem;font-weight:650}
+p{margin:0}
+code,kbd,pre,.mono{font-family:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace}
+code{font-size:.86em;background:var(--surface-2);padding:.1em .35em;border-radius:4px}
+pre{margin:0;background:var(--code-bg);color:var(--code-ink);padding:14px 16px;border-radius:var(--radius);overflow-x:auto;font-size:.85rem;line-height:1.5}
+pre code{background:none;padding:0;color:inherit;font-size:inherit}
+.eyebrow{font-family:"Bricolage Grotesque",sans-serif;font-variation-settings:"wdth" 80;text-transform:uppercase;letter-spacing:.14em;font-size:.76rem;font-weight:600;color:var(--ink-2)}
+.lede{font-size:1.25rem;line-height:1.45;color:var(--ink);max-width:62ch}
+.muted{color:var(--ink-2)}
+.small{font-size:.92rem}
+.wrap{max-width:1120px;margin:0 auto;padding:0 24px}
+.prose{max-width:68ch}
+.prose p+p{margin-top:.9em}
+.stack>*+*{margin-top:var(--stack,1rem)}
+.stack,.cmd,.grid>*,.loop>*{min-width:0}
+.pill{display:inline-flex;align-items:center;gap:.45em;font-family:"IBM Plex Mono",monospace;font-size:.74rem;padding:.3em .7em;border-radius:999px;border:1px solid var(--rule-2);color:var(--ink-2);background:var(--surface);text-decoration:none;white-space:nowrap}
+.pill .dot{width:7px;height:7px;border-radius:50%;background:var(--good)}
+table{border-collapse:collapse;width:100%;font-size:.95rem}
+th,td{text-align:left;padding:.55em .7em;border-bottom:1px solid var(--rule);vertical-align:top}
+th{font-family:"Bricolage Grotesque",sans-serif;font-weight:650;font-size:.82rem;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-2)}
+.tablewrap{overflow-x:auto}
+/* Visually hidden, still announced. The second selector is the roles table's
+   column heads: the portrait already carries the role's name in its alt text,
+   so the label repeated under it adds nothing a reader needs to SEE — while on
+   a phone it is what sets the column's width and squeezes the table's own
+   prose into a ribbon. The picture stays and the words go where every other
+   visually-hidden label goes.
+   This changes what is drawn, not what is announced: the head's accessible
+   name is the alt text followed by the label, before and after alike. Removing
+   that duplication would mean changing the markup, not this rule. */
+.sr,th .th-portrait~span{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* ---------- site header ---------- */
+.site-head{background:var(--ground);border-bottom:1px solid var(--rule)}
+.site-head .wrap{display:flex;align-items:center;gap:22px;min-height:64px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:10px;text-decoration:none;color:var(--ink);font-family:"Bricolage Grotesque",sans-serif;font-weight:700;font-size:1.15rem;letter-spacing:-.01em}
+.brand img{width:34px;height:34px;border-radius:8px}
+.beta{font-family:"IBM Plex Mono",monospace;font-size:.68rem;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--hazard-ink);background:var(--hazard-soft);border:1px solid var(--hazard);border-radius:999px;padding:.25em .6em;margin-left:-8px;align-self:center}
+.site-nav{display:flex;gap:4px;flex-wrap:wrap;margin-left:auto}
+.site-nav a{font-family:"Bricolage Grotesque",sans-serif;font-weight:600;font-size:.95rem;color:var(--ink-2);text-decoration:none;padding:.5em .75em;border-radius:6px}
+.site-nav a:hover,.site-nav a.on{color:var(--ink);background:var(--surface-2)}
+.site-nav a.gh{color:var(--ink)}
+@media (max-width:700px){
+  .site-head .wrap{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:12px;row-gap:2px;padding-top:10px;padding-bottom:6px;min-height:0}
+  .site-head .brand{grid-column:1;grid-row:1}
+  .site-head .beta{grid-column:1;grid-row:1;justify-self:start;margin-left:92px;margin-top:8px}
+  .site-head .pill{grid-column:2;grid-row:1;justify-self:end}
+  .site-head .pill .pdate{display:none}
+  .site-head .site-nav{grid-column:1/-1;grid-row:2;display:flex;flex-wrap:nowrap;gap:0;overflow-x:auto;scrollbar-width:none;margin:0 -16px;padding:2px 10px 4px;mask-image:linear-gradient(to right,#000 calc(100% - 24px),transparent)}
+  .site-head .site-nav::-webkit-scrollbar{display:none}
+  .site-head .site-nav a{padding:.45em .6em;font-size:.92rem;flex:0 0 auto}
+}
+
+/* ---------- landing ---------- */
+.hero{padding:64px 0 24px}
+.hero .grid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr);gap:48px;align-items:start}
+.hero h1{margin:.35em 0 .45em}
+.hero-aside{margin-top:2.35rem;padding-left:16px;border-left:3px solid var(--accent)}
+.hero-aside .tagline{font-family:"Bricolage Grotesque",sans-serif;font-size:1.3rem;line-height:1.3;font-weight:600;color:var(--ink);font-variation-settings:"wdth" 92;text-wrap:balance}
+.hero-aside .pitch{margin-top:12px;font-size:1.02rem;line-height:1.5;color:var(--ink-2)}
+.getit{margin-top:22px;padding-top:16px;border-top:1px solid var(--rule);display:flex;flex-direction:column;gap:6px;font-family:"Bricolage Grotesque",sans-serif;font-size:.95rem}
+.getit .eyebrow{margin-bottom:2px}
+.getit .dl a{color:var(--ink);font-weight:600;text-decoration-color:var(--rule-2)}
+.getit .dl a:hover{text-decoration-color:var(--accent)}
+.getit .more{margin-top:4px;font-weight:600;text-decoration:none;color:var(--accent)}
+@media (max-width:860px){.hero-aside{margin-top:0}.hero .grid{grid-template-columns:minmax(0,1fr)}}
+.comic{margin:36px 0 0;background:var(--surface);border:1px solid var(--rule);border-radius:10px;padding:10px;box-shadow:var(--shadow)}
+.comic img{border-radius:6px;width:100%}
+.comic p{margin:0}
+
+.chapter{padding:72px 0 40px;border-top:1px solid var(--rule);position:relative}
+.chapter .head{display:grid;grid-template-columns:88px minmax(0,1fr);gap:24px;align-items:start}
+.chapter .head h2{align-self:center}
+.chapter .body{padding-left:112px;margin-top:28px}
+.letter{font-family:"Bricolage Grotesque",sans-serif;font-weight:800;font-size:5.4rem;line-height:.8;letter-spacing:-.05em;margin-top:-.08em}
+.letter.a{color:var(--la)}.letter.b{color:var(--lb)}.letter.c{color:var(--lc)}.letter.d{color:var(--ld)}
+@media (max-width:700px){.chapter .head{grid-template-columns:minmax(0,1fr)}.letter{display:none}.chapter .body{padding-left:0}}
+
+/* The rail that carries a to b to c to d: a thin line running down the letter
+   column, entering each chapter in the previous chapter's colour and leaving
+   it in its own, so the four letters read as one continuous descent rather
+   than four separate sections. Two pseudo-elements per chapter — `::after`
+   above the letter, `::before` below it — leave the letter itself in the gap.
+   The first chapter has nothing above it and the last nothing below, so those
+   two ends are switched off. Below the letter's own breakpoint the rail has no
+   column to run down, and goes with it. */
+.chapter::before,.chapter::after{content:"";position:absolute;left:calc(50% - 513px);width:2px;opacity:.32;pointer-events:none;border-radius:2px}
+.chapter::after{top:0;height:58px}
+.chapter::before{top:150px;bottom:0}
+.chapter#roles::after,.chapter#install::before{display:none}
+.chapter#roles::before{background:linear-gradient(var(--la),var(--lb))}
+.chapter#artefacts::after{background:var(--lb)}.chapter#artefacts::before{background:linear-gradient(var(--lb),var(--lc))}
+.chapter#process::after{background:var(--lc)}.chapter#process::before{background:linear-gradient(var(--lc),var(--ld))}
+.chapter#install::after{background:var(--ld)}
+/* `calc(50% - 513px)` tracks the letter column only while `.wrap` is still
+   centring, which stops at its own max-width — 1120px, padding included, since
+   the sheet is border-box throughout. Below that the wrap is flush left and the
+   column sits at a fixed 24px + 23px. The two expressions meet at exactly
+   1120px, so the seam is continuous. */
+@media (max-width:1120px){.chapter::before,.chapter::after{left:47px}}
+@media (max-width:700px){.chapter::before,.chapter::after{display:none}}
+
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px}
+.cards.two{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+.card{background:var(--surface);border:1px solid var(--rule);border-radius:var(--radius);padding:20px 22px;box-shadow:var(--shadow)}
+.card h3{margin-bottom:.45em}
+.card p{font-size:1rem;color:var(--ink-2)}
+.card p+p{margin-top:.7em}
+.card .portrait-lg{width:120px;height:120px;border-radius:50%;margin-bottom:14px;box-shadow:var(--shadow)}
+.card .icon{width:64px;height:64px;margin-bottom:12px}
+.card .icon svg{width:64px;height:64px;display:block}
+/* An inlined drawing is markup from a committed file, so the span it lands in
+   is also its box: paint containment clips it to that box and makes the span
+   the containing block for anything inside that positions itself. The build's
+   attribute allowlist is what keeps a drawing from trying (assets.go); this is
+   the second line, and it costs the legitimate drawings nothing. */
+.svgasset{display:block;contain:paint}
+.svgasset svg{width:100%;height:auto;display:block}
+th .th-portrait{display:block;width:72px;height:72px;border-radius:50%;margin:0 auto 8px;box-shadow:var(--shadow)}
+th:has(.th-portrait){text-align:center;vertical-align:bottom}
+
+.quote{background:var(--surface);border:1px solid var(--rule);border-left:4px solid var(--s-intent);border-radius:var(--radius);padding:22px 26px;box-shadow:var(--shadow)}
+.quote .pr{font-family:"IBM Plex Mono",monospace;font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-2);display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.quote blockquote{margin:0;font-size:1.12rem;line-height:1.5}
+.quote blockquote b,.quote blockquote strong{font-weight:650}
+.quote blockquote p+p{margin-top:.8em}
+.quote .crit{margin-top:14px;background:var(--surface-2);border-radius:var(--radius);padding:12px 14px;font-size:.98rem}
+.quote .crit p{margin:0}
+
+.loop{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:32px;align-items:start}
+.loop .prose+.prose{margin-top:14px}
+.loopfig{margin:0;align-self:start;position:sticky;top:72px;padding:12px}
+@media (max-width:860px){.loop{grid-template-columns:minmax(0,1fr)}.loopfig{position:static;max-width:420px;margin:0 auto}}
+h3.subh{font-size:1.5rem;font-weight:650;letter-spacing:-.01em;margin:40px 0 12px;padding-top:22px;border-top:1px solid var(--rule)}
+.loop h3.subh:first-child{margin-top:0;padding-top:0;border-top:0}
+.lede-2{font-size:1.12rem;line-height:1.5}
+.lede-2 p+p{margin-top:.8em}
+.prose table{margin:.6em 0}
+.prose pre{margin:.2em 0}
+.prose .cmd{margin:.6em 0}
+.prose img{border-radius:8px}
+
+/* ---------- copyable commands ---------- */
+.cmd{position:relative}
+.cmd .copy{position:absolute;right:8px;top:8px;font-family:"IBM Plex Mono",monospace;font-size:.7rem;background:#2a3140;color:#e6e9ef;border:0;border-radius:4px;padding:4px 8px;cursor:pointer}
+.cmd .copy:hover{background:#3a4356}
+
+/* ---------- install tabs ---------- */
+.installwrap{max-width:860px}
+/* All five panels share ONE grid cell under the tab strip, so the box is as
+   tall as the tallest of them whichever tab is selected and the page below
+   stops jumping when the reader compares two. The script still sets `hidden`
+   on the panels that are not selected — that is what keeps them out of the
+   accessibility tree and out of the tab order — so the attribute's display is
+   traded for `visibility:hidden`, which does both of those things too and
+   still occupies its cell. */
+.tabs{background:var(--surface);border:1px solid var(--rule);border-radius:10px;box-shadow:var(--shadow);overflow:hidden;display:grid;grid-template-columns:minmax(0,1fr)}
+.tabs>[role=tablist]{grid-row:1}
+.tabs>[role=tabpanel]{grid-row:2;grid-column:1}
+.tabs>[role=tabpanel][hidden]{display:block;visibility:hidden}
+.tabs [role=tablist]{display:flex;flex-wrap:wrap;gap:4px;padding:6px 10px 0;border-bottom:1px solid var(--rule);background:var(--surface-2);align-items:flex-end}
+.tabs .tabgroup{display:flex;flex-wrap:wrap;gap:4px;align-items:flex-end;margin-left:auto;padding-left:14px;border-left:1px solid var(--rule-2)}
+.tabs .tabgroup .grp{font-family:"IBM Plex Mono",monospace;font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--ink-3);padding:12px 4px 13px 0}
+.tabs [role=tab]{font-family:"IBM Plex Mono",monospace;font-size:.9rem;padding:10px 12px 11px;border:0;background:transparent;color:var(--ink-3);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap}
+.tabs [role=tab]:hover{color:var(--ink)}
+.tabs [role=tab][aria-selected=true]{color:var(--ink);border-bottom-color:var(--ink);font-weight:600}
+.tabs [role=tab].mine::before{content:"★ ";color:var(--hazard)}
+.tabs [role=tabpanel]{padding:14px 16px 16px}
+.tabs .tabbody{color:var(--ink-2)}
+.tabs .tabbody .cmd{margin:10px 0}
+.tabs .tabbody p+p{margin-top:.8em}
+.tabs .tabbody pre,.tabs .tabprose pre{background:var(--code-bg);font-size:.86rem;white-space:pre-wrap;overflow-wrap:anywhere;padding-right:72px}
+.tabs .tabprose{margin-top:14px;color:var(--ink-2)}
+.tabs .tabprose.lead{margin:0 0 4px}
+.tabs .tabprose p+p{margin-top:.8em}
+.tabs .tabprose .cmd{margin:.7em 0}
+.tabprose h4{font-family:"Bricolage Grotesque",sans-serif;font-size:.95rem;margin:18px 0 6px;color:var(--ink-2)}
+.tabprose.after .cmd{margin:8px 0 4px}
+.tabprose details.more summary,.tabbody details.more summary{cursor:pointer;font-family:"Bricolage Grotesque",sans-serif;font-weight:600;color:var(--ink-2);margin:6px 0}
+.tabprose details.more[open] summary,.tabbody details.more[open] summary{margin-bottom:8px}
+/* On a phone the strip is given a deliberate shape rather than left to wrap:
+   the standalone tab keeps the first row, and the CLI group takes the second
+   as one horizontally scrolling row — the same treatment the site header's
+   navigation gets at this width. Left to wrap, five tabs and a group label
+   break into three ragged rows. */
+@media (max-width:700px){
+  .tabs [role=tablist]{padding:6px 0 0;gap:0}
+  .tabs [role=tablist]>[role=tab]{margin-left:10px}
+  .tabs .tabgroup{margin-left:0;border-left:0;width:100%;border-top:1px solid var(--rule);
+    flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;gap:0;padding:0 10px;
+    mask-image:linear-gradient(to right,#000 calc(100% - 24px),transparent)}
+  .tabs .tabgroup::-webkit-scrollbar{display:none}
+  .tabs .tabgroup>*{flex:0 0 auto}
+  .tabs .tabgroup>[role=tab]{margin-bottom:0}
+}
+
+/* The disclosure's open/close is animated only where the reader has not asked
+   for stillness; where they have, it simply opens. */
+@media (prefers-reduced-motion:no-preference){
+  details.more>*:not(summary){animation:reveal .18s ease-out}
+}
+@keyframes reveal{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:none}}
+
+/* ---------- footer ---------- */
+.site-foot{border-top:1px solid var(--rule);padding:28px 0 48px;font-family:"Bricolage Grotesque",sans-serif;font-size:.9rem;color:var(--ink-2)}
+.site-foot .wrap{display:flex;gap:18px;flex-wrap:wrap;align-items:center}
+.site-foot a{color:var(--ink-2)}
+.site-foot .foot-meta{margin-left:auto}
+/* The separators went; the SPACE they carried has to come from somewhere, or
+   three facts render as one token. Weight does the rest: the licence and the
+   build stamp are quieter than the name and the version beside them. */
+.site-foot .foot-meta{display:inline-flex;gap:10px}
+.quiet{color:var(--ink-3)}
+
+/* ---------- record explorer ----------
+ *
+ * Lifted from the clickable prototype in the investigation cluster, which is the
+ * behavioural spec for everything visual here: the sub-navigation, the dashboard
+ * grid, the chart's stage and its corner discipline — controls in the corners,
+ * the middle belongs to the chart — the card, the genealogy and the two
+ * attribution pages.
+ */
+.tnum{font-variant-numeric:tabular-nums}
+.sans{font-family:"Bricolage Grotesque",sans-serif;font-optical-sizing:auto}
+hr{border:0;border-top:1px solid var(--rule);margin:1.4em 0}
+
+/* sub-navigation */
+.sub{border-bottom:1px solid var(--rule);background:var(--surface)}
+.sub .wrap{display:flex;gap:2px;overflow-x:auto;padding-top:6px;scrollbar-width:none}
+.sub .wrap::-webkit-scrollbar{display:none}
+.sub a{position:relative;font-family:"Bricolage Grotesque",sans-serif;font-weight:600;font-size:.92rem;color:var(--ink-2);text-decoration:none;padding:10px 14px 12px;border-bottom:2px solid transparent;white-space:nowrap}
+.sub a.on{color:var(--ink);border-bottom-color:var(--ink)}
+@media (max-width:700px){.sub .wrap{mask-image:linear-gradient(to right,#000 calc(100% - 28px),transparent);gap:0}.sub a{padding:10px 10px 12px;font-size:.9rem}}
+
+.record{padding:32px 0 64px}
+.rechead h1.pagetitle{font-size:clamp(1.9rem,4vw,2.2rem)}
+.recpills{margin-top:14px}
+
+/* the dashboard grid */
+.dash{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:14px;margin-top:22px}
+.panel{background:var(--surface);border:1px solid var(--rule);border-radius:var(--radius);padding:16px 18px;box-shadow:var(--shadow);min-width:0}
+.panel h3{font-size:1rem;margin-bottom:10px;display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+.panel h3 span{font-family:"IBM Plex Mono",monospace;font-weight:400;font-size:.72rem;color:var(--ink-3)}
+/* Panels stacked in one column — the record page's sidebar — carry their own
+   gap. Panels laid out BY the dashboard grid already have `gap`, so the same
+   margin there pushes every panel after the first 14px down its own row and the
+   tiles stop lining up. The grid is the one context that must not inherit it. */
+.panel+.panel{margin-top:14px}
+.dash>.panel+.panel{margin-top:0}
+/* Cards in a row share a height; columns of prose do not — see the note in
+   the references page's own renderer. */
+.dash.reading{align-items:start}
+/* A panel a reader opens. The summary carries the panel's own heading, so the
+   marker sits beside it rather than above it, and the closed state is the
+   heading alone — the shape the relationship chart's list uses. */
+.panel.fold>summary{cursor:pointer;list-style:none;display:block}
+.panel.fold>summary::-webkit-details-marker{display:none}
+/* The marker is a pseudo-element and therefore a flex item of its own, so
+   space-between would push the heading into the middle of the row. The items
+   run from the start and the count alone is pushed to the far end. */
+.panel.fold>summary h3{margin:0;display:flex;justify-content:flex-start;gap:8px;align-items:baseline}
+.panel.fold>summary h3>span{margin-left:auto}
+/* The marker is decoration, and a pseudo-element cannot carry aria-hidden, so
+   its glyph would be read out as part of the panel's name — "▸ References &
+   sources 28". The alt-text form of `content` gives it an EMPTY alternative,
+   which is the one way to draw it and leave the accessible name alone. */
+.panel.fold>summary h3::before{content:"▸" / "";color:var(--ink-3);font-size:.8em;margin-right:.5em}
+.panel.fold[open]>summary h3::before{content:"▾" / ""}
+.panel.fold[open]>summary{margin-bottom:10px}
+.c12{grid-column:span 12}.c8{grid-column:span 8}.c6{grid-column:span 6}.c4{grid-column:span 4}.c3{grid-column:span 3}.c2{grid-column:span 2}
+@media (max-width:900px){.c8,.c6,.c4,.c3{grid-column:span 12}.c2{grid-column:span 4}}
+@media (max-width:520px){.c2{grid-column:span 6}.c2 .tile .n{font-size:1.9rem}}
+
+.tile{display:block}
+/* A tile that leads somewhere says so before it is clicked: the whole tile is
+   the target, and the frame is what tells a reader the number is a way in. An
+   inert tile keeps the plain surface, so the two are never confused. */
+/* The WHOLE tile lights up, not a line of it: the tile is the target, so the
+   tile is what changes. The panel's own padding is taken over by the anchor so
+   the fill reaches the tile's edges rather than leaving a border of untouched
+   surface around it. */
+.panel.c2:has(>a.tile.lead){padding:0}
+a.tile.lead{display:flex;flex-direction:column;height:100%;color:inherit;text-decoration:none;
+  border-radius:var(--radius);padding:16px 18px;border:2px solid transparent;
+  transition:background .12s ease,border-color .12s ease}
+a.tile.lead:hover,a.tile.lead:focus-visible{background:var(--accent-soft);border-color:var(--accent)}
+@media (prefers-reduced-motion:reduce){a.tile.lead{transition:none}}
+.tile .n,.tile .l,.tile .s{display:block}
+.tile .n{font-family:"Bricolage Grotesque",sans-serif;font-weight:700;font-size:2.3rem;line-height:1;letter-spacing:-.02em}
+.tile .l{font-family:"Bricolage Grotesque",sans-serif;font-weight:600;font-size:.92rem;margin-top:6px}
+.tile .s{font-size:.88rem;color:var(--ink-2);margin-top:2px;font-variant-numeric:tabular-nums}
+.tile .s+.s{margin-top:0}
+
+.seg{display:flex;gap:2px;height:16px;border-radius:3px;overflow:hidden;background:var(--surface-2)}
+.seg i{display:block;height:100%}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-family:"Bricolage Grotesque",sans-serif;font-size:.84rem;color:var(--ink-2);margin-top:8px}
+/* One rhythm down a store: the gap from the legend to the first bucket is the
+   gap between buckets. Without this the first one sits tighter than the rest,
+   because .panel+.panel only fires between two panels. */
+.legend+.panel{margin-top:14px}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend i{width:10px;height:10px;border-radius:2px;display:inline-block}
+.legend .tnum{color:var(--ink)}
+
+.list{list-style:none;margin:0;padding:0;font-size:.92rem}
+.list li{display:grid;grid-template-columns:auto 1fr;gap:10px;padding:7px 0;border-bottom:1px solid var(--rule);align-items:baseline}
+.list li:last-child{border-bottom:0}
+.list .id{font-family:"IBM Plex Mono",monospace;font-size:.76rem;color:var(--ink-2);white-space:nowrap}
+.list .d{font-family:"IBM Plex Mono",monospace;font-size:.74rem;color:var(--ink-3);margin-left:6px}
+.health{font-family:"IBM Plex Mono",monospace;font-size:.78rem;line-height:1.6}
+.health .w{color:var(--hazard-ink);background:var(--hazard-soft);padding:0 .3em;border-radius:3px}
+.health .hsum{margin-top:8px;color:var(--ink-2);display:flex;flex-wrap:wrap;gap:4px 14px}
+.health div{overflow-wrap:anywhere}
+.health .hitem{margin-bottom:6px}
+.health .hfact,.health .hwhy{display:block}
+.health .hwhy{margin-left:26px;color:var(--ink-2);font-size:.72rem}
+/* A record that has left the tree: shown as the absence it is, never linked. */
+.stub{font-family:"IBM Plex Mono",monospace;font-weight:400;color:var(--hazard-ink);border-bottom:1px dashed var(--hazard);padding-bottom:1px}
+
+svg text{font-family:"Bricolage Grotesque",sans-serif}
+.axis{stroke:var(--rule-2);stroke-width:1}
+.grid{stroke:var(--rule);stroke-width:1}
+.tick{cursor:default}.tick:hover line{stroke:var(--ink)}.tick:hover text{fill:var(--ink);font-weight:650}
+
+/* foundations */
+.fcards{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px}
+/* A card and a leading tile are the same affordance at two sizes, so they
+   answer a pointer the same way: the whole surface lights, inside a border
+   thick enough to read as a state rather than as a hairline. */
+.fcard{display:flex;flex-direction:column;gap:4px;padding:11px 13px;border:2px solid var(--rule);border-radius:var(--radius);background:var(--ground);text-decoration:none;color:var(--ink);transition:background .12s ease,border-color .12s ease}
+.fcard:hover,.fcard:focus-visible{border-color:var(--accent);background:var(--accent-soft)}
+@media (prefers-reduced-motion:reduce){.fcard{transition:none}}
+.fcard .t{font-family:"Bricolage Grotesque",sans-serif;font-weight:600;font-size:.95rem;line-height:1.25}
+.fcard .id{font-family:"IBM Plex Mono",monospace;font-size:.7rem;color:var(--ink-3);word-break:break-word}
+
+/* a record's own page */
+.recgrid{align-items:start}
+.recside{display:block;min-width:0}
+.recbody h2{font-size:1.5rem;margin:1.4em 0 .5em}
+.recbody h3{font-size:1.15rem;margin:1.2em 0 .4em}
+.recbody h4{font-size:1rem;margin:1em 0 .3em;font-family:"Bricolage Grotesque",sans-serif}
+.recbody>*:first-child{margin-top:0}
+/* A record's prose carries paths, ids and URLs that are longer than a phone is
+   wide. They wrap inside the column rather than pushing the page sideways. */
+.recbody{overflow-wrap:break-word}
+.recbody code,.recbody a{overflow-wrap:anywhere}
+/* A word the glossary defines, linked to its entry the first time a page uses
+   it. It is drawn as an underline the reader can notice and ignore, not as a
+   second colour: the word is the record's own prose, and a page whose every
+   defined term shouted would be harder to read than the plain one it replaced. */
+.gterm{color:inherit;text-decoration:none;border-bottom:1px dotted var(--rule-2)}
+.gterm:hover,.gterm:focus{color:var(--accent);border-bottom-color:currentColor}
+.recbody p+p,.recbody p+ul,.recbody p+ol,.recbody ul+p,.recbody ol+p{margin-top:.9em}
+.recbody ul,.recbody ol{margin:.6em 0;padding-left:1.4em}
+.recbody li+li{margin-top:.35em}
+.recbody li ul,.recbody li ol{margin:.35em 0}
+.recbody blockquote{margin:1em 0;padding:.2em 0 .2em 16px;border-left:3px solid var(--s-intent);color:var(--ink-2)}
+.recbody blockquote p+p{margin-top:.7em}
+.recbody table{margin:1em 0}
+.recbody .cmd{margin:1em 0}
+.recbody pre{white-space:pre-wrap;overflow-wrap:anywhere;padding-right:72px}
+table.fm th{text-transform:none;letter-spacing:0;font-family:"IBM Plex Mono",monospace;font-weight:400;font-size:.76rem;white-space:nowrap;color:var(--ink-3)}
+table.fm td{font-family:"IBM Plex Mono",monospace;font-size:.78rem}
+.reclinks{margin-top:10px;font-family:"IBM Plex Mono",monospace;font-size:.74rem}
+.links{list-style:none;margin:0;padding:0;font-size:.88rem}
+.links li{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;padding:6px 0;border-bottom:1px solid var(--rule)}
+.links li:last-child{border-bottom:0}
+.links li>span{overflow-wrap:anywhere;min-width:0}
+.links .id{font-family:"IBM Plex Mono",monospace;font-size:.74rem;white-space:nowrap}
+.links .rel{font-family:"IBM Plex Mono",monospace;font-size:.68rem;color:var(--ink-3);margin-left:auto;white-space:nowrap}
+.policy{margin-top:12px;color:var(--ink-2)}
+
+/* the relationship chart */
+.bwrap{margin-top:18px}
+.bstage{position:relative;background:var(--surface);border:1px solid var(--rule);border-radius:var(--radius);overflow:hidden;height:min(72vh,720px);min-height:420px}
+.bstage canvas{display:block;width:100%;height:100%;touch-action:none;cursor:grab}
+.bsearch{position:absolute;right:12px;top:12px;width:min(300px,calc(100% - 24px));z-index:6}
+.bsearch input{width:100%;font:inherit;font-family:"Bricolage Grotesque",sans-serif;font-size:.92rem;padding:9px 12px;border:1px solid var(--rule-2);border-radius:999px;background:var(--surface);color:var(--ink);box-shadow:var(--shadow)}
+.bhits{position:absolute;left:0;right:0;top:calc(100% + 6px);display:none;background:var(--surface);border:1px solid var(--rule);border-radius:10px;box-shadow:var(--shadow);max-height:280px;overflow:auto;padding:6px}
+.bhits div{padding:7px 12px;font-size:.86rem;cursor:pointer;display:flex;gap:8px;align-items:baseline}
+.bhits div:hover{background:var(--surface-2)}
+.bhits .id{font-family:"IBM Plex Mono",monospace;font-size:.72rem;color:var(--ink-2);min-width:58px}
+.brow2{position:absolute;left:12px;top:12px;z-index:3;display:flex;gap:8px;align-items:center}
+.bseg{display:inline-flex;border:1px solid var(--rule-2);border-radius:999px;background:var(--surface);box-shadow:var(--shadow);overflow:hidden}
+.bseg button{font-family:"Bricolage Grotesque",sans-serif;font-weight:600;font-size:.85rem;padding:7px 14px;border:0;background:transparent;color:var(--ink-2);cursor:pointer}
+.bseg button[aria-checked="true"]{background:var(--ink);color:var(--ground)}
+.bfilters-btn{z-index:3;font-family:"Bricolage Grotesque",sans-serif;font-weight:600;font-size:.85rem;padding:8px 14px;border-radius:999px;border:1px solid var(--rule-2);background:var(--surface);color:var(--ink);cursor:pointer;box-shadow:var(--shadow)}
+.bfilters-btn[aria-expanded="true"]{background:var(--ink);color:var(--ground);border-color:var(--ink)}
+.bcorner{position:absolute;right:12px;bottom:12px;z-index:3;display:flex;flex-direction:column;align-items:flex-end;gap:8px}
+.bfs{z-index:3;width:36px;height:36px;border-radius:50%;border:1px solid var(--rule-2);background:var(--surface);color:var(--ink);cursor:pointer;box-shadow:var(--shadow);font-size:1rem;line-height:1}
+.bfs[aria-pressed="true"]{background:var(--ink);color:var(--ground);border-color:var(--ink)}
+.bzoom{display:flex;flex-direction:column;border:1px solid var(--rule-2);border-radius:10px;background:var(--surface);box-shadow:var(--shadow);overflow:hidden}
+.bzoom button{width:36px;height:32px;border:0;background:transparent;color:var(--ink);cursor:pointer;font-size:1rem;line-height:1;font-family:"IBM Plex Mono",monospace}
+.bzoom button+button{border-top:1px solid var(--rule)}
+.bzoom button:hover{background:var(--surface-2)}
+.bstandby{position:absolute;inset:0;z-index:4;display:flex;align-items:center;justify-content:center;gap:12px;background:var(--surface);font-family:"Bricolage Grotesque",sans-serif;font-weight:600;color:var(--ink-2);opacity:0;animation:standby-in .2s ease .12s forwards;transition:opacity .3s}
+.bstandby.done{opacity:0!important;pointer-events:none;animation:none}
+.bstandby .spin{width:18px;height:18px;border-radius:50%;border:2px solid var(--rule-2);border-top-color:var(--accent);animation:spin .8s linear infinite}
+@keyframes standby-in{to{opacity:1}}
+@keyframes spin{to{transform:rotate(360deg)}}
+.bstage.fs{position:fixed;inset:0;z-index:50;height:100dvh;border-radius:0;border:0}
+.bstage:fullscreen{background:var(--surface)}
+.bfs-open{overflow:hidden}
+.bfilters{position:absolute;left:12px;top:56px;z-index:3;width:min(300px,calc(100% - 24px));background:var(--surface);border:1px solid var(--rule);border-radius:10px;padding:12px;box-shadow:var(--shadow)}
+.bfilters label{display:flex;gap:8px;align-items:center;margin-top:10px;cursor:pointer}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{font-family:"Bricolage Grotesque",sans-serif;font-size:.8rem;font-weight:600;border:1px solid var(--rule-2);border-radius:999px;padding:.28em .7em;background:var(--surface);color:var(--ink-2);cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.chip i{width:9px;height:9px;border-radius:50%;display:inline-block}
+.chip.on{color:var(--ink);border-color:var(--ink)}
+.chip.off{opacity:.45;text-decoration:line-through}
+/* Two BLOCKS, one under the other: what a colour means, then what a border
+   means. Each block lists its own items in two columns. The container is a
+   plain block — as a grid it laid the two blocks side by side and they ran
+   into each other. */
+.glegend{font-family:"Bricolage Grotesque",sans-serif;font-size:.8rem;color:var(--ink-2);margin-top:10px}
+.glegend span{display:inline-flex;align-items:center;gap:6px}
+.glegend svg{width:14px;height:14px;flex:0 0 auto}
+
+/* the card: anchored bottom-left, growing upward to the control row */
+.bcard{position:absolute;left:12px;bottom:12px;z-index:3;width:min(360px,calc(100% - 24px));background:var(--surface);border:1px solid var(--rule);border-radius:10px;padding:14px 16px 12px;box-shadow:var(--shadow);max-height:calc(100% - 12px - 64px);overflow:hidden;display:flex;flex-direction:column;will-change:height,transform,opacity}
+.bcard[hidden]{display:none}
+.bcard .head{flex:0 0 auto}
+.bcard .body{flex:0 1 auto;min-height:0;overflow:auto;overscroll-behavior:contain}
+.bcard .foot{flex:0 0 auto;display:flex;justify-content:space-between;align-items:center;gap:10px;border-top:1px solid var(--rule);padding-top:8px;margin-top:8px}
+.bcard .ghs{display:flex;flex-direction:column;gap:2px;min-width:0}
+.bcard .t{font-family:"Bricolage Grotesque",sans-serif;font-weight:650;font-size:1rem;line-height:1.3;padding-right:28px}
+.bcard .nav{display:flex;gap:4px;align-items:center}
+.bcard .nav .hb{width:28px;height:28px;border:1px solid var(--rule);border-radius:7px;background:var(--surface);color:var(--ink);cursor:pointer;font-family:"Bricolage Grotesque",sans-serif;font-size:1.2rem;line-height:1;padding:0 0 3px}
+.bcard .nav .hb:hover:not(:disabled){background:var(--surface-2)}
+.bcard .nav .hb:disabled{color:var(--rule-2);cursor:default}
+.bcard .x{position:absolute;right:8px;top:8px;border:0;background:transparent;font-size:1.1rem;cursor:pointer;color:var(--ink-2);line-height:1;width:28px;height:28px}
+.bcard .gh{font-family:"IBM Plex Mono",monospace;font-size:.72rem;display:block}
+.bcard ul{list-style:none;margin:0;padding:0;font-size:.84rem}
+.bcard li{padding:5px 0;border-bottom:1px solid var(--rule);display:flex;gap:8px;align-items:baseline;cursor:pointer}
+.bcard li.stubrow{cursor:default}
+.bcard li:hover{background:var(--surface-2)}
+.bcard li .id{font-family:"IBM Plex Mono",monospace;font-size:.72rem;color:var(--ink-2);white-space:nowrap;min-width:56px}
+.bcard .rel{font-family:"IBM Plex Mono",monospace;font-size:.68rem;color:var(--ink-3);margin-left:auto;white-space:nowrap}
+.bcard details.linked{border-top:1px solid var(--rule);margin-top:4px;padding-top:8px;padding-bottom:2px}
+.bcard details.linked summary{cursor:pointer;font-family:"Bricolage Grotesque",sans-serif;font-weight:600;font-size:.86rem;color:var(--ink-2)}
+.bcard details.linked[open] summary{margin-bottom:4px}
+.bcard details.linked.empty summary{color:var(--ink-3);cursor:default}
+.bcard details.linked.empty summary::marker{color:var(--rule-2)}
+
+/* pills, in the forge's own state palette */
+.pills{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:8px 0 10px}
+.pills .pill{font-family:"Bricolage Grotesque",sans-serif;font-weight:600;font-size:.74rem;line-height:1;padding:5px 9px;border-radius:999px;border:1px solid color-mix(in srgb,var(--c) 55%,transparent);color:var(--c);background:color-mix(in srgb,var(--c) 12%,transparent);display:inline-flex;align-items:center;gap:6px}
+.pills .pill i{width:8px;height:8px;border-radius:50%;background:var(--c);display:inline-block}
+.pills .pill.plain{--c:var(--ink-3)}
+.pills .pill.open{--c:var(--gh-open)}.pills .pill.done{--c:var(--gh-done)}.pills .pill.draft,.pills .pill.notplanned{--c:var(--gh-muted)}
+.pills .pill.critical{--c:var(--gh-critical)}.pills .pill.high{--c:var(--gh-high)}.pills .pill.moderate{--c:var(--gh-moderate)}.pills .pill.low{--c:var(--gh-muted)}
+.pills .mono.id{font-family:"IBM Plex Mono",monospace;font-size:.72rem;color:var(--ink-3);margin-left:auto}
+
+/* the date continuum: every date of the record on one line */
+.continuum{display:block;width:100%;height:auto;margin:2px 0 6px;overflow:visible}
+.continuum .base{stroke:var(--rule-2);stroke-width:1.5}
+.continuum .alive{stroke:var(--ink-3);stroke-width:3;stroke-linecap:round;opacity:.55}
+.continuum .tick{stroke:var(--rule-2);stroke-width:1}
+.continuum .tlab{font-family:"IBM Plex Mono",monospace;font-size:8.5px;fill:var(--ink-3);text-anchor:middle}
+/* Focusable, so keyboard and forced-colors users get a real focus ring: an
+   `outline:none` here left the tab stop invisible in exactly the mode a
+   reader turns on because they need to see it. */
+.continuum .mark{cursor:help}
+.continuum .mark:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.continuum .mark .hit{fill:transparent;stroke:none;pointer-events:all}
+.continuum .mark path,.continuum .mark circle:not(.hit){fill:var(--ink);stroke:var(--surface);stroke-width:1.5}
+.continuum .mark.tree circle{fill:var(--ink)}
+.continuum .mark.last circle{fill:var(--ink-3)}
+.continuum .mark.since circle{fill:var(--surface);stroke-width:2.2}
+.continuum .mark.since.open circle{stroke:var(--gh-open)}.continuum .mark.since.done circle{stroke:var(--gh-done)}
+.continuum .mark.since.draft circle,.continuum .mark.since.notplanned circle,.continuum .mark.since.plain circle{stroke:var(--gh-muted)}
+.continuum .mark.dated.adr path{fill:var(--s-adr)}.continuum .mark.dated.intent path{fill:var(--s-intent)}.continuum .mark.dated.spec path{fill:var(--s-spec)}
+.continuum .mark text{font-family:"IBM Plex Mono",monospace;font-size:9px;fill:var(--ink);opacity:0;pointer-events:none;paint-order:stroke;stroke:var(--surface);stroke-width:3px}
+.continuum .mark:hover text,.continuum .mark:focus text{opacity:1}
+.continuum .mark:hover path,.continuum .mark:hover circle:not(.hit),.continuum .mark:focus path,.continuum .mark:focus circle:not(.hit){stroke:var(--accent)}
+
+
+/* The legend is two encodings, each with its own heading and its own row. */
+.glegend .glrow{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 14px}
+.glegend .glrow.glstates{margin-top:10px;padding-top:10px;border-top:1px solid var(--rule)}
+.glegend .glrow>span{min-width:0}
+/* the list twin: the keyboard path, and what replaces the chart at rest */
+.blist{margin-top:12px;background:var(--surface);border:1px solid var(--rule);border-radius:var(--radius);padding:10px 14px}
+.blist summary{cursor:pointer;font-weight:600;font-size:.92rem}
+.nodelist{list-style:none;margin:8px 0 0;padding:0;max-height:520px;overflow:auto;font-size:.86rem}
+.nodelist li{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;padding:5px 0;border-bottom:1px solid var(--rule)}
+.nodelist .id{font-family:"IBM Plex Mono",monospace;font-size:.74rem;white-space:nowrap;min-width:64px}
+.nodelist .d{font-family:"IBM Plex Mono",monospace;font-size:.7rem;color:var(--ink-3);white-space:nowrap}
+.nodelist .rel{font-family:"IBM Plex Mono",monospace;font-size:.68rem;color:var(--ink-3);flex-basis:100%}
+
+/* the genealogy: one static SVG, scrolling inside its own panel on a phone */
+.tl{overflow-x:auto;margin-top:18px}
+.tlsvg{width:100%;min-width:760px;height:auto}
+.tlmark{cursor:pointer}
+.tlmark:hover circle{stroke:var(--accent)!important;stroke-width:2.4}
+.tlbar,.tlcap{cursor:default}
+.tlside{margin-top:14px}
+
+/* contributors */
+.bars{display:grid;grid-template-columns:minmax(0,max-content) minmax(40px,1fr) max-content;gap:6px 12px;align-items:center;font-size:.9rem}
+.bars .lab{font-family:"IBM Plex Mono",monospace;font-size:.78rem;word-break:break-word}
+.bars .bar{height:12px;background:var(--surface-2);border-radius:3px;overflow:hidden}
+.bars .bar i{display:block;height:100%;background:var(--s-adr);border-radius:3px}
+
+/* references */
+.refs{counter-reset:ref;list-style:none;margin:0;padding:0}
+/* A citation is one run of MIXED INLINE content — plain text, an italic
+   journal title, a link — not a row of cells. A grid container would make each
+   of those a grid item in its own right, italics and link included, and lay the
+   citation out as a column of fragments instead of a sentence. The number is
+   placed out of the flow beside the text it numbers, and the text stays one
+   flowing block. */
+.refs li{position:relative;padding:10px 0 10px 50px;border-bottom:1px solid var(--rule);font-size:.98rem;line-height:1.45}
+.refs li::before{position:absolute;left:0;top:10px;counter-increment:ref;content:"[" counter(ref) "]";font-family:"IBM Plex Mono",monospace;font-size:.78rem;color:var(--ink-2);padding-top:.25em}
+.refs a{word-break:break-word}
+.insp ul{font-size:.92rem;list-style:none;padding:0;margin:0}
+.insp li{padding:6px 0;border-bottom:1px solid var(--rule)}
+/* A bibliography is made of ADDRESSES — DOIs, repository URLs, a manpage path —
+   single tokens with no space in them and no natural break. They are the one
+   kind of text a narrower column cannot make fit: given nowhere to break, the
+   token sets the width of the whole page and the layout scrolls sideways
+   underneath it.
+ *
+ * The lifted prototype broke them in the numbered list (`.refs a` above), and
+ * its inspirations list needed nothing because it held plain strings. This one
+ * renders the acknowledgement file's own credits, autolinks and all, so it needs
+ * the same treatment — `overflow-wrap:anywhere` rather than `break-word`
+ * because only `anywhere` also shrinks the element's min-content width, which is
+ * what lets the track around it give. */
+.refs li,.insp li{overflow-wrap:anywhere}
+/* And the net under both: no link inside a panel may widen the page, whichever
+   list a later change puts it in. Short text is unaffected — a break only
+   happens where the line would otherwise overflow. */
+.panel a{overflow-wrap:anywhere}
+
+/* 390 px: the card becomes a full-width bottom sheet and the chart pans so the
+   focused record stays above it. */
+@media (max-width:700px){
+  .bstage{height:70vh}
+  .bcard{left:8px;right:8px;width:auto;bottom:8px;max-height:calc(100% - 8px - 108px)}
+  .bsearch{left:8px;right:8px;top:52px;width:auto}
+  .bfilters{width:calc(100% - 24px);top:56px;left:12px}
+  .brow2{top:8px;left:8px}
+  .bcorner{right:8px;top:8px;bottom:auto}
+  .bzoom{display:none}
+  .glegend .glrow{grid-template-columns:1fr}
+}
+
+/* Where the reader has asked for stillness, nothing moves and the list is
+   offered in place of the chart (the script removes the stage). */
+@media (prefers-reduced-motion:reduce){
+  .bstandby{display:none;animation:none}
+  .bstandby .spin{animation:none}
+}
+
+/* ---------- print ----------
+ *
+ * A first pass, and an honest one: paper gets the words. Controls that exist
+ * only to be operated go, the disclosures give up what they are hiding as far
+ * as an engine allows, and the pagination is told which blocks read as one
+ * thing and which are free to run over a fold.
+ */
+@media print{
+  /* Chrome with nothing to say on paper: the site's navigation, the copy
+     buttons, and the whole of the relationship chart's control furniture —
+     the by-date/by-links switch, the filter button and its panel, the search
+     field and its results, the zoom and fullscreen corner, the loading
+     placeholder. */
+  .site-nav,.cmd .copy,
+  .brow2,.bseg,.bfilters,.bfilters-btn,.bcorner,.bfs,.bzoom,.bsearch,.bhits,.bstandby{display:none!important}
+
+  /* A command block reserves a gutter on its right for the copy button that
+     sits in it. The button is gone from the page above, so the gutter is a
+     stripe of empty ink-dark paper; the block gets its ordinary padding back. */
+  .tabs .tabbody pre,.tabs .tabprose pre,.recbody pre{padding-right:16px}
+
+  /* On screen the install panels are stacked so the box cannot jump. On paper
+     there is nothing to jump, and a reader wants the selected panel followed
+     by the next section, not by the blank column the tallest panel reserves. */
+  .tabs>[role=tabpanel][hidden]{display:none}
+
+  /* A disclosure that hides part of the DOCUMENT gives it up: the install
+     page's asides. `::details-content` is what makes a CLOSED `details` do that, and it
+     is a Chromium feature — elsewhere a closed disclosure still prints as its
+     summary alone, and in every engine the marker beside it still points
+     closed, because CSS cannot set the `open` attribute. That residue is real
+     and needs script or markup, not this stylesheet.
+
+     The relationship chart's list twin is deliberately left closed. It is not
+     hidden prose but a way to walk 772 records with a keyboard, and opening it
+     turns one printed page into ninety. */
+  details.more::details-content,.panel.fold::details-content{content-visibility:visible;display:block}
+  details.more>*:not(summary),.panel.fold>*:not(summary){animation:none}
+  /* A folded panel is the PAGE's content, not an aside: printing /references/
+     as two headings and no bibliography would be a worse document than the
+     one this stylesheet replaced. The marker still points closed, and outside
+     Chromium the residue above applies — that is the same limit named there,
+     not a new one. */
+  .panel.fold>summary h3::before{content:"" / ""}
+
+  /* The genealogy is one scalable drawing kept behind a scrolling window on a
+     narrow screen. Paper has no scroll, so the window is opened and the
+     drawing is allowed to fit the sheet instead of being cut off at it. */
+  .tl{overflow:visible}
+  .tlsvg{min-width:0}
+
+  /* A scroll window has no meaning on paper: the record list would print the
+     first screenful and slice the entry at its edge. The cap comes off, and
+     the whole record prints — a long document, which is what an archival print
+     of a record is. */
+  .nodelist{max-height:none;overflow:visible}
+  .nodelist li{break-inside:avoid}
+
+  /* The chart is a CANVAS whose bitmap was drawn for the viewport's width; a
+     printed page is narrower, and stretching that bitmap to fill the box
+     squashes the drawing. Letterboxing it inside the box keeps the circles
+     round, and the stage takes the page's own proportions rather than a
+     viewport height that means nothing on paper. */
+  .bstage{height:auto;aspect-ratio:4/3;min-height:0}
+  .bstage canvas{object-fit:contain}
+
+  /* Blocks that read as one thing are kept on one sheet. Panels are NOT among
+     them, and the omission is the point: a dashboard panel is long enough that
+     refusing to break it pushes the whole panel to the next sheet and leaves
+     the one before it blank. A panel breaks; the cards inside it do not. */
+  .card,.fcard,.tile,.quote,.cmd,.comic{break-inside:avoid}
+  .panel{break-inside:auto}
+
+  /* A panel that breaks is only half the story: its card DECKS are grids, and
+     a grid container does not fragment across sheets — the whole deck moves to
+     the next one and leaves the sheet that carries its heading empty, which is
+     what made the foundations page open on a blank sheet. Multi-column layout
+     does fragment, so the decks become columns for print; the cards keep their
+     no-break rule and now flow from one sheet to the next. */
+  .fcards,.cards{display:block;column-count:2;column-gap:12px}
+  .fcard,.card{margin-bottom:12px}
+
+  /* Trailing padding is what tips a footer onto a sheet of its own, and a
+     footer that splits down the middle guarantees one. Both are taken away;
+     what CSS cannot do is pull a footer back onto a full page. */
+  .record,.chapter,.hero{padding-bottom:0}
+  .site-foot{padding:12px 0 0;break-inside:avoid}
+}

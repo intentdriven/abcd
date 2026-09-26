@@ -29,8 +29,7 @@ type modeOutput struct {
 // neither the render nor the agent can invent an answer of its own.
 func newModeCommand(asJSON *bool) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "mode [<state>]",
-		Short: "Print or set whose answer the agent loop is waiting on (managed, facilitator, product-thinker)",
+		Use: "mode [<state>]",
 		Long: "Print or set the waiting-on state behind the status line's badge.\n\n" +
 			"Bare `abcd mode` prints the stored state: `managed` (abcd is here and nobody\n" +
 			"is waiting), `facilitator` (the loop is parked on the facilitator, the person\n" +

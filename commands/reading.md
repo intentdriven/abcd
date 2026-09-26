@@ -1,7 +1,8 @@
 ---
 name: reading
-description: Assemble the input a cold reading is handed and validate the output it returns, by invoking the abcd binary. Bare invocation is a read-only status render; assemble produces the assembled input and its hashed manifest, and ingest validates one reading's output and writes its records.
+description: "Render the cold-reading assembler's state: Writes nothing; refuses any argument."
 argument-hint: "[] | assemble --position <widening|entailment|comparative|detection> --target <HEAD|sha> [--out <dir>] [--dry-run] | ingest --reading-json <path>"
+block: agents
 ---
 
 # `/abcd:reading` — cold-reading input assembler
@@ -255,10 +256,33 @@ detect it after the fact.
   --reading-json ./reading-output.json --json
 ```
 
-`--reading-json` names the JSON the reading returned. It is the only operand:
-the output states its own run, position and regime, and there is no flag that
-could set one. A missing operand, a positional argument, and every refusal
-below exit 2.
+`--reading-json` names the JSON the reading returned. It is the only operand
+that names the output: the output states its own run, position and regime, and
+there is no flag that could set one. A missing operand, a positional argument,
+and every refusal below exit 2. The one other flag, `--route`, routes the agent
+the output came from and sets nothing the output carries.
+
+**Model-tier routing.** The ingest dispatches the cold-reading agent of the
+position the output names (`cold-reading-<position>`), and resolves that agent's
+model tier before anything else runs: an invocation override, over the
+repository's `.abcd/config/oracle-routing.json`, over the machine's
+`~/.abcd/oracle-routing.json`, over abcd's bundled proposal (which applies only
+once a table is accepted). The override is `--route
+<agent>=<tier>[@<connection>][?k=v,...]`, naming the one agent this invocation
+dispatches (a second `--route` is refused, not merged), with the tier one of
+`local`, `economy`, `frontier` or `host-decides`; it governs this run alone.
+`assemble` takes no `--route`: its invocation is a position and a target and
+nothing else, so run the reading at the tier you mean to and pass that route to
+the ingest, which records it as an override. The receipt's `model_reported` is
+the output's `instrument.model`. The ingest's `--json` result carries a `route`
+receipt (`tier_asked`, `connection_tried`, `connection_used`, `fallback_reason`,
+`override`, `settings_sent`, `model_reported`) and its text a `route:` line;
+relay it with the result. When no configured provider can serve the tier, one
+stderr line says the step goes through the harness instead. A `--route` naming
+an agent this invocation does not dispatch, a tier outside the set, a connection
+this machine has not configured, or a routing table that cannot be read exits 2
+before anything is written. With no table accepted and no `--route`, the step
+asks for `host-decides` and nothing is printed.
 
 ### What the output carries
 

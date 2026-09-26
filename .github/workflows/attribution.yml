@@ -38,10 +38,18 @@ on:
     types: [opened, edited, reopened, synchronize]
   # Merge-queue entries re-run the required checks on the would-be merge result,
   # so this workflow must trigger there for the check to report at all. The
-  # PR-data steps exempt themselves loudly below: entry to the queue already
-  # required the pull_request-level run green, and a merge_group event carries
-  # no PR body or head/base pair to validate.
+  # commit half runs there over the queue's own base..head — the commits the
+  # merge would land, including the one the merge creates — while the PR-FORM
+  # steps exempt themselves loudly below: entry to the queue already required
+  # the pull_request-level run green, and a merge_group event carries no PR body
+  # or title to validate.
   merge_group:
+  # A push to main runs the commit half over what just landed (before..sha).
+  # A squash or web-UI merge creates a commit no pull-request run ever saw, and
+  # `make check-attribution` walks origin/main..HEAD, whose base is main itself,
+  # so without this nothing judged a commit once it was on main (iss-280).
+  push:
+    branches: [main]
 
 concurrency:
   # A merge_group event has no PR number; run_id keeps each queue entry in its
@@ -125,8 +133,8 @@ jobs:
           ABCD_OUTBOUND_BIN: ${{ runner.temp }}/abcd
         run: |
           set -euo pipefail
-          if [ "$EVENT_NAME" = "merge_group" ]; then
-            echo "attribution: merge-queue run — body check exempt (validated on the pull request before queueing), nothing was checked."
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            echo "attribution: ${EVENT_NAME} run — no pull-request body to check (validated on the pull request before it merged), nothing was checked."
             exit 0
           fi
           if [ "$PR_AUTHOR_TYPE" = "Bot" ]; then
@@ -162,8 +170,8 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
-          if [ "$EVENT_NAME" = "merge_group" ]; then
-            echo "attribution: merge-queue run — no pull-request form to check (validated on the pull request before queueing), nothing was checked."
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            echo "attribution: ${EVENT_NAME} run — no pull-request form to check (validated on the pull request before it merged), nothing was checked."
             exit 0
           fi
           if [ "$PR_AUTHOR_TYPE" = "Bot" ]; then
@@ -183,17 +191,26 @@ jobs:
       - name: Check the gate's own test corpus
         run: bash scripts/check-attribution-cases.sh
 
+      # The range is the one each event carries: a pull request's base..head, a
+      # queue entry's base_sha..head_sha, a push's before..sha. The queue and the
+      # push are where the commit a merge creates is judged — a squash commit
+      # composed from the pull request's title and body, a web-UI merge — which
+      # no pull-request run ever sees (iss-280). The script exempts merge
+      # MESSAGES from the trailer and still reads their authorship. A base that
+      # is absent, the all-zeroes placeholder a force-push leaves, or not in this
+      # checkout is refused loudly rather than guessed around.
       - name: Check the commit trailers
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
           EVENT_NAME: ${{ github.event_name }}
           ABCD_OUTBOUND_BIN: ${{ runner.temp }}/abcd
         run: |
           set -euo pipefail
-          if [ "$EVENT_NAME" = "merge_group" ]; then
-            echo "attribution: merge-queue run — commit check exempt (validated on the pull request before queueing; the queue's own merge commit carries no trailer to check), nothing was checked."
-            exit 0
+          if [ -z "${BASE_SHA:-}" ] || [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ] ||
+            ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
+            echo "::error::attribution: no usable base for this ${EVENT_NAME} run (BASE_SHA='${BASE_SHA:-}'); the commit range cannot be bounded, so nothing is passed unchecked"
+            exit 1
           fi
           # No bot exemption here: the commit half reads AUTHORSHIP, and a machine
           # author is exactly what it now refuses (iss-2609082001204831). A bump a

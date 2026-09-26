@@ -177,17 +177,17 @@ func TestFindRecordFileProbe(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if rel, ok := findRecordFile(repo, intentStoreRelDirs(), "itd-12"); !ok || !strings.Contains(rel, "shipped") {
+	if rel, ok, _ := findRecordFile(repo, intentStoreRelDirs(), "itd-12"); !ok || !strings.Contains(rel, "shipped") {
 		t.Fatalf("probe missed itd-12 in shipped/: %q %v", rel, ok)
 	}
-	if rel, ok := findRecordFile(repo, specStoreRelDirs(), "spc-9"); !ok || !strings.Contains(rel, "closed") {
+	if rel, ok, _ := findRecordFile(repo, specStoreRelDirs(), "spc-9"); !ok || !strings.Contains(rel, "closed") {
 		t.Fatalf("probe missed bare spc-9.md in closed/: %q %v", rel, ok)
 	}
-	if _, ok := findRecordFile(repo, intentStoreRelDirs(), "itd-1"); ok {
+	if _, ok, _ := findRecordFile(repo, intentStoreRelDirs(), "itd-1"); ok {
 		t.Fatalf("probe found an absent id")
 	}
 	// itd-120 must not match itd-12's prefix rule.
-	if _, ok := findRecordFile(repo, intentStoreRelDirs(), "itd-120"); ok {
+	if _, ok, _ := findRecordFile(repo, intentStoreRelDirs(), "itd-120"); ok {
 		t.Fatalf("probe prefix rule over-matched itd-120 against itd-12")
 	}
 }
@@ -195,7 +195,7 @@ func TestFindRecordFileProbe(t *testing.T) {
 // A SHA-256 repo's commits are 64 hex chars; the shape check must accept them
 // (iss-356 item 5): the value is a provenance stamp, not a filter, and spc-25's
 // own rationale is "must not refuse a legitimate resolution". The sibling
-// receipt gate (lint.go receiptShaRe) already accepts {7,64}.
+// receipt gate (lint.go receiptShaRe) accepts a 64-hex sha too.
 func TestResolveAcceptsASHA256Commit(t *testing.T) {
 	repo, ir, issID := provenanceFixture(t)
 	sha := strings.Repeat("0123abcd", 8) // 64 hex chars

@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/core/mdrecord"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
@@ -111,31 +112,21 @@ func normalizeSpanText(text string) string {
 }
 
 var (
-	fenceDelimRe       = regexp.MustCompile("^ {0,3}(`{3,}|~{3,})")
 	blockquoteRe       = regexp.MustCompile(`^ {0,3}>`)
 	blockquoteMarkerRe = regexp.MustCompile(`^ {0,3}> ?`)
 )
 
+// fenceMask marks the lines inside a fenced code block, delimiters included, by
+// mdrecord's TopLevel rule — the tree's one notion of a fence
+// (iss-2609251044055902). Comments are not masked: a quoted span inside one is
+// still text the page carries.
 func fenceMask(lines []string) []bool {
-	mask := make([]bool, len(lines))
-	openChar := byte(0)
-	openLen := 0
-	for i, line := range lines {
-		if openChar == 0 {
-			if m := fenceDelimRe.FindString(line); m != "" {
-				run := strings.TrimLeft(m, " ")
-				openChar, openLen = run[0], len(run)
-				mask[i] = true
-			}
-		} else {
-			mask[i] = true
-			stripped := strings.TrimSpace(line)
-			if len(stripped) >= openLen && stripped == strings.Repeat(string(openChar), len(stripped)) {
-				openChar, openLen = 0, 0
-			}
-		}
+	mask := mdrecord.Read(lines, mdrecord.TopLevel).Mask
+	out := make([]bool, len(lines))
+	for i, m := range mask {
+		out[i] = m&mdrecord.MaskFence != 0
 	}
-	return mask
+	return out
 }
 
 // quotePairSpans returns (startRuneIndex, innerText) for each double-quoted

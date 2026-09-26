@@ -334,7 +334,7 @@ jobs:
     environment: site-render
     permissions:
       contents: write       # upload site.tar.gz to the Release (no branch push)
-      id-token: write       # mint the OIDC token attest-build-provenance signs with
+      id-token: write       # mint the OIDC token actions/attest signs with
       attestations: write   # publish the build-provenance attestation (public repo)
     env:
       TAG: ${{ needs.resolve.outputs.tag }}
@@ -417,9 +417,22 @@ jobs:
           # A bare `abcd site` does exit 2 today, but it would EXECUTE the verb once
           # the verb exists, so it is not a probe either. The listing is the public
           # surface, costs nothing, has no side effects, and names `site` exactly when
-          # the verb is registered. Verified in both directions against a binary built
-          # before the site slice.
-          ./abcd --help 2>/dev/null | grep -qE '^[[:space:]]+site[[:space:]]' || {
+          # the verb is registered.
+          #
+          # WHICH listing depends on the tag. From v0.11.0 the root help is grouped:
+          # `abcd --help` names only the person's verbs, and `site` is listed under
+          # `abcd --help --agent` alone, so the plain listing misses it on every
+          # binary that has it. A tag before v0.11.0 refuses `--agent` as an unknown
+          # flag (exit 2, nothing on stdout) and lists every verb in the plain
+          # listing. So read the agent listing, and fall back to the plain one when
+          # the flag is refused: a binary from before the site slice passes neither,
+          # and still refuses here in one line. Captured in a variable, not piped, so
+          # neither the fallback nor grep's early exit meets pipefail. Verified
+          # against binaries built from v0.6.1 (no verb), v0.10.0 (plain listing)
+          # and v0.11.0 (agent listing); internal/surface/cli's
+          # TestSiteWorkflowProbeFindsTheSiteVerb runs every probing step.
+          listing="$(./abcd --help --agent 2>/dev/null || ./abcd --help 2>/dev/null || true)"
+          grep -qE '^[[:space:]]+site[[:space:]]' <<<"$listing" || {
             echo "::error::this binary has no site verb (released before the site slice); refusing — see PR #421"
             exit 1
           }
@@ -430,7 +443,7 @@ jobs:
           commit="$(git rev-parse --verify HEAD)"
           # --version takes the tag WITHOUT its leading v. The page renders the
           # stamp as "v" prepended to this value, so passing v0.6.1 yields
-          # "vv0.6.1" on the page, and `site check`'s provenance gate refuses it:
+          # "vv0.6.1" on the page, and the site gate's provenance check refuses it:
           # that gate admits a version token matching ^v?\d+(\.\d+)*$ and nothing
           # else. Measured both ways against a binary built from main — bare
           # passes every gate, v-prefixed fails two.
@@ -468,13 +481,25 @@ jobs:
         # runs AFTER the docs build so it sees the whole tree that will be deployed.
         run: |
           set -euo pipefail
-          # The root-listing probe again; see the render step above for why neither
-          # `abcd site --help` nor `abcd site build --help` can serve as one.
-          ./abcd --help 2>/dev/null | grep -qE '^[[:space:]]+site[[:space:]]' || {
+          # The listing probe again (the agent listing, else the plain one); see the
+          # render step above for why that pair, and why neither `abcd site --help`
+          # nor `abcd site build --help` can serve as one.
+          listing="$(./abcd --help --agent 2>/dev/null || ./abcd --help 2>/dev/null || true)"
+          grep -qE '^[[:space:]]+site[[:space:]]' <<<"$listing" || {
             echo "::error::this binary has no site verb (released before the site slice); refusing — see PR #421"
             exit 1
           }
-          ./abcd site check --out site
+          # The gate is `lint site` from itd-2609212130136102 on, and the binary
+          # here is the RELEASED one of whichever tag this run names, so a tag cut
+          # before that release carries it as `site check`. The lint's own
+          # listing names its targets, and is a probe for the same reasons the
+          # root listing is: no side effects, and it names `site` exactly when
+          # the target is registered.
+          if ./abcd lint --help 2>/dev/null | grep -qE '^[[:space:]]+site[[:space:]]'; then
+            ./abcd lint site --out site
+          else
+            ./abcd site check --out site
+          fi
 
       - name: Re-check that the release is still not a pre-release
         # `resolve` read this state minutes ago and the render is slow. A maintainer
@@ -504,8 +529,14 @@ jobs:
         # a user-owned private repo (GitHub gates artifact attestation by repo
         # visibility, exactly as release.yml documents); it re-enables automatically on
         # the public flip, and a skipped step is not a failure, so the deploy still runs.
+        # actions/attest directly, with no predicate input: it then generates SLSA
+        # build provenance itself, the predicate the actions/attest-build-provenance
+        # wrapper produced by calling it (iss-273). NODE_OPTIONS is the wrapper's
+        # own env on that call, kept so the attestation is made exactly as before.
         if: ${{ !github.event.repository.private }}
-        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        env:
+          NODE_OPTIONS: "--max-http-header-size=32768"
         with:
           subject-path: site.tar.gz
 
@@ -741,12 +772,14 @@ jobs:
         # one. The workflow therefore passes no version anywhere on this path.
         run: |
           set -euo pipefail
-          # Probe before use, as in `render` — same root-listing grep, and see that
-          # step for why the obvious `--help` forms all pass on a verb-less binary.
-          # main carries the site verb now, so this is a standing guard rather than
-          # a window: it fires if the verb is ever renamed or withdrawn, and turns
-          # what would be a cobra usage dump mid-render into one line naming why.
-          ./abcd --help 2>/dev/null | grep -qE '^[[:space:]]+site[[:space:]]' || {
+          # Probe before use, as in `render` — same listing grep (the agent listing,
+          # else the plain one), and see that step for why that pair, and why the
+          # obvious `--help` forms all pass on a verb-less binary. main carries the
+          # site verb now, so this is a standing guard rather than a window: it
+          # fires if the verb is ever renamed or withdrawn, and turns what would be
+          # a cobra usage dump mid-render into one line naming why.
+          listing="$(./abcd --help --agent 2>/dev/null || ./abcd --help 2>/dev/null || true)"
+          grep -qE '^[[:space:]]+site[[:space:]]' <<<"$listing" || {
             echo "::error::this binary has no site verb (built from a commit before the site slice); refusing — see PR #421"
             exit 1
           }
@@ -771,12 +804,14 @@ jobs:
         # a preview that skipped them would stop being a preview of anything.
         run: |
           set -euo pipefail
-          # The root-listing probe again; see the render job for the full note.
-          ./abcd --help 2>/dev/null | grep -qE '^[[:space:]]+site[[:space:]]' || {
+          # The listing probe again (the agent listing, else the plain one); see the
+          # render job for the full note.
+          listing="$(./abcd --help --agent 2>/dev/null || ./abcd --help 2>/dev/null || true)"
+          grep -qE '^[[:space:]]+site[[:space:]]' <<<"$listing" || {
             echo "::error::this binary has no site verb (built from a commit before the site slice); refusing — see PR #421"
             exit 1
           }
-          ./abcd site check --out site
+          ./abcd lint site --out site
 
       - name: Upload a non-production Worker version
         uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0 # v4.0.0

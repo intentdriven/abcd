@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -31,16 +32,14 @@ const maxGuardStdinBytes = 1 << 20 // 1 MiB
 // can never brick a session). spc-16, "Fail-open-loud and health".
 func newGuardCommand(asJSON *bool) *cobra.Command {
 	guardCmd := &cobra.Command{
-		Use:   "guard",
-		Short: "Check a shell command against the hazard registry before it runs",
-		Args:  failOpenNoArgs,
-		RunE:  helpRunE,
+		Use:  "guard",
+		Args: failOpenNoArgs,
+		RunE: helpRunE,
 	}
 
 	var command string
 	checkCmd := &cobra.Command{
-		Use:   "check",
-		Short: "Decide whether a candidate shell command is safe to run",
+		Use: "check",
 		Long: "Evaluates one candidate command line against the hazard registry — the\n" +
 			"bundled defaults merged with this repo's `.abcd/guard.json` — and reports\n" +
 			"allow, warn, or block. A blocker exits 1 and names the safe successor; a\n" +
@@ -67,22 +66,74 @@ func newGuardCommand(asJSON *bool) *cobra.Command {
 			"An allow means no registry entry matched — it is never a statement that a\n" +
 			"command is safe. A hazard behind a launcher the guard does not recognise is\n" +
 			"a WARN naming the entry it matched, rather than an allow, because the guard\n" +
-			"cannot tell whether that program runs the rest of the line. What an\n" +
+			"cannot tell whether that program runs the rest of the line. A `$(…)`,\n" +
+			"backtick, `<(…)` or `>(…)`, quoted or not, IS followed into command\n" +
+			"position, and the words written after one stay the enclosing command's,\n" +
+			"so `rm $(true) -rf *` is read as `rm -rf *`. What one prints is unknown,\n" +
+			"so a word holding one fails closed, read every way it can be at once: led\n" +
+			"by a dash (`--$(…)`) it is every flag it could become — standing alone,\n" +
+			"taking a value, a shell's `-c` — before the command as well as after it;\n" +
+			"after a value flag (`git -C $(pwd) push`) it is that flag's value; as an\n" +
+			"operand it is one operand; in command position (`$(echo git) push`) it is\n" +
+			"any program its known text allows, so an unknown name with any operand\n" +
+			"reads as `pkill` too; a block that fires only on such a name is reported\n" +
+			"as program-name-unknown, and the way past is to spell the program's name.\n" +
+			"Text beside one in the same word is also read as bash\n" +
+			"leaves it when the output is empty. One nested more than eight\n" +
+			"double-quoted substitutions deep, holding a case command, or more than\n" +
+			"eight of them where the program name could be, is blocked, because the\n" +
+			"guard has stopped reading it. An ANSI-C string ends at its closing quote\n" +
+			"and its first NUL, as bash ends it. A `${…}` holding a substitution is\n" +
+			"unknown from its `${` on, and inside double quotes it ends at its own\n" +
+			"`}`, its nested quotes opening a nested string. A here-document body is\n" +
+			"data, but a substitution in one whose delimiter is unquoted runs, and is\n" +
+			"read as a command; a body line ending in an odd number of backslashes\n" +
+			"joins the next before the delimiter compare, as bash joins it. A\n" +
+			"backtick's text is read after bash's own pass over it, which drops a\n" +
+			"backslash before `$`, a backtick or a backslash (and, directly inside\n" +
+			"double quotes, one before a `\"` too), so an escaped `\\$(…)`\n" +
+			"or an escaped backtick pair between backticks is read as the\n" +
+			"substitution bash runs, in a here-document body there too. A\n" +
+			"`\"$(cat <<'EOF' … EOF)\"` handed to `sh -c` or `eval` is read as its\n" +
+			"document's text, and an unquoted one as the words bash splits its\n" +
+			"document into, at every layer, each joined to any text written\n" +
+			"beside it in the same word, as bash joins it; a backtick spelling with\n" +
+			"no backslash in it is read the same way. On a line where another command\n" +
+			"names IFS an unquoted one is blocked (ifs-split-unread), because the\n" +
+			"guard splits on the default IFS only. Two `sh -c` or `eval` layers are\n" +
+			"followed; a payload nested deeper is blocked.\n" +
+			"`$(( … ))` is an expression, not commands. A shell reading\n" +
+			"its script from a pipe, a here-document, a here-string, the stdin device\n" +
+			"or a process substitution is blocked, and so is a line over 64 KiB.\n" +
+			"An unquoted brace group IS\n" +
+			"expanded as bash expands it, and one past 4096 words is blocked. What an\n" +
 			"allow still does not see is a hazard that never reaches command position at\n" +
-			"all: one launched through a known\n" +
+			"all: a word that is wholly a `$(…)` standing where a flag would be (read as\n" +
+			"an operand, the way a commit message or a branch is spelled), one launched\n" +
+			"through a known\n" +
 			"wrapper carrying a value-taking flag the guard does not name (`sudo -u bob\n" +
 			"<hazard>` is seen; the bundled short form `sudo -Hu bob <hazard>` reaches\n" +
 			"only the warn, not the entry that names it),\n" +
 			"one whose API path an entry names by its ROOT segment but the host serves\n" +
 			"under a prefix (a GitHub Enterprise Server install mounts the same endpoints\n" +
-			"under `/api/v3/`; the api.github.com URL form IS read), a bare `$VAR` inside\n" +
-			"an interpreter payload (an execute-a-string payload IS read — `sh -c`,\n" +
+			"under `/api/v3/`; the api.github.com URL form IS read), a parameter\n" +
+			"expansion that carries no substitution (`$VAR`, `${VAR:-git}`) wherever it\n" +
+			"stands — as the program's name, as a flag (`--$VAR`), or inside an\n" +
+			"interpreter payload (an execute-a-string payload IS read — `sh -c`,\n" +
 			"`env -S`; one the guard cannot read is warned or, for `env -S`, blocked),\n" +
-			"a hazard inside a top-level command substitution (`$(…)` and\n" +
-			"backticks are both followed into command position),\n" +
+			"because the guard sees the variable, not what the shell expands it to,\n" +
+			"an IFS the shell already holds when the line starts or gains during the\n" +
+			"line through a name the guard does not read (every line is read from the\n" +
+			"default IFS),\n" +
 			"a hazard inside a NON-shell interpreter's payload (`python -c`, `perl -e`) —\n" +
 			"one opaque token the tokenizer cannot read, today a silent allow (a warn for\n" +
 			"it is a recorded design target, not yet raised),\n" +
+			"a lone substitution standing as the whole command (`$(cat msg.txt)`,\n" +
+			"`$(date)`), which can be any program but matches no entry with no\n" +
+			"operand after it, and so a document printed that way through any shape\n" +
+			"but exactly `cat <<DELIM`, a newline, the body, the delimiter line and\n" +
+			"blanks (`/bin/cat`, `command cat`, `cat -`, a redirection or a command\n" +
+			"beside it, a backslash-newline in it, a `${…}` around it),\n" +
 			"or a dangerous form no entry describes. Coverage is what the registry\n" +
 			"names.\n\n" +
 			"The candidate comes from --command, or from stdin when the flag is absent.\n" +
@@ -96,10 +147,21 @@ func newGuardCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return &exitError{Code: 2, Msg: fmt.Sprintf("guard check: %s", scrubPaths(err))}
 			}
-			reg, err := loadGuardRegistry(cmd.ErrOrStderr())
+			ld, err := loadGuardRegistry(cmd.ErrOrStderr())
 			if err != nil {
 				return &exitError{Code: 2, Msg: fmt.Sprintf("guard check: %s", scrubPaths(err))}
 			}
+			// The check answers a person or a script that asked a question, so
+			// any posture but a clean load is a refusal: a verdict drawn from a
+			// registry other than the one the repo declares is worse than being
+			// told the registry is not the one in force.
+			switch ld.Posture {
+			case guard.LoadUnavailable:
+				return &exitError{Code: 2, Msg: "guard check: no hazard registry could be loaded; nothing was checked"}
+			case guard.LoadRepoDropped:
+				return &exitError{Code: 2, Msg: fmt.Sprintf("guard check: %s", scrubPaths(ld.Err))}
+			}
+			reg := ld.Registry
 			// A disabled registry evaluated nothing, so there is no answer to
 			// render — and a bare `allow` here is indistinguishable from a real
 			// clearance to the CI job or script using this verb as a gate. Same
@@ -150,22 +212,24 @@ func newGuardCommand(asJSON *bool) *cobra.Command {
 // and must never be silently absent either (itd-103 AC 1).
 func newGuardHookCommand() *cobra.Command {
 	return &cobra.Command{
-		Use:   "hook",
-		Short: "Host pre-tool-use adapter: decide a shell command from a hook payload",
+		Use: "hook",
 		Long: "Reads a host pre-tool-use hook payload on stdin and evaluates its shell\n" +
 			"command against the hazard registry. A blocker exits with the host's\n" +
 			"blocking status and puts the safe successor and the plain-language why on\n" +
 			"stderr, which is the channel the host replays to the agent. A warn and an\n" +
 			"allow both let the command run.\n\n" +
 			"Anything the adapter cannot turn into a decision — an unreadable payload, a\n" +
-			"tool call that is not a shell command, an unparsable command line, a\n" +
-			"registry that will not load — allows the command and warns loudly on\n" +
-			"stderr. A guard that cannot answer never stops a session, and is never\n" +
-			"silently absent. Unparsable means an unterminated quote in COMMAND text,\n" +
-			"which no shell runs either — a quote inside a here-document body is\n" +
-			"document text and is not one. A trailing backslash and a here-document with\n" +
-			"no delimiter line are grammar a shell does run, so each gets a verdict —\n" +
-			"the backslash is read as bash reads it, the unterminated document blocks.\n\n" +
+			"tool call that is not a shell command, a registry that will not load —\n" +
+			"allows the command and warns loudly on stderr. A guard that cannot answer\n" +
+			"never stops a session, and is never silently absent. A command line the\n" +
+			"guard cannot split is not in that set: it is blocked (command-unparsable),\n" +
+			"because a line the guard misreads may be one bash runs, and letting it\n" +
+			"through would pass every hazard in it. Unparsable means an unterminated\n" +
+			"quote in COMMAND text, which no shell runs either — a quote inside a\n" +
+			"here-document body is document text and is not one. A trailing backslash\n" +
+			"and a here-document with no delimiter line are grammar a shell does run,\n" +
+			"so each gets a verdict — the backslash is read as bash reads it, the\n" +
+			"unterminated document blocks.\n\n" +
 			"A host whose shell tool takes a per-call working directory passes it as\n" +
 			"tool_input.workdir. It is resolved against the session directory, and a\n" +
 			"command whose workdir is an existing directory in another repository is\n" +
@@ -224,24 +288,25 @@ func newGuardHookCommand() *cobra.Command {
 				}
 			}
 			sessionRoot := rulesRoot(cwd, cmd.ErrOrStderr())
-			reg, err := guard.Load(sessionRoot)
-			// A repo-layer error is fail-SAFE, not fail-open: guard.Load returns the
-			// bundled defaults alongside the error, so the built-in hazards stay
-			// armed even though the repo's own overrides were dropped. We check
-			// against that bundled registry rather than running unguarded, and
-			// announce the dropped repo layer loudly so a human learns their
-			// committed guard config is broken (iss-2608261551087492). Only an
-			// EMPTY registry — the bundled layer itself somehow unavailable, which
-			// cannot happen with an embedded default — is the remaining fail-open.
+			// The fail-safe posture is decided in core (guard.LoadRepo,
+			// iss-2608291814576261); the hook only formats it. A dropped repo layer
+			// is fail-SAFE, not fail-open: the registry still holds the bundled
+			// hazards (and the committed repo layer, when only an uncommitted edit
+			// was refused), so the session keeps checking against it and the drop
+			// is announced loudly (iss-2608261551087492). Only an unavailable
+			// registry — unreachable with the embedded defaults — fails open.
+			ld := guard.LoadRepo(sessionRoot)
+			reg := ld.Registry
 			repoDropped := false
-			if err != nil {
-				if len(reg.Entries) == 0 {
-					return failOpen("the hazard registry did not load (%s)", scrubPaths(err))
+			switch ld.Posture {
+			case guard.LoadUnavailable:
+				if ld.Err != nil {
+					return failOpen("the hazard registry did not load (%s)", scrubPaths(ld.Err))
 				}
+				return failOpen("no hazard registry is loaded")
+			case guard.LoadRepoDropped:
 				repoDropped = true
-				fmt.Fprintf(cmd.ErrOrStderr(),
-					"abcd guard: the repo %s did not load (%s); its overrides are DROPPED, but the bundled hazards remain armed.\n",
-					guard.RepoRelPath, scrubPaths(err))
+				fmt.Fprintln(cmd.ErrOrStderr(), guardDropNotice("the repo", ld.Err))
 			}
 			// A disabled registry allows everything, which makes it an unguarded
 			// session — and it is the CHEAPEST one to reach: the other unguarded
@@ -264,8 +329,15 @@ func newGuardHookCommand() *cobra.Command {
 				return &exitError{Code: 2}
 			}
 			dec, err := reg.Check(candidate)
-			if err != nil {
-				return failOpen("the command line could not be parsed (%s)", scrubPaths(err))
+			switch {
+			case errors.Is(err, guard.ErrUnparsableCommand):
+				// A line the tokenizer cannot split is BLOCKED, never run
+				// unchecked: where the tokenizer is right no shell runs it
+				// either, and where it is wrong a pass is a bypass of every
+				// blocker (review4-guard finding 2). The decision is core's.
+				dec = guard.UnparsableDecision(err)
+			case err != nil:
+				return failOpen("the command line could not be checked (%s)", scrubPaths(err))
 			}
 			// The command runs in the workdir, so the registry of the repository
 			// it runs in names its hazards too. Only an existing directory has
@@ -275,14 +347,13 @@ func newGuardHookCommand() *cobra.Command {
 			// and never subtract one.
 			if wd.Exists {
 				if root := rulesRoot(wd.Path, cmd.ErrOrStderr()); root != sessionRoot {
-					wreg, werr := guard.Load(root)
-					if werr != nil && len(wreg.Entries) > 0 {
+					wld := guard.LoadRepo(root)
+					wreg := wld.Registry
+					if wld.Posture == guard.LoadRepoDropped {
 						repoDropped = true
-						fmt.Fprintf(cmd.ErrOrStderr(),
-							"abcd guard: the working directory's %s did not load (%s); its overrides are DROPPED, but the bundled hazards remain armed.\n",
-							guard.RepoRelPath, scrubPaths(werr))
+						fmt.Fprintln(cmd.ErrOrStderr(), guardDropNotice("the working directory's", wld.Err))
 					}
-					if !wreg.Disabled && len(wreg.Entries) > 0 {
+					if !wreg.Disabled && wld.Posture != guard.LoadUnavailable {
 						if wdec, cerr := wreg.Check(candidate); cerr == nil {
 							dec = guard.Strictest(dec, wdec)
 						}
@@ -389,12 +460,25 @@ func guardCandidate(cmd *cobra.Command, flag string) (string, error) {
 // does — the nearest .abcd directory inside the git working tree, never one
 // planted above it — so `.abcd/guard.json` is honoured from any nested working
 // directory, kill switch included, and only the repo's own file can throw it.
-func loadGuardRegistry(w io.Writer) (guard.Registry, error) {
+func loadGuardRegistry(w io.Writer) (guard.Loaded, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
-		return guard.Registry{}, err
+		return guard.Loaded{}, err
 	}
-	return guard.Load(rulesRoot(cwd, w))
+	return guard.LoadRepo(rulesRoot(cwd, w)), nil
+}
+
+// guardDropNotice is the loud line the hook prints when a repo layer was
+// dropped. which names the layer ("the repo", "the working directory's"). A
+// refused uncommitted edit leaves the committed registry in force, a broken
+// file leaves the bundled one, and the notice says which.
+func guardDropNotice(which string, err error) string {
+	if errors.Is(err, guard.ErrUncommittedOverride) {
+		return fmt.Sprintf("abcd guard: %s %s edit is REFUSED (%s); the committed hazards remain armed.",
+			which, guard.RepoRelPath, scrubPaths(err))
+	}
+	return fmt.Sprintf("abcd guard: %s %s did not load (%s); its overrides are DROPPED, but the bundled hazards remain armed.",
+		which, guard.RepoRelPath, scrubPaths(err))
 }
 
 // guardHealthLine renders ahoy's one-line guard-health verdict. A guard that
@@ -412,10 +496,9 @@ func guardHealthLine(h ahoy.GuardHealth) string {
 			state = fmt.Sprintf("armed (%d bundled hazards) — %s does not load, repo overrides dropped", h.Entries, guard.RepoRelPath)
 		}
 		if h.Disabled {
-			// Loadable and wired, but switched off in .abcd/guard.json. Not a
-			// fault, and not something to report as protection either. The file is
-			// read from the working tree, so this can be true before anyone has
-			// reviewed the edit that made it true (iss-147).
+			// Loadable and wired, but switched off in .abcd/guard.json by a
+			// committed edit (an uncommitted one is refused, iss-147). Not a
+			// fault, and not something to report as protection either.
 			state = "OFF — disabled in " + guard.RepoRelPath
 		}
 		return state

@@ -3,6 +3,7 @@ package fsutil
 import (
 	"errors"
 	"fmt"
+	"os"
 	"syscall"
 	"time"
 )
@@ -134,4 +135,70 @@ func acquireFlock(fd int, deadline time.Time, timeout time.Duration) error {
 			backoff *= 2
 		}
 	}
+}
+
+// WithFileLockIn is WithFileLock with the lock file resolved INSIDE root: rel is
+// a slash path relative to it, so an ancestor swapped for a symlink cannot carry
+// the lock out of the containment scope between a caller's checks and the open.
+// The leaf keeps WithFileLock's refusals: a symlink or a non-regular file at rel
+// is ErrLockPathUnsafe, judged by Lstat and confirmed on the opened descriptor
+// (os.SameFile), because os.Root follows a symlink that stays inside the root.
+func WithFileLockIn(root *os.Root, rel string, timeout time.Duration, fn func() error) error {
+	f, err := openLockIn(root, rel)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	fd := int(f.Fd())
+	if err := acquireFlock(fd, time.Now().Add(timeout), timeout); err != nil {
+		return err
+	}
+	defer syscall.Flock(fd, syscall.LOCK_UN)
+	return fn()
+}
+
+// openLockIn opens (creating when absent) the lock file at rel inside root and
+// proves the descriptor is the regular, non-symlinked file that was checked.
+func openLockIn(root *os.Root, rel string) (*os.File, error) {
+	pre, lerr := root.Lstat(rel)
+	switch {
+	case lerr == nil && pre.Mode()&os.ModeSymlink != 0:
+		return nil, fmt.Errorf("%w: lock path is a symlink: %s", ErrLockPathUnsafe, rel)
+	case lerr == nil && !pre.Mode().IsRegular():
+		return nil, fmt.Errorf("%w: lock path is not a regular file: %s", ErrLockPathUnsafe, rel)
+	case lerr != nil && !errors.Is(lerr, os.ErrNotExist):
+		return nil, lerr
+	}
+	f, err := openOrCreateIn(root, rel, os.O_RDWR|syscall.O_NOFOLLOW, 0o644)
+	if err != nil {
+		return nil, err
+	}
+	st, err := f.Stat()
+	if err != nil {
+		f.Close()
+		return nil, err
+	}
+	if !st.Mode().IsRegular() || (lerr == nil && !os.SameFile(pre, st)) {
+		f.Close()
+		return nil, fmt.Errorf("%w: lock path changed or is not a regular file: %s", ErrLockPathUnsafe, rel)
+	}
+	return f, nil
+}
+
+// openOrCreateIn opens rel inside root, creating it at perm when absent, using
+// only the two opens that behave when several processes race to create the same
+// file: a plain open, and an exclusive create exactly one racer wins. A single
+// non-exclusive openat(O_CREAT) relative to a directory descriptor was observed
+// on darwin to fail with ENOENT for some of several racers (openAppendIn's note),
+// which here would fail a ledger verb on a lock file every racer was creating.
+func openOrCreateIn(root *os.Root, rel string, flag int, perm os.FileMode) (*os.File, error) {
+	f, err := root.OpenFile(rel, flag, 0)
+	if err == nil || !errors.Is(err, os.ErrNotExist) {
+		return f, err
+	}
+	f, err = root.OpenFile(rel, flag|os.O_CREATE|os.O_EXCL, perm)
+	if err == nil || !errors.Is(err, os.ErrExist) {
+		return f, err
+	}
+	return root.OpenFile(rel, flag, 0)
 }
