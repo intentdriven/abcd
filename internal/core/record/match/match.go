@@ -244,6 +244,11 @@ func Overlap(a, b []string, w Weights) (forward, reverse float64, shared []strin
 	return forward, reverse, shared
 }
 
+// Short reports whether text carries fewer distinct terms than MinTerms, so a
+// caller can file it without gathering any candidates: Rank would compare
+// nothing anyway.
+func Short(text string) bool { return len(Terms(text)) < MinTerms }
+
 // Rank matches text against every candidate. A threshold outside (0, 1] is
 // the caller's fault and reads as the bundled default, so a matcher can never
 // be configured into linking everything or nothing by accident; the layered
@@ -314,3 +319,17 @@ func Rank(text string, cands []Candidate, threshold float64) Outcome {
 }
 
 func round3(f float64) float64 { return math.Round(f*1000) / 1000 }
+
+// Unread is the outcome of a match whose candidate set could not be read: the
+// record is filed without matching, and the reason travels with the outcome
+// rather than refusing the write.
+func Unread(threshold float64, err error) Outcome {
+	if !(threshold > 0 && threshold <= 1) {
+		threshold = DefaultThreshold
+	}
+	return Outcome{
+		Heuristic: Heuristic, Threshold: threshold, MinTerms: MinTerms,
+		Skipped: "the record could not be read for matching (" + err.Error() + "), so it is filed without matching",
+		Matches: []Score{}, NearMisses: []Score{},
+	}
+}

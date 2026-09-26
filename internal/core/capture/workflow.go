@@ -13,6 +13,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/grounds"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/provenance"
+	"github.com/intentdriven/abcd/internal/core/record/match"
 	"github.com/intentdriven/abcd/internal/core/relink"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -256,10 +257,17 @@ func commitCapture(repoRoot, issuesRoot string, req CaptureRequest, issID, slug,
 		// Written inside the ledger's os.Root (iss-2609012037143368): an ancestor
 		// swapped since the re-read above cannot carry the record out of the
 		// checkout.
+		// The filing-time match (itd-2609212137116617) runs here, under the
+		// ledger lock, so the ledger it reads is the one the record joins. It
+		// adds links to the content and never fails the write.
+		var matched *match.Outcome
+		if req.Match != nil {
+			content, matched = matchAndLink(repoRoot, issuesRoot, *req.Match, req.Text, content, fm)
+		}
 		if werr := writeLedgerFile(repoRoot, issuesRoot, placeholder, []byte(content)); werr != nil {
 			return werr
 		}
-		result = CaptureResult{ID: issID, Slug: slug, Path: placeholder, Status: StateOpen}
+		result = CaptureResult{ID: issID, Slug: slug, Path: placeholder, Status: StateOpen, Match: matched}
 		return nil
 	})
 	if err != nil {

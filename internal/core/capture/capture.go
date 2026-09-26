@@ -20,6 +20,7 @@ import (
 	"regexp"
 
 	"github.com/intentdriven/abcd/internal/core/issueschema"
+	"github.com/intentdriven/abcd/internal/core/record/match"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/core/relink"
 )
@@ -108,6 +109,12 @@ type Issue struct {
 	RelatedSpecs   []string `json:"related_specs,omitempty"`
 	RelatedIssues  []string `json:"related_issues,omitempty"`
 	BlockedBy      []string `json:"blocked_by,omitempty"` // iss-N dependency edges
+	// Duplicates and Refines are the typed links the filing-time match writes
+	// (itd-2609212137116617): the iss-N or itd-N this record is a near-identical
+	// double of, or a narrower case of. A person confirms a link by leaving it
+	// and removes it by deleting the line; a record without either is ordinary.
+	Duplicates []string `json:"duplicates,omitempty"`
+	Refines    []string `json:"refines,omitempty"`
 	// Grounds is the record's recorded conjectures, in the order they were
 	// written: one `<token>: <text>` value in the shared core/grounds vocabulary
 	// per grounds-bearing act. Appended by promote, resolve and wontfix; never by
@@ -163,6 +170,14 @@ type CaptureRequest struct {
 	// it is derived from which command ran, and a capture is researcher-authored
 	// by construction.
 	ProductionMode string
+	// Match, when non-nil, matches the text against every open and resolved
+	// issue and every intent before the record is written, under the ledger
+	// lock, and writes a `duplicates:` or `refines:` link naming each likely
+	// double (itd-2609212137116617). It never refuses the capture: a match that
+	// cannot run says why on the result and the record is filed without it.
+	// nil files the record unmatched, as a caller with its own matching (the
+	// inbox drain, the consistency pass) does.
+	Match *match.Config
 }
 
 // CaptureResult is the outcome of a successful Capture. The timestamp-numeric
@@ -189,6 +204,10 @@ type CaptureResult struct {
 	// record to the repository it is filed into — the shape every misfiled
 	// record of iss-2609120511058115 had (iss-2609231156260287).
 	NoLocation bool `json:"no_location,omitempty"`
+	// Match is the filing-time match's outcome when the request asked for one:
+	// the links written, the near misses below the threshold with their scores,
+	// or why nothing was compared.
+	Match *match.Outcome `json:"match,omitempty"`
 }
 
 // ResolveRequest moves an open issue to resolved/.

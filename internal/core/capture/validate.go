@@ -20,7 +20,7 @@ var knownFields = issueschema.Known
 
 // uniqueItemsFields are the array properties issue.schema.json flags
 // uniqueItems:true.
-var uniqueItemsFields = []string{"related_intents", "related_specs", "related_issues", "synthesis_clusters", "blocked_by"}
+var uniqueItemsFields = []string{"related_intents", "related_specs", "related_issues", "synthesis_clusters", "blocked_by", "duplicates", "refines"}
 
 // validateStrict validates a frontmatter map against the issue schema. It
 // special-cases schema_version first (mirrors _validate_strict) and rejects
@@ -142,6 +142,9 @@ func validateStrict(fm map[string]any) error {
 		{"related_specs", reSpcID, "spc-N"},
 		{"related_issues", reIssID, "iss-N"},
 		{"blocked_by", reIssID, "iss-N"},
+		// The filing-time match's typed links name an issue or an intent.
+		{"duplicates", reLinkID, "iss-N or itd-N"},
+		{"refines", reLinkID, "iss-N or itd-N"},
 	}
 	for _, f := range idListFields {
 		v, present := fm[f.field]
@@ -302,6 +305,8 @@ func issueFromFrontmatter(fm map[string]any, status State, path, body string) Is
 	iss.RelatedSpecs = asStrList(fm["related_specs"])
 	iss.RelatedIssues = asStrList(fm["related_issues"])
 	iss.BlockedBy = asStrList(fm["blocked_by"])
+	iss.Duplicates = asStrList(fm["duplicates"])
+	iss.Refines = asStrList(fm["refines"])
 	if rb, ok := fm["resolved_by"].(map[string]any); ok {
 		iss.ResolvedBy = &ResolvedBy{
 			Intent: asString(rb["intent"]),
