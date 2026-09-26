@@ -518,7 +518,10 @@ func transition(repoRoot, issuesRoot, issID, verb, field, note string, extra []k
 	// resolve and a wontfix on one issue) serialize: the second sees the issue
 	// already moved out of open/ and conflicts, instead of both passing the
 	// checksum re-read and landing the issue in two status dirs (split-brain).
-	var result TransitionResult
+	var (
+		result    TransitionResult
+		movedFrom string
+	)
 	err = withLedgerLock(rr, ir, func() error {
 		src, status, err := findIssue(ir, issID)
 		if err != nil {
@@ -591,15 +594,18 @@ func transition(repoRoot, issuesRoot, issID, verb, field, note string, extra []k
 		}
 		result = TransitionResult{ID: issID, Path: dst, FromStatus: StateOpen, ToStatus: target,
 			Redacted: redacted, Degraded: degraded}
-		// Repoint every link that named the issue in open/, still under the
-		// ledger lock because the links it rewrites include other issues'. A
-		// failure is reported, not raised: the issue has moved.
-		result.Relinked, result.RelinkError = repointMovedIssue(rr, src, dst)
+		movedFrom = src
 		return nil
 	})
 	if err != nil {
 		return TransitionResult{}, err
 	}
+	// Repoint every link that named the issue in open/, in a fresh hold of
+	// the ledger lock (the links it rewrites include other issues') and the
+	// intent store's, taken after the move's hold is released — as the intent
+	// verbs repoint after theirs. A failure is reported, not raised: the issue
+	// has moved.
+	result.Relinked, result.RelinkError = repointMovedIssue(rr, ir, movedFrom, result.Path)
 	// Machine output carries a repo-relative locator, never an absolute
 	// developer-identity path (iss-81).
 	result.Path = fsutil.RepoRel(rr, result.Path)
@@ -611,13 +617,18 @@ func transition(repoRoot, issuesRoot, issID, verb, field, note string, extra []k
 // shares. A ledger outside the repository (a custom issues root) is linked from
 // nowhere the repository's links can reach, so there is nothing to repoint.
 //
-// The caller holds the ledger lock, and the repoint also rewrites intents that
-// link to the issue, so it runs under the intent store's lock as well, taken
-// INSIDE the ledger lock — the one order every path holding both takes
-// (intent.WithMintLock). Outside it, an intent writer landing on a linking
+// The repoint rewrites other ledger records and intents that link to the
+// issue, so it runs under this ledger's lock and then the intent store's
+// (intent.WithLedgerThenMintLock, the one order every path holding both
+// takes). Outside the intent lock, an intent writer landing on a linking
 // intent between the repoint's read and its write was erased
-// (iss-2609261254247117).
-func repointMovedIssue(repoRoot, src, dst string) ([]relink.Rewrite, string) {
+// (iss-2609261254247117). The caller has RELEASED the ledger lock its move
+// held: waiting for the intent lock inside that hold chained two five-second
+// budgets and failed a third process's ledger writer (iss-2609262218059995),
+// and the pair never holds the ledger lock while it waits. A pair that cannot
+// be taken is reported as the repoint's error, with nothing repointed, and the
+// front door names record-lint's links_resolve as what finds each stale link.
+func repointMovedIssue(repoRoot, issuesRoot, src, dst string) ([]relink.Rewrite, string) {
 	from, err1 := filepath.Rel(repoRoot, src)
 	to, err2 := filepath.Rel(repoRoot, dst)
 	if err1 != nil || err2 != nil || !filepath.IsLocal(from) || !filepath.IsLocal(to) {
@@ -627,7 +638,8 @@ func repointMovedIssue(repoRoot, src, dst string) ([]relink.Rewrite, string) {
 		rw    []relink.Rewrite
 		rpErr error
 	)
-	if err := intent.WithMintLock(repoRoot, func() error {
+	ledger := func(fn func() error) error { return withLedgerLock(repoRoot, issuesRoot, fn) }
+	if err := intent.WithLedgerThenMintLock(repoRoot, ledger, func() error {
 		if duringIssueRepoint != nil {
 			duringIssueRepoint()
 		}

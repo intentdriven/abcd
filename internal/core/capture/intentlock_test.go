@@ -2,6 +2,7 @@ package capture
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -80,35 +81,43 @@ func issueLinkedFromAnIntent(t *testing.T) (repo, ir, id, name, itdRel string) {
 	return repo, ir, res.ID, name, itdRel
 }
 
-// Every path that holds both the ledger lock and the intent store's lock takes
-// the ledger lock FIRST (iss-2609261254247117, iss-2609261941039204): with the
-// intent lock held elsewhere, a resolve and a migrate apply each hold the
-// ledger lock while they wait for it, and finish once it is released. The
-// reverse order is unreachable in the core — the intent package cannot import
-// this one — so the one order is the order.
-func TestLedgerLockIsTakenBeforeTheIntentLock(t *testing.T) {
+// A verb that needs the ledger lock and the intent store's lock never holds
+// the first while it waits for the second (iss-2609262218059995). Waiting on
+// the intent lock inside the ledger lock chained two five-second budgets: an
+// intent hold of five seconds made a third process's ledger writer fail with
+// ErrAllocatorContention while the verb itself waited on. So, with the intent
+// lock held elsewhere for longer than a ledger writer's whole budget, a resolve
+// and a migrate apply each wait, a capture arriving meanwhile lands, and each
+// verb finishes once the intent lock is released.
+func TestAWaitingVerbLeavesTheLedgerToOtherWriters(t *testing.T) {
 	for _, tc := range []struct {
 		name string
-		run  func(t *testing.T) (ir string, verb func() error)
+		run  func(t *testing.T) (repo, ir string, verb func() error)
 	}{
-		{"resolve", func(t *testing.T) (string, func() error) {
+		{"resolve", func(t *testing.T) (string, string, func() error) {
 			repo, ir, id, _, _ := issueLinkedFromAnIntent(t)
-			return ir, func() error {
-				_, err := Resolve(ResolveRequest{Grounds: testGrounds, RepoRoot: repo, IssuesRoot: ir, ID: id, Resolution: "fixed", Impact: "fix"})
+			return repo, ir, func() error {
+				res, err := Resolve(ResolveRequest{Grounds: testGrounds, RepoRoot: repo, IssuesRoot: ir, ID: id, Resolution: "fixed", Impact: "fix"})
+				if err == nil && (res.RelinkError != "" || len(res.Relinked) != 1) {
+					err = fmt.Errorf("the resolve must repoint its one link once the intent lock is free: %+v %q", res.Relinked, res.RelinkError)
+				}
 				return err
 			}
 		}},
-		{"migrate --apply", func(t *testing.T) (string, func() error) {
+		{"migrate --apply", func(t *testing.T) (string, string, func() error) {
 			repo, ir, _ := migrateFixture(t)
-			return ir, func() error {
+			return repo, ir, func() error {
 				_, err := Migrate(MigrateRequest{RepoRoot: repo, IssuesRoot: ir, Apply: true})
 				return err
 			}
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			ir, verb := tc.run(t)
-			repo := filepath.Dir(filepath.Dir(filepath.Dir(ir)))
+			repo, ir, verb := tc.run(t)
+			old := lockTimeout
+			lockTimeout = 400 * time.Millisecond
+			t.Cleanup(func() { lockTimeout = old })
+
 			held, release := make(chan struct{}), make(chan struct{})
 			holder := make(chan error, 1)
 			go func() {
@@ -121,30 +130,15 @@ func TestLedgerLockIsTakenBeforeTheIntentLock(t *testing.T) {
 			<-held
 			done := make(chan error, 1)
 			go func() { done <- verb() }()
+			time.Sleep(150 * time.Millisecond)
 
-			// The verb's own brief ledger holds before the transition (the
-			// orphan sweep) come and go; the hold that WAITS on the intent lock
-			// is the one that persists.
-			deadline := time.Now().Add(3 * time.Second)
-			steady := 0
-			for steady < 3 {
-				select {
-				case err := <-done:
-					close(release)
-					t.Fatalf("%s finished while another holder had the intent lock (err %v): it wrote intent records without taking it", tc.name, err)
-				default:
-				}
-				if time.Now().After(deadline) {
-					close(release)
-					<-done
-					t.Fatalf("%s never held the ledger lock while waiting for the intent lock", tc.name)
-				}
-				if ledgerLockHeld(t, ir) {
-					steady++
-				} else {
-					steady = 0
-				}
-				time.Sleep(100 * time.Millisecond)
+			_, capErr := Capture(CaptureRequest{RepoRoot: repo, IssuesRoot: ir, Text: "a third writer", Severity: SeverityMinor,
+				Category: "bug", Source: "user-observation", FoundDuring: "t", Slug: "third"})
+			select {
+			case err := <-done:
+				close(release)
+				t.Fatalf("%s finished while another holder had the intent lock (err %v): it wrote intent records without taking it", tc.name, err)
+			default:
 			}
 			close(release)
 			if err := <-holder; err != nil {
@@ -153,7 +147,67 @@ func TestLedgerLockIsTakenBeforeTheIntentLock(t *testing.T) {
 			if err := <-done; err != nil {
 				t.Fatalf("%s after the intent lock was released: %v", tc.name, err)
 			}
+			if capErr != nil {
+				t.Fatalf("a ledger writer arriving while %s waited for the intent lock failed: %v", tc.name, capErr)
+			}
 		})
+	}
+}
+
+// An intent verb's repoint rewrites ledger records that link to the record it
+// moved, so it takes the ledger lock — registered with the intent package by
+// this one, which owns it — before the intent store's lock
+// (iss-2609262143209970). With the ledger lock held elsewhere, a plan whose
+// draft an issue links to waits for it, and repoints the issue's link once it
+// is released.
+func TestAnIntentVerbRepointTakesTheLedgerLock(t *testing.T) {
+	repo, ir := ledger(t)
+	res, err := Capture(CaptureRequest{RepoRoot: repo, IssuesRoot: ir, Text: "b", Severity: SeverityMinor,
+		Category: "bug", Source: "user-observation", FoundDuring: "t", Slug: "alpha"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	issueRel := filepath.ToSlash(res.Path)
+	writeTree(t, repo, ".abcd/development/intents/drafts/itd-7-seven.md", "---\nid: itd-7\nslug: seven\nspec_id: null\nkind: null\n---\n# seven\n\n"+
+		"## Acceptance Criteria\n\n- **Given** a user, **when** they act, **then** it works.\n")
+	abs := filepath.Join(repo, filepath.FromSlash(issueRel))
+	data, err := os.ReadFile(abs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(abs, append(data, []byte("\nOccasioned [itd-7](../../../development/intents/drafts/itd-7-seven.md).\n")...), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	held, release := make(chan struct{}), make(chan struct{})
+	holder := make(chan error, 1)
+	go func() {
+		holder <- WithLedgerLock(repo, func() error {
+			close(held)
+			<-release
+			return nil
+		})
+	}()
+	<-held
+	landed, done := landsWithin(300*time.Millisecond, func() error {
+		pr, err := intent.Plan(repo, "itd-7", intent.PlanOptions{})
+		if err == nil && pr.RelinkError != "" {
+			err = fmt.Errorf("plan's repoint: %s", pr.RelinkError)
+		}
+		return err
+	})
+	close(release)
+	if err := <-holder; err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if landed {
+		t.Error("plan finished while another holder had the ledger lock: its repoint rewrote a ledger record without taking it")
+	}
+	if got := readTree(t, repo, issueRel); !strings.Contains(got, "(../../../development/intents/planned/itd-7-seven.md)") {
+		t.Errorf("the issue's link must be repointed to the planned intent:\n%s", got)
 	}
 }
 
@@ -207,9 +261,10 @@ func TestMigrateApplyKeepsAConcurrentIntentEdit(t *testing.T) {
 	repo, ir, _ := migrateFixture(t)
 	const rel = ".abcd/development/intents/planned/itd-3-three.md"
 	const edit = "\nA concurrent intent edit.\n"
-	var landedEarly bool
+	var landedEarly, ledgerHeld bool
 	var writer chan error
 	afterMigrateScan = func() {
+		ledgerHeld = ledgerLockHeld(t, ir)
 		landedEarly, writer = landsWithin(300*time.Millisecond, func() error {
 			return lockedIntentAppend(repo, rel, edit)
 		})
@@ -224,6 +279,9 @@ func TestMigrateApplyKeepsAConcurrentIntentEdit(t *testing.T) {
 	}
 	if err := <-writer; err != nil {
 		t.Fatal(err)
+	}
+	if !ledgerHeld {
+		t.Error("the migration wrote without the ledger lock")
 	}
 	if landedEarly {
 		t.Error("an intent writer landed between the migration's scan and its write")

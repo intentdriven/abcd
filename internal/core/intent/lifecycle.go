@@ -1056,27 +1056,30 @@ func Reconcile(repoRoot, specID, impact string, remainder RemainderRequest) (Rec
 }
 
 // duringRepoint is a test seam, nil outside tests: called inside the hold
-// repointUnderLock takes, before the repoint reads anything, so a test can
-// start a concurrent intent writer there and prove it waits for the repoint's
-// write instead of landing between its read and its write.
+// repointUnderLock takes — the ledger lock and the intent store's lock both
+// held — before the repoint reads anything, so a test can start a concurrent
+// intent or ledger writer there and prove it waits for the repoint's write
+// instead of landing between its read and its write.
 var duringRepoint func()
 
-// repointUnderLock is relink.Repoint under the intent store's lock. The repoint
-// is a read-modify-write of every record that links to a moved path, intents
-// among them, so outside the lock an intent writer (a hold, a condition
+// repointUnderLock is relink.Repoint under the ledger lock and then the intent
+// store's lock (WithLedgerThenMintLock). The repoint is a read-modify-write of
+// every record that links to a moved path, intents and ledger records among
+// them, so outside the intent lock an intent writer (a hold, a condition
 // disposition, a verdict ingest, a related-issue edge) landing on a linking
 // record between the repoint's read and its write was erased
-// (iss-2609261254247117). Every record-moving verb calls it AFTER its own hold
-// is released — the lock is not reentrant — and reports a repoint failure
+// (iss-2609261254247117), and outside the ledger lock a ledger writer was
+// (iss-2609262143209970). Every record-moving verb calls it AFTER its own hold
+// is released — neither lock is reentrant — and reports a repoint failure
 // rather than raising it, as before: the record has moved and the verb stands.
-// A lock that cannot be taken is reported the same way, with nothing
-// repointed.
+// A lock that cannot be taken, or a ledger with no ledger lock registered, is
+// reported the same way, with nothing repointed.
 func repointUnderLock(repoRoot string, moves []relink.Move) ([]relink.Rewrite, error) {
 	var (
 		rewrites []relink.Rewrite
 		rpErr    error
 	)
-	if err := withIntentMintLock(repoRoot, func() error {
+	if err := WithLedgerThenMintLock(repoRoot, repoLedgerLock(repoRoot), func() error {
 		if duringRepoint != nil {
 			duringRepoint()
 		}

@@ -602,6 +602,15 @@ var beforeIntentMintLock func()
 // itself, so no lock artifact is left in the committed record tree (mirroring
 // the spec store's mint lock). O_NOFOLLOW refuses a symlinked intents/.
 func withIntentMintLock(repoRoot string, fn func() error) error {
+	return withIntentMintLockWithin(repoRoot, mintLockTimeout, fn)
+}
+
+// errIntentLockBusy is the intent store's lock not granted within a budget.
+var errIntentLockBusy = errors.New("intent: could not acquire mint lock")
+
+// withIntentMintLockWithin is withIntentMintLock with its own acquisition
+// budget; a lock not granted within it is errIntentLockBusy.
+func withIntentMintLockWithin(repoRoot string, timeout time.Duration, fn func() error) error {
 	if beforeIntentMintLock != nil {
 		beforeIntentMintLock()
 	}
@@ -615,7 +624,7 @@ func withIntentMintLock(repoRoot string, fn func() error) error {
 	}
 	defer syscall.Close(fd)
 
-	deadline := time.Now().Add(mintLockTimeout)
+	deadline := time.Now().Add(timeout)
 	for {
 		lockErr := syscall.Flock(fd, syscall.LOCK_EX|syscall.LOCK_NB)
 		if lockErr == nil {
@@ -625,7 +634,7 @@ func withIntentMintLock(repoRoot string, fn func() error) error {
 			return fmt.Errorf("intent: acquiring mint lock: %w", lockErr)
 		}
 		if time.Now().After(deadline) {
-			return fmt.Errorf("intent: could not acquire mint lock within %s", mintLockTimeout)
+			return fmt.Errorf("%w within %s", errIntentLockBusy, timeout)
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
@@ -636,9 +645,11 @@ func withIntentMintLock(repoRoot string, fn func() error) error {
 
 // WithMintLock runs fn while holding the intent store's lock — the one
 // withIntentMintLock takes, not a second one — for a caller OUTSIDE this
-// package that rewrites intent records: the link repoint after a ledger
-// record moves, and capture's migration of the promote join's back-edge
-// (iss-2609261254247117, iss-2609261941039204). Every intent writer here reads
+// package that rewrites intent records and no ledger record. A caller that
+// rewrites both — the link repoint after a ledger record moves, capture's
+// migration of the promote join's back-edge (iss-2609261254247117,
+// iss-2609261941039204) — takes WithLedgerThenMintLock instead, which never
+// holds the ledger lock while it waits for this one. Every intent writer here reads
 // and writes under this lock, so a caller writing an intent record without it
 // can erase an edit landing between its read and its write.
 //

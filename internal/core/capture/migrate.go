@@ -132,13 +132,14 @@ func Migrate(req MigrateRequest) (MigrateResult, error) {
 		}
 		// The run rewrites intent records too (the related_issues back-edge,
 		// in any bucket), so the scan and every write run under the intent
-		// store's lock as well, taken INSIDE the ledger lock — the one order
-		// every path holding both takes (intent.WithMintLock). Under the ledger
-		// lock alone, an intent writer landing between the scan and the write
-		// was erased (iss-2609261941039204).
-		err = withLedgerLock(repoRoot, issuesRoot, func() error {
-			return intent.WithMintLock(repoRoot, run)
-		})
+		// store's lock as well, taken after the ledger lock — the one order
+		// every path holding both takes (intent.WithLedgerThenMintLock). Under
+		// the ledger lock alone, an intent writer landing between the scan and
+		// the write was erased (iss-2609261941039204). The pair never holds the
+		// ledger lock while it waits for the intent lock, so a long intent hold
+		// cannot fail a third process's ledger writer (iss-2609262218059995).
+		ledger := func(fn func() error) error { return withLedgerLock(repoRoot, issuesRoot, fn) }
+		err = intent.WithLedgerThenMintLock(repoRoot, ledger, run)
 	} else {
 		err = run()
 	}
