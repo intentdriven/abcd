@@ -224,7 +224,10 @@ history reaches), a second open record, a completion in which nothing moved, and
 before state the history no longer holds within 64 commits touching the frame. The
 readings keep the record out by its store's path, so record-lint's
 `cross_store_id_claim` refuses a reframe-shaped file (an `rfm-N` name, an
-`rfm-N` id, or `occasioned_by` beside a before fingerprint) anywhere else.
+`rfm-N` id, or `occasioned_by` beside a before fingerprint) anywhere else. A
+reframe's text copied out with all three signals stripped is plain prose to
+that check and reaches a reading like any other prose, a limit of detecting
+the record by its signals.
 
 **Resolving** marks an issue resolved and moves it to
 `resolved/`. Impact is required, and resolving without it is refused with
