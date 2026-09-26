@@ -209,13 +209,34 @@ func TestEveryRangeScopedGateResolvesABaseOnEveryEvent(t *testing.T) {
 // one of them has not skipped the guard; it has moved it where it is written
 // once and tested (TestResolveRangeBase, TestDecisionsAppendSkipsWithoutAUsableBase
 // and TestDecisionsAppendFaults). A gate joins this list only with such a test.
+//
+// Each entry is a WHOLE run line, matched exactly: the exemption covers the
+// step, so the step's entire script must be the delegated invocation. A
+// substring match would let a step keep the allowed command and hand BASE_SHA
+// to a second, unguarded one beside it.
 var baseGuardingGates = []string{
-	"go run ./cmd/record-lint decisions-append \"$BASE_SHA\"",
+	`go run ./cmd/record-lint decisions-append "$BASE_SHA" HEAD`,
 }
 
+var runLineRe = regexp.MustCompile(`^\s*run:\s*(.*)$`)
+
+// delegatesBaseGuard reports whether a step's script is exactly one allowed
+// base-guarding invocation: a single single-line `run:` whose value is an
+// entry of baseGuardingGates. A block scalar (`run: |`), a second `run:` key,
+// a trailing comment or anything else on the line fails closed, and the step
+// is then held to the explicit guard like any other.
 func delegatesBaseGuard(body string) bool {
+	var runs []string
+	for _, l := range strings.Split(body, "\n") {
+		if m := runLineRe.FindStringSubmatch(l); m != nil {
+			runs = append(runs, strings.TrimSpace(m[1]))
+		}
+	}
+	if len(runs) != 1 {
+		return false
+	}
 	for _, g := range baseGuardingGates {
-		if strings.Contains(body, g) {
+		if runs[0] == g {
 			return true
 		}
 	}
@@ -330,4 +351,46 @@ func judgesTheEventItself(step workflowStep) bool {
 		return false
 	}
 	return eventNameRe.MatchString(step.body)
+}
+
+// TestBaseGuardDelegationCoversTheWholeStep holds the delegation exemption to
+// the step, not to a substring of it. A step earns it only when its whole
+// script IS the base-guarding gate's invocation: a step that keeps the
+// allowed command and also hands BASE_SHA to something else has an unguarded
+// use, and the exemption must not cover it.
+func TestBaseGuardDelegationCoversTheWholeStep(t *testing.T) {
+	const gate = `go run ./cmd/record-lint decisions-append "$BASE_SHA" HEAD`
+	step := func(run string) string {
+		return "steps:\n" +
+			"      - name: Decisions ledger is append-only\n" +
+			"        env:\n" +
+			"          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}\n" +
+			"        run: " + run + "\n"
+	}
+	block := func(lines ...string) string {
+		return "|\n          " + strings.Join(lines, "\n          ")
+	}
+	cases := []struct {
+		name string
+		yaml string
+		want bool
+	}{
+		{"the gate's invocation alone is delegated", step(gate), true},
+		{"a second, unguarded use on the same line is not", step(gate + ` && git log --oneline "$BASE_SHA"..HEAD`), false},
+		{"a second, unguarded use on its own line is not", step(block(gate, `git diff "$BASE_SHA" HEAD`)), false},
+		{"a second use spelled with braces is not", step(block(gate, `git diff "${BASE_SHA}" HEAD`)), false},
+		{"the gate's text inside another command is not", step(`echo ` + gate), false},
+		{"the gate's text in a comment above another command is not", step(block("# "+gate, `git diff "$BASE_SHA" HEAD`)), false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			steps, err := workflowSteps(c.yaml)
+			if err != nil || len(steps) != 1 {
+				t.Fatalf("fixture parsed into %d step(s), err %v", len(steps), err)
+			}
+			if got := delegatesBaseGuard(steps[0].body); got != c.want {
+				t.Fatalf("delegatesBaseGuard = %v, want %v, for the step:\n%s", got, c.want, steps[0].body)
+			}
+		})
+	}
 }
