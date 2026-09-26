@@ -8,6 +8,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // isolateCommitter is isolate plus the committer's own environment overrides,
@@ -208,7 +210,9 @@ func TestIsToolIdentity(t *testing.T) {
 // embeds, and defines none of its own. A literal pattern reappearing in the
 // script is the second copy this test exists to refuse.
 func TestToolIdentityListIsTheGatesOwn(t *testing.T) {
-	top, err := exec.Command("git", "rev-parse", "--show-toplevel").Output()
+	cmd := exec.Command("git", "rev-parse", "--show-toplevel")
+	cmd.Env = gittest.Env(t)
+	top, err := cmd.Output()
 	if err != nil {
 		t.Skip("not in a git checkout")
 	}
