@@ -183,8 +183,8 @@ func newGuardHookCommand() *cobra.Command {
 			// the command run and puts the warning in front of a human. Only the
 			// blocking status (2) stops anything.
 			failOpen := func(format string, a ...any) error {
-				fmt.Fprintf(cmd.ErrOrStderr(),
-					"abcd guard: NOT CHECKED — "+format+". This command runs UNGUARDED.\n", a...)
+				diagnosticLine(cmd.ErrOrStderr(),
+					"abcd guard: NOT CHECKED — "+format+". This command runs UNGUARDED.", a...)
 				return &exitError{Code: 1}
 			}
 
@@ -236,8 +236,8 @@ func newGuardHookCommand() *cobra.Command {
 					return failOpen("the hazard registry did not load (%s)", scrubPaths(err))
 				}
 				repoDropped = true
-				fmt.Fprintf(cmd.ErrOrStderr(),
-					"abcd guard: the repo %s did not load (%s); its overrides are DROPPED, but the bundled hazards remain armed.\n",
+				diagnosticLine(cmd.ErrOrStderr(),
+					"abcd guard: the repo %s did not load (%s); its overrides are DROPPED, but the bundled hazards remain armed.",
 					guard.RepoRelPath, scrubPaths(err))
 			}
 			// A disabled registry allows everything, which makes it an unguarded
@@ -275,8 +275,8 @@ func newGuardHookCommand() *cobra.Command {
 					wreg, werr := guard.Load(root)
 					if werr != nil && len(wreg.Entries) > 0 {
 						repoDropped = true
-						fmt.Fprintf(cmd.ErrOrStderr(),
-							"abcd guard: the working directory's %s did not load (%s); its overrides are DROPPED, but the bundled hazards remain armed.\n",
+						diagnosticLine(cmd.ErrOrStderr(),
+							"abcd guard: the working directory's %s did not load (%s); its overrides are DROPPED, but the bundled hazards remain armed.",
 							guard.RepoRelPath, scrubPaths(werr))
 					}
 					if !wreg.Disabled && len(wreg.Entries) > 0 {

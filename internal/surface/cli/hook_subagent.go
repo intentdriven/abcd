@@ -85,12 +85,11 @@ func newSubagentStopCommand() *cobra.Command {
 			// SubagentStop hook's stdout is not a place to speak to the model.
 			var in hookInput // read below; warn names whatever of it was parsed
 			warn := func(format string, a ...any) error {
-				msg := fmt.Sprintf(format, a...)
-				fmt.Fprintf(cmd.ErrOrStderr(), "abcd history: %s\n", msg)
+				msg := strings.TrimPrefix(diagnosticLine(cmd.ErrOrStderr(), "abcd history: "+format, a...), "abcd history: ")
 				// Under --json, the one result line every path writes
 				// (hook_result.go, iss-2608261550596333).
 				emitHookResult(cmd, hookStageResult{Hook: "subagent-stop", Outcome: hookOutcomeNotCaptured,
-					SessionID: termsafe.Sanitize(in.SessionID), AgentID: termsafe.Sanitize(in.AgentID), Reason: termsafe.Sanitize(msg)})
+					SessionID: termsafe.Sanitize(in.SessionID), AgentID: termsafe.Sanitize(in.AgentID), Reason: msg})
 				return nil // never an error: exit 2 is this event's BLOCKING code
 			}
 
@@ -108,8 +107,8 @@ func newSubagentStopCommand() *cobra.Command {
 			if in.AgentTranscriptPath == "" {
 				if rootSHA != "" {
 					if err := history.NoteSubagentGap(repoRoot, rootSHA, in.Event); err != nil {
-						fmt.Fprintf(cmd.ErrOrStderr(),
-							"abcd history: could not record the sub-agent payload gap (%v)\n", err)
+						diagnosticLine(cmd.ErrOrStderr(),
+							"abcd history: could not record the sub-agent payload gap (%v)", err)
 					}
 				}
 				return warn("this harness fired %s with no agent_transcript_path, so no sub-agent transcript can be captured here; `abcd history staged` reports this",

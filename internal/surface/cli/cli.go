@@ -1313,7 +1313,7 @@ func newHookCommand() *cobra.Command {
 			// fatal — but silently missing is the shape the drop exists to
 			// prevent, so each one is named here, out of band.
 			for _, note := range rs.Notes() {
-				fmt.Fprintf(cmd.ErrOrStderr(), "abcd %s\n", note)
+				diagnosticLine(cmd.ErrOrStderr(), "abcd %s", note)
 			}
 			session := hookSession(in)
 			// The fixed-N backstop comes from the repo's config (default 15 when
@@ -1389,9 +1389,8 @@ func newHookCommand() *cobra.Command {
 			// the caller asked for --json, when it carries one result line on
 			// every path (hook_result.go, iss-2608261550596333).
 			warn := func(format string, a ...any) error {
-				msg := fmt.Sprintf(format, a...)
-				fmt.Fprintf(cmd.ErrOrStderr(), "abcd history: %s\n", msg)
-				emitHookResult(cmd, hookStageResult{Hook: "session-end", Outcome: hookOutcomeNotCaptured, Reason: termsafe.Sanitize(msg)})
+				msg := diagnosticLine(cmd.ErrOrStderr(), "abcd history: "+format, a...)
+				emitHookResult(cmd, hookStageResult{Hook: "session-end", Outcome: hookOutcomeNotCaptured, Reason: strings.TrimPrefix(msg, "abcd history: ")})
 				return nil // never non-zero: a Stop hook must not wedge the session
 			}
 
@@ -1638,7 +1637,7 @@ func newHookCommand() *cobra.Command {
 			// (iss-2608241115201044): a non-zero exit renders as an opaque error
 			// banner with the text dropped.
 			for _, n := range notices {
-				fmt.Fprintln(cmd.ErrOrStderr(), n)
+				diagnosticLine(cmd.ErrOrStderr(), "%s", n)
 			}
 			// Name the verbs that actually hold the detail. An earlier draft sent
 			// the reader to `abcd ahoy` alone, which renders install state and a
@@ -1910,7 +1909,7 @@ renders bare and carries "source": "bundled". Read-only.`,
 			// Stderr, never stdout: --json renders one document, and a
 			// diagnostic mixed into it would break every parser reading it.
 			for _, note := range rs.Notes() {
-				fmt.Fprintf(cmd.ErrOrStderr(), "abcd %s\n", note)
+				diagnosticLine(cmd.ErrOrStderr(), "abcd %s", note)
 			}
 			// Scoped: inspect one domain's configured content regardless of its
 			// state OR the kill switch — this diagnostic shows what a domain holds,
@@ -4793,7 +4792,7 @@ func printStoreNotes(cmd *cobra.Command, repoRoot, rootSHA string) error {
 func rulesRoot(cwd string, w io.Writer) string {
 	res := rules.Resolve(cwd)
 	for _, note := range res.Notes {
-		fmt.Fprintf(w, "abcd %s\n", note)
+		diagnosticLine(w, "abcd %s", note)
 	}
 	return res.Root
 }
