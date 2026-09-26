@@ -200,6 +200,105 @@ func TestRecordSchemaNamesASymlinkedBucket(t *testing.T) {
 	}
 }
 
+// Every other link in a record store is named too, and nothing behind it is
+// read: an undeclared, non-markdown link at a bucketed store's root is an
+// undeclared bucket that is also a link, and a link inside a declared bucket or a
+// flat store is the undeclared subdirectory's twin. A symlink DirEntry is not a
+// directory, so each fell to the markdown suffix test and went unsaid
+// (iss-2609261152282753). A dot-named link is tooling state, as a dot-directory
+// is, and is left alone.
+func TestRecordSchemaNamesEveryUndeclaredLink(t *testing.T) {
+	cfg := Config{Rules: map[string]RuleConfig{
+		ruleRecordSchema: {Enabled: true, Severity: "blocker", RecordStores: map[string]string{
+			"iss": "work/issues", "adr": "work/adrs",
+		}},
+	}}
+	forged := map[string]string{
+		"iss-9-x.md": "---\nid: \"iss-9\"\nseverity: \"SECRET-TARGET\"\n---\n",
+		"0009-x.md":  "---\nid: \"adr-9\"\nstatus: \"SECRET-TARGET\"\n---\n",
+	}
+	for _, tc := range []struct {
+		name, link, want string
+	}{
+		{"store root", "work/issues/foo",
+			"'foo' is a link and not a declared issue bucket (open, resolved, wontfix); nothing behind it is checked, " +
+				"and an undeclared bucket is a lifecycle state no rule reads"},
+		{"bucket", "work/issues/open/nested",
+			"lifecycle bucket 'open' holds records directly, so link 'nested' is undeclared; nothing behind it is checked"},
+		{"flat store", "work/adrs/archive",
+			"the ADR store is flat, so link 'archive' is undeclared; nothing behind it is checked"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			// The honest record is missing required fields, so it draws findings:
+			// proof that the rest of the store is still walked.
+			writeFile(t, root, "work/issues/resolved/iss-5-a.md", "---\nid: \"iss-5\"\n---\n")
+			symlinkDirOut(t, root, tc.link, forged)
+			// A dot-named link beside it is tooling state and draws nothing.
+			symlinkDirOut(t, root, filepath.ToSlash(filepath.Join(filepath.Dir(tc.link), ".cache")), forged)
+			fs, err := lintWithin(t, cfg, root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			n, honest := 0, false
+			for _, f := range fs {
+				if strings.Contains(f.Message, "SECRET-TARGET") || strings.Contains(f.File, "iss-9") ||
+					strings.Contains(f.File, "0009") {
+					t.Fatalf("a record behind the link was read: %+v", f)
+				}
+				if strings.Contains(f.File, ".cache") {
+					t.Fatalf("a dot-named link is tooling state and draws no finding: %+v", f)
+				}
+				if f.RuleID == ruleRecordSchema && f.File == filepath.FromSlash(tc.link) {
+					if f.Message != tc.want {
+						t.Errorf("finding on the link:\n got %q\nwant %q", f.Message, tc.want)
+					}
+					n++
+				}
+				if strings.HasSuffix(f.File, "iss-5-a.md") {
+					honest = true
+				}
+			}
+			if n != 1 {
+				t.Fatalf("want exactly one finding on %s, got %d in %+v", tc.link, n, fs)
+			}
+			if !honest {
+				t.Fatalf("the unlinked resolved bucket must still be checked: %+v", fs)
+			}
+		})
+	}
+}
+
+// A link at a store root that is itself a CONFIGURED store root is scanned by
+// that store, exactly as a real nested root is, so its parent does not call it an
+// undeclared bucket.
+func TestRecordSchemaExemptsALinkedNestedStoreRoot(t *testing.T) {
+	cfg := Config{Rules: map[string]RuleConfig{
+		ruleRecordSchema: {Enabled: true, Severity: "blocker", RecordStores: map[string]string{
+			"iss": "work/issues", "rdg": "work/issues/readings",
+		}},
+	}}
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "work", "elsewhere"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "work", "issues", "open"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join("..", "elsewhere"), filepath.Join(root, "work", "issues", "readings")); err != nil {
+		t.Fatal(err)
+	}
+	fs, err := lintWithin(t, cfg, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range fs {
+		if f.File == filepath.Join("work", "issues", "readings") {
+			t.Fatalf("a linked nested store root is scanned by its own store, not an undeclared bucket: %+v", f)
+		}
+	}
+}
+
 func assertSingleSafeReadFinding(t *testing.T, fs []Finding, file string) {
 	t.Helper()
 	n := 0

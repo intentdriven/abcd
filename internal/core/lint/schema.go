@@ -1490,6 +1490,18 @@ func scanRecordStores(repoRoot string, cfg RuleConfig) ([]schemaRecord, []Findin
 			}
 			for _, e := range es {
 				rel := filepath.Join(bucketRel, e.Name())
+				// A link that is not a markdown entry is the undeclared
+				// subdirectory's twin: a symlink DirEntry is not a directory, so
+				// it fell past the leg below and the suffix test dropped it with
+				// nothing said. It is named and never followed. A markdown link
+				// stays with the record legs, which refuse it through the guarded
+				// read (iss-2609261152282753).
+				if e.Type()&fs.ModeSymlink != 0 && !hasMarkdownExt(e.Name()) {
+					if !strings.HasPrefix(e.Name(), ".") {
+						add(rel, linkedSubdirMessage(store, bucket, e.Name()))
+					}
+					continue
+				}
 				if e.IsDir() {
 					// A bucket (and a flat store) holds its records DIRECTLY. A
 					// directory inside one is a lifecycle nobody declared, and every
@@ -1618,6 +1630,19 @@ func scanRecordStores(repoRoot string, cfg RuleConfig) ([]schemaRecord, []Findin
 				add(rel, "declared bucket '"+e.Name()+"' is a link; nothing in it is checked")
 				continue
 			}
+			// Any other link the suffix test below would drop is an undeclared
+			// bucket that is also a link: named once, and nothing behind it read.
+			// It is exempt exactly where a real directory is — a dot-name is
+			// tooling state, and a configured store root is scanned by its own
+			// store — and a markdown link stays with the store-root record leg
+			// (iss-2609261152282753).
+			if e.Type()&fs.ModeSymlink != 0 && !strings.HasSuffix(e.Name(), ".md") {
+				if !strings.HasPrefix(e.Name(), ".") && !nestedRoots[e.Name()] {
+					add(rel, "'"+e.Name()+"' is a link and not a declared "+store.noun+" bucket ("+store.bucketDesc()+
+						"); nothing behind it is checked, and an undeclared bucket is a lifecycle state no rule reads")
+				}
+				continue
+			}
 			if e.IsDir() {
 				// A dot-directory is tooling state (an editor's, a scanner's), never
 				// a lifecycle the record authored — the record's own buckets are all
@@ -1705,6 +1730,18 @@ func undeclaredSubdirMessage(store recordStore, bucket, name string) string {
 	}
 	return "lifecycle bucket '" + bucket + "' holds records directly, so subdirectory '" + name +
 		"' is undeclared; records inside it are read by no rule"
+}
+
+// linkedSubdirMessage names a link that sits where records should. It is
+// undeclaredSubdirMessage's twin for an entry the walk does not follow, so it
+// says the link is undeclared without claiming what it points at.
+func linkedSubdirMessage(store recordStore, bucket, name string) string {
+	if bucket == "" {
+		return "the " + store.noun + " store is flat, so link '" + name +
+			"' is undeclared; nothing behind it is checked"
+	}
+	return "lifecycle bucket '" + bucket + "' holds records directly, so link '" + name +
+		"' is undeclared; nothing behind it is checked"
 }
 
 // isAbsentValue reports whether a frontmatter value says "nothing here".
