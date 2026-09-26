@@ -58,15 +58,24 @@ var ownerUID = fsutil.OwnerUID
 // uid (`git init /tmp`, or a repository laid in a root-owned mode-1777
 // directory), which the fallback refuses on OWNERSHIP — see
 // foreignOwnerRefusal, and TrustedRootsRelPath for the explicit opt-in that
-// re-admits a foreign-uid checkout the caller means to trust. One residual
-// stays open, recorded rather than silently assumed shut:
+// re-admits a foreign-uid checkout the caller means to trust.
 //
-//   - iss-2609020219198779 — the user-scope ~/.abcd when the home directory is
-//     ITSELF a git working tree (dotfiles-in-home). The toplevel for a session
-//     in a non-repo directory beneath such a home is the home, so ~/.abcd
-//     governs it as the REPO layer as well as the user layer (spc-23), and its
-//     guard.json and config.json with it. Closing it needs a decision on
-//     whether a home-directory toplevel is a legitimate repo-scope root.
+// The home directory is never a repo root (iss-2609020219198779). Its .abcd is
+// the USER layer (spc-23), and a home that is itself a git working tree
+// (dotfiles-in-home) would otherwise hand every non-repo directory beneath it
+// the home's .abcd a second time, as the repo layer — its guard.json with it,
+// which has no user layer at all, and its config.json as the repo layer over
+// itself as the machine layer. So the walk
+// passes over the home, a toplevel that IS the home takes the non-repo route
+// (cwd, no walk) when nothing nearer carries a .abcd, and a toplevel that
+// CONTAINS the home — a hermetic harness pointing HOME inside its checkout —
+// stays the root, because it is a repository git vouched for and not the home.
+// What this does not reach is a session whose working directory IS the home:
+// the root is then cwd, as it is for any non-repo directory, and a .abcd at the
+// working directory is read. That is the working-directory read the refusal
+// below also leaves standing; making it refuse is a posture change, not a
+// bound on the walk (iss-2609251522588539, and its entry of 2026-09-25 in
+// .abcd/work/DECISIONS.md).
 //
 // "Not a repository" and "a repository git will not answer for" are DIFFERENT
 // outcomes and only the first resolves to cwd with no walk. abcd runs git under
@@ -142,9 +151,17 @@ func Resolve(cwd string) Resolution {
 	if real, err := filepath.EvalSymlinks(top); err == nil {
 		top = real
 	}
+	// The home is never a repo root (iss-2609020219198779): its .abcd is the
+	// USER layer, read as such by every loader that has one, and a home under
+	// version control is not thereby a project. So the walk passes over it, and
+	// a toplevel that IS the home takes the non-repo route once the walk finds
+	// nothing nearer.
+	home := resolvedHome()
 	for inside(dir, top) {
-		if fi, err := os.Stat(filepath.Join(dir, ".abcd")); err == nil && fi.IsDir() {
-			return Resolution{Root: dir}
+		if dir != home {
+			if fi, err := os.Stat(filepath.Join(dir, ".abcd")); err == nil && fi.IsDir() {
+				return Resolution{Root: dir}
+			}
 		}
 		if dir == top {
 			break
@@ -155,7 +172,26 @@ func Resolve(cwd string) Resolution {
 		}
 		dir = parent
 	}
+	if top == home {
+		return Resolution{Root: cwd}
+	}
 	return Resolution{Root: top}
+}
+
+// resolvedHome is the caller's home directory, symlink-resolved so it compares
+// with the physical paths the walk climbs, or "" when there is none to name. It
+// reads through userHomeDir, the lookup the user layer is read through, so the
+// directory whose .abcd is the user layer and the directory the walk declines
+// are always the same one.
+func resolvedHome() string {
+	home, err := userHomeDir()
+	if err != nil || home == "" || !filepath.IsAbs(home) {
+		return ""
+	}
+	if real, err := filepath.EvalSymlinks(home); err == nil {
+		return real
+	}
+	return filepath.Clean(home)
 }
 
 // inside reports whether dir is top or lies beneath it.

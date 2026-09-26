@@ -502,13 +502,15 @@ directory, and
 [adr-46](../../decisions/adrs/0046-persistence-never-weakens-the-verification-posture.md)
 treats home write as the ownership root.
 
-One residual stays open and recorded rather than assumed shut:
-**iss-2609020219198779**, the user scope when the home directory is itself a git
-working tree. The toplevel for a session in a non-repo directory beneath such a
-home is the home, so the user-scope `.abcd` governs it as the repo root too — its
-`rules.json` as the repo layer as well as the user layer, and its `guard.json` and
-`config.json` with it; closing it needs a decision on whether a home-directory
-toplevel is a legitimate repo-scope root.
+**The home directory is never a repo root.** Its `.abcd/` is the user layer, and
+a home that is itself a git working tree (dotfiles in the home) is not thereby a
+project. The walk passes over the home, and a toplevel that is the home resolves
+like a directory outside any repository — the working directory, no walk — when
+nothing below the home carries a `.abcd/`. So a session beneath such a home reads
+`~/.abcd/rules.json` once, as the user layer, and never the home's `guard.json`
+or `config.json` as a repository's own. A toplevel that contains the home — a
+test harness that points `HOME` inside its checkout — stays the root, because it
+is a repository git vouched for, and its own `.abcd/` stays its own.
 
 ## 1. Visibility-driven gitignore policy
 
