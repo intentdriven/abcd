@@ -143,6 +143,10 @@ func needleOccurrences(s, needle string, raw, wantURLs bool, accept func(s strin
 // maxEscapeRunWalk bounds how far afterEscapeBackslash reads back. A run past
 // it is judged even — the text as written decides, as it always did — so a
 // crafted run of backslashes before every occurrence costs a constant each.
+// Past the cap the raw reading spans the home alone, so the escape unit is
+// still masked whole only because the JSON view of the same line spans the
+// unit and disjointSpans unions the two readings: correctness there rests on
+// that union, not on this walk.
 const maxEscapeRunWalk = 64
 
 // afterEscapeBackslash reports whether the byte at is escaped: an odd run of
