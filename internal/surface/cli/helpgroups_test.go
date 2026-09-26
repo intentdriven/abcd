@@ -84,7 +84,7 @@ func TestRootHelpListsThePersonsGroups(t *testing.T) {
 	}
 
 	for group, want := range map[string][]string{
-		"Records:":     {"capture", "decide", "intent", "memory", "spec"},
+		"Records:":     {"build", "capture", "decide", "intent", "memory", "source", "spec"},
 		"Checks:":      {"lint"},
 		"Portability:": {"disembark", "embark"},
 		"Release:":     {"launch"},

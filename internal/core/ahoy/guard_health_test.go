@@ -260,7 +260,7 @@ func TestGuardHealthUnresolvablePluginRootAssertsNothing(t *testing.T) {
 	if hasGap(det.Gaps, "guard.hook_missing") || hasGap(det.Gaps, "guard.binary_unreachable") {
 		t.Errorf("ahoy must not accuse a manifest it never opened; gaps = %v", gapIDs(det.Gaps))
 	}
-	if !strings.Contains(det.Guard.Detail, "plugin root") {
+	if !strings.Contains(det.Guard.Detail, "cannot check the automatic hooks") {
 		t.Errorf("the reason must name what is actually unknown; detail = %q", det.Guard.Detail)
 	}
 	// The registry is a repo fact and stays answerable regardless of the plugin.
@@ -294,5 +294,20 @@ func TestGuardHealthDisabledIsReported(t *testing.T) {
 	}
 	if !det.Guard.Disabled {
 		t.Error("a committed kill switch must be reported by ahoy, not hidden")
+	}
+}
+
+// TestGuardHealthNamesMissingPluginFilesAsTheGapDoes is iss-2609260057111298:
+// one abcd ahoy render showed the missing-plugin-files state twice, once as the
+// plain plugin.root_missing gap and once as the guard line's "plugin root not
+// resolvable". Both now say the one plain sentence.
+func TestGuardHealthNamesMissingPluginFilesAsTheGapDoes(t *testing.T) {
+	h := detectGuardHealth(t.TempDir(), "", false)
+	gap := detectPluginRoot(false)[0]
+	if !strings.Contains(h.Detail, strings.TrimSuffix(gap.Detail, ".")) {
+		t.Errorf("the guard line and the gap word one state two ways:\n guard: %q\n gap:   %q", h.Detail, gap.Detail)
+	}
+	if strings.Contains(strings.ToLower(h.Detail), "plugin root") {
+		t.Errorf("the guard line uses insider vocabulary: %q", h.Detail)
 	}
 }

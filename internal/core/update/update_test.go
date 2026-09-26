@@ -621,3 +621,48 @@ func TestPlanRefusesSupersededNamingAhoyInstall(t *testing.T) {
 		t.Errorf("the foreign remedy must not be offered for abcd's own pin: %+v", r)
 	}
 }
+
+// TestPlanForeignRefusalNamesWhatItExamined is iss-2608230943260391: `abcd
+// version` says "dev" and `abcd update` calls the same entry foreign, both
+// correctly, because they describe unrelated properties. The foreign refusal
+// must say what it examined (the entry, where it leads, and that no provenance
+// record names it) and that a dev version string is a build label, not the
+// dev-shim install shape, so the two words stop colliding.
+func TestPlanForeignRefusalNamesWhatItExamined(t *testing.T) {
+	r := Plan(ahoy.UpdateTarget{Path: "/x/abcd", ResolvedPath: "/src/bin/abcd-darwin-arm64", Kind: ahoy.UpdateTargetForeign})
+	if r == nil {
+		t.Fatal("foreign target must refuse")
+	}
+	for _, want := range []string{"/src/bin/abcd-darwin-arm64", "provenance record", "build label"} {
+		if !strings.Contains(r.Detail, want) {
+			t.Errorf("the foreign refusal does not say %q: %q", want, r.Detail)
+		}
+	}
+}
+
+// TestPlanForeignRefusalJudgesTheLinkNotItsTarget is iss-2609260057117838:
+// for a PATH entry that is a symlink, the refusal said the link's target "is
+// not ... a regular file abcd can verify", while the target IS a regular file
+// (the classifier Lstat'd the entry, not what it leads to). The negatives
+// belong to the entry, which is what was examined; where it leads is named as
+// a fact about the entry, never as the subject of the negatives.
+func TestPlanForeignRefusalJudgesTheLinkNotItsTarget(t *testing.T) {
+	r := Plan(ahoy.UpdateTarget{Path: "/x/abcd", ResolvedPath: "/src/bin/abcd-darwin-arm64", Kind: ahoy.UpdateTargetForeign})
+	if r == nil {
+		t.Fatal("foreign target must refuse")
+	}
+	if strings.Contains(r.Detail, "which is not") {
+		t.Errorf("the refusal attaches its negatives to the link's target, which the classifier never examined: %q", r.Detail)
+	}
+	for _, want := range []string{"the entry at /x/abcd, which resolves to /src/bin/abcd-darwin-arm64, is not", "not itself a regular file"} {
+		if !strings.Contains(r.Detail, want) {
+			t.Errorf("the refusal does not say %q: %q", want, r.Detail)
+		}
+	}
+
+	// An entry that resolves nowhere else carries the same negatives, each true of it.
+	plain := Plan(ahoy.UpdateTarget{Path: "/x/abcd", Kind: ahoy.UpdateTargetForeign})
+	if plain == nil || !strings.Contains(plain.Detail, "the entry at /x/abcd is not") || !strings.Contains(plain.Detail, "not itself a regular file") {
+		t.Errorf("a foreign entry that resolves nowhere else lost its negatives: %+v", plain)
+	}
+}

@@ -168,6 +168,19 @@ Render the banned-names layers, private entries by key only: Writes nothing; ref
       --public    the committed, CI-enforced layer (.abcd/docs-lint.json)
 ```
 
+#### `abcd banlist migrate`
+
+Key a legacy private store in place, every line matching what it matched: Writes the private store; refuses when no private store exists.
+
+**Usage:** `abcd banlist migrate`
+
+Convert a legacy private store (.abcd/.work.local/private-names.txt with no
+'# abcd-banlist: keyed' first line, every line a whole-line pattern) to the keyed
+format: the declaration becomes line 1, and each pattern keeps its exact bytes under
+the key the guard already names it by, entry-<its line>. Comments and blank lines
+survive. add, remove and `abcd source sync-banlist` refuse a legacy store with entries
+until it is migrated. A keyed store is left alone. No pattern is printed.
+
 #### `abcd banlist remove`
 
 Remove one banned-name entry from the layer a flag names: Writes that layer's store; refuses a public entry curated by hand.
@@ -185,6 +198,39 @@ Remove one banned-name entry from the layer a flag names: Writes that layer's st
 
 ```
 abcd banlist remove --private acme-internal
+```
+
+### `abcd build`
+
+Start the loop that takes one READY intent to delivered: Writes the run's state file in the local tier; refuses an open question, a hold or a peer holding it.
+
+**Usage:** `abcd build <itd-N>`
+
+Start the implement loop for one intent, or resume the run already in progress for it.
+A new run's checks run first, and every one must pass:
+the intent is READY (planned, criteria written, its spec linked and written), asks no
+open question, has no unanswered claim section, is not held, its spec leaves a step to
+build, and no peer holds it (no sibling worktree or local branch holds it in another
+bucket, and no session holds a live claim on it; a peer or claim that cannot be read
+counts as holding it). A refusal names the check, the reason
+and the remedy, and writes nothing.
+
+When the checks pass, the run is created in this checkout's local tier,
+`.abcd/.work.local/run/<run-id>/state.json`: one lane for the spec's first unlanded step,
+the other unlanded steps pending, and the run record's first line. The tier itself is
+never created: only a repository abcd manages has one. Starting again while the run is
+in progress creates nothing and names the run without judging the checks again (the
+run's own lanes change what they read), so a killed process resumes where it stopped.
+
+The run then moves one step per `abcd implement step`, driven by the host session.
+
+Exit 2 on a refusal, exit 3 when a peer holds the intent or the run state is locked
+(back off and take other work).
+
+**Example:**
+
+```
+abcd build itd-2609010000000001
 ```
 
 ### `abcd capture`
@@ -1155,11 +1201,11 @@ Print the correction for every drifted surface as a unified diff: Writes nothing
 
 ### `abcd implement`
 
-Share one autonomous run between sessions, from joining to reporting: Writes nothing bare, only the machine-scoped run state; refuses an unknown sub-verb.
+Share one autonomous run between sessions and drive the implement loop: Writes nothing bare, only the run state its sub-verbs name; refuses an unknown sub-verb.
 
 **Usage:** `abcd implement`
 
-The run machinery an autonomous run calls. Every piece lives in the machine-scoped run
+The run machinery an autonomous run calls. The shared run lives in the machine-scoped run
 state, `~/.abcd/runs/<root-sha>/`, keyed on the repository's root commit, so sessions
 in different worktrees of one repository share one run and no repository file.
 
@@ -1175,6 +1221,11 @@ The second session is bounded: one lane at a time, never the release, never a la
 that touches the reading corpus, no lane in a split-roles window (`check` asks before
 a step that is not a claim). `log` appends the run's other events, and `report`
 derives the comparison of the modes from the log.
+
+`status`, `step` and `receipt` drive the implement loop `abcd build` starts, whose state
+lives in this checkout's local tier: `step` performs one step and exits, naming the
+agent, brief and receipt path when a step hands work to an agent, and `receipt`
+completes that step once the receipt verifies.
 
 Exit 2 on a refusal (an unrecognised input, a session that has not joined, a bound
 the session's role does not permit), exit 3 on contention (the record is claimed by
@@ -1394,6 +1445,34 @@ mode in force is the log's last window_mode line, whoever wrote it.
 abcd implement mode single --session s-example
 ```
 
+#### `abcd implement receipt`
+
+Hand back the receipt an agent step of a loop run awaits: Writes the run's state when the receipt verifies; refuses a receipt that does not verify.
+
+**Usage:** `abcd implement receipt <path> [--run <run-id>] [flags]`
+
+Hand back the receipt the run's awaiting lane named when its step handed work to an
+agent. The path must be the one the step named. The step's verifier checks it; a
+receipt that verifies completes the step and the lane moves to its next step, and one
+that does not is refused naming what is missing, with the lane left where it was. A
+step whose verifier this abcd does not carry is refused naming the spec piece that
+delivers it.
+
+--run names the run; without it, the one run in progress in this checkout. Exit 2 on a
+refusal, exit 3 on a locked run state.
+
+**Flags:**
+
+```
+      --run string   the run the receipt belongs to (run-<16 digits>); the one run in progress when omitted
+```
+
+**Example:**
+
+```
+abcd implement receipt review-receipt.json --run run-2609010000000001
+```
+
 #### `abcd implement release`
 
 Release this session's claim on a record: Writes the release and a claim_released line; refuses a claim another session holds.
@@ -1439,6 +1518,50 @@ By default the run's whole log is read, every day of it; --date reads one day, a
 ```
       --date string   read one day's log (YYYY-MM-DD, UTC)
       --log string    read this log file instead of the run's own
+```
+
+#### `abcd implement status`
+
+Render the implement loop's runs in this checkout, lane by lane: Writes nothing; refuses a --run naming no run.
+
+**Usage:** `abcd implement status [--run <run-id>] [flags]`
+
+Render the runs `abcd build` started in this checkout, or the one --run names: the
+intent and spec, each lane with its spec step and next step, what an awaiting lane
+waits on, the pending spec steps, and the run record. Read-only: it writes nothing
+and creates nothing. Exit 2 when --run names no run.
+
+**Flags:**
+
+```
+      --run string   the run to render (run-<16 digits>); every run in this checkout when omitted
+```
+
+#### `abcd implement step`
+
+Perform the next step of an implement loop run and exit: Writes the run's state; refuses a step whose body this abcd does not carry.
+
+**Usage:** `abcd implement step [--run <run-id>] [flags]`
+
+Perform one step of the run's current lane, write the state, and exit. At a step that
+hands work to an agent, the result names the agent to start, the brief it is handed
+and the path its receipt goes to; the lane then advances only on
+`abcd implement receipt`, and asking for a step again re-tells the same thing and
+moves nothing. When a lane is done the spec's next pending step opens the next lane.
+A complete run says so.
+
+A step whose body this abcd does not carry is refused naming the spec piece that
+delivers it, and the run is unchanged. A step that fails leaves the state as it was,
+so the next invocation performs it again; a completed step is never repeated. Before
+the run's next_eligible_at the step is refused as a pause.
+
+--run names the run; without it, the one run in progress in this checkout. Exit 2 on a
+refusal, exit 3 on a pause or a locked run state.
+
+**Flags:**
+
+```
+      --run string   the run to step (run-<16 digits>); the one run in progress when omitted
 ```
 
 ### `abcd inbox`
@@ -1899,7 +2022,7 @@ Run the release job's semantic-receipt gate locally, before the merge: Writes no
 
 #### `abcd launch scaffold`
 
-Scaffold the changelog-driven release gate: Writes the release workflows and runbook; refuses to overwrite a hand-edited one without --confirm.
+Scaffold the release gate for the declared artefact kind: Writes its workflows and runbook; refuses an undeclared kind, or a hand-edited file without --confirm.
 
 **Usage:** `abcd launch scaffold [--confirm] [flags]`
 
@@ -2383,6 +2506,178 @@ Take the website from this checkout to a live address: Writes its files, and the
       --domain string   custom domain to route to the host when the composition names none
       --name string     host name when the composition names none (default: the repository's name)
       --yes             confirm the forge and host changes without being asked; without it an unanswered run declines them
+```
+
+### `abcd source`
+
+Render the sources corpus and its ledgers, read-only: Writes nothing; refuses without a corpus, exit 3, naming `abcd source init`.
+
+**Usage:** `abcd source`
+
+The personal sources corpus: documents you may consult, a CSL-JSON bibliography, and one
+append-only influence ledger per repository, in a local-only git repository with no
+remote (~/.abcd/sources by default; --corpus names another). The folder a source sits
+in — confidential/<key>/ or public/<key>/ — is its classification.
+
+Consult freely, cite deliberately: confidential entries are projected into this
+repository's untracked private banlist (sync-banlist), which the committed pre-commit
+guard refreshes and enforces; cite-check clears text before it leaves the machine; and
+a ledger line becomes a public citation only when the source permits it AND a person
+flips the line (adr-41). No output names a confidential source except by key.
+
+Bare `abcd source` is read-only. Exit 3 when there is no corpus, on every verb but init.
+
+**Flags:**
+
+```
+      --corpus string   the corpus directory (absolute; default ~/.abcd/sources)
+```
+
+#### `abcd source add`
+
+Register a source under its class folder, with its entry and text: Writes the corpus and commits it; refuses without one of --confidential or --public.
+
+**Usage:** `abcd source add [document] [flags]`
+
+Register a source: write its CSL-JSON entry (with the custom block), store the document
+as original.<ext> and its extracted text as text.md under confidential/<key>/ or
+public/<key>/, and commit the corpus. The class is declared here, once: exactly one
+of --confidential or --public is required. abcd converts nothing and fetches nothing:
+a Markdown or text document is its own text, any other needs --text, and a URL
+alone registers a metadata stub.
+
+A confidential entry's title, aliases and (under --ban-authors) authors become banned
+phrases, so each must hold at least three letters or digits, and its key must not
+contain any of them — the key is what every refusal and scan prints. Pass those
+strings with --meta FILE (or --meta - on stdin) to keep them out of argv and shell
+history.
+
+**Flags:**
+
+```
+      --alias stringArray      another identifying name for a confidential source (repeatable)
+      --author stringArray     an author, "Family, Given" or a literal name (repeatable)
+      --ban-authors            also ban the authors' names (a confidential source whose authorship is itself identifying)
+      --confidential           file the source under confidential/ (exclusive with --public)
+      --key string             the source key: lowercase, opaque for a confidential source (e.g. conf2026a)
+      --keywords stringArray   retrieval keywords, comma-separated (repeatable)
+      --meta string            a JSON file (or - for stdin) with "title", "aliases", "author" and "keywords"
+      --permission string      permission_status: citable | no-public-citation | internal-never-cite | ai-generated-never-cite | ask-author (default by class)
+      --public                 file the source under public/ (exclusive with --confidential)
+      --text string            the extracted text of a non-text document
+      --title string           the exact title (for a confidential source prefer --meta)
+      --type string            the CSL item type (default document)
+      --url string             the canonical URL (recorded, never fetched)
+      --venue string           the container title (journal, site, publisher)
+      --year int               the year of issue
+```
+
+#### `abcd source cite-check`
+
+Scan text for confidential sources and report each hit by key only: Writes nothing; refuses without a corpus, and exits 1 on a hit.
+
+**Usage:** `abcd source cite-check <file|->`
+
+Scan a file, or stdin with -, for every confidential source's title, aliases and
+opted-in authors, through the private banlist's matcher — the engine the pre-commit
+guard runs. Offenders are reported by key, field, line and byte offset, never by the
+text matched, so the report is safe to relay. The offset counts bytes from the start
+of the whole text, not from the start of the line, to the start of the matched span,
+which can be the one byte before the phrase that bounds it. Exit 1 when anything is found.
+
+**Example:**
+
+```
+abcd source cite-check draft.md
+```
+
+#### `abcd source declassify`
+
+Move a published confidential source to public/ in one visible commit: Writes the corpus and commits it; refuses a key that is not confidential.
+
+**Usage:** `abcd source declassify <key> [flags]`
+
+Declassify a confidential source once it is published: `git mv` its folder from
+confidential/ to public/ and set the entry's confidential flag and permission_status
+(citable unless --permission says otherwise), in one corpus commit. The next
+sync-banlist drops its strings, and its ledger lines become flippable.
+
+**Flags:**
+
+```
+      --permission string   permission_status after the move: citable | no-public-citation | internal-never-cite | ai-generated-never-cite | ask-author (default citable)
+```
+
+**Example:**
+
+```
+abcd source declassify example-paper-2026
+```
+
+#### `abcd source init`
+
+Create an empty sources corpus, a git repository with no remote: Writes the corpus in one commit; refuses an existing corpus or one inside another working tree.
+
+**Usage:** `abcd source init`
+
+Create the corpus at its location (0700): a git repository with no remote, an empty
+sources.json and a README, in one commit. Refuses an existing corpus, a non-empty
+directory, and a location inside another repository's working tree.
+
+#### `abcd source ledger`
+
+Append an influence line to this repository's ledger, or flip one to cited: Writes one ledger line; refuses a flip for a source that is not public and citable.
+
+**Usage:** `abcd source ledger [flags]`
+
+Append one influence record — {ts, repo, decision_ref, claim, source_key, locator,
+influence, cited_publicly: false} — to this repository's ledger in the corpus, and
+commit it. The ledger is append-only: a correction is a new line (--corrects N).
+
+--flip N is the person's act of citing line N publicly. It checks the source first
+(adr-41 gate 1: the folder is public/ and permission_status is citable), refuses
+naming the failing gate, and on success appends a NEW line with cited_publicly true.
+An agent never runs it. --list prints the ledger, numbered.
+
+The repository is named by its root commit's first twelve hex digits unless --repo
+names it.
+
+**Flags:**
+
+```
+      --claim string          what was decided or claimed
+      --corrects int          the line this record corrects
+      --decision string       the decision influenced: a DECISIONS.md date, an ADR or intent id, or free text
+      --flip int              cite line N publicly (the person's act; checks the source's permission first)
+      --influence string      the influence: supports | contradicts | method | background
+      --list                  print the ledger, numbered (read-only)
+      --locator string        where in the source (pp., §)
+      --repo string           the ledger's repository handle (default: this checkout's root commit, 12 hex digits)
+      --source string         the source key
+      --used-in stringArray   a repository-relative path the influence landed in (repeatable)
+```
+
+#### `abcd source sync-banlist`
+
+Project confidential titles and aliases into the private banlist: Writes the store's generated block; refuses a corpus whose folders and entries disagree.
+
+**Usage:** `abcd source sync-banlist [flags]`
+
+Regenerate the corpus's block in this repository's untracked private banlist
+(.abcd/.work.local/private-names.txt, the banlist verb's private layer): every
+confidential source's title and aliases, and its authors under ban_authors, as
+whitespace-flexible, case-insensitive phrases. Lines outside the block survive.
+A corpus whose folders and entries disagree is refused and nothing is written.
+
+--refresh is the pre-commit guard's mode: it updates a private store that already
+exists and declares the keyed format, and never creates one. With no corpus, no store
+or a legacy store (migrate it with `abcd banlist migrate`) it says so on one line and
+exits 0.
+
+**Flags:**
+
+```
+      --refresh   the guard's mode: update an existing store only; an absent corpus or store is a one-line notice and exit 0
 ```
 
 ### `abcd spec`

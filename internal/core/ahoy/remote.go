@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // RepoSettingsMirrorRelPath is the committed mirror of the repo-object settings
@@ -148,12 +149,8 @@ func nativeScanningOptedOut(cwd string) (optedOut, answerable bool) {
 // and what keeps the os.Root the mirror is written through pointed at the tier the
 // mirror belongs in rather than at a stray `.abcd` two levels down.
 func worktreeRoot(cwd string) (string, bool) {
-	out, err := runGit(cwd, "rev-parse", "--show-toplevel")
+	top, err := gitutil.Toplevel(cwd)
 	if err != nil {
-		return "", false
-	}
-	top := strings.TrimSpace(out)
-	if top == "" {
 		return "", false
 	}
 	return top, true

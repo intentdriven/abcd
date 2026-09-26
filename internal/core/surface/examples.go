@@ -21,6 +21,8 @@ var examples = map[string]string{
 	"abcd banlist add":    "abcd banlist add --private acme-internal 'acme-internal\\.example\\.com'",
 	"abcd banlist remove": "abcd banlist remove --private acme-internal",
 
+	"abcd build": "abcd build itd-2609010000000001",
+
 	"abcd capture admit":       `abcd capture admit rdi-2609010000000001 --grounds "the widened configuration is one the next release has to serve"`,
 	"abcd capture defer":       `abcd capture defer iss-2609010000000001 --after v0.1.0 --reason "the fix needs the parser rewrite that lands next cycle"`,
 	"abcd capture disposition": `abcd capture disposition rdi-2609010000000001 --state accepted --grounds "pursued: the tension is real and the next reading will show it again"`,
@@ -56,6 +58,7 @@ var examples = map[string]string{
 	"abcd implement load":    "abcd implement load --site preflight",
 	"abcd implement log":     "abcd implement log lane_open --session s-example",
 	"abcd implement mode":    "abcd implement mode single --session s-example",
+	"abcd implement receipt": "abcd implement receipt review-receipt.json --run run-2609010000000001",
 	"abcd implement release": "abcd implement release iss-2609010000000001 --session s-example",
 
 	"abcd inbox promote": "abcd inbox promote rpt-2609010000000001",
@@ -88,6 +91,9 @@ var examples = map[string]string{
 
 	"abcd scribe assemble": "abcd scribe assemble --run rdg-2609010000000001 --dispositions dispositions.md",
 	"abcd scribe ingest":   "abcd scribe ingest --scribe-json scribe.json --dispositions dispositions.md",
+
+	"abcd source cite-check": "abcd source cite-check draft.md",
+	"abcd source declassify": "abcd source declassify example-paper-2026",
 
 	"abcd spec close": "abcd spec close spc-2609010000000001",
 }

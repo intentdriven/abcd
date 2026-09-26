@@ -8,6 +8,7 @@ import (
 func runCitationGate(t *testing.T, pre *CitationPreflight) (GateSummary, []string) {
 	t.Helper()
 	repo := t.TempDir()
+	writeFile(t, repo, ArtefactRelPath, `{"kind": "plugin"}`)
 	writeFile(t, repo, ".abcd/config/launch-payload.json", `{"includes": ["commands"]}`)
 	writeFile(t, repo, "commands/x.md", "# doc\n")
 	report, err := DryRun(DryRunRequest{RepoRoot: repo, Version: "v0.1.0", Citations: pre})

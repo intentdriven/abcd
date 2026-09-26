@@ -14,6 +14,7 @@ import (
 // old skip-by-extension shipped the raw bytes unscanned.
 func TestSvgPayloadSecretRefuses(t *testing.T) {
 	root := t.TempDir()
+	writeFile(t, root, ArtefactRelPath, `{"kind": "plugin"}`)
 	writeFile(t, root, ".abcd/config/launch-payload.json", `{"includes": ["docs"]}`)
 	// FAKE token shape only: ghp_ + 36 chars, matching \bghp_[A-Za-z0-9]{36,}.
 	token := "ghp_" + strings.Repeat("a", 36)
@@ -49,6 +50,7 @@ func TestSvgPayloadSecretRefuses(t *testing.T) {
 // closed on it rather than let "some other file scanned" count as coverage.
 func TestUnscannedPayloadRefuses(t *testing.T) {
 	root := t.TempDir()
+	writeFile(t, root, ArtefactRelPath, `{"kind": "plugin"}`)
 	writeFile(t, root, ".abcd/config/launch-payload.json", `{"includes": ["commands"]}`)
 	// A leading NUL makes an otherwise-.md file read as binary → Unscanned.
 	writeFile(t, root, "commands/clean.md", "wholly clean documentation\n")
@@ -94,6 +96,7 @@ func TestUnscannedPayloadRefuses(t *testing.T) {
 // filename-keyed skip shipped the raw bytes with zero findings.
 func TestBinaryPayloadSecretRefuses(t *testing.T) {
 	root := t.TempDir()
+	writeFile(t, root, ArtefactRelPath, `{"kind": "plugin"}`)
 	writeFile(t, root, ".abcd/config/launch-payload.json", `{"includes": ["docs"]}`)
 	writeFile(t, root, "docs/README.md", "clean documentation\n")
 	// FAKE token shape only, built at runtime: ghp_ + 36 chars.

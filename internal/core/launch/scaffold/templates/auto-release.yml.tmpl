@@ -2,14 +2,14 @@ name: auto-release
 
 # On every push to the default branch, tag-and-release the NEWEST dated
 # CHANGELOG version when it has no git tag yet — WITHOUT a PAT. A tag pushed with
-# the built-in GITHUB_TOKEN deliberately does NOT re-trigger release.yml's
-# tag-push event, so this workflow invokes release.yml directly as a reusable
+# the built-in GITHUB_TOKEN deliberately does NOT re-trigger <% .ReleaseWorkflow %>'s
+# tag-push event, so this workflow invokes <% .ReleaseWorkflow %> directly as a reusable
 # workflow (the `release` job below) and asks it to create the tag. That keeps
 # the whole publish path inside GitHub's own token model — no personal access
 # token, no elevated secret.
 #
 # The order is detect -> verify -> tag -> build -> publish. The tag is made
-# INSIDE release.yml, by a job that needs its verify gate, never here before the
+# INSIDE <% .ReleaseWorkflow %>, by a job that needs its verify gate, never here before the
 # call: a tag is immutable, so a tag cut ahead of a gate that then refuses
 # consumes the version with no Release behind it, and the heal path below would
 # rebuild the same refused commit on every later push (iss-2608231226347380,
@@ -25,7 +25,7 @@ name: auto-release
 # sets need_release=true and re-invokes `release` ALONE — built from the tagged
 # commit (release_ref), never the moved-on HEAD — so a flaky publish never
 # permanently wedges the version. A tag its own verify refused is the exception:
-# a hand-pushed tag runs release.yml before verify, and when that run's verify
+# a hand-pushed tag runs <% .ReleaseWorkflow %> before verify, and when that run's verify
 # failed, `detect` refuses loudly and names the re-cut (a new dated version)
 # rather than rebuilding the refused commit on every push.
 on:
@@ -47,7 +47,7 @@ permissions:
 jobs:
   # Decide whether the newest dated CHANGELOG version still needs a tag. Pure
   # read: no writes, no pushes. contents: read for the checkout and the Release
-  # lookup; actions: read to list release.yml's runs for a tag with no Release.
+  # lookup; actions: read to list <% .ReleaseWorkflow %>'s runs for a tag with no Release.
   detect:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -97,11 +97,11 @@ jobs:
             # ONLY when its GitHub Release is missing: a transient publish failure
             # must not permanently wedge the version. Build the re-release FROM the
             # tagged commit, not the current (moved-on) main HEAD — resolve the tag
-            # to its immutable commit SHA and hand it to release.yml as `ref`.
+            # to its immutable commit SHA and hand it to <% .ReleaseWorkflow %> as `ref`.
             echo "need_tag=false" >> "$GITHUB_OUTPUT"
             # Deliberate fail-open: ANY non-zero from `gh release view` (a true 404
             # or a transient rate-limit/auth blip) counts as "Release missing" and
-            # re-releases. Safe — `gh release create` (release.yml) has no --clobber,
+            # re-releases. Safe — `gh release create` (<% .ReleaseWorkflow %>) has no --clobber,
             # so a false positive just errors on the existing release and nothing is
             # overwritten: one red run, no data loss. Parsing the error to isolate a
             # real 404 was rejected — it would hinge on gh's wording and could
@@ -111,28 +111,28 @@ jobs:
               echo "$tag is tagged and released; nothing to do."
               echo "need_release=false" >> "$GITHUB_OUTPUT"
             else
-              # A refused gate is not healed. A hand-pushed tag runs release.yml
+              # A refused gate is not healed. A hand-pushed tag runs <% .ReleaseWorkflow %>
               # on its own push, before verify; when the newest such run's verify
               # job failed, the tagged commit is the one the gate refused, and
               # rebuilding it fails the same way on every later push
               # (iss-2609251125599536). The version is consumed: refuse loudly
-              # and name the re-cut. The tag auto-release asks release.yml to
+              # and name the re-cut. The tag auto-release asks <% .ReleaseWorkflow %> to
               # make is made only after verify is green and fires no push run,
               # so a heal on that path finds none and proceeds. A listing that
               # errors refuses too: guessing past it is the loop this closes.
-              if ! run_id="$(gh run list --workflow release.yml --event push --branch "$tag" \
+              if ! run_id="$(gh run list --workflow <% .ReleaseWorkflow %> --event push --branch "$tag" \
                   --limit 1 --json databaseId --jq '.[0].databaseId // ""')"; then
-                echo "::error::cannot list release.yml's push runs for $tag, so cannot tell a refused verify from a failed publish; not rebuilding it."
+                echo "::error::cannot list <% .ReleaseWorkflow %>'s push runs for $tag, so cannot tell a refused verify from a failed publish; not rebuilding it."
                 exit 1
               fi
               if [ -n "$run_id" ]; then
                 if ! verify="$(gh run view "$run_id" --json jobs \
                     --jq '[.jobs[] | select(.name == "verify") | .conclusion] | first // ""')"; then
-                  echo "::error::cannot read the jobs of release.yml run $run_id for $tag; not rebuilding it."
+                  echo "::error::cannot read the jobs of <% .ReleaseWorkflow %> run $run_id for $tag; not rebuilding it."
                   exit 1
                 fi
                 if [ "$verify" = failure ]; then
-                  echo "::error::$tag was refused by its own verify gate (release.yml run $run_id), so rebuilding the tagged commit would fail the same way. The version is consumed: roll a new dated CHANGELOG version on a commit that carries the fix, and its push cuts that release."
+                  echo "::error::$tag was refused by its own verify gate (<% .ReleaseWorkflow %> run $run_id), so rebuilding the tagged commit would fail the same way. The version is consumed: roll a new dated CHANGELOG version on a commit that carries the fix, and its push cuts that release."
                   exit 1
                 fi
               fi
@@ -142,49 +142,49 @@ jobs:
               echo "release_ref=$commit" >> "$GITHUB_OUTPUT"
             fi
           else
-            echo "$tag has no git tag; release.yml will verify, then tag and release, github.sha."
+            echo "$tag has no git tag; <% .ReleaseWorkflow %> will verify, then tag and release, github.sha."
             echo "need_tag=true" >> "$GITHUB_OUTPUT"
             echo "need_release=true" >> "$GITHUB_OUTPUT"
           fi
 
-  # Cut the release by calling release.yml as a reusable workflow. Because it is
-  # CALLED (not triggered by a tag push), github.sha inside release.yml is this
+  # Cut the release by calling <% .ReleaseWorkflow %> as a reusable workflow. Because it is
+  # CALLED (not triggered by a tag push), github.sha inside <% .ReleaseWorkflow %> is this
   # run's HEAD, so its verify gate, its tag job and its publish job all check out,
   # tag and ship exactly that commit — the same anti-tag-move property the
-  # tag-push entry point has. release.yml's tag job pushes the only ref this
+  # tag-push entry point has. <% .ReleaseWorkflow %>'s tag job pushes the only ref this
   # automation writes, a NEW tag, and only once verify is green.
 <%- if .Abcd %>
   # A called workflow is capped by the caller's grants, and that cap is
-  # transitive: release.yml in turn calls site.yml (adr-48), so this job hands
+  # transitive: <% .ReleaseWorkflow %> in turn calls site.yml (adr-48), so this job hands
   # down every scope BOTH workflows' jobs need (contents/id-token/attestations:
   # write). The three happen to be the same set, so the site deploy widens
   # nothing here.
 <%- else %>
   # A called workflow is capped by the caller's grants, so this job hands down
-  # every scope release.yml's jobs need (contents: write).
+  # every scope <% .ReleaseWorkflow %>'s jobs need (contents: write).
 <%- end %>
   release:
     needs: detect
-    # Run when a release is needed: a fresh version (need_tag, so release.yml
+    # Run when a release is needed: a fresh version (need_tag, so <% .ReleaseWorkflow %>
     # tags it after verify) or a tagged version whose Release is missing (the
     # heal path, built from the tagged commit).
     if: needs.detect.outputs.need_release == 'true'
     permissions:
 <%- if .Abcd %>
-      contents: write        # release.yml: push the new tag after verify, create the Release; site.yml: attach site.tar.gz
-      id-token: write        # release.yml + site.yml: OIDC for build-provenance attestation
-      attestations: write    # release.yml: publish + read back the attestations; site.yml: attest site.tar.gz
+      contents: write        # <% .ReleaseWorkflow %>: push the new tag after verify, create the Release; site.yml: attach site.tar.gz
+      id-token: write        # <% .ReleaseWorkflow %> + site.yml: OIDC for build-provenance attestation
+      attestations: write    # <% .ReleaseWorkflow %>: publish + read back the attestations; site.yml: attest site.tar.gz
 <%- else %>
-      contents: write        # release.yml: push the new tag after verify, create the Release
+      contents: write        # <% .ReleaseWorkflow %>: push the new tag after verify, create the Release
 <%- end %>
-    uses: ./.github/workflows/release.yml
+    uses: ./.github/workflows/<%.ReleaseWorkflow%>
     with:
       tag: v${{ needs.detect.outputs.version }}
-      # True only on the fresh-tag path: release.yml's tag job, which needs its
+      # True only on the fresh-tag path: <% .ReleaseWorkflow %>'s tag job, which needs its
       # verify gate, creates the tag at the commit verify passed. False on the
       # heal path, where the tag already exists and is never moved.
       create_tag: ${{ needs.detect.outputs.need_tag == 'true' }}
-      # Empty on the fresh-tag path → release.yml falls back to github.sha (the
+      # Empty on the fresh-tag path → <% .ReleaseWorkflow %> falls back to github.sha (the
       # commit it verifies and then tags). The resolved tagged-commit SHA on the re-release
       # path, so the Release is built from the tag, not a newer main HEAD.
       ref: ${{ needs.detect.outputs.release_ref }}
@@ -194,7 +194,7 @@ jobs:
     # its caller passes: a job inside it that declares `environment:` gets the
     # environment applied — a deployment record is even created — but resolves
     # none of that environment's secrets unless `inherit` unlocked the context
-    # first. Necessary at EVERY level, so this line and release.yml's call to
+    # first. Necessary at EVERY level, so this line and <% .ReleaseWorkflow %>'s call to
     # site.yml are one mechanism, not two.
     #
     # Measured rather than reasoned, on a canary environment secret through this

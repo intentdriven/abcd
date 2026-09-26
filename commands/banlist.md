@@ -1,7 +1,7 @@
 ---
 name: banlist
 description: "Render both banned-names layers: Writes nothing; refuses an unknown word without echoing it."
-argument-hint: "[list --private|--public] | add --private|--public <key> <pattern> [--severity blocker|warn] [--successor <text>] | remove --private|--public <key>"
+argument-hint: "[list --private|--public] | add --private|--public <key> <pattern> [--severity blocker|warn] [--successor <text>] | remove --private|--public <key> | migrate"
 block: agents
 ---
 
@@ -52,8 +52,8 @@ commit until they are fixed. `inert_lines` are lines it accepts but reads differ
 (a Perl-style escape, an inline flag group): the guard refuses nothing, and those
 names are unguarded while the store looks healthy. Report each by line number only.
 `keyed` reports the store's format; when it is false and there are entries, say that
-the store is in the legacy whole-line format and that `add`/`remove` refuse until its
-first line declares the keyed format.
+the store is in the legacy whole-line format and that `add`/`remove` refuse until it
+is migrated (below).
 
 `list` is the same render with an optional scope:
 
@@ -92,8 +92,7 @@ path is not gitignored the add is refused: the whole layer rests on that file be
 untracked, so add the tier line the message names and re-run. If the store predates
 the keyed format — no `# abcd-banlist: keyed` first line, and at least one entry —
 `add` and `remove` refuse, because a keyed line written into it would change what
-every other line means; the message names the one line the user adds by hand, after
-which each existing whole-line pattern needs a key.
+every other line means; the message names the migration below.
 
 A public add takes `--severity` (`blocker`, the default, or `warn`) and
 `--successor` (the replacement the finding cites; default "a generic term"), and
@@ -113,6 +112,20 @@ the user to commit it: the public layer gates everyone.
 A public removal is refused for a hand-curated entry (an id outside `names/`):
 those are edited in the config by a human, in a reviewable commit. An unknown key
 is refused rather than treated as a no-op.
+
+## Migrate a legacy private store
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" banlist migrate --json
+```
+
+Converts a legacy private store to the keyed format in place: the declaration
+becomes line 1 and every whole-line pattern keeps its exact bytes under the key the
+guard already names it by, `entry-<its line>`, so nothing it matches changes.
+Comments and blank lines survive. `migrated` is false when the store was already
+keyed, and nothing is written then. Report the entry count; the binary prints no
+pattern, and neither should you. `abcd source sync-banlist` and the pre-commit
+guard's refresh of the sources block both name this command for a legacy store.
 
 **Binary resolution.** Run `"${CLAUDE_PLUGIN_ROOT}/abcd"` — a plugin install
 provisions the binary into the plugin root, so this is the rung that fires for a

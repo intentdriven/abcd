@@ -160,7 +160,7 @@ func CheckDecisionsAppend(root, base, head string) (DecisionsAppendReport, error
 	// Every path is resolved from the repository root: the ledger pathspec is
 	// matched against git's working directory, so from a subdirectory the diff
 	// would match nothing and the gate would pass having scanned nothing.
-	top, err := gitutil.Run(root, "rev-parse", "--show-toplevel")
+	top, err := gitutil.Toplevel(root)
 	if err != nil || top == "" {
 		return rep, fmt.Errorf("not a readable git repository — refusing rather than reporting a vacuous pass: %v", err)
 	}

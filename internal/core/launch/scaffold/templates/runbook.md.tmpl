@@ -2,9 +2,24 @@
 
 This repo cuts releases the changelog-driven way (adr-37): rolling the
 accumulated `## [Unreleased]` section into a dated `## [X.Y.Z] - <date>` heading,
-in an ordinary reviewed PR, **is** the release decision. On merge to
+in an ordinary reviewed PR, **is** the release decision.
+<%- if .OwnReleaseWorkflow %> This repository's own
+release workflow, `<% .OwnReleaseWorkflow %>`, stays in charge of building and
+publishing, and `abcd launch scaffold` leaves it byte-for-byte as it is. It calls
+abcd's gate, `<% .ReleaseWorkflow %>`, before its build step: the gate verifies
+exactly the commit being released and refuses before anything is built, so a
+refused gate publishes nothing. Add this job to `<% .OwnReleaseWorkflow %>` and
+make the job that builds need it:
+
+```yaml
+<% .CallStanza %>```
+
+The gate runs on the built-in `GITHUB_TOKEN` — no personal access token, no
+standing secret — and with `publish: false` it builds and publishes nothing
+itself.
+<%- else %> On merge to
 `<% .DefaultBranch %>`, `auto-release.yml` reads the newest dated heading and
-calls `release.yml`, which verifies exactly that commit, tags it only once the
+calls `<% .ReleaseWorkflow %>`, which verifies exactly that commit, tags it only once the
 gates pass, and publishes. A refused gate leaves no tag, so the version stays
 free. Nothing else declares a release; an ordinary push with no new dated
 heading is a no-op.
@@ -15,10 +30,11 @@ no standing secret. Tags are immutable; a publish is idempotent and self-healing
 The one tag it does not heal is a hand-pushed tag its own `verify` refused:
 rebuilding that commit would fail the same way, so `auto-release.yml` refuses
 loudly and names the re-cut, a new dated version.
+<%- end %>
 
 ## Before the first real release: run the rehearsal
 
-`release.yml` carries a `workflow_dispatch` **rehearsal**. Trigger it once before
+`<% .ReleaseWorkflow %>` carries a `workflow_dispatch` **rehearsal**. Trigger it once before
 the first public release. It arms the full gate against a simulated changelog
 roll and reviewed-content commit, asserts the gate admits it, and **publishes
 nothing** — no tag, no Release, no attestation. A green rehearsal is the
@@ -48,7 +64,7 @@ rewrites them with the new list.
 triggered by `pull_request` or `merge_group`, so nothing but review gates the
 release roll's merge. Add a CI workflow for pull requests, require its checks on
 `<% .DefaultBranch %>`, and re-run `abcd launch scaffold --confirm` to record
-them here and in `release.yml`.
+them here and in `<% .ReleaseWorkflow %>`.
 <%- end %>
 
 ## Workflow audit — what abcd checked, and what it did not
@@ -63,9 +79,9 @@ Run zizmor, or the workflow auditor this repository already uses, over
 <% end -%>
 ## Deterministic gates (CI-enforced)
 
-The `release.yml` `verify` job runs these, in order, on the released commit.
-`release.yml` is authoritative; this list is the human-readable mirror.
-
+The `<% .ReleaseWorkflow %>` `verify` job runs these, in order, on the released commit.
+`<% .ReleaseWorkflow %>` is authoritative; this list is the human-readable mirror.
+<% if .GoModule %>
 1. Format (gofmt)
 2. Build
 3. Vet
@@ -75,20 +91,21 @@ The `release.yml` `verify` job runs these, in order, on the released commit.
 <%- else %>
 5. Test (race)
 <%- end %>
+<%- end %>
 <%- range $i, $g := .ExtraGates %>
-<% add $i 6 %>. <% $g.Name %>
+<% add $i $.ExtraBase %>. <% $g.Name %>
 <%- end %>
 <%- if .Abcd %>
 <% add (len .ExtraGates) 6 %>. Plugin archive reproduces the committed pin (fail-closed)
 <%- end %>
 <%- if .SemanticGates %>
-<% if .Abcd %><% add (len .ExtraGates) 7 %><% else %><% add (len .ExtraGates) 6 %><% end %>. The release tag names the released CHANGELOG version (fail-closed)
+<% if .Abcd %><% add (len .ExtraGates) 7 %><% else %><% add (len .ExtraGates) .ExtraBase %><% end %>. The release tag names the released CHANGELOG version (fail-closed)
 <%- end %>
 <%- if .Abcd %>
 
 The plugin-archive gate also checks that the pinned address is this repository's own
 release. On the `auto-release.yml` path every gate here runs before the tag —
-`release.yml`'s `tag` job needs `verify` — so a refusal tags nothing, and the
+`<% .ReleaseWorkflow %>`'s `tag` job needs `verify` — so a refusal tags nothing, and the
 next push to `<% .DefaultBranch %>` retries. A hand-pushed tag exists before
 `verify` runs, so a refusal there consumes the version.
 <%- end %>
@@ -105,7 +122,7 @@ A receipt names the commit its reviewer **read**, and lives in a **later**
 commit — it can never sit in the tree of the commit it names (adding it would
 change that commit's sha). So the release branch is two commits: the CHANGELOG
 roll (the reviewed content commit), then the receipts naming it. On merge,
-`release.yml` arms the gate with the **content** commit, derived from the
+`<% .ReleaseWorkflow %>` arms the gate with the **content** commit, derived from the
 receipts directory of the released tree — the nearest commit a
 `.abcd/work/reviews/<full-sha>/` entry names among those carrying this
 release's own CHANGELOG version — so the receipt-vs-tag self-reference never
@@ -158,14 +175,21 @@ and a release's own receipts never fail the charter.
 3. Run `abcd launch receipts`; it exits 0 only when the release job's receipt
    gate would admit the branch.
 4. Open the pull request and merge it once the merge gate is green.
-5. `auto-release.yml` has `release.yml` verify, tag `vX.Y.Z` on the merged
+5. `auto-release.yml` has `<% .ReleaseWorkflow %>` verify, tag `vX.Y.Z` on the merged
    commit and publish. No tag is made unless every semantic receipt is present
    and PROMOTE.
+<%- else if .OwnReleaseWorkflow -%>
+1. Land all work; open the release the normal way (branch → PR → merge), rolling
+   `## [Unreleased]` into the dated heading. The merge gate above gates the
+   merge.
+2. Tag the merged commit `vX.Y.Z` the way this repository does; `<% .OwnReleaseWorkflow %>`
+   calls `<% .ReleaseWorkflow %>`, whose deterministic `verify` job gates the build
+   and the publish that follow it.
 <%- else -%>
 1. Land all work; open the release the normal way (branch → PR → merge), rolling
    `## [Unreleased]` into the dated heading. The merge gate above gates the
    merge.
-2. `auto-release.yml` has `release.yml` verify, tag `vX.Y.Z` on the merged
+2. `auto-release.yml` has `<% .ReleaseWorkflow %>` verify, tag `vX.Y.Z` on the merged
    commit and publish; the tag and the Release are gated on the deterministic
    `verify` job alone.
 <%- end %>

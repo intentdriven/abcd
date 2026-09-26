@@ -11,9 +11,9 @@ import (
 func TestMarkerInsertIntoAbsentFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "CLAUDE.md")
-	wrote, ok := installMarkerFile(path)
-	if !ok || !wrote {
-		t.Fatalf("install into absent file: wrote=%v ok=%v", wrote, ok)
+	wrote, err := installMarkerFile(path)
+	if err != nil || !wrote {
+		t.Fatalf("install into absent file: wrote=%v err=%v", wrote, err)
 	}
 	if classifyMarker(path) != markerCurrent {
 		t.Errorf("state after install = %q, want current", classifyMarker(path))
@@ -27,9 +27,9 @@ func TestMarkerInsertAfterFrontmatterAndH1(t *testing.T) {
 	if err := os.WriteFile(path, []byte(original), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	wrote, ok := installMarkerFile(path)
-	if !ok || !wrote {
-		t.Fatalf("install: wrote=%v ok=%v", wrote, ok)
+	wrote, err := installMarkerFile(path)
+	if err != nil || !wrote {
+		t.Fatalf("install: wrote=%v err=%v", wrote, err)
 	}
 	got, err := os.ReadFile(path)
 	if err != nil {
@@ -63,7 +63,7 @@ func TestMarkerInsertSkipsFencedH1(t *testing.T) {
 	if err := os.WriteFile(path, []byte(original), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := installMarkerFile(path); !ok {
+	if _, err := installMarkerFile(path); err != nil {
 		t.Fatal("install failed")
 	}
 	got, _ := os.ReadFile(path)
@@ -102,7 +102,7 @@ func TestMarkerInsertFollowsTheCommonMarkFenceRule(t *testing.T) {
 			if err := os.WriteFile(path, []byte(original), 0o644); err != nil {
 				t.Fatal(err)
 			}
-			if _, ok := installMarkerFile(path); !ok {
+			if _, err := installMarkerFile(path); err != nil {
 				t.Fatal("install failed")
 			}
 			got, _ := os.ReadFile(path)
@@ -144,8 +144,8 @@ func TestClassifySymlinkedMarkerIsNotResolvableGap(t *testing.T) {
 	}
 	// install refuses to write through the symlink, so the two must agree: no
 	// resolvable gap paired with a silent no-op.
-	if wrote, ok := installMarkerFile(link); wrote || ok {
-		t.Fatalf("installMarkerFile through symlink: wrote=%v ok=%v, want false/false", wrote, ok)
+	if wrote, err := installMarkerFile(link); wrote || err == nil {
+		t.Fatalf("installMarkerFile through symlink: wrote=%v err=%v, want false and a refusal", wrote, err)
 	}
 	// detectMarkerDrift must not emit an actionable (required+resolvable) gap.
 	for _, g := range detectMarkerDrift(dir) {
@@ -161,16 +161,16 @@ func TestMarkerInstallIsIdempotent(t *testing.T) {
 	if err := os.WriteFile(path, []byte("# Title\n\nprose\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := installMarkerFile(path); !ok {
+	if _, err := installMarkerFile(path); err != nil {
 		t.Fatal("first install failed")
 	}
 	first, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	wrote, ok := installMarkerFile(path)
-	if !ok {
-		t.Fatal("second install failed")
+	wrote, err := installMarkerFile(path)
+	if err != nil {
+		t.Fatalf("second install failed: %v", err)
 	}
 	if wrote {
 		t.Errorf("second install rewrote a current block (not byte-stable)")
@@ -194,9 +194,9 @@ func TestMarkerOutdatedBlockIsRewritten(t *testing.T) {
 	if classifyMarker(path) != markerOutdated {
 		t.Fatalf("precondition: expected outdated, got %q", classifyMarker(path))
 	}
-	wrote, ok := installMarkerFile(path)
-	if !ok || !wrote {
-		t.Fatalf("rewrite: wrote=%v ok=%v", wrote, ok)
+	wrote, err := installMarkerFile(path)
+	if err != nil || !wrote {
+		t.Fatalf("rewrite: wrote=%v err=%v", wrote, err)
 	}
 	if classifyMarker(path) != markerCurrent {
 		t.Errorf("state after rewrite = %q, want current", classifyMarker(path))
@@ -217,7 +217,7 @@ func TestMarkerMultiBlockCollapsesToOne(t *testing.T) {
 	if err := os.WriteFile(path, []byte(dup), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := installMarkerFile(path); !ok {
+	if _, err := installMarkerFile(path); err != nil {
 		t.Fatal("install failed")
 	}
 	got, _ := os.ReadFile(path)
@@ -236,10 +236,10 @@ func TestMarkerRemoveRoundTrip(t *testing.T) {
 	if err := os.WriteFile(path, []byte(original), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := installMarkerFile(path); !ok {
+	if _, err := installMarkerFile(path); err != nil {
 		t.Fatal("install failed")
 	}
-	if _, ok := removeMarkerFile(path); !ok {
+	if _, err := removeMarkerFile(path); err != nil {
 		t.Fatal("remove failed")
 	}
 	got, _ := os.ReadFile(path)
@@ -258,7 +258,7 @@ func TestMarkerCRLFPreserved(t *testing.T) {
 	if err := os.WriteFile(path, []byte(crlf), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := installMarkerFile(path); !ok {
+	if _, err := installMarkerFile(path); err != nil {
 		t.Fatal("install failed")
 	}
 	got, _ := os.ReadFile(path)

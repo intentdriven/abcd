@@ -45,8 +45,13 @@ var sentences = map[string]string{
 		"Writes that layer's store; refuses without exactly one of --private or --public.",
 	"abcd banlist list": "Render the banned-names layers, private entries by key only: " +
 		"Writes nothing; refuses --private and --public together.",
+	"abcd banlist migrate": "Key a legacy private store in place, every line matching what it matched: " +
+		"Writes the private store; refuses when no private store exists.",
 	"abcd banlist remove": "Remove one banned-name entry from the layer a flag names: " +
 		"Writes that layer's store; refuses a public entry curated by hand.",
+
+	"abcd build": "Start the loop that takes one READY intent to delivered: " +
+		"Writes the run's state file in the local tier; refuses an open question, a hold or a peer holding it.",
 
 	"abcd capture": "File an issue from quoted text, or render the ledger's status bare: " +
 		"Writes one record under open/; refuses a lone word and any folder outside a checkout.",
@@ -158,8 +163,8 @@ var sentences = map[string]string{
 	"abcd identity render": "Print the correction for every drifted surface as a unified diff: " +
 		"Writes nothing; refuses a repository that records no identity block.",
 
-	"abcd implement": "Share one autonomous run between sessions, from joining to reporting: " +
-		"Writes nothing bare, only the machine-scoped run state; refuses an unknown sub-verb.",
+	"abcd implement": "Share one autonomous run between sessions and drive the implement loop: " +
+		"Writes nothing bare, only the run state its sub-verbs name; refuses an unknown sub-verb.",
 	"abcd implement check": "Ask whether this session may take a step before taking it: " +
 		"Writes a run-log line only on a refusal; refuses a step the second session's bounds forbid.",
 	"abcd implement claim": "Claim a record for this session before opening its lane: " +
@@ -174,10 +179,16 @@ var sentences = map[string]string{
 		"Writes one line; refuses the claim, window, and session events their own verbs write.",
 	"abcd implement mode": "Open a window by logging its division mode: " +
 		"Writes a window_mode line; refuses any session but the first.",
+	"abcd implement receipt": "Hand back the receipt an agent step of a loop run awaits: " +
+		"Writes the run's state when the receipt verifies; refuses a receipt that does not verify.",
 	"abcd implement release": "Release this session's claim on a record: " +
 		"Writes the release and a claim_released line; refuses a claim another session holds.",
 	"abcd implement report": "Derive the comparison of the division modes from the run log: " +
 		"Writes nothing; refuses --date and --log together.",
+	"abcd implement status": "Render the implement loop's runs in this checkout, lane by lane: " +
+		"Writes nothing; refuses a --run naming no run.",
+	"abcd implement step": "Perform the next step of an implement loop run and exit: " +
+		"Writes the run's state; refuses a step whose body this abcd does not carry.",
 
 	"abcd inbox": "List the reports managed repositories filed back to abcd, newest first: " +
 		"Writes nothing; refuses any argument.",
@@ -230,8 +241,8 @@ var sentences = map[string]string{
 		"Writes the archive into --out; refuses a dirty tree without --verify, and exits 1 when --verify finds it unpinned.",
 	"abcd launch receipts": "Run the release job's semantic-receipt gate locally, before the merge: " +
 		"Writes nothing; refuses with exit 1 when the release job would refuse the receipts.",
-	"abcd launch scaffold": "Scaffold the changelog-driven release gate: " +
-		"Writes the release workflows and runbook; refuses to overwrite a hand-edited one without --confirm.",
+	"abcd launch scaffold": "Scaffold the release gate for the declared artefact kind: " +
+		"Writes its workflows and runbook; refuses an undeclared kind, or a hand-edited file without --confirm.",
 	"abcd launch ship": "Cut a release, deriving its version and records from what shipped: " +
 		"Writes the CHANGELOG heading, RELEASE.md, and the archive pin; refuses a cut its gates stop.",
 
@@ -287,6 +298,21 @@ var sentences = map[string]string{
 		"Writes only inside that directory; refuses a non-empty directory it did not write.",
 	"abcd site setup": "Take the website from this checkout to a live address: " +
 		"Writes its files, and the forge and host changes once confirmed; refuses a folder abcd does not manage.",
+
+	"abcd source": "Render the sources corpus and its ledgers, read-only: " +
+		"Writes nothing; refuses without a corpus, exit 3, naming `abcd source init`.",
+	"abcd source add": "Register a source under its class folder, with its entry and text: " +
+		"Writes the corpus and commits it; refuses without one of --confidential or --public.",
+	"abcd source cite-check": "Scan text for confidential sources and report each hit by key only: " +
+		"Writes nothing; refuses without a corpus, and exits 1 on a hit.",
+	"abcd source declassify": "Move a published confidential source to public/ in one visible commit: " +
+		"Writes the corpus and commits it; refuses a key that is not confidential.",
+	"abcd source init": "Create an empty sources corpus, a git repository with no remote: " +
+		"Writes the corpus in one commit; refuses an existing corpus or one inside another working tree.",
+	"abcd source ledger": "Append an influence line to this repository's ledger, or flip one to cited: " +
+		"Writes one ledger line; refuses a flip for a source that is not public and citable.",
+	"abcd source sync-banlist": "Project confidential titles and aliases into the private banlist: " +
+		"Writes the store's generated block; refuses a corpus whose folders and entries disagree.",
 
 	"abcd spec": "Render the spec store's status: " +
 		"Writes nothing; refuses outside a git checkout.",

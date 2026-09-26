@@ -1,8 +1,6 @@
 package launch
 
 import (
-	"path/filepath"
-
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
@@ -62,12 +60,17 @@ type GateSummary struct {
 
 // DryRunReport is the full dry-run preview. No artefact is written.
 type DryRunReport struct {
-	Version   string             `json:"version"`
-	Bundle    Bundle             `json:"bundle"`
-	Scan      scanner.ScanResult `json:"scan"`
-	Lockstep  LockstepResult     `json:"lockstep"`
-	Retention RetentionPlan      `json:"retention"`
-	Smoke     SmokeReport        `json:"smoke"`
+	Version string `json:"version"`
+	// Kind is the declared artefact kind the preview ran against.
+	Kind ArtefactKind `json:"kind"`
+	// ScannedTree names the tree the bundle and its scan cover: the plugin
+	// payload, or the tree the release tag would archive.
+	ScannedTree string             `json:"scanned_tree"`
+	Bundle      Bundle             `json:"bundle"`
+	Scan        scanner.ScanResult `json:"scan"`
+	Lockstep    LockstepResult     `json:"lockstep"`
+	Retention   RetentionPlan      `json:"retention"`
+	Smoke       SmokeReport        `json:"smoke"`
 	// DeepSmoke is the deep installability tier, present when it was asked for.
 	DeepSmoke *DeepSmokeReport `json:"deep_smoke,omitempty"`
 	// Parity is the file-level diff against the previous release's payload.
@@ -92,12 +95,22 @@ type DryRunReport struct {
 func DryRun(req DryRunRequest) (DryRunReport, error) {
 	var report DryRunReport
 
-	bundle, err := ResolveBundle(req.RepoRoot, nil)
+	// The declaration first: every read below is chosen by the declared kind,
+	// and a repository that has not declared one is told where to, not handed
+	// the first missing file a plugin-shaped read would trip on
+	// (itd-2609150819432059 AC1).
+	art, err := LoadArtefact(req.RepoRoot)
 	if err != nil {
 		return DryRunReport{}, err // preflight fault only
 	}
-	report.Bundle = bundle
-	policy, err := LoadGatePolicy(req.RepoRoot)
+	report.Kind = art.Kind
+
+	bundle, tree, err := kindBundle(req.RepoRoot, art)
+	if err != nil {
+		return DryRunReport{}, err // preflight fault only
+	}
+	report.Bundle, report.ScannedTree = bundle, tree
+	policy, err := kindGatePolicy(req.RepoRoot, art)
 	if err != nil {
 		return DryRunReport{}, err // preflight fault only
 	}
@@ -110,8 +123,7 @@ func DryRun(req DryRunRequest) (DryRunReport, error) {
 	// accuse a correct repository of drift and prescribe the exact key the ADR
 	// forbids. The public polarity belongs over the rendered payload, where
 	// RenderPayload applies it to its own output.
-	vlPath := filepath.Join(req.RepoRoot, versionLocationRelPath)
-	lockstep := CheckLockstep(TreeDev, req.RepoRoot, vlPath)
+	lockstep := kindLockstep(TreeDev, req.RepoRoot, art)
 	report.Lockstep = lockstep
 
 	report.Version = req.Version
@@ -121,19 +133,26 @@ func DryRun(req DryRunRequest) (DryRunReport, error) {
 	// in the tree but excluded from the payload is exactly the break it exists
 	// to catch. It subsumes itd-65's placeholder `plugin.json-parse` gate, which
 	// asserted a strict subset of what the light tier asserts.
-	smoke := SmokeLight(NewBundleTree(bundle))
+	// A kind that ships no plugin has no plugin surface to install, so the
+	// smoke is not armed for it rather than failing on a manifest it never had.
+	smoke := SmokeReport{Tier: SmokeTierLight, OK: true}
+	smokeRow := pluginOnlyRow("installability-smoke", art.Kind)
+	if art.IsPlugin() {
+		smoke = SmokeLight(NewBundleTree(bundle))
+		smokeRow = GateSummary{Name: "installability-smoke", Status: "ran", Detail: smokeDetail(smoke)}
+	}
 	report.Smoke = smoke
 
 	// The preview has no override flag, so the dirty-tree gate runs at its
 	// refusing default: a dirty tree is reported as what a cut would refuse on.
 	suite := runGateSuite(suiteRequest{
 		RepoRoot: req.RepoRoot, Bundle: bundle, Dirty: DirtyRefuse,
-		DocAudit: req.DocAudit, Policy: policy,
+		DocAudit: req.DocAudit, Policy: policy, Kind: art.Kind,
 	})
 
 	report.Gates = append([]GateSummary{
 		{Name: "secret+pii-scan", Status: "ran", Detail: scanDetail(scan)},
-		{Name: "installability-smoke", Status: "ran", Detail: smokeDetail(smoke)},
+		smokeRow,
 	}, suite.Gates...)
 	report.Gates = append(report.Gates,
 		citationGate(req.Citations),
@@ -142,15 +161,21 @@ func DryRun(req DryRunRequest) (DryRunReport, error) {
 		receiptGate(req.Receipts),
 	)
 
-	if req.DeepSmoke != nil {
+	switch {
+	case req.DeepSmoke != nil && art.IsPlugin():
 		deep := smokeDeepOverBundle(bundle, req.DeepSmoke)
 		report.DeepSmoke = &deep
 		report.Gates = append(report.Gates, deepSmokeGate(&deep))
+	case req.DeepSmoke != nil:
+		report.Gates = append(report.Gates, pluginOnlyRow("installability-smoke-deep", art.Kind))
 	}
-	if req.Parity != nil {
+	switch {
+	case req.Parity != nil && art.IsPlugin():
 		parity := PayloadParity(req.RepoRoot, bundle, *req.Parity)
 		report.Parity = &parity
 		report.Gates = append(report.Gates, parityGate(&parity))
+	case req.Parity != nil:
+		report.Gates = append(report.Gates, pluginOnlyRow("payload-parity", art.Kind))
 	}
 
 	report.WouldRefuseOn = wouldRefuseOn(bundle, scan, lockstep, report.Retention, smoke)

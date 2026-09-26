@@ -78,7 +78,7 @@ func detectGuardHealth(cwd, pluginRoot string, pluginOK bool) GuardHealth {
 	var reasons []string
 	h.PluginRootResolved = pluginOK
 	if !pluginOK {
-		reasons = append(reasons, "plugin root not resolvable, so the hook manifest cannot be read and the guard wiring is unknown")
+		reasons = append(reasons, pluginFilesMissing)
 	} else {
 		h.HookInstalled = manifestArmsGuard(pluginRoot)
 		h.BinaryReachable = isExecutableFile(pluginBinaryPath(pluginRoot))

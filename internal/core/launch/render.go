@@ -276,6 +276,18 @@ func PrecheckPayload(repoRoot, dest string, opts PrecheckOptions) (PayloadPreche
 	// The contract says WHERE the version goes. It is read from the source tree
 	// (it is a decision artefact, never shipped) and it is the only thing that
 	// tells the render which manifest and pointer adr-19 selected.
+	// The render stages a plugin payload. A repository that declares another
+	// kind has none to stage, and a present declaration is held to the one
+	// reader, so an unknown kind refuses here before anything is read.
+	art, err := LoadArtefactOrPlugin(pre.Root)
+	if err != nil {
+		return pre, err
+	}
+	if !art.IsPlugin() {
+		return pre, fmt.Errorf("%w: the declared artefact kind is %s (%s), which ships no plugin payload to stage",
+			ErrNotAPlugin, art.Kind, ArtefactRelPath)
+	}
+
 	pre.VersionLocationPath = filepath.Join(pre.Root, versionLocationRelPath)
 	decision, err := loadJSON(pre.VersionLocationPath)
 	if err != nil {

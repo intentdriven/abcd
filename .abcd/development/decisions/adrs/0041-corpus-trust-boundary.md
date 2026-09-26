@@ -14,7 +14,7 @@ related_adrs: [adr-30]
 
 ## Context
 
-The sources corpus ([itd-76](../../intents/planned/itd-76-source-provenance-ledger.md))
+The sources corpus ([itd-76](../../intents/shipped/itd-76-source-provenance-ledger.md))
 lets an agent consult material the user is not free to name in public. Anything
 that makes consultation safe rests on two boundaries holding mechanically,
 regardless of which surface — personal verbs, team share/ingest

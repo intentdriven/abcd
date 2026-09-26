@@ -14,7 +14,7 @@ impact: additive
 
 ## Press Release
 
-> **Citation data travels through the repo; corpora never do.** Alice works from a personal sources corpus ([itd-76](../planned/itd-76-source-provenance-ledger.md), which this intent `refines`); their teammate Bob has their own, or none. `abcd source share` writes a public source's *citation data* into the repo's committed CSL-JSON references store — `.abcd/development/research/references.csl.json`, the store the acknowledgements list already reads (maintainer ruling, 2026-08-16: one committed bibliography, not a second exchange file) — and refuses any `confidential: true` entry mechanically. `abcd source ingest` imports the repo's shared entries into the local corpus. Documents and influence ledgers never travel — only bibliography.
+> **Citation data travels through the repo; corpora never do.** Alice works from a personal sources corpus ([itd-76](../shipped/itd-76-source-provenance-ledger.md), which this intent `refines`); their teammate Bob has their own, or none. `abcd source share` writes a public source's *citation data* into the repo's committed CSL-JSON references store — `.abcd/development/research/references.csl.json`, the store the acknowledgements list already reads (maintainer ruling, 2026-08-16: one committed bibliography, not a second exchange file) — and refuses any `confidential: true` entry mechanically. `abcd source ingest` imports the repo's shared entries into the local corpus. Documents and influence ledgers never travel — only bibliography.
 >
 > "I just ingest the repo's shared references," said Bob, "and every public source Alice worked from is in my own local store, ready to consult."
 

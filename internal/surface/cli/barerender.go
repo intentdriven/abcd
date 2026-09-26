@@ -12,6 +12,9 @@ package cli
 // way until it renders or is listed here. The brief's one enumeration of the
 // exceptions (04-surfaces/README.md, "Bare invocation") is held to this table.
 var bareRenderExceptions = map[string]string{
+	"build": "its one operand is the intent it starts or resumes a run for, so bare " +
+		"refuses as a usage error (exit 2) and writes nothing; the run's state renders " +
+		"through `abcd implement status`",
 	"decide": "its one operand is the quoted title it mints a record from, so bare " +
 		"refuses (exit 2) naming the form, and writes nothing",
 	"disembark": "a parent of stage sub-verbs that each act on a named repository or " +
@@ -34,6 +37,9 @@ var bareRenderExceptions = map[string]string{
 		"a terminal and refuses (exit 2) anywhere else",
 	"scribe": "a parent whose sub-verbs act on a named reading run or on a scribe's " +
 		"returned output; with no operand it has no state of its own to render, so bare prints its sub-verbs",
+	"source": "its state is the user-level corpus, not the repository: with a corpus bare " +
+		"renders it read-only, and with none, this test's isolated home included, it refuses " +
+		"(exit 3) naming `abcd source init`",
 	"statusline": "its row belongs to a managed repository: there bare renders it with or " +
 		"without the payload (TestStatuslineEmptyStdinStillRendersTheBadge), and anywhere else, " +
 		"this test's scratch repository included, abcd has no row and bare prints nothing of " +

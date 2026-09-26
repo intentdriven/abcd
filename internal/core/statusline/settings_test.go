@@ -7,6 +7,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
 // writeSettings lays a settings file at <home>/.abcd/statusline.json.
@@ -367,9 +369,7 @@ func TestLoadRefusesAWorldWritableFile(t *testing.T) {
 func TestLoadRefusesAForeignOwner(t *testing.T) {
 	home := t.TempDir()
 	writeSettings(t, home, `{"schema_version":1,"disabled":true}`)
-	orig := ownerUID
-	t.Cleanup(func() { ownerUID = orig })
-	ownerUID = func(string) (uint32, error) { return 4242, nil }
+	t.Cleanup(fsutil.SwapOwnerUIDForTest(func(string) (uint32, error) { return 4242, nil }))
 
 	got, notes, err := LoadFrom(home)
 	if err != nil {
