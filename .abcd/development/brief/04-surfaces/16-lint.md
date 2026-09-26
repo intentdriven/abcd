@@ -6,8 +6,11 @@ returns a graded list of what does not conform, each finding naming the file,
 the reason and the fix, so a maintainer can decide what to repair and in what
 order.
 
-It is **strictly read-only**: it performs zero writes, and remediation stays
-with `/abcd:prepare-this-repo` and the maintainer. It answers a different
+It is **read-only** but for one target: bare and every other target perform
+zero writes, and `lint site` renders the site into its output directory when
+that directory holds no `index.html`, as the site verb's check does
+([`22-site.md`](22-site.md)). Remediation stays with `/abcd:prepare-this-repo`
+and the technical facilitator. It answers a different
 question from `/abcd:ahoy`: `ahoy` reports whether the *tool* is installed and
 configured for a repo; `lint` reports whether the *repo* conforms. Two
 questions, two verbs.
