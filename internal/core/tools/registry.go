@@ -85,7 +85,8 @@ type Tool struct {
 	Homepage string // where to read what it is
 	Uses     map[Capability]Use
 	Install  map[string]Step // keyed by runtime.GOOS
-	// Effects is what the install does to the machine, and what it does not.
+	// Effects is what the install does on the machine and over the network, and
+	// what it does not.
 	Effects string
 	// Verify is the argv that proves the tool runs once installed.
 	Verify []string
@@ -97,6 +98,18 @@ type Tool struct {
 // offered a step composed for some other manager.
 func homebrew(formula string) Step {
 	return Step{Manager: "Homebrew", Argv: []string{"brew", "install", formula}}
+}
+
+// homebrewEffects is what a Homebrew install does beyond the machine, said in
+// full because it is part of the sentence the install question is answered on:
+// brew install may first update its package lists over the network, downloads
+// the package, and sends Homebrew's own install analytics unless the person's
+// Homebrew settings turn them off. abcd neither adds to nor subtracts from
+// that: the step runs with the person's environment, as if they typed it.
+func homebrewEffects(program string) string {
+	return "Homebrew uses the network: it may first update its package lists, then downloads the " + program +
+		" program (with anything it depends on) and puts it on your PATH, and it sends Homebrew's own install " +
+		"analytics unless your Homebrew settings turn them off (brew analytics off)."
 }
 
 // registry is the curated set (the product thinker's decision 2). An entry is
@@ -133,8 +146,8 @@ var registry = map[string]Tool{
 			},
 		},
 		Install: map[string]Step{"darwin": homebrew("gitleaks"), "linux": homebrew("gitleaks")},
-		Effects: "Homebrew downloads the gitleaks program and puts it on your PATH. It changes no repository, " +
-			"starts no background service, and sends nothing anywhere; abcd runs it only in a repository that opts in.",
+		Effects: homebrewEffects("gitleaks") + " The install changes no repository and starts no background service; " +
+			"abcd runs gitleaks only in a repository that opts in.",
 		Verify: []string{"gitleaks", "version"},
 	},
 	"gh": {
@@ -152,8 +165,8 @@ var registry = map[string]Tool{
 			},
 		},
 		Install: map[string]Step{"darwin": homebrew("gh"), "linux": homebrew("gh")},
-		Effects: "Homebrew downloads the gh program and puts it on your PATH. It does not sign you in: run " +
-			"gh auth login afterwards, and abcd never sees the token.",
+		Effects: homebrewEffects("gh") + " The install does not sign you in: run gh auth login afterwards, " +
+			"and abcd never sees the token.",
 		Verify: []string{"gh", "--version"},
 	},
 }

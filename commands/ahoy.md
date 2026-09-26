@@ -64,8 +64,9 @@ Then summarise the JSON for the user:
   `category`, and `fix_hint`; call out which are `required`. A `dependency` gap
   carries `tool`, the tool registry's explanation: relay `what`, the
   `requirement` for `capability_name`, `without_it`, `does`, the exact `step`
-  and `effects` (what the install does to the machine) rather than a bare
-  command, so the person can judge the install.
+  and `effects` (what the install does on the machine and over the network,
+  Homebrew's own analytics included) rather than a bare command, so the
+  person can judge the install.
 
 If there are actionable gaps, tell the user to run `/abcd:ahoy install` to apply
 them. If `folder_kind` is `unmanaged-folder`, note there is nothing to act on

@@ -138,6 +138,33 @@ func TestEveryRegistryEntryIsComplete(t *testing.T) {
 	}
 }
 
+// TestHomebrewEffectsSayWhatTheInstallSends is iss-2609261604492132: the
+// Effects text is the sentence the install question is answered on, so for a
+// Homebrew step it names the network fetch (Homebrew may update its package
+// lists first, then downloads the package) and Homebrew's own install
+// analytics, which it sends unless the person's Homebrew settings turn them
+// off. It never claims the install sends nothing.
+func TestHomebrewEffectsSayWhatTheInstallSends(t *testing.T) {
+	for _, name := range Names() {
+		tool := registry[name]
+		brew := false
+		for _, s := range tool.Install {
+			brew = brew || s.Manager == "Homebrew"
+		}
+		if !brew {
+			continue
+		}
+		for _, want := range []string{"network", "update its package lists", "analytics", "brew analytics off"} {
+			if !strings.Contains(tool.Effects, want) {
+				t.Errorf("%s: effects do not say %q: %q", name, want, tool.Effects)
+			}
+		}
+		if strings.Contains(tool.Effects, "sends nothing") {
+			t.Errorf("%s: effects claim the install sends nothing: %q", name, tool.Effects)
+		}
+	}
+}
+
 // --- Install -----------------------------------------------------------------
 
 // fakeExec records every argv it is handed and answers from a table.
