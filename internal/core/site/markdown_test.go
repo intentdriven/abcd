@@ -473,9 +473,9 @@ func TestSiteHref(t *testing.T) {
 		{"docs/explanation", "https://example.invalid/", "https://example.invalid/"},
 		// Outside docs/ there is no page on this site yet, so the link goes to
 		// the forge's view of the file rather than to a relative path that 404s.
-		{"docs/explanation", "../../CONTRIBUTING.md", forge + "/blob/main/CONTRIBUTING.md"},
+		{"docs/explanation", "../../CONTRIBUTING.md", forge + "/blob/HEAD/CONTRIBUTING.md"},
 		{"docs/explanation", "../../.abcd/development/decisions/adrs/0047-x.md#decision",
-			forge + "/blob/main/.abcd/development/decisions/adrs/0047-x.md#decision"},
+			forge + "/blob/HEAD/.abcd/development/decisions/adrs/0047-x.md#decision"},
 	}
 	for _, c := range cases {
 		if got := siteHref(c.dir, c.in, forge, true); got != c.want {
@@ -489,7 +489,7 @@ func TestSiteHref(t *testing.T) {
 	}
 	// A site with no docs tree has no docs route to send a docs page to, so
 	// it goes to the forge's view like any other file.
-	if got := siteHref("docs/explanation", "roles.md#x", forge, false); got != forge+"/blob/main/docs/explanation/roles.md#x" {
+	if got := siteHref("docs/explanation", "roles.md#x", forge, false); got != forge+"/blob/HEAD/docs/explanation/roles.md#x" {
 		t.Errorf("siteHref with no docs tree = %q, want the forge's view of the page", got)
 	}
 }

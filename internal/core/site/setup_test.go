@@ -919,8 +919,16 @@ func TestASiteWithNoDocsBuildLinksNoDocsTree(t *testing.T) {
 			t.Errorf("%s links %s, but this site renders no docs tree", name, m)
 		}
 	}
-	if !strings.Contains(pages["index.html"], `href="https://github.com/example-owner/example-site/blob/`) {
-		t.Errorf("the guide link does not go to the forge's view of the page")
+	if !strings.Contains(pages["index.html"], `href="https://github.com/example-owner/example-site/blob/HEAD/docs/how-to/guide.md"`) {
+		t.Errorf("the guide link does not go to the forge's view of the page on the default branch")
+	}
+	// The forge's view of a file names the default branch as HEAD: the build
+	// reads no forge, and a repository's default need not be main
+	// (iss-2609261206437257).
+	for name, page := range pages {
+		if strings.Contains(page, "/blob/main/") {
+			t.Errorf("%s links a file on a branch named main, which this repository may not have", name)
+		}
 	}
 
 	// Declaring the docs surface brings the tree's links back.

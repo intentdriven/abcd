@@ -867,7 +867,7 @@ func (e *explorer) policyQuote() (string, error) {
 		}
 		out := `<div class="prose small policy"` + srcAttr(p.File, s.Anchor) + `>` + h
 		if e.c.repo.Repository != "" {
-			out += `<p class="small"><a href="` + escapeAttr(e.c.repo.Repository+"/blob/main/"+p.File) + `">` +
+			out += `<p class="small"><a href="` + escapeAttr(forgeBlob(e.c.repo.Repository, p.File)) + `">` +
 				escapeText(p.File) + `</a></p>`
 		}
 		return out + `</div>`, nil
@@ -945,7 +945,7 @@ func (e *explorer) forgeBlob(rel string) string {
 	if e.c.repo.Repository == "" {
 		return ""
 	}
-	return e.c.repo.Repository + "/blob/main/" + rel
+	return forgeBlob(e.c.repo.Repository, rel)
 }
 
 // forgeCommits is the record file's commit history on the forge — the link that

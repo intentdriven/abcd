@@ -388,7 +388,7 @@ func (e *explorer) referencesPage() (string, error) {
 	refs.WriteString(`</ol>`)
 	if e.c.repo.Repository != "" {
 		refs.WriteString(`<p class="small muted"` + srcAttr(b.Path, "") + `><a href="` +
-			escapeAttr(e.c.repo.Repository+"/blob/main/"+b.Path) + `">` + escapeText(b.Path) + `</a></p>`)
+			escapeAttr(forgeBlob(e.c.repo.Repository, b.Path)) + `">` + escapeText(b.Path) + `</a></p>`)
 	}
 	out.WriteString(panelDisclosure("c12", b.RefsHeading, b.Source+"#"+b.RefsAnchor,
 		strconv.Itoa(len(b.Entries)), refs.String()))

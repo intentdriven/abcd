@@ -127,6 +127,12 @@ func (c *composer) renderer(p *docPage) *Renderer {
 	}
 }
 
+// forgeBlob is the forge's view of the repository file rel on the default
+// branch. HEAD names that branch whatever it is called: the build reads no
+// forge to learn the name, and a repository's default need not be main
+// (iss-2609261206437257).
+func forgeBlob(repo, rel string) string { return repo + "/blob/HEAD/" + rel }
+
 // rendersDocs reports whether this site serves a /docs/ tree. The tree is not
 // this build's output (the docs build writes it beside it), so the composition
 // is what says it is there: a `docs` block naming the index the docs surface
@@ -164,7 +170,7 @@ func siteHref(pageDir, href, forge string, docs bool) string {
 		if forge == "" || !fsutil.ValidRelPath(rel) {
 			return href
 		}
-		out := forge + "/blob/main/" + rel
+		out := forgeBlob(forge, rel)
 		if frag != "" {
 			out += "#" + frag
 		}
@@ -412,7 +418,7 @@ func (c *composer) footer() string {
 			if _, err := c.root.Stat(f); err != nil {
 				continue
 			}
-			b.WriteString(`<a href="` + escapeAttr(c.repo.Repository+"/blob/main/"+f) + `">` + escapeText(f) + `</a>`)
+			b.WriteString(`<a href="` + escapeAttr(forgeBlob(c.repo.Repository, f)) + `">` + escapeText(f) + `</a>`)
 		}
 		b.WriteString(`<a href="` + escapeAttr(c.repo.Repository) + `">` + escapeText(c.forgeLabel()) + `</a>`)
 	}
@@ -1084,7 +1090,7 @@ func (c *composer) install(p *docPage, ch Chapter) (string, error) {
 		b.WriteString(`<p class="small muted">` +
 			`<a href="` + escapeAttr(rr+"/releases/latest") + `">` + escapeText(c.ui.LatestRelease) + `</a> · ` +
 			`<a href="` + escapeAttr(rr+"/releases/latest/download/"+AssetChecksums) + `">` + escapeText(AssetChecksums) + `</a> · ` +
-			`<a href="` + escapeAttr(rr+"/blob/main/CHANGELOG.md") + `">CHANGELOG.md</a> · ` +
+			`<a href="` + escapeAttr(forgeBlob(rr, "CHANGELOG.md")) + `">CHANGELOG.md</a> · ` +
 			`<a href="` + escapeAttr(rr+"/releases") + `">` + escapeText(c.ui.AllReleases) + `</a></p>`)
 	}
 	b.WriteString(`</div>`)
@@ -1171,7 +1177,7 @@ func (c *composer) featureBlock(f *Feature) (string, error) {
 	var b strings.Builder
 	b.WriteString(`<div class="quote"` + srcAttr(node.Path, Slug("Press Release")) + `><div class="pr"><span>`)
 	if c.repo.Repository != "" {
-		b.WriteString(`<a href="` + escapeAttr(c.repo.Repository+"/blob/main/"+node.Path) + `">` + escapeText(node.ID) + `</a>`)
+		b.WriteString(`<a href="` + escapeAttr(forgeBlob(c.repo.Repository, node.Path)) + `">` + escapeText(node.ID) + `</a>`)
 	} else {
 		b.WriteString(escapeText(node.ID))
 	}

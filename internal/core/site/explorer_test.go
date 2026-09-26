@@ -118,7 +118,7 @@ func TestRecordPageRendersItsBodyAndLinks(t *testing.T) {
 		`implemented by`,
 		`href="/record/spec/spc-1/"`,
 		// the forge links: the file, and its commit history
-		`https://example.invalid/fixture/repo/blob/main/.abcd/development/intents/shipped/itd-2-the-shipped-one.md`,
+		`https://example.invalid/fixture/repo/blob/HEAD/.abcd/development/intents/shipped/itd-2-the-shipped-one.md`,
 		`https://example.invalid/fixture/repo/commits/main/.abcd/development/intents/shipped/itd-2-the-shipped-one.md`,
 	} {
 		if !strings.Contains(page, want) {
