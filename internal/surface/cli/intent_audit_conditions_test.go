@@ -282,3 +282,12 @@ func TestIntentAuditDeadLetterJSONRecordsNoVerdict(t *testing.T) {
 		}
 	}
 }
+
+// TestIntentAuditIngestHelpNamesTheVerdictShape is iss-2609181121305984's other
+// half: the ingest's help names where the shape it decodes is stated.
+func TestIntentAuditIngestHelpNamesTheVerdictShape(t *testing.T) {
+	intentTestRepo(t)
+	if help := string(runCLI(t, "intent", "audit", "ingest", "--help")); !strings.Contains(help, "Verdict shape") {
+		t.Fatalf("the ingest help does not say where the verdict shape is stated:\n%s", help)
+	}
+}

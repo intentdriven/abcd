@@ -12,6 +12,21 @@ over the brief's earlier `1.0.0`-at-close expectation). The four M6 synthesis
 agents below entered at `0.1.0`, wired to their `abcd disembark` verbs and
 unmeasured; `lifeboat-oracle` has since become `lifeboat-reviewer` at `0.1.1`.
 
+## 2026-09-26 (iss-2609181121301638, iss-2609181121305984 — the request states the conditions and the shape)
+
+The fidelity review request lists every scope condition under its `cond-…`
+identity and carries a `## Verdict shape` section rendered from the structure
+the ingest decodes, so the auditor no longer scrapes identities out of the
+record or learns the shape from refusals.
+
+### intent-auditor 0.4.1
+
+PATCH: the `scope_conditions` input names the request's `## Scope Conditions`
+block as where the identities are listed, and the Role 1 output format names the
+request's `## Verdict shape` section as the same shape, winning where the two
+differ. The rubric, the verdict's shape and every ingest rule are untouched, so
+a verdict that was valid before stays valid. Unmeasured, as before.
+
 ## 2026-09-26 (itd-48 — the intent auditor gains its cross-document role)
 
 `abcd intent consistency` assembles the brief and every live intent into one

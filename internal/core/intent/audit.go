@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"sort"
 	"strings"
@@ -501,18 +502,156 @@ func auditPromptBody(it Intent, rcp, content string, realised []string) string {
 	fmt.Fprintf(&b, "- intent: %s\n", it.Path)
 	fmt.Fprintf(&b, "- specs: %s\n", specs)
 	fmt.Fprintf(&b, "- delivered: the diff/commit range that realised ALL of %s (host supplies the range)\n\n", specs)
-	b.WriteString("## Acceptance Criteria (authority; numbered ac-1..ac-K in order)\n\n")
+	// The counts are the ingest's own: K is the bullet count validateVerdict
+	// judges against, so the request never leaves the auditor to count
+	// (iss-2609181121301638).
+	switch k := countAcceptanceCriteria(content); k {
+	case 0:
+		b.WriteString("## Acceptance Criteria (authority; no bullets found)\n\n")
+	default:
+		fmt.Fprintf(&b, "## Acceptance Criteria (authority; %d %s, numbered ac-1..ac-%d in order)\n\n",
+			k, plural(k, "criterion", "criteria"), k)
+	}
 	if ac == "" {
 		b.WriteString("(none found)\n")
 	} else {
 		b.WriteString(ac + "\n")
 	}
+	writeScopeConditions(&b, content)
 	b.WriteString("\n## Rubric (authority; the contract the ingest enforces)\n\n")
 	b.WriteString(rubricText())
-	b.WriteString("\nRun the intent-auditor agent over the criteria and the delivered\n")
-	b.WriteString("diff, then ingest its verdict JSON:\n\n")
+	b.WriteString("\n## Verdict shape (authority; the fields the ingest decodes, and no other)\n\n")
+	b.WriteString(verdictShape(rcp))
+	b.WriteString("\nRun the intent-auditor agent over the criteria, the scope conditions and\n")
+	b.WriteString("the delivered diff; its verdict JSON takes the shape above. Ingest it with:\n\n")
 	fmt.Fprintf(&b, "    abcd intent audit ingest --verdict-json <path>   # receipt %s\n", rcp)
 	return b.String()
+}
+
+// writeScopeConditions renders the request's Scope Conditions block: every
+// scope condition the intent carries, by the minted identity the verdict must
+// dispose it under, with its text (iss-2609181121301638). The identities used to
+// reach the auditor only as HTML comments in the record, which the request did
+// not quote, so an auditor scraped them by hand and a miscount quarantined the
+// verdict. They are read through ParseClaims, the reader the ingest's coverage
+// check reads them through, so the set stated here is the set it enforces. An
+// unstamped condition is listed as one, since the ingest refuses a verdict for
+// an intent carrying it and the auditor should see why.
+func writeScopeConditions(b *strings.Builder, content string) {
+	conds := ParseClaims(content).Conditions
+	if len(conds) == 0 {
+		b.WriteString("\n## Scope Conditions (authority; none recorded, so scope_conditions is an empty list)\n\n")
+		b.WriteString("(none recorded)\n")
+		return
+	}
+	fmt.Fprintf(b, "\n## Scope Conditions (authority; %d %s, each disposed exactly once under its identity verbatim)\n\n",
+		len(conds), plural(len(conds), "condition", "conditions"))
+	for _, c := range conds {
+		text := strings.Join(strings.Fields(c.Text), " ")
+		if c.ID == "" {
+			fmt.Fprintf(b, "- (condition %d carries no minted identity) — %s\n", c.Ordinal, text)
+			continue
+		}
+		fmt.Fprintf(b, "- %s — %s\n", c.ID, text)
+	}
+}
+
+// plural picks the noun form for a count.
+func plural(n int, one, many string) string {
+	if n == 1 {
+		return one
+	}
+	return many
+}
+
+// verdictShapeHints are the placeholders the stated shape shows for the fields
+// that have one, keyed by JSON name; every other string shows `<string>`. The
+// vocabularies come from the enum maps the validator consults, as the rubric's
+// do, and the receipt is the one this request issued.
+func verdictShapeHints(rcp string) map[string]string {
+	return map[string]string{
+		"_type":        VerdictType,
+		"receipt_id":   rcp,
+		"rubric_hash":  "sha256:<the Provenance block's rubric_hash>",
+		"prompt_hash":  "sha256:<the Provenance block's prompt_hash>",
+		"digest":       "sha256:<64 lowercase hex, or empty where not known>",
+		"criterion_id": "ac-<N>",
+		"verdict":      strings.Join(sortedKeys(verdictEnum), " | "),
+		"condition_id": "cond-<an identity from Scope Conditions>",
+		"disposition":  strings.Join(sortedKeys(dispositionEnum), " | "),
+		"narrowing":    "<required on narrowed, empty otherwise>",
+	}
+}
+
+// verdictShape renders the verdict the ingest decodes as one example object
+// (iss-2609181121305984): the verdict struct itself — the type validateVerdict
+// decodes into with DisallowUnknownFields — rendered by renderShape, so it is
+// that schema rather than a copy of it. acceptance_rollup shows every
+// acceptance verdict as a key.
+func verdictShape(rcp string) string {
+	return renderShape(reflect.TypeOf(verdict{}), shapeSpec{
+		hints:   verdictShapeHints(rcp),
+		mapKeys: map[string][]string{"acceptance_rollup": sortedKeys(verdictEnum)},
+	})
+}
+
+// shapeSpec says what a stated JSON shape shows beyond the struct's own fields,
+// each keyed by JSON name.
+type shapeSpec struct {
+	hints   map[string]string   // a string field's placeholder; any other shows <string>
+	mapKeys map[string][]string // the keys a map field shows
+	lens    map[string]int      // the elements a list shows; any other shows one
+}
+
+// renderShape renders the struct type t as one example object, indented as a
+// markdown code block, for a request to state the shape its ingest decodes. It
+// is built by reflection over the very struct the ingest decodes into, so a
+// field added to or dropped from that struct moves the stated shape, and the
+// prompt_hash with it: the request states the schema, never a copy of it. Every
+// list shows at least one element so its members are named.
+func renderShape(t reflect.Type, spec shapeSpec) string {
+	v := reflect.New(t).Elem()
+	fillShape(v, "", spec)
+	var buf strings.Builder
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false) // the placeholders' angle brackets stay readable
+	enc.SetIndent("    ", "  ")
+	if err := enc.Encode(v.Interface()); err != nil {
+		// The value is strings, ints, slices and string-keyed maps, which always
+		// encode; the branch keeps the composition total.
+		return "    (the shape could not be rendered: " + err.Error() + ")\n"
+	}
+	return "    " + buf.String()
+}
+
+// fillShape populates v with the placeholder for each field, by JSON name.
+func fillShape(v reflect.Value, name string, spec shapeSpec) {
+	switch v.Kind() {
+	case reflect.Struct:
+		for i := 0; i < v.NumField(); i++ {
+			tag, _, _ := strings.Cut(v.Type().Field(i).Tag.Get("json"), ",")
+			fillShape(v.Field(i), tag, spec)
+		}
+	case reflect.String:
+		if h, ok := spec.hints[name]; ok {
+			v.SetString(h)
+		} else {
+			v.SetString("<string>")
+		}
+	case reflect.Slice:
+		n := max(spec.lens[name], 1)
+		s := reflect.MakeSlice(v.Type(), n, n)
+		for i := 0; i < n; i++ {
+			fillShape(s.Index(i), name, spec)
+		}
+		v.Set(s)
+	case reflect.Map:
+		m := reflect.MakeMap(v.Type())
+		for _, k := range spec.mapKeys[name] {
+			m.SetMapIndex(reflect.ValueOf(k), reflect.Zero(v.Type().Elem()))
+		}
+		v.Set(m)
+	}
 }
 
 // ---------------------------------------------------------------------------

@@ -727,12 +727,16 @@ anything is written. With no table accepted and no `--route`, the step asks for
 `host-decides` and nothing is printed.
 
 **Hand the auditor the whole request file.** `intent audit` writes it to the
-reported `request_path`. The result's `status` names the receipt's state and
-`request_written` the act: a re-emit of an owed receipt rewrites its request
-(`already_owed`, `request_written: true`, text `request rewritten:`), and a
-re-emit of an ingested or dead-lettered receipt writes none and names no
-`request_path`. Its `## Provenance` block states the `rubric_hash` and
-`prompt_hash` the host computed. The auditor echoes both
+reported `request_path`. It states the criteria count, lists every scope
+condition under the `cond-…` identity the verdict disposes it by, and carries a
+`## Verdict shape` section rendered from the structure the ingest decodes, so a
+reviewer working from the request alone has the shape to write against. The
+result's `status` names the receipt's state and `request_written` the act: a
+re-emit of an owed receipt rewrites its request (`already_owed`,
+`request_written: true`, text `request rewritten:`), and a re-emit of an
+ingested or dead-lettered receipt writes none and names no `request_path`. Its
+`## Provenance` block states the `rubric_hash` and `prompt_hash` the host
+computed. The auditor echoes both
 verbatim into `policy`; it never computes either itself. The ingest recomputes
 them and refuses a verdict carrying any other value, leaving the receipt parked
 so the request can be re-emitted and the audit re-run — so a made-up hash costs
