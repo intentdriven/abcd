@@ -20,7 +20,7 @@ says so and names the release path it does have: the scaffolded release
 workflows, the dated CHANGELOG heading the cut writes, and the auto-release
 workflow that tags it.
 
-> **Phase ownership** ([adr-33](../../decisions/adrs/0033-launch-phase-ownership-tiered.md)): the curated-release cut — packaging with `.abcd/**` excluded plus the secret/PII scan — ships in [Phase 1](../../roadmap/phases/phase-1-ahoy.md). The pre-flight gate suite (itd-65) runs on the preview and on the cut's render path; the remaining release automation is separately scheduled (itd-66 render parity, itd-70 retention, itd-72 publishing); itd-73 derived versioning ships with the release cut.
+> **Phase ownership** ([adr-33](../../decisions/adrs/0033-launch-phase-ownership-tiered.md)): the curated-release cut — packaging with `.abcd/**` excluded plus the secret/PII scan — ships in [Phase 1](../../roadmap/phases/phase-1-ahoy.md). The pre-flight gate suite (itd-65) and the payload parity diff with the deep installability smoke (itd-66) run on the preview and on the cut's render path; the remaining release automation is separately scheduled (itd-70 retention, itd-72 publishing); itd-73 derived versioning ships with the release cut.
 
 ## Sub-verbs
 
@@ -169,7 +169,10 @@ The **hard-fail** gates refuse the release:
   writes skips it, because by then the cut's own output is on disk. Skipping is
   a render caller's stated choice: a render that states no policy runs the gate
   and refuses a dirty tree.
-- **The installability smoke** at its light tier (below).
+- **The installability smoke** at its light tier, and at its deep tier on the
+  cut and on a preview that asks for it (below).
+- **The payload parity diff**, which refuses only when its baseline cannot be
+  read (below).
 
 The **warn** gates surface a concern and refuse nothing, unless the
 repository's `.abcd/config/launch-payload.json` sets `"strict_warnings": true`,
@@ -233,10 +236,64 @@ resolves to the payload root it is rendered from, and its pin must be an https
 the payload is responsible for is carried. Resolution reads the resolved bundle,
 so a file present in the tree but excluded from the payload fails here.
 `dry-run` reports it; the payload render refuses on it, because the render is
-the only step that materialises an artefact. The **deep tier** (itd-66,
-deferred) would, over the same resolved list, import every shipped entrypoint
-and render each command's help in an isolated subprocess rooted at the rendered
-payload.
+the only step that materialises an artefact.
+
+The **deep tier** asserts, over the same resolved list, that every declared
+command, skill and agent page loads. The payload is materialised in a private
+temporary tree and the binary re-runs itself there as an isolated child (a
+hidden, operator-internal sub-verb), with its working directory, `HOME` and
+`TMPDIR` inside that tree and a minimal environment, so anything rendering a page
+could write lands in the throwaway copy, which is removed. The child renders each
+page's help and frontmatter; a page fails when it is not UTF-8, opens a
+frontmatter block it never closes, holds a line no YAML mapping holds or a
+duplicated key, renders no help at all, or is a skill without a name and a
+description. The frontmatter is read no more strictly than YAML reads it: a
+scalar continued on indented lines, plain or quoted, a quoted or non-ASCII key,
+and a block closed by the document-end marker `...` all load, and a key spelled
+once quoted and once plain is one key, duplicated. The parent refuses a child that ran anywhere but the tree it was
+given, and a child that fails or leaves a page unanswered fails the tier. The
+tier is opt-in on the preview, by flag, and always on in the cut, where a
+finding refuses before anything is written. There is no import check: nothing the
+payload ships is imported, so the entrypoint-import half of the original
+criterion has nothing to assert.
+
+The **payload parity diff** lists every payload path added, changed or removed
+since the previous release, each with its SHA-256, in the preview (always) and
+in the cut, which measures against its anchor tag. The preview measures against
+the newest release tag, or a tag the operator names; a named baseline that is not
+a release tag in the checkout exits 2. The previous payload is read by a fresh
+render at the tag in a private temporary clone of the checkout's own objects,
+with the tag's own include config, so the diff reads only the disk. The tag's
+published plugin archive is read instead only on an explicit ask, a
+flag on the preview and on the cut (per
+[adr-38](../../decisions/adrs/0038-implicit-checks-are-disk-only.md)): each fetch
+is announced on stderr and named in the report, the archive is refused unless the
+release's own `checksums.txt` vouches for its digest, and a release that
+publishes no archive falls back to the render at the tag, saying so. The fetch's
+own client honours no proxy or CA override, as the updater's does, without
+unsetting any in the process, and the report names every override that was set,
+as the updater's receipt does; a fetch that fails names them in its refusal. The two
+manifests the release stamps are compared as canonical JSON with their version
+keys removed, because the render re-marshals them and the version bump is the
+cut's own report; the catalog, which the archive leaves out by construction, is
+named as not compared against an archive. A tree whose `CHANGELOG.md` dates no
+release and that holds no release tag is a first launch: every path is added and
+the report says why, as it does for a tag that declared no payload. A checkout
+that cannot read the previous release from its own tags is not a first launch,
+and is not measured against an older release — a clone holding no release tag
+while `CHANGELOG.md` dates one, a shallow clone, whose tag listing holds only
+the tags it fetched, or a fork or mirror whose newest tag is older than the
+release `CHANGELOG.md` dates newest. Its baseline is the newest release
+`CHANGELOG.md` dates (or a newer tag the listing holds), and the diff refuses by
+naming it and both remedies: fetch the tags and the history, or read the
+release's published archive by flag, which is then the only baseline, since
+there is no tag to render at. The window between a cut and its tag reads the
+same way, with the opposite meaning: the dated release is the one just cut and
+the newest tag is the right baseline. The preview refuses there too, calling the
+release not tagged yet rather than the previous one and naming the explicit
+baseline that measures against the release before it; the cut is not blocked,
+because it diffs before it writes its heading. A baseline that cannot be read is
+a named refusal, never an empty diff.
 
 Every preview, and every cut that renders a payload, writes its pre-flight
 report (§ 4). The scan gate is side-effect-free with respect to the repo: its
@@ -496,7 +553,8 @@ Every preview, and every cut that renders a payload, writes a pre-flight report:
 `.abcd/.work.local/logs/launch/`, named for the run's instant, in the gitignored
 local tier (per the iss-36 and iss-56 adjudication resolved as iss-73). The
 report carries the mode (preview or cut), the verdict, every refusal, every
-warning, every gate row, and the dirty-tree override with the paths it carried.
+warning, every gate row, the dirty-tree override with the paths it carried, and
+the parity diff and the deep smoke tier where the run made them.
 A refused cut writes its report too, and the refusal names where it landed. The
 preview's JSON carries `report_path`, the cut's `preflight_report`. A detector
 fails the build if any non-test Go source under `internal/` so much as names the
@@ -591,6 +649,17 @@ performed by a human and by CI.
 - **Given** findings in several gates at once, **when** the preview or the cut
   runs, **then** every one of them is reported in the one pass and in the
   pre-flight report.
+- **Given** a previous release tag, **when** the preview or a cut that renders a
+  payload runs, **then** the report lists every payload path added, changed or
+  removed since that tag's payload, each with its SHA-256; **given** no previous
+  tag, every path is added and the report says why; **given** a named baseline
+  that is not a release tag in the checkout, the preview exits 2 naming it.
+- **Given** a declared command page that resolves on disk but whose frontmatter
+  never closes, **when** a cut that renders a payload runs, **then** the deep
+  smoke tier, rendering every page in an isolated subprocess rooted at a
+  materialised copy of the payload, names the page and the cut refuses before
+  writing anything; the preview reports the same finding when asked for
+  the deep tier.
 - **Given** a dirty working tree, **when** a cut that renders a payload runs,
   **then** it refuses before writing anything and names the uncommitted paths;
   **with** the dirty-tree override it proceeds and its pre-flight report
@@ -628,11 +697,14 @@ _Generated from the command tree; a drift test fails `go test` when this appendi
 
 ### `abcd launch`
 
-Sub-verbs: `abcd launch archive`, `abcd launch scaffold`, `abcd launch ship`.
+Sub-verbs: `abcd launch archive`, `abcd launch scaffold`, `abcd launch ship`, `abcd launch smoke-pages`.
 
 | Flag | Type |
 |---|---|
+| `--baseline` | string |
+| `--deep-smoke` | bool |
 | `--dry-run` | bool |
+| `--fetch-baseline` | bool |
 
 ### `abcd launch archive`
 
@@ -661,7 +733,14 @@ Sub-verbs: none.
 |---|---|
 | `--allow-dirty` | bool |
 | `--changelog-json` | string |
+| `--fetch-baseline` | bool |
 | `--payload-dir` | string |
 | `--route` | stringArray |
+
+### `abcd launch smoke-pages`
+
+Sub-verbs: none.
+
+Flags: none.
 
 <!-- surface-appendix:end -->

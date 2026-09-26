@@ -1135,7 +1135,10 @@ Preview the public launch bundle, its secret scan, and the release gates: Writes
 **Flags:**
 
 ```
-      --dry-run   preview the launch bundle and gates without publishing
+      --baseline string   the release tag the payload parity diff measures against (default: the newest release tag)
+      --deep-smoke        also run the installability smoke's deep tier: render every command, skill and agent page's help in an isolated subprocess (always on in the cut)
+      --dry-run           preview the launch bundle and gates without publishing
+      --fetch-baseline    read the parity baseline from the tag's published plugin archive, verified against the release's checksums.txt (a network fetch; default: a fresh render at the tag)
 ```
 
 #### `abcd launch archive`
@@ -1178,13 +1181,14 @@ Scaffold the changelog-driven release gate: Writes the release workflows and run
 
 Cut a release, deriving its version and records from what shipped: Writes the CHANGELOG heading, RELEASE.md, and the archive pin; refuses a cut its gates stop.
 
-**Usage:** `abcd launch ship [--changelog-json <file|->] [--payload-dir <dir>] [--allow-dirty] [flags]`
+**Usage:** `abcd launch ship [--changelog-json <file|->] [--payload-dir <dir>] [--allow-dirty] [--fetch-baseline] [flags]`
 
 **Flags:**
 
 ```
       --allow-dirty             cut from a working tree with uncommitted changes; the pre-flight report records the override and every path it carried (waives the dirty-tree gate only — never lockstep, and never the archive pin's clean-payload refusal)
       --changelog-json string   path to the host-composed changelog JSON (or - for stdin); absent runs the deterministic emit step
+      --fetch-baseline          read the parity baseline from the anchor tag's published plugin archive, verified against the release's checksums.txt (a network fetch; default: a fresh render at the tag)
       --payload-dir string      stage the versioned release payload in this directory (must be empty and outside the repository)
       --route stringArray       route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
 ```

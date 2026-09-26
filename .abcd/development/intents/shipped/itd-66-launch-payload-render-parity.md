@@ -20,6 +20,7 @@ warrants_assumed:
 - "Shipped Python modules may have import-time side effects; the smoke cannot assume import purity."
 - "The previously published release may be absent at first launch; parity treats that as all-added, not an error."
 severity: critical
+impact: additive
 ---
 
 # abcd Renders The Exact Public Payload, Proves The Excludes Never Leak, And Smoke-Tests The Installed Surface Before Any Snapshot
@@ -72,6 +73,60 @@ Python-import clause (nothing shipped imports) and the seeded first baseline
 (the first release is manual by the brief's bootstrap exception). Open, and
 scoped by spc-2609201955277614: the file-level parity diff and the deep smoke
 tier.
+Both delivered on 2026-09-25; the Decisions below cite them.
+
+## Decisions
+
+- **2026-09-25 — the Python-import clause of the smoke criterion (fourth) is
+  moot, and the rest of it stands.** Source: spc-2609201955277614 (Summary,
+  piece 2: "the original criterion's Python-import clause is moot (nothing
+  shipped imports) and is recorded as such on the intent") and the Delivery
+  Status review above (2026-09-20). The payload's include roots carry no Python
+  and no other imported entrypoint (`hooks/` and `scripts/` ship shell), so
+  "every shipped Python entrypoint imports" has nothing to assert; the criterion
+  text is unchanged. Stands and is met: every declared command, skill and hook
+  resolves (the light tier), and every declared command, skill and agent page
+  LOADS, rendered in an isolated subprocess rooted at a materialised copy of the
+  payload, so a broken page fails (`SmokeDeep` and `RenderPageHelp` in
+  `internal/core/launch/deepsmoke.go`, the hidden `abcd launch smoke-pages`
+  child in `internal/surface/cli/launch_deep.go`;
+  `TestSmokeDeepCatchesAPageThatResolvesButDoesNotLoad`,
+  `TestLaunchDryRunDeepSmokeRunsInAnIsolatedSubprocess`,
+  `TestLaunchShipRunsTheDeepTierAndParity`). The tier is opt-in on the preview
+  (`--deep-smoke`) and always on in the cut, per the spec's Approach.
+- **2026-09-25 — how the parity criteria are met** (spc-2609201955277614 piece
+  1). The third criterion: `PayloadParity` in `internal/core/launch/parity.go`
+  lists every payload path added, changed or removed with its SHA-256, on every
+  preview and in the cut (its JSON, its render and its pre-flight report)
+  (`TestParityAgainstARenderAtTheTagReportsEveryChange`,
+  `TestLaunchDryRunReportsTheParityDiff`). The seventh: no previous tag, or a
+  tag that declared no payload, is all-added with the reason stated
+  (`TestParityWithNoPreviousReleaseIsAllAdded`,
+  `TestParityAgainstATagThatShippedNoPayloadIsAllAdded`); a baseline that cannot
+  be read is a named refusal, never an empty diff, and a configured `--baseline`
+  that is not a release tag exits 2 by name
+  (`TestParityWithAnUnreadableBaselineIsANamedRefusal`,
+  `TestLaunchDryRunConfiguredBaseline`). The fifth still holds with both pieces
+  in: the render at the tag and the deep tier write only private temporary
+  trees they remove.
+- **2026-09-25 — the baseline is read from the disk unless the operator asks
+  for the network.** The spec reads the previous payload "from the tag's release
+  asset when present and from a fresh render at that tag otherwise";
+  [adr-38](../../decisions/adrs/0038-implicit-checks-are-disk-only.md) lets the
+  network answer only an explicit ask. So the default baseline is a fresh render
+  at the tag in a private clone of the checkout's own objects, and
+  `--fetch-baseline` (preview and cut) reads the tag's published plugin archive
+  first: every fetch announced on stderr and named in the report, the archive
+  refused unless the release's own `checksums.txt` vouches for its digest, and a
+  release publishing no archive falling back to the render at the tag, saying so
+  (`TestParityAgainstTheReleaseAssetVerifiesAndDiffs`,
+  `TestParityReleaseAssetChecksumMismatchFailsClosed`,
+  `TestParityReleaseAssetAbsentFallsBackToARenderAtTheTag`,
+  `TestLaunchDryRunFetchBaselineReadsTheVerifiedReleaseAsset`). The two
+  manifests the release stamps are compared as canonical JSON with their
+  version keys removed, since the render re-marshals them and the version bump
+  is the cut's own report; against an archive, the catalog the archive omits by
+  construction is named as not compared.
 
 ## Acceptance Criteria
 
@@ -99,3 +154,8 @@ tier.
 - What is the parity baseline when there is no previously published release or it is on a different ref — treat all-added, or require a configured baseline?
 - How deep does the smoke test go — manifest resolution + import only, or also a minimal invocation of each command's help surface?
 - Should the render assert against the SAME resolved manifest the pre-flight suite ([[itd-65-launch-preflight-gate-suite]]) scans, so the two never diverge on what "the payload" is?
+
+## Audit Notes
+
+<!-- abcd-review: OWED receipt=rcp-04706634ba21 -->
+Fidelity review OWED (receipt rcp-04706634ba21).

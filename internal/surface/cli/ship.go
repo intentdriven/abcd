@@ -66,6 +66,11 @@ type shipResult struct {
 	Preflight string `json:"preflight_report,omitempty"`
 	// AllowedDirty is every uncommitted path --allow-dirty carried into the cut.
 	AllowedDirty []string `json:"allowed_dirty,omitempty"`
+	// Parity is the payload's file-level diff against the anchor release's, and
+	// DeepSmoke the deep installability tier, both run by the cut's precheck
+	// whenever the ship renders a payload.
+	Parity    *launch.ParityReport    `json:"parity,omitempty"`
+	DeepSmoke *launch.DeepSmokeReport `json:"deep_smoke,omitempty"`
 }
 
 // shipArchive is the archive half of a ship's report: the archive the release
@@ -317,10 +322,10 @@ func bumpReason(cut release.Cut) string {
 func newLaunchShipCommand(asJSON *bool) *cobra.Command {
 	var changelogJSON string
 	var payloadDir string
-	var allowDirty bool
+	var allowDirty, fetchBaseline bool
 	var shipRoute *routeFlag
 	cmd := &cobra.Command{
-		Use:  "ship [--changelog-json <file|->] [--payload-dir <dir>] [--allow-dirty]",
+		Use:  "ship [--changelog-json <file|->] [--payload-dir <dir>] [--allow-dirty] [--fetch-baseline]",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cwd, err := os.Getwd()
@@ -337,6 +342,10 @@ func newLaunchShipCommand(asJSON *bool) *cobra.Command {
 			if allowDirty && changelogJSON == "" {
 				return &exitError{Code: 2, Msg: "abcd launch ship: --allow-dirty waives the dirty-tree gate, and the " +
 					"deterministic emit step renders no payload, so it runs no gate to waive"}
+			}
+			if fetchBaseline && changelogJSON == "" {
+				return &exitError{Code: 2, Msg: "abcd launch ship: --fetch-baseline reads the baseline a payload render's parity " +
+					"diff compares against, and the deterministic emit step renders no payload"}
 			}
 			// Both steps dispatch the composer: the emit step hands the host
 			// its request block, the ingest step returns its receipt. The route
@@ -361,7 +370,7 @@ func newLaunchShipCommand(asJSON *bool) *cobra.Command {
 				return &exitError{Code: 2, Msg: "abcd launch ship: " + scrubPaths(err)}
 			}
 			if raw != nil {
-				return runShipIngest(cmd, root, raw, payloadDir, allowDirty, *asJSON, route)
+				return runShipIngest(cmd, root, raw, payloadDir, allowDirty, fetchBaseline, *asJSON, route)
 			}
 
 			cut, err := emitCut(root)
@@ -391,6 +400,9 @@ func newLaunchShipCommand(asJSON *bool) *cobra.Command {
 	cmd.Flags().BoolVar(&allowDirty, "allow-dirty", false,
 		"cut from a working tree with uncommitted changes; the pre-flight report records the override and every path it carried "+
 			"(waives the dirty-tree gate only — never lockstep, and never the archive pin's clean-payload refusal)")
+	cmd.Flags().BoolVar(&fetchBaseline, "fetch-baseline", false,
+		"read the parity baseline from the anchor tag's published plugin archive, verified against the release's checksums.txt "+
+			"(a network fetch; default: a fresh render at the tag)")
 	shipRoute = addRouteFlag(cmd, changelogAgent)
 	return cmd
 }
@@ -404,7 +416,7 @@ func newLaunchShipCommand(asJSON *bool) *cobra.Command {
 // contract alone: only a release workflow that uploads the archive makes the
 // pinned address resolve, and a managed repository's scaffolded workflows
 // upload none, so a catalog pinned there would 404 on every install.
-func runShipIngest(cmd *cobra.Command, cwd string, raw []byte, payloadDir string, allowDirty, asJSON bool, route *oracle.Route) error {
+func runShipIngest(cmd *cobra.Command, cwd string, raw []byte, payloadDir string, allowDirty, fetchBaseline, asJSON bool, route *oracle.Route) error {
 	archive, err := launch.DeclaresPluginArchive(cwd)
 	if err != nil {
 		return &exitError{Code: 2, Msg: "abcd launch ship: " + scrubPaths(err)}
@@ -415,6 +427,10 @@ func runShipIngest(cmd *cobra.Command, cwd string, raw []byte, payloadDir string
 	if allowDirty && !stage {
 		return &exitError{Code: 2, Msg: "abcd launch ship: --allow-dirty waives the dirty-tree gate, and this ship " +
 			"renders no payload (no --payload-dir, and the repository does not publish a plugin archive), so it runs no gate to waive"}
+	}
+	if fetchBaseline && !stage {
+		return &exitError{Code: 2, Msg: "abcd launch ship: --fetch-baseline reads the baseline a payload render's parity diff " +
+			"compares against, and this ship renders no payload (no --payload-dir, and the repository does not publish a plugin archive)"}
 	}
 
 	// Every render refusal that does not need a version is made BEFORE the
@@ -449,7 +465,13 @@ func runShipIngest(cmd *cobra.Command, cwd string, raw []byte, payloadDir string
 		// The pre-flight suite runs here, BEFORE the cut writes anything, so the
 		// dirty-tree gate reads the tree the cut starts from; the render after
 		// the ingest skips it, because by then the cut's own writes are on disk.
-		opts := launch.PrecheckOptions{DocAudit: docAuditPreflight(cwd)}
+		// The cut always runs the deep installability tier and the parity
+		// diff against its anchor tag, before it writes anything.
+		parity, err := launchParityInput(cwd, "", fetchBaseline, cmd.ErrOrStderr())
+		if err != nil {
+			return &exitError{Code: 2, Msg: "abcd launch ship: " + scrubPaths(err)}
+		}
+		opts := launch.PrecheckOptions{DocAudit: docAuditPreflight(cwd), Parity: parity, DeepSmoke: subprocessPageRunner}
 		if allowDirty {
 			opts.Dirty = launch.DirtyAllow
 		}
@@ -471,6 +493,7 @@ func runShipIngest(cmd *cobra.Command, cwd string, raw []byte, payloadDir string
 		if allowDirty {
 			res.AllowedDirty = pre.Dirty
 		}
+		res.Parity, res.DeepSmoke = pre.Parity, pre.DeepSmoke
 		if archive {
 			if err := launch.PrecheckPluginArchive(cwd); err != nil {
 				return &exitError{Code: 2, Msg: "abcd launch ship: " + scrubPaths(err)}
@@ -715,6 +738,8 @@ func renderIngest(w io.Writer, res shipResult) {
 		fmt.Fprintf(w, "  allowed:    %d uncommitted path(s) carried by --allow-dirty: %s\n",
 			len(res.AllowedDirty), termsafe.Sanitize(strings.Join(res.AllowedDirty, ", ")))
 	}
+	renderDeepSmoke(w, res.DeepSmoke)
+	renderParity(w, res.Parity)
 	if res.Payload == nil {
 		return
 	}

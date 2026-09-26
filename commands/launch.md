@@ -1,7 +1,7 @@
 ---
 name: launch
 description: "Preview the public launch bundle, its secret scan, and the release gates: Writes only its pre-flight report, to the local tier; refuses without --dry-run."
-argument-hint: "[--dry-run] | ship [--changelog-json <path>] [--payload-dir <dir>] [--allow-dirty] | archive --out <dir> [--tag <vX.Y.Z>] [--verify] [--repository <owner/name>] | scaffold"
+argument-hint: "[--dry-run [--deep-smoke] [--baseline <vX.Y.Z>] [--fetch-baseline]] | ship [--changelog-json <path>] [--payload-dir <dir>] [--allow-dirty] [--fetch-baseline] | archive --out <dir> [--tag <vX.Y.Z>] [--verify] [--repository <owner/name>] | scaffold"
 block: people
 ---
 
@@ -192,6 +192,59 @@ Then summarise the JSON for the user:
 - `smoke.ok` — whether the payload would install: both plugin manifests parse,
   the marketplace source resolves, and every declared command, agent, skill and
   hook path is carried. `smoke.findings` names any path that is not.
+- `deep_smoke` — present only when the preview was run with `--deep-smoke`: the
+  installability smoke's deep tier. It materialises the payload in a private
+  temporary directory and re-runs the binary there as an isolated child
+  (`abcd launch smoke-pages`, hidden and operator-internal: its working
+  directory, `HOME` and `TMPDIR` are the throwaway tree), which renders every
+  declared command, skill and agent page's help and frontmatter. `deep_smoke.ok`
+  says whether every page loads; `deep_smoke.findings` names each page that
+  resolves on disk and would not load — a frontmatter block never closed, a line
+  that is not a YAML mapping entry, a duplicated key, bytes that are not UTF-8, a
+  skill with no name or description, a page with no help at all. Frontmatter is
+  read as YAML reads it: a value continued on indented lines, a quoted or
+  non-ASCII key, and a block closed by `...` all load. The tier costs a copy of
+  the payload and one child process. The cut always runs this tier; offer
+  `--deep-smoke` when the user wants the preview to say what the cut will.
+- `parity` — the file-level diff between this payload and the previous
+  release's. `parity.baseline` is the tag it was measured against (the newest
+  release tag, or the tag given with `--baseline <vX.Y.Z>`), `parity.source` how
+  that payload was read: `render-at-tag` (a fresh render of the tag in a private
+  temporary clone, from this checkout's own git objects), `release-asset` (the
+  tag's published plugin archive, fetched only with `--fetch-baseline`) or
+  `none` (no previous release: a first launch, and every path is `added`, with
+  `parity.note` saying why). A checkout missing the previous release's tag —
+  cloned without tags, shallow, or a fork or mirror whose newest tag is older
+  than the release `CHANGELOG.md` dates newest — is not a first launch and is
+  not measured against an older release: `parity.refused` names the release
+  `CHANGELOG.md` dates and the remedy (fetch the tags and history, or
+  `--fetch-baseline`, whose verified archive is then the only baseline, since
+  there is no tag to render at). Between a cut and its tag the checkout reads
+  the same way — `CHANGELOG.md` dates the release just cut, which has no tag
+  yet — so the preview refuses there too, naming the release as not tagged yet
+  and `--baseline <newest tag>`, which measures against the release before it;
+  the cut itself diffs before it writes its heading. `parity.entries` lists
+  every path `added`, `changed` or `removed` with its `digest` and
+  `baseline_digest` (SHA-256); report the counts and the paths. The two stamped manifests are compared with their
+  version keys removed (`parity.normalised`), and against a release asset the
+  catalog, which the archive omits by construction, is named in
+  `parity.not_compared`. A render at the tag is a shared clone of this checkout
+  checked out at the tag in a private temporary directory, removed afterwards:
+  a few seconds and a working tree the size of the tag's, on every preview and
+  on every cut that renders a payload, which has no opt-out. A baseline that
+  cannot be read sets `parity.refused` with a `refusal_reason` and lands in
+  `would_refuse_on`; it is never an empty diff. A `--baseline` that is not a release tag in this checkout exits 2 by
+  name.
+  `--fetch-baseline` is the one network read the preview makes, and only on that
+  explicit ask: it fetches the tag's `checksums.txt` and plugin archive from the
+  repository `plugin.json` names, announces each fetch on stderr, refuses an
+  archive whose digest the release's own `checksums.txt` does not vouch for, and
+  falls back to a render at the tag, saying so, when the release publishes no
+  archive. Its connection honours no proxy or CA variable (`HTTPS_PROXY`,
+  `SSL_CERT_FILE` and their kin), as `abcd update`'s does, and every one that was
+  set is named in `parity.env_ignored`, on the plain preview, and in the refusal
+  when the fetch fails; the environment itself is left as it is. Never add the
+  flag on the user's behalf.
 - `gates` — every release gate and its disposition. Report the whole array,
   not a summary. Each row carries a `status` (`ran`; `not_armed` where the
   repository has not adopted what the gate reads, such as the documentation
@@ -435,7 +488,8 @@ only a completed cut has a version to stamp.
 given `--payload-dir`, or the repository publishes its plugin archive — runs
 the same gate suite the preview reports, before anything is written: the
 secret/PII scan, marker-block sanity, change narration in the shipped docs, the
-dirty tree, the installability smoke, and the warn-tier rows. A file the bundler
+dirty tree, the installability smoke at both tiers (the deep tier always runs in
+the cut), the parity diff against the anchor tag, and the warn-tier rows. A file the bundler
 rejected stops it at once; otherwise it refuses with every finding from every
 gate together (exit 2). It writes its pre-flight report whatever the verdict; the refusal names where it landed, and `--json` carries it as
 `preflight_report`. A working tree with uncommitted changes refuses unless the
@@ -445,7 +499,13 @@ override, with every path it carried, in the report (`allowed_dirty` in
 and never the archive pin's refusal of an uncommitted payload file. On a ship
 that renders nothing it is an operand error, because there is no gate to
 waive. Relay the refusal and let the user decide; do not add `--allow-dirty` on
-their behalf.
+their behalf. The ship's report, its `--json` (`parity`, `deep_smoke`) and its
+pre-flight report carry the parity diff and the deep tier's verdict. A page that
+would not load, or an anchor tag whose payload cannot be read, refuses the cut
+before anything is written. `--fetch-baseline` reads the anchor tag's published
+archive instead of rendering the tag, under the same verification the preview
+applies; like `--allow-dirty` it is an operand error on a ship that renders
+nothing, and it is the user's call, never yours.
 
 The binary re-derives the cut, then proves the prose describes it — the
 **completeness bijection**: the set of record ids the payload cites must equal

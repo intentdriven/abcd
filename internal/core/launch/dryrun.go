@@ -36,6 +36,13 @@ type DryRunRequest struct {
 	// the same reason as Citations. Nil means the repository has not armed a
 	// docs-lint configuration, which the gate reports as such.
 	DocAudit *DocAuditPreflight
+	// Parity is the parity diff's input: the previous release's tag and, when
+	// the operator asked for it, the release-asset fetcher. Nil runs no diff.
+	Parity *ParityInput
+	// DeepSmoke is the isolated page runner the installability smoke's deep
+	// tier renders every page through. Nil keeps the preview at the light tier:
+	// the deep tier is opt-in here and always on in the cut.
+	DeepSmoke PageRunner
 }
 
 // GateSummary records one gate's disposition.
@@ -55,15 +62,19 @@ type GateSummary struct {
 
 // DryRunReport is the full dry-run preview. No artefact is written.
 type DryRunReport struct {
-	Version       string             `json:"version"`
-	Bundle        Bundle             `json:"bundle"`
-	Scan          scanner.ScanResult `json:"scan"`
-	Lockstep      LockstepResult     `json:"lockstep"`
-	Retention     RetentionPlan      `json:"retention"`
-	Smoke         SmokeReport        `json:"smoke"`
-	Gates         []GateSummary      `json:"gates"`
-	WouldPublish  bool               `json:"would_publish"` // always false in dry-run
-	WouldRefuseOn []string           `json:"would_refuse_on,omitempty"`
+	Version   string             `json:"version"`
+	Bundle    Bundle             `json:"bundle"`
+	Scan      scanner.ScanResult `json:"scan"`
+	Lockstep  LockstepResult     `json:"lockstep"`
+	Retention RetentionPlan      `json:"retention"`
+	Smoke     SmokeReport        `json:"smoke"`
+	// DeepSmoke is the deep installability tier, present when it was asked for.
+	DeepSmoke *DeepSmokeReport `json:"deep_smoke,omitempty"`
+	// Parity is the file-level diff against the previous release's payload.
+	Parity        *ParityReport `json:"parity,omitempty"`
+	Gates         []GateSummary `json:"gates"`
+	WouldPublish  bool          `json:"would_publish"` // always false in dry-run
+	WouldRefuseOn []string      `json:"would_refuse_on,omitempty"`
 	// Warnings are the warn-tier concerns: surfaced, refusing nothing unless
 	// the repository configures the suite strict.
 	Warnings []string `json:"warnings,omitempty"`
@@ -131,7 +142,20 @@ func DryRun(req DryRunRequest) (DryRunReport, error) {
 		receiptGate(req.Receipts),
 	)
 
+	if req.DeepSmoke != nil {
+		deep := smokeDeepOverBundle(bundle, req.DeepSmoke)
+		report.DeepSmoke = &deep
+		report.Gates = append(report.Gates, deepSmokeGate(&deep))
+	}
+	if req.Parity != nil {
+		parity := PayloadParity(req.RepoRoot, bundle, *req.Parity)
+		report.Parity = &parity
+		report.Gates = append(report.Gates, parityGate(&parity))
+	}
+
 	report.WouldRefuseOn = wouldRefuseOn(bundle, scan, lockstep, report.Retention, smoke)
+	report.WouldRefuseOn = append(report.WouldRefuseOn, deepSmokeRefusals(report.DeepSmoke)...)
+	report.WouldRefuseOn = append(report.WouldRefuseOn, parityRefusals(report.Parity)...)
 	report.WouldRefuseOn = append(report.WouldRefuseOn, suite.Refusals...)
 	report.WouldRefuseOn = append(report.WouldRefuseOn, citationRefusals(req.Citations)...)
 	report.Warnings = suite.Warnings
@@ -178,7 +202,7 @@ func computeRetentionForReport(version string, req DryRunRequest) RetentionPlan 
 		// A shallow checkout's listing SUCCEEDS but holds only the tags that
 		// were fetched, so it is not the release set either
 		// (iss-2609251238184553).
-		if shallow, err := gitutil.Run(req.RepoRoot, "rev-parse", "--is-shallow-repository"); err != nil || shallow != "false" {
+		if shallow, err := ShallowCheckout(req.RepoRoot); err != nil || shallow {
 			reason := "the checkout is shallow, so its tag listing may hold only the tags that were fetched"
 			if err != nil {
 				reason = "whether the checkout is shallow could not be read: " + err.Error()
@@ -191,6 +215,19 @@ func computeRetentionForReport(version string, req DryRunRequest) RetentionPlan 
 		existing = tags
 	}
 	return ComputeRetention(pub, existing)
+}
+
+// ShallowCheckout reports whether the checkout at repoRoot is a shallow clone.
+// A shallow clone's tag listing succeeds while holding only the tags that were
+// fetched, so neither the retention plan nor the parity diff's baseline may
+// read that listing as the release set. An error is a checkout whose shallowness
+// git could not report, which a caller treats as shallow.
+func ShallowCheckout(repoRoot string) (bool, error) {
+	out, err := gitutil.Run(repoRoot, "rev-parse", "--is-shallow-repository")
+	if err != nil {
+		return true, err
+	}
+	return out != "false", nil
 }
 
 // scanRefusals collects the secret/PII scan gate's refusals: scanner
