@@ -3,7 +3,6 @@ package capture
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -168,28 +167,26 @@ func IssueDrift(req IssueDriftRequest) (IssueDriftResult, error) {
 // writeDriftReceipt allocates this run's receipt directory and writes the
 // report into it, returning its repo-relative path.
 func writeDriftReceipt(repoRoot string, now time.Time, res *IssueDriftResult) (string, error) {
-	base := filepath.Join(repoRoot, driftReceiptRelDir)
-	stamp := "issue-drift-" + now.UTC().Format("20060102T150405Z")
-	dir := filepath.Join(base, stamp)
-	for n := 1; ; n++ {
-		if _, err := os.Lstat(dir); os.IsNotExist(err) {
-			break
-		}
-		if n >= 1000 {
-			return "", fmt.Errorf("issue drift: could not allocate a unique receipt directory for %s", stamp)
-		}
-		dir = filepath.Join(base, fmt.Sprintf("%s-%03d", stamp, n))
-	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	// The local tier's run-log create path: every level from the checkout root
+	// down is proved real before the receipt directory is created under it, so a
+	// tier the checkout carries as a committed symlink is refused rather than
+	// followed out of the checkout.
+	dir, err := fsutil.CreateRunDir(repoRoot, filepath.ToSlash(driftReceiptRelDir),
+		"issue-drift-"+now.UTC().Format("20060102T150405Z"), 0o755)
+	if err != nil {
 		return "", fmt.Errorf("issue drift: %w", err)
 	}
-	path := filepath.Join(dir, "report.json")
-	res.ReceiptPath = fsutil.RepoRel(repoRoot, path)
+	res.ReceiptPath = fsutil.RepoRel(repoRoot, filepath.Join(dir, "report.json"))
 	data, err := json.MarshalIndent(res, "", "  ")
 	if err != nil {
 		return "", err
 	}
-	if err := fsutil.WriteFileAtomicPreserveMode(path, append(data, '\n')); err != nil {
+	root, err := fsutil.OpenRealDir(dir)
+	if err != nil {
+		return "", fmt.Errorf("issue drift: %w", err)
+	}
+	defer root.Close()
+	if err := fsutil.WriteFileAtomicInRoot(root, "report.json", append(data, '\n'), 0o644); err != nil {
 		return "", fmt.Errorf("issue drift: %w", err)
 	}
 	return res.ReceiptPath, nil

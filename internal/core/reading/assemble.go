@@ -725,10 +725,26 @@ func writeArtefacts(repoRoot, outDir, label string, b Bundle, m Manifest) error 
 	if label == "" {
 		label = outDir
 	}
+	// A run directory named inside the repository — the default one in the
+	// local tier above all — is created one proved level at a time: a level the
+	// checkout carries as a committed symlink is refused rather than followed out
+	// of it. A directory named outside the repository (absolute, or climbing out
+	// of it) is the operator's own and is taken as given.
+	rel := path.Clean(filepath.ToSlash(outDir))
+	inRepo := !filepath.IsAbs(outDir) && fsutil.ValidRelPath(rel)
+	if inRepo && path.Dir(rel) != "." {
+		if err := fsutil.EnsureRealDirAll(repoRoot, path.Dir(rel), 0o755); err != nil {
+			return fmt.Errorf("reading: creating the run directory: %w", err)
+		}
+	}
 	if err := requireEmptyDir(label, dir); err != nil {
 		return err
 	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if inRepo {
+		if err := fsutil.EnsureRealDir(dir, 0o755); err != nil {
+			return fmt.Errorf("reading: creating the run directory: %w", err)
+		}
+	} else if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("reading: creating the run directory: %w", err)
 	}
 	bundleRaw, err := EncodeBundle(b)
