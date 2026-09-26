@@ -3,6 +3,7 @@ package reading
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -713,7 +714,8 @@ func resolveOutDir(req AssembleRequest, runID string) (string, bool) {
 
 // writeArtefacts writes the assembled input and the manifest as two separate
 // files. A relative output directory is taken against the repository root; an
-// absolute one is used as given.
+// absolute one is used as spelled. Either is proved against a symlinked
+// ancestor inside a checkout before anything is created.
 func writeArtefacts(repoRoot, outDir, label string, b Bundle, m Manifest) error {
 	dir := outDir
 	if !filepath.IsAbs(dir) {
@@ -725,11 +727,27 @@ func writeArtefacts(repoRoot, outDir, label string, b Bundle, m Manifest) error 
 	if label == "" {
 		label = outDir
 	}
-	// A run directory named inside the repository — the default one in the
-	// local tier above all — is created one proved level at a time: a level the
-	// checkout carries as a committed symlink is refused rather than followed out
-	// of it. A directory named outside the repository (absolute, or climbing out
-	// of it) is the operator's own and is taken as given.
+	// Every spelling is proved first, whatever it looks like: an absolute path,
+	// or one climbing out and back in (../<repo>/...), can still name a
+	// directory inside this checkout or another, and a level a checkout carries
+	// as a committed symlink is refused rather than followed out of it
+	// (iss-2609262231500173). Outside every checkout the directory is the
+	// operator's own and is taken as given (gitutil.ProveOperandDir).
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return fmt.Errorf("reading: resolving the output directory %s: %w", label, err)
+	}
+	if err := gitutil.ProveOperandDir(abs); err != nil {
+		var oe *gitutil.OperandError
+		if errors.As(err, &oe) {
+			return fmt.Errorf("reading: the output directory %s is reached through %s inside the checkout %s, which is a symlink or a file rather than a real directory; refusing to follow it: %w",
+				label, oe.Level, filepath.Base(oe.Checkout), oe.Err)
+		}
+		return fmt.Errorf("reading: proving the output directory %s: %w", label, err)
+	}
+	// A run directory named inside the repository by a relative path — the
+	// default one in the local tier above all — is then created one level at a
+	// time, each level re-checked as it is created (fsutil.EnsureRealDirAll).
 	rel := path.Clean(filepath.ToSlash(outDir))
 	inRepo := !filepath.IsAbs(outDir) && fsutil.ValidRelPath(rel)
 	if inRepo && path.Dir(rel) != "." {

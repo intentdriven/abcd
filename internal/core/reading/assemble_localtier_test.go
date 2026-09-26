@@ -44,3 +44,48 @@ func TestAssembleRefusesASymlinkedLocalTierAncestor(t *testing.T) {
 		})
 	}
 }
+
+// TestAssembleRefusesAnOutSpelledIntoTheCheckoutThroughALink: an --out that is
+// absolute, or that climbs out of the checkout and back in, is not therefore
+// outside it. Either spelling of a directory below a committed link in the
+// local tier is refused, and nothing lands at the link's target
+// (iss-2609262231500173). A plain absolute directory outside every checkout is
+// the operator's own and is still written.
+func TestAssembleRefusesAnOutSpelledIntoTheCheckoutThroughALink(t *testing.T) {
+	root := fixtureRepo(t)
+	outside := t.TempDir()
+	link := filepath.Join(root, ".abcd", ".work.local", "scratch")
+	if err := os.MkdirAll(filepath.Dir(link), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, link); err != nil {
+		t.Fatal(err)
+	}
+	for _, sp := range []struct{ name, out string }{
+		{"absolute", filepath.Join(link, "run")},
+		{"climbing-in", filepath.Join("..", filepath.Base(root), ".abcd", ".work.local", "scratch", "run")},
+	} {
+		out := sp.out
+		t.Run(sp.name, func(t *testing.T) {
+			_, err := Assemble(AssembleRequest{RepoRoot: root, Position: PositionWidening, Target: "HEAD", OutDir: out})
+			if err == nil {
+				t.Fatalf("assemble --out %s reached through a symlink inside the checkout returned nil; it must refuse", out)
+			}
+			if !errors.Is(err, fsutil.ErrNotRealDir) {
+				t.Errorf("assemble refused for the wrong reason: %v", err)
+			}
+			if entries, _ := os.ReadDir(outside); len(entries) != 0 {
+				t.Errorf("assemble wrote %d entr(y|ies) at the link's target outside the checkout", len(entries))
+			}
+		})
+	}
+	t.Run("outside every checkout", func(t *testing.T) {
+		out := filepath.Join(t.TempDir(), "nested", "run")
+		if _, err := Assemble(AssembleRequest{RepoRoot: root, Position: PositionWidening, Target: "HEAD", OutDir: out}); err != nil {
+			t.Fatalf("an absolute --out outside every checkout was refused: %v", err)
+		}
+		if _, err := os.Stat(filepath.Join(out, ManifestFileName)); err != nil {
+			t.Errorf("the manifest was not written: %v", err)
+		}
+	})
+}
