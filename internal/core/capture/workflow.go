@@ -11,6 +11,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/changelog"
 	"github.com/intentdriven/abcd/internal/core/grounds"
+	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/provenance"
 	"github.com/intentdriven/abcd/internal/core/relink"
@@ -609,18 +610,43 @@ func transition(repoRoot, issuesRoot, issID, verb, field, note string, extra []k
 // transition moved it, through the one primitive every record-moving verb
 // shares. A ledger outside the repository (a custom issues root) is linked from
 // nowhere the repository's links can reach, so there is nothing to repoint.
+//
+// The caller holds the ledger lock, and the repoint also rewrites intents that
+// link to the issue, so it runs under the intent store's lock as well, taken
+// INSIDE the ledger lock — the one order every path holding both takes
+// (intent.WithMintLock). Outside it, an intent writer landing on a linking
+// intent between the repoint's read and its write was erased
+// (iss-2609261254247117).
 func repointMovedIssue(repoRoot, src, dst string) ([]relink.Rewrite, string) {
 	from, err1 := filepath.Rel(repoRoot, src)
 	to, err2 := filepath.Rel(repoRoot, dst)
 	if err1 != nil || err2 != nil || !filepath.IsLocal(from) || !filepath.IsLocal(to) {
 		return nil, ""
 	}
-	rw, err := relink.Repoint(repoRoot, []relink.Move{{From: from, To: to, MovedNow: true}})
-	if err != nil {
-		return rw, err.Error()
+	var (
+		rw    []relink.Rewrite
+		rpErr error
+	)
+	if err := intent.WithMintLock(repoRoot, func() error {
+		if duringIssueRepoint != nil {
+			duringIssueRepoint()
+		}
+		rw, rpErr = relink.Repoint(repoRoot, []relink.Move{{From: from, To: to, MovedNow: true}})
+		return nil
+	}); err != nil {
+		return nil, err.Error()
+	}
+	if rpErr != nil {
+		return rw, rpErr.Error()
 	}
 	return rw, ""
 }
+
+// duringIssueRepoint is a test seam, nil outside tests: called with both the
+// ledger lock and the intent store's lock held, before the repoint reads
+// anything, so a test can prove the order the two are taken in and that a
+// concurrent intent writer waits for the repoint's write.
+var duringIssueRepoint func()
 
 // removeSourceHook, when non-nil, replaces os.Remove(src) inside
 // commitTransition. It is a test-only seam (nil in production, zero overhead)

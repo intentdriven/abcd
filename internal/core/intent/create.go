@@ -1,7 +1,9 @@
 package intent
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -630,4 +632,32 @@ func withIntentMintLock(repoRoot string, fn func() error) error {
 	defer syscall.Flock(fd, syscall.LOCK_UN)
 
 	return fn()
+}
+
+// WithMintLock runs fn while holding the intent store's lock — the one
+// withIntentMintLock takes, not a second one — for a caller OUTSIDE this
+// package that rewrites intent records: the link repoint after a ledger
+// record moves, and capture's migration of the promote join's back-edge
+// (iss-2609261254247117, iss-2609261941039204). Every intent writer here reads
+// and writes under this lock, so a caller writing an intent record without it
+// can erase an edit landing between its read and its write.
+//
+// A tree with no intent store runs fn WITHOUT the lock: taking it creates the
+// store, and a verb that writes no intent must not plant an empty one — the
+// verdict ingest makes the same refusal without the lock for the same reason.
+// With no store there is no intent record for fn to race.
+//
+// It is NOT reentrant — an flock blocks a second acquisition in the same
+// process until the timeout — so a caller must not hold it across any exported
+// verb of this package that writes, every one of which takes it internally.
+//
+// Lock order: the capture ledger lock, THEN this one. capture takes this lock
+// inside its ledger lock, and nothing may take them the other way round. This
+// package cannot take the ledger lock at all (capture imports it, so it cannot
+// import capture), which is what keeps the order one-way inside the core.
+func WithMintLock(repoRoot string, fn func() error) error {
+	if _, err := os.Lstat(filepath.Join(repoRoot, IntentsRelDir)); errors.Is(err, fs.ErrNotExist) {
+		return fn()
+	}
+	return withIntentMintLock(repoRoot, fn)
 }

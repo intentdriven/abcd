@@ -128,6 +128,14 @@ type Rewrite struct {
 // A move naming a path that is not a clean repo-relative slash path is refused
 // before anything is read. An error part-way through the walk returns the
 // rewrites already written alongside it, so a caller can report both.
+//
+// Every rewrite is a read-modify-write, and this package takes no lock: it
+// cannot import the intent store that owns one (the store imports it). So the
+// CALLER holds the intent store's lock across the call — intent's
+// repointUnderLock for the verbs that move an intent or a spec, and
+// intent.WithMintLock, inside the ledger lock, for an issue transition — or an
+// intent writer landing on a linking record between the read and the write is
+// erased (iss-2609261254247117).
 func Repoint(repoRoot string, moves []Move) ([]Rewrite, error) {
 	root, err := os.OpenRoot(repoRoot)
 	if err != nil {

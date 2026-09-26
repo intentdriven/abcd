@@ -315,7 +315,7 @@ func Plan(repoRoot, intentID string, opts PlanOptions) (PlanResult, error) {
 	// Repoint every link that named the draft's path, as a close does for the
 	// records it moves (iss-2609250846525896). Reported, not raised: the record
 	// is planned and the plan stands.
-	res.Relinked, err = relink.Repoint(repoRoot, []relink.Move{{From: draftRel, To: plannedRel, MovedNow: true}})
+	res.Relinked, err = repointUnderLock(repoRoot, []relink.Move{{From: draftRel, To: plannedRel, MovedNow: true}})
 	if err != nil {
 		res.RelinkError = err.Error()
 	}
@@ -1034,7 +1034,7 @@ func Reconcile(repoRoot, specID, impact string, remainder RemainderRequest) (Rec
 	// the folder it left: a record an earlier run moved may have been edited
 	// where it is now. A failure is reported, not raised: the records have moved
 	// and the close stands.
-	res.Relinked, err = relink.Repoint(repoRoot, closeMoves(res, specMovedNow))
+	res.Relinked, err = repointUnderLock(repoRoot, closeMoves(res, specMovedNow))
 	if err != nil {
 		res.RelinkError = err.Error()
 	}
@@ -1053,6 +1053,39 @@ func Reconcile(repoRoot, specID, impact string, remainder RemainderRequest) (Rec
 		}
 	}
 	return res, nil
+}
+
+// duringRepoint is a test seam, nil outside tests: called inside the hold
+// repointUnderLock takes, before the repoint reads anything, so a test can
+// start a concurrent intent writer there and prove it waits for the repoint's
+// write instead of landing between its read and its write.
+var duringRepoint func()
+
+// repointUnderLock is relink.Repoint under the intent store's lock. The repoint
+// is a read-modify-write of every record that links to a moved path, intents
+// among them, so outside the lock an intent writer (a hold, a condition
+// disposition, a verdict ingest, a related-issue edge) landing on a linking
+// record between the repoint's read and its write was erased
+// (iss-2609261254247117). Every record-moving verb calls it AFTER its own hold
+// is released — the lock is not reentrant — and reports a repoint failure
+// rather than raising it, as before: the record has moved and the verb stands.
+// A lock that cannot be taken is reported the same way, with nothing
+// repointed.
+func repointUnderLock(repoRoot string, moves []relink.Move) ([]relink.Rewrite, error) {
+	var (
+		rewrites []relink.Rewrite
+		rpErr    error
+	)
+	if err := withIntentMintLock(repoRoot, func() error {
+		if duringRepoint != nil {
+			duringRepoint()
+		}
+		rewrites, rpErr = relink.Repoint(repoRoot, moves)
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	return rewrites, rpErr
 }
 
 // closeMoves names the renames a close stands for, derived from where the two

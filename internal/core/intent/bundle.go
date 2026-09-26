@@ -195,7 +195,7 @@ func PlanBundle(repoRoot string, ids []string, opts BundleOptions) (BundleResult
 		it.Path = m.plannedRel
 		res.Members = append(res.Members, PlanResult{Intent: it, Spec: sp, ConditionsStamped: m.stamped, ImpactStamped: m.impact})
 	}
-	relinked, err := relink.Repoint(repoRoot, moves)
+	relinked, err := repointUnderLock(repoRoot, moves)
 	res.Relinked = relinked
 	if err != nil {
 		res.RelinkError = err.Error()
@@ -546,7 +546,7 @@ func reconcileBundle(repoRoot string, store spec.Store, sp spec.Spec, impact str
 			m.ReceiptID, m.ReceiptStatus = emit.ReceiptID, emit.Status
 		}
 	}
-	relinked, err := relink.Repoint(repoRoot, moves)
+	relinked, err := repointUnderLock(repoRoot, moves)
 	res.Relinked = relinked
 	if err != nil {
 		res.RelinkError = err.Error()

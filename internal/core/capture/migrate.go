@@ -83,8 +83,9 @@ type migrateRecord struct {
 //
 // Nothing else moves: a loose `related_intents` entry is kept where it is, and a
 // record carrying no retired key and joined to nothing that did is left
-// byte-identical. The run is idempotent. It holds the ledger lock for the whole
-// apply, so no verb writes the ledger between the read and the rewrite.
+// byte-identical. The run is idempotent. It holds the ledger lock and, inside it,
+// the intent store's lock for the whole apply, so no verb writes either store
+// between the read and the rewrite.
 func Migrate(req MigrateRequest) (MigrateResult, error) {
 	repoRoot, issuesRoot, err := resolveRoots(req.RepoRoot, req.IssuesRoot)
 	if err != nil {
@@ -100,6 +101,9 @@ func Migrate(req MigrateRequest) (MigrateResult, error) {
 		res.Changes, res.Notes = migratePlan(records)
 		if !req.Apply {
 			return nil
+		}
+		if afterMigrateScan != nil {
+			afterMigrateScan()
 		}
 		for _, r := range records {
 			if r.retired == "" && len(r.additions) == 0 {
@@ -126,7 +130,15 @@ func Migrate(req MigrateRequest) (MigrateResult, error) {
 		if err := mutationPreamble(repoRoot, issuesRoot); err != nil {
 			return MigrateResult{}, err
 		}
-		err = withLedgerLock(repoRoot, issuesRoot, run)
+		// The run rewrites intent records too (the related_issues back-edge,
+		// in any bucket), so the scan and every write run under the intent
+		// store's lock as well, taken INSIDE the ledger lock — the one order
+		// every path holding both takes (intent.WithMintLock). Under the ledger
+		// lock alone, an intent writer landing between the scan and the write
+		// was erased (iss-2609261941039204).
+		err = withLedgerLock(repoRoot, issuesRoot, func() error {
+			return intent.WithMintLock(repoRoot, run)
+		})
 	} else {
 		err = run()
 	}
@@ -138,6 +150,12 @@ func Migrate(req MigrateRequest) (MigrateResult, error) {
 	}
 	return res, nil
 }
+
+// afterMigrateScan is a test seam, nil outside tests: called on an apply
+// between the scan and the first write, with every lock the apply takes held,
+// so a test can land a concurrent intent writer in that window and prove it
+// waits rather than being erased by the write that follows.
+var afterMigrateScan func()
 
 // migrateScan reads every record that can carry either half of the join. It
 // reads RAW frontmatter rather than through the ledger reader, because the
