@@ -18,6 +18,8 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	"github.com/intentdriven/abcd/internal/core/mdrecord"
 )
 
 // UnsupportedError is a markdown construct outside the rendered subset.
@@ -155,6 +157,10 @@ func (r *Renderer) RenderBlocks(path string, blocks []Block) (string, error) {
 // tilde run, or a backtick run longer than three, at any indent.
 var unrenderedFenceRe = regexp.MustCompile("^[ \t]*(~{3,}|`{4,})")
 
+// indentedFenceRe matches a three-backtick fence opener at up to three spaces
+// of indent. Four or more spaces is an indented code block, refused on its own.
+var indentedFenceRe = regexp.MustCompile("^ {0,3}```")
+
 // RenderBlock renders one top-level block.
 func (r *Renderer) RenderBlock(path string, blk Block) (string, error) {
 	at := Source{Path: path, Line: blk.Line}
@@ -163,15 +169,38 @@ func (r *Renderer) RenderBlock(path string, blk Block) (string, error) {
 
 	// The walk that cut this block reads fences by mdrecord's rule, tildes and
 	// longer backtick runs included, and this renderer renders one form: a
-	// three-backtick run at column 0. Any other form arriving here would render
-	// as a paragraph, delimiters and code inlined into prose, with no error, so
-	// it is refused. A three-backtick fence's own body is code and is not read
-	// (iss-2609251514129841).
-	if !strings.HasPrefix(first, "```") || strings.HasPrefix(first, "````") {
+	// three-backtick run at up to three spaces of indent. Any other form
+	// arriving here would render as a paragraph, delimiters and code inlined
+	// into prose, with no error, so it is refused. A three-backtick fence's own
+	// body is code and is not read (iss-2609251514129841).
+	opensFence := indentedFenceRe.MatchString(first) && !unrenderedFenceRe.MatchString(first)
+	if !opensFence {
 		for i, ln := range lines {
 			if unrenderedFenceRe.MatchString(ln) {
 				return "", &UnsupportedError{at.Path, at.Line + i, "fenced code block opened by a tilde or a run of four or more backticks",
 					"only a three-backtick fence renders; any other opener renders as a paragraph"}
+			}
+		}
+	}
+
+	// A three-backtick opener indented one to three spaces opens a fence, by
+	// CommonMark and by the walk that cut this block: its lines lose up to that
+	// many spaces of indent and it renders as the fence at the margin does. It
+	// arrives here most often as the fence of a loose list item, cut from its
+	// item by the blank line above it. Rendered as a paragraph it inlined the
+	// delimiters and the code into prose (iss-2609251600023777).
+	if opensFence && !strings.HasPrefix(first, "```") {
+		return r.indentedFence(path, blk, lines)
+	}
+
+	// An indented opener below the first line of a block that is not a list —
+	// whose items the list renderer dedents and reads fences in — is a fence
+	// without a blank line before it, refused as the one at the margin is below.
+	if !opensFence && !IsUnorderedItem(first) && !OrderedItemRe.MatchString(first) {
+		for i, ln := range lines {
+			if indentedFenceRe.MatchString(ln) {
+				return "", &UnsupportedError{at.Path, at.Line + i, "fenced code block without a blank line before it",
+					"a fence opens its own block; without the blank line the code renders as part of the paragraph above"}
 			}
 		}
 	}
@@ -285,6 +314,33 @@ func (r *Renderer) fence(at Source, lines []string) (string, error) {
 	return `<div class="cmd"><pre><code` + cls + `>` + EscapeText(raw) + "\n" +
 		`</code></pre><button class="copy" data-copy="` + EscapeAttr(raw) +
 		`" data-copied="` + EscapeAttr(r.Labels.Copied) + `">` + EscapeText(r.Labels.Copy) + `</button></div>`, nil
+}
+
+// indentedFence renders a block opened by a three-backtick fence indented one
+// to three spaces. Each of the fence's lines loses up to the opener's indent
+// (CommonMark's rule for fenced content), and the fence then renders as one at
+// the margin does. The walk ends a block after a fence only when the fence
+// closes at the margin, so any lines after an indented closer run on in this
+// block; they render as the block they are.
+func (r *Renderer) indentedFence(path string, blk Block, lines []string) (string, error) {
+	end := len(lines)
+	if fs := mdrecord.Read(lines, mdrecord.TopLevel).Fences; len(fs) > 0 && fs[0].Start == 0 {
+		end = fs[0].End
+	}
+	n := IndentOf(lines[0])
+	fence := make([]string, end)
+	for i, ln := range lines[:end] {
+		fence[i] = ln[min(n, IndentOf(ln)):]
+	}
+	h, err := r.fence(Source{Path: path, Line: blk.Line}, fence)
+	if err != nil || end == len(lines) {
+		return h, err
+	}
+	rest, err := r.RenderBlock(path, Block{Text: strings.Join(lines[end:], "\n"), Line: blk.Line + end})
+	if err != nil {
+		return "", err
+	}
+	return h + rest, nil
 }
 
 // heading renders an ATX heading.
