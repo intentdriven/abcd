@@ -239,6 +239,16 @@ before that point and leave no refusal record at all. That is deliberate: a refu
 record is a record about a run, and a payload that has not yet shown which run it
 belongs to has nothing to be recorded against.
 
+One refusal after that point is deliberately unrecorded. An item whose pattern or
+body field cites a record id that names no record — wherever the repository's
+record-lint gates prose citations in the reading-record store, which reads every
+record the ingest would write — refuses the whole run, naming the item, the field
+and the id, before the orphan sweep and before anything is staged. It is the gate
+the verdict ingest asks, reached through the same registration. Recording it would
+give the run an outcome, and the same run re-worded would then be refused as a
+rerun; left parked, it is ingested again once its prose describes the record
+rather than citing an id that does not exist.
+
 Writes are staged. Nothing durable is written or deleted until the whole payload
 validates; the reading records land as one batch; and the run metadata is written
 **last**, as the commit marker, so a run without one never happened. An interrupted

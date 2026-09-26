@@ -923,7 +923,11 @@ issue for the receipt (likewise: a request an earlier binary wrote no longer
 matches, so re-emit and run the pass again), a class or severity outside its set, an end whose path is not a corpus
 document or whose quote is not in it (twelve characters at least), and a
 finding with fewer or more than two ends or one that repeats another. A scoped
-run also refuses a finding with no end in its intent.
+run also refuses a finding with no end in its intent. And a finding it would
+file whose text cites a record id that names no record is refused, naming the
+finding and the id, wherever the repository's record-lint gates prose
+citations in the issue ledger: every finding is checked before the first is
+filed, so re-word the prose to describe the record and ingest again.
 
 A payload that validates is written in two places. Each finding is filed as one
 issue (`inconsistency`, from an `agent-finding`, located at its first end, with

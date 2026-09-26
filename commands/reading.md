@@ -338,6 +338,16 @@ a wrong `_type`, a run id that resolves to nothing, a manifest hash that
 disagrees — writes nothing durable anywhere, because there is no proven run to
 record against.
 
+**An item citing a record id that names no record refuses the whole run, and
+writes nothing.** Wherever the repository's record-lint gates prose citations in
+the reading-record store, an item whose pattern or body field cites an `adr`,
+`itd`, `iss` or `spc` id that names no record refuses the ingest, naming the
+item, the field and the id — before the orphan sweep and before anything is
+staged. No refusal record is written, because one would give the run an outcome
+and turn away the same run re-worded: the run stays parked, so re-word the prose
+to describe the record rather than cite an id that does not exist, and ingest it
+again.
+
 **A rerun is a new run with a new run id, never an amendment.** Once a run id
 has an outcome — a commit marker or a refusal record — ingesting it again is
 refused. Assemble again, and ingest the run that assembly parked.
