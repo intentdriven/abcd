@@ -6,8 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"os/exec"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -608,5 +611,96 @@ func TestUnescapeJSONText(t *testing.T) {
 		if got := unescapeJSONText(c.in); got != c.want {
 			t.Errorf("unescapeJSONText(%q) = %q, want %q", c.in, got, c.want)
 		}
+	}
+}
+
+// proxyChildEnv carries the base URL a TestProxyHelperProcess child calls;
+// the child runs only when it is set.
+const proxyChildEnv = "OPENAIAPI_TEST_PROXY_CHILD_BASE"
+
+// TestALocalhostBaseURLIsNeverProxiedWhateverItsCase: plain http is admitted
+// only to this machine, and a call to this machine is never proxied, however
+// the base URL spells localhost. net/http's proxy exclusion compares the host
+// with "localhost" case-sensitively, so a base URL spelled LOCALHOST would
+// otherwise send the bearer key through HTTP_PROXY in cleartext. net/http
+// reads the proxy variables once per process, so each call runs in a child
+// process with HTTP_PROXY and HTTPS_PROXY aimed at a fake proxy that records
+// whatever reaches it.
+func TestALocalhostBaseURLIsNeverProxiedWhateverItsCase(t *testing.T) {
+	if testing.Short() {
+		t.Skip("runs child processes")
+	}
+	var proxied atomic.Int32
+	var proxiedAuth atomic.Pointer[string]
+	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		proxied.Add(1)
+		a := r.Method + " " + r.Host + " " + r.Header.Get("Authorization")
+		proxiedAuth.Store(&a)
+		w.WriteHeader(http.StatusBadGateway)
+	}))
+	t.Cleanup(proxy.Close)
+	provider := newFake(t, ok("m", `{"verdict":"yes"}`))
+	port := provider.srv.Listener.Addr().(*net.TCPAddr).Port
+
+	var env []string
+	for _, kv := range os.Environ() {
+		switch strings.ToUpper(strings.SplitN(kv, "=", 2)[0]) {
+		case "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "ALL_PROXY", "REQUEST_METHOD", proxyChildEnv:
+			continue
+		}
+		env = append(env, kv)
+	}
+	env = append(env, "HTTP_PROXY="+proxy.URL, "HTTPS_PROXY="+proxy.URL)
+
+	for _, c := range []struct {
+		host      string
+		scheme    string
+		wantReply bool
+	}{
+		{"localhost", "http", true},
+		{"LOCALHOST", "http", true},
+		{"LocalHost", "http", true},
+		{"LOCALHOST", "https", false}, // the fake speaks no TLS; only the route is judged
+	} {
+		base := fmt.Sprintf("%s://%s:%d/api/v1", c.scheme, c.host, port)
+		t.Run(c.scheme+" "+c.host, func(t *testing.T) {
+			before, calls := proxied.Load(), provider.calls.Load()
+			cmd := exec.Command(os.Args[0], "-test.run=^TestProxyHelperProcess$", "-test.count=1")
+			cmd.Env = append(append([]string(nil), env...), proxyChildEnv+"="+base)
+			out, err := cmd.CombinedOutput()
+			if n := proxied.Load() - before; n != 0 {
+				t.Fatalf("%s was sent through the proxy (%d request(s), last %q); a call to this machine is never proxied\n%s",
+					base, n, *proxiedAuth.Load(), out)
+			}
+			if !c.wantReply {
+				return
+			}
+			if err != nil {
+				t.Fatalf("child: %v\n%s", err, out)
+			}
+			if provider.calls.Load() == calls {
+				t.Fatalf("%s reached no provider\n%s", base, out)
+			}
+			if got := provider.last.Load().auth; got != "Bearer "+testKey {
+				t.Fatalf("the provider saw Authorization %q, want the bearer key sent to it directly", got)
+			}
+		})
+	}
+}
+
+// TestProxyHelperProcess is TestALocalhostBaseURLIsNeverProxiedWhateverItsCase's
+// child: it makes one call to the base URL it is given and fails on a
+// refusal. It is skipped in every other run.
+func TestProxyHelperProcess(t *testing.T) {
+	base := os.Getenv(proxyChildEnv)
+	if base == "" {
+		t.Skip("the child of TestALocalhostBaseURLIsNeverProxiedWhateverItsCase")
+	}
+	c, err := New(base, testKey, WithTimeout(10*time.Second))
+	if err != nil {
+		t.Fatalf("New(%q): %v", base, err)
+	}
+	if _, err := c.Complete(context.Background(), request(), jsonObject); err != nil {
+		t.Fatalf("Complete: %v", err)
 	}
 }

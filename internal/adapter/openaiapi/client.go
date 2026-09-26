@@ -149,6 +149,15 @@ func New(baseURL, key string, opts ...Option) (*Client, error) {
 		return nil, err
 	}
 	u, _ := url.Parse(baseURL)
+	// net/http never proxies a call to localhost or a loopback address, but it
+	// matches localhost in lower case alone, so LOCALHOST would be sent
+	// through HTTP_PROXY with the key in cleartext. A host name is
+	// case-insensitive, so spelling it in lower case changes nothing else
+	// about where the call goes. Only localhost is rewritten: net/http already
+	// compares NO_PROXY without case, and an IPv6 zone is not lower-cased.
+	if strings.EqualFold(u.Hostname(), "localhost") {
+		u.Host = strings.ToLower(u.Host)
+	}
 	c := &Client{
 		endpoint: strings.TrimSuffix(u.String(), "/") + "/chat/completions",
 		key:      key,
