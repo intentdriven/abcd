@@ -389,3 +389,31 @@ func TestMissingErrorKeepsTheCauseAndCarriesTheExplanation(t *testing.T) {
 		t.Fatalf("error = %q, want the cause then the explanation", err.Error())
 	}
 }
+
+// TestInstallSanitisesTheProgramsOutput is iss-2609261604498137: a program's
+// output is untrusted text, and the result carries it to the terminal (the
+// ahoy changed: and note: lines) and to --json, so no escape, C1 control or
+// bidi override survives into Output or the Summary, on success or failure.
+func TestInstallSanitisesTheProgramsOutput(t *testing.T) {
+	const hostile = "\x1b[2J8.18.0‮\u009b31m\x07"
+	for _, tc := range []struct {
+		name string
+		fx   *fakeExec
+	}{
+		{"verified", &fakeExec{out: map[string]string{"gitleaks": hostile + "\nsecond\n"}}},
+		{"failed step", &fakeExec{fail: map[string]error{"brew": errors.New("exit status 1")}, out: map[string]string{"brew": "Error:\n" + hostile + "\n"}}},
+		{"failed verify", &fakeExec{fail: map[string]error{"gitleaks": errors.New("exit status 2")}, out: map[string]string{"gitleaks": hostile}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := testInstaller(t, tc.fx, binDir(t, "brew", "gitleaks"), nil).Install("gitleaks", TranscriptScan, yes)
+			if !strings.Contains(r.Output, "8.18.0") {
+				t.Fatalf("output lost its text: %q", r.Output)
+			}
+			for _, s := range []string{r.Output, r.Summary()} {
+				if strings.ContainsAny(s, "\x1b‮\u009b\x07") {
+					t.Errorf("a control reached the result: %q", s)
+				}
+			}
+		})
+	}
+}

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // Answer is a caller's reply to the install question: yes or no, and in words
@@ -323,24 +324,34 @@ func (c *capped) Write(p []byte) (int, error) {
 	return n, nil
 }
 
-// tail is the last few non-blank lines of out, joined on " | ".
-func tail(out []byte) string {
+// outputLines is the one place a program's output becomes result text: its
+// non-blank lines, trimmed and passed through termsafe. The output is the
+// program's, not abcd's, and Output carries it to every render of the result
+// (the ahoy changed: and note: lines, and --json, which escapes no C1 control
+// or bidi override), so an escape sequence in it never reaches a terminal.
+func outputLines(out []byte) []string {
 	var keep []string
-	for _, l := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+	for _, l := range strings.Split(string(out), "\n") {
 		if l = strings.TrimSpace(l); l != "" {
-			keep = append(keep, l)
+			keep = append(keep, termsafe.Sanitize(l))
 		}
 	}
+	return keep
+}
+
+// tail is the last few non-blank lines of out, joined on " | ".
+func tail(out []byte) string {
+	keep := outputLines(out)
 	if len(keep) > tailLines {
 		keep = keep[len(keep)-tailLines:]
 	}
 	return strings.Join(keep, " | ")
 }
 
+// firstLine is the first non-blank line of out.
 func firstLine(out []byte) string {
-	s := strings.TrimSpace(string(out))
-	if i := strings.IndexByte(s, '\n'); i >= 0 {
-		s = s[:i]
+	if keep := outputLines(out); len(keep) > 0 {
+		return keep[0]
 	}
-	return s
+	return ""
 }
