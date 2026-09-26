@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
+	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -640,6 +642,35 @@ func IngestVerdictBytes(repoRoot string, raw []byte) (IngestVerdictResult, error
 	}
 	rcp := lenient.ReceiptID
 
+	// The receipt's resolution, every check judged on the record, and the
+	// write(s) are ONE critical section under the store's advisory lock, as every
+	// other intent writer's are (iss-2609261935343851). Two ingests on one
+	// intent, or an ingest beside a condition disposition, would otherwise each
+	// write the bytes they read: the later write erases the earlier one and both
+	// exit 0. Held here, the ingest reads the record another writer just left —
+	// a verdict that landed first makes this a re-ingest, not a fresh one — and
+	// the dead-letter's two writes land inside the same hold.
+	//
+	// Taking the lock creates the intent store, and a repository without one
+	// holds no receipt to resolve: that refusal is made without the lock, so it
+	// still writes nothing.
+	if _, err := os.Lstat(filepath.Join(repoRoot, IntentsRelDir)); errors.Is(err, fs.ErrNotExist) {
+		return ingestLocked(repoRoot, raw, rcp)
+	}
+	var res IngestVerdictResult
+	err := withIntentMintLock(repoRoot, func() error {
+		var err error
+		res, err = ingestLocked(repoRoot, raw, rcp)
+		return err
+	})
+	return res, err
+}
+
+// ingestLocked is IngestVerdictBytes's critical section, called under the
+// intent store lock: it resolves rcp to its intent on the bytes read there and
+// applies the verdict to those bytes. reingestVerdict and deadLetter are reached
+// only from here, so they run under the same hold.
+func ingestLocked(repoRoot string, raw []byte, rcp string) (IngestVerdictResult, error) {
 	it, content, state, ok, err := findIntentByReceipt(repoRoot, rcp)
 	if err != nil {
 		return IngestVerdictResult{}, err
@@ -710,7 +741,8 @@ func IngestVerdictBytes(repoRoot string, raw []byte) (IngestVerdictResult, error
 // block names its occasion and ingests again (the 2026-09-25 ruling in
 // .abcd/work/DECISIONS.md). A payload that does not validate is refused with
 // nothing written rather than dead-lettered: quarantine is for a receipt still
-// owed a verdict, and a bad re-ingest must never replace a good one.
+// owed a verdict, and a bad re-ingest must never replace a good one. It runs
+// under the store lock ingestLocked holds.
 func reingestVerdict(repoRoot string, raw []byte, it Intent, rcp, content string) (IngestVerdictResult, error) {
 	free, err := newVerdictProse(repoRoot)
 	if err != nil {
@@ -997,7 +1029,9 @@ func validateConditionDispositions(v verdict, intentContent string) error {
 
 // deadLetter quarantines a bad-but-resolvable verdict: it retains the raw payload
 // under the ephemeral reviews dir and replaces the parked marker with a
-// DEAD_LETTER block recording all criteria INCONCLUSIVE. Never partial.
+// DEAD_LETTER block recording all criteria INCONCLUSIVE. Never partial. It runs
+// under the store lock ingestLocked holds, so its two writes — the retained
+// payload and the record — land in one hold.
 func deadLetter(repoRoot string, it Intent, content, rcp string, raw []byte, reason string, free proseField) (IngestVerdictResult, error) {
 	if !rcpIDRe.MatchString(rcp) {
 		return IngestVerdictResult{}, fmt.Errorf("intent: receipt id %q is malformed; refusing to dead-letter", rcp)
