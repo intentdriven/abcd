@@ -131,6 +131,17 @@ var writeKindHelp = map[writeKind]SummaryItem{
 	},
 }
 
+// unexplainedWriteHelp is what a write reaches the person as when it carries no
+// kind, or a kind this table has no entry for. Every write site passes a kind
+// today, so it is a fallback that should never be seen; if it is, it must say
+// plainly that the summary cannot describe the write, rather than borrow another
+// kind's explanation, and it must still list the path.
+var unexplainedWriteHelp = SummaryItem{
+	What:   "Wrote a file this summary has no plain description for.",
+	Why:    "abcd lists every file it writes, so none is left out even when it cannot say what the file is for.",
+	Action: "Look at the file listed; abcd ahoy doctor shows what abcd expects to find in this repository.",
+}
+
 // declinedCategoryHelp explains each kind of change the person declined.
 var declinedCategoryHelp = map[GapCategory]SummaryItem{
 	SafeAutocreate: {
@@ -217,10 +228,17 @@ func (r *InstallResult) explain() {
 	r.Summary = []SummaryItem{}
 
 	refs := map[writeKind][]string{}
+	var unexplained []string
 	for i, w := range r.Writes {
-		k := writeScannerHint
+		var k writeKind
 		if i < len(r.writeKinds) {
 			k = r.writeKinds[i]
+		}
+		if _, known := writeKindHelp[k]; !known || !slices.Contains(allWriteKinds, k) {
+			if !slices.Contains(unexplained, w) {
+				unexplained = append(unexplained, w)
+			}
+			continue
 		}
 		if !slices.Contains(refs[k], w) {
 			refs[k] = append(refs[k], w)
@@ -232,6 +250,11 @@ func (r *InstallResult) explain() {
 		}
 		it := writeKindHelp[k]
 		it.Refs = refs[k]
+		r.Summary = append(r.Summary, it)
+	}
+	if len(unexplained) > 0 {
+		it := unexplainedWriteHelp
+		it.Refs = unexplained
 		r.Summary = append(r.Summary, it)
 	}
 	for _, c := range r.DeclinedCategories {
