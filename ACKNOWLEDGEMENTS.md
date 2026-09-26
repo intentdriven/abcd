@@ -253,6 +253,16 @@ Ideas and methodologies that shaped the design — not code abcd depends on.
   (adr-2609212115255771, decision 4; itd-2609212103565953): a spec lists its
   steps under a `## Steps` section (`internal/core/spec/steps.go`), and a
   remainder carries forward the steps not yet landed.
+- **Inverse document frequency (Karen Spärck Jones, "A statistical
+  interpretation of term specificity and its application in retrieval",
+  *Journal of Documentation* 28, 1 (1972), 11–21,
+  [doi:10.1108/eb026526](https://doi.org/10.1108/eb026526))** — the idea that a
+  term few documents carry says more about a document than one most of them
+  carry. The filing-time match weights every shared term by it
+  (itd-2609212137116617, `internal/core/record/match`), so the words common to
+  the whole record do not make two unrelated findings look alike. Linear's
+  similar-issue detection, advisory and at issue creation (cited in itd-84),
+  is the precedent for running the match at filing and never refusing on it.
 
 ## References & sources
 
