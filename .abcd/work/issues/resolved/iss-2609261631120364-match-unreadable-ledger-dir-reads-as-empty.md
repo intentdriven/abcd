@@ -8,6 +8,14 @@ source: "review-followup"
 found_during: "autonomous run A resumed 2026-09-25: review-match"
 origin: researcher-authored
 production_mode: hand-written
+resolution: "scanStatusDir separates an absent status directory from an unreadable one for every ledger reader: the filing-time match reports an unreadable open/ or resolved/ as an unread record set, and capture list and capture status name the directory in the skipped roster."
+impact: fix
+resolved_by:
+  commit: "b24ec86f"
 ---
 
 The filing-time match reads an unreadable open/ or resolved/ ledger directory as an empty candidate set: capture/match.go matchCandidates discards scanLedger's result for the directory, and scanLedger treats any ReadDir error as an absent ledger, so a capture or intent create reports 'compared N' or 'no record to compare' instead of the unread outcome the intent store's own failure takes. The same absent-or-unreadable conflation makes capture list and capture status count an unreadable status directory as zero records with nothing in the skipped roster.
+
+## Grounds
+
+- pursued: a capture with resolved/ at mode 000 reports the match as unread and links nothing, and list and status carry one read-layer skip naming the directory; TestMatchReportsAnUnreadableStatusDirectoryAsUnread, TestListAndStatusReportAnUnreadableStatusDirectory and TestAScopedListNamesAnUnreadableOpenDirectory would fail if the directory read as empty again
