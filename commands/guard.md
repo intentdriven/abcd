@@ -191,7 +191,12 @@ but where its delimiter is unquoted (`<<EOF`, not `<<'EOF'`, `<<"EOF"` or
 `<<\EOF`) the shell runs the command substitutions in it, and each is read as a
 command; such a body is read by the lines bash compares with the delimiter, so a
 line ending in an odd number of backslashes joins the next one before the
-compare, and `x\` followed by `EOF` does not end the document. A word that is
+compare, and `x\` followed by `EOF` does not end the document. Between
+backticks bash drops a backslash before `$`, a backtick or a backslash before it
+reads the command, and directly inside double quotes one before a `"` too, so a
+backtick's text is read after that pass: an escaped `\$(…)` or an escaped
+backtick pair there is the substitution bash runs, in a word or in an unquoted
+here-document body inside the backticks. A word that is
 wholly `"$(cat <<'EOF' … EOF)"`, whose document the shell does not change, or
 its backtick spelling with no backslash between the backticks, is
 also read as that document's text where it is a payload, so `sh -c` or `eval`

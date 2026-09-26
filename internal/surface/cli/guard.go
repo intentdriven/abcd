@@ -91,6 +91,10 @@ func newGuardCommand(asJSON *bool) *cobra.Command {
 			"data, but a substitution in one whose delimiter is unquoted runs, and is\n" +
 			"read as a command; a body line ending in an odd number of backslashes\n" +
 			"joins the next before the delimiter compare, as bash joins it. A\n" +
+			"backtick's text is read after bash's own pass over it, which drops a\n" +
+			"backslash before `$`, a backtick or a backslash, so an escaped `\\$(…)`\n" +
+			"or an escaped backtick pair between backticks is read as the\n" +
+			"substitution bash runs, in a here-document body there too. A\n" +
 			"`\"$(cat <<'EOF' … EOF)\"` handed to `sh -c` or `eval` is read as its\n" +
 			"document's text, and an unquoted one as the words bash splits its\n" +
 			"document into, at every layer; a backtick spelling with no backslash\n" +

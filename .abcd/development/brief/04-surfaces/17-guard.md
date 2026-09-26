@@ -199,7 +199,10 @@ on, and inside double quotes one ends at its own `}`, where a nested `"` opens a
 string of its own. A here-document body is data, but the substitutions the shell
 runs in a body whose delimiter is unquoted are read as commands, and such a body
 is read by the lines bash compares with its delimiter, joined across a trailing
-odd run of backslashes. A payload that is wholly a substitution printing a
+odd run of backslashes. A backtick's text is read after bash's own pass over
+it, which drops a backslash before `$`, a backtick or a backslash (and, directly
+inside double quotes, a `"`), so an escaped substitution between backticks is
+read as the one bash runs. A payload that is wholly a substitution printing a
 here-document the shell does not change (`sh -c "$(cat <<'EOF' … EOF)"`, or the
 backtick spelling where no backslash stands between the backticks) is also
 read as that document's text. The same substitution unquoted runs the words its

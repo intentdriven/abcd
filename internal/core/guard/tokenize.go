@@ -396,7 +396,8 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 					unread()
 					return
 				}
-				follow(body[j+1 : k])
+				text, _ := backtickText(body[j+1:k], false)
+				follow(text)
 				j = k + 1
 			case body[j] == '$' && j+1 < len(body) && body[j+1] == '(':
 				if j+2 < len(body) && body[j+2] == '(' {
@@ -467,7 +468,11 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 				}
 				return
 			}
-			follow(body[open:inner])
+			text := body[open:inner]
+			if body[j] == '`' {
+				text, _ = backtickText(text, false)
+			}
+			follow(text)
 			j = inner + 1
 		}
 	}
@@ -487,6 +492,33 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		curLit, curLitSet = wordLiteral{}, false
 		curStdin, pipeNext = false, false
 		parens = append(parens, parenFrame{kind: kind, pos: pos, saved: saved})
+	}
+	// prePassedBacktick reads a backtick opening at line[i] whose text bash's
+	// backslash pre-pass changes (backtickText): the text after the pass is
+	// what bash parses, so it is followed as the substitution's command, and
+	// the enclosing command resumes with the unknown output in its word, as
+	// it does after a backtick read in place. ok is false where the pass
+	// changes nothing, and the text is then read in place as written, or
+	// where the backtick has no close.
+	var closeSubstitution func(e *enclosing)
+	prePassedBacktick := func(i int) (next int, ok bool) {
+		k := closingBacktick(line, i+1, budget)
+		if k < 0 {
+			if k == closeUnread {
+				unread()
+			}
+			return 0, false
+		}
+		text, changed := backtickText(line[i+1:k], false)
+		if !changed {
+			return 0, false
+		}
+		openSubstitution(parenBacktick, i, false)
+		follow(text)
+		top := parens[len(parens)-1]
+		parens = parens[:len(parens)-1]
+		closeSubstitution(top.saved)
+		return k + 1, true
 	}
 	// closeArithmetic resumes the command an arithmetic expansion suspended,
 	// with the number it prints in the word it sat in. What the loop gathered
@@ -508,7 +540,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 	// that may also vanish; glued to text it makes that word unknown. A process
 	// substitution always contributes exactly one word, the /dev/fd path the
 	// shell hands the command, so the operands after it keep their positions.
-	closeSubstitution := func(e *enclosing) {
+	closeSubstitution = func(e *enclosing) {
 		flushSegment()
 		toks, globs, lits, cur, curMask, hasCur, curGlob, curBrace, braceGroup, chain =
 			e.toks, e.globs, e.lits, e.cur, e.curMask, e.hasCur, e.curGlob, e.curBrace, e.braceGroup, e.chain
@@ -540,6 +572,10 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 				i += 2
 				continue
 			case c == '`':
+				if next, ok := prePassedBacktick(i); ok {
+					i = next
+					continue
+				}
 				openSubstitution(parenBacktick, i, false)
 				i++
 				continue
@@ -673,7 +709,11 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 						followSubs = false
 						continue
 					}
-					follow(line[open:inner])
+					text := line[open:inner]
+					if line[j] == '`' {
+						text, _ = backtickText(text, true)
+					}
+					follow(text)
 					addCur([]byte{unknownMark}, 0)
 					// A `$(cat <<'EOF' … EOF)` prints its document verbatim,
 					// and so does its backtick spelling; flushToken keeps
@@ -961,6 +1001,11 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 				continue
 			}
 			if c == '`' && !(len(parens) > 0 && parens[len(parens)-1].kind == parenBacktick) {
+				if next, ok := prePassedBacktick(i); ok {
+					lastList = false
+					i = next
+					continue
+				}
 				openSubstitution(parenBacktick, i, false)
 				lastList = false
 				i++
@@ -1440,6 +1485,38 @@ func closingDolBrace(line string, i int, budget *int) int {
 		i++
 	}
 	return closeNone
+}
+
+// backtickText is a backtick substitution's text as bash parses it. Between
+// backticks bash removes a backslash before a `$`, a backtick or a backslash
+// before it reads the command, and directly inside double quotes a backslash
+// before a `"` too, in one pass (review7-guard finding 1): an escaped `$( … )`
+// or an escaped backtick pair there is a live substitution, in an unquoted
+// here-document body as much as in a word. changed reports that a backslash
+// was removed, which is when the text differs from what was written.
+func backtickText(text string, inDoubleQuotes bool) (out string, changed bool) {
+	tally(len(text))
+	var b []byte
+	for i := 0; i < len(text); i++ {
+		if text[i] == '\\' && i+1 < len(text) {
+			switch n := text[i+1]; {
+			case n == '$' || n == '`' || n == '\\' || (inDoubleQuotes && n == '"'):
+				if b == nil {
+					b = append(make([]byte, 0, len(text)), text[:i]...)
+				}
+				b = append(b, n)
+				i++
+				continue
+			}
+		}
+		if b != nil {
+			b = append(b, text[i])
+		}
+	}
+	if b == nil {
+		return text, false
+	}
+	return string(b), true
 }
 
 // closingBacktick returns the index of the unescaped backtick that closes one
