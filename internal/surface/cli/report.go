@@ -202,22 +202,43 @@ func inboxTallyText(t report.Tally) string {
 	return fmt.Sprintf("%d report(s) from %s", t.Reports, managedRepos(t.Senders))
 }
 
-// inboxGreeting is the session-start line, or "" when nothing waits.
-func inboxGreeting() string {
+// inboxGreeting is the session-start line, or "" when nothing waits. When the
+// inbox cannot be counted, the line is "" and notice names why, for the hook's
+// stderr: a refused inbox is not silent, and it is not an empty one
+// (iss-2609261106287627).
+func inboxGreeting() (line, notice string) {
 	t, err := report.Count()
-	if err != nil || t.Reports == 0 {
-		return ""
+	if err != nil {
+		return "", inboxCountNotice(err)
 	}
-	return "abcd: " + inboxTallyText(t) + " wait in the inbox; `abcd inbox` lists them."
+	if t.Reports == 0 {
+		return "", ""
+	}
+	return "abcd: " + inboxTallyText(t) + " wait in the inbox; `abcd inbox` lists them.", ""
 }
 
-// boardInbox is the board's inbox row, or nil when nothing waits.
-func boardInbox() *report.Tally {
+// boardInbox is the board's inbox row, or nil when nothing waits. An inbox that
+// cannot be counted has no row, and the reason goes to stderr under the board's
+// prefix, as the presence line's failure does.
+func boardInbox(stderr io.Writer) *report.Tally {
 	t, err := report.Count()
-	if err != nil || t.Reports == 0 {
+	if err != nil {
+		fmt.Fprintln(stderr, inboxCountNotice(err))
+		return nil
+	}
+	if t.Reports == 0 {
 		return nil
 	}
 	return &t
+}
+
+// inboxCountNotice is the one line naming why the inbox could not be counted:
+// the refusal's own words, with the home and working directories written as
+// `~` and `.` and the text sanitised for the terminal. The words are abcd's, and
+// the only path they name is a level of the inbox, never a report's text.
+func inboxCountNotice(err error) string {
+	msg := strings.TrimPrefix(scrubPaths(err), report.ErrRefused.Error()+": ")
+	return "abcd: the inbox is not counted — " + termsafe.Sanitize(msg) + "; `abcd inbox` names the same refusal"
 }
 
 // inboxUntrustedNotice frames what the inbox prints. The list and show both

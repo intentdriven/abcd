@@ -114,7 +114,8 @@ when reports from managed repositories wait in the user account's inbox, the tex
 render carries an `inbox:` line — `3 report(s) from 2 managed repositories` — and
 the JSON an `inbox` object with `reports` and `senders`. It is the same count the
 session-start greeting says ([`29-report.md`](29-report.md)); it names no sender,
-and it is absent when nothing waits.
+and it is absent when nothing waits. An inbox that cannot be counted has no row:
+one line on stderr names the refusal instead.
 
 **The oracle lines** (itd-2609170822093401, spc-2609180535002478) show the
 model-tier routing once a table is accepted, at the repository

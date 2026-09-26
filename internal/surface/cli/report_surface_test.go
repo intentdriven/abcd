@@ -449,3 +449,47 @@ func TestAReportThatFailsAfterTheEditorNamesTheKeptDraft(t *testing.T) {
 		t.Errorf("failure = %q, want it to name the kept draft %s", err, filepath.Base(drafts[0]))
 	}
 }
+
+// TestARefusedInboxIsNamedAtSessionStartAndOnTheBoard: an inbox abcd refuses to
+// read is not silent where its count belongs. The session-start hook names the
+// refusal in one line among its notices on stderr — never on the stdout the
+// session's context reads, which carries counts only — and the board names it
+// on stderr beside its render, text and JSON alike (iss-2609261106287627).
+func TestARefusedInboxIsNamedAtSessionStartAndOnTheBoard(t *testing.T) {
+	repo, home := gitRepoNoStore(t)
+	noAmbientPluginRoot(t)
+	if err := os.MkdirAll(filepath.Join(home, ".abcd"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(t.TempDir(), filepath.Join(home, ".abcd", "inbox")); err != nil {
+		t.Fatal(err)
+	}
+	const want = "abcd: the inbox is not counted — ~/.abcd/inbox is not a real directory"
+	stdout, stderr, code := runSessionStart(startPayload("s1", repo), "hook", "session-start")
+	if code != 0 {
+		t.Fatalf("exit %d", code)
+	}
+	if strings.Count(stderr, want) != 1 {
+		t.Errorf("session-start stderr = %q, want the one line %q", stderr, want)
+	}
+	if strings.Contains(stdout, "inbox") {
+		t.Errorf("the refusal reached the session's context on stdout: %q", stdout)
+	}
+	if strings.Contains(stderr, home) {
+		t.Errorf("the notice carries the absolute home: %q", stderr)
+	}
+
+	t.Chdir(repo)
+	for _, args := range [][]string{nil, {"--json"}} {
+		stdout, stderr, code := runSessionStart("", args...)
+		if code != 0 {
+			t.Fatalf("board %v: exit %d", args, code)
+		}
+		if strings.Count(stderr, want) != 1 {
+			t.Errorf("board %v stderr = %q, want the one line %q", args, stderr, want)
+		}
+		if strings.Contains(stdout, "inbox:") || strings.Contains(stdout, `"inbox"`) {
+			t.Errorf("board %v renders a count for a refused inbox: %q", args, stdout)
+		}
+	}
+}

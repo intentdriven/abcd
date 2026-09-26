@@ -260,7 +260,7 @@ func NewRootCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			board := boardOutput{StatusInfo: st, Statusline: boardPresence(cwd, cmd.ErrOrStderr()), Peers: boardPeers(cwd, cmd.ErrOrStderr()), Inbox: boardInbox(), Oracle: boardOracle(cwd, cmd.ErrOrStderr())}
+			board := boardOutput{StatusInfo: st, Statusline: boardPresence(cwd, cmd.ErrOrStderr()), Peers: boardPeers(cwd, cmd.ErrOrStderr()), Inbox: boardInbox(cmd.ErrOrStderr()), Oracle: boardOracle(cwd, cmd.ErrOrStderr())}
 			return render(cmd.OutOrStdout(), asJSON, board, func(w io.Writer) {
 				fmt.Fprintf(w, "abcd — %s\n", st.Dir)
 				fmt.Fprintf(w, "  git repo:   %v\n", st.IsGitRepo)
@@ -1632,8 +1632,12 @@ func newHookCommand() *cobra.Command {
 			// else. It goes to STDOUT, where the session reads it, because it
 			// is counts only — no sender name and no word a report wrote, which
 			// is what the paragraph below keeps off that channel.
-			if g := inboxGreeting(); g != "" {
+			// An inbox that cannot be counted says so among the notices, on
+			// stderr: the reason names a path, and stdout carries counts only.
+			if g, n := inboxGreeting(); g != "" {
 				fmt.Fprintln(cmd.OutOrStdout(), g)
+			} else if n != "" {
+				notices = append(notices, n)
 			}
 			if len(notices) == 0 {
 				return nil

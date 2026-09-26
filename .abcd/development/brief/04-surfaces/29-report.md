@@ -116,7 +116,12 @@ abcd: 3 report(s) from 2 managed repositories wait in the inbox; `abcd inbox` li
 It carries counts only — no sender name and no word a report wrote — because
 the session-start stdout is injected into the session's context. The bare
 [`/abcd`](08-abcd.md) board carries the same count as its `inbox:` row. Both are
-silent when nothing waits.
+silent when nothing waits. Neither is silent when the inbox cannot be counted:
+the hook names the refusal in one line among its notices on stderr, and the
+board prints the same line on stderr in place of the row —
+`abcd: the inbox is not counted — ~/.abcd/inbox is not a real directory …`,
+naming the level refused, home-redacted — so a refused inbox never reads as an
+empty one.
 
 ## Exit codes
 
