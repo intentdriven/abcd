@@ -92,7 +92,8 @@ func newGuardCommand(asJSON *bool) *cobra.Command {
 			"read as a command; a body line ending in an odd number of backslashes\n" +
 			"joins the next before the delimiter compare, as bash joins it. A\n" +
 			"backtick's text is read after bash's own pass over it, which drops a\n" +
-			"backslash before `$`, a backtick or a backslash, so an escaped `\\$(…)`\n" +
+			"backslash before `$`, a backtick or a backslash (and, directly inside\n" +
+			"double quotes, one before a `\"` too), so an escaped `\\$(…)`\n" +
 			"or an escaped backtick pair between backticks is read as the\n" +
 			"substitution bash runs, in a here-document body there too. A\n" +
 			"`\"$(cat <<'EOF' … EOF)\"` handed to `sh -c` or `eval` is read as its\n" +
@@ -123,8 +124,9 @@ func newGuardCommand(asJSON *bool) *cobra.Command {
 			"interpreter payload (an execute-a-string payload IS read — `sh -c`,\n" +
 			"`env -S`; one the guard cannot read is warned or, for `env -S`, blocked),\n" +
 			"because the guard sees the variable, not what the shell expands it to,\n" +
-			"an IFS the shell already holds when the line starts (every line is read\n" +
-			"from the default IFS),\n" +
+			"an IFS the shell already holds when the line starts or gains during the\n" +
+			"line through a name the guard does not read (every line is read from the\n" +
+			"default IFS),\n" +
 			"a hazard inside a NON-shell interpreter's payload (`python -c`, `perl -e`) —\n" +
 			"one opaque token the tokenizer cannot read, today a silent allow (a warn for\n" +
 			"it is a recorded design target, not yet raised),\n" +

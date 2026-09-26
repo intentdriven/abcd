@@ -272,7 +272,8 @@ form **is** read), a parameter expansion that carries no substitution (`$VAR`,
 `${VAR:-git}`) wherever it stands — as the program's name, as a flag
 (`--$VAR`), or inside a payload the guard reads — because the guard sees the
 variable, not what the shell expands it to, an IFS the shell already holds when
-the line starts (every line is read from the default IFS), a hazard inside a non-shell interpreter's payload (`python -c`,
+the line starts or gains during the line through a name the guard does not read
+(`declare $(echo I)FS=x`, a sourced file; every line is read from the default IFS), a hazard inside a non-shell interpreter's payload (`python -c`,
 `perl -e`) — one opaque token the tokenizer cannot read, today a silent allow, not
 a warn (a warn for it is a recorded design target, not yet implemented), or a
 dangerous form no entry describes. Nor does an allow see what a lone substitution

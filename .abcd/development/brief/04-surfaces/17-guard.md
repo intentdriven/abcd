@@ -238,8 +238,9 @@ would be, which is read as an operand because that is how a commit message or a
 branch name is spelled every day; one behind a wrapper flag the per-wrapper
 table does not name; a REST
 path an entry names by its root segment when the host serves that API under a
-prefix; an IFS the shell already holds when the line starts, since every line
-is read from the default IFS; a payload inside a non-shell interpreter such as `python -c`, which is
+prefix; an IFS the shell already holds when the line starts, or gains during the line
+through a name the guard does not read (`declare $(echo I)FS=x`, a sourced file),
+since every line is read from the default IFS; a payload inside a non-shell interpreter such as `python -c`, which is
 one opaque token and today a silent allow; and any dangerous form no entry
 describes. Nor does an allow see through a parameter expansion that carries no
 substitution (`$VAR`, `${VAR:-git}`), wherever it stands — as the command's
