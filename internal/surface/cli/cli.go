@@ -473,6 +473,9 @@ func NewRootCommand() *cobra.Command {
 	// manifest before anything renders a list, so the one declaration is what
 	// every command list, help and page shows.
 	applySentences(root, surface.SentenceFor)
+	// One worked example per verb that takes a required input, from the same
+	// manifest (iss-2609100508565741).
+	applyExamples(root, surface.ExampleFor)
 
 	// The grouped help (itd-146): every visible verb filed under a group, and
 	// the root's help rendering the person's groups, or both blocks with --agent.
@@ -485,6 +488,11 @@ func NewRootCommand() *cobra.Command {
 	// clean-ish gate pass: usage errors exit 2, like every usage error abcd raises
 	// itself. Flag-parse errors route through FlagErrorFunc; argument errors come
 	// from each command's Args validator — wrap both across the whole tree (B13).
+	// A refusal names every unmet requirement the verb's Use line declares at
+	// once (requirements.go, iss-2609100531051385). Before the generic tagging,
+	// which would otherwise hand it cobra's positional error already coded and
+	// indistinguishable from a validator's own chosen refusal.
+	aggregateUsageRequirements(root)
 	markUsageErrorsExitTwo(root)
 	// AFTER the generic tagging, which sets a FlagErrorFunc on every command: the
 	// banlist verbs need one that does NOT quote the offending token, because for
@@ -1333,7 +1341,7 @@ func newHookCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			in, err := readHookInput(cmd)
 			if err != nil {
-				fmt.Fprintf(cmd.ErrOrStderr(), "abcd rules: unreadable hook payload (%v); injecting nothing\n", err)
+				fmt.Fprintf(cmd.ErrOrStderr(), "abcd rules: unreadable hook payload (%s); injecting nothing\n", termsafe.Sanitize(err.Error()))
 				return nil
 			}
 			cwd := in.Cwd
@@ -1368,21 +1376,21 @@ func newHookCommand() *cobra.Command {
 				// rules.Load errors already carry their own "rules:" prefix, so
 				// wrap with a bare "abcd" to avoid "abcd rules: rules: …"
 				// (iss-2608261550491547).
-				fmt.Fprintf(cmd.ErrOrStderr(), "abcd %v; injecting nothing\n", err)
+				fmt.Fprintf(cmd.ErrOrStderr(), "abcd %s; injecting nothing\n", termsafe.Sanitize(err.Error()))
 				return nil
 			}
 			// A domain Load dropped (no rules of its own) is skipped, not
 			// fatal — but silently missing is the shape the drop exists to
 			// prevent, so each one is named here, out of band.
 			for _, note := range rs.Notes() {
-				fmt.Fprintf(cmd.ErrOrStderr(), "abcd %s\n", note)
+				diagnosticLine(cmd.ErrOrStderr(), "abcd %s", note)
 			}
 			session := hookSession(in)
 			// The fixed-N backstop comes from the repo's config (default 15 when
 			// unset); event-driven reset is the primary refresh (D1).
 			res := rules.Inject(rs, in.Prompt, rules.LoadState(session), rules.LoadBackstop(root))
 			if err := rules.SaveState(session, res.State); err != nil {
-				fmt.Fprintf(cmd.ErrOrStderr(), "abcd rules: state save failed (%v)\n", err)
+				fmt.Fprintf(cmd.ErrOrStderr(), "abcd rules: state save failed (%s)\n", termsafe.Sanitize(err.Error()))
 			}
 			// The names carry their layer ("PII (repo override)"), the same
 			// label the injected heading bears, so the out-of-band log says
@@ -1405,12 +1413,12 @@ func newHookCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			in, err := readHookInput(cmd)
 			if err != nil {
-				fmt.Fprintf(cmd.ErrOrStderr(), "abcd rules: unreadable reset payload (%v)\n", err)
+				fmt.Fprintf(cmd.ErrOrStderr(), "abcd rules: unreadable reset payload (%s)\n", termsafe.Sanitize(err.Error()))
 				return nil
 			}
 			session := hookSession(in)
 			if err := rules.ResetState(session); err != nil {
-				fmt.Fprintf(cmd.ErrOrStderr(), "abcd rules: reset failed (%v)\n", err)
+				fmt.Fprintf(cmd.ErrOrStderr(), "abcd rules: reset failed (%s)\n", termsafe.Sanitize(err.Error()))
 				return nil
 			}
 			// SessionStart is a natural sweep point for stale ledgers.
@@ -1447,16 +1455,25 @@ func newHookCommand() *cobra.Command {
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			// Diagnostics go to stderr, out of band; stdout stays empty, since a
-			// Stop hook's stdout is not a place to speak to the model.
+			// Stop hook's stdout is not a place to speak to the model — unless
+			// the caller asked for --json, when it carries one result line on
+			// every path (hook_result.go, iss-2608261550596333).
+			// The result names the session it lost, as subagent-stop's does
+			// (iss-2609260221577624): in is read below, and warn names whatever
+			// of it was parsed — nothing, for a payload that did not parse.
+			var in hookInput
 			warn := func(format string, a ...any) error {
-				fmt.Fprintf(cmd.ErrOrStderr(), "abcd history: "+format+"\n", a...)
+				msg := diagnosticLine(cmd.ErrOrStderr(), "abcd history: "+format, a...)
+				emitHookResult(cmd, hookStageResult{Hook: "session-end", Outcome: hookOutcomeNotCaptured,
+					SessionID: termsafe.Sanitize(in.SessionID), Reason: strings.TrimPrefix(msg, "abcd history: ")})
 				return nil // never non-zero: a Stop hook must not wedge the session
 			}
 
-			in, err := readHookInput(cmd)
+			parsed, err := readHookInput(cmd)
 			if err != nil {
 				return warn("unreadable Stop payload (%v); capturing nothing", err)
 			}
+			in = parsed
 			if in.TranscriptPath == "" {
 				return warn("Stop payload carries no transcript_path; capturing nothing")
 			}
@@ -1495,8 +1512,12 @@ func newHookCommand() *cobra.Command {
 			if err != nil {
 				return warn("staging failed (%v); this session was not captured", err)
 			}
+			staged := hookStageResult{Hook: "session-end", Captured: true, SessionID: res.Staged.SessionID, Bytes: res.Staged.Bytes}
 			if !res.Wrote {
-				return warn("session %s already staged with identical bytes (no-op)", res.Staged.SessionID)
+				fmt.Fprintf(cmd.ErrOrStderr(), "abcd history: session %s already staged with identical bytes (no-op)\n", res.Staged.SessionID)
+				staged.Outcome = hookOutcomeAlreadyStaged
+				emitHookResult(cmd, staged)
+				return nil
 			}
 			if res.Replaced {
 				// Different bytes for an already-staged session: the later
@@ -1504,10 +1525,14 @@ func newHookCommand() *cobra.Command {
 				// than reporting a no-op that would hide a replaced transcript.
 				fmt.Fprintf(cmd.ErrOrStderr(), "abcd history: re-staged %s (%d bytes), replacing %d stale bytes; the next session redacts and stores it\n",
 					res.Staged.SessionID, res.Staged.Bytes, res.ReplacedBytes)
+				staged.Outcome, staged.ReplacedBytes = hookOutcomeRestaged, res.ReplacedBytes
+				emitHookResult(cmd, staged)
 				return nil
 			}
 			fmt.Fprintf(cmd.ErrOrStderr(), "abcd history: staged %s (%d bytes); the next session redacts and stores it\n",
 				res.Staged.SessionID, res.Staged.Bytes)
+			staged.Outcome = hookOutcomeStaged
+			emitHookResult(cmd, staged)
 			return nil
 		},
 	})
@@ -1688,7 +1713,7 @@ func newHookCommand() *cobra.Command {
 			// (iss-2608241115201044): a non-zero exit renders as an opaque error
 			// banner with the text dropped.
 			for _, n := range notices {
-				fmt.Fprintln(cmd.ErrOrStderr(), n)
+				diagnosticLine(cmd.ErrOrStderr(), "%s", n)
 			}
 			// Name the verbs that actually hold the detail. An earlier draft sent
 			// the reader to `abcd ahoy` alone, which renders install state and a
@@ -1960,7 +1985,7 @@ renders bare and carries "source": "bundled". Read-only.`,
 			// Stderr, never stdout: --json renders one document, and a
 			// diagnostic mixed into it would break every parser reading it.
 			for _, note := range rs.Notes() {
-				fmt.Fprintf(cmd.ErrOrStderr(), "abcd %s\n", note)
+				diagnosticLine(cmd.ErrOrStderr(), "abcd %s", note)
 			}
 			// Scoped: inspect one domain's configured content regardless of its
 			// state OR the kill switch — this diagnostic shows what a domain holds,
@@ -2072,6 +2097,10 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 					return &exitError{Code: 2, Msg: fmt.Sprintf(
 						"unknown intent subcommand %q; %s (nothing created)", args[0], instead)}
 				}
+				if hint := recordReadHint("intent", args); hint != "" {
+					return &exitError{Code: 2, Msg: fmt.Sprintf(
+						"unknown intent subcommand %q; %s (nothing created)", args[0], hint)}
+				}
 				if sug, refuse := unrecognizedSubverb(cmd, args); refuse {
 					if sug == "" {
 						return &exitError{Code: 2, Msg: fmt.Sprintf(
@@ -2136,11 +2165,21 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 	intentCmd.Flags().StringVar(&intentProductionMode, "production-mode", "", productionModeFlagHelp)
 
 	// plan <itd-N> — mint the spec, write both link sides, move drafts -> planned.
-	var planProductionMode, planImpact string
+	// plan <itd-A> <itd-B> … --bundle <name> — the bundle command (itd-34): one
+	// shared spec for every member, all moved together.
+	var planProductionMode, planImpact, planBundle string
 	planCmd := &cobra.Command{
-		Use:  "plan <itd-N>",
-		Args: cobra.ExactArgs(1),
+		Use:  "plan <itd-N> [<itd-N>…] [--bundle <name>]",
+		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// The bundle's name is the planner's to give: the plugin page asks for
+			// it, and this door refuses its absence rather than inventing one.
+			if len(args) > 1 && planBundle == "" {
+				return &exitError{Code: 2, Msg: "abcd intent plan: several intents are planned as one bundle, and --bundle <name> names it; re-run with --bundle (nothing moved)"}
+			}
+			if len(args) == 1 && planBundle != "" {
+				return &exitError{Code: 2, Msg: "abcd intent plan: --bundle names a bundle of two or more intents; plan one intent without it (nothing moved)"}
+			}
 			repoRoot, err := intentStoreRoot(cmd)
 			if err != nil {
 				return err
@@ -2150,6 +2189,9 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 			mode, err := resolveProductionMode(repoRoot, planProductionMode)
 			if err != nil {
 				return err
+			}
+			if len(args) > 1 {
+				return planIntentBundle(cmd, repoRoot, args, intent.BundleOptions{Bundle: planBundle, ProductionMode: mode, Impact: planImpact}, *asJSON)
 			}
 			// The impact belongs to the INTENT: plan is the verb that runs when the
 			// planning interview settles the judgement, so it is where a draft filed
@@ -2166,6 +2208,10 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 					// The identity step alone, over a record already planned: say what
 					// was done and nothing more, so the line cannot read as a move.
 					fmt.Fprintf(w, "abcd intent plan — %s already planned; stamped in place\n", res.Intent.ID)
+				} else if res.LinkedInPlace {
+					// A planned record that had no spec: minted and linked, no move
+					// (iss-2609211738504433).
+					fmt.Fprintf(w, "abcd intent plan — %s already planned; linked %s in place\n", res.Intent.ID, res.Spec.ID)
 				} else {
 					fmt.Fprintf(w, "abcd intent plan — %s drafts -> planned, linked %s\n", res.Intent.ID, res.Spec.ID)
 				}
@@ -2187,7 +2233,9 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 	// --impact on plan is the same closed choice the create path and `spec close`
 	// carry, taken at the moment the judgement is actually made.
 	planCmd.Flags().StringVar(&planImpact, "impact", "", "stamp the intent's product impact: additive|breaking|fix (optional; refused when it disagrees with one already recorded)")
+	planCmd.Flags().StringVar(&planBundle, "bundle", "", "the name of the bundle several intents are planned as: kebab-case, required with two or more intents and refused with one")
 	intentCmd.AddCommand(planCmd)
+	intentCmd.AddCommand(newIntentReclassifyCommand(asJSON))
 
 	// ready <itd-N> — the read-only implement-readiness gate. Exit codes are the
 	// machine seam an autonomous run gates on: 0 ready, 1 not ready (the rendered
@@ -2361,6 +2409,91 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 	intentCmd.AddCommand(newIntentAuditCommand(asJSON))
 	intentCmd.AddCommand(newIntentConditionCommand(asJSON))
 	return intentCmd
+}
+
+// closeReviewResults is the close's fidelity-review outcome per shipped
+// intent: the one intent of an ordinary close, or each member of a bundle's,
+// shaped as the close result routeCloseRequest reads.
+func closeReviewResults(res intent.ReconcileResult) []intent.ReconcileResult {
+	if len(res.Members) == 0 {
+		return []intent.ReconcileResult{res}
+	}
+	out := make([]intent.ReconcileResult, 0, len(res.Members))
+	for _, m := range res.Members {
+		out = append(out, intent.ReconcileResult{Intent: m.Intent, ReceiptID: m.ReceiptID, ReceiptStatus: m.ReceiptStatus, AuditEmitError: m.AuditEmitError})
+	}
+	return out
+}
+
+// planIntentBundle runs the bundle command and renders what it did: the shared
+// spec and each member's move.
+func planIntentBundle(cmd *cobra.Command, repoRoot string, ids []string, opts intent.BundleOptions, asJSON bool) error {
+	res, err := intent.PlanBundle(repoRoot, ids, opts)
+	if err != nil {
+		return &exitError{Code: 2, Msg: "abcd intent plan: " + err.Error()}
+	}
+	emitRelinkError(cmd.ErrOrStderr(), "intent plan", res.RelinkError, "record-lint's links_resolve names each link left behind")
+	return render(cmd.OutOrStdout(), asJSON, res, func(w io.Writer) {
+		fmt.Fprintf(w, "abcd intent plan — bundle %s: %d intents drafts -> planned, sharing %s\n", res.Bundle, len(res.Members), res.Spec.ID)
+		fmt.Fprintf(w, "  spec:   %s\n", termsafe.Sanitize(res.Spec.Path))
+		for _, m := range res.Members {
+			fmt.Fprintf(w, "  intent: %s\n", termsafe.Sanitize(m.Intent.Path))
+			if m.ConditionsStamped > 0 {
+				fmt.Fprintf(w, "    scope-condition identities stamped: %d\n", m.ConditionsStamped)
+			}
+			if m.ImpactStamped != "" {
+				fmt.Fprintf(w, "    impact stamped: %s\n", m.ImpactStamped)
+			}
+		}
+		emitRelinked(w, res.Relinked)
+	})
+}
+
+// newIntentReclassifyCommand builds `abcd intent reclassify` (itd-34): a late
+// kind change, or a supersession that writes both directions of the link, in
+// one write. Every refusal exits 2 with nothing written.
+func newIntentReclassifyCommand(asJSON *bool) *cobra.Command {
+	var kind, bundle, by, reason string
+	cmd := &cobra.Command{
+		Use:  "reclassify <itd-N> --kind <standalone|bundle-member --bundle <name>|superseded --by <itd-M|adr-N> --reason \"<why>\">",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if kind == "" {
+				return &exitError{Code: 2, Msg: "abcd intent reclassify: --kind is required: standalone, bundle-member (with --bundle) or superseded (with --by and --reason) (nothing written)"}
+			}
+			repoRoot, err := intentStoreRoot(cmd)
+			if err != nil {
+				return err
+			}
+			res, err := intent.Reclassify(repoRoot, args[0], intent.ReclassifyRequest{Kind: kind, Bundle: bundle, By: by, Reason: reason})
+			if err != nil {
+				return &exitError{Code: 2, Msg: "abcd intent reclassify: " + err.Error()}
+			}
+			emitRelinkError(cmd.ErrOrStderr(), "intent reclassify", res.RelinkError, "record-lint's links_resolve names each link left behind")
+			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
+				fmt.Fprintf(w, "abcd intent reclassify — %s %s -> %s\n", res.IntentID, termsafe.Sanitize(res.FromKind), res.ToKind)
+				for _, m := range res.Moved {
+					fmt.Fprintf(w, "  moved: %s -> %s\n", termsafe.Sanitize(m.From), termsafe.Sanitize(m.To))
+				}
+				for _, p := range res.Written {
+					fmt.Fprintf(w, "  wrote: %s\n", termsafe.Sanitize(p))
+				}
+				if res.Survivor != "" {
+					fmt.Fprintf(w, "  %s stays a bundle-member; its history records that the bundle now has one member\n", res.Survivor)
+				}
+				if len(res.OpenSpecs) > 0 {
+					fmt.Fprintf(w, "  note: %s still open and naming %s\n", strings.Join(res.OpenSpecs, ", "), res.IntentID)
+				}
+				emitRedactionNote(w, res.Redacted, "")
+				emitRelinked(w, res.Relinked)
+			})
+		},
+	}
+	cmd.Flags().StringVar(&kind, "kind", "", "the new kind: standalone, bundle-member, or superseded (a discipline is filed, never reclassified into)")
+	cmd.Flags().StringVar(&bundle, "bundle", "", "with --kind bundle-member: the bundle to join, one another record already names")
+	cmd.Flags().StringVar(&by, "by", "", "with --kind superseded: the successor, an intent (itd-M) or an ADR (adr-N)")
+	cmd.Flags().StringVar(&reason, "reason", "", "why, one line, redacted before it is written; required with --kind superseded")
+	return cmd
 }
 
 // newIntentConditionCommand builds `abcd intent condition`, the second writer
@@ -2606,6 +2739,12 @@ func newIntentAuditCommand(asJSON *bool) *cobra.Command {
 					}
 				case "dead_letter":
 					fmt.Fprintf(w, "  DEAD_LETTER: %s\n  raw payload: %s\n", res.Reason, res.DeadLetterPath)
+					// The quarantine records every scope condition untested; the
+					// JSON reports that split, and so does this render.
+					if res.Conditions > 0 {
+						fmt.Fprintf(w, "  scope conditions %d: untested %d (a quarantined verdict disposes none)\n",
+							res.Conditions, res.Untested)
+					}
 				}
 				// The condition blocks this verdict did not override: its rationale
 				// named none of their occasions (spc-2609020626046252). A re-ingest
@@ -2767,7 +2906,12 @@ func newSpecCommand(asJSON *bool) *cobra.Command {
 		closeMode      string
 	)
 	closeCmd := &cobra.Command{
-		Use:  "close <spc-N>",
+		Use: "close <spc-N>",
+		Long: "Moves the spec to closed/ and, when no open spec still names its intent, moves the intent to shipped/.\n\n" +
+			"The close that ships an intent also makes its fidelity review owed: it mints an OWED receipt (rcp-…), " +
+			"parks an `<!-- abcd-review: OWED receipt=rcp-… -->` marker in the intent's Audit Notes, and writes the " +
+			"review request to `.abcd/.work.local/reviews/<rcp>.request.md`, the input `abcd intent audit ingest` " +
+			"answers. A failed emit is a warning on stderr; the intent ships regardless.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			repoRoot, err := specStoreRoot(cmd)
@@ -2794,10 +2938,14 @@ func newSpecCommand(asJSON *bool) *cobra.Command {
 			}
 			// The fidelity-review emit is report-only: a failure does NOT fail the
 			// close (the intent already shipped), but it is surfaced loudly on stderr.
-			if res.AuditEmitError != "" {
-				fmt.Fprintf(cmd.ErrOrStderr(), "WARNING: abcd spec close — fidelity-review emit failed for %s (intent shipped anyway): %s\n", res.Intent.ID, res.AuditEmitError)
+			// A bundle's close emits one request per member it shipped (itd-34), so
+			// each is reported and routed on its own.
+			for _, r := range closeReviewResults(res) {
+				if r.AuditEmitError != "" {
+					fmt.Fprintf(cmd.ErrOrStderr(), "WARNING: abcd spec close — fidelity-review emit failed for %s (intent shipped anyway): %s\n", r.Intent.ID, termsafe.Sanitize(r.AuditEmitError))
+				}
+				routeCloseRequest(cmd, repoRoot, r)
 			}
-			routeCloseRequest(cmd, repoRoot, res)
 			emitRelinkError(cmd.ErrOrStderr(), "spec close", res.RelinkError, "re-run `abcd spec close "+args[0]+"` to repoint the links other files hold; record-lint's links_resolve names each link left behind")
 			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
 				fmt.Fprintf(w, "abcd spec close — %s open -> closed\n  %s\n", res.Spec.ID, termsafe.Sanitize(res.Spec.Path))
@@ -2819,6 +2967,24 @@ func newSpecCommand(asJSON *bool) *cobra.Command {
 							fmt.Fprintf(w, "    %d. %s\n", st.Number, termsafe.Sanitize(st.Title))
 						}
 					}
+				}
+				if len(res.Members) > 0 {
+					// A bundle's shared spec: every member it shipped, together.
+					for _, m := range res.Members {
+						if m.Moved {
+							fmt.Fprintf(w, "  reconciled intent %s: %s -> %s\n", m.Intent.ID, m.From, m.To)
+						} else {
+							fmt.Fprintf(w, "  intent %s already %s (no move)\n", m.Intent.ID, m.To)
+						}
+						if m.ReceiptID != "" {
+							fmt.Fprintf(w, "  fidelity review for %s: receipt %s (%s)\n", m.Intent.ID, m.ReceiptID, m.ReceiptStatus)
+						}
+					}
+					for _, id := range res.Skipped {
+						fmt.Fprintf(w, "  passed over %s: no longer a member of this bundle\n", id)
+					}
+					emitRelinked(w, res.Relinked)
+					return
 				}
 				switch {
 				case res.IntentMoved:
@@ -3679,6 +3845,10 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			// writes, iss-29): with a did-you-mean when a real sub-verb is near,
 			// and with the sub-verb list when none is, because a far miss is a
 			// subcommand call too (iss-2609091647589392). Genuine prose still files.
+			if hint := recordReadHint("capture", args); hint != "" {
+				return &exitError{Code: 2, Msg: fmt.Sprintf(
+					"unknown capture subcommand %q; %s (nothing captured)", args[0], hint)}
+			}
 			if sug, refuse := unrecognizedSubverb(cmd, args); refuse {
 				if sug == "" {
 					return &exitError{Code: 2, Msg: fmt.Sprintf(
@@ -4075,7 +4245,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 	var dispState, dispGrounds, dispExit, dispSupersedes, dispRecurs string
 	var dispHoldFrame, dispHoldMoscow string
 	dispositionCmd := &cobra.Command{
-		Use:  "disposition <rdi-N> --state <accepted|rejected|declined|held> [--grounds <text>] [--exit-condition <text>] [--supersedes <dsp-N>] [--recurs <rdi-N,...>]",
+		Use:  "disposition <rdi-N> --state <accepted|rejected|declined|held> (--grounds <text>, or --exit-condition <text> when held) [--supersedes <dsp-N>] [--recurs <rdi-N,...>]",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			repoRoot, err := captureLedgerRoot(cmd)
@@ -4988,7 +5158,7 @@ func printStoreNotes(cmd *cobra.Command, repoRoot, rootSHA string) error {
 func rulesRoot(cwd string, w io.Writer) string {
 	res := rules.Resolve(cwd)
 	for _, note := range res.Notes {
-		fmt.Fprintf(w, "abcd %s\n", note)
+		diagnosticLine(w, "abcd %s", note)
 	}
 	return res.Root
 }
@@ -5039,6 +5209,12 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		if note := staleUsageNote(root, args, msg); note != "" {
 			msg += "\nabcd: " + note
 		}
+		// Masked once, here, for every verb: a refusal that echoes an operand or
+		// repository text must not carry ESC, C1 or bidi runes to the terminal or
+		// into the envelope (iss-2609012037438844). SanitizeBlock, not Sanitize,
+		// because the refusal's own line breaks (the note above, joined errors)
+		// are its structure.
+		msg = termsafe.SanitizeBlock(msg)
 		// Honour --json for the error surface too: a caller that asked for
 		// machine output must get a JSON envelope, never raw Go text (iss-29) —
 		// and it goes to STDOUT, where a machine-readable consumer reads

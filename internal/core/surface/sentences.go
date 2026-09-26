@@ -188,8 +188,10 @@ var sentences = map[string]string{
 		"Writes the held line with its reason; refuses without --reason.",
 	"abcd intent link": "Link a planned intent to an existing spec: " +
 		"Writes the intent's spec_id; refuses an intent that is not planned.",
-	"abcd intent plan": "Plan a draft intent by minting and linking its spec, or stamp a planned one's scope conditions: " +
-		"Writes both records; refuses an intent on hold.",
+	"abcd intent plan": "Plan a draft, or several as a named bundle, or stamp a planned one's conditions: " +
+		"Writes the intents and their spec; refuses a held intent or a bundle's blocker.",
+	"abcd intent reclassify": "Change an intent's kind, or retire it as superseded by a named successor: " +
+		"Writes the record and its successor together; refuses a shipped intent's kind change.",
 	"abcd intent ready": "Report whether an intent is ready to implement, exiting 1 when not: " +
 		"Writes its grounds only with --grounds; refuses malformed grounds.",
 	"abcd intent unhold": "Lift an intent's hold: " +

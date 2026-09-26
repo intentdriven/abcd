@@ -50,6 +50,12 @@ checkout and branch whose ledger it read, as every ledger verb does: a stderr
 line in the plain render and a `ledger` member in the machine-readable one
 (iss-2609202053570475).
 
+A bundle's shared spec is read through every member it lists, as its close
+reads them (itd-34): its links carry `intents` beside `intent`, a superseded
+member is passed over and named, and the move reads each member still in force
+— the open specs a closed spec's members wait on, or the readiness of each
+member an open spec defers to.
+
 Any other positional is refused: the CLI exits **2** with `abcd: unknown command
 …` on stderr, which is the framework's usage-error convention. `abcd status` is
 refused that way, and `abcd help` prints the grouped verb list the

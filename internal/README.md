@@ -55,6 +55,12 @@ plugin surface, and a future MCP server share one engine.
   `core/intent`'s tests import `core/lint`, so a lint importing intent back is
   an import cycle. It imports `core/mdrecord` for the one notion of a section,
   and nothing else beyond the standard library.
+- **`core/intentbundle/`** — the bundle's record vocabulary: the words a
+  bundle's survivor states its bundle of one in. A leaf on the `core/condition`
+  precedent: the writer (`abcd intent reclassify`, in `core/intent`) and the
+  gate that accepts the one legitimate bundle of one (`record_schema`, in
+  `core/lint`) read one phrase, and a lint importing intent back is an import
+  cycle.
 - **`core/readingitem/`** — the reading ledger's locator: a reading item or a
   disposition found by id across every run, symlink-refusing at each level, and
   the one occasion resolver the verbs that name an occasion share, each naming

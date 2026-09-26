@@ -41,8 +41,14 @@ const (
 	BucketSuperseded  = "superseded"
 )
 
-// KindStandalone is the default binding kind Plan writes (a 1:1 intent↔spec).
-const KindStandalone = "standalone"
+// The binding kinds (itd-34). KindStandalone is the default Plan writes (a 1:1
+// intent↔spec); a bundle-member shares one spec with its bundle-mates; a
+// discipline is a cross-cutting rule on disciplines/, with no spec of its own.
+const (
+	KindStandalone   = "standalone"
+	KindBundleMember = "bundle-member"
+	KindDiscipline   = "discipline"
+)
 
 // Buckets is the fixed lifecycle order used for loading and rendering.
 var Buckets = []string{BucketDrafts, BucketPlanned, BucketShipped, BucketDisciplines, BucketSuperseded}
@@ -91,6 +97,9 @@ type Intent struct {
 	// trust boundary between the two.
 	Held          string `json:"held,omitempty"`
 	HeldMalformed bool   `json:"held_malformed,omitempty"`
+	// Bundle is the bundle a bundle-member names in its `bundle:` field, and
+	// empty when the record names none (itd-34).
+	Bundle string `json:"bundle,omitempty"`
 }
 
 // Corpus is the in-memory set of intent records discovered across every bucket.
@@ -244,6 +253,10 @@ type PlanResult struct {
 	// condition written after planning reaches the mint, which is what makes the
 	// readiness gate's remedy a command that works.
 	StampOnly bool `json:"stamp_only"`
+	// LinkedInPlace reports that this run minted (or reused) the spec for a
+	// record already in planned/ whose spec_id was null, and linked it without
+	// moving the record (iss-2609211738504433).
+	LinkedInPlace bool `json:"linked_in_place"`
 	// ImpactStamped is the impact judgement this run wrote onto the record, and
 	// empty when it wrote none — because no --impact was supplied, or because the
 	// record already carried the same value.
@@ -315,6 +328,13 @@ type ReconcileResult struct {
 	// and a re-run of the close repoints the links other files still hold. The
 	// moved records' own links it leaves as written, for links_resolve to name.
 	RelinkError string `json:"relink_error,omitempty"`
+	// Members is every member a bundle's shared spec shipped (or found already
+	// shipped), in the order the spec lists them, and Skipped the members it
+	// passed over — superseded out of the bundle, or naming another — (itd-34).
+	// Both are empty on one intent's close; on a bundle's, Intent and the fields
+	// beside it describe the first member.
+	Members []BundleMemberClose `json:"members,omitempty"`
+	Skipped []string            `json:"skipped,omitempty"`
 }
 
 // RemainderRequest asks a close to mint a follow-on spec for the part of the
@@ -346,4 +366,29 @@ type StatusView struct {
 	SpecsOpen   int            `json:"specs_open"`
 	SpecsClosed int            `json:"specs_closed"`
 	Linked      []LinkedPair   `json:"linked"`
+	// Intents lists every intent, one entry each, ordered by bucket then id
+	// (iss-242): what a planning sweep asks of each record without opening it.
+	Intents []IntentListing `json:"intents"`
+}
+
+// The two values of IntentListing.ACState.
+const (
+	// ACStateReal is an Acceptance Criteria section holding at least one
+	// top-level bullet: the bar plan checks.
+	ACStateReal = "real"
+	// ACStateSeeded is a section holding no bullet — the placeholder the create
+	// path seeds, or nothing — so the intent cannot be planned yet.
+	ACStateSeeded = "seeded"
+)
+
+// IntentListing is one intent as the status view lists it.
+type IntentListing struct {
+	ID     string `json:"id"`
+	Title  string `json:"title"`
+	Bucket string `json:"bucket"`
+	// ACState is ACStateReal or ACStateSeeded, judged by the bar plan applies.
+	ACState string `json:"ac_state"`
+	// Filed is the date a timestamp id encodes (adr-45), as YYYY-MM-DD, and
+	// null for an ordinal id, which encodes none: the view reads no git history.
+	Filed *string `json:"filed"`
 }

@@ -250,8 +250,8 @@ func newGuardHookCommand() *cobra.Command {
 			// the command run and puts the warning in front of a human. Only the
 			// blocking status (2) stops anything.
 			failOpen := func(format string, a ...any) error {
-				fmt.Fprintf(cmd.ErrOrStderr(),
-					"abcd guard: NOT CHECKED — "+format+". This command runs UNGUARDED.\n", a...)
+				diagnosticLine(cmd.ErrOrStderr(),
+					"abcd guard: NOT CHECKED — "+format+". This command runs UNGUARDED.", a...)
 				return &exitError{Code: 1}
 			}
 
@@ -306,7 +306,7 @@ func newGuardHookCommand() *cobra.Command {
 				return failOpen("no hazard registry is loaded")
 			case guard.LoadRepoDropped:
 				repoDropped = true
-				fmt.Fprintln(cmd.ErrOrStderr(), guardDropNotice("the repo", ld.Err))
+				diagnosticLine(cmd.ErrOrStderr(), "%s", guardDropNotice("the repo", ld.Err))
 			}
 			// A disabled registry allows everything, which makes it an unguarded
 			// session — and it is the CHEAPEST one to reach: the other unguarded
@@ -351,7 +351,7 @@ func newGuardHookCommand() *cobra.Command {
 					wreg := wld.Registry
 					if wld.Posture == guard.LoadRepoDropped {
 						repoDropped = true
-						fmt.Fprintln(cmd.ErrOrStderr(), guardDropNotice("the working directory's", wld.Err))
+						diagnosticLine(cmd.ErrOrStderr(), "%s", guardDropNotice("the working directory's", wld.Err))
 					}
 					if !wreg.Disabled && wld.Posture != guard.LoadUnavailable {
 						if wdec, cerr := wreg.Check(candidate); cerr == nil {

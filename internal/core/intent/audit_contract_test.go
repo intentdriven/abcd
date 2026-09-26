@@ -139,3 +139,28 @@ func TestAuditorDefinitionDocumentsEveryDisposition(t *testing.T) {
 		}
 	}
 }
+
+// TestAuditorDescriptionNamesTheDispositionSurface: the frontmatter description
+// is what a host reads to choose and brief the agent, so it summarises the whole
+// output — the scope-condition dispositions included, not only the criteria
+// verdict and gap audit it carried before the disposition surface existed
+// (iss-2608300927241768).
+func TestAuditorDescriptionNamesTheDispositionSurface(t *testing.T) {
+	data, err := os.ReadFile(auditorDefinitionPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	front, _, ok := strings.Cut(strings.TrimPrefix(string(data), "---\n"), "\n---\n")
+	if !ok {
+		t.Fatal("the auditor definition has no frontmatter")
+	}
+	_, desc, ok := strings.Cut(front, "description:")
+	if !ok {
+		t.Fatal("the auditor frontmatter has no description")
+	}
+	desc, _, _ = strings.Cut(desc, "\nprompt_version:")
+	desc = strings.Join(strings.Fields(desc), " ")
+	if !strings.Contains(desc, "scope condition") || !strings.Contains(desc, "disposition") {
+		t.Fatalf("the description does not summarise the scope-condition dispositions the verdict carries: %q", desc)
+	}
+}

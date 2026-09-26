@@ -44,14 +44,11 @@ var cliOnlyVerbs = map[string]string{
 	"statusline": "harness-invoked status-line render, wired by `ahoy install` and run by the harness on every refresh with its payload on stdin, never by a user; the row it prints and the offer that wires it are documented in commands/abcd.md and commands/ahoy.md",
 }
 
-// hostDelegatedCommands are the command files with no Go verb at all: the whole
-// workflow runs in the host agent, so the parity check must not read a missing
-// binary verb as drift.
-var hostDelegatedCommands = map[string]bool{
-	"consult":           true,
-	"ingest":            true,
-	"prepare-this-repo": true,
-}
+// The command files with no Go verb at all — the host-delegated pages, whose
+// whole workflow runs in the host agent — are pagesWithNoVerb in staleusage.go,
+// the one set both this parity check and the stale-usage refusal read, so the
+// check never reads a missing binary verb as drift and the refusal never calls
+// an up-to-date binary stale for one.
 
 // commandFileBodies reads every command file in the surface, keyed by verb.
 func commandFileBodies(t *testing.T) map[string]string {
@@ -160,11 +157,11 @@ func TestPluginSurfaceReachesEveryBinaryVerb(t *testing.T) {
 	}
 	sort.Strings(names)
 	for _, name := range names {
-		if name == bareCommandFile || verbs[name] || hostDelegatedCommands[name] {
+		if _, noVerb := pagesWithNoVerb[name]; name == bareCommandFile || verbs[name] || noVerb {
 			continue
 		}
-		t.Errorf("%s/%s.md has no binary verb and is not recorded as host-delegated: the plugin "+
-			"surface names a command nothing answers", pluginCommandsDir, name)
+		t.Errorf("%s/%s.md has no binary verb and is not recorded as host-delegated in pagesWithNoVerb "+
+			"(staleusage.go): the plugin surface names a command nothing answers", pluginCommandsDir, name)
 	}
 }
 

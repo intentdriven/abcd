@@ -1,7 +1,7 @@
 ---
 name: intent
 description: "File a draft intent from quoted text, or render the intent store's status bare: Writes the draft into drafts/; refuses a lone word."
-argument-hint: "[text] [--title \"<title>\"] | ready <itd-N> [--grounds \"<pursued|deferred|declined>: <conjecture>\"] | plan <itd-N> [--impact <additive|breaking|fix>] | hold <itd-N> --reason \"<text>\" | unhold <itd-N> | link <itd-N> <spc-N> | audit [<itd-N>] | audit --issue-drift [--strict] | condition <itd-N> [<cond-id> --disposition <survived|narrowed|falsified|untested> --occasioned-by <rdi-N|itd-N> --grounds \"<why>\" [--narrowing \"<what now holds>\"]]"
+argument-hint: "[text] [--title \"<title>\"] | ready <itd-N> [--grounds \"<pursued|deferred|declined>: <conjecture>\"] | plan <itd-N> [<itd-N>…] [--bundle <name>] [--impact <additive|breaking|fix>] | reclassify <itd-N> --kind <standalone|bundle-member --bundle <name>|superseded --by <itd-M|adr-N> --reason \"<why>\"> | hold <itd-N> --reason \"<text>\" | unhold <itd-N> | link <itd-N> <spc-N> | audit [<itd-N>] | audit --issue-drift [--strict] | condition <itd-N> [<cond-id> --disposition <survived|narrowed|falsified|untested> --occasioned-by <rdi-N|itd-N> --grounds \"<why>\" [--narrowing \"<what now holds>\"]]"
 block: people
 ---
 
@@ -23,7 +23,12 @@ invocation **performs zero writes**.
 ```
 
 Summarise the JSON for the user: counts per bucket, open/closed spec counts,
-and the intent↔spec links. Nothing is created or moved by this invocation.
+and the intent↔spec links. The `intents` array lists every intent with its
+`id`, `title`, `bucket`, `ac_state` (`real` when its Acceptance Criteria hold
+at least one bullet, `seeded` when they are still the placeholder, so it cannot
+be planned yet) and `filed` (the date a timestamp id encodes; null for an
+ordinal id): a planning sweep reads it rather than opening the files. Nothing
+is created or moved by this invocation.
 
 **Every `intent` verb addresses the checkout's store, from anywhere in the
 tree.** The verb resolves the repository root before it reads or writes, so the
@@ -272,7 +277,11 @@ after planning still reaches the mint. That re-run also takes `--impact`,
 under the rules step 10 gives, so a planned record filed without a judgement
 gets one before its close through the verb rather than an editor. With nothing
 unmarked (and no judgement to add) it refuses and says so, rather than exiting
-quietly having done nothing. The
+quietly having done nothing. A planned intent whose `spec_id` is null — planned
+before the spec seam existed — is the one exception: the same call mints and
+links its spec as it would for a draft, on the same Acceptance Criteria bar,
+and still moves no bucket; the readiness gate's remedy for a missing spec names
+that call. The
 identities are rendered by `abcd intent ready <itd-N> --json` under
 `conditions`, which is where a consumer reads them; bare `abcd intent` is a
 corpus-wide count-and-link status and carries no per-record body.
@@ -366,6 +375,30 @@ gate that will refuse the move mechanically is a recorded seed until built.
    stays owed to the close that ships. On an intent already in `planned/` the
    flag works the same way alongside the identity stamp.
 
+   **Several drafts as one bundle.** When the interview settles that two or
+   more drafts are distinct user moments that only make sense delivered
+   together, they are planned as one bundle: ONE shared spec, every member
+   moved together. Ask the human for the bundle's name — a short kebab-case
+   name, which every member carries as `bundle: <name>` and which becomes the
+   shared spec's slug — and pass their answer; never invent one. The CLI
+   refuses several intents without `--bundle`, and `--bundle` with one:
+
+   ```bash
+   "${CLAUDE_PLUGIN_ROOT}/abcd" intent plan <itd-A> <itd-B> [<itd-C>…] --bundle <name> [--impact <additive|breaking|fix>] --json
+   ```
+
+   It mints one spec whose frontmatter lists every member (`intents: [itd-A,
+   itd-B]` beside `intent: itd-A`, and `bundle: <name>`), stamps
+   `kind: bundle-member`, `bundle: <name>`, the scope-condition identities and
+   `spec_id` on each, and moves them all `drafts/ → planned/`. `--impact`
+   applies to every member under the rules above. A member that names another
+   in `blocked_by` is refused naming the edge — a bundle cannot contain its own
+   blocker, since its members ship at one moment — and so is a member that is
+   not a plannable draft, is held, already names another bundle, or is already
+   realised by a spec, and a name another record already carries. Every refusal
+   leaves every member where it was and mints nothing. The JSON carries the
+   `bundle`, the shared `spec`, and each member under `members`.
+
    **"Plan" means this act and nothing else here.** The build plan the phase
    docs hold, a dated design plan, and a session's planning brief are three
    other senses — see the glossary entry
@@ -433,6 +466,19 @@ it ships on the close after which no open spec names it. A close that ships
 nothing refuses `--impact`, because that judgement is written only at the close
 that ships (adr-2609151513118583, invariant 17). Report the specs the close
 names as still open — they are the reason the intent did not move.
+
+**A bundle's shared spec ships every member together.** Closing the spec a
+bundle plan minted moves every member whose `bundle:` matches the spec's
+`planned/ → shipped/` in the one close, each under the impact rule a single
+intent's close applies, and emits one fidelity-review request per member —
+review runs per member against the same delivery. The members move together or
+not at all: a member the impact rule refuses, a held member, or a member still
+realised by another open spec stops the close before anything moves (close that
+other spec first; it ships nothing while the bundle's spec is open). A member
+superseded out of the bundle is passed over and named. `--remainder` is refused
+on a bundle's spec, because a remainder belongs to one intent. The JSON lists
+each member under `members` (with its move and receipt) and the passed-over
+ones under `skipped`.
 
 **The close repoints every link that named a record it moved.** A record's
 folder is its status, so the close renames two files — the spec out of
@@ -549,6 +595,48 @@ you to the line to repair it by hand. A key spelled by hand in a way the reader
 accepts but the verb never writes (`held : "…"`, a space before the colon) is
 honoured as a hold and refused by `unhold` as a hand repair, never reported as
 a lift that did not happen.
+
+## Reclassify
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" intent reclassify <itd-N> --kind standalone [--reason "<why>"] --json
+"${CLAUDE_PLUGIN_ROOT}/abcd" intent reclassify <itd-N> --kind bundle-member --bundle <name> [--reason "<why>"] --json
+"${CLAUDE_PLUGIN_ROOT}/abcd" intent reclassify <itd-N> --kind superseded --by <itd-M|adr-N> --reason "<why>" --json
+```
+
+The one verb that changes a record's kind after planning set it, so a late
+change is one command rather than a hand edit that leaves a one-way link. Every
+change is appended to the record's `reclassification_history` as
+`{ date, from, to, reason }`; the reason is one line, redacted before it is
+written.
+
+- **A kind change**, `standalone` ↔ `bundle-member`, on a draft or a planned
+  record: the shelf stays, and the kind (and `bundle:`, set or cleared) is
+  rewritten. Joining a bundle names one another record already carries; a
+  new bundle is planned with the bundle form of `plan`, never started here. A
+  planned member whose spec is its bundle's shared spec does not leave the
+  bundle this way — that would dissolve it, which this verb does not do.
+- **A supersession**, `--kind superseded --by <itd-M|adr-N> --reason`, on any
+  live record: the record moves to `superseded/` with `superseded_by`,
+  `kind_at_supersession` (the kind it had) and the supersession note under its
+  title, and the successor's `supersedes` gains the record **in the same
+  write**, so the link is never one-way. The successor must be present and in
+  force. Superseding one member of a bundle of two leaves the other a
+  `bundle-member` whose history says the bundle now has one member, and the
+  retired member keeps the bundle it left as `bundle_at_supersession` with
+  `bundle: null`.
+- **A shipped intent never changes kind.** `--kind discipline` on a shipped
+  record is refused with the remedy: file a discipline that supersedes it, then
+  supersede the shipped record by that discipline. The verb writes no
+  discipline on any shelf — a discipline is a `## Rule` record, not a
+  relabelled press release.
+
+The write is all-or-nothing under the intent store's lock: every refusal comes
+before the first write, and a failure part way through puts back every file
+already written. Report the paths from `moved` and `written`, the `survivor`
+when there is one, and any `open_specs` — an open spec still naming a record
+just superseded is a fact to act on (close it, or retire it by hand), not
+something the verb decides.
 
 ## Link
 

@@ -491,7 +491,10 @@ func TestShippedVerdictsSurviveTheStagedRollout(t *testing.T) {
 	dir := filepath.Join(repoRootFromPackage, shippedDir)
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		t.Skipf("shipped intents unreadable from the package dir: %v", err)
+		// Fatal, not Skip: .abcd/ ships in every checkout and source archive, so an
+		// unreadable shipped/ is a broken tree, and a skip would pass the rollout
+		// assertion by never running it (iss-2608300927241768).
+		t.Fatalf("shipped intents unreadable from the package dir: %v", err)
 	}
 	checked := 0
 	for _, e := range entries {
