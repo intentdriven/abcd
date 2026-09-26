@@ -625,7 +625,16 @@ func renderShape(t reflect.Type, spec shapeSpec) string {
 }
 
 // fillShape populates v with the placeholder for each field, by JSON name.
+//
+// A field reflection cannot set is an unexported one, which encoding/json never
+// decodes either, so it is no part of the shape and is skipped rather than
+// panicking the emit. The guard sits on the writes, not on the struct walk: an
+// unexported EMBEDDED struct is itself unsettable while its exported fields are
+// promoted, settable and decoded, so they still show.
 func fillShape(v reflect.Value, name string, spec shapeSpec) {
+	if v.Kind() != reflect.Struct && !v.CanSet() {
+		return
+	}
 	switch v.Kind() {
 	case reflect.Struct:
 		for i := 0; i < v.NumField(); i++ {

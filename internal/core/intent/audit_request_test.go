@@ -210,3 +210,37 @@ func TestConsistencyRequestCarriesTheFindingsShape(t *testing.T) {
 		t.Fatalf("the stated shape shows %+v, want one finding with its two ends", p.Findings)
 	}
 }
+
+// TestRenderShapeSkipsFieldsTheDecoderCannotSet: fillShape writes through
+// reflection, and an unexported field is read-only there, so one added to a
+// decode struct would panic every emit. encoding/json never decodes such a
+// field, so it is no part of the shape and is skipped, while an exported field
+// promoted from an unexported embedded struct IS decoded and still shows.
+func TestRenderShapeSkipsFieldsTheDecoderCannotSet(t *testing.T) {
+	type inner struct {
+		Promoted string `json:"promoted"`
+	}
+	type shape struct {
+		inner
+		Named  string            `json:"named"`
+		note   string            // unexported: read-only through reflection
+		marks  []string          // unexported: read-only through reflection
+		byName map[string]string // unexported: read-only through reflection
+	}
+	var out string
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				t.Fatalf("renderShape panicked on an unexported field: %v", r)
+			}
+		}()
+		out = renderShape(reflect.TypeOf(shape{}), shapeSpec{hints: map[string]string{"named": "<named>"}})
+	}()
+	var got map[string]any
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("rendered shape is not one JSON object: %v\n%s", err, out)
+	}
+	if got["named"] != "<named>" || got["promoted"] != "<string>" || len(got) != 2 {
+		t.Fatalf("rendered shape = %v, want exactly named and the promoted field", got)
+	}
+}
