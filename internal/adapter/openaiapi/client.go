@@ -25,9 +25,14 @@
 //     sub-agent's payload is judged by, so an answer that does not satisfy it is
 //     refused rather than used.
 //
-// It uses net/http and encoding/json alone; it reads no file, no environment
-// and no credential store: the caller resolves the key by name through
-// internal/core/credential and hands the value in.
+// It uses net/http and encoding/json alone; it reads no file and no
+// credential store: the caller resolves the key by name through
+// internal/core/credential and hands the value in. The one environment it
+// honours is net/http's own, through the default transport: the standard
+// proxy variables (HTTPS_PROXY, HTTP_PROXY, NO_PROXY) and the platform's
+// trust roots. An https call through a proxy is a CONNECT tunnel, so the key
+// and the brief stay inside TLS, and a call to this machine (the only one
+// plain HTTP may reach) is never proxied.
 package openaiapi
 
 import (

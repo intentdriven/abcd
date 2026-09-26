@@ -67,7 +67,11 @@ judged by. The request is the host's brief in the protocol's two roles: the
 agent's prompt as the system message, the verb's request as the user message.
 
 The key is resolved by name through `internal/core/credential`, the one reader;
-the adapter reads no file, no environment and no store of its own. Its
+the adapter reads no file and no store of its own. The one environment it
+honours is the HTTP stack's: the standard proxy variables (`HTTPS_PROXY`,
+`NO_PROXY`) and the platform's trust roots. An https call through a proxy is a
+tunnel, so the key and the brief stay inside TLS, and a call to this machine is
+never proxied. Its
 connection (`oracle.Connections`) carries the provider's allowlist and the
 settings the adapter accepts, which is what the model tier's allowlist check and
 its accepted-settings refusal read (spc-2609251028149555). A provider claims no
