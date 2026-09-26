@@ -295,6 +295,14 @@
       ]
     },
     {
+      "path": "abcd build",
+      "hidden": false,
+      "group": "records",
+      "block": "people",
+      "sentence": "Start the loop that takes one READY intent to delivered: Writes the run's state file in the local tier; refuses an open decision, a hold or a peer holding it.",
+      "flags": []
+    },
+    {
       "path": "abcd capture",
       "hidden": false,
       "group": "records",
@@ -1181,7 +1189,7 @@
       "hidden": false,
       "group": "agents",
       "block": "agents",
-      "sentence": "Share one autonomous run between sessions, from joining to reporting: Writes nothing bare, only the machine-scoped run state; refuses an unknown sub-verb.",
+      "sentence": "Share one autonomous run between sessions and drive the implement loop: Writes nothing bare, only the run state its sub-verbs name; refuses an unknown sub-verb.",
       "flags": []
     },
     {
@@ -1360,6 +1368,20 @@
       ]
     },
     {
+      "path": "abcd implement receipt",
+      "hidden": false,
+      "sentence": "Hand back the receipt an agent step of a loop run awaits: Writes the run's state when the receipt verifies; refuses a receipt that does not verify.",
+      "flags": [
+        {
+          "name": "run",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd implement release",
       "hidden": false,
       "sentence": "Release this session's claim on a record: Writes the release and a claim_released line; refuses a claim another session holds.",
@@ -1387,6 +1409,34 @@
         },
         {
           "name": "log",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd implement status",
+      "hidden": false,
+      "sentence": "Render the implement loop's runs in this checkout, lane by lane: Writes nothing; refuses a --run naming no run.",
+      "flags": [
+        {
+          "name": "run",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd implement step",
+      "hidden": false,
+      "sentence": "Perform the next step of an implement loop run and exit: Writes the run's state; refuses a step whose body this abcd does not carry.",
+      "flags": [
+        {
+          "name": "run",
           "shorthand": "",
           "type": "string",
           "required": false,

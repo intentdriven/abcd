@@ -90,6 +90,7 @@ var helpPlacements = map[string]helpPlacement{
 	"ahoy":      {group: groupSetUp},
 	"rules":     {group: groupSetUp},
 	"update":    {group: groupSetUp},
+	"build":     {group: groupRecords},
 	"capture":   {group: groupRecords},
 	"decide":    {group: groupRecords},
 	"intent":    {group: groupRecords},

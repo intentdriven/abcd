@@ -6,11 +6,12 @@ makes a record the unit of exclusion between them with a claim, keeps a second
 session inside its bounds, and derives the comparison of the three ways of
 dividing work from the run log (itd-2609221656373558, spc-2609221657588816).
 
-It is the family the implement loop extends: `implement step` and
-`implement receipt` (itd-2609201916151817, decision 8) are later sub-verbs of
-the same verb, and the pacing intent (itd-2609201925079472) reads the same run
-state. `build` is what a person types; `implement` is what a driving session
-calls.
+It is also the family the implement loop is driven through (itd-2609201916151817,
+decision 8): `build` is what a person types, and the loop's status, step and
+receipt are sub-verbs of this verb, which a driving session calls. The loop's
+own state lives in the checkout's local tier, not in the shared run state below;
+[`31-build.md`](31-build.md) is its chapter. The pacing intent
+(itd-2609201925079472) reads the loop's window clock.
 
 ## Sub-verbs
 
@@ -32,6 +33,9 @@ calls.
 | `log` | — | shipped |
 | `report` | — | shipped |
 | `load` | — | shipped |
+| `status` | — | shipped |
+| `step` | — | shipped |
+| `receipt` | — | shipped |
 
 ## Where the run lives
 
@@ -198,6 +202,21 @@ as it was printed; the run's hand-written load samples share the name and carry
 no `triggers`. The check exits 0 on every status: it never refuses, waits or
 signals anything.
 
+## The implement loop
+
+Three sub-verbs drive the loop a build starts, each over the run's state file in
+the checkout's local tier ([`31-build.md`](31-build.md) states the file, the
+checks and the step interface). The status render reads every run, or the one
+named, and writes nothing. The step performs the current lane's next step and
+exits; at a step that hands work to an agent it names the agent, the brief and
+the receipt path, and asking again moves nothing. The receipt hands that file
+back, and the step completes only when the path is the one named and its
+verifier accepts it. Without a named run, the step and the receipt act on the
+one run in progress in the checkout and refuse naming the runs when there are
+several. Their refusals name the step, the reason and the remedy, and a pause
+before the run's next eligible time, or a lock held by another invocation, is
+contention at exit 3.
+
 ## Exit codes
 
 `0` done, and every status of the load check; `2` refused (an unrecognised input, a session that has not joined, a
@@ -215,7 +234,7 @@ _Generated from the command tree; a drift test fails `go test` when this appendi
 
 ### `abcd implement`
 
-Sub-verbs: `abcd implement check`, `abcd implement claim`, `abcd implement join`, `abcd implement leave`, `abcd implement load`, `abcd implement log`, `abcd implement mode`, `abcd implement release`, `abcd implement report`.
+Sub-verbs: `abcd implement check`, `abcd implement claim`, `abcd implement join`, `abcd implement leave`, `abcd implement load`, `abcd implement log`, `abcd implement mode`, `abcd implement receipt`, `abcd implement release`, `abcd implement report`, `abcd implement status`, `abcd implement step`.
 
 Flags: none.
 
@@ -286,6 +305,14 @@ Sub-verbs: none.
 | `--session` | string |
 | `--window` | int |
 
+### `abcd implement receipt`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--run` | string |
+
 ### `abcd implement release`
 
 Sub-verbs: none.
@@ -302,5 +329,21 @@ Sub-verbs: none.
 |---|---|
 | `--date` | string |
 | `--log` | string |
+
+### `abcd implement status`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--run` | string |
+
+### `abcd implement step`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--run` | string |
 
 <!-- surface-appendix:end -->

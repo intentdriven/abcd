@@ -48,6 +48,9 @@ var sentences = map[string]string{
 	"abcd banlist remove": "Remove one banned-name entry from the layer a flag names: " +
 		"Writes that layer's store; refuses a public entry curated by hand.",
 
+	"abcd build": "Start the loop that takes one READY intent to delivered: " +
+		"Writes the run's state file in the local tier; refuses an open decision, a hold or a peer holding it.",
+
 	"abcd capture": "File an issue from quoted text, or render the ledger's status bare: " +
 		"Writes one record under open/; refuses a lone word and any folder outside a checkout.",
 	"abcd capture defer": "Carry an open major or critical issue past one release cut: " +
@@ -150,8 +153,8 @@ var sentences = map[string]string{
 	"abcd identity render": "Print the correction for every drifted surface as a unified diff: " +
 		"Writes nothing; refuses a repository that records no identity block.",
 
-	"abcd implement": "Share one autonomous run between sessions, from joining to reporting: " +
-		"Writes nothing bare, only the machine-scoped run state; refuses an unknown sub-verb.",
+	"abcd implement": "Share one autonomous run between sessions and drive the implement loop: " +
+		"Writes nothing bare, only the run state its sub-verbs name; refuses an unknown sub-verb.",
 	"abcd implement check": "Ask whether this session may take a step before taking it: " +
 		"Writes a run-log line only on a refusal; refuses a step the second session's bounds forbid.",
 	"abcd implement claim": "Claim a record for this session before opening its lane: " +
@@ -166,10 +169,16 @@ var sentences = map[string]string{
 		"Writes one line; refuses the claim, window, and session events their own verbs write.",
 	"abcd implement mode": "Open a window by logging its division mode: " +
 		"Writes a window_mode line; refuses any session but the first.",
+	"abcd implement receipt": "Hand back the receipt an agent step of a loop run awaits: " +
+		"Writes the run's state when the receipt verifies; refuses a receipt that does not verify.",
 	"abcd implement release": "Release this session's claim on a record: " +
 		"Writes the release and a claim_released line; refuses a claim another session holds.",
 	"abcd implement report": "Derive the comparison of the division modes from the run log: " +
 		"Writes nothing; refuses --date and --log together.",
+	"abcd implement status": "Render the implement loop's runs in this checkout, lane by lane: " +
+		"Writes nothing; refuses a --run naming no run.",
+	"abcd implement step": "Perform the next step of an implement loop run and exit: " +
+		"Writes the run's state; refuses a step whose body this abcd does not carry.",
 
 	"abcd inbox": "List the reports managed repositories filed back to abcd, newest first: " +
 		"Writes nothing; refuses any argument.",
