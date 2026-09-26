@@ -15,7 +15,7 @@
 # about committed history, and history is cheap to stage in a throwaway repo and
 # impossible to stage honestly in a tree someone is working in.
 #
-# Usage: check-reviews-cases.sh
+# Usage: check-reviews-cases.sh   (or /bin/bash check-reviews-cases.sh for bash 3.2)
 # Exit 0 all cases behaved, 1 a case did not.
 set -euo pipefail
 
@@ -63,7 +63,10 @@ PIN="0123456789abcdef0123456789abcdef01234567"
 expect() {
 	local want="$1" repo="$2" label="$3" needle="${4:-}"
 	local out rc=0
-	out="$(cd "$repo" && bash "$GATE" 2>&1)" || rc=$?
+	# "$BASH", not a bare bash: the gate runs under the interpreter running these
+	# cases, so `/bin/bash scripts/check-reviews-cases.sh` proves it on the bash
+	# 3.2 macOS ships and a bare invocation on whatever bash PATH names.
+	out="$(cd "$repo" && "$BASH" "$GATE" 2>&1)" || rc=$?
 	case "$want" in
 	pass)
 		if [ "$rc" -ne 0 ]; then
@@ -225,6 +228,93 @@ printf '{}\n' >"$d/$REV_DIR/$PIN/gate.json"
 git -C "$d" add -A
 git -C "$d" commit -qm "add a receipt"
 expect pass "$d" "RD004 a receipt directory is exempt"
+
+# --- RD001/RD004: what the board cannot read, the gate refuses ----------------
+#
+# The board reads a summary through a guarded read (internal/core/reviews.Read):
+# a symlink is no summary, and neither is one past maxSummaryBytes (1 MiB); both
+# show unpinned. `[ -f ]` follows a symlink and the gate's read has no cap, so
+# both were gate-green and board-unpinned. So was a NUL byte in the frontmatter:
+# bash `read` drops it, so the gate saw a clean pin line where reviews.Pin sees
+# none. Each is refused now, and each boundary's clean side is asserted too.
+
+# pinned <file> writes a pinned summary's frontmatter and a short body.
+pinned() {
+	printf -- '---\nreview_of_commit: %s\n---\n# S\n' "$PIN" >"$1"
+}
+
+# padto <file> <bytes> grows a file with body text to exactly <bytes>.
+padto() {
+	local have
+	have=$(($(wc -c <"$1")))
+	head -c "$(($2 - have))" /dev/zero | tr '\0' 'a' >>"$1"
+}
+
+# commitall <repo> commits whatever the fixture wrote.
+commitall() {
+	git -C "$1" add -A
+	git -C "$1" commit -qm "add a review"
+}
+
+# A symlinked summary is a pointer, not committed content: the board reads it as
+# no summary at all.
+d="$(newrepo rd001-symlink)"
+mkdir -p "$d/$REV_DIR/2026-09-26-linked"
+pinned "$d/$REV_DIR/2026-09-26-linked/01-real.md"
+ln -s 01-real.md "$d/$REV_DIR/2026-09-26-linked/00-summary.md"
+commitall "$d"
+expect fail "$d" "RD001 a symlinked 00-summary.md" "RD001"
+
+# A symlinked review folder is not on the board at all (the board does not follow
+# a symlinked entry), so the gate refuses it rather than vouching for it.
+d="$(newrepo rd001-symlink-dir)"
+mkdir -p "$d/elsewhere"
+pinned "$d/elsewhere/00-summary.md"
+ln -s ../../../elsewhere "$d/$REV_DIR/2026-09-26-linked-dir"
+commitall "$d"
+expect fail "$d" "RD001 a symlinked review folder" "RD001"
+
+# Past the board's 1 MiB cap the summary shows unpinned, so the gate refuses it;
+# at exactly the cap the board reads it, and so does the gate.
+d="$(newrepo rd004-oversize)"
+mkdir -p "$d/$REV_DIR/2026-09-26-oversize"
+pinned "$d/$REV_DIR/2026-09-26-oversize/00-summary.md"
+padto "$d/$REV_DIR/2026-09-26-oversize/00-summary.md" 1048577
+commitall "$d"
+expect fail "$d" "RD004 a summary over 1 MiB" "RD004"
+d="$(newrepo rd004-at-cap)"
+mkdir -p "$d/$REV_DIR/2026-09-26-at-cap"
+pinned "$d/$REV_DIR/2026-09-26-at-cap/00-summary.md"
+padto "$d/$REV_DIR/2026-09-26-at-cap/00-summary.md" 1048576
+commitall "$d"
+expect pass "$d" "RD004 a summary of exactly 1 MiB"
+
+# A NUL byte anywhere in the frontmatter block — after the sha, inside the key,
+# or on the closing fence — leaves reviews.Pin with no pin; bash `read` drops it
+# and would have read a clean block. The fixtures are written with printf's own
+# escapes, since a shell variable cannot carry a NUL.
+d="$(newrepo rd004-nul-value)"
+mkdir -p "$d/$REV_DIR/2026-09-26-nul-value"
+printf -- '---\nreview_of_commit: %s\0\n---\n# S\n' "$PIN" >"$d/$REV_DIR/2026-09-26-nul-value/00-summary.md"
+commitall "$d"
+expect fail "$d" "RD004 a NUL byte after the sha" "RD004"
+d="$(newrepo rd004-nul-key)"
+mkdir -p "$d/$REV_DIR/2026-09-26-nul-key"
+printf -- '---\nreview_of\0_commit: %s\n---\n# S\n' "$PIN" >"$d/$REV_DIR/2026-09-26-nul-key/00-summary.md"
+commitall "$d"
+expect fail "$d" "RD004 a NUL byte inside the key" "RD004"
+d="$(newrepo rd004-nul-fence)"
+mkdir -p "$d/$REV_DIR/2026-09-26-nul-fence"
+printf -- '---\nreview_of_commit: %s\n---\0\n# S\n' "$PIN" >"$d/$REV_DIR/2026-09-26-nul-fence/00-summary.md"
+commitall "$d"
+expect fail "$d" "RD004 a NUL byte on the closing fence" "RD004"
+# The pin is read from the block alone, so a NUL in the body after it moves
+# nothing: the board reads the pin, and the gate passes it.
+d="$(newrepo rd004-nul-body)"
+mkdir -p "$d/$REV_DIR/2026-09-26-nul-body"
+printf -- '---\nreview_of_commit: %s\n---\n# S\0\n' "$PIN" >"$d/$REV_DIR/2026-09-26-nul-body/00-summary.md"
+commitall "$d"
+expect pass "$d" "RD004 a NUL byte in the body, past the block"
 
 # --- environment polarities --------------------------------------------------
 

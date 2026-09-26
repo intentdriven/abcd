@@ -152,8 +152,10 @@ object with `threshold`, `default_ref` and `rows`, each row `folder`, `kind`
 `commits_since` (null unless pinned) and `stale`. The block is absent when the
 tree holds no folder, and a tree that cannot be read omits it with the reason
 on stderr. The reader is `internal/core/reviews`; the reviews-charter gate's
-`RD004` refuses a dated review filed without the pin, so every row after the
-rule can be counted.
+`RD004` refuses a dated review filed without the pin, and `RD001` and `RD004`
+refuse the summaries the reader treats as no pin — a symlink, one past 1 MiB,
+one with a NUL byte in its frontmatter — so every row after the rule can be
+counted.
 
 ## The board itself is not built
 

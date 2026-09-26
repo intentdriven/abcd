@@ -163,3 +163,67 @@ func TestStalenessCountsTheDefaultBranchSinceThePin(t *testing.T) {
 		t.Fatalf("StaleCount = %d, want 1", b.StaleCount())
 	}
 }
+
+// TestReadShowsUnpinnedWhatTheGateRefuses is the board's half of the parity
+// scripts/check-reviews-cases.sh proves from the gate's side: a symlinked
+// summary, a summary past maxSummaryBytes, and a NUL byte anywhere in the
+// frontmatter block are no pin, and a symlinked folder is not read at all. At
+// exactly the cap, and with a NUL in the body past the block, the pin reads.
+func TestReadShowsUnpinnedWhatTheGateRefuses(t *testing.T) {
+	root := t.TempDir()
+	sha := strings.Repeat("f", 40)
+	write := func(rel string, body []byte) {
+		t.Helper()
+		p := filepath.Join(root, Dir, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, body, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	padded := func(n int) []byte {
+		b := []byte(pinnedSummary(sha))
+		return append(b, []byte(strings.Repeat("a", n-len(b)))...)
+	}
+	write("2026-09-26-linked/01-real.md", []byte(pinnedSummary(sha)))
+	if err := os.Symlink("01-real.md", filepath.Join(root, Dir, "2026-09-26-linked", summaryFile)); err != nil {
+		t.Fatal(err)
+	}
+	write("../elsewhere/00-summary.md", []byte(pinnedSummary(sha)))
+	if err := os.Symlink(filepath.Join("..", "elsewhere"), filepath.Join(root, Dir, "2026-09-26-linked-dir")); err != nil {
+		t.Fatal(err)
+	}
+	write("2026-09-26-oversize/00-summary.md", padded(maxSummaryBytes+1))
+	write("2026-09-26-at-cap/00-summary.md", padded(maxSummaryBytes))
+	write("2026-09-26-nul-value/00-summary.md", []byte("---\nreview_of_commit: "+sha+"\x00\n---\n# S\n"))
+	write("2026-09-26-nul-key/00-summary.md", []byte("---\nreview_of\x00_commit: "+sha+"\n---\n# S\n"))
+	write("2026-09-26-nul-fence/00-summary.md", []byte("---\nreview_of_commit: "+sha+"\n---\x00\n# S\n"))
+	write("2026-09-26-nul-body/00-summary.md", []byte(pinnedSummary(sha)+"\x00\n"))
+
+	got, err := Read(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pins := map[string]string{}
+	for _, e := range got {
+		pins[e.Folder] = e.ReviewOfCommit
+	}
+	if _, ok := pins["2026-09-26-linked-dir"]; ok {
+		t.Fatal("a symlinked review folder was read; the board follows no symlinked entry")
+	}
+	want := map[string]string{
+		"2026-09-26-linked":    "",
+		"2026-09-26-oversize":  "",
+		"2026-09-26-at-cap":    sha,
+		"2026-09-26-nul-value": "",
+		"2026-09-26-nul-key":   "",
+		"2026-09-26-nul-fence": "",
+		"2026-09-26-nul-body":  sha,
+	}
+	for folder, pin := range want {
+		if got, ok := pins[folder]; !ok || got != pin {
+			t.Errorf("%s: pin %q (read %v), want %q", folder, got, ok, pin)
+		}
+	}
+}

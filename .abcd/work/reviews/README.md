@@ -31,10 +31,10 @@ Commissioned reviews of this project — plan reviews, code reviews, external au
 
 The machine-checkable half of this charter is enforced deterministically as lint codes `RD001`–`RD004`, defined by the gate that runs them, [`scripts/check-reviews.sh`](../../../scripts/check-reviews.sh) — the lint engine's contract ([`06-lint.md`](../../development/brief/05-internals/06-lint.md)) carries no numbered catalogue:
 
-- **`RD001`** — each review directory is `<YYYY-MM-DD>-<scope>/` and carries a `00-summary.md`. The 40-hex sha-keyed semantic-gate receipt directories (`<40-hex>/<gate>.json`, iss-35) are a distinct artefact class with their own `receipt_gate` integrity check and are exempt.
+- **`RD001`** — each review directory is `<YYYY-MM-DD>-<scope>/` and carries a `00-summary.md`; the directory and the summary are real, never symlinks, since the status board follows neither. The 40-hex sha-keyed semantic-gate receipt directories (`<40-hex>/<gate>.json`, iss-35) are a distinct artefact class with their own `receipt_gate` integrity check and are exempt.
 - **`RD002`** — review files are append-only (no post-creation edit in git history).
 - **`RD003`** — repo-relative paths only (no absolute personal paths).
-- **`RD004`** — each dated review's `00-summary.md` names `review_of_commit: <full sha>` in its leading frontmatter block, as a bare lowercase-hex object name. The three folders filed before the rule (`2026-07-06-plan-consistency`, `2026-07-07-roadmap-consistency`, `2026-08-19-pr-294-null-predicate`) are named as legacy and not refused; the set is closed. The sha-keyed receipt directories are pinned by their own names and are exempt.
+- **`RD004`** — each dated review's `00-summary.md` names `review_of_commit: <full sha>` in its leading frontmatter block, as a bare lowercase-hex object name, in a summary of at most 1 MiB whose frontmatter holds no NUL byte — the board reads no pin from anything else. The three folders filed before the rule (`2026-07-06-plan-consistency`, `2026-07-07-roadmap-consistency`, `2026-08-19-pr-294-null-predicate`) are named as legacy and not refused; the set is closed. The sha-keyed receipt directories are pinned by their own names and are exempt.
 
 Until these land in abcd's own lint (`internal/core/lint`), the standalone gate `scripts/check-reviews.sh` runs them on every push (via `make preflight`) and in CI (the `record-lint` job). The provenance discriminator and the "not a shadow backlog" rule above are semantic — they are enforced by review, not by the gate.
 
