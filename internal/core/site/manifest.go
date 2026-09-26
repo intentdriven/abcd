@@ -191,7 +191,10 @@ type Manifest struct {
 	Home      Home       `json:"home"`
 	Record    RecordOpts `json:"record"`
 	// Docs names the documentation pages the site's docs surface renders.
-	// DEFERRED: consumed by the docs-surface slice; validated here as paths.
+	// A docs.index says the site serves a /docs/ tree, so the header links it
+	// and a link to a docs page reaches its route; without one both go
+	// (iss-2609260928152365). The rest of the block is DEFERRED to the
+	// docs-surface slice and validated here as paths.
 	Docs DocsRefs `json:"docs"`
 	// RecordPages carries the record explorer's selectors.
 	// DEFERRED: consumed by spc-38's pages half; validated here as paths.
