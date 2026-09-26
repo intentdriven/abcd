@@ -682,7 +682,14 @@ or `noop`) and, for `dead_letter`, the reason. A second ingest for a receipt
 already ingested is a `noop` when its payload renders to the block on the record,
 replaces that block in place when it renders differently (`ingested`, reported
 as `replaced`), and is refused with nothing written when it does not validate:
-a bad re-ingest never dead-letters a verdict already ingested.
+a bad re-ingest never dead-letters a verdict already ingested. A verdict whose
+prose cites a record id that names no record is refused too, naming the id, with
+nothing written, wherever the repository's record-lint gates prose citations in
+the intent store: re-word the prose to describe the record and ingest again.
+Each review block closes on its own `<!-- abcd-review-end receipt=rcp-… -->`
+line, and only a marker on a live line of `## Audit Notes` counts: a note written
+below a block stays when the block is replaced, and a marker quoted in a fenced
+example or an HTML comment is not review state.
 
 **Model-tier routing.** Both `intent audit <itd-N>` and `intent audit ingest`
 dispatch the `intent-auditor` agent, and each resolves that agent's model tier

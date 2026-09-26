@@ -45,14 +45,15 @@ package termsafe
 // below — the tag rule defends a RENDER, and a renderer parses no HTML inside a
 // span, while the comment delimiters defend a GATE that does not read CommonMark
 // at all. The intent audit parks its review state as
-// `<!-- abcd-review: <STATE> receipt=<rcp> -->` lines and finds them with a plain
-// regex over the record's bytes, so backticks around a marker mean nothing to it:
-// exempting spans let an untrusted verdict field write a WORKING marker into a
-// committed intent record, claiming another intent's outstanding receipt was
-// already INGESTED and turning that receipt's genuine review into a silent
-// no-op. A gate that cannot see a code span cannot be given a code-span
-// exemption. (That matcher is now line-anchored too — second defence, not a
-// substitute for this one: it is still a byte pattern and not a grammar.)
+// `<!-- abcd-review: <STATE> receipt=<rcp> -->` lines and finds them with a
+// whole-line pattern over the lines mdrecord's fence-and-comment mask leaves
+// live, which knows no inline code span, so backticks around a marker mean
+// nothing to it: exempting spans let an untrusted verdict field write a WORKING
+// marker into a committed intent record, claiming another intent's outstanding
+// receipt was already INGESTED and turning that receipt's genuine review into a
+// silent no-op. A gate that cannot see a code span cannot be given a code-span
+// exemption. (That reader's line anchor and its mask are the second defence,
+// not a substitute for this one.)
 //
 // THE INVARIANT THE EXEMPTION RESTS ON: a cleaned field is parsed as CommonMark
 // as the exact string it was cleaned as. The cleaner decides what is sheltered

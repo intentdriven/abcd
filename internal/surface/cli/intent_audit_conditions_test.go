@@ -193,3 +193,35 @@ func TestIntentAuditDeadLetterRendersTheUntestedSplit(t *testing.T) {
 		t.Fatalf("the dead-letter render must report the untested split the JSON carries:\n%s", text)
 	}
 }
+
+// TestIntentAuditIngestRefusesAnUnresolvableCitation is the front door's half of
+// iss-2609231036448320: the CLI registers record-lint's prose-citation gate with
+// the ingest, so a verdict whose prose cites a record that does not exist is
+// refused, naming the id, with nothing written — in a repository whose
+// record-lint arms the rule over the intent store.
+func TestIntentAuditIngestRefusesAnUnresolvableCitation(t *testing.T) {
+	root, vp := conditionedRepo(t)
+	cfg := `{"roots": [".abcd/development"], "rules": {"prose_citation_resolves": {"enabled": true, "severity": "blocker",
+  "record_stores": {"itd": ".abcd/development/intents"}}}}` + "\n"
+	if err := os.WriteFile(filepath.Join(root, ".abcd", "record-lint.json"), []byte(cfg), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(vp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const dangling = "spc-2609999999999999"
+	cites := writeVerdict(t, strings.Replace(string(raw), "the stub is parked", "the stub is parked, as "+dangling+" asked", 1))
+	path := filepath.Join(root, ".abcd", "development", "intents", "shipped", "itd-10-alpha.md")
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := runCLIErr(t, "intent", "audit", "ingest", "--verdict-json", cites)
+	if err == nil || !strings.Contains(err.Error()+string(out), dangling) {
+		t.Fatalf("ingest = %v\n%s\nwant a refusal naming %s", err, out, dangling)
+	}
+	if after, _ := os.ReadFile(path); string(after) != string(before) {
+		t.Fatalf("a refused ingest changed the record:\n%s", after)
+	}
+}

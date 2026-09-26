@@ -87,18 +87,21 @@ var (
 	// the reviews dir (path-traversal defence). 12 lowercase hex chars.
 	rcpIDRe = regexp.MustCompile(`^rcp-[0-9a-f]{12}$`)
 	// auditHeadingRe matches the `## Audit Notes` heading (any heading depth).
+	// The review block's reader and writer find the section through
+	// condition.AuditNotes; the section-body proofs read it here.
 	auditHeadingRe = regexp.MustCompile(`^#{1,6}\s+Audit Notes\s*$`)
-	// markerRe matches a parked review marker LINE inside the Audit Notes. It is
-	// line-anchored and whole-line on purpose: the marker is the ledger's own
-	// review state, and an unanchored pattern would find one anywhere in the
-	// record's bytes — mid-sentence inside a rendered verdict field, for instance,
-	// where an untrusted payload put it. termsafe's cleaner is the primary defence
-	// (it breaks `<!` and `-->` in every field it writes, code span or not); this
-	// is the second, so a marker has to occupy a line of its own to count.
+	// markerRe matches a parked review marker LINE. It is line-anchored and
+	// whole-line on purpose: the marker is the ledger's own review state, and an
+	// unanchored pattern would find one anywhere in the record's bytes —
+	// mid-sentence inside a rendered verdict field, for instance, where an
+	// untrusted payload put it. termsafe's cleaner is the first defence (it
+	// breaks `<!` and `-->` in every field it writes, code span or not); this is
+	// the second, so a marker has to occupy a line of its own to count.
 	//
-	// It is still a byte pattern rather than a grammar: it does not know a fenced
-	// block from prose, so a marker-shaped line inside a fence still matches
-	// (iss-2609020529185438). Both defences are needed; neither is sufficient.
+	// It is a pattern over ONE line, never over the record: readReviewBlocks is
+	// the only caller, and it offers only the live lines of the live Audit Notes
+	// section, so a marker-shaped line in a fence, a comment span or another
+	// section is never matched (iss-2609020529185438).
 	//
 	// The grammar is core/condition's ReviewMarkerRe, shared with the condition
 	// block's reader.
@@ -595,6 +598,8 @@ func auditProvenanceBlock(p auditPolicy) string {
 //     validate (see reingestVerdict);
 //   - schema/semantic validation failure on a resolvable receipt -> DEAD_LETTER
 //     (marker + INCONCLUSIVE criteria + retained raw payload), never partial;
+//   - a rendered block citing a record id the repository's record gate
+//     refuses -> reject, nothing written (checkReviewCitations);
 //   - otherwise -> INGESTED (OWED stub replaced by the rendered verdict).
 func IngestVerdict(repoRoot, verdictPath string) (IngestVerdictResult, error) {
 	raw, err := readVerdictFile(verdictPath)
@@ -678,6 +683,9 @@ func IngestVerdictBytes(repoRoot string, raw []byte) (IngestVerdictResult, error
 
 	rollup := countVerdicts(v)
 	block := ingestedBlock(rcp, v, rollup, free)
+	if err := checkReviewCitations(repoRoot, it, rcp, block); err != nil {
+		return IngestVerdictResult{}, err
+	}
 	updated := upsertReviewBlock(content, rcp, block)
 	if err := writeIntentFile(filepath.Join(repoRoot, it.Path), it.Path, updated); err != nil {
 		return IngestVerdictResult{}, err
@@ -715,10 +723,13 @@ func reingestVerdict(repoRoot string, raw []byte, it Intent, rcp, content string
 	}
 	rollup := countVerdicts(v)
 	block := ingestedBlock(rcp, v, rollup, free)
-	if existing, ok := reviewBlockText(content, rcp); ok && existing == block {
+	if existing, ok := reviewBlockText(content, rcp); ok && sameReviewBlock(existing, block, rcp) {
 		return IngestVerdictResult{Status: "noop", ReceiptID: rcp, IntentID: it.ID}, nil
 	}
 	if err := checkIssuedPolicy(repoRoot, raw, it, rcp, content); err != nil {
+		return IngestVerdictResult{}, err
+	}
+	if err := checkReviewCitations(repoRoot, it, rcp, block); err != nil {
 		return IngestVerdictResult{}, err
 	}
 	updated := upsertReviewBlock(content, rcp, block)
@@ -992,15 +1003,20 @@ func deadLetter(repoRoot string, it Intent, content, rcp string, raw []byte, rea
 		return IngestVerdictResult{}, fmt.Errorf("intent: receipt id %q is malformed; refusing to dead-letter", rcp)
 	}
 	dir := filepath.Join(repoRoot, reviewsRelDir)
+	dlRel := filepath.Join(reviewsRelDir, rcp+".deadletter.json")
+	untested := untestedDispositions(content)
+	block := deadLetterBlock(rcp, reason, dlRel, untested, free)
+	// The quarantine's reason quotes the payload, so it is held to the same gate
+	// as a verdict, before anything is retained or written.
+	if err := checkReviewCitations(repoRoot, it, rcp, block); err != nil {
+		return IngestVerdictResult{}, err
+	}
 	if err := ensureRecordDir(repoRoot, reviewsRelDir); err != nil {
 		return IngestVerdictResult{}, err
 	}
-	dlRel := filepath.Join(reviewsRelDir, rcp+".deadletter.json")
 	if err := fsutil.WriteFileAtomic(filepath.Join(dir, rcp+".deadletter.json"), raw, 0o644); err != nil {
 		return IngestVerdictResult{}, fmt.Errorf("intent: retaining dead-letter payload %s: %w", dlRel, err)
 	}
-	untested := untestedDispositions(content)
-	block := deadLetterBlock(rcp, reason, dlRel, untested, free)
 	updated := upsertReviewBlock(content, rcp, block)
 	if err := writeIntentFile(filepath.Join(repoRoot, it.Path), it.Path, updated); err != nil {
 		return IngestVerdictResult{}, err
@@ -1014,6 +1030,84 @@ func deadLetter(repoRoot string, it Intent, content, rcp string, raw []byte, rea
 		DeadLetterPath: dlRel, Reason: reason,
 		ReadingOccasionedStanding: occasionedStanding(updated),
 	}, nil
+}
+
+// UnresolvedCitation is one record id a fragment cites that the repository's
+// record gate refuses, at its 1-based line in the fragment.
+type UnresolvedCitation struct {
+	Line int
+	ID   string
+}
+
+// proseCitationGate is record-lint's prose_citation_resolves asked of a
+// fragment before it is written into the record at rel: the ids it cites that
+// the gate would refuse there. It is lint.UnresolvedProseCitationsInRecord,
+// registered by the front doors (SetProseCitationGate), because this package
+// cannot import core/lint: lint's own tests import this package, and Go refuses
+// the cycle. The same seam lint.SetIssueReader is, from the other side.
+var proseCitationGate func(repoRoot, rel, text string) ([]UnresolvedCitation, error)
+
+// SetProseCitationGate registers the prose-citation gate every verdict ingest
+// asks before it writes. Pass an adapter over lint.UnresolvedProseCitationsInRecord.
+func SetProseCitationGate(fn func(repoRoot, rel, text string) ([]UnresolvedCitation, error)) {
+	proseCitationGate = fn
+}
+
+// checkReviewCitations refuses a rendered review block that would cite a record
+// id naming no record, in a repository whose record-lint gates prose citations
+// in the intent store (iss-2609231036448320). The ingest validated the verdict
+// against the rubric; this holds the block to the gate the record it lands in
+// must pass, so a valid verdict can never produce an uncommittable record.
+//
+// It REFUSES rather than sanitises, and nothing is written. The verdict schema
+// has no way to say an id is illustrative, and the cleaner every ingest routes
+// prose through (termsafe) neutralises syntax, never a citation's meaning: a
+// rewrite that dropped every id would erase the real citations an audit rests
+// on, and one that dropped only the unresolvable ones would be a second
+// sanitiser deciding what an auditor meant. The auditor re-words the prose to
+// describe the record instead of citing an id that does not exist, and ingests
+// again; the receipt stays in the state it was in.
+//
+// The gate is the repository's: a repository whose record-lint does not arm the
+// rule over the intent store refuses nothing here. A front door that registered
+// no gate is refused outright, since the check it owes cannot be made.
+func checkReviewCitations(repoRoot string, it Intent, rcp, block string) error {
+	if proseCitationGate == nil {
+		return fmt.Errorf("intent: no prose-citation gate is registered, so the verdict for %s cannot be checked "+
+			"against the record gate the intent record must pass; refusing to ingest (nothing written)", rcp)
+	}
+	rel := filepath.ToSlash(it.Path)
+	cites, err := proseCitationGate(repoRoot, rel, block)
+	if err != nil {
+		return fmt.Errorf("intent: the prose-citation check over the rendered review block: %w", err)
+	}
+	if len(cites) == 0 {
+		return nil
+	}
+	lines := strings.Split(block, "\n")
+	named := make([]string, 0, len(cites))
+	for _, c := range cites {
+		at := ""
+		if c.Line >= 1 && c.Line <= len(lines) {
+			at = ": " + excerpt(lines[c.Line-1])
+		}
+		named = append(named, fmt.Sprintf("%s (line %d of the rendered block%s)", c.ID, c.Line, at))
+	}
+	return fmt.Errorf("intent: verdict %s cites a record id that names no record in this repository: %s; "+
+		"record-lint's prose_citation_resolves refuses %s if it carries one, and a verdict has no way to mark an id "+
+		"illustrative. Re-word the prose to describe the record rather than cite an id that does not exist, and "+
+		"ingest again (nothing written)", rcp, strings.Join(named, "; "), rel)
+}
+
+// excerpt shortens one rendered line for a refusal. The line is already cleaned
+// for the record, so only its length needs bounding.
+func excerpt(s string) string {
+	const limit = 120
+	r := []rune(s)
+	if len(r) <= limit {
+		return s
+	}
+	return string(r[:limit]) + "…"
 }
 
 // occasionedStanding lists the condition-block dispositions the fold reports as
@@ -1060,107 +1154,204 @@ func findIntentByReceipt(repoRoot, rcp string) (Intent, string, string, bool, er
 	return Intent{}, "", "", false, nil
 }
 
-// existingMarker returns the receipt id and state of the FIRST parked review
-// marker in content, if any. Emit reuses this parked receipt rather than
-// recomputing one (see emitAuditForIntent's receipt-shift note).
+// reviewBlock is one review block as the record carries it: its marker's state
+// and receipt, and the [start, end) lines it spans.
+type reviewBlock struct {
+	state, receipt string
+	start, end     int
+}
+
+// readReviewBlocks is the ONE reader of an intent record's review blocks, in
+// document order. Every question the audit asks of the record — which receipt
+// it parked, what state a receipt is in, which lines a replacement rewrites —
+// is answered from here, so the reader and the writer cannot disagree about
+// where a block is.
+//
+// A marker counts only on a LIVE line of the live `## Audit Notes` section, as
+// condition.AuditNotes reads it: a marker-shaped line in a fenced block, in an
+// HTML comment span or under another heading is an example, not state, so a
+// record quoting a marker cannot solicit, misroute or silence a verdict
+// (iss-2609020529185438). termsafe's cleaner breaks the comment delimiters in
+// every field the ingest writes; this reader is the other half, reading the
+// record as a markdown reader parses it.
+//
+// A block's extent is reviewBlockEnd's.
+func readReviewBlocks(content string) (lines []string, blocks []reviewBlock) {
+	lines, mask, start, end, ok := condition.AuditNotes(content)
+	if !ok {
+		return lines, nil
+	}
+	for i := start; i < end; i++ {
+		if mask[i] != 0 {
+			continue
+		}
+		m := markerRe.FindStringSubmatch(strings.TrimRight(lines[i], "\r"))
+		if m == nil {
+			continue
+		}
+		blocks = append(blocks, reviewBlock{state: m[1], receipt: m[2], start: i,
+			end: reviewBlockEnd(lines, mask, i, end, m[1], m[2])})
+	}
+	return lines, blocks
+}
+
+// reviewBlockEnd bounds the block whose marker is at line start, within a
+// section body ending at sectionEnd:
+//
+//   - A block closes on its own closing line (condition.ReviewEndRe naming its
+//     receipt), which every renderer writes; the block ends after it, so prose a
+//     human writes below the block is never part of it (iss-2609251451434656).
+//   - A block written before the closing line existed has none. An OWED stub
+//     has one known shape — the marker and its one sentence — and ends there,
+//     so a first ingest replaces the stub and nothing below it
+//     (iss-2609251451432601).
+//   - Any other block without one runs to the next live block marker of either
+//     grammar, closing line or heading, as it always has; a condition block
+//     written after it survives its replacement (spc-2609020626046252). A
+//     trailing run of link-reference definitions is not the block's: no
+//     renderer writes one, and a record parks them at the end of the section
+//     (iss-2608210737265820), so a replacement leaves them where they are.
+func reviewBlockEnd(lines []string, mask []uint8, start, sectionEnd int, state, rcp string) int {
+	live := func(j int) (string, bool) {
+		if mask[j] != 0 {
+			return "", false
+		}
+		return strings.TrimRight(lines[j], "\r"), true
+	}
+	for j := start + 1; j < sectionEnd; j++ {
+		t, ok := live(j)
+		if !ok {
+			continue
+		}
+		if m := condition.ReviewEndRe.FindStringSubmatch(t); m != nil {
+			if m[1] == rcp {
+				return j + 1
+			}
+			break
+		}
+		if condition.IsBlockMarker(t) {
+			break
+		}
+	}
+	if state == "OWED" && start+1 < sectionEnd {
+		if t, ok := live(start + 1); ok && strings.HasPrefix(t, "Fidelity review OWED") {
+			return start + 2
+		}
+	}
+	end := sectionEnd
+	for j := start + 1; j < sectionEnd; j++ {
+		if t, ok := live(j); ok && (condition.IsBlockMarker(t) || condition.ReviewEndRe.MatchString(t)) {
+			end = j
+			break
+		}
+	}
+	body := append([]string(nil), lines[start+1:end]...)
+	if refs := mdrecord.PeelTrailingLinkRefs(&body); len(refs) > 0 {
+		end = start + 1 + len(body)
+	}
+	return end
+}
+
+// reviewBlockFor returns the block for rcp, if the record carries one.
+func reviewBlockFor(content, rcp string) ([]string, reviewBlock, bool) {
+	lines, blocks := readReviewBlocks(content)
+	for _, b := range blocks {
+		if b.receipt == rcp {
+			return lines, b, true
+		}
+	}
+	return lines, reviewBlock{}, false
+}
+
+// existingMarker returns the receipt id and state of the FIRST review marker in
+// content, if any. Emit reuses this parked receipt rather than recomputing one
+// (see emitAuditForIntent's receipt-shift note).
 func existingMarker(content string) (string, string, bool) {
-	if m := markerRe.FindStringSubmatch(content); m != nil {
-		return m[2], m[1], true
+	if _, blocks := readReviewBlocks(content); len(blocks) > 0 {
+		return blocks[0].receipt, blocks[0].state, true
 	}
 	return "", "", false
 }
 
 // markerState returns the state of the review marker for rcp, if present.
 func markerState(content, rcp string) (string, bool) {
-	for _, m := range markerRe.FindAllStringSubmatch(content, -1) {
-		if m[2] == rcp {
-			return m[1], true
-		}
-	}
-	return "", false
+	_, b, ok := reviewBlockFor(content, rcp)
+	return b.state, ok
 }
 
 // upsertReviewBlock replaces the existing review block for rcp with newBlock, or
-// appends newBlock to the Audit Notes section (creating the section if absent). A
-// review block runs from its marker line to the next block marker of EITHER
-// grammar (condition.IsBlockMarker), the next heading, or end of file — so a
-// condition block written after an OWED stub survives the stub's replacement
-// rather than being swallowed as part of it (spc-2609020626046252).
+// appends newBlock to the Audit Notes section (creating the section if absent).
+// The block's extent is readReviewBlocks'. The record it returns ends in a
+// newline, whatever the record it was handed ended in (iss-2609231011136579).
 func upsertReviewBlock(content, rcp, newBlock string) string {
-	lines := strings.Split(content, "\n")
-	if start, end, ok := reviewBlockRange(lines, rcp); ok {
-		// Keep the blank separator the old block ended with, so a block that
-		// follows it is not glued to the replacement.
-		sep := end
-		for sep > start+1 && strings.TrimSpace(lines[sep-1]) == "" {
-			sep--
-		}
-		out := make([]string, 0, len(lines))
-		out = append(out, lines[:start]...)
-		out = append(out, strings.Split(newBlock, "\n")...)
-		out = append(out, lines[sep:]...)
-		return strings.Join(out, "\n")
+	lines, b, ok := reviewBlockFor(content, rcp)
+	if !ok {
+		return appendToAuditNotes(content, newBlock)
 	}
-	return appendToAuditNotes(content, newBlock)
-}
-
-// reviewBlockRange locates the review block for rcp in lines: from its marker
-// line to the next block marker of either grammar, the next heading, or end of
-// file. It is the one notion of a review block's extent, so the replacement and
-// the idempotency comparison cannot disagree about where a block ends.
-func reviewBlockRange(lines []string, rcp string) (start, end int, ok bool) {
-	for i, ln := range lines {
-		m := markerRe.FindStringSubmatch(strings.TrimRight(ln, "\r"))
-		if m == nil || m[2] != rcp {
-			continue
-		}
-		end = len(lines)
-		for j := i + 1; j < len(lines); j++ {
-			t := strings.TrimRight(lines[j], "\r")
-			if condition.IsBlockMarker(t) || mdrecord.IsHeading(t) {
-				end = j
-				break
-			}
-		}
-		return i, end, true
+	// Keep the blank separator the old block ended with, so a block that
+	// follows it is not glued to the replacement.
+	sep := b.end
+	for sep > b.start+1 && strings.TrimSpace(lines[sep-1]) == "" {
+		sep--
 	}
-	return 0, 0, false
+	out := make([]string, 0, len(lines))
+	out = append(out, lines[:b.start]...)
+	out = append(out, strings.Split(newBlock, "\n")...)
+	out = append(out, lines[sep:]...)
+	return withFinalNewline(strings.Join(out, "\n"))
 }
 
 // reviewBlockText is the review block for rcp as a renderer would have written
 // it: its lines with the trailing blank separator trimmed.
 func reviewBlockText(content, rcp string) (string, bool) {
-	lines := strings.Split(content, "\n")
-	start, end, ok := reviewBlockRange(lines, rcp)
+	lines, b, ok := reviewBlockFor(content, rcp)
 	if !ok {
 		return "", false
 	}
-	return strings.TrimRight(strings.Join(lines[start:end], "\n"), "\r\n\t "), true
+	return strings.TrimRight(strings.Join(lines[b.start:b.end], "\n"), "\r\n\t "), true
+}
+
+// sameReviewBlock reports whether the block on the record already says what
+// rendered says. A block written before the closing line existed carries none,
+// and says the same when it is rendered without it: an identical re-ingest over
+// it is the noop it always was, not a rewrite that adds the line.
+func sameReviewBlock(existing, rendered, rcp string) bool {
+	if existing == rendered {
+		return true
+	}
+	return !condition.ReviewEndRe.MatchString(lastLine(existing)) &&
+		existing == strings.TrimSuffix(rendered, "\n"+condition.ReviewEndLine(rcp))
+}
+
+// lastLine is the final line of s.
+func lastLine(s string) string {
+	if i := strings.LastIndex(s, "\n"); i >= 0 {
+		return s[i+1:]
+	}
+	return s
+}
+
+// withFinalNewline ends s in a newline, as every record writer in the tree ends
+// its file.
+func withFinalNewline(s string) string {
+	if strings.HasSuffix(s, "\n") {
+		return s
+	}
+	return s + "\n"
 }
 
 // appendToAuditNotes appends a block to the `## Audit Notes` section, creating
 // the section at end of file if it is absent.
 func appendToAuditNotes(content, block string) string {
-	lines := strings.Split(content, "\n")
-	head := -1
-	for i, ln := range lines {
-		if auditHeadingRe.MatchString(strings.TrimRight(ln, "\r")) {
-			head = i
-			break
-		}
-	}
-	if head < 0 {
+	// The section is the live one readReviewBlocks reads: a fenced or commented
+	// `## Audit Notes` is an example, and a block appended under it is a block
+	// the reader never finds again.
+	lines, _, bodyStart, end, ok := condition.AuditNotes(content)
+	if !ok {
 		body := strings.TrimRight(content, "\n")
 		return body + "\n\n## Audit Notes\n\n" + block + "\n"
 	}
-	// Find the end of the Audit Notes section (next heading or EOF).
-	end := len(lines)
-	for j := head + 1; j < len(lines); j++ {
-		if mdrecord.IsHeading(strings.TrimRight(lines[j], "\r")) {
-			end = j
-			break
-		}
-	}
+	head := bodyStart - 1
 	// Copy the section out (never alias the backing array) and drop the template
 	// placeholder line, so the first real review block replaces the "Empty" claim
 	// rather than sitting beneath it.
@@ -1200,7 +1391,7 @@ func appendToAuditNotes(content, block string) string {
 	}
 	rebuilt = append(rebuilt, "")
 	rebuilt = append(rebuilt, lines[end:]...)
-	return strings.Join(rebuilt, "\n")
+	return withFinalNewline(strings.Join(rebuilt, "\n"))
 }
 
 // ---------------------------------------------------------------------------
@@ -1208,7 +1399,8 @@ func appendToAuditNotes(content, block string) string {
 // ---------------------------------------------------------------------------
 
 func owedBlock(rcp string) string {
-	return fmt.Sprintf("<!-- abcd-review: OWED receipt=%s -->\nFidelity review OWED (receipt %s).", rcp, rcp)
+	return fmt.Sprintf("<!-- abcd-review: OWED receipt=%s -->\nFidelity review OWED (receipt %s).\n%s",
+		rcp, rcp, condition.ReviewEndLine(rcp))
 }
 
 // deadLetterBlock renders the quarantine block. conds are the record's own scope
@@ -1225,7 +1417,13 @@ func deadLetterBlock(rcp, reason, dlRel string, conds []verdictCondition, free p
 		"Fidelity review DEAD_LETTER (receipt %s): %s. Raw payload retained at %s. "+
 		"All criteria recorded INCONCLUSIVE.\n", rcp, rcp, free(reason), dlRel)
 	renderDispositions(&b, conds, free)
-	return strings.TrimRight(b.String(), "\n")
+	return closeReviewBlock(&b, rcp)
+}
+
+// closeReviewBlock ends a rendered block on its closing line, the line
+// readReviewBlocks bounds it by.
+func closeReviewBlock(b *strings.Builder, rcp string) string {
+	return strings.TrimRight(b.String(), "\n") + "\n" + condition.ReviewEndLine(rcp)
 }
 
 // untestedDispositions is every identified scope condition the record carries,
@@ -1282,7 +1480,7 @@ func ingestedBlock(rcp string, v verdict, rollup map[string]int, free proseField
 	renderBucket(&b, "diverged", v.GapAudit.Diverged, free)
 	renderBucket(&b, "missing", v.GapAudit.Missing, free)
 	renderDispositions(&b, v.ScopeConditions, free)
-	return strings.TrimRight(b.String(), "\n")
+	return closeReviewBlock(&b, rcp)
 }
 
 // renderDispositions writes the scope-condition disposition block — the ONE
