@@ -10,9 +10,11 @@ import (
 // init registers the issue ledger's reader and the site renderer's body check
 // with the lint for every lint the CLI runs (`abcd lint docs`, `abcd lint`), so a config arming record_schema over an
 // issue store gets the reader-parity and body legs the record-lint gate runs.
-// It registers record-lint's prose-citation gate with the intent audit's ingest
-// the same way, so every verdict the CLI ingests is held to the gate the record
-// it writes must pass.
+// It registers record-lint's prose-citation gate the same way, once, for every
+// ingest that copies host prose into a record: the intent audit's verdict
+// ingest, and the consistency and reading ingests in the ledger, which ask it
+// through intent.UnresolvedProseCitations. Each is held to the gate the record
+// it writes must pass, and each refuses when no gate is registered.
 func init() {
 	lint.SetIssueReader(capture.ReadRefusal)
 	lint.SetRecordBodyCheck(site.CheckRecordBody)

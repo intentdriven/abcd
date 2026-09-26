@@ -628,13 +628,22 @@ type ConsistencyFiling struct {
 // the caller supplies it.
 type ConsistencyFiler func(f ConsistencyFinding, reportRel string) (ConsistencyFiling, error)
 
+// ConsistencyCheck holds one finding, as the filer would write it, to the
+// record gate the filed record must pass, and refuses it with nothing written.
+// It is asked of EVERY finding before the first is filed, so a refusal leaves
+// the ledger as it was. The filer's caller supplies it beside the filer,
+// because only the ledger knows the text a finding is filed as
+// (iss-2609261835118276).
+type ConsistencyCheck func(f ConsistencyFinding, reportRel string) error
+
 // ConsistencyIngestRequest is one ingest.
 type ConsistencyIngestRequest struct {
 	RepoRoot string
 	Payload  []byte
 	// Date is the report's date, YYYY-MM-DD; empty is today in UTC.
-	Date string
-	File ConsistencyFiler
+	Date  string
+	File  ConsistencyFiler
+	Check ConsistencyCheck
 }
 
 // ConsistencyRow is one finding as the report and the result carry it.
@@ -673,6 +682,9 @@ func IngestConsistency(req ConsistencyIngestRequest) (ConsistencyIngestResult, e
 	if req.File == nil {
 		return ConsistencyIngestResult{}, fmt.Errorf("intent: consistency ingest has no ledger to file findings in")
 	}
+	if req.Check == nil {
+		return ConsistencyIngestResult{}, fmt.Errorf("intent: consistency ingest has no prose-citation check for the records it files; refusing to ingest (nothing written)")
+	}
 	date := req.Date
 	if date == "" {
 		date = time.Now().UTC().Format(time.DateOnly)
@@ -708,6 +720,14 @@ func IngestConsistency(req ConsistencyIngestRequest) (ConsistencyIngestResult, e
 	}
 	reportRel := ReviewsShelfRelDir + "/" + dirName + "/00-summary.md"
 
+	// Every finding is held to the record gate before the first is filed: a
+	// refusal part-way through the filing would leave the findings before it
+	// in the ledger with no report to cite.
+	for _, f := range rv.Findings {
+		if err := req.Check(f, reportRel); err != nil {
+			return ConsistencyIngestResult{}, fmt.Errorf("intent: finding %d of %d: %w", f.Number, len(rv.Findings), err)
+		}
+	}
 	for _, f := range rv.Findings {
 		filing, err := req.File(f, reportRel)
 		if err != nil {

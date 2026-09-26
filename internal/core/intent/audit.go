@@ -1325,10 +1325,31 @@ type UnresolvedCitation struct {
 // the cycle. The same seam lint.SetIssueReader is, from the other side.
 var proseCitationGate func(repoRoot, rel, text string) ([]UnresolvedCitation, error)
 
-// SetProseCitationGate registers the prose-citation gate every verdict ingest
-// asks before it writes. Pass an adapter over lint.UnresolvedProseCitationsInRecord.
+// SetProseCitationGate registers the prose-citation gate every host-prose
+// ingest asks before it writes: the verdict ingest here, and the consistency
+// and reading ingests in the ledger through UnresolvedProseCitations. One
+// registration serves them all, so a front door cannot arm one and miss
+// another. Pass an adapter over lint.UnresolvedProseCitationsInRecord.
 func SetProseCitationGate(fn func(repoRoot, rel, text string) ([]UnresolvedCitation, error)) {
 	proseCitationGate = fn
+}
+
+// ErrNoProseCitationGate is UnresolvedProseCitations' answer when no front door
+// registered the gate: the question cannot be answered, and a caller refuses
+// rather than writes (fail closed).
+var ErrNoProseCitationGate = errors.New("no prose-citation gate is registered")
+
+// UnresolvedProseCitations asks the registered gate which record ids text cites
+// that the repository's record-lint would refuse in the record at rel — the
+// same question the verdict ingest asks, for a writer outside this package
+// that copies host-delegated prose into a lint-bound record
+// (iss-2609261835118276). With no gate registered it returns
+// ErrNoProseCitationGate.
+func UnresolvedProseCitations(repoRoot, rel, text string) ([]UnresolvedCitation, error) {
+	if proseCitationGate == nil {
+		return nil, ErrNoProseCitationGate
+	}
+	return proseCitationGate(repoRoot, rel, text)
 }
 
 // checkReviewCitations refuses a rendered review block that would cite a record

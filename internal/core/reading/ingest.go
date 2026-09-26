@@ -636,6 +636,21 @@ func ingestUnderLock(root *os.Root, repoRoot string, req IngestRequest, res *Ing
 		return refuse(root, res, out, manifest, def, free, err)
 	}
 
+	// The items are the host's words, bound for reading records that
+	// record-lint's prose_citation_resolves reads, so they are held to that gate
+	// here, before the sweep and the stage (iss-2609261835118276). An item
+	// citing a record id that names no record refuses the whole ingest and
+	// writes NOTHING — no refusal record, no rollback, no sweep — exactly as the
+	// verdict ingest refuses: a recorded refusal would give the run an outcome,
+	// and refuseARerun would then turn away the same run re-worded, where the
+	// run left parked is ingested again once the prose describes the record
+	// rather than citing an id that does not exist.
+	if err := capture.CheckReadingCitations(capture.IngestReadingRequest{
+		RepoRoot: repoRoot, Run: out.RunID, Items: items,
+	}); err != nil {
+		return fmt.Errorf("reading: run %s: %w", out.RunID, err)
+	}
+
 	// The whole payload has validated: this is the first point at which the
 	// committed tier may be deleted from. The sweep reports what it cleared
 	// and what it rolled back, and whatever it did not reach stays pending —
