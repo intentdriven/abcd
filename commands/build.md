@@ -1,6 +1,6 @@
 ---
 name: build
-description: "Start the loop that takes one READY intent to delivered: Writes the run's state file in the local tier; refuses an open decision, a hold or a peer holding it."
+description: "Start the loop that takes one READY intent to delivered: Writes the run's state file in the local tier; refuses an open question, a hold or a peer holding it."
 argument-hint: "<itd-N>"
 block: people
 ---

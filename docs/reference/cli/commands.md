@@ -202,7 +202,7 @@ abcd banlist remove --private acme-internal
 
 ### `abcd build`
 
-Start the loop that takes one READY intent to delivered: Writes the run's state file in the local tier; refuses an open decision, a hold or a peer holding it.
+Start the loop that takes one READY intent to delivered: Writes the run's state file in the local tier; refuses an open question, a hold or a peer holding it.
 
 **Usage:** `abcd build <itd-N>`
 
@@ -2022,7 +2022,7 @@ Run the release job's semantic-receipt gate locally, before the merge: Writes no
 
 #### `abcd launch scaffold`
 
-Scaffold the changelog-driven release gate: Writes the release workflows and runbook; refuses to overwrite a hand-edited one without --confirm.
+Scaffold the release gate for the declared artefact kind: Writes its workflows and runbook; refuses an undeclared kind, or a hand-edited file without --confirm.
 
 **Usage:** `abcd launch scaffold [--confirm] [flags]`
 

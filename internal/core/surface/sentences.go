@@ -51,7 +51,7 @@ var sentences = map[string]string{
 		"Writes that layer's store; refuses a public entry curated by hand.",
 
 	"abcd build": "Start the loop that takes one READY intent to delivered: " +
-		"Writes the run's state file in the local tier; refuses an open decision, a hold or a peer holding it.",
+		"Writes the run's state file in the local tier; refuses an open question, a hold or a peer holding it.",
 
 	"abcd capture": "File an issue from quoted text, or render the ledger's status bare: " +
 		"Writes one record under open/; refuses a lone word and any folder outside a checkout.",
@@ -241,8 +241,8 @@ var sentences = map[string]string{
 		"Writes the archive into --out; refuses a dirty tree without --verify, and exits 1 when --verify finds it unpinned.",
 	"abcd launch receipts": "Run the release job's semantic-receipt gate locally, before the merge: " +
 		"Writes nothing; refuses with exit 1 when the release job would refuse the receipts.",
-	"abcd launch scaffold": "Scaffold the changelog-driven release gate: " +
-		"Writes the release workflows and runbook; refuses to overwrite a hand-edited one without --confirm.",
+	"abcd launch scaffold": "Scaffold the release gate for the declared artefact kind: " +
+		"Writes its workflows and runbook; refuses an undeclared kind, or a hand-edited file without --confirm.",
 	"abcd launch ship": "Cut a release, deriving its version and records from what shipped: " +
 		"Writes the CHANGELOG heading, RELEASE.md, and the archive pin; refuses a cut its gates stop.",
 

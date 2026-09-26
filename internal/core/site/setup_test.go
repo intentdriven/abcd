@@ -798,8 +798,10 @@ func TestTheWorkflowFiresOnEveryReleasePath(t *testing.T) {
 	}
 	// Each scaffold profile's workflows run under a name the trigger lists. The
 	// plugin profile's release workflow is `release`; a gate profile's (a
-	// declared binary or application) is call-only, with no push trigger of its
-	// own, so its runs are reported under its caller's name, `auto-release`.
+	// declared binary or application) fires on workflow_call and on
+	// workflow_dispatch (the rehearsal, which publishes nothing), with no push
+	// trigger of its own, so its release runs are reported under its caller's
+	// name, `auto-release`.
 	for _, p := range []struct {
 		profile string
 		subs    scaffold.Substitutions

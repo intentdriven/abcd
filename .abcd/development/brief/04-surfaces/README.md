@@ -46,7 +46,7 @@ are wiring rather than user-facing surface are listed separately under
 | 31 | `/abcd:lab` | shipped | Run a lab against a pinned snapshot of the repository and harvest what it found, with the evidence kept out of the repository | [`31-lab.md`](31-lab.md) |
 | 32 | `/abcd:scribe` | shipped | Build the ledger scribe's context from the ledger alone, and ingest what it transcribed without letting it author anything | [`32-scribe.md`](32-scribe.md) |
 | 33 | `/abcd:source` | shipped | Keep the documents you consult in a local corpus, record what each one changed, and ban the confidential ones' names at commit time | [`33-source.md`](33-source.md) |
-| 34 | `/abcd:build` | shipped | Start the loop that takes one READY intent to delivered, refusing while a decision is open or a peer holds it | [`34-build.md`](34-build.md) |
+| 34 | `/abcd:build` | shipped | Start the loop that takes one READY intent to delivered, refusing while a question is open or a peer holds it | [`34-build.md`](34-build.md) |
 
 ## How much of this table a machine keeps honest
 
