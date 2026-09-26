@@ -446,6 +446,16 @@ makes that grain more visible; finer-grained merging, detecting a repo file that
 duplicates the user layer, and moving conventions out of per-project harness
 memory are all recorded in itd-117 as follow-up questions.
 
+**A withheld guardrail is named.** Because a list replaces the bundled list, an
+override written before a release added an entry keeps withholding that entry.
+For the three guardrail domains — `PII`, `COMMITTING` and `LOAD` — the load
+compares every recall, alias and rule list an override set against the list the
+running binary bundles. It names each bundled entry left out, and the file whose
+list is in force, on stderr from `abcd rules` and from the hook on every prompt.
+The effective set is unchanged. Restating the entry keeps it; leaving the field
+out inherits the bundled list. The other bundled domains are conventions a
+repository restates in its own words, so a replacement there is not reported.
+
 ## The rules root — which `.abcd/` governs a session
 
 The rules, the hazard registry and the per-repo config are read from ONE resolved
