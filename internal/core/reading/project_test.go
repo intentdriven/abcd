@@ -91,7 +91,8 @@ func TestAttributeMaskStaysOnItsOwnLine(t *testing.T) {
 // The last two are refusals as well as costs: a title that is never bounded is
 // refused rather than read, and titles that overlap past the floor's read budget
 // are refused rather than read in quadratic time. The bound is generous: the
-// linear scan is milliseconds.
+// linear scan is milliseconds. It is not asserted under -race (raceEnabled),
+// where the verdicts still are.
 func TestRawHeadingScanStaysLinearInTheOpenerCount(t *testing.T) {
 	headings := map[string]bool{"Audit Notes": true}
 	build := func(opener string, n int, tail string) string {
@@ -126,7 +127,7 @@ func TestRawHeadingScanStaysLinearInTheOpenerCount(t *testing.T) {
 			case c.refuse != "" && !strings.Contains(err.Error(), c.refuse):
 				t.Errorf("the refusal does not name %q: %v", c.refuse, err)
 			}
-			if elapsed > 10*time.Second {
+			if !raceEnabled && elapsed > 10*time.Second {
 				t.Errorf("the raw heading scan took %s over a %d-byte document; it reads each "+
 					"title over the remainder, or counts each line from the top", elapsed, len(c.doc))
 			}
