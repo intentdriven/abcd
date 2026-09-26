@@ -622,8 +622,12 @@ var admissionTokens = []string{issueschema.DispositionAccepted, "admit", "admits
 // line, and a word that merely contains it ("unaccepted") does not carry it. It
 // reads words, not sense, so a line that names a state to negate it still
 // carries it; that residue is the chapter's to disclose.
+//
+// A line ends at any terminator a researcher's editor writes (lineBreak): split
+// on LF alone, a text whose lines end in CR or a Unicode separator is one line,
+// and the per-line check collapses to a whole-text one.
 func lineCarries(supplied, id string, tokens ...string) bool {
-	for _, line := range strings.Split(supplied, "\n") {
+	for _, line := range strings.FieldsFunc(supplied, lineBreak) {
 		if !mentions(line, id) {
 			continue
 		}
@@ -632,6 +636,18 @@ func lineCarries(supplied, id string, tokens ...string) bool {
 				return true
 			}
 		}
+	}
+	return false
+}
+
+// lineBreak reports whether r ends a line: LF, CR (so CRLF too, the empty field
+// between them dropped), U+2028 LINE SEPARATOR and U+2029 PARAGRAPH SEPARATOR.
+// The code points are written as numbers so no layer between the author and
+// the compiler can decode an escape into the wrong byte.
+func lineBreak(r rune) bool {
+	switch r {
+	case 0x0a, 0x0d, 0x2028, 0x2029:
+		return true
 	}
 	return false
 }

@@ -653,3 +653,53 @@ func TestScribeIngestRefusesASymlinkedLedgerAncestor(t *testing.T) {
 		t.Fatalf("an ingest through a symlinked ledger ancestor was not refused: %v", err)
 	}
 }
+
+// Line terminators, built from their code points so no layer between the
+// author and the compiler can decode an escape into the wrong byte.
+var (
+	termLF   = string(rune(0x0a))
+	termCR   = string(rune(0x0d))
+	termCRLF = termCR + termLF
+	termLS   = string(rune(0x2028))
+	termPS   = string(rune(0x2029))
+)
+
+// TestScribeIngestHoldsTheStateToTheItemsLineWhateverEndsIt: the state is held
+// to the item's own line, and a line ends at any of the terminators a
+// researcher's editor writes. A text whose lines end in CR, U+2028 or U+2029 is
+// several lines, so one item's state is not another's (iss-2609261205176571).
+func TestScribeIngestHoldsTheStateToTheItemsLineWhateverEndsIt(t *testing.T) {
+	for name, term := range map[string]string{
+		"LF": termLF, "CRLF": termCRLF, "CR": termCR, "U+2028": termLS, "U+2029": termPS,
+	} {
+		t.Run(name, func(t *testing.T) {
+			s := assembleSession(t, positionDetection, 2,
+				"{0}: rejected — "+groundA+"."+term+"{1}: accepted — "+groundA+"."+term)
+			before := s.ledger(t)
+			o := s.out()
+			o.Dispositions = []OutDisposition{
+				{Item: s.items[0], State: issueschema.DispositionAccepted, Grounds: groundA},
+				{Item: s.items[1], State: issueschema.DispositionAccepted, Grounds: groundA},
+			}
+			_, err := s.ingest(t, s.write(t, o))
+			if err == nil || !strings.Contains(err.Error(), "state") || !strings.Contains(err.Error(), s.items[0]) {
+				t.Fatalf("a state carried only by the next line (%s-terminated) was granted to the item: %v", name, err)
+			}
+			if s.ledger(t) != before {
+				t.Fatal("a refused payload changed the ledger")
+			}
+
+			// The rulings the lines do give land.
+			s2 := assembleSession(t, positionDetection, 2,
+				"{0}: rejected — "+groundA+"."+term+"{1}: accepted — "+groundA+"."+term)
+			o2 := s2.out()
+			o2.Dispositions = []OutDisposition{
+				{Item: s2.items[0], State: issueschema.DispositionRejected, Grounds: groundA},
+				{Item: s2.items[1], State: issueschema.DispositionAccepted, Grounds: groundA},
+			}
+			if _, err := s2.ingest(t, s2.write(t, o2)); err != nil {
+				t.Fatalf("the states the %s-terminated lines carry were refused: %v", name, err)
+			}
+		})
+	}
+}
