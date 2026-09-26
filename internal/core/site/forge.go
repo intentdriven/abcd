@@ -4,7 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/url"
+	"strconv"
+	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/ahoy"
 )
@@ -48,6 +51,9 @@ type BranchPolicy struct {
 type ghForge struct {
 	dir  string
 	repo string
+	// gh runs one gh subcommand; nil is ahoy.GH. Tests point it at an
+	// in-process fake of the forge's API, so nothing reaches a network.
+	gh func(dir string, stdin []byte, args ...string) ([]byte, error)
 }
 
 // GitHubForge is the forge for the checkout at dir, or an error saying why the
@@ -71,6 +77,9 @@ func (g *ghForge) api(stdin []byte, method, path string) ([]byte, error) {
 	if stdin != nil {
 		args = append(args, "--input", "-")
 	}
+	if g.gh != nil {
+		return g.gh(g.dir, stdin, args...)
+	}
 	return ahoy.GH(g.dir, stdin, args...)
 }
 
@@ -80,51 +89,106 @@ func (g *ghForge) envPath(env, rest string) string {
 	return "repos/" + g.repo + "/environments/" + url.PathEscape(env) + rest
 }
 
-func (g *ghForge) Environments(context.Context) (map[string]EnvironmentState, error) {
-	out, err := g.api(nil, "", "repos/"+g.repo+"/environments?per_page=100")
-	if err != nil {
-		return nil, err
+// perPage is the largest page the forge serves a list read in.
+const perPage = 100
+
+// maxListPages bounds a list read: a forge that kept serving full pages past
+// ten thousand entries is refused rather than followed.
+const maxListPages = 100
+
+// listAll reads every page of the list endpoint path, whose entries arrive
+// under key, and hands each entry to each. The forge serves a list read at most
+// perPage entries at a time and reports the whole list's total_count, so a read
+// stops when it holds that many and fails when it cannot: a page that cannot be
+// read, or that comes back short of the total, is an error rather than a
+// shorter list. Every list setup reads decides whether it writes (an
+// environment read as absent is created through the endpoint that replaces its
+// whole protection set), so a partial list is never an answer.
+func (g *ghForge) listAll(path, key, what string, each func(json.RawMessage) error) error {
+	sep := "?"
+	if strings.Contains(path, "?") {
+		sep = "&"
 	}
-	var doc struct {
-		Environments []struct {
+	got := 0
+	for page := 1; ; page++ {
+		if page > maxListPages {
+			return fmt.Errorf("the %s list runs past %d pages, so it was not read", what, maxListPages)
+		}
+		out, err := g.api(nil, "", path+sep+"per_page="+strconv.Itoa(perPage)+"&page="+strconv.Itoa(page))
+		if err != nil {
+			return err
+		}
+		var doc map[string]json.RawMessage
+		var entries []json.RawMessage
+		var total *int
+		if json.Unmarshal(out, &doc) != nil || json.Unmarshal(doc["total_count"], &total) != nil || total == nil {
+			return fmt.Errorf("the %s response could not be read as JSON", what)
+		}
+		// An empty list may arrive with no entries field at all.
+		if raw, ok := doc[key]; (ok || *total > 0) && json.Unmarshal(raw, &entries) != nil {
+			return fmt.Errorf("the %s response could not be read as JSON", what)
+		}
+		for _, e := range entries {
+			if err := each(e); err != nil {
+				return err
+			}
+		}
+		got += len(entries)
+		if got >= *total {
+			if got > *total {
+				return fmt.Errorf("the forge reported %d %s and served %d, so the list was not read whole", *total, what, got)
+			}
+			return nil
+		}
+		if len(entries) < perPage {
+			return fmt.Errorf("the forge reported %d %s and served %d, so the list was not read whole", *total, what, got)
+		}
+	}
+}
+
+func (g *ghForge) Environments(context.Context) (map[string]EnvironmentState, error) {
+	envs := map[string]EnvironmentState{}
+	err := g.listAll("repos/"+g.repo+"/environments", "environments", "environments", func(raw json.RawMessage) error {
+		var e struct {
 			Name   string `json:"name"`
 			Policy *struct {
 				Protected bool `json:"protected_branches"`
 				Custom    bool `json:"custom_branch_policies"`
 			} `json:"deployment_branch_policy"`
-		} `json:"environments"`
-	}
-	if err := json.Unmarshal(out, &doc); err != nil {
-		return nil, errors.New("the environments response could not be read as JSON")
-	}
-	envs := map[string]EnvironmentState{}
-	for _, e := range doc.Environments {
+		}
+		if err := json.Unmarshal(raw, &e); err != nil {
+			return errors.New("the environments response could not be read as JSON")
+		}
 		st := EnvironmentState{}
 		if e.Policy != nil {
 			st.ProtectedBranches, st.CustomBranchPolicies = e.Policy.Protected, e.Policy.Custom
 		}
 		envs[e.Name] = st
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 	return envs, nil
 }
 
 func (g *ghForge) Policies(_ context.Context, env string) ([]BranchPolicy, error) {
-	out, err := g.api(nil, "", g.envPath(env, "/deployment-branch-policies?per_page=100"))
+	var policies []BranchPolicy
+	err := g.listAll(g.envPath(env, "/deployment-branch-policies"), "branch_policies", "deployment policies", func(raw json.RawMessage) error {
+		var p BranchPolicy
+		if err := json.Unmarshal(raw, &p); err != nil {
+			return errors.New("the deployment policies response could not be read as JSON")
+		}
+		if p.Type == "" {
+			p.Type = "branch"
+		}
+		policies = append(policies, p)
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}
-	var doc struct {
-		Policies []BranchPolicy `json:"branch_policies"`
-	}
-	if err := json.Unmarshal(out, &doc); err != nil {
-		return nil, errors.New("the deployment policies response could not be read as JSON")
-	}
-	for i := range doc.Policies {
-		if doc.Policies[i].Type == "" {
-			doc.Policies[i].Type = "branch"
-		}
-	}
-	return doc.Policies, nil
+	return policies, nil
 }
 
 func (g *ghForge) PutEnvironment(_ context.Context, env string) error {
@@ -142,21 +206,19 @@ func (g *ghForge) AddPolicy(_ context.Context, env string, p BranchPolicy) error
 }
 
 func (g *ghForge) SecretNames(_ context.Context, env string) ([]string, error) {
-	out, err := g.api(nil, "", g.envPath(env, "/secrets?per_page=100"))
+	names := []string{}
+	err := g.listAll(g.envPath(env, "/secrets"), "secrets", "secrets", func(raw json.RawMessage) error {
+		var s struct {
+			Name string `json:"name"`
+		}
+		if err := json.Unmarshal(raw, &s); err != nil {
+			return errors.New("the secrets response could not be read as JSON")
+		}
+		names = append(names, s.Name)
+		return nil
+	})
 	if err != nil {
 		return nil, err
-	}
-	var doc struct {
-		Secrets []struct {
-			Name string `json:"name"`
-		} `json:"secrets"`
-	}
-	if err := json.Unmarshal(out, &doc); err != nil {
-		return nil, errors.New("the secrets response could not be read as JSON")
-	}
-	names := make([]string, 0, len(doc.Secrets))
-	for _, s := range doc.Secrets {
-		names = append(names, s.Name)
 	}
 	return names, nil
 }
