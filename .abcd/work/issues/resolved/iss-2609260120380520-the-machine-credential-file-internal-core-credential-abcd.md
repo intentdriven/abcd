@@ -9,8 +9,14 @@ found_during: "autonomous run A resumed 2026-09-25 (fix round, review of lane si
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/credential/credential.go"
-deferred_after: "v0.10.0"
-deferral_reason: "deferred to the integration step (run A, 2026-09-26): the strict duplicate-key decoder jsonstrict lives on the unmerged lintB lane and copying it here would fork it; once lintB lands, credential.go reroutes its decode through jsonstrict and this record is resolved there"
+resolution: "The machine credential store's read runs jsonstrict.NoDuplicateKeys before the unmarshal and refuses a repeated key or a case twin without echoing either spelling; TestAStoreNamingACredentialTwiceIsRefused pins the exact, escaped and case-twin shapes."
+impact: fix
+resolved_by:
+  commit: "ae89fe2f"
 ---
 
 The machine credential file (internal/core/credential, ~/.abcd/credentials.json) is decoded with plain json.Unmarshal, so a duplicate key silently takes the last value instead of being refused; the strict duplicate-key decoder (jsonstrict) lives on an unmerged lane, not on this base.
+
+## Grounds
+
+- pursued: a credentials.json naming one credential twice is refused rather than resolved to either value; a store with a repeated or case-twin key that Resolve answers would show it wrong
