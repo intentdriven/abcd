@@ -22,8 +22,9 @@ exist.
 In a repository abcd manages the board also carries one line of presence — the
 `statusline` object in the JSON (`state`, `plain`, `elements`), rendered as a
 `presence:` line in the text form. It is the same row the host's status line
-shows, in plain words: the badge first (`abcd`, `waiting: facilitator` or
-`waiting: product thinker`, from the state `/abcd:mode` stores), then the
+shows, in plain words: the badge first (`abcd-managed`, `waiting on the
+technical facilitator` or `waiting on the product thinker`, from the state
+`/abcd:mode` stores), then the
 repository, the branch and the record's counts. Relay the `plain` text when the
 state is not `managed`: it says whose answer the loop is waiting on. The field
 is omitted in a repository abcd does not manage. The board reads the state and

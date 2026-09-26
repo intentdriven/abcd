@@ -72,13 +72,35 @@ the same line tripped, so a command hazardous in two ways reports both rather
 than only the first; the rendered form says the same thing on an `also matched:`
 line.
 
+## The question gate
+
+The hook also answers for the host's question tool (itd-2609212130146198), and
+there it consults the waiting-on state rather than the hazard registry. In a
+repository abcd manages, a question to the human asked while `abcd mode` reads
+managed is refused with the blocking status, and the one-line refusal names the
+two settings, `abcd mode product-thinker` and `abcd mode facilitator`, so the
+agent says whom it is asking before it asks and the status-line badge shows
+it. Once the state names somebody the question runs, and the hook writes a
+`question_open` marker in `.abcd/.work.local/`; the rules loader's prompt hook
+resets the state to managed on the next human message and clears the marker.
+Where the badge does not show, a question is not the gate's business and runs
+silently. A state file or marker the gate cannot read or write is not a
+decision: the question runs and the hook says so on exit 1, the same
+fail-open-loud contract below. So is a tier `abcd mode` cannot write — a
+read-only mount, a directory the session's user does not own: the refusal's
+remedy could not run there, so the gate probes that the verb could set the
+state before it refuses, and where it could not, the question runs on exit 1. The manifest's pre-tool-use matcher names the
+shell tool and the question tool, and nothing else.
+
 ## Fail-open-loud
 
 A broken guard never bricks a session and never silently stops protecting one.
 The installed hook wraps the binary in a shim: the binary's own three statuses
 pass through untouched, and anything else means the binary did not run at all,
 which the shim reports as an unmissable `UNGUARDED` warning while letting the
-command through.
+call through. The warning names the tool whose call went through unchecked —
+shell commands, or questions through the host's question tool — read from the
+hook payload, which the shim then hands to the binary unchanged.
 
 The states that can independently be false are reported outside the session, on
 `abcd ahoy`'s `guard:` line: whether the hook is installed, whether the binary it

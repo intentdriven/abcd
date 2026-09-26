@@ -1362,6 +1362,11 @@ func newHookCommand() *cobra.Command {
 			// strings are transcript paths and capture errors, which are the
 			// least appropriate text in the program to hand to a model.
 			drainWhileLive(cmd, cwd)
+			// The badge's reset (itd-2609212130146198): a human message after
+			// an admitted question is its answer. Before the rules work, for
+			// the drain's reason: a rules.json that will not load must not
+			// also leave the badge parked.
+			resetModeOnAnswer(cmd.ErrOrStderr(), cwd)
 			root := rulesRoot(cwd, cmd.ErrOrStderr())
 			rs, err := rules.Load(root)
 			if err != nil {

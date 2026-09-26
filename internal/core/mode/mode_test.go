@@ -132,7 +132,7 @@ func TestStorePathsSitInTheLocalTier(t *testing.T) {
 func TestAddresseeNamesWhoseAnswerIsOwed(t *testing.T) {
 	cases := map[mode.State]string{
 		mode.Managed:        "",
-		mode.Facilitator:    "facilitator",
+		mode.Facilitator:    "technical facilitator",
 		mode.ProductThinker: "product thinker",
 	}
 	for st, want := range cases {

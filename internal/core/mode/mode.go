@@ -123,19 +123,36 @@ func (s State) Valid() bool {
 func (s State) String() string { return string(s) }
 
 // Addressee names, in plain words, the person whose answer a parked loop is
-// waiting on: "facilitator", "product thinker", or "" for Managed, which owes
-// nobody an answer. It is the one place the vocabulary is turned into prose a
-// front door can put in a sentence, so the notice a set prints where the host
-// has no status surface (ac-7) and the words the badge carries cannot drift
-// into naming two different people.
+// waiting on: "technical facilitator", "product thinker", or "" for Managed,
+// which owes nobody an answer. The role names are the two ruled for the badge
+// (itd-2609212130146198, whose three states read `waiting on the technical
+// facilitator` and `waiting on the product thinker`), and the facilitator is
+// named in full, as the record names the role.
+//
+// It is the one place the vocabulary is turned into prose. Every front door
+// that names the owed person — the status-line badge, the notice a set prints
+// where the host has no status surface (ac-7) — reads it, through WaitingOn,
+// so no two of them can name two different people.
 func (s State) Addressee() string {
 	switch s {
 	case Facilitator:
-		return "facilitator"
+		return "technical facilitator"
 	case ProductThinker:
 		return "product thinker"
 	}
 	return ""
+}
+
+// WaitingOn is the phrase a front door shows for a parked state — "waiting on
+// the technical facilitator", "waiting on the product thinker" — or "" for
+// Managed. It is the badge's word for the two role states and the body of the
+// set form's notice, composed here once so the two cannot drift apart.
+func (s State) WaitingOn() string {
+	who := s.Addressee()
+	if who == "" {
+		return ""
+	}
+	return "waiting on the " + who
 }
 
 // ParseState reads one of the three words from raw, tolerating the surrounding
