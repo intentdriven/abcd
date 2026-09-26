@@ -102,7 +102,7 @@ var writeKindHelp = map[writeKind]SummaryItem{
 	writeIdentityPin: {
 		What:   "Recorded the git name and email that commit to this repository.",
 		Why:    "abcd can then warn when a commit is about to be made under a different identity, such as an agent's.",
-		Action: "Nothing, unless the recorded name or email is wrong; then run abcd ahoy install again.",
+		Action: "Nothing, unless the recorded name or email is wrong; then correct it in .abcd/config/identity.json, because running abcd ahoy install again leaves a recorded name and email as they are.",
 	},
 	writeCommandEntry: {
 		What:   "Made the abcd command available in your terminal.",
@@ -175,7 +175,7 @@ var optionalSkippedHelp = map[string]SummaryItem{
 	OptionalPinGapID: {
 		What:   "Recording who commits to this repository was left for you to confirm.",
 		Why:    "It would record whatever git name and email happen to be set, which in an unattended run may be an agent's.",
-		Action: "Run abcd ahoy install without --yes and answer y if the name and email shown are yours.",
+		Action: "Check that git config user.name and git config user.email give your own name and email, then run abcd ahoy install without --yes and answer y to the config-change question; abcd records those two values.",
 	},
 	StatusLineOfferGapID: {
 		What:   "abcd's status line was not set up.",

@@ -56,9 +56,10 @@ var promptHelp = map[string]PromptHelp{
 			"are committed with your code or kept out of git. It decides what the block abcd writes into .gitignore contains.",
 		Choices: []ChoiceHelp{
 			{Value: "private", Meaning: "the records under .abcd/ are committed with your code, so everyone who can see the repository shares them; " +
-				"only abcd's per-machine scratch space is kept out of git. Suits a repository whose code is not published."},
-			{Value: "public", Meaning: "the whole .abcd/ folder is kept out of git, so the records stay on this machine and are not published with your code. " +
-				"If .abcd/ already holds committed records, only the per-machine scratch space is kept out, because git cannot hide a file it already tracks."},
+				"only abcd's per-machine scratch space, .abcd/.work.local/, is kept out of git. Suits a repository whose code is not published."},
+			{Value: "public", Meaning: "the whole .abcd/ folder is kept out of git, so the records stay on this machine and are not published with your code, " +
+				"and so is a memory/ folder at the top of the repository, the older home of abcd's memory store. " +
+				"If .abcd/ already holds committed records, only its per-machine scratch space is kept out, because git cannot hide a file it already tracks; the memory/ folder is still kept out."},
 		},
 	},
 	"docs_target": {
