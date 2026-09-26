@@ -4,9 +4,8 @@
 # Stopgap: enforces the machine-checkable half of the reviews-folder charter
 # until these codes are implemented in `internal/core/lint` (Go). The semantic
 # half (provenance discriminator, "not a shadow backlog") is not mechanisable
-# and stays a convention. See:
-#   .abcd/development/brief/05-internals/06-lint.md  (RD family)
-#   .abcd/work/reviews/README.md                     (the charter)
+# and stays a convention. This script is where the RD codes are defined; the
+# charter they enforce is .abcd/work/reviews/README.md.
 set -euo pipefail
 
 # Every git probe below is fail-closed: a swallowed error reads exactly like a
