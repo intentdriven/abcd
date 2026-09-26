@@ -1,7 +1,9 @@
 package capture
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -11,8 +13,10 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/changelog"
 	"github.com/intentdriven/abcd/internal/core/grounds"
+	"github.com/intentdriven/abcd/internal/core/issuerecord"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/provenance"
+	"github.com/intentdriven/abcd/internal/core/record/match"
 	"github.com/intentdriven/abcd/internal/core/relink"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -256,10 +260,17 @@ func commitCapture(repoRoot, issuesRoot string, req CaptureRequest, issID, slug,
 		// Written inside the ledger's os.Root (iss-2609012037143368): an ancestor
 		// swapped since the re-read above cannot carry the record out of the
 		// checkout.
+		// The filing-time match (itd-2609212137116617) runs here, under the
+		// ledger lock, so the ledger it reads is the one the record joins. It
+		// adds links to the content and never fails the write.
+		var matched *match.Outcome
+		if req.Match != nil {
+			content, matched = matchAndLink(repoRoot, issuesRoot, *req.Match, req.Text, content, fm)
+		}
 		if werr := writeLedgerFile(repoRoot, issuesRoot, placeholder, []byte(content)); werr != nil {
 			return werr
 		}
-		result = CaptureResult{ID: issID, Slug: slug, Path: placeholder, Status: StateOpen}
+		result = CaptureResult{ID: issID, Slug: slug, Path: placeholder, Status: StateOpen, Match: matched}
 		return nil
 	})
 	if err != nil {
@@ -688,7 +699,14 @@ func List(req ListRequest) (ListResult, error) {
 	}
 	issues, skipped := scanLedger(ir, state)
 	sortIssues(issues)
-	prioritise(issues, openIDSet(ir))
+	openIDs, openUnread := openIDSet(ir)
+	prioritise(issues, openIDs)
+	// The blocked_by projection reads open/ whatever the scope. A list whose own
+	// rows come from open/ already names an unreadable open/; any other scope
+	// names it here, since every dependent it shows reads as unblocked.
+	if openUnread != nil && state != StateAll && state != StateOpen {
+		skipped = append(skipped, *openUnread)
+	}
 	relativiseLedgerPaths(repoRoot, issues, skipped)
 	if set, ok := uncommittedLedgerPaths(repoRoot, ir); ok {
 		markUncommitted(set, issues)
@@ -801,9 +819,16 @@ func prioritise(issues []Issue, openIDs map[string]bool) {
 }
 
 // openIDSet returns the set of ids currently in open/ — the predicate a
-// blocked_by target must satisfy to still count as blocking. Read-only.
-func openIDSet(issuesRoot string) map[string]bool {
-	return openBlockingIDs(scanLedger(issuesRoot, StateOpen))
+// blocked_by target must satisfy to still count as blocking. Read-only. An
+// open/ that exists and cannot be listed yields no ids and its roster entry,
+// for the caller to report.
+func openIDSet(issuesRoot string) (map[string]bool, *SkipRecord) {
+	open, skipped, err := scanStatusDir(issuesRoot, StateOpen)
+	if err != nil {
+		sk := unreadableDirSkip(issuesRoot, StateOpen, err)
+		return map[string]bool{}, &sk
+	}
+	return openBlockingIDs(open, skipped), nil
 }
 
 // openBlockingIDs is that predicate over ONE scan of open/: the ids that listed,
@@ -848,7 +873,8 @@ func idSet(issues []Issue) map[string]bool {
 }
 
 // scanLedger reads issues from the requested state(s). Stray/non-matching .md
-// files are silently ignored; corrupt matching files go into Skipped.
+// files are silently ignored; corrupt matching files go into Skipped, and so
+// does a status directory that exists and cannot be read (unreadableDirSkip).
 func scanLedger(issuesRoot string, state State) ([]Issue, []SkipRecord) {
 	var targets []State
 	if state == StateAll {
@@ -859,70 +885,73 @@ func scanLedger(issuesRoot string, state State) ([]Issue, []SkipRecord) {
 	var issues []Issue
 	var skipped []SkipRecord
 	for _, sub := range targets {
-		dir := filepath.Join(issuesRoot, statusDirName[sub])
-		entries, err := os.ReadDir(dir)
+		got, sk, err := scanStatusDir(issuesRoot, sub)
 		if err != nil {
-			continue // virgin/absent ledger tolerance
+			skipped = append(skipped, unreadableDirSkip(issuesRoot, sub, err))
+			continue
 		}
-		names := make([]string, 0, len(entries))
-		for _, e := range entries {
-			names = append(names, e.Name())
-		}
-		sort.Strings(names)
-		for _, name := range names {
-			path := filepath.Join(dir, name)
-			wellFormed := issFileNumRe.MatchString(name)
-			if !wellFormed {
-				// A file that claims to be a record (family prefix + ordinal) and is
-				// not well-formed is REPORTED, not dropped: it sits in the ledger,
-				// counted by nothing and reported by nothing, which is how a record
-				// gets silently lost. A file claiming nothing — README.md, a stray
-				// note, the allocator lock — is silently ignored, as before.
-				//
-				// Detection uses recordid.FilenameNumRe, the SAME grammar the resolver
-				// and record-lint's per-store rule read, so a filename the gate and
-				// the resolver treat as a record reaches the reader too rather than
-				// being dropped by a stricter local grammar (iss-2608280739112123).
-				// The stricter slug shape is still enforced — as a filename<->
-				// frontmatter agreement, below in validateInvariants — but that is a
-				// judgement on a record, not the question of whether one exists.
-				if filepath.Ext(name) == ".md" && reIssNameClaim.MatchString(name) {
-					skipped = append(skipped, SkipRecord{Path: path, Layer: SkipLayerName, Error: fmt.Errorf(
-						"%w: filename %q is not a well-formed record name (iss-N[-slug].md)",
-						ErrInvariantViolation, name).Error()})
-				}
-				continue
-			}
-			// A well-formed name always ends .md — the grammar's pattern requires
-			// it — so no separate extension check is needed on this path.
-			//
-			// The read is guarded, not bare: a well-formed NAME says nothing about
-			// the leaf behind it, and in a hostile clone that leaf is a FIFO that
-			// would hang this scan, a symlink to a file outside the ledger, or a
-			// body sized to make the read unbounded. Each is a skipped record the
-			// surfaces already render, never a hang and never serialized.
-			content, err := readRecordGuarded(path)
-			if err != nil {
-				skipped = append(skipped, SkipRecord{Path: path, Layer: SkipLayerRead, Error: err.Error()})
-				continue
-			}
-			fm, body, err := parseFrontmatterAndBody(content)
-			if err != nil {
-				skipped = append(skipped, SkipRecord{Path: path, Layer: SkipLayerFrontmatter, Error: err.Error()})
-				continue
-			}
-			if err := validateStrict(fm); err != nil {
-				skipped = append(skipped, SkipRecord{Path: path, Layer: SkipLayerSchema, Error: err.Error()})
-				continue
-			}
-			if err := validateInvariants(fm, sub, path); err != nil {
-				skipped = append(skipped, SkipRecord{Path: path, Layer: SkipLayerInvariant, Error: err.Error()})
-				continue
-			}
-			issues = append(issues, issueFromFrontmatter(fm, sub, path, body))
-		}
+		issues = append(issues, got...)
+		skipped = append(skipped, sk...)
 	}
 	return issues, skipped
+}
+
+// unreadableDirSkip is the roster entry for a status directory the scan could
+// not list. It is a read-layer skip because nothing about any record's content
+// was judged; its path is the directory, so it names no record id and blocks
+// nothing (skippedRecordID reads a record NAME).
+func unreadableDirSkip(issuesRoot string, sub State, err error) SkipRecord {
+	return SkipRecord{
+		Path:  filepath.Join(issuesRoot, statusDirName[sub]),
+		Layer: SkipLayerRead,
+		Error: fmt.Sprintf("the %s/ status directory could not be read, so none of its records were counted: %v", statusDirName[sub], err),
+	}
+}
+
+// scanStatusDir reads the records of ONE status directory. It is where an
+// absent directory and an unreadable one part company, once, for every reader
+// of the ledger: absent is a virgin ledger and reads as no records, while a
+// directory that exists and cannot be listed is returned as an error — a
+// reader that counted it as empty would report a ledger it never read
+// (iss-2609261631120364).
+func scanStatusDir(issuesRoot string, sub State) ([]Issue, []SkipRecord, error) {
+	var issues []Issue
+	var skipped []SkipRecord
+	dir := filepath.Join(issuesRoot, statusDirName[sub])
+	entries, err := os.ReadDir(dir)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil, nil // virgin/absent ledger tolerance
+	}
+	if err != nil {
+		// The caller names the directory; the path error's own absolute path
+		// would only carry the checkout's location into a surface.
+		var pe *fs.PathError
+		if errors.As(err, &pe) {
+			err = pe.Err
+		}
+		return nil, nil, err
+	}
+	names := make([]string, 0, len(entries))
+	for _, e := range entries {
+		names = append(names, e.Name())
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		path := filepath.Join(dir, name)
+		// The verdict on each file is the record reader's (core/issuerecord),
+		// the one record-lint reports from, so a record this scan skips is never
+		// green at the gate (iss-2609261631132673).
+		fm, body, refusal, claims := issuerecord.Judge(path, statusDirName[sub])
+		if !claims {
+			continue
+		}
+		if refusal != nil {
+			skipped = append(skipped, SkipRecord{Path: path, Layer: refusal.Layer, Error: refusal.Err.Error()})
+			continue
+		}
+		issues = append(issues, issueFromFrontmatter(fm, sub, path, body))
+	}
+	return issues, skipped, nil
 }
 
 // sortIssues orders issues ascending by numeric N.
@@ -986,7 +1015,7 @@ func checkOneStatusPerID(repoRoot, issuesRoot string) error {
 		dir := filepath.Join(issuesRoot, statusDirName[sub])
 		entries, err := os.ReadDir(dir)
 		if err != nil {
-			continue // virgin/absent ledger tolerance, as scanLedger has
+			continue // absent is a virgin ledger; an unreadable one is the scan's to report (scanStatusDir)
 		}
 		names := make([]string, 0, len(entries))
 		for _, e := range entries {

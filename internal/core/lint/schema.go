@@ -120,7 +120,9 @@ var (
 	// pruned id, so it can never fail its own resolution check; listing it would
 	// read as coverage it does not provide. Its targets are checked separately,
 	// against the store's allocation high-water mark.
-	recordRefFields = []string{"related_adrs", "related_intents", "builds_on", "blocked_by"}
+	// `duplicates` and `refines` are the typed links the filing-time match
+	// writes (itd-2609212137116617), each naming an issue or an intent.
+	recordRefFields = []string{"related_adrs", "related_intents", "builds_on", "blocked_by", "duplicates", "refines"}
 	// Every field the rule reads handles out of, so the scan parses each once.
 	recordHandleFields = append([]string{"supersedes", "superseded_by"}, recordRefFields...)
 	// recordGraphFields are cross-reference fields the record carries that this

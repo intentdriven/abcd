@@ -60,6 +60,17 @@ capture-time agent is the **discipline rung — build after** the protocol is
 calibrated against ~50 real, human-graded captures. Until the agent ships the
 gate is the documented protocol, announced as not-yet-automated (loud-staging).
 
+**Delivered rung: the capture-time candidate pass.** The lexical shortlist of
+rule 2 runs at filing, delivered by
+[itd-2609212137116617](../shipped/itd-2609212137116617-a-new-capture-or-draft-is-matched-against-the-record-before.md):
+`capture` and the quoted-text intent create match the new text against every
+open and resolved issue and every intent, write each likely double onto the new
+record as a typed `duplicates` or `refines` link, never refuse the write, and
+leave the link for a human to confirm or remove. It proposes no `reverses` and
+no `supersedes`, so rule 3 holds by construction. The atomicity smell, the
+per-part routing, the reversal flag and the three-outcome verdict are not
+delivered, and the hand-run protocol stays their gate.
+
 ## Why
 
 The record information architecture ([adr-30](../../decisions/adrs/0030-record-information-architecture.md))
