@@ -452,3 +452,57 @@ func TestAFencedMarkupExampleIsNotTheShape(t *testing.T) {
 		t.Errorf("the refusal does not name the shape: %v", err)
 	}
 }
+
+// TestANestedMappingRefusesBehindEveryBlockIndicator is shape 3's class, not its
+// one spelling (iss-2608301237450573). The refusal read one `- ` and then a key,
+// so every other way of reaching a compact nested mapping travelled: a second
+// sequence indicator, a node property between the indicator and the key, an
+// explicit key inside the entry, an explicit key's value on its `:` line, and a
+// single-pair mapping inside a flow sequence. Each is an `origin` key to YAML and
+// was nothing to the floor, and the manifest asserted its refusal.
+func TestANestedMappingRefusesBehindEveryBlockIndicator(t *testing.T) {
+	const pre, post = "---\nid: spc-1\n", "---\n\n# A record\n"
+	for name, front := range map[string]string{
+		"a sequence of sequences":        "links:\n  - - origin: ABCD-WARM-ORIGIN\n",
+		"a tab after the indicator":      "links:\n  -\t- origin: ABCD-WARM-ORIGIN\n",
+		"an anchored entry":              "links:\n  - &a origin: ABCD-WARM-ORIGIN\n",
+		"a tagged entry":                 "links:\n  - !t origin: ABCD-WARM-ORIGIN\n",
+		"an explicit key in an entry":    "links:\n  - ? origin\n    : ABCD-WARM-ORIGIN\n",
+		"an explicit value's mapping":    "? meta\n: origin: ABCD-WARM-ORIGIN\n",
+		"a flow pair in a flow sequence": "links: [origin: ABCD-WARM-ORIGIN]\n",
+		// Siblings refused before this change, kept refused.
+		"the recorded shape":                "links:\n  - origin: ABCD-WARM-ORIGIN\n",
+		"a quoted key in an entry":          "links:\n  - \"origin\": ABCD-WARM-ORIGIN\n",
+		"a flow mapping in an entry":        "links:\n  - {origin: ABCD-WARM-ORIGIN}\n",
+		"an anchored flow mapping":          "base: &b {origin: ABCD-WARM-ORIGIN}\nuse: *b\n",
+		"a key under a bare indicator":      "links:\n  -\n    origin: ABCD-WARM-ORIGIN\n",
+		"a multi-line flow mapping":         "meta: {a: 1,\n  origin: ABCD-WARM-ORIGIN}\n",
+		"a block scalar holding the key":    "note: |\n  origin: ABCD-WARM-ORIGIN\n",
+		"a quoted pair in a flow sequence":  "links: [\"origin\": ABCD-WARM-ORIGIN]\n",
+		"a second key in a nested mapping":  "links:\n  - name: a\n    origin: ABCD-WARM-ORIGIN\n",
+		"a flow pair after a flow sequence": "links: [a, origin: ABCD-WARM-ORIGIN]\n",
+	} {
+		err := refuses(t, "spc-1-a-record.md", pre+front+post, refusalKeys, refusalHeadings)
+		if err == nil {
+			t.Errorf("%s: admitted; the key is an origin key to YAML and travels", name)
+			continue
+		}
+		if !strings.Contains(err.Error(), "spc-1-a-record.md") {
+			t.Errorf("%s: the refusal does not name the document: %v", name, err)
+		}
+	}
+
+	// The anti-vacuity half: what committed records carry is admitted.
+	for name, front := range map[string]string{
+		"a sequence of scalars":       "builds_on:\n  - itd-183\n  - \"itd-199\"\n",
+		"a flow sequence of scalars":  "related: [itd-183, itd-199]\n",
+		"a URL in a flow sequence":    "sources: [https://example.com/a]\n",
+		"an explicit key and a value": "? meta\n: a plain value\n",
+		"an entry under a bare dash":  "builds_on:\n  -\n    itd-183\n",
+	} {
+		if err := refuses(t, "spc-1-a-record.md", pre+front+post, refusalKeys, refusalHeadings); err != nil {
+			t.Errorf("%s was refused: %v", name, err)
+		}
+	}
+}
+

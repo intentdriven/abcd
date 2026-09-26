@@ -202,8 +202,11 @@ var (
 	mdLinkRe = regexp.MustCompile(`\[([^\]]*)\]\([^)]*\)`)
 	// explicitYAMLKeyRe matches YAML's explicit-key form, `? origin`.
 	explicitYAMLKeyRe = regexp.MustCompile(`^\s*\?\s+["']?([A-Za-z_][A-Za-z0-9_-]*)["']?\s*$`)
-	// flowKeyRe matches a key inside a flow mapping, at top level or nested.
-	flowKeyRe = regexp.MustCompile(`[{,]\s*["']?([A-Za-z_][A-Za-z0-9_-]*)["']?\s*:`)
+	// flowKeyRe matches a key inside a flow mapping, at top level or nested, and
+	// a single-pair mapping written straight into a flow sequence: `[origin: x]`
+	// is a sequence holding the mapping {origin: x} to YAML, and a scan that
+	// wanted a `{` or a `,` before the key let it travel (iss-2608301237450573).
+	flowKeyRe = regexp.MustCompile(`[{\[,]\s*["']?([A-Za-z_][A-Za-z0-9_-]*)["']?\s*:`)
 	// doubleQuotedKeyRe captures a double-quoted key's raw spelling, escapes and
 	// all, so escapedQuotedKey can judge it. The whitespace is `\s`, YAML's own
 	// class, because a carriage return between the key and its colon is a break
@@ -224,12 +227,15 @@ var (
 	// bound an unclosed element has was missing there and the title was read
 	// past the blank line into whatever followed (iss-2608301421380392).
 	rawHeadingBoundRe = regexp.MustCompile(`(?is)</([a-z][a-z0-9-]*)\s*>|<h[1-6](?:\s[^>]*)?/?>|\n[ \t\r]*\n`)
-	// nestedMappingRe matches a block-sequence entry whose item opens a mapping:
-	// `- key:` at any indent, bare or quoted. A key nested that way is invisible
-	// to a reader anchored to the line, and the fix the records ask for is to
-	// refuse the NESTING rather than to learn one more spelling of the key
-	// (iss-2608301237450573, iss-2608301251398360).
-	nestedMappingRe = regexp.MustCompile(`^\s*-\s+(?:"[^"]*"|'[^']*'|[A-Za-z_][A-Za-z0-9_-]*)\s*:(\s|$)`)
+	// blockIndicatorsRe matches the run of block indicators a frontmatter line
+	// can open with before its content: sequence entries (`- `) and an explicit
+	// key's value (`: `), each followed by the whitespace YAML requires of it.
+	// What follows the run is a node of its own, so a key written there is nested
+	// and invisible to a reader anchored to the line (nestedBlockEntry).
+	blockIndicatorsRe = regexp.MustCompile(`^[ \t]*(?:[-:][ \t]+)+`)
+	// compactKeyRe matches a mapping indicator in a line whose quoted scalars are
+	// blanked: a colon before whitespace or the end of the line.
+	compactKeyRe = regexp.MustCompile(`:(\s|$)`)
 	// flowExplicitKeyRe matches YAML's explicit-key indicator inside a flow
 	// mapping: a `?` following `{` or `,`. Same class, same answer.
 	flowExplicitKeyRe = regexp.MustCompile(`[{,]\s*\?`)
@@ -1112,7 +1118,17 @@ func maskAngles(out []byte, from, to int) {
 // of it — the refusal has to name a line a human can go and look at.
 //
 // An opener sitting on a fenced line is skipped, so an example inside a code
-// block still cannot fire.
+// block still cannot fire. That is ALL the fence does here, and nothing more is
+// claimed for it (iss-2608301237450573): the lines are joined as they stand, not
+// blanked, so a fenced region below an unfenced opener is read as part of that
+// opener's text. It can supply the title, which only adds text a refusal may
+// name. And it can supply the hard BOUND — a closing tag or the next heading
+// open written inside the fence ends the title there — while a renderer escapes
+// a fence's text, so on the page that tag is literal text inside the heading
+// and ends nothing. The shorter title is still judged, the heading on the page
+// then carries the tag's own name as text, and a fence inside an HTML block,
+// where a renderer reads the delimiter as markup, is refused on its own by
+// fenceInHTMLBlock.
 //
 // The document is read TWICE: once as it stands, and once with its markup DATA
 // masked — see maskMarkupData — because the opener and the bound are structure
@@ -1284,8 +1300,8 @@ func unresolvableFrontmatterShape(lines []string, fenced []bool) (int, string, b
 			return i + 1, "a YAML tag", true
 		case strings.HasPrefix(trimmed, "&"):
 			return i + 1, "a YAML anchor", true
-		case nestedMappingRe.MatchString(lines[i]):
-			return i + 1, "a mapping nested in a block sequence", true
+		case nestedBlockEntry(lines[i]) != "":
+			return i + 1, nestedBlockEntry(lines[i]), true
 		case flowExplicitKeyRe.MatchString(lines[i]):
 			return i + 1, "an explicit key in a flow mapping", true
 		case questionLineRe.MatchString(lines[i]) && !explicitYAMLKeyRe.MatchString(lines[i]):
@@ -1293,6 +1309,52 @@ func unresolvableFrontmatterShape(lines []string, fenced []bool) (int, string, b
 		}
 	}
 	return 0, "", false
+}
+
+// nestedBlockEntry reports what a block-sequence entry, or an explicit key's
+// value, opens on its own line when that is a node whose keys this package
+// cannot resolve, or "" when it opens none.
+//
+// The refusal is of the NESTING, whatever the key is named, because a key
+// written behind an indicator is invisible to every reader here that is anchored
+// to the line (iss-2608301237450573, iss-2608301251398360). Reading one `- ` and
+// then a key covered the recorded spelling and none of its siblings, and each of
+// them was an excluded key to YAML that travelled under a manifest asserting its
+// refusal: a second indicator (`- - origin: x`), a node property between the
+// indicator and the key (`- &a origin: x`, `- !t origin: x`), an explicit key in
+// the entry (`- ? origin`), and a compact mapping as an explicit key's value
+// (`: origin: x`). So the whole run of indicators is read off first, and what
+// follows it is judged as the start of a line would be.
+//
+// A FLOW collection behind the indicators is left to the flow scan, which reads
+// its keys wherever they stand: committed intents carry their history as
+// `- { date: …, reason: "…" }`, and refusing the nesting there would refuse the
+// corpus. A sequence of scalars opens nothing — `- itd-183`, a quoted scalar
+// holding a colon, a URL, whose colon is not followed by whitespace.
+func nestedBlockEntry(line string) string {
+	run := blockIndicatorsRe.FindString(line)
+	if run == "" {
+		return ""
+	}
+	inner := line[len(run):]
+	within := "a block sequence"
+	if last := strings.TrimRight(run, " \t"); last[len(last)-1] == ':' {
+		within = "an explicit key's value"
+	}
+	switch {
+	case strings.HasPrefix(inner, "{"), strings.HasPrefix(inner, "["):
+		return ""
+	case strings.HasPrefix(inner, "!"):
+		return "a YAML tag in " + within
+	case strings.HasPrefix(inner, "&"):
+		return "a YAML anchor in " + within
+	case questionLineRe.MatchString(inner):
+		return "an explicit key nested in " + within
+	}
+	if bare, _ := blankQuoted(inner); compactKeyRe.MatchString(bare) {
+		return "a mapping nested in " + within
+	}
+	return ""
 }
 
 // floorFences reports, per line, whether that line is code to the floor's
