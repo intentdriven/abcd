@@ -296,7 +296,9 @@ var ErrNoCheckoutRoot = errors.New("no checkout root")
 //
 //   - git names a toplevel: that is the answer, whoever owns the checkout.
 //   - git will not answer for a repo-SHAPED tree (git absent from PATH, a
-//     corrupt .git, an ownership refusal under the isolated env): REFUSED,
+//     corrupt .git, an ownership refusal under the isolated env, or an answer
+//     Toplevel refuses for its shape, which a core.worktree setting naming a
+//     tree that does not contain cwd produces): REFUSED,
 //     naming that git could not answer. RepoShapedRoot is read here as a
 //     CLASSIFIER and never as a root: it is a marker walk, which accepts any
 //     directory merely carrying the name and has neither the shape check nor
@@ -317,7 +319,7 @@ func CheckoutRoot(cwd, store string) (string, error) {
 	// leaks an absolute local path (iss-76), and the caller already knows where
 	// they are standing.
 	if RepoShapedRoot(cwd) != "" {
-		return "", fmt.Errorf("%w: git could not name the repository root for the working directory (git absent from PATH, the repository unreadable, or its ownership refused), and %s is never guessed at",
+		return "", fmt.Errorf("%w: git could not name the repository root for the working directory (git absent from PATH, the repository unreadable, its ownership refused, or a core.worktree setting naming a working tree that does not contain this directory), and %s is never guessed at",
 			ErrNoCheckoutRoot, store)
 	}
 	return "", fmt.Errorf("%w: the working directory is not inside a git repository, and %s is per-repository: run this from a checkout",
