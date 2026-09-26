@@ -156,9 +156,9 @@ func Resolve(cwd string) Resolution {
 	// version control is not thereby a project. So the walk passes over it, and
 	// a toplevel that IS the home takes the non-repo route once the walk finds
 	// nothing nearer.
-	home := resolvedHome()
+	isHome := homeMatcher()
 	for inside(dir, top) {
-		if dir != home {
+		if !isHome(dir) {
 			if fi, err := os.Stat(filepath.Join(dir, ".abcd")); err == nil && fi.IsDir() {
 				return Resolution{Root: dir}
 			}
@@ -172,26 +172,38 @@ func Resolve(cwd string) Resolution {
 		}
 		dir = parent
 	}
-	if top == home {
+	if isHome(top) {
 		return Resolution{Root: cwd}
 	}
 	return Resolution{Root: top}
 }
 
-// resolvedHome is the caller's home directory, symlink-resolved so it compares
-// with the physical paths the walk climbs, or "" when there is none to name. It
-// reads through userHomeDir, the lookup the user layer is read through, so the
+// homeMatcher returns the predicate both home sites in Resolve ask: does this
+// path name the caller's home directory? It answers by file IDENTITY — the
+// home and the path are each stat'd and compared with os.SameFile — never by
+// spelling (iss-2609261753285273). HOME is the caller's string and the walk
+// climbs the physical path git reports; a trailing slash, a symlink and a case
+// variant on a case-insensitive volume all name the home without matching its
+// bytes, and filepath.EvalSymlinks keeps the caller's case, so a string
+// comparison adopted a case-variant home as the repo root. The home is read
+// through userHomeDir, the lookup the user layer is read through, so the
 // directory whose .abcd is the user layer and the directory the walk declines
-// are always the same one.
-func resolvedHome() string {
+// are always the same one. With no home to name, or one that cannot be
+// stat'd, nothing is the home.
+func homeMatcher() func(path string) bool {
+	never := func(string) bool { return false }
 	home, err := userHomeDir()
 	if err != nil || home == "" || !filepath.IsAbs(home) {
-		return ""
+		return never
 	}
-	if real, err := filepath.EvalSymlinks(home); err == nil {
-		return real
+	hi, err := os.Stat(home)
+	if err != nil {
+		return never
 	}
-	return filepath.Clean(home)
+	return func(path string) bool {
+		pi, err := os.Stat(path)
+		return err == nil && os.SameFile(hi, pi)
+	}
 }
 
 // inside reports whether dir is top or lies beneath it.

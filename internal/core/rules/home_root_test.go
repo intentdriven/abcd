@@ -1,7 +1,9 @@
 package rules
 
 import (
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core/guard"
@@ -132,5 +134,87 @@ func TestResolveRootStillAdoptsARepositoryBeneathTheHome(t *testing.T) {
 	deep := mustDir(t, filepath.Join(project, "drafts"))
 	if got, want := resolvedPath(Resolve(deep).Root), resolvedPath(project); got != want {
 		t.Errorf("Resolve(%q).Root = %q, want the nearest .abcd below the home, %q", deep, got, want)
+	}
+}
+
+// homeSpellings are the spellings of one home directory the exclusion has to
+// see through (iss-2609261753285273): HOME is the caller's string, the walk
+// climbs the physical path git reports, and the two name the same directory
+// without being the same bytes. Each returns the HOME to set and the working
+// directory to resolve from, given the home as created and a plain directory
+// beneath it; link is a symlink to the home beside it.
+var homeSpellings = []struct {
+	name  string
+	spell func(t *testing.T, home, plain, link string) (homeEnv, cwd string)
+}{
+	{"trailing slash", func(_ *testing.T, home, plain, _ string) (string, string) {
+		return home + string(filepath.Separator), plain
+	}},
+	{"symlinked HOME", func(_ *testing.T, _, plain, link string) (string, string) {
+		return link, plain
+	}},
+	{"cwd through a symlinked HOME", func(t *testing.T, home, plain, link string) (string, string) {
+		rel, err := filepath.Rel(home, plain)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return link, filepath.Join(link, rel)
+	}},
+	{"case variant", func(t *testing.T, home, plain, _ string) (string, string) {
+		variant := filepath.Join(filepath.Dir(home), strings.ToUpper(filepath.Base(home)))
+		hi, herr := os.Stat(home)
+		vi, verr := os.Stat(variant)
+		if herr != nil || verr != nil || !os.SameFile(hi, vi) {
+			t.Skipf("the test filesystem is case-sensitive: %q names no directory, so a case-variant HOME cannot be staged here", variant)
+		}
+		return variant, plain
+	}},
+}
+
+// TestResolveRootNeverAdoptsTheHomeAtAnySpelling (iss-2609261753285273): the
+// exclusion compares the home by file IDENTITY, not by spelling. A HOME with a
+// trailing slash, reached through a symlink, or spelled as a case variant of
+// the on-disk path on a case-insensitive volume names the same directory the
+// walk arrives at, and a string comparison missed the last of those — the
+// version-controlled home became the repo root and its .abcd was read a second
+// time as the repo layer. Both sites are exercised: with a ~/.abcd the walk
+// would stop at the home, and without one the toplevel IS the home.
+func TestResolveRootNeverAdoptsTheHomeAtAnySpelling(t *testing.T) {
+	for _, planted := range []bool{true, false} {
+		site := "the walk passes over ~/.abcd"
+		if !planted {
+			site = "a toplevel that is the home takes the non-repo route"
+		}
+		for _, shape := range homeSpellings {
+			t.Run(site+"/"+shape.name, func(t *testing.T) {
+				outer := mustDir(t, t.TempDir())
+				home := filepath.Join(outer, "home")
+				gitInitAt(t, home)
+				if planted {
+					plantConfiguration(t, home)
+				}
+				plain := mustDir(t, filepath.Join(home, "scratch", "notes"))
+				if top, err := gitutil.Run(plain, "rev-parse", "--show-toplevel"); err != nil || resolvedPath(top) != resolvedPath(home) {
+					t.Skipf("git does not name the home as the toplevel for the fixture (%q, %v)", top, err)
+				}
+				link := filepath.Join(outer, "link")
+				if err := os.Symlink(home, link); err != nil {
+					t.Fatal(err)
+				}
+				homeEnv, cwd := shape.spell(t, home, plain, link)
+				t.Setenv("HOME", homeEnv)
+
+				res := Resolve(cwd)
+				if got := resolvedPath(res.Root); got == resolvedPath(home) {
+					t.Fatalf("HOME=%q: Resolve(%q).Root = the home directory %q; the home must not be a repo root at any spelling", homeEnv, cwd, got)
+				}
+				if res.Root != cwd {
+					t.Errorf("HOME=%q: Resolve(%q).Root = %q, want cwd with no walk (the non-repo route)", homeEnv, cwd, res.Root)
+				}
+				if len(res.Notes) != 0 {
+					t.Errorf("declining the home as a repo root declines nothing the session should read; notes = %q", res.Notes)
+				}
+			})
+		}
 	}
 }
