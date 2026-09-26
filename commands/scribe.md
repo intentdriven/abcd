@@ -107,9 +107,10 @@ hold, and any failure exits 2 naming the field and the item:
 - **Nothing is authored**: a key outside the shapes above (a `resolution`, a
   `pattern`, a `position`, anything) is refused by name; a disposition or an
   admission for an item the supplied dispositions never name is refused; a
-  `state` that does not stand as a whole word on a line naming its item is
-  refused, and so is an admission whose item's line neither admits nor accepts
-  it; a `grounds`, an `exit_condition` or a surprise `text` that does not stand
+  `state` that does not stand as a whole word in its item's part of a line
+  (the whole line when the line names no other item, else the text from the
+  item's id to the next item id) is refused, and so is an admission whose
+  item's part neither admits nor accepts it; a `grounds`, an `exit_condition` or a surprise `text` that does not stand
   verbatim in the supplied text once whitespace is folded is refused. The scribe
   reformats; it never adds a word.
 - **Every answer is the run's**: a disposition, admission or outstanding item

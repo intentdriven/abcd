@@ -703,3 +703,58 @@ func TestScribeIngestHoldsTheStateToTheItemsLineWhateverEndsIt(t *testing.T) {
 		})
 	}
 }
+
+// TestScribeIngestHoldsTheStateToTheItemsPartOfALine: a line that names two
+// items gives each only its own part — the text from its id to the next item id
+// — so the state one item's part carries is not granted to the other item the
+// line mentions in passing (iss-2609261205178776).
+func TestScribeIngestHoldsTheStateToTheItemsPartOfALine(t *testing.T) {
+	supplied := "{0}: rejected — " + groundA + "." + termLF +
+		"{1}: accepted — " + groundA + " (unlike {0})." + termLF
+	s := assembleSession(t, positionDetection, 2, supplied)
+	before := s.ledger(t)
+	o := s.out()
+	o.Dispositions = []OutDisposition{
+		{Item: s.items[0], State: issueschema.DispositionAccepted, Grounds: groundA},
+		{Item: s.items[1], State: issueschema.DispositionAccepted, Grounds: groundA},
+	}
+	_, err := s.ingest(t, s.write(t, o))
+	if err == nil || !strings.Contains(err.Error(), "state") || !strings.Contains(err.Error(), s.items[0]) {
+		t.Fatalf("a state another item's part of a line carries was granted to the item it mentions: %v", err)
+	}
+	if s.ledger(t) != before {
+		t.Fatal("a refused payload changed the ledger")
+	}
+
+	// The same line still gives the item it opens with its ruling.
+	s2 := assembleSession(t, positionDetection, 2, supplied)
+	o2 := s2.out()
+	o2.Dispositions = []OutDisposition{
+		{Item: s2.items[0], State: issueschema.DispositionRejected, Grounds: groundA},
+		{Item: s2.items[1], State: issueschema.DispositionAccepted, Grounds: groundA},
+	}
+	if _, err := s2.ingest(t, s2.write(t, o2)); err != nil {
+		t.Fatalf("the ruling each item's own part carries was refused: %v", err)
+	}
+
+	// An admission is held by the same rule.
+	s3 := assembleSession(t, issueschema.PositionWidening, 2,
+		"{0}: declined — "+groundA+"."+termLF+"{1}: admit it — "+groundA+" (not {0})."+termLF)
+	writeFile(t, s3.repo, filepath.Join(issueschema.ReadingsRecordDir, "rdg-2609250000000009", issueschema.RunRecordFileName),
+		`{"run_id":"rdg-2609250000000009","position":"comparative","candidate_run":"`+fixtureRun+`"}`)
+	o3 := s3.out()
+	o3.Admissions = []OutAdmission{{Item: s3.items[0], Grounds: groundA}, {Item: s3.items[1], Grounds: groundA}}
+	if _, err := s3.ingest(t, s3.write(t, o3)); err == nil || !strings.Contains(err.Error(), "admission") ||
+		!strings.Contains(err.Error(), s3.items[0]) {
+		t.Fatalf("an admission another item's part of a line carries was granted to the item it mentions: %v", err)
+	}
+
+	// A line that names one item is read whole, so a ruling written ahead of
+	// the id still counts for it.
+	s4 := assembleSession(t, positionDetection, 1, "Accepted: {0} — "+groundA+"."+termLF)
+	o4 := s4.out()
+	o4.Dispositions = []OutDisposition{{Item: s4.items[0], State: issueschema.DispositionAccepted, Grounds: groundA}}
+	if _, err := s4.ingest(t, s4.write(t, o4)); err != nil {
+		t.Fatalf("a ruling ahead of the id on a line naming one item was refused: %v", err)
+	}
+}

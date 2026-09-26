@@ -90,10 +90,11 @@ until all of the following hold:
   level, so a key the scribe may not author is refused by name with the entry it
   sat on. A disposition or an admission for an item the supplied text never names
   is one the researcher did not supply. A disposition's state must stand as a
-  whole word, in any case, on a line of the supplied text that names its item,
-  and an admission, which writes an acceptance, needs that line to admit or
-  accept the proposal: the state is the ruling, and a state another item's line
-  carries is not the researcher's answer to this one. A ground, an exit
+  whole word, in any case, in its item's part of a line of the supplied text
+  (the whole line when it names no other item), and an admission, which writes
+  an acceptance, needs that part to admit or accept the proposal: the state is
+  the ruling, and a state another item's line or part carries is not the
+  researcher's answer to this one. A ground, an exit
   condition or a surprise that does not stand verbatim in the supplied text,
   once whitespace is folded, is one the researcher did not write. The scribe
   reformats; the check is that every word it carries was already there.
@@ -169,6 +170,15 @@ renders what landed first.
   states carries both, so the verb refuses a state the item's line does not
   carry and cannot tell which of two it carries the researcher meant. The
   definition holds the scribe to the ruling the line gives.
+- A line ends at LF, CR, CRLF, U+2028 or U+2029. A line that names one item is
+  that item's whole; on a line that names several, each item owns only the text
+  from its id to the next item id, so "rdi-2: accepted, unlike rdi-1" accepts
+  rdi-2 and gives rdi-1 nothing. The split is by position, not by sense. A
+  ruling shared across ids ("rdi-1 and rdi-2: both accepted") reaches only the
+  id it follows, and one written ahead of every id on the line reaches none, so
+  either is refused for the item it misses. A ruling that follows an item named
+  only in passing ("rdi-2, like rdi-1, accepted") is granted to the item it
+  follows, rdi-1, and refused for rdi-2.
 
 ## References
 

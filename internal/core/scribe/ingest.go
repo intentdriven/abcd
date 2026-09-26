@@ -625,19 +625,85 @@ var admissionTokens = []string{issueschema.DispositionAccepted, "admit", "admits
 //
 // A line ends at any terminator a researcher's editor writes (lineBreak): split
 // on LF alone, a text whose lines end in CR or a Unicode separator is one line,
-// and the per-line check collapses to a whole-text one.
+// and the per-line check collapses to a whole-text one. Within a line, the token
+// must sit in the item's own part of it (itemParts), so a line that names two
+// items does not grant one item's ruling to both.
 func lineCarries(supplied, id string, tokens ...string) bool {
 	for _, line := range strings.FieldsFunc(supplied, lineBreak) {
-		if !mentions(line, id) {
-			continue
-		}
-		for _, tok := range tokens {
-			if tok != "" && wholeWord(line, tok) {
-				return true
+		for _, part := range itemParts(line, id) {
+			for _, tok := range tokens {
+				if tok != "" && wholeWord(part, tok) {
+					return true
+				}
 			}
 		}
 	}
 	return false
+}
+
+// itemParts is the text of line that belongs to id. A line that names id and no
+// other item is the item's own, whole, so a ruling written ahead of the id still
+// counts for it. On a line that names more than one item, each mention of id
+// owns only the text from its end to the next item id the line names: the
+// ruling a line gives one item is not granted to another it mentions in passing
+// ("rdi-2: accepted, unlike rdi-1" accepts rdi-2 and gives rdi-1 nothing), and a
+// ruling written ahead of every id on such a line belongs to none of them, which
+// refuses rather than guesses. A line that does not name id gives it nothing.
+func itemParts(line, id string) []string {
+	spans := itemIDs(line)
+	own, other := false, false
+	for _, m := range spans {
+		if line[m[0]:m[1]] == id {
+			own = true
+		} else {
+			other = true
+		}
+	}
+	switch {
+	case !own:
+		return nil
+	case !other:
+		return []string{line}
+	}
+	var parts []string
+	for i, m := range spans {
+		if line[m[0]:m[1]] != id {
+			continue
+		}
+		end := len(line)
+		if i+1 < len(spans) {
+			end = spans[i+1][0]
+		}
+		parts = append(parts, line[m[1]:end])
+	}
+	return parts
+}
+
+// itemIDPattern matches a reading-item id; itemIDs keeps the matches that stand
+// as whole tokens.
+var itemIDPattern = regexp.MustCompile(regexp.QuoteMeta(issueschema.ReadingItemFamily) + `-[0-9]+`)
+
+// itemIDs lists, in order, the byte spans of every reading-item id line names as
+// a whole token, by the boundary mentions applies: no letter, digit or hyphen
+// before it, and no letter or digit after it.
+func itemIDs(line string) [][]int {
+	var out [][]int
+	for _, m := range itemIDPattern.FindAllStringIndex(line, -1) {
+		if m[0] > 0 && idByte(line[m[0]-1], true) {
+			continue
+		}
+		if m[1] < len(line) && idByte(line[m[1]], false) {
+			continue
+		}
+		out = append(out, m)
+	}
+	return out
+}
+
+// idByte reports whether c continues an id token: an ASCII letter or digit, or,
+// where hyphen is set, a hyphen.
+func idByte(c byte, hyphen bool) bool {
+	return c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || hyphen && c == '-'
 }
 
 // lineBreak reports whether r ends a line: LF, CR (so CRLF too, the empty field
