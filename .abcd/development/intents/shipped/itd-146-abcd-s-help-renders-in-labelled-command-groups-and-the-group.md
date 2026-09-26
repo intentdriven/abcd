@@ -174,8 +174,70 @@ _None open; decisions 2 and 3 settle the four this record carried._
 
 ## Audit Notes
 
-<!-- abcd-review: OWED receipt=rcp-cdad1c08a756 -->
-Fidelity review OWED (receipt rcp-cdad1c08a756).
+<!-- abcd-review: INGESTED receipt=rcp-cdad1c08a756 -->
+Fidelity review — receipt rcp-cdad1c08a756 (verifier intent-auditor claude-fable-5-1).
+
+Provenance: intent-auditor@claude-fable-5-1 · rubric_hash sha256:effa65b3e9e88ff29433b443ec2be159522a8b0b71cf1434526514aa61edb13e · prompt_hash sha256:a5093def235101890b0ba5cb8060612e82f504450885985e82d28a296fb20155
+Input attestations: diff:4bac5e5d (feat(cli): abcd's help renders in labelled command groups), read in the tree at main 811fba17@sha256:1a38691fd8f9092a0f6281f00bda5427509404a12ff9ad9ded6e3e727b8d838f;
+
+Acceptance rollup: MET 6 · MET_WITH_CONCERNS 0 · NOT_MET 0 · INCONCLUSIVE 0
+
+Per-criterion verdicts:
+- ac-1 — MET: the live `abcd --help` renders Set-up, Records, Checks, Portability and Release under the one line naming --help --agent, and the test pins the section titles, the line's position above the first group and each group's members
+  evidence: internal/surface/cli/helpgroups.go:56 — "helpExpandLine = `Run "abcd --help --agent" to expand this list with the verbs agents and hosts call.`"
+  evidence: internal/surface/cli/helpgroups.go:44 — "var helpPeopleGroups = []*cobra.Group{"
+  evidence: internal/surface/cli/helpgroups_test.go:66 — "func TestRootHelpListsThePersonsGroups"
+- ac-2 — MET: with --agent the render writes the people block then the agents-and-hosts block, and the test walks every available top-level command asserting it is listed under exactly one section
+  evidence: internal/surface/cli/helpgroups.go:287 — "if agent {"
+  evidence: internal/surface/cli/helpgroups_test.go:112 — "func TestRootHelpAgentRendersBothBlocks"
+  evidence: internal/surface/cli/helpgroups_test.go:133 — "want exactly one section"
+- ac-3 — MET: placement only sets GroupID and annotations, an agents-block verb is executed through the CLI in the test, and a visible top-level verb with no declared group fails TestEveryVisibleVerbHasAGroup, whose detector is proved able to fail by TestUngroupedVerbIsNamed
+  evidence: internal/surface/cli/helpgroups_test.go:219 — "func TestPlacementChangesNoInvocation"
+  evidence: internal/surface/cli/helpgroups_test.go:189 — "func TestEveryVisibleVerbHasAGroup"
+  evidence: internal/surface/cli/helpgroups.go:211 — "func ungroupedVerbs(root *cobra.Command) []string {"
+- ac-4 — MET: the snapshot carries Group and Block per command, the release guard refuses when the binary's surface differs from the committed snapshot and names each moved verb through PlacementChanges, and the guard test asserts the refusal reads `abcd capture: group records → checks`
+  evidence: internal/core/surface/snapshot.go:95 — "Group string `json:"group,omitempty"`"
+  evidence: internal/core/surface/snapshot.go:275 — "func PlacementChanges(committed, current Snapshot) []string {"
+  evidence: internal/core/changelog/guard.go:195 — "if !bytes.Equal(wantBytes, gotBytes) {"
+  evidence: internal/core/changelog/guard_test.go:477 — "abcd capture: group records → checks"
+- ac-5 — MET: every command page backing a visible top-level verb declares `block:` and the test holds it to the tree's placement; each agents-block line ends `(read commands/<page>.md)` and the test reads that page and requires it to mention the entry
+  evidence: internal/surface/cli/helpgroups_test.go:277 — "func TestCommandPagesDeclareTheirBlock"
+  evidence: internal/surface/cli/helpgroups.go:306 — "fmt.Fprintf(w, " %-*s %s (read %s)\n", width, e.name, e.short, e.page)"
+  evidence: internal/surface/cli/helpgroups_test.go:163 — "which does not exist"
+- ac-6 — MET: rules and spec are placed as visible top-level verbs (set-up and records) and the test asserts both are unhidden, top-level and listed in the default help
+  evidence: internal/surface/cli/helpgroups_test.go:239 — "func TestRulesAndSpecKeepTheirPlaces"
+  evidence: internal/surface/cli/helpgroups.go:91 — ""rules": {group: groupSetUp},"
+  evidence: internal/surface/cli/helpgroups.go:97 — ""spec": {group: groupRecords},"
+
+Gap audit:
+- honoured:
+  - the command list reads as a map: five labelled groups, every invocation unchanged, no verb renamed, moved, nested or hidden
+    evidence: internal/surface/cli/helpgroups.go:16 — "Placement is presentation only. No verb is hidden, renamed, moved or nested by"
+    evidence: internal/surface/cli/helpgroups_test.go:219 — "TestPlacementChangesNoInvocation"
+  - the grouping is gated: the snapshot records the placement, a test asserts the rendered help, and a newly registered visible verb with no group fails a test
+    evidence: internal/surface/cli/helpgroups_test.go:307 — "func TestSurfaceSnapshotRecordsHelpPlacement"
+    evidence: internal/surface/cli/helpgroups_test.go:189 — "TestEveryVisibleVerbHasAGroup"
+  - the snapshot's schema version bumps for the placement fields and older versions stay readable (decision 3)
+    evidence: internal/core/surface/snapshot.go:35 — "Version 2 added each command's help placement (Command.Group and"
+    evidence: internal/core/surface/snapshot.go:49 — "var readableVersions = map[int]bool{1: true, 2: true, 3: true, SchemaVersion: true}"
+  - help and completion are filed under set-up rather than an Additional Commands bucket
+    evidence: internal/surface/cli/helpgroups.go:133 — "root.SetHelpCommandGroupID(groupSetUp)"
+- diverged:
+  - decision 2 names the agents block as nine entries; the delivered block lists eighteen (banlist, docs, guard, ideate, identity, inbox, peers, report, site added) under a technical ruling the orchestrator recorded on 2026-09-25 as subject to the product thinker's review on return, and build and drain are absent from records because they are not built
+    evidence: internal/surface/cli/helpgroups.go:104 — ""banlist": {group: groupAgents, page: "commands/banlist.md"},"
+    evidence: .abcd/work/DECISIONS.md:2554 — "Help placement of the verbs itd-146's decision 2 does not name: the orchestrator's technical ruling"
+- missing: (none)
+
+Scope-condition dispositions:
+- cond-2609212139580802 — survived: every placed entry is an act (a verb path), and the groups sort acts by who runs them, so the top level is still a set of acts
+  evidence: internal/surface/cli/helpgroups.go:88 — "var helpPlacements = map[string]helpPlacement{"
+- cond-2609212139580635 — survived: the grouping is cobra's own AddGroup/GroupID and the render replaces only the root's help function, as the condition assumed
+  evidence: internal/surface/cli/helpgroups.go:131 — "root.AddGroup(helpPeopleGroups...)"
+  evidence: internal/surface/cli/helpgroups.go:154 — "root.SetHelpFunc(func(cmd *cobra.Command, args []string) {"
+- cond-2609212139582531 — untested: no third party registers a verb in this tree, so nothing in the delivery exercised or contradicted the assumption
+- cond-2609212139588587 — survived: the placement carries no adr-40 bucket meaning by its own statement, and a regroup is reported by the release guard as a stale snapshot to regenerate rather than as a surface break
+  evidence: internal/surface/cli/helpgroups.go:18 — "carry no adr-40 bucket meaning"
+  evidence: internal/core/changelog/guard.go:217 — "const regenerateRemedy = "regenerate and commit it with `go generate ./internal/surface/cli`""
 
 ## Grounds
 
