@@ -137,6 +137,7 @@ func TestAddPublicEntryGatesUserFacingContent(t *testing.T) {
 	for _, r := range []string{".abcd/README.md", "AGENTS.md", "CONTRIBUTING.md", "scripts/README.md"} {
 		write(r, "# t\n")
 	}
+	provisionDocsLintTrees(t, cfg, docs)
 	write("docs/named.md", "# t\n\nBuilt with widgetworks.\n")
 	write("docs/allowed.md", "# t\n\n<!-- docs-lint: allow --> widgetworks is named deliberately.\n")
 	write("docs/clean.md", "# t\n\nBuilt with a generic term.\n")
@@ -447,6 +448,7 @@ func TestAddPublicIsCaseInsensitiveLikeTheCuratedEntries(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	provisionDocsLintTrees(t, cfg, docs)
 	findings, err := lint.Lint(cfg, docs)
 	if err != nil {
 		t.Fatal(err)
@@ -643,5 +645,32 @@ func TestConcurrentPublicAddsAllLand(t *testing.T) {
 	}
 	if len(after.Entries) != len(before.Entries)+n {
 		t.Errorf("entries = %d, want %d — a concurrent add was lost", len(after.Entries), len(before.Entries)+n)
+	}
+}
+
+// provisionDocsLintTrees creates, in a fixture repository, every tree the real
+// docs-lint config reads beyond its roots and name_roots: links_resolve's extra
+// roots and the persona roster (iss-46). A configured tree that does not resolve
+// is a load error, so a fixture that lints with the real config needs them, and
+// reading them from the config means a new one needs no edit here.
+func provisionDocsLintTrees(t *testing.T, cfg lint.Config, root string) {
+	t.Helper()
+	write := func(rel, body string) {
+		p := filepath.Join(root, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, r := range cfg.Rules["links_resolve"].ExtraRoots {
+		if !strings.HasSuffix(r, ".md") {
+			r += "/README.md"
+		}
+		write(r, "# t\n")
+	}
+	if reg := cfg.Rules["persona_registry"].Registry; reg != "" {
+		write(reg, `{"personas": [{"name": "Kira"}]}`+"\n")
 	}
 }

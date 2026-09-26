@@ -12,7 +12,8 @@ LDFLAGS := -s -w$(if $(VERSION), -X github.com/intentdriven/abcd/internal/core.V
 
 # The Go toolchain version go.mod declares, read from the declaration rather
 # than spelled here: a second spelling is a second thing to bump, and the one
-# that falls behind is the one nothing runs. Drives the format gate below.
+# that falls behind is the one nothing runs. Drives the format gate and every
+# Go step `preflight` makes, below.
 GO_TOOLCHAIN_VERSION := $(shell sed -n 's/^go \([0-9][0-9.]*\)$$/\1/p' go.mod)
 
 .PHONY: build test vet clean preflight load-check lint-reviews lint-issues lint-decisions record-lint issue-drift docs-lint site-render smoke \
@@ -76,10 +77,12 @@ evals-cold-reading:
 # neither direction is visible in the output, which names a file and never says
 # which toolchain judged it.
 #
-# `GOTOOLCHAIN=go<version> go env GOROOT` fetches and caches the declared
-# toolchain if the machine lacks it, then reports where it landed; the gofmt
-# under that GOROOT is the one CI runs. `fmt` applies the same binary, so the
-# remedy and the diagnosis can never disagree.
+# scripts/pinned-toolchain.sh is the one resolver: `GOTOOLCHAIN=go<version> go
+# env GOROOT` fetches and caches the declared toolchain if the machine lacks it,
+# then reports where it landed, and the gofmt under that GOROOT is the one CI
+# runs. `fmt` applies the same binary, so the remedy and the diagnosis can never
+# disagree, and `preflight` runs this gate before any other and then exports the
+# same GOTOOLCHAIN to every Go step it makes (see below).
 #
 # It REFUSES rather than falling back when the toolchain cannot be resolved
 # (offline, or the fetch declined). A fallback would print a filename judged by
@@ -89,26 +92,7 @@ evals-cold-reading:
 define pinned_gofmt
 	@set -eu; \
 	version='$(GO_TOOLCHAIN_VERSION)'; \
-	if [ -z "$$version" ]; then \
-		echo "gofmt: REFUSING — go.mod declares no \`go <version>\` line, so the format gate has no toolchain to resolve." >&2; \
-		exit 2; \
-	fi; \
-	local_version="$$(go env GOVERSION 2>/dev/null || echo unknown)"; \
-	if ! goroot="$$(GOTOOLCHAIN=go$$version go env GOROOT 2>&1)" || [ ! -x "$$goroot/bin/gofmt" ]; then \
-		echo "gofmt: REFUSING to judge this tree." >&2; \
-		echo "gofmt:   go.mod declares go$$version; the go on PATH is $$local_version." >&2; \
-		echo "gofmt:   the go$$version toolchain could not be resolved (the fetch needs network):" >&2; \
-		echo "$$goroot" | sed 's/^/gofmt:     /' >&2; \
-		echo "gofmt:   NOT falling back to the gofmt on PATH — a different gofmt version judges this" >&2; \
-		echo "gofmt:   tree differently, so the fallback would name files CI considers correct." >&2; \
-		exit 2; \
-	fi; \
-	resolved="$$("$$goroot/bin/go" version 2>/dev/null | awk '{print $$3}')"; \
-	if [ "$$resolved" != "go$$version" ]; then \
-		echo "gofmt: REFUSING — go.mod declares go$$version, but the resolved toolchain reports $$resolved." >&2; \
-		echo "gofmt:   GOTOOLCHAIN did not switch, so the gate would run the wrong gofmt." >&2; \
-		exit 2; \
-	fi; \
+	goroot="$$(scripts/pinned-toolchain.sh "$$version")" || exit 2; \
 	case '$(1)' in \
 	check) \
 		unformatted="$$("$$goroot/bin/gofmt" -l .)"; \
@@ -161,8 +145,16 @@ check-attribution:
 # Deterministic drift gate for the .abcd/development design record (first slice
 # of internal/core/lint). Blocking: any record drift (stale tool names, dropped
 # concepts, lifecycle or reference breakage) fails preflight and CI.
+#
+# `-agent-diff` arms agent_contract's unbumped-edit check — a changed agent
+# prompt must bump its prompt_version and add its agents/CHANGELOG.md entry —
+# over the branch's own changes, the merge-base range `origin/main...HEAD`. CI's
+# step passes the same three-dot range from its base commit. Unarmed, the check
+# is a no-op, and a prompt edit passed three green preflights to be refused in
+# the merge queue (iss-2609021152026246). Like lint-issues and lint-decisions,
+# it needs origin/main.
 record-lint:
-	@go run ./cmd/record-lint
+	@go run ./cmd/record-lint -agent-diff origin/main...HEAD
 
 # Promote-join drift gate (itd-4 AC3). Blocking: an intent naming a record in
 # `related_issues` that does not name it back, a dangling id on either side, a
@@ -235,8 +227,12 @@ lint-decisions:
 
 # Deterministic docs-currency gate (itd-60): the same internal/core/lint engine,
 # driven over docs/ and the repo root via the transport-agnostic `abcd lint docs`
-# verb. Blocking: change-narration in a doc body, a broken relative link, or a
-# stray root markdown file fails preflight and CI.
+# verb. Blocking: change-narration in a doc body, a broken relative link, a
+# persona the roster does not hold, or a stray root markdown file fails
+# preflight and CI. The link check also walks every other committed markdown
+# file record-lint does not — the root prose, the agent prompts, the plugin
+# command pages and the READMEs — through links_resolve's extra_roots in
+# .abcd/docs-lint.json (iss-46).
 docs-lint:
 	@go run ./cmd/abcd lint docs
 
@@ -282,14 +278,15 @@ scaffold-sync-check:
 
 # Pre-push gate (run before a push, never by it: .githooks/pre-push checks the
 # receipt the last step mints, below): the load check first (a
-# warning, never a failure: load-check), then the six lint gates
+# warning, never a failure: load-check), then the format gate (fmt-check), the
+# six lint gates
 # (lint-reviews, lint-issues, lint-decisions, record-lint, issue-drift,
 # docs-lint), the
 # site-render gate and both tagged eval lanes (smoke, evals-cold-reading) as
 # prerequisites, then build, vet, test,
-# and race-enabled internal tests natively. CI's check job runs those same four
-# Go steps plus the `fmt-check` format gate this target does not, so run
-# `make fmt-check` separately before pushing. Host-native `go build` (not the
+# and race-enabled internal tests natively — every Go step on the toolchain
+# go.mod declares, which is the one CI's check job runs those same four Go
+# steps and its format gate on. Host-native `go build` (not the
 # cross-compiling build target) because it mirrors CI.
 #
 # The eval lanes are prerequisites because the untagged `go test ./...` step
@@ -306,7 +303,7 @@ scaffold-sync-check:
 # file reaching for a smoke-only helper compiles under one and not the other,
 # which is the split CI's two jobs cover. About five seconds each on a warm
 # cache, against roughly a minute for the gates already here.
-preflight: load-check lint-reviews lint-issues lint-decisions record-lint issue-drift docs-lint site-render smoke evals-cold-reading
+preflight: load-check fmt-check lint-reviews lint-issues lint-decisions record-lint issue-drift docs-lint site-render smoke evals-cold-reading
 	go build ./...
 	go vet ./...
 	go test ./...
@@ -336,6 +333,17 @@ endif
 # exported variable reaches the target's prerequisites and recipe, and not a
 # prerequisite run on its own.
 preflight: export ABCD_LOAD_CHECKED := preflight
+
+# Every Go step preflight makes — its own recipe lines and every go run and go
+# test its prerequisites make — runs on the toolchain go.mod declares, the one
+# CI's setup-go installs, never the go on PATH (iss-2609261850045839). A test
+# that asserts standard-library wording passed preflight on a newer local go and
+# failed CI (pull request 728). The go on PATH switches to the declared release
+# and puts its bin first on PATH for anything it runs, so a `go` a test execs is
+# the declared one too. `fmt-check` runs second, straight after the load check,
+# and its resolver (scripts/pinned-toolchain.sh) refuses, naming the skew, when
+# the release cannot be fetched, before any gate runs on it.
+preflight: export GOTOOLCHAIN := go$(GO_TOOLCHAIN_VERSION)
 
 # The load check (itd-2609231434459890): reads the machine's load and process
 # table once and warns about programs left running and extreme load. It exits 0

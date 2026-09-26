@@ -287,6 +287,59 @@ expect_refusal_naming "$d" "RS001 on a record terminal before divergence says to
 expect_refusal_not_naming "$d" "RS001 on a record terminal before divergence does not prescribe a rebase" \
 	"[Rr]ebase" -- commits main HEAD
 
+# --- RS001 in the merge queue: a competitor's landing, not pre-divergence -----
+#
+# iss-2609091433422134. The queue checks the would-be merge: its head is a merge
+# of the entry's base with the branch, so the base is an ANCESTOR of the head.
+# A competitor that resolved the same record while this entry waited left it
+# terminal at the base, so it enters nothing across the range and the trailer is
+# refused — the right verdict. The diagnosis used to probe head..base for the
+# base-side commit that placed the record, and in the queue that walk is always
+# empty, so every such refusal read as "already sat in resolved/ before this
+# branch diverged": pre-divergence history that never happened, and an author
+# told to drop a trailer that was correct when written. The refusal must name
+# the competitor's landing, and a record genuinely terminal before the branch
+# was cut must keep the message it has.
+queue_merge() {
+	local d="$1"
+	git -C "$d" checkout -q -b queue main
+	git -C "$d" merge -q --no-ff --no-edit work
+}
+d="$(newrepo rs001-queue-collision)"
+resolve_record "$d"
+git -C "$d" add -A
+git -C "$d" commit -qm "fix: something
+
+Resolves: iss-999"
+git -C "$d" checkout -q main
+git -C "$d" mv "$ISS_DIR/open/iss-999-a-fixture.md" "$ISS_DIR/resolved/iss-999-a-fixture.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "fix: a competing resolution that landed first"
+queue_merge "$d"
+expect_refusal_naming "$d" "RS001 in the queue names the competitor's landing" \
+	"already sits in $ISS_DIR/resolved/ at main, placed there by .*competing resolution that landed first.*after this branch diverged.*while this change waited" -- commits main HEAD
+expect_refusal_not_naming "$d" "RS001 in the queue does not call a competitor's landing pre-divergence history" \
+	"before this branch diverged" -- commits main HEAD
+
+d="$(newrepo rs001-queue-terminal-before-divergence)"
+git -C "$d" checkout -q main
+resolve_record "$d"
+git -C "$d" add -A
+git -C "$d" commit -qm "chore: resolve a stale issue"
+git -C "$d" checkout -q -B work main
+echo "touched" >>"$d/README.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "fix: something else
+
+Resolves: iss-999"
+git -C "$d" checkout -q main
+echo "unrelated" >"$d/unrelated.txt"
+git -C "$d" add -A
+git -C "$d" commit -qm "chore: unrelated base-side commit"
+queue_merge "$d"
+expect_refusal_naming "$d" "RS001 in the queue on a record terminal before divergence says to drop the trailer" \
+	"already sat in $ISS_DIR/resolved/ before this branch diverged from main.*[Dd]rop the trailer" -- commits main HEAD
+
 # A trailer naming a record the head tree does not hold at all, while the base
 # does: the branch predates the record (a cherry-pick from main onto a stale
 # branch produces exactly this). The rebase brings the record; the message must
@@ -920,6 +973,24 @@ git -C "$d" commit -qm "feat: build the thing (squash of work)"
 git -C "$d" checkout -q work
 expect_refusal_naming "$d" "RS005 on a stale branch names the base-side ship and a rebase" \
 	"itd-7 already sits in $INT_DIR/shipped/ at main .*squash of work.*[Rr]ebase onto main" -- commits main HEAD
+
+# RS005's twin of the queue collision: a competitor shipped the intent while
+# this entry waited, so the base is an ancestor of the head and holds it shipped.
+d="$(newrepo_intents rs005-queue-collision)"
+ship_intent "$d" 7
+git -C "$d" add -A
+git -C "$d" commit -qm "feat: build the thing
+
+Delivers: itd-7"
+git -C "$d" checkout -q main
+ship_intent "$d" 7
+git -C "$d" add -A
+git -C "$d" commit -qm "feat: a competing delivery that landed first"
+queue_merge "$d"
+expect_refusal_naming "$d" "RS005 in the queue names the competitor's landing" \
+	"itd-7 already sits in $INT_DIR/shipped/ at main, placed there by .*competing delivery that landed first.*after this branch diverged.*while this change waited" -- commits main HEAD
+expect_refusal_not_naming "$d" "RS005 in the queue does not call a competitor's landing pre-divergence history" \
+	"before this branch diverged" -- commits main HEAD
 
 d="$(newrepo_intents rs005-absent-here)"
 git -C "$d" checkout -q main

@@ -454,7 +454,14 @@ func TestFormatGateResolvesThroughTheDeclaredToolchain(t *testing.T) {
 			"a workflow calling a target that does not exist fails the job with a make error "+
 			"rather than a format report", target, target)
 	}
-	if !strings.Contains(recipe, "GOTOOLCHAIN=go") {
+	// The resolution lives in scripts/pinned-toolchain.sh, the one resolver the
+	// format gate and preflight's Go steps share (iss-2609261850045839), so the
+	// pin is read from the script the recipe invokes as well as the recipe.
+	resolution := recipe
+	if strings.Contains(recipe, "scripts/pinned-toolchain.sh") {
+		resolution += "\n" + readRepoFile(t, root, "scripts/pinned-toolchain.sh")
+	}
+	if !strings.Contains(resolution, `GOTOOLCHAIN="go`) && !strings.Contains(resolution, "GOTOOLCHAIN=go") {
 		t.Errorf("the `%s:` recipe does not resolve a pinned toolchain (no GOTOOLCHAIN=go...):\n\n%s\n\n"+
 			"gofmt must come from the toolchain go.mod declares, or the gate judges the tree "+
 			"by whatever version the caller happens to have", target, recipe)
