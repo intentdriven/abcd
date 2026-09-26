@@ -119,6 +119,9 @@ var helpPlacements = map[string]helpPlacement{
 	"report":              {group: groupAgents, page: "commands/report.md"},
 	"site":                {group: groupAgents, page: "commands/site.md"},
 	"statusline":          {group: groupAgents, page: "commands/ahoy.md"},
+
+	// Role 2's ingest sits in the agents block beside Role 1's.
+	"intent consistency ingest": {page: "commands/intent.md"},
 }
 
 // applyHelpPlacement declares the groups on root, files every placed entry, and

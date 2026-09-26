@@ -68,6 +68,8 @@ func TestEveryDelegatingVerbCarriesRoute(t *testing.T) {
 		"abcd disembark review",
 		"abcd intent audit",
 		"abcd intent audit ingest",
+		"abcd intent consistency",
+		"abcd intent consistency ingest",
 		"abcd launch ship",
 		"abcd reading ingest",
 	}

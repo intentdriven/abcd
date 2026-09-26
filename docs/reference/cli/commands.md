@@ -1077,6 +1077,31 @@ Read or disposition a shipped intent's scope conditions: Writes a dated conditio
       --occasioned-by string   what occasioned it: a reading item (rdi-N) or a shipped intent (itd-N)
 ```
 
+#### `abcd intent consistency`
+
+Emit the consistency request over the brief and every intent, or one intent against them: Writes the request locally; refuses a superseded intent.
+
+**Usage:** `abcd intent consistency [<itd-N>] [flags]`
+
+**Flags:**
+
+```
+      --route stringArray   route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
+```
+
+##### `abcd intent consistency ingest`
+
+Ingest consistency findings as a dated review and a capture per finding: Writes the report and the ledger records; refuses without --findings-json.
+
+**Usage:** `abcd intent consistency ingest --findings-json <path> [flags]`
+
+**Flags:**
+
+```
+      --findings-json string   path to the consistency findings JSON the intent-auditor returned
+      --route stringArray      route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
+```
+
 #### `abcd intent hold`
 
 Hold a draft or planned intent so that planning refuses it: Writes the held line with its reason; refuses without --reason.

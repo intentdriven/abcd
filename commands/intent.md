@@ -1,15 +1,17 @@
 ---
 name: intent
 description: "File a draft intent from quoted text, or render the intent store's status bare: Writes the draft into drafts/; refuses a lone word."
-argument-hint: "[text] [--title \"<title>\"] | ready <itd-N> [--grounds \"<pursued|deferred|declined>: <conjecture>\"] | plan <itd-N> [--impact <additive|breaking|fix>] | hold <itd-N> --reason \"<text>\" | unhold <itd-N> | link <itd-N> <spc-N> | audit [<itd-N>] | audit --issue-drift [--strict] | condition <itd-N> [<cond-id> --disposition <survived|narrowed|falsified|untested> --occasioned-by <rdi-N|itd-N> --grounds \"<why>\" [--narrowing \"<what now holds>\"]]"
+argument-hint: "[text] [--title \"<title>\"] | ready <itd-N> [--grounds \"<pursued|deferred|declined>: <conjecture>\"] | plan <itd-N> [--impact <additive|breaking|fix>] | hold <itd-N> --reason \"<text>\" | unhold <itd-N> | link <itd-N> <spc-N> | audit [<itd-N>] | audit --issue-drift [--strict] | consistency [<itd-N>] | consistency ingest --findings-json <file> | condition <itd-N> [<cond-id> --disposition <survived|narrowed|falsified|untested> --occasioned-by <rdi-N|itd-N> --grounds \"<why>\" [--narrowing \"<what now holds>\"]]"
 block: people
 ---
 
 # `/abcd:intent` — intent lifecycle
 
 `abcd --help` lists `intent` in the person's records group. `intent audit
-ingest`, which applies a host-produced audit verdict, is in the agents-and-hosts
-block of `abcd --help --agent`, and its line there names this page.
+ingest`, which applies a host-produced audit verdict, and `intent consistency
+ingest`, which files host-produced consistency findings, are in the
+agents-and-hosts block of `abcd --help --agent`, and their lines there name
+this page.
 
 The write side of the intent record store under `.abcd/development/intents/`.
 Every intent gets a stable `itd-N` id and directory-as-truth lifecycle state
@@ -685,6 +687,52 @@ key — `/abcd:capture migrate --apply` rewrites it). Report the finding count,
 each finding's kind and records, and the receipt path the run left under
 `.abcd/.work.local/logs/audit/`. It writes to neither store. `--strict` without
 `--issue-drift` is refused.
+
+## Consistency: where do two records contradict each other?
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" intent consistency --json                               # the brief and every intent
+"${CLAUDE_PLUGIN_ROOT}/abcd" intent consistency <itd-N> --json                       # one intent against the rest
+"${CLAUDE_PLUGIN_ROOT}/abcd" intent consistency ingest --findings-json <file> --json # file the findings
+```
+
+The cross-document pass (the intent-auditor's Role 2). The first form reads the
+whole corpus — every brief page, and every intent outside `superseded/` as its
+title, press release, scope, decisions and rule — and the second narrows it to
+one intent against the rest. Neither judges anything: each assembles the corpus
+into `corpus_path` and writes the request to `request_path`, both under
+`.abcd/.work.local/reviews/`, names the commit the tree stood at
+(`review_of_commit`), and writes nothing else. A superseded or unknown intent is
+refused.
+
+Then run the pass, one request at a time:
+
+1. Dispatch the `intent-auditor` agent with its **Role 2** section, handing it
+   the whole request file and the corpus file it names. Relay the request's
+   `## Routing` tier where the harness lets you choose one; `--route` works as
+   it does for the audit above.
+2. Save the single JSON block it returns to a file, unedited.
+3. Run the ingest on that file and report its result.
+
+The ingest validates before it writes anything. It refuses, with nothing
+written: a receipt no request here was issued for, a corpus that moved since the
+request (re-emit and run the pass again), provenance hashes the request did not
+state, a class or severity outside its set, an end whose path is not a corpus
+document or whose quote is not in it (twelve characters at least), and a
+finding with fewer or more than two ends or one that repeats another. A scoped
+run also refuses a finding with no end in its intent.
+
+A payload that validates is written in two places. Each finding is filed as one
+issue (`inconsistency`, from an `agent-finding`, located at its first end, with
+the report as its evidence) — unless an open record already quotes either end
+and names its document, in which case it is linked to that record and nothing
+is filed. And one dated report lands on the reviews shelf,
+`.abcd/work/reviews/<date>-consistency[-<itd-N>]/00-summary.md`, pinned to the
+commit the pass read, listing every finding with both ends quoted and located
+and the record it was filed as or linked to; a second run the same day takes
+the next free suffix. Report `status`, `report_path`, and the `filed` and
+`linked` ids. The same findings ingested again are a `noop` naming the report.
+The brief and the intents are never edited: act on a finding through its issue.
 
 **Binary resolution.** Run `"${CLAUDE_PLUGIN_ROOT}/abcd"` — a plugin install
 provisions the binary into the plugin root, so this is the rung that fires for a

@@ -1,6 +1,6 @@
 # `/abcd:intent` — Press-Release Intent Capture
 
-> **Delivery state**: the `intent` binary verb ships — bare invocation is read-only status, plus the sub-verbs this chapter's generated appendix lists, and the quoted-text create path `abcd intent "<text>"` (itd-46, itd-80, itd-94). The implement-readiness gate runs eight checks on one intent (bucket, acceptance criteria, mechanism claim, scope conditions, spec link, spec body, the spec's steps, recorded grounds); exit 0 ready / 1 not / 2 fault — and recorded grounds are the one thing it writes: the conjecture behind the gate decision, appended to the intent's `## Grounds` section. The `/abcd:intent` plugin command surface exists (`commands/intent.md`, resolving iss-105) and carries the planning interview an unready intent is routed to. Remaining backing intents sit in `intents/planned/` (itd-27 grill, itd-34 kinds, itd-48 reviewer roles 2–3, itd-50 audit loop) and `intents/drafts/` (itd-16, itd-35 — the `/abcd:audit` sub-verbs); delivery state is the intent lifecycle's, not this page's (see the [brief README's provenance note](../README.md)).
+> **Delivery state**: the `intent` binary verb ships — bare invocation is read-only status, plus the sub-verbs this chapter's generated appendix lists, and the quoted-text create path `abcd intent "<text>"` (itd-46, itd-80, itd-94). The implement-readiness gate runs eight checks on one intent (bucket, acceptance criteria, mechanism claim, scope conditions, spec link, spec body, the spec's steps, recorded grounds); exit 0 ready / 1 not / 2 fault — and recorded grounds are the one thing it writes: the conjecture behind the gate decision, appended to the intent's `## Grounds` section. The `/abcd:intent` plugin command surface exists (`commands/intent.md`, resolving iss-105) and carries the planning interview an unready intent is routed to. Remaining backing intents sit in `intents/planned/` (itd-27 grill, itd-34 kinds, itd-50 audit loop) and `intents/drafts/` (itd-16, itd-35 — the `/abcd:audit` sub-verbs); delivery state is the intent lifecycle's, not this page's (see the [brief README's provenance note](../README.md)).
 
 abcd uses **intents** in press-release format (Amazon working-backwards) as the unit of forward-looking *user-facing* planning. Intents capture *what user-facing capability exists once shipped*, written in present tense as if already delivered. This is engineered to discipline product clarity before scope creep — a reader of an intent thinks like a product person first, an engineer second.
 
@@ -56,6 +56,8 @@ judgement no verb makes.
 | `ready` | gate | shipped |
 | `audit` | audit | shipped |
 | `audit ingest` | audit | shipped |
+| `consistency` | audit | shipped |
+| `consistency ingest` | audit | shipped |
 | `condition` | — | shipped |
 
 
@@ -281,7 +283,8 @@ Later phase — intent-auditor (shape-classification role) scans the corpus
 | Issue drift (the whole corpus, optionally strict) | **The promote join's drift check** (itd-4 AC3, in the predecessor store's spc-23 shape): walks the intent store and the issue ledger, readings included, and reports every join that does not read the same from both ends — an intent naming a record in `related_issues` that does not name it back in `related_intents` (from an issue's end a one-way `related_intents` is a loose relation and stays silent; a reading item carries none, so from its end it is reported), either end naming a record the tree does not hold, a shipped intent naming an issue that is not in `resolved/`, and a record still carrying a retired back-link key. Each finding is a warning on stderr and the run exits 0; the strict form exits 1 on any finding, for a CI gate. Findings land in `.abcd/.work.local/logs/audit/issue-drift-<ts>/report.json`. | (no move; writes only its receipt) |
 | Audit ingest (a verdict JSON path) | Ingests a host-delegated intent-fidelity verdict JSON, validated fail-closed against the schema and the parked review request, and writes its per-criterion verdict into the shipped intent's `## Audit Notes` (or quarantines a bad payload). A second ingest for the same receipt is a no-op when its payload renders to the block on the record, replaces that block in place when it renders differently, and is refused with nothing written when it does not validate. | (no move; updates `## Audit Notes`) |
 | Condition disposition (one shipped intent id, optionally one condition id) | **The second writer into the scope-condition disposition surface.** With the intent alone it is read-only: every scope condition the intent carries, with its standing disposition and the block that disposition came from, or `untested (no block)`; the machine-readable form carries the whole history and the fold. With a condition identity it writes one disposition against a **shipped** intent — `survived`, `narrowed`, `falsified` or `untested` — joined to what occasioned it: a reading item at any position, or a delivered intent in `shipped/` whose delivery changed the condition's standing. It appends one dated block to `## Audit Notes`, beside the fidelity verdict's blocks and in the same bullet shape. A condition's standing is its latest reading-occasioned block where it has one, and otherwise its latest verdict block: a verdict overrides a reading-occasioned block only where its rationale names that block's occasion, wherever the two sit in the section; the verdict ingest reports what it leaves standing, and a re-ingest for the same receipt that names the occasion replaces the ingested verdict. Refused, with nothing written: an intent not in `shipped/` (naming its bucket), an identity the intent does not carry or carries twice, a value outside the four, grounds below the substance floor, `narrowed` without a narrowing or a narrowing on any other value, an occasion that does not resolve, and the intent itself as its own occasion. Grounds and narrowing are redacted before the write. When a reading item's `constraint_in_play` cites a different condition's identity, the mismatch is reported and never refused: the reading names the tension and the researcher marks the condition. The block sits under the heading every reading's assembler withholds, so no disposition reaches a reading. | (no move; appends to `## Audit Notes`) |
-| `/abcd:intent consistency [<itd-N>]` | **Role 2 — cross-document fidelity.** Surfaces five judgement categories (terminology drift, premise contradictions, scope leakage, sequencing impossibilities, naming conflicts) across briefs + intents. **Bare** scans the whole corpus; **with `<itd-N>`** narrows to one intent's relationship with the rest. Findings land in `.abcd/.work.local/logs/audit/consistency-<ts>/report.{json,md}`. The judgement half + on-demand verb are the predecessor's spc-29 (a later phase); mechanical-half categories and pre-commit hook are deferred follow-ups. | (stays) |
+| Consistency (the whole corpus, or one intent id) | **Role 2 — cross-document fidelity** (itd-48). Assembles the corpus — every brief page, and every intent outside `superseded/` reduced to its title, press release, scope, decisions and rule — into one input under the local tier, and writes the request beside it: the five judgement classes (terminology drift, premise contradictions, scope leakage, sequencing impossibilities, naming conflicts), the rubric, the host-computed provenance pair the audit's request carries, and the commit the tree stood at. With an intent id the pass is that intent against the rest of the corpus, and every finding must have an end in it; a superseded or unknown intent is refused. The judgement rides the host: the intent-auditor's Role 2 reads the corpus and returns findings, each naming exactly two ends, quoted. The receipt is deterministic over the scope and the corpus, so a re-emit over an unchanged corpus reuses it. | (no move; writes the request and the corpus to the local tier) |
+| Consistency ingest (a findings JSON path) | Validates the returned findings fail-closed before anything is written: the request was issued here, the corpus has not moved since (the receipt is recomputed), the provenance pair is the one issued, every class and severity is in its set, each end's path is a corpus document whose text holds the end's quote (twelve characters at least), and no finding repeats another. Then it files one capture per finding — an `inconsistency` from an `agent-finding`, found during the pass that names the report, located at its first end, with the report as its evidence — unless an open record already quotes either end and names its document, in which case the finding is linked to that record rather than filed twice; and it writes a dated report on the reviews shelf naming, in its `review_of_commit` pin, the commit the pass read, then the receipt and every finding with both ends quoted and located and the record it was filed as or linked to. A second run the same day takes the next free suffix; the same findings ingested again are a no-op naming the report. Neither half writes the brief or an intent. | (no move; writes the report and the ledger) |
 | `/abcd:intent shape [<itd-N>]` | **Role 3 — kind classification.** Examines whether an intent's declared `kind` (the noun) still fits the corpus. Surfaces *suggested* reclassifications across three live types: `kind_change`, `bundle`, `supersession`. **Bare** scans the corpus; **with `<itd-N>`** checks one intent. Pairs with the reclassify step (action verb that commits a `shape` finding). On-demand only per spc-29 (predecessor store; a later phase); findings land in `.abcd/.work.local/logs/audit/shape-<ts>/report.{json,md}`. Concurrency via `flock(2)` on `.abcd/coordination/shape.lock` (see § 7). Scheduled / continuous invocation is a deferred follow-up. | (stays) |
 | The reclassify step, on one intent id | **A later phase — no reclassify sub-verb ships yet.** Late reclassification (e.g., a standalone intent realised to be a bundle-member; a draft realised to be a discipline; a shipped intent superseded by a later one). Records `reclassification_history` entry; moves the file between directories as the new kind dictates. Reclassifying to superseded, naming the successor handle, is the supersession path: the file moves to `superseded/`, frontmatter records `superseded_by: <handle>` — the record that formally supersedes this intent, either an intent (`itd-M`) or an ADR (`adr-M`) when a decision redecided the question — AND `kind_at_supersession: <original-kind>` so future readers know what shape the intent had when retired. | varies by destination kind |
 | Hold (one intent id and a reason) | Holds a draft or planned intent: writes `held: "<reason>"` — the reason is required, single-line and redacted through the store's scanner before the write, and the JSON reports `redacted` like the other write verbs. Planning and closing a spec refuse a held record before anything moves, naming the reason and the unhold that lifts it; `abcd <itd-N>` reports the hold as the next move. Refused on a record already held (naming the standing reason — an updated reason is an unhold then a hold) and on a shipped, superseded or discipline record. The `record_provenance` lint rule reports a `held` value in a shape the verb never writes; a legal hand-typed line is byte-identical to the write and is not reported. | (no move; writes `held`) |
@@ -545,17 +548,19 @@ Receipt **states**: `offered` (the gate opened — the drainer stamps this on a 
 
 **`rejected_wrong_criteria` → replan, NOT a synthetic `NOT_MET`.** When the machine says `MET` but the product thinker judges the criteria themselves were wrong, the defect is the *criteria*, not the code — so the rejection routes to the **same replan surface** as `UNACHIEVABLE` (one writer, two entry points), carrying the rejection justification into the seeded grill. It does **not** write a `NOT_MET` (which would re-loop the implementation against criteria that already pass) and does **not** move the intent.
 
-### Role 2 — cross-document fidelity → `/abcd:intent consistency [<itd-N>]`
+### Role 2 — cross-document fidelity → the consistency pass
 
 Introduced by itd-48 (which superseded itd-31). The opponent is *other documents*: compares the brief and every intent against each other (and against the brief itself), surfacing the five live judgement categories — **terminology drift, premise contradictions, scope leakage, sequencing impossibilities, naming conflicts**. No spec-store analogue — the spec store reviews one artefact at a time; corpus-wide consistency is pure abcd ground.
 
-The judgement half runs on demand via `/abcd:intent consistency` (Carmack-level oracle review) — a later phase (spc-29, predecessor store), not yet a binary sub-verb.
+The judgement half runs on demand as the consistency sub-verb, host-delegated as the audit is: the binary assembles the corpus and validates the return, and the intent-auditor's Role 2 judges on the host. It rides the audit's request/ingest seam — a request under the local tier, a rubric hash and a prompt hash the host computes and the ingest recomputes — rather than a second one. Its report is filed on the reviews shelf, and each finding in the ledger, because the product thinker ruled a report and a capture per finding (itd-48, Decisions 2): the pass leaves its evidence beside the records it files.
 
-**Deferred follow-up**: the mechanical-half lint categories — schema/state contradictions, reference rot, acknowledgement gaps — were originally planned as `internal/core/lint` cross-doc codes `XD002`/`XD006`/`XD007` per `05-internals/06-lint.md`; the lint-code half is deferred to a follow-up intent. Pre-commit hook wiring that would let `/abcd:intent consistency` findings block commits is also deferred.
+The shape role below is not built by itd-48: on 2026-09-21 the product thinker re-homed it to itd-34's kinds lint, and the overlap question to itd-42's pre-pass.
+
+**Deferred follow-up**: the mechanical-half lint categories — schema/state contradictions, reference rot, acknowledgement gaps — were originally planned as `internal/core/lint` cross-doc codes `XD002`/`XD006`/`XD007` per `05-internals/06-lint.md`; the lint-code half is deferred to a follow-up intent. Pre-commit hook wiring that would let consistency findings block commits is also deferred.
 
 **Polymorphic on arg presence (same operation, narrowed scope):** bare = scan the whole corpus; with `<itd-N>` = scan one intent's relationship with the rest. This is *not* the forbidden hidden-state dispatch — the operation is identical; the arg just narrows scope (like `git log` vs `git log <path>`).
 
-Findings land in `.abcd/.work.local/logs/audit/consistency-<ts>/report.{json,md}`.
+The report lands at `.abcd/work/reviews/<date>-consistency/00-summary.md` for the corpus and at `.abcd/work/reviews/<date>-consistency-<itd-N>/00-summary.md` for one intent; the request and the assembled corpus stay under `.abcd/.work.local/reviews/`.
 
 ### Role 3 — kind classification → `/abcd:intent shape [<itd-N>]`
 
@@ -589,13 +594,13 @@ The shipped audit keeps its record in the intent file itself: its ingest of a ve
 The later-phase review/audit verbs write their per-run receipts under the local ephemeral logs tier, `.abcd/.work.local/logs/audit/<sub-tier>-<ts>/`, where the `audit/` name reflects "this is the on-disk audit trail" regardless of which verb produced it and the sub-tier prefix names the verb:
 
 - The audit (MG004 pass) → `audit/spec-mg-<ts>/` (Role 1 itd-37 `MG004` check on a native spec's `## Modification Grammar`; one per-run batch receipt, one `results[]` entry per spec — native specs have no `## Audit Notes` section, so the verdict lands here, per itd-37 — a later phase)
-- `/abcd:intent consistency` → `audit/consistency-<ts>/` (Role 2, cross-document fidelity per itd-48, which superseded itd-31)
+- The consistency pass (Role 2, per itd-48) keeps no receipt here: its report is filed on the reviews shelf, as Role 2 above records.
 - `/abcd:intent shape` → `audit/shape-<ts>/` (Role 3, shape classification per itd-34)
 - `/abcd:audit chain` → `audit/chain-<ts>/` (conversation/edit-history Merkle, default application per itd-16 — a later phase)
 - `/abcd:audit lifeboat <path>` → `audit/lifeboat-<ts>/` (lifeboat-artefact integrity per itd-35 — a later phase)
 
-`chain` and `lifeboat` are later-phase sub-verbs of the reserved `/abcd:audit` (their backing intents itd-16 and itd-35 sit in `intents/drafts/`); the read-only working-conventions conformance check is `abcd lint`. The audit is a shipped sub-verb of `/abcd:intent`;
- `consistency` and `shape` are later phases. Bare `/abcd:intent` is status+help per the common (not universal) bare-command-as-help convention.
+`chain` and `lifeboat` are later-phase sub-verbs of the reserved `/abcd:audit` (their backing intents itd-16 and itd-35 sit in `intents/drafts/`); the read-only working-conventions conformance check is `abcd lint`. The audit and the consistency pass are shipped sub-verbs of `/abcd:intent`;
+ `shape` is a later phase. Bare `/abcd:intent` is status+help per the common (not universal) bare-command-as-help convention.
 
 **Model-tier routing.** The audit's emit and its verdict ingest dispatch the
 intent auditor, and each resolves the model-tier route (itd-2609170822093401,
@@ -635,7 +640,7 @@ _Generated from the command tree; a drift test fails `go test` when this appendi
 
 ### `abcd intent`
 
-Sub-verbs: `abcd intent audit`, `abcd intent condition`, `abcd intent hold`, `abcd intent link`, `abcd intent plan`, `abcd intent ready`, `abcd intent unhold`.
+Sub-verbs: `abcd intent audit`, `abcd intent condition`, `abcd intent consistency`, `abcd intent hold`, `abcd intent link`, `abcd intent plan`, `abcd intent ready`, `abcd intent unhold`.
 
 | Flag | Type |
 |---|---|
@@ -672,6 +677,23 @@ Sub-verbs: none.
 | `--grounds` | string |
 | `--narrowing` | string |
 | `--occasioned-by` | string |
+
+### `abcd intent consistency`
+
+Sub-verbs: `abcd intent consistency ingest`.
+
+| Flag | Type |
+|---|---|
+| `--route` | stringArray |
+
+### `abcd intent consistency ingest`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--findings-json` | string |
+| `--route` | stringArray |
 
 ### `abcd intent hold`
 
