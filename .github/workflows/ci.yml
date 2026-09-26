@@ -223,7 +223,11 @@ jobs:
   check:
     needs: changes
     if: ${{ !cancelled() }}
-    timeout-minutes: 30
+    # The race step's own -timeout must fire before this does, or a hang reads
+    # as a cancelled job with no goroutine dump: 20m for the slowest package,
+    # plus about 18m the macOS leg spends before that package starts (8m of
+    # steps ahead of the race step, 10m of packages ahead of it inside it).
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -283,9 +287,18 @@ jobs:
 
       # Only a source change can introduce a data race, and the plain lane above
       # has already run the same tests over the record.
+      #
+      # -timeout is a declared budget, not go test's 10m per-package default:
+      # internal/surface/cli under -race on the macOS runner measured 418-568s
+      # passing, and a slow runner crossed 600s with no test hung, ejecting an
+      # unrelated pull request from the merge queue (iss-2609260319483365). 20m
+      # is about twice the slowest passing run, so a real hang still fails with
+      # a goroutine dump. make preflight and release.yml's verify job carry the
+      # same flag, and the job's timeout-minutes above leaves room for it to
+      # fire; TestRaceLaneBudgetIsDeclaredAndFitsItsJob holds all three.
       - name: Test (race, internal)
         if: needs.changes.outputs.inert != 'true'
-        run: go test -race ./internal/...
+        run: go test -race -timeout 20m ./internal/...
 
       # Drift gate for the .abcd/development design record. Blocking: a
       # blocker-severity finding exits non-zero and fails the job; warn-level

@@ -82,7 +82,10 @@ jobs:
   # never the default-branch tip or the re-resolvable tag name — so the gate
   # exercises exactly the commit whose binaries will ship.
   verify:
-    timeout-minutes: 15
+    # The race step's own -timeout (20m, sized in ci.yml) must fire before this
+    # does, or a hang reads as a cancelled job with no goroutine dump: 20m for
+    # the slowest package plus about 10m this job spends before it starts.
+    timeout-minutes: 35
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -136,7 +139,7 @@ jobs:
         run: go test ./...
 
       - name: Test (race, internal)
-        run: go test -race ./internal/...
+        run: go test -race -timeout 20m ./internal/...
 
       - name: Record-lint (design-record drift gate)
         run: go run ./cmd/record-lint
