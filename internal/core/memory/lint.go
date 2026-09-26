@@ -642,11 +642,8 @@ func Lint(req LintRequest) (LintResult, error) {
 		coverageIndex = coverageReport
 	}
 
-	reportDir, err := lintReportDir(root, now)
+	reportDir, err := makeLintReportDir(root, now)
 	if err != nil {
-		return LintResult{}, err
-	}
-	if err := os.MkdirAll(reportDir, 0o755); err != nil {
 		return LintResult{}, err
 	}
 	reportFields := map[string]any{
@@ -656,10 +653,7 @@ func Lint(req LintRequest) (LintResult, error) {
 		"generated_at":   generatedAt,
 		"store_path":     storeDisplay,
 	}
-	if err := writeStringAtomic(filepath.Join(reportDir, "report.json"), marshalIndentNoEscape(reportFields)); err != nil {
-		return LintResult{}, err
-	}
-	if err := writeStringAtomic(filepath.Join(reportDir, "report.md"), renderLintReportMD(reportFields)); err != nil {
+	if err := writeLintReports(reportDir, marshalIndentNoEscape(reportFields), renderLintReportMD(reportFields)); err != nil {
 		return LintResult{}, err
 	}
 
@@ -674,22 +668,38 @@ func Lint(req LintRequest) (LintResult, error) {
 	}, nil
 }
 
-func lintReportDir(repoRoot string, now time.Time) (string, error) {
-	ts := now.Format("20060102T150405.000000Z")
-	// Runtime artefacts live in the gitignored .abcd/.work.local/logs/ tier, not
-	// the retired runtime location (iss-36/iss-56 adjudication, iss-73).
-	logs := filepath.Join(repoRoot, ".abcd", ".work.local", "logs", "memory")
-	base := filepath.Join(logs, "lint-"+ts)
-	if _, err := os.Stat(base); os.IsNotExist(err) {
-		return base, nil
+// lintLogsRelDir is where every lint run keeps its run log: the gitignored
+// local tier, not the retired runtime location (iss-36/iss-56 adjudication,
+// iss-73).
+const lintLogsRelDir = ".abcd/.work.local/logs/memory"
+
+// makeLintReportDir creates this run's own directory under lintLogsRelDir
+// through the local tier's run-log create path (fsutil.CreateRunDir): every
+// level from the checkout root down is proved a real directory first, so a
+// local tier — or any level below it — that a checkout carries as a committed
+// symlink is refused rather than followed out of the checkout
+// (iss-2609260948440803), and the run directory is created exclusively.
+func makeLintReportDir(repoRoot string, now time.Time) (string, error) {
+	dir, err := fsutil.CreateRunDir(repoRoot, lintLogsRelDir, "lint-"+now.Format("20060102T150405.000000Z"), 0o755)
+	if err != nil {
+		return "", fmt.Errorf("the lint run-log directory: %w", err)
 	}
-	for n := 1; n < 1000; n++ {
-		candidate := filepath.Join(logs, fmt.Sprintf("lint-%s-%03d", ts, n))
-		if _, err := os.Stat(candidate); os.IsNotExist(err) {
-			return candidate, nil
-		}
+	return dir, nil
+}
+
+// writeLintReports writes both reports through a handle on the run directory
+// makeLintReportDir just created (fsutil.OpenRealDir), so a level swapped for a
+// link after the proof cannot carry the writes elsewhere.
+func writeLintReports(dir, reportJSON, reportMD string) error {
+	root, err := fsutil.OpenRealDir(dir)
+	if err != nil {
+		return err
 	}
-	return "", fmt.Errorf("could not allocate a unique lint run-log dir for %s", ts)
+	defer root.Close()
+	if err := fsutil.WriteFileAtomicInRoot(root, "report.json", []byte(reportJSON), 0o644); err != nil {
+		return err
+	}
+	return fsutil.WriteFileAtomicInRoot(root, "report.md", []byte(reportMD), 0o644)
 }
 
 func findingsToMaps(findings []Finding) []any {
