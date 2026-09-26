@@ -526,6 +526,7 @@ func checkRecordSchema(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 	if err != nil {
 		return nil, err
 	}
+	out = append(out, unregisteredIssueSeams(records, cfg)...)
 
 	// index: what the corpus HAS. highWater: the highest id each store has ever
 	// issued, as far as the corpus can show.
@@ -2014,8 +2015,9 @@ func checkIssueReaderParity(r schemaRecord, severity string) []Finding {
 // registered by the front doors that run this gate (cmd/record-lint, and the CLI
 // for `abcd lint`), because this package cannot import core/capture: capture's
 // own tests import this package, and Go refuses the cycle. A caller that
-// registers nothing runs every other leg and not this backstop; the front-door
-// tests pin that both register it.
+// registers nothing runs every other leg and not this backstop, and
+// unregisteredIssueSeams names the omission in a finding; the front-door tests
+// pin that both register it.
 var issueReadRefusal func(content, status, path string) error
 
 // SetIssueReader registers the issue ledger's reader for the record_schema
@@ -2033,6 +2035,43 @@ var recordBodyCheck func(rel, content string) error
 // record_schema body leg. Pass site.CheckRecordBody.
 func SetRecordBodyCheck(fn func(rel, content string) error) {
 	recordBodyCheck = fn
+}
+
+// unregisteredIssueSeams names the issue-store seams no front door registered.
+// Two legs over the issue store — reader parity and the body render — are asked
+// of functions this package cannot import, so a caller that registers neither
+// runs every other leg and those two not at all. Skipping them silently let a
+// new front door lose both checks with no signal; an armed rule that reads issue
+// records now says, in one finding on the store, which seam is missing. Nothing
+// is said over a store with no records, where the skipped legs would ask
+// nothing.
+func unregisteredIssueSeams(records []schemaRecord, cfg RuleConfig) []Finding {
+	var missing []string
+	if issueReadRefusal == nil {
+		missing = append(missing, "the ledger reader (lint.SetIssueReader, the reader-parity leg)")
+	}
+	if recordBodyCheck == nil {
+		missing = append(missing, "the site renderer's body check (lint.SetRecordBodyCheck, the body leg)")
+	}
+	if len(missing) == 0 {
+		return nil
+	}
+	verb, what, which := " is", "that leg", "it"
+	if len(missing) > 1 {
+		verb, what, which = " are", "those legs", "them"
+	}
+	for _, r := range records {
+		if r.store.prefix != "iss" {
+			continue
+		}
+		return []Finding{{
+			File: cfg.RecordStores["iss"], Line: 0, RuleID: ruleRecordSchema, Severity: cfg.Severity,
+			Message: "record_schema reads issue records, and " + strings.Join(missing, " and ") + verb +
+				" not registered by the front door running it, so " + what + " did not run on any of them; " +
+				"register " + which + " where the gate is wired, as cmd/record-lint and the CLI do",
+		}}
+	}
+	return nil
 }
 
 // checkIssueBodyRenders refuses an issue record whose body the site renderer
