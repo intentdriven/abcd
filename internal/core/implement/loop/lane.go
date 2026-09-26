@@ -68,10 +68,12 @@ func safeSegment(s string) bool {
 }
 
 // laneName composes a lane's store name, <run-id>-<lane-id>, refusing any
-// component that is not the loop's own shape.
+// component that is not the loop's own shape. Each refusal names, quoted, the id
+// it refuses and carries no lane: the lane id is not yet proved when the run id
+// fails, and is the thing refused when it fails itself.
 func laneName(runID, laneID string) (string, error) {
 	if !ValidRunID(runID) {
-		return "", refuse(string(StepWorktree), "", laneID, fmt.Sprintf("%q is not a run id, so no lane path is built from it", runID),
+		return "", refuse(string(StepWorktree), "", "", fmt.Sprintf("%q is not a run id, so no lane path is built from it", runID),
 			"the loop names its runs; restore the run's state file")
 	}
 	if !ValidLaneID(laneID) {

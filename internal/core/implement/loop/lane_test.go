@@ -2,6 +2,7 @@ package loop
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -273,6 +274,30 @@ func TestTheWorktreeStepMakesTheStoreTheCallersAlone(t *testing.T) {
 	for _, level := range []string{filepath.Join(home, ".abcd"), filepath.Join(home, ".abcd", "worktrees"), laneStore(t, repo)} {
 		if fi, err := os.Lstat(level); err != nil || fi.Mode().Perm() != 0o700 {
 			t.Fatalf("%s is made 0700: %v %v", level, fi, err)
+		}
+	}
+}
+
+// TestALaneNameRefusalNamesTheIDItRefuses: each refusal of a malformed id
+// names that id, quoted, and never carries an id it did not refuse — nor any
+// unvalidated id raw into the one-line rendering.
+func TestALaneNameRefusalNamesTheIDItRefuses(t *testing.T) {
+	for _, tc := range []struct{ runID, laneID, refused string }{
+		{"run-bad", "lane-1", "run-bad"},
+		{"run-bad", "lane-1\x1b[31m", "run-bad"},
+		{"run-0123456789012345", "lane-01", "lane-01"},
+		{"run-0123456789012345", "lane-1\x1b[31m", "lane-1\x1b[31m"},
+	} {
+		_, err := laneName(tc.runID, tc.laneID)
+		r := mustRefusal(t, err)
+		if !strings.Contains(r.Reason, fmt.Sprintf("%q", tc.refused)) {
+			t.Fatalf("laneName(%q, %q): the refusal names %q: %+v", tc.runID, tc.laneID, tc.refused, r)
+		}
+		if r.Lane != "" {
+			t.Fatalf("laneName(%q, %q): the refusal carries no lane it did not refuse: %q", tc.runID, tc.laneID, r.Lane)
+		}
+		if strings.ContainsRune(r.Error(), '\x1b') {
+			t.Fatalf("laneName(%q, %q): no raw control byte is rendered: %q", tc.runID, tc.laneID, r.Error())
 		}
 	}
 }
