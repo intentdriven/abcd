@@ -108,7 +108,7 @@ func buildIssueText(fields []kv, body string) (string, error) {
 }
 
 // yamlList encodes a string list as the inline flow form buildIssueText has
-// always written and parseScalarOrList reads back: `[]` when empty, bare ids
+// always written and issuerecord.ParseScalarOrList reads back: `[]` when empty, bare ids
 // when every item is an abcd id (`[itd-4, iss-12]`), per-item quoted otherwise.
 // It is the ONE list encoder, shared by the create path and the in-place list
 // rewrite (setListField), so a list a verb edits after capture is spelled

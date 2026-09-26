@@ -221,7 +221,7 @@ type recordStore struct {
 	// readerRefusesDuplicateKey declares that the store's reader refuses a record
 	// carrying a top-level key twice, and skips it. It is separate from
 	// readerFailsClosed because the two answers come apart: capture's
-	// parseFrontmatterBlock refuses a duplicate key by name, and the ADR dispatcher
+	// issuerecord.ParseBlock refuses a duplicate key by name, and the ADR dispatcher
 	// — which DOES validate the id before it renders — reads the frontmatter with
 	// the lenient scanner and so never sees the second line at all. An ADR carrying
 	// `status` twice renders, with the first value and a nil error

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/core/issuerecord"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/lint"
 )
@@ -145,7 +146,7 @@ func TestBlankRequiredPropertyFindingsMatchTheReadersVerdict(t *testing.T) {
 				// ledger never reads either, so a parse error is a refusal like any
 				// other — the block-sequence spelling is refused there rather than at
 				// the validator.
-				fm, readerErr := parseFrontmatterBlock(lines)
+				fm, readerErr := issuerecord.ParseBlock(lines)
 				if readerErr == nil {
 					readerErr = validateStrict(fm)
 				}

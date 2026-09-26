@@ -31,15 +31,6 @@ func parseFrontmatterAndBody(text string) (map[string]any, string, error) {
 	return issuerecord.Parse(text)
 }
 
-// parseFrontmatterBlock parses the interior lines of a frontmatter block
-// (issuerecord.ParseBlock).
-func parseFrontmatterBlock(lines []string) (map[string]any, error) {
-	return issuerecord.ParseBlock(lines)
-}
-
-// parseScalarOrList decodes one frontmatter value (issuerecord.ParseScalarOrList).
-func parseScalarOrList(s string) (any, error) { return issuerecord.ParseScalarOrList(s) }
-
 // acceptedValues renders a closed enum's legal set for a refusal message
 // (issuerecord.AcceptedValues).
 func acceptedValues(vals []string) string { return issuerecord.AcceptedValues(vals) }

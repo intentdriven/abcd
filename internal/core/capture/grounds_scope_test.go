@@ -29,7 +29,7 @@ func rewriteIssue(t *testing.T, ir, issID string, fn func(string) string) {
 }
 
 // TestGroundsLandInTheBodyNotAFrontmatterComment is the writer/reader scope
-// agreement (iss-2608301805069999). parseFrontmatterBlock skips a line whose
+// agreement (iss-2608301805069999). issuerecord.ParseBlock skips a line whose
 // trimmed form starts with `#`, so `# Grounds` is a legal YAML comment inside
 // the frontmatter block — and an ATX heading pattern matches it as the section
 // heading. With the append judged over the WHOLE FILE the bullet landed in that
