@@ -151,6 +151,15 @@ const probePrefix = ".mode-probe-"
 // is the test because it is what fails on a read-only mount, an unwritable
 // directory and a foreign owner alike, where a mode-bit check answers only the
 // second.
+//
+// A probe the remove could not reach — the tier turned unwritable between the
+// create and the remove, or the process died between them — would otherwise
+// stay in the tier for good, so every call first sweeps the probes an earlier
+// call left behind (iss-2609261403493536). The sweep removes only regular files
+// named exactly as a probe is named, and it is best-effort: a tier it cannot
+// read or clear is the one the create below then reports. Because a concurrent
+// call's sweep can take this call's probe, a probe already gone when this call
+// removes it is not a fault: its create succeeded, which is what was asked.
 func CanSet(repoRoot string) error {
 	root, err := os.OpenRoot(repoRoot)
 	if err != nil {
@@ -161,6 +170,7 @@ func CanSet(repoRoot string) error {
 		return fmt.Errorf("%w: %s/ is not a directory in this checkout, so there is nowhere for %s to live",
 			ErrNoLocalTier, TierRelPath, StoreName)
 	}
+	sweepProbes(root)
 	if fi, err := root.Lstat(FileRelPath); err == nil && fi.IsDir() {
 		return fmt.Errorf("%s at %s is a directory, which the writer cannot replace", StoreName, FileRelPath)
 	} else if err != nil && !errors.Is(err, fs.ErrNotExist) {
@@ -176,11 +186,51 @@ func CanSet(repoRoot string) error {
 		return fmt.Errorf("%s/ is not writable, so %s cannot be recorded here: %w", TierRelPath, StoreName, err)
 	}
 	closeErr := f.Close()
-	if err := root.Remove(probe); err != nil {
+	if err := root.Remove(probe); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return fmt.Errorf("removing the probe %s: %w", probe, err)
 	}
 	if closeErr != nil {
 		return fmt.Errorf("closing the probe %s: %w", probe, closeErr)
 	}
 	return nil
+}
+
+// probeNameLen is the length of a probe's name: the prefix and the hex of its
+// eight random bytes.
+const probeNameLen = len(probePrefix) + 16
+
+// isProbeName reports whether name is exactly the shape CanSet gives a probe,
+// so the sweep never takes a file that merely shares the prefix.
+func isProbeName(name string) bool {
+	if len(name) != probeNameLen || name[:len(probePrefix)] != probePrefix {
+		return false
+	}
+	for _, c := range name[len(probePrefix):] {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return false
+		}
+	}
+	return true
+}
+
+// sweepProbes removes the probe files an earlier CanSet left in the tier. It
+// reports nothing: a tier it cannot list or clear is one CanSet's own create
+// then fails on and names, and a probe that is no longer a regular file is
+// nothing CanSet wrote.
+func sweepProbes(root *os.Root) {
+	dir, err := root.Open(TierRelPath)
+	if err != nil {
+		return
+	}
+	ents, err := dir.ReadDir(-1)
+	_ = dir.Close()
+	if err != nil {
+		return
+	}
+	for _, e := range ents {
+		if !e.Type().IsRegular() || !isProbeName(e.Name()) {
+			continue
+		}
+		_ = root.Remove(TierRelPath + "/" + e.Name())
+	}
 }

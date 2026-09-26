@@ -89,7 +89,10 @@ decision: the question runs and the hook says so on exit 1, the same
 fail-open-loud contract below. So is a tier `abcd mode` cannot write — a
 read-only mount, a directory the session's user does not own: the refusal's
 remedy could not run there, so the gate probes that the verb could set the
-state before it refuses, and where it could not, the question runs on exit 1. The manifest's pre-tool-use matcher names the
+state before it refuses, and where it could not, the question runs on exit 1.
+The probe is a file created in the tier and removed again; one the remove could
+not reach, because the tier turned unwritable in between or the process died,
+is swept by the next probe. The manifest's pre-tool-use matcher names the
 shell tool and the question tool, and nothing else.
 
 ## Fail-open-loud

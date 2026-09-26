@@ -181,6 +181,58 @@ func TestCanSetProbesWhatTheVerbNeeds(t *testing.T) {
 	}
 }
 
+// TestCanSetSweepsTheProbesAnEarlierCallLeftBehind (iss-2609261403493536): a
+// probe created while the tier was writable and removed after it turned
+// unwritable (or orphaned by a kill between the two) stays in the tier, and
+// nothing else ever removes it. The next CanSet sweeps every such probe, and
+// only those: a file that merely starts with the prefix, or a directory
+// wearing a probe's name, is nothing CanSet wrote and is left alone.
+func TestCanSetSweepsTheProbesAnEarlierCallLeftBehind(t *testing.T) {
+	root := newRepo(t)
+	tier := makeTier(t, root)
+	for _, name := range []string{".mode-probe-0123456789abcdef", ".mode-probe-fedcba9876543210"} {
+		if err := os.WriteFile(filepath.Join(tier, name), nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	keep := []string{".mode-probe-notes.txt", ".mode-probe-00112233445566aa"}
+	if err := os.WriteFile(filepath.Join(tier, keep[0]), []byte("mine"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(tier, keep[1]), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := mode.CanSet(root); err != nil {
+		t.Fatalf("CanSet on a writable tier = %v, want nil", err)
+	}
+	got := tierEntries(t, tier)
+	if len(got) != len(keep) || got[0] != keep[1] || got[1] != keep[0] {
+		t.Fatalf("tier after CanSet = %v, want only %v (the stale probes swept, nothing else touched)", got, keep)
+	}
+}
+
+// TestCanSetConcurrentProbesAllAnswer: the sweep must not turn one caller's
+// in-flight probe into another caller's fault. Concurrent probes on a writable
+// tier all answer nil and leave the tier empty.
+func TestCanSetConcurrentProbesAllAnswer(t *testing.T) {
+	root := newRepo(t)
+	tier := makeTier(t, root)
+	const n = 32
+	errs := make(chan error, n)
+	for range n {
+		go func() { errs <- mode.CanSet(root) }()
+	}
+	for range n {
+		if err := <-errs; err != nil {
+			t.Errorf("concurrent CanSet = %v, want nil", err)
+		}
+	}
+	if got := tierEntries(t, tier); len(got) != 0 {
+		t.Fatalf("concurrent probes left residue in the tier: %v", got)
+	}
+}
+
 // TestResetOnAnswerRefusesAMarkerItCannotRemove (iss-2609260100393814): a
 // directory planted at the marker's path is nothing the gate wrote and nothing
 // the reset can clear, so resetting on it would reset a hand-set mode on every
