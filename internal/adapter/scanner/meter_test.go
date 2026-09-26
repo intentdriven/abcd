@@ -92,7 +92,7 @@ var meterFixtures = []meterFixture{
 	// the line, so a line dense in escapes, in nested escapes and in
 	// escaped homes must still cost a constant number of passes.
 	{"json_escaped_other_homes", Identity{}, rep(`\/home\/zqa\/x\n`)},
-	{"json_unicode_escaped_own_homes", meterNamedID, rep(`/Users/zq8home/x `)},
+	{"json_unicode_escaped_own_homes", meterNamedID, rep(escapeSeparators("/Users/zq8home/x ", uSolidus))}, // abcd-audit:allow
 	{"json_nested_escape_runs", meterNamedID, rep(`\\\\\\\"\\\\n`)},
 	{"json_tokens_after_escapes", Identity{}, rep(`\n` + "ghp_" + strings.Repeat("a", 36))},
 }
@@ -206,5 +206,28 @@ func TestBoundedContextHelpersKeepTheFinding(t *testing.T) {
 	short := "Generated with [x](https://example.com)"
 	if f := ScanText(short, Identity{}, DefaultPatterns(), DefaultIdentitySeverities(), "f"); hasKind(f, kindHarnessFooter) {
 		t.Errorf("a footer linking a reserved documentation host was reported: %+v", f)
+	}
+}
+
+// TestMeterFixturesCarryTheSpellingTheyName pins the escaped fixtures to the
+// bytes their names promise (iss-2609261811321435). The unicode-escaped home
+// fixture was once written as the literal home, its six-byte escapes folded
+// back into slashes, so the linearity guard held a plain path to the bar and
+// never the unicode-escape decode it names.
+func TestMeterFixturesCarryTheSpellingTheyName(t *testing.T) {
+	want := map[string]string{
+		"json_escaped_other_homes":       `\/`,
+		"json_unicode_escaped_own_homes": uSolidus,
+	}
+	for _, fx := range meterFixtures {
+		if esc, ok := want[fx.name]; ok {
+			if !strings.Contains(fx.build(1), esc) {
+				t.Errorf("fixture %s is %q, which carries no %q", fx.name, fx.build(1), esc)
+			}
+			delete(want, fx.name)
+		}
+	}
+	for name := range want {
+		t.Errorf("no meter fixture named %s", name)
 	}
 }
