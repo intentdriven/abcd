@@ -50,13 +50,9 @@ func utf16View(data []byte) (decodedView, bool) {
 		}
 		start, mark := len(text), i+2
 		j := mark
-		for ; j+1 < len(data); j += 2 {
-			u := uint16(data[j+1])<<8 | uint16(data[j])
-			if bigEndian {
-				u = uint16(data[j])<<8 | uint16(data[j+1])
-			}
-			r := rune(u)
-			if !utf16TextRune(r) {
+		for j+1 < len(data) {
+			r, width := utf16RuneAt(data, j, bigEndian)
+			if width == 0 {
 				break
 			}
 			var enc [utf8.UTFMax]byte
@@ -64,6 +60,7 @@ func utf16View(data []byte) (decodedView, bool) {
 				text = append(text, c)
 				pos = append(pos, j)
 			}
+			j += width
 		}
 		scanMeter.charge(stageUTF16, j-i)
 		if (j-mark)/2 < minUTF16Run {
@@ -80,10 +77,39 @@ func utf16View(data []byte) (decodedView, bool) {
 	return decodedView{text: string(text), posMap: append(pos, len(data))}, true
 }
 
+// utf16RuneAt decodes the character whose first code unit starts at data[j]
+// and reports the bytes it spans: 2 for a text unit, 4 for a surrogate pair
+// that makes a character outside the Basic Multilingual Plane (an emoji, a
+// historic script, a supplementary CJK ideograph), and 0 for anything that
+// ends a run. A valid pair continues the run, so a name after an emoji in one
+// string is read (iss-2609261909101409); a lone surrogate, a pair spelling a
+// noncharacter, and every unit utf16TextRune refuses still end it.
+func utf16RuneAt(data []byte, j int, bigEndian bool) (rune, int) {
+	unit := func(k int) rune {
+		if bigEndian {
+			return rune(data[k])<<8 | rune(data[k+1])
+		}
+		return rune(data[k+1])<<8 | rune(data[k])
+	}
+	r := unit(j)
+	if utf16TextRune(r) {
+		return r, 2
+	}
+	if r < 0xd800 || r >= 0xdc00 || j+3 >= len(data) {
+		return 0, 0
+	}
+	pair := utf16.DecodeRune(r, unit(j+2))
+	if pair == unicode.ReplacementChar || pair&0xfffe == 0xfffe {
+		return 0, 0
+	}
+	return pair, 4
+}
+
 // utf16TextRune reports whether a code unit reads as text inside a run: the
 // layout controls, printable Latin through the IPA block, and beyond it the
 // letters, marks, digits, punctuation and spaces of any script. A control, a
-// surrogate (no BMP rune on its own), a noncharacter and a symbol end the run.
+// surrogate (no BMP rune on its own; utf16RuneAt reads a valid pair), a
+// noncharacter and a symbol end the run.
 // The symbol clause is what ends a big-endian PDF string: the ')' closing it
 // pairs with the byte after it into a unit in the arrows block.
 func utf16TextRune(r rune) bool {

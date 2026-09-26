@@ -135,3 +135,35 @@ func TestUTF16ViewWorkIsLinear(t *testing.T) {
 		})
 	}
 }
+
+// TestUTF16RunContinuesPastAnAstralCharacter pins iss-2609261909101409: a
+// character outside the Basic Multilingual Plane is written as a surrogate
+// pair, and a run that ended at the pair lost every name after it, so an
+// emoji before a name in one marked string hid the name entirely. A valid
+// pair continues the run in either byte order; a lone surrogate still ends it.
+func TestUTF16RunContinuesPastAnAstralCharacter(t *testing.T) {
+	const name = "Zoë Qüxbar"
+	for _, bigEndian := range []bool{true, false} {
+		body := append(append([]byte("%PDF-1.7\n<< /Author ("), utf16Bytes("😀 "+name, bigEndian)...), []byte(") >>\n")...)
+		v, ok := utf16View(body)
+		if !ok || !strings.Contains(v.text, "😀 "+name) {
+			t.Errorf("bigEndian=%v: the view does not read the name after the emoji: %q", bigEndian, v.text)
+		}
+		root := t.TempDir()
+		sc, err := New(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		sc.identity = Identity{GitUserName: name}
+		res := scanOne(t, sc, "deck.pdf", writeFile(t, root, "deck.pdf", string(body)))
+		if !hasKind(res.Findings, kindRealName) || res.HardFails == 0 {
+			t.Errorf("bigEndian=%v: no hard_fail %s for the name after an emoji: %+v", bigEndian, kindRealName, res.Findings)
+		}
+	}
+	// A high surrogate with no low one after it is no character: the run ends
+	// there, as it always did, and the view keeps what came before it.
+	lone := []byte{0xfe, 0xff, 0x00, 'a', 0x00, 'b', 0xd8, 0x3d, 0x00, 'c', 0x00, 'd'}
+	if v, ok := utf16View(lone); !ok || v.text != "ab\n" {
+		t.Errorf("a lone high surrogate: view %q, want the run before it alone", v.text)
+	}
+}
