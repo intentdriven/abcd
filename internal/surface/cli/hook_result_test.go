@@ -81,3 +81,28 @@ func TestSubagentStopJSONResultReportsStagedAndNotCaptured(t *testing.T) {
 		t.Fatalf("missing transcript path: got %+v, want not_captured with a reason", r)
 	}
 }
+
+// session-end's not_captured line names the session it lost, as subagent-stop's
+// does (iss-2609260221577624): the result line alone is what a caller reads, and
+// a failure that does not say which session it lost cannot be acted on. A payload
+// that could not be read has no session to name, and says none.
+func TestSessionEndNotCapturedNamesTheSession(t *testing.T) {
+	repo, _ := sessionEndRepo(t)
+	stdout, _ := runHook(t, endPayload(t, "sess-lost", repo, ""), "hook", "session-end", "--json")
+	if r := decodeHookResult(t, stdout); r.Outcome != "not_captured" || r.SessionID != "sess-lost" {
+		t.Fatalf("a not_captured result must name its session: got %+v", r)
+	}
+
+	stdout, _ = runHook(t, "{not json", "hook", "session-end", "--json")
+	if r := decodeHookResult(t, stdout); r.Outcome != "not_captured" || r.SessionID != "" {
+		t.Fatalf("an unreadable payload has no session to name: got %+v", r)
+	}
+
+	// A session id is payload text: the result masks it like the reason.
+	stdout, _ = runHook(t, endPayload(t, "sess\x1b[31m", repo, ""), "hook", "session-end", "--json")
+	r := decodeHookResult(t, stdout)
+	assertNoAttackRunes(t, "session-end --json session_id", r.SessionID)
+	if !strings.HasPrefix(r.SessionID, "sess") {
+		t.Fatalf("the masked session id must still name the session: got %q", r.SessionID)
+	}
+}

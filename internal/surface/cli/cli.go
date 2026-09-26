@@ -1388,16 +1388,22 @@ func newHookCommand() *cobra.Command {
 			// Stop hook's stdout is not a place to speak to the model — unless
 			// the caller asked for --json, when it carries one result line on
 			// every path (hook_result.go, iss-2608261550596333).
+			// The result names the session it lost, as subagent-stop's does
+			// (iss-2609260221577624): in is read below, and warn names whatever
+			// of it was parsed — nothing, for a payload that did not parse.
+			var in hookInput
 			warn := func(format string, a ...any) error {
 				msg := diagnosticLine(cmd.ErrOrStderr(), "abcd history: "+format, a...)
-				emitHookResult(cmd, hookStageResult{Hook: "session-end", Outcome: hookOutcomeNotCaptured, Reason: strings.TrimPrefix(msg, "abcd history: ")})
+				emitHookResult(cmd, hookStageResult{Hook: "session-end", Outcome: hookOutcomeNotCaptured,
+					SessionID: termsafe.Sanitize(in.SessionID), Reason: strings.TrimPrefix(msg, "abcd history: ")})
 				return nil // never non-zero: a Stop hook must not wedge the session
 			}
 
-			in, err := readHookInput(cmd)
+			parsed, err := readHookInput(cmd)
 			if err != nil {
 				return warn("unreadable Stop payload (%v); capturing nothing", err)
 			}
+			in = parsed
 			if in.TranscriptPath == "" {
 				return warn("Stop payload carries no transcript_path; capturing nothing")
 			}
