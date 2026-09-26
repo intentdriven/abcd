@@ -452,6 +452,15 @@ func refuseAuthored(out Output, supplied string, items map[string]bool) error {
 			return fmt.Errorf("scribe: %s is a disposition the researcher did not supply: the supplied "+
 				"dispositions never name %s", where, echo(d.Item))
 		}
+		// The state is the ruling itself, so it is held to the supplied text as
+		// the grounds are, and more tightly: it must stand whole-word on a line
+		// that names the item, because a state another item's line carries is not
+		// the researcher's answer to this one.
+		if !lineCarries(supplied, d.Item, d.State) {
+			return fmt.Errorf("scribe: %s carries state %q, and no line of the supplied dispositions that names "+
+				"%s carries it; the state is the researcher's ruling and the scribe never supplies one, so the "+
+				"payload is refused and nothing is written", where, echo(d.State), echo(d.Item))
+		}
 		for _, id := range append([]string{d.Supersedes}, d.Recurs...) {
 			if id != "" && !named(id) {
 				return fmt.Errorf("scribe: %s cites %s, which the supplied dispositions never name", where, echo(id))
@@ -475,6 +484,14 @@ func refuseAuthored(out Output, supplied string, items map[string]bool) error {
 		if !named(a.Item) {
 			return fmt.Errorf("scribe: %s is an admission the researcher did not supply: the supplied "+
 				"dispositions never name %s", where, echo(a.Item))
+		}
+		// An admission writes an accepted disposition, so it is a state too, held
+		// by the same rule: the item's own line admits or accepts the proposal.
+		if !lineCarries(supplied, a.Item, admissionTokens...) {
+			return fmt.Errorf("scribe: %s is an admission, and no line of the supplied dispositions that names "+
+				"%s admits or accepts it (%s); an admission writes an acceptance, which is the researcher's "+
+				"ruling and never the scribe's, so the payload is refused and nothing is written",
+				where, echo(a.Item), strings.Join(admissionTokens, ", "))
 		}
 		if err := verbatim(where, "grounds", a.Grounds); err != nil {
 			return err
@@ -538,6 +555,41 @@ func refuseAuthored(out Output, supplied string, items map[string]bool) error {
 			strings.Join(silent, ", "), out.Run)
 	}
 	return nil
+}
+
+// admissionTokens are the words that carry an admission on an item's line. At
+// the widening position acceptance IS admission, so the state's own name counts
+// beside the verb's forms.
+var admissionTokens = []string{issueschema.DispositionAccepted, "admit", "admits", "admitted"}
+
+// lineCarries reports whether some line of supplied that names id carries one of
+// tokens as a whole word, ignoring case. It is the mechanical form of "the
+// researcher gave this item this ruling": the token must sit on the item's own
+// line, and a word that merely contains it ("unaccepted") does not carry it. It
+// reads words, not sense, so a line that names a state to negate it still
+// carries it; that residue is the chapter's to disclose.
+func lineCarries(supplied, id string, tokens ...string) bool {
+	for _, line := range strings.Split(supplied, "\n") {
+		if !mentions(line, id) {
+			continue
+		}
+		for _, tok := range tokens {
+			if tok != "" && wholeWord(line, tok) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// wholeWord reports whether text holds word, ignoring case, bounded on each side
+// by the text's edge or a character that is neither a letter nor a digit.
+func wholeWord(text, word string) bool {
+	re, err := regexp.Compile(`(?i)(^|[^\pL\pN])` + regexp.QuoteMeta(word) + `($|[^\pL\pN])`)
+	if err != nil {
+		return false
+	}
+	return re.MatchString(text)
 }
 
 // fold collapses every run of whitespace to one space and trims the ends, so a

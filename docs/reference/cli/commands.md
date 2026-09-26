@@ -1589,10 +1589,11 @@ Validate the JSON a scribe session returned and write its records through the ca
 
 The context the session was handed is proven first: it must hash to its parked manifest, and
 the output must cite that hash. Then the output is refused if the scribe authored anything —
-a field outside the declared shapes, an item the supplied dispositions never name, or a ground,
-exit condition or surprise that does not stand verbatim in the supplied text once whitespace
-is folded — or if it passes over an unanswered item of the run in silence. Nothing is written
-until all of that holds.
+a field outside the declared shapes, an item the supplied dispositions never name, a state or an
+admission the item's own line of the supplied text does not carry, or a ground, exit condition
+or surprise that does not stand verbatim in the supplied text once whitespace is folded — or if
+it passes over an unanswered item of the run in silence. Nothing is written until all of that
+holds.
 
 Dispositions, admissions and surprises are then written in that order through the capture verbs,
 which apply their own redaction and refusals, the ordering gate included; the first refusal stops

@@ -465,3 +465,62 @@ func TestScribeIngestWritesAdmissionsAndSurprises(t *testing.T) {
 		t.Fatalf("an unsupplied surprise was not refused: %v", err)
 	}
 }
+
+// TestScribeIngestHoldsTheStateToTheItemsLine: the state is the ruling, and the
+// scribe may not author it. A disposition's state must stand, whole-word, on a
+// line of the supplied text that names its item: a state another item's line
+// carries is not the researcher's answer to this one, and a word that merely
+// contains the state is not the state.
+func TestScribeIngestHoldsTheStateToTheItemsLine(t *testing.T) {
+	s := assembleSession(t, positionDetection, 2,
+		"{0}: rejected — "+groundA+".\n{1}: accepted — "+groundA+".\n")
+	before := s.ledger(t)
+	o := s.out()
+	o.Dispositions = []OutDisposition{
+		{Item: s.items[0], State: issueschema.DispositionAccepted, Grounds: groundA},
+		{Item: s.items[1], State: issueschema.DispositionAccepted, Grounds: groundA},
+	}
+	_, err := s.ingest(t, s.write(t, o))
+	if err == nil || !strings.Contains(err.Error(), "state") || !strings.Contains(err.Error(), s.items[0]) {
+		t.Fatalf("a state the item's line does not carry was not refused naming the state and the item: %v", err)
+	}
+	if s.ledger(t) != before {
+		t.Fatal("a refused payload changed the ledger")
+	}
+
+	// Whole-word: "unaccepted" does not carry "accepted".
+	s2 := assembleSession(t, positionDetection, 1, "{0}: unaccepted — "+groundA+".\n")
+	o2 := s2.out()
+	o2.Dispositions = []OutDisposition{{Item: s2.items[0], State: issueschema.DispositionAccepted, Grounds: groundA}}
+	if _, err := s2.ingest(t, s2.write(t, o2)); err == nil || !strings.Contains(err.Error(), "state") {
+		t.Fatalf("a state carried only inside a longer word was not refused: %v", err)
+	}
+
+	// The state the line does carry lands, whatever its case.
+	s3 := assembleSession(t, positionDetection, 1, "{0}: Accepted — "+groundA+".\n")
+	o3 := s3.out()
+	o3.Dispositions = []OutDisposition{{Item: s3.items[0], State: issueschema.DispositionAccepted, Grounds: groundA}}
+	if _, err := s3.ingest(t, s3.write(t, o3)); err != nil {
+		t.Fatalf("a state the item's line carries was refused: %v", err)
+	}
+}
+
+// TestScribeIngestHoldsAnAdmissionToTheItemsLine: an admission writes an
+// accepted disposition, so it is a state too, and the same rule holds it: the
+// item's own line must admit or accept the proposal.
+func TestScribeIngestHoldsAnAdmissionToTheItemsLine(t *testing.T) {
+	s := assembleSession(t, issueschema.PositionWidening, 2,
+		"{0}: declined — "+groundA+".\n{1}: admit it — "+groundA+".\n")
+	writeFile(t, s.repo, filepath.Join(issueschema.ReadingsRecordDir, "rdg-2609250000000009", issueschema.RunRecordFileName),
+		`{"run_id":"rdg-2609250000000009","position":"comparative","candidate_run":"`+fixtureRun+`"}`)
+	before := s.ledger(t)
+	o := s.out()
+	o.Admissions = []OutAdmission{{Item: s.items[0], Grounds: groundA}, {Item: s.items[1], Grounds: groundA}}
+	_, err := s.ingest(t, s.write(t, o))
+	if err == nil || !strings.Contains(err.Error(), "admission") || !strings.Contains(err.Error(), s.items[0]) {
+		t.Fatalf("an admission the item's line does not carry was not refused: %v", err)
+	}
+	if s.ledger(t) != before {
+		t.Fatal("a refused payload changed the ledger")
+	}
+}

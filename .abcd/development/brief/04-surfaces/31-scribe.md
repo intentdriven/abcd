@@ -77,10 +77,14 @@ until all of the following hold:
 - **Nothing is authored.** The payload is decoded against closed shapes at every
   level, so a key the scribe may not author is refused by name with the entry it
   sat on. A disposition or an admission for an item the supplied text never names
-  is one the researcher did not supply. A ground, an exit condition or a surprise
-  that does not stand verbatim in the supplied text, once whitespace is folded,
-  is one the researcher did not write. The scribe reformats; the check is that
-  every word it carries was already there.
+  is one the researcher did not supply. A disposition's state must stand as a
+  whole word, in any case, on a line of the supplied text that names its item,
+  and an admission, which writes an acceptance, needs that line to admit or
+  accept the proposal: the state is the ruling, and a state another item's line
+  carries is not the researcher's answer to this one. A ground, an exit
+  condition or a surprise that does not stand verbatim in the supplied text,
+  once whitespace is folded, is one the researcher did not write. The scribe
+  reformats; the check is that every word it carries was already there.
 - **Every answer is the run's, once.** An answered or outstanding item must be one
   of the run's items, and one item takes one answer.
 - **Nothing is passed over in silence.** Every item of the run with no standing
@@ -117,10 +121,11 @@ renders what landed first.
   the obligation, and the separation check can only see what a host retained:
   where a host assembles context before anything is retained, the check reports
   the property unobserved and the scribe definition's protocol remains the gate.
-- The state a disposition carries is judged by the capture verbs' vocabulary and
-  per-position rule, not against the supplied text: the verb refuses a ground the
-  researcher did not write, and the definition, not the verb, holds the scribe to
-  the state the researcher gave.
+- The state check reads words, not sense. A line that names a state only to
+  negate it ("rdi-N: not accepted") still carries it, and a line naming two
+  states carries both, so the verb refuses a state the item's line does not
+  carry and cannot tell which of two it carries the researcher meant. The
+  definition holds the scribe to the ruling the line gives.
 
 ## References
 
