@@ -65,3 +65,20 @@ func TestBlockTextStillEscapesAnUnbalancedLeadingRun(t *testing.T) {
 		}
 	}
 }
+
+// TestBlockTextEscapesAnOrderedMarkerFaithfully (iss-2609262241109876): an idea
+// shaped like an ordered-list item must neither open a list nor gain a
+// character. CommonMark keeps a backslash before a digit as a literal
+// backslash, so the escape goes before the delimiter, where it is consumed.
+func TestBlockTextEscapesAnOrderedMarkerFaithfully(t *testing.T) {
+	for _, s := range []string{"1. first", "12) twelve"} {
+		got := blockText(s)
+		html, err := renderMarkdown(got)
+		if err != nil {
+			t.Fatalf("blockText(%q) = %q does not render: %v", s, got, err)
+		}
+		if want := "<p>" + s + "</p>"; !strings.Contains(html, want) {
+			t.Errorf("blockText(%q) = %q rendered as %q; want %q", s, got, html, want)
+		}
+	}
+}
