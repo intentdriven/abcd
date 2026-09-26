@@ -374,17 +374,17 @@ func (r ReviewResult) Render() string {
 func renderReviewMD(a ReviewArtefact) string {
 	var b strings.Builder
 	b.WriteString("# Lifeboat review\n\n")
-	fmt.Fprintf(&b, "- verdict: %s\n", a.Verdict)
-	fmt.Fprintf(&b, "- mode: %s\n", a.Mode)
+	fmt.Fprintf(&b, "- verdict: %s\n", mdInline(string(a.Verdict)))
+	fmt.Fprintf(&b, "- mode: %s\n", mdInline(string(a.Mode)))
 	if a.PromptVersion != "" {
-		fmt.Fprintf(&b, "- prompt_version: %s\n", sanitize(a.PromptVersion))
+		fmt.Fprintf(&b, "- prompt_version: %s\n", mdInline(a.PromptVersion))
 	}
-	fmt.Fprintf(&b, "- source: %s\n", sanitize(a.SourceName))
+	fmt.Fprintf(&b, "- source: %s\n", mdInline(a.SourceName))
 	verified := "not verified"
 	if a.ManifestVerified {
 		verified = "verified"
 	}
-	fmt.Fprintf(&b, "- manifest: %s (%s)\n", sanitize(a.ManifestSHA256), verified)
+	fmt.Fprintf(&b, "- manifest: %s (%s)\n", mdInline(a.ManifestSHA256), verified)
 	fmt.Fprintf(&b, "- coverage: grounded %d · partial %d · blank %d\n",
 		a.Coverage.Grounded, a.Coverage.Partial, a.Coverage.Blank)
 	b.WriteString("\n## Findings\n\n")
@@ -393,13 +393,15 @@ func renderReviewMD(a ReviewArtefact) string {
 		return b.String()
 	}
 	for _, f := range a.Findings {
-		sev := ""
-		if f.Severity != "" {
-			sev = "[" + sanitize(f.Severity) + "] "
+		// The severity is set off as a code span, never wrapped in the render's
+		// own brackets (iss-2609251355497247); the id likewise.
+		b.WriteString("- ")
+		if sev := mdCode(f.Severity); sev != "" {
+			b.WriteString(sev + " ")
 		}
-		fmt.Fprintf(&b, "- %s%s — %s", sev, sanitize(f.ID), sanitize(f.Finding))
-		if len(f.Evidence) > 0 {
-			fmt.Fprintf(&b, " (evidence: %s)", strings.Join(sanitizeAll(f.Evidence), ", "))
+		fmt.Fprintf(&b, "%s — %s", mdCode(f.ID), mdInline(f.Finding))
+		if refs := mdCodeList(f.Evidence); refs != "" {
+			fmt.Fprintf(&b, " (evidence: %s)", refs)
 		}
 		b.WriteString("\n")
 	}

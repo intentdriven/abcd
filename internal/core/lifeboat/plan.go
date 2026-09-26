@@ -470,7 +470,11 @@ func briefSectionDoc(s SectionCoverage) []byte {
 		ev := append([]string(nil), s.Evidence...)
 		sort.Strings(ev)
 		for _, e := range ev {
-			fmt.Fprintf(&b, "- %s\n", sanitize(e))
+			// A source path is untrusted: a hostile filename can carry HTML or
+			// link syntax, so it is cleaned and set off as a code span.
+			if c := mdCode(e); c != "" {
+				fmt.Fprintf(&b, "- %s\n", c)
+			}
 		}
 		b.WriteString("\n")
 	}
