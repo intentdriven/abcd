@@ -321,18 +321,3 @@ func refuseTrackedOutDir(outDir string) error {
 	}
 	return nil
 }
-
-// displayOutDir is the output directory as the verbs report it. The report
-// travels into --json, and machine output never carries an absolute
-// developer-identity path (iss-81): a directory inside the repository is named
-// relative to it, and one outside it has the home directory redacted to "~". A
-// relative path is reported as it was given (iss-2608291957114882).
-func displayOutDir(repoRoot, outDir string) string {
-	if !filepath.IsAbs(outDir) {
-		return outDir
-	}
-	if rel, err := filepath.Rel(repoRoot, outDir); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return filepath.ToSlash(fsutil.RepoRel(repoRoot, outDir))
-	}
-	return fsutil.RedactHome(outDir)
-}
