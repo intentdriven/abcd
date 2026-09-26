@@ -324,12 +324,17 @@ func round3(f float64) float64 { return math.Round(f*1000) / 1000 }
 // record is filed without matching, and the reason travels with the outcome
 // rather than refusing the write.
 func Unread(threshold float64, err error) Outcome {
+	return Skip(threshold, "the record could not be read for matching ("+err.Error()+"), so it is filed without matching")
+}
+
+// Skip is the outcome of a match that compared nothing, for the reason given:
+// the filing goes ahead, and the reason is what a surface says.
+func Skip(threshold float64, reason string) Outcome {
 	if !(threshold > 0 && threshold <= 1) {
 		threshold = DefaultThreshold
 	}
 	return Outcome{
 		Heuristic: Heuristic, Threshold: threshold, MinTerms: MinTerms,
-		Skipped: "the record could not be read for matching (" + err.Error() + "), so it is filed without matching",
-		Matches: []Score{}, NearMisses: []Score{},
+		Skipped: reason, Matches: []Score{}, NearMisses: []Score{},
 	}
 }

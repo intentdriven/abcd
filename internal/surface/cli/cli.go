@@ -38,6 +38,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/oracle"
 	"github.com/intentdriven/abcd/internal/core/provenance"
 	"github.com/intentdriven/abcd/internal/core/record"
+	"github.com/intentdriven/abcd/internal/core/record/match"
 	"github.com/intentdriven/abcd/internal/core/rules"
 	"github.com/intentdriven/abcd/internal/core/spec"
 	"github.com/intentdriven/abcd/internal/core/surface"
@@ -2501,12 +2502,25 @@ func createIntentFromText(cmd *cobra.Command, repoRoot, text string, opts intent
 		return err
 	}
 	opts.ProductionMode = mode
-	it, err := intent.CreateFromText(repoRoot, text, opts)
+	// The filing-time match (itd-2609212137116617): the ledger gathers the
+	// candidates, the create runs the match under its mint lock.
+	var m *intent.Matcher
+	cfg, refused := resolveMatch(cmd.ErrOrStderr(), "intent", repoRoot)
+	if cfg != nil {
+		m = &intent.Matcher{Threshold: cfg.Threshold, Candidates: func() ([]match.Candidate, error) {
+			return capture.MatchCandidates(repoRoot, *cfg)
+		}}
+	}
+	it, err := intent.CreateFromTextMatched(repoRoot, text, opts, m)
 	if err != nil {
 		return &exitError{Code: 2, Msg: "abcd intent: " + err.Error()}
 	}
+	if it.Match == nil {
+		it.Match = refused
+	}
 	return render(cmd.OutOrStdout(), asJSON, it, func(w io.Writer) {
 		fmt.Fprintf(w, "created %s (%s) — %s\n", it.ID, it.Bucket, termsafe.Sanitize(it.Path))
+		renderMatch(w, it.Match)
 	})
 }
 
@@ -3727,6 +3741,10 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			if req.ProductionMode, err = resolveProductionMode(repoRoot, captureProductionMode); err != nil {
 				return err
 			}
+			// The filing-time match (itd-2609212137116617): configured through the
+			// layered reader, run by core under the ledger lock, never a refusal.
+			var matchRefused *match.Outcome
+			req.Match, matchRefused = resolveMatch(cmd.ErrOrStderr(), "capture", repoRoot)
 			// --lapsed-at has NO default and is never filled in for the caller: a
 			// lapse capture that omits the instant records none. The refusal that
 			// stood here is parked, not lifted (iss-2609091009111294): the instant stays
@@ -3743,8 +3761,12 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 				}
 				return err
 			}
+			if res.Match == nil {
+				res.Match = matchRefused
+			}
 			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, res, func(w io.Writer) {
 				fmt.Fprintf(w, "captured %s (%s) — %s\n", res.ID, res.Status, termsafe.Sanitize(res.Path))
+				renderMatch(w, res.Match)
 				// Folder membership is a status only once the file is committed
 				// (iss-2609100508570527): say so at the write, where it is cheap.
 				if res.Uncommitted {
