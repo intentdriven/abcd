@@ -3,9 +3,11 @@ package credential
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -140,5 +142,44 @@ func TestSetMachineRefusesABadNameOrValue(t *testing.T) {
 	}
 	if _, err := SetMachine("", "openrouter", secretValue); err == nil {
 		t.Fatal("SetMachine with no home wrote")
+	}
+}
+
+// TestConcurrentSetsKeepEveryEntry: the store is read, changed and renamed
+// into place, so writers that overlap must be serialised or all but one
+// entry is lost while each reports it wrote. Every writer's entry survives.
+func TestConcurrentSetsKeepEveryEntry(t *testing.T) {
+	const writers = 8
+	for round := 0; round < 3; round++ {
+		home := t.TempDir()
+		var wg sync.WaitGroup
+		errs := make(chan error, writers)
+		start := make(chan struct{})
+		for i := 0; i < writers; i++ {
+			wg.Add(1)
+			go func(i int) {
+				defer wg.Done()
+				<-start
+				changed, err := SetMachine(home, fmt.Sprintf("provider-%02d", i), fmt.Sprintf("throwaway-value-%02d", i))
+				if err == nil && !changed {
+					err = fmt.Errorf("writer %d reported no change", i)
+				}
+				errs <- err
+			}(i)
+		}
+		close(start)
+		wg.Wait()
+		close(errs)
+		for err := range errs {
+			if err != nil {
+				t.Fatalf("round %d: SetMachine: %v", round, err)
+			}
+		}
+		for i := 0; i < writers; i++ {
+			got, err := Machine(home).Resolve(fmt.Sprintf("provider-%02d", i))
+			if err != nil || got != fmt.Sprintf("throwaway-value-%02d", i) {
+				t.Fatalf("round %d: provider-%02d was lost by a concurrent writer (%v)", round, i, err)
+			}
+		}
 	}
 }

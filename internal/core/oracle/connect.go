@@ -213,11 +213,37 @@ func checkConnect(req *ConnectRequest) error {
 	return credential.CheckValue(req.Key)
 }
 
+// configLockFileName is the lock the provider block's write takes, beside
+// ~/.abcd/config.json.
+const configLockFileName = ".config.json.lock"
+
+// configLockTimeout bounds the wait for another setup writing the file.
+var configLockTimeout = 5 * time.Second
+
 // writeProviderBlock sets oracle.api.<name> in ~/.abcd/config.json, keeping
-// every other key, written atomically at mode 0600.
+// every other key, written atomically at mode 0600. The file is read, changed
+// and renamed into place under its lock (fsutil.WithFileLock), so concurrent
+// setups never lose each other's blocks, and a block another setup wrote
+// after this one's check is refused rather than replaced.
 func writeProviderBlock(home, name string, block map[string]any) error {
 	origin := layered.Config.MachineOrigin()
 	p := filepath.Join(home, ".abcd", filepath.FromSlash(layered.Config.MachineRel))
+	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+		return fmt.Errorf("oracle adapter: ~/.abcd could not be created, so the provider block was not written")
+	}
+	err := fsutil.WithFileLock(filepath.Join(filepath.Dir(p), configLockFileName), configLockTimeout, func() error {
+		return writeProviderBlockLocked(p, name, block)
+	})
+	if errors.Is(err, fsutil.ErrLockContention) || errors.Is(err, fsutil.ErrLockPathUnsafe) {
+		return fmt.Errorf("oracle adapter: %s is being written by another abcd, or its lock could not be taken, so the provider block was not written; retry", origin)
+	}
+	return err
+}
+
+// writeProviderBlockLocked is writeProviderBlock's read, change and write,
+// run under the file's lock.
+func writeProviderBlockLocked(p, name string, block map[string]any) error {
+	origin := layered.Config.MachineOrigin()
 	root := map[string]json.RawMessage{}
 	raw, refusal, err := fsutil.ReadDeclaration(p, layered.MaxFileBytes)
 	switch {
@@ -241,6 +267,10 @@ func writeProviderBlock(home, name string, block map[string]any) error {
 			return fmt.Errorf("oracle adapter: %s: oracle.api is not an object, so the provider block was not written", origin)
 		}
 	}
+	if _, exists := api[name]; exists {
+		return fmt.Errorf("oracle adapter: provider %s is already configured in %s; "+
+			"abcd never replaces a block unasked, so edit or remove it there to change it", name, origin)
+	}
 	enc, err := json.Marshal(block)
 	if err != nil {
 		return err
@@ -255,9 +285,6 @@ func writeProviderBlock(home, name string, block map[string]any) error {
 	body, err := json.MarshalIndent(root, "", "  ")
 	if err != nil {
 		return err
-	}
-	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
-		return fmt.Errorf("oracle adapter: ~/.abcd could not be created, so the provider block was not written")
 	}
 	if err := fsutil.WriteFileAtomic(p, append(body, '\n'), 0o600); err != nil {
 		return fmt.Errorf("oracle adapter: %s could not be written, so the provider block was not written", origin)

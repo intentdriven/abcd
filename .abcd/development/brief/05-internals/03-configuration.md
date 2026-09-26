@@ -303,8 +303,9 @@ staged worktree store, the run state an autonomous run's sessions share
 never created, itd-2609231434459890), the external credentials adapters resolve
 by name in `credentials.json` (refused unless it is a regular file this uid owns
 at mode 0600; `ahoy connect` adds one name at a time and never replaces a stored
-value — the interim source the credential store, itd-2609221017023290,
-replaces), the
+value, holding the file's lock across the read and the write as the provider
+block's write holds `config.json`'s, so concurrent setups lose nothing — the
+interim source the credential store, itd-2609221017023290, replaces), the
 machine's rule conventions in `rules.json` (the user layer of the rules loader,
 read-only and never created, itd-117 — see
 [the rules layers](#the-rules-layers--bundled-user-repo) below), user-scope memory for personal cross-project knowledge (a later

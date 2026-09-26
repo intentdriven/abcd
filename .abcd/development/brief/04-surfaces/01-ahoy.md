@@ -170,7 +170,8 @@ user-scope directory for machine-local state.
   config.json                    the machine layer of the layered configuration,
                                  read-only except for the provider blocks
                                  (oracle.api.<provider>) the provider setup writes,
-                                 and the only file a provider block may sit in
+                                 and the only file a provider block may sit in;
+                                 that write holds .config.json.lock beside it
   memory/                        user-scope memory (personal, cross-project — a later
                                  phase; the shipped store is repo-scope .abcd/memory/)
   sources/                       the local sources corpus /abcd:ingest and /abcd:consult
@@ -182,9 +183,10 @@ user-scope directory for machine-local state.
   credentials.json               external credentials by name (a hosting token for
                                  setting up a site, a provider's key), mode 0600;
                                  only the provider setup writes it, one new name at
-                                 a time, never replacing a stored value. The interim
-                                 source the credential store replaces
-                                 (itd-2609221017023290)
+                                 a time, never replacing a stored value, holding
+                                 .credentials.json.lock beside it across the read
+                                 and the write. The interim source the credential
+                                 store replaces (itd-2609221017023290)
   rules.json                     the machine's rule conventions, the user layer
                                  between the bundled domains and each repo's
                                  .abcd/rules.json, read-only; abcd never creates it

@@ -28,6 +28,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -147,7 +148,9 @@ const MaxValueBytes = 4096
 // unsafe file; and a name already holding a different value, because a stored
 // secret is never replaced by a second one unasked. The same value already
 // stored is no change (changed is false). The file is written atomically at
-// mode 0600, and ~/.abcd is created owner-only when it is absent.
+// mode 0600, and ~/.abcd is created owner-only when it is absent. The read,
+// the change and the write hold the store's lock (fsutil.WithFileLock, beside
+// the store), so concurrent writers never lose each other's entries.
 func SetMachine(home, name, value string) (changed bool, err error) {
 	if !nameRe.MatchString(name) {
 		return false, errors.New("credential: the name is not a plain credential name (lower case letters, digits, '.', '_' and '-')")
@@ -158,6 +161,33 @@ func SetMachine(home, name, value string) (changed bool, err error) {
 	if err := CheckValue(value); err != nil {
 		return false, err
 	}
+	dir := filepath.Join(home, ".abcd")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return false, fmt.Errorf("credential: ~/.abcd could not be created, so nothing was written")
+	}
+	// The store is read, changed and renamed into place, so a second writer
+	// between the read and the rename would lose this entry or its own; the
+	// write holds the store's lock across all three.
+	err = fsutil.WithFileLock(filepath.Join(dir, storeLockFileName), storeLockTimeout, func() error {
+		var werr error
+		changed, werr = setLocked(home, dir, name, value)
+		return werr
+	})
+	if errors.Is(err, fsutil.ErrLockContention) || errors.Is(err, fsutil.ErrLockPathUnsafe) {
+		return false, fmt.Errorf("credential: %s is being written by another abcd, or its lock could not be taken, so nothing was written; retry", StorePath)
+	}
+	return changed, err
+}
+
+// storeLockFileName is the lock every writer of the store takes, beside it.
+const storeLockFileName = "." + StoreFileName + ".lock"
+
+// storeLockTimeout bounds the wait for another writer of the store.
+var storeLockTimeout = 5 * time.Second
+
+// setLocked is SetMachine's read, change and write, run under the store's
+// lock.
+func setLocked(home, dir, name, value string) (bool, error) {
 	store, err := readStore(home)
 	if err != nil {
 		return false, err
@@ -174,10 +204,6 @@ func SetMachine(home, name, value string) (changed bool, err error) {
 	body, err := json.MarshalIndent(store, "", "  ")
 	if err != nil {
 		return false, errors.New("credential: the store could not be encoded")
-	}
-	dir := filepath.Join(home, ".abcd")
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return false, fmt.Errorf("credential: ~/.abcd could not be created, so nothing was written")
 	}
 	if err := fsutil.WriteFileAtomic(filepath.Join(dir, StoreFileName), append(body, '\n'), 0o600); err != nil {
 		return false, fmt.Errorf("credential: %s could not be written, so the credential was not stored", StorePath)

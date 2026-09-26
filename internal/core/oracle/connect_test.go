@@ -4,10 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -226,5 +229,80 @@ func TestConnectToALocalServerNeedsNoKey(t *testing.T) {
 	}
 	if got, _ := f.loadAPI().Provider("desk"); got.Key != "" {
 		t.Fatalf("a key name was recorded for a keyless provider: %+v", got)
+	}
+}
+
+// TestConcurrentConnectsKeepEveryKeyAndBlock: two setups that overlap must
+// not lose each other's key or provider block while each reports it wrote
+// them. Every connect's key resolves and every block reads back.
+func TestConcurrentConnectsKeepEveryKeyAndBlock(t *testing.T) {
+	const connects = 12
+	p := newProvFake(t, 200, chat("typesafe/jev-1.13", "ok"))
+	for round := 0; round < 3; round++ {
+		f := newFx(t)
+		var wg sync.WaitGroup
+		errs := make(chan error, connects)
+		start := make(chan struct{})
+		for i := 0; i < connects; i++ {
+			wg.Add(1)
+			go func(i int) {
+				defer wg.Done()
+				req := connectReq(f, p.base())
+				req.Provider = fmt.Sprintf("provider-%02d", i)
+				req.Key = fmt.Sprintf("throwaway-key-%02d", i)
+				<-start
+				_, err := Connect(context.Background(), req)
+				errs <- err
+			}(i)
+		}
+		close(start)
+		wg.Wait()
+		close(errs)
+		for err := range errs {
+			if err != nil {
+				t.Fatalf("round %d: Connect: %v", round, err)
+			}
+		}
+		c := f.loadAPI()
+		for i := 0; i < connects; i++ {
+			name := fmt.Sprintf("provider-%02d", i)
+			if _, ok := c.Provider(name); !ok {
+				t.Fatalf("round %d: the block for %s was lost by a concurrent connect", round, name)
+			}
+			if v, err := credential.Machine(f.roots.Home).Resolve(name); err != nil || v != fmt.Sprintf("throwaway-key-%02d", i) {
+				t.Fatalf("round %d: the key for %s was lost by a concurrent connect (%v)", round, name, err)
+			}
+		}
+	}
+}
+
+// TestConcurrentConnectsOfOneProviderWriteOneBlock: two setups of the same
+// provider both pass the check made before the call; the write re-checks
+// under the lock, so the second is refused rather than replacing the first.
+func TestConcurrentConnectsOfOneProviderWriteOneBlock(t *testing.T) {
+	const connects = 8
+	p := newProvFake(t, 200, chat("typesafe/jev-1.13", "ok"))
+	f := newFx(t)
+	var wg sync.WaitGroup
+	var won atomic.Int32
+	start := make(chan struct{})
+	for i := 0; i < connects; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			req := connectReq(f, p.base())
+			req.Home, req.Key = KeyHomeNone, ""
+			<-start
+			if _, err := Connect(context.Background(), req); err == nil {
+				won.Add(1)
+			} else if !strings.Contains(err.Error(), "already configured") {
+				t.Errorf("Connect: %v, want a refusal naming the block already configured", err)
+			}
+		}()
+	}
+	close(start)
+	wg.Wait()
+	if n := won.Load(); n != 1 {
+		t.Fatalf("%d concurrent setups of one provider reported success; want exactly one", n)
 	}
 }
