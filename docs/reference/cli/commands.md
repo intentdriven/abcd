@@ -1220,6 +1220,12 @@ is written to --out.
       --verify              refuse (exit 1) unless the committed catalog pins this archive's address and digest; without it, a tree with an uncommitted change refuses (exit 2)
 ```
 
+#### `abcd launch receipts`
+
+Run the release job's semantic-receipt gate locally, before the merge: Writes nothing; refuses with exit 1 when the release job would refuse the receipts.
+
+**Usage:** `abcd launch receipts`
+
 #### `abcd launch scaffold`
 
 Scaffold the changelog-driven release gate: Writes the release workflows and runbook; refuses to overwrite a hand-edited one without --confirm.

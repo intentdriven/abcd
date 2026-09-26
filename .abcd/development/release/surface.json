@@ -1629,6 +1629,12 @@
       ]
     },
     {
+      "path": "abcd launch receipts",
+      "hidden": false,
+      "sentence": "Run the release job's semantic-receipt gate locally, before the merge: Writes nothing; refuses with exit 1 when the release job would refuse the receipts.",
+      "flags": []
+    },
+    {
       "path": "abcd launch scaffold",
       "hidden": false,
       "sentence": "Scaffold the changelog-driven release gate: Writes the release workflows and runbook; refuses to overwrite a hand-edited one without --confirm.",

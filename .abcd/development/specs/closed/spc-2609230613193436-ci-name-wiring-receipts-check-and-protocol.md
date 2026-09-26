@@ -9,8 +9,8 @@ production_mode: hand-written
 
 ## Summary
 
-The remainder of [itd-93](../../intents/planned/itd-93-abcd-scaffolds-a-hardened-changelog-driven-release-gate-into.md)
-that [spc-14](../closed/spc-14-abcd-scaffolds-a-hardened-changelog-driven-release-gate-into.md) did not deliver. spc-14 closed on
+The remainder of [itd-93](../../intents/shipped/itd-93-abcd-scaffolds-a-hardened-changelog-driven-release-gate-into.md)
+that [spc-14](spc-14-abcd-scaffolds-a-hardened-changelog-driven-release-gate-into.md) did not deliver. spc-14 closed on
 2026-09-23 with acceptance criteria 3, 4 and 6 delivered and criteria 1 and 5 in part: `launch scaffold` writes `release.yml`, `auto-release.yml` and the runbook with a `GITHUB_TOKEN`-only gate, the bare render states that no semantic detector is configured, a re-run is an idempotent no-op that refuses a hand edit, and the rehearsal publishes nothing. This spec carries what did not ship.
 
 The delivered part was already announced in the [0.4.1] changelog section,

@@ -195,7 +195,7 @@ func TestFindRecordFileProbe(t *testing.T) {
 // A SHA-256 repo's commits are 64 hex chars; the shape check must accept them
 // (iss-356 item 5): the value is a provenance stamp, not a filter, and spc-25's
 // own rationale is "must not refuse a legitimate resolution". The sibling
-// receipt gate (lint.go receiptShaRe) already accepts {7,64}.
+// receipt gate (lint.go receiptShaRe) accepts a 64-hex sha too.
 func TestResolveAcceptsASHA256Commit(t *testing.T) {
 	repo, ir, issID := provenanceFixture(t)
 	sha := strings.Repeat("0123abcd", 8) // 64 hex chars
