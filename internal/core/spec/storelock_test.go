@@ -172,3 +172,29 @@ func TestTheSpecStoreImportsNoEarlierLock(t *testing.T) {
 		}
 	}
 }
+
+// Close and Discard on a tree with no spec store have nothing to move or
+// remove, so they must not create the store to lock it: Close refuses the
+// id as not found and Discard succeeds, and neither plants
+// .abcd/development/specs/ (iss-2609262342345159).
+func TestAWriterOnATreeWithNoSpecStorePlantsNone(t *testing.T) {
+	t.Run("close", func(t *testing.T) {
+		root := t.TempDir()
+		if _, err := Close(root, "spc-1"); err == nil || !strings.Contains(err.Error(), "not found") {
+			t.Errorf("Close with no store must refuse the id as not found, got %v", err)
+		}
+		if _, err := os.Lstat(filepath.Join(root, SpecsRelDir)); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("Close planted a spec store (err %v)", err)
+		}
+	})
+	t.Run("discard", func(t *testing.T) {
+		root := t.TempDir()
+		sp := Spec{Path: filepath.Join(SpecsRelDir, StatusOpen, "spc-1-my-feature.md")}
+		if err := Discard(root, sp); err != nil {
+			t.Errorf("Discard with no store has nothing to remove and must succeed, got %v", err)
+		}
+		if _, err := os.Lstat(filepath.Join(root, SpecsRelDir)); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("Discard planted a spec store (err %v)", err)
+		}
+	})
+}

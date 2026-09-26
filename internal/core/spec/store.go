@@ -329,10 +329,18 @@ func WithStoreLock(repoRoot string, fn func() error) error {
 // WithStoreLockWithin is WithStoreLock with its own acquisition budget; a lock
 // not granted within it is ErrStoreLockBusy, and fn has not run.
 func WithStoreLockWithin(repoRoot string, timeout time.Duration, fn func() error) error {
-	if _, err := os.Lstat(filepath.Join(repoRoot, SpecsRelDir)); errors.Is(err, fs.ErrNotExist) {
+	if !storeExists(repoRoot) {
 		return fn()
 	}
 	return withStoreLock(repoRoot, timeout, fn)
+}
+
+// storeExists reports whether the tree has a spec store. Only an absent one
+// reads as false: any other Lstat failure is left for the lock's own open to
+// report.
+func storeExists(repoRoot string) bool {
+	_, err := os.Lstat(filepath.Join(repoRoot, SpecsRelDir))
+	return !errors.Is(err, fs.ErrNotExist)
 }
 
 // Close moves a spec file open/ -> closed/ via os.Rename (atomic on one
@@ -341,10 +349,15 @@ func WithStoreLockWithin(repoRoot string, timeout time.Duration, fn func() error
 // moving it is a later reconcile concern that consumes Spec.Intent. The read
 // and the rename are one critical section under the store's lock, so a writer
 // holding it — a repoint between its read and its write — finishes before the
-// spec moves.
+// spec moves. A tree with no spec store holds no spec to close, and taking the
+// lock would create the store, so the id is refused as not found and nothing
+// is planted.
 func Close(repoRoot, specID string) (Spec, error) {
 	if !recordid.ValidSpecID(specID) {
 		return Spec{}, fmt.Errorf("spec: id %q must match ^spc-[0-9]+$", specID)
+	}
+	if !storeExists(repoRoot) {
+		return Spec{}, fmt.Errorf("spec: %s not found", specID)
 	}
 	var sp Spec
 	err := withStoreLock(repoRoot, mintLockTimeout, func() error {
@@ -398,12 +411,16 @@ func closeLocked(repoRoot, specID string) (Spec, error) {
 // store's lock, so the removal cannot interleave with another writer's read and
 // write of the same file — a repoint writing it back would resurrect it. Only a
 // spec in open/, named as the mint names one, is removed; any other path is
-// refused before anything is touched. A spec already gone is not an error.
+// refused before anything is touched. A spec already gone is not an error, and
+// a tree with no spec store has none to remove, so nothing is planted there.
 func Discard(repoRoot string, sp Spec) error {
 	rel := filepath.ToSlash(sp.Path)
 	name := path.Base(rel)
 	if rel != path.Join(filepath.ToSlash(SpecsRelDir), StatusOpen, name) || !specFileRe.MatchString(name) {
 		return fmt.Errorf("spec: refusing to discard %q, which is not a spec in %s", sp.Path, filepath.Join(SpecsRelDir, StatusOpen))
+	}
+	if !storeExists(repoRoot) {
+		return nil
 	}
 	return withStoreLock(repoRoot, mintLockTimeout, func() error {
 		if err := os.Remove(filepath.Join(repoRoot, filepath.FromSlash(rel))); err != nil && !errors.Is(err, fs.ErrNotExist) {
