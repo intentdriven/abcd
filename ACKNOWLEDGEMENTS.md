@@ -166,6 +166,11 @@ Ideas and methodologies that shaped the design — not code abcd depends on.
   fix) while rejecting their implicit background network check: abcd implements
   the same grammar over disk-only sources, and the network answers only an
   explicit `--check` (adr-38).
+- **Homebrew (BSD-2-Clause)** — the package manager the tool registry's install
+  steps run (`brew install <formula>`, on macOS and on Linux), chosen as the one
+  manager with a single fixed command on both supported platforms, so an
+  explained install is an argv abcd can show exactly and run only on a yes
+  (itd-63). <https://brew.sh>
 - **git's editor hand-off (`GIT_EDITOR`, then `$VISUAL`, then `$EDITOR`)** — the
   order and the shape bare `abcd report` follows to open the report skeleton:
   `$VISUAL` before `$EDITOR`, run through the shell so the setting may carry

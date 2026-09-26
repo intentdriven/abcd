@@ -117,6 +117,13 @@ plugin surface, and a future MCP server share one engine.
   and it holds the seam a specialist link checker would later slot into — the
   baseline schema and the lint rules are the contract, the fetcher is a
   replaceable producer.
+- **`core/tools/`** — the explain-then-install mode (itd-63): the curated
+  registry of the external tools abcd knows, the plain-language explanation a
+  verb gives when one is missing, and the one place abcd runs a package
+  manager. It is a trust boundary, and a mode rather than a surface: a verb
+  hands `Install` a confirmation its front door supplies, and what runs is the
+  registry's fixed argv, never composed from input, never a shell, never in CI,
+  and never a program that resolves inside the repository.
 - **`core/lifeboat/`** — the brief↔lifeboat contract. `mapping.go` is the single
   source of truth for which brief section a lifeboat fills from which source
   tier, and it is rendered into the brief's `00-meta.md` with a test asserting
