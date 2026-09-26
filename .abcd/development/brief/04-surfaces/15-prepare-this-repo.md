@@ -125,7 +125,7 @@ then ratified ADRs, then everything else read for understanding only.
 - **Never commit downstream assets.** Anything tooling will later provide
   (persona data, lint-config JSON copied in by hand, content copied from the
   abcd record) is applied, not copied. Only content about the target repository
-  is committed. The config files `abcd ahoy install` seeds, `.abcd/docs-lint.json`
+  is committed. The config files the install seeds, `.abcd/docs-lint.json`
   among them, are not downstream assets: each is the repository's own once it is
   written (the docs-lint config carries its banned-names family and its
   house-style answer), and the gates read it on every commit, so it is committed.
