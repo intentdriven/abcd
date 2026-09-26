@@ -431,7 +431,9 @@ func specLinkCheck(it Intent, store spec.Store) (ReadyCheck, spec.Spec) {
 		c.Remedy = fmt.Sprintf("restore %s or correct spec_id via `abcd intent link`", it.SpecID)
 		return c, spec.Spec{}
 	}
-	if sp.Intent != it.ID {
+	// A bundle's shared spec realises every member it lists, not only the one
+	// its `intent:` names (itd-34).
+	if !sp.Names(it.ID) {
 		c.Detail = fmt.Sprintf("bidirectional link disagrees: %s names %s, but %s claims %s", it.ID, it.SpecID, sp.ID, sp.Intent)
 		c.Remedy = "correct the spec's `intent:` field or the intent's spec_id so both sides agree"
 		return c, spec.Spec{}

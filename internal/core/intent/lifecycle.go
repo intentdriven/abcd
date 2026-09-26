@@ -84,6 +84,9 @@ func parseIntent(relPath, content, bucket string) (Intent, error) {
 		Bucket: bucket,
 		Path:   relPath,
 	}
+	if b := fields[BundleKey].Value; !frontmatter.IsNull(b) {
+		it.Bundle = b
+	}
 	if f, ok := fields[RelatedIssuesKey]; ok && !frontmatter.IsNull(f.Value) {
 		it.RelatedIssues = frontmatter.StringList(f.Value)
 	}
@@ -745,6 +748,10 @@ func Reconcile(repoRoot, specID, impact string, remainder RemainderRequest) (Rec
 	sp, ok := store.Lookup(specID)
 	if !ok {
 		return ReconcileResult{}, fmt.Errorf("intent: spec %s not found", specID)
+	}
+	// A bundle's shared spec ships every member together (itd-34).
+	if sp.Bundle != "" && len(sp.Intents) > 0 {
+		return reconcileBundle(repoRoot, store, sp, impact, remainder)
 	}
 
 	// Resolve the linked intent from the spec's intent: field, validated before it
