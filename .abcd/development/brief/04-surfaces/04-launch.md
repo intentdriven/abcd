@@ -31,7 +31,8 @@ leg keys on `go.mod`, never on the kind. One
 reader in `internal/core/launch` validates the file for every launch verb and for
 `ahoy`, whose `artefact.missing` gap writes it — kind `plugin` without a question
 for a repository carrying a plugin manifest, otherwise the kind the operator
-answers. An unknown kind or a malformed declaration refuses every verb before
+answers. An unknown kind or a malformed declaration — an unknown or repeated key, or a
+lockstep entry key in another case, among them — refuses every verb before
 anything is written, naming the kind and the accepted set. The preview and the
 scaffold choose what to read and write by the kind, so they refuse a repository
 that has declared none, naming the file and the kinds and never a missing-file

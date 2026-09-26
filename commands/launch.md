@@ -58,6 +58,10 @@ Every verb runs against what the repository says it ships, declared once in
 - `site` — the release-rendered site opt-in, read and validated but not yet
   acted on.
 
+The keys are read exactly as written: a key the declaration does not admit, a
+key repeated at any level, and a lockstep entry key spelt in another case
+(`PATH` for `path`) are each refused, before anything is written.
+
 `ahoy install` writes the declaration: a repository carrying
 `.claude-plugin/plugin.json` adopts `kind: plugin` without being asked, and any
 other is asked its kind. The preview and the scaffold choose what to read and

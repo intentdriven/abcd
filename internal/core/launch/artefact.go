@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/core/jsonstrict"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
@@ -123,6 +124,12 @@ func LoadArtefact(repoRoot string) (Artefact, error) {
 // ParseArtefact validates a declaration's bytes. It is exported for the writer
 // in ahoy, which proves what it is about to write reads back.
 func ParseArtefact(data []byte) (Artefact, error) {
+	// A repeated key, at any level, is refused before the decode reads it
+	// last-wins: {"kind": "wasm", "kind": "binary"} names two kinds, and the
+	// reader must not pick one (iss-2609260149249724).
+	if err := jsonstrict.NoDuplicateKeys(data); err != nil {
+		return Artefact{}, preflight("the artefact declaration %s: %v", ArtefactRelPath, err)
+	}
 	var raw map[string]json.RawMessage
 	dec := json.NewDecoder(bytes.NewReader(data))
 	if err := dec.Decode(&raw); err != nil || raw == nil || dec.More() {
@@ -179,11 +186,11 @@ func parseLockstep(v json.RawMessage) ([]LockstepFile, error) {
 	for _, e := range entries {
 		var f LockstepFile
 		var p string
-		obj := json.NewDecoder(bytes.NewReader(e))
-		obj.DisallowUnknownFields()
 		if err := json.Unmarshal(e, &p); err == nil {
 			f.Path = p
-		} else if err := obj.Decode(&f); err != nil {
+		} else if obj, ok := parseLockstepEntry(e); ok {
+			f = obj
+		} else {
 			return nil, preflight("the artefact declaration %s: a lockstep entry is neither a path nor {\"path\", \"json_pointer\"}", ArtefactRelPath)
 		}
 		// The path is committed configuration data joined onto the repository
@@ -205,6 +212,33 @@ func parseLockstep(v json.RawMessage) ([]LockstepFile, error) {
 		files = append(files, f)
 	}
 	return files, nil
+}
+
+// parseLockstepEntry reads a lockstep object entry with its keys matched
+// exactly. encoding/json binds a field name case-insensitively, so a struct
+// decode would read {"PATH": ...} as a path while the top level refuses "Kind";
+// an entry is refused on any key but path and json_pointer as spelt.
+func parseLockstepEntry(e json.RawMessage) (LockstepFile, bool) {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(e, &raw); err != nil || raw == nil {
+		return LockstepFile{}, false
+	}
+	var f LockstepFile
+	for key, v := range raw {
+		var dst *string
+		switch key {
+		case "path":
+			dst = &f.Path
+		case "json_pointer":
+			dst = &f.Pointer
+		default:
+			return LockstepFile{}, false
+		}
+		if err := json.Unmarshal(v, dst); err != nil {
+			return LockstepFile{}, false
+		}
+	}
+	return f, true
 }
 
 // MarshalArtefact renders a declaration the way ahoy writes it: indented, with

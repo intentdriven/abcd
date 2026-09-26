@@ -104,3 +104,29 @@ func TestLoadArtefactRefusesMalformedDeclarations(t *testing.T) {
 		})
 	}
 }
+
+// A declaration is read the way it is written: a repeated key is refused
+// rather than read last-wins, and a lockstep entry's keys are matched exactly,
+// so a case-folded spelling encoding/json would bind is refused as the top
+// level already refuses "Kind" (iss-2609260149249724).
+func TestParseArtefactRefusesRepeatedAndCaseFoldedKeys(t *testing.T) {
+	cases := map[string]struct{ body, want string }{
+		"repeated kind":        {`{"kind": "application", "kind": "binary"}`, `"kind"`},
+		"kind case twin":       {`{"kind": "binary", "KIND": "plugin"}`, `"KIND"`},
+		"repeated entry path":  {`{"kind": "binary", "lockstep": [{"path": "a.json", "path": "b.json"}]}`, `"path"`},
+		"upper-case path":      {`{"kind": "binary", "lockstep": [{"PATH": "a.json"}]}`, "lockstep entry"},
+		"upper-case pointer":   {`{"kind": "binary", "lockstep": [{"path": "a.json", "JSON_POINTER": "/v"}]}`, "lockstep entry"},
+		"mixed-case entry key": {`{"kind": "binary", "lockstep": [{"Path": "a.json"}]}`, "lockstep entry"},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			art, err := ParseArtefact([]byte(c.body))
+			if err == nil {
+				t.Fatalf("accepted %s as %+v", c.body, art)
+			}
+			if !strings.Contains(err.Error(), c.want) {
+				t.Errorf("the refusal does not name %q: %v", c.want, err)
+			}
+		})
+	}
+}
