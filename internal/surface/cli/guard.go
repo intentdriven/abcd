@@ -128,6 +128,12 @@ func newGuardCommand(asJSON *bool) *cobra.Command {
 			"a hazard inside a NON-shell interpreter's payload (`python -c`, `perl -e`) —\n" +
 			"one opaque token the tokenizer cannot read, today a silent allow (a warn for\n" +
 			"it is a recorded design target, not yet raised),\n" +
+			"a lone substitution standing as the whole command (`$(cat msg.txt)`,\n" +
+			"`$(date)`), which can be any program but matches no entry with no\n" +
+			"operand after it, and so a document printed that way through any shape\n" +
+			"but exactly `cat <<DELIM`, a newline, the body, the delimiter line and\n" +
+			"blanks (`/bin/cat`, `command cat`, `cat -`, a redirection or a command\n" +
+			"beside it, a backslash-newline in it, a `${…}` around it),\n" +
 			"or a dangerous form no entry describes. Coverage is what the registry\n" +
 			"names.\n\n" +
 			"The candidate comes from --command, or from stdin when the flag is absent.\n" +

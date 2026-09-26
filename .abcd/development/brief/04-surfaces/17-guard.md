@@ -246,7 +246,17 @@ substitution (`$VAR`, `${VAR:-git}`), wherever it stands — as the command's
 program name, as a flag, or inside a payload the guard does read — because the
 guard sees the variable and not what the shell will expand it to, and warning on
 every variable would bury the warnings that matter; so the obvious evasions above
-do not include a hazard spelled through a variable. The check's own help text is the fuller statement of the same list,
+do not include a hazard spelled through a variable. Nor does an allow see what a
+lone substitution prints when it stands as the whole command (`$(cat msg.txt)`,
+`$(date)`): such a name can be any program, but with no operand after it no
+entry matches, so it allows by the posture above, where an allow means no entry
+matched. What a substitution prints is read only for the exact shape `cat
+<<DELIM`, a newline, the body, the delimiter line and blanks. `/bin/cat`,
+`command cat`, `cat -`, a redirection after the delimiter word, a
+backslash-newline before the `<<`, a command after the document, a
+backslash-newline after a backtick's document, and an output inside a `${…}`
+all leave it unknown, so each of those standing alone as the command allows,
+though bash runs what it prints; handed to `sh -c` as its string, each warns. The check's own help text is the fuller statement of the same list,
 kept beside the code that implements it, with a worked example for each and the
 near-misses that *are* read spelled out beside them.
 

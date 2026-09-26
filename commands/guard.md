@@ -275,7 +275,16 @@ variable, not what the shell expands it to, an IFS the shell already holds when
 the line starts (every line is read from the default IFS), a hazard inside a non-shell interpreter's payload (`python -c`,
 `perl -e`) — one opaque token the tokenizer cannot read, today a silent allow, not
 a warn (a warn for it is a recorded design target, not yet implemented), or a
-dangerous form no entry describes.
+dangerous form no entry describes. Nor does an allow see what a lone substitution
+prints when it stands as the whole command (`$(cat msg.txt)`, `$(date)`): the
+name can be any program, but with no operand after it no entry matches, so it
+allows, because an allow means no entry matched. What a substitution prints is
+read only for the exact shape `cat <<DELIM`, a newline, the body, the delimiter
+line and blanks; `/bin/cat`, `command cat`, `cat -`, a redirection after the
+delimiter word, a backslash-newline before the `<<`, a command after the
+document, a backslash-newline after a backtick's document, and an output inside
+a `${…}` all leave it unknown, so each of those alone as the command allows,
+though bash runs what it prints (handed to `sh -c` as its string, each warns).
 Coverage is what the registry names. Say exactly this if a user asks about
 coverage — never that the guard cleared the command.
 

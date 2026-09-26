@@ -588,6 +588,12 @@ from the default IFS),
 a hazard inside a NON-shell interpreter's payload (`python -c`, `perl -e`) —
 one opaque token the tokenizer cannot read, today a silent allow (a warn for
 it is a recorded design target, not yet raised),
+a lone substitution standing as the whole command (`$(cat msg.txt)`,
+`$(date)`), which can be any program but matches no entry with no
+operand after it, and so a document printed that way through any shape
+but exactly `cat <<DELIM`, a newline, the body, the delimiter line and
+blanks (`/bin/cat`, `command cat`, `cat -`, a redirection or a command
+beside it, a backslash-newline in it, a `${…}` around it),
 or a dangerous form no entry describes. Coverage is what the registry
 names.
 
