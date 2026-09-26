@@ -1,6 +1,7 @@
 package scaffold
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -261,5 +262,38 @@ func TestBareReleaseIsGatePlumbingPlusANamedEmptyBuildJob(t *testing.T) {
 		if strings.Contains(release, "go build") {
 			t.Errorf("gate=%v: the release job still builds with a guessed command", gate)
 		}
+	}
+}
+
+// The Go toolchain is reported only for a repository that is a Go module: its
+// workflows point setup-go at go.mod, so without one there is no toolchain to
+// name, and a report of the host's default would describe nothing the release
+// uses.
+func TestScaffoldReportsAGoVersionOnlyForAGoModule(t *testing.T) {
+	dir := kindRepo(t, "application")
+	if err := os.Remove(filepath.Join(dir, "go.mod")); err != nil {
+		t.Fatal(err)
+	}
+	rep, err := Scaffold(Request{RepoRoot: dir})
+	if err != nil {
+		t.Fatalf("scaffold: %v", err)
+	}
+	if rep.GoVersion != "" {
+		t.Errorf("a repository with no go.mod reported go %q", rep.GoVersion)
+	}
+	data, err := json.Marshal(rep)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), `"go_version"`) {
+		t.Errorf("the JSON report names a go version for a repository with no go.mod: %s", data)
+	}
+
+	rep, err = Scaffold(Request{RepoRoot: kindRepo(t, "application")})
+	if err != nil {
+		t.Fatalf("scaffold: %v", err)
+	}
+	if rep.GoVersion != "1.22" {
+		t.Errorf("a Go module reported go %q, want its go directive 1.22", rep.GoVersion)
 	}
 }

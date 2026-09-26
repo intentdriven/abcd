@@ -144,3 +144,17 @@ func TestLaunchScaffoldForABinaryWithItsOwnReleaseWorkflowPrintsTheStanza(t *tes
 		t.Errorf("the repository's own release workflow changed:\n%s", got)
 	}
 }
+
+// The scaffold header names a Go toolchain only for a Go module; a declared
+// binary with no go.mod has none to name.
+func TestLaunchScaffoldHeaderNamesNoGoToolchainWithoutGoMod(t *testing.T) {
+	r := binaryShipFixture(t)
+	out, err := shipIn(t, r, "launch", "scaffold")
+	if err != nil {
+		t.Fatalf("scaffold: %v\n%s", err, out)
+	}
+	header, _, _ := strings.Cut(string(out), "\n")
+	if !strings.Contains(header, "kind binary, branch ") || strings.Contains(header, "go ") {
+		t.Errorf("the scaffold header for a repository with no go.mod: %q, want the kind and branch and no go toolchain", header)
+	}
+}

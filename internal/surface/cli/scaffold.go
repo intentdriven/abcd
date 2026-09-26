@@ -86,8 +86,14 @@ func renderScaffold(w io.Writer, rep scaffold.Report, blocked bool) {
 	case rep.NoOp:
 		verdict = "no-op (already current)"
 	}
-	fmt.Fprintf(w, "abcd launch scaffold — %s (kind %s, branch %s, go %s)\n",
-		verdict, termsafe.Sanitize(string(rep.Kind)), termsafe.Sanitize(rep.DefaultBranch), termsafe.Sanitize(rep.GoVersion))
+	// The toolchain is named only for a Go module; a repository with no go.mod
+	// resolves none (the report leaves GoVersion empty).
+	toolchain := ""
+	if rep.GoVersion != "" {
+		toolchain = ", go " + termsafe.Sanitize(rep.GoVersion)
+	}
+	fmt.Fprintf(w, "abcd launch scaffold — %s (kind %s, branch %s%s)\n",
+		verdict, termsafe.Sanitize(string(rep.Kind)), termsafe.Sanitize(rep.DefaultBranch), toolchain)
 	if len(rep.CIChecks) > 0 {
 		fmt.Fprintf(w, "  merge gate: %s (require these on %s)\n",
 			termsafe.Sanitize(strings.Join(rep.CIChecks, ", ")), termsafe.Sanitize(rep.DefaultBranch))

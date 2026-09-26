@@ -76,7 +76,9 @@ type Report struct {
 	// into them: they point setup-go at go.mod, so this reports the go directive
 	// the run read. It is reported because an adopter should see which toolchain
 	// their release lane is about to use, and see it before the first tag.
-	GoVersion string `json:"go_version"`
+	// Empty, and absent from the JSON, for a repository with no go.mod: there is
+	// no toolchain its release resolves, so none is named.
+	GoVersion string `json:"go_version,omitempty"`
 	// CIChecks are the managed repo's own pull-request check names the
 	// scaffolded files were wired to (DeriveCIChecks); empty when none was found.
 	CIChecks []string      `json:"ci_checks"`
@@ -126,6 +128,9 @@ func Scaffold(req Request) (Report, error) {
 		subs = GateSubstitutions(branch, own)
 	}
 	subs.GoModule = isGoModule(req.RepoRoot)
+	if !subs.GoModule {
+		goVersion = ""
+	}
 	subs.CIChecks = DeriveCIChecks(req.RepoRoot)
 	if subs.CIChecks == nil {
 		subs.CIChecks = []string{} // --json reports an empty list, never null
