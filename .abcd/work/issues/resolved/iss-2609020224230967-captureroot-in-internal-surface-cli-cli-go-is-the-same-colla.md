@@ -9,6 +9,10 @@ found_during: "autonomous-run-2026-09-01"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/surface/cli/cli.go"
+resolution: "captureRoot resolves three-state: git's toplevel, else the rules root's plausibility- and ownership-gated marker resolution, else cwd, so a repository git will not answer for is no longer collapsed onto the working directory."
+impact: fix
+resolved_by:
+  commit: "fdd6624d"
 ---
 
 captureRoot (`internal/surface/cli/cli.go:3794`) is the same collapse the rules
@@ -60,3 +64,7 @@ should land before any new caller is added without a root-SHA gate in front of
 it, because the gate is what is holding this closed, not the function.
 
 AMENDED 2026-09-09. The adjacent front-door defect this record was read against — iss-2609090951291524, every capture verb taking the working directory as the repo root — is fixed, and captureRoot gained no new callers in the fixing change. The capture verbs resolve through capture.LedgerRoot, which asks git and refuses the two states captureRoot collapses onto cwd, deliberately rather than reusing this function while it still collapses them. So the condition this record sets is intact: the reading verbs at reading.go:56, :121 and :237 remain the one ungated caller set, and the fix wanted here — three-state through gitutil.RepoShapedRoot, like the two siblings that already do it — is unchanged and still wanted before the next ungated caller is added.
+
+## Grounds
+
+- pursued: from a subdirectory of a repository git cannot answer for, captureRoot names the checkout, not the subdirectory; shown wrong if TestCaptureRootBoundsARepositoryGitWillNotAnswerFor returns the subdirectory

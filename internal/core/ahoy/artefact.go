@@ -97,7 +97,7 @@ func (a *applyCtx) stepArtefact() {
 		a.refuse("could not write " + launch.ArtefactRelPath + ": " + errText(err))
 		return
 	}
-	a.note(launch.ArtefactRelPath)
+	a.note(writeArtefactKind, launch.ArtefactRelPath)
 	if note != "" {
 		a.refuse(note)
 	}

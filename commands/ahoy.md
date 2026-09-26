@@ -75,9 +75,14 @@ them. If `folder_kind` is `unmanaged-folder`, note there is nothing to act on
 
 **This writes.** It applies the actionable gaps the detection pass found — the
 marker block (only where `--docs-target` names a conventions file; the
-default, `skip`, names none), the `.abcd/` scaffolding, the owned `PATH` entry. Report the
-returned `status`, what changed, and any `notes` — a note is a refusal, stating
-something abcd deliberately did not do and why. The engine prompts before an
+default, `skip`, names none), the `.abcd/` scaffolding, the owned `PATH` entry. Lead
+the report with the returned `headline`, then each `summary` item in its own
+three parts: `what` it is, `why` it matters, and the `action`, if any, the user
+should take. These are abcd's own plain words for the product thinker and the
+technical facilitator; relay them rather than rewording, and keep the `refs`
+(the exact paths and identifiers each item explains) for anyone who asks. Then
+report any `notes` — a note is a refusal, stating something abcd deliberately
+did not do and why. The engine prompts before an
 ambiguous adoption, so surface any prompt to the user rather than answering it
 for them.
 
@@ -124,6 +129,15 @@ transcript shows what was asked and what it was answered — read it back rather
 than assuming. Under `set -o pipefail` the pipeline reports 141: `yes` takes
 SIGPIPE when abcd stops reading, by design — judge the run by abcd's own output
 and exit status, not the pipeline's.
+
+**Every value question arrives explained.** A question that picks one of
+several values (`visibility`, `docs_target`, `oracle_backend`, `scan_deep`, the
+house-style question and each status-line element) is printed with abcd's own
+explanation above it: one paragraph saying what is being decided, then one
+line per answer saying what that answer means, including what it asks of the
+user (keys, tools, cost). When you relay such a question, relay that
+explanation verbatim with it; never describe an answer in your own words, and
+never offer an answer the question does not list.
 
 That is a channel for passing on an answer the user has GIVEN — ask first, then
 pipe; it is never a licence to answer on their behalf. Note that `yes |`

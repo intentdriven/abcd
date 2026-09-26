@@ -59,7 +59,7 @@ func Vintage(cwd string) VintageStatus {
 	mode := detectInstallMode(pluginRoot, pluginOK)
 	pinTag := ""
 	if pluginOK {
-		pinTag = readPinnedTag(pluginRoot)
+		pinTag = readPinnedTag(pluginRoot, abs)
 	}
 	return vintageFrom(currentVintage(), mode, abs, core.Version, pinTag)
 }
@@ -224,11 +224,18 @@ func VersionTransition(cwd string) (recorded, running string, changed bool) {
 // versionTransitionFrom is the pure comparison, split so the change/no-change
 // branches are testable without a fixture config or a re-stamped core.Version.
 func versionTransitionFrom(recorded, running string) (from, to string, changed bool) {
-	if running == "" || running == "dev" || recorded == "" {
+	// A dev build on either side is no transition: a dev stamp can never
+	// reconcile against a release, and re-stamping it would flap the tracked
+	// config between dev and release installs (iss-2608241115259170).
+	if isDevOrUnknown(running) || isDevOrUnknown(recorded) {
 		return recorded, running, false
 	}
 	return recorded, running, recorded != running
 }
+
+// isDevOrUnknown reports a version that cannot take part in a comparison: none
+// recorded, or a local dev build's.
+func isDevOrUnknown(v string) bool { return v == "" || v == "dev" }
 
 // recordedSetupVersion reads meta.setup_version from the repo config, or "" when
 // it is absent or unreadable.
@@ -251,11 +258,15 @@ func recordedSetupVersion(cwd string) string {
 // root's .data-dir stamp (pluginDataDir). The same precedence lives in
 // internal/surface/cli/skew.go's readSkewMeta; the two readers should be
 // consolidated if either record changes shape again.
-func readPinnedTag(pluginRoot string) string {
+func readPinnedTag(pluginRoot, cwd string) string {
 	if tag := metaReleaseTag(filepath.Join(pluginRoot, ".binary-meta")); tag != "" {
 		return tag
 	}
-	if data := pluginDataDir(pluginRoot).dir; data != "" {
+	// The data directory passes the same shape check as every other reader of
+	// it (dataDirHazard): a relative, in-repository or world-writable one is a
+	// value the harness never produces, and its record would otherwise supply
+	// the tag staleBinaryRefusal trusts (iss-2609020630242279).
+	if data := pluginDataDir(pluginRoot).dir; data != "" && dataDirHazard(data, cwd) == "" {
 		return metaReleaseTag(filepath.Join(data, "cache", "binary-meta"))
 	}
 	return ""

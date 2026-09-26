@@ -9,6 +9,14 @@ found_during: "autonomous-run-2026-09-01"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/ahoy/vintage.go"
+resolution: "readPinnedTag gates the data directory through dataDirHazard, and the skew notice's readSkewMeta sibling does the same through ahoy.PluginDataDirHazard."
+impact: fix
+resolved_by:
+  commit: "85749fd7"
 ---
 
 readPinnedTag in internal/core/ahoy/vintage.go still reads CLAUDE_PLUGIN_DATA/cache/binary-meta without dataDirHazard, the one reader of that variable the owned-copy hardening did not route through the check. An environment-chosen relative, in-repo or world-writable data directory therefore supplies release_tag to currentVintage, which feeds staleBinaryRefusal, so a wrong vintage claim can suppress the stale-binary refusal that gates install logic. No write is demonstrated; the consequence is a wrong vintage claim. The fix is the same dataDirHazard gate at this reader, or a documented statement that the vintage line is display-only if that is decided.
+
+## Grounds
+
+- pursued: no release tag or skew record is read from a relative, in-repository or world-writable data directory; shown wrong if TestReadPinnedTagRefusesAHazardousDataDir or TestReadSkewMetaRefusesAHazardousDataDir reads a record from one

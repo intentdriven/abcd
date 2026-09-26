@@ -549,7 +549,7 @@ func banlistRoot(w io.Writer) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if top, err := gitutil.Run(cwd, "rev-parse", "--show-toplevel"); err == nil && top != "" {
+	if top, err := gitutil.Toplevel(cwd); err == nil {
 		return top, nil
 	}
 	return rulesRoot(cwd, w), nil

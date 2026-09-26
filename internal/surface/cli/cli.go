@@ -2986,6 +2986,18 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 			}
 			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
 				fmt.Fprintf(w, "abcd ahoy install — %s\n", res.Status)
+				// Core's plain summary first (iss-164): what changed for the
+				// person, why it matters and what to do. The exact record of
+				// paths and identifiers follows as detail.
+				if res.Headline != "" {
+					fmt.Fprintf(w, "\n%s\n", res.Headline)
+				}
+				for _, it := range res.Summary {
+					fmt.Fprintf(w, "\n  - %s\n    %s\n    %s\n", it.What, it.Why, it.Action)
+				}
+				if len(res.Summary) > 0 {
+					fmt.Fprint(w, "\ndetail:\n")
+				}
 				for _, c := range res.Changes {
 					fmt.Fprintf(w, "  changed: %s\n", c)
 				}
@@ -3377,7 +3389,19 @@ func (p *stdinPrompter) Confirm(question string) bool {
 	return line == "y" || line == "yes"
 }
 
+// Prompt renders core's canonical explanation of the question above it (what
+// is being decided, then what each answer means), so the person answering, or
+// the host agent relaying the question to them, reads abcd's own words rather
+// than inventing them (iss-163). The question line itself is unchanged, so a
+// scripted answer stream and a transcript still line up with it. A key core
+// has no help for is asked bare: the door never writes help of its own.
 func (p *stdinPrompter) Prompt(key string, choices []string, def string) string {
+	if h, ok := ahoy.HelpFor(key); ok {
+		fmt.Fprintf(p.w, "\n%s\n", h.About)
+		for _, c := range h.Choices {
+			fmt.Fprintf(p.w, "  %s — %s\n", c.Value, c.Meaning)
+		}
+	}
 	fmt.Fprintf(p.w, "%s (%s) [%s]: ", key, strings.Join(choices, "/"), def)
 	line, _ := p.r.ReadString('\n')
 	line = strings.TrimSpace(line)
@@ -3532,22 +3556,47 @@ func strayStoreNotes(cwd, root, relPath, noun string) []string {
 	if err != nil {
 		top = filepath.Clean(root)
 	}
-	var notes []string
-	for dir != top {
+	// The root is recognised by identity, not spelling: on a case-insensitive
+	// filesystem the caller's directory can name the root in another case, which
+	// EvalSymlinks keeps, and a string comparison would walk past the root and
+	// report its own store as a stray one (iss-2609260057123452).
+	topInfo, topErr := os.Stat(top)
+	isTop := func(d string) bool {
+		if d == top {
+			return true
+		}
+		if topErr != nil {
+			return false
+		}
+		fi, err := os.Stat(d)
+		return err == nil && os.SameFile(fi, topInfo)
+	}
+	var strays []string
+	for !isTop(dir) {
 		store := filepath.Join(dir, filepath.FromSlash(relPath))
 		if fi, statErr := os.Stat(store); statErr == nil && fi.IsDir() {
-			rel, relErr := filepath.Rel(top, store)
-			if relErr != nil {
-				rel = store
-			}
-			notes = append(notes, indefiniteArticle(noun)+" "+noun+" also exists below the checkout root, at "+filepath.ToSlash(rel)+
-				" — this verb addressed the checkout's "+noun+" and left that one untouched; records filed there reach no gate and no release cut")
+			strays = append(strays, store)
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
 			break
 		}
 		dir = parent
+	}
+	// Paths are named relative to the root as the caller spelt it, when the walk
+	// reached it, so a case-variant spelling does not read as "../<root>/...".
+	base := top
+	if isTop(dir) {
+		base = dir
+	}
+	var notes []string
+	for _, store := range strays {
+		rel, relErr := filepath.Rel(base, store)
+		if relErr != nil {
+			rel = store
+		}
+		notes = append(notes, indefiniteArticle(noun)+" "+noun+" also exists below the checkout root, at "+filepath.ToSlash(rel)+
+			" — this verb addressed the checkout's "+noun+" and left that one untouched; records filed there reach no gate and no release cut")
 	}
 	return notes
 }
@@ -4924,14 +4973,21 @@ func readSourceCapped(cmd *cobra.Command, spec string, limit int64) ([]byte, err
 // capture honours the per-repo redaction override (the scanner resolves it at
 // <root>/.abcd/config/pii.json, without walking up). Without this, a capture run
 // from a subdirectory hands the subdirectory to scanner.New, which finds no
-// override there and silently redacts with defaults only (B12). It falls back to
-// cwd when git cannot answer (not a repo, git absent) — the scanner then behaves
-// exactly as before, so the fallback never regresses a non-git use.
+// override there and silently redacts with defaults only (B12).
+//
+// Three states, not two (iss-2609020224230967): git's toplevel when git
+// answers; else, for a repository git will not answer for (an ownership
+// refusal under the isolated env, git absent from PATH, a corrupt .git), the
+// checkout the .git marker names, through the rules root's resolution, which
+// admits a marker only when it is a plausible repository the caller owns (or
+// has declared trusted) and otherwise stays at cwd; else cwd, where there is
+// no repository at all and the scanner behaves exactly as before. Collapsing
+// the middle state onto cwd treated a real working tree as no repository.
 func captureRoot(cwd string) string {
-	if top, err := gitutil.Run(cwd, "rev-parse", "--show-toplevel"); err == nil && top != "" {
+	if top, err := gitutil.Toplevel(cwd); err == nil {
 		return top
 	}
-	return cwd
+	return rules.ResolveRoot(cwd)
 }
 
 // historyStore is the shared front-door step for every `history` verb: resolve

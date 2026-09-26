@@ -137,7 +137,7 @@ func (a *applyCtx) writeMachineRouting(body []byte) {
 		a.refuse("could not write ~/.abcd/oracle-routing.json (" + errText(err) + "); the routing was not accepted.")
 		return
 	}
-	a.note(p)
+	a.note(writeRouting, p)
 }
 
 // writeRepoRouting writes the repository table inside an os.Root at the
@@ -170,7 +170,7 @@ func (a *applyCtx) writeRepoRouting(body []byte) {
 		a.refuse("could not write " + rel + " (" + errText(err) + "); the repository's routing was not accepted.")
 		return
 	}
-	a.note(filepath.Join(a.cwd, filepath.FromSlash(rel)))
+	a.note(writeRouting, filepath.Join(a.cwd, filepath.FromSlash(rel)))
 }
 
 // proposalTable renders the bundled proposal in the routing file's own shape,
