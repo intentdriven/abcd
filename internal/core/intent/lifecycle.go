@@ -476,11 +476,14 @@ func stampPlanned(repoRoot string, it Intent, impact string) (PlanResult, error)
 // whose spec_id is null, and writes the link in place. It is the draft face of
 // Plan without the move: the Acceptance Criteria bar, the impact judgement,
 // the scope-condition stamp and the size check all apply, in the same order,
-// under the same lock, so a refusal leaves the record byte-identical with no
-// spec minted. A spec that already names the intent (a one-sided link) is
-// reused rather than duplicated, which also repairs that link. The one write
-// sets spec_id together with the kind (defaulted only when null), the impact
-// and the stamped identities, so there is no intermediate record to lint.
+// under the same lock. A refusal before the mint leaves the record
+// byte-identical with no spec minted; a refusal after it (the intent write is
+// the last step, and it can fail) removes the spec this run minted, so the
+// store is left as it was too. A spec that already names the intent (a
+// one-sided link) is reused rather than duplicated, which also repairs that
+// link, and is never removed. The one write sets spec_id together with the
+// kind (defaulted only when null), the impact and the stamped identities, so
+// there is no intermediate record to lint.
 func linkPlannedSpec(repoRoot string, it Intent, opts PlanOptions) (PlanResult, error) {
 	if !slugRe.MatchString(it.Slug) {
 		return PlanResult{}, fmt.Errorf("intent: %s has slug %q which must be kebab-case", it.ID, it.Slug)
@@ -525,22 +528,36 @@ func linkPlannedSpec(repoRoot string, it Intent, opts PlanOptions) (PlanResult, 
 				return err
 			}
 		}
-		stamped, n, err := stampScopeConditions(content, recordid.Minter{})
-		if err != nil {
-			return err
+		err = func() error {
+			stamped, n, err := stampScopeConditions(content, recordid.Minter{})
+			if err != nil {
+				return err
+			}
+			conditionsStamped = n
+			kind = it.Kind
+			if frontmatter.IsNull(kind) {
+				kind = KindStandalone
+			}
+			fields := draftFaceFields(kind, impactStamp)
+			fields["spec_id"] = sp.ID
+			linked, err := setFrontmatterFields(stamped, fields)
+			if err != nil {
+				return err
+			}
+			return writeIntentFile(abs, rel, linked)
+		}()
+		if err != nil && !reused {
+			// The spec this run minted is taken back with the refusal, so the
+			// spec store is as it was (iss-2609260221563975). Nothing else can
+			// name it: it was written under this lock a moment ago, and the
+			// intent write that would have linked it is what failed. Were the
+			// removal itself to fail, the spec is still one a retry reuses
+			// through ByIntent, and the refusal says so.
+			if rmErr := os.Remove(filepath.Join(repoRoot, sp.Path)); rmErr != nil && !os.IsNotExist(rmErr) {
+				return fmt.Errorf("%w; the spec minted for it, %s, could not be removed (%v) and a retry reuses it", err, sp.ID, rmErr)
+			}
 		}
-		conditionsStamped = n
-		kind = it.Kind
-		if frontmatter.IsNull(kind) {
-			kind = KindStandalone
-		}
-		fields := draftFaceFields(kind, impactStamp)
-		fields["spec_id"] = sp.ID
-		linked, err := setFrontmatterFields(stamped, fields)
-		if err != nil {
-			return err
-		}
-		return writeIntentFile(abs, rel, linked)
+		return err
 	}); err != nil {
 		return PlanResult{}, err
 	}

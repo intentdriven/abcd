@@ -101,3 +101,54 @@ func TestReadyRemedyForAPlannedRecordWithNoSpecNamesPlan(t *testing.T) {
 	}
 	t.Fatal("no spec-link check reported")
 }
+
+// A refusal after the mint leaves no spec behind (iss-2609260221563975). The
+// intent write is the last step, and it can fail after spec.Create has written
+// the spec — a read-only planned/ is the reproduced case. The minted spec is
+// removed with the refusal, so the record and the spec store are both as they
+// were, and the retry mints once.
+func TestPlanInPlaceRefusalAfterTheMintLeavesNoSpec(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root writes through a read-only directory")
+	}
+	root := t.TempDir()
+	writeFile(t, root, plannedDir+"/itd-10-alpha.md", nullSpecPlanned)
+	planned := filepath.Join(root, plannedDir)
+	if err := os.Chmod(planned, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(planned, 0o755) })
+
+	if _, err := Plan(root, "itd-10", PlanOptions{}); err == nil {
+		t.Fatal("a plan whose intent write fails must refuse")
+	}
+	body, err := os.ReadFile(filepath.Join(planned, "itd-10-alpha.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(body) != nullSpecPlanned {
+		t.Fatalf("the refused record changed:\n%s", body)
+	}
+	store, err := spec.Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sp, ok := store.ByIntent("itd-10"); ok {
+		t.Fatalf("the refusal left a minted spec behind: %s", sp.Path)
+	}
+
+	if err := os.Chmod(planned, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	res, err := Plan(root, "itd-10", PlanOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err = spec.Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := len(store.SpecsForIntent("itd-10")); n != 1 || res.Intent.SpecID != res.Spec.ID {
+		t.Fatalf("the retry must mint and link exactly one spec: %d spec(s), result %+v", len(store.SpecsForIntent("itd-10")), res)
+	}
+}
