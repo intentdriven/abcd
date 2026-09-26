@@ -1,0 +1,144 @@
+package credential
+
+import (
+	"encoding/json"
+	"errors"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+// The write half of the interim store, for the one home it reads: the
+// abcd-only file, owner-only (itd-2609081951381895 scope 5; the other homes
+// are itd-2609221017023290's).
+
+func TestSetMachineWritesAnOwnerOnlyStore(t *testing.T) {
+	home := t.TempDir()
+	changed, err := SetMachine(home, "openrouter", secretValue)
+	if err != nil || !changed {
+		t.Fatalf("SetMachine = %v, %v", changed, err)
+	}
+	p := filepath.Join(home, ".abcd", StoreFileName)
+	fi, err := os.Lstat(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fi.Mode().Perm() != 0o600 || !fi.Mode().IsRegular() {
+		t.Fatalf("store mode = %v, want a regular file at 0600", fi.Mode())
+	}
+	di, err := os.Stat(filepath.Join(home, ".abcd"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if di.Mode().Perm()&0o077 != 0 {
+		t.Fatalf("~/.abcd created at %o; a directory abcd creates for a secret is owner-only", di.Mode().Perm())
+	}
+	got, err := Machine(home).Resolve("openrouter")
+	if err != nil || got != secretValue {
+		t.Fatal("the value written does not resolve back")
+	}
+}
+
+func TestSetMachineKeepsTheOtherEntries(t *testing.T) {
+	home := t.TempDir()
+	writeStore(t, home, `{"hosting.cloudflare": "cf-value"}`, 0o600)
+	if _, err := SetMachine(home, "openrouter", secretValue); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(filepath.Join(home, ".abcd", StoreFileName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m map[string]string
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatal(err)
+	}
+	if m["hosting.cloudflare"] != "cf-value" || m["openrouter"] != secretValue || len(m) != 2 {
+		t.Fatal("the store lost or changed an entry it was not asked to write")
+	}
+}
+
+// TestSetMachineNeverOverwritesAStoredSecret: a name already holding another
+// value is refused, and the refusal carries neither value; the same value is
+// an unchanged no-op.
+func TestSetMachineNeverOverwritesAStoredSecret(t *testing.T) {
+	home := t.TempDir()
+	writeStore(t, home, `{"openrouter": "old-value-0123456789"}`, 0o600)
+	changed, err := SetMachine(home, "openrouter", secretValue)
+	if err == nil || changed {
+		t.Fatalf("SetMachine over a stored value = %v, %v; want a refusal", changed, err)
+	}
+	if strings.Contains(err.Error(), secretValue) || strings.Contains(err.Error(), "old-value") {
+		t.Fatal("the refusal carries a value")
+	}
+	if got, _ := Machine(home).Resolve("openrouter"); got != "old-value-0123456789" {
+		t.Fatal("the stored value was replaced")
+	}
+	changed, err = SetMachine(home, "openrouter", "old-value-0123456789")
+	if err != nil || changed {
+		t.Fatalf("SetMachine with the stored value = %v, %v; want unchanged", changed, err)
+	}
+}
+
+// TestSetMachineRefusesWhatResolveRefuses: a store Resolve would refuse is not
+// written over either, so a write never launders an unsafe file.
+func TestSetMachineRefusesWhatResolveRefuses(t *testing.T) {
+	home := t.TempDir()
+	writeStore(t, home, `{}`, 0o644)
+	if _, err := SetMachine(home, "openrouter", secretValue); err == nil {
+		t.Fatal("wrote into a store others can read")
+	}
+
+	home = t.TempDir()
+	real := filepath.Join(t.TempDir(), "elsewhere.json")
+	if err := os.WriteFile(real, []byte(`{}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(home, ".abcd"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(real, filepath.Join(home, ".abcd", StoreFileName)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := SetMachine(home, "openrouter", secretValue); err == nil {
+		t.Fatal("wrote through a symlinked store")
+	}
+	if raw, _ := os.ReadFile(real); string(raw) != `{}` {
+		t.Fatal("the symlink's target was written")
+	}
+
+	home = t.TempDir()
+	writeStore(t, home, `{"a": ,}`, 0o600)
+	if _, err := SetMachine(home, "openrouter", secretValue); err == nil {
+		t.Fatal("wrote over a malformed store")
+	}
+}
+
+func TestSetMachineRefusesABadNameOrValue(t *testing.T) {
+	for _, tc := range []struct{ name, value string }{
+		{"../x", secretValue},
+		{"Open Router", secretValue},
+		{"openrouter", ""},
+		{"openrouter", "two\nlines"},
+		{"openrouter", "esc\x1b[31m"},
+		{"openrouter", " padded"},
+		{"openrouter", strings.Repeat("k", MaxValueBytes+1)},
+	} {
+		home := t.TempDir()
+		_, err := SetMachine(home, tc.name, tc.value)
+		if err == nil {
+			t.Errorf("SetMachine(%q, …) wrote; want a refusal", tc.name)
+			continue
+		}
+		if tc.value != "" && strings.Contains(err.Error(), tc.value) {
+			t.Errorf("SetMachine(%q, …): the refusal carries the value", tc.name)
+		}
+		if _, statErr := os.Lstat(filepath.Join(home, ".abcd", StoreFileName)); !errors.Is(statErr, os.ErrNotExist) {
+			t.Errorf("SetMachine(%q, …): a refused write left a store", tc.name)
+		}
+	}
+	if _, err := SetMachine("", "openrouter", secretValue); err == nil {
+		t.Fatal("SetMachine with no home wrote")
+	}
+}
