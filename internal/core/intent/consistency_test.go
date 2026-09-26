@@ -157,11 +157,15 @@ type fakeFiler struct {
 	reports []string
 	link    map[int]string
 	failAt  int
+	onFile  func(reportRel string)
 }
 
 func (f *fakeFiler) file(fd ConsistencyFinding, reportRel string) (ConsistencyFiling, error) {
 	f.calls = append(f.calls, fd)
 	f.reports = append(f.reports, reportRel)
+	if f.onFile != nil {
+		f.onFile(reportRel)
+	}
 	if f.failAt == fd.Number {
 		return ConsistencyFiling{}, fmt.Errorf("ledger unavailable")
 	}
@@ -699,5 +703,38 @@ func TestConsistencyIngestRefusesARequestSilentOnDirtiness(t *testing.T) {
 				t.Fatal("a refused ingest left a report on the shelf")
 			}
 		})
+	}
+}
+
+// TestConsistencyIngestAReportFailureNamesTheFiledRecords: the findings are
+// filed before the report is created, so when the create fails — here a
+// concurrent ingest took the same report path while the findings were being
+// filed — the error names the records already filed and linked, whose evidence
+// line cites a report this ingest did not write.
+func TestConsistencyIngestAReportFailureNamesTheFiledRecords(t *testing.T) {
+	r := consistencyRepo(t)
+	root := r.Root()
+	em, err := EmitConsistency(root, "", ConsistencyEmitOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := &fakeFiler{link: map[int]string{2: "iss-777"}}
+	f.onFile = func(reportRel string) {
+		p := filepath.Join(root, filepath.FromSlash(reportRel))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte("a concurrent ingest's report\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_, err = ingest(t, root, findingsPayload(t, root, em, contradiction(), briefDrift()), f)
+	if err == nil {
+		t.Fatal("ingest succeeded over a report path another ingest holds")
+	}
+	for _, want := range []string{"iss-901", "iss-777", "creating report"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("report-failure error does not name %q: %v", want, err)
+		}
 	}
 }

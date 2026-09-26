@@ -707,21 +707,28 @@ func IngestConsistency(req ConsistencyIngestRequest) (ConsistencyIngestResult, e
 		}
 	}
 
+	// Every finding is in the ledger by now, each citing reportRel as its
+	// evidence, so a failure from here on says which records those are.
+	afterFiling := func(err error) error {
+		return fmt.Errorf("%w; the findings were already filed as %s and linked to %s, each citing %s as its evidence, "+
+			"which this ingest did not write — ingesting the same findings again links those records rather than filing them twice",
+			err, orNone(res.Filed), orNone(res.Linked), reportRel)
+	}
 	report := renderConsistencyReport(rv, res.Rows, date, free)
 	if err := ensureRecordDir(req.RepoRoot, filepath.Join(ReviewsShelfRelDir, dirName)); err != nil {
-		return ConsistencyIngestResult{}, err
+		return ConsistencyIngestResult{}, afterFiling(err)
 	}
 	// Create-only: the shelf is append-only, so a report is never overwritten.
 	fh, err := os.OpenFile(filepath.Join(req.RepoRoot, filepath.FromSlash(reportRel)), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if err != nil {
-		return ConsistencyIngestResult{}, fmt.Errorf("intent: creating report %s: %w", reportRel, err)
+		return ConsistencyIngestResult{}, afterFiling(fmt.Errorf("intent: creating report %s: %w", reportRel, err))
 	}
 	if _, err := fh.WriteString(report); err != nil {
 		fh.Close()
-		return ConsistencyIngestResult{}, fmt.Errorf("intent: writing report %s: %w", reportRel, err)
+		return ConsistencyIngestResult{}, afterFiling(fmt.Errorf("intent: writing report %s: %w", reportRel, err))
 	}
 	if err := fh.Close(); err != nil {
-		return ConsistencyIngestResult{}, fmt.Errorf("intent: writing report %s: %w", reportRel, err)
+		return ConsistencyIngestResult{}, afterFiling(fmt.Errorf("intent: writing report %s: %w", reportRel, err))
 	}
 	res.Status, res.ReportPath = "ingested", reportRel
 	return res, nil
