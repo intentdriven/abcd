@@ -19,7 +19,13 @@ type ArchiveEntry struct {
 // trusted by git, so the listing is built from the two commands that run no
 // configured program: `ls-tree` for the committed files, and `check-attr` for the
 // export-ignore attribute archive honours, asked of each file and of every
-// directory above it (an ignored directory drops everything beneath it).
+// directory above it (an ignored directory drops everything beneath it). A
+// directory is asked as `dir/`, the form archive itself asks: only a path that
+// ends in a slash matches the directory-only pattern (`dir/ export-ignore`), a
+// bare pattern (`dir export-ignore`) matches it too, and where the two forms
+// disagree (`dir export-ignore` then `dir/ -export-ignore`) the answer for
+// `dir/` is the one archive acts on. Asking `dir` as well would drop a
+// directory archive keeps, and the scan would miss files the tag ships.
 // Submodules are skipped: archive carries no submodule content.
 //
 // Attributes are read from the index (--cached), the committed view, so an
@@ -50,10 +56,12 @@ func ArchiveTree(root, rev string) ([]ArchiveEntry, error) {
 		return nil, nil
 	}
 
+	// Each file is asked as itself; each directory above one is asked as `dir/`.
 	candidates := map[string]struct{}{}
 	for _, e := range entries {
-		for p := e.Path; p != "." && p != "/" && p != ""; p = path.Dir(p) {
-			candidates[p] = struct{}{}
+		candidates[e.Path] = struct{}{}
+		for p := path.Dir(e.Path); p != "." && p != "/" && p != ""; p = path.Dir(p) {
+			candidates[p+"/"] = struct{}{}
 		}
 	}
 	list := make([]string, 0, len(candidates))
@@ -71,7 +79,7 @@ func ArchiveTree(root, rev string) ([]ArchiveEntry, error) {
 	// -z emits three fields per record: path, attribute, value.
 	for i := 0; i+2 < len(fields); i += 3 {
 		if fields[i+2] == "set" {
-			ignored[fields[i]] = struct{}{}
+			ignored[strings.TrimSuffix(fields[i], "/")] = struct{}{}
 		}
 	}
 	kept := entries[:0]
