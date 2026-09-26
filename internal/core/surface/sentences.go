@@ -249,6 +249,8 @@ var sentences = map[string]string{
 		"Writes nothing; refuses any argument.",
 	"abcd site build": "Render the website into the output directory: " +
 		"Writes only inside that directory; refuses a non-empty directory it did not write.",
+	"abcd site setup": "Take the website from this checkout to a live address: " +
+		"Writes its files, and the forge and host changes once confirmed; refuses a folder abcd does not manage.",
 
 	"abcd spec": "Render the spec store's status: " +
 		"Writes nothing; refuses outside a git checkout.",

@@ -1,7 +1,7 @@
 ---
 name: site
 description: "Report what the website declares and what was built: Writes nothing; refuses any argument."
-argument-hint: "[build]"
+argument-hint: "[build|setup]"
 block: agents
 ---
 
@@ -85,6 +85,53 @@ A failure names its cause and its place: a markdown construct outside the
 rendered subset is reported as `file:line`, and so is an image the page names
 that the repository does not carry. Neither is a rendering bug to work around —
 the fix is an edit to the page.
+
+## `setup` — take a managed repository's site to a live address
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" site setup --json
+```
+
+sets up the site of a repository abcd manages, in three stages, and emits
+`{ "status": …, "files": […], "environments": […], "host": {…}, "remaining": […], "notes": […] }`:
+
+- `files` — the repository half, each `written`, `current`, `kept` or
+  `refused`: `.abcd/site.json` (derived from the identity block and
+  `docs/README.md`), the static inputs under `site-src/`, the workflow
+  `.github/workflows/site.yml` (render on each published release with abcd's
+  verified binary, deploy from the rendered archive) and `wrangler.jsonc`. The
+  composition and the static inputs are the repository's own once they exist
+  and are `kept`; a workflow or host configuration that differs from what setup
+  writes is `refused`, the whole run writes nothing, and `--confirm` replaces it.
+- `environments` — the forge's `site-render` and `site` deployment
+  environments, each admitting only the default branch and tags `v*`, created
+  through `gh` as you. An existing environment is never rewritten (the forge's
+  write would replace its required reviewers): one on named rules and no rule
+  beyond those two gains the rules it lacks, and one that admits more, through
+  its protection mode or a rule of its own such as branch `*`, is
+  `unrestricted`, with restricting it listed in `remaining`.
+- `host` — with a hosting credential stored on this machine, the host is
+  created and the domain routed to it, and `address` is the live address.
+  Without one, `status` is `no_credential` and nothing is contacted.
+- `remaining` — the exact steps left for you: committing the written files,
+  storing the credential, and one `gh secret set … --env site` command for
+  each deploy secret the environment does not hold yet. abcd never reads or
+  sets a secret's value.
+
+Both remote stages ask before they write, naming each change. An unanswered
+run declines them and exits `1`; `--yes` confirms in advance — pass it only
+when the user has asked for the forge and host changes. A second run over an
+unchanged repository reports `no_change` and writes nothing.
+
+The first run names the host after the repository; `--name` and `--domain`
+choose the host name and the custom domain, and are recorded in the
+composition's `hosting` block. The composition's `pages` block switches pages of
+the closed set (`landing`, `explorer`, `record_pages`, `graph`, `timeline`,
+`glossary`, `status`) off; it cannot add one.
+
+Report each stage's outcome, then the remaining steps in order. Never paste a
+credential into the conversation: the store is the file `~/.abcd/credentials.json`
+(mode `0600`), which the user writes themselves.
 
 ## The gate over what was rendered
 

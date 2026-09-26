@@ -332,7 +332,9 @@ func (c *composer) headerFor(active string) string {
 	b.WriteString(`<a href="/#` + escapeAttr(c.firstChapterAnchor()) + `">` + escapeText(c.ui.NavStory) + `</a>`)
 	b.WriteString(`<a href="/#` + escapeAttr(c.installChapterAnchor()) + `">` + escapeText(c.ui.NavInstall) + `</a>`)
 	b.WriteString(`<a href="/docs/">` + escapeText(c.ui.NavDocs) + `</a>`)
-	b.WriteString(`<a href="/record/"` + on("/record/") + `>` + escapeText(c.ui.NavRecord) + `</a>`)
+	if c.manifest.Pages.resolve().explorer {
+		b.WriteString(`<a href="/record/"` + on("/record/") + `>` + escapeText(c.ui.NavRecord) + `</a>`)
+	}
 	if c.repo.Repository != "" {
 		b.WriteString(`<a class="gh" href="` + escapeAttr(c.repo.Repository) + `">` + escapeText(c.forgeLabel()) + ` ↗</a>`)
 	}

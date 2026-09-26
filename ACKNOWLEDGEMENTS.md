@@ -109,6 +109,11 @@ Ideas and methodologies that shaped the design — not code abcd depends on.
   outright instead of shipped, and the enforcing control sits at the execution
   layer.
   <https://code.claude.com/docs/en/permissions>
+- **Cloudflare Workers and its v4 API (Cloudflare)** — the host the one
+  provider behind `abcd site setup`'s hosting seam targets: an assets-only
+  Worker deployed by the pinned `wrangler-action`, created, routed and
+  addressed through the Workers, domains and subdomain endpoints
+  (itd-2609061543533170). <https://developers.cloudflare.com/api/>
 - **Conftest (Open Policy Agent)** — the severity→exit-code convention (`0`
   clean / `1` warnings / `2` any error) the `abcd lint` verb adopts for its
   tri-state exit, taken as vocabulary without adopting the Rego engine (itd-85).
