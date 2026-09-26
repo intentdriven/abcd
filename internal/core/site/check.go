@@ -811,6 +811,12 @@ func (c *checker) generatorWords() generatorWords {
 		addName(a)
 	}
 	addName(AssetChecksums)
+	// The footer names each file it links by its base name, wherever the
+	// repository keeps it: the security policy may live in .github/, where
+	// the name alone resolves to nothing at the root.
+	for _, f := range footerLinks(c.root) {
+		addName(path.Base(f))
+	}
 
 	g.exists = func(token string) bool {
 		if !fsutil.ValidRelPath(token) {

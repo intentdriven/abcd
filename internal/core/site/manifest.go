@@ -63,6 +63,9 @@ type quoteSource struct {
 	directlyIn []string
 	// rootMarkdown admits a markdown file at the repository root itself.
 	rootMarkdown bool
+	// markdownIn admits a markdown file sitting DIRECTLY in one of these
+	// directories, and no other file there.
+	markdownIn []string
 	// what says, in the refusal, what the field is for — the reader's next move
 	// is an edit to this key, and the reason it is fenced is the useful half.
 	what string
@@ -91,14 +94,16 @@ var (
 		under: []string{"docs/"},
 		what:  "it names a documentation page the site links",
 	}
-	// record_pages.contributors.policy.file: the contribution policy
-	// conventionally sits at the repository ROOT, which the page roots do not
-	// cover, so the set adds a markdown file at the root itself. The root holds
-	// committed, forge-published prose and no gitignored tier; `.env` and
-	// `.git/config` are not markdown and stay refused.
+	// record_pages.contributors.policy.file: the contribution policy is a
+	// community-health file, which the forge reads from the repository ROOT or
+	// from `.github/`, and neither is a page root, so the set adds a markdown
+	// file directly in either. Both hold committed, forge-published prose and no
+	// gitignored tier; `.env`, `.git/config` and the forge configuration beside
+	// the markdown in `.github/` are not markdown and stay refused.
 	policySource = quoteSource{
 		under:        []string{"docs/", "site-src/"},
 		rootMarkdown: true,
+		markdownIn:   []string{".github/"},
 		what:         "the contributors page publishes the section it selects, verbatim",
 	}
 	// checks.unresolved_reference_baseline is CONFIGURATION rather than prose:
@@ -125,8 +130,14 @@ func (q quoteSource) admits(p string) bool {
 			return true
 		}
 	}
-	if q.rootMarkdown && !strings.Contains(p, "/") && strings.HasSuffix(strings.ToLower(p), ".md") {
+	isMarkdown := strings.HasSuffix(strings.ToLower(p), ".md")
+	if q.rootMarkdown && !strings.Contains(p, "/") && isMarkdown {
 		return true
+	}
+	for _, dir := range q.markdownIn {
+		if rest, ok := strings.CutPrefix(p, dir); ok && isMarkdown && !strings.Contains(rest, "/") {
+			return true
+		}
 	}
 	return false
 }
@@ -140,6 +151,9 @@ func (q quoteSource) describe() string {
 	}
 	if q.rootMarkdown {
 		parts = append(parts, "a markdown file at the repository root")
+	}
+	for _, dir := range q.markdownIn {
+		parts = append(parts, "a markdown file directly in "+dir)
 	}
 	return strings.Join(parts, " or ")
 }
@@ -486,7 +500,8 @@ func (m Manifest) validateDeferred(bad func(string, ...any) error) error {
 			return bad("record_pages.contributors.policy.file %q is not a repo-relative path", policy.File)
 		}
 		// A quote, not a whole-file page source, so the attribution policy stays
-		// quotable from CONTRIBUTING.md at the repository root — but from
+		// quotable from a contribution guide at the repository root or in
+		// .github/ — but from
 		// nowhere the page roots and that root allowance do not cover. This is
 		// the field with the widest blast radius: policyQuote publishes the
 		// whole matched section whenever `part` is not first-bullet.
