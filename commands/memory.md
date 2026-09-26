@@ -95,7 +95,8 @@ and the line, never the span, and lint never rewrites the store):
 ```
 
 It rebuilds the regenerable `.coverage_index.json` and writes a report under
-`.abcd/.work.local/logs/memory/lint-<ts>/`. Summarise `summary.blockers` /
+`.abcd/.work.local/logs/memory/lint-<ts>/`. `report_dir`, `store_path` and each
+finding's `file` are named relative to the repository. Summarise `summary.blockers` /
 `summary.warnings` / `summary.infos` and each finding's `code` and `message`.
 Blockers exit nonzero; warn-only exits 0.
 

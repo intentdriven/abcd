@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
@@ -469,7 +470,8 @@ func (l *memoryLinter) checkQuotation() {
 func runMemoryCoverageLint(repoRoot string, store *storeHandle) ([]Finding, map[string]any, error) {
 	indexPath := CoverageIndexPath(repoRoot)
 	report := map[string]any{
-		"path":            indexPath,
+		// Display only, like every path Lint reports (iss-81).
+		"path":            fsutil.DisplayPath(repoRoot, indexPath),
 		"stale":           false,
 		"old_fingerprint": nil,
 		"new_fingerprint": nil,
@@ -609,6 +611,15 @@ func Lint(req LintRequest) (LintResult, error) {
 		return LintResult{}, err
 	}
 	findings = append(findings, corpusFindings...)
+	// Every path the result names travels into --json and into the run log, and
+	// machine output never carries an absolute developer-identity path (iss-81,
+	// iss-2609261950061900): each finding's file, the store and the run-log
+	// directory are named relative to the repository. The absolute values stay
+	// the working ones below.
+	for i := range findings {
+		findings[i].File = fsutil.DisplayPath(root, findings[i].File)
+	}
+	storeDisplay := fsutil.DisplayPath(root, mem)
 
 	summary := LintSummary{}
 	for _, f := range findings {
@@ -643,7 +654,7 @@ func Lint(req LintRequest) (LintResult, error) {
 		"summary":        map[string]any{"blockers": summary.Blockers, "warnings": summary.Warnings, "infos": summary.Infos},
 		"coverage_index": coverageIndex,
 		"generated_at":   generatedAt,
-		"store_path":     mem,
+		"store_path":     storeDisplay,
 	}
 	if err := writeStringAtomic(filepath.Join(reportDir, "report.json"), marshalIndentNoEscape(reportFields)); err != nil {
 		return LintResult{}, err
@@ -656,9 +667,9 @@ func Lint(req LintRequest) (LintResult, error) {
 		Findings:      findings,
 		Summary:       summary,
 		CoverageIndex: coverageIndex,
-		ReportDir:     reportDir,
+		ReportDir:     fsutil.DisplayPath(root, reportDir),
 		GeneratedAt:   generatedAt,
-		StorePath:     mem,
+		StorePath:     storeDisplay,
 		ExitCode:      exitCode,
 	}, nil
 }
