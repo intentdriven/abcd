@@ -124,15 +124,15 @@ var sentences = map[string]string{
 	"abcd history ingest": "Redact and store transcripts already on disk into a named repository: " +
 		"Writes that repository's store; refuses without --into.",
 	"abcd history list": "List this repository's stored transcripts, newest first: " +
-		"Writes nothing; refuses outside a git checkout.",
+		"Writes only a missing store and a legacy corpus moved into it; refuses outside a git checkout.",
 	"abcd history migrate": "Repair records filed under a composite session id: " +
-		"Writes the repaired records only with --apply; refuses outside a git checkout.",
+		"Writes a missing store, and the repaired records only with --apply; refuses outside a git checkout.",
 	"abcd history reconstruct": "Render one session and its sub-agents as one artefact plus telemetry: " +
 		"Writes both files into --out; refuses an --out that is not an existing directory.",
 	"abcd history show": "Show one stored transcript's metadata and redacted body: " +
-		"Writes nothing; refuses an id the store does not hold.",
-	"abcd history staged": "List the transcripts that ended but are not yet redacted into the store: " +
-		"Writes nothing; refuses outside a git checkout.",
+		"Writes only a missing store and a legacy corpus moved into it; refuses an id the store does not hold.",
+	"abcd history staged": "List the ended transcripts not yet redacted into the store: " +
+		"Writes only a missing store and a legacy corpus moved into it; refuses outside a git checkout.",
 
 	"abcd ideate": "Judge an idea through the host-run admission gauntlet: " +
 		"Writes nothing bare, and one research record and its decision-log line; refuses an unknown sub-verb.",

@@ -689,7 +689,7 @@ Redact and store transcripts already on disk into a named repository: Writes tha
 
 #### `abcd history list`
 
-List this repository's stored transcripts, newest first: Writes nothing; refuses outside a git checkout.
+List this repository's stored transcripts, newest first: Writes only a missing store and a legacy corpus moved into it; refuses outside a git checkout.
 
 **Usage:** `abcd history list [flags]`
 
@@ -701,7 +701,7 @@ List this repository's stored transcripts, newest first: Writes nothing; refuses
 
 #### `abcd history migrate`
 
-Repair records filed under a composite session id: Writes the repaired records only with --apply; refuses outside a git checkout.
+Repair records filed under a composite session id: Writes a missing store, and the repaired records only with --apply; refuses outside a git checkout.
 
 **Usage:** `abcd history migrate [flags]`
 
@@ -728,13 +728,13 @@ Render one session and its sub-agents as one artefact plus telemetry: Writes bot
 
 #### `abcd history show`
 
-Show one stored transcript's metadata and redacted body: Writes nothing; refuses an id the store does not hold.
+Show one stored transcript's metadata and redacted body: Writes only a missing store and a legacy corpus moved into it; refuses an id the store does not hold.
 
 **Usage:** `abcd history show <session-id-or-filename>`
 
 #### `abcd history staged`
 
-List the transcripts that ended but are not yet redacted into the store: Writes nothing; refuses outside a git checkout.
+List the ended transcripts not yet redacted into the store: Writes only a missing store and a legacy corpus moved into it; refuses outside a git checkout.
 
 **Usage:** `abcd history staged [flags]`
 

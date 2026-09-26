@@ -952,7 +952,7 @@
     {
       "path": "abcd history list",
       "hidden": false,
-      "sentence": "List this repository's stored transcripts, newest first: Writes nothing; refuses outside a git checkout.",
+      "sentence": "List this repository's stored transcripts, newest first: Writes only a missing store and a legacy corpus moved into it; refuses outside a git checkout.",
       "flags": [
         {
           "name": "session",
@@ -966,7 +966,7 @@
     {
       "path": "abcd history migrate",
       "hidden": false,
-      "sentence": "Repair records filed under a composite session id: Writes the repaired records only with --apply; refuses outside a git checkout.",
+      "sentence": "Repair records filed under a composite session id: Writes a missing store, and the repaired records only with --apply; refuses outside a git checkout.",
       "flags": [
         {
           "name": "apply",
@@ -1015,13 +1015,13 @@
     {
       "path": "abcd history show",
       "hidden": false,
-      "sentence": "Show one stored transcript's metadata and redacted body: Writes nothing; refuses an id the store does not hold.",
+      "sentence": "Show one stored transcript's metadata and redacted body: Writes only a missing store and a legacy corpus moved into it; refuses an id the store does not hold.",
       "flags": []
     },
     {
       "path": "abcd history staged",
       "hidden": false,
-      "sentence": "List the transcripts that ended but are not yet redacted into the store: Writes nothing; refuses outside a git checkout.",
+      "sentence": "List the ended transcripts not yet redacted into the store: Writes only a missing store and a legacy corpus moved into it; refuses outside a git checkout.",
       "flags": [
         {
           "name": "all-repos",
