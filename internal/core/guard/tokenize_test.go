@@ -77,19 +77,21 @@ func TestTokenizeSegments(t *testing.T) {
 			// `$( … )` does, so the tokenizer must split it into command position
 			// the same way — otherwise the hazard is swallowed into a token and
 			// never matched (gh-312).
+			// The inner command is emitted before the enclosing one because it
+			// runs first; the enclosing command resumes after it (iss-148).
 			name: "backtick command substitution splits into command position",
 			line: "echo `gh repo delete owner/repo`",
-			want: []string{"0:echo", "0:gh|repo|delete|owner/repo"},
+			want: []string{"0:gh|repo|delete|owner/repo", "0:echo|\x00"},
 		},
 		{
 			name: "a bare backtick substitution is a command-position segment",
 			line: "`git push --force origin main`",
-			want: []string{"0:git|push|--force|origin|main"},
+			want: []string{"0:git|push|--force|origin|main", "0:\x00"},
 		},
 		{
 			name: "an assignment carrying a backtick substitution splits it out",
 			line: "x=`git push --force origin main`",
-			want: []string{"0:x=", "0:git|push|--force|origin|main"},
+			want: []string{"0:git|push|--force|origin|main", "0:x=\x00"},
 		},
 		{
 			name: "a backtick inside single quotes stays literal",
@@ -182,7 +184,7 @@ func TestTokenizeSegments(t *testing.T) {
 		{
 			name: "an arithmetic shift is not a heredoc",
 			line: "echo $((1<<20))\ncd scratch",
-			want: []string{"0:echo|$", "0:1<<20", "1:cd|scratch"},
+			want: []string{"0:echo|0", "1:cd|scratch"},
 		},
 		{
 			name: "a herestring is an argument, not a heredoc",
@@ -230,9 +232,12 @@ func TestTokenizeSegments(t *testing.T) {
 			want: []string{"0:go|test|./..."},
 		},
 		{
-			name: "process substitution keeps its prior handling",
+			// The inner command runs first and is its own segment; the
+			// enclosing command keeps one /dev/fd operand in its place
+			// (iss-2608221126066631).
+			name: "process substitution is an operand of the enclosing command",
 			line: "cat <(echo hi)",
-			want: []string{"0:cat|<", "0:echo|hi"},
+			want: []string{"0:echo|hi", "0:cat|/dev/fd/63"},
 		},
 		{
 			name: "an ampersand redirection does not split the command",

@@ -78,9 +78,15 @@ type Pattern struct {
 	// leading `+` on the refspec is a force push by another name and Flags has
 	// nothing to look at.
 	ArgPrefixes []string `json:"arg_prefixes,omitempty"`
+	// MinOperands, when set, requires at least that many non-flag arguments
+	// (value_flags stepped over). It is what separates a kill BY PATTERN —
+	// `pkill make`, whose operand is the pattern — from `pkill -g 4242`, which
+	// names a process group and carries no pattern at all.
+	MinOperands int `json:"min_operands,omitempty"`
 	// AfterCD, when true, additionally requires that some EARLIER command in the
-	// same chain is a `cd` — the cd-chain structure (`cd scratch && rm -rf *`)
-	// whose hazard is that a failed cd silently redirects the command. A nil
+	// same chain is a `cd`, `pushd` or `popd` — the cd-chain structure (`cd
+	// scratch && rm -rf *`) whose hazard is that a failed directory change
+	// silently redirects the command. A nil
 	// pointer means false; it is a pointer so a per-repo override can turn the
 	// requirement off as well as on.
 	AfterCD *bool `json:"after_cd,omitempty"`
@@ -136,6 +142,10 @@ type Registry struct {
 	SchemaVersion int              `json:"schema_version"`
 	Disabled      bool             `json:"disabled"`
 	Entries       map[string]Entry `json:"entries"`
+
+	// worktrees counts the working trees of the repository this registry was
+	// loaded for (stash.go); nil for a registry with no repository behind it.
+	worktrees func() int
 }
 
 // Decision is what core returns for one candidate command. It carries no
@@ -299,6 +309,10 @@ func Validate(r Registry) error {
 				return fmt.Errorf("%w: entry %s flag-value constraint %d accepts no value and could never match", ErrInvalidEntry, id, i)
 			}
 		}
+		// A negative operand count describes nothing a command line can hold.
+		if e.Pattern.MinOperands < 0 {
+			return fmt.Errorf("%w: entry %s min_operands %d is negative", ErrInvalidEntry, id, e.Pattern.MinOperands)
+		}
 		// A path constraint with no root would depth-limit every operand that
 		// happened to look like a path, and one with no depth describes no path
 		// at all.
@@ -366,15 +380,37 @@ func (r Registry) Check(command string) (Decision, error) {
 	if r.Disabled {
 		return Decision{Verdict: VerdictAllow}, nil
 	}
+	// A line past the cap is refused before it is read (review2-guard finding
+	// 6): no everyday command comes near it, and the guard runs on the
+	// PreToolUse path, where every byte it is handed is paid for in time.
+	if len(command) > maxCommandBytes {
+		return syntheticDecision(VerdictBlock, commandTooLongSignal(), []string{commandTooLongEntryID}), nil
+	}
+	return r.check(command)
+}
+
+// check is Check past the disabled switch and the length cap. The cost guards
+// measure it directly (work_test.go), because the class of the work is a
+// property of the reading, whatever the cap in front of it.
+func (r Registry) check(command string) (Decision, error) {
+	// No argv word can hold a NUL, and bash drops one from its input; the byte
+	// is the tokenizer's mark for a substitution's output (unknown.go), so the
+	// line's own are removed before a word is read.
+	command = strings.ReplaceAll(command, unknownText, "")
 	segs, err := tokenize(command)
 	if err != nil {
 		return Decision{}, err
 	}
+	// Each segment's walk to command position is read by every pass below;
+	// it is taken once per segment (walkSegments), here and again after each
+	// pass that adds segments.
+	walkSegments(segs)
 	// Expand every execute-a-string payload ONCE, here, before the entry loop —
 	// never inside a per-entry callee (that path went quadratic). Every entry then
 	// sees the payload segments for free, and any payload the guard cannot read
 	// raises a synthetic (entry-less) signal folded in by severity below.
 	segs, signals := expandPayloads(segs)
+	walkSegments(segs)
 
 	// git rewrites its own subcommand from configuration carried IN the command
 	// line, and the operand walk was built to step exactly those values over
@@ -386,7 +422,19 @@ func (r Registry) Check(command string) (Decision, error) {
 	segs = aliasSegs
 	signals = append(signals, aliasSignals...)
 
-	// A brace group the tokenizer could not expand is folded in the same way,
+	// A git command that moves core.hooksPath for itself skips the hooks as
+	// --no-verify does, and is read as carrying the flag (iss-2609251640464212).
+	// After the alias pre-pass, so an alias's expansion is read too.
+	segs = expandHooksPathOverrides(segs, r.gitValueFlags())
+
+	// A stash that does not name its entry, in a repository whose stash stack
+	// several worktrees share (iss-2609190338340796). Read after the alias
+	// pre-pass so an alias that expands to `stash pop` is reached too.
+	if sig, ok := r.sharedStashSignal(segs, r.gitValueFlags()); ok {
+		signals = append(signals, sig)
+	}
+
+	// A brace group the tokenizer did not expand (past the cap) is folded in the same way,
 	// and AFTER the payload expansion so a group hidden inside an inspectable
 	// payload counts too. One signal is enough however many segments carry a
 	// group: the verdict is the whole command's, and repeating the same lesson
@@ -405,6 +453,24 @@ func (r Registry) Check(command string) (Decision, error) {
 			break
 		}
 	}
+	// And a command substitution the tokenizer stopped reading: past the
+	// double-quote depth, or one whose text did not split (iss-2609251640353405).
+	for _, s := range segs {
+		if s.substitutionUnread {
+			signals = append(signals, substitutionBlockSignal())
+			break
+		}
+	}
+	// A shell reading its script from a pipe, a here-document or a here-string
+	// runs text the guard read as data (iss-2609251640462464), and so does one
+	// handed a process substitution or the stdin device as its script. After the
+	// payload expansion, so a payload's own pipe into a shell is read too.
+	for _, s := range segs {
+		if readsScriptStream(s) {
+			signals = append(signals, interpreterStreamSignal())
+			break
+		}
+	}
 
 	ids := make([]string, 0, len(r.Entries))
 	for id := range r.Entries {
@@ -412,17 +478,35 @@ func (r Registry) Check(command string) (Decision, error) {
 	}
 	sort.Strings(ids)
 
+	// Every segment is final here, and the ones the alias and hooks-path
+	// passes added are walked now. A walk that met more words of unknown name
+	// than it follows is refused, like a substitution the tokenizer stopped
+	// reading.
+	walkSegments(segs)
+	for _, s := range segs {
+		if s.walkCapped {
+			signals = append(signals, unknownSitesBlockSignal())
+			break
+		}
+	}
+
 	// Tier 1: the registry match at command position. matchedSeg records WHICH
 	// segments fired, because Tier 2's gate is per segment — a line-wide gate would
 	// let one warn-tier command disarm the fail-safe for everything after it
 	// (adr-42 decision 4).
-	var blockers, warns []string
+	//
+	// An entry that fired only where the program name is wholly unknown
+	// (matchSegmentNamed) is kept apart: it is in Matches, but the verdict
+	// speaks for the substitution unless an entry fired on a name the line
+	// spells.
+	var blockers, warns, unnamedBlockers, unnamedWarns []string
 	matchedSeg := make([]bool, len(segs))
 	for _, id := range ids {
 		p := r.Entries[id].Pattern
-		hit := false
+		hit, named := false, false
 		for i, s := range segs {
-			if !matchSegment(p, s) {
+			segHit, segNamed := matchSegmentNamed(p, s)
+			if !segHit {
 				continue
 			}
 			if p.AfterCD != nil && *p.AfterCD && !precededByCD(segs[:i], s.chain) {
@@ -430,13 +514,20 @@ func (r Registry) Check(command string) (Decision, error) {
 			}
 			matchedSeg[i] = true
 			hit = true
+			named = named || segNamed
 		}
-		if hit {
-			if r.Entries[id].Tier == TierBlocker {
-				blockers = append(blockers, id)
-			} else {
-				warns = append(warns, id)
-			}
+		if !hit {
+			continue
+		}
+		switch {
+		case r.Entries[id].Tier == TierBlocker && named:
+			blockers = append(blockers, id)
+		case r.Entries[id].Tier == TierBlocker:
+			unnamedBlockers = append(unnamedBlockers, id)
+		case named:
+			warns = append(warns, id)
+		default:
+			unnamedWarns = append(unnamedWarns, id)
 		}
 	}
 
@@ -459,8 +550,8 @@ func (r Registry) Check(command string) (Decision, error) {
 	// Merge by SEVERITY POOL, not a single "registry outranks synthetic" rule: a
 	// synthetic block never hides behind a registry warn, and a registry blocker
 	// still outranks a synthetic warn.
-	blockPool := len(blockers) > 0 || synBlock != nil
-	warnPool := len(warns) > 0 || synWarn != nil
+	blockPool := len(blockers) > 0 || len(unnamedBlockers) > 0 || synBlock != nil
+	warnPool := len(warns) > 0 || len(unnamedWarns) > 0 || synWarn != nil
 	if !blockPool && !warnPool {
 		return Decision{Verdict: VerdictAllow}, nil
 	}
@@ -470,7 +561,8 @@ func (r Registry) Check(command string) (Decision, error) {
 	// record of what fired, and a Tier 2 hit that loses the slot to an unrelated
 	// payload warn would vanish from it entirely. That is exactly what the warn
 	// rate is measured from, so the blind spot would have hidden itself.
-	matches := append(append([]string(nil), blockers...), warns...)
+	matches := append(append([]string(nil), blockers...), unnamedBlockers...)
+	matches = append(append(matches, warns...), unnamedWarns...)
 	for i := range signals {
 		if id := signals[i].entryID(); !containsString(matches, id) {
 			matches = append(matches, id)
@@ -482,16 +574,106 @@ func (r Registry) Check(command string) (Decision, error) {
 	// only when it is the sole member of the winning pool. A synthetic id must NOT
 	// index r.Entries — that yields a zero Entry and a blank message — so the
 	// winner construction branches on it.
+	//
+	// An entry that fired only on a program name nothing fixes supplies neither:
+	// its lesson is about a program the line never named (killall's "stop it by
+	// pid" for `$(which go) build`), so the verdict carries the substitution's
+	// reason and the way past, spelling the program's name (review4-guard
+	// finding 4). It ranks after an entry the line names and before the
+	// entry-less signals, as the registry match it is.
 	if blockPool {
-		if len(blockers) > 0 {
+		switch {
+		case len(blockers) > 0:
 			return decisionFromEntry(VerdictBlock, r.Entries[blockers[0]], matches), nil
+		case len(unnamedBlockers) > 0:
+			return unknownProgramDecision(VerdictBlock, unnamedBlockers[0], matches), nil
 		}
 		return syntheticDecision(VerdictBlock, *synBlock, matches), nil
 	}
-	if len(warns) > 0 {
+	switch {
+	case len(warns) > 0:
 		return decisionFromEntry(VerdictWarn, r.Entries[warns[0]], matches), nil
+	case len(unnamedWarns) > 0:
+		return unknownProgramDecision(VerdictWarn, unnamedWarns[0], matches), nil
 	}
 	return syntheticDecision(VerdictWarn, *synWarn, matches), nil
+}
+
+// unknownProgramDecision is the verdict for a command whose program name a
+// substitution prints, where the entry id fired only because that name can be
+// any program. It speaks in the substitution family's voice under its own
+// reserved id, names the entry the line can be, and lists that id beside the
+// entries in matches.
+func unknownProgramDecision(v Verdict, id string, matches []string) Decision {
+	if !containsString(matches, unknownProgramEntryID) {
+		matches = append(matches, unknownProgramEntryID)
+	}
+	return syntheticDecision(v, unknownProgramSignal(v, id), matches)
+}
+
+const (
+	// maxCommandBytes is the longest command line Check reads. It is generous
+	// next to any command an agent writes — a commit message or a pull-request
+	// body passed through a here-document is a few kilobytes — and small next to
+	// the front doors' 1 MiB stdin cap, which bounds what arrives, not what is
+	// worth reading.
+	maxCommandBytes = 64 << 10
+
+	// commandTooLongEntryID is the reserved id a line past maxCommandBytes is
+	// refused under. No registry entry may claim it.
+	commandTooLongEntryID = "command-too-long"
+
+	familyCommandLength = "command length"
+
+	// unparsableEntryID is the reserved id a front door refuses a line under
+	// when the tokenizer cannot split it (UnparsableDecision). No registry
+	// entry may claim it.
+	unparsableEntryID = "command-unparsable"
+
+	familyUnparsable = "command line"
+)
+
+// UnparsableDecision is the verdict a front door that must answer — the
+// pre-tool-use hook — gives a command line Check refused with
+// ErrUnparsableCommand. It is a BLOCK, not a pass: where the tokenizer reads the
+// line right, no shell runs it either (an unterminated quote in command text),
+// so the block costs nothing; where it reads it wrong, bash runs a line the
+// guard never read, and letting it through made every such misreading a bypass
+// of every blocker (review4-guard finding 2: `$'\c'` read as swallowing its
+// own closing quote). err is named in the reason, so the way past is plain.
+func UnparsableDecision(err error) Decision {
+	return syntheticDecision(VerdictBlock, unparsableSignal(err), []string{unparsableEntryID})
+}
+
+// unparsableSignal is the reason and remedy UnparsableDecision carries.
+func unparsableSignal(err error) payloadSignal {
+	what := "it"
+	if err != nil {
+		what = strings.TrimPrefix(err.Error(), ErrUnparsableCommand.Error()+": ")
+	}
+	return payloadSignal{
+		id:      unparsableEntryID,
+		verdict: VerdictBlock,
+		family:  familyUnparsable,
+		reason: "The guard cannot split this command line into words (" + what + "), so it has not checked what would run. " +
+			"A shell refuses a line whose quote never closes, and one the guard misreads is one it cannot vouch for.",
+		successor: "Close every quote the line opens, or put the text in a file and pass the file, " +
+			"so the guard checks the command that actually runs.",
+	}
+}
+
+// commandTooLongSignal is the fail-closed verdict for a line past
+// maxCommandBytes. It is a BLOCK because the guard has not read the line.
+func commandTooLongSignal() payloadSignal {
+	return payloadSignal{
+		id:      commandTooLongEntryID,
+		verdict: VerdictBlock,
+		family:  familyCommandLength,
+		reason: fmt.Sprintf("This command line is longer than the %d bytes the guard reads, so it has not been checked.",
+			maxCommandBytes),
+		successor: "Split it into shorter commands, or put the long text in a file and pass the file, " +
+			"so the guard checks the command that actually runs.",
+	}
 }
 
 // decisionFromEntry builds the decision a concrete registry match produces.
@@ -551,7 +733,7 @@ func message(v Verdict, e Entry) string {
 }
 
 func cloneRegistry(r Registry) Registry {
-	out := Registry{SchemaVersion: r.SchemaVersion, Disabled: r.Disabled}
+	out := Registry{SchemaVersion: r.SchemaVersion, Disabled: r.Disabled, worktrees: r.worktrees}
 	if r.Entries != nil {
 		out.Entries = make(map[string]Entry, len(r.Entries))
 		for id, e := range r.Entries {

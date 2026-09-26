@@ -8,6 +8,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // writeOverride lays down a repo root with .abcd/guard.json and returns the root.
@@ -21,6 +23,18 @@ func writeOverride(t *testing.T, body string) string {
 		t.Fatal(err)
 	}
 	return dir
+}
+
+// writeCommittedOverride is writeOverride in a real repository with the file
+// committed: an override that weakens a blocker or switches the guard off takes
+// effect only once HEAD carries it (iss-147), so a test of what such an override
+// DOES has to commit it first.
+func writeCommittedOverride(t *testing.T, body string) string {
+	t.Helper()
+	repo := gittest.NewRepo(t)
+	repo.Write(RepoRelPath, body)
+	repo.Commit("guard override")
+	return repo.Root()
 }
 
 func TestLoadWithoutOverrideReturnsDefaults(t *testing.T) {
@@ -61,7 +75,7 @@ func TestLoadOverridesEntryPerField(t *testing.T) {
 // TestLoadOverridesPatternPerField pins the pointer semantics of after_cd: an
 // override can turn the cd-chain requirement OFF as well as on.
 func TestLoadOverridesPatternPerField(t *testing.T) {
-	root := writeOverride(t, `{"schema_version":1,"entries":{"rm-rf-after-cd-chain":{"pattern":{"after_cd":false}}}}`)
+	root := writeCommittedOverride(t, `{"schema_version":1,"entries":{"rm-rf-after-cd-chain":{"pattern":{"after_cd":false}}}}`)
 	r, err := Load(root)
 	if err != nil {
 		t.Fatal(err)
@@ -115,7 +129,7 @@ func TestLoadAcceptsADeclaredEntryID(t *testing.T) {
 }
 
 func TestLoadHonoursCommittedKillSwitch(t *testing.T) {
-	root := writeOverride(t, `{"schema_version":1,"disabled":true}`)
+	root := writeCommittedOverride(t, `{"schema_version":1,"disabled":true}`)
 	r, err := Load(root)
 	if err != nil {
 		t.Fatal(err)
@@ -317,7 +331,7 @@ func TestLoadAcceptsWellFormedOperandConstraints(t *testing.T) {
 		`{"schema_version":1,"entries":{"git-push-force":{"pattern":{"arg_prefixes":["+"]}}}}`,
 		`{"schema_version":1,"entries":{"gh-api-repo-delete":{"pattern":{"arg_paths":[{"root":"repos","segments":3}]}}}}`,
 	} {
-		if _, err := Load(writeOverride(t, body)); err != nil {
+		if _, err := Load(writeCommittedOverride(t, body)); err != nil {
 			t.Fatalf("a well-formed operand constraint must load, got %v for %s", err, body)
 		}
 	}

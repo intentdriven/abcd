@@ -518,22 +518,74 @@ of it to teach, never in place of it.
 An allow means no registry entry matched — it is never a statement that a
 command is safe. A hazard behind a launcher the guard does not recognise is
 a WARN naming the entry it matched, rather than an allow, because the guard
-cannot tell whether that program runs the rest of the line. What an
+cannot tell whether that program runs the rest of the line. A `$(…)`,
+backtick, `<(…)` or `>(…)`, quoted or not, IS followed into command
+position, and the words written after one stay the enclosing command's,
+so `rm $(true) -rf *` is read as `rm -rf *`. What one prints is unknown,
+so a word holding one fails closed, read every way it can be at once: led
+by a dash (`--$(…)`) it is every flag it could become — standing alone,
+taking a value, a shell's `-c` — before the command as well as after it;
+after a value flag (`git -C $(pwd) push`) it is that flag's value; as an
+operand it is one operand; in command position (`$(echo git) push`) it is
+any program its known text allows, so an unknown name with any operand
+reads as `pkill` too; a block that fires only on such a name is reported
+as program-name-unknown, and the way past is to spell the program's name.
+Text beside one in the same word is also read as bash
+leaves it when the output is empty. One nested more than eight
+double-quoted substitutions deep, holding a case command, or more than
+eight of them where the program name could be, is blocked, because the
+guard has stopped reading it. An ANSI-C string ends at its closing quote
+and its first NUL, as bash ends it. A `${…}` holding a substitution is
+unknown from its `${` on, and inside double quotes it ends at its own
+`}`, its nested quotes opening a nested string. A here-document body is
+data, but a substitution in one whose delimiter is unquoted runs, and is
+read as a command; a body line ending in an odd number of backslashes
+joins the next before the delimiter compare, as bash joins it. A
+backtick's text is read after bash's own pass over it, which drops a
+backslash before `$`, a backtick or a backslash (and, directly inside
+double quotes, one before a `"` too), so an escaped `\$(…)`
+or an escaped backtick pair between backticks is read as the
+substitution bash runs, in a here-document body there too. A
+`"$(cat <<'EOF' … EOF)"` handed to `sh -c` or `eval` is read as its
+document's text, and an unquoted one as the words bash splits its
+document into, at every layer, each joined to any text written
+beside it in the same word, as bash joins it; a backtick spelling with
+no backslash in it is read the same way. On a line where another command
+names IFS an unquoted one is blocked (ifs-split-unread), because the
+guard splits on the default IFS only. Two `sh -c` or `eval` layers are
+followed; a payload nested deeper is blocked.
+`$(( … ))` is an expression, not commands. A shell reading
+its script from a pipe, a here-document, a here-string, the stdin device
+or a process substitution is blocked, and so is a line over 64 KiB.
+An unquoted brace group IS
+expanded as bash expands it, and one past 4096 words is blocked. What an
 allow still does not see is a hazard that never reaches command position at
-all: one launched through a known
+all: a word that is wholly a `$(…)` standing where a flag would be (read as
+an operand, the way a commit message or a branch is spelled), one launched
+through a known
 wrapper carrying a value-taking flag the guard does not name (`sudo -u bob
 <hazard>` is seen; the bundled short form `sudo -Hu bob <hazard>` reaches
 only the warn, not the entry that names it),
 one whose API path an entry names by its ROOT segment but the host serves
 under a prefix (a GitHub Enterprise Server install mounts the same endpoints
-under `/api/v3/`; the api.github.com URL form IS read), a bare `$VAR` inside
-an interpreter payload (an execute-a-string payload IS read — `sh -c`,
+under `/api/v3/`; the api.github.com URL form IS read), a parameter
+expansion that carries no substitution (`$VAR`, `${VAR:-git}`) wherever it
+stands — as the program's name, as a flag (`--$VAR`), or inside an
+interpreter payload (an execute-a-string payload IS read — `sh -c`,
 `env -S`; one the guard cannot read is warned or, for `env -S`, blocked),
-a hazard inside a top-level command substitution (`$(…)` and
-backticks are both followed into command position),
+because the guard sees the variable, not what the shell expands it to,
+an IFS the shell already holds when the line starts or gains during the
+line through a name the guard does not read (every line is read from the
+default IFS),
 a hazard inside a NON-shell interpreter's payload (`python -c`, `perl -e`) —
 one opaque token the tokenizer cannot read, today a silent allow (a warn for
 it is a recorded design target, not yet raised),
+a lone substitution standing as the whole command (`$(cat msg.txt)`,
+`$(date)`), which can be any program but matches no entry with no
+operand after it, and so a document printed that way through any shape
+but exactly `cat <<DELIM`, a newline, the body, the delimiter line and
+blanks (`/bin/cat`, `command cat`, `cat -`, a redirection or a command
+beside it, a backslash-newline in it, a `${…}` around it),
 or a dangerous form no entry describes. Coverage is what the registry
 names.
 
@@ -562,14 +614,17 @@ stderr, which is the channel the host replays to the agent. A warn and an
 allow both let the command run.
 
 Anything the adapter cannot turn into a decision — an unreadable payload, a
-tool call that is not a shell command, an unparsable command line, a
-registry that will not load — allows the command and warns loudly on
-stderr. A guard that cannot answer never stops a session, and is never
-silently absent. Unparsable means an unterminated quote in COMMAND text,
-which no shell runs either — a quote inside a here-document body is
-document text and is not one. A trailing backslash and a here-document with
-no delimiter line are grammar a shell does run, so each gets a verdict —
-the backslash is read as bash reads it, the unterminated document blocks.
+tool call that is not a shell command, a registry that will not load —
+allows the command and warns loudly on stderr. A guard that cannot answer
+never stops a session, and is never silently absent. A command line the
+guard cannot split is not in that set: it is blocked (command-unparsable),
+because a line the guard misreads may be one bash runs, and letting it
+through would pass every hazard in it. Unparsable means an unterminated
+quote in COMMAND text, which no shell runs either — a quote inside a
+here-document body is document text and is not one. A trailing backslash
+and a here-document with no delimiter line are grammar a shell does run,
+so each gets a verdict — the backslash is read as bash reads it, the
+unterminated document blocks.
 
 A host whose shell tool takes a per-call working directory passes it as
 tool_input.workdir. It is resolved against the session directory, and a

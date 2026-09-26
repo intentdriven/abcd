@@ -105,7 +105,11 @@ type speculationBudget struct {
 // claiming one would be indexed out of Registry.Entries by a synthetic winner
 // (yielding a blank message), and would let a repo dress an ordinary entry up as
 // the guard's own verdict.
-var reservedEntryIDs = []string{syntheticEntryID, speculativeEntryID, braceEntryID, heredocEntryID, gitConfigEntryID}
+var reservedEntryIDs = []string{
+	syntheticEntryID, speculativeEntryID, braceEntryID, heredocEntryID, substitutionEntryID,
+	gitConfigEntryID, stashEntryID, interpreterStreamEntryID, commandTooLongEntryID, unparsableEntryID,
+	unknownProgramEntryID, ifsSplitEntryID,
+}
 
 // speculate runs Tier 2 over every segment Tier 1 left unmatched, returning at
 // most one signal per segment (the first hit wins; there is nothing to gain from
@@ -135,12 +139,12 @@ func (r Registry) speculate(segs []segment, matched []bool, ids []string) []payl
 		// hazard twice, once as a precise entry and once as a guess about it.
 		//
 		// A payload the guard reached only by GUESSING at a globbed command
-		// name is the exception: there the reading is "this pattern can expand
-		// to sh", not "this is sh", so it is taken in addition to the warn and
-		// not instead of it. Dropping the warn there turned a hazard behind an
+		// name, or at a name a substitution prints, is the exception: there the
+		// reading is "this can be sh", not "this is sh", so it is taken in
+		// addition to the warn and not instead of it. Dropping the warn there turned a hazard behind an
 		// unknown launcher into a silent allow, which is exactly what adr-42
 		// decision 2 says is never dropped.
-		if _, _, _, _, carriesPayload := classifySegment(s); carriesPayload && !shellNameGuessed(s) {
+		if carriesReadPayload(s) {
 			continue
 		}
 		if sig, ok := r.speculateSegment(segs[:i], s, ids, &budget); ok {
@@ -163,7 +167,7 @@ func (r Registry) speculateSegment(before []segment, s segment, ids []string, bu
 	// and a window that starts after the wrapper no longer holds it — so the
 	// glob record is withheld from every window of such a segment, or Tier 2
 	// would re-arm the compare Tier 1 correctly stood down.
-	_, noglob := commandIndex(s)
+	noglob := allNoglob(s)
 	for _, start := range starts {
 		tokens := s.tokens[start:]
 		if len(tokens) > maxSpeculativeWindow {
@@ -265,12 +269,28 @@ func speculativeStarts(tokens []string) ([]int, bool) {
 	return starts, false
 }
 
-// eligibleStart reports whether a token is worth re-matching from.
+// eligibleStart reports whether a token is worth re-matching from. A word whose
+// name a substitution ends (`prefix-$(date)`) can be any program at all
+// (anyProgram); starting there would turn every argument that spells one into a
+// warn, and Tier 1 already reads such a word in command position every way it
+// can be, so it is not a start.
 func eligibleStart(tok string) bool {
 	if tok == "" || tok == "-" {
 		return false
 	}
-	return !strings.HasPrefix(tok, "-") && !isAssignment(tok) && !reserved[tok]
+	return !strings.HasPrefix(tok, "-") && !steppedBeforeCommand(tok) && !anyProgram(tok)
+}
+
+// allNoglob reports whether every place the segment's command can sit is behind
+// zsh's noglob, so no window of it holds a word bash would expand.
+func allNoglob(s segment) bool {
+	sites := commandSites(s)
+	for _, a := range sites {
+		if !a.noglob {
+			return false
+		}
+	}
+	return len(sites) > 0
 }
 
 // segmentBytes is the segment's total token size, the quantity the expansion

@@ -1,6 +1,20 @@
 package guard
 
-import "testing"
+import (
+	"path"
+	"testing"
+)
+
+// commandOf is the tests' view of the walk to command position: the name at the
+// first place the command can sit (commandSites) and the arguments after it.
+// For a line with no unknown word there is exactly one such place.
+func commandOf(s segment) (string, []string) {
+	sites := commandSites(s)
+	if len(sites) == 0 {
+		return "", nil
+	}
+	return path.Base(s.tokens[sites[0].idx]), s.tokens[sites[0].idx+1:]
+}
 
 // firstSegment tokenises a line and returns its first command-position segment,
 // so a matcher-level test can assert on what commandOf reads without going
