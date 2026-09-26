@@ -2,7 +2,6 @@ package capture
 
 import (
 	"fmt"
-	"regexp"
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/intent"
@@ -17,10 +16,6 @@ import (
 // gathers the intents too, because it already reads the intent store and the
 // intent store does not read the ledger; the intent create takes this set
 // through its Matcher.
-
-// reLinkID is the shape of a typed link's target: an issue or an intent, the
-// two families the match compares with.
-var reLinkID = regexp.MustCompile(`^(iss|itd)-[0-9]+$`)
 
 // linkFields are the typed-link keys a record may carry, in the order a
 // capture writes them.

@@ -25,6 +25,12 @@ plugin surface, and a future MCP server share one engine.
   carries, and a record they disagree about is one that sits in the ledger unread
   by every surface. It is not inside `core/capture` because that package's own
   tests import `core/lint`, so a lint importing capture back is an import cycle.
+- **`core/issuerecord/`** — the ledger reader's judgement of one file in a status
+  directory: the guarded read, the frontmatter parse, the schema and the
+  folder-and-filename invariants, and the stage that refused a record it skips.
+  A leaf on the `core/issueschema` precedent: `core/capture` scans the ledger
+  through it and `core/lint` reports every record it skips, so the gate and the
+  surfaces reach one verdict on one file rather than two validators agreeing.
 - **`core/grounds/`** — the recorded-grounds vocabulary and its record form: the
   three values (`pursued`, `deferred`, `declined`), the `<token>: <text>` grammar,
   the substance floor that refuses a degenerate text, and the append-only

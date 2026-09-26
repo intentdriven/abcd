@@ -608,11 +608,17 @@ func TestRecordSchemaRequiresIssueFrontmatter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !findingWith(fs, filepath.Join(issues, "resolved", "iss-2-stripped.md"), ruleRecordSchema, "schema_version") {
+	stripped := filepath.Join(issues, "resolved", "iss-2-stripped.md")
+	if !findingWith(fs, stripped, ruleRecordSchema, "schema_version") {
 		t.Errorf("expected a missing-schema_version finding on the stripped record: %+v", fs)
 	}
-	if n := countRule(fs, ruleRecordSchema); n != 1 {
-		t.Fatalf("expected exactly 1 record_schema finding (the stripped record), got %d: %+v", n, fs)
+	// The reader's own verdict on the same record is the second finding
+	// (iss-2609261631132673); nothing else in the fixture is reported.
+	if !findingWith(fs, stripped, ruleRecordSchema, readerSkipsPhrase) {
+		t.Errorf("expected the ledger reader's verdict on the stripped record: %+v", fs)
+	}
+	if n := countRule(fs, ruleRecordSchema); n != 2 {
+		t.Fatalf("expected exactly 2 record_schema findings (both on the stripped record), got %d: %+v", n, fs)
 	}
 }
 
@@ -708,11 +714,18 @@ func TestRecordSchemaFilenameSlugAgrees(t *testing.T) {
 			t.Errorf("no record_schema finding on %s naming the frontmatter slug %q: %+v", c.file, c.fmSlug, fs)
 		}
 	}
+	// The drifted ISSUE is one the ledger reader skips at its invariant layer,
+	// and the reader's verdict says so beside the slug finding
+	// (iss-2609261631132673).
+	if !findingWith(fs, filepath.Join(issues, "open", "iss-2-inspirations-lead-removal.md"), ruleRecordSchema,
+		readerSkipsPhrase+" (invariant: ") {
+		t.Errorf("no ledger-reader verdict on the drifted issue: %+v", fs)
+	}
 	// Exactly the two drifted records — the agreeing issue, the agreeing ADR and
 	// the slugless spec must all stay silent, or the rule is a false-blocker
 	// generator on the committed tree.
-	if n := countRule(fs, ruleRecordSchema); n != 2 {
-		t.Fatalf("expected exactly 2 record_schema findings (the two drifted records), got %d: %+v", n, fs)
+	if n := countRule(fs, ruleRecordSchema); n != 3 {
+		t.Fatalf("expected exactly 3 record_schema findings (the two drifted records, and the reader's verdict on the issue), got %d: %+v", n, fs)
 	}
 }
 
@@ -1495,17 +1508,32 @@ func TestAbsentAndEmptyRequiredPropertiesGiveDifferentReasons(t *testing.T) {
 	if !findingWith(fs, absent, ruleRecordSchema, "skipped") {
 		t.Errorf("this reader DOES refuse a record that omits a required property, and the finding should say so: %+v", fs)
 	}
-	if findingWith(fs, empty, ruleRecordSchema, "skipped") {
+	// The required-fields leg's own finding on the blank claims nothing about the
+	// reader. What the reader does with it is stated by the reader's verdict
+	// (iss-2609261631132673), which is the reader's word rather than an account
+	// of it, so it is excluded from the claim check.
+	var blankLeg []string
+	for _, f := range fs {
+		if f.File == empty && f.RuleID == ruleRecordSchema && !strings.Contains(f.Message, readerSkipsPhrase) {
+			blankLeg = append(blankLeg, f.Message)
+		}
+	}
+	if len(blankLeg) != 1 || !strings.Contains(blankLeg[0], "'found_during'") {
+		t.Fatalf("a blank required property is one finding of its own: %+v", fs)
+	}
+	if strings.Contains(blankLeg[0], "skipped") {
 		t.Errorf("no leg judges a blank found_during, so the finding must not claim the record is skipped: %+v", fs)
 	}
-	if findingWith(fs, empty, ruleRecordSchema, "this record is read") {
+	if strings.Contains(blankLeg[0], "this record is read") {
 		t.Errorf("no leg judges a blank found_during, so the finding must not claim the record is read either: %+v", fs)
 	}
-	if !findingWith(fs, empty, ruleRecordSchema, "'found_during'") {
-		t.Errorf("a blank required property is still a finding: %+v", fs)
+	for _, file := range []string{absent, empty} {
+		if !findingWith(fs, file, ruleRecordSchema, readerSkipsPhrase+" (schema: ") {
+			t.Errorf("the ledger reader skips %s at its schema layer, and its verdict is not reported: %+v", file, fs)
+		}
 	}
-	if n := countRule(fs, ruleRecordSchema); n != 2 {
-		t.Fatalf("expected exactly 2 findings, got %d: %+v", n, fs)
+	if n := countRule(fs, ruleRecordSchema); n != 4 {
+		t.Fatalf("expected exactly 4 findings (each record's own, and the reader's verdict on each), got %d: %+v", n, fs)
 	}
 }
 

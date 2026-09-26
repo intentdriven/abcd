@@ -13,6 +13,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/changelog"
 	"github.com/intentdriven/abcd/internal/core/grounds"
+	"github.com/intentdriven/abcd/internal/core/issuerecord"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/provenance"
 	"github.com/intentdriven/abcd/internal/core/record/match"
@@ -937,52 +938,15 @@ func scanStatusDir(issuesRoot string, sub State) ([]Issue, []SkipRecord, error) 
 	sort.Strings(names)
 	for _, name := range names {
 		path := filepath.Join(dir, name)
-		wellFormed := issFileNumRe.MatchString(name)
-		if !wellFormed {
-			// A file that claims to be a record (family prefix + ordinal) and is
-			// not well-formed is REPORTED, not dropped: it sits in the ledger,
-			// counted by nothing and reported by nothing, which is how a record
-			// gets silently lost. A file claiming nothing — README.md, a stray
-			// note, the allocator lock — is silently ignored, as before.
-			//
-			// Detection uses recordid.FilenameNumRe, the SAME grammar the resolver
-			// and record-lint's per-store rule read, so a filename the gate and
-			// the resolver treat as a record reaches the reader too rather than
-			// being dropped by a stricter local grammar (iss-2608280739112123).
-			// The stricter slug shape is still enforced — as a filename<->
-			// frontmatter agreement, below in validateInvariants — but that is a
-			// judgement on a record, not the question of whether one exists.
-			if filepath.Ext(name) == ".md" && reIssNameClaim.MatchString(name) {
-				skipped = append(skipped, SkipRecord{Path: path, Layer: SkipLayerName, Error: fmt.Errorf(
-					"%w: filename %q is not a well-formed record name (iss-N[-slug].md)",
-					ErrInvariantViolation, name).Error()})
-			}
+		// The verdict on each file is the record reader's (core/issuerecord),
+		// the one record-lint reports from, so a record this scan skips is never
+		// green at the gate (iss-2609261631132673).
+		fm, body, refusal, claims := issuerecord.Judge(path, statusDirName[sub])
+		if !claims {
 			continue
 		}
-		// A well-formed name always ends .md — the grammar's pattern requires
-		// it — so no separate extension check is needed on this path.
-		//
-		// The read is guarded, not bare: a well-formed NAME says nothing about
-		// the leaf behind it, and in a hostile clone that leaf is a FIFO that
-		// would hang this scan, a symlink to a file outside the ledger, or a
-		// body sized to make the read unbounded. Each is a skipped record the
-		// surfaces already render, never a hang and never serialized.
-		content, err := readRecordGuarded(path)
-		if err != nil {
-			skipped = append(skipped, SkipRecord{Path: path, Layer: SkipLayerRead, Error: err.Error()})
-			continue
-		}
-		fm, body, err := parseFrontmatterAndBody(content)
-		if err != nil {
-			skipped = append(skipped, SkipRecord{Path: path, Layer: SkipLayerFrontmatter, Error: err.Error()})
-			continue
-		}
-		if err := validateStrict(fm); err != nil {
-			skipped = append(skipped, SkipRecord{Path: path, Layer: SkipLayerSchema, Error: err.Error()})
-			continue
-		}
-		if err := validateInvariants(fm, sub, path); err != nil {
-			skipped = append(skipped, SkipRecord{Path: path, Layer: SkipLayerInvariant, Error: err.Error()})
+		if refusal != nil {
+			skipped = append(skipped, SkipRecord{Path: path, Layer: refusal.Layer, Error: refusal.Err.Error()})
 			continue
 		}
 		issues = append(issues, issueFromFrontmatter(fm, sub, path, body))

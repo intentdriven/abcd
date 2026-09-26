@@ -3,18 +3,14 @@ package capture
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
-	"syscall"
 
-	"github.com/intentdriven/abcd/internal/core/issueschema"
+	"github.com/intentdriven/abcd/internal/core/issuerecord"
 	"github.com/intentdriven/abcd/internal/core/recordid"
-	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
@@ -173,40 +169,6 @@ func readWithChecksum(path string) (string, string, error) {
 	return content, sha256Hex([]byte(content)), nil
 }
 
-// readRecordGuarded reads one record file through the shared trust-boundary
-// primitive: fsutil.ReadGuarded opens once with O_NOFOLLOW and O_NONBLOCK and
-// validates on the SAME descriptor, so no symlink swap fits between a check and
-// the read, and a FIFO or device at a record name cannot block the open. The cap
-// is issueschema.RecordReadLimit, the ONE cap the ledger's families share —
-// core/lint applies the same value, because a cap the board applies loosely and
-// the verb applies tightly makes the ledger say two things about one file.
-//
-// It is the reader for EVERY record family in this package. The reading and
-// disposition families used it from the start; the issue family read through a
-// bare os.ReadFile until GHSA-fh9j-8xmg-m33f, so a committed FIFO hung `list`,
-// an oversize record was serialized unbounded, and a committed symlink read an
-// out-of-tree file into `list --json` (iss-2609012036271396). A record store a
-// clone carries is a trust boundary whichever family the record belongs to.
-//
-// The sentinels are mapped to this package's own: a non-regular leaf, or a
-// symlink refused by O_NOFOLLOW, is ErrPathUnsafe, which is what every caller
-// here already tests for.
-func readRecordGuarded(path string) (string, error) {
-	data, err := fsutil.ReadGuarded(path, issueschema.RecordReadLimit)
-	if err == nil {
-		return string(data), nil
-	}
-	if errors.Is(err, fsutil.ErrNotRegular) || errors.Is(err, syscall.ELOOP) {
-		return "", fmt.Errorf("%w: record path is not a regular file: %s", ErrPathUnsafe, path)
-	}
-	if errors.Is(err, fsutil.ErrTooBig) {
-		return "", fmt.Errorf("%w: record is larger than the %d-byte size cap and was left unread: %s", ErrPathUnsafe, issueschema.RecordReadLimit, path)
-	}
-	// A record the process may not open is a refusal with a name, not a raw open
-	// error surfacing through a verb: the caller is told the ledger could not be
-	// read and which file, rather than a syscall's own wording.
-	if errors.Is(err, fs.ErrPermission) {
-		return "", fmt.Errorf("%w: record is unreadable (permission denied): %s", ErrPathUnsafe, path)
-	}
-	return "", err
-}
+// readRecordGuarded reads one record file through the guarded, capped read
+// every ledger family shares (issuerecord.ReadGuarded).
+func readRecordGuarded(path string) (string, error) { return issuerecord.ReadGuarded(path) }

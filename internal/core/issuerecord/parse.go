@@ -1,4 +1,4 @@
-package capture
+package issuerecord
 
 import (
 	"fmt"
@@ -8,7 +8,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
 )
 
-// parseFrontmatterAndBody splits text into a frontmatter map and a body,
+// Parse splits text into a frontmatter map and a body,
 // mirroring _issue_lib._parse_text_with_body. The text MUST start with an
 // opening --- line; the next un-indented --- closes the block. At most one
 // leading blank line after the closing delimiter is stripped from the body.
@@ -27,8 +27,8 @@ import (
 // lists (`[]`, `[itd-4, fn-12]`, `["a", "b"]`), and a single level of nested
 // object (used only by the optional resolved_by field). Values decode to
 // string, int, []string, or map[string]any.
-func parseFrontmatterAndBody(text string) (map[string]any, string, error) {
-	lines := splitKeepEnds(text)
+func Parse(text string) (map[string]any, string, error) {
+	lines := SplitKeepEnds(text)
 	// TrimBOM applies to lines[0] and nowhere else: U+FEFF is a byte-order mark
 	// only at the file's first position, and a mid-file "\ufeff---" is an
 	// ordinary body line (iss-2608270926036966).
@@ -58,14 +58,14 @@ func parseFrontmatterAndBody(text string) (map[string]any, string, error) {
 		body = body[1:]
 	}
 
-	fm, err := parseFrontmatterBlock(lines[1:closeIdx])
+	fm, err := ParseBlock(lines[1:closeIdx])
 	if err != nil {
 		return nil, "", err
 	}
 	return fm, body, nil
 }
 
-// parseFrontmatterBlock parses the interior lines of a frontmatter block.
+// ParseBlock parses the interior lines of a frontmatter block.
 // nextLineIsIndented reports whether the line after i begins an indented block,
 // skipping blank lines. It is the lookahead that separates `key:` as a null from
 // `key:` as the head of a nested object.
@@ -87,14 +87,14 @@ func quotedScalar(rest string) bool {
 	return len(t) >= 2 && strings.HasPrefix(t, `"`) && strings.HasSuffix(t, `"`)
 }
 
-// parseFrontmatterBlock parses the interior lines of a frontmatter block,
+// ParseBlock parses the interior lines of a frontmatter block,
 // deciding null-vs-string while the RAW scalar is still in hand.
 //
 // An earlier draft split this in two and threaded a set of quoted keys out to the
 // validator. The decision is made inline here, so that set was never populated and
 // both callers discarded it — dead scaffolding, and the comment justifying it was
 // false as well. One function, no reserved return.
-func parseFrontmatterBlock(lines []string) (map[string]any, error) {
+func ParseBlock(lines []string) (map[string]any, error) {
 	fm := map[string]any{}
 	i := 0
 	for i < len(lines) {
@@ -157,7 +157,7 @@ func parseFrontmatterBlock(lines []string) (map[string]any, error) {
 				if sidx < 0 {
 					return nil, fmt.Errorf("%w: nested line is not key: value %q", ErrMalformedFrontmatter, subRaw)
 				}
-				sval, err := parseScalarOrList(strings.TrimSpace(frontmatter.StripComment(subTrim[sidx+1:])))
+				sval, err := ParseScalarOrList(strings.TrimSpace(frontmatter.StripComment(subTrim[sidx+1:])))
 				if err != nil {
 					return nil, err
 				}
@@ -171,14 +171,14 @@ func parseFrontmatterBlock(lines []string) (map[string]any, error) {
 			fm[key] = sub
 			continue
 		}
-		val, err := parseScalarOrList(rest)
+		val, err := ParseScalarOrList(rest)
 		if err != nil {
 			return nil, err
 		}
 		// Normalise a BARE YAML null to the empty string, and leave a quoted one
 		// as the string it is (iss-285).
 		//
-		// parseScalarOrList unquotes, which destroys the only thing separating
+		// ParseScalarOrList unquotes, which destroys the only thing separating
 		// `impact: null` from `impact: "null"` — and record-lint tests the RAW
 		// scalar, so the two gates reached opposite verdicts on one record: the
 		// lint saw a string and refused, capture saw a null and passed. That is
@@ -212,8 +212,8 @@ func parseFrontmatterBlock(lines []string) (map[string]any, error) {
 // raw scalar — quotes included — rather than on its decoded string.
 var rawScalarKeys = map[string]bool{"impact": true}
 
-// parseScalarOrList decodes one YAML value into string, int, or []string.
-func parseScalarOrList(s string) (any, error) {
+// ParseScalarOrList decodes one YAML value into string, int, or []string.
+func ParseScalarOrList(s string) (any, error) {
 	if s == "[]" {
 		return []string{}, nil
 	}
@@ -284,4 +284,21 @@ func decodeScalar(s string) (any, error) {
 	}
 	// Bare token (unquoted string, e.g. an abcd id or a legacy value).
 	return s, nil
+}
+
+// SplitKeepEnds splits s into lines preserving their trailing newline(s),
+// mirroring Python's str.splitlines(keepends=True) for \n and \r\n.
+func SplitKeepEnds(s string) []string {
+	var out []string
+	start := 0
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\n' {
+			out = append(out, s[start:i+1])
+			start = i + 1
+		}
+	}
+	if start < len(s) {
+		out = append(out, s[start:])
+	}
+	return out
 }

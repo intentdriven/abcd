@@ -33,12 +33,17 @@ import (
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
+	"github.com/intentdriven/abcd/internal/core/issuerecord"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/mdrecord"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 )
 
 const ruleRecordSchema = "record_schema"
+
+// readerSkipsPhrase opens the finding that reports the ledger reader's own
+// verdict on a record it skips (ledgerReader).
+const readerSkipsPhrase = "the ledger reader skips this record"
 
 var (
 	// A record handle as it is written in a cross-reference field: adr-6, ADR-6,
@@ -235,6 +240,14 @@ type recordStore struct {
 	// that contradicted the answer it was given (iss-2608301901264848). Read the
 	// table for what a reader does; a wrong row there is a red gate.
 	readerRefusesDuplicateKey bool
+	// ledgerReader declares that the store is read through core/issuerecord, the
+	// ledger reader's own judgement of a file, and that every record it skips is
+	// reported here with the reader's stage and reason. It is the reader's verdict
+	// rather than a restatement of it: the legs above each re-ask one of its
+	// questions for a precise line and message, and a question none of them asks —
+	// an id-list item of the wrong shape, a list naming one record twice — left a
+	// record lint-green that every capture surface skipped (iss-2609261631132673).
+	ledgerReader bool
 	// bucketField is the frontmatter property that must name the bucket the
 	// record sits in, for a store that states its bucket twice. An admission is
 	// filed under the run whose candidate set it joins AND carries that run as a
@@ -357,7 +370,7 @@ var recordStores = []recordStore{
 	// this invariant exists to catch.
 	{prefix: "iss", noun: "issue", nodeType: "issue", buckets: issueStatusDirs, fileNumRe: issueFileNumRe, fileFamily: "iss", filename: "iss-<N>-<slug>.md",
 		requiredFields: issueschema.Required, knownFields: issueschema.Known, readerFailsClosed: true,
-		readerRefusesDuplicateKey: true},
+		readerRefusesDuplicateKey: true, ledgerReader: true},
 	// The three reading families (spc-58). Each buckets by GRAMMAR because its
 	// buckets are minted: a reading item and a run record live under the run that
 	// produced them, and a disposition lives under the item it answers.
@@ -1531,6 +1544,17 @@ func scanRecordStores(repoRoot string, cfg RuleConfig) ([]schemaRecord, []Findin
 					out = append(out, Finding{
 						File: rel, Line: dup.Line, RuleID: ruleRecordSchema, Severity: cfg.Severity, Message: msg,
 					})
+				}
+				if store.ledgerReader {
+					abs := filepath.Join(bucketAbs, e.Name())
+					if _, _, refusal, claims := issuerecord.Judge(abs, bucket); claims && refusal != nil {
+						out = append(out, Finding{
+							File: rel, Line: 1, RuleID: ruleRecordSchema, Severity: cfg.Severity,
+							Message: readerSkipsPhrase + " (" +
+								strings.ReplaceAll(refusal.Error(), abs, rel) +
+								"), so capture list, capture status and every verb that reads the ledger leave it out",
+						})
+					}
 				}
 				fields := frontmatterFields(lines)
 				records = append(records, schemaRecord{

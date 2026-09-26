@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"regexp"
 
+	"github.com/intentdriven/abcd/internal/core/issuerecord"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/record/match"
 	"github.com/intentdriven/abcd/internal/core/recordid"
@@ -313,24 +314,18 @@ type SkipRecord struct {
 	Error string    `json:"error"`
 }
 
-// SkipLayer is the reader stage that refused a ledger file, in scan order.
-type SkipLayer string
+// SkipLayer is the reader stage that refused a ledger file, in scan order. It
+// is the record reader's own type (core/issuerecord), so the board and the
+// committed-ledger gate name a refusal with one vocabulary.
+type SkipLayer = issuerecord.Layer
 
-// The reader's stages, in the order a file meets them.
+// The reader's stages, in the order a file meets them; see core/issuerecord.
 const (
-	// SkipLayerName: the filename claims a record and is not a well-formed one.
-	SkipLayerName SkipLayer = "filename"
-	// SkipLayerRead: the guarded read refused the leaf (a FIFO, a symlink, an
-	// oversize body, an I/O error) — nothing about the record's content.
-	SkipLayerRead SkipLayer = "read"
-	// SkipLayerFrontmatter: the bytes do not parse as a frontmatter block.
-	SkipLayerFrontmatter SkipLayer = "frontmatter"
-	// SkipLayerSchema: the frontmatter parses and the issue schema refuses a
-	// key or value in it.
-	SkipLayerSchema SkipLayer = "schema"
-	// SkipLayerInvariant: schema-clean, and the record disagrees with where it
-	// sits — its filename, or the status folder holding it.
-	SkipLayerInvariant SkipLayer = "invariant"
+	SkipLayerName        = issuerecord.LayerName
+	SkipLayerRead        = issuerecord.LayerRead
+	SkipLayerFrontmatter = issuerecord.LayerFrontmatter
+	SkipLayerSchema      = issuerecord.LayerSchema
+	SkipLayerInvariant   = issuerecord.LayerInvariant
 )
 
 // ListResult is Issues sorted ascending by numeric N plus a corrupt roster.
@@ -405,41 +400,35 @@ var (
 	// token is a different KIND of failure from a missing one
 	// (iss-2608300930057882).
 	ErrGroundsRefused = errors.New("grounds refused")
+	// The record reader's own sentinels (core/issuerecord), re-exported: one
+	// value under either name, so errors.Is holds across the two packages.
+	//
 	// ErrInvariantViolation means frontmatter passed the schema but violates a
 	// folder-status cross-field invariant.
-	ErrInvariantViolation = errors.New("invariant violation")
+	ErrInvariantViolation = issuerecord.ErrInvariantViolation
 	// ErrMalformedFrontmatter means frontmatter could not be parsed or failed
 	// schema validation.
-	ErrMalformedFrontmatter = errors.New("malformed frontmatter")
+	ErrMalformedFrontmatter = issuerecord.ErrMalformedFrontmatter
 	// ErrMissingRequiredField means a schema-required field was absent.
-	ErrMissingRequiredField = errors.New("missing required field")
+	ErrMissingRequiredField = issuerecord.ErrMissingRequiredField
 	// ErrPathUnsafe means the ledger root or a status dir is a symlink.
-	ErrPathUnsafe = errors.New("path unsafe")
+	ErrPathUnsafe = issuerecord.ErrPathUnsafe
 )
 
 // Field regexes mirroring issue.schema.json.
 var (
-	reIssID     = regexp.MustCompile(`^iss-[0-9]+$`)
-	reItdID     = regexp.MustCompile(`^itd-[0-9]+$`)
-	reSpcID     = regexp.MustCompile(`^spc-[0-9]+$`)
+	reIssID     = issuerecord.IssIDRe
+	reItdID     = issuerecord.ItdIDRe
+	reSpcID     = issuerecord.SpcIDRe
 	reCommitSha = regexp.MustCompile(`^[0-9a-f]{7,64}$`)
 	reSlug      = issueschema.SlugRe // the ONE kebab-slug pattern, shared with record-lint
-	// reIssNameClaim matches a filename that CLAIMS to be a ledger record: the
-	// family prefix followed by an ordinal. It is deliberately LOOSER than
-	// recordid.SplitRecordFilename, and the gap between the two is the point — a
-	// name that claims to be a record and then is not well-formed is reported as a
-	// skip rather than dropped, while a file claiming nothing (README.md,
-	// notes.md, iss-notes.md, the allocator lock) stays silently ignored. The
-	// ordinal is what parts the two: prose that merely starts with the prefix is
-	// not asserting an id.
-	reIssNameClaim = regexp.MustCompile(`^iss-[0-9]`)
 	// issFileNumRe is the ONE grammar that decides whether a ledger filename NAMES
 	// a record — the same recordid.FilenameNumRe the read-side resolver and
 	// record-lint's per-store rule match, so capture, the resolver and the gate
 	// agree on which files are records rather than sitting on two detection
 	// grammars (iss-2608280739112123). It is deliberately DISTINCT from the
 	// filename<->frontmatter slug agreement, which stays on the stricter
-	// recordid.SplitRecordFilename (validate.go) because that check EXTRACTS and
+	// recordid.SplitRecordFilename (core/issuerecord) because that check EXTRACTS and
 	// compares the slug; detection only needs the ordinal.
 	issFileNumRe = recordid.FilenameNumRe(issFamily)
 	reAbcdListID = regexp.MustCompile(`^(itd|fn|iss|rdi)-[0-9]+$`)
