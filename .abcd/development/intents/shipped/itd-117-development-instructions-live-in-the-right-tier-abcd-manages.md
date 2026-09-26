@@ -126,5 +126,55 @@ None stated.
 
 ## Audit Notes
 
-<!-- abcd-review: OWED receipt=rcp-056068d9886e -->
-Fidelity review OWED (receipt rcp-056068d9886e).
+<!-- abcd-review: INGESTED receipt=rcp-056068d9886e -->
+Fidelity review — receipt rcp-056068d9886e (verifier intent-auditor claude-fable-5-1).
+
+Provenance: intent-auditor@claude-fable-5-1 · rubric_hash sha256:effa65b3e9e88ff29433b443ec2be159522a8b0b71cf1434526514aa61edb13e · prompt_hash sha256:9776608c18287af8c45be5db9e7b5422040542f74fd82352aadad2a98cac5b6f
+Input attestations: diff:tree at 4c09b5c749de3dc3d1a1e0ab85d9dcd58ffcb4d5 (main lineage, itd-117 shipped)@-;
+
+Acceptance rollup: MET 6 · MET_WITH_CONCERNS 1 · NOT_MET 0 · INCONCLUSIVE 0
+
+Per-criterion verdicts:
+- ac-1 — MET: Load returns Defaults() unchanged when neither file is present and readUserLayer treats an absent path as no layer; TestUserLayerAbsentChangesNothing asserts DeepEqual with Defaults(), an unchanged repo merge, and an unchanged user-scope tree listing before and after
+  evidence: internal/core/rules/rules.go:239 — "if !haveUser && !haveRepo {"
+  evidence: internal/core/rules/rules.go:341 — "if refusal == fsutil.DeclarationAbsent && (os.IsNotExist(err)"
+  evidence: internal/core/rules/user_layer_test.go:88 — "Load created something in the user scope"
+- ac-2 — MET: the user layer merges onto Defaults() through mergeFrom with SourceUser before the repo layer; TestUserLayerOverridesBundled asserts the user rule is injected in place of the bundled one, the source reads user, and unset fields inherit the bundled value
+  evidence: internal/core/rules/rules.go:244 — "merged = mergeFrom(merged, user, SourceUser)"
+  evidence: internal/core/rules/user_layer_test.go:158 — "func TestUserLayerOverridesBundled(t *testing.T) {"
+- ac-3 — MET: the repo layer merges last through the same Merge/mergeDomain path, so per-field wholesale replacement is unchanged; TestRepoLayerOverridesUser asserts the repo's rules win and a field the repo does not set survives from the layer below
+  evidence: internal/core/rules/rules.go:255 — "merged = Merge(merged, repo)"
+  evidence: internal/core/rules/rules.go:563 — "func mergeDomain(base, over Domain) Domain {"
+  evidence: internal/core/rules/user_layer_test.go:183 — "func TestRepoLayerOverridesUser(t *testing.T) {"
+- ac-4 — MET: a user-declared custom domain is added by mergeFrom as a new key and recall-matches in a repo with and without a rules file; TestUserCustomDomainInjectsInAnyRepo asserts the match, the injected text and the user-override label
+  evidence: internal/core/rules/rules.go:548 — "out.origins[name] = source"
+  evidence: internal/core/rules/user_layer_test.go:212 — "func TestUserCustomDomainInjectsInAnyRepo(t *testing.T) {"
+- ac-5 — MET: readUserLayer reads through fsutil.ReadDeclaration and turns not-regular, writable-by-others, foreign-owner, oversize, symlinked-leaf and symlinked-~/.abcd into errors naming the file; Load returns an empty set with the error, the hook prints it and injects nothing; TestUserLayerRefusalsAreLoud covers malformed, oversize, symlinked leaf, FIFO, symlinked dir and group-writable, and TestUserLayerRefusalIsNotAPartialSet asserts no domains survive a refusal
+  evidence: internal/core/rules/rules.go:335 — "data, refusal, err := fsutil.ReadDeclaration(path, maxRulesFileBytes)"
+  evidence: internal/core/rules/rules.go:344 — "rules: ~/.abcd is a symlink (refusing to follow it to %s)"
+  evidence: internal/core/rules/rules.go:357 — "exceeds the %d-byte cap"
+  evidence: internal/surface/cli/cli.go:1371 — "fmt.Fprintf(cmd.ErrOrStderr(), "abcd %v; injecting nothing\n", err)"
+  evidence: internal/core/rules/user_layer_test.go:240 — "func TestUserLayerRefusalsAreLoud(t *testing.T) {"
+  evidence: internal/core/rules/user_layer_test.go:364 — "func TestUserLayerRefusalIsNotAPartialSet(t *testing.T) {"
+- ac-6 — MET_WITH_CONCERNS: every resolved domain carries a Source of bundled, user or repo and the rendered heading labels user and repo overrides; TestProvenanceNamesAllThreeLayers asserts the three sources through Lookup and the two labelled headings. Concern: the text render of `abcd rules` shows a bundled domain bare, so the bundled layer is conveyed by the absence of a marker rather than a word; the explicit bundled value is on the --json surface only. spc-23 AC6 specifies labels for overridden domains, so the shape is the spec's, not a drift
+  evidence: internal/core/rules/rules.go:978 — "func Label(name, source string) string {"
+  evidence: internal/core/rules/rules.go:983 — "return name"
+  evidence: internal/surface/cli/cli.go:1948 — "An untouched bundled domain renders bare and carries "source": "bundled""
+  evidence: internal/core/rules/user_layer_test.go:382 — "func TestProvenanceNamesAllThreeLayers(t *testing.T) {"
+  evidence: .abcd/development/specs/closed/spc-23-a-machines-shared-conventions-are-declared-once-in-the-user-s.md:82 — "the CLI test asserts the label for a domain overridden at each level"
+- ac-7 — MET: the repo layer merges after the user layer so its dormant state replaces the user's active one, and the kill switch is sticky through mergeFrom; TestRepoSuppressionBeatsUserActivation asserts a repo-dormant domain stays dormant and a repo kill switch suppresses the user's custom domain
+  evidence: internal/core/rules/rules.go:538 — "out.killedBy = append(out.killedBy, source)"
+  evidence: internal/core/rules/user_layer_test.go:411 — "func TestRepoSuppressionBeatsUserActivation(t *testing.T) {"
+
+Gap audit:
+- honoured:
+  - one user-scope file layers between bundled defaults and the repo file with no new directory occupied
+    evidence: internal/core/rules/rules.go:229 — "func Load(repoRoot string) (RuleSet, error) {"
+  - a machine with no user rules file behaves precisely as before
+    evidence: internal/core/rules/user_layer_test.go:62 — "func TestUserLayerAbsentChangesNothing(t *testing.T) {"
+  - an unreadable user layer fails loudly, never as a partial injection
+    evidence: internal/core/rules/user_layer_test.go:364 — "func TestUserLayerRefusalIsNotAPartialSet(t *testing.T) {"
+- diverged:
+  - provenance is visible for every domain: the text render marks user and repo overrides and leaves a bundled domain bare, with the explicit bundled source on --json only
+    evidence: internal/core/rules/rules.go:983 — "return name"
+- missing: (none)
