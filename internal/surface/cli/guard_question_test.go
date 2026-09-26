@@ -211,6 +211,36 @@ func TestPromptHookResetsTheModeAfterAQuestion(t *testing.T) {
 	}
 }
 
+// TestPromptHookLeavesAHandSetModeOverAnUnremovableMarker
+// (iss-2609260100393814): with a directory planted at the marker's path, every
+// message would otherwise reset the hand-set mode and repeat the same error.
+// Each message says so in one line, and the mode stays where the human put it.
+func TestPromptHookLeavesAHandSetModeOverAnUnremovableMarker(t *testing.T) {
+	root := managedCheckout(t)
+	if err := os.MkdirAll(filepath.Join(questionMarker(root), "planted"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := mode.SetAt(root, mode.Facilitator); err != nil {
+		t.Fatal(err)
+	}
+	prompt := `{"session_id":"s-planted","hook_event_name":"UserPromptSubmit","prompt":"carry on","cwd":"` + root + `"}`
+	for i := range 2 {
+		_, stderr, err := runSplit(t, prompt, "hook", "prompt-router")
+		if err != nil {
+			t.Fatalf("message %d: prompt-router: %v\n%s", i+1, err, stderr)
+		}
+		if got, _ := mode.ReadAt(root); got != mode.Facilitator {
+			t.Fatalf("message %d: the hand-set mode moved to %q", i+1, got)
+		}
+		if n := modeResetLines(stderr); n != 1 {
+			t.Errorf("message %d: want one loud line about the marker, got %d:\n%s", i+1, n, stderr)
+		}
+		if strings.Contains(stderr, "reset to managed") {
+			t.Errorf("message %d: the hook claims a reset it must not make:\n%s", i+1, stderr)
+		}
+	}
+}
+
 func modeResetLines(stderr string) int {
 	n := 0
 	for _, l := range strings.Split(stderr, "\n") {

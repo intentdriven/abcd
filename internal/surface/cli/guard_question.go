@@ -107,8 +107,8 @@ func resetModeOnAnswer(w io.Writer, cwd string) {
 	reset, err := mode.ResetOnAnswer(root)
 	switch {
 	case err != nil:
-		fmt.Fprintf(w, "abcd mode: the question marker could not be cleared, so the mode was not reset (%s)\n",
-			termsafe.Sanitize(scrubPaths(err)))
+		// The store's error says whether the mode moved; it is the one line.
+		fmt.Fprintf(w, "abcd mode: after the question, %s\n", termsafe.Sanitize(scrubPaths(err)))
 	case reset:
 		fmt.Fprintln(w, "abcd mode: the question was answered, so the mode is reset to managed")
 	}

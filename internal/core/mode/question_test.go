@@ -180,3 +180,28 @@ func TestCanSetProbesWhatTheVerbNeeds(t *testing.T) {
 		t.Fatal("CanSet with a directory at the store's path = nil; the verb's rename cannot replace it")
 	}
 }
+
+// TestResetOnAnswerRefusesAMarkerItCannotRemove (iss-2609260100393814): a
+// directory planted at the marker's path is nothing the gate wrote and nothing
+// the reset can clear, so resetting on it would reset a hand-set mode on every
+// message that follows and never clear the cause. The reset refuses it, names
+// it, and leaves the mode as it was, on every message.
+func TestResetOnAnswerRefusesAMarkerItCannotRemove(t *testing.T) {
+	root := newRepo(t)
+	makeTier(t, root)
+	if err := os.MkdirAll(filepath.Join(markerPath(root), "planted"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := mode.SetAt(root, mode.Facilitator); err != nil {
+		t.Fatal(err)
+	}
+	for i := range 2 {
+		reset, err := mode.ResetOnAnswer(root)
+		if err == nil || reset {
+			t.Fatalf("message %d: ResetOnAnswer on a planted directory = %v, %v; want false and an error", i+1, reset, err)
+		}
+		if got, _ := mode.ReadAt(root); got != mode.Facilitator {
+			t.Fatalf("message %d: the hand-set mode moved to %q", i+1, got)
+		}
+	}
+}

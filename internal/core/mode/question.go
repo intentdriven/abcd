@@ -102,21 +102,33 @@ func markerIn(root *os.Root) (bool, error) {
 // two leaves the marker in place and the next message retries the reset; the
 // opposite order could clear the marker and leave the badge parked with nothing
 // left to reset it.
+//
+// That ordering is only safe for a marker the reset CAN remove, so it refuses
+// to act on one it cannot: a directory at the marker's path is nothing the gate
+// wrote (the gate writes one file), and resetting on it would reset a hand-set
+// state on every message that follows while the cause stayed put
+// (iss-2609260100393814). The refusal changes nothing and names the path. A
+// file, a symlink or a FIFO is removed as itself, as before.
 func ResetOnAnswer(repoRoot string) (bool, error) {
 	root, err := os.OpenRoot(repoRoot)
 	if err != nil {
 		return false, fmt.Errorf("opening the checkout to reset %s: %w", StoreName, err)
 	}
 	defer root.Close()
-	open, err := markerIn(root)
-	if err != nil || !open {
-		return false, err
+	fi, err := root.Lstat(QuestionOpenRelPath)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return false, nil
+	case err != nil:
+		return false, fmt.Errorf("reading the question marker at %s, so the mode was not reset: %w", QuestionOpenRelPath, err)
+	case fi.IsDir():
+		return false, fmt.Errorf("a directory stands at the question marker's path %s, which the gate never writes and the reset cannot clear, so the mode was not reset; remove it by hand", QuestionOpenRelPath)
 	}
 	if err := SetAt(repoRoot, Managed); err != nil {
-		return false, err
+		return false, fmt.Errorf("the mode was not reset: %w", err)
 	}
 	if err := root.Remove(QuestionOpenRelPath); err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return false, fmt.Errorf("clearing the question marker at %s: %w", QuestionOpenRelPath, err)
+		return true, fmt.Errorf("the mode was reset to managed, but the question marker at %s could not be cleared, so the next message resets it again: %w", QuestionOpenRelPath, err)
 	}
 	return true, nil
 }
