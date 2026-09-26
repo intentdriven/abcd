@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -554,10 +555,9 @@ func TestARefusalRollsBackTheRunsOwnCrashedAttempt(t *testing.T) {
 //
 // The sweep is held back to the commit path, so an orphan can now outlive the
 // invocation that found it — and nothing named one. `staged_runs` reads the
-// ASSEMBLY parking area, which is a different directory and lists committed
-// runs alongside uncommitted ones, so an operator had no way to see that a
-// crashed ingest had left reading records in the ledger for a run that never
-// happened.
+// ASSEMBLY parking area, which is a different directory, so an operator had no
+// way to see that a crashed ingest had left reading records in the ledger for
+// a run that never happened.
 func TestTheBareRenderNamesAnOrphanedIngestStage(t *testing.T) {
 	f := newIngestFixture(t, "detection")
 	status, err := Describe(f.root)
@@ -621,5 +621,46 @@ func TestTheBareRenderTellsALeftoverStageFromAnOrphan(t *testing.T) {
 	}
 	if len(status.LeftoverStages) != 1 || status.LeftoverStages[0] != f.runID {
 		t.Errorf("the render reports leftover stages %v, want [%s]", status.LeftoverStages, f.runID)
+	}
+}
+
+// TestTheBareRenderListsOnlyTheParkedRunsAwaitingAnOutcome
+// (iss-2608311621412224). Nothing removes an assembly's parking directory after
+// its run is ingested, so `staged_runs` listed every run ever assembled: a
+// committed run, a refused one and one no reading had been given rendered
+// alike, and the list grew without bound while answering a different question
+// from the one an operator asks of it. The record already holds the answer — a
+// run with an outcome has a run.json or a refusal.json under its id, the probe
+// refuseARerun makes — so the render lists a parked run only while it has none.
+func TestTheBareRenderListsOnlyTheParkedRunsAwaitingAnOutcome(t *testing.T) {
+	f := newIngestFixture(t, "detection")
+	status, err := Describe(f.root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(status.StagedRuns, []string{f.runID}) {
+		t.Fatalf("a parked run awaiting ingest renders as staged runs %v, want [%s]", status.StagedRuns, f.runID)
+	}
+
+	f.mustIngest(f.payload(1))
+	waiting := f.nextRun(f.payload(1))["run_id"].(string)
+	refused := f.nextRun(f.payload(1))
+	for _, it := range refused["items"].([]any) {
+		it.(map[string]any)[PatternField] = ""
+	}
+	if _, err := f.ingest(refused); err == nil {
+		t.Fatal("a run in which every item was refused was accepted")
+	}
+	if !f.exists(ReadingsRecordDir + "/" + refused["run_id"].(string) + "/" + RefusalFileName) {
+		t.Fatal("the refused run left no refusal record, so this case proves nothing")
+	}
+
+	status, err = Describe(f.root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(status.StagedRuns, []string{waiting}) {
+		t.Errorf("staged runs are %v; want only the run awaiting an outcome, [%s] — the committed run %s "+
+			"and the refused run %s have one", status.StagedRuns, waiting, f.runID, refused["run_id"])
 	}
 }

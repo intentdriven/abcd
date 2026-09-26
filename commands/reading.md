@@ -32,7 +32,8 @@ To render the assembler's state:
 Summarise the JSON for the user: `assembler_version`, `include_rows` and
 `exclusion_rows` (what the table admits and what it refuses), `definitions`
 (the reading definitions the locator RESOLVED), `staged_runs` (runs an
-assembly has parked in the local tier), `orphaned_ingests`, and
+assembly has parked in the local tier that no ingest has yet committed or
+refused), `orphaned_ingests`, and
 `leftover_stages`. Zero writes.
 
 **`definitions` is what resolved, not what is present.** A definition is

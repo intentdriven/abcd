@@ -30,10 +30,10 @@ a reading whose account of itself can be checked rather than believed.
 
 Bare `abcd reading` is a third form and a **read-only status render**: the
 assembler's version and schema number, the include and exclusion row counts, the
-charter path, the position definitions the binary resolves, the staged runs, and
-any orphaned ingest waiting to be swept. It writes nothing, and it is where an
-operator reads what the instrument currently is before commissioning anything
-through it.
+charter path, the position definitions the binary resolves, the staged runs no
+ingest has yet committed or refused, and any orphaned ingest waiting to be
+swept. It writes nothing, and it is where an operator reads what the instrument
+currently is before commissioning anything through it.
 
 ## The invocation carries no free text
 

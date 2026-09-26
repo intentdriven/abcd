@@ -993,21 +993,34 @@ func validArtefactName(name string) error {
 // It runs before the refusal path for that second reason: a rerun must not
 // overwrite the refusal record of the run it is repeating either.
 func refuseARerun(root *os.Root, runID string) error {
-	for _, name := range []string{RunFileName, RefusalFileName} {
-		rel := ReadingsRecordDir + "/" + runID + "/" + name
-		_, err := root.Lstat(rel)
-		switch {
-		case err == nil:
-			return fmt.Errorf("reading: run %s already has an outcome at %s; a rerun is a new run with a "+
-				"new run id, never an amendment — assemble again, and ingest the run that assembly parked",
-				runID, rel)
-		case os.IsNotExist(err):
-			continue
-		default:
-			return fmt.Errorf("reading: probing the outcome of run %s: %w", runID, err)
-		}
+	rel, err := runOutcome(root, runID)
+	if err != nil {
+		return fmt.Errorf("reading: probing the outcome of run %s: %w", runID, err)
+	}
+	if rel != "" {
+		return fmt.Errorf("reading: run %s already has an outcome at %s; a rerun is a new run with a "+
+			"new run id, never an amendment — assemble again, and ingest the run that assembly parked",
+			runID, rel)
 	}
 	return nil
+}
+
+// runOutcome returns the repository-relative path of the outcome record a run
+// already has — its commit marker, or its refusal record — or "" when it has
+// none. It is the one answer to "has this run been ingested": the rerun refusal
+// asks it before an ingest writes, and the bare render asks it of every parked
+// run, so the two cannot disagree about which runs are still outstanding.
+func runOutcome(root *os.Root, runID string) (string, error) {
+	for _, name := range []string{RunFileName, RefusalFileName} {
+		rel := ReadingsRecordDir + "/" + runID + "/" + name
+		switch _, err := root.Lstat(rel); {
+		case err == nil:
+			return rel, nil
+		case !os.IsNotExist(err):
+			return "", err
+		}
+	}
+	return "", nil
 }
 
 // refuse records a list-level refusal and returns it. It is the ONE writer of a
