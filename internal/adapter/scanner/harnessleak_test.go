@@ -342,3 +342,21 @@ func TestScrubOutboundKeepsTheSentenceAroundASessionURL(t *testing.T) {
 		t.Errorf("the artefact's own content was destroyed: %q", got)
 	}
 }
+
+// TestFooterAfterADecodedLineBreakOwnsItsLine pins the footer's line-start
+// rule on the decoded views (iss-2609261658553101): a raw JSONL transcript
+// line quoting a pull-request body carries the body's breaks as \n escapes, so
+// a footer the harness appended sits on a line of its own once the string is
+// read, and is the finding it is in the body. Prose quoting the shape
+// mid-sentence inside the same kind of string is still spared.
+func TestFooterAfterADecodedLineBreakOwnsItsLine(t *testing.T) {
+	const footer = "Generated with [Some Tool](https://tool.dev)"
+	leak := `{"body":"Shipped.\n\n` + footer + `"}`
+	if _, ok := findingOf(ScanText(leak, Identity{}, DefaultPatterns(), nil, "transcript"), kindHarnessFooter); !ok {
+		t.Errorf("a footer on its own line inside a JSON string raised no %s", kindHarnessFooter)
+	}
+	prose := `{"body":"We refuse the \"` + footer + `\" footer.\nThanks."}`
+	if f, ok := findingOf(ScanText(prose, Identity{}, DefaultPatterns(), nil, "transcript"), kindHarnessFooter); ok {
+		t.Errorf("prose quoting the footer inside a JSON string was reported: %+v", f)
+	}
+}
