@@ -2,6 +2,7 @@ package scanner
 
 import (
 	"os"
+	"sort"
 	"strings"
 )
 
@@ -56,31 +57,143 @@ func BlockingResidual(findings []Finding) []Finding {
 // into "~bc/x" under HOME=/home/a, silently corrupting the committed text; the
 // anchor is what lets a short home coexist with the paths that merely share
 // its prefix. An empty home sweeps nothing.
+//
+// The home is read in every spelling the detector reads (backstopSpans): as
+// written, and through the decoded views of each line that carries an escape,
+// so "\/Users\/me", its \u002f form, a second JSON layer and "%2FUsers%2Fme" abcd-lint:allow
+// are swept with the escape's own bytes, exactly as the literal home is
+// (iss-2609261659041553).
 func SweepCallerHome(text, home string) string {
 	if home == "" {
 		return text
 	}
-	urls := urlSpans(text)
-	var b strings.Builder
+	return replaceSpans(text, backstopSpans(text, home, true, homeSweepable), "~")
+}
+
+// backstopSpans returns, sorted and disjoint, the byte spans of text at which
+// needle occurs and accept holds, read in the spellings the detector reads: as
+// written, and through the decoded views of every line carrying a backslash or
+// a '%' (the percent pre-pass's view and each JSON-escape layer, the one
+// definition in percent.go and jsonescape.go). A hit on a view is mapped back
+// through the view's position map, so the span covers the whole escape units
+// it was decoded from and a rewrite never splits one. accept judges an
+// occurrence on the text it was found in, so the anchors read the decoded
+// neighbours of an escaped home rather than the escape's letters; wantURLs
+// says whether it consults the URL spans, which are then found once per text.
+//
+// An occurrence written straight after an odd run of backslashes is the tail
+// of an escape ("\/Users/me" read from its '/'), so the raw reading leaves it abcd-lint:allow
+// to the view that decodes the escape: judging the tail as written read the
+// escape's backslash as a boundary and swept "x\/root" under HOME=/root, and
+// rewriting from the '/' left a dangling "\~" no JSON reader accepts.
+func backstopSpans(text, needle string, wantURLs bool, accept func(s string, at, end int, urls urlSet) bool) []span {
+	out := needleOccurrences(text, needle, true, wantURLs, accept)
+	for start := 0; start < len(text); {
+		end := strings.IndexByte(text[start:], '\n')
+		if end < 0 {
+			end = len(text)
+		} else {
+			end += start
+		}
+		line := text[start:end]
+		if strings.IndexByte(line, '\\') >= 0 || strings.IndexByte(line, '%') >= 0 {
+			for _, v := range lineViews(line) {
+				for _, sp := range needleOccurrences(v.text, needle, false, wantURLs, accept) {
+					if rs, re, ok := mapDecodedSpan(v.posMap, sp.start, sp.end, len(line)); ok {
+						out = append(out, span{start + rs, start + re})
+					}
+				}
+			}
+		}
+		start = end + 1
+	}
+	return disjointSpans(out)
+}
+
+// lineViews is every decoded view of one line the scan reads: the percent
+// pre-pass's fully decoded copy and each JSON-escape layer, outermost first.
+func lineViews(line string) []decodedView {
+	var views []decodedView
+	if decoded, posMap := percentDecodeBounded(line); posMap != nil {
+		views = append(views, decodedView{decoded, posMap})
+	}
+	return append(views, jsonEscapeLayers(line)...)
+}
+
+// needleOccurrences walks s for needle, keeping each occurrence accept holds
+// and resuming past it, or one byte on where accept declines — the walk the
+// sweep has always made. raw marks s as the text as written, where an
+// occurrence behind an escape's backslash is left to the views.
+func needleOccurrences(s, needle string, raw, wantURLs bool, accept func(s string, at, end int, urls urlSet) bool) []span {
+	if needle == "" || !strings.Contains(s, needle) {
+		return nil
+	}
+	var urls urlSet
+	if wantURLs {
+		urls = urlSpans(s)
+	}
+	var out []span
 	from := 0
 	for {
-		i := strings.Index(text[from:], home)
+		i := strings.Index(s[from:], needle)
 		if i < 0 {
-			break
+			return out
 		}
 		at := from + i
-		end := at + len(home)
-		if homeSweepable(text, at, end, urls) {
-			b.WriteString(text[from:at])
-			b.WriteByte('~')
+		end := at + len(needle)
+		if !(raw && afterEscapeBackslash(s, at)) && accept(s, at, end, urls) {
+			out = append(out, span{at, end})
 			from = end
 			continue
 		}
-		b.WriteString(text[from : at+1])
 		from = at + 1
 	}
-	if from == 0 {
+}
+
+// maxEscapeRunWalk bounds how far afterEscapeBackslash reads back. A run past
+// it is judged even — the text as written decides, as it always did — so a
+// crafted run of backslashes before every occurrence costs a constant each.
+const maxEscapeRunWalk = 64
+
+// afterEscapeBackslash reports whether the byte at is escaped: an odd run of
+// backslashes stands right before it.
+func afterEscapeBackslash(s string, at int) bool {
+	n := 0
+	for j := at - 1; j >= 0 && s[j] == '\\' && n < maxEscapeRunWalk; j-- {
+		n++
+	}
+	scanMeter.charge(stageIdentity, n)
+	return n%2 == 1 && n < maxEscapeRunWalk
+}
+
+// disjointSpans sorts spans by start and unions the ones that overlap. Spans
+// that merely touch stay apart, so two homes written back to back are two
+// rewrites, as the literal sweep has always made them.
+func disjointSpans(spans []span) []span {
+	sort.Slice(spans, func(i, j int) bool { return spans[i].start < spans[j].start })
+	scanMeter.charge(stageIdentity, len(spans)*searchCost(len(spans)))
+	out := spans[:0]
+	for _, s := range spans {
+		if n := len(out); n > 0 && s.start < out[n-1].end {
+			out[n-1].end = max(out[n-1].end, s.end)
+			continue
+		}
+		out = append(out, s)
+	}
+	return out
+}
+
+// replaceSpans rewrites each of the sorted, disjoint spans of text to repl.
+func replaceSpans(text string, spans []span, repl string) string {
+	if len(spans) == 0 {
 		return text
+	}
+	var b strings.Builder
+	from := 0
+	for _, sp := range spans {
+		b.WriteString(text[from:sp.start])
+		b.WriteString(repl)
+		from = sp.end
 	}
 	b.WriteString(text[from:])
 	return b.String()
@@ -195,29 +308,10 @@ func SurvivingCallerHome(text, home string) (string, []Finding) {
 // match "/Users/metoo" (a different, longer username), while "/Users/me." at abcd-audit:allow
 // a sentence end does. Only the trailing half — a leading anchor here would
 // trade the old refusal for a leak, since a name behind a host or under a
-// longer root is still the caller's name.
+// longer root is still the caller's name. The segment is read in the same
+// spellings as the home (backstopSpans), escaped ones included.
 func sweepUserSegment(text, needle, repl string) string {
-	var b strings.Builder
-	from := 0
-	for {
-		i := strings.Index(text[from:], needle)
-		if i < 0 {
-			break
-		}
-		at := from + i
-		end := at + len(needle)
-		if !nameContinues(text, end) {
-			b.WriteString(text[from:at])
-			b.WriteString(repl)
-			from = end
-			continue
-		}
-		b.WriteString(text[from : at+1])
-		from = at + 1
-	}
-	if from == 0 {
-		return text
-	}
-	b.WriteString(text[from:])
-	return b.String()
+	return replaceSpans(text, backstopSpans(text, needle, false, func(s string, _, end int, _ urlSet) bool {
+		return !nameContinues(s, end)
+	}), repl)
 }
