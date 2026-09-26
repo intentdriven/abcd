@@ -116,7 +116,9 @@ hold, and any failure exits 2 naming the field and the item:
 - **Nothing is passed over in silence**: every item of the run with no standing
   disposition is answered, listed as outstanding, or named in a refusal.
 - **The run has no promoted scribe manifest yet**: the durable tier is
-  write-once, so a later answer to the run is written with the capture verbs.
+  write-once, so once a session has landed records over a run, a later answer
+  to it is written with the capture verbs. An ingest that lands no record
+  promotes nothing and leaves the run open to a later session.
 
 Then the dispositions, the admissions and the surprises are written, in that
 order, through the capture verbs' own functions, each with its own redaction and
@@ -129,7 +131,8 @@ than minting it twice.
 Report from the JSON: the `dispositions`, `admissions` and `surprises` written,
 each with its id; `outstanding`; every `fidelity_flags` entry, **unresolved** —
 never pick one side of a flag, it is the researcher's to resolve; every
-`refusals` entry; and `manifest`, the promoted manifest beside the run. Flags
+`refusals` entry; and `manifest`, the promoted manifest beside the run, absent
+when the ingest landed no record. Flags
 and refusals are never written into a record.
 
 **Binary resolution.** Run `"${CLAUDE_PLUGIN_ROOT}/abcd"` — a plugin install

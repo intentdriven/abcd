@@ -591,3 +591,45 @@ func TestScribeIngestAuthenticatesTheParkedPair(t *testing.T) {
 		t.Fatalf("an ingest with no supplied dispositions was not refused: %v", err)
 	}
 }
+
+// TestScribeIngestPromotesOnlyWhenARecordLanded: an ingest that lands nothing
+// (every item outstanding, or refused) promotes nothing, so it cannot lock the
+// run against the session that answers it later; the ingest that lands a
+// record promotes the manifest as before.
+func TestScribeIngestPromotesOnlyWhenARecordLanded(t *testing.T) {
+	s := assembleSession(t, positionDetection, 1, "{0}: accepted — "+groundA+".\n")
+	nothing := s.out()
+	nothing.Outstanding = []string{s.items[0]}
+	res, err := s.ingest(t, s.write(t, nothing))
+	if err != nil {
+		t.Fatalf("Ingest: %v", err)
+	}
+	if res.Manifest != "" {
+		t.Errorf("an ingest that landed nothing names a promoted manifest %s", res.Manifest)
+	}
+	if _, err := os.Stat(s.promoted()); !os.IsNotExist(err) {
+		t.Fatal("an ingest that landed nothing promoted the manifest, locking the run")
+	}
+
+	refused := s.out()
+	refused.Refusals = []Refusal{{Subject: s.items[0], Reason: "the line is ambiguous"}}
+	if _, err := s.ingest(t, s.write(t, refused)); err != nil {
+		t.Fatalf("an all-refusal ingest after an all-outstanding one was refused: %v", err)
+	}
+	if _, err := os.Stat(s.promoted()); !os.IsNotExist(err) {
+		t.Fatal("an all-refusal ingest promoted the manifest")
+	}
+
+	answer := s.out()
+	answer.Dispositions = []OutDisposition{{Item: s.items[0], State: issueschema.DispositionAccepted, Grounds: groundA}}
+	res, err = s.ingest(t, s.write(t, answer))
+	if err != nil {
+		t.Fatalf("the answering ingest was refused: %v", err)
+	}
+	if res.Manifest == "" {
+		t.Fatal("the ingest that landed a record did not promote the manifest")
+	}
+	if _, err := os.Stat(s.promoted()); err != nil {
+		t.Fatalf("the manifest is not beside the run: %v", err)
+	}
+}

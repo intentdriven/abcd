@@ -130,7 +130,7 @@ type IngestResult struct {
 	FidelityFlags []FidelityFlag `json:"fidelity_flags"`
 	Refusals      []Refusal      `json:"refusals"`
 	// Manifest is the promoted manifest's repository-relative path, set only
-	// once every write has landed.
+	// once every write has landed, and only when at least one record did.
 	Manifest string `json:"manifest,omitempty"`
 }
 
@@ -247,6 +247,15 @@ func Ingest(req IngestRequest) (IngestResult, error) {
 	// Promotion comes LAST, so a refused ingest leaves the manifest parked and a
 	// rerun re-proves the same context. The run directory is denied to every
 	// assembly by the exclusion floor, so the next reading cannot see it.
+	//
+	// An ingest that landed nothing promotes nothing. The promoted manifest is
+	// write-once and locks the run against every later scribe session, so it is
+	// the evidence of a session that wrote records; a payload of outstanding
+	// items and refusals alone wrote none, and the researcher who answers next
+	// week must still be able to use the scribe for it.
+	if len(res.Landed()) == 0 {
+		return res, nil
+	}
 	rel, err := reading.WriteRunArtefact(req.RepoRoot, out.Run, ManifestFileName, m)
 	if err != nil {
 		return res, fmt.Errorf("scribe: every record landed (%s) and promoting the manifest failed: %w",

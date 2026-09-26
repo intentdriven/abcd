@@ -102,6 +102,16 @@ until all of the following hold:
 - **The run has no promoted scribe manifest.** The durable tier is write-once, so
   the refusal comes before any write rather than after the records land.
 
+One scribe session per run lands records: this is a departure from the spec,
+which assumes a rerun re-proves the same context and says nothing of a second
+session. The promoted manifest is write-once beside the run, so once an ingest
+has landed a record and promoted it, a later answer to that run is written with
+the capture verbs directly, not through the scribe. An ingest that lands no
+record — every item outstanding, or refused — promotes nothing, so it cannot
+lock the run: its manifest stays parked, and a later session over the run is
+assembled once the parked directory is cleared, or into an operator-named
+directory.
+
 The records are then written in payload order — dispositions, admissions,
 surprises — through the capture verbs' own functions, each under the ledger lock
 it takes for itself and each with the redaction and refusals it already applies.
@@ -113,8 +123,9 @@ an admission whose ground differs from the standing acceptance's. The first
 refusal from any write stops the ingest and names what landed before it.
 
 Fidelity flags and refusals are carried into the result unresolved and never
-into a record. Once every write has landed the manifest is promoted beside the
-run through the reading store's one durable-tier writer, write-once. That
+into a record. Once every write has landed, and when at least one record did,
+the manifest is promoted beside the run through the reading store's one
+durable-tier writer, write-once. That
 directory is denied to every assembly by the exclusion floor, so the next
 reading cannot see it.
 
@@ -133,6 +144,11 @@ renders what landed first.
   file the operator names. A scribe session that learns its path and rewrites
   it before the ingest is outside what the verb can see; the host obligation
   covers it, since the session is handed the context and nothing else.
+- Promotion follows what this ingest landed, not what the session landed. A
+  rerun after a partial ingest that drops everything that landed, leaving only
+  outstanding items, promotes nothing, so the records the first attempt wrote
+  have no promoted manifest beside the run; the parked one still names the
+  context they came from.
 - The state check reads words, not sense. A line that names a state only to
   negate it ("rdi-N: not accepted") still carries it, and a line naming two
   states carries both, so the verb refuses a state the item's line does not

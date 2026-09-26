@@ -1601,7 +1601,8 @@ holds.
 Dispositions, admissions and surprises are then written in that order through the capture verbs,
 which apply their own redaction and refusals, the ordering gate included; the first refusal stops
 the ingest and names what landed before it. Fidelity flags and refusals are reported and never
-written. Once every write has landed the manifest is promoted beside the run, write-once.
+written. Once every write has landed, and when at least one record did, the manifest is promoted
+beside the run, write-once; an ingest that lands no record leaves the run open.
 
 **Flags:**
 

@@ -127,7 +127,8 @@ func newScribeCommand(asJSON *bool) *cobra.Command {
 			"Dispositions, admissions and surprises are then written in that order through the capture verbs,\n" +
 			"which apply their own redaction and refusals, the ordering gate included; the first refusal stops\n" +
 			"the ingest and names what landed before it. Fidelity flags and refusals are reported and never\n" +
-			"written. Once every write has landed the manifest is promoted beside the run, write-once.",
+			"written. Once every write has landed, and when at least one record did, the manifest is promoted\n" +
+			"beside the run, write-once; an ingest that lands no record leaves the run open.",
 		Example: "  abcd scribe ingest --scribe-json ./scribe-output.json --dispositions ./dispositions.md --json",
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) > 0 {
