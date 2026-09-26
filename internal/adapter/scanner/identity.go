@@ -71,21 +71,24 @@ func DefaultIdentitySeverities() map[string]Severity {
 // fields hold every value another scope configured that it displaced.
 func ProbeIdentity(repoRoot string) Identity {
 	var id Identity
-	git := func(args ...string) string {
+	gitIn := func(env []string, args ...string) string {
 		full := append([]string{"-C", repoRoot}, args...)
 		cmd := exec.Command("git", full...)
+		cmd.Env = env
+		out, err := cmd.Output()
+		if err != nil {
+			return ""
+		}
+		return strings.TrimSpace(string(out))
+	}
+	git := func(args ...string) string {
 		// Scrub repo-selection and config-injection env vars, but keep global
 		// config: this probe reads the caller's OWN user.name/user.email to redact
 		// their identity, and those live in global config, so full IsolatedEnv
 		// (which neutralises ~/.gitconfig) would blind the identity gate. Scrubbing
 		// still stops an inherited GIT_DIR pointing the probe at another repo and an
 		// injected GIT_CONFIG_* forging a fake identity that displaces the real one.
-		cmd.Env = gitutil.ScrubbedEnv()
-		out, err := cmd.Output()
-		if err != nil {
-			return ""
-		}
-		return strings.TrimSpace(string(out))
+		return gitIn(gitutil.ScrubbedEnv(), args...)
 	}
 	// --get-all lists every value git resolves for the key, in scope order
 	// with the effective one last — system, global with its includeIf
@@ -111,6 +114,24 @@ func ProbeIdentity(repoRoot string) Identity {
 		os.Getenv("GIT_AUTHOR_NAME"), os.Getenv("GIT_COMMITTER_NAME"))
 	id.OtherGitUserEmails = addIdentityValues(id.GitUserEmail, id.OtherGitUserEmails,
 		os.Getenv("GIT_AUTHOR_EMAIL"), os.Getenv("GIT_COMMITTER_EMAIL"))
+	// git also stamps a commit from author.*/committer.*, which it ranks above
+	// user.*, and from a `git -c` persona (GIT_CONFIG_PARAMETERS or the
+	// GIT_CONFIG_COUNT form), which outranks every file and reaches a hook
+	// running this probe. They are read in ONE extra listing, under the
+	// scrubbed env plus only those command-line entries, and folded in as
+	// OTHERS like the environment persona above: the effective identity still
+	// comes from the scrubbed read, so an injected value can only add something
+	// to redact (iss-2609261614450166).
+	cmdline := append(gitutil.ScrubbedEnv(), gitutil.CommandLineConfig()...)
+	// -z: a value git holds with an embedded newline stays one value.
+	for _, entry := range strings.Split(gitIn(cmdline, "config", "-z", "--get-regexp", `^(user|author|committer)\.(name|email)$`), "\x00") {
+		key, value, _ := strings.Cut(entry, "\n")
+		if strings.HasSuffix(key, ".email") {
+			id.OtherGitUserEmails = addIdentityValues(id.GitUserEmail, id.OtherGitUserEmails, value)
+		} else {
+			id.OtherGitUserNames = addIdentityValues(id.GitUserName, id.OtherGitUserNames, value)
+		}
+	}
 	if remote := git("config", "--get", "remote.origin.url"); remote != "" {
 		id.GitRemoteUsername, id.GitRemoteRepo = parseGitHubRemote(remote)
 	}

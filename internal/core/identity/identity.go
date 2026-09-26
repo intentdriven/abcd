@@ -350,18 +350,11 @@ func gitConfig(root, key string) (string, error) {
 // GIT_AUTHOR_*/GIT_COMMITTER_*, which any process able to set these variables
 // can set as well, and a `git config --get` read executes nothing a parameter
 // names. Every other ScrubbedEnv caller keeps the scrub. The redaction probe
-// especially keeps it, because there a displacing value hides the real
-// identity instead of reporting it.
+// keeps it for the identity it resolves, because there a displacing value
+// hides the real identity instead of reporting it; it reads these variables
+// only for extra identities to redact (iss-2609261614450166).
 func commitConfigEnv() []string {
-	env := gitutil.ScrubbedEnv()
-	for _, kv := range os.Environ() {
-		key, _, _ := strings.Cut(kv, "=")
-		if key == "GIT_CONFIG_PARAMETERS" || key == "GIT_CONFIG_COUNT" ||
-			strings.HasPrefix(key, "GIT_CONFIG_KEY_") || strings.HasPrefix(key, "GIT_CONFIG_VALUE_") {
-			env = append(env, kv)
-		}
-	}
-	return env
+	return append(gitutil.ScrubbedEnv(), gitutil.CommandLineConfig()...)
 }
 
 // Check resolves the effective author and committer, loads the pin, and
