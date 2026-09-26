@@ -62,7 +62,10 @@ func TestToolConfirmNamedAndYes(t *testing.T) {
 	var w bytes.Buffer
 	tty := &stdinPrompter{r: bufio.NewReader(strings.NewReader("y\n")), w: &w, tty: true}
 
-	if ans := toolConfirm(tty, map[string]bool{"gitleaks": true}, false, &w)(e); !ans.Yes {
+	// Off a terminal, and with nothing typed, the named tool is still a yes:
+	// the flag is the answer.
+	piped := &stdinPrompter{r: bufio.NewReader(strings.NewReader("")), w: &w}
+	if ans := toolConfirm(piped, map[string]bool{"gitleaks": true}, false, &w)(e); !ans.Yes {
 		t.Fatalf("a tool named with --install-tool was not a yes: %+v", ans)
 	}
 	ans := toolConfirm(tty, nil, true, &w)(e)
