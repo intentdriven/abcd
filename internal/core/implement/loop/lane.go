@@ -13,7 +13,8 @@ package loop
 // no component can walk out of the store, and nothing outside
 // ~/.abcd/worktrees/<root-sha>/ is ever created (the user's directory is
 // theirs; adr-2609091248200336). Every level of the store is made one at a time
-// and proved a real directory, and git runs through the isolated environment.
+// and proved a real directory that is the caller's alone, and git runs through
+// the isolated environment.
 
 import (
 	"errors"
@@ -145,12 +146,8 @@ func worktreeStep(c Context, lane *Lane) (Outcome, error) {
 		return Outcome{}, fmt.Errorf("resolving the default branch %s: %v", defRef, err)
 	}
 
-	// Every level of the store, from the home down, made one at a time and
-	// proved real: a symlink anywhere in the chain refuses the whole step.
-	if err := fsutil.EnsureRealDirAll(lw.Home, lw.StoreRel, storeDirPerm); err != nil {
-		return Outcome{}, refuse(string(StepWorktree), "", lane.ID,
-			fmt.Sprintf("the worktree store ~/%s cannot be made as real directories: %v", lw.StoreRel, fsutil.RedactHome(err.Error())),
-			"remove what stands in for the store (a symlink or a file), then run the step again")
+	if err := ensureStore(lw.Home, lw.StoreRel, lane.ID); err != nil {
+		return Outcome{}, err
 	}
 
 	adopted, err := adoptWorktree(c.RepoRoot, lw, lane.ID)
@@ -203,6 +200,46 @@ func worktreeStep(c Context, lane *Lane) (Outcome, error) {
 	}
 	return Outcome{Note: fmt.Sprintf("%s the worktree ~/%s/%s on %s, cut from %s at %s",
 		verb, lw.StoreRel, filepath.Base(lw.Path), lw.Branch, shortRefName(defRef), base[:12])}, nil
+}
+
+// ensureStore makes the store's levels under home one at a time, from the top
+// down, and holds each to two tests before the next is made: it is a real
+// directory (a symlink or a file anywhere in the chain refuses), and it is the
+// caller's alone (fsutil.CallersAlone: owned by this uid, no group or other
+// write bit), so no other account can replace the checkout a lane's
+// implementer works in. A level made here is made storeDirPerm; one that
+// already exists keeps its mode and is judged as it stands, and nothing is made
+// inside a level that fails.
+func ensureStore(home, rel, laneID string) error {
+	if !fsutil.IsRealDir(home) || !fsutil.ValidRelPath(rel) {
+		return refuse(string(StepWorktree), "", laneID,
+			"the home directory is not a real directory to make the worktree store under",
+			"run the step from an account whose home is a real directory")
+	}
+	dir, shown := home, "~"
+	for _, seg := range strings.Split(rel, "/") {
+		dir, shown = filepath.Join(dir, seg), shown+"/"+seg
+		if err := fsutil.EnsureRealDir(dir, storeDirPerm); err != nil {
+			return refuse(string(StepWorktree), "", laneID,
+				fmt.Sprintf("the worktree store ~/%s cannot be made as real directories: %v", rel, fsutil.RedactHome(err.Error())),
+				"remove what stands in for the store (a symlink or a file), then run the step again")
+		}
+		fi, err := os.Lstat(dir)
+		if err != nil {
+			return fmt.Errorf("checking the worktree store level %s: %w", shown, err)
+		}
+		switch err := fsutil.CallersAlone(dir, fi); {
+		case errors.Is(err, fsutil.ErrDeclarationWritable):
+			return refuse(string(StepWorktree), "", laneID,
+				fmt.Sprintf("the worktree store level %s is writable by its group or by every user, so another account could replace the lane's checkout", shown),
+				"make it yours alone (`chmod go-w` it), then run the step again")
+		case err != nil:
+			return refuse(string(StepWorktree), "", laneID,
+				fmt.Sprintf("the worktree store level %s is owned by another account, or its owner could not be read, so that account could replace the lane's checkout", shown),
+				"move it aside and let the step make the store, then run the step again")
+		}
+	}
+	return nil
 }
 
 // adoptWorktree reports whether git already lists a worktree at the lane's

@@ -207,3 +207,72 @@ func TestTheWorktreeStepNeverAdoptsWhatItDidNotMake(t *testing.T) {
 		t.Fatalf("the squatter is left as it was: %v", names)
 	}
 }
+
+// TestTheWorktreeStepRefusesAStoreLevelAnyoneElseCanWrite: a level of the store
+// that already exists is held to the caller-alone test the home declarations
+// and the harness data directory use (fsutil.CallersAlone), so a level another
+// account could write — group- or world-writable — refuses the step before
+// anything is made inside it, and the level is left as it was.
+func TestTheWorktreeStepRefusesAStoreLevelAnyoneElseCanWrite(t *testing.T) {
+	for _, tc := range []struct {
+		level string
+		mode  os.FileMode
+	}{
+		{".abcd", 0o777},
+		{".abcd/worktrees", 0o777},
+		{".abcd/worktrees", 0o770},
+		{"<sha>", 0o722},
+	} {
+		t.Run(strings.ReplaceAll(tc.level, "/", "_")+"-"+tc.mode.String(), func(t *testing.T) {
+			repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
+			start, err := Start(repo.Root(), "itd-10", Options{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			store := laneStore(t, repo)
+			if err := os.MkdirAll(store, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			level := filepath.Join(os.Getenv("HOME"), filepath.FromSlash(tc.level))
+			if tc.level == "<sha>" {
+				level = store
+			}
+			if err := os.Chmod(level, tc.mode); err != nil {
+				t.Fatal(err)
+			}
+			_, err = Advance(repo.Root(), start.RunID, DefaultSteps(), Options{})
+			r := mustRefusal(t, err)
+			if r.Step != string(StepWorktree) || !strings.Contains(r.Reason, "writable by its group or by every user") {
+				t.Fatalf("want the writable store level refused: %+v", r)
+			}
+			if names := dirNames(t, store); len(names) != 0 {
+				t.Fatalf("nothing is made in the store: %v", names)
+			}
+			if fi, err := os.Lstat(level); err != nil || fi.Mode().Perm() != tc.mode {
+				t.Fatalf("the level is left as it was: %v %v", fi, err)
+			}
+			if st, _ := ReadState(repo.Root(), start.RunID); st.Lanes[0].Step != StepWorktree || st.Lanes[0].Worktree != "" {
+				t.Fatalf("the lane stays at its worktree step: %+v", st.Lanes[0])
+			}
+		})
+	}
+}
+
+// TestTheWorktreeStepMakesTheStoreTheCallersAlone: every level the step makes
+// is 0700, so the store it makes passes its own test on the next call.
+func TestTheWorktreeStepMakesTheStoreTheCallersAlone(t *testing.T) {
+	repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
+	start, err := Start(repo.Root(), "itd-10", Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Advance(repo.Root(), start.RunID, DefaultSteps(), Options{}); err != nil {
+		t.Fatal(err)
+	}
+	home := os.Getenv("HOME")
+	for _, level := range []string{filepath.Join(home, ".abcd"), filepath.Join(home, ".abcd", "worktrees"), laneStore(t, repo)} {
+		if fi, err := os.Lstat(level); err != nil || fi.Mode().Perm() != 0o700 {
+			t.Fatalf("%s is made 0700: %v %v", level, fi, err)
+		}
+	}
+}
