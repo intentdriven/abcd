@@ -115,12 +115,18 @@ record kind. Only the first ships.
    (spc-6 disowned auto-firing, and no spec owns it now). The term-drift,
    PRD-fidelity and modification-grammar outputs the role was drawn with are
    **deferred**: none is in the shipped prompt or in any lint.
-2. **Cross-document fidelity → `abcd intent consistency`** (**design target**). It
-   would read the brief and every intent and report terminology drift, premise
-   contradictions, scope leakage, sequencing impossibilities and naming conflicts.
-   No `consistency` sub-verb is registered. Per adr-40 the surface as drawn is
-   multi-act — its finding categories span both `lint` and `audit` — so it is split
-   into single-act surfaces when built.
+2. **Cross-document fidelity → `abcd intent consistency [<itd-N>]`** (shipped,
+   itd-48). It reads the brief and every intent outside `superseded/` and reports
+   terminology drift, premise contradictions, scope leakage, sequencing
+   impossibilities and naming conflicts, each finding naming two documents and
+   quoting both verbatim. The binary assembles the corpus and validates the
+   return on the audit's request/ingest seam; the ingest files each finding in the
+   ledger, or links it to the open record that already holds it, and leaves a
+   dated report on the reviews shelf. Per adr-40 the surface as first drawn was
+   multi-act, its categories spanning `lint` and `audit`: what ships is the
+   `audit` half alone, and the mechanical categories (schema and state
+   contradictions, reference rot, acknowledgement gaps) are deferred to a
+   follow-up intent.
 3. **Kind classification → `abcd intent shape`** (**design target**). It would read
    the intent corpus and suggest reclassifications, supersessions and bundles. No
    `shape` sub-verb is registered, and no cached suggestions exist for bare

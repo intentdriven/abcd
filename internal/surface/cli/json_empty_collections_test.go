@@ -21,7 +21,7 @@ func TestJSONCollectionsAreEmptyArraysNotNull(t *testing.T) {
 		{"capture", []string{"capture", "--json"}, []string{"recent_open"}},
 		{"capture-list", []string{"capture", "list", "--open", "--json"}, []string{"issues", "skipped"}},
 		{"spec", []string{"spec", "--json"}, []string{"specs"}},
-		{"intent", []string{"intent", "--json"}, []string{"linked"}},
+		{"intent", []string{"intent", "--json"}, []string{"linked", "intents"}},
 		{"memory", []string{"memory", "--json"}, []string{"by_class", "contradictions", "drift"}},
 	}
 	for _, tc := range cases {

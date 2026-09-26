@@ -182,3 +182,14 @@ func TestSpecCloseUnreadableRoutingTableStillCloses(t *testing.T) {
 		t.Fatalf("stderr %q", stderr)
 	}
 }
+
+// TestIntentAuditListingRefusesRoute (iss-2609252054322226): the bare owed
+// listing is read-only and dispatches no agent, so a --route is refused as the
+// drift check refuses it, never accepted and dropped.
+func TestIntentAuditListingRefusesRoute(t *testing.T) {
+	intentTestRepo(t)
+	_, _, err := runCLISplit(t, "intent", "audit", "--route", "intent-auditor=economy")
+	if exitCodeOf(err) != 2 || !strings.Contains(err.Error(), "dispatches none") {
+		t.Fatalf("err %v", err)
+	}
+}

@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/core/frontmatter"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 )
 
@@ -36,6 +37,10 @@ type SpecLink struct {
 	Path string
 	// IntentID is the raw intent frontmatter value — the back-link.
 	IntentID string
+	// Intents is the raw `intents:` list a bundle's shared spec carries: every
+	// member it realises, the first being IntentID (itd-34). Empty on an
+	// ordinary spec.
+	Intents []string
 
 	fields map[string]fmField
 	exempt bool
@@ -100,11 +105,26 @@ func (x SpecLinkIndex) KnownIntents() map[string]bool {
 func (x SpecLinkIndex) SpecsForIntent(intentID string) []SpecLink {
 	var out []SpecLink
 	for _, s := range x.Specs {
-		if recordid.SameID(s.IntentID, intentID) {
+		if s.names(intentID) {
 			out = append(out, s)
 		}
 	}
 	return out
+}
+
+// names reports whether the spec realises intentID through its `intent:`
+// back-link or its bundle `intents:` list — the same question spec.Spec.Names
+// answers for the store, through the same primitive.
+func (s SpecLink) names(intentID string) bool {
+	if recordid.SameID(s.IntentID, intentID) {
+		return true
+	}
+	for _, m := range s.Intents {
+		if recordid.SameID(m, intentID) {
+			return true
+		}
+	}
+	return false
 }
 
 // SpecBucket resolves a spec_id value to the lifecycle bucket holding that spec.
@@ -207,7 +227,12 @@ func ScanSpecLinks(repoRoot, intentsDir, specsDir string, top Config) (SpecLinkI
 			rel := repoRel(repoRoot, fileAbs)
 			lines := strings.Split(string(content), "\n")
 			fields := frontmatterFields(lines)
+			var members []string
+			if v := fields["intents"].value; !isNull(v) {
+				members = frontmatter.StringList(v)
+			}
 			idx.Specs = append(idx.Specs, SpecLink{
+				Intents:  members,
 				ID:       fields["id"].value,
 				Bucket:   bucket,
 				Path:     rel,

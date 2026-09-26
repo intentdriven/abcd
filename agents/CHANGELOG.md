@@ -12,6 +12,38 @@ over the brief's earlier `1.0.0`-at-close expectation). The four M6 synthesis
 agents below entered at `0.1.0`, wired to their `abcd disembark` verbs and
 unmeasured; `lifeboat-oracle` has since become `lifeboat-reviewer` at `0.1.1`.
 
+## 2026-09-26 (itd-48 — the intent auditor gains its cross-document role)
+
+`abcd intent consistency` assembles the brief and every live intent into one
+corpus and asks the host to name where two documents cannot both be right; its
+ingest files each finding in the ledger and writes a dated report on the reviews
+shelf. The judgement rides this agent, on the same request/ingest seam and the
+same echoed provenance pair as the fidelity audit.
+
+### intent-auditor 0.4.0
+
+MINOR: a Role 2 section — the five classes (`terminology_drift`,
+`premise_contradiction`, `scope_leakage`, `sequencing_impossibility`,
+`naming_conflict`), the two-ends-quoted-verbatim rule, its injection rules and
+the `abcd/intent-consistency-findings/v1` output shape — and a note at the head
+saying the request names the role. Role 1's rubric, schema and rules are
+untouched, so a verdict that was valid before stays valid. A second canary,
+`fixtures/injection-canary-consistency.json`, covers Role 2. Unmeasured, as
+before.
+
+## 2026-09-26 (iss-2608300927241768 — the description names the whole output)
+
+The frontmatter description, which a host reads to choose and brief the agent,
+summarised the verdict as the criteria verdict and the gap audit alone, a
+summary written before the scope-condition dispositions joined the output.
+
+### intent-auditor 0.3.2
+
+PATCH: the description names the scope conditions among what the auditor reads
+and their dispositions among what it emits. The body, the rubric, the verdict's
+shape and every ingest rule are untouched, so a verdict that was valid before
+stays valid. Unmeasured, as before.
+
 ## 2026-09-25 (iss-2608270926037088 — the binary's notices have their own field)
 
 A graveyard finding carries the binary's own statements about it — a signal

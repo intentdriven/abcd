@@ -5,6 +5,7 @@ Commissioned reviews of this project — plan reviews, code reviews, external au
 ## What does NOT belong here
 
 - **Per-invocation artifacts from abcd surfaces** (oracle audits, grill reports, disembark audits) — those go to `.abcd/.work.local/logs/<verb>/<ts>/` as traces of the command run that produced them.
+  One verb is the exception, by ruling: `abcd intent consistency` files its dated report here as `<YYYY-MM-DD>-consistency[-<itd-N>]/00-summary.md`, because the product thinker ruled a report and a capture per finding for the cross-document pass (itd-48), and the report is the evidence each filed issue cites.
 - **Distilled outcomes** — when a review changes course, the settled decision graduates to `../../development/decisions/` (an ADR or a decision note). The review folder is the evidence trail, not the decision record.
 - **Individual open findings** — findings graduate into intents, issues, or ADRs. Reviews are not a shadow backlog.
 

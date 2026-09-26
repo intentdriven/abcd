@@ -746,6 +746,9 @@ func checkRecordSchema(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 		}
 	}
 
+	// A bundle is its members' shared name (itd-34).
+	out = append(out, checkIntentBundles(records, cfg.Severity)...)
+
 	// Supersession, direction B→A: a record that claims to replace another must be
 	// named by it. A target that is not in the corpus was pruned with the record's
 	// blessing (see above) and has nothing left to answer with.
