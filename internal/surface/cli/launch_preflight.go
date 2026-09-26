@@ -9,15 +9,18 @@ import (
 	"github.com/intentdriven/abcd/internal/core/lint"
 )
 
-// noLaunchPayloadGuidance is what a repository with no launch payload is told
-// (iss-2608270559313719). It is not misconfigured: a repository that ships no
-// plugin bundle has no include config, and its releases go through the
-// changelog-driven path instead, which the refusal names.
-const noLaunchPayloadGuidance = "this repository declares no launch payload (.abcd/config/launch-payload.json), " +
-	"so there is no plugin bundle to preview, gate or stage. A repository without one releases through the " +
-	"changelog-driven path: `abcd launch scaffold` installs the release workflows, `abcd launch ship` derives the " +
-	"version and writes the dated CHANGELOG heading, and the auto-release workflow tags that commit on merge. " +
-	"A repository that does ship a plugin declares its payload in that file"
+// noLaunchPayloadGuidance is what a repository that declares kind plugin but
+// no launch payload is told (iss-2608270559313719). A plugin's bundle is its
+// include set, so there is nothing to preview, gate or stage until it declares
+// one; a repository that ships something other than a plugin says so in its
+// artefact declaration instead, and its preview scans the tree the release tag
+// would archive (itd-2609150819432059).
+const noLaunchPayloadGuidance = "this repository declares kind plugin (.abcd/config/artefact.json) but no launch payload " +
+	"(.abcd/config/launch-payload.json), so there is no plugin bundle to preview, gate or stage. A plugin declares its " +
+	"payload in that file. A repository that ships no plugin declares its kind as binary or application instead, and " +
+	"its preview scans the tree the release tag would archive; its releases go through the changelog-driven path: " +
+	"`abcd launch scaffold` installs the release workflows, `abcd launch ship` derives the version and writes the dated " +
+	"CHANGELOG heading, and the auto-release workflow tags that commit on merge"
 
 // launchPayloadRefusal turns a launch error into what the operator reads: the
 // release-path guidance for a repository with no payload, the scrubbed error
@@ -27,6 +30,21 @@ func launchPayloadRefusal(err error) string {
 		return noLaunchPayloadGuidance
 	}
 	return scrubPaths(err)
+}
+
+// launchArtefact reads the artefact declaration a launch verb runs against,
+// through the one reader every verb and ahoy share (itd-2609150819432059). A
+// declaration that is present and wrong — an unknown kind, a malformed file —
+// refuses the verb before it reads or writes anything else. Its absence is the
+// plugin shape the verbs that predate it assume; the preview and the scaffold,
+// which choose what to read and write by the kind, refuse the absence in the
+// core instead.
+func launchArtefact(verb, cwd string) (launch.Artefact, error) {
+	art, err := launch.LoadArtefactOrPlugin(cwd)
+	if err != nil {
+		return art, &exitError{Code: 2, Msg: verb + ": " + scrubPaths(err) + " (nothing was written)"}
+	}
+	return art, nil
 }
 
 // docAuditPreflight measures the documentation audit a launch's

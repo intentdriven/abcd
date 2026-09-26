@@ -14,6 +14,7 @@ import (
 // preview "nothing to prune" for a repository whose tags were never seen.
 func TestPreviewRetentionRefusesWhenTagsAreUnreadable(t *testing.T) {
 	root := t.TempDir() // not a git repository: the tag listing fails
+	writeFile(t, root, ArtefactRelPath, `{"kind": "plugin"}`)
 	writeFile(t, root, ".abcd/config/launch-payload.json", `{"includes": [".claude-plugin", "README.md"]}`)
 	writeFile(t, root, "README.md", "readme\n")
 	writeLockstepTree(t, root, "", "", "")
@@ -34,7 +35,9 @@ func TestPreviewRetentionRefusesWhenTagsAreUnreadable(t *testing.T) {
 // repository with no launch payload gets an error the front door can recognise
 // and explain, not only a raw missing-file message.
 func TestMissingPayloadConfigIsNamed(t *testing.T) {
-	_, err := DryRun(DryRunRequest{RepoRoot: t.TempDir()})
+	root := t.TempDir()
+	writeFile(t, root, ArtefactRelPath, `{"kind": "plugin"}`)
+	_, err := DryRun(DryRunRequest{RepoRoot: root})
 	if !errors.Is(err, ErrNoLaunchPayload) {
 		t.Fatalf("a missing include config must carry ErrNoLaunchPayload, got %v", err)
 	}
@@ -55,6 +58,7 @@ func anyReasonContains(reasons []string, fragment string) bool {
 // the checkout never saw.
 func TestPreviewRetentionRefusesInAShallowCheckout(t *testing.T) {
 	r := gittest.NewRepo(t)
+	r.Write(ArtefactRelPath, `{"kind": "plugin"}`)
 	r.Write(".abcd/config/launch-payload.json", `{"includes": [".claude-plugin", "README.md"]}`)
 	r.Write("README.md", "readme\n")
 	writeLockstepTree(t, r.Root(), "", "", "")

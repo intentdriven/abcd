@@ -60,11 +60,11 @@ func CheckLockstep(tree LockstepTree, repoRoot, versionLocationPath string) Lock
 		return unreadable(res, verr)
 	}
 
-	primaryDoc, err := loadJSON(filepath.Join(repoRoot, primaryPath))
+	primaryDoc, err := loadRepoJSON(repoRoot, primaryPath)
 	if err != nil {
 		return unreadable(res, "primary manifest not readable: "+err.Error())
 	}
-	marketplace, err := loadJSON(filepath.Join(repoRoot, marketplaceFile))
+	marketplace, err := loadRepoJSON(repoRoot, marketplaceFile)
 	if err != nil {
 		return unreadable(res, "marketplace.json not readable: "+err.Error())
 	}
@@ -94,6 +94,29 @@ func unreadable(res LockstepResult, detail string) LockstepResult {
 
 func loadJSON(path string) (any, error) {
 	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, pathFreeError(err)
+	}
+	var v any
+	if err := json.Unmarshal(data, &v); err != nil {
+		return nil, err
+	}
+	return v, nil
+}
+
+// loadRepoJSON reads a repo-relative JSON document through an os.Root opened on
+// repoRoot, so the read is contained by what the path resolves to rather than by
+// its spelling: ValidRelPath is lexical, and a committed symlink inside the
+// repository that points out of it would otherwise be read through. A symlink
+// that stays inside the repository still reads; one that leaves it is an error,
+// and the document outside is never read.
+func loadRepoJSON(repoRoot, rel string) (any, error) {
+	root, err := os.OpenRoot(repoRoot)
+	if err != nil {
+		return nil, pathFreeError(err)
+	}
+	defer root.Close()
+	data, err := root.ReadFile(filepath.FromSlash(rel))
 	if err != nil {
 		return nil, pathFreeError(err)
 	}
@@ -285,4 +308,99 @@ func checkDev(primaryPath, primaryPtr string, primaryDoc, marketplace any) []str
 		}
 	}
 	return drifts
+}
+
+// CheckDeclaredLockstep is the lockstep check for a non-plugin artefact kind
+// (itd-2609150819432059, decision 2): the primary is read from
+// version-location.json exactly as CheckLockstep reads it, and the pinned
+// plugin-manifest table is replaced by the files the artefact declaration names.
+// No plugin manifest is read.
+//
+// Each declared file is a JSON document carrying the version at its own pointer,
+// or at the primary's when it names none. The polarities are CheckLockstep's:
+// DEV requires every key ABSENT (adr-19), PUBLIC requires the primary present as
+// strict SemVer and every secondary to agree with it. A declared file that cannot
+// be read or parsed is unreadable (exit 2) and the detail names it.
+//
+// A kind that declares no lockstep list and carries no version-location contract
+// holds nothing in lockstep, and the result is an OK that says so. A declared
+// list with no contract to read the primary from is unreadable: there is nothing
+// for the list to agree with.
+func CheckDeclaredLockstep(tree LockstepTree, repoRoot, versionLocationPath string, files []LockstepFile) LockstepResult {
+	res := LockstepResult{Tree: tree}
+
+	decision, err := loadJSON(versionLocationPath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) && len(files) == 0 {
+			res.OK = true
+			res.Detail = "no version-location contract and no declared lockstep list: nothing is held in lockstep"
+			return res
+		}
+		return unreadable(res, "version-location.json not readable: "+err.Error())
+	}
+	primaryPath, primaryPtr, verr := validateVersionLocation(decision)
+	if verr != "" {
+		return unreadable(res, verr)
+	}
+	primaryDoc, err := loadRepoJSON(repoRoot, primaryPath)
+	if err != nil {
+		return unreadable(res, "primary manifest "+primaryPath+" not readable: "+err.Error())
+	}
+
+	type located struct {
+		file, ptr string
+		doc       any
+	}
+	secondaries := make([]located, 0, len(files))
+	for _, f := range files {
+		doc, err := loadRepoJSON(repoRoot, f.Path)
+		if err != nil {
+			return unreadable(res, "declared lockstep file "+f.Path+" not readable: "+err.Error())
+		}
+		ptr := f.Pointer
+		if ptr == "" {
+			ptr = primaryPtr
+		}
+		secondaries = append(secondaries, located{f.Path, ptr, doc})
+	}
+
+	var drifts []string
+	primVal, primPresent := resolvePointer(primaryDoc, primaryPtr)
+	if tree == TreePublic {
+		primStr, isStr := primVal.(string)
+		expectedOK := primPresent && isStr && IsStrictSemver(primStr)
+		if !expectedOK {
+			drifts = append(drifts, fmt.Sprintf("DRIFT public %s%s: expected a present strict-SemVer version string, got %s",
+				primaryPath, primaryPtr, fmtValue(primVal, primPresent)))
+		}
+		for _, s := range secondaries {
+			v, present := resolvePointer(s.doc, s.ptr)
+			switch {
+			case expectedOK && (!present || v != any(primStr)):
+				drifts = append(drifts, fmt.Sprintf("DRIFT public %s%s: expected %s (from primary), got %s",
+					s.file, s.ptr, fmtValue(primStr, true), fmtValue(v, present)))
+			case !expectedOK && present:
+				drifts = append(drifts, fmt.Sprintf("DRIFT public %s%s: present but primary version is unreadable, got %s",
+					s.file, s.ptr, fmtValue(v, present)))
+			}
+		}
+	} else {
+		if primPresent {
+			drifts = append(drifts, fmt.Sprintf("DRIFT dev %s%s: adr-19 requires this key ABSENT in the dev tree, got %s",
+				primaryPath, primaryPtr, fmtValue(primVal, primPresent)))
+		}
+		for _, s := range secondaries {
+			if v, present := resolvePointer(s.doc, s.ptr); present {
+				drifts = append(drifts, fmt.Sprintf("DRIFT dev %s%s: adr-19 requires this key ABSENT in the dev tree, got %s",
+					s.file, s.ptr, fmtValue(v, present)))
+			}
+		}
+	}
+	if len(drifts) > 0 {
+		res.Drifts = drifts
+		res.ExitCode = 1
+		return res
+	}
+	res.OK = true
+	return res
 }

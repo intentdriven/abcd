@@ -10,6 +10,7 @@ severity: major
 related_issues: [iss-2609061432214212]
 origin: extracted-from-record
 production_mode: hand-written
+impact: additive
 ---
 
 # A managed repository that is not a plugin gets the same release gate
@@ -76,7 +77,8 @@ Settled in the planning interview with the product thinker on 2026-09-20; each r
 
 ## Audit Notes
 
-_Empty. Populated by intent-auditor when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-97519c4308ad -->
+Fidelity review OWED (receipt rcp-97519c4308ad).
 
 ## Grounds
 

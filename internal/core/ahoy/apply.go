@@ -173,6 +173,9 @@ func Install(cwd string, opts InstallOptions, p Prompter) (InstallResult, error)
 	ac.stepRules()
 	ac.stepVersionStamp()
 	ac.stepIdentityPin()
+	// After every step that asks its questions first: the kind is the last
+	// answer a piped install gives (itd-2609150819432059).
+	ac.stepArtefact()
 	// Last, because it describes the entry the steps above actually wrote.
 	ac.noteReachability()
 

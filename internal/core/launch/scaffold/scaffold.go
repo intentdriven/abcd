@@ -9,6 +9,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/intentdriven/abcd/internal/core/launch"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
@@ -34,13 +35,15 @@ const (
 	// StatusRefused — the file exists and differs, and --confirm was not given, so
 	// it was left untouched.
 	StatusRefused FileStatus = "refused"
+	// StatusKept — a file that belongs to the repository, not to abcd, left
+	// exactly as it is: a seed file (PlannedFile.Seed) that already exists, or a
+	// file the run never opened — an existing CHANGELOG.md, or the repository's
+	// own release workflow beside the gate. Detail says why it was left alone.
+	StatusKept FileStatus = "kept"
 	// StatusSkipped — the file WOULD have been written, but the run refused (a
 	// sibling was hand-edited) or a write faulted first, so it was NOT written. The
 	// scaffold is all-or-nothing, so this reports honestly that nothing landed.
 	StatusSkipped FileStatus = "skipped"
-	// StatusKept — a seed file (PlannedFile.Seed) that already exists: it is the
-	// repository's own, so it was left exactly as it is.
-	StatusKept FileStatus = "kept"
 )
 
 // disposition is the pre-write classification of a target: what it is on disk,
@@ -64,12 +67,19 @@ type FileOutcome struct {
 // Report is the outcome of a scaffold run.
 type Report struct {
 	Substitutions Substitutions `json:"-"`
-	DefaultBranch string        `json:"default_branch"`
+	// Kind is the declared artefact kind the file set was chosen by.
+	Kind launch.ArtefactKind `json:"kind"`
+	// CallStanza is what to add to the repository's own release workflow to
+	// call the gate; present only when such a workflow was left alone.
+	CallStanza    string `json:"call_stanza,omitempty"`
+	DefaultBranch string `json:"default_branch"`
 	// GoVersion is what the scaffolded workflows will RESOLVE, not a value written
 	// into them: they point setup-go at go.mod, so this reports the go directive
 	// the run read. It is reported because an adopter should see which toolchain
 	// their release lane is about to use, and see it before the first tag.
-	GoVersion string `json:"go_version"`
+	// Empty, and absent from the JSON, for a repository with no go.mod: there is
+	// no toolchain its release resolves, so none is named.
+	GoVersion string `json:"go_version,omitempty"`
 	// CIChecks are the managed repo's own pull-request check names the
 	// scaffolded files were wired to (DeriveCIChecks); empty when none was found.
 	CIChecks []string      `json:"ci_checks"`
@@ -104,8 +114,24 @@ type Request struct {
 // A run that refuses any file returns ErrScaffoldBlocked with the report, so the
 // caller can render exactly what was and was not touched — no partial half-write.
 func Scaffold(req Request) (Report, error) {
+	// The file set is chosen by the declared artefact kind, so a repository
+	// that has not declared one — or declares one abcd does not know — is
+	// refused before anything is rendered or written (itd-2609150819432059).
+	art, err := launch.LoadArtefact(req.RepoRoot)
+	if err != nil {
+		return Report{}, err
+	}
 	branch, goVersion := DeriveRepoFacts(req.RepoRoot)
+	own := ""
 	subs := BareSubstitutions(branch)
+	if !art.IsPlugin() {
+		own = findOwnReleaseWorkflow(req.RepoRoot)
+		subs = GateSubstitutions(branch, own)
+	}
+	subs.GoModule = isGoModule(req.RepoRoot)
+	if !subs.GoModule {
+		goVersion = ""
+	}
 	subs.CIChecks = DeriveCIChecks(req.RepoRoot)
 	if subs.CIChecks == nil {
 		subs.CIChecks = []string{} // --json reports an empty list, never null
@@ -115,14 +141,40 @@ func Scaffold(req Request) (Report, error) {
 		return Report{}, err
 	}
 
-	report := Report{Substitutions: subs, DefaultBranch: branch, GoVersion: goVersion, CIChecks: subs.CIChecks}
-	outcomes, wrote, refused, err := WriteFiles(req.RepoRoot, []PlannedFile{
-		{Path: ReleaseYMLPath, Data: rendered.ReleaseYML},
-		{Path: AutoReleaseYMLPath, Data: rendered.AutoReleaseYML},
-		{Path: RunbookPath, Data: rendered.Runbook},
-		{Path: CheckReviewsPath, Data: rendered.CheckReviews},
-	}, req.Confirm)
-	report.Files, report.Wrote, report.Refused = outcomes, wrote, refused
+	report := Report{Substitutions: subs, Kind: art.Kind, CallStanza: subs.CallStanza,
+		DefaultBranch: branch, GoVersion: goVersion, CIChecks: subs.CIChecks}
+	var planned []PlannedFile
+	var kept []FileOutcome
+	if art.IsPlugin() {
+		planned = []PlannedFile{
+			{Path: ReleaseYMLPath, Data: rendered.ReleaseYML},
+			{Path: AutoReleaseYMLPath, Data: rendered.AutoReleaseYML},
+			{Path: RunbookPath, Data: rendered.Runbook},
+			{Path: CheckReviewsPath, Data: rendered.CheckReviews},
+		}
+	} else {
+		// The changelog is the release record once it exists, so it is laid
+		// only when absent and never drift-checked afterwards.
+		if _, err := os.Lstat(filepath.Join(req.RepoRoot, ChangelogPath)); err == nil {
+			kept = append(kept, FileOutcome{Path: ChangelogPath, Status: StatusKept,
+				Detail: "left alone: the changelog is this repository's release record"})
+		} else {
+			planned = append(planned, PlannedFile{Path: ChangelogPath, Data: []byte(ChangelogAnchor)})
+		}
+		planned = append(planned, PlannedFile{Path: GateWorkflowPath, Data: rendered.ReleaseYML})
+		if own == "" {
+			planned = append(planned, PlannedFile{Path: AutoReleaseYMLPath, Data: rendered.AutoReleaseYML})
+		} else {
+			kept = append(kept, FileOutcome{Path: own, Status: StatusKept,
+				Detail: "left alone: this repository's own release workflow; add the job below to it so it calls " +
+					GateWorkflowName + " before its build step"})
+		}
+		planned = append(planned,
+			PlannedFile{Path: RunbookPath, Data: rendered.Runbook},
+			PlannedFile{Path: CheckReviewsPath, Data: rendered.CheckReviews})
+	}
+	outcomes, wrote, refused, err := WriteFiles(req.RepoRoot, planned, req.Confirm)
+	report.Files, report.Wrote, report.Refused = append(outcomes, kept...), wrote, refused
 	if err != nil {
 		return report, err
 	}

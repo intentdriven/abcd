@@ -1025,3 +1025,52 @@ func sortBundle(b *Bundle) {
 		return b.Rejected[i].Reason < b.Rejected[j].Reason
 	})
 }
+
+// ExcludedSymlink is a link in the archived tree. An archive carries a link as
+// the path it names, not as content, so there is nothing of it to scan, and
+// reading through it would scan whatever the working tree's target is instead.
+const ExcludedSymlink ExcludedReason = "symlink"
+
+// ArchiveTreeDescription names the tree a non-plugin kind's preview scans, for
+// the report line that says which tree was scanned.
+const ArchiveTreeDescription = "the tree the release tag would archive (git archive's view of HEAD, export-ignore honoured), minus the record namespace"
+
+// ResolveArchiveBundle is the bundle of a non-plugin artefact kind that declares
+// no payload include config (itd-2609150819432059, decision 8): the files an
+// archive of HEAD would carry, classified under the same structural deny a
+// plugin payload is held to. A path with a denied segment is
+// excluded(denied_namespace), exactly as the plugin resolver excludes it; a link
+// is excluded(symlink); a control character in a path is rejected, as it is in a
+// plugin payload. Every other file is included, read from the working tree the
+// way a plugin payload's files are, so an uncommitted edit is what the
+// dirty-tree gate reports rather than something this listing hides.
+func ResolveArchiveBundle(repoRoot string) (Bundle, error) {
+	absRoot, err := filepath.Abs(repoRoot)
+	if err != nil {
+		return Bundle{}, err
+	}
+	if real, err := filepath.EvalSymlinks(absRoot); err == nil {
+		absRoot = real
+	}
+	entries, err := gitutil.ArchiveTree(absRoot, "HEAD")
+	if err != nil {
+		return Bundle{}, preflight("the tree the release tag would archive could not be listed: %v", err)
+	}
+	var b Bundle
+	for _, e := range entries {
+		switch {
+		case hasControlChar(e.Path):
+			b.Rejected = append(b.Rejected, RejectedFile{LogicalPath: e.Path, Reason: RejectedControlChar})
+		case pathContainsDeniedSegment(e.Path):
+			b.Excluded = append(b.Excluded, ExcludedFile{LogicalPath: e.Path, Reason: ExcludedDeniedNamespace})
+		case e.Mode == "120000":
+			b.Excluded = append(b.Excluded, ExcludedFile{LogicalPath: e.Path, Reason: ExcludedSymlink})
+		default:
+			b.Included = append(b.Included, IncludedFile{
+				LogicalPath: e.Path, ResolvedPath: filepath.Join(absRoot, filepath.FromSlash(e.Path)), GitMode: e.Mode,
+			})
+		}
+	}
+	sortBundle(&b)
+	return b, nil
+}

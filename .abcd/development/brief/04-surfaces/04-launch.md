@@ -14,11 +14,41 @@ And it never ships the design record: the payload is default-deny with the whole
 
 The preview always exits 0, because a preview never blocks, and its one write is
 its pre-flight report in the gitignored local tier. Bare `abcd launch` refuses
-with a hint to ask for it. A repository with no launch payload
-(`.abcd/config/launch-payload.json`) has nothing to preview, and the preview
-says so and names the release path it does have: the scaffolded release
+with a hint to ask for it. A repository that declares `kind: plugin` with no
+launch payload (`.abcd/config/launch-payload.json`) has nothing to preview, and
+the preview says so and names the release path a repository that ships no plugin
+has: declaring its kind as `binary` or `application`, the scaffolded release
 workflows, the dated CHANGELOG heading the cut writes, and the auto-release
 workflow that tags it.
+
+**Every verb runs against a declared artefact kind** (itd-2609150819432059). A
+managed repository says once what it ships, in `.abcd/config/artefact.json`:
+`kind` is `plugin`, `binary` or `application`, `lockstep` names the JSON files a
+non-plugin kind holds in lockstep with its version-location primary, and `site`
+reserves the release-rendered site's opt-in, read and not yet acted on.
+`binary` and `application` behave identically in every verb; the verify job's Go
+leg keys on `go.mod`, never on the kind. One
+reader in `internal/core/launch` validates the file for every launch verb and for
+`ahoy`, whose `artefact.missing` gap writes it — kind `plugin` without a question
+for a repository carrying a plugin manifest, otherwise the kind the operator
+answers. An unknown kind or a malformed declaration refuses every verb before
+anything is written, naming the kind and the accepted set. The preview and the
+scaffold choose what to read and write by the kind, so they refuse a repository
+that has declared none, naming the file and the kinds and never a missing-file
+error; the cut, the archive render and the receipts check read an absent
+declaration as the plugin shape they have always assumed. The gate's inputs — the ledger, the anchor tag,
+the version location — are kind-independent, so the cut's derivation, its
+findings gate and the deferral read run unchanged for every kind; only the reads
+that bind a run to a plugin follow the kind. For a kind other than `plugin` the
+preview scans the tree the release tag would archive (`git archive`'s view of
+`HEAD`, `export-ignore` honoured, links excluded) minus the record namespace,
+denied by the same rule a plugin payload is held to, unless it declares an
+include set; the report names which tree it scanned. Its lockstep check reads
+the primary and every declared file, reads no plugin manifest, and refuses a
+declared file it cannot read. The rows that judge a plugin payload — the
+installability smoke and its deep tier, hook compliance, the parity diff — report
+`not_armed` and name the kind. For a kind that ships no plugin payload, the cut
+refuses to stage one and the archive render refuses outright.
 
 > **Phase ownership** ([adr-33](../../decisions/adrs/0033-launch-phase-ownership-tiered.md)): the curated-release cut — packaging with `.abcd/**` excluded plus the secret/PII scan — ships in [Phase 1](../../roadmap/phases/phase-1-ahoy.md). The pre-flight gate suite (itd-65) and the payload parity diff with the deep installability smoke (itd-66) run on the preview and on the cut's render path; the remaining release automation is separately scheduled (itd-70 retention, itd-72 publishing); itd-73 derived versioning ships with the release cut.
 
@@ -117,9 +147,25 @@ version flag at all: the version is derived, never authored
 ([adr-31](../../decisions/adrs/0031-derived-versioning-from-intents.md)).
 
 **The scaffold writes the release machinery into a managed repo that lacks
-it**: the two release workflows, the adr-37 release runbook and a reviews-charter
-check, wired to the repo's own default branch and Go version and to the check
-names its own pull-request CI reports, token-scoped and injection-safe. The check
+it**, shaped by the declared artefact kind and refused without one. A plugin
+receives the two release workflows, the adr-37 release runbook and a
+reviews-charter check. Any other kind receives the gate as a workflow of its own,
+`abcd-release-gate.yml`, rendered from the same template, which is only ever
+called — never triggered by a tag push, so it cannot race a tag-driven workflow
+the repository already runs — plus the runbook and the charter check, a
+`CHANGELOG.md` holding only the empty `[Unreleased]` anchor when it has none (an
+existing changelog is never opened), and `auto-release.yml` calling the gate
+unless a release workflow of its own is in charge. That workflow is left
+byte-for-byte; the report names it as left alone and prints the job to add to it
+so it calls the gate before its build step, with `publish: false` so the gate
+verifies and tags only. Every scaffolded file is drift-checked the same way. A
+managed repository's workflow carries gate plumbing and a **named empty build
+job**: abcd does not guess how a repository builds (iss-2608270559310755), so the
+job holds one step to fill and names `dist/` as its output, and the publish job
+attaches whatever is left there. The verify job's Go leg renders only for a
+repository with a `go.mod`. Every file is wired to the repo's own default branch
+and Go version and to the check names its own pull-request CI reports,
+token-scoped and injection-safe. The check
 names are read from the repo's pull-request and merge-queue workflows — a name
 only a run knows (a matrix job, an expression-named job, a reusable-workflow
 call) is omitted rather than guessed, and every name is held to an injection-safe
@@ -133,12 +179,13 @@ are regenerated from, proved byte-exact by a test, so a scaffolded repo and this
 one cannot drift. The scaffolded workflow carries a **rehearsal** that arms the
 full gate against a simulated changelog roll and publishes nothing, so a green
 rehearsal is the runbook's precondition for a first real release. A bare repo
-with no semantic detector degrades cleanly to the deterministic gates and a
-generic build.
+with no semantic detector degrades cleanly to the deterministic gates and the
+empty build job.
 
 It is idempotent and fail-safe: a re-run on current machinery is a no-op
 (exit 0), a hand-edited file is refused (exit 1) rather than clobbered unless
-the caller confirms, and a structural fault exits 2.
+the caller confirms, and a structural fault, a missing declaration or an unknown
+kind exits 2 with nothing written.
 
 **The preview is spelled `dry-run`, and it is a flag, not a sub-verb.** The
 binary registers no `dry-run` subcommand under launch, and `commands/launch.md`

@@ -197,6 +197,7 @@ func writeSurfaceFixture(t *testing.T, root string, files map[string]string) {
 		}
 		list += `"` + inc + `"`
 	}
+	writeFile(t, root, ArtefactRelPath, `{"kind": "plugin"}`)
 	writeFile(t, root, ".abcd/config/launch-payload.json", `{"includes": [`+list+`]}`)
 	plugin := `{"name": "abcd"`
 	if extra != "" {

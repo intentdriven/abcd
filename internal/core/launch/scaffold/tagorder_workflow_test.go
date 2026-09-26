@@ -28,7 +28,7 @@ import (
 // chain, and TestSelfScaffoldParity binds the Abcd rendering to the committed
 // workflows.
 func TestTheTagWaitsOnTheVerifyGate(t *testing.T) {
-	for _, subs := range []Substitutions{AbcdSubstitutions(), BareSubstitutions("main")} {
+	for _, subs := range []Substitutions{AbcdSubstitutions(), BareSubstitutions("main"), GateSubstitutions("main", "")} {
 		rendered, err := Render(subs)
 		if err != nil {
 			t.Fatal(err)
@@ -73,8 +73,14 @@ func TestTheTagWaitsOnTheVerifyGate(t *testing.T) {
 			!strings.Contains(tag, `git tag -a "$TAG"`) || !strings.Contains(tag, `git push origin "refs/tags/$TAG"`) {
 			t.Errorf("the tag job must tag the exact commit verify checked out and push only the tag ref (Abcd=%v)", subs.Abcd)
 		}
-		if !strings.Contains(publish, "needs: [verify, tag]\n") {
-			t.Errorf("the publish job must need both verify and tag (Abcd=%v)", subs.Abcd)
+		// A managed profile publishes what its named build job built, so its
+		// publish job needs that job too (iss-2608270559310755).
+		needs := "needs: [verify, tag]\n"
+		if !subs.Abcd {
+			needs = "needs: [verify, tag, build]\n"
+		}
+		if !strings.Contains(publish, needs) {
+			t.Errorf("the publish job must need both verify and tag (Abcd=%v, Gate=%v): want %q", subs.Abcd, subs.Gate, needs)
 		}
 		// The publish job's condition is evaluated, not pattern-matched, by
 		// TestThePublishConditionNeedsAGreenVerify below.
@@ -105,41 +111,80 @@ func TestThePublishConditionNeedsAGreenVerify(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read committed %s: %v", ReleaseYMLPath, err)
 	}
-	sources := map[string]string{ReleaseYMLPath: string(committed)}
-	for _, subs := range []Substitutions{AbcdSubstitutions(), BareSubstitutions("main")} {
+	// Whether a source is the reusable gate comes from the profile that
+	// rendered it, never from the condition under test: a condition that lost
+	// its `inputs.publish` clause would otherwise be expected not to carry it.
+	type source struct {
+		wf   string
+		gate bool
+	}
+	sources := map[string]source{ReleaseYMLPath: {wf: string(committed), gate: false}}
+	for _, subs := range []Substitutions{AbcdSubstitutions(), BareSubstitutions("main"), GateSubstitutions("main", "")} {
 		rendered, err := Render(subs)
 		if err != nil {
 			t.Fatal(err)
 		}
-		sources[fmt.Sprintf("release.yml.tmpl (Abcd=%v)", subs.Abcd)] = string(rendered.ReleaseYML)
+		sources[fmt.Sprintf("release.yml.tmpl (Abcd=%v, Gate=%v)", subs.Abcd, subs.Gate)] = source{wf: string(rendered.ReleaseYML), gate: subs.Gate}
 	}
 
 	results := []string{"success", "failure", "cancelled", "skipped"}
-	for where, wf := range sources {
+	for where, src := range sources {
+		wf, gate := src.wf, src.gate
 		cond := jobIf(t, jobSection(t, wf, "release"), where)
+		// A managed profile publishes only what its named build job built
+		// (iss-2608270559310755), and the gate publishes only when its caller
+		// asks; abcd's own profile has neither, and its condition reads neither.
+		hasBuild := strings.Contains(wf, "\n  build:\n")
+		var buildCond string
+		if hasBuild {
+			buildCond = jobIf(t, jobSection(t, wf, "build"), where+" build job")
+		}
 		for _, event := range []string{"push", "workflow_dispatch"} {
 			for _, verify := range results {
 				for _, tag := range results {
-					for _, cancelled := range []bool{false, true} {
-						ctx := map[string]any{
-							"github.event_name":   event,
-							"needs.verify.result": verify,
-							"needs.tag.result":    tag,
-							"cancelled()":         cancelled,
-							"success()":           !cancelled && verify == "success" && tag == "success",
-							"failure()":           verify == "failure" || tag == "failure",
-						}
-						got, err := actionsexpr.EvalIf(cond, ctx)
-						if err != nil {
-							t.Fatalf("%s: cannot evaluate the publish job's if %q: %v", where, cond, err)
-						}
-						want := event != "workflow_dispatch" && !cancelled && verify == "success" &&
-							(tag == "success" || tag == "skipped")
-						if got != want {
-							t.Errorf("%s: the publish job's if %q is %v for event=%s verify=%s tag=%s "+
-								"cancelled=%v, want %v: a release publishes only after a green verify, "+
-								"with its tag made or not asked for, on an uncancelled non-rehearsal run",
-								where, cond, got, event, verify, tag, cancelled, want)
+					for _, build := range results {
+						for _, publish := range []bool{true, false} {
+							for _, cancelled := range []bool{false, true} {
+								ctx := map[string]any{
+									"github.event_name":   event,
+									"needs.verify.result": verify,
+									"needs.tag.result":    tag,
+									"needs.build.result":  build,
+									"inputs.publish":      publish,
+									"cancelled()":         cancelled,
+									"success()":           !cancelled && verify == "success" && tag == "success",
+									"failure()":           verify == "failure" || tag == "failure",
+								}
+								got, err := actionsexpr.EvalIf(cond, ctx)
+								if err != nil {
+									t.Fatalf("%s: cannot evaluate the publish job's if %q: %v", where, cond, err)
+								}
+								want := event != "workflow_dispatch" && !cancelled && verify == "success" &&
+									(tag == "success" || tag == "skipped") &&
+									(!hasBuild || build == "success") && (!gate || publish)
+								if got != want {
+									t.Errorf("%s: the publish job's if %q is %v for event=%s verify=%s tag=%s build=%s "+
+										"publish=%v cancelled=%v, want %v: a release publishes only after a green verify, "+
+										"with its tag made or not asked for, on an uncancelled non-rehearsal run",
+										where, cond, got, event, verify, tag, build, publish, cancelled, want)
+								}
+								if buildCond == "" {
+									continue
+								}
+								// The build job obeys the same rule less its own
+								// result: a caller that asked for no publish gets
+								// no build either.
+								gotBuild, err := actionsexpr.EvalIf(buildCond, ctx)
+								if err != nil {
+									t.Fatalf("%s: cannot evaluate the build job's if %q: %v", where, buildCond, err)
+								}
+								wantBuild := event != "workflow_dispatch" && !cancelled && verify == "success" &&
+									(tag == "success" || tag == "skipped") && (!gate || publish)
+								if gotBuild != wantBuild {
+									t.Errorf("%s: the build job's if %q is %v for event=%s verify=%s tag=%s publish=%v "+
+										"cancelled=%v, want %v", where, buildCond, gotBuild, event, verify, tag, publish, cancelled, wantBuild)
+								}
+							}
 						}
 					}
 				}

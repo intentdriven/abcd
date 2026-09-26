@@ -329,12 +329,30 @@ about, one question per category present, never one per item.
 | `category` | Examples | Apply behaviour |
 |---|---|---|
 | `safe-autocreate` | the repo skeleton, history-store directories, the name-guard artefacts | applied once the category is approved, no per-item prompt; create-if-absent, never overwriting |
-| `config-change` | visibility, oracle adapter, the `PATH` entry, the git-identity pin | transparent confirm; skip-if-set with a "current value" notice |
+| `config-change` | visibility, oracle adapter, the `PATH` entry, the git-identity pin, the artefact kind | transparent confirm; skip-if-set with a "current value" notice |
 | `plugin-owned` | the marker block (itd-3); hook-manifest verification | silent overwrite on marker drift; a non-resolvable diagnostic for a malformed or missing manifest, and for a conventions file whose block would land inside a fence or HTML comment nothing closes (`marker.unplaceable`) |
 | `dependency` | the opt-in scanners | one category-level approval covering them; abcd never auto-executes a package manager, and the user runs the commands |
 | `status-line` | the offer of abcd's status line in the host harness | an advisory offer asked after its own question, written only on an answered consent; never under the approve-everything flag, and reported as optional work it skipped |
 | `oracle-routing` | the offer of abcd's proposed model-tier routing table (itd-2609170822093401): the machine's `~/.abcd/oracle-routing.json`, then, as a separate question, the repository's `.abcd/config/oracle-routing.json` | the proposal rendered as a table (agent, tier, fan-out) and each file written only on its own answered consent, the machine one owner-only; never under the approve-everything flag, and reported as optional work it skipped; a decline records nothing, so the next install offers again; uninstall leaves both files |
 | `user-state` | the registry entry, re-founding, stale or duplicate entries | guided; never auto-edit user-scope state, report extras read-only |
+
+**The artefact kind is a gap until it is declared** (itd-2609150819432059). A
+managed repository with no `.abcd/config/artefact.json` raises a required,
+resolvable `artefact.missing` gap, because the launch verbs choose what to
+preview, check and scaffold by the kind declared there and refuse to guess it.
+The apply pass writes the file once config changes are approved: a repository
+carrying `.claude-plugin/plugin.json` takes `kind: plugin` without a question,
+so the shipped shape adopts silently; any other is asked its kind, last of all
+the install's questions. An unanswered prompt takes `application`, the kind that
+assumes least about the build. An unattended install is not asked, and an
+answer naming none of `plugin`, `binary` and `application` is not refused: both
+declare `application` with a note saying what was heard, as the house-style
+question does, because withholding the declaration would leave every launch verb
+refusing the repository. The file is validated by
+the one reader the launch verbs share, before it is written and whenever it is
+read, so a declaration that is present and refused raises a non-resolvable
+`artefact.invalid` diagnostic instead: it is the user's file, and the install
+never overwrites it.
 
 **The questions come in a fixed order**, and the order is a contract rather than
 a presentation choice: answers are positional, so without it the Nth piped
