@@ -7,6 +7,10 @@ category: "bug"
 source: "user-observation"
 found_during: "itd-183-round-9-security"
 found_at: "internal/core/reading/project.go"
+resolution: "The floor refuses the nesting behind every block indicator, not one spelling of it: the run of sequence and explicit-value indicators is read off and a tag, anchor, explicit key or compact mapping after it is refused whatever the key is named, and the flow scan reads a key after an opening bracket. The recorded shape and its siblings (a second indicator, a node property, an explicit key in the entry, a compact explicit value, a flow pair in a flow sequence) are refused; rawHTMLHeading's comment states only what the fence does there."
+impact: fix
+resolved_by:
+  commit: "9088559086d6d4b5334a336257bd926c45d8b409"
 ---
 
 pre-existing on the itd-183 branch: a compact nested mapping in a block sequence leaks an excluded key, and rawHTMLHeading's fence comment overclaims
@@ -37,3 +41,7 @@ does not exist on main, so nothing here is inherited from main.
 Both are pre-existing on the branch and are left open for the facilitator.
 Item 1 in particular deserves a decision: it is a genuine hole in the exclusion
 floor that no round has closed.
+
+## Grounds
+
+- pursued: every compact nested mapping a frontmatter line can open behind block indicators refuses the assembly, while committed flow-mapping history rows and scalar sequences are admitted; an excluded key admitted in any such spelling, or a committed record refused by the new rule, would show it wrong
