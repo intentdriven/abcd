@@ -108,11 +108,12 @@ func TestPreCommitHook_IdentityGate(t *testing.T) {
 // TestPreCommitHook_AuthorRoleConfigBlocks is iss-2609261454332615 at the shell
 // guard: a repo-local author.name/author.email outranks user.name/user.email
 // for the author git stamps, so a matching user.* must not wave through a commit
-// that author.* attributes to someone else.
+// that author.* attributes to someone else. The committer is held to the pin the
+// same way (itd-131), so committer.* is refused on the same terms.
 func TestPreCommitHook_AuthorRoleConfigBlocks(t *testing.T) {
 	hook := locateHook(t)
 	env := gittest.Env(t)
-	for _, key := range []string{"author.name", "author.email"} {
+	for _, key := range []string{"author.name", "author.email", "committer.name", "committer.email"} {
 		t.Run(key, func(t *testing.T) {
 			dir := t.TempDir()
 			hookGit(t, dir, env, "init")
@@ -137,7 +138,7 @@ func TestPreCommitHook_AuthorRoleConfigBlocks(t *testing.T) {
 			}
 			hookGit(t, dir, env, "add", "-A")
 			if err := hookGit(t, dir, env, "commit", "-m", "t"); err == nil {
-				t.Fatalf("the hook let %s = Test User author a commit under a pin of Alex", key)
+				t.Fatalf("the hook let %s = Test User make a commit under a pin of Alex", key)
 			}
 		})
 	}

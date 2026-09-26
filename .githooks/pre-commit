@@ -173,7 +173,7 @@ fi
 cd "$toplevel"
 
 # --- iss-62 identity gate ---------------------------------------------------
-# Refuse a commit whose author identity diverges from the committed pin
+# Refuse a commit whose author or committer identity diverges from the committed pin
 # (.abcd/config/identity.json). Self-contained (no binary dependency) so the
 # guard holds even before abcd is built or on PATH, and can't be broken by a
 # stale abcd. Runs FIRST — the name-guard below early-exits when no banlist is
@@ -201,6 +201,15 @@ if [ -f "$identity_pin" ]; then
   if [ "$have_name" != "$want_name" ] || [ "$have_email" != "$want_email" ]; then
     echo "pre-commit: BLOCKED — git identity \"$have_name <$have_email>\" does not match the pinned \"$want_name <$want_email>\" ($identity_pin)." >&2
     echo "            fix: git config user.name \"$want_name\" && git config user.email \"$want_email\"" >&2
+    exit 1
+  fi
+  # The committer is held to the pin too (itd-131): committer.name/committer.email
+  # outrank user.* for the committer git stamps, exactly as author.* does above.
+  have_cname=$(git config committer.name || git config user.name || true)
+  have_cemail=$(git config committer.email || git config user.email || true)
+  if [ "$have_cname" != "$want_name" ] || [ "$have_cemail" != "$want_email" ]; then
+    echo "pre-commit: BLOCKED — git committer \"$have_cname <$have_cemail>\" does not match the pinned \"$want_name <$want_email>\" ($identity_pin)." >&2
+    echo "            fix: git config --unset committer.name; git config --unset committer.email (or set them to the pinned identity)" >&2
     exit 1
   fi
 fi
