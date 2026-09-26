@@ -193,8 +193,9 @@ identity` and bare `abcd ahoy remote` answer with the invocation their report
 moved to (`abcd lint identity`, `abcd ahoy --remote`) and exit non-zero for one
 release, because their sub-verbs stay. Bare `abcd report` opens the editor on a
 terminal and refuses anywhere else, because it files a report rather than
-rendering one, and bare `abcd statusline` renders nothing without the payload
-the harness hands it on stdin. And `abcd
+rendering one, and bare `abcd statusline` renders abcd's row only in a managed
+repository, where it needs none of the payload the harness hands it on stdin,
+and prints nothing of its own anywhere else. And `abcd
 update` is a mutating fetch-verify-swap rather than a render at all. This
 paragraph is the one enumeration of the exceptions; the chapters point here
 rather than restating it. Each exception is also recorded with its reason in

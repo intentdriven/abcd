@@ -32,8 +32,10 @@ var bareRenderExceptions = map[string]string{
 		"(exit 1) naming the flag, because publishing is not wired",
 	"report": "it files a report from a file or the editor, so bare opens the editor on " +
 		"a terminal and refuses (exit 2) anywhere else",
-	"statusline": "the harness invokes it with its payload on stdin, and with no payload " +
-		"there is no row to render",
+	"statusline": "its row belongs to a managed repository: there bare renders it with or " +
+		"without the payload (TestStatuslineEmptyStdinStillRendersTheBadge), and anywhere else, " +
+		"this test's scratch repository included, abcd has no row and bare prints nothing of " +
+		"its own, or runs the user's recorded previous status command",
 	"update": "bare update is the explicit ask to swap the PATH-installed binary, so it " +
 		"writes; `abcd update --check` is its read-only form",
 }
