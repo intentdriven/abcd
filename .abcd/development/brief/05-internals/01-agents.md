@@ -174,9 +174,10 @@ The `scribe` is machine assistance in maintaining the ledger, and its access rul
 is the exact inverse of the assembler's (invariant 15 in
 [`02-constraints/03-invariants.md`](../02-constraints/03-invariants.md), which
 binds this section). The assembler passes a reading a positively included slice of
-the shipped repository and no ledger; the scribe receives ledger content plus the
-reading output it is transcribing, and never the shipped repository as an object
-of judgement. **No session holds both a reading and the ledger.** The scribe is
+the shipped repository and no ledger; the scribe receives ledger content, the
+run's reading records among it as the store holds them, plus the researcher's
+supplied dispositions, and never the shipped repository as an object of
+judgement. **No session holds both a reading and the ledger.** The scribe is
 also not a consumer of the session-transcript store: that store's consumer list is
 enumerated in the same invariant, and adding the scribe to it is an invariant
 change rather than a code path.
@@ -186,11 +187,16 @@ positive inclusion is what excludes the path nobody thought to name, including a
 record type the list has never heard of. Two tests in `internal/core/lint` hold the
 definition to that, and their reach is exactly what they say: they prove the
 definition names the right paths, not that a host assembled the right context.
-Mechanical assembly belongs to the ingest verb.
+Mechanical assembly belongs to `abcd scribe assemble`, which builds the context
+from an allow list derived from the ledger's own directory list and parks it with
+a manifest of every path passed; a third test holds the definition's list to
+that function ([`04-surfaces/32-scribe.md`](../04-surfaces/32-scribe.md)).
 
 The mechanical path exists beside the scribe: `abcd reading ingest` validates the
-output a reading returned and writes its reading records, and `abcd capture
-disposition` writes the researcher's answer to one item. The scribe is the
+output a reading returned and writes its reading records, `abcd capture
+disposition` writes the researcher's answer to one item, and `abcd scribe ingest`
+validates what a scribe session returned, refuses anything it authored, and
+writes it through the capture verbs' own functions. The scribe is the
 transcription assistant of the session in which that material is prepared, and
 four rules bind that session:
 
@@ -199,15 +205,19 @@ four rules bind that session:
    readings held for transcription is the pressure that invents one.
 2. **The reading run and the scribe run are separate host sessions**, always. Each
    is retained under its own session id, and the transcript store is what shows
-   two distinct sessions. The honest limit: the store shows that two sessions
-   exist and that neither carries the other's material; it cannot enforce that the
-   practice held, because the separation happens in the host before anything is
-   retained.
+   two distinct sessions. Every reading bundle and every scribe context carries
+   a per-run context stamp, and `abcd history separation` names a retained
+   transcript carrying the reading stamp and the scribe stamp of one run. The
+   honest limit: the check reports what a host retained; it cannot enforce that
+   the practice held, because the separation happens in the host before anything
+   is retained, and where nothing stamped was retained it reports the property
+   unobserved rather than held.
 3. **The transcribed material is committed through the ordinary record path.** The
    reading and disposition stores are declared record families, so `record_schema`
    holds each record to its shape at the gate, and the writing verbs validate
    before they write. A record the scribe transcribed reaches the tree through a
-   verb, never by a hand-placed file.
+   verb — `abcd scribe ingest`, beside `abcd reading ingest` and `abcd capture
+   disposition` — never by a hand-placed file.
 4. **A fidelity flag is carried to the researcher unresolved.** The scribe may flag
    an internal inconsistency in the material it is transcribing, because that is
    transcription fidelity rather than judgement. It may never propose a

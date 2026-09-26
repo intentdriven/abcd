@@ -1,13 +1,17 @@
 package site
 
-// Principles — the one record family that carries no frontmatter.
+// Principles — the record family keyed by file name.
 //
 // A principle is a markdown file whose name is its handle and whose H1 is its
-// title; there is no id field to read and no lifecycle directory to sit in, so
-// the lint engine's frontmatter scan cannot see one. They are read here instead
-// — a directory listing and a first heading, through the same section walk every
-// other page uses — and joined to the record graph as nodes of their own, so the
-// dashboard can count them, the chart can draw them and each gets a page.
+// title; it has no lifecycle directory to sit in, and most carry no
+// frontmatter at all (a typed one carries four claim keys the site does not
+// publish). The lint scan reads the family as a slug-keyed store under the
+// handle prn-<stem>; the site reads it here instead — a directory listing and a
+// first heading, through the same section walk every other page uses — and
+// joins it to the record graph under the stem, the handle every published page
+// carries, so the dashboard can count them, the chart can draw them and each
+// gets a page (withoutPrincipleNodes keeps the two reads from publishing one
+// record twice).
 //
 // The directory is DERIVED, never configured: it is `principles/` under the
 // record root the lint configuration already names. A repository that keeps none
@@ -99,6 +103,44 @@ func LoadPrinciples(repoRoot, dir string) ([]lint.RecordNode, error) {
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out, nil
+}
+
+// withoutPrincipleNodes drops the principle nodes the record graph carries, and
+// any edge touching one.
+//
+// The lint scan reads the principles store as a declared, slug-keyed record
+// family (adr-2609021016270132), so the graph carries each principle under its
+// record handle, prn-<stem>. The site publishes the same file under the stem
+// alone, the handle its pages and links have always carried, and one record
+// published twice under two handles is the duplicate this drop prevents. The
+// site's own read is kept rather than the graph's because it is what every
+// published page URL is keyed on; the graph's copy adds no field the site
+// reads, since a principle carries none of the typed references the graph
+// draws edges from.
+func withoutPrincipleNodes(g lint.RecordGraph) lint.RecordGraph {
+	drop := map[string]bool{}
+	nodes := g.Nodes[:0:0]
+	for _, n := range g.Nodes {
+		if n.Type == principleType {
+			drop[n.ID] = true
+			continue
+		}
+		nodes = append(nodes, n)
+	}
+	if len(drop) == 0 {
+		return g
+	}
+	keep := func(es []lint.RecordEdge) []lint.RecordEdge {
+		out := es[:0:0]
+		for _, e := range es {
+			if !drop[e.From] && !drop[e.To] {
+				out = append(out, e)
+			}
+		}
+		return out
+	}
+	g.Nodes, g.Edges, g.Dangling = nodes, keep(g.Edges), keep(g.Dangling)
+	return g
 }
 
 // firstHeading is a document's H1, or the fallback where it carries none.

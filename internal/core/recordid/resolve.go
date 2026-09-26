@@ -9,9 +9,11 @@ package recordid
 // next to a consumer (an ingest seam, a lint rule) would drift from the minting
 // side the first time a family moved.
 //
-// Only the four ID-BEARING families are resolvable. The brief and the principles
-// carry no per-entry id, so a citation of one cannot be validated by id at all;
-// a caller that needs to reference them does so in prose, never as a citation.
+// Only the four ID-BEARING families are resolvable. The brief carries no
+// per-entry id, and the principles carry a slug-keyed one (`prn-<filename
+// stem>`, adr-2609021016270132) that no citation grammar admits, so a citation
+// of either cannot be validated by id here; a caller that needs to reference
+// them does so in prose, never as a citation.
 //
 // The scan is deliberately SHALLOW (a family root plus one bucket level) and
 // symlink-refusing: the record families are flat-with-buckets by construction, an
@@ -326,4 +328,29 @@ func readDirIfPresent(dir string) ([]os.DirEntry, error) {
 		return nil, nil
 	}
 	return os.ReadDir(dir)
+}
+
+// handleInTextRe finds a record handle written anywhere in running text: any
+// family the record mints a numbered id in, or a scope-condition identity, as a
+// whole token in any case. It is wider than CitedIDRe on purpose. CitedIDRe
+// bounds what an INGEST accepts as a citation; this answers whether a piece of
+// prose carries genealogy at all — a reading item, a disposition or a condition
+// named in a sentence is as much a pointer back into the record as an ADR is.
+// A slug after the number does not stop it being one: `itd-4-a-slug` names
+// itd-4, which is prose_citation_resolves' reading of the same shape.
+var handleInTextRe = regexp.MustCompile(
+	`(?i)(?:^|[^A-Za-z0-9-])((?:adr|itd|spc|iss|rdi|rdg|dsp|adm|srp|rfm|cond)-[0-9]+)(?:$|[^A-Za-z0-9])`)
+
+// HandleInText returns the first record handle the text carries, and whether it
+// carries one. It is the one answer the principles lint and the reading
+// assembler give to "does this statement cite?" (spc-2609020626042471): the lint
+// refuses a typed principle whose statement cites, and the assembler refuses an
+// assembly whose projected principle still does, so the two cannot disagree
+// about what a citation looks like.
+func HandleInText(s string) (string, bool) {
+	m := handleInTextRe.FindStringSubmatch(s)
+	if m == nil {
+		return "", false
+	}
+	return m[1], true
 }

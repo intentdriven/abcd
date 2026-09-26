@@ -99,6 +99,13 @@ var (
 	// it carries rather than by a directory.
 	admissionFileNumRe = recordid.FilenameNumRe(issueschema.AdmissionFamily)
 	surpriseFileNumRe  = recordid.FilenameNumRe(issueschema.SurpriseFamily)
+	// The reframe store is flat for the surprise store's reason: a reframe is
+	// keyed by the occasion and the fingerprints it carries (spc-2609020626048705).
+	reframeFileNumRe = recordid.FilenameNumRe(issueschema.ReframeFamily)
+	// The principles family is SLUG-KEYED (adr-2609021016270132): a principle's
+	// filename stem is its identity and it carries no ordinal, so the pattern
+	// captures the whole kebab stem where the numbered stores capture a number.
+	principleFileRe = regexp.MustCompile(`^([a-z0-9]+(?:-[a-z0-9]+)*)\.md$`)
 	// A YAML block-scalar header and nothing else: `|`, `>`, with the chomping and
 	// indentation indicators the spelling allows (`|-`, `>+`, `|2-`). A key
 	// carrying one holds its value on the lines BELOW it, so the same-line scanner
@@ -208,11 +215,12 @@ type recordStore struct {
 	// all three legs made the ADR store claim a refusal nobody performs
 	// (iss-2608301656200729). That leg reads readerRefusesDuplicateKey instead.
 	//
-	// The two stores this cycle added have no such reader: the only reader of
-	// admission records honours one carrying nothing but its run and its proposal
-	// (reading_outstanding_test.go), and no reader of surprise records exists at
-	// all — so a message telling their authors the record is skipped and invisible
-	// sends them to look for a refusal nobody performs (iss-2608301411010342).
+	// The two stores this cycle added have no such reader: the outstanding report
+	// honours an admission carrying nothing but its run and its proposal
+	// (reading_outstanding_test.go), and the record dispatcher reads both families
+	// leniently and skips neither — so a message telling their authors the record
+	// is skipped and invisible sends them to look for a refusal nobody performs
+	// (iss-2608301411010342).
 	// Where it is false each leg states what the malformation IS, which is true of
 	// every store, and stops there.
 	readerFailsClosed bool
@@ -246,6 +254,13 @@ type recordStore struct {
 	// field, so a disagreement is the record contradicting itself about which set
 	// it joined. Empty means the store makes no such double claim.
 	bucketField string
+	// slugKeyed declares a store whose records are keyed by their filename stem
+	// rather than by an ordinal: the handle is `<prefix>-<stem>`, fileNumRe's
+	// submatch 1 is the stem, and the store issues no number and so has no
+	// allocation high-water mark. The principles family is the one such store
+	// (adr-2609021016270132): its entries are prose files keyed by filename, and
+	// minting ordinals for them would cost every existing reference its handle.
+	slugKeyed bool
 }
 
 // recordJoin is one keying field a store declares, with what the join is FOR —
@@ -312,6 +327,18 @@ type recordJoin struct {
 	// join that ALSO declares sameBucketAs; declared alone it would be inert, which
 	// TestEveryJoinTargetPositionIsADeclaredPosition refuses.
 	targetPosition string
+	// oneOf names the CLOSED set of families this join's value must be a handle
+	// of, verbatim, for a join whose value may name one of several families.
+	// Empty means the join declares no such set.
+	//
+	// The surprise's `occasioned_by` is the one such join: an rdi-N, adm-N or
+	// dsp-N and nothing else (spc-2609020626040342). It used to admit a
+	// consequence named in prose, so a prose value passed the gate while the
+	// surprise verb refuses it — a hand-written record joined to nothing. The set
+	// is issueschema's one declaration (SurpriseOccasionFamilies), so the verb and
+	// this gate cannot disagree about it. A value in the set then resolves on the
+	// ordinary presence leg below.
+	oneOf []string
 }
 
 // bucketed reports whether the store holds its records in lifecycle
@@ -415,8 +442,30 @@ var recordStores = []recordStore{
 		requiredFields: issueschema.SurpriseRequired, knownFields: issueschema.SurpriseKnown,
 		joins: []recordJoin{{
 			field: "occasioned_by",
-			why:   "a surprise is keyed to whatever occasioned it, and a join naming nothing joins nothing",
+			why:   "a surprise is keyed to the record that occasioned it, and a join naming nothing joins nothing",
+			oneOf: issueschema.SurpriseOccasionFamilies,
 		}}},
+	// The reframe record (spc-2609020626048705). Its schema comes from
+	// core/issueschema's one declaration, its occasion is a closed join over
+	// the families the verb resolves, and checkReframeRecordShape judges what
+	// the required-fields leg cannot: each fingerprint's shape, the after half
+	// together or not at all, and `changed` drawn from the three surface names.
+	{prefix: "rfm", noun: "reframe", nodeType: "reframe",
+		fileNumRe: reframeFileNumRe, fileFamily: "rfm", filename: "rfm-<N>.md",
+		requiredFields: issueschema.ReframeRequired, knownFields: issueschema.ReframeKnown,
+		joins: []recordJoin{{
+			field: "occasioned_by",
+			why:   "a reframe is keyed to the reading record that occasioned it, and a join naming nothing joins nothing",
+			oneOf: issueschema.ReframeOccasionFamilies,
+		}}},
+	// The principles family (adr-2609021016270132, spc-2609020626042471): flat,
+	// slug-keyed, and declaring no required set here, because an untyped entry —
+	// a prose file with no frontmatter, which is every entry the family held when
+	// it was declared — is a legal state. What a typed entry must carry is judged
+	// by principle_claims (principles.go), which reads the four claim keys this
+	// rule does not; the one key this rule judges is the id, against the stem.
+	{prefix: "prn", noun: "principle", nodeType: "principle",
+		fileNumRe: principleFileRe, filename: "<slug>.md", slugKeyed: true},
 }
 
 // storeByPrefix returns the code-side store for a prefix.
@@ -443,9 +492,12 @@ func recordStorePrefixes() map[string]bool {
 // schemaRecord is one record file as the schema rule sees it: which store and
 // bucket hold it, the id number its FILENAME claims, and its frontmatter.
 type schemaRecord struct {
-	rel    string
-	store  recordStore
-	num    int
+	rel   string
+	store recordStore
+	num   int
+	// slug is the filename stem of a record in a slug-keyed store, and empty for
+	// every numbered one; num is zero where slug is set.
+	slug   string
 	bucket string
 	// title is the record's H1, or — for a store whose records carry none, the
 	// issue ledger — its first body line. The schema rule never reads it; it is
@@ -487,8 +539,12 @@ func (r schemaRecord) scalar(value string) string {
 	return issueScalar(value)
 }
 
-// handle renders the record's prose handle (adr-12, itd-47).
+// handle renders the record's prose handle (adr-12, itd-47), or for a
+// slug-keyed store the prefix and the filename stem (prn-fix-the-detector).
 func (r schemaRecord) handle() string {
+	if r.store.slugKeyed {
+		return r.store.prefix + "-" + r.slug
+	}
 	return r.store.prefix + "-" + strconv.Itoa(r.num)
 }
 
@@ -554,10 +610,18 @@ func checkRecordSchema(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 	// (iss-2608270908346940). For the prose-handle stores the id-unique rules
 	// (issue_id_unique, intent_lifecycle, spec_id_unique) catch the frontmatter-id
 	// collision; the ADR store has no such rule, so this is its only guard.
-	index := map[recordRef]schemaRecord{}
+	//
+	// The index keys on the RENDERED handle, not on (prefix, ordinal): a
+	// slug-keyed store issues no ordinal, so keying on the pair would read every
+	// principle as prn-0 and report a clean store as thirty collisions. For a
+	// numbered store the rendered handle is the prefix-N string the pair spelled,
+	// so nothing about those stores moves; for the slug-keyed store it is
+	// prn-<stem>, which a filename-keyed directory can only hold once, so the leg
+	// reports nothing there today and stands guard over a second such store.
+	index := map[string]schemaRecord{}
 	highWater := map[string]int{}
 	for _, r := range records {
-		ref := recordRef{r.store.prefix, r.num}
+		ref := r.handle()
 		if first, dup := index[ref]; dup {
 			out = append(out, Finding{
 				File: r.rel, Line: 1, RuleID: ruleRecordSchema, Severity: cfg.Severity,
@@ -567,7 +631,8 @@ func checkRecordSchema(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 		} else {
 			index[ref] = r
 		}
-		if r.num > highWater[r.store.prefix] {
+		// A slug-keyed store issues no ordinals and so has no high-water mark.
+		if !r.store.slugKeyed && r.num > highWater[r.store.prefix] {
 			highWater[r.store.prefix] = r.num
 		}
 	}
@@ -620,6 +685,7 @@ func checkRecordSchema(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 		out = append(out, checkRecordFilename(r, cfg.Severity, judged)...)
 		out = append(out, checkRecordFilenameSlug(r, cfg.Severity, judged)...)
 		out = append(out, checkIssueRecordShape(r, cfg.Severity, judged)...)
+		out = append(out, checkReframeRecordShape(r, cfg.Severity, judged)...)
 		out = append(out, checkRecordRequiredFields(r, cfg.Severity, judged)...)
 		out = append(out, checkRecordUnknownFields(r, cfg.Severity)...)
 		out = append(out, checkRecordJoins(r, index, retired, cfg)...)
@@ -634,7 +700,7 @@ func checkRecordSchema(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 		for _, field := range recordRefFields {
 			f := r.fields[field]
 			for _, h := range r.refs[field] {
-				if _, ok := index[h]; ok || retired[h] {
+				if _, ok := index[h.String()]; ok || retired[h] {
 					continue
 				}
 				add(r.rel, f.line, field+" names '"+h.String()+"', which is not a record in the corpus and no record declares it superseded; a cross-reference is a claim that the record exists")
@@ -646,7 +712,7 @@ func checkRecordSchema(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 		// resolvable everywhere else in the corpus.
 		sup := r.fields["supersedes"]
 		for _, h := range r.refs["supersedes"] {
-			if _, ok := index[h]; ok {
+			if _, ok := index[h.String()]; ok {
 				continue
 			}
 			if h.num >= 1 && h.num <= highWater[h.prefix] {
@@ -668,7 +734,7 @@ func checkRecordSchema(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 			continue
 		}
 		for _, h := range targets {
-			target, ok := index[h]
+			target, ok := index[h.String()]
 			if !ok {
 				add(r.rel, sb.line, "superseded_by names '"+h.String()+"', which is not a record in the corpus; a successor decision must be present")
 				continue
@@ -686,7 +752,7 @@ func checkRecordSchema(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 	for _, r := range records {
 		sup := r.fields["supersedes"]
 		for _, h := range r.refs["supersedes"] {
-			target, ok := index[h]
+			target, ok := index[h.String()]
 			if !ok {
 				continue
 			}
@@ -718,6 +784,23 @@ func checkRecordFilename(r schemaRecord, severity string, judged map[string]bool
 	}
 	want := r.handle()
 	got := r.scalar(f.value)
+	// A slug-keyed store's handle carries the stem verbatim, so it is compared as
+	// the string it is: there is no ordinal to parse and no padding to forgive.
+	if r.store.slugKeyed {
+		if got == want {
+			return nil
+		}
+		line := f.line
+		if line == 0 {
+			line = 1
+		}
+		mark(judged, "id")
+		return []Finding{{
+			File: r.rel, Line: line, RuleID: ruleRecordSchema, Severity: severity,
+			Message: "filename claims id '" + want + "' but frontmatter declares '" + got +
+				"'; a " + r.noun() + " is keyed by its filename, so its id is '" + r.store.prefix + "-' and the stem of " + r.store.filename,
+		}}
+	}
 	// Compared as a PARSED handle, not as a string: `adr-0012` and `adr-12` are one
 	// id written two ways (the rest of the rule already compares numerically), and
 	// a string comparison would report the record's own zero-padded spelling as a
@@ -788,6 +871,11 @@ func mark(judged map[string]bool, field string) {
 // filename grammar to match belongs on that record, because it changes what the
 // gate refuses across all four stores.
 func checkRecordFilenameSlug(r schemaRecord, severity string, judged map[string]bool) []Finding {
+	// A slug-keyed store's filename IS its slug and it carries no slug property to
+	// disagree with; its one identity question is the id, asked above.
+	if r.store.slugKeyed {
+		return nil
+	}
 	f := r.fields["slug"]
 	// isNull, not isAbsentValue, for checkRecordFilename's reason: an empty slug
 	// is a value that disagrees, and the stores that would otherwise catch it
@@ -903,8 +991,8 @@ func checkRecordRequiredFields(r schemaRecord, severity string, judged map[strin
 // — invisible to every surface of its own family while it still sits in the store.
 // That second account is gated on readerFailsClosed for the reason the
 // missing-property account is: the admission reader COUNTS a record carrying an
-// unknown key, and no reader of surprise records exists at all
-// (iss-2608301519254418).
+// unknown key, and the one reader of surprise records — the record dispatcher —
+// reads them leniently and skips none (iss-2608301519254418).
 func checkRecordUnknownFields(r schemaRecord, severity string) []Finding {
 	if r.store.knownFields == nil {
 		return nil
@@ -987,13 +1075,13 @@ func checkRecordUnknownFields(r schemaRecord, severity string) []Finding {
 // queries. It is declared per join AND per target family (sameBucketAs), because
 // that pair-keying is a property of the family and the message names it.
 //
-// Prose is legitimate and stays silent WHERE THE JOIN DECLARES NO FAMILY. A
-// surprise is keyed to whatever occasioned it — a detection, an admission, or a
-// consequence that has no id — so only a value that is a record handle of a store
-// this scan reads is resolved. A handle a record declares it PRUNED is resolved
+// Prose is legitimate and stays silent WHERE THE JOIN DECLARES NO FAMILY AND NO
+// CLOSED SET: only a value that is a record handle of a store this scan reads is
+// resolved. A surprise's occasion is NOT such a join — it declares its closed set
+// (oneOf), so a prose occasion is a finding (spc-2609020626040342). A handle a record declares it PRUNED is resolved
 // too, on the same terms the cross-reference loop resolves it, so one rule gives
 // one answer about it.
-func checkRecordJoins(r schemaRecord, index map[recordRef]schemaRecord, retired map[recordRef]bool, cfg RuleConfig) []Finding {
+func checkRecordJoins(r schemaRecord, index map[string]schemaRecord, retired map[recordRef]bool, cfg RuleConfig) []Finding {
 	var out []Finding
 	for _, join := range r.store.joins {
 		f := r.fields[join.field]
@@ -1027,6 +1115,17 @@ func checkRecordJoins(r schemaRecord, index map[recordRef]schemaRecord, retired 
 			})
 			continue
 		}
+		// The closed set, where the join declares one: the value must be verbatim a
+		// handle of one of its families, so prose and a fourth family are findings
+		// rather than the silence an undeclared join gives them.
+		if len(join.oneOf) > 0 && !spellsHandleOfAny(join.oneOf, value) {
+			out = append(out, Finding{
+				File: r.rel, Line: line, RuleID: ruleRecordSchema, Severity: cfg.Severity,
+				Message: join.field + " declares '" + value + "', which is not a handle of " + handleList(join.oneOf) +
+					" (lower case with nothing around it); " + join.why,
+			})
+			continue
+		}
 		m := anyHandleFullRe.FindStringSubmatch(value)
 		if m == nil {
 			continue
@@ -1043,7 +1142,7 @@ func checkRecordJoins(r schemaRecord, index map[recordRef]schemaRecord, retired 
 			continue
 		}
 		ref := recordRef{prefix, num}
-		target, ok := index[ref]
+		target, ok := index[ref.String()]
 		if !ok {
 			// A handle a record declares it PRUNED resolves to that declaration rather
 			// than to a file, exactly as the cross-reference loop in checkRecordSchema
@@ -1165,6 +1264,26 @@ func spellsHandleOf(family, value string) bool {
 		}
 	}
 	return true
+}
+
+// spellsHandleOfAny reports whether value is verbatim a handle of one of
+// families.
+func spellsHandleOfAny(families []string, value string) bool {
+	for _, f := range families {
+		if spellsHandleOf(f, value) {
+			return true
+		}
+	}
+	return false
+}
+
+// handleList renders a family set as the handles a message names.
+func handleList(families []string) string {
+	names := make([]string, 0, len(families))
+	for _, f := range families {
+		names = append(names, f+"-<N>")
+	}
+	return strings.Join(names, ", ")
 }
 
 // joinFamilyNoun renders the record kind a join's declared family holds, for the
@@ -1548,9 +1667,15 @@ func scanRecordStores(repoRoot string, cfg RuleConfig) ([]schemaRecord, []Findin
 						"); the filename is the handle every cross-reference resolves through")
 					continue
 				}
-				num, err := strconv.Atoi(m[1])
-				if err != nil {
-					continue
+				num, slug := 0, ""
+				if store.slugKeyed {
+					slug = m[1]
+				} else {
+					n, err := strconv.Atoi(m[1])
+					if err != nil {
+						continue
+					}
+					num = n
 				}
 				// fsutil.ReadGuarded on the unresolved leaf, as the reading walk in
 				// readingoutstanding.go reads the same trees: a record is never
@@ -1581,7 +1706,8 @@ func scanRecordStores(repoRoot string, cfg RuleConfig) ([]schemaRecord, []Findin
 				// The refusal half is gated on readerRefusesDuplicateKey rather than on
 				// readerFailsClosed, because the two come apart on this malformation
 				// alone: the admission reader COUNTS a record carrying a duplicated key,
-				// no reader of surprise records exists, and the ADR dispatcher — which
+				// the record dispatcher reads surprise records with the lenient scanner
+				// on its first value, and the ADR dispatcher — which
 				// does validate the id — reads the frontmatter with the lenient scanner
 				// and never sees the second line, so naming a refusal on any of the three
 				// sends the author looking for one nobody performs (iss-2608301519254418,
@@ -1627,6 +1753,7 @@ func scanRecordStores(repoRoot string, cfg RuleConfig) ([]schemaRecord, []Findin
 					rel:     rel,
 					store:   store,
 					num:     num,
+					slug:    slug,
 					bucket:  bucket,
 					title:   recordTitle(lines),
 					fields:  fields,
@@ -2060,6 +2187,80 @@ func refsContain(refs []recordRef, want recordRef) bool {
 		}
 	}
 	return false
+}
+
+// checkReframeRecordShape judges a reframe record's values the way the reframe
+// writer's validateReframeStrict does (spc-2609020626048705), so a record
+// written by hand is refused where a written one would be: every fingerprint a
+// 64-hex SHA-256, the after half — the three after fingerprints and `changed` —
+// present together or not at all, and `changed` a non-empty list drawn from the
+// three surface names. An ABSENT required value is the required-fields leg's
+// business, so a blank is skipped here.
+func checkReframeRecordShape(r schemaRecord, severity string, judged map[string]bool) []Finding {
+	if r.store.prefix != issueschema.ReframeFamily {
+		return nil
+	}
+	var out []Finding
+	add := func(field string, line int, msg string) {
+		if line == 0 {
+			line = 1
+		}
+		mark(judged, field)
+		out = append(out, Finding{
+			File: r.rel, Line: line, RuleID: ruleRecordSchema, Severity: severity, Message: msg,
+		})
+	}
+	present := 0
+	for _, n := range issueschema.FrameSurfaceNames {
+		for _, half := range []string{"_before", "_after"} {
+			f, ok := r.fields[n+half]
+			if !ok {
+				continue
+			}
+			if half == "_after" {
+				present++
+			}
+			if isNull(strings.TrimSpace(f.value)) {
+				continue
+			}
+			if v := issueScalar(f.value); !issueschema.ValidFingerprint(v) {
+				add(n+half, f.line, n+half+" '"+v+"' is not a 64-hex SHA-256 fingerprint; the reframe writer "+
+					"records each surface's content fingerprint in that shape and nothing else")
+			}
+		}
+	}
+	ch, hasChanged := r.fields["changed"]
+	if hasChanged {
+		present++
+	}
+	if present != 0 && present != len(issueschema.FrameSurfaceNames)+1 {
+		line := ch.line
+		if !hasChanged {
+			line = 1
+		}
+		add("changed", line, "a reframe's after half is the three after fingerprints and `changed` together, "+
+			"or none of them while the record is open; this record carries part of it")
+	}
+	if hasChanged {
+		v := strings.TrimSpace(ch.value)
+		inner, isList := strings.CutPrefix(v, "[")
+		inner, closed := strings.CutSuffix(inner, "]")
+		switch {
+		case !isList || !closed:
+			add("changed", ch.line, "changed '"+v+"' is not an inline list of the surfaces that moved")
+		case strings.TrimSpace(inner) == "":
+			add("changed", ch.line, "changed is empty; a completed reframe in which no surface moved records no reframe")
+		default:
+			for _, item := range strings.Split(inner, ",") {
+				name := issueScalar(strings.TrimSpace(item))
+				if !issueschema.ValidFrameSurface(name) {
+					add("changed", ch.line, "changed names '"+name+"', which is not one of the frame's surfaces ("+
+						strings.Join(issueschema.FrameSurfaceNames, ", ")+")")
+				}
+			}
+		}
+	}
+	return out
 }
 
 // checkIssueReaderParity is the backstop under the issue store's legs: when none

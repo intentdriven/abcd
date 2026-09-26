@@ -33,3 +33,40 @@ func TestValidIDPredicates(t *testing.T) {
 		}
 	}
 }
+
+// TestAdmissionAndSurpriseIDGrammars pins the two families the admission and
+// surprise verbs build paths from (spc-2609020626040342): an id nothing has
+// matched never becomes a filename, so each family's grammar sits beside the
+// four this package already holds.
+func TestAdmissionAndSurpriseIDGrammars(t *testing.T) {
+	cases := []struct {
+		name  string
+		valid func(string) bool
+		ok    []string
+		bad   []string
+	}{
+		{"ValidAdmissionID", ValidAdmissionID,
+			[]string{"adm-1", "adm-2609251200001234", "adm-0007"},
+			[]string{"", "null", "~", "adm-", "adm-1-slug", " adm-1", "adm-1\n", "ADM-1", "srp-1", "adm-../x", "adm-1/..", "rdi-1"}},
+		{"ValidSurpriseID", ValidSurpriseID,
+			[]string{"srp-1", "srp-2609251200001234", "srp-0007"},
+			[]string{"", "null", "~", "srp-", "srp-1-slug", " srp-1", "srp-1\n", "SRP-1", "adm-1", "srp-../x", "dsp-1"}},
+		// The reframe record (spc-2609020626048705) writes reframes/rfm-N.md and
+		// the dispatcher reads it back, so its grammar joins the two above.
+		{"ValidReframeID", ValidReframeID,
+			[]string{"rfm-1", "rfm-2609251200001234", "rfm-0007"},
+			[]string{"", "null", "~", "rfm-", "rfm-1-slug", " rfm-1", "rfm-1\n", "RFM-1", "srp-1", "rfm-../x", "rfm-1/.."}},
+	}
+	for _, c := range cases {
+		for _, id := range c.ok {
+			if !c.valid(id) {
+				t.Errorf("%s(%q) = false, want true", c.name, id)
+			}
+		}
+		for _, id := range c.bad {
+			if c.valid(id) {
+				t.Errorf("%s(%q) = true, want false", c.name, id)
+			}
+		}
+	}
+}

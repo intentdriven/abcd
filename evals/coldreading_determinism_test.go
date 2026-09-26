@@ -9,7 +9,9 @@ package evals
 // agent can be trusted to follow, so it is checked here rather than exhibited in
 // a case run. The identity relation is byte-equality of the assembled input with
 // the manifest excluded, because the manifest legitimately carries a run
-// identifier that differs between runs. The manifest is not therefore
+// identifier that differs between runs, and with the bundle's per-run context
+// stamp set aside after it is held to its run and to one digest across the pair
+// (adr-2609021016275803). The manifest is not therefore
 // unasserted: it is held to two weaker properties — no timestamp-shaped key or
 // scalar (here), and item paths in lexicographic order
 // (coldreading_order_test.go).
@@ -108,7 +110,17 @@ func TestAssembledInputIsByteIdenticalAcrossRuns(t *testing.T) {
 				}
 			})
 
-			if diffs := compareArtefacts(bundleFile, a.BundleRaw, b.BundleRaw); len(diffs) > 0 {
+			// The bundle carries ONE run-dependent value, its per-run context stamp
+			// (adr-2609021016275803). Each side's stamp is held to its run and the
+			// two to one digest, and only then set aside for the byte comparison,
+			// so the relation stays byte-equality of everything else.
+			aRaw, aDigest := setStampAside(t, a)
+			bRaw, bDigest := setStampAside(t, b)
+			if aDigest != bDigest {
+				t.Fatalf("the two assemblies at %s stamp two digests (%s, %s) over what must be one "+
+					"item set", position, aDigest, bDigest)
+			}
+			if diffs := compareArtefacts(bundleFile, aRaw, bRaw); len(diffs) > 0 {
 				t.Fatalf("the assembled input at %s differs between two assemblies of ONE commit "+
 					"at two paths (%d difference(s)):\n%s\nthis is the assembler failing to be "+
 					"deterministic, not the eval being strict", position, len(diffs), reportDifferences(diffs))
@@ -394,6 +406,41 @@ func reportDifferences(ds []artefactDifference) string {
 		out = append(out, "  - "+d.String())
 	}
 	return strings.Join(out, "\n")
+}
+
+// readingStampRe is the reading kind's per-run context stamp, restated here
+// rather than imported: this eval falsifies the assembler independently, so it
+// reads the stamp by its own copy of the grammar and a drift between the two is
+// a failure rather than a shared blind spot.
+var readingStampRe = regexp.MustCompile(`^abcd\.context-stamp/reading/(rdg-[0-9]+)/([0-9a-f]{12})$`)
+
+// setStampAside checks one assembly's context stamp and returns the bundle with
+// the stamp's run segment replaced by a fixed token, together with the digest.
+// The stamp must name the run the manifest names: a stamp naming another run is
+// a stamp a transcript would attribute to the wrong session.
+func setStampAside(t *testing.T, a assembled) ([]byte, string) {
+	t.Helper()
+	var doc struct {
+		ContextStamp string `json:"context_stamp"`
+	}
+	if err := json.Unmarshal(a.BundleRaw, &doc); err != nil {
+		t.Fatalf("decoding the bundle at %s: %v", a.Position, err)
+	}
+	m := readingStampRe.FindStringSubmatch(doc.ContextStamp)
+	if m == nil {
+		t.Fatalf("the bundle at %s carries the context stamp %q, which is not a reading stamp",
+			a.Position, doc.ContextStamp)
+	}
+	if run := runIdentifier(t, a); m[1] != run {
+		t.Fatalf("the bundle at %s is stamped for run %s and its manifest names run %s",
+			a.Position, m[1], run)
+	}
+	if n := strings.Count(string(a.BundleRaw), doc.ContextStamp); n != 1 {
+		t.Fatalf("the bundle at %s carries its stamp %d times; it is one field", a.Position, n)
+	}
+	aside := strings.Replace(string(a.BundleRaw), doc.ContextStamp,
+		"abcd.context-stamp/reading/<run>/"+m[2], 1)
+	return []byte(aside), m[2]
 }
 
 // compareArtefacts is the comparison ac-1 rests on. The RELATION it asserts is

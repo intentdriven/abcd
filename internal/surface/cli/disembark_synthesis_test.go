@@ -163,8 +163,9 @@ func TestDisembarkPrinciplesDeterministic(t *testing.T) {
 // adr-12 is written, exit 0, mode delegated.
 func TestDisembarkPrinciplesDelegated(t *testing.T) {
 	dir := buildSynthLifeboat(t, synthOpts{})
-	payload := synthPayloadFile(t, `{"schema_version":1,"mode":"delegated","prompt_version":"0.1.0",`+
-		`"principles":[{"id":"prn-cascade","principle":"the cascade is fixed","confidence":"high","evidence":["adr-12"]}]}`)
+	payload := synthPayloadFile(t, `{"schema_version":2,"mode":"delegated","prompt_version":"0.2.0",`+
+		`"principles":[{"id":"prn-cascade","principle":"the cascade is fixed","confidence":"high",`+
+		`"claim_type":"causal","reference":"adr-12","comparison":null,"evidence":["adr-12"]}]}`)
 	out := runCLI(t, "disembark", "principles", dir, "--principles-json", payload, "--json")
 	var res lifeboat.PrinciplesResult
 	if err := json.Unmarshal(out, &res); err != nil {
@@ -178,8 +179,9 @@ func TestDisembarkPrinciplesDelegated(t *testing.T) {
 // TestDisembarkPrinciplesStdin: the "-" stdin transport works (one verb suffices).
 func TestDisembarkPrinciplesStdin(t *testing.T) {
 	dir := buildSynthLifeboat(t, synthOpts{})
-	payload := `{"schema_version":1,"mode":"delegated","prompt_version":"0.1.0",` +
-		`"principles":[{"id":"prn-x","principle":"y","confidence":"high","evidence":["adr-12"]}]}`
+	payload := `{"schema_version":2,"mode":"delegated","prompt_version":"0.2.0",` +
+		`"principles":[{"id":"prn-x","principle":"y","confidence":"high",` +
+		`"claim_type":null,"reference":null,"comparison":null,"evidence":["adr-12"]}]}`
 	out := runCLIStdin(t, payload, "disembark", "principles", dir, "--principles-json", "-", "--json")
 	var res lifeboat.PrinciplesResult
 	if err := json.Unmarshal(out, &res); err != nil {
@@ -194,7 +196,7 @@ func TestDisembarkPrinciplesStdin(t *testing.T) {
 // field is a structural refusal — exit 2, scrubbed (no absolute path leak).
 func TestDisembarkPrinciplesUnknownFieldExit2(t *testing.T) {
 	dir := buildSynthLifeboat(t, synthOpts{})
-	payload := synthPayloadFile(t, `{"schema_version":1,"mode":"delegated","prompt_version":"0.1.0",`+
+	payload := synthPayloadFile(t, `{"schema_version":2,"mode":"delegated","prompt_version":"0.2.0",`+
 		`"principles":[],"smuggled":true}`)
 	var stdout, stderr bytes.Buffer
 	code := Run([]string{"disembark", "principles", dir, "--principles-json", payload}, &stdout, &stderr)

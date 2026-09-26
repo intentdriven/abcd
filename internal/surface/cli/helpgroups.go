@@ -118,6 +118,7 @@ var helpPlacements = map[string]helpPlacement{
 	"peers":               {group: groupAgents, page: "commands/peers.md"},
 	"reading":             {group: groupAgents, page: "commands/reading.md"},
 	"report":              {group: groupAgents, page: "commands/report.md"},
+	"scribe":              {group: groupAgents, page: "commands/scribe.md"},
 	"site":                {group: groupAgents, page: "commands/site.md"},
 	"statusline":          {group: groupAgents, page: "commands/ahoy.md"},
 }

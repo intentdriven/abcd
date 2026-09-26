@@ -148,6 +148,80 @@ func TestResolveOccasionReadsOnlyTheIntentStore(t *testing.T) {
 	}
 }
 
+// TestLocateAdmissionFindsOneAcrossRuns is the admission half of the occasion
+// resolver (spc-2609020626040342): a surprise may be occasioned by an admission,
+// and an admission is bucketed by run, so the locator walks every run bucket
+// exactly as Locate walks the reading store.
+func TestLocateAdmissionFindsOneAcrossRuns(t *testing.T) {
+	root, ir := repo(t)
+	write(t, filepath.Join(ir, "admissions", "rdg-1", "adm-11.md"), "a")
+	write(t, filepath.Join(ir, "admissions", "rdg-2", "adm-22.md"), "b")
+	run, path, err := LocateAdmission(ir, "adm-22")
+	if err != nil || run != "rdg-2" || filepath.Base(path) != "adm-22.md" {
+		t.Fatalf("LocateAdmission = %q %q %v", run, path, err)
+	}
+	if _, _, err := LocateAdmission(ir, "adm-33"); !errors.Is(err, ErrUnknown) {
+		t.Errorf("an absent admission: err = %v, want ErrUnknown", err)
+	}
+	write(t, filepath.Join(ir, "admissions", "rdg-3", "adm-22.md"), "c")
+	if _, _, err := LocateAdmission(ir, "adm-22"); !errors.Is(err, ErrDuplicate) {
+		t.Errorf("an admission in two runs: err = %v, want ErrDuplicate", err)
+	}
+	if _, _, err := LocateAdmission(ir, "adm-../x"); err == nil || !strings.Contains(err.Error(), "invalid adm-N") {
+		t.Errorf("a malformed id: err = %v", err)
+	}
+	if got, err := ResolveOccasion(root, "adm-11", FamilyItem, FamilyAdmission, FamilyDisposition); err != nil || filepath.Base(got) != "adm-11.md" {
+		t.Errorf("ResolveOccasion(adm-11) = %q, %v", got, err)
+	}
+	outside := t.TempDir()
+	write(t, filepath.Join(outside, "adm-44.md"), "d")
+	if err := os.Symlink(outside, filepath.Join(ir, "admissions", "rdg-4")); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := LocateAdmission(ir, "adm-44"); !errors.Is(err, ErrPathUnsafe) {
+		t.Errorf("a symlinked run bucket: err = %v, want ErrPathUnsafe", err)
+	}
+}
+
+// TestResolveOccasionResolvesASurpriseAsARegularFileOnly is the surprise half
+// of the occasion resolver (spc-2609020626048705): a reframe may be occasioned
+// by a surprise, and a surprise is flat under surprises/, admitted only as a
+// regular file. A symlinked leaf, a symlinked store and an absent record all
+// refuse.
+func TestResolveOccasionResolvesASurpriseAsARegularFileOnly(t *testing.T) {
+	root, ir := repo(t)
+	write(t, filepath.Join(ir, "surprises", "srp-11.md"), "a")
+	path, err := ResolveOccasion(root, "srp-11", FamilySurprise)
+	if err != nil || filepath.Base(path) != "srp-11.md" {
+		t.Fatalf("ResolveOccasion(srp-11) = %q %v", path, err)
+	}
+	if _, err := ResolveOccasion(root, "srp-12", FamilySurprise); !errors.Is(err, ErrUnknown) {
+		t.Errorf("an absent surprise: err = %v, want ErrUnknown", err)
+	}
+	outside := t.TempDir()
+	write(t, filepath.Join(outside, "srp-13.md"), "b")
+	if err := os.Symlink(filepath.Join(outside, "srp-13.md"), filepath.Join(ir, "surprises", "srp-13.md")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	if _, err := ResolveOccasion(root, "srp-13", FamilySurprise); err == nil {
+		t.Error("a symlinked surprise leaf resolved; it must be refused")
+	}
+	// A surprise is not an occasion where the caller does not hand the family.
+	if _, err := ResolveOccasion(root, "srp-11", FamilyItem, FamilyDisposition); err == nil || !strings.Contains(err.Error(), "is not one of rdi-N, dsp-N") {
+		t.Errorf("a surprise without its family handed: err = %v", err)
+	}
+	// A symlinked store is refused before any leaf is looked at.
+	root2, ir2 := repo(t)
+	store := t.TempDir()
+	write(t, filepath.Join(store, "srp-14.md"), "c")
+	if err := os.Symlink(store, filepath.Join(ir2, "surprises")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	if _, err := ResolveOccasion(root2, "srp-14", FamilySurprise); !errors.Is(err, ErrPathUnsafe) {
+		t.Errorf("a symlinked surprises store: err = %v, want ErrPathUnsafe", err)
+	}
+}
+
 // A symlinked item FILE is described the way the outstanding board describes it
 // — a path that is not a regular file — rather than as an id the ledger does
 // not hold, which sent the reader looking for a missing record that is plainly

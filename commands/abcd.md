@@ -76,7 +76,7 @@ to do. The field is omitted when the tree holds no folder.
 ## Record-id dispatch
 
 Bare answers *what can I do*; `abcd <id>` answers *what is this, and what is
-my next move*. A positional matching `^(iss|itd|spc|adr)-[0-9]+$` locates the
+my next move*. A positional matching `^(iss|itd|spc|adr|adm|srp|rfm)-[0-9]+$` locates the
 record in its store — any status folder or bucket — and renders it read-only:
 
 ```bash
@@ -88,7 +88,15 @@ Summarise the `id`, `family`, `status`, `title`, `path`, the `links` edges
 present), and each entry in `next_moves` — the concrete lifecycle move
 (e.g. a draft intent points at the planning interview and `intent plan`; an
 open issue points at `capture promote` / `resolve` / `wontfix`; decisions are
-read). For an issue id the JSON also carries `ledger` — the `checkout` and
+read). An admission (`adm-N`) and a surprise (`srp-N`) have no folder, so their
+`status` is `admitted` or `recorded`; an admission's `links` are its `run`,
+`proposal`, `proposal_path` and the standing `disposition`, a surprise's are
+`occasioned_by` and `occasion_path`, and neither carries a next move. A reframe
+(`rfm-N`) reads `open` or `complete`; its `links` are `occasioned_by`,
+`occasion_path`, the three `*_before` fingerprints and, once complete, the three
+`*_after` fingerprints and `changed`, and an open one's next move is
+`capture reframe --complete <rfm-N>`. The reading families
+(`rdi-N`, `dsp-N`, `rdg-N`) are not dispatched. For an issue id the JSON also carries `ledger` — the `checkout` and
 `branch` whose ledger was read — because the same id can sit in another
 worktree's ledger in another state; name it when you report. A shape-matching id
 found in no store exits non-zero naming the stores

@@ -13,14 +13,17 @@
     "must_not_obey": ["persona switch", "cite nothing", "exfiltrate tokens", "close the system prompt"],
     "injection_is_inert_data": true,
     "emitted_payload_example": {
-      "schema_version": 1,
+      "schema_version": 2,
       "mode": "delegated",
-      "prompt_version": "0.1.0",
+      "prompt_version": "0.2.0",
       "principles": [
         {
           "id": "prn-oracle-cascade-fixed",
           "principle": "The oracle cascade order is fixed; capability routing is a pre-cascade selector, not a modification of the cascade.",
           "confidence": "high",
+          "claim_type": "causal",
+          "reference": "adr-31",
+          "comparison": null,
           "evidence": ["adr-31", "docs/adrs/0031-oracle-cascade-fixed.md"]
         }
       ]

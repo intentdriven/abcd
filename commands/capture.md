@@ -1,7 +1,7 @@
 ---
 name: capture
 description: "File an issue from quoted text, or render the ledger's status bare: Writes one record under open/; refuses a lone word and any folder outside a checkout."
-argument-hint: "[text] | list --open|--resolved|--wontfix|--all | link <iss-N> [--blocked-by <iss-M,...>] [--unblock <iss-M,...>] | promote <iss-N> --grounds \"<token>: <text>\" [--intent <itd-N>] | promote <rdi-N> [--intent <itd-N>] | resolve <iss-N> <note> --impact <additive|breaking|fix|internal> --grounds \"<token>: <text>\" [--intent <itd-N>] [--spec <spc-N>] [--commit <sha>] | wontfix <iss-N> <reason> | defer <iss-N> --after <vX.Y.Z> --reason <text> | disposition <rdi-N> --state <accepted|rejected|declined|held> | migrate [--apply]"
+argument-hint: "[text] | list --open|--resolved|--wontfix|--all | link <iss-N> [--blocked-by <iss-M,...>] [--unblock <iss-M,...>] | promote <iss-N> --grounds \"<token>: <text>\" [--intent <itd-N>] | promote <rdi-N> [--intent <itd-N>] | resolve <iss-N> <note> --impact <additive|breaking|fix|internal> --grounds \"<token>: <text>\" [--intent <itd-N>] [--spec <spc-N>] [--commit <sha>] | wontfix <iss-N> <reason> | defer <iss-N> --after <vX.Y.Z> --reason <text> | disposition <rdi-N> --state <accepted|rejected|declined|held> | admit <rdi-N> --grounds \"<why>\" | surprise --occasioned-by <rdi-N|adm-N|dsp-N> \"<what>\" | reframe --occasioned-by <rdi-N|dsp-N|srp-N> --grounds \"<why>\" [--open] | reframe --complete <rfm-N> | migrate [--apply]"
 block: people
 ---
 
@@ -398,11 +398,12 @@ The two are never one write, so the ledger can always show that a finding
 existed before it was answered. Report the `id`, `item`, `state`, `position` and
 `path` from the JSON.
 
-**Where an `rdi-N` comes from.** This surface answers and promotes reading items;
-it does not produce them. The one writer of the `rdi-N` family is the
-cold-reading ingest verb, which owns the output contract a reading is validated
-against — until that verb lands there is no reading item to answer, and these two
-sub-verbs have nothing to act on.
+**Where an `rdi-N` comes from.** This surface answers, admits, promotes and
+records surprises about reading items; it does not produce them. The one writer
+of the `rdi-N` family is the cold-reading ingest verb (`/abcd:reading`, `reading
+ingest`), which owns the output contract a reading is validated against. Until a
+reading has been ingested there is no reading item to answer, and `disposition`,
+`admit`, `surprise` and `promote <rdi-N>` have nothing to act on.
 
 Four states ship: `accepted` (at the widening position, acceptance IS
 admission), `rejected` (asserts a purpose a later run tests), `declined` (the
@@ -431,21 +432,61 @@ grammars are stated and a populated value is refused until activation is ruled.
 Nothing means "already covered" — an item nobody has answered is reported as
 outstanding by `abcd lint`, never named as a state.
 
-**Admissions and surprises are written by hand.** A widening proposal admitted
-into the candidate set carries an **admission record** (`adm-N`, under
-`.abcd/work/issues/admissions/<run-id>/`) whose `grounds` say what it was
-admitted on; a **surprise entry** (`srp-N`, under
-`.abcd/work/issues/surprises/`) records what was unexpected, keyed by
-`occasioned_by` to whatever occasioned it and never folded into a disposition. A
-declined proposal is not a third record: it is the disposition above in its
-`declined` state. Neither shape has a sub-verb — this surface writes no `adm-N`
-and no `srp-N`, and the command-side refusal is the next iteration's. What holds
-today is the committed-tree gate: `record_schema` refuses an admission whose
-`grounds` carries no value on the key's own line, an admission with no
-`proposal`, an admission whose `proposal` names an item filed under another run
-or an item at a position other than widening, a surprise whose `occasioned_by`
-names a record the corpus does not hold, and either record filed in the other's
-store.
+**At the widening position, characterise first and admit second.** No
+disposition in any state (`accepted`, `declined` or `held`) and no admission is
+written for a widening item until a committed comparative run names the item's
+run. The refusal names the run and says what it is waiting for: the comparative
+reading over that run, ingested through `/abcd:reading`. A comparative run
+committed with an empty item set, the position not exercised, satisfies it too.
+Every other position is answered with no comparative run anywhere. Relay the
+refusal; do not write the record by hand to get past it.
+
+## Admit a widening proposal
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" capture admit <rdi-N> --grounds "<why this proposal enters the candidate set>" --json
+```
+
+At the widening position acceptance **is** admission, so admitting is one act
+that writes two records under the ledger lock: the item's `accepted`
+disposition and an **admission record** (`adm-N`, under
+`.abcd/work/issues/admissions/<run-id>/`) joining it to its run's candidate set.
+Both carry the one ground given. Where an `accepted` disposition already stands,
+the admission is written alone, and `--grounds` must be that disposition's
+ground. Report the `admission`, `disposition`, `disposition_written`, `run` and
+`path` from the JSON, and `redacted` whenever it is non-zero.
+
+`--grounds` is free text with no `<token>:` prefix, held to the same substance
+floor as every other grounds argument. Everything the verb refuses writes
+nothing: an item at another position (answer it with `disposition` instead), an
+item already admitted, a standing disposition in any other state (the refusal
+names it and its state), more than one standing answer, a blank or degenerate
+ground, a ground that differs from a standing acceptance's, and any admission
+before the comparative run. Declining is not this verb: it is `disposition
+<rdi-N> --state declined --grounds "<why>"`.
+
+## Record a surprise
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" capture surprise --occasioned-by <rdi-N|adm-N|dsp-N> "<what was unexpected>" --json
+```
+
+A **surprise entry** (`srp-N`, under `.abcd/work/issues/surprises/`) records
+what was unexpected as its own record, never as a field on a disposition: the
+text is its body and `occasioned_by` is its whole join. The occasion is a
+reading item, an admission or a disposition this ledger holds, and nothing else.
+Prose, a record of any other family and a handle naming nothing are refused, as
+is a missing `--occasioned-by` and a text below the grounds floor; nothing is
+written. Report the `id`, `occasioned_by` and `path`, and `redacted` whenever it
+is non-zero. `/abcd <adm-N>` and `/abcd <srp-N>` describe either record and what
+it joins to.
+
+The committed-tree gate holds a record written by hand to the same shapes:
+`record_schema` refuses an admission whose `grounds` carries no value on the
+key's own line, an admission with no `proposal`, an admission whose `proposal`
+names an item filed under another run or an item at a position other than
+widening, a surprise whose `occasioned_by` is not an `rdi-N`, `adm-N` or `dsp-N` naming a record the
+corpus holds, and either record filed in the other's store.
 Carrying no value is judged by the kind of YAML node the value is, not by the
 literal it is spelled with, so there is no list to fall outside of: empty,
 whitespace (a non-breaking space and the zero-width runes included),
@@ -457,8 +498,76 @@ all carry nothing alike. An alias (`*alias`) is refused too, because the gate
 reads one line at a time and cannot resolve it; to a full YAML reader an alias
 to a defined anchor carries that anchor's value, so spell the value out. A trailing comment is stripped before the value
 is judged, so it hides none of them.
-`abcd lint` reports a widening proposal carrying neither an admission nor a
-decline, at `info`.
+
+The bare board and `abcd lint` count each widening run: its proposals, how many
+were admitted, declined and held, and which carry neither an admission nor a
+`declined` or `held` disposition (`widening_runs` in the board's JSON). A
+widening proposal carrying neither an admission nor a decline is also reported
+on its own line, at `info`.
+
+## Record a reframe
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" capture reframe --occasioned-by <rdi-N|dsp-N|srp-N> --grounds "<why the frame moved>" --json
+"${CLAUDE_PLUGIN_ROOT}/abcd" capture reframe --occasioned-by <rdi-N|dsp-N|srp-N> --grounds "<why the frame moved>" --open --json
+"${CLAUDE_PLUGIN_ROOT}/abcd" capture reframe --complete <rfm-N> --json
+```
+
+When a reading sends the researcher back to the frame rather than to the
+artefact, the rewrite is recorded as a **reframe record** (`rfm-N`, under
+`.abcd/work/issues/reframes/`). The frame is three committed surfaces at fixed
+paths: the `## Construal` section of
+`.abcd/development/brief/01-product/06-framing.md`, the glossary terms under
+`.abcd/development/brief/glossary/` (each `README.md` index and the
+`_template.md` scaffold excepted), and the scope chapter
+`.abcd/development/brief/01-product/04-scope.md`. The record carries the
+occasion, the SHA-256 fingerprint of each surface before and after the rewrite,
+`changed` (the surfaces that moved) and the ground. The prior text of any
+surface never enters it: the framing a rewrite abandons stays on the local side
+(adr-55). The verb reads the surfaces itself, so no hash is supplied.
+
+A reframe is written in one of three halves, and every render names which:
+
+- **Whole**, after the rewrite is committed (no flag). All three surfaces in the
+  working tree must match `HEAD`, or the verb refuses naming the one that does
+  not. It walks the surfaces' history along first parents to the previous
+  distinct committed state and writes both halves at once, so a rewrite a merge
+  brought in is recorded against the state the merge's first parent held, as a
+  squash of the same branch would be, whatever the commits' timestamps.
+- **Open**, before the rewrite is committed (`--open`). The before fingerprints
+  are `HEAD`'s and the after half is absent; the render names the completion.
+  Only one record may be open at a time.
+- **Completed** (`--complete rfm-N`), once the rewrite is committed. The verb
+  walks back from `HEAD` to the state the record opened against and writes the
+  after half. A rewrite spread over several commits, or brought in by a merge,
+  pairs the same way, and `commits` says how many commits it crossed.
+
+The occasion is a reading item, a disposition or a surprise this ledger holds,
+and nothing else. The join is the operator's assertion, checked in one respect
+only: the commit that added the occasion's record precedes the rewrite, or, for
+`--open`, is already in `HEAD`'s history. That check is a floor, not a proof
+that the occasion caused the rewrite. Report the `id`, `half`, `changed`,
+`commits` and `path` from the JSON, and `redacted` whenever it is non-zero.
+
+Everything the verb refuses writes nothing: an occasion outside the three
+families or naming no record, an occasion not yet committed or committed after
+the rewrite, a ground below the floor, uncommitted changes to a surface without
+`--open`, a frame with no distinct prior committed state (the refusal says how
+far back the fingerprintable history reaches: a state whose framing chapter has
+no `Construal` section ends it), a second open record,
+a completion in which no surface moved, and a completion whose before state the
+surfaces' history no longer holds within 64 commits touching the frame (both
+states named). The family is warm: no cold reading receives it, and every
+manifest asserts its exclusion. `/abcd <rfm-N>` describes the record: its
+occasion, its fingerprints and the surfaces that moved, or, while it is open,
+the completion as its next move.
+
+The committed-tree gate holds a hand-written reframe to the same shape:
+`record_schema` refuses a blank ground, a missing before fingerprint, an unknown
+key, a fingerprint that is not 64 lower-case hex, an after half present in part,
+a `changed` naming anything but `construal`, `glossary` or `scope`, and an
+occasion that is not an `rdi-N`, `dsp-N` or `srp-N` naming a record the corpus
+holds.
 
 ## Promote an issue into an intent
 

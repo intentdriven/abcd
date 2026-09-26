@@ -4,8 +4,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/intentdriven/abcd/internal/core/capture"
 )
 
 // The committed-ledger gate refuses exactly what capture's ledger reader
@@ -48,7 +46,12 @@ func TestRecordSchemaAgreesWithTheLedgerReader(t *testing.T) {
 			content := strings.Replace(body, c.old, c.new, 1)
 			// The expectation is the reader's own verdict, asserted rather than
 			// assumed, so a case cannot encode a guess about what the reader does.
-			if refused := capture.ReadRefusal(content, "open", rel) != nil; refused != c.refused {
+			// issueReadRefusal is capture.ReadRefusal, registered by the external
+			// test package (issuereader_test.go): capture cannot be imported here.
+			if issueReadRefusal == nil {
+				t.Fatal("the ledger reader is not registered; issuereader_test.go registers it")
+			}
+			if refused := issueReadRefusal(content, "open", rel) != nil; refused != c.refused {
 				t.Fatalf("fixture expectation is wrong: the reader refuses=%v", refused)
 			}
 			writeFile(t, root, rel, content)

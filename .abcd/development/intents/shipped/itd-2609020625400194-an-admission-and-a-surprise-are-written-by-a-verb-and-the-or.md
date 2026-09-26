@@ -14,7 +14,7 @@ production_mode: dictated-and-formatted
 
 # An admission and a surprise are written by a verb, and the order the design fixes is a refusal
 
-Typed links: `builds_on` [itd-189](../shipped/itd-189-what-the-widening-reading-proposes-is-admitted-or-declined-o.md) (the admission and surprise schemas), [itd-180](../shipped/itd-180-a-cold-reading-s-findings-land-as-reading-records-and-the-re.md) (dispositions), [itd-185](../shipped/itd-185-one-ingest-verb-validates-every-cold-reading-output-includin.md) (the ingest verb); `refines` [itd-180](../shipped/itd-180-a-cold-reading-s-findings-land-as-reading-records-and-the-re.md) (admission is the `accepted` disposition plus the admission record, written as one act, flagged for the maintainer).
+Typed links: `builds_on` [itd-189](itd-189-what-the-widening-reading-proposes-is-admitted-or-declined-o.md) (the admission and surprise schemas), [itd-180](itd-180-a-cold-reading-s-findings-land-as-reading-records-and-the-re.md) (dispositions), [itd-185](itd-185-one-ingest-verb-validates-every-cold-reading-output-includin.md) (the ingest verb); `refines` [itd-180](itd-180-a-cold-reading-s-findings-land-as-reading-records-and-the-re.md) (admission is the `accepted` disposition plus the admission record, written as one act, flagged for the maintainer).
 
 ## Press Release
 
@@ -24,7 +24,7 @@ Typed links: `builds_on` [itd-189](../shipped/itd-189-what-the-widening-reading-
 
 ## Why This Matters
 
-[itd-189](../shipped/itd-189-what-the-widening-reading-proposes-is-admitted-or-declined-o.md) places the recording burden on admission: rejecting a proposal costs nothing epistemically, and admitting one into the candidate set is where the frame is engaged. Its scope text says the enforcement is hand-run in Iteration 1, no reading running to produce proposals, and enforced at the command in Iteration 2. Iteration 1 delivered the schemas: the admission family, the surprise family, the store layout and the gate that refuses a blank ground on a committed record. It delivered no verb, and its fidelity verdict named filing the enforcement intent as "the concrete next step this verdict asks for".
+[itd-189](itd-189-what-the-widening-reading-proposes-is-admitted-or-declined-o.md) places the recording burden on admission: rejecting a proposal costs nothing epistemically, and admitting one into the candidate set is where the frame is engaged. Its scope text says the enforcement is hand-run in Iteration 1, no reading running to produce proposals, and enforced at the command in Iteration 2. Iteration 1 delivered the schemas: the admission family, the surprise family, the store layout and the gate that refuses a blank ground on a committed record. It delivered no verb, and its fidelity verdict named filing the enforcement intent as "the concrete next step this verdict asks for".
 
 The gate that reads committed records has two open defects that a verb closes for the records it writes: its blank refusal decides on literal spellings rather than on the YAML null and empty class ([iss-2608301808198621](../../../work/issues/resolved/iss-2608301808198621-isabsentvalue-decides-on-literal-strings-rather-than-the-yam.md)), and a trailing comment on a key defeats every spelling it refuses ([iss-2608301744268001](../../../work/issues/resolved/iss-2608301744268001-a-trailing-comment-on-a-frontmatter-key-defeats-every-blank.md)). Both belong where the scanner lives and are fixed there, in their own change; a verb that cannot write a blank is the other half.
 
@@ -74,7 +74,7 @@ We expect a verb that refuses a blank ground to make the admission asymmetry leg
 
 ## Prior Art
 
-- [itd-189](../shipped/itd-189-what-the-widening-reading-proposes-is-admitted-or-declined-o.md) and its spec (the schemas), [itd-180](../shipped/itd-180-a-cold-reading-s-findings-land-as-reading-records-and-the-re.md) (dispositions), adr-56 (absence as a class, ruled for the exclusion floor).
+- [itd-189](itd-189-what-the-widening-reading-proposes-is-admitted-or-declined-o.md) and its spec (the schemas), [itd-180](itd-180-a-cold-reading-s-findings-land-as-reading-records-and-the-re.md) (dispositions), adr-56 (absence as a class, ruled for the exclusion floor).
 - The cold-reading rulings of 2026-08-28 in the decision log.
 
 ## Open Questions
@@ -83,7 +83,8 @@ None beyond the flagged decision above.
 
 ## Audit Notes
 
-_Empty. Populated by intent-auditor when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-77c7c87559c2 -->
+Fidelity review OWED (receipt rcp-77c7c87559c2).
 
 ## Grounds
 

@@ -403,6 +403,20 @@
       ]
     },
     {
+      "path": "abcd capture admit",
+      "hidden": false,
+      "sentence": "Admit one widening proposal into its run's candidate set: Writes its accepted disposition and an adm-N record; refuses before a committed comparative run.",
+      "flags": [
+        {
+          "name": "grounds",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd capture defer",
       "hidden": false,
       "sentence": "Carry an open major or critical issue past one release cut: Writes deferred_after and deferral_reason; refuses a minor or nitpick issue, or an empty reason.",
@@ -592,6 +606,41 @@
       ]
     },
     {
+      "path": "abcd capture reframe",
+      "hidden": false,
+      "sentence": "Record a reframe a reading occasioned: Writes one rfm-N fingerprinting the frame before and after; refuses an uncommitted occasion or frame edit without --open.",
+      "flags": [
+        {
+          "name": "complete",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "grounds",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "occasioned-by",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "open",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd capture resolve",
       "hidden": false,
       "sentence": "Move an open issue to resolved/, naming what fixed it: Writes the moved record; refuses without --impact or on an id this ledger does not hold.",
@@ -640,6 +689,20 @@
         },
         {
           "name": "spec",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd capture surprise",
+      "hidden": false,
+      "sentence": "Record one surprise a reading item, admission or disposition occasioned: Writes one srp-N record; refuses an unresolved occasion or a text below the floor.",
+      "flags": [
+        {
+          "name": "occasioned-by",
           "shorthand": "",
           "type": "string",
           "required": false,
@@ -1081,6 +1144,12 @@
           "hidden": false
         }
       ]
+    },
+    {
+      "path": "abcd history separation",
+      "hidden": false,
+      "sentence": "Report whether any retained transcript held both a reading and the ledger of one run: Writes nothing; never refuses, exiting 1 naming each such transcript.",
+      "flags": []
     },
     {
       "path": "abcd history show",
@@ -2062,6 +2131,77 @@
       "block": "people",
       "sentence": "Render the active rule set, or the one domain named: Writes nothing; refuses an unknown domain.",
       "flags": []
+    },
+    {
+      "path": "abcd scribe",
+      "hidden": false,
+      "group": "agents",
+      "block": "agents",
+      "sentence": "Assemble a ledger scribe's context and ingest what it transcribed: Writes nothing bare; refuses an unknown sub-verb.",
+      "flags": []
+    },
+    {
+      "path": "abcd scribe assemble",
+      "hidden": false,
+      "sentence": "Build a scribe session's context from the ledger and supplied dispositions: Writes it and a hashed manifest; refuses an uningested run or a symlinked ledger.",
+      "flags": [
+        {
+          "name": "dispositions",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "dry-run",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "out",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "run",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd scribe ingest",
+      "hidden": false,
+      "sentence": "Validate a scribe's output against the supplied dispositions: Writes what it transcribed through the capture verbs; refuses anything the scribe authored.",
+      "flags": [
+        {
+          "name": "context",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "dispositions",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "scribe-json",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
     },
     {
       "path": "abcd site",

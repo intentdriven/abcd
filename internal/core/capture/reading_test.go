@@ -6,8 +6,10 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/core/issueschema"
+	"github.com/intentdriven/abcd/internal/core/recordid"
 )
 
 // readingFixture ingests one run of one detection item into a fresh ledger and
@@ -192,24 +194,22 @@ func TestPopulatedHoldAxisRefused(t *testing.T) {
 	}
 }
 
-// The reserved surprise key gets the same posture as the hold axes: reserved in
-// the family now, populated in Iteration 2, and refused until then.
+// The surprise key is no longer reserved on the reading envelope: the join lives
+// on the surprise record alone (spc-2609020626040342), so a reading record
+// carrying it is refused as any unknown key is.
 func TestPopulatedSurpriseKeyRefused(t *testing.T) {
-	repo, ir := ledger(t)
-	_, err := IngestReading(IngestReadingRequest{
-		RepoRoot: repo, IssuesRoot: ir,
-		Run: "rdg-2608300000000001", Manifest: "sha256:beef",
-		Position: "detection", Regime: "registrative",
-		Items: []ReadingItem{{
-			Pattern: "a stated constraint", Body: bodyFor("detection"),
-			OccasionedBy: "iss-1",
-		}},
-	})
-	if !errors.Is(err, ErrInvariantViolation) {
-		t.Fatalf("populated occasioned_by: err = %v, want ErrInvariantViolation", err)
+	content := "---\nschema_version: 1\nid: \"rdi-1\"\nrun: \"rdg-2608300000000001\"\nmanifest: \"sha256:beef\"\n" +
+		"position: \"detection\"\nregime: \"registrative\"\npattern: \"a stated constraint\"\n"
+	for k, v := range bodyFor("detection") {
+		content += k + ": \"" + v + "\"\n"
 	}
-	if !strings.Contains(err.Error(), "occasioned_by") {
-		t.Fatalf("the refusal must name the reserved field; got %v", err)
+	content += "occasioned_by: \"iss-1\"\n---\n"
+	_, err := ValidateReadingRecord(content)
+	if !errors.Is(err, ErrMalformedFrontmatter) {
+		t.Fatalf("occasioned_by on a reading record: err = %v, want ErrMalformedFrontmatter", err)
+	}
+	if !strings.Contains(err.Error(), "unknown property \"occasioned_by\"") {
+		t.Fatalf("the refusal must name the key as unknown; got %v", err)
 	}
 }
 
@@ -543,5 +543,171 @@ func TestDispositionRefusesUnderContest(t *testing.T) {
 				t.Fatalf("the refusal must name the hand repair; got %v", err)
 			}
 		})
+	}
+}
+
+// fixtureRun is the run readingFixture ingests into.
+const fixtureRun = "rdg-2608300000000001"
+
+// commitComparativeRun writes the committed run record of a comparative run over
+// candidateRun into the durable readings family — the marker
+// ComparativeRunFor reads and the ordering gate waits for. It is written by hand
+// because the gate only READS the channel's output (spc-2609020626040342, Out).
+func commitComparativeRun(t *testing.T, repo, compRun, candidateRun string) {
+	t.Helper()
+	writeFile(t, filepath.Join(repo, filepath.FromSlash(issueschema.ReadingsRecordDir), compRun, issueschema.RunRecordFileName),
+		`{"run_id":"`+compRun+`","position":"comparative","candidate_run":"`+candidateRun+`"}`)
+}
+
+// dispositionFiles lists every file under the dispositions tree, for a test that
+// proves a refusal wrote nothing.
+func dispositionFiles(t *testing.T, ir string) []string {
+	t.Helper()
+	var out []string
+	root := filepath.Join(ir, issueschema.DispositionsDir)
+	_ = filepath.Walk(root, func(p string, fi os.FileInfo, err error) error {
+		if err == nil && !fi.IsDir() {
+			out = append(out, p)
+		}
+		return nil
+	})
+	return out
+}
+
+// TestDispositionRefusesBeforeTheComparativeRun is ac-3's disposition half: at
+// the widening position no disposition in any state is written until a
+// committed comparative run names the item's run, and the refusal names the run
+// and what it is waiting for. The ruled order is characterise first, admit
+// second, and the gate lives in the writer every verb routes through.
+func TestDispositionRefusesBeforeTheComparativeRun(t *testing.T) {
+	for _, tc := range []DispositionRequest{
+		{State: issueschema.DispositionAccepted, Grounds: "the frame is engaged by this proposal"},
+		{State: issueschema.DispositionDeclined, Grounds: "the proposal duplicates a standing candidate"},
+		{State: issueschema.DispositionHeld, ExitCondition: "the comparative reading characterises it"},
+	} {
+		t.Run(tc.State, func(t *testing.T) {
+			repo, ir, item := readingFixture(t, issueschema.PositionWidening)
+			tc.RepoRoot, tc.IssuesRoot, tc.Item = repo, ir, item
+			_, err := Disposition(tc)
+			if !errors.Is(err, ErrNotCharacterised) {
+				t.Fatalf("a %s disposition before the comparative run: err = %v, want ErrNotCharacterised", tc.State, err)
+			}
+			for _, want := range []string{fixtureRun, "comparative"} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("the refusal must name %q; got %v", want, err)
+				}
+			}
+			if got := dispositionFiles(t, ir); len(got) != 0 {
+				t.Fatalf("a refused disposition wrote %v", got)
+			}
+			// A comparative run over ANOTHER widening run does not characterise
+			// this one.
+			commitComparativeRun(t, repo, "rdg-2608300000000009", "rdg-2608300000000008")
+			if _, err := Disposition(tc); !errors.Is(err, ErrNotCharacterised) {
+				t.Fatalf("a comparative run over another run satisfied the gate: err = %v", err)
+			}
+			commitComparativeRun(t, repo, "rdg-2608300000000002", fixtureRun)
+			if _, err := Disposition(tc); err != nil {
+				t.Fatalf("after the comparative run is committed: %v", err)
+			}
+		})
+	}
+}
+
+// TestTheGateIsKeyedOnTheWideningPositionAlone: every other position is
+// dispositioned with no comparative run anywhere, because the ordering the
+// design fixes is the widening reading's alone.
+func TestTheGateIsKeyedOnTheWideningPositionAlone(t *testing.T) {
+	for _, position := range []string{"entailment", "detection"} {
+		repo, ir, item := readingFixture(t, position)
+		if _, err := Disposition(DispositionRequest{
+			RepoRoot: repo, IssuesRoot: ir, Item: item,
+			State: issueschema.DispositionAccepted, Grounds: "the claim is one the record makes",
+		}); err != nil {
+			t.Fatalf("a %s item with no comparative run anywhere: %v", position, err)
+		}
+	}
+}
+
+// TestDispositionMintsUnderTheLock records the behaviour change the shared
+// writer makes to `capture disposition`: the dsp-N is minted INSIDE the ledger
+// lock, as IngestReading's mint already is, so the mint sees the tree it writes
+// into. The probe is a second acquisition from inside the mint's clock read: the
+// flock is not reentrant, so a held lock reads as contention.
+func TestDispositionMintsUnderTheLock(t *testing.T) {
+	repo, ir, item := readingFixture(t, "detection")
+	held := mintLockProbe(t, repo, ir)
+	if _, err := Disposition(DispositionRequest{
+		RepoRoot: repo, IssuesRoot: ir, Item: item,
+		State: issueschema.DispositionAccepted, Grounds: "the claim is one the record makes",
+	}); err != nil {
+		t.Fatalf("Disposition: %v", err)
+	}
+	if len(*held) == 0 {
+		t.Fatal("the mint never ran")
+	}
+	for i, h := range *held {
+		if !h {
+			t.Fatalf("mint %d ran outside the ledger lock", i+1)
+		}
+	}
+}
+
+// mintLockProbe installs a minter whose clock read asks whether the ledger lock
+// is held, and returns the answers in mint order.
+func mintLockProbe(t *testing.T, repo, ir string) *[]bool {
+	t.Helper()
+	var held []bool
+	origTimeout := lockTimeout
+	lockTimeout = 50 * time.Millisecond
+	t.Cleanup(func() { lockTimeout = origTimeout })
+	setMinter(t, recordid.Minter{Now: func() time.Time {
+		err := withLedgerLock(repo, ir, func() error { return nil })
+		held = append(held, errors.Is(err, ErrAllocatorContention))
+		return time.Now().UTC()
+	}})
+	return &held
+}
+
+// TestDispositionAndAdmitShareOneWritePath proves the factored writer is the one
+// both verbs call: the write seam every disposition passes through fires for a
+// `capture disposition` and for a `capture admit`, on a path in the item-keyed
+// dispositions tree, so neither verb can land a disposition by a route that
+// skips the validator or the ordering gate.
+func TestDispositionAndAdmitShareOneWritePath(t *testing.T) {
+	var seen []string
+	orig := readingWriteHook
+	t.Cleanup(func() { readingWriteHook = orig })
+	install := func(repo, ir string) {
+		readingWriteHook = func(path string, data []byte) error {
+			if strings.Contains(filepath.ToSlash(path), "/"+issueschema.DispositionsDir+"/") {
+				seen = append(seen, path)
+			}
+			return writeContained(ledgerBase(repo, ir), path, data)
+		}
+	}
+
+	repo, ir, item := readingFixture(t, "detection")
+	install(repo, ir)
+	if _, err := Disposition(DispositionRequest{
+		RepoRoot: repo, IssuesRoot: ir, Item: item,
+		State: issueschema.DispositionAccepted, Grounds: "the claim is one the record makes",
+	}); err != nil {
+		t.Fatalf("Disposition: %v", err)
+	}
+	if len(seen) != 1 {
+		t.Fatalf("capture disposition: the shared write fired %d time(s), want 1", len(seen))
+	}
+
+	readingWriteHook = orig
+	repo, ir, item = readingFixture(t, issueschema.PositionWidening)
+	commitComparativeRun(t, repo, "rdg-2608300000000002", fixtureRun)
+	install(repo, ir)
+	if _, err := Admit(AdmitRequest{RepoRoot: repo, IssuesRoot: ir, Item: item,
+		Grounds: "the configuration engages the frame the comparative reading characterised"}); err != nil {
+		t.Fatalf("Admit: %v", err)
+	}
+	if len(seen) != 2 {
+		t.Fatalf("capture admit: the shared write fired %d time(s) in total, want 2", len(seen))
 	}
 }

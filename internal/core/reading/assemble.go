@@ -15,6 +15,8 @@ import (
 	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/lint"
+	"github.com/intentdriven/abcd/internal/core/recordid"
+	"github.com/intentdriven/abcd/internal/core/sessionkind"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
@@ -314,6 +316,9 @@ var storeNodeType = map[string]string{
 	// narrow that row to the derived run by setting Row.Bucket rather than by
 	// growing a second selector (adr-2609021016272867).
 	issueschema.ReadingItemFamily: "reading",
+	// The knowledge record (adr-2609021016270132): a slug-keyed store whose
+	// node id is prn-<filename stem>.
+	"prn": "principle",
 }
 
 // rowClass is how a committed entry's object set narrows the row that admitted
@@ -496,6 +501,21 @@ func Assemble(req AssembleRequest) (AssembleResult, error) {
 	}
 	cands = scoped
 
+	// The citation half of the exclusion floor, made fail-closed. It runs over
+	// what the entry SELECTED rather than over the unfiltered walk, and that is
+	// the one gate here that does: the property it checks is the manifest's own
+	// assertion about the principle items it carries, so a principle no entry
+	// selected is carried by no manifest and asserted about by none. Run over the
+	// walk, it would refuse every assembly at the three positions the moment any
+	// UNTYPED principle's statement named a record — which the record lint does
+	// not judge until its author types it — whether or not the run was handed
+	// the knowledge record at all.
+	for _, c := range cands {
+		if err := verifyPrincipleItem(c); err != nil {
+			return AssembleResult{}, err
+		}
+	}
+
 	// The comparative position's two remaining facts: the criteria it
 	// characterises against, and whether it is exercised at all.
 	var criteria []string
@@ -589,6 +609,14 @@ func Assemble(req AssembleRequest) (AssembleResult, error) {
 		manifest.Items = append(manifest.Items, mItem)
 	}
 
+	// The stamp is set LAST over the bundle, because its digest is over the item
+	// set the loop above just finished (adr-2609021016275803).
+	stamp, err := bundleStamp(runID, bundle.Items)
+	if err != nil {
+		return AssembleResult{}, err
+	}
+	bundle.ContextStamp = stamp
+
 	hash, err := ManifestHash(manifest)
 	if err != nil {
 		return AssembleResult{}, err
@@ -621,6 +649,20 @@ func Assemble(req AssembleRequest) (AssembleResult, error) {
 	res.Written = true
 	res.Artefacts = []string{BundleFileName, ManifestFileName}
 	return res, notExercisedError(notExercised, candidateRun)
+}
+
+// bundleStamp is the reading kind's per-run context stamp: the run and the
+// sha256 over the bundle's item set as the canonical encoder serialises it.
+func bundleStamp(runID string, items []BundleItem) (string, error) {
+	raw, err := encode(items)
+	if err != nil {
+		return "", err
+	}
+	stamp, err := sessionkind.Stamp(sessionkind.Reading, runID, sha256Hex(raw))
+	if err != nil {
+		return "", fmt.Errorf("reading: stamping the bundle: %w", err)
+	}
+	return stamp, nil
 }
 
 // PositionNotExercised is the fixed interpretation as a refusal: the derived
@@ -789,6 +831,17 @@ func requireEmptyDir(named, dir string) error {
 // Only a directory inside the repository can be reached, so an output path that
 // resolves outside it is always fine.
 func refuseSelfAdmittingOutDir(repoRoot, outDir, label string) error {
+	return RefuseReachableOutDir(repoRoot, outDir, label, BundleFileName, ManifestFileName)
+}
+
+// RefuseReachableOutDir refuses an output directory where any of the named
+// files would be admitted by the include table at some position. It is the
+// check refuseSelfAdmittingOutDir makes for this assembler's own two artefacts,
+// exported for the one other assembler whose output must never become a
+// reading's input: the scribe's context carries ledger content, and a context
+// parked where the table reaches it is the next reading handed the ledger
+// (spc-2609020626045177, brief invariant 15).
+func RefuseReachableOutDir(repoRoot, outDir, label string, names ...string) error {
 	if outDir == "" {
 		return nil
 	}
@@ -813,7 +866,7 @@ func refuseSelfAdmittingOutDir(repoRoot, outDir, label string) error {
 	if rel == ".." || strings.HasPrefix(rel, "../") {
 		return nil
 	}
-	for _, name := range []string{BundleFileName, ManifestFileName} {
+	for _, name := range names {
 		candidate := path.Join(rel, name)
 		for _, p := range Positions() {
 			if Admits(p, candidate) {
@@ -1119,7 +1172,7 @@ func collect(repoRoot string, position Position, candidateRun string) ([]candida
 				continue
 			}
 			for i, field := range row.Fields {
-				text, ok, err := projectField(rel, doc, field)
+				text, ok, err := projectField(rel, doc, field, row.Kind)
 				if err != nil {
 					return nil, err
 				}
@@ -1141,6 +1194,32 @@ func collect(repoRoot string, position Position, candidateRun string) ([]candida
 		return out[i].fieldIdx < out[j].fieldIdx
 	})
 	return out, nil
+}
+
+// verifyPrincipleItem refuses a principle item that still carries a citation
+// after projection. The manifest asserts that a principle travels without its
+// record handles and links (the floor's citation entry); the projection keeps
+// only the statement and unwraps a labelled link to its label, which leaves a
+// link with no label (a bare URL, an autolink) to refuse here, and this is what
+// makes the assertion checked rather than trusted — a statement that names a record
+// in its own words would otherwise ride into the bundle under a manifest saying
+// it had not.
+func verifyPrincipleItem(c candidate) error {
+	if c.kind != KindPrinciple {
+		return nil
+	}
+	if id, ok := recordid.HandleInText(c.text); ok {
+		return fmt.Errorf("reading: the principle %s carries the record handle %s in its projected "+
+			"statement, and the manifest asserts a principle travels without its citations; move the "+
+			"handle into the principle's evidence or below its statement", c.path, id)
+	}
+	if m, ok := lint.PrincipleLinkIn(c.text); ok {
+		return fmt.Errorf("reading: the principle %s carries the link %s in its projected statement, "+
+			"and the manifest asserts a principle travels without its citations; a link with no label "+
+			"to keep, a bare URL or an autolink, belongs in the principle's evidence or below its statement",
+			c.path, m)
+	}
+	return nil
 }
 
 // narrowRow applies the comparative position's two narrowings to one row before
@@ -1273,7 +1352,13 @@ func requireConfiguredStores(repoRoot string, cfg lint.Config) error {
 		// run qualifies, listing what there is. A store pointed at something that
 		// exists and is not a directory is still refused below, for every store
 		// alike (adr-2609021016272867).
-		if os.IsNotExist(err) && row.Store == issueschema.ReadingItemFamily {
+		//
+		// The KNOWLEDGE RECORD is the same state for the same reason: a
+		// repository that has written no principle has no principles directory,
+		// and the row enumerating nothing there is what the record holds rather
+		// than a hole — the manifest carries no principle item, and a committed
+		// entry naming the kind is handed none.
+		if os.IsNotExist(err) && (row.Store == issueschema.ReadingItemFamily || row.Store == "prn") {
 			continue
 		}
 		if err != nil || !info.IsDir() {

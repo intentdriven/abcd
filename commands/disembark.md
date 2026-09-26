@@ -154,9 +154,17 @@ distils from), write that document to a file, then:
 "${CLAUDE_PLUGIN_ROOT}/abcd" disembark principles <lifeboat-dir> --principles-json <path>   # or - for stdin
 ```
 
+Every principle carries three typed claims beside its evidence: `claim_type`
+(`criterion`, `causal` or `context`), `reference` (what the principle is about)
+and `comparison` (what was compared to produce it). A claim the record does not
+settle is `null`; an entry missing one of the keys is dropped, and a `mechanism`
+claim type is written back as `causal`. The payload is `schema_version` 2.
+
 **Without the flag** the verb runs deterministic mode: it writes an evidence-only
 `principles.json` composed straight from the packed ADRs' own stated decisions —
-no agent, no interpretation, byte-identical across re-runs.
+no agent, no interpretation, byte-identical across re-runs. Each principle's
+`reference` is the ADR it came from, and its claim type and comparison are `null`,
+because the fallback carries what it can establish and invents nothing.
 
 With the flag it is a **cite-or-be-dropped** gate. A principle survives only if at
 least one of its `evidence` refs resolves to a live record/finding id or a packed

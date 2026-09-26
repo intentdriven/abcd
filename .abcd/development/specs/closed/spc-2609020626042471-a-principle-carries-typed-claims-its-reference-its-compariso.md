@@ -10,7 +10,7 @@ production_mode: dictated-and-formatted
 ## Summary
 
 spc-2609020626042471 delivers
-[itd-2609020625405170](../../intents/planned/itd-2609020625405170-a-principle-carries-typed-claims-its-reference-its-compariso.md).
+[itd-2609020625405170](../../intents/shipped/itd-2609020625405170-a-principle-carries-typed-claims-its-reference-its-compariso.md).
 An entry under `.abcd/development/principles/` may declare four typed keys in a
 frontmatter block: `claim_type`, `reference`, `comparison` and `evidence`. The
 record lint reports an entry carrying none of them as untyped at warn, refuses
@@ -39,7 +39,7 @@ No existing entry is renamed, typed or moved.
 
 This spec lands last of the Iteration 2 set. It consumes the condition reader
 the sibling spec
-[spc-2609020626046252](../closed/spc-2609020626046252-a-scope-condition-is-dispositioned-from-a-reading-run-keyed.md)
+[spc-2609020626046252](spc-2609020626046252-a-scope-condition-is-dispositioned-from-a-reading-run-keyed.md)
 introduces, and it takes the include table, the exclusion floor and the eval
 tables as the earlier specs leave them.
 
