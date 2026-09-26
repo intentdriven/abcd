@@ -29,19 +29,61 @@ var (
 // The lock is advisory — every writer of the guarded state must take it — and its
 // scope is one lock file; callers that must not deadlock keep their acquisitions
 // unnested.
+//
+// A holder MAY unlink lockPath inside fn, which is how a caller retires a
+// per-key lock file once the key has nothing left to guard. That is safe
+// because acquisition is revalidated: after the flock is granted, the path must
+// still name the inode that was locked. A waiter that opened the file before a
+// holder unlinked it would otherwise be granted the flock on the orphaned inode
+// while a newcomer holds the fresh file at the same path — two holders of one
+// lock. On a mismatch the waiter releases, reopens the current file and waits
+// again, all within the one timeout.
 func WithFileLock(lockPath string, timeout time.Duration, fn func() error) error {
-	fd, err := openLockFd(lockPath)
-	if err != nil {
-		return err
+	deadline := time.Now().Add(timeout)
+	for {
+		fd, err := openLockFd(lockPath)
+		if err != nil {
+			return err
+		}
+		if err := acquireFlock(fd, deadline, timeout); err != nil {
+			syscall.Close(fd)
+			return err
+		}
+		current, err := lockStillNamesFd(lockPath, fd)
+		if err != nil {
+			syscall.Flock(fd, syscall.LOCK_UN)
+			syscall.Close(fd)
+			return err
+		}
+		if !current {
+			syscall.Flock(fd, syscall.LOCK_UN)
+			syscall.Close(fd)
+			continue
+		}
+		defer syscall.Close(fd)
+		defer syscall.Flock(fd, syscall.LOCK_UN)
+		return fn()
 	}
-	defer syscall.Close(fd)
+}
 
-	if err := acquireFlock(fd, timeout); err != nil {
-		return err
+// lockStillNamesFd reports whether lockPath still names the inode fd holds. An
+// absent path (a holder retired it) is false, not an error; a path that is now
+// a symlink is refused as ErrLockPathUnsafe rather than followed.
+func lockStillNamesFd(lockPath string, fd int) (bool, error) {
+	var held, named syscall.Stat_t
+	if err := syscall.Fstat(fd, &held); err != nil {
+		return false, err
 	}
-	defer syscall.Flock(fd, syscall.LOCK_UN)
-
-	return fn()
+	if err := syscall.Lstat(lockPath, &named); err != nil {
+		if err == syscall.ENOENT {
+			return false, nil
+		}
+		return false, err
+	}
+	if named.Mode&syscall.S_IFMT == syscall.S_IFLNK {
+		return false, fmt.Errorf("%w: lock path is a symlink: %s", ErrLockPathUnsafe, lockPath)
+	}
+	return held.Dev == named.Dev && held.Ino == named.Ino, nil
 }
 
 // openLockFd opens lockPath with O_CREAT|O_RDWR|O_NOFOLLOW and verifies, on the
@@ -67,10 +109,11 @@ func openLockFd(lockPath string) (int, error) {
 	return fd, nil
 }
 
-// acquireFlock polls for an exclusive flock until timeout elapses, returning
-// ErrLockContention on timeout.
-func acquireFlock(fd int, timeout time.Duration) error {
-	deadline := time.Now().Add(timeout)
+// acquireFlock polls for an exclusive flock until deadline, returning
+// ErrLockContention on timeout. The error names timeout, the caller's whole
+// budget: a revalidation retry spends one deadline across more than one
+// acquisition, and the slice left for the last one is not what was asked for.
+func acquireFlock(fd int, deadline time.Time, timeout time.Duration) error {
 	backoff := 5 * time.Millisecond
 	for {
 		err := syscall.Flock(fd, syscall.LOCK_EX|syscall.LOCK_NB)
@@ -107,7 +150,7 @@ func WithFileLockIn(root *os.Root, rel string, timeout time.Duration, fn func() 
 	}
 	defer f.Close()
 	fd := int(f.Fd())
-	if err := acquireFlock(fd, timeout); err != nil {
+	if err := acquireFlock(fd, time.Now().Add(timeout), timeout); err != nil {
 		return err
 	}
 	defer syscall.Flock(fd, syscall.LOCK_UN)

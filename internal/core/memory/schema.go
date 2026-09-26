@@ -760,9 +760,14 @@ func RenderIndex(pages []PageInfo) string {
 			// Every interpolated field is page CONTENT (a filename tail, a derived
 			// domain/summary), masked through CleanProse so a control/bidi rune cannot
 			// replay when the committed index.md is `cat`/paged (iss-2608270655495573).
-			// The `- ` / backtick / ` | ` structure is the render's own and stays raw.
-			lines = append(lines, fmt.Sprintf("- `%s` — %s | %s | %s",
-				cleanPageField(p.Filename), cleanPageField(cls), cleanPageField(domain), cleanPageField(summary)))
+			// The `- ` and ` | ` structure is the render's own and stays raw. The
+			// filename's code span is termsafe.CodeSpan's, not the render's own
+			// backticks: a name carrying a balanced backtick pair re-paired with
+			// a hand-written wrapper, dissolving the field's own span and putting
+			// the raw HTML it sheltered live in the committed index
+			// (iss-2609020539188868).
+			lines = append(lines, fmt.Sprintf("- %s — %s | %s | %s",
+				termsafe.CodeSpan(cleanPageField(p.Filename)), cleanPageField(cls), cleanPageField(domain), cleanPageField(summary)))
 		}
 	}
 	return strings.Join(lines, "\n") + "\n"
@@ -781,7 +786,11 @@ func RenderContradictions(pages []PageInfo) string {
 			// Both filenames are page CONTENT (frontmatter-supplied `contradicts:`
 			// targets, hostile-clone filename tails) — masked so the committed
 			// contradictions.md cannot replay an escape (iss-2608270655495573).
-			entries = append(entries, fmt.Sprintf("- `%s` contradicts `%s`", cleanPageField(p.Filename), cleanPageField(t)))
+			// Each name is wrapped by termsafe.CodeSpan rather than the render's
+			// own backticks, so neither can move the other's span boundaries
+			// (iss-2609020539188868).
+			entries = append(entries, fmt.Sprintf("- %s contradicts %s",
+				termsafe.CodeSpan(cleanPageField(p.Filename)), termsafe.CodeSpan(cleanPageField(t))))
 		}
 	}
 	if len(entries) == 0 {

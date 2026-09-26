@@ -67,7 +67,7 @@ func WithStoreLock(repoRoot string, fn func() error) error {
 	if err := syscall.Fstat(fd, &st); err != nil {
 		return err
 	}
-	if st.Mode&syscall.S_IFREG == 0 {
+	if !lockModeIsRegular(uint32(st.Mode)) {
 		return &UnsafeStorePathError{Msg: "memory store lock fd is not a regular file: " + path}
 	}
 	if st.Nlink < 1 {
@@ -80,6 +80,14 @@ func WithStoreLock(repoRoot string, fn func() error) error {
 	defer syscall.Flock(fd, syscall.LOCK_UN)
 
 	return fn()
+}
+
+// lockModeIsRegular reports whether a stat mode names a regular file. The
+// file-type field is an enumeration under S_IFMT, not a set of flags: a socket
+// and a symlink both carry the S_IFREG bit, so testing that bit alone admitted
+// them (iss-2608261133210491).
+func lockModeIsRegular(mode uint32) bool {
+	return mode&syscall.S_IFMT == syscall.S_IFREG
 }
 
 // memoryDir is the ONE walk that resolves <repoRoot>/.abcd/memory for every

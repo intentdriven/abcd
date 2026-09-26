@@ -4,14 +4,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
+	"math"
 	"regexp"
 	"sort"
 	"strings"
 	"time"
 
-	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
@@ -201,37 +199,23 @@ func QueryPages(repoRoot, question string, topN int) ([]MatchedPage, error) {
 	for _, t := range tokens {
 		tokenSet[t] = true
 	}
-	// Refuse a symlinked store DIRECTORY up front (GHSA-72rp): the leaf-guarded
-	// reads below only bind the leaf, so a committed `.abcd/memory` symlink would
-	// otherwise be walked and its out-of-repo pages disclosed.
-	mem, present, err := safeMemoryDir(repoRoot)
+	// Every read goes through the store handle, so a symlinked store DIRECTORY
+	// is refused when it is opened (GHSA-72rp) and nothing below can read
+	// outside it (iss-2608291814572914).
+	store, err := openStore(repoRoot)
 	if err != nil {
 		return nil, err
 	}
-	if !present {
-		return nil, nil
-	}
-	entries, err := os.ReadDir(mem)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, err
-	}
+	defer store.Close()
 	var matches []MatchedPage
-	for _, e := range entries {
-		if !e.Type().IsRegular() || !IsMemoryPageName(e.Name()) {
-			continue
-		}
-		// ReadGuarded re-checks regular-file on the open fd (closing the
-		// ReadDir→open symlink-swap TOCTOU) and caps the size.
-		raw, err := fsutil.ReadGuarded(filepath.Join(mem, e.Name()), maxMemoryPageBytes)
+	for _, name := range store.pageNames() {
+		raw, err := store.read(name, maxMemoryPageBytes)
 		if err != nil {
 			continue
 		}
 		text := string(raw)
 		page := parsePage(text)
-		info := pageInfoOf(e.Name(), page)
+		info := pageInfoOf(name, page)
 		if classFilter != "" {
 			ok := false
 			for _, c := range info.Classes {
@@ -263,7 +247,7 @@ func QueryPages(repoRoot, question string, topN int) ([]MatchedPage, error) {
 			continue
 		}
 		matches = append(matches, MatchedPage{
-			Filename:  e.Name(),
+			Filename:  name,
 			Score:     score,
 			Classes:   info.Classes,
 			Domain:    info.Domain,
@@ -295,11 +279,32 @@ func QueryPages(repoRoot, question string, topN int) ([]MatchedPage, error) {
 // be told they invoked a plugin command they may not even have installed.
 const AskReportHeading = "abcd memory ask"
 
+// citationTruncatedMarker ends a citation JSON cut at the page-value cap. The
+// cap cuts mid-JSON, so the cut is said out loud rather than left to read as
+// a whole value. It is plain text: nothing in it opens markdown or HTML.
+const citationTruncatedMarker = " … (citation truncated)"
+
+// cleanCitationJSON is cleanPageField for the compacted citation JSON with the
+// cut made visible: a value that cleans within the cap renders whole, and one
+// that does not is cut short enough for the marker to fit and ends with it, so
+// the field stays within the cap either way. The marker follows CleanProse's
+// output, whose final span-aware pass leaves no span or escape open for it to
+// fall into.
+func cleanCitationJSON(raw string) string {
+	if whole := termsafe.CleanProse(raw, math.MaxInt); len(whole) <= maxPageValueBytes {
+		return whole
+	}
+	return termsafe.CleanProse(raw, maxPageValueBytes-len(citationTruncatedMarker)) + citationTruncatedMarker
+}
+
 // RenderCitedMatches is the default deterministic synthesizer — a
 // citation-renderer, not an LLM. Missing provenance renders as explicit (none).
 func RenderCitedMatches(question string, matches []MatchedPage) string {
 	lines := []string{
-		"# " + AskReportHeading + " — " + termsafe.Sanitize(question),
+		// Every untrusted field on the answer's markdown lines goes through
+		// CleanProse, not Sanitize alone, which leaves an HTML opener and link
+		// syntax live (iss-2609020539188868).
+		"# " + AskReportHeading + " — " + cleanPageField(question),
 		"",
 		fmt.Sprintf("Matched pages (%d, overlap-ranked):", len(matches)),
 		"",
@@ -308,11 +313,13 @@ func RenderCitedMatches(question string, matches []MatchedPage) string {
 		// Filename and Summary are page-derived (repo content); sanitise each field
 		// before it joins the multi-line answer — masking the whole answer wholesale
 		// would clobber its legitimate newlines.
-		summary := termsafe.Sanitize(m.Summary)
+		summary := cleanPageField(m.Summary)
 		if summary == "" {
 			summary = "(no summary)"
 		}
-		lines = append(lines, fmt.Sprintf("- `%s` (score %d) — %s", termsafe.Sanitize(m.Filename), m.Score, summary))
+		// The filename's code span is termsafe.CodeSpan's, never a hand-written
+		// backtick pair the name could re-pair with.
+		lines = append(lines, fmt.Sprintf("- %s (score %d) — %s", termsafe.CodeSpan(cleanPageField(m.Filename)), m.Score, summary))
 		for _, c := range m.Citations {
 			// Every citation field is page-derived content from the same untrusted
 			// ingest boundary as Summary/Filename above, so each is sanitised before
@@ -322,17 +329,17 @@ func RenderCitedMatches(question string, matches []MatchedPage) string {
 			// masked here (gh-250). class/source_hash are charset-constrained upstream,
 			// but sanitising them too matches the sibling treatment and defends the
 			// render even if that constraint ever weakens.
-			cls := termsafe.Sanitize(c.SourceClass)
+			cls := cleanPageField(c.SourceClass)
 			if cls == "" {
 				cls = "(none)"
 			}
-			sh := termsafe.Sanitize(c.SourceHash)
+			sh := cleanPageField(c.SourceHash)
 			if sh == "" {
 				sh = "(none)"
 			}
 			cj := "(none)"
 			if len(c.Citation) > 0 {
-				cj = termsafe.Sanitize(compactJSONSorted(c.Citation))
+				cj = cleanCitationJSON(compactJSONSorted(c.Citation))
 			}
 			lines = append(lines, fmt.Sprintf("  - cites: class=%s | source_hash=%s | citation=%s", cls, sh, cj))
 		}
@@ -340,12 +347,11 @@ func RenderCitedMatches(question string, matches []MatchedPage) string {
 	return strings.Join(lines, "\n") + "\n"
 }
 
-// RenderNoMatches is the explicit empty-result render. It sanitises the
-// question itself, as RenderCitedMatches does, so a direct caller is covered
-// and the two renders cannot disagree on what reaches the terminal; Sanitize
-// is idempotent, so the copy Ask already masked costs nothing here.
+// RenderNoMatches is the explicit empty-result render. It cleans the question
+// itself, as RenderCitedMatches does, so a direct caller is covered and the two
+// renders cannot disagree on what reaches the terminal.
 func RenderNoMatches(question string) string {
-	return "# " + AskReportHeading + " — " + termsafe.Sanitize(question) + "\n\n" +
+	return "# " + AskReportHeading + " — " + cleanPageField(question) + "\n\n" +
 		"No matching memory pages (token overlap found nothing; an empty or absent store matches nothing).\n" +
 		"Try different terms, an explicit class:<source-class> / domain:<domain> filter, or ingest a source first.\n"
 }
@@ -409,14 +415,21 @@ func fileBack(root string, matches []MatchedPage, rawPage map[string]any, decide
 		return FileBackResult{Status: "declined"}, nil
 	}
 
-	mem := Dir(root)
-	existing := existingPageFrontmatter(mem)
-	plan, err := ResolveDistilledPages(existing, []DistilledPage{page})
+	// The store handle, not Dir(root): file-back reads the existing pages and
+	// the registry before it writes, and those reads were the ones no per-verb
+	// check covered (iss-2608291814572914). A symlinked store is refused here,
+	// before anything is read.
+	store, err := openStore(root)
 	if err != nil {
 		return FileBackResult{}, err
 	}
-
-	registry, err := LoadRegistry(SourcesIndexPath(root))
+	existing := existingPageFrontmatter(store)
+	registry, err := store.registry()
+	store.Close()
+	if err != nil {
+		return FileBackResult{}, err
+	}
+	plan, err := ResolveDistilledPages(existing, []DistilledPage{page})
 	if err != nil {
 		return FileBackResult{}, err
 	}

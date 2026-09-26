@@ -55,8 +55,15 @@ func TestLintSkipsSymlinkedTypedPage(t *testing.T) {
 	}
 	plantSymlink(t, outside, filepath.Join(mem, "fact_eng_injected.md"))
 
-	if isTypedMemoryPagePath(mem, filepath.Join(mem, "fact_eng_injected.md")) {
-		t.Fatal("a symlinked page was followed and classified as a typed memory page")
+	store, err := openStore(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	for _, p := range store.typedPages() {
+		if p.rel == "fact_eng_injected.md" {
+			t.Fatal("a symlinked page was followed and classified as a typed memory page")
+		}
 	}
 }
 
@@ -71,9 +78,14 @@ func TestLoadQuotationBudgetRefusesSymlinkedConfig(t *testing.T) {
 	if err := os.WriteFile(outside, []byte(cfg), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	plantSymlink(t, outside, memoryConfigPath(root))
+	plantSymlink(t, outside, filepath.Join(mem, "config.json"))
 
-	got := loadQuotationBudget(root)
+	store, err := openStore(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	got := loadQuotationBudget(store)
 	if got.PerPagePct == 0.99 {
 		t.Fatal("a symlinked config.json was followed into the quotation budget")
 	}

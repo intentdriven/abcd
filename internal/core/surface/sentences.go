@@ -119,8 +119,8 @@ var sentences = map[string]string{
 
 	"abcd history": "Keep session transcripts in the user-level store and read them back: " +
 		"Writes nothing bare, and redacts each one it stores; refuses an unknown sub-verb.",
-	"abcd history capture": "Redact and store one raw session transcript from a file or stdin: " +
-		"Writes one record into the store; refuses stdin without --session.",
+	"abcd history capture": "Redact and store a session transcript, or a whole session with --all: " +
+		"Writes one record per transcript; refuses stdin or --all without --session.",
 	"abcd history discard": "Delete one staged or quarantined raw transcript for good: " +
 		"Writes the deletion; refuses without --yes.",
 	"abcd history drain": "Redact and store every transcript staged for this repository: " +

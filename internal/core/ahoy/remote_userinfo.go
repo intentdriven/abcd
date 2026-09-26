@@ -1,6 +1,9 @@
 package ahoy
 
-import "strings"
+import (
+	"net/url"
+	"strings"
+)
 
 // scrubRemoteUserinfo drops any credential from a git remote URL before it
 // enters RepoIdentity — the one value every registry sink and every JSON
@@ -35,9 +38,7 @@ func scrubRemoteUserinfo(s string) string {
 		if at < 0 {
 			return s
 		}
-		userinfo := authority[:at]
-		hasPassword := strings.Contains(userinfo, ":")
-		if !hasPassword && scheme != "http" && scheme != "https" {
+		if !userinfoCarriesPassword(authority[:at]) && scheme != "http" && scheme != "https" {
 			return s
 		}
 		return s[:i+3] + authority[at+1:] + rest[len(authority):]
@@ -56,8 +57,23 @@ func scrubRemoteUserinfo(s string) string {
 	}
 	// A userinfo with no colon is a bare login (`git@host:path`): the transport
 	// needs it and it is a route, not a secret.
-	if !strings.Contains(s[:at], ":") {
+	if !userinfoCarriesPassword(s[:at]) {
 		return s
 	}
 	return s[at+1:]
+}
+
+// userinfoCarriesPassword reports whether a userinfo holds a login:password
+// pair. The test runs on the DECODED userinfo, because git percent-decodes it
+// before use: `user%3Apw` is the login "user" with the password "pw", and a
+// literal-colon test read it as a bare login (iss-2609020630232658). One round
+// of decoding is what git applies, so `%253A` decodes to the literal text
+// `%3A` and is not a separator. A userinfo that does not decode is treated as
+// carrying one: this function decides what may go to rest, so it fails closed.
+func userinfoCarriesPassword(userinfo string) bool {
+	decoded, err := url.PathUnescape(userinfo)
+	if err != nil {
+		return true
+	}
+	return strings.Contains(decoded, ":")
 }
