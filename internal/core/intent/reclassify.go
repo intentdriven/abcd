@@ -43,6 +43,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/decide"
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
+	"github.com/intentdriven/abcd/internal/core/intentbundle"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/core/relink"
 	"github.com/intentdriven/abcd/internal/core/spec"
@@ -55,11 +56,6 @@ const KindSuperseded = "superseded"
 
 // ReclassificationHistoryKey is the append-only kind-change log.
 const ReclassificationHistoryKey = "reclassification_history"
-
-// BundleOfOnePhrase is how a survivor's history line states that its bundle
-// now has one member (decision 3), with the bundle's name in place of %s.
-// record_schema reads the same words as the bundle-of-one declaration.
-const BundleOfOnePhrase = "bundle %s now has one member"
 
 // ReclassifyRequest parameterises Reclassify.
 type ReclassifyRequest struct {
@@ -381,7 +377,7 @@ func supersede(repoRoot string, corpus Corpus, it Intent, by, reason string, red
 			if err != nil {
 				return err
 			}
-			line := fmt.Sprintf(BundleOfOnePhrase, it.Bundle) + ": " + it.ID + " was superseded by " + succID
+			line := intentbundle.OneMember(it.Bundle) + ": " + it.ID + " was superseded by " + succID
 			surv, err := appendFrontmatterBlockItem(string(survData), ReclassificationHistoryKey, historyEntry(date, KindBundleMember, KindBundleMember, line))
 			if err != nil {
 				return fmt.Errorf("intent: %s: %w", survivor.Path, err)

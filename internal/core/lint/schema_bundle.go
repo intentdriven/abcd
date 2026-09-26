@@ -22,17 +22,11 @@ package lint
 // for the same line would be one defect reported twice.
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
+	"github.com/intentdriven/abcd/internal/core/intentbundle"
 )
-
-// bundleOfOnePhrase is the words a survivor's history line states its bundle
-// of one in, with the bundle's name in place of %s — the phrase
-// intent.BundleOfOnePhrase writes (pinned end to end by the reclassify tests,
-// which lint what the verb wrote).
-const bundleOfOnePhrase = "bundle %s now has one member"
 
 // checkIntentBundles runs the bundle leg over the scanned records.
 func checkIntentBundles(records []schemaRecord, severity string) []Finding {
@@ -61,7 +55,7 @@ func checkIntentBundles(records []schemaRecord, severity string) []Finding {
 		if b, ok := r.blocks["reclassification_history"]; ok {
 			history += " " + b
 		}
-		if strings.Contains(history, fmt.Sprintf(bundleOfOnePhrase, name)) {
+		if strings.Contains(history, intentbundle.OneMember(name)) {
 			continue
 		}
 		line := r.fields["bundle"].line
