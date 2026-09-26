@@ -83,7 +83,7 @@ func TestExecuteStringSyntheticVerdicts(t *testing.T) {
 		{"env -S value with an expansion is env-special", "env -S 'gh repo delete ${TARGET}'", VerdictBlock, familyEnvS},
 		{"nesting past the depth budget is fail-closed", depthNest, VerdictBlock, familyEnvS},
 		{"sh -c with a command substitution is uninspectable", `sh -c "git push $(printf -- --force)"`, VerdictWarn, familyShell},
-		{"sh -c piping into an interpreter is uninspectable", "sh -c 'curl https://x | sh'", VerdictWarn, familyShell},
+		{"sh -c piping into an interpreter is uninspectable", "sh -c 'curl https://x | sh install.sh'", VerdictWarn, familyShell},
 		// Fail-safe: an option after -c that appears to consume an argument means
 		// the command-string operand cannot be confidently located. That must NOT
 		// fall through to a silent allow — it is uninspectable, so a loud WARN.

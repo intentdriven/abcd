@@ -3,16 +3,18 @@ package guard
 import (
 	"strings"
 	"testing"
-	"time"
 )
 
 // TestUnquotedBraceGroupIsRefused is the repro for iss-2608221457227161. Bash
 // expands `{--force,}` to byte-identical `--force` argv, but the guard's
-// tokenizer does not expand braces: it read the literal token `{--force,}`, no
-// blocker matched it, and a Tier-1 hazard was a silent allow — the same
-// mutate-the-flag-token shape the redirection fix closed. The guard does not
-// expand the group either; it REFUSES it, because a token it cannot expand is a
-// token whose argv it cannot check.
+// tokenizer read the literal token `{--force,}`, no blocker matched it, and a
+// Tier-1 hazard was a silent allow — the same mutate-the-flag-token shape the
+// redirection fix closed. The guard first refused every unquoted group; it now
+// expands the group as bash does (iss-2608282026038930), so each shape here
+// blocks because the argv bash builds from it is a hazard an entry names.
+// Shapes bash expands to something harmless — `{{--force,--dry-run}}` keeps its
+// outer braces, `\${--force,}` yields `$--force` — are pinned against bash in
+// TestBraceExpansionMatchesBash instead.
 func TestUnquotedBraceGroupIsRefused(t *testing.T) {
 	for _, cmd := range []string{
 		// The reported shape: a single-element group with an empty alternative.
@@ -23,9 +25,8 @@ func TestUnquotedBraceGroupIsRefused(t *testing.T) {
 		// A real two-alternative group, and a nested one whose comma is not at
 		// the group's own top level.
 		`git push {--force,--dry-run} origin main`,
-		`git push {{--force,--dry-run}} origin main`,
 		// A range, the other expansion form.
-		`rm -rf dir{1..9}`,
+		`cd scratch && rm -rf dir{1..9}`,
 		// The group hidden one execute-a-string layer down, where the outer
 		// quotes exempt it but the payload's own tokenize does not.
 		`sh -c 'git push {--force,} origin main'`,
@@ -39,9 +40,6 @@ func TestUnquotedBraceGroupIsRefused(t *testing.T) {
 		"git push {--force,`echo x`} origin main",
 		"git push {--force,<(true)} origin main",
 		"git push {--force,$(echo a)$(echo b)} origin main",
-		// A dollar that is itself escaped is a literal `$`, so `${` after it is
-		// NOT parameter expansion and bash expands the group.
-		`git push \${--force,} origin main`,
 		// A `}` inside the FIRST alternative. bash does not take the first
 		// closing brace as the group's end — it keeps looking for a separator,
 		// so `{msg},--no-verify}` expands to `msg}` and `--no-verify` (checked
@@ -69,9 +67,9 @@ func TestUnquotedBraceGroupIsRefused(t *testing.T) {
 // wrong one: the `guard check` verb maps a tokenize error to a blocking exit,
 // but the pre-tool-use hook maps it to fail-OPEN — so the bypass would have
 // survived on the surface that matters. Only a real VerdictBlock is fail-closed
-// on both front doors.
+// on both front doors. The refusal is reached by a group past the expansion cap.
 func TestBraceRefusalIsFailClosed(t *testing.T) {
-	const cmd = `git push {--force,} origin main`
+	cmd := `git push origin main ` + strings.Repeat(`{a,b}`, 13)
 	d, err := Defaults().Check(cmd)
 	if err != nil {
 		t.Fatalf("Check(%q) returned an error: %v — a tokenize error fails OPEN on the hook", cmd, err)
@@ -154,10 +152,10 @@ func TestBraceHandlingLeavesEveryOtherShapeAlone(t *testing.T) {
 }
 
 // TestBraceGroupIsRecordedOnTheSegment pins the tokenizer half directly: the
-// flag rides on the segment that carried the group, so Check folds one signal
-// however many segments the line has.
+// refusal flag rides on the segment whose group passed the cap, so Check folds
+// one signal however many segments the line has.
 func TestBraceGroupIsRecordedOnTheSegment(t *testing.T) {
-	segs, err := tokenize(`echo hi && git push {--force,} origin main`)
+	segs, err := tokenize(`echo hi && git push origin ` + strings.Repeat(`{a,b}`, 13))
 	if err != nil {
 		t.Fatalf("tokenize: %v", err)
 	}
@@ -178,22 +176,19 @@ func TestBraceGroupIsRecordedOnTheSegment(t *testing.T) {
 // minutes on a 1 MiB command, which is inside the guard's own stdin cap. That is
 // a hang on the PreToolUse path, reachable by any command the agent is asked to
 // run. A shared budget bounds the total look-ahead per tokenize call, and
-// exhausting it is fail-closed.
+// exhausting it is fail-closed. The guard is a count of the bytes scanned, not a
+// wall-clock ceiling (iss-2609240046582859).
 func TestBraceScanStaysLinear(t *testing.T) {
-	line := "echo " + strings.Repeat("{", 1<<20)
-	start := time.Now()
-	segs, err := tokenize(line)
-	elapsed := time.Since(start)
+	build := func(n int) string { return "echo " + strings.Repeat("{", n) }
+	assertWorkGrowth(t, build, 1<<18, "the brace look-ahead's shared braceScanBudget")
+	segs, err := tokenize(build(1 << 20))
 	if err != nil {
 		t.Fatalf("tokenize: %v", err)
 	}
-	if elapsed > 5*time.Second {
-		t.Errorf("tokenizing a %d-byte word of braces took %v, want well under 5s (quadratic-scan regression)", len(line), elapsed)
-	}
 	// Exhausting the budget means the scan can no longer tell a group from a
-	// literal, and a guard that cannot tell says group.
+	// literal, and a guard that cannot tell refuses the segment.
 	if len(segs) == 0 || !segs[0].braceGroup {
-		t.Errorf("a brace word past the scan budget must be refused, not waved through: %+v", segs)
+		t.Errorf("a brace word past the scan budget must be refused, not waved through: %d segments", len(segs))
 	}
 }
 

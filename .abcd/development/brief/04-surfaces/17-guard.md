@@ -57,10 +57,13 @@ worth having rather than merely obstructive.
 The exit codes are the contract, and the asymmetry in them is deliberate. On the
 hook, only exit 2 stops anything; a warn exits 1 because a pre-tool-use hook that
 exits 0 has its stderr discarded, so a warn returning 0 would run as if allowed
-with nobody told (iss-231). A guard that cannot answer at all — an unparsable
-command line, a registry with nothing left to check against, a registry switched
-off — exits 1 on the hook and lets the command run, and exits 2 on the check so
-that a script never reads silence as clearance.
+with nobody told (iss-231). A guard that cannot answer at all — a registry with
+nothing left to check against, a registry switched off — exits 1 on the hook and
+lets the command run, and exits 2 on the check so that a script never reads
+silence as clearance. A command line the guard cannot split is the exception on
+the hook: it is blocked (`command-unparsable`), not let through, because a line
+the guard misreads may be one bash runs, and a pass would carry every hazard in
+it past the guard. On the check it exits 2, like the rest.
 
 Either verb also speaks JSON, and that is the form the plugin page uses: a
 verdict, and with it the entry that fired, its tier, why the command is
@@ -82,7 +85,9 @@ The states that can independently be false are reported outside the session, on
 calls is reachable, and whether a hazard registry is armed. A repo
 `.abcd/guard.json` that will not load drops the repo's own overrides while the
 bundled hazards stay armed, and that middle state is reported as itself rather
-than folded into either extreme.
+than folded into either extreme. The three states — clean, repo layer dropped,
+no registry at all — are decided once, in the core, and every caller formats
+the same answer.
 
 The two callers part company on exactly that file, deliberately. **On the hook,
 the session keeps its protection:** the repo's overrides are dropped with a
@@ -106,12 +111,14 @@ running on a registry it cannot trust.
 
 There is no flag, environment variable, or prompt that disarms the guard for a
 session. The file is the only route, so switching the guard off lands in a diff
-somebody reviews. What is not yet enforced is that the diff is *committed*: the
-registry is read from the working tree, so an uncommitted edit takes effect on
-the next command. The mitigation today is loudness rather than refusal — a
-disabled registry makes every command it lets through carry an `UNGUARDED`
-warning naming the file, and `abcd ahoy` reads `OFF`. Refusing a `disabled: true`
-that is not in `HEAD` is a core-side change, tracked as an issue.
+somebody reviews, and the diff must be *committed* before it counts. An edit
+that weakens the registry — switching it off, or changing a blocker's tier or
+pattern — is refused until `HEAD` carries it: the committed registry stays in
+force, the hook announces the refused edit on every command, and the check
+refuses to answer. Where git cannot say what `HEAD` carries, the edit is refused
+too. An edit that only adds or tightens a hazard needs no commit. Once a
+switch-off is committed, every command it lets through carries an `UNGUARDED`
+warning naming the file, and `abcd ahoy` reads `OFF`.
 
 ## What this guard is, and is not
 
@@ -168,20 +175,89 @@ hazard behind a launcher it does not recognise is a **warn** naming the entry it
 matched rather than an allow, because the guard cannot tell whether that program
 runs the rest of the line. An unquoted glob is treated as producing whatever
 literal it could produce, at every position an entry constrains, so a force push
-spelled `git pus? --force` blocks. A command string handed to a shell is opened
-and read. A git alias declared on the same command line is resolved, and the
-command git would actually run is what gets checked. Where the reading is a
+spelled `git pus? --force` blocks. A git long flag written short of its full
+name is read as git reads it, as the one option that prefix can mean. A command
+or process substitution, unquoted
+or inside double quotes, is followed into command position, and the words
+written after one stay the
+enclosing command's, so `rm $(true) -rf *` is read as `rm -rf *`. What a
+substitution prints is not in the line, so a word holding one is unknown and
+fails closed in every role it could play, read every way it can be at once: led
+by a dash it is every flag it could become — one standing alone, one taking a
+value, a shell's `-c` — before the command as well as after it; after a value
+flag it is that flag's value; as an operand it is one operand; and in command
+position it is any program its known text allows, a shell, a wrapper and git
+among them; where the only entries that fire are ones such a name can be, the
+block is reported as the substitution's (`program-name-unknown`), and its way
+past is to spell the program's name. Every reader of a word goes through that one rule, and a test holds
+the package to it. Text beside one in the same word is also read as bash leaves
+it when the output is empty. One nested past the depth the guard reads, one
+holding a case command, or more of them where the program name could be than
+the guard follows, is refused rather than left unread. A parameter expansion
+holding a substitution prints its output, so its word is unknown from the `${`
+on, and inside double quotes one ends at its own `}`, where a nested `"` opens a
+string of its own. A here-document body is data, but the substitutions the shell
+runs in a body whose delimiter is unquoted are read as commands, and such a body
+is read by the lines bash compares with its delimiter, joined across a trailing
+odd run of backslashes. A backtick's text is read after bash's own pass over
+it, which drops a backslash before `$`, a backtick or a backslash (and, directly
+inside double quotes, a `"`), so an escaped substitution between backticks is
+read as the one bash runs. A payload that is wholly a substitution printing a
+here-document the shell does not change (`sh -c "$(cat <<'EOF' … EOF)"`, or the
+backtick spelling where no backslash stands between the backticks) is also
+read as that document's text, joined to any text beside it in the word. The same
+substitution unquoted runs the words its document splits into, the first and
+last joined to whatever is written against it in its word, and is read as those
+words wherever it stands and at every payload layer, so a document whose text is another such substitution is read
+too; the words are never read again as a command line, as bash never reads
+them. On a line where another command names IFS such an output is refused,
+because the guard splits on the default IFS only and does not work out which
+assignment reaches which expansion; a prefix assignment, which does not reach
+its own command's expansion, is read as the default split. The guard follows two execute-a-string layers and refuses a payload
+nested deeper, whatever it holds, because it has stopped reading it. An ANSI-C string ends at its
+closing quote, found before any escape is decoded, and at its first NUL, as bash
+ends it. An arithmetic expansion is an expression, not commands. A shell reading its script from a pipe, a here-document or a
+here-string is refused, because what it runs is text the guard read as data, and
+so is one handed the stdin device behind a pipe or a process substitution as its
+script, a `source` of one, and a line longer than the guard reads. An unquoted
+brace group is expanded as bash expands it and every word it produces is
+checked, so `mkdir -p foo/{a,b}` passes and `git push {--force,} origin main`
+blocks; a group past the expansion cap is refused rather than read in part. A
+command string handed to a shell is opened and read. A git alias declared on the same command line is resolved, and the
+command git would actually run is what gets checked. A commit or push that
+moves `core.hooksPath` for itself is read as skipping its hooks, which is what
+it does. A delete chained after `pushd` or `popd` is read as one chained after
+`cd`. In a repository with more
+than one worktree, a stash or pop that does not name its entry is warned about,
+because the stash stack is shared across worktrees. Where the reading is a
 guess, over-blocking is the direction the guard takes.
 
 What an allow still does not see is a hazard that never reaches command position
-at all: one behind a wrapper flag the per-wrapper table does not name; a REST
+at all: a word that is wholly a command substitution standing where a flag
+would be, which is read as an operand because that is how a commit message or a
+branch name is spelled every day; one behind a wrapper flag the per-wrapper
+table does not name; a REST
 path an entry names by its root segment when the host serves that API under a
-prefix; a bare `$VAR` standing where the hazard would be inside a payload the
-guard does read, because the guard sees the variable and not what the shell will
-expand it to, and warning on every variable would bury the warnings that matter;
-a payload inside a non-shell interpreter such as `python -c`, which is one
-opaque token and today a silent allow; and any dangerous form no entry
-describes. The check's own help text is the fuller statement of the same list,
+prefix; an IFS the shell already holds when the line starts, or gains during the line
+through a name the guard does not read (`declare $(echo I)FS=x`, a sourced file),
+since every line is read from the default IFS; a payload inside a non-shell interpreter such as `python -c`, which is
+one opaque token and today a silent allow; and any dangerous form no entry
+describes. Nor does an allow see through a parameter expansion that carries no
+substitution (`$VAR`, `${VAR:-git}`), wherever it stands — as the command's
+program name, as a flag, or inside a payload the guard does read — because the
+guard sees the variable and not what the shell will expand it to, and warning on
+every variable would bury the warnings that matter; so the obvious evasions above
+do not include a hazard spelled through a variable. Nor does an allow see what a
+lone substitution prints when it stands as the whole command (`$(cat msg.txt)`,
+`$(date)`): such a name can be any program, but with no operand after it no
+entry matches, so it allows by the posture above, where an allow means no entry
+matched. What a substitution prints is read only for the exact shape `cat
+<<DELIM`, a newline, the body, the delimiter line and blanks. `/bin/cat`,
+`command cat`, `cat -`, a redirection after the delimiter word, a
+backslash-newline before the `<<`, a command after the document, a
+backslash-newline after a backtick's document, and an output inside a `${…}`
+all leave it unknown, so each of those standing alone as the command allows,
+though bash runs what it prints; handed to `sh -c` as its string, each warns. The check's own help text is the fuller statement of the same list,
 kept beside the code that implements it, with a worked example for each and the
 near-misses that *are* read spelled out beside them.
 

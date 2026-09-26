@@ -49,10 +49,10 @@ type GuardHealth struct {
 	// hiding it would let a repo's own tightened hazards quietly lapse.
 	RepoOverridesDropped bool `json:"repo_overrides_dropped,omitempty"`
 	// Disabled reports a deliberately switched-off registry. It is not a fault —
-	// .abcd/guard.json is the only route, so the change lands in a diff — but the
-	// file is read from the WORKING TREE, so this can be true before anyone has
-	// reviewed the edit that made it true (iss-147). A disabled guard that looks
-	// armed is exactly the state this report exists to prevent.
+	// .abcd/guard.json is the only route, and a switch-off takes effect only
+	// once HEAD carries it (iss-147), so the change is a reviewed commit. A
+	// disabled guard that looks armed is exactly the state this report exists
+	// to prevent.
 	Disabled bool `json:"disabled"`
 	// Entries is how many hazards the loaded registry holds, so "loadable" is
 	// backed by a number rather than a boolean nobody can check.
@@ -90,8 +90,7 @@ func detectGuardHealth(cwd, pluginRoot string, pluginOK bool) GuardHealth {
 		}
 	}
 
-	reg, err := guard.Load(cwd)
-	if reason := applyRegistryHealth(&h, reg, err); reason != "" {
+	if reason := applyRegistryHealth(&h, guard.LoadRepo(cwd)); reason != "" {
 		reasons = append(reasons, reason)
 	}
 
@@ -99,23 +98,23 @@ func detectGuardHealth(cwd, pluginRoot string, pluginOK bool) GuardHealth {
 	return h
 }
 
-// applyRegistryHealth folds one guard.Load result into the health report and
-// returns the human reason ("" when nothing needs saying). Since the fail-safe
-// load (iss-2608261551087492) the two registry faults are distinguishable from
-// the pair Load returns: an error ALONGSIDE a non-empty registry is the mild
-// state — the repo layer is broken, its overrides are dropped, and the bundled
-// hazards stay armed — while an empty registry is the only genuinely-unguarded
-// state, which the embedded defaults make unreachable in practice. Split out so
-// that unreachable state stays testable (iss-2608281222011114).
-func applyRegistryHealth(h *GuardHealth, reg guard.Registry, err error) string {
-	h.Entries = len(reg.Entries)
-	if h.Entries == 0 {
+// applyRegistryHealth folds one typed load result into the health report and
+// returns the human reason ("" when nothing needs saying). The posture is
+// decided in core (guard.LoadRepo, iss-2608291814576261), so this report and the
+// hook cannot disagree about it: a dropped repo layer is the mild state — the
+// repo's overrides are dropped and the bundled hazards stay armed — while an
+// unavailable registry is the only genuinely-unguarded state, which the
+// embedded defaults make unreachable in practice. Split out so that
+// unreachable state stays testable (iss-2608281222011114).
+func applyRegistryHealth(h *GuardHealth, ld guard.Loaded) string {
+	h.Entries = len(ld.Registry.Entries)
+	if ld.Posture == guard.LoadUnavailable {
 		// No bundled layer to fall back to: the guard declines to answer.
 		return guardRegistryEmptyReason
 	}
 	h.RegistryLoadable = true
-	h.Disabled = reg.Disabled
-	if err != nil {
+	h.Disabled = ld.Registry.Disabled
+	if ld.Posture == guard.LoadRepoDropped {
 		// The raw error can name a per-repo path, and the action a human takes is
 		// the same whatever the parse failure was: `abcd guard check` prints it.
 		h.RepoOverridesDropped = true
