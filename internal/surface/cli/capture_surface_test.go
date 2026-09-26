@@ -1118,6 +1118,39 @@ func TestCaptureTransitionRefusalsExit2(t *testing.T) {
 	}
 }
 
+// TestCaptureUnreadableStatusDirectoryExits1 is iss-2609261241121312's surface
+// half: a status directory the ledger cannot read is a fault, exit 1, and the
+// message says the directory could not be read. It read as an unknown id, the
+// refusal of the caller's input at exit 2.
+func TestCaptureUnreadableStatusDirectoryExits1(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root reads a directory whatever its mode")
+	}
+	repo := captureLedgerRepo(t)
+	var m struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(runCLI(t, "capture", "an observation behind a locked folder", "--json"), &m); err != nil || m.ID == "" {
+		t.Fatalf("capture envelope unreadable: %v", err)
+	}
+	open := filepath.Join(repo, ".abcd", "work", "issues", "open")
+	if err := os.Chmod(open, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(open, 0o755) })
+	for _, args := range [][]string{
+		{"capture", "resolve", m.ID, "fixed", "--impact", "fix"},
+		{"capture", "wontfix", m.ID, "not worth it"},
+		{"capture", "defer", m.ID, "--after", "v0.1.0", "--reason", "a reason that is long enough"},
+	} {
+		out, err := runCLIErr(t, args...)
+		if exitCodeOf(err) != 1 || err == nil || strings.Contains(err.Error(), "unknown issue id") ||
+			!strings.Contains(err.Error(), "cannot read") {
+			t.Errorf("%v with open/ unreadable: exit = %d (%v), want 1 naming the unreadable folder\n%s", args[1:], exitCodeOf(err), err, out)
+		}
+	}
+}
+
 // TestGroundsFlagUsageRendersAStringPlaceholder: cobra's UnquoteUsage takes the
 // first backquoted word of a flag's usage string as the flag's value
 // placeholder and strips it from the prose, so backticks in the wontfix

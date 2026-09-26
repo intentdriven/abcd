@@ -984,9 +984,13 @@ func checkOneStatusPerID(repoRoot, issuesRoot string) error {
 	var ids []string
 	for _, sub := range statusDirs {
 		dir := filepath.Join(issuesRoot, statusDirName[sub])
-		entries, err := os.ReadDir(dir)
+		entries, err := readStatusDir(issuesRoot, statusDirName[sub])
 		if err != nil {
-			continue // virgin/absent ledger tolerance, as scanLedger has
+			// Absent is tolerated (a virgin ledger); unreadable is a fault, so
+			// every read of the ledger that runs this check first — list and
+			// status, before scanLedger — never renders an unreadable folder as
+			// an empty one (iss-2609261241121312).
+			return err
 		}
 		names := make([]string, 0, len(entries))
 		for _, e := range entries {
