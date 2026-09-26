@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/recordid"
+	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
 // ledgerLock is the issue ledger's lock, registered by the package that owns
@@ -44,13 +45,15 @@ func repoLedgerLock(repoRoot string) func(func() error) error {
 
 // pairIntentTry is how long one attempt of a pair acquisition waits for the
 // intent store's lock with the ledger lock held, and pairLedgerRest how long it
-// then leaves the ledger lock free before the next attempt. The rest is longer
-// than the ledger's longest poll interval (fsutil's backoff tops out at 100ms),
-// so a ledger writer polling through a wait finds the lock free at least once
-// per attempt.
+// then leaves the ledger lock free before the next attempt. The rest is twice
+// the longest interval a ledger writer sleeps between its polls
+// (fsutil.LockPollCeiling), so a ledger writer polling through a wait wakes
+// inside the window at least once per attempt and finds the lock free. It is
+// derived from the ceiling rather than restated beside it: a rest written as a
+// number once sat below the poll's real ceiling (iss-2609262257227538).
 var (
 	pairIntentTry  = 25 * time.Millisecond
-	pairLedgerRest = 150 * time.Millisecond
+	pairLedgerRest = 2 * fsutil.LockPollCeiling
 )
 
 // WithLedgerThenMintLock runs fn holding the ledger lock (taken through

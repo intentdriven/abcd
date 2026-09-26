@@ -214,3 +214,15 @@ func TestThePairLeavesTheLedgerFreeWhileItWaitsForTheIntentLock(t *testing.T) {
 		t.Errorf("a pair past its budget must refuse without running fn: ran=%v err=%v", ran, err)
 	}
 }
+
+// The pair's rest outlasts the longest interval a ledger writer sleeps between
+// polls by a margin, so a writer polling through the pair's wait wakes inside
+// the window the ledger is left free: a rest at or under the poll ceiling can
+// fall wholly between two polls, and the writer waits out its budget behind a
+// lock that was free (iss-2609262257227538).
+func TestThePairRestOutlastsTheLedgerPoll(t *testing.T) {
+	if floor := fsutil.LockPollCeiling + fsutil.LockPollCeiling/2; pairLedgerRest < floor {
+		t.Errorf("the pair rests %s with the ledger free, under %s: a ledger writer polling every %s can sleep through it",
+			pairLedgerRest, floor, fsutil.LockPollCeiling)
+	}
+}
