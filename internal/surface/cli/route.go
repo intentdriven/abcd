@@ -34,11 +34,14 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// machineConnections is the machine's configured provider connections. The
-// provider adapter intent (itd-2609081951381895) supplies a real one; until it
-// lands no provider is configured, so every step resolves to the harness. It
-// is a variable so a test can hand the verbs a reachable provider without a
-// socket.
+// machineConnections is the connections the delegating verbs resolve against.
+// The provider adapter (itd-2609081951381895) implements Connections from the
+// machine's provider blocks (oracle.APIConfig.Connections), and it is not
+// handed to the verbs yet: a route resolved to a provider would name a leg no
+// verb can send a step to until provider dispatch lands
+// (spc-2609251028149555), so every step resolves to the harness until then.
+// It is a variable so a test can hand the verbs a reachable provider without
+// a socket.
 var machineConnections = func() oracle.Connections { return oracle.NoConnections{} }
 
 // routeFlag is one delegating verb's --route values and the agents the verb
