@@ -219,3 +219,28 @@ func TestHookSessionStartSilentOnUnknownOrMatchedRelease(t *testing.T) {
 		})
 	}
 }
+
+// TestReadSkewMetaRefusesAHazardousDataDir is the front-door twin of
+// iss-2609020630242279: the skew notice read CLAUDE_PLUGIN_DATA's cache record
+// without the shape check core applies to that directory, so a world-writable
+// or in-checkout data dir could fabricate or suppress the notice.
+func TestReadSkewMetaRefusesAHazardousDataDir(t *testing.T) {
+	root := t.TempDir()
+	data := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(data, "cache"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(data, "cache", "binary-meta"), []byte("release_sha="+strings.Repeat("a", 40)+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CLAUDE_PLUGIN_DATA", data)
+	if readSkewMeta(root) == nil {
+		t.Fatal("control: a well-shaped data dir's record was not read")
+	}
+	if err := os.Chmod(data, 0o777); err != nil {
+		t.Fatal(err)
+	}
+	if meta := readSkewMeta(root); meta != nil {
+		t.Fatalf("a world-writable data dir supplied the record %v", meta)
+	}
+}

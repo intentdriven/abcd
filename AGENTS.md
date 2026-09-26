@@ -157,7 +157,7 @@ vet, test and the race-enabled internal tests on both, with the `make
 fmt-check` format gate, the record-lint, issue-drift and docs-lint steps and the
 site-render gate on the Linux leg alone. Separate jobs run the reviews-charter check
 (`scripts/check-reviews.sh`) together with the issue-resolution gates
-(RS001–RS005) and the decisions-append gate (DA001–DA003), full-history secret scanning (`gitleaks`), a workflow audit
+(RS001–RS006) and the decisions-append gate (DA001–DA003), full-history secret scanning (`gitleaks`), a workflow audit
 (`zizmor`), dependency review, `govulncheck`, and the smoke harness
 (`make smoke`). A
 fail-closed classifier stands the macOS leg, the race lane and the `zizmor`,
@@ -336,8 +336,9 @@ irreversible; guessing downward costs nothing.**
   `## [Unreleased]` must be EMPTY or the ingest refuses — a derived cut never
   folds hand-written prose into a generated section. So the way to announce a
   change is to resolve its issue or ship its intent in the same diff, which the
-  point below already requires. Writing the entry by hand does not add a line; it
-  blocks the next release.
+  point below already requires. Writing the entry by hand does not add a line: record-lint's
+  `changelog_unreleased_empty` rule refuses it at the change, before it can block
+  the next release.
 - **A change that fixes a captured issue resolves it in the same change**, and
   says so with a `Resolves: iss-N` trailer. `lint-issues` (RS001) refuses a
   trailer whose record does not enter `.abcd/work/issues/resolved/` or

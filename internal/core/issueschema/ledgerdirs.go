@@ -21,12 +21,12 @@ import "sort"
 //
 // It is DERIVED from the constants above it rather than restated, so a family
 // this package gains is in the list from the day its constant is declared.
-// spc-2609020626048705's reframes directory joins it when that spec lands, by
-// declaring its constant and adding it here in the same change.
+// The reframes directory (spc-2609020626048705) joined by declaring its
+// constant and adding it here in the same change.
 func LedgerDirs() []string {
-	out := make([]string, 0, len(StatusDirs)+4)
+	out := make([]string, 0, len(StatusDirs)+5)
 	out = append(out, StatusDirs...)
-	return append(out, ReadingsDir, DispositionsDir, AdmissionsDir, SurprisesDir)
+	return append(out, ReadingsDir, DispositionsDir, AdmissionsDir, SurprisesDir, ReframesDir)
 }
 
 // ReadingsRecordDir is the DURABLE home of a run's own artefacts — the promoted

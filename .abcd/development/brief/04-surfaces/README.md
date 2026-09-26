@@ -44,6 +44,9 @@ are wiring rather than user-facing surface are listed separately under
 | 29 | `/abcd:report` | shipped | Tell abcd about a defect or propose an enhancement from a repository it manages, into an inbox in your own account | [`29-report.md`](29-report.md) |
 | 30 | `/abcd:inbox` | shipped | Read the reports managed repositories filed, and promote one to a capture that names the sender only by its root-commit key | [`30-inbox.md`](30-inbox.md) |
 | 31 | `/abcd:lab` | shipped | Run a lab against a pinned snapshot of the repository and harvest what it found, with the evidence kept out of the repository | [`31-lab.md`](31-lab.md) |
+| 32 | `/abcd:scribe` | shipped | Build the ledger scribe's context from the ledger alone, and ingest what it transcribed without letting it author anything | [`32-scribe.md`](32-scribe.md) |
+| 33 | `/abcd:source` | shipped | Keep the documents you consult in a local corpus, record what each one changed, and ban the confidential ones' names at commit time | [`33-source.md`](33-source.md) |
+| 34 | `/abcd:build` | shipped | Start the loop that takes one READY intent to delivered, refusing while a question is open or a peer holds it | [`34-build.md`](34-build.md) |
 
 ## How much of this table a machine keeps honest
 
@@ -133,7 +136,7 @@ the command's sentence (the section below).
 | people | checks | `lint` |
 | people | portability | `disembark`, `embark` |
 | people | release | `launch` |
-| agents and hosts | — | `banlist`, `changelog`, `docs`, `guard`, `guard hook`, `history`, `ideate`, `ideate record`, `identity`, `implement`, `inbox`, `intent audit ingest`, `mode`, `peers`, `reading`, `report`, `site`, `statusline` |
+| agents and hosts | — | `banlist`, `changelog`, `docs`, `guard`, `guard hook`, `history`, `ideate`, `ideate record`, `identity`, `implement`, `inbox`, `intent audit ingest`, `mode`, `peers`, `reading`, `report`, `scribe`, `site`, `statusline` |
 
 The placement is presentation. No verb is hidden, renamed, moved or nested by
 it, every verb runs the same whichever block lists it, and the group titles
@@ -186,16 +189,28 @@ read-only render of their own state, and close on the next move where there is
 one to name.
 
 It is a convention rather than a universal, and the exceptions are where the
-tree does not yet meet its own discipline. Six parents print usage with no state
-at all: `disembark`, `docs`, `embark`, `guard`, `history`, and `ideate`. Bare
+tree does not yet meet its own discipline. Seven parents print usage with no state
+at all: `disembark`, `docs`, `embark`, `guard`, `history`, `ideate`, and `scribe`. Bare
 `abcd launch` refuses with a hint to pass `--dry-run`. Bare `abcd decide` refuses
-because its one operand is the quoted title it mints a record from. Bare `abcd
-identity` and bare `abcd ahoy remote` answer with the invocation their report
-moved to (`abcd lint identity`, `abcd ahoy --remote`) and exit non-zero for one
-release, because their sub-verbs stay. And `abcd
+because its one operand is the quoted title it mints a record from, and bare
+`abcd build` refuses as a usage error because its one operand is the intent it
+starts a run for; the run's state renders through `abcd implement status`. Bare
+`abcd source` renders the corpus under the user-level home rather than anything
+in the repository, so where there is no corpus it refuses naming `abcd source
+init`. Bare `abcd identity` and bare `abcd ahoy remote` answer with the
+invocation their report moved to (`abcd lint identity`, `abcd ahoy --remote`) and exit non-zero for one
+release, because their sub-verbs stay. Bare `abcd report` opens the editor on a
+terminal and refuses anywhere else, because it files a report rather than
+rendering one, and bare `abcd statusline` renders abcd's row only in a managed
+repository, where it needs none of the payload the harness hands it on stdin,
+and prints nothing of its own anywhere else. And `abcd
 update` is a mutating fetch-verify-swap rather than a render at all. This
 paragraph is the one enumeration of the exceptions; the chapters point here
-rather than restating it.
+rather than restating it. Each exception is also recorded with its reason in
+the front door's exception table, and a test runs every other top-level verb
+bare and fails when one renders no state, so a verb added later is either a
+render or a recorded exception, and this paragraph must name every exception
+the table holds.
 
 ## Operator-internal verbs
 
@@ -237,10 +252,11 @@ documents is then an unknown command (iss-161). One file per verb, directly unde
 `commands/`:
 
 <!-- index: commands -->
-`abcd`, `ahoy`, `banlist`, `capture`, `consult`, `decide`, `disembark`, `docs`,
+`abcd`, `ahoy`, `banlist`, `build`, `capture`, `consult`, `decide`, `disembark`, `docs`,
 `embark`, `guard`, `history`, `ideate`, `identity`, `implement`, `inbox`,
 `ingest`, `intent`, `lab`, `launch`, `lint`, `memory`, `mode`, `peers`,
-`prepare-this-repo`, `reading`, `report`, `site`, `update`, `version`.
+`prepare-this-repo`, `reading`, `report`, `scribe`, `site`, `source`, `update`,
+`version`.
 <!-- /index -->
 
 `abcd.md` is the bare `/abcd` status board; every other file is `/abcd:<verb>`.

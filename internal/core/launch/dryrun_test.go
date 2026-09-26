@@ -17,6 +17,7 @@ const fakeSecret = "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ab"
 // (exit-0 semantics — a preview never blocks).
 func TestDryRunSecretRefusesButExitsZero(t *testing.T) {
 	root := t.TempDir()
+	writeFile(t, root, ArtefactRelPath, `{"kind": "plugin"}`)
 	writeFile(t, root, ".abcd/config/launch-payload.json", `{"includes": ["commands"]}`)
 	writeFile(t, root, "commands/x.md", "# doc\ntoken = "+fakeSecret+"\n")
 
@@ -51,6 +52,7 @@ func TestDryRunSecretRefusesButExitsZero(t *testing.T) {
 // TestShipBlocksOnSecret is the ship-side of brief AC 1: the same tree blocks.
 func TestShipBlocksOnSecret(t *testing.T) {
 	root := t.TempDir()
+	writeFile(t, root, ArtefactRelPath, `{"kind": "plugin"}`)
 	writeFile(t, root, ".abcd/config/launch-payload.json", `{"includes": ["commands"]}`)
 	writeFile(t, root, "commands/x.md", "token = "+fakeSecret+"\n")
 
@@ -82,6 +84,7 @@ func TestShipCleanWouldPublish(t *testing.T) {
 	root := repo.Root()
 	// The payload must carry .claude-plugin: a bundle without the manifests is
 	// not an installable plugin, which the installability gate now says out loud.
+	writeFile(t, root, ArtefactRelPath, `{"kind": "plugin"}`)
 	writeFile(t, root, ".abcd/config/launch-payload.json", `{"includes": [".claude-plugin", "commands", "README.md"]}`)
 	writeFile(t, root, "commands/a.md", "clean content\n")
 	writeFile(t, root, "README.md", "clean readme\n")
@@ -108,6 +111,7 @@ func TestShipCleanWouldPublish(t *testing.T) {
 // WouldRefuseOn, and blocks Ship instead of letting it would-publish.
 func TestZeroCoverageRefuses(t *testing.T) {
 	root := t.TempDir()
+	writeFile(t, root, ArtefactRelPath, `{"kind": "plugin"}`)
 	writeFile(t, root, ".abcd/config/launch-payload.json", `{"includes": ["commands"]}`)
 	writeFile(t, root, "commands/a.md", "clean content\n")
 	writeFile(t, root, ".abcd/config/pii.json", `{"skip_extensions": [".md"]}`)

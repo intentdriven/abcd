@@ -39,6 +39,7 @@ func TestDryRunAssertsTheDevPolarity(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			root := t.TempDir()
+			writeFile(t, root, ArtefactRelPath, `{"kind": "plugin"}`)
 			writeFile(t, root, ".abcd/config/launch-payload.json",
 				`{"includes": [".claude-plugin", "README.md"]}`)
 			writeFile(t, root, "README.md", "clean readme\n")
@@ -81,6 +82,7 @@ func TestDryRunAssertsTheDevPolarity(t *testing.T) {
 // on every correct repository and then refuse retention for it.
 func TestDryRunVersionComesFromTheCaller(t *testing.T) {
 	root := t.TempDir()
+	writeFile(t, root, ArtefactRelPath, `{"kind": "plugin"}`)
 	writeFile(t, root, ".abcd/config/launch-payload.json", `{"includes": [".claude-plugin", "README.md"]}`)
 	writeFile(t, root, "README.md", "clean readme\n")
 	writeLockstepTree(t, root, "", "", "")

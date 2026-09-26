@@ -25,15 +25,16 @@ repo whose stamp says it is current.
 
 | Verb | Bucket | Status |
 |---|---|---|
+| `connect` | — | shipped |
 | `doctor` | — | shipped |
 | `install` | — | shipped |
 | `remote apply` | gate | shipped |
 | `uninstall` | — | shipped |
 
 
-Bare `/abcd:ahoy` shows read-only status and mutates nothing. Three read-only
-modes of the same act — the dry run, the identity check and the remote report —
-are flags on the bare verb rather than sub-verbs, one at a time, and the
+Bare `/abcd:ahoy` shows read-only status and mutates nothing. Four read-only
+modes of the same act — the dry run, the identity check, the remote report and
+the provider board — are flags on the bare verb rather than sub-verbs, one at a time, and the
 appendix lists them. A sub-verb is a distinct action, a flag a mode of the same
 one (itd-2609212130136102). For one release each
 mode's retired sub-verb spelling answers with its flag and exits non-zero, and
@@ -76,6 +77,17 @@ the table above is the sub-verb set, and the modes are the bare verb's flags.
   machine.** See below.
 - **The identity check** exits non-zero when the git commit identity does not
   match the repo's identity pin. Read-only, CLI-only, for an operator or CI.
+- **The provider board** explains the optional OpenAI-compatible
+  provider adapter (itd-2609081951381895): what an aggregator is, that abcd
+  would use one for decision models and cheap judgements pointed at it by name,
+  and that everything works without one, because with no provider configured
+  every delegated step runs on the host. It lists the providers configured on
+  this machine, whether each one's key resolves (never the key), the vendor
+  denylist in force, the roles and judgement types pointed at a provider, and
+  where a key can live, the keychain recommended in the prose and never as a
+  marked option. The bare board carries the same explanation as an optional,
+  advisory gap while no provider is configured.
+- **The provider setup** sets one provider up, and writes. See below.
 
 **Not built yet:** `destroy`, a nuclear uninstall that would remove the `.abcd/`
 namespace too (itd-10), as distinct from the uninstall's reversible behaviour.
@@ -104,6 +116,35 @@ the API host explicitly, so an ambient host variable cannot send the write to an
 endpoint the origin never named, and the call goes through the caller's own
 authenticated identity: abcd never holds a token.
 
+### The provider setup
+
+The setup takes the provider's name, its base URL, its first allowlist (every
+model it may serve) and where its key lives. It verifies the provider with one
+call to the first model listed and, only when that call succeeds, writes the key
+and then the provider block, both under `~/.abcd/`: the key into the owner-only
+`credentials.json`, the block (base URL, the key's name, the models) into
+`config.json`. A failed verification writes nothing. Nothing reaches the
+repository or the harness's settings. Every fault the configuration read would
+refuse (a denylisted or malformed model, a base URL that is plain HTTP to
+another machine, a provider already configured, a key name already holding a
+different value) is refused before the call, so a setup that cannot finish is
+never billed.
+
+The key arrives on stdin and nowhere else. A flag would leave it in the process
+listing and the shell history, the install prompter echoes every answer into its
+transcript, a host's question tool would put it in an agent's context, and a
+terminal would echo it as it is typed, so stdin from a terminal is refused. For
+the same reason the walkthrough is this sub-verb, which the person runs with the
+key piped in, rather than a question the install pass asks: declining is not
+running it, and changes nothing.
+
+Of the three homes a key may live in, the setup builds the abcd-only one. The
+environment-variable-or-external-tool home and the platform keychain arrive with
+the credential store (itd-2609221017023290); asked for either, the setup refuses
+naming it. A fourth answer, no key, sets up a local server that takes none.
+No delegating verb sends a step to a configured provider until provider dispatch
+lands (spc-2609251028149555), and both the board and the setup say so.
+
 ## What abcd manages — repos and `~/.abcd/`
 
 abcd manages exactly one kind of folder, a **repository**, and keeps one
@@ -129,19 +170,27 @@ user-scope directory for machine-local state.
   inbox/                         reports managed repositories filed back to abcd,
                                  <received-stamp>-<sender-key>.md; promoted/ keeps
                                  the ones filed as captures (itd-2609221656361680)
-  config.json                    machine config defaults (a later phase)
+  config.json                    the machine layer of the layered configuration,
+                                 read-only except for the provider blocks
+                                 (oracle.api.<provider>) the provider setup writes,
+                                 and the only file a provider block may sit in;
+                                 that write holds .config.json.lock beside it
   memory/                        user-scope memory (personal, cross-project — a later
                                  phase; the shipped store is repo-scope .abcd/memory/)
-  sources/                       the local sources corpus /abcd:ingest and /abcd:consult
-                                 read. abcd NEVER creates it: absent means both verbs
-                                 say so and stop
+  sources/                       the local sources corpus the source verb maintains and
+                                 /abcd:ingest and /abcd:consult read. Created only by
+                                 its explicit init: absent means every other verb and
+                                 both commands say so and stop
   load-limits                    the load check's per-machine limits (stray-minutes,
                                  extreme-load), read-only; abcd never creates it
                                  (itd-2609231434459890)
   credentials.json               external credentials by name (a hosting token for
-                                 setting up a site), mode 0600, read-only; abcd never
-                                 creates it. The interim source the credential store
-                                 replaces (itd-2609221017023290)
+                                 setting up a site, a provider's key), mode 0600;
+                                 only the provider setup writes it, one new name at
+                                 a time, never replacing a stored value, holding
+                                 .credentials.json.lock beside it across the read
+                                 and the write. The interim source the credential
+                                 store replaces (itd-2609221017023290)
   rules.json                     the machine's rule conventions, the user layer
                                  between the bundled domains and each repo's
                                  .abcd/rules.json, read-only; abcd never creates it
@@ -331,12 +380,30 @@ about, one question per category present, never one per item.
 | `category` | Examples | Apply behaviour |
 |---|---|---|
 | `safe-autocreate` | the repo skeleton, history-store directories, the name-guard artefacts | applied once the category is approved, no per-item prompt; create-if-absent, never overwriting |
-| `config-change` | visibility, oracle adapter, the `PATH` entry, the git-identity pin | transparent confirm; skip-if-set with a "current value" notice |
+| `config-change` | visibility, oracle adapter, the `PATH` entry, the git-identity pin, the artefact kind | transparent confirm; skip-if-set with a "current value" notice |
 | `plugin-owned` | the marker block (itd-3); hook-manifest verification | silent overwrite on marker drift; a non-resolvable diagnostic for a malformed or missing manifest, and for a conventions file whose block would land inside a fence or HTML comment nothing closes (`marker.unplaceable`) |
 | `dependency` | the opt-in scanners | one category-level approval covering them; abcd never auto-executes a package manager, and the user runs the commands |
 | `status-line` | the offer of abcd's status line in the host harness | an advisory offer asked after its own question, written only on an answered consent; never under the approve-everything flag, and reported as optional work it skipped |
 | `oracle-routing` | the offer of abcd's proposed model-tier routing table (itd-2609170822093401): the machine's `~/.abcd/oracle-routing.json`, then, as a separate question, the repository's `.abcd/config/oracle-routing.json` | the proposal rendered as a table (agent, tier, fan-out) and each file written only on its own answered consent, the machine one owner-only; never under the approve-everything flag, and reported as optional work it skipped; a decline records nothing, so the next install offers again; uninstall leaves both files |
 | `user-state` | the registry entry, re-founding, stale or duplicate entries | guided; never auto-edit user-scope state, report extras read-only |
+
+**The artefact kind is a gap until it is declared** (itd-2609150819432059). A
+managed repository with no `.abcd/config/artefact.json` raises a required,
+resolvable `artefact.missing` gap, because the launch verbs choose what to
+preview, check and scaffold by the kind declared there and refuse to guess it.
+The apply pass writes the file once config changes are approved: a repository
+carrying `.claude-plugin/plugin.json` takes `kind: plugin` without a question,
+so the shipped shape adopts silently; any other is asked its kind, last of all
+the install's questions. An unanswered prompt takes `application`, the kind that
+assumes least about the build. An unattended install is not asked, and an
+answer naming none of `plugin`, `binary` and `application` is not refused: both
+declare `application` with a note saying what was heard, as the house-style
+question does, because withholding the declaration would leave every launch verb
+refusing the repository. The file is validated by
+the one reader the launch verbs share, before it is written and whenever it is
+read, so a declaration that is present and refused raises a non-resolvable
+`artefact.invalid` diagnostic instead: it is the user's file, and the install
+never overwrites it.
 
 **The questions come in a fixed order**, and the order is a contract rather than
 a presentation choice: answers are positional, so without it the Nth piped
@@ -351,6 +418,28 @@ terminal a human types them; off one, a caller pipes them, which is how a host
 agent drives the git-identity pin, the one approval no flag covers. Off a
 terminal each answer is echoed to the diagnostic stream, so a piped run leaves a
 transcript rather than a column of questions with no visible reply.
+
+**Every value question carries its own explanation** (iss-163). A question that
+picks one of several values (the repo visibility, the docs target, the oracle
+backend, the deep-scan toggle, the house-style question and each status-line
+element) is rendered with core's canonical help above it: what is being
+decided, then what each answer means, including what it asks of the person in
+keys, tools or cost. The oracle question defines an oracle before asking for
+one, and says plainly that every answer but host-delegated is recorded without
+changing how reviews run, because no other adapter ships. The words live in core, so every
+front door shows the same explanation and none invents its own; the question
+line itself is unchanged, so a piped answer stream lines up with it.
+
+**The result explains itself to the person who ran it** (iss-164). Beside the
+exact record (every write, change, note, declined category, outstanding step and
+optional step left undone), the install returns a one-sentence headline for its
+status and a plain-language summary: one item per kind of write, per declined
+category, for the required work still outstanding, and per optional step left
+undone, each saying what it is, why it matters and what, if anything, to do, and
+naming the paths or identifiers it explains. The words are core's, written for
+the product thinker and the technical facilitator rather than abcd's
+implementers, with no raw environment names; the text render leads with them and
+prints the exact record after as detail.
 
 Answers that run out read as end-of-file, and end-of-file declines every confirm
 and takes the default for every prompt, so an unattended run adopts nothing it
@@ -405,9 +494,11 @@ hook as a running one.
 
 Two writes deserve their own note. The visibility step rewrites the ignore block
 under the config-change approval already given, with no confirmation of its own;
-its one extra line is a post-hoc note when a public fence had to be narrowed,
+its receipt adds a post-hoc note when a public fence had to be narrowed,
 because an ignore rule cannot untrack committed records, so the reader learns
-from the receipt that the committed record tiers stay published (iss-255). And a
+from the receipt that the committed record tiers stay published (iss-255). Like
+every install write, a block it could not write (a symlinked `.gitignore`, say)
+is a note naming the file and the reason, never a silent omission. And a
 remote URL recorded in the registry carries no credential: it is scrubbed where
 the identity is derived, scrubbed again as the index is *loaded* so every
 rewrite drops a credential from every entry rather than only the one being
@@ -536,13 +627,25 @@ _Generated from the command tree; a drift test fails `go test` when this appendi
 
 ### `abcd ahoy`
 
-Sub-verbs: `abcd ahoy doctor`, `abcd ahoy install`, `abcd ahoy remote`, `abcd ahoy uninstall`.
+Sub-verbs: `abcd ahoy connect`, `abcd ahoy doctor`, `abcd ahoy install`, `abcd ahoy remote`, `abcd ahoy uninstall`.
 
 | Flag | Type |
 |---|---|
 | `--dry-run` | bool |
 | `--identity` | bool |
+| `--providers` | bool |
 | `--remote` | bool |
+
+### `abcd ahoy connect`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--base-url` | string |
+| `--home` | string |
+| `--key` | string |
+| `--model` | stringArray |
 
 ### `abcd ahoy doctor`
 

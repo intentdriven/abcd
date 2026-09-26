@@ -80,6 +80,14 @@ is written to --out.`,
 			if err != nil {
 				return err
 			}
+			art, err := launchArtefact("abcd launch archive", cwd)
+			if err != nil {
+				return err
+			}
+			if !art.IsPlugin() {
+				return &exitError{Code: 2, Msg: "abcd launch archive: the declared artefact kind is " + string(art.Kind) +
+					" (" + launch.ArtefactRelPath + "), which ships no plugin archive (nothing was written)"}
+			}
 			if outDir == "" {
 				return &exitError{Code: 2, Msg: "abcd launch archive: --out names no directory"}
 			}

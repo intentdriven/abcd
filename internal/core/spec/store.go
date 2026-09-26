@@ -106,6 +106,10 @@ func parseSpec(relPath, content, bucket string) (Spec, error) {
 		Intent: nullToUnset(fields["intent"].Value),
 		Status: bucket,
 		Path:   relPath,
+		Bundle: nullToUnset(fields["bundle"].Value),
+	}
+	if f, ok := fields["intents"]; ok && !frontmatter.IsNull(f.Value) {
+		sp.Intents = frontmatter.StringList(f.Value)
 	}
 	if err := Validate(sp); err != nil {
 		return Spec{}, fmt.Errorf("spec: malformed %s: %w", relPath, err)
@@ -144,6 +148,35 @@ func CreateWithSteps(repoRoot, intentID, slug, productionMode string, steps []St
 	if !recordid.ValidIntentID(intentID) {
 		return Spec{}, fmt.Errorf("spec: intent id %q must match ^itd-[0-9]+$", intentID)
 	}
+	return create(repoRoot, intentID, nil, "", slug, productionMode, steps)
+}
+
+// CreateBundle mints ONE spec realising every member of a bundle (itd-34): its
+// `intent:` names the first member, its `intents:` list names all of them in
+// order, and its `bundle:` carries the name the members' own `bundle:` fields
+// hold, so the close can ship them together. The bundle name is the spec's slug
+// too. A bundle has at least two members, each named once (canonically), and
+// every id and the name are validated before the mint.
+func CreateBundle(repoRoot string, members []string, bundle, productionMode string) (Spec, error) {
+	if len(members) < 2 {
+		return Spec{}, fmt.Errorf("spec: a bundle has at least two members (got %d)", len(members))
+	}
+	for i, m := range members {
+		if !recordid.ValidIntentID(m) {
+			return Spec{}, fmt.Errorf("spec: intent id %q must match ^itd-[0-9]+$", m)
+		}
+		for _, prev := range members[:i] {
+			if recordid.SameID(prev, m) {
+				return Spec{}, fmt.Errorf("spec: %s is named twice in one bundle", m)
+			}
+		}
+	}
+	return create(repoRoot, members[0], append([]string(nil), members...), bundle, bundle, productionMode, nil)
+}
+
+// create is the one mint-and-write both constructors share: intents and bundle
+// are empty for an ordinary spec.
+func create(repoRoot, intentID string, intents []string, bundle, slug, productionMode string, steps []Step) (Spec, error) {
 	if !slugRe.MatchString(slug) {
 		return Spec{}, fmt.Errorf("spec: slug %q must be kebab-case", slug)
 	}
@@ -173,15 +206,17 @@ func CreateWithSteps(repoRoot, intentID, slug, productionMode string, steps []St
 		}
 		name := fmt.Sprintf("%s-%s.md", id, slug)
 		// 0o644 matches the intent-side markdown writer — both write committed design-record files.
-		if err := fsutil.WriteFileAtomic(filepath.Join(openDir, name), []byte(renderSpecWithSteps(id, slug, intentID, stamp, steps)), 0o644); err != nil {
+		if err := fsutil.WriteFileAtomic(filepath.Join(openDir, name), []byte(renderSpecRecord(id, slug, intentID, intents, bundle, stamp, steps)), 0o644); err != nil {
 			return fmt.Errorf("spec: writing %s: %w", filepath.Join(SpecsRelDir, StatusOpen, name), err)
 		}
 		sp = Spec{
-			ID:     id,
-			Slug:   slug,
-			Intent: intentID,
-			Status: StatusOpen,
-			Path:   filepath.Join(SpecsRelDir, StatusOpen, name),
+			ID:      id,
+			Slug:    slug,
+			Intent:  intentID,
+			Status:  StatusOpen,
+			Path:    filepath.Join(SpecsRelDir, StatusOpen, name),
+			Intents: intents,
+			Bundle:  bundle,
 		}
 		return nil
 	})

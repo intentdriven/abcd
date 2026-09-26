@@ -158,6 +158,7 @@ func readWorktree(root, common string, wt worktree, merged map[string]bool, defa
 			return p, &Skipped{Source: SourceWorktree, Branch: wt.branch, Path: wt.path, Reason: SkipGone}, true
 		}
 		p.NotRead = "its directory cannot be read: " + err.Error()
+		p.unjudged = true
 		return p, nil, true
 	}
 	// The candidate's OWN answer, not this checkout's: a directory git lists can
@@ -166,6 +167,7 @@ func readWorktree(root, common string, wt worktree, merged map[string]bool, defa
 	theirs, err := commonDir(wt.path)
 	if err != nil {
 		p.NotRead = "git refused to answer for it: " + firstLine(err.Error())
+		p.unjudged = true
 		return p, nil, true
 	}
 	if realPath(theirs) != realPath(common) {
@@ -188,9 +190,11 @@ func readWorktree(root, common string, wt worktree, merged map[string]bool, defa
 	h, present, err := scanDisk(wt.path)
 	if err != nil {
 		p.NotRead = "its record folders cannot be read: " + err.Error()
+		p.unjudged = true
 		return p, nil, false
 	}
 	p.NotRead = judgeHoldings(h, present)
+	p.unjudged = p.NotRead != "" && present
 	if p.NotRead == "" {
 		p.holdings = h
 	}
@@ -203,9 +207,11 @@ func readBranch(root, branch string) Peer {
 	h, present, err := scanTree(root, "refs/heads/"+branch)
 	if err != nil {
 		p.NotRead = "git could not list its records: " + firstLine(err.Error())
+		p.unjudged = true
 		return p
 	}
 	p.NotRead = judgeHoldings(h, present)
+	p.unjudged = p.NotRead != "" && present
 	if p.NotRead == "" {
 		p.holdings = h
 	}
@@ -293,6 +299,22 @@ func (r Report) Locate(id string) []Location {
 		}
 		for _, h := range p.holdings[id] {
 			out = append(out, Location{Source: p.Source, Branch: p.Branch, Path: p.Path, Folder: h.folder})
+		}
+	}
+	return out
+}
+
+// Unjudged returns the live peers that were named and not read for a reason
+// that leaves what they hold unknown: git or the filesystem would not answer
+// for them, or their ledger holds one id in two folders. Locate cannot see
+// into these, so a caller that must not start past a peer's holding treats
+// each as one. A peer of another repository, and one holding no records at
+// the committed layout, hold nothing of this checkout's and are not returned.
+func (r Report) Unjudged() []Peer {
+	var out []Peer
+	for _, p := range r.Peers {
+		if p.unjudged {
+			out = append(out, p)
 		}
 	}
 	return out

@@ -8,14 +8,23 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/lint"
+	"github.com/intentdriven/abcd/internal/core/site"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
+
+// init registers the issue ledger's reader and the site renderer's body check
+// with the lint, so record_schema refuses exactly the issue records capture
+// refuses and skips, and the bodies the site render refuses.
+func init() {
+	lint.SetIssueReader(capture.ReadRefusal)
+	lint.SetRecordBodyCheck(site.CheckRecordBody)
+}
 
 func main() {
 	// The decisions-append mode is a range check, not a tree lint: its own
@@ -114,6 +123,14 @@ func main() {
 		os.Exit(2)
 	}
 
+	// A gitignored path under a root is not the record; the lint pruned it, and
+	// says so (iss-2609151952353626).
+	if pruned, err := lint.PrunedInRoots(cfg, root); err == nil {
+		if note := prunedNote(pruned); note != "" {
+			fmt.Fprintln(os.Stderr, termsafe.Sanitize(note))
+		}
+	}
+
 	blockers := 0
 	for _, f := range findings {
 		fmt.Println(renderFinding(f, root))
@@ -182,16 +199,21 @@ func (m *multiFlag) Set(v string) error {
 // lint the wrong repository. The os.Getwd fallback is the correct root under the
 // Makefile/CI contract, so scrubbing global config introduces no regression.
 func resolveRoot() string {
-	cmd := exec.Command("git", "rev-parse", "--show-toplevel")
-	cmd.Env = gitutil.IsolatedEnv()
-	out, err := cmd.Output()
-	if err == nil {
-		if top := strings.TrimSpace(string(out)); top != "" {
+	if wd, err := os.Getwd(); err == nil {
+		if top, err := gitutil.Toplevel(wd); err == nil {
 			return top
 		}
-	}
-	if wd, err := os.Getwd(); err == nil {
 		return wd
 	}
 	return "."
+}
+
+// prunedNote names the gitignored paths the lint pruned under its roots, or ""
+// when it pruned none. It goes to stderr: stdout is one finding per line.
+func prunedNote(pruned []string) string {
+	if len(pruned) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("record-lint: skipped %d gitignored path(s) under the roots: %s",
+		len(pruned), strings.Join(pruned, ", "))
 }

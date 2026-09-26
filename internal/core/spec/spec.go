@@ -21,6 +21,7 @@ package spec
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -68,6 +69,42 @@ type Spec struct {
 	Intent string `json:"intent"` // itd-N, the load-bearing link
 	Status string `json:"status"` // open | closed (directory-as-truth)
 	Path   string `json:"path"`   // repo-relative markdown path
+	// Intents is every intent a bundle's shared spec realises, in the order they
+	// were planned, the first being the one `intent:` names; Bundle is the name
+	// the members carry in their own `bundle:` field, which the close ships
+	// together (itd-34). Both are empty on an ordinary spec, which realises the
+	// one intent its `intent:` names.
+	Intents []string `json:"intents,omitempty"`
+	Bundle  string   `json:"bundle,omitempty"`
+}
+
+// Names reports whether the spec realises intentID: its `intent:` back-link, or
+// any member its `intents:` list carries. The match is canonical
+// (recordid.SameID), for the reason SpecsForIntent states.
+func (s Spec) Names(intentID string) bool {
+	if recordid.SameID(s.Intent, intentID) {
+		return true
+	}
+	for _, m := range s.Intents {
+		if recordid.SameID(m, intentID) {
+			return true
+		}
+	}
+	return false
+}
+
+// Members is every intent the spec realises, in order: its `intent:` back-link
+// first, then each `intents:` entry not already listed. A hand-written list
+// that omits `intent:` still has it counted, and a repeat (canonically, as
+// Names compares) counts once. An ordinary spec has the one member.
+func (s Spec) Members() []string {
+	out := []string{s.Intent}
+	for _, m := range s.Intents {
+		if !slices.ContainsFunc(out, func(have string) bool { return recordid.SameID(have, m) }) {
+			out = append(out, m)
+		}
+	}
+	return out
 }
 
 // Store is the in-memory set of spec records discovered under both buckets.
@@ -110,7 +147,7 @@ func (s Store) Lookup(specID string) (Spec, bool) {
 // The match is canonical (recordid.SameID) for the reason SpecsForIntent states.
 func (s Store) ByIntent(intentID string) (Spec, bool) {
 	for _, sp := range s.Specs {
-		if recordid.SameID(sp.Intent, intentID) {
+		if sp.Names(intentID) {
 			return sp, true
 		}
 	}
@@ -136,10 +173,13 @@ func (s Store) ByIntent(intentID string) (Spec, bool) {
 // while the store saw one, so the intent shipped with the second spec still
 // open, and that spec could then never be closed, because the verb resolving its
 // back-link found no intent of that spelling. One primitive, one answer.
+//
+// A bundle's shared spec realises every member it lists, so a member other than
+// the first is found through the spec's `intents:` list (Spec.Names).
 func (s Store) SpecsForIntent(intentID string) []Spec {
 	var out []Spec
 	for _, sp := range s.Specs {
-		if recordid.SameID(sp.Intent, intentID) {
+		if sp.Names(intentID) {
 			out = append(out, sp)
 		}
 	}
@@ -279,11 +319,22 @@ func renderSpec(id, slug, intentID string, stamp provenance.Stamp) string {
 
 // renderSpecWithSteps is renderSpec with the Steps section seeded from steps.
 func renderSpecWithSteps(id, slug, intentID string, stamp provenance.Stamp, steps []Step) string {
+	return renderSpecRecord(id, slug, intentID, nil, "", stamp, steps)
+}
+
+// renderSpecRecord is the one spec renderer: a bundle's shared spec adds the
+// `intents:` list and the `bundle:` name beside the `intent:` link, and an
+// ordinary spec carries neither key.
+func renderSpecRecord(id, slug, intentID string, intents []string, bundle string, stamp provenance.Stamp, steps []Step) string {
 	var b strings.Builder
 	b.WriteString("---\n")
 	fmt.Fprintf(&b, "id: %s\n", id)
 	fmt.Fprintf(&b, "slug: %s\n", slug)
 	fmt.Fprintf(&b, "intent: %s\n", intentID)
+	if len(intents) > 0 {
+		fmt.Fprintf(&b, "intents: [%s]\n", strings.Join(intents, ", "))
+		fmt.Fprintf(&b, "bundle: %s\n", bundle)
+	}
 	// The disclosure pair (itd-178), bare like every other scalar in this block
 	// and written together — a lone key is a state no write path produces.
 	fmt.Fprintf(&b, "%s: %s\n", provenance.KeyOrigin, stamp.OriginValue())

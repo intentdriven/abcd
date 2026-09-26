@@ -194,9 +194,9 @@ func (a *applyCtx) wireStatusLine(hs harnessSettings, entry string, switches map
 		return
 	}
 	if settingBytes != nil {
-		a.note(settingPath)
+		a.note(writeStatusLine, settingPath)
 	}
-	a.note(hs.path)
+	a.note(writeStatusLine, hs.path)
 }
 
 // repairStatusLine closes the dangling gap: the harness's command names an abcd
@@ -238,7 +238,7 @@ func (a *applyCtx) repairStatusLine() {
 		a.refuse("could not write " + displayPath(hs.path) + " (" + errText(err) + "); the dangling status line was left as it is.")
 		return
 	}
-	a.note(hs.path)
+	a.note(writeStatusLine, hs.path)
 }
 
 // uninstallStatusLine is the uninstall half: a status line that is abcd's is
@@ -427,18 +427,31 @@ func encodeJSONObject(doc map[string]any) ([]byte, error) {
 // level real rather than following a symlink (fsutil.EnsureRealDirAll). It
 // runs after stepVisibility for the reason stepBanlist does: the tier is only
 // worth having once the .gitignore fence that keeps it untracked is on disk.
+//
+// The proof starts at the checkout root resolved through its symlinks
+// (fsutil.RealExistingPath), not at a.cwd: a.cwd is the shell's logical working
+// directory, and a checkout entered through a symlinked path (`cd ~/proj` where
+// ~/proj -> ~/src/proj) is the user's own, so only a symlink at or below the
+// checkout's .abcd is refused (iss-2609261108448674). A refusal names the
+// refused level repository-relative.
 func (a *applyCtx) stepLocalTier() {
 	if !a.approved[SafeAutocreate] || !a.has(localTierGapID) {
 		return
 	}
-	if err := fsutil.EnsureRealDirAll(a.cwd, localTierRelPath, 0o755); err != nil {
+	root := fsutil.RealExistingPath(a.cwd)
+	if err := fsutil.EnsureRealDirAll(root, localTierRelPath, 0o755); err != nil {
 		reason := errText(err)
-		if errors.Is(err, fsutil.ErrNotRealDir) {
-			reason = "something that is not a real directory (a symlink, or a file) stands at that path"
+		var pe *os.PathError
+		if errors.Is(err, fsutil.ErrNotRealDir) && errors.As(err, &pe) {
+			level := "the checkout root"
+			if rel, relErr := filepath.Rel(root, pe.Path); relErr == nil && rel != "." && !strings.HasPrefix(rel, "..") {
+				level = filepath.ToSlash(rel)
+			}
+			reason = level + " is not a real directory (a symlink, or a file, stands there)"
 		}
 		a.refuse("refused to create " + localTierRelPath + "/: " + reason +
 			". abcd never reaches the local tier through a symlink; remove what is there and re-run `abcd ahoy install`.")
 		return
 	}
-	a.note(filepath.Join(a.cwd, filepath.FromSlash(localTierRelPath)))
+	a.note(writeLocalTier, filepath.Join(a.cwd, filepath.FromSlash(localTierRelPath)))
 }

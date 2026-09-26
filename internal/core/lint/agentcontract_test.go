@@ -439,3 +439,35 @@ func TestAgentContractUndeclaredPromptStillNeedsAVersion(t *testing.T) {
 		t.Errorf("expected the missing prompt_version to be named in the same run; got %+v", fs)
 	}
 }
+
+// A prompt filed below the flat agents/ layout is not a silent opt-out of the
+// trust contract: a markdown file one level down (agents/<name>/<name>.md), or
+// deeper, is a misfiled-prompt finding, while a fixture under a fixtures/
+// directory is left alone (iss-2608281948289198).
+func TestAgentContractRefusesANestedPrompt(t *testing.T) {
+	root := t.TempDir()
+	writeAgent(t, root, "ruthless-reviewer", conformingAgent)
+	writeCanary(t, root, "ruthless-reviewer")
+	writeFile(t, root, "agents/ruthless-reviewer/fixtures/case.md", "fixture input\n")
+	writeFile(t, root, "agents/sneaky/sneaky.md", "---\nname: sneaky\n---\n\n# sneaky\n")
+	writeFile(t, root, "agents/deep/er/hidden.md", "# hidden\n")
+
+	fs, err := Lint(agentCfg(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, rel := range []string{"agents/sneaky/sneaky.md", "agents/deep/er/hidden.md"} {
+		if !hasFinding(fs, filepath.FromSlash(rel), ruleAgentContract, 1) {
+			t.Errorf("a markdown file at %s must be refused as a misfiled prompt; got %+v", rel, fs)
+		}
+	}
+	n := 0
+	for _, f := range fs {
+		if strings.Contains(f.Message, "misfiled") {
+			n++
+		}
+	}
+	if n != 2 {
+		t.Errorf("want exactly the two misfiled-prompt findings (the fixture is not one), got %d: %+v", n, fs)
+	}
+}

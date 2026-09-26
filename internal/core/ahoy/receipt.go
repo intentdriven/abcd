@@ -15,8 +15,14 @@ import (
 // nothing itself: a step added later cannot put a home directory or a username
 // on a receipt a user pastes into an issue, because the scrub is not a thing a
 // step has to remember to do.
-func (a *applyCtx) note(path string) {
+//
+// The kind says what the write IS for the person who ran the install, so the
+// completion summary can explain it rather than list a path (iss-164). It is a
+// parameter, not a lookup on the path, so a write cannot reach the receipt
+// without one.
+func (a *applyCtx) note(kind writeKind, path string) {
 	a.writes = append(a.writes, receiptPath(a.cwd, path))
+	a.writeKinds = append(a.writeKinds, kind)
 }
 
 // receiptPath renders one receipt entry with the two roots that carry developer

@@ -194,14 +194,11 @@ func ReadDeclaration(path string, limit int64) ([]byte, DeclarationRefusal, erro
 	if !fi.Mode().IsRegular() {
 		return nil, DeclarationNotRegular, ErrNotRegular
 	}
-	if fi.Mode().Perm()&0o022 != 0 {
-		return nil, DeclarationWritableByOthers, ErrDeclarationWritable
-	}
-	// An unreadable owner is refused too: "I could not learn who owns this" and
-	// "I own this" are different answers, and a fail-closed gate must not spell
-	// them the same way.
-	if owner, err := ownerUID(path); err != nil || owner != uint32(os.Getuid()) {
-		return nil, DeclarationForeignOwner, ErrDeclarationForeignOwner
+	if err := CallersAlone(path, fi); err != nil {
+		if errors.Is(err, ErrDeclarationWritable) {
+			return nil, DeclarationWritableByOthers, err
+		}
+		return nil, DeclarationForeignOwner, err
 	}
 	declarationVetted(path)
 	raw, err := readGuarded(path, limit, fi)
@@ -209,6 +206,32 @@ func ReadDeclaration(path string, limit int64) ([]byte, DeclarationRefusal, erro
 		return nil, DeclarationUnreadable, err
 	}
 	return raw, DeclarationOK, nil
+}
+
+// CallersAlone is the half of ReadDeclaration's judgement that makes a path the
+// caller's word, for a path the caller has already stat'd (fi describes it): nil
+// when fi carries no group or other write bit AND path is owned by this
+// session's uid. Otherwise ErrDeclarationWritable (someone else could write it)
+// or ErrDeclarationForeignOwner (another uid owns it, or its owner could not be
+// read). It is exported so a check on something other than a declaration file —
+// a directory whose contents are trusted, such as the harness data directory
+// ahoy promotes a binary out of — applies this one test rather than a copy of
+// it (iss-2609260057111315).
+//
+// Ownership is looked up through path (OwnerUID follows symlinks), so a caller
+// that must judge a link as itself Lstat's and refuses it before calling, as
+// ReadDeclaration does.
+func CallersAlone(path string, fi os.FileInfo) error {
+	if fi.Mode().Perm()&0o022 != 0 {
+		return ErrDeclarationWritable
+	}
+	// An unreadable owner is refused too: "I could not learn who owns this" and
+	// "I own this" are different answers, and a fail-closed gate must not spell
+	// them the same way.
+	if owner, err := ownerUID(path); err != nil || owner != uint32(os.Getuid()) {
+		return ErrDeclarationForeignOwner
+	}
+	return nil
 }
 
 // ReadGuardedInRoot is ReadGuarded resolved inside an os.Root containment
@@ -541,6 +564,36 @@ func EnsureRealDirAll(base, rel string, perm os.FileMode) error {
 		}
 	}
 	return nil
+}
+
+// ProbeRealDirAll is EnsureRealDirAll's read-only counterpart: it walks rel
+// under base one level at a time, creating nothing, so a reader refuses exactly
+// the levels the creating walk refuses. ok is true when base and every level of
+// rel stand as real directories. A missing level ends the walk with ok false and
+// a nil error — there is nothing under it to read. A level a symlink or a
+// non-directory occupies, base included, is ErrNotRealDir inside an
+// *os.PathError naming that level, the error EnsureRealDirAll returns for it, so
+// a reading verb and a writing verb refuse the same path in the same terms. Any
+// other lstat failure is returned, so the probe fails closed.
+func ProbeRealDirAll(base, rel string) (ok bool, err error) {
+	if !ValidRelPath(rel) {
+		return false, &os.PathError{Op: "proberealdir", Path: rel, Err: os.ErrInvalid}
+	}
+	dir := base
+	for _, seg := range append([]string{""}, strings.Split(rel, "/")...) {
+		dir = filepath.Join(dir, seg)
+		fi, err := os.Lstat(dir)
+		if notPresent(err) {
+			return false, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		if !fi.IsDir() || fi.Mode()&os.ModeSymlink != 0 {
+			return false, &os.PathError{Op: "ensurerealdir", Path: dir, Err: ErrNotRealDir}
+		}
+	}
+	return true, nil
 }
 
 // CreateExclusiveIn writes data to rel INSIDE root, failing if rel already

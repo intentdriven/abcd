@@ -26,6 +26,7 @@ explicitly.
 |---|---|---|
 | `add` | — | shipped |
 | `list` | — | shipped |
+| `migrate` | — | shipped |
 | `remove` | — | shipped |
 
 An add or a remove each names its layer, private or public, and neither
@@ -66,6 +67,19 @@ already carries one: it renders as verb-managed, and a removal would take it.
 Read the prefix as the place the verb writes, not as proof of what wrote an
 entry.
 
+The prefix is also the gate's reach. The rest of the `banned_tokens` family is
+a writing rule for the documentation and reads the configuration's `roots`; a
+name ban is about the whole public surface, so the `names/` entries alone also
+read the configuration's `name_roots`, every text file there and not only
+markdown, with `exempt_paths` excusing a historical tree as it does under
+`roots`. Wherever it runs, a `names/` entry also reads inside fenced code
+blocks, which the rest of the family skips by default: a fenced example is not
+prose, but a fence is published as readily as prose, so an entry that means to
+skip fences declares `skip_code_fences: true`. This repository's `name_roots` are `.abcd`, `AGENTS.md`,
+`CONTRIBUTING.md` and `scripts`, and its `exempt_paths` excuse the
+configuration itself (whose entries spell every ban), the research data and the
+review archive.
+
 ## The private store's format is declared, not guessed
 
 The store's first line decides how the whole file is read. A store whose first
@@ -98,12 +112,22 @@ pattern to the remainder after its first field. An add and a remove refuse a
 non-empty legacy store for the same reason: writing a keyed line into it would
 change what every *other* line means.
 
+The migration is its own visible act, and every refusal names it. A migrate
+puts the declaration on line 1 and keys each whole-line pattern, byte for byte,
+under the synthetic key the guard already prints for it, `entry-<its line>`, so
+the store matches exactly what it matched and a refusal names the same key
+before and after. Comments and blank lines stay where they were; each composed
+line is proved to parse back to its key and pattern before anything is written;
+a keyed store is left alone, and no pattern is printed. It takes no layer, since
+only the private layer has a legacy form.
+
 The store has a second writer, and the format declaration is what lets the two
 share it. The sources corpus derives patterns from its confidential entries and
-maintains them inside a fenced generated block in the same file, refusing a target
-that does not carry the declaration and leaving every line outside its block
-untouched. So a hand-added private entry and the corpus sync write into one store
-without either clobbering the other. See [`13-consult.md`](13-consult.md) for the
+maintains them inside a fenced generated block in the same file, refusing a legacy
+store that carries entries and leaving every line outside its block untouched. So
+a hand-added private entry and the corpus sync write into one store without either
+clobbering the other, and a hand-written key that collides with one the sync owns
+is refused rather than overwritten. See [`33-source.md`](33-source.md) for the
 corpus side of that contract.
 
 Leading and trailing ASCII spaces and tabs are stripped, and so are a trailing
@@ -297,7 +321,7 @@ _Generated from the command tree; a drift test fails `go test` when this appendi
 
 ### `abcd banlist`
 
-Sub-verbs: `abcd banlist add`, `abcd banlist list`, `abcd banlist remove`.
+Sub-verbs: `abcd banlist add`, `abcd banlist list`, `abcd banlist migrate`, `abcd banlist remove`.
 
 Flags: none.
 
@@ -320,6 +344,12 @@ Sub-verbs: none.
 |---|---|
 | `--private` | bool |
 | `--public` | bool |
+
+### `abcd banlist migrate`
+
+Sub-verbs: none.
+
+Flags: none.
 
 ### `abcd banlist remove`
 

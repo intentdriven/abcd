@@ -99,6 +99,7 @@ func Detect(cwd string) (DetectionResult, error) {
 		gaps = append(gaps, detectPathSymlink(abs, pluginRoot, pluginOK)...)
 		gaps = append(gaps, detectStatusLine(harness)...)
 		gaps = append(gaps, detectOracleRouting(abs)...)
+		gaps = append(gaps, detectProviderAdapter(abs)...)
 		gaps = append(gaps, detectHookManifest(pluginRoot, pluginOK)...)
 		gaps = append(gaps, detectVersion(abs)...)
 		// Guard health is computed for every managed or adoptable repo, so a
@@ -116,6 +117,9 @@ func Detect(cwd string) (DetectionResult, error) {
 		// The attribution prompt is opt-in, so this reports nothing at all for a repo
 		// that never adopted it — and a hand-deleted hook for one that did.
 		gaps = append(gaps, detectAttributionHook(abs)...)
+		// What the repository ships, declared once for the launch verbs
+		// (itd-2609150819432059).
+		gaps = append(gaps, detectArtefact(abs)...)
 	}
 
 	sortGaps(gaps)
@@ -173,6 +177,12 @@ func gitPresent(cwd string) bool {
 	return err == nil
 }
 
+// pluginFilesMissing is the one sentence for the state in which abcd cannot find
+// the folder its plugin was installed into. The plugin.root_missing gap and the
+// guard-health reason both say it, because one render shows both, and a state
+// worded two ways reads as two problems (iss-2609260057111298).
+const pluginFilesMissing = "abcd looked for the folder its plugin was installed into and found none, so it cannot check the automatic hooks that run it"
+
 func detectPluginRoot(ok bool) []Gap {
 	if ok {
 		return nil
@@ -181,9 +191,11 @@ func detectPluginRoot(ok bool) []Gap {
 		ID:       "plugin.root_missing",
 		Category: PluginOwned,
 		Scope:    "machine",
-		Title:    "plugin root not resolvable",
-		Detail:   "ABCD_PLUGIN_ROOT and CLAUDE_PLUGIN_ROOT are unset and the fallback found no plugin layout.",
-		FixHint:  "Reinstall the abcd plugin, or set ABCD_PLUGIN_ROOT.",
+		// Plain words for the person, not the mechanism (iss-164): the two
+		// environment names are named only in the fix hint, with what they are.
+		Title:   "abcd's plugin files were not found on this machine",
+		Detail:  pluginFilesMissing + ".",
+		FixHint: "Reinstall the abcd plugin in your AI assistant; or, to point abcd at a plugin folder by hand, set the ABCD_PLUGIN_ROOT environment variable to that folder (the assistant normally supplies it as CLAUDE_PLUGIN_ROOT).",
 	}}
 }
 
@@ -777,7 +789,10 @@ func detectVersion(cwd string) []Gap {
 			FixHint: "ahoy install stamps the meta block.", Required: true, Resolvable: true,
 		}}
 	}
-	if current := pluginVersion(); current != "" && setupVersion != current {
+	// Neither side a dev build (iss-2608241115259170): the gap is required, and
+	// against a dev stamp or a dev binary it could never settle — every
+	// release install would re-stamp and every dev install undo it.
+	if current := pluginVersion(); !isDevOrUnknown(current) && !isDevOrUnknown(setupVersion) && setupVersion != current {
 		return []Gap{{
 			ID: "version.upgrade", Category: SafeAutocreate, Scope: "repo",
 			Title:   "plugin upgrade " + setupVersion + " -> " + current,

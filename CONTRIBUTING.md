@@ -22,7 +22,7 @@ inbound = outbound statement is the whole of it.
   builds, vets and tests (plain and race-enabled) on macOS + Linux, and on the
   Linux leg alone adds the `make fmt-check` format gate, the record-lint,
   issue-drift and docs-lint steps, and the site-render gate; separate jobs run the
-  reviews-charter and issue-resolution checks (RS001–RS005), `gitleaks`,
+  reviews-charter and issue-resolution checks (RS001–RS006), `gitleaks`,
   `zizmor`, dependency review, `govulncheck`, the smoke harness and the
   cold-reading evals (`make evals-cold-reading`, which runs on every event).
 - **Merge queue.** Merging goes through the queue ("Merge when ready"): the

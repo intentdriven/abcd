@@ -63,12 +63,6 @@ const SettingsDisplay = "~/" + SettingsRelPath
 // same cap the two sibling home-scoped declarations use.
 const maxSettingsBytes = 64 << 10
 
-// ownerUID is the package's view of fsutil.OwnerUID, held as a var for the
-// reason rules/root.go holds its own: the foreign-owner branch cannot be
-// provoked on a host where the test process can create only its own files, so
-// substituting the lookup is the only way a detector can prove the refusal.
-var ownerUID = fsutil.OwnerUID
-
 // Pair is a badge's foreground and background, as hex.
 type Pair struct {
 	Foreground string `json:"foreground"`
@@ -323,13 +317,15 @@ func ReadSettingsFile(path string) (raw []byte, why string, err error) {
 	if err != nil {
 		return nil, "", nil
 	}
-	switch {
-	case !fi.Mode().IsRegular():
+	if !fi.Mode().IsRegular() {
 		return nil, "it is not a regular file", nil
-	case fi.Mode().Perm()&0o022 != 0:
-		return nil, "it is writable by others, so its contents are not necessarily yours", nil
 	}
-	if owner, err := ownerUID(path); err != nil || owner != uint32(os.Getuid()) {
+	// The one caller-alone test every home-scoped declaration applies
+	// (fsutil.CallersAlone), so the guard cannot drift from its siblings'.
+	switch err := fsutil.CallersAlone(path, fi); {
+	case errors.Is(err, fsutil.ErrDeclarationWritable):
+		return nil, "it is writable by others, so its contents are not necessarily yours", nil
+	case err != nil:
 		return nil, "it is not owned by this session's uid", nil
 	}
 	raw, err = fsutil.ReadGuarded(path, maxSettingsBytes)

@@ -41,14 +41,32 @@ and which of the `.abcd/` work tiers exist. The plugin command invokes its JSON
 form.
 
 **`abcd <record-id>`** takes a single positional matching `iss-N`, `itd-N`,
-`spc-N` or `adr-N` and reports, read-only, what that record is, where it lives,
-and the concrete next move for its lifecycle state. Bare answers *what can I
+`spc-N`, `adr-N`, `adm-N`, `srp-N` or `rfm-N` and reports, read-only, what that
+record is, where it lives, and the concrete next move for its lifecycle state.
+An admission and a surprise are the issue ledger's two folderless families
+(spc-2609020626040342): their status reads `admitted` and `recorded`, their links
+are the records they join to, and neither has a next move. A reframe record
+(`rfm-N`, spc-2609020626048705) reads `open` until its after half is written and
+`complete` after; its links are its occasion, the before fingerprints and, once
+complete, the after fingerprints and the surfaces that changed, and an open one's
+next move is its completion. The reading families have no record dispatch. Bare answers *what can I
 do*; the id form answers *what is this, and what is my next move* (spc-26,
-itd-121). A positional on the namespace root is not a `show` sub-verb, so the
-form stays inside the naming discipline. For an issue id it also names the
-checkout and branch whose ledger it read, as every ledger verb does: a stderr
-line in the plain render and a `ledger` member in the machine-readable one
+itd-121). For a shipped intent the move is its fidelity-review state, read by
+the intent store's one reader of the review marker (itd-2609150819445595): an
+owed review names its receipt and the re-emit command; a shipped intent with no
+marker owes one too, and the re-emit mints its receipt; a dead-lettered review
+is reported unreviewed with its reason; an ingested one leaves nothing to do. A
+positional on the namespace root is not a `show` sub-verb, so the form stays
+inside the naming discipline. For an issue id it also names the checkout and
+branch whose ledger it read, as every ledger verb does: a stderr line in the
+plain render and a `ledger` member in the machine-readable one
 (iss-2609202053570475).
+
+A bundle's shared spec is read through every member it lists, as its close
+reads them (itd-34): its links carry `intents` beside `intent`, a superseded
+member is passed over and named, and the move reads each member still in force
+— the open specs a closed spec's members wait on, or the readiness of each
+member an open spec defers to.
 
 Any other positional is refused: the CLI exits **2** with `abcd: unknown command
 …` on stderr, which is the framework's usage-error convention. `abcd status` is
@@ -68,8 +86,9 @@ here too.
 Binary-backed `/abcd:` verbs route through the transport-agnostic core (the CLI
 is the front door today; an MCP server follows later, per
 [adr-23](../../decisions/adrs/0023-transport-agnostic-core.md)). Not every verb
-does: `consult` and `ingest` run entirely as host-side markdown over the
-sources corpus and never invoke the binary. `prepare-this-repo` is the mixed
+does: `consult` and `ingest` run as host-side markdown over the sources corpus,
+and reach the binary only through the `source` verb, which makes every write to
+the corpus. `prepare-this-repo` is the mixed
 case: its audit half runs `abcd lint`, and its adoption half is binary-backed
 too and writes — the identity verb's initialiser records the repo's identity
 block and registers the surfaces held to it, and the ahoy installer lays the hooks, the
@@ -134,7 +153,8 @@ when reports from managed repositories wait in the user account's inbox, the tex
 render carries an `inbox:` line — `3 report(s) from 2 managed repositories` — and
 the JSON an `inbox` object with `reports` and `senders`. It is the same count the
 session-start greeting says ([`29-report.md`](29-report.md)); it names no sender,
-and it is absent when nothing waits.
+and it is absent when nothing waits. An inbox that cannot be counted has no row:
+one line on stderr names the refusal instead.
 
 **The oracle lines** (itd-2609170822093401, spc-2609180535002478) show the
 model-tier routing once a table is accepted, at the repository

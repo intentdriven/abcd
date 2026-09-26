@@ -90,11 +90,13 @@ var helpPlacements = map[string]helpPlacement{
 	"ahoy":      {group: groupSetUp},
 	"rules":     {group: groupSetUp},
 	"update":    {group: groupSetUp},
+	"build":     {group: groupRecords},
 	"capture":   {group: groupRecords},
 	"decide":    {group: groupRecords},
 	"intent":    {group: groupRecords},
 	"memory":    {group: groupRecords},
 	"spec":      {group: groupRecords},
+	"source":    {group: groupRecords},
 	"lint":      {group: groupChecks},
 	"disembark": {group: groupPortability},
 	"embark":    {group: groupPortability},
@@ -118,8 +120,12 @@ var helpPlacements = map[string]helpPlacement{
 	"peers":               {group: groupAgents, page: "commands/peers.md"},
 	"reading":             {group: groupAgents, page: "commands/reading.md"},
 	"report":              {group: groupAgents, page: "commands/report.md"},
+	"scribe":              {group: groupAgents, page: "commands/scribe.md"},
 	"site":                {group: groupAgents, page: "commands/site.md"},
 	"statusline":          {group: groupAgents, page: "commands/ahoy.md"},
+
+	// Role 2's ingest sits in the agents block beside Role 1's.
+	"intent consistency ingest": {page: "commands/intent.md"},
 }
 
 // applyHelpPlacement declares the groups on root, files every placed entry, and

@@ -1,7 +1,7 @@
 ---
 name: ahoy
 description: "Detect abcd's install state and list its gaps, or report one mode a flag names: Writes nothing; refuses any argument or two modes at once."
-argument-hint: "[install | uninstall | doctor | --dry-run | --remote | remote apply]"
+argument-hint: "[install | uninstall | doctor | --dry-run | --remote | remote apply | --providers | connect]"
 block: people
 ---
 
@@ -12,10 +12,11 @@ harness-invoked row that `install` wires, is in the agents-and-hosts block of
 `abcd --help --agent`, and its line there names this page.
 
 Run abcd's install/update engine for the current repo and present the result.
-Bare invocation, its `--dry-run` and `--remote` modes, and the `doctor` sub-verb
-perform **zero writes**; `install`, `uninstall` and `remote apply` are the three
-that change something, and each says so before it runs — `remote apply` is the
-only one that changes state outside this machine, and it asks before it does.
+Bare invocation, its `--dry-run`, `--remote` and `--providers` modes, and the
+`doctor` sub-verb perform **zero writes**; `install`, `uninstall`, `remote apply`
+and `connect` are the four that change something, and each says so before it
+runs — `remote apply` is the only one that changes state outside this machine,
+and it asks before it does.
 A mode is a flag on the bare verb, one at a time; a distinct action is a
 sub-verb.
 
@@ -75,9 +76,14 @@ them. If `folder_kind` is `unmanaged-folder`, note there is nothing to act on
 
 **This writes.** It applies the actionable gaps the detection pass found — the
 marker block (only where `--docs-target` names a conventions file; the
-default, `skip`, names none), the `.abcd/` scaffolding, the owned `PATH` entry. Report the
-returned `status`, what changed, and any `notes` — a note is a refusal, stating
-something abcd deliberately did not do and why. The engine prompts before an
+default, `skip`, names none), the `.abcd/` scaffolding, the owned `PATH` entry. Lead
+the report with the returned `headline`, then each `summary` item in its own
+three parts: `what` it is, `why` it matters, and the `action`, if any, the user
+should take. These are abcd's own plain words for the product thinker and the
+technical facilitator; relay them rather than rewording, and keep the `refs`
+(the exact paths and identifiers each item explains) for anyone who asks. Then
+report any `notes` — a note is a refusal, stating something abcd deliberately
+did not do and why. The engine prompts before an
 ambiguous adoption, so surface any prompt to the user rather than answering it
 for them.
 
@@ -125,6 +131,15 @@ than assuming. Under `set -o pipefail` the pipeline reports 141: `yes` takes
 SIGPIPE when abcd stops reading, by design — judge the run by abcd's own output
 and exit status, not the pipeline's.
 
+**Every value question arrives explained.** A question that picks one of
+several values (`visibility`, `docs_target`, `oracle_backend`, `scan_deep`, the
+house-style question and each status-line element) is printed with abcd's own
+explanation above it: one paragraph saying what is being decided, then one
+line per answer saying what that answer means, including what it asks of the
+user (keys, tools, cost). When you relay such a question, relay that
+explanation verbatim with it; never describe an answer in your own words, and
+never offer an answer the question does not list.
+
 That is a channel for passing on an answer the user has GIVEN — ask first, then
 pipe; it is never a licence to answer on their behalf. Note that `yes |`
 approves EVERY question, so only reach for it once the user has agreed to all of
@@ -157,6 +172,23 @@ what was heard. The question comes after the category approvals and the
 configuration values and before the status-line offer, and is asked only when
 the config is being created: a repository that already has one keeps its own
 severity.
+
+**The artefact kind.** A repository with no `.abcd/config/artefact.json` carries
+an `artefact.missing` gap: the launch verbs choose what to preview, check and
+scaffold by the kind declared there, and refuse to guess it. Once config changes
+are approved, a repository carrying `.claude-plugin/plugin.json` is declared
+`kind: plugin` without a question. Any other is asked
+`artefact_kind (plugin/binary/application) [application]`: relay it and pass on
+the user's answer, never answering for them. End of input or a bare Enter takes
+`application` — gate plumbing with an empty build job, assuming nothing about the
+build. `--yes` does not ask and declares `application`, and the result's `notes`
+says so. An answer naming none of the three (the `y` of `yes |`) also declares
+`application`, with a note naming what was heard; the user edits the file to
+declare another. The question is the last one the install asks, after the
+status-line offer. A declaration that is present but
+refused by the reader the launch verbs share (an unknown kind, a malformed file)
+is an `artefact.invalid` gap instead: the file is the user's, so the install
+reports it and never overwrites it.
 
 **The status-line offer.** When the harness's user-level settings file exists
 (`$CLAUDE_CONFIG_DIR/settings.json`, or `~/.claude/settings.json`) and its
@@ -301,6 +333,49 @@ state takes no write, and a re-run rewrites nothing in the tree — and it stops
 at the first failed step rather than attempting one that cannot succeed. Relay
 `status`, the resolved `repo`, every `change`, and every `note`: a note is a
 thing abcd deliberately did not do, and the reason.
+
+## `--providers` and `connect` — the optional model provider
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" ahoy --providers --json
+```
+
+Explains the optional OpenAI-compatible provider adapter and writes nothing. An
+aggregator (OpenRouter, for one) serves many vendors' models behind one address
+and one key, and a local OpenAI-compatible server is reached the same way. abcd
+would use one for decision models and cheap judgements pointed at it by name,
+never for a frontier model, which a bundled vendor denylist (`anthropic/*` at
+minimum) keeps on the host. Everything works without one: with no provider
+configured, every delegated step runs on the host. Relay `explanation`, each of
+`providers` with its `key_state` (`set`, `not set`, `none`, or a refusal; never
+the key), the `denylist`, the `routes`, every line of `diagnostics`, and the
+`key_homes` prose verbatim: it recommends the platform keychain in prose, and
+the choice stays the person's, so never present one home as the marked option.
+Relay `dispatch` too: no delegating verb sends a step to a provider yet, so a
+configured provider changes no step until provider dispatch lands.
+
+The bare board names the same adapter as an optional gap
+(`oracle_api.none_configured`) while none is configured, and a configuration the
+adapter refuses as `oracle_api.config_refused`, naming the file and the key.
+Declining is not running `connect`, and it changes nothing.
+
+The setup is `abcd ahoy connect <provider> --base-url <url> --model <model>
+[--model <model>…] --home abcd [--key <name>]`, with the key piped in on stdin
+from a file or a variable. **This writes, under `~/.abcd/` alone.** It verifies the provider with one call
+to the first model listed, and only when that call succeeds writes the key into
+the owner-only `~/.abcd/credentials.json` and the provider block (the base URL,
+the key's name and the models, the allowlist) into `~/.abcd/config.json`.
+Nothing goes into the repository or the harness's settings, and a failed
+verification writes nothing. `--home none` sets up a server that takes no key.
+The `external` and `keychain` homes arrive with the credential store
+(itd-2609221017023290) and are refused, naming it, before any call.
+
+The key is read from stdin and nowhere else, and never from a terminal, where it
+would be echoed. **Never ask the person for the key and never pass it
+yourself**: it would enter this conversation. Give them the command to run in
+their own shell, with the key piped in from a file or a variable they hold, and
+relay the result — `verified` (the provider, the model asked for and the model
+it reported), each `wrote` path, and `dispatch`.
 
 ## `--dry-run` — the canonical detection envelope
 

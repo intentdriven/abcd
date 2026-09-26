@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
 // isolatedGit builds a git command under root with global and system config
@@ -294,7 +296,9 @@ var ErrNoCheckoutRoot = errors.New("no checkout root")
 //
 //   - git names a toplevel: that is the answer, whoever owns the checkout.
 //   - git will not answer for a repo-SHAPED tree (git absent from PATH, a
-//     corrupt .git, an ownership refusal under the isolated env): REFUSED,
+//     corrupt .git, an ownership refusal under the isolated env, or an answer
+//     Toplevel refuses for its shape, which a core.worktree setting naming a
+//     tree that does not contain cwd produces): REFUSED,
 //     naming that git could not answer. RepoShapedRoot is read here as a
 //     CLASSIFIER and never as a root: it is a marker walk, which accepts any
 //     directory merely carrying the name and has neither the shape check nor
@@ -308,14 +312,14 @@ var ErrNoCheckoutRoot = errors.New("no checkout root")
 //     which is the same lost trail this resolution exists to prevent. Every
 //     store this resolves for is per-repository by definition.
 func CheckoutRoot(cwd, store string) (string, error) {
-	if top, err := Run(cwd, "rev-parse", "--show-toplevel"); err == nil && top != "" {
+	if top, err := Toplevel(cwd); err == nil {
 		return top, nil
 	}
 	// Neither message carries the working directory: an error envelope never
 	// leaks an absolute local path (iss-76), and the caller already knows where
 	// they are standing.
 	if RepoShapedRoot(cwd) != "" {
-		return "", fmt.Errorf("%w: git could not name the repository root for the working directory (git absent from PATH, the repository unreadable, or its ownership refused), and %s is never guessed at",
+		return "", fmt.Errorf("%w: git could not name the repository root for the working directory (git absent from PATH, the repository unreadable, its ownership refused, or a core.worktree setting naming a working tree that does not contain this directory), and %s is never guessed at",
 			ErrNoCheckoutRoot, store)
 	}
 	return "", fmt.Errorf("%w: the working directory is not inside a git repository, and %s is per-repository: run this from a checkout",
@@ -449,4 +453,46 @@ func runBoundedBytes(root string, maxBytes int, args ...string) ([]byte, bool, e
 		return nil, w.overflowed, fmt.Errorf("%w (stderr: %q)", err, strings.TrimSpace(string(e.buf)))
 	}
 	return w.buf, w.overflowed, nil
+}
+
+// ErrToplevelShape is Toplevel's refusal of an answer git would never give.
+var ErrToplevelShape = errors.New("git's toplevel answer is not one absolute path containing the directory asked about")
+
+// Toplevel asks git for the working-tree root that contains dir, and holds the
+// answer to the one shape git ever gives: a single absolute line naming a
+// directory at or above dir. Anything else (relative, several lines, empty, a
+// directory elsewhere) is refused with ErrToplevelShape rather than handed on
+// as a root, because every caller bounds work at the answer: it is where a
+// ledger, a rules file or a site is read and written. It is the one call every
+// `rev-parse --show-toplevel` in the module goes through, so the rule is kept
+// once (iss-2608292038186663).
+//
+// A git failure (not a repository, git absent, an ownership refusal under the
+// isolated environment) is returned as git's own error; a caller that must
+// tell "no repository" from "a repository git will not answer for" follows up
+// with RepoShapedRoot.
+func Toplevel(dir string) (string, error) {
+	top, err := Run(dir, "rev-parse", "--show-toplevel")
+	if err != nil {
+		return "", err
+	}
+	if !ToplevelShaped(dir, top) {
+		return "", ErrToplevelShape
+	}
+	return top, nil
+}
+
+// ToplevelShaped reports whether top has the shape of git's toplevel answer
+// for dir: one absolute line naming a directory that contains dir. It is
+// Toplevel's check, for the callers that must run git themselves (a command
+// that pins the git binary it runs, or asks for the path in another format).
+func ToplevelShaped(dir, top string) bool {
+	if top == "" || !filepath.IsAbs(top) || strings.ContainsAny(top, "\n\r") {
+		return false
+	}
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return false
+	}
+	return fsutil.PathWithin(fsutil.RealExistingPath(abs), fsutil.RealExistingPath(top), fsutil.CaseFoldingFS())
 }

@@ -370,11 +370,11 @@ func setupRoot(dir string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	top, err := gitutil.Run(abs, "rev-parse", "--show-toplevel")
-	if err != nil || strings.TrimSpace(top) == "" {
+	top, err := gitutil.Toplevel(abs)
+	if err != nil {
 		return "", errors.New("site setup: this is not inside a git checkout")
 	}
-	return strings.TrimSpace(top), nil
+	return top, nil
 }
 
 // scrubRoot keeps the checkout's absolute path out of a message.

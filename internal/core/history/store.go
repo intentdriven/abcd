@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core/sessionkind"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
@@ -202,6 +203,11 @@ const (
 
 	// Adoption (schema 3).
 	fmAdoptedProject = "adopted_project"
+
+	// The per-run context stamps a transcript carried, comma-joined. Optional
+	// and omitted when empty, so it does not move the schema version: every
+	// reader parses by field presence (adr-2609021016275803).
+	fmContextStamps = "context_stamps"
 )
 
 // marshalRecord renders a record file: YAML frontmatter then the redacted body.
@@ -233,6 +239,9 @@ func marshalRecord(r Record, body string) []byte {
 	}
 	if r.SpawnDepth > 0 {
 		fmt.Fprintf(&b, "%s: %d\n", fmSpawnDepth, r.SpawnDepth)
+	}
+	if stamps := wellFormedStamps(r.ContextStamps); len(stamps) > 0 {
+		fmt.Fprintf(&b, "%s: %s\n", fmContextStamps, strings.Join(stamps, ","))
 	}
 	b.WriteString("---\n")
 	b.WriteString(marshalBody(body))
@@ -306,7 +315,28 @@ func parseRecord(data []byte) (Record, string, error) {
 	r.SpawnAttribution = fields[fmSpawnAttribution]
 	r.AdoptedProject = fields[fmAdoptedProject]
 	r.SpawnDepth, _ = strconv.Atoi(fields[fmSpawnDepth])
+	if raw := fields[fmContextStamps]; raw != "" {
+		r.ContextStamps = wellFormedStamps(strings.Split(raw, ","))
+	}
 	return r, body, nil
+}
+
+// wellFormedStamps keeps the entries that are stamps, distinct and in order.
+// Anything else in the field — a hand edit, a truncation — is not evidence of a
+// context a session held, so it is dropped on both the write and the read
+// rather than counted.
+func wellFormedStamps(in []string) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, s := range in {
+		s = strings.TrimSpace(s)
+		if _, ok := sessionkind.Parse(s); !ok || seen[s] {
+			continue
+		}
+		seen[s] = true
+		out = append(out, s)
+	}
+	return out
 }
 
 // listRecords reads every *.md record under tdir, newest first. A record file

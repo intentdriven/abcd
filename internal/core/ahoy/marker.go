@@ -3,6 +3,7 @@ package ahoy
 import (
 	"bytes"
 	_ "embed"
+	"fmt"
 	"os"
 	"regexp"
 	"strings"
@@ -109,53 +110,54 @@ func classifyMarker(targetPath string) markerState {
 }
 
 // installMarkerFile plants, updates, or leaves-current the block in one target.
-// It returns (wrote, ok): ok=false means a per-target failure that leaves the
-// file untouched. Byte-stable: a current block is not rewritten.
-func installMarkerFile(targetPath string) (wrote bool, ok bool) {
+// It returns (wrote, err): a non-nil err is a per-target failure that leaves the
+// file untouched, and says why, so the install can tell the person which file
+// kept no block and for what reason (iss-2609260057127611). Byte-stable: a
+// current block is not rewritten.
+func installMarkerFile(targetPath string) (wrote bool, err error) {
 	// Reject a symlinked leaf so a planted symlink cannot redirect the write.
-	if fi, err := os.Lstat(targetPath); err == nil && fi.Mode()&os.ModeSymlink != 0 {
-		return false, false
+	if fi, lerr := os.Lstat(targetPath); lerr == nil && fi.Mode()&os.ModeSymlink != 0 {
+		return false, &ahoyError{"it is a symlink, and abcd never writes through one"}
 	}
-	existing, err := fsutil.ReadGuarded(targetPath, maxAhoyFileBytes)
+	existing, rerr := fsutil.ReadGuarded(targetPath, maxAhoyFileBytes)
 	absent := false
-	if err != nil {
-		if os.IsNotExist(err) {
-			absent = true
-		} else {
-			return false, false
+	if rerr != nil {
+		if !os.IsNotExist(rerr) {
+			return false, fmt.Errorf("it could not be read: %w", rerr)
 		}
+		absent = true
 	}
 	eol := detectEOL(existing)
 	synth := synthesizeMarker(markerInner, eol)
 
 	if absent {
 		body := append(append([]byte{}, synth...), eol...)
-		if err := fsutil.WriteFileAtomicPreserveMode(targetPath, body); err != nil {
-			return false, false
+		if werr := fsutil.WriteFileAtomicPreserveMode(targetPath, body); werr != nil {
+			return false, fmt.Errorf("it could not be written: %w", werr)
 		}
-		return true, true
+		return true, nil
 	}
 
 	matches := markerBlockRe.FindAllIndex(existing, -1)
 	if len(matches) == 0 {
 		if appendsInsideOpenSpan(existing) {
-			return false, false
+			return false, &ahoyError{"a fenced block or HTML comment in it is never closed, so the block would land inside it"}
 		}
 		body := composeMarkerInsertion(existing, synth, eol)
-		if err := fsutil.WriteFileAtomicPreserveMode(targetPath, body); err != nil {
-			return false, false
+		if werr := fsutil.WriteFileAtomicPreserveMode(targetPath, body); werr != nil {
+			return false, fmt.Errorf("it could not be written: %w", werr)
 		}
-		return true, true
+		return true, nil
 	}
 	first := matches[0]
 	if len(matches) == 1 && bytes.Equal(existing[first[0]:first[1]], synth) {
-		return false, true // current — no write, mtime preserved
+		return false, nil // current — no write, mtime preserved
 	}
 	body := composeMarkerReplacement(existing, matches, synth)
-	if err := fsutil.WriteFileAtomicPreserveMode(targetPath, body); err != nil {
-		return false, false
+	if werr := fsutil.WriteFileAtomicPreserveMode(targetPath, body); werr != nil {
+		return false, fmt.Errorf("it could not be written: %w", werr)
 	}
-	return true, true
+	return true, nil
 }
 
 // composeMarkerInsertion inserts synth into a file with no block: after
@@ -253,32 +255,36 @@ func composeMarkerReplacement(existing []byte, matches [][]int, synth []byte) []
 }
 
 // removeMarkerFile strips every abcd block from one target, collapsing the EOLs
-// install introduced so install->uninstall round-trips. Returns (wrote, ok).
-// A symlinked leaf or non-regular file is skipped (ok=false).
-func removeMarkerFile(targetPath string) (wrote bool, ok bool) {
-	fi, err := os.Lstat(targetPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return false, true // absent — nothing to remove
+// install introduced so install->uninstall round-trips. Returns (wrote, err): a
+// symlinked leaf, a non-regular file, or a failed read or write leaves the file
+// untouched and returns why.
+func removeMarkerFile(targetPath string) (wrote bool, err error) {
+	fi, lerr := os.Lstat(targetPath)
+	if lerr != nil {
+		if os.IsNotExist(lerr) {
+			return false, nil // absent — nothing to remove
 		}
-		return false, false
+		return false, fmt.Errorf("it could not be examined: %w", lerr)
 	}
-	if fi.Mode()&os.ModeSymlink != 0 || !fi.Mode().IsRegular() {
-		return false, false
+	if fi.Mode()&os.ModeSymlink != 0 {
+		return false, &ahoyError{"it is a symlink, and abcd never writes through one"}
 	}
-	existing, err := fsutil.ReadGuarded(targetPath, maxAhoyFileBytes)
-	if err != nil {
-		return false, false
+	if !fi.Mode().IsRegular() {
+		return false, &ahoyError{"it is not a regular file"}
+	}
+	existing, rerr := fsutil.ReadGuarded(targetPath, maxAhoyFileBytes)
+	if rerr != nil {
+		return false, fmt.Errorf("it could not be read: %w", rerr)
 	}
 	matches := markerBlockRe.FindAllIndex(existing, -1)
 	if len(matches) == 0 {
-		return false, true // no block — untouched
+		return false, nil // no block — untouched
 	}
 	body := composeMarkerRemoval(existing, matches)
-	if err := fsutil.WriteFileAtomicPreserveMode(targetPath, body); err != nil {
-		return false, false
+	if werr := fsutil.WriteFileAtomicPreserveMode(targetPath, body); werr != nil {
+		return false, fmt.Errorf("it could not be written: %w", werr)
 	}
-	return true, true
+	return true, nil
 }
 
 // StripMarkerBlock returns content with every abcd marker block (a balanced

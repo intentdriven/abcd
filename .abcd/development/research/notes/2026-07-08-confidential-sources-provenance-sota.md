@@ -1,6 +1,6 @@
 # SOTA survey: confidential source consultation, provenance ledgers, and paper reconstruction
 
-Grounding for [itd-76](../../intents/planned/itd-76-source-provenance-ledger.md)
+Grounding for [itd-76](../../intents/shipped/itd-76-source-provenance-ledger.md)
 and the [convention-first scaffold plan](../../plans/2026-07-08-confidential-sources-scaffold.md).
 Question: what is the best current (2024–2026) shape for a **local-only**
 system in which an agent may *consult* confidential documents, never *cites*

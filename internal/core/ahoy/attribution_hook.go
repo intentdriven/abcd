@@ -152,7 +152,7 @@ func (a *applyCtx) stepAttributionHook() {
 		return
 	}
 	defer root.Close()
-	a.createContained(root, AttributionHookRelPath, attributionHookTemplate, 0o755, 0o755)
+	a.createContained(writeAttributionHook, root, AttributionHookRelPath, attributionHookTemplate, 0o755, 0o755)
 	if a.attribution {
 		a.recordAttributionOptIn()
 	}
@@ -188,5 +188,5 @@ func (a *applyCtx) recordAttributionOptIn() {
 		a.changes = append(a.changes, receiptPath(a.cwd, "attribution opt-in not persisted ("+err.Error()+")"))
 		return
 	}
-	a.note(configPath(a.cwd))
+	a.note(writeSettings, configPath(a.cwd))
 }

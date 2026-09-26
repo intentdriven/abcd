@@ -48,7 +48,7 @@ func TestCleanProseBreaksCommentDelimitersInsideACodeSpan(t *testing.T) {
 // stray run in the first re-pairs with the opener of a genuine span in the second,
 // moving the span boundary and exposing content the cleaner had judged sheltered.
 // A backslash escape is the CommonMark-faithful neutralisation: an unclosed run
-// already renders as literal backticks, `\“ renders as the same literal backtick,
+// already renders as literal backticks, a backslash-escaped one renders as the same literal backtick,
 // and an escaped backtick can never open or close a span.
 func TestCleanProseEmitsNoUnpairedBacktickRun(t *testing.T) {
 	cases := []struct{ name, in, want string }{

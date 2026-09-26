@@ -102,3 +102,32 @@ func TestScanSpecLinksUnreadableIntentIsHard(t *testing.T) {
 		t.Fatal("ScanSpecLinks must propagate an unreadable intent record")
 	}
 }
+
+// A bundle's shared spec realises every member its `intents:` list names, not
+// only the one its `intent:` names, so the index answers "which specs realise
+// this intent" as the spec store does (itd-34).
+func TestScanSpecLinksBundleSpecRealisesEveryMember(t *testing.T) {
+	root := t.TempDir()
+	for rel, content := range map[string]string{
+		"record/intents/planned/itd-20-a.md": "---\nid: itd-20\nkind: bundle-member\nbundle: pair\nspec_id: spc-5\n---\n# a\n",
+		"record/intents/planned/itd-21-b.md": "---\nid: itd-21\nkind: bundle-member\nbundle: pair\nspec_id: spc-5\n---\n# b\n",
+		"record/specs/open/spc-5-pair.md":    "---\nid: spc-5\nslug: pair\nintent: itd-20\nintents: [itd-20, itd-21]\nbundle: pair\n---\n# pair\n",
+	} {
+		path := filepath.Join(root, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	idx, err := ScanSpecLinks(root, "record/intents", "record/specs", Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"itd-20", "itd-21"} {
+		if got := idx.SpecsForIntent(id); len(got) != 1 || got[0].ID != "spc-5" {
+			t.Errorf("SpecsForIntent(%s) = %+v, want the shared spc-5", id, got)
+		}
+	}
+}

@@ -228,8 +228,11 @@ substance:
 ### Never commit downstream
 
 Assets that will later be provided by tooling are applied, not copied: no
-`personas.json`, no lint-config JSON files, no content copied from the abcd
-record. Commit only content that is about this repository.
+`personas.json`, no lint-config JSON copied in by hand, no content copied from
+the abcd record. Commit only content that is about this repository. The config
+files `abcd ahoy install` seeds, `.abcd/docs-lint.json` among them, are this
+repository's own once written, and the gates read them on every commit, so they
+are committed.
 
 ## Definition of done
 

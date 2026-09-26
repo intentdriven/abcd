@@ -122,8 +122,8 @@ func Resolve(cwd string) Resolution {
 	if err != nil {
 		dir = filepath.Clean(cwd)
 	}
-	top, err := gitutil.Run(cwd, "rev-parse", "--show-toplevel")
-	if err != nil || top == "" {
+	top, err := gitutil.Toplevel(cwd)
+	if err != nil {
 		// The marker walk runs on the symlink-resolved path, so the bound it
 		// returns is already on the same chain the walk below climbs.
 		marker := gitutil.RepoShapedRoot(dir)

@@ -39,6 +39,47 @@ delegation is the default; when an operator wires two oracle adapters for a
 high-stakes review, the adapter layer offers the scoped-vs-broad,
 asymmetric-trust guidance of adr-25 — advice, never a cascade the core imposes.
 
+### The OpenAI-compatible API adapter — a provider serves only what it lists
+
+The `api` oracle plug-in is `internal/adapter/openaiapi`, one client over the
+chat-completions protocol that OpenRouter and a local OpenAI-compatible server
+both speak, so a provider is configuration and never code (itd-2609081951381895).
+The invariant it serves is adr-2609221009491186's: **a provider adapter serves
+only the models it lists, under a vendor denylist no listing overrides, and
+everything else runs on the host.** `internal/core/oracle` enforces it before a
+client is ever built: a route to an unlisted model is refused naming the list, a
+listed model the denylist matches is refused whatever the list says, and a
+reported model the denylist matches discards the answer. The configuration is in
+[`03-configuration.md`](03-configuration.md#the-provider-adapters-keys).
+
+The client's own guarantees are the network path's. The base URL is pinned per
+provider block, plain HTTP is admitted only to this machine, and a redirect is
+never followed, so a provider cannot move the key or the brief elsewhere. Every
+response is bounded in size and every call in time. The key travels only as the
+bearer header of a request to the pinned address. A provider's own text, its
+error and the model it reports, is decoded (JSON escapes undone, HTML character
+references resolved), bounded, sanitised and scrubbed of the key in every form an
+encoder gives it (literal, JSON-, HTML- and URL-escaped, quoted) before it
+reaches an error or a record, because a provider may echo what it was sent. A
+setting the protocol does not take is refused before the call, and the answer is
+judged by the caller's output contract, the one the host sub-agent's payload is
+judged by. The request is the host's brief in the protocol's two roles: the
+agent's prompt as the system message, the verb's request as the user message.
+
+The key is resolved by name through `internal/core/credential`, the one reader;
+the adapter reads no file and no store of its own. The one environment it
+honours is the HTTP stack's: the standard proxy variables (`HTTPS_PROXY`,
+`NO_PROXY`) and the platform's trust roots. An https call through a proxy is a
+tunnel, so the key and the brief stay inside TLS, and a call to this machine is
+never proxied. Its
+connection (`oracle.Connections`) carries the provider's allowlist and the
+settings the adapter accepts, which is what the model tier's allowlist check and
+its accepted-settings refusal read (spc-2609251028149555). A provider claims no
+tier: it is reached by a role or a judgement type pointed at it, never by a tier
+alone. No delegating verb dispatches a step through it yet, and no test reaches a
+real provider: the client is exercised end to end against a fake on the loopback
+address that fails in every way a provider can.
+
 ### RepoPrompt oracle adapter — `dev-sync reviews` harvesting
 
 RepoPrompt is one opt-in `oracle` (mcp) adapter. When it is wired, `dev-sync

@@ -796,7 +796,7 @@ func (a *applyCtx) stepBanlist() {
 	// have run, and a snapshot is by then a claim about a repo as it used to be.
 	guardOwned := classifyGuardHook(root, GuardHookRelPath) == HookInstalled
 	if a.has("banlist.hook_missing") {
-		if a.createContained(root, GuardHookRelPath, guardHookTemplate, 0o755, 0o755) {
+		if a.createContained(writeNameGuard, root, GuardHookRelPath, guardHookTemplate, 0o755, 0o755) {
 			guardOwned = true
 		}
 	}
@@ -811,7 +811,7 @@ func (a *applyCtx) stepBanlist() {
 	// deliberately not raised (the pre-commit half's gap covers both), and apply must
 	// still write the shim it just earned the right to write.
 	if guardOwned && classifyGuardHook(root, GuardMergeHookRelPath) == HookAbsent {
-		a.createContained(root, GuardMergeHookRelPath, guardMergeHookTemplate, 0o755, 0o755)
+		a.createContained(writeNameGuard, root, GuardMergeHookRelPath, guardMergeHookTemplate, 0o755, 0o755)
 	}
 	// Never write a config abcd would immediately declare unenforceable — and never on
 	// an answer git did not actually give. An unanswerable probe withholds the write
@@ -823,7 +823,7 @@ func (a *applyCtx) stepBanlist() {
 	// own severity, and a question whose answer would go nowhere is not asked.
 	if a.has("banlist.public_family_missing") && publicPathIsWritable(a.cwd) {
 		sev, note := a.emDashSeverity()
-		if a.createContained(root, banlist.PublicConfigRelPath, docsLintSeed(sev), 0o644, 0o755) && note != "" {
+		if a.createContained(writeDocsCheck, root, banlist.PublicConfigRelPath, docsLintSeed(sev), 0o644, 0o755) && note != "" {
 			a.notes = append(a.notes, note)
 		}
 	}
@@ -839,7 +839,7 @@ func (a *applyCtx) stepBanlist() {
 	if a.has("banlist.private_stub_missing") && storePathIsSafe(a.cwd) {
 		// 0700/0600: the directory holding private patterns is no more readable than
 		// the patterns are, matching the store the banlist verbs write.
-		a.createContained(root, banlist.PrivateRelPath, []byte(privateStubContent()), 0o600, 0o700)
+		a.createContained(writePrivateNames, root, banlist.PrivateRelPath, []byte(privateStubContent()), 0o600, 0o700)
 	}
 }
 
@@ -868,7 +868,7 @@ func (a *applyCtx) pinHookEOL(root *os.Root) {
 	if err := fsutil.WriteFileAtomicPreserveModeInRoot(root, gitattributesRelPath, appendEOLPin(data)); err != nil {
 		return
 	}
-	a.note(filepath.Join(a.cwd, gitattributesRelPath))
+	a.note(writeNameGuard, filepath.Join(a.cwd, gitattributesRelPath))
 }
 
 // appendEOLPin returns data with the canonical attribute appended, or data unchanged
@@ -921,7 +921,7 @@ func lastLiveAttributeIsOurs(data []byte) bool {
 // Any failure — the file already exists (the ordinary idempotent no-op), an escaping
 // symlink, a permission fault — leaves the artefact unwritten and unnoted. Detection
 // reports it on the next pass rather than this run claiming a file it did not create.
-func (a *applyCtx) createContained(root *os.Root, rel string, data []byte, perm, dirPerm os.FileMode) bool {
+func (a *applyCtx) createContained(kind writeKind, root *os.Root, rel string, data []byte, perm, dirPerm os.FileMode) bool {
 	if dir := path.Dir(rel); dir != "." {
 		// MkdirAll on the PARENT, and it may create more than one level: every artefact
 		// here sits at most two deep under the repo root (.githooks/, .abcd/.work.local/),
@@ -953,6 +953,6 @@ func (a *applyCtx) createContained(root *os.Root, rel string, data []byte, perm,
 	if err := root.Chmod(rel, perm); err != nil {
 		return false
 	}
-	a.note(filepath.Join(a.cwd, filepath.FromSlash(rel)))
+	a.note(kind, filepath.Join(a.cwd, filepath.FromSlash(rel)))
 	return true
 }

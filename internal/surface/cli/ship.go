@@ -332,6 +332,17 @@ func newLaunchShipCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			// The cut itself — the derivation, the guard, the deferral read — is
+			// the same for every kind; the declaration only decides whether there
+			// is a plugin payload to stage.
+			art, err := launchArtefact("abcd launch ship", cwd)
+			if err != nil {
+				return err
+			}
+			if payloadDir != "" && !art.IsPlugin() {
+				return &exitError{Code: 2, Msg: "abcd launch ship: --payload-dir stages a plugin payload, and the declared artefact kind is " +
+					string(art.Kind) + " (" + launch.ArtefactRelPath + "), which ships none (nothing was written)"}
+			}
 			// The payload is rendered by the INGEST step, from a version only a
 			// completed cut has. Asking the emit step for one is an operand
 			// error, refused before anything is read or staged.

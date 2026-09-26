@@ -26,6 +26,8 @@ var sentences = map[string]string{
 
 	"abcd ahoy": "Detect abcd's install state and list its gaps, or report one mode a flag names: " +
 		"Writes nothing; refuses any argument or two modes at once.",
+	"abcd ahoy connect": "Verify a model provider with one call, then configure it: " +
+		"Writes its block and its key under ~/.abcd/; refuses a key typed at a terminal.",
 	"abcd ahoy doctor": "Report every install gap, user-scope state included: " +
 		"Writes nothing; refuses any argument.",
 	"abcd ahoy install": "Apply the install gaps the detection finds: " +
@@ -43,11 +45,18 @@ var sentences = map[string]string{
 		"Writes that layer's store; refuses without exactly one of --private or --public.",
 	"abcd banlist list": "Render the banned-names layers, private entries by key only: " +
 		"Writes nothing; refuses --private and --public together.",
+	"abcd banlist migrate": "Key a legacy private store in place, every line matching what it matched: " +
+		"Writes the private store; refuses when no private store exists.",
 	"abcd banlist remove": "Remove one banned-name entry from the layer a flag names: " +
 		"Writes that layer's store; refuses a public entry curated by hand.",
 
+	"abcd build": "Start the loop that takes one READY intent to delivered: " +
+		"Writes the run's state file in the local tier; refuses an open question, a hold or a peer holding it.",
+
 	"abcd capture": "File an issue from quoted text, or render the ledger's status bare: " +
 		"Writes one record under open/; refuses a lone word and any folder outside a checkout.",
+	"abcd capture admit": "Admit one widening proposal into its run's candidate set: " +
+		"Writes its accepted disposition and an adm-N record; refuses before a committed comparative run.",
 	"abcd capture defer": "Carry an open major or critical issue past one release cut: " +
 		"Writes deferred_after and deferral_reason; refuses a minor or nitpick issue, or an empty reason.",
 	"abcd capture disposition": "Answer one reading item with a disposition record: " +
@@ -62,8 +71,12 @@ var sentences = map[string]string{
 		"Writes the records only with --apply; refuses outside a git checkout.",
 	"abcd capture promote": "Graduate an issue or an accepted reading item into an intent draft: " +
 		"Writes the draft and both back-links; refuses a promoted issue or an unaccepted item.",
+	"abcd capture reframe": "Record a reframe a reading occasioned: " +
+		"Writes one rfm-N fingerprinting the frame before and after; refuses an uncommitted occasion or frame edit without --open.",
 	"abcd capture resolve": "Move an open issue to resolved/, naming what fixed it: " +
 		"Writes the moved record; refuses without --impact or on an id this ledger does not hold.",
+	"abcd capture surprise": "Record one surprise a reading item, admission or disposition occasioned: " +
+		"Writes one srp-N record; refuses an unresolved occasion or a text below the floor.",
 	"abcd capture wontfix": "Move an open issue to wontfix/ with the reason it is not acted on: " +
 		"Writes the moved record; refuses an id this ledger does not hold.",
 
@@ -126,15 +139,17 @@ var sentences = map[string]string{
 	"abcd history ingest": "Redact and store transcripts already on disk into a named repository: " +
 		"Writes that repository's store; refuses without --into.",
 	"abcd history list": "List this repository's stored transcripts, newest first: " +
-		"Writes nothing; refuses outside a git checkout.",
+		"Writes only a missing store and a legacy corpus moved into it; refuses outside a git checkout.",
 	"abcd history migrate": "Repair records filed under a composite session id: " +
-		"Writes the repaired records only with --apply; refuses outside a git checkout.",
+		"Writes a missing store, and the repaired records only with --apply; refuses outside a git checkout.",
 	"abcd history reconstruct": "Render one session and its sub-agents as one artefact plus telemetry: " +
 		"Writes both files into --out; refuses an --out that is not an existing directory.",
+	"abcd history separation": "Report whether any retained transcript held both a reading and the ledger of one run: " +
+		"Writes nothing; never refuses, exiting 1 naming each such transcript.",
 	"abcd history show": "Show one stored transcript's metadata and redacted body: " +
-		"Writes nothing; refuses an id the store does not hold.",
-	"abcd history staged": "List the transcripts that ended but are not yet redacted into the store: " +
-		"Writes nothing; refuses outside a git checkout.",
+		"Writes only a missing store and a legacy corpus moved into it; refuses an id the store does not hold.",
+	"abcd history staged": "List the ended transcripts not yet redacted into the store: " +
+		"Writes only a missing store and a legacy corpus moved into it; refuses outside a git checkout.",
 
 	"abcd ideate": "Judge an idea through the host-run admission gauntlet: " +
 		"Writes nothing bare, and one research record and its decision-log line; refuses an unknown sub-verb.",
@@ -148,8 +163,8 @@ var sentences = map[string]string{
 	"abcd identity render": "Print the correction for every drifted surface as a unified diff: " +
 		"Writes nothing; refuses a repository that records no identity block.",
 
-	"abcd implement": "Share one autonomous run between sessions, from joining to reporting: " +
-		"Writes nothing bare, only the machine-scoped run state; refuses an unknown sub-verb.",
+	"abcd implement": "Share one autonomous run between sessions and drive the implement loop: " +
+		"Writes nothing bare, only the run state its sub-verbs name; refuses an unknown sub-verb.",
 	"abcd implement check": "Ask whether this session may take a step before taking it: " +
 		"Writes a run-log line only on a refusal; refuses a step the second session's bounds forbid.",
 	"abcd implement claim": "Claim a record for this session before opening its lane: " +
@@ -164,10 +179,16 @@ var sentences = map[string]string{
 		"Writes one line; refuses the claim, window, and session events their own verbs write.",
 	"abcd implement mode": "Open a window by logging its division mode: " +
 		"Writes a window_mode line; refuses any session but the first.",
+	"abcd implement receipt": "Hand back the receipt an agent step of a loop run awaits: " +
+		"Writes the run's state when the receipt verifies; refuses a receipt that does not verify.",
 	"abcd implement release": "Release this session's claim on a record: " +
 		"Writes the release and a claim_released line; refuses a claim another session holds.",
 	"abcd implement report": "Derive the comparison of the division modes from the run log: " +
 		"Writes nothing; refuses --date and --log together.",
+	"abcd implement status": "Render the implement loop's runs in this checkout, lane by lane: " +
+		"Writes nothing; refuses a --run naming no run.",
+	"abcd implement step": "Perform the next step of an implement loop run and exit: " +
+		"Writes the run's state; refuses a step whose body this abcd does not carry.",
 
 	"abcd inbox": "List the reports managed repositories filed back to abcd, newest first: " +
 		"Writes nothing; refuses any argument.",
@@ -178,18 +199,24 @@ var sentences = map[string]string{
 
 	"abcd intent": "File a draft intent from quoted text, or render the intent store's status bare: " +
 		"Writes the draft into drafts/; refuses a lone word.",
-	"abcd intent audit": "Emit a shipped intent's audit request, or check the issue and intent joins with --issue-drift: " +
-		"Writes nothing; refuses an intent not shipped.",
+	"abcd intent audit": "List or drain owed fidelity reviews, emit an intent's request, or check issue drift: " +
+		"Writes an OWED stub only for --owed or an id; refuses an unshipped intent.",
 	"abcd intent audit ingest": "Ingest an intent-audit verdict into the shipped intent: " +
 		"Writes its Audit Notes; refuses without --verdict-json.",
 	"abcd intent condition": "Read or disposition a shipped intent's scope conditions: " +
 		"Writes a dated condition block; refuses an unresolved occasion or thin grounds.",
+	"abcd intent consistency": "Emit the consistency request over the brief and every intent, or one intent against them: " +
+		"Writes the request locally; refuses a superseded intent.",
+	"abcd intent consistency ingest": "Ingest consistency findings as a dated review and a capture per finding: " +
+		"Writes the report and the ledger records; refuses without --findings-json.",
 	"abcd intent hold": "Hold a draft or planned intent so that planning refuses it: " +
 		"Writes the held line with its reason; refuses without --reason.",
 	"abcd intent link": "Link a planned intent to an existing spec: " +
 		"Writes the intent's spec_id; refuses an intent that is not planned.",
-	"abcd intent plan": "Plan a draft intent by minting and linking its spec, or stamp a planned one's scope conditions: " +
-		"Writes both records; refuses an intent on hold.",
+	"abcd intent plan": "Plan a draft, or several as a named bundle, or stamp a planned one's conditions: " +
+		"Writes the intents and their spec; refuses a held intent or a bundle's blocker.",
+	"abcd intent reclassify": "Change an intent's kind, or retire it as superseded by a named successor: " +
+		"Writes the record and its successor together; refuses a shipped intent's kind change.",
 	"abcd intent ready": "Report whether an intent is ready to implement, exiting 1 when not: " +
 		"Writes its grounds only with --grounds; refuses malformed grounds.",
 	"abcd intent unhold": "Lift an intent's hold: " +
@@ -214,8 +241,8 @@ var sentences = map[string]string{
 		"Writes the archive into --out; refuses a dirty tree without --verify, and exits 1 when --verify finds it unpinned.",
 	"abcd launch receipts": "Run the release job's semantic-receipt gate locally, before the merge: " +
 		"Writes nothing; refuses with exit 1 when the release job would refuse the receipts.",
-	"abcd launch scaffold": "Scaffold the changelog-driven release gate: " +
-		"Writes the release workflows and runbook; refuses to overwrite a hand-edited one without --confirm.",
+	"abcd launch scaffold": "Scaffold the release gate for the declared artefact kind: " +
+		"Writes its workflows and runbook; refuses an undeclared kind, or a hand-edited file without --confirm.",
 	"abcd launch ship": "Cut a release, deriving its version and records from what shipped: " +
 		"Writes the CHANGELOG heading, RELEASE.md, and the archive pin; refuses a cut its gates stop.",
 
@@ -258,12 +285,34 @@ var sentences = map[string]string{
 	"abcd rules": "Render the active rule set, or the one domain named: " +
 		"Writes nothing; refuses an unknown domain.",
 
+	"abcd scribe": "Assemble a ledger scribe's context and ingest what it transcribed: " +
+		"Writes nothing bare; refuses an unknown sub-verb.",
+	"abcd scribe assemble": "Build a scribe session's context from the ledger and supplied dispositions: " +
+		"Writes it and a hashed manifest; refuses an uningested run or a symlinked ledger.",
+	"abcd scribe ingest": "Validate a scribe's output against the supplied dispositions: " +
+		"Writes what it transcribed through the capture verbs; refuses anything the scribe authored.",
+
 	"abcd site": "Report what the website declares and what was built: " +
 		"Writes nothing; refuses any argument.",
 	"abcd site build": "Render the website into the output directory: " +
 		"Writes only inside that directory; refuses a non-empty directory it did not write.",
 	"abcd site setup": "Take the website from this checkout to a live address: " +
 		"Writes its files, and the forge and host changes once confirmed; refuses a folder abcd does not manage.",
+
+	"abcd source": "Render the sources corpus and its ledgers, read-only: " +
+		"Writes nothing; refuses without a corpus, exit 3, naming `abcd source init`.",
+	"abcd source add": "Register a source under its class folder, with its entry and text: " +
+		"Writes the corpus and commits it; refuses without one of --confidential or --public.",
+	"abcd source cite-check": "Scan text for confidential sources and report each hit by key only: " +
+		"Writes nothing; refuses without a corpus, and exits 1 on a hit.",
+	"abcd source declassify": "Move a published confidential source to public/ in one visible commit: " +
+		"Writes the corpus and commits it; refuses a key that is not confidential.",
+	"abcd source init": "Create an empty sources corpus, a git repository with no remote: " +
+		"Writes the corpus in one commit; refuses an existing corpus or one inside another working tree.",
+	"abcd source ledger": "Append an influence line to this repository's ledger, or flip one to cited: " +
+		"Writes one ledger line; refuses a flip for a source that is not public and citable.",
+	"abcd source sync-banlist": "Project confidential titles and aliases into the private banlist: " +
+		"Writes the store's generated block; refuses a corpus whose folders and entries disagree.",
 
 	"abcd spec": "Render the spec store's status: " +
 		"Writes nothing; refuses outside a git checkout.",

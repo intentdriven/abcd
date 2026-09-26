@@ -1,6 +1,7 @@
 package ahoy
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -113,18 +114,21 @@ func insideRepo(cwd, p string) bool {
 
 // dataDirHazard reports why dataDir cannot be trusted as the harness's
 // persistent data directory, or "" when it has the shape that directory always
-// has: an absolute path, outside the repository being installed, not
-// world-writable. Neither source pluginDataDir consults examines the value it
-// hands back — CLAUDE_PLUGIN_DATA is read from the environment as given, and
-// the plugin root's .data-dir stamp is checked only for being an existing
-// absolute directory — and the owned-copy promotion re-verifies the cache only
-// against the record beside it, so a value of any other shape would let
-// whoever chose it — a
-// relative value resolves against the checkout the verb runs in, an
-// in-checkout value is committed bytes, a world-writable cache is any local
-// user's — bless their own bytes as the owned PATH binary (sub-finding of
-// GHSA-4q78-ccfv-f374). The harness never produces these shapes, so refusing
-// them costs a real install nothing. This is the shape check only; the trust
+// has: an absolute path, outside the repository being installed, and, with its
+// cache/ subdirectory, owned by this uid and writable by nobody else (the
+// fsutil.CallersAlone test the home-scoped declarations use). Neither source
+// pluginDataDir consults examines the value it hands back — CLAUDE_PLUGIN_DATA
+// is read from the environment as given, and the plugin root's .data-dir stamp
+// is checked only for being an existing absolute directory — and the owned-copy
+// promotion re-verifies the cache only against the record beside it, so a
+// value of any other shape would let whoever chose it bless their own bytes as
+// the owned PATH binary (sub-finding of GHSA-4q78-ccfv-f374): a relative value
+// resolves against the checkout the verb runs in, an in-checkout value is
+// committed bytes, and a cache its group or every user can write, or another
+// account owns, is theirs (iss-2609260057111315). The harness produces none of
+// these shapes under an ordinary umask; on a host whose umask leaves directories
+// group-writable the refusal costs the owned copy, and the install degrades to
+// the pinned symlink and says why. This is the shape check only; the trust
 // binding — the cache is promoted only when ~/.abcd/cache-attestation names
 // the directory and its recorded hash — is cacheBindingProblem, and a
 // directory that passes here is still not promoted without it.
@@ -139,9 +143,23 @@ func dataDirHazard(dataDir, cwd string) string {
 		return "it lies inside the repository being installed, so its cache would be committed bytes"
 	}
 	for _, dir := range []string{dataDir, filepath.Join(dataDir, "cache")} {
-		if fi, err := os.Stat(dir); err == nil && fi.IsDir() && fi.Mode().Perm()&0o002 != 0 {
-			return "it is world-writable (" + displayPath(dir) + "), so any local user could replace both the artefact and its recorded hash"
+		fi, err := os.Stat(dir)
+		if err != nil || !fi.IsDir() {
+			continue
+		}
+		switch err := fsutil.CallersAlone(dir, fi); {
+		case errors.Is(err, fsutil.ErrDeclarationWritable):
+			return "it is writable by its group or by every user (" + displayPath(dir) + "), so someone other than you could replace both the artefact and its recorded hash"
+		case err != nil:
+			return "it is owned by another account (" + displayPath(dir) + "), or its owner could not be read, so that account could replace both the artefact and its recorded hash"
 		}
 	}
 	return ""
 }
+
+// PluginDataDirHazard is dataDirHazard for a front door that reads the harness
+// data directory itself (the session-start skew notice): the reason dataDir
+// cannot be trusted, or "" when it has the shape the harness always gives it.
+// One check, so the surface and core cannot disagree about which directories
+// are believed.
+func PluginDataDirHazard(dataDir, cwd string) string { return dataDirHazard(dataDir, cwd) }

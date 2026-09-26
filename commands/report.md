@@ -51,7 +51,10 @@ run bare `abcd report`, which opens the skeleton in `$VISUAL` or `$EDITOR`.
 
 On success, tell the user the report's `id` and its `path` (under
 `~/.abcd/inbox/`). A refusal exits 2, names the field, and files nothing: fix
-that field and file again. A report whose `schema_version` this abcd does not
+that field and file again. A failure to file — the inbox cannot be created,
+every id drawn this second is taken, the write fails — exits 1 and files
+nothing. After the editor ran, a refusal and a failure both name where what was
+written is kept. A report whose `schema_version` this abcd does not
 know is refused naming the version.
 
 **Binary resolution.** Run `"${CLAUDE_PLUGIN_ROOT}/abcd"` — a plugin install

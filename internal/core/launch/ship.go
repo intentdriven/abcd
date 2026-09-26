@@ -2,7 +2,6 @@ package launch
 
 import (
 	"errors"
-	"path/filepath"
 
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
 )
@@ -60,12 +59,18 @@ var ErrShipBlocked = errors.New("ship blocked by a launch gate")
 func Ship(req ShipRequest) (ShipReport, error) {
 	var report ShipReport
 
-	bundle, err := ResolveBundle(req.RepoRoot, nil)
+	// The declaration chooses the reads below, as it does for DryRun; its
+	// absence is the plugin shape this verdict has always assumed.
+	art, err := LoadArtefactOrPlugin(req.RepoRoot)
+	if err != nil {
+		return ShipReport{}, err // preflight fault
+	}
+	bundle, _, err := kindBundle(req.RepoRoot, art)
 	if err != nil {
 		return ShipReport{}, err // preflight fault
 	}
 	report.Bundle = bundle
-	policy, err := LoadGatePolicy(req.RepoRoot)
+	policy, err := kindGatePolicy(req.RepoRoot, art)
 	if err != nil {
 		return ShipReport{}, err // preflight fault
 	}
@@ -76,8 +81,7 @@ func Ship(req ShipRequest) (ShipReport, error) {
 	// The source tree is checked under the DEV polarity, for the reason DryRun
 	// states: adr-19 keeps the version out of the committed manifests, and the
 	// public polarity is proved over the rendered payload instead.
-	vlPath := filepath.Join(req.RepoRoot, versionLocationRelPath)
-	lockstep := CheckLockstep(TreeDev, req.RepoRoot, vlPath)
+	lockstep := kindLockstep(TreeDev, req.RepoRoot, art)
 	report.Lockstep = lockstep
 
 	report.Version = req.Version
@@ -85,14 +89,17 @@ func Ship(req ShipRequest) (ShipReport, error) {
 		RepoRoot: req.RepoRoot, Version: req.Version, ExistingTags: req.ExistingTags,
 	})
 
-	report.Smoke = SmokeLight(NewBundleTree(bundle))
+	report.Smoke = SmokeReport{Tier: SmokeTierLight, OK: true}
+	if art.IsPlugin() {
+		report.Smoke = SmokeLight(NewBundleTree(bundle))
+	}
 	dirty := DirtyRefuse
 	if req.AllowDirty {
 		dirty = DirtyAllow
 	}
 	suite := runGateSuite(suiteRequest{
 		RepoRoot: req.RepoRoot, Bundle: bundle, Dirty: dirty,
-		DocAudit: req.DocAudit, Policy: policy,
+		DocAudit: req.DocAudit, Policy: policy, Kind: art.Kind,
 	})
 	report.Gates = suite.Gates
 	report.Warnings = suite.Warnings

@@ -216,7 +216,18 @@
     },
     "links_resolve": {
       "enabled": true,
-      "severity": "blocker"
+      "severity": "blocker",
+      "extra_roots": [
+        ".abcd/work"
+      ],
+      "exempt": [
+        ".abcd/work/reviews/*",
+        ".abcd/work/reviews/*/*"
+      ]
+    },
+    "link_anchors": {
+      "enabled": true,
+      "severity": "warn"
     },
     "no_brittle_line_refs": {
       "enabled": true,
@@ -239,6 +250,11 @@
     "intent_impact_valid": {
       "enabled": true,
       "severity": "blocker",
+      "intents_dir": "intents"
+    },
+    "intent_sota": {
+      "enabled": true,
+      "severity": "warn",
       "intents_dir": "intents"
     },
     "issue_id_unique": {
@@ -280,7 +296,9 @@
         "dsp": ".abcd/work/issues/dispositions",
         "rdg": ".abcd/development/readings",
         "adm": ".abcd/work/issues/admissions",
-        "srp": ".abcd/work/issues/surprises"
+        "srp": ".abcd/work/issues/surprises",
+        "rfm": ".abcd/work/issues/reframes",
+        "prn": ".abcd/development/principles"
       }
     },
     "prose_citation_resolves": {
@@ -295,10 +313,27 @@
         "dsp": ".abcd/work/issues/dispositions",
         "rdg": ".abcd/development/readings",
         "adm": ".abcd/work/issues/admissions",
-        "srp": ".abcd/work/issues/surprises"
+        "srp": ".abcd/work/issues/surprises",
+        "rfm": ".abcd/work/issues/reframes"
       }
     },
     "record_provenance": {
+      "enabled": true,
+      "severity": "blocker"
+    },
+    "principle_untyped": {
+      "enabled": true,
+      "severity": "warn"
+    },
+    "principle_claims": {
+      "enabled": true,
+      "severity": "blocker"
+    },
+    "principle_inheritance": {
+      "enabled": true,
+      "severity": "warn"
+    },
+    "principle_falsified": {
       "enabled": true,
       "severity": "blocker"
     },
@@ -401,6 +436,10 @@
         "docs-currency-reviewer",
         "iss35-brief-surface-crosscheck"
       ]
+    },
+    "changelog_unreleased_empty": {
+      "enabled": true,
+      "severity": "blocker"
     },
     "gate_lockstep": {
       "enabled": true,

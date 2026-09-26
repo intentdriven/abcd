@@ -514,3 +514,41 @@ func TestBanlistAcceptsATrailingJSONFlag(t *testing.T) {
 		t.Errorf("result = %+v", res)
 	}
 }
+
+// TestBanlistMigrateKeysALegacyStore is the front door onto the legacy-store
+// migration (iss-2609252007433563): the refusal `add` gives a legacy store names
+// `abcd banlist migrate`, the migration reports its count and never a pattern, and
+// the `add` it unblocks then succeeds. A second run says there was nothing to do.
+func TestBanlistMigrateKeysALegacyStore(t *testing.T) {
+	repo := blRepo(t, "")
+	store := filepath.Join(repo, filepath.FromSlash(banlist.PrivateRelPath))
+	if err := os.MkdirAll(filepath.Dir(store), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(store, []byte("# notes\nwidgetworks\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(repo)
+
+	stdout, stderr, code := runBanlist("", "banlist", "add", "--private", "k2", "other")
+	if code != 2 || !strings.Contains(stdout+stderr, "abcd banlist migrate") {
+		t.Fatalf("add over a legacy store: exit %d\n%s%s", code, stdout, stderr)
+	}
+	stdout, stderr, code = runBanlist("", "banlist", "migrate")
+	if code != 0 || !strings.Contains(stdout, "1 entr") || !strings.Contains(stdout, "keyed") {
+		t.Fatalf("migrate: exit %d\n%s%s", code, stdout, stderr)
+	}
+	if strings.Contains(stdout+stderr, "widgetworks") {
+		t.Fatalf("the migration echoes a pattern:\n%s%s", stdout, stderr)
+	}
+	if body, _ := os.ReadFile(store); !strings.HasPrefix(string(body), blFormatDecl+"\n") || !strings.Contains(string(body), "entry-2 widgetworks") {
+		t.Fatalf("store after migration:\n%s", body)
+	}
+	if _, _, code := runBanlist("", "banlist", "add", "--private", "k2", "other"); code != 0 {
+		t.Fatalf("add after migration: exit %d", code)
+	}
+	stdout, stderr, code = runBanlist("", "banlist", "migrate", "--json")
+	if code != 0 || !strings.Contains(stdout, `"migrated": false`) {
+		t.Fatalf("second migrate: exit %d\n%s%s", code, stdout, stderr)
+	}
+}

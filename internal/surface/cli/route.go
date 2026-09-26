@@ -6,8 +6,9 @@ package cli
 // (itd-2609170822093401, spc-2609180535002478 steps 3 and 4).
 //
 // A delegating verb is one whose step is run by an agent in the roster under
-// agents/: `intent audit` (and its ingest), `launch ship`, `disembark review`,
-// `principles`, `press-release` and `graveyard`, and `reading ingest`. Each
+// agents/: `intent audit` and `intent consistency` (each with its ingest),
+// `launch ship`, `disembark review`, `principles`, `press-release` and
+// `graveyard`, and `reading ingest`. Each
 // registers the flag through addRouteFlag, naming the agents it can dispatch,
 // and TestEveryDelegatingVerbCarriesRoute holds the command tree to that list,
 // so a verb cannot gain delegation without gaining the flag.
@@ -34,11 +35,14 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// machineConnections is the machine's configured provider connections. The
-// provider adapter intent (itd-2609081951381895) supplies a real one; until it
-// lands no provider is configured, so every step resolves to the harness. It
-// is a variable so a test can hand the verbs a reachable provider without a
-// socket.
+// machineConnections is the connections the delegating verbs resolve against.
+// The provider adapter (itd-2609081951381895) implements Connections from the
+// machine's provider blocks (oracle.APIConfig.Connections), and it is not
+// handed to the verbs yet: a route resolved to a provider would name a leg no
+// verb can send a step to until provider dispatch lands
+// (spc-2609251028149555), so every step resolves to the harness until then.
+// It is a variable so a test can hand the verbs a reachable provider without
+// a socket.
 var machineConnections = func() oracle.Connections { return oracle.NoConnections{} }
 
 // routeFlag is one delegating verb's --route values and the agents the verb

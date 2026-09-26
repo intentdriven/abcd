@@ -121,3 +121,74 @@ func TestLocalTierFenceCoversTheModeFile(t *testing.T) {
 		t.Errorf("public (narrowed): git does not ignore %s", modeFile)
 	}
 }
+
+// symlinkedCheckout returns a checkout (a .git and a real .abcd) and a path
+// that reaches it through a symlink, the shape `cd ~/proj` takes when
+// ~/proj -> ~/src/proj.
+func symlinkedCheckout(t *testing.T) (real, link string) {
+	t.Helper()
+	real = t.TempDir()
+	for _, d := range []string{".git", ".abcd"} {
+		if err := os.Mkdir(filepath.Join(real, d), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	link = filepath.Join(t.TempDir(), "proj")
+	if err := os.Symlink(real, link); err != nil {
+		t.Fatal(err)
+	}
+	return real, link
+}
+
+// TestInstallCreatesTheLocalTierThroughASymlinkedCheckoutPath is
+// iss-2609261108448674: the path a checkout is entered through is the user's
+// own, so a symlink there is not a planted redirect. The tier is created, and
+// only a symlink at or below the checkout's .abcd is refused.
+func TestInstallCreatesTheLocalTierThroughASymlinkedCheckoutPath(t *testing.T) {
+	setupHermetic(t)
+	harnessFixture(t, "")
+	real, link := symlinkedCheckout(t)
+	res, err := Install(link, installOpts(), RefusingPrompter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range res.Notes {
+		if strings.Contains(n, "refused to create") {
+			t.Errorf("a checkout entered through a symlinked path had a directory refused: %s", n)
+		}
+	}
+	if !fsutil.IsRealDir(filepath.Join(real, ".abcd", ".work.local")) {
+		t.Error("the local tier is not a real directory after install")
+	}
+}
+
+// TestTheLocalTierRefusalNamesTheRefusedLevel pins the other half of
+// iss-2609261108448674: a refusal names the level that was refused,
+// repository-relative, never "that path" and never an absolute path — here
+// through a symlinked checkout path, so the level named is the planted one and
+// not the path the checkout was entered through.
+func TestTheLocalTierRefusalNamesTheRefusedLevel(t *testing.T) {
+	setupHermetic(t)
+	harnessFixture(t, "")
+	real, link := symlinkedCheckout(t)
+	if err := os.Symlink(t.TempDir(), filepath.Join(real, ".abcd", ".work.local")); err != nil {
+		t.Fatal(err)
+	}
+	res, err := Install(link, installOpts(), RefusingPrompter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const want = "refused to create .abcd/.work.local/: .abcd/.work.local is not a real directory"
+	var note string
+	for _, n := range res.Notes {
+		if strings.Contains(n, "refused to create .abcd/.work.local/") {
+			note = n
+		}
+	}
+	if !strings.Contains(note, want) {
+		t.Fatalf("the refusal does not name the refused level %q: %q (notes %v)", want, note, res.Notes)
+	}
+	if strings.Contains(note, real) || strings.Contains(note, link) {
+		t.Errorf("the refusal carries an absolute path: %s", note)
+	}
+}

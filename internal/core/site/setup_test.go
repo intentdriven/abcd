@@ -21,6 +21,7 @@ import (
 	"github.com/intentdriven/abcd/internal/adapter/hosting/cloudflare"
 	"github.com/intentdriven/abcd/internal/adapter/hosting/cloudflare/cloudflaretest"
 	"github.com/intentdriven/abcd/internal/core/credential"
+	"github.com/intentdriven/abcd/internal/core/launch/scaffold"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
@@ -806,13 +807,34 @@ func TestTheWorkflowFiresOnEveryReleasePath(t *testing.T) {
 	if strings.Contains(on, "branches:") {
 		t.Errorf("the trigger filters branches, which drops a tag-push release run:\n%s", on)
 	}
-	for _, name := range wantNames {
-		src, err := os.ReadFile(filepath.Join("..", "launch", "scaffold", "templates", name+".yml.tmpl"))
+	// Each scaffold profile's workflows run under a name the trigger lists. The
+	// plugin profile's release workflow is `release`; a gate profile's (a
+	// declared binary or application) fires on workflow_call and on
+	// workflow_dispatch (the rehearsal, which publishes nothing), with no push
+	// trigger of its own, so its release runs are reported under its caller's
+	// name, `auto-release`.
+	for _, p := range []struct {
+		profile string
+		subs    scaffold.Substitutions
+	}{
+		{"bare", scaffold.BareSubstitutions("trunk")},
+		{"gate", scaffold.GateSubstitutions("trunk", "")},
+	} {
+		rendered, err := scaffold.Render(p.subs)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if first, _, _ := strings.Cut(string(src), "\n"); first != "name: "+name {
-			t.Errorf("the scaffolded %s workflow is named %q, not the %q the site workflow listens for", name, first, name)
+		for name, wf := range map[string][]byte{"release": rendered.ReleaseYML, "auto-release": rendered.AutoReleaseYML} {
+			first, _, _ := strings.Cut(string(wf), "\n")
+			if p.subs.Gate && name == "release" {
+				if strings.Contains(string(wf), "\n  push:") {
+					t.Errorf("the %s profile's gate workflow (%q) has a push trigger, so it runs under a name the site workflow does not listen for", p.profile, first)
+				}
+				continue
+			}
+			if first != "name: "+name {
+				t.Errorf("the %s profile's %s workflow is named %q, not the %q the site workflow listens for", p.profile, name, first, name)
+			}
 		}
 	}
 	gate := block("    if: >-", func(l string) bool { return strings.HasPrefix(l, "    runs-on:") })

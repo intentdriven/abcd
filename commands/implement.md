@@ -1,7 +1,7 @@
 ---
 name: implement
-description: "Share one autonomous run between sessions, from joining to reporting: Writes nothing bare, only the machine-scoped run state; refuses an unknown sub-verb."
-argument-hint: "[join|leave|mode|claim|release|check|log|report|load] …"
+description: "Share one autonomous run between sessions and drive the implement loop: Writes nothing bare, only the run state its sub-verbs name; refuses an unknown sub-verb."
+argument-hint: "[join|leave|mode|claim|release|check|log|report|load|status|step|receipt] …"
 block: agents
 ---
 
@@ -11,13 +11,15 @@ An autonomous run is one session's by default. A second session may join it
 for a window, and the run divides the work one of three ways — a claim per
 record, whole batches per session, or the first building while the second
 reviews and lands — and measures which way worked. This page is the run
-machinery a driving session calls; it is not the verb a person types to build
-an intent.
+machinery a driving session calls; the verb a person types to build an intent
+is `/abcd:build`, and the implement loop it starts is driven from here (see
+[Drive the implement loop](#drive-the-implement-loop)).
 
-Everything lives in the machine-scoped run state, `~/.abcd/runs/<root-sha>/`,
+The shared run lives in the machine-scoped run state, `~/.abcd/runs/<root-sha>/`,
 keyed on the repository's root commit, so sessions in different worktrees of
-one repository share one run and no repository file. Nothing here ever writes
-to the checkout.
+one repository share one run and no repository file. The shared run never
+writes to the checkout; the implement loop writes only its state file, in the
+checkout's gitignored local tier.
 
 ## See where the run stands
 
@@ -140,6 +142,40 @@ and, per session across the run, its context lines and the last `used_pct` seen.
 `leader` is the mode with the most lanes landed per wall-clock hour — a figure,
 not a verdict: the run's own report names the mode it would keep and says why.
 Relay any `unparsed` lines; they are counted nowhere.
+
+## Drive the implement loop
+
+`/abcd:build` starts a run of the implement loop in this checkout's local tier,
+`.abcd/.work.local/run/<run-id>/state.json`, separate from the shared run state
+above. Three sub-verbs drive it, each reading the state first and writing it
+last:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" implement status [--run <run-id>] --json
+"${CLAUDE_PLUGIN_ROOT}/abcd" implement step [--run <run-id>] --json
+"${CLAUDE_PLUGIN_ROOT}/abcd" implement receipt <path> [--run <run-id>] --json
+```
+
+`status` renders every run (or the one `--run` names): its lanes, each lane's
+spec step and next step, what an awaiting lane waits on, the pending spec steps
+and the run record. It writes nothing.
+
+`step` performs one step of the current lane and exits. When a step hands work
+to an agent the result's `awaiting` names the `role` to start as a fresh agent,
+the `brief` to hand it and the `receipt` path it writes; the lane then moves
+only when `receipt` is called with that path and the receipt verifies. A step
+while the lane awaits re-tells the await and moves nothing; a complete run says
+`complete: true`. A step that fails leaves the state as it was, so the next call
+performs it again, and a completed step is never repeated. Before the run's
+`next_eligible_at` the step is refused as a pause (exit 3).
+
+Without `--run`, both act on the one run in progress in this checkout, and are
+refused naming the runs when there are several. A refusal exits 2 (3 on a pause
+or a locked state), writes nothing, and under `--json` comes as its own document
+before the error envelope, naming `refusal.step`, `refusal.reason` and
+`refusal.remedy`. In this build no step body is carried yet: `step` refuses the
+lane's first step naming the spec piece that delivers it, and the run stays
+ready to resume. Report the refusal as it is.
 
 ## Check the machine's load
 

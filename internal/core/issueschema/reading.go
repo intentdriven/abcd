@@ -132,14 +132,6 @@ var ReadingRequired = []string{
 // properties below. A key outside it is refused, exactly as it is on an issue.
 var ReadingKnown = readingKnown()
 
-// ReservedSurpriseFields are reserved and DORMANT (spc-58, out of scope: "the
-// surprise entry, reserved here and populated in Iteration 2"). The reading's
-// output, the researcher's disposition, and the surprise that occasions
-// abduction are three acts and three records; this reserves the third's join
-// key in the family now. A populated value is REFUSED until the shape is ruled,
-// so the reservation is a behaviour rather than a comment.
-var ReservedSurpriseFields = []string{"occasioned_by"}
-
 // DispositionRequired is what every disposition carries whatever its state.
 // `disposition_grounds` is NOT here: it is required on every state except
 // `held`, which is a per-state rule rather than a schema-wide one.
@@ -290,9 +282,6 @@ func readingKnown() map[string]bool {
 		for _, f := range p.Fields {
 			known[f] = true
 		}
-	}
-	for _, f := range ReservedSurpriseFields {
-		known[f] = true
 	}
 	return known
 }

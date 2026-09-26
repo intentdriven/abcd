@@ -8,8 +8,11 @@ block: people
 # `/abcd:lint` repo-conformance check
 
 Run the abcd binary's read-only conformance lint for the current repo and
-present the result. This command performs **zero writes** — it reports gaps, it
-never fixes them (remediation stays with `/abcd:prepare-this-repo`).
+present the result. Bare `lint` and every target but one perform **zero
+writes**; `lint site` renders the site into its `--out` directory (default
+`./site`, under the working directory) when that directory holds no
+`index.html`, and leaves the render there. It reports gaps, it never fixes
+them (remediation stays with `/abcd:prepare-this-repo`).
 
 `lint` is the one check, with targets. Bare, it runs every target that judges
 the repository: the working conventions, the docs (`docs-currency`), the identity
@@ -99,6 +102,10 @@ Then summarise the JSON for the user:
 - `documents` — how many markdown documents the configured roots hold for the
   per-document rules. `0` means those rules read nothing: the roots are empty or
   hold no markdown.
+- `pruned` — the gitignored paths under the roots the lint did not read (a
+  cached clone, a build output); a gitignored path is not the repository's
+  documentation. Name them, so the user knows the tree was smaller than the
+  roots. Absent when nothing was pruned.
 - `blockers` — how many blocker findings exist; any blocker fails the gate.
 - `findings` — for each, its `File`, `Line`, `RuleID`, `Severity`, and
   `Message`; group them so the user sees what to fix.
@@ -108,7 +115,12 @@ The lint enforces present-tense docs: unambiguous change-narration (`previously`
 implemented`) blocks, while phrases that also describe present state
 (`deprecated`, `no longer`, `migrated from`) warn advisorily rather than block.
 It also checks that relative links resolve and that no stray markdown sits at the
-repo root (it belongs under `docs/`). Point the user at the offending file and
+repo root (it belongs under `docs/`). A file whose links resolve only from
+somewhere else, such as a tool-mandated mirror of a root file, is excused from
+the link check by listing it in the `links_resolve` rule's `exempt` globs in
+`.abcd/docs-lint.json`; `exempt_paths` does not reach the link check. A
+link's `#fragment` is checked against the target page's headings by the
+`link_anchors` rule, which warns rather than blocks. Point the user at the offending file and
 line for each finding, and note whether it is a blocker or a warning.
 
 Where a repo arms them, the citation rules add: footnote markers and definitions
