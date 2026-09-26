@@ -959,6 +959,11 @@ func Reconcile(repoRoot, specID, impact string, remainder RemainderRequest) (Rec
 			if err != nil {
 				return err
 			}
+			// The impact is judged again on these bytes, the ones the stamp is
+			// written onto; the gate above is the early refusal.
+			if stamp, err = resolveShipImpactFrom(it, content, impact); err != nil {
+				return err
+			}
 			// The stamp is written while the record is still in planned/, where a
 			// valid impact is equally lint-legal, so a failure at the move leaves a
 			// consistent record and the retry finds the judgement already recorded.
@@ -1134,13 +1139,27 @@ const shipImpactValues = "additive|breaking|fix"
 //     judgement: silently overwriting it would let `--impact` rewrite history
 //     as a side effect of shipping, so a disagreement is refused and the human
 //     edits the record they meant to change.
+//
+// It reads the record from disk, so it is the EARLY judgement a close makes
+// before the lock; the one that binds is resolveShipImpactFrom on the bytes
+// the close reads under the lock and writes the stamp onto.
 func resolveShipImpact(repoRoot string, it Intent, supplied string) (string, error) {
 	abs := filepath.Join(repoRoot, it.Path)
 	data, err := readRepoFile(abs, it.Path)
 	if err != nil {
 		return "", err
 	}
-	recorded := recordedImpact(string(data))
+	return resolveShipImpactFrom(it, string(data), supplied)
+}
+
+// resolveShipImpactFrom is resolveShipImpact on the record's content as the
+// caller read it. A close calls it on the bytes it read under the store lock,
+// because the stamp is written onto those bytes: judged on a read made before
+// the lock, an impact recorded in the window by `abcd intent plan --impact`
+// was overwritten by --impact instead of refused as a disagreement
+// (iss-2609261218318807).
+func resolveShipImpactFrom(it Intent, content, supplied string) (string, error) {
+	recorded := recordedImpact(content)
 	supplied = strings.TrimSpace(supplied)
 
 	switch {

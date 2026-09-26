@@ -400,7 +400,8 @@ type BundleMemberClose struct {
 // under the impact rule one intent's close applies. A member superseded out of
 // the bundle is passed over and named; every other refusal — a member not
 // planned, a one-sided link, a hold, an impact the rule refuses, a member still
-// held open by another spec — fires before anything moves, and a failure part
+// held open by another spec, a twin already at a member's shipped/ path — is
+// judged under the store lock and fires before anything moves, and a failure part
 // way through the moves puts every member back, so the members move together or
 // not at all. The spec closes last, as on one intent's close, so a failure at a
 // move leaves it open and the close retries cleanly.
@@ -408,88 +409,35 @@ func reconcileBundle(repoRoot string, store spec.Store, sp spec.Spec, impact str
 	if remainder.Slug != "" {
 		return ReconcileResult{}, fmt.Errorf("intent: spec %s is bundle %s's shared spec, and --remainder mints a follow-on for ONE intent; a bundle ships its members together, so nothing was minted. Close it whole, or plan the remaining work as a new intent", sp.ID, sp.Bundle)
 	}
-	corpus, err := Load(repoRoot)
-	if err != nil {
-		return ReconcileResult{}, err
-	}
-	// The list names every member, the first being `intent:`; a hand-written
-	// list that omits it still has it considered, and a repeat once.
-	names := append([]string{sp.Intent}, sp.Intents...)
-	var (
-		members []BundleMemberClose
-		skipped []string
-		seen    []string
-	)
-	for _, name := range names {
-		if !recordid.ValidIntentID(name) {
-			return ReconcileResult{}, fmt.Errorf("intent: spec %s lists %q, which is not a well-formed intent id; refusing to reconcile", sp.ID, name)
-		}
-		dup := false
-		for _, s := range seen {
-			dup = dup || recordid.SameID(s, name)
-		}
-		if dup {
-			continue
-		}
-		seen = append(seen, name)
-		it, ok := corpus.Lookup(name)
-		if !ok {
-			return ReconcileResult{}, fmt.Errorf("intent: %s (listed by spec %s) not found in any bucket; refusing to reconcile", name, sp.ID)
-		}
-		switch it.Bucket {
-		case BucketSuperseded:
-			skipped = append(skipped, it.ID)
-			continue
-		case BucketPlanned, BucketShipped:
-		default:
-			return ReconcileResult{}, fmt.Errorf("intent: %s is in %s (listed by bundle spec %s); expected planned or shipped — refusing to reconcile", it.ID, it.Bucket, sp.ID)
-		}
-		if it.Bundle != sp.Bundle {
-			skipped = append(skipped, it.ID)
-			continue
-		}
-		claimers := store.SpecsForIntent(it.ID)
-		backLinked := false
-		for _, c := range claimers {
-			backLinked = backLinked || spec.SameNum(it.SpecID, c.ID)
-		}
-		if !backLinked {
-			return ReconcileResult{}, fmt.Errorf("intent: %s spec_id is %q but no spec realising it carries that id (bundle spec %s lists it; bidirectional link disagrees); refusing to reconcile", it.ID, it.SpecID, sp.ID)
-		}
-		if it.Bucket == BucketPlanned {
-			if err := refuseIfHeld(it, "spec close"); err != nil {
-				return ReconcileResult{}, err
-			}
-			if open := otherOpenSpecs(claimers, sp.ID); len(open) > 0 {
-				return ReconcileResult{}, fmt.Errorf("intent: bundle member %s is still realised by %s, which is open; a bundle's members ship together, so close %s first (it ships nothing while this spec is open) — nothing moved",
-					it.ID, strings.Join(specIDs(open), ", "), strings.Join(specIDs(open), ", "))
-			}
-		}
-		members = append(members, BundleMemberClose{Intent: it, From: it.Bucket, To: it.Bucket})
-	}
-	if len(members) == 0 {
-		return ReconcileResult{}, fmt.Errorf("intent: no member of bundle %s (spec %s) is planned or shipped under that bundle; refusing to reconcile", sp.Bundle, sp.ID)
-	}
-
-	// The impact rule per member, ahead of every write.
-	stamps := make([]string, len(members))
-	for i, m := range members {
-		if m.Intent.Bucket != BucketPlanned {
-			continue
-		}
-		if stamps[i], err = resolveShipImpact(repoRoot, m.Intent, impact); err != nil {
-			return ReconcileResult{}, err
-		}
-	}
-
 	type undo struct {
 		abs, rel, orig, dstRel string
 		moved                  bool
 	}
-	var done []undo
+	var (
+		members []BundleMemberClose
+		skipped []string
+		done    []undo
+		// preflight is true until the first write: a refusal before it has
+		// moved nothing, and says so, where one after it is undone.
+		preflight = true
+	)
 	if err := withIntentMintLock(repoRoot, func() error {
-		for i := range members {
-			m := &members[i]
+		// Every member is judged under the lock the moves take, on a corpus
+		// loaded here and on the bytes the stamp is written onto
+		// (iss-2609261218318807), and every refusal fires before the first
+		// member moves.
+		corpus, err := Load(repoRoot)
+		if err != nil {
+			return err
+		}
+		if members, skipped, err = judgeBundleMembers(store, corpus, sp); err != nil {
+			return err
+		}
+		type staged struct {
+			abs, content, stamp, dstRel string
+		}
+		plan := make([]staged, len(members))
+		for i, m := range members {
 			if m.Intent.Bucket != BucketPlanned {
 				continue
 			}
@@ -498,15 +446,35 @@ func reconcileBundle(repoRoot string, store spec.Store, sp spec.Spec, impact str
 			if err != nil {
 				return err
 			}
+			stamp, err := resolveShipImpactFrom(m.Intent, content, impact)
+			if err != nil {
+				return err
+			}
+			// The destination is pre-flighted per member, as PlanBundle's is, so
+			// a twin at the second member's destination refuses before the
+			// first member moves (iss-2609261215168271).
+			dstRel := filepath.Join(IntentsRelDir, BucketShipped, filepath.Base(m.Intent.Path))
+			if _, err := os.Lstat(filepath.Join(repoRoot, dstRel)); err == nil {
+				return fmt.Errorf("intent: refusing to overwrite existing %s", dstRel)
+			}
+			plan[i] = staged{abs: abs, content: content, stamp: stamp, dstRel: dstRel}
+		}
+		preflight = false
+		for i := range members {
+			m := &members[i]
+			if m.Intent.Bucket != BucketPlanned {
+				continue
+			}
+			st := plan[i]
 			// Recorded before the first write, so a failure at either write or at
-			// the move is undone from the bytes read here.
-			done = append(done, undo{abs: abs, rel: m.Intent.Path, orig: content})
-			if stamps[i] != "" {
-				updated, err := setFrontmatterFields(content, map[string]string{"impact": stamps[i]})
+			// the move is undone from the bytes read under this lock.
+			done = append(done, undo{abs: st.abs, rel: m.Intent.Path, orig: st.content})
+			if st.stamp != "" {
+				updated, err := setFrontmatterFields(st.content, map[string]string{"impact": st.stamp})
 				if err != nil {
 					return err
 				}
-				if err := writeIntentFile(abs, m.Intent.Path, updated); err != nil {
+				if err := writeIntentFile(st.abs, m.Intent.Path, updated); err != nil {
 					return err
 				}
 			}
@@ -518,6 +486,9 @@ func reconcileBundle(repoRoot string, store spec.Store, sp spec.Spec, impact str
 		}
 		return nil
 	}); err != nil {
+		if preflight {
+			return ReconcileResult{}, fmt.Errorf("%w; nothing moved, and spec %s stays open", err, sp.ID)
+		}
 		for i := len(done) - 1; i >= 0; i-- {
 			u := done[i]
 			if u.moved {
@@ -575,7 +546,8 @@ func reconcileBundle(repoRoot string, store spec.Store, sp spec.Spec, impact str
 			m.ReceiptID, m.ReceiptStatus = emit.ReceiptID, emit.Status
 		}
 	}
-	res.Relinked, err = relink.Repoint(repoRoot, moves)
+	relinked, err := relink.Repoint(repoRoot, moves)
+	res.Relinked = relinked
 	if err != nil {
 		res.RelinkError = err.Error()
 	}
@@ -588,4 +560,61 @@ func reconcileBundle(repoRoot string, store spec.Store, sp spec.Spec, impact str
 	}
 	res.AuditEmitError = strings.Join(emitErrs, "; ")
 	return res, nil
+}
+
+// judgeBundleMembers resolves the members a bundle's shared spec closes from
+// corpus, making every judgement the corpus decides: each listed id is well
+// formed and present, a superseded member or one that left the bundle is
+// passed over and named, and each remaining member is planned or shipped, is
+// back-linked to a spec realising it, and — when still planned — is neither
+// held nor realised by another open spec. reconcileBundle calls it under the
+// store lock, on a corpus loaded there.
+func judgeBundleMembers(store spec.Store, corpus Corpus, sp spec.Spec) ([]BundleMemberClose, []string, error) {
+	var (
+		members []BundleMemberClose
+		skipped []string
+	)
+	for _, name := range sp.Members() {
+		if !recordid.ValidIntentID(name) {
+			return nil, nil, fmt.Errorf("intent: spec %s lists %q, which is not a well-formed intent id; refusing to reconcile", sp.ID, name)
+		}
+		it, ok := corpus.Lookup(name)
+		if !ok {
+			return nil, nil, fmt.Errorf("intent: %s (listed by spec %s) not found in any bucket; refusing to reconcile", name, sp.ID)
+		}
+		switch it.Bucket {
+		case BucketSuperseded:
+			skipped = append(skipped, it.ID)
+			continue
+		case BucketPlanned, BucketShipped:
+		default:
+			return nil, nil, fmt.Errorf("intent: %s is in %s (listed by bundle spec %s); expected planned or shipped — refusing to reconcile", it.ID, it.Bucket, sp.ID)
+		}
+		if it.Bundle != sp.Bundle {
+			skipped = append(skipped, it.ID)
+			continue
+		}
+		claimers := store.SpecsForIntent(it.ID)
+		backLinked := false
+		for _, c := range claimers {
+			backLinked = backLinked || spec.SameNum(it.SpecID, c.ID)
+		}
+		if !backLinked {
+			return nil, nil, fmt.Errorf("intent: %s spec_id is %q but no spec realising it carries that id (bundle spec %s lists it; bidirectional link disagrees); refusing to reconcile", it.ID, it.SpecID, sp.ID)
+		}
+		if it.Bucket == BucketPlanned {
+			if err := refuseIfHeld(it, "spec close"); err != nil {
+				return nil, nil, err
+			}
+			if open := otherOpenSpecs(claimers, sp.ID); len(open) > 0 {
+				return nil, nil, fmt.Errorf("intent: bundle member %s is still realised by %s, which is open; a bundle's members ship together, so close %s first (it ships nothing while this spec is open)",
+					it.ID, strings.Join(specIDs(open), ", "), strings.Join(specIDs(open), ", "))
+			}
+		}
+		members = append(members, BundleMemberClose{Intent: it, From: it.Bucket, To: it.Bucket})
+	}
+	if len(members) == 0 {
+		return nil, nil, fmt.Errorf("intent: no member of bundle %s (spec %s) is planned or shipped under that bundle; refusing to reconcile", sp.Bundle, sp.ID)
+	}
+	return members, skipped, nil
 }

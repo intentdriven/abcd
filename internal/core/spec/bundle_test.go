@@ -71,3 +71,21 @@ func TestCreateBundleRefusesMalformedRequests(t *testing.T) {
 		t.Fatalf("a refused bundle must mint nothing, found %d file(s)", len(entries))
 	}
 }
+
+// Members lists every intent a spec realises, `intent:` first, each once: an
+// `intents:` list that omits the back-link still has it counted, and a repeat
+// in another spelling counts once.
+func TestSpecMembersListsEachMemberOnceBackLinkFirst(t *testing.T) {
+	for _, c := range []struct {
+		sp   Spec
+		want string
+	}{
+		{Spec{Intent: "itd-10"}, "itd-10"},
+		{Spec{Intent: "itd-10", Intents: []string{"itd-10", "itd-11"}}, "itd-10,itd-11"},
+		{Spec{Intent: "itd-10", Intents: []string{"itd-11", "itd-010", "itd-11"}}, "itd-10,itd-11"},
+	} {
+		if got := strings.Join(c.sp.Members(), ","); got != c.want {
+			t.Errorf("Members(%+v) = %s, want %s", c.sp, got, c.want)
+		}
+	}
+}

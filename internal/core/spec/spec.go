@@ -21,6 +21,7 @@ package spec
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -90,6 +91,20 @@ func (s Spec) Names(intentID string) bool {
 		}
 	}
 	return false
+}
+
+// Members is every intent the spec realises, in order: its `intent:` back-link
+// first, then each `intents:` entry not already listed. A hand-written list
+// that omits `intent:` still has it counted, and a repeat (canonically, as
+// Names compares) counts once. An ordinary spec has the one member.
+func (s Spec) Members() []string {
+	out := []string{s.Intent}
+	for _, m := range s.Intents {
+		if !slices.ContainsFunc(out, func(have string) bool { return recordid.SameID(have, m) }) {
+			out = append(out, m)
+		}
+	}
+	return out
 }
 
 // Store is the in-memory set of spec records discovered under both buckets.
