@@ -290,7 +290,13 @@ func matchSegment(p Pattern, s segment) bool {
 // name is unknown, not because the line names the entry's program, and Check
 // reports it as the substitution's, not the entry's (review4-guard finding 4).
 func matchSegmentNamed(p Pattern, s segment) (hit, named bool) {
-	tally(len(s.tokens))
+	// The places a command can sit are looked through for every entry; the
+	// words after them are walked only for an entry whose command stands at
+	// one, which is where the count below charges them. Charging every word
+	// to every entry counted a walk no entry without a named site makes, and
+	// made each entry added to the registry raise the constant the cost guards
+	// hold (work_test.go) on lines that never name it.
+	tally(len(arrivalsOf(s)))
 	// Every place the command can sit is read (commandArrivals): an unknown word
 	// before it is read every way it can be, and an unknown word in command
 	// position is every program its tail allows. The command NAME is folded
@@ -313,11 +319,12 @@ func matchSegmentNamed(p Pattern, s segment) (hit, named bool) {
 		if len(group) == 0 {
 			continue
 		}
+		tally(len(s.tokens))
 		// glob reports, per TOKEN index, whether bash would expand that token.
 		glob := func(i int) bool { return !noglob && s.globAt(i) }
 		m := newEntryMatcher(p, s.tokens, glob)
 		for _, a := range group {
-			if m.matchesAfter(a.idx) {
+			if m.matchesAfter(a.idx) && argsFed(p, s, a.idx) {
 				hit = true
 				if !anyProgram(s.tokens[a.idx]) {
 					return true, true
@@ -326,6 +333,87 @@ func matchSegmentNamed(p Pattern, s segment) (hit, named bool) {
 		}
 	}
 	return hit, false
+}
+
+// argsFed reports whether the arguments of the command at site come from a
+// command p.ArgsFrom names, or true when the entry names none. Two places hand
+// a command its arguments from another command's output: a command
+// substitution in a word after it (`kill $(pgrep -f make)`), and, where xargs
+// runs it, the pipeline feeding xargs (`pgrep -f make | xargs kill`) or a word
+// of xargs's own (`xargs -a <(pgrep make) kill`). What a substitution or a
+// pipeline ran is recorded by the tokenizer (segment.feeds, segment.piped), so
+// the question is only whether any of those commands matches.
+func argsFed(p Pattern, s segment, site int) bool {
+	if len(p.ArgsFrom) == 0 {
+		return true
+	}
+	from := site + 1
+	if x, ok := xargsBefore(s, site); ok {
+		if s.piped.hits(p.ArgsFrom) {
+			return true
+		}
+		from = x + 1
+	}
+	for i, fs := range s.feeds {
+		if i < from {
+			continue
+		}
+		for _, f := range fs {
+			if f.hits(p.ArgsFrom) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// xargsBefore returns the earliest place before site the walk arrives at that
+// can be xargs, which runs the command at site with arguments it reads from its
+// input. A name a substitution prints can be xargs too (`"$(true)"xargs kill`),
+// and the walk steps it as a wrapper of unknown grammar, so it is read as one.
+func xargsBefore(s segment, site int) (int, bool) {
+	for _, a := range arrivalsOf(s) {
+		if a.idx >= site {
+			break
+		}
+		if commandNamed(s, a, "xargs") {
+			return a.idx, true
+		}
+	}
+	return 0, false
+}
+
+// hits reports whether any command in the run matches one of srcs. The first
+// question asked of a list counts, once, how many of its commands match, so
+// every later question about any run in it — however many runs nest inside
+// one another — is two lookups.
+func (f feed) hits(srcs []Pattern) bool {
+	if f.list == nil || f.lo >= f.hi || len(srcs) == 0 {
+		return false
+	}
+	key := &srcs[0]
+	counts, ok := f.list.hits[key]
+	if !ok {
+		counts = make([]int, len(f.list.segs)+1)
+		for i, s := range f.list.segs {
+			counts[i+1] = counts[i]
+			for _, src := range srcs {
+				if matchSegment(src, s) {
+					counts[i+1]++
+					break
+				}
+			}
+		}
+		if f.list.hits == nil {
+			f.list.hits = map[*Pattern][]int{}
+		}
+		f.list.hits[key] = counts
+	}
+	hi := f.hi
+	if hi > len(f.list.segs) {
+		hi = len(f.list.segs)
+	}
+	return f.lo < hi && counts[hi] > counts[f.lo]
 }
 
 // entryMatcher answers, for any place a command can sit in one segment, whether

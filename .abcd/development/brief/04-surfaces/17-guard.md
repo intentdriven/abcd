@@ -227,7 +227,10 @@ command string handed to a shell is opened and read. A git alias declared on the
 command git would actually run is what gets checked. A commit or push that
 moves `core.hooksPath` for itself is read as skipping its hooks, which is what
 it does. A delete chained after `pushd` or `popd` is read as one chained after
-`cd`. In a repository with more
+`cd`. A `kill` handed what a process search prints, in a substitution or
+piped into `xargs kill`, is read as the kill by name it is, and a `pkill` or
+`killall` selecting by user or terminal as selecting every session under the
+account. In a repository with more
 than one worktree, a stash or pop that does not name its entry is warned about,
 because the stash stack is shared across worktrees. Where the reading is a
 guess, over-blocking is the direction the guard takes.
@@ -240,7 +243,9 @@ table does not name; a REST
 path an entry names by its root segment when the host serves that API under a
 prefix; an IFS the shell already holds when the line starts, or gains during the line
 through a name the guard does not read (`declare $(echo I)FS=x`, a sourced file),
-since every line is read from the default IFS; a payload inside a non-shell interpreter such as `python -c`, which is
+since every line is read from the default IFS; a pid list a kill reads through a variable, a file, a brace group, a `ps |
+grep` chain or a shell string;
+a payload inside a non-shell interpreter such as `python -c`, which is
 one opaque token and today a silent allow; and any dangerous form no entry
 describes. Nor does an allow see through a parameter expansion that carries no
 substitution (`$VAR`, `${VAR:-git}`), wherever it stands — as the command's

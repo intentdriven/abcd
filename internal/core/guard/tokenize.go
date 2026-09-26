@@ -78,6 +78,37 @@ type segment struct {
 	// walkCapped records that the walk stopped at maxUnknownSites, which
 	// Check refuses.
 	walkCapped bool
+	// feeds records, per token index, where the output a word holds comes
+	// from: the commands each command substitution in it ran, nested ones
+	// included. nil when no word holds one. It is what lets an entry read a
+	// command's arguments by the command that printed them (Pattern.ArgsFrom):
+	// `kill $(pgrep -f make)` is a kill by name.
+	feeds map[int][]feed
+	// piped records the commands before this one in its pipeline, whose output
+	// is its standard input, with the commands their own substitutions ran;
+	// the zero feed when it reads no pipe. `pgrep -f make | xargs kill` hands
+	// kill what pgrep printed.
+	piped feed
+}
+
+// feed is a run of segments one tokenize call emitted, list.segs[lo:hi]: the
+// commands whose output a word holds (segment.feeds) or a command reads on its
+// standard input (segment.piped). It names the run rather than copying it, so
+// recording one costs the same whatever it holds, and the question an entry
+// asks of it — does any of these commands match — is answered from a count the
+// list keeps per question (feedHit), so asking it of nested runs costs no more
+// than asking it once of the whole list.
+type feed struct {
+	list   *segList
+	lo, hi int
+}
+
+// segList is one tokenize call's output, shared by every feed that call
+// recorded. segs is set when the call returns; hits caches, per list of source
+// patterns an entry names, how many of the first i segments match one of them.
+type segList struct {
+	segs []segment
+	hits map[*Pattern][]int
 }
 
 // wordLiteral is the fixed text of a word whose every fixed-output command
@@ -180,6 +211,26 @@ func (s segment) globSlice(lo, hi int) []bool {
 		}
 	}
 	return nil
+}
+
+// feedsSlice returns the feeds of tokens[lo:hi], indexed from lo, or nil when
+// none of those words holds one — the record a sub-segment built from a token
+// window (Tier 2) carries forward. It reads the window's words, not the whole
+// record, so a window costs what its words do.
+func (s segment) feedsSlice(lo, hi int) map[int][]feed {
+	if len(s.feeds) == 0 {
+		return nil
+	}
+	var out map[int][]feed
+	for i := lo; i < hi; i++ {
+		if fs, ok := s.feeds[i]; ok {
+			if out == nil {
+				out = map[int][]feed{}
+			}
+			out[i-lo] = fs
+		}
+	}
+	return out
 }
 
 // tokenize splits a candidate command line into command-position segments,
@@ -316,7 +367,26 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		// command emitted reads a pipe. Both land on segment.stdinStream.
 		curStdin bool
 		pipeNext bool
+		// feeds rides with the segment and records, per token index, the
+		// commands whose output the word holds (segment.feeds); curFeeds holds
+		// them for the word being built. pipeFrom is where, in segs, the
+		// pipeline the command being built belongs to began: the commands from
+		// there on are what a pipe hands it (segment.piped).
+		feeds    map[int][]feed
+		curFeeds []feed
+		pipeFrom int
+		// list is this call's output as the feeds it records name it.
+		list = &segList{}
 	)
+	defer func() { list.segs = segs }()
+	// feedFrom records, for the word being built, that it holds the output of
+	// the commands emitted since start: a substitution's own command and every
+	// command nested inside it.
+	feedFrom := func(start int) {
+		if len(segs) > start {
+			curFeeds = append(curFeeds, feed{list: list, lo: start, hi: len(segs)})
+		}
+	}
 	// inArithmetic reports whether the innermost construct that can change how a
 	// `<<` reads is an arithmetic one. A plain `(` is skipped rather than
 	// answered on: inside `(( … ))` it is sub-expression grouping, and at the
@@ -376,6 +446,17 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		}
 		hasCur = true
 	}
+	// recordFeeds files the word being built's feeds under the index it is
+	// about to take.
+	recordFeeds := func() {
+		if len(curFeeds) == 0 {
+			return
+		}
+		if feeds == nil {
+			feeds = map[int][]feed{}
+		}
+		feeds[len(toks)] = curFeeds
+	}
 	flushToken := func() {
 		if !hasCur {
 			return
@@ -395,11 +476,12 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		if curBrace && !(isAssignment(string(cur)) && allAssignments(toks)) {
 			if words, ok := expandBraces(bword{b: cur, m: curMask}, &braceLim); ok {
 				for _, w := range words {
+					recordFeeds()
 					toks = append(toks, unknownFromOpenExpansion(string(w.b)))
 					globs = append(globs, w.globbed())
 				}
 				cur, curMask, hasCur, curGlob, curBrace = nil, nil, false, false, false
-				curPieces = nil
+				curPieces, curFeeds = nil, nil
 				return
 			}
 			braceGroup = true
@@ -415,6 +497,8 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			lits[len(toks)] = joinedLiteral(cur, curPieces)
 		}
 		curPieces = nil
+		recordFeeds()
+		curFeeds = nil
 		toks = append(toks, tok)
 		globs = append(globs, curGlob)
 		cur, curMask, hasCur, curGlob, curBrace = nil, nil, false, false, false
@@ -422,13 +506,18 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 	flushSegment := func() {
 		flushToken()
 		if len(toks) > 0 {
+			var piped feed
+			if pipeNext && len(segs) > pipeFrom {
+				piped = feed{list: list, lo: pipeFrom, hi: len(segs)}
+			}
 			segs = append(segs, segment{
 				tokens: toks, chain: chain, braceGroup: braceGroup, globbed: globsOrNil(globs),
-				stdinStream: curStdin || pipeNext, literal: lits,
+				stdinStream: curStdin || pipeNext, literal: lits, feeds: feeds, piped: piped,
 			})
 			toks = nil
 			globs = nil
 			lits = nil
+			feeds = nil
 			braceGroup = false
 			pipeNext = false
 		}
@@ -560,10 +649,14 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			toks: toks, globs: globs, lits: lits, cur: cur, curMask: curMask, hasCur: hasCur, curGlob: curGlob,
 			curBrace: curBrace, braceGroup: braceGroup, chain: chain, procSub: procSub,
 			curStdin: curStdin, pipeNext: pipeNext, pieces: curPieces,
+			feeds: feeds, curFeeds: curFeeds, pipeFrom: pipeFrom, segStart: len(segs),
 		}
 		toks, globs, lits, cur, curMask, hasCur, curGlob, curBrace, braceGroup = nil, nil, nil, nil, nil, false, false, false, false
 		curPieces = nil
 		curStdin, pipeNext = false, false
+		// A substitution is a command string of its own: its pipelines begin
+		// inside it.
+		feeds, curFeeds, pipeFrom = nil, nil, len(segs)
 		parens = append(parens, parenFrame{kind: kind, pos: pos, saved: saved})
 	}
 	// prePassedBacktick reads a backtick opening at line[i] whose text bash's
@@ -602,8 +695,12 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		toks, globs, lits, cur, curMask, hasCur, curGlob, curBrace, braceGroup, chain =
 			e.toks, e.globs, e.lits, e.cur, e.curMask, e.hasCur, e.curGlob, e.curBrace, e.braceGroup, e.chain
 		curStdin, pipeNext, curPieces = e.curStdin, e.pipeNext, e.pieces
+		feeds, curFeeds, pipeFrom = e.feeds, e.curFeeds, e.pipeFrom
 		if !f.bare {
 			addCur([]byte(arithmeticOperand), 0)
+			// The number it prints is computed from what the substitutions
+			// inside it printed.
+			feedFrom(e.segStart)
 		}
 		lastList = false
 	}
@@ -618,6 +715,8 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		toks, globs, lits, cur, curMask, hasCur, curGlob, curBrace, braceGroup, chain =
 			e.toks, e.globs, e.lits, e.cur, e.curMask, e.hasCur, e.curGlob, e.curBrace, e.braceGroup, e.chain
 		curStdin, pipeNext, curPieces = e.curStdin, e.pipeNext, e.pieces
+		feeds, curFeeds, pipeFrom = e.feeds, e.curFeeds, e.pipeFrom
+		feedFrom(e.segStart)
 		if e.procSub {
 			addCur([]byte(procSubOperand), 0)
 		} else {
@@ -761,7 +860,9 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 						continue
 					}
 					if end >= 0 {
+						start := len(segs)
 						arithmetic(line[j+3 : end-1])
+						feedFrom(start)
 						addCur([]byte(arithmeticOperand), 0)
 						j = end + 1
 						continue
@@ -786,7 +887,9 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 					if line[j] == '`' {
 						text, _ = backtickText(text, true)
 					}
+					start := len(segs)
 					follow(text)
+					feedFrom(start)
 					addCur([]byte{unknownMark}, 0)
 					// A `$(cat <<'EOF' … EOF)` prints its document verbatim,
 					// and so does its backtick spelling; flushToken reads the
@@ -877,6 +980,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 				chainSeq++
 				chain = chainSeq
 				pipeNext = false
+				pipeFrom = len(segs)
 			}
 		case c == '#' && !hasCur:
 			// A comment starts only at a word boundary (POSIX): `url/#frag` is
@@ -1150,6 +1254,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			}
 			if (c == '&' || c == '|') && i+1 < len(line) && line[i+1] == c {
 				pipeNext = false
+				pipeFrom = len(segs)
 				lastList = true
 				i += 2
 				continue
@@ -1159,6 +1264,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 				pipeNext = true
 			case ';', '&':
 				pipeNext = false
+				pipeFrom = len(segs)
 			}
 			// A single pipe continues the list across a newline; `;`, `&`, the
 			// grouping parens, and a backtick boundary do not.
@@ -1670,6 +1776,13 @@ type enclosing struct {
 	pipeNext bool
 	// pieces is the enclosing word's fixed outputs so far (tokenizeAt).
 	pieces []litPiece
+	// feeds, curFeeds and pipeFrom are the enclosing command's own records of
+	// where its words and its input come from (tokenizeAt); segStart is where,
+	// in the output, the substitution's own commands begin.
+	feeds    map[int][]feed
+	curFeeds []feed
+	pipeFrom int
+	segStart int
 }
 
 // procSubOperand is the word a process substitution leaves in the enclosing

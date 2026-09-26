@@ -262,6 +262,21 @@ the repository's hooks exactly as `--no-verify` does, and blocks under the same
 entries whatever the value, because the guard cannot tell a directory of real
 hooks from an empty one. Setting the key with `git config` is not refused.
 
+A kill is read with where its pids come from. A `kill` handed what a process
+search prints — `kill $(pgrep -f make)`, `pgrep -f make | xargs kill`, `kill
+$(pidof make)` — is a **block** (`kill-by-search`), because it signals every
+matching process on the machine, as `pkill` does; a kill of a pid you name, one
+you recorded (`kill $(cat pidfile)`), or a search of your own group (`kill
+$(pgrep -g <pgid>)`) is not. A `pkill` or `killall` that selects by user or
+terminal (`-u`, `-t`, and `pkill`'s `-U` and `-G`) is a **block** too, under
+`pkill-by-owner`, `killall-by-owner` or the entry for a kill by name, because
+every session under the account is among what it selects. A pid list carried
+through a variable, a file, a brace group (`{ pgrep …; } | xargs kill`), a `ps |
+grep` chain or a shell string (`kill $(sh -c 'pgrep …')`) is not seen, and
+neither is a selector written against its flag with a value that holds anything
+but letters and digits (`pkill -tpts/3`), or `pkill`'s `-U` and `-G` written
+that way.
+
 What an allow still does not see is a hazard that never reaches command position
 at all: one launched through a known wrapper carrying a value-taking flag the
 guard does not name (`sudo -u bob <hazard>` is seen; the bundled short form

@@ -176,10 +176,13 @@ func (r Registry) speculateSegment(before []segment, s segment, ids []string, bu
 		}
 		// The glob record travels with the window: a globbed flag behind an
 		// unrecognised launcher is still a pattern bash expands.
-		cand := segment{tokens: tokens, chain: s.chain}
+		cand := segment{tokens: tokens, chain: s.chain, piped: s.piped}
 		if !noglob {
 			cand.globbed = s.globSlice(start, start+len(tokens))
 		}
+		// So do the words' feeds and the segment's piped input: `myrunner kill
+		// $(pgrep -f make)` is a kill fed by a search behind a launcher.
+		cand.feeds = s.feedsSlice(start, start+len(tokens))
 
 		// Expand the suffix's own payloads, so `busybox sh -c "<hazard>"` is
 		// reached: stepping busybox leaves `sh -c …` in command position, and the

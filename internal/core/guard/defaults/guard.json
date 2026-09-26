@@ -269,17 +269,19 @@
       "tier": "blocker",
       "pattern": {
         "command": "pkill",
-        "value_flags": ["-P", "--parent", "-g", "--pgroup", "-G", "--group", "-s", "--session", "-u", "--euid", "-U", "--uid", "-t", "--terminal", "-F", "--pidfile", "--signal", "--ns", "--nslist", "-j", "-M", "-N"],
+        "value_flags": ["-P", "--parent", "-g", "--pgroup", "-s", "--session", "-F", "--pidfile", "--signal", "--ns", "--nslist", "-j", "-M", "-N"],
         "min_operands": 1
       },
-      "why": "`pkill` signals every process on the machine whose name matches the pattern — with `-f`, whose whole command line does — so a pattern meant for your own run also stops every other session's run of the same command.",
+      "why": "`pkill` signals every process on the machine whose name matches the pattern — with `-f`, whose whole command line does, and with `-u`, `-U`, `-t` or `-G`, every process of that user, terminal or group — so a selection meant for your own run also stops every other session's run of the same command.",
       "successor": "Stop the process you started by the pid you recorded when you started it (`kill \"$pid\"`), or stop its own process group (`kill -- -\"$pgid\"`), so no other session's process is touched.",
       "fixtures": {
         "known_bad": [
           "pkill -f 'make preflight'",
           "pkill make",
           "pkill -9 -f 'go test'",
-          "sudo pkill -f node"
+          "sudo pkill -f node",
+          "pkill -U 501",
+          "pkill -G staff"
         ],
         "known_good": [
           "pkill -g 4242",
@@ -287,7 +289,74 @@
           "kill 4242",
           "kill -- -4242",
           "pgrep -f 'make preflight'",
+          "pkill -HUP -P $$",
           "abcd capture \"pkill -f make stopped a peer's gate\""
+        ]
+      }
+    },
+    "pkill-by-owner": {
+      "tier": "blocker",
+      "pattern": {
+        "command": "pkill",
+        "flags": ["-u|-t|--euid|--uid|--terminal|--group"]
+      },
+      "why": "`pkill -u` signals every process that user owns, and `pkill -t` every process on that terminal: every session running under the account, other agents' included, so selecting your own run by user or terminal stops everyone else's with it.",
+      "successor": "Stop the process you started by the pid you recorded when you started it (`kill \"$pid\"`), or stop its own process group (`kill -- -\"$pgid\"`), so no other session's process is touched.",
+      "fixtures": {
+        "known_bad": [
+          "pkill -u bob",
+          "pkill -u $(whoami)",
+          "pkill -ubob",
+          "pkill --euid=bob",
+          "pkill -t pts/3"
+        ],
+        "known_good": [
+          "pkill -g 4242",
+          "pkill -P $$",
+          "pkill -USR1 -g 4242",
+          "pgrep -u bob",
+          "abcd capture \"pkill -u stopped every session\""
+        ]
+      }
+    },
+    "kill-by-search": {
+      "tier": "blocker",
+      "pattern": {
+        "command": "kill",
+        "args_from": [
+          {
+            "command": "pgrep",
+            "value_flags": ["-P", "--parent", "-g", "--pgroup", "-s", "--session", "-F", "--pidfile", "-d", "--delimiter", "--ns", "--nslist", "-j", "-M", "-N"],
+            "min_operands": 1
+          },
+          {
+            "command": "pgrep",
+            "flags": ["-u|-t|--euid|--uid|--terminal|--group"]
+          },
+          {
+            "command": "pidof",
+            "value_flags": ["-o", "--omit-pid", "-S", "--separator", "-d"],
+            "min_operands": 1
+          }
+        ]
+      },
+      "why": "`kill` handed the pids a name search prints — `kill $(pgrep -f make)`, `pgrep -f make | xargs kill`, `kill $(pidof make)` — signals every process on the machine that matches, other sessions' included, exactly as `pkill` does.",
+      "successor": "Stop the process you started by the pid you recorded when you started it (`kill \"$pid\"`), or stop its own process group (`kill -- -\"$pgid\"`), so no other session's process is touched.",
+      "fixtures": {
+        "known_bad": [
+          "kill $(pgrep -f 'make preflight')",
+          "kill -9 $(pgrep make)",
+          "pgrep -f node | xargs kill",
+          "kill $(pidof make)"
+        ],
+        "known_good": [
+          "kill 4242",
+          "kill -- -4242",
+          "kill $(cat pidfile)",
+          "kill $(pgrep -g 4242)",
+          "pgrep -l make",
+          "pgrep make | wc -l",
+          "abcd capture 'kill $(pgrep make) stopped a peer gate'"
         ]
       }
     },
@@ -295,23 +364,48 @@
       "tier": "blocker",
       "pattern": {
         "command": "killall",
-        "value_flags": ["-s", "--signal", "-u", "--user", "-o", "--older-than", "-y", "--younger-than", "-n", "--ns", "-t", "-c"],
+        "value_flags": ["-s", "--signal", "-o", "--older-than", "-y", "--younger-than", "-n", "--ns"],
         "min_operands": 1
       },
-      "why": "`killall` signals every process on the machine with that name, other sessions' and other people's included, so stopping your own run of a command also stops everyone else's.",
+      "why": "`killall` signals every process on the machine with that name — with `-u` or `-t`, every process of that user or terminal — other sessions' and other people's included, so stopping your own run of a command also stops everyone else's.",
       "successor": "Stop the process you started by the pid you recorded when you started it (`kill \"$pid\"`), or stop its own process group (`kill -- -\"$pgid\"`), so no other session's process is touched.",
       "fixtures": {
         "known_bad": [
           "killall make",
           "killall -9 node",
-          "sudo killall -KILL go"
+          "sudo killall -KILL go",
+          "killall -u bob",
+          "killall -t ttys001"
         ],
         "known_good": [
           "killall -l",
           "kill 4242",
           "kill -- -4242",
           "pgrep -x make",
+          "killall -V",
           "abcd capture \"killall make stopped every session's build\""
+        ]
+      }
+    },
+    "killall-by-owner": {
+      "tier": "blocker",
+      "pattern": {
+        "command": "killall",
+        "flags": ["-u|-t|--user"]
+      },
+      "why": "`killall -u` signals every process that user owns, a name or not, and `killall -t` every process on that terminal: every session running under the account, other agents' included.",
+      "successor": "Stop the process you started by the pid you recorded when you started it (`kill \"$pid\"`), or stop its own process group (`kill -- -\"$pgid\"`), so no other session's process is touched.",
+      "fixtures": {
+        "known_bad": [
+          "killall -ubob",
+          "killall --user=bob",
+          "killall -u bob"
+        ],
+        "known_good": [
+          "killall -l",
+          "kill 4242",
+          "pgrep -u bob",
+          "abcd capture \"killall -u bob stopped every session\""
         ]
       }
     }
