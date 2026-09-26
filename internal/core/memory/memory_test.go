@@ -934,7 +934,7 @@ func TestIngestKeepOriginalWritesSourceCanonically(t *testing.T) {
 		t.Fatalf("stored original not written: %v", err)
 	}
 	if fi.Mode().Perm() != 0o644 {
-		t.Fatalf("stored original mode = %v, want 0644 (fsutil.WriteFileAtomic chmod)", fi.Mode().Perm())
+		t.Fatalf("stored original mode = %v, want 0644 (fsutil.WriteFileAtomicInRoot chmod)", fi.Mode().Perm())
 	}
 	got, err := os.ReadFile(stored)
 	if err != nil {
@@ -978,6 +978,7 @@ func TestKeepOriginalErrorMessageNoPathLeak(t *testing.T) {
 	cases := []error{
 		&os.PathError{Op: "open", Path: abs + "/deadbeef.pdf.tmp", Err: os.ErrPermission},
 		&os.LinkError{Op: "rename", Old: abs + "/deadbeef.pdf.1.memtmp", New: abs + "/deadbeef.pdf", Err: os.ErrExist},
+		&UnsafeStorePathError{Msg: "memory store segment is a symlink or non-directory: " + abs},
 	}
 	for _, in := range cases {
 		msg := keepOriginalErrorMessage(in)

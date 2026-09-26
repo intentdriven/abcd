@@ -7,7 +7,7 @@ category: "architectural-insight"
 source: "impl-review"
 found_during: "ultra-v0.6.8-followup"
 found_at: "internal/core/memory/writer.go"
-resolution: "Every memory read (Bare and its headroom, QueryPages, the Ingest dedup and registry load, fileBack, the Lint crawl, residue and quotation checks, and the coverage crawl with its budget and stored fingerprint) goes through one os.Root store handle opened inside the repository root, and one Lint holds one handle for both passes; fileBack opens it before reading. The crawls moved in 2475b570; the config, registry and fingerprint reads that commit left by path moved in a8652c12. The coverage-index write goes through the handle too (iss-2609252100150846). The locked writer keeps validatedMemoryDir and writes by path, a residual behind the store lock."
+resolution: "Every memory read (Bare and its headroom, QueryPages, the Ingest dedup and registry load, fileBack, the Lint crawl, residue and quotation checks, and the coverage crawl with its budget and stored fingerprint) goes through one os.Root store handle opened inside the repository root, and one Lint holds one handle for both passes; fileBack opens it before reading. The crawls moved in 2475b570; the config, registry and fingerprint reads that commit left by path moved in a8652c12. The coverage-index write goes through the handle too (iss-2609252100150846), and so does the --keep-original write of sources/<hash>, through a handle Ingest opens after WritePages returns, since the lock and its walk lapse there (iss-2609260908572219). The locked writer keeps validatedMemoryDir and writes by path, a residual behind the store lock; it is the only write into the store by path."
 impact: fix
 resolved_by:
   commit: "a8652c12"

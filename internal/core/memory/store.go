@@ -94,6 +94,22 @@ func (h *storeHandle) Close() {
 	}
 }
 
+// stillAtItsPath reports whether the store's path still names the directory
+// the handle opened. A write through the handle lands in that directory
+// whatever happens to the path; this is what lets a caller decide whether a
+// store-relative name it reports still reaches what it wrote.
+func (h *storeHandle) stillAtItsPath() bool {
+	if h.root == nil {
+		return false
+	}
+	opened, err := h.root.Stat(".")
+	if err != nil {
+		return false
+	}
+	named, err := os.Lstat(h.dir)
+	return err == nil && named.Mode()&os.ModeSymlink == 0 && os.SameFile(opened, named)
+}
+
 // present reports whether the store directory exists.
 func (h *storeHandle) present() bool { return h.root != nil }
 

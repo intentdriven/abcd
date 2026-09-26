@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -217,11 +218,14 @@ func Ingest(req IngestRequest) (IngestResult, error) {
 			if err != nil {
 				return IngestResult{}, err
 			}
+			if pagesWritten != nil {
+				pagesWritten()
+			}
 			// Best-effort keep-original: a failure after the durable write is
 			// recorded, never reported as total failure (iss-30).
 			kept, keepErr := "", ""
 			if req.KeepOriginal {
-				if k, serr := storeOriginal(root, material, contentHash, redactor); serr != nil {
+				if k, serr := keepOriginal(root, material, contentHash, redactor); serr != nil {
 					keepErr = keepOriginalErrorMessage(serr)
 				} else {
 					kept = k
@@ -361,12 +365,15 @@ func Ingest(req IngestRequest) (IngestResult, error) {
 	if err != nil {
 		return IngestResult{}, err
 	}
+	if pagesWritten != nil {
+		pagesWritten()
+	}
 	// storeOriginal runs AFTER the durable page + registry write. A failure
 	// here does not un-ingest anything, so it must not be reported as total
 	// failure — record it and return the successful result (iss-30).
 	kept, keepErr := "", ""
 	if req.KeepOriginal {
-		if k, serr := storeOriginal(root, material, contentHash, redactor); serr != nil {
+		if k, serr := keepOriginal(root, material, contentHash, redactor); serr != nil {
 			keepErr = keepOriginalErrorMessage(serr)
 		} else {
 			kept = k
@@ -385,6 +392,12 @@ func Ingest(req IngestRequest) (IngestResult, error) {
 		WriteReport: &report,
 	}, nil
 }
+
+// pagesWritten, when set, runs as WritePages hands back to Ingest, before the
+// kept original is written. It is a test seam and nothing else: WritePages has
+// released the store lock and its segment walk by then, so it is the window in
+// which a swapped store would redirect a write by path. Nil outside tests.
+var pagesWritten func()
 
 // ---------------------------------------------------------------------------
 // Registry back-link helpers
@@ -1013,9 +1026,14 @@ var sourcesRelPath = filepath.Join(".abcd", "memory", "sources")
 // absolute sources path: filesystem errors embed the full path(s), so report
 // only their bare cause against the repo-relative store location (iss-30). Both
 // *PathError (Lstat/MkdirAll/OpenFile/Write/Sync) and *LinkError (Rename, which
-// carries TWO absolute paths) are stripped; the only other storeOriginal error
-// already names the repo-relative sourcesRelPath.
+// carries TWO absolute paths) are stripped, and so is an *UnsafeStorePathError
+// from the store handle keepOriginal opens, which names the absolute store
+// segment; the only other keepOriginal errors already name the repo-relative
+// sourcesRelPath.
 func keepOriginalErrorMessage(err error) string {
+	if ue := (*UnsafeStorePathError)(nil); errors.As(err, &ue) {
+		return fmt.Sprintf("could not store original under %s: the memory store is a symlink, a non-directory, or changed while it was opened", sourcesRelPath)
+	}
 	if pe := (*os.PathError)(nil); errors.As(err, &pe) {
 		return fmt.Sprintf("could not store original under %s: %s", sourcesRelPath, pe.Err.Error())
 	}
@@ -1025,7 +1043,37 @@ func keepOriginalErrorMessage(err error) string {
 	return err.Error()
 }
 
-func storeOriginal(repoRoot string, material sourceMaterial, contentHash string, redactor *storeRedactor) (string, error) {
+// keepOriginal writes the kept original through a store handle opened after
+// WritePages returns (iss-2609260908572219). The handle Ingest opened first
+// cannot serve: the store may not have existed then, since WritePages
+// materialises it. By this point WritePages has released the store lock and
+// its segment walk, so a write by path would follow a store directory swapped
+// for a symlink in between; opening a fresh handle re-runs the walk, and the
+// write then resolves inside the directory that handle opened.
+func keepOriginal(repoRoot string, material sourceMaterial, contentHash string, redactor *storeRedactor) (string, error) {
+	store, err := openStore(repoRoot)
+	if err != nil {
+		return "", err
+	}
+	defer store.Close()
+	if !store.present() {
+		return "", newIngestError("memory store vanished before the original was kept: %s", sourcesRelPath)
+	}
+	rel, err := storeOriginal(store, material, contentHash, redactor)
+	if err != nil {
+		return "", err
+	}
+	// The write landed in the directory the handle opened. Report it at the
+	// store's path only if that path still names that directory: a store
+	// swapped after the open holds the file somewhere the reported path does
+	// not reach.
+	if !store.stillAtItsPath() {
+		return "", newIngestError("memory store changed while the original was being kept: %s", sourcesRelPath)
+	}
+	return rel, nil
+}
+
+func storeOriginal(store *storeHandle, material sourceMaterial, contentHash string, redactor *storeRedactor) (string, error) {
 	// The kept-original copy lands in the committed store, so it is sanitised
 	// through the same detector as the page bodies before it is written — the raw
 	// bytes verbatim were the zero-host-cooperation leak in GHSA-j5f5-phgm-9m73.
@@ -1033,28 +1081,25 @@ func storeOriginal(repoRoot string, material sourceMaterial, contentHash string,
 	if err != nil {
 		return "", err
 	}
-	sourcesDir := filepath.Join(Dir(repoRoot), "sources")
-	if fi, err := os.Lstat(sourcesDir); err != nil {
-		if os.IsNotExist(err) {
-			if err := os.MkdirAll(sourcesDir, 0o755); err != nil {
-				return "", err
-			}
-		} else {
+	// Resolved inside the store handle, so the check binds the same directory
+	// the write does. A symlinked sources/ is refused outright even where the
+	// root would keep it contained.
+	if fi, err := store.root.Lstat("sources"); err != nil {
+		if !os.IsNotExist(err) {
 			return "", err
 		}
 	} else if fi.Mode()&os.ModeSymlink != 0 || !fi.IsDir() {
 		return "", newIngestError("sources dir is a symlink or non-directory: %s", sourcesRelPath)
 	}
-	// The sources dir is guaranteed a real directory by the guard above; route
-	// the durable write through the canonical primitive (temp + fsync + chmod +
-	// rename + parent-dir fsync) rather than an inline copy (iss-79 /
-	// one-canonical-primitive). os.Rename does not follow a leaf symlink, so a
-	// pre-planted target symlink is replaced, not written through.
-	target := filepath.Join(sourcesDir, contentHash+material.ext)
-	if err := fsutil.WriteFileAtomic(target, payload, 0o644); err != nil {
+	// The canonical primitive, resolved inside the handle's root: it creates a
+	// missing sources/, writes temp + fsync + chmod + rename + parent-dir fsync
+	// (iss-79 / one-canonical-primitive), and a rename does not follow a leaf
+	// symlink, so a pre-planted target symlink is replaced, not written through.
+	name := contentHash + material.ext
+	if err := fsutil.WriteFileAtomicInRoot(store.root, path.Join("sources", name), payload, 0o644); err != nil {
 		return "", err
 	}
-	return filepath.Join(".abcd", "memory", "sources", contentHash+material.ext), nil
+	return filepath.Join(".abcd", "memory", "sources", name), nil
 }
 
 func dedupStrings(ss []string) []string {

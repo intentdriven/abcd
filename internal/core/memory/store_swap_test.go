@@ -22,10 +22,21 @@ import (
 // It returns where the vetted directory was moved to.
 func swapStoreOnOpen(t *testing.T, repo, outside string) string {
 	t.Helper()
+	moved, swap := storeSwap(t, repo, outside)
+	storeOpened = swap
+	t.Cleanup(func() { storeOpened = nil })
+	return moved
+}
+
+// storeSwap returns where the vetted store directory will be moved to, and a
+// function that, the first time it runs, moves it there and puts a symlink to
+// outside in its place. Later calls do nothing.
+func storeSwap(t *testing.T, repo, outside string) (string, func()) {
+	t.Helper()
 	mem := Dir(repo)
 	moved := mem + ".vetted"
 	swapped := false
-	storeOpened = func() {
+	return moved, func() {
 		if swapped {
 			return
 		}
@@ -37,8 +48,6 @@ func swapStoreOnOpen(t *testing.T, repo, outside string) string {
 			t.Fatalf("swap: %v", err)
 		}
 	}
-	t.Cleanup(func() { storeOpened = nil })
-	return moved
 }
 
 func writeFile(t *testing.T, path, content string) {
@@ -168,5 +177,107 @@ func TestIngestReadsTheRegistryThroughTheStoreHandle(t *testing.T) {
 	var unsafe *UnsafeStorePathError
 	if !errors.As(err, &unsafe) {
 		t.Fatalf("ingest over a swapped store = %v (%T); want the writer's *UnsafeStorePathError", err, err)
+	}
+}
+
+// keepOriginalOverASwap ingests one source with --keep-original, with arm
+// installed as the pagesWritten seam: it runs once WritePages has released the
+// store lock and its segment walk, before the kept original is written. The
+// source is the same every call, so a second call takes the registry-hit fast
+// path.
+func keepOriginalOverASwap(t *testing.T, repo string, arm func(), wantStatus string) IngestResult {
+	t.Helper()
+	pagesWritten = arm
+	t.Cleanup(func() { pagesWritten = nil; storeOpened = nil })
+	src := writeSource(t, t.TempDir(), "rotation.md", "Rotate tokens every 24 hours.\n")
+	res, err := Ingest(IngestRequest{
+		RepoRoot:     repo,
+		Source:       src,
+		KeepOriginal: true,
+		Distiller:    oneTopicDistiller("topic", "auth", "tokens", "# Token rotation\nRotate tokens every 24 hours."),
+		Now:          fixedNow,
+	})
+	if err != nil {
+		t.Fatalf("ingest must report the durable page write, not a total failure: %v", err)
+	}
+	if res.Status != wantStatus {
+		t.Fatalf("status = %q, want %s", res.Status, wantStatus)
+	}
+	return res
+}
+
+// assertNothingKeptBeyondTheSwap: no file reached the directory the swap points
+// at, and the result names no kept original the path does not hold — a success
+// naming .abcd/memory/sources/<hash> while the file is elsewhere is the false
+// report the finding proved.
+func assertNothingKeptBeyondTheSwap(t *testing.T, repo, outside string, res IngestResult) {
+	t.Helper()
+	_ = filepath.WalkDir(outside, func(p string, d os.DirEntry, err error) error {
+		if err == nil && p != outside {
+			t.Errorf("the kept original was written beyond the swap: %s", p)
+		}
+		return nil
+	})
+	if res.KeptOriginal != "" {
+		if _, err := os.Stat(filepath.Join(repo, res.KeptOriginal)); err != nil {
+			t.Errorf("ingest reported the original kept at %s, which does not hold it: %v", res.KeptOriginal, err)
+		} else {
+			t.Errorf("ingest reported the original kept at %s, which resolves beyond the swap", res.KeptOriginal)
+		}
+	}
+	if res.KeepOriginalError == "" {
+		t.Errorf("a refused kept original must be reported in the result")
+	}
+	if strings.Contains(res.KeepOriginalError, repo) {
+		t.Errorf("the keep-original error leaked the absolute repo path: %s", res.KeepOriginalError)
+	}
+}
+
+// TestKeepOriginalIsNotWrittenThroughASwappedStore pins iss-2609260908572219:
+// storeOriginal wrote sources/<hash><ext> by path after WritePages released the
+// lock and its walk, behind an Lstat guard on the leaf only, so a store swapped
+// for a symlink in that window received the original outside the repository and
+// Ingest reported it kept in the store.
+func TestKeepOriginalIsNotWrittenThroughASwappedStore(t *testing.T) {
+	repo := t.TempDir()
+	outside := t.TempDir()
+	_, swap := storeSwap(t, repo, outside)
+
+	res := keepOriginalOverASwap(t, repo, swap, "ingested")
+	assertNothingKeptBeyondTheSwap(t, repo, outside, res)
+}
+
+// TestKeepOriginalOnTheFastPathIsNotWrittenThroughASwappedStore: the
+// registry-hit fast path wrote the kept original the same way, after its own
+// registry-only WritePages.
+func TestKeepOriginalOnTheFastPathIsNotWrittenThroughASwappedStore(t *testing.T) {
+	repo := t.TempDir()
+	outside := t.TempDir()
+	keepOriginalOverASwap(t, repo, nil, "ingested")
+	_, swap := storeSwap(t, repo, outside)
+
+	res := keepOriginalOverASwap(t, repo, swap, "registry_only")
+	assertNothingKeptBeyondTheSwap(t, repo, outside, res)
+}
+
+// TestKeepOriginalRefusesAStoreSwappedAfterItsHandleOpened: the kept original is
+// written through a store handle opened after WritePages, so a swap after that
+// open cannot redirect the write — and the write, landing in the directory the
+// handle opened, must not be reported at a path that no longer names it.
+func TestKeepOriginalRefusesAStoreSwappedAfterItsHandleOpened(t *testing.T) {
+	repo := t.TempDir()
+	outside := t.TempDir()
+	moved, swap := storeSwap(t, repo, outside)
+	opened := false
+
+	res := keepOriginalOverASwap(t, repo, func() {
+		storeOpened = func() { opened = true; swap() }
+	}, "ingested")
+	if !opened {
+		t.Fatalf("no store handle was opened for the kept original")
+	}
+	assertNothingKeptBeyondTheSwap(t, repo, outside, res)
+	if _, err := os.Stat(filepath.Join(moved, "sources")); err != nil {
+		t.Errorf("the kept original did not go through the handle into the directory it opened: %v", err)
 	}
 }
