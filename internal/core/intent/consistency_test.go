@@ -574,3 +574,130 @@ func TestConsistencyQuoteMatchesAcrossANoBreakSpace(t *testing.T) {
 		t.Fatalf("the quote was located at line %d, want 3", res.Rows[0].Ends[0].Line)
 	}
 }
+
+// TestConsistencyADirtyCorpusIsMarkedDirty: the report pins HEAD, but the pass
+// reads the corpus from the working tree, so an uncommitted or untracked corpus
+// document means the quoted text may not be at the pinned commit. itd-28's
+// dirty-tree policy for a review pin is to tag the review `dirty: true` and not
+// block: the emit names the uncommitted corpus paths, the request carries the
+// mark, and the report says so beside the pin. A change outside the corpus —
+// a brief template the pass skips, a file elsewhere in the tree — leaves the
+// report clean.
+func TestConsistencyADirtyCorpusIsMarkedDirty(t *testing.T) {
+	r := consistencyRepo(t)
+	root := r.Root()
+	head := r.Git("rev-parse", "HEAD")
+
+	// Outside the corpus: not dirty.
+	r.Write(cxTemplate, "# Template\n\nAn uncommitted edit to a template the pass skips.\n")
+	r.Write("README.md", "an untracked file outside the corpus\n")
+	clean, err := EmitConsistency(root, "", ConsistencyEmitOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m := emitJSON(t, clean); m["dirty"] != false {
+		t.Fatalf("emit over a tree dirty only outside the corpus = %v; want dirty false", m)
+	}
+
+	// Inside the corpus: an uncommitted edit and an untracked page.
+	const edited = "An uncommitted sentence the pinned commit does not hold."
+	const untracked = ".abcd/development/brief/01-product/02-new-page.md"
+	r.Write(cxBrief, "# Review queue\n\nIntro line.\n\n"+cxQuoteBrief+"\n\n"+edited+"\n")
+	r.Write(untracked, "# New page\n\nAn untracked brief page.\n")
+	em, err := EmitConsistency(root, "", ConsistencyEmitOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := emitJSON(t, em)
+	if m["dirty"] != true || m["review_of_commit"] != head {
+		t.Fatalf("emit over an uncommitted corpus = %v; want dirty true at %s", m, head)
+	}
+	if got := fmt.Sprint(m["dirty_paths"]); got != "["+cxBrief+" "+untracked+"]" {
+		t.Fatalf("emit dirty_paths = %s; want the edited page and the untracked page", got)
+	}
+	req, err := os.ReadFile(filepath.Join(root, em.RequestPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(req), "- dirty: true\n") {
+		t.Fatalf("request does not carry the dirty mark:\n%s", req)
+	}
+
+	f := &fakeFiler{}
+	drift := cxFinding{
+		class: "terminology_drift", severity: "minor",
+		summary:     "the brief quotes a sentence the pinned commit does not hold",
+		explanation: "The quoted end is an uncommitted edit.",
+		ends:        []cxEnd{{cxBrief, edited}, {cxShipped, cxQuoteShipped}},
+	}
+	res, err := ingest(t, root, findingsPayload(t, root, em, drift), f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := os.ReadFile(filepath.Join(root, res.ReportPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(body)
+	for _, want := range []string{
+		"---\nreview_of_commit: " + head + "\ndirty: true\n---\n",
+		"`" + cxBrief + "`", "`" + untracked + "`",
+	} {
+		if !strings.Contains(s, want) {
+			t.Errorf("report lacks %q:\n%s", want, s)
+		}
+	}
+}
+
+// emitJSON renders an emit result as its JSON object, the shape a front door's
+// --json carries.
+func emitJSON(t *testing.T, em ConsistencyEmitResult) map[string]any {
+	t.Helper()
+	b, err := json.Marshal(em)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m map[string]any
+	if err := json.Unmarshal(b, &m); err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+// TestConsistencyIngestRefusesARequestSilentOnDirtiness: a request that does
+// not say whether the corpus it read was committed, or says dirty without
+// naming a path, is refused with nothing written, so a report never pins a
+// commit without saying whether the read matched it.
+func TestConsistencyIngestRefusesARequestSilentOnDirtiness(t *testing.T) {
+	for name, edit := range map[string]func(string) string{
+		"no dirty line":  func(s string) string { return strings.Replace(s, "- dirty: false\n", "", 1) },
+		"dirty, no path": func(s string) string { return strings.Replace(s, "- dirty: false\n", "- dirty: true\n", 1) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := consistencyRepo(t)
+			root := r.Root()
+			em, err := EmitConsistency(root, "", ConsistencyEmitOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			p := filepath.Join(root, em.RequestPath)
+			req, err := os.ReadFile(p)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(p, []byte(edit(string(req))), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			f := &fakeFiler{}
+			if _, err := ingest(t, root, findingsPayload(t, root, em, contradiction()), f); err == nil {
+				t.Fatal("ingest accepted a request that does not state the tree's dirtiness")
+			}
+			if len(f.calls) != 0 {
+				t.Fatalf("a refused ingest filed %d finding(s)", len(f.calls))
+			}
+			if _, err := os.Stat(filepath.Join(root, ReviewsShelfRelDir)); !os.IsNotExist(err) {
+				t.Fatal("a refused ingest left a report on the shelf")
+			}
+		})
+	}
+}

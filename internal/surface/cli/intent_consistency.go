@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/intent"
@@ -50,6 +51,10 @@ func newIntentConsistencyCommand(asJSON *bool) *cobra.Command {
 				fmt.Fprintf(w, "abcd intent consistency — %s %s (receipt %s)\n", res.Scope, res.Status, res.ReceiptID)
 				fmt.Fprintf(w, "  read: %d documents (%d brief pages, %d intents) at %s\n",
 					res.Documents, res.BriefDocuments, res.IntentDocuments, res.ReviewOfCommit)
+				if res.Dirty {
+					fmt.Fprintf(w, "  dirty: %d corpus path(s) differ from that commit, and the report will say so: %s\n",
+						len(res.DirtyPaths), termsafe.Sanitize(strings.Join(res.DirtyPaths, ", ")))
+				}
 				fmt.Fprintf(w, "  request: %s\n  corpus: %s\n", res.RequestPath, res.CorpusPath)
 				renderRequestLine(w, route)
 			})
@@ -85,7 +90,11 @@ func newIntentConsistencyCommand(asJSON *bool) *cobra.Command {
 			}
 			return render(cmd.OutOrStdout(), *asJSON, withReceipt(res, route, payload), func(w io.Writer) {
 				fmt.Fprintf(w, "abcd intent consistency ingest — %s (receipt %s, scope %s)\n", res.Status, res.ReceiptID, res.Scope)
-				fmt.Fprintf(w, "  report: %s (read %s)\n", res.ReportPath, res.ReviewOfCommit)
+				dirty := ""
+				if res.Dirty {
+					dirty = ", dirty"
+				}
+				fmt.Fprintf(w, "  report: %s (read %s%s)\n", res.ReportPath, res.ReviewOfCommit, dirty)
 				if res.Status == "ingested" {
 					fmt.Fprintf(w, "  findings %d: filed %d · linked to an open record %d\n", res.Findings, len(res.Filed), len(res.Linked))
 					for _, r := range res.Rows {

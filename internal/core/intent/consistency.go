@@ -172,6 +172,11 @@ type ConsistencyEmitResult struct {
 	Documents       int    `json:"documents"`
 	BriefDocuments  int    `json:"brief_documents"`
 	IntentDocuments int    `json:"intent_documents"`
+	// Dirty is true when a corpus document differs from ReviewOfCommit: the pass
+	// reads the working tree, so the report is marked rather than refused
+	// (itd-28's dirty-tree policy for a review pin). DirtyPaths names them.
+	Dirty      bool     `json:"dirty"`
+	DirtyPaths []string `json:"dirty_paths"`
 }
 
 // EmitConsistency assembles the corpus for one scope — the whole corpus when
@@ -193,6 +198,10 @@ func EmitConsistency(repoRoot, intentID string, opts ConsistencyEmitOptions) (Co
 	if err != nil {
 		return ConsistencyEmitResult{}, err
 	}
+	dirty, err := dirtyCorpusPaths(repoRoot, c)
+	if err != nil {
+		return ConsistencyEmitResult{}, err
+	}
 	rcp := consistencyReceipt(scope, c.Digest)
 	if err := ensureRecordDir(repoRoot, reviewsRelDir); err != nil {
 		return ConsistencyEmitResult{}, err
@@ -205,7 +214,7 @@ func EmitConsistency(repoRoot, intentID string, opts ConsistencyEmitOptions) (Co
 		return ConsistencyEmitResult{}, fmt.Errorf("intent: writing consistency corpus %s: %w", corpusRel, err)
 	}
 	body := consistencyPromptBody(c, rcp)
-	doc := body + consistencyProvenanceBlock(consistencyPolicyFor(body), commit)
+	doc := body + consistencyProvenanceBlock(consistencyPolicyFor(body), commit, dirty)
 	if opts.RoutingSection != "" {
 		doc += "\n## Routing\n\n" + opts.RoutingSection
 	}
@@ -215,9 +224,66 @@ func EmitConsistency(repoRoot, intentID string, opts ConsistencyEmitOptions) (Co
 	return ConsistencyEmitResult{
 		Status: "issued", ReceiptID: rcp, Scope: scope,
 		RequestPath: requestRel, CorpusPath: corpusRel,
-		ReviewOfCommit: commit, CorpusDigest: c.Digest,
+		ReviewOfCommit: commit, Dirty: len(dirty) > 0, DirtyPaths: dirty, CorpusDigest: c.Digest,
 		Documents: len(c.Docs), BriefDocuments: c.Brief, IntentDocuments: c.Intents,
 	}, nil
+}
+
+// dirtyCorpusPaths names the corpus paths whose working-tree text is not the
+// text HEAD holds: an edited or untracked corpus document, or one deleted (or
+// renamed away) since HEAD, which the pinned commit holds and the pass did not
+// read. A change under the corpus roots that the corpus skips — a brief
+// template, a superseded intent still on disk — is not the pass's input, so it
+// is not named. Dirtiness elsewhere in the tree is not the pass's business.
+//
+// -uall, not the default: git collapses an untracked directory to one entry,
+// and a new page inside it would then never be named.
+func dirtyCorpusPaths(repoRoot string, c consistencyCorpus) ([]string, error) {
+	out, err := gitutil.RunCapped(repoRoot, 8<<20, "status", "--porcelain=v1", "-z", "--untracked-files=all",
+		"--", briefRelDir, filepath.ToSlash(IntentsRelDir))
+	if err != nil {
+		return nil, fmt.Errorf("intent: reading the working-tree status of the corpus: %w", err)
+	}
+	seen := map[string]bool{}
+	dirty := []string{}
+	for _, p := range statusPaths(out) {
+		if seen[p] {
+			continue
+		}
+		if _, inCorpus := c.doc(p); !inCorpus {
+			if _, err := os.Lstat(filepath.Join(repoRoot, filepath.FromSlash(p))); !errors.Is(err, fs.ErrNotExist) {
+				continue
+			}
+		}
+		seen[p] = true
+		dirty = append(dirty, p)
+	}
+	sort.Strings(dirty)
+	return dirty, nil
+}
+
+// statusPaths parses `git status --porcelain=v1 -z` into the paths it names.
+// The -z form never quotes a path, so a name holding a space or a newline
+// arrives verbatim. A rename or copy carries its source as the following
+// record, which is taken with it: the source is the path HEAD holds.
+func statusPaths(out string) []string {
+	records := strings.Split(out, "\x00")
+	var paths []string
+	for i := 0; i < len(records); i++ {
+		rec := records[i]
+		if len(rec) < 4 {
+			continue
+		}
+		st := rec[:2]
+		paths = append(paths, rec[3:])
+		if st[0] == 'R' || st[0] == 'C' || st[1] == 'R' || st[1] == 'C' {
+			i++
+			if i < len(records) && records[i] != "" {
+				paths = append(paths, records[i])
+			}
+		}
+	}
+	return paths
 }
 
 // headCommit is the commit the tree stands at: the report names it as the
@@ -442,14 +508,18 @@ func consistencyPolicyFor(promptBody string) auditPolicy {
 }
 
 // consistencyProvenanceBlock renders the block appended to the request. The
-// commit sits here rather than in the prompt: it is a fact about the tree, not
-// about the corpus, so it must not move prompt_hash.
-func consistencyProvenanceBlock(p auditPolicy, commit string) string {
+// commit and the dirty mark sit here rather than in the prompt: they are facts
+// about the tree, not about the corpus, so they must not move prompt_hash.
+func consistencyProvenanceBlock(p auditPolicy, commit string, dirty []string) string {
 	var b strings.Builder
 	b.WriteString("\n## Provenance (host-computed — echo both hashes verbatim into `policy`)\n\n")
 	fmt.Fprintf(&b, "- rubric_hash: %s\n", p.RubricHash)
 	fmt.Fprintf(&b, "- prompt_hash: %s\n", p.PromptHash)
 	fmt.Fprintf(&b, "- review_of_commit: %s\n", commit)
+	fmt.Fprintf(&b, "- dirty: %t\n", len(dirty) > 0)
+	for _, d := range dirty {
+		fmt.Fprintf(&b, "- dirty_path: %s\n", oneLine(d))
+	}
 	b.WriteString("\nDo not compute these yourself. `abcd intent consistency ingest` recomputes\n")
 	b.WriteString("both hashes and refuses findings carrying any other value.\n")
 	return b.String()
@@ -521,6 +591,7 @@ type consistencyReview struct {
 	Scope         string
 	ScopePath     string
 	Commit        string
+	DirtyPaths    []string // non-empty when the corpus read differed from Commit
 	CorpusDigest  string
 	Documents     int
 	Verifier      verdictVerifier
@@ -564,6 +635,7 @@ type ConsistencyIngestResult struct {
 	Scope          string           `json:"scope"`
 	ReportPath     string           `json:"report_path"`
 	ReviewOfCommit string           `json:"review_of_commit"`
+	Dirty          bool             `json:"dirty"`
 	Findings       int              `json:"findings"`
 	Filed          []string         `json:"filed"`
 	Linked         []string         `json:"linked"`
@@ -597,7 +669,7 @@ func IngestConsistency(req ConsistencyIngestRequest) (ConsistencyIngestResult, e
 		return ConsistencyIngestResult{}, err
 	}
 	res := ConsistencyIngestResult{
-		ReceiptID: rv.ReceiptID, Scope: rv.Scope, ReviewOfCommit: rv.Commit,
+		ReceiptID: rv.ReceiptID, Scope: rv.Scope, ReviewOfCommit: rv.Commit, Dirty: len(rv.DirtyPaths) > 0,
 		Findings: len(rv.Findings), Filed: []string{}, Linked: []string{}, Rows: []ConsistencyRow{},
 	}
 	existing, err := findConsistencyReport(req.RepoRoot, rv.ReceiptID, rv.PayloadDigest)
@@ -662,12 +734,15 @@ func orNone(ids []string) string {
 	return strings.Join(ids, ", ")
 }
 
-// requestScopeRe and requestCommitRe read the two facts the ingest takes from
-// the issued request. Both are bound by what follows: the scope by the receipt
-// recomputation, the commit by the object check.
+// requestScopeRe, requestCommitRe and requestDirtyRe read the facts the ingest
+// takes from the issued request. The scope is bound by the receipt
+// recomputation and the commit by the object check; the dirty mark and its
+// paths are the emit's reading of the tree, carried to the report as stated.
 var (
-	requestScopeRe  = regexp.MustCompile(`(?m)^- scope: (corpus|itd-[0-9]+) `)
-	requestCommitRe = regexp.MustCompile(`(?m)^- review_of_commit: ([0-9a-f]+)\s*$`)
+	requestScopeRe     = regexp.MustCompile(`(?m)^- scope: (corpus|itd-[0-9]+) `)
+	requestCommitRe    = regexp.MustCompile(`(?m)^- review_of_commit: ([0-9a-f]+)\s*$`)
+	requestDirtyRe     = regexp.MustCompile(`(?m)^- dirty: (true|false)$`)
+	requestDirtyPathRe = regexp.MustCompile(`(?m)^- dirty_path: (.+)$`)
 )
 
 // validateConsistency parses and fully validates a findings payload. Every
@@ -708,6 +783,18 @@ func validateConsistency(repoRoot string, raw []byte) (consistencyReview, error)
 	}
 	if _, err := gitutil.Run(repoRoot, "cat-file", "-e", commit+"^{commit}"); err != nil {
 		return consistencyReview{}, fmt.Errorf("intent: request %s names review_of_commit %s, which is no commit here", requestRel, commit)
+	}
+	dm := requestDirtyRe.FindSubmatch(reqData)
+	if dm == nil {
+		return consistencyReview{}, fmt.Errorf("intent: request %s does not say whether the corpus it read was committed (no dirty line); "+
+			"re-emit with `abcd intent consistency%s` and run the pass again", requestRel, scopeArg(scope))
+	}
+	var dirtyPaths []string
+	for _, m := range requestDirtyPathRe.FindAllSubmatch(reqData, -1) {
+		dirtyPaths = append(dirtyPaths, string(m[1]))
+	}
+	if (string(dm[1]) == "true") != (len(dirtyPaths) > 0) {
+		return consistencyReview{}, fmt.Errorf("intent: request %s says dirty: %s but names %d dirty path(s); refusing to ingest", requestRel, dm[1], len(dirtyPaths))
 	}
 
 	c, err := assembleConsistency(repoRoot, scope)
@@ -755,7 +842,7 @@ func validateConsistency(repoRoot string, raw []byte) (consistencyReview, error)
 		return consistencyReview{}, fmt.Errorf("intent: %v; refusing to ingest (nothing written)", err)
 	}
 	return consistencyReview{
-		ReceiptID: rcp, Scope: scope, ScopePath: c.ScopePath, Commit: commit,
+		ReceiptID: rcp, Scope: scope, ScopePath: c.ScopePath, Commit: commit, DirtyPaths: dirtyPaths,
 		CorpusDigest: c.Digest, Documents: len(c.Docs), Verifier: p.Verifier,
 		PayloadDigest: sha256Field(string(raw)), Findings: findings,
 	}, nil
@@ -953,7 +1040,11 @@ func findConsistencyReport(repoRoot, rcp, payloadDigest string) (string, error) 
 // are validated shapes.
 func renderConsistencyReport(rv consistencyReview, rows []ConsistencyRow, date string, free proseField) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "---\nreview_of_commit: %s\n---\n", rv.Commit)
+	fmt.Fprintf(&b, "---\nreview_of_commit: %s\n", rv.Commit)
+	if len(rv.DirtyPaths) > 0 {
+		b.WriteString("dirty: true\n")
+	}
+	b.WriteString("---\n")
 	if rv.Scope == ConsistencyScopeCorpus {
 		b.WriteString("# Consistency review — the brief and every intent\n\n")
 	} else {
@@ -966,6 +1057,14 @@ func renderConsistencyReport(rv consistencyReview, rows []ConsistencyRow, date s
 		fmt.Fprintf(&b, "- scope: %s (`%s`) against the rest of the corpus; every finding has an end in it\n", rv.Scope, rv.ScopePath)
 	}
 	fmt.Fprintf(&b, "- read: commit `%s`, corpus %s over %d documents\n", rv.Commit, rv.CorpusDigest, rv.Documents)
+	if len(rv.DirtyPaths) > 0 {
+		quoted := make([]string, len(rv.DirtyPaths))
+		for i, p := range rv.DirtyPaths {
+			quoted[i] = "`" + oneLine(p) + "`"
+		}
+		fmt.Fprintf(&b, "- dirty: the corpus was read from a working tree holding %d uncommitted corpus path(s), "+
+			"so an end quoted from one of them may not be at that commit: %s\n", len(rv.DirtyPaths), strings.Join(quoted, ", "))
+	}
 	fmt.Fprintf(&b, "- receipt: %s\n", rv.ReceiptID)
 	fmt.Fprintf(&b, "- payload: %s\n", rv.PayloadDigest)
 	fmt.Fprintf(&b, "- verifier: %s %s\n", orFree(rv.Verifier.ID, free), orFree(rv.Verifier.Version, free))

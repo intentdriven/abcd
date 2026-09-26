@@ -139,3 +139,25 @@ func TestIntentConsistencyScopedAndRefusals(t *testing.T) {
 		}
 	}
 }
+
+// TestIntentConsistencyNamesADirtyCorpus: an uncommitted edit to a corpus
+// document is named on the emit, and the ingest's report line says the read
+// was dirty (itd-28's dirty-tree policy: mark, do not block).
+func TestIntentConsistencyNamesADirtyCorpus(t *testing.T) {
+	repo := consistencyCLIRepo(t)
+	writeRepoFile(t, repo, cxCLIPlanned, "---\nid: itd-10\nslug: one-spec\nkind: standalone\nspec_id: spc-1\n---\n\n# One spec\n\n## Press Release\n\n"+
+		cxCLIQuoteA+"\n\nAn uncommitted line.\n")
+	text := string(runCLI(t, "intent", "consistency"))
+	if !strings.Contains(text, "dirty: 1 corpus path(s) differ from that commit, and the report will say so: "+cxCLIPlanned) {
+		t.Fatalf("emit text does not name the dirty corpus path:\n%s", text)
+	}
+	var em consistencyEmitted
+	if err := json.Unmarshal(runCLI(t, "intent", "consistency", "--json"), &em); err != nil {
+		t.Fatalf("intent consistency output not JSON: %v", err)
+	}
+	fp := consistencyFindingsFile(t, repo, em)
+	out := string(runCLI(t, "intent", "consistency", "ingest", "--findings-json", fp))
+	if !strings.Contains(out, "(read "+em.ReviewOfCommit+", dirty)") {
+		t.Fatalf("ingest text does not say the read was dirty:\n%s", out)
+	}
+}
