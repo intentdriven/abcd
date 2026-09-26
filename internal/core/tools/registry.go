@@ -44,9 +44,10 @@ const (
 	// in .abcd/config/gitleaks.json: the history store refuses to store a
 	// transcript with less coverage than the repository asked for.
 	TranscriptScanArmed Capability = "transcript-scan-armed"
-	// RemoteSettings is `ahoy remote`: reading and changing the repository's
-	// GitHub secret-scanning settings, which abcd does only through gh.
-	RemoteSettings Capability = "remote-settings"
+	// GitHubSettings is every verb that reads or changes the repository's
+	// settings on GitHub (ahoy remote, site setup), which abcd does only
+	// through gh.
+	GitHubSettings Capability = "github-settings"
 )
 
 // Use is what one capability does with a tool, in the words a person reads.
@@ -141,13 +142,13 @@ var registry = map[string]Tool{
 		What:     "GitHub's own command-line program, signed in as you",
 		Homepage: "https://cli.github.com",
 		Uses: map[Capability]Use{
-			RemoteSettings: {
-				Capability:  "reading and changing this repository's GitHub secret-scanning settings (ahoy remote)",
+			GitHubSettings: {
+				Capability:  "reading and changing this repository's settings on GitHub (ahoy remote, site setup)",
 				Requirement: Required,
 				Does: "abcd speaks to GitHub through gh, so a remote change is made by your own signed-in identity " +
 					"and abcd never holds a token",
-				WithoutIt: "ahoy remote cannot read or change the settings; nothing else in abcd needs gh",
-				OnDecline: "the remote settings stay unread and unchanged",
+				WithoutIt: "ahoy remote and site setup cannot read or change the settings; nothing else in abcd needs gh",
+				OnDecline: "the settings on GitHub stay unread and unchanged",
 			},
 		},
 		Install: map[string]Step{"darwin": homebrew("gh"), "linux": homebrew("gh")},

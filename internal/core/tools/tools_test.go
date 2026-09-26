@@ -52,7 +52,7 @@ func TestExplainIsPerCapability(t *testing.T) {
 	if !strings.Contains(e.WithoutIt, "enabled") {
 		t.Errorf("an armed repository's without-it must name the opt-out that returns it to the native scanner: %q", e.WithoutIt)
 	}
-	gh := explainFor("gh", RemoteSettings, "darwin")
+	gh := explainFor("gh", GitHubSettings, "darwin")
 	if gh.Requirement != Required || !gh.Known {
 		t.Fatalf("gh for the remote settings: %+v", gh)
 	}
@@ -373,5 +373,19 @@ func TestRunArgvKillsItsOwnGroupOnTimeout(t *testing.T) {
 	}
 	if d := time.Since(start); d > 10*time.Second {
 		t.Fatalf("runArgv waited %s: the group was not killed", d)
+	}
+}
+
+// TestMissingErrorKeepsTheCauseAndCarriesTheExplanation: a verb's refusal for a
+// missing tool keeps its sentinel for errors.Is and appends the explanation.
+func TestMissingErrorKeepsTheCauseAndCarriesTheExplanation(t *testing.T) {
+	cause := errors.New("gitleaks configured but not found")
+	err := Missing(cause, "gitleaks", TranscriptScanArmed)
+	if !errors.Is(err, cause) {
+		t.Fatal("the cause is lost")
+	}
+	lines := strings.Split(err.Error(), "\n")
+	if lines[0] != cause.Error() || len(lines) < 5 {
+		t.Fatalf("error = %q, want the cause then the explanation", err.Error())
 	}
 }

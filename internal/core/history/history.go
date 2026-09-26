@@ -33,6 +33,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/adapter/gitleaks"
+	"github.com/intentdriven/abcd/internal/core/tools"
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
@@ -251,6 +252,13 @@ func Capture(repoRoot, rootSHA string, raw []byte, meta CaptureMeta) (CaptureRes
 	// asked for.
 	extra, err := scanGitleaks(repoRoot, text, "transcript")
 	if err != nil {
+		// A binary the repository asked for and nobody installed is a missing
+		// tool: the refusal stands, and it says what gitleaks is, that this
+		// repository requires it, the install step, and the way back to the
+		// native scanner (itd-63). A refused path is not a missing tool.
+		if errors.Is(err, gitleaks.ErrConfiguredNotFound) {
+			err = tools.Missing(err, "gitleaks", tools.TranscriptScanArmed)
+		}
 		return CaptureResult{}, fmt.Errorf("history: %w", err)
 	}
 	findings = append(findings, extra...)

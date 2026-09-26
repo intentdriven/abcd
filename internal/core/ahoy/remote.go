@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core/tools"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
@@ -455,8 +456,10 @@ func ghEnable(cwd, repo, key string) error {
 // the actor.
 func runGH(cwd string, stdin []byte, args ...string) ([]byte, error) {
 	if _, err := exec.LookPath("gh"); err != nil {
-		return nil, errors.New("the GitHub CLI (gh) is not on PATH; abcd speaks to GitHub through it so that a " +
-			"remote write is made by your own authenticated identity, never by a token abcd holds")
+		// The refusal carries the tool registry's explanation (itd-63): what gh
+		// is, that these verbs require it, and the exact install step.
+		return nil, tools.Missing(errors.New("the GitHub CLI (gh) is not on PATH; abcd speaks to GitHub through it so that a "+
+			"remote write is made by your own authenticated identity, never by a token abcd holds"), "gh", tools.GitHubSettings)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), remoteAPITimeout)
 	defer cancel()

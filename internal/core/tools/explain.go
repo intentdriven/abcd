@@ -146,3 +146,23 @@ func (e Explanation) Lines() []string {
 	}
 	return lines
 }
+
+// MissingError is a verb's refusal for a missing tool with the registry's
+// explanation appended: the refusal stands exactly as it was (its cause stays
+// reachable through errors.Is), and only its message grows to say what the
+// tool is, whether this capability needs it, and the exact install step.
+type MissingError struct {
+	Cause       error
+	Explanation Explanation
+}
+
+// Missing wraps cause with the explanation for name as capability uses it.
+func Missing(cause error, name string, capability Capability) error {
+	return &MissingError{Cause: cause, Explanation: Explain(name, capability)}
+}
+
+func (m *MissingError) Error() string {
+	return m.Cause.Error() + "\n" + strings.Join(m.Explanation.Lines(), "\n")
+}
+
+func (m *MissingError) Unwrap() error { return m.Cause }
