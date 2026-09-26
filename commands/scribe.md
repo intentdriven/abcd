@@ -106,7 +106,8 @@ hold, and any failure exits 2 naming the field and the item:
   `--dispositions` names, and every check below reads that file. Never hand
   the scribe session that file's path.
 - **Nothing is authored**: a key outside the shapes above (a `resolution`, a
-  `pattern`, a `position`, anything) is refused by name; a disposition or an
+  `pattern`, a `position`, anything) is refused by name, and so is a key the
+  payload repeats at any depth, which is never read last-wins; a disposition or an
   admission for an item the supplied dispositions never name is refused; a
   `state` that does not stand as a whole word in its item's part of a line
   (the whole line when the line names no other item, else the text from the

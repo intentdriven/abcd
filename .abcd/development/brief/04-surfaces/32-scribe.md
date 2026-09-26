@@ -88,7 +88,8 @@ until all of the following hold:
   below reads that text.
 - **Nothing is authored.** The payload is decoded against closed shapes at every
   level, so a key the scribe may not author is refused by name with the entry it
-  sat on. A disposition or an admission for an item the supplied text never names
+  sat on, and a key repeated at any level is refused rather than read last-wins.
+  A disposition or an admission for an item the supplied text never names
   is one the researcher did not supply. A disposition's state must stand as a
   whole word, in any case, in its item's part of a line of the supplied text
   (the whole line when it names no other item), and an admission, which writes

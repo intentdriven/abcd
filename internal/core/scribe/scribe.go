@@ -39,6 +39,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
+	"github.com/intentdriven/abcd/internal/core/jsonstrict"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
@@ -181,9 +182,16 @@ func encode(v any) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// decodeStrict decodes one document, refusing unknown fields and trailing
-// content.
+// decodeStrict decodes one document, refusing a repeated key at any depth,
+// unknown fields and trailing content. The scribe output, the manifest and the
+// context all decode through it.
 func decodeStrict(data []byte, into any, what string) error {
+	// A repeated key at any depth is refused, not read last-wins: encoding/json
+	// would take {"state":"declined","state":"accepted"} as accepted. jsonstrict
+	// is the one check every trust-boundary reader shares (iss-2609261036363114).
+	if err := jsonstrict.NoDuplicateKeys(data); err != nil {
+		return fmt.Errorf("scribe: decoding %s: %w; nothing is written", what, err)
+	}
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(into); err != nil {
