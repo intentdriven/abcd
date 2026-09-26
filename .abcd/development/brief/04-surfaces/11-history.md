@@ -173,6 +173,15 @@ the part that makes the rest legible. Whatever the budget leaves is reported
 rather than dropped, because a repo with a dozen missed sessions must not stall
 the user's first prompt.
 
+Because both staging entrypoints exit 0 on every path, the exit code cannot say
+whether a transcript was kept, and their error-stream line is prose rather than
+a contract. A programmatic caller asks for the machine-readable form, and each
+entrypoint then writes exactly one result line to its output stream on every
+path: whether the transcript was captured, how (newly staged, re-staged over
+older bytes, or already staged), which session and sub-agent it belongs to, and
+why nothing was captured when nothing was. The exit code stays 0, and without
+that request the output stream stays empty, the shape the host invokes.
+
 Session start is also the one moment abcd can tell a user about install trouble
 before they act on it, so the same hook carries a short notice channel: a
 transcript backlog or a drain that failed, a plugin binary out of step with the

@@ -1552,10 +1552,24 @@
     {
       "path": "abcd intent audit",
       "hidden": false,
-      "sentence": "Emit a shipped intent's audit request, or check the issue and intent joins with --issue-drift: Writes nothing; refuses an intent not shipped.",
+      "sentence": "List or drain owed fidelity reviews, emit an intent's request, or check issue drift: Writes an OWED stub only for --owed or an id; refuses an unshipped intent.",
       "flags": [
         {
           "name": "issue-drift",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "max",
+          "shorthand": "",
+          "type": "int",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "owed",
           "shorthand": "",
           "type": "bool",
           "required": false,
@@ -1635,6 +1649,42 @@
       ]
     },
     {
+      "path": "abcd intent consistency",
+      "hidden": false,
+      "sentence": "Emit the consistency request over the brief and every intent, or one intent against them: Writes the request locally; refuses a superseded intent.",
+      "flags": [
+        {
+          "name": "route",
+          "shorthand": "",
+          "type": "stringArray",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd intent consistency ingest",
+      "hidden": false,
+      "block": "agents",
+      "sentence": "Ingest consistency findings as a dated review and a capture per finding: Writes the report and the ledger records; refuses without --findings-json.",
+      "flags": [
+        {
+          "name": "findings-json",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "route",
+          "shorthand": "",
+          "type": "stringArray",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd intent hold",
       "hidden": false,
       "sentence": "Hold a draft or planned intent so that planning refuses it: Writes the held line with its reason; refuses without --reason.",
@@ -1657,8 +1707,15 @@
     {
       "path": "abcd intent plan",
       "hidden": false,
-      "sentence": "Plan a draft intent by minting and linking its spec, or stamp a planned one's scope conditions: Writes both records; refuses an intent on hold.",
+      "sentence": "Plan a draft, or several as a named bundle, or stamp a planned one's conditions: Writes the intents and their spec; refuses a held intent or a bundle's blocker.",
       "flags": [
+        {
+          "name": "bundle",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
         {
           "name": "impact",
           "shorthand": "",
@@ -1682,6 +1739,41 @@
       "flags": [
         {
           "name": "grounds",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd intent reclassify",
+      "hidden": false,
+      "sentence": "Change an intent's kind, or retire it as superseded by a named successor: Writes the record and its successor together; refuses a shipped intent's kind change.",
+      "flags": [
+        {
+          "name": "bundle",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "by",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "kind",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "reason",
           "shorthand": "",
           "type": "string",
           "required": false,

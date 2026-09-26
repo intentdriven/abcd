@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/relink"
 	"github.com/intentdriven/abcd/internal/core/spec"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // Load discovers intent files across every lifecycle bucket, parses their
@@ -82,6 +84,9 @@ func parseIntent(relPath, content, bucket string) (Intent, error) {
 		Bucket: bucket,
 		Path:   relPath,
 	}
+	if b := fields[BundleKey].Value; !frontmatter.IsNull(b) {
+		it.Bundle = b
+	}
 	if f, ok := fields[RelatedIssuesKey]; ok && !frontmatter.IsNull(f.Value) {
 		it.RelatedIssues = frontmatter.StringList(f.Value)
 	}
@@ -147,6 +152,12 @@ func Plan(repoRoot, intentID string, opts PlanOptions) (PlanResult, error) {
 	// re-run would leave such a record permanently unable to satisfy the gate that
 	// demands the marker (iss-2608300210588874).
 	if it.Bucket == BucketPlanned {
+		// A planned record with no spec — planned before the spec seam existed —
+		// is given one in place: the draft's mint and link, on the same criteria
+		// bar, with no bucket move (iss-2609211738504433).
+		if frontmatter.IsNull(it.SpecID) {
+			return linkPlannedSpec(repoRoot, it, opts)
+		}
 		return stampPlanned(repoRoot, it, opts.Impact)
 	}
 	if !slugRe.MatchString(it.Slug) {
@@ -182,6 +193,14 @@ func Plan(repoRoot, intentID string, opts PlanOptions) (PlanResult, error) {
 		content, err := readIntentRefusingHold(draftAbs, draftRel, intentID, "plan")
 		if err != nil {
 			return err
+		}
+		// The record's fields are the ones these bytes carry, not the corpus's:
+		// the kind this write keeps and the spec_id it refuses on are judged on
+		// what is rewritten. From the corpus, a kind a reclassify wrote in the
+		// window was overwritten, leaving kind: standalone beside the bundle
+		// that reclassify named (iss-2609261218301461).
+		if it, err = parseIntent(draftRel, content, BucketDrafts); err != nil {
+			return fmt.Errorf("intent: malformed %s: %w", draftRel, err)
 		}
 		if !hasAcceptanceCriteria(content) {
 			return fmt.Errorf("intent: %s has no non-empty '## Acceptance Criteria' section (itd-1 discipline); refusing to plan", intentID)
@@ -464,6 +483,106 @@ func stampPlanned(repoRoot string, it Intent, impact string) (PlanResult, error)
 	return res, nil
 }
 
+// linkPlannedSpec mints (or reuses) the spec for a record already in planned/
+// whose spec_id is null, and writes the link in place. It is the draft face of
+// Plan without the move: the Acceptance Criteria bar, the impact judgement,
+// the scope-condition stamp and the size check all apply, in the same order,
+// under the same lock. A refusal before the mint leaves the record
+// byte-identical with no spec minted; a refusal after it (the intent write is
+// the last step, and it can fail) removes the spec this run minted, so the
+// store is left as it was too. A spec that already names the intent (a
+// one-sided link) is reused rather than duplicated, which also repairs that
+// link, and is never removed. The one write sets spec_id together with the
+// kind (defaulted only when null), the impact and the stamped identities, so
+// there is no intermediate record to lint.
+func linkPlannedSpec(repoRoot string, it Intent, opts PlanOptions) (PlanResult, error) {
+	if !slugRe.MatchString(it.Slug) {
+		return PlanResult{}, fmt.Errorf("intent: %s has slug %q which must be kebab-case", it.ID, it.Slug)
+	}
+	rel := it.Path
+	abs := filepath.Join(repoRoot, rel)
+	var (
+		sp                spec.Spec
+		kind              string
+		conditionsStamped int
+		impactStamp       string
+	)
+	if err := withIntentMintLock(repoRoot, func() error {
+		content, err := readIntentRefusingHold(abs, rel, it.ID, "plan")
+		if err != nil {
+			return err
+		}
+		// Judged on these bytes, as the draft branch is: the kind kept is the
+		// one the record carries here, not the corpus's (iss-2609261232176189).
+		if it, err = parseIntent(rel, content, BucketPlanned); err != nil {
+			return fmt.Errorf("intent: malformed %s: %w", rel, err)
+		}
+		if !hasAcceptanceCriteria(content) {
+			return fmt.Errorf("intent: %s is planned with no spec, and has no non-empty '## Acceptance Criteria' section (itd-1 discipline) to mint one from; refusing to plan", it.ID)
+		}
+		impactStamp, err = resolvePlanImpact(it, content, opts.Impact)
+		if err != nil {
+			return err
+		}
+		store, err := spec.Load(repoRoot)
+		if err != nil {
+			return err
+		}
+		var reused bool
+		sp, reused = store.ByIntent(it.ID)
+		specID := sp.ID
+		if !reused {
+			if specID, err = probeMinter().Mint(specFamily); err != nil {
+				return err
+			}
+		}
+		if err := checkDraftFaceSize(content, it, specID, impactStamp, rel); err != nil {
+			return err
+		}
+		if !reused {
+			if sp, err = spec.Create(repoRoot, it.ID, it.Slug, opts.ProductionMode); err != nil {
+				return err
+			}
+		}
+		err = func() error {
+			stamped, n, err := stampScopeConditions(content, recordid.Minter{})
+			if err != nil {
+				return err
+			}
+			conditionsStamped = n
+			kind = it.Kind
+			if frontmatter.IsNull(kind) {
+				kind = KindStandalone
+			}
+			fields := draftFaceFields(kind, impactStamp)
+			fields["spec_id"] = sp.ID
+			linked, err := setFrontmatterFields(stamped, fields)
+			if err != nil {
+				return err
+			}
+			return writeIntentFile(abs, rel, linked)
+		}()
+		if err != nil && !reused {
+			// The spec this run minted is taken back with the refusal, so the
+			// spec store is as it was (iss-2609260221563975). Nothing else can
+			// name it: it was written under this lock a moment ago, and the
+			// intent write that would have linked it is what failed. Were the
+			// removal itself to fail, the spec is still one a retry reuses
+			// through ByIntent, and the refusal says so.
+			if rmErr := os.Remove(filepath.Join(repoRoot, sp.Path)); rmErr != nil && !os.IsNotExist(rmErr) {
+				return fmt.Errorf("%w; the spec minted for it, %s, could not be removed (%v) and a retry reuses it", err, sp.ID, rmErr)
+			}
+		}
+		return err
+	}); err != nil {
+		return PlanResult{}, err
+	}
+	it.Kind = kind
+	it.SpecID = sp.ID
+	return PlanResult{Intent: it, Spec: sp, ConditionsStamped: conditionsStamped,
+		LinkedInPlace: true, ImpactStamped: impactStamp}, nil
+}
+
 // Link retroactively writes the derived spec_id link on an existing planned
 // intent for an existing spec. It validates both ids, that the intent is in
 // planned/, and that the spec exists AND already declares this intent (the
@@ -642,6 +761,10 @@ func Reconcile(repoRoot, specID, impact string, remainder RemainderRequest) (Rec
 	sp, ok := store.Lookup(specID)
 	if !ok {
 		return ReconcileResult{}, fmt.Errorf("intent: spec %s not found", specID)
+	}
+	// A bundle's shared spec ships every member together (itd-34).
+	if sp.Bundle != "" && len(sp.Intents) > 0 {
+		return reconcileBundle(repoRoot, store, sp, impact, remainder)
 	}
 
 	// Resolve the linked intent from the spec's intent: field, validated before it
@@ -841,6 +964,11 @@ func Reconcile(repoRoot, specID, impact string, remainder RemainderRequest) (Rec
 			if err != nil {
 				return err
 			}
+			// The impact is judged again on these bytes, the ones the stamp is
+			// written onto; the gate above is the early refusal.
+			if stamp, err = resolveShipImpactFrom(it, content, impact); err != nil {
+				return err
+			}
 			// The stamp is written while the record is still in planned/, where a
 			// valid impact is equally lint-legal, so a failure at the move leaves a
 			// consistent record and the retry finds the judgement already recorded.
@@ -1016,13 +1144,27 @@ const shipImpactValues = "additive|breaking|fix"
 //     judgement: silently overwriting it would let `--impact` rewrite history
 //     as a side effect of shipping, so a disagreement is refused and the human
 //     edits the record they meant to change.
+//
+// It reads the record from disk, so it is the EARLY judgement a close makes
+// before the lock; the one that binds is resolveShipImpactFrom on the bytes
+// the close reads under the lock and writes the stamp onto.
 func resolveShipImpact(repoRoot string, it Intent, supplied string) (string, error) {
 	abs := filepath.Join(repoRoot, it.Path)
 	data, err := readRepoFile(abs, it.Path)
 	if err != nil {
 		return "", err
 	}
-	recorded := recordedImpact(string(data))
+	return resolveShipImpactFrom(it, string(data), supplied)
+}
+
+// resolveShipImpactFrom is resolveShipImpact on the record's content as the
+// caller read it. A close calls it on the bytes it read under the store lock,
+// because the stamp is written onto those bytes: judged on a read made before
+// the lock, an impact recorded in the window by `abcd intent plan --impact`
+// was overwritten by --impact instead of refused as a disagreement
+// (iss-2609261218318807).
+func resolveShipImpactFrom(it Intent, content, supplied string) (string, error) {
+	recorded := recordedImpact(content)
 	supplied = strings.TrimSpace(supplied)
 
 	switch {
@@ -1169,7 +1311,7 @@ func moveIntentToBucket(repoRoot, srcRel, dstBucket string) (string, error) {
 }
 
 // Status builds the read-only lifecycle summary: intent counts by bucket, spec
-// counts by status, and the intent↔spec links (every intent whose spec_id is
+// counts by status, the owed fidelity reviews, and the intent↔spec links (every intent whose spec_id is
 // non-null). Linked pairs are ordered by the corpus load order (bucket, then
 // directory), which is deterministic.
 func Status(repoRoot string) (StatusView, error) {
@@ -1182,7 +1324,7 @@ func Status(repoRoot string) (StatusView, error) {
 		return StatusView{}, err
 	}
 
-	v := StatusView{Buckets: map[string]int{}, Linked: []LinkedPair{}}
+	v := StatusView{Buckets: map[string]int{}, Linked: []LinkedPair{}, Intents: []IntentListing{}}
 	for _, b := range Buckets {
 		v.Buckets[b] = 0
 	}
@@ -1191,7 +1333,23 @@ func Status(repoRoot string) (StatusView, error) {
 		if !frontmatter.IsNull(it.SpecID) {
 			v.Linked = append(v.Linked, LinkedPair{Intent: it.ID, Spec: it.SpecID})
 		}
+		l, err := listIntent(repoRoot, it)
+		if err != nil {
+			return StatusView{}, err
+		}
+		v.Intents = append(v.Intents, l)
 	}
+	bucketRank := map[string]int{}
+	for i, b := range Buckets {
+		bucketRank[b] = i
+	}
+	sort.SliceStable(v.Intents, func(i, j int) bool {
+		a, b := v.Intents[i], v.Intents[j]
+		if a.Bucket != b.Bucket {
+			return bucketRank[a.Bucket] < bucketRank[b.Bucket]
+		}
+		return a.ID < b.ID
+	})
 	for _, sp := range store.Specs {
 		if sp.Status == spec.StatusClosed {
 			v.SpecsClosed++
@@ -1199,7 +1357,47 @@ func Status(repoRoot string) (StatusView, error) {
 			v.SpecsOpen++
 		}
 	}
+	// The owed count is the listing's own total, from the one reader, so the
+	// board and `abcd intent audit` cannot disagree.
+	reviews, err := reviewsOf(repoRoot, corpus)
+	if err != nil {
+		return StatusView{}, err
+	}
+	v.ReviewsOwed = reviews.Owed
 	return v, nil
+}
+
+// listIntent reads one intent for the status listing (iss-242): its H1 title,
+// masked for the terminal a JSON consumer may print it to; whether its
+// Acceptance Criteria clear the bar plan applies; and the date its id encodes.
+func listIntent(repoRoot string, it Intent) (IntentListing, error) {
+	data, err := readRepoFile(filepath.Join(repoRoot, it.Path), it.Path)
+	if err != nil {
+		return IntentListing{}, err
+	}
+	content := string(data)
+	l := IntentListing{ID: it.ID, Bucket: it.Bucket, ACState: ACStateSeeded, Filed: filedFromID(it.ID)}
+	if hasAcceptanceCriteria(content) {
+		l.ACState = ACStateReal
+	}
+	for _, ln := range strings.Split(content, "\n") {
+		if t, ok := strings.CutPrefix(strings.TrimRight(ln, "\r"), "# "); ok {
+			l.Title = termsafe.Sanitize(strings.TrimSpace(t))
+			break
+		}
+	}
+	return l, nil
+}
+
+// filedFromID is the YYYY-MM-DD a timestamp intent id encodes in its
+// yymmdd head (adr-45: itd-<yymmddHHMMSS><rrrr>), or nil for an ordinal id.
+func filedFromID(id string) *string {
+	num := strings.TrimPrefix(id, "itd-")
+	if len(num) != 16 {
+		return nil
+	}
+	d := "20" + num[0:2] + "-" + num[2:4] + "-" + num[4:6]
+	return &d
 }
 
 // readRepoFile reads a repo file behind the trust-boundary guards: refuse a

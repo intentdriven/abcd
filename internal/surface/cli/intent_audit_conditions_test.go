@@ -170,3 +170,26 @@ func TestIntentAuditReingestReportsTheReplacement(t *testing.T) {
 		t.Fatalf("an identical re-ingest must be a noop:\n%s", text)
 	}
 }
+
+// TestIntentAuditDeadLetterRendersTheUntestedSplit: a quarantined verdict
+// records every scope condition untested, and the JSON result reports that
+// split; the human render reports it too, so the reader of either surface
+// learns the conditions stand untested (iss-2608300927241768).
+func TestIntentAuditDeadLetterRendersTheUntestedSplit(t *testing.T) {
+	_, vp := conditionedRepo(t)
+	body, err := os.ReadFile(vp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bad := strings.Replace(string(body), `"disposition": "narrowed"`, `"disposition": "not-a-disposition"`, 1)
+	if err := os.WriteFile(vp, []byte(bad), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	text := string(runCLI(t, "intent", "audit", "ingest", "--verdict-json", vp))
+	if !strings.Contains(text, "DEAD_LETTER") {
+		t.Fatalf("an invalid disposition must dead-letter:\n%s", text)
+	}
+	if !strings.Contains(text, "scope conditions 1: untested 1") {
+		t.Fatalf("the dead-letter render must report the untested split the JSON carries:\n%s", text)
+	}
+}

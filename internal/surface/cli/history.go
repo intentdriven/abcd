@@ -471,7 +471,7 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 	// person typing this.
 	var discardYes bool
 	discardCmd := &cobra.Command{
-		Use:  "discard <staged-filename>",
+		Use:  "discard <staged-filename> --yes",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			repoRoot, rootSHA, err := historyStore(cmd)

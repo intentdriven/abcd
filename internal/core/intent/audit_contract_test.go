@@ -91,8 +91,12 @@ func TestAuditorDefinitionMatchesTheVerdictSchema(t *testing.T) {
 		if err := json.Unmarshal([]byte(body), &raw); err != nil {
 			t.Fatalf("json block %d in the auditor definition is not an object: %v", i, err)
 		}
-		// The error verdict is deliberately a different, minimal shape.
+		// The error verdict is deliberately a different, minimal shape, and a
+		// Role 2 block is the consistency contract, pinned by its own test below.
 		if _, isError := raw["error"]; isError {
+			continue
+		}
+		if isConsistencyBlock(raw) {
 			continue
 		}
 		checked++
@@ -136,6 +140,100 @@ func TestAuditorDefinitionDocumentsEveryDisposition(t *testing.T) {
 	for value := range dispositionEnum {
 		if !strings.Contains(string(data), "`"+value+"`") {
 			t.Errorf("the auditor definition never names the disposition %q", value)
+		}
+	}
+}
+
+// TestAuditorDescriptionNamesTheDispositionSurface: the frontmatter description
+// is what a host reads to choose and brief the agent, so it summarises the whole
+// output — the scope-condition dispositions included, not only the criteria
+// verdict and gap audit it carried before the disposition surface existed
+// (iss-2608300927241768).
+func TestAuditorDescriptionNamesTheDispositionSurface(t *testing.T) {
+	data, err := os.ReadFile(auditorDefinitionPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	front, _, ok := strings.Cut(strings.TrimPrefix(string(data), "---\n"), "\n---\n")
+	if !ok {
+		t.Fatal("the auditor definition has no frontmatter")
+	}
+	_, desc, ok := strings.Cut(front, "description:")
+	if !ok {
+		t.Fatal("the auditor frontmatter has no description")
+	}
+	desc, _, _ = strings.Cut(desc, "\nprompt_version:")
+	desc = strings.Join(strings.Fields(desc), " ")
+	if !strings.Contains(desc, "scope condition") || !strings.Contains(desc, "disposition") {
+		t.Fatalf("the description does not summarise the scope-condition dispositions the verdict carries: %q", desc)
+	}
+}
+
+// isConsistencyBlock reports whether a published json block is Role 2's
+// findings contract rather than Role 1's verdict.
+func isConsistencyBlock(raw map[string]json.RawMessage) bool {
+	var typ string
+	return json.Unmarshal(raw["_type"], &typ) == nil && typ == ConsistencyType
+}
+
+// TestAuditorDefinitionMatchesTheConsistencySchema is Role 2's lockstep
+// assertion (itd-48): every findings block the definition publishes decodes
+// into the payload the consistency ingest decodes, and documents exactly the
+// fields it carries at every level — top, finding and end.
+func TestAuditorDefinitionMatchesTheConsistencySchema(t *testing.T) {
+	checked := 0
+	for i, body := range jsonFences(t, auditorDefinitionPath) {
+		var raw map[string]json.RawMessage
+		if err := json.Unmarshal([]byte(body), &raw); err != nil || !isConsistencyBlock(raw) {
+			continue
+		}
+		checked++
+		if got, want := keysOf(raw), jsonTagsOf(consistencyPayload{}); !reflect.DeepEqual(got, want) {
+			t.Errorf("findings block %d documents keys %v, but the ingest decodes %v", i, got, want)
+		}
+		dec := json.NewDecoder(strings.NewReader(body))
+		dec.DisallowUnknownFields()
+		var p consistencyPayload
+		if err := dec.Decode(&p); err != nil {
+			t.Errorf("findings block %d does not decode into the payload the ingest accepts: %v", i, err)
+			continue
+		}
+		var findings []map[string]json.RawMessage
+		if err := json.Unmarshal(raw["findings"], &findings); err != nil || len(findings) == 0 {
+			t.Errorf("findings block %d documents no finding; the finding shape is unreachable to the agent", i)
+			continue
+		}
+		for j, f := range findings {
+			if got, want := keysOf(f), jsonTagsOf(consistencyFindingJSON{}); !reflect.DeepEqual(got, want) {
+				t.Errorf("findings block %d finding %d documents keys %v, want %v", i, j, got, want)
+			}
+			var ends []map[string]json.RawMessage
+			if err := json.Unmarshal(f["ends"], &ends); err != nil {
+				t.Errorf("findings block %d finding %d: ends is not a list of objects", i, j)
+				continue
+			}
+			for k, e := range ends {
+				if got, want := keysOf(e), jsonTagsOf(consistencyEndJSON{}); !reflect.DeepEqual(got, want) {
+					t.Errorf("findings block %d finding %d end %d documents keys %v, want %v", i, j, k, got, want)
+				}
+			}
+		}
+	}
+	if checked == 0 {
+		t.Fatal("the auditor definition publishes no Role 2 findings block; the consistency contract is undocumented")
+	}
+}
+
+// TestAuditorDefinitionDocumentsEveryConsistencyClass proves the definition
+// names the whole closed set of classes the ingest refuses outside of.
+func TestAuditorDefinitionDocumentsEveryConsistencyClass(t *testing.T) {
+	data, err := os.ReadFile(auditorDefinitionPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, class := range ConsistencyClasses {
+		if !strings.Contains(string(data), "`"+class+"`") {
+			t.Errorf("the auditor definition never names the consistency class %q", class)
 		}
 	}
 }

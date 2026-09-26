@@ -418,6 +418,8 @@ func specLinkCheck(it Intent, store spec.Store) (ReadyCheck, spec.Spec) {
 		c.Detail = "spec_id is null — no spec realises this intent"
 		if it.Bucket == BucketDrafts {
 			c.Remedy = fmt.Sprintf("planning (`abcd intent plan %s`) mints and links the spec", it.ID)
+		} else if it.Bucket == BucketPlanned {
+			c.Remedy = fmt.Sprintf("run `abcd intent plan %s` — on a planned record with no spec it mints and links one in place, moving nothing", it.ID)
 		} else {
 			c.Remedy = fmt.Sprintf("hand-author %s/open/spc-N-<slug>.md with `intent: %s`, then run `abcd intent link`", spec.SpecsRelDir, it.ID)
 		}
@@ -429,7 +431,9 @@ func specLinkCheck(it Intent, store spec.Store) (ReadyCheck, spec.Spec) {
 		c.Remedy = fmt.Sprintf("restore %s or correct spec_id via `abcd intent link`", it.SpecID)
 		return c, spec.Spec{}
 	}
-	if sp.Intent != it.ID {
+	// A bundle's shared spec realises every member it lists, not only the one
+	// its `intent:` names (itd-34).
+	if !sp.Names(it.ID) {
 		c.Detail = fmt.Sprintf("bidirectional link disagrees: %s names %s, but %s claims %s", it.ID, it.SpecID, sp.ID, sp.Intent)
 		c.Remedy = "correct the spec's `intent:` field or the intent's spec_id so both sides agree"
 		return c, spec.Spec{}
