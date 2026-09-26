@@ -15,9 +15,10 @@ builds_on: [itd-39]
 
 ## Operator deviation (thin adoption — recorded)
 
-> **This intent is delivered under an operator-elected THIN adoption** (interview
-> decision; ratified at plan-review r1 of the implementing spec
-> `spc-56-fourth-intent-kind-decision-thin`). Two design choices in the original
+> **This intent is scoped to an operator-elected THIN adoption** (interview
+> decision; ratified at plan-review r1 of `spc-56-fourth-intent-kind-decision-thin`
+> in the predecessor store, a spec the Go rebuild did not carry — the live
+> `spc-56` is an unrelated record). Two design choices in the original
 > draft (preserved below the line, struck through where superseded) are
 > **rejected**, and the rejection is recorded here so a future reader does not
 > re-derive the heavy design:
@@ -44,6 +45,14 @@ builds_on: [itd-39]
 > store's `## Context` / `## Decision` / `## Alternatives Considered` /
 > `## Consequences` body — **no** `## Rationale` section (rationale folds into
 > `## Context`, matching the store convention).
+
+> **Delivery state (amended 2026-09-26, iss-239).** Nothing here is delivered.
+> The thin adoption was ratified against a spec of the predecessor store; the Go
+> binary has no capture-time classifier verdict, no `decision` route into the ADR
+> store from `abcd intent`, and no "decisions are not plannable" refusal — the
+> brief states the same (`brief/04-surfaces/05-intent.md`, the fourth capture
+> verdict). This draft carries the design for a later plan; `abcd decide` mints an
+> ADR directly and is not this capture-time route.
 
 ## Why This Matters
 
@@ -125,8 +134,8 @@ language version. The verdict generalises.
 - `decision` is therefore NEVER written to the schema `kind` or
   `kind_at_supersession`, NEVER enters the `drafts/→planned/→shipped/`
   lifecycle, NEVER gets a native spec, and is referenced downstream as
-  `adr-N` (which spc-48's RC linkage lint, matching only `itd-N` tokens, already
-  ignores).
+  `adr-N` (which the predecessor store's spc-48 RC linkage lint, matching only
+  `itd-N` tokens, ignored).
 
 ### Plan/reclassify refusal guard
 
@@ -166,9 +175,11 @@ language version. The verdict generalises.
 
 The original draft's full-store acceptance criteria are **superseded-by-decision**
 (the thin-adoption operator deviation recorded above). They are struck through in
-the preserved draft below the line and are NOT requirements of the implementing
-spec. The live acceptance criteria for this intent are owned by
-`spc-56-fourth-intent-kind-decision-thin` (R1–R5); in summary:
+the preserved draft below the line and are NOT requirements of any spec. The
+thin-adoption criteria were written as R1–R5 of
+`spc-56-fourth-intent-kind-decision-thin` in the predecessor store; the live spec
+store holds no spec for this intent (`spec_id: null`), so the criteria below are
+this draft's own, in summary:
 
 - *Given* a product thinker records a standing choice, *when* they run
   `/abcd:intent "we use Postgres for the audit trail"`, *then* the capture
@@ -229,7 +240,7 @@ spec. The live acceptance criteria for this intent are owned by
 
 ### ~~Audit / fidelity~~ (superseded — no decision-kind intent files exist to audit)
 
-- ~~The `intent-fidelity-reviewer` agent (spc-12) gets a Role 1 variant for decisions, with per-decision verdicts (`IMPLEMENTED` / `IMPLEMENTED_WITH_DRIFT` / `NOT_IMPLEMENTED` / `INCONCLUSIVE`).~~
+- ~~The `intent-fidelity-reviewer` agent (spc-12, predecessor store) gets a Role 1 variant for decisions, with per-decision verdicts (`IMPLEMENTED` / `IMPLEMENTED_WITH_DRIFT` / `NOT_IMPLEMENTED` / `INCONCLUSIVE`).~~
 
 ### ~~Original full-store Acceptance Criteria~~ (superseded-by-decision)
 

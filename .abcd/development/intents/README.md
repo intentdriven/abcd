@@ -42,7 +42,7 @@ Standalone is the default (~60% of the corpus). Bundle-members ship together as 
 
 The kind is **project-agnostic** — application projects (e.g., a macOS app under abcd) produce their own disciplines (privacy-impact review, accessibility passes, code-style conventions). The three kinds are a property of the intent framework, not of abcd's particular subject matter.
 
-**The persisted `kind` enum stays three-valued.** The capture-time classifier has a *fourth* verdict, `decision` (a standing infrastructure choice — "we use Postgres"), but `decision` is **never a persisted `kind`** and never enters this lifecycle: a confirmed `decision` routes to the existing ADR store (`../decisions/adrs/`, `adr-N-<slug>.md`), not to a draft. There is deliberately **no `intents/decisions/` directory**. See [itd-44](drafts/itd-44-fourth-intent-kind-decision.md) (spc-56 thin adoption) and `brief/04-surfaces/05-intent.md § 1`.
+**The persisted `kind` enum stays three-valued.** A *fourth* capture-time verdict, `decision` (a standing infrastructure choice — "we use Postgres"), is drafted as [itd-44](drafts/itd-44-fourth-intent-kind-decision.md) and not built: the binary has no capture-time classifier verdict. In that design `decision` is **never a persisted `kind`** and never enters this lifecycle: a confirmed `decision` would route to the existing ADR store (`../decisions/adrs/`), not to a draft. There is deliberately **no `intents/decisions/` directory**. See `brief/04-surfaces/05-intent.md § 1`.
 
 ---
 
