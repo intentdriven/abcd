@@ -541,3 +541,51 @@ func TestACommonWordNameIsNotScrubbedAsAWord(t *testing.T) {
 		t.Errorf("a distinctive name is no longer scrubbed: %q", got)
 	}
 }
+
+// TestAnInboxPathThatIsNotARealDirectoryIsARefusal: a symlink or a file where
+// the inbox belongs is refused on purpose, so every verb that meets it answers
+// with ErrRefused (exit 2 at the front door), whether it only reads the inbox
+// or would create it, and nothing is written through it
+// (iss-2609260552250826).
+func TestAnInboxPathThatIsNotARealDirectoryIsARefusal(t *testing.T) {
+	for _, occupant := range []string{"symlink", "file"} {
+		t.Run(occupant, func(t *testing.T) {
+			home := sandbox(t, time.Date(2026, 9, 26, 9, 0, 0, 0, time.UTC))
+			ledger := abcdCheckout(t)
+			if err := os.MkdirAll(filepath.Join(home, ".abcd"), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			inbox := filepath.Join(home, ".abcd", "inbox")
+			elsewhere := t.TempDir()
+			switch occupant {
+			case "symlink":
+				if err := os.Symlink(elsewhere, inbox); err != nil {
+					t.Fatal(err)
+				}
+			case "file":
+				if err := os.WriteFile(inbox, []byte("not an inbox\n"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			id := "rpt-2609260900000001"
+			if _, err := List(); !errors.Is(err, ErrRefused) {
+				t.Errorf("List = %v, want a refusal", err)
+			}
+			if _, err := Count(); !errors.Is(err, ErrRefused) {
+				t.Errorf("Count = %v, want a refusal", err)
+			}
+			if _, err := Show(id); !errors.Is(err, ErrRefused) {
+				t.Errorf("Show = %v, want a refusal", err)
+			}
+			if _, err := Promote(ledger.Root(), id); !errors.Is(err, ErrRefused) {
+				t.Errorf("Promote = %v, want a refusal", err)
+			}
+			if _, err := File(mustParse(t, filled(t)), Sender{Key: strings.Repeat("9", 40), Name: "linked"}); !errors.Is(err, ErrRefused) {
+				t.Errorf("File = %v, want a refusal", err)
+			}
+			if entries, _ := os.ReadDir(elsewhere); len(entries) != 0 {
+				t.Errorf("a refused verb wrote through the link: %v", entries)
+			}
+		})
+	}
+}

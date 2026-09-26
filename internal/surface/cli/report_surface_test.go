@@ -375,3 +375,28 @@ func TestInboxPromoteCaptureRefusalExitsTwo(t *testing.T) {
 		t.Errorf("the refused capture wrote through the link: %v", entries)
 	}
 }
+
+// TestAnInboxPathThatIsNotARealDirectoryExitsTwo: a symlink where the inbox
+// belongs is a refusal at the front door, exit 2, for the reading verbs and for
+// a report filed into it (iss-2609260552250826).
+func TestAnInboxPathThatIsNotARealDirectoryExitsTwo(t *testing.T) {
+	repo, home := gitRepoNoStore(t)
+	t.Chdir(repo)
+	skeleton := string(runCLI(t, "report", "--template"))
+	if err := os.MkdirAll(filepath.Join(home, ".abcd"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(t.TempDir(), filepath.Join(home, ".abcd", "inbox")); err != nil {
+		t.Fatal(err)
+	}
+	var coded interface{ ExitCode() int }
+	for _, args := range [][]string{{"inbox"}, {"inbox", "show", "rpt-2609260900000001"}} {
+		if _, err := runCLIErr(t, args...); !errors.As(err, &coded) || coded.ExitCode() != 2 {
+			t.Errorf("%v = %v, want an exit-2 refusal", args, err)
+		}
+	}
+	_, err := runCLIStdinErr(t, fillTemplate(t, skeleton, "inbox is a link", "It went wrong."), "report", "-")
+	if !errors.As(err, &coded) || coded.ExitCode() != 2 || !strings.Contains(err.Error(), "nothing filed") {
+		t.Errorf("report into a symlinked inbox = %v, want an exit-2 refusal filing nothing", err)
+	}
+}

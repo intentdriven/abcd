@@ -157,10 +157,19 @@ func ensureInbox() (string, error) {
 		return "", err
 	}
 	if err := fsutil.EnsureRealDirAll(home, inboxRelPath+"/"+promotedDirName, storeDirPerm); err != nil {
+		if errors.Is(err, fsutil.ErrNotRealDir) {
+			return "", errInboxNotRealDir
+		}
 		return "", fmt.Errorf("cannot create the inbox: %w", err)
 	}
 	return dir, nil
 }
+
+// errInboxNotRealDir is the refusal of an inbox path, or a level above it,
+// that a symlink or a file occupies. It is a refusal (exit 2), not a failure:
+// the inbox is never read or written through anything but real directories
+// (iss-2609260552250826).
+var errInboxNotRealDir = fmt.Errorf("%w: the inbox path is not a real directory (a symlink or a file occupies it); refusing", ErrRefused)
 
 // peekInbox returns the inbox directory, or "" when it does not exist yet. A
 // path occupied by anything but a real directory is refused.
@@ -173,7 +182,7 @@ func peekInbox() (string, error) {
 		return dir, nil
 	}
 	if ok, _ := fsutil.ExistsNoFollow(dir); ok {
-		return "", fmt.Errorf("the inbox path is not a real directory (a symlink or a file occupies it); refusing")
+		return "", errInboxNotRealDir
 	}
 	return "", nil
 }

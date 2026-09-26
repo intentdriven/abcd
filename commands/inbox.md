@@ -65,10 +65,13 @@ Tell the user the `capture` id and its `path`, and relay `redacted` or
 `redaction_degraded` when present. The report is kept, marked promoted. A
 refusal exits 2 and writes nothing: a promotion outside a checkout of abcd, an
 unreadable report, one already promoted (the refusal names its capture), an id
-with no report, or a capture the ledger refuses (the report still waits). If a promotion filed
-its capture but could not move the report, promoting it again files nothing:
-it finishes the move and reports `resumed: true` with the capture already
-filed.
+with no report, a capture the ledger refuses (the report still waits), or an
+inbox path a symlink or a file occupies, which every inbox verb refuses. A
+failure after the capture is written exits 1 and names the capture: if the
+promotion could not be recorded, the report still waits, and that capture is
+deleted before promoting again; if the report could not be moved, promoting it
+again files nothing: it finishes the move and reports `resumed: true` with the
+capture already filed.
 
 **Binary resolution.** Run `"${CLAUDE_PLUGIN_ROOT}/abcd"` — a plugin install
 provisions the binary into the plugin root, so this is the rung that fires for a

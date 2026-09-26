@@ -113,12 +113,16 @@ Promotions hold the inbox's lock, so two sessions cannot file one report twice.
 A promotion outside abcd's own checkout, an unreadable report, one already
 promoted, and an id with no report are refused. A capture the ledger refuses —
 a symlinked ledger, a slug that normalises to nothing — is refused too: capture
-sweeps its reservation, so nothing is written and the report still waits.
+sweeps its reservation, so nothing is written and the report still waits. An
+inbox path a symlink or a file occupies is refused by every inbox verb, and by
+a report filed into it.
 
 ## Exit codes
 
-`0` done; `2` refused, with nothing written, and with the home and working
-directories written as `~` and `.` in the message. The JSON output holds on
+`0` done; `1` a failure after the capture is written (the promotion could not
+be recorded, or the report could not be moved), naming the capture; `2`
+refused, with nothing written, and with the home and working directories
+written as `~` and `.` in the message. The JSON output holds on
 every path: the list is `{"notice", "tally": {"reports", "senders"}, "reports": [...]}`, show is
 the entry with `notice` beside its fields, and a refusal is
 the `{"abcd":"error",…}` envelope on stdout.
