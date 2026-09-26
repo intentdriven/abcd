@@ -128,3 +128,26 @@ func TestSessionStoreFailureIsNoted(t *testing.T) {
 		}
 	})
 }
+
+// A session store whose index cannot be read skips this repository's
+// registration, and the receipt says so rather than returning silently: the
+// fourth of stepHistory's store failures (iss-2609262032177818).
+func TestUnreadableHistoryIndexIsNoted(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	dir := filepath.Join(home, ".abcd", "history")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "index.json"), []byte("{not json\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	a := &applyCtx{cwd: t.TempDir(), approved: map[GapCategory]bool{UserState: true}}
+	a.registerRepo(strings.Repeat("a", 40))
+	if !notesCarryAll(a.notes, "register", "index.json") {
+		t.Errorf("no note says the repository was not registered because the index could not be read; notes: %v", a.notes)
+	}
+	if strings.Contains(strings.Join(a.notes, "\n"), home) {
+		t.Errorf("a note names the home directory unredacted: %v", a.notes)
+	}
+}

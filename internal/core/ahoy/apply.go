@@ -813,7 +813,19 @@ func (a *applyCtx) stepHistory() {
 // state is refused rather than silently applied.
 func (a *applyCtx) registerRepo(sha string) {
 	idx, err := loadHistoryIndex()
-	if err != nil || idx == nil {
+	if err != nil {
+		// An index that exists but cannot be read (unreadable, oversize or
+		// malformed) skips the registration; like stepHistory's store failures,
+		// that is a note naming the index and the reason (iss-2609262032177818).
+		// An absent index is bootstrapHistory's to report, above.
+		where := "index.json"
+		if root, rerr := historyRoot(); rerr == nil {
+			where = displayPath(filepath.Join(root, "index.json"))
+		}
+		a.refuse("could not register this repository on this machine: the session store's index (" + where + ") could not be read: " + errText(err))
+		return
+	}
+	if idx == nil {
 		return
 	}
 	id := a.det.RepoIdentity
