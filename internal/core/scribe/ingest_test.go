@@ -758,3 +758,34 @@ func TestScribeIngestHoldsTheStateToTheItemsPartOfALine(t *testing.T) {
 		t.Fatalf("a ruling ahead of the id on a line naming one item was refused: %v", err)
 	}
 }
+
+// TestScribeIngestRefusesASymlinkedReadingsOrRunDir: the ingest lists the run's
+// items through the readings directory and the run directory, so those two are
+// judged as the ledger's ancestors are; a link planted at either after the
+// assembly is refused before the listing (iss-2609261205185463).
+func TestScribeIngestRefusesASymlinkedReadingsOrRunDir(t *testing.T) {
+	readings := capture.LedgerRelPath + "/" + issueschema.ReadingsDir
+	for name, tc := range map[string]struct{ rel, target string }{
+		"readings": {readings, "../../../docs/shadow"},
+		"run":      {readings + "/" + fixtureRun, "../../../../docs/shadow"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			s := assembleSession(t, positionDetection, 1, "{0}: accepted — "+groundA+"."+termLF)
+			linked := filepath.Join(s.repo, filepath.FromSlash(tc.rel))
+			if err := os.Rename(linked, filepath.Join(s.repo, "docs", "shadow")); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(tc.target, linked); err != nil {
+				t.Skipf("symlinks unavailable: %v", err)
+			}
+			if _, err := os.ReadDir(linked); err != nil {
+				t.Fatalf("the planted link does not resolve, so the probe proves nothing: %v", err)
+			}
+			o := s.out()
+			o.Outstanding = []string{s.items[0]}
+			if _, err := s.ingest(t, s.write(t, o)); !errors.Is(err, ErrSymlink) {
+				t.Fatalf("an ingest listing through a symlinked %s directory was not refused: %v", name, err)
+			}
+		})
+	}
+}

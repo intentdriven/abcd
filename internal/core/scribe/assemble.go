@@ -13,6 +13,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/reading"
+	"github.com/intentdriven/abcd/internal/core/readingitem"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/core/sessionkind"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -258,10 +259,24 @@ func collectLedger(repoRoot string) ([]LedgerEntry, error) {
 
 // refuseRedirectedLedger is capture.RefuseRedirectedLedger under this package's
 // symlink sentinel, so a caller tests one refusal whichever level held the link.
-func refuseRedirectedLedger(repoRoot string) error {
+//
+// below names directories under the issues root, each one level deeper than the
+// last, that a caller lists through: each is judged in turn by
+// readingitem.RefuseSymlinkedDir, the primitive capture's own ledger walk judges
+// every ledger directory by, so a symlinked readings or run directory is refused
+// as a symlinked `.abcd` is. An absent directory is not a fault here either.
+func refuseRedirectedLedger(repoRoot string, below ...string) error {
 	if err := capture.RefuseRedirectedLedger(repoRoot); err != nil {
 		return fmt.Errorf("%w: the ledger is reached through a directory that is not a real one (%w); the "+
 			"context is drawn from the ledger's own directories and a link above them is a route out", ErrSymlink, err)
+	}
+	dir := filepath.Join(repoRoot, filepath.FromSlash(capture.LedgerRelPath))
+	for _, segment := range below {
+		dir = filepath.Join(dir, segment)
+		if err := readingitem.RefuseSymlinkedDir(dir); err != nil {
+			return fmt.Errorf("%w: a ledger directory the scribe lists through is not a real one (%w); a link "+
+				"there is a route out of the ledger", ErrSymlink, err)
+		}
 	}
 	return nil
 }

@@ -99,7 +99,10 @@ until all of the following hold:
   once whitespace is folded, is one the researcher did not write. The scribe
   reformats; the check is that every word it carries was already there.
 - **Every answer is the run's, once.** An answered or outstanding item must be one
-  of the run's items, and one item takes one answer.
+  of the run's items, and one item takes one answer. The run's items are listed
+  through the ledger's directories down to the run's own, and a symlink at any
+  of them, the readings directory and the run directory included, is refused
+  before the listing, by the rule the assembly applies.
 - **Nothing is passed over in silence.** Every item of the run with no standing
   disposition is answered, listed as outstanding, or named in a refusal. An item
   already answered in the ledger is not owed again, which is what lets a rerun
