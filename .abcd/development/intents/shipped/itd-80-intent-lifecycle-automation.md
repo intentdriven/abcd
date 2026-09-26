@@ -59,7 +59,7 @@ This intent builds the automation. Directory location stays the single source of
 
 ## Prior Art
 
-- **[itd-34](../planned/itd-34-three-intent-kinds.md)** (three intent kinds) — defines the `kind` field and the standalone/bundle/discipline lifecycle paths; slice 1 implements the `standalone` path only. This intent is the lifecycle *automation* itd-34's ACs assume exists.
+- **[itd-34](itd-34-three-intent-kinds.md)** (three intent kinds) — defines the `kind` field and the standalone/bundle/discipline lifecycle paths; slice 1 implements the `standalone` path only. This intent is the lifecycle *automation* itd-34's ACs assume exists.
 - **[itd-46](../shipped/itd-46-abcd-intent-quoted-text-create-symmetric.md)** — the `abcd intent` create ergonomics (markdown surface); complementary, not overlapping (that is the create path; this is plan→ship→audit).
 - **[itd-48](../planned/itd-48-intent-fidelity-reviewer-roles-2-3.md)** — the reviewer's Roles 2/3; this intent delivers Role 1 that they extend.
 - **itd-3** (shipped, manual precedent) — its hand-authored `## Audit Notes` are the golden reference the automated audit must reproduce in shape.

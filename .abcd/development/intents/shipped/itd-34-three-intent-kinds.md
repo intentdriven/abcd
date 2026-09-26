@@ -87,7 +87,7 @@ Both are required (lint hard-blocks if either is missing). The reason: "supersed
 
 ### `intent-fidelity-reviewer` shape-classification role (third role)
 
-The same agent that performs single-document fidelity audits (per the [itd-1 discipline](../disciplines/itd-1-acceptance-gates.md)) and cross-document fidelity audits (per [itd-48](itd-48-intent-fidelity-reviewer-roles-2-3.md), which superseded [itd-31](../superseded/itd-31-cross-document-fidelity-reviewer.md)) gains a third role: **shape classification.** It runs continuously via the pre-commit hook (writing findings to the latest report) and on-demand via `/abcd:intent shape`. Bare `/abcd:intent` (status+help) surfaces the latest cached shape suggestions in its summary output without itself running a fresh scan — bare invocation never mutates the report. Findings live at `.abcd/logbook/audit/shape-<ts>/report.{json,md}`. Specific suggestions:
+The same agent that performs single-document fidelity audits (per the [itd-1 discipline](../disciplines/itd-1-acceptance-gates.md)) and cross-document fidelity audits (per [itd-48](../planned/itd-48-intent-fidelity-reviewer-roles-2-3.md), which superseded [itd-31](../superseded/itd-31-cross-document-fidelity-reviewer.md)) gains a third role: **shape classification.** It runs continuously via the pre-commit hook (writing findings to the latest report) and on-demand via `/abcd:intent shape`. Bare `/abcd:intent` (status+help) surfaces the latest cached shape suggestions in its summary output without itself running a fresh scan — bare invocation never mutates the report. Findings live at `.abcd/logbook/audit/shape-<ts>/report.{json,md}`. Specific suggestions:
 
 - **Bundle candidate:** "intents X and Y reference each other in scope/references and target the same release; consider `kind: bundle-member` with shared bundle ID."
 - **Supersession candidate:** "intent X's scope is fully covered by intent Y; consider `kind: superseded --by Y`."
@@ -152,8 +152,8 @@ None stated.
 
 - **Coordinated with:** the [itd-1 discipline](../disciplines/itd-1-acceptance-gates.md) — itd-1 is the first intent reclassified to `kind: discipline` under this framework. itd-1's content rewrite and itd-34's lifecycle changes ship in the same brief revision.
 - **Coordinated with:** the [itd-5 discipline](../disciplines/itd-5-prompt-quality-additions.md) — second discipline reclassified.
-- **Coordinated with:** [itd-48](itd-48-intent-fidelity-reviewer-roles-2-3.md) — itd-48 owns the cross-document role (Role 2) and the shape-classification role (Role 3) on `intent-fidelity-reviewer`, superseding [itd-31](../superseded/itd-31-cross-document-fidelity-reviewer.md) which originally introduced the cross-document concept. The agent's three-role architecture is documented uniformly across the brief and intent surfaces.
-- **Coordinated with:** [itd-48](itd-48-intent-fidelity-reviewer-roles-2-3.md) (cross-document role) and [itd-34's own shape-classification role] — these are the second and third roles on `intent-fidelity-reviewer` (the first being single-document fidelity per itd-1). Each role has its own user-facing verb under `/abcd:intent` (consistency, shape, review respectively). The earlier `tier-0-audit-substrate` bundle ([itd-31](../superseded/itd-31-cross-document-fidelity-reviewer.md) + itd-32) was dissolved on 2026-05-07 when the unified-`/abcd:audit`-surface premise no longer held; itd-31 promoted to standalone (later superseded by itd-48 on 2026-05-27), itd-32 superseded. An even earlier attempted bundle (`intent-capture-discipline`, itd-27 + itd-30) was retired on the same day because itd-27 and itd-30 are scoped to different phases — bundles cannot span phases (one shared spec shipped together is the invariant). Both intent-capture intents reclassified to standalone.
+- **Coordinated with:** [itd-48](../planned/itd-48-intent-fidelity-reviewer-roles-2-3.md) — itd-48 owns the cross-document role (Role 2) and the shape-classification role (Role 3) on `intent-fidelity-reviewer`, superseding [itd-31](../superseded/itd-31-cross-document-fidelity-reviewer.md) which originally introduced the cross-document concept. The agent's three-role architecture is documented uniformly across the brief and intent surfaces.
+- **Coordinated with:** [itd-48](../planned/itd-48-intent-fidelity-reviewer-roles-2-3.md) (cross-document role) and [itd-34's own shape-classification role] — these are the second and third roles on `intent-fidelity-reviewer` (the first being single-document fidelity per itd-1). Each role has its own user-facing verb under `/abcd:intent` (consistency, shape, review respectively). The earlier `tier-0-audit-substrate` bundle ([itd-31](../superseded/itd-31-cross-document-fidelity-reviewer.md) + itd-32) was dissolved on 2026-05-07 when the unified-`/abcd:audit`-surface premise no longer held; itd-31 promoted to standalone (later superseded by itd-48 on 2026-05-27), itd-32 superseded. An even earlier attempted bundle (`intent-capture-discipline`, itd-27 + itd-30) was retired on the same day because itd-27 and itd-30 are scoped to different phases — bundles cannot span phases (one shared spec shipped together is the invariant). Both intent-capture intents reclassified to standalone.
 
 ## Decisions
 
@@ -171,7 +171,8 @@ _None open; decisions 2 to 4 settle the three this record carried._
 
 ## Audit Notes
 
-_Empty. Populated by intent-fidelity-reviewer's single-document role when this intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-03d2e3b295e8 -->
+Fidelity review OWED (receipt rcp-03d2e3b295e8).
 
 ## References
 
