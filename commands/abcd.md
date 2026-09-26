@@ -68,8 +68,8 @@ record in its store — any status folder or bucket — and renders it read-only
 ```
 
 Summarise the `id`, `family`, `status`, `title`, `path`, the `links` edges
-(`spec_id`, `intent`, `related_intents`, `related_issues`, `resolved_by.*`, `superseded_by` as
-present), and each entry in `next_moves` — the concrete lifecycle move
+(`spec_id`, `intent`, `intents`, `related_intents`, `related_issues`, `resolved_by.*`,
+`superseded_by` as present; `intents` is every member a bundle's shared spec lists), and each entry in `next_moves` — the concrete lifecycle move
 (e.g. a draft intent points at the planning interview and `intent plan`; an
 open issue points at `capture promote` / `resolve` / `wontfix`; decisions are
 read). A shape-matching id found in no store exits non-zero naming the stores

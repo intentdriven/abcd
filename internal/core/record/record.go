@@ -373,6 +373,9 @@ func describeSpec(repoRoot, id string) (Description, error) {
 		Path:   sp.Path,
 		Links:  map[string]string{"intent": sp.Intent},
 	}
+	if members := sp.Members(); len(members) > 1 {
+		return describeBundleSpec(repoRoot, store, sp, members, d), nil
+	}
 	if sp.Status == spec.StatusClosed {
 		// A closed spec whose intent still has open specs delivered part of it: say
 		// which sibling the intent is now waiting on, rather than leaving the reader
@@ -405,6 +408,71 @@ func describeSpec(repoRoot, id string) (Description, error) {
 		}
 	}
 	return d, nil
+}
+
+// describeBundleSpec renders a bundle's shared spec through every member it
+// lists, as its close reads them (iss-2609261215160156): the links name them
+// all, a superseded member is passed over and named, and the move reads each
+// member still in force — the open specs a closed one waits on, or the
+// readiness an open one defers to.
+func describeBundleSpec(repoRoot string, store spec.Store, sp spec.Spec, members []string, d Description) Description {
+	d.Links["intents"] = strings.Join(members, ", ")
+	var live, superseded []string
+	corpus, err := intent.Load(repoRoot)
+	for _, m := range members {
+		if err == nil {
+			if it, ok := corpus.Lookup(m); ok && it.Bucket == intent.BucketSuperseded {
+				superseded = append(superseded, m)
+				continue
+			}
+		}
+		live = append(live, m)
+	}
+	passedOver := ""
+	if len(superseded) > 0 {
+		passedOver = " (" + strings.Join(superseded, ", ") + " superseded, passed over)"
+	}
+	if len(live) == 0 {
+		d.NextMoves = []string{"none — every member of bundle " + sp.Bundle + " is superseded" + passedOver}
+		return d
+	}
+	if sp.Status == spec.StatusClosed {
+		var waits []string
+		for _, m := range live {
+			if open := store.OpenSpecsForIntent(m); len(open) > 0 {
+				ids := make([]string, len(open))
+				for i, s := range open {
+					ids[i] = s.ID
+				}
+				waits = append(waits, m+" stays planned until "+strings.Join(ids, ", ")+" closes")
+			}
+		}
+		if len(waits) > 0 {
+			d.NextMoves = []string{"none — closed; " + strings.Join(waits, "; ") + passedOver}
+			return d
+		}
+		d.NextMoves = []string{"none — closed; the linked intents are " + strings.Join(live, ", ") + passedOver}
+		return d
+	}
+	var unread, notReady []string
+	for _, m := range live {
+		ready, err := intent.Ready(repoRoot, m)
+		switch {
+		case err != nil:
+			unread = append(unread, "the linked intent "+m+" could not be read: "+err.Error())
+		case !ready.Ready:
+			notReady = append(notReady, "`abcd "+verbIntentReady+" "+m+"`")
+		}
+	}
+	switch {
+	case len(unread) > 0:
+		d.NextMoves = unread
+	case len(notReady) > 0:
+		d.NextMoves = []string{"not ready — the gate defers to the failing checks of " + strings.Join(notReady, ", ") + passedOver}
+	default:
+		d.NextMoves = []string{"implement against this spec's body; when done, `abcd " + verbSpecClose + " " + sp.ID + "`" + passedOver}
+	}
+	return d
 }
 
 // describeADR probes decisions/adrs/ for the numbered file carrying the id and
