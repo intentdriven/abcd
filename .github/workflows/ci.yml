@@ -223,11 +223,18 @@ jobs:
   check:
     needs: changes
     if: ${{ !cancelled() }}
-    # The race step's own -timeout must fire before this does, or a hang reads
-    # as a cancelled job with no goroutine dump: 20m for the slowest package,
-    # plus about 18m the macOS leg spends before that package starts (8m of
-    # steps ahead of the race step, 10m of packages ahead of it inside it).
-    timeout-minutes: 45
+    # Equal to the merge queue's check response timeout (30 minutes, recorded in
+    # .abcd/work/rulesets/main-protection.json), which is the outer ceiling on a
+    # merge-group run: the queue fails the group when this required check has
+    # not concluded by then, so a job ceiling above it is unreachable there. The
+    # race step's -timeout lifts go test's 10m per-package default, so a slow
+    # package runs on to this ceiling instead of failing at ten minutes; it does
+    # not fit inside the ceiling on the macOS leg, which spends about 18m before
+    # the slowest package starts, so a hang there is cancelled without a
+    # goroutine dump. Raising the queue's cap is an admin act on the live
+    # ruleset, left to the technical facilitator; this job may follow it then.
+    # TestRaceLaneBudgetIsDeclaredAndFitsItsJob holds this at or below the cap.
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -293,9 +300,11 @@ jobs:
       # passing, and a slow runner crossed 600s with no test hung, ejecting an
       # unrelated pull request from the merge queue (iss-2609260319483365). 20m
       # is about twice the slowest passing run, so a real hang still fails with
-      # a goroutine dump. The Makefile's preflight recipe and release.yml's
-      # verify job carry the same flag, and the job's timeout-minutes above
-      # leaves room for it to fire; TestRaceLaneBudgetIsDeclaredAndFitsItsJob
+      # a goroutine dump where the enclosing ceiling leaves room for it: in
+      # release.yml's verify job it does, while this job's 30 minutes, held to
+      # the merge queue's response cap, are the binding ceiling here (see the
+      # job header). The Makefile's preflight recipe and release.yml's verify
+      # job carry the same flag; TestRaceLaneBudgetIsDeclaredAndFitsItsJob
       # holds all three.
       - name: Test (race, internal)
         if: needs.changes.outputs.inert != 'true'
