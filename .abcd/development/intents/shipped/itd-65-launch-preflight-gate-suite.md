@@ -24,6 +24,7 @@ warrants_assumed:
 blocked_by: [itd-66]
 builds_on: [itd-67]
 severity: critical
+impact: additive
 ---
 
 # abcd Refuses To Publish A Payload Until The Full Ship-Time Pre-Flight Gate Suite Passes, Not Just The Secret Scan
@@ -79,9 +80,53 @@ passes (`TestOtherIdentitiesArmMatchersAndHandleStaysPublic`); a clean payload
 exiting 0 (`TestShipCleanWouldPublish`); the manifest half of the marker
 criterion (`smoke.go`). Moot: the auto-append of narration into the changelog,
 because the changelog is derived (adr-37); the reroute-not-dirt criterion,
-because no reroute exists. Open, and scoped by spc-2609201955279019: the
-marker-block check, the change-narration detector, the dirty-tree refusal,
-the two warn-fail rows, the report file, the multi-gate test.
+because no reroute exists. Scoped by spc-2609201955279019 and delivered with
+it on 2026-09-25: the marker-block check, the change-narration detector, the
+dirty-tree refusal, the two warn-fail rows, the report file, the multi-gate
+test (the evidence for each is under `## Decisions`).
+
+## Decisions
+
+- **2026-09-25 — two criteria are superseded in part by the derived
+  changelog, and the rest of each stands.** The changelog is derived from the
+  records: [adr-37](../../decisions/adrs/0037-changelog-driven-releases.md)
+  makes the dated CHANGELOG heading the release instrument, and its
+  2026-08-26 amendment records that the ingest composes that section from the
+  records that shipped, behind the completeness bijection (first cut this way:
+  v0.5.1, `.abcd/work/DECISIONS.md`, 2026-08-16). A gate cannot append prose to
+  a changelog nothing hand-writes, so:
+  - *The doc-history criterion (third).* Superseded: the offer to auto-append
+    the flagged passage, and "the change is recorded in the changelog" as a
+    condition the gate checks — the change reaches the changelog through its
+    record, not through the gate. Stands and is met: the gate HARD-FAILS on a
+    change-narration sentence in a shipped doc body and names it
+    (`change-narration` row; `narrationFindings` in
+    `internal/core/launch/gates.go`; `TestNarrationGateHardFailsOnAChangeConstruct`),
+    and the ship proceeds only once the doc describes present state.
+  - *The reroute criterion (last).* Superseded whole: with no auto-append there
+    is no reroute and nothing it stages. The ordering it protected stands in
+    another form and is met: the cut runs the dirty-tree gate before it writes
+    anything, and the render after its own writes skips it, so the cut's own
+    output is never read as dirt (`DirtySkip` in `gates.go`;
+    `TestLaunchShipRefusesADirtyTreeUnlessAllowed`).
+- **2026-09-25 — how the remaining criteria are met** (spc-2609201955279019).
+  Marker blocks: `marker-block` row, `TestMarkerBlockGateRefusesAMalformedBlock`.
+  Dirty tree: `dirty-tree` row and `abcd launch ship --allow-dirty`, the
+  override recorded in the pre-flight report with every path it carried
+  (`TestDirtyTreeGateRefusesUnlessAllowed`,
+  `TestLaunchShipRefusesADirtyTreeUnlessAllowed`). Warn tier: the
+  `documentation-auditor` row runs the docs-lint engine the front door
+  measures, the `hook-compliance` row checks hook executability, handler
+  commands and timeouts, and `"strict_warnings": true` in
+  `.abcd/config/launch-payload.json` is the configured strict tier
+  (`TestWarnRowsSurfaceWithoutBlocking`). Report: every preview and every cut
+  that renders a payload writes `preflight.{json,md}` under
+  `.abcd/.work.local/logs/launch/<ts>/`, the tier iss-73 settled
+  (`TestWritePreflightReportLandsInTheLocalTier`,
+  `TestLaunchDryRunWritesThePreflightReport`). Run-all-collect-all:
+  `TestSuiteReportsEveryGateInOnePass` plants findings in four gates and finds
+  all four in the preview, the render refusal and the written report. Bare
+  present-tense "now"/"previously": `TestNarrationGatePassesPresentTense`.
 
 ## Acceptance Criteria
 
@@ -101,7 +146,12 @@ the two warn-fail rows, the report file, the multi-gate test.
 
 ## Open Questions
 
-- Should the custom-regex identity layer live inside the spc-64 gate module (extending its config) or as a sibling gate the orchestrator composes? (Reuse vs separation.)
-- What is the exact GitHub-username source — git config `user.name`/`user.email`, remote URLs, or a maintained denylist — and how are legitimate org handles in docs distinguished from leaked personal ones?
-- Does the documentation auditor reuse the existing doc-scout machinery, or is it a launch-specific pass?
-- Where does `--allow-doc-warnings` sit relative to a strict CI invocation of the same suite?
+- ~~Should the custom-regex identity layer live inside the spc-64 gate module (extending its config) or as a sibling gate the orchestrator composes? (Reuse vs separation.)~~ Answered by this intent's own scope (grill Q2/Q4/Q6, "Gate composition + tiering"): a sibling gate the orchestrator composes, with spc-64 keeping its pinned engines; delivered as `internal/adapter/scanner/identity.go` (Delivery Status).
+- ~~What is the exact GitHub-username source — git config `user.name`/`user.email`, remote URLs, or a maintained denylist — and how are legitimate org handles in docs distinguished from leaked personal ones?~~ Answered by the same scope bullet: the LOCAL git identity (`user.name`/`user.email`, the dev-repo remote URL), never a denylist of arbitrary handles, with the public org handle allowlisted; delivered and pinned by `TestOtherIdentitiesArmMatchersAndHandleStaysPublic`.
+- Does the documentation auditor reuse the existing doc-scout machinery, or is it a launch-specific pass? Open. The `documentation-auditor` row runs the deterministic docs-lint engine today; whether the host-delegated `documentation-auditor` agent (`brief/05-internals/01-agents.md`) joins it is not ruled.
+- Where does `--allow-doc-warnings` sit relative to a strict CI invocation of the same suite? Open. No such flag ships: a warning refuses nothing unless the repository sets `"strict_warnings": true`, and whether a per-run override of that setting is wanted is not ruled.
+
+## Audit Notes
+
+<!-- abcd-review: OWED receipt=rcp-28b4f73968a9 -->
+Fidelity review OWED (receipt rcp-28b4f73968a9).

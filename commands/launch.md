@@ -1,7 +1,7 @@
 ---
 name: launch
-description: "Preview the public launch bundle, its secret scan, and the release gates: Writes nothing; refuses without --dry-run."
-argument-hint: "[--dry-run] | ship [--changelog-json <path>] | archive --out <dir> [--tag <vX.Y.Z>] [--verify] [--repository <owner/name>] | scaffold"
+description: "Preview the public launch bundle, its secret scan, and the release gates: Writes only its pre-flight report, to the local tier; refuses without --dry-run."
+argument-hint: "[--dry-run] | ship [--changelog-json <path>] [--payload-dir <dir>] [--allow-dirty] | archive --out <dir> [--tag <vX.Y.Z>] [--verify] [--repository <owner/name>] | scaffold"
 block: people
 ---
 
@@ -13,7 +13,9 @@ read-only preview of the same cut, is in the agents-and-hosts block of
 
 Two flows over the abcd binary, kept apart on purpose:
 
-- **preview** (`dry-run`) — the bundle, the scan, and the gates. **Zero writes.**
+- **preview** (`dry-run`) — the bundle, the scan, and the pre-flight gates. Its
+  one write is its pre-flight report, under the gitignored
+  `.abcd/.work.local/logs/launch/`.
 - **ship** — the release cut: derive the version from what shipped, compose the
   changelog prose and the release page, write them. It writes the dated section
   of `CHANGELOG.md`, the release page `RELEASE.md`, and the outgoing page's copy
@@ -191,20 +193,38 @@ Then summarise the JSON for the user:
   the marketplace source resolves, and every declared command, agent, skill and
   hook path is carried. `smoke.findings` names any path that is not.
 - `gates` — every release gate and its disposition. Report the whole array,
-  not a summary: `ran` gates carry their measurement, `not_implemented` ones name
-  what is deferred, and `semantic-receipts` (`host-run`) reports which semantic
-  receipts are recorded for the candidate commit. That row is the one a release
-  fails on most expensively, so never omit it.
+  not a summary. Each row carries a `status` (`ran`; `not_armed` where the
+  repository has not adopted what the gate reads, such as the documentation
+  audit without a `.abcd/docs-lint.json`; `not_implemented`; `host-run`), a
+  one-line `detail`, a `tier` (`hard-fail` refuses, `warn` surfaces) and its
+  located `findings`. The pre-flight suite's rows are `marker-block`,
+  `change-narration`, `dirty-tree` (hard-fail) and `documentation-auditor`,
+  `hook-compliance` (warn). `semantic-receipts` (`host-run`) reports which
+  semantic receipts are recorded for the candidate commit. That row is the one a
+  release fails on most expensively, so never omit it.
 - `would_publish` — **always `false`** in a dry-run: this command previews and
-  never publishes, and two gates are Phase-5 deferred, so it is not a verdict on
-  the release. Read `gates` and `would_refuse_on` for that.
+  never publishes, so it is not a verdict on the release. Read `gates` and
+  `would_refuse_on` for that.
 - `lockstep` and `retention` — the manifest-lockstep result and the release
   retention plan. Both feed `would_refuse_on`, so a lockstep drift or a
   retention refusal is invisible to anyone who reads only the gate list.
-- `would_refuse_on` — if non-empty, the gates that would refuse, so the user
-  knows what to fix before a real launch.
+- `would_refuse_on` — if non-empty, every finding a cut would refuse on, from
+  every gate at once, so the user can fix them in one pass. A dirty working tree
+  is among them: the preview has no override, and the cut refuses one unless it
+  is passed `--allow-dirty`.
+- `warnings` — the warn-tier concerns. They refuse nothing, unless the
+  repository's `.abcd/config/launch-payload.json` sets `"strict_warnings": true`,
+  in which case each also appears in `would_refuse_on`.
+- `report_path` — where this preview's pre-flight report landed
+  (`preflight.json` and `preflight.md`), or `report_error` saying why it could
+  not be written.
 
 This is preview-only: publishing is not driven from this command.
+
+A repository with no `.abcd/config/launch-payload.json` has no plugin payload to
+preview. The preview says so and names the release path such a repository has:
+`launch scaffold`, `launch ship` writing the dated CHANGELOG heading, and the
+auto-release workflow. Relay that; it is not a misconfiguration.
 
 ## Ship — the release cut
 
@@ -410,6 +430,22 @@ rolls the heading back — so a ship that exits non-zero leaves no release recor
 behind for the next attempt to trip over. Without the flag nothing is staged;
 `--payload-dir` on its own (no `--changelog-json`) is an operand error, because
 only a completed cut has a version to stamp.
+
+**The pre-flight gates run first.** A ship that renders a payload — it was
+given `--payload-dir`, or the repository publishes its plugin archive — runs
+the same gate suite the preview reports, before anything is written: the
+secret/PII scan, marker-block sanity, change narration in the shipped docs, the
+dirty tree, the installability smoke, and the warn-tier rows. A file the bundler
+rejected stops it at once; otherwise it refuses with every finding from every
+gate together (exit 2). It writes its pre-flight report whatever the verdict; the refusal names where it landed, and `--json` carries it as
+`preflight_report`. A working tree with uncommitted changes refuses unless the
+ship is passed `--allow-dirty`, which carries them into the cut and records the
+override, with every path it carried, in the report (`allowed_dirty` in
+`--json`). The flag waives the dirty-tree gate and nothing else: never lockstep,
+and never the archive pin's refusal of an uncommitted payload file. On a ship
+that renders nothing it is an operand error, because there is no gate to
+waive. Relay the refusal and let the user decide; do not add `--allow-dirty` on
+their behalf.
 
 The binary re-derives the cut, then proves the prose describes it — the
 **completeness bijection**: the set of record ids the payload cites must equal
@@ -623,7 +659,9 @@ catalog is left out of it, because the catalog is what names its digest.
   in `detect`, before the tag is made; the release workflow runs it again on the
   tagged commit in `verify`, before anything is built, and once more in the
   publish job, where the verified archive is the file it checksums, attests and
-  uploads.
+  uploads. With `--verify` the pin is the dirty-tree gate, since a payload file
+  that differs from the commit changes the digest; without it, an uncommitted
+  change in the working tree refuses the render (exit 2).
 - `--repository <owner/name>` refuses unless the archive's download address lies
   under that repository's
   `https://github.com/<owner>/<name>/releases/download/<tag>/`, compared

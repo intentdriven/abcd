@@ -1128,7 +1128,7 @@ Lift an intent's hold: Writes the removal of its held line; refuses a record not
 
 ### `abcd launch`
 
-Preview the public launch bundle, its secret scan, and the release gates: Writes nothing; refuses without --dry-run.
+Preview the public launch bundle, its secret scan, and the release gates: Writes only its pre-flight report, to the local tier; refuses without --dry-run.
 
 **Usage:** `abcd launch [flags]`
 
@@ -1140,9 +1140,18 @@ Preview the public launch bundle, its secret scan, and the release gates: Writes
 
 #### `abcd launch archive`
 
-Render the release's plugin archive: Writes the archive into --out; refuses with exit 1 when --verify finds the catalogue does not pin it.
+Render the release's plugin archive: Writes the archive into --out; refuses a dirty tree without --verify, and exits 1 when --verify finds it unpinned.
 
 **Usage:** `abcd launch archive --out <dir> [--tag <vX.Y.Z>] [--verify] [--repository <owner/name>] [flags]`
+
+Render the release's plugin archive into --out and, with --verify, prove the
+committed catalog pins it (exit 1 on a mismatch).
+
+With --verify the pin judges the working tree: a payload file that differs
+from the commit changes the archive's digest, and the pin refuses it. Without
+--verify nothing else judges the tree, so an uncommitted change, tracked or
+untracked and outside the local tier, refuses the render (exit 2) and nothing
+is written to --out.
 
 **Flags:**
 
@@ -1150,7 +1159,7 @@ Render the release's plugin archive: Writes the archive into --out; refuses with
       --out string          existing directory to write <plugin>-plugin-v<version>.zip into
       --repository string   refuse (exit 1) unless the archive's address is this GitHub owner/name's release download for the tag
       --tag string          refuse unless the newest dated CHANGELOG version is this tag
-      --verify              refuse (exit 1) unless the committed catalog pins this archive's address and digest
+      --verify              refuse (exit 1) unless the committed catalog pins this archive's address and digest; without it, a tree with an uncommitted change refuses (exit 2)
 ```
 
 #### `abcd launch scaffold`
@@ -1169,11 +1178,12 @@ Scaffold the changelog-driven release gate: Writes the release workflows and run
 
 Cut a release, deriving its version and records from what shipped: Writes the CHANGELOG heading, RELEASE.md, and the archive pin; refuses a cut its gates stop.
 
-**Usage:** `abcd launch ship [--changelog-json <file|->] [--payload-dir <dir>] [flags]`
+**Usage:** `abcd launch ship [--changelog-json <file|->] [--payload-dir <dir>] [--allow-dirty] [flags]`
 
 **Flags:**
 
 ```
+      --allow-dirty             cut from a working tree with uncommitted changes; the pre-flight report records the override and every path it carried (waives the dirty-tree gate only — never lockstep, and never the archive pin's clean-payload refusal)
       --changelog-json string   path to the host-composed changelog JSON (or - for stdin); absent runs the deterministic emit step
       --payload-dir string      stage the versioned release payload in this directory (must be empty and outside the repository)
       --route stringArray       route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)

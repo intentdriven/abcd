@@ -40,7 +40,6 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/fsutil"
-	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // archiveEpoch is the one timestamp every archive entry carries. It is the
@@ -469,22 +468,18 @@ func VerifyArchivePin(repoRoot string, a PluginArchive) error {
 // file that differs between the two makes the pin unreproducible, and the
 // release would then refuse at a point where the version is already tagged. So
 // the ship refuses such a tree before it writes anything.
+//
+// It reads the tree through DirtyTreeFiles, the dirty-tree gate's own reader,
+// and keeps the payload's share: unlike that gate, this refusal has no
+// --allow-dirty, because an unreproducible pin is wrong whoever allows it.
 func DirtyPayloadFiles(repoRoot string, bundle Bundle) ([]string, error) {
-	changed, err := gitutil.Run(repoRoot, "diff", "--name-only", "-z", "HEAD")
+	list, err := DirtyTreeFiles(repoRoot)
 	if err != nil {
-		return nil, fmt.Errorf("the working tree's changes could not be read: %w", err)
+		return nil, err
 	}
-	untracked, err := gitutil.Run(repoRoot, "ls-files", "--others", "--exclude-standard", "-z")
-	if err != nil {
-		return nil, fmt.Errorf("the working tree's untracked files could not be read: %w", err)
-	}
-	dirty := map[string]struct{}{}
-	for _, list := range []string{changed, untracked} {
-		for _, p := range strings.Split(list, "\x00") {
-			if p != "" {
-				dirty[p] = struct{}{}
-			}
-		}
+	dirty := make(map[string]struct{}, len(list))
+	for _, p := range list {
+		dirty[p] = struct{}{}
 	}
 	var out []string
 	for _, f := range bundle.Included {

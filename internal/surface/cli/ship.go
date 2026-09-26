@@ -61,6 +61,11 @@ type shipResult struct {
 	// ArchiveUnpinned says why a written ship left the catalog untouched: the
 	// repository does not declare that its release publishes the archive.
 	ArchiveUnpinned string `json:"archive_unpinned,omitempty"`
+	// Preflight is the repo-relative directory of the cut's pre-flight report,
+	// written whenever the ship runs the gate suite (it renders a payload).
+	Preflight string `json:"preflight_report,omitempty"`
+	// AllowedDirty is every uncommitted path --allow-dirty carried into the cut.
+	AllowedDirty []string `json:"allowed_dirty,omitempty"`
 }
 
 // shipArchive is the archive half of a ship's report: the archive the release
@@ -99,6 +104,11 @@ func releaseRenderRequest(repoRoot, dest string, cut release.Cut, at time.Time) 
 		RepoRoot: repoRoot,
 		Dest:     dest,
 		Version:  next.String(),
+		// The cut renders AFTER its own writes (the dated heading, the release
+		// page, the archive pin), so the tree is dirty by construction with the
+		// cut's expected output; the cut ran the dirty-tree gate in its
+		// pre-flight, before any of them.
+		Dirty: launch.DirtySkip,
 		Entry: launch.ChangelogEntry{
 			Tier:      launch.BumpTier(prev, next),
 			Reason:    bumpReason(cut),
@@ -307,9 +317,10 @@ func bumpReason(cut release.Cut) string {
 func newLaunchShipCommand(asJSON *bool) *cobra.Command {
 	var changelogJSON string
 	var payloadDir string
+	var allowDirty bool
 	var shipRoute *routeFlag
 	cmd := &cobra.Command{
-		Use:  "ship [--changelog-json <file|->] [--payload-dir <dir>]",
+		Use:  "ship [--changelog-json <file|->] [--payload-dir <dir>] [--allow-dirty]",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cwd, err := os.Getwd()
@@ -322,6 +333,10 @@ func newLaunchShipCommand(asJSON *bool) *cobra.Command {
 			if payloadDir != "" && changelogJSON == "" {
 				return &exitError{Code: 2, Msg: "abcd launch ship: --payload-dir needs --changelog-json — " +
 					"the release payload is staged by the ingest step, which the deterministic emit step does not run"}
+			}
+			if allowDirty && changelogJSON == "" {
+				return &exitError{Code: 2, Msg: "abcd launch ship: --allow-dirty waives the dirty-tree gate, and the " +
+					"deterministic emit step renders no payload, so it runs no gate to waive"}
 			}
 			// Both steps dispatch the composer: the emit step hands the host
 			// its request block, the ingest step returns its receipt. The route
@@ -346,7 +361,7 @@ func newLaunchShipCommand(asJSON *bool) *cobra.Command {
 				return &exitError{Code: 2, Msg: "abcd launch ship: " + scrubPaths(err)}
 			}
 			if raw != nil {
-				return runShipIngest(cmd, root, raw, payloadDir, *asJSON, route)
+				return runShipIngest(cmd, root, raw, payloadDir, allowDirty, *asJSON, route)
 			}
 
 			cut, err := emitCut(root)
@@ -373,6 +388,9 @@ func newLaunchShipCommand(asJSON *bool) *cobra.Command {
 		"path to the host-composed changelog JSON (or - for stdin); absent runs the deterministic emit step")
 	cmd.Flags().StringVar(&payloadDir, "payload-dir", "",
 		"stage the versioned release payload in this directory (must be empty and outside the repository)")
+	cmd.Flags().BoolVar(&allowDirty, "allow-dirty", false,
+		"cut from a working tree with uncommitted changes; the pre-flight report records the override and every path it carried "+
+			"(waives the dirty-tree gate only — never lockstep, and never the archive pin's clean-payload refusal)")
 	shipRoute = addRouteFlag(cmd, changelogAgent)
 	return cmd
 }
@@ -386,12 +404,18 @@ func newLaunchShipCommand(asJSON *bool) *cobra.Command {
 // contract alone: only a release workflow that uploads the archive makes the
 // pinned address resolve, and a managed repository's scaffolded workflows
 // upload none, so a catalog pinned there would 404 on every install.
-func runShipIngest(cmd *cobra.Command, cwd string, raw []byte, payloadDir string, asJSON bool, route *oracle.Route) error {
+func runShipIngest(cmd *cobra.Command, cwd string, raw []byte, payloadDir string, allowDirty, asJSON bool, route *oracle.Route) error {
 	archive, err := launch.DeclaresPluginArchive(cwd)
 	if err != nil {
 		return &exitError{Code: 2, Msg: "abcd launch ship: " + scrubPaths(err)}
 	}
 	stage := archive || payloadDir != ""
+	// The dirty-tree gate is part of the pre-flight suite, which runs on the
+	// render path only; a ship that renders nothing has no gate to waive.
+	if allowDirty && !stage {
+		return &exitError{Code: 2, Msg: "abcd launch ship: --allow-dirty waives the dirty-tree gate, and this ship " +
+			"renders no payload (no --payload-dir, and the repository does not publish a plugin archive), so it runs no gate to waive"}
+	}
 
 	// Every render refusal that does not need a version is made BEFORE the
 	// ingest step writes the dated heading. That heading is a durable release
@@ -402,6 +426,10 @@ func runShipIngest(cmd *cobra.Command, cwd string, raw []byte, payloadDir string
 		saved   []savedFile
 		staging = payloadDir
 		zipDir  string
+		// res accumulates the pre-flight half of the report before the ingest
+		// fills in the rest.
+		res           shipResult
+		preflightNote string
 	)
 	if stage {
 		if archive {
@@ -418,9 +446,30 @@ func runShipIngest(cmd *cobra.Command, cwd string, raw []byte, payloadDir string
 				staging = filepath.Join(scratch, "payload")
 			}
 		}
-		pre, perr := launch.PrecheckPayload(cwd, staging)
+		// The pre-flight suite runs here, BEFORE the cut writes anything, so the
+		// dirty-tree gate reads the tree the cut starts from; the render after
+		// the ingest skips it, because by then the cut's own writes are on disk.
+		opts := launch.PrecheckOptions{DocAudit: docAuditPreflight(cwd)}
+		if allowDirty {
+			opts.Dirty = launch.DirtyAllow
+		}
+		pre, perr := launch.PrecheckPayload(cwd, staging, opts)
+		// The report is written whatever the verdict: a refused cut is the one
+		// whose record matters most. A precheck that stopped before its gates (a
+		// structural fault) has no gate to report, and writes nothing.
+		if len(pre.Gates) > 0 {
+			preflightDir, failure := writePreflight(cwd, pre.PreflightReport(time.Now(), ""))
+			preflightNote = "; pre-flight report: " + preflightDir
+			if failure != "" {
+				preflightNote = "; the pre-flight report was not written: " + failure
+			}
+			res.Preflight = preflightDir
+		}
 		if perr != nil {
-			return &exitError{Code: 2, Msg: "abcd launch ship: " + scrubPaths(perr)}
+			return &exitError{Code: 2, Msg: "abcd launch ship: " + launchPayloadRefusal(perr) + preflightNote}
+		}
+		if allowDirty {
+			res.AllowedDirty = pre.Dirty
 		}
 		if archive {
 			if err := launch.PrecheckPluginArchive(cwd); err != nil {
@@ -451,7 +500,7 @@ func runShipIngest(cmd *cobra.Command, cwd string, raw []byte, payloadDir string
 		// The composer's payload is refused: render the cut and every reason,
 		// and exit 2 WITH payload_refusal — the host's signal to recompose
 		// (commands/launch.md, the retry loop).
-		res := shipResult{IngestResult: ingested, PayloadRefusal: refused}
+		res.IngestResult, res.PayloadRefusal = ingested, refused
 		if rerr := render(cmd.OutOrStdout(), asJSON, res, func(w io.Writer) {
 			renderIngest(w, res)
 		}); rerr != nil {
@@ -467,7 +516,7 @@ func runShipIngest(cmd *cobra.Command, cwd string, raw []byte, payloadDir string
 	if err != nil {
 		return &exitError{Code: 2, Msg: "abcd launch ship: " + scrubPaths(err)}
 	}
-	res := shipResult{IngestResult: ingested}
+	res.IngestResult = ingested
 	if ingested.Written && !archive {
 		res.ArchiveUnpinned = archiveUnpinnedReason
 	}
@@ -658,6 +707,13 @@ func renderIngest(w io.Writer, res shipResult) {
 	}
 	if res.ArchiveUnpinned != "" {
 		fmt.Fprintf(w, "  archive:    not pinned — %s\n", res.ArchiveUnpinned)
+	}
+	if res.Preflight != "" {
+		fmt.Fprintf(w, "  preflight:  %s\n", termsafe.Sanitize(res.Preflight))
+	}
+	if len(res.AllowedDirty) > 0 {
+		fmt.Fprintf(w, "  allowed:    %d uncommitted path(s) carried by --allow-dirty: %s\n",
+			len(res.AllowedDirty), termsafe.Sanitize(strings.Join(res.AllowedDirty, ", ")))
 	}
 	if res.Payload == nil {
 		return

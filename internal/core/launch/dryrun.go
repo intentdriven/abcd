@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // versionLocationRelPath is the committed version-location decision artefact.
@@ -31,13 +32,25 @@ type DryRunRequest struct {
 	// means the measurement was not taken, which the gate reports as such rather
 	// than as an absence of receipts.
 	Receipts *ReceiptPreflight
+	// DocAudit is the documentation audit's result, MEASURED by the caller for
+	// the same reason as Citations. Nil means the repository has not armed a
+	// docs-lint configuration, which the gate reports as such.
+	DocAudit *DocAuditPreflight
 }
 
-// GateSummary records one gate's dry-run disposition.
+// GateSummary records one gate's disposition.
 type GateSummary struct {
-	Name   string `json:"name"`
-	Status string `json:"status"` // "ran" | "not_implemented" | "host-run"
+	Name string `json:"name"`
+	// Status is "ran", "not_implemented", "not_armed" (the repository has not
+	// adopted what the gate reads) or "host-run".
+	Status string `json:"status"`
 	Detail string `json:"detail"`
+	// Tier is what a finding in the row does: TierHardFail refuses, TierWarn
+	// surfaces. Empty for a row whose refusals are reported elsewhere.
+	Tier string `json:"tier,omitempty"`
+	// Findings are the row's located concerns, each also carried as a line in
+	// would_refuse_on (hard-fail) or warnings (warn).
+	Findings []GateFinding `json:"findings,omitempty"`
 }
 
 // DryRunReport is the full dry-run preview. No artefact is written.
@@ -51,12 +64,20 @@ type DryRunReport struct {
 	Gates         []GateSummary      `json:"gates"`
 	WouldPublish  bool               `json:"would_publish"` // always false in dry-run
 	WouldRefuseOn []string           `json:"would_refuse_on,omitempty"`
+	// Warnings are the warn-tier concerns: surfaced, refusing nothing unless
+	// the repository configures the suite strict.
+	Warnings []string `json:"warnings,omitempty"`
+	// ReportPath is the repo-relative directory the front door wrote this
+	// preview's pre-flight report into; ReportError says why it could not.
+	ReportPath  string `json:"report_path,omitempty"`
+	ReportError string `json:"report_error,omitempty"`
 }
 
-// DryRun assembles the bundle, scans it, checks lockstep and previews retention,
-// then reports what a real ship WOULD refuse on. It ALWAYS returns exit-0
-// semantics: an error is returned only for a preflight fault (bad include config)
-// that makes a report impossible — never on a finding.
+// DryRun assembles the bundle, scans it, checks lockstep, previews retention and
+// runs the pre-flight gate suite, then reports what a real ship WOULD refuse on.
+// It ALWAYS returns exit-0 semantics: an error is returned only for a preflight
+// fault (bad include config) that makes a report impossible — never on a
+// finding. It writes nothing; the front door writes the pre-flight report.
 func DryRun(req DryRunRequest) (DryRunReport, error) {
 	var report DryRunReport
 
@@ -65,6 +86,10 @@ func DryRun(req DryRunRequest) (DryRunReport, error) {
 		return DryRunReport{}, err // preflight fault only
 	}
 	report.Bundle = bundle
+	policy, err := LoadGatePolicy(req.RepoRoot)
+	if err != nil {
+		return DryRunReport{}, err // preflight fault only
+	}
 
 	scan := scanBundle(req.RepoRoot, bundle)
 	report.Scan = scan
@@ -88,20 +113,28 @@ func DryRun(req DryRunRequest) (DryRunReport, error) {
 	smoke := SmokeLight(NewBundleTree(bundle))
 	report.Smoke = smoke
 
-	report.Gates = []GateSummary{
+	// The preview has no override flag, so the dirty-tree gate runs at its
+	// refusing default: a dirty tree is reported as what a cut would refuse on.
+	suite := runGateSuite(suiteRequest{
+		RepoRoot: req.RepoRoot, Bundle: bundle, Dirty: DirtyRefuse,
+		DocAudit: req.DocAudit, Policy: policy,
+	})
+
+	report.Gates = append([]GateSummary{
 		{Name: "secret+pii-scan", Status: "ran", Detail: scanDetail(scan)},
-		{Name: "marker-block", Status: "not_implemented", Detail: "Phase-5 deferred"},
 		{Name: "installability-smoke", Status: "ran", Detail: smokeDetail(smoke)},
-		{Name: "documentation-auditor", Status: "not_implemented", Detail: "Phase-5 deferred"},
+	}, suite.Gates...)
+	report.Gates = append(report.Gates,
 		citationGate(req.Citations),
 		// Reporting-only: the semantic passes are host-run and release.yml owns
 		// the required-gates list, so this row never feeds WouldRefuseOn.
 		receiptGate(req.Receipts),
-	}
+	)
 
-	report.WouldRefuseOn = append(
-		wouldRefuseOn(bundle, scan, lockstep, report.Retention, smoke),
-		citationRefusals(req.Citations)...)
+	report.WouldRefuseOn = wouldRefuseOn(bundle, scan, lockstep, report.Retention, smoke)
+	report.WouldRefuseOn = append(report.WouldRefuseOn, suite.Refusals...)
+	report.WouldRefuseOn = append(report.WouldRefuseOn, citationRefusals(req.Citations)...)
+	report.Warnings = suite.Warnings
 	report.WouldPublish = false
 	return report, nil
 }
@@ -132,7 +165,30 @@ func computeRetentionForReport(version string, req DryRunRequest) RetentionPlan 
 	}
 	existing := req.ExistingTags
 	if existing == nil {
-		existing, _ = GitExistingTags(req.RepoRoot)
+		// A listing that FAILED is not an empty release set: read as one, it
+		// previews "nothing to prune" for a repository whose tags were never
+		// seen, indistinguishable from a genuine nothing-to-prune (iss-194).
+		tags, err := GitExistingTags(req.RepoRoot)
+		if err != nil {
+			return RetentionPlan{
+				Published: pub.Tag(), Line: pub.Line(), Refused: true,
+				RefusalReason: "the existing release tags could not be listed, so the plan cannot say what the release would prune: " + err.Error(),
+			}
+		}
+		// A shallow checkout's listing SUCCEEDS but holds only the tags that
+		// were fetched, so it is not the release set either
+		// (iss-2609251238184553).
+		if shallow, err := gitutil.Run(req.RepoRoot, "rev-parse", "--is-shallow-repository"); err != nil || shallow != "false" {
+			reason := "the checkout is shallow, so its tag listing may hold only the tags that were fetched"
+			if err != nil {
+				reason = "whether the checkout is shallow could not be read: " + err.Error()
+			}
+			return RetentionPlan{
+				Published: pub.Tag(), Line: pub.Line(), Refused: true,
+				RefusalReason: reason + ", and the plan cannot say what the release would prune — fetch the full history and tags first",
+			}
+		}
+		existing = tags
 	}
 	return ComputeRetention(pub, existing)
 }

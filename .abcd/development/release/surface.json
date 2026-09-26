@@ -1561,7 +1561,7 @@
       "hidden": false,
       "group": "release",
       "block": "people",
-      "sentence": "Preview the public launch bundle, its secret scan, and the release gates: Writes nothing; refuses without --dry-run.",
+      "sentence": "Preview the public launch bundle, its secret scan, and the release gates: Writes only its pre-flight report, to the local tier; refuses without --dry-run.",
       "flags": [
         {
           "name": "dry-run",
@@ -1575,7 +1575,7 @@
     {
       "path": "abcd launch archive",
       "hidden": false,
-      "sentence": "Render the release's plugin archive: Writes the archive into --out; refuses with exit 1 when --verify finds the catalogue does not pin it.",
+      "sentence": "Render the release's plugin archive: Writes the archive into --out; refuses a dirty tree without --verify, and exits 1 when --verify finds it unpinned.",
       "flags": [
         {
           "name": "out",
@@ -1626,6 +1626,13 @@
       "hidden": false,
       "sentence": "Cut a release, deriving its version and records from what shipped: Writes the CHANGELOG heading, RELEASE.md, and the archive pin; refuses a cut its gates stop.",
       "flags": [
+        {
+          "name": "allow-dirty",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
         {
           "name": "changelog-json",
           "shorthand": "",
