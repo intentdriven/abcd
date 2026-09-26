@@ -251,6 +251,9 @@ func (l *lab) checkRemotes() Check {
 // with the operator's global and system configuration in force as they would be
 // for that session, and refuses one outside the lab: an operator-level hooks
 // path seeds operator state (a banlist, an identity gate) into the lab world.
+// The value is judged as git itself expands it (--type=path: ~, ~user and
+// %(prefix)/), never as raw text, so no spelling of an operator path reads as
+// a relative one; a value git cannot expand is refused.
 func (l *lab) checkHooks(realDir string) Check {
 	c := Check{ID: "isolation.hooks", Group: GroupIsolation}
 	snap := filepath.Join(l.dir, snapshotDir)
@@ -258,7 +261,7 @@ func (l *lab) checkHooks(realDir string) Check {
 		c.Detail = "snapshot/ is missing"
 		return c
 	}
-	cmd := exec.Command("git", "-C", snap, "config", "--get", "core.hooksPath")
+	cmd := exec.Command("git", "-C", snap, "config", "--type=path", "--get", "core.hooksPath")
 	cmd.Env = gitutil.ScrubbedEnv()
 	out, err := cmd.Output()
 	if err != nil {
@@ -268,20 +271,20 @@ func (l *lab) checkHooks(realDir string) Check {
 			c.Detail = "core.hooksPath is unset: the snapshot runs its own .git/hooks"
 			return c
 		}
-		c.Detail = "git cannot read the snapshot's hooks path: " + redact(err, l.store.home)
+		c.Detail = "git cannot read or expand the snapshot's hooks path: " + redact(err, l.store.home)
 		return c
 	}
-	hp := strings.TrimSpace(string(out))
-	resolved := hp
-	switch {
-	case strings.HasPrefix(hp, "~") && hp != "~" && !strings.HasPrefix(hp, "~/"):
-		// ~user/…: git expands it to another account's home, never the lab.
-		c.Detail = "core.hooksPath names another account's home (" + clip(hp) + "): operator-level hooks would run in the lab world"
+	resolved := strings.TrimSuffix(string(out), "\n")
+	if resolved == "" {
+		// git joins the hook's name to the value, so an empty one runs hooks
+		// from the filesystem root, never the snapshot.
+		c.Detail = "core.hooksPath is set empty: git would run hooks from the filesystem root, outside the lab"
 		return c
-	case hp == "~" || strings.HasPrefix(hp, "~/"):
-		resolved = filepath.Join(l.store.home, strings.TrimPrefix(hp, "~"))
-	case !filepath.IsAbs(hp):
-		resolved = filepath.Join(snap, hp)
+	}
+	if !filepath.IsAbs(resolved) {
+		// git runs hooks from the top of the work tree, so a relative path
+		// names a directory in the snapshot.
+		resolved = filepath.Join(snap, resolved)
 	}
 	resolved = fsutil.RealExistingPath(filepath.Clean(resolved))
 	fold := fsutil.CaseFoldingFS()
@@ -290,7 +293,7 @@ func (l *lab) checkHooks(realDir string) Check {
 		c.Detail = "core.hooksPath resolves inside the lab"
 		return c
 	}
-	c.Detail = "core.hooksPath resolves outside the lab (" + tilde(resolved, l.store.home) + "): operator-level hooks would run in the lab world"
+	c.Detail = "core.hooksPath resolves outside the lab (" + clip(tilde(resolved, l.store.home)) + "): operator-level hooks would run in the lab world"
 	return c
 }
 

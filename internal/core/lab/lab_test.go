@@ -407,6 +407,58 @@ func TestPreflightRefusesEachIsolationBreach(t *testing.T) {
 	}
 }
 
+// The hooks path is judged as git expands it (iss-2609261004261615): a
+// %(prefix)/ value names git's install prefix, never a path in the snapshot,
+// and a ~/ value is inside the lab only when git's own expansion lands there.
+func TestPreflightJudgesTheHooksPathGitExpands(t *testing.T) {
+	r, home := fixture(t)
+	m := mint(t, r)
+	dir := labDir(home, m)
+	snap := filepath.Join(dir, "snapshot")
+	stubVintage(t, m.Pin, true)
+	write(t, filepath.Join(dir, "bin", "abcd"), "work")
+	hooks := func(v string) Preflighted {
+		t.Helper()
+		write(t, filepath.Join(home, ".gitconfig"), "[core]\n\thooksPath = "+v+"\n")
+		res, _ := Preflight(r.Root(), m.ID)
+		return res
+	}
+
+	const prefixed = "%(prefix)/share/evil-hooks"
+	write(t, filepath.Join(home, ".gitconfig"), "[core]\n\thooksPath = "+prefixed+"\n")
+	// The operator's global configuration in force, as the check reads it.
+	probe := exec.Command("git", "-C", snap, "config", "--type=path", "--get", "core.hooksPath")
+	probe.Env = os.Environ()
+	expanded, err := probe.Output()
+	if err != nil {
+		t.Fatalf("git config --type=path: %v", err)
+	}
+	if strings.HasPrefix(string(expanded), "%(prefix)") {
+		t.Skip("this git does not expand %(prefix)/, so a session would read the path as snapshot-relative too")
+	}
+	if res := hooks(prefixed); !strings.Contains(failedIDs(res), "isolation.hooks") {
+		t.Errorf("a %%(prefix)/ hooks path passed: %+v", res.Checks)
+	}
+	if res := hooks("~/ghooks"); !strings.Contains(failedIDs(res), "isolation.hooks") {
+		t.Errorf("a home hooks path outside the lab passed: %+v", res.Checks)
+	}
+	inLab, err := filepath.Rel(home, filepath.Join(snap, ".githooks"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res := hooks("~/" + filepath.ToSlash(inLab)); strings.Contains(failedIDs(res), "isolation.hooks") {
+		t.Errorf("a ~/ hooks path git expands into the lab failed: %+v", res.Checks)
+	}
+	// An empty value makes git look for hooks at the filesystem root.
+	if res := hooks(""); !strings.Contains(failedIDs(res), "isolation.hooks") {
+		t.Errorf("an empty hooks path passed: %+v", res.Checks)
+	}
+	// A value git cannot expand is refused, never guessed at.
+	if res := hooks("~no-such-account-zz/hooks"); !strings.Contains(failedIDs(res), "isolation.hooks") {
+		t.Errorf("an unexpandable hooks path passed: %+v", res.Checks)
+	}
+}
+
 func TestPreflightRefusesALinkedWorktreeSnapshot(t *testing.T) {
 	r, home := fixture(t)
 	m := mint(t, r)

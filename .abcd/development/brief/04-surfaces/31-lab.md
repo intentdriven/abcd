@@ -60,7 +60,8 @@ Harness isolation: the lab's own HOME holds no link out of the lab; the
 snapshot is a standalone clone rather than a linked worktree, borrows no object
 store, and descends from the pin; it has no remote; and the hooks path a
 session in it would run, read with the operator's global configuration in
-force, resolves inside the lab. Dual binary: the work binary is a regular file,
+force and judged as git expands it (`~`, `~user`, `%(prefix)/`), resolves
+inside the lab; an empty value, or one git cannot expand, is refused. Dual binary: the work binary is a regular file,
 never a link to an operator-level installation; its embedded vintage, read from
 its build metadata without running it, is the pin and unmodified; it is the
 binary the first passing preflight pinned by its sha256, since the work binary
