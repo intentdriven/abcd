@@ -76,7 +76,8 @@ _None open; decisions 1 to 3 settle the three this record carried._
 
 ## Audit Notes
 
-_Empty. Populated by intent-fidelity-reviewer when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-3c9fb4ba9770 -->
+Fidelity review OWED (receipt rcp-3c9fb4ba9770).
 
 ### Linkage note (spc-83.5)
 
