@@ -33,6 +33,7 @@ var fenceWriters = map[string]fenceWriter{
 	"internal/adapter/scanner/scanner.go":           {1, "a comment quoting a regexp quantifier (`{36,}`); no delimiter is written or read"},
 	"internal/core/glossary/index.go":               {2, "a WRITER: RenderLayout wraps the generated layout tree in one fence; it reads no fences"},
 	"internal/core/history/reconstruct_render.go":   {1, "a WRITER: writeFenced opens a fence longer than any backtick run in the body, the floor of three; it reads no fences"},
+	"internal/core/implement/loop/brief.go":         {2, "a WRITER: the lane brief shows the receipt's shape inside one json fence, before any record body it quotes; it reads no fences"},
 	"internal/core/lifeboat/sources_conventions.go": {3, "judges one line or the whole text: a README prose measure skips a delimiter line, and a presence test asks whether any fence exists; neither tracks which lines a fence covers"},
 	"internal/core/reading/project.go":              {2, "fenceDelimiterRe judges one frontmatter line and refuses it; which lines a fence covers is floorFences, which reads mdrecord"},
 	"internal/core/release/page.go":                 {2, "a presence test: a headline carrying any delimiter is refused; it tracks nothing"},
