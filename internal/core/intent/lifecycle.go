@@ -623,15 +623,20 @@ func Link(repoRoot, intentID, specID string) (LinkResult, error) {
 
 	rel := it.Path
 	abs := filepath.Join(repoRoot, rel)
-	data, err := readRepoFile(abs, rel)
-	if err != nil {
-		return LinkResult{}, err
-	}
-	updated, err := setFrontmatterFields(string(data), map[string]string{"spec_id": specID})
-	if err != nil {
-		return LinkResult{}, err
-	}
-	if err := writeIntentFile(abs, rel, updated); err != nil {
+	// The read and the write are ONE critical section under the store's
+	// advisory lock (iss-2609261935407995): a hold or any other write landing
+	// between an unlocked read and this write would be erased.
+	if err := withIntentMintLock(repoRoot, func() error {
+		data, err := readRepoFile(abs, rel)
+		if err != nil {
+			return err
+		}
+		updated, err := setFrontmatterFields(string(data), map[string]string{"spec_id": specID})
+		if err != nil {
+			return err
+		}
+		return writeIntentFile(abs, rel, updated)
+	}); err != nil {
 		return LinkResult{}, err
 	}
 
@@ -685,28 +690,43 @@ func AddRelatedIssue(repoRoot, intentID, source string) (Intent, error) {
 	}
 	rel := it.Path
 	abs := filepath.Join(repoRoot, rel)
-	data, err := readRepoFile(abs, rel)
-	if err != nil {
-		return Intent{}, err
-	}
-	if _, retired := frontmatter.Fields(strings.Split(string(data), "\n"))[RetiredRelatedIssuesKey]; retired {
-		return Intent{}, fmt.Errorf("%w: %s carries `%s`, renamed to `%s`; run `abcd capture migrate --apply` first, nothing written",
-			ErrRetiredField, intentID, RetiredRelatedIssuesKey, RelatedIssuesKey)
-	}
-	for _, have := range it.RelatedIssues {
-		if have == source {
-			return it, nil // already joined; the write would change no byte
+	// The read, the list judged on it and the write are ONE critical section
+	// under the store's advisory lock (iss-2609261935407995): the list is read
+	// from the bytes held there, not from the corpus, so an edge or any other
+	// write landing before this one is kept rather than overwritten.
+	if err := withIntentMintLock(repoRoot, func() error {
+		data, err := readRepoFile(abs, rel)
+		if err != nil {
+			return err
 		}
-	}
-	list := append(append([]string{}, it.RelatedIssues...), source)
-	updated, err := setFrontmatterFields(string(data), map[string]string{RelatedIssuesKey: "[" + strings.Join(list, ", ") + "]"})
-	if err != nil {
+		fields := frontmatter.Fields(strings.Split(string(data), "\n"))
+		if _, retired := fields[RetiredRelatedIssuesKey]; retired {
+			return fmt.Errorf("%w: %s carries `%s`, renamed to `%s`; run `abcd capture migrate --apply` first, nothing written",
+				ErrRetiredField, intentID, RetiredRelatedIssuesKey, RelatedIssuesKey)
+		}
+		var have []string
+		if f, ok := fields[RelatedIssuesKey]; ok && !frontmatter.IsNull(f.Value) {
+			have = frontmatter.StringList(f.Value)
+		}
+		it.RelatedIssues = have
+		for _, h := range have {
+			if h == source {
+				return nil // already joined; the write would change no byte
+			}
+		}
+		list := append(append([]string{}, have...), source)
+		updated, err := setFrontmatterFields(string(data), map[string]string{RelatedIssuesKey: "[" + strings.Join(list, ", ") + "]"})
+		if err != nil {
+			return err
+		}
+		if err := writeIntentFile(abs, rel, updated); err != nil {
+			return err
+		}
+		it.RelatedIssues = list
+		return nil
+	}); err != nil {
 		return Intent{}, err
 	}
-	if err := writeIntentFile(abs, rel, updated); err != nil {
-		return Intent{}, err
-	}
-	it.RelatedIssues = list
 	return it, nil
 }
 

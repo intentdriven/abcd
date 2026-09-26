@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core/condition"
+	"github.com/intentdriven/abcd/internal/core/frontmatter"
 )
 
 // writer_lock_test.go — every writer of an intent record judges and writes the
@@ -185,5 +186,59 @@ func TestReEmitKeepsAConditionDispositionLandedInTheWindow(t *testing.T) {
 	}
 	if !strings.Contains(s, "abcd-review: OWED receipt="+res.ReceiptID) {
 		t.Fatalf("the stub was not parked:\n%s", s)
+	}
+}
+
+// iss-2609261935407995: two back-edges written to one intent — the one landing
+// in the window is read under the lock, so both stand.
+func TestAddRelatedIssueKeepsAnEdgeLandedInTheWindow(t *testing.T) {
+	root := t.TempDir()
+	rel := plannedDir + "/itd-10-alpha.md"
+	writeFile(t, root, rel, "---\nid: itd-10\nslug: alpha\nspec_id: null\nkind: standalone\n---\n# alpha\n")
+	fired := landAtLockEntry(t, func() {
+		if _, err := AddRelatedIssue(root, "itd-10", "rdi-16"); err != nil {
+			t.Errorf("the edge landing in the window must be written: %v", err)
+		}
+	})
+
+	it, err := AddRelatedIssue(root, "itd-10", "rdi-17")
+	if !*fired {
+		t.Fatal("AddRelatedIssue never took the store lock: the seam never fired")
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	fields := frontmatter.Fields(strings.Split(readIntent(t, root, rel), "\n"))
+	if got := fields[RelatedIssuesKey].Value; got != "[rdi-16, rdi-17]" {
+		t.Fatalf("related_issues = %q, want both edges [rdi-16, rdi-17]", got)
+	}
+	if strings.Join(it.RelatedIssues, ",") != "rdi-16,rdi-17" {
+		t.Errorf("the result must report the list written: %v", it.RelatedIssues)
+	}
+}
+
+// iss-2609261935407995, the link half: a hold landing in the window before a
+// link survives the link's write.
+func TestLinkKeepsAHoldLandedInTheWindow(t *testing.T) {
+	root := t.TempDir()
+	rel := plannedDir + "/itd-10-alpha.md"
+	writeFile(t, root, rel, "---\nid: itd-10\nslug: alpha\nspec_id: null\nkind: standalone\n---\n# alpha\n")
+	writeFile(t, root, specsOpen+"/spc-3-alpha.md", "---\nid: spc-3\nslug: alpha\nintent: itd-10\n---\n# alpha\n")
+	fired := landAtLockEntry(t, func() {
+		if _, err := Hold(root, "itd-10", "landed in the window"); err != nil {
+			t.Errorf("the hold landing in the window must succeed: %v", err)
+		}
+	})
+
+	if _, err := Link(root, "itd-10", "spc-3"); err != nil {
+		t.Fatal(err)
+	}
+	if !*fired {
+		t.Fatal("Link never took the store lock: the seam never fired")
+	}
+	fields := frontmatter.Fields(strings.Split(readIntent(t, root, rel), "\n"))
+	if fields[HeldKey].Value == "" || fields["spec_id"].Value != "spc-3" {
+		t.Fatalf("the link must keep the hold and write its spec_id: held=%q spec_id=%q",
+			fields[HeldKey].Value, fields["spec_id"].Value)
 	}
 }
