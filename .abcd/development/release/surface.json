@@ -1518,8 +1518,15 @@
     {
       "path": "abcd intent plan",
       "hidden": false,
-      "sentence": "Plan a draft intent by minting and linking its spec, or stamp a planned one's scope conditions: Writes both records; refuses an intent on hold.",
+      "sentence": "Plan a draft, or several as a named bundle, or stamp a planned one's conditions: Writes the intents and their spec; refuses a held intent or a bundle's blocker.",
       "flags": [
+        {
+          "name": "bundle",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
         {
           "name": "impact",
           "shorthand": "",
@@ -1543,6 +1550,41 @@
       "flags": [
         {
           "name": "grounds",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd intent reclassify",
+      "hidden": false,
+      "sentence": "Change an intent's kind, or retire it as superseded by a named successor: Writes the record and its successor together; refuses a shipped intent's kind change.",
+      "flags": [
+        {
+          "name": "bundle",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "by",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "kind",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "reason",
           "shorthand": "",
           "type": "string",
           "required": false,

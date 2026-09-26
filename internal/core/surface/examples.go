@@ -62,6 +62,7 @@ var examples = map[string]string{
 	"abcd intent link":         "abcd intent link itd-2609010000000001 spc-2609010000000002",
 	"abcd intent plan":         "abcd intent plan itd-2609010000000001",
 	"abcd intent ready":        "abcd intent ready itd-2609010000000001",
+	"abcd intent reclassify":   `abcd intent reclassify itd-2609010000000001 --kind superseded --by itd-2609010000000002 --reason "absorbed by the later intent"`,
 	"abcd intent unhold":       "abcd intent unhold itd-2609010000000001",
 
 	"abcd launch archive": "abcd launch archive --out dist",

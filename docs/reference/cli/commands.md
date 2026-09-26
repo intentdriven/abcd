@@ -1307,13 +1307,14 @@ abcd intent link itd-2609010000000001 spc-2609010000000002
 
 #### `abcd intent plan`
 
-Plan a draft intent by minting and linking its spec, or stamp a planned one's scope conditions: Writes both records; refuses an intent on hold.
+Plan a draft, or several as a named bundle, or stamp a planned one's conditions: Writes the intents and their spec; refuses a held intent or a bundle's blocker.
 
-**Usage:** `abcd intent plan <itd-N> [flags]`
+**Usage:** `abcd intent plan <itd-N> [<itd-N>…] [--bundle <name>] [flags]`
 
 **Flags:**
 
 ```
+      --bundle string            the name of the bundle several intents are planned as: kebab-case, required with two or more intents and refused with one
       --impact string            stamp the intent's product impact: additive|breaking|fix (optional; refused when it disagrees with one already recorded)
       --production-mode string   how this record's text was produced: hand-written|dictated-and-formatted|scribe-transcribed (default: the repo's declared mode, else hand-written)
 ```
@@ -1340,6 +1341,27 @@ Report whether an intent is ready to implement, exiting 1 when not: Writes its g
 
 ```
 abcd intent ready itd-2609010000000001
+```
+
+#### `abcd intent reclassify`
+
+Change an intent's kind, or retire it as superseded by a named successor: Writes the record and its successor together; refuses a shipped intent's kind change.
+
+**Usage:** `abcd intent reclassify <itd-N> --kind <standalone|bundle-member --bundle <name>|superseded --by <itd-M|adr-N> --reason "<why>"> [flags]`
+
+**Flags:**
+
+```
+      --bundle string   with --kind bundle-member: the bundle to join, one another record already names
+      --by string       with --kind superseded: the successor, an intent (itd-M) or an ADR (adr-N)
+      --kind string     the new kind: standalone, bundle-member, or superseded (a discipline is filed, never reclassified into)
+      --reason string   why, one line, redacted before it is written; required with --kind superseded
+```
+
+**Example:**
+
+```
+abcd intent reclassify itd-2609010000000001 --kind superseded --by itd-2609010000000002 --reason "absorbed by the later intent"
 ```
 
 #### `abcd intent unhold`
