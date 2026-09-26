@@ -1361,30 +1361,39 @@ func TestCaptureEnumRefusalNamesTheFlagAndItsSet(t *testing.T) {
 	}
 }
 
-// TestCaptureWontfixActsOnALockedBody is the surface half of
-// iss-2608301908270888: ordinary prose can carry a `<!--` nothing closes, and
-// capture writes it verbatim into the body, where it masks every line below it.
-// Wontfix derives a `declined:` entry that cannot read back there, so it refused
-// on every attempt and the only exit was a hand edit. It now lands, and says on
-// stderr which construct and line kept the entry out.
-func TestCaptureWontfixActsOnALockedBody(t *testing.T) {
-	_ = captureLedgerRepo(t)
+// TestCaptureWontfixRefusesALockedBody is the surface half of
+// iss-2608301908270888 as the 2026-08-31 ruling settled it. Ordinary prose can
+// carry a `<!--` nothing closes, and capture writes it verbatim into the body,
+// where it masks every line below it. Wontfix derives a `declined:` entry that
+// could not read back there, so it refuses, moves nothing, and tells the
+// operator which construct and line to fix and how: the hand edit is the repair.
+func TestCaptureWontfixRefusesALockedBody(t *testing.T) {
+	repo := captureLedgerRepo(t)
 	var m struct {
 		ID string `json:"id"`
 	}
 	if err := json.Unmarshal(runCLI(t, "capture", "the loader drops rules when the <!-- abcd-review marker is stale", "--json"), &m); err != nil || m.ID == "" {
 		t.Fatalf("capture envelope unreadable: %v", err)
 	}
-	stdout, stderr, err := runCLISplit(t, "capture", "wontfix", m.ID, "superseded by the loader rewrite")
-	if err != nil {
-		t.Fatalf("wontfix over a locked body refused: %v\n%s", err, stderr)
+	_, _, err := runCLISplit(t, "capture", "wontfix", m.ID, "superseded by the loader rewrite")
+	if err == nil {
+		t.Fatal("wontfix over a locked body acted, want a refusal")
 	}
-	if !strings.Contains(stdout, "open -> wontfix") {
-		t.Fatalf("wontfix did not report the move: %s", stdout)
-	}
-	for _, frag := range []string{"WARNING", "HTML comment", "body line 2", "wontfix_reason"} {
-		if !strings.Contains(stderr, frag) {
-			t.Fatalf("stderr does not name %q, so the missing entry is silent: %s", frag, stderr)
+	for _, frag := range []string{"HTML comment", "body line 2", "text editor", "re-run", "nothing written"} {
+		if !strings.Contains(err.Error(), frag) {
+			t.Fatalf("the refusal does not name %q: %v", frag, err)
 		}
+	}
+	var where []string
+	if werr := filepath.WalkDir(repo, func(p string, d fs.DirEntry, err error) error {
+		if err == nil && !d.IsDir() && strings.HasPrefix(d.Name(), m.ID+"-") {
+			where = append(where, filepath.Base(filepath.Dir(p)))
+		}
+		return err
+	}); werr != nil {
+		t.Fatal(werr)
+	}
+	if len(where) != 1 || where[0] != "open" {
+		t.Fatalf("after the refusal the record sits in %v, want [open]", where)
 	}
 }

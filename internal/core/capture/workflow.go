@@ -415,11 +415,6 @@ var reShippedIn = regexp.MustCompile(`^v[0-9]+\.[0-9]+\.[0-9]+$`)
 // a wontfix could never be recorded without grounds — what it lacked was the
 // TYPE. Grounds overrides the text when the conjecture is worth stating
 // separately from the user-facing reason.
-//
-// The derived entry is left out, and the result's GroundsNotWritten says why,
-// when the record's body leaves an opener unclosed: no appended line could read
-// back, and the entry would only have copied the reason wontfix_reason holds.
-// Refusing there left a record no verb could close (iss-2608301908270888).
 func Wontfix(req WontfixRequest) (TransitionResult, error) {
 	rr, _, err := resolveRoots(req.RepoRoot, req.IssuesRoot)
 	if err != nil {
@@ -432,13 +427,8 @@ func Wontfix(req WontfixRequest) (TransitionResult, error) {
 	if err := validateRestampMode(req.ProductionMode); err != nil {
 		return TransitionResult{}, fmt.Errorf("wontfix: %w", err)
 	}
-	// The entry is DERIVED when the caller supplied no grounds: it copies the
-	// reason, which the record carries in wontfix_reason whether or not the entry
-	// lands, so a body that cannot take an append does not stop the wontfix
-	// (iss-2608301908270888).
-	derived := strings.TrimSpace(req.Grounds) == ""
-	res, err := transitionGrounds(req.RepoRoot, req.IssuesRoot, req.ID, "wontfix", "wontfix_reason", req.Reason,
-		nil, &g, derived, req.ProductionMode, StateWontfix)
+	res, err := transition(req.RepoRoot, req.IssuesRoot, req.ID, "wontfix", "wontfix_reason", req.Reason,
+		nil, &g, req.ProductionMode, StateWontfix)
 	if err != nil {
 		return TransitionResult{}, err
 	}
@@ -519,16 +509,6 @@ func restampField(fm map[string]any, issID, mode string) ([]kv, error) {
 // same write — and is refused against a record that carries no origin, before
 // anything is written (restampField).
 func transition(repoRoot, issuesRoot, issID, verb, field, note string, extra []kv, g *grounds.Grounds, productionMode string, target State) (TransitionResult, error) {
-	return transitionGrounds(repoRoot, issuesRoot, issID, verb, field, note, extra, g, false, productionMode, target)
-}
-
-// transitionGrounds is transition with the grounds entry's provenance declared.
-// derived says g is a copy of a value the write already records (a wontfix's
-// reason): such an entry is left out, and the result says why, when the record's
-// body leaves an opener unclosed and no appended line could read back
-// (iss-2608301908270888). Every other refusal of the append, and every refusal of
-// an entry the operator supplied, still refuses the whole transition.
-func transitionGrounds(repoRoot, issuesRoot, issID, verb, field, note string, extra []kv, g *grounds.Grounds, derived bool, productionMode string, target State) (TransitionResult, error) {
 	rr, ir, err := resolveRoots(repoRoot, issuesRoot)
 	if err != nil {
 		return TransitionResult{}, err
@@ -597,20 +577,9 @@ func transitionGrounds(repoRoot, issuesRoot, issID, verb, field, note string, ex
 		// it rides the same atomic write as the fields above. A record promoted
 		// before it was resolved carries both conjectures afterwards
 		// (iss-2608301657354776).
-		notWritten := ""
 		if g != nil {
-			appended, err := appendGrounds(verb, newContent, *g)
-			var unclosed *grounds.UnclosedBodyError
-			switch {
-			case err == nil:
-				newContent = appended
-			case derived && errors.As(err, &unclosed):
-				notWritten = fmt.Sprintf(
-					"no `%s:` grounds entry was appended: the record's body leaves %s open at body line %d, %q, "+
-						"which masks every line below it, so the entry could not read back; the text it would have "+
-						"copied is recorded in %s — close the opener so later entries can be read",
-					g.Token, unclosed.Construct, unclosed.Line, unclosed.Text, field)
-			default:
+			newContent, err = appendGrounds(verb, newContent, *g)
+			if err != nil {
 				return err
 			}
 		}
@@ -631,7 +600,7 @@ func transitionGrounds(repoRoot, issuesRoot, issID, verb, field, note string, ex
 			return err
 		}
 		result = TransitionResult{ID: issID, Path: dst, FromStatus: StateOpen, ToStatus: target,
-			Redacted: redacted, Degraded: degraded, GroundsNotWritten: notWritten}
+			Redacted: redacted, Degraded: degraded}
 		// Repoint every link that named the issue in open/, still under the
 		// ledger lock because the links it rewrites include other issues'. A
 		// failure is reported, not raised: the issue has moved.
