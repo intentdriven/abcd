@@ -151,3 +151,39 @@ func TestIngestIntoARepositoryWithNoIntentStoreWritesNothing(t *testing.T) {
 		t.Fatalf("the refusal wrote into the repository: %v", entries)
 	}
 }
+
+// iss-2609261935407925: the review emit parks its OWED stub on the bytes it
+// read under the lock, so a condition disposition landing in the window before
+// it survives.
+func TestReEmitKeepsAConditionDispositionLandedInTheWindow(t *testing.T) {
+	root, rcp := condFixture(t, "\\\"holds while the record is one repository\\\" "+condOne)
+	// A markerless shipped record: the emit parks a fresh stub, which is a write.
+	abs := filepath.Join(root, shippedDir, "itd-10-alpha.md")
+	unparked := strings.Replace(intentBody(t, root), owedBlock(rcp), "", 1)
+	if err := os.WriteFile(abs, []byte(unparked), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if reviewMarkers(t, unparked) != 0 {
+		t.Fatalf("the fixture must carry no review marker:\n%s", unparked)
+	}
+	fired := landAtLockEntry(t, func() {
+		if _, err := DispositionCondition(root, condReq(condition.Falsified)); err != nil {
+			t.Errorf("the disposition landing in the window must succeed: %v", err)
+		}
+	})
+
+	res, err := ReEmitAudit(root, "itd-10")
+	if !*fired {
+		t.Fatal("ReEmitAudit never took the store lock: the seam never fired")
+	}
+	if err != nil || res.Status != "owed" {
+		t.Fatalf("re-emit: %+v, %v", res, err)
+	}
+	s := intentBody(t, root)
+	if !strings.Contains(s, "<!-- abcd-condition: "+condOne+" occasion="+condItem+" -->") {
+		t.Fatalf("the emit erased the condition block that landed in the window:\n%s", s)
+	}
+	if !strings.Contains(s, "abcd-review: OWED receipt="+res.ReceiptID) {
+		t.Fatalf("the stub was not parked:\n%s", s)
+	}
+}

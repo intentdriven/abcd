@@ -276,6 +276,23 @@ func emitAuditWith(repoRoot string, it Intent, opts AuditEmitOptions) (AuditEmit
 	if !spec.HasNum(it.SpecID) {
 		return AuditEmitResult{}, fmt.Errorf("intent: spec id %q must carry a spec number (spc-N)", it.SpecID)
 	}
+	// The read, the marker judgement and the writes are ONE critical section
+	// under the store's advisory lock (iss-2609261935407925): the emit parks its
+	// stub on the bytes it read, so a condition disposition or a verdict ingest
+	// landing between an unlocked read and the write would be erased, with both
+	// verbs exiting 0. Held here, the emit judges the record that writer left.
+	var res AuditEmitResult
+	err := withIntentMintLock(repoRoot, func() error {
+		var err error
+		res, err = emitLocked(repoRoot, it, opts)
+		return err
+	})
+	return res, err
+}
+
+// emitLocked is emitAuditWith's critical section, called under the intent
+// store lock.
+func emitLocked(repoRoot string, it Intent, opts AuditEmitOptions) (AuditEmitResult, error) {
 	abs := filepath.Join(repoRoot, it.Path)
 	data, err := readRepoFile(abs, it.Path)
 	if err != nil {
