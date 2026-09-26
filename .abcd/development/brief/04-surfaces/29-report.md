@@ -96,7 +96,9 @@ The inbox is a machine-scoped store beside the history, transcript, worktree,
 sources, labs and run stores. The sender key is the reporting repository's full
 root-commit SHA, the key those stores use; the stamp is the report id's digits.
 abcd derives the file name and writes the file by an exclusive create at mode
-0600, in a directory created one real level at a time at 0700. The stored file
+0600, in a directory created one real level at a time at 0700; a symlink or a
+file at any level is refused, naming that level
+([`30-inbox.md`](30-inbox.md)). The stored file
 is what the validator accepted, written back by abcd with the envelope it
 stamps: `received_at`, `sender_key`, and `sender_name`, the name of the
 repository's main checkout directory, so a worktree reports under its

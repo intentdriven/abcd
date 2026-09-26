@@ -115,9 +115,17 @@ Promotions hold the inbox's lock, so two sessions cannot file one report twice.
 A promotion outside abcd's own checkout, an unreadable report, one already
 promoted, and an id with no report are refused. A capture the ledger refuses —
 a symlinked ledger, a slug that normalises to nothing — is refused too: capture
-sweeps its reservation, so nothing is written and the report still waits. An
-inbox path a symlink or a file occupies is refused by every inbox verb, and by
-a report filed into it.
+sweeps its reservation, so nothing is written and the report still waits.
+
+Every inbox verb, and a report filed into the inbox, refuses a symlink or a
+file where a level of it belongs — the home directory, `~/.abcd`, the inbox,
+or its `promoted/` folder — and the refusal names that level, home-redacted.
+The reading verbs walk the levels through the same check the filing verbs
+create them by, so nothing is read through a link a filing verb would refuse
+to write through. A symlink or a file at the home or at `~/.abcd` with no inbox
+behind it holds nothing to read: the list and the count read it as no inbox,
+the stance the rules loader takes on `~/.abcd/rules.json` behind a symlinked
+`~/.abcd`, and filing into it is refused.
 
 ## Exit codes
 

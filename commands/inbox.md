@@ -67,8 +67,10 @@ Tell the user the `capture` id and its `path`, and relay `redacted` or
 `redaction_degraded` when present. The report is kept, marked promoted. A
 refusal exits 2 and writes nothing: a promotion outside a checkout of abcd, an
 unreadable report, one already promoted (the refusal names its capture), an id
-with no report, a capture the ledger refuses (the report still waits), or an
-inbox path a symlink or a file occupies, which every inbox verb refuses. A
+with no report, a capture the ledger refuses (the report still waits), or a
+symlink or a file where a level of the inbox belongs (the home, `~/.abcd`, the
+inbox or its `promoted/` folder), which every inbox verb refuses, naming that
+level; relay the level it names. A
 failure after the capture is written exits 1 and names the capture: if the
 promotion could not be recorded, the report still waits, and that capture is
 deleted before promoting again; if the report could not be moved, promoting it
