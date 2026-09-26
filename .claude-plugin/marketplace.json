@@ -10,9 +10,9 @@
       "description": "Host-agnostic configuration layer for development — a single Go binary, usable as a plugin in compatible agent harnesses.",
       "name": "abcd",
       "source": {
-        "sha256": "1ab2acd14b1a7c844f3af1c0740bc9b48a90268d7450cc9b5eff8055c711c0f8",
+        "sha256": "3eb68057d0dcbe7e67f7f373dd21be0fe501c6ff015ccf8de3baf84ca14df77c",
         "source": "archive",
-        "url": "https://github.com/intentdriven/abcd/releases/download/v0.10.0/abcd-plugin-v0.10.0.zip"
+        "url": "https://github.com/intentdriven/abcd/releases/download/v0.11.0/abcd-plugin-v0.11.0.zip"
       }
     }
   ]
