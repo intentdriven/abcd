@@ -183,6 +183,8 @@ func install(cwd string, opts InstallOptions, p Prompter) (InstallResult, error)
 	ac.stepOracleRouting()
 	ac.stepRules()
 	ac.stepVersionStamp()
+	// Before the pin: an identity mended here is the one the pin then records.
+	ac.stepGitIdentity()
 	ac.stepIdentityPin()
 	// After every step that asks its questions first: the kind is the last
 	// answer a piped install gives (itd-2609150819432059).
@@ -421,6 +423,12 @@ func (a *applyCtx) stepIdentityPin() {
 	}
 	if eff.Name == "" || eff.Email == "" {
 		a.refuse("did not record who commits to this repository in " + identity.PinRelPath + ": git has no user.name and user.email set here; set them and run abcd ahoy install again")
+		return
+	}
+	// The pin names the repo's human; a machine identity is the one value it
+	// must never canonicalise (itd-131).
+	if identity.IsToolIdentity(identity.RoleAuthor, eff.Name, eff.Email) {
+		a.refuse("did not record who commits to this repository in " + identity.PinRelPath + ": the current git identity " + eff.Name + " <" + eff.Email + "> is a machine's, not a person's; set your own user.name and user.email and run abcd ahoy install again")
 		return
 	}
 	if err := identity.WritePin(a.cwd, identity.Pin{Name: eff.Name, Email: eff.Email}); err != nil {

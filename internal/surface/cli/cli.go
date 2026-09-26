@@ -3221,7 +3221,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 
 	ahoyCmd.Flags().BoolVar(&dryRun, "dry-run", false, "print the detection result as its JSON envelope, whether or not --json is passed")
 	ahoyCmd.Flags().BoolVar(&identityMode, "identity", false,
-		"check git's commit identity against .abcd/config/identity.json, exiting non-zero on a mismatch (for a pre-commit hook or CI)")
+		"check git's commit author and committer against .abcd/config/identity.json, exiting non-zero when either diverges (for a pre-commit hook or CI)")
 	ahoyCmd.Flags().BoolVar(&remoteMode, "remote", false,
 		"report this repository's GitHub secret-scanning settings and what the remote apply sub-verb would change")
 	ahoyCmd.Flags().BoolVar(&providersMode, "providers", false,
@@ -3308,7 +3308,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 	// No backquotes in a flag's usage string: cobra reads the first backquoted
 	// word as the flag's argument placeholder, so a quoted answer would render
 	// this boolean as "--yes y" in the help and the generated reference.
-	installCmd.Flags().BoolVar(&yes, "yes", false, "approve every resolvable change category without prompting; excludes the optional git-identity pin, the status line and the model-tier routing tables, which need an answered prompt (run without --yes, or answer every prompt with: yes | abcd ahoy install)")
+	installCmd.Flags().BoolVar(&yes, "yes", false, "approve every resolvable change category without prompting; excludes the optional git-identity pin, the status line and the model-tier routing tables, which need an answered prompt (run without --yes, or answer every prompt with: yes | abcd ahoy install); it never changes the repository's git identity, which is proposed only to a person at a terminal")
 	installCmd.Flags().BoolVar(&adopt, "adopt", false, "adopt an unmanaged repo without prompting")
 	installCmd.Flags().BoolVar(&refuseAdopt, "refuse-adopt", false, "decline to adopt an unmanaged repo")
 	installCmd.Flags().BoolVar(&dev, "dev", false, "track-latest dogfood mode: the PATH entry rebuilds from the source tip on every call instead of pinning the built binary")
@@ -3402,19 +3402,41 @@ func runAhoyDryRun(cmd *cobra.Command, cwd string) error {
 }
 
 // runAhoyIdentity is `ahoy --identity`, the iss-62 gate's canonical, testable
-// entrypoint. It exits non-zero when the commit identity diverges from the
-// committed pin, so a pre-commit hook (or CI) can fail closed. A match, or an
-// un-pinned repo, exits zero.
+// entrypoint. It exits non-zero when the commit's author or committer diverges
+// from the committed pin (itd-131), so a pre-commit hook (or CI) can fail
+// closed. A match, or an un-pinned repo, exits zero; a machine identity is named
+// either way, because the routine case must be visible where the gate runs.
 func runAhoyIdentity(cmd *cobra.Command, cwd string) error {
 	res, err := identity.Check(cwd)
 	if err != nil {
 		return err
 	}
 	if res.Blocks() {
-		return fmt.Errorf("%s\n  fix: git config user.name %q && git config user.email %q",
-			res.Reason, res.Pin.Name, res.Pin.Email)
+		var why []string
+		if res.Status == identity.StatusMismatch || res.Status == identity.StatusUnset {
+			why = append(why, res.Reason)
+		}
+		fix := fmt.Sprintf("git config user.name %q && git config user.email %q", res.Pin.Name, res.Pin.Email)
+		if res.CommitterDiverges {
+			why = append(why, res.CommitterReason)
+			fix += " (and unset any GIT_COMMITTER_NAME/GIT_COMMITTER_EMAIL override and committer.name/committer.email key)"
+		}
+		return fmt.Errorf("%s\n  fix: %s", termsafe.Sanitize(strings.Join(why, "; ")), termsafe.Sanitize(fix))
 	}
 	fmt.Fprintf(cmd.OutOrStdout(), "identity ok (%s)\n", res.Status)
+	if res.CommitterDiverges {
+		fmt.Fprintf(cmd.OutOrStdout(), "  note: %s\n", termsafe.Sanitize(res.CommitterReason))
+	}
+	for _, t := range []struct {
+		is  bool
+		who identity.Effective
+		as  string
+	}{{res.AuthorIsTool, res.Effective, "author"}, {res.CommitterIsTool, res.Committer, "committer"}} {
+		if t.is {
+			fmt.Fprintf(cmd.OutOrStdout(), "  note: the %s %s is a machine identity; the human is the author of record (abcd ahoy reports it as %s)\n",
+				t.as, termsafe.Sanitize(t.who.Name+" <"+t.who.Email+">"), ahoy.ToolIdentityGapID)
+		}
+	}
 	return nil
 }
 
@@ -3655,6 +3677,11 @@ func (p *stdinPrompter) echo(answer string) {
 	}
 	fmt.Fprintf(p.w, "%s\n", termsafe.Sanitize(answer))
 }
+
+// AtTerminal reports whether a person is answering at a terminal, which makes
+// the prompter an ahoy.TerminalPrompter: the one question abcd asks only of a
+// person (whether to change who commits, itd-131) is never put to a pipe.
+func (p *stdinPrompter) AtTerminal() bool { return p.tty }
 
 func (p *stdinPrompter) Confirm(question string) bool {
 	fmt.Fprintf(p.w, "%s [y/N] ", question)

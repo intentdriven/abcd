@@ -182,8 +182,17 @@ func TestAhoyIdentityFlagHoldsTheCommitIdentityToThePin(t *testing.T) {
 		t.Errorf("the refusal does not name the fix: %v", err)
 	}
 
+	// The author alone matching is not a match: this repo configures no
+	// committer, so git would stamp a fabricated one, and the gate reads the
+	// committer too (itd-131).
 	t.Setenv("GIT_AUTHOR_NAME", "Pinned Person")
 	t.Setenv("GIT_AUTHOR_EMAIL", "pinned@example.com")
+	if out, err := runCLIErr(t, "ahoy", "--identity"); err == nil || !strings.Contains(err.Error(), "committer") {
+		t.Fatalf("`abcd ahoy --identity` passed an unconfigured committer: %v\n%s", err, out)
+	}
+
+	t.Setenv("GIT_COMMITTER_NAME", "Pinned Person")
+	t.Setenv("GIT_COMMITTER_EMAIL", "pinned@example.com")
 	if got := string(runCLI(t, "ahoy", "--identity")); !strings.Contains(got, "identity ok") {
 		t.Fatalf("`abcd ahoy --identity` on a matching identity = %q", got)
 	}
