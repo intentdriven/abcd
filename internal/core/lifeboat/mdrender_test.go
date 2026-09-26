@@ -3,6 +3,8 @@ package lifeboat
 import (
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/core/site"
 )
 
 // The lifeboat half of iss-2609020539188868 (iss-2609251355497247): every
@@ -99,4 +101,51 @@ func TestBriefSectionDocCleansItsEvidence(t *testing.T) {
 		Evidence: []string{"docs/<script>x.md", "docs/[a](http://example.com).md", "docs/<!--c.md"},
 	}))
 	assertNoLiveHazard(t, "brief section doc", md)
+}
+
+// siteRender renders md through the site renderer, the strictest reader the
+// record has: it refuses inline HTML and an unclosed code span outright, so
+// it is the oracle for "did this value land as live markup".
+func siteRender(t *testing.T, md string) (string, error) {
+	t.Helper()
+	r := &site.Renderer{
+		UI:    site.UI{Copy: "copy", Copied: "copied"},
+		Image: func(src, alt string, _ site.Source) (string, error) { return "", nil },
+		Link:  func(href string, _ site.Source) string { return href },
+	}
+	return r.RenderBlocks("lifeboat.md", site.Blocks(md, 1))
+}
+
+// TestBlockValueNeverDefinesALinkReference is the two-field attack
+// (iss-2609262237352137): one field shaped like a link reference definition,
+// another carrying the matching shortcut reference. Left unescaped, the first
+// renders as nothing and arms the second as a live link to its destination.
+// Every block field of both renderers is driven with it.
+func TestBlockValueNeverDefinesALinkReference(t *testing.T) {
+	const def, use = "[label]: http://example.com/trap", "see [label] for details"
+	docs := map[string]string{
+		"principles.md": renderPrinciplesMarkdown(PrinciplesFile{Mode: ModeDelegated, Principles: []Principle{
+			{ID: "prn-a", Principle: def, Confidence: ConfidenceHigh},
+			{ID: "prn-b", Principle: use, Confidence: ConfidenceHigh},
+		}}),
+		"press-release.md (subhead)": renderPressReleaseMarkdown(PressReleaseFile{
+			Mode: ModeDelegated, Headline: "Headline", Subhead: def, Body: use,
+		}),
+		"press-release.md (quote)": renderPressReleaseMarkdown(PressReleaseFile{
+			Mode: ModeDelegated, Headline: "Headline", Body: use,
+			Quotes: []PressReleaseQuote{{Text: def, Attribution: "someone"}},
+		}),
+	}
+	for what, md := range docs {
+		assertNoLineOpensWith(t, what, md, "[label]:")
+		assertNoLineOpensWith(t, what, md, "> [label]:")
+		html, err := siteRender(t, md)
+		if err != nil {
+			t.Errorf("%s does not render: %v\n%s", what, err, md)
+			continue
+		}
+		if !strings.Contains(html, "label]: http://example.com/trap") {
+			t.Errorf("%s: the definition-shaped value was consumed rather than shown:\n%s", what, html)
+		}
+	}
 }

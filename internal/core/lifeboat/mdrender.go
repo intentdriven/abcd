@@ -20,7 +20,8 @@ import (
 //     where a delimiter is wanted, termsafe.CodeSpan picks one the value cannot
 //     close, without altering the value's bytes;
 //   - a value that begins a block has its leading marker escaped, so a field
-//     cannot turn itself into a heading, a list, a quote, a fence or a table.
+//     cannot turn itself into a heading, a list, a quote, a fence, a table or
+//     a link reference definition.
 //
 // Re-cleaning a field its ingest already cleaned is a no-op (the cleaner is
 // idempotent), so this costs a well-formed record nothing and holds for any
@@ -56,15 +57,22 @@ func mdBlock(s string) string { return escapeLeadingMarker(mdInline(s)) }
 // escapeLeadingMarker backslash-escapes the character that would make s open a
 // block construct rather than a paragraph: an ATX heading (#), a bullet (- * +),
 // a block quote (>), a fence (` ~), a table row (|), a thematic break or setext
-// underline (- _ * =), raw HTML (<), or an ordered-list marker (digits then . or
-// )). CommonMark renders a backslash-escaped ASCII punctuation character as the
-// character itself, so the reader sees the value's text unchanged.
+// underline (- _ * =), raw HTML (<), a link reference definition ([), or an
+// ordered-list marker (digits then . or )). CommonMark renders a
+// backslash-escaped ASCII punctuation character as the character itself, so the
+// reader sees the value's text unchanged.
+//
+// The bracket is the subtle one: a paragraph shaped like `[label]: <dest>` is
+// consumed as a definition and renders as nothing, and it arms a `[label]`
+// shortcut reference in any other field, which the cleaner leaves alone, as a
+// live link to the attacker's destination (iss-2609262237352137). ideate's
+// blockText escapes it for the same reason.
 func escapeLeadingMarker(s string) string {
 	if s == "" {
 		return s
 	}
 	switch s[0] {
-	case '#', '-', '*', '+', '>', '`', '~', '|', '=', '_', '<':
+	case '#', '-', '*', '+', '>', '`', '~', '|', '=', '_', '<', '[':
 		return `\` + s
 	}
 	digits := 0
