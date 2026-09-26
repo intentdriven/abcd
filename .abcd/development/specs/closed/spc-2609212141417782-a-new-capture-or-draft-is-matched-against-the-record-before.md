@@ -40,3 +40,15 @@ The overlap function is the one the embark ranking uses, moved to the record pac
 | 3 never refused | scope 2 |
 | 4 threshold and json | scope 1, 3 |
 | 5 itd-84 rung | scope 4 |
+
+## Amendment (2026-09-26)
+
+The Scope, Approach and Footprint above name a delivery that did not happen
+(iss-2609261631134401). No embark ranking held an overlap function to move: the
+embark ranking is scope 7 of the open reflect spec, spc-2609211751376504, and is
+not yet built. The primitive shipped new, as the package
+`internal/core/record/match` rather than a file in `internal/core/record`,
+because `internal/core/record` imports the capture and intent packages that
+call the matcher, and a matcher there would close an import cycle. The capture
+and intent writers import it directly, and the reflect spec's Approach names
+it as the primitive its embark ranking is to use.
