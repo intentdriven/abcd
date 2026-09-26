@@ -8,7 +8,7 @@ status: stable
 introduced_in: phase-1
 starts_when: null
 ends_when: null
-not_to_be_confused_with: null
+not_to_be_confused_with: core/record-families
 versions: null
 ---
 <!-- Adapted from mattpocock/skills (MIT). See README Acknowledgements. -->
@@ -38,5 +38,6 @@ Do not call a persona a "user" (too generic and erases the named-character frami
 
 ## Related terms
 
+- [record families](record-families.md) — the one page that maps the record families and how they relate
 - [brief](brief.md) — personas appear in briefs as the primary audience
 - [intent](intent.md) — persona quotes anchor the press-release section of intents

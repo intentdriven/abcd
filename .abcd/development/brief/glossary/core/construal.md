@@ -8,7 +8,7 @@ status: stable
 introduced_in: adr-55
 starts_when: null
 ends_when: null
-not_to_be_confused_with: core/brief
+not_to_be_confused_with: [core/brief, core/record-families]
 versions: null
 ---
 <!-- Adapted from mattpocock/skills (MIT). See README Acknowledgements. -->
@@ -65,6 +65,7 @@ deliberately does not hold.
 
 ## Related terms
 
+- [record families](record-families.md) — the one page that maps the record families and how they relate
 - [construal (ledger context)](../ledger/construal.md), the canonical entry for the experiment
 - [reading-position](reading-position.md) — the widening position reads against the construal as it stands
 - [ledger](ledger.md) — the local ledger side, where the construal's history stays

@@ -13,7 +13,11 @@
 // fresh.
 package vintage
 
-import "runtime/debug"
+import (
+	"debug/buildinfo"
+	"io"
+	"runtime/debug"
+)
 
 // Outcome is the comparator's verdict.
 type Outcome string
@@ -93,6 +97,18 @@ func CurrentBuildVintage() Current {
 		return currentFromSettings(false, nil)
 	}
 	return currentFromSettings(true, bi.Settings)
+}
+
+// OfReader reads the vintage a binary on disk was built at from its embedded
+// build metadata, without executing it. The same unknown triggers apply as for
+// the running binary: no vcs.revision, or a dirty rebuild, is not Known. An
+// error means r is not a Go binary whose build metadata can be read at all.
+func OfReader(r io.ReaderAt) (Current, error) {
+	bi, err := buildinfo.Read(r)
+	if err != nil {
+		return Current{}, err
+	}
+	return currentFromSettings(true, bi.Settings), nil
 }
 
 // currentFromSettings is the pure core of CurrentBuildVintage, split out so the

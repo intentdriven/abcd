@@ -43,6 +43,7 @@ are wiring rather than user-facing surface are listed separately under
 | 28 | `/abcd:peers` | shipped | See what the sibling worktrees and local branches hold before capturing, fixing or filing anything | [`08-abcd.md`](08-abcd.md) |
 | 29 | `/abcd:report` | shipped | Tell abcd about a defect or propose an enhancement from a repository it manages, into an inbox in your own account | [`29-report.md`](29-report.md) |
 | 30 | `/abcd:inbox` | shipped | Read the reports managed repositories filed, and promote one to a capture that names the sender only by its root-commit key | [`30-inbox.md`](30-inbox.md) |
+| 31 | `/abcd:lab` | shipped | Run a lab against a pinned snapshot of the repository and harvest what it found, with the evidence kept out of the repository | [`31-lab.md`](31-lab.md) |
 
 ## How much of this table a machine keeps honest
 
@@ -238,7 +239,7 @@ documents is then an unknown command (iss-161). One file per verb, directly unde
 <!-- index: commands -->
 `abcd`, `ahoy`, `banlist`, `capture`, `consult`, `decide`, `disembark`, `docs`,
 `embark`, `guard`, `history`, `ideate`, `identity`, `implement`, `inbox`,
-`ingest`, `intent`, `launch`, `lint`, `memory`, `mode`, `peers`,
+`ingest`, `intent`, `lab`, `launch`, `lint`, `memory`, `mode`, `peers`,
 `prepare-this-repo`, `reading`, `report`, `site`, `update`, `version`.
 <!-- /index -->
 

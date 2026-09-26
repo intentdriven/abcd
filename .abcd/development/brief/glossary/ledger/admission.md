@@ -8,7 +8,7 @@ status: draft
 introduced_in: itd-183
 starts_when: null
 ends_when: null
-not_to_be_confused_with: ledger/disposition
+not_to_be_confused_with: [ledger/disposition, core/record-families]
 versions: null
 ---
 
@@ -26,5 +26,6 @@ Do not call admission selection: selection is the later act of choosing among ca
 
 ## Related terms
 
+- [record families](../core/record-families.md) — the one page that maps the record families and how they relate
 - [disposition](disposition.md)
 - [construal](construal.md), what the widening reading widens against

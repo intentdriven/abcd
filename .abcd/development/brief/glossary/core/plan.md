@@ -64,6 +64,7 @@ dates for future work.
 
 ## Related terms
 
+- [record families](record-families.md) — the one page that maps the record families and how they relate
 - [intent](intent.md) — what `plan` acts on
 - [spec](spec.md) — what `plan` mints
 - [phase](phase.md) — the sequencing unit the build plan orders

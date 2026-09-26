@@ -19,11 +19,11 @@ The families, and the two axes they sit on.
 
 | Family | What it is | Groups | Grouped by | Lifecycle | Moved by |
 |---|---|---|---|---|---|
-| **intent** | one user-facing capability, press release first | its specs | a bundle (delivery) | drafts → planned → shipped (superseded; disciplines) | `intent plan`, `spec close`, `intent reclassify` |
+| **intent** | one user-facing capability, press release first | its specs | a bundle (delivery) | drafts → planned → shipped (superseded; disciplines) | `intent plan`, `spec close` |
 | **spec** | the design record for one piece of scheduled work | its steps | its intent (one or more specs per intent) | open → closed | `intent plan` mints, `spec close` |
-| **step** | one landable piece of a spec | nothing | its spec | listed, landed, or carried into the remainder | `abcd build` |
-| **bundle** | intents that ship as one change | intents | nothing | named at plan, ships with its spec | `intent plan --bundle` |
-| **issue** | a captured finding with a remedy; no spec by design | nothing | nothing (edges: `blocked_by`) | open → resolved / wontfix | `capture`, `capture resolve`, `drain` |
+| **step** | one landable piece of a spec | nothing | its spec | listed, landed, or carried into the remainder | no verb: each lands as one pull request (itd-2609212103565953, planned) |
+| **bundle** | intents that ship as one change | intents | nothing | named at plan, ships with its spec | `intent plan` per member (itd-34, planned, plans several in one act) |
+| **issue** | a captured finding with a remedy; no spec by design | nothing | nothing (edges: `blocked_by`) | open → resolved / wontfix | `capture`, `capture resolve`, `capture wontfix` |
 | **release** | the derived cut: version from impact, changelog from records | what shipped since the last tag | nothing | cut, tagged | `launch ship` |
 | **status** | Now / Next / Later, rendered from the shelves, the gate and the build's state | nothing (a view) | nothing | none: computed | nothing |
 
