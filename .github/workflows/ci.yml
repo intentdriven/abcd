@@ -473,7 +473,7 @@ jobs:
             ghcr.io/zizmorcore/zizmor@sha256:d1117e5dbd9ee4970644067b534ab6ab50371f3c6f7f4d05446eb603a6e78f48 \
             --persona regular /src
 
-  # Deterministic gate for the .abcd/work/reviews/ charter (RD001-RD003). Needs
+  # Deterministic gate for the .abcd/work/reviews/ charter (RD001-RD004). Needs
   # full history: RD002 (append-only) checks committed history for post-creation
   # edits, so fetch-depth: 0 (the default shallow checkout would miss them).
   # Stopgap until the RD codes land in internal/core/lint.
@@ -488,7 +488,7 @@ jobs:
       - name: Reviews-charter gate can fail (cases)
         run: bash scripts/check-reviews-cases.sh
 
-      - name: Reviews-charter discipline (RD001-RD003)
+      - name: Reviews-charter discipline (RD001-RD004)
         run: bash scripts/check-reviews.sh
 
       # The cases run before the gate, deliberately. They prove the gate can

@@ -140,7 +140,7 @@ fmt:
 vet:
 	go vet ./...
 
-# Deterministic gate for the .abcd/work/reviews/ charter (RD001-RD003) — a
+# Deterministic gate for the .abcd/work/reviews/ charter (RD001-RD004) — a
 # stopgap until these codes land in internal/core/lint. Needs full git history
 # (RD002 is append-only over committed history): on a shallow checkout the
 # script refuses (exit 2) rather than pass vacuously with nothing covered. The
