@@ -119,12 +119,27 @@ func redactExcluded(rel, doc string, exclusions []Exclusion) (string, error) {
 	}
 
 	kept := make([]string, 0, len(lines))
+	lastKept := -1
 	for i, line := range lines {
 		if !drop[i] {
 			kept = append(kept, line)
+			lastKept = i
 		}
 	}
 	out := strings.Join(kept, "\n")
+	// A CRLF pair is kept or dropped whole. The split is on "\n", so a line's
+	// carriage return is the first half of the pair that ends it; when the drop
+	// runs to the end of the document it takes the newline after the last kept
+	// line, and the join left that line's carriage return behind alone — a lone
+	// CR the source does not carry, which the verifier then refused as the
+	// source's (iss-2609251600019863). The carriage return goes with its
+	// newline, which is what an LF document already loses at the same place, so
+	// the two line endings redact to the same text. A carriage return ending the
+	// document's own last line had no newline to lose and is left for the
+	// verifier to refuse.
+	if lastKept >= 0 && lastKept < len(lines)-1 {
+		out = strings.TrimSuffix(out, "\r")
+	}
 	if err := verifyRedaction(rel, doc, out, keys, headings); err != nil {
 		return "", err
 	}
