@@ -47,12 +47,13 @@ func TestSubagentStopMasksAttackRunesOnStderr(t *testing.T) {
 }
 
 // A committed .abcd/guard.json is repository text a pull request can set. An
-// entries key carrying ESC and RLO, with a value of the wrong type, makes the
-// JSON decoder's type error name the key, raw; the hook announces the dropped
-// repo layer on stderr and keeps the bundled hazards armed.
+// unknown top-level key carrying ESC and RLO makes the strict decoder's
+// unknown-field error name the key, raw, on every Go toolchain (a type error's
+// wording names a map key on some toolchains and not others); the hook
+// announces the dropped repo layer on stderr and keeps the bundled hazards armed.
 func TestGuardHookMasksAttackRunesInADroppedRepoLayer(t *testing.T) {
 	dir := guardRepo(t)
-	hostile := `{"schema_version": 1, "entries": {"x\u001b[31mRED‮": {"tier": 5}}}`
+	hostile := `{"schema_version": 1, "x\u001b[31mRED‮": 5}`
 	if err := os.WriteFile(filepath.Join(dir, ".abcd", "guard.json"), []byte(hostile), 0o644); err != nil {
 		t.Fatal(err)
 	}
