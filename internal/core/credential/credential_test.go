@@ -122,10 +122,15 @@ func TestAStoreNamingACredentialTwiceIsRefused(t *testing.T) {
 	const other = "tok-other-value-not-a-real-secret"
 	for name, body := range map[string]string{
 		"exact repeat":   `{"hosting.cloudflare": "` + secretValue + `", "hosting.cloudflare": "` + other + `"}`,
-		"escaped repeat": `{"hosting.cloudflare": "` + secretValue + `", "hosting.cloudflare": "` + other + `"}`,
+		"escaped repeat": `{"hosting.cloudflare": "` + secretValue + `", "hosting.cloudflar` + "\x5cu0065" + `": "` + other + `"}`,
 		"case twin":      `{"hosting.cloudflare": "` + secretValue + `", "Hosting.Cloudflare": "` + other + `"}`,
 	} {
 		t.Run(name, func(t *testing.T) {
+			// The escaped case is spelt with \x5c so the JSON escape survives
+			// any layer that would decode a literal one; it must reach the file.
+			if name == "escaped repeat" && !strings.Contains(body, "cloudflar"+"\x5cu0065") {
+				t.Fatalf("the escaped twin carries no JSON escape: %s", body)
+			}
 			home := t.TempDir()
 			writeStore(t, home, body, 0o600)
 			got, err := Machine(home).Resolve("hosting.cloudflare")
