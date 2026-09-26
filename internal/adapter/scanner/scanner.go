@@ -1163,6 +1163,7 @@ func (s *Scanner) scanBytes(data []byte, secrets []Pattern, logical string) []Fi
 	}
 	all := scanText(string(data), long, secrets, s.identSev, logical, true)
 	meta := metadataFields{data: data}
+	all = append(all, s.utf16Findings(data, long, secrets, logical, &meta)...)
 	out := all[:0]
 	for _, f := range all {
 		if s.byteScanDrops(f, &meta) {
@@ -1201,9 +1202,11 @@ const byteScanLongLiteral = 8
 // document's dc:creator and cp:lastModifiedBy. Each is written as text in the
 // raw bytes (or in a region the container decoder inflates), so a short name
 // after one is the name the file was stamped with rather than a chance run of
-// bytes (iss-2609090934372160). A key read from binary structure — EXIF's
-// Artist tag, a UTF-16 PDF string — is not text in the bytes and is not
-// reached here.
+// bytes (iss-2609090934372160). A UTF-16 value behind a byte-order mark is
+// decoded first (utf16.go) and judged by the raw bytes before it, so a PDF
+// "/Author (" before a UTF-16 string reaches its name. A key read from binary
+// structure — EXIF's Artist tag — is not text in the bytes and is not reached
+// here (iss-2609261659051539).
 var metadataPersonKeys = [][]byte{[]byte("author"), []byte("artist"), []byte("creator"), []byte("lastmodifiedby")}
 
 // maxMetadataKeyGap is how far before a short name metadataFields looks for a
@@ -1226,12 +1229,7 @@ type metadataFields struct {
 // newline and its Column is the byte offset on that line.
 func (m *metadataFields) holds(f Finding) bool {
 	if m.starts == nil {
-		m.starts = []int{0}
-		for i, b := range m.data {
-			if b == '\n' {
-				m.starts = append(m.starts, i+1)
-			}
-		}
+		m.starts = lineStarts(m.data)
 	}
 	if f.Line < 1 || f.Line > len(m.starts) || f.Column < 1 {
 		return false
