@@ -440,6 +440,11 @@ func refusePromoted(repoRoot, run string) error {
 // runItems lists the run's reading items as the store holds them, each with
 // whether a disposition already stands over it.
 func runItems(repoRoot, run string) (map[string]bool, error) {
+	// The listing is a plain path read, so the directories above it are judged
+	// first by the same rule the assembly applies.
+	if err := refuseRedirectedLedger(repoRoot); err != nil {
+		return nil, err
+	}
 	dir := filepath.Join(repoRoot, filepath.FromSlash(runRecordsDir(run)))
 	entries, err := os.ReadDir(dir)
 	if err != nil {

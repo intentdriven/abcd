@@ -310,3 +310,41 @@ func TestScribeAssembleRefusesASymlinkedLedgerDirectory(t *testing.T) {
 		t.Fatalf("a symlinked ledger directory was not refused: %v", err)
 	}
 }
+
+// TestScribeAssembleRefusesASymlinkedLedgerAncestor: a link ABOVE an allow-list
+// directory is the same route out, and one that stays inside the repository is
+// followed by the root the walk runs in. The ledger moved into the shipped tree
+// behind a committed link would hand the scribe shipped content under ledger
+// paths, so every ancestor is judged by capture's own rule and refused.
+func TestScribeAssembleRefusesASymlinkedLedgerAncestor(t *testing.T) {
+	for _, tc := range []struct{ name, linked, target string }{
+		{"the issue ledger", capture.LedgerRelPath, "../../docs/shadow"},
+		{"the shared working tier", ".abcd/work", "../docs/shadow"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newFixture(t, positionDetection, 1)
+			linked := filepath.Join(f.repo, filepath.FromSlash(tc.linked))
+			shadow := filepath.Join(f.repo, "docs", "shadow")
+			if err := os.Rename(linked, shadow); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(tc.target, linked); err != nil {
+				t.Skipf("symlinks unavailable: %v", err)
+			}
+			plantedRel := "open/planted.md"
+			if tc.linked == ".abcd/work" {
+				plantedRel = "issues/open/planted.md"
+			}
+			writeFile(t, shadow, plantedRel, "SENTINEL-SHIPPED-SHADOW\n")
+			res, err := Assemble(AssembleRequest{RepoRoot: f.repo, Run: fixtureRun, DispositionsPath: supply(t, suppliedText), DryRun: true})
+			if err == nil || !errors.Is(err, ErrSymlink) {
+				for _, e := range res.Context.Ledger {
+					if strings.Contains(e.Text, "SENTINEL-SHIPPED-SHADOW") {
+						t.Errorf("the shadowed shipped file reached the context as %s", e.Path)
+					}
+				}
+				t.Fatalf("a symlinked ancestor of the allow list was not refused: %v", err)
+			}
+		})
+	}
+}

@@ -55,6 +55,21 @@ func ensureLedgerDirs(repoRoot, issuesRoot string) error {
 	return ledgerDirs(repoRoot, issuesRoot, true)
 }
 
+// RefuseRedirectedLedger judges, creating nothing, every directory the default
+// ledger of repoRoot is reached through — `.abcd`, `.abcd/work`, the issues root
+// and its status directories — and refuses any that is a symlink or not a
+// directory. It is ledgerDirs' read form, the one resolveRoots applies to every
+// verb, exported for a reader outside this package that walks the ledger
+// itself (the scribe's context assembler), so that reader judges the ancestors
+// by this rule rather than by a copy of it. An absent directory is not a fault.
+func RefuseRedirectedLedger(repoRoot string) error {
+	rr, err := filepath.Abs(repoRoot)
+	if err != nil {
+		return err
+	}
+	return ledgerDirs(rr, filepath.Join(rr, filepath.FromSlash(LedgerRelPath)), false)
+}
+
 // ledgerDirs judges every directory the ledger is reached through and every
 // directory the ledger IS, refusing any that exists as something other than a
 // real directory. Exactly three groups, in this order:

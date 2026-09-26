@@ -196,6 +196,15 @@ func collectLedger(repoRoot string) ([]LedgerEntry, error) {
 	}
 	defer root.Close()
 
+	// The walk below runs inside the repository root, which follows a symlink
+	// that stays inside it, and the Lstat on each allow-list directory sees only
+	// the leaf. So the ANCESTORS are judged first, by the rule capture's own
+	// readers apply: the ledger moved into the shipped tree behind a committed
+	// link would otherwise reach the context under ledger paths.
+	if err := refuseRedirectedLedger(repoRoot); err != nil {
+		return nil, err
+	}
+
 	var out []LedgerEntry
 	for _, dir := range AllowList() {
 		fi, err := root.Lstat(dir)
@@ -245,6 +254,16 @@ func collectLedger(repoRoot string) ([]LedgerEntry, error) {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
 	return out, nil
+}
+
+// refuseRedirectedLedger is capture.RefuseRedirectedLedger under this package's
+// symlink sentinel, so a caller tests one refusal whichever level held the link.
+func refuseRedirectedLedger(repoRoot string) error {
+	if err := capture.RefuseRedirectedLedger(repoRoot); err != nil {
+		return fmt.Errorf("%w: the ledger is reached through a directory that is not a real one (%w); the "+
+			"context is drawn from the ledger's own directories and a link above them is a route out", ErrSymlink, err)
+	}
+	return nil
 }
 
 // assertAllowList is the fail-closed half: every item must sit strictly inside

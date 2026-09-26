@@ -633,3 +633,23 @@ func TestScribeIngestPromotesOnlyWhenARecordLanded(t *testing.T) {
 		t.Fatalf("the manifest is not beside the run: %v", err)
 	}
 }
+
+// TestScribeIngestRefusesASymlinkedLedgerAncestor: the ingest lists the run's
+// items through a plain path, so the ledger's ancestors are judged there too; a
+// ledger redirected after the assembly is refused before the listing.
+func TestScribeIngestRefusesASymlinkedLedgerAncestor(t *testing.T) {
+	s := assembleSession(t, positionDetection, 1, "{0}: accepted — "+groundA+".\n")
+	linked := filepath.Join(s.repo, filepath.FromSlash(capture.LedgerRelPath))
+	shadow := filepath.Join(s.repo, "docs", "shadow")
+	if err := os.Rename(linked, shadow); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("../../docs/shadow", linked); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	o := s.out()
+	o.Outstanding = []string{s.items[0]}
+	if _, err := s.ingest(t, s.write(t, o)); !errors.Is(err, ErrSymlink) {
+		t.Fatalf("an ingest through a symlinked ledger ancestor was not refused: %v", err)
+	}
+}

@@ -46,8 +46,9 @@ The context carries every record under the issue ledger's own directories — th
 reading records, dispositions, admissions, surprises and reframes, and the open,
 resolved and won't-fix issues — derived from the ledger's directory list, so a
 record family the ledger declares later is included the day it is declared.
-Nothing outside those directories is walked, a symlink inside them is refused,
-and an item outside them is refused whatever route it arrived by.
+Nothing outside those directories is walked, a symlink inside them or at any
+directory above them is refused, and an item outside them is refused whatever
+route it arrived by.
 
 Report from the JSON: `run`, `item_count`, `context_stamp`, `context_sha256`
 (the scribe's output cites it), `out_dir` and `artefacts`. The context and the

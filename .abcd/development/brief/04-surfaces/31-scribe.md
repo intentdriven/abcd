@@ -42,7 +42,11 @@ from the issue ledger's own directory list — the reading records, dispositions
 admissions, surprises and reframes, and the three status directories — so a
 record family the ledger declares later is inside the scribe's world, and
 outside every reading's, by the same declaration. The collector walks those
-directories and nothing else and refuses a symlink inside them; an allow-list
+directories and nothing else and refuses a symlink inside them, and first
+judges every directory above them — `.abcd`, `.abcd/work` and the issue ledger's
+root — by the rule the capture verbs' own readers apply, because the walk
+follows a link that stays inside the repository and a committed one there would
+move the ledger into the shipped tree under ledger paths; an allow-list
 assertion then refuses any item whose path lies outside the list, whatever route
 it arrived by, so an item that reached the context by a future route is a
 refusal rather than a disclosure. The shipped tree, the brief, the intents, the
