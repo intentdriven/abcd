@@ -15,16 +15,14 @@ package loop
 // owed; this decode is the same discipline inline.
 
 import (
-	"bytes"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/core/jsonstrict"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
@@ -157,7 +155,8 @@ func verifyReceipt(c Context, lane *Lane, receiptRel string) error {
 }
 
 // readReceipt reads a receipt through the guarded reader and decodes it
-// strictly: one JSON document, no field the schema does not name.
+// strictly: one JSON document, no key repeated, no field the schema does not
+// name.
 func readReceipt(root *os.Root, rel, laneID string) (LaneReceipt, error) {
 	var rc LaneReceipt
 	data, err := fsutil.ReadGuardedInRoot(root, rel, maxReceiptBytes)
@@ -169,15 +168,16 @@ func readReceipt(root *os.Root, rel, laneID string) (LaneReceipt, error) {
 		return rc, refuse("receipt", "", laneID, fmt.Sprintf("%s cannot be read as a receipt: %v", rel, err),
 			fmt.Sprintf("write the receipt as a regular file of at most %d bytes", maxReceiptBytes))
 	}
-	dec := json.NewDecoder(bytes.NewReader(data))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&rc); err != nil {
+	// One strict decode, the one every trust-boundary reader shares: a repeated
+	// key is refused rather than read last-wins, so "exit_code":1,"exit_code":0
+	// cannot pass a failing definition of done (iss-2609262123574454).
+	if err := jsonstrict.Decode(data, &rc); err != nil {
+		if errors.Is(err, jsonstrict.ErrTrailing) {
+			return rc, refuse("receipt", "", laneID, rel+" carries more than one JSON document",
+				"write the receipt as one JSON object and nothing after it")
+		}
 		return rc, refuse("receipt", "", laneID, fmt.Sprintf("%s does not parse as a receipt: %v", rel, err),
-			"write exactly the fields the brief names; a verdict is the loop's to record, never the lane's")
-	}
-	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
-		return rc, refuse("receipt", "", laneID, rel+" carries more than one JSON document",
-			"write the receipt as one JSON object and nothing after it")
+			"write exactly the fields the brief names, each once; a verdict is the loop's to record, never the lane's")
 	}
 	return rc, nil
 }

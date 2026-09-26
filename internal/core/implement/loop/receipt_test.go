@@ -114,8 +114,8 @@ func TestAVerifiedReceiptAdvancesTheLane(t *testing.T) {
 // refusal: a receipt without commits on the branch, without the definition of
 // done's output or without the report is refused naming what is missing, and
 // the lane is not advanced. A receipt that is not what the brief names — a
-// verdict field, a second document, a symlink, a path out of the lane's
-// directory — is refused the same way.
+// verdict field, a repeated key, a second document, a symlink, a path out of
+// the lane's directory — is refused the same way.
 func TestAReceiptShortOfItsLaneIsRefusedNamingWhatIsMissing(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -191,6 +191,18 @@ func TestAReceiptShortOfItsLaneIsRefusedNamingWhatIsMissing(t *testing.T) {
 			b, _ := json.Marshal(rc)
 			return strings.Replace(string(b), `"schema_version":1`, `"schema_version":1,"verdict":"SHIP"`, 1)
 		}, []string{"unknown field \"verdict\""}},
+		{"a repeated key", func(t *testing.T, _ *gittest.Repo, _ Lane, _ string, rc *LaneReceipt) any {
+			one := 1
+			rc.DefinitionOfDone.ExitCode = &one
+			b, _ := json.Marshal(rc)
+			return strings.Replace(string(b), `"exit_code":1`, `"exit_code":1,"exit_code":0`, 1)
+		}, []string{`duplicate key "exit_code"`}},
+		{"a repeated key spelt as a case twin", func(t *testing.T, _ *gittest.Repo, _ Lane, _ string, rc *LaneReceipt) any {
+			one := 1
+			rc.DefinitionOfDone.ExitCode = &one
+			b, _ := json.Marshal(rc)
+			return strings.Replace(string(b), `"exit_code":1`, `"exit_code":1,"EXIT_CODE":0`, 1)
+		}, []string{`duplicate key "EXIT_CODE"`}},
 		{"a second document", func(t *testing.T, _ *gittest.Repo, _ Lane, _ string, rc *LaneReceipt) any {
 			b, _ := json.Marshal(rc)
 			return string(b) + "\n{}\n"

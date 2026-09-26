@@ -8,7 +8,9 @@ package jsonstrict
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"strings"
 	"unicode"
 )
@@ -35,6 +37,30 @@ func (e *DuplicateKeyError) Error() string {
 	}
 	return fmt.Sprintf("duplicate key %q%s: it is %q spelt another way, and encoding/json binds "+
 		"the two to one field case-insensitively (last-wins is silent — refusing)", e.Key, where, e.First)
+}
+
+// ErrTrailing is Decode's answer for data that carries anything after its one
+// JSON document: a second document, or bytes that are not JSON at all.
+var ErrTrailing = errors.New("content after the one JSON document")
+
+// Decode is the strict decode a trust-boundary reader makes: data is exactly
+// one JSON document, no object in it repeats a key (a *DuplicateKeyError, judged
+// as NoDuplicateKeys judges it), no field is one v's type does not name
+// (encoding/json's unknown-field error), and nothing follows the document
+// (ErrTrailing). Whitespace after the document is not content.
+func Decode(data []byte, v any) error {
+	if err := NoDuplicateKeys(data); err != nil {
+		return err
+	}
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(v); err != nil {
+		return err
+	}
+	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
+		return ErrTrailing
+	}
+	return nil
 }
 
 // NoDuplicateKeys walks the JSON token stream and refuses any object that
