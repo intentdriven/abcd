@@ -325,3 +325,56 @@ func closingRun(s string, from, n int) int {
 	}
 	return -1
 }
+
+// CodeSpan wraps one already-cleaned value in a CommonMark code span whose
+// delimiters the value cannot break, WITHOUT altering the value's bytes.
+//
+// A cleaned field is parsed as CommonMark as the exact string it was cleaned
+// as, and the shelter the cleaner grants what sits inside the FIELD's own code
+// spans is only real if the rendered line draws the same boundaries. A
+// renderer that wraps the field in its own single backticks moves them: with a
+// page name of a`<script>`b, the render's opening backtick pairs with the
+// field's first one, the field's own span dissolves, and the <script> the
+// cleaner deliberately left alone is live prose in a committed record
+// (iss-2609020539188868).
+//
+// The rule is CommonMark's own: a run of N backticks opens a span closed by the
+// next run of exactly N, so a fence one longer than the value's longest run
+// cannot be closed early by anything the value carries. A leading or trailing
+// backtick — or a value padded with spaces on both sides — takes the spec's
+// one-space padding, which the reader strips again, so the value reads back
+// verbatim.
+//
+// It is for a ONE-LINE value, and it is the LAST step: cleaning the result
+// would re-judge delimiters this function chose. An empty value returns an
+// empty string, because CommonMark has no empty code span; a caller wanting a
+// visible marker for an absent value supplies its own placeholder.
+func CodeSpan(s string) string {
+	if s == "" {
+		return ""
+	}
+	fence := strings.Repeat("`", longestBacktickRun(s)+1)
+	pad := ""
+	if strings.HasPrefix(s, "`") || strings.HasSuffix(s, "`") ||
+		(strings.HasPrefix(s, " ") && strings.HasSuffix(s, " ") && strings.TrimSpace(s) != "") {
+		pad = " "
+	}
+	return fence + pad + s + pad + fence
+}
+
+// longestBacktickRun returns the length of the longest unbroken run of
+// backticks in s, or 0 when it holds none.
+func longestBacktickRun(s string) int {
+	best, run := 0, 0
+	for i := 0; i < len(s); i++ {
+		if s[i] == '`' {
+			run++
+			if run > best {
+				best = run
+			}
+			continue
+		}
+		run = 0
+	}
+	return best
+}

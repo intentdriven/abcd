@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"os"
 	"regexp"
 	"sort"
 	"strconv"
@@ -57,15 +56,13 @@ func (b quotationBudget) asMap() map[string]any {
 	}
 }
 
-func memoryConfigPath(repoRoot string) string {
-	return Dir(repoRoot) + string(os.PathSeparator) + "config.json"
-}
-
-func loadQuotationBudget(repoRoot string) quotationBudget {
+// loadQuotationBudget reads the store's config.json through the handle: a
+// trust boundary, so a symlinked leaf is refused rather than followed and the
+// read cannot leave the directory the handle vetted (iss-2608291814572914).
+// Absent or unreadable is the default budget.
+func loadQuotationBudget(store *storeHandle) quotationBudget {
 	def := defaultBudget()
-	// Guarded read: config.json lives in the store, a trust boundary — a
-	// committed symlink is refused, not followed.
-	raw, err := fsutil.ReadGuarded(memoryConfigPath(repoRoot), maxRegistryBytes)
+	raw, err := store.read("config.json", maxRegistryBytes)
 	if err != nil {
 		return def
 	}
@@ -523,8 +520,8 @@ func buildCoverage(pages []crawledPage, registry map[string]any, budget quotatio
 // .coverage_index.json IO
 // ---------------------------------------------------------------------------
 
-func readStoredFingerprint(path string) string {
-	raw, err := fsutil.ReadGuarded(path, maxRegistryBytes)
+func readStoredFingerprint(store *storeHandle) string {
+	raw, err := store.read(coverageIndexName, maxRegistryBytes)
 	if err != nil {
 		return ""
 	}
@@ -538,7 +535,11 @@ func readStoredFingerprint(path string) string {
 	return ""
 }
 
-func writeCoverageIndex(path string, result coverageResult, budget quotationBudget) (map[string]any, error) {
+// writeCoverageIndex writes the index through the store handle's root, so the
+// write resolves inside the directory the handle vetted: a store swapped for a
+// symlink after the open cannot land it outside the repository
+// (iss-2609252100150846). The caller holds a present store.
+func writeCoverageIndex(store *storeHandle, result coverageResult, budget quotationBudget) (map[string]any, error) {
 	sourcesOut := map[string]any{}
 	for sh, cov := range result.sources {
 		sourcesOut[sh] = map[string]any{
@@ -562,20 +563,10 @@ func writeCoverageIndex(path string, result coverageResult, budget quotationBudg
 		"sources":                     sourcesOut,
 		"unavailable":                 unavailableOut,
 	}
-	if err := os.MkdirAll(dirOf(path), 0o755); err != nil {
-		return nil, err
-	}
-	if err := writeStringAtomic(path, marshalIndentNoEscape(payload)); err != nil {
+	if err := fsutil.WriteFileAtomicInRoot(store.root, coverageIndexName, []byte(marshalIndentNoEscape(payload)), 0o644); err != nil {
 		return nil, err
 	}
 	return payload, nil
-}
-
-func dirOf(path string) string {
-	if i := strings.LastIndexByte(path, os.PathSeparator); i >= 0 {
-		return path[:i]
-	}
-	return "."
 }
 
 func uniqueSorted(ss []string) []string {

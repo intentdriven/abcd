@@ -911,8 +911,15 @@
     {
       "path": "abcd history capture",
       "hidden": false,
-      "sentence": "Redact and store one raw session transcript from a file or stdin: Writes one record into the store; refuses stdin without --session.",
+      "sentence": "Redact and store a session transcript, or a whole session with --all: Writes one record per transcript; refuses stdin or --all without --session.",
       "flags": [
+        {
+          "name": "all",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
         {
           "name": "kind",
           "shorthand": "",

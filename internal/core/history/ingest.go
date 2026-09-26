@@ -140,6 +140,14 @@ type IngestOptions struct {
 	Lineage LineageLookup
 	// MaxDepth bounds a directory walk; zero means ingestDefaultDepth.
 	MaxDepth int
+	// Session, when set, scopes the run to one session: only transcripts whose
+	// lines name exactly this session id — its main thread and every sub-agent
+	// it spawned — are placed and stored, and every other transcript found is
+	// out of scope and not reported. It is the write-side twin of a session
+	// listing (`history capture --session <id> --all`, iss-2609202046145653).
+	// A file that could not be read is still reported as failed: it may have
+	// been one of the session's.
+	Session string
 }
 
 // Ingested is one transcript that entered the store.
@@ -215,6 +223,9 @@ func Ingest(dest Destination, sources []string, opts IngestOptions) (IngestResul
 	if len(sources) == 0 {
 		return IngestResult{}, errors.New("history: ingest needs at least one source path; declare them in " + ConfigRelPath + " or name them on the command line")
 	}
+	if opts.Session != "" && !sessionIDRe.MatchString(opts.Session) {
+		return IngestResult{}, errors.New("history: the session to ingest must match [A-Za-z0-9._-]+")
+	}
 	// Resolving is what creates the destination store when it is absent, and
 	// what migrates a corpus left at the legacy location into it (iss-95). It
 	// is done here, before any source is read, so a destination that cannot be
@@ -229,6 +240,9 @@ func Ingest(dest Destination, sources []string, opts IngestOptions) (IngestResul
 		p, err := probeTranscript(c)
 		if err != nil {
 			res.Failed = append(res.Failed, IngestFailure{Path: c.path, Err: err.Error()})
+			continue
+		}
+		if opts.Session != "" && p.sessionID != opts.Session {
 			continue
 		}
 		probes = append(probes, p)
@@ -275,15 +289,18 @@ func placeSessions(probes []transcriptProbe) map[string]sessionPlacement {
 	// needs it. Asking the store per session would re-read every record in
 	// every store for every session that fell through, which on a populated
 	// machine is the difference between a verb and a coffee break.
-	var index map[string][]string
+	var index ownerIndex
 	storeOwner := func(sessionID string) string {
 		if index == nil {
 			index = storeSessionIndex()
 		}
-		if shas := index[sessionID]; len(shas) == 1 {
-			return shas[0]
+		// A refusal (no store, or several) is no placement; the session falls
+		// through to its files' own directories.
+		sha, err := index.owner(sessionID)
+		if err != nil {
+			return ""
 		}
-		return ""
+		return sha
 	}
 	mainCwds := map[string][]string{}
 	for _, p := range probes {
@@ -580,8 +597,13 @@ func probeTranscript(c candidate) (transcriptProbe, error) {
 	return p, nil
 }
 
-// SessionOwner returns the root-commit SHA of the store that already holds a
-// session — through a session note, or through a stored record naming it.
+// ownerIndex maps a session id to the root-commit SHAs of every store lane
+// that already knows it (storeSessionIndex builds it once per run).
+type ownerIndex map[string][]string
+
+// owner is THE session-ownership rule, and it has this one definition
+// (iss-2609091911066372): the root-commit SHA of the store that already holds
+// a session — through a session note, or through a stored record naming it.
 //
 // It is the placement this machine made earlier, recovered rather than
 // recomputed, and it is what lets a session whose directories are all gone
@@ -589,11 +611,11 @@ func probeTranscript(c candidate) (transcriptProbe, error) {
 // guessed, for the same reason SessionRepo refuses one: a transcript filed
 // against the wrong repository is redacted by the wrong repository's scanner
 // configuration.
-func SessionOwner(sessionID string) (string, error) {
+func (idx ownerIndex) owner(sessionID string) (string, error) {
 	if !safeIDSegment(sessionID) {
 		return "", fmt.Errorf("history: sessionID must be non-empty, match [A-Za-z0-9._-]+ and not be a directory reference")
 	}
-	switch found := storeSessionIndex()[sessionID]; len(found) {
+	switch found := idx[sessionID]; len(found) {
 	case 1:
 		return found[0], nil
 	case 0:
@@ -609,8 +631,8 @@ func SessionOwner(sessionID string) (string, error) {
 //
 // A store that cannot be listed is skipped rather than fatal: one unreadable
 // store is not a reason to refuse a placement every other store can make.
-func storeSessionIndex() map[string][]string {
-	index := map[string][]string{}
+func storeSessionIndex() ownerIndex {
+	index := ownerIndex{}
 	root, err := userStoreBase()
 	if err != nil {
 		return index
