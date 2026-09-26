@@ -58,11 +58,14 @@ rendered archive from a second job; and the provider's host configuration. The
 composition and the static inputs are the repository's own once they exist, so
 a later run keeps them as they are. The workflow and the host configuration are
 abcd's: a copy that differs refuses the whole run, with nothing written and
-nothing remote attempted, unless the run is told to replace it.
+no remote change attempted, unless the run is told to replace it.
 
 **The forge.** Two deployment environments, one for the render and one for the
 deploy, each admitting only the default branch and release tags, created
-through the forge's API as the person running the verb. An environment that
+through the forge's API as the person running the verb. The default branch is
+the one the forge names for the repository, and it is also the branch the
+workflow gates on; only when the forge cannot answer does the checkout's own
+stand in, and the report's notes say so. An environment that
 already exists is never rewritten, because the forge's environment write
 replaces its whole protection set, required reviewers included: one on named
 rules and no rule beyond those two gains the rules it lacks, and one that

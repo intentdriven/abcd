@@ -121,6 +121,7 @@ func (f *fakeGHAPI) env(name, rest string) string {
 // setup looks for placed past the first hundred.
 func crowded() *fakeGHAPI {
 	f := newFakeGHAPI()
+	f.objects["repos/"+f.repo] = map[string]any{"default_branch": "main"}
 	for i := 0; i < 120; i++ {
 		f.lists[f.envs()] = append(f.lists[f.envs()], map[string]any{"name": fmt.Sprintf("preview-%03d", i)})
 	}
@@ -261,5 +262,20 @@ func TestAnEmptyListIsWholeAtOnePage(t *testing.T) {
 	g.gh = func(string, []byte, ...string) ([]byte, error) { return []byte(`{"total_count":3}`), nil }
 	if _, err := g.SecretNames(t.Context(), EnvDeploy); err == nil {
 		t.Fatal("a list reporting entries it did not serve read as whole")
+	}
+}
+
+// TestTheForgeNamesTheDefaultBranch is iss-2609260927214634's forge half: the
+// default branch is the repository object's default_branch, and a response
+// that names none is an error, never an empty branch.
+func TestTheForgeNamesTheDefaultBranch(t *testing.T) {
+	f := newFakeGHAPI()
+	f.objects["repos/"+f.repo] = map[string]any{"default_branch": "trunk"}
+	if b, err := f.forge().DefaultBranch(t.Context()); err != nil || b != "trunk" {
+		t.Fatalf("default branch read as %q, %v; want trunk", b, err)
+	}
+	f.objects["repos/"+f.repo] = map[string]any{"name": "example-site"}
+	if b, err := f.forge().DefaultBranch(t.Context()); err == nil {
+		t.Fatalf("a repository naming no default branch read as %q", b)
 	}
 }

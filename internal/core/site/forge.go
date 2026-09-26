@@ -19,6 +19,9 @@ import (
 type Forge interface {
 	// Repo names the repository every call acts on.
 	Repo() string
+	// DefaultBranch reads the repository's default branch: the branch the
+	// workflow gates on and the environments admit.
+	DefaultBranch(ctx context.Context) (string, error)
 	// Environments reads every environment the repository has, by name.
 	Environments(ctx context.Context) (map[string]EnvironmentState, error)
 	// Policies reads one environment's deployment branch and tag policies.
@@ -87,6 +90,23 @@ func (g *ghForge) api(stdin []byte, method, path string) ([]byte, error) {
 // package's own constants, escaped regardless.
 func (g *ghForge) envPath(env, rest string) string {
 	return "repos/" + g.repo + "/environments/" + url.PathEscape(env) + rest
+}
+
+func (g *ghForge) DefaultBranch(context.Context) (string, error) {
+	out, err := g.api(nil, "", "repos/"+g.repo)
+	if err != nil {
+		return "", err
+	}
+	var doc struct {
+		DefaultBranch string `json:"default_branch"`
+	}
+	if err := json.Unmarshal(out, &doc); err != nil {
+		return "", errors.New("the repository response could not be read as JSON")
+	}
+	if doc.DefaultBranch == "" {
+		return "", errors.New("the repository response names no default branch")
+	}
+	return doc.DefaultBranch, nil
 }
 
 // perPage is the largest page the forge serves a list read in.
