@@ -8,7 +8,7 @@ status: stable
 introduced_in: itd-184
 starts_when: null
 ends_when: null
-not_to_be_confused_with: core/oracle
+not_to_be_confused_with: [core/oracle, core/record-families]
 versions: null
 ---
 <!-- Adapted from mattpocock/skills (MIT). See README Acknowledgements. -->
@@ -61,6 +61,7 @@ also discusses phases, scope or surfaces.
 
 ## Related terms
 
+- [record families](record-families.md) — the one page that maps the record families and how they relate
 - [construal](construal.md) — what the widening position reads against
 - [ledger](ledger.md) — ledger content is what a reading must not see
 - [oracle](oracle.md) — a model invoked to review; a position is a question, not a reviewer

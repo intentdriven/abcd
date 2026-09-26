@@ -8,7 +8,7 @@ status: draft
 introduced_in: itd-183
 starts_when: null
 ends_when: null
-not_to_be_confused_with: ledger/position
+not_to_be_confused_with: [ledger/position, core/record-families]
 versions: null
 ---
 
@@ -26,5 +26,6 @@ Do not call the regime a mode of the instrument or a level of trust; it is a lic
 
 ## Related terms
 
+- [record families](../core/record-families.md) — the one page that maps the record families and how they relate
 - [position](position.md)
 - [disposition](disposition.md), the researcher's answer to what a regime produced

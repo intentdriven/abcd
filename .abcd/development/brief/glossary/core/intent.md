@@ -39,6 +39,7 @@ specced *implementation* block, not the human-authored *intention*.
 
 ## Related terms
 
+- [record families](record-families.md) — the one page that maps the record families and how they relate
 - [brief](brief.md) — the project-level root document (intent is feature-level)
 - [spec](spec.md) — the implementation spec derived from an intent
 - [oracle](oracle.md) — used to review intents at promotion time
