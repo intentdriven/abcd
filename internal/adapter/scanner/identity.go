@@ -23,11 +23,12 @@ type Identity struct {
 	// identities: every user.name / user.email value git resolves for this
 	// repository in a scope the effective value displaced — the unconditional
 	// global identity under a repo-local persona, or the reverse, or an
-	// includeIf persona keyed on where the repository sits — and the
+	// includeIf persona keyed on where the repository sits — the
 	// GIT_AUTHOR_*/GIT_COMMITTER_* persona the environment sets, which no
-	// config listing reports at all. A persona ADDS an identity to redact; it
-	// never replaces one (GHSA-v826-5jf4-p8xg, GHSA-gxhr-pmwv-r99p,
-	// GHSA-rvhr-3455-c5jw).
+	// config listing reports at all, and every author.*/committer.* value and
+	// `git -c` persona git commits with (iss-2609261614450166). A persona ADDS
+	// an identity to redact; it never replaces one (GHSA-v826-5jf4-p8xg,
+	// GHSA-gxhr-pmwv-r99p, GHSA-rvhr-3455-c5jw).
 	OtherGitUserNames  []string
 	OtherGitUserEmails []string
 	GitRemoteUsername  string
