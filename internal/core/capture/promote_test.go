@@ -389,6 +389,9 @@ func TestPromoteRefusesARefusedReadingItem(t *testing.T) {
 	} {
 		t.Run(tc.state, func(t *testing.T) {
 			repo, ir, item := readingFixture(t, tc.position)
+			// A widening proposal is answered only after the comparative run over
+			// its run is committed (spc-2609020626040342's ordering gate).
+			commitComparativeRun(t, repo, "rdg-2608300000000002", fixtureRun)
 			if _, err := Disposition(DispositionRequest{
 				RepoRoot: repo, IssuesRoot: ir, Item: item,
 				State: tc.state, Grounds: "the constraint already covers it",

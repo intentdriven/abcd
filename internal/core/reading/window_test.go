@@ -737,7 +737,7 @@ func TestTwoAssembliesOfOneEntryAreByteIdentical(t *testing.T) {
 	for _, p := range AssemblingPositions() {
 		first := assembleFixture(t, root, p)
 		second := assembleFixture(t, root, p)
-		if string(mustEncodeBundle(t, first.Bundle)) != string(mustEncodeBundle(t, second.Bundle)) {
+		if !identicalButForRun(t, first.Bundle, second.Bundle) {
 			t.Errorf("two assemblies of the committed %s entry produced different bundles", p)
 		}
 		a := decodedManifest(t, first.Manifest)

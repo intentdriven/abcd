@@ -10,7 +10,7 @@ production_mode: dictated-and-formatted
 ## Summary
 
 spc-2609020626045177 delivers
-[itd-2609020625402599](../../intents/planned/itd-2609020625402599-the-scribe-s-context-is-assembled-and-its-output-is-ingested.md).
+[itd-2609020625402599](../../intents/shipped/itd-2609020625402599-the-scribe-s-context-is-assembled-and-its-output-is-ingested.md).
 `abcd scribe assemble --run <rdg-N>` builds the scribe's context for one
 ingested run from the ledger's allow list, which is derived from the ledger's
 own directory constants, and from the researcher's supplied dispositions text:
@@ -26,7 +26,7 @@ at capture which stamps a transcript carried, and `abcd history` gains a check
 that names a retained transcript carrying both stamps of one run, reports
 that no retained transcript carries two stamps of one run when none does, and
 says when the property is unobserved.
-[spc-66](../closed/spc-66-machine-assistance-in-maintaining-the-ledger-without-any-con.md)
+[spc-66](spc-66-machine-assistance-in-maintaining-the-ledger-without-any-con.md)
 met both of
 [itd-188](../../intents/shipped/itd-188-machine-assistance-in-maintaining-the-ledger-without-any-con.md)'s
 criteria by declaration; this spec meets them by mechanism.

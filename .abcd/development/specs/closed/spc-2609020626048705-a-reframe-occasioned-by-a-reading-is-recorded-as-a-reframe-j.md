@@ -10,7 +10,7 @@ production_mode: dictated-and-formatted
 ## Summary
 
 spc-2609020626048705 delivers
-[itd-2609020625402518](../../intents/planned/itd-2609020625402518-a-reframe-occasioned-by-a-reading-is-recorded-as-a-reframe-j.md).
+[itd-2609020625402518](../../intents/shipped/itd-2609020625402518-a-reframe-occasioned-by-a-reading-is-recorded-as-a-reframe-j.md).
 A new record family, `rfm-N`, lives flat under `.abcd/work/issues/reframes/`
 beside the surprise family, one record per reframe occasioned by a reading. It
 carries the occasion, the SHA-256 of each of the three frame surfaces as they

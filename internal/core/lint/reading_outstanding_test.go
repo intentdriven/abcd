@@ -57,11 +57,11 @@ func TestOutstandingReportNamesUndispositionedItems(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n := countRule(fs, ruleReadingOutstanding); n != 1 {
+	if n := countRule(answerLines(fs), ruleReadingOutstanding); n != 1 {
 		t.Fatalf("expected exactly 1 %s finding, got %d: %+v", ruleReadingOutstanding, n, fs)
 	}
-	if !strings.Contains(fs[0].Message, item) {
-		t.Fatalf("the report must name the item; got %q", fs[0].Message)
+	if !strings.Contains(answerLines(fs)[0].Message, item) {
+		t.Fatalf("the report must name the item; got %q", answerLines(fs)[0].Message)
 	}
 
 	// An answered item drops off the report — the status signal is the presence
@@ -73,7 +73,7 @@ func TestOutstandingReportNamesUndispositionedItems(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n := countRule(fs, ruleReadingOutstanding); n != 0 {
+	if n := countRule(answerLines(fs), ruleReadingOutstanding); n != 0 {
 		t.Fatalf("a dispositioned item must not be outstanding, got %d finding(s): %+v", n, fs)
 	}
 }
@@ -118,10 +118,10 @@ func TestOpenHoldRendersItsExitCondition(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n := countRule(fs, ruleReadingOutstanding); n != 1 {
+	if n := countRule(answerLines(fs), ruleReadingOutstanding); n != 1 {
 		t.Fatalf("expected exactly 1 %s finding for the open hold, got %d: %+v", ruleReadingOutstanding, n, fs)
 	}
-	msg := fs[0].Message
+	msg := answerLines(fs)[0].Message
 	if !strings.Contains(msg, "held") || !strings.Contains(msg, "the closing run returns it again") {
 		t.Fatalf("an open hold must render with its exit condition; got %q", msg)
 	}
@@ -136,7 +136,7 @@ func TestOpenHoldRendersItsExitCondition(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n := countRule(fs, ruleReadingOutstanding); n != 0 {
+	if n := countRule(answerLines(fs), ruleReadingOutstanding); n != 0 {
 		t.Fatalf("a superseded hold must leave the report, got %d finding(s): %+v", n, fs)
 	}
 }
@@ -446,11 +446,11 @@ func TestWideningProposalWithoutAdmissionOrDeclineIsOutstanding(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n := countRule(fs, ruleReadingOutstanding); n != 1 {
+	if n := countRule(answerLines(fs), ruleReadingOutstanding); n != 1 {
 		t.Fatalf("expected exactly 1 %s finding, got %d: %+v", ruleReadingOutstanding, n, fs)
 	}
-	if !strings.Contains(fs[0].Message, item) || !strings.Contains(fs[0].Message, "admission") {
-		t.Fatalf("the report must name the proposal and the missing admission; got %q", fs[0].Message)
+	if !strings.Contains(answerLines(fs)[0].Message, item) || !strings.Contains(answerLines(fs)[0].Message, "admission") {
+		t.Fatalf("the report must name the proposal and the missing admission; got %q", answerLines(fs)[0].Message)
 	}
 
 	// And the admission answers it: the grounds are on the record, so there is
@@ -460,7 +460,7 @@ func TestWideningProposalWithoutAdmissionOrDeclineIsOutstanding(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n := countRule(fs, ruleReadingOutstanding); n != 0 {
+	if n := countRule(answerLines(fs), ruleReadingOutstanding); n != 0 {
 		t.Fatalf("an admitted proposal must not be outstanding, got %d finding(s): %+v", n, fs)
 	}
 }
@@ -478,7 +478,7 @@ func TestDeclinedDispositionSatisfiesTheAdmissionLeg(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n := countRule(fs, ruleReadingOutstanding); n != 0 {
+	if n := countRule(answerLines(fs), ruleReadingOutstanding); n != 0 {
 		t.Fatalf("a declined proposal is answered, got %d finding(s): %+v", n, fs)
 	}
 }
@@ -495,7 +495,7 @@ func TestAdmissionRecordSatisfiesTheAdmissionLeg(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n := countRule(fs, ruleReadingOutstanding); n != 0 {
+	if n := countRule(answerLines(fs), ruleReadingOutstanding); n != 0 {
 		t.Fatalf("an admitted proposal must not be outstanding, got %d finding(s): %+v", n, fs)
 	}
 
@@ -511,7 +511,7 @@ func TestAdmissionRecordSatisfiesTheAdmissionLeg(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n := countRule(fs, ruleReadingOutstanding); n != 1 {
+	if n := countRule(answerLines(fs), ruleReadingOutstanding); n != 1 {
 		t.Fatalf("an undispositioned detection is still outstanding, got %d finding(s): %+v", n, fs)
 	}
 }
@@ -558,7 +558,7 @@ func TestAdmissionFilenameGrammarMatchesTheGate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n := countRule(fs, ruleReadingOutstanding); n != 0 {
+	if n := countRule(answerLines(fs), ruleReadingOutstanding); n != 0 {
 		t.Fatalf("an admission carrying a slug in its filename must still admit its proposal, got %d finding(s): %+v", n, fs)
 	}
 }
@@ -633,7 +633,7 @@ func TestAnAdmissionAdmitsOnlyWithinItsOwnRun(t *testing.T) {
 			t.Errorf("%s carries no admission in its own run and must still be reported: %+v", item, fs)
 		}
 	}
-	if n := countRule(fs, ruleReadingOutstanding); n != 2 {
+	if n := countRule(answerLines(fs), ruleReadingOutstanding); n != 2 {
 		t.Fatalf("expected both proposals outstanding, got %d finding(s): %+v", n, fs)
 	}
 }
@@ -650,7 +650,7 @@ func TestAnAdmissionInItsOwnRunStillAdmits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n := countRule(fs, ruleReadingOutstanding); n != 0 {
+	if n := countRule(answerLines(fs), ruleReadingOutstanding); n != 0 {
 		t.Fatalf("an admission under its proposal's own run must admit it, got %d finding(s): %+v", n, fs)
 	}
 }
@@ -672,7 +672,7 @@ func TestAnAdmissionWhoseRunFieldContradictsItsBucketAdmitsNothing(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if n := countRule(fs, ruleReadingOutstanding); n != 1 {
+	if n := countRule(answerLines(fs), ruleReadingOutstanding); n != 1 {
 		t.Fatalf("an admission contradicting its own bucket admits nothing, got %d finding(s): %+v", n, fs)
 	}
 }
@@ -761,11 +761,11 @@ func TestAHeldWideningProposalIsNotAlsoReportedUnadmitted(t *testing.T) {
 			t.Errorf("a held proposal is already published with its exit condition: %s", f.Message)
 		}
 	}
-	if n := countRule(fs, ruleReadingOutstanding); n != 1 {
+	if n := countRule(answerLines(fs), ruleReadingOutstanding); n != 1 {
 		t.Fatalf("expected exactly the open-hold line, got %d finding(s): %+v", n, fs)
 	}
-	if !strings.Contains(fs[0].Message, "exit condition") {
-		t.Fatalf("the one line must be the hold and its exit condition; got %q", fs[0].Message)
+	if !strings.Contains(answerLines(fs)[0].Message, "exit condition") {
+		t.Fatalf("the one line must be the hold and its exit condition; got %q", answerLines(fs)[0].Message)
 	}
 }
 
@@ -1080,6 +1080,137 @@ func TestAnAdmissionNamingNoProposalIsKeyedOnNothing(t *testing.T) {
 	if len(tree.admitted) != 1 || !tree.admits(run, item) {
 		t.Fatalf("an admission that names its proposal is keyed on it, got %+v", tree.admitted)
 	}
+}
+
+// wideningItem writes one more widening item into run.
+func wideningItem(t *testing.T, root, run, item string) {
+	t.Helper()
+	writeFile(t, root, ".abcd/work/issues/readings/"+run+"/"+item+".md",
+		"---\nschema_version: 1\nid: \""+item+"\"\nrun: \""+run+"\"\nmanifest: \"sha256:beef\"\n"+
+			"position: \"widening\"\nregime: \""+issueschema.ReadingRegime("widening")+"\"\npattern: \"a stated constraint\"\n---\n\n")
+}
+
+// ac-7 (spc-2609020626040342): a run of four widening items — one admitted, one
+// declined, one held and one untouched — summarises as a count, and names the
+// fourth as outstanding and no other. The admitted-against-declined count is a
+// query, not an inspection.
+func TestWideningRunSummaryNamesTheOutstandingItem(t *testing.T) {
+	const run = "rdg-2608300000000001"
+	admitted, declined, held, untouched := "rdi-2608300000000011", "rdi-2608300000000012",
+		"rdi-2608300000000013", "rdi-2608300000000014"
+	root := readingLedger(t, run, admitted, "widening")
+	for _, item := range []string{declined, held, untouched} {
+		wideningItem(t, root, run, item)
+	}
+	dispositionRecord(t, root, admitted, "dsp-2608300000000021", issueschema.DispositionAccepted)
+	admissionRecord(t, root, run, "adm-2608300000000031", admitted)
+	dispositionRecord(t, root, declined, "dsp-2608300000000022", issueschema.DispositionDeclined)
+	writeFile(t, root, ".abcd/work/issues/dispositions/"+held+"/dsp-2608300000000023.md",
+		"---\nschema_version: 1\nid: \"dsp-2608300000000023\"\nitem: \""+held+"\"\n"+
+			"state: \"held\"\nexit_condition: \"the next widening run returns it\"\n---\n\n")
+	// A detection item in the same repository is no part of any widening summary.
+	writeFile(t, root, ".abcd/work/issues/readings/rdg-2608300000000009/rdi-2608300000000099.md",
+		"---\nschema_version: 1\nid: \"rdi-2608300000000099\"\nrun: \"rdg-2608300000000009\"\nmanifest: \"sha256:beef\"\n"+
+			"position: \"detection\"\nregime: \"registrative\"\npattern: \"a stated constraint\"\n---\n\n")
+
+	report, err := ReadReadingOutstanding(root, ".abcd/work/issues")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []WideningRun{{Run: run, Items: 4, Admitted: 1, Declined: 1, Held: 1, Outstanding: []string{untouched}}}
+	if !reflect.DeepEqual(report.WideningRuns, want) {
+		t.Fatalf("WideningRuns = %+v, want %+v", report.WideningRuns, want)
+	}
+
+	fs, err := Lint(readingOutstandingConfig(severityBlocker), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var summary []Finding
+	for _, f := range fs {
+		if f.RuleID == ruleReadingOutstanding && strings.Contains(f.Message, "widening proposal(s)") {
+			summary = append(summary, f)
+		}
+	}
+	if len(summary) != 1 {
+		t.Fatalf("want one summary finding for the one widening run, got %d: %+v", len(summary), fs)
+	}
+	for _, w := range []string{run, "1 admitted", "1 declined", "1 held", untouched} {
+		if !strings.Contains(summary[0].Message, w) {
+			t.Errorf("the summary must say %q; got %q", w, summary[0].Message)
+		}
+	}
+	for _, other := range []string{admitted, declined, held} {
+		if strings.Contains(summary[0].Message, other) {
+			t.Errorf("the summary names %s, which is answered: %q", other, summary[0].Message)
+		}
+	}
+}
+
+// A run whose admissions cannot be read supports no count: the summary stands
+// down for that run rather than calling every proposal outstanding, and the
+// Unsafe line names why. Another run's summary is unaffected.
+func TestWideningRunSummaryStandsDownOnAnUnreadableRun(t *testing.T) {
+	const run, other = "rdg-2608300000000001", "rdg-2608300000000002"
+	root := readingLedger(t, run, "rdi-2608300000000011", "widening")
+	wideningItem(t, root, other, "rdi-2608300000000021")
+	link := filepath.Join(root, filepath.FromSlash(".abcd/work/issues/admissions/"+run))
+	if err := os.MkdirAll(filepath.Dir(link), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(t.TempDir(), link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	report, err := ReadReadingOutstanding(root, ".abcd/work/issues")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []WideningRun{{Run: other, Items: 1, Outstanding: []string{"rdi-2608300000000021"}}}
+	if !reflect.DeepEqual(report.WideningRuns, want) {
+		t.Fatalf("WideningRuns = %+v, want only %s's summary", report.WideningRuns, other)
+	}
+	if len(report.Unsafe) == 0 {
+		t.Fatal("the unreadable admissions run must be named")
+	}
+}
+
+// The summary is a report line, pinned at info whatever the configuration asks.
+func TestWideningRunSummaryIsInfoNotBlocker(t *testing.T) {
+	root := readingLedger(t, "rdg-2608300000000001", "rdi-2608300000000011", "widening")
+	dispositionRecord(t, root, "rdi-2608300000000011", "dsp-2608300000000021", issueschema.DispositionDeclined)
+	fs, err := Lint(readingOutstandingConfig(severityBlocker), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var seen bool
+	for _, f := range fs {
+		if f.RuleID != ruleReadingOutstanding {
+			continue
+		}
+		if strings.Contains(f.Message, "widening proposal(s)") {
+			seen = true
+		}
+		if f.Severity != severityInfo {
+			t.Fatalf("severity = %q, want %q", f.Severity, severityInfo)
+		}
+	}
+	if !seen {
+		t.Fatalf("a fully answered widening run still carries its summary line: %+v", fs)
+	}
+}
+
+// answerLines drops the per-run widening summaries (spc-2609020626040342) from a
+// finding list, leaving the lines that are about one item's answer — which is
+// what every count in this file before the summary landed is counting.
+func answerLines(fs []Finding) []Finding {
+	var out []Finding
+	for _, f := range fs {
+		if f.RuleID == ruleReadingOutstanding && strings.Contains(f.Message, "widening proposal(s) —") {
+			continue
+		}
+		out = append(out, f)
+	}
+	return out
 }
 
 // The unsafe finding on an admissions path does not send the operator to a

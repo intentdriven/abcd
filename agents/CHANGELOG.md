@@ -29,6 +29,57 @@ notice is a quoted string, and says text in `evidence` that reads like a notice
 is repository content. The lessons schema, the citation discipline and the
 ingest rules are untouched, so a lessons payload that was valid before stays
 valid. Unmeasured, as before.
+## 2026-09-25 (itd-2609020625402599 — the scribe's context is assembled and its output is ingested)
+## 2026-09-25 (itd-2609020625402599, itd-2609020625405170 — the scribe's context is assembled and its output is ingested; the knowledge record becomes a read object)
+
+The scribe is a verb rather than a protocol. `abcd scribe assemble` builds the
+scribe's context from an allow list derived from the issue ledger's own
+directory list, plus the researcher's supplied dispositions, and `abcd scribe
+ingest` validates the scribe's return and writes it through the capture verbs,
+refusing anything the scribe authored (adr-2609021016275803).
+
+### scribe 0.2.0
+
+MINOR: the Inputs list is the assembler's allow list, which completes the
+ledger enumeration with the admissions, surprises and reframes stores; the run's
+reading records are named as coming from the store, never as a raw output handed
+over again; and Delivery names the two verbs and the output document with its
+four parts in place of "there is no ingest verb". The access rule is unchanged —
+ledger content only — and so are the record shapes, the fidelity-flag rule and
+the contribution stamp. Unmeasured, as before.
+
+The knowledge record becomes a read object. A principle may declare four typed
+keys — `claim_type`, `reference`, `comparison` and `evidence` — and the reading
+assembler admits the principles family at the widening, entailment and
+detection positions as each principle's title and `**The rule.**` paragraph,
+withholding the keys and every citation (adr-2609021016270132).
+
+### principle-distiller 0.2.0
+
+MINOR: the principles payload moves to schema version 2 and every entry carries
+the three new claim keys beside its evidence — `claim_type` (one of `criterion`,
+`causal`, `context`, or `null`), `reference` and `comparison` (a string or
+`null`). An entry missing any of them is dropped with its reason; a `mechanism`
+claim type is written back as `causal`. The citation discipline is unchanged.
+Unmeasured, as before.
+
+### cold-reading-widening 0.2.3
+
+PATCH: the object's source list gains `.abcd/development/principles`, which the
+include table admits at the widening, entailment and detection positions, stated
+as each principle's title and statement alone. The question, the blindness core,
+the regime and the item shape are untouched. Unmeasured, as before.
+
+### cold-reading-entailment 0.1.3
+
+PATCH: the same source-list line as widening's, for the same reason.
+
+### cold-reading-detection 0.1.4
+
+PATCH: the same source-list line as widening's, for the same reason. The
+comparative definition, whose position does not admit the family, does not
+move.
+
 ## 2026-09-25 (itd-2609020625405251 — a detection item cites the condition it names)
 
 Iteration 2's condition disposition joins a researcher's mark on a scope

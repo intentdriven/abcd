@@ -14,7 +14,7 @@ production_mode: dictated-and-formatted
 
 # A reframe occasioned by a reading is recorded as a reframe, joined to what occasioned it, without carrying the construal it replaced
 
-Typed links: `builds_on` [itd-180](../shipped/itd-180-a-cold-reading-s-findings-land-as-reading-records-and-the-re.md) (record families in the issue tier), [itd-189](../shipped/itd-189-what-the-widening-reading-proposes-is-admitted-or-declined-o.md) (the surprise entry as its own act); `refines` [adr-55](../../decisions/adrs/0055-the-construal-stands-in-the-record-its-history-does-not.md) (a reframe record beside the construal, adopted as [adr-2609021016288378](../../decisions/adrs/2609021016288378-a-reframe-occasioned-by-a-reading-is-a-committed-pointer-to.md) in its three-surface form).
+Typed links: `builds_on` [itd-180](itd-180-a-cold-reading-s-findings-land-as-reading-records-and-the-re.md) (record families in the issue tier), [itd-189](itd-189-what-the-widening-reading-proposes-is-admitted-or-declined-o.md) (the surprise entry as its own act); `refines` [adr-55](../../decisions/adrs/0055-the-construal-stands-in-the-record-its-history-does-not.md) (a reframe record beside the construal, adopted as [adr-2609021016288378](../../decisions/adrs/2609021016288378-a-reframe-occasioned-by-a-reading-is-a-committed-pointer-to.md) in its three-surface form).
 
 ## Press Release
 
@@ -69,7 +69,7 @@ We expect a record keyed to the committed fingerprints of the three frame surfac
 
 ## Prior Art
 
-- [adr-55](../../decisions/adrs/0055-the-construal-stands-in-the-record-its-history-does-not.md); the brief's framing chapter; [itd-180](../shipped/itd-180-a-cold-reading-s-findings-land-as-reading-records-and-the-re.md) and [itd-189](../shipped/itd-189-what-the-widening-reading-proposes-is-admitted-or-declined-o.md).
+- [adr-55](../../decisions/adrs/0055-the-construal-stands-in-the-record-its-history-does-not.md); the brief's framing chapter; [itd-180](itd-180-a-cold-reading-s-findings-land-as-reading-records-and-the-re.md) and [itd-189](itd-189-what-the-widening-reading-proposes-is-admitted-or-declined-o.md).
 - The cold-reading rulings of 2026-08-28 in the decision log.
 
 ## Open Questions
@@ -78,7 +78,8 @@ None. The flagged decisions are adopted as adr-2609021016288378; the family's id
 
 ## Audit Notes
 
-_Empty. Populated by intent-auditor when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-987317795e99 -->
+Fidelity review OWED (receipt rcp-987317795e99).
 
 ## Grounds
 

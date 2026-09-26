@@ -77,13 +77,26 @@ func TestReadOnlyVerbsRun(t *testing.T) {
 	cases := []struct {
 		args     []string
 		wantZero bool // --version/help must be 0; the bare status board may report non-zero
+		// ownHome runs the verb under a fresh HOME, for a verb that resolves a
+		// user-level store: the smoke lane must neither read nor create the
+		// operator's own.
+		ownHome bool
 	}{
-		{[]string{"--help"}, true},
-		{[]string{"--version"}, true},
-		{[]string{}, false}, // bare status board: no panic, any exit
+		{[]string{"--help"}, true, false},
+		{[]string{"--version"}, true, false},
+		{[]string{}, false, false}, // bare status board: no panic, any exit
+		// The session-separation check over an empty store reports the property
+		// unobserved and exits 0 (adr-2609021016275803, spc-2609020626045177).
+		{[]string{"history", "separation"}, true, true},
 	}
 	for _, tc := range cases {
-		out, code := run(t, tc.args...)
+		var out string
+		var code int
+		if tc.ownHome {
+			out, code = runIn(t, "", []string{"HOME=" + t.TempDir()}, tc.args...)
+		} else {
+			out, code = run(t, tc.args...)
+		}
 		label := "abcd " + strings.Join(tc.args, " ")
 		if panicked(out) {
 			t.Errorf("`%s` panicked:\n%s", label, out)

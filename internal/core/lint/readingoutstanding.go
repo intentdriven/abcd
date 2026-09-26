@@ -126,6 +126,28 @@ type OpenHold struct {
 	Path          string `json:"path"`
 }
 
+// WideningRun is one widening run's answer count (spc-2609020626040342): how many
+// proposals it returned, how many were admitted, declined and held, and which
+// carry neither an admission nor a `declined` or `held` disposition. It makes
+// the admitted-against-declined count — the evidence that the admission
+// asymmetry is being exercised — a query rather than an inspection.
+//
+// It is reported only for a run whose every widening item's answer the walk
+// could read without ambiguity. A run holding an unreadable item, an unreadable
+// admission, an answer the walk declined to read, or a contested, cyclic or
+// illegible disposition supports no count, so its summary stands down; the
+// report's other lists already name what stood in the way.
+type WideningRun struct {
+	Run      string `json:"run"`
+	Items    int    `json:"items"`
+	Admitted int    `json:"admitted"`
+	Declined int    `json:"declined"`
+	Held     int    `json:"held"`
+	// Outstanding names the proposals carrying neither an admission nor a
+	// `declined` or `held` disposition, sorted. Never null.
+	Outstanding []string `json:"outstanding"`
+}
+
 // OutstandingReadings is the whole report, ordered deterministically.
 type OutstandingReadings struct {
 	Undispositioned []OutstandingItem `json:"undispositioned"`
@@ -170,6 +192,9 @@ type OutstandingReadings struct {
 	// and the item simply vanished from the board — and an item whose only answer
 	// is unreadable is the case most in need of a line, not least.
 	Unreadable []UnreadableAnswer `json:"unreadable,omitempty"`
+	// WideningRuns is the per-run answer count of every widening run whose
+	// answers the walk could read, ordered by run.
+	WideningRuns []WideningRun `json:"widening_runs,omitempty"`
 }
 
 // UnsafePath is one path the walk declined to read, with the reason it declined.
@@ -211,7 +236,7 @@ type ContestedItem struct {
 func (r OutstandingReadings) Empty() bool {
 	return len(r.Undispositioned) == 0 && len(r.Unadmitted) == 0 && len(r.OpenHolds) == 0 &&
 		len(r.Unsafe) == 0 && len(r.Cyclic) == 0 && len(r.Contested) == 0 &&
-		len(r.Unreadable) == 0
+		len(r.Unreadable) == 0 && len(r.WideningRuns) == 0
 }
 
 // ReadReadingOutstanding builds the report from the ledger at issuesDir
@@ -290,6 +315,11 @@ func ReadReadingOutstanding(repoRoot, issuesDir string) (OutstandingReadings, er
 			})
 			continue
 		}
+		// The run's widening summary. It stands down — withheld, not zeroed —
+		// the moment any fact it would count cannot be read, because a count
+		// over a partial read is a confident false statement about the run.
+		summary := WideningRun{Run: run.Name(), Outstanding: []string{}}
+		standDown := !dispositionsReadable || admissions.unknown(run.Name())
 		for _, e := range entries {
 			m := readingItemFileRe.FindStringSubmatch(e.Name())
 			if e.IsDir() || m == nil {
@@ -311,9 +341,16 @@ func ReadReadingOutstanding(repoRoot, issuesDir string) (OutstandingReadings, er
 				report.Unsafe = append(report.Unsafe, UnsafePath{
 					Path: filepath.ToSlash(rel), Reason: unreadableReason(rerr),
 				})
+				// An item nobody could read may be a widening proposal, so the
+				// run's count is not known.
+				standDown = true
 				continue
 			}
 			position := readingPosition(string(content))
+			widening := position == issueschema.PositionWidening
+			if widening {
+				summary.Items++
+			}
 			if !dispositionsReadable {
 				// The item's answer is unreadable, which is not the same fact as
 				// "unanswered" — reporting it outstanding would be a confident
@@ -405,6 +442,26 @@ func ReadReadingOutstanding(repoRoot, issuesDir string) (OutstandingReadings, er
 			// because a hold is not an alternative to the facts above; it is an
 			// additional one.
 			report.OpenHolds = append(report.OpenHolds, answer.holds...)
+
+			if widening {
+				switch {
+				case admissions.admits(run.Name(), item):
+					summary.Admitted++
+				case len(answer.unsafe) > 0 || answer.cyclic || len(answer.contested) > 1 ||
+					(answer.standing != nil && !answer.standing.wellFormed):
+					standDown = true
+				case answer.standing != nil && answer.standing.state == issueschema.DispositionDeclined:
+					summary.Declined++
+				case answer.standing != nil && answer.standing.state == issueschema.DispositionHeld:
+					summary.Held++
+				default:
+					summary.Outstanding = append(summary.Outstanding, item)
+				}
+			}
+		}
+		if summary.Items > 0 && !standDown {
+			sort.Strings(summary.Outstanding)
+			report.WideningRuns = append(report.WideningRuns, summary)
 		}
 	}
 
@@ -421,6 +478,7 @@ func ReadReadingOutstanding(repoRoot, issuesDir string) (OutstandingReadings, er
 	sort.Slice(report.Contested, func(i, j int) bool { return report.Contested[i].Item < report.Contested[j].Item })
 	sort.Slice(report.Unreadable, func(i, j int) bool { return report.Unreadable[i].Item < report.Unreadable[j].Item })
 	sort.Slice(report.Unsafe, func(i, j int) bool { return report.Unsafe[i].Path < report.Unsafe[j].Path })
+	sort.Slice(report.WideningRuns, func(i, j int) bool { return report.WideningRuns[i].Run < report.WideningRuns[j].Run })
 	return report, nil
 }
 
@@ -713,8 +771,23 @@ func checkReadingOutstanding(repoRoot string, cfg RuleConfig) ([]Finding, error)
 			Message: o.Item + " (run " + o.Run + ") is a widening proposal with neither an admission nor a decline — outstanding. " +
 				"At the widening position acceptance IS admission, and the grounds an admission was made on live in an " +
 				"admission record (`" + issueschema.AdmissionFamily + "-N` under " + issueschema.AdmissionsDir + "/" + o.Run +
-				"/), because uniform adoption of everything a reading proposes is equally consistent with judgement and with abdication. " +
+				"/), because uniform adoption of everything a reading proposes is equally consistent with judgement and with abdication; " +
+				"write it with `abcd capture admit " + o.Item + " --grounds \"<why>\"`, which on a standing acceptance writes the admission alone. " +
 				"Declining costs nothing epistemically and is recorded as a disposition in the `" + issueschema.DispositionDeclined + "` state",
+		})
+	}
+	for _, w := range report.WideningRuns {
+		msg := w.Run + ": " + strconv.Itoa(w.Items) + " widening proposal(s) — " +
+			strconv.Itoa(w.Admitted) + " admitted, " + strconv.Itoa(w.Declined) + " declined, " +
+			strconv.Itoa(w.Held) + " held, " + strconv.Itoa(len(w.Outstanding)) + " outstanding"
+		if len(w.Outstanding) > 0 {
+			msg += " (" + strings.Join(w.Outstanding, ", ") + "): an outstanding proposal carries neither an admission nor a `" +
+				issueschema.DispositionDeclined + "` or `" + issueschema.DispositionHeld + "` disposition; admit it with `abcd capture admit <rdi-N> --grounds \"<why>\"` " +
+				"or decline it with `abcd capture disposition <rdi-N> --state " + issueschema.DispositionDeclined + " --grounds \"<why>\"`"
+		}
+		out = append(out, Finding{
+			File: filepath.ToSlash(filepath.Join(issuesDirOf(cfg), issueschema.ReadingsDir, w.Run)), Line: 1,
+			RuleID: ruleReadingOutstanding, Severity: severityInfo, Message: msg,
 		})
 	}
 	for _, u := range report.Unreadable {

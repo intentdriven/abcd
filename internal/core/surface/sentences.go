@@ -50,6 +50,8 @@ var sentences = map[string]string{
 
 	"abcd capture": "File an issue from quoted text, or render the ledger's status bare: " +
 		"Writes one record under open/; refuses a lone word and any folder outside a checkout.",
+	"abcd capture admit": "Admit one widening proposal into its run's candidate set: " +
+		"Writes its accepted disposition and an adm-N record; refuses before a committed comparative run.",
 	"abcd capture defer": "Carry an open major or critical issue past one release cut: " +
 		"Writes deferred_after and deferral_reason; refuses a minor or nitpick issue, or an empty reason.",
 	"abcd capture disposition": "Answer one reading item with a disposition record: " +
@@ -64,8 +66,12 @@ var sentences = map[string]string{
 		"Writes the records only with --apply; refuses outside a git checkout.",
 	"abcd capture promote": "Graduate an issue or an accepted reading item into an intent draft: " +
 		"Writes the draft and both back-links; refuses a promoted issue or an unaccepted item.",
+	"abcd capture reframe": "Record a reframe a reading occasioned: " +
+		"Writes one rfm-N fingerprinting the frame before and after; refuses an uncommitted occasion or frame edit without --open.",
 	"abcd capture resolve": "Move an open issue to resolved/, naming what fixed it: " +
 		"Writes the moved record; refuses without --impact or on an id this ledger does not hold.",
+	"abcd capture surprise": "Record one surprise a reading item, admission or disposition occasioned: " +
+		"Writes one srp-N record; refuses an unresolved occasion or a text below the floor.",
 	"abcd capture wontfix": "Move an open issue to wontfix/ with the reason it is not acted on: " +
 		"Writes the moved record; refuses an id this ledger does not hold.",
 
@@ -133,6 +139,8 @@ var sentences = map[string]string{
 		"Writes a missing store, and the repaired records only with --apply; refuses outside a git checkout.",
 	"abcd history reconstruct": "Render one session and its sub-agents as one artefact plus telemetry: " +
 		"Writes both files into --out; refuses an --out that is not an existing directory.",
+	"abcd history separation": "Report whether any retained transcript held both a reading and the ledger of one run: " +
+		"Writes nothing; never refuses, exiting 1 naming each such transcript.",
 	"abcd history show": "Show one stored transcript's metadata and redacted body: " +
 		"Writes only a missing store and a legacy corpus moved into it; refuses an id the store does not hold.",
 	"abcd history staged": "List the ended transcripts not yet redacted into the store: " +
@@ -259,6 +267,13 @@ var sentences = map[string]string{
 
 	"abcd rules": "Render the active rule set, or the one domain named: " +
 		"Writes nothing; refuses an unknown domain.",
+
+	"abcd scribe": "Assemble a ledger scribe's context and ingest what it transcribed: " +
+		"Writes nothing bare; refuses an unknown sub-verb.",
+	"abcd scribe assemble": "Build a scribe session's context from the ledger and supplied dispositions: " +
+		"Writes it and a hashed manifest; refuses an uningested run or a symlinked ledger.",
+	"abcd scribe ingest": "Validate a scribe's output against the supplied dispositions: " +
+		"Writes what it transcribed through the capture verbs; refuses anything the scribe authored.",
 
 	"abcd site": "Report what the website declares and what was built: " +
 		"Writes nothing; refuses any argument.",

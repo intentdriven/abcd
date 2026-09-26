@@ -237,3 +237,83 @@ func TestCrossStoreIDClaimSkipsUntrackedFiles(t *testing.T) {
 		t.Fatalf("expected the tracked probe to fire, got %d: %+v", n, fs)
 	}
 }
+
+// reframeStoreCfg arms the cross-store rule with the reframe store declared
+// and NO record held anywhere, so an outside-store reframe is judged on its
+// own shape rather than against a taken id.
+func reframeStoreCfg() Config {
+	return Config{
+		Rules: map[string]RuleConfig{
+			ruleCrossStoreIDClaim: {Enabled: true, Severity: severityBlocker},
+			ruleRecordSchema: {Enabled: false, RecordStores: map[string]string{
+				"iss": ".abcd/work/issues",
+				"rfm": ".abcd/work/issues/reframes",
+			}},
+		},
+	}
+}
+
+// reframeLookAlike is a reframe record in its written shape: warm grounds in
+// the frontmatter and a body, exactly what the reading exclusion keeps out by
+// the store's PATH.
+const reframeLookAlike = "---\nschema_version: 1\nid: rfm-9\noccasioned_by: rdi-11\n" +
+	"construal_before: " + "0000000000000000000000000000000000000000000000000000000000000000" + "\n" +
+	"grounds: why the frame moved\n---\n\nThe warm body.\n"
+
+// A reframe record is excluded from every cold reading by the path of its
+// store, so a reframe-shaped file anywhere else reaches a reading with its
+// grounds and body. The rule names every one of the three shapes that make a
+// file a reframe outside its store — the rfm-N name, an rfm id in the
+// frontmatter, and the reframe's own keys — and leaves the store, a nested
+// tree's own store, and a page that only mentions a reframe alone.
+func TestCrossStoreFlagsAReframeOutsideItsStore(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, filepath.Join(".abcd", "work", "issues", "reframes", "rfm-1.md"), reframeLookAlike)
+	writeFile(t, root, filepath.Join("evals", "testdata", "repo", ".abcd", "work", "issues", "reframes", "rfm-1.md"), reframeLookAlike)
+	writeFile(t, root, filepath.Join("docs", "reframes.md"), "# Reframes\n\nSee rfm-9 for the shape.\n")
+
+	planted := map[string]string{
+		filepath.Join(".abcd", "development", "brief", "01-product", "rfm-9.md"):  "# A chapter\n\nNo frontmatter, only the name.\n",
+		filepath.Join(".abcd", "development", "brief", "01-product", "notes.md"):  "---\nid: RFM-3\n---\n\n# Notes\n",
+		filepath.Join(".abcd", "development", "brief", "01-product", "moved.md"):  "---\noccasioned_by: dsp-5\nscope_before: abc\n---\n\n# Moved\n",
+		filepath.Join(".abcd", "development", "brief", "01-product", "record.md"): reframeLookAlike,
+	}
+	for rel, body := range planted {
+		writeFile(t, root, rel, body)
+	}
+
+	fs, err := Lint(reframeStoreCfg(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := countRule(fs, ruleCrossStoreIDClaim); n != len(planted) {
+		t.Fatalf("expected the %d planted reframes and nothing else, got %d: %+v", len(planted), n, fs)
+	}
+	for rel := range planted {
+		found := false
+		for _, f := range fs {
+			if f.RuleID == ruleCrossStoreIDClaim && filepath.ToSlash(f.File) == filepath.ToSlash(rel) {
+				found = true
+				if f.Severity != severityBlocker || !strings.Contains(f.Message, ".abcd/work/issues/reframes") ||
+					!strings.Contains(f.Message, "cold reading") {
+					t.Errorf("%s: finding = %+v, want a blocker naming the store and the reading it would reach", rel, f)
+				}
+			}
+		}
+		if !found {
+			t.Errorf("%s: no finding; got %+v", rel, fs)
+		}
+	}
+
+	// With no reframe store declared, the arm has nothing to weigh a reframe
+	// against and names nothing.
+	cfg := reframeStoreCfg()
+	rs := cfg.Rules[ruleRecordSchema]
+	rs.RecordStores = map[string]string{"iss": ".abcd/work/issues"}
+	cfg.Rules[ruleRecordSchema] = rs
+	if fs, err = Lint(cfg, root); err != nil {
+		t.Fatal(err)
+	} else if n := countRule(fs, ruleCrossStoreIDClaim); n != 0 {
+		t.Fatalf("no reframe store declared, yet %d finding(s): %+v", n, fs)
+	}
+}

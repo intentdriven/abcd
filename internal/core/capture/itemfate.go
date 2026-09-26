@@ -62,8 +62,13 @@ func ItemFate(repoRoot, run, item string) (issueschema.ItemFate, error) {
 		return issueschema.ItemFate{}, fmt.Errorf("%w: item %q does not match ^%s-[0-9]+$",
 			ErrMalformedFrontmatter, item, issueschema.ReadingItemFamily)
 	}
-	issuesRoot := filepath.Join(repoRoot, filepath.FromSlash(LedgerRelPath))
+	return itemFateIn(filepath.Join(repoRoot, filepath.FromSlash(LedgerRelPath)), run, item)
+}
 
+// itemFateIn is ItemFate over an issues root the caller has already resolved —
+// the form the admission verb asks under its lock, so the probe reads the same
+// ledger the verb writes into.
+func itemFateIn(issuesRoot, run, item string) (issueschema.ItemFate, error) {
 	itemDir := filepath.Join(issuesRoot, issueschema.DispositionsDir, item)
 	records, err := readDispositions(itemDir)
 	if err != nil {

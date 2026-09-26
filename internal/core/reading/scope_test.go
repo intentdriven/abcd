@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/core/sessionkind"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
@@ -574,10 +575,23 @@ func TestNoBundleFieldIsAPresetSelector(t *testing.T) {
 		t.Fatalf("encode: %v", err)
 	}
 	var doc struct {
-		Preset map[string]any `json:"preset"`
+		Preset       map[string]any `json:"preset"`
+		ContextStamp string         `json:"context_stamp"`
 	}
 	if err := json.Unmarshal(raw, &doc); err != nil {
 		t.Fatalf("decode: %v", err)
+	}
+	// The context stamp is the one other top-level value a run chooses, and it
+	// is a token rather than a selector: it parses whole as a stamp, so it can
+	// name no record, no path and no material kind (adr-2609021016275803).
+	if _, ok := sessionkind.Parse(doc.ContextStamp); !ok {
+		t.Errorf("the bundle's context_stamp %q is not a stamp; anything else a run writes there "+
+			"is a channel a selector could ride", doc.ContextStamp)
+	}
+	for _, k := range Kinds() {
+		if doc.ContextStamp == string(k) {
+			t.Errorf("the bundle's context_stamp is the material kind %q", k)
+		}
 	}
 	allowed := map[string]bool{"kinds": true, "records": true, "location_narrowings": true}
 	for key := range doc.Preset {
@@ -1088,8 +1102,7 @@ func TestRunIsReproducibleFromCommitAndPreset(t *testing.T) {
 		if err != nil {
 			t.Fatalf("second assembly at %s: %v", p, err)
 		}
-		a, b := mustEncodeBundle(t, first.Bundle), mustEncodeBundle(t, second.Bundle)
-		if string(a) != string(b) {
+		if !identicalButForRun(t, first.Bundle, second.Bundle) {
 			t.Errorf("two assemblies at %s of one commit produced different bundles; the "+
 				"invocation carries nothing a re-run could differ on", p)
 		}

@@ -294,7 +294,7 @@ func TestRehearseTheOpeningRunLoop(t *testing.T) {
 		if len(detectionItems) == 0 || len(wideningItems) < 2 {
 			t.Fatal("the earlier ingests left no item to disposition, so this step would assert nothing")
 		}
-		rehearseDispositions(t, f, detectionItems[0], wideningItems)
+		rehearseDispositions(t, f, detectionItems[0], parked[posWidening].RunID, wideningItems)
 	})
 
 	// -------------------------------------------------------------------
@@ -1251,7 +1251,7 @@ type dispositionResult struct {
 // end it is a parking space. Companion 4.3 is the same rule from the other side.
 // Availability is per POSITION and is read off the item's own record, never
 // supplied.
-func rehearseDispositions(t *testing.T, f fixture, detectionItem string, wideningItems []string) {
+func rehearseDispositions(t *testing.T, f fixture, detectionItem, wideningRun string, wideningItems []string) {
 	t.Helper()
 
 	// The acceptance, on the detection item, with its grounds.
@@ -1326,7 +1326,24 @@ func rehearseDispositions(t *testing.T, f fixture, detectionItem string, widenin
 	// else. It is the answer that costs nothing epistemically — a proposal
 	// weighed and not taken up — and at a position whose items are findings
 	// rather than proposals there is nothing to decline (framework 11.2).
+	//
+	// At the widening position the order is ruled: characterise first, answer
+	// second (spc-2609020626040342). Before a committed comparative run names the
+	// widening run, the decline refuses and names what it is waiting for. This
+	// loop cannot assemble that comparative run in place — step 1b says why, and
+	// TestTheComparativeAssemblyFollowsTheCommittedWideningIngest rehearses the
+	// channel end to end — so the committed run record the channel writes is
+	// placed as the marker the gate reads, and the decline then lands.
 	t.Run("declined-is-available-at-widening", func(t *testing.T) {
+		out, code := runIn(t, f.Root, []string{"HOME=" + f.Home}, "capture", "disposition", wideningItems[0],
+			"--state", "declined", "--grounds", "the configuration is admissible and this iteration does not take it up")
+		if code == 0 {
+			t.Fatalf("a widening item was dispositioned before any comparative run named its run:\n%s", out)
+		}
+		if !strings.Contains(out, "comparative") || !strings.Contains(out, wideningRun) {
+			t.Errorf("the ordering refusal does not name the run and the comparative run it waits for:\n%s", out)
+		}
+		placeComparativeRunRecord(t, f, wideningRun)
 		res := disposition(t, f, wideningItems[0], "--state", "declined",
 			"--grounds", "the configuration is admissible and this iteration does not take it up")
 		if res.State != "declined" || res.Position != posWidening {
@@ -1373,6 +1390,23 @@ func disposition(t *testing.T, f fixture, item string, args ...string) dispositi
 // An item carrying a standing answer refuses a second one that does not cite it,
 // which is right and makes an item a single-use subject. Assembling another run
 // is what the operator would do, and it is cheap on this corpus.
+// placeComparativeRunRecord writes the committed run record of a comparative run
+// over wideningRun into the durable run directory: the commit marker
+// capture's ordering gate reads (ComparativeRunFor), carrying the
+// candidate-join subset it decodes.
+func placeComparativeRunRecord(t *testing.T, f fixture, wideningRun string) {
+	t.Helper()
+	const compRun = "rdg-2609259999999999"
+	dir := filepath.Join(f.Root, filepath.FromSlash(rehearsalRunRecords), compRun)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "run.json"), []byte(`{"run_id":"`+compRun+
+		`","position":"comparative","candidate_run":"`+wideningRun+`"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func mustSecondDetectionItem(t *testing.T, f fixture) string {
 	t.Helper()
 	run := assembleParked(t, f, posDetection)

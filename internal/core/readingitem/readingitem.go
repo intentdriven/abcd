@@ -42,6 +42,8 @@ type Family string
 const (
 	FamilyItem        Family = issueschema.ReadingItemFamily // rdi-N, a reading item
 	FamilyDisposition Family = issueschema.DispositionFamily // dsp-N, a disposition
+	FamilyAdmission   Family = issueschema.AdmissionFamily   // adm-N, an admission
+	FamilySurprise    Family = issueschema.SurpriseFamily    // srp-N, a surprise
 	FamilyIntent      Family = "itd"                         // itd-N, a shipped intent
 )
 
@@ -155,10 +157,79 @@ func LocateDisposition(issuesRoot, id string) (item, path string, err error) {
 	}
 }
 
+// LocateAdmission finds the one admission record carrying id across every run
+// bucket under admissions/, and the run it is filed under. An admission is
+// bucketed by RUN, so the walk is Paths' walk over the admission store: every
+// run bucket is checked for a symlink, and the id is unique to the ledger.
+func LocateAdmission(issuesRoot, id string) (run, path string, err error) {
+	if !recordid.ValidAdmissionID(id) {
+		return "", "", fmt.Errorf("invalid %s-N identifier: %q", issueschema.AdmissionFamily, id)
+	}
+	root := filepath.Join(issuesRoot, issueschema.AdmissionsDir)
+	if err := RefuseSymlinkedDir(root); err != nil {
+		return "", "", err
+	}
+	runs, err := os.ReadDir(root)
+	if err != nil && !os.IsNotExist(err) {
+		return "", "", err
+	}
+	var found []string
+	for _, e := range runs {
+		if !recordid.ValidReadingRunID(e.Name()) {
+			continue
+		}
+		dir := filepath.Join(root, e.Name())
+		if err := RefuseSymlinkedDir(dir); err != nil {
+			return "", "", err
+		}
+		cand := filepath.Join(dir, id+".md")
+		if fi, err := os.Lstat(cand); err == nil && fi.Mode().IsRegular() {
+			found = append(found, cand)
+		}
+	}
+	switch len(found) {
+	case 0:
+		return "", "", fmt.Errorf("%w: %s is not an admission this ledger holds", ErrUnknown, id)
+	case 1:
+		return filepath.Base(filepath.Dir(found[0])), found[0], nil
+	default:
+		return "", "", fmt.Errorf("%w: %s is present under more than one run", ErrDuplicate, id)
+	}
+}
+
+// LocateSurprise finds the surprise record carrying id. The surprise store is
+// FLAT (surprises/srp-N.md), so the walk is one leaf: the store is refused if it
+// is a symlink, and the leaf is admitted only as a regular file by Lstat, so a
+// symlinked record is never followed. Resolution is by presence in the store,
+// so a surprise written by hand and one the surprise verb wrote resolve alike
+// (spc-2609020626048705).
+func LocateSurprise(issuesRoot, id string) (string, error) {
+	if !recordid.ValidSurpriseID(id) {
+		return "", fmt.Errorf("invalid %s-N identifier: %q", issueschema.SurpriseFamily, id)
+	}
+	root := filepath.Join(issuesRoot, issueschema.SurprisesDir)
+	if err := RefuseSymlinkedDir(root); err != nil {
+		return "", err
+	}
+	cand := filepath.Join(root, id+".md")
+	fi, err := os.Lstat(cand)
+	switch {
+	case err == nil && fi.Mode().IsRegular():
+		return cand, nil
+	case err == nil:
+		return "", fmt.Errorf("%w: %s is not a regular file: %s", ErrPathUnsafe, id, cand)
+	case os.IsNotExist(err):
+		return "", fmt.Errorf("%w: %s is not a surprise this ledger holds", ErrUnknown, id)
+	default:
+		return "", err
+	}
+}
+
 // ResolveOccasion resolves id in one of the families the caller admits and
 // returns the path of the record it names. An id outside those families is
-// refused by shape before any path is built. A reading item or a disposition
-// resolves through the ledger walk above, under repoRoot's issue ledger; an
+// refused by shape before any path is built. A reading item, a disposition or an
+// admission resolves through the ledger walk above, and a surprise through its
+// flat store, under repoRoot's issue ledger; an
 // intent resolves only in repoRoot's intent store's shipped/ bucket, and a
 // record in any other bucket is refused naming the bucket.
 func ResolveOccasion(repoRoot, id string, families ...Family) (string, error) {
@@ -182,6 +253,11 @@ func ResolveOccasion(repoRoot, id string, families ...Family) (string, error) {
 	case FamilyDisposition:
 		_, path, err := LocateDisposition(issuesRoot, id)
 		return path, err
+	case FamilyAdmission:
+		_, path, err := LocateAdmission(issuesRoot, id)
+		return path, err
+	case FamilySurprise:
+		return LocateSurprise(issuesRoot, id)
 	case FamilyIntent:
 		return resolveShippedIntent(repoRoot, id)
 	}

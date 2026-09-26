@@ -611,6 +611,14 @@ func LintAt(cfg Config, repoRoot string, now time.Time) ([]Finding, error) {
 		findings = append(findings, ro...)
 	}
 
+	// The four principle rules read the same cross-store scan, and one run
+	// serves all four so the principles store, the shipped intents' condition
+	// markers and the corpus's handles are read once (spc-2609020626042471).
+	pr, err := checkPrinciples(repoRoot, cfg)
+	if err != nil {
+		return nil, err
+	}
+	findings = append(findings, pr...)
 	// The record-families pair reads the glossary against its one map page and
 	// the record stores' frontmatter keys against the same page, all addressed
 	// repo-relative in the rules' own config, so each runs once here.

@@ -1,7 +1,7 @@
 ---
 name: principle-distiller
 description: Distil durable principles from a packed lifeboat's decision record — each principle citing the record ids or lifeboat paths it rests on. Host-delegated; feeds `abcd disembark principles <lifeboat-dir> --principles-json`.
-prompt_version: 0.1.0
+prompt_version: 0.2.0
 reads_untrusted_input: true
 capability_scope:
   task_classes: [principle_distillation]
@@ -42,14 +42,17 @@ the **whole payload**, not just the offending entry. Use exactly these keys:
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "mode": "delegated",
-  "prompt_version": "0.1.0",
+  "prompt_version": "0.2.0",
   "principles": [
     {
       "id": "prn-oracle-cascade-fixed",
       "principle": "The oracle cascade is fixed; capability routing is a pre-cascade selector.",
       "confidence": "high",
+      "claim_type": "causal",
+      "reference": "adr-24",
+      "comparison": null,
       "evidence": ["adr-24", "docs/adrs/0024-oracle-cascade.md"]
     }
   ]
@@ -58,10 +61,11 @@ the **whole payload**, not just the offending entry. Use exactly these keys:
 
 Field rules:
 
-- `schema_version`: integer `1`. Required — a missing or `0` value is rejected.
+- `schema_version`: integer `2`. Required — a missing or `0` value is rejected,
+  and so is `1`, the version before the claim keys.
 - `mode`: `"delegated"` (you are the delegated path). If present it must be exactly
   `"delegated"`; the binary stamps it regardless.
-- `prompt_version`: `"0.1.0"` — this file's version, semver-shaped. Required in your
+- `prompt_version`: `"0.2.0"` — this file's version, semver-shaped. Required in your
   delegated output.
 - `principles`: an array. Each entry:
   - `id`: `prn-` followed by kebab-case `[a-z0-9]` segments (e.g. `prn-fixed-cascade`),
@@ -71,7 +75,25 @@ Field rules:
   - `confidence`: exactly one of `high`, `medium`, `low`. High means the record
     states it outright; medium means it is strongly implied; low means it is your
     reading of converging evidence. An unknown value drops the entry.
+  - `claim_type`: what kind of claim the principle makes — exactly one of
+    `criterion` (a standard a choice is judged by), `causal` (X brings about Y,
+    by a mechanism the record states) or `context` (a condition the record
+    treats as given), or `null` when the record does not settle it. `mechanism`
+    is read as `causal` and written back as `causal`; any other value drops the
+    entry.
+  - `reference`: what the principle is about — a record id (`adr-24`) or the
+    name of a surface (a verb, a package, a rule), or `null`.
+  - `comparison`: what was compared to produce the principle, in one sentence
+    (the alternatives the record weighed), or `null`.
   - `evidence`: the ids/paths this principle rests on (see citation discipline).
+
+Every entry carries all seven keys. A claim you considered and could not ground
+in the record is `null`, never omitted: an entry missing `claim_type`,
+`reference` or `comparison` is dropped, because an absent key and a declined
+claim are different statements. Write `null` rather than guess — the record's
+own words decide these, and a comparison the record never made is a principle
+invented, not distilled. A stated `reference` or `comparison` is sanitised
+like the principle, and one that sanitises to nothing drops the entry.
 
 No other top-level or per-entry keys. Do not add `mode: "deterministic"` — a
 delegated payload claiming deterministic is refused.

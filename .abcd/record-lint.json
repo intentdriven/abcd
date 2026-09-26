@@ -296,7 +296,9 @@
         "dsp": ".abcd/work/issues/dispositions",
         "rdg": ".abcd/development/readings",
         "adm": ".abcd/work/issues/admissions",
-        "srp": ".abcd/work/issues/surprises"
+        "srp": ".abcd/work/issues/surprises",
+        "rfm": ".abcd/work/issues/reframes",
+        "prn": ".abcd/development/principles"
       }
     },
     "prose_citation_resolves": {
@@ -311,10 +313,27 @@
         "dsp": ".abcd/work/issues/dispositions",
         "rdg": ".abcd/development/readings",
         "adm": ".abcd/work/issues/admissions",
-        "srp": ".abcd/work/issues/surprises"
+        "srp": ".abcd/work/issues/surprises",
+        "rfm": ".abcd/work/issues/reframes"
       }
     },
     "record_provenance": {
+      "enabled": true,
+      "severity": "blocker"
+    },
+    "principle_untyped": {
+      "enabled": true,
+      "severity": "warn"
+    },
+    "principle_claims": {
+      "enabled": true,
+      "severity": "blocker"
+    },
+    "principle_inheritance": {
+      "enabled": true,
+      "severity": "warn"
+    },
+    "principle_falsified": {
       "enabled": true,
       "severity": "blocker"
     },

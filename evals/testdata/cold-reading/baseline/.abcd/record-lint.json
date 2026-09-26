@@ -12,7 +12,8 @@
         "rdi": ".abcd/work/issues/readings",
         "dsp": ".abcd/work/issues/dispositions",
         "adm": ".abcd/work/issues/admissions",
-        "rdg": ".abcd/development/readings"
+        "rdg": ".abcd/development/readings",
+        "prn": ".abcd/development/principles"
       }
     }
   }

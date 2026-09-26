@@ -5,7 +5,7 @@ description: >-
   being the kind of thing it is, that its articulation does not state? Returns
   surfaced claims, each with its claim type and what implies it, under the
   explicative supply regime.
-prompt_version: 0.1.2
+prompt_version: 0.1.3
 reads_untrusted_input: true
 capability_scope:
   task_classes: [cold_reading]
@@ -39,6 +39,7 @@ a claim, and what it commits to is already true of it.
 - `.abcd/development/specs` — the design record a capability was built against.
 - `.abcd/development/intents/drafts` — the candidate set as articulated.
 - `.abcd/development/intents/planned` — the candidate set as planned.
+- `.abcd/development/principles` — the knowledge record, each principle as its title and statement alone.
 - `.` — the shipped tree: source, tests, delivered documentation, root prose and build configuration.
 
 

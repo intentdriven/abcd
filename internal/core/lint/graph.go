@@ -90,26 +90,14 @@ func LoadRecordGraph(cfg Config, repoRoot string) (RecordGraph, error) {
 		return RecordGraph{}, err
 	}
 
-	present := make(map[recordRef]bool, len(records))
-	highWater := map[string]int{}
+	// present keys on the rendered handle, so a slug-keyed record (a principle,
+	// prn-<stem>) is present under the handle it is cited by rather than under a
+	// (prefix, 0) pair every principle would share.
+	present := make(map[string]bool, len(records))
 	for _, r := range records {
-		present[recordRef{r.store.prefix, r.num}] = true
-		if r.num > highWater[r.store.prefix] {
-			highWater[r.store.prefix] = r.num
-		}
+		present[r.handle()] = true
 	}
-	var retired []string
-	seenRetired := map[recordRef]bool{}
-	for _, r := range records {
-		for _, h := range r.refs["supersedes"] {
-			if present[h] || seenRetired[h] || h.num < 1 || h.num > highWater[h.prefix] {
-				continue
-			}
-			seenRetired[h] = true
-			retired = append(retired, h.String())
-		}
-	}
-	sort.Slice(retired, func(i, j int) bool { return HandleLess(retired[i], retired[j]) })
+	retired := retiredHandles(records)
 
 	g := RecordGraph{
 		Nodes:    make([]RecordNode, 0, len(records)),
@@ -142,7 +130,7 @@ func LoadRecordGraph(cfg Config, repoRoot string) (RecordGraph, error) {
 					continue
 				}
 				seen[e] = true
-				if present[h] {
+				if present[h.String()] {
 					g.Edges = append(g.Edges, e)
 				} else {
 					g.Dangling = append(g.Dangling, e)

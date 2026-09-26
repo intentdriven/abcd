@@ -65,7 +65,8 @@ func fixtureRepo(t *testing.T) string {
         "itd": ".abcd/development/intents",
         "spc": ".abcd/development/specs",
         "iss": ".abcd/work/issues",
-        "rdi": ".abcd/work/issues/readings"
+        "rdi": ".abcd/work/issues/readings",
+        "prn": ".abcd/development/principles"
       }
     }
   }

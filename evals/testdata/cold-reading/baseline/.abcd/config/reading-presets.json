@@ -3,10 +3,10 @@
   "presets": {
     "everything": {
       "positions": {
-        "widening": {"kinds": ["brief-section", "glossary-term", "intent-projection", "discipline", "spec", "source", "test", "doc", "config"], "records": [], "paths": ["Makefile", "README.md", "docs", "fence.go", "go.mod", "main.go", "main_test.go", "sitefixture_test.go"]},
-        "entailment": {"kinds": ["brief-section", "glossary-term", "intent-projection", "discipline", "spec", "source", "test", "doc", "config"], "records": ["itd-2", "itd-3", "itd-5"], "paths": ["Makefile", "README.md", "docs", "fence.go", "go.mod", "main.go", "main_test.go", "sitefixture_test.go"]},
+        "widening": {"kinds": ["brief-section", "glossary-term", "intent-projection", "discipline", "spec", "principle", "source", "test", "doc", "config"], "records": [], "paths": ["Makefile", "README.md", "docs", "fence.go", "go.mod", "main.go", "main_test.go", "sitefixture_test.go"]},
+        "entailment": {"kinds": ["brief-section", "glossary-term", "intent-projection", "discipline", "spec", "principle", "source", "test", "doc", "config"], "records": ["itd-2", "itd-3", "itd-5"], "paths": ["Makefile", "README.md", "docs", "fence.go", "go.mod", "main.go", "main_test.go", "sitefixture_test.go"]},
         "comparative": {"kinds": ["discipline"], "records": ["itd-191"], "paths": []},
-        "detection": {"kinds": ["brief-section", "glossary-term", "intent-projection", "discipline", "spec", "source", "test", "doc", "config"], "records": [], "paths": ["Makefile", "README.md", "docs", "fence.go", "go.mod", "main.go", "main_test.go", "sitefixture_test.go"]}
+        "detection": {"kinds": ["brief-section", "glossary-term", "intent-projection", "discipline", "spec", "principle", "source", "test", "doc", "config"], "records": [], "paths": ["Makefile", "README.md", "docs", "fence.go", "go.mod", "main.go", "main_test.go", "sitefixture_test.go"]}
       }
     }
   }

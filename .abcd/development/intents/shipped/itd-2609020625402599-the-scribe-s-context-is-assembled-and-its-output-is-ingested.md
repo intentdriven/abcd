@@ -14,7 +14,7 @@ production_mode: dictated-and-formatted
 
 # The scribe's context is assembled and its output is ingested by a verb, and the record can show that no session held both a reading and the ledger
 
-Typed links: `builds_on` [itd-188](../shipped/itd-188-machine-assistance-in-maintaining-the-ledger-without-any-con.md) (the scribe definition), [itd-183](../shipped/itd-183-the-cold-reading-sees-exactly-what-the-assembler-passes-posi.md) (the assembler and manifest idiom), [itd-180](../shipped/itd-180-a-cold-reading-s-findings-land-as-reading-records-and-the-re.md) (the disposition validator), [itd-185](../shipped/itd-185-one-ingest-verb-validates-every-cold-reading-output-includin.md) (the ingest idiom); `refines` [itd-188](../shipped/itd-188-machine-assistance-in-maintaining-the-ledger-without-any-con.md) (the protocol becomes a verb).
+Typed links: `builds_on` [itd-188](itd-188-machine-assistance-in-maintaining-the-ledger-without-any-con.md) (the scribe definition), [itd-183](itd-183-the-cold-reading-sees-exactly-what-the-assembler-passes-posi.md) (the assembler and manifest idiom), [itd-180](itd-180-a-cold-reading-s-findings-land-as-reading-records-and-the-re.md) (the disposition validator), [itd-185](itd-185-one-ingest-verb-validates-every-cold-reading-output-includin.md) (the ingest idiom); `refines` [itd-188](itd-188-machine-assistance-in-maintaining-the-ledger-without-any-con.md) (the protocol becomes a verb).
 
 ## Press Release
 
@@ -24,7 +24,7 @@ Typed links: `builds_on` [itd-188](../shipped/itd-188-machine-assistance-in-main
 
 ## Why This Matters
 
-[itd-188](../shipped/itd-188-machine-assistance-in-maintaining-the-ledger-without-any-con.md) specifies the scribe as a definition with an inverse access rule, hand-run until an ingest verb lands, with two acceptance criteria: the scribe's assembled context contains ledger content and no shipped-tree material, and each reading run and each scribe run is a distinct retained session with no session holding both. Iteration 1 shipped the definition with the access rule stated in its allow list, and its own text says "There is no ingest verb". The fidelity verdict found both criteria met by declaration rather than by mechanism: no assembler runs for the scribe, and session retention cannot show that no session held both.
+[itd-188](itd-188-machine-assistance-in-maintaining-the-ledger-without-any-con.md) specifies the scribe as a definition with an inverse access rule, hand-run until an ingest verb lands, with two acceptance criteria: the scribe's assembled context contains ledger content and no shipped-tree material, and each reading run and each scribe run is a distinct retained session with no session holding both. Iteration 1 shipped the definition with the access rule stated in its allow list, and its own text says "There is no ingest verb". The fidelity verdict found both criteria met by declaration rather than by mechanism: no assembler runs for the scribe, and session retention cannot show that no session held both.
 
 The scribe exists so that machine assistance in maintaining the ledger remains available without any context holding both ledger content and a reading. That property is the mirror of the read block, and the read block is held by an assembler, a manifest and an eval. The scribe deserves the same three things, or its half of the wall is an assertion.
 
@@ -72,7 +72,7 @@ We expect an assembler with an allow list to hold the inverse access rule for th
 
 ## Prior Art
 
-- [itd-188](../shipped/itd-188-machine-assistance-in-maintaining-the-ledger-without-any-con.md) and its spec (the definition), [itd-183](../shipped/itd-183-the-cold-reading-sees-exactly-what-the-assembler-passes-posi.md) (the assembler and manifest idiom), [itd-180](../shipped/itd-180-a-cold-reading-s-findings-land-as-reading-records-and-the-re.md) (the disposition validator), the `abcd history` store.
+- [itd-188](itd-188-machine-assistance-in-maintaining-the-ledger-without-any-con.md) and its spec (the definition), [itd-183](itd-183-the-cold-reading-sees-exactly-what-the-assembler-passes-posi.md) (the assembler and manifest idiom), [itd-180](itd-180-a-cold-reading-s-findings-land-as-reading-records-and-the-re.md) (the disposition validator), the `abcd history` store.
 - The cold-reading rulings of 2026-08-28 in the decision log.
 
 ## Open Questions
@@ -81,7 +81,8 @@ None. The flagged decisions are adopted as adr-2609021016275803.
 
 ## Audit Notes
 
-_Empty. Populated by intent-auditor when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-6654dbf923b3 -->
+Fidelity review OWED (receipt rcp-6654dbf923b3).
 
 ## Grounds
 
