@@ -40,12 +40,17 @@ func MatchCandidates(repoRoot string, cfg match.Config) ([]match.Candidate, erro
 // intent's title and press release, as far as cfg compares them. A wontfix
 // record is not a candidate: it names work nobody is doing. A ledger record
 // the reader skips is not one either, since its text cannot be trusted; the
-// ledger's own surfaces already report it.
+// ledger's own surfaces already report it. A status directory that exists and
+// cannot be listed is different: the candidate set is then unknown rather than
+// smaller, so it is an error, which the caller reports as an unread match.
 func matchCandidates(repoRoot, issuesRoot string, cfg match.Config) ([]match.Candidate, error) {
 	var out []match.Candidate
 	if cfg.Compares(match.FieldIssueBody) {
 		for _, st := range []State{StateOpen, StateResolved} {
-			issues, _ := scanLedger(issuesRoot, st)
+			issues, _, err := scanStatusDir(issuesRoot, st)
+			if err != nil {
+				return nil, fmt.Errorf("the %s/ status directory: %w", statusDirName[st], err)
+			}
 			for _, iss := range issues {
 				out = append(out, match.Candidate{ID: iss.ID, Text: iss.Body})
 			}

@@ -46,7 +46,9 @@ refuses is counted in none of the three totals, so the board counts it beside
 them and names, for each one, the reader layer that refused it: the filename,
 the guarded read, the frontmatter parse, the schema or the folder and filename
 invariants. The layer is what tells a reader whether the record or the reader is
-the side to fix (iss-2609120452071388). The board also counts the records git
+the side to fix (iss-2609120452071388). A status directory that exists and
+cannot be listed is named the same way, as a read-layer entry whose path is the
+directory, rather than counted as empty (iss-2609261631120364). The board also counts the records git
 reports as untracked or changed and marks each such row: folder membership is a
 status only once the file is committed, so an uncommitted record is in no state to
 any other branch, worktree or gate (iss-2609100508570527).
