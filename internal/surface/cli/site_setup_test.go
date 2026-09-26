@@ -1,12 +1,15 @@
 package cli
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/core/launch/scaffold"
+	"github.com/intentdriven/abcd/internal/core/site"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
@@ -80,5 +83,49 @@ func TestSiteSetupRefusesAnUnmanagedFolder(t *testing.T) {
 	}
 	if _, serr := os.Stat(filepath.Join(r.Root(), ".abcd", "site.json")); !os.IsNotExist(serr) {
 		t.Fatal("a refused run wrote the composition")
+	}
+}
+
+// TestSiteSetupTextAlignsEveryStatus renders a result whose statuses differ in
+// length, `unrestricted` among them: every file and environment name starts in
+// one column, and an environment's change lines sit under its name.
+func TestSiteSetupTextAlignsEveryStatus(t *testing.T) {
+	res := site.SetupResult{
+		Status: site.StatusNoChange,
+		Repo:   "example/site",
+		Files: []scaffold.FileOutcome{
+			{Path: ".abcd/site.json", Status: scaffold.StatusCurrent},
+			{Path: ".github/workflows/site.yml", Status: scaffold.StatusKept},
+		},
+		Environments: []site.EnvironmentOutcome{
+			{Name: "site-render", Status: site.RemoteCurrent},
+			{Name: "site", Status: site.RemoteUnrestricted, Changes: []string{"admits every branch"}},
+			{Name: "site-extra", Status: site.RemoteNotReached},
+		},
+		Host: site.HostOutcome{Provider: "cloudflare", Name: "example-site", Status: site.HostNoCredential},
+	}
+	var buf bytes.Buffer
+	renderSiteSetup(&buf, res)
+	names := []string{".abcd/site.json", ".github/workflows/site.yml",
+		"site-render", "site", "site-extra", "admits every branch"}
+	col, seen := -1, 0
+	for _, line := range strings.Split(buf.String(), "\n") {
+		for _, name := range names {
+			if !strings.HasSuffix(line, " "+name) {
+				continue
+			}
+			seen++
+			at := len(line) - len(name)
+			if col == -1 {
+				col = at
+			}
+			if at != col {
+				t.Fatalf("%q starts at column %d, not %d:\n%s", name, at, col, buf.String())
+			}
+			break
+		}
+	}
+	if seen != len(names) {
+		t.Fatalf("%d of %d names rendered:\n%s", seen, len(names), buf.String())
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -293,9 +294,20 @@ func newSiteSetupCommand(asJSON *bool) *cobra.Command {
 // renderSiteSetup prints the three stages and what remains.
 func renderSiteSetup(w io.Writer, res site.SetupResult) {
 	fmt.Fprintf(w, "abcd site setup — %s\n", termsafe.Sanitize(res.Status))
+	// One status column for files and environments, as wide as the longest
+	// status in this result (`unrestricted` is twelve characters), so every
+	// name starts in one column and a change line sits under its name.
+	width := 8
+	for _, f := range res.Files {
+		width = max(width, len(f.Status))
+	}
+	for _, e := range res.Environments {
+		width = max(width, len(e.Status))
+	}
+	under := strings.Repeat(" ", 4+width+1)
 	fmt.Fprintf(w, "  repository\n")
 	for _, f := range res.Files {
-		line := fmt.Sprintf("    %-8s %s", f.Status, f.Path)
+		line := fmt.Sprintf("    %-*s %s", width, f.Status, f.Path)
 		if f.Detail != "" && f.Status != "kept" {
 			line += " (" + f.Detail + ")"
 		}
@@ -307,9 +319,9 @@ func renderSiteSetup(w io.Writer, res site.SetupResult) {
 	}
 	fmt.Fprintf(w, "  forge (%s)\n", termsafe.Sanitize(repo))
 	for _, e := range res.Environments {
-		fmt.Fprintf(w, "    %-8s %s\n", termsafe.Sanitize(e.Status), termsafe.Sanitize(e.Name))
+		fmt.Fprintf(w, "    %-*s %s\n", width, termsafe.Sanitize(e.Status), termsafe.Sanitize(e.Name))
 		for _, c := range e.Changes {
-			fmt.Fprintf(w, "             %s\n", termsafe.Sanitize(c))
+			fmt.Fprintf(w, "%s%s\n", under, termsafe.Sanitize(c))
 		}
 	}
 	h := res.Host
