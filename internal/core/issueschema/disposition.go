@@ -21,6 +21,8 @@ package issueschema
 import (
 	"sort"
 	"strings"
+
+	"github.com/intentdriven/abcd/internal/core/frontmatter"
 )
 
 // DispositionRecord is one disposition as the standing computation sees it: the
@@ -108,7 +110,18 @@ func ParseDisposition(id, content string) DispositionRecord {
 			return DispositionRecord{ID: id}
 		}
 		seen[key] = true
-		values[key] = strings.Trim(strings.TrimSpace(value), `"'`)
+		// The value is read as the strict ledger parser reads it: a trailing
+		// comment is not part of it, and a BARE null is no value at all — asked of
+		// the raw scalar, before the quotes go, because quoting is what makes
+		// "null" a string (frontmatter.IsNull). Taking the raw remainder read
+		// `state: held # waiting` as the state `held # waiting` and a commented
+		// supersession as no edge, so the board and the verb gave two answers
+		// about one file (iss-2608241347321759).
+		raw := strings.TrimSpace(frontmatter.StripComment(value))
+		if frontmatter.IsNull(raw) {
+			raw = ""
+		}
+		values[key] = strings.Trim(raw, `"'`)
 	}
 
 	// A record citing ITSELF is not well-formed. Honouring the citation would
