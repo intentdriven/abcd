@@ -678,7 +678,13 @@ sibling worktree or a local branch, see `/abcd:peers`) the refusal names the
 peer's branch, path and bucket instead of answering not found.
 
 Ingest is fail-closed: report the returned status (`ingested`, `dead_letter`,
-or `noop`) and, for `dead_letter`, the reason. A second ingest for a receipt
+or `noop`) and, for `dead_letter`, the reason. The `--json` result's `recorded`
+says what the ingest wrote into the record: `verdict`, `quarantine` or
+`nothing`. The acceptance rollup and the disposition split (`criteria`, `met`,
+`met_with_concerns`, `not_met`, `inconclusive`, `conditions`, `survived`,
+`narrowed`, `falsified`, `untested`) appear only beside a recorded verdict; a
+quarantine carries `conditions_untested` (every scope condition it recorded
+untested), `dead_letter_path` and `reason` instead. A second ingest for a receipt
 already ingested is a `noop` when its payload renders to the block on the record,
 replaces that block in place when it renders differently (`ingested`, reported
 as `replaced`), and is refused with nothing written when it does not validate:
@@ -721,8 +727,12 @@ anything is written. With no table accepted and no `--route`, the step asks for
 `host-decides` and nothing is printed.
 
 **Hand the auditor the whole request file.** `intent audit` writes it to the
-reported `request_path`, and its `## Provenance` block states the
-`rubric_hash` and `prompt_hash` the host computed. The auditor echoes both
+reported `request_path`. The result's `status` names the receipt's state and
+`request_written` the act: a re-emit of an owed receipt rewrites its request
+(`already_owed`, `request_written: true`, text `request rewritten:`), and a
+re-emit of an ingested or dead-lettered receipt writes none and names no
+`request_path`. Its `## Provenance` block states the `rubric_hash` and
+`prompt_hash` the host computed. The auditor echoes both
 verbatim into `policy`; it never computes either itself. The ingest recomputes
 them and refuses a verdict carrying any other value, leaving the receipt parked
 so the request can be re-emitted and the audit re-run — so a made-up hash costs

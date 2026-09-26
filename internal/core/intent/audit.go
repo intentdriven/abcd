@@ -198,11 +198,18 @@ type verdictGapAudit struct {
 // ---------------------------------------------------------------------------
 
 // AuditEmitResult reports one emit (OWED stub + request file).
+//
+// Status names the receipt's state and RequestWritten names the act, because
+// the two differ: an emit on a receipt already OWED rewrites its request, and
+// reported only already_owed, which a caller read as "nothing happened"
+// (iss-2609190337598356). RequestPath is the request this emit wrote, so a
+// terminal receipt — whose emit writes nothing — names none.
 type AuditEmitResult struct {
-	ReceiptID   string `json:"receipt_id"`
-	IntentID    string `json:"intent_id"`
-	Status      string `json:"status"` // owed | already_owed | already_ingested | already_dead_letter
-	RequestPath string `json:"request_path"`
+	ReceiptID      string `json:"receipt_id"`
+	IntentID       string `json:"intent_id"`
+	Status         string `json:"status"` // owed | already_owed | already_ingested | already_dead_letter
+	RequestPath    string `json:"request_path,omitempty"`
+	RequestWritten bool   `json:"request_written"`
 }
 
 // IngestVerdictResult reports one verdict ingest.
@@ -233,6 +240,62 @@ type IngestVerdictResult struct {
 	// occasion in the rationale and ingests again for the same receipt: a
 	// payload that renders differently replaces the ingested block (Replaced).
 	ReadingOccasionedStanding []condition.Disposition `json:"reading_occasioned_standing,omitempty"`
+}
+
+// MarshalJSON writes the result the way its outcome reads (iss-2609190337545165).
+// One struct serves every status, so its counters are zero-valued members on a
+// quarantine and a noop, and a reader took a dead letter's "criteria: 0" beside
+// the conditions it recorded untested for a rollup. The JSON therefore states
+// what the ingest recorded — `verdict` (ingested), `quarantine` (dead_letter) or
+// `nothing` (noop) — and carries the rollup only beside a recorded verdict,
+// where a zero is a count. A quarantine states the one split it did record,
+// every scope condition untested, under a name of its own.
+func (r IngestVerdictResult) MarshalJSON() ([]byte, error) {
+	type rollup struct {
+		Criteria       int `json:"criteria"`
+		Met            int `json:"met"`
+		MetWithConcern int `json:"met_with_concerns"`
+		NotMet         int `json:"not_met"`
+		Inconclusive   int `json:"inconclusive"`
+		Conditions     int `json:"conditions"`
+		Survived       int `json:"survived"`
+		Narrowed       int `json:"narrowed"`
+		Falsified      int `json:"falsified"`
+		Untested       int `json:"untested"`
+	}
+	out := struct {
+		Status    string `json:"status"`
+		ReceiptID string `json:"receipt_id"`
+		IntentID  string `json:"intent_id"`
+		Recorded  string `json:"recorded"`
+		// A nil embedded pointer contributes no members at all.
+		*rollup
+		ConditionsUntested        *int                    `json:"conditions_untested,omitempty"`
+		DeadLetterPath            string                  `json:"dead_letter_path,omitempty"`
+		Reason                    string                  `json:"reason,omitempty"`
+		Replaced                  bool                    `json:"replaced,omitempty"`
+		ReadingOccasionedStanding []condition.Disposition `json:"reading_occasioned_standing,omitempty"`
+	}{
+		Status: r.Status, ReceiptID: r.ReceiptID, IntentID: r.IntentID,
+		DeadLetterPath: r.DeadLetterPath, Reason: r.Reason, Replaced: r.Replaced,
+		ReadingOccasionedStanding: r.ReadingOccasionedStanding,
+	}
+	switch r.Status {
+	case "ingested":
+		out.Recorded = "verdict"
+		out.rollup = &rollup{
+			Criteria: r.Criteria, Met: r.Met, MetWithConcern: r.MetWithConcern, NotMet: r.NotMet,
+			Inconclusive: r.Inconclusive, Conditions: r.Conditions, Survived: r.Survived,
+			Narrowed: r.Narrowed, Falsified: r.Falsified, Untested: r.Untested,
+		}
+	case "dead_letter":
+		out.Recorded = "quarantine"
+		n := r.Untested
+		out.ConditionsUntested = &n
+	default:
+		out.Recorded = "nothing"
+	}
+	return json.Marshal(out)
 }
 
 // ---------------------------------------------------------------------------
@@ -308,7 +371,6 @@ func emitLocked(repoRoot string, it Intent, opts AuditEmitOptions) (AuditEmitRes
 	// second stub. The parked marker is the authority the ingest resolves against.
 	if rcp, state, ok := existingMarker(content); ok {
 		res := AuditEmitResult{ReceiptID: rcp, IntentID: it.ID}
-		res.RequestPath = filepath.Join(reviewsRelDir, rcp+".request.md")
 		switch state {
 		case "INGESTED":
 			res.Status = "already_ingested"
@@ -322,6 +384,8 @@ func emitLocked(repoRoot string, it Intent, opts AuditEmitOptions) (AuditEmitRes
 			if err := writeAuditRequest(repoRoot, it, rcp, content, opts); err != nil {
 				return res, err
 			}
+			res.RequestPath = filepath.Join(reviewsRelDir, rcp+".request.md")
+			res.RequestWritten = true
 		}
 		return res, nil
 	}
@@ -344,6 +408,7 @@ func emitLocked(repoRoot string, it Intent, opts AuditEmitOptions) (AuditEmitRes
 	}
 	res.Status = "owed"
 	res.RequestPath = filepath.Join(reviewsRelDir, rcp+".request.md")
+	res.RequestWritten = true
 	return res, nil
 }
 
