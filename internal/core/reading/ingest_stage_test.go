@@ -624,6 +624,38 @@ func TestTheBareRenderTellsALeftoverStageFromAnOrphan(t *testing.T) {
 	}
 }
 
+// TestTheBareRenderProbesEveryRunThroughTheOneRoot (iss-2609261905354450). The
+// staged-runs probe reads through an os.Root over the repository, and the
+// stage's commit-marker probe read through an unbounded Lstat, so the two
+// disagreed on a symlink: with the readings directory symlinked out of the
+// checkout, a parked run refused the render while a stage alone was classified
+// by a marker read outside the repository. Both probes go through the root, so
+// a stage alone refuses as a parked run does.
+func TestTheBareRenderProbesEveryRunThroughTheOneRoot(t *testing.T) {
+	f := newIngestFixture(t, "detection")
+	f.mustIngest(f.payload(1))
+	f.write(IngestStageDir+"/"+f.runID+"/"+stageFileName,
+		[]byte(`{"_type":"`+StageType+`","run_id":"`+f.runID+`","records":[]}`))
+	// No parked run, so only the stage's probe reaches the readings directory.
+	if err := os.RemoveAll(filepath.Join(f.root, filepath.FromSlash(DefaultRunDir))); err != nil {
+		t.Fatal(err)
+	}
+	readings := filepath.Join(f.root, filepath.FromSlash(ReadingsRecordDir))
+	outside := filepath.Join(t.TempDir(), "readings")
+	if err := os.Rename(readings, outside); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, readings); err != nil {
+		t.Fatal(err)
+	}
+
+	status, err := Describe(f.root)
+	if err == nil {
+		t.Fatalf("a commit marker outside the repository classified the stage: leftover %v, orphaned %v",
+			status.LeftoverStages, status.OrphanedIngests)
+	}
+}
+
 // TestTheBareRenderListsOnlyTheParkedRunsAwaitingAnOutcome
 // (iss-2608311621412224). Nothing removes an assembly's parking directory after
 // its run is ingested, so `staged_runs` listed every run ever assembled: a

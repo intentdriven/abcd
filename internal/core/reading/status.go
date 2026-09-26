@@ -93,7 +93,25 @@ func Describe(repoRoot string) (Status, error) {
 	if err != nil && !os.IsNotExist(err) {
 		return Status{}, fmt.Errorf("reading: listing the staged runs: %w", err)
 	}
-	if s.StagedRuns, err = awaitingOutcome(repoRoot, runs); err != nil {
+	stages, err := os.ReadDir(filepath.Join(repoRoot, filepath.FromSlash(IngestStageDir)))
+	if err != nil && !os.IsNotExist(err) {
+		return Status{}, fmt.Errorf("reading: listing the ingest stage: %w", err)
+	}
+	if len(runs) == 0 && len(stages) == 0 {
+		return s, nil
+	}
+
+	// Every probe of the durable tier goes through ONE root over the
+	// repository, so a parked run and a stage agree on a symlink: a record
+	// directory that escapes the checkout refuses the render for both, rather
+	// than refusing it for one and classifying the other by a marker read
+	// outside the repository (iss-2609261905354450).
+	root, err := os.OpenRoot(repoRoot)
+	if err != nil {
+		return Status{}, fmt.Errorf("reading: opening the repository to probe the staged runs: %w", err)
+	}
+	defer root.Close()
+	if s.StagedRuns, err = awaitingOutcome(root, runs); err != nil {
 		return Status{}, err
 	}
 
@@ -104,16 +122,11 @@ func Describe(repoRoot string) (Status, error) {
 	// committed and only the stage failed to clear, so the records stay and
 	// only the stage goes. Calling both an orphan would tell an operator that a
 	// committed run's records are about to be deleted.
-	stages, err := os.ReadDir(filepath.Join(repoRoot, filepath.FromSlash(IngestStageDir)))
-	if err != nil && !os.IsNotExist(err) {
-		return Status{}, fmt.Errorf("reading: listing the ingest stage: %w", err)
-	}
 	for _, e := range stages {
 		if !e.IsDir() || !recordid.ValidReadingRunID(e.Name()) {
 			continue
 		}
-		marker := filepath.Join(repoRoot, filepath.FromSlash(ReadingsRecordDir), e.Name(), RunFileName)
-		switch _, err := os.Lstat(marker); {
+		switch _, err := root.Lstat(ReadingsRecordDir + "/" + e.Name() + "/" + RunFileName); {
 		case err == nil:
 			s.LeftoverStages = append(s.LeftoverStages, e.Name())
 		case os.IsNotExist(err):
@@ -134,16 +147,8 @@ func Describe(repoRoot string) (Status, error) {
 // tells an outstanding run from an ingested one is the record: an ingested run
 // has a commit marker or a refusal record under its id in the durable tier, the
 // same probe refuseARerun makes before an ingest writes.
-func awaitingOutcome(repoRoot string, parked []os.DirEntry) ([]string, error) {
+func awaitingOutcome(root *os.Root, parked []os.DirEntry) ([]string, error) {
 	out := []string{}
-	if len(parked) == 0 {
-		return out, nil
-	}
-	root, err := os.OpenRoot(repoRoot)
-	if err != nil {
-		return nil, fmt.Errorf("reading: opening the repository to probe the staged runs: %w", err)
-	}
-	defer root.Close()
 	for _, e := range parked {
 		if !e.IsDir() || !strings.HasPrefix(e.Name(), RunIDFamily+"-") {
 			continue
