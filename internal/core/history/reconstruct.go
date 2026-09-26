@@ -322,7 +322,7 @@ func Reconstruct(repoRoot, rootSHA string, opts ReconstructOptions) (Reconstruct
 		return Reconstruction{}, fmt.Errorf("history: no records for session %q under %s", opts.SessionID, rootSHA)
 	}
 
-	threads, dropped := loadThreads(records)
+	threads, dropped := loadThreads(records, opts.Mode)
 
 	s := &session{
 		rootSHA: rootSHA,
@@ -349,14 +349,31 @@ func Reconstruct(repoRoot, rootSHA string, opts ReconstructOptions) (Reconstruct
 // Loading and choosing records
 // ---------------------------------------------------------------------------
 
-// loadThreads reads every record's body and picks ONE per (session, agent).
+// loadThreads reads every record's body, parses it, and picks ONE thread per
+// (session, agent).
 //
 // The pick is longest body, then newest capture, then filename. Longest first
 // because that is the store's own notion of more complete — supersession
 // replaces a stored record when the new bytes strictly extend it — so
 // preferring the newest alone would let a truncated re-capture displace a whole
 // transcript. Everything not picked is reported, never dropped silently.
-func loadThreads(records []Record) ([]*thread, []DroppedRecord) {
+//
+// The mode reaches the loader (iss-2609091155497399). Each body is parsed as it
+// is read and then let go, so at most one record body is resident at a time,
+// never the whole session's. In spine mode a delegate that hosts no other
+// agent of this session keeps decoded content for its head and tail turns
+// only — the ones the renderer shows — so a session of verbose delegates is
+// not held in memory in full just to be elided. Its telemetry is still counted
+// over every line. The main thread is never reduced, and neither is a delegate
+// named as another record's parent, because placement reads a host's every
+// turn to find where it spawned and joined its own agents.
+func loadThreads(records []Record, mode ReconstructMode) ([]*thread, []DroppedRecord) {
+	hosts := map[string]bool{}
+	for _, r := range records {
+		if r.ParentAgentID != "" {
+			hosts[r.ParentAgentID] = true
+		}
+	}
 	byAgent := map[string][]*thread{}
 	for _, r := range records {
 		data, err := fsutil.ReadGuarded(r.Path, maxTranscriptBytes)
@@ -379,11 +396,13 @@ func loadThreads(records []Record) ([]*thread, []DroppedRecord) {
 			continue
 		}
 		rec.Path = r.Path
-		byAgent[r.AgentID] = append(byAgent[r.AgentID], &thread{
+		th := &thread{
 			record:     rec,
 			recordName: filepath.Base(r.Path),
-			body:       body,
-		})
+			bodyLen:    len(body),
+		}
+		th.parse(body, mode == ModeSpine && rec.AgentID != "" && !hosts[rec.AgentID])
+		byAgent[r.AgentID] = append(byAgent[r.AgentID], th)
 	}
 
 	var out []*thread
@@ -394,8 +413,8 @@ func loadThreads(records []Record) ([]*thread, []DroppedRecord) {
 			if a.unreadable != b.unreadable {
 				return a.unreadable == "" // readable first
 			}
-			if len(a.body) != len(b.body) {
-				return len(a.body) > len(b.body)
+			if a.bodyLen != b.bodyLen {
+				return a.bodyLen > b.bodyLen
 			}
 			if !a.record.CapturedAt.Equal(b.record.CapturedAt) {
 				return a.record.CapturedAt.After(b.record.CapturedAt)
@@ -409,7 +428,7 @@ func loadThreads(records []Record) ([]*thread, []DroppedRecord) {
 				reason = "unreadable: " + c.unreadable
 			}
 			dropped = append(dropped, DroppedRecord{
-				Record: c.recordName, AgentID: agentID, Bytes: len(c.body), Reason: reason,
+				Record: c.recordName, AgentID: agentID, Bytes: c.bodyLen, Reason: reason,
 			})
 		}
 		if candidates[0].unreadable != "" {
@@ -427,7 +446,7 @@ func loadThreads(records []Record) ([]*thread, []DroppedRecord) {
 type thread struct {
 	record     Record
 	recordName string
-	body       string
+	bodyLen    int // bytes of the record body; the body itself is not kept
 	unreadable string
 
 	turns []turn
@@ -518,13 +537,20 @@ type turn struct {
 }
 
 // parse fills the thread from its stored body.
-func (t *thread) parse() {
+//
+// spine reduces the thread as it is parsed: once a turn falls outside the
+// window the spine renderer shows (the first spineHeadTurns and the last
+// spineTailTurns), its decoded blocks and source lines are released, leaving
+// the turn's index and role for the omission count. Every line is still
+// decoded for the telemetry — tokens, tool calls, models, span — which is
+// counted over the whole transcript in both modes.
+func (t *thread) parse(body string, spine bool) {
 	t.toolCalls = map[string]int{}
 	seenUsage := map[string]bool{}
 	seenToolUse := map[string]bool{}
 	seenModel := map[string]bool{}
 
-	for _, line := range strings.Split(t.body, "\n") {
+	for _, line := range strings.Split(body, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
@@ -558,6 +584,14 @@ func (t *thread) parse() {
 			cur.blocks = append(cur.blocks, blocks...)
 			cur.raw = append(cur.raw, line)
 		} else {
+			if spine {
+				// The turn about to leave the tail window, unless it is a head
+				// turn. Only the last turn is ever extended by a continuation
+				// line, and it is never the one released.
+				if k := len(t.turns) - spineTailTurns; k >= spineHeadTurns {
+					t.turns[k].blocks, t.turns[k].raw = nil, nil
+				}
+			}
 			t.turns = append(t.turns, turn{
 				index:     len(t.turns) + 1,
 				role:      rl.Type,
@@ -714,14 +748,14 @@ type session struct {
 	telemetry Telemetry
 }
 
-// order parses every thread and sorts the sub-agents into a stable reading
+// order separates the main thread from the sub-agents (the loader has already
+// parsed every thread) and sorts the sub-agents into a stable reading
 // order: by depth, then by start time, then by agent id. Start time rather than
 // spawn point, because the spawn point is not always recoverable and a section
 // order that changes with attribution quality would make two runs over the same
 // store disagree.
 func (s *session) order() {
 	for _, t := range s.threads {
-		t.parse()
 		if t.isMain() {
 			s.main = t
 			continue

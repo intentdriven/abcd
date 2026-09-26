@@ -53,3 +53,47 @@ func TestRenderCitedMatchesSanitizesCitationFields(t *testing.T) {
 		t.Fatalf("gh-250: sanitising must not drop the legitimate citation content:\n%s", out)
 	}
 }
+
+// TestRenderCitedMatchesMarksATruncatedCitation: the citation JSON is capped at
+// the page-value cap like every other field, and a cap cuts it mid-JSON. The
+// cut must be visible — an explicit marker at the end, the whole field still
+// inside the cap — so a reader never takes a cut citation for the whole one.
+// A citation under the cap carries no marker.
+func TestRenderCitedMatchesMarksATruncatedCitation(t *testing.T) {
+	render := func(title string) string {
+		t.Helper()
+		out := RenderCitedMatches("what tokens", []MatchedPage{{
+			Filename: "topic_auth_tokens.md",
+			Score:    1,
+			Summary:  "summary",
+			Citations: []AskCitation{{
+				SourceClass: "knowledge",
+				SourceHash:  strings.Repeat("a", 64),
+				Citation:    map[string]any{"title": title, "type": "knowledge"},
+			}},
+		}})
+		for _, line := range strings.Split(out, "\n") {
+			if _, cj, ok := strings.Cut(line, "| citation="); ok {
+				return cj
+			}
+		}
+		t.Fatalf("no citation line in:\n%s", out)
+		return ""
+	}
+
+	long := render(strings.Repeat("x", maxPageValueBytes+500))
+	if !strings.HasSuffix(long, citationTruncatedMarker) {
+		t.Fatalf("an over-cap citation renders cut with no marker; it ends %q", long[len(long)-40:])
+	}
+	if len(long) > maxPageValueBytes {
+		t.Fatalf("the marked citation is %d bytes, over the %d-byte cap", len(long), maxPageValueBytes)
+	}
+
+	short := render("Token rotation")
+	if strings.Contains(short, citationTruncatedMarker) {
+		t.Fatalf("a citation under the cap carries the truncation marker: %q", short)
+	}
+	if !strings.HasSuffix(short, "}") {
+		t.Fatalf("a citation under the cap must render whole: %q", short)
+	}
+}

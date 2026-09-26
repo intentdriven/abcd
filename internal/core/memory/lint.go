@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
@@ -76,37 +75,8 @@ func severityFor(code string) string {
 // Typed-page gate
 // ---------------------------------------------------------------------------
 
-func isTypedMemoryPagePath(mem, path string) bool {
-	base := filepath.Base(path)
-	if siblingFiles[base] {
-		return false
-	}
-	if _, _, _, ok := ParsePageFilename(base); !ok {
-		return false
-	}
-	rel, err := filepath.Rel(mem, path)
-	if err != nil {
-		return false
-	}
-	segs := strings.Split(filepath.ToSlash(rel), "/")
-	for i := 0; i < len(segs)-1; i++ {
-		if segs[i] == "sources" {
-			return false
-		}
-	}
-	// Guarded read: the store is a trust boundary, so a committed symlink
-	// page is refused here (O_NOFOLLOW) rather than followed unbounded.
-	raw, err := fsutil.ReadGuarded(path, maxMemoryPageBytes)
-	if err != nil {
-		return false
-	}
-	fm, err := parseFrontmatter(string(raw))
-	if err != nil {
-		return false
-	}
-	_, ok := fm["source"]
-	return ok
-}
+// The typed-page gate is isTypedMemoryPage (store.go), applied to a page the
+// store handle has already read.
 
 // ---------------------------------------------------------------------------
 // Page-local linter
@@ -114,7 +84,7 @@ func isTypedMemoryPagePath(mem, path string) bool {
 
 type memoryLinter struct {
 	pagePath    string
-	repoRoot    string
+	store       *storeHandle // the one way the checks read the store
 	content     string
 	frontmatter map[string]any
 	sourceLine  int
@@ -125,14 +95,14 @@ type memoryLinter struct {
 	redactor *storeRedactor
 }
 
-func newMemoryLinter(pagePath, repoRoot, content string, redactor *storeRedactor) *memoryLinter {
+func newMemoryLinter(pagePath string, store *storeHandle, content string, redactor *storeRedactor) *memoryLinter {
 	fm, err := parseFrontmatter(content)
 	if err != nil {
 		fm = map[string]any{}
 	}
 	return &memoryLinter{
 		pagePath:    pagePath,
-		repoRoot:    repoRoot,
+		store:       store,
 		content:     content,
 		frontmatter: fm,
 		sourceLine:  frontmatterKeyLine(content, "source"),
@@ -338,21 +308,26 @@ func quotedLine(text, s string) int {
 // from the pages by reconcile, so a page finding covers them. A binary
 // kept-original (a PDF) cannot be scanned span-wise and is skipped, as the
 // write side declines to rewrite it; its distilled pages are scanned instead.
-func residueOfStoreFiles(r *storeRedactor, repoRoot, mem string) []Finding {
+func residueOfStoreFiles(r *storeRedactor, store *storeHandle) []Finding {
 	var out []Finding
-	index := SourcesIndexPath(repoRoot)
-	if raw, err := fsutil.ReadGuarded(index, maxRegistryBytes); err == nil {
+	const indexName = ".sources_index.json"
+	index := store.path(indexName)
+	if raw, err := store.read(indexName, maxRegistryBytes); err == nil {
 		links := storedBackLinks(raw)
 		out = append(out, residueFindings(r, maskBackLinks(string(raw), links), index)...)
 		for _, bl := range links {
 			out = append(out, pageNameResidue(r, bl.name, index, bl.line)...)
 		}
 	}
-	sources := filepath.Join(mem, "sources")
-	if fi, err := os.Lstat(sources); err != nil || fi.Mode()&os.ModeSymlink != 0 || !fi.IsDir() {
+	if store.root == nil {
 		return out
 	}
-	entries, err := os.ReadDir(sources)
+	// ReadDir through the handle: a symlinked sources/ fails to open as a
+	// directory inside the root rather than being listed through.
+	if fi, err := store.root.Lstat("sources"); err != nil || fi.Mode()&os.ModeSymlink != 0 || !fi.IsDir() {
+		return out
+	}
+	entries, err := fs.ReadDir(store.root.FS(), "sources")
 	if err != nil {
 		return out
 	}
@@ -360,12 +335,12 @@ func residueOfStoreFiles(r *storeRedactor, repoRoot, mem string) []Finding {
 		if !e.Type().IsRegular() {
 			continue
 		}
-		path := filepath.Join(sources, e.Name())
-		raw, err := fsutil.ReadGuarded(path, maxFetchBytes)
+		rel := "sources/" + e.Name()
+		raw, err := store.read(rel, maxFetchBytes)
 		if err != nil || !isRedactableText(raw) {
 			continue
 		}
-		out = append(out, residueFindings(r, string(raw), path)...)
+		out = append(out, residueFindings(r, string(raw), store.path(rel))...)
 	}
 	return out
 }
@@ -451,7 +426,7 @@ func (l *memoryLinter) checkQuotation() {
 			l.sourceLine, "")
 		return
 	}
-	budget := loadQuotationBudget(l.repoRoot)
+	budget := loadQuotationBudget(l.store)
 	for _, span := range spans {
 		if span.tokenCount > budget.MaxContiguousQuoteWords {
 			l.emit("MQ001",
@@ -461,7 +436,7 @@ func (l *memoryLinter) checkQuotation() {
 		}
 	}
 	pageTokens := pageQuotedTokenTotal(spans)
-	registry, err := LoadRegistry(SourcesIndexPath(l.repoRoot))
+	registry, err := l.store.registry()
 	if err != nil {
 		registry = nil // corrupt index -> every lookup degrades to malformed
 	}
@@ -491,7 +466,7 @@ func (l *memoryLinter) checkQuotation() {
 // Full-corpus coverage lint (MQ002 + per-source MQ003)
 // ---------------------------------------------------------------------------
 
-func runMemoryCoverageLint(repoRoot string) ([]Finding, map[string]any, error) {
+func runMemoryCoverageLint(repoRoot string, store *storeHandle) ([]Finding, map[string]any, error) {
 	indexPath := CoverageIndexPath(repoRoot)
 	report := map[string]any{
 		"path":            indexPath,
@@ -500,47 +475,26 @@ func runMemoryCoverageLint(repoRoot string) ([]Finding, map[string]any, error) {
 		"new_fingerprint": nil,
 		"written":         false,
 	}
-	// Refuse a symlinked store DIRECTORY before the coverage index is written
-	// (GHSA-72rp): writeCoverageIndex would otherwise MkdirAll + write into the
-	// symlink target, escaping the repo.
-	mem, present, err := safeMemoryDir(repoRoot)
-	if err != nil {
-		return nil, report, err
-	}
-	if !present {
+	// The caller's store handle refused a symlinked store DIRECTORY when it was
+	// opened (GHSA-72rp), and every read below and the index write resolve
+	// inside the directory it vetted (iss-2608291814572914,
+	// iss-2609252100150846), so a store swapped after the open can neither feed
+	// the coverage nor receive the index. It is the handle the page lint read
+	// through: one Lint opens the store once.
+	if !store.present() {
 		return nil, report, nil
 	}
+	pages := store.typedPages()
 
-	var pages []crawledPage
-	err = filepath.WalkDir(mem, func(path string, d fs.DirEntry, err error) error {
-		if err != nil || !d.Type().IsRegular() || !strings.HasSuffix(path, ".md") {
-			return nil
-		}
-		if !isTypedMemoryPagePath(mem, path) {
-			return nil
-		}
-		raw, err := fsutil.ReadGuarded(path, maxMemoryPageBytes)
-		if err != nil {
-			return nil
-		}
-		rel, _ := filepath.Rel(mem, path)
-		pages = append(pages, crawledPage{rel: filepath.ToSlash(rel), text: string(raw)})
-		return nil
-	})
-	if err != nil {
-		return nil, report, err
-	}
-	sort.Slice(pages, func(i, j int) bool { return pages[i].rel < pages[j].rel })
-
-	budget := loadQuotationBudget(repoRoot)
-	registry, regErr := LoadRegistry(SourcesIndexPath(repoRoot))
+	budget := loadQuotationBudget(store)
+	registry, regErr := store.registry()
 	if regErr != nil {
 		registry = nil
 	}
 	result := buildCoverage(pages, registry, budget)
 
-	oldFP := readStoredFingerprint(indexPath)
-	if _, err := writeCoverageIndex(indexPath, result, budget); err != nil {
+	oldFP := readStoredFingerprint(store)
+	if _, err := writeCoverageIndex(store, result, budget); err != nil {
 		return nil, report, err
 	}
 	report["stale"] = oldFP != "" && oldFP != result.fingerprint
@@ -618,17 +572,18 @@ func Lint(req LintRequest) (LintResult, error) {
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
-	// Refuse a symlinked store DIRECTORY before any crawl or coverage write
-	// (GHSA-72rp): the leaf O_NOFOLLOW guards do not contain a symlinked ancestor,
-	// and runMemoryCoverageLint would otherwise write .coverage_index.json into
-	// the symlink target.
-	mem, present, err := safeMemoryDir(root)
+	// The store handle refuses a symlinked store DIRECTORY before any crawl or
+	// coverage write (GHSA-72rp), and every read below goes through it
+	// (iss-2608291814572914).
+	store, err := openStore(root)
 	if err != nil {
 		return LintResult{}, err
 	}
+	defer store.Close()
+	mem := store.dir
 
 	var findings []Finding
-	if present {
+	if store.present() {
 		// The store redactor's read side (GHSA-xj89-cc2c-wgwr). A degraded
 		// scanner is a blocker finding against the store rather than an error:
 		// lint's contract is to always crawl and write its report, and the exit
@@ -641,33 +596,15 @@ func Lint(req LintRequest) (LintResult, error) {
 				Suggestion: "Repair or remove the per-repo scanner override at .abcd/config/pii.json and re-run lint.",
 			})
 		}
-		var pagePaths []string
-		err := filepath.WalkDir(mem, func(path string, d fs.DirEntry, err error) error {
-			if err != nil || !d.Type().IsRegular() || !strings.HasSuffix(path, ".md") {
-				return nil
-			}
-			if isTypedMemoryPagePath(mem, path) {
-				pagePaths = append(pagePaths, path)
-			}
-			return nil
-		})
-		if err != nil {
-			return LintResult{}, err
-		}
-		sort.Strings(pagePaths)
-		for _, path := range pagePaths {
-			raw, err := fsutil.ReadGuarded(path, maxMemoryPageBytes)
-			if err != nil {
-				continue
-			}
-			findings = append(findings, newMemoryLinter(path, root, string(raw), redactor).run()...)
+		for _, p := range store.typedPages() {
+			findings = append(findings, newMemoryLinter(store.path(p.rel), store, p.text, redactor).run()...)
 		}
 		if redactor != nil {
-			findings = append(findings, residueOfStoreFiles(redactor, root, mem)...)
+			findings = append(findings, residueOfStoreFiles(redactor, store)...)
 		}
 	}
 
-	corpusFindings, coverageReport, err := runMemoryCoverageLint(root)
+	corpusFindings, coverageReport, err := runMemoryCoverageLint(root, store)
 	if err != nil {
 		return LintResult{}, err
 	}

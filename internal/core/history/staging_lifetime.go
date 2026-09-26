@@ -183,7 +183,8 @@ func quarantineStaged(sdir, qdir string, s Staged, read []byte, reason string) (
 	base := filepath.Base(s.Path)
 	qpath := filepath.Join(qdir, base)
 	var moved string
-	err := withStagingLock(sdir, func() error {
+	key := stagedLockKey(s.Path)
+	err := withStagingLock(sdir, key, func() error {
 		current, err := fsutil.ReadGuarded(s.Path, maxTranscriptBytes)
 		if err != nil {
 			return err
@@ -225,6 +226,7 @@ func quarantineStaged(sdir, qdir string, s Staged, read []byte, reason string) (
 			// invisible to listStaged, so it strands nothing.
 			_ = os.Rename(s.SidecarPath, sidecarPathFor(qpath))
 		}
+		retireStagingLock(sdir, key)
 		moved = qpath
 		return nil
 	})
@@ -371,15 +373,25 @@ func Discard(repoRoot, rootSHA, name string) (DiscardResult, error) {
 			}
 			return nil
 		}
-		// The staging lock covers the staging directory's mutators; taking it
-		// for a quarantined file too is harmless (it is the same per-repo lock)
-		// and keeps a discard from racing a drain that is mid-move. When the
-		// staging directory does not exist there is no lock file to take and no
-		// drain to race — a drain requires it — so the removal runs unlocked
-		// rather than creating a directory in order to delete something else.
+		// The file's own staging lock (keyed by its filename, exactly as Stage
+		// and the drain key it) covers the staging directory's mutators; taking
+		// it for a quarantined file too is harmless and keeps a discard from
+		// racing a drain that is mid-move. When the staging directory does not
+		// exist there is no drain to race — a drain requires it — so the
+		// removal runs unlocked rather than creating a directory in order to
+		// delete something else.
 		derr := remove
 		if fsutil.IsRealDir(sdir) {
-			derr = func() error { return withStagingLock(sdir, remove) }
+			key := stagedLockKey(name)
+			derr = func() error {
+				return withStagingLock(sdir, key, func() error {
+					if err := remove(); err != nil {
+						return err
+					}
+					retireStagingLock(sdir, key)
+					return nil
+				})
+			}
 		}
 		if err := derr(); err != nil {
 			return DiscardResult{}, fmt.Errorf("history: discard %s: %w", name, err)

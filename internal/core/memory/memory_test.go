@@ -934,7 +934,7 @@ func TestIngestKeepOriginalWritesSourceCanonically(t *testing.T) {
 		t.Fatalf("stored original not written: %v", err)
 	}
 	if fi.Mode().Perm() != 0o644 {
-		t.Fatalf("stored original mode = %v, want 0644 (fsutil.WriteFileAtomic chmod)", fi.Mode().Perm())
+		t.Fatalf("stored original mode = %v, want 0644 (fsutil.WriteFileAtomicInRoot chmod)", fi.Mode().Perm())
 	}
 	got, err := os.ReadFile(stored)
 	if err != nil {
@@ -942,6 +942,54 @@ func TestIngestKeepOriginalWritesSourceCanonically(t *testing.T) {
 	}
 	if string(got) != content {
 		t.Fatalf("stored original bytes = %q, want %q", got, content)
+	}
+}
+
+// TestIngestKeepOriginalRefusesASymlinkedSourcesDir pins storeOriginal's
+// root.Lstat("sources") refusal. The symlink points at a directory INSIDE the
+// store, so the handle's os.Root would resolve it and keep the write contained:
+// only the explicit refusal stops the original landing in, and being reported
+// at, a path the symlink redirects.
+func TestIngestKeepOriginalRefusesASymlinkedSourcesDir(t *testing.T) {
+	repo := t.TempDir()
+	src := writeSource(t, repo, "article.txt", "Token rotation policy: rotate tokens every 24 hours.")
+
+	elsewhere := filepath.Join(Dir(repo), "elsewhere")
+	if err := os.MkdirAll(elsewhere, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("elsewhere", filepath.Join(Dir(repo), "sources")); err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := Ingest(IngestRequest{
+		RepoRoot:     repo,
+		Source:       src,
+		KeepOriginal: true,
+		Distiller:    oneTopicDistiller("topic", "auth", "tokens", "# Token rotation\nRotate tokens every 24 hours."),
+		Now:          fixedNow,
+	})
+	if err != nil {
+		t.Fatalf("ingest must not report total failure when only keep-original was refused: %v", err)
+	}
+	if res.Status != "ingested" {
+		t.Fatalf("status = %q, want ingested", res.Status)
+	}
+	if res.KeptOriginal != "" {
+		t.Errorf("KeptOriginal = %q, want empty when sources/ is a symlink", res.KeptOriginal)
+	}
+	if !strings.Contains(res.KeepOriginalError, "sources dir is a symlink or non-directory") {
+		t.Errorf("KeepOriginalError = %q, want the symlinked sources/ refusal", res.KeepOriginalError)
+	}
+	if strings.Contains(res.KeepOriginalError, repo) {
+		t.Errorf("keep-original error leaked the absolute repo path: %s", res.KeepOriginalError)
+	}
+	entries, err := os.ReadDir(elsewhere)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		t.Errorf("the kept original was written through the symlinked sources/: %s", e.Name())
 	}
 }
 
@@ -978,6 +1026,7 @@ func TestKeepOriginalErrorMessageNoPathLeak(t *testing.T) {
 	cases := []error{
 		&os.PathError{Op: "open", Path: abs + "/deadbeef.pdf.tmp", Err: os.ErrPermission},
 		&os.LinkError{Op: "rename", Old: abs + "/deadbeef.pdf.1.memtmp", New: abs + "/deadbeef.pdf", Err: os.ErrExist},
+		&UnsafeStorePathError{Msg: "memory store segment is a symlink or non-directory: " + abs},
 	}
 	for _, in := range cases {
 		msg := keepOriginalErrorMessage(in)

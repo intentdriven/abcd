@@ -105,6 +105,13 @@ const maxRegistryBytes = 8 << 20 // 8 MiB
 // source metadata must fail loudly, never be silently replaced.
 func LoadRegistry(path string) (map[string]any, error) {
 	raw, err := fsutil.ReadGuarded(path, maxRegistryBytes)
+	return decodeRegistry(raw, err, path)
+}
+
+// decodeRegistry is LoadRegistry's meaning applied to a read that already
+// happened, by path or through a store handle: absent is an empty registry,
+// anything unreadable or malformed a *RegistryFormatError naming path.
+func decodeRegistry(raw []byte, err error, path string) (map[string]any, error) {
 	if err != nil {
 		if os.IsNotExist(err) {
 			return map[string]any{}, nil
