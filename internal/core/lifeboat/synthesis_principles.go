@@ -51,7 +51,7 @@ func SynthesizePrinciples(lifeboatDir string, raw []byte) (PrinciplesResult, err
 		return PrinciplesResult{}, err
 	}
 
-	res := PrinciplesResult{LifeboatDir: abs}
+	res := PrinciplesResult{LifeboatDir: fsutil.RedactHome(abs)}
 	var (
 		principles    []Principle
 		mode          SynthesisMode

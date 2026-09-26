@@ -26,6 +26,8 @@ import (
 	"fmt"
 	"os"
 	"strings"
+
+	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
 // briefPressReleasePath is the packed brief's press-release section, the primary
@@ -88,7 +90,7 @@ func ComposePressRelease(lifeboatDir string, raw []byte) (PressReleaseResult, er
 	}
 
 	return PressReleaseResult{
-		LifeboatDir:      abs,
+		LifeboatDir:      fsutil.RedactHome(abs),
 		Mode:             file.Mode,
 		EvidenceRefs:     len(file.Evidence),
 		PressReleasePath: "press-release.json",

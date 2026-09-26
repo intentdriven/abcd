@@ -104,7 +104,7 @@ func Pack(repoRoot, dest string, scan SecretScan, opts ...ProbeOption) (PackResu
 	}
 
 	res := PackResult{
-		Dest:           destAbs,
+		Dest:           fsutil.RedactHome(destAbs),
 		SourceName:     lb.Coverage.Repo.Name,
 		ManifestSHA256: ManifestSHA256(lb.Files),
 		FilesWritten:   written,

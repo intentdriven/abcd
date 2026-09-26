@@ -89,7 +89,7 @@ Each positional argument is a probe report emitted with `probe --json`.
 
 Summarise the JSON result for the user:
 
-- `dest` — where the lifeboat was written.
+- `dest` — where the lifeboat was written, with the home directory as `~`.
 - `files_written` / `bytes_written` — the size of the lifeboat.
 - `manifest_sha256` — the pinned hash over every file (matches `<dest>/_provenance.json`).
 - `voyage_appended` — whether the operator-level voyage ledger recorded the pack

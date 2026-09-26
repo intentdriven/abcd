@@ -123,7 +123,7 @@ func ReviewLifeboat(lifeboatDir, sourceRepo string, raw []byte) (ReviewResult, e
 		Coverage:         cov.Summary,
 	}
 
-	res := ReviewResult{LifeboatDir: abs}
+	res := ReviewResult{LifeboatDir: fsutil.RedactHome(abs)}
 
 	if raw == nil {
 		// --- deterministic mode -------------------------------------------------

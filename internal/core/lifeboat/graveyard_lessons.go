@@ -93,7 +93,7 @@ func IngestLessons(lifeboatDir string, raw []byte) (LessonsResult, error) {
 	}
 
 	// 4. Per-entry validation, drop-not-fatal.
-	res := LessonsResult{LifeboatDir: abs}
+	res := LessonsResult{LifeboatDir: fsutil.RedactHome(abs)}
 	seen := map[string]bool{}
 	var mainLessons, lowLessons []Lesson
 	for _, in := range lf.Lessons {

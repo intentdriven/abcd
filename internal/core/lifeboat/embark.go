@@ -51,8 +51,8 @@ func EmbarkProbe(lifeboatDir, targetDir string) (EmbarkPlan, error) {
 	marker := embarkMarker(pr.targetAbs, true)
 	return EmbarkPlan{
 		SchemaVersion:        EmbarkSchemaVersion,
-		LifeboatDir:          pr.lifeboatAbs,
-		TargetDir:            pr.targetAbs,
+		LifeboatDir:          fsutil.RedactHome(pr.lifeboatAbs),
+		TargetDir:            fsutil.RedactHome(pr.targetAbs),
 		SourceName:           pr.prov.SourceName,
 		ManifestVerified:     true,
 		ManifestSHA256:       pr.prov.ManifestSHA256,
@@ -77,8 +77,8 @@ func EmbarkFrom(lifeboatDir, targetDir string) (EmbarkResult, error) {
 	}
 	res := EmbarkResult{
 		SchemaVersion: EmbarkSchemaVersion,
-		LifeboatDir:   pr.lifeboatAbs,
-		TargetDir:     pr.targetAbs,
+		LifeboatDir:   fsutil.RedactHome(pr.lifeboatAbs),
+		TargetDir:     fsutil.RedactHome(pr.targetAbs),
 		SourceName:    pr.prov.SourceName,
 		Coverage:      pr.coverage,
 		Ignored:       pr.ignored,
