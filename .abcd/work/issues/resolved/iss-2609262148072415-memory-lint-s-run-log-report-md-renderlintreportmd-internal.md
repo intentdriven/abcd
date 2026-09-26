@@ -12,7 +12,7 @@ found_at: "internal/core/memory/lint.go"
 resolution: "memory lint's report.md renders the store path, each finding's code, file, message and suggestion through termsafe.CleanProseLine, and sets the store path and each file off with termsafe.CodeSpan."
 impact: fix
 resolved_by:
-  commit: "825c60db1"
+  commit: "bc51fd4ae"
 ---
 
 memory lint's run-log report.md (renderLintReportMD, internal/core/memory/lint.go) renders a finding's file, message and suggestion through termsafe.Sanitize alone, so a page name or a pii.json pattern name carrying an HTML comment opener or link syntax reaches the markdown report live; the memory renderers fixed for iss-2609020539188868 and the lifeboat renderers fixed for iss-2609251355497247 route the same kind of field through termsafe.CleanProse and set a path off with termsafe.CodeSpan.
