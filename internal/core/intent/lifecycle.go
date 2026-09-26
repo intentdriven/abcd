@@ -512,6 +512,11 @@ func linkPlannedSpec(repoRoot string, it Intent, opts PlanOptions) (PlanResult, 
 		if err != nil {
 			return err
 		}
+		// Judged on these bytes, as the draft branch is: the kind kept is the
+		// one the record carries here, not the corpus's (iss-2609261232176189).
+		if it, err = parseIntent(rel, content, BucketPlanned); err != nil {
+			return fmt.Errorf("intent: malformed %s: %w", rel, err)
+		}
 		if !hasAcceptanceCriteria(content) {
 			return fmt.Errorf("intent: %s is planned with no spec, and has no non-empty '## Acceptance Criteria' section (itd-1 discipline) to mint one from; refusing to plan", it.ID)
 		}
