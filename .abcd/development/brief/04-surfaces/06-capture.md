@@ -170,8 +170,10 @@ one code a script reads for "the request was not usable": an id the ledger
 does not hold or a peer holds, a record already out of `open/`, a malformed id,
 malformed grounds, and a flag value outside its shape or naming nothing, on
 resolving, marking wontfix, promoting, deferring, linking and the capture write
-alike (iss-2609260552251398). Exit 1 is left to a fault, a ledger that could not
-be read or moved.
+alike (iss-2609260552251398), a found-at path that leaves the checkout or does
+not exist in it included (iss-2609261241119343). Exit 1 is left to a fault: a
+ledger that could not be read or moved, or a found-at path the checkout would
+not let the write check for a reason other than its absence.
 
 **Resolving** marks an issue resolved and moves it to
 `resolved/`. Impact is required, and resolving without it is refused with

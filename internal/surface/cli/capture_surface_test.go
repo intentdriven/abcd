@@ -1105,6 +1105,14 @@ func TestCaptureTransitionRefusalsExit2(t *testing.T) {
 		!strings.HasPrefix(err.Error(), "abcd capture: ") || strings.Contains(err.Error(), "capture: capture") {
 		t.Errorf("capture --blocked-by %s: exit = %d (%v), want 2 naming the verb once", unknown, exitCodeOf(err), err)
 	}
+	// So does a --found-at that leaves the checkout or names nothing in it
+	// (iss-2609261241119343).
+	for _, at := range []string{"../outside/notes.md", "does/not/exist.go"} {
+		if _, err := runCLIErr(t, "capture", "an observation about a path that is not here", "--found-at", at); exitCodeOf(err) != 2 ||
+			!strings.HasPrefix(err.Error(), "abcd capture: ") || strings.Contains(err.Error(), "capture: capture") {
+			t.Errorf("capture --found-at %s: exit = %d (%v), want 2 naming the verb once", at, exitCodeOf(err), err)
+		}
+	}
 	if m, _ := filepath.Glob(filepath.Join(repo, ".abcd", "work", "issues", "open", open+"-*.md")); len(m) != 1 {
 		t.Fatalf("a refused transition moved %s", open)
 	}

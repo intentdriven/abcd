@@ -74,8 +74,8 @@ default): `--severity` (`nitpick|minor|major|critical`, default `minor`),
 `--category` (default `observation`), `--source` (default `user-observation`),
 `--found-during` (session/command context, default `manual-capture`),
 `--found-at` (optional repo-relative path, which must exist in this checkout,
-or a conceptual location in words; a path that does not resolve is refused and
-nothing is written), `--lapsed-at` (RFC 3339 instant in
+or a conceptual location in words; a path that leaves the checkout or does not
+resolve in it is refused, exit 2, and nothing is written), `--lapsed-at` (RFC 3339 instant in
 UTC at which a recorded discipline gave way — the lapse itself, never the
 write-up), `--slug` (overrides the slug derived from the text), `--blocked-by`
 (comma-separated `iss-N` ids this issue depends on; each must already exist in
@@ -333,7 +333,9 @@ Every refusal of a ledger verb's own input exits 2 and writes nothing: an id
 the ledger does not hold (or one a peer holds), a record already out of
 `open/`, a malformed id, and a flag value outside its shape or naming nothing,
 on `resolve`, `wontfix`, `promote`, `defer`, `link` and the capture write alike.
-Exit 1 is a fault: the ledger could not be read or moved. Tell the user which
+Exit 1 is a fault: the ledger could not be read or moved, or a `--found-at`
+path could not be checked against the checkout for a reason other than its
+absence. Tell the user which
 input was refused, from the message, rather than retrying the same command.
 
 `resolve` requires `--impact`: a resolved issue is in the release set, so it
