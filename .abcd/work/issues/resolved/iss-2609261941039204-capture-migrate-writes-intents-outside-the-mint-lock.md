@@ -9,6 +9,14 @@ found_during: "autonomous run A resumed 2026-09-25: fix2-drainA1 sweep"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/capture/migrate.go"
+resolution: "capture migrate --apply now scans and writes under the intent store's lock, taken inside the ledger lock through intent.WithMintLock (ledger, then intent: the order every path holding both takes; the intent package cannot take the ledger lock)."
+impact: fix
+resolved_by:
+  commit: "3a3b69895"
 ---
 
 capture migrate --apply rewrites intent records (the related_issues back-edge, any bucket including shipped/) under the ledger lock only, not the intent mint lock (internal/core/capture/migrate.go, Migrate): an intent writer holding withIntentMintLock (a hold, a condition disposition, a verdict ingest, a review emit, a related-issue edge) landing on the same record between migrate's scan and its write is erased. The intent package exports no seam for another package to take its lock, the same gap iss-2609261254247117 names for relink.Repoint.
+
+## Grounds
+
+- pursued: an intent writer landing between the migration's scan and its write waits and its edit survives the rewrite; the edit missing from the migrated record, or the apply finishing while another holder has the intent lock, would show it wrong
