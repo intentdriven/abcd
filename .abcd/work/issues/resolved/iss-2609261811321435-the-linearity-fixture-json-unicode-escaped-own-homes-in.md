@@ -9,6 +9,14 @@ found_during: "autonomous run A resumed 2026-09-25"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/adapter/scanner/meter_test.go"
+resolution: "The fixture is assembled from escapeSeparators and uSolidus, so the line carries the six-byte unicode escape the linearity guard is meant to hold to the bar; TestMeterFixturesCarryTheSpellingTheyName pins both escaped meter fixtures to the bytes their names promise."
+impact: internal
+resolved_by:
+  commit: "d8f5252d"
 ---
 
 The linearity fixture json_unicode_escaped_own_homes in internal/adapter/scanner/meter_test.go is the literal home path, not its unicode-escaped spelling: the u002f escapes were folded back into slashes when the fixture was written, so TestScanLineWorkIsLinear never holds the JSON unicode-escape decode of a dense line of escaped homes to the cost bar its name claims, and the shape duplicates own_home_paths. Detector: the fixture's line carries the six-byte backslash-u002f escape, assembled so no tool can fold it again.
+
+## Grounds
+
+- pursued: the unicode-escape decode of a dense line of escaped homes is now metered by TestScanLineWorkIsLinear; a fixture whose bytes again carry no escape would show it wrong, and the new test fails on exactly that
