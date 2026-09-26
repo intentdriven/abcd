@@ -196,15 +196,18 @@ backticks bash drops a backslash before `$`, a backtick or a backslash before it
 reads the command, and directly inside double quotes one before a `"` too, so a
 backtick's text is read after that pass: an escaped `\$(…)` or an escaped
 backtick pair there is the substitution bash runs, in a word or in an unquoted
-here-document body inside the backticks. A word that is
-wholly `"$(cat <<'EOF' … EOF)"`, whose document the shell does not change, or
-its backtick spelling with no backslash between the backticks, is
-also read as that document's text where it is a payload, so `sh -c` or `eval`
+here-document body inside the backticks. A `"$(cat <<'EOF' … EOF)"` whose
+document the shell does not change, or its backtick spelling with no backslash
+between the backticks, is also read as that document's text, joined to any text
+written beside it in the same word, where it is a payload, so `sh -c` or `eval`
 handed one reads the document as the command it runs. Unquoted, the same
-substitution runs the words its document splits into on blanks and newlines, and
-those words are read as bash splits them: as the command in command position,
-as operands after it, and at every payload layer the guard follows, so a
-document whose own text is `$(cat <<'F' … F)` is read too. The words are never
+substitution runs the words its document splits into on blanks and newlines, the
+first and last joined to whatever is written against the substitution in its
+word (`$(…)x`, or a second such substitution), and those words are read as bash
+builds them: as the command in command position, as operands after it, and at
+every payload layer the guard follows, so a document whose own text is
+`$(cat <<'F' … F)` is read too. Text written in the word is not split, as bash
+does not split it, and an assignment's value is not split either. The words are never
 read again as a command line, as bash never reads them, so a `;` or a `$(` in
 them stays a word. The guard follows two execute-a-string layers, an `sh -c` or
 `eval` inside another; a payload nested deeper is a **block**

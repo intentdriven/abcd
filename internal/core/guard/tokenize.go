@@ -77,13 +77,80 @@ type segment struct {
 	walkCapped bool
 }
 
-// wordLiteral is the fixed output of a word that is wholly one command
-// substitution (segment.literal). split records that the substitution stood
-// unquoted, so bash splits the output into words, and expands each as a
-// pattern, before the command runs; a double-quoted one is one word, verbatim.
+// wordLiteral is the fixed text of a word whose every fixed-output command
+// substitution is replaced by what it prints (segment.literal, joinedLiteral).
+// split records that one of them stood unquoted, so bash splits its output
+// into words, and expands each as a pattern, before the command runs: words
+// is then what the word becomes. Otherwise text is the one word, verbatim.
 type wordLiteral struct {
 	text  string
 	split bool
+	words []string
+}
+
+// litPiece is one fixed-output substitution in the word being built: the
+// offset of the unknownMark it left in the word, what it prints, and whether
+// it stood unquoted.
+type litPiece struct {
+	at    int
+	text  string
+	split bool
+}
+
+// joinedLiteral is the word cur, whose marks at the pieces' offsets stand for
+// fixed outputs, as bash builds it (review7-guard finding 3): each output
+// joined to the text written beside it, and an unquoted one split on blanks
+// and newlines, the default IFS, so its first and last words join the text on
+// either side and a blank at its edge ends the word there. Text written in
+// the word, quoted or not, is never split, and a mark no piece names stays in
+// the word, unknown.
+func joinedLiteral(cur []byte, pieces []litPiece) wordLiteral {
+	split := false
+	for _, p := range pieces {
+		split = split || p.split
+	}
+	var b []byte
+	n := 0
+	if !split {
+		for _, p := range pieces {
+			b = append(append(b, cur[n:p.at]...), p.text...)
+			n = p.at + 1
+		}
+		b = append(b, cur[n:]...)
+		tally(len(b))
+		return wordLiteral{text: string(b)}
+	}
+	var words []string
+	open := false
+	for _, p := range pieces {
+		if p.at > n {
+			b, open = append(b, cur[n:p.at]...), true
+		}
+		n = p.at + 1
+		tally(len(p.text))
+		if !p.split {
+			b, open = append(b, p.text...), true
+			continue
+		}
+		for k := 0; k < len(p.text); k++ {
+			switch c := p.text[k]; c {
+			case ' ', '\t', '\n':
+				if open {
+					words = append(words, string(b))
+					b, open = b[:0], false
+				}
+			default:
+				b, open = append(b, c), true
+			}
+		}
+	}
+	if n < len(cur) {
+		b, open = append(b, cur[n:]...), true
+	}
+	if open {
+		words = append(words, string(b))
+	}
+	return wordLiteral{split: true, words: words}
 }
 
 // globAt reports whether token i carried an unquoted glob metacharacter.
@@ -200,12 +267,11 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		curGlob bool
 		globs   []bool
 		// lits rides with the segment and records, per token index, the text
-		// of a word that is wholly one substitution whose output is fixed
-		// (literalHeredocOutput); curLit holds that text for the word being
-		// built, and curLitSet that the substitution closed last set it.
+		// of a word holding a substitution whose output is fixed
+		// (literalHeredocOutput), read as bash joins it (joinedLiteral);
+		// curPieces holds those outputs for the word being built.
 		lits      map[int]wordLiteral
-		curLit    wordLiteral
-		curLitSet bool
+		curPieces []litPiece
 		// curMask is parallel to cur and records, per byte, whether it reached
 		// the tokenizer unquoted (wordStruct) and whether it began its word
 		// (wordRawStart) — what the brace expander needs to read a word the way
@@ -330,19 +396,23 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 					globs = append(globs, w.globbed())
 				}
 				cur, curMask, hasCur, curGlob, curBrace = nil, nil, false, false, false
-				curLit, curLitSet = wordLiteral{}, false
+				curPieces = nil
 				return
 			}
 			braceGroup = true
 		}
-		if curLitSet && string(cur) == unknownText {
+		// A word holding a fixed output is also read as bash joins it, but not
+		// an assignment in assignment position, whose value bash does not
+		// split, nor an output inside a `${…}`, which may not print it.
+		tok := unknownFromOpenExpansion(string(cur))
+		if len(curPieces) > 0 && tok == string(cur) && !(isAssignment(tok) && allAssignments(toks)) {
 			if lits == nil {
 				lits = map[int]wordLiteral{}
 			}
-			lits[len(toks)] = curLit
+			lits[len(toks)] = joinedLiteral(cur, curPieces)
 		}
-		curLit, curLitSet = wordLiteral{}, false
-		toks = append(toks, unknownFromOpenExpansion(string(cur)))
+		curPieces = nil
+		toks = append(toks, tok)
 		globs = append(globs, curGlob)
 		cur, curMask, hasCur, curGlob, curBrace = nil, nil, false, false, false
 	}
@@ -486,10 +556,10 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		saved := &enclosing{
 			toks: toks, globs: globs, lits: lits, cur: cur, curMask: curMask, hasCur: hasCur, curGlob: curGlob,
 			curBrace: curBrace, braceGroup: braceGroup, chain: chain, procSub: procSub,
-			curStdin: curStdin, pipeNext: pipeNext,
+			curStdin: curStdin, pipeNext: pipeNext, pieces: curPieces,
 		}
 		toks, globs, lits, cur, curMask, hasCur, curGlob, curBrace, braceGroup = nil, nil, nil, nil, nil, false, false, false, false
-		curLit, curLitSet = wordLiteral{}, false
+		curPieces = nil
 		curStdin, pipeNext = false, false
 		parens = append(parens, parenFrame{kind: kind, pos: pos, saved: saved})
 	}
@@ -528,7 +598,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		e := f.saved
 		toks, globs, lits, cur, curMask, hasCur, curGlob, curBrace, braceGroup, chain =
 			e.toks, e.globs, e.lits, e.cur, e.curMask, e.hasCur, e.curGlob, e.curBrace, e.braceGroup, e.chain
-		curStdin, pipeNext = e.curStdin, e.pipeNext
+		curStdin, pipeNext, curPieces = e.curStdin, e.pipeNext, e.pieces
 		if !f.bare {
 			addCur([]byte(arithmeticOperand), 0)
 		}
@@ -544,7 +614,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		flushSegment()
 		toks, globs, lits, cur, curMask, hasCur, curGlob, curBrace, braceGroup, chain =
 			e.toks, e.globs, e.lits, e.cur, e.curMask, e.hasCur, e.curGlob, e.curBrace, e.braceGroup, e.chain
-		curStdin, pipeNext = e.curStdin, e.pipeNext
+		curStdin, pipeNext, curPieces = e.curStdin, e.pipeNext, e.pieces
 		if e.procSub {
 			addCur([]byte(procSubOperand), 0)
 		} else {
@@ -716,11 +786,11 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 					follow(text)
 					addCur([]byte{unknownMark}, 0)
 					// A `$(cat <<'EOF' … EOF)` prints its document verbatim,
-					// and so does its backtick spelling; flushToken keeps
-					// that text beside the word when the word is this output
-					// and nothing else.
-					curLit.text, curLitSet = substitutionOutput(line[open:inner], line[j] == '`')
-					curLit.split = false
+					// and so does its backtick spelling; flushToken reads the
+					// word with that text in the output's place.
+					if text, ok := substitutionOutput(line[open:inner], line[j] == '`'); ok {
+						curPieces = append(curPieces, litPiece{at: len(cur) - 1, text: text})
+					}
 					j = inner + 1
 					continue
 				}
@@ -1058,12 +1128,11 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 						closeSubstitution(top.saved)
 						// An unquoted `$(cat <<'EOF' … EOF)`, or its backtick
 						// spelling, prints its document, which bash splits
-						// into words; flushToken
-						// keeps that output beside the word when the word is
-						// this substitution and nothing else.
+						// into words; flushToken reads the word with those
+						// words in the output's place.
 						if (c == ')' && top.kind == parenCommandSub && !top.saved.procSub) || (c == '`' && top.kind == parenBacktick) {
 							if text, ok := substitutionOutput(line[top.pos+1:i], c == '`'); ok {
-								curLit, curLitSet = wordLiteral{text: text, split: true}, true
+								curPieces = append(curPieces, litPiece{at: len(cur) - 1, text: text, split: true})
 							}
 						}
 					}
@@ -1597,6 +1666,8 @@ type enclosing struct {
 	// record (tokenizeAt), suspended with the rest of it.
 	curStdin bool
 	pipeNext bool
+	// pieces is the enclosing word's fixed outputs so far (tokenizeAt).
+	pieces []litPiece
 }
 
 // procSubOperand is the word a process substitution leaves in the enclosing

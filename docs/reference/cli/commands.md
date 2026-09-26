@@ -557,8 +557,9 @@ or an escaped backtick pair between backticks is read as the
 substitution bash runs, in a here-document body there too. A
 `"$(cat <<'EOF' … EOF)"` handed to `sh -c` or `eval` is read as its
 document's text, and an unquoted one as the words bash splits its
-document into, at every layer; a backtick spelling with no backslash
-in it is read the same way. Two `sh -c` or `eval` layers are
+document into, at every layer, each joined to any text written
+beside it in the same word, as bash joins it; a backtick spelling with
+no backslash in it is read the same way. Two `sh -c` or `eval` layers are
 followed; a payload nested deeper is blocked.
 `$(( … ))` is an expression, not commands. A shell reading
 its script from a pipe, a here-document, a here-string, the stdin device

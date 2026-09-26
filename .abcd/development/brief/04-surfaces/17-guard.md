@@ -205,9 +205,10 @@ inside double quotes, a `"`), so an escaped substitution between backticks is
 read as the one bash runs. A payload that is wholly a substitution printing a
 here-document the shell does not change (`sh -c "$(cat <<'EOF' … EOF)"`, or the
 backtick spelling where no backslash stands between the backticks) is also
-read as that document's text. The same substitution unquoted runs the words its
-document splits into, and is read as those words wherever it stands and at every
-payload layer, so a document whose text is another such substitution is read
+read as that document's text, joined to any text beside it in the word. The same
+substitution unquoted runs the words its document splits into, the first and
+last joined to whatever is written against it in its word, and is read as those
+words wherever it stands and at every payload layer, so a document whose text is another such substitution is read
 too; the words are never read again as a command line, as bash never reads
 them. The guard follows two execute-a-string layers and refuses a payload
 nested deeper, whatever it holds, because it has stopped reading it. An ANSI-C string ends at its

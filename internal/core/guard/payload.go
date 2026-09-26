@@ -304,10 +304,11 @@ func payloadRefsOf(s segment) []payloadRef {
 	return refs
 }
 
-// fixedOutputSegment is the command a segment runs once each unquoted word
-// whose output is fixed (segment.literal) is replaced by that output as bash
-// reads it: split into words on blanks and newlines, the default IFS, and
-// each word a pattern where it holds `*`, `?` or `[`. The words are not read
+// fixedOutputSegment is the command a segment runs once each word holding an
+// unquoted fixed output (segment.literal) is replaced by the words bash builds
+// from it (joinedLiteral): the output split on blanks and newlines, the
+// default IFS, joined to the text beside it, and each word a pattern where it
+// holds `*`, `?` or `[`. The words are not read
 // again as a command line — bash does not, so a `;` or a `$(` in them is text
 // (review6-guard finding 1). A double-quoted fixed output stays one word and
 // keeps its record, so the payload readers still reach it. ok is false when the
@@ -338,8 +339,7 @@ func fixedOutputSegment(s segment) (segment, bool) {
 			globs = append(globs, s.globAt(i))
 			continue
 		}
-		tally(len(lit.text))
-		for _, w := range strings.FieldsFunc(lit.text, func(r rune) bool { return r == ' ' || r == '\t' || r == '\n' }) {
+		for _, w := range lit.words {
 			out.tokens = append(out.tokens, w)
 			globs = append(globs, strings.ContainsAny(w, "*?["))
 		}
