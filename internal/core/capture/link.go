@@ -64,17 +64,17 @@ func validateBlockers(issuesRoot, verb, subject string, ids []string) ([]string,
 	seen := map[string]bool{}
 	for _, dep := range ids {
 		if !reIssID.MatchString(dep) {
-			return nil, fmt.Errorf("%s: --blocked-by token %q must match iss-N; nothing written (%s)", verb, dep, blockedByDocs)
+			return nil, refused(fmt.Errorf("%s: --blocked-by token %q must match iss-N; nothing written (%s)", verb, dep, blockedByDocs))
 		}
 		if dep == subject {
-			return nil, fmt.Errorf("%s: --blocked-by %s names the record itself, and a record cannot block itself; nothing written", verb, dep)
+			return nil, refused(fmt.Errorf("%s: --blocked-by %s names the record itself, and a record cannot block itself; nothing written", verb, dep))
 		}
 		if seen[dep] {
 			continue
 		}
 		if _, _, err := findIssue(issuesRoot, dep); err != nil {
 			if errors.Is(err, ErrUnknownIssueID) {
-				return nil, fmt.Errorf("%s: --blocked-by %s not found in the issue ledger; nothing written (%s)", verb, dep, blockedByDocs)
+				return nil, refused(fmt.Errorf("%s: --blocked-by %s not found in the issue ledger; nothing written (%s)", verb, dep, blockedByDocs))
 			}
 			return nil, fmt.Errorf("%s: --blocked-by %s: %w; nothing written", verb, dep, err)
 		}
@@ -102,7 +102,7 @@ func validateBlockers(issuesRoot, verb, subject string, ids []string) ([]string,
 func Link(req LinkRequest) (LinkResult, error) {
 	const verb = "capture link"
 	if len(req.BlockedBy) == 0 && len(req.Unblock) == 0 {
-		return LinkResult{}, fmt.Errorf("%s: nothing to do — give --blocked-by <iss-N,...> and/or --unblock <iss-N,...>; nothing written", verb)
+		return LinkResult{}, refused(fmt.Errorf("%s: nothing to do — give --blocked-by <iss-N,...> and/or --unblock <iss-N,...>; nothing written", verb))
 	}
 	repoRoot, issuesRoot, err := resolveRoots(req.RepoRoot, req.IssuesRoot)
 	if err != nil {
@@ -112,7 +112,7 @@ func Link(req LinkRequest) (LinkResult, error) {
 		return LinkResult{}, err
 	}
 	if !reIssID.MatchString(req.ID) {
-		return LinkResult{}, fmt.Errorf("invalid iss-N identifier: %q", req.ID)
+		return LinkResult{}, refused(fmt.Errorf("invalid iss-N identifier: %q", req.ID))
 	}
 	// The subject is located BEFORE the targets are validated, so an unknown
 	// subject is reported as the fault rather than a target it would never have
@@ -128,7 +128,7 @@ func Link(req LinkRequest) (LinkResult, error) {
 	seen := map[string]bool{}
 	for _, dep := range req.Unblock {
 		if !reIssID.MatchString(dep) {
-			return LinkResult{}, fmt.Errorf("%s: --unblock token %q must match iss-N; nothing written", verb, dep)
+			return LinkResult{}, refused(fmt.Errorf("%s: --unblock token %q must match iss-N; nothing written", verb, dep))
 		}
 		if !seen[dep] {
 			seen[dep] = true
@@ -158,8 +158,8 @@ func Link(req LinkRequest) (LinkResult, error) {
 		// judged against the bytes under the lock.
 		for _, dep := range remove {
 			if !containsString(current, dep) {
-				return fmt.Errorf("%s: --unblock %s is not in %s's blocked_by, which is currently %s; nothing written",
-					verb, dep, req.ID, renderIDList(current))
+				return refused(fmt.Errorf("%s: --unblock %s is not in %s's blocked_by, which is currently %s; nothing written",
+					verb, dep, req.ID, renderIDList(current)))
 			}
 		}
 		next := make([]string, 0, len(current)+len(add))

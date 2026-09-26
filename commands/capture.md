@@ -329,6 +329,13 @@ a sibling worktree or a local branch (see `/abcd:peers`) — the refusal names
 the peer's branch, path and folder instead of answering not found: the record
 lives there, so relay that rather than capturing it again here.
 
+Every refusal of a ledger verb's own input exits 2 and writes nothing: an id
+the ledger does not hold (or one a peer holds), a record already out of
+`open/`, a malformed id, and a flag value outside its shape or naming nothing,
+on `resolve`, `wontfix`, `promote`, `defer`, `link` and the capture write alike.
+Exit 1 is a fault: the ledger could not be read or moved. Tell the user which
+input was refused, from the message, rather than retrying the same command.
+
 `resolve` requires `--impact`: a resolved issue is in the release set, so it
 carries the product judgement the version derivation reads (`additive`,
 `breaking`, `fix`, or `internal` — plumbing invisible to users). There is no

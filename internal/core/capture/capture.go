@@ -386,6 +386,13 @@ var (
 	// token is a different KIND of failure from a missing one
 	// (iss-2608300930057882).
 	ErrGroundsRefused = errors.New("grounds refused")
+	// ErrRequestRefused means a member of a transition request is outside its
+	// shape or names nothing: an impact outside its set, a provenance reference
+	// that is malformed or absent, a release tag or production mode that is not
+	// one. Like ErrGroundsRefused it is the caller's input to fix with nothing
+	// written, and the surface gives both the one exit code a refusal takes
+	// (iss-2609260552251398).
+	ErrRequestRefused = errors.New("request refused")
 	// ErrInvariantViolation means frontmatter passed the schema but violates a
 	// folder-status cross-field invariant.
 	ErrInvariantViolation = errors.New("invariant violation")
@@ -397,6 +404,21 @@ var (
 	// ErrPathUnsafe means the ledger root or a status dir is a symlink.
 	ErrPathUnsafe = errors.New("path unsafe")
 )
+
+// refusedError marks an error as a refusal of the request's own input, keeping
+// its text: it unwraps to ErrRequestRefused and to the error it wraps.
+type refusedError struct{ err error }
+
+func (e refusedError) Error() string   { return e.err.Error() }
+func (e refusedError) Unwrap() []error { return []error{ErrRequestRefused, e.err} }
+
+// refused marks err as a refusal of the request's input; nil stays nil.
+func refused(err error) error {
+	if err == nil {
+		return nil
+	}
+	return refusedError{err: err}
+}
 
 // Field regexes mirroring issue.schema.json.
 var (

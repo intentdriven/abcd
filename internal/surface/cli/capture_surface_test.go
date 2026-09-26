@@ -1051,6 +1051,65 @@ func TestCaptureMalformedGroundsExit2(t *testing.T) {
 	}
 }
 
+// TestCaptureTransitionRefusalsExit2 is iss-2609260552251398: every refusal of
+// a transition verb's own input exits 2 with nothing written, as a malformed
+// grounds value does, so a script reads one exit code for "the request was not
+// usable". An unknown id and a transition conflict exited 1, the code a fault
+// takes, and on resolve so did an impact, a --shipped-in or a --commit outside
+// its shape.
+func TestCaptureTransitionRefusalsExit2(t *testing.T) {
+	repo := captureLedgerRepo(t)
+	mint := func() string {
+		t.Helper()
+		var m struct {
+			ID string `json:"id"`
+		}
+		if err := json.Unmarshal(runCLI(t, "capture", "an observation that a transition will refuse", "--json"), &m); err != nil || m.ID == "" {
+			t.Fatalf("capture envelope unreadable: %v", err)
+		}
+		return m.ID
+	}
+	open, closed := mint(), mint()
+	runCLI(t, "capture", "resolve", closed, "fixed", "--impact", "fix")
+	unknown := "iss-99999"
+
+	for _, args := range [][]string{
+		{"capture", "resolve", unknown, "fixed", "--impact", "fix"},
+		{"capture", "resolve", closed, "fixed again", "--impact", "fix"},
+		{"capture", "resolve", open, "fixed", "--impact", "bogus"},
+		{"capture", "resolve", open, "fixed"},
+		{"capture", "resolve", open, "fixed", "--impact", "fix", "--shipped-in", "latest"},
+		{"capture", "resolve", open, "fixed", "--impact", "fix", "--commit", "not-a-sha"},
+		{"capture", "resolve", open, "fixed", "--impact", "fix", "--intent", "itd-99999"},
+		{"capture", "wontfix", unknown, "not worth it"},
+		{"capture", "wontfix", closed, "not worth it"},
+		{"capture", "promote", unknown},
+		{"capture", "defer", unknown, "--after", "v0.1.0", "--reason", "a reason that is long enough"},
+		{"capture", "link", unknown, "--blocked-by", open},
+		{"capture", "link", open, "--blocked-by", open},
+		{"capture", "link", open, "--blocked-by", unknown},
+		{"capture", "resolve", "iss-abc", "fixed", "--impact", "fix"},
+		{"capture", "defer", open, "--after", "latest", "--reason", "a reason that is long enough"},
+	} {
+		out, err := runCLIErr(t, args...)
+		if exitCodeOf(err) != 2 {
+			t.Errorf("%v: exit = %d (%v), want 2\n%s", args[1:], exitCodeOf(err), err, out)
+		}
+		if err != nil && (!strings.HasPrefix(err.Error(), "abcd capture "+args[1]+": ") ||
+			strings.Contains(err.Error(), ": capture "+args[1]+": ") || strings.Contains(err.Error(), ": "+args[1]+": ")) {
+			t.Errorf("%v: the refusal does not name its verb: %v", args[1:], err)
+		}
+	}
+	// The capture write refuses a blocker the ledger does not hold the same way.
+	if _, err := runCLIErr(t, "capture", "an observation blocked on nothing real", "--blocked-by", unknown); exitCodeOf(err) != 2 ||
+		!strings.HasPrefix(err.Error(), "abcd capture: ") || strings.Contains(err.Error(), "capture: capture") {
+		t.Errorf("capture --blocked-by %s: exit = %d (%v), want 2 naming the verb once", unknown, exitCodeOf(err), err)
+	}
+	if m, _ := filepath.Glob(filepath.Join(repo, ".abcd", "work", "issues", "open", open+"-*.md")); len(m) != 1 {
+		t.Fatalf("a refused transition moved %s", open)
+	}
+}
+
 // TestGroundsFlagUsageRendersAStringPlaceholder: cobra's UnquoteUsage takes the
 // first backquoted word of a flag's usage string as the flag's value
 // placeholder and strips it from the prose, so backticks in the wontfix
