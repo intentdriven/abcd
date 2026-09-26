@@ -103,7 +103,15 @@ pass through untouched, and anything else means the binary did not run at all,
 which the shim reports as an unmissable `UNGUARDED` warning while letting the
 call through. The warning names the tool whose call went through unchecked —
 shell commands, or questions through the host's question tool — read from the
-hook payload, which the shim then hands to the binary unchanged.
+hook payload. The shim reads that payload once, through a command
+substitution, and hands the binary what the substitution kept: the payload
+less its trailing newlines, and, under the bash 3.2 that serves as `/bin/sh` on
+macOS, less any raw NUL byte, which that shell drops silently. Neither changes
+what a conformant host means: its JSON carries no raw NUL, since JSON escapes
+one as `\u0000`, and a trailing newline is whitespace to JSON. A payload that
+does carry a raw NUL reaches the binary with the byte gone rather than as an
+unreadable payload, and one over the size cap only by trailing newlines comes
+under it.
 
 The states that can independently be false are reported outside the session, on
 `abcd ahoy`'s `guard:` line: whether the hook is installed, whether the binary it
