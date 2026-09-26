@@ -619,9 +619,12 @@ agent and refuses the override. A step no configured provider can serve at its
 tier goes to the harness with the tier named in its request, and one stderr line
 says so. The receipt is a `route` member in the JSON and a `route:` line in the
 text, carrying `tier_asked`, `connection_tried`, `connection_used`,
-`fallback_reason`, `override`, `settings_sent` and `model_reported`, the last
-read from the payload's own `model` field (a reading's `instrument.model`) and
-empty when the payload names none. A routing table that cannot be read, an
+`fallback_reason`, `override`, `settings_sent`, `model_reported` and
+`provider_call`. `model_reported` is read from the payload's own `model` field (a
+reading's `instrument.model`) and empty when the payload names none;
+`provider_call` names the provider, the model asked for and the model it
+reported when a provider adapter answered the step, and is null on the harness
+leg. A routing table that cannot be read, an
 override naming an agent this invocation does not dispatch, a tier outside
 `local`, `economy`, `frontier` and `host-decides`, or a connection this machine
 has not configured exits 2 before anything is written. With no table accepted

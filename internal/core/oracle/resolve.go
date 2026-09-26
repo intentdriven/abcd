@@ -15,6 +15,35 @@ const Harness = "harness"
 type Connection struct {
 	Name     string
 	Defaults Settings
+	// Models is the provider's allowlist (adr-2609221009491186): the only
+	// models it may serve, every one already cleared against the vendor
+	// denylist when the configuration was read. nil on a connection no
+	// provider block backs.
+	Models []string
+	// Accepts is the settings the connection's adapter accepts; a setting
+	// outside it is refused before a step runs, never dropped
+	// (spc-2609251028149555, AC 8). nil on a connection no adapter backs.
+	Accepts []string
+}
+
+// Admits reports whether model is on the connection's allowlist.
+func (c Connection) Admits(model string) bool {
+	for _, m := range c.Models {
+		if m == model {
+			return true
+		}
+	}
+	return false
+}
+
+// Accepted reports whether the connection's adapter accepts setting key.
+func (c Connection) Accepted(key string) bool {
+	for _, k := range c.Accepts {
+		if k == key {
+			return true
+		}
+	}
+	return false
 }
 
 // Connections is the machine's configured provider connections. The provider

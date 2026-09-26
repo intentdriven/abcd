@@ -14,18 +14,21 @@
 //
 // The resolver never writes, never reaches a network and never prints. It
 // takes the machine's connections as a value (Connections), so a test hands it
-// a provider that is "reachable" without a socket. Until the provider adapter
-// intent (itd-2609081951381895) implements Connections, NoConnections is the
-// only implementation, so every row resolves to the harness.
+// a provider that is "reachable" without a socket. The provider adapter
+// (itd-2609081951381895, config.go) implements Connections from the machine's
+// provider blocks, each connection carrying its allowlist and the settings its
+// adapter accepts; the delegating verbs still hand every resolution
+// NoConnections, so every row resolves to the harness until provider dispatch
+// lands (spc-2609251028149555).
 //
 // Staged, loudly (the loud-staging rule): spc-2609180535002478 lands the types,
 // the proposal and its roster test, the store readers, the --route parser,
 // Resolve, the bare board's oracle lines, the request block and receipt every
 // delegating verb carries (Route.Request, Route.Receipt), and the ahoy consent
 // step that writes an accepted table. Escalating a tier after a failed fix
-// round and the provider allowlist wait on the implement loop's state file and
-// the API adapter, and are the spec's remainder; until the adapter implements
-// Connections, every step resolves to the harness.
+// round, the allowlist check inside Resolve and dispatching a step to a
+// provider are spc-2609251028149555's; until they land, every step resolves to
+// the harness.
 package oracle
 
 import (
