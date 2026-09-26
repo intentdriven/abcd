@@ -194,6 +194,14 @@ func Plan(repoRoot, intentID string, opts PlanOptions) (PlanResult, error) {
 		if err != nil {
 			return err
 		}
+		// The record's fields are the ones these bytes carry, not the corpus's:
+		// the kind this write keeps and the spec_id it refuses on are judged on
+		// what is rewritten. From the corpus, a kind a reclassify wrote in the
+		// window was overwritten, leaving kind: standalone beside the bundle
+		// that reclassify named (iss-2609261218301461).
+		if it, err = parseIntent(draftRel, content, BucketDrafts); err != nil {
+			return fmt.Errorf("intent: malformed %s: %w", draftRel, err)
+		}
 		if !hasAcceptanceCriteria(content) {
 			return fmt.Errorf("intent: %s has no non-empty '## Acceptance Criteria' section (itd-1 discipline); refusing to plan", intentID)
 		}
