@@ -4208,6 +4208,58 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 	surpriseCmd.Flags().StringVar(&surpriseOccasion, "occasioned-by", "", "the record that occasioned it: a reading item (rdi-N), an admission (adm-N) or a disposition (dsp-N)")
 	captureCmd.AddCommand(surpriseCmd)
 
+	// reframe — one reframe occasioned by a reading, recorded as a reframe
+	// (spc-2609020626048705): the occasion, the fingerprints of the frame's
+	// three committed surfaces before and after, which moved, and the ground.
+	// `--open` writes the before half ahead of the rewrite's commit and
+	// `--complete rfm-N` finishes it after; every render names the half it wrote.
+	var reframeOccasion, reframeGrounds, reframeComplete string
+	var reframeOpen bool
+	reframeCmd := &cobra.Command{
+		Use:   "reframe --occasioned-by <rdi-N|dsp-N|srp-N> --grounds \"<why>\" [--open] | --complete <rfm-N>",
+		Short: "Record a reframe a reading occasioned: the frame's fingerprints before and after, and which surfaces moved",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if reframeComplete == "" && strings.TrimSpace(reframeOccasion) == "" {
+				return &exitError{Code: 2, Msg: "abcd capture reframe: --occasioned-by <rdi-N|dsp-N|srp-N> is required, or --complete <rfm-N> to finish an open record (nothing written)"}
+			}
+			if reframeComplete != "" && (reframeOccasion != "" || reframeGrounds != "" || reframeOpen) {
+				return &exitError{Code: 2, Msg: "abcd capture reframe: --complete takes the record id alone; the occasion and the ground are the first half's (nothing written)"}
+			}
+			repoRoot, err := captureLedgerRoot(cmd)
+			if err != nil {
+				return err
+			}
+			res, err := capture.Reframe(capture.ReframeRequest{
+				RepoRoot: repoRoot, OccasionedBy: reframeOccasion, Grounds: reframeGrounds,
+				Open: reframeOpen, Complete: reframeComplete,
+			})
+			if err != nil {
+				return err
+			}
+			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, res, func(w io.Writer) {
+				switch res.Half {
+				case capture.ReframeHalfOpen:
+					fmt.Fprintf(w, "%s  first half written; commit the rewrite, then `abcd capture reframe --complete %s` — %s\n",
+						res.ID, res.ID, termsafe.Sanitize(res.Path))
+				case capture.ReframeHalfCompleted:
+					fmt.Fprintf(w, "%s  completed across %d commit(s): %s moved — %s\n",
+						res.ID, res.Commits, strings.Join(res.Changed, ", "), termsafe.Sanitize(res.Path))
+				default:
+					fmt.Fprintf(w, "%s  reframe written whole across %d commit(s): %s moved — %s\n",
+						res.ID, res.Commits, strings.Join(res.Changed, ", "), termsafe.Sanitize(res.Path))
+				}
+				fmt.Fprintf(w, "  occasioned by %s\n", res.OccasionedBy)
+				emitRedactionNote(w, res.Redacted, res.Degraded)
+			})
+		},
+	}
+	reframeCmd.Flags().StringVar(&reframeOccasion, "occasioned-by", "", "the record that occasioned the reframe: a reading item (rdi-N), a disposition (dsp-N) or a surprise (srp-N)")
+	reframeCmd.Flags().StringVar(&reframeGrounds, "grounds", "", "why the frame moved (free text, held to the grounds floor)")
+	reframeCmd.Flags().BoolVar(&reframeOpen, "open", false, "record the first half before the rewrite is committed; complete it after with --complete")
+	reframeCmd.Flags().StringVar(&reframeComplete, "complete", "", "the open reframe record (rfm-N) to finish once the rewrite is committed")
+	captureCmd.AddCommand(reframeCmd)
+
 	// wontfix — open -> wontfix with a reason. It needs no required --grounds:
 	// the reason is already mandatory, so a wontfix could never be recorded
 	// without grounds — what it lacked was the TYPE, which it stamps as

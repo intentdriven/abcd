@@ -33,9 +33,10 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/intent"
+	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/mode"
+	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -124,9 +125,14 @@ func branch(root string) string {
 
 // openIssues counts the ledger's open folder: the regular files named
 // iss-*.md directly in open/. The folder is the ledger's own path constant and
-// the state's own directory name — nothing here restates where the ledger is.
+// the open state's own directory name, the first of the status folders —
+// nothing here restates where the ledger is. Both are read from the leaves
+// core/capture derives them from (recordid, issueschema), not from capture
+// itself: capture reads the site package's section walk, the site package
+// reaches ahoy, and ahoy reads this package, so an import of capture here
+// closes a cycle.
 func openIssues(root string) (int, error) {
-	return countRecords(filepath.Join(root, filepath.FromSlash(capture.LedgerRelPath), string(capture.StateOpen)), "iss-")
+	return countRecords(filepath.Join(root, filepath.FromSlash(recordid.IssuesRelDir), issueschema.StatusDirs[0]), "iss-")
 }
 
 // unshippedIntents counts the intents not yet shipped: the itd-*.md files in

@@ -280,7 +280,8 @@
         "dsp": ".abcd/work/issues/dispositions",
         "rdg": ".abcd/development/readings",
         "adm": ".abcd/work/issues/admissions",
-        "srp": ".abcd/work/issues/surprises"
+        "srp": ".abcd/work/issues/surprises",
+        "rfm": ".abcd/work/issues/reframes"
       }
     },
     "prose_citation_resolves": {
@@ -295,7 +296,8 @@
         "dsp": ".abcd/work/issues/dispositions",
         "rdg": ".abcd/development/readings",
         "adm": ".abcd/work/issues/admissions",
-        "srp": ".abcd/work/issues/surprises"
+        "srp": ".abcd/work/issues/surprises",
+        "rfm": ".abcd/work/issues/reframes"
       }
     },
     "record_provenance": {

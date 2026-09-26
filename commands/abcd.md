@@ -75,8 +75,11 @@ open issue points at `capture promote` / `resolve` / `wontfix`; decisions are
 read). An admission (`adm-N`) and a surprise (`srp-N`) have no folder, so their
 `status` is `admitted` or `recorded`; an admission's `links` are its `run`,
 `proposal`, `proposal_path` and the standing `disposition`, a surprise's are
-`occasioned_by` and `occasion_path`, and neither carries a next move. An `rfm-N`
-is refused naming the reframe record that has not landed. The reading families
+`occasioned_by` and `occasion_path`, and neither carries a next move. A reframe
+(`rfm-N`) reads `open` or `complete`; its `links` are `occasioned_by`,
+`occasion_path`, the three `*_before` fingerprints and, once complete, the three
+`*_after` fingerprints and `changed`, and an open one's next move is
+`capture reframe --complete <rfm-N>`. The reading families
 (`rdi-N`, `dsp-N`, `rdg-N`) are not dispatched. For an issue id the JSON also carries `ledger` — the `checkout` and
 `branch` whose ledger was read — because the same id can sit in another
 worktree's ledger in another state; name it when you report. A shape-matching id

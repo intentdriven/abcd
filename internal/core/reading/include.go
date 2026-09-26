@@ -68,7 +68,12 @@ import (
 // assertExclusions where `unreachable path` was enforced by nothing, so the
 // floor gains a refusal a reader can check, which is MINOR by this constant's
 // own rule (iss-95).
-const AssemblerVersionCore = "1.8.0"
+// It goes 1.8.0 to 1.9.0 with the reframe record: Exclusions gains the row
+// naming the family at every position, and the comparative position's derived
+// ledger rows gain `.abcd/work/issues/reframes` from the ledger's directory
+// list. Both are refusals a reader can now check, which is MINOR by this
+// constant's own rule (spc-2609020626048705).
+const AssemblerVersionCore = "1.9.0"
 
 // AssemblerVersion is the core semver with the rendered include table's digest
 // as semver build metadata. The digest is computed, not declared, so a table
@@ -617,6 +622,12 @@ var Exclusions = []Exclusion{
 	{Rule: "no reading consumes the local ledger side, unconditionally and under no flag (brief invariant 14)",
 		Signal: "directory", Detail: ".abcd/.work.local"},
 	{Rule: "absent from the positive walk", Signal: "record type in a denied path", Detail: "the lapse log"},
+	// The reframe record (spc-2609020626048705): a pointer to a reframe whose
+	// content stays local, warm at every position. It lives under the ledger, so
+	// the container row above and the derived per-family row at comparative
+	// already refuse it by path; this row is the declaration a reader checks,
+	// naming the family rather than leaving it to be inferred from a directory.
+	{Rule: "absent from the positive walk", Signal: "record type in a denied path", Detail: "the reframe record"},
 	{Rule: "absent from the positive walk", Signal: "record type in a denied path", Detail: "admission and selection grounds"},
 	{Rule: "the instrument's own output is never its input", Signal: "directory", Detail: ".abcd/development/readings"},
 	{Rule: "the instrument's own output is never its input", Signal: "directory", Detail: "agents"},

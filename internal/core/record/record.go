@@ -1,5 +1,5 @@
 // Package record is the read side of `abcd <id>`: dispatch on a record id —
-// iss-N, itd-N, spc-N, adr-N, and the ledger's adm-N and srp-N — and report what the record is, its links, and
+// iss-N, itd-N, spc-N, adr-N, and the ledger's adm-N, srp-N and rfm-N — and report what the record is, its links, and
 // the concrete next move for its lifecycle state (spc-26). It is a leaf
 // package over the capture, intent, and spec read paths plus a thin adr
 // reader; nothing imports it back, and nothing here writes or knows a
@@ -30,8 +30,8 @@ import (
 // here. Anything else stays on the unknown-command path, byte-for-byte.
 //
 // adm, srp and rfm joined in one edit (spc-2609020626040342): rfm because the
-// reframe spec (spc-2609020626048705) lands after it and inherits the gate
-// rather than making a second edit — its Describe case is that spec's. The
+// reframe spec (spc-2609020626048705) landed after it and inherited the gate
+// rather than making a second edit; describeReframe is that spec's. The
 // reading families rdi, dsp and rdg stay outside it, the residual spc-67 names.
 var IDRe = regexp.MustCompile(`^(iss|itd|spc|adr|adm|srp|rfm)-[0-9]+$`)
 
@@ -57,9 +57,9 @@ var ErrSkippedRecord = errors.New("skipped on read")
 // superseded_by) as present.
 type Description struct {
 	ID        string            `json:"id"`
-	Family    string            `json:"family"` // issue | intent | spec | adr | admission | surprise
+	Family    string            `json:"family"` // issue | intent | spec | adr | admission | surprise | reframe
 	Title     string            `json:"title"`
-	Status    string            `json:"status"` // folder/bucket, directory-as-truth; admitted | recorded for the two folderless ledger families
+	Status    string            `json:"status"` // folder/bucket, directory-as-truth; admitted | recorded | open | complete for the folderless ledger families
 	Path      string            `json:"path"`
 	Links     map[string]string `json:"links,omitempty"`
 	NextMoves []string          `json:"next_moves,omitempty"`
@@ -77,6 +77,7 @@ const (
 	verbCapturePromote = "capture promote"
 	verbCaptureResolve = "capture resolve"
 	verbCaptureWontfix = "capture wontfix"
+	verbCaptureReframe = "capture reframe"
 	// verbIntentLink is never written by this package directly: it reaches
 	// NextMoves through intent.Ready's spec_link remedies, which the
 	// planned-not-ready branch passes through verbatim. It is pinned here so
@@ -90,7 +91,7 @@ const (
 func RecommendedVerbPaths() []string {
 	return []string{
 		verbIntentPlan, verbIntentReady, verbIntentLink, verbIntentUnhold, verbSpecClose,
-		verbCapturePromote, verbCaptureResolve, verbCaptureWontfix,
+		verbCapturePromote, verbCaptureResolve, verbCaptureWontfix, verbCaptureReframe,
 	}
 }
 
@@ -114,7 +115,7 @@ func Describe(repoRoot, id string) (Description, error) {
 	case "srp":
 		return describeSurprise(repoRoot, id)
 	case "rfm":
-		return Description{}, fmt.Errorf("record: %s — the reframe family is dispatched by its own record's spec (spc-2609020626048705), which has not landed; no reframe store exists to read", id)
+		return describeReframe(repoRoot, id)
 	default:
 		return describeADR(repoRoot, id)
 	}
@@ -551,6 +552,83 @@ func describeSurprise(repoRoot, id string) (Description, error) {
 		}
 	}
 	return d, nil
+}
+
+// describeReframe renders a reframe record (spc-2609020626048705): its
+// occasion and where that resolves, the three before fingerprints and, once
+// complete, the three after fingerprints and the surfaces that moved. Its
+// status is `open` while the after half is absent and `complete` once it is
+// present; an open record's one next move is the completion.
+func describeReframe(repoRoot, id string) (Description, error) {
+	if !recordid.ValidReframeID(id) {
+		return Description{}, fmt.Errorf("record: malformed rfm id %q", id)
+	}
+	issuesRoot := filepath.Join(repoRoot, filepath.FromSlash(capture.LedgerRelPath))
+	dir := filepath.Join(issuesRoot, issueschema.ReframesDir)
+	if err := readingitem.RefuseSymlinkedDir(dir); err != nil {
+		return Description{}, fmt.Errorf("record: %s: %w", id, err)
+	}
+	path := filepath.Join(dir, id+".md")
+	if fi, err := os.Lstat(path); err != nil || !fi.Mode().IsRegular() {
+		return Description{}, fmt.Errorf("record: %s not found in %s/%s", id, capture.LedgerRelPath, issueschema.ReframesDir)
+	}
+	fields, _ := readRecordHead(path, "")
+	occ := headValue(fields, "occasioned_by", "")
+	d := Description{
+		ID:     id,
+		Family: "reframe",
+		Title:  "reframe occasioned by " + occ,
+		Status: "open",
+		Path:   filepath.ToSlash(relTo(repoRoot, path)),
+		Links:  map[string]string{},
+	}
+	if occ == "" {
+		d.Title = "reframe"
+	} else {
+		d.Links["occasioned_by"] = occ
+		if issueschema.ValidReframeOccasion(occ) {
+			fams := make([]readingitem.Family, 0, len(issueschema.ReframeOccasionFamilies))
+			for _, f := range issueschema.ReframeOccasionFamilies {
+				fams = append(fams, readingitem.Family(f))
+			}
+			if opath, err := readingitem.ResolveOccasion(repoRoot, occ, fams...); err == nil {
+				d.Links["occasion_path"] = filepath.ToSlash(relTo(repoRoot, opath))
+			}
+		}
+	}
+	for _, n := range issueschema.FrameSurfaceNames {
+		if v := headValue(fields, n+"_before", ""); v != "" {
+			d.Links[n+"_before"] = v
+		}
+	}
+	if headValue(fields, "construal_after", "") != "" {
+		d.Status = "complete"
+		for _, n := range issueschema.FrameSurfaceNames {
+			if v := headValue(fields, n+"_after", ""); v != "" {
+				d.Links[n+"_after"] = v
+			}
+		}
+		if v := inlineList(headValue(fields, "changed", "")); v != "" {
+			d.Links["changed"] = v
+		}
+		return d, nil
+	}
+	d.NextMoves = []string{
+		"commit the rewrite, then `abcd " + verbCaptureReframe + " --complete " + id + "`",
+	}
+	return d, nil
+}
+
+// inlineList renders a one-line flow sequence (`["a", "b"]`) as `a, b`.
+func inlineList(v string) string {
+	v = strings.TrimSuffix(strings.TrimPrefix(strings.TrimSpace(v), "["), "]")
+	var out []string
+	for _, item := range strings.Split(v, ",") {
+		if item = strings.Trim(strings.TrimSpace(item), `"'`); item != "" {
+			out = append(out, item)
+		}
+	}
+	return strings.Join(out, ", ")
 }
 
 // headValue reads one frontmatter value, unquoted, or fallback when it is absent

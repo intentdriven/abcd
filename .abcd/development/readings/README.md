@@ -157,6 +157,7 @@ disclosed as residue.
 | `.abcd/work/DECISIONS.md` | file | absent from the positive walk | every position |
 | `.abcd/.work.local` | directory | no reading consumes the local ledger side, unconditionally and under no flag (brief invariant 14) | every position |
 | `the lapse log` | record type in a denied path | absent from the positive walk | every position |
+| `the reframe record` | record type in a denied path | absent from the positive walk | every position |
 | `admission and selection grounds` | record type in a denied path | absent from the positive walk | every position |
 | `.abcd/development/readings` | directory | the instrument's own output is never its input | every position |
 | `agents` | directory | the instrument's own output is never its input | every position |
@@ -173,6 +174,7 @@ disclosed as residue.
 | `.abcd/work/issues/dispositions` | directory | the comparative reading receives candidates and never their fate: the ledger's other families are excluded family by family, derived from the ledger's own directory list | comparative |
 | `.abcd/work/issues/admissions` | directory | the comparative reading receives candidates and never their fate: the ledger's other families are excluded family by family, derived from the ledger's own directory list | comparative |
 | `.abcd/work/issues/surprises` | directory | the comparative reading receives candidates and never their fate: the ledger's other families are excluded family by family, derived from the ledger's own directory list | comparative |
+| `.abcd/work/issues/reframes` | directory | the comparative reading receives candidates and never their fate: the ledger's other families are excluded family by family, derived from the ledger's own directory list | comparative |
 
 <!-- END GENERATED: reading-include-table -->
 

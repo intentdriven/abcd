@@ -564,6 +564,41 @@
       ]
     },
     {
+      "path": "abcd capture reframe",
+      "hidden": false,
+      "sentence": "Record a reframe a reading occasioned: Writes one rfm-N fingerprinting the frame before and after; refuses an uncommitted occasion or frame edit without --open.",
+      "flags": [
+        {
+          "name": "complete",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "grounds",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "occasioned-by",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "open",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd capture resolve",
       "hidden": false,
       "sentence": "Move an open issue to resolved/, naming what fixed it: Writes the moved record; refuses without --impact or on an id this ledger does not hold.",

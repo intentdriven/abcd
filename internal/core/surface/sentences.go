@@ -64,6 +64,8 @@ var sentences = map[string]string{
 		"Writes the records only with --apply; refuses outside a git checkout.",
 	"abcd capture promote": "Graduate an issue or an accepted reading item into an intent draft: " +
 		"Writes the draft and both back-links; refuses a promoted issue or an unaccepted item.",
+	"abcd capture reframe": "Record a reframe a reading occasioned: " +
+		"Writes one rfm-N fingerprinting the frame before and after; refuses an uncommitted occasion or frame edit without --open.",
 	"abcd capture resolve": "Move an open issue to resolved/, naming what fixed it: " +
 		"Writes the moved record; refuses without --impact or on an id this ledger does not hold.",
 	"abcd capture surprise": "Record one surprise a reading item, admission or disposition occasioned: " +

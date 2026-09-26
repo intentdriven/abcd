@@ -150,6 +150,19 @@ func duplicateKeyReaderRows() []readerRow {
 		reader: "record.Describe → describeSurprise → readRecordHeadAndBody → frontmatter.Fields",
 		want:   keepsFirst,
 		probe:  probeSurprise,
+	}, {
+		// The reframe record's two readers disagree, which is why the store does
+		// not declare readerRefusesDuplicateKey: the verb that completes it
+		// refuses the file, and the dispatcher renders the first value.
+		store:  "rfm",
+		reader: "capture.Reframe --complete → readReframeRecord → parseFrontmatterAndBody",
+		want:   refuses,
+		probe:  probeReframeComplete,
+	}, {
+		store:  "rfm",
+		reader: "record.Describe → describeReframe → readRecordHead → frontmatter.Fields",
+		want:   keepsFirst,
+		probe:  probeReframeDescribe,
 	}}
 }
 
@@ -197,6 +210,7 @@ func TestThisRulesOwnScannerKeepsTheFirstValueInEveryStore(t *testing.T) {
 		"work/issues/dispositions/rdi-2/dsp-3.md": "---\nschema_version: 1\nid: dsp-3\nid: dsp-404\nitem: rdi-2\nstate: accepted\n---\n\n",
 		"work/issues/admissions/rdg-1/adm-3.md":   "---\nschema_version: 1\nid: adm-3\nid: adm-404\nrun: rdg-1\nproposal: rdi-2\ngrounds: it widens the frame\n---\n\n",
 		"work/issues/surprises/srp-6.md":          "---\nschema_version: 1\nid: srp-6\nid: srp-404\noccasioned_by: rdi-2\n---\n\n",
+		"work/issues/reframes/rfm-6.md":           dupReframe("id: rfm-6\nid: rfm-404"),
 	}
 	writeRel(t, root, "rec/.keep", "")
 	for rel, body := range files {
@@ -520,6 +534,37 @@ func probeSurprise(t *testing.T) answer {
 	return which(t, d.Links["occasioned_by"], "FIRST-MARKER", "SECOND-MARKER")
 }
 
+// dupReframe renders an open reframe record whose id line is idLines, so a
+// probe can duplicate the key it asks about.
+func dupReframe(idLines string) string {
+	const fp = "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb"
+	return "---\nschema_version: 1\n" + idLines + "\noccasioned_by: rdi-2\nconstrual_before: " + fp +
+		"\nglossary_before: " + fp + "\nscope_before: " + fp + "\ngrounds: the reading sent us back to the frame\n---\n\n"
+}
+
+// probeReframeComplete reads a reframe through the verb that completes it
+// (spc-2609020626048705), which parses the record strictly before it touches git.
+func probeReframeComplete(t *testing.T) answer {
+	root := t.TempDir()
+	writeRel(t, root, ".abcd/work/issues/reframes/rfm-6.md",
+		dupReframe("id: rfm-6\noccasioned_by: rdi-3"))
+	_, err := capture.Reframe(capture.ReframeRequest{RepoRoot: root, Complete: "rfm-6"})
+	return errAnswer(t, err)
+}
+
+// probeReframeDescribe reads the same shape through the record dispatcher,
+// `abcd rfm-N`, which renders its occasion.
+func probeReframeDescribe(t *testing.T) answer {
+	root := t.TempDir()
+	writeRel(t, root, ".abcd/work/issues/reframes/rfm-6.md",
+		strings.Replace(dupReframe("id: rfm-6\noccasioned_by: FIRST-MARKER"), "occasioned_by: rdi-2", "occasioned_by: SECOND-MARKER", 1))
+	d, err := record.Describe(root, "rfm-6")
+	if err != nil {
+		return refuses
+	}
+	return which(t, d.Links["occasioned_by"], "FIRST-MARKER", "SECOND-MARKER")
+}
+
 func probeUnread(t *testing.T, rel, body string) answer {
 	root, _ := readingLedger(t, detectionItem)
 	writeRel(t, root, rel, body)
@@ -691,6 +736,7 @@ func everyStoreConfig() lint.Config {
 				"dsp": "work/issues/dispositions",
 				"adm": "work/issues/admissions",
 				"srp": "work/issues/surprises",
+				"rfm": "work/issues/reframes",
 			}},
 		},
 	}
