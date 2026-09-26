@@ -61,6 +61,16 @@ plugin surface, and a future MCP server share one engine.
   the families it admits. A leaf because `core/capture` imports `core/intent`
   and both need it; `core/capture` keeps its historical locator names as thin
   wrappers over it.
+- **`core/sessionkind/`** — the per-run context stamp: the two session kinds
+  (`reading`, `scribe`), the one grammar a stamp is rendered and recognised by
+  (kind, reading run, and twelve hex digits of the context's sha256), and the
+  bounded finder that picks every stamp out of a text (adr-2609021016275803). A
+  leaf on the `core/grounds` precedent, because three packages read one token:
+  `core/reading` stamps the bundle, `core/scribe` stamps the context, and
+  `core/history` records the stamps a transcript carried and checks separation
+  over them. History importing either assembler to learn the grammar would pull
+  the assemblers into the transcript store, so the grammar lives here and each of
+  them imports it.
 - **`core/relink/`** — the one link-repoint primitive. A record's folder is its
   status, so every lifecycle transition is a rename, and a rename strands every
   relative link that named the file where it was. The verbs that move a record
@@ -135,6 +145,17 @@ plugin surface, and a future MCP server share one engine.
   row's own source downward, so a record family added later is excluded by
   construction. Record enumeration is `core/lint`'s `LoadRecordGraph`, never a second
   parser. The package assembles input and never runs a reading.
+- **`core/scribe/`** — the ledger scribe's context assembler and output ingest
+  (itd-2609020625402599, spc-2609020626045177): the reading assembler's inverse.
+  It builds the scribe's context by positive inclusion from an allow list DERIVED
+  from `core/issueschema`'s ledger directory list, refuses any item outside it by
+  path prefix whatever route it arrived by, and parks the context with a hashed
+  manifest in the local tier. Its ingest refuses a payload that authored anything
+  and writes through `core/capture`'s own verbs, adding no validation path beyond
+  the authoring refusal, then promotes the manifest beside the run through
+  `core/reading`'s one durable-tier writer. It is not inside `core/reading`
+  because the two contexts must never share a front door, and a package that
+  built both would be one.
 - **`core/decide/`** — the decision record's WRITE side: `abcd decide "<title>"`
   mints an `adr-<stamp>` through `core/recordid` and lays the ADR skeleton under
   `.abcd/development/decisions/adrs/`. It is the last record family to reach that

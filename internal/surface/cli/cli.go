@@ -468,6 +468,7 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newEmbarkCommand(&asJSON))
 	root.AddCommand(newSiteCommand(&asJSON))
 	root.AddCommand(newReadingCommand(&asJSON))
+	root.AddCommand(newScribeCommand(&asJSON))
 
 	// Every visible verb's sentence (itd-2609212113220149), set from the surface
 	// manifest before anything renders a list, so the one declaration is what

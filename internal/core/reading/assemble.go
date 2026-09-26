@@ -15,6 +15,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/lint"
+	"github.com/intentdriven/abcd/internal/core/sessionkind"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
@@ -589,6 +590,14 @@ func Assemble(req AssembleRequest) (AssembleResult, error) {
 		manifest.Items = append(manifest.Items, mItem)
 	}
 
+	// The stamp is set LAST over the bundle, because its digest is over the item
+	// set the loop above just finished (adr-2609021016275803).
+	stamp, err := bundleStamp(runID, bundle.Items)
+	if err != nil {
+		return AssembleResult{}, err
+	}
+	bundle.ContextStamp = stamp
+
 	hash, err := ManifestHash(manifest)
 	if err != nil {
 		return AssembleResult{}, err
@@ -621,6 +630,20 @@ func Assemble(req AssembleRequest) (AssembleResult, error) {
 	res.Written = true
 	res.Artefacts = []string{BundleFileName, ManifestFileName}
 	return res, notExercisedError(notExercised, candidateRun)
+}
+
+// bundleStamp is the reading kind's per-run context stamp: the run and the
+// sha256 over the bundle's item set as the canonical encoder serialises it.
+func bundleStamp(runID string, items []BundleItem) (string, error) {
+	raw, err := encode(items)
+	if err != nil {
+		return "", err
+	}
+	stamp, err := sessionkind.Stamp(sessionkind.Reading, runID, sha256Hex(raw))
+	if err != nil {
+		return "", fmt.Errorf("reading: stamping the bundle: %w", err)
+	}
+	return stamp, nil
 }
 
 // PositionNotExercised is the fixed interpretation as a refusal: the derived
@@ -789,6 +812,17 @@ func requireEmptyDir(named, dir string) error {
 // Only a directory inside the repository can be reached, so an output path that
 // resolves outside it is always fine.
 func refuseSelfAdmittingOutDir(repoRoot, outDir, label string) error {
+	return RefuseReachableOutDir(repoRoot, outDir, label, BundleFileName, ManifestFileName)
+}
+
+// RefuseReachableOutDir refuses an output directory where any of the named
+// files would be admitted by the include table at some position. It is the
+// check refuseSelfAdmittingOutDir makes for this assembler's own two artefacts,
+// exported for the one other assembler whose output must never become a
+// reading's input: the scribe's context carries ledger content, and a context
+// parked where the table reaches it is the next reading handed the ledger
+// (spc-2609020626045177, brief invariant 15).
+func RefuseReachableOutDir(repoRoot, outDir, label string, names ...string) error {
 	if outDir == "" {
 		return nil
 	}
@@ -813,7 +847,7 @@ func refuseSelfAdmittingOutDir(repoRoot, outDir, label string) error {
 	if rel == ".." || strings.HasPrefix(rel, "../") {
 		return nil
 	}
-	for _, name := range []string{BundleFileName, ManifestFileName} {
+	for _, name := range names {
 		candidate := path.Join(rel, name)
 		for _, p := range Positions() {
 			if Admits(p, candidate) {

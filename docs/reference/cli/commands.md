@@ -910,6 +910,12 @@ Render one session and its sub-agents as one artefact plus telemetry: Writes bot
       --out string            directory to write <session>.md and <session>.telemetry.json into, or - for stdout (default ".")
 ```
 
+#### `abcd history separation`
+
+Report whether any retained transcript held both a reading and the ledger of one run: Writes nothing; never refuses, exiting 1 naming each such transcript.
+
+**Usage:** `abcd history separation`
+
 #### `abcd history show`
 
 Show one stored transcript's metadata and redacted body: Writes nothing; refuses an id the store does not hold.
@@ -1753,6 +1759,95 @@ rules replaced, its state changed, or a custom domain declared — renders as
 block and in the hook's diagnostic, and carries "source": "user" or "repo" in
 --json; the last layer to name a domain labels it. An untouched bundled domain
 renders bare and carries "source": "bundled". Read-only.
+
+### `abcd scribe`
+
+Assemble a ledger scribe's context and ingest what it transcribed: Writes nothing bare; refuses an unknown sub-verb.
+
+**Usage:** `abcd scribe`
+
+Build the ledger scribe's context and ingest what the scribe returns.
+
+The scribe transcribes a reading run's records and the researcher's dispositions into the
+ledger's declared shapes, and authors nothing. Its context is the reading assembler's exact
+inverse: ledger content only, drawn from the issue ledger's own directories, and the
+researcher's supplied text. `assemble` builds it with a manifest of every path passed;
+`ingest` validates the scribe's output and refuses anything the scribe authored.
+
+#### `abcd scribe assemble`
+
+Build a scribe session's context from the ledger and supplied dispositions: Writes it and a hashed manifest; refuses an uningested run or a symlinked ledger.
+
+**Usage:** `abcd scribe assemble --run <rdg-N> --dispositions <path> [flags]`
+
+Build the context one scribe session is handed, for one ingested reading run.
+
+The context is positive inclusion at directory grain: the issue ledger's own directories
+(its reading records, dispositions, admissions, surprises and reframes, and its three status
+directories), derived from the ledger's directory list, and the researcher's dispositions
+text read whole. Nothing else is walked, and an item outside that list is refused whatever
+route it arrived by. The run must be ingested: its records come from the store, never from
+a raw reading output handed over again.
+
+The context and a manifest naming every path passed, by hash, are parked in the local tier
+(or under --out, which may not be a directory a reading's include table reaches). Nothing in
+the durable record is touched. Both carry the scribe's per-run context stamp.
+
+**Flags:**
+
+```
+      --dispositions string   the researcher's dispositions text, read whole and carried verbatim
+      --dry-run               write nothing; with --out the two artefacts still land in that directory
+      --out string            an empty or absent directory the context and the manifest are written to
+                              (default: the local-tier scribe run directory)
+      --run string            the ingested reading run the session transcribes for (rdg-N)
+```
+
+**Example:**
+
+```
+abcd scribe assemble --run rdg-2609250000000001 --dispositions ./dispositions.md --json
+```
+
+#### `abcd scribe ingest`
+
+Validate a scribe's output against the supplied dispositions: Writes what it transcribed through the capture verbs; refuses anything the scribe authored.
+
+**Usage:** `abcd scribe ingest --scribe-json <path> --dispositions <path> [flags]`
+
+Validate the JSON a scribe session returned and write its records through the capture verbs.
+
+The context the session was handed is proven first: it must hash to its parked manifest, and
+the output must cite that hash. The pair is parked where a scribe session could rewrite it, so
+--dispositions names the researcher's own text again, the file assemble was handed: the
+manifest's supplied hash and the context's supplied copy must both equal it, and every check
+below reads it. Then the output is refused if the scribe authored anything —
+a field outside the declared shapes, an item the supplied dispositions never name, a state or an
+admission the item's own line of the supplied text does not carry, or a ground, exit condition
+or surprise that does not stand verbatim in the supplied text once whitespace is folded — or if
+it passes over an unanswered item of the run in silence. Nothing is written until all of that
+holds.
+
+Dispositions, admissions and surprises are then written in that order through the capture verbs,
+which apply their own redaction and refusals, the ordering gate included; the first refusal stops
+the ingest and names what landed before it. Fidelity flags and refusals are reported and never
+written. Once every write has landed, and when at least one record did, the manifest is promoted
+beside the run, write-once; an ingest that lands no record leaves the run open.
+
+**Flags:**
+
+```
+      --context string        the context the session was handed, when assemble wrote it under --out
+                              (default: the local-tier scribe run directory of the output's run)
+      --dispositions string   the researcher's dispositions text, the file assemble was handed
+      --scribe-json string    path to the JSON the scribe session returned
+```
+
+**Example:**
+
+```
+abcd scribe ingest --scribe-json ./scribe-output.json --dispositions ./dispositions.md --json
+```
 
 ### `abcd site`
 

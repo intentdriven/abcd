@@ -137,6 +137,8 @@ var sentences = map[string]string{
 		"Writes the repaired records only with --apply; refuses outside a git checkout.",
 	"abcd history reconstruct": "Render one session and its sub-agents as one artefact plus telemetry: " +
 		"Writes both files into --out; refuses an --out that is not an existing directory.",
+	"abcd history separation": "Report whether any retained transcript held both a reading and the ledger of one run: " +
+		"Writes nothing; never refuses, exiting 1 naming each such transcript.",
 	"abcd history show": "Show one stored transcript's metadata and redacted body: " +
 		"Writes nothing; refuses an id the store does not hold.",
 	"abcd history staged": "List the transcripts that ended but are not yet redacted into the store: " +
@@ -250,6 +252,13 @@ var sentences = map[string]string{
 
 	"abcd rules": "Render the active rule set, or the one domain named: " +
 		"Writes nothing; refuses an unknown domain.",
+
+	"abcd scribe": "Assemble a ledger scribe's context and ingest what it transcribed: " +
+		"Writes nothing bare; refuses an unknown sub-verb.",
+	"abcd scribe assemble": "Build a scribe session's context from the ledger and supplied dispositions: " +
+		"Writes it and a hashed manifest; refuses an uningested run or a symlinked ledger.",
+	"abcd scribe ingest": "Validate a scribe's output against the supplied dispositions: " +
+		"Writes what it transcribed through the capture verbs; refuses anything the scribe authored.",
 
 	"abcd site": "Report what the website declares and what was built: " +
 		"Writes nothing; refuses any argument.",

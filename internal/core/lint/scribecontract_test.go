@@ -8,7 +8,9 @@ package lint_test
 //
 // These cases hold the shipped DEFINITION to that rule, and they are honest about
 // their reach: they prove the prompt names the right paths, not that a host
-// assembled the right context. Mechanical assembly belongs to the ingest verb.
+// assembled the right context. Mechanical assembly belongs to the scribe
+// verb's assembler, whose allow list TestScribeInputsMatchTheLedgerDirs holds
+// this definition's list to.
 //
 // They sit in the external test package beside preflightgates_test.go, the other
 // case that reads the real repository's shipped files, and share its readRepoFile.
@@ -27,6 +29,7 @@ import (
 	"unicode"
 
 	"github.com/intentdriven/abcd/internal/core/lint"
+	"github.com/intentdriven/abcd/internal/core/scribe"
 )
 
 // scribePromptRel is the shipped definition; scribeCanaryRel its injection canary.
@@ -564,4 +567,67 @@ func TestScribePromptSatisfiesTheContract(t *testing.T) {
 	}
 	t.Fatalf("no %q finding over a deliberately broken agent tree; the rule id this case filters on is stale",
 		scribeAgentContractRule)
+}
+
+// scribeSection returns the body of the definition's section whose heading
+// starts with name, up to the next heading of the same or higher level.
+func scribeSection(t *testing.T, prompt, name string) string {
+	t.Helper()
+	re := regexp.MustCompile(`(?m)^##[ \t]+` + regexp.QuoteMeta(name) + `.*$`)
+	loc := re.FindStringIndex(prompt)
+	if loc == nil {
+		t.Fatalf("%s carries no %q section", scribePromptRel, name)
+	}
+	rest := prompt[loc[1]:]
+	if next := regexp.MustCompile(`(?m)^##[ \t]`).FindStringIndex(rest); next != nil {
+		rest = rest[:next[0]]
+	}
+	return rest
+}
+
+// scribeLedgerPathRe matches one backticked ledger directory in the Inputs list.
+var scribeLedgerPathRe = regexp.MustCompile("`(" + regexp.QuoteMeta(scribeLedgerRoot) + "[a-z]+)/`")
+
+// TestScribeInputsMatchTheLedgerDirs holds the definition's allow list to the
+// function the verb assembles from: the Inputs section names exactly the
+// directories scribe.AllowList() derives from the ledger's own directory list,
+// so the definition and the assembler describe one set and a family the ledger
+// declares later is a red test until the definition names it
+// (spc-2609020626045177).
+func TestScribeInputsMatchTheLedgerDirs(t *testing.T) {
+	root := filepath.Join("..", "..", "..")
+	inputs := scribeSection(t, readRepoFile(t, root, scribePromptRel), "Inputs")
+	got := map[string]bool{}
+	for _, m := range scribeLedgerPathRe.FindAllStringSubmatch(inputs, -1) {
+		got[m[1]] = true
+	}
+	want := map[string]bool{}
+	for _, dir := range scribe.AllowList() {
+		want[dir] = true
+		if !got[dir] {
+			t.Errorf("%s's Inputs do not name %s/, which the assembler passes", scribePromptRel, dir)
+		}
+	}
+	for dir := range got {
+		if !want[dir] {
+			t.Errorf("%s's Inputs name %s/, which the assembler does not pass", scribePromptRel, dir)
+		}
+	}
+}
+
+// TestScribeDeliveryNamesTheVerb: the definition's Delivery section names the
+// two verbs its session sits between and the four outputs it returns, and no
+// longer says there is no ingest verb.
+func TestScribeDeliveryNamesTheVerb(t *testing.T) {
+	root := filepath.Join("..", "..", "..")
+	delivery := scribeSection(t, readRepoFile(t, root, scribePromptRel), "Delivery")
+	for _, want := range []string{"abcd scribe assemble", "abcd scribe ingest", "`dispositions`", "`admissions`",
+		"`surprises`", "`fidelity_flags`", "`outstanding`", "`refusals`", "`context_sha256`"} {
+		if !strings.Contains(delivery, want) {
+			t.Errorf("%s's Delivery section does not name %s", scribePromptRel, want)
+		}
+	}
+	if strings.Contains(delivery, "There is no ingest verb") {
+		t.Errorf("%s's Delivery section still says there is no ingest verb", scribePromptRel)
+	}
 }

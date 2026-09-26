@@ -1104,6 +1104,12 @@
       ]
     },
     {
+      "path": "abcd history separation",
+      "hidden": false,
+      "sentence": "Report whether any retained transcript held both a reading and the ledger of one run: Writes nothing; never refuses, exiting 1 naming each such transcript.",
+      "flags": []
+    },
+    {
       "path": "abcd history show",
       "hidden": false,
       "sentence": "Show one stored transcript's metadata and redacted body: Writes nothing; refuses an id the store does not hold.",
@@ -2037,6 +2043,77 @@
       "block": "people",
       "sentence": "Render the active rule set, or the one domain named: Writes nothing; refuses an unknown domain.",
       "flags": []
+    },
+    {
+      "path": "abcd scribe",
+      "hidden": false,
+      "group": "agents",
+      "block": "agents",
+      "sentence": "Assemble a ledger scribe's context and ingest what it transcribed: Writes nothing bare; refuses an unknown sub-verb.",
+      "flags": []
+    },
+    {
+      "path": "abcd scribe assemble",
+      "hidden": false,
+      "sentence": "Build a scribe session's context from the ledger and supplied dispositions: Writes it and a hashed manifest; refuses an uningested run or a symlinked ledger.",
+      "flags": [
+        {
+          "name": "dispositions",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "dry-run",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "out",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "run",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd scribe ingest",
+      "hidden": false,
+      "sentence": "Validate a scribe's output against the supplied dispositions: Writes what it transcribed through the capture verbs; refuses anything the scribe authored.",
+      "flags": [
+        {
+          "name": "context",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "dispositions",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "scribe-json",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
     },
     {
       "path": "abcd site",
