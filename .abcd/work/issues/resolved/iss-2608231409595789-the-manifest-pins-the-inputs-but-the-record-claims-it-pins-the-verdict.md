@@ -7,6 +7,10 @@ category: "bug"
 source: "user-observation"
 found_during: "v0.6.2 release-gate double run 2026-08-23"
 found_at: ".abcd/development/release-gate/manifest.json"
+resolution: "The manifest's comment, the release-gate README, the detector header, the currency test's doc comment and the phase-8 goal claim what the manifest pins — the inputs, and so the scope two runs of one tier examine — and say the findings, their count and their classes vary between runs; the README states that a receipt's failing count is one run's observation, not a metric. Record correction only; the gate's refusals are unchanged."
+impact: internal
+resolved_by:
+  commit: "b2fc7f3b"
 ---
 
 `.abcd/development/release-gate/manifest.json` describes itself as "the
@@ -68,3 +72,7 @@ This is the enforcement-claims-are-facts class again (iss-2608230847432286): a
 record stating an assurance the machinery underneath it does not provide. It was
 found only because a release recovery happened to run the same gate twice in one
 afternoon, which is not something the process would otherwise ever do.
+
+## Grounds
+
+- pursued: no record states that two runs of one tier yield comparable findings or that a receipt's count measures drift; a surviving sentence saying runs 'mean the same thing', or a receipt comparison presented as a trend, would show it wrong

@@ -224,8 +224,10 @@ those three records are in is not reachable through this verb.
 restates the decision and records nothing; "planned it because we expect a
 stamped identity to survive rewording, which nothing else does" is a conjecture
 somebody can later find wrong. abcd refuses only the degenerate texts — empty,
-too short, or the vocabulary word repeated back — and cannot tell a conjecture
-from a restatement. That part is yours: put the question to the human and write
+too short, or the vocabulary word repeated back — and text the site cannot
+render, such as an unclosed backtick, an image or raw HTML, because the entry is
+append-only and the record must still build; it cannot tell a conjecture from a
+restatement. That part is yours: put the question to the human and write
 down their answer, not a paraphrase of the route taken. A hand-typed bullet is
 held to the same floor: `- pursued: yes` is not an entry, and the gate reports
 the record as carrying none.

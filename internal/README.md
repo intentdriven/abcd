@@ -119,6 +119,11 @@ plugin surface, and a future MCP server share one engine.
   record scan (`LoadRecordGraph`), never a second parser; the dates come from one
   `git log` pass; the chart arrangements are computed here so the published pages
   need no layout engine and make no requests.
+- **`core/mdrender/`** — the Markdown subset renderer the site publishes the
+  repository's prose through, and `RefusalIn`, the one answer to what that
+  subset refuses. It is a leaf apart from `core/site` because the writers of
+  append-only record prose (`core/grounds`) ask it before they write, and
+  `core/site` imports the record families they belong to.
 - **`core/cite/`** — the live half of the citation gate: the bounded fetcher and
   the refresh that writes the committed baseline `core/lint` then enforces with
   zero network. It is the only place abcd dials out on behalf of documentation,

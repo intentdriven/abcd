@@ -78,7 +78,7 @@ _Empty. Populated by intent-fidelity-reviewer when intent moves to shipped/._
   mechanisms in the companion harness.
 - Governing constraints: abcd never forks/patches/reimplements a dependency
   (wrap + configure only); abcd must run locally, independent of Claude Code.
-- Reuses the fail-closed, four-verdict posture of the spc-12 fidelity reviewer
+- Reuses the fail-closed, four-verdict posture of the fidelity reviewer of spc-12 (predecessor store)
   and the native ship gate (scanner-unavailable → refuse, never silent
   pass).
 - Brief-change dependency: introducing framework-provided "validation

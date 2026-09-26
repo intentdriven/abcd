@@ -12,9 +12,10 @@
 // no reading of the grammar and imports nothing from here. It imports core/mdrecord — the record-body machinery the
 // `## Grounds` section is read and written through — and core/frontmatter, for
 // the one rule about where a record's frontmatter stops and its body begins;
-// and internal/termsafe, whose hidden-rune encoder a written text passes
-// through; otherwise only the standard library: no filesystem, no transport, no
-// record store.
+// internal/termsafe, whose hidden-rune encoder a written text passes through;
+// and core/mdrender, the site's Markdown renderer, which the constructors ask
+// whether the entry they are about to hand a writer will render; otherwise only
+// the standard library: no filesystem, no transport, no record store.
 //
 // The grounds name the CONJECTURE being acted on, not the route taken. "Planned
 // it because it is next" restates the decision; "planned it because we expect a
@@ -32,6 +33,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/intentdriven/abcd/internal/core/mdrender"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
@@ -55,7 +57,7 @@ const (
 // Vocabulary is the closed set, in the order a surface should offer it. The two
 // refusals that reject a TOKEN -- Parse's grammar refusal and ParseToken's --
 // render it (vocabularyList), so a caller told their token is wrong is told
-// which tokens are right. The package's other eleven refusals render nothing of
+// which tokens are right. The package's other refusals render nothing of
 // the kind -- and that is all this comment claims about them. Two earlier
 // spellings each replaced an overclaim with a smaller one: first that every
 // refusal rendered the list, then that the other eleven all speak about the
@@ -250,14 +252,15 @@ func New(tok Token, text string) (Grounds, error) {
 	if err := ValidateText(folded); err != nil {
 		return Grounds{}, err
 	}
-	return Grounds{Token: t, Text: termsafe.EncodeHiddenRunes(folded)}, nil
+	return renderable(Grounds{Token: t, Text: termsafe.EncodeHiddenRunes(folded)})
 }
 
 // NewDerived builds a Grounds whose text is DERIVED from another required value
 // rather than supplied to the argument — a wontfix's `declined:` entry stamped
 // from its reason. It takes the same path New does with the substance floor left
 // off: the text is folded, refused for the control characters ValidateText
-// refuses, and hidden runes are encoded. The floor stays with what a caller
+// refuses, hidden runes are encoded, and the entry is refused when the site's
+// renderer would refuse it — a derived entry is as append-only as a supplied one. The floor stays with what a caller
 // supplies, because the value it is derived from has its own contract and a
 // terse reason is a legal one (iss-2608301244450106).
 func NewDerived(tok Token, text string) (Grounds, error) {
@@ -272,7 +275,27 @@ func NewDerived(tok Token, text string) (Grounds, error) {
 	if err := validateControl(folded); err != nil {
 		return Grounds{}, err
 	}
-	return Grounds{Token: t, Text: termsafe.EncodeHiddenRunes(folded)}, nil
+	return renderable(Grounds{Token: t, Text: termsafe.EncodeHiddenRunes(folded)})
+}
+
+// renderable refuses a ground whose entry the site's renderer would refuse, and
+// otherwise returns it unchanged. It is asked by BOTH constructors, of the text
+// exactly as it will be written, because the entry is append-only: no verb
+// removes it once it lands, so a record the site cannot render stays that way
+// until somebody hand-edits a committed record, and `site-render` is a
+// preflight gate, a CI step and a release gate (iss-2608301646046226).
+//
+// The question is put to the renderer itself (mdrender.RefusalIn) over the
+// bullet the record will carry, never to a list of its rules kept here: a copy
+// of the renderer's refusals is a copy that stops agreeing with it.
+func renderable(g Grounds) (Grounds, error) {
+	if err := mdrender.RefusalIn(g.Bullet()); err != nil {
+		return Grounds{}, fmt.Errorf(
+			"grounds text %q carries a construct the site renderer refuses: %v; the entry is append-only "+
+				"and the record it lands in must still build, so it is refused before anything is written — "+
+				"put markup in a closed code span or reword it", g.Text, err)
+	}
+	return g, nil
 }
 
 // Fold collapses every run of whitespace to a single space and trims the ends —

@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"unicode"
 
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
 	"github.com/intentdriven/abcd/internal/core/mdrecord"
@@ -495,7 +496,8 @@ func verifyRedaction(rel, original, redacted string, keys, headings map[string]b
 	// The scan runs over the unfenced body JOINED, not line by line, because
 	// `<h2>` and its text and its close need not share a line. The match offset
 	// maps back to a line so the refusal still names one.
-	if line, title, ok := rawHTMLHeading(lines, fenced, offset, headings); ok {
+	line, title, ok, overBudget := rawHTMLHeading(lines, fenced, offset, headings)
+	if ok {
 		if want, hit := namesExcludedHeading(title, headings); hit {
 			return fmt.Errorf("reading: %s carries the excluded heading %q as raw HTML at line %d; "+
 				"the floor names %q, and a heading is excluded however it is spelled",
@@ -505,13 +507,22 @@ func verifyRedaction(rel, original, redacted string, keys, headings map[string]b
 
 	// An opener that reaches the end of the document with neither a hard nor a
 	// soft bound has its title read over the whole remainder, which is the shape
-	// that admitted the heading sitting under it. The refusal removes the
-	// shape's admission and claims nothing about the scan's COST, which stays
-	// with iss-2608301421382564 (iss-2608301421380392).
+	// that admitted the heading sitting under it (iss-2608301421380392). It is
+	// asked before the budget below is, so a document that is both is refused
+	// by the shape it has rather than by what reading it would cost.
 	if line, ok := unboundedRawHeading(lines, fenced, offset); ok {
 		return fmt.Errorf("reading: %s opens a raw heading element that is never closed at line "+
 			"%d, and nothing bounds its title short of the end of the document; the title is "+
 			"refused rather than read over the remainder", rel, line)
+	}
+
+	// Titles that overlap past the read budget are refused rather than read in
+	// time quadratic in the opener count (iss-2608301421382564). The scan above
+	// stopped at the opener that spent the budget and read no title past it.
+	if overBudget {
+		return fmt.Errorf("reading: %s opens raw heading elements whose titles overlap past the "+
+			"floor's read budget (from line %d); each title would be read over most of the "+
+			"document, so the titles are refused rather than read in quadratic time", rel, line)
 	}
 
 	// Setext headings are a refusal rather than a redaction. The section scan
@@ -735,8 +746,8 @@ func escapedQuotedKey(line string) (string, bool) {
 	return m[1], true
 }
 
-// rawHeadingTitleEnds bounds the text one heading element introduces, and
-// returns EVERY reading of that bound rather than one.
+// rawHeadingBounds bounds the text one heading element introduces, and returns
+// EVERY reading of that bound rather than one.
 //
 // The hard bound is the element's OWN closing tag or the next heading open,
 // whichever comes first. Bounding at any closing tag instead cut the title at
@@ -755,21 +766,88 @@ func escapedQuotedKey(line string) (string, bool) {
 // caller refuses on either: a title read two ways is excluded if EITHER way
 // names an excluded heading.
 //
-// The walk is incremental rather than a materialised match list. Listing every
-// candidate bound in the whole remainder for every opener, only to break at the
-// first hard one, is quadratic with a large constant: a committed markdown file
-// of repeated openers up to the size cap this package sets did not finish, and a
-// silent hang is the one staging a fail-closed floor cannot afford.
+// The bounds are indexed once per reading, not searched once per opener. A
+// walk from each opener to its first hard bound is linear per opener and
+// quadratic per document: listing every candidate bound in the remainder for
+// every opener did not finish on a committed file up to the size cap, and even
+// the incremental walk read the whole remainder once per opener when no bound
+// followed (iss-2608301421382564). One pass lists every candidate bound in the
+// reading, and each opener finds its own by binary search. The list is the one
+// the walk visited: a bound match ends at a `>` or is a blank line, so no match
+// straddles the `>` that ends an opener, and the matches at or after an opener
+// are exactly the ones a walk starting there would have found.
+//
 // The second return says whether ANY bound was found. An opener with neither a
 // hard nor a soft bound has its title read over the whole remainder of the
 // document, which is the shape that admitted the heading sitting under it; the
 // caller refuses it rather than reading the remainder as a title
 // (iss-2608301421380392).
-func rawHeadingTitleEnds(rest, name string) ([]int, bool) {
-	hard, soft := -1, -1
-	for off := 0; off < len(rest); {
+type rawHeadingBounds struct {
+	text   string
+	starts []int            // every candidate bound's start, ascending
+	endsAt []int            // and its end, index for index
+	blanks []int            // starts of blank lines: the soft bound
+	hOpens []int            // starts of h-tag openers: a hard bound for every element
+	closes map[string][]int // starts of closing tags, keyed by the name's case fold
+}
+
+// indexRawHeadingBounds lists every candidate bound in one reading of the
+// document, in a single pass.
+func indexRawHeadingBounds(text string) *rawHeadingBounds {
+	ix := &rawHeadingBounds{text: text, closes: map[string][]int{}}
+	for _, m := range rawHeadingBoundRe.FindAllStringSubmatchIndex(text, -1) {
+		ix.starts = append(ix.starts, m[0])
+		ix.endsAt = append(ix.endsAt, m[1])
+		switch {
+		case text[m[0]] == '\n':
+			ix.blanks = append(ix.blanks, m[0])
+		case m[2] >= 0:
+			key := elementFoldKey(text[m[2]:m[3]])
+			ix.closes[key] = append(ix.closes[key], m[0])
+		default:
+			ix.hOpens = append(ix.hOpens, m[0])
+		}
+	}
+	return ix
+}
+
+// titleEnds bounds the title of the opener whose tag ends at p, returning each
+// reading of the bound as an offset from p, and whether any bound was found.
+//
+// One case is walked rather than looked up. An opener is found in one reading
+// and bounded in every reading, and in a MASKED reading the `>` that ends it
+// may be blanked, because it sat inside a comment or an attribute value there.
+// A bound match of that reading can then straddle p, and a walk starting at p
+// finds matches the single pass never listed. For that opener the walk from p
+// runs as it always did, and the bytes it reads are charged to the budget, so a
+// document built of such openers is refused rather than read in quadratic time.
+func (ix *rawHeadingBounds) titleEnds(p int, name string, budget *titleReadBudget) ([]int, bool) {
+	if i, _ := slices.BinarySearch(ix.starts, p); i > 0 && ix.endsAt[i-1] > p {
+		ends, bounded, scanned := walkRawHeadingBounds(ix.text[p:], name)
+		budget.charge(scanned)
+		return ends, bounded
+	}
+	hard := min(nextAt(ix.hOpens, p), nextAt(ix.closes[elementFoldKey(name)], p))
+	soft := nextAt(ix.blanks, p)
+	bounded := hard != noBound || soft != noBound
+	if hard == noBound {
+		hard = len(ix.text)
+	}
+	ends := []int{hard - p}
+	if soft < hard {
+		ends = append(ends, soft-p)
+	}
+	return ends, bounded
+}
+
+// walkRawHeadingBounds is the bound walk titleEnds indexes, run from one opener
+// over the remainder of its reading. It also returns how far it read.
+func walkRawHeadingBounds(rest, name string) ([]int, bool, int) {
+	hard, soft, off := -1, -1, 0
+	for off < len(rest) {
 		m := rawHeadingBoundRe.FindStringSubmatchIndex(rest[off:])
 		if m == nil {
+			off = len(rest)
 			break
 		}
 		at := off + m[0]
@@ -786,7 +864,7 @@ func rawHeadingTitleEnds(rest, name string) ([]int, bool) {
 				continue
 			}
 		}
-		hard = at
+		hard, off = at, off+m[1]
 		break
 	}
 	bounded := hard >= 0 || soft >= 0
@@ -797,7 +875,73 @@ func rawHeadingTitleEnds(rest, name string) ([]int, bool) {
 	if soft >= 0 && soft < hard {
 		ends = append(ends, soft)
 	}
-	return ends, bounded
+	return ends, bounded, off
+}
+
+// titleReadBudget bounds the bytes the raw heading scan reads to a multiple of
+// the document's own length.
+//
+// Indexing the bounds makes FINDING each title linear; READING the titles is
+// another matter. A title is rendered and compared over the whole span its
+// bound gives it, and titles overlap: a run of openers that all share one far
+// bound gives each of them most of the document, so the rendering alone is
+// quadratic in the opener count however the bound is found. Truncating a long
+// title is not an answer — padding a heading with a comment or with tags is how
+// an excluded one would be walked past a cap — and a long title is not a refusal
+// on its own either, because the committed corpus holds single spans of tens of
+// kilobytes that read in no time.
+//
+// So the budget is on the TOTAL. Every title rendered, and every walk titleEnds
+// falls back to, is charged; a document whose titles overlap past the budget
+// is refused by name, which is the fail-closed answer the floor gives every
+// shape it cannot read, and the scan is linear in the document by construction.
+// The allowance is generous: the committed corpus reads under one times its own
+// length in titles, and the budget is eight times plus a floor.
+type titleReadBudget struct {
+	left      int
+	exhausted bool
+}
+
+// newTitleReadBudget sizes the budget for a document of n bytes.
+func newTitleReadBudget(n int) *titleReadBudget {
+	return &titleReadBudget{left: 8*n + 1<<20}
+}
+
+// charge spends n bytes, recording exhaustion once the budget is spent.
+func (b *titleReadBudget) charge(n int) {
+	b.left -= n
+	if b.left < 0 {
+		b.exhausted = true
+	}
+}
+
+// nextAt returns the first position in the sorted list at or after p, or
+// noBound when there is none, so that min over two lookups picks the one that
+// exists.
+func nextAt(sorted []int, p int) int {
+	i, _ := slices.BinarySearch(sorted, p)
+	if i == len(sorted) {
+		return noBound
+	}
+	return sorted[i]
+}
+
+// noBound stands for a missing bound. It is larger than every offset, so min
+// prefers any real bound.
+const noBound = int(^uint(0) >> 1)
+
+// elementFoldKey reduces an element name to one spelling per case-fold class, which
+// is the equivalence strings.EqualFold decides: the pattern matches names
+// case-insensitively, and under Go's folding that admits the Kelvin sign for
+// `k` and the long s for `s`, which a plain lower-casing would miss.
+func elementFoldKey(name string) string {
+	return strings.Map(func(r rune) rune {
+		least := r
+		for f := unicode.SimpleFold(r); f != r; f = unicode.SimpleFold(f) {
+			least = min(least, f)
+		}
+		return least
+	}, name)
 }
 
 // maskMarkupData blanks, length-preservingly, the angle brackets that stand
@@ -969,7 +1113,10 @@ func maskAngles(out []byte, from, to int) {
 // structure; it must never stop them from being read as content. Reading both
 // makes the mask purely additive: every refusal the unmasked text supports still
 // stands, and the masked text can only add more.
-func rawHTMLHeading(lines []string, fenced []bool, offset int, headings map[string]bool) (int, string, bool) {
+//
+// The fourth return reports that the titles overlapped past the read budget
+// (titleReadBudget); the scan stops there, and the caller refuses.
+func rawHTMLHeading(lines []string, fenced []bool, offset int, headings map[string]bool) (int, string, bool, bool) {
 	raw := strings.Join(lines, "\n")
 	lineBounded, _ := maskMarkupData(raw, true)
 	unbounded, _ := maskMarkupData(raw, false)
@@ -979,32 +1126,60 @@ func rawHTMLHeading(lines []string, fenced []bool, offset int, headings map[stri
 			readings = append(readings, masked)
 		}
 	}
+	bounds := make([]*rawHeadingBounds, len(readings))
+	for i, r := range readings {
+		bounds[i] = indexRawHeadingBounds(r)
+	}
+	budget := newTitleReadBudget(len(raw))
 
 	for _, text := range readings {
+		at := lineCounter{text: text}
 		for _, open := range rawHeadingOpenRe.FindAllStringSubmatchIndex(text, -1) {
-			line := strings.Count(text[:open[0]], "\n")
+			line := at.at(open[0])
 			if line < offset || (line < len(fenced) && fenced[line]) {
 				continue
 			}
-			name := ""
-			for _, g := range [][2]int{{open[2], open[3]}, {open[4], open[5]}} {
-				if g[0] >= 0 {
-					name = text[g[0]:g[1]]
-				}
-			}
+			name := openerName(text, open)
 			if name == "" {
 				continue
 			}
-			rests := make([]string, 0, len(readings))
-			for _, r := range readings {
-				rests = append(rests, r[open[1]:])
+			title, ok := excludedRawTitle(readings, bounds, open[1], name, headings, budget)
+			if ok {
+				return line + 1, title, true, false
 			}
-			if title, ok := excludedRawTitle(rests, name, headings); ok {
-				return line + 1, title, true
+			if budget.exhausted {
+				return line + 1, "", false, true
 			}
 		}
 	}
-	return 0, "", false
+	return 0, "", false, false
+}
+
+// openerName returns the element name a rawHeadingOpenRe match captured: the
+// h-tag's, or the name of the element carrying the heading role.
+func openerName(text string, open []int) string {
+	name := ""
+	for _, g := range [][2]int{{open[2], open[3]}, {open[4], open[5]}} {
+		if g[0] >= 0 {
+			name = text[g[0]:g[1]]
+		}
+	}
+	return name
+}
+
+// lineCounter maps ascending byte offsets to 0-based line numbers, counting
+// each newline once. Counting from the top of the document for every opener is
+// quadratic in the opener count: at the size cap it alone took seconds.
+type lineCounter struct {
+	text      string
+	pos, line int
+}
+
+// at returns the line holding offset. Offsets must not decrease between calls.
+func (c *lineCounter) at(offset int) int {
+	c.line += strings.Count(c.text[c.pos:offset], "\n")
+	c.pos = offset
+	return c.line
 }
 
 // excludedRawTitle reports the excluded heading the text after one raw opener
@@ -1015,17 +1190,25 @@ func rawHTMLHeading(lines []string, fenced []bool, offset int, headings map[stri
 // `</h2>` written inside an attribute value bounds nothing; the unmasked text
 // answers what the title SAYS, since a heading written inside a comment is still
 // carried by the file. Taking either alone lost the other.
-func excludedRawTitle(rests []string, name string, headings map[string]bool) (string, bool) {
+//
+// Every title rendered is charged to the budget first; once it is spent the
+// answer is no longer trusted and the caller refuses the document.
+func excludedRawTitle(readings []string, bounds []*rawHeadingBounds, p int, name string,
+	headings map[string]bool, budget *titleReadBudget) (string, bool) {
 	seen := map[int]bool{}
-	for _, bound := range rests {
-		ends, _ := rawHeadingTitleEnds(bound, name)
+	for _, ix := range bounds {
+		ends, _ := ix.titleEnds(p, name, budget)
 		for _, end := range ends {
 			if seen[end] {
 				continue
 			}
 			seen[end] = true
-			for _, text := range rests {
-				for _, read := range renderedTexts(text[:end]) {
+			for _, text := range readings {
+				budget.charge(end)
+				if budget.exhausted {
+					return "", false
+				}
+				for _, read := range renderedTexts(text[p : p+end]) {
 					title := normaliseHeadingTitle(read)
 					if title == "" {
 						continue
@@ -1264,23 +1447,25 @@ func displacedFrontmatter(lines []string) (int, string, bool) {
 // an attribute value's brackets from being read as structure, and a bound it
 // erases was never a bound; a mask that could manufacture this refusal would be
 // a mask deciding, which is what every other reading here refuses to let it do.
+//
+// The document is its own only reading here, so every opener's `>` is a `>` in
+// the reading its bounds come from and titleEnds never walks: the scan is one
+// pass to index and a lookup per opener.
 func unboundedRawHeading(lines []string, fenced []bool, offset int) (int, bool) {
 	text := strings.Join(lines, "\n")
+	bounds := indexRawHeadingBounds(text)
+	budget := newTitleReadBudget(len(text))
+	at := lineCounter{text: text}
 	for _, open := range rawHeadingOpenRe.FindAllStringSubmatchIndex(text, -1) {
-		line := strings.Count(text[:open[0]], "\n")
+		line := at.at(open[0])
 		if line < offset || (line < len(fenced) && fenced[line]) {
 			continue
 		}
-		name := ""
-		for _, g := range [][2]int{{open[2], open[3]}, {open[4], open[5]}} {
-			if g[0] >= 0 {
-				name = text[g[0]:g[1]]
-			}
-		}
+		name := openerName(text, open)
 		if name == "" {
 			continue
 		}
-		if _, bounded := rawHeadingTitleEnds(text[open[1]:], name); !bounded {
+		if _, bounded := bounds.titleEnds(open[1], name, budget); !bounded {
 			return line + 1, true
 		}
 	}

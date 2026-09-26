@@ -737,9 +737,6 @@ func leadIn(text string) (title, rest string, ok bool) {
 	return "", "", false
 }
 
-// isSpace reports whether a byte is markdown whitespace.
-func isSpace(c byte) bool { return c == ' ' || c == '\t' || c == '\n' || c == '\r' }
-
 // tablePortraits puts the role portraits above the column labels they name. The
 // portrait is not configured by asset name: the manifest names the PAGE the
 // roles live on, and each column label is matched to the section of that page

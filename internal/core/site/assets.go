@@ -397,8 +397,8 @@ func (a *assetPipe) Copies() [][2]string {
 // resolves the way a reader on GitHub sees it.
 func (a *assetPipe) render(pageDir, src, alt string, at Source) (string, error) {
 	if strings.HasPrefix(src, "http://") || strings.HasPrefix(src, "https://") || strings.HasPrefix(src, "data:") {
-		return "", &UnsupportedError{at.Path, at.Line, "remote image",
-			"every picture is a committed asset under docs/assets/img/; " + quote(src) + " is fetched at render time"}
+		return "", &UnsupportedError{Path: at.Path, Line: at.Line, Construct: "remote image",
+			Detail: "every picture is a committed asset under docs/assets/img/; " + quote(src) + " is fetched at render time"}
 	}
 	rel := path.Clean(path.Join(pageDir, src))
 	if !fsutil.ValidRelPath(rel) {

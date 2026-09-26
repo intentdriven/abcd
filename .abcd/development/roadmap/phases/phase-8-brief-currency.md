@@ -34,7 +34,8 @@ rather than being smoothed over between cuts.
   the prose around them carries the why and the refusals.
 - The brief-to-surface crosscheck gate runs at every release cut against a
   manifest whose pinned inputs name the current brief and the current
-  surface, so two honest runs mean the same thing.
+  surface, so two honest runs of one tier examine the same scope (their
+  findings are LLM output and vary between runs).
 - The drift records the v0.7.0 receipts opened are resolved, and the two
   exact duplicates are closed as duplicates.
 
