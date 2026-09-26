@@ -25,7 +25,9 @@ workflow that tags it.
 managed repository says once what it ships, in `.abcd/config/artefact.json`:
 `kind` is `plugin`, `binary` or `application`, `lockstep` names the JSON files a
 non-plugin kind holds in lockstep with its version-location primary, and `site`
-reserves the release-rendered site's opt-in, read and not yet acted on. One
+reserves the release-rendered site's opt-in, read and not yet acted on.
+`binary` and `application` behave identically in every verb; the verify job's Go
+leg keys on `go.mod`, never on the kind. One
 reader in `internal/core/launch` validates the file for every launch verb and for
 `ahoy`, whose `artefact.missing` gap writes it — kind `plugin` without a question
 for a repository carrying a plugin manifest, otherwise the kind the operator

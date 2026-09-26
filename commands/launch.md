@@ -41,7 +41,11 @@ Every verb runs against what the repository says it ships, declared once in
   gates already judge), `binary` (a built program, a Go binary in the first cut)
   or `application` (an application with its own build and publish steps). Any
   other value is refused by every verb, naming the kind and the accepted set,
-  before anything is written.
+  before anything is written. `binary` and `application` behave identically in
+  every verb: the same preview, lockstep check, scaffold file set and release
+  gate. Neither names a toolchain; the verify job's Go leg follows `go.mod`, not
+  the kind. The two names record what the repository ships, and choosing one
+  over the other changes nothing the release does.
 - `lockstep` — for a kind other than `plugin`, the JSON files held in lockstep
   with the version-location primary: each carries the version at its own
   `json_pointer`, or at the primary's when it names none. A plugin's lockstep is
