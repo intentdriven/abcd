@@ -218,3 +218,55 @@ func TestReceiptGateRefusesUnsafeReceipts(t *testing.T) {
 		})
 	}
 }
+
+// The prose-citation baseline is an exemption list: every id it names stops
+// firing. Its path comes out of the committed config, so a baseline read from
+// outside the repository — spelled out with "..", or reached through a
+// symlinked directory — would disarm the gate with content the tree does not
+// hold. Both are refused, as every other configured path is.
+func TestProseCitationBaselineIsReadOnlyInsideTheRepository(t *testing.T) {
+	const exempt = `{"schema_version":1,"ids":[{"id":"spc-995","class":"pruned","note":"an exemption the tree does not hold"}]}`
+	for name, plant := range map[string]func(t *testing.T, root string) string{
+		"climbs out": func(t *testing.T, root string) string {
+			if err := os.WriteFile(filepath.Join(filepath.Dir(root), "outside-baseline.json"), []byte(exempt), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			return "../outside-baseline.json"
+		},
+		"symlinked directory": func(t *testing.T, root string) string {
+			symlinkDirOut(t, root, "baselines", map[string]string{"prose.json": exempt})
+			return "baselines/prose.json"
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			root := t.TempDir()
+			proseCorpus(t, root)
+			writeProseIssue(t, root, "open", "iss-95-ratchet.md", "A newly invented id: spc-995.")
+			cfg := proseCfg()
+			rc := cfg.Rules[ruleProseCitationResolves]
+			rc.Baseline = plant(t, root)
+			cfg.Rules[ruleProseCitationResolves] = rc
+			fs, err := Lint(cfg, root)
+			if err == nil || !strings.Contains(err.Error(), "inside the repository") {
+				t.Fatalf("want a containment refusal, got err=%v findings=%+v", err, fs)
+			}
+		})
+	}
+}
+
+// The reading walk checks every directory below the issue store for a link, and
+// the store root itself on the same terms: a symlinked store root carried the
+// whole walk out of the tree, so the outstanding board reported on records the
+// repository does not hold.
+func TestReadingWalkRefusesASymlinkedStoreRoot(t *testing.T) {
+	root := t.TempDir()
+	issues := filepath.Join(".abcd", "work", "issues")
+	symlinkDirOut(t, root, issues, map[string]string{"README.md": "outside"})
+	report, err := ReadReadingOutstanding(root, filepath.ToSlash(issues))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(report.Unsafe) != 1 || report.Unsafe[0].Path != filepath.ToSlash(issues) {
+		t.Fatalf("want one unsafe entry naming the store root, got %+v", report.Unsafe)
+	}
+}

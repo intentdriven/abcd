@@ -216,6 +216,13 @@ func (r OutstandingReadings) Empty() bool {
 func ReadReadingOutstanding(repoRoot, issuesDir string) (OutstandingReadings, error) {
 	var report OutstandingReadings
 	issuesRoot := filepath.Join(repoRoot, filepath.FromSlash(issuesDir))
+	// Every directory below the store is checked for a link; the store root is
+	// checked for leaving the repository, or a symlinked root carries the whole
+	// walk out of the tree (iss-2609261019593167).
+	if err := resolvedInsideRoot(repoRoot, issuesRoot); err != nil {
+		report.Unsafe = append(report.Unsafe, UnsafePath{Path: filepath.ToSlash(issuesDir), Reason: err.Error()})
+		return report, nil
+	}
 	readingsRoot := filepath.Join(issuesRoot, issueschema.ReadingsDir)
 	if !realDir(readingsRoot) {
 		report.Unsafe = append(report.Unsafe, UnsafePath{

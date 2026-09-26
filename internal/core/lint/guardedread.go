@@ -3,6 +3,7 @@ package lint
 import (
 	"errors"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"syscall"
 
@@ -42,6 +43,29 @@ func readRepoAbs(repoRoot, abs string, limit int64) ([]byte, error) {
 			"; the lint reads only inside the repository"}
 	}
 	return fsutil.ReadGuarded(realPath, limit)
+}
+
+// readRepoLeaf is readRepoFile for a configured file that is never legitimately
+// a link — a baseline, an exemption list — so the leaf is refused as a link
+// rather than resolved, and every ancestor is resolved inside the repository on
+// the descriptor that is read (fsutil.ReadGuardedInRoot through an os.Root), so
+// a directory linked out of the tree cannot carry the read with it. The
+// directory is also judged up front, so the refusal names the repository rather
+// than the os.Root error. A missing file keeps its os.IsNotExist error.
+func readRepoLeaf(repoRoot, rel string, limit int64) ([]byte, error) {
+	if err := containedRepoPath(rel); err != nil {
+		return nil, &configError{quote(rel) + " " + err.Error() + "; the lint reads only inside the repository"}
+	}
+	native := filepath.FromSlash(rel)
+	if err := resolvedInsideRoot(repoRoot, filepath.Join(repoRoot, filepath.Dir(native))); err != nil {
+		return nil, &configError{quote(rel) + " " + err.Error() + "; the lint reads only inside the repository"}
+	}
+	root, err := os.OpenRoot(repoRoot)
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close()
+	return fsutil.ReadGuardedInRoot(root, native, limit)
 }
 
 // maxReceiptBytes caps a semantic-pass receipt and the release-gate manifest.
