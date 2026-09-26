@@ -68,8 +68,9 @@ interview itself is host-run from `commands/reflect.md`, which renders the
 seed and the five sections and calls `abcd reflect write <phase-id>
 --answers <file>` with the answers. The nudge is one line in `spec close`'s
 ship path. Lifeboat packing extends the record-family list `disembark`
-already carries; the embark ranking is a small term-overlap score in
-`internal/core/lifeboat`, declared a heuristic.
+already carries; the embark ranking scores with the canonical term-overlap
+primitive, `internal/core/record/match` (spc-2609212141417782), declared a
+heuristic.
 
 ## How the criteria are satisfied
 

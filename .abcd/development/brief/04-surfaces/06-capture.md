@@ -78,6 +78,24 @@ record names no location in this checkout, so nothing ties it to the repository
 it is filed into: that is a nudge, not a gate, and it is the shape every
 misfiled record behind iss-2609120511058115 had (iss-2609231156260287).
 
+Before the record is written, the fast path matches its text against the
+record (itd-2609212137116617): every open and resolved issue's body and every
+intent's title and press release, under the ledger lock, through the
+term-overlap primitive in `internal/core/record/match`. The score is the share
+of the new text's terms a candidate already holds, each term weighted by how
+rare it is across the candidates, and it is declared a lexical heuristic on
+every output. A candidate at or above `match.threshold` is written onto the
+new record as `duplicates:` (the two hold each other's terms) or `refines:`
+(the candidate holds this text's terms and more, so this record is the
+narrower), at most three links; the output lists the rest, and the best five
+below the threshold as near misses with their scores. The match never refuses
+and never drops a capture: a text with fewer than eight distinct terms, a record
+set that cannot be read and a configuration the reader refuses each file the
+record unlinked, and the output says which. A person confirms a link by leaving
+it and removes it by deleting its line, which leaves an ordinary record. The
+match proposes no `reverses` and no `supersedes`: the itd-84 discipline keeps a
+reversal advisory and human.
+
 One flag belongs to one category: the lapse-instant flag carries the RFC 3339
 instant a recorded discipline gave way, for the `lapse` category, and it has no
 default.
@@ -255,6 +273,8 @@ related_specs: [spc-N, ...]
 related_issues: [iss-N, ...]
 synthesis_clusters: [<label>, ...]  # optional synthesis grouping
 blocked_by: [iss-N, ...]   # dependency edges, written at capture or afterwards by linking; blocked/priority is derived, never stored
+duplicates: [iss-N|itd-N, ...]  # written by the filing-time match: a near-identical double; removed by hand when wrong
+refines: [iss-N|itd-N, ...]     # written by the filing-time match: this record is the narrower case
 wontfix_reason: "<text>"   # required when in wontfix/
 resolution: "<one-line>"   # required when in resolved/
 shipped_in: vX.Y.Z         # migration use: the release that already carried the work

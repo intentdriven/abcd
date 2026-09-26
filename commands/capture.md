@@ -102,6 +102,36 @@ work settles what a lapse record must carry; the instant the discipline gave way
 is still what the flag exists to record, and a value that is given must be an
 RFC 3339 instant.
 
+### A likely double is linked, never refused
+
+Before the record is written, the text is matched against every open and
+resolved issue's body and every intent's title and press release. The match is
+a lexical heuristic and says so in its output: the score is the share of the
+new text's terms another record already holds, each term weighted by how rare
+it is across the records compared. A record at or above the threshold (`0.6`
+by default) is written onto the new one as a typed link, at most three of them,
+best first:
+
+- `duplicates: [<id>]` when the two hold each other's terms: the same finding
+  filed again;
+- `refines: [<id>]` when the other record holds this one's terms and a good
+  deal more: this one is the narrower case.
+
+Nothing is refused or dropped. The JSON's `match` object carries `matches`
+(each with `id`, `relation`, `score`, `reverse`, `linked` and `shared_terms`),
+`near_misses` (the best five below the threshold, with their scores),
+`threshold`, and `skipped` when nothing was compared: a text with fewer than
+eight distinct terms, a record set that could not be read, or a match
+configuration the reader refuses. Relay each match with its id and relation
+and ask the user to confirm it. A confirmed link is left as it is; a wrong one
+is removed by deleting its line, which leaves an ordinary record. The match
+never proposes `reverses` or `supersedes`: a reversal is a person's judgement.
+
+The threshold and the compared fields are configuration: `match.threshold`
+and `match.fields` (any of `issue.body`, `intent.title`,
+`intent.press_release`) in `.abcd/config.json`, or in `~/.abcd/config.json`
+for every checkout on the machine.
+
 ## Disclosure: where a record came from and how its text was produced
 
 Intent, spec and issue records carry two frontmatter keys, written by the

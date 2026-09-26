@@ -67,9 +67,12 @@ capture routes the pieces, it never files a monolith:
    note under the development record's `research/notes/`. That corpus (about
    50 graded captures) is what gates the automated rung.
 
-**Not yet automated.** The deterministic pre-pass and the capture-time
-validator are future rungs of the itd-84 discipline; until they ship, this
-documented protocol is the gate.
+**Partly automated.** The lexical candidate pass of step 2 runs at filing:
+the create command below matches the draft against the record and writes a
+`duplicates:` or `refines:` link for each likely double (itd-2609212137116617).
+The routing, the atomicity smell, the reversal flag and the verdict are future
+rungs of the itd-84 discipline; until they ship, this documented protocol is
+the gate for them.
 
 ## Create a draft
 
@@ -90,6 +93,16 @@ Report the new `id` and `path`, and tell the user the seeded Why This Matters
 and Acceptance Criteria sections are placeholders that must be replaced — the
 criteria with real Given-When-Then bullets, via the planning interview below —
 before the draft can be planned.
+
+Before the draft is written, its title and press release are matched against
+every open and resolved issue and every intent, by the same lexical heuristic
+`/abcd:capture` uses: a record at or above `match.threshold` (`0.6` by default)
+is written onto the draft as `duplicates: [<id>]` (the same proposal filed
+again) or `refines: [<id>]` (the other record is broader), at most three links.
+The create is never refused by the match. The JSON's `match` object carries the
+matches, the `near_misses` below the threshold with their scores, and `skipped`
+when nothing was compared. Relay each match and ask the user to confirm it; a
+wrong link is removed by deleting its line, which leaves an ordinary draft.
 
 A single whitespace-free word is refused (exit 2, nothing written): a lone
 token reads as a mistyped sub-verb, never as a draft title. A near-miss of a
