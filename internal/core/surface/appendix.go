@@ -415,8 +415,9 @@ func ProseShapeClaims(prose string, own []string, tree []Command) []ShapeClaim {
 	// claim or not, so a shorter path inside it is not read a second time.
 	//
 	// The path's regex spells every word of the path literally, and blanking
-	// only ever removes bytes from masked, so a path one of whose words masked
-	// does not contain cannot match and is not compiled or scanned. The regex
+	// replaces bytes of masked with spaces, which can spell no word, so a path
+	// one of whose words masked does not contain cannot match and is not
+	// compiled or scanned. The regex
 	// opens on a character class, which gives the engine no literal to skip to,
 	// so each scan it is spared is a full pass over the chapter.
 	masked := text
