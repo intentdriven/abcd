@@ -7,6 +7,10 @@ category: "bug"
 source: "user-observation"
 found_during: "itd-183-round-10-ruthless"
 found_at: "internal/core/reading/project.go"
+resolution: "The raw heading scan indexes each reading's bounds once and binary-searches per opener (a masked reading that blanks an opener's own > falls back to the walk, charged to a budget), charges every rendered title to a read budget of 8x the document plus 1 MiB and refuses a document whose titles overlap past it, and counts lines incrementally. TestRawHeadingScanStaysLinearInTheOpenerCount now covers the unbounded run, the shared-far-bound run and closed openers at the size cap (57 s and 67 s before, 0.2 s after); TestIndexedHeadingBoundsAgreeWithTheWalk holds the index to the walk."
+impact: fix
+resolved_by:
+  commit: "fce93af7"
 ---
 
 a raw heading opener with no hard bound renders its title over the whole remainder so the scan is quadratic in a shape the linearity test does not cover
@@ -39,3 +43,7 @@ Remedies to weigh together: cap the length of text a title may be read from (a
 heading is not kilobytes long), or give an unbounded opener a bound of the
 document's own end-of-line rather than end-of-file. Seed material for the
 exclusion floor's own intent, with the test's name to correct alongside it.
+
+## Grounds
+
+- pursued: verifyRedaction finishes in time linear in the document for any run of raw heading openers and refuses nothing the corpus holds; a document up to MaxFileBytes that takes seconds, or a committed markdown file refused for its read budget, would show it wrong
