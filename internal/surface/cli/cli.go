@@ -3401,22 +3401,47 @@ func strayStoreNotes(cwd, root, relPath, noun string) []string {
 	if err != nil {
 		top = filepath.Clean(root)
 	}
-	var notes []string
-	for dir != top {
+	// The root is recognised by identity, not spelling: on a case-insensitive
+	// filesystem the caller's directory can name the root in another case, which
+	// EvalSymlinks keeps, and a string comparison would walk past the root and
+	// report its own store as a stray one (iss-2609260057123452).
+	topInfo, topErr := os.Stat(top)
+	isTop := func(d string) bool {
+		if d == top {
+			return true
+		}
+		if topErr != nil {
+			return false
+		}
+		fi, err := os.Stat(d)
+		return err == nil && os.SameFile(fi, topInfo)
+	}
+	var strays []string
+	for !isTop(dir) {
 		store := filepath.Join(dir, filepath.FromSlash(relPath))
 		if fi, statErr := os.Stat(store); statErr == nil && fi.IsDir() {
-			rel, relErr := filepath.Rel(top, store)
-			if relErr != nil {
-				rel = store
-			}
-			notes = append(notes, indefiniteArticle(noun)+" "+noun+" also exists below the checkout root, at "+filepath.ToSlash(rel)+
-				" — this verb addressed the checkout's "+noun+" and left that one untouched; records filed there reach no gate and no release cut")
+			strays = append(strays, store)
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
 			break
 		}
 		dir = parent
+	}
+	// Paths are named relative to the root as the caller spelt it, when the walk
+	// reached it, so a case-variant spelling does not read as "../<root>/...".
+	base := top
+	if isTop(dir) {
+		base = dir
+	}
+	var notes []string
+	for _, store := range strays {
+		rel, relErr := filepath.Rel(base, store)
+		if relErr != nil {
+			rel = store
+		}
+		notes = append(notes, indefiniteArticle(noun)+" "+noun+" also exists below the checkout root, at "+filepath.ToSlash(rel)+
+			" — this verb addressed the checkout's "+noun+" and left that one untouched; records filed there reach no gate and no release cut")
 	}
 	return notes
 }
