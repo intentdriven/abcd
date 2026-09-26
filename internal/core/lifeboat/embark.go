@@ -27,6 +27,8 @@ import (
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/ahoy"
+	"github.com/intentdriven/abcd/internal/core/capture"
+	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/update"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
@@ -67,7 +69,9 @@ func EmbarkProbe(lifeboatDir, targetDir string) (EmbarkPlan, error) {
 
 // EmbarkFrom performs the write. It runs the same planner as EmbarkProbe; if the
 // plan carries ANY conflict it returns (result-with-Conflicts, ErrEmbarkConflicts)
-// having written NOTHING. Otherwise it writes each ActionCreate file through
+// having written NOTHING. It judges the plan again under the target's ledger
+// and intent locks, and a conflict found then refuses the same way. Otherwise
+// it writes each ActionCreate file through
 // os.Root containment + independent lexical validation + fsutil.WriteFileAtomic,
 // skips ActionUnchanged files, ensures the marker last, and returns the summary.
 func EmbarkFrom(lifeboatDir, targetDir string) (EmbarkResult, error) {
@@ -92,9 +96,41 @@ func EmbarkFrom(lifeboatDir, targetDir string) (EmbarkResult, error) {
 		return res, ErrEmbarkConflicts
 	}
 
-	written, unchanged, bytesW, families, err := writeEmbark(pr.targetAbs, pr.planned)
+	if afterEmbarkPlan != nil {
+		afterEmbarkPlan()
+	}
+	// The write runs under the target's ledger lock, then its intent store's
+	// lock, then its spec store's — the one order every path holding more than
+	// one takes — and every planned write is judged again under them: a record
+	// created at a planned target between the classification above and this
+	// write — a capture, an intent or spec mint — refuses the whole write as a
+	// conflict instead of being replaced (iss-2609262143265180,
+	// iss-2609262218306589, iss-2609262218309668).
+	var (
+		written, unchanged, bytesW int
+		families                   map[string]int
+		late                       []Conflict
+	)
+	err = intent.WithLedgerThenMintLock(pr.targetAbs, embarkLedgerLock(pr.targetAbs, pr.planned), func() error {
+		if duringEmbarkWrite != nil {
+			duringEmbarkWrite()
+		}
+		var planned []PlannedEmbark
+		planned, late = rejudgeEmbark(pr.targetAbs, pr.planned)
+		if len(late) > 0 {
+			return nil
+		}
+		var werr error
+		written, unchanged, bytesW, families, werr = writeEmbark(pr.targetAbs, planned)
+		return werr
+	})
 	if err != nil {
 		return EmbarkResult{}, fmt.Errorf("embark: %w", err)
+	}
+	if len(late) > 0 {
+		res.Conflicts = late
+		res.Marker = embarkMarker(pr.targetAbs, true)
+		return res, ErrEmbarkConflicts
 	}
 	res.Written = written
 	res.Unchanged = unchanged
@@ -104,6 +140,42 @@ func EmbarkFrom(lifeboatDir, targetDir string) (EmbarkResult, error) {
 	// (never foreign prose copied) into the target CLAUDE.md.
 	res.Marker = embarkMarker(pr.targetAbs, false)
 	return res, nil
+}
+
+// afterEmbarkPlan and duringEmbarkWrite are test seams, nil outside tests:
+// the first is called between the plan and the locks, so a test can land a
+// record in that window; the second with the locks held, before the
+// re-judgement, so a test can prove a concurrent writer waits.
+var afterEmbarkPlan, duringEmbarkWrite func()
+
+// embarkLedgerLock is the target ledger's lock when the plan creates an issue
+// record there, and no lock otherwise: taking it creates the ledger, which an
+// embark carrying no issue must not plant.
+func embarkLedgerLock(targetAbs string, planned []PlannedEmbark) func(func() error) error {
+	for _, p := range planned {
+		if p.Family == "issues" && p.Action == ActionCreate {
+			return func(fn func() error) error { return capture.WithLedgerLock(targetAbs, fn) }
+		}
+	}
+	return func(fn func() error) error { return fn() }
+}
+
+// rejudgeEmbark classifies every planned write again against the target as it
+// is now, returning the writes to perform or the conflicts that refuse them.
+func rejudgeEmbark(targetAbs string, planned []PlannedEmbark) ([]PlannedEmbark, []Conflict) {
+	var (
+		out       []PlannedEmbark
+		conflicts []Conflict
+	)
+	for _, p := range planned {
+		pe, cf := classifyEmbark(targetAbs, p.LifeboatPath, p.TargetPath, p.Family, p.Content)
+		if cf != nil {
+			conflicts = append(conflicts, *cf)
+			continue
+		}
+		out = append(out, pe)
+	}
+	return out, conflicts
 }
 
 // VerifyManifest re-hashes every non-excluded file in the lifeboat and compares

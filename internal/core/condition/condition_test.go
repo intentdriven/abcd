@@ -192,3 +192,39 @@ func TestVerdictNamingTheOccasionOverridesWhereverItSits(t *testing.T) {
 		t.Errorf("standing = %+v, want the later condition block (the verdict names rdi-7, not rdi-8)", got)
 	}
 }
+
+// TestReadDispositionsReadsOnlyLiveBlocks: a verdict block quoted in a fenced
+// example, or parked in an HTML comment span, is an example a human wrote, not
+// a disposition the record holds (iss-2609020529185438).
+func TestReadDispositionsReadsOnlyLiveBlocks(t *testing.T) {
+	for name, body := range map[string]string{
+		"fenced": "```markdown\n" + verdictBlock + "```\n",
+		// The comment opened above closes on the marker's own `-->`, so the
+		// marker line is inside the span and the bullets below it are not a block.
+		"commented": "<!--\nparked example:\n" + verdictBlock,
+	} {
+		if got := ReadDispositions(record(body)); len(got) != 0 {
+			t.Errorf("%s: read %d dispositions from a block that is not live: %+v", name, len(got), got)
+		}
+	}
+}
+
+// TestReadDispositionsStopsAtTheClosingLine: a review block ends on its closing
+// line, so a disposition-shaped bullet a human writes below it is not the
+// verdict's (iss-2609251451434656).
+func TestReadDispositionsStopsAtTheClosingLine(t *testing.T) {
+	closed := verdictBlock + ReviewEndLine("rcp-0123456789ab") + "\n\n" +
+		"Scope-condition dispositions:\n- " + condA + " — falsified: a human's note, not the verdict\n"
+	got := ReadDispositions(record(closed))
+	if len(got) != 2 {
+		t.Fatalf("got %d dispositions, want the verdict's 2: %+v", len(got), got)
+	}
+	for _, d := range got {
+		if d.Disposition == Falsified {
+			t.Errorf("read the note below the closing line as the verdict's: %+v", d)
+		}
+	}
+	if !ReviewEndRe.MatchString(ReviewEndLine("rcp-0123456789ab")) {
+		t.Fatal("ReviewEndLine does not render the line ReviewEndRe reads")
+	}
+}

@@ -60,7 +60,9 @@ and the `marker` action.
 `from` is **conflict-safe**: if the plan carries **any** conflict, it writes
 **nothing** — not a partial set — and exits non-zero with one bulk conflict report.
 A conflict is per-file: a target that merely holds unrelated files is fine; a file
-that already matches byte-for-byte is an idempotent skip. Relay the bulk report so
+that already matches byte-for-byte is an idempotent skip. The plan is judged again
+under the target's ledger and intent locks just before the write, so a record
+created at a planned target while the embark ran is a conflict too. Relay the bulk report so
 the user resolves the conflicts and re-runs. A re-run over an already-embarked
 target is a clean no-op (all `unchanged`, marker `current`).
 

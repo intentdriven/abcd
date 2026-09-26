@@ -193,3 +193,101 @@ func TestIntentAuditDeadLetterRendersTheUntestedSplit(t *testing.T) {
 		t.Fatalf("the dead-letter render must report the untested split the JSON carries:\n%s", text)
 	}
 }
+
+// TestIntentAuditIngestRefusesAnUnresolvableCitation is the front door's half of
+// iss-2609231036448320: the CLI registers record-lint's prose-citation gate with
+// the ingest, so a verdict whose prose cites a record that does not exist is
+// refused, naming the id, with nothing written — in a repository whose
+// record-lint arms the rule over the intent store.
+func TestIntentAuditIngestRefusesAnUnresolvableCitation(t *testing.T) {
+	root, vp := conditionedRepo(t)
+	cfg := `{"roots": [".abcd/development"], "rules": {"prose_citation_resolves": {"enabled": true, "severity": "blocker",
+  "record_stores": {"itd": ".abcd/development/intents"}}}}` + "\n"
+	if err := os.WriteFile(filepath.Join(root, ".abcd", "record-lint.json"), []byte(cfg), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(vp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const dangling = "spc-2609999999999999"
+	cites := writeVerdict(t, strings.Replace(string(raw), "the stub is parked", "the stub is parked, as "+dangling+" asked", 1))
+	path := filepath.Join(root, ".abcd", "development", "intents", "shipped", "itd-10-alpha.md")
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := runCLIErr(t, "intent", "audit", "ingest", "--verdict-json", cites)
+	if err == nil || !strings.Contains(err.Error()+string(out), dangling) {
+		t.Fatalf("ingest = %v\n%s\nwant a refusal naming %s", err, out, dangling)
+	}
+	if after, _ := os.ReadFile(path); string(after) != string(before) {
+		t.Fatalf("a refused ingest changed the record:\n%s", after)
+	}
+}
+
+// TestIntentAuditReEmitNamesTheRequestItWrote is iss-2609190337598356 at the
+// front door: a re-emit on an owed receipt says it rewrote the request, in both
+// renders, and a re-emit on an ingested receipt names no request, because it
+// wrote none.
+func TestIntentAuditReEmitNamesTheRequestItWrote(t *testing.T) {
+	root, vp := conditionedRepo(t)
+	var again struct {
+		Status         string `json:"status"`
+		RequestPath    string `json:"request_path"`
+		RequestWritten bool   `json:"request_written"`
+	}
+	if err := json.Unmarshal(runCLI(t, "intent", "audit", "itd-10", "--json"), &again); err != nil {
+		t.Fatal(err)
+	}
+	if again.Status != "already_owed" || !again.RequestWritten || again.RequestPath == "" {
+		t.Fatalf("an owed re-emit = %+v, want already_owed naming the request it wrote", again)
+	}
+	if text := string(runCLI(t, "intent", "audit", "itd-10")); !strings.Contains(text, "request rewritten: "+again.RequestPath) {
+		t.Fatalf("the owed re-emit's render does not say it rewrote the request:\n%s", text)
+	}
+
+	runCLI(t, "intent", "audit", "ingest", "--verdict-json", vp)
+	text := string(runCLI(t, "intent", "audit", "itd-10"))
+	if !strings.Contains(text, "already_ingested") || !strings.Contains(text, "no request written: the review is ingested") ||
+		strings.Contains(text, ".request.md") {
+		t.Fatalf("an ingested re-emit's render must name no request:\n%s", text)
+	}
+	_ = root
+}
+
+// TestIntentAuditDeadLetterJSONRecordsNoVerdict is iss-2609190337545165 at the
+// front door: a quarantined verdict's JSON says it recorded a quarantine,
+// carries no acceptance rollup, and states the untested split the record holds.
+func TestIntentAuditDeadLetterJSONRecordsNoVerdict(t *testing.T) {
+	_, vp := conditionedRepo(t)
+	body, err := os.ReadFile(vp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bad := strings.Replace(string(body), `"disposition": "narrowed"`, `"disposition": "not-a-disposition"`, 1)
+	if err := os.WriteFile(vp, []byte(bad), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var res map[string]any
+	if err := json.Unmarshal(runCLI(t, "intent", "audit", "ingest", "--verdict-json", vp, "--json"), &res); err != nil {
+		t.Fatal(err)
+	}
+	if res["status"] != "dead_letter" || res["recorded"] != "quarantine" || res["conditions_untested"] != float64(1) {
+		t.Fatalf("dead-letter JSON = %v, want a recorded quarantine stating 1 condition untested", res)
+	}
+	for _, k := range []string{"criteria", "met", "conditions", "untested"} {
+		if _, ok := res[k]; ok {
+			t.Errorf("dead-letter JSON carries the rollup member %q: %v", k, res)
+		}
+	}
+}
+
+// TestIntentAuditIngestHelpNamesTheVerdictShape is iss-2609181121305984's other
+// half: the ingest's help names where the shape it decodes is stated.
+func TestIntentAuditIngestHelpNamesTheVerdictShape(t *testing.T) {
+	intentTestRepo(t)
+	if help := string(runCLI(t, "intent", "audit", "ingest", "--help")); !strings.Contains(help, "Verdict shape") {
+		t.Fatalf("the ingest help does not say where the verdict shape is stated:\n%s", help)
+	}
+}

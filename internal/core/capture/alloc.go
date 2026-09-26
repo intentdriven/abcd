@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -242,6 +243,13 @@ func WithLedgerLock(repoRoot string, fn func() error) error {
 	}
 	return withLedgerLock(rr, issuesRoot, fn)
 }
+
+// init registers this ledger's lock with the intent package, which cannot
+// import this one: an intent verb's link repoint rewrites ledger records that
+// link to the record it moved, and takes the lock for that, before the intent
+// store's (iss-2609262143209970). Registering here rather than in a front door
+// is what arms every binary that links a ledger at all.
+func init() { intent.SetLedgerLock(WithLedgerLock) }
 
 // minter is the capture family's mint seam (adr-45; mechanics per spc-33). The
 // zero value is the production configuration — real clock, crypto entropy;
