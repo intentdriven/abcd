@@ -363,6 +363,9 @@ func gateSynthLifeboat(lifeboatDir string) (string, Provenance, error) {
 	if err != nil {
 		return "", Provenance{}, err
 	}
+	if err := proveOperand("lifeboat", abs); err != nil {
+		return "", Provenance{}, err
+	}
 	if !fsutil.IsRealDir(abs) {
 		return "", Provenance{}, fmt.Errorf("lifeboat %s is not a directory", filepath.Base(abs))
 	}

@@ -44,7 +44,11 @@ func IngestLessons(lifeboatDir string, raw []byte) (LessonsResult, error) {
 	if err != nil {
 		return LessonsResult{}, err
 	}
-	// 1. Gate the lifeboat: a real directory carrying a parseable _provenance.json.
+	// 1. Gate the lifeboat: a real directory, reached through no symlinked
+	// ancestor inside a checkout, carrying a parseable _provenance.json.
+	if err := proveOperand("lifeboat", abs); err != nil {
+		return LessonsResult{}, err
+	}
 	if !fsutil.IsRealDir(abs) {
 		return LessonsResult{}, fmt.Errorf("lifeboat %s is not a directory", filepath.Base(abs))
 	}

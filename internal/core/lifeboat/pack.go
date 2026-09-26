@@ -126,6 +126,13 @@ func Pack(repoRoot, dest string, scan SecretScan, opts ...ProbeOption) (PackResu
 // an ancestor of, or inside it), which would otherwise mutate the source. It
 // fails closed on any stat error it cannot interpret as "absent".
 func destinationGate(dest, source string) error {
+	// Every existing level from the checkout the destination sits in down to it
+	// is proved real, so a committed link above the leaf cannot carry the write
+	// elsewhere (iss-2609261232464351); outside every checkout the path is the
+	// operator's own, and the resolved-path checks below still apply to it.
+	if err := proveOperand("pack: destination", dest); err != nil {
+		return err
+	}
 	if fi, err := os.Lstat(dest); err == nil {
 		if fi.Mode()&os.ModeSymlink != 0 {
 			return fmt.Errorf("pack: destination %s is a symlink; refusing", filepath.Base(dest))

@@ -90,7 +90,10 @@ func ReviewLifeboat(lifeboatDir, sourceRepo string, raw []byte) (ReviewResult, e
 	}
 	// Gate the source repo as a real dir. Its CONTENT is never read — this keeps the
 	// audit deterministic and safe when the source is gone. A symlinked or absent
-	// source is structural (mirrors embark's target gate).
+	// source is structural (mirrors embark's target gate). It is the one operand
+	// not proved against a symlinked ancestor (proveOperand): nothing under it is
+	// read or written and only its base name reaches the audit, so an ancestor
+	// link redirects nothing (iss-2609261232464351).
 	srcAbs, err := filepath.Abs(sourceRepo)
 	if err != nil {
 		return ReviewResult{}, err
