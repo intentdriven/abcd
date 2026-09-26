@@ -293,9 +293,10 @@ jobs:
       # passing, and a slow runner crossed 600s with no test hung, ejecting an
       # unrelated pull request from the merge queue (iss-2609260319483365). 20m
       # is about twice the slowest passing run, so a real hang still fails with
-      # a goroutine dump. make preflight and release.yml's verify job carry the
-      # same flag, and the job's timeout-minutes above leaves room for it to
-      # fire; TestRaceLaneBudgetIsDeclaredAndFitsItsJob holds all three.
+      # a goroutine dump. The Makefile's preflight recipe and release.yml's
+      # verify job carry the same flag, and the job's timeout-minutes above
+      # leaves room for it to fire; TestRaceLaneBudgetIsDeclaredAndFitsItsJob
+      # holds all three.
       - name: Test (race, internal)
         if: needs.changes.outputs.inert != 'true'
         run: go test -race -timeout 20m ./internal/...
