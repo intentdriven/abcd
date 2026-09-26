@@ -4188,7 +4188,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			}
 			res, err := capture.Mentions(capture.MentionsRequest{RepoRoot: repoRoot, Ref: mentionsRef})
 			if err != nil {
-				return err
+				return captureRefusal("mentions", err)
 			}
 			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, res, func(w io.Writer) {
 				fmt.Fprintf(w, "%s: %d open record(s), %d commit(s) walked, %d possibly already fixed\n",
@@ -4385,8 +4385,10 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 				return err
 			}
 			res, err := capture.Migrate(capture.MigrateRequest{RepoRoot: repoRoot, Apply: migrateApply})
+			// Migrate takes no input it could refuse, so what fails here is a
+			// fault and exits 1, as every ledger verb's fault does.
 			if err != nil {
-				return &exitError{Code: 2, Msg: "abcd capture migrate: " + err.Error()}
+				return fmt.Errorf("abcd capture migrate: %w", err)
 			}
 			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, res, func(w io.Writer) {
 				mode := "report only — nothing was written; re-run with --apply to write"
@@ -4441,7 +4443,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 				HoldFrameLocation: dispHoldFrame, HoldMoscow: dispHoldMoscow,
 			})
 			if err != nil {
-				return err
+				return captureRefusal("disposition", err)
 			}
 			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, res, func(w io.Writer) {
 				fmt.Fprintf(w, "%s  %s %s (%s) — %s\n",
@@ -4487,7 +4489,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			}
 			res, err := capture.Admit(capture.AdmitRequest{RepoRoot: repoRoot, Item: args[0], Grounds: admitGrounds})
 			if err != nil {
-				return err
+				return captureRefusal("admit", err)
 			}
 			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, res, func(w io.Writer) {
 				fmt.Fprintf(w, "%s  %s admitted into %s — %s\n",
@@ -4530,7 +4532,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			}
 			res, err := capture.Surprise(capture.SurpriseRequest{RepoRoot: repoRoot, OccasionedBy: surpriseOccasion, Text: args[0]})
 			if err != nil {
-				return err
+				return captureRefusal("surprise", err)
 			}
 			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, res, func(w io.Writer) {
 				fmt.Fprintf(w, "%s  occasioned by %s — %s\n", res.ID, res.OccasionedBy, termsafe.Sanitize(res.Path))
@@ -4573,7 +4575,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 				Open: reframeOpen, Complete: reframeComplete,
 			})
 			if err != nil {
-				return err
+				return captureRefusal("reframe", err)
 			}
 			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, res, func(w io.Writer) {
 				switch res.Half {
@@ -4716,7 +4718,8 @@ var groundsFlagUsage = "optional; recorded when given — the conjecture being a
 // captureRefusal maps every refusal of a ledger verb's own input to exit 2 (verb
 // "" is the capture write itself): a
 // malformed grounds value (iss-2608300930057882), an unknown id or one a peer
-// holds, a transition conflict, and a request member outside its shape. They
+// holds, a transition conflict, a request member outside its shape, and on the
+// reading ledger an admission or disposition asked for before characterisation. They
 // are one thing to a script — the request was not usable and nothing was
 // written — so they share one code, and exit 1 stays a fault's
 // (iss-2609260552251398). The core carries a sentinel for each class, so this
@@ -4724,7 +4727,8 @@ var groundsFlagUsage = "optional; recorded when given — the conjecture being a
 // through unchanged.
 func captureRefusal(verb string, err error) error {
 	if !errors.Is(err, capture.ErrGroundsRefused) && !errors.Is(err, capture.ErrUnknownIssueID) &&
-		!errors.Is(err, capture.ErrTransitionConflict) && !errors.Is(err, capture.ErrRequestRefused) {
+		!errors.Is(err, capture.ErrTransitionConflict) && !errors.Is(err, capture.ErrRequestRefused) &&
+		!errors.Is(err, capture.ErrNotCharacterised) {
 		return err
 	}
 	msg := scrubPaths(err)
@@ -5055,7 +5059,7 @@ func parseRecurs(raw string) ([]string, error) {
 			continue
 		}
 		if !readingItemIDRe.MatchString(tok) {
-			return nil, fmt.Errorf("capture: --recurs token %q must match rdi-N", tok)
+			return nil, &exitError{Code: 2, Msg: fmt.Sprintf("abcd capture disposition: --recurs token %q must match rdi-N (nothing written)", tok)}
 		}
 		ids = append(ids, tok)
 	}

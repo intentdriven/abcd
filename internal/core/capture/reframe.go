@@ -490,8 +490,8 @@ func Reframe(req ReframeRequest) (ReframeResult, error) {
 	}
 	occasion := req.OccasionedBy
 	if !issueschema.ValidReframeOccasion(occasion) {
-		return ReframeResult{}, fmt.Errorf("%w: --occasioned-by %q is not a handle of %s; a reframe is keyed to the reading record that occasioned it, never to prose (nothing written)",
-			ErrMalformedFrontmatter, occasion, reframeOccasionList())
+		return ReframeResult{}, refused(fmt.Errorf("%w: --occasioned-by %q is not a handle of %s; a reframe is keyed to the reading record that occasioned it, never to prose (nothing written)",
+			ErrMalformedFrontmatter, occasion, reframeOccasionList()))
 	}
 	ground, redacted, degraded, err := requireFreeGrounds(repoRoot, "reframe", req.Grounds)
 	if err != nil {
@@ -533,8 +533,8 @@ func Reframe(req ReframeRequest) (ReframeResult, error) {
 				// Every state from HEAD back to here equals HEAD's, and the
 				// one before cannot be compared: the fingerprintable history
 				// ends here, holding no distinct state.
-				return ReframeResult{}, fmt.Errorf("%w: the frame at HEAD matches no prior committed state within its fingerprintable history, so there is no reframe to record: that history reaches back %d commit(s) touching the frame, to %s, and the state before it, at %s, cannot be fingerprinted (%v) (nothing written)",
-					ErrInvariantViolation, i, shortRev(walk.commits[i-1]), shortRev(walk.commits[i]), state)
+				return ReframeResult{}, refused(fmt.Errorf("%w: the frame at HEAD matches no prior committed state within its fingerprintable history, so there is no reframe to record: that history reaches back %d commit(s) touching the frame, to %s, and the state before it, at %s, cannot be fingerprinted (%v) (nothing written)",
+					ErrInvariantViolation, i, shortRev(walk.commits[i-1]), shortRev(walk.commits[i]), state))
 			}
 			if err != nil {
 				return ReframeResult{}, fmt.Errorf("%w: the frame's previous state cannot be fingerprinted: %v; there is no prior committed state to record against (nothing written)",
@@ -545,8 +545,8 @@ func Reframe(req ReframeRequest) (ReframeResult, error) {
 			}
 		}
 		if i == len(walk.commits) || i == 0 {
-			return ReframeResult{}, fmt.Errorf("%w: the frame at HEAD matches no prior committed state, so there is no reframe to record (%s; nothing written)",
-				ErrInvariantViolation, walk.searched())
+			return ReframeResult{}, refused(fmt.Errorf("%w: the frame at HEAD matches no prior committed state, so there is no reframe to record (%s; nothing written)",
+				ErrInvariantViolation, walk.searched()))
 		}
 		before, _ := walk.at(i)
 		if err := requirePredates(repoRoot, occasion, occCommit, walk.commits[i-1]); err != nil {
@@ -570,8 +570,8 @@ func Reframe(req ReframeRequest) (ReframeResult, error) {
 				return err
 			}
 			if len(open) > 0 {
-				return fmt.Errorf("%w: %s is open; a second open record could be completed against the wrong rewrite, so commit the rewrite and run `abcd capture reframe --complete %s` first (nothing written)",
-					ErrInvariantViolation, strings.Join(open, ", "), open[0])
+				return refused(fmt.Errorf("%w: %s is open; a second open record could be completed against the wrong rewrite, so commit the rewrite and run `abcd capture reframe --complete %s` first (nothing written)",
+					ErrInvariantViolation, strings.Join(open, ", "), open[0]))
 			}
 		}
 		id, err := minter.Mint(issueschema.ReframeFamily)
@@ -611,11 +611,11 @@ func Reframe(req ReframeRequest) (ReframeResult, error) {
 func completeReframe(repoRoot, issuesRoot string, req ReframeRequest) (ReframeResult, error) {
 	id := req.Complete
 	if req.OccasionedBy != "" || strings.TrimSpace(req.Grounds) != "" || req.Open {
-		return ReframeResult{}, fmt.Errorf("%w: --complete takes the record id alone; the occasion and the ground are the first half's, and the record already carries them (nothing written)",
-			ErrMalformedFrontmatter)
+		return ReframeResult{}, refused(fmt.Errorf("%w: --complete takes the record id alone; the occasion and the ground are the first half's, and the record already carries them (nothing written)",
+			ErrMalformedFrontmatter))
 	}
 	if !recordid.ValidReframeID(id) {
-		return ReframeResult{}, fmt.Errorf("%w: --complete %q does not match ^%s-[0-9]+$ (nothing written)", ErrMalformedFrontmatter, id, issueschema.ReframeFamily)
+		return ReframeResult{}, refused(fmt.Errorf("%w: --complete %q does not match ^%s-[0-9]+$ (nothing written)", ErrMalformedFrontmatter, id, issueschema.ReframeFamily))
 	}
 	recPath, fm, _, err := readReframeRecord(issuesRoot, id)
 	if err != nil {
@@ -644,8 +644,8 @@ func completeReframe(repoRoot, issuesRoot string, req ReframeRequest) (ReframeRe
 		return ReframeResult{}, err
 	}
 	if head == before {
-		return ReframeResult{}, fmt.Errorf("%w: the frame at HEAD is still the state the record opened against; nothing was rewritten, so commit the rewrite before completing %s (nothing written)",
-			ErrInvariantViolation, id)
+		return ReframeResult{}, refused(fmt.Errorf("%w: the frame at HEAD is still the state the record opened against; nothing was rewritten, so commit the rewrite before completing %s (nothing written)",
+			ErrInvariantViolation, id))
 	}
 	walk, err := frameHistory(repoRoot, cache, walkEveryLine)
 	if err != nil {
@@ -661,8 +661,8 @@ func completeReframe(repoRoot, issuesRoot string, req ReframeRequest) (ReframeRe
 		}
 	}
 	if found < 1 {
-		return ReframeResult{}, fmt.Errorf("%w: the surfaces' history no longer contains the state %s opened against, so the rewrite cannot be paired with it: before %s; HEAD %s (%s; nothing written)",
-			ErrInvariantViolation, id, before, head, walk.searched())
+		return ReframeResult{}, refused(fmt.Errorf("%w: the surfaces' history no longer contains the state %s opened against, so the rewrite cannot be paired with it: before %s; HEAD %s (%s; nothing written)",
+			ErrInvariantViolation, id, before, head, walk.searched()))
 	}
 	if err := requirePredates(repoRoot, occasion, occCommit, walk.commits[found-1]); err != nil {
 		return ReframeResult{}, err
@@ -724,8 +724,8 @@ func requireWorkingTreeAtHead(repoRoot string, head Frame, remedy string) error 
 		if len(moved) > 1 {
 			verb = "have"
 		}
-		return fmt.Errorf("%w: the %s %s uncommitted changes; %s (nothing written)",
-			ErrInvariantViolation, strings.Join(moved, " and the "), verb, remedy)
+		return refused(fmt.Errorf("%w: the %s %s uncommitted changes; %s (nothing written)",
+			ErrInvariantViolation, strings.Join(moved, " and the "), verb, remedy))
 	}
 	return nil
 }
@@ -756,8 +756,8 @@ func occasionCommit(repoRoot, occasion, abs string) (string, error) {
 	if c := strings.TrimSpace(out); c != "" {
 		return c, nil
 	}
-	return "", fmt.Errorf("%w: the occasion %s is not committed; a reframe cannot be occasioned by a record that does not yet exist in history (nothing written)",
-		ErrInvariantViolation, occasion)
+	return "", refused(fmt.Errorf("%w: the occasion %s is not committed; a reframe cannot be occasioned by a record that does not yet exist in history (nothing written)",
+		ErrInvariantViolation, occasion))
 }
 
 // requirePredates holds the one check the join carries: the commit that added
@@ -773,8 +773,8 @@ func requirePredates(repoRoot, occasion, occCommit, rewrite string) error {
 			return nil
 		}
 	}
-	return fmt.Errorf("%w: the occasion %s was committed in %s, which does not precede the rewrite %s; a reframe cannot be occasioned by what came later (nothing written)",
-		ErrInvariantViolation, occasion, shortRev(occCommit), shortRev(rewrite))
+	return refused(fmt.Errorf("%w: the occasion %s was committed in %s, which does not precede the rewrite %s; a reframe cannot be occasioned by what came later (nothing written)",
+		ErrInvariantViolation, occasion, shortRev(occCommit), shortRev(rewrite)))
 }
 
 // readReframeRecord reads one reframe record by id from the flat store,
@@ -806,7 +806,7 @@ func readReframeRecord(issuesRoot, id string) (string, map[string]any, string, e
 // openBefore returns an open record's before triple, refusing a complete one.
 func openBefore(id string, fm map[string]any) (Frame, error) {
 	if _, done := fm["construal_after"]; done {
-		return Frame{}, fmt.Errorf("%w: %s is already complete; a reframe record is completed once (nothing written)", ErrInvariantViolation, id)
+		return Frame{}, refused(fmt.Errorf("%w: %s is already complete; a reframe record is completed once (nothing written)", ErrInvariantViolation, id))
 	}
 	return Frame{
 		Construal: asString(fm["construal_before"]),

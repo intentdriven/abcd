@@ -333,9 +333,18 @@ Every refusal of a ledger verb's own input exits 2 and writes nothing: an id
 the ledger does not hold (or one a peer holds), a record already out of
 `open/`, a malformed id, and a flag value outside its shape or naming nothing,
 on `resolve`, `wontfix`, `promote`, `defer`, `link` and the capture write alike.
-Exit 1 is a fault: the ledger could not be read or moved, or a `--found-at`
-path could not be checked against the checkout for a reason other than its
-absence. Tell the user which
+The reading ledger's verbs keep the same code. `disposition`, `admit`,
+`surprise` and `reframe` exit 2 on an item, occasion or record id that is
+malformed or names nothing, a ground or flag value outside its shape, a request
+the standing records do not admit (a second answer citing none, an item already
+admitted, an admission over an answer in another state, a second open reframe,
+a reframe with nothing to record or an occasion not committed before the
+rewrite), and an answer or admission before characterisation; `mentions` exits
+2 on a `--ref` that names no commit. Exit 1 is a fault: the ledger could not be
+read or moved, a record in it contradicts itself (a tangled or contested set of
+answers only a hand edit repairs), or a `--found-at` path could not be checked
+against the checkout for a reason other than its absence. `migrate` takes no
+input to refuse, so each of its failures is a fault. Tell the user which
 input was refused, from the message, rather than retrying the same command.
 
 `resolve` requires `--impact`: a resolved issue is in the release set, so it

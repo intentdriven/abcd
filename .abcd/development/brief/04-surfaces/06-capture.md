@@ -235,9 +235,19 @@ does not hold or a peer holds, a record already out of `open/`, a malformed id,
 malformed grounds, and a flag value outside its shape or naming nothing, on
 resolving, marking wontfix, promoting, deferring, linking and the capture write
 alike (iss-2609260552251398), a found-at path that leaves the checkout or does
-not exist in it included (iss-2609261241119343). Exit 1 is left to a fault: a
-ledger that could not be read or moved, or a found-at path the checkout would
-not let the write check for a reason other than its absence.
+not exist in it included (iss-2609261241119343). The reading ledger's verbs
+share the code: a disposition, an admission, a surprise and a reframe exit 2 on
+an item, occasion or record id malformed or naming nothing, a ground or flag
+value outside its shape, a request the standing records do not admit (a second
+answer citing none, an item already admitted, an admission over an answer in
+another state, a second open reframe, a reframe with nothing to record or an
+occasion not committed before the rewrite) and an answer or admission before
+characterisation, and the mentions listing exits 2 on a named ref that names no
+commit. Exit 1 is left to a fault: a ledger that could not be read or moved, a
+record that contradicts itself (a tangled or contested set of answers only a
+hand edit repairs), or a found-at path the checkout would not let the write
+check for a reason other than its absence. Migration takes no input to refuse,
+so each of its failures is a fault.
 
 **Resolving** marks an issue resolved and moves it to
 `resolved/`. Impact is required, and resolving without it is refused with
