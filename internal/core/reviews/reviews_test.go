@@ -164,6 +164,63 @@ func TestStalenessCountsTheDefaultBranchSinceThePin(t *testing.T) {
 	}
 }
 
+// TestStalenessCountsEveryCommitOnAMergeHeavyHistory pins what Row.CommitsSince
+// documents on the history shape a merge-based workflow makes: the count is
+// every commit the default branch holds that the pin does not, branch commits
+// and merge commits alike (`rev-list --count <pin>..main`), not the first-parent
+// walk a linear history cannot tell apart from it.
+func TestStalenessCountsEveryCommitOnAMergeHeavyHistory(t *testing.T) {
+	r := gittest.NewRepo(t)
+	r.Commit("c0")
+	pin := r.Git("rev-parse", "HEAD")
+	for i := 1; i <= 3; i++ {
+		branch := fmt.Sprintf("f%d", i)
+		r.Git("checkout", "-q", "-b", branch)
+		r.Commit(branch + "-a")
+		r.Commit(branch + "-b")
+		r.Git("checkout", "-q", "main")
+		r.Git("merge", "-q", "--no-ff", "-m", "merge "+branch, branch)
+	}
+	r.Write(Dir+"/2026-09-01-merged/00-summary.md", pinnedSummary(pin))
+
+	b, err := Staleness(r.Root())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first := r.Git("rev-list", "--count", "--first-parent", pin+"..main"); first != "3" {
+		t.Fatalf("fixture: first-parent count %s, want 3", first)
+	}
+	// Three branches of two commits each, and a merge commit apiece.
+	if len(b.Rows) != 1 || b.Rows[0].CommitsSince == nil || *b.Rows[0].CommitsSince != 9 || b.Rows[0].Stale {
+		t.Fatalf("merge-heavy row = %+v, want pinned with 9 commits since and not stale", b.Rows)
+	}
+}
+
+// TestStalenessWithNoDefaultBranchCountsAgainstHead pins the fallback: where
+// no default branch resolves, the board names HEAD and counts against it
+// rather than refusing or counting nothing.
+func TestStalenessWithNoDefaultBranchCountsAgainstHead(t *testing.T) {
+	r := gittest.NewRepo(t)
+	r.Commit("c0")
+	pin := r.Git("rev-parse", "HEAD")
+	for i := 1; i <= 3; i++ {
+		r.Commit(fmt.Sprintf("c%d", i))
+	}
+	r.Git("branch", "-m", "main", "feature")
+	r.Write(Dir+"/2026-09-01-headless/00-summary.md", pinnedSummary(pin))
+
+	b, err := Staleness(r.Root())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b.DefaultRef != "HEAD" {
+		t.Fatalf("default ref %q, want HEAD", b.DefaultRef)
+	}
+	if len(b.Rows) != 1 || b.Rows[0].State != StatePinned || b.Rows[0].CommitsSince == nil || *b.Rows[0].CommitsSince != 3 {
+		t.Fatalf("row = %+v, want pinned with 3 commits since HEAD", b.Rows)
+	}
+}
+
 // TestReadShowsUnpinnedWhatTheGateRefuses is the board's half of the parity
 // scripts/check-reviews-cases.sh proves from the gate's side: a symlinked
 // summary, a summary past maxSummaryBytes, and a NUL byte anywhere in the
