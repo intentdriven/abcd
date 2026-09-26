@@ -344,3 +344,35 @@ func TestConnectNamesAnUnsafeConfigLockRatherThanContention(t *testing.T) {
 		}
 	}
 }
+
+// TestTheProviderBlockWriteRefusesAConfigNamingAKeyTwice: the write re-reads
+// config.json under its lock, and that read is the one the rewrite trusts, so it
+// is held to the check LoadAPI makes: a key named twice, or two spellings of
+// one, is refused and the file is left as it stands, never collapsed
+// last-wins and rewritten without the other spelling (iss-2609261312108500).
+func TestTheProviderBlockWriteRefusesAConfigNamingAKeyTwice(t *testing.T) {
+	for name, body := range map[string]string{
+		"repeat at the top":        `{"pace": 1, "pace": 2}`,
+		"case twin under oracle":   `{"oracle": {"api": {}, "API": {"x": {}}}}`,
+		"repeat inside a provider": `{"oracle": {"api": {"a": {"base_url": "https://one.example.com", "base_url": "https://two.example.com"}}}}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			home := t.TempDir()
+			dir := filepath.Join(home, ".abcd")
+			if err := os.MkdirAll(dir, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			p := filepath.Join(dir, "config.json")
+			if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			err := writeProviderBlock(home, "desk", map[string]any{"base_url": "http://127.0.0.1:1"})
+			if err == nil {
+				t.Fatal("the provider block was written over a config naming a key twice")
+			}
+			if raw, _ := os.ReadFile(p); string(raw) != body {
+				t.Fatalf("config.json was rewritten:\n%s", raw)
+			}
+		})
+	}
+}

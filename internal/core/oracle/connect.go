@@ -26,6 +26,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/adapter/openaiapi"
 	"github.com/intentdriven/abcd/internal/core/credential"
+	"github.com/intentdriven/abcd/internal/core/jsonstrict"
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
@@ -256,6 +257,13 @@ func writeProviderBlockLocked(p, name string, block map[string]any) error {
 	case refusal != fsutil.DeclarationOK || err != nil:
 		return fmt.Errorf("oracle adapter: %s could not be read safely, so the provider block was not written", origin)
 	default:
+		// The bytes re-read under the lock are the ones the rewrite trusts, so
+		// they meet LoadAPI's duplicate-key check again: a key named twice would
+		// otherwise collapse last-wins here and be rewritten without its other
+		// spelling (iss-2609261312108500).
+		if err := jsonstrict.NoDuplicateKeys(raw); err != nil {
+			return fmt.Errorf("oracle adapter: %s is refused: %v; the provider block was not written", origin, err)
+		}
 		if err := json.Unmarshal(raw, &root); err != nil || root == nil {
 			return fmt.Errorf("oracle adapter: %s is not a JSON object, so the provider block was not written", origin)
 		}
