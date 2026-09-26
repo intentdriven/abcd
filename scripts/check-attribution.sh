@@ -435,6 +435,10 @@ strip_fenced_blocks() {
 # one commit; a human is the author of record, and machine assistance is disclosed
 # by the trailer, never by the identity fields the contributor graph reads.
 #
+# Ownership: this identity half is itd-131's (the managed-repo identity gate,
+# which flags the same list before the first commit); the message half below —
+# trailer, footer, co-author — is itd-91's. Neither claims the other's pass.
+#
 # Returns non-zero when it refuses, so the caller can leave the message alone: a
 # machine-authored commit has no trailer, and reporting that too would hand back
 # the wrong remedy. "Add an Assisted-by: line" is not the fix for a dependency
