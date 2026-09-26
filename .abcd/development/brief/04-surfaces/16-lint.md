@@ -3,7 +3,7 @@
 Find out whether a repository actually follows the working conventions, without
 changing anything and without reading the conventions yourself. One command
 returns a graded list of what does not conform, each finding naming the file,
-the reason and the fix, so a maintainer can decide what to repair and in what
+the reason and the fix, so the technical facilitator can decide what to repair and in what
 order.
 
 It is **read-only** but for one target: bare and every other target perform
