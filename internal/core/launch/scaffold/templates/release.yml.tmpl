@@ -111,7 +111,14 @@ jobs:
 <%- end %>
 <%- end %>
   verify:
+<%- if .Abcd %>
+    # The race step's own -timeout (20m, sized in ci.yml) must fire before this
+    # does, or a hang reads as a cancelled job with no goroutine dump: 20m for
+    # the slowest package plus about 10m this job spends before it starts.
+    timeout-minutes: 35
+<%- else %>
     timeout-minutes: 15
+<%- end %>
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -193,7 +200,7 @@ jobs:
 <%- if .Abcd %>
 
       - name: Test (race, internal)
-        run: go test -race ./internal/...
+        run: go test -race -timeout 20m ./internal/...
 <%- else %>
 
       # A generic module may have no internal tree, so the race leg runs over the
