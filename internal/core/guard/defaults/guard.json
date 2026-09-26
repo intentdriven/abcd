@@ -298,9 +298,9 @@
       "tier": "blocker",
       "pattern": {
         "command": "pkill",
-        "flags": ["-u|-t|--euid|--uid|--terminal|--group"]
+        "flags": ["-u|-t|-U|-G|--euid|--uid|--terminal|--group"]
       },
-      "why": "`pkill -u` signals every process that user owns, and `pkill -t` every process on that terminal: every session running under the account, other agents' included, so selecting your own run by user or terminal stops everyone else's with it.",
+      "why": "`pkill -u` or `-U` signals every process that user owns, `pkill -G` every process of that group, and `pkill -t` every process on that terminal: every session running under the account, other agents' included, so selecting your own run by user, group or terminal stops everyone else's with it.",
       "successor": "Stop the process you started by the pid you recorded when you started it (`kill \"$pid\"`), or stop its own process group (`kill -- -\"$pgid\"`), so no other session's process is touched.",
       "fixtures": {
         "known_bad": [
@@ -308,12 +308,15 @@
           "pkill -u $(whoami)",
           "pkill -ubob",
           "pkill --euid=bob",
-          "pkill -t pts/3"
+          "pkill -t pts/3",
+          "pkill -tpts/3",
+          "pkill -Ubob"
         ],
         "known_good": [
           "pkill -g 4242",
           "pkill -P $$",
           "pkill -USR1 -g 4242",
+          "pkill -term -g 4242",
           "pgrep -u bob",
           "abcd capture \"pkill -u stopped every session\""
         ]
@@ -331,7 +334,7 @@
           },
           {
             "command": "pgrep",
-            "flags": ["-u|-t|--euid|--uid|--terminal|--group"]
+            "flags": ["-u|-t|-U|-G|--euid|--uid|--terminal|--group"]
           },
           {
             "command": "pidof",
@@ -347,7 +350,10 @@
           "kill $(pgrep -f 'make preflight')",
           "kill -9 $(pgrep make)",
           "pgrep -f node | xargs kill",
-          "kill $(pidof make)"
+          "kill $(pidof make)",
+          "{ pgrep make; } | xargs kill",
+          "kill $(sh -c 'pgrep make')",
+          "pgrep make | xargs sh -c 'kill \"$@\"' _"
         ],
         "known_good": [
           "kill 4242",
@@ -356,6 +362,7 @@
           "kill $(pgrep -g 4242)",
           "pgrep -l make",
           "pgrep make | wc -l",
+          "echo 4242 | xargs sh -c 'kill \"$@\"' _",
           "abcd capture 'kill $(pgrep make) stopped a peer gate'"
         ]
       }

@@ -343,13 +343,21 @@ func matchSegmentNamed(p Pattern, s segment) (hit, named bool) {
 // of xargs's own (`xargs -a <(pgrep make) kill`). What a substitution or a
 // pipeline ran is recorded by the tokenizer (segment.feeds, segment.piped), so
 // the question is only whether any of those commands matches.
+//
+// A command of a command string is also handed what reaches the string from
+// outside it (segment.argsIn, segment.stdinIn): the input of the xargs that
+// runs the shell, and the shell's own standard input, which an xargs inside
+// the string reads.
 func argsFed(p Pattern, s segment, site int) bool {
 	if len(p.ArgsFrom) == 0 {
 		return true
 	}
+	if anyHits(s.argsIn, p.ArgsFrom) {
+		return true
+	}
 	from := site + 1
 	if x, ok := xargsBefore(s, site); ok {
-		if s.piped.hits(p.ArgsFrom) {
+		if s.piped.hits(p.ArgsFrom) || anyHits(s.stdinIn, p.ArgsFrom) {
 			return true
 		}
 		from = x + 1
@@ -383,6 +391,99 @@ func xargsBefore(s segment, site int) (int, bool) {
 	return 0, false
 }
 
+// argsReader answers, for places in one segment read left to right, what
+// reaches a command there as its arguments from outside its own words: what
+// reached the segment itself (segment.argsIn) and, past an xargs, the input
+// xargs hands the command it runs — its standard input (the pipe into it, and
+// segment.stdinIn) and the output of the substitutions in its own words
+// (`xargs -a <(pgrep make)`). The words are read once however many places are
+// asked about, so a launcher's windows cost what the line's words do.
+//
+// The words' substitutions are held as one run: every command the tokenizer
+// emitted while it read a segment's words is a substitution in one of them,
+// in word order, so the commands of the words between two places are one run
+// of the segment's list. What a place is handed therefore stays as short as
+// the nesting of strings is deep, however many words it spans.
+type argsReader struct {
+	s     segment
+	x     int
+	ok    bool
+	next  int
+	base  []feed
+	words feed
+}
+
+func newArgsReader(s segment) *argsReader {
+	r := &argsReader{s: s}
+	r.x, r.ok = xargsBefore(s, len(s.tokens))
+	if r.ok {
+		r.base = append([]feed(nil), s.argsIn...)
+		if s.piped.list != nil {
+			r.base = append(r.base, s.piped)
+		}
+		r.base = append(r.base, s.stdinIn...)
+		r.next = r.x + 1
+	}
+	return r
+}
+
+// before returns what reaches a command at site, for a site at or after every
+// one asked before.
+func (r *argsReader) before(site int) []feed {
+	if !r.ok || site <= r.x {
+		return r.s.argsIn
+	}
+	for ; r.next < site && r.next < len(r.s.tokens); r.next++ {
+		tally(1)
+		for _, f := range r.s.feeds[r.next] {
+			switch {
+			case r.words.list == nil:
+				r.words = f
+			case f.list == r.words.list:
+				r.words.lo, r.words.hi = min(r.words.lo, f.lo), max(r.words.hi, f.hi)
+			default:
+				// Not reached: a word's feeds name its own tokenize call. Kept
+				// whole rather than dropped, should that ever change.
+				r.base = append(r.base, f)
+			}
+		}
+	}
+	out := append([]feed(nil), r.base...)
+	if r.words.list != nil {
+		out = append(out, r.words)
+	}
+	return out
+}
+
+// anyHits reports whether any command in any of the runs matches one of srcs.
+func anyHits(fs []feed, srcs []Pattern) bool {
+	for _, f := range fs {
+		if f.hits(srcs) {
+			return true
+		}
+	}
+	return false
+}
+
+// segmentHits reports whether a command matches one of srcs, or any command of
+// a command string it runs does (segList.payloads), however deep they nest.
+func segmentHits(s segment, srcs []Pattern) bool {
+	for _, src := range srcs {
+		if matchSegment(src, s) {
+			return true
+		}
+	}
+	if s.home == nil {
+		return false
+	}
+	for _, ps := range s.home.payloads[s.at] {
+		if segmentHits(ps, srcs) {
+			return true
+		}
+	}
+	return false
+}
+
 // hits reports whether any command in the run matches one of srcs. The first
 // question asked of a list counts, once, how many of its commands match, so
 // every later question about any run in it — however many runs nest inside
@@ -397,11 +498,8 @@ func (f feed) hits(srcs []Pattern) bool {
 		counts = make([]int, len(f.list.segs)+1)
 		for i, s := range f.list.segs {
 			counts[i+1] = counts[i]
-			for _, src := range srcs {
-				if matchSegment(src, s) {
-					counts[i+1]++
-					break
-				}
+			if segmentHits(s, srcs) {
+				counts[i+1]++
 			}
 		}
 		if f.list.hits == nil {
@@ -430,6 +528,13 @@ type entryMatcher struct {
 	// nextHit holds, per flag clause (each flag group, then each flag-value
 	// constraint), the first index at or after i whose token satisfies it.
 	nextHit [][]int
+	// groups is how many of the clauses are flag groups, the ones a signal
+	// word is no answer to.
+	groups int
+	// nextSig[i] is the first index at or after i holding a word the command
+	// reads as its signal (signalWordCommands), or len(tokens); nil for a
+	// command that reads none.
+	nextSig []int
 }
 
 // newEntryMatcher reads the tokens for one entry. One operand walk reads every
@@ -469,6 +574,10 @@ func newEntryMatcher(p Pattern, tokens []string, glob func(int) bool) entryMatch
 		alts := strings.Split(group, "|")
 		m.nextHit = append(m.nextHit, next(func(i int) bool { return flagGroupHit(alts, tokens, i, glob, opts) }))
 	}
+	m.groups = len(p.Flags)
+	if signalWordCommands[strings.ToLower(p.Command)] && len(p.Flags) > 0 {
+		m.nextSig = next(func(i int) bool { return isSignalWord(tokens[i]) })
+	}
 	for _, fv := range p.FlagValues {
 		fv := fv
 		m.nextHit = append(m.nextHit, next(func(i int) bool { return flagValueHit(fv, tokens, i, glob) }))
@@ -485,8 +594,13 @@ func (m entryMatcher) matchesAfter(site int) bool {
 		return false
 	}
 	stop := m.nextStop[start]
-	for _, nh := range m.nextHit {
-		if nh[start] >= stop {
+	for c, nh := range m.nextHit {
+		h := nh[start]
+		// The command's first signal word is its signal, never a flag.
+		if c < m.groups && m.nextSig != nil && h < len(nh)-1 && h == m.nextSig[start] {
+			h = nh[h+1]
+		}
+		if h >= stop {
 			return false
 		}
 	}
@@ -638,6 +752,14 @@ func flagMatches(alt, arg string, glob bool) bool {
 	}
 	if len(alt) == 2 && alt[0] == '-' {
 		if isShortCluster(arg) && strings.ContainsRune(arg[1:], rune(alt[1])) {
+			return true
+		}
+		// The first letter after a single dash is always an option, and a
+		// byte no option letter can be (`/`, `.`) marks what follows as its
+		// value — or the word as one the program refuses — so `-tpts/3` is
+		// `-t pts/3` and `-ubob.smith` is `-u bob.smith`. Only that first
+		// letter is read: the rest may be the value (`-m"new feature"`).
+		if len(arg) > 2 && arg[0] == '-' && arg[1] == alt[1] && !isShortCluster(arg) {
 			return true
 		}
 		if !glob || len(arg) < 2 || arg[0] != '-' || arg[1] == '-' {

@@ -111,6 +111,10 @@ func expandPayloads(segs []segment) ([]segment, []payloadSignal) {
 				out = append(out, fs)
 				queue = append(queue, work{segs: []segment{fs}, depth: item.depth})
 			}
+			// What reaches the commands of a string s runs is read once per
+			// segment, however many strings it carries (payloadInput).
+			var stdin, args []feed
+			inputRead := false
 			for _, ref := range payloadRefsOf(s) {
 				kind, fam, payload, trailing := ref.kind, ref.family, ref.payload, ref.trailing
 				// Past the depth budget the guard cannot follow the nesting, so a
@@ -159,12 +163,24 @@ func expandPayloads(segs []segment) ([]segment, []payloadSignal) {
 				}
 
 				// Offset the payload's chains into a fresh disjoint range and append.
+				// Each command of the string is handed what reaches it from the
+				// command that runs it (segment.stdinIn, segment.argsIn), and the
+				// string is filed under that command, so a run holding it holds
+				// the string's commands too (segList.payloads).
+				if !inputRead {
+					stdin, args = payloadInput(s)
+					inputRead = true
+				}
 				offset := chainMax + 1
 				for i := range psegs {
 					psegs[i].chain += offset
 					if psegs[i].chain > chainMax {
 						chainMax = psegs[i].chain
 					}
+					psegs[i].stdinIn, psegs[i].argsIn = stdin, args
+				}
+				if s.home != nil {
+					s.home.addPayload(s.at, psegs)
 				}
 				out = append(out, psegs...)
 				queue = append(queue, work{segs: psegs, depth: item.depth + 1})
@@ -175,6 +191,20 @@ func expandPayloads(segs []segment) ([]segment, []payloadSignal) {
 		signals = append(signals, ifsSplitSignal())
 	}
 	return out, signals
+}
+
+// payloadInput returns what reaches the commands of a command string s runs:
+// the standard input the running shell passes on — its pipe and whatever
+// reached s itself — and, as their arguments, the input of an xargs that runs
+// the shell, which xargs replaces into the string (`-I{}`) or appends as its
+// positional parameters. Which of the string's commands reads it is not
+// modelled: every one of them is read as handed it.
+func payloadInput(s segment) (stdin, args []feed) {
+	if s.piped.list != nil {
+		stdin = append(stdin, s.piped)
+	}
+	stdin = append(stdin, s.stdinIn...)
+	return stdin, newArgsReader(s).before(len(s.tokens))
 }
 
 // splitAfterIFS reports whether a segment carrying an unquoted fixed output

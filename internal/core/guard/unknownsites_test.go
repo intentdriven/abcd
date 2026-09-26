@@ -47,6 +47,7 @@ var wordReaders = map[string]string{
 	"flagShaped":           "exempt: reads the known text flagMatches is handed",
 	"isShortFlag":          "exempt: reads a registry alternative, never a command word",
 	"isShortCluster":       "exempt: a known word's shape; clusterCouldCarry reads the unknown word",
+	"isSignalWord":         "exempt: spares a word only when it spells a signal name whole; a word holding a substitution's output never does, so it stays every flag it can become",
 	"pathOf":               "exempt: reads a URL scheme's characters in an operand pathArgMatches reads as the rule says",
 	"xargsBefore":          "arrivalsOf and commandNamed: every place the walk arrives at that can be xargs",
 
