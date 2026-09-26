@@ -496,3 +496,117 @@ func htmlNumericAll(s string) string {
 	}
 	return b.String()
 }
+
+// jsonEscapeEveryRune writes every rune of s as a JSON \u escape, a rune
+// above the Basic Multilingual Plane as a surrogate pair. Every backslash is
+// written \x5c, so the escape is the text a provider sends.
+func jsonEscapeEveryRune(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		if r > 0xFFFF {
+			r -= 0x10000
+			fmt.Fprintf(&b, "\x5cu%04x\x5cu%04X", 0xD800+(r>>10), 0xDC00+(r&0x3FF))
+			continue
+		}
+		fmt.Fprintf(&b, "\x5cu%04x", r)
+	}
+	return b.String()
+}
+
+// jsonEscapeMixed writes s the way a mixed encoder may: ASCII letters as \u
+// escapes in upper-case hex, '/', '"' and the backslash as short escapes, and
+// every other rune as it is.
+func jsonEscapeMixed(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		switch {
+		case r == '/' || r == '"' || r == 0x5c:
+			b.WriteByte(0x5c)
+			b.WriteRune(r)
+		case r < 0x80 && ('a' <= r && r <= 'z' || 'A' <= r && r <= 'Z'):
+			fmt.Fprintf(&b, "\x5cu%04X", r)
+		default:
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+// TestAnEscapedKeyInAnUndecodableBodyIsScrubbed: a body that is not
+// decodable JSON (plain text, or a JSON body cut at the error-body bound) is
+// scrubbed as thoroughly as one that is: the key written as JSON escapes,
+// ordinary ASCII runes included, reaches no error, and neither does a key
+// that itself carries a backslash sequence or a character reference written
+// literally, which a decoding step would otherwise rewrite before the scrub.
+func TestAnEscapedKeyInAnUndecodableBodyIsScrubbed(t *testing.T) {
+	const astralKey = "sk-astral-\U0001F600-key"
+	const backslashKey = "sk-back\x5cnslash\x5cu0041-key"
+	const ampKey = "sk-amp&amp;&#65;-key"
+	type tc struct{ name, key, prefix, body string }
+	var cases []tc
+	for _, k := range []struct{ key, prefix string }{{awkwardKey, "sk-aw"}, {astralKey, "sk-astral"}} {
+		every, mixed := jsonEscapeEveryRune(k.key), jsonEscapeMixed(k.key)
+		cases = append(cases,
+			tc{"plain text, every rune escaped", k.key, k.prefix, "bad key " + every + " was refused"},
+			tc{"plain text, mixed escapes", k.key, k.prefix, "bad key " + mixed + " was refused"},
+			tc{"JSON cut at the bound, every rune escaped", k.key, k.prefix,
+				`{"detail":"bad key ` + every + strings.Repeat("x", maxErrorBodyBytes) + `"}`},
+			tc{"JSON cut short, mixed escapes", k.key, k.prefix, `{"detail":"bad key ` + mixed},
+		)
+	}
+	cases = append(cases,
+		tc{"plain text, a key with a literal backslash sequence", backslashKey, "sk-back", "bad key " + backslashKey + " was refused"},
+		tc{"plain text, a key with a literal character reference", ampKey, "sk-amp", "bad key " + ampKey + " was refused"},
+		tc{"JSON, a key with a literal character reference", ampKey, "sk-amp", `{"detail":"bad key ` + ampKey + `"}`},
+	)
+	for _, c := range cases {
+		t.Run(c.name+" "+c.prefix, func(t *testing.T) {
+			f := newFake(t, status(401, c.body))
+			_, err := mustClient(t, f.base(), c.key).Complete(context.Background(), request(), nil)
+			if err == nil {
+				t.Fatal("Complete succeeded; want a refusal")
+			}
+			msg := err.Error()
+			if !strings.Contains(msg, "HTTP 401") {
+				t.Fatalf("error = %v, want it to name HTTP 401", err)
+			}
+			for _, leak := range []string{c.prefix, jsonEscapeEveryRune(c.prefix), jsonEscapeMixed(c.prefix)} {
+				if strings.Contains(msg, leak) {
+					t.Fatalf("the error carries the key as %q: %s", leak, msg)
+				}
+			}
+			if !strings.Contains(msg, "[credential]") {
+				t.Fatalf("error = %s, want the key replaced by [credential] and the provider's text around it kept", msg)
+			}
+		})
+	}
+}
+
+// TestUnescapeJSONText: every JSON string escape is undone once, wherever it
+// stands in the text, and anything that is not a well-formed escape is left
+// exactly as it is. Every backslash below is written \x5c.
+func TestUnescapeJSONText(t *testing.T) {
+	for _, c := range []struct{ in, want string }{
+		{"plain text", "plain text"},
+		{"\x5cu006B\x5cu0065y", "key"},
+		{"\x5cu00e9 \x5cu00E9", "é é"},
+		{"\x5cud83d\x5cude00", "\U0001F600"},
+		{"\x5cuD83D\x5cuDE00!", "\U0001F600!"},
+		{"\x5c/ \x5c\x22 \x5c\x5c \x5cb\x5cf\x5cn\x5cr\x5ct", "/ \x22 \x5c \b\f\n\r\t"},
+		{"\x5c\x5cu006b", "\x5cu006b"},
+		{"\x5cq \x5cx41", "\x5cq \x5cx41"},
+		{"\x5cu12", "\x5cu12"},
+		{"\x5cuZZZZ", "\x5cuZZZZ"},
+		{"\x5cu12G4", "\x5cu12G4"},
+		{"end\x5c", "end\x5c"},
+		{"\x5cud83d alone", "\x5cud83d alone"},
+		{"\x5cude00 alone", "\x5cude00 alone"},
+		{"\x5cud83d\x5cu0041", "\x5cud83dA"},
+		{"\x5cu0000", "\x00"},
+		{"\xff\x5cu0041", "\xffA"},
+	} {
+		if got := unescapeJSONText(c.in); got != c.want {
+			t.Errorf("unescapeJSONText(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}

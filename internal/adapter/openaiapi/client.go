@@ -50,6 +50,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf16"
 	"unicode/utf8"
 
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -361,9 +362,13 @@ func unfence(s string) string {
 // one, else the body itself. A provider may echo the key in any field and in
 // any encoding its stack applies, so the text is decoded before the scrub: a
 // JSON body is re-rendered from its decoded values (every \u, \/ and other
-// escape undone) and HTML character references are resolved, which leaves
-// the key, wherever it was, in the one literal form the scrub matches, and
-// the scrub removes its escaped forms besides.
+// escape undone), a body that does not decode (plain text, or JSON cut at
+// maxErrorBodyBytes) has its JSON escapes undone where they stand
+// (unescapeJSONText), and HTML character references are resolved, which
+// leaves the key, wherever it was, in the one literal form the scrub
+// matches. The scrub runs before each decoding step as well as after it, so
+// a key written literally is removed before a step could rewrite it, and it
+// removes the key's escaped forms besides.
 func (c *Client) providerSaid(raw []byte) string {
 	var env struct {
 		Error json.RawMessage `json:"error"`
@@ -382,29 +387,117 @@ func (c *Client) providerSaid(raw []byte) string {
 		}
 	}
 	if said == "" {
-		said = decodedBody(raw)
+		var decoded bool
+		if said, decoded = decodedBody(raw); !decoded {
+			said = unescapeJSONText(c.scrub(said))
+		}
 	}
-	said = c.scrub(html.UnescapeString(said))
+	said = c.scrub(html.UnescapeString(c.scrub(said)))
 	return termsafe.Sanitize(bound(strings.TrimSpace(said)))
 }
 
 // decodedBody is a body as text with its JSON escapes undone: a JSON document
 // is decoded and rendered again without escaping anything JSON does not
-// require, and anything else is returned as it is.
-func decodedBody(raw []byte) string {
+// require, and decoded is true; anything else is returned as it is, and
+// decoded is false.
+func decodedBody(raw []byte) (text string, decoded bool) {
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.UseNumber()
 	var v any
 	if dec.Decode(&v) != nil || dec.More() {
-		return string(raw)
+		return string(raw), false
 	}
 	var b bytes.Buffer
 	enc := json.NewEncoder(&b)
 	enc.SetEscapeHTML(false)
 	if enc.Encode(v) != nil {
-		return string(raw)
+		return string(raw), false
 	}
-	return strings.TrimSuffix(b.String(), "\n")
+	return strings.TrimSuffix(b.String(), "\n"), true
+}
+
+// unescapeJSONText undoes, once and wherever it stands, every well-formed
+// JSON string escape in s: the short escapes (\" \\ \/ \b \f \n \r \t) and
+// \uXXXX in either case of hex, a surrogate pair joined into its rune. It is
+// lenient where a decoder is strict: anything that is not a well-formed
+// escape (an unknown letter, short or non-hex digits, a trailing backslash,
+// a surrogate without its partner) is kept exactly as it is, and so is every
+// byte outside an escape, so it never fails and never drops text. That makes
+// it total over a body a decoder refuses: a key escaped rune by rune in any
+// mix of these forms comes out literal, which is the form the scrub matches.
+func unescapeJSONText(s string) string {
+	if !strings.Contains(s, "\\") {
+		return s
+	}
+	var b strings.Builder
+	b.Grow(len(s))
+	for i := 0; i < len(s); {
+		if s[i] != '\\' || i+1 == len(s) {
+			b.WriteByte(s[i])
+			i++
+			continue
+		}
+		if r, ok := shortEscape(s[i+1]); ok {
+			b.WriteByte(r)
+			i += 2
+			continue
+		}
+		r, ok := hex4(s, i)
+		if !ok {
+			b.WriteByte(s[i])
+			i++
+			continue
+		}
+		switch {
+		case utf16.IsSurrogate(r):
+			// A surrogate is a rune only with its partner; alone it is kept
+			// as written.
+			if lo, ok := hex4(s, i+6); ok && r < 0xDC00 {
+				if joined := utf16.DecodeRune(r, lo); joined != utf8.RuneError {
+					b.WriteRune(joined)
+					i += 12
+					continue
+				}
+			}
+			b.WriteString(s[i : i+6])
+		default:
+			b.WriteRune(r)
+		}
+		i += 6
+	}
+	return b.String()
+}
+
+// shortEscape is the byte a JSON short escape \c stands for.
+func shortEscape(c byte) (byte, bool) {
+	switch c {
+	case '"', '\\', '/':
+		return c, true
+	case 'b':
+		return '\b', true
+	case 'f':
+		return '\f', true
+	case 'n':
+		return '\n', true
+	case 'r':
+		return '\r', true
+	case 't':
+		return '\t', true
+	}
+	return 0, false
+}
+
+// hex4 reads a \uXXXX escape starting at s[i], and reports whether one
+// stands there.
+func hex4(s string, i int) (rune, bool) {
+	if i+6 > len(s) || s[i] != '\\' || s[i+1] != 'u' {
+		return 0, false
+	}
+	v, err := strconv.ParseUint(s[i+2:i+6], 16, 16)
+	if err != nil {
+		return 0, false
+	}
+	return rune(v), true
 }
 
 func (c *Client) transportError(err error) error {
