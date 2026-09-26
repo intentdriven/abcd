@@ -184,6 +184,10 @@ var sentences = map[string]string{
 		"Writes its Audit Notes; refuses without --verdict-json.",
 	"abcd intent condition": "Read or disposition a shipped intent's scope conditions: " +
 		"Writes a dated condition block; refuses an unresolved occasion or thin grounds.",
+	"abcd intent consistency": "Emit the consistency request over the brief and every intent, or one intent against them: " +
+		"Writes the request locally; refuses a superseded intent.",
+	"abcd intent consistency ingest": "Ingest consistency findings as a dated review and a capture per finding: " +
+		"Writes the report and the ledger records; refuses without --findings-json.",
 	"abcd intent hold": "Hold a draft or planned intent so that planning refuses it: " +
 		"Writes the held line with its reason; refuses without --reason.",
 	"abcd intent link": "Link a planned intent to an existing spec: " +

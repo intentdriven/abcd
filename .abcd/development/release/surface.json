@@ -1538,6 +1538,42 @@
       ]
     },
     {
+      "path": "abcd intent consistency",
+      "hidden": false,
+      "sentence": "Emit the consistency request over the brief and every intent, or one intent against them: Writes the request locally; refuses a superseded intent.",
+      "flags": [
+        {
+          "name": "route",
+          "shorthand": "",
+          "type": "stringArray",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd intent consistency ingest",
+      "hidden": false,
+      "block": "agents",
+      "sentence": "Ingest consistency findings as a dated review and a capture per finding: Writes the report and the ledger records; refuses without --findings-json.",
+      "flags": [
+        {
+          "name": "findings-json",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "route",
+          "shorthand": "",
+          "type": "stringArray",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd intent hold",
       "hidden": false,
       "sentence": "Hold a draft or planned intent so that planning refuses it: Writes the held line with its reason; refuses without --reason.",

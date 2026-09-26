@@ -153,10 +153,12 @@ _None open; the standalone-versus-two question this record carried is moot with 
 
 ## Routed Deferrals (spc-33)
 
-spc-33's Phase 3→4 cleanup sweep routes its cluster-A and G1 deferrals into this
-intent as their durable home (recorded as `routed_from` frontmatter backlinks,
-asserted by `tests/abcd/test_fn33_defer_backlinks.py`). These are follow-up
-scope captured here — NOT active spc-33 work:
+spc-33's Phase 3→4 cleanup sweep routed its cluster-A and G1 deferrals into this
+intent (the `routed_from` frontmatter backlinks). This intent shipped the
+consistency pass alone and none of the five, so they are tracked by the ledger
+record iss-2609260926323349, a future-work seed that names them and hands the
+Role-3 item to the kinds lint in itd-34. The list below is what was routed here,
+kept as the record of that routing, not as scope this intent delivered:
 
 - **`spc-33:A1`** — Role-2 mechanical half: schema/state contradictions,
   reference rot, acknowledgement gaps → `internal/core/lint --cross-doc` lint codes
@@ -202,3 +204,8 @@ scope captured here — NOT active spc-33 work:
 ## Grounds
 
 - pursued: the autonomous run builds forty-eight intents against this corpus, and a contradiction between two of them is a stop condition it cannot resolve; we expect the first whole-corpus pass to find contradictions the ledger does not hold; shown wrong if it finds none
+
+## Audit Notes
+
+<!-- abcd-review: OWED receipt=rcp-80414ddf96b9 -->
+Fidelity review OWED (receipt rcp-80414ddf96b9).
