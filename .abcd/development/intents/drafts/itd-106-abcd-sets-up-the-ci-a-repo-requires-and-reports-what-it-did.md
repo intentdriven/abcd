@@ -44,7 +44,7 @@ private-plan repos where no ruleset is possible. Deterministic expert work
 that repeats per repo is precisely the facilitation abcd exists to absorb;
 leaving it manual means most repos simply never get the bar.
 
-The seam already exists. [itd-93](../planned/itd-93-abcd-scaffolds-a-hardened-changelog-driven-release-gate-into.md)
+The seam already exists. [itd-93](../shipped/itd-93-abcd-scaffolds-a-hardened-changelog-driven-release-gate-into.md)
 has abcd scaffolding the hardened release workflows into a managed repo,
 parity-tested against the live workflows so the template cannot drift from
 reality. This intent generalises that machinery to the standing CI gates and

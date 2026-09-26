@@ -197,6 +197,8 @@ var sentences = map[string]string{
 		"Writes only its pre-flight report, to the local tier; refuses without --dry-run.",
 	"abcd launch archive": "Render the release's plugin archive: " +
 		"Writes the archive into --out; refuses a dirty tree without --verify, and exits 1 when --verify finds it unpinned.",
+	"abcd launch receipts": "Run the release job's semantic-receipt gate locally, before the merge: " +
+		"Writes nothing; refuses with exit 1 when the release job would refuse the receipts.",
 	"abcd launch scaffold": "Scaffold the changelog-driven release gate: " +
 		"Writes the release workflows and runbook; refuses to overwrite a hand-edited one without --confirm.",
 	"abcd launch ship": "Cut a release, deriving its version and records from what shipped: " +

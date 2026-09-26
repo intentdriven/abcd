@@ -35,6 +35,7 @@ workflow that tags it.
 | Verb | Bucket | Status |
 |---|---|---|
 | `archive` | gate | shipped |
+| `receipts` | gate | shipped |
 | `scaffold` | — | shipped |
 | `ship` | gate | shipped |
 
@@ -81,6 +82,26 @@ to the pin, the render leaves the dirty-tree gate to it — a payload file that
 differs from the commit changes the digest and refuses; unbound, it runs the
 gate, and an uncommitted change refuses the render.
 
+**The emit step ends with the receipts protocol.** After the cut's report, the
+render closes with a numbered checklist, composed in the core and carried in
+the machine-readable report too: commit the roll, run each semantic gate the
+release workflow requires against that commit, key every receipt to it, commit
+the receipts on top so the branch is exactly two commits, then prove the gate
+locally. The gate names come from the committed `release.yml`, the list the
+release job enforces, so the checklist cannot ask for a gate the release does not
+require. A workflow that arms no semantic gate gets a checklist that says no
+receipt is required.
+
+**The receipts check is the release job's receipt gate, run before the merge.**
+It reads the required gates from the committed `release.yml`, derives the
+content commit from the receipts directory the way the release job does, and
+runs the release job's own check over it — one reader, which a test holds to the
+release job's verdict and reasons on the same repository state by running the
+workflow's step beside it. It names each missing or non-PROMOTE receipt and the
+commit the receipt must name, and refuses on an uncommitted receipt change,
+because the release job reads the committed tree. It exits 0 when the gate would
+admit (or nothing is armed), 1 when it would refuse, and 2 on a structural fault.
+
 `commands/launch.md` carries the emit, compose and ingest orchestration over the
 `release-changelog-composer` agent, including the release page's retry loop. The
 deterministic emit alone is `abcd changelog`, read-only and prose-free.
@@ -96,8 +117,17 @@ version flag at all: the version is derived, never authored
 ([adr-31](../../decisions/adrs/0031-derived-versioning-from-intents.md)).
 
 **The scaffold writes the release machinery into a managed repo that lacks
-it**: the two release workflows and the adr-37 release runbook, wired to the
-repo's own default branch and Go version, token-scoped and injection-safe. The
+it**: the two release workflows, the adr-37 release runbook and a reviews-charter
+check, wired to the repo's own default branch and Go version and to the check
+names its own pull-request CI reports, token-scoped and injection-safe. The check
+names are read from the repo's pull-request and merge-queue workflows — a name
+only a run knows (a matrix job, an expression-named job, a reusable-workflow
+call) is omitted rather than guessed, and every name is held to an injection-safe
+allowlist — and written into the runbook as the contexts to require on the default
+branch and into the release workflow's verify header as its merge gate. The
+reviews-charter check holds dated review directories to their shape and exempts
+the sha-keyed receipt directories, and the scaffolded verify job runs it as a
+deterministic gate, so a release's own receipts never fail the charter. The
 workflows ship from a single embedded template that abcd's own release workflows
 are regenerated from, proved byte-exact by a test, so a scaffolded repo and this
 one cannot drift. The scaffolded workflow carries a **rehearsal** that arms the
@@ -697,7 +727,7 @@ _Generated from the command tree; a drift test fails `go test` when this appendi
 
 ### `abcd launch`
 
-Sub-verbs: `abcd launch archive`, `abcd launch scaffold`, `abcd launch ship`, `abcd launch smoke-pages`.
+Sub-verbs: `abcd launch archive`, `abcd launch receipts`, `abcd launch scaffold`, `abcd launch ship`, `abcd launch smoke-pages`.
 
 | Flag | Type |
 |---|---|
@@ -716,6 +746,12 @@ Sub-verbs: none.
 | `--repository` | string |
 | `--tag` | string |
 | `--verify` | bool |
+
+### `abcd launch receipts`
+
+Sub-verbs: none.
+
+Flags: none.
 
 ### `abcd launch scaffold`
 

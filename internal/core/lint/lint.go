@@ -80,8 +80,13 @@ var (
 	// Surface registry Command cell: the bare "/abcd" top-level, or "/abcd:<name>".
 	surfaceCmdRe = regexp.MustCompile(`^/abcd(?::([a-z0-9-]+))?$`)
 	// receipt_gate arming inputs are release-time and become externally supplied
-	// (release.yml) — validated as safe path components before use.
-	receiptShaRe  = regexp.MustCompile(`^[0-9a-f]{7,64}$`)
+	// (release.yml) — validated as safe path components before use. A receipts
+	// directory is named by the FULL commit sha (the reviews charter, the release
+	// protocol and the runbook all say so): 40 hex digits, or 64 in a SHA-256
+	// repository. An abbreviation is not admitted, so an abbreviated twin of a
+	// real directory is a stray entry rather than a second candidate that ties
+	// with it (iss-2609251939466588).
+	receiptShaRe  = regexp.MustCompile(`^(?:[0-9a-f]{40}|[0-9a-f]{64})$`)
 	receiptGateRe = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
 	// gate_lockstep hand-parsers (no YAML library — the repo has none and adds no
 	// dependency): a markdown numbered-list item; the `jobs:` line; a 2-space job

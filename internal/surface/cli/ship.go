@@ -377,13 +377,21 @@ func newLaunchShipCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return &exitError{Code: 2, Msg: "abcd launch ship: " + scrubPaths(err)}
 			}
+			// The emit step ends with the receipts protocol (itd-93 AC8), so a
+			// first-time operator learns it from the verb, not a failed release.
+			proto, err := release.ReceiptsProtocolFor(root)
+			if err != nil {
+				return &exitError{Code: 2, Msg: "abcd launch ship: " + scrubPaths(err)}
+			}
 			// A refused cut goes to no composer, so it carries no request block.
 			if !cut.Ready {
 				route = nil
 			}
-			if rerr := render(cmd.OutOrStdout(), *asJSON, withRequest(cut, route), func(w io.Writer) {
+			emitted := shipEmit{Cut: cut, ReceiptsProtocol: proto}
+			if rerr := render(cmd.OutOrStdout(), *asJSON, withRequest(emitted, route), func(w io.Writer) {
 				renderCut(w, "abcd launch ship", cut)
 				renderRequestLine(w, route)
+				renderReceiptsProtocol(w, proto)
 			}); rerr != nil {
 				return rerr
 			}
@@ -405,6 +413,14 @@ func newLaunchShipCommand(asJSON *bool) *cobra.Command {
 			"(a network fetch; default: a fresh render at the tag)")
 	shipRoute = addRouteFlag(cmd, changelogAgent)
 	return cmd
+}
+
+// shipEmit is the emit step's report: the cut, unchanged in shape (embedded,
+// so its JSON fields stay where they were), plus the receipts protocol it ends
+// with.
+type shipEmit struct {
+	release.Cut
+	ReceiptsProtocol release.ReceiptsProtocol `json:"receipts_protocol"`
 }
 
 // runShipIngest is the ingest step of `abcd launch ship`: validate the composed
