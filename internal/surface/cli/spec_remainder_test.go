@@ -123,3 +123,32 @@ func openSpecsWithSlug(t *testing.T, root, slug string) []string {
 	}
 	return m
 }
+
+// The remainder carries the closing spec's unlanded steps, and the close says
+// which it carried, in text and in --json (itd-2609212103565953, criterion 3).
+func TestSpecCloseRemainderReportsTheCarriedSteps(t *testing.T) {
+	repo, _ := specStoreFixture(t)
+	plantPlannedIntent(t, repo, "itd-10", "alpha", "spc-1")
+	writeSpecRecord(t, repo, "open", "spc-1-alpha.md",
+		"---\nid: spc-1\nslug: alpha\nintent: itd-10\n---\n# alpha\n\n## Steps\n\n"+
+			"1. The parser\n   - landed: #101\n2. The loop\n   - tests: advances after merge\n")
+
+	out := string(runCLI(t, "spec", "close", "spc-1", "--remainder", "the-rest"))
+	if !strings.Contains(out, "carried 1 unlanded step(s)") || !strings.Contains(out, "1. The loop") {
+		t.Fatalf("the close must name the steps it carried into the remainder:\n%s", out)
+	}
+	if strings.Contains(out, "The parser") {
+		t.Fatalf("a landed step is not carried:\n%s", out)
+	}
+	matches, err := filepath.Glob(filepath.Join(repo, ".abcd", "development", "specs", "open", "*-the-rest.md"))
+	if err != nil || len(matches) != 1 {
+		t.Fatalf("one remainder spec expected: %v, %v", matches, err)
+	}
+	data, err := os.ReadFile(matches[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "## Steps\n\n1. The loop\n   - tests: advances after merge\n") {
+		t.Fatalf("the remainder must carry the unlanded step verbatim:\n%s", data)
+	}
+}

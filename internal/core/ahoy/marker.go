@@ -4,9 +4,11 @@ import (
 	"bytes"
 	_ "embed"
 	"os"
-
-	"github.com/intentdriven/abcd/internal/fsutil"
 	"regexp"
+	"strings"
+
+	"github.com/intentdriven/abcd/internal/core/mdrecord"
+	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
 // markerInner is the canonical inner content of the marker block (the rule
@@ -67,6 +69,11 @@ const (
 	// a distinct non-resolvable state so detection never advertises a resolvable
 	// gap that apply can never close.
 	markerSymlink markerState = "symlink"
+	// markerUnplaceable is a file whose block would be appended at end of file
+	// inside a fenced block or an HTML comment nothing closes, where no reader
+	// sees it as markdown. installMarkerFile refuses to write it, so it is not
+	// a resolvable gap either.
+	markerUnplaceable markerState = "unplaceable"
 )
 
 // classifyMarker reads targetPath and classifies its marker block. A read error
@@ -84,6 +91,9 @@ func classifyMarker(targetPath string) markerState {
 	}
 	matches := markerBlockRe.FindAllIndex(existing, -1)
 	if len(matches) == 0 {
+		if appendsInsideOpenSpan(existing) {
+			return markerUnplaceable
+		}
 		return markerMissing
 	}
 	if len(matches) > 1 {
@@ -128,6 +138,9 @@ func installMarkerFile(targetPath string) (wrote bool, ok bool) {
 
 	matches := markerBlockRe.FindAllIndex(existing, -1)
 	if len(matches) == 0 {
+		if appendsInsideOpenSpan(existing) {
+			return false, false
+		}
 		body := composeMarkerInsertion(existing, synth, eol)
 		if err := fsutil.WriteFileAtomicPreserveMode(targetPath, body); err != nil {
 			return false, false
@@ -165,25 +178,51 @@ func composeMarkerInsertion(existing, synth, eol []byte) []byte {
 	return concat(existing, eol, synth, eol)
 }
 
-// firstOutOfFenceH1 returns the byte offset just past the first ATX-1 heading
-// line that lies outside a ``` (or ~~~) fenced code block, or -1 when none
-// exists. Scanning line-by-line with fence tracking keeps the block from being
-// planted inside a fence when a '# ' line (e.g. a shell comment) precedes the
-// document's real H1.
-func firstOutOfFenceH1(existing []byte) int {
-	inFence := false
+// appendsInsideOpenSpan reports whether composeMarkerInsertion would append the
+// block at end of file inside a fenced block or an HTML comment nothing closes:
+// there is no frontmatter and no live H1 to place it after, and mdrecord reads
+// a span still open at the end. Every line below such an opener is code or a
+// comment to every reader, so a block appended there is never read as markdown,
+// while the byte regex would still classify it current (iss-2609251522453961).
+func appendsInsideOpenSpan(existing []byte) bool {
+	if frontmatterRe.Match(existing) || firstOutOfFenceH1(existing) != -1 {
+		return false
+	}
+	lines, _, _ := markerLines(existing)
+	_, _, open := mdrecord.Unclosed(lines)
+	return open
+}
+
+// markerLines splits a file into its lines, line endings trimmed, with each
+// line's start and end byte offsets.
+func markerLines(existing []byte) (lines []string, starts, ends []int) {
 	for offset := 0; offset < len(existing); {
 		next := len(existing)
 		if nl := bytes.IndexByte(existing[offset:], '\n'); nl != -1 {
 			next = offset + nl + 1
 		}
-		line := existing[offset:next]
-		if trimmed := bytes.TrimLeft(line, " \t"); bytes.HasPrefix(trimmed, []byte("```")) || bytes.HasPrefix(trimmed, []byte("~~~")) {
-			inFence = !inFence
-		} else if !inFence && h1Re.Match(line) {
-			return next
-		}
+		lines = append(lines, strings.TrimRight(string(existing[offset:next]), "\r\n"))
+		starts, ends = append(starts, offset), append(ends, next)
 		offset = next
+	}
+	return lines, starts, ends
+}
+
+// firstOutOfFenceH1 returns the byte offset just past the first ATX-1 heading
+// line that is live markdown, or -1 when none exists. Which lines are live is
+// mdrecord's answer, the tree's one CommonMark reading: a `# ` line inside a
+// fenced block (e.g. a shell comment) or an HTML comment is not the title, and
+// a fence closes only on a bare run of its own marker at least as long as the
+// opener, so a quoted fence inside a longer one does not end it early
+// (iss-2609250955219864). Placing the block after such a line would write it
+// inside the example.
+func firstOutOfFenceH1(existing []byte) int {
+	lines, starts, ends := markerLines(existing)
+	mask := mdrecord.Mask(lines)
+	for i := range lines {
+		if mask[i] == 0 && h1Re.Match(existing[starts[i]:ends[i]]) {
+			return ends[i]
+		}
 	}
 	return -1
 }

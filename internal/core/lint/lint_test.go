@@ -357,6 +357,35 @@ func TestLinksResolve(t *testing.T) {
 	}
 }
 
+// TestLinksResolveSkipsInlineCodeSpans: a code span takes precedence over link
+// syntax (CommonMark), so `Get[T](s, key)` in a record is code, not a link to a
+// file called "s, key" (iss-2609250915305413). A real link beside a span, and a
+// link whose text is a span, are still checked.
+func TestLinksResolveSkipsInlineCodeSpans(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "rec/target.md", "# Target\n")
+	writeFile(t, root, "rec/doc.md",
+		"api: `Get[T](s, key, bundled, check)` and `Decode[T](raw)`\n"+
+			"beside: `x[i](j)` then [t](missing.md)\n"+
+			"code text: [`target`](target.md) and [`gone`](gone.md)\n")
+	cfg := Config{
+		Roots: []string{"rec"},
+		Rules: map[string]RuleConfig{"links_resolve": {Enabled: true, Severity: "blocker"}},
+	}
+	fs, err := Lint(cfg, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := countRule(fs, "links_resolve"); n != 2 {
+		t.Fatalf("expected 2 link findings (missing.md, gone.md), got %d: %+v", n, fs)
+	}
+	for _, line := range []int{2, 3} {
+		if !hasFinding(fs, filepath.Join("rec", "doc.md"), "links_resolve", line) {
+			t.Errorf("expected a finding on line %d: %+v", line, fs)
+		}
+	}
+}
+
 func TestBrittleLineRefs(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, "rec/doc.md", "see configuration.md:171 for detail\nno ref here\nalso other.md:9 inline\n")
@@ -1823,5 +1852,35 @@ func TestSpecLifecycleMissingDirIsSoft(t *testing.T) {
 	}
 	if n := countRule(fs, "spec_lifecycle"); n != 0 {
 		t.Fatalf("missing specs/ dir must be soft; got %+v", fs)
+	}
+}
+
+// TestLinksResolveReadsALinkBetweenEscapedBackticks: a backslash-escaped
+// backtick is a literal character in CommonMark and never a code-span
+// delimiter, so a link between two of them is read and a broken one reported
+// (iss-2609251004336500). An escaped backtick beside a real span leaves the
+// span blanked.
+func TestLinksResolveReadsALinkBetweenEscapedBackticks(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "rec/doc.md",
+		"literal \\` text [x](gone.md) \\` end\n"+
+			"escaped \\` then `code [y](gone2.md)` end\n"+
+			"double \\\\` then [z](gone3.md) ` end\n")
+	cfg := Config{
+		Roots: []string{"rec"},
+		Rules: map[string]RuleConfig{"links_resolve": {Enabled: true, Severity: "blocker"}},
+	}
+	fs, err := Lint(cfg, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasFinding(fs, filepath.Join("rec", "doc.md"), "links_resolve", 1) {
+		t.Errorf("a broken link between escaped backticks is not reported: %+v", fs)
+	}
+	if hasFinding(fs, filepath.Join("rec", "doc.md"), "links_resolve", 2) {
+		t.Errorf("a link inside a real code span beside an escaped backtick is reported: %+v", fs)
+	}
+	if hasFinding(fs, filepath.Join("rec", "doc.md"), "links_resolve", 3) {
+		t.Errorf("an escaped backslash does not escape the backtick after it, so the span is code: %+v", fs)
 	}
 }

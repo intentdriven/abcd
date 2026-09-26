@@ -15,7 +15,7 @@
 // itd-137 AC 7 require: a real browser loads every route family at four
 // viewport widths and fails if the document scrolls horizontally.
 //
-// `abcd site check`'s mobile gate is the STATIC half — it reads the emitted
+// `abcd lint site`'s mobile gate is the STATIC half — it reads the emitted
 // HTML and CSS for a viewport meta, overflow containers, image constraints and
 // inline widths wider than 390px. That gate runs in the build path and blocks a
 // release; it cannot see layout, because nothing has been laid out. This one

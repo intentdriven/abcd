@@ -10,31 +10,37 @@ name: release
 # their SLSA build-provenance attestations once the repo is public — attestation is
 # not offered on a user-owned private repo, so it is skipped there and re-enables
 # automatically on the public flip).
-# Nothing is pushed to any branch. Both jobs check out `github.sha` — the commit the
+# Nothing is pushed to any branch. Every job checks out `github.sha` — the commit the
 # pushed tag pointed at, fixed for the whole run — never the tag NAME (which could be
 # re-pointed between jobs to swap unverified code into the build) and never the
 # default-branch tip. Net effect: a tag push yields a verified release whose binaries,
-# checksums, and reported version all come from the pushed commit.
+# checksums, and reported version all come from the pushed commit. Called by
+# auto-release with create_tag, the same run makes the tag itself, and only once
+# verify is green: detect -> verify -> tag -> build -> publish.
 <%- else %>
 # Pushing a version tag (vX.Y.Z) re-runs the full verification gate against the
 # PUSHED COMMIT; only if that gate is green does it build and publish a GitHub
 # Release from that same commit. Nothing is pushed to any branch, and the whole
-# path runs on the built-in GITHUB_TOKEN. Both jobs check out `github.sha` — the
+# path runs on the built-in GITHUB_TOKEN. Every job checks out `github.sha` — the
 # commit the pushed tag pointed at — never the re-resolvable tag NAME and never the
-# default-branch tip. A manual workflow_dispatch runs the rehearsal (below), which
-# arms the gate against a simulated release and publishes nothing.
+# default-branch tip. Called by auto-release with create_tag, the same run makes
+# the tag itself, and only once verify is green. A manual workflow_dispatch runs
+# the rehearsal (below), which arms the gate against a simulated release and
+# publishes nothing.
 <%- end %>
 on:
   push:
     tags:
       - 'v*'
-  # Called by auto-release.yml after it tags the newest dated CHANGELOG version
+  # Called by auto-release.yml to release the newest dated CHANGELOG version
   # (adr-37). `tag` and `ref` are an unenforced caller CONTRACT — --verify-tag
   # checks only that the tag exists, not that it points at `ref`; the sole
   # caller (auto-release) binds them: ref = `git rev-parse "$tag^{commit}"` on
-  # the re-release path, empty (-> github.sha, the just-tagged commit) on the
-  # fresh-tag path. A resolved commit SHA, never a tag name, keeps the
-  # anti-tag-move property.
+  # the re-release path, empty (-> github.sha, the commit verify gates and the
+  # tag job then tags) on the fresh-tag path. A resolved commit SHA, never a tag
+  # name, keeps the anti-tag-move property. `create_tag` is true on the
+  # fresh-tag path only: the tag job below makes the tag after verify passes, so
+  # a refused gate consumes no version (iss-2608231226347380).
   workflow_call:
     inputs:
       tag:
@@ -44,6 +50,10 @@ on:
         required: false
         type: string
         default: ''
+      create_tag:
+        required: false
+        type: boolean
+        default: false
   # Manual rehearsal. A workflow_dispatch runs the `rehearsal` job below alongside
   # `verify`, and nothing that publishes: the publish job (`release`) is gated off
   # this event, and the rehearsal arms the gate's resolution path against a
@@ -67,9 +77,9 @@ concurrency:
   group: release-${{ inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
-# Floor for the workflow: read-only. The release job elevates itself to
-# contents: write only to create the Release and upload its assets; verify stays
-# read-only. No job pushes to any branch.
+# Floor for the workflow: read-only. The tag job elevates itself to contents:
+# write only to push one new tag ref, the release job only to create the Release
+# and upload its assets; verify stays read-only. No job pushes to any branch.
 permissions:
   contents: read
 
@@ -95,6 +105,14 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+<%- if .SemanticGates %>
+    # The reviewed content commit the semantic gate below admitted, handed to
+    # the release job so it signs the receipts of exactly the commit that was
+    # gated rather than re-deriving it (iss-2608291814573570). Empty when the
+    # gate step is skipped (private repo, rehearsal), where nothing reads it.
+    outputs:
+      content_sha: ${{ steps.receipts.outputs.content_sha }}
+<%- end %>
     steps:
       - name: Check out the pushed commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -188,10 +206,9 @@ jobs:
       # differs. Re-render the archive from THIS commit, reproducibly, and refuse
       # the release unless it yields exactly the pinned digest: a pin the release
       # could not reproduce would name a zip nobody can publish, and every install
-      # would fail. Refusing here, in verify, costs the tag but builds and
-      # publishes nothing; on the auto-release path auto-release.yml's detect
-      # job has already made this proof before tagging, so this is the second
-      # proof there and the only one for a hand-pushed tag. Skipped on the rehearsal path: a workflow_dispatch has
+      # would fail. Refusing here, in verify, builds and publishes nothing, and on
+      # the auto-release path it makes no tag either: the tag job needs verify,
+      # so the version stays free. Skipped on the rehearsal path: a workflow_dispatch has
       # no release tag to bind (TAG is the branch name), and main between releases
       # pins the LAST release's archive, which its own tree no longer reproduces.
       # TAG reaches the script through the workflow env (injection-safe).
@@ -211,8 +228,9 @@ jobs:
       # verify gates the release before it is built or published, so a semantic
       # refusal blocks the release the way a deterministic failure already does,
       # WITHOUT consuming a version — the fix for iss-2608231226347380, where a
-      # gate that sat in the publish job wedged the immutable tag. The tag itself is
-      # untouched: only the GATE moved to the safe side of it.
+      # gate that sat in the publish job wedged the immutable tag. On the
+      # auto-release path the tag job below needs verify, so the tag itself is made
+      # only after this gate and the deterministic ones above have passed.
       #
       # Skipped on the rehearsal path: verify runs on workflow_dispatch too, where
       # no real receipts exist, and a missing receipt there is not a refusal
@@ -227,7 +245,10 @@ jobs:
       # .abcd/work/reviews/<sha>/, which names the content commit and rides in the
       # released tree regardless of batch position, and fails closed on a wrong or
       # absent directory. No ${{ }} interpolation in the script (injection-safe).
+      # The admitted sha is exported as the job's content_sha output, written
+      # only after the gate passes, for the release job's provenance steps.
       - name: Semantic-gate receipts (fail-closed, before tag)
+        id: receipts
         if: ${{ !github.event.repository.private && github.event_name != 'workflow_dispatch' }}
         run: |
           set -euo pipefail
@@ -236,17 +257,62 @@ jobs:
           echo "reviewed content commit: $content"
           go run ./cmd/record-lint --release-gate "$content"<% range .SemanticGates %> \
             --require-gate <% . %><% end %>
+          echo "content_sha=$content" >> "$GITHUB_OUTPUT"
 <%- end %>
+
+  # Create and push the annotated tag with the GITHUB_TOKEN — AFTER verify, so a
+  # refused gate leaves no tag and the version stays free (iss-2608231226347380;
+  # adr-52 moved the gate into verify, this moves the tag behind it). Runs only
+  # when the caller asks (auto-release, fresh-tag path): a tag push already has
+  # its tag, and the rehearsal makes none. This is the ONLY push the release
+  # chain makes, and it targets a NEW tag ref only — never a branch. A
+  # GITHUB_TOKEN-pushed tag raises no tag-push event, so nothing re-triggers.
+  tag:
+    needs: verify
+    if: inputs.create_tag
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write        # push the new tag ref
+    steps:
+      - name: Check out the verified commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The commit verify checked out and gated, resolved the same way.
+          ref: ${{ inputs.ref || github.sha }}
+          # persist-credentials: true is REQUIRED here so `git push` below
+          # authenticates as the GITHUB_TOKEN. Scoped to this single tag-creating
+          # job whose only step pushes one new tag ref; no other step runs, so
+          # the persisted credential is never exposed to untrusted input.
+          persist-credentials: true
+
+      - name: Create and push the annotated tag at the verified commit
+        # Values arrive via env (no ${{ }} inside the script): injection-safe.
+        env:
+          COMMIT: ${{ inputs.ref || github.sha }}
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          # Annotated tag at the commit verify passed and the release job below
+          # checks out and ships.
+          git tag -a "$TAG" -m "abcd $TAG" "$COMMIT"
+          git push origin "refs/tags/$TAG"
 
   # Build and publish ONLY after verify is green. Binaries are cross-compiled from
   # the same pushed commit (github.sha) that verify just gated, so the shipped
   # artefacts match the code that passed — even if the tag were re-pointed since.
   release:
-    needs: verify
+    needs: [verify, tag]
     # The publish path never runs on a manual rehearsal (workflow_dispatch): that
-    # event runs the `rehearsal` job, which publishes nothing. The tag-push and
-    # workflow_call (auto-release) entry points are unaffected.
-    if: github.event_name != 'workflow_dispatch'
+    # event runs the `rehearsal` job, which publishes nothing. Otherwise it runs
+    # once verify is green and the tag is in place — the tag job made it
+    # (success) or the tag already existed and the job was skipped (a tag push,
+    # or auto-release's heal path). !cancelled() is required because a skipped
+    # need skips a job whose if uses no status function; it never fires on a
+    # cancelled run, so a manual cancel cannot publish a half-finished state. A
+    # FAILED tag job blocks the release, so a half-made tag never publishes.
+    if: github.event_name != 'workflow_dispatch' && !cancelled() && needs.verify.result == 'success' && (needs.tag.result == 'success' || needs.tag.result == 'skipped')
     timeout-minutes: 20
     runs-on: ubuntu-latest
 <%- if .Abcd %>
@@ -258,7 +324,7 @@ jobs:
     permissions:
 <%- if .Abcd %>
       contents: write       # create the Release and upload its assets (no branch push)
-      id-token: write       # mint the OIDC token attest-build-provenance signs with
+      id-token: write       # mint the OIDC token actions/attest signs with
       attestations: write   # publish the build-provenance attestations (public repo)
 <%- else %>
       contents: write       # create the Release (no branch push, no attestation)
@@ -273,14 +339,32 @@ jobs:
           # workflow_call re-release path, exactly as in verify.
           ref: ${{ inputs.ref || github.sha }}
 <%- if .Abcd %>
-          # Full history: the content-commit derivation below checks commit
-          # ancestry (git merge-base / rev-list) over the receipts directory, which
-          # a shallow (depth-1) clone cannot answer — it would fail-close.
+          # Full history, the same checkout shape verify gated, so every step
+          # here reads the repository the gate judged.
 <%- else %>
           # Full history, so any history-walking gate has the commits it needs.
 <%- end %>
           fetch-depth: 0
           persist-credentials: false
+
+      - name: Refuse a tag that is not a vX.Y.Z release tag
+        # TAG is inputs.tag or github.ref_name, and every later step consumes it:
+        # the build stamps it into a quoted -ldflags recipe, where a double quote
+        # in a legal v* ref would close the quoting and splice a command
+        # (iss-2608261041218890). Refuse anything that is not a release tag
+        # before it reaches any of them — the pattern site.yml applies to the
+        # same value. A bash [[ =~ ]] match, deliberately NOT grep: grep is
+        # line-oriented, so a tag carrying an embedded newline would pass on its
+        # first line; [[ =~ ]] matches the whole string. TAG arrives through the
+        # workflow env (injection-safe).
+        run: |
+          set -euo pipefail
+          tag_re='^v[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$'
+          if [[ ! $TAG =~ $tag_re ]]; then
+            printf "refusing to release '%s': not a vX.Y.Z release tag\n" "$TAG" >&2
+            exit 1
+          fi
+          echo "release tag: $TAG"
 
       - name: Record the default-branch tip (no-branch-commit tripwire)
         # This release job must push NOTHING to any branch. Record the remote
@@ -310,8 +394,9 @@ jobs:
 
       # --- Semantic-gate provenance (iss-35; dormant until the public flip) ------
       # The gate that can REFUSE the release now runs in `verify`, before the tag
-      # (adr-52). What remains here is provenance: re-derive the reviewed content
-      # commit and SIGN its receipts for an auditable release attestation. By the
+      # (adr-52). What remains here is provenance: take the reviewed content
+      # commit verify gated and SIGN its receipts for an auditable release
+      # attestation. By the
       # time this job runs, verify has already proved the receipts exist and are
       # PROMOTE, so these steps record what passed rather than deciding it. Gated on
       # repo visibility exactly like the binary attestation below — dormant on a
@@ -319,22 +404,28 @@ jobs:
       # evidence, not committer-forgery-proof (a forged committed receipt would be
       # signed too); that residual is bounded by the identity gate + branch
       # protection.
-      - name: Resolve the reviewed content commit (the receipt subject)
+      - name: Receive the reviewed content commit verify gated (the receipt subject)
         if: ${{ !github.event.repository.private }}
-        # Re-derive CONTENT_SHA in this job (a $GITHUB_ENV export does not cross
-        # jobs). The receipts name the commit they gate, so the content commit is
-        # read from the RECEIPTS DIRECTORY of the released tree
-        # (record-lint --derive-content-sha), not HEAD^2^/HEAD^ ancestry: a batched
-        # merge-queue push makes github.sha the batch tip, and HEAD^2^ can then
-        # resolve an unrelated PR's commit (iss-355). The derivation reads HEAD —
-        # the exact commit this job checked out (inputs.ref on the re-release heal
-        # path, else github.sha) — and fails closed on a wrong or absent directory.
+        # The sha verify's semantic gate admitted, received as its job output
+        # rather than re-derived here: one derivation, so the receipts signed
+        # below are those of the commit the gate judged (iss-2608291814573570).
+        # verify checked out the same commit this job did (inputs.ref on the
+        # re-release heal path, else github.sha). The value is shape-checked
+        # before it reaches $GITHUB_ENV, a file path and the signed predicate —
+        # [[ =~ ]], not grep, so an embedded newline cannot forge a second env
+        # line — and an empty value fails closed. It arrives through env
+        # (injection-safe).
+        env:
+          CONTENT_SHA_FROM_VERIFY: ${{ needs.verify.outputs.content_sha }}
         run: |
           set -euo pipefail
-          content="$(go run ./cmd/record-lint --derive-content-sha)"
-          test -n "$content"
-          echo "CONTENT_SHA=$content" >> "$GITHUB_ENV"
-          echo "reviewed content commit: $content"
+          sha_re='^[0-9a-f]{40}([0-9a-f]{24})?$'
+          if [[ ! $CONTENT_SHA_FROM_VERIFY =~ $sha_re ]]; then
+            echo "refusing: verify handed no well-formed content sha (got '${CONTENT_SHA_FROM_VERIFY}')" >&2
+            exit 1
+          fi
+          echo "CONTENT_SHA=$CONTENT_SHA_FROM_VERIFY" >> "$GITHUB_ENV"
+          echo "reviewed content commit: $CONTENT_SHA_FROM_VERIFY"
 
       - name: Attest the semantic-gate receipts (signed release provenance)
         if: ${{ !github.event.repository.private }}
@@ -349,7 +440,7 @@ jobs:
 
       - name: Verify the semantic-gate receipt attestation
         if: ${{ !github.event.repository.private }}
-        # CONTENT_SHA reaches this step via $GITHUB_ENV (resolve step above).
+        # CONTENT_SHA reaches this step via $GITHUB_ENV (receive step above).
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -363,7 +454,7 @@ jobs:
 <%- end %>
 <% if .Abcd %>
       - name: Cross-compile the four binaries (version-stamped from the tag)
-        # VERSION=<tag> stamps `abcd version` via -ldflags -X …internal/core.Version.
+        # VERSION=<tag> stamps `abcd --version` via -ldflags -X …internal/core.Version.
         # The binaries built here are the ones checksummed, attested, and uploaded
         # below, so the manifest, the published assets, and the reported version are
         # all in sync.
@@ -405,8 +496,14 @@ jobs:
         # visibility); the release still ships binaries + checksums.txt, and
         # attestation re-enables automatically on the public flip. A skipped step is
         # not a failure, so the publish steps still run.
+        # actions/attest directly, with no predicate input: it then generates SLSA
+        # build provenance itself, the predicate the actions/attest-build-provenance
+        # wrapper produced by calling it (iss-273). NODE_OPTIONS is the wrapper's
+        # own env on that call, kept so the attestation is made exactly as before.
         if: ${{ !github.event.repository.private }}
-        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        env:
+          NODE_OPTIONS: "--max-http-header-size=32768"
         with:
           subject-path: |
             bin/abcd-*

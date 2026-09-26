@@ -27,9 +27,8 @@ import (
 func newLaunchScaffoldCommand(asJSON *bool) *cobra.Command {
 	var confirm bool
 	cmd := &cobra.Command{
-		Use:   "scaffold [--confirm]",
-		Short: "Scaffold the changelog-driven release gate (release.yml, auto-release.yml, runbook) into this repo",
-		Args:  cobra.NoArgs,
+		Use:  "scaffold [--confirm]",
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cwd, err := os.Getwd()
 			if err != nil {

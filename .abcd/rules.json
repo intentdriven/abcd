@@ -35,7 +35,7 @@
         "One Diataxis type per page (tutorial / how-to / reference / explanation).",
         "User-facing prose in British English; code-side identifiers, comments, strings in US English.",
         "Writing style: Follow the canonical guide at docs/reference/writing-style.md \u2014 em dashes allowed in prose but never in list items (use a colon), a capital letter after a colon, lower case after a semicolon. The guide labels each rule machine-enforced or review (the list-item em-dash rule is enforced as a docs-lint banned token; adr-54 rules the colon and semicolon casing checks review by nature); point at the guide rather than copying it.",
-        "Before presenting a drafted docs artefact (a page under docs/, README.md, or an edit to either), run `abcd docs lint` and clear its blockers first: the gate that will refuse the commit gives its feedback at draft time, not review time. Conversational replies are not artefacts and are never linted."
+        "Before presenting a drafted docs artefact (a page under docs/, README.md, or an edit to either), run `abcd lint docs` and clear its blockers first: the gate that will refuse the commit gives its feedback at draft time, not review time. Conversational replies are not artefacts and are never linted."
       ]
     },
     "INTENTS": {

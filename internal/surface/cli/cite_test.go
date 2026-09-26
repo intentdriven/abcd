@@ -200,11 +200,11 @@ func TestDocsLintReleaseGatePromotesOverdue(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if out, err := runCLIErr(t, "docs", "lint", "--config", cfg, "--root", root); err != nil {
+	if out, err := runCLIErr(t, "lint", "docs", "--config", cfg, "--root", root); err != nil {
 		t.Fatalf("the commit gate must not calendar-block, got %v\n%s", err, out)
 	}
 
-	out, err := runCLIErr(t, "docs", "lint", "--release-gate", "--json", "--config", cfg, "--root", root)
+	out, err := runCLIErr(t, "lint", "docs", "--release-gate", "--json", "--config", cfg, "--root", root)
 	if err == nil {
 		t.Fatalf("the release gate did not block on an overdue citation\n%s", out)
 	}

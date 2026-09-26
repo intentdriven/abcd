@@ -374,6 +374,51 @@ func TestShipStructuralFaultExits2(t *testing.T) {
 	}
 }
 
+// TestCutReadsTheWholeCheckoutFromASubdirectory: the cut is a fact about the
+// repository, so the preview and the gate run from a subdirectory of a
+// checkout read the same records, baseline and anchor tag as from its root.
+// Handing the working directory over as the root made the preview report an
+// empty cut and a missing baseline there with exit 0 (iss-2609251713073532).
+func TestCutReadsTheWholeCheckoutFromASubdirectory(t *testing.T) {
+	r := shipFixture(t)
+	r.Write(".abcd/development/intents/shipped/itd-73-derived-versioning.md",
+		"---\nid: itd-73\nimpact: additive\n---\n\n# A Version Is A Fact\n\nthe version is derived.\n")
+	r.Commit("ship an intent")
+	sub := filepath.Join(r.Root(), ".abcd", "development")
+
+	for _, args := range [][]string{{"changelog"}, {"launch", "ship"}} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			t.Chdir(sub)
+			out, err := runCLIErr(t, args...)
+			if code := exitCodeOf(err); code != 0 {
+				t.Fatalf("exit = %d, want 0\n%s", code, out)
+			}
+			for _, want := range []string{"v0.4.1", "itd-73"} {
+				if !strings.Contains(string(out), want) {
+					t.Errorf("run from a subdirectory, the cut does not mention %q:\n%s", want, out)
+				}
+			}
+		})
+	}
+}
+
+// TestCutOutsideACheckoutNamesTheCheckout: outside any repository both verbs
+// refuse naming what is missing, not with git's bare exit status.
+func TestCutOutsideACheckoutNamesTheCheckout(t *testing.T) {
+	for _, args := range [][]string{{"changelog"}, {"launch", "ship"}} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			t.Chdir(t.TempDir())
+			out, err := runCLIErr(t, args...)
+			if code := exitCodeOf(err); code != 2 {
+				t.Fatalf("exit = %d, want 2\n%s", code, out)
+			}
+			if msg := err.Error(); !strings.Contains(msg, "not inside a git repository") || strings.Contains(msg, "exit status") {
+				t.Errorf("refusal = %q, want it to name the missing checkout", msg)
+			}
+		})
+	}
+}
+
 // TestLaunchStillRunsWithoutASubcommand is the regression guard on hanging
 // `ship` off the launch command: a cobra parent that gains a subcommand can stop
 // running its own RunE, which would silently turn `abcd launch` into a usage
@@ -390,7 +435,8 @@ func TestLaunchStillRunsWithoutASubcommand(t *testing.T) {
 }
 
 // cliTreeDigest hashes every path and byte under root except .git, whose
-// internals git rewrites for reasons unrelated to the code under test.
+// internals git rewrites for reasons unrelated to the code under test, and the
+// gitignored local tier, where a cut keeps its pre-flight report.
 func cliTreeDigest(t *testing.T, root string) string {
 	t.Helper()
 	var lines []string
@@ -400,6 +446,12 @@ func cliTreeDigest(t *testing.T, root string) string {
 		}
 		if d.IsDir() {
 			if d.Name() == ".git" {
+				return fs.SkipDir
+			}
+			// The local tier is left out: a refused cut deliberately keeps its
+			// pre-flight report there (itd-65), and nothing in that tier is
+			// part of the release record a rollback restores.
+			if rel, rerr := filepath.Rel(root, path); rerr == nil && filepath.ToSlash(rel) == ".abcd/.work.local" {
 				return fs.SkipDir
 			}
 			return nil

@@ -1,7 +1,8 @@
 ---
 name: capture
-description: Capture issues to the structured per-repo ledger and query them, by invoking the abcd binary. Bare invocation is a read-only status render; disposition/link/list/promote/resolve/wontfix act on the ledger, and migrate rewrites retired back-links.
+description: "File an issue from quoted text, or render the ledger's status bare: Writes one record under open/; refuses a lone word and any folder outside a checkout."
 argument-hint: "[text] | list --open|--resolved|--wontfix|--all | link <iss-N> [--blocked-by <iss-M,...>] [--unblock <iss-M,...>] | promote <iss-N> --grounds \"<token>: <text>\" [--intent <itd-N>] | promote <rdi-N> [--intent <itd-N>] | resolve <iss-N> <note> --impact <additive|breaking|fix|internal> --grounds \"<token>: <text>\" [--intent <itd-N>] [--spec <spc-N>] [--commit <sha>] | wontfix <iss-N> <reason> | disposition <rdi-N> --state <accepted|rejected|declined|held> | migrate [--apply]"
+block: people
 ---
 
 # `/abcd:capture` — issue ledger
@@ -281,6 +282,15 @@ the `from_status -> to_status` transition from the JSON. Report `redacted` too
 whenever it is non-zero: these paths redact the note exactly as `capture` does,
 but their human render stays silent, so the caller learns their wording was
 rewritten only if you relay it.
+
+Moving the issue repoints every relative markdown link in the tree that named
+it in `open/` — an ADR, a draft intent, a sibling issue — and the moved issue's
+own links, which were written from `open/`. The JSON lists each rewrite under
+`relinked` (`file`, `line`, `from`, `to`) and the text render prints them;
+report them, because they are files the verb changed beyond the issue. A link
+that never resolved is left as written. A repoint that fails part-way leaves
+the transition standing and warns on stderr; record-lint's `links_resolve`
+then names each link left behind.
 
 An id this checkout's ledger does not hold is refused. When a peer holds it —
 a sibling worktree or a local branch (see `/abcd:peers`) — the refusal names

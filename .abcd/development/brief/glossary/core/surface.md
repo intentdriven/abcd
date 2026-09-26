@@ -61,7 +61,7 @@ carry no command file and no registry row by design.
 
 - "Wired or it isn't done: every verb is reachable from both the CLI and the plugin markdown surface."
 - "The surface chapter for `/abcd:reading` is `04-surfaces/23-reading.md`."
-- "`abcd identity` reports each rendered surface's verdict and writes nothing."
+- "`abcd lint identity` reports each rendered surface's verdict and writes nothing."
 
 ## Related terms
 

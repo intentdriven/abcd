@@ -2,7 +2,7 @@ package site
 
 // The strict tokenizer over the generator's own output.
 //
-// `abcd site check` has to walk the emitted pages and say, of every visible
+// `abcd lint site` has to walk the emitted pages and say, of every visible
 // word, where it came from. That is a claim about the WHOLE document, so a
 // reader that skips what it does not understand cannot make it: a text node
 // inside markup the reader silently dropped is a text node the provenance walk

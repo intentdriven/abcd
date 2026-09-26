@@ -119,33 +119,33 @@ func TestDocsLintMissingConfigCleanError(t *testing.T) {
 	repo := captureLedgerRepo(t)
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"docs", "lint"}, &stdout, &stderr)
+	code := Run([]string{"lint", "docs"}, &stdout, &stderr)
 	if code == 0 {
-		t.Fatalf("expected a non-zero exit for `docs lint` with no config")
+		t.Fatalf("expected a non-zero exit for `lint docs` with no config")
 	}
 	msg := stderr.String()
 	if strings.Contains(msg, repo) {
-		t.Fatalf("docs lint error leaked the absolute repo path %q:\n%s", repo, msg)
+		t.Fatalf("lint docs error leaked the absolute repo path %q:\n%s", repo, msg)
 	}
 	if !strings.Contains(msg, filepath.Join(".abcd", "docs-lint.json")) {
-		t.Fatalf("docs lint error should name the repo-relative config path:\n%s", msg)
+		t.Fatalf("lint docs error should name the repo-relative config path:\n%s", msg)
 	}
 
 	// And under --json it is JSON-shaped, not raw text.
 	stdout.Reset()
 	stderr.Reset()
-	if code := Run([]string{"docs", "lint", "--json"}, &stdout, &stderr); code == 0 {
-		t.Fatalf("expected a non-zero exit for `docs lint --json` with no config")
+	if code := Run([]string{"lint", "docs", "--json"}, &stdout, &stderr); code == 0 {
+		t.Fatalf("expected a non-zero exit for `lint docs --json` with no config")
 	}
 	var env struct {
 		Error string `json:"error"`
 	}
 	if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
-		t.Fatalf("--json docs lint error not JSON-shaped: %v\nstdout: %q", err, stdout.String())
+		t.Fatalf("--json lint docs error not JSON-shaped: %v\nstdout: %q", err, stdout.String())
 	}
 }
 
-// TestDocsLintEngineFaultExitsTwo pins that `docs lint` returns exit 2 — "could
+// TestDocsLintEngineFaultExitsTwo pins that `lint docs` returns exit 2 — "could
 // not be evaluated" — when the engine cannot run (here, a config whose root
 // escapes the repository), the same tri-state code `abcd lint` and record-lint
 // return. Exit 1 is reserved for a blocker finding, so a CI gate keying on >=2
@@ -164,9 +164,9 @@ func TestDocsLintEngineFaultExitsTwo(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"docs", "lint"}, &stdout, &stderr)
+	code := Run([]string{"lint", "docs"}, &stdout, &stderr)
 	if code != 2 {
-		t.Fatalf("docs lint engine fault exit = %d, want 2\nstderr: %s", code, stderr.String())
+		t.Fatalf("lint docs engine fault exit = %d, want 2\nstderr: %s", code, stderr.String())
 	}
 	if strings.Contains(stderr.String(), repo) {
 		t.Errorf("engine fault message leaked the absolute repo path:\n%s", stderr.String())
@@ -245,21 +245,21 @@ func TestDocsLintUnreadableConfigNoPathLeak(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	if code := Run([]string{"docs", "lint"}, &stdout, &stderr); code == 0 {
+	if code := Run([]string{"lint", "docs"}, &stdout, &stderr); code == 0 {
 		t.Fatalf("expected a non-zero exit for an unreadable docs-lint config")
 	}
 	if msg := stderr.String(); strings.Contains(msg, repo) {
-		t.Fatalf("docs lint error leaked the absolute repo path %q:\n%s", repo, msg)
+		t.Fatalf("lint docs error leaked the absolute repo path %q:\n%s", repo, msg)
 	}
 
 	// Same guarantee under --json.
 	stdout.Reset()
 	stderr.Reset()
-	if code := Run([]string{"docs", "lint", "--json"}, &stdout, &stderr); code == 0 {
+	if code := Run([]string{"lint", "docs", "--json"}, &stdout, &stderr); code == 0 {
 		t.Fatalf("expected a non-zero exit under --json for an unreadable config")
 	}
 	if msg := stderr.String(); strings.Contains(msg, repo) {
-		t.Fatalf("--json docs lint error leaked the absolute repo path %q:\n%s", repo, msg)
+		t.Fatalf("--json lint docs error leaked the absolute repo path %q:\n%s", repo, msg)
 	}
 }
 

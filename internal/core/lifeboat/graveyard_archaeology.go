@@ -11,7 +11,7 @@ import (
 // graveyard_archaeology.go — Layer 1 of the graveyard (M4, adr-35): the Tier-0,
 // git-only, deterministic, EVIDENCE-ONLY dig. It reads ONLY through the cached,
 // capped SourceContext git surface (ctx.Git/ctx.GitLines/ctx.ReadFile) and never
-// writes. Every human string is run through sanitize; every id is built by the
+// writes. Every human string is run through gvText; every id is built by the
 // namespaced helpers in graveyard.go; findings are grouped in signalRank order so
 // the assembled file is byte-identical across re-plans of an unchanged repo. No
 // wall-clock time enters any output — commit dates used for branch ranking are
@@ -62,7 +62,7 @@ func gvReverts(ctx *SourceContext) []Finding {
 			ID:       revID(sha),
 			Signal:   SignalRevert,
 			Summary:  "reverted commit",
-			Evidence: []string{sanitize(subject)},
+			Evidence: []string{gvText(subject)},
 		})
 	}
 	return capSignalFindings(out)
@@ -164,9 +164,9 @@ func gvUnmergedBranches(ctx *SourceContext) []Finding {
 		out = append(out, Finding{
 			ID:      branchID(b.name),
 			Signal:  SignalUnmergedBranch,
-			Summary: fmt.Sprintf("branch never merged into %s; diverged %d commits ago", sanitize(db), b.ahead),
+			Summary: fmt.Sprintf("branch never merged into %s; diverged %d commits ago", gvText(db), b.ahead),
 			Evidence: []string{
-				fmt.Sprintf("%d commits ahead of %s", b.ahead, sanitize(db)),
+				fmt.Sprintf("%d commits ahead of %s", b.ahead, gvText(db)),
 				"merge-base " + shortHex(b.base),
 			},
 		})
@@ -274,7 +274,7 @@ func gvRemovedDependencies(ctx *SourceContext) []Finding {
 		}
 		evidence := make([]string, 0, len(removed))
 		for _, tok := range removed {
-			evidence = append(evidence, "removed: "+sanitize(tok))
+			evidence = append(evidence, "removed: "+gvText(tok))
 		}
 		out = append(out, Finding{
 			ID:       dependencyID(m),
@@ -380,7 +380,7 @@ func gvRewrites(ctx *SourceContext) []Finding {
 				Signal:  SignalWholesaleRewrite,
 				Summary: "single commit replaced a large fraction of the tree",
 				Evidence: []string{
-					"rewrite: " + sanitize(curSubject),
+					"rewrite: " + gvText(curSubject),
 					fmt.Sprintf("%d files changed of %d tracked", curFiles, size),
 				},
 			})

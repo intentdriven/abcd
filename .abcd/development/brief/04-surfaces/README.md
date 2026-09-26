@@ -59,15 +59,18 @@ neither direction: nothing asserts that one has a row here, and nothing notices
 when one is added or removed (iss-110).
 
 The grain extends **inside** each row (spc-27, adr-40 decision 6): every surface
-file in this directory whose verb registers sub-commands carries a `## Sub-verbs`
-table recording, per verb, its adr-40 bucket (`lint` / `review` / `audit` /
-`gate`, or `—` for a non-assessment verb) and whether it is `shipped` or `staged`.
-The rule checks each table against the committed command-tree snapshot in both
-directions: a `shipped` row must be registered, a `staged` row must not be, a
-registered sub-command must have a row, and a sub-command-bearing verb cannot lack
-a table or a file entirely. Host-delegated surfaces and the bare command are
-exempt from that comparison by explicit configuration, never silently; operator-
-internal verbs are absent from this registry by design.
+file in this directory carries a `## Sub-verbs` table recording, per verb, its
+adr-40 bucket (`lint` / `review` / `audit` / `gate`, or `—` for a non-assessment
+verb) and whether it is `shipped` or `staged`. A verb with no sub-verb carries
+the table with its header alone, so an empty table is a recorded fact rather than
+a missing one, and a file without the table is a finding whatever its verb
+registers. The rule checks each table against the committed command-tree
+snapshot in both directions: a `shipped` row must be registered, a `staged` row
+must not be, a registered sub-command must have a row, and a sub-command-bearing
+verb cannot lack a file entirely. Host-delegated surfaces and the bare command are
+exempt from that comparison by explicit configuration, never silently, and from
+nothing else: their tables are still required and format-checked.
+Operator-internal verbs are absent from this registry by design.
 
 The surface-grain `Status` enum stays two-valued: there is no `partial`, because
 the sub-verb rows carry that granularity, so a row may honestly read `shipped`
@@ -113,6 +116,67 @@ snapshot and every appendix. Keep flags and sub-verb spellings out of the prose:
 say what the surface is for, and let the appendix say how it is spelled.
 
 
+## How the help lists the verbs
+
+`abcd --help` lists the verbs a person runs under five labelled groups, with one
+line above them saying that `abcd --help --agent` expands the list. With
+`--agent` the help renders two blocks: the person's groups, then the verbs agents
+and hosts call, each line naming the command page an agent reads next (itd-146).
+Every other command's help is the framework's own, except that it opens with
+the command's sentence (the section below).
+
+| Block | Group | Verbs |
+|---|---|---|
+| people | set-up | `ahoy`, `rules`, `update`, and the framework's `help` and `completion` |
+| people | records | `capture`, `decide`, `intent`, `memory`, `spec` |
+| people | checks | `lint` |
+| people | portability | `disembark`, `embark` |
+| people | release | `launch` |
+| agents and hosts | — | `banlist`, `changelog`, `docs`, `guard`, `guard hook`, `history`, `ideate`, `ideate record`, `identity`, `implement`, `inbox`, `intent audit ingest`, `mode`, `peers`, `reading`, `report`, `site`, `statusline` |
+
+The placement is presentation. No verb is hidden, renamed, moved or nested by
+it, every verb runs the same whichever block lists it, and the group titles
+carry no adr-40 bucket meaning. A spelling that moved (itd-2609212130136102) is
+listed in neither block: `version` became the root's `--version` flag, and the
+stub it leaves for one release is deprecated, which keeps it out of every list
+and out of the person's count, held by a test at fourteen verbs at most. The
+product thinker placed the people's verbs
+and nine of the agent entries; the rest are the technical ruling of 2026-09-25 in
+[`DECISIONS.md`](../../../work/DECISIONS.md), which gives each its reason.
+
+It is gated like every other surface claim. The committed command-tree snapshot
+records each visible top-level verb's group and each listed entry's block, so a
+regroup shows in its diff; the drift test and the release gate's stale-surface
+refusal name every verb whose placement moved without a regeneration. A test in
+`internal/surface/cli` fails on a visible top-level verb registered with no
+group, and another holds each command page's `block:` frontmatter to the tree.
+A regroup is not a break: the surface diff never reads the placement, because it
+changes no invocation.
+
+## The sentence every verb opens with
+
+Every visible verb and sub-verb carries one sentence naming what it does, what
+it writes (or that it writes nothing), and when it refuses, in that order: the
+doing clause, a colon, a writing clause opening with "Writes", a semicolon, and
+a refusing clause opening with "refuses" or "never refuses", at most 160
+characters, under the [writing-style guide](../../../../docs/reference/writing-style.md)
+(itd-2609212113220149). The sentence is declared once, in the surface manifest
+(`internal/core/surface/sentences.go`), and rendered from there byte for byte:
+it is the line every command list prints (a parent's list, the root's groups
+and the agents block), the first line of the verb's own `--help`, and, for a
+top-level verb with a plugin page, that page's `description:`. The committed
+command-tree snapshot records it, `go generate ./internal/surface/cli` writes
+the pages' descriptions from it, and the generated CLI reference carries it,
+which puts it under the docs lint.
+
+It is gated. A test in `internal/surface/cli` walks every visible command and
+fails naming the verb and the defect when a sentence is missing, lacks a clause,
+runs past the cap, or differs between the manifest, the command list, the help
+and the page; a synthetic tree proves it names each defect. A reworded sentence
+is not a break: the surface diff never reads it, because it changes no
+invocation. Adding a verb therefore adds its sentence to the manifest in the
+same change, and the regeneration carries it to every place it appears.
+
 ## Bare invocation
 
 Typing a verb with no arguments is how a person finds out where they stand
@@ -124,7 +188,10 @@ It is a convention rather than a universal, and the exceptions are where the
 tree does not yet meet its own discipline. Six parents print usage with no state
 at all: `disembark`, `docs`, `embark`, `guard`, `history`, and `ideate`. Bare
 `abcd launch` refuses with a hint to pass `--dry-run`. Bare `abcd decide` refuses
-because its one operand is the quoted title it mints a record from. And `abcd
+because its one operand is the quoted title it mints a record from. Bare `abcd
+identity` and bare `abcd ahoy remote` answer with the invocation their report
+moved to (`abcd lint identity`, `abcd ahoy --remote`) and exit non-zero for one
+release, because their sub-verbs stay. And `abcd
 update` is a mutating fetch-verify-swap rather than a render at all. This
 paragraph is the one enumeration of the exceptions; the chapters point here
 rather than restating it.
@@ -141,7 +208,7 @@ verb the binary registers apart from the framework's own `help`.
 |---|---|---|
 | `changelog` | The deterministic, read-only emit of the next release cut — derived version, record set, guardrail, no prose. Nothing on the plugin surface runs it: `commands/launch.md`'s emit → compose → ingest orchestration runs `launch ship --json`, and names this verb only as the read-only preview of the same cut. `launch ship` is the write half. | itd-73 (derived versioning) and itd-67's changelog slice, both in `intents/planned/`; documented in [`04-launch.md`](04-launch.md) |
 | `rules` | Renders the active rule set; a positional `DOMAIN` scopes to one. Read-only diagnostics over the hook-driven rule injection. | itd-3 (the modular rules loader); the loader it reports on is documented in [`05-internals/03-configuration.md`](../05-internals/03-configuration.md), which names no verb: the verb itself is documented only in the generated CLI reference and the repo's own conventions router |
-| `spec` | The native spec store: bare invocation is a read-only status board, and `spec close` closes a spec and ships its linked intent (`planned/` → `shipped/`) only when no open spec is left naming it — an intent owns one or more specs, and `--remainder <slug>` mints the follow-on for a partial delivery in the same operation. | itd-80 / spc-2 (intent lifecycle automation), adr-2609151513118583 (the 1:n relation); documented in [`05-intent.md`](05-intent.md) |
+| `spec` | The native spec store: bare invocation is a read-only status board, and `spec close` closes a spec and ships its linked intent (`planned/` → `shipped/`) only when no open spec is left naming it — an intent owns one or more specs, and `--remainder <slug>` mints the follow-on for a partial delivery in the same operation, carrying the closing spec's steps not marked landed. | itd-80 / spc-2 (intent lifecycle automation), adr-2609151513118583 (the 1:n relation); documented in [`05-intent.md`](05-intent.md) |
 | `hook` | Hidden from `--help`: five host hook entrypoints, live-wired from `hooks/hooks.json`. `prompt-router` injects the rules a prompt matches and `prompt-router-reset` clears the per-session ledger so they inject again; `session-end` stages the session's own transcript, `subagent-stop` stages a finished sub-agent's transcript with its lineage, and `session-start` files both away and says how many reports wait in the inbox ([`29-report.md`](29-report.md)). The pre-tool-use adapter is `guard hook`, under `guard`. | itd-3 (the prompt router), itd-89 / spc-4 (the transcript clock), itd-103 / spc-16 (the guard hook); the transcript entrypoints are documented in [`11-history.md`](11-history.md), and the rule injection the router drives in [`05-internals/03-configuration.md`](../05-internals/03-configuration.md), which names no entrypoint of its own: the two router entrypoints have no documented home in this brief, and the generated CLI reference omits them by design |
 | `completion` | The CLI framework's generated per-shell autocompletion scripts. | No record: generated by the CLI framework, not designed here |
 | `statusline` | The harness-invoked status-line render: the harness runs it on every refresh with its payload on stdin, and it prints abcd's row in a managed repository or runs the user's recorded previous status command everywhere else. `ahoy install` wires it; no user invokes it. | itd-200 / spc-70 (the presence badge); the row and the state behind it are documented in [`08-abcd.md`](08-abcd.md) |

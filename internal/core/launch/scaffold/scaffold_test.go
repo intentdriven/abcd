@@ -101,7 +101,7 @@ func TestBareRenderOmitsAbcdMachinery(t *testing.T) {
 	// The abcd-specific detectors and steps must be gone.
 	for _, needle := range []string{
 		"record-lint", "docs-currency-reviewer", "iss35-brief-surface-crosscheck",
-		"check-reviews.sh", "make smoke", "make build", "make fmt-check", "abcd docs lint",
+		"check-reviews.sh", "make smoke", "make build", "make fmt-check", "abcd lint docs",
 		"semantic-release-gate", "Cross-compile the four binaries",
 		"./internal/...",
 	} {

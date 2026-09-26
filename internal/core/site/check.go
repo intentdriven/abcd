@@ -1,6 +1,6 @@
 package site
 
-// `abcd site check` — the gates adr-47 decision 3 arms.
+// `abcd lint site` — the gates adr-47 decision 3 arms.
 //
 // The build renders; this says whether what it rendered may be published. Seven
 // independent checks run over an already-built output directory and the
@@ -136,6 +136,7 @@ import (
 	"unicode"
 
 	"github.com/intentdriven/abcd/internal/core/lint"
+	"github.com/intentdriven/abcd/internal/core/mdrecord"
 	"github.com/intentdriven/abcd/internal/core/positioning"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
@@ -1250,17 +1251,15 @@ var (
 //
 // Only FENCED lines contribute flags. Prose in a section can name a flag while
 // saying it is gone, and crediting that would let the very drift this check
-// exists to catch pass.
+// exists to catch pass. Fences are mdrecord's reading, the one Sections takes
+// (iss-2609251044055902).
 func parseCLIReference(md string) cliReference {
 	ref := cliReference{commands: map[string]bool{}, flags: map[string]map[string]bool{}}
 	cur := ""
-	fenced := false
-	for _, line := range strings.Split(md, "\n") {
-		if strings.HasPrefix(strings.TrimSpace(line), "```") {
-			fenced = !fenced
-			continue
-		}
-		if !fenced {
+	lines := strings.Split(md, "\n")
+	mask := mdrecord.Read(lines, mdrecord.ListNested).Mask
+	for i, line := range lines {
+		if mask[i]&mdrecord.MaskFence == 0 {
 			if m := cliHeadingRe.FindStringSubmatch(strings.TrimRight(line, " \t")); m != nil {
 				cur = commandPathOf(m[1])
 				ref.commands[cur] = true

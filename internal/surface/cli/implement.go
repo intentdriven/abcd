@@ -30,8 +30,7 @@ const implementStore = "the run state"
 // of the run state.
 func newImplementCommand(asJSON *bool) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "implement",
-		Short: "Share one autonomous run between sessions: join, claim a record, check the bounds, log, and compare the division modes",
+		Use: "implement",
 		Long: "The run machinery an autonomous run calls. Every piece lives in the machine-scoped run\n" +
 			"state, `~/.abcd/runs/<root-sha>/`, keyed on the repository's root commit, so sessions\n" +
 			"in different worktrees of one repository share one run and no repository file.\n\n" +
@@ -233,8 +232,7 @@ func newImplementJoinCommand(asJSON *bool) *cobra.Command {
 	var session, role, model, reason string
 	var ceiling int
 	cmd := &cobra.Command{
-		Use:   "join --session <id> --role first|second",
-		Short: "Join the run: record the session and its role, and log its session_open",
+		Use: "join --session <id> --role first|second",
 		Long: "Record this session in the run state with its role and log a session_open line.\n" +
 			"Nothing signals any other session: the first learns of a second only by reading the\n" +
 			"run state. Joining again with the same role is a resume and is logged as one; asking\n" +
@@ -275,8 +273,7 @@ func newImplementJoinCommand(asJSON *bool) *cobra.Command {
 func newImplementLeaveCommand(asJSON *bool) *cobra.Command {
 	var session, reason string
 	cmd := &cobra.Command{
-		Use:   "leave --session <id>",
-		Short: "Leave the run: release every claim the session holds and log its session_close",
+		Use: "leave --session <id>",
 		Long: "Release every claim this session holds (each logged as claim_released), log a\n" +
 			"session_close line with the reason, and remove the session's record. A session\n" +
 			"that stops without leaving strands nothing: its claims lapse with their leases.",
@@ -303,7 +300,6 @@ func newImplementModeCommand(asJSON *bool) *cobra.Command {
 	var window int
 	cmd := &cobra.Command{
 		Use:       "mode <single|claim|batch|split-roles> --session <id>",
-		Short:     "Open a window: log its division mode (the first session's call)",
 		ValidArgs: modeWords(),
 		Long: "Log a window_mode line naming how this window divides the work: `single` (one\n" +
 			"session), `claim` (a session claims a record before opening its lane), `batch` (the\n" +
@@ -346,8 +342,7 @@ func newImplementClaimCommand(asJSON *bool) *cobra.Command {
 	var lease time.Duration
 	var paths []string
 	cmd := &cobra.Command{
-		Use:   "claim <record> --session <id> --lane <lane>",
-		Short: "Claim a record before opening its lane; exactly one session holds it",
+		Use: "claim <record> --session <id> --lane <lane>",
 		Long: "Take a record for this session: one claim file per record in the run state, created\n" +
 			"exclusively, so of two sessions reaching for one record exactly one holds it. The\n" +
 			"claim is a lease (--lease, default 2h, 1m to 24h). Claiming a record this session\n" +
@@ -389,8 +384,7 @@ func newImplementClaimCommand(asJSON *bool) *cobra.Command {
 func newImplementReleaseCommand(asJSON *bool) *cobra.Command {
 	var session string
 	cmd := &cobra.Command{
-		Use:   "release <record> --session <id>",
-		Short: "Release this session's claim on a record",
+		Use: "release <record> --session <id>",
 		Long: "Remove this session's claim on a record and log claim_released. Only the holder\n" +
 			"releases a claim; another session's claim lapses with its lease instead.",
 		Args: cobra.ExactArgs(1),
@@ -415,7 +409,6 @@ func newImplementCheckCommand(asJSON *bool) *cobra.Command {
 	var paths []string
 	cmd := &cobra.Command{
 		Use:       "check <lane|release|review|audit|land> --session <id>",
-		Short:     "Ask whether this session may take a step; the second session's bounds refuse",
 		ValidArgs: stepWords(),
 		Long: "Say whether this session may take a step, before it takes it. The first session may\n" +
 			"take every step. The second is refused the release step always, a lane in a\n" +
@@ -467,7 +460,6 @@ func newImplementLogCommand(asJSON *bool) *cobra.Command {
 	var fields []string
 	cmd := &cobra.Command{
 		Use:       "log <event> --session <id> [--field key=value ...]",
-		Short:     "Append one of the run's events to the run log",
 		ValidArgs: implement.LoggableEvents(),
 		Long: "Append one event line to today's run log (`~/.abcd/runs/<root-sha>/<UTC date>.jsonl`)\n" +
 			"in a single append, so two sessions writing at once each land whole lines. The line\n" +
@@ -508,8 +500,7 @@ func newImplementLogCommand(asJSON *bool) *cobra.Command {
 func newImplementReportCommand(asJSON *bool) *cobra.Command {
 	var date, logPath string
 	cmd := &cobra.Command{
-		Use:   "report [--date YYYY-MM-DD | --log <file>]",
-		Short: "Derive the comparison of the division modes from the run log (read-only)",
+		Use: "report [--date YYYY-MM-DD | --log <file>]",
 		Long: "Derive, per division mode, the figures the run's report compares: windows, wall\n" +
 			"clock, lanes opened and landed (a lane_close whose outcome is merged or landed),\n" +
 			"the second session's lanes landed, collisions (claim_denied), lapsed claims,\n" +
