@@ -334,3 +334,25 @@ func TestLoadPinAbsentMemberDefaultsHandWritten(t *testing.T) {
 		t.Fatalf("DeclaredProductionMode with no pin = %q, %v; want %q", got, err, provenance.DefaultMode)
 	}
 }
+
+// TestCheck_AuthorRoleConfigOutranksUser guards iss-2609261454332615: git stamps
+// the author from author.name/author.email ahead of user.name/user.email (git
+// 2.22+), so a repo-local author.name must be read as the author even when
+// user.name matches the pin. Reading user.* alone reported the pinned identity
+// as matching while every commit was authored by someone else.
+func TestCheck_AuthorRoleConfigOutranksUser(t *testing.T) {
+	isolate(t)
+	dir := gitRepo(t, "Alex Reppel", "alex@example.com") // user.* matches the pin
+	runGitT(t, dir, "config", "author.name", "Test User")
+	writePin(t, dir, `{"name":"Alex Reppel","email":"alex@example.com"}`)
+	res, err := Check(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Status != StatusMismatch {
+		t.Fatalf("want StatusMismatch (author.name outranks user.name), got %v — %s", res.Status, res.Reason)
+	}
+	if res.Effective.Name != "Test User" || res.Effective.Email != "alex@example.com" {
+		t.Fatalf("effective author did not follow git's author.name precedence: %+v", res.Effective)
+	}
+}

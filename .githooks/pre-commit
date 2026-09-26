@@ -194,8 +194,10 @@ if [ -f "$identity_pin" ]; then
     echo "            check the pin's JSON (lowercase \"name\"/\"email\", both non-empty), or run: abcd ahoy --identity" >&2
     exit 1
   fi
-  have_name=$(git config user.name || true)
-  have_email=$(git config user.email || true)
+  # git ranks the role's own author.name/author.email ahead of user.* for the
+  # author it stamps (iss-2609261454332615), so read them in that order.
+  have_name=$(git config author.name || git config user.name || true)
+  have_email=$(git config author.email || git config user.email || true)
   if [ "$have_name" != "$want_name" ] || [ "$have_email" != "$want_email" ]; then
     echo "pre-commit: BLOCKED — git identity \"$have_name <$have_email>\" does not match the pinned \"$want_name <$want_email>\" ($identity_pin)." >&2
     echo "            fix: git config user.name \"$want_name\" && git config user.email \"$want_email\"" >&2

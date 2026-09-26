@@ -221,29 +221,62 @@ func unpinnable(s string) bool {
 	return false
 }
 
+// Role is one of the two identities git stamps on a commit. The author is who
+// wrote the change and the committer is who recorded it; the contributor graph
+// reads both, so the gate resolves both.
+type Role string
+
+const (
+	// RoleAuthor is the commit's author (%an/%ae).
+	RoleAuthor Role = "author"
+	// RoleCommitter is the commit's committer (%cn/%ce).
+	RoleCommitter Role = "committer"
+)
+
 // EffectiveIdentity returns the author identity git would stamp on a commit in
-// root. Git gives the GIT_AUTHOR_NAME/GIT_AUTHOR_EMAIL environment variables
-// HIGHER precedence than user.name/user.email config, so an agent/CI sandbox that
-// exports them lands a mis-attributed commit that a config-only check would wave
-// through. Each field is therefore resolved from its GIT_AUTHOR_* override first,
-// falling back to `git config` (local > global > system) when the override is
-// unset or blank. Unset name or email yields an empty field, not an error.
+// root. Each field is resolved the way git resolves it: the GIT_AUTHOR_NAME /
+// GIT_AUTHOR_EMAIL environment override first (an agent or CI sandbox that
+// exports one lands a mis-attributed commit a config-only check would wave
+// through), then the role's own author.name / author.email config key, which git
+// ranks ahead of user.* (iss-2609261454332615), then user.name / user.email.
+// Config keys follow git's local > global > system layering. An unset name or
+// email yields an empty field, not an error.
 func EffectiveIdentity(root string) (Effective, error) {
-	name := strings.TrimSpace(os.Getenv("GIT_AUTHOR_NAME"))
-	if name == "" {
-		var err error
-		if name, err = gitConfig(root, "user.name"); err != nil {
-			return Effective{}, err
-		}
+	return effective(root, RoleAuthor)
+}
+
+// effective resolves one role's identity field by field, with the precedence
+// git itself applies: GIT_<ROLE>_NAME / GIT_<ROLE>_EMAIL, then <role>.name /
+// <role>.email, then user.name / user.email. It deliberately does NOT ask
+// `git var GIT_<ROLE>_IDENT`, which fabricates an identity from the account's
+// gecos field and the hostname when none is configured and exits 0 — that would
+// collapse the distinct StatusUnset state the pre-commit hook blocks on.
+func effective(root string, role Role) (Effective, error) {
+	env := "GIT_" + strings.ToUpper(string(role)) + "_"
+	name, err := resolveField(root, env+"NAME", string(role)+".name", "user.name")
+	if err != nil {
+		return Effective{}, err
 	}
-	email := strings.TrimSpace(os.Getenv("GIT_AUTHOR_EMAIL"))
-	if email == "" {
-		var err error
-		if email, err = gitConfig(root, "user.email"); err != nil {
-			return Effective{}, err
-		}
+	email, err := resolveField(root, env+"EMAIL", string(role)+".email", "user.email")
+	if err != nil {
+		return Effective{}, err
 	}
 	return Effective{Name: name, Email: email}, nil
+}
+
+// resolveField returns the first non-blank of an environment override and then
+// each config key in turn. A blank override is treated as unset.
+func resolveField(root, envKey string, keys ...string) (string, error) {
+	if v := strings.TrimSpace(os.Getenv(envKey)); v != "" {
+		return v, nil
+	}
+	for _, key := range keys {
+		v, err := gitConfig(root, key)
+		if err != nil || v != "" {
+			return v, err
+		}
+	}
+	return "", nil
 }
 
 // gitConfig returns the trimmed value of a git config key, or "" when the key is

@@ -104,3 +104,41 @@ func TestPreCommitHook_IdentityGate(t *testing.T) {
 		})
 	}
 }
+
+// TestPreCommitHook_AuthorRoleConfigBlocks is iss-2609261454332615 at the shell
+// guard: a repo-local author.name/author.email outranks user.name/user.email
+// for the author git stamps, so a matching user.* must not wave through a commit
+// that author.* attributes to someone else.
+func TestPreCommitHook_AuthorRoleConfigBlocks(t *testing.T) {
+	hook := locateHook(t)
+	env := gittest.Env(t)
+	for _, key := range []string{"author.name", "author.email"} {
+		t.Run(key, func(t *testing.T) {
+			dir := t.TempDir()
+			hookGit(t, dir, env, "init")
+			hookGit(t, dir, env, "config", "user.name", "Alex")
+			hookGit(t, dir, env, "config", "user.email", "a@b.com")
+			hookGit(t, dir, env, "config", key, "Test User")
+			if err := os.MkdirAll(filepath.Join(dir, ".abcd", "config"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(dir, ".abcd", "config", "identity.json"), []byte(`{"name":"Alex","email":"a@b.com"}`), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			src, err := os.ReadFile(hook)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(dir, ".git", "hooks", "pre-commit"), src, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(dir, "f.txt"), []byte("x"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			hookGit(t, dir, env, "add", "-A")
+			if err := hookGit(t, dir, env, "commit", "-m", "t"); err == nil {
+				t.Fatalf("the hook let %s = Test User author a commit under a pin of Alex", key)
+			}
+		})
+	}
+}
