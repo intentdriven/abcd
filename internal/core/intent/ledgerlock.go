@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/recordid"
+	"github.com/intentdriven/abcd/internal/core/spec"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
@@ -43,58 +44,93 @@ func repoLedgerLock(repoRoot string) func(func() error) error {
 	}
 }
 
-// pairIntentTry is how long one attempt of a pair acquisition waits for the
-// intent store's lock with the ledger lock held, and pairLedgerRest how long it
-// then leaves the ledger lock free before the next attempt. The rest is twice
-// the longest interval a ledger writer sleeps between its polls
-// (fsutil.LockPollCeiling), so a ledger writer polling through a wait wakes
-// inside the window at least once per attempt and finds the lock free. It is
-// derived from the ceiling rather than restated beside it: a rest written as a
-// number once sat below the poll's real ceiling (iss-2609262257227538).
+// pairIntentTry is how long one attempt of the three-lock acquisition waits
+// for each of the intent store's lock and the spec store's with the earlier
+// locks held, and pairLedgerRest how long it then leaves every lock free before
+// the next attempt. The rest is twice the longest interval a ledger writer
+// sleeps between its polls (fsutil.LockPollCeiling), so a ledger writer polling
+// through a wait wakes inside the window at least once per attempt and finds
+// the lock free; the intent and spec stores' writers poll every 10ms, far
+// inside it. It is derived from the ceiling rather than restated beside it: a
+// rest written as a number once sat below the poll's real ceiling
+// (iss-2609262257227538).
 var (
 	pairIntentTry  = 25 * time.Millisecond
 	pairLedgerRest = 2 * fsutil.LockPollCeiling
 )
 
-// WithLedgerThenMintLock runs fn holding the ledger lock (taken through
-// ledger) and then the intent store's lock — the one order every path holding
-// both takes; the intent package never takes the ledger lock inside its own.
+// WithLedgerThenMintLock runs fn holding the record stores' three locks in
+// their one total order: the issue ledger's lock (taken through ledger), then
+// the intent store's, then the spec store's (spec.WithStoreLock's). Every path
+// holding more than one of them takes them in that order and none takes a
+// later one and then an earlier one: this package never takes the ledger lock
+// inside its own (it cannot import the ledger's package; capture registers the
+// lock, SetLedgerLock), plan mints its spec inside the intent lock, and the
+// spec package imports neither of the others. It is the one acquisition for a
+// writer of records in more than one store — a link repoint (intent's
+// repointUnderLock, capture's repointMovedIssue), capture's migration of the
+// promote join's back-edge, a lifeboat embark — and a writer of specs outside
+// the spec package takes the spec lock through it (iss-2609262218309668).
 //
-// It never holds the ledger lock while it WAITS for the intent lock
+// It never holds an earlier lock while it WAITS for a later one
 // (iss-2609262218059995). Waiting inside the hold chained two budgets: an
 // intent hold of five seconds made a third process's ledger writer fail with
 // contention while this caller waited on. So each attempt asks for the intent
-// lock only briefly, and on contention lets the ledger go, rests, and tries
-// again, until mintLockTimeout; past it the pair returns an error naming the
-// intent lock and fn has not run. fn runs exactly once, with both held.
+// lock and then the spec lock only briefly (pairIntentTry each), and on
+// contention for either lets every lock it holds go, rests, and tries again,
+// until mintLockTimeout; past it the call returns an error naming the lock it
+// last found busy and fn has not run. fn runs exactly once, with every lock
+// held.
 //
-// With no intent store, fn runs under the ledger lock alone, as WithMintLock
-// runs it with none.
+// A store with no directory contributes no lock, as WithMintLock and
+// spec.WithStoreLock take none there: taking one would plant the store, and
+// with no store there is no record in it to race. With neither the intent nor
+// the spec store, fn runs under the ledger lock alone.
+//
+// None of the three is reentrant, so fn must not call a writer that takes any
+// of them.
 func WithLedgerThenMintLock(repoRoot string, ledger func(func() error) error, fn func() error) error {
-	if _, err := os.Lstat(filepath.Join(repoRoot, IntentsRelDir)); errors.Is(err, fs.ErrNotExist) {
+	var inner []func(time.Duration, func() error) error
+	if _, err := os.Lstat(filepath.Join(repoRoot, IntentsRelDir)); !errors.Is(err, fs.ErrNotExist) {
+		inner = append(inner, func(d time.Duration, fn func() error) error { return withIntentMintLockWithin(repoRoot, d, fn) })
+	}
+	if _, err := os.Lstat(filepath.Join(repoRoot, spec.SpecsRelDir)); !errors.Is(err, fs.ErrNotExist) {
+		inner = append(inner, func(d time.Duration, fn func() error) error { return spec.WithStoreLockWithin(repoRoot, d, fn) })
+	}
+	if len(inner) == 0 {
 		return ledger(fn)
 	}
 	deadline := time.Now().Add(mintLockTimeout)
 	for {
-		busy := false
+		var busy error
 		err := ledger(func() error {
 			entered := false
-			err := withIntentMintLockWithin(repoRoot, pairIntentTry, func() error {
+			err := holdInOrder(inner, func() error {
 				entered = true
 				return fn()
 			})
-			if !entered && errors.Is(err, errIntentLockBusy) {
-				busy = true
+			if !entered && (errors.Is(err, errIntentLockBusy) || errors.Is(err, spec.ErrStoreLockBusy)) {
+				busy = err
 				return nil
 			}
 			return err
 		})
-		if err != nil || !busy {
+		if err != nil || busy == nil {
 			return err
 		}
 		if time.Now().After(deadline) {
-			return fmt.Errorf("%w within %s, waiting with the ledger lock released between attempts", errIntentLockBusy, mintLockTimeout)
+			return fmt.Errorf("%w; tried for %s, with every lock released between attempts", busy, mintLockTimeout)
 		}
 		time.Sleep(pairLedgerRest)
 	}
+}
+
+// holdInOrder takes each lock in turn, each with pairIntentTry to be granted,
+// and runs fn with all of them held. A lock not granted unwinds the ones
+// already taken, in reverse, before its error returns.
+func holdInOrder(locks []func(time.Duration, func() error) error, fn func() error) error {
+	if len(locks) == 0 {
+		return fn()
+	}
+	return locks[0](pairIntentTry, func() error { return holdInOrder(locks[1:], fn) })
 }

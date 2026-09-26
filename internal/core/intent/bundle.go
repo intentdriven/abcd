@@ -173,7 +173,7 @@ func PlanBundle(repoRoot string, ids []string, opts BundleOptions) (BundleResult
 		}
 		if err := writeBundleMembers(repoRoot, members, name, sp.ID); err != nil {
 			rollbackBundleMembers(repoRoot, members)
-			if rmErr := os.Remove(filepath.Join(repoRoot, sp.Path)); rmErr != nil && !os.IsNotExist(rmErr) {
+			if rmErr := spec.Discard(repoRoot, sp); rmErr != nil {
 				return fmt.Errorf("%w; every member was put back, but the spec minted for the bundle, %s, could not be removed (%v)", err, sp.ID, rmErr)
 			}
 			return fmt.Errorf("%w; every member was put back and the shared spec taken back (nothing moved)", err)

@@ -569,7 +569,7 @@ func linkPlannedSpec(repoRoot string, it Intent, opts PlanOptions) (PlanResult, 
 			// intent write that would have linked it is what failed. Were the
 			// removal itself to fail, the spec is still one a retry reuses
 			// through ByIntent, and the refusal says so.
-			if rmErr := os.Remove(filepath.Join(repoRoot, sp.Path)); rmErr != nil && !os.IsNotExist(rmErr) {
+			if rmErr := spec.Discard(repoRoot, sp); rmErr != nil {
 				return fmt.Errorf("%w; the spec minted for it, %s, could not be removed (%v) and a retry reuses it", err, sp.ID, rmErr)
 			}
 		}
@@ -1056,21 +1056,23 @@ func Reconcile(repoRoot, specID, impact string, remainder RemainderRequest) (Rec
 }
 
 // duringRepoint is a test seam, nil outside tests: called inside the hold
-// repointUnderLock takes — the ledger lock and the intent store's lock both
-// held — before the repoint reads anything, so a test can start a concurrent
-// intent or ledger writer there and prove it waits for the repoint's write
-// instead of landing between its read and its write.
+// repointUnderLock takes — the ledger lock, the intent store's and the spec
+// store's all held — before the repoint reads anything, so a test can start a
+// concurrent ledger, intent or spec writer there and prove it waits for the
+// repoint's write instead of landing between its read and its write.
 var duringRepoint func()
 
-// repointUnderLock is relink.Repoint under the ledger lock and then the intent
-// store's lock (WithLedgerThenMintLock). The repoint is a read-modify-write of
-// every record that links to a moved path, intents and ledger records among
-// them, so outside the intent lock an intent writer (a hold, a condition
-// disposition, a verdict ingest, a related-issue edge) landing on a linking
-// record between the repoint's read and its write was erased
-// (iss-2609261254247117), and outside the ledger lock a ledger writer was
-// (iss-2609262143209970). Every record-moving verb calls it AFTER its own hold
-// is released — neither lock is reentrant — and reports a repoint failure
+// repointUnderLock is relink.Repoint under the ledger lock, the intent store's
+// lock and the spec store's, in that order (WithLedgerThenMintLock). The
+// repoint is a read-modify-write of every record that links to a moved path,
+// intents, specs and ledger records among them, so outside the intent lock an
+// intent writer (a hold, a condition disposition, a verdict ingest, a
+// related-issue edge) landing on a linking record between the repoint's read
+// and its write was erased (iss-2609261254247117), outside the ledger lock a
+// ledger writer was (iss-2609262143209970), and outside the spec lock a spec
+// close landing there left the spec in both status folders
+// (iss-2609262218309668). Every record-moving verb calls it AFTER its own hold
+// is released — no lock is reentrant — and reports a repoint failure
 // rather than raising it, as before: the record has moved and the verb stands.
 // A lock that cannot be taken, or a ledger with no ledger lock registered, is
 // reported the same way, with nothing repointed.

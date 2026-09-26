@@ -617,10 +617,10 @@ func transition(repoRoot, issuesRoot, issID, verb, field, note string, extra []k
 // shares. A ledger outside the repository (a custom issues root) is linked from
 // nowhere the repository's links can reach, so there is nothing to repoint.
 //
-// The repoint rewrites other ledger records and intents that link to the
-// issue, so it runs under this ledger's lock and then the intent store's
-// (intent.WithLedgerThenMintLock, the one order every path holding both
-// takes). Outside the intent lock, an intent writer landing on a linking
+// The repoint rewrites other ledger records, intents and specs that link to
+// the issue, so it runs under this ledger's lock, then the intent store's,
+// then the spec store's (intent.WithLedgerThenMintLock, the one order every
+// path holding more than one takes). Outside the intent lock, an intent writer landing on a linking
 // intent between the repoint's read and its write was erased
 // (iss-2609261254247117). The caller has RELEASED the ledger lock its move
 // held: waiting for the intent lock inside that hold chained two five-second
@@ -654,10 +654,10 @@ func repointMovedIssue(repoRoot, issuesRoot, src, dst string) ([]relink.Rewrite,
 	return rw, ""
 }
 
-// duringIssueRepoint is a test seam, nil outside tests: called with both the
-// ledger lock and the intent store's lock held, before the repoint reads
-// anything, so a test can prove the order the two are taken in and that a
-// concurrent intent writer waits for the repoint's write.
+// duringIssueRepoint is a test seam, nil outside tests: called with the
+// ledger lock, the intent store's lock and the spec store's held, before the
+// repoint reads anything, so a test can prove the order they are taken in and
+// that a concurrent intent or spec writer waits for the repoint's write.
 var duringIssueRepoint func()
 
 // removeSourceHook, when non-nil, replaces os.Remove(src) inside

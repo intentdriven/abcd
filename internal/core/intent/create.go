@@ -600,7 +600,7 @@ var beforeIntentMintLock func()
 // need to: the mint reads no maximum, so two checkouts never share the state a
 // lock would have to protect. It flocks the intents/ directory file descriptor
 // itself, so no lock artifact is left in the committed record tree (mirroring
-// the spec store's mint lock). O_NOFOLLOW refuses a symlinked intents/.
+// the spec store's lock). O_NOFOLLOW refuses a symlinked intents/.
 func withIntentMintLock(repoRoot string, fn func() error) error {
 	return withIntentMintLockWithin(repoRoot, mintLockTimeout, fn)
 }
@@ -662,10 +662,12 @@ func withIntentMintLockWithin(repoRoot string, timeout time.Duration, fn func() 
 // process until the timeout — so a caller must not hold it across any exported
 // verb of this package that writes, every one of which takes it internally.
 //
-// Lock order: the capture ledger lock, THEN this one. capture takes this lock
-// inside its ledger lock, and nothing may take them the other way round. This
-// package cannot take the ledger lock at all (capture imports it, so it cannot
-// import capture), which is what keeps the order one-way inside the core.
+// Lock order: the capture ledger lock, THEN this one, THEN the spec store's
+// (spec.WithStoreLock). capture takes this lock inside its ledger lock, plan
+// mints its spec inside this one, and nothing may take them the other way
+// round. This package cannot take the ledger lock at all (capture imports it,
+// so it cannot import capture), and the spec package imports neither, which is
+// what keeps the order one-way inside the core.
 func WithMintLock(repoRoot string, fn func() error) error {
 	if _, err := os.Lstat(filepath.Join(repoRoot, IntentsRelDir)); errors.Is(err, fs.ErrNotExist) {
 		return fn()

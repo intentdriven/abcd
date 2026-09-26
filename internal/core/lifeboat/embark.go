@@ -99,12 +99,13 @@ func EmbarkFrom(lifeboatDir, targetDir string) (EmbarkResult, error) {
 	if afterEmbarkPlan != nil {
 		afterEmbarkPlan()
 	}
-	// The write runs under the target's ledger lock and then its intent
-	// store's lock, the order every path holding both takes, and every planned
-	// write is judged again under them: a record created at a planned target
-	// between the classification above and this write — a capture, an intent
-	// mint — refuses the whole write as a conflict instead of being replaced
-	// (iss-2609262143265180, iss-2609262218306589).
+	// The write runs under the target's ledger lock, then its intent store's
+	// lock, then its spec store's — the one order every path holding more than
+	// one takes — and every planned write is judged again under them: a record
+	// created at a planned target between the classification above and this
+	// write — a capture, an intent or spec mint — refuses the whole write as a
+	// conflict instead of being replaced (iss-2609262143265180,
+	// iss-2609262218306589, iss-2609262218309668).
 	var (
 		written, unchanged, bytesW int
 		families                   map[string]int

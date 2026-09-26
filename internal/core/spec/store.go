@@ -4,7 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -16,8 +18,9 @@ import (
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
-// mintLockTimeout bounds how long Create waits for the spec-store mint lock. A
-// var (not const) so a test can shorten it to exercise contention.
+// mintLockTimeout bounds how long a spec writer waits for the spec store's
+// lock (withStoreLock). A var (not const) so a test can shorten it to exercise
+// contention.
 var mintLockTimeout = 5 * time.Second
 
 // specFamily is the spec store's id prefix, the family tag the mint splices
@@ -184,14 +187,14 @@ func create(repoRoot, intentID string, intents []string, bundle, slug, productio
 	if err != nil {
 		return Spec{}, fmt.Errorf("spec: %w", err)
 	}
-	// Mint and write under the exclusive mint lock: the presence check inside
+	// Mint and write under the store's exclusive lock: the presence check inside
 	// mintSpecID and the write of spc-N-<slug>.md are one critical section, so
 	// two concurrent plans in this checkout that draw the same id — the
 	// same-second, same-suffix coincidence — cannot both write it. The filenames
 	// differ by slug, so neither the atomic write nor a clobber guard would
 	// notice on its own.
 	var sp Spec
-	err = withMintLock(repoRoot, func() error {
+	err = withStoreLock(repoRoot, mintLockTimeout, func() error {
 		store, err := Load(repoRoot)
 		if err != nil {
 			return err
@@ -233,7 +236,7 @@ func create(repoRoot, intentID string, intents []string, bundle, slug, productio
 // ids and the entropy separates two minters in the same second. A candidate
 // already present is redrawn, never bumped: a bump would re-derive the next id
 // from the store's occupancy, a miniature maximum-plus-one (spc-33 ruling 2).
-// Called under the mint lock so the check and the caller's write are atomic
+// Called under the store's lock so the check and the caller's write are atomic
 // within the checkout.
 func mintSpecID(store Store) (string, error) {
 	for attempt := 0; attempt < mintRetryBudget; attempt++ {
@@ -248,38 +251,60 @@ func mintSpecID(store Store) (string, error) {
 	return "", fmt.Errorf("spec: could not mint a free spc id after %d draws", mintRetryBudget)
 }
 
-// withMintLock runs fn while holding an exclusive advisory lock over the spec
-// store. It serializes the presence check and the write of one mint against
-// concurrent abcd processes in the SAME checkout (two agent sessions, or a hook
-// firing beside a manual command), which is the one clash — same second, same
-// suffix, one directory — that time and entropy leave to the store to arbitrate
-// (spc-33 ruling 2). It cannot see a sibling checkout and does not need to: the
-// mint reads no maximum, so two checkouts never share the state a lock would
-// have to protect. It flocks the specs/ directory file descriptor itself, so no
-// lock artifact is left in the committed record tree. O_NOFOLLOW refuses a
-// symlinked specs/.
-func withMintLock(repoRoot string, fn func() error) error {
+// ErrStoreLockBusy is the spec store's lock not granted within a writer's
+// budget. The three-lock acquisition in the intent package retries on it, with
+// every earlier lock released between attempts.
+var ErrStoreLockBusy = errors.New("spec: could not acquire the spec store's lock")
+
+// withStoreLock runs fn while holding the spec store's one lock, an exclusive
+// advisory flock on the specs/ directory itself, so no lock artifact is left in
+// the committed record tree; O_NOFOLLOW refuses a symlinked specs/. It creates
+// the store when absent, which only the mint may do.
+//
+// Every writer of a spec record takes it (iss-2609262218309668): the mint
+// (Create and its siblings), Close, Discard, and — through WithStoreLock, from
+// the intent package's three-lock acquisition — every link repoint and the
+// lifeboat embark, the writers outside this package that rewrite or create a
+// spec. Unlocked, a close renaming a spec open/ -> closed/ while a repoint that
+// had read it at open/ wrote it back there left one record in both status
+// folders, and an edit landing between a repoint's read and its write was
+// erased. The mint's own clash — two plans in this checkout drawing the same
+// id in the same second (spc-33 ruling 2) — is one more thing it arbitrates.
+// It cannot see a sibling checkout and does not need to: the mint reads no
+// maximum, so two checkouts never share the state it protects.
+//
+// Lock order: the issue ledger's lock, THEN the intent store's, THEN this one.
+// It is the innermost of the three. Plan mints its spec inside the intent
+// store's lock, and the three-lock acquisition takes it last; close, discard
+// and a remainder's mint take it alone. This package imports neither the
+// ledger's package nor the intent store's, so nothing run under this lock can
+// request an earlier one, and it may never be taken the other way round.
+//
+// It is NOT reentrant — a second flock on another descriptor in the same
+// process blocks until the budget runs out — so a caller holding it must not
+// call a writer of this package, every one of which takes it.
+func withStoreLock(repoRoot string, timeout time.Duration, fn func() error) error {
 	specsDir := filepath.Join(repoRoot, SpecsRelDir)
 	if err := ensureDir(specsDir, SpecsRelDir); err != nil {
 		return err
 	}
 	fd, err := syscall.Open(specsDir, syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_NOFOLLOW, 0)
 	if err != nil {
-		return fmt.Errorf("spec: opening mint lock on %s: %w", SpecsRelDir, err)
+		return fmt.Errorf("spec: opening the store lock on %s: %w", SpecsRelDir, err)
 	}
 	defer syscall.Close(fd)
 
-	deadline := time.Now().Add(mintLockTimeout)
+	deadline := time.Now().Add(timeout)
 	for {
 		lockErr := syscall.Flock(fd, syscall.LOCK_EX|syscall.LOCK_NB)
 		if lockErr == nil {
 			break
 		}
 		if lockErr != syscall.EWOULDBLOCK {
-			return fmt.Errorf("spec: acquiring mint lock: %w", lockErr)
+			return fmt.Errorf("spec: acquiring the store lock: %w", lockErr)
 		}
 		if time.Now().After(deadline) {
-			return fmt.Errorf("spec: could not acquire mint lock within %s", mintLockTimeout)
+			return fmt.Errorf("%w within %s", ErrStoreLockBusy, timeout)
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
@@ -288,14 +313,53 @@ func withMintLock(repoRoot string, fn func() error) error {
 	return fn()
 }
 
+// WithStoreLock runs fn holding the spec store's lock — the one every spec
+// writer takes, not a second one — for a caller outside this package that
+// writes a spec record. A caller that also writes ledger or intent records
+// takes it through intent.WithLedgerThenMintLock, which takes the three in
+// order and never holds an earlier lock while it waits for a later one.
+//
+// A tree with no spec store runs fn WITHOUT the lock: taking it creates the
+// store, and a verb that writes no spec must not plant an empty one. With no
+// store there is no spec record for fn to race.
+func WithStoreLock(repoRoot string, fn func() error) error {
+	return WithStoreLockWithin(repoRoot, mintLockTimeout, fn)
+}
+
+// WithStoreLockWithin is WithStoreLock with its own acquisition budget; a lock
+// not granted within it is ErrStoreLockBusy, and fn has not run.
+func WithStoreLockWithin(repoRoot string, timeout time.Duration, fn func() error) error {
+	if _, err := os.Lstat(filepath.Join(repoRoot, SpecsRelDir)); errors.Is(err, fs.ErrNotExist) {
+		return fn()
+	}
+	return withStoreLock(repoRoot, timeout, fn)
+}
+
 // Close moves a spec file open/ -> closed/ via os.Rename (atomic on one
 // filesystem) and returns the updated Spec. It fails closed if the spec is
 // missing or already closed. The linked intent is deliberately left untouched:
-// moving it is a later reconcile concern that consumes Spec.Intent.
+// moving it is a later reconcile concern that consumes Spec.Intent. The read
+// and the rename are one critical section under the store's lock, so a writer
+// holding it — a repoint between its read and its write — finishes before the
+// spec moves.
 func Close(repoRoot, specID string) (Spec, error) {
 	if !recordid.ValidSpecID(specID) {
 		return Spec{}, fmt.Errorf("spec: id %q must match ^spc-[0-9]+$", specID)
 	}
+	var sp Spec
+	err := withStoreLock(repoRoot, mintLockTimeout, func() error {
+		var err error
+		sp, err = closeLocked(repoRoot, specID)
+		return err
+	})
+	if err != nil {
+		return Spec{}, err
+	}
+	return sp, nil
+}
+
+// closeLocked is Close's body, run under the store's lock.
+func closeLocked(repoRoot, specID string) (Spec, error) {
 	store, err := Load(repoRoot)
 	if err != nil {
 		return Spec{}, err
@@ -313,12 +377,12 @@ func Close(repoRoot, specID string) (Spec, error) {
 		return Spec{}, err
 	}
 	dstRel := filepath.Join(SpecsRelDir, StatusClosed, name)
-	// Best-effort clobber guard: os.Rename would silently overwrite the destination,
-	// so refuse when it already exists. This Lstat→Rename check is racy against a
-	// file appearing in the window — accepted under the trusted-worktree model (only
-	// the developer/agent mutates the store; there is no concurrent adversary), where
-	// the atomic same-filesystem rename is preferred over a non-atomic no-clobber
-	// link+remove that a crash could leave half-done.
+	// Clobber guard: os.Rename would silently overwrite the destination, so
+	// refuse when it already exists. Every abcd writer of the store holds the
+	// store's lock across this check and the rename; a hand edit does not, and
+	// under the trusted-worktree model (only the developer/agent mutates the
+	// store) the atomic same-filesystem rename is preferred over a non-atomic
+	// no-clobber link+remove that a crash could leave half-done.
 	if _, err := os.Lstat(filepath.Join(closedDir, name)); err == nil {
 		return Spec{}, fmt.Errorf("spec: refusing to overwrite existing %s", dstRel)
 	}
@@ -328,6 +392,25 @@ func Close(repoRoot, specID string) (Spec, error) {
 	sp.Status = StatusClosed
 	sp.Path = filepath.Join(SpecsRelDir, StatusClosed, name)
 	return sp, nil
+}
+
+// Discard takes back a spec a refused operation minted a moment ago, under the
+// store's lock, so the removal cannot interleave with another writer's read and
+// write of the same file — a repoint writing it back would resurrect it. Only a
+// spec in open/, named as the mint names one, is removed; any other path is
+// refused before anything is touched. A spec already gone is not an error.
+func Discard(repoRoot string, sp Spec) error {
+	rel := filepath.ToSlash(sp.Path)
+	name := path.Base(rel)
+	if rel != path.Join(filepath.ToSlash(SpecsRelDir), StatusOpen, name) || !specFileRe.MatchString(name) {
+		return fmt.Errorf("spec: refusing to discard %q, which is not a spec in %s", sp.Path, filepath.Join(SpecsRelDir, StatusOpen))
+	}
+	return withStoreLock(repoRoot, mintLockTimeout, func() error {
+		if err := os.Remove(filepath.Join(repoRoot, filepath.FromSlash(rel))); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return fmt.Errorf("spec: discarding %s: %w", sp.Path, err)
+		}
+		return nil
+	})
 }
 
 // readRepoFile reads a repo file behind the trust-boundary guards. It opens ONCE

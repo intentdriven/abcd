@@ -131,12 +131,13 @@ type Rewrite struct {
 //
 // Every rewrite is a read-modify-write, and this package takes no lock: it
 // cannot import the stores that own them (they import it). So the CALLER holds
-// the ledger lock and then the intent store's lock across the call, through
-// intent.WithLedgerThenMintLock — intent's repointUnderLock for the verbs that
-// move an intent or a spec, and capture's repointMovedIssue for an issue
-// transition — or a ledger or intent writer landing on a linking record
-// between the read and the write is erased (iss-2609261254247117,
-// iss-2609262143209970).
+// the ledger lock, then the intent store's lock, then the spec store's across
+// the call, through intent.WithLedgerThenMintLock — intent's repointUnderLock
+// for the verbs that move an intent or a spec, and capture's repointMovedIssue
+// for an issue transition — or a ledger, intent or spec writer landing on a
+// linking record between the read and the write is erased, and a spec close
+// landing there leaves the spec in both status folders (iss-2609261254247117,
+// iss-2609262143209970, iss-2609262218309668).
 func Repoint(repoRoot string, moves []Move) ([]Rewrite, error) {
 	root, err := os.OpenRoot(repoRoot)
 	if err != nil {
