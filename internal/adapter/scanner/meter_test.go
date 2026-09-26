@@ -58,7 +58,7 @@ var meterFixtures = []meterFixture{
 	{"footers", Identity{}, rep("generated with [x](y) ")},
 	{"footer_openings_without_links", Identity{}, rep("generated with [x ")},
 	{"footers_after_prose", Identity{}, func(n int) string { return strings.Repeat("prose ", n) + "generated with [x](y)" }},
-	{"percent_encoded", meterNamedID, rep("%2Fhome%2Fzq8home ")},
+	{"percent_encoded", meterNamedID, rep("%2Fhome%2Fzq8home ")}, // abcd-lint:allow
 	// Identity matchers.
 	{"generic_login_words", meterGenericID, rep("dev ")},
 	{"generic_login_dotted_run", meterGenericID, rep("dev.")},
@@ -91,7 +91,7 @@ var meterFixtures = []meterFixture{
 	// The JSON-escape layers (jsonescape.go): each layer is one more scan of
 	// the line, so a line dense in escapes, in nested escapes and in
 	// escaped homes must still cost a constant number of passes.
-	{"json_escaped_other_homes", Identity{}, rep(`\/home\/zqa\/x\n`)},
+	{"json_escaped_other_homes", Identity{}, rep(`\/home\/zqa\/x\n`)},                                      // abcd-lint:allow
 	{"json_unicode_escaped_own_homes", meterNamedID, rep(escapeSeparators("/Users/zq8home/x ", uSolidus))}, // abcd-audit:allow
 	{"json_nested_escape_runs", meterNamedID, rep(`\\\\\\\"\\\\n`)},
 	{"json_tokens_after_escapes", Identity{}, rep(`\n` + "ghp_" + strings.Repeat("a", 36))},

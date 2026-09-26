@@ -183,7 +183,7 @@ func TestHarnessLeakPatternsAreInTheCanonicalSet(t *testing.T) {
 // carrying the harness-appended footer comes back carrying only the repo's own
 // attribution trailer.
 func TestScrubOutboundStripsFooterKeepsTrailer(t *testing.T) {
-	body := "Fixes the walk.\n\nAssisted-by: Claude:some-model\n\n🤖 _Generated with [Some Tool](https://tool.dev)_\n"
+	body := "Fixes the walk.\n\nAssisted-by: Claude:some-model\n\n🤖 _Generated with [Some Tool](https://tool.dev)_\n" // abcd-lint:allow
 
 	got, findings, err := ScrubOutbound(t.TempDir(), body, "pr-body")
 	if err != nil {

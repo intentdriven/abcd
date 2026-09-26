@@ -376,7 +376,7 @@ func TestSessionURLInBinaryHardFailsLikeText(t *testing.T) {
 // identity guards, so it must be dropped explicitly on the binary branch.
 func TestGenericHomePathInBinaryIsNotAFinding(t *testing.T) {
 	root := t.TempDir()
-	abs := writeFile(t, root, "b.png", "\x89PNG\r\n\x1a\n/home/runner/work/repo/x\n")
+	abs := writeFile(t, root, "b.png", "\x89PNG\r\n\x1a\n/home/runner/work/repo/x\n") // abcd-lint:allow
 	sc, err := New(root)
 	if err != nil {
 		t.Fatal(err)
@@ -396,7 +396,7 @@ func TestGenericHomePathInBinaryIsNotAFinding(t *testing.T) {
 func TestRepoRaisedSeverityIsHonouredOnBytes(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, ".abcd/config/pii.json", `{"identity_severities":{"home_path_other":"hard_fail"}}`)
-	abs := writeFile(t, root, "b.png", "\x89PNG\r\n\x1a\n/home/runner/work/repo/x\n")
+	abs := writeFile(t, root, "b.png", "\x89PNG\r\n\x1a\n/home/runner/work/repo/x\n") // abcd-lint:allow
 	sc, err := New(root)
 	if err != nil {
 		t.Fatal(err)

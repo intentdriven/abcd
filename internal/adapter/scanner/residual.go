@@ -110,16 +110,6 @@ func backstopSpans(text, needle string, wantURLs bool, accept func(s string, at,
 	return disjointSpans(out)
 }
 
-// lineViews is every decoded view of one line the scan reads: the percent
-// pre-pass's fully decoded copy and each JSON-escape layer, outermost first.
-func lineViews(line string) []decodedView {
-	var views []decodedView
-	if decoded, posMap := percentDecodeBounded(line); posMap != nil {
-		views = append(views, decodedView{decoded, posMap})
-	}
-	return append(views, jsonEscapeLayers(line)...)
-}
-
 // needleOccurrences walks s for needle, keeping each occurrence accept holds
 // and resuming past it, or one byte on where accept declines — the walk the
 // sweep has always made. raw marks s as the text as written, where an

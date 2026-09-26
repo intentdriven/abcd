@@ -40,15 +40,44 @@ const maxPercentDecodePasses = 3
 // (iss-2608270720336165).
 func decodedLineFindings(patterns []Pattern, probes []matcher, junctions junctionSet, matchers identityMatchers, id2sev map[string]Severity, rawLine string, lineno int, file string) []Finding {
 	var out []Finding
-	if decoded, posMap := percentDecodeBounded(rawLine); posMap != nil {
-		out = viewFindings(patterns, probes, junctions, matchers, id2sev, rawLine, decodedView{decoded, posMap}, lineno, file)
-	}
-	// The JSON-escape views (jsonescape.go): the same scan over each layer of
-	// the line's JSON string escapes, mapped back the same way, so a value an
-	// escape hid from an anchor or spelled with escaped bytes is found where
-	// it sits on disk (iss-2609261647358395, iss-2609251639263391).
-	for _, v := range jsonEscapeLayers(rawLine) {
+	for _, v := range lineViews(rawLine) {
 		out = append(out, viewFindings(patterns, probes, junctions, matchers, id2sev, rawLine, v, lineno, file)...)
+	}
+	return out
+}
+
+// lineViews is every decoded view of one line the scan reads, and the one
+// place that list is made: the percent pre-pass's fully decoded copy, then
+// each layer of the line's JSON string escapes (jsonescape.go), outermost
+// first, so a value an escape hid from an anchor or spelled with escaped
+// bytes is found where it sits on disk (iss-2609261647358395,
+// iss-2609251639263391). The literal-home backstop (residual.go) and, through
+// DecodedViews, the committed-text lint rules read the same list.
+func lineViews(line string) []decodedView {
+	var views []decodedView
+	if decoded, posMap := percentDecodeBounded(line); posMap != nil {
+		views = append(views, decodedView{decoded, posMap})
+	}
+	return append(views, jsonEscapeLayers(line)...)
+}
+
+// DecodedViews returns the decoded spellings of one line that the scan reads
+// beside the line as written (lineViews), without their position maps: nil
+// for a line with nothing to decode. It is the seam for a surface that judges
+// committed lines with its own matchers — the repolint privacy rule and the
+// harness_leak lint rule — so a JSON fixture, export or transcript that
+// writes a home path, an address or a session URL behind an escape is read
+// in the spelling the store-before-commit redactors read it in
+// (iss-2609261658553101). A decoded view can carry line breaks the escapes
+// stood for; a line-scoped check reads each one as the start of a line.
+func DecodedViews(line string) []string {
+	views := lineViews(line)
+	if len(views) == 0 {
+		return nil
+	}
+	out := make([]string, len(views))
+	for i, v := range views {
+		out[i] = v.text
 	}
 	return out
 }

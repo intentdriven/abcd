@@ -86,8 +86,8 @@ func TestJSONSolidusEscapeReadsAsASeparator(t *testing.T) {
 	cases := []struct {
 		name, line, kind, gone string
 	}{
-		{"own home, solidus escape", `{"p":"\/Users\/zqjsonme\/Desktop\/a.txt"}`, kindHomeSelf, "zqjsonme"},
-		{"own home, unicode solidus", `{"p":"\u002fUsers\u002fzqjsonme\u002fDesktop"}`, kindHomeSelf, "zqjsonme"},
+		{"own home, solidus escape", `{"p":"\/Users\/zqjsonme\/Desktop\/a.txt"}`, kindHomeSelf, "zqjsonme"},       // abcd-lint:allow
+		{"own home, unicode solidus", `{"p":"\u002fUsers\u002fzqjsonme\u002fDesktop"}`, kindHomeSelf, "zqjsonme"}, // abcd-lint:allow
 		{"other home, solidus escape", `{"p":"\/home\/` + other + `\/x"}`, kindHomeOther, other},
 		{"other home, unicode solidus", `{"p":"\u002Fhome\u002F` + other + `\u002Fx"}`, kindHomeOther, other},
 		{"other home, solidus at line end", `{"p":"\/home\/` + other + `"}`, kindHomeOther, other},
@@ -108,7 +108,7 @@ func TestJSONSolidusEscapeReadsAsASeparator(t *testing.T) {
 	// A generic login is reported where it stands as an account, and the
 	// solidus-escaped home root is such a position.
 	generic := Identity{HomePath: "/home/" + "dev", HomeUser: "dev"}
-	line := `{"p":"\/home\/dev\/project"}`
+	line := `{"p":"\/home\/dev\/project"}` // abcd-lint:allow
 	if f, ok := findingOf(ScanText(line, generic, DefaultPatterns(), nil, "transcript"), kindHomeSelf); !ok {
 		t.Errorf("a generic login's own home behind solidus escapes raised no %s", kindHomeSelf)
 	} else if !strings.Contains(f.Matched, "dev") {
