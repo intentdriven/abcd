@@ -57,6 +57,28 @@ func symlinkOut(t *testing.T, root, rel, content string) {
 	}
 }
 
+// symlinkDirOut makes rel a link to a directory outside the repository holding
+// files, so every read below rel crosses the link at an ANCESTOR, not the leaf.
+func symlinkDirOut(t *testing.T, root, rel string, files map[string]string) {
+	t.Helper()
+	outside := filepath.Join(t.TempDir(), "outside")
+	if err := os.MkdirAll(outside, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for name, content := range files {
+		if err := os.WriteFile(filepath.Join(outside, name), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	link := filepath.Join(root, filepath.FromSlash(rel))
+	if err := os.MkdirAll(filepath.Dir(link), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, link); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // A path the committed config names is read only inside the repository: the
 // persona roster symlinked to a file outside the checkout is refused rather than
 // read and trusted (iss-2608211914592726).
@@ -146,7 +168,9 @@ func assertSingleSafeReadFinding(t *testing.T, fs []Finding, file string) {
 
 // The receipt gate refuses a FIFO receipt and a symlinked one with a fail-closed
 // finding: a FIFO once hung the gate, and a link to an out-of-tree forged
-// PROMOTE satisfied it (iss-2609012037127981).
+// PROMOTE satisfied it (iss-2609012037127981). A link one level up is the same
+// forgery — a symlinked commit directory, or a symlinked manifest directory —
+// and is refused the same way (iss-2609261016494611).
 func TestReceiptGateRefusesUnsafeReceipts(t *testing.T) {
 	const sha = "0123456789abcdef0123456789abcdef01234567"
 	const gate = "docs-currency-reviewer"
@@ -163,6 +187,22 @@ func TestReceiptGateRefusesUnsafeReceipts(t *testing.T) {
 		"fifo manifest": func(t *testing.T, root string) {
 			writeFile(t, root, receipt, promote)
 			mkfifo(t, filepath.Join(root, releaseGateManifestPath))
+		},
+		// The leaf is a regular file, so O_NOFOLLOW on it refuses nothing: the
+		// link is the COMMIT DIRECTORY, which the kernel follows on the way to
+		// the leaf (iss-2609261016494611).
+		"symlinked commit directory": func(t *testing.T, root string) {
+			symlinkDirOut(t, root, filepath.Join(reviews, sha), map[string]string{gate + ".json": promote})
+		},
+		// The manifest's own directory carried out of the tree: an out-of-tree
+		// manifest, and a receipt echoing its hash at the tier it demands.
+		"symlinked manifest directory": func(t *testing.T, root string) {
+			const manifest = `{"inputs":[]}`
+			echo := strings.TrimSuffix(promote, "}") +
+				`,"tier":"full","manifestHash":"` + hashManifest([]byte(manifest)) + `"}`
+			writeFile(t, root, receipt, echo)
+			symlinkDirOut(t, root, filepath.Dir(releaseGateManifestPath),
+				map[string]string{filepath.Base(releaseGateManifestPath): manifest})
 		},
 	} {
 		t.Run(name, func(t *testing.T) {

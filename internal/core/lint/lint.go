@@ -1088,13 +1088,25 @@ func checkReceiptGate(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 	// predates the manifest is judged by the pre-manifest rules only. Read it from
 	// repoRoot, the checked-out content tree the gate is armed against.
 	//
-	// Both this read and each receipt read below are fsutil.ReadGuarded on the
-	// unresolved path: the reviews store and the manifest are committed and travel
-	// with a clone, so a FIFO at either path would hang the gate, and a symlinked
-	// receipt would be judged as if the reviewers had written it — an out-of-tree
-	// forged PROMOTE satisfied the gate. Neither file is ever legitimately a link,
-	// so a symlinked leaf is refused rather than resolved (iss-2609012037127981).
-	manifestBytes, manifestErr := fsutil.ReadGuarded(filepath.Join(repoRoot, releaseGateManifestPath), maxReceiptBytes)
+	// Both this read and each receipt read below are fsutil.ReadGuardedInRoot
+	// through an os.Root opened on repoRoot: the reviews store and the manifest
+	// are committed and travel with a clone, so a FIFO at either path would hang
+	// the gate, and a receipt reached through a link would be judged as if the
+	// reviewers had written it — an out-of-tree forged PROMOTE satisfied the gate.
+	// Neither file is ever legitimately a link, so a symlinked leaf is refused
+	// rather than resolved (iss-2609012037127981). A link in the ANCESTRY is the
+	// other half: O_NOFOLLOW judges the leaf alone, and a committed
+	// `.abcd/work/reviews/<sha> -> /outside` carried the read out of the tree to
+	// a regular file it accepted. os.Root resolves every component inside the
+	// root on the descriptor it opens, so an ancestor that leaves the repository
+	// is an error at the read itself, with no window between a check and the open
+	// (iss-2609261016494611).
+	root, err := os.OpenRoot(repoRoot)
+	if err != nil {
+		return failClosed("receipt_gate cannot open the repository root: " + bareCause(err) + "; the release gate fails closed"), nil
+	}
+	defer root.Close()
+	manifestBytes, manifestErr := fsutil.ReadGuardedInRoot(root, releaseGateManifestPath, maxReceiptBytes)
 	var manifestEra bool
 	var expectedManifestHash, requiredTier string
 	switch {
@@ -1120,6 +1132,15 @@ func checkReceiptGate(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 	if err := resolvedInsideRoot(repoRoot, filepath.Join(repoRoot, dir)); err != nil {
 		return failClosed("receipt_gate receipts_dir " + quote(dir) + " " + err.Error() + "; the release gate fails closed"), nil
 	}
+	// The commit directory is judged once, before any gate, so a link carrying it
+	// out of the tree is one finding that names the directory rather than one
+	// unreadable receipt per gate; the reads below refuse it again on their own.
+	commitRel := filepath.Join(dir, cfg.Commit)
+	if err := resolvedInsideRoot(repoRoot, filepath.Join(repoRoot, commitRel)); err != nil {
+		return []Finding{{File: commitRel, Line: 0, RuleID: "receipt_gate", Severity: cfg.Severity,
+			Message: "receipt_gate commit directory " + quote(commitRel) + " " + err.Error() +
+				"; a receipt the tree does not hold attests nothing, and the release gate fails closed"}}, nil
+	}
 
 	var out []Finding
 	add := func(rel, msg string) {
@@ -1132,8 +1153,8 @@ func checkReceiptGate(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 			add(dir, "receipt_gate required gate name '"+gate+"' is not a safe path component; the release gate fails closed")
 			continue
 		}
-		rel := filepath.Join(dir, cfg.Commit, gate+".json")
-		data, err := fsutil.ReadGuarded(filepath.Join(repoRoot, rel), maxReceiptBytes)
+		rel := filepath.Join(commitRel, gate+".json")
+		data, err := fsutil.ReadGuardedInRoot(root, rel, maxReceiptBytes)
 		if err != nil {
 			if os.IsNotExist(err) {
 				add(rel, "no '"+gate+"' receipt for commit "+cfg.Commit+"; the semantic gate has not run (fail-closed)")
