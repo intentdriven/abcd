@@ -16,7 +16,7 @@ It is **host-delegated**: the workflow runs in the host agent from
 `abcd consult` verb and no bare-status render of its own. Reading the corpus is
 plain search with `grep` and file reads; every write — a ledger line, the
 banlist sync, the pre-share scan — goes through the `abcd source` verbs
-([`31-source.md`](31-source.md)).
+([`33-source.md`](33-source.md)).
 
 ## Sub-verbs
 
@@ -84,7 +84,7 @@ The rule is backed mechanically rather than trusted alone, by the `abcd source`
 verbs. `sync-banlist` maintains a generated block in the repo's untracked
 `.abcd/.work.local/private-names.txt`, which the repo's committed pre-commit guard
 refreshes on every commit, where that store already exists and the guard can run
-the verb (see [`31-source.md`](31-source.md)), and then enforces. `cite-check` scans a document before
+the verb (see [`33-source.md`](33-source.md)), and then enforces. `cite-check` scans a document before
 it is shared and exits non-zero when a confidential identifier is present, naming
 only the key, so the report itself is safe to relay. Both read the same
 projection of the corpus through the same matcher as the guard, so a scan and a
@@ -102,7 +102,7 @@ absence of complaint.
 the banlist verb's private layer (itd-74 / spc-20). The sources sync owns one
 fenced block in it and rewrites only that block, so hand-added and verb-added
 lines outside the fence survive every sync. See [`20-banlist.md`](20-banlist.md)
-for the store itself and [`31-source.md`](31-source.md) for the projection.
+for the store itself and [`33-source.md`](33-source.md) for the projection.
 
 **The mechanical layer is narrower than the hard rule, deliberately.** Patterns
 are derived from every confidential entry's title and aliases always, and from
@@ -139,13 +139,13 @@ names.
 
 `/abcd:consult` is the read-and-record side of the sources system;
 [`/abcd:ingest`](14-ingest.md) is the write side that adds a source; and
-[`/abcd:source`](31-source.md) is the binary both call. The three share the
+[`/abcd:source`](33-source.md) is the binary both call. The three share the
 corpus and its ledger.
 
 ## References
 
 - Plugin command: [`commands/consult.md`](../../../../commands/consult.md)
-- The verbs behind every write, and the store's schema: [`31-source.md`](31-source.md)
+- The verbs behind every write, and the store's schema: [`33-source.md`](33-source.md)
 - Write side of the same corpus: [`14-ingest.md`](14-ingest.md)
 - The banlist store the guard wiring shares: [`20-banlist.md`](20-banlist.md)
 - The trust boundary the hard rule restates:

@@ -114,7 +114,7 @@ maintains them inside a fenced generated block in the same file, refusing a lega
 store that carries entries and leaving every line outside its block untouched. So
 a hand-added private entry and the corpus sync write into one store without either
 clobbering the other, and a hand-written key that collides with one the sync owns
-is refused rather than overwritten. See [`31-source.md`](31-source.md) for the
+is refused rather than overwritten. See [`33-source.md`](33-source.md) for the
 corpus side of that contract.
 
 Leading and trailing ASCII spaces and tabs are stripped, and so are a trailing

@@ -13,7 +13,7 @@ the read side and the provenance recorder.
 It is a **host-delegated command**: a markdown workflow that runs in the host
 agent. There is no top-level `abcd ingest` verb, no bare-status render, and no
 CLI flags of its own. The write it ends in is the source verb's add
-([`31-source.md`](31-source.md)), which stores and classifies what the host hands
+([`33-source.md`](33-source.md)), which stores and classifies what the host hands
 it and fetches and converts nothing.
 
 
@@ -111,7 +111,7 @@ contract.
 
 - Plugin command: [`commands/ingest.md`](../../../../commands/ingest.md)
 - Read side of the same corpus: [`13-consult.md`](13-consult.md)
-- The verb behind the write, and the corpus contract: [`31-source.md`](31-source.md)
+- The verb behind the write, and the corpus contract: [`33-source.md`](33-source.md)
 
 <!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
 
