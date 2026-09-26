@@ -3,7 +3,6 @@ package guard
 import (
 	"strings"
 	"testing"
-	"time"
 )
 
 // stdinCapBytes mirrors the 1 MiB cap both front doors put on a candidate
@@ -73,45 +72,27 @@ var boundCases = []struct {
 	},
 }
 
-// TestSpeculationIsBoundedAtTheStdinCap holds every adversarial shape at the size
-// an author can actually submit.
-//
-// The budget is deliberately loose. It is not a performance target; it is the
-// line between "slow" and "the session has hung", and it must not fail on a
-// loaded CI runner. Each shape ran in tens of milliseconds when this was written,
-// and each blew past the budget by two to three orders of magnitude before the
-// bound it names existed.
+// TestSpeculationIsBoundedAtTheStdinCap holds every adversarial shape to linear
+// work up to the size an author can actually submit: each shape is built at a
+// quarter of the stdin cap and at the cap, and the guard's counted work may grow
+// no faster than the input (assertWorkGrowth). It asserted a three-second
+// wall-clock ceiling before, which a loaded gate run could trip with nothing
+// wrong (iss-2609240046582859); every regression it defends against grew the
+// work 16x or more per 4x of input, which the count sees on any machine.
 func TestSpeculationIsBoundedAtTheStdinCap(t *testing.T) {
-	const budget = 3 * time.Second
-
 	for _, c := range boundCases {
 		c := c
 		t.Run(c.name, func(t *testing.T) {
-			candidate := c.build(stdinCapBytes)
-			if len(candidate) < stdinCapBytes/2 {
-				t.Fatalf("candidate is %d bytes; the shape must be built near the %d-byte cap to say anything", len(candidate), stdinCapBytes)
+			if len(c.build(stdinCapBytes)) < stdinCapBytes/2 {
+				t.Fatalf("the shape must be built near the %d-byte cap to say anything", stdinCapBytes)
 			}
-
-			start := time.Now()
-			d, err := Defaults().Check(candidate)
-			elapsed := time.Since(start)
-
-			if err != nil {
-				t.Fatalf("guard could not evaluate the candidate: %v", err)
-			}
+			_, d := assertWorkGrowth(t, c.build, stdinCapBytes/4, "the bound this shape defends is "+c.why)
 			// It warns rather than allowing: the line is past every bound, so the
 			// guard says it stopped looking. A silent allow here would be the defect,
-			// not the slowness.
+			// not the cost.
 			if d.Verdict == VerdictAllow {
 				t.Errorf("verdict = %q: a candidate too long to inspect was waved through", d.Verdict)
 			}
-			if elapsed > budget {
-				t.Fatalf("Check took %s on a %d-byte %s candidate, over the %s budget.\n"+
-					"The guard gates a PreToolUse hook; this is a denial of service, not a slow test.\n"+
-					"The bound this shape defends is %s.",
-					elapsed.Round(time.Millisecond), len(candidate), c.name, budget, c.why)
-			}
-			t.Logf("%-24s %8d bytes in %s", c.name, len(candidate), elapsed.Round(time.Millisecond))
 		})
 	}
 }

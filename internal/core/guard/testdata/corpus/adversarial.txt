@@ -43,6 +43,19 @@ quiet	kubectl get pods -A
 quiet	terraform plan -out=tf.plan
 quiet	rsync -av src/ dest/
 
+# --- quiet: arithmetic and substitutions in everyday shapes -----------------
+# An arithmetic expansion is an expression, not commands (review2-guard
+# finding 5), and a substitution's output is an unknown word that fails closed
+# only where it could be a hazard.
+quiet	echo "$(( (1+2) * 3 ))"
+quiet	echo $(( (1+2) * 3 ))
+quiet	sleep "$(( 2 * 60 ))"
+quiet	n=$(( n + 1 ))
+quiet	git -C "$(git rev-parse --show-toplevel)" status --short
+quiet	git push -u origin "$(git branch --show-current)"
+quiet	cd "$(git rev-parse --show-toplevel)" && make build
+quiet	export PATH="$(go env GOPATH)/bin:$PATH"
+
 # --- block: the wrapper class iss-272 recorded as silent allows --------------
 # Every one of these exited 0 with no output before adr-42. Part A made them loud
 # warns without naming anything; part B named them, which upgrades the warn to a

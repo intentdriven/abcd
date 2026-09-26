@@ -27,6 +27,13 @@ this list is the human-readable mirror.
 8. Reviews-charter discipline (RD001-RD003)
 9. Smoke every command (self-discovering harness)
 10. Plugin archive reproduces the committed pin (fail-closed)
+11. The release tag names the released CHANGELOG version (fail-closed)
+
+Gate 11 runs on a real release only too: it refuses unless the release tag is
+`v` plus the version `record-lint --released-version` reads from the released
+tree, the reader the semantic receipts are bound with. Gate 10 refuses such a
+tag first on this repository's own release; gate 11 is the check a scaffolded
+repository, which has no archive gate, relies on (iss-2609251945586202).
 
 Gate 10 runs on a real release only (a rehearsal has no release tag to bind). It
 re-renders the release's plugin archive from the tagged commit and refuses unless
@@ -100,8 +107,19 @@ name the commit they gate, so `record-lint --derive-content-sha` reads the
 `.abcd/work/reviews/<sha>/` entry on the released lineage and returns that `<sha>`
 — not the merge commit, and not `<merge>^2^` ancestry, which a batched
 merge-queue push can point at an unrelated PR's commit (`github.sha` is the batch
-tip, iss-355). `subject.digest.gitCommit` therefore still matches the armed
-commit exactly and the gate stays strict. (Before this, the gate armed with the tagged merge commit, whose
+tip, iss-355). The entry must also belong to THIS release: the commit it names
+carries the released tree's own newest dated CHANGELOG version, or the derivation
+fails closed — the nearest entry on a release that recorded no receipts of its
+own is the previous release's, whose valid receipts would otherwise admit it
+unreviewed (iss-2609251755386183). Entries carrying another version are passed
+over before the nearest is taken, so a co-batched pull request's own sha-keyed
+entry cannot tie with or shadow the roll's (iss-2609251939460232), and an entry
+must be named by the full sha (iss-2609251939466588). The released tree's newest
+release heading is read strictly: a pre-release or undated head, or a tree that
+names no dated release, refuses, because there is no version to bind the receipts
+to (iss-2609251939468296, iss-2609251939461459) — which is why the rehearsal
+rolls a plain `## [0.0.0]` heading. `subject.digest.gitCommit` therefore still
+matches the armed commit exactly and the gate stays strict. (Before this, the gate armed with the tagged merge commit, whose
 tree can never hold a receipt naming itself — an unsatisfiable self-reference.
 Dormant while the repo was private, it surfaced at the first public release and
 fail-closed it, v0.3.0, iss-108.)
@@ -204,7 +222,13 @@ semantic refusal blocks the release without the version-consuming wedge of a gat
 that sat in the publish path (iss-2608231226347380). `verify` supplies the
 content commit and the required-gate list from the workflow (the trust root), not
 the in-tree config: `record-lint --release-gate <sha> --require-gate <name>…`,
-where `<sha>` is `record-lint --derive-content-sha`. The rule is skipped on the
+where `<sha>` is `record-lint --derive-content-sha`. Before it, on a tag push,
+`verify` requires the tag to be `v` plus the version `record-lint
+--released-version` reads from the released tree — the strict reader the
+receipts are bound with — so a hand-pushed tag naming another version cannot
+publish under the receipts of the CHANGELOG's version (iss-2609251945586202).
+On abcd's own profile `launch archive --tag` refuses such a tag earlier still.
+The rule is skipped on the
 rehearsal path (`workflow_dispatch`), where no real receipts exist. Once `verify`
 has admitted the release, `release.yml`'s publish job signs the receipts with
 `actions/attest` (predicate `.../semantic-release-gate/v1`) and verifies the

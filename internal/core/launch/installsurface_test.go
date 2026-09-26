@@ -265,7 +265,7 @@ func TestPayloadTreeImplementationsResolveIdentically(t *testing.T) {
 	dest := filepath.Join(t.TempDir(), "payload")
 	if _, err := RenderPayload(PayloadRenderRequest{
 		RepoRoot: root, Dest: dest, Version: "9.9.9",
-		Entry: ChangelogEntry{Tier: "patch", Reason: "seam parity", Date: time.Now(), SourceSHA: "deadbeef"},
+		Entry: ChangelogEntry{Tier: "patch", Reason: "seam parity", Date: time.Now(), SourceSHA: "deadbeef"}, Dirty: DirtySkip,
 	}); err != nil {
 		t.Fatalf("render the payload: %v", err)
 	}

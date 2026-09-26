@@ -76,27 +76,26 @@ func TestGuardHookHonoursTheRepoRegistryWhenGitRefuses(t *testing.T) {
 }
 
 // TestGuardHookHonoursTheRepoKillSwitchWhenGitRefuses is the same resolution on
-// the other side of the switch: a repo that deliberately turned its guard off
-// must be reported as UNGUARDED from a nested directory, not quietly re-armed
-// with the bundled defaults. Reading the wrong file is wrong in both
-// directions; the point is that the repo's file is the one that governs.
+// the other side of the switch: from a nested directory git will not answer
+// for, the hook must still find the REPO's file — reading the wrong file is
+// wrong in both directions. What it then does with a kill switch follows
+// iss-147: switching the guard off takes effect only once HEAD carries it, and
+// a git that will not answer cannot confirm that, so the switch is refused and
+// the committed-or-bundled hazards stay armed. The notice naming the refused
+// file is the proof the right file was read; the block is the fail-safe.
 func TestGuardHookHonoursTheRepoKillSwitchWhenGitRefuses(t *testing.T) {
 	repo := t.TempDir()
-	gitInitAt(t, repo)
-	mustMkdirAll(t, filepath.Join(repo, ".abcd"))
-	if err := os.WriteFile(filepath.Join(repo, ".abcd", "guard.json"), []byte(`{"schema_version":1,"disabled":true,"entries":{}}`), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	commitGuardConfig(t, repo, `{"schema_version":1,"disabled":true,"entries":{}}`)
 	sub := mustMkdirAll(t, filepath.Join(repo, "pkg"))
 
 	gitRefusesOwnership(t, sub)
 
 	_, stderr, code := runGuard(preToolUse(t, "Bash", "cd scratch && rm -rf *", sub), "guard", "hook")
-	if code == 2 {
-		t.Errorf("the repo's kill switch was not seen from a subdirectory: the session was told it is guarded when the repo switched the guard off (stderr %q)", stderr)
+	if !strings.Contains(stderr, "REFUSED") || !strings.Contains(stderr, ".abcd/guard.json") {
+		t.Errorf("the repo's kill switch was not read from a subdirectory git would not answer for; stderr = %q", stderr)
 	}
-	if !strings.Contains(stderr, "UNGUARDED") {
-		t.Errorf("a disabled repo registry must announce the unguarded session; stderr = %q", stderr)
+	if code != 2 {
+		t.Errorf("a kill switch whose commit git cannot confirm must not disarm the guard: exit %d, stderr %q", code, stderr)
 	}
 }
 

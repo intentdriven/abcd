@@ -1,0 +1,63 @@
+{
+  "subject": {
+    "digest": {
+      "gitCommit": "9ef247440f673609036630644df169d360e41d1f"
+    }
+  },
+  "verifier": {
+    "id": "docs-currency-reviewer@release"
+  },
+  "timeVerified": "2026-09-26T05:52:42Z",
+  "verificationResult": "PROMOTE",
+  "judgeModel": "claude-fable-5-1",
+  "tier": "full",
+  "manifestHash": "sha256:572ffbd0d79d5aa37216c036181b5324af1a796a8f6892a20a4f66617fa0972a",
+  "policy": {
+    "detector": "docs-currency-reviewer",
+    "version": "1",
+    "promptHash": "sha256:host-run-agent-harness-review-no-pinned-prompt",
+    "briefVersion": "0.11.0"
+  },
+  "categories": {
+    "false-claim": 2,
+    "stale-record": 1,
+    "stale-count": 0,
+    "incomplete": 1,
+    "criterion-violation": 0
+  },
+  "_reviewProvenance": "Host-run docs-currency-reviewer (Fable 5.1) read the first roll 0a006d34c5aa49281014bc3cd8d6fda1a242e8f3, which differs from this content commit 9ef247440f673609036630644df169d360e41d1f only by the corrections of its own findings: dc-1 and dc-3 fixed in ae116575 (README.md, docs/how-to/install.md, CONTRIBUTING.md) and dc-2 and dc-4 recomposed by the release-changelog-composer into the changelog this commit carries. Every finding carries its disposition.",
+  "failing": [
+    {
+      "id": "dc-1",
+      "category": "false-claim",
+      "severity": "major",
+      "summary": "README.md:106; docs/how-to/install.md:216; docs/how-to/install.md:222: The CLI install one-liners end with `\"$HOME/.local/bin/abcd\" version`, a spelling this release retires: on the v0.11.0 binary it exits 2 naming `abcd --version`, and under the one-liner's `set -eu` the whole command ends non-zero immediately after a successful install. The release's own changelog says to update scripts to the new spellings; its install instructions were not.",
+      "disposition": "fixed",
+      "note": "The three install one-liners end on `abcd --version`; fixed in ae116575, the parent of content commit 9ef24744."
+    },
+    {
+      "id": "dc-2",
+      "category": "stale-record",
+      "severity": "minor",
+      "summary": "CHANGELOG.md:32: The Added line for itd-2609231434459890 describes the stray rule as a process that `has run near a full core for over the stray limit`; the shipped rule (and the Fixed line at CHANGELOG.md:94 for iss-2609231947544298, and commands/implement.md:150-160) judges a process against its fair share of a loaded machine, so a stray can show well under a full core.",
+      "disposition": "fixed",
+      "note": "Recomposed by the release-changelog-composer: the stray is described by its fair share of the machine as loaded, agreeing with the Fixed line for iss-2609231947544298. Fixed in content commit 9ef24744."
+    },
+    {
+      "id": "dc-3",
+      "category": "false-claim",
+      "severity": "nitpick",
+      "summary": "CONTRIBUTING.md:58: Says the commit-msg hook refuses the message `through \\`go run ./cmd/abcd lint outbound\\``; the hook builds ./cmd/abcd into a temporary directory and runs that binary. Same source, same verdict, different invocation.",
+      "disposition": "fixed",
+      "note": "CONTRIBUTING.md names what the commit-msg hook runs: this checkout's own `abcd lint outbound`, built from ./cmd/abcd. Fixed in ae116575."
+    },
+    {
+      "id": "dc-4",
+      "category": "incomplete",
+      "severity": "nitpick",
+      "summary": "CHANGELOG.md:50: Lists `timeout` beside `sudo`, `env`, `xargs`, `su -c` and `git` as wrappers through which a dash-glued substitution word `is no longer allowed`. Literally true (the verdict is a warn, not an allow), but the sibling wrappers block while `timeout` degrades to `unrecognised-launcher (warn)`, and the same hazard behind a plain `timeout 5` blocks.",
+      "disposition": "fixed",
+      "note": "Recomposed: the line says the hazard is blocked behind sudo, env, xargs, su -c and git, and that `timeout` with no duration after a dash-glued word warns as an unrecognised launcher. Fixed in content commit 9ef24744; the guard's own gap is captured as iss-2609260543090196 (minor)."
+    }
+  ]
+}

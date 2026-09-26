@@ -314,7 +314,8 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newGuardCommand(&asJSON))
 	root.AddCommand(newIdentityCommand(&asJSON))
 
-	var launchDryRun bool
+	var launchDryRun, launchDeepSmoke, launchFetchBaseline bool
+	var launchBaseline string
 	launchCmd := &cobra.Command{
 		Use:  "launch",
 		Args: cobra.NoArgs,
@@ -326,19 +327,40 @@ func NewRootCommand() *cobra.Command {
 			if !launchDryRun {
 				return fmt.Errorf("abcd launch: pass --dry-run to preview the bundle (publishing is not wired at this stage)")
 			}
+			// The parity diff measures the payload against the previous
+			// release's, rendered fresh at its tag unless --fetch-baseline asks
+			// for the published archive (adr-38: the network answers only an
+			// explicit ask). A configured baseline that is wrong is an operand
+			// error, never a first launch.
+			parity, err := launchParityInput(cwd, launchBaseline, launchFetchBaseline, cmd.ErrOrStderr())
+			if err != nil {
+				return &exitError{Code: 2, Msg: "abcd launch --dry-run: " + scrubPaths(err)}
+			}
+			var deep launch.PageRunner
+			if launchDeepSmoke {
+				deep = subprocessPageRunner
+			}
 			rep, err := launch.DryRun(launch.DryRunRequest{
-				RepoRoot: cwd,
-				Version:  publishedVersion(cwd),
+				RepoRoot:  cwd,
+				Parity:    parity,
+				DeepSmoke: deep,
+				Version:   publishedVersion(cwd),
 				// Grading the citation baseline needs the lint engine, which
 				// imports launch for its semver — so the measurement is taken
 				// HERE, where both are already in scope, and handed in as data.
 				Citations: citationPreflight(cwd),
 				// Same reason, same shape: measured here, handed in as data.
 				Receipts: receiptPreflight(cwd),
+				// The documentation audit is the docs-lint engine, which also
+				// imports launch: measured here, handed in as data.
+				DocAudit: docAuditPreflight(cwd),
 			})
 			if err != nil {
-				return err
+				return errors.New("abcd launch --dry-run: " + launchPayloadRefusal(err))
 			}
+			// Every preview leaves its pre-flight report in the local logs tier
+			// (itd-65); the preview still refuses nothing and exits 0.
+			rep.ReportPath, rep.ReportError = writePreflight(cwd, rep.PreflightReport(time.Now()))
 			return render(cmd.OutOrStdout(), asJSON, rep, func(w io.Writer) {
 				fmt.Fprintf(w, "abcd launch (dry-run) — version %s\n", rep.Version)
 				fmt.Fprintf(w, "  files bundled:  %d\n", len(rep.Bundle.Included))
@@ -347,14 +369,21 @@ func NewRootCommand() *cobra.Command {
 					if g.Name == "citation-baseline" && g.Status == "ran" {
 						fmt.Fprintf(w, "  citations:      %s\n", termsafe.Sanitize(g.Detail))
 					}
-					// The semantic-receipt gate refuses releases and CI cannot run it,
-					// so the plain render must not stay silent about it either: a row
-					// only --json shows is invisible to everyone who does not know to
-					// ask (iss-2608231226342272).
-					if g.Name == "semantic-receipts" {
-						fmt.Fprintf(w, "  receipts:       %s\n", termsafe.Sanitize(g.Detail))
+				}
+				// Every row that did not run — host-run, not_armed,
+				// not_implemented — is staged here with its status and why: a
+				// row only --json shows is invisible to everyone who does not
+				// know to ask (iss-2608231226342272, iss-2609251827290265). The
+				// semantic-receipt row is among them, and is the one a release
+				// fails on most expensively.
+				for _, g := range rep.Gates {
+					if g.Status != "ran" {
+						fmt.Fprintf(w, "  not run:        %s (%s) — %s\n",
+							termsafe.Sanitize(g.Name), termsafe.Sanitize(g.Status), termsafe.Sanitize(g.Detail))
 					}
 				}
+				renderDeepSmoke(w, rep.DeepSmoke)
+				renderParity(w, rep.Parity)
 				fmt.Fprintf(w, "  would publish:  %v\n", rep.WouldPublish)
 				for _, reason := range rep.WouldRefuseOn {
 					// Each reason embeds a raw repo filename (a control-char-rejected
@@ -363,10 +392,27 @@ func NewRootCommand() *cobra.Command {
 					// citation line above.
 					fmt.Fprintf(w, "  would refuse on: %s\n", termsafe.Sanitize(reason))
 				}
+				// Warn-tier concerns refuse nothing, so they are printed apart
+				// from the refusals — but printed: a warning only --json shows is
+				// one nobody reads.
+				for _, warning := range rep.Warnings {
+					fmt.Fprintf(w, "  warning:        %s\n", termsafe.Sanitize(warning))
+				}
+				if rep.ReportPath != "" {
+					fmt.Fprintf(w, "  report:         %s\n", termsafe.Sanitize(rep.ReportPath))
+				} else {
+					fmt.Fprintf(w, "  report:         not written — %s\n", termsafe.Sanitize(rep.ReportError))
+				}
 			})
 		},
 	}
 	launchCmd.Flags().BoolVar(&launchDryRun, "dry-run", false, "preview the launch bundle and gates without publishing")
+	launchCmd.Flags().BoolVar(&launchDeepSmoke, "deep-smoke", false,
+		"also run the installability smoke's deep tier: render every command, skill and agent page's help in an isolated subprocess (always on in the cut)")
+	launchCmd.Flags().StringVar(&launchBaseline, "baseline", "",
+		"the release tag the payload parity diff measures against (default: the newest release tag)")
+	launchCmd.Flags().BoolVar(&launchFetchBaseline, "fetch-baseline", false,
+		"read the parity baseline from the tag's published plugin archive, verified against the release's checksums.txt (a network fetch; default: a fresh render at the tag)")
 	// `ship` is the release-cut verb: the dry-run above previews the launch
 	// BUNDLE, this cuts the RELEASE (version + changelog record set). They hang
 	// off one command because they gate the same event.
@@ -379,6 +425,12 @@ func NewRootCommand() *cobra.Command {
 	// auto-release.yml, runbook) into a managed repo that lacks it (itd-93). It
 	// extends 04-launch because launch already owns how a release is cut and gated.
 	launchCmd.AddCommand(newLaunchScaffoldCommand(&asJSON))
+	// `receipts` runs the release job's semantic-receipt gate locally, before
+	// the merge, through the same reader the job runs (itd-93 AC7).
+	launchCmd.AddCommand(newLaunchReceiptsCommand(&asJSON))
+	// `smoke-pages` is the deep installability tier's child process (itd-66):
+	// hidden and operator-internal, re-executed by the preview and the cut.
+	launchCmd.AddCommand(newLaunchSmokePagesCommand())
 	root.AddCommand(launchCmd)
 
 	root.AddCommand(newChangelogCommand(&asJSON))

@@ -194,9 +194,11 @@ var sentences = map[string]string{
 		"Writes the removal of its held line; refuses a record not held.",
 
 	"abcd launch": "Preview the public launch bundle, its secret scan, and the release gates: " +
-		"Writes nothing; refuses without --dry-run.",
+		"Writes only its pre-flight report, to the local tier; refuses without --dry-run.",
 	"abcd launch archive": "Render the release's plugin archive: " +
-		"Writes the archive into --out; refuses with exit 1 when --verify finds the catalogue does not pin it.",
+		"Writes the archive into --out; refuses a dirty tree without --verify, and exits 1 when --verify finds it unpinned.",
+	"abcd launch receipts": "Run the release job's semantic-receipt gate locally, before the merge: " +
+		"Writes nothing; refuses with exit 1 when the release job would refuse the receipts.",
 	"abcd launch scaffold": "Scaffold the changelog-driven release gate: " +
 		"Writes the release workflows and runbook; refuses to overwrite a hand-edited one without --confirm.",
 	"abcd launch ship": "Cut a release, deriving its version and records from what shipped: " +

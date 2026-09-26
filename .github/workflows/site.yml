@@ -417,9 +417,22 @@ jobs:
           # A bare `abcd site` does exit 2 today, but it would EXECUTE the verb once
           # the verb exists, so it is not a probe either. The listing is the public
           # surface, costs nothing, has no side effects, and names `site` exactly when
-          # the verb is registered. Verified in both directions against a binary built
-          # before the site slice.
-          ./abcd --help 2>/dev/null | grep -qE '^[[:space:]]+site[[:space:]]' || {
+          # the verb is registered.
+          #
+          # WHICH listing depends on the tag. From v0.11.0 the root help is grouped:
+          # `abcd --help` names only the person's verbs, and `site` is listed under
+          # `abcd --help --agent` alone, so the plain listing misses it on every
+          # binary that has it. A tag before v0.11.0 refuses `--agent` as an unknown
+          # flag (exit 2, nothing on stdout) and lists every verb in the plain
+          # listing. So read the agent listing, and fall back to the plain one when
+          # the flag is refused: a binary from before the site slice passes neither,
+          # and still refuses here in one line. Captured in a variable, not piped, so
+          # neither the fallback nor grep's early exit meets pipefail. Verified
+          # against binaries built from v0.6.1 (no verb), v0.10.0 (plain listing)
+          # and v0.11.0 (agent listing); internal/surface/cli's
+          # TestSiteWorkflowProbeFindsTheSiteVerb runs every probing step.
+          listing="$(./abcd --help --agent 2>/dev/null || ./abcd --help 2>/dev/null || true)"
+          grep -qE '^[[:space:]]+site[[:space:]]' <<<"$listing" || {
             echo "::error::this binary has no site verb (released before the site slice); refusing — see PR #421"
             exit 1
           }
@@ -468,9 +481,11 @@ jobs:
         # runs AFTER the docs build so it sees the whole tree that will be deployed.
         run: |
           set -euo pipefail
-          # The root-listing probe again; see the render step above for why neither
-          # `abcd site --help` nor `abcd site build --help` can serve as one.
-          ./abcd --help 2>/dev/null | grep -qE '^[[:space:]]+site[[:space:]]' || {
+          # The listing probe again (the agent listing, else the plain one); see the
+          # render step above for why that pair, and why neither `abcd site --help`
+          # nor `abcd site build --help` can serve as one.
+          listing="$(./abcd --help --agent 2>/dev/null || ./abcd --help 2>/dev/null || true)"
+          grep -qE '^[[:space:]]+site[[:space:]]' <<<"$listing" || {
             echo "::error::this binary has no site verb (released before the site slice); refusing — see PR #421"
             exit 1
           }
@@ -757,12 +772,14 @@ jobs:
         # one. The workflow therefore passes no version anywhere on this path.
         run: |
           set -euo pipefail
-          # Probe before use, as in `render` — same root-listing grep, and see that
-          # step for why the obvious `--help` forms all pass on a verb-less binary.
-          # main carries the site verb now, so this is a standing guard rather than
-          # a window: it fires if the verb is ever renamed or withdrawn, and turns
-          # what would be a cobra usage dump mid-render into one line naming why.
-          ./abcd --help 2>/dev/null | grep -qE '^[[:space:]]+site[[:space:]]' || {
+          # Probe before use, as in `render` — same listing grep (the agent listing,
+          # else the plain one), and see that step for why that pair, and why the
+          # obvious `--help` forms all pass on a verb-less binary. main carries the
+          # site verb now, so this is a standing guard rather than a window: it
+          # fires if the verb is ever renamed or withdrawn, and turns what would be
+          # a cobra usage dump mid-render into one line naming why.
+          listing="$(./abcd --help --agent 2>/dev/null || ./abcd --help 2>/dev/null || true)"
+          grep -qE '^[[:space:]]+site[[:space:]]' <<<"$listing" || {
             echo "::error::this binary has no site verb (built from a commit before the site slice); refusing — see PR #421"
             exit 1
           }
@@ -787,8 +804,10 @@ jobs:
         # a preview that skipped them would stop being a preview of anything.
         run: |
           set -euo pipefail
-          # The root-listing probe again; see the render job for the full note.
-          ./abcd --help 2>/dev/null | grep -qE '^[[:space:]]+site[[:space:]]' || {
+          # The listing probe again (the agent listing, else the plain one); see the
+          # render job for the full note.
+          listing="$(./abcd --help --agent 2>/dev/null || ./abcd --help 2>/dev/null || true)"
+          grep -qE '^[[:space:]]+site[[:space:]]' <<<"$listing" || {
             echo "::error::this binary has no site verb (built from a commit before the site slice); refusing — see PR #421"
             exit 1
           }

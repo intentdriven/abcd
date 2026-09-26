@@ -435,7 +435,8 @@ func TestLaunchStillRunsWithoutASubcommand(t *testing.T) {
 }
 
 // cliTreeDigest hashes every path and byte under root except .git, whose
-// internals git rewrites for reasons unrelated to the code under test.
+// internals git rewrites for reasons unrelated to the code under test, and the
+// gitignored local tier, where a cut keeps its pre-flight report.
 func cliTreeDigest(t *testing.T, root string) string {
 	t.Helper()
 	var lines []string
@@ -445,6 +446,12 @@ func cliTreeDigest(t *testing.T, root string) string {
 		}
 		if d.IsDir() {
 			if d.Name() == ".git" {
+				return fs.SkipDir
+			}
+			// The local tier is left out: a refused cut deliberately keeps its
+			// pre-flight report there (itd-65), and nothing in that tier is
+			// part of the release record a rollback restores.
+			if rel, rerr := filepath.Rel(root, path); rerr == nil && filepath.ToSlash(rel) == ".abcd/.work.local" {
 				return fs.SkipDir
 			}
 			return nil

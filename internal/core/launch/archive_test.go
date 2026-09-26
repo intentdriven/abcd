@@ -33,7 +33,7 @@ func renderArchiveIn(t *testing.T, root, version string) PluginArchive {
 	t.Helper()
 	out := t.TempDir()
 	a, _, err := RenderPluginArchive(PayloadRenderRequest{
-		RepoRoot: root, Dest: filepath.Join(t.TempDir(), "staging"), Version: version, Entry: sampleEntry(),
+		RepoRoot: root, Dest: filepath.Join(t.TempDir(), "staging"), Version: version, Entry: sampleEntry(), Dirty: DirtySkip,
 	}, out)
 	if err != nil {
 		t.Fatalf("RenderPluginArchive: %v", err)

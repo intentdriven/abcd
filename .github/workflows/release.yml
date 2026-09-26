@@ -82,7 +82,10 @@ jobs:
   # never the default-branch tip or the re-resolvable tag name — so the gate
   # exercises exactly the commit whose binaries will ship.
   verify:
-    timeout-minutes: 15
+    # The race step's own -timeout (20m, sized in ci.yml) must fire before this
+    # does, or a hang reads as a cancelled job with no goroutine dump: 20m for
+    # the slowest package plus about 10m this job spends before it starts.
+    timeout-minutes: 35
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -136,7 +139,7 @@ jobs:
         run: go test ./...
 
       - name: Test (race, internal)
-        run: go test -race ./internal/...
+        run: go test -race -timeout 20m ./internal/...
 
       - name: Record-lint (design-record drift gate)
         run: go run ./cmd/record-lint
@@ -170,6 +173,30 @@ jobs:
           out="$RUNNER_TEMP/plugin-archive"
           mkdir -p "$out"
           go run ./cmd/abcd launch archive --out "$out" --tag "${TAG}" --verify --repository "${GITHUB_REPOSITORY}"
+
+      # --- The release tag names the released version (iss-2609251945586202) ---
+      # The receipts gate below binds the receipts to the version the released
+      # tree's CHANGELOG names, not to the tag. A hand-pushed tag naming another
+      # version (v0.9.1 on a tree whose newest dated heading is 0.9.0, or a
+      # v0.9.0-rc.1) would otherwise publish under a version nobody reviewed,
+      # admitted by the receipts of the CHANGELOG's. So the tag must be exactly
+      # "v" plus that version, read by record-lint's strict reader, the one the
+      # receipts are bound with; this step compares the two and reads no heading
+      # itself. It refuses before the receipts gate and before the tag job, so
+      # nothing is built, tagged or published. Skipped on the rehearsal path,
+      # where TAG is the branch name. TAG reaches the script through the
+      # workflow env (injection-safe).
+      - name: The release tag names the released CHANGELOG version (fail-closed)
+        if: github.event_name != 'workflow_dispatch'
+        run: |
+          set -euo pipefail
+          released="$(go run ./cmd/record-lint --released-version)"
+          test -n "$released"   # never compare against an empty version (fail closed)
+          if [ "$TAG" != "v$released" ]; then
+            printf "refusing to release '%s': the released tree's CHANGELOG names %s, so its release tag is v%s\n" "$TAG" "$released" "$released" >&2
+            exit 1
+          fi
+          echo "release tag $TAG names the released version $released"
 
       # --- Semantic release gate, armed BEFORE the tag (adr-52, Alternative 1) ---
       # The semantic gate (the LLM passes CI cannot run) refuses HERE, in verify,
@@ -645,12 +672,15 @@ jobs:
           date="$(date -u +%Y-%m-%d)"
           # Content commit on a scratch branch: simulate rolling [Unreleased] into a
           # dated heading — the reviewed content commit a real release names.
+          # The heading is a plain vX.Y.Z (0.0.0, below every real release): the
+          # gate's reader refuses a newest heading it cannot parse, so a
+          # pre-release spelling here would refuse the rehearsal.
           git switch -q -c rehearsal-sim
           if grep -q '^## \[Unreleased\]' CHANGELOG.md 2>/dev/null; then
-            awk -v d="$date" '1; /^## \[Unreleased\]/ && !done {print ""; print "## [0.0.0-rehearsal] - " d; done=1}' CHANGELOG.md > CHANGELOG.rehearsal
+            awk -v d="$date" '1; /^## \[Unreleased\]/ && !done {print ""; print "## [0.0.0] - " d; done=1}' CHANGELOG.md > CHANGELOG.rehearsal
             mv CHANGELOG.rehearsal CHANGELOG.md
           else
-            printf '\n## [0.0.0-rehearsal] - %s\n' "$date" >> CHANGELOG.md
+            printf '\n## [0.0.0] - %s\n' "$date" >> CHANGELOG.md
           fi
           git add -A
           git commit -q -m 'rehearsal: simulated changelog roll (content commit)'

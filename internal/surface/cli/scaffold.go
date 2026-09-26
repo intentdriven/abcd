@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/launch/scaffold"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -13,8 +14,9 @@ import (
 
 // newLaunchScaffoldCommand builds `abcd launch scaffold` (itd-93, spc-14): it
 // writes the changelog-driven release machinery — release.yml, auto-release.yml,
-// and the adr-37 runbook — into a managed repo that lacks it, wired to the repo's
-// own default branch and Go version, GITHUB_TOKEN-only and injection-safe.
+// the adr-37 runbook and the reviews-charter check — into a managed repo that
+// lacks it, wired to the repo's own default branch and pull-request CI check
+// names, GITHUB_TOKEN-only and injection-safe.
 //
 // It is idempotent and fail-safe (AC4): a re-run on current machinery is a no-op,
 // and a hand-edited file is refused (exit 1) rather than clobbered unless
@@ -79,6 +81,12 @@ func renderScaffold(w io.Writer, rep scaffold.Report, blocked bool) {
 	}
 	fmt.Fprintf(w, "abcd launch scaffold — %s (branch %s, go %s)\n",
 		verdict, termsafe.Sanitize(rep.DefaultBranch), termsafe.Sanitize(rep.GoVersion))
+	if len(rep.CIChecks) > 0 {
+		fmt.Fprintf(w, "  merge gate: %s (require these on %s)\n",
+			termsafe.Sanitize(strings.Join(rep.CIChecks, ", ")), termsafe.Sanitize(rep.DefaultBranch))
+	} else {
+		fmt.Fprintln(w, "  merge gate: no pull-request CI workflow found (the runbook says how to add one)")
+	}
 	for _, f := range rep.Files {
 		// f.Path is a fixed repo-relative constant; f.Detail interpolates a reason.
 		fmt.Fprintf(w, "  [%s] %s", f.Status, f.Path)

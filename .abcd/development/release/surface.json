@@ -1561,10 +1561,31 @@
       "hidden": false,
       "group": "release",
       "block": "people",
-      "sentence": "Preview the public launch bundle, its secret scan, and the release gates: Writes nothing; refuses without --dry-run.",
+      "sentence": "Preview the public launch bundle, its secret scan, and the release gates: Writes only its pre-flight report, to the local tier; refuses without --dry-run.",
       "flags": [
         {
+          "name": "baseline",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "deep-smoke",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "dry-run",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "fetch-baseline",
           "shorthand": "",
           "type": "bool",
           "required": false,
@@ -1575,7 +1596,7 @@
     {
       "path": "abcd launch archive",
       "hidden": false,
-      "sentence": "Render the release's plugin archive: Writes the archive into --out; refuses with exit 1 when --verify finds the catalogue does not pin it.",
+      "sentence": "Render the release's plugin archive: Writes the archive into --out; refuses a dirty tree without --verify, and exits 1 when --verify finds it unpinned.",
       "flags": [
         {
           "name": "out",
@@ -1608,6 +1629,12 @@
       ]
     },
     {
+      "path": "abcd launch receipts",
+      "hidden": false,
+      "sentence": "Run the release job's semantic-receipt gate locally, before the merge: Writes nothing; refuses with exit 1 when the release job would refuse the receipts.",
+      "flags": []
+    },
+    {
       "path": "abcd launch scaffold",
       "hidden": false,
       "sentence": "Scaffold the changelog-driven release gate: Writes the release workflows and runbook; refuses to overwrite a hand-edited one without --confirm.",
@@ -1627,9 +1654,23 @@
       "sentence": "Cut a release, deriving its version and records from what shipped: Writes the CHANGELOG heading, RELEASE.md, and the archive pin; refuses a cut its gates stop.",
       "flags": [
         {
+          "name": "allow-dirty",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "changelog-json",
           "shorthand": "",
           "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "fetch-baseline",
+          "shorthand": "",
+          "type": "bool",
           "required": false,
           "hidden": false
         },
@@ -1648,6 +1689,11 @@
           "hidden": false
         }
       ]
+    },
+    {
+      "path": "abcd launch smoke-pages",
+      "hidden": true,
+      "flags": []
     },
     {
       "path": "abcd lint",

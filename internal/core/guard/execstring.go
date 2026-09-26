@@ -1,7 +1,6 @@
 package guard
 
 import (
-	"path"
 	"strings"
 )
 
@@ -85,51 +84,52 @@ var execStringOtherValueFlags = map[string][]string{
 	"flock":   {"-w", "--timeout", "--wait", "-E", "--conflict-exit-code"},
 }
 
-// execStringPayload walks a segment's leading wrapper chain and returns the
-// command string carried by the first exec-string verb it reaches.
+// execStringPayloads walks a segment's leading wrapper chain and returns the
+// command strings carried by every exec-string verb the walk can arrive at.
 //
-// The walk mirrors splitStringValue's: assignments and reserved words are
-// stepped, and a wrapper is stepped WITH its own arguments, so `sudo su -c
-// <hazard>` and `nice runuser -c <hazard>` are reached rather than lost at the
-// first token.
+// The walk is commandArrivals: assignments and reserved words are stepped, and a
+// wrapper is stepped WITH its own arguments, so `sudo su -c <hazard>` and `nice
+// runuser -c <hazard>` are reached rather than lost at the first token. A verb
+// that carries no command string (`su - bob` is a login shell) ends the walk
+// unless it is also a wrapper (runuser, flock), which the walk steps through. A
+// name a substitution prints can be any of the verbs (unknown.go).
 //
-// resolved is false when a payload flag is present but its value is not — a
-// `-c` at the end of the line — which the caller turns into a loud warn rather
-// than a silent allow.
-func execStringPayload(tokens []string) (verb, value string, resolved, found bool) {
-	i := 0
-	for i < len(tokens) {
-		tok := tokens[i]
-		if isAssignment(tok) || reserved[tok] {
-			i++
-			continue
-		}
-		// Folded to lower case: `SU -c` / `FLOCK … -c` resolve to the real binary
-		// on a case-insensitive filesystem, so a case-varied exec-string verb must
-		// be read exactly as its lowercase spelling is (gh-315).
-		name := strings.ToLower(path.Base(tok))
-		if flags, ok := execStringVerbs[name]; ok {
-			if v, resolved, found := scanExecString(tokens[i+1:], flags,
-				execStringOtherValueFlags[name], execStringCommandOperand[name]); found {
-				return name, v, resolved, true
+// A payload flag present with no value after it — a `-c` at the end of the line
+// — is returned as a kindExecStringWarn, which the caller turns into a loud warn
+// rather than a silent allow.
+func execStringPayloads(tokens []string, arrivals []arrival) []payloadRef {
+	var out []payloadRef
+	for _, name := range execStringVerbNames {
+		for _, guessed := range []bool{false, true} {
+			var starts []int
+			for _, a := range arrivals {
+				tok := tokens[a.idx]
+				if isUnknown(tok) == guessed && nameCouldBe(tok, name) {
+					starts = append(starts, a.idx+1)
+				}
 			}
-			// This verb carries no command string: `su - bob` is a login shell, not
-			// an execute-a-string. If it is also a wrapper (runuser, flock), the walk
-			// continues through it; otherwise the segment is an ordinary command.
-			if !wrappers[name] {
-				return "", "", false, false
+			if len(starts) == 0 {
+				continue
+			}
+			values, unresolved := scanExecString(tokens, starts, execStringVerbs[name],
+				execStringOtherValueFlags[name], execStringCommandOperand[name])
+			for _, v := range values {
+				out = append(out, payloadRef{kind: kindExecString, family: name, payload: v, guessed: guessed})
+			}
+			if unresolved {
+				out = append(out, payloadRef{kind: kindExecStringWarn, family: name, guessed: guessed})
 			}
 		}
-		if wrappers[name] {
-			i = skipWrapperArgs(tokens, i+1, name)
-			continue
-		}
-		break
 	}
-	return "", "", false, false
+	return out
 }
 
-// scanExecString looks through ONE verb's tokens for its payload flag.
+// execStringVerbNames is execStringVerbs' keys in a fixed order.
+var execStringVerbNames = []string{"flock", "runuser", "script", "su"}
+
+// scanExecString looks through one verb's tokens — from each index in starts,
+// the word after each place the verb can sit, in one walk — for its payload
+// flag.
 //
 // It does not stop at the FIRST non-flag token, because these grammars put the
 // flag after an operand (`flock FILE -c CMD`, `su USER -c CMD`) and getopt
@@ -140,58 +140,122 @@ func execStringPayload(tokens []string) (verb, value string, resolved, found boo
 //     wrapper walk already owns it;
 //   - past commandOperandAfter operands, when the verb declares one, because the
 //     launched command's own flags are none of this scan's business.
-func scanExecString(tokens, payloadFlags, valueFlags []string, commandOperandAfter int) (value string, resolved, found bool) {
-	operands := 0
-	for i := 0; i < len(tokens); i++ {
-		tok := tokens[i]
-		if tok == "--" {
-			return "", false, false
+//
+// Each word is read as unknown.go reads it, every way it can be: an unknown
+// dash-word may be the payload flag (so the next word is a payload, and so is
+// the value it may glue on), a value flag, or a flag that stands alone. Every
+// payload a reading finds is returned; unresolved reports a payload flag with
+// nothing after it.
+func scanExecString(tokens []string, starts []int, payloadFlags, valueFlags []string, commandOperandAfter int) (values []string, unresolved bool) {
+	type state struct{ i, operands int }
+	seen := map[state]bool{}
+	var stack []state
+	for _, st := range starts {
+		stack = append(stack, state{i: st})
+	}
+	push := func(st state) {
+		if !seen[st] {
+			seen[st] = true
+			stack = append(stack, st)
 		}
-		if !strings.HasPrefix(tok, "-") || tok == "-" {
+	}
+	added := map[string]bool{}
+	add := func(v string) {
+		if !added[v] {
+			added[v] = true
+			values = append(values, v)
+		}
+	}
+	// valueAfter takes the word after a payload flag as its payload.
+	valueAfter := func(i int) {
+		if i+1 < len(tokens) {
+			add(tokens[i+1])
+		} else {
+			// Present but unresolvable. Fail loud: the guard knows a command
+			// string was meant and cannot read it.
+			unresolved = true
+		}
+	}
+	for len(stack) > 0 {
+		st := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		tally(1)
+		if st.i >= len(tokens) {
+			continue
+		}
+		tok := tokens[st.i]
+		if tok == "--" {
+			continue
+		}
+		r := readWord(tok, valueFlags)
+		if r.operand || tok == "-" {
 			// An operand: the user, the lock file, the typescript — or, past this
 			// verb's own operands, the command it launches, whose flags are none of
-			// this scan's business.
-			operands++
-			if commandOperandAfter > 0 && operands > commandOperandAfter {
-				return "", false, false
+			// this scan's business. A verb with no operand bound counts none, so
+			// the walk's states stay one per word.
+			switch {
+			case commandOperandAfter == 0:
+				push(state{st.i + 1, 0})
+			case st.operands+1 <= commandOperandAfter:
+				push(state{st.i + 1, st.operands + 1})
 			}
+		}
+		if r.vanish {
+			push(state{st.i + 1, st.operands})
+		}
+		if !r.flag && !r.takes {
+			continue
+		}
+		if isUnknown(tok) {
+			// A flag of unknown name can be the payload flag, with its value
+			// next or glued on, and can be any other flag as well.
+			for _, pf := range payloadFlags {
+				if flagCouldBe(tok, pf) || (len(pf) == 2 && clusterCouldCarry(tok, pf[1])) {
+					valueAfter(st.i)
+					add(tok)
+					break
+				}
+			}
+			if r.takes {
+				push(state{st.i + 2, st.operands})
+			}
+			push(state{st.i + 1, st.operands})
 			continue
 		}
 
 		// Glued long form: --command=<value>.
 		if eq := strings.IndexByte(tok, '='); eq > 0 {
 			if containsString(payloadFlags, tok[:eq]) {
-				return tok[eq+1:], true, true
+				add(tok[eq+1:])
+				continue
 			}
-			continue // a glued value for some other flag
+			push(state{st.i + 1, st.operands}) // a glued value for some other flag
+			continue
 		}
 
 		if containsString(payloadFlags, tok) {
-			if i+1 >= len(tokens) {
-				// Present but unresolvable. Fail loud: the guard knows a command
-				// string was meant and cannot read it.
-				return "", false, true
-			}
-			return tokens[i+1], true, true
+			valueAfter(st.i)
+			continue
 		}
 
 		// A short cluster carrying the payload flag last: `su -lc <value>`, which
 		// getopt reads as -l -c <value>.
 		if v, ok := clusteredPayload(tok, payloadFlags, valueFlags); ok {
 			if v != "" {
-				return v, true, true // glued value: -c<value>
+				add(v) // glued value: -c<value>
+			} else {
+				valueAfter(st.i)
 			}
-			if i+1 >= len(tokens) {
-				return "", false, true
-			}
-			return tokens[i+1], true, true
+			continue
 		}
 
-		if containsString(valueFlags, tok) {
-			i++ // its value is not the payload
+		if r.takes {
+			push(state{st.i + 2, st.operands}) // its value is not the payload
+			continue
 		}
+		push(state{st.i + 1, st.operands})
 	}
-	return "", false, false
+	return values, unresolved
 }
 
 // clusteredPayload reads a short option cluster for a single-letter payload flag.
