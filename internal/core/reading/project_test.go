@@ -506,3 +506,50 @@ func TestANestedMappingRefusesBehindEveryBlockIndicator(t *testing.T) {
 	}
 }
 
+// TestTheEscapedKeyRefusalStatesOnlyWhatItKnows (iss-2608301421381157). The
+// escaped-key refusal shared the excluded-key message, which asserted that the
+// document still carried an excluded key and that its block was not closed the
+// way the field reader expects. Neither is known of an escape: the package does
+// not decode one, so which key it spells is exactly what it cannot say, and the
+// block is closed as expected. The refusal stands; its stated reason is the
+// escape.
+func TestTheEscapedKeyRefusalStatesOnlyWhatItKnows(t *testing.T) {
+	for name, doc := range map[string]string{
+		"a line-anchored escaped key":  "---\nid: spc-1\n\"C:\\tmp\\x\": v\n---\n\n# A record\n",
+		"an escaped key in a flow map": "---\nid: spc-1\nmeta: {a: 1, \"C:\\tmp\\x\": v}\n---\n\n# A record\n",
+	} {
+		err := refuses(t, "spc-1-a-record.md", doc, map[string]bool{"origin": true}, nil)
+		if err == nil {
+			t.Errorf("%s: an escaped key was admitted", name)
+			continue
+		}
+		msg := err.Error()
+		for _, want := range []string{"spc-1-a-record.md", "line 3", "escape", `C:\\tmp\\x`} {
+			if !strings.Contains(msg, want) {
+				t.Errorf("%s: the refusal does not state %q: %v", name, want, err)
+			}
+		}
+		for _, claim := range []string{"excluded key", "not closed"} {
+			if strings.Contains(msg, claim) {
+				t.Errorf("%s: the refusal asserts %q, which is not known of an escape: %v", name, claim, err)
+			}
+		}
+	}
+
+	// The general refusal names the key and the line, and claims no block shape
+	// it did not observe: a quoted key survives redaction in a block closed
+	// exactly as the field reader expects.
+	const quoted = "---\nid: spc-1\n\"origin\": ABCD-WARM-ORIGIN\n---\n\n# A record\n"
+	err := refuses(t, "spc-1-a-record.md", quoted, map[string]bool{"origin": true}, nil)
+	if err == nil {
+		t.Fatal("a quoted excluded key was admitted")
+	}
+	for _, want := range []string{"spc-1-a-record.md", `"origin"`, "line 3"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the refusal does not state %q: %v", want, err)
+		}
+	}
+	if strings.Contains(err.Error(), "not closed") {
+		t.Errorf("the refusal asserts a block shape the document does not have: %v", err)
+	}
+}

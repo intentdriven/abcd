@@ -405,9 +405,23 @@ func verifyRedaction(rel, original, redacted string, keys, headings map[string]b
 				"whose keys this package cannot resolve without becoming a YAML parser; a record has no "+
 				"reason to use one, so it is refused rather than guessed at", rel, shape, line)
 		}
-		if line, key, ok := excludedKeyInFirstBlock(lines, fenced, keys); ok {
+		// Each message states what the scan observed and nothing more. The one
+		// message both findings shared asserted an excluded key and a block closed
+		// the wrong way, and for an escape neither is known: the key is undecoded
+		// and the block may be closed exactly as expected (iss-2608301421381157).
+		// Nor is a block shape known for an excluded key: a quoted, indented or
+		// flow spelling survives in a block closed as expected, because the field
+		// reader reports none of them as the key and the redactor removes only what
+		// it reports.
+		if line, key, escaped, ok := excludedKeyInFirstBlock(lines, fenced, keys); ok {
+			if escaped {
+				return fmt.Errorf("reading: %s spells the double-quoted frontmatter key %q at line %d with a "+
+					"YAML escape; this package does not decode escapes, so which key it names is unknown, "+
+					"and it is refused rather than guessed at", rel, key, line)
+			}
 			return fmt.Errorf("reading: %s still carries the excluded key %q at line %d after redaction; "+
-				"the frontmatter block is not closed the way the field reader expects it", rel, key, line)
+				"the field reader did not report it as a key, so the redactor did not remove it",
+				rel, key, line)
 		}
 	}
 	if len(headings) == 0 {
@@ -1599,10 +1613,16 @@ func firstBlockRange(lines []string, fenced []bool) (int, int, bool) {
 // dashes delimits it, not an exact `---`, because that is the rule the
 // frontmatter stripper applies and the gap between the two rules is where a key
 // survives.
-func excludedKeyInFirstBlock(lines []string, fenced []bool, keys map[string]bool) (int, string, bool) {
+//
+// The third return says the finding is an ESCAPED double-quoted key rather than
+// an excluded one. The two are refused for different reasons and are reported
+// that way: an excluded key is a name this package read, while an escape is a
+// name it declined to decode, so which key it spells is exactly what it does not
+// know (iss-2608301421381157).
+func excludedKeyInFirstBlock(lines []string, fenced []bool, keys map[string]bool) (int, string, bool, bool) {
 	open, closed, ok := firstBlockRange(lines, fenced)
 	if !ok {
-		return 0, "", false
+		return 0, "", false, false
 	}
 	end := len(lines)
 	if closed >= 0 {
@@ -1625,12 +1645,12 @@ func excludedKeyInFirstBlock(lines []string, fenced []bool, keys map[string]bool
 		} {
 			for _, key := range submatches(m) {
 				if keys[key] {
-					return i + 1, key, true
+					return i + 1, key, false, true
 				}
 			}
 		}
 		if key, ok := escapedQuotedKey(lines[i]); ok {
-			return i + 1, key, true
+			return i + 1, key, true, true
 		}
 		// The flow scan runs UNANCHORED over the line with its quoted scalars
 		// blanked. Blanking is what closes the false positive — a quoted reason
@@ -1652,10 +1672,10 @@ func excludedKeyInFirstBlock(lines []string, fenced []bool, keys map[string]bool
 			// wherever the key stands, and escapedQuotedKey below reaches only
 			// the line-anchored spelling of it.
 			if tok[0] == '"' && strings.Contains(name, `\`) {
-				return i + 1, name, true
+				return i + 1, name, true, true
 			}
 			if keys[name] {
-				return i + 1, name, true
+				return i + 1, name, false, true
 			}
 		}
 		scan := bare
@@ -1665,7 +1685,7 @@ func excludedKeyInFirstBlock(lines []string, fenced []bool, keys map[string]bool
 		for _, m := range flowKeyRe.FindAllStringSubmatch(scan, -1) {
 			for _, key := range submatches(m) {
 				if keys[key] {
-					return i + 1, key, true
+					return i + 1, key, false, true
 				}
 			}
 		}
@@ -1675,7 +1695,7 @@ func excludedKeyInFirstBlock(lines []string, fenced []bool, keys map[string]bool
 			depth = 0
 		}
 	}
-	return 0, "", false
+	return 0, "", false, false
 }
 
 // sectionSpan is the half-open line range one heading OWNS: the heading itself
