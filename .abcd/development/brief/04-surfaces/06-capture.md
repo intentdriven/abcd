@@ -310,15 +310,9 @@ Promotion, resolving and marking wontfix write the conjecture they were given in
 append-only `## Grounds` section in the record body, one top-level bullet per
 entry in the form `- <token>: <text>`. A wontfix that was given no grounds at
 all still gets a bullet, because a wontfix is the non-action the `declined`
-token names. The one exception is a body that leaves an HTML comment or a fence
-open: the opener masks every line below it, so no appended bullet can be read.
-That wontfix still moves the record, writes no bullet, and warns naming the
-construct and its body line, because the bullet would only have copied the
-reason `wontfix_reason` already holds. Grounds the operator supplies over such
-a body are refused on every route, naming the same construct and line.
-
-Appending rather than setting is the point: a later triage route adds a bullet
-beside the one an earlier route recorded, and neither overwrites the other. The section is held by `internal/core/grounds` per adr-57, and
+token names. Appending rather than setting is the point: a later triage route
+adds a bullet beside the one an earlier route recorded, and neither overwrites
+the other. The section is held by `internal/core/grounds` per adr-57, and
 `record_schema` blocks a frontmatter `grounds:` key by naming this section as
 where the value belongs. It also blocks a top-level bullet in the section that
 does not parse as `- <token>: <text>`, on an issue or an intent record: the
@@ -327,6 +321,14 @@ otherwise be no recorded ground to any surface while the record reads as
 carrying one. Which bullets the reader drops is `internal/core/grounds`'s own
 answer, so the gate and the reader cannot disagree about it, and a paragraph of
 prose under the heading is not a bullet and is not judged.
+
+A body that leaves an HTML comment or a fence open is refused on every route
+that would append a bullet, a wontfix included, exit 2 and nothing written: the
+opener masks every line below it, so the bullet could not be read back. The
+refusal names the construct and its body line, and the repair is the hand edit:
+close or remove the opener in a text editor, then re-run the verb
+(iss-2608301908270888). A resolve or a promote given no grounds appends nothing,
+so it acts.
 
 **The grounds text is gated on substance, not only on grammar.** A value that
 parses as `<token>: <text>` is still refused, exit 2 and nothing written, unless

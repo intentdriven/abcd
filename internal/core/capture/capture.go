@@ -272,13 +272,6 @@ type TransitionResult struct {
 	// issue has moved and the transition stands, so the surface prints it
 	// loudly, and record-lint's links_resolve names any link left behind.
 	RelinkError string `json:"relink_error,omitempty"`
-	// GroundsNotWritten is non-empty when a wontfix landed WITHOUT the
-	// `declined:` entry it derives from its reason, and says why: the record's
-	// body leaves an opener unclosed, which masks every line an append could add,
-	// so the entry could not read back (iss-2608301908270888). The reason itself
-	// is on the record, in wontfix_reason, which is what the entry would have
-	// copied. The surface prints it; it is not an error.
-	GroundsNotWritten string `json:"grounds_not_written,omitempty"`
 }
 
 // ListRequest queries one state (or "all").

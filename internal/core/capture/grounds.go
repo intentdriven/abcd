@@ -140,7 +140,7 @@ func wontfixGrounds(repoRoot, raw, reason string) (g grounds.Grounds, redacted i
 func appendGrounds(verb, content string, g grounds.Grounds) (string, error) {
 	updated, err := grounds.AppendToRecord(content, g)
 	if err != nil {
-		return "", fmt.Errorf("%s: %w: %w", verb, ErrGroundsRefused, err)
+		return "", fmt.Errorf("%s: %w: %v", verb, ErrGroundsRefused, err)
 	}
 	return updated, nil
 }

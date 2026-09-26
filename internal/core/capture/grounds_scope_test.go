@@ -220,17 +220,16 @@ func TestAFrontmatterCommentMarkerDoesNotBlindTheRecord(t *testing.T) {
 	}
 }
 
-// TestEveryTriageRouteActsOnALockedBody is iss-2608301908270888. A body carrying
-// an opener nothing closes masks every line below it, so no appended grounds
-// entry can read back. Resolve and promote record grounds only when given them,
-// so without --grounds they already act; wontfix stamped a `declined:` entry
-// DERIVED from its reason and so refused on every attempt, and the only exit was
-// a hand edit. A derived entry is a copy of the reason the record already
-// carries in wontfix_reason, so the wontfix now lands without it and says, in
-// the result, which construct and line kept it out. Grounds the operator SUPPLIES
-// are still refused, naming the same line: the operator asked for a record the
-// reader could not show them.
-func TestEveryTriageRouteActsOnALockedBody(t *testing.T) {
+// TestALockedBodyRefusesWhatWouldWriteGroundsAndNothingElse is
+// iss-2608301908270888 as the 2026-08-31 ruling settled it: a body that leaves an
+// opener unclosed masks every line below it, so a grounds entry appended there
+// cannot read back, and refusing is correct — the hand edit is the repair. So
+// every route that WOULD write an entry refuses, a wontfix included, since it
+// derives a `declined:` entry from its reason when given no grounds, and nothing
+// moves. The refusal names the construct, its body line and the exit: close or
+// remove the opener in a text editor, then re-run. The routes that write no
+// entry — resolve and promote given no grounds — have nothing to refuse and act.
+func TestALockedBodyRefusesWhatWouldWriteGroundsAndNothingElse(t *testing.T) {
 	for _, lock := range []struct {
 		name  string
 		apply func(t *testing.T, ir, issID string)
@@ -243,32 +242,32 @@ func TestEveryTriageRouteActsOnALockedBody(t *testing.T) {
 			})
 		}, "HTML comment"},
 	} {
+		refused := func(t *testing.T, ir, issID string, err error) {
+			t.Helper()
+			if err == nil {
+				t.Fatal("the route acted over a locked body, want a refusal")
+			}
+			for _, frag := range []string{lock.frag, "body line", "text editor", "re-run", "nothing written"} {
+				if !strings.Contains(err.Error(), frag) {
+					t.Fatalf("the refusal does not name %q: %v", frag, err)
+				}
+			}
+			if _, status, ferr := findIssue(ir, issID); ferr != nil || status != StateOpen {
+				t.Fatalf("after the refusal the record is in %q (%v), want it left in open/", status, ferr)
+			}
+		}
 		t.Run(lock.name+"/wontfix derives", func(t *testing.T) {
 			repo, ir, issID := promoteFixture(t, "the loader drops rules silently when the config is stale")
 			lock.apply(t, ir, issID)
-			res, err := Wontfix(WontfixRequest{RepoRoot: repo, IssuesRoot: ir, ID: issID, Reason: "superseded by the loader rewrite"})
-			if err != nil {
-				t.Fatalf("Wontfix over a locked body refused: %v", err)
-			}
-			if res.ToStatus != StateWontfix {
-				t.Fatalf("Wontfix moved the record to %q, want wontfix", res.ToStatus)
-			}
-			if !strings.Contains(res.GroundsNotWritten, lock.frag) || !strings.Contains(res.GroundsNotWritten, "body line") {
-				t.Fatalf("the result does not say which construct and line kept the entry out: %q", res.GroundsNotWritten)
-			}
-			iss := readIssue(t, ir, issID)
-			if iss.WontfixReason != "superseded by the loader rewrite" {
-				t.Fatalf("the reason is not on the record: %+v", iss)
-			}
+			_, err := Wontfix(WontfixRequest{RepoRoot: repo, IssuesRoot: ir, ID: issID, Reason: "superseded by the loader rewrite"})
+			refused(t, ir, issID, err)
 		})
 		t.Run(lock.name+"/wontfix with supplied grounds", func(t *testing.T) {
 			repo, ir, issID := promoteFixture(t, "the loader drops rules silently when the config is stale")
 			lock.apply(t, ir, issID)
 			_, err := Wontfix(WontfixRequest{RepoRoot: repo, IssuesRoot: ir, ID: issID,
 				Reason: "superseded by the loader rewrite", Grounds: "declined: the rewrite retires the loader this record is about"})
-			if err == nil || !strings.Contains(err.Error(), lock.frag) || !strings.Contains(err.Error(), "body line") {
-				t.Fatalf("Wontfix with supplied grounds over a locked body = %v, want a refusal naming the construct and line", err)
-			}
+			refused(t, ir, issID, err)
 		})
 		t.Run(lock.name+"/resolve without grounds", func(t *testing.T) {
 			repo, ir, issID := promoteFixture(t, "the loader drops rules silently when the config is stale")
@@ -276,6 +275,17 @@ func TestEveryTriageRouteActsOnALockedBody(t *testing.T) {
 			if _, err := Resolve(ResolveRequest{RepoRoot: repo, IssuesRoot: ir, ID: issID,
 				Resolution: "closed by the fix under review", Impact: "fix"}); err != nil {
 				t.Fatalf("Resolve without grounds over a locked body refused: %v", err)
+			}
+		})
+		t.Run(lock.name+"/promote without grounds", func(t *testing.T) {
+			repo, ir, issID := promoteFixture(t, "the loader drops rules silently when the config is stale")
+			lock.apply(t, ir, issID)
+			res, err := Promote(PromoteRequest{RepoRoot: repo, IssuesRoot: ir, ID: issID})
+			if err != nil {
+				t.Fatalf("Promote without grounds over a locked body refused: %v", err)
+			}
+			if res.IntentID == "" {
+				t.Fatalf("Promote without grounds minted no intent: %+v", res)
 			}
 		})
 	}
