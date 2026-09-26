@@ -417,9 +417,11 @@ hook as a running one.
 
 Two writes deserve their own note. The visibility step rewrites the ignore block
 under the config-change approval already given, with no confirmation of its own;
-its one extra line is a post-hoc note when a public fence had to be narrowed,
+its receipt adds a post-hoc note when a public fence had to be narrowed,
 because an ignore rule cannot untrack committed records, so the reader learns
-from the receipt that the committed record tiers stay published (iss-255). And a
+from the receipt that the committed record tiers stay published (iss-255). Like
+every install write, a block it could not write (a symlinked `.gitignore`, say)
+is a note naming the file and the reason, never a silent omission. And a
 remote URL recorded in the registry carries no credential: it is scrubbed where
 the identity is derived, scrubbed again as the index is *loaded* so every
 rewrite drops a credential from every entry rather than only the one being
