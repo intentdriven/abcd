@@ -84,3 +84,47 @@ func TestMarkerBlockFailureIsNoted(t *testing.T) {
 		}
 	}
 }
+
+// TestSessionStoreFailureIsNoted is the history step's share of the rule the
+// brief states for every install write: a session store abcd could not create
+// is a note naming the store and the reason, never a silent omission. Both
+// halves are driven — the store's directory refused (a file where ~/.abcd
+// belongs) and a home directory the process cannot name at all.
+func TestSessionStoreFailureIsNoted(t *testing.T) {
+	t.Run("the store cannot be created", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+		if err := os.WriteFile(filepath.Join(home, ".abcd"), []byte("not a directory\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		a := &applyCtx{cwd: t.TempDir(), approved: map[GapCategory]bool{SafeAutocreate: true}}
+		a.stepHistory()
+		if !notesCarryAll(a.notes, "session store", "not a directory") {
+			t.Errorf("no note says the session store was not created, and why; notes: %v", a.notes)
+		}
+	})
+	t.Run("the transcript store cannot be created", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+		if err := os.MkdirAll(filepath.Join(home, ".abcd"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(home, ".abcd", "transcripts"), []byte("not a directory\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		a := &applyCtx{cwd: t.TempDir(), approved: map[GapCategory]bool{SafeAutocreate: true}}
+		a.det.RepoIdentity.RootSHA = strings.Repeat("a", 40)
+		a.stepHistory()
+		if !notesCarryAll(a.notes, "session store", "transcripts", "not a real directory") {
+			t.Errorf("no note says the transcript store was not created, and why; notes: %v", a.notes)
+		}
+	})
+	t.Run("the home directory is unknown", func(t *testing.T) {
+		t.Setenv("HOME", "")
+		a := &applyCtx{cwd: t.TempDir(), approved: map[GapCategory]bool{SafeAutocreate: true}}
+		a.stepHistory()
+		if !notesCarryAll(a.notes, "session store", "HOME") {
+			t.Errorf("no note says the session store was not created, and why; notes: %v", a.notes)
+		}
+	})
+}

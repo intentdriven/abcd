@@ -742,16 +742,17 @@ func (a *applyCtx) stepHistory() {
 	if !a.approved[UserState] && !a.approved[SafeAutocreate] {
 		return
 	}
-	if a.approved[UserState] || a.approved[SafeAutocreate] {
-		if wrote, err := bootstrapHistory(); err == nil && wrote {
-			if root, e := historyRoot(); e == nil {
-				a.note(writeSessionStore, filepath.Join(root, "index.json"))
-			}
-		}
-	}
+	// Like every install write, a store it could not create is a note naming
+	// the store and the reason, never a silent omission.
 	root, err := historyRoot()
 	if err != nil {
+		a.refuse("could not set up this machine's session store: " + errText(err))
 		return
+	}
+	if wrote, err := bootstrapHistory(); err != nil {
+		a.refuse("could not set up this machine's session store (" + displayPath(root) + "): " + errText(err))
+	} else if wrote {
+		a.note(writeSessionStore, filepath.Join(root, "index.json"))
 	}
 	sha := a.det.RepoIdentity.RootSHA
 	if sha == "" {
@@ -759,7 +760,10 @@ func (a *applyCtx) stepHistory() {
 	}
 	repoDir := filepath.Join(root, sha)
 	store, storeErr := history.Resolve(a.cwd, sha)
-	if storeErr == nil && a.approved[SafeAutocreate] {
+	switch {
+	case storeErr != nil && a.approved[SafeAutocreate]:
+		a.refuse("could not set up this machine's session store for this repository: " + errText(storeErr))
+	case storeErr == nil && a.approved[SafeAutocreate]:
 		a.note(writeSessionStore, store.Records)
 	}
 	metaPath := filepath.Join(repoDir, "meta.json")
