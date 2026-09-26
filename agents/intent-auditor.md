@@ -317,6 +317,9 @@ the wording is.
 
 ## Output format (emit EXACTLY this — one fenced json block, no prose around it)
 
+The request's `## Findings shape` section states the same shape, rendered from
+the structure the ingest decodes; where the two ever differ, the request wins.
+
 ```json
 {
   "_type": "abcd/intent-consistency-findings/v1",

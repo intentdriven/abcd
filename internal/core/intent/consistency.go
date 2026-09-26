@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"sort"
 	"strconv"
@@ -479,10 +480,39 @@ func consistencyPromptBody(c consistencyCorpus, rcp string) string {
 	}
 	b.WriteString("\n## Rubric (authority; the contract the ingest enforces)\n\n")
 	b.WriteString(consistencyRubricText())
-	b.WriteString("\nRun the intent-auditor agent's Role 2 over the corpus file, then ingest\n")
-	b.WriteString("its findings JSON:\n\n")
+	b.WriteString("\n## Findings shape (authority; the fields the ingest decodes, and no other)\n\n")
+	b.WriteString(consistencyShape(rcp))
+	b.WriteString("\nRun the intent-auditor agent's Role 2 over the corpus file; its findings\n")
+	b.WriteString("JSON takes the shape above. Ingest it with:\n\n")
 	fmt.Fprintf(&b, "    abcd intent consistency ingest --findings-json <path>   # receipt %s\n", rcp)
 	return b.String()
+}
+
+// consistencyShapeHints are the placeholders the stated findings shape shows,
+// keyed by JSON name; the class and severity vocabularies are the ones the
+// rubric states and the ingest checks.
+func consistencyShapeHints(rcp string) map[string]string {
+	return map[string]string{
+		"_type":       ConsistencyType,
+		"receipt_id":  rcp,
+		"rubric_hash": "sha256:<the Provenance block's rubric_hash>",
+		"prompt_hash": "sha256:<the Provenance block's prompt_hash>",
+		"class":       strings.Join(ConsistencyClasses, " | "),
+		"severity":    strings.Join(issueschema.Severities, " | "),
+		"path":        "<a path the corpus manifest lists>",
+		"quote":       "<verbatim from that document, at least 12 characters>",
+	}
+}
+
+// consistencyShape renders the findings payload the consistency ingest decodes
+// as one example object (iss-2609262011046013), from the struct itself, as the
+// fidelity request states its verdict. A finding shows both of its ends,
+// because the ingest requires exactly two.
+func consistencyShape(rcp string) string {
+	return renderShape(reflect.TypeOf(consistencyPayload{}), shapeSpec{
+		hints: consistencyShapeHints(rcp),
+		lens:  map[string]int{"ends": 2},
+	})
 }
 
 // consistencyPolicyFor computes the provenance the host issues for one request.

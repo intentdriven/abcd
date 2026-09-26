@@ -155,6 +155,7 @@ func TestShapeHintsNameRealFields(t *testing.T) {
 		hints map[string]string
 	}{
 		{"verdict", reflect.TypeOf(verdict{}), verdictShapeHints("rcp-000000000000")},
+		{"consistency findings", reflect.TypeOf(consistencyPayload{}), consistencyShapeHints("rcp-000000000000")},
 	} {
 		fields := map[string]bool{}
 		var walk func(rt reflect.Type)
@@ -176,5 +177,36 @@ func TestShapeHintsNameRealFields(t *testing.T) {
 				t.Errorf("%s shape hint %q names no field of the payload", c.name, name)
 			}
 		}
+	}
+}
+
+// TestConsistencyRequestCarriesTheFindingsShape is iss-2609262011046013, the
+// Role 2 sibling of iss-2609181121305984: the consistency request stated the
+// classes and the rubric but no findings shape. It now carries one, rendered
+// from the struct the consistency ingest decodes, with both ends of a finding
+// shown because the ingest requires exactly two.
+func TestConsistencyRequestCarriesTheFindingsShape(t *testing.T) {
+	root := consistencyRepo(t).Root()
+	em, err := EmitConsistency(root, "", ConsistencyEmitOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rb, err := os.ReadFile(filepath.Join(root, em.RequestPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, body := requestSection(t, string(rb), "Findings shape")
+	shape := firstCodeBlock(body)
+	dec := json.NewDecoder(strings.NewReader(shape))
+	dec.DisallowUnknownFields()
+	var p consistencyPayload
+	if err := dec.Decode(&p); err != nil {
+		t.Fatalf("the stated shape does not decode as the ingest decodes: %v\n%s", err, shape)
+	}
+	if p.Type != ConsistencyType || p.ReceiptID != em.ReceiptID {
+		t.Fatalf("the stated shape carries _type %q and receipt_id %q, want %q and %q", p.Type, p.ReceiptID, ConsistencyType, em.ReceiptID)
+	}
+	if len(p.Findings) != 1 || len(p.Findings[0].Ends) != 2 {
+		t.Fatalf("the stated shape shows %+v, want one finding with its two ends", p.Findings)
 	}
 }

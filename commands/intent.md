@@ -897,7 +897,8 @@ title, press release, scope, decisions and rule — and the second narrows it to
 one intent against the rest. Neither judges anything: each assembles the corpus
 into `corpus_path` and writes the request to `request_path`, both under
 `.abcd/.work.local/reviews/`, names the commit the tree stood at
-(`review_of_commit`), and writes nothing else. A superseded or unknown intent is
+(`review_of_commit`), and writes nothing else. The request carries a
+`## Findings shape` section rendered from the structure the ingest decodes. A superseded or unknown intent is
 refused. The corpus is read from the working tree, so when a corpus document is
 edited, untracked or deleted relative to that commit the emit says `dirty: true`,
 names the paths in `dirty_paths`, and the report carries the mark beside its pin
