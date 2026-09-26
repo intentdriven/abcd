@@ -121,15 +121,19 @@ const maxListPages = 100
 // perPage entries at a time and reports the whole list's total_count, so a read
 // stops when it holds that many and fails when it cannot: a page that cannot be
 // read, or that comes back short of the total, is an error rather than a
-// shorter list. Every list setup reads decides whether it writes (an
-// environment read as absent is created through the endpoint that replaces its
-// whole protection set), so a partial list is never an answer.
+// shorter list. The first page's total is held for the whole read, and a later
+// page reporting another is an error too: a list that changed between two page
+// reads has shifted entries across the page boundary, so one was never seen
+// even when the count served matches the later total (iss-2609261241117925).
+// Every list setup reads decides whether it writes (an environment read as
+// absent is created through the endpoint that replaces its whole protection
+// set), so a partial list is never an answer.
 func (g *ghForge) listAll(path, key, what string, each func(json.RawMessage) error) error {
 	sep := "?"
 	if strings.Contains(path, "?") {
 		sep = "&"
 	}
-	got := 0
+	got, first := 0, -1
 	for page := 1; ; page++ {
 		if page > maxListPages {
 			return fmt.Errorf("the %s list runs past %d pages, so it was not read", what, maxListPages)
@@ -143,6 +147,11 @@ func (g *ghForge) listAll(path, key, what string, each func(json.RawMessage) err
 		var total *int
 		if json.Unmarshal(out, &doc) != nil || json.Unmarshal(doc["total_count"], &total) != nil || total == nil {
 			return fmt.Errorf("the %s response could not be read as JSON", what)
+		}
+		if first < 0 {
+			first = *total
+		} else if *total != first {
+			return fmt.Errorf("the forge reported %d %s on the first page and %d on page %d, so the list changed while it was read and was not read whole", first, what, *total, page)
 		}
 		// An empty list may arrive with no entries field at all.
 		if raw, ok := doc[key]; (ok || *total > 0) && json.Unmarshal(raw, &entries) != nil {

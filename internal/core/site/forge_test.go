@@ -28,6 +28,9 @@ type fakeGHAPI struct {
 	// shortPage makes one page of one list come back empty, as a list that
 	// shrank between two page reads would.
 	shortPage map[string]int
+	// beforePage runs before one page of one list is served, so a test can
+	// change the list between two page reads the way a concurrent write would.
+	beforePage map[string]func(page int)
 	// fail makes every read of a path fail.
 	fail   map[string]error
 	writes []string
@@ -38,6 +41,7 @@ func newFakeGHAPI() *fakeGHAPI {
 	return &fakeGHAPI{
 		repo: "example-owner/example-site", lists: map[string][]map[string]any{}, objects: map[string]map[string]any{},
 		failPage: map[string]int{}, shortPage: map[string]int{}, fail: map[string]error{},
+		beforePage: map[string]func(int){},
 	}
 }
 
@@ -92,6 +96,9 @@ func (f *fakeGHAPI) gh(_ string, stdin []byte, args ...string) ([]byte, error) {
 	}
 	if v, err := strconv.Atoi(q.Get("page")); err == nil {
 		page = v
+	}
+	if hook := f.beforePage[path]; hook != nil {
+		hook(page)
 	}
 	if f.failPage[path] == page {
 		return nil, fmt.Errorf("fake gh: HTTP 502 for page %d of %s", page, path)
@@ -219,6 +226,41 @@ func TestAListThatCannotBeReadWholeIsAnError(t *testing.T) {
 			f.shortPage[p] = 2
 			if err := read(f.forge()); err == nil {
 				t.Fatal("a list that came back short of its total read as whole")
+			}
+		})
+	}
+}
+
+// TestAListWhoseTotalMovesBetweenPagesIsAnError: a list that shrinks between
+// two page reads shifts an entry from the second page onto the first, where it
+// is never read, and the second page's smaller total then matches what was
+// served (iss-2609261241117925). The read holds the first page's total and
+// fails closed on a page that reports another, so a concurrent delete cannot
+// read an existing environment as absent and have setup rewrite it.
+func TestAListWhoseTotalMovesBetweenPagesIsAnError(t *testing.T) {
+	for name, delta := range map[string]int{"shrinks": -1, "grows": +1} {
+		t.Run(name, func(t *testing.T) {
+			f := newFakeGHAPI()
+			p := f.envs()
+			for i := 0; i < 150; i++ {
+				f.lists[p] = append(f.lists[p], map[string]any{"name": fmt.Sprintf("env-%03d", i)})
+			}
+			f.beforePage[p] = func(page int) {
+				if page != 2 {
+					return
+				}
+				if delta < 0 {
+					f.lists[p] = append(f.lists[p][:100:100], f.lists[p][101:]...)
+				} else {
+					f.lists[p] = append(f.lists[p], map[string]any{"name": "env-new"})
+				}
+			}
+			envs, err := f.forge().Environments(t.Context())
+			if err == nil {
+				t.Fatalf("a list whose total moved from 150 to %d between pages read as whole (%d environments)", 150+delta, len(envs))
+			}
+			if !strings.Contains(err.Error(), "150") || !strings.Contains(err.Error(), strconv.Itoa(150+delta)) {
+				t.Errorf("the refusal names neither total: %v", err)
 			}
 		})
 	}
