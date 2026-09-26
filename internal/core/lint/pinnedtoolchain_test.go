@@ -195,3 +195,34 @@ func TestPreflightRunsTheDeclaredToolchain(t *testing.T) {
 			"could not be fetched", prereqs, format)
 	}
 }
+
+// TestPreflightArmsRecordLintAsCIDoes holds preflight's record-lint to the range
+// CI's step arms it with (iss-2609021152026246). CI passes `-agent-diff
+// <base>...HEAD`, which arms agent_contract's unbumped-edit check; preflight
+// passed nothing, so a changed agent prompt that bumped no prompt_version
+// passed three green preflights and was refused in the merge queue (pull
+// request 606).
+func TestPreflightArmsRecordLintAsCIDoes(t *testing.T) {
+	root := filepath.Join("..", "..", "..")
+	makefile := readRepoFile(t, root, "Makefile")
+	workflow := readRepoFile(t, root, ".github/workflows/ci.yml")
+
+	ciStep, ok := workflowStepBlock(workflow, "Record-lint (drift gate)")
+	if !ok {
+		t.Fatal(".github/workflows/ci.yml defines no `Record-lint (drift gate)` step")
+	}
+	if !strings.Contains(ciStep, `-agent-diff "${BASE_SHA}...HEAD"`) {
+		t.Fatalf("CI's record-lint step no longer arms `-agent-diff \"${BASE_SHA}...HEAD\"`; "+
+			"re-derive what preflight must match:\n\n%s", ciStep)
+	}
+	lintRecipe, ok := makeRecipe(makefile, "record-lint")
+	if !ok {
+		t.Fatal("the Makefile declares no `record-lint:` target")
+	}
+	if !strings.Contains(lintRecipe, "go run ./cmd/record-lint -agent-diff origin/main...HEAD") {
+		t.Errorf("the `record-lint:` recipe does not arm agent_contract over origin/main...HEAD, "+
+			"the merge-base range CI's step passes as ${BASE_SHA}...HEAD:\n\n%s\n\n"+
+			"Unarmed, the unbumped-prompt check is a no-op locally and fires first in the merge "+
+			"queue.", lintRecipe)
+	}
+}

@@ -145,8 +145,16 @@ check-attribution:
 # Deterministic drift gate for the .abcd/development design record (first slice
 # of internal/core/lint). Blocking: any record drift (stale tool names, dropped
 # concepts, lifecycle or reference breakage) fails preflight and CI.
+#
+# `-agent-diff` arms agent_contract's unbumped-edit check — a changed agent
+# prompt must bump its prompt_version and add its agents/CHANGELOG.md entry —
+# over the branch's own changes, the merge-base range `origin/main...HEAD`. CI's
+# step passes the same three-dot range from its base commit. Unarmed, the check
+# is a no-op, and a prompt edit passed three green preflights to be refused in
+# the merge queue (iss-2609021152026246). Like lint-issues and lint-decisions,
+# it needs origin/main.
 record-lint:
-	@go run ./cmd/record-lint
+	@go run ./cmd/record-lint -agent-diff origin/main...HEAD
 
 # Promote-join drift gate (itd-4 AC3). Blocking: an intent naming a record in
 # `related_issues` that does not name it back, a dangling id on either side, a
