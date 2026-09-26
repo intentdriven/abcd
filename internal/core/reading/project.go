@@ -239,6 +239,11 @@ var (
 	// flowExplicitKeyRe matches YAML's explicit-key indicator inside a flow
 	// mapping: a `?` following `{` or `,`. Same class, same answer.
 	flowExplicitKeyRe = regexp.MustCompile(`[{,]\s*\?`)
+	// flowAliasKeyRe matches an alias where a flow collection's key can stand:
+	// a `*` following `{`, `[` or `,`, in a line whose quoted scalars are
+	// blanked. Node properties are allowed between the two. YAML gives an alias
+	// none, but the floor does not rest a refusal on a reader refusing one.
+	flowAliasKeyRe = regexp.MustCompile(`[{\[,]\s*(?:[!&][^\s{}\[\],]*\s+)*\*`)
 )
 
 // One shape this floor does NOT see, disclosed rather than claimed: a title
@@ -1280,6 +1285,18 @@ func excludedRawTitle(readings []string, bounds []*rawHeadingBounds, p int, name
 // any explicit-key line the readable-key pattern cannot fully read is a key
 // whose name this package is not entitled to assume.
 //
+// An ALIAS in a key position is refused wherever that position is: at line
+// start, behind a block indicator (a compact mapping there, nestedBlockEntry),
+// in an explicit key (the unreadable-key rule), and behind `{`, `[` or `,`. An
+// anchor may sit on any node, a value included, so `k: &a origin` then
+// `*a : X` is the key `origin` to YAML (iss-2609261900095459). The rule is on
+// the alias rather than the anchor because it is the smaller complete one:
+// every node position can carry an anchor, while a key position is a short,
+// closed list, and a `*` can never open a plain scalar, so one there is an
+// alias and nothing else. An alias in a VALUE position is admitted: it copies a
+// node whose own text the floor has already read where the anchor sits, and a
+// key inside that node was refused there.
+//
 // The block BOUNDS matter for the same reason the keys do. The frontmatter
 // stripper closes on `---`, so a block closed by `...`, or opened and never
 // closed, makes the offset it reports overshoot into the body — and a scan that
@@ -1301,6 +1318,7 @@ func unresolvableFrontmatterShape(lines []string, fenced []bool) (int, string, b
 			continue
 		}
 		trimmed := strings.TrimLeft(lines[i], " \t")
+		bare, _ := blankQuoted(lines[i])
 		switch {
 		// The fence delimiter is first because it is the shape that used to
 		// switch the rest of this scan off. It can no longer do so — the mask
@@ -1314,6 +1332,10 @@ func unresolvableFrontmatterShape(lines []string, fenced []bool) (int, string, b
 			return i + 1, "a YAML tag", true
 		case strings.HasPrefix(trimmed, "&"):
 			return i + 1, "a YAML anchor", true
+		case strings.HasPrefix(trimmed, "*"):
+			return i + 1, "a YAML alias as a key", true
+		case flowAliasKeyRe.MatchString(bare):
+			return i + 1, "a YAML alias where a flow collection's key can stand", true
 		case nestedBlockEntry(lines[i]) != "":
 			return i + 1, nestedBlockEntry(lines[i]), true
 		case flowExplicitKeyRe.MatchString(lines[i]):

@@ -506,6 +506,61 @@ func TestANestedMappingRefusesBehindEveryBlockIndicator(t *testing.T) {
 	}
 }
 
+// TestAnAliasInAKeyPositionRefuses (iss-2609261900095459). An anchor sits
+// wherever a node can, a value included, and an alias written where a key
+// stands IS that anchored scalar to YAML: `k: &a origin` then `*a : X` reads as
+// {origin: X}. The anchor refusal fired only at line start and behind a block
+// indicator, and nothing read `*` at all, so the key travelled. The refusal is
+// of the alias in every key position — line start, behind a block indicator,
+// behind `{`, `[` or `,` — whatever the anchored scalar says.
+func TestAnAliasInAKeyPositionRefuses(t *testing.T) {
+	const pre, post = "---\nid: spc-1\n", "---\n\n# A record\n"
+	for name, front := range map[string]string{
+		"an alias key at line start":          "k: &a origin\n*a : ABCD-WARM-ORIGIN\n",
+		"an alias key in a flow mapping":      "k: &a origin\nm: {*a : ABCD-WARM-ORIGIN}\n",
+		"an alias key after a flow comma":     "k: &a origin\nm: {x: 1, *a : ABCD-WARM-ORIGIN}\n",
+		"an alias pair in a flow sequence":    "k: &a origin\nm: [*a : ABCD-WARM-ORIGIN]\n",
+		"an alias key on a flow continuation": "k: &a origin\nm: {x: 1,\n  *a : ABCD-WARM-ORIGIN}\n",
+		"a comma-first flow continuation":     "k: &a origin\nm: {x: 1\n  , *a : ABCD-WARM-ORIGIN}\n",
+		"an alias key in a nested mapping":    "k: &a origin\nm:\n  *a : ABCD-WARM-ORIGIN\n",
+		"an anchor behind a tag":              "k: !!str &a origin\n*a : ABCD-WARM-ORIGIN\n",
+		"an anchor in a flow mapping's value": "m: {k: &a origin}\n*a : ABCD-WARM-ORIGIN\n",
+		"an anchor in a flow sequence":        "l: [&a origin]\n*a : ABCD-WARM-ORIGIN\n",
+		"a tag before a flow alias key":       "k: &a origin\nm: {!!str *a : ABCD-WARM-ORIGIN}\n",
+		"a CRLF alias key":                    "k: &a origin\r\n*a : ABCD-WARM-ORIGIN\r\n",
+		// Siblings refused before this change, kept refused.
+		"an alias as an explicit key":           "k: &a origin\n? *a\n: ABCD-WARM-ORIGIN\n",
+		"an alias key in a sequence entry":      "k: &a origin\nlinks:\n  - *a : ABCD-WARM-ORIGIN\n",
+		"an alias key behind an explicit value": "k: &a origin\n? meta\n: *a : ABCD-WARM-ORIGIN\n",
+		"a merge over an anchored flow map":     "base: &m {origin: ABCD-WARM-ORIGIN}\nuse:\n  <<: *m\n",
+		"a merge over an anchored block map":    "base: &m\n  origin: ABCD-WARM-ORIGIN\nuse:\n  <<: *m\n",
+	} {
+		err := refuses(t, "spc-1-a-record.md", pre+front+post, refusalKeys, refusalHeadings)
+		if err == nil {
+			t.Errorf("%s: admitted; the alias is an origin key to YAML and travels", name)
+			continue
+		}
+		if !strings.Contains(err.Error(), "spc-1-a-record.md") {
+			t.Errorf("%s: the refusal does not name the document: %v", name, err)
+		}
+	}
+
+	// The anti-vacuity half: an alias in a VALUE position copies a node whose
+	// own text the floor already read where the anchor sits, and an asterisk
+	// that is not an alias is prose.
+	for name, front := range map[string]string{
+		"an alias as a value":            "k: &a origin\nuse: *a\n",
+		"an alias in a sequence entry":   "k: &a origin\nlist:\n  - *a\n",
+		"a merge over a harmless map":    "base: &m {name: x}\nuse:\n  <<: *m\n",
+		"an asterisk in a quoted value":  "note: \"see [*] and {*a : b}\"\n",
+		"an asterisk inside a plain one": "note: a*b, c *d\n",
+	} {
+		if err := refuses(t, "spc-1-a-record.md", pre+front+post, refusalKeys, refusalHeadings); err != nil {
+			t.Errorf("%s was refused: %v", name, err)
+		}
+	}
+}
+
 // TestTheEscapedKeyRefusalStatesOnlyWhatItKnows (iss-2608301421381157). The
 // escaped-key refusal shared the excluded-key message, which asserted that the
 // document still carried an excluded key and that its block was not closed the
