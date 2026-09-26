@@ -1,0 +1,367 @@
+package openaiapi
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"sync/atomic"
+	"testing"
+	"time"
+)
+
+// testKey is shaped like a provider key so a leak is unmistakable in any
+// message a test inspects.
+const testKey = "sk-or-v1-0123456789abcdef-not-a-real-key"
+
+// fake is an OpenAI-compatible server that can fail every call. handler
+// answers each request; calls counts them, so a test can prove a refusal
+// reached no socket.
+type fake struct {
+	srv   *httptest.Server
+	calls atomic.Int32
+	last  atomic.Pointer[seen]
+}
+
+// seen is what the fake received on its last call.
+type seen struct {
+	method, path, auth, contentType string
+	body                            map[string]json.RawMessage
+}
+
+func newFake(t *testing.T, handler func(w http.ResponseWriter, r *http.Request, body map[string]json.RawMessage)) *fake {
+	t.Helper()
+	f := &fake{}
+	f.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		f.calls.Add(1)
+		raw, _ := io.ReadAll(r.Body)
+		var body map[string]json.RawMessage
+		_ = json.Unmarshal(raw, &body)
+		f.last.Store(&seen{method: r.Method, path: r.URL.Path, auth: r.Header.Get("Authorization"),
+			contentType: r.Header.Get("Content-Type"), body: body})
+		handler(w, r, body)
+	}))
+	t.Cleanup(f.srv.Close)
+	return f
+}
+
+// base is the fake's base URL in the /v1 shape a provider publishes.
+func (f *fake) base() string { return f.srv.URL + "/api/v1" }
+
+func completionBody(model, content string) string {
+	b, _ := json.Marshal(map[string]any{
+		"id": "gen-1", "object": "chat.completion", "model": model,
+		"choices": []any{map[string]any{"index": 0, "finish_reason": "stop",
+			"message": map[string]any{"role": "assistant", "content": content}}},
+	})
+	return string(b)
+}
+
+func ok(model, content string) func(http.ResponseWriter, *http.Request, map[string]json.RawMessage) {
+	return func(w http.ResponseWriter, _ *http.Request, _ map[string]json.RawMessage) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, completionBody(model, content))
+	}
+}
+
+func status(code int, body string) func(http.ResponseWriter, *http.Request, map[string]json.RawMessage) {
+	return func(w http.ResponseWriter, _ *http.Request, _ map[string]json.RawMessage) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(code)
+		_, _ = io.WriteString(w, body)
+	}
+}
+
+// jsonObject is an output contract that admits one JSON object with a
+// "verdict" string, the shape a host sub-agent's payload has.
+func jsonObject(b []byte) error {
+	var v struct {
+		Verdict string `json:"verdict"`
+	}
+	dec := json.NewDecoder(strings.NewReader(string(b)))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&v); err != nil {
+		return err
+	}
+	if v.Verdict == "" {
+		return errors.New("verdict is empty")
+	}
+	return nil
+}
+
+func request() Request {
+	return Request{
+		Model: "typesafe/jev-1.13",
+		Brief: Brief{Instructions: "You are the scribe. Emit one JSON object.", Input: "the request document"},
+	}
+}
+
+func mustClient(t *testing.T, base, key string, opts ...Option) *Client {
+	t.Helper()
+	c, err := New(base, key, opts...)
+	if err != nil {
+		t.Fatalf("New(%q): %v", base, err)
+	}
+	return c
+}
+
+// assertNoKey fails when the key reaches an error a caller could print.
+func assertNoKey(t *testing.T, err error) {
+	t.Helper()
+	if err != nil && strings.Contains(err.Error(), testKey) {
+		t.Fatalf("the key reached an error: %v", err)
+	}
+}
+
+// TestCompleteSendsTheBriefAndValidatesTheAnswer is criterion 1's call: the
+// host's brief goes over the chat-completions protocol as the system and user
+// messages, the key as a bearer token, the accepted settings as top-level
+// fields, and the answer comes back validated, with the model asked for and
+// the model the provider reported.
+func TestCompleteSendsTheBriefAndValidatesTheAnswer(t *testing.T) {
+	f := newFake(t, ok("typesafe/jev-1.13-20260915", `{"verdict":"yes"}`))
+	c := mustClient(t, f.base(), testKey)
+	req := request()
+	req.Settings = map[string]json.RawMessage{"temperature": json.RawMessage(`0`), "seed": json.RawMessage(`42`)}
+	res, err := c.Complete(context.Background(), req, jsonObject)
+	if err != nil {
+		t.Fatalf("Complete: %v", err)
+	}
+	if string(res.Content) != `{"verdict":"yes"}` {
+		t.Fatalf("content = %q", res.Content)
+	}
+	if res.ModelAsked != "typesafe/jev-1.13" || res.ModelReported != "typesafe/jev-1.13-20260915" {
+		t.Fatalf("models: asked %q, reported %q", res.ModelAsked, res.ModelReported)
+	}
+	got := f.last.Load()
+	if got.method != http.MethodPost || got.path != "/api/v1/chat/completions" {
+		t.Fatalf("request line = %s %s", got.method, got.path)
+	}
+	if got.auth != "Bearer "+testKey {
+		t.Fatal("the key was not sent as a bearer token")
+	}
+	if !strings.HasPrefix(got.contentType, "application/json") {
+		t.Fatalf("content type = %q", got.contentType)
+	}
+	var msgs []struct{ Role, Content string }
+	if err := json.Unmarshal(got.body["messages"], &msgs); err != nil {
+		t.Fatal(err)
+	}
+	if len(msgs) != 2 || msgs[0].Role != "system" || msgs[0].Content != req.Brief.Instructions ||
+		msgs[1].Role != "user" || msgs[1].Content != req.Brief.Input {
+		t.Fatalf("messages = %+v", msgs)
+	}
+	if string(got.body["model"]) != `"typesafe/jev-1.13"` || string(got.body["temperature"]) != "0" ||
+		string(got.body["seed"]) != "42" || string(got.body["stream"]) != "false" {
+		t.Fatalf("body = %v", got.body)
+	}
+}
+
+// TestNoKeyMeansNoAuthorizationHeader: a local server needs no key, and none
+// is invented.
+func TestNoKeyMeansNoAuthorizationHeader(t *testing.T) {
+	f := newFake(t, ok("local-model", `{"verdict":"no"}`))
+	c := mustClient(t, f.base(), "")
+	if _, err := c.Complete(context.Background(), request(), jsonObject); err != nil {
+		t.Fatalf("Complete: %v", err)
+	}
+	if a := f.last.Load().auth; a != "" {
+		t.Fatalf("Authorization = %q, want none", a)
+	}
+}
+
+// TestAFencedAnswerIsUnwrapped: a model that wraps its JSON in one code fence
+// is read for the document inside it, which the contract then judges.
+func TestAFencedAnswerIsUnwrapped(t *testing.T) {
+	f := newFake(t, ok("m", "```json\n{\"verdict\":\"yes\"}\n```"))
+	res, err := mustClient(t, f.base(), testKey).Complete(context.Background(), request(), jsonObject)
+	if err != nil {
+		t.Fatalf("Complete: %v", err)
+	}
+	if string(res.Content) != `{"verdict":"yes"}` {
+		t.Fatalf("content = %q", res.Content)
+	}
+}
+
+// TestEveryFailureIsRefusedWithoutTheKey drives the fake through every way a
+// provider can fail. Each is an error, none carries the key (even when the
+// provider's own body echoes it back), and none is mistaken for an answer.
+func TestEveryFailureIsRefusedWithoutTheKey(t *testing.T) {
+	huge := strings.Repeat("x", MaxResponseBytes+10)
+	cases := []struct {
+		name    string
+		handler func(http.ResponseWriter, *http.Request, map[string]json.RawMessage)
+		want    string
+	}{
+		{"401 echoing the key", status(401, `{"error":{"message":"invalid key `+testKey+`","code":401}}`), "HTTP 401"},
+		{"403", status(403, `{"error":{"message":"forbidden"}}`), "HTTP 403"},
+		{"429", status(429, `{"error":{"message":"rate limited"}}`), "HTTP 429"},
+		{"500", status(500, `upstream exploded`), "HTTP 500"},
+		{"502 no body", status(502, ``), "HTTP 502"},
+		{"model the provider does not list", status(404, `{"error":{"message":"No endpoints found for typesafe/jev-1.13.","code":404}}`), "HTTP 404"},
+		{"bad JSON", status(200, `{"choices": [`), "not a chat completion"},
+		{"not an object", status(200, `[1,2,3]`), "not a chat completion"},
+		{"huge body", status(200, huge), "larger than"},
+		{"huge error body", status(500, huge), "HTTP 500"},
+		{"no choices", status(200, `{"model":"m","choices":[]}`), "no choice"},
+		{"error object on a 200", status(200, `{"error":{"message":"provider overloaded `+testKey+`","code":502}}`), "reported an error"},
+		{"answer fails the output contract", ok("m", `{"verdict":""}`), "output contract"},
+		{"answer is prose", ok("m", `I think the answer is yes.`), "output contract"},
+		{"answer has an unknown field", ok("m", `{"verdict":"yes","extra":1}`), "output contract"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newFake(t, tc.handler)
+			_, err := mustClient(t, f.base(), testKey).Complete(context.Background(), request(), jsonObject)
+			if err == nil {
+				t.Fatal("Complete succeeded; want a refusal")
+			}
+			assertNoKey(t, err)
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error = %v, want it to name %q", err, tc.want)
+			}
+			if len(err.Error()) > 1024 {
+				t.Fatalf("error is %d bytes; a provider's body must not flood it", len(err.Error()))
+			}
+		})
+	}
+}
+
+// TestATimeoutIsRefused: a provider that never answers is refused within the
+// client's bound, not waited on.
+func TestATimeoutIsRefused(t *testing.T) {
+	release := make(chan struct{})
+	f := newFake(t, func(w http.ResponseWriter, r *http.Request, _ map[string]json.RawMessage) {
+		select {
+		case <-release:
+		case <-r.Context().Done():
+		}
+	})
+	defer close(release)
+	c := mustClient(t, f.base(), testKey, WithTimeout(200*time.Millisecond))
+	start := time.Now()
+	_, err := c.Complete(context.Background(), request(), jsonObject)
+	if err == nil {
+		t.Fatal("Complete succeeded against a server that never answered")
+	}
+	assertNoKey(t, err)
+	if !strings.Contains(err.Error(), "no answer within") {
+		t.Fatalf("error = %v", err)
+	}
+	if d := time.Since(start); d > 5*time.Second {
+		t.Fatalf("the timeout took %s", d)
+	}
+}
+
+// TestARedirectIsNeverFollowed: the base URL is pinned; a provider answering
+// with a redirect elsewhere is refused and the other host never sees the key
+// or the brief.
+func TestARedirectIsNeverFollowed(t *testing.T) {
+	elsewhere := newFake(t, ok("m", `{"verdict":"yes"}`))
+	f := newFake(t, func(w http.ResponseWriter, r *http.Request, _ map[string]json.RawMessage) {
+		http.Redirect(w, r, elsewhere.srv.URL+"/steal", http.StatusTemporaryRedirect)
+	})
+	_, err := mustClient(t, f.base(), testKey).Complete(context.Background(), request(), jsonObject)
+	if err == nil {
+		t.Fatal("Complete succeeded through a redirect")
+	}
+	assertNoKey(t, err)
+	if !strings.Contains(err.Error(), "redirect") {
+		t.Fatalf("error = %v", err)
+	}
+	if n := elsewhere.calls.Load(); n != 0 {
+		t.Fatalf("the redirect target received %d request(s)", n)
+	}
+}
+
+// TestASettingTheProtocolDoesNotTakeIsRefusedBeforeAnyCall: a setting outside
+// the accepted set is refused, naming it, and no request is made.
+func TestASettingTheProtocolDoesNotTakeIsRefusedBeforeAnyCall(t *testing.T) {
+	f := newFake(t, ok("m", `{"verdict":"yes"}`))
+	req := request()
+	req.Settings = map[string]json.RawMessage{"model": json.RawMessage(`"anthropic/claude-opus"`)}
+	_, err := mustClient(t, f.base(), testKey).Complete(context.Background(), req, jsonObject)
+	if err == nil || !strings.Contains(err.Error(), `"model"`) {
+		t.Fatalf("error = %v, want a refusal naming the setting", err)
+	}
+	if n := f.calls.Load(); n != 0 {
+		t.Fatalf("a refused request reached the provider %d time(s)", n)
+	}
+}
+
+// TestAnEmptyModelIsRefusedBeforeAnyCall: the adapter asks for the model it
+// is given, and it is never given none.
+func TestAnEmptyModelIsRefusedBeforeAnyCall(t *testing.T) {
+	f := newFake(t, ok("m", `{"verdict":"yes"}`))
+	req := request()
+	req.Model = ""
+	if _, err := mustClient(t, f.base(), testKey).Complete(context.Background(), req, jsonObject); err == nil {
+		t.Fatal("an empty model was sent")
+	}
+	if n := f.calls.Load(); n != 0 {
+		t.Fatalf("reached the provider %d time(s)", n)
+	}
+}
+
+// TestTheReportedModelIsBoundedAndClean: the provider's model field is
+// untrusted, so it is bounded and a hidden or control rune cannot ride it.
+func TestTheReportedModelIsBoundedAndClean(t *testing.T) {
+	f := newFake(t, ok("evil‮model\x1b[31m"+strings.Repeat("m", 500), `{"verdict":"yes"}`))
+	res, err := mustClient(t, f.base(), testKey).Complete(context.Background(), request(), jsonObject)
+	if err != nil {
+		t.Fatalf("Complete: %v", err)
+	}
+	if len(res.ModelReported) > MaxModelBytes+3 || strings.ContainsAny(res.ModelReported, "‮\x1b") {
+		t.Fatalf("model reported = %q", res.ModelReported)
+	}
+}
+
+// TestValidateBaseURL: the base URL is pinned per provider block. Plain HTTP
+// is admitted only to this machine (a local server), and a URL carrying
+// credentials, a query or a fragment is refused.
+func TestValidateBaseURL(t *testing.T) {
+	good := []string{
+		"https://openrouter.ai/api/v1",
+		"https://api.example.com/v1/",
+		"http://127.0.0.1:8080/v1",
+		"http://localhost:11434/v1",
+		"http://[::1]:8000/v1",
+	}
+	for _, u := range good {
+		if err := ValidateBaseURL(u); err != nil {
+			t.Errorf("ValidateBaseURL(%q) = %v, want nil", u, err)
+		}
+	}
+	bad := []string{
+		"", "openrouter.ai/api/v1", "ftp://example.com/v1",
+		"http://example.com/v1", "http://192.0.2.10/v1",
+		"https://user:" + testKey + "@example.com/v1",
+		"https://example.com/v1?key=" + testKey,
+		"https://example.com/v1#frag",
+		"https:///v1",
+	}
+	for _, u := range bad {
+		err := ValidateBaseURL(u)
+		if err == nil {
+			t.Errorf("ValidateBaseURL(%q) = nil, want a refusal", u)
+		}
+		assertNoKey(t, err)
+	}
+}
+
+// TestAcceptedSettingsIsACopy: the declaration cannot be widened by a caller.
+func TestAcceptedSettingsIsACopy(t *testing.T) {
+	a := AcceptedSettings()
+	a[0] = "model"
+	if AcceptedSettings()[0] == "model" {
+		t.Fatal("AcceptedSettings returned the package's own slice")
+	}
+	for _, k := range AcceptedSettings() {
+		if k == "model" || k == "messages" || k == "stream" {
+			t.Fatalf("AcceptedSettings admits %q, which the adapter itself sets", k)
+		}
+	}
+}
