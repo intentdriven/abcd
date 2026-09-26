@@ -738,3 +738,97 @@ func TestConsistencyIngestAReportFailureNamesTheFiledRecords(t *testing.T) {
 		}
 	}
 }
+
+// TestConsistencyIngestRecomputesTheDirtyMark: the request's dirty mark is the
+// emit's reading of the tree, carried as local-tier text anyone can edit, so the
+// ingest reads the tree again against the pinned commit and takes the union with
+// the request's paths — it marks, and never unmarks. A request hand-edited to
+// `dirty: false` over an uncommitted corpus still yields a report marked dirty
+// that names the real path, and so does one whose edit was committed between
+// the emit and the ingest (the tree then matches HEAD, not the pinned commit).
+// A path the request names that the tree no longer shows stays named.
+func TestConsistencyIngestRecomputesTheDirtyMark(t *testing.T) {
+	const edited = "An uncommitted sentence the pinned commit does not hold."
+	drift := cxFinding{
+		class: "terminology_drift", severity: "minor",
+		summary:     "the brief quotes a sentence the pinned commit does not hold",
+		explanation: "The quoted end is an uncommitted edit.",
+		ends:        []cxEnd{{cxBrief, edited}, {cxShipped, cxQuoteShipped}},
+	}
+	forgeClean := func(s string) string {
+		s = regexp.MustCompile(`(?m)^- dirty_path: .*\n`).ReplaceAllString(s, "")
+		return strings.Replace(s, "- dirty: true\n", "- dirty: false\n", 1)
+	}
+	for name, tc := range map[string]struct {
+		dirty   bool                  // edit the corpus before the emit
+		forge   func(string) string   // rewrite the issued request
+		since   func(r *gittest.Repo) // act on the tree between emit and ingest
+		finding cxFinding
+		want    []string
+	}{
+		"forged clean over a dirty tree": {
+			dirty: true, forge: forgeClean, finding: drift, want: []string{cxBrief},
+		},
+		"forged clean, the edit committed since": {
+			dirty: true, forge: forgeClean, finding: drift, want: []string{cxBrief},
+			since: func(r *gittest.Repo) {
+				r.Git("add", "--", cxBrief)
+				r.Git("commit", "-m", "commit the edit the pass read")
+			},
+		},
+		"a named path the tree no longer shows": {
+			forge: func(s string) string {
+				return strings.Replace(s, "- dirty: false\n", "- dirty: true\n- dirty_path: "+cxPlanned+"\n", 1)
+			},
+			finding: contradiction(), want: []string{cxPlanned},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := consistencyRepo(t)
+			root := r.Root()
+			head := r.Git("rev-parse", "HEAD")
+			if tc.dirty {
+				r.Write(cxBrief, "# Review queue\n\nIntro line.\n\n"+cxQuoteBrief+"\n\n"+edited+"\n")
+			}
+			em, err := EmitConsistency(root, "", ConsistencyEmitOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			p := filepath.Join(root, em.RequestPath)
+			req, err := os.ReadFile(p)
+			if err != nil {
+				t.Fatal(err)
+			}
+			forged := tc.forge(string(req))
+			if forged == string(req) {
+				t.Fatalf("the forge left the request unchanged:\n%s", req)
+			}
+			if err := os.WriteFile(p, []byte(forged), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if tc.since != nil {
+				tc.since(r)
+			}
+			res, err := ingest(t, root, findingsPayload(t, root, em, tc.finding), &fakeFiler{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !res.Dirty || res.ReviewOfCommit != head {
+				t.Fatalf("ingest = dirty %t at %s; want dirty true at %s", res.Dirty, res.ReviewOfCommit, head)
+			}
+			body, err := os.ReadFile(filepath.Join(root, res.ReportPath))
+			if err != nil {
+				t.Fatal(err)
+			}
+			s := string(body)
+			if !strings.Contains(s, "---\nreview_of_commit: "+head+"\ndirty: true\n---\n") {
+				t.Errorf("report is not marked dirty at %s:\n%s", head, s)
+			}
+			for _, w := range tc.want {
+				if !strings.Contains(s, "`"+w+"`") {
+					t.Errorf("report does not name dirty path %s:\n%s", w, s)
+				}
+			}
+		})
+	}
+}

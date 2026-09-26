@@ -198,7 +198,7 @@ func EmitConsistency(repoRoot, intentID string, opts ConsistencyEmitOptions) (Co
 	if err != nil {
 		return ConsistencyEmitResult{}, err
 	}
-	dirty, err := dirtyCorpusPaths(repoRoot, c)
+	dirty, err := dirtyCorpusPaths(repoRoot, c, commit)
 	if err != nil {
 		return ConsistencyEmitResult{}, err
 	}
@@ -230,24 +230,34 @@ func EmitConsistency(repoRoot, intentID string, opts ConsistencyEmitOptions) (Co
 }
 
 // dirtyCorpusPaths names the corpus paths whose working-tree text is not the
-// text HEAD holds: an edited or untracked corpus document, or one deleted (or
-// renamed away) since HEAD, which the pinned commit holds and the pass did not
+// text the given commit holds: an edited or untracked corpus document, or one
+// deleted (or renamed away) since it, which that commit holds and the pass did not
 // read. A change under the corpus roots that the corpus skips — a brief
 // template, a superseded intent still on disk — is not the pass's input, so it
 // is not named. Dirtiness elsewhere in the tree is not the pass's business.
 //
-// -uall, not the default: git collapses an untracked directory to one entry,
-// and a new page inside it would then never be named.
-func dirtyCorpusPaths(repoRoot string, c consistencyCorpus) ([]string, error) {
-	out, err := gitutil.RunCapped(repoRoot, 8<<20, "status", "--porcelain=v1", "-z", "--untracked-files=all",
-		"--", briefRelDir, filepath.ToSlash(IntentsRelDir))
+// The emit asks it against HEAD, the commit it pins; the ingest asks it again
+// against the commit the request pins, so a mark edited out of the request, or
+// a tree committed since the emit, cannot unmark a read that commit does not
+// hold. The working tree is diffed against commit itself, not HEAD, for that
+// second reading: the index and HEAD may both have moved since the pin.
+// --no-renames names a rename as its source and its target; the untracked
+// listing names every file, never a collapsed directory, so a new page inside
+// an untracked directory is named.
+func dirtyCorpusPaths(repoRoot string, c consistencyCorpus, commit string) ([]string, error) {
+	roots := []string{"--", briefRelDir, filepath.ToSlash(IntentsRelDir)}
+	changed, err := gitutil.RunCapped(repoRoot, 8<<20, append([]string{"diff", "--name-only", "-z", "--no-renames", commit}, roots...)...)
 	if err != nil {
-		return nil, fmt.Errorf("intent: reading the working-tree status of the corpus: %w", err)
+		return nil, fmt.Errorf("intent: reading how the corpus differs from %s: %w", commit, err)
+	}
+	untracked, err := gitutil.RunCapped(repoRoot, 8<<20, append([]string{"ls-files", "-z", "--others", "--exclude-standard"}, roots...)...)
+	if err != nil {
+		return nil, fmt.Errorf("intent: reading the untracked corpus paths: %w", err)
 	}
 	seen := map[string]bool{}
 	dirty := []string{}
-	for _, p := range statusPaths(out) {
-		if seen[p] {
+	for _, p := range strings.Split(changed+"\x00"+untracked, "\x00") {
+		if p == "" || seen[p] {
 			continue
 		}
 		if _, inCorpus := c.doc(p); !inCorpus {
@@ -260,30 +270,6 @@ func dirtyCorpusPaths(repoRoot string, c consistencyCorpus) ([]string, error) {
 	}
 	sort.Strings(dirty)
 	return dirty, nil
-}
-
-// statusPaths parses `git status --porcelain=v1 -z` into the paths it names.
-// The -z form never quotes a path, so a name holding a space or a newline
-// arrives verbatim. A rename or copy carries its source as the following
-// record, which is taken with it: the source is the path HEAD holds.
-func statusPaths(out string) []string {
-	records := strings.Split(out, "\x00")
-	var paths []string
-	for i := 0; i < len(records); i++ {
-		rec := records[i]
-		if len(rec) < 4 {
-			continue
-		}
-		st := rec[:2]
-		paths = append(paths, rec[3:])
-		if st[0] == 'R' || st[0] == 'C' || st[1] == 'R' || st[1] == 'C' {
-			i++
-			if i < len(records) && records[i] != "" {
-				paths = append(paths, records[i])
-			}
-		}
-	}
-	return paths
 }
 
 // headCommit is the commit the tree stands at: the report names it as the
@@ -744,7 +730,8 @@ func orNone(ids []string) string {
 // requestScopeRe, requestCommitRe and requestDirtyRe read the facts the ingest
 // takes from the issued request. The scope is bound by the receipt
 // recomputation and the commit by the object check; the dirty mark and its
-// paths are the emit's reading of the tree, carried to the report as stated.
+// paths are the emit's reading of the tree, which the ingest reads again and
+// widens to what the tree shows at ingest.
 var (
 	requestScopeRe     = regexp.MustCompile(`(?m)^- scope: (corpus|itd-[0-9]+) `)
 	requestCommitRe    = regexp.MustCompile(`(?m)^- review_of_commit: ([0-9a-f]+)\s*$`)
@@ -812,6 +799,15 @@ func validateConsistency(repoRoot string, raw []byte) (consistencyReview, error)
 		return consistencyReview{}, fmt.Errorf("intent: the corpus has moved since %s was issued (it now reads as %s), so the findings judge text the tree no longer holds; "+
 			"re-emit with `abcd intent consistency%s` and run the pass again", rcp, now, scopeArg(scope))
 	}
+	// The request's mark is local-tier text: read the tree again against the
+	// pinned commit and keep the union, so the report is marked with at least
+	// what the tree shows now — marked, never unmarked, and not refused on a
+	// disagreement (itd-28's dirty-tree policy is to mark, not block).
+	now, err := dirtyCorpusPaths(repoRoot, c, commit)
+	if err != nil {
+		return consistencyReview{}, err
+	}
+	dirtyPaths = unionSorted(dirtyPaths, now)
 
 	dec := json.NewDecoder(strings.NewReader(string(raw)))
 	dec.DisallowUnknownFields()
@@ -853,6 +849,20 @@ func validateConsistency(repoRoot string, raw []byte) (consistencyReview, error)
 		CorpusDigest: c.Digest, Documents: len(c.Docs), Verifier: p.Verifier,
 		PayloadDigest: sha256Field(string(raw)), Findings: findings,
 	}, nil
+}
+
+// unionSorted is the sorted set of the paths either list names.
+func unionSorted(a, b []string) []string {
+	seen := map[string]bool{}
+	out := []string{}
+	for _, p := range append(append([]string{}, a...), b...) {
+		if !seen[p] {
+			seen[p] = true
+			out = append(out, p)
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 func scopeArg(scope string) string {

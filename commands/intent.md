@@ -705,8 +705,11 @@ into `corpus_path` and writes the request to `request_path`, both under
 (`review_of_commit`), and writes nothing else. A superseded or unknown intent is
 refused. The corpus is read from the working tree, so when a corpus document is
 edited, untracked or deleted relative to that commit the emit says `dirty: true`,
-names the paths in `dirty_paths`, and the report carries the same mark beside
-its pin rather than refusing.
+names the paths in `dirty_paths`, and the report carries the mark beside its pin
+rather than refusing. The ingest reads the tree again against the pinned commit
+and marks the report with every path either reading names, so a mark edited out
+of the request, or an edit committed since the emit, never leaves the report
+clean.
 
 Then run the pass, one request at a time:
 
