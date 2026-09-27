@@ -1411,3 +1411,83 @@ func TestPreCommitHook_ResistsInheritedShellState(t *testing.T) {
 		}
 	})
 }
+
+// TestPreCommitHook_ReadsEscapedSpellings pins iss-2609261909106167: the guard
+// read every staged blob only as written, so a private name spelled with JSON
+// string escapes or percent-encoding — a transcript, an export, a fixture —
+// passed every pattern written for its plain spelling, plain ASCII letters
+// included. The guard now reads each line that holds such an escape in its
+// decoded spellings too, the views the scanner's redactors read, and refuses by
+// key exactly as it refuses the plain spelling. The names are fake.
+func TestPreCommitHook_ReadsEscapedSpellings(t *testing.T) {
+	const banlist = "# abcd-banlist: keyed\n" +
+		"widget-partner   widgetworks\n" +
+		"fake-person      zoë qüxbar\n" +
+		"lab-share        lab-share/widget-drop\n"
+	cases := []struct{ name, staged, key string }{
+		{"an ASCII letter as a unicode escape", `{"note":"the \u0077idgetworks deal"}` + "\n", "widget-partner"},
+		{"non-ASCII letters as unicode escapes", `{"author":"Zo\u00EB Q\u00fcxbar"}` + "\n", "fake-person"},
+		{"a second escape layer", `"{\\\"note\\\":\\\"\\u0077idgetworks\\\"}"` + "\n", "widget-partner"},
+		{"an escaped solidus", `{"path":"lab-share\/widget-drop"}` + "\n", "lab-share"},
+		{"a surrogate pair before the name", `{"m":"\ud83d\ude00 Zo\u00eb Q\u00fcxbar"}` + "\n", "fake-person"},
+		{"percent-encoding", "see https://example.com/?who=Zo%C3%AB%20Q%C3%BCxbar\n", "fake-person"},
+		{"double percent-encoding", "see https://example.com/?who=%2577idgetworks\n", "widget-partner"},
+		{"a NUL earlier on the line", "\x00\x01bin \\u0077idgetworks\n", "widget-partner"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			blocked, out := hookRun(t, banlist, c.staged)
+			if !blocked {
+				t.Fatalf("commit not blocked; the escaped spelling is the banned name\n%s", out)
+			}
+			if !strings.Contains(out, c.key) {
+				t.Errorf("the refusal does not name the key %q\n%s", c.key, out)
+			}
+			for _, leak := range []string{"widgetworks", "qüxbar", "widget-drop"} {
+				if strings.Contains(strings.ToLower(out), leak) {
+					t.Errorf("output leaks %q; the decoded text is withheld like the raw\n%s", leak, out)
+				}
+			}
+		})
+	}
+
+	t.Run("escapes that spell no banned name pass", func(t *testing.T) {
+		staged := `{"note":"\u0077idget works, caf\u00e9, lab-share\/other, 100%, C:\\new \\"}` + "\n" +
+			"q=%77idget%20works&r=%ZZ\n"
+		blocked, out := hookRun(t, banlist, staged)
+		if blocked {
+			t.Fatalf("a staged file whose decoded spellings hold no banned name was refused\n%s", out)
+		}
+	})
+}
+
+// TestPreCommitHook_DecodeFailureRefuses pins the direction the decoded reading
+// fails in (iss-2609261909106167): a decoder that could not finish must never
+// leave a decoded copy that reads as "nothing to find". The hook's own decoder is
+// made to exit non-zero after reading an escaped line, and the commit is refused
+// by naming the step. The staged text spells no banned name, so a refusal can
+// only come from the failed step.
+func TestPreCommitHook_DecodeFailureRefuses(t *testing.T) {
+	src, err := os.ReadFile(locateHook(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const rule = `index($0, "\\") { json_view($0) }`
+	if !strings.Contains(string(src), rule) {
+		t.Fatalf("the hook no longer holds the decoder rule %q; the fault this test injects has no target", rule)
+	}
+	broken := strings.Replace(string(src), rule, `index($0, "\\") { json_view($0); exit 3 }`, 1)
+	r := newHookRepo(t, keyedBanlist)
+	if err := os.WriteFile(filepath.Join(r.dir, ".git", "hooks", "pre-commit"), []byte(broken), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	r.write("note.md", `{"note":"caf\u00e9"}`+"\n")
+	r.git("add", "note.md")
+	blocked, out := r.commit()
+	if !blocked {
+		t.Fatalf("a decoder that failed let the commit through\n%s", out)
+	}
+	if !strings.Contains(out, "could not decode the escaped spellings") {
+		t.Errorf("the refusal does not name the failed step\n%s", out)
+	}
+}

@@ -1247,3 +1247,83 @@ func TestScaffoldedGuardHookRefusesAMirrorInsideAnotherCheckout(t *testing.T) {
 		})
 	}
 }
+
+// TestScaffoldedGuardHookReadsEscapedSpellings pins iss-2609261909106167 on the
+// artefact ahoy installs: a private name spelled with JSON string escapes or
+// percent-encoding passed the scaffolded guard exactly as it passed abcd's own,
+// because both read the staged bytes only as written. The scaffold carries the
+// same decoded reading, and refuses by key without echoing the decoded text.
+// The names are fake.
+func TestScaffoldedGuardHookReadsEscapedSpellings(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash unavailable")
+	}
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git unavailable")
+	}
+	setupHermetic(t)
+	repo := t.TempDir()
+	env := gittest.Env(t)
+	git := func(args ...string) (string, error) {
+		cmd := exec.Command("git", append([]string{"-C", repo}, args...)...)
+		cmd.Env = env
+		out, err := cmd.CombinedOutput()
+		return string(out), err
+	}
+	for _, args := range [][]string{{"init"}, {"config", "user.name", "Alice Example"}, {"config", "user.email", "alice@example.com"}} {
+		if out, err := git(args...); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	if _, err := Install(repo, installOpts(), RefusingPrompter{}); err != nil {
+		t.Fatal(err)
+	}
+	src, err := os.ReadFile(filepath.Join(repo, filepath.FromSlash(GuardHookRelPath)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	hooksDir := filepath.Join(repo, ".git", "hooks")
+	if err := os.MkdirAll(hooksDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(hooksDir, "pre-commit"), src, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	store := filepath.Join(repo, filepath.FromSlash(banlist.PrivateRelPath))
+	if err := os.WriteFile(store, []byte("# abcd-banlist: keyed\nfake-person zoë qüxbar\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	for i, staged := range []string{
+		`{"author":"Zo\u00eb Q\u00FCxbar"}` + "\n",
+		"https://example.com/?who=Zo%C3%AB%20Q%C3%BCxbar\n",
+	} {
+		name := filepath.Join(repo, "export.json")
+		if err := os.WriteFile(name, []byte(staged), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if out, err := git("add", "export.json"); err != nil {
+			t.Fatalf("git add: %v\n%s", err, out)
+		}
+		out, err := git("commit", "-m", "leak")
+		if err == nil {
+			t.Fatalf("case %d: the scaffolded guard let an escaped banned name through:\n%s", i, out)
+		}
+		if !strings.Contains(out, "fake-person") {
+			t.Errorf("case %d: the refusal does not name the key:\n%s", i, out)
+		}
+		if strings.Contains(strings.ToLower(out), "qüxbar") {
+			t.Errorf("case %d: the refusal echoes the decoded text:\n%s", i, out)
+		}
+	}
+
+	if err := os.WriteFile(filepath.Join(repo, "export.json"), []byte(`{"note":"caf\u00e9 100%"}`+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := git("add", "export.json"); err != nil {
+		t.Fatalf("git add: %v\n%s", err, out)
+	}
+	if out, err := git("commit", "-m", "clean"); err != nil {
+		t.Fatalf("the scaffolded guard refused escapes that spell no banned name:\n%s", out)
+	}
+}
