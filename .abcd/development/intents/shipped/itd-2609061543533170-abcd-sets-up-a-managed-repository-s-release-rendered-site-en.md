@@ -84,8 +84,84 @@ _None open._
 
 ## Audit Notes
 
-<!-- abcd-review: OWED receipt=rcp-070279698e5f -->
-Fidelity review OWED (receipt rcp-070279698e5f).
+<!-- abcd-review: INGESTED receipt=rcp-070279698e5f -->
+Fidelity review — receipt rcp-070279698e5f (verifier intent-auditor claude-fable-5-1).
+
+Provenance: intent-auditor@claude-fable-5-1 · rubric_hash sha256:effa65b3e9e88ff29433b443ec2be159522a8b0b71cf1434526514aa61edb13e · prompt_hash sha256:82d9f21abe685773ec84da6e26aae97b2d9f21bf899ac42b23c5c1692ad6289e
+Input attestations: diff:a4d0980a^1..a4d0980a (PR #722 feat/site-setup, read at main 811fba17)@sha256:a0d059f6b94e86f8fe112bf5bb06de3b73a44d7472fc0bade8ada6effb6255fd;
+
+Acceptance rollup: MET 4 · MET_WITH_CONCERNS 2 · NOT_MET 0 · INCONCLUSIVE 0
+
+Per-criterion verdicts:
+- ac-1 — MET: with no credential the harness test sees every setup file written on disk, both forge environments created with branch+tag policies, the provider never called, and the remaining steps naming the credential store path, the gh secret set commands and git add; the credential step is composed at setup.go:290-296
+  evidence: internal/core/site/setup_test.go:220 — "func TestSetupWithoutACredentialWritesTheRepositoryHalfAndSaysWhatRemains"
+  evidence: internal/core/site/setup.go:290 — "if hc.Status == HostNoCredential {"
+  evidence: internal/core/site/setup.go:752 — "cmd := "gh secret set " + name + " --env " + EnvDeploy"
+- ac-2 — MET: with a credential the fake host ends holding the worker and the routed domain, the address is reported, and git status -uall equals exactly the setup file list with the token in none of them; the host stage runs Inspect then Create/Route through the Provider interface after confirmation
+  evidence: internal/core/site/setup_test.go:267 — "func TestSetupWithACredentialCreatesRoutesAndReportsTheHost"
+  evidence: internal/core/site/setup_test.go:308 — "the repository changed in\n %v\nwant exactly"
+  evidence: internal/core/site/setup.go:664 — "func setupHost(ctx context.Context, adapter hosting.Adapter"
+  evidence: internal/adapter/hosting/cloudflare/cloudflare.go:365 — "func (c *client) Create(ctx context.Context, s hosting.Site) error"
+- ac-3 — MET: the provider list is one adapter, cloudflare, and a test pins Providers() to exactly [cloudflare]; the seam is the hosting.Adapter interface (repository half as data, Connect for the host half) which is what a second provider implements
+  evidence: internal/core/site/providers.go:13 — "var adapters = []hosting.Adapter{cloudflare.Adapter{}}"
+  evidence: internal/adapter/hosting/hosting.go:58 — "type Adapter interface {"
+  evidence: internal/core/site/setup_test.go:336 — "func TestTheProviderListHasOneAdapterBehindTheSeam"
+- ac-4 — MET_WITH_CONCERNS: the composition setup writes builds every page of the set from the fixture repository's own text and the switches remove pages and their links; the concern is that the set's edges are narrower than the bullet reads: the timeline is a panel of the dashboard rather than a page and status is the record health page (Decision 7), and the rendered header links a docs page a managed repository does not build (open iss-2609260928152365)
+  evidence: internal/core/site/setup_test.go:349 — "func TestSetupGivesAManagedRepositoryTheWholePageSet"
+  evidence: internal/core/site/pages.go:37 — "var PageNames = []string{"landing", "explorer", "record_pages", "graph", "timeline", "glossary", "status"}"
+  evidence: internal/core/site/pages_test.go:97 — "func TestASwitchedOffPageIsGoneAndNothingLinksToIt"
+  evidence: .abcd/development/intents/shipped/itd-2609061543533170-abcd-sets-up-a-managed-repository-s-release-rendered-site-en.md:68 — "the timeline is the genealogy the dashboard carries"
+  evidence: .abcd/work/issues/open/iss-2609260928152365-site-header-links-docs-without-a-docs-build.md:1 — "site-header-links-docs-without-a-docs-build"
+- ac-5 — MET: a second run after a credentialled first run reports no_change, every file current or kept, no forge write and no host write; the CLI prints the status on its first line
+  evidence: internal/core/site/setup_test.go:375 — "func TestASecondRunWritesNothingAndSaysSo"
+  evidence: internal/core/site/setup.go:331 — "res.Status = StatusNoChange"
+  evidence: internal/surface/cli/site.go:296 — "fmt.Fprintf(w, "abcd site setup — %s\n", termsafe.Sanitize(res.Status))"
+- ac-6 — MET_WITH_CONCERNS: the lane's security review is on the record as Decision 6's addendum and Decision 9 (the workflow's supply-chain posture and the provider calls' blast radius, named) and as four category-security/bug findings captured from the review of lane sitesetup, three resolved in the same PR; the concern is that no dated review directory under .abcd/work/reviews/ holds the review itself, so its scope is recoverable only from its findings and the decisions that summarise it
+  evidence: .abcd/development/intents/shipped/itd-2609061543533170-abcd-sets-up-a-managed-repository-s-release-rendered-site-en.md:70 — "9. **The supply-chain posture and the exit-1 output, named (2026-09-26, the lane's security review)."
+  evidence: .abcd/development/intents/shipped/itd-2609061543533170-abcd-sets-up-a-managed-repository-s-release-rendered-site-en.md:67 — "*Addendum (2026-09-26, the lane's security review, iss-2609260120384106).*"
+  evidence: .abcd/work/issues/resolved/iss-2609260120383554-abcd-site-setup-rewrites-an-existing-deployment-environment.md:8 — "found_during: "autonomous run A resumed 2026-09-25 (fix round, review of lane sitesetup)""
+  evidence: .abcd/work/issues/open/iss-2609260120380520-the-machine-credential-file-internal-core-credential-abcd.md:6 — "category: "security""
+
+Gap audit:
+- honoured:
+  - one verb writes the composition, the render-then-deploy workflow and the environments, and prints the remaining step
+    evidence: internal/core/site/setup_test.go:220 — "TestSetupWithoutACredentialWritesTheRepositoryHalfAndSaysWhatRemains"
+  - with a credential the host is created and routed and the live address reported; the credential never enters the repository or the report
+    evidence: internal/core/site/setup_test.go:267 — "TestSetupWithACredentialCreatesRoutesAndReportsTheHost"
+    evidence: internal/adapter/hosting/cloudflare/cloudflare_test.go:137 — "func TestTheCredentialNeverReachesAnError"
+  - one provider behind a seam a second would implement
+    evidence: internal/adapter/hosting/hosting.go:58 — "type Adapter interface {"
+  - the site renders on release whoever made it, fork runs never render
+    evidence: internal/core/site/setupsrc/site.yml.tmpl:46 — "workflows: [release, auto-release]"
+    evidence: internal/core/site/setup_test.go:766 — "func TestTheWorkflowFiresOnEveryReleasePath"
+    evidence: internal/core/site/setup_test.go:743 — "func TestAWorkflowRunFromAForkNeverRenders"
+  - re-runnable: a second run writes nothing and says so
+    evidence: internal/core/site/setup_test.go:375 — "TestASecondRunWritesNothingAndSaysSo"
+  - wired on the CLI and the plugin surface
+    evidence: internal/surface/cli/site_setup_test.go:20 — "func TestSiteSetupIsWiredAndReachesNoNetwork"
+    evidence: commands/site.md:89 — "## `setup` — take a managed repository's site to a live address"
+- diverged:
+  - the hosting credential is resolved through the credential store itd-2609221017023290; delivered through an interim owner-only ~/.abcd/credentials.json behind credential.Resolve, signed off as Decision 4 with the store intent named as successor
+    evidence: .abcd/development/intents/shipped/itd-2609061543533170-abcd-sets-up-a-managed-repository-s-release-rendered-site-en.md:63 — "4. **The credential's interim source (2026-09-26)."
+    evidence: internal/core/credential/credential.go:1 — "package credential"
+  - everything when a credential is present (ruling 1); delivered with the deploy secrets left as the person's step, the verb printing one gh secret set command per missing secret, signed off as Decision 5
+    evidence: .abcd/development/intents/shipped/itd-2609061543533170-abcd-sets-up-a-managed-repository-s-release-rendered-site-en.md:64 — "5. **Secrets are the person's step (2026-09-26)."
+    evidence: internal/core/site/setup.go:728 — "func secretSteps("
+  - the page set names timeline and status as pages; delivered as the dashboard's genealogy panel and the record health page, signed off as Decision 7
+    evidence: .abcd/development/intents/shipped/itd-2609061543533170-abcd-sets-up-a-managed-repository-s-release-rendered-site-en.md:68 — "7. **The page set's edges (2026-09-26)."
+    evidence: internal/core/site/setup_test.go:366 — "the managed repository's dashboard lacks the timeline"
+- missing:
+  - a review artefact for the lane's security review under .abcd/work/reviews/ (the charter's home for a review conducted outside abcd's verbs); only its findings and the decisions summarising it are on the record
+    evidence: .abcd/work/reviews/README.md:1 — "# Reviews"
+    evidence: .abcd/development/intents/shipped/itd-2609061543533170-abcd-sets-up-a-managed-repository-s-release-rendered-site-en.md:70 — "named here so no reader has to infer them"
+
+Scope-condition dispositions:
+- cond-2609212141406389 — survived: the written workflow fires on release: published, on the release and auto-release workflows completing, and on dispatch, and a test asserts each path; a forge without workflows has nothing to run it
+  evidence: internal/core/site/setupsrc/site.yml.tmpl:46 — "workflows: [release, auto-release]"
+  evidence: internal/core/site/setup_test.go:766 — "func TestTheWorkflowFiresOnEveryReleasePath"
+- cond-2609212141407649 — survived: the one shipped provider creates and routes through its API and the no-credential path leaves the host as the person's step in the provider's console, as the condition assumed
+  evidence: internal/adapter/hosting/cloudflare/cloudflare.go:379 — "func (c *client) Route(ctx context.Context, s hosting.Site) error"
+  evidence: internal/core/site/setup.go:296 — "in the provider's own console"
 
 ## Grounds
 

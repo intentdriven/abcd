@@ -289,8 +289,8 @@ func Disposition(req DispositionRequest) (DispositionResult, error) {
 		return DispositionResult{}, err
 	}
 	if !recordid.ValidReadingItemID(req.Item) {
-		return DispositionResult{}, fmt.Errorf("%w: item %q does not match ^%s-[0-9]+$",
-			ErrMalformedFrontmatter, req.Item, issueschema.ReadingItemFamily)
+		return DispositionResult{}, refused(fmt.Errorf("%w: item %q does not match ^%s-[0-9]+$",
+			ErrMalformedFrontmatter, req.Item, issueschema.ReadingItemFamily))
 	}
 	if err := mutationPreamble(repoRoot, issuesRoot); err != nil {
 		return DispositionResult{}, err
@@ -312,8 +312,10 @@ func Disposition(req DispositionRequest) (DispositionResult, error) {
 	// probes the machine identity and shells out to do it, and nothing under the
 	// lock needs one.
 	clean, redacted, degraded := redactDispositionRequest(repoRoot, req)
+	// The pre-flight checks the request's own members against the item's
+	// position, so what it refuses is the caller's input (exit 2 at the surface).
 	if err := prevalidateDisposition(clean, head.position); err != nil {
-		return DispositionResult{}, err
+		return DispositionResult{}, refused(err)
 	}
 
 	var written writtenDisposition
@@ -443,13 +445,15 @@ func writeDispositionLocked(repoRoot, issuesRoot string, head itemHead, req Disp
 			"records that are no longer meant to stand, by hand, until exactly one does",
 			ErrInvariantViolation, head.item, len(standing), renderList(standing))
 	}
+	// The two refusals below are the request's, not the ledger's: the caller
+	// named no standing answer, or one that does not stand.
 	if req.Supersedes != "" && !containsString(standing, req.Supersedes) {
-		return writtenDisposition{}, fmt.Errorf("%w: supersedes_disposition names %q, which is not a standing disposition of %s (standing: %s)",
-			ErrInvariantViolation, req.Supersedes, head.item, renderList(standing))
+		return writtenDisposition{}, refused(fmt.Errorf("%w: supersedes_disposition names %q, which is not a standing disposition of %s (standing: %s)",
+			ErrInvariantViolation, req.Supersedes, head.item, renderList(standing)))
 	}
 	if req.Supersedes == "" && len(standing) > 0 {
-		return writtenDisposition{}, fmt.Errorf("%w: %s already carries a standing disposition (%s); a second answer must cite the one it replaces (supersedes_disposition), so the record can say which is in force",
-			ErrInvariantViolation, head.item, renderList(standing))
+		return writtenDisposition{}, refused(fmt.Errorf("%w: %s already carries a standing disposition (%s); a second answer must cite the one it replaces (supersedes_disposition), so the record can say which is in force",
+			ErrInvariantViolation, head.item, renderList(standing)))
 	}
 	if err := requireCharacterised(repoRoot, head); err != nil {
 		return writtenDisposition{}, err

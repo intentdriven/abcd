@@ -32,7 +32,15 @@ func TestSurfaceAppendicesMatchCommandTree(t *testing.T) {
 // prose from coming back (itd-147 ac-5): the hand-written region above each
 // chapter's opening marker states no flag and no sub-verb, because those live
 // only in the generated appendix.
+//
+// It skips under -race: one goroutine matching every sub-verb path against
+// every chapter took 12.8s instrumented against 0.6s uninstrumented, with
+// nothing for the detector to watch (iss-2609261924541555). The uninstrumented
+// lane asserts it on both CI legs.
 func TestSurfaceChapterProseStatesNoShape(t *testing.T) {
+	if raceEnabled {
+		t.Skip("one goroutine over the committed chapters gains nothing under -race; the uninstrumented run asserts it")
+	}
 	chapters, err := SurfaceChapters(testRepoRoot())
 	if err != nil {
 		t.Errorf("cannot read every surface chapter: %v", err)

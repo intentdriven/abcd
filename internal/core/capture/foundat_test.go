@@ -1,6 +1,7 @@
 package capture
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -38,6 +39,11 @@ func TestCaptureFoundAtMustResolveInTheTree(t *testing.T) {
 			})
 			if err == nil {
 				t.Fatalf("found_at %q names a path that is not in this checkout; the capture must be refused", tc.foundAt)
+			}
+			// The caller's input, nothing written: a refusal, not a fault
+			// (iss-2609261241119343).
+			if !errors.Is(err, ErrRequestRefused) {
+				t.Errorf("found_at %q is refused as a fault, not as the request's input: %v", tc.foundAt, err)
 			}
 			msg := err.Error()
 			for _, want := range []string{"found_at", strings.TrimSpace(tc.foundAt), "nothing written"} {
@@ -98,5 +104,39 @@ func TestCaptureFoundAtMustResolveInTheTree(t *testing.T) {
 				t.Errorf("found_at read back as %q, want %q", got, tc.foundAt)
 			}
 		})
+	}
+}
+
+// TestCaptureFoundAtThatCannotBeCheckedIsAFault is the other half of
+// iss-2609261241119343: a path the checkout will not let the check read (a
+// directory on the way to it that cannot be searched) says nothing about the
+// caller's input, so it is refused with nothing written but as a fault, never
+// as ErrRequestRefused.
+func TestCaptureFoundAtThatCannotBeCheckedIsAFault(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root searches a mode-000 directory")
+	}
+	repo, ir := ledger(t)
+	locked := filepath.Join(repo, "internal", "locked")
+	if err := os.MkdirAll(locked, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(locked, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(locked, 0o755) })
+	_, err := Capture(CaptureRequest{
+		RepoRoot: repo, IssuesRoot: ir, Text: "a finding", Severity: SeverityMinor,
+		Category: "bug", Source: "manual-test", Slug: "finding", FoundDuring: "t",
+		FoundAt: "internal/locked/x.go",
+	})
+	if err == nil || !strings.Contains(err.Error(), "could not be checked") {
+		t.Fatalf("a found_at behind an unsearchable directory: %v, want the could-not-be-checked fault", err)
+	}
+	if errors.Is(err, ErrRequestRefused) {
+		t.Errorf("a found_at that could not be checked is refused as the caller's input: %v", err)
+	}
+	if _, serr := os.Stat(ir); !os.IsNotExist(serr) {
+		t.Fatalf("a refused capture touched the ledger root %s (stat err=%v)", ir, serr)
 	}
 }

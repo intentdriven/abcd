@@ -59,8 +59,8 @@ func Surprise(req SurpriseRequest) (SurpriseResult, error) {
 	}
 	occasion := req.OccasionedBy
 	if !issueschema.ValidSurpriseOccasion(occasion) {
-		return SurpriseResult{}, fmt.Errorf("%w: --occasioned-by %q is not a handle of %s; a surprise is keyed to the record that occasioned it, never to prose (nothing written)",
-			ErrMalformedFrontmatter, occasion, occasionFamilyList())
+		return SurpriseResult{}, refused(fmt.Errorf("%w: --occasioned-by %q is not a handle of %s; a surprise is keyed to the record that occasioned it, never to prose (nothing written)",
+			ErrMalformedFrontmatter, occasion, occasionFamilyList()))
 	}
 	text, redacted, degraded, err := requireFreeGrounds(repoRoot, "surprise", req.Text)
 	if err != nil {

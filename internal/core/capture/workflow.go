@@ -283,7 +283,7 @@ func commitCapture(repoRoot, issuesRoot string, req CaptureRequest, issID, slug,
 func Resolve(req ResolveRequest) (TransitionResult, error) {
 	impact, err := changelog.ParseImpact(req.Impact)
 	if err != nil {
-		return TransitionResult{}, fmt.Errorf("resolve: %w", err)
+		return TransitionResult{}, refused(fmt.Errorf("resolve: %w", err))
 	}
 	rb, err := resolveProvenance(req)
 	if err != nil {
@@ -306,11 +306,11 @@ func Resolve(req ResolveRequest) (TransitionResult, error) {
 	// worse than no value at all — it would sit in the ledger looking like an
 	// exclusion and never be one.
 	if req.ShippedIn != "" && !reShippedIn.MatchString(req.ShippedIn) {
-		return TransitionResult{}, fmt.Errorf(
-			"resolve: --shipped-in %q is not a release tag (want vMAJOR.MINOR.PATCH); nothing written", req.ShippedIn)
+		return TransitionResult{}, refused(fmt.Errorf(
+			"resolve: --shipped-in %q is not a release tag (want vMAJOR.MINOR.PATCH); nothing written", req.ShippedIn))
 	}
 	if err := validateRestampMode(req.ProductionMode); err != nil {
-		return TransitionResult{}, fmt.Errorf("resolve: %w", err)
+		return TransitionResult{}, refused(fmt.Errorf("resolve: %w", err))
 	}
 	extras := []kv{{"impact", rawScalar(string(impact))}}
 	if req.ShippedIn != "" {
@@ -361,26 +361,26 @@ func resolveProvenance(req ResolveRequest) (*ResolvedBy, error) {
 	}
 	if req.ByIntent != "" {
 		if !reItdID.MatchString(req.ByIntent) {
-			return nil, fmt.Errorf("resolve: --intent %q does not match ^itd-[0-9]+$; nothing written", req.ByIntent)
+			return nil, refused(fmt.Errorf("resolve: --intent %q does not match ^itd-[0-9]+$; nothing written", req.ByIntent))
 		}
 		if _, ok, err := findRecordFile(repoRoot, intentStoreRelDirs(), req.ByIntent); err != nil {
 			return nil, fmt.Errorf("resolve: --intent %s: %w; nothing written", req.ByIntent, err)
 		} else if !ok {
-			return nil, fmt.Errorf("resolve: --intent %s not found in the intent store; nothing written", req.ByIntent)
+			return nil, refused(fmt.Errorf("resolve: --intent %s not found in the intent store; nothing written", req.ByIntent))
 		}
 	}
 	if req.BySpec != "" {
 		if !reSpcID.MatchString(req.BySpec) {
-			return nil, fmt.Errorf("resolve: --spec %q does not match ^spc-[0-9]+$; nothing written", req.BySpec)
+			return nil, refused(fmt.Errorf("resolve: --spec %q does not match ^spc-[0-9]+$; nothing written", req.BySpec))
 		}
 		if _, ok, err := findRecordFile(repoRoot, specStoreRelDirs(), req.BySpec); err != nil {
 			return nil, fmt.Errorf("resolve: --spec %s: %w; nothing written", req.BySpec, err)
 		} else if !ok {
-			return nil, fmt.Errorf("resolve: --spec %s not found in the spec store; nothing written", req.BySpec)
+			return nil, refused(fmt.Errorf("resolve: --spec %s not found in the spec store; nothing written", req.BySpec))
 		}
 	}
 	if req.ByCommit != "" && !reCommitSha.MatchString(req.ByCommit) {
-		return nil, fmt.Errorf("resolve: --commit %q is not a 7-64 char lowercase hex sha; nothing written", req.ByCommit)
+		return nil, refused(fmt.Errorf("resolve: --commit %q is not a 7-64 char lowercase hex sha; nothing written", req.ByCommit))
 	}
 	return &ResolvedBy{Intent: req.ByIntent, Spec: req.BySpec, Commit: req.ByCommit}, nil
 }
@@ -414,7 +414,7 @@ func Wontfix(req WontfixRequest) (TransitionResult, error) {
 		return TransitionResult{}, err
 	}
 	if err := validateRestampMode(req.ProductionMode); err != nil {
-		return TransitionResult{}, fmt.Errorf("wontfix: %w", err)
+		return TransitionResult{}, refused(fmt.Errorf("wontfix: %w", err))
 	}
 	res, err := transition(req.RepoRoot, req.IssuesRoot, req.ID, "wontfix", "wontfix_reason", req.Reason,
 		nil, &g, req.ProductionMode, StateWontfix)
@@ -506,10 +506,10 @@ func transition(repoRoot, issuesRoot, issID, verb, field, note string, extra []k
 		return TransitionResult{}, err
 	}
 	if !reIssID.MatchString(issID) {
-		return TransitionResult{}, fmt.Errorf("invalid iss-N identifier: %q", issID)
+		return TransitionResult{}, refused(fmt.Errorf("invalid iss-N identifier: %q", issID))
 	}
 	if strings.TrimSpace(note) == "" {
-		return TransitionResult{}, fmt.Errorf("%s must be a non-empty string", field)
+		return TransitionResult{}, refused(fmt.Errorf("%s must be a non-empty string", field))
 	}
 
 	// The find→read→move critical section runs under the ledger lock, the SAME
@@ -984,9 +984,13 @@ func checkOneStatusPerID(repoRoot, issuesRoot string) error {
 	var ids []string
 	for _, sub := range statusDirs {
 		dir := filepath.Join(issuesRoot, statusDirName[sub])
-		entries, err := os.ReadDir(dir)
+		entries, err := readStatusDir(issuesRoot, statusDirName[sub])
 		if err != nil {
-			continue // virgin/absent ledger tolerance, as scanLedger has
+			// Absent is tolerated (a virgin ledger); unreadable is a fault, so
+			// every read of the ledger that runs this check first — list and
+			// status, before scanLedger — never renders an unreadable folder as
+			// an empty one (iss-2609261241121312).
+			return err
 		}
 		names := make([]string, 0, len(entries))
 		for _, e := range entries {

@@ -999,6 +999,13 @@ exists. A workdir that is not a string, or holds a NUL byte, a control
 character or invalid UTF-8, or is over 4096 bytes, is refused with the
 blocking status and the reason.
 
+On the host's question tool the hook gates the question on the mode, not
+the registry. In a checkout abcd manages, a question asked while `abcd mode`
+reads managed is refused with the blocking status, naming `abcd mode
+product-thinker` and `abcd mode facilitator`; once the mode names somebody
+the question runs and is marked open in the local tier, and the next human
+message resets the mode to managed. Elsewhere a question runs unchecked.
+
 ### `abcd help`
 
 Help about any command
@@ -2186,6 +2193,12 @@ the local-ephemeral tier — can hold it; elsewhere the set refuses and creates
 nothing. The next status-line refresh and the bare `abcd` board read the
 same file.
 
+The guard holds the agent to it: a question through the host's question
+tool is refused while the state reads `managed`, and once the state names
+somebody the question runs and is marked open. The next human message is
+its answer, so the prompt hook resets the state to `managed` and says so
+once on stderr. A state set by hand with no question open is left as it is.
+
 Where this machine has no status surface — no `~/.abcd/statusline.json`, or
 one with `disabled` set — the set form prints one line naming whose answer
 is owed, once, because the verb call is the stop. Setting `managed` owes
@@ -2720,8 +2733,9 @@ Render abcd's row for the host harness's status line.
 
 The harness runs this on every status refresh, with its JSON status
 payload on stdin, and shows what it prints. In a checkout abcd manages the
-row is abcd's own: the presence badge first — `abcd`, `waiting: facilitator`
-or `waiting: product thinker`, from the state `abcd mode` stores — then the
+row is abcd's own: the presence badge first — `abcd-managed`, `waiting on
+the technical facilitator` or `waiting on the product thinker`, from the state
+`abcd mode` stores, its colour ending at the badge — then the
 repository name, the branch, the model, the context percentage, the
 five-hour and seven-day usage percentages, and the record's counts of
 intents not yet shipped and open issues. Each element after the badge is

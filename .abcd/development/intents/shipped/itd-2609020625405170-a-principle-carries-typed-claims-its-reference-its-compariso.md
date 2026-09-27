@@ -82,8 +82,74 @@ None. The flagged decisions are adopted as adr-2609021016270132.
 
 ## Audit Notes
 
-<!-- abcd-review: OWED receipt=rcp-df264ca3973f -->
-Fidelity review OWED (receipt rcp-df264ca3973f).
+<!-- abcd-review: INGESTED receipt=rcp-df264ca3973f -->
+Fidelity review — receipt rcp-df264ca3973f (verifier intent-auditor claude-fable-5-1).
+
+Provenance: intent-auditor@claude-fable-5-1 · rubric_hash sha256:effa65b3e9e88ff29433b443ec2be159522a8b0b71cf1434526514aa61edb13e · prompt_hash sha256:fa48879ed29ae56d764076e0e001f00311ed3e6f6d3b4650c7c258e5dcaeb05d
+Input attestations: diff:internal/core/lint/principles.go, internal/core/reading/include.go, internal/core/lifeboat/synthesis_principles.go, agents/principle-distiller.md, evals/coldreading_fixture_test.go at 4001d807 (git ls-tree -r)@sha256:f879b41b426d5002cb1f9e1d3d7d09ffd443edbf57fac42ab268df7dbba77560;
+
+Acceptance rollup: MET 8 · MET_WITH_CONCERNS 0 · NOT_MET 0 · INCONCLUSIVE 0
+
+Per-criterion verdicts:
+- ac-1 — MET: a typed principle missing one of the four keys draws principle_claims at blocker naming the missing key, and is not reported as untyped; TestPrincipleClaimsNamesTheMissingKey passes at BASE
+  evidence: internal/core/lint/principles.go:291 — "func (p principleCheck) judge(repoRoot string, r schemaRecord) ([]Finding, error) {"
+  evidence: internal/core/lint/principles_test.go:189 — "func TestPrincipleClaimsNamesTheMissingKey"
+- ac-2 — MET: an entry carrying none of the four keys draws exactly one principle_untyped finding at warn with the message naming the four keys, and the schema rule draws nothing; a warn rule does not fail preflight
+  evidence: internal/core/lint/principles.go:301 — "p.add(&out, rulePrincipleUntyped, r, 1, "principle "+h+" is untyped (carries none of "+"
+  evidence: internal/core/lint/principles_test.go:164 — "func TestUntypedPrincipleIsAWarnAndNothingElse"
+  evidence: internal/core/lint/principles_test.go:153 — "func TestUntypedPrincipleHasNoSchemaFinding"
+- ac-3 — MET: evidence naming a scope condition whose shipped intent's audit dispositioned it falsified draws principle_falsified at blocker naming both the principle handle and the condition identity
+  evidence: internal/core/lint/principles.go:468 — ""as falsified""
+  evidence: internal/core/lint/principles_test.go:383 — "func TestFalsifiedConditionIsReported"
+- ac-4 — MET: a narrowed condition draws principle_inheritance carrying the disposition's stated narrowing verbatim, and no falsified finding
+  evidence: internal/core/lint/principles.go:476 — ""), which was dispositioned as narrowed: "+d.Narrowing)"
+  evidence: internal/core/lint/principles_test.go:398 — "func TestNarrowedConditionCarriesTheNarrowing"
+- ac-5 — MET: a condition with no disposition, one recorded untested, and one whose audit disposes only another condition each draw the untested inheritance finding naming the condition, while a survived condition is silent
+  evidence: internal/core/lint/principles.go:484 — "p.add(out, rulePrincipleInheritance, r, line, "principle "+h+" rests on the untested condition "+m+" ("+"
+  evidence: internal/core/lint/principles_test.go:412 — "func TestUndispositionedConditionIsUntested"
+- ac-6 — MET: at widening, entailment and detection the manifest carries one parsed item of kind principle whose Field is the statement label, the statement reaches the bundle while the keys, the reasoning and the link target do not, and the manifest asserts the four keys' exclusion by field projection and the citation exclusion; the comparative assembly carries no principle item
+  evidence: internal/core/reading/include.go:199 — "KindPrinciple Kind = "principle""
+  evidence: internal/core/reading/include.go:536 — "Rule: "The knowledge record is a read object: a principle travels as its statement, " +"
+  evidence: internal/core/reading/principle_test.go:95 — "func TestPrincipleProjectsItsStatementOnly"
+  evidence: internal/core/reading/principle_test.go:204 — "func TestManifestAssertsPrincipleExclusions"
+  evidence: internal/core/reading/principle_test.go:179 — "func TestPrincipleRowExcludesComparative"
+- ac-7 — MET: the read-block eval plants the PRINCIPLE-CITATION class in four homes (an evidence key, the reasoning paragraph, a link target in the statement, and an evidence key on a spec) as exhaust at every position, with a relocation control that must leak; the coldreading-tagged eval passes at BASE (go test -tags coldreading ./evals/, 99.7s)
+  evidence: evals/coldreading_fixture_test.go:337 — "Name: "PRINCIPLE-CITATION","
+  evidence: evals/coldreading_fixture_test.go:507 — "Class: "PRINCIPLE-CITATION","
+  evidence: internal/core/reading/principle_test.go:224 — "func TestPrincipleItemCarryingAHandleRefuses"
+- ac-8 — MET: the delegated synthesis carries claim_type (canonicalised through lint.CanonicalClaimType), reference, comparison and the filtered evidence into every principle it writes, the deterministic fallback writes the keys with explicit nulls where it invents nothing, and the agent contract names the four keys; the keys test asserts each entry carries all four
+  evidence: internal/core/lifeboat/synthesis_principles.go:287 — "ClaimType: claims.ClaimType,"
+  evidence: internal/core/lifeboat/synthesis_principles.go:310 — "ct, ok := lint.CanonicalClaimType(*in.ClaimType)"
+  evidence: internal/core/lifeboat/synthesis_principles_keys_test.go:51 — "for _, k := range []string{"claim_type", "reference", "comparison", "evidence"} {"
+  evidence: internal/core/lifeboat/principles_contract_test.go:86 — "for _, k := range []string{"`claim_type`", "`reference`", "`comparison`", "`evidence`"} {"
+  evidence: agents/principle-distiller.md:53 — ""claim_type": "causal","
+
+Gap audit:
+- honoured:
+  - mechanism is read as an alias for causal and written back as causal, never refused; a fourth claim type is refused
+    evidence: internal/core/lint/principles.go:84 — "func CanonicalClaimType(v string) (string, bool) {"
+    evidence: internal/core/lint/principles_test.go:263 — "func TestPrincipleClaimsReadsMechanismAsCausal"
+    evidence: internal/core/lint/principles_test.go:251 — "func TestPrincipleClaimsRefusesFourthClaimType"
+  - an explicit null declines a claim and a blank value is refused as a forgotten key; the two are never collapsed
+    evidence: internal/core/lint/principles_test.go:210 — "func TestPrincipleClaimsRefusesEmptyValue"
+  - a statement or title that cites a record is refused, so the statement can be separated from its citations by section
+    evidence: internal/core/lint/principles_test.go:303 — "func TestPrincipleStatementMayNotCite"
+    evidence: internal/core/reading/principle_test.go:285 — "func TestHeadingShapedStatementNeverTravels"
+  - forward-only: nothing backfills an existing entry, and the untyped warn does not fail preflight
+    evidence: internal/core/lint/principles_test.go:469 — "func TestWarnRuleDoesNotFailPreflight"
+- diverged: (none)
+- missing: (none)
+
+Scope-condition dispositions:
+- cond-2609020626047525 — survived: ClaimTypes is the three kinds with mechanism as the causal alias, and any other value is refused
+  evidence: internal/core/lint/principles.go:84 — "func CanonicalClaimType(v string) (string, bool) {"
+  evidence: internal/core/lint/principles_test.go:251 — "func TestPrincipleClaimsRefusesFourthClaimType"
+- cond-2609020626048283 — survived: evidence that resolves in no record store, and a condition identity no shipped intent carries, are reported as unresolvable with the lifeboat case named, not as absent
+  evidence: internal/core/lint/principles.go:442 — ""unresolvable in this repository's record stores; a principle distilled from a lifeboat cites packed "+"
+  evidence: internal/core/lint/principles_test.go:440 — "func TestUnresolvableEvidenceIsReportedNotAbsent"
+- cond-2609020626048565 — survived: an untyped entry draws one warn finding and nothing else, and a warn rule does not fail preflight, so the count stays a count
+  evidence: internal/core/lint/principles_test.go:164 — "func TestUntypedPrincipleIsAWarnAndNothingElse"
+  evidence: internal/core/lint/principles_test.go:469 — "func TestWarnRuleDoesNotFailPreflight"
 
 ## Grounds
 

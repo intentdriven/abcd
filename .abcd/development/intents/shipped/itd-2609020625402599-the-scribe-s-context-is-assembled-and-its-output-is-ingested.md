@@ -81,8 +81,86 @@ None. The flagged decisions are adopted as adr-2609021016275803.
 
 ## Audit Notes
 
-<!-- abcd-review: OWED receipt=rcp-6654dbf923b3 -->
-Fidelity review OWED (receipt rcp-6654dbf923b3).
+<!-- abcd-review: INGESTED receipt=rcp-6654dbf923b3 -->
+Fidelity review — receipt rcp-6654dbf923b3 (verifier intent-auditor claude-fable-5-1).
+
+Provenance: intent-auditor@claude-fable-5-1 · rubric_hash sha256:effa65b3e9e88ff29433b443ec2be159522a8b0b71cf1434526514aa61edb13e · prompt_hash sha256:34a24bad1b9e20b4164136080330b158cd3074b20815d120269663ffd6d5dd36
+Input attestations: diff:internal/core/scribe/, internal/core/history/separation.go, internal/core/sessionkind/, internal/surface/cli/history.go, commands/scribe.md, evals/{coldreading_fixture,smoke}_test.go at 4001d807 (git ls-tree -r)@sha256:965e74af30dcb1a630023cf07598e711ecfe826ea8d086e36692a106176ea973;
+
+Acceptance rollup: MET 8 · MET_WITH_CONCERNS 0 · NOT_MET 0 · INCONCLUSIVE 0
+
+Per-criterion verdicts:
+- ac-1 — MET: Assemble requires an ingested run, builds the context from the ledger directories plus the supplied text and writes a manifest of every path passed; the test plants sentinels in the shipped tree, the durable record and the transcript store and asserts none reaches the context, that the run's records come from the store, and that the manifest names every path
+  evidence: internal/core/scribe/assemble.go:61 — "func Assemble(req AssembleRequest) (AssembleResult, error) {"
+  evidence: internal/core/scribe/scribe.go:81 — "func AllowList() []string {"
+  evidence: internal/core/scribe/assemble_test.go:41 — "func TestScribeContextIsLedgerAndSuppliedTextOnly"
+  evidence: internal/core/scribe/assemble_test.go:82 — "func TestScribeContextCarriesTheRunsRecordsFromTheStore"
+  evidence: internal/core/scribe/assemble_test.go:107 — "func TestScribeManifestNamesEveryPathPassed"
+  evidence: internal/core/scribe/assemble_test.go:186 — "func TestScribeAssembleRefusesAnUncommittedRun"
+- ac-2 — MET: Ingest writes a supplied disposition through capture.Disposition, the existing validator, and the test asserts exactly one disposition file carrying the supplied ground with the admissions and surprises stores untouched
+  evidence: internal/core/scribe/ingest.go:223 — "r, err := capture.Disposition(capture.DispositionRequest{"
+  evidence: internal/core/scribe/ingest_test.go:99 — "func TestScribeIngestWritesASuppliedDisposition"
+- ac-3 — MET: a key outside the closed output shapes (a resolution on a disposition) is refused by name with the item it was on, a ground the supplied text does not carry is refused naming grounds and the item, on dispositions and admissions alike, and a disposition for an item the text never names is refused; every case proves the ledger unchanged
+  evidence: internal/core/scribe/ingest.go:335 — "func refuseKeys(where string, obj map[string]json.RawMessage, allowed map[string]bool) error {"
+  evidence: internal/core/scribe/ingest_test.go:139 — "func TestScribeIngestRefusesAnAuthoredField"
+  evidence: internal/core/scribe/ingest_test.go:172 — "func TestScribeIngestRefusesAnUnsuppliedGround"
+  evidence: internal/core/scribe/ingest_test.go:196 — "func TestScribeIngestRefusesAnUnsuppliedAdmissionGround"
+  evidence: internal/core/scribe/ingest_test.go:212 — "func TestScribeIngestRefusesAnUnsuppliedDisposition"
+- ac-4 — MET: an all-outstanding payload returns both items in the result's outstanding list with the ledger digest unchanged, an item both dispositioned and outstanding refuses, and an outstanding item of another run refuses by name; a silent item is refused too
+  evidence: internal/core/scribe/ingest_test.go:230 — "func TestScribeIngestReportsOutstandingAndWritesNothing"
+  evidence: internal/core/scribe/ingest_test.go:264 — "func TestScribeIngestRefusesASilentItem"
+- ac-5 — MET: SessionSeparation reads the store's records and reports a transcript carrying a reading stamp and a scribe stamp of one run as a Violation naming the session and file; the test asserts the exact violation, and history list prints the summary while the CLI test exits one on a breach
+  evidence: internal/core/history/separation.go:62 — "func SessionSeparation(repoRoot, rootSHA string) (SeparationReport, error) {"
+  evidence: internal/core/history/separation_test.go:96 — "func TestSeparationNamesATranscriptCarryingBothStampsOfOneRun"
+  evidence: internal/surface/cli/history.go:172 — "if rep, err := history.SessionSeparation(repoRoot, rootSHA); err == nil {"
+  evidence: internal/surface/cli/history_separation_surface_test.go:47 — "func TestHistorySeparationNamesABreachAndExitsOne"
+- ac-6 — MET: two transcripts each carrying one stamp of one run yield no violation, two transcripts and two stamped counted, the run named, and a summary saying no retained transcript carries two stamps of one run; a reading stamp and a scribe stamp of two different runs are likewise no violation
+  evidence: internal/core/history/separation_test.go:139 — "func TestSeparationReportsNoTranscriptCarryingTwoStamps"
+  evidence: internal/core/history/separation_test.go:119 — "func TestSeparationIgnoresTwoStampsOfTwoRuns"
+- ac-7 — MET: an empty store, and a store whose transcripts carry no stamp, set Unobserved with a reason rather than reporting clean; the CLI renders it and the smoke lane runs history separation over an empty store expecting exit 0
+  evidence: internal/core/history/separation.go:115 — "rep.Unobserved, rep.Reason = true, reasonNoTranscript"
+  evidence: internal/core/history/separation_test.go:168 — "func TestSeparationReportsAnEmptyStoreAsUnobserved"
+  evidence: internal/surface/cli/history_separation_surface_test.go:19 — "func TestHistorySeparationRendersUnobservedOnAnEmptyStore"
+  evidence: evals/smoke_test.go:90 — "{[]string{"history", "separation"}, true, true},"
+- ac-8 — MET: the manifest is promoted last through reading.WriteRunArtefact into the run's directory, which the exclusion floor denies to every assembly, and the read-block eval fixture plants a promoted scribe-manifest.json beside a run as EXHAUST that no reading may carry; the tagged eval passes at BASE
+  evidence: internal/core/scribe/ingest.go:259 — "rel, err := reading.WriteRunArtefact(req.RepoRoot, out.Run, ManifestFileName, m)"
+  evidence: evals/coldreading_fixture_test.go:230 — ""repo:.abcd/development/readings/rdg-2608300900000001/scribe-manifest.json","
+  evidence: internal/core/scribe/ingest_test.go:395 — "func TestScribeIngestPromotesTheManifestLast"
+
+Gap audit:
+- honoured:
+  - the allow list is derived from the ledger's declared directories and fails closed
+    evidence: internal/core/scribe/assemble_test.go:171 — "func TestAllowListIsDerivedFromLedgerDirs"
+    evidence: internal/core/scribe/assemble_test.go:147 — "func TestAssertAllowListFailsClosed"
+  - a reading bundle and a scribe context each carry a per-run stamp matched exactly, and a session that merely reads the documentation carries none
+    evidence: internal/core/scribe/assemble_test.go:208 — "func TestScribeContextCarriesThePerRunStamp"
+    evidence: internal/core/reading/manifest_test.go:39 — "func TestBundleCarriesTheReadingStampOfItsRun"
+    evidence: internal/core/sessionkind/sessionkind_test.go:18 — "func TestStampsArePerRunAndMatchedExactly"
+    evidence: internal/core/history/separation_test.go:79 — "func TestARecordWithoutContextStampsStillParses"
+  - ingest proves the context hash and lands admissions and surprises through the capture stores, meeting the ordering gate
+    evidence: internal/core/scribe/ingest_test.go:285 — "func TestScribeIngestProvesTheContextHash"
+    evidence: internal/core/scribe/ingest_test.go:443 — "func TestScribeIngestWritesAdmissionsAndSurprises"
+    evidence: internal/core/scribe/ingest_test.go:379 — "func TestScribeIngestRefusesBeforeTheComparativeRun"
+  - the manifest is parked at assembly and promoted only after every record landed, write-once beside the run
+    evidence: internal/core/scribe/ingest.go:256 — "if len(res.Landed()) == 0 {"
+    evidence: internal/core/reading/ingest_comparative_test.go:241 — "func TestWriteRunArtefactIsWriteOnce"
+  - surfaces: the plugin page, the brief's surface index row and the definition's Delivery section name the verb
+    evidence: commands/scribe.md:1 — "scribe"
+    evidence: .abcd/development/brief/04-surfaces/README.md:47 — "| 32 | `/abcd:scribe` | shipped |"
+    evidence: internal/core/lint/scribecontract_test.go:621 — "func TestScribeDeliveryNamesTheVerb"
+- diverged: (none)
+- missing: (none)
+
+Scope-condition dispositions:
+- cond-2609020626046719 — survived: assemble refuses a run without its commit marker and reads the ledger's committed directories plus the supplied text; nothing reads uncommitted ledger content
+  evidence: internal/core/scribe/assemble_test.go:186 — "func TestScribeAssembleRefusesAnUncommittedRun"
+  evidence: internal/core/scribe/assemble_test.go:41 — "func TestScribeContextIsLedgerAndSuppliedTextOnly"
+- cond-2609020626048270 — survived: the check reads the native store's metadata only and reports unobserved with a reason when no transcript or no stamped transcript is retained, rather than clean
+  evidence: internal/core/history/separation.go:117 — "rep.Unobserved, rep.Reason = true, reasonNoStamp"
+  evidence: internal/core/history/separation_test.go:195 — "func TestSeparationReadsMetadataOnly"
+- cond-2609020626049512 — survived: the payload is a closed shape: dispositions, admissions and surprises land through the existing stores and any other key is refused by name, so a family with no store cannot be written
+  evidence: internal/core/scribe/ingest.go:335 — "func refuseKeys("
+  evidence: internal/core/scribe/ingest_test.go:139 — "func TestScribeIngestRefusesAnAuthoredField"
 
 ## Grounds
 

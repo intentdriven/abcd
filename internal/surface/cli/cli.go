@@ -1391,6 +1391,11 @@ func newHookCommand() *cobra.Command {
 			// strings are transcript paths and capture errors, which are the
 			// least appropriate text in the program to hand to a model.
 			drainWhileLive(cmd, cwd)
+			// The badge's reset (itd-2609212130146198): a human message after
+			// an admitted question is its answer. Before the rules work, for
+			// the drain's reason: a rules.json that will not load must not
+			// also leave the badge parked.
+			resetModeOnAnswer(cmd.ErrOrStderr(), cwd)
 			root := rulesRoot(cwd, cmd.ErrOrStderr())
 			rs, err := rules.Load(root)
 			if err != nil {
@@ -4082,7 +4087,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 					return &exitError{Code: 2, Msg: fmt.Sprintf("abcd capture: --%s %q is not accepted; accepted values: %s (nothing captured)",
 						fv.Field, fv.Value, enumHelp(fv.Accepted))}
 				}
-				return err
+				return captureRefusal("", err)
 			}
 			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, res, func(w io.Writer) {
 				fmt.Fprintf(w, "captured %s (%s) — %s\n", res.ID, res.Status, termsafe.Sanitize(res.Path))
@@ -4183,7 +4188,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			}
 			res, err := capture.Mentions(capture.MentionsRequest{RepoRoot: repoRoot, Ref: mentionsRef})
 			if err != nil {
-				return err
+				return captureRefusal("mentions", err)
 			}
 			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, res, func(w io.Writer) {
 				fmt.Fprintf(w, "%s: %d open record(s), %d commit(s) walked, %d possibly already fixed\n",
@@ -4231,10 +4236,10 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 				ProductionMode: resolveModeRestamp,
 			})
 			if errors.Is(err, capture.ErrUnknownIssueID) {
-				return peerHeldRefusal(repoRoot, "abcd capture resolve: ", args[0], err)
+				err = peerHeldRefusal(repoRoot, "abcd capture resolve: ", args[0], err)
 			}
 			if err != nil {
-				return groundsUsageError("resolve", err)
+				return captureRefusal("resolve", err)
 			}
 			emitRelinkError(cmd.ErrOrStderr(), "capture resolve", res.RelinkError, "record-lint's links_resolve names each link left behind")
 			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, res, func(w io.Writer) {
@@ -4289,7 +4294,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 				BlockedBy: splitIDList(linkBlockedBy), Unblock: splitIDList(linkUnblock),
 			})
 			if err != nil {
-				return err
+				return captureRefusal("link", err)
 			}
 			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, res, func(w io.Writer) {
 				list := "[]"
@@ -4338,7 +4343,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 				ProductionMode: mode,
 			})
 			if err != nil {
-				return groundsUsageError("promote", err)
+				return captureRefusal("promote", err)
 			}
 			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, res, func(w io.Writer) {
 				verb := "minted"
@@ -4380,8 +4385,10 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 				return err
 			}
 			res, err := capture.Migrate(capture.MigrateRequest{RepoRoot: repoRoot, Apply: migrateApply})
+			// Migrate takes no input it could refuse, so what fails here is a
+			// fault and exits 1, as every ledger verb's fault does.
 			if err != nil {
-				return &exitError{Code: 2, Msg: "abcd capture migrate: " + err.Error()}
+				return fmt.Errorf("abcd capture migrate: %w", err)
 			}
 			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, res, func(w io.Writer) {
 				mode := "report only — nothing was written; re-run with --apply to write"
@@ -4436,7 +4443,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 				HoldFrameLocation: dispHoldFrame, HoldMoscow: dispHoldMoscow,
 			})
 			if err != nil {
-				return err
+				return captureRefusal("disposition", err)
 			}
 			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, res, func(w io.Writer) {
 				fmt.Fprintf(w, "%s  %s %s (%s) — %s\n",
@@ -4482,7 +4489,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			}
 			res, err := capture.Admit(capture.AdmitRequest{RepoRoot: repoRoot, Item: args[0], Grounds: admitGrounds})
 			if err != nil {
-				return err
+				return captureRefusal("admit", err)
 			}
 			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, res, func(w io.Writer) {
 				fmt.Fprintf(w, "%s  %s admitted into %s — %s\n",
@@ -4525,7 +4532,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			}
 			res, err := capture.Surprise(capture.SurpriseRequest{RepoRoot: repoRoot, OccasionedBy: surpriseOccasion, Text: args[0]})
 			if err != nil {
-				return err
+				return captureRefusal("surprise", err)
 			}
 			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, res, func(w io.Writer) {
 				fmt.Fprintf(w, "%s  occasioned by %s — %s\n", res.ID, res.OccasionedBy, termsafe.Sanitize(res.Path))
@@ -4568,7 +4575,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 				Open: reframeOpen, Complete: reframeComplete,
 			})
 			if err != nil {
-				return err
+				return captureRefusal("reframe", err)
 			}
 			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, res, func(w io.Writer) {
 				switch res.Half {
@@ -4612,7 +4619,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 				ProductionMode: wontfixProductionMode,
 			})
 			if err != nil {
-				return groundsUsageError("wontfix", err)
+				return captureRefusal("wontfix", err)
 			}
 			emitRelinkError(cmd.ErrOrStderr(), "capture wontfix", res.RelinkError, "record-lint's links_resolve names each link left behind")
 			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, res, func(w io.Writer) {
@@ -4649,7 +4656,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 				RepoRoot: repoRoot, ID: args[0], After: deferAfter, Reason: deferReason,
 			})
 			if err != nil {
-				return err
+				return captureRefusal("defer", err)
 			}
 			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, res, func(w io.Writer) {
 				fmt.Fprintf(w, "%s  deferred past %s (stays %s) — %s\n", res.ID, res.DeferredAfter, res.Status, termsafe.Sanitize(res.Path))
@@ -4708,20 +4715,39 @@ func emitGroundsReceipt(cmd *cobra.Command, asJSON bool, rec intent.GroundsResul
 var groundsFlagUsage = "optional; recorded when given — the conjecture being acted on, not the route taken: " +
 	"\"" + grounds.UsageSpelling() + ": <what is expected, and what would show it wrong>\""
 
-// groundsUsageError maps a core grounds refusal to exit 2, leaving every other
-// failure on its existing path.
-//
-// A MISSING --grounds exited 2 (the flag check above) while a MALFORMED one
-// exited 1, so a caller distinguishing usage errors from real failures learned
-// the wrong thing from the same flag (iss-2608300930057882). Both are one thing:
-// the argument was not usable and nothing was written. The core carries one
-// sentinel for the whole class, so this needs no second copy of the vocabulary,
-// the grammar, or the floor.
-func groundsUsageError(verb string, err error) error {
-	if errors.Is(err, capture.ErrGroundsRefused) {
-		return &exitError{Code: 2, Msg: "abcd capture " + verb + ": " + scrubPaths(err)}
+// captureRefusal maps every refusal of a ledger verb's own input to exit 2 (verb
+// "" is the capture write itself): a
+// malformed grounds value (iss-2608300930057882), an unknown id or one a peer
+// holds, a transition conflict, a request member outside its shape, and on the
+// reading ledger an admission or disposition asked for before characterisation. They
+// are one thing to a script — the request was not usable and nothing was
+// written — so they share one code, and exit 1 stays a fault's
+// (iss-2609260552251398). The core carries a sentinel for each class, so this
+// needs no second copy of any vocabulary or grammar. Every other error passes
+// through unchanged.
+func captureRefusal(verb string, err error) error {
+	if !errors.Is(err, capture.ErrGroundsRefused) && !errors.Is(err, capture.ErrUnknownIssueID) &&
+		!errors.Is(err, capture.ErrTransitionConflict) && !errors.Is(err, capture.ErrRequestRefused) &&
+		!errors.Is(err, capture.ErrNotCharacterised) {
+		return err
 	}
-	return err
+	msg := scrubPaths(err)
+	// The peer-held refusal already names the verb.
+	var held *peerHeldError
+	if errors.As(err, &held) {
+		return &exitError{Code: 2, Msg: msg}
+	}
+	// The core's own messages carry the verb, some as "capture link:", so it is
+	// trimmed before the surface names it once.
+	name := "capture"
+	if verb != "" {
+		name += " " + verb
+	}
+	msg = strings.TrimPrefix(msg, name+": ")
+	if verb != "" {
+		msg = strings.TrimPrefix(msg, verb+": ")
+	}
+	return &exitError{Code: 2, Msg: "abcd " + name + ": " + msg}
 }
 
 // emitRedactionNote says, on the human surface, that the written text differs
@@ -5033,7 +5059,7 @@ func parseRecurs(raw string) ([]string, error) {
 			continue
 		}
 		if !readingItemIDRe.MatchString(tok) {
-			return nil, fmt.Errorf("capture: --recurs token %q must match rdi-N", tok)
+			return nil, &exitError{Code: 2, Msg: fmt.Sprintf("abcd capture disposition: --recurs token %q must match rdi-N (nothing written)", tok)}
 		}
 		ids = append(ids, tok)
 	}

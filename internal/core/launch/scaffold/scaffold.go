@@ -352,6 +352,11 @@ func DeriveRepoFacts(repoRoot string) (branch, goVersion string) {
 	return deriveBranch(repoRoot), deriveGoVersion(repoRoot)
 }
 
+// SafeBranchName reports whether name is a default-branch name the rendered
+// workflows may carry: the allowlist deriveBranch holds a local ref to, for a
+// name read from elsewhere (the forge).
+func SafeBranchName(name string) bool { return branchNameRe.MatchString(name) }
+
 func deriveGoVersion(repoRoot string) string {
 	data, err := fsutil.ReadGuarded(filepath.Join(repoRoot, "go.mod"), maxWorkflowBytes)
 	if err != nil {
