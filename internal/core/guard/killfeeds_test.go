@@ -281,6 +281,23 @@ func TestKillFeedReviewBlockShapesStillBlock(t *testing.T) {
 	runVerdictCases(t, cases)
 }
 
+// TestBSDXargsValueFlagsAreStepped — iss-2609270028432249. The xargs of macOS
+// and the BSDs takes a value after `-J` (the replacement string), `-R` (the
+// most replacements) and `-S` (the replacement size). The walk did not know
+// them, so it read the value as the command xargs runs and warned on an
+// unrecognised launcher instead of reading the kill behind it.
+func TestBSDXargsValueFlagsAreStepped(t *testing.T) {
+	runVerdictCases(t, []verdictCase{
+		{`pgrep make | xargs -J % kill %`, VerdictBlock, "kill-by-search"},
+		{`pgrep make | xargs -R 5 -I{} kill {}`, VerdictBlock, "kill-by-search"},
+		{`pgrep make | xargs -S 1024 -I{} kill {}`, VerdictBlock, "kill-by-search"},
+		{`pgrep make | xargs -J % -R 2 kill -9 %`, VerdictBlock, "kill-by-search"},
+
+		{`echo 4242 | xargs -J % kill %`, VerdictAllow, ""},
+		{`ls | xargs -J % cp % /tmp/`, VerdictAllow, ""},
+	})
+}
+
 // TestKillFeedGroupsAndStringsStayLinear holds the group and string readings
 // to the cost class the rest of the guard keeps (work_test.go): nested groups,
 // a pipeline of groups, strings in the substitutions a kill reads, a

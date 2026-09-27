@@ -94,10 +94,12 @@ var wrapperValueFlags = map[string][]string{
 	// walk would otherwise consume and discard the value it needs to inspect.
 	"env":     {"-u", "--unset", "-C", "--chdir"},
 	"time":    {"-f", "--format", "-o", "--output"},
-	"xargs":   {"-a", "--arg-file", "-d", "--delimiter", "-E", "-I", "-L", "-n", "--max-args", "-P", "--max-procs", "-s", "--max-chars", "--process-slot-var"},
+	"xargs":   {"-a", "--arg-file", "-d", "--delimiter", "-E", "-I", "-J", "-L", "-n", "--max-args", "-P", "--max-procs", "-R", "-s", "-S", "--max-chars", "--process-slot-var"},
 	"timeout": {"-k", "--kill-after", "-s", "--signal"},
 	"exec":    {"-a"},
-	// `command` and `nohup` take no value flags at all.
+	// `command` and `nohup` take no value flags at all. xargs's `-J`, `-R` and
+	// `-S` are BSD's (macOS xargs): the replacement string, the most
+	// replacements, and the replacement size.
 
 	// Probed on util-linux 2.39.3 / coreutils 9.4 (wrappers_test.go). Two of these
 	// are traps a document would have got wrong:
