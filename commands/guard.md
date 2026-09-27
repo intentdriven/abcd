@@ -268,13 +268,15 @@ $(pidof make)` — is a **block** (`kill-by-search`), because it signals every
 matching process on the machine, as `pkill` does; a kill of a pid you name, one
 you recorded (`kill $(cat pidfile)`), or a search of your own group (`kill
 $(pgrep -g <pgid>)`) is not. The search is followed through a group (`{ pgrep
-…; } | xargs kill`), through a shell string that runs it (`kill $(sh -c 'pgrep
-…')`), and into a shell string that `xargs` runs or that reads the pipe (`pgrep
-… | xargs sh -c 'kill "$@"' _`, `pgrep … | sh -c 'xargs kill'`); behind `xargs`
-and a launcher the guard does not know, the fail-safe warns. Every command of a
-string `xargs` runs is read as handed its input, so `pgrep … | xargs sh -c 'kill
-4242'` is a **block** too: the guard does not read which of the string's
-commands uses it. A `pkill` or `killall` that selects by user, group or terminal
+…; } | xargs kill`) and into one, to every command in it (`pgrep … | { sleep 1;
+xargs kill; }`), through a shell string that runs it (`kill $(sh -c 'pgrep
+…')`), and into a shell string that `xargs` runs or that reads the pipe or a
+redirect (`pgrep … | xargs sh -c 'kill "$@"' _`, `pgrep … | sh -c 'xargs
+kill'`, `sh -c 'xargs kill' < <(pgrep …)`); behind `xargs` and a launcher the
+guard does not know, the fail-safe warns. Every command of a string `xargs`
+runs, and every command in a group a pipe feeds, is read as handed that input,
+so `pgrep … | xargs sh -c 'kill 4242'` is a **block** too: the guard does not
+read which of the commands uses it. A `pkill` or `killall` that selects by user, group or terminal
 (`-u`, `-t`, and `pkill`'s `-U` and `-G`, written apart from the value or
 against it, as `pkill -tpts/3`) is a **block** too, under `pkill-by-owner`,
 `killall-by-owner` or the entry for a kill by name, because every session under

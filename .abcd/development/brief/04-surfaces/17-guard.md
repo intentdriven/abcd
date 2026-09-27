@@ -228,9 +228,11 @@ command git would actually run is what gets checked. A commit or push that
 moves `core.hooksPath` for itself is read as skipping its hooks, which is what
 it does. A delete chained after `pushd` or `popd` is read as one chained after
 `cd`. A `kill` handed what a process search prints, in a substitution or
-piped into `xargs kill`, is read as the kill by name it is — through a group,
+piped into `xargs kill`, is read as the kill by name it is — through a group
+and into one, whose every command is read as handed what is piped into it,
 through a shell string that runs the search, and into a shell string `xargs`
-runs, whose every command is read as handed its input — and a `pkill` or
+runs or a pipe or redirect feeds, whose every command is read as handed its
+input — and a `pkill` or
 `killall` selecting by user, group or terminal, its value written apart or
 attached, as selecting every session under the account; `pkill`'s signal name
 is read as a signal first, in any case. In a repository with more

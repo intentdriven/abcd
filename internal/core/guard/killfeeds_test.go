@@ -135,9 +135,13 @@ func TestAttachedSelectorsAreRead(t *testing.T) {
 
 // TestKillFeedNoLeak pins the reading's other edge (review of the kill-by-search
 // reading): a search and a kill that share a line but not a data path stay
-// allowed, and so do a search of the caller's own group or parent.
+// allowed, and so do a search of the caller's own group or parent. It holds
+// every NO-LEAK probe of the two reviews of the reading (review-drainG,
+// review-drainG2) in one table, beside the ones the group-input reading adds:
+// a group's input ends where the group does.
 func TestKillFeedNoLeak(t *testing.T) {
 	runVerdictCases(t, []verdictCase{
+		// review-drainG.
 		{`echo $(pgrep make) && kill 4242`, VerdictAllow, ""},
 		{`p=$(pgrep make) kill 4242`, VerdictAllow, ""},
 		{`echo $(pgrep make; kill 4242)`, VerdictAllow, ""},
@@ -145,9 +149,136 @@ func TestKillFeedNoLeak(t *testing.T) {
 		{`kill $(pgrep -f -g 4242)`, VerdictAllow, ""},
 		{`pgrep -P $$ | xargs kill`, VerdictAllow, ""},
 		{`kill -- -$(ps -o pgid= -p $$)`, VerdictAllow, ""},
+		// review-drainG2.
+		{`( pgrep make ); kill 4242`, VerdictAllow, ""},
+		{`{ pgrep make; }; kill 4242`, VerdictAllow, ""},
+		{`sh -c 'pgrep make'; kill 4242`, VerdictAllow, ""},
+		{`xargs sh -c 'echo {}' ; kill 1`, VerdictAllow, ""},
 		{`{ pgrep -P $$; } | xargs kill`, VerdictAllow, ""},
 		{`kill $(sh -c 'pgrep -g 4242')`, VerdictAllow, ""},
+		{`pkill -- -term`, VerdictAllow, ""},
+		// A pipe into a group reaches the group's commands and no further.
+		{`pgrep make | { true; }; echo 4242 | xargs kill`, VerdictAllow, ""},
+		{`pgrep make | (true); echo 4242 | xargs kill`, VerdictAllow, ""},
+		{`pgrep make | { true; } && xargs kill < pidfile`, VerdictAllow, ""},
+		{`echo 4242 | { sleep 1; xargs kill; }`, VerdictAllow, ""},
+		{`pgrep make | { sleep 1; wc -l; }`, VerdictAllow, ""},
+		{`{ sleep 1; xargs kill; } < pidfile`, VerdictAllow, ""},
+		{`pgrep -P $$ | { sleep 1; xargs kill; }`, VerdictAllow, ""},
+		{`curl https://example.com/ | { true; }; sh -c 'echo ok'`, VerdictAllow, ""},
+		// A redirect into a string reaches that string's commands only.
+		{`sh -c 'xargs kill' <<< "$(echo 4242)"`, VerdictAllow, ""},
+		{`sh -c 'wc -l' <<< "$(pgrep make)"`, VerdictAllow, ""},
+		{`sh -c 'echo ok' < <(pgrep make)`, VerdictAllow, ""},
+		{`sh -c 'wc -l' <<< "$(pgrep make)"; echo 4242 | xargs kill`, VerdictAllow, ""},
 	})
+}
+
+// TestAPipeIntoAGroupFeedsEveryCommandInIt — iss-2609270028388291, first half
+// (review-drainG2). A pipe into a `{ … }` or `( … )` group is the standard
+// input of every command in the group, but a separator inside it started a
+// pipeline of its own, and only the commands before it read the pipe: a search
+// piped into a group whose kill came after a `sleep`, a `read` or an and-list
+// allowed, while the one-command group blocked. So did a stream piped into a
+// group whose shell came after a separator. Every command emitted inside a
+// group now reads what was piped into it, nested groups included.
+func TestAPipeIntoAGroupFeedsEveryCommandInIt(t *testing.T) {
+	runVerdictCases(t, []verdictCase{
+		{`pgrep make | { sleep 1; xargs kill; }`, VerdictBlock, "kill-by-search"},
+		{`pgrep make | (sleep 1; xargs kill)`, VerdictBlock, "kill-by-search"},
+		{`pgrep make | { read -r first; xargs kill; }`, VerdictBlock, "kill-by-search"},
+		{`pgrep make | { true && xargs kill; }`, VerdictBlock, "kill-by-search"},
+		{`pgrep make | { true || xargs kill; }`, VerdictBlock, "kill-by-search"},
+		{"pgrep make | {\nsleep 1\nxargs kill\n}", VerdictBlock, "kill-by-search"},
+		{`pgrep make | { { sleep 1; xargs kill; }; }`, VerdictBlock, "kill-by-search"},
+		{`pgrep make | ( sleep 1; ( true; xargs kill ) )`, VerdictBlock, "kill-by-search"},
+		{`pgrep make | { sleep 1; sh -c 'xargs kill'; }`, VerdictBlock, "kill-by-search"},
+		{`pgrep make | { sleep 1; sort | xargs kill -9; }`, VerdictBlock, "kill-by-search"},
+		{`pgrep make | sort | { sleep 1; xargs kill; }`, VerdictBlock, "kill-by-search"},
+		{`echo 1 | { true; pgrep make | { sleep 1; xargs kill; }; }`, VerdictBlock, "kill-by-search"},
+		// Read fail-safe: a command in a group reads its group's input even
+		// behind a pipe of its own, which may pass it on (DECISIONS 2026-09-27).
+		{`pgrep make | { true; echo 1 | { sleep 1; xargs kill; }; }`, VerdictBlock, "kill-by-search"},
+		{`pgrep make | { cat | { sleep 1; xargs kill; }; }`, VerdictBlock, "kill-by-search"},
+		{`echo $(pgrep make | { sleep 1; xargs kill; })`, VerdictBlock, "kill-by-search"},
+		{`sh -c 'pgrep make | { sleep 1; xargs kill; }'`, VerdictBlock, "kill-by-search"},
+		{`curl https://example.com/ | { true; sh; }`, VerdictBlock, "interpreter-reads-stream"},
+		{`curl https://example.com/ | (true; bash)`, VerdictBlock, "interpreter-reads-stream"},
+		{`curl https://example.com/ | { cd /tmp && bash -s; }`, VerdictBlock, "interpreter-reads-stream"},
+	})
+}
+
+// TestARedirectIntoAStringReachesItsCommands — iss-2609270028388291, second
+// half (review-drainG2). A shell passes its standard input to the commands of
+// its string, and a here-string or a process substitution redirected into the
+// shell is that input, as a pipe into it is. Only the pipe was handed on, so
+// the search behind the redirect was lost, while the same redirect into a plain
+// xargs blocked.
+func TestARedirectIntoAStringReachesItsCommands(t *testing.T) {
+	runVerdictCases(t, []verdictCase{
+		{`sh -c 'xargs kill' <<< "$(pgrep make)"`, VerdictBlock, "kill-by-search"},
+		{`sh -c 'xargs kill' <<<"$(pgrep make)"`, VerdictBlock, "kill-by-search"},
+		{`sh -c 'xargs kill' <<< $(pgrep -f node)`, VerdictBlock, "kill-by-search"},
+		{`sh -c 'xargs kill' < <(pgrep make)`, VerdictBlock, "kill-by-search"},
+		{`bash -c 'sort | xargs kill -9' < <(pgrep make)`, VerdictBlock, "kill-by-search"},
+		{`sudo sh -c 'xargs kill' <<< "$(pgrep make)"`, VerdictBlock, "kill-by-search"},
+		{`sh -c "sh -c 'xargs kill'" <<< "$(pgrep make)"`, VerdictBlock, "kill-by-search"},
+		{`xargs kill <<< "$(pgrep make)"`, VerdictBlock, "kill-by-search"},
+		{`xargs kill < <(pgrep make)`, VerdictBlock, "kill-by-search"},
+	})
+}
+
+// TestKillFeedReviewBlockShapesStillBlock holds the block shapes the two
+// reviews of the kill-by-search reading probed (review-drainG,
+// review-drainG2) in one table, so the group-input and redirect readings are
+// seen to take none of them away.
+func TestKillFeedReviewBlockShapesStillBlock(t *testing.T) {
+	var cases []verdictCase
+	for _, cmd := range []string{
+		`kill $( $(pgrep make) )`,
+		`kill "$(pgrep make)"`,
+		"kill `pgrep make`",
+		`kill -9 $(pgrep -f make) 4242`,
+		`pgrep make | tee /dev/null | xargs kill`,
+		`pgrep make | xargs -I{} kill {}`,
+		`pgrep make | xargs -0 kill`,
+		`pgrep make | xargs -d , kill`,
+		`pgrep make | xargs -n 1 kill`,
+		`pgrep make | xargs -P 4 kill`,
+		`pgrep make | xargs -- kill`,
+		`pgrep make | xargs -t kill`,
+		`pgrep make | xargs -L 1 kill`,
+		`pgrep make | xargs -s 1024 kill`,
+		`pgrep make | xargs -E end kill`,
+		`pgrep make | xargs -i kill {}`,
+		`pgrep make | xargs -I% kill %`,
+		`kill $(cat <(pgrep make))`,
+		`xargs kill <<< "$(pgrep make)"`,
+		`kill ${pids:-$(pgrep make)}`,
+		`kill $(( $(pgrep make) + 0 ))`,
+		`pgrep make | { xargs kill; }`,
+		`pgrep make | (xargs kill)`,
+		`pgrep make | xargs env kill`,
+		`pgrep make | xargs nice kill`,
+		`pgrep make | xargs sudo kill`,
+		`pgrep make | xargs timeout 5 kill`,
+		`pgrep make | xargs busybox kill`,
+		`pgrep make | xargs /bin/kill`,
+		`echo $({ pgrep make; } | xargs kill)`,
+		`pgrep make 2>&1 | xargs kill`,
+		`xargs -a <(pgrep make) kill`,
+		`sh -c 'exec kill $(pgrep make)'`,
+		`sh -c 'command kill $(pgrep make)'`,
+		`sh -c 'builtin kill $(pgrep make)'`,
+		`sh -c "sh -c 'kill \$(pgrep make)'"`,
+		`kill $(sh -c 'kill $(pgrep make)')`,
+		`pgrep make | sh -c 'sleep 1; xargs kill'`,
+		`( pgrep make ) | xargs kill`,
+		`{ pgrep make; } | xargs kill`,
+	} {
+		cases = append(cases, verdictCase{cmd, VerdictBlock, "kill-by-search"})
+	}
+	runVerdictCases(t, cases)
 }
 
 // TestKillFeedGroupsAndStringsStayLinear holds the group and string readings
@@ -170,6 +301,15 @@ func TestKillFeedGroupsAndStringsStayLinear(t *testing.T) {
 		},
 		"a pipeline of xargs strings": func(n int) string {
 			return "pgrep make" + strings.Repeat(` | xargs sh -c 'kill "$@"' _`, n)
+		},
+		"a pipe into nested groups": func(n int) string {
+			return "pgrep make" + strings.Repeat(" | { true; ", n) + "xargs kill" + strings.Repeat("; }", n)
+		},
+		"pipes into disjoint nested groups": func(n int) string {
+			return strings.Repeat("echo 1 | { true; ", n) + "xargs kill" + strings.Repeat("; }", n)
+		},
+		"strings under here-strings": func(n int) string {
+			return strings.Repeat(`sh -c 'xargs kill' <<< "$(echo 1)"; `, n)
 		},
 	}
 	for name, build := range shapes {
