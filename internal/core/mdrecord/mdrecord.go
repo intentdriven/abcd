@@ -7,8 +7,9 @@
 // families carry the same constructs — the intent record's scope conditions and
 // audit notes, the issue ledger's grounds — and a body reader spelled twice is a
 // reader the two can disagree about, which is how a bullet one writer appends is
-// a bullet the other cannot find. It imports only the standard library: no
-// filesystem, no transport, no record store, and no notion of which family a
+// a bullet the other cannot find. It imports the standard library and
+// termsafe, itself a standard-library leaf, for the tree's one code-span pairer:
+// no filesystem, no transport, no record store, and no notion of which family a
 // body belongs to.
 //
 // What it does NOT own is any heading's meaning. A caller supplies the heading
@@ -19,6 +20,8 @@ package mdrecord
 import (
 	"regexp"
 	"strings"
+
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 var (
@@ -329,11 +332,10 @@ func opensCommentFrom(ln string, start int) bool {
 	for i := start; i < len(ln); {
 		switch {
 		case ln[i] == '`':
-			j := backtickRunEnd(ln, i)
-			if _, end, ok := findBacktickRun(ln, j, j-i); ok {
-				i = end
+			if sp, ok := termsafe.PairCodeSpan(ln, i); ok {
+				i = sp.End
 			} else {
-				i = j
+				i = runEnd(ln, i)
 			}
 		case strings.HasPrefix(ln[i:], "<!--"):
 			rest := ln[i+len("<!--"):]
@@ -531,8 +533,9 @@ func PeelTrailingLinkRefs(section *[]string) []string {
 	return refs
 }
 
-// CodeSpanRanges returns the byte ranges of the inline code spans on one line:
-// a run of backticks closed by a run of the same length (CommonMark).
+// CodeSpanRanges returns the byte ranges of the inline code spans on one line,
+// each paired by termsafe.PairCodeSpan (CommonMark: a run of backticks closed
+// by the next run of exactly the same length).
 func CodeSpanRanges(ln string) [][2]int {
 	var out [][2]int
 	for i := 0; i < len(ln); {
@@ -540,54 +543,24 @@ func CodeSpanRanges(ln string) [][2]int {
 			i++
 			continue
 		}
-		j := backtickRunEnd(ln, i)
-		closeStart, closeEnd, ok := findBacktickRun(ln, j, j-i)
+		sp, ok := termsafe.PairCodeSpan(ln, i)
 		if !ok {
-			i = j
+			i = runEnd(ln, i)
 			continue
 		}
-		_ = closeStart
-		out = append(out, [2]int{i, closeEnd})
-		i = closeEnd
+		out = append(out, [2]int{sp.Start, sp.End})
+		i = sp.End
 	}
 	return out
 }
 
-// backtickRunEnd returns the index just past the run of backticks at i.
-func backtickRunEnd(ln string, i int) int {
+// runEnd returns the index just past the run of backticks at i: an unpaired run
+// is literal backticks, stepped over whole so none of them opens a span.
+func runEnd(ln string, i int) int {
 	for i < len(ln) && ln[i] == '`' {
 		i++
 	}
 	return i
-}
-
-// findBacktickRun finds the next run of exactly n backticks at or after from.
-//
-// The search is per-run and walks the bytes between runs, so a line whose runs
-// all have DISTINCT lengths asks once per length and the cost is superlinear in
-// the line's length (iss-2608301803425790). That shape is left in place on a
-// MEASUREMENT rather than a shrug, and this package's own benchmarks are the
-// measurement: a line of 120 distinct-length runs costs ~200us, an ordinary
-// record line ~76ns, and both candidate fixes cost more than they save.
-// Precomputing the runs into a slice takes the bad line to ~7us and the ordinary
-// line to ~115ns with one allocation — every line paying for a shape no record
-// body has. Stepping between runs with strings.IndexByte leaves the ordinary
-// line alone and takes the bad line to ~243us, the gaps being too short to repay
-// the call. Re-run BenchmarkOpensCommentDistinctRuns and
-// BenchmarkOpensCommentTypicalLine before revisiting this.
-func findBacktickRun(ln string, from, n int) (start, end int, ok bool) {
-	for k := from; k < len(ln); {
-		if ln[k] != '`' {
-			k++
-			continue
-		}
-		e := backtickRunEnd(ln, k)
-		if e-k == n {
-			return k, e, true
-		}
-		k = e
-	}
-	return 0, 0, false
 }
 
 // InAnyRange reports whether pos falls inside one of the ranges.

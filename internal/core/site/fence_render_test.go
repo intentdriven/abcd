@@ -106,12 +106,12 @@ func TestRenderBlockKeepsTheFencesItAlreadyRendered(t *testing.T) {
 // paragraph opening with a code span. The renderer read any three-backtick
 // prefix as a fence, so it rendered an empty command block with the text lost,
 // or refused the whole page over an info string the line never had
-// (iss-2609262309556167). A real fence still renders as one. (The span of a
-// lone space renders empty: the inline renderer trims a multi-backtick span's
-// spaces, a reading of its own this does not touch.)
+// (iss-2609262309556167). A real fence still renders as one. The span of a
+// lone space keeps it: CommonMark strips one space from each side only when
+// the content is not all spaces (iss-2609262322244502).
 func TestRenderBlockReadsABacktickRunHoldingABacktickAsProse(t *testing.T) {
 	for md, want := range map[string]string{
-		"``` ```":              "<p><code></code></p>",
+		"``` ```":              "<p><code> </code></p>",
 		"```x```":              "<p><code>x</code></p>",
 		"``` x ```":            "<p><code>x</code></p>",
 		"```` ``` ````":        "<p><code>```</code></p>",
