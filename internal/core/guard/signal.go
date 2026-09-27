@@ -17,7 +17,8 @@ var signalWordCommands = map[string]bool{"pkill": true}
 // signalNames are the signal names the pkill implementations accept, Linux
 // and BSD together, without the SIG prefix. A name one platform lacks is
 // refused as an option there, so reading it as a signal spares nothing that
-// runs.
+// runs. A name no pkill accepts is not here: its letters are options, so
+// `pkill -null` is `-n -u ll` and BSD's `pkill -unused` is `-u nused`.
 var signalNames = map[string]bool{
 	"hup": true, "int": true, "quit": true, "ill": true, "trap": true, "abrt": true,
 	"iot": true, "bus": true, "emt": true, "fpe": true, "kill": true, "usr1": true,
@@ -25,7 +26,7 @@ var signalNames = map[string]bool{
 	"chld": true, "cld": true, "cont": true, "stop": true, "tstp": true, "ttin": true,
 	"ttou": true, "urg": true, "xcpu": true, "xfsz": true, "vtalrm": true, "prof": true,
 	"winch": true, "io": true, "poll": true, "pwr": true, "sys": true, "info": true,
-	"lost": true, "unused": true, "rtmin": true, "rtmax": true, "exit": true, "null": true,
+	"lost": true, "rtmin": true, "rtmax": true,
 }
 
 // isSignalWord reports whether a word is `-` and a signal: a number, or a name

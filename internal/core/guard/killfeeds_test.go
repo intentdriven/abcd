@@ -298,6 +298,19 @@ func TestBSDXargsValueFlagsAreStepped(t *testing.T) {
 	})
 }
 
+// TestSignalTableHoldsOnlySignals — review-drainG2 (INFO). The signal names
+// pkill's first `-NAME` word is read by are the ones a pkill accepts: a word no
+// pkill takes for a signal is a cluster of options, so `pkill -null` is `-n -u
+// ll` and BSD's `pkill -unused` is `-u nused`, both by owner.
+func TestSignalTableHoldsOnlySignals(t *testing.T) {
+	runVerdictCases(t, []verdictCase{
+		{`pkill -null -g 1`, VerdictBlock, "pkill-by-owner"},
+		{`pkill -unused -g 1`, VerdictBlock, "pkill-by-owner"},
+		{`pkill -term -g 1`, VerdictAllow, ""},
+		{`pkill -SIGINFO -g 1`, VerdictAllow, ""},
+	})
+}
+
 // TestKillFeedGroupsAndStringsStayLinear holds the group and string readings
 // to the cost class the rest of the guard keeps (work_test.go): nested groups,
 // a pipeline of groups, strings in the substitutions a kill reads, a
@@ -334,5 +347,38 @@ func TestKillFeedGroupsAndStringsStayLinear(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			assertWorkGrowth(t, build, 1<<8, "a kill's feeds are counted once per list")
 		})
+	}
+}
+
+// TestArgsReaderReadsEachWordOnce pins the argsReader's contract directly
+// (review-drainG2, finding 5): the words after an xargs are read once however
+// many places are asked about, left to right. The growth shapes above do not
+// catch a reader that re-reads the words per place, because the speculation
+// caps turn that re-read into a constant factor; this counts the reader alone.
+func TestArgsReaderReadsEachWordOnce(t *testing.T) {
+	segs, err := tokenize("echo 4242 | xargs myrunner" + strings.Repeat(" kill $(echo 1)", 300))
+	if err != nil {
+		t.Fatalf("tokenize: %v", err)
+	}
+	var s segment
+	found := false
+	for _, seg := range segs {
+		if len(seg.tokens) > 0 && seg.tokens[0] == "xargs" {
+			s, found = seg, true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("no xargs segment in the shape")
+	}
+	n := 0
+	workTally = &n
+	defer func() { workTally = nil }()
+	r := newArgsReader(s)
+	for i := 0; i <= len(s.tokens); i++ {
+		r.before(i)
+	}
+	if n > 2*len(s.tokens) {
+		t.Errorf("asking every place of a %d-word segment counted %d units, want at most %d: the words are read once", len(s.tokens), n, 2*len(s.tokens))
 	}
 }
