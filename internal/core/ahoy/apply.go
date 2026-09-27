@@ -994,8 +994,9 @@ func markerFilesDropped(from, to string) []string {
 }
 
 // stepSymlink installs the PATH entry: an abcd-owned regular-file copy of the
-// verified cache artefact (default, spc-35), the spc-21 pinned symlink when no
-// cache exists to copy from, or the track-latest dev shim under --dev. It runs
+// verified cache artefact (default, spc-35), or the track-latest dev shim under
+// --dev. With no verified artefact to copy it writes nothing and names the
+// command to run first (iss-2609100506263330). It runs
 // on a fresh install (the symlink.missing / symlink.dangling gaps), to heal a
 // legacy symlink into the plugin root (symlink.legacy — that link dies at the
 // next plugin update), or when a mode switch was forced on an already-present
@@ -1023,8 +1024,8 @@ func (a *applyCtx) stepSymlink() {
 		// explicit --bin-dir the detection gap does not even describe this location.
 		a.refuse("refused to write the PATH entry " + displayPath(target) +
 			// dangling is carried, not defaulted: clearDanglingEntry leaves a
-			// dangling link in place when there is no plugin binary to repoint
-			// it at, and that is the one way a dangling entry still reaches this
+			// dangling link in place when this run has nothing to put there,
+			// and that is the one way a dangling entry still reaches this
 			// refusal — describing it as an ordinary foreign link would name the
 			// wrong repair.
 			": it is occupied by " + describeEntry(pathEntry{path: target, kind: kind, dangling: linkIsDangling(target)}) +
@@ -1045,9 +1046,11 @@ func (a *applyCtx) stepSymlink() {
 // refuses loudly and installs nothing — and the very bytes that were verified
 // are written 0755 with the provenance recorded in the data dir's path-entry.
 // A legacy owned symlink or a dev shim at the target is replaced (the heal); an
-// owned copy already matching is left alone. Without a usable cache it
-// degrades, loudly, to the spc-21 pinned symlink — there is nothing on disk
-// whose provenance a copy could record. The cache is reached through the
+// owned copy already matching is left alone. Without a usable cache it writes
+// nothing and refuses, naming the command that provides a verified copy
+// (coldCacheRefusal): the only other entry there is to write is a symlink into
+// the plugin root, which the next plugin update strands
+// (iss-2609100506263330). The cache is reached through the
 // hook's CLAUDE_PLUGIN_DATA or, from the terminal the bootstrap's notice sends
 // the reader to, through the plugin root's .data-dir stamp
 // (iss-2609012111168716). Both are ROUTES, not trust: the cache is promoted
@@ -1096,19 +1099,19 @@ func (a *applyCtx) installOwnedEntry(target string, kind binTargetKind) {
 		}
 	}
 	if !present || unbound != "" {
-		if kind != binTargetOwnedSymlink {
-			// Notes is the loud channel (see refuse): the degradation must be
-			// SAID, because a symlink into the plugin root dies at the next
-			// plugin update and a silent fallback would hide why — and it names
-			// every source tried, so the reader knows which one to restore.
-			why := look.explainMissingCache()
-			if unbound != "" {
-				why = look.story + ", whose cache no attestation binds (above)"
-			}
-			a.refuse("no verified release artefact is available in the persistent plugin data directory (" + why +
-				"), so the PATH entry was written as a symlink to the plugin-root binary — it will stop working when a plugin update replaces that directory. Start a session so the hooks provision the cache and record its location in the plugin root, then re-run `abcd ahoy install` to upgrade it to an owned copy.")
+		// No verified artefact, so no entry is written (iss-2609100506263330).
+		// A symlink into the plugin root is the only other thing there is to
+		// write, and it is known to dangle at the next plugin update — a
+		// warned-about install that breaks later is harder to diagnose than a
+		// refusal now. Fetching the artefact here is not this verb's to do: its
+		// documented meaning is local configuration, and the network answers
+		// only a verb whose meaning is the fetch (adr-38). So the refusal names
+		// the command that is: the install one-liner.
+		why := look.explainMissingCache()
+		if unbound != "" {
+			why = look.story + ", whose cache no attestation binds (above)"
 		}
-		a.installPinnedSymlink(target, kind)
+		a.refuse(coldCacheRefusal(target, kind, a.det.pluginRoot, why))
 		return
 	}
 	dataDir := look.dir
@@ -1212,7 +1215,8 @@ func (a *applyCtx) installDevShim(target string, kind binTargetKind) {
 
 // stepPathEntry records the installed PATH entry in ~/.abcd/path-entry, for the
 // two shapes whose ownership does not already rest on that record: the spc-21
-// pinned symlink and the --dev shim. The owned copy stamps itself inside
+// pinned symlink an earlier release wrote, which install records when it finds
+// one working, and the --dev shim. The owned copy stamps itself inside
 // installOwnedEntry — its very classification reads the record back, so it
 // cannot be recognised here before it has been recorded — and this step then
 // leaves it alone.
@@ -1280,11 +1284,21 @@ func (a *applyCtx) stepPathEntry() {
 	a.recordEntry(target, digest)
 }
 
-// clearDanglingEntry removes an abcd-owned symlink at target whose destination
-// no longer exists. It is deliberately narrow: only a SYMLINK, only one that
-// resolves to nothing, and only when the binary it would be repointed at exists.
-// Nothing is destroyed (the link already answered nothing) and the alternative is
-// worse — a dangling `abcd` earlier on PATH shadows the working install.
+// clearDanglingEntry removes a symlink at target whose destination no longer
+// exists, so the entry this run writes can take its place. It is deliberately
+// narrow: only a SYMLINK, only one that resolves to nothing, and only when this
+// run has something to put there — the verified release artefact for the owned
+// copy, or the plugin binary the --dev shim rebuilds beside. Nothing is
+// destroyed (the link already answered nothing) and the alternative is worse —
+// a dangling `abcd` earlier on PATH shadows the working install. When there is
+// nothing to write, the link stays exactly as it is: an entry abcd owns is then
+// named by installOwnedEntry's refusal together with the command to run first,
+// and one it does not own by the foreign refusal in stepSymlink.
+//
+// A link the provenance record names takes its record with it
+// (iss-2609100506263330): the record would otherwise outlive the entry and hand
+// the ownership claim to whatever occupies that path next. The entry written in
+// its place records itself afresh.
 func (a *applyCtx) clearDanglingEntry(target string) {
 	fi, err := os.Lstat(target)
 	if err != nil || fi.Mode()&os.ModeSymlink == 0 {
@@ -1293,64 +1307,18 @@ func (a *applyCtx) clearDanglingEntry(target string) {
 	if present, serr := fsutil.Exists(target); serr != nil || present {
 		return
 	}
-	if !fileExists(pluginBinaryPath(a.det.pluginRoot)) {
-		// Nothing to repoint it at. Leaving the link is the lesser evil (removing
-		// it would take abcd off PATH entirely for no gain), and installPinnedSymlink
-		// states the reason — its source check runs before the owned-entry early
-		// return precisely so this case is never silent.
+	if a.devMode {
+		if !fileExists(pluginBinaryPath(a.det.pluginRoot)) {
+			return
+		}
+	} else if !ownedCopySourceReady(a.cwd, a.det.pluginRoot) {
 		return
 	}
 	if err := os.Remove(target); err != nil {
 		a.refuse("could not remove the dangling PATH entry " + displayPath(target) + ": " + errText(err))
-	}
-}
-
-// installPinnedSymlink writes the owned symlink to the pinned binary, replacing a
-// dev shim if one is there. An existing owned symlink is left as-is (idempotent).
-// It REFUSES to create a link whose target does not exist: a dangling `abcd` on
-// PATH shadows whatever else would have answered, so a broken plugin install must
-// not be converted into a broken PATH (iss-171).
-func (a *applyCtx) installPinnedSymlink(target string, kind binTargetKind) {
-	// The source check comes FIRST, before the idempotent early return: an owned
-	// entry whose binary is gone classifies as owned, so checking the kind first
-	// would return silently and leave a dangling link reported as a healthy
-	// install with no reason recorded anywhere.
-	source := pluginBinaryPath(a.det.pluginRoot)
-	if !fileExists(source) {
-		a.refuse("refused to write the PATH entry " + displayPath(target) +
-			": its target " + displayPath(source) + " does not exist — a dangling link would shadow any working abcd on PATH. Reinstall the plugin, then re-run `abcd ahoy install`.")
 		return
 	}
-	if kind == binTargetOwnedSymlink {
-		// Idempotent only when the pin already resolves to the current binary. A
-		// pin into a superseded vintage (iss-2609161805447092) classifies as
-		// owned too, and returning here would leave it answering the old
-		// release with the gap that named this verb as the remedy still open.
-		if dest, err := os.Readlink(target); err == nil && resolveSymlinkDest(target, dest) == resolvePath(source) {
-			return
-		}
-		if err := os.Remove(target); err != nil {
-			a.refuse("could not replace the superseded PATH entry " + displayPath(target) + ": " + errText(err))
-			return
-		}
-	}
-	if kind == binTargetDevShim {
-		if err := os.Remove(target); err != nil {
-			a.refuse("could not replace the dev PATH entry " + displayPath(target) + " with the pinned one: " + errText(err) +
-				"; the dev entry is left as it was")
-			return
-		}
-		a.echoChange("install_mode", "dev", "pinned")
-	}
-	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-		a.refuse("could not create the install directory " + displayPath(filepath.Dir(target)) + ": " + errText(err))
-		return
-	}
-	if err := os.Symlink(source, target); err == nil {
-		a.note(writeCommandEntry, target)
-	} else {
-		a.refuse("could not write the PATH entry " + displayPath(target) + ": " + errText(err))
-	}
+	removePathEntryFor(target)
 }
 
 // noteReachability describes, on the install result itself, whether the entry

@@ -289,7 +289,11 @@ which is false (iss-95).
 **The `PATH` entry is classified, not assumed.** Detection scans `PATH`,
 resolving symlinks, and classifies each hit as abcd's own entry, the dev shim,
 or a foreign binary. An abcd-owned entry anywhere on `PATH` is the install; with
-none, the default location answers the same question. Three states are named
+none, the default location answers the same question. A symlink whose target
+has gone is abcd's own when it is the one a plugin update stranded or when the
+home-scoped `path-entry` record names it, read exactly as the hook shims read
+it; any other dangling link asserts no provenance (iss-2609100506263330).
+Three states are named
 rather than lumped together: an owned entry whose target has gone is dangling; an
 install directory absent from `PATH` is required but not resolvable, for which
 abcd prints a one-line export fix and never edits a shell profile; and any
@@ -349,8 +353,14 @@ produces (iss-2609012039117381) — and only when the home-scoped `path-entry`
 record names that exact path as this machine's installed binary. The record is a
 string comparison and no hashing, because adr-46 keeps the fast path at one file
 test. Both install routes write it, and the ahoy installer writes it for **every**
-entry shape it leaves on `PATH`: the owned copy, the pinned symlink it degrades
-to when there is no verified artefact to copy from, and the dev shim. An entry
+entry shape it leaves on `PATH`: the owned copy, the dev shim, and a working
+pinned symlink into the plugin root that an earlier release wrote. The installer
+never writes that symlink itself: with no verified artefact to copy from it
+writes no entry, because a link into the plugin root dangles at the next plugin
+update, and it names the install one-liner as the command to run first — the
+one route that fetches and verifies the release binary on an explicit ask
+(adr-38) — after which a re-run adopts the copy in place. A pin into the plugin
+root is a required `symlink.legacy` gap whatever the cache holds (iss-2609100506263330). An entry
 the record does not name is an install this rung refuses, and it is the one
 state where a filesystem test alone would call the install healthy while every
 hook quietly degrades, so the board raises it as a gap in its own right and
@@ -556,8 +566,9 @@ the same three-shape predicate detection classifies with, and only one of the
 three is a pointer at all: the dev shim; the owned copy the `path-entry` record
 names and whose bytes still hash to the recorded value, which is the default
 install and a regular file pointing at nothing; and lastly a legacy symlink
-whose target is this plugin's binary. Anything else is foreign and is left where
-it stands. It leaves the entire `.abcd/` namespace and the history store intact.
+whose target is this plugin's binary, or whose target has gone when it is the
+link a plugin update stranded or the one the `path-entry` record names. Anything
+else is foreign and is left where it stands. It leaves the entire `.abcd/` namespace and the history store intact.
 
 **Uninstall then install is a tested round-trip invariant**: afterwards the
 detection pass must report zero actionable gaps, and the resulting state must be

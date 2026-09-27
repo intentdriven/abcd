@@ -104,6 +104,19 @@ failure and let the user pick a directory they own. If the report carries a
 `path.bin_dir_not_on_path` gap, relay its one-line `export` fix verbatim and
 leave the user's shell profile alone.
 
+The entry install writes is the abcd-owned copy of the verified release binary,
+taken from the persistent plugin data directory a session's hooks provision.
+When no verified copy is there, install writes no entry at all rather than a
+symlink into the plugin root, which stops working at the next plugin update, and
+its note names the command to run first: the install one-liner in the README,
+which downloads the release binary, verifies it against that release's own
+checksums and records it, after which a re-run of `ahoy install` adopts it.
+Relay that note verbatim. A `symlink.legacy` gap is a symlink into the plugin
+root that an earlier release wrote: it works until the next plugin update, and
+its fix hint says whether install replaces it now or which command comes first.
+A `symlink.dangling` gap whose detail calls the entry abcd-owned — including an
+entry `~/.abcd/path-entry` records — is repaired by install the same way.
+
 A `symlink.shadowed` gap (or a note saying the same) means another `abcd` comes
 first on `PATH`, so the entry abcd just wrote is NOT what runs — typically a
 binary an older install copied into a system directory. Relay it prominently:

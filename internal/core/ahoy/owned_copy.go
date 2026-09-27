@@ -271,9 +271,49 @@ func IsOwnedPathCopy(target string) bool {
 	return isOwnedCopyFile(target)
 }
 
+// coldCacheRemedy is the one command an operator runs when no verified release
+// artefact is available to install from (iss-2609100506263330). "A session
+// whose hooks provisioned the cache" is a condition the operator cannot check,
+// create or observe; this is a command they can type. The one-liner fetches the release binary and verifies it against that
+// release's own checksums.txt, writes it to ~/.local/bin/abcd and records it in
+// ~/.abcd/path-entry, which is exactly the owned-copy shape `ahoy install` then
+// adopts where it stands. One string, shared by the install refusal and the
+// symlink.legacy fix hint, so the two cannot drift apart.
+const coldCacheRemedy = "Install a verified copy first with the install one-liner in the README " +
+	"(https://github.com/intentdriven/abcd#install): it downloads the release binary, checks it against that release's own checksums.txt, " +
+	"writes it to ~/.local/bin/abcd and records it in ~/.abcd/path-entry. Then re-run `abcd ahoy install`, which adopts it."
+
+// coldCacheRefusal is the install note for a run that had no verified artefact
+// to install from. It says what was left at target and why, in the words the
+// entry's shape calls for, and always ends in coldCacheRemedy. why is the
+// data-dir story (which sources were tried, or why the cache found was not
+// bound).
+func coldCacheRefusal(target string, kind binTargetKind, pluginRoot, why string) string {
+	at := displayPath(target)
+	lead := "no PATH entry was written at " + at
+	switch kind {
+	case binTargetOwnedSymlink:
+		switch {
+		case linkIsDangling(target):
+			lead = "abcd's own PATH entry " + at + " points at a binary that is gone, and it was left as it is"
+		default:
+			if dest, err := os.Readlink(target); err == nil && resolveSymlinkDest(target, dest) == resolvePath(pluginBinaryPath(pluginRoot)) {
+				lead = "the PATH entry " + at + " is a symlink into the plugin root and was left as it is; it works now and stops working when a plugin update replaces that directory"
+			} else {
+				lead = "the PATH entry " + at + " pins an earlier plugin vintage and was left as it is"
+			}
+		}
+	case binTargetDevShim:
+		lead = "the dev shim at " + at + " was left as it is rather than replaced with a pinned entry"
+	}
+	return lead + ": no verified release artefact is available in the persistent plugin data directory (" + why +
+		"), and abcd does not write a symlink into the plugin root in its place, because that link stops working when a plugin update replaces the directory. " +
+		coldCacheRemedy
+}
+
 // ownedCopySourceReady reports whether a verified cache artefact exists to copy
 // from — the precondition for installing (or healing to) an owned copy. When it
-// does not hold, install degrades loudly to the spc-21 pinned symlink. The data
+// does not hold, install writes no entry and refuses with coldCacheRemedy. The data
 // dir is resolved for pluginRoot (a hook's environment, or the root's stamp
 // from a terminal); cwd is the repository the verb runs against, which is what
 // dataDirHazard needs to judge the resolved directory's shape.

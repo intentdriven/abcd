@@ -496,6 +496,9 @@ func classifyBinTarget(target, pluginRoot string) binTargetKind {
 		if supersededSiblingDest(target, dest, pluginRoot) {
 			return binTargetOwnedSymlink
 		}
+		if recordedDanglingLink(target) {
+			return binTargetOwnedSymlink
+		}
 		return binTargetForeign
 	}
 	if isDevShimFile(target) {
@@ -533,6 +536,25 @@ func strandedSiblingDest(symlinkPath, dest, pluginRoot string) bool {
 	}
 	present, err := fsutil.Exists(dest)
 	return err == nil && !present
+}
+
+// recordedDanglingLink reports whether the symlink at target resolves to
+// nothing AND ~/.abcd/path-entry names this very entry (iss-2609100506263330).
+// The sibling rules above recognise the stranded link only while the plugin
+// root it pointed into still shares a parent with the current one; once that
+// no longer holds, the link abcd wrote and recorded would otherwise read as
+// foreign, and the repair its own record entitles it to would never be offered.
+//
+// The record is read exactly as the hook shims read it — through
+// readPathEntry's fsutil.ReadDeclaration, so a record another uid owns or that
+// group or other can write vouches for nothing — and it claims the link only
+// while the link is DANGLING: a recorded link that resolves to a live binary
+// somewhere else was retargeted by something other than abcd, and stays
+// foreign. A dangling link runs nothing and the shims' `command -v` never
+// yields it, so claiming it widens no execution path; it lets `ahoy install`
+// repair it and `ahoy uninstall` remove it with its record.
+func recordedDanglingLink(target string) bool {
+	return linkIsDangling(target) && pathEntryNames(target)
 }
 
 // supersededSiblingDest is the live twin of strandedSiblingDest

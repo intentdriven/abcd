@@ -81,13 +81,19 @@ outside the one the session is working in, that is not world-writable, **and**
 `~/.abcd/path-entry` records that exact path as the `abcd` installed on this
 machine. The [install](#cli) one-liner writes that record, and so does abcd's
 own install verb — whichever entry it leaves on `PATH`: the copy of the
-verified release binary it prefers, the symlink it degrades to when there is no
-verified copy to make, and the track-latest shim `--dev` writes. The copy is
-made only from a cache that `~/.abcd/cache-attestation` vouches for — the
-directory it names, holding the hash it names — so a data directory pointed at
-by an environment variable alone is never promoted onto `PATH`; the install
-says which record is missing or disagrees and degrades to the symlink until a
-session with network access re-authenticates the cache. The record is read
+verified release binary, the track-latest shim `--dev` writes, and a symlink
+into the plugin root that an earlier release wrote and that still works. The
+copy is made only from a cache that `~/.abcd/cache-attestation` vouches for —
+the directory it names, holding the hash it names — so a data directory pointed
+at by an environment variable alone is never promoted onto `PATH`. With no
+verified copy to make, the install writes no entry rather than a symlink into
+the plugin root, which the next plugin update would break: it says which record
+is missing or disagrees, and names the command to run first, the
+[install](#cli) one-liner, after which re-running the install adopts the copy
+the one-liner wrote. A symlink into the plugin root that an earlier release
+wrote is named by `abcd ahoy` as a gap while it still works, and an entry the
+record names that has since stopped resolving is reported as abcd's own and
+replaced by the install. The record is read
 only from a home directory the session can trust: one that is absolute and
 not inside the repository being installed, since a home the environment can
 point anywhere could name the attestation too. A refused home is named as the
@@ -136,10 +142,12 @@ others — a file inside the checkout can never vouch for the checkout. Nothing
 infers the exception for you.
 
 That covers the hooks. For the `abcd` command in your own terminal, keep the
-[install](#cli) below, or put the plugin-root binary on your `PATH` by
-running it once by its absolute path — `'<plugin-root>/abcd' ahoy install`.
-The path is absolute because `abcd` is not on your `PATH` yet, which is what
-that one run fixes. `<plugin-root>` is the directory the agent harness unpacked
+[install](#cli) below, or put abcd on your `PATH` by running the plugin-root
+binary once by its absolute path — `'<plugin-root>/abcd' ahoy install`. That
+run copies the release binary the session's hooks verified and cached; where no
+verified copy is cached it writes nothing and names the [install](#cli)
+one-liner instead. The path is absolute because `abcd` is not on your `PATH`
+yet, which is what that one run fixes. `<plugin-root>` is the directory the agent harness unpacked
 the abcd plugin into, with the binary sitting directly inside it as `abcd`; the
 bootstrap's success notice prints that full binary path, so the shortest route
 is to copy the command straight out of the notice. That notice appears once per

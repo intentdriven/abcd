@@ -58,7 +58,30 @@ func setupHermetic(t *testing.T) (home, pluginRoot string) {
 		kept = append(kept, dir)
 	}
 	t.Setenv("PATH", strings.Join(kept, string(os.PathListSeparator)))
+	// The persistent data dir a session's hooks provision: a verified cache
+	// the home-scoped attestation binds. It is the ordinary state `ahoy
+	// install` meets, and the only one in which it writes a PATH entry at all
+	// (iss-2609100506263330); a test about the cold cache says so with
+	// coldCache.
+	data := t.TempDir()
+	seedDataCacheAt(t, data, cacheArtefact)
+	attestDataCache(t, data, cacheArtefact)
+	t.Setenv("CLAUDE_PLUGIN_DATA", data)
 	return home, pluginRoot
+}
+
+// coldCache undoes the provisioned data dir setupHermetic lays down: no
+// CLAUDE_PLUGIN_DATA and no attestation, so no verified release artefact is
+// available to install from — the terminal on a machine whose hooks never
+// provisioned the cache.
+func coldCache(t *testing.T) {
+	t.Helper()
+	t.Setenv("CLAUDE_PLUGIN_DATA", "")
+	if p := userCacheAttestationPath(); p != "" {
+		if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
+			t.Fatal(err)
+		}
+	}
 }
 
 func TestClassifyUnmanagedFolder(t *testing.T) {

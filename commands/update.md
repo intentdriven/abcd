@@ -64,8 +64,10 @@ error.** Every refusal is a named shape with a remedy in `refusal`:
   install` switches modes first. This names the install shape, not the version
   string: a binary that `abcd version` reports as `dev` is any locally built
   one, and a link to such a binary is `foreign`, not `dev-shim`.
-- `owned-dangling` — a plugin update stranded the entry; `abcd ahoy install`
-  repoints it.
+- `owned-dangling` — abcd's own entry points at a binary that is gone (a
+  plugin update strands it); `abcd ahoy install` replaces it with a verified
+  copy of the current release, or names the command to run first when none is
+  available.
 - `owned-superseded` — the entry is abcd's own pin into a plugin vintage the
   harness has moved past, so `abcd` answers an older release than the plugin
   holds; `abcd ahoy install` replaces it with the current release.
