@@ -429,6 +429,12 @@ func LintAt(cfg Config, repoRoot string, now time.Time) ([]Finding, error) {
 		findings = append(findings, nf...)
 	}
 
+	tf, err := lintTokenExtraRoots(cfg, repoRoot, scanned)
+	if err != nil {
+		return nil, err
+	}
+	findings = append(findings, tf...)
+
 	// stray_root_docs is repo-root scoped and non-recursive — independent of
 	// cfg.Roots, so it runs once, outside the per-root loop.
 	if strayCfg, ok := cfg.Rules["stray_root_docs"]; ok && strayCfg.Enabled {
@@ -3164,36 +3170,63 @@ const nameTokenPrefix = "names/"
 // lintNameRoots runs the name gate — the `names/` banned tokens alone — over
 // cfg.NameRoots (iss-279). A name ban is about the whole public surface, not
 // the documentation's writing, so it reads every text file there, markdown or
-// not; the rest of the token family stays a docs rule. Roots are contained and
-// gitignore-pruned exactly as the per-root walk's are, a file that walk already
-// read is not read twice, a binary file (a NUL in it) is not text, and
-// exempt_paths / exempt_if_status excuse a file here as they do there.
-func lintNameRoots(cfg Config, repoRoot string, scanned map[string]bool) ([]Finding, error) {
+// not; the rest of the token family stays a docs rule.
+func lintNameRoots(cfg Config, repoRoot string, walked map[string]bool) ([]Finding, error) {
 	var names []BannedToken
 	for _, t := range cfg.BannedTokens {
 		if strings.HasPrefix(t.ID, nameTokenPrefix) {
 			names = append(names, t)
 		}
 	}
-	checker, err := NewTokenChecker(names)
+	return lintTokensOver(cfg, repoRoot, walked, names, cfg.NameRoots, "name_roots", "the name gate")
+}
+
+// lintTokenExtraRoots runs each banned token that declares extra_roots over
+// those roots, that token alone (itd-2609212137129937): a ban widened past the
+// documentation without arming the rest of the family there.
+func lintTokenExtraRoots(cfg Config, repoRoot string, walked map[string]bool) ([]Finding, error) {
+	var out []Finding
+	for _, t := range cfg.BannedTokens {
+		if len(t.ExtraRoots) == 0 {
+			continue
+		}
+		fs, err := lintTokensOver(cfg, repoRoot, walked, []BannedToken{t}, t.ExtraRoots,
+			"extra_roots of banned token "+quote(t.ID), "the "+quote(t.ID)+" ban")
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, fs...)
+	}
+	return out, nil
+}
+
+// lintTokensOver runs tokens over roots beyond cfg.Roots, reading every text
+// file there. Roots are contained and gitignore-pruned exactly as the per-root
+// walk's are, a file that walk already read (walked) or this pass already read
+// is not read twice, a binary file (a NUL in it) is not text, and exempt_paths /
+// exempt_if_status excuse a file here as they do there. key names the
+// configuration field in a refusal and gate the check a missing root disarms.
+func lintTokensOver(cfg Config, repoRoot string, walked map[string]bool, tokens []BannedToken, roots []string, key, gate string) ([]Finding, error) {
+	checker, err := NewTokenChecker(tokens)
 	if err != nil || checker.Len() == 0 {
 		return nil, err
 	}
+	seen := map[string]bool{}
 	var out []Finding
-	for _, root := range cfg.NameRoots {
+	for _, root := range roots {
 		if err := containedRepoPath(root); err != nil {
-			return nil, &configError{"name_roots entry " + quote(root) + " " + err.Error() +
+			return nil, &configError{key + " entry " + quote(root) + " " + err.Error() +
 				"; the lint reads only inside the repository"}
 		}
 		rootAbs := filepath.Join(repoRoot, root)
 		if err := resolvedInsideRoot(repoRoot, rootAbs); err != nil {
-			return nil, &configError{"name_roots entry " + quote(root) + " " + err.Error() +
+			return nil, &configError{key + " entry " + quote(root) + " " + err.Error() +
 				"; the lint reads only inside the repository"}
 		}
 		if _, err := os.Stat(rootAbs); err != nil {
 			if os.IsNotExist(err) {
-				return nil, &configError{"name_roots entry " + quote(root) +
-					" does not exist; a configured root that does not resolve silently disarms the name gate for that tree — fix the list or create the tree"}
+				return nil, &configError{key + " entry " + quote(root) +
+					" does not exist; a configured root that does not resolve silently disarms " + gate + " for that tree — fix the list or create the tree"}
 			}
 			return nil, err
 		}
@@ -3203,10 +3236,10 @@ func lintNameRoots(cfg Config, repoRoot string, scanned map[string]bool) ([]Find
 			return nil, err
 		}
 		for _, fileAbs := range files {
-			if scanned[fileAbs] {
+			if walked[fileAbs] || seen[fileAbs] {
 				continue
 			}
-			scanned[fileAbs] = true
+			seen[fileAbs] = true
 			rel := repoRel(repoRoot, fileAbs)
 			if contentExempt(rel, nil, cfg) {
 				continue
@@ -3224,8 +3257,8 @@ func lintNameRoots(cfg Config, repoRoot string, scanned map[string]bool) ([]Find
 			// link, its target being read wherever a root reaches it.
 			st, err := os.Stat(realPath)
 			if err != nil {
-				return nil, errors.New("name_roots file " + quote(rel) + " cannot be examined (" + bareCause(err) +
-					"); the name gate refuses to pass a file it could not read")
+				return nil, errors.New(key + " file " + quote(rel) + " cannot be examined (" + bareCause(err) +
+					"); " + gate + " refuses to pass a file it could not read")
 			}
 			if !st.Mode().IsRegular() {
 				continue
