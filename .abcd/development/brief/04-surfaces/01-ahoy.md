@@ -26,6 +26,7 @@ repo whose stamp says it is current.
 | Verb | Bucket | Status |
 |---|---|---|
 | `connect` | — | shipped |
+| `credential` | — | shipped |
 | `doctor` | — | shipped |
 | `install` | — | shipped |
 | `remote apply` | gate | shipped |
