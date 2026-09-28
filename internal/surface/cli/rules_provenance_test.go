@@ -32,7 +32,7 @@ func TestRulesJSONCarriesSource(t *testing.T) {
 	overrideRepo(t)
 	for name, want := range map[string]string{"PII": "repo", "COMMITTING": "bundled"} {
 		var got map[string]any
-		out := runCLI(t, "rules", name, "--json")
+		out := rulesJSON(t, "rules", name, "--json")
 		if err := json.Unmarshal(out, &got); err != nil {
 			t.Fatalf("rules %s --json not JSON: %v\n%s", name, err, out)
 		}
@@ -43,7 +43,7 @@ func TestRulesJSONCarriesSource(t *testing.T) {
 	var bare struct {
 		Domains []map[string]any `json:"domains"`
 	}
-	out := runCLI(t, "rules", "--json")
+	out := rulesJSON(t, "rules", "--json")
 	if err := json.Unmarshal(out, &bare); err != nil {
 		t.Fatalf("rules --json not JSON: %v\n%s", err, out)
 	}
@@ -78,5 +78,58 @@ func TestHookPromptRouterDiagnosticNamesOverrides(t *testing.T) {
 	}
 	if !strings.Contains(errlog, "PII (repo override)") {
 		t.Fatalf("diagnostic does not name the override:\n%s", errlog)
+	}
+}
+
+// rulesJSON runs a `rules --json` form and returns its STDOUT alone, failing on
+// an error. The load's notes (a withheld bundled guardrail, a skipped domain)
+// go to stderr by design, so a fixture that overrides a security-bearing
+// domain has a stderr line beside a stdout that must still parse as one
+// document.
+func rulesJSON(t *testing.T, args ...string) []byte {
+	t.Helper()
+	out, errb, err := runCLISplit(t, args...)
+	if err != nil {
+		t.Fatalf("execute %v: %v\n%s%s", args, err, out, errb)
+	}
+	return []byte(out)
+}
+
+// TestRulesNamesAWithheldGuardrailOnStderr (iss-174) is the front-door half of
+// the withheld-entry note: `abcd rules` names the bundled PII rules the repo's
+// override withholds, on stderr, and --json stays one parseable document.
+func TestRulesNamesAWithheldGuardrailOnStderr(t *testing.T) {
+	overrideRepo(t)
+	for _, args := range [][]string{{"rules"}, {"rules", "--json"}, {"rules", "PII", "--json"}} {
+		out, errb, err := runCLISplit(t, args...)
+		if err != nil {
+			t.Fatalf("%v: %v", args, err)
+		}
+		if !strings.Contains(errb, `domain "PII"`) || !strings.Contains(errb, "WITHHOLDS") || !strings.Contains(errb, "network identifiers") {
+			t.Errorf("%v: the withheld bundled PII rules are not named on stderr; stderr = %q", args, errb)
+		}
+		if strings.Contains(out, "WITHHOLDS") {
+			t.Errorf("%v: the note reached stdout:\n%s", args, out)
+		}
+	}
+}
+
+// TestHookPromptRouterNamesAWithheldGuardrail (iss-174): the hook injects the
+// override's PII rules, as the per-field merge says it must, and names the
+// bundled rules that override withholds out of band — never in the
+// model-facing context.
+func TestHookPromptRouterNamesAWithheldGuardrail(t *testing.T) {
+	t.Setenv("ABCD_RULES_STATE_DIR", t.TempDir())
+	repo := overrideRepo(t)
+
+	out, errlog := runHook(t, hookInputJSON(t, "s1", repo, "do not leak the token"), "hook", "prompt-router")
+	if !strings.Contains(out, "printing secrets is fine in this repo") {
+		t.Errorf("the override's own PII rule must still inject; stdout:\n%s\nstderr:\n%s", out, errlog)
+	}
+	if !strings.Contains(errlog, `domain "PII"`) || !strings.Contains(errlog, "WITHHOLDS") {
+		t.Errorf("the withheld bundled PII rules must be named out of band; stderr = %q", errlog)
+	}
+	if strings.Contains(out, "WITHHOLDS") {
+		t.Errorf("the note must not reach the model-facing context:\n%s", out)
 	}
 }

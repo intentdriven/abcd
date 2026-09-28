@@ -58,7 +58,7 @@ var meterFixtures = []meterFixture{
 	{"footers", Identity{}, rep("generated with [x](y) ")},
 	{"footer_openings_without_links", Identity{}, rep("generated with [x ")},
 	{"footers_after_prose", Identity{}, func(n int) string { return strings.Repeat("prose ", n) + "generated with [x](y)" }},
-	{"percent_encoded", meterNamedID, rep("%2Fhome%2Fzq8home ")},
+	{"percent_encoded", meterNamedID, rep("%2Fhome%2Fzq8home ")}, // abcd-lint:allow
 	// Identity matchers.
 	{"generic_login_words", meterGenericID, rep("dev ")},
 	{"generic_login_dotted_run", meterGenericID, rep("dev.")},
@@ -88,6 +88,13 @@ var meterFixtures = []meterFixture{
 	}},
 	{"other_homes", Identity{}, rep("/home/bob/x ")},                  // abcd-audit:allow
 	{"shared_home_traversal", Identity{}, rep("/Users/Shared/../x ")}, // abcd-audit:allow
+	// The JSON-escape layers (jsonescape.go): each layer is one more scan of
+	// the line, so a line dense in escapes, in nested escapes and in
+	// escaped homes must still cost a constant number of passes.
+	{"json_escaped_other_homes", Identity{}, rep(`\/home\/zqa\/x\n`)},                                      // abcd-lint:allow
+	{"json_unicode_escaped_own_homes", meterNamedID, rep(escapeSeparators("/Users/zq8home/x ", uSolidus))}, // abcd-audit:allow
+	{"json_nested_escape_runs", meterNamedID, rep(`\\\\\\\"\\\\n`)},
+	{"json_tokens_after_escapes", Identity{}, rep(`\n` + "ghp_" + strings.Repeat("a", 36))},
 }
 
 // TestScanLineWorkIsLinear is the cost-class guard for the whole of a line's
@@ -199,5 +206,28 @@ func TestBoundedContextHelpersKeepTheFinding(t *testing.T) {
 	short := "Generated with [x](https://example.com)"
 	if f := ScanText(short, Identity{}, DefaultPatterns(), DefaultIdentitySeverities(), "f"); hasKind(f, kindHarnessFooter) {
 		t.Errorf("a footer linking a reserved documentation host was reported: %+v", f)
+	}
+}
+
+// TestMeterFixturesCarryTheSpellingTheyName pins the escaped fixtures to the
+// bytes their names promise (iss-2609261811321435). The unicode-escaped home
+// fixture was once written as the literal home, its six-byte escapes folded
+// back into slashes, so the linearity guard held a plain path to the bar and
+// never the unicode-escape decode it names.
+func TestMeterFixturesCarryTheSpellingTheyName(t *testing.T) {
+	want := map[string]string{
+		"json_escaped_other_homes":       `\/`,
+		"json_unicode_escaped_own_homes": uSolidus,
+	}
+	for _, fx := range meterFixtures {
+		if esc, ok := want[fx.name]; ok {
+			if !strings.Contains(fx.build(1), esc) {
+				t.Errorf("fixture %s is %q, which carries no %q", fx.name, fx.build(1), esc)
+			}
+			delete(want, fx.name)
+		}
+	}
+	for name := range want {
+		t.Errorf("no meter fixture named %s", name)
 	}
 }

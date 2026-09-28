@@ -90,7 +90,7 @@ Each positional argument is a probe report emitted with `probe --json`.
 
 Summarise the JSON result for the user:
 
-- `dest` — where the lifeboat was written.
+- `dest` — where the lifeboat was written, with the home directory as `~`.
 - `files_written` / `bytes_written` — the size of the lifeboat.
 - `manifest_sha256` — the pinned hash over every file (matches `<dest>/_provenance.json`).
 - `voyage_appended` — whether the operator-level voyage ledger recorded the pack
@@ -102,8 +102,11 @@ Summarise the JSON result for the user:
 
 The **destination safety gate** protects real work. A pack refuses unless `<dest>`
 is absent, an empty directory, or an existing lifeboat abcd produced (it carries a
-parseable `_provenance.json`). It also refuses a symlinked destination, one inside
-a `.git/` directory, or one that overlaps the source tree. And it **refuses on a
+parseable `_provenance.json`). It also refuses a symlinked destination, a
+destination reached through a symlink at any level inside a checkout (a
+committed link; outside every checkout the path is taken as given), one inside
+a `.git/` directory, or one that overlaps the source tree. The lifeboat operand
+of every later verb is proved the same way. And it **refuses on a
 hard-fail secret** in the planned bytes — a secret is fixed at source, never
 redacted into the artefact. Relay the refusal message so the user knows what to fix.
 

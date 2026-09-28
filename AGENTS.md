@@ -108,12 +108,13 @@ Run from the repo root.
 
 ```bash
 make preflight      # the pre-push gate: the load check first (load-check,
-                    # a warning, never a failure), then lint-reviews +
+                    # a warning, never a failure), then fmt-check +
+                    # lint-reviews +
                     # lint-issues + lint-decisions + record-lint +
                     # issue-drift + docs-lint + site-render +
                     # smoke + evals-cold-reading,
                     # then build + vet +
-                    # test + race (internal)
+                    # test + race (internal), all on the go.mod toolchain
 make build          # cross-compiles bin/abcd-<goos>-<arch> (there is no plain bin/abcd)
 make fmt-check      # format gate, run through the go.mod toolchain's gofmt
 make fmt            # rewrite what fmt-check names, with that same gofmt
@@ -162,9 +163,10 @@ site-render gate on the Linux leg alone. Separate jobs run the reviews-charter c
 (`make smoke`). A
 fail-closed classifier stands the macOS leg, the race lane and the `zizmor`,
 `govulncheck` and smoke jobs down on a pull request confined to `docs/`,
-`.abcd/development/`, `.abcd/work/` and the root prose files; the Linux unit
-lane, the format gate and the record gates always run, and every other event —
-the merge-queue entry that gates the merge included — runs the lot.
+`.abcd/development/`, `.abcd/work/`, the root prose files and the
+community-health files in `.github/`; the Linux unit lane, the format gate and
+the record gates always run, and every other event — the merge-queue entry that
+gates the merge included — runs the lot.
 
 ## Working-tree layout (three tiers under `.abcd/`)
 
@@ -312,9 +314,9 @@ irreversible; guessing downward costs nothing.**
 
 ## Definition of done
 
-- `make preflight` is clean — the seven gates (`lint-reviews`, `lint-issues`,
-  `lint-decisions`, `record-lint`, `issue-drift`, `docs-lint`, `site-render`),
-  both tagged eval
+- `make preflight` is clean — the eight gates (`fmt-check`, `lint-reviews`,
+  `lint-issues`, `lint-decisions`, `record-lint`, `issue-drift`, `docs-lint`,
+  `site-render`), both tagged eval
   lanes (`smoke`, `evals-cold-reading`), plus `go build ./...`,
   `go vet ./...`, `go test ./...`, and
   `go test -race -timeout 20m ./internal/...`. The load
@@ -322,13 +324,19 @@ irreversible; guessing downward costs nothing.**
   it exits 0 whatever it finds. The eval
   lanes are named separately because their files carry a build tag, so
   `go test ./...` compiles none of them; each costs about five seconds.
-- `make fmt-check` reports nothing. The format gate is CI's own step, outside
-  `make preflight`, so run it before pushing. It resolves gofmt from the
-  toolchain `go.mod` declares rather than from PATH, because gofmt's rules move
-  between releases and a bare `gofmt` on a newer machine names files CI
-  considers correctly formatted (iss-2609081953452204); `make fmt` rewrites what
-  it names, with that same binary. If the pinned toolchain cannot be fetched the
-  target refuses and names the skew — it never falls back to the local gofmt.
+- **Preflight judges with CI's toolchain.** `make fmt-check`, the format gate
+  CI's check job runs, is preflight's first gate, straight after the load
+  check. It resolves gofmt from the toolchain `go.mod` declares rather than from
+  PATH, because gofmt's rules move between releases and a bare `gofmt` on a
+  newer machine names files CI considers correctly formatted
+  (iss-2609081953452204); `make fmt` rewrites what it names, with that same
+  binary. Every Go step preflight makes — build, vet, test, race, and each
+  `go run` and `go test` of its gates — runs on that same declared toolchain,
+  which is the one CI's `setup-go` installs, so a test that asserts
+  standard-library wording cannot pass preflight on a newer local `go` and fail
+  CI (iss-2609261850045839). One resolver, `scripts/pinned-toolchain.sh`, serves
+  both; if the declared toolchain cannot be fetched it refuses and names the
+  skew — it never falls back to the local `go`.
 - Every new behaviour has a test watched fail before the change and pass after.
 - **A user-facing change is accompanied by a RECORD, not by a hand-written
   CHANGELOG entry.** The changelog is derived: `launch ship` composes the dated
@@ -391,7 +399,7 @@ irreversible; guessing downward costs nothing.**
   `Co-Authored-By:` for AI (it asserts an authorship the tool does not hold and
   inflates the contributor graph). There is no DCO: contributions are inbound =
   outbound MIT, so no `Signed-off-by:` is required (adr-43). The human is the
-  author of record, responsible for all AI-assisted output. See `CONTRIBUTING.md`.
+  author of record, responsible for all AI-assisted output. See `.github/CONTRIBUTING.md`.
 - **Every commit is authored by a human, and the gate refuses a machine.** The
   contributor graph is built from the author and committer fields, so a machine
   there asserts an authorship it does not hold — and a squash merge re-appends a

@@ -77,7 +77,7 @@ markdown, with `exempt_paths` excusing a historical tree as it does under
 blocks, which the rest of the family skips by default: a fenced example is not
 prose, but a fence is published as readily as prose, so an entry that means to
 skip fences declares `skip_code_fences: true`. This repository's `name_roots` are `.abcd`, `AGENTS.md`,
-`CONTRIBUTING.md` and `scripts`, and its `exempt_paths` excuse the
+`.github/CONTRIBUTING.md` and `scripts`, and its `exempt_paths` excuse the
 configuration itself (whose entries spell every ban), the research data and the
 review archive.
 
@@ -147,6 +147,25 @@ around: a content line beginning `++`, a blob containing a NUL, a committed
 `.gitattributes` carrying `-diff`, and a rename all hide a name from a diff-text
 reading. Binary blobs are scanned like anything else, because a name in a binary
 file is in history just the same.
+
+Every staged line that holds a JSON string escape (`\u00eb`, `\/`) or a
+percent-encoded byte (`%C3%AB`) is also read **decoded**, and a pattern matching
+either spelling refuses the commit. An escape changes the bytes a name is written
+in without changing the name, plain ASCII letters included, and a JSON
+transcript, export or fixture is where such spellings live. The decoded readings
+are the two the scanner's redactors read beside the text as written: the JSON
+escape layers and the percent view. The guard's reading is deliberately the wider
+one: a run of backslashes of any length before an escape decodes as one escape,
+so a JSON string nested inside another decodes all its layers at once, and a
+chain of `%25` layers before two hex digits decodes to the byte they name. A
+decoded reading is itself read again for the escapes it still holds, since a
+backslash or a percent sign that an escape spells (`%5C`) opens an escape of its
+own, for as many layers as the scanner reads a JSON line through; the hook
+declares that bound once and a test holds it equal to the scanner's. The
+decode runs in the hook itself, in `awk` and the shell's `printf`, not in the
+abcd binary, because the guard holds before abcd is built and in every clone the
+dispatcher runs it in. It adds readings and replaces none: the text as written
+is still read in full.
 
 On a match the guard refuses the commit and names **the key alone**. The matched
 string and the pattern never reach stdout, stderr, or a log — a refusal that

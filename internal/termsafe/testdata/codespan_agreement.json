@@ -1,0 +1,23 @@
+{
+  "_comment": "One table, read by every escaper that leaves a balanced leading code span unescaped and by the site renderer: termsafe (OpensBalancedCodeSpan), lifeboat (escapeLeadingMarker), ideate (blockText). balanced says whether the value's leading backtick run opens a span; code is the text that span renders (iss-2609262322244502).",
+  "cases": [
+    {"in": "`a` rest", "balanced": true, "code": "a"},
+    {"in": "``a```b`` rest", "balanced": true, "code": "a```b"},
+    {"in": "`` ``` ``", "balanced": true, "code": "```"},
+    {"in": "` `", "balanced": true, "code": " "},
+    {"in": "``  `` x", "balanced": true, "code": "  "},
+    {"in": "`` a `` x", "balanced": true, "code": "a"},
+    {"in": "``  a  `` x", "balanced": true, "code": " a "},
+    {"in": "`` a`` x", "balanced": true, "code": " a"},
+    {"in": "`` `a` ``", "balanced": true, "code": "`a`"},
+    {"in": "```x``` after", "balanced": true, "code": "x"},
+    {"in": "``` ```", "balanced": true, "code": " "},
+    {"in": "```` ``` ````", "balanced": true, "code": "```"},
+    {"in": "`<details>` everything after", "balanced": true, "code": "<details>"},
+    {"in": "`a`` b", "balanced": false},
+    {"in": "``a` b", "balanced": false},
+    {"in": "``a``` b", "balanced": false},
+    {"in": "`stray opener", "balanced": false},
+    {"in": "```go unclosed fence", "balanced": false}
+  ]
+}

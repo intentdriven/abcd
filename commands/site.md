@@ -32,7 +32,8 @@ emits `{ "manifest": …, "ui_strings": …, "baseline": …, "out_dir": … }`:
 - `baseline` and `baseline_entries` — the committed unresolved-reference
   ratchet and its size.
 - `version`, `commit` — what a render would stamp the footer with.
-- `out_dir`, `out_exists`, `out_files` — where a render writes, and what is
+- `out_dir`, `out_exists`, `out_files` — where a render writes (relative to the
+  repository inside it, with the home directory as `~` outside it), and what is
   there now.
 
 Report the declared inputs first, then the output directory's state. It writes
@@ -49,11 +50,12 @@ reads exactly this set — `.abcd/site.json`, `site-src/ui.json`,
 `.abcd/development/` and the opted-in issue ledger, git history,
 `CHANGELOG.md`, the composed pages and assets under `docs/`, the static inputs
 `site-src/{site.css,site.js,record.js,redirects,headers}` and the served
-`site-src/install.sh.tmpl`, the credit sources `CONTRIBUTING.md` and
-`ACKNOWLEDGEMENTS.md` (and the existence of `SECURITY.md` and `CITATION.cff`
-for the footer), `.abcd/site-baseline.json` (the ratchet the health block
-counts against), and `.claude-plugin/plugin.json` (the forge URL, licence and
-author the links and footer use) — and writes the landing page, the record
+`site-src/install.sh.tmpl`, the credit sources `.github/CONTRIBUTING.md` and
+`ACKNOWLEDGEMENTS.md` (and the existence of `SECURITY.md` — in `.github/`, at
+the root or in `docs/` — and `CITATION.cff` for the footer),
+`.abcd/site-baseline.json` (the ratchet the health block counts against), and
+`.claude-plugin/plugin.json` (the forge URL, licence and author the links and
+footer use) — and writes the landing page, the record
 export, the redirect and header maps, the stylesheet, the two scripts, the
 `install.sh`, and every referenced raster into the output directory, and
 nowhere else. It reaches no network. The default output directory is `site`,

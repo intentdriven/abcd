@@ -83,3 +83,25 @@ func contains(ss []string, want string) bool {
 	}
 	return false
 }
+
+// The board names its directory with the home redacted to "~": a checkout under
+// the home named the developer in `abcd --json`, against the iss-81 rule
+// (iss-2609261950066257). The text board prints the same field.
+func TestStatusNamesTheDirectoryWithoutTheHome(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	dir := filepath.Join(home, "src", "repo")
+	mustMkdir(t, filepath.Join(dir, ".git"))
+
+	s, err := Status(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join("~", "src", "repo"); s.Dir != want {
+		t.Errorf("Status.Dir = %q, want %q", s.Dir, want)
+	}
+	// The directory is still inspected where it is, not where it is displayed.
+	if !s.IsGitRepo {
+		t.Error("the redacted directory must not change what is inspected: IsGitRepo = false")
+	}
+}

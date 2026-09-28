@@ -95,6 +95,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -333,11 +334,33 @@ func proseCitationsInFile(repoRoot, abs string, resolver *recordid.Resolver, bas
 	}
 	rel := repoRel(repoRoot, abs)
 	lines := strings.Split(strings.ReplaceAll(string(data), "\r\n", "\n"), "\n")
-	mask := fenceMask(lines)
-
 	skip := proseFrontmatterSkip(lines, recordBodyStart(lines))
 
 	var out []Finding
+	for _, c := range unresolvedProseCitations(lines, skip, resolver, baseline, used) {
+		out = append(out, Finding{
+			File: rel, Line: c.Line, RuleID: ruleProseCitationResolves, Severity: severity,
+			Message: proseCitationMessage(c.ID),
+		})
+	}
+	return out, nil
+}
+
+// ProseCitation is one record id a line of prose cites that the rule refuses:
+// it names no record, the baseline does not carry it, and its line carries no
+// escape marker. Line is 1-based.
+type ProseCitation struct {
+	Line int
+	ID   string
+}
+
+// unresolvedProseCitations is the rule's reading of a body's lines, shared by
+// the gate and by a writer that asks before it writes, so the two cannot
+// disagree about what the gate refuses. Fenced lines and the lines skip marks
+// are not read.
+func unresolvedProseCitations(lines []string, skip []bool, resolver *recordid.Resolver, baseline map[string]ProseBaselineEntry, used map[string]bool) []ProseCitation {
+	mask := fenceMask(lines)
+	var out []ProseCitation
 	for i := 0; i < len(lines); i++ {
 		if mask[i] || (i < len(skip) && skip[i]) {
 			continue
@@ -361,13 +384,72 @@ func proseCitationsInFile(repoRoot, abs string, resolver *recordid.Resolver, bas
 			if escaped {
 				continue
 			}
-			out = append(out, Finding{
-				File: rel, Line: i + 1, RuleID: ruleProseCitationResolves, Severity: severity,
-				Message: proseCitationMessage(id),
-			})
+			out = append(out, ProseCitation{Line: i + 1, ID: id})
 		}
 	}
-	return out, nil
+	return out
+}
+
+// DefaultRecordLintConfigPath is the repository's record-lint configuration,
+// repo-relative: the one a writer consults to learn what the gate will refuse.
+const DefaultRecordLintConfigPath = ".abcd/record-lint.json"
+
+// UnresolvedProseCitationsInRecord is UnresolvedProseCitationsInText under the
+// repository's own record-lint configuration. A repository with no
+// configuration gates nothing, and the answer is empty; a configuration that
+// cannot be read is an error, since the question cannot then be answered.
+func UnresolvedProseCitationsInRecord(repoRoot, rel, text string) ([]ProseCitation, error) {
+	cfg, err := LoadConfig(filepath.Join(repoRoot, filepath.FromSlash(DefaultRecordLintConfigPath)))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("reading %s: %w", DefaultRecordLintConfigPath, err)
+	}
+	return UnresolvedProseCitationsInText(cfg, repoRoot, rel, text)
+}
+
+// UnresolvedProseCitationsInText runs prose_citation_resolves over text a
+// writer is about to put into the record at rel, BEFORE it is written: the one
+// resolver, the committed baseline and the line escape marker, read exactly as
+// the gate reads them. A writer composing a record from a host-delegated
+// payload asks this first, because a payload the writer accepts must never
+// produce a record the gate then refuses (iss-2609231036448320). A
+// configuration that does not arm the rule, or whose record stores do not hold
+// rel, gates nothing, and the answer is empty. text is a fragment of a record
+// body, never its frontmatter.
+func UnresolvedProseCitationsInText(cfg Config, repoRoot, rel, text string) ([]ProseCitation, error) {
+	rc, on := cfg.Rules[ruleProseCitationResolves]
+	if !on || !rc.Enabled || !underAnyStore(rel, rc.RecordStores) {
+		return nil, nil
+	}
+	resolver, err := recordid.NewResolver(repoRoot)
+	if err != nil {
+		return nil, &configError{ruleProseCitationResolves + ": " + err.Error()}
+	}
+	baselinePath := rc.Baseline
+	if baselinePath == "" {
+		baselinePath = DefaultProseBaselinePath
+	}
+	baseline, err := loadProseBaseline(repoRoot, baselinePath)
+	if err != nil {
+		return nil, err
+	}
+	lines := strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n")
+	return unresolvedProseCitations(lines, nil, resolver, baseline, map[string]bool{}), nil
+}
+
+// underAnyStore reports whether the repo-relative path rel lies inside one of
+// the configured record stores.
+func underAnyStore(rel string, stores map[string]string) bool {
+	rel = filepath.ToSlash(filepath.Clean(rel))
+	for _, dir := range stores {
+		dir = strings.TrimSuffix(filepath.ToSlash(filepath.Clean(dir)), "/")
+		if strings.HasPrefix(rel, dir+"/") {
+			return true
+		}
+	}
+	return false
 }
 
 // proseCitationMessage is the refusal, and it is where an author learns the

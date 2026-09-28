@@ -493,6 +493,16 @@ makes that grain more visible; finer-grained merging, detecting a repo file that
 duplicates the user layer, and moving conventions out of per-project harness
 memory are all recorded in itd-117 as follow-up questions.
 
+**A withheld guardrail is named.** Because a list replaces the bundled list, an
+override written before a release added an entry keeps withholding that entry.
+For the three guardrail domains — `PII`, `COMMITTING` and `LOAD` — the load
+compares every recall, alias and rule list an override set against the list the
+running binary bundles. It names each bundled entry left out, and the file whose
+list is in force, on stderr from `abcd rules` and from the hook on every prompt.
+The effective set is unchanged. Restating the entry keeps it; leaving the field
+out inherits the bundled list. The other bundled domains are conventions a
+repository restates in its own words, so a replacement there is not reported.
+
 ## The rules root — which `.abcd/` governs a session
 
 The rules, the hazard registry and the per-repo config are read from ONE resolved
@@ -520,11 +530,16 @@ second falls back to the `.git` marker, under two bounds:
 | **ownership** | a marker root whose owner is not the caller. Shape alone is not a trust boundary: `git init` in a shared world-writable directory produces a genuine repository, and git's refusal on ownership is the same signal in that attack as in the legitimate foreign-uid case (iss-2609020259564193) | a declaration, once, per foreign-uid checkout |
 
 A refused root is refused **loudly and fail-closed**: the session resolves to its
-own working directory with no walk, the bundled rule defaults (under the user
-layer, which is the caller's own) and bundled hazard registry stand in for the
-repository's, and every front door prints one line naming
-the refused directory, the two uids, and the exact command that re-admits it
+own working directory with no walk, and every front door prints one line naming
+the refused directory, the two uids, what the session reads instead, and the
+exact command that re-admits it
 ([`../../principles/loud-staging.md`](../../principles/loud-staging.md)). The
+refusal bounds the walk, not the working directory. From a directory with no
+`.abcd/` of its own, the bundled rule defaults (under the user layer, which is
+the caller's own) and the bundled hazard registry stand in for the repository's.
+A `.abcd/` at the working directory is still read, so a session started at the
+refused root reads that root's configuration, and the line says so rather than
+promising the defaults. The
 ownership bound applies only to the git-refused fallback: where git answers, the
 toplevel it named stands whoever owns it, because that is a repository git itself
 vouched for.
@@ -549,13 +564,15 @@ directory, and
 [adr-46](../../decisions/adrs/0046-persistence-never-weakens-the-verification-posture.md)
 treats home write as the ownership root.
 
-One residual stays open and recorded rather than assumed shut:
-**iss-2609020219198779**, the user scope when the home directory is itself a git
-working tree. The toplevel for a session in a non-repo directory beneath such a
-home is the home, so the user-scope `.abcd` governs it as the repo root too — its
-`rules.json` as the repo layer as well as the user layer, and its `guard.json` and
-`config.json` with it; closing it needs a decision on whether a home-directory
-toplevel is a legitimate repo-scope root.
+**The home directory is never a repo root.** Its `.abcd/` is the user layer, and
+a home that is itself a git working tree (dotfiles in the home) is not thereby a
+project. The walk passes over the home, and a toplevel that is the home resolves
+like a directory outside any repository — the working directory, no walk — when
+nothing below the home carries a `.abcd/`. So a session beneath such a home reads
+`~/.abcd/rules.json` once, as the user layer, and never the home's `guard.json`
+or `config.json` as a repository's own. A toplevel that contains the home — a
+test harness that points `HOME` inside its checkout — stays the root, because it
+is a repository git vouched for, and its own `.abcd/` stays its own.
 
 ## 1. Visibility-driven gitignore policy
 

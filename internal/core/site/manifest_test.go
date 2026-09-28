@@ -150,6 +150,12 @@ func TestManifestRefusesQuoteSourcesOutsideTheirRoots(t *testing.T) {
 		{"contributors policy in the working tier", policy,
 			`"file": ".abcd/work/CONTEXT.md"`, ".abcd/work/CONTEXT.md"},
 		{"contributors policy at a repository-root dotfile", policy, `"file": ".env"`, ".env"},
+		// .github/ admits a markdown file directly in it, where the forge reads
+		// community-health files, and nothing else there.
+		{"contributors policy as forge configuration", policy,
+			`"file": ".github/dependabot.yml"`, ".github/dependabot.yml"},
+		{"contributors policy below the community-health directory", policy,
+			`"file": ".github/ISSUE_TEMPLATE/bug.md"`, ".github/ISSUE_TEMPLATE/bug.md"},
 		{"identity block in the local tier", identity,
 			`"file": ".abcd/.work.local/scratch/identity.md"`, ".abcd/.work.local/scratch/identity.md"},
 		{"identity block at a repository-root dotfile", identity, `"file": ".env"`, ".env"},
@@ -181,6 +187,7 @@ func TestManifestRefusesQuoteSourcesOutsideTheirRoots(t *testing.T) {
 		{"the identity block in the durable record", identity,
 			`"file": ".abcd/development/brief/01-product/README.md"`},
 		{"the contributors policy at the repository root", policy, `"file": "CONTRIBUTING.md"`},
+		{"the contributors policy in the community-health directory", policy, `"file": ".github/CONTRIBUTING.md"`},
 		{"a documentation page as the policy source", policy, `"file": "docs/README.md"`},
 		// The baseline is held to the manifest's own directory and no deeper,
 		// so a repository may name a baseline it has yet to write.

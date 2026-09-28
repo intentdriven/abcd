@@ -283,3 +283,39 @@ func sliceBetween(s, from, to string) string {
 	}
 	return rest[:j]
 }
+
+// TestHealthCarriesTheDisclosureRate pins where the disclosure rate lives. The
+// contributors page carries two things only — the authors of record and the
+// Assisted-by trailers — and the share of authored commits that disclose AI
+// assistance sits with the other findings, on the health page's row of counts,
+// as COMMITS that disclose over commits a person wrote, with the merges set
+// aside stated (iss-2608231008315498).
+func TestHealthCarriesTheDisclosureRate(t *testing.T) {
+	f := newFixture(t)
+	out := t.TempDir()
+	buildFixture(t, f, out)
+
+	a := decodeExport(t, out).Authorship
+	if a.Authored == 0 || a.AssistedCommits == 0 || a.Merges == 0 {
+		t.Fatalf("the fixture must carry authored, assisted and merge commits: %+v", a)
+	}
+	share := strconv.Itoa(a.AssistedCommits*100/a.Authored) + "%"
+	want := `<span class="n">` + share + `</span><span class="l">of authored commits disclose AI assistance</span>` +
+		`<span class="s">` + strconv.Itoa(a.AssistedCommits) + ` / ` + strconv.Itoa(a.Authored) + `</span>` +
+		`<span class="s"><b class="tnum">` + strconv.Itoa(a.Merges) + `</b> merge commits excluded</span>`
+
+	health := outFile(t, out, "record/health/index.html")
+	if !strings.Contains(health, want) {
+		t.Errorf("the health page does not carry the disclosure rate %s", want)
+	}
+	contributors := outFile(t, out, "contributors/index.html")
+	if strings.Contains(contributors, "disclose AI assistance") {
+		t.Error("the contributors page still carries the disclosure rate")
+	}
+	if n := strings.Count(contributors, `class="panel fold c12"`); n != 2 {
+		t.Errorf("the contributors page carries %d folded full-width panels, want the two: authors and trailers", n)
+	}
+	if strings.Contains(contributors, `class="tile`) {
+		t.Error("the contributors page carries a stat tile")
+	}
+}

@@ -144,6 +144,10 @@ var deliberateSeedOmissions = map[string]string{
 	// extra_roots name abcd's own trees (the plugin command pages, the bundled
 	// rules source), which a prepared repository does not have.
 	"roles/": "abcd's own role vocabulary, over abcd's own trees",
+	// The persona rule reads abcd's persona roster
+	// (.abcd/development/personas.json), which a prepared repository does not
+	// have; armed there, it refuses to load for want of a registry.
+	"persona_registry": "abcd's persona roster",
 }
 
 // deliberatelyOmitted reports whether a canonical token id or rule name is named

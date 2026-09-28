@@ -2024,7 +2024,14 @@ rules replaced, its state changed, or a custom domain declared — renders as
 "## NAME (user override)" or "## NAME (repo override)" here, in the injected
 block and in the hook's diagnostic, and carries "source": "user" or "repo" in
 --json; the last layer to name a domain labels it. An untouched bundled domain
-renders bare and carries "source": "bundled". Read-only.`,
+renders bare and carries "source": "bundled".
+
+A list an override sets replaces the bundled one, so an override can hold back
+an entry abcd ships. For the guardrail domains (COMMITTING, LOAD, PII), every
+bundled recall keyword, alias or rule that an override's list leaves out is
+named on stderr, with the file that set the list, here and on every hook
+prompt. To keep an entry, restate it in the list, or leave the field out to
+inherit the bundled list. Read-only.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cwd, err := os.Getwd()
@@ -2778,8 +2785,19 @@ func newIntentAuditCommand(asJSON *bool) *cobra.Command {
 				route = nil
 			}
 			return render(cmd.OutOrStdout(), *asJSON, withRequest(res, route), func(w io.Writer) {
-				fmt.Fprintf(w, "abcd intent audit — %s %s (receipt %s)\n  request: %s\n",
-					res.IntentID, res.Status, res.ReceiptID, res.RequestPath)
+				fmt.Fprintf(w, "abcd intent audit — %s %s (receipt %s)\n", res.IntentID, res.Status, res.ReceiptID)
+				// The status is the receipt's state and the request line is the
+				// act: an owed receipt's request is rewritten on every re-emit,
+				// and a terminal one's is not written at all (iss-2609190337598356).
+				switch {
+				case !res.RequestWritten:
+					fmt.Fprintf(w, "  no request written: the review is %s\n",
+						strings.ReplaceAll(strings.TrimPrefix(res.Status, "already_"), "_", "-"))
+				case res.Status == "already_owed":
+					fmt.Fprintf(w, "  request rewritten: %s\n", res.RequestPath)
+				default:
+					fmt.Fprintf(w, "  request: %s\n", res.RequestPath)
+				}
 				renderRequestLine(w, route)
 			})
 		},
@@ -2847,7 +2865,7 @@ func newIntentAuditCommand(asJSON *bool) *cobra.Command {
 			})
 		},
 	}
-	ingestCmd.Flags().StringVar(&verdictJSON, "verdict-json", "", "path to the intent-audit verdict JSON")
+	ingestCmd.Flags().StringVar(&verdictJSON, "verdict-json", "", "path to the intent-audit verdict JSON, in the shape the Verdict shape section of its review request states")
 	ingestRoute = addRouteFlag(ingestCmd, auditAgent)
 	auditCmd.AddCommand(ingestCmd)
 	auditCmd.Flags().BoolVar(&issueDrift, "issue-drift", false,
@@ -5327,6 +5345,11 @@ func newMemoryCommand(asJSON *bool) *cobra.Command {
 				}
 				if st.LastIngest != "" {
 					fmt.Fprintf(w, "  last ingest: %s\n", termsafe.Sanitize(st.LastIngest))
+				}
+				// Drift is the board's one call to action, and it is printed in the
+				// words the JSON carries (iss-2609091647582259).
+				for _, line := range st.Drift {
+					fmt.Fprintf(w, "  %s\n", line)
 				}
 				for _, line := range st.Contradictions {
 					fmt.Fprintf(w, "  contradiction: %s\n", termsafe.Sanitize(line))

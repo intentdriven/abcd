@@ -28,6 +28,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // Finding is one lint violation. File is repo-relative; Line is 1-based (0 when
@@ -2763,49 +2764,52 @@ func frontmatterBodyStart(lines []string) int {
 	return 0 // unterminated frontmatter: treat all as body rather than swallow the file
 }
 
-// stripInlineCode blanks the contents of single-backtick inline code spans (and
-// their delimiters) so a forbidden synonym named inside a code span is a mention,
-// not a match. It blanks matched backtick pairs only; a trailing unpaired backtick
-// and its tail are left literal so an earlier, correctly-closed span stays blanked
-// (double-backtick spans are out of scope — this masks single-backtick pairs).
+// stripInlineCode blanks every inline code span on a line, its delimiters and
+// its content, so a forbidden synonym or a link named inside one is a mention,
+// not a match. Spans are paired by termsafe.PairCodeSpan, the pairer every
+// reader shares: a run of backticks closed by the next run of exactly its
+// length. Pairing single backticks one at a time read a double-backtick span as
+// two empty spans with live prose between them (iss-2609262350446885). An
+// unpaired run and its tail stay literal, so an earlier, correctly closed span
+// stays blanked (iss-106). Each blanked rune becomes one space, so a rune's
+// column on the line is unchanged.
 func stripInlineCode(line string) string {
-	b := []rune(line)
-	out := make([]rune, len(b))
-	copy(out, b)
-	// open tracks the index of an as-yet-unclosed opening backtick; -1 when none.
-	open := -1
-	for i, r := range b {
-		if r != '`' {
+	var out strings.Builder
+	last := 0
+	for i := 0; i < len(line); {
+		if line[i] != '`' {
+			i++
 			continue
 		}
-		if open < 0 {
-			// Outside a span, a backtick behind an odd run of backslashes is
-			// escaped: a literal character, never a delimiter (CommonMark), so
-			// it opens nothing and a link after it is still read
-			// (iss-2609251004336500). Inside a span backslashes are literal, so
-			// a closer is never escaped.
-			if escapedAt(b, i) {
-				continue
+		// Outside a span, a backtick behind an odd run of backslashes is
+		// escaped: a literal character, never a delimiter (CommonMark), so it
+		// opens nothing and a link after it is still read
+		// (iss-2609251004336500). The run after it may still open one. Inside
+		// a span backslashes are literal, so a closer is never escaped.
+		if escapedAt(line, i) {
+			i++
+			continue
+		}
+		sp, ok := termsafe.PairCodeSpan(line, i)
+		if !ok {
+			for i < len(line) && line[i] == '`' {
+				i++
 			}
-			open = i // provisional opener; blanked only once its pair closes
 			continue
 		}
-		// Closing backtick: blank the delimiters and the span between them.
-		for j := open; j <= i; j++ {
-			out[j] = ' '
-		}
-		open = -1
+		out.WriteString(line[last:sp.Start])
+		out.WriteString(strings.Repeat(" ", utf8.RuneCountInString(line[sp.Start:sp.End])))
+		last, i = sp.End, sp.End
 	}
-	// A leftover unpaired backtick (open >= 0) and its tail stay literal, so the
-	// earlier paired spans that were already blanked are preserved.
-	return string(out)
+	out.WriteString(line[last:])
+	return out.String()
 }
 
-// escapedAt reports whether the rune at i sits behind an odd number of
+// escapedAt reports whether the byte at i sits behind an odd number of
 // backslashes, which escape it.
-func escapedAt(b []rune, i int) bool {
+func escapedAt(s string, i int) bool {
 	n := 0
-	for j := i - 1; j >= 0 && b[j] == '\\'; j-- {
+	for j := i - 1; j >= 0 && s[j] == '\\'; j-- {
 		n++
 	}
 	return n%2 == 1

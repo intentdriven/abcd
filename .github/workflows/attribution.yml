@@ -3,7 +3,7 @@ name: attribution
 # Fails a pull request whose commits or body break abcd's AI-attribution
 # convention: the kernel trailer `Assisted-by: Claude:<model-version>`, never
 # `Co-Authored-By:` for an AI, never a tool's own "Generated with <tool>" footer
-# (AGENTS.md § Attribution and acknowledgements, CONTRIBUTING.md).
+# (AGENTS.md § Attribution and acknowledgements, .github/CONTRIBUTING.md).
 #
 # It also refuses a LIVE AGENT-SESSION URL in any commit message in the range or
 # in the pull-request body. That half was gated NOWHERE until it was added — not

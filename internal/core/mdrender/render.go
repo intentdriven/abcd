@@ -18,6 +18,9 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	"github.com/intentdriven/abcd/internal/core/mdrecord"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // UnsupportedError is a markdown construct outside the rendered subset.
@@ -155,6 +158,28 @@ func (r *Renderer) RenderBlocks(path string, blocks []Block) (string, error) {
 // tilde run, or a backtick run longer than three, at any indent.
 var unrenderedFenceRe = regexp.MustCompile("^[ \t]*(~{3,}|`{4,})")
 
+// indentedFenceRe matches a three-backtick fence opener at up to three spaces
+// of indent. Four or more spaces is an indented code block, refused on its own.
+var indentedFenceRe = regexp.MustCompile("^ {0,3}```")
+
+// opensFence reports whether a line opens a fence by mdrecord's rule, the rule
+// the walk that cut the block read it by. The two form patterns above only say
+// which form a line has; whether it opens anything is this rule's to say. A
+// backtick run whose info string holds a backtick is a code span, not a fence:
+// read by a prefix test, a line such as three backticks, x, three backticks
+// rendered as an empty command block, its text lost, or refused the page over
+// an info string it never had (iss-2609262309556167). ListNested admits any
+// indent, and the form patterns decide which indents the renderer accepts.
+func opensFence(ln string) bool { return mdrecord.OpensFence(ln, mdrecord.ListNested) }
+
+// OpensFence reports whether a block the walk cut opens with a fence this
+// renderer renders as a command block: a three-backtick run at the left margin
+// that opens a fence by mdrecord's rule.
+func OpensFence(blk Block) bool {
+	first, _, _ := strings.Cut(blk.Text, "\n")
+	return strings.HasPrefix(first, "```") && !unrenderedFenceRe.MatchString(first) && opensFence(first)
+}
+
 // RenderBlock renders one top-level block.
 func (r *Renderer) RenderBlock(path string, blk Block) (string, error) {
 	at := Source{Path: path, Line: blk.Line}
@@ -163,15 +188,38 @@ func (r *Renderer) RenderBlock(path string, blk Block) (string, error) {
 
 	// The walk that cut this block reads fences by mdrecord's rule, tildes and
 	// longer backtick runs included, and this renderer renders one form: a
-	// three-backtick run at column 0. Any other form arriving here would render
-	// as a paragraph, delimiters and code inlined into prose, with no error, so
-	// it is refused. A three-backtick fence's own body is code and is not read
-	// (iss-2609251514129841).
-	if !strings.HasPrefix(first, "```") || strings.HasPrefix(first, "````") {
+	// three-backtick run at up to three spaces of indent. Any other form
+	// arriving here would render as a paragraph, delimiters and code inlined
+	// into prose, with no error, so it is refused. A three-backtick fence's own
+	// body is code and is not read (iss-2609251514129841).
+	opens := indentedFenceRe.MatchString(first) && !unrenderedFenceRe.MatchString(first) && opensFence(first)
+	if !opens {
 		for i, ln := range lines {
-			if unrenderedFenceRe.MatchString(ln) {
+			if unrenderedFenceRe.MatchString(ln) && opensFence(ln) {
 				return "", &UnsupportedError{at.Path, at.Line + i, "fenced code block opened by a tilde or a run of four or more backticks",
 					"only a three-backtick fence renders; any other opener renders as a paragraph"}
+			}
+		}
+	}
+
+	// A three-backtick opener indented one to three spaces opens a fence, by
+	// CommonMark and by the walk that cut this block: its lines lose up to that
+	// many spaces of indent and it renders as the fence at the margin does. It
+	// arrives here most often as the fence of a loose list item, cut from its
+	// item by the blank line above it. Rendered as a paragraph it inlined the
+	// delimiters and the code into prose (iss-2609251600023777).
+	if opens && !strings.HasPrefix(first, "```") {
+		return r.indentedFence(path, blk, lines)
+	}
+
+	// An indented opener below the first line of a block that is not a list —
+	// whose items the list renderer dedents and reads fences in — is a fence
+	// without a blank line before it, refused as the one at the margin is below.
+	if !opens && !IsUnorderedItem(first) && !OrderedItemRe.MatchString(first) {
+		for i, ln := range lines {
+			if indentedFenceRe.MatchString(ln) && opensFence(ln) {
+				return "", &UnsupportedError{at.Path, at.Line + i, "fenced code block without a blank line before it",
+					"a fence opens its own block; without the blank line the code renders as part of the paragraph above"}
 			}
 		}
 	}
@@ -180,9 +228,9 @@ func (r *Renderer) RenderBlock(path string, blk Block) (string, error) {
 	// walk never sees it start, so the whole run — prose, backticks and code —
 	// arrives here as one paragraph, and every backtick would be escaped into the
 	// page as visible punctuation with the code inlined into the sentence.
-	if !strings.HasPrefix(first, "```") {
+	if !opens {
 		for i, ln := range lines {
-			if strings.HasPrefix(ln, "```") {
+			if strings.HasPrefix(ln, "```") && opensFence(ln) {
 				return "", &UnsupportedError{at.Path, at.Line + i, "fenced code block without a blank line before it",
 					"a fence opens its own block; without the blank line the code renders as part of the paragraph above"}
 			}
@@ -190,8 +238,8 @@ func (r *Renderer) RenderBlock(path string, blk Block) (string, error) {
 	}
 
 	switch {
-	case strings.HasPrefix(first, "```"):
-		return r.fence(at, lines)
+	case opens:
+		return r.fence(at, lines, closesLastLine(lines))
 	case strings.HasPrefix(strings.TrimSpace(first), "<!--"):
 		return r.commentBlock(at, lines)
 	case allLinkDefs(lines):
@@ -264,16 +312,32 @@ func (r *Renderer) commentBlock(at Source, lines []string) (string, error) {
 	return out.String(), nil
 }
 
+// closesLastLine reports whether a block's last line closes a fence by
+// mdrecord's reading of the block, the ListNested rule the walk cut it by. A
+// block opened by a margin fence ends where the walk ended it: at a fence closed
+// at the margin, or, when an indented closer let it run on, at a blank line. So
+// the question for its last line is only whether that line is a closer, and it
+// is mdrecord's to answer: a prefix test took the last line of an unclosed
+// fence for a closer whenever it opened with three backticks — an info string
+// and all — and dropped its text from the page (iss-2609262322244502).
+func closesLastLine(lines []string) bool {
+	fs := mdrecord.Read(lines, mdrecord.ListNested).Fences
+	n := len(fs)
+	return n > 0 && fs[n-1].Closed && fs[n-1].End == len(lines)
+}
+
 // fence renders a fenced code block as a copyable command block: the button's
-// label is a ui.json string, and its payload is the block's own raw text.
-func (r *Renderer) fence(at Source, lines []string) (string, error) {
+// label is a ui.json string, and its payload is the block's own raw text. lines
+// runs from the opener, and closed says whether the last of them is a closer,
+// mdrecord's verdict and never a prefix test's.
+func (r *Renderer) fence(at Source, lines []string, closed bool) (string, error) {
 	info := strings.TrimSpace(strings.TrimPrefix(lines[0], "```"))
 	if strings.ContainsAny(info, " \t") {
 		return "", &UnsupportedError{at.Path, at.Line, "fenced-code info string", "only a bare language word is rendered, got " + Quote(info)}
 	}
 	body := lines[1:]
-	if n := len(body); n > 0 && strings.HasPrefix(strings.TrimSpace(body[n-1]), "```") {
-		body = body[:n-1]
+	if closed {
+		body = body[:len(body)-1]
 	}
 	raw := strings.Join(body, "\n")
 	cls := ""
@@ -285,6 +349,33 @@ func (r *Renderer) fence(at Source, lines []string) (string, error) {
 	return `<div class="cmd"><pre><code` + cls + `>` + EscapeText(raw) + "\n" +
 		`</code></pre><button class="copy" data-copy="` + EscapeAttr(raw) +
 		`" data-copied="` + EscapeAttr(r.Labels.Copied) + `">` + EscapeText(r.Labels.Copy) + `</button></div>`, nil
+}
+
+// indentedFence renders a block opened by a three-backtick fence indented one
+// to three spaces. Each of the fence's lines loses up to the opener's indent
+// (CommonMark's rule for fenced content), and the fence then renders as one at
+// the margin does. The walk ends a block after a fence only when the fence
+// closes at the margin, so any lines after an indented closer run on in this
+// block; they render as the block they are.
+func (r *Renderer) indentedFence(path string, blk Block, lines []string) (string, error) {
+	end, closed := len(lines), false
+	if fs := mdrecord.Read(lines, mdrecord.TopLevel).Fences; len(fs) > 0 && fs[0].Start == 0 {
+		end, closed = fs[0].End, fs[0].Closed
+	}
+	n := IndentOf(lines[0])
+	fence := make([]string, end)
+	for i, ln := range lines[:end] {
+		fence[i] = ln[min(n, IndentOf(ln)):]
+	}
+	h, err := r.fence(Source{Path: path, Line: blk.Line}, fence, closed)
+	if err != nil || end == len(lines) {
+		return h, err
+	}
+	rest, err := r.RenderBlock(path, Block{Text: strings.Join(lines[end:], "\n"), Line: blk.Line + end})
+	if err != nil {
+		return "", err
+	}
+	return h + rest, nil
 }
 
 // heading renders an ATX heading.
@@ -466,7 +557,7 @@ func (r *Renderer) listItem(at Source, body []string) (string, error) {
 	split := len(body)
 	for i := 1; i < len(body); i++ {
 		t := strings.TrimLeft(body[i], " \t")
-		if IsUnorderedItem(t) || OrderedItemRe.MatchString(t) || strings.HasPrefix(t, "```") ||
+		if IsUnorderedItem(t) || OrderedItemRe.MatchString(t) || (strings.HasPrefix(t, "```") && opensFence(t)) ||
 			strings.HasPrefix(t, ">") || strings.HasPrefix(t, "|") || HeadingRe.MatchString(t) {
 			split = i
 			break
@@ -721,17 +812,16 @@ func (r *Renderer) scanInline(at Source, s string) ([]*inlineNode, error) {
 			text(EscapeText(string(s[i+1])))
 			i += 2
 		case c == '`':
-			n := runLen(s, i, '`')
-			end := strings.Index(s[i+n:], s[i:i+n])
-			if end < 0 {
+			// termsafe's pairer is the one every escaper judged the value by,
+			// so a span it calls balanced renders here as that span: closed by
+			// a run of exactly the opening length, never by a longer run's
+			// prefix, with CommonMark's content rules (iss-2609262322244502).
+			sp, ok := termsafe.PairCodeSpan(s, i)
+			if !ok {
 				return nil, &UnsupportedError{at.Path, at.Line, "unclosed code span", Quote(Clip(s[i:]))}
 			}
-			code := s[i+n : i+n+end]
-			if n > 1 {
-				code = strings.Trim(code, " ")
-			}
-			text("<code>" + EscapeText(code) + "</code>")
-			i += n + end + n
+			text("<code>" + EscapeText(termsafe.CodeSpanText(sp.Raw(s))) + "</code>")
+			i = sp.End
 		case c == '!' && i+1 < len(s) && s[i+1] == '[':
 			label, href, next, kind := parseLink(s, i+1)
 			switch kind {

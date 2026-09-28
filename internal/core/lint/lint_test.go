@@ -280,9 +280,20 @@ func TestDocsLintHarnessNameGate(t *testing.T) {
 	writeFile(t, root, "README.md", "# readme\n")
 	// Its name_roots must resolve too (iss-279), and the role ban's extra_roots
 	// (itd-2609212137129937).
-	for _, r := range []string{".abcd/README.md", "AGENTS.md", "CONTRIBUTING.md", "scripts/README.md",
+	for _, r := range []string{".abcd/README.md", "AGENTS.md", ".github/CONTRIBUTING.md", "scripts/README.md",
 		"commands/README.md", ".abcd/rules.json", "internal/core/rules/defaults/rules.json"} {
 		writeFile(t, root, r, "# t\n")
+	}
+	// So must links_resolve's extra roots (iss-46), read from the config so a
+	// new one needs no edit here, and the persona rule needs its roster.
+	for _, r := range cfg.Rules["links_resolve"].ExtraRoots {
+		if !strings.HasSuffix(r, ".md") {
+			r += "/README.md"
+		}
+		writeFile(t, root, r, "# t\n")
+	}
+	if reg := cfg.Rules["persona_registry"].Registry; reg != "" {
+		writeFile(t, root, reg, `{"personas": [{"name": "Kira"}]}`+"\n")
 	}
 	writeFile(t, root, "docs/named.md", "# t\n\nRun this in Claude Code.\n")
 	writeFile(t, root, "docs/allowed.md", "# t\n\n<!-- docs-lint: allow --> Claude Code is named deliberately.\n")

@@ -111,7 +111,9 @@ ahoy's registry stays under `~/.abcd/history/` and holds no transcripts.
 - **Reconstructing** — render one session, named by its id, as **one
   self-contained artefact** (`<session>.md`) and **one telemetry file**
   (`<session>.telemetry.json`), written into an output directory (default the working
-  directory) or to stdout. The artefact is Markdown because its
+  directory) or to stdout. The directory must already exist, and it is refused
+  when it is reached through a symlink at any level inside a checkout; outside
+  every checkout the path is the operator's own. The artefact is Markdown because its
   consumer is a model being handed the session as context; it names its records
   by basename and carries no store path, so it reads with the store gone.
 

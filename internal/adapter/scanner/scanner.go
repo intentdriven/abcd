@@ -1,6 +1,7 @@
 package scanner
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"os"
@@ -867,7 +868,8 @@ func scanText(text string, id Identity, patterns []Pattern, id2sev map[string]Se
 		// %22) leaves a hex word-char before a literal token, defeating the
 		// leading \b so the raw scan above never fires. Scan bounded
 		// percent-decoded copies of the line and map every hit back to its raw
-		// byte span, so Redact masks the live token where it sits on disk.
+		// byte span, so Redact masks the live token where it sits on disk. The
+		// same pass reads the line's JSON-escape layers (jsonescape.go).
 		findings = append(findings, decodedLineFindings(patterns, probes, junctions, matchers, id2sev, line, lineno, file)...)
 	}
 	findings = dedupFindings(findings)
@@ -1137,15 +1139,17 @@ func guardedReadWhy(err error) string {
 // secret patterns (secretPatterns) plus the identity rules whose literal is
 // the caller's own and long enough that a chance collision with binary
 // content is negligible — the home path, the email, and a real name that is
-// multi-word or 8+ characters. A home path in PDF /Creator, an /Author stamp,
-// or a session URL in PNG tEXt metadata is the same release-blocking leak it
-// is in prose, and renaming deck.md to deck.pdf must not change the verdict.
-// The short/generic identity kinds (local_username, github_username,
-// home_path_other, a short single-token real_name) are dropped by
-// byteScanPolicy after the scan — home_path_other runs unguarded inside the
-// identity matcher, so switching it off by identity value is not possible —
-// unless the repo's pii.json raised that kind above its built-in default,
-// which is a judgement the byte scan honours.
+// multi-word or 8+ bytes, or a short single token standing in a metadata
+// field that names a person (metadataPersonKeys). A home path in PDF
+// /Creator, an /Author stamp, or a session URL in PNG tEXt metadata is the
+// same release-blocking leak it is in prose, and renaming deck.md to deck.pdf
+// must not change the verdict. The short/generic identity kinds
+// (local_username, github_username, home_path_other, a short single-token
+// real_name anywhere else) are dropped by byteScanPolicy after the scan —
+// home_path_other runs unguarded inside the identity matcher, so switching it
+// off by identity value is not possible — unless the repo's pii.json raised
+// that kind above its built-in default, which is a judgement the byte scan
+// honours.
 func (s *Scanner) scanBytes(data []byte, secrets []Pattern, logical string) []Finding {
 	// GitRemoteUsername and the emails travel with the names so the matcher
 	// tells a public handle from a real name exactly as it does on text
@@ -1158,9 +1162,11 @@ func (s *Scanner) scanBytes(data []byte, secrets []Pattern, logical string) []Fi
 		OtherGitUserNames: s.identity.OtherGitUserNames, OtherGitUserEmails: s.identity.OtherGitUserEmails,
 	}
 	all := scanText(string(data), long, secrets, s.identSev, logical, true)
+	meta := metadataFields{data: data}
+	all = append(all, s.utf16Findings(data, long, secrets, logical, &meta)...)
 	out := all[:0]
 	for _, f := range all {
-		if s.byteScanDrops(f) {
+		if s.byteScanDrops(f, &meta) {
 			continue
 		}
 		out = append(out, f)
@@ -1177,13 +1183,69 @@ const (
 	// bytePolicyDrop: noise on bytes; dropped unless the repo raised the kind.
 	bytePolicyDrop
 	// bytePolicyKeepLongLiteral: kept when the matched literal is multi-word or
-	// at least byteScanLongLiteral bytes, dropped when it is a short token.
+	// at least byteScanLongLiteral bytes, or when a short token stands in a
+	// metadata field that names a person; dropped when it is a short token
+	// anywhere else.
 	bytePolicyKeepLongLiteral
 )
 
 // byteScanLongLiteral is the length from which a single-token real name no
-// longer collides with binary content by chance.
+// longer collides with binary content by chance. It counts BYTES, not runes,
+// on purpose: what a chance collision needs is that many specific bytes in a
+// row, so a four-rune CJK name (twelve bytes) is as unlikely by chance as a
+// twelve-letter Latin one, and a seven-byte Latin name is not.
 const byteScanLongLiteral = 8
+
+// metadataPersonKeys are the metadata keys that name a person, lower-cased: a
+// PDF Info dictionary's /Author, XMP's dc:creator, pdf:Author and tiff:Artist,
+// a PNG text chunk's Author and Artist keywords, and an OOXML or ODF
+// document's dc:creator and cp:lastModifiedBy. Each is written as text in the
+// raw bytes (or in a region the container decoder inflates), so a short name
+// after one is the name the file was stamped with rather than a chance run of
+// bytes (iss-2609090934372160). A UTF-16 value behind a byte-order mark is
+// decoded first (utf16.go) and judged by the raw bytes before it, so a PDF
+// "/Author (" before a UTF-16 string reaches its name. A key read from binary
+// structure — EXIF's Artist tag — is not text in the bytes and is not reached
+// here (iss-2609261659051539).
+var metadataPersonKeys = [][]byte{[]byte("author"), []byte("artist"), []byte("creator"), []byte("lastmodifiedby")}
+
+// maxMetadataKeyGap is how far before a short name metadataFields looks for a
+// person key: the markup between an XMP dc:creator and its rdf:li value, laid
+// out one element per line and indented the way XMP writers indent it, fits
+// with room to spare, and the reach is what keeps an incidental match far
+// from any key out.
+const maxMetadataKeyGap = 96
+
+// metadataFields answers whether a byte-scan finding stands in a person
+// metadata field of the data it was scanned from. The line offsets are found
+// once, on the first question.
+type metadataFields struct {
+	data   []byte
+	starts []int
+}
+
+// holds reports whether a person key ends within maxMetadataKeyGap bytes
+// before f. scanText splits on '\n', so f's line starts after the (Line-1)th
+// newline and its Column is the byte offset on that line.
+func (m *metadataFields) holds(f Finding) bool {
+	if m.starts == nil {
+		m.starts = lineStarts(m.data)
+	}
+	if f.Line < 1 || f.Line > len(m.starts) || f.Column < 1 {
+		return false
+	}
+	at := m.starts[f.Line-1] + f.Column - 1
+	if at > len(m.data) {
+		return false
+	}
+	window := bytes.ToLower(m.data[max(0, at-maxMetadataKeyGap):at])
+	for _, k := range metadataPersonKeys {
+		if bytes.Contains(window, k) {
+			return true
+		}
+	}
+	return false
+}
 
 // byteScanPolicy is the EXPLICIT byte-scan classification of every identity
 // kind. It is a table, not a derivation: a kind that is not listed reports
@@ -1210,7 +1272,7 @@ func byteScanPolicy(kind string) (bytePolicy, bool) {
 // byteScanDrops applies byteScanPolicy to one finding, honouring a repo-raised
 // severity: when pii.json made the kind stricter than its built-in default,
 // the repo has judged that kind a leak wherever it sits, and the drop yields.
-func (s *Scanner) byteScanDrops(f Finding) bool {
+func (s *Scanner) byteScanDrops(f Finding, meta *metadataFields) bool {
 	policy, ok := byteScanPolicy(f.Kind)
 	if !ok {
 		return false
@@ -1222,7 +1284,8 @@ func (s *Scanner) byteScanDrops(f Finding) bool {
 	case bytePolicyDrop:
 		return true
 	case bytePolicyKeepLongLiteral:
-		return len(f.Matched) < byteScanLongLiteral && strings.IndexFunc(f.Matched, unicode.IsSpace) < 0
+		short := len(f.Matched) < byteScanLongLiteral && strings.IndexFunc(f.Matched, unicode.IsSpace) < 0
+		return short && !meta.holds(f)
 	}
 	return false
 }

@@ -86,6 +86,7 @@ INVENTORY (read-only)
 DESTINATION SAFETY GATE
   refuse unless <dest> is absent, empty, or carries a parseable _provenance.json
   → never overwrite a directory abcd did not produce (adr-35)
+  refuse a <dest> reached through a symlink at any level inside a checkout
                            │
                            ▼
 SECRET SCAN (before any write)
