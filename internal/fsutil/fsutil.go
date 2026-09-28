@@ -30,6 +30,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path"
@@ -119,6 +120,10 @@ const (
 	// DeclarationBehindSymlink: the file is there, but a directory between the
 	// home and it (~/.abcd first) is a symlink (ReadHomeDeclaration only).
 	DeclarationBehindSymlink
+	// DeclarationExposed: the opened file's mode carries a permission bit its
+	// reader denies — a secret group or other can read
+	// (ReadHomeDeclarationDenying only). The error is a *DeclarationModeError.
+	DeclarationExposed
 )
 
 // ErrDeclarationWritable and ErrDeclarationForeignOwner are the two guards that
@@ -132,6 +137,18 @@ var (
 	// (replaced between the vetting lstat and the open).
 	ErrDeclarationSwapped = errors.New("fsutil: declaration was replaced between its vetting and its read")
 )
+
+// DeclarationModeError is the error of a DeclarationExposed refusal: Perm is
+// the permission bits of the file that was opened, judged on its own
+// descriptor, so a caller can name the mode it refused and the chmod that
+// repairs it.
+type DeclarationModeError struct {
+	Perm os.FileMode
+}
+
+func (e *DeclarationModeError) Error() string {
+	return fmt.Sprintf("fsutil: declaration's mode %04o carries a permission bit its reader refuses", uint32(e.Perm))
+}
 
 // ownerUID is the package's own view of OwnerUID, held as a var for the same
 // reason caseFoldingFS is: the foreign-owner branch cannot be provoked on a host

@@ -262,6 +262,18 @@ func swappedLevel(parent *os.Root, part, full, shown string, err error) error {
 // A rel that is not a clean relative path is DeclarationUnreadable before
 // anything is looked at: it names no place in the home to read.
 func ReadHomeDeclaration(home, rel string, limit int64) ([]byte, DeclarationRefusal, error) {
+	return ReadHomeDeclarationDenying(home, rel, limit, 0)
+}
+
+// ReadHomeDeclarationDenying is ReadHomeDeclaration for a file whose reader
+// refuses more of its mode than a declaration's group- and other-write: deny
+// holds the permission bits that refuse it (0o077 for a secret no one else
+// may read). The bits are judged on the fstat of the file that was opened,
+// never on a path, so a file swapped or re-moded after any check by path is
+// judged as the file that is read (iss-2609281310017733). A refusal is
+// DeclarationExposed with a *DeclarationModeError naming the mode. Every other
+// guard, and its order, is ReadHomeDeclaration's.
+func ReadHomeDeclarationDenying(home, rel string, limit int64, deny os.FileMode) ([]byte, DeclarationRefusal, error) {
 	if !ValidRelPath(rel) {
 		return nil, DeclarationUnreadable, &os.PathError{Op: "readhomedeclaration", Path: rel, Err: os.ErrInvalid}
 	}
@@ -280,7 +292,7 @@ func ReadHomeDeclaration(home, rel string, limit int64) ([]byte, DeclarationRefu
 		return nil, DeclarationUnreadable, err
 	}
 	defer root.Close()
-	return readDeclarationIn(root, path.Base(rel), p, limit)
+	return readDeclarationIn(root, path.Base(rel), p, limit, deny.Perm())
 }
 
 // readDeclarationIn is ReadDeclaration for the file leaf directly inside root:
@@ -288,8 +300,9 @@ func ReadHomeDeclaration(home, rel string, limit int64) ([]byte, DeclarationRefu
 // fstat all relative to root's descriptor. p is the file's full path, which the
 // owner lookup (ownerUID, the package's test seam) and the vetting hook are
 // given; the owner is confirmed again on the opened descriptor, so the lookup
-// by path cannot vouch for a file other than the one read.
-func readDeclarationIn(root *os.Root, leaf, p string, limit int64) ([]byte, DeclarationRefusal, error) {
+// by path cannot vouch for a file other than the one read. deny is judged on
+// that same descriptor (ReadHomeDeclarationDenying).
+func readDeclarationIn(root *os.Root, leaf, p string, limit int64, deny os.FileMode) ([]byte, DeclarationRefusal, error) {
 	fi, err := root.Lstat(leaf)
 	if err != nil {
 		return nil, DeclarationAbsent, err
@@ -318,6 +331,9 @@ func readDeclarationIn(root *os.Root, leaf, p string, limit int64) ([]byte, Decl
 	}
 	if sys, ok := st.Sys().(*syscall.Stat_t); !ok || sys.Uid != uint32(os.Getuid()) {
 		return nil, DeclarationForeignOwner, ErrDeclarationForeignOwner
+	}
+	if perm := st.Mode().Perm(); perm&deny != 0 {
+		return nil, DeclarationExposed, &DeclarationModeError{Perm: perm}
 	}
 	if st.Size() > limit {
 		return nil, DeclarationUnreadable, ErrTooBig

@@ -364,7 +364,10 @@ level above (`fsutil.OpenHomeScope`, or `fsutil.EnsureHomeScope` to create the
 missing levels), confirms each descriptor is the real directory its judgement
 saw, and reaches the file only through that descriptor, so a process swapping
 `~/.abcd` for a link between the check and the use is refused rather than
-followed (iss-2609281310017733). A symlinked `~/.abcd` holding no such file reads as absent and
+followed (iss-2609281310017733). The file's own guards are judged on that
+descriptor too: the credential store's mode 0600 is judged on the fstat of the
+file that is opened (`fsutil.ReadHomeDeclarationDenying`), never on its path,
+so a store swapped for a group-readable file after any check is refused. A symlinked `~/.abcd` holding no such file reads as absent and
 costs nothing. A file that is there behind the link is refused the way its reader
 refuses any declaration that is not the caller's word: the rules load fails, a
 declaration is ignored with a note, the path entry and the cache attestation

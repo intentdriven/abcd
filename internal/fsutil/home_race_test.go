@@ -160,3 +160,38 @@ func TestEnsureHomeScopeRefusesALevelSwappedForALinkAfterItsCheck(t *testing.T) 
 		t.Fatalf("EnsureHomeScope created history behind the swapped link: %v", err)
 	}
 }
+
+// TestReadHomeDeclarationDenyingJudgesTheModeOfTheFileItOpened: deny is judged
+// on the opened file's fstat, not on the Lstat that vetted it. A 0600 file is
+// read; the same file opened wider than 0600 — the one the Lstat judged, re-
+// moded inside the window between that Lstat and the open — is refused as
+// DeclarationExposed naming its mode, and no byte is returned. deny 0 (the
+// plain ReadHomeDeclaration) keeps admitting a declaration others can read.
+func TestReadHomeDeclarationDenyingJudgesTheModeOfTheFileItOpened(t *testing.T) {
+	home, _ := raceableHome(t, "credentials.json")
+	p := filepath.Join(home, ".abcd", "credentials.json")
+	if err := os.Chmod(p, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if raw, refusal, err := ReadHomeDeclarationDenying(home, ".abcd/credentials.json", 1024, 0o077); refusal != DeclarationOK || err != nil || string(raw) != "/real\n" {
+		t.Fatalf("a 0600 file must be read: refusal %d, err %v, raw %q", refusal, err, raw)
+	}
+
+	prev := declarationVetted
+	t.Cleanup(func() { declarationVetted = prev })
+	declarationVetted = func(string) {
+		if err := os.Chmod(p, 0o644); err != nil {
+			t.Fatalf("chmod: %v", err)
+		}
+	}
+	raw, refusal, err := ReadHomeDeclarationDenying(home, ".abcd/credentials.json", 1024, 0o077)
+	var mode *DeclarationModeError
+	if raw != nil || refusal != DeclarationExposed || !errors.As(err, &mode) || mode.Perm != 0o644 {
+		t.Fatalf("a file opened at 0644 must be refused on its fstat: refusal %d, err %v, raw %q", refusal, err, raw)
+	}
+
+	declarationVetted = prev
+	if raw, refusal, err := ReadHomeDeclaration(home, ".abcd/credentials.json", 1024); refusal != DeclarationOK || err != nil || string(raw) != "/real\n" {
+		t.Fatalf("with no mask a 0644 declaration is still read: refusal %d, err %v, raw %q", refusal, err, raw)
+	}
+}

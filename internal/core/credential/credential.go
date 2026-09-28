@@ -27,7 +27,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -105,39 +104,36 @@ func (m machine) Resolve(name string) (string, error) {
 
 // readStore reads the store at home under every refusal the package doc
 // names. An absent store is an empty map and no error.
+//
+// Every guard is judged by fsutil.ReadHomeDeclarationDenying on the store it
+// reads, never on a path first: absence on the Lstat that decides it (a
+// symlinked ~/.abcd holding no store is no store), a store behind a symlinked
+// ~/.abcd — which sits wherever the link points, a dotfiles checkout
+// typically, and is refused as the rules loader refuses a rules.json there —
+// on the descriptor walk of ~/.abcd, and the leaf's type, owner and mode on
+// the opened file's own fstat. A mode judged by path would vouch for a file
+// other than the one read: a store swapped for a group-readable file after
+// that check would be read once (iss-2609281310017733).
 func readStore(home string) (map[string]string, error) {
-	p := filepath.Join(home, ".abcd", StoreFileName)
-	fi, err := os.Lstat(p)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return map[string]string{}, nil
-		}
-		return nil, fmt.Errorf("credential: %s could not be examined, so it is not read", StorePath)
-	}
-	// A store that is there behind a symlinked ~/.abcd sits wherever the link
-	// points — a dotfiles checkout, typically — and is refused as the rules
-	// loader refuses a rules.json there; a symlinked ~/.abcd holding no store
-	// is no store (the Lstat above).
-	if err := fsutil.HomeScopeLink(home, storeRel); err != nil {
-		return nil, fmt.Errorf("credential: %s is not read: %v", StorePath, err)
-	}
-	if !fi.Mode().IsRegular() {
-		return nil, fmt.Errorf("credential: %s is not a regular file (a symlink is never followed), so it is not read", StorePath)
-	}
-	if fi.Mode().Perm()&0o077 != 0 {
-		return nil, fmt.Errorf("credential: %s can be read or written by group or other (mode %04o), so it is not read; `chmod 0600 %s`", StorePath, fi.Mode().Perm(), StorePath)
-	}
-	// ReadDeclaration re-checks the leaf on its own descriptor and refuses a
-	// file this uid does not own.
-	raw, refusal, err := fsutil.ReadHomeDeclaration(home, storeRel, maxStoreBytes)
+	raw, refusal, err := fsutil.ReadHomeDeclarationDenying(home, storeRel, maxStoreBytes, 0o077)
+	var mode *fsutil.DeclarationModeError
 	switch {
+	case refusal == fsutil.DeclarationOK:
 	case refusal == fsutil.DeclarationAbsent && errors.Is(err, os.ErrNotExist):
 		return map[string]string{}, nil
+	case refusal == fsutil.DeclarationAbsent:
+		return nil, fmt.Errorf("credential: %s could not be examined, so it is not read", StorePath)
 	case refusal == fsutil.DeclarationBehindSymlink:
 		return nil, fmt.Errorf("credential: %s is not read: %v", StorePath, err)
+	case refusal == fsutil.DeclarationNotRegular:
+		return nil, fmt.Errorf("credential: %s is not a regular file (a symlink is never followed), so it is not read", StorePath)
+	case refusal == fsutil.DeclarationExposed && errors.As(err, &mode):
+		return nil, fmt.Errorf("credential: %s can be read or written by group or other (mode %04o), so it is not read; `chmod 0600 %s`", StorePath, uint32(mode.Perm), StorePath)
+	case refusal == fsutil.DeclarationWritableByOthers:
+		return nil, fmt.Errorf("credential: %s can be written by group or other, so it is not read; `chmod 0600 %s`", StorePath, StorePath)
 	case refusal == fsutil.DeclarationForeignOwner:
 		return nil, fmt.Errorf("credential: %s is not owned by you, so it is not read", StorePath)
-	case err != nil:
+	default:
 		return nil, fmt.Errorf("credential: %s could not be read safely (mode 0600, owned by you, a regular file), so it is not read", StorePath)
 	}
 	// A repeated key, or a case twin encoding/json binds to the same entry, is
