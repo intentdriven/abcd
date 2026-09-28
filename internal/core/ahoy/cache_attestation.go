@@ -88,11 +88,11 @@ func userCacheAttestationPath() string {
 // the sibling record. It is not the accepted same-uid residual
 // (iss-2609012039107700), which it neither closes nor claims to.
 func readCacheAttestation() (cacheAttestation, bool) {
-	path := userCacheAttestationPath()
-	if path == "" {
+	home, refused := homeScope()
+	if refused != "" {
 		return cacheAttestation{}, false
 	}
-	raw, _, err := fsutil.ReadDeclaration(path, maxPathEntryBytes)
+	raw, _, err := fsutil.ReadHomeDeclaration(home, ".abcd/"+cacheAttestationFile, maxPathEntryBytes)
 	if err != nil {
 		return cacheAttestation{}, false
 	}

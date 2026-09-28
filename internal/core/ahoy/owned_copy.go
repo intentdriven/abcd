@@ -3,6 +3,7 @@ package ahoy
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -68,19 +69,44 @@ func cacheMetaPath(dataDir string) string {
 // record" — and cacheBindingProblem renders the reason, because an operator
 // told only "start a session with network access" would re-run hooks that
 // decline to write the record for the same reason.
+//
+// A ~/.abcd that is a SYMLINK is refused here too, through the rule every
+// home-scoped reader and writer applies (fsutil.HomeScopeLink), the one AGENTS.md
+// states for the rules loader: a dotfiles-symlinked ~/.abcd hosts no record abcd
+// trusts, so it neither vouches for which binary the hooks run nor binds the
+// cache a release binary is promoted out of (iss-2609281017573862). The hook
+// shims and hooks/bootstrap.sh refuse the same link.
 func homeScope() (string, string) {
-	home, err := os.UserHomeDir()
-	if err != nil || home == "" {
-		return "", "no home directory is resolved (HOME is unset), so there is no ~/.abcd for the record to live in"
-	}
-	if !filepath.IsAbs(home) {
-		return "", "HOME is a relative path, so ~/.abcd resolves against whatever directory the verb happens to run in rather than naming one home"
-	}
-	if cwd, err := os.Getwd(); err == nil && insideRepo(cwd, home) && resolvePath(cwd) != resolvePath(home) {
-		return "", "HOME lies inside the repository the verb is running against, so its ~/.abcd records would be repository content rather than a write into the caller's own home"
+	home, err := homeScopeErr()
+	if err != nil {
+		return "", err.Error()
 	}
 	return home, ""
 }
+
+// homeScopeErr is homeScope with the refusal as an error, so a caller can tell
+// the symlinked ~/.abcd (errors.Is fsutil.ErrHomeScopeSymlinked), whose remedy
+// is replacing the link, from a HOME that names no home at all.
+func homeScopeErr() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return "", errors.New("no home directory is resolved (HOME is unset), so there is no ~/.abcd for the record to live in")
+	}
+	if !filepath.IsAbs(home) {
+		return "", errors.New("HOME is a relative path, so ~/.abcd resolves against whatever directory the verb happens to run in rather than naming one home")
+	}
+	if cwd, err := os.Getwd(); err == nil && insideRepo(cwd, home) && resolvePath(cwd) != resolvePath(home) {
+		return "", errors.New("HOME lies inside the repository the verb is running against, so its ~/.abcd records would be repository content rather than a write into the caller's own home")
+	}
+	if err := fsutil.HomeScopeLink(home, pathEntryRel); err != nil {
+		return "", err
+	}
+	return home, nil
+}
+
+// pathEntryRel is the provenance record's place in the home, in the slash form
+// the home-scoped primitives take.
+const pathEntryRel = ".abcd/path-entry"
 
 // userPathEntryPath is the PATH-copy provenance record, home-scoped and
 // abcd-owned (~/.abcd/path-entry, alongside the history store). It deliberately
@@ -96,7 +122,7 @@ func userPathEntryPath() string {
 	if refused != "" {
 		return ""
 	}
-	return filepath.Join(home, ".abcd", "path-entry")
+	return filepath.Join(home, filepath.FromSlash(pathEntryRel))
 }
 
 // cacheRecordedSHA reads the cache meta's binary_sha256, or "" when the record
@@ -143,11 +169,11 @@ type pathEntryRecord struct {
 // (iss-2609091927085132); that is NOT the accepted same-uid residual
 // (iss-2609012039107700), which this check neither closes nor claims to.
 func readPathEntry() (pathEntryRecord, bool) {
-	path := userPathEntryPath()
-	if path == "" {
+	home, refused := homeScope()
+	if refused != "" {
 		return pathEntryRecord{}, false
 	}
-	raw, _, err := fsutil.ReadDeclaration(path, maxPathEntryBytes)
+	raw, _, err := fsutil.ReadHomeDeclaration(home, pathEntryRel, maxPathEntryBytes)
 	if err != nil {
 		return pathEntryRecord{}, false
 	}
@@ -179,10 +205,11 @@ func readPathEntry() (pathEntryRecord, bool) {
 // resolvePluginRoot reads it as a candidate. An empty pluginRoot records no
 // such line — a degraded install has no root to record.
 func writePathEntry(target, shaHex, pluginRoot string) error {
-	path := userPathEntryPath()
-	if path == "" {
-		return os.ErrNotExist
+	home, err := homeScopeErr()
+	if err != nil {
+		return err
 	}
+	path := filepath.Join(home, filepath.FromSlash(pathEntryRel))
 	body := "path=" + target + "\nbinary_sha256=" + shaHex + "\n"
 	if pluginRoot != "" {
 		body += "plugin_root=" + pluginRoot + "\n"

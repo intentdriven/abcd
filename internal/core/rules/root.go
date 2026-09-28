@@ -296,17 +296,18 @@ func trustedRootDeclared(marker string) (bool, string) {
 	if err != nil || home == "" {
 		return false, ""
 	}
-	path := filepath.Join(home, filepath.FromSlash(TrustedRootsRelPath))
-	// The three-part guard is fsutil.ReadDeclaration's, not this function's: the
+	// The guard is fsutil.ReadHomeDeclaration's, not this function's: the
 	// three home-scoped declaration records differ in what they declare, never in
 	// what makes a declaration trustworthy, and the copy that skipped two of the
 	// checks was the one whose consequence is code execution
 	// (iss-2609091927085132). Only the WORDING stays here.
-	raw, refusal, err := fsutil.ReadDeclaration(path, maxTrustedRootsBytes)
+	raw, refusal, err := fsutil.ReadHomeDeclaration(home, TrustedRootsRelPath, maxTrustedRootsBytes)
 	switch refusal {
 	case fsutil.DeclarationOK:
 	case fsutil.DeclarationAbsent:
 		return false, "" // no declaration is the ordinary case, not a diagnostic.
+	case fsutil.DeclarationBehindSymlink:
+		return false, ignoredDeclaration(termsafe.Sanitize(err.Error()))
 	case fsutil.DeclarationNotRegular:
 		return false, ignoredDeclaration("it is not a regular file")
 	case fsutil.DeclarationWritableByOthers:

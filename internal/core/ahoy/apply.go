@@ -3,6 +3,7 @@ package ahoy
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -1162,7 +1163,10 @@ func (a *applyCtx) installOwnedEntry(target string, kind binTargetKind) {
 			// to write it into that home for the same reason, so the reader
 			// would be sent round a loop that cannot close.
 			remedy := "Start a session with network access so the hooks re-authenticate the cache and attest it, then re-run `abcd ahoy install`."
-			if _, refusedHome := homeScope(); refusedHome != "" {
+			switch _, herr := homeScopeErr(); {
+			case errors.Is(herr, fsutil.ErrHomeScopeSymlinked):
+				remedy = "Replace the symlinked ~/.abcd with a real directory first: the hooks decline to write the attestation through the link for the same reason, so no session will produce it until then."
+			case herr != nil:
 				remedy = "Re-run from a session whose HOME names your own home directory: the hooks refuse to write the attestation into this one for the same reason, so no further session will produce it."
 			}
 			a.refuse("ignored the cache in the plugin data directory (" + look.story + "): " + unbound +

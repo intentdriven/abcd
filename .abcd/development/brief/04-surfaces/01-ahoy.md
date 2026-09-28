@@ -214,16 +214,21 @@ are caller-controlled and line-oriented. `trusted-roots` and
 `local-transcript-roots` are the two that widen what a session will trust, so
 each is honoured only when it is a regular file this uid owns that no one else
 can write, and a file failing either test is ignored with one line saying which
-test it failed. `path-entry` is read through the shared guarded read instead:
-a symlinked, non-regular or oversized file is refused, but its ownership and its
-permissions are not checked, and the hook shims that consult it check neither.
+test it failed. `path-entry` and `cache-attestation` are held to the same test,
+by the install verb and by the hook shims that consult `path-entry`, and a record
+failing it vouches for nothing.
 `load-limits` is a setting, not a declaration, but it is read through the same
 guard as the two that widen trust, and a file failing it, or holding a line that
 does not parse, is reported loudly and both of its limits take their defaults.
 `rules.json` is read through that guard too, because it injects text into every
 session on the machine, but a file failing it — or failing to parse — fails the
 rules load outright: nothing injects until it is fixed, and the file is named on
-stderr.
+stderr. None of these files is honoured behind a `~/.abcd` that is itself a
+symlink, and nothing ahoy or the bootstrap writes there goes through one: each
+refuses the link and names it, as the rules loader does for `rules.json`, while a
+symlinked `~/.abcd` holding none of them reads as absent (the rule is stated once,
+under *The two `.abcd/` scopes* in
+[`05-internals/03-configuration.md`](../05-internals/03-configuration.md#the-two-abcd-scopes)).
 
 There is **no workspace, host, or development-environment layer.** A folder a
 user keeps their repos in groups nothing, and abcd does not privilege it. abcd

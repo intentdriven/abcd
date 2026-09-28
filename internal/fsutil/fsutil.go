@@ -116,6 +116,9 @@ const (
 	DeclarationForeignOwner
 	// DeclarationUnreadable: it passed the guards but the read itself failed.
 	DeclarationUnreadable
+	// DeclarationBehindSymlink: the file is there, but a directory between the
+	// home and it (~/.abcd first) is a symlink (ReadHomeDeclaration only).
+	DeclarationBehindSymlink
 )
 
 // ErrDeclarationWritable and ErrDeclarationForeignOwner are the two guards that

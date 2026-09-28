@@ -351,6 +351,30 @@ are pulled in. **Never the design record.** The same inventory is drawn as a tre
 in [`../04-surfaces/01-ahoy.md`](../04-surfaces/01-ahoy.md#what-abcd-manages--repos-and-abcd);
 the two are one list and must agree.
 
+**A symlinked `~/.abcd` hosts nothing abcd trusts.** Every file in the user
+scope whose contents abcd acts on — `rules.json`, `trusted-roots`,
+`local-transcript-roots`, `path-entry`, `cache-attestation`, `config.json`,
+`oracle-routing.json`, `statusline.json`, `load-limits` and `credentials.json` —
+is refused when `~/.abcd`, or a directory below it on the way to the file, is a
+symlink: the rule the rules loader states for `rules.json`, applied by one check
+(`fsutil.HomeScopeLink`, read through `fsutil.ReadHomeDeclaration`) so it cannot
+drift per file. A symlinked `~/.abcd` holding no such file reads as absent and
+costs nothing. A file that is there behind the link is refused the way its reader
+refuses any declaration that is not the caller's word: the rules load fails, a
+declaration is ignored with a note, the path entry and the cache attestation
+vouch for nothing, the credential store refuses loudly. Every write abcd makes
+into those files — the credential and the provider block `ahoy connect` adds, the
+path entry, the routing table and the status-line setting `ahoy install` writes,
+and the path entry and cache attestation `hooks/bootstrap.sh` writes — refuses
+the link rather than writing through it, naming it and the repair: replace the
+link with a real directory. The hook shims refuse a `path-entry` behind the link
+too, before they read it. The home directory itself may be a link; only
+`~/.abcd` and what lies under it are judged. The stores are not declarations:
+`transcripts/`, `voyage/`, `lab/`, `inbox/` and `runs/` refuse a symlinked
+level through their own create-then-prove seam (`fsutil.EnsureRealDir`), the
+`history/` registry is created through the link (iss-2609281129171021), and the
+`sources/` corpus is the caller's to place.
+
 **Repo scope, in-tree `.abcd/`** — this repository's record and working files: the
 three-tier layout below, the config file with its `meta` block, the rules
 overrides, the per-surface machine records under `config/`, the lint and site

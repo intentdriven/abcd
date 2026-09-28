@@ -386,7 +386,9 @@ to the first model listed, and only when that call succeeds writes the key into
 the owner-only `~/.abcd/credentials.json` and the provider block (the base URL,
 the key's name and the models, the allowlist) into `~/.abcd/config.json`.
 Nothing goes into the repository or the harness's settings, and a failed
-verification writes nothing. `--home none` sets up a server that takes no key.
+verification writes nothing. A `~/.abcd` that is a symlink (into a dotfiles
+checkout, say) is refused with nothing written, naming the link: the key would
+otherwise land wherever it points. `--home none` sets up a server that takes no key.
 The `external` and `keychain` homes arrive with the credential store
 (itd-2609221017023290) and are refused, naming it, before any call.
 
