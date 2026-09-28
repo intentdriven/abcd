@@ -275,13 +275,15 @@ guess, over-blocking is the direction the guard takes.
 
 A recursive delete is read by what it deletes. Of the filesystem root or the
 home directory (`/`, `/*`, `~`, `$HOME`, `${HOME}`, each also with a trailing
-`/` or `/*`) it is a block wherever it stands, with or without `-f`. Of the
-directory the shell is in or the one above it (`*`, `.`, `..`, `./*`, `../*`,
-`.*`) it is a warn, graded like `git clean`, because that directory is usually
-the repository and emptying a build directory the same way is ordinary work.
-Chained after a `cd` any recursive forced delete blocks, as above. The target is
-compared as written, before the shell expands it, so `$HOME` is seen as the
-word `$HOME` although no other parameter expansion is.
+`/` or `/*`, and the home's dotfiles `~/.*`, `$HOME/.*`, `${HOME}/.*`) it is a
+block wherever it stands, with or without `-f`. Of the directory the shell is
+in or the one above it (`*`, `*/`, `.`, `..`, `./*`, `./*/`, `../*`, `.*`,
+`./.*`, and `$PWD` or `${PWD}`, each also with `/*`) it is a warn, graded like
+`git clean`, because that directory is usually the repository and emptying a
+build directory the same way is ordinary work. Chained after a `cd` any
+recursive forced delete blocks, as above. The target is compared as written,
+before the shell expands it, so `$HOME` and `$PWD` are seen as those words
+although no other parameter expansion is.
 
 What an allow still does not see is a hazard that never reaches command position
 at all: a word that is wholly a command substitution standing where a flag

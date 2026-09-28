@@ -297,11 +297,13 @@ so `pkill -term -g <pgid>` stops a group and stays allowed. A pid list carried
 through a variable or a file, or taken from a `ps | grep` chain, is not seen.
 
 A recursive delete of the filesystem root or the home directory (`/`, `/*`,
-`~`, `$HOME`, `${HOME}`, each also with a trailing `/` or `/*`) is a **block**
+`~`, `$HOME`, `${HOME}`, each also with a trailing `/` or `/*`, and the home's
+dotfiles `~/.*`, `$HOME/.*`, `${HOME}/.*`) is a **block**
 (`rm-rf-root-or-home`), with or without `-f`; one of the directory the shell is
-in or the one above it (`*`, `.`, `..`, `./*`, `../*`, `.*`) is a **warn**
-(`rm-rf-working-directory`). The target is compared as written, so `$HOME` is
-seen as that word.
+in or the one above it (`*`, `*/`, `.`, `..`, `./*`, `./*/`, `../*`, `.*`,
+`./.*`, and `$PWD` or `${PWD}`, each also with `/*`) is a **warn**
+(`rm-rf-working-directory`). The target is compared as written, so `$HOME` and
+`$PWD` are seen as those words.
 
 What an allow still does not see is a hazard that never reaches command position
 at all: a delete target printed whole by a substitution (`rm -rf $(echo /)`),

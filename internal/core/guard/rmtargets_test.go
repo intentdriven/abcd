@@ -51,6 +51,29 @@ func TestRecursiveDeleteOfRootOrHomeBlocks(t *testing.T) {
 	})
 }
 
+// TestRecursiveDeleteOfTheHomesDotfilesBlocks — iss-2609282105242542, the
+// review's medium finding. `rm -rf ~/.*` names every dotfile and dot-directory
+// in the home — the keys, the shell and tool settings, abcd's own store — and it
+// is a shape people type, not an obfuscation: the working directory's `.*` was
+// already a warn while the home's was an allow. It blocks with the root and the
+// home themselves, in every spelling of the home the entry knows. A delete that
+// names one dot-directory under the home is ordinary work and stays an allow.
+func TestRecursiveDeleteOfTheHomesDotfilesBlocks(t *testing.T) {
+	const id = "rm-rf-root-or-home"
+	runVerdictCases(t, []verdictCase{
+		{`rm -rf ~/.*`, VerdictBlock, id},
+		{`rm -r ~/.*`, VerdictBlock, id},
+		{`rm -rf $HOME/.*`, VerdictBlock, id},
+		{`rm -rf "$HOME"/.*`, VerdictBlock, id},
+		{`rm -rf ${HOME}/.*`, VerdictBlock, id},
+		{`sudo rm -rf ~/.*`, VerdictBlock, id},
+
+		{`rm -rf ~/.cache/x`, VerdictAllow, ""},
+		{`rm -rf "$HOME/.cache/x"`, VerdictAllow, ""},
+		{`rm -f ~/.*`, VerdictAllow, ""},
+	})
+}
+
 // TestRecursiveDeleteOfTheWorkingDirectoryWarns — iss-2609282105242542. A
 // recursive delete of everything in the directory the shell is in (`rm -rf *`,
 // `rm -rf .`) deletes the repository when that directory is the repository,
@@ -72,12 +95,28 @@ func TestRecursiveDeleteOfTheWorkingDirectoryWarns(t *testing.T) {
 		{`rm -rf .*`, VerdictWarn, id},
 		{`sudo rm -rf *`, VerdictWarn, id},
 		{`rm $(true) -rf *`, VerdictWarn, id},
+		// The working directory by name, and the globs that still reach
+		// everything in it: `rm -rf .` is refused by rm itself, while
+		// `rm -rf "$PWD"` is the spelling that deletes (the review's low finding).
+		{`rm -rf $PWD`, VerdictWarn, id},
+		{`rm -rf "$PWD"`, VerdictWarn, id},
+		{`rm -rf ${PWD}`, VerdictWarn, id},
+		{`rm -rf $PWD/*`, VerdictWarn, id},
+		{`rm -rf "$PWD"/*`, VerdictWarn, id},
+		{`rm -rf ${PWD}/*`, VerdictWarn, id},
+		{`rm -rf */`, VerdictWarn, id},
+		{`rm -rf ./*/`, VerdictWarn, id},
+		{`rm -rf ./.*`, VerdictWarn, id},
 
 		{`rm -rf ./build`, VerdictAllow, ""},
 		{`rm -rf build/*`, VerdictAllow, ""},
 		{`rm -rf node_modules`, VerdictAllow, ""},
 		{`rm -f *.o`, VerdictAllow, ""},
 		{`rm *`, VerdictAllow, ""},
+		{`rm -rf .git`, VerdictAllow, ""},
+		{`rm -rf .venv`, VerdictAllow, ""},
+		{`rm -rf "$PWD/build"`, VerdictAllow, ""},
+		{`rm -rf $PWD/build/*`, VerdictAllow, ""},
 
 		// Behind a cd chain the blocker still decides, and names both.
 		{`cd scratch && rm -rf *`, VerdictBlock, "rm-rf-after-cd-chain"},
