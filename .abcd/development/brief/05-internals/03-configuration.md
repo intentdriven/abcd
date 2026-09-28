@@ -217,6 +217,10 @@ The transcript corpus is a **sibling** user-scope store rather than a sub-tree o
 the registry, at `~/.abcd/transcripts/<root-sha>/`, holding redacted records and a
 staging area for raw transcripts awaiting redaction
 ([adr-2609091248201071](../../decisions/adrs/2609091248201071-the-transcript-corpus-is-a-sibling-store-that-creates-itself.md)).
+Every machine-scoped store keyed on the root commit takes the full object name
+as its `<root-sha>`: Forty hex digits under SHA-1, sixty-four under SHA-256, the
+form `gitutil.RootCommit` returns and `gitutil.IsFullSHA` admits as a path
+segment. An abbreviated key is a different directory, and no verb reads it.
 One package owns its layout: `internal/core/history` declares both the user-scope
 default and the opt-in per-repo location, and every resolver goes through it. The
 rule is a convention with nothing behind it, and it already has one exception —

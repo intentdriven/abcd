@@ -1,7 +1,7 @@
 ---
 name: disembark
 description: "Pack a repository into a lifeboat, probing and planning first: Writes nothing in the source, only inside the lifeboat; refuses an unknown sub-verb."
-argument-hint: "pack <source-repo> <dest> | plan [<source-repo>] | probe [<source-repo>]"
+argument-hint: "pack <source-repo> <dest> | plan [<source-repo>] | probe [<source-repo>] | coverage <report.json>... | review <lifeboat-dir> <source-repo> [--review-json <file|->] | principles <lifeboat-dir> [--principles-json <file|->] | press-release <lifeboat-dir> [--press-release-json <file|->] | graveyard <lifeboat-dir> --lessons-json <file|->"
 block: people
 ---
 
