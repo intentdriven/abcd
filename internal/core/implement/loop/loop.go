@@ -140,8 +140,9 @@ type StartResult struct {
 	// resumed start runs none, and carries none.
 	Checks []CheckRow `json:"checks"`
 	// Claim is the shared-run claim a new run took for Options.Session; nil when
-	// no session was named or the start resumed a run.
-	Claim *implement.ClaimResult `json:"claim,omitempty"`
+	// no session was named or the start resumed a run, and then null in the
+	// JSON, never absent, so the payload says the run holds no claim.
+	Claim *implement.ClaimResult `json:"claim"`
 	Next  string                 `json:"next"`
 }
 

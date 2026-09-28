@@ -260,3 +260,21 @@ func TestBuildWithoutASessionSaysItHoldsNoClaim(t *testing.T) {
 		t.Fatalf("build without --session is silent about its claim:\n%s", out)
 	}
 }
+
+// TestBuildWithoutASessionSaysItHoldsNoClaimInJSON: the JSON says what the text
+// says — the claim key is present and null, never absent (iss-2609252050506863).
+func TestBuildWithoutASessionSaysItHoldsNoClaimInJSON(t *testing.T) {
+	buildRepo(t)
+	var doc map[string]json.RawMessage
+	out := mustImplement(t, "build", "itd-10", "--json")
+	if err := json.Unmarshal([]byte(out), &doc); err != nil {
+		t.Fatalf("build --json is not an object: %v\n%s", err, out)
+	}
+	claim, ok := doc["claim"]
+	if !ok {
+		t.Fatalf("build --json without --session omits the claim key:\n%s", out)
+	}
+	if string(claim) != "null" {
+		t.Fatalf("build --json without --session: claim = %s; want null", claim)
+	}
+}

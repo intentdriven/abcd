@@ -76,7 +76,8 @@ own claim on the intent is its own, not a peer's. A session the shared run does
 not hold is refused at the `claim` step before anything is created; a claim
 refused under the lock leaves no run behind; a run whose state cannot be written
 releases the claim it took. A build started without a session holds no claim
-and says so: until its lane shows, another checkout cannot see it.
+and says so, in the text and as a null `claim` in the JSON: until its lane
+shows, another checkout cannot see it.
 
 A refusal names the check, the reason and the remedy, carries every check's row,
 and writes nothing. A peer's holding is contention rather than a fault in the

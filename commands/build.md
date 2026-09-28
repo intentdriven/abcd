@@ -26,7 +26,7 @@ checkout of the repository is refused as held from the start, before this run's
 lane has moved or claimed anything. The session's own live claim on the intent
 is not counted as a peer's. A session that has not joined is refused at the
 `claim` step with nothing written. Without `--session` the run holds no claim,
-and the result says so (`claim` is absent): another checkout cannot see the run
+and the result says so (`claim` is null): another checkout cannot see the run
 until its lane shows.
 
 For an intent with no run in progress, the checks run first, and every one must
@@ -59,7 +59,8 @@ goes back to the planning interview, a hold to the person who placed it.
 
 When the checks pass, the payload names the `run_id`, the `state` file
 (`.abcd/.work.local/run/<run-id>/state.json`), the first `lane` (the spec's first
-unlanded step), the `pending` spec steps, `claim` when `--session` took one,
+unlanded step), the `pending` spec steps, `claim` (the claim `--session` took,
+or null),
 and `next`, the move to make. The
 local tier is never created: in a repository abcd does not manage the verb
 refuses. Starting again while the run is in progress creates nothing, runs no
