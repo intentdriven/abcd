@@ -198,3 +198,48 @@ func TestAWriterOnATreeWithNoSpecStorePlantsNone(t *testing.T) {
 		}
 	})
 }
+
+// A store removed after Close or Discard decided to lock it, and before the
+// lock is taken, must not be re-planted empty by the lock: Close refuses the
+// id as not found and Discard succeeds, and neither leaves
+// .abcd/development/specs/ behind (iss-2609262342345159, the review's
+// remove-between-check-and-lock note). beforeStoreLock stands in for the
+// concurrent deletion.
+func TestAStoreRemovedBeforeTheLockIsNotReplanted(t *testing.T) {
+	removeStoreAtTheLock := func(t *testing.T, root string) {
+		t.Helper()
+		beforeStoreLock = func() {
+			if err := os.RemoveAll(filepath.Join(root, SpecsRelDir)); err != nil {
+				t.Fatalf("removing the store at the lock: %v", err)
+			}
+		}
+		t.Cleanup(func() { beforeStoreLock = nil })
+	}
+	t.Run("close", func(t *testing.T) {
+		root := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(root, SpecsRelDir, StatusOpen), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		removeStoreAtTheLock(t, root)
+		if _, err := Close(root, "spc-1"); err == nil || !strings.Contains(err.Error(), "not found") {
+			t.Errorf("Close on a store removed before the lock must refuse the id as not found, got %v", err)
+		}
+		if _, err := os.Lstat(filepath.Join(root, SpecsRelDir)); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("Close re-planted the removed spec store (err %v)", err)
+		}
+	})
+	t.Run("discard", func(t *testing.T) {
+		root := t.TempDir()
+		if err := os.MkdirAll(filepath.Join(root, SpecsRelDir, StatusOpen), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		removeStoreAtTheLock(t, root)
+		sp := Spec{Path: filepath.Join(SpecsRelDir, StatusOpen, "spc-1-my-feature.md")}
+		if err := Discard(root, sp); err != nil {
+			t.Errorf("Discard on a store removed before the lock has nothing to remove and must succeed, got %v", err)
+		}
+		if _, err := os.Lstat(filepath.Join(root, SpecsRelDir)); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("Discard re-planted the removed spec store (err %v)", err)
+		}
+	})
+}

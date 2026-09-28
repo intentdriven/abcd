@@ -23,6 +23,12 @@ import (
 // contention.
 var mintLockTimeout = 5 * time.Second
 
+// beforeStoreLock, when set, runs as withStoreLock is entered, before the store
+// is opened for its lock. It is a test seam: a test removes the store there to
+// stand in for a concurrent deletion landing between a writer's decision to
+// lock and the lock itself. Production never sets it.
+var beforeStoreLock func()
+
 // specFamily is the spec store's id prefix, the family tag the mint splices
 // into every native spc id.
 const specFamily = "spc"
@@ -194,7 +200,7 @@ func create(repoRoot, intentID string, intents []string, bundle, slug, productio
 	// differ by slug, so neither the atomic write nor a clobber guard would
 	// notice on its own.
 	var sp Spec
-	err = withStoreLock(repoRoot, mintLockTimeout, func() error {
+	err = withStoreLock(repoRoot, mintLockTimeout, createStore, func() error {
 		store, err := Load(repoRoot)
 		if err != nil {
 			return err
@@ -283,12 +289,29 @@ var ErrStoreLockBusy = errors.New("spec: could not acquire the spec store's lock
 // It is NOT reentrant — a second flock on another descriptor in the same
 // process blocks until the budget runs out — so a caller holding it must not
 // call a writer of this package, every one of which takes it.
-func withStoreLock(repoRoot string, timeout time.Duration, fn func() error) error {
+//
+// mode says what an absent store means. createStore plants it, which only the
+// mint and the three-lock acquisition's path may do. storeMustExist refuses
+// with errStoreAbsent instead, and the open that takes the lock is the check:
+// a writer with nothing to act on in an absent store (Close, Discard) decides
+// on the store the lock actually holds, so a store removed after an earlier
+// look is never re-planted empty (iss-2609262342345159).
+func withStoreLock(repoRoot string, timeout time.Duration, mode storeLockMode, fn func() error) error {
+	if beforeStoreLock != nil {
+		beforeStoreLock()
+	}
 	specsDir := filepath.Join(repoRoot, SpecsRelDir)
-	if err := ensureDir(specsDir, SpecsRelDir); err != nil {
-		return err
+	if mode == createStore {
+		if err := ensureDir(specsDir, SpecsRelDir); err != nil {
+			return err
+		}
+	} else if di, err := os.Lstat(specsDir); err == nil && di.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("spec: %s is a symlink (refusing to follow)", SpecsRelDir)
 	}
 	fd, err := syscall.Open(specsDir, syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_NOFOLLOW, 0)
+	if mode == storeMustExist && errors.Is(err, syscall.ENOENT) {
+		return errStoreAbsent
+	}
 	if err != nil {
 		return fmt.Errorf("spec: opening the store lock on %s: %w", SpecsRelDir, err)
 	}
@@ -313,6 +336,21 @@ func withStoreLock(repoRoot string, timeout time.Duration, fn func() error) erro
 	return fn()
 }
 
+// storeLockMode says what withStoreLock does with an absent store.
+type storeLockMode int
+
+const (
+	// createStore plants an absent store and locks it.
+	createStore storeLockMode = iota
+	// storeMustExist refuses an absent store with errStoreAbsent and plants
+	// nothing.
+	storeMustExist
+)
+
+// errStoreAbsent is withStoreLock's refusal, in storeMustExist mode, of a tree
+// whose spec store is absent when the lock is taken; fn has not run.
+var errStoreAbsent = errors.New("spec: the spec store is absent")
+
 // WithStoreLock runs fn holding the spec store's lock — the one every spec
 // writer takes, not a second one — for a caller outside this package that
 // writes a spec record. A caller that also writes ledger or intent records
@@ -332,7 +370,7 @@ func WithStoreLockWithin(repoRoot string, timeout time.Duration, fn func() error
 	if !storeExists(repoRoot) {
 		return fn()
 	}
-	return withStoreLock(repoRoot, timeout, fn)
+	return withStoreLock(repoRoot, timeout, createStore, fn)
 }
 
 // storeExists reports whether the tree has a spec store. Only an absent one
@@ -349,22 +387,22 @@ func storeExists(repoRoot string) bool {
 // moving it is a later reconcile concern that consumes Spec.Intent. The read
 // and the rename are one critical section under the store's lock, so a writer
 // holding it — a repoint between its read and its write — finishes before the
-// spec moves. A tree with no spec store holds no spec to close, and taking the
-// lock would create the store, so the id is refused as not found and nothing
-// is planted.
+// spec moves. A tree with no spec store holds no spec to close, so the lock is
+// taken in storeMustExist mode: the id is refused as not found and nothing is
+// planted, even when the store is removed a moment before the lock.
 func Close(repoRoot, specID string) (Spec, error) {
 	if !recordid.ValidSpecID(specID) {
 		return Spec{}, fmt.Errorf("spec: id %q must match ^spc-[0-9]+$", specID)
 	}
-	if !storeExists(repoRoot) {
-		return Spec{}, fmt.Errorf("spec: %s not found", specID)
-	}
 	var sp Spec
-	err := withStoreLock(repoRoot, mintLockTimeout, func() error {
+	err := withStoreLock(repoRoot, mintLockTimeout, storeMustExist, func() error {
 		var err error
 		sp, err = closeLocked(repoRoot, specID)
 		return err
 	})
+	if errors.Is(err, errStoreAbsent) {
+		return Spec{}, fmt.Errorf("spec: %s not found", specID)
+	}
 	if err != nil {
 		return Spec{}, err
 	}
@@ -412,22 +450,24 @@ func closeLocked(repoRoot, specID string) (Spec, error) {
 // write of the same file — a repoint writing it back would resurrect it. Only a
 // spec in open/, named as the mint names one, is removed; any other path is
 // refused before anything is touched. A spec already gone is not an error, and
-// a tree with no spec store has none to remove, so nothing is planted there.
+// a tree with no spec store has none to remove: the lock is taken in
+// storeMustExist mode, so nothing is planted there.
 func Discard(repoRoot string, sp Spec) error {
 	rel := filepath.ToSlash(sp.Path)
 	name := path.Base(rel)
 	if rel != path.Join(filepath.ToSlash(SpecsRelDir), StatusOpen, name) || !specFileRe.MatchString(name) {
 		return fmt.Errorf("spec: refusing to discard %q, which is not a spec in %s", sp.Path, filepath.Join(SpecsRelDir, StatusOpen))
 	}
-	if !storeExists(repoRoot) {
-		return nil
-	}
-	return withStoreLock(repoRoot, mintLockTimeout, func() error {
+	err := withStoreLock(repoRoot, mintLockTimeout, storeMustExist, func() error {
 		if err := os.Remove(filepath.Join(repoRoot, filepath.FromSlash(rel))); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return fmt.Errorf("spec: discarding %s: %w", sp.Path, err)
 		}
 		return nil
 	})
+	if errors.Is(err, errStoreAbsent) {
+		return nil
+	}
+	return err
 }
 
 // readRepoFile reads a repo file behind the trust-boundary guards. It opens ONCE
