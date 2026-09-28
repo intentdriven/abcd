@@ -2073,7 +2073,7 @@ Cut a release, deriving its version and records from what shipped: Writes the CH
 
 ### `abcd lint`
 
-Check this repository against the conventions, every target included: Writes nothing; refuses with exit 2 on an error finding and exit 1 on warnings alone.
+Check this repository against the conventions, every target but outbound: Writes nothing; refuses with exit 2 on an error finding and exit 1 on warnings alone.
 
 **Usage:** `abcd lint [flags]`
 

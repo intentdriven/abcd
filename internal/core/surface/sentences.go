@@ -246,7 +246,7 @@ var sentences = map[string]string{
 	"abcd launch ship": "Cut a release, deriving its version and records from what shipped: " +
 		"Writes the CHANGELOG heading, RELEASE.md, and the archive pin; refuses a cut its gates stop.",
 
-	"abcd lint": "Check this repository against the conventions, every target included: " +
+	"abcd lint": "Check this repository against the conventions, every target but outbound: " +
 		"Writes nothing; refuses with exit 2 on an error finding and exit 1 on warnings alone.",
 	"abcd lint docs": "Lint the docs for change-narration, broken links, citations, and stray root markdown: " +
 		"Writes nothing; refuses a tree with a blocker finding.",
