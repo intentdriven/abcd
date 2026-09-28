@@ -370,7 +370,7 @@ func describeEntry(e pathEntry) string {
 	if err == nil {
 		// Say what the file is, so the reader can decide without inspecting it
 		// by hand (iss-2609120447482255).
-		return "a file abcd does not own (" + describeForeignFile(e.path, fi) + ")"
+		return foreignOccupant(fi, "a file") + " abcd does not own (" + describeForeignFile(e.path, fi) + ")"
 	}
 	return "a file abcd does not own"
 }

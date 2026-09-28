@@ -634,10 +634,11 @@ func detectPathSymlink(cwd, pluginRoot string, pluginOK bool) []Gap {
 			// vouches for, byte-for-byte. The healthy default install.
 			installed = true
 		} else {
+			occupant := foreignOccupant(fi, "a regular file")
 			gaps = append(gaps, Gap{
 				ID: "symlink.foreign", Category: ConfigChange, Scope: "machine",
 				Title:   "non-symlink at " + displayPath(target),
-				Detail:  "A regular file occupies the PATH entry abcd would write: " + describeForeignFile(target, fi) + ".",
+				Detail:  strings.ToUpper(occupant[:1]) + occupant[1:] + " occupies the PATH entry abcd would write: " + describeForeignFile(target, fi) + ".",
 				FixHint: "Resolve manually; ahoy refuses to clobber.", Required: false, Resolvable: false,
 			})
 		}
