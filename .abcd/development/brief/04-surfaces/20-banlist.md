@@ -76,7 +76,8 @@ markdown, with `exempt_paths` excusing a historical tree as it does under
 blocks, which the rest of the family skips by default: a fenced example is not
 prose, but a fence is published as readily as prose, so an entry that means to
 skip fences declares `skip_code_fences: true`. This repository's `name_roots` are `.abcd`, `AGENTS.md`,
-`CONTRIBUTING.md` and `scripts`, and its `exempt_paths` excuse the
+`CONTRIBUTING.md`, `scripts` and the plugin surfaces the shipped artefact
+carries (`commands`, `agents` and `hooks`), and its `exempt_paths` excuse the
 configuration itself (whose entries spell every ban), the research data and the
 review archive.
 

@@ -59,7 +59,10 @@ func TestNameRootsCarryTheNamesFamilyOnly(t *testing.T) {
 }
 
 // TestRepoNameRootsCoverThePublicSurface pins this repository's own coverage:
-// the name gate reaches .abcd/**, the root prose files and scripts/ (iss-279).
+// the name gate reaches .abcd/**, the root prose files and scripts/ (iss-279),
+// and the plugin surfaces the shipped artefact carries — commands/, agents/,
+// skills/ and hooks/ — which itd-74's first criterion names as gated
+// (iss-2609261457358637).
 func TestRepoNameRootsCoverThePublicSurface(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join("..", "..", "..", ".abcd", "docs-lint.json"))
 	if err != nil {
@@ -76,6 +79,17 @@ func TestRepoNameRootsCoverThePublicSurface(t *testing.T) {
 	for _, want := range []string{".abcd", "AGENTS.md", "CONTRIBUTING.md", "scripts", "README.md", "docs"} {
 		if !have[want] {
 			t.Errorf("the name gate does not reach %s (roots %q, name_roots %q)", want, cfg.Roots, cfg.NameRoots)
+		}
+	}
+	// A plugin surface the repository carries is part of the shipped artefact;
+	// one it does not carry cannot be a root, since a root that does not resolve
+	// fails the lint.
+	for _, surface := range []string{"commands", "agents", "skills", "hooks"} {
+		if _, err := os.Stat(filepath.Join("..", "..", "..", surface)); err != nil {
+			continue
+		}
+		if !have[surface] {
+			t.Errorf("the name gate does not reach the shipped plugin surface %s/ (roots %q, name_roots %q)", surface, cfg.Roots, cfg.NameRoots)
 		}
 	}
 }
