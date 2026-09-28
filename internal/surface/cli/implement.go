@@ -356,7 +356,9 @@ func newImplementClaimCommand(asJSON *bool) *cobra.Command {
 			"already holds renews the lease. A claim whose lease has passed is claimable again,\n" +
 			"and the lapse is logged as claim_lapsed. A record another session holds is refused\n" +
 			"at exit 3 and logged as claim_denied naming the holder; the second session also\n" +
-			"logs a backoff.\n\n" +
+			"logs a backoff with its reason and the minutes the attempt spent. A run state\n" +
+			"locked by another session's change is exit 3 too, and the second session's\n" +
+			"backoff from it is logged the same way.\n\n" +
 			"The second session is refused (exit 2, logged as a refusal) when it already holds\n" +
 			"a live claim, when the window is split-roles, or when a --path it declares is in the\n" +
 			"reading corpus.",
@@ -474,7 +476,9 @@ func newImplementLogCommand(asJSON *bool) *cobra.Command {
 			"a boolean is written as one when it reads back as the same text, so `sha=0123456`\n" +
 			"stays a string. The events: " + strings.Join(implement.LoggableEvents(), ", ") + ".\n" +
 			"The claim, window and session events are written by their own sub-verbs and are\n" +
-			"refused here, so the log cannot record a claim the run state does not hold.",
+			"refused here, so the log cannot record a claim the run state does not hold. A\n" +
+			"backoff names its reason and the minutes it spent (reason=<why>, minutes=<n>),\n" +
+			"or it is refused.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			kv := map[string]string{}

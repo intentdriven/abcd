@@ -86,8 +86,10 @@ session stops:
 
 **Exit 3 means back off.** A record another session holds is refused at exit 3,
 naming the holder, and logged as `claim_denied` (the second session also logs a
-`backoff`). Take other work; do not retry the same record in a loop. A locked
-run state is the same exit.
+`backoff` naming the reason and the minutes the attempt spent). Take other work;
+do not retry the same record in a loop. A locked run state is the same exit,
+and the second session's backoff from it is logged the same way, with the
+minutes it waited for the lock.
 
 ## The second session's bounds
 
@@ -124,7 +126,9 @@ each land whole lines. The events are `backoff`, `lane_open`, `lane_close`,
 `agent_start`, `agent_end`, `ceiling_wait`, `gate_run`, `review`, `fallback`,
 `stop`, `refusal`, `pr`, `capture` and `context`. For the comparison to count
 them: a `lane_close` with `outcome=merged` (or `landed`) is a lane landed;
-`backoff` and `ceiling_wait` carry `minutes`, and `agent_end` carries `minutes`,
+`backoff` and `ceiling_wait` carry `minutes` (a `backoff` must also carry
+`reason`, or it is refused: contention the verb cannot see, such as the merge
+queue, is logged this way with the minutes the backed-off work cost), and `agent_end` carries `minutes`,
 `wall_minutes` or `wall_min`; a `context` line carries `used_pct` (with `role`
 and `note`), the orchestrator's share of its context window in use. The session, window and claim
 events belong to their own sub-verbs and are refused here.
