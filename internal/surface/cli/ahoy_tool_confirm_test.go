@@ -110,7 +110,10 @@ func toolFreePath(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", dir)
+	// Both of the variables cienv.Runner reads, so the confirmation path runs
+	// on a CI runner as it does on a workstation.
 	t.Setenv("CI", "")
+	t.Setenv("GITHUB_ACTIONS", "")
 }
 
 func installNotes(t *testing.T, out []byte) (notes, declined []string) {
