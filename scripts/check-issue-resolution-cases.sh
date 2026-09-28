@@ -388,13 +388,15 @@ d="$(stale_trailer_on_terminal_record rs001-base-moved-to-wontfix)"
 git -C "$d" mv "$ISS_DIR/resolved/iss-999-a-fixture.md" "$ISS_DIR/wontfix/iss-999-a-fixture.md"
 git -C "$d" commit -qm "chore: reclassify as wontfix"
 git -C "$d" checkout -q work
-expect fail "$d" "RS001 a base-side move resolved/ -> wontfix/ does not satisfy a stale trailer" -- commits main HEAD
+expect_refusal_naming "$d" "RS001 a base-side move resolved/ -> wontfix/ does not satisfy a stale trailer" \
+	"iss-999 already sat in $ISS_DIR/wontfix/ before this branch diverged from main.*[Dd]rop the trailer" -- commits main HEAD
 
 d="$(stale_trailer_on_terminal_record rs001-base-reslugged)"
 git -C "$d" mv "$ISS_DIR/resolved/iss-999-a-fixture.md" "$ISS_DIR/resolved/iss-999-reslugged.md"
 git -C "$d" commit -qm "chore: reslug the record"
 git -C "$d" checkout -q work
-expect fail "$d" "RS001 a base-side reslug inside resolved/ does not satisfy a stale trailer" -- commits main HEAD
+expect_refusal_naming "$d" "RS001 a base-side reslug inside resolved/ does not satisfy a stale trailer" \
+	"iss-999 already sat in $ISS_DIR/resolved/ before this branch diverged from main.*[Dd]rop the trailer" -- commits main HEAD
 
 # The same move rewritten past rename detection arrives as a plain add, with no
 # rename source to read — which is why the test is the base's listing.
@@ -407,6 +409,56 @@ git -C "$d" add -A
 git -C "$d" commit -qm "chore: reclassify and rewrite"
 git -C "$d" checkout -q work
 expect fail "$d" "RS001 a base-side move rewritten past rename detection does not satisfy a stale trailer" -- commits main HEAD
+
+# --- RS001's stale-branch split asks the merge base (iss-2609012047566360) ----
+#
+# Terminal at the merge base, then merely EDITED on the base's side: the edit is
+# not a placement, and a rebase cures nothing. The honest verdict is the one
+# the untouched case already gets — drop the trailer.
+d="$(stale_trailer_on_terminal_record rs001-base-body-edit)"
+echo "A later note on the resolved record." >>"$d/$ISS_DIR/resolved/iss-999-a-fixture.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "docs: annotate the resolved record"
+git -C "$d" checkout -q work
+expect_refusal_naming "$d" "RS001 a base-side body edit of a record terminal at the merge base says to drop the trailer" \
+	"iss-999 already sat in $ISS_DIR/resolved/ before this branch diverged from main.*[Dd]rop the trailer" -- commits main HEAD
+expect_refusal_not_naming "$d" "RS001 a base-side body edit of a record terminal at the merge base does not prescribe a rebase" \
+	"[Rr]ebase" -- commits main HEAD
+
+# Open at the merge base and placed on the base's side, then edited there: the
+# placer named is the commit that MOVED it into resolved/, not the later edit.
+d="$(newrepo rs001-placer-names-the-move)"
+resolve_record "$d"
+git -C "$d" add -A
+git -C "$d" commit -qm "fix: something
+
+Resolves: iss-999"
+git -C "$d" checkout -q main
+git -C "$d" mv "$ISS_DIR/open/iss-999-a-fixture.md" "$ISS_DIR/resolved/iss-999-a-fixture.md"
+git -C "$d" commit -qm "fix: something (squash of work)"
+echo "A later note on the resolved record." >>"$d/$ISS_DIR/resolved/iss-999-a-fixture.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "docs: annotate the resolved record"
+git -C "$d" checkout -q work
+expect_refusal_naming "$d" "RS001 names the base-side commit that placed the record, not a later edit" \
+	"placed there on main's side by [0-9a-f]+ fix: something \\(squash of work\\).*[Rr]ebase onto main" -- commits main HEAD
+
+# The placer's subject is text the base's history controls. A control sequence
+# in it must not reach the terminal through the gate's output.
+d="$(newrepo rs001-placer-control-bytes)"
+resolve_record "$d"
+git -C "$d" add -A
+git -C "$d" commit -qm "fix: something
+
+Resolves: iss-999"
+git -C "$d" checkout -q main
+git -C "$d" mv "$ISS_DIR/open/iss-999-a-fixture.md" "$ISS_DIR/resolved/iss-999-a-fixture.md"
+git -C "$d" commit -qm "$(printf 'fix: \033[31mred\033[0m squash')"
+git -C "$d" checkout -q work
+expect_refusal_naming "$d" "RS001 still names a placer whose subject carried control bytes" \
+	"placed there on main's side by [0-9a-f]+ fix: \\[31mred\\[0m squash" -- commits main HEAD
+expect_refusal_not_naming "$d" "RS001 does not replay the placer subject's control bytes" \
+	"$(printf '\033')" -- commits main HEAD
 
 # --- RS002: a stamp added here must name a reachable commit ------------------
 
@@ -1139,7 +1191,25 @@ git -C "$d" checkout -q main
 git -C "$d" mv "$INT_DIR/shipped/itd-6-fixture-6.md" "$INT_DIR/shipped/itd-6-reslugged.md"
 git -C "$d" commit -qm "docs: reslug itd-6"
 git -C "$d" checkout -q work
-expect fail "$d" "RS005 a base-side reslug inside shipped/ does not satisfy a stale trailer" -- commits main HEAD
+expect_refusal_naming "$d" "RS005 a base-side reslug inside shipped/ does not satisfy a stale trailer" \
+	"itd-6 already sat in $INT_DIR/shipped/ before this branch diverged from main.*[Dd]rop the trailer" -- commits main HEAD
+
+# RS001's merge-base split on the intent store: a base-side edit of an intent
+# already shipped at the merge base is not a placement (iss-2609012047566360's
+# twin).
+d="$(newrepo_intents rs005-base-body-edit)"
+echo "touched" >>"$d/README.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "feat: build the thing again
+
+Delivers: itd-6"
+git -C "$d" checkout -q main
+echo "A later note on the shipped intent." >>"$d/$INT_DIR/shipped/itd-6-fixture-6.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "docs: annotate itd-6"
+git -C "$d" checkout -q work
+expect_refusal_not_naming "$d" "RS005 a base-side edit of an intent shipped at the merge base does not prescribe a rebase" \
+	"[Rr]ebase" -- commits main HEAD
 
 # Criterion 5: the intent rule's refusal has the issue rule's shape and exit
 # code — compared here, not judged by a reviewer. Both fixtures are the ordinary

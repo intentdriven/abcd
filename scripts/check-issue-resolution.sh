@@ -226,8 +226,15 @@ DELIVERS_ID_SHAPED_RE='[A-Za-z]+-[0-9]+'
 
 violations=0
 
+# fail reports one violation. Every refusal passes through here, and several
+# carry text the branch under judgement controls — a base-side commit subject in
+# the stale-branch diagnosis, an unreadable delivery line quoted back — so control
+# bytes are deleted before the message reaches a terminal or a CI log: an escape
+# sequence in a commit subject is not the gate's to replay (iss-2609012047566360).
+# Deleted rather than escaped, because the byte carries no meaning a reader needs;
+# the refusal's own text is printable ASCII and loses nothing.
 fail() {
-	printf 'check-issue-resolution: %s\n' "$1" >&2
+	printf 'check-issue-resolution: %s\n' "$(printf '%s' "$1" | tr -d '[:cntrl:]')" >&2
 	violations=$((violations + 1))
 }
 
@@ -460,7 +467,7 @@ open_specs_for() {
 # check_delivery applies RS005 to one declared, canonical itd-N from commit sha.
 # $shipped is the set of ids entering shipped/ in the range.
 check_delivery() {
-	local sha="$1" id="$2" base="$3" head="$4" shipped="$5" behind="$6"
+	local sha="$1" id="$2" base="$3" head="$4" shipped="$5" behind="$6" mb="$7"
 	printf '%s\n' "$shipped" | grep -qx "$id" && return 0
 	local says="RS005 commit ${sha:0:12} declares 'Delivers: $id', but"
 	local head_path base_path base_bucket=""
@@ -477,10 +484,18 @@ check_delivery() {
 	if [ "$base_bucket" = shipped ]; then
 		# The stale-branch split RS001 draws, for the same reason: whether a rebase
 		# is the remedy turns on WHEN the record reached shipped/.
-		local placer
-		placer="$(git log -n1 --format='%h %s' "$head".."$base" -- "$base_path" || true)"
-		if [ -n "$placer" ]; then
-			fail "$says $id already sits in $INTENTS_DIR/shipped/ at $base (placed there on $base's side by $placer), and $head is $behind commit(s) behind $base: the delivery reached $base outside $base..$head, so this trailer describes work $base already holds. Rebase onto $base; if this commit survives the rebase, drop the trailer."
+		# Asked of the merge base's tree, and the placer is the commit that added
+		# or renamed the path into place — iss-2609012047566360, as RS001.
+		local mb_path mb_bucket=""
+		if [ -n "$mb" ]; then
+			mb_path="$(intent_path "$mb" "$id")"
+			[ -n "$mb_path" ] && mb_bucket="$(bucket_of "$mb_path")"
+		fi
+		if [ "$mb_bucket" != shipped ]; then
+			local placer placed_by="after this branch diverged"
+			placer="$(git log -n1 --diff-filter=AR --format='%h %s' "$head".."$base" -- "$base_path" || true)"
+			[ -n "$placer" ] && placed_by="by $placer"
+			fail "$says $id already sits in $INTENTS_DIR/shipped/ at $base (placed there on $base's side $placed_by), and $head is $behind commit(s) behind $base: the delivery reached $base outside $base..$head, so this trailer describes work $base already holds. Rebase onto $base; if this commit survives the rebase, drop the trailer."
 		else
 			fail "$says $id already sat in $INTENTS_DIR/shipped/ before this branch diverged from $base: the trailer names an intent delivered before this commit. Drop the trailer."
 		fi
@@ -598,6 +613,11 @@ check_commits() {
 	local declared="" delivered=""
 	local behind
 	behind="$(git rev-list --count "$head".."$base")"
+	# The fork point the stale-branch diagnoses ask about. None (unrelated
+	# histories) leaves it empty, and every record then reads as placed after
+	# the fork, which is where head..base puts all of base's history anyway.
+	local mb
+	mb="$(git merge-base "$base" "$head" 2>/dev/null || true)"
 	local scanned=0
 	while IFS= read -r sha; do
 		[ -n "$sha" ] || continue
@@ -632,7 +652,7 @@ check_commits() {
 					local cid
 					cid="$(canon_itd "$raw")"
 					delivered="$delivered $cid"
-					check_delivery "$sha" "$cid" "$base" "$head" "$shipped" "$behind"
+					check_delivery "$sha" "$cid" "$base" "$head" "$shipped" "$behind" "$mb"
 				done
 				continue
 			fi
@@ -668,11 +688,25 @@ check_commits() {
 					# terminal already at the merge base, in which case the trailer
 					# names an issue resolved before this commit and nothing but
 					# dropping it helps. The behind-count alone cannot tell them apart;
-					# the record's base-side history can.
-					local placer
-					placer="$(git log -n1 --format='%h %s' "$head".."$base" -- "$base_path" || true)"
-					if [ -n "$placer" ]; then
-						fail "RS001 commit ${sha:0:12} declares 'Resolves: $id', but $id already sits in $ISSUES_DIR/$base_status/ at $base (placed there on $base's side by $placer), and $head is $behind commit(s) behind $base: the resolution reached $base outside $base..$head, so this trailer describes work $base already holds. Rebase onto $base; if this commit survives the rebase, drop the trailer."
+					# the merge base's tree can.
+					#
+					# It is asked of that TREE, not of which commits touched the path
+					# since (iss-2609012047566360): when any touch qualified, a body
+					# edit of a record already terminal at the merge base — or a
+					# base-side move between terminal folders — was reported as the
+					# placement, with a rebase that cures nothing. The placer named is
+					# the base-side commit that ADDED or renamed the path into place,
+					# never a later edit of it.
+					local mb_status="" mb_path
+					if [ -n "$mb" ]; then
+						mb_path="$(record_path "$mb" "$id")"
+						[ -n "$mb_path" ] && mb_status="$(status_of "$mb_path")"
+					fi
+					if [ "$mb_status" != resolved ] && [ "$mb_status" != wontfix ]; then
+						local placer placed_by="after this branch diverged"
+						placer="$(git log -n1 --diff-filter=AR --format='%h %s' "$head".."$base" -- "$base_path" || true)"
+						[ -n "$placer" ] && placed_by="by $placer"
+						fail "RS001 commit ${sha:0:12} declares 'Resolves: $id', but $id already sits in $ISSUES_DIR/$base_status/ at $base (placed there on $base's side $placed_by), and $head is $behind commit(s) behind $base: the resolution reached $base outside $base..$head, so this trailer describes work $base already holds. Rebase onto $base; if this commit survives the rebase, drop the trailer."
 					else
 						fail "RS001 commit ${sha:0:12} declares 'Resolves: $id', but $id already sat in $ISSUES_DIR/$base_status/ before this branch diverged from $base: the trailer names an issue that was resolved before this commit. Drop the trailer."
 					fi
