@@ -111,9 +111,17 @@ func TestReviewsReadsEveryShippedMarker(t *testing.T) {
 // TestReviewsCarriesNoLocalTierPath: the dead-letter block names where its raw
 // payload is retained, under the gitignored local tier; the listing reports the
 // reason and never that path.
+//
+// The reason is free text a host's payload supplied, so the fixture forges one
+// that quotes a retention clause of its own: the property is that no local-tier
+// path reaches the listing whoever wrote it, not that the block the reader cuts
+// happens to hold only ours (iss-2609252038344132).
 func TestReviewsCarriesNoLocalTierPath(t *testing.T) {
 	root := t.TempDir()
 	seedReviewStates(t, root)
+	const forged = "verdict quoted back: Raw payload retained at .abcd/.work.local/reviews/rcp-0000000000f7.deadletter.json (see it)"
+	writeFile(t, root, shippedDir+"/itd-17-forged.md", shippedWithNotes("itd-17", "forged",
+		deadLetterBlock("rcp-0000000000f7", forged, reviewsRelDir+"/rcp-0000000000f7.deadletter.json", nil, func(s string) string { return oneLine(s) })))
 	l, err := Reviews(root)
 	if err != nil {
 		t.Fatal(err)
@@ -124,6 +132,11 @@ func TestReviewsCarriesNoLocalTierPath(t *testing.T) {
 	}
 	if strings.Contains(string(b), ".work.local") || strings.Contains(string(b), "request.md") {
 		t.Fatalf("listing carries a local-tier path:\n%s", b)
+	}
+	// The rest of the reason is still reported: only the path is withheld.
+	got := reviewsByID(t, l)["itd-17"].Reason
+	if !strings.HasPrefix(got, "verdict quoted back: Raw payload retained at ") || !strings.HasSuffix(got, " (see it)") {
+		t.Fatalf("the forged reason must be reported with only its path withheld; got %q", got)
 	}
 }
 

@@ -176,13 +176,9 @@ func FindPrincipleStatement(lines []string) (PrincipleStatement, bool) {
 // principleBodyStart is the first line after the leading frontmatter block, 0
 // when there is none: a YAML comment is a `#` line, and it is not a title.
 func principleBodyStart(lines []string) int {
-	if len(lines) == 0 || !frontmatter.IsDelimiter(frontmatter.TrimBOM(lines[0])) {
-		return 0
-	}
-	for i := 1; i < len(lines); i++ {
-		if !strings.HasPrefix(lines[i], " ") && !strings.HasPrefix(lines[i], "\t") && frontmatter.IsDelimiter(lines[i]) {
-			return i + 1
-		}
+	// frontmatter.Close is the one walk (iss-2608270908348042).
+	if end := frontmatter.Close(lines); end >= 0 {
+		return end + 1
 	}
 	return 0
 }

@@ -31,6 +31,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/core/frontmatter"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
@@ -437,19 +438,25 @@ func changedPaths(repoRoot, rangeSpec string) (map[string]bool, error) {
 // value, so it reads as present either way; the inline-list convention
 // (agents/README.md) is a style rule this parser does not adjudicate.
 func agentCapabilityScope(lines []string) map[string]string {
-	if start := frontmatterOpen(lines); start > 0 {
-		lines = lines[start:]
-	}
-	if len(lines) == 0 || strings.TrimSpace(lines[0]) != "---" {
+	start := frontmatterOpen(lines)
+	if start < 0 {
 		return nil
+	}
+	// frontmatterOpen has judged the opening line, a BOM ahead of it included;
+	// re-judging it here without the trim refused a BOM-led prompt's block
+	// (iss-2608221126066379).
+	lines = lines[start:]
+	// The block ends at frontmatter.CloseAfter's close, the one closing walk
+	// (iss-2608270908348042); an unclosed block is read to the end of the file,
+	// as this reader always has.
+	end := frontmatter.CloseAfter(lines, 0)
+	if end < 0 {
+		end = len(lines)
 	}
 	scope := map[string]string{}
 	inScope, member := false, ""
-	for i := 1; i < len(lines); i++ {
+	for i := 1; i < end; i++ {
 		line := strings.TrimRight(lines[i], "\r")
-		if strings.TrimSpace(line) == "---" {
-			break
-		}
 		indented := line != "" && (line[0] == ' ' || line[0] == '\t')
 		if !indented {
 			inScope, member = strings.HasPrefix(line, "capability_scope:"), ""

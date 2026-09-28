@@ -984,3 +984,74 @@ func TestDescribeReframeReportsOccasionAndFingerprints(t *testing.T) {
 	}
 	assertZeroWrites(t, repo, before)
 }
+
+// TestDescribeUnparseableIssueIsNotNotFound pins iss-263's own shape: an issue
+// file whose frontmatter is broken (here, never closed) is present in a status
+// folder, so `abcd iss-N` names the file and the parse error rather than
+// answering "not found in the issue ledger".
+func TestDescribeUnparseableIssueIsNotNotFound(t *testing.T) {
+	repo := t.TempDir()
+	res, err := capture.Capture(capture.CaptureRequest{
+		RepoRoot: repo, Text: "a record whose frontmatter will break", Severity: capture.SeverityMinor,
+		Category: "observation", Source: "user-observation", FoundDuring: "t", Slug: "broken-block",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	abs := res.Path
+	if !filepath.IsAbs(abs) {
+		abs = filepath.Join(repo, abs)
+	}
+	raw, err := os.ReadFile(abs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Drop the closing delimiter: the block is never terminated.
+	head, body, ok := strings.Cut(string(raw), "\n---\n")
+	if !ok {
+		t.Fatalf("fixture has no closing delimiter: %q", raw)
+	}
+	if err := os.WriteFile(abs, []byte(head+"\n"+body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err = Describe(repo, res.ID)
+	if err == nil || strings.Contains(err.Error(), "not found") || !errors.Is(err, ErrSkippedRecord) {
+		t.Fatalf("an unparseable issue must fault as skipped, not as not found: %v", err)
+	}
+	if !strings.Contains(err.Error(), filepath.Base(abs)) || !strings.Contains(err.Error(), "not terminated") {
+		t.Fatalf("the fault must name the file and the parse error: %v", err)
+	}
+}
+
+// TestDescribeReadsAnEmptySupersededByAsNoSuccessor: record-lint's supersession
+// gate reads an empty collection or an empty node in superseded_by as absent, so
+// the dispatcher asks the same emptiness question and renders no successor link
+// for it — one value, one answer (iss-2608301744300631). A populated value is
+// still the link. The intent page reads the field the same way.
+func TestDescribeReadsAnEmptySupersededByAsNoSuccessor(t *testing.T) {
+	for _, tc := range []struct{ value, want string }{
+		{"[]", ""}, {"{}", ""}, {"!!null", ""}, {"[ ]", ""}, {"~", ""}, {"adr-7", "adr-7"},
+	} {
+		t.Run(tc.value, func(t *testing.T) {
+			repo := t.TempDir()
+			write(t, repo, ".abcd/development/decisions/adrs/0040-three-verbs.md",
+				"---\nid: adr-40\nstatus: accepted\nsuperseded_by: "+tc.value+"\n---\n\n# A decision\n")
+			d, err := Describe(repo, "adr-40")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := d.Links["superseded_by"]; got != tc.want {
+				t.Fatalf("adr superseded_by link = %q, want %q", got, tc.want)
+			}
+			write(t, repo, ".abcd/development/intents/superseded/itd-5-old.md",
+				"---\nid: itd-5\nslug: old\nspec_id: null\nkind: standalone\nsuperseded_by: "+tc.value+"\n---\n\n# O\n")
+			d, err = Describe(repo, "itd-5")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := d.Links["superseded_by"]; got != tc.want {
+				t.Fatalf("intent superseded_by link = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
