@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -1459,6 +1460,95 @@ func TestPreCommitHook_ReadsEscapedSpellings(t *testing.T) {
 			t.Fatalf("a staged file whose decoded spellings hold no banned name was refused\n%s", out)
 		}
 	})
+}
+
+// TestPreCommitHook_ReadsEscapeSpelledBackslashes pins iss-2609280944560197: a
+// backslash spelled as an escape (the unicode escape of U+005C, or %5C) decoded
+// to a backslash the guard never read again, so a name one escape layer behind
+// it committed while the scanner's JSON walk reads it on its next layer. The
+// guard now reads each decoded copy again, as many layers as the scanner does.
+// The escapes are built from parts so no tool that folds a written escape into
+// its character can change the fixture. The names are fake.
+func TestPreCommitHook_ReadsEscapeSpelledBackslashes(t *testing.T) {
+	const banlist = "# abcd-banlist: keyed\n" +
+		"widget-partner   widgetworks\n" +
+		"fake-person      zoë qüxbar\n"
+	bs := "\\"
+	escBS := bs + "u005c" // a backslash written as its unicode escape
+	cases := []struct{ name, staged, key string }{
+		{"a backslash as a unicode escape before an escaped letter", `{"note":"` + escBS + "u0077idgetworks" + `"}` + "\n", "widget-partner"},
+		{"a backslash as a unicode escape before an escaped capital", `{"author":"` + escBS + "u005Ao" + bs + "u00eb Q" + bs + "u00fcxbar" + `"}` + "\n", "fake-person"},
+		{"a backslash as a percent escape", "see https://example.com/?q=%5Cu0077idgetworks\n", "widget-partner"},
+		{"two escape-spelled backslashes, the scanner's third layer", `{"note":"` + escBS + "u005c" + "u0077idgetworks" + `"}` + "\n", "widget-partner"},
+		{"a doubled backslash still decodes", `"{\"note\":\"` + bs + bs + "u0077idgetworks" + `\"}"` + "\n", "widget-partner"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			blocked, out := hookRun(t, banlist, c.staged)
+			if !blocked {
+				t.Fatalf("commit not blocked; the escaped spelling is the banned name\n%s", out)
+			}
+			if !strings.Contains(out, c.key) {
+				t.Errorf("the refusal does not name the key %q\n%s", c.key, out)
+			}
+			for _, leak := range []string{"widgetworks", "qüxbar"} {
+				if strings.Contains(strings.ToLower(out), leak) {
+					t.Errorf("output leaks %q; the decoded text is withheld like the raw\n%s", leak, out)
+				}
+			}
+		})
+	}
+
+	t.Run("escape-spelled backslashes that spell no banned name pass", func(t *testing.T) {
+		staged := `{"path":"C:` + escBS + "new" + escBS + "u0077idget works" + `", "q":"%5Cn caf%5Cu00e9"}` + "\n"
+		blocked, out := hookRun(t, banlist, staged)
+		if blocked {
+			t.Fatalf("a staged file whose decoded layers hold no banned name was refused\n%s", out)
+		}
+	})
+}
+
+// TestPreCommitHook_DecoderIsOneBlockSplitOnCharacters pins the decoder's shape
+// in both copies of the guard: abcd's own hook and the one ahoy scaffolds.
+// Every awk split takes a one-character string separator, because a regular
+// expression separator makes the split of the one true awk (macOS) quadratic in
+// the length of the line — one 19 MB line of minified JSON took over a minute
+// to decode (iss-2609280945018822). And the decode block, from its layer bound
+// to the pattern loop, is the same bytes in both copies, so a fix to one cannot
+// leave the other reading less.
+func TestPreCommitHook_DecoderIsOneBlockSplitOnCharacters(t *testing.T) {
+	hook := locateHook(t)
+	scaffold := filepath.Join(filepath.Dir(filepath.Dir(hook)), "internal", "core", "ahoy", "defaults", "pre-commit")
+	var blocks []string
+	for _, path := range []string{hook, scaffold} {
+		src, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		s := string(src)
+		start := strings.Index(s, "\ndecode_layers=")
+		if start < 0 {
+			t.Fatalf("%s: no decode_layers declaration opens the decode block", path)
+		}
+		end := strings.Index(s[start:], "\ni=0\n")
+		if end < 0 {
+			t.Fatalf("%s: the decode block does not end at the pattern loop", path)
+		}
+		block := s[start : start+end]
+		blocks = append(blocks, block)
+		calls := regexp.MustCompile(`split\([^,]+,\s*[a-z]+,\s*([^)]*)\)`).FindAllStringSubmatch(block, -1)
+		if len(calls) == 0 {
+			t.Fatalf("%s: the decode block holds no split call; the pin has no target", path)
+		}
+		for _, c := range calls {
+			if c[1] != `"\\"` && c[1] != `"%"` {
+				t.Errorf("%s: split separator %s; want a one-character string, never a regular expression", path, c[1])
+			}
+		}
+	}
+	if blocks[0] != blocks[1] {
+		t.Errorf("the decode blocks of %s and %s differ; the two guards must read the same spellings", hook, scaffold)
+	}
 }
 
 // TestPreCommitHook_DecodeFailureRefuses pins the direction the decoded reading

@@ -880,10 +880,10 @@ if [ ! -s "$candidate" ]; then exit "$rc"; fi
 # written for its plain spelling matches, plain ASCII letters included, and a JSON
 # transcript, export or fixture is exactly where such spellings live
 # (iss-2609261909106167). So every line that holds such an escape is ALSO read
-# decoded — the two views the scanner's redactors read beside the text as written
-# (the JSON escape layers and the percent view) — and each pattern is matched
-# against the decoded copy as well as the candidate. The raw candidate is still
-# read in full: the decoded copy adds spellings, it never replaces one.
+# decoded — in the two kinds of view the scanner's redactors read beside the text
+# as written, the JSON escape layers and the percent view — and each pattern is
+# matched against the decoded copy as well as the candidate. The raw candidate is
+# still read in full: the decoded copy adds spellings, it never replaces one.
 #
 # The decode is here, in awk and the shell's own printf, and not in the abcd
 # binary's scanner, because this hook is the private layer's one enforcement point
@@ -891,9 +891,18 @@ if [ ! -s "$candidate" ]; then exit "$rc"; fi
 # runs it in, abcd's own or not. Its reading is deliberately a superset: a run of
 # backslashes of ANY length before an escape letter decodes as one escape, so a
 # JSON string nested inside another decodes all its layers at once, and a run of
-# `%25` before two hex digits decodes as the byte those digits name. Over-reading
-# can only refuse more; a guard that reads less than the redactors lets through
-# what they would have caught.
+# `%25` before two hex digits decodes as the byte those digits name.
+#
+# A decoded layer is read again for the escapes it still holds, because a
+# backslash or a percent sign an escape spelled (`%5C`, or the unicode escape of
+# U+005C) opens an escape of its own on the next layer (iss-2609280944560197).
+# Each later layer reads only what the layer before it decoded, and the walk
+# stops at a layer that holds no escape or at decode_layers, the number of JSON
+# layers the scanner reads (its maxJSONDecodeLayers; a test holds the two equal).
+# A name behind more escape-spelled backslashes than that is left unread here,
+# as it is in the scanner; a `%5C` before a JSON escape, which the scanner does
+# not decode as one, is read here too. Over-reading can only refuse more; a guard
+# that reads less than the redactors lets through what they would have caught.
 #
 # Every step is checked and a failure refuses: a decoded copy that could not be
 # built must not look like one that held nothing. Nothing decoded is ever printed.
@@ -901,11 +910,23 @@ if [ ! -s "$candidate" ]; then exit "$rc"; fi
 # first (an awk may end a line at one), and awk writes each decoded byte as a
 # `\0NNN` escape that the shell's printf %b turns back into the byte, because
 # awks disagree about what printf %c emits past 127 and printf %b does not.
-esc_gr=0
-grep -aE '\\u[0-9A-Fa-f]{4}|\\/|%[0-9A-Fa-f]{2}' -- "$candidate" >"$escaped" 2>/dev/null || esc_gr=$?
-case "$esc_gr" in
-  0)
-    if ! tr -d '\000' <"$escaped" | awk '
+decode_layers=3
+layer=0
+layer_in="$candidate"
+while [ "$layer" -lt "$decode_layers" ]; do
+  layer=$((layer + 1))
+  esc_gr=0
+  grep -aE '\\u[0-9A-Fa-f]{4}|\\/|%[0-9A-Fa-f]{2}' -- "$layer_in" >"$escaped" 2>/dev/null || esc_gr=$?
+  case "$esc_gr" in
+    0) ;;
+    1) break ;;
+    *)
+      echo "pre-commit: BLOCKED — could not find the escaped lines of the staged content (grep failed)." >&2
+      echo "            the guard cannot check what it cannot read, so it refuses rather than pass." >&2
+      exit 1
+      ;;
+  esac
+  if ! tr -d '\000' <"$escaped" | awk '
 BEGIN {
   for (i = 0; i < 256; i++) O[i] = sprintf("\\0%03o", i)
   for (i = 0; i < 16; i++) {
@@ -921,11 +942,12 @@ BEGIN {
 function put(s) { buf = buf s; if (++nbuf >= 64) { printf "%s", buf; buf = ""; nbuf = 0 } }
 function endline() { printf "%s\n", buf; buf = ""; nbuf = 0 }
 # lit is text as written, each backslash doubled so printf %b keeps it. Every
-# split takes a regular expression, never a one-byte string, which awks read
-# alike.
+# split takes a one-character string, which POSIX reads as that character and
+# never as a pattern: a regular-expression separator makes the split of the one
+# true awk quadratic in the length of the line.
 function lit(s,   n, k, a) {
   if (index(s, "\\") == 0) { put(s); return }
-  n = split(s, a, /\\/)
+  n = split(s, a, "\\")
   put(a[1])
   for (k = 2; k <= n; k++) put("\\\\" a[k])
 }
@@ -946,7 +968,7 @@ function hex4(f,   a, b, c, d) {
 # field that ends the run decides the escape. A surrogate pair joins into one
 # character; a lone surrogate reads as U+FFFD, as the JSON decoders read it.
 function json_view(line,   n, k, f, c0, cp, pend) {
-  n = split(line, p, /\\/)
+  n = split(line, p, "\\")
   put(p[1])
   pend = -1
   for (k = 2; k <= n; k++) {
@@ -975,7 +997,7 @@ function json_view(line,   n, k, f, c0, cp, pend) {
 }
 # The percent view: each %XX is the byte it names, after any run of %25 layers.
 function percent_view(line,   n, k, f, a, b) {
-  n = split(line, q, /%/)
+  n = split(line, q, "%")
   lit(q[1])
   for (k = 2; k <= n; k++) {
     f = q[k]
@@ -989,27 +1011,26 @@ function percent_view(line,   n, k, f, a, b) {
 index($0, "\\") { json_view($0) }
 /%[0-9A-Fa-f][0-9A-Fa-f]/ { percent_view($0) }
 ' >"$views"; then
-      echo "pre-commit: BLOCKED — could not decode the escaped spellings of the staged content (awk failed)." >&2
-      echo "            the guard cannot check what it cannot read, so it refuses rather than pass." >&2
-      exit 1
-    fi
-    if ! views_text=$(cat -- "$views"); then
-      echo "pre-commit: BLOCKED — could not read back the decoded spellings of the staged content." >&2
-      exit 1
-    fi
-    if ! printf '%b\n' "$views_text" >"$decoded"; then
-      echo "pre-commit: BLOCKED — could not write the decoded spellings of the staged content." >&2
-      exit 1
-    fi
-    views_text=""
-    ;;
-  1) ;;
-  *)
-    echo "pre-commit: BLOCKED — could not find the escaped lines of the staged content (grep failed)." >&2
+    echo "pre-commit: BLOCKED — could not decode the escaped spellings of the staged content (awk failed)." >&2
     echo "            the guard cannot check what it cannot read, so it refuses rather than pass." >&2
     exit 1
-    ;;
-esac
+  fi
+  if ! views_text=$(cat -- "$views"); then
+    echo "pre-commit: BLOCKED — could not read back the decoded spellings of the staged content." >&2
+    exit 1
+  fi
+  # The layer's decoded bytes replace its %b-escaped form: the next layer reads them.
+  if ! printf '%b\n' "$views_text" >"$views"; then
+    echo "pre-commit: BLOCKED — could not write the decoded spellings of the staged content." >&2
+    exit 1
+  fi
+  views_text=""
+  if ! cat -- "$views" >>"$decoded"; then
+    echo "pre-commit: BLOCKED — could not keep the decoded spellings of the staged content." >&2
+    exit 1
+  fi
+  layer_in="$views"
+done
 
 i=0
 while [ "$i" -lt "$entries" ]; do
