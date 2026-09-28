@@ -91,10 +91,11 @@ func TestRenderedHelpAndPluginPagesNameTheRoles(t *testing.T) {
 // "and", or after a bold lead-in) whose object is a person, "them" or the
 // question itself; an instruction to relay or present a question; or a
 // `--yes` that answers a question in advance, since pre-answering a stop is
-// answering it and the paragraph must say whose answer that is. An ask whose
+// answering it and the paragraph must say whose answer that is; or an act taken
+// "on the <person>'s word", which is a stop that waits on that answer. An ask whose
 // object is a verb, a binary or another agent ("ask the update verb", "Ask it
 // for kill attempts") is not a question to a human.
-var questionBlock = regexp.MustCompile(`(?:(?:^|[.!?:;,—]\s+|\*\*\s*|\bthen\s+|\band\s+)(?:Ask|ask)\s+(?:once\b|whether\b|why\b|what\b|first\b|them\b|the (?:user|human|researcher|person|product thinker|technical facilitator)\b|for (?:the|every)\b)|\b(?:[Rr]elay|[Pp]resent) the question\b|` + "`--yes`" + `[^.]*\bin advance\b)`)
+var questionBlock = regexp.MustCompile(`(?:(?:^|[.!?:;,—]\s+|\*\*\s*|\bthen\s+|\band\s+)(?:Ask|ask)\s+(?:once\b|whether\b|why\b|what\b|first\b|them\b|the (?:user|human|researcher|person|product thinker|technical facilitator)\b|for (?:the|every)\b)|\b(?:[Rr]elay|[Pp]resent) the question\b|` + "`--yes`" + `[^.]*\bin advance\b|\bon the (?:user|human|researcher|person|product thinker|technical facilitator)['\x{2019}]s word\b)`)
 
 // TestPluginQuestionBlocksNameTheAddressee (AC3): every question a plugin page
 // has the agent put to a human names which of the two roles it asks, in the
