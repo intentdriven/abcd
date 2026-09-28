@@ -432,7 +432,13 @@ keys, tools or cost. The oracle question defines an oracle before asking for
 one, and says plainly that every answer but host-delegated is recorded without
 changing how reviews run, because no other adapter ships. The words live in core, so every
 front door shows the same explanation and none invents its own; the question
-line itself is unchanged, so a piped answer stream lines up with it.
+line itself is unchanged, so a piped answer stream lines up with it. The four
+config values' help also carries the install flag that answers the question
+without asking it, and both the question and the missing-value gap's fix hint
+name it, because a flag is the reliable answer in a piped run
+(iss-2609120447486547). `--yes` approves each kind of change and chooses no
+value, so a `--yes` run that still has a value to ask says so once, in core's
+words, above the first value question.
 
 **The result explains itself to the person who ran it** (iss-164). Beside the
 exact record (every write, change, note, declined category, outstanding step and

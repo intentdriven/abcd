@@ -493,15 +493,15 @@ func detectConfigValues(cwd string) []Gap {
 
 	visibility, visOK := stringVal(repo, "visibility")
 	if !visOK || !inSet(visibility, visibilityChoices) {
-		gaps = append(gaps, cfgGap("config.visibility_missing", "repo.visibility not set",
+		gaps = append(gaps, configValueGap("config.visibility_missing", "visibility", "repo.visibility not set",
 			"Visibility (private/public) controls .gitignore policy."))
 	}
 	if v, ok := stringVal(docs, "target"); !ok || !inSet(v, docsTargetChoices) {
-		gaps = append(gaps, cfgGap("config.docs_target_missing", "docs.target not set",
+		gaps = append(gaps, configValueGap("config.docs_target_missing", "docs_target", "docs.target not set",
 			"Which docs file (CLAUDE.md / AGENTS.md / both / skip) hosts the marker block."))
 	}
 	if v, ok := stringVal(oracle, "backend"); !ok || !inSet(v, oracleBackendChoices) {
-		gaps = append(gaps, cfgGap("config.oracle_backend_missing", "oracle.backend not set",
+		gaps = append(gaps, configValueGap("config.oracle_backend_missing", "oracle_backend", "oracle.backend not set",
 			"Oracle backend (host-delegated/native/cli/api/mcp)."))
 	}
 
@@ -512,16 +512,14 @@ func detectConfigValues(cwd string) []Gap {
 	// scan.deep is conditional: private + trufflehog present.
 	if validVis == "private" && onPath("trufflehog") {
 		if _, ok := boolVal(scan, "deep"); !ok {
-			gaps = append(gaps, cfgGap("config.scan_deep_missing", "scan.deep not set",
+			gaps = append(gaps, configValueGap("config.scan_deep_missing", "scan_deep", "scan.deep not set",
 				"Private repo + trufflehog present — confirm deep secret scanning."))
 		}
 	}
 	// visibility.gitignore_drift only when a valid visibility is persisted.
 	if validVis == "private" || validVis == "public" {
 		if gitignoreBlockDrifts(cwd, validVis) {
-			gaps = append(gaps, cfgGap("visibility.gitignore_drift",
-				"abcd-managed .gitignore block drifts from visibility",
-				"The .gitignore abcd block does not match the canonical rules for visibility="+validVis+"."))
+			gaps = append(gaps, gitignoreDriftGap(validVis))
 		}
 	}
 	return gaps
@@ -530,6 +528,28 @@ func detectConfigValues(cwd string) []Gap {
 func cfgGap(id, title, detail string) Gap {
 	return Gap{ID: id, Category: ConfigChange, Scope: "repo", Title: title, Detail: detail,
 		FixHint: "ahoy install prompts for the value.", Required: true, Resolvable: true}
+}
+
+// configValueGap is a missing config value: install asks for it, and the flag
+// its question's help names answers it without the question — the one reliable
+// answer in a piped run, so the fix hint says so (iss-2609120447486547).
+func configValueGap(id, key, title, detail string) Gap {
+	g := cfgGap(id, title, detail)
+	if h, ok := HelpFor(key); ok && h.Flag != "" {
+		g.FixHint = "ahoy install asks for the value; " + h.FlagHint() + "."
+	}
+	return g
+}
+
+// gitignoreDriftGap is abcd's .gitignore block out of step with the visibility
+// already persisted. Install rewrites the block for that visibility and asks
+// nothing, so its hint claims no question.
+func gitignoreDriftGap(visibility string) Gap {
+	g := cfgGap("visibility.gitignore_drift",
+		"abcd-managed .gitignore block drifts from visibility",
+		"The .gitignore abcd block does not match the canonical rules for visibility="+visibility+".")
+	g.FixHint = "ahoy install rewrites the block to the rules for visibility=" + visibility + "."
+	return g
 }
 
 func detectMarkerDrift(cwd string) []Gap {

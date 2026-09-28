@@ -144,3 +144,60 @@ func TestAhoyInstallYesKeepsValuePromptsOffStdout(t *testing.T) {
 		t.Errorf("the value prompt was not asked on stderr:\n%s", errOut)
 	}
 }
+
+// TestAhoyInstallYesSaysUpFrontThatValuesAreStillAsked is iss-2609120447486547
+// at the front door: --yes approves each kind of change but chooses no value, so
+// a --yes run that still has a value to ask says so before the first question,
+// and every value question names the flag that answers it without being asked.
+// The words are core's; a run whose flags answered every value says nothing.
+func TestAhoyInstallYesSaysUpFrontThatValuesAreStillAsked(t *testing.T) {
+	hermeticEnv(t)
+	repo := gittest.NewRepo(t).Root()
+	t.Chdir(repo)
+	_, errOut, err := runCLIPipedStdinSplit(t, "private\n\n\n", "ahoy", "install", "--yes", "--adopt", "--json")
+	if err != nil {
+		t.Fatalf("install exited non-zero: %v\n%s", err, errOut)
+	}
+	transcript := string(errOut)
+	first := strings.Index(transcript, "visibility (")
+	if first < 0 {
+		t.Fatalf("visibility was not asked:\n%s", transcript)
+	}
+	notice := strings.Index(transcript, ahoy.YesStillAsksValues)
+	if notice < 0 || notice > first {
+		t.Errorf("the --yes notice is not printed before the first value question:\n%s", transcript)
+	}
+	if strings.Count(transcript, ahoy.YesStillAsksValues) != 1 {
+		t.Errorf("the --yes notice is printed more than once:\n%s", transcript)
+	}
+	var help strings.Builder
+	if code := Run([]string{"ahoy", "install", "--help"}, &help, &help); code != 0 {
+		t.Fatalf("ahoy install --help exited %d", code)
+	}
+	prev := 0
+	for _, key := range []string{"visibility", "docs_target", "oracle_backend"} {
+		h, _ := ahoy.HelpFor(key)
+		q := strings.Index(transcript, key+" (")
+		if q < 0 {
+			t.Fatalf("%s was not asked:\n%s", key, transcript)
+		}
+		if at := strings.Index(transcript[prev:q], h.FlagHint()); h.Flag == "" || at < 0 {
+			t.Errorf("%s: the question does not name its flag %q above it:\n%s", key, h.Flag, transcript)
+		}
+		if !strings.Contains(help.String(), h.Flag+" ") {
+			t.Errorf("%s: core names %q, which ahoy install does not register", key, h.Flag)
+		}
+		prev = q
+	}
+
+	repo2 := gittest.NewRepo(t).Root()
+	t.Chdir(repo2)
+	_, errOut, err = runCLIPipedStdinSplit(t, "", "ahoy", "install", "--yes", "--adopt", "--json",
+		"--visibility", "private", "--docs-target", "skip", "--oracle-backend", "host-delegated", "--scan-deep", "false")
+	if err != nil {
+		t.Fatalf("install exited non-zero: %v\n%s", err, errOut)
+	}
+	if strings.Contains(string(errOut), ahoy.YesStillAsksValues) {
+		t.Errorf("the --yes notice is printed although the flags answered every value:\n%s", errOut)
+	}
+}

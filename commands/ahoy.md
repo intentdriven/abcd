@@ -143,7 +143,13 @@ explanation above it: one paragraph saying what is being decided, then one
 line per answer saying what that answer means, including what it asks of the
 user (keys, tools, cost). When you relay such a question, relay that
 explanation verbatim with it; never describe an answer in your own words, and
-never offer an answer the question does not list.
+never offer an answer the question does not list. The four config values also
+name the flag that answers them without the question (`--visibility`,
+`--docs-target`, `--oracle-backend`, `--scan-deep`), and the matching gap's fix
+hint names it too: in a scripted run, pass the user's answer through the flag
+rather than lining a piped answer up with the question. `--yes` chooses no
+value, so a `--yes` run that still has a value to ask says so once, above the
+first such question.
 
 That is a channel for passing on an answer the user has GIVEN — ask first, then
 pipe; it is never a licence to answer on their behalf. Note that `yes |`
