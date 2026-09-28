@@ -237,8 +237,12 @@ any surface. The verb reads the surfaces at `HEAD`, in the working tree and
 along their history, so the operator supplies no hash. Written after the
 rewrite's commit it is one write, against the previous distinct state along
 first parents, so a rewrite a merge brought in is recorded as a squash of the
-same branch would record it, whatever the commits' timestamps; written before
-it, a first half records the
+same branch would record it, whatever the commits' timestamps. A rewrite that
+lands as several commits on the first-parent line, a rebased branch among them,
+is recorded by that one write as its last step alone, because the previous
+distinct state is the one before that step (iss-2609261325441711); the open and
+complete pair below records such a rewrite whole. Written before
+the rewrite's commit, a first half records the
 before fingerprints and a second write finishes it once the rewrite is
 committed, walking back across as many commits as the rewrite took, merges
 included. Every render names the half it wrote. The occasion

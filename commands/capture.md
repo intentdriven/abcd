@@ -595,7 +595,12 @@ A reframe is written in one of three halves, and every render names which:
   not. It walks the surfaces' history along first parents to the previous
   distinct committed state and writes both halves at once, so a rewrite a merge
   brought in is recorded against the state the merge's first parent held, as a
-  squash of the same branch would be, whatever the commits' timestamps.
+  squash of the same branch would be, whatever the commits' timestamps. A
+  rewrite that lands as several commits on the first-parent line, a rebased
+  branch among them, is different: the previous distinct state is the one
+  before its last commit, so the whole write records that step alone. To record
+  such a rewrite whole, open the record before its first commit and complete it
+  after its last.
 - **Open**, before the rewrite is committed (`--open`). The before fingerprints
   are `HEAD`'s and the after half is absent; the render names the completion.
   Only one record may be open at a time.

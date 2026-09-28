@@ -441,6 +441,33 @@ func TestReframeWholeWriteAcrossAMergeIsTopological(t *testing.T) {
 	}
 }
 
+// TestReframeWholeWriteOfALinearSeriesRecordsItsLastStep pins what the command
+// page states about a rewrite that lands as a series of commits on the first
+// parent line, a rebased branch among them (iss-2609261325441711): the whole
+// write reads back to the previous DISTINCT state, which is the state before the
+// series' last step, so it records that step alone. Two commits that move the
+// construal and then the glossary give changed=[glossary] with before at the
+// post-construal state, where a squash or a --no-ff merge of the same rewrite
+// gives [construal glossary]. The route that records the whole series is --open
+// before its first commit and --complete after its last
+// (TestCompleteCrossesATwoCommitRewrite).
+func TestReframeWholeWriteOfALinearSeriesRecordsItsLastStep(t *testing.T) {
+	r := reframeFixture(t)
+	rewriteConstrual(r, "First step of a rebased rewrite.")
+	mid := frameAt(t, r)
+	r.Write(fxGlossary+"/core/term.md", "# Term\n\nSecond step of a rebased rewrite.\n")
+	r.Commit("rewrite a term")
+	after := frameAt(t, r)
+
+	res, err := Reframe(reframeReq(r, fxItem))
+	if err != nil {
+		t.Fatalf("Reframe: %v", err)
+	}
+	if res.Before != mid || res.After != after || res.Commits != 1 || !slices.Equal(res.Changed, []string{"glossary"}) {
+		t.Fatalf("result = %+v\nwant before at the post-construal state, [glossary] across 1 commit", res)
+	}
+}
+
 func TestReframeRefusesUncommittedChangesWithoutOpen(t *testing.T) {
 	r := reframeFixture(t)
 	rewriteConstrual(r, "A committed rewrite.")
