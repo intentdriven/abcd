@@ -217,10 +217,10 @@ func NewRootCommand() *cobra.Command {
 		Use: "abcd [<record-id>]",
 		Long: "Agent-based configuration for development.\n\n" +
 			"Bare `abcd` renders the read-only status board — what can I do. A single\n" +
-			"positional matching a record id (`iss-N`, `itd-N`, `spc-N`, `adr-N`) instead\n" +
-			"reports what that record is, where it lives, and the next move for its\n" +
-			"lifecycle state — what is this. Both forms are strictly read-only; any other\n" +
-			"positional is refused as an unknown command.",
+			"positional matching a record id (`iss-N`, `itd-N`, `spc-N`, `adr-N`, `adm-N`,\n" +
+			"`srp-N`, `rfm-N`) instead reports what that record is, where it lives, and\n" +
+			"the next move for its lifecycle state — what is this. Both forms are strictly\n" +
+			"read-only; any other positional is refused as an unknown command.",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		// Bare answers "what can I do"; `abcd <id>` answers "what is this, and

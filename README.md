@@ -122,7 +122,7 @@ abcd — /path/to/your-repo
   git repo:   true
   record:     true
   work tiers: [development work work.local]
-  presence:   abcd · your-repo · main · itd 0 · iss 0
+  presence:   abcd-managed · your-repo · main · itd 0 · iss 0
 ```
 
 
