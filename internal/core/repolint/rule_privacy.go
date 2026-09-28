@@ -69,7 +69,15 @@ var (
 	// the Windows arm is case-folded: NTFS is case-insensitive and `c:\users\bob`
 	// is a common spelling (Python os.path.normcase lowercases the whole path),
 	// while folding the POSIX arm would flag ordinary API-route text ("/users/me").
-	absPathRe = regexp.MustCompile(`(?:/Users/|/home/)[A-Za-z0-9._-]+|(?i:[A-Za-z]:\\Users\\[A-Za-z0-9._-]+)`)
+	// A Windows separator is a RUN of backslashes: the ledger serialiser escapes
+	// a backslash inside a quoted scalar and a JSON encoder doubles it again, so
+	// the spelling the tool itself commits is `C:\\Users\\<name>`, and a
+	// single-backslash arm caught the shape a human types while missing the one
+	// the tool produces (iss-2608301306580014).
+	absPathRe = regexp.MustCompile(`(?:/Users/|/home/)[A-Za-z0-9._-]+|(?i:[A-Za-z]:\\+Users\\+[A-Za-z0-9._-]+)`)
+	// windowsUsersRootRe is the Windows users root inside a match, at any
+	// escaping depth; its second group is one escaped separator.
+	windowsUsersRootRe = regexp.MustCompile(`(?i):(\\+)users(\\+)`)
 )
 
 func (privacyHygiene) Meta() RuleMeta {
@@ -309,7 +317,7 @@ func hasAbsHomePath(line string) bool {
 			// is not a home path, and this rule detects home paths; the committing
 			// user's OWN name there is still caught by the scanner's
 			// local_username detector at hard_fail.
-			if reachedNameViaTraversal(line, loc[1], isWindowsPath(m)) {
+			if reachedNameViaTraversal(line, loc[1], windowsSeparatorWidth(m)) {
 				return true
 			}
 			continue
@@ -378,11 +386,28 @@ func isPersonaHomeSegment(seg string) bool {
 // exempt the mixed spelling wholesale. A POSIX path stays slash-only, because a
 // backslash after one is an escape (the two bytes of "/Users/Shared\n" in a
 // source string), never a path segment.
-func reachedNameViaTraversal(line string, pos int, windows bool) bool {
-	isSep := func(b byte) bool { return b == '/' || (windows && b == '\\') }
+//
+// width is the backslash run one Windows separator is spelled with in the
+// match (1 raw, 2 escaped once, and so on), or 0 for a POSIX path: an escaped
+// path's separator is its whole run, and only a run longer than that holds an
+// empty segment (iss-2608301306580014).
+func reachedNameViaTraversal(line string, pos int, width int) bool {
+	sepLen := func(p int) int {
+		if line[p] == '/' {
+			return 1
+		}
+		if width == 0 || line[p] != '\\' {
+			return 0
+		}
+		n := 0
+		for p+n < len(line) && n < width && line[p+n] == '\\' {
+			n++
+		}
+		return n
+	}
 	traversed := false
-	for pos < len(line) && isSep(line[pos]) {
-		i, named := pos+1, false
+	for pos < len(line) && sepLen(pos) > 0 {
+		i, named := pos+sepLen(pos), false
 		for i < len(line) && isPathSegmentChar(line[i]) {
 			if line[i] != '.' {
 				named = true
@@ -403,10 +428,15 @@ func reachedNameViaTraversal(line string, pos int, windows bool) bool {
 	return false
 }
 
-// isWindowsPath reports whether the matched path is the Windows spelling
-// (`C:\Users\<name>`) rather than a POSIX one.
-func isWindowsPath(m string) bool {
-	return strings.Contains(strings.ToLower(m), `:\users\`)
+// windowsSeparatorWidth is the backslash run one separator is spelled with in
+// a Windows match (`C:\Users\<name>` is 1, its escaped spelling 2), or 0
+// when the match is a POSIX path.
+func windowsSeparatorWidth(m string) int {
+	sub := windowsUsersRootRe.FindStringSubmatch(m)
+	if sub == nil {
+		return 0
+	}
+	return len(sub[2])
 }
 
 // leadingBoundaryOK reports whether the match at start BEGINS a path rather than
@@ -432,7 +462,7 @@ func isPathSegmentChar(b byte) bool {
 // C:\Users) root rather than /home.
 func isUsersRoot(m string) bool {
 	l := strings.ToLower(m)
-	return strings.HasPrefix(l, "/users/") || strings.Contains(l, `:\users\`)
+	return strings.HasPrefix(l, "/users/") || windowsUsersRootRe.MatchString(m)
 }
 
 // readTrackedFile reads a tracked path safely for scanning, relative to root

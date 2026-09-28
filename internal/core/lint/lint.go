@@ -420,6 +420,13 @@ func LintAt(cfg Config, repoRoot string, now time.Time) ([]Finding, error) {
 		}
 		findings = append(findings, lx...)
 	}
+	if leakOn && len(leakCfg.ExtraRoots) > 0 {
+		hx, err := checkHarnessLeakExtraRoots(repoRoot, leakCfg, scanned)
+		if err != nil {
+			return nil, err
+		}
+		findings = append(findings, hx...)
+	}
 
 	if len(cfg.NameRoots) > 0 {
 		nf, err := lintNameRoots(cfg, repoRoot, scanned)

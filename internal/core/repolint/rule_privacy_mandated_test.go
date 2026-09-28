@@ -142,3 +142,38 @@ func countRulePrivacy(res repolint.Result) int {
 	}
 	return n
 }
+
+// The escaped Windows spelling is the shape the tool itself writes
+// (iss-2608301306580014): the ledger serialiser escapes a backslash inside a
+// double-quoted scalar, and a JSON encoder doubles it again, so a home path
+// reaches a committed file as `C:\\Users\\<name>`. The backstop caught the
+// spelling a human types and missed the one the tool produces. A separator is a
+// RUN of backslashes at any escaping depth, and the persona and system-root
+// exemptions read the escaped spelling as they read the raw one.
+func TestAC_PrivacyEscapedWindowsHomeIsALeak(t *testing.T) {
+	user := strings.Join([]string{"j", "doe"}, "")
+	cases := []struct {
+		name string
+		body string
+		want bool
+	}{
+		{"escaped once", `resolution: "found under C:\\Users\\` + user + `\\notes.md"` + "\n", true},
+		{"escaped twice", `"C:\\\\Users\\\\` + user + `\\\\notes.md"` + "\n", true},
+		{"escaped lowercase", `path c:\\users\\` + user + "\n", true},
+		{"escaped persona", `the fixture lives at C:\\Users\\carol\\notes.md` + "\n", false},
+		{"escaped public subtree", `report at C:\\Users\\Public\\report.txt` + "\n", false},
+		{"escaped public traversal", `keys at C:\\Users\\Public\\..\\` + user + "\n", true},
+		{"escaped public doubled separator", `keys at C:\\Users\\Public\\\\` + user + "\n", true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			res := newFixtureRepo(t).conforming().
+				file("reference/paths.md", c.body).
+				commit().run()
+			got := findingFor(res, "privacy-hygiene") != nil
+			if got != c.want {
+				t.Fatalf("finding = %v, want %v for %q", got, c.want, c.body)
+			}
+		})
+	}
+}
