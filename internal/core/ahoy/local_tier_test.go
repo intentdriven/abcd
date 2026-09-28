@@ -91,6 +91,11 @@ func TestInstallRefusesASymlinkedLocalTier(t *testing.T) {
 	if !refused {
 		t.Errorf("no refusal note for the symlinked tier: %v", res.Notes)
 	}
+	// The refusal and the status agree: a run that refused the tier is not
+	// clean (iss-2609261232477655).
+	if res.Status != "partial" {
+		t.Errorf("status = %q with the tier refused, want partial", res.Status)
+	}
 	fi, err := os.Lstat(filepath.Join(repo, ".abcd", ".work.local"))
 	if err != nil || fi.Mode()&os.ModeSymlink == 0 {
 		t.Error("the symlink was replaced or removed; abcd must not touch what it did not write")
@@ -159,6 +164,11 @@ func TestInstallCreatesTheLocalTierThroughASymlinkedCheckoutPath(t *testing.T) {
 	}
 	if !fsutil.IsRealDir(filepath.Join(real, ".abcd", ".work.local")) {
 		t.Error("the local tier is not a real directory after install")
+	}
+	// The run that once printed a false refusal beside a clean status
+	// (iss-2609261232477655): clean, and with no refusal to contradict it.
+	if res.Status != "clean" {
+		t.Errorf("status = %q remaining=%v notes=%v, want clean", res.Status, res.Remaining, res.Notes)
 	}
 }
 
