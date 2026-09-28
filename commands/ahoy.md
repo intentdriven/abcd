@@ -267,7 +267,9 @@ the source tip on every call and fails loudly on a broken build. Re-running
 
 **This writes.** It removes the BEGIN/END marker block and abcd's own `PATH`
 entry — the owned copy (or a legacy pinned symlink), found wherever it sits on
-`PATH`, along with its provenance record — and leaves `.abcd/` intact, so the
+`PATH`, along with its provenance record; a dangling link that record names is
+removed with it even when no plugin root resolves any more — and leaves
+`.abcd/` intact, so the
 repo's record survives. The persistent download cache is left to the harness's
 own uninstall to delete. Report `marker.removed` and the entry note; the
 receipt's `symlink.target` is already rendered in tilde form, so relay it as

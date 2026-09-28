@@ -567,8 +567,10 @@ three is a pointer at all: the dev shim; the owned copy the `path-entry` record
 names and whose bytes still hash to the recorded value, which is the default
 install and a regular file pointing at nothing; and lastly a legacy symlink
 whose target is this plugin's binary, or whose target has gone when it is the
-link a plugin update stranded or the one the `path-entry` record names. Anything
-else is foreign and is left where it stands. It leaves the entire `.abcd/` namespace and the history store intact.
+link a plugin update stranded or the one the `path-entry` record names. The
+recorded dangling link needs no plugin root to be recognised, so uninstall finds
+it on `PATH` and removes it with its record on a machine where abcd itself is
+gone. Anything else is foreign and is left where it stands. It leaves the entire `.abcd/` namespace and the history store intact.
 
 **Uninstall then install is a tested round-trip invariant**: afterwards the
 detection pass must report zero actionable gaps, and the resulting state must be

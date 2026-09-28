@@ -300,6 +300,11 @@ func nearestExistingDir(dir string) string {
 // shadowing the new entry from earlier in PATH), else the default location.
 // Empty when the home directory cannot be resolved — there is no user-scope
 // location to write, and inventing a privileged one is what iss-171 removes.
+//
+// With no plugin root the one shape still found on PATH is the dangling link
+// ~/.abcd/path-entry records: the record vouches for it without a root, and it
+// is exactly what is left when abcd is gone, the case the owned dangling gap
+// sends to `ahoy uninstall`.
 func adoptedBinTarget(pluginRoot string) string {
 	if pluginRoot != "" {
 		if e, ok := ownedPathEntry(pluginRoot); ok {
@@ -308,6 +313,8 @@ func adoptedBinTarget(pluginRoot string) string {
 		if e, ok := danglingPathEntry(pluginRoot); ok {
 			return e.path
 		}
+	} else if p, ok := recordedDanglingPathEntry(); ok {
+		return p
 	}
 	return binTarget()
 }
@@ -1518,6 +1525,17 @@ func Uninstall(cwd, binDir string) (UninstallReceipt, error) {
 			}
 		default:
 			receipt.Symlink.Note = "not a symlink; left untouched"
+		}
+	case recordedDanglingLink(target):
+		// Judged before the plugin root: the record vouches for a dangling link
+		// without one, and a machine with no plugin root left is the case the
+		// owned dangling gap names uninstall for ("if abcd is gone").
+		if err := os.Remove(target); err == nil {
+			receipt.Symlink.Removed = true
+			receipt.Symlink.Note = "removed dangling entry"
+			removePathEntryFor(target)
+		} else {
+			receipt.Symlink.Note = "remove failed"
 		}
 	case !ok:
 		receipt.Symlink.Note = "plugin root unresolved; left untouched"

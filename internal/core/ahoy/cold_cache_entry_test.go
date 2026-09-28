@@ -413,3 +413,88 @@ func TestUninstallTakesARecordedDanglingEntryWithItsRecord(t *testing.T) {
 		assertLinkUntouched(t, link, dest, "uninstall")
 	})
 }
+
+// noPluginRoot leaves nothing for the plugin-root ladder to resolve: both root
+// variables empty and an executable whose ancestors hold no plugin layout —
+// the machine the owned dangling gap means by "if abcd is gone". It fails the
+// test unless the premise holds, so a leak through the ladder cannot turn the
+// assertions below into a test of the rooted path.
+func noPluginRoot(t *testing.T) {
+	t.Helper()
+	t.Setenv("ABCD_PLUGIN_ROOT", "")
+	t.Setenv("CLAUDE_PLUGIN_ROOT", "")
+	exe := filepath.Join(t.TempDir(), "elsewhere", "abcd")
+	saved := osExecutable
+	t.Cleanup(func() { osExecutable = saved })
+	osExecutable = func() (string, error) { return exe, nil }
+	if root, ok := resolvePluginRoot(); ok {
+		t.Fatalf("premise: no plugin root may resolve, got %q", root)
+	}
+}
+
+// TestUninstallTakesARecordedDanglingEntryWithNoPluginRoot is the case the
+// owned dangling gap's fix hint sends to `ahoy uninstall`: abcd is gone, so no
+// plugin root resolves. The record vouches for the link without one, so
+// uninstall removes the link together with its record — at the default
+// location and wherever else on PATH it sits — and an unrecorded dangling link
+// in the same shape stays untouched, its unrelated record with it.
+func TestUninstallTakesARecordedDanglingEntryWithNoPluginRoot(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		elsewhere bool
+	}{{"default location", false}, {"elsewhere on PATH", true}} {
+		t.Run("recorded/"+tc.name, func(t *testing.T) {
+			home, _ := setupUserScope(t)
+			binDir := filepath.Join(home, ".local", "bin")
+			link := filepath.Join(binDir, "abcd")
+			t.Setenv("PATH", binDir)
+			if tc.elsewhere {
+				other := filepath.Join(t.TempDir(), "opt-bin")
+				link = filepath.Join(other, "abcd")
+				t.Setenv("PATH", other+string(os.PathListSeparator)+binDir)
+			}
+			plantDanglingLink(t, link)
+			vouchedPathEntry(t, link)
+			noPluginRoot(t)
+
+			receipt, err := Uninstall(managedRepo(t), "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !receipt.Symlink.Removed {
+				t.Fatalf("uninstall left abcd's own recorded dangling entry in place with no plugin root: %+v", receipt.Symlink)
+			}
+			if _, err := os.Lstat(link); !os.IsNotExist(err) {
+				t.Errorf("the entry is still there: %v", err)
+			}
+			if _, err := os.Lstat(userPathEntryPath()); !os.IsNotExist(err) {
+				t.Errorf("the record outlived the entry it names: %v", err)
+			}
+		})
+	}
+	t.Run("unrecorded", func(t *testing.T) {
+		home, _ := setupUserScope(t)
+		binDir := filepath.Join(home, ".local", "bin")
+		t.Setenv("PATH", binDir)
+		link := filepath.Join(binDir, "abcd")
+		dest := plantDanglingLink(t, link)
+		vouchedPathEntry(t, filepath.Join(t.TempDir(), "abcd"))
+		recBefore, err := os.ReadFile(userPathEntryPath())
+		if err != nil {
+			t.Fatal(err)
+		}
+		noPluginRoot(t)
+
+		receipt, err := Uninstall(managedRepo(t), "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if receipt.Symlink.Removed {
+			t.Fatalf("uninstall removed a dangling link abcd cannot prove it wrote: %+v", receipt.Symlink)
+		}
+		assertLinkUntouched(t, link, dest, "uninstall with no plugin root")
+		if recAfter, _ := os.ReadFile(userPathEntryPath()); !bytes.Equal(recAfter, recBefore) {
+			t.Errorf("uninstall touched a record naming another entry: %q -> %q", recBefore, recAfter)
+		}
+	})
+}

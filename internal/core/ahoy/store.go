@@ -283,6 +283,24 @@ func danglingPathEntry(pluginRoot string) (pathEntry, bool) {
 	return pathEntry{}, false
 }
 
+// recordedDanglingPathEntry returns the first `abcd` on PATH that is a dangling
+// link ~/.abcd/path-entry names — the one owned shape that needs no plugin root
+// to recognise, so it is found when none resolves.
+func recordedDanglingPathEntry() (string, bool) {
+	for _, dir := range pathDirs() {
+		candidate := filepath.Join(dir, binName)
+		// Lstat first: recordedDanglingLink reads an ABSENT path as dangling,
+		// and a record naming a path nothing occupies is no entry at all.
+		if fi, err := os.Lstat(candidate); err != nil || fi.Mode()&os.ModeSymlink == 0 {
+			continue
+		}
+		if recordedDanglingLink(candidate) {
+			return candidate, true
+		}
+	}
+	return "", false
+}
+
 // effectiveBinTarget is the PATH entry every verb acts on: an existing owned
 // install (adopted where it stands), else the default target.
 func effectiveBinTarget(pluginRoot string) string {
