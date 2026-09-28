@@ -67,7 +67,7 @@ func TestLintOutboundPassesACleanArtefact(t *testing.T) {
 func TestLintOutboundReadsAFilePositional(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "body.md")
-	body := "Closes the gate.\n\n🤖 Generated with [Some Tool](https://sometool.dev)\n"
+	body := "Closes the gate.\n\n🤖 Generated with [Some Tool](https://sometool.dev)\n" // abcd-lint:allow
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}

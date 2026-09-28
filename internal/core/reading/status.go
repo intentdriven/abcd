@@ -31,9 +31,12 @@ type Status struct {
 	IncludeRows      int        `json:"include_rows"`
 	ExclusionRows    int        `json:"exclusion_rows"`
 	Definitions      []string   `json:"definitions"`
-	// StagedRuns is what an ASSEMBLY parked. It is not filtered by whether the
-	// run was ingested: nothing removes an assembly's directory afterwards, so a
-	// committed run and an unread one appear alike (iss captured separately).
+	// StagedRuns is what an ASSEMBLY parked and no ingest has yet given an
+	// outcome: the runs still awaiting a reading. Nothing removes an assembly's
+	// directory after its run is ingested, so the parking area alone lists every
+	// run ever assembled, committed and refused alike; a parked run whose id
+	// already has a commit marker or a refusal record is therefore left out, by
+	// the probe the rerun refusal makes (runOutcome, iss-2608311621412224).
 	StagedRuns []string `json:"staged_runs"`
 	// OrphanedIngests names the runs whose ingest reached the ledger and never
 	// reached its commit marker.
@@ -90,12 +93,27 @@ func Describe(repoRoot string) (Status, error) {
 	if err != nil && !os.IsNotExist(err) {
 		return Status{}, fmt.Errorf("reading: listing the staged runs: %w", err)
 	}
-	for _, e := range runs {
-		if e.IsDir() && strings.HasPrefix(e.Name(), RunIDFamily+"-") {
-			s.StagedRuns = append(s.StagedRuns, e.Name())
-		}
+	stages, err := os.ReadDir(filepath.Join(repoRoot, filepath.FromSlash(IngestStageDir)))
+	if err != nil && !os.IsNotExist(err) {
+		return Status{}, fmt.Errorf("reading: listing the ingest stage: %w", err)
 	}
-	sort.Strings(s.StagedRuns)
+	if len(runs) == 0 && len(stages) == 0 {
+		return s, nil
+	}
+
+	// Every probe of the durable tier goes through ONE root over the
+	// repository, so a parked run and a stage agree on a symlink: a record
+	// directory that escapes the checkout refuses the render for both, rather
+	// than refusing it for one and classifying the other by a marker read
+	// outside the repository (iss-2609261905354450).
+	root, err := os.OpenRoot(repoRoot)
+	if err != nil {
+		return Status{}, fmt.Errorf("reading: opening the repository to probe the staged runs: %w", err)
+	}
+	defer root.Close()
+	if s.StagedRuns, err = awaitingOutcome(root, runs); err != nil {
+		return Status{}, err
+	}
 
 	// A stage directory named by a run id is left in one of two states, and the
 	// commit marker is what tells them apart — the same probe the sweep's
@@ -104,16 +122,11 @@ func Describe(repoRoot string) (Status, error) {
 	// committed and only the stage failed to clear, so the records stay and
 	// only the stage goes. Calling both an orphan would tell an operator that a
 	// committed run's records are about to be deleted.
-	stages, err := os.ReadDir(filepath.Join(repoRoot, filepath.FromSlash(IngestStageDir)))
-	if err != nil && !os.IsNotExist(err) {
-		return Status{}, fmt.Errorf("reading: listing the ingest stage: %w", err)
-	}
 	for _, e := range stages {
 		if !e.IsDir() || !recordid.ValidReadingRunID(e.Name()) {
 			continue
 		}
-		marker := filepath.Join(repoRoot, filepath.FromSlash(ReadingsRecordDir), e.Name(), RunFileName)
-		switch _, err := os.Lstat(marker); {
+		switch _, err := root.Lstat(ReadingsRecordDir + "/" + e.Name() + "/" + RunFileName); {
 		case err == nil:
 			s.LeftoverStages = append(s.LeftoverStages, e.Name())
 		case os.IsNotExist(err):
@@ -125,4 +138,35 @@ func Describe(repoRoot string) (Status, error) {
 	sort.Strings(s.OrphanedIngests)
 	sort.Strings(s.LeftoverStages)
 	return s, nil
+}
+
+// awaitingOutcome returns the parked runs no ingest has given an outcome, sorted.
+//
+// The parking directory is kept after an ingest — it is the run's local
+// evidence, and removing it is not this read-only render's to do — so what
+// tells an outstanding run from an ingested one is the record: an ingested run
+// has a commit marker or a refusal record under its id in the durable tier, the
+// same probe refuseARerun makes before an ingest writes.
+func awaitingOutcome(root *os.Root, parked []os.DirEntry) ([]string, error) {
+	out := []string{}
+	for _, e := range parked {
+		if !e.IsDir() || !strings.HasPrefix(e.Name(), RunIDFamily+"-") {
+			continue
+		}
+		// A parked name the run-id shape refuses cannot have an outcome, since
+		// ingest refuses to name a record directory after it; it stays listed,
+		// as everything parked did, rather than be probed as a path.
+		if recordid.ValidReadingRunID(e.Name()) {
+			rel, err := runOutcome(root, e.Name())
+			if err != nil {
+				return nil, fmt.Errorf("reading: probing the outcome of staged run %s: %w", e.Name(), err)
+			}
+			if rel != "" {
+				continue
+			}
+		}
+		out = append(out, e.Name())
+	}
+	sort.Strings(out)
+	return out, nil
 }

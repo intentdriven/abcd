@@ -7,6 +7,10 @@ category: "bug"
 source: "user-observation"
 found_during: "itd-183-round-10-ruthless"
 found_at: "internal/core/reading/project.go"
+resolution: "The escaped-key refusal has its own message: it names the key's raw spelling, the line and the ground (a YAML escape this package does not decode), and asserts neither an excluded key nor an unclosed block. The excluded-key message no longer claims a block shape either; it states that the field reader did not report the key, so the redactor did not remove it."
+impact: fix
+resolved_by:
+  commit: "85f1cff9c45196026a5b5095b4e4b33ae7bd9f2a"
 ---
 
 the escaped key refusal returns through an error message asserting the block is unclosed and the key excluded when neither need be true
@@ -32,3 +36,7 @@ so the escape is the signal and the answer is a refusal rather than a guess.
 Cost is comprehensibility, not safety -- the refusal is correct, its stated
 reason is not. Remedy: give the escape refusal its own message. Seed material
 for the exclusion floor's own intent.
+
+## Grounds
+
+- pursued: every escaped-key refusal, line-anchored or in a flow mapping, states the escape and the line and never claims an excluded key or an unclosed block; a refusal message asserting either of an escape, or an escape admitted, would show it wrong

@@ -61,9 +61,9 @@
       ],
       "window": {
         "tokens_est": 1300000,
-        "measured_tokens_est": 1279461,
-        "measured_bytes": 4925925,
-        "measured_at": "e1344b4c3a3d7a27382964d4644a3e7cfff0de81"
+        "measured_tokens_est": 1280867,
+        "measured_bytes": 4931339,
+        "measured_at": "35483ff77ca726d81633625eaa816cae14b38d73"
       }
     },
     "entailment": {
@@ -133,9 +133,9 @@
       ],
       "window": {
         "tokens_est": 390000,
-        "measured_tokens_est": 381285,
-        "measured_bytes": 1467950,
-        "measured_at": "e1344b4c3a3d7a27382964d4644a3e7cfff0de81"
+        "measured_tokens_est": 382072,
+        "measured_bytes": 1470980,
+        "measured_at": "35483ff77ca726d81633625eaa816cae14b38d73"
       }
     },
     "comparative": {
@@ -217,9 +217,9 @@
       ],
       "window": {
         "tokens_est": 1310000,
-        "measured_tokens_est": 1288496,
-        "measured_bytes": 4960713,
-        "measured_at": "e1344b4c3a3d7a27382964d4644a3e7cfff0de81"
+        "measured_tokens_est": 1289903,
+        "measured_bytes": 4966127,
+        "measured_at": "35483ff77ca726d81633625eaa816cae14b38d73"
       }
     }
   }

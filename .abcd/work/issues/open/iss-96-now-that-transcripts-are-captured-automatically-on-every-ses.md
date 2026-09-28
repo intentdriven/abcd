@@ -7,8 +7,8 @@ category: "security"
 source: "manual-test"
 found_during: "itd-89-m1"
 found_at: "internal/adapter/scanner/patterns.go"
-deferred_after: "v0.10.0"
-deferral_reason: "ruling owed to the product thinker (away; run A 2026-09-25): Transcript-path secret detection: an entropy detector, key-name context, or an opt-in external scanner?"
+deferred_after: "v0.11.0"
+deferral_reason: "ruling owed to the product thinker: the residue past the opt-in external-scanner adapter (ruled 2026-08-28) is a bare value with no key name and a labelled value under the entropy floor, and only an always-on entropy or charset detector reads either; the same ruling rejected that detector for its redaction false-positive cost on transcript prose (hashes, ids, base64 blobs), and a native key-name rule reaches only labelled values the armed adapter already reaches, so where the floor sits, or whether a keyword-delimiter-entropy rule runs natively by default, trades a corrupted record against reach and is not an implementer call"
 ---
 
 Now that transcripts are captured automatically on every session end, the scanner's secret-pattern coverage becomes load-bearing in a way it was not when capture was a manual verb nobody ran. Verified by live test: the bundled patterns DO catch anchored tokens (AKIA... access key IDs, ghp_/gho_/sk-ant- style prefixes) and absolute home paths, but they do NOT catch unanchored high-entropy values — an AWS SECRET access key (the 40-char base64 value, no prefix), a bare password, or a generic API token with no recognisable prefix all pass through into the store verbatim. This is the standard prefix-matching limitation and is pre-existing, not a regression; the point is that the blast radius changed. Consider entropy-based detection or the opt-in gitleaks adapter for the transcript path specifically, where the input is unstructured prose rather than curated source.
@@ -213,3 +213,13 @@ carries a share of that cost too, in proportion to its reach — its entropy flo
 fires on any labelled high-entropy token in prose, credential or not. Reach and
 cost together are the open question, and where the bar sits is the maintainer's
 to decide — grill-then-implement, not autonomous work.
+
+**Re-check (2026-09-26, autonomous run A, lane drainS1).** Nothing built for
+this entry: the 2026-08-28 ruling already rejected option (a) and shipped (c)
+opt-in, and the residue it names is exactly what only (a) reaches, so building
+a detector would be re-opening a ruling rather than implementing one. The
+lane's JSON-escape views (iss-2609261647358395) widen the ANCHORED reach on
+this path — a prefixed token written straight after a `\n` or `\t` escape in a
+raw transcript line is masked from that change on — and leave the
+unanchored residue exactly where it was: `TestTranscriptPathMissesUnanchoredEntropy`
+and `TestCaptureStoresUnanchoredEntropyVerbatim` both still pass.

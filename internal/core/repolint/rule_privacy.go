@@ -224,7 +224,28 @@ func (privacyHygiene) Eval(ctx Context) ([]Finding, error) {
 // speaks about paths and addresses, which is no use to somebody looking at a
 // tool footer, and the harness class has an operational half — the post-create
 // re-read — that only its own policy states (scanner.OutboundPolicy).
+//
+// The line is read in every spelling the scanner reads (scanner.DecodedViews):
+// as written, then through its percent and JSON-escape views, so a committed
+// JSON fixture, export or transcript that writes a home path, an address or
+// a session URL behind an escape is refused as the plain spelling is
+// (iss-2609261658553101). Each view keeps every exemption the line has — the
+// waiver is read on the line as written, and the persona, system-root and
+// reserved-value exemptions run on whichever spelling matched.
 func privacyLeak(line string, patterns []scanner.Pattern) (msg, fix string, sev Severity, leaked bool) {
+	if msg, fix, sev, leaked = privacyLeakOn(line, patterns); leaked {
+		return msg, fix, sev, leaked
+	}
+	for _, view := range scanner.DecodedViews(line) {
+		if msg, fix, sev, leaked = privacyLeakOn(view, patterns); leaked {
+			return msg, fix, sev, leaked
+		}
+	}
+	return "", "", SeverityError, false
+}
+
+// privacyLeakOn is privacyLeak over one spelling of the line.
+func privacyLeakOn(line string, patterns []scanner.Pattern) (msg, fix string, sev Severity, leaked bool) {
 	if hasAbsHomePath(line) {
 		return "committed file contains an absolute local path", "", SeverityError, true
 	}
