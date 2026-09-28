@@ -75,15 +75,17 @@ any secret step.
 
 **The host.** With a hosting credential on this machine, the provider adapter
 creates the host, routes the custom domain to it and reports the live address.
-Without one, the stage stops and says what remains: store the credential and
-re-run, or create the host in the provider's console.
+Without one, the stage stops and says what remains: store the credential through the credential
+walkthrough at `ahoy`, which verifies it with the provider's own account read
+before it keeps it, and re-run, or create the host in the
+provider's console.
 
 Both remote stages write only after a confirmation that names each change, and
 an unanswered run declines them. The deploy environment's secrets are never
 set by abcd, because the value would pass through it: the verb reads which
 secret names are present and prints the exact command for each one that is not.
-The credential is read by name from the machine and never written into the
-repository or the report. A second run over an unchanged repository and host
+The credential is read by name through the credential store and never written
+into the repository or the report, which names only the credential's name. A second run over an unchanged repository and host
 writes nothing and says so. One provider ships, behind an adapter seam
 ([`05-internals/02-adapters.md`](../05-internals/02-adapters.md#hosting-providers)).
 

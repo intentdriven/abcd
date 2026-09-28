@@ -43,6 +43,10 @@ type State struct {
 
 // Provider is the live half of the seam: one connected account.
 type Provider interface {
+	// Verify is the provider's own call proving the credential reaches an
+	// account it can act in. It writes nothing; the credential walkthrough
+	// makes it before the credential is stored.
+	Verify(ctx context.Context) error
 	// Inspect reads what the host holds for s. It writes nothing.
 	Inspect(ctx context.Context, s Site) (State, error)
 	// Create creates the host for s.

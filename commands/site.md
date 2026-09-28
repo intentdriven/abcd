@@ -131,8 +131,10 @@ the closed set (`landing`, `explorer`, `record_pages`, `graph`, `timeline`,
 `glossary`, `status`) off; it cannot add one.
 
 Report each stage's outcome, then the remaining steps in order. Never paste a
-credential into the conversation: the store is the file `~/.abcd/credentials.json`
-(mode `0600`), which the user writes themselves.
+credential into the conversation: the user stores it themselves with `abcd ahoy
+credential hosting.cloudflare` (see `/abcd:ahoy`), which explains where it can
+live and verifies it before keeping it; `host.credential` names the credential,
+never its value.
 
 ## The gate over what was rendered
 

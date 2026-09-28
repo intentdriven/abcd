@@ -99,7 +99,7 @@ func TestCallSendsTheBriefToThePointedModelWithTheKeyByName(t *testing.T) {
 	if string(payload) != `{"verdict":"keep"}` {
 		t.Fatalf("payload = %q", payload)
 	}
-	want := CallRecord{Provider: "openrouter", ModelAsked: "typesafe/jev-1.13", ModelReported: "typesafe/jev-1.13-20260915"}
+	want := CallRecord{Provider: "openrouter", ModelAsked: "typesafe/jev-1.13", ModelReported: "typesafe/jev-1.13-20260915", Credential: "openrouter"}
 	if rec != want {
 		t.Fatalf("record = %+v, want %+v", rec, want)
 	}
@@ -123,9 +123,9 @@ func TestCallRefusesAnUnsetKeyWithoutACall(t *testing.T) {
 	f := newFx(t)
 	f.machineConfig(`{"oracle":{"api":{"openrouter":{"base_url":"` + p.base() + `","key":"openrouter","models":["typesafe/jev-1.13"]}}}}`)
 	c := f.loadAPI()
-	_, _, err := c.Call(context.Background(), credential.Machine(f.roots.Home), CallRequest{
+	_, _, err := c.Call(context.Background(), credential.Store(f.roots.Home), CallRequest{
 		Target: Target{Provider: "openrouter", Model: "typesafe/jev-1.13"}, Contract: verdictContract})
-	if err == nil || !strings.Contains(err.Error(), `"openrouter"`) || !strings.Contains(err.Error(), "abcd ahoy connect") {
+	if err == nil || !strings.Contains(err.Error(), `"openrouter"`) || !strings.Contains(err.Error(), credential.Walkthrough("openrouter")) {
 		t.Fatalf("err = %v, want a refusal naming the credential and the setup", err)
 	}
 	if n := p.calls.Load(); n != 0 {
@@ -206,9 +206,11 @@ func TestTheReceiptCarriesTheProviderCall(t *testing.T) {
 	if !strings.Contains(string(enc), `"provider_call":null`) {
 		t.Fatalf("harness receipt = %s", enc)
 	}
-	rec := CallRecord{Provider: "openrouter", ModelAsked: "typesafe/jev-1.13", ModelReported: "typesafe/jev-1.13-20260915"}
+	rec := CallRecord{Provider: "openrouter", ModelAsked: "typesafe/jev-1.13", ModelReported: "typesafe/jev-1.13-20260915", Credential: "openrouter"}
 	enc, _ = json.Marshal(r.Receipt("").WithCall(rec))
-	for _, want := range []string{`"provider_call":{"provider":"openrouter","model_asked":"typesafe/jev-1.13","model_reported":"typesafe/jev-1.13-20260915"}`} {
+	// The run's record names the credential the call used, and never a value
+	// (itd-2609221017023290 criterion 5).
+	for _, want := range []string{`"provider_call":{"provider":"openrouter","model_asked":"typesafe/jev-1.13","model_reported":"typesafe/jev-1.13-20260915","credential":"openrouter"}`} {
 		if !strings.Contains(string(enc), want) {
 			t.Fatalf("receipt = %s, want %s", enc, want)
 		}

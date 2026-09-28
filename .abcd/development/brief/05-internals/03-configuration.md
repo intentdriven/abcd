@@ -352,13 +352,13 @@ keys, each read beneath the repo-scope `.abcd/config.json`, and its one write
 the provider block `ahoy connect` adds; every other config read resolves the
 repo-scope `.abcd/config.json` alone), the load check's two limits in
 `load-limits` (read-only and never created, itd-2609231434459890), the external
-credentials adapters resolve by name in `credentials.json` (refused unless it is
-a regular file this uid owns at mode 0600 that names each credential once, a
-repeated key or a case twin included; `ahoy connect` adds one name at a time and
-never replaces a stored value, holding the file's lock across the read and the
-write as the provider block's write holds `config.json`'s, so concurrent setups
-lose nothing — the interim source the credential store, itd-2609221017023290,
-replaces), the
+credentials adapters resolve by name through the credential store, whose abcd
+home is `credentials.json` and whose index is `credential-homes.json` (each
+refused unless it is a regular file this uid owns at mode 0600 that names each
+credential once, a repeated key or a case twin included; the walkthrough adds
+one name at a time and never replaces a stored value, holding the file's lock
+across the read and the write as the provider block's write holds
+`config.json`'s, so concurrent setups lose nothing), the
 machine's rule conventions in `rules.json` (the user layer of the rules loader,
 read-only and never created, itd-117 — see
 [the rules layers](#the-rules-layers--bundled-user-repo) below), user-scope memory for personal cross-project knowledge (a later

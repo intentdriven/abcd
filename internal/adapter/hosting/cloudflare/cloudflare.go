@@ -269,6 +269,13 @@ func (c *client) scrub(s string) string {
 	return strings.ReplaceAll(s, c.token, "[credential]")
 }
 
+// Verify proves the token reaches exactly one account, by the same read the
+// host stage begins with.
+func (c *client) Verify(ctx context.Context) error {
+	_, err := c.accountID(ctx)
+	return err
+}
+
 // accountID resolves the one account the token reaches, once.
 func (c *client) accountID(ctx context.Context) (string, error) {
 	if c.account != "" {

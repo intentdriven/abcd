@@ -1,12 +1,10 @@
-// Package credential is the one reader every adapter resolves an external
-// credential through, by NAME.
-//
-// This is the interim source itd-2609061543533170 ruled for `abcd site setup`
-// (its `## Decisions`, 2026-09-25): the credential store proper, with its three
-// homes and its walkthrough, is itd-2609221017023290, which is planned and not
-// built. Until it lands, a credential is read from one machine-scoped file,
-// ~/.abcd/credentials.json, a JSON object mapping a credential name to its
-// value. The successor replaces the source behind Source; no reader changes.
+// Package credential is the credential store (itd-2609221017023290,
+// adr-2609221017021499): the one reader every adapter resolves an external
+// credential through, by NAME (Store, store.go), the one write (Set), and the
+// walkthrough that chooses a credential's home (Walk, walk.go). This file is
+// the abcd home: one machine-scoped file, ~/.abcd/credentials.json, a JSON
+// object mapping a credential name to its value. The keychain and external
+// homes are keychain.go and external.go.
 //
 // The file is refused, loudly and never treated as absent, unless it is a
 // regular file (not a symlink), owned by the caller, and readable and writable
@@ -15,9 +13,8 @@
 //
 // The value never leaves Resolve except as its return: no error formats it,
 // nothing logs it, and nothing here writes to the repository. The one write is
-// SetMachine, into this same file, for the setup of the OpenAI-compatible API
-// adapter (itd-2609081951381895). A malformed file is refused without echoing
-// a byte of it.
+// SetMachine, into this same file, which Set calls for the abcd home. A
+// malformed file is refused without echoing a byte of it.
 package credential
 
 import (
@@ -36,7 +33,7 @@ import (
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
-// StoreFileName is the interim store's file under ~/.abcd/.
+// StoreFileName is the abcd home's file under ~/.abcd/.
 const StoreFileName = "credentials.json"
 
 // maxStoreBytes bounds the store read.
@@ -60,22 +57,15 @@ var nameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}$`)
 // it is read rather than at the first call.
 func ValidName(name string) bool { return nameRe.MatchString(name) }
 
-// Machine is the interim machine-scoped source rooted at home (the caller's
-// home directory). An empty home resolves every name to ErrNotSet.
+// Machine is the abcd home alone, rooted at home (the caller's home
+// directory). An empty home resolves every name to ErrNotSet. Every reader
+// outside this package resolves through Store, which reads this home among
+// the three; a test refuses any other.
 func Machine(home string) Source { return machine{home: home} }
-
-// UserMachine is Machine at the caller's home directory.
-func UserMachine() Source {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		home = ""
-	}
-	return Machine(home)
-}
 
 type machine struct{ home string }
 
-// StorePath is where the interim store lives, displayed with ~ so no
+// StorePath is where the abcd home lives, displayed with ~ so no
 // developer-identity path reaches output.
 const StorePath = "~/.abcd/" + StoreFileName
 
@@ -144,10 +134,9 @@ func readStore(home string) (map[string]string, error) {
 // MaxValueBytes bounds one credential's value.
 const MaxValueBytes = 4096
 
-// SetMachine writes value under name in the interim store at home
-// (~/.abcd/credentials.json): the one write this package makes, for the one
-// home it reads (itd-2609081951381895's setup; the credential store,
-// itd-2609221017023290, brings the other homes and replaces this backing).
+// SetMachine writes value under name in the abcd home at home
+// (~/.abcd/credentials.json): the abcd home's write, which Set makes for it
+// and no reader outside this package calls.
 //
 // It refuses, before writing anything and without echoing either value: a
 // name that is not plain; a value that is empty, longer than MaxValueBytes,

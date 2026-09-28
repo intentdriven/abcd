@@ -122,10 +122,10 @@ authenticated identity: abcd never holds a token.
 
 The setup takes the provider's name, its base URL, its first allowlist (every
 model it may serve) and where its key lives. It verifies the provider with one
-call to the first model listed and, only when that call succeeds, writes the key
-and then the provider block, both under `~/.abcd/`: the key into the owner-only
-`credentials.json`, the block (base URL, the key's name, the models) into
-`config.json`. A failed verification writes nothing. Nothing reaches the
+call to the first model listed and, only when that call succeeds, keeps the key
+in the home chosen through the credential store's walkthrough and then writes
+the provider block (base URL, the key's name, the models) into
+`~/.abcd/config.json`. A failed verification writes nothing. Nothing reaches the
 repository or the harness's settings. Every fault the configuration read would
 refuse (a denylisted or malformed model, a base URL that is plain HTTP to
 another machine, a provider already configured, a key name already holding a
@@ -140,12 +140,50 @@ the same reason the walkthrough is this sub-verb, which the person runs with the
 key piped in, rather than a question the install pass asks: declining is not
 running it, and changes nothing.
 
-Of the three homes a key may live in, the setup builds the abcd-only one. The
-environment-variable-or-external-tool home and the platform keychain arrive with
-the credential store (itd-2609221017023290); asked for either, the setup refuses
-naming it. A fourth answer, no key, sets up a local server that takes none.
+The key lives in one of the credential store's three homes (below), and a
+fourth answer, no key, sets up a local server that takes none.
 No delegating verb sends a step to a configured provider until provider dispatch
 lands (spc-2609251028149555), and both the board and the setup say so.
+
+### The credential store and its walkthrough
+
+Every external credential abcd holds goes through one store
+(`internal/core/credential`, adr-2609221017021499): configuration names a
+credential, and the value lives in the home the person chose for it, once, in
+the credential walkthrough at `ahoy`. Without a name, the walkthrough lists
+every credential an adapter reads (the site setup's hosting token, each
+configured provider's key) with whether it is set and in which home, never the
+value; with a name and no home, it explains what the credential unlocks and
+what works without it, then the three homes, the keychain recommended in the
+prose above them and never marked as an option. Given a home, it runs: the
+reading adapter's own verification call (the provider's one short exchange,
+the hosting provider's account read) with the value, and only when that
+succeeds, the write. The provider setup runs the same walkthrough for a new
+provider's key.
+
+The three homes:
+
+- `external` — a setup outside abcd: an environment variable, or a dotted
+  field of a tool's JSON configuration file under the home directory. The
+  store keeps only the pointer, in
+  `~/.abcd/credential-homes.json`, and follows it on every read.
+- `abcd` — the owner-only `~/.abcd/credentials.json`, which holds the value.
+- `keychain` — the platform keychain under the service name `abcd` (the
+  Keychain through `/usr/bin/security` on macOS, the secret service through
+  `/usr/bin/secret-tool` on Linux), the value handed over on stdin, never in an
+  argument; `credential-homes.json` records only that the name lives there. A
+  platform with neither tool refuses this home and names the other two.
+
+One reader, `credential.Store(home).Resolve(name)`, serves every adapter; a
+name no home holds is a refusal naming the walkthrough, and the caller makes no
+call. A test walks the production tree for any other read (a store file named,
+a keychain command run, a secret-shaped environment variable read). One write,
+`credential.Set`, is reached only through the walkthrough: it refuses a home
+inside a git working tree, a name another home already holds, and a different
+value for a name already kept, and the secret scanner reads the index's bytes
+before they are written, refusing any finding. A value is read from stdin only,
+and never printed, logged or written to a record; a call's record names the
+credential it used.
 
 ## What abcd manages — repos and `~/.abcd/`
 
@@ -186,13 +224,17 @@ user-scope directory for machine-local state.
   load-limits                    the load check's per-machine limits (stray-minutes,
                                  extreme-load), read-only; abcd never creates it
                                  (itd-2609231434459890)
-  credentials.json               external credentials by name (a hosting token for
-                                 setting up a site, a provider's key), mode 0600;
-                                 only the provider setup writes it, one new name at
-                                 a time, never replacing a stored value, holding
-                                 .credentials.json.lock beside it across the read
-                                 and the write. The interim source the credential
-                                 store replaces (itd-2609221017023290)
+  credentials.json               the credential store's abcd home: external
+                                 credentials by name (a hosting token, a provider's
+                                 key), mode 0600; only the walkthrough writes it,
+                                 one new name at a time, never replacing a stored
+                                 value, holding .credentials.json.lock beside it
+                                 across the read and the write (itd-2609221017023290)
+  credential-homes.json          the credential store's index: which names live in
+                                 the keychain, and the pointer for each in the
+                                 external home; never a value, scanned before it is
+                                 written, mode 0600, .credential-homes.json.lock
+                                 beside it
   rules.json                     the machine's rule conventions, the user layer
                                  between the bundled domains and each repo's
                                  .abcd/rules.json, read-only; abcd never creates it
@@ -684,7 +726,7 @@ _Generated from the command tree; a drift test fails `go test` when this appendi
 
 ### `abcd ahoy`
 
-Sub-verbs: `abcd ahoy connect`, `abcd ahoy doctor`, `abcd ahoy install`, `abcd ahoy remote`, `abcd ahoy uninstall`.
+Sub-verbs: `abcd ahoy connect`, `abcd ahoy credential`, `abcd ahoy doctor`, `abcd ahoy install`, `abcd ahoy remote`, `abcd ahoy uninstall`.
 
 | Flag | Type |
 |---|---|
@@ -700,9 +742,23 @@ Sub-verbs: none.
 | Flag | Type |
 |---|---|
 | `--base-url` | string |
+| `--env` | string |
+| `--field` | string |
+| `--file` | string |
 | `--home` | string |
 | `--key` | string |
 | `--model` | stringArray |
+
+### `abcd ahoy credential`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--env` | string |
+| `--field` | string |
+| `--file` | string |
+| `--home` | string |
 
 ### `abcd ahoy doctor`
 
