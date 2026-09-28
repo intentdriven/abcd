@@ -9,7 +9,7 @@ found_during: "adversarial-review"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "scripts/check-attribution.sh"
-resolution: "The attribution gate also refuses, in both roles, a trailing bot, robot or automation word standing alone at the end of the display name or the mailbox's local part, so a configured automation such as semantic-release-bot at a forge no-reply address is a machine; the comment names the shapes still out of reach and the one over-reach (a person whose name ends in the separate word Bot). Proved by cases in scripts/check-attribution-cases.sh: semantic-release-bot at a forge no-reply address, Renovate Bot, release_automation@ and a ci-robot committer are refused (all accepted by the previous gate), while Ada Talbot at a forge privacy address and jean.bot@ still pass."
+resolution: "The attribution gate also refuses, in both roles, a trailing bot, robot or automation word ending the display name or the mailbox's local part, standing alone or joined by - or _ (and + in the local part), so a configured automation such as semantic-release-bot at a forge no-reply address is a machine; whitespace does not separate the word in a display name, so a person named Jan Bot passes (cec6047b5), and the comment names the shapes still out of reach. Proved by cases in scripts/check-attribution-cases.sh: semantic-release-bot at a forge no-reply address and by name alone, ci_bot, Renovate Bot at bot@renovateapp.com, release_automation@ and a ci-robot committer are refused, while Ada Talbot at a forge privacy address, jean.bot@ and Jan Bot pass."
 impact: internal
 resolved_by:
   commit: "bd3f55e68"

@@ -9,7 +9,7 @@ found_during: "autonomous-run-2026-09-01"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "scripts/check-issue-resolution.sh"
-resolution: "ids_entering_closed now counts an id as entering resolved/ or wontfix/ only when the base does not already hold it in a terminal folder (the base's listing, so a move rewritten past rename detection is caught too); ids_entering_shipped takes the same filter for shipped/. Proved by four cases in scripts/check-issue-resolution-cases.sh (base-side resolved->wontfix move, base-side reslug, the move rewritten past rename detection, the shipped/ reslug twin), each passing the old gate and refused by the new one."
+resolution: "ids_entering_closed now counts an id as entering resolved/ or wontfix/ only when the merge base did not hold it in the very folder it lands in (the merge base's listing, so a move rewritten past rename detection is caught too, and a branch's own wontfix/ -> resolved/ move still enters: a24c792e8); ids_entering_shipped filters on the base's shipped/ listing. Proved by four cases in scripts/check-issue-resolution-cases.sh (base-side resolved->wontfix move, base-side reslug, the move rewritten past rename detection, the shipped/ reslug twin), each passing the old gate and refused by the new one, while a branch's own wontfix/ -> resolved/ move passes."
 impact: internal
 resolved_by:
   commit: "46ae88404"

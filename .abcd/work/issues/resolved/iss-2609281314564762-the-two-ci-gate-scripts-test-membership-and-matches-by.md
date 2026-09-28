@@ -9,7 +9,7 @@ found_during: "autonomous run A resumed 2026-09-25 (lane drainScr, full-history 
 origin: researcher-authored
 production_mode: hand-written
 found_at: "scripts/check-issue-resolution.sh"
-resolution: "Every membership and match test in scripts/check-issue-resolution.sh and scripts/check-attribution.sh reads a here-string instead of a printf pipe, and RS006's frontmatter reader reads to the end instead of exiting early; the cases suites' own helpers take the same change. Proved by two cases, each failing against the previous scripts: a message declaring 1,100 long ids (about 70 KiB) is read whole by RS004 (the previous gate refused 39 of its declared ids), and a Co-authored-by line at the top of a 200 KiB pull-request body is refused (the previous gate accepted it)."
+resolution: "Every membership and match test in scripts/check-issue-resolution.sh and scripts/check-attribution.sh reads a here-string instead of a printf pipe, and RS006's frontmatter reader reads to the end instead of exiting early; the cases suites' own helpers take the same change. Proved by two cases, each failing against the previous scripts: a message declaring 1,100 long ids (about 70 KiB) is read whole by RS004 (the previous gate refused 39 of its declared ids), and a Co-authored-by line at the top of a 200 KiB pull-request body is refused (the previous gate accepted it). The RS006 reader half landed in eff2eefda, proved by a resolved record of about 200 KiB passing (the previous gate ended at exit 141)."
 impact: internal
 resolved_by:
   commit: "5b7c79426"
