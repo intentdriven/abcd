@@ -300,7 +300,12 @@ abcd prints a one-line export fix and never edits a shell profile; and any
 `abcd` that comes *before* abcd's own entry is shadowed, because an entry that is
 correct and never reached is not an install (iss-171). Install carries the two
 non-resolvable ones on its own result as notes, since a fresh user cannot run
-the doctor by name on a machine where abcd is not yet on `PATH`.
+the doctor by name on a machine where abcd is not yet on `PATH`. A foreign
+regular file at an entry abcd would write, or ahead of its own, is described
+rather than only named: its size, when it was last modified, and whether its
+embedded Go build metadata identifies it as an abcd build and of which version,
+read without running it, so the person deciding whether to clear it need not
+inspect it by hand (iss-2609120447482255).
 
 **The name-guard scaffolding is reported at the granularity a maintainer can
 act on.** Each absent artefact is a gap abcd will create; every other state is a

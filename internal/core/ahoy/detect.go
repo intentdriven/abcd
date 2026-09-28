@@ -636,7 +636,8 @@ func detectPathSymlink(cwd, pluginRoot string, pluginOK bool) []Gap {
 		} else {
 			gaps = append(gaps, Gap{
 				ID: "symlink.foreign", Category: ConfigChange, Scope: "machine",
-				Title: "non-symlink at " + displayPath(target), Detail: "A regular file occupies the PATH entry abcd would write.",
+				Title:   "non-symlink at " + displayPath(target),
+				Detail:  "A regular file occupies the PATH entry abcd would write: " + describeForeignFile(target, fi) + ".",
 				FixHint: "Resolve manually; ahoy refuses to clobber.", Required: false, Resolvable: false,
 			})
 		}
