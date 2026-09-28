@@ -264,7 +264,10 @@ func describeIntent(repoRoot, id string) (Description, error) {
 	if len(it.RelatedIssues) > 0 {
 		d.Links["related_issues"] = strings.Join(it.RelatedIssues, ", ")
 	}
-	if sup := fields["superseded_by"].Value; sup != "" && !frontmatter.IsNull(sup) {
+	// Absence is frontmatter.IsEmptyValue's, the question record-lint's
+	// supersession gate asks, so `[]`, `{}` and `!!null` name no successor here
+	// either (iss-2608301744300631).
+	if sup := fields["superseded_by"].Value; !frontmatter.IsEmptyValue(sup) {
 		d.Links["superseded_by"] = sup
 	}
 	if it.Held != "" {
@@ -567,7 +570,10 @@ func describeADR(repoRoot, id string) (Description, error) {
 			Path:   rel,
 			Links:  map[string]string{},
 		}
-		if sup := fields["superseded_by"].Value; sup != "" && !frontmatter.IsNull(sup) {
+		// One emptiness question with the supersession gate: an empty collection
+		// or an empty node is no successor, never a link to a bracket pair
+		// (iss-2608301744300631).
+		if sup := fields["superseded_by"].Value; !frontmatter.IsEmptyValue(sup) {
 			d.Links["superseded_by"] = sup
 		}
 		d.NextMoves = []string{"none — decisions are read"}
