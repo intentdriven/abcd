@@ -144,7 +144,12 @@ func blockText(lines []string, b mdrecord.BulletBlock) string {
 //
 // The count question subsumes more than the comment one: a bullet swallowed by a
 // fence, by a mask this reader does not yet model, or by anything else, fails to
-// raise the count and is refused for the same reason. The comment question is
+// raise the count and is refused for the same reason. It answers for THIS
+// reader only. The site's renderer reads the same record in the same preflight
+// and refuses constructs this reader accepts — an unclosed code span, an image,
+// raw HTML, a reference link — and that question is asked where a Grounds is
+// built (New, NewDerived), of the site's renderer itself, so a Grounds that
+// reaches this writer through either constructor already renders. The comment question is
 // still asked separately because it is the one whose remedy the caller can act
 // on — "close the comment, or drop the marker" — and a refusal that can name the
 // cause is worth more than one that can only say the entry did not arrive.

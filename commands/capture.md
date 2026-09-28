@@ -277,8 +277,11 @@ closed — `pursued`, `deferred`, `declined` — and the text is free prose:
 when it is not: the refusal on an absent value is parked (iss-2609091009111294)
 until the rethink of the reading work settles what a human is asked for at a
 triage. A malformed value is still refused — an unknown token, a missing colon,
-or a text below the substance floor. Every grounds refusal is a usage error at
-exit 2, on all three routes.
+a text below the substance floor, or a text the site cannot render (an unclosed
+backtick, an image, raw HTML, a reference link), since the entry is append-only
+and the record must still build. A wontfix reason is held to that last check
+too, because its `declined:` entry is written from it. Every grounds refusal is
+a usage error at exit 2, on all three routes.
 `promote <rdi-N>` is the one route that takes no grounds and refuses one handed
 to it: a reading item states its conjecture in its disposition, which promote
 already refuses to act without, so a second one here would reach no record.
