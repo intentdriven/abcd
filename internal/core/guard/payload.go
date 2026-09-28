@@ -201,16 +201,19 @@ func expandPayloads(segs []segment) ([]segment, []payloadSignal) {
 }
 
 // payloadView is s with each word that holds only variables, and stands
-// where no command can sit, spelled as the line spells it (segment.variable):
-// a string handed to a shell carries `$X` for that shell to expand, and the
-// payload reading reads it there, where `--$X` is a flag of unknown name and
-// `$X` alone is a program name or an operand, as it is at the top level. The
-// shell that runs the string has already put the value in, and a value that
-// holds shell syntax is not read: that is the gap shellRawUninspectable
-// keeps open for a bare `$VAR` rather than warn on every string that holds
-// one, and `eval "$X"` reads as a program named by a variable
-// (iss-2609251824244354). A word where a command can sit keeps its mark, so
-// the name it can be is read by every family.
+// where no command can sit, spelled with varMark where each value goes
+// (segment.variable): the shell that runs a string handed to it gets the
+// value the enclosing shell put in, and the payload reading takes the mark
+// for that value, where `--\x01` is a flag of unknown name and the mark alone
+// a program name or an operand, as at the top level. The mark is not text, so
+// the string's own quoting applies to the value, as bash applies it: `'--$X'`
+// and `\$X` in a string are the flag the value spells, not the literal `$X`
+// (review-drainG3 finding 1). A value that holds shell syntax is not read:
+// that is the gap shellRawUninspectable keeps open for a bare `$VAR` rather
+// than warn on every string that holds one, and `eval "$X"` reads as a
+// program named by a variable (iss-2609251824244354). A word where a command
+// can sit keeps its unknownMark, so the name it can be is read by every
+// family.
 func payloadView(s segment) segment {
 	if len(s.variable) == 0 {
 		return s
@@ -1014,7 +1017,7 @@ func isPlainCommand(s string) bool {
 	}
 	for i := 0; i < len(s); i++ {
 		switch s[i] {
-		case '\\', '$', '\'', '"', '#', unknownMark:
+		case '\\', '$', '\'', '"', '#', unknownMark, varMark:
 			return false
 		}
 	}

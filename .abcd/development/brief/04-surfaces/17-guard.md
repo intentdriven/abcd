@@ -201,7 +201,7 @@ own `}`, where a nested `"` opens a string of its own, and a substitution in its
 text runs and is read. A variable that is the whole word is read as an operand,
 as a wholly-substituted word is (`git push origin "$branch"`), and a string
 handed to a shell carries its variables for that shell to expand, where they
-are read by the same rule. What a variable carries in from an earlier command
+are read by the same rule, the string's own quotes applying to the value. What a variable carries in from an earlier command
 is not read: as a script it is not a stream, and as the program's name it is not
 a `pkill` or `killall`, whose entries name only the program and an operand, nor a
 bare interpreter inside a string, because a variable is how ordinary commands

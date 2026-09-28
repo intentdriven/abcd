@@ -75,6 +75,30 @@ const unknownMark = '\x00'
 // unknownText is unknownMark as a string, for building tokens.
 const unknownText = "\x00"
 
+// varMark stands, in the TEXT of a string the guard re-reads as a payload,
+// for a variable's value the enclosing shell has already put there
+// (payloadView). The tokenizer turns it into unknownMark in the word it lands
+// in, and records that the word's unknown part is a variable's
+// (segment.variable), wherever it stands: unquoted, inside a quote, behind a
+// backslash or in an ANSI-C string. That is what the enclosing shell did to
+// the value — the string's own quoting applies to the value, not to a name —
+// so `sh -c "git push '--$X'"` is read as the flag of unknown name bash
+// builds (review-drainG3 finding 1). Spelling the variable back as `$X` text
+// applied that quoting to the name instead, and `'--$X'` read as text.
+//
+// It is the byte 0x01. An ANSI-C escape that decodes to it stays text
+// (readAnsiCQuote), but the byte itself can reach the text read: written raw
+// in the line, or carried into a string's text from the level above. There
+// it is read as a variable's value — every flag and program name its known
+// text allows, less the readings variableCarried drops, each of which a
+// literal 0x01 byte in its place cannot produce either: it names no program,
+// no stream and no flag. So a byte read as the mark reads no narrower than
+// the literal byte bash hands on.
+const varMark = '\x01'
+
+// varText is varMark as a string, for spelling a payload's text.
+const varText = "\x01"
+
 // isUnknown reports whether a word carries a substitution's output.
 func isUnknown(tok string) bool { return strings.IndexByte(tok, unknownMark) >= 0 }
 

@@ -189,7 +189,8 @@ text allows; a single-quoted or escaped `$` is text. A word that is wholly a
 variable is read as an operand, as a wholly-substituted one is, so `git push
 origin "$branch"` stays allowed and `git push $X origin main` is not seen. A
 string handed to a shell carries its variables for that shell to expand
-(`sh -c "git push --$X …"` is read as that shell reads it). A variable's value
+(`sh -c "git push --$X …"` is read as that shell reads it), and the string's
+own quotes apply to the value, so `'--$X'` inside it is a flag too. A variable's value
 is not read as what an earlier command carried into it: as a shell's or
 `source`'s script it is not a stream (`bash "$script"`), and as the program's
 name it is not `pkill` or `killall`, whose entries name only the program and an

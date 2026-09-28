@@ -73,11 +73,12 @@ type segment struct {
 	// variable records, per token index, that every unknown part of the word
 	// is a parameter expansion's value, a variable set before the line ran,
 	// and none a substitution's output (iss-2609251824244354), with the word
-	// as the line spells it, each expansion written out (`--$X`). nil when no
-	// word is. Three readings take it: a variable's value is not read as a
-	// stream path or as a program whose entry names nothing but itself and
-	// its operands (variableCarried in unknown.go), and a string handed to a
-	// shell carries the expansion for the shell to read (payloadView).
+	// spelled with varMark where each value goes (`--\x01`), or "" for a word
+	// brace expansion made. nil when no word is. Three readings take it: a
+	// variable's value is not read as a stream path or as a program whose
+	// entry names nothing but itself and its operands (variableCarried in
+	// unknown.go), and a string handed to a shell carries the value's mark
+	// for the re-read to take as a variable's (payloadView).
 	variable map[int]string
 	// arrivals caches commandArrivals(tokens) once Check has its final
 	// segments (walked records that it is set), so the walk to command position
@@ -368,11 +369,9 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		curPieces []litPiece
 		// vars rides with the segment (segment.variable); curVar and curSub
 		// record, for the word being built, that a parameter expansion and a
-		// substitution left their mark in it, and curVarRaw holds, in order,
-		// the text of each parameter expansion that left one.
+		// substitution left their mark in it (addCur).
 		vars           map[int]string
 		curVar, curSub bool
-		curVarRaw      []string
 		// curMask is parallel to cur and records, per byte, whether it reached
 		// the tokenizer unquoted (wordStruct) and whether it began its word
 		// (wordRawStart) — what the brace expander needs to read a word the way
@@ -537,12 +536,30 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 	}
 	// addCur appends bytes to the word being built with one mask value for all
 	// of them: wordStruct for bytes read unquoted, zero for quoted, escaped or
-	// decoded ones.
+	// decoded ones. Every byte a word takes passes here but a varMark an
+	// ANSI-C escape decoded (addText), so here is where a mark in the text
+	// read is recorded, whatever quote it stands in: a varMark is a
+	// variable's value (unknown.go) and becomes unknownMark in the word, and
+	// an unknownMark is a substitution's output.
 	addCur := func(b []byte, mask byte) {
-		cur = append(cur, b...)
-		for range b {
+		for _, c := range b {
+			switch c {
+			case varMark:
+				c = unknownMark
+				curVar = true
+			case unknownMark:
+				curSub = true
+			}
+			cur = append(cur, c)
 			curMask = append(curMask, mask)
 		}
+		hasCur = true
+	}
+	// addText appends one decoded byte as text: an ANSI-C escape that
+	// decodes to varMark hands bash that byte, and no mark (readAnsiCQuote).
+	addText := func(c byte) {
+		cur = append(cur, c)
+		curMask = append(curMask, 0)
 		hasCur = true
 	}
 	// recordFeeds files the word being built's feeds under the index it is
@@ -558,37 +575,27 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 	}
 	// recordVar files the word being built under segment.variable when every
 	// mark in it is a parameter expansion's, spelled with each mark written
-	// back as the expansion's text. A brace expansion's words are not spelled
-	// (each may hold a different count of marks), and are filed as a
-	// variable's only for the two readings that need no spelling.
+	// as varMark, which a payload re-read takes for a variable's value
+	// whatever quote the string puts round it (unknown.go). A substitution's
+	// mark in the word, from anywhere, sets curSub, so none is spelled as a
+	// variable's. A brace expansion's words are not spelled, and are filed as
+	// a variable's only for the two readings that need no spelling.
 	recordVar := func(spell bool) {
 		if !curVar || curSub {
 			return
 		}
 		text := ""
-		if spell && bytes.Count(cur, []byte{unknownMark}) == len(curVarRaw) {
-			var b strings.Builder
-			k := 0
-			for _, c := range cur {
-				if c == unknownMark {
-					b.WriteString(curVarRaw[k])
-					k++
-				} else {
-					b.WriteByte(c)
-				}
-			}
-			text = b.String()
+		if spell {
+			text = strings.ReplaceAll(string(cur), unknownText, varText)
 		}
 		if vars == nil {
 			vars = map[int]string{}
 		}
 		vars[len(toks)] = text
 	}
-	// addVar leaves the mark of a parameter expansion written raw in the line.
-	addVar := func(raw string) {
-		addCur([]byte{unknownMark}, 0)
-		curVar = true
-		curVarRaw = append(curVarRaw, raw)
+	// addVar leaves the mark of a parameter expansion where its value goes.
+	addVar := func() {
+		addCur([]byte{varMark}, 0)
 	}
 	flushToken := func() {
 		if !hasCur {
@@ -615,7 +622,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 					globs = append(globs, w.globbed())
 				}
 				cur, curMask, hasCur, curGlob, curBrace = nil, nil, false, false, false
-				curPieces, curFeeds, curVar, curSub, curVarRaw = nil, nil, false, false, nil
+				curPieces, curFeeds, curVar, curSub = nil, nil, false, false
 				return
 			}
 			braceGroup = true
@@ -633,7 +640,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		curPieces = nil
 		recordFeeds()
 		recordVar(true)
-		curFeeds, curVar, curSub, curVarRaw = nil, false, false, nil
+		curFeeds, curVar, curSub = nil, false, false
 		// An unquoted `{` or `}` in command position opens or closes a group.
 		if len(curMask) == 1 && curMask[0]&wordStruct != 0 && allReserved(toks) {
 			switch tok {
@@ -806,7 +813,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 	// becoming a command called `-rf`.
 	openSubstitution := func(kind parenKind, pos int, procSub bool) {
 		saved := &enclosing{
-			toks: toks, globs: globs, lits: lits, vars: vars, curVar: curVar, curSub: curSub, curVarRaw: curVarRaw,
+			toks: toks, globs: globs, lits: lits, vars: vars, curVar: curVar, curSub: curSub,
 			cur: cur, curMask: curMask, hasCur: hasCur, curGlob: curGlob,
 			curBrace: curBrace, braceGroup: braceGroup, chain: chain, procSub: procSub,
 			curStdin: curStdin, pipeNext: pipeNext, curDocs: curDocs, pieces: curPieces,
@@ -814,7 +821,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			groupIn: groupIn,
 		}
 		toks, globs, lits, cur, curMask, hasCur, curGlob, curBrace, braceGroup = nil, nil, nil, nil, nil, false, false, false, false
-		curPieces, vars, curVar, curSub, curVarRaw = nil, nil, false, false, nil
+		curPieces, vars, curVar, curSub = nil, nil, false, false
 		// A substitution is a command string of its own: its pipelines begin
 		// inside it. Its standard input is its command's: what was piped into
 		// the groups around it, and the pipe into the command it sits in
@@ -863,7 +870,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			e.toks, e.globs, e.lits, e.cur, e.curMask, e.hasCur, e.curGlob, e.curBrace, e.braceGroup, e.chain
 		curStdin, pipeNext, curDocs, curPieces = e.curStdin, e.pipeNext, e.curDocs, e.pieces
 		feeds, curFeeds, pipeFrom, braceFrom, groupIn = e.feeds, e.curFeeds, e.pipeFrom, e.braceFrom, e.groupIn
-		vars, curVar, curSub, curVarRaw = e.vars, e.curVar, e.curSub, e.curVarRaw
+		vars, curVar, curSub = e.vars, e.curVar, e.curSub
 		if !f.bare {
 			addCur([]byte(arithmeticOperand), 0)
 			// The number it prints is computed from what the substitutions
@@ -884,7 +891,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			e.toks, e.globs, e.lits, e.cur, e.curMask, e.hasCur, e.curGlob, e.curBrace, e.braceGroup, e.chain
 		curStdin, pipeNext, curDocs, curPieces = e.curStdin, e.pipeNext, e.curDocs, e.pieces
 		feeds, curFeeds, pipeFrom, braceFrom, groupIn = e.feeds, e.curFeeds, e.pipeFrom, e.braceFrom, e.groupIn
-		vars, curVar, curSub, curVarRaw = e.vars, e.curVar, e.curSub, e.curVarRaw
+		vars, curVar, curSub = e.vars, e.curVar, e.curSub
 		feedFrom(e.segStart)
 		if e.procSub {
 			addCur([]byte(procSubOperand), 0)
@@ -909,7 +916,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		start := len(segs)
 		expandedBody(body)
 		feedFrom(start)
-		addVar("${" + body + "}")
+		addVar()
 		if len(segs) > start {
 			curSub = true
 		}
@@ -1033,7 +1040,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 					continue
 				}
 				if k := simpleParamEnd(line, j+1); line[j] == '$' && k >= 0 {
-					addVar(line[j:k])
+					addVar()
 					j = k
 					continue
 				}
@@ -1300,11 +1307,17 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			// blocker naming `--force` missed — a silent allow of the very argv
 			// bash hands the child. Quoting must not change argument semantics
 			// (doc.go): `git push $'--force'` fires, like `git push '--force'`.
-			decoded, next, err := readAnsiCQuote(line, i+2)
+			decoded, forged, next, err := readAnsiCQuote(line, i+2)
 			if err != nil {
 				return fail(err)
 			}
-			addCur(decoded, 0)
+			prev := 0
+			for _, k := range forged {
+				addCur(decoded[prev:k], 0)
+				addText(decoded[k])
+				prev = k + 1
+			}
+			addCur(decoded[prev:], 0)
 			lastList = false
 			i = next
 		case c == '$' && i+1 < len(line) && line[i+1] == '"':
@@ -1343,7 +1356,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			// is not in the command line, so the word holds unknownMark where
 			// it goes (unknown.go), and `--$X` is a flag of unknown name as
 			// `--$(x)` is. A `$` that is quoted or escaped never reaches here.
-			addVar(line[i:simpleParamEnd(line, i+1)])
+			addVar()
 			lastList = false
 			i = simpleParamEnd(line, i+1)
 		case c == '$' && i+1 < len(line) && line[i+1] == '{':
@@ -1519,13 +1532,13 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			addCur([]byte{c}, mask)
 			lastList = false
 			i++
-		case c == unknownMark:
+		case c == unknownMark || c == varMark:
 			// A payload re-read from a word that carried a substitution's
-			// output: the mark stays where the output goes, and the word it
-			// lands in is unknown (unknown.go). Where the output came from is
-			// not known here, so it is read as a substitution's.
+			// output or a variable's value: the mark stays where it goes, and
+			// the word it lands in is unknown (unknown.go). addCur records
+			// which: an unknownMark's origin is not known here, so it is read
+			// as a substitution's; a varMark is a variable's (payloadView).
 			addCur([]byte{c}, 0)
-			curSub = true
 			lastList = false
 			i++
 		default:
@@ -2027,7 +2040,6 @@ type enclosing struct {
 	vars       map[int]string
 	curVar     bool
 	curSub     bool
-	curVarRaw  []string
 	cur        []byte
 	curMask    []byte
 	hasCur     bool
@@ -2317,7 +2329,13 @@ func skipSubstitution(line string, j, end int) (next int, alt bool) {
 // dropped, so `$'\x00'git` is `git`. The guard reads it the same way, and that
 // is also what keeps unknownMark unforgeable (unknown.go): no decoded byte is
 // ever a NUL.
-func readAnsiCQuote(line string, start int) ([]byte, int, error) {
+//
+// forged lists the offsets in the decoded bytes of each varMark an escape
+// decoded (`$'\x01'`, `\001`, `\cA`, `\u0001`): the byte bash hands on, which
+// the tokenizer keeps as text, so no escape puts a variable's mark into a
+// word either. A varMark written raw in the body is the payload spelling's
+// (payloadView) and is read as one.
+func readAnsiCQuote(line string, start int) ([]byte, []int, int, error) {
 	end := -1
 	for i := start; i < len(line); i++ {
 		if line[i] == '\\' {
@@ -2330,10 +2348,11 @@ func readAnsiCQuote(line string, start int) ([]byte, int, error) {
 		}
 	}
 	if end < 0 {
-		return nil, 0, fmt.Errorf("%w: unterminated $'' quote", ErrUnparsableCommand)
+		return nil, nil, 0, fmt.Errorf("%w: unterminated $'' quote", ErrUnparsableCommand)
 	}
 	body := line[start:end]
 	var out []byte
+	var forged []int
 	for i := 0; i < len(body); {
 		if body[i] != '\\' || i+1 >= len(body) {
 			out = append(out, body[i])
@@ -2342,12 +2361,19 @@ func readAnsiCQuote(line string, start int) ([]byte, int, error) {
 		}
 		decoded, next := decodeAnsiCEscape(body, i+1)
 		if nul := bytes.IndexByte(decoded, 0); nul >= 0 {
-			return append(out, decoded[:nul]...), end + 1, nil
+			return append(out, decoded[:nul]...), forged, end + 1, nil
+		}
+		if string(decoded) != body[i:next] {
+			for k, b := range decoded {
+				if b == varMark {
+					forged = append(forged, len(out)+k)
+				}
+			}
 		}
 		out = append(out, decoded...)
 		i = next
 	}
-	return out, end + 1, nil
+	return out, forged, end + 1, nil
 }
 
 // decodeAnsiCEscape resolves one ANSI-C escape whose leading backslash has
