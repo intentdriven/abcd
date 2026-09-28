@@ -451,9 +451,10 @@ for the home through your question tool; never ask for the value, and never
 pass it yourself: give the person the command to run in their own shell and
 relay `name`, `home`, `verified` and each `wrote` entry. A name another home
 already holds, or a different value for a name already kept, is refused:
-abcd never replaces a stored secret. A home inside a git working tree is
-refused, and a platform with no keychain tool refuses that home and names the
-other two.
+abcd never replaces a stored secret. The abcd home is refused when `~/.abcd`
+lies inside a git working tree (the keychain and an external home stay open
+there), and a platform with no keychain tool refuses the keychain home and
+names the other two.
 
 ## `--dry-run` — the canonical detection envelope
 

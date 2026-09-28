@@ -179,8 +179,9 @@ One reader, `credential.Store(home).Resolve(name)`, serves every adapter; a
 name no home holds is a refusal naming the walkthrough, and the caller makes no
 call. A test walks the production tree for any other read (a store file named,
 a keychain command run, a secret-shaped environment variable read). One write,
-`credential.Set`, is reached only through the walkthrough: it refuses a home
-inside a git working tree, a name another home already holds, and a different
+`credential.Set`, is reached only through the walkthrough: it refuses the abcd
+home when `~/.abcd` lies inside a git working tree, since that home alone keeps
+a value there, a name another home already holds, and a different
 value for a name already kept, and the secret scanner reads the index's bytes
 before they are written, refusing any finding. A value is read from stdin only,
 and never printed, logged or written to a record; a call's record names the

@@ -191,30 +191,27 @@ func TestAnUnsetNameRefusesNamingTheWalkthrough(t *testing.T) {
 	}
 }
 
-// TestAWriteIntoAWorkingTreeIsRefused (criterion 3): a home whose ~/.abcd
-// sits inside a git working tree would put the store where a commit can reach
-// it, so every home's write is refused and nothing is written.
-func TestAWriteIntoAWorkingTreeIsRefused(t *testing.T) {
-	withFakeKeychain(t, keychainMacOS)
-	for _, ch := range []Choice{
-		{Home: HomeABCD, Value: secretValue},
-		{Home: HomeKeychain, Value: secretValue},
-		{Home: HomeExternal, Pointer: Pointer{Env: "HOME"}},
-	} {
-		home := t.TempDir()
-		if err := os.Mkdir(filepath.Join(home, ".git"), 0o700); err != nil {
-			t.Fatal(err)
-		}
-		_, err := Set(home, "svc", ch)
-		if err == nil || !strings.Contains(err.Error(), "working tree") {
-			t.Fatalf("%s: err = %v, want a working-tree refusal", ch.Home, err)
-		}
-		if _, statErr := os.Stat(filepath.Join(home, ".abcd")); !errors.Is(statErr, os.ErrNotExist) {
-			t.Fatalf("%s: ~/.abcd was created", ch.Home)
-		}
+// TestAValueIntoAWorkingTreeIsRefused (criterion 3): a home whose ~/.abcd
+// sits inside a git working tree would put credentials.json where a commit can
+// reach it, so the abcd home's write is refused and nothing is written. The
+// abcd home is the one home that writes a value there.
+func TestAValueIntoAWorkingTreeIsRefused(t *testing.T) {
+	home := t.TempDir()
+	if err := os.Mkdir(filepath.Join(home, ".git"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Set(home, "svc", Choice{Home: HomeABCD, Value: secretValue})
+	if err == nil || !strings.Contains(err.Error(), "working tree") {
+		t.Fatalf("err = %v, want a working-tree refusal", err)
+	}
+	if strings.Contains(err.Error(), secretValue) {
+		t.Fatal("the refusal echoes the value")
+	}
+	if _, statErr := os.Stat(filepath.Join(home, ".abcd")); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatal("~/.abcd was created")
 	}
 	// A tool file inside a working tree is refused as a pointer too.
-	home := t.TempDir()
+	home = t.TempDir()
 	repo := filepath.Join(home, "repo")
 	if err := os.MkdirAll(filepath.Join(repo, ".git"), 0o700); err != nil {
 		t.Fatal(err)
@@ -226,6 +223,52 @@ func TestAWriteIntoAWorkingTreeIsRefused(t *testing.T) {
 		!strings.Contains(err.Error(), "working tree") {
 		t.Fatalf("a pointer into a working tree: err = %v", err)
 	}
+}
+
+// TestAHomeThatIsAWorkingTreeKeepsTheOtherHomes (criterion 3): a home
+// directory that is itself a git working tree (a dotfiles repository) refuses
+// the abcd home, whose file holds the value, and nothing else: the keychain
+// keeps its value outside the home, and the index beside it holds names and
+// pointers only, scanned before every write. An external pointer at a file
+// inside the working tree is still refused by the pointer's own check.
+func TestAHomeThatIsAWorkingTreeKeepsTheOtherHomes(t *testing.T) {
+	home := t.TempDir()
+	if err := os.Mkdir(filepath.Join(home, ".git"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	withFakeKeychain(t, keychainMacOS)
+	if changed, err := Set(home, "svc.keychain", Choice{Home: HomeKeychain, Value: "kc-" + secretValue}); err != nil || !changed {
+		t.Errorf("keychain: Set = %v, %v; want it stored", changed, err)
+	}
+	if v, err := Store(home).Resolve("svc.keychain"); err != nil || v != "kc-"+secretValue {
+		t.Errorf("keychain: Resolve = %v; want the value set", err)
+	}
+	t.Setenv("ABCD_TEST_TOKEN_FOR_STORE", "env-"+secretValue)
+	if changed, err := Set(home, "svc.env", Choice{Home: HomeExternal, Pointer: Pointer{Env: "ABCD_TEST_TOKEN_FOR_STORE"}}); err != nil || !changed {
+		t.Errorf("external: Set = %v, %v; want the pointer stored", changed, err)
+	}
+	if v, err := Store(home).Resolve("svc.env"); err != nil || v != "env-"+secretValue {
+		t.Errorf("external: Resolve = %v; want the value pointed at", err)
+	}
+	_, err := Set(home, "svc.abcd", Choice{Home: HomeABCD, Value: "abcd-" + secretValue})
+	if err == nil || !strings.Contains(err.Error(), "working tree") {
+		t.Fatalf("abcd: err = %v, want a working-tree refusal", err)
+	}
+	if _, statErr := os.Lstat(filepath.Join(home, ".abcd", StoreFileName)); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatal("abcd: credentials.json was written inside the working tree")
+	}
+	tool := filepath.Join(home, ".config", "tool")
+	if err := os.MkdirAll(tool, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(tool, "auth.json"), []byte(`{"token":"file-`+secretValue+`"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err = Set(home, "svc.file", Choice{Home: HomeExternal, Pointer: Pointer{File: "~/.config/tool/auth.json", Field: "token"}})
+	if err == nil || !strings.Contains(err.Error(), "points at ~/.config/tool/auth.json, which lies inside a git working tree") {
+		t.Fatalf("external file: err = %v, want the pointer's working-tree refusal", err)
+	}
+	assertNowhere(t, home, secretValue, filepath.Join(tool, "auth.json"))
 }
 
 // TestTheIndexWriteRunsTheScanner (criterion 3): the one file the store writes

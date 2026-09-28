@@ -19,7 +19,8 @@ package credential
 //
 // The index is the one file the store writes that must never hold a secret,
 // so the secret scanner reads its bytes before they are written, and a
-// finding refuses the write. No home is written inside a git working tree.
+// finding refuses the write. The abcd home, the one that keeps a value under
+// ~/.abcd, is never written inside a git working tree.
 
 import (
 	"encoding/json"
@@ -171,7 +172,7 @@ func Where(home, name string) (string, error) {
 // Set stores a credential under name in the chosen home: the one write every
 // setup goes through (the walkthrough, Walk, is its only caller outside this
 // package's tests). It refuses, before writing anything and never echoing a
-// value: a home inside a git working tree; a name another home already holds,
+// value: the abcd home inside a git working tree; a name another home already holds,
 // or a different value in the same home, because a stored secret is never
 // replaced unasked; a keychain on a platform without one; and a pointer that
 // does not resolve. The same value again is no change.
@@ -200,9 +201,13 @@ func Set(home, name string, c Choice) (changed bool, err error) {
 	default:
 		return false, fmt.Errorf("credential: home %q is not one of external, abcd, keychain", boundHome(c.Home))
 	}
-	dir := filepath.Join(home, ".abcd")
-	if tree := workingTreeAbove(dir); tree != "" {
-		return false, fmt.Errorf("credential: ~/.abcd lies inside a git working tree, where a commit could carry the credential, so nothing was written")
+	// The abcd home is the one home that writes a value under ~/.abcd, so it
+	// alone is refused inside a git working tree. The keychain keeps its value
+	// outside the home, and the index holds names and pointers only, scanned
+	// before every write, so a home directory that is itself a working tree (a
+	// dotfiles repository) keeps those homes.
+	if c.Home == HomeABCD && workingTreeAbove(filepath.Join(home, ".abcd")) != "" {
+		return false, errors.New("credential: ~/.abcd lies inside a git working tree, where a commit could carry the credential, so the abcd home is refused and nothing was written; choose the keychain or an external home")
 	}
 	held, err := Where(home, name)
 	if err != nil {
