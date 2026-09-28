@@ -333,7 +333,8 @@ Every verb also says which checkout's ledger it addressed, and the record
 dispatcher says it for an issue id (iss-2609202053570475): one stderr line naming
 the checkout and its branch in the plain render, and a `ledger` member with
 `checkout` and `branch` in the machine-readable one. The checkout is written home-relative where
-it can be. A record filed in another worktree is invisible here, and a refusal
+it can be, and by its directory name where it cannot, so neither render carries an
+absolute local path (iss-2609251823560369). A record filed in another worktree is invisible here, and a refusal
 that says "not found" without naming where it looked sends the reader to the
 wrong conclusion.
 

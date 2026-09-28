@@ -3815,7 +3815,8 @@ func captureLedgerRoot(cmd *cobra.Command) (string, error) {
 
 // ledgerIdentity names the checkout whose ledger a verb addressed and the
 // branch checked out there (iss-2609202053570475). The checkout is home-
-// relative where it can be, so the line carries no developer-identity path.
+// relative where it can be, and its directory name where it cannot, so the line
+// never carries an absolute path (iss-2609251823560369).
 type ledgerIdentity struct {
 	Checkout string `json:"checkout"`
 	Branch   string `json:"branch"`
@@ -3823,6 +3824,12 @@ type ledgerIdentity struct {
 
 // ledgerIdentityOf reads root's identity: its home-redacted path, and the
 // branch git reports ("HEAD" when detached, "" when git cannot answer).
+//
+// A checkout outside HOME survives RedactHome whole, and printed whole it is an
+// absolute local path in output a person pastes elsewhere. It is reduced to its
+// directory name instead, the rule scrubPaths already applies to an absolute
+// path outside both identity roots, so the two surfaces agree on what is safe
+// to print.
 func ledgerIdentityOf(root string) ledgerIdentity {
 	// symbolic-ref answers on an unborn branch too, where rev-parse cannot; it
 	// fails only when HEAD is detached, which rev-parse then names.
@@ -3834,7 +3841,11 @@ func ledgerIdentityOf(root string) ledgerIdentity {
 			branch = ""
 		}
 	}
-	return ledgerIdentity{Checkout: fsutil.RedactHome(root), Branch: branch}
+	checkout := fsutil.RedactHome(root)
+	if filepath.IsAbs(checkout) {
+		checkout = filepath.Base(root)
+	}
+	return ledgerIdentity{Checkout: checkout, Branch: branch}
 }
 
 // branchPhrase renders the branch half of the identity line.
@@ -3865,13 +3876,20 @@ func renderLedger(w io.Writer, asJSON bool, root string, v any, text func(io.Wri
 	if err != nil {
 		return err
 	}
-	if n := len(body); n >= 2 && body[0] == '{' && body[n-1] == '}' {
-		sep := ","
-		if n == 2 {
-			sep = ""
-		}
-		body = append(append(append(body[:n-1:n-1], []byte(sep+`"ledger":`)...), ident...), '}')
+	// json.Marshal emits compact JSON, so an object result is exactly the bytes
+	// between its own braces and the member is appended before the closing one,
+	// keeping the result's member order. A result that is not an object has no
+	// member to carry the identity, and dropping it silently would ship the
+	// envelope without the one thing it exists to say — so it is an error.
+	n := len(body)
+	if n < 2 || body[0] != '{' || body[n-1] != '}' {
+		return fmt.Errorf("internal: a capture verb's --json result must be an object to carry its ledger member, got %T", v)
 	}
+	sep := ","
+	if n == 2 {
+		sep = ""
+	}
+	body = append(append(append(body[:n-1:n-1], []byte(sep+`"ledger":`)...), ident...), '}')
 	var buf bytes.Buffer
 	if err := json.Indent(&buf, body, "", "  "); err != nil {
 		return err
