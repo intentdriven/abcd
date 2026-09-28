@@ -47,7 +47,9 @@ var wordReaders = map[string]string{
 	"flagShaped":           "exempt: reads the known text flagMatches is handed",
 	"isShortFlag":          "exempt: reads a registry alternative, never a command word",
 	"isShortCluster":       "exempt: a known word's shape; clusterCouldCarry reads the unknown word",
+	"isSignalWord":         "exempt: spares a word only when it spells a signal name whole; a word holding a substitution's output never does, so it stays every flag it can become",
 	"pathOf":               "exempt: reads a URL scheme's characters in an operand pathArgMatches reads as the rule says",
+	"xargsBefore":          "arrivalsOf and commandNamed: every place the walk arrives at that can be xargs",
 
 	// payload.go
 	"payloadsOf":           "arrivalsOf and nameCouldBe: every env on the walk",
@@ -93,7 +95,7 @@ var wordReaders = map[string]string{
 	"allReserved":       "exempt: reserved words are grammar, which no substitution prints",
 	"keywordAt":         "exempt: reserved words are grammar, which no substitution prints",
 	"readHeredocDelim":  "exempt: the `<<-` operator is grammar",
-	"Validate":          "exempt: reads registry entries, not command words",
+	"validatePattern":   "exempt: reads registry patterns, not command words",
 	"validEntryID":      "exempt: reads a registry id, not a command word",
 }
 
