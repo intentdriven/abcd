@@ -494,6 +494,20 @@ git -C "$d" commit -qm "chore: touch many records
 $refs"
 expect pass "$d" "RS004 a declaration set past one pipe buffer is read whole" -- commits main HEAD
 
+# RS006 reads the resolution of every record entering a terminal folder. A reader
+# that stops at the closing delimiter hands git show a SIGPIPE on a record past
+# one pipe buffer, and under pipefail the unguarded read ended the gate at exit
+# 141 with no FAILED line. A resolved record of about 200 KiB must pass cleanly.
+d="$(newrepo rs006-large-record)"
+resolve_record "$d"
+awk 'BEGIN { for (i = 0; i < 2500; i++) printf "Body line %d of a long resolved record, past one pipe buffer.\n", i }' \
+	>>"$d/$ISS_DIR/resolved/iss-999-a-fixture.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "fix: something
+
+Resolves: iss-999"
+expect pass "$d" "RS006 a resolved record past one pipe buffer is read whole" -- commits main HEAD
+
 # --- RS002: a stamp added here must name a reachable commit ------------------
 
 d="$(newrepo rs002-bad)"

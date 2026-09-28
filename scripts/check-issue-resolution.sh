@@ -903,7 +903,11 @@ check_commits() {
 		local rpath note name
 		rpath="$(record_path "$head" "$id")"
 		[ -n "$rpath" ] || continue
-		note="$(git show "$head:$rpath" 2>/dev/null | awk 'NR>1 && /^---$/{exit} /^resolution:/{print}')"
+		# Read to the end, never `exit` at the closing delimiter: under pipefail
+		# an early exit hands git show a SIGPIPE on any record past one pipe
+		# buffer (64 KiB), and this unguarded assignment then ends the gate at
+		# exit 141 with no FAILED line.
+		note="$(git show "$head:$rpath" 2>/dev/null | awk 'NR>1 && /^---$/{done=1} !done && /^resolution:/{print}')"
 		while IFS= read -r name; do
 			[ -n "$name" ] || continue
 			rs006=$((rs006 + 1))
