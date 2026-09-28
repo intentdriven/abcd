@@ -1996,7 +1996,14 @@ rules replaced, its state changed, or a custom domain declared — renders as
 "## NAME (user override)" or "## NAME (repo override)" here, in the injected
 block and in the hook's diagnostic, and carries "source": "user" or "repo" in
 --json; the last layer to name a domain labels it. An untouched bundled domain
-renders bare and carries "source": "bundled". Read-only.`,
+renders bare and carries "source": "bundled".
+
+A list an override sets replaces the bundled one, so an override can hold back
+an entry abcd ships. For the guardrail domains (COMMITTING, LOAD, PII), every
+bundled recall keyword, alias or rule that an override's list leaves out is
+named on stderr, with the file that set the list, here and on every hook
+prompt. To keep an entry, restate it in the list, or leave the field out to
+inherit the bundled list. Read-only.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cwd, err := os.Getwd()
