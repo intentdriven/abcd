@@ -115,7 +115,10 @@ Relay that note verbatim. A `symlink.legacy` gap is a symlink into the plugin
 root that an earlier release wrote: it works until the next plugin update, and
 its fix hint says whether install replaces it now or which command comes first.
 A `symlink.dangling` gap whose detail calls the entry abcd-owned — including an
-entry `~/.abcd/path-entry` records — is repaired by install the same way.
+entry `~/.abcd/path-entry` records — is repaired by install the same way. When
+that entry is not the one install acts on (a link a plugin update stranded ahead
+of the copy the one-liner wrote), install removes it with its record once the
+entry it does act on is working, and a note names what it removed.
 
 A `symlink.shadowed` gap (or a note saying the same) means another `abcd` comes
 first on `PATH`, so the entry abcd just wrote is NOT what runs — typically a
@@ -123,7 +126,9 @@ binary an older install copied into a system directory. Relay it prominently:
 the install is not finished from the user's point of view. abcd will not remove
 that binary, and neither should you offer to; state the two remedies it gives
 (delete the stale one, or install ahead of it with `--bin-dir`) and let the user
-choose.
+choose. When the occupant is a link whose target is gone, the gap says it runs
+nothing (the shell skips it) and asks for it to be removed; relay that, not the
+"not what runs" framing above.
 
 Prompts read stdin whether or not stdin is a terminal, so an answer can be
 relayed without one:

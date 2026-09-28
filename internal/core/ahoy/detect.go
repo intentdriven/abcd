@@ -498,8 +498,9 @@ func detectPathSymlink(cwd, pluginRoot string, pluginOK bool) []Gap {
 	}
 	var gaps []Gap
 
-	// A link of ours whose binary has gone shadows whatever else on PATH would
-	// have answered. It is neither "installed" nor "missing" — it is its own gap.
+	// A link of ours whose binary has gone runs nothing (the shell skips it), and
+	// answers again whatever reappears at its target. It is neither
+	// "installed" nor "missing" — it is its own gap.
 	top, topOK := danglingPathEntry(pluginRoot)
 	if topOK {
 		gaps = append(gaps, danglingEntryGap(top.path, true))
@@ -596,8 +597,8 @@ func detectPathSymlink(cwd, pluginRoot string, pluginOK bool) []Gap {
 			// A link abcd cannot prove it wrote, that resolves to NOTHING
 			// (iss-2609100506256636). Refusing to clobber a foreign entry is
 			// right — it is somebody's working install — but this one is
-			// nobody's: it runs nothing, and it shadows every later PATH entry
-			// including a healthy abcd. Reporting it as foreign made the state
+			// nobody's: it runs nothing, and it answers whatever reappears at
+			// its target ahead of a healthy abcd. Reporting it as foreign made the state
 			// unreachable from inside the tool, because that gap is
 			// `resolvable: false` and there is no --force and no uninstall path
 			// for an entry abcd does not own, so `ahoy install` could never
@@ -630,10 +631,10 @@ func detectPathSymlink(cwd, pluginRoot string, pluginOK bool) []Gap {
 // prove it wrote, and never points at `ahoy uninstall`, which removes only what
 // abcd owns.
 func danglingEntryGap(path string, owned bool) Gap {
-	detail := displayPath(path) + " points at a target that does not exist, so it runs nothing and shadows every later PATH entry."
+	detail := displayPath(path) + " points at a target that does not exist. It runs nothing — the shell skips it — but whatever reappears at that target would answer `abcd` first."
 	fix := "ahoy install replaces it with a verified copy of the release binary once one is available: a link that resolves to nothing is nobody's working install."
 	if owned {
-		detail = displayPath(path) + " is an abcd-owned entry whose target no longer exists, so it shadows every later PATH entry."
+		detail = displayPath(path) + " is an abcd-owned entry whose target no longer exists. It runs nothing — the shell skips it — but whatever reappears at that target would answer `abcd` first."
 		fix = "ahoy install replaces it with a verified copy of the release binary, and names the command to run first when none is available; remove it with `ahoy uninstall` if abcd is gone."
 	}
 	return Gap{

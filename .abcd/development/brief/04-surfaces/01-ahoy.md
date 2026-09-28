@@ -298,7 +298,15 @@ rather than lumped together: an owned entry whose target has gone is dangling; a
 install directory absent from `PATH` is required but not resolvable, for which
 abcd prints a one-line export fix and never edits a shell profile; and any
 `abcd` that comes *before* abcd's own entry is shadowed, because an entry that is
-correct and never reached is not an install (iss-171). Install carries the two
+correct and never reached is not an install (iss-171). A link whose target has
+gone is the exception to "never reached" in wording, not in the gap: it runs
+nothing, because the shell skips it, and what it still threatens is to answer
+whatever reappears at its target, so neither the gap nor the note says it is what
+runs. An owned one that is not the entry install acts on — typically a link a
+plugin update stranded ahead of the one-liner's copy — is removed with its record
+by an install that leaves a working entry of abcd's own behind it
+(iss-2609280932480608), the same danglingness rule that clears one at the target
+(iss-2609100506256636); an unowned one is named and left. Install carries the two
 non-resolvable ones on its own result as notes, since a fresh user cannot run
 the doctor by name on a machine where abcd is not yet on `PATH`.
 

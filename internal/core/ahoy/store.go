@@ -273,7 +273,8 @@ func ownedPathEntry(pluginRoot string) (pathEntry, bool) {
 }
 
 // danglingPathEntry returns the first abcd-owned entry on PATH whose target has
-// gone — a link that shadows whatever else on PATH would have answered.
+// gone — a link that runs nothing now and answers whatever reappears at its
+// target.
 func danglingPathEntry(pluginRoot string) (pathEntry, bool) {
 	for _, e := range scanPathEntries(pluginRoot) {
 		if e.owned() && e.dangling {
@@ -389,7 +390,17 @@ func describeEntry(e pathEntry) string {
 
 // shadowMessage is the single wording for a shadowed install, shared by the
 // detection gap and the install-time note so the two can never drift.
+//
+// A link whose target is gone gets its own wording: it runs nothing — the
+// shell skips an entry it cannot execute — so it neither "is what runs" nor is
+// "a binary" of anyone's. What is still true of it is that it answers again the
+// moment something reappears at the path it points to.
 func shadowMessage(e pathEntry, target string) string {
+	if e.dangling {
+		return displayPath(e.path) + " (" + describeEntry(e) + ") comes before " +
+			displayPath(target) + " on PATH. It runs nothing — the shell skips a link whose target is gone — " +
+			"but whatever reappears at the path it points to would run instead of " + displayPath(target) + ". Remove it."
+	}
 	return displayPath(e.path) + " (" + describeEntry(e) + ") comes before " +
 		displayPath(target) + " on PATH, so it is what runs when you type `abcd`. " +
 		"Remove or rename it, or install ahead of it with `abcd ahoy install --bin-dir <dir>`. " +

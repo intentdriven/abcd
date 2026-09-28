@@ -296,8 +296,8 @@ func nearestExistingDir(dir string) string {
 
 // adoptedBinTarget is the PATH entry abcd owns and acts on when no --bin-dir is
 // given: an existing owned entry adopted exactly where it stands, else a
-// dangling one of ours repaired in place (installing elsewhere would leave it
-// shadowing the new entry from earlier in PATH), else the default location.
+// dangling one of ours repaired in place (the entry the user already has on
+// PATH, rather than a second one elsewhere), else the default location.
 // Empty when the home directory cannot be resolved — there is no user-scope
 // location to write, and inventing a privileged one is what iss-171 removes.
 //
@@ -1019,9 +1019,18 @@ func (a *applyCtx) stepSymlink() {
 		return
 	}
 	target := a.binTarget
-	// A dangling entry of ours is cleared first: it resolves to nothing, so
-	// removing it destroys nothing, while leaving it in place would keep a link
-	// that shadows every later PATH entry — including the one being installed.
+	a.placeEntry(target)
+	if gapDriven {
+		a.clearStrandedEntries(target)
+	}
+}
+
+// placeEntry writes, repairs or adopts the PATH entry at target — the one entry
+// the run acts on — or refuses, loudly, when target is not abcd's to write.
+func (a *applyCtx) placeEntry(target string) {
+	// A dangling entry at the target is cleared first: it resolves to nothing,
+	// so removing it destroys nothing, and the entry this run writes takes its
+	// place.
 	a.clearDanglingEntry(target)
 	kind := classifyBinTarget(target, a.det.pluginRoot)
 	if kind == binTargetForeign {
@@ -1044,6 +1053,54 @@ func (a *applyCtx) stepSymlink() {
 		return
 	}
 	a.installOwnedEntry(target, kind)
+}
+
+// clearStrandedEntries removes every abcd-owned PATH entry OTHER than target
+// whose own target has gone (iss-2609280932480608). It is iss-2609100506256636's
+// rule — danglingness, not provenance, is what makes a link safe to clear —
+// applied past the one entry the run acts on: install adopts or writes target,
+// and an owned dangling link elsewhere on PATH (typically one a plugin update
+// stranded ahead of the one-liner's copy) would otherwise raise
+// symlink.dangling on every run, which no run could close.
+//
+// It acts only once target is a working entry of abcd's own. A link that
+// resolves to nothing runs nothing — the shell skips it — so removing it takes
+// nothing away; but on a run that left nothing working at target, the dangling
+// entry stays as it is and the refusal already given names what to run first,
+// the same stance clearDanglingEntry takes at the target itself. Unowned
+// dangling links are never touched here: that claim needs the record, or the
+// sibling rule, that makes the entry abcd's.
+func (a *applyCtx) clearStrandedEntries(target string) {
+	if !entryAnswers(target, a.det.pluginRoot) {
+		return
+	}
+	for _, e := range scanPathEntries(a.det.pluginRoot) {
+		if !e.owned() || !e.dangling || sameEntry(e.path, target) {
+			continue
+		}
+		// Re-read right before the removal: only a symlink that still
+		// resolves to nothing is removed.
+		if fi, err := os.Lstat(e.path); err != nil || fi.Mode()&os.ModeSymlink == 0 || !linkIsDangling(e.path) {
+			continue
+		}
+		if err := os.Remove(e.path); err != nil {
+			a.refuse("could not remove abcd's own dangling PATH entry " + displayPath(e.path) + ": " + errText(err))
+			continue
+		}
+		removePathEntryFor(e.path)
+		a.refuse("removed abcd's own PATH entry " + displayPath(e.path) + ": it pointed at a binary that is gone, so it ran nothing, and " +
+			displayPath(target) + " is abcd's working entry.")
+	}
+}
+
+// entryAnswers reports whether target is a working entry of abcd's own: one
+// the ownership predicate claims and whose target resolves.
+func entryAnswers(target, pluginRoot string) bool {
+	switch classifyBinTarget(target, pluginRoot) {
+	case binTargetOwnedSymlink, binTargetDevShim, binTargetOwnedCopy:
+		return !linkIsDangling(target)
+	}
+	return false
 }
 
 // installOwnedEntry writes the default PATH entry. With a verified cache
@@ -1306,7 +1363,7 @@ func (a *applyCtx) stepPathEntry() {
 // run has something to put there — the verified release artefact for the owned
 // copy, or the plugin binary the --dev shim rebuilds beside. Nothing is
 // destroyed (the link already answered nothing) and the alternative is worse —
-// a dangling `abcd` earlier on PATH shadows the working install. When there is
+// a link that answers whatever reappears at the path it names. When there is
 // nothing to write, the link stays exactly as it is: an entry abcd owns is then
 // named by installOwnedEntry's refusal together with the command to run first,
 // and one it does not own by the foreign refusal in stepSymlink.
