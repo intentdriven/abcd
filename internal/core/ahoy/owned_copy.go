@@ -226,11 +226,22 @@ func writePathEntry(target, shaHex, pluginRoot string) error {
 	return fsutil.WriteFileAtomicInRoot(dir, path.Base(pathEntryRel), []byte(body), 0o644)
 }
 
-// removePathEntry drops the provenance record; absent is fine.
+// removePathEntry drops the provenance record; absent is fine. ~/.abcd is
+// judged and opened relative to home's descriptor and the record is removed
+// through it, so a link swapped in after homeScopeErr's check removes nothing
+// behind the link (iss-2609281310017733). A ~/.abcd that is a symlink, or is
+// not there, leaves nothing to remove.
 func removePathEntry() {
-	if path := userPathEntryPath(); path != "" {
-		_ = os.Remove(path)
+	home, err := homeScopeErr()
+	if err != nil {
+		return
 	}
+	dir, err := fsutil.OpenHomeScope(home, path.Dir(pathEntryRel))
+	if err != nil {
+		return
+	}
+	defer dir.Close()
+	_ = dir.Remove(path.Base(pathEntryRel))
 }
 
 // pathEntryNames reports whether the provenance record names target. It is the

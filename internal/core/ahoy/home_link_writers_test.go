@@ -91,3 +91,45 @@ func TestMachineWritesRefuseAnAbcdHomeSwappedForALink(t *testing.T) {
 		})
 	}
 }
+
+// TestPathEntryRemovalRemovesNothingBehindAnAbcdHomeSwappedForALink is the
+// remove half of iss-2609281310017733: ~/.abcd is a real directory when the
+// provenance record's removal judges it and a symlink into a dotfiles checkout
+// by the time it removes (staged through the vetting hook). A remove by path
+// after a check by path unlinks the checkout's copy of path-entry; the remove
+// through the descriptor of the directory that was judged leaves it alone.
+func TestPathEntryRemovalRemovesNothingBehindAnAbcdHomeSwappedForALink(t *testing.T) {
+	home, _ := setupHermetic(t)
+	abcd := filepath.Join(home, ".abcd")
+	dotfiles := filepath.Join(home, "dotfiles", "abcd")
+	for _, dir := range []string{abcd, dotfiles} {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, dir := range []string{abcd, dotfiles} {
+		if err := os.WriteFile(filepath.Join(dir, "path-entry"), []byte("path=/example/bin/abcd\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	swapped := false
+	t.Cleanup(fsutil.SwapHomeScopeVettedForTest(func(dir string) {
+		if swapped || dir != abcd {
+			return
+		}
+		swapped = true
+		if err := os.Rename(abcd, filepath.Join(home, "moved-aside")); err != nil {
+			t.Fatalf("swap: %v", err)
+		}
+		if err := os.Symlink(dotfiles, abcd); err != nil {
+			t.Fatalf("swap: %v", err)
+		}
+	}))
+	removePathEntry()
+	if !swapped {
+		t.Fatal("the removal never judged ~/.abcd, so the race was not staged")
+	}
+	if _, err := os.Lstat(filepath.Join(dotfiles, "path-entry")); err != nil {
+		t.Fatalf("the removal went through the swapped link: the checkout's path-entry is gone (%v)", err)
+	}
+}

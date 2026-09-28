@@ -376,7 +376,8 @@ into those files — the credential and the provider block `ahoy connect` adds, 
 path entry, the routing table and the status-line setting `ahoy install` writes,
 and the path entry and cache attestation `hooks/bootstrap.sh` writes — refuses
 the link rather than writing through it, naming it and the repair: replace the
-link with a real directory. The hook shims refuse a `path-entry` behind the link
+link with a real directory. The path entry's removal on uninstall goes through
+the same descriptor, so it removes nothing behind the link. The hook shims refuse a `path-entry` behind the link
 too, before they read it. The home directory itself may be a link; only
 `~/.abcd` and what lies under it are judged. The stores are not declarations:
 `transcripts/`, `voyage/`, `lab/`, `inbox/` and `runs/` refuse a symlinked
