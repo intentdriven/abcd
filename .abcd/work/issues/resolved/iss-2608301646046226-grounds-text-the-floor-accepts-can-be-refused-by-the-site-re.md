@@ -7,6 +7,10 @@ category: "bug"
 source: "user-observation"
 found_during: "itd-179-round-5-security"
 found_at: "internal/core/intent/grounds.go"
+resolution: "grounds.New and grounds.NewDerived refuse, with nothing written, a bullet the site renderer refuses, asking the renderer itself through one predicate (mdrender.RefusalIn, the renderer moved to a leaf so the grounds package can import it), strict on reference links and images. TestNewRefusesWhatTheSiteRendererRefuses covers the five reviewed constructs and five siblings from the renderer's refusal list; TestNewDerivedRefusesWhatTheSiteRendererRefuses covers the wontfix path. All 645 committed grounds entries pass, so none is stranded."
+impact: fix
+resolved_by:
+  commit: "cce6eb9f"
 ---
 
 grounds text the floor accepts can be refused by the site renderer and the entry is append only so no verb can remove it
@@ -39,3 +43,7 @@ command this residue can only be removed by hand-editing the committed record.
 The readability guard's own doc is silent about this: it says a bullet that
 fails to raise the count is refused, which is true of `ParseGrounds` and says
 nothing about the second reader that runs in the same preflight.
+
+## Grounds
+
+- pursued: no grounds entry a verb can write makes site build refuse the record it lands in; a grounds text that New accepts and site-render then refuses would show it wrong

@@ -26,6 +26,8 @@ import (
 	"fmt"
 	"os"
 	"strings"
+
+	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
 // briefPressReleasePath is the packed brief's press-release section, the primary
@@ -88,7 +90,7 @@ func ComposePressRelease(lifeboatDir string, raw []byte) (PressReleaseResult, er
 	}
 
 	return PressReleaseResult{
-		LifeboatDir:      abs,
+		LifeboatDir:      fsutil.RedactHome(abs),
 		Mode:             file.Mode,
 		EvidenceRefs:     len(file.Evidence),
 		PressReleasePath: "press-release.json",
@@ -269,23 +271,22 @@ func (r PressReleaseResult) Render() string {
 // written into the lifeboat.
 func renderPressReleaseMarkdown(f PressReleaseFile) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "# %s\n\n", sanitize(f.Headline))
-	if f.Subhead != "" {
-		fmt.Fprintf(&b, "_%s_\n\n", sanitize(f.Subhead))
+	fmt.Fprintf(&b, "# %s\n\n", mdInline(f.Headline))
+	// The subhead is a paragraph of its own under the headline — never wrapped
+	// in the render's own emphasis, which a value carrying the delimiter could
+	// close early (iss-2609251355497247).
+	if sub := mdBlock(f.Subhead); sub != "" {
+		fmt.Fprintf(&b, "%s\n\n", sub)
 	}
-	fmt.Fprintf(&b, "_mode: %s", sanitize(string(f.Mode)))
-	if f.PromptVersion != "" {
-		fmt.Fprintf(&b, "; prompt %s", sanitize(f.PromptVersion))
-	}
-	b.WriteString("_\n\n")
-	if f.Body != "" {
-		fmt.Fprintf(&b, "%s\n\n", sanitize(f.Body))
+	b.WriteString(renderSynthModeLine(f.Mode, f.PromptVersion))
+	if body := mdBlock(f.Body); body != "" {
+		fmt.Fprintf(&b, "%s\n\n", body)
 	}
 	for _, q := range f.Quotes {
-		fmt.Fprintf(&b, "> %s\n>\n> — %s\n\n", sanitize(q.Text), sanitize(q.Attribution))
+		fmt.Fprintf(&b, "> %s\n>\n> — %s\n\n", mdBlock(q.Text), mdInline(q.Attribution))
 	}
-	if len(f.Evidence) > 0 {
-		fmt.Fprintf(&b, "Evidence: %s\n", strings.Join(sanitizeAll(f.Evidence), ", "))
+	if refs := mdCodeList(f.Evidence); refs != "" {
+		fmt.Fprintf(&b, "Evidence: %s\n", refs)
 	}
 	return b.String()
 }

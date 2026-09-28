@@ -65,3 +65,45 @@ func TestBlockTextStillEscapesAnUnbalancedLeadingRun(t *testing.T) {
 		}
 	}
 }
+
+// TestBlockTextEscapesAnOrderedMarkerFaithfully (iss-2609262241109876): an idea
+// shaped like an ordered-list item must neither open a list nor gain a
+// character. CommonMark keeps a backslash before a digit as a literal
+// backslash, so the escape goes before the delimiter, where it is consumed.
+func TestBlockTextEscapesAnOrderedMarkerFaithfully(t *testing.T) {
+	for _, s := range []string{"1. first", "12) twelve"} {
+		got := blockText(s)
+		html, err := renderMarkdown(got)
+		if err != nil {
+			t.Fatalf("blockText(%q) = %q does not render: %v", s, got, err)
+		}
+		if want := "<p>" + s + "</p>"; !strings.Contains(html, want) {
+			t.Errorf("blockText(%q) = %q rendered as %q; want %q", s, got, html, want)
+		}
+	}
+}
+
+// TestBlockTextLeavesATripleBacktickSpanAProseLine (iss-2609262309556167): a
+// balanced leading run of three or more backticks is left unescaped, which is
+// sound only while the renderer reads it as the span it is. A backtick run
+// whose info string holds a backtick opens no fence, so each of these renders
+// as a paragraph carrying its text — never an empty command block, never a
+// refused page.
+func TestBlockTextLeavesATripleBacktickSpanAProseLine(t *testing.T) {
+	for s, text := range map[string]string{
+		"``` ```":       "<code>",
+		"```x```":       "<code>x</code>",
+		"``` x ```":     "<code>x</code>",
+		"```` ``` ````": "<code>```</code>",
+	} {
+		got := blockText(s)
+		html, err := renderMarkdown(got)
+		if err != nil {
+			t.Errorf("blockText(%q) = %q does not render: %v", s, got, err)
+			continue
+		}
+		if strings.Contains(html, `class="cmd"`) || !strings.Contains(html, "<p>"+text) {
+			t.Errorf("blockText(%q) = %q rendered %q, want a paragraph holding %q", s, got, html, text)
+		}
+	}
+}

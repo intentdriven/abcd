@@ -162,9 +162,10 @@ site-render gate on the Linux leg alone. Separate jobs run the reviews-charter c
 (`make smoke`). A
 fail-closed classifier stands the macOS leg, the race lane and the `zizmor`,
 `govulncheck` and smoke jobs down on a pull request confined to `docs/`,
-`.abcd/development/`, `.abcd/work/` and the root prose files; the Linux unit
-lane, the format gate and the record gates always run, and every other event —
-the merge-queue entry that gates the merge included — runs the lot.
+`.abcd/development/`, `.abcd/work/`, the root prose files and the
+community-health files in `.github/`; the Linux unit lane, the format gate and
+the record gates always run, and every other event — the merge-queue entry that
+gates the merge included — runs the lot.
 
 ## Working-tree layout (three tiers under `.abcd/`)
 
@@ -391,7 +392,7 @@ irreversible; guessing downward costs nothing.**
   `Co-Authored-By:` for AI (it asserts an authorship the tool does not hold and
   inflates the contributor graph). There is no DCO: contributions are inbound =
   outbound MIT, so no `Signed-off-by:` is required (adr-43). The human is the
-  author of record, responsible for all AI-assisted output. See `CONTRIBUTING.md`.
+  author of record, responsible for all AI-assisted output. See `.github/CONTRIBUTING.md`.
 - **Every commit is authored by a human, and the gate refuses a machine.** The
   contributor graph is built from the author and committer fields, so a machine
   there asserts an authorship it does not hold — and a squash merge re-appends a

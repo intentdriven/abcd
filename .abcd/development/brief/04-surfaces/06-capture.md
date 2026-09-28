@@ -411,6 +411,15 @@ cases; a floor set high enough to judge reasoning would only buy padding. In a
 script written without inter-word spaces each letter counts as one unit, so the
 word floor does not fall on the writer of a Chinese or Japanese text.
 
+**The grounds text must render.** The section is append-only and no verb removes
+an entry, so a text the site's renderer refuses — an unclosed code span, an
+image, raw HTML, a reference link, a link title — is refused before anything is
+written, exit 2, on every route that records grounds, the reason-derived
+`declined:` entry of a wontfix included. The question is put to the renderer
+itself (`internal/core/mdrender`), so what is refused is exactly what a site
+build refuses, judged strictly where a page would supply context: every
+reference link and every image is refused.
+
 ## 4. Legacy scratch migration
 
 **Not built yet.** The migration rides the `dev-sync work` surface

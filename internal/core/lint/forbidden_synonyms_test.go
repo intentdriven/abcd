@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 // glossaryTerm writes a minimal glossary term file with the given forbidden
@@ -223,5 +224,43 @@ func TestForbiddenSynonymsRealGlossary(t *testing.T) {
 	}
 	if n := countRule(fs, "GL002"); n != 0 {
 		t.Fatalf("live corpus has %d GL002 finding(s); the epic sweep is incomplete: %+v", n, fs)
+	}
+}
+
+// TestStripInlineCodePairsRunsOfTheSameLength: stripInlineCode paired single
+// backticks one at a time, so a span a double-backtick run opened was read as
+// two empty spans with live prose between them: a synonym quoted in one was
+// flagged, and a link quoted in one was checked. It pairs by termsafe's pairer,
+// the rule every reader shares, and blanks rune for rune, so a column after a
+// multi-byte rune stays where it was.
+func TestStripInlineCodePairsRunsOfTheSameLength(t *testing.T) {
+	for in, gone := range map[string]string{
+		"the ``epic`` word":              "epic",
+		"the `` `epic` `` word":          "epic",
+		"a ``[x](gone.md)`` link":        "gone.md",
+		"a ``b`epic`` word":              "epic",
+		"é `epic` ü":                     "epic",
+		"a `x`` epic `` y` word":         "epic",
+		"\\`a ``epic`` b":                "epic",
+		"ok `epic` then a stray ` here":  "epic",
+		"``one`` and `epic` and ``two``": "epic",
+	} {
+		got := stripInlineCode(in)
+		if strings.Contains(got, gone) {
+			t.Errorf("stripInlineCode(%q) = %q, still holds %q", in, got, gone)
+		}
+		if utf8.RuneCountInString(got) != utf8.RuneCountInString(in) {
+			t.Errorf("stripInlineCode(%q) = %q changed the rune count", in, got)
+		}
+	}
+	for in, kept := range map[string]string{
+		"a ``epic` word":     "epic",
+		"\\`epic` word":      "epic",
+		"a `epic`` word":     "epic",
+		"the ```epic`` word": "epic",
+	} {
+		if got := stripInlineCode(in); !strings.Contains(got, kept) {
+			t.Errorf("stripInlineCode(%q) = %q, blanked %q, which no span holds", in, got, kept)
+		}
 	}
 }

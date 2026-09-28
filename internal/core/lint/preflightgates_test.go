@@ -51,12 +51,12 @@ func TestPreflightGateListIsNotRestatedWrongly(t *testing.T) {
 	// Every surface that enumerates the gates. A file joins this list when it
 	// starts restating them — which is the moment it becomes able to drift.
 	for _, rel := range []string{
-		"Makefile",               // the recipe's own comment, above the recipe
-		"docs/how-to/install.md", // the build section a contributor copies
-		"CONTRIBUTING.md",        // the local-gates paragraph
-		"AGENTS.md",              // the definition-of-done list
-		"CLAUDE.md",              // AGENTS.md's committed mirror
-		".githooks/pre-push",     // the hook that invokes the recipe
+		"Makefile",                // the recipe's own comment, above the recipe
+		"docs/how-to/install.md",  // the build section a contributor copies
+		".github/CONTRIBUTING.md", // the local-gates paragraph
+		"AGENTS.md",               // the definition-of-done list
+		"CLAUDE.md",               // AGENTS.md's committed mirror
+		".githooks/pre-push",      // the hook that invokes the recipe
 	} {
 		t.Run(rel, func(t *testing.T) {
 			prose := readRepoFile(t, root, rel)
@@ -485,7 +485,7 @@ func TestFormatGateResolvesThroughTheDeclaredToolchain(t *testing.T) {
 	for _, rel := range []string{
 		"AGENTS.md",                        // the command table and the definition-of-done list
 		"CLAUDE.md",                        // AGENTS.md's committed mirror
-		"CONTRIBUTING.md",                  // the local-gates paragraph
+		".github/CONTRIBUTING.md",          // the local-gates paragraph
 		".github/PULL_REQUEST_TEMPLATE.md", // the verification prompt
 		".githooks/pre-push",               // the hook's header, which tells the developer what CI adds
 	} {

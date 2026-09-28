@@ -26,6 +26,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/lint"
 	"github.com/intentdriven/abcd/internal/core/mdrecord"
+	"github.com/intentdriven/abcd/internal/core/mdrender"
 	"github.com/intentdriven/abcd/internal/core/positioning"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
@@ -400,6 +401,34 @@ func (c *composer) installChapterAnchor() string {
 	return c.firstChapterAnchor()
 }
 
+// footerFiles are the repository files the footer links, in order, each by the
+// first of its locations the repository carries. The security policy is a
+// community-health file, which the forge reads from `.github/`, the root or
+// `docs/`, in that order, so the footer looks where the forge looks; the other
+// three are read at the root alone.
+var footerFiles = [][]string{
+	{".github/SECURITY.md", "SECURITY.md", "docs/SECURITY.md"},
+	{"ACKNOWLEDGEMENTS.md"},
+	{"CITATION.cff"},
+	{"CHANGELOG.md"},
+}
+
+// footerLinks resolves footerFiles against the repository: each file at the
+// first of its locations the repository carries, in order. The footer and the
+// provenance gate that reads its link text resolve through this one walk.
+func footerLinks(root *os.Root) []string {
+	var out []string
+	for _, candidates := range footerFiles {
+		for _, f := range candidates {
+			if _, err := root.Stat(f); err == nil {
+				out = append(out, f)
+				break
+			}
+		}
+	}
+	return out
+}
+
 // footer renders the site footer: file names, links, and build metadata only.
 func (c *composer) footer() string {
 	var b strings.Builder
@@ -420,11 +449,8 @@ func (c *composer) footer() string {
 			` <span class="quiet">` + escapeText(c.repo.License) + `</span></span>`)
 	}
 	if c.repo.Repository != "" {
-		for _, f := range []string{"SECURITY.md", "ACKNOWLEDGEMENTS.md", "CITATION.cff", "CHANGELOG.md"} {
-			if _, err := c.root.Stat(f); err != nil {
-				continue
-			}
-			b.WriteString(`<a href="` + escapeAttr(forgeBlob(c.repo.Repository, f)) + `">` + escapeText(f) + `</a>`)
+		for _, f := range footerLinks(c.root) {
+			b.WriteString(`<a href="` + escapeAttr(forgeBlob(c.repo.Repository, f)) + `">` + escapeText(path.Base(f)) + `</a>`)
 		}
 		b.WriteString(`<a href="` + escapeAttr(c.repo.Repository) + `">` + escapeText(c.forgeLabel()) + `</a>`)
 	}
@@ -759,9 +785,6 @@ func leadIn(text string) (title, rest string, ok bool) {
 	return "", "", false
 }
 
-// isSpace reports whether a byte is markdown whitespace.
-func isSpace(c byte) bool { return c == ' ' || c == '\t' || c == '\n' || c == '\r' }
-
 // tablePortraits puts the role portraits above the column labels they name. The
 // portrait is not configured by asset name: the manifest names the PAGE the
 // roles live on, and each column label is matched to the section of that page
@@ -1028,7 +1051,7 @@ func (c *composer) install(p *docPage, ch Chapter) (string, error) {
 		bl := Blocks(s.Body, s.BodyLine)
 		hasCode := false
 		for _, b := range bl {
-			if strings.HasPrefix(b.Text, "```") {
+			if mdrender.OpensFence(b) {
 				hasCode = true
 			}
 		}

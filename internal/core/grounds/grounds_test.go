@@ -525,3 +525,58 @@ func TestVocabularyRenderings(t *testing.T) {
 		}
 	}
 }
+
+// TestNewRefusesWhatTheSiteRendererRefuses: a grounds entry is append-only and
+// lands in a record the site renders, so text the site's renderer refuses must be
+// refused where it enters, or the record lands and `abcd site build` goes red
+// with no verb that can take the entry back out (iss-2608301646046226). The
+// first five are the constructs the security review verified; the rest are the
+// renderer's other inline refusals, which the shared predicate covers because it
+// IS the renderer.
+func TestNewRefusesWhatTheSiteRendererRefuses(t *testing.T) {
+	refused := map[string]string{
+		"an unclosed code span":       "we expect the `--grounds flag to make the conjecture survive the session",
+		"a remote image":              "we expect ![the chart](https://example.com/c.png) to show the drift shrinking",
+		"a raw div":                   `we expect <div class="note">this page</div> to stay readable after the change`,
+		"an undefined reference link": "we expect [the ledger][nowhere] to record the conjecture we pursued",
+		"a footnote link":             "we expect the conjecture [see the note][^1] to survive rewording",
+		"a link title":                `we expect [the page](https://example.com "a title") to keep its reader`,
+		"an executable link scheme":   "we expect [this link](javascript:void) to be refused by every reader",
+		"an unterminated comment":     "we expect the record <!-- to keep every line below this entry",
+		"a nested link":               "we expect [a [nested](https://example.com) link](https://example.com) to render",
+		"inline html":                 "we expect <span>marked words</span> to carry the conjecture forward",
+	}
+	for what, text := range refused {
+		if g, err := New(Pursued, text); err == nil {
+			t.Errorf("New admitted %s, which the site renderer refuses: %q", what, g.Text)
+		} else if !strings.Contains(err.Error(), "site") {
+			t.Errorf("the refusal of %s does not say the site cannot render it: %v", what, err)
+		}
+	}
+
+	admitted := map[string]string{
+		"a closed code span":  "we expect the `--grounds` flag to make the conjecture survive the session",
+		"an inline link":      "we expect [the ledger](https://example.com/ledger) to record the conjecture",
+		"a literal bracket":   "we expect the array [0] to hold the first conjecture we recorded",
+		"a prose placeholder": "we expect the `<ts>` stamp and <ts> placeholder to survive rewording",
+		"emphasis left open":  "we expect the *stamped identity to survive rewording in the record",
+	}
+	for what, text := range admitted {
+		if _, err := New(Pursued, text); err != nil {
+			t.Errorf("New refused %s, which the site renders: %v", what, err)
+		}
+	}
+}
+
+// TestNewDerivedRefusesWhatTheSiteRendererRefuses: a wontfix stamps its
+// `declined:` entry from its reason, and that entry is as append-only as a
+// supplied one, so the derived constructor asks the renderer too. The substance
+// floor stays off: a terse reason that renders is still admitted.
+func TestNewDerivedRefusesWhatTheSiteRendererRefuses(t *testing.T) {
+	if g, err := NewDerived(Declined, "the `--grounds flag is out of scope"); err == nil {
+		t.Errorf("NewDerived admitted an unclosed code span, which the site renderer refuses: %q", g.Text)
+	}
+	if _, err := NewDerived(Declined, "out of scope"); err != nil {
+		t.Errorf("NewDerived refused a terse reason that renders: %v", err)
+	}
+}

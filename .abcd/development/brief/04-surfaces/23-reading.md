@@ -142,6 +142,11 @@ contamination. And both artefacts are refused as input wherever an admitted path
 holds one, recognised by the type tag they carry, so a run committed before that
 refusal existed cannot ride in either.
 
+An output directory reached through a symlink at any level inside a checkout is
+refused however it is spelled (relative, absolute, or climbing out of the
+repository and back in), because a committed link would carry both files
+elsewhere; outside every checkout the path is the operator's own.
+
 Run identifiers are minted per adr-45, from a mint that reads no maximum, so two
 checkouts assembling in the same window cannot converge on one id.
 

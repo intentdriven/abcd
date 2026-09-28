@@ -9,6 +9,8 @@ package core
 import (
 	"os"
 	"path/filepath"
+
+	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
 // Version is abcd's version, stamped at build time via -ldflags -X (see the
@@ -29,6 +31,10 @@ func NewVersion() VersionInfo {
 // StatusInfo is the result of Status: a read-only "where am I" snapshot of a
 // directory, mirroring abcd's bare-invocation status convention (never mutates).
 type StatusInfo struct {
+	// Dir is the inspected directory with the home redacted to "~": it travels
+	// into --json, and machine output never carries an absolute
+	// developer-identity path (iss-81, iss-2609261950066257). It is display
+	// only; the inspection reads the directory itself.
 	Dir       string   `json:"dir"`
 	IsGitRepo bool     `json:"is_git_repo"`
 	HasRecord bool     `json:"has_record"` // .abcd/development present
@@ -43,7 +49,7 @@ func Status(dir string) (StatusInfo, error) {
 		return StatusInfo{}, err
 	}
 	s := StatusInfo{
-		Dir: abs,
+		Dir: fsutil.RedactHome(abs),
 		// .git is a directory in a normal clone but a regular gitfile in a linked
 		// worktree or submodule — both are genuine checkouts, so test existence, not
 		// dir-ness. HasRecord/WorkTiers stay dir-only (those must be directories).

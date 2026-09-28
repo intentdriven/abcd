@@ -83,8 +83,14 @@ var renderPathDocAudit = &DocAuditPreflight{
 
 // PayloadRenderResult is a completed render.
 type PayloadRenderResult struct {
-	// Dest is the staging directory the payload was written to.
-	Dest string `json:"dest"`
+	// Dest is the staging directory the payload was written to: the resolved,
+	// absolute working value the archive step packs from. It never reaches
+	// machine output (iss-81); DisplayDest is what a report names.
+	Dest string `json:"-"`
+	// DisplayDest is Dest as a report names it (fsutil.DisplayPath): relative
+	// to the repository inside it, the home redacted to "~" outside it — and a
+	// destination is always outside it (iss-2609261848338673).
+	DisplayDest string `json:"dest"`
 	// Version is the version stamped at every pinned location.
 	Version string `json:"version"`
 	// Bundle is the resolution the payload was written from, so a caller can
@@ -432,6 +438,7 @@ func RenderPayload(req PayloadRenderRequest) (PayloadRenderResult, error) {
 	primaryPath, primaryPtr := pre.PrimaryPath, pre.PrimaryPointer
 	bundle := pre.Bundle
 	res.Dest = dest
+	res.DisplayDest = fsutil.DisplayPath(req.RepoRoot, dest)
 	res.Bundle = bundle
 
 	if err := os.MkdirAll(dest, 0o755); err != nil {

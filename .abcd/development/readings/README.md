@@ -107,7 +107,10 @@ document the floor cannot resolve at all — a fence delimiter inside the
 frontmatter block, a delimited block displaced from line 0 by blank lines,
 whitespace or an HTML comment, a compact mapping nested in a block sequence, an
 explicit key in a flow mapping, an attribute value that opens on the line after
-its equals sign, and a raw heading element that is never closed. Each is refused
+its equals sign, a raw heading element that is never closed, and raw heading
+elements whose titles overlap past the floor's read budget — a run of openers
+sharing one far bound, whose titles cannot be read in time linear in the
+document (iss-2608301421382564). Each is refused
 by name, naming the document, the line and the shape, because a control that
 cannot examine an input refuses it rather than admitting it silently (adr-56). Prose-borne warmth inside an admitted chapter has no structural
 signal: the chapter-level bound and the glossary discipline carry it, and it is

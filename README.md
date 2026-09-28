@@ -152,5 +152,5 @@ repository* button reads:
 ## Resources
 
 - [`LICENSE`](LICENSE): MIT.
-- [`SECURITY.md`](SECURITY.md): Report a vulnerability privately.
+- [`SECURITY.md`](.github/SECURITY.md): Report a vulnerability privately.
 - [`ACKNOWLEDGEMENTS.md`](ACKNOWLEDGEMENTS.md): The ideas, tools, and writing `abcd` stands on.

@@ -11,10 +11,12 @@
 //
 // Invoke with args = the pinned input manifest
 // (.abcd/development/release-gate/manifest.json): { briefDocs, surfaces, prompt,
-// ... }. The manifest is the reproducibility anchor (iss-122) — the doc list,
-// the directions, the checker count, and the prompt (context + both direction
+// ... }. The manifest pins the run's inputs (iss-122) — the doc list, the
+// directions, the checker count, and the prompt (context + both direction
 // templates) are fixed there rather than composed ad hoc here, so two honest
-// runs of the same tier mean the same thing. The receipt echoes the manifest's
+// runs of the same tier examine the same scope. It cannot pin the findings: the
+// checkers are LLM agents, and their count and classes vary between runs on
+// identical inputs (iss-2608231409595789). The receipt echoes the manifest's
 // sha256 as manifestHash and the depth it ran at as tier; receipt_gate refuses a
 // receipt whose manifestHash mismatches or whose tier is too shallow for the
 // release's impact class.

@@ -151,7 +151,7 @@ func TestPrinciplesMarkdownRendersTheKeys(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"Claim type: causal", "Reference: adr-24", "Comparison: none stated", "Evidence: adr-24"} {
+	for _, want := range []string{"Claim type: causal", "Reference: adr-24", "Comparison: none stated", "Evidence: `adr-24`"} {
 		if !strings.Contains(string(md), want) {
 			t.Errorf("principles.md does not carry %q:\n%s", want, md)
 		}

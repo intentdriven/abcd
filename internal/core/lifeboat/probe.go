@@ -914,6 +914,8 @@ func tiersPresent(c *SourceContext) []Tier {
 func hasConventions(c *SourceContext) bool {
 	candidates := []string{
 		"docs", "LICENSE", "LICENSE.md", "CONTRIBUTING.md", "CONTRIBUTING",
+		// The forge reads the contribution guide from .github/ as well as the root.
+		".github/CONTRIBUTING.md",
 		"ISSUES.md", "ISSUES",
 		// Directory evidence the adapters treat as grounding.
 		".github/workflows", "issues", ".github/ISSUE_TEMPLATE",
