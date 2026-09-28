@@ -118,7 +118,14 @@ every check verdict reports it (`ceiling`). abcd runs no agent and counts none
 count here to hold it against; keeping it, and logging a `ceiling_wait` at it,
 is the session's discipline, which the verdict puts in front of it at every
 step. On a refused claim the second session
-also logs a `backoff` with its reason and minutes.
+also logs a `backoff` with its reason and minutes, the minutes being what the
+attempt spent, measured from its start; a run state locked past the lock's
+timeout by another session's change is contention too, and the second session's
+`backoff` from it carries `on: run_state` and the minutes it waited. A second
+session whose join meets the lock has no record yet, so the role it is joining
+with places the line; a session that never joined has no role to place it by,
+and the refusal says the backoff went unlogged. The append takes no lock, so
+that line reaches the log while the lock is held.
 
 The reading corpus is derived, never restated: the union of every position's
 `object.paths` in the checkout's committed `.abcd/config/reading-presets.json`,
@@ -144,7 +151,11 @@ the fields; it reaches the file in one `O_APPEND` write through
 `fsutil.AppendLineIn`, so two writers each land whole lines. The session, window,
 claim and load events are refused here: they are written by their own sub-verbs,
 so the log cannot record a claim the run state does not hold, or a load warning
-the check did not give.
+the check did not give. A hand-logged `backoff` names its `reason` and the
+`minutes` it spent (a number no smaller than zero), or it is refused with nothing
+written: contention the verb cannot see, such as the merge queue, reaches the
+comparison only this way, and a backoff with neither would count as one that
+cost nothing for no reason.
 
 The report derives, per mode, the windows, wall clock, lanes opened and
 landed (a `lane_close` whose outcome is `merged` or `landed`), the second

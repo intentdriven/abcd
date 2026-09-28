@@ -701,3 +701,62 @@ func TestTheInboxReadersRefuseWhatTheWritersRefuse(t *testing.T) {
 
 // second is the error of a two-value call.
 func second[T any](_ T, err error) error { return err }
+
+// TestAnUnreadableReportStillNamesItsSender: the envelope is abcd's own
+// writing, so a report whose reporter block this abcd cannot read (a later
+// template, a malformed field) is still listed with the sender's name when the
+// envelope names it under the key the file is filed by (itd-2609221656361680
+// criterion 4, iss-2609240133234244). An envelope naming another key, or a name
+// no filing could have written, names nobody.
+func TestAnUnreadableReportStillNamesItsSender(t *testing.T) {
+	home := sandbox(t, time.Date(2026, 9, 23, 11, 0, 0, 0, time.UTC))
+	dir := filepath.Join(home, ".abcd", "inbox")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	key := strings.Repeat("c", 40)
+	other := strings.Repeat("d", 40)
+	write := func(stamp, fileKey, body string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, stamp+"-"+fileKey+".md"), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// A later template, envelope intact.
+	write("2609231100001234", key, "---\nschema_version: 7\nsomething_new: yes\nreceived_at: \"2026-09-23T11:00:00Z\"\nsender_key: "+key+"\nsender_name: \"widget-repo\"\n---\n\nprose\n")
+	// A malformed reporter field, envelope intact.
+	write("2609231100011234", key, "---\nschema_version: 1\nkind: nonsense\nsender_key: "+key+"\nsender_name: widget-repo\n---\n\nprose\n")
+	// An envelope naming a key other than the one the file is filed by.
+	write("2609231100021234", other, "---\nschema_version: 7\nsender_key: "+key+"\nsender_name: widget-repo\n---\n\nprose\n")
+	// A name no filing writes.
+	write("2609231100031234", other, "---\nschema_version: 7\nsender_key: "+other+"\nsender_name: \"a/../b\"\n---\n\nprose\n")
+
+	list, err := List()
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	want := map[string]string{
+		"rpt-2609231100001234": "widget-repo",
+		"rpt-2609231100011234": "widget-repo",
+		"rpt-2609231100021234": "",
+		"rpt-2609231100031234": "",
+	}
+	if len(list) != len(want) {
+		t.Fatalf("List = %+v", list)
+	}
+	for _, e := range list {
+		if e.State != StateUnreadable {
+			t.Errorf("%s state = %q; want unreadable", e.ID, e.State)
+		}
+		if e.SenderName != want[e.ID] {
+			t.Errorf("%s sender name = %q; want %q", e.ID, e.SenderName, want[e.ID])
+		}
+	}
+	e, err := Show("rpt-2609231100001234")
+	if err != nil {
+		t.Fatalf("Show: %v", err)
+	}
+	if e.SenderName != "widget-repo" {
+		t.Errorf("Show sender name = %q; want the envelope's", e.SenderName)
+	}
+}

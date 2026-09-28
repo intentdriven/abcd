@@ -307,7 +307,11 @@ func newInboxCommand(asJSON *bool) *cobra.Command {
 				fmt.Fprintf(w, "  %s\n", inboxUntrustedNotice)
 				for _, e := range list {
 					if e.State == report.StateUnreadable {
-						fmt.Fprintf(w, "  %s  %s  key %s  UNREADABLE: %s\n", e.ID, e.ReceivedAt, e.SenderKey[:12], termsafe.Sanitize(e.Unreadable))
+						from := "key " + e.SenderKey[:12]
+						if e.SenderName != "" {
+							from = termsafe.Sanitize(e.SenderName) + " (" + from + ")"
+						}
+						fmt.Fprintf(w, "  %s  %s  %s  UNREADABLE: %s\n", e.ID, e.ReceivedAt, from, termsafe.Sanitize(e.Unreadable))
 						continue
 					}
 					fmt.Fprintf(w, "  %s  %s  %s  %s/%s  %s\n", e.ID, e.ReceivedAt, termsafe.Sanitize(e.SenderName),

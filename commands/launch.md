@@ -1,7 +1,7 @@
 ---
 name: launch
 description: "Preview the public launch bundle, its secret scan, and the release gates: Writes only its pre-flight report, to the local tier; refuses without --dry-run."
-argument-hint: "[--dry-run [--deep-smoke] [--baseline <vX.Y.Z>] [--fetch-baseline]] | ship [--changelog-json <path>] [--payload-dir <dir>] [--allow-dirty] [--fetch-baseline] | archive --out <dir> [--tag <vX.Y.Z>] [--verify] [--repository <owner/name>] | scaffold"
+argument-hint: "[--dry-run [--deep-smoke] [--baseline <vX.Y.Z>] [--fetch-baseline]] | ship [--changelog-json <path>] [--payload-dir <dir>] [--allow-dirty] [--fetch-baseline] | archive --out <dir> [--tag <vX.Y.Z>] [--verify] [--repository <owner/name>] | manifests --tree public|dev [--root <dir>] | scaffold"
 block: people
 ---
 
@@ -833,6 +833,30 @@ Relay `archive.name`, `archive.sha256`, `url`, `pin` and `repository`. Between r
 pins the last release's archive, which its moved-on tree no longer reproduces, so
 `--verify` there is expected to refuse: it proves a release commit, not a branch
 tip.
+
+## Manifests — the manifest lockstep check
+
+`manifests` runs the manifest lockstep check over a tree, at the polarity the
+caller names: the check the preview runs at `dev` over the source tree and the
+cut's render runs at `public` over the staged payload. It reads and never
+writes, and it has no flag that waives a finding.
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" launch manifests --tree public|dev [--root <dir>] --json
+```
+
+- `--tree public` requires the version-location primary present as strict
+  SemVer and every pinned secondary in `.claude-plugin/marketplace.json` to
+  agree with it (adr-20). Use it on a public tree: a marketplace install or a
+  release source archive.
+- `--tree dev` requires every version key absent (adr-19), as a development
+  checkout carries them.
+- `--root` names the tree; the default is the working directory. The tree's own
+  `.abcd/config/version-location.json` and artefact declaration are read.
+
+Exit codes: **0** consistent; **1** drift, with one `drifts` line per field;
+**2** an input that cannot be read (`unreadable` with its `detail`), or a
+`--tree` that is neither polarity. Relay `tree`, `ok` and each `drifts` line.
 
 ## Scaffold — the release-gate scaffolder
 

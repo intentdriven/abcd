@@ -1276,7 +1276,9 @@ claim is a lease (--lease, default 2h, 1m to 24h). Claiming a record this sessio
 already holds renews the lease. A claim whose lease has passed is claimable again,
 and the lapse is logged as claim_lapsed. A record another session holds is refused
 at exit 3 and logged as claim_denied naming the holder; the second session also
-logs a backoff.
+logs a backoff with its reason and the minutes the attempt spent. A run state
+locked by another session's change is exit 3 too, and the second session's
+backoff from it is logged the same way.
 
 The second session is refused (exit 2, logged as a refusal) when it already holds
 a live claim, when the window is split-roles, or when a --path it declares is in the
@@ -1413,7 +1415,9 @@ carries ts, session and event, then each --field. A value that reads as a number
 a boolean is written as one when it reads back as the same text, so `sha=0123456`
 stays a string. The events: backoff, lane_open, lane_close, agent_start, agent_end, ceiling_wait, gate_run, review, fallback, stop, refusal, pr, capture, context.
 The claim, window and session events are written by their own sub-verbs and are
-refused here, so the log cannot record a claim the run state does not hold.
+refused here, so the log cannot record a claim the run state does not hold. A
+backoff names its reason and the minutes it spent (reason=<why>, minutes=<n>),
+or it is refused.
 
 **Flags:**
 
@@ -2033,6 +2037,31 @@ is written to --out.
 
 ```
 abcd launch archive --out dist
+```
+
+#### `abcd launch manifests`
+
+Check the release manifests agree on the version, or carry none on a dev tree: Writes nothing; refuses with exit 1 on drift and exit 2 on an unreadable input.
+
+**Usage:** `abcd launch manifests --tree public|dev [--root <dir>] [flags]`
+
+Run the manifest lockstep check over a tree. --tree public requires the
+version-location primary present as strict SemVer and every pinned secondary
+to agree with it; --tree dev requires every version key absent (adr-19). The
+tree is the working directory, or --root. Exit 0 consistent, 1 drift (one
+line per field), 2 unreadable. Nothing is written.
+
+**Flags:**
+
+```
+      --root string   the tree to check (default: the working directory)
+      --tree string   the polarity to check: public (versions present and agreeing) or dev (versions absent)
+```
+
+**Example:**
+
+```
+abcd launch manifests --tree public
 ```
 
 #### `abcd launch receipts`

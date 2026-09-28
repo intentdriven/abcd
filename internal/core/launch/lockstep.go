@@ -21,6 +21,30 @@ const (
 	TreePublic LockstepTree = "public"
 )
 
+// ParseLockstepTree reads a polarity by its name, refusing any other.
+func ParseLockstepTree(s string) (LockstepTree, error) {
+	switch LockstepTree(s) {
+	case TreeDev, TreePublic:
+		return LockstepTree(s), nil
+	}
+	return "", fmt.Errorf("tree %q is neither %q nor %q", s, TreeDev, TreePublic)
+}
+
+// CheckTree runs the lockstep check the caller chooses over the checkout at
+// root, reading that checkout's own version-location contract and artefact
+// declaration: the check the preview and the cut run at the dev polarity over
+// the source tree, and the payload render at the public polarity over its
+// output, reachable for any tree a person holds — a public checkout, such as a
+// marketplace install or a release source archive, included (itd-69). An
+// artefact declaration that cannot be read is an unreadable input (exit 2).
+func CheckTree(tree LockstepTree, root string) LockstepResult {
+	art, err := LoadArtefactOrPlugin(root)
+	if err != nil {
+		return unreadable(LockstepResult{Tree: tree}, "artefact declaration not readable: "+err.Error())
+	}
+	return kindLockstep(tree, root, art)
+}
+
 // LockstepResult is the outcome of a manifest lockstep check.
 type LockstepResult struct {
 	Tree       LockstepTree `json:"tree"`

@@ -523,6 +523,44 @@ func refusePath(key, v string) error {
 	return nil
 }
 
+// EnvelopeSender reads the sender's name from a filed report's envelope alone,
+// for a report the parser refuses (a later template, a malformed reporter
+// field): the envelope is abcd's own writing and sits in the same block, so the
+// inbox can say who is asking even where it cannot read what they ask. The name
+// is returned only when the block names it once, in the shape a filing writes,
+// beside a sender_key once that is fileKey, the key the file is filed by; any
+// other file names nobody, and "" is returned.
+func EnvelopeSender(data []byte, fileKey string) string {
+	if len(data) > maxFiledBytes || !utf8.Valid(data) {
+		return ""
+	}
+	lines := strings.Split(strings.ReplaceAll(frontmatter.TrimBOM(string(data)), "\r\n", "\n"), "\n")
+	if len(lines) == 0 || !frontmatter.IsDelimiter(lines[0]) {
+		return ""
+	}
+	seen := map[string][]string{}
+	for _, line := range lines[1:] {
+		if frontmatter.IsDelimiter(line) {
+			break
+		}
+		key, value, ok := strings.Cut(line, ":")
+		if !ok || (key != keySenderKey && key != keySenderName) {
+			continue
+		}
+		v, ok := scalar(&blockLine{value: value})
+		if !ok {
+			return ""
+		}
+		seen[key] = append(seen[key], v)
+	}
+	keys, names := seen[keySenderKey], seen[keySenderName]
+	if len(keys) != 1 || len(names) != 1 || keys[0] != fileKey || !senderKeyRe.MatchString(keys[0]) ||
+		!senderNameRe.MatchString(names[0]) {
+		return ""
+	}
+	return names[0]
+}
+
 // senderKeyRe is a full root-commit SHA, SHA-1 or SHA-256.
 var senderKeyRe = regexp.MustCompile(`^(?:[0-9a-f]{40}|[0-9a-f]{64})$`)
 
