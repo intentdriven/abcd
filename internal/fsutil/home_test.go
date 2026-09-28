@@ -121,3 +121,40 @@ func TestHomeDeclarationsReadThroughReadHomeDeclaration(t *testing.T) {
 			strings.Join(offenders, "\n  "))
 	}
 }
+
+// TestHomeScopeLinkRefusesARelThatIsNotARelativePath: rel names a place in
+// the caller's home, so a rel that is not a clean relative path is refused
+// rather than judged. Passing it would say "no link here" about a path the
+// walk never covered: an escaping rel ("../x/f") left home before any
+// directory was judged, and an absolute one judged HOME ITSELF, the one
+// directory the rule deliberately leaves alone. ReadHomeDeclaration refuses
+// it the same way, as unreadable rather than as a symlink it did not find.
+func TestHomeScopeLinkRefusesARelThatIsNotARelativePath(t *testing.T) {
+	home := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(home, ".abcd"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for _, rel := range []string{
+		"",
+		"../x/f",
+		".abcd/../../x/f",
+		"/etc/f",
+		"./.abcd/f",
+		".abcd//f",
+		".abcd/f/",
+	} {
+		err := HomeScopeLink(home, rel)
+		if !errors.Is(err, os.ErrInvalid) {
+			t.Errorf("HomeScopeLink(%q) = %v, want a refusal wrapping os.ErrInvalid", rel, err)
+		}
+		if errors.Is(err, ErrHomeScopeSymlinked) {
+			t.Errorf("HomeScopeLink(%q) reports a symlink that is not there: %v", rel, err)
+		}
+		if _, refusal, err := ReadHomeDeclaration(home, rel, 1<<10); refusal != DeclarationUnreadable || !errors.Is(err, os.ErrInvalid) {
+			t.Errorf("ReadHomeDeclaration(%q) = refusal %d, err %v; want DeclarationUnreadable wrapping os.ErrInvalid", rel, refusal, err)
+		}
+	}
+	if err := HomeScopeLink(home, ".abcd/credentials.json"); err != nil {
+		t.Fatalf("a valid rel under a real ~/.abcd must pass: %v", err)
+	}
+}

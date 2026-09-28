@@ -53,9 +53,18 @@ func (e *HomeScopeLinkError) Unwrap() error { return ErrHomeScopeSymlinked }
 // link (/home -> /usr/home, a relocated account) is the machine's layout, not a
 // declaration the caller could have made somewhere else, and refusing it would
 // refuse every account laid out that way.
+//
+// rel must be a clean relative path (ValidRelPath); anything else is refused
+// with an *os.PathError wrapping os.ErrInvalid rather than judged. An escaping
+// rel ("../x/f") leaves home before any directory below it is reached, and an
+// absolute one would judge home itself, so passing either would vouch for a
+// path the walk never covered.
 func HomeScopeLink(home, rel string) error {
-	dir := path.Dir(path.Clean(filepath.ToSlash(rel)))
-	if dir == "." || dir == "/" || strings.HasPrefix(dir, "../") || dir == ".." {
+	if !ValidRelPath(rel) {
+		return &os.PathError{Op: "homescopelink", Path: rel, Err: os.ErrInvalid}
+	}
+	dir := path.Dir(rel)
+	if dir == "." {
 		return nil
 	}
 	cur := home
@@ -87,7 +96,13 @@ func HomeScopeLink(home, rel string) error {
 // refused before a byte of it is read. The Lstat that decides absence follows
 // the directories, which is what lets a file behind a link be found in order to
 // be refused.
+//
+// A rel that is not a clean relative path is DeclarationUnreadable before
+// anything is looked at: it names no place in the home to read.
 func ReadHomeDeclaration(home, rel string, limit int64) ([]byte, DeclarationRefusal, error) {
+	if !ValidRelPath(rel) {
+		return nil, DeclarationUnreadable, &os.PathError{Op: "readhomedeclaration", Path: rel, Err: os.ErrInvalid}
+	}
 	p := filepath.Join(home, filepath.FromSlash(rel))
 	if _, err := os.Lstat(p); err != nil {
 		return nil, DeclarationAbsent, err
