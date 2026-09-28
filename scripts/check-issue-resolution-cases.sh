@@ -359,6 +359,55 @@ git -C "$d" checkout -q work
 expect_refusal_naming "$d" "RS001 on a stale branch diagnoses a record with a non-ASCII slug" \
 	"iss-998 already sits in $ISS_DIR/resolved/ at main .*squash of work.*[Rr]ebase onto main" -- commits main HEAD
 
+# --- RS001: entering is from outside a terminal folder (iss-2609012047551175) --
+#
+# A stale trailer must not be satisfied by a move the branch did not make. In
+# each case the record is terminal at the merge base, the branch carries a
+# `Resolves:` for it anyway, and the BASE then moves the record between or
+# within terminal folders — so the two-dot diff shows it arriving in a terminal
+# folder, back where the branch still has it. Keyed on the destination alone,
+# every one of these passed.
+stale_trailer_on_terminal_record() {
+	local d
+	d="$(newrepo "$1")"
+	git -C "$d" checkout -q main
+	resolve_record "$d"
+	git -C "$d" add -A
+	git -C "$d" commit -qm "chore: resolve a stale issue"
+	git -C "$d" checkout -q -B work main
+	echo "touched" >>"$d/README.md"
+	git -C "$d" add -A
+	git -C "$d" commit -qm "fix: something else
+
+Resolves: iss-999"
+	git -C "$d" checkout -q main
+	echo "$d"
+}
+
+d="$(stale_trailer_on_terminal_record rs001-base-moved-to-wontfix)"
+git -C "$d" mv "$ISS_DIR/resolved/iss-999-a-fixture.md" "$ISS_DIR/wontfix/iss-999-a-fixture.md"
+git -C "$d" commit -qm "chore: reclassify as wontfix"
+git -C "$d" checkout -q work
+expect fail "$d" "RS001 a base-side move resolved/ -> wontfix/ does not satisfy a stale trailer" -- commits main HEAD
+
+d="$(stale_trailer_on_terminal_record rs001-base-reslugged)"
+git -C "$d" mv "$ISS_DIR/resolved/iss-999-a-fixture.md" "$ISS_DIR/resolved/iss-999-reslugged.md"
+git -C "$d" commit -qm "chore: reslug the record"
+git -C "$d" checkout -q work
+expect fail "$d" "RS001 a base-side reslug inside resolved/ does not satisfy a stale trailer" -- commits main HEAD
+
+# The same move rewritten past rename detection arrives as a plain add, with no
+# rename source to read — which is why the test is the base's listing.
+d="$(stale_trailer_on_terminal_record rs001-base-moved-rewritten)"
+git -C "$d" mv "$ISS_DIR/resolved/iss-999-a-fixture.md" "$ISS_DIR/wontfix/iss-999-a-fixture.md"
+for i in 1 2 3 4 5 6 7 8 9 10; do
+	echo "Rewritten line $i so git reports the move as a delete plus an add." >>"$d/$ISS_DIR/wontfix/iss-999-a-fixture.md"
+done
+git -C "$d" add -A
+git -C "$d" commit -qm "chore: reclassify and rewrite"
+git -C "$d" checkout -q work
+expect fail "$d" "RS001 a base-side move rewritten past rename detection does not satisfy a stale trailer" -- commits main HEAD
+
 # --- RS002: a stamp added here must name a reachable commit ------------------
 
 d="$(newrepo rs002-bad)"
@@ -1076,6 +1125,21 @@ git -C "$d" commit -qm "feat: build the thing
 Delivers: itd-8"
 expect_refusal_naming "$d" "RS005 with an empty open/ still diagnoses the planned intent" \
 	"itd-8 .*no spec to close" -- commits main HEAD
+
+# RS001's entering-from-outside fix on the intent store: a reslug inside
+# shipped/ on the base's side does not satisfy a stale `Delivers:`
+# (iss-2609012047551175's twin).
+d="$(newrepo_intents rs005-base-reslugged)"
+echo "touched" >>"$d/README.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "feat: build the thing again
+
+Delivers: itd-6"
+git -C "$d" checkout -q main
+git -C "$d" mv "$INT_DIR/shipped/itd-6-fixture-6.md" "$INT_DIR/shipped/itd-6-reslugged.md"
+git -C "$d" commit -qm "docs: reslug itd-6"
+git -C "$d" checkout -q work
+expect fail "$d" "RS005 a base-side reslug inside shipped/ does not satisfy a stale trailer" -- commits main HEAD
 
 # Criterion 5: the intent rule's refusal has the issue rule's shape and exit
 # code — compared here, not judged by a reviewer. Both fixtures are the ordinary

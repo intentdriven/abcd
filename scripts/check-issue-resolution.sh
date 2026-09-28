@@ -243,23 +243,57 @@ usage() {
 # plain add into the terminal folder. Both are honest resolutions and both are
 # caught here. A record that only LEAVES open/ (a bare delete) enters nothing and
 # is deliberately absent, so RS001 refuses a trailer that merely deletes.
+#
+# ENTERING means from outside: a record the base already holds in a terminal
+# folder enters nothing, whatever the diff shows (iss-2609012047551175). Keyed on
+# the destination alone, a move BETWEEN terminal folders counted — so a stale
+# branch whose base had since moved the record resolved/ -> wontfix/, or reslugged
+# it inside resolved/, read the two-dot diff's rename back into place as this
+# branch's resolution, and a trailer satisfied by a move it did not make passed
+# silently. The base's own listing is the test rather than the rename's source,
+# because a move rewritten past rename detection arrives as a plain add and has
+# no source to read. Such a trailer falls through to RS001's diagnosis instead.
 ids_entering_closed() {
-	local base="$1" head="$2"
+	local base="$1" head="$2" terminal_at_base
+	# `|| exit 2`: this runs inside the caller's command substitution, where
+	# errexit is cleared, so a failed listing must end the subshell itself for
+	# pipefail to carry it out.
+	terminal_at_base="$(terminal_ids "$base" "$ISSUES_DIR/resolved" "$ISSUES_DIR/wontfix" 'iss-[0-9]+')" || exit 2
 	git diff --name-status --find-renames "$base".."$head" -- "${STATUS_PATHSPECS[@]}" |
 		while IFS=$'\t' read -r status path dest; do
+			local landed="" id
 			case "$status" in
-			R*)
-				case "$dest" in
-				"$ISSUES_DIR/resolved/"* | "$ISSUES_DIR/wontfix/"*) basename "$dest" | grep -oE '^iss-[0-9]+' || true ;;
-				esac
-				;;
-			A)
-				case "$path" in
-				"$ISSUES_DIR/resolved/"* | "$ISSUES_DIR/wontfix/"*) basename "$path" | grep -oE '^iss-[0-9]+' || true ;;
-				esac
+			R*) landed="$dest" ;;
+			A) landed="$path" ;;
+			esac
+			case "$landed" in
+			"$ISSUES_DIR/resolved/"* | "$ISSUES_DIR/wontfix/"*)
+				id="$(basename "$landed" | grep -oE '^iss-[0-9]+' || true)"
+				[ -n "$id" ] || continue
+				printf '%s\n' "$terminal_at_base" | grep -qx "$id" && continue
+				printf '%s\n' "$id"
 				;;
 			esac
 		done
+}
+
+# terminal_ids prints, one per line, the id (matched by the ERE in $4, anchored
+# at the basename's start) of every record ref holds under the terminal folders
+# $2 and $3 ($3 may be empty). The listing is rc-checked: a git failure must not
+# read as "nothing was terminal", which would re-open the hole this closes.
+terminal_ids() {
+	local ref="$1" d1="$2" d2="$3" idre="$4" listing rc=0
+	if [ -n "$d2" ]; then
+		listing="$(git ls-tree -r --name-only "$ref" -- "$d1" "$d2" 2>&1)" || rc=$?
+	else
+		listing="$(git ls-tree -r --name-only "$ref" -- "$d1" 2>&1)" || rc=$?
+	fi
+	if [ "$rc" -ne 0 ]; then
+		echo "check-issue-resolution: git ls-tree failed at $ref (exit $rc) — refusing rather than reporting a vacuous pass:" >&2
+		echo "$listing" >&2
+		exit 2
+	fi
+	printf '%s\n' "$listing" | sed 's|.*/||' | { grep -oE "^$idre" || true; } | sort -u
 }
 
 # record_path prints the ledger path of iss-N's record at ref — its status
@@ -351,19 +385,29 @@ canon_itd() {
 # shipped/ across the range: a move out of planned/ (a rename, or an add without
 # rename detection) or a record filed straight into shipped/. The mirror of
 # ids_entering_closed, and as there a record that only leaves planned/ enters
-# nothing.
+# nothing — nor does one the base already holds in shipped/: a reslug inside
+# shipped/ on the base's side reads, in the two-dot diff, as a rename back into
+# shipped/, and must not satisfy a stale `Delivers:` (iss-2609012047551175's
+# twin). The comparison is on the canonical id, so a zero-padded filename on
+# either side is the same record.
 ids_entering_shipped() {
-	local base="$1" head="$2"
+	local base="$1" head="$2" shipped_at_base
+	# `|| exit 2` for the reason ids_entering_closed gives.
+	shipped_at_base="$(terminal_ids "$base" "$INTENTS_DIR/shipped" "" 'itd-[0-9]+')" || exit 2
+	shipped_at_base="$(printf '%s\n' "$shipped_at_base" | while IFS= read -r raw; do canon_itd "$raw"; done)"
 	git diff --name-status --find-renames "$base".."$head" -- "${INTENT_PATHSPECS[@]}" |
 		while IFS=$'\t' read -r status path dest; do
-			local landed=""
+			local landed="" id
 			case "$status" in
 			R*) landed="$dest" ;;
 			A) landed="$path" ;;
 			esac
 			case "$landed" in
 			"$INTENTS_DIR/shipped/"*)
-				canon_itd "$(basename "$landed" | grep -oE '^itd-[0-9]+' || true)"
+				id="$(canon_itd "$(basename "$landed" | grep -oE '^itd-[0-9]+' || true)")"
+				[ -n "$id" ] || continue
+				printf '%s\n' "$shipped_at_base" | grep -qx "$id" && continue
+				printf '%s\n' "$id"
 				;;
 			esac
 		done
