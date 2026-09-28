@@ -100,14 +100,15 @@ func after(name StepName) StepName {
 }
 
 // DefaultSteps is the lane sequence this build carries, each step with the
-// spec piece that delivers its body. No body is built yet: the worktree and
-// the brief, the receipt and the validators, and the landing are the next
-// lanes of spc-2609202134338445, and each registers its body here.
+// spec piece that delivers its body: the worktree (lane.go), the brief
+// (brief.go) and the implement step with its receipt's verifier (receipt.go).
+// The validators and the landing are later pieces of spc-2609202134338445, and
+// each registers its body here.
 func DefaultSteps() Steps {
 	return Steps{
-		{Name: StepWorktree, Piece: 6},
-		{Name: StepBrief, Piece: 5},
-		{Name: StepImplement, Piece: 7},
+		{Name: StepWorktree, Piece: 6, Run: worktreeStep},
+		{Name: StepBrief, Piece: 5, Run: briefStep},
+		{Name: StepImplement, Piece: 7, Run: implementStep, Verify: verifyReceipt},
 		{Name: StepValidate, Piece: 8},
 		{Name: StepLand, Piece: 9},
 	}
@@ -435,13 +436,16 @@ func specOf(st State) string {
 }
 
 // samePath reports whether two paths name the same file, a relative one read
-// against the checkout root.
+// against the checkout root. Each is compared by its real path, so a checkout
+// reached through a symlinked spelling (the caller's working directory) and
+// the resolved one git names as the root are the same place
+// (iss-2609261534097255).
 func samePath(repoRoot, a, b string) bool {
 	abs := func(p string) string {
 		if !filepath.IsAbs(p) {
 			p = filepath.Join(repoRoot, filepath.FromSlash(p))
 		}
-		return filepath.Clean(p)
+		return fsutil.RealExistingPath(filepath.Clean(p))
 	}
 	return a != "" && abs(a) == abs(b)
 }

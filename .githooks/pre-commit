@@ -173,7 +173,7 @@ fi
 cd "$toplevel"
 
 # --- iss-62 identity gate ---------------------------------------------------
-# Refuse a commit whose author identity diverges from the committed pin
+# Refuse a commit whose author or committer identity diverges from the committed pin
 # (.abcd/config/identity.json). Self-contained (no binary dependency) so the
 # guard holds even before abcd is built or on PATH, and can't be broken by a
 # stale abcd. Runs FIRST — the name-guard below early-exits when no banlist is
@@ -194,11 +194,38 @@ if [ -f "$identity_pin" ]; then
     echo "            check the pin's JSON (lowercase \"name\"/\"email\", both non-empty), or run: abcd ahoy --identity" >&2
     exit 1
   fi
-  have_name=$(git config user.name || true)
-  have_email=$(git config user.email || true)
+  # Each field is read the way git resolves the one it stamps, first source that
+  # sets it wins: the GIT_AUTHOR_NAME/GIT_AUTHOR_EMAIL environment, then the
+  # role's own author.name/author.email (iss-2609261454332615), then user.*.
+  # The environment comes first because git ranks it above every config key, and
+  # an exported machine identity is the harness and CI shape
+  # (iss-2609261614268567). git also exports the author it resolved, from
+  # --author and -c author.* included, into this hook's environment, so reading
+  # it first holds those too. An empty variable is not a source; git refuses an
+  # empty ident itself.
+  have_name=${GIT_AUTHOR_NAME:-}
+  [ -n "$have_name" ] || have_name=$(git config author.name || git config user.name || true)
+  have_email=${GIT_AUTHOR_EMAIL:-}
+  [ -n "$have_email" ] || have_email=$(git config author.email || git config user.email || true)
   if [ "$have_name" != "$want_name" ] || [ "$have_email" != "$want_email" ]; then
     echo "pre-commit: BLOCKED — git identity \"$have_name <$have_email>\" does not match the pinned \"$want_name <$want_email>\" ($identity_pin)." >&2
-    echo "            fix: git config user.name \"$want_name\" && git config user.email \"$want_email\"" >&2
+    echo "            fix: git config user.name \"$want_name\" && git config user.email \"$want_email\"," >&2
+    echo "            and drop any GIT_AUTHOR_NAME/GIT_AUTHOR_EMAIL, author.name/author.email, --author or -c author.* that outranks them" >&2
+    exit 1
+  fi
+  # The committer is held to the pin in the same order (itd-131):
+  # GIT_COMMITTER_NAME/GIT_COMMITTER_EMAIL, then committer.name/committer.email,
+  # then user.*. git does not export the committer into this hook, so the
+  # environment holds only what the caller set; a -c committer.* reaches the
+  # git config reads below through the GIT_CONFIG_PARAMETERS git passes down.
+  have_cname=${GIT_COMMITTER_NAME:-}
+  [ -n "$have_cname" ] || have_cname=$(git config committer.name || git config user.name || true)
+  have_cemail=${GIT_COMMITTER_EMAIL:-}
+  [ -n "$have_cemail" ] || have_cemail=$(git config committer.email || git config user.email || true)
+  if [ "$have_cname" != "$want_name" ] || [ "$have_cemail" != "$want_email" ]; then
+    echo "pre-commit: BLOCKED — git committer \"$have_cname <$have_cemail>\" does not match the pinned \"$want_name <$want_email>\" ($identity_pin)." >&2
+    echo "            fix: unset GIT_COMMITTER_NAME/GIT_COMMITTER_EMAIL and drop any -c committer.*;" >&2
+    echo "            git config --unset committer.name; git config --unset committer.email (or set them to the pinned identity)" >&2
     exit 1
   fi
 fi

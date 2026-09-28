@@ -188,7 +188,7 @@ var sentences = map[string]string{
 	"abcd implement status": "Render the implement loop's runs in this checkout, lane by lane: " +
 		"Writes nothing; refuses a --run naming no run.",
 	"abcd implement step": "Perform the next step of an implement loop run and exit: " +
-		"Writes the run's state; refuses a step whose body this abcd does not carry.",
+		"Writes the run's state, the lane's worktree or brief; refuses a step this abcd does not carry.",
 
 	"abcd inbox": "List the reports managed repositories filed back to abcd, newest first: " +
 		"Writes nothing; refuses any argument.",

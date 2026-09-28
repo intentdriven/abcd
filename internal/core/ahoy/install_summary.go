@@ -35,6 +35,7 @@ const (
 	writeRouting                 writeKind = "routing"
 	writeRules                   writeKind = "rules"
 	writeIdentityPin             writeKind = "identity-pin"
+	writeGitIdentity             writeKind = "git-identity"
 	writeArtefactKind            writeKind = "artefact-kind"
 )
 
@@ -43,7 +44,7 @@ const (
 var allWriteKinds = []writeKind{
 	writeSettings, writeGitignore, writeLocalTier, writeNameGuard, writePrivateNames,
 	writeDocsCheck, writeAttributionHook, writeRules, writeConventionsBlock,
-	writeConventionsBlockRemoved, writeIdentityPin, writeArtefactKind, writeCommandEntry, writeSessionStore,
+	writeConventionsBlockRemoved, writeGitIdentity, writeIdentityPin, writeArtefactKind, writeCommandEntry, writeSessionStore,
 	writeStatusLine, writeRouting,
 }
 
@@ -98,6 +99,11 @@ var writeKindHelp = map[writeKind]SummaryItem{
 		What:   "Removed abcd's block from a conventions file you no longer chose.",
 		Why:    "abcd names itself only in the files you pick.",
 		Action: "Nothing to do.",
+	},
+	writeGitIdentity: {
+		What:   "Set the git name and email this repository commits under, in its own .git/config, to the identity you confirmed.",
+		Why:    "Commits here were about to be made under a different identity, such as a leftover test account or an agent's, and the human is the author of record.",
+		Action: "Nothing. Your global git settings are unchanged; to undo it, run git config --local --unset user.name and git config --local --unset user.email.",
 	},
 	writeIdentityPin: {
 		What:   "Recorded the git name and email that commit to this repository.",

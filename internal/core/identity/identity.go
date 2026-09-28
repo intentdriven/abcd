@@ -1,5 +1,6 @@
-// Package identity checks that the git author identity a commit would use in a
-// managed repo matches the identity pinned in .abcd/config/identity.json.
+// Package identity checks that the git author and committer identities a commit
+// would use in a managed repo match the identity pinned in
+// .abcd/config/identity.json, and recognises a machine identity in either role.
 //
 // It is the single source of truth for the iss-62 managed-repo identity gate:
 // `ahoy doctor` surfaces a divergence as a detection gap, and the installed
@@ -81,20 +82,43 @@ func (s Status) String() string {
 	}
 }
 
-// Result carries the comparison outcome and both identities for reporting.
+// Result carries the comparison outcome and the identities for reporting.
+//
+// Status and Effective describe the AUTHOR, with the meaning they have always
+// had. The committer is reported beside them rather than folded into Status, so
+// every existing reader of the author statuses reads exactly what it did.
 type Result struct {
 	Status    Status
 	Pin       Pin
 	Effective Effective
 	Reason    string
+
+	// Committer is the committer identity git would stamp (EffectiveCommitter).
+	Committer Effective
+	// CommitterDiverges reports a committer that differs from the author and is
+	// not the pinned identity either: a GIT_COMMITTER_* override, a committer.*
+	// config key, or an author override the committer does not share. A
+	// committer that is the same wrong identity as the author is not reported
+	// again — the author status already says so, and one fix mends both.
+	CommitterDiverges bool
+	// CommitterReason says what diverges, for the person reading the gap.
+	CommitterReason string
+
+	// AuthorIsTool and CommitterIsTool report a machine identity in that role
+	// (IsToolIdentity), pinned or not: the routine case, made visible.
+	AuthorIsTool    bool
+	CommitterIsTool bool
 }
 
 // Blocks reports whether a pre-commit hook should refuse the commit. A mismatch
-// or an unset identity blocks; a match, or an un-pinned (opted-out) repo, does
-// not — an absent pin must never break commits in a repo that has not adopted
-// the gate.
+// or an unset author identity blocks, and so does a committer that diverges from
+// the pin; a match, or an un-pinned (opted-out) repo, does not — an absent pin
+// must never break commits in a repo that has not adopted the gate.
 func (r Result) Blocks() bool {
-	return r.Status == StatusMismatch || r.Status == StatusUnset
+	if r.Status == StatusMismatch || r.Status == StatusUnset {
+		return true
+	}
+	return r.Status != StatusNoPin && r.CommitterDiverges
 }
 
 // LoadPin reads .abcd/config/identity.json. It returns (pin, true, nil) when the
@@ -221,29 +245,72 @@ func unpinnable(s string) bool {
 	return false
 }
 
+// Role is one of the two identities git stamps on a commit. The author is who
+// wrote the change and the committer is who recorded it; the contributor graph
+// reads both, so the gate resolves both.
+type Role string
+
+const (
+	// RoleAuthor is the commit's author (%an/%ae).
+	RoleAuthor Role = "author"
+	// RoleCommitter is the commit's committer (%cn/%ce).
+	RoleCommitter Role = "committer"
+)
+
 // EffectiveIdentity returns the author identity git would stamp on a commit in
-// root. Git gives the GIT_AUTHOR_NAME/GIT_AUTHOR_EMAIL environment variables
-// HIGHER precedence than user.name/user.email config, so an agent/CI sandbox that
-// exports them lands a mis-attributed commit that a config-only check would wave
-// through. Each field is therefore resolved from its GIT_AUTHOR_* override first,
-// falling back to `git config` (local > global > system) when the override is
-// unset or blank. Unset name or email yields an empty field, not an error.
+// root. Each field is resolved the way git resolves it: the GIT_AUTHOR_NAME /
+// GIT_AUTHOR_EMAIL environment override first (an agent or CI sandbox that
+// exports one lands a mis-attributed commit a config-only check would wave
+// through), then the role's own author.name / author.email config key, which git
+// ranks ahead of user.* (iss-2609261454332615), then user.name / user.email.
+// Config keys follow git's layering: command-line configuration (`git -c`, as a
+// hook inherits it), then local, global and system. An unset name or email
+// yields an empty field, not an error.
 func EffectiveIdentity(root string) (Effective, error) {
-	name := strings.TrimSpace(os.Getenv("GIT_AUTHOR_NAME"))
-	if name == "" {
-		var err error
-		if name, err = gitConfig(root, "user.name"); err != nil {
-			return Effective{}, err
-		}
+	return effective(root, RoleAuthor)
+}
+
+// EffectiveCommitter returns the committer identity git would stamp on a commit
+// in root, resolved exactly as EffectiveIdentity resolves the author:
+// GIT_COMMITTER_NAME / GIT_COMMITTER_EMAIL first, then committer.name /
+// committer.email, then user.name / user.email. An unset field is empty, never
+// fabricated.
+func EffectiveCommitter(root string) (Effective, error) {
+	return effective(root, RoleCommitter)
+}
+
+// effective resolves one role's identity field by field, with the precedence
+// git itself applies: GIT_<ROLE>_NAME / GIT_<ROLE>_EMAIL, then <role>.name /
+// <role>.email, then user.name / user.email. It deliberately does NOT ask
+// `git var GIT_<ROLE>_IDENT`, which fabricates an identity from the account's
+// gecos field and the hostname when none is configured and exits 0 — that would
+// collapse the distinct StatusUnset state the pre-commit hook blocks on.
+func effective(root string, role Role) (Effective, error) {
+	env := "GIT_" + strings.ToUpper(string(role)) + "_"
+	name, err := resolveField(root, env+"NAME", string(role)+".name", "user.name")
+	if err != nil {
+		return Effective{}, err
 	}
-	email := strings.TrimSpace(os.Getenv("GIT_AUTHOR_EMAIL"))
-	if email == "" {
-		var err error
-		if email, err = gitConfig(root, "user.email"); err != nil {
-			return Effective{}, err
-		}
+	email, err := resolveField(root, env+"EMAIL", string(role)+".email", "user.email")
+	if err != nil {
+		return Effective{}, err
 	}
 	return Effective{Name: name, Email: email}, nil
+}
+
+// resolveField returns the first non-blank of an environment override and then
+// each config key in turn. A blank override is treated as unset.
+func resolveField(root, envKey string, keys ...string) (string, error) {
+	if v := strings.TrimSpace(os.Getenv(envKey)); v != "" {
+		return v, nil
+	}
+	for _, key := range keys {
+		v, err := gitConfig(root, key)
+		if err != nil || v != "" {
+			return v, err
+		}
+	}
+	return "", nil
 }
 
 // gitConfig returns the trimmed value of a git config key, or "" when the key is
@@ -251,12 +318,7 @@ func EffectiveIdentity(root string) (Effective, error) {
 // failure (git absent, not a repo) is returned.
 func gitConfig(root, key string) (string, error) {
 	cmd := exec.Command("git", "-C", root, "config", "--get", key)
-	// Scrub repo-selection and config-injection env vars, but keep global config:
-	// this reads the caller's real user.name/user.email (which live in ~/.gitconfig)
-	// to enforce the commit-identity gate, so full IsolatedEnv would blind it.
-	// Scrubbing still stops an inherited GIT_DIR redirecting the read at another repo
-	// and an injected GIT_CONFIG_* forging the identity the gate is meant to verify.
-	cmd.Env = gitutil.ScrubbedEnv()
+	cmd.Env = commitConfigEnv()
 	out, err := cmd.Output()
 	if err != nil {
 		if ee, ok := err.(*exec.ExitError); ok && ee.ExitCode() == 1 {
@@ -267,7 +329,36 @@ func gitConfig(root, key string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-// Check resolves the effective identity, loads the pin, and compares them.
+// commitConfigEnv is the environment the identity read runs git under: the
+// configuration git will commit with, and nothing that points it elsewhere.
+//
+// It starts from gitutil.ScrubbedEnv, which keeps the caller's global config
+// (where user.name/user.email usually live, so full IsolatedEnv would blind the
+// gate) and drops the repo-selection variables, so an inherited GIT_DIR cannot
+// redirect the read at another repository. It also drops the legacy GIT_CONFIG
+// file variable, which only `git config` reads and `git commit` ignores.
+//
+// This reader is the one exception to that scrub: it puts back
+// GIT_CONFIG_PARAMETERS and the GIT_CONFIG_COUNT/GIT_CONFIG_KEY_n/
+// GIT_CONFIG_VALUE_n form (iss-2609261614306830). The caller that matters is
+// git itself. `git -c committer.name=X commit` hands its hooks exactly these
+// variables, and git commits with them, so they are the commit's real
+// configuration, not an injection. Scrubbing them made `abcd ahoy --identity`
+// in a hook report the configured identity as ok while git stamped X. The
+// scrub's other reason, that an injected value could forge the identity the
+// gate verifies, does not hold for this reader: it already honours
+// GIT_AUTHOR_*/GIT_COMMITTER_*, which any process able to set these variables
+// can set as well, and a `git config --get` read executes nothing a parameter
+// names. Every other ScrubbedEnv caller keeps the scrub. The redaction probe
+// keeps it for the identity it resolves, because there a displacing value
+// hides the real identity instead of reporting it; it reads these variables
+// only for extra identities to redact (iss-2609261614450166).
+func commitConfigEnv() []string {
+	return append(gitutil.ScrubbedEnv(), gitutil.CommandLineConfig()...)
+}
+
+// Check resolves the effective author and committer, loads the pin, and
+// compares them.
 func Check(root string) (Result, error) {
 	pin, pinned, err := LoadPin(root)
 	if err != nil {
@@ -277,17 +368,50 @@ func Check(root string) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
+	committer, err := EffectiveCommitter(root)
+	if err != nil {
+		return Result{}, err
+	}
+	res := authorResult(pin, pinned, eff)
+	res.Committer = committer
+	res.CommitterDiverges, res.CommitterReason = committerDivergence(pin, pinned, eff, committer)
+	res.AuthorIsTool = eff != (Effective{}) && IsToolIdentity(RoleAuthor, eff.Name, eff.Email)
+	res.CommitterIsTool = committer != (Effective{}) && IsToolIdentity(RoleCommitter, committer.Name, committer.Email)
+	return res, nil
+}
+
+// authorResult is the author half of Check, unchanged in meaning.
+func authorResult(pin Pin, pinned bool, eff Effective) Result {
 	if !pinned {
-		return Result{Status: StatusNoPin, Effective: eff, Reason: "no " + PinRelPath + "; repo has not adopted the identity gate"}, nil
+		return Result{Status: StatusNoPin, Effective: eff, Reason: "no " + PinRelPath + "; repo has not adopted the identity gate"}
 	}
 	if eff.Name == "" || eff.Email == "" {
-		return Result{Status: StatusUnset, Pin: pin, Effective: eff, Reason: "git author identity is not configured (user.name/user.email)"}, nil
+		return Result{Status: StatusUnset, Pin: pin, Effective: eff, Reason: "git author identity is not configured (user.name/user.email)"}
 	}
 	if eff.Name != pin.Name || eff.Email != pin.Email {
 		return Result{
 			Status: StatusMismatch, Pin: pin, Effective: eff,
 			Reason: fmt.Sprintf("commit identity %q <%s> does not match the pin %q <%s>", eff.Name, eff.Email, pin.Name, pin.Email),
-		}, nil
+		}
 	}
-	return Result{Status: StatusOK, Pin: pin, Effective: eff}, nil
+	return Result{Status: StatusOK, Pin: pin, Effective: eff}
+}
+
+// committerDivergence is the committer half: a committer that differs from the
+// author, unless it is the pinned identity (then the author is the one that is
+// wrong, and the author status says so).
+func committerDivergence(pin Pin, pinned bool, author, committer Effective) (bool, string) {
+	if committer == author {
+		return false, ""
+	}
+	if pinned && committer.Name == pin.Name && committer.Email == pin.Email {
+		return false, ""
+	}
+	if committer.Name == "" || committer.Email == "" {
+		return true, fmt.Sprintf("git committer identity is not configured, while the author is %q <%s>", author.Name, author.Email)
+	}
+	if pinned {
+		return true, fmt.Sprintf("committer %q <%s> does not match the pin %q <%s>", committer.Name, committer.Email, pin.Name, pin.Email)
+	}
+	return true, fmt.Sprintf("committer %q <%s> differs from the author %q <%s>", committer.Name, committer.Email, author.Name, author.Email)
 }

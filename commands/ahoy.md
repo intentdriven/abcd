@@ -164,6 +164,18 @@ harness-wide setting, and never accepts a model-tier routing table (below),
 because a table decides which model every delegated step asks for. When the result carries `optional_skipped`, report it and
 offer the `yes |` form above as the way to apply it.
 
+**The git identity question is a person's alone.** When the author or committer
+a commit would carry diverges from the identity pin, or is a machine identity
+(`git_identity.mismatch`, `git_identity.unset`, `git_identity.committer`,
+`git_identity.tool`), the install proposes the human identity (the pin, else
+the global git identity) and asks whether to commit to this repository as it,
+but only at a terminal. Off a terminal it asks nothing and writes nothing, and a
+piped `yes` does not answer it; neither does `--yes`. Relay the result's note to
+the user and tell them to run `abcd ahoy install` in their own terminal, or to
+set `user.name` and `user.email` themselves; never set them on the user's
+behalf. For an autonomous routine the human identity is set by whatever launches
+it, before its first commit.
+
 **The tool question.** When a `dependency` gap is present and its category is
 approved, each missing tool is its own question, and a piped answer never
 answers it: installing runs a program on the machine. At a terminal the install
@@ -424,8 +436,8 @@ exactly what an install would do before letting it run.
 
 ## Scoping note: `--identity` is CLI-only
 
-`abcd ahoy --identity` exits non-zero when the git commit identity diverges
-from the committed pin. It exists to be wired into a pre-commit hook or CI, where
+`abcd ahoy --identity` exits non-zero when the author or the committer a commit
+would carry diverges from the committed pin. It exists to be wired into a pre-commit hook or CI, where
 its exit code is the whole point, so it stays a bare-CLI entrypoint rather than a
 plugin mode; report it only if a user asks how the identity gate fails
 closed.

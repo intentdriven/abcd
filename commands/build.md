@@ -77,11 +77,28 @@ lane awaits a receipt re-tells what it awaits and moves nothing.
 `"${CLAUDE_PLUGIN_ROOT}/abcd" implement status --json` renders every run, its
 lanes and its record, and writes nothing.
 
-In this build the lane's steps are named but their bodies are not carried yet:
-the first step is refused naming the spec piece that delivers it, and the run
-stays as it is, ready to resume in an abcd that carries it. Report that refusal
-as it is; do not make the worktree, the brief or the pull request by hand on the
-run's behalf.
+A lane's steps run in order:
+
+1. `worktree` — the loop makes the lane's worktree in the machine-scoped store,
+   `~/.abcd/worktrees/<root-sha>/<run-id>-<lane-id>`, on a branch
+   `build/<run-id>-<lane-id>` cut from the default branch. Nothing is made
+   beside the checkout.
+2. `brief` — the loop renders the lane's brief from that base: the intent, the
+   spec, the conventions of `AGENTS.md` and the decisions the intent cites, with
+   where the implementer's report, the definition of done's output and its
+   receipt go. An intent the default branch does not carry as planned is
+   refused here: land its planning first.
+3. `implement` — `awaiting` names an `implementer`. Start a fresh agent with
+   nothing but the brief; it works in the lane's worktree, commits on the
+   lane's branch and writes its receipt. Hand the receipt back unedited. A
+   receipt that names no commit on the branch past its base, no passing
+   definition of done's output or no report is refused naming what is missing;
+   relay the refusal to a fresh implementer rather than completing the receipt
+   yourself.
+4. `validate` and `land` — not carried in this build: `step` refuses at
+   `validate` naming the spec piece that delivers it, and the run stays ready
+   to resume in an abcd that carries it. Report that refusal as it is; do not
+   review, open the pull request or close the spec by hand on the run's behalf.
 
 **Binary resolution.** Run `"${CLAUDE_PLUGIN_ROOT}/abcd"` — a plugin install
 provisions the binary into the plugin root, so this is the rung that fires for a

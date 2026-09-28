@@ -1551,7 +1551,7 @@
     {
       "path": "abcd implement step",
       "hidden": false,
-      "sentence": "Perform the next step of an implement loop run and exit: Writes the run's state; refuses a step whose body this abcd does not carry.",
+      "sentence": "Perform the next step of an implement loop run and exit: Writes the run's state, the lane's worktree or brief; refuses a step this abcd does not carry.",
       "flags": [
         {
           "name": "run",

@@ -9,9 +9,10 @@ machinery's (decision 8): the steps after the start are driven through the
 [`/abcd:implement`](27-implement.md) family.
 
 This chapter describes the part of the loop that ships: the checks, the state
-file and the step interface a host session drives. The lane's own steps, from
-the worktree to the landing, are named in the sequence and delivered by the
-later pieces of the spec; until each lands, the loop refuses at it by name.
+file, the step interface a host session drives, and the lane's first three
+steps (its worktree, its brief and the implementer's receipt). The validators
+and the landing are named in the sequence and delivered by later pieces of the
+spec; until each lands, the loop refuses at it by name.
 
 ## Sub-verbs
 
@@ -127,9 +128,73 @@ next lane, so the spec's steps land one lane at a time. Before
 
 A step whose body this build does not carry is refused naming the step, the lane
 and the spec piece that delivers it, and the run is unchanged, ready to resume in
-a build that carries it. The process driver (piece 3) is the same loop called by
-a process instead of a host, starting the named agent through the runner and
-handing its receipt back.
+a build that carries it. This build carries the worktree, the brief and the
+implement step with its receipt's verifier; the validate and land steps are
+refused naming pieces 8 and 9. The process driver (piece 3) is the same loop
+called by a process instead of a host, starting the named agent through the
+runner and handing its receipt back.
+
+## The lane
+
+A lane lands one step of the spec, and its files live in its own directory of
+the run, `.abcd/.work.local/run/<run-id>/<lane-id>/`.
+
+**The worktree** (piece 6). The lane's checkout is made in abcd's form: in the
+machine-scoped worktree store, `~/.abcd/worktrees/<root-sha>/<run-id>-<lane-id>`,
+keyed on the repository's root commit in the full form the sibling stores use,
+on a branch `build/<run-id>-<lane-id>` cut from the default branch (origin's
+`HEAD` as last fetched, else the first of `main`, `master`, `trunk` and
+`develop`), never from whatever the checkout has checked out. The store's own
+verbs are a draft (itd-2609091014076309), so the lane is a plain
+`git worktree add` into the store's path. The path is derived, never taken: the
+run id and the lane id are each held to their own shape, and the name they
+compose must be one path segment of letters, digits, `.`, `_` and `-`, not led
+by `-` or `.` and holding no `..`, so no component can leave the store. Every
+level of the store is made one at a time and proved a real directory that is
+the caller's alone (owned by the caller, writable by neither its group nor
+anyone else), and a level the step makes is made `0700`, so a symlink anywhere
+in the chain, or a level another account owns or can write, refuses the step
+before anything is made inside it; nothing beside the checkout, and nothing outside
+`~/.abcd/worktrees/<root-sha>/`, is created. Git runs in the isolated
+environment, with `--` before the path. Run again after a kill, the step finds
+the worktree git lists at the lane's path on the lane's branch and adopts it;
+anything else at that path is refused and left as it is.
+
+**The brief** (piece 5; criterion 3). The brief is rendered from the lane's
+base commit, read out of git's objects rather than the worktree's files, so the
+implementer reads the record its branch builds on, and a brief rendered again
+after the implementer edited, committed or removed a file in the worktree is
+still the base's: the intent and the spec whole, the conventions of `AGENTS.md` (its
+section between `<!-- working-conventions … -->` and
+`<!-- /working-conventions -->` when it marks one, the whole file when it does
+not), and the decisions the intent cites (each ADR id in the intent, with its
+title and path, and every entry of `.abcd/work/DECISIONS.md` that names the
+intent or its spec). It opens by naming each source and the base it was read
+at, then gives the lane (the spec step it builds, the worktree, the branch) and
+what the implementer hands back: its report, the definition of done's output,
+and the receipt with its exact shape, each at an absolute path in the lane's
+directory. An intent the default branch does not carry as planned, a spec not
+open there, or no `AGENTS.md` is refused rather than briefed from elsewhere, and
+so is a source the base holds as a link or past its size cap.
+The brief is written atomically, mode `0600`.
+
+**The receipt** (piece 7; criterion 4). The implement step hands the lane to a
+fresh implementer and awaits its receipt at
+`.abcd/.work.local/run/<run-id>/<lane-id>/receipt.json`. The receipt is the
+implementer's word, read as untrusted input: through the guarded reader inside
+the checkout's `os.Root` (no symlinked leaf, a regular file of at most 64 KiB),
+decoded strictly (one JSON object, no field the schema does not name), with
+every path it names held inside the lane's directory. Its fields are
+`schema_version`, `run_id`, `lane`, `branch`, `commits` (full object names),
+`definition_of_done` (`command`, `exit_code`, `output`), `report` and an
+optional `model`, the model the implementer's harness reported. It verifies
+only when every commit it names is on the lane's branch and not already on the
+default branch at the lane's base, the definition of done's output exists
+non-empty with exit code 0, and the report exists non-empty. A receipt short of
+any of these is refused naming every gap at once, and the lane is not advanced.
+A receipt carrying a verdict is refused by the same strict decode: a verdict is
+the loop's to record (decision 9). A verified receipt moves the lane's head to
+its branch's tip and the lane to its validators.
 
 ## Exit codes
 
@@ -144,6 +209,8 @@ the remedy as fields.
 
 - The intent and its decisions: itd-2609201916151817; the design record:
   spc-2609202134338445, whose Progress section says which pieces have landed.
+- The worktree store the lane's checkout lives in: itd-2609091014076309 (a
+  draft), and the rule it enacts, adr-2609091248200336.
 - The shared run state and the claim the peers check reads:
   [`27-implement.md`](27-implement.md).
 - The plugin surface: `commands/build.md`.
