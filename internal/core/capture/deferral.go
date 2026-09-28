@@ -55,7 +55,8 @@ var deferrableSeverities = map[Severity]bool{SeverityMajor: true, SeverityCritic
 // record that is not open, and a grade the guard never blocks on. A record
 // already deferred past an earlier anchor is re-deferred: the pair is replaced
 // and a new body section is appended, so the history of each deferral stays in
-// the record.
+// the record. A record already deferred past the SAME anchor has the pair and
+// that cycle's section replaced, so the body keeps one section per cycle.
 func Defer(req DeferRequest) (DeferResult, error) {
 	repoRoot, issuesRoot, err := resolveRoots(req.RepoRoot, req.IssuesRoot)
 	if err != nil {
@@ -142,14 +143,43 @@ func Defer(req DeferRequest) (DeferResult, error) {
 	return result, nil
 }
 
-// appendDeferralSection appends one dated `## Deferral` section to the record,
+// appendDeferralSection writes one dated `## Deferral` section into the record,
 // the body half of a deferral's shape: the frontmatter pair is what the cut
 // reads, and the section is what a reader of the record sees, one per cycle.
+//
+// One per cycle is what the section is, so a second deferral past the SAME
+// anchor (a corrected reason, or the verb run twice) rewrites that cycle's
+// section in place rather than appending a second one (iss-2609251823555125);
+// the superseded wording stays in git's history, where every earlier revision of
+// a record lives. A deferral past a different anchor appends, so each cycle's
+// section stays in the record.
 func appendDeferralSection(content, date, after, reason string) string {
+	heading, line := "## Deferral "+date, "Deferred past "+after+": "+reason
+	if i := sameCycleDeferral(content, after); i >= 0 {
+		lines := strings.Split(content, "\n")
+		lines[i], lines[i+2] = heading, line
+		return strings.Join(lines, "\n")
+	}
 	if !strings.HasSuffix(content, "\n") {
 		content += "\n"
 	}
-	return content + "\n## Deferral " + date + "\n\nDeferred past " + after + ": " + reason + "\n"
+	return content + "\n" + heading + "\n\n" + line + "\n"
+}
+
+// sameCycleDeferral returns the line index of the last `## Deferral` heading
+// whose section is the one this verb writes for anchor — the heading, a blank
+// line, then `Deferred past <anchor>: ` — or -1 when the record carries none. A
+// section of any other shape is a hand edit the verb does not own, so it is left
+// alone and the new section appended.
+func sameCycleDeferral(content, anchor string) int {
+	lines := strings.Split(content, "\n")
+	for i := len(lines) - 3; i >= 0; i-- {
+		if strings.HasPrefix(lines[i], "## Deferral ") && lines[i+1] == "" &&
+			strings.HasPrefix(lines[i+2], "Deferred past "+anchor+": ") {
+			return i
+		}
+	}
+	return -1
 }
 
 // requireCurrentAnchor refuses a tag that is not the checkout's newest release

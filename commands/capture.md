@@ -432,6 +432,8 @@ since the last release and still open, and one sanctioned way past it is a
 deferral stated out loud. `defer` writes it: `deferred_after` (the anchor tag)
 and `deferral_reason` in the record's frontmatter, and a dated
 `## Deferral <date>` section appended to its body. The record stays in `open/`.
+A second deferral past the same anchor replaces that cycle's pair and section
+rather than adding another, so the body carries one section per cycle.
 Report the `id`, `deferred_after` and `deferral_reason` from the JSON, and tell
 the user that the waiver lapses when the next release re-anchors, so it must be
 renewed then or the finding fixed. Report `redacted` whenever it is non-zero.

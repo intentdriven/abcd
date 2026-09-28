@@ -288,7 +288,10 @@ tag that is not the checkout's newest release tag, an empty reason, a record tha
 is not open, and a record whose grade is neither `major` nor `critical`, which
 the guard never blocks on. The grade is judged before the tag. A record deferred
 past an earlier anchor is deferred again: the pair is replaced and a new section
-appended, so each cycle's deferral stays readable in the record.
+appended, so each cycle's deferral stays readable in the record. A record
+deferred again past the SAME anchor has the pair and that cycle's section
+rewritten in place, so the body keeps one section per cycle
+(iss-2609251823555125).
 
 **Marking an issue wontfix** records an explicit non-action decision and moves
 the issue to `wontfix/`. Grounds are optional here and override the recorded
