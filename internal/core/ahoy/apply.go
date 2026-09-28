@@ -332,7 +332,7 @@ type applyCtx struct {
 	// writeKinds runs parallel to writes: what each write is, for the summary.
 	writeKinds  []writeKind
 	changes     []string // human-readable value changes an explicit override forced
-	notes       []string // loud refusals: what abcd deliberately did not do, and why
+	notes       []string // loud refusals (refuse) and informational lines (inform), in the order they arose
 	autoYes     bool     // --yes: every category auto-approved without interaction
 	devMode     bool     // --dev: install the track-latest shim instead of the symlink
 	modeForced  bool     // the requested install mode differs from the on-disk state
@@ -353,6 +353,12 @@ type applyCtx struct {
 // travels with the install result. Callers pass text already rendered for a
 // human — user-scope paths in tilde form.
 func (a *applyCtx) refuse(reason string) { a.notes = append(a.notes, reason) }
+
+// inform records something abcd DID that the operator should hear about and
+// that no write receipt says — a removal, typically. It travels in the same
+// notes as a refusal, because the person reads both in one place, but it is a
+// separate call so a reader of the code never mistakes a success for a refusal.
+func (a *applyCtx) inform(line string) { a.notes = append(a.notes, line) }
 
 // refuseMalformedConfig records, once per run, that .abcd/config.json could not
 // be parsed and that no step will touch it. Three steps read the file
@@ -1088,7 +1094,7 @@ func (a *applyCtx) clearStrandedEntries(target string) {
 			continue
 		}
 		removePathEntryFor(e.path)
-		a.refuse("removed abcd's own PATH entry " + displayPath(e.path) + ": it pointed at a binary that is gone, so it ran nothing, and " +
+		a.inform("removed abcd's own PATH entry " + displayPath(e.path) + ": it pointed at a binary that is gone, so it ran nothing, and " +
 			displayPath(target) + " is abcd's working entry.")
 	}
 }

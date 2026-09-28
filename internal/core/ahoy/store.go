@@ -251,8 +251,8 @@ func scanPathEntries(pluginRoot string) []pathEntry {
 // cannot be anyone's install.
 //
 // Stat FOLLOWS the link, so this is asked of EVERY entry, ours or not: a
-// foreign dangling `abcd` still occupies the name and still shadows the entries
-// behind it, and a check that only looked at our own would report it as nothing
+// foreign dangling `abcd` still occupies the name — it runs nothing, the shell
+// skips it — and a check that only looked at our own would report it as nothing
 // at all. A stat error other than not-exist is not proof of a dangling link, so
 // it reads as healthy rather than manufacturing a gap.
 func linkIsDangling(path string) bool {

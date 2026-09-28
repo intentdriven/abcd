@@ -49,7 +49,7 @@ func setupHermetic(t *testing.T) (home, pluginRoot string) {
 	var kept []string
 	for _, dir := range filepath.SplitList(os.Getenv("PATH")) {
 		// Lstat, not Stat: the scanner under test classifies a DANGLING abcd symlink
-		// as an entry that still shadows PATH, so a Stat here — which follows the link
+		// as an entry that still occupies PATH (it runs nothing), so a Stat here — which follows the link
 		// to a not-exist error and keeps the directory — would leak that entry into
 		// every hermetic assertion. Lstat sees the link itself and drops it.
 		if fi, err := os.Lstat(filepath.Join(dir, "abcd")); err == nil && !fi.IsDir() {
