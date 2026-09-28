@@ -541,6 +541,47 @@ check_delivery() {
 	esac
 }
 
+# revert_pairs prints "<reverting-sha> <reverted-sha>" for every non-merge commit
+# in base..head whose message says, in git revert's own words, that it reverts
+# ANOTHER commit of the same range (iss-2609240646533487). A pushed branch has no
+# other way to take a declaration back: the trailer stays in the range after the
+# revert takes the record back out of the terminal folder, and without this the
+# only exit was a new branch and a new pull request.
+#
+# The reverted commit must be a strict ancestor of the one reverting it, which is
+# true of every revert git writes (it names a commit that existed) and makes a
+# cycle of hand-written "reverts" lines impossible, so the recursion below always
+# ends. An abbreviated sha is resolved; one naming nothing, or a commit outside
+# the range, withdraws nothing.
+revert_pairs() {
+	local base="$1" head="$2" range="$3" r x full
+	git log --no-merges --format=%H -E --grep='This reverts commit [0-9a-f]{7,64}' "$base".."$head" |
+		while IFS= read -r r; do
+			[ -n "$r" ] || continue
+			for x in $(git show -s --format='%B' "$r" | grep -E '^This reverts commit [0-9a-f]{7,64}' | grep -oE '[0-9a-f]{7,64}' || true); do
+				full="$(git rev-parse -q --verify "${x}^{commit}" 2>/dev/null || true)"
+				[ -n "$full" ] && [ "$full" != "$r" ] || continue
+				printf '%s\n' "$range" | grep -qx "$full" || continue
+				git merge-base --is-ancestor "$full" "$r" 2>/dev/null || continue
+				printf '%s %s\n' "$r" "$full"
+			done
+		done
+}
+
+# withdrawn_by prints the commit that withdraws sha's declarations — a revert of
+# it in the range that is not itself reverted there (a revert of a revert
+# reinstates) — and returns 0, or returns 1 when nothing withdraws it.
+withdrawn_by() {
+	local sha="$1" pairs="$2" r
+	for r in $(printf '%s\n' "$pairs" | awk -v s="$sha" '$2 == s { print $1 }'); do
+		if ! withdrawn_by "$r" "$pairs" >/dev/null; then
+			printf '%s\n' "$r"
+			return 0
+		fi
+	done
+	return 1
+}
+
 check_pr() {
 	local title_file="$1" body_file="$2" title body declared
 	local f
@@ -610,6 +651,12 @@ check_commits() {
 	local shipped
 	shipped="$(ids_entering_shipped "$base" "$head" | sort -u)"
 
+	# A declaration a later commit of the range reverts is withdrawn: its
+	# `Resolves:` and `Delivers:` lines are not held to a move the revert undid.
+	# RS004 still reads the message — a withdrawn commit named what it named.
+	local reverts
+	reverts="$(revert_pairs "$base" "$head" "$range")"
+
 	local declared="" delivered=""
 	local behind
 	behind="$(git rev-list --count "$head".."$base")"
@@ -632,6 +679,15 @@ check_commits() {
 		msg="$(git show -s --format='%B' "$sha")"
 		check_mentions "commit ${sha:0:12}" "$msg" "$(declared_ids "$msg")"
 		scanned=$((scanned + 1))
+		if [ -n "$reverts" ]; then
+			local withdrawer
+			if withdrawer="$(withdrawn_by "$sha" "$reverts")"; then
+				if printf '%s\n' "$msg" | grep -qE "$TRAILER_RE|$DELIVERS_LOOSE_RE"; then
+					echo "check-issue-resolution: RS001/RS005 commit ${sha:0:12} is reverted in this range by ${withdrawer:0:12}, so its Resolves:/Delivers: declarations are withdrawn"
+				fi
+				continue
+			fi
+		fi
 		while IFS= read -r line; do
 			# RS005 — a declared delivery must ship the intent. Judged on the same
 			# lines RS001 reads; a line is one trailer or the other, never both.

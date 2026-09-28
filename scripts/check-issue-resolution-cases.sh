@@ -1211,6 +1211,60 @@ git -C "$d" checkout -q work
 expect_refusal_not_naming "$d" "RS005 a base-side edit of an intent shipped at the merge base does not prescribe a rebase" \
 	"[Rr]ebase" -- commits main HEAD
 
+# --- A revert in the range withdraws a declaration (iss-2609240646533487) -----
+#
+# Once a commit carrying `Delivers:` is on a pushed branch, a revert is the one
+# honest way to take the delivery back — and the trailer stays in the range. The
+# revert names the reverted commit in git's own words, and that withdraws it.
+d="$(newrepo_intents rs005-reverted-delivery)"
+echo "touched" >>"$d/README.md"
+ship_intent "$d" 7
+git -C "$d" add -A
+git -C "$d" commit -qm "feat: build the thing
+
+Delivers: itd-7"
+git -C "$d" revert --no-edit HEAD >/dev/null
+expect pass "$d" "RS005 a delivery reverted in the same range is withdrawn" -- commits main HEAD
+
+# A revert of the revert reinstates the declaration, and the rule holds it again.
+d="$(newrepo_intents rs005-revert-reverted)"
+echo "touched" >>"$d/README.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "feat: build the thing
+
+Delivers: itd-7"
+git -C "$d" revert --no-edit HEAD >/dev/null
+git -C "$d" revert --no-edit HEAD >/dev/null
+expect_refusal_naming "$d" "RS005 a revert of the revert reinstates the declaration" \
+	"declares 'Delivers: itd-7', but itd-7 does not enter" -- commits main HEAD
+
+# A "reverts" line naming a commit OUTSIDE the range withdraws nothing: the
+# range's own declaration stands.
+d="$(newrepo_intents rs005-revert-outside-range)"
+echo "touched" >>"$d/README.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "feat: build the thing
+
+Delivers: itd-7"
+echo "more" >>"$d/README.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "Revert something on main
+
+This reverts commit $(git -C "$d" rev-parse main)."
+expect_refusal_naming "$d" "RS005 a revert naming a commit outside the range withdraws nothing" \
+	"declares 'Delivers: itd-7', but itd-7 does not enter" -- commits main HEAD
+
+# The same withdrawal for RS001: a resolution reverted on the branch puts the
+# record back in open/, and its `Resolves:` goes with it.
+d="$(newrepo rs001-reverted-resolution)"
+resolve_record "$d"
+git -C "$d" add -A
+git -C "$d" commit -qm "fix: something
+
+Resolves: iss-999"
+git -C "$d" revert --no-edit HEAD >/dev/null
+expect pass "$d" "RS001 a resolution reverted in the same range is withdrawn" -- commits main HEAD
+
 # Criterion 5: the intent rule's refusal has the issue rule's shape and exit
 # code — compared here, not judged by a reviewer. Both fixtures are the ordinary
 # case (a trailer whose record stays where it was); each refusal is normalised by
