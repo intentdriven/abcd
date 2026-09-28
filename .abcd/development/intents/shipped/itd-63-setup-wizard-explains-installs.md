@@ -76,8 +76,70 @@ _None open; decisions 1 to 3 settle the three this record carried._
 
 ## Audit Notes
 
-<!-- abcd-review: OWED receipt=rcp-3c9fb4ba9770 -->
-Fidelity review OWED (receipt rcp-3c9fb4ba9770).
+<!-- abcd-review: INGESTED receipt=rcp-3c9fb4ba9770 -->
+Fidelity review — receipt rcp-3c9fb4ba9770 (verifier intent-auditor claude-fable-5-1).
+
+Provenance: intent-auditor@claude-fable-5-1 · rubric_hash sha256:effa65b3e9e88ff29433b443ec2be159522a8b0b71cf1434526514aa61edb13e · prompt_hash sha256:02987ee70399625e2472201d6961c35bff8f37408256c2f78915e8785d534a0e
+Input attestations: tree:ceb4b6dbb97622bddf2401c91f9f808ed05060a0 (origin/main; commits 0289455eb, edef56854, 705b8216d, 291410bb5, 09938d677, 7f34670d8 under internal/core/tools)@-;
+
+Acceptance rollup: MET 2 · MET_WITH_CONCERNS 2 · NOT_MET 1 · INCONCLUSIVE 0
+
+Per-criterion verdicts:
+- ac-1 — MET: Explain renders name, optional/required per (tool, capability), what works without it, what it does and the platform step from the compiled registry; TestExplainNamesEveryPartTheCriterionAsksFor and the ahoy gap detector both exercise it, and the ahoy gap and the missing-gitleaks/gh refusals carry the lines
+  evidence: internal/core/tools/explain.go:124 — "func (e Explanation) Lines() []string"
+  evidence: internal/core/tools/explain.go:133 — "e.Tool + " — " + string(e.Requirement) + " for " + e.CapabilityName"
+  evidence: internal/core/tools/registry.go:118 — "var registry = map[string]Tool{"
+  evidence: internal/core/ahoy/detect.go:231 — "e := tools.Explain("gitleaks", capability)"
+  evidence: internal/core/tools/tools_test.go:17 — "func TestExplainNamesEveryPartTheCriterionAsksFor"
+- ac-2 — MET_WITH_CONCERNS: Install runs the step only after Confirm returns yes (nil or no or CI or --yes all decline), Result.Summary reports what ran and whether it verified, and every declined path ends in OnDecline (continuing on the native secret scanner); concern: the install is offered for gitleaks alone (DependencyTools), so for gh the explanation is shown in the refusal but no verb ever asks the question or runs the step
+  evidence: internal/core/tools/install.go:179 — "ans := confirm(e) if !ans.Yes {"
+  evidence: internal/core/tools/install.go:61 — "func (r Result) Summary() string"
+  evidence: internal/core/ahoy/apply.go:465 — "res := newToolInstaller(a.cwd).Install(g.Tool.Tool, g.Tool.Capability, a.confirmTool)"
+  evidence: internal/surface/cli/cli.go:3711 — "--yes never installs a tool"
+  evidence: internal/core/ahoy/detect.go:207 — "var DependencyTools = []string{"gitleaks"}"
+  evidence: internal/core/ahoy/tools_route_test.go:122 — "func TestDependencyNoKeepsTheNativeDefaultAndSaysSo"
+- ac-3 — MET_WITH_CONCERNS: an unregistered name gets the generic text, no step (install step: none known to abcd) and a RegistryGap line naming the abcd capture that records it; concern: abcd files no capture itself (the line is printed for whoever meets it), and every production caller passes a literal registry name, so the unknown path is reached only by tests
+  evidence: internal/core/tools/explain.go:87 — "func unknown(name string, capability Capability) Explanation"
+  evidence: internal/core/tools/explain.go:104 — "func gapCapture(name string, capability Capability) string"
+  evidence: internal/core/tools/tools_test.go:67 — "func TestUnknownToolGetsGenericTextAndARegistryGap"
+  evidence: internal/core/ahoy/tools_route_test.go:183 — "func TestEveryToolAhoyNamesIsRegistered"
+- ac-4 — NOT_MET: promised: the safety gate's missing-scanner case routes through this mode; delivered: no safety gate exists on main (itd-62 is still in intents/drafts/), so no gate surfaces the prerequisite at all; the close note substitutes the history store's armed-gitleaks refusal, which does carry tools.Missing, but that is transcript capture, not the safety gate the criterion names
+  evidence: .abcd/development/intents/drafts/itd-62-pluggable-safety-gate.md:1 — "itd-62-pluggable-safety-gate.md (drafts/)"
+  evidence: .abcd/development/specs/closed/spc-2609211955339422-setup-wizard-explains-installs.md:62 — "belongs to itd-62, which is still a draft: no gate on the default branch always blocks on a missing scanner"
+  evidence: internal/core/history/history.go:277 — "err = tools.Missing(err, "gitleaks", tools.TranscriptScanArmed)"
+- ac-5 — MET: the package reads no terminal and writes no stdout; the CLI supplies the Confirm and asks on a tty itself, refusing piped or --yes answers, and TestToolConfirmAsksOnlyAtATerminal plus TestAhoyInstallNamedToolReachesTheStep run the whole path with no host present
+  evidence: internal/core/tools/registry.go:9 — "The package has no transport // knowledge — it never reads a terminal and never writes to stdout"
+  evidence: internal/surface/cli/cli.go:3705 — "func toolConfirm(p ahoy.Prompter, named map[string]bool, yes bool, w io.Writer) tools.Confirm"
+  evidence: internal/surface/cli/ahoy_tool_confirm_test.go:25 — "func TestToolConfirmAsksOnlyAtATerminal"
+
+Gap audit:
+- honoured:
+  - a curated registry abcd ships, with what the tool is, why the capability uses it, the native default and the exact step per platform (decision 2)
+    evidence: internal/core/tools/registry.go:118 — "var registry = map[string]Tool{"
+  - the install runs on confirmation and its result is reported (decision 1)
+    evidence: internal/core/tools/install.go:144 — "func (in *Installer) Install(name string, capability Capability, confirm Confirm) Result"
+  - a mode other verbs call, not a surface of its own (decision 3): ahoy detect/install, history capture, ahoy remote call it
+    evidence: internal/core/ahoy/detect.go:231 — "tools.Explain("gitleaks", capability)"
+    evidence: internal/core/ahoy/remote.go:458 — "return nil, tools.Missing("
+  - honesty about what the install does to the machine and the network
+    evidence: internal/core/tools/registry.go:109 — "func homebrewEffects(program string) string"
+  - declining never weakens a gate: the armed-gitleaks refusal stands, and the install never runs in CI or inside the repository tree
+    evidence: internal/core/tools/install.go:159 — "if reason, ci := cienv.Runner(in.Getenv); ci {"
+    evidence: internal/core/tools/install.go:237 — "func (in *Installer) admit(name string) (string, error)"
+  - the plugin page relays the explanation and the host-relayed yes through --install-tool
+    evidence: commands/ahoy.md:179 — "**The tool question.**"
+- diverged:
+  - the install question is asked for every missing tool the mode explains: gh is explained in the ahoy remote / site setup refusal but never offered (DependencyTools holds gitleaks only, and --install-tool gh is refused)
+    evidence: internal/core/ahoy/detect.go:207 — "var DependencyTools = []string{"gitleaks"}"
+    evidence: internal/surface/cli/cli.go:3691 — "is not a tool ahoy install checks for"
+  - a registry gap is captured: abcd prints the capture command for the person to run, it does not file the capture
+    evidence: internal/core/tools/explain.go:104 — "record the gap in abcd's own ledger with: abcd capture"
+  - the guard's and the launch's tool checks reroute through the mode (spec scope 3): neither exists, nothing was rerouted
+    evidence: .abcd/development/specs/closed/spc-2609211955339422-setup-wizard-explains-installs.md:68 — "do not exist: the guard runs no external tool, and the launch scans are native"
+- missing:
+  - the safety gate's missing-scanner path routes through the mode (first consumer, itd-62): the gate is not on main
+    evidence: .abcd/development/intents/drafts/itd-62-pluggable-safety-gate.md:1 — "drafts/"
+<!-- abcd-review-end receipt=rcp-3c9fb4ba9770 -->
 
 ### Linkage note (spc-83.5)
 
