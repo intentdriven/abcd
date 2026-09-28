@@ -16,6 +16,12 @@ var (
 	ErrLockPathUnsafe = errors.New("fsutil: lock path unsafe")
 )
 
+// lockFileMode is the mode a lock file is created with. A lock carries no content
+// and only its owner opens it (an open for the flock needs write access, which
+// 0644 never gave another account either), so it is the owner's alone, like the
+// 0600 state files it guards.
+const lockFileMode = 0o600
+
 // WithFileLock acquires an exclusive advisory (flock) lock on lockPath, holds it
 // across fn, and releases it when fn returns. The lock file is opened O_NOFOLLOW
 // (a symlinked lock path is refused) and verified on the same descriptor to be a
@@ -90,7 +96,7 @@ func lockStillNamesFd(lockPath string, fd int) (bool, error) {
 // same descriptor, that it is a regular file — refusing a symlinked or
 // non-regular lock path with ErrLockPathUnsafe.
 func openLockFd(lockPath string) (int, error) {
-	fd, err := syscall.Open(lockPath, syscall.O_CREAT|syscall.O_RDWR|syscall.O_NOFOLLOW, 0o644)
+	fd, err := syscall.Open(lockPath, syscall.O_CREAT|syscall.O_RDWR|syscall.O_NOFOLLOW, lockFileMode)
 	if err != nil {
 		if err == syscall.ELOOP {
 			return -1, fmt.Errorf("%w: lock path is a symlink: %s", ErrLockPathUnsafe, lockPath)
@@ -169,7 +175,7 @@ func openLockIn(root *os.Root, rel string) (*os.File, error) {
 	case lerr != nil && !errors.Is(lerr, os.ErrNotExist):
 		return nil, lerr
 	}
-	f, err := openOrCreateIn(root, rel, os.O_RDWR|syscall.O_NOFOLLOW, 0o644)
+	f, err := openOrCreateIn(root, rel, os.O_RDWR|syscall.O_NOFOLLOW, lockFileMode)
 	if err != nil {
 		return nil, err
 	}
