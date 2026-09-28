@@ -37,8 +37,11 @@ Two read-only forms, and no third.
 
 **Bare `abcd`** renders a four-field snapshot of the current directory: the
 directory itself, whether it is a git repo, whether an abcd record is present,
-and which of the `.abcd/` work tiers exist. The plugin command invokes its JSON
-form.
+and which of the `.abcd/` work tiers exist. The directory is named home-relative
+(`~/…`), or by its directory name outside HOME, in the text form's first line
+and in the JSON form's `dir` alike, never by an absolute path
+(iss-2609281613094952): the board is the output most often pasted, and no
+consumer acts on `dir`. The plugin command invokes its JSON form.
 
 **`abcd <record-id>`** takes a single positional matching `iss-N`, `itd-N`,
 `spc-N`, `adr-N`, `adm-N`, `srp-N` or `rfm-N` and reports, read-only, what that

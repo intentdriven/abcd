@@ -183,7 +183,10 @@ func boardPeers(cwd string, stderr io.Writer) *boardPeersLine {
 	}
 	rep, err := peers.Scan(root)
 	if err != nil {
-		fmt.Fprintf(stderr, "abcd: the peers line is omitted — %s\n", termsafe.Sanitize(fsutil.RedactHome(err.Error())))
+		// The reader's error can name a record folder by its absolute path,
+		// so the checkout is named by the board's display rule here too
+		// (iss-2609281613094952).
+		fmt.Fprintf(stderr, "abcd: the peers line is omitted — %s\n", termsafe.Sanitize(fsutil.DisplayPathsIn(err.Error(), root)))
 		return nil
 	}
 	if rep.IDCount() == 0 {

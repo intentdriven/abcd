@@ -280,6 +280,13 @@ func NewRootCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			// The board is the output most often pasted, so it names the
+			// checkout by the display rule — home-relative under HOME, the
+			// directory's base name outside it — in the text form and in
+			// --json alike (iss-2609281613094952). No consumer acts on dir: the
+			// plugin page relays it, and a reader that needs the path already
+			// has its own working directory.
+			st.Dir = fsutil.DisplayPath(st.Dir)
 			board := boardOutput{StatusInfo: st, Statusline: boardPresence(cwd, cmd.ErrOrStderr()), Peers: boardPeers(cwd, cmd.ErrOrStderr()), Inbox: boardInbox(cmd.ErrOrStderr()), Oracle: boardOracle(cwd, cmd.ErrOrStderr()), Reviews: boardReviews(cwd, cmd.ErrOrStderr())}
 			return render(cmd.OutOrStdout(), asJSON, board, func(w io.Writer) {
 				fmt.Fprintf(w, "abcd — %s\n", st.Dir)
