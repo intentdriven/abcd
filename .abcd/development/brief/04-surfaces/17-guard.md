@@ -243,7 +243,7 @@ through a shell string that runs the search, and into a shell string `xargs`
 runs or a pipe or redirect feeds, whose every command is read as handed its
 input, or whose positional parameters or own text hold the search's output; out
 of an unquoted here-document's substitutions into the command that reads the
-document; and into a substitution in a command that reads a pipe, which runs
+document and every command its output is piped on to; and into a substitution in a command that reads a pipe, which runs
 with that pipe as its input — and a `pkill` or
 `killall` selecting by user, group or terminal, its value written apart or
 attached, as selecting every session under the account; `pkill`'s signal name

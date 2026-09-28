@@ -288,7 +288,8 @@ redirect (`pgrep … | xargs sh -c 'kill "$@"' _`, `pgrep … | sh -c 'xargs
 kill'`, `sh -c 'xargs kill' < <(pgrep …)`), or whose positional parameters or
 own text hold the search's output (`sh -c 'kill "$1"' _ "$(pgrep …)"`); out
 of an unquoted here-document whose body holds the search (`xargs kill <<EOF`
-over `$(pgrep …)`); and into a substitution in a command that reads a pipe,
+over `$(pgrep …)`), and on through a pipe from the command that reads it
+(`cat <<EOF | xargs kill`); and into a substitution in a command that reads a pipe,
 which runs with that pipe as its input (`pgrep … | echo "$(xargs kill)"`);
 behind `xargs` and a launcher the guard does not know, the fail-safe warns. Every command of a string `xargs`
 runs, and every command in a group a pipe feeds, is read as handed that input,

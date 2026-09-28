@@ -3,6 +3,7 @@ package guard
 import (
 	"bytes"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -1143,14 +1144,22 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 				// (review4-guard finding 1). Its text stays data; what runs is
 				// read as commands of this command's chain, and what they print
 				// is the opening command's standard input, as a here-string's
-				// output is (iss-2609270036253187).
+				// output is (iss-2609270036253187). The owner's output is what
+				// a pipe after it hands on, and the body is read here, after
+				// the whole pipeline, so each command the owner's output
+				// reaches is handed the body as well (handOnDocs).
+				emitted := len(segs)
+				var docs []docRun
 				for k, body := range bodies {
 					start := len(segs)
 					expandedBody(body)
 					if o := docOwners[k]; o >= 0 && len(segs) > start {
-						segs[o].stdinIn = append(append([]feed(nil), segs[o].stdinIn...), feed{list: list, lo: start, hi: len(segs)})
+						run := feed{list: list, lo: start, hi: len(segs)}
+						segs[o].stdinIn = append(append([]feed(nil), segs[o].stdinIn...), run)
+						docs = append(docs, docRun{owner: o, run: run})
 					}
 				}
+				handOnDocs(segs[:emitted], list, docs)
 				if !ok {
 					// The delimiter line never came. bash RUNS this (it recovers
 					// silently, taking input-to-EOF as the body), so an error is
@@ -2310,6 +2319,85 @@ func skipSubstitution(line string, j, end int) (next int, alt bool) {
 		}
 	}
 	return end, alt
+}
+
+// docRun is the run of commands an unquoted here-document's body ran, and
+// the index of the command that opened the document (its owner).
+type docRun struct {
+	owner int
+	run   feed
+}
+
+// handOnDocs hands each here-document body in docs to the commands of segs
+// after its owner that read the owner's output: one whose pipe, or whose
+// inherited input (a pipe into its group, into the command a substitution
+// sits in), is a run of list holding the owner. `cat <<EOF | xargs kill` over
+// `$(pgrep make)` is then the here-string twin `cat <<< "$(pgrep make)" |
+// xargs kill` (review-drainG3 finding 2). Every command the owner's output
+// reaches is handed the bodies of the owners in that run as one feed,
+// spanning the first body to the last: the bodies were read in document
+// order, one after the other, so for owners in document order that span is
+// exactly theirs. Owners out of document order (a document opened inside a
+// substitution, whose command is emitted first) widen it to every body read
+// here, the fail-closed side. Each command is read once, and each of its
+// runs asks two binary searches, so the cost is the line's, not owners
+// times commands.
+func handOnDocs(segs []segment, list *segList, docs []docRun) {
+	if len(docs) == 0 {
+		return
+	}
+	ordered := true
+	for k := 1; k < len(docs); k++ {
+		if docs[k].owner < docs[k-1].owner {
+			ordered = false
+			break
+		}
+	}
+	if !ordered {
+		sort.SliceStable(docs, func(a, b int) bool { return docs[a].owner < docs[b].owner })
+	}
+	all := feed{list: list, lo: docs[0].run.lo, hi: docs[0].run.hi}
+	for _, d := range docs {
+		all.lo, all.hi = min(all.lo, d.run.lo), max(all.hi, d.run.hi)
+	}
+	// span returns the bodies of the owners in [lo, hi), and whether any is.
+	span := func(lo, hi int) (feed, bool) {
+		a := sort.Search(len(docs), func(k int) bool { return docs[k].owner >= lo })
+		b := sort.Search(len(docs), func(k int) bool { return docs[k].owner >= hi })
+		if a >= b {
+			return feed{}, false
+		}
+		if !ordered {
+			return all, true
+		}
+		return feed{list: list, lo: docs[a].run.lo, hi: docs[b-1].run.hi}, true
+	}
+	for p := docs[0].owner + 1; p < len(segs); p++ {
+		tally(1)
+		s := &segs[p]
+		var got feed
+		add := func(w feed) {
+			if w.list != list {
+				return
+			}
+			f, ok := span(w.lo, min(w.hi, p))
+			if !ok {
+				return
+			}
+			if got.list == nil {
+				got = f
+				return
+			}
+			got.lo, got.hi = min(got.lo, f.lo), max(got.hi, f.hi)
+		}
+		add(s.piped)
+		for _, w := range s.stdinIn {
+			add(w)
+		}
+		if got.list != nil {
+			s.stdinIn = append(append([]feed(nil), s.stdinIn...), got)
+		}
+	}
 }
 
 // readAnsiCQuote decodes a bash ANSI-C `$'...'` body that begins at start (the
