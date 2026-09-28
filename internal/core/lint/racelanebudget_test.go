@@ -87,6 +87,12 @@ func TestRaceLaneBudgetIsDeclaredAndFitsItsJob(t *testing.T) {
 					"false. Raise the live ruleset's cap (an admin act) before the job's",
 					where, leg.os, leg.minutes, queue, rulesetMirror)
 			}
+			// Ruling Z raised the macOS leg alone; every other leg keeps 30.
+			if leg.os != "macos-latest" && leg.minutes != 30*time.Minute {
+				t.Errorf("%s: the %s leg's timeout-minutes is %s; ruling Z (2026-09-28) raised only "+
+					"the macOS leg, and every other leg of the check job stays at 30m",
+					where, leg.os, leg.minutes)
+			}
 		}
 	}
 

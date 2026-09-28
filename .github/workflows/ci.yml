@@ -413,7 +413,10 @@ jobs:
       # cancellation. The rule for a cancelled check is to rerun it once; a
       # second cancellation for the same reason stops that pull request and
       # opens a speed lane, never another raise of the timeout. This warning
-      # moves that signal ahead of the first cancellation. It never fails the
+      # moves that signal ahead of the first cancellation: it is emitted at the
+      # job's end, for a run that finished past the line, so a check that
+      # passed between 35 and 45 minutes says so before one is cancelled at
+      # the cap. It never fails the
       # job: `always()` runs it however the steps before it ended, and
       # `continue-on-error` holds even a broken script to a warning.
       # TestCheckJobWarnsBeforeTheQueueCap pins the threshold below the leg's
