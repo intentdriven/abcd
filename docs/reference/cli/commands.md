@@ -20,10 +20,10 @@ Render the status board, or say what one record id is and its next move: Writes 
 Agent-based configuration for development.
 
 Bare `abcd` renders the read-only status board — what can I do. A single
-positional matching a record id (`iss-N`, `itd-N`, `spc-N`, `adr-N`) instead
-reports what that record is, where it lives, and the next move for its
-lifecycle state — what is this. Both forms are strictly read-only; any other
-positional is refused as an unknown command.
+positional matching a record id (`iss-N`, `itd-N`, `spc-N`, `adr-N`, `adm-N`,
+`srp-N`, `rfm-N`) instead reports what that record is, where it lives, and
+the next move for its lifecycle state — what is this. Both forms are strictly
+read-only; any other positional is refused as an unknown command.
 
 **Flags:**
 

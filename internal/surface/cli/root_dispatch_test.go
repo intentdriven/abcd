@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -141,6 +142,40 @@ func TestNextMoveVerbsResolveInLiveTree(t *testing.T) {
 			if !next {
 				t.Fatalf("recommended verb path %q does not resolve at %q in the live tree", path, part)
 			}
+		}
+	}
+}
+
+// TestRootSentenceNamesEveryDispatchedFamily pins the root command's long help
+// to the dispatcher's own gate: the record-id families the sentence lists are
+// exactly the families record.IDRe routes, so a family added to the gate
+// cannot ship with a reference page that omits it, and the sentence cannot
+// promise a family the gate refuses.
+func TestRootSentenceNamesEveryDispatchedFamily(t *testing.T) {
+	src := record.IDRe.String()
+	open, closing := strings.Index(src, "("), strings.Index(src, ")")
+	if open < 0 || closing < open {
+		t.Fatalf("record.IDRe %q has no family group to read", src)
+	}
+	want := map[string]bool{}
+	for _, fam := range strings.Split(src[open+1:closing], "|") {
+		want[fam+"-N"] = true
+	}
+
+	long := NewRootCommand().Long
+	got := map[string]bool{}
+	for _, tok := range regexp.MustCompile("`([a-z]+-N)`").FindAllStringSubmatch(long, -1) {
+		got[tok[1]] = true
+	}
+
+	for fam := range want {
+		if !got[fam] {
+			t.Errorf("root long help omits the dispatched family `%s`:\n%s", fam, long)
+		}
+	}
+	for fam := range got {
+		if !want[fam] {
+			t.Errorf("root long help names `%s`, which the dispatcher does not route (%s)", fam, src)
 		}
 	}
 }
