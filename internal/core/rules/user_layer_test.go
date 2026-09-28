@@ -82,6 +82,12 @@ func TestUserLayerAbsentChangesNothing(t *testing.T) {
 			t.Fatal(err)
 		}
 		want := Merge(Defaults(), RuleSet{SchemaVersion: 1, Domains: map[string]Domain{"PII": {Rules: []string{"repo pii"}}}})
+		// The override withholds every bundled PII rule, which Load names in a
+		// note (iss-174); the SET is what it always was.
+		if withheldNote(rs, "PII", "rules") == "" {
+			t.Fatalf("the withheld bundled PII rules are silent; notes = %q", rs.Notes())
+		}
+		rs.notes = nil
 		if !reflect.DeepEqual(rs, want) {
 			t.Fatalf("no user file: the repo merge must be what it always was")
 		}

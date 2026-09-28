@@ -290,7 +290,15 @@ var (
 	// class stays ASCII-cased on purpose: it is the USERNAME, which the boundary
 	// helpers and isHomeSegmentByte judge by the same class, and folding a class
 	// that already carries both cases changes nothing.
-	genericHomeRe = regexp.MustCompile(`(?i)(?:/Users/[A-Za-z0-9._-]+|/home/[A-Za-z0-9._-]+)`)
+	//
+	// The third alternative is the Windows spelling, <drive>:\Users\<name>
+	// (iss-2609251639261103): a WSL session, a pasted PowerShell transcript or
+	// a Windows CI log names homes that way. Each separator is a RUN of
+	// backslashes, because a JSON encoder doubles the separator and JSON quoted
+	// inside JSON doubles it again; the run reads as one separator at any
+	// depth, the way endsWithPathFold reads accountRootPrefixes. Windows has no
+	// /home root, so there is no fourth alternative.
+	genericHomeRe = regexp.MustCompile(`(?i)(?:/Users/[A-Za-z0-9._-]+|/home/[A-Za-z0-9._-]+|[A-Za-z]:\\+Users\\+[A-Za-z0-9._-]+)`)
 	// Loose URL span (scheme to whitespace/quote/closing).
 	urlSpanRe = regexp.MustCompile(`(?:https?://|git@|ftp://|ssh://)[^\s"'` + "`" + `)>\]<]+`)
 	// A git noreply email is not a leak.
@@ -331,10 +339,12 @@ func isOwnRepoSlug(line string, end int, repo string) bool {
 }
 
 // homeBoundary is the trailing-boundary set for a home-path match (ported from
-// the Python lookahead [/\s"'`)\]\}<,;:]).
+// the Python lookahead [/\s"'`)\]\}<,;:]), plus the backslash: the Windows
+// separator, and the first byte of any escape a JSON string writes after a
+// path (iss-2609251639261103). No username continues with a backslash.
 func homeBoundary(r rune) bool {
 	switch r {
-	case '/', '"', '\'', '`', ')', ']', '}', '<', ',', ';', ':':
+	case '/', '\\', '"', '\'', '`', ')', ']', '}', '<', ',', ';', ':':
 		return true
 	}
 	return r == ' ' || r == '\t' || r == '\n' || r == '\r' || r == '\f' || r == '\v'
@@ -649,7 +659,10 @@ func (m identityMatchers) findings(line string, lineno int, id2sev map[string]Se
 			continue
 		}
 		matched := line[loc[0]:loc[1]]
-		if m.homeSelf != nil && homeSelfStandsIn(m.homeSelf, matched) {
+		// The caller's own home, in any escaped spelling: a Windows match
+		// carries its separators as runs, and the home literal carries one
+		// backslash per separator.
+		if m.homeSelf != nil && (homeSelfStandsIn(m.homeSelf, matched) || homeSelfStandsIn(m.homeSelf, collapseSeparatorRuns(matched))) {
 			continue
 		}
 		// /Users/Shared and friends are macOS system directories, not users
@@ -1069,13 +1082,14 @@ func isLocalPartByte(b byte) bool {
 }
 
 // isNonUserHomeMatch reports whether a generic-home match's final segment is a
-// well-known non-user directory under a /Users root.
+// well-known non-user directory under a /Users root, POSIX or Windows.
 func isNonUserHomeMatch(matched string) bool {
 	scanMeter.charge(stageIdentity, len(matched))
-	if !strings.HasPrefix(strings.ToLower(matched), "/users/") {
+	lower := strings.ToLower(matched)
+	if !strings.HasPrefix(lower, "/users/") && !(len(lower) > 2 && lower[1] == ':' && lower[2] == '\\') {
 		return false
 	}
-	i := strings.LastIndexByte(matched, '/')
+	i := strings.LastIndexAny(matched, `/\`)
 	return i >= 0 && IsNonUserHomeSegment(matched[i+1:])
 }
 
@@ -1091,12 +1105,20 @@ func isNonUserHomeMatch(matched string) bool {
 // rather than a home directory, which is the subtree the exemption now covers
 // (iss-2609100505145554).
 //
-// genericHomeRe is POSIX-only, so '/' is the only separator that can reach here.
+// A separator is a '/' or a RUN of backslashes, the Windows separator at any
+// escaping depth: "C:\\Users\\Public\\x" is one separator per run, not an
+// empty traversal segment between two backslashes, so it stays inside the
+// shared root. Two '/' in a row are an empty segment.
 func nextPathSegmentEnd(line string, pos int) (int, bool) {
 	traversed := false
 	from := pos
-	for pos < len(line) && line[pos] == '/' {
+	for pos < len(line) && (line[pos] == '/' || line[pos] == '\\') {
 		i, named := pos+1, false
+		if line[pos] == '\\' {
+			for i < len(line) && line[i] == '\\' {
+				i++
+			}
+		}
 		for i < len(line) && isHomeSegmentByte(line[i]) {
 			if line[i] != '.' {
 				named = true

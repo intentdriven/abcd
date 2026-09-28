@@ -151,11 +151,13 @@ func IsPersonaName(seg string) bool {
 // (a detector must not tax legitimate product code) applied to hostnames.
 var nonHostLabels = map[string]bool{"work.local": true}
 
-// nonUserHomeSegments are the well-known macOS directories that live under
-// /Users but name no user. Flagging them as usernames (iss-153) forced waivers
-// onto product code that legitimately writes there.
+// nonUserHomeSegments are the well-known directories that live under a Users
+// root but name no user: macOS's Shared and Guest, and Windows's Public,
+// Default (the profile every new account is copied from) and the All Users
+// junction, whose name ends at its space. Flagging them as usernames (iss-153)
+// forced waivers onto product code that legitimately writes there.
 var nonUserHomeSegments = map[string]bool{
-	"shared": true, "guest": true, "public": true,
+	"shared": true, "guest": true, "public": true, "default": true, "all": true,
 }
 
 // IsNonUserHomeSegment reports whether seg, the segment immediately after a

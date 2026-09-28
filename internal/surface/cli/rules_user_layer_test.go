@@ -43,7 +43,7 @@ func TestRulesVerbLabelsTheUserLayer(t *testing.T) {
 	}
 	for name, want := range map[string]string{"PII": "user", "HOUSE": "user", "ROADMAP": "repo", "COMMITTING": "bundled"} {
 		var got map[string]any
-		out := runCLI(t, "rules", name, "--json")
+		out := rulesJSON(t, "rules", name, "--json")
 		if err := json.Unmarshal(out, &got); err != nil {
 			t.Fatalf("rules %s --json not JSON: %v\n%s", name, err, out)
 		}
