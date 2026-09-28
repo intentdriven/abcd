@@ -162,11 +162,11 @@ offer the `yes |` form above as the way to apply it.
 **The house-style question.** When the install seeds `.abcd/docs-lint.json`,
 it asks `docs_lint.em_dash_in_list_item (blocking/warning) [warning]`: whether an
 em dash inside a list item, abcd's own house style rather than a currency rule,
-blocks the docs lint or only warns. Relay the question to the user and pass on
-their answer; never answer it for them. The answer is written into the seeded
-config as that token's severity (`blocker` or `warn`), where the user can change
-it later. `--yes` does not ask and seeds a warning, and the result's `notes`
-says so. End of input or a bare Enter takes the warning. An answer that is
+blocks the docs lint or only warns. Relay the question to the technical
+facilitator and pass on their answer; never answer it for them. The answer is
+written into the seeded config as that token's severity (`blocker` or `warn`),
+where the technical facilitator can change it later. `--yes` does not ask and
+seeds a warning, and the result's `notes` says so. End of input or a bare Enter takes the warning. An answer that is
 neither word (the `y` of `yes |`) also seeds the warning, with a note naming
 what was heard. The question comes after the category approvals and the
 configuration values and before the status-line offer, and is asked only when
@@ -314,8 +314,9 @@ caller must CONFIRM the specific toggles named. A repo that sets
 as it is and is not contacted at all.
 
 The confirmation is the fourth gate, not a formality: an unanswered run declines
-and changes nothing, so present the question and the repository it names before
-answering it. `--yes` says yes in advance, and it is the user's word to give —
+and changes nothing, so set `abcd mode facilitator` and present the question
+and the repository it names to the technical facilitator before answering it.
+`--yes` says yes in advance, and it is the technical facilitator's word to give —
 never pass it on their behalf. A run that changed nothing exits NON-ZERO
 (`refused` or `aborted`), so a failed invocation is never mistaken for a write
 that landed; `opted_out` is the one non-change that exits clean, because leaving

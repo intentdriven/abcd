@@ -298,8 +298,8 @@ scaffold prompt is reported as unanswered, never as a recorded claim.
 ## Planning interview (host-run, with the human present)
 
 The interview turns a draft into an intent the product thinker has signed off.
-Every question in it is theirs: set `abcd mode product-thinker` before the
-first one. Run it only in a live session with the product thinker; deferral of
+The sign-off is the product thinker's; set the mode before the first question
+and reset it whenever the hat changes, as the rule below says. Run it only in a live session with the product thinker; deferral of
 any question is a valid answer, but silence is not consent.
 
 **How every question is asked (the GRILL rule domain).** One question at a

@@ -88,10 +88,13 @@ func TestRenderedHelpAndPluginPagesNameTheRoles(t *testing.T) {
 
 // questionBlock finds a paragraph in which a page tells the agent to put a
 // question to a human: an imperative ask (sentence-initial, after "then" or
-// "and", or after a bold lead-in) whose object is a person or the question
-// itself. An ask whose object is a verb, a binary or another agent ("ask the
-// update verb", "Ask it for kill attempts") is not a question to a human.
-var questionBlock = regexp.MustCompile(`(?:^|[.!?:;,—]\s+|\*\*\s*|\bthen\s+|\band\s+)(?:Ask|ask)\s+(?:once\b|whether\b|why\b|what\b|first\b|the (?:user|human|researcher|person|product thinker|technical facilitator)\b|for (?:the|every)\b)`)
+// "and", or after a bold lead-in) whose object is a person, "them" or the
+// question itself; an instruction to relay or present a question; or a
+// `--yes` that answers a question in advance, since pre-answering a stop is
+// answering it and the paragraph must say whose answer that is. An ask whose
+// object is a verb, a binary or another agent ("ask the update verb", "Ask it
+// for kill attempts") is not a question to a human.
+var questionBlock = regexp.MustCompile(`(?:(?:^|[.!?:;,—]\s+|\*\*\s*|\bthen\s+|\band\s+)(?:Ask|ask)\s+(?:once\b|whether\b|why\b|what\b|first\b|them\b|the (?:user|human|researcher|person|product thinker|technical facilitator)\b|for (?:the|every)\b)|\b(?:[Rr]elay|[Pp]resent) the question\b|` + "`--yes`" + `[^.]*\bin advance\b)`)
 
 // TestPluginQuestionBlocksNameTheAddressee (AC3): every question a plugin page
 // has the agent put to a human names which of the two roles it asks, in the
@@ -116,6 +119,8 @@ func TestPluginQuestionBlocksNameTheAddressee(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, sec := range pageSections(string(data)) {
+			// A setter wrapped across two lines is still the setter.
+			flat := strings.Join(strings.Fields(sec.text), " ")
 			for _, para := range sec.paragraphs {
 				if !questionBlock.MatchString(para.text) {
 					continue
@@ -128,7 +133,7 @@ func TestPluginQuestionBlocksNameTheAddressee(t *testing.T) {
 						continue
 					}
 					named = true
-					if !strings.Contains(sec.text, r.setter) {
+					if !strings.Contains(flat, r.setter) {
 						t.Errorf("%s:%d asks the %s but its section never sets `abcd %s` first",
 							filepath.ToSlash(p), para.line, r.name, r.setter)
 					}
