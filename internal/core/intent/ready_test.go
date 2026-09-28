@@ -518,7 +518,7 @@ func TestReadyClaimChecksNotApplicableInTerminalBuckets(t *testing.T) {
 // and the gate must not report it as one.
 func TestReadyScaffoldPromptIsNotAClaim(t *testing.T) {
 	root := t.TempDir()
-	seeded := seedDraft("itd-10", DraftOptions{Slug: "alpha", Title: "alpha", SeedBody: "why it matters"}, researcherStamp(t))
+	seeded := seedDraft("itd-10", DraftOptions{Slug: "alpha", Title: "alpha", SeedBody: "why it matters"}, researcherStamp(t), nil)
 	// Plan the criteria only, so the two claim sections stay as seeded.
 	seeded = strings.Replace(seeded,
 		"> _Required (the itd-1 discipline)", "- **Given** x, **when** y, **then** z.\n\n> _was: ", 1)

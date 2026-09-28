@@ -382,7 +382,7 @@ about, one question per category present, never one per item.
 | `safe-autocreate` | the repo skeleton, history-store directories, the name-guard artefacts | applied once the category is approved, no per-item prompt; create-if-absent, never overwriting |
 | `config-change` | visibility, oracle adapter, the `PATH` entry, the git-identity pin, the artefact kind | transparent confirm; skip-if-set with a "current value" notice |
 | `plugin-owned` | the marker block (itd-3); hook-manifest verification | silent overwrite on marker drift; a non-resolvable diagnostic for a malformed or missing manifest, and for a conventions file whose block would land inside a fence or HTML comment nothing closes (`marker.unplaceable`) |
-| `dependency` | the opt-in scanners | one category-level approval covering them; abcd never auto-executes a package manager, and the user runs the commands |
+| `dependency` | a tool a capability uses and cannot find: gitleaks, optional over the native secret scanner and required where the repository armed it in `.abcd/config/gitleaks.json` | the category approval reaches the step; each tool is then explained from the tool registry (what it is, optional or required here, what works without it, the exact install step, what the install does) and its install step runs only on a per-tool yes — typed at a terminal, or relayed by a host as a flag naming the tool — never under the approve-everything flag, a piped answer or CI; a no is reported as what the capability continues on |
 | `status-line` | the offer of abcd's status line in the host harness | an advisory offer asked after its own question, written only on an answered consent; never under the approve-everything flag, and reported as optional work it skipped |
 | `oracle-routing` | the offer of abcd's proposed model-tier routing table (itd-2609170822093401): the machine's `~/.abcd/oracle-routing.json`, then, as a separate question, the repository's `.abcd/config/oracle-routing.json` | the proposal rendered as a table (agent, tier, fan-out) and each file written only on its own answered consent, the machine one owner-only; never under the approve-everything flag, and reported as optional work it skipped; a decline records nothing, so the next install offers again; uninstall leaves both files |
 | `user-state` | the registry entry, re-founding, stale or duplicate entries | guided; never auto-edit user-scope state, report extras read-only |
@@ -447,6 +447,25 @@ was not told to adopt. The cost is that a stdin held open and silent makes a
 prompt wait rather than decline, which is the contract every prompting CLI has.
 A run that must neither block nor prompt closes stdin and pre-answers with
 flags.
+
+**Installing a tool is the one question a piped answer never answers.** It runs
+a program on the machine, so it is asked only of a person at a terminal, after
+the tool registry's explanation is shown, and its default is no. Off a terminal
+the answer is a flag naming the tool, which is how a host relays the answer its
+own question tool got; the approve-everything flag never installs a tool, and a
+CI runner never installs one and is not asked: the canonical CI detector
+(`internal/cienv`, `GITHUB_ACTIONS=true` or a truthy `CI`) refuses, and so does
+`CI` set to any value, `false` and `0` included. What runs is the
+registry's fixed argv for the platform, never a shell string and never a command
+composed from input, and only when the package manager resolves on `PATH`
+outside the repository (`internal/core/tools`). The step runs in a process group
+of its own, bounded at 15 minutes (its verify at 30 seconds), and a timeout kills
+that group through the handle abcd holds. The kill has one limit: a process the
+step moves into another group or session (`setsid`, `setpgid`) is out of its
+reach and can outlive the run. abcd stops reading output 10 seconds after the
+step exits or is killed, so such a process holding the output open cannot hold
+the run past its bound, and a step that exits cleanly while leaving one behind
+is reported as failed, saying so.
 
 The non-interactive flags pre-answer the prompts: approve every resolvable
 category, decide the adoption question either way, set the marker target, the
@@ -591,9 +610,12 @@ byte-identical to a fresh install save for the setup date.
 - **Given** a repo with the install run at an older setup version, **when**
   the install runs, **then** the version is updated, the marker block refreshed,
   and existing config keys preserved.
-- **Given** an opt-in scanner is not on `PATH`, **when** the dependency category
-  is approved, **then** the user is shown the install commands under one
-  category-level approval; abcd never auto-executes a package manager.
+- **Given** a tool a capability uses is not on `PATH`, **when** the dependency
+  category is approved, **then** the person is shown the tool registry's
+  explanation and asked per tool; the registry's fixed install step runs only
+  on a yes typed at a terminal or relayed by a host naming the tool, the result
+  reports what ran and whether its verify passed, and a no reports what the
+  capability continues on (itd-63).
 - **Given** no oracle adapter is wired, **when** detection resolves the oracle,
   **then** it stays host-delegated: abcd needs no API keys or model config,
   because it emits prompts the host runs (adr-25), and an adapter can be
@@ -665,6 +687,7 @@ Sub-verbs: none.
 | `--bin-dir` | string |
 | `--dev` | bool |
 | `--docs-target` | string |
+| `--install-tool` | stringSlice |
 | `--oracle-backend` | string |
 | `--refuse-adopt` | bool |
 | `--scan-deep` | string |

@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/cienv"
 	"github.com/intentdriven/abcd/internal/core/banlist"
 	"github.com/intentdriven/abcd/internal/core/machineload"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -191,7 +192,7 @@ func CheckLoad(req LoadRequest) LoadResult {
 		Site: req.Site, Triggers: []string{}, OwnStrays: []LoadOwnStray{}, Remedy: []LoadRemedy{},
 		WithinPreflight: getenv(loadCheckedEnv) == SitePreflight,
 	}
-	if reason, ci := ciRunner(getenv); ci {
+	if reason, ci := cienv.Runner(getenv); ci {
 		res.Status = LoadSkipped
 		res.Reason = "skipped on a CI runner (" + reason + "): a fresh runner carries no programs left from earlier work, so there is nothing to warn about"
 		return res
@@ -264,25 +265,6 @@ func CheckLoad(req LoadRequest) LoadResult {
 		res.RunLog = logLoadWarning(req, res)
 	}
 	return res
-}
-
-// ciRunner reports whether the environment is a CI runner, and names the
-// variable that says so: GITHUB_ACTIONS=true, or a CI value other than empty,
-// "false" or "0".
-func ciRunner(getenv func(string) string) (string, bool) {
-	if getenv("GITHUB_ACTIONS") == "true" {
-		return "GITHUB_ACTIONS=true", true
-	}
-	switch v := getenv("CI"); v {
-	case "", "false", "0":
-		return "", false
-	default:
-		shown := termsafe.Sanitize(v)
-		if len(shown) > 32 {
-			shown = shown[:32]
-		}
-		return "CI=" + shown, true
-	}
 }
 
 // readLimits reads ~/.abcd/load-limits through the guarded declaration read the

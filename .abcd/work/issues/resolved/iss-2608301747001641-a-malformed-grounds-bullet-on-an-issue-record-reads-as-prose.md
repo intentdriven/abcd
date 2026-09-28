@@ -7,8 +7,10 @@ category: "bug"
 source: "user-observation"
 found_during: "itd-179-round-5-builder"
 found_at: "internal/core/grounds"
-deferred_after: "v0.10.0"
-deferral_reason: "ruling owed to the product thinker (away; run A 2026-09-25): Should a malformed ## Grounds bullet be a gate finding while grounds refusals stay parked (2026-09-09)?"
+resolution: "record_schema now reports every bullet under ## Grounds that the reader drops, on issue and intent records, from grounds.MalformedIn, the other half of the one walk ParseSection takes; the grammar is judged, not the floor, and prose paragraphs stay silent. The tree's one such bullet (iss-2609012039210402) is corrected. Proven by TestRecordSchemaReportsAMalformedGroundsBullet (watched red) and TestMalformedInIsTheReadersComplement."
+impact: fix
+resolved_by:
+  commit: "bc9fca94"
 ---
 
 a malformed grounds bullet on an issue record reads as prose so no gate can review it losing coverage the frontmatter rule had
@@ -26,3 +28,7 @@ That is the same shape as the class this branch has been closing all cycle -- a
 reader declining to see something while nothing downstream knows -- arrived at
 from the other direction, by moving data somewhere the gate does not look. Worth
 weighing before the section form is copied to any other field.
+
+## Grounds
+
+- pursued: a hand-typed bullet the grounds reader drops is named by the record gate; a malformed bullet passing record-lint while no surface shows it would show it wrong

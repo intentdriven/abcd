@@ -129,7 +129,7 @@
     {
       "path": "abcd ahoy install",
       "hidden": false,
-      "sentence": "Apply the install gaps the detection finds: Writes the .abcd/ scaffolding, the name-guard hooks, and the PATH entry; refuses a stale binary before any write.",
+      "sentence": "Apply the install gaps the detection finds: Writes .abcd/, the name-guard hooks and the PATH entry, and installs a tool only on a yes; refuses a stale binary.",
       "flags": [
         {
           "name": "adopt",
@@ -170,6 +170,13 @@
           "name": "docs-target",
           "shorthand": "",
           "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "install-tool",
+          "shorthand": "",
+          "type": "stringSlice",
           "required": false,
           "hidden": false
         },

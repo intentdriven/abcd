@@ -21,7 +21,6 @@ import (
 )
 
 var (
-	headingRe   = regexp.MustCompile(`^(#{1,6})\s+(.*)$`)
 	nonSlugRe   = regexp.MustCompile(`[^a-z0-9]+`)
 	slugStripRe = regexp.MustCompile("[`*_]")
 )
@@ -45,14 +44,6 @@ type Section struct {
 	Line int
 	// BodyLine is the 1-based source line Body starts at.
 	BodyLine int
-}
-
-// Block is one top-level markdown block: a paragraph, a table, a fence, an
-// image line, a list, or a blockquote — whatever sits between two blank lines.
-type Block struct {
-	Text string
-	// Line is the 1-based source line the block starts at.
-	Line int
 }
 
 // StripFrontmatter removes a leading YAML frontmatter block and reports how many
@@ -123,8 +114,8 @@ func Sections(path, md string, offset int) ([]Section, error) {
 		if flag&mdrecord.MaskComment != 0 {
 			what = "unterminated HTML comment"
 		}
-		return nil, &UnsupportedError{path, offset + at + 1, what,
-			"it swallows every heading after it, so the rest of the document silently stops existing"}
+		return nil, &UnsupportedError{Path: path, Line: offset + at + 1, Construct: what,
+			Detail: "it swallows every heading after it, so the rest of the document silently stops existing"}
 	}
 
 	var out []Section
@@ -186,56 +177,4 @@ func trimBlankLines(body []string, start int) (string, int) {
 func Slug(t string) string {
 	t = strings.ToLower(slugStripRe.ReplaceAllString(t, ""))
 	return strings.Trim(nonSlugRe.ReplaceAllString(t, "-"), "-")
-}
-
-// Blocks splits a section body into its top-level blocks, honouring fenced code
-// by mdrecord's ListNested rule, the same reading Sections takes.
-// start is the 1-based source line the body begins at.
-func Blocks(md string, start int) []Block {
-	if md == "" {
-		return nil
-	}
-	lines := strings.Split(md, "\n")
-	fences := mdrecord.Read(lines, mdrecord.ListNested).Fences
-	var out []Block
-	var buf []string
-	bufLine := 0
-	flush := func() {
-		if len(buf) > 0 {
-			out = append(out, Block{Text: strings.Join(buf, "\n"), Line: bufLine})
-			buf = nil
-		}
-	}
-	for i := 0; i < len(lines); i++ {
-		if len(fences) > 0 && i == fences[0].Start {
-			f := fences[0]
-			fences = fences[1:]
-			if len(buf) == 0 {
-				bufLine = start + i
-			}
-			buf = append(buf, lines[f.Start:f.End]...)
-			i = f.End - 1
-			// A fence closed at the left margin closes its own block. An
-			// INDENTED one belongs to whatever list item holds it, so the block
-			// runs on: the item's renderer dedents it and reads it as a fence
-			// there. Ending the block here instead would leave the fence's blank
-			// lines to split the code into paragraphs, and its `#` lines to be
-			// read as headings — which is a document silently losing sections.
-			if f.Closed && f.End-1 > f.Start && indentOf(lines[f.End-1]) == 0 {
-				flush()
-			}
-			continue
-		}
-		line := lines[i]
-		if strings.TrimSpace(line) == "" {
-			flush()
-			continue
-		}
-		if len(buf) == 0 {
-			bufLine = start + i
-		}
-		buf = append(buf, line)
-	}
-	flush()
-	return out
 }

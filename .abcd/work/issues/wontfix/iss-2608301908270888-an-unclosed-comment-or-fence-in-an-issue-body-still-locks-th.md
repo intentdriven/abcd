@@ -7,8 +7,7 @@ category: "bug"
 source: "user-observation"
 found_during: "itd-179-fix-delta-ruthless"
 found_at: "internal/core/grounds/record.go"
-deferred_after: "v0.10.0"
-deferral_reason: "ruling owed to the product thinker (away; run A 2026-09-25): Does the record-body repair verb belong in the errata intent (M25), or its own?"
+wontfix_reason: "Declined on the product thinker's ruling of 2026-08-31 (DECISIONS.md, ruling 3): the guard is correct and the hand edit is the accepted repair, so a triage verb that would append a grounds entry below an unclosed comment or fence refuses rather than landing an entry no reader can see. What the fix/drain-record-reading branch still improved: the refusal, which already named the construct, its body line and the opener's text, now also says the exit, close or remove the opener in a text editor and re-run. A record-body repair verb, if wanted, is its own intent, as the ruling says."
 ---
 
 an unclosed comment or fence in an issue body still locks the record out of every triage verb and no open record tracks it
@@ -79,3 +78,7 @@ own intent rather than a fix bolted onto a shipped one.
 
 Stays OPEN at minor: the tool still stops mid-workflow and hands the operator a
 text editor, which is a real cost even if it is not a lockout.
+
+## Grounds
+
+- declined: refusing is correct because an entry appended below an unclosed opener cannot be read back; an operator unable to repair the record from the refusal message alone would show it wrong

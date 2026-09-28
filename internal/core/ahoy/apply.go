@@ -14,6 +14,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/history"
 	"github.com/intentdriven/abcd/internal/core/identity"
+	"github.com/intentdriven/abcd/internal/core/tools"
 )
 
 // Install runs detect + apply over the approved categories. It is idempotent:
@@ -143,6 +144,7 @@ func install(cwd string, opts InstallOptions, p Prompter) (InstallResult, error)
 		modeForced:  modeForced,
 		binTarget:   binTargetPath,
 		attribution: opts.Attribution,
+		confirmTool: opts.ConfirmTool,
 	}
 
 	// itd-111 refusal: a binary that is stale against its own source tip, or
@@ -331,6 +333,7 @@ type applyCtx struct {
 	modeForced  bool     // the requested install mode differs from the on-disk state
 	attribution bool     // --attribution: opt this repo into the committed prompt hook
 	binTarget   string   // the resolved PATH entry this run installs (never re-derived)
+	confirmTool tools.Confirm
 
 	visibilityForced bool     // an explicit --visibility override overwrote a valid value
 	docsTargetForced bool     // a --docs-target override overwrote a valid value, or this run chose the first one
@@ -432,22 +435,42 @@ func (a *applyCtx) stepIdentityPin() {
 
 func (a *applyCtx) has(id string) bool { return a.gapPresent[id] }
 
-// stepDependencies re-probes PATH; surfaces the fix hint but never auto-runs a
-// package manager.
+// stepDependencies is the explain-then-install mode at ahoy (itd-63). For each
+// dependency gap whose tool is still missing it hands the tool registry's
+// explanation to the front door's confirmation, and runs the registry's step
+// only on a yes. What ran, and whether it verified, is a change; a no, a failure
+// or a caller that asked nothing is a note carrying the explanation and the
+// capability's standing ("continuing on the native secret scanner"), never a
+// silent skip. The category approval gates reaching this step at all; it never
+// stands in for the per-tool answer.
 func (a *applyCtx) stepDependencies() {
 	if !a.approved[Dependency] {
 		return
 	}
 	for _, g := range a.det.Gaps {
-		if g.Category != Dependency {
+		if g.Category != Dependency || g.Tool == nil {
 			continue
 		}
-		tool := strings.TrimPrefix(strings.TrimSuffix(g.ID, "_missing"), "deps.")
-		if !onPath(tool) {
-			a.note(writeScannerHint, "dependency: "+g.FixHint)
+		if onPath(g.Tool.Tool) {
+			continue
 		}
+		res := newToolInstaller(a.cwd).Install(g.Tool.Tool, g.Tool.Capability, a.confirmTool)
+		if res.Ran && res.Installed && res.Verified {
+			a.changes = append(a.changes, receiptPath(a.cwd, "dependency: "+res.Summary()))
+			continue
+		}
+		if !res.Ran {
+			for _, line := range g.Tool.Lines() {
+				a.refuse(receiptPath(a.cwd, "dependency: "+line))
+			}
+		}
+		a.refuse(receiptPath(a.cwd, "dependency: "+res.Summary()))
 	}
 }
+
+// newToolInstaller is the tool installer seam, guarded on the repository the
+// install runs in; a test swaps it for one that records instead of executing.
+var newToolInstaller = tools.Default
 
 // stepSkeleton writes .abcd/config.json seed when the skeleton gap is present.
 func (a *applyCtx) stepSkeleton() {
@@ -1762,10 +1785,16 @@ func resolveApproval(gaps []Gap, opts InstallOptions, p Prompter) (map[GapCatego
 		}
 	default:
 		for _, c := range presentInPromptOrder(present) {
+			if c == Dependency && opts.ApproveDependency {
+				continue // answered by the named tool; approved below
+			}
 			if p.Confirm("Apply " + string(c) + " changes?") {
 				approved[c] = true
 			}
 		}
+	}
+	if opts.ApproveDependency && present[Dependency] {
+		approved[Dependency] = true
 	}
 	var declined []string
 	for c := range present {

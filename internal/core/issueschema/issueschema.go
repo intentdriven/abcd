@@ -69,6 +69,12 @@ var Known = map[string]bool{
 	"related_specs": true, "related_issues": true,
 	"synthesis_clusters": true, "wontfix_reason": true, "resolution": true,
 	"resolved_by": true, "blocked_by": true,
+	// duplicates and refines are the typed links the filing-time match writes
+	// (itd-2609212137116617): each an id list naming the issue or intent this
+	// record is a near-identical double of, or a narrower case of. Optional, and
+	// removable by hand — a record without either is ordinary — but KNOWN, or
+	// the reader would drop every linked record as malformed.
+	"duplicates": true, "refines": true,
 	// shipped_in names the release that already carried this record's work, so the
 	// derivation can leave it out of a later cut (iss-2608241612087533). Optional
 	// and rare — only a ledger-hygiene close, for a fix released long ago, has

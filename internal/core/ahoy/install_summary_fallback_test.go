@@ -4,8 +4,9 @@ import "testing"
 
 // TestUnkindedWriteIsExplainedAsUnexplained is iss-2609260057112822: a write
 // that carries no kind, or a kind the table has no entry for, must reach the
-// person as a write the summary cannot describe, never as the scanner hint (the
-// old fallback) and never not at all.
+// person as a write the summary cannot describe, never as another kind's
+// explanation (the old fallback borrowed the scanner hint's, a kind itd-63's
+// explain-then-install step retired) and never not at all.
 func TestUnkindedWriteIsExplainedAsUnexplained(t *testing.T) {
 	r := &InstallResult{
 		Writes:     []string{"/x/kinded", "/x/unknown-kind", "/x/no-kind"},
@@ -27,8 +28,10 @@ func TestUnkindedWriteIsExplainedAsUnexplained(t *testing.T) {
 			t.Errorf("write %q is missing from the summary", w)
 			continue
 		}
-		if it.What == writeKindHelp[writeScannerHint].What {
-			t.Errorf("write %q is explained as the scanner hint: %+v", w, it)
+		for k, help := range writeKindHelp {
+			if it.What == help.What {
+				t.Errorf("write %q borrows the %s explanation: %+v", w, k, it)
+			}
 		}
 		if it.What != unexplainedWriteHelp.What {
 			t.Errorf("write %q is not reported as unexplained: %+v", w, it)

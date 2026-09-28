@@ -49,7 +49,10 @@ refuses is counted in none of the three totals, so the board counts it beside
 them and names, for each one, the reader layer that refused it: the filename,
 the guarded read, the frontmatter parse, the schema or the folder and filename
 invariants. The layer is what tells a reader whether the record or the reader is
-the side to fix (iss-2609120452071388). The board also counts the records git
+the side to fix (iss-2609120452071388). A status directory that exists and
+cannot be listed is not counted as empty and is not an entry: the board faults
+naming the directory, as the list, the transitions and the mint do
+(iss-2609261241121312, iss-2609261631120364). The board also counts the records git
 reports as untracked or changed and marks each such row: folder membership is a
 status only once the file is committed, so an uncommitted record is in no state to
 any other branch, worktree or gate (iss-2609100508570527).
@@ -80,6 +83,24 @@ An absent location is written as given and is not refused, but the verb says the
 record names no location in this checkout, so nothing ties it to the repository
 it is filed into: that is a nudge, not a gate, and it is the shape every
 misfiled record behind iss-2609120511058115 had (iss-2609231156260287).
+
+Before the record is written, the fast path matches its text against the
+record (itd-2609212137116617): every open and resolved issue's body and every
+intent's title and press release, under the ledger lock, through the
+term-overlap primitive in `internal/core/record/match`. The score is the share
+of the new text's terms a candidate already holds, each term weighted by how
+rare it is across the candidates, and it is declared a lexical heuristic on
+every output. A candidate at or above `match.threshold` is written onto the
+new record as `duplicates:` (the two hold each other's terms) or `refines:`
+(the candidate holds this text's terms and more, so this record is the
+narrower), at most three links; the output lists the rest, and the best five
+below the threshold as near misses with their scores. The match never refuses
+and never drops a capture: a text with fewer than eight distinct terms, a record
+set that cannot be read and a configuration the reader refuses each file the
+record unlinked, and the output says which. A person confirms a link by leaving
+it and removes it by deleting its line, which leaves an ordinary record. The
+match proposes no `reverses` and no `supersedes`: the itd-84 discipline keeps a
+reversal advisory and human.
 
 One flag belongs to one category: the lapse-instant flag carries the RFC 3339
 instant a recorded discipline gave way, for the `lapse` category, and it has no
@@ -339,6 +360,8 @@ related_specs: [spc-N, ...]
 related_issues: [iss-N, ...]
 synthesis_clusters: [<label>, ...]  # optional synthesis grouping
 blocked_by: [iss-N, ...]   # dependency edges, written at capture or afterwards by linking; blocked/priority is derived, never stored
+duplicates: [iss-N|itd-N, ...]  # written by the filing-time match: a near-identical double; removed by hand when wrong
+refines: [iss-N|itd-N, ...]     # written by the filing-time match: this record is the narrower case
 wontfix_reason: "<text>"   # required when in wontfix/
 resolution: "<one-line>"   # required when in resolved/
 shipped_in: vX.Y.Z         # migration use: the release that already carried the work
@@ -398,7 +421,21 @@ token names. Appending rather than setting is the point: a later triage route
 adds a bullet beside the one an earlier route recorded, and neither overwrites
 the other. The section is held by `internal/core/grounds` per adr-57, and
 `record_schema` blocks a frontmatter `grounds:` key by naming this section as
-where the value belongs.
+where the value belongs. It also blocks a top-level bullet in the section that
+does not parse as `- <token>: <text>`, on an issue or an intent record: the
+reader drops such a bullet, so a hand edit spelled `- rejected: …` would
+otherwise be no recorded ground to any surface while the record reads as
+carrying one. Which bullets the reader drops is `internal/core/grounds`'s own
+answer, so the gate and the reader cannot disagree about it, and a paragraph of
+prose under the heading is not a bullet and is not judged.
+
+A body that leaves an HTML comment or a fence open is refused on every route
+that would append a bullet, a wontfix included, exit 2 and nothing written: the
+opener masks every line below it, so the bullet could not be read back. The
+refusal names the construct and its body line, and the repair is the hand edit:
+close or remove the opener in a text editor, then re-run the verb
+(iss-2608301908270888). A resolve or a promote given no grounds appends nothing,
+so it acts.
 
 **The grounds text is gated on substance, not only on grammar.** A value that
 parses as `<token>: <text>` is still refused, exit 2 and nothing written, unless
@@ -410,6 +447,15 @@ whether what clears them names a real conjecture. They refuse the degenerate
 cases; a floor set high enough to judge reasoning would only buy padding. In a
 script written without inter-word spaces each letter counts as one unit, so the
 word floor does not fall on the writer of a Chinese or Japanese text.
+
+**The grounds text must render.** The section is append-only and no verb removes
+an entry, so a text the site's renderer refuses — an unclosed code span, an
+image, raw HTML, a reference link, a link title — is refused before anything is
+written, exit 2, on every route that records grounds, the reason-derived
+`declined:` entry of a wontfix included. The question is put to the renderer
+itself (`internal/core/mdrender`), so what is refused is exactly what a site
+build refuses, judged strictly where a page would supply context: every
+reference link and every image is refused.
 
 ## 4. Legacy scratch migration
 

@@ -3,6 +3,8 @@ package capture
 import (
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/core/issuerecord"
 )
 
 // The gate exists to refuse exactly what the reader refuses, and a trailing
@@ -26,9 +28,9 @@ func TestLedgerParserStripsATrailingCommentLikeTheGate(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			key := c.line[:strings.IndexByte(c.line, ':')]
-			fm, err := parseFrontmatterBlock([]string{"id: iss-1", c.line})
+			fm, err := issuerecord.ParseBlock([]string{"id: iss-1", c.line})
 			if err != nil {
-				t.Fatalf("parseFrontmatterBlock(%q): %v", c.line, err)
+				t.Fatalf("issuerecord.ParseBlock(%q): %v", c.line, err)
 			}
 			got, _ := fm[key].(string)
 			if got != c.want {
