@@ -171,11 +171,14 @@ func Where(home, name string) (string, error) {
 
 // Set stores a credential under name in the chosen home: the one write every
 // setup goes through (the walkthrough, Walk, is its only caller outside this
-// package's tests). It refuses, before writing anything and never echoing a
-// value: the abcd home inside a git working tree; a name another home already holds,
-// or a different value in the same home, because a stored secret is never
-// replaced unasked; a keychain on a platform without one; and a pointer that
-// does not resolve. The same value again is no change.
+// package's tests). It refuses, before writing a value or an index entry and
+// never echoing a value: the abcd home inside a git working tree; a name
+// another home already holds, or a different value in the same home, because a
+// stored secret is never replaced unasked; a keychain on a platform without
+// one; and a pointer that does not resolve. The same value again is no change.
+// The whole write, from reading where the name is held to the last write,
+// holds the index's lock, so concurrent Sets of one name cannot land in two
+// homes.
 func Set(home, name string, c Choice) (changed bool, err error) {
 	if !nameRe.MatchString(name) {
 		return false, errors.New("credential: the name is not a plain credential name (lower case letters, digits, '.', '_' and '-')")
@@ -209,6 +212,32 @@ func Set(home, name string, c Choice) (changed bool, err error) {
 	if c.Home == HomeABCD && workingTreeAbove(filepath.Join(home, ".abcd")) != "" {
 		return false, errors.New("credential: ~/.abcd lies inside a git working tree, where a commit could carry the credential, so the abcd home is refused and nothing was written; choose the keychain or an external home")
 	}
+	dir := filepath.Join(home, ".abcd")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return false, errors.New("credential: ~/.abcd could not be created, so nothing was written")
+	}
+	// One lock, the index's, is held across the whole write: where the name
+	// is held, the value's write and the index's. Two Sets of one name to two
+	// homes therefore cannot both land. The abcd home's own lock (SetMachine)
+	// is taken inside this one, always in that order; no writer takes the two
+	// the other way round.
+	err = fsutil.WithFileLock(filepath.Join(dir, indexLockFileName), indexLockTimeout, func() error {
+		var werr error
+		changed, werr = setUnderLock(home, name, c)
+		return werr
+	})
+	switch {
+	case errors.Is(err, fsutil.ErrLockContention):
+		return false, fmt.Errorf("credential: %s is being written by another abcd, so nothing was written; retry", IndexPath)
+	case errors.Is(err, fsutil.ErrLockPathUnsafe):
+		return false, fmt.Errorf("credential: the lock ~/.abcd/%s is not a regular file (a symlink, or something else), so it is refused and nothing was written; remove it, and the next write creates it afresh", indexLockFileName)
+	}
+	return changed, err
+}
+
+// setUnderLock is Set's read of where name is held and its write, run under
+// the index's lock.
+func setUnderLock(home, name string, c Choice) (bool, error) {
 	held, err := Where(home, name)
 	if err != nil {
 		return false, err
@@ -368,51 +397,32 @@ const indexLockFileName = "." + IndexFileName + ".lock"
 var indexLockTimeout = 5 * time.Second
 
 // setIndex adds e under name to the index, or, with dryRun, judges the write
-// (the scanner included) without making it. The read, the scan and the write
-// hold the index's lock.
+// (the scanner included) without making it. The caller, Set, holds the index's
+// lock across the read, the scan and the write, and has created ~/.abcd.
 func setIndex(home, name string, e indexEntry, dryRun bool) error {
-	dir := filepath.Join(home, ".abcd")
-	if !dryRun {
-		if err := os.MkdirAll(dir, 0o700); err != nil {
-			return errors.New("credential: ~/.abcd could not be created, so nothing was written")
-		}
+	idx, err := readIndex(home)
+	if err != nil {
+		return err
 	}
-	write := func() error {
-		idx, err := readIndex(home)
-		if err != nil {
-			return err
-		}
-		if old, ok := idx[name]; ok && old != e {
-			return fmt.Errorf("credential: %s already names a home for %s, and abcd never replaces it; remove that entry by hand", IndexPath, name)
-		}
-		idx[name] = e
-		body, err := json.MarshalIndent(idx, "", "  ")
-		if err != nil {
-			return errors.New("credential: the index could not be encoded")
-		}
-		body = append(body, '\n')
-		if err := scanIndex(body); err != nil {
-			return err
-		}
-		if dryRun {
-			return nil
-		}
-		if err := fsutil.WriteFileAtomic(filepath.Join(dir, IndexFileName), body, 0o600); err != nil {
-			return fmt.Errorf("credential: %s could not be written, so the credential's home was not recorded", IndexPath)
-		}
-		return nil
+	if old, ok := idx[name]; ok && old != e {
+		return fmt.Errorf("credential: %s already names a home for %s, and abcd never replaces it; remove that entry by hand", IndexPath, name)
+	}
+	idx[name] = e
+	body, err := json.MarshalIndent(idx, "", "  ")
+	if err != nil {
+		return errors.New("credential: the index could not be encoded")
+	}
+	body = append(body, '\n')
+	if err := scanIndex(body); err != nil {
+		return err
 	}
 	if dryRun {
-		return write()
+		return nil
 	}
-	err := fsutil.WithFileLock(filepath.Join(dir, indexLockFileName), indexLockTimeout, write)
-	switch {
-	case errors.Is(err, fsutil.ErrLockContention):
-		return fmt.Errorf("credential: %s is being written by another abcd, so nothing was written; retry", IndexPath)
-	case errors.Is(err, fsutil.ErrLockPathUnsafe):
-		return fmt.Errorf("credential: the lock ~/.abcd/%s is not a regular file (a symlink, or something else), so it is refused and nothing was written; remove it, and the next write creates it afresh", indexLockFileName)
+	if err := fsutil.WriteFileAtomic(filepath.Join(home, ".abcd", IndexFileName), body, 0o600); err != nil {
+		return fmt.Errorf("credential: %s could not be written, so the credential's home was not recorded", IndexPath)
 	}
-	return err
+	return nil
 }
 
 // scanIndex runs the secret scanner over the index's bytes before they are

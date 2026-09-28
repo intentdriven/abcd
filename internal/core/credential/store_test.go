@@ -12,6 +12,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
 // The credential store proper (itd-2609221017023290): one Resolve and one Set
@@ -269,6 +272,38 @@ func TestAHomeThatIsAWorkingTreeKeepsTheOtherHomes(t *testing.T) {
 		t.Fatalf("external file: err = %v, want the pointer's working-tree refusal", err)
 	}
 	assertNowhere(t, home, secretValue, filepath.Join(tool, "auth.json"))
+}
+
+// TestOneNameCannotLandInTwoHomes: Set reads where a name is held and writes
+// it under one lock, so a second Set of the same name to another home that
+// lands while the first holds the lock is refused, never written beside it.
+// The test holds the lock itself, records the name in the keychain home as a
+// concurrent Set would, and only then lets the abcd home's Set proceed.
+func TestOneNameCannotLandInTwoHomes(t *testing.T) {
+	home := t.TempDir()
+	dir := filepath.Join(home, ".abcd")
+	if err := os.Mkdir(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	err := fsutil.WithFileLock(filepath.Join(dir, indexLockFileName), 5*time.Second, func() error {
+		go func() {
+			_, err := Set(home, "svc", Choice{Home: HomeABCD, Value: secretValue})
+			done <- err
+		}()
+		time.Sleep(300 * time.Millisecond)
+		return os.WriteFile(filepath.Join(dir, IndexFileName), []byte(`{"svc": {"home": "keychain"}}`+"\n"), 0o600)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = <-done
+	if err == nil || !strings.Contains(err.Error(), "already held in the keychain home") {
+		t.Fatalf("err = %v, want the second home refused", err)
+	}
+	if _, statErr := os.Lstat(filepath.Join(dir, StoreFileName)); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatal("the abcd home was written beside the keychain home")
+	}
 }
 
 // TestTheIndexWriteRunsTheScanner (criterion 3): the one file the store writes
