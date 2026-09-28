@@ -279,3 +279,96 @@ func TestTheScanBeforeMutatingConventionNamesThePeerListing(t *testing.T) {
 		}
 	}
 }
+
+// A sibling worktree outside HOME survives the home redaction whole, so peers
+// printed it as an absolute local path — its path, its not-read reason, a spent
+// worktree's path and the peer-held refusal alike (iss-2609281329007423). Each
+// names the worktree by its directory name instead, fsutil.DisplayPath's rule.
+func TestPeersNamesAWorktreeOutsideHomeByItsDirectoryName(t *testing.T) {
+	home, repo := peerCheckout(t)
+	outside := t.TempDir()
+	live := filepath.Join(outside, "wt-live")
+	gitCmd(t, repo, "worktree", "add", "-q", "-b", "feat/live", live, "main")
+	writeRel(t, live, ".abcd/work/issues/open/iss-100-a-peer-finding.md", peerIssue("iss-100", "a-peer-finding", "A finding the peer captured"))
+	shut := filepath.Join(outside, "wt-shut")
+	gitCmd(t, repo, "worktree", "add", "-q", "-b", "feat/shut", shut, "main")
+	writeRel(t, shut, ".abcd/work/issues/open/iss-101-another.md", peerIssue("iss-101", "another", "Another"))
+	// Committed, so the branch is ahead of main and its folders are read, not
+	// judged spent; the unreadable folder then fails that read with its path.
+	gitCmd(t, shut, "add", "-A")
+	gitCommit(t, shut, "commit", "-q", "-m", "a peer capture")
+	locked := filepath.Join(shut, ".abcd", "work", "issues", "open")
+	if err := os.Chmod(locked, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(locked, 0o755) })
+	gone := filepath.Join(outside, "wt-gone")
+	gitCmd(t, repo, "worktree", "add", "-q", "-b", "feat/gone", gone, "main")
+	if err := os.RemoveAll(gone); err != nil {
+		t.Fatal(err)
+	}
+
+	absForms := []string{outside}
+	if r, err := filepath.EvalSymlinks(outside); err == nil && r != outside {
+		absForms = append(absForms, r)
+	}
+	noOutsidePath := func(what, s string) {
+		t.Helper()
+		noHomePath(t, home, s)
+		for _, abs := range absForms {
+			if strings.Contains(s, abs) {
+				t.Errorf("%s prints the absolute worktree path under %s:\n%s", what, abs, s)
+			}
+		}
+	}
+
+	raw := runCLI(t, "peers", "--json")
+	noOutsidePath("peers --json", string(raw))
+	var got struct {
+		Peers []struct {
+			Branch  string `json:"branch"`
+			Path    string `json:"path"`
+			NotRead string `json:"not_read"`
+		} `json:"peers"`
+		Skipped []struct {
+			Branch string `json:"branch"`
+			Path   string `json:"path"`
+		} `json:"skipped"`
+	}
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatalf("--json is not JSON: %v\n%s", err, raw)
+	}
+	want := map[string]string{"feat/live": "wt-live", "feat/shut": "wt-shut", "feat/gone": "wt-gone"}
+	seen := map[string]string{}
+	notRead := ""
+	for _, p := range got.Peers {
+		if p.Path != "" {
+			seen[p.Branch] = p.Path
+		}
+		if p.Branch == "feat/shut" {
+			notRead = p.NotRead
+		}
+	}
+	if !strings.Contains(notRead, "wt-shut/") {
+		t.Errorf("the unreadable peer's reason = %q, want one naming the folder under wt-shut", notRead)
+	}
+	for _, s := range got.Skipped {
+		seen[s.Branch] = s.Path
+	}
+	for branch, path := range want {
+		if seen[branch] != path {
+			t.Errorf("%s is shown at %q, want its directory name %q\n%s", branch, seen[branch], path, raw)
+		}
+	}
+
+	noOutsidePath("peers", string(runCLI(t, "peers")))
+
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"iss-100"}, &stdout, &stderr); code == 0 {
+		t.Fatalf("the dispatcher succeeded for a record this checkout lacks:\n%s", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "feat/live at wt-live holds it") {
+		t.Errorf("the peer-held refusal does not name the worktree by its directory name:\n%s", stderr.String())
+	}
+	noOutsidePath("the peer-held refusal", stderr.String())
+}

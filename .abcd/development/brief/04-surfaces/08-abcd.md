@@ -142,8 +142,9 @@ and one with no records at the committed layout is named with the reason and
 not read; when the worktree is gone or git refuses it, its branch is read from
 the object store instead, so a dead worktree never hides an unmerged commit. The board carries one `peers:` line (JSON `peers`: `live`, `ids`)
 only when some peer holds a record that differs here; `abcd peers` prints the
-whole picture, as text or in its JSON form, with every home path redacted to
-`~`. The same reader answers the not-found paths of `abcd <record-id>`, of
+whole picture, as text or in its JSON form, with every worktree named
+home-relative, or by its directory name outside HOME, never by an absolute
+path (iss-2609281329007423). The same reader answers the not-found paths of `abcd <record-id>`, of
 resolving a capture and of the intent audit, consulted only after the local
 lookup fails. It writes nothing,
 takes no lock and fetches nothing.

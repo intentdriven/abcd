@@ -119,11 +119,11 @@ func (d Destination) verify() error {
 	sha, ok := resolveRootSHA(d.RepoRoot)
 	if !ok || sha == "" {
 		return fmt.Errorf("history: ingest cannot resolve the root commit of the destination repository at %s, so it cannot prove that root owns the store key %s; name a git repository with commits as the destination",
-			fsutil.RedactHome(d.RepoRoot), d.RootSHA)
+			fsutil.DisplayPath(d.RepoRoot), d.RootSHA)
 	}
 	if sha != d.RootSHA {
 		return fmt.Errorf("history: ingest destination is inconsistent — the repository at %s has root commit %s, not the store key %s; the pair must name ONE repository, because the scanner is built from the root and the records are filed under the key, and a mismatch redacts under one repository's configuration while filing into another's corpus",
-			fsutil.RedactHome(d.RepoRoot), sha, d.RootSHA)
+			fsutil.DisplayPath(d.RepoRoot), sha, d.RootSHA)
 	}
 	return nil
 }
@@ -185,7 +185,8 @@ type Orphan struct {
 	Project   string `json:"project"`
 	SessionID string `json:"session_id,omitempty"`
 	AgentID   string `json:"agent_id,omitempty"`
-	// Cwd is the working directory the transcript recorded, home-redacted.
+	// Cwd is the working directory the transcript recorded, as fsutil.DisplayPath
+	// shows it: home-relative, or its directory name outside HOME.
 	Cwd string `json:"cwd,omitempty"`
 }
 
@@ -390,7 +391,7 @@ func ingestOne(dest Destination, opts IngestOptions, p transcriptProbe, placed s
 		if _, claimed := adopt[p.project]; !claimed {
 			res.Orphans = append(res.Orphans, Orphan{
 				Path: p.path, Project: p.project, SessionID: p.sessionID,
-				AgentID: p.agentID, Cwd: fsutil.RedactHome(p.firstCwd()),
+				AgentID: p.agentID, Cwd: fsutil.DisplayPath(p.firstCwd()),
 			})
 			return
 		}

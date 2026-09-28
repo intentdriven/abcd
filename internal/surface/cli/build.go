@@ -142,7 +142,10 @@ func renderPending(w io.Writer, pending []loop.PendingStep) {
 	fmt.Fprintf(w, "  pending: spec step %s\n", strings.Join(parts, ", "))
 }
 
-// redactAwait home-redacts the paths an await carries, for a stream.
+// redactAwait home-redacts the paths an await carries, for a stream. They keep
+// RedactHome rather than fsutil.DisplayPath: the brief is the file the agent is
+// handed and the receipt the path it writes and passes to `implement receipt`,
+// so a base name would leave it unable to act on either.
 func redactAwait(a *loop.Await) *loop.Await {
 	if a == nil {
 		return nil
@@ -186,7 +189,7 @@ func newImplementStatusCommand(asJSON *bool) *cobra.Command {
 			for i := range runs {
 				for j := range runs[i].Lanes {
 					runs[i].Lanes[j].Awaiting = redactAwait(runs[i].Lanes[j].Awaiting)
-					runs[i].Lanes[j].Worktree = fsutil.RedactHome(runs[i].Lanes[j].Worktree)
+					runs[i].Lanes[j].Worktree = fsutil.DisplayPath(runs[i].Lanes[j].Worktree)
 				}
 			}
 			return render(cmd.OutOrStdout(), *asJSON, implementStatusRuns{Runs: runs}, func(w io.Writer) {

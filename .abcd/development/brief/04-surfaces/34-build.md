@@ -96,7 +96,10 @@ default); the window clock the pacing intent writes (`window_started_at`,
 the run record, one line per completed step. A lane carries its spec step and
 title, its next step, what it awaits when a step has handed work to an agent,
 and the footprint its steps fill in: branch, base and head, worktree, brief,
-receipt and pull request.
+receipt and pull request. The status render names the worktree home-relative,
+or by its directory name outside HOME (iss-2609281329007423); the brief and the
+receipt stay whole paths, home-redacted, because the agent reads the one and
+writes the other.
 
 Starting creates one lane, for the first unlanded spec step, and records the
 rest as pending. Starting again while that run is in progress creates nothing

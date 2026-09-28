@@ -122,6 +122,8 @@ type implementStatusOutput struct {
 
 // implementStatus reads the run state for the bare render.
 func implementStatus(run *implement.Run) (implementStatusOutput, error) {
+	// The run directory is ~/.abcd/runs/<root-sha>, under HOME by construction,
+	// and a store the reader opens, so it keeps RedactHome, not fsutil.DisplayPath.
 	out := implementStatusOutput{Dir: fsutil.RedactHome(run.Dir)}
 	var err error
 	if out.Sessions, err = run.Sessions(); err != nil {

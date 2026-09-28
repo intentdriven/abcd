@@ -3826,10 +3826,10 @@ type ledgerIdentity struct {
 // branch git reports ("HEAD" when detached, "" when git cannot answer).
 //
 // A checkout outside HOME survives RedactHome whole, and printed whole it is an
-// absolute local path in output a person pastes elsewhere. It is reduced to its
-// directory name instead, the rule scrubPaths already applies to an absolute
-// path outside both identity roots, so the two surfaces agree on what is safe
-// to print.
+// absolute local path in output a person pastes elsewhere. fsutil.DisplayPath
+// reduces it to its directory name instead, the rule scrubPaths applies to an
+// absolute path outside both identity roots, so the two surfaces agree on what
+// is safe to print.
 func ledgerIdentityOf(root string) ledgerIdentity {
 	// symbolic-ref answers on an unborn branch too, where rev-parse cannot; it
 	// fails only when HEAD is detached, which rev-parse then names.
@@ -3841,11 +3841,7 @@ func ledgerIdentityOf(root string) ledgerIdentity {
 			branch = ""
 		}
 	}
-	checkout := fsutil.RedactHome(root)
-	if filepath.IsAbs(checkout) {
-		checkout = filepath.Base(root)
-	}
-	return ledgerIdentity{Checkout: checkout, Branch: branch}
+	return ledgerIdentity{Checkout: fsutil.DisplayPath(root), Branch: branch}
 }
 
 // branchPhrase renders the branch half of the identity line.
@@ -5727,6 +5723,10 @@ func newErrorEnvelope(msg string, code int) errorEnvelope {
 //   - any remaining absolute path embedded by os.PathError/os.LinkError (e.g. a
 //     path argument outside both roots) is reduced to its base name.
 //
+// The home redaction and the base-name rule are fsutil.DisplayPathsIn, the one
+// statement of how a surface prints a path it names (iss-2609281329007423); the
+// working directory is redacted first so a path under it reads "./…", not "~/…".
+//
 // This is NOT a universal absolute-path scrub: a verb that echoes a user-supplied
 // absolute path lying outside both roots (e.g. `memory ingest /tmp/x`) still
 // surfaces it — that path carries no developer identity, and sanitising such
@@ -5743,15 +5743,7 @@ func scrubPaths(err error) string {
 	if cwd, e := os.Getwd(); e == nil {
 		msg = fsutil.RedactRoot(msg, cwd, ".")
 	}
-	if home, e := os.UserHomeDir(); e == nil {
-		msg = fsutil.RedactRoot(msg, home, "~")
-	}
-	for _, p := range embeddedPaths(err) {
-		if filepath.IsAbs(p) {
-			msg = strings.ReplaceAll(msg, p, filepath.Base(p))
-		}
-	}
-	return msg
+	return fsutil.DisplayPathsIn(msg, embeddedPaths(err)...)
 }
 
 // embeddedPaths collects the filesystem paths carried by os.PathError/os.LinkError
