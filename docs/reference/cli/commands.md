@@ -205,7 +205,7 @@ abcd banlist remove --private acme-internal
 
 Start the loop that takes one READY intent to delivered: Writes the run's state file in the local tier; refuses an open question, a hold or a peer holding it.
 
-**Usage:** `abcd build <itd-N>`
+**Usage:** `abcd build <itd-N> [--session <id>] [flags]`
 
 Start the implement loop for one intent, or resume the run already in progress for it.
 A new run's checks run first, and every one must pass:
@@ -223,10 +223,23 @@ never created: only a repository abcd manages has one. Starting again while the 
 in progress creates nothing and names the run without judging the checks again (the
 run's own lanes change what they read), so a killed process resumes where it stopped.
 
+--session names the host session's id in the shared run state (`abcd implement join`):
+a new run then claims the intent there for that session, the run id as its lane, so a
+build of the same intent from any other checkout of the repository is refused as held
+before this run's lane has moved or claimed anything, and the session's own claim on the
+intent is not counted as a peer's. A session that has not joined is refused. Without it
+the run holds no claim, and the result says so.
+
 The run then moves one step per `abcd implement step`, driven by the host session.
 
 Exit 2 on a refusal, exit 3 when a peer holds the intent or the run state is locked
 (back off and take other work).
+
+**Flags:**
+
+```
+      --session string   the host session's id in the shared run state; a new run claims the intent for it
+```
 
 **Example:**
 
@@ -1249,7 +1262,8 @@ Say whether this session may take a step, before it takes it. The first session 
 take every step. The second is refused the release step always, a lane in a
 split-roles window, and a lane whose --path reaches the reading corpus; review,
 audit and land are open to it. A refusal exits 2 and is logged; an allowed step
-writes nothing. The verdict reports the agent ceiling the session joined with.
+writes nothing. The verdict reports the agent ceiling the session joined with and the
+agents its log lines declare alive (agents_alive).
 
 **Flags:**
 
@@ -1309,14 +1323,16 @@ run state. Joining again with the same role is a resume and is logged as one; as
 for the other role is refused. The role is the session's own statement, recorded
 here and read by every bound — never taken from the environment.
 
---ceiling states the session's own agent ceiling: for the second session, the most
-agents it runs at once, on top of the first session's. abcd counts no agents, so the
-ceiling is recorded and reported by every `check`, not enforced; a resume keeps it.
+--ceiling states the session's own agent ceiling: the most agents it runs at once (for
+the second session, on top of the first session's). abcd runs no agent: it counts the
+agents the session's own agent_start and agent_end lines declare alive, refuses an
+agent_start past the ceiling, and reports the count with every `check`. An agent the
+session never logs is invisible to it. A resume keeps the ceiling.
 
 **Flags:**
 
 ```
-      --ceiling int      this session's own agent ceiling (1 to 64; 0 states none), recorded and reported by check
+      --ceiling int      this session's own agent ceiling (1 to 64; 0 states none), held against its logged agent_start lines
       --model string     the model this session runs, recorded on the session_open line
       --reason string    why the session opens (run start, window, resume), recorded on the line
       --role string      first | second
@@ -1411,9 +1427,14 @@ Append one event line to today's run log (`~/.abcd/runs/<root-sha>/<UTC date>.js
 in a single append, so two sessions writing at once each land whole lines. The line
 carries ts, session and event, then each --field. A value that reads as a number or
 a boolean is written as one when it reads back as the same text, so `sha=0123456`
-stays a string. The events: backoff, lane_open, lane_close, agent_start, agent_end, ceiling_wait, gate_run, review, fallback, stop, refusal, pr, capture, context.
+stays a string. The events: backoff, lane_open, lane_close, agent_start, agent_end, ceiling_wait, gate_run, review, fallback, stop, refusal, pr, capture, context, ceiling_overrun, intervention, decision.
 The claim, window and session events are written by their own sub-verbs and are
 refused here, so the log cannot record a claim the run state does not hold.
+
+An event missing a field the report reads is refused, naming it: lane_close (lane, outcome); agent_start (agent); agent_end (agent, role, model, minutes|wall_minutes|wall_min); stop (cause); ceiling_overrun (alive, ceiling, lane, minutes); intervention (kind, by, what, why, autonomy_gap); decision (what, alternative, why).
+An intervention's kind is one of session_open, account, ruling, restart, close_session, file_restore, permission, other; an at or
+last_productive is an RFC 3339 time, and a *_min or minutes field a number. An agent_start
+that would take a session past the ceiling it joined with is refused, and the refusal logged.
 
 **Flags:**
 
@@ -1518,11 +1539,15 @@ Derive, per division mode, the figures the run's report compares: windows, wall
 clock, lanes opened and landed (a lane_close whose outcome is merged or landed),
 the second session's lanes landed, collisions (claim_denied), lapsed claims,
 backoffs and the minutes backed off, agent minutes (agent_end's minutes, wall_minutes
-or wall_min), ceiling wait and refusals, per session within each mode. Each event
-belongs to the window open when it happened; each session's context lines are totalled
+or wall_min), ceiling wait, ceiling overruns and refusals, per session within each mode.
+Each event belongs to the window open when it happened, and a join logged at most a
+minute before a window_mode to that window; each session's context lines are totalled
 across the run, with the last used_pct seen. `leader` is the mode with the most lanes landed per wall-clock hour —
-a figure, not a verdict. Lines the reader cannot use are listed, never dropped
-silently.
+a figure, not a verdict. Over the whole run it counts the evidence (interventions by
+kind, stops, decisions), names the lines lacking a field `log` requires of their event
+(missing_fields), and names each of lane_open, lane_close, agent_start, agent_end and
+gate_run whose lines stop more than six hours before the run's last line (coverage).
+Lines the reader cannot use are listed, never dropped silently.
 
 By default the run's whole log is read, every day of it; --date reads one day, and
 --log reads one log file named directly. Reads only; creates nothing.

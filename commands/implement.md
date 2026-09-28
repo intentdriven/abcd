@@ -47,13 +47,18 @@ one: the first session learns of a second only by reading the run state, and
 never waits on it. Joining again with the same role is a resume; asking for the
 other role is refused.
 
-A second session states its own agent ceiling with `--ceiling`: the most agents
-it runs at once, kept on top of the first session's, never instead of it. abcd
-runs and counts no agent, so the ceiling is the session's own discipline: it is
-recorded, carried on the `session_open` line, and reported by every `check`
-(`ceiling` in the verdict), and a resume cannot restate it. Before starting an
-agent, the second session counts its own running agents against it and, at the
-ceiling, waits and logs a `ceiling_wait`.
+A session states its own agent ceiling with `--ceiling`: the most agents it
+runs at once (for a second session, kept on top of the first session's, never
+instead of it). It is recorded and carried on the `session_open` line, and a
+resume cannot restate it. abcd runs no agent: it counts the agents the
+session's own `agent_start` and `agent_end` lines declare alive, since it
+joined, matched by their `agent` field. An `agent_start` past the ceiling is
+refused at exit 2 and the refusal logged (condition `agent_ceiling`); every
+`check` reports `agents_alive` beside `ceiling`. At the ceiling, wait, log a
+`ceiling_wait`, and log the `agent_end` of an agent that finished before
+starting the next. An agent the session never logs — a fork, one started
+outside the log — is invisible to the count, so never start one; if the run
+went over the ceiling anyway, log a `ceiling_overrun`.
 
 The first session opens each window by naming its mode — `single`, `claim`,
 `batch` or `split-roles`:
@@ -101,8 +106,14 @@ The second session is refused at exit 2, and the refusal is logged, when it:
   declared `--path` is refused, since nothing can say the lane is clear;
 - reaches the release step — only the first session cuts a release.
 
-It also keeps its own agent ceiling (stated on joining, reported by `check`),
-which no verb here enforces.
+It also keeps its own agent ceiling (stated on joining, held against its logged
+`agent_start` lines, reported by `check`).
+
+The role these bounds key on is the session's own statement, not an
+identity: the release refusal, like every bound here, rests on a cooperative,
+unauthenticated role. Two sessions of one account can each write anything
+under that account's home, so the bounds keep two cooperating sessions apart;
+they are not a wall against a session that lies about its role.
 
 Before a step that is not a claim, ask:
 
@@ -122,12 +133,33 @@ first session; a stop condition the second session meets stops only itself.
 One line per event, appended in a single write, so two sessions writing at once
 each land whole lines. The events are `backoff`, `lane_open`, `lane_close`,
 `agent_start`, `agent_end`, `ceiling_wait`, `gate_run`, `review`, `fallback`,
-`stop`, `refusal`, `pr`, `capture` and `context`. For the comparison to count
-them: a `lane_close` with `outcome=merged` (or `landed`) is a lane landed;
-`backoff` and `ceiling_wait` carry `minutes`, and `agent_end` carries `minutes`,
-`wall_minutes` or `wall_min`; a `context` line carries `used_pct` (with `role`
-and `note`), the orchestrator's share of its context window in use. The session, window and claim
-events belong to their own sub-verbs and are refused here.
+`stop`, `refusal`, `pr`, `capture`, `context`, `ceiling_overrun`,
+`intervention` and `decision`. The session, window and claim events belong to
+their own sub-verbs and are refused here.
+
+An event missing a field the report reads is refused at exit 2, naming the
+field, with nothing written:
+
+| Event | Required fields | Checked when given |
+|---|---|---|
+| `lane_close` | `lane`, `outcome` | |
+| `agent_start` | `agent` | |
+| `agent_end` | `agent`, `role`, `model`, and `minutes` (or `wall_minutes`, `wall_min`), a number | |
+| `ceiling_overrun` | `alive`, `ceiling`, `minutes` (numbers), `lane` | |
+| `intervention` | `kind`, `by`, `what`, `why`, `autonomy_gap` | `at` (RFC 3339), `detected_after_min` (a number) |
+| `stop` | `cause` | `last_productive` (RFC 3339), `noticed_after_min` (a number); `recovery` |
+| `decision` | `what`, `alternative`, `why` | `at` (RFC 3339) |
+
+An intervention's `kind` is one of `session_open`, `account`, `ruling`,
+`restart`, `close_session`, `file_restore`, `permission` or `other`, and its
+`autonomy_gap` says what abcd or the host would need so no person is needed. A
+`decision` records a judgement call a person would normally make, with the
+alternative not taken.
+
+For the comparison to count them: a `lane_close` with `outcome=merged` (or
+`landed`) is a lane landed; `backoff` and `ceiling_wait` carry `minutes`; a
+`context` line carries `used_pct` (with `role` and `note`), the orchestrator's
+share of its context window in use.
 
 ## Compare the modes
 
@@ -137,8 +169,17 @@ events belong to their own sub-verbs and are refused here.
 
 Read-only. Per mode: windows, wall clock, lanes opened and landed, the second
 session's lanes landed, collisions, lapsed claims, backoffs and the minutes
-backed off, agent minutes, ceiling wait and refusals, with each session's share;
-and, per session across the run, its context lines and the last `used_pct` seen.
+backed off, agent minutes, ceiling wait, ceiling overruns and refusals, with
+each session's share; and, per session across the run, its context lines and
+the last `used_pct` seen. A join logged up to a minute before a window opens
+counts in that window. Over the whole run, `evidence` counts the
+interventions (by kind, with the minutes they went undetected), stops and
+decisions; `missing_fields` names, per event, the lines lacking a field `log`
+requires — lines written by hand or before the requirement, which the figures
+read as absent; and `coverage` names each of `lane_open`, `lane_close`,
+`agent_start`, `agent_end` and `gate_run` whose lines stop more than six hours
+before the run's last line. Relay the last two whole: a figure they name is
+short.
 `leader` is the mode with the most lanes landed per wall-clock hour — a figure,
 not a verdict: the run's own report names the mode it would keep and says why.
 Relay any `unparsed` lines; they are counted nowhere.
