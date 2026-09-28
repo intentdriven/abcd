@@ -848,7 +848,7 @@ func bootstrapHistory() (bool, error) {
 		tmp.Close()
 		return false, err
 	}
-	if err := tmp.Sync(); err != nil {
+	if err := fsutil.Flush(tmp); err != nil {
 		tmp.Close()
 		return false, err
 	}

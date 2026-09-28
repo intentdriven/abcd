@@ -337,6 +337,13 @@ endif
 # prerequisite run on its own.
 preflight: export ABCD_LOAD_CHECKED := preflight
 
+# The test binaries these targets run skip the flush to stable storage
+# (internal/fsutil/flush.go): on macOS every synced write is an F_FULLFSYNC of
+# about 8.8 ms, and no test asserts what a flush makes true. The skip needs a
+# test binary as well as this opt-in, so a binary built or run here, the lint
+# gates' `go run` tools included, still flushes. CI's test steps set the same.
+test preflight: export ABCD_TEST_SKIP_FLUSH := 1
+
 # The load check (itd-2609231434459890): reads the machine's load and process
 # table once and warns about programs left running and extreme load. It exits 0
 # on every status, and the leading `-` ignores even a failure to build it: a
