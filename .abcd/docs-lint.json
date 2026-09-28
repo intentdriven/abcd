@@ -254,7 +254,26 @@
   "rules": {
     "links_resolve": {
       "enabled": true,
-      "severity": "blocker"
+      "severity": "blocker",
+      "extra_roots": [
+        "AGENTS.md",
+        "CHANGELOG.md",
+        "ACKNOWLEDGEMENTS.md",
+        "RELEASE.md",
+        ".abcd/README.md",
+        ".github",
+        "agents",
+        "commands",
+        "evals/README.md",
+        "evals/data/README.md",
+        "internal/README.md",
+        "site-src/README.md"
+      ]
+    },
+    "persona_registry": {
+      "enabled": true,
+      "severity": "blocker",
+      "registry": ".abcd/development/personas.json"
     },
     "link_anchors": {
       "enabled": true,

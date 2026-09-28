@@ -59,6 +59,13 @@ var (
 	// ReviewMarkerRe is the verdict ingest's block marker: one line, whole-line,
 	// carrying the receipt state and id.
 	ReviewMarkerRe = regexp.MustCompile(`(?m)^<!-- abcd-review: (OWED|INGESTED|DEAD_LETTER) receipt=(rcp-[0-9a-f]+) -->\r?$`)
+	// ReviewEndRe is the line a review block closes on, naming the receipt of
+	// the block it closes. Everything below it is not the block's, so a note a
+	// human writes under a verdict is never read as part of the verdict, nor
+	// replaced with it (iss-2609251451434656). A block written before the
+	// closing line existed has none, and its reader falls back to the block's
+	// known extent.
+	ReviewEndRe = regexp.MustCompile(`(?m)^<!-- abcd-review-end receipt=(rcp-[0-9a-f]+) -->\r?$`)
 	// BlockMarkerRe is the condition verb's block marker: the one identity the
 	// block dispositions and what occasioned it, a reading item or a delivered
 	// intent and nothing else.
@@ -84,6 +91,24 @@ func IsBlockMarker(line string) bool {
 	return ReviewMarkerRe.MatchString(line) || BlockMarkerRe.MatchString(line)
 }
 
+// ReviewEndLine renders the closing line of the review block for rcp.
+func ReviewEndLine(rcp string) string {
+	return "<!-- abcd-review-end receipt=" + rcp + " -->"
+}
+
+// AuditNotes returns content's lines, their liveness mask (mdrecord's one
+// fence-and-comment rule) and the [start, end) bounds of the live
+// `## Audit Notes` section's body. A marker, a closing line or a disposition
+// bullet counts only on a line inside those bounds whose mask is zero: one in a
+// fenced block, in an HTML comment span, or under another heading is an example
+// a human wrote, not state (iss-2609020529185438).
+func AuditNotes(content string) (lines []string, mask []uint8, start, end int, ok bool) {
+	lines = strings.Split(content, "\n")
+	mask = mdrecord.Mask(lines)
+	start, end, ok = mdrecord.SectionLineRangeIn(lines, mask, auditHeadingRe)
+	return lines, mask, start, end, ok
+}
+
 // Disposition is one disposition as a block records it. Occasion is set only
 // for an entry from a condition block, and is what tells the two sources apart;
 // Date likewise.
@@ -101,10 +126,11 @@ type Disposition struct {
 // ReadDispositions returns every disposition the `## Audit Notes` section
 // records, in document order. A bullet whose value is outside the enum is not a
 // disposition and is skipped, as is a condition-block bullet naming an identity
-// other than the one its marker names: the marker is the block's key.
+// other than the one its marker names: the marker is the block's key. Only live
+// lines are read (AuditNotes), and a review block's closing line ends it, so
+// nothing written below a verdict is read as the verdict's.
 func ReadDispositions(content string) []Disposition {
-	lines := strings.Split(content, "\n")
-	start, end, ok := mdrecord.SectionLineRange(lines, auditHeadingRe)
+	lines, mask, start, end, ok := AuditNotes(content)
 	if !ok {
 		return nil
 	}
@@ -117,8 +143,15 @@ func ReadDispositions(content string) []Disposition {
 		date      string
 		lastIndex = -1 // the entry a narrowing line attaches to
 	)
-	for _, raw := range lines[start:end] {
-		ln := strings.TrimRight(raw, "\r")
+	for i := start; i < end; i++ {
+		if mask[i] != 0 {
+			continue
+		}
+		ln := strings.TrimRight(lines[i], "\r")
+		if ReviewEndRe.MatchString(ln) {
+			source, inList, blockID, occasion, date, lastIndex = "", false, "", "", "", -1
+			continue
+		}
 		if m := ReviewMarkerRe.FindStringSubmatch(ln); m != nil {
 			source, inList, blockID, occasion, date, lastIndex = "verdict "+m[2], false, "", "", "", -1
 			continue

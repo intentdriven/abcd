@@ -33,7 +33,7 @@ func TestReadTrackedFileCapBoundary(t *testing.T) {
 	for i := range buf {
 		buf[i] = 'a'
 	}
-	tail := []byte("\n/home/somebody/secret\n")
+	tail := []byte("\n/home/somebody/secret\n") // abcd-lint:allow
 	copy(buf[len(buf)-len(tail):], tail)
 	if err := os.WriteFile(atCap, buf, 0o644); err != nil {
 		t.Fatal(err)

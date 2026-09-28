@@ -393,14 +393,14 @@ func (r *Renderer) heading(at Source, line string) (string, error) {
 // blockquote renders a `>` block by stripping the marker and rendering what is
 // left as blocks in their own right.
 //
-// That recursion is what carries the structures a Quote legitimately holds —
-// paragraphs, lists, a Quote inside a Quote, a table. Flattening any of them
+// That recursion is what carries the structures a quote legitimately holds —
+// paragraphs, lists, a quote inside a quote, a table. Flattening any of them
 // would publish a document the source does not have, with nothing on the page to
 // tell a reader that it happened.
 //
 // A LAZY continuation — a line inside the block that drops the marker — is still
-// refused. It is genuinely ambiguous: the same bytes are a Quote in one reader
-// and a Quote followed by a paragraph in another, and guessing publishes one of
+// refused. It is genuinely ambiguous: the same bytes are a quote in one reader
+// and a quote followed by a paragraph in another, and guessing publishes one of
 // them as if it were certain.
 func (r *Renderer) blockquote(at Source, lines []string) (string, error) {
 	var stripped []string
@@ -1130,7 +1130,7 @@ func parseLink(s string, i int) (text, href string, next, kind int) {
 
 // ExecutableScheme reports whether an href names a scheme that executes rather
 // than navigates. Escaping an attribute is not enough on its own: a perfectly
-// well-formed `javascript:` href needs no Quote to break out of, and the site
+// well-formed `javascript:` href needs no quote to break out of, and the site
 // renders text from a repository whose files an outside contributor can edit.
 // The comparison folds case and strips the whitespace and control characters a
 // browser ignores inside a scheme, because those are exactly what a bypass is

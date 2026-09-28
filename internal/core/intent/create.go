@@ -1,7 +1,9 @@
 package intent
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -11,6 +13,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/changelog"
 	"github.com/intentdriven/abcd/internal/core/provenance"
+	"github.com/intentdriven/abcd/internal/core/record/match"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
@@ -59,9 +62,16 @@ const maxSlugLen = 60
 // `abcd intent plan` schedules it. This is the quoted-text create path itd-46
 // delivers — the create half of what spc-6 AC3 (promote) needs.
 func CreateFromText(repoRoot, text string, opts TextOptions) (Intent, error) {
+	c, err := createFromText(repoRoot, text, opts, nil)
+	return c.Intent, err
+}
+
+// createFromText is CreateFromText with the optional filing-time match
+// (match.go), which runs inside CreateDraft's mint lock.
+func createFromText(repoRoot, text string, opts TextOptions, m *Matcher) (Created, error) {
 	trimmed := strings.TrimSpace(text)
 	if trimmed == "" {
-		return Intent{}, fmt.Errorf("intent: refusing to create from empty text")
+		return Created{}, fmt.Errorf("intent: refusing to create from empty text")
 	}
 	// An explicit title is held to the text's own bar before anything is
 	// derived: non-empty once trimmed, and one line — it becomes the H1, where a
@@ -71,10 +81,10 @@ func CreateFromText(repoRoot, text string, opts TextOptions) (Intent, error) {
 	// alike rather than one of them silently falling back to the derived H1.
 	title := strings.TrimSpace(opts.Title)
 	if (opts.TitleSet || opts.Title != "") && title == "" {
-		return Intent{}, fmt.Errorf("intent: refusing an empty --title (nothing written)")
+		return Created{}, fmt.Errorf("intent: refusing an empty --title (nothing written)")
 	}
 	if strings.ContainsAny(title, "\r\n") {
-		return Intent{}, fmt.Errorf("intent: --title must be a single line (nothing written)")
+		return Created{}, fmt.Errorf("intent: --title must be a single line (nothing written)")
 	}
 	// Redact the caller's text through the one canonical scanner BEFORE anything
 	// derived from it is built (gh-486). The slug becomes the filename and is
@@ -85,11 +95,11 @@ func CreateFromText(repoRoot, text string, opts TextOptions) (Intent, error) {
 	// body again as its own boundary guard; that second pass is idempotent here.
 	redacted, _, err := redactIntentText(repoRoot, trimmed)
 	if err != nil {
-		return Intent{}, err
+		return Created{}, err
 	}
 	slug, err := deriveIntentSlug(redacted)
 	if err != nil {
-		return Intent{}, err
+		return Created{}, err
 	}
 	if title == "" {
 		title = deriveTitle(redacted)
@@ -97,10 +107,10 @@ func CreateFromText(repoRoot, text string, opts TextOptions) (Intent, error) {
 		// The same boundary the text crossed: the title is free prose too, and
 		// CreateDraft's own pass is idempotent on it.
 		if title, _, err = redactIntentText(repoRoot, title); err != nil {
-			return Intent{}, err
+			return Created{}, err
 		}
 	}
-	return CreateDraft(repoRoot, DraftOptions{
+	it, outcome, err := createDraftMatched(repoRoot, DraftOptions{
 		Slug:         slug,
 		Title:        title,
 		PressRelease: redacted,
@@ -109,7 +119,9 @@ func CreateFromText(repoRoot, text string, opts TextOptions) (Intent, error) {
 		// the default; the production mode is the operator's declared one, or the
 		// repo's default resolved by the surface.
 		ProductionMode: opts.ProductionMode,
+		Match:          m,
 	})
+	return Created{Intent: it, Match: outcome}, err
 }
 
 // TextOptions parameterizes CreateFromText beyond the text itself: an explicit
@@ -193,6 +205,11 @@ type DraftOptions struct {
 	// provenance.DefaultMode, so a draft written through a command carries the key
 	// whatever the caller says.
 	ProductionMode string
+	// Match, when non-nil, matches the draft's title and press release against
+	// the record under the mint lock and writes each likely double as a typed
+	// link (match.go). The promote route passes none: its draft is joined to
+	// the record it graduated from already.
+	Match *Matcher
 }
 
 // relatedIssueRe constrains the promote back-edge to a captured id before it is
@@ -211,17 +228,24 @@ var relatedIssueRe = regexp.MustCompile(`^(iss|rdi)-[0-9]+$`)
 // id through the shared recordid seam, and atomically writes
 // drafts/itd-N-<slug>.md. On any refusal nothing is written.
 func CreateDraft(repoRoot string, opts DraftOptions) (Intent, error) {
+	it, _, err := createDraftMatched(repoRoot, opts)
+	return it, err
+}
+
+// createDraftMatched is CreateDraft returning the filing-time match's outcome too,
+// nil when opts asked for none.
+func createDraftMatched(repoRoot string, opts DraftOptions) (Intent, *match.Outcome, error) {
 	if !slugRe.MatchString(opts.Slug) {
-		return Intent{}, fmt.Errorf("intent: slug %q is not kebab-case", opts.Slug)
+		return Intent{}, nil, fmt.Errorf("intent: slug %q is not kebab-case", opts.Slug)
 	}
 	if strings.TrimSpace(opts.Title) == "" {
-		return Intent{}, fmt.Errorf("intent: refusing to create a draft with an empty title")
+		return Intent{}, nil, fmt.Errorf("intent: refusing to create a draft with an empty title")
 	}
 	if strings.TrimSpace(opts.SeedBody) == "" && strings.TrimSpace(opts.PressRelease) == "" {
-		return Intent{}, fmt.Errorf("intent: refusing to create a draft with neither a press release nor a seed body")
+		return Intent{}, nil, fmt.Errorf("intent: refusing to create a draft with neither a press release nor a seed body")
 	}
 	if opts.RelatedIssue != "" && !relatedIssueRe.MatchString(opts.RelatedIssue) {
-		return Intent{}, fmt.Errorf("intent: related issue %q must match ^(iss|rdi)-[0-9]+$", opts.RelatedIssue)
+		return Intent{}, nil, fmt.Errorf("intent: related issue %q must match ^(iss|rdi)-[0-9]+$", opts.RelatedIssue)
 	}
 	// impact is optional on a draft (intent_impact_valid gates the move into
 	// shipped/, not the seed), but when set it must be a legal, non-internal
@@ -231,10 +255,10 @@ func CreateDraft(repoRoot string, opts DraftOptions) (Intent, error) {
 	if opts.Impact != "" {
 		imp, err := changelog.ParseImpact(opts.Impact)
 		if err != nil {
-			return Intent{}, fmt.Errorf("intent: %w", err)
+			return Intent{}, nil, fmt.Errorf("intent: %w", err)
 		}
 		if imp == changelog.ImpactInternal {
-			return Intent{}, fmt.Errorf("intent: impact must not be internal on an intent — a press-release-first intent is user-facing by definition; declare one of additive|breaking|fix, or record the work as an issue instead")
+			return Intent{}, nil, fmt.Errorf("intent: impact must not be internal on an intent — a press-release-first intent is user-facing by definition; declare one of additive|breaking|fix, or record the work as an issue instead")
 		}
 	}
 
@@ -244,7 +268,7 @@ func CreateDraft(repoRoot string, opts DraftOptions) (Intent, error) {
 	// path; an unset mode means provenance.DefaultMode.
 	stamp, err := draftStamp(opts)
 	if err != nil {
-		return Intent{}, fmt.Errorf("intent: %w", err)
+		return Intent{}, nil, fmt.Errorf("intent: %w", err)
 	}
 
 	// Boundary redaction (gh-486): CreateDraft is the ONE canonical draft-mint
@@ -257,15 +281,15 @@ func CreateDraft(repoRoot string, opts DraftOptions) (Intent, error) {
 	// scanner; the pass is idempotent for text a caller already redacted.
 	rTitle, _, err := redactIntentText(repoRoot, opts.Title)
 	if err != nil {
-		return Intent{}, err
+		return Intent{}, nil, err
 	}
 	rPress, _, err := redactIntentText(repoRoot, opts.PressRelease)
 	if err != nil {
-		return Intent{}, err
+		return Intent{}, nil, err
 	}
 	rBody, _, err := redactIntentText(repoRoot, opts.SeedBody)
 	if err != nil {
-		return Intent{}, err
+		return Intent{}, nil, err
 	}
 	// Hidden runes — a bidi override, a zero-width rune, a C1 control, DEL — are
 	// percent-encoded at the same boundary, after redaction, with termsafe's one
@@ -276,6 +300,7 @@ func CreateDraft(repoRoot string, opts DraftOptions) (Intent, error) {
 	opts.SeedBody = termsafe.EncodeHiddenRunesBlock(rBody)
 
 	var created Intent
+	var outcome *match.Outcome
 	err = withIntentMintLock(repoRoot, func() error {
 		draftsDirAbs := filepath.Join(repoRoot, IntentsRelDir, BucketDrafts)
 		if err := ensureRecordDir(repoRoot, filepath.Join(IntentsRelDir, BucketDrafts)); err != nil {
@@ -292,7 +317,14 @@ func CreateDraft(repoRoot string, opts DraftOptions) (Intent, error) {
 		name := id + "-" + opts.Slug + ".md"
 		rel := filepath.Join(IntentsRelDir, BucketDrafts, name)
 		abs := filepath.Join(draftsDirAbs, name)
-		content := seedDraft(id, opts, stamp)
+		// The filing-time match runs here, under the mint lock, so the record
+		// it reads is the record the draft is written into.
+		var links map[match.Relation][]string
+		if opts.Match != nil {
+			outcome = runMatch(opts.Match, opts.Title+"\n"+opts.PressRelease)
+			links = outcome.Links()
+		}
+		content := seedDraft(id, opts, stamp, links)
 		if err := writeIntentFile(abs, rel, content); err != nil {
 			return err
 		}
@@ -310,9 +342,9 @@ func CreateDraft(repoRoot string, opts DraftOptions) (Intent, error) {
 		return nil
 	})
 	if err != nil {
-		return Intent{}, err
+		return Intent{}, nil, err
 	}
-	return created, Validate(created)
+	return created, outcome, Validate(created)
 }
 
 // draftStamp resolves the draft's disclosure pair from the mint options: the
@@ -413,7 +445,7 @@ var intentFileNumRe = recordid.FilenameNumRe(intentFamily)
 // Press Release prose or the route's seed note, the Why This Matters seed body
 // or its prompt, and the itd-1 discipline's Acceptance Criteria section left as
 // a placeholder for the human to fill before planning.
-func seedDraft(id string, opts DraftOptions, stamp provenance.Stamp) string {
+func seedDraft(id string, opts DraftOptions, stamp provenance.Stamp, links map[match.Relation][]string) string {
 	var b strings.Builder
 	b.WriteString("---\n")
 	b.WriteString("id: " + id + "\n")
@@ -430,6 +462,13 @@ func seedDraft(id string, opts DraftOptions, stamp provenance.Stamp) string {
 	// graduated from an issue.
 	if opts.RelatedIssue != "" {
 		b.WriteString(RelatedIssuesKey + ": [" + opts.RelatedIssue + "]\n")
+	}
+	// The filing-time match's typed links (itd-2609212137116617), an inline id
+	// list each, written only when a candidate cleared the threshold.
+	for _, rel := range []match.Relation{match.Duplicates, match.Refines} {
+		if ids := links[rel]; len(ids) > 0 {
+			b.WriteString(string(rel) + ": [" + strings.Join(ids, ", ") + "]\n")
+		}
 	}
 	// impact is written only when the caller declared one (validated in
 	// CreateDraft). It is bare — the machine-read enum the shipped-intent gate
@@ -598,8 +637,17 @@ var beforeIntentMintLock func()
 // need to: the mint reads no maximum, so two checkouts never share the state a
 // lock would have to protect. It flocks the intents/ directory file descriptor
 // itself, so no lock artifact is left in the committed record tree (mirroring
-// the spec store's mint lock). O_NOFOLLOW refuses a symlinked intents/.
+// the spec store's lock). O_NOFOLLOW refuses a symlinked intents/.
 func withIntentMintLock(repoRoot string, fn func() error) error {
+	return withIntentMintLockWithin(repoRoot, mintLockTimeout, fn)
+}
+
+// errIntentLockBusy is the intent store's lock not granted within a budget.
+var errIntentLockBusy = errors.New("intent: could not acquire mint lock")
+
+// withIntentMintLockWithin is withIntentMintLock with its own acquisition
+// budget; a lock not granted within it is errIntentLockBusy.
+func withIntentMintLockWithin(repoRoot string, timeout time.Duration, fn func() error) error {
 	if beforeIntentMintLock != nil {
 		beforeIntentMintLock()
 	}
@@ -613,7 +661,7 @@ func withIntentMintLock(repoRoot string, fn func() error) error {
 	}
 	defer syscall.Close(fd)
 
-	deadline := time.Now().Add(mintLockTimeout)
+	deadline := time.Now().Add(timeout)
 	for {
 		lockErr := syscall.Flock(fd, syscall.LOCK_EX|syscall.LOCK_NB)
 		if lockErr == nil {
@@ -623,11 +671,43 @@ func withIntentMintLock(repoRoot string, fn func() error) error {
 			return fmt.Errorf("intent: acquiring mint lock: %w", lockErr)
 		}
 		if time.Now().After(deadline) {
-			return fmt.Errorf("intent: could not acquire mint lock within %s", mintLockTimeout)
+			return fmt.Errorf("%w within %s", errIntentLockBusy, timeout)
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
 	defer syscall.Flock(fd, syscall.LOCK_UN)
 
 	return fn()
+}
+
+// WithMintLock runs fn while holding the intent store's lock — the one
+// withIntentMintLock takes, not a second one — for a caller OUTSIDE this
+// package that rewrites intent records and no ledger record. A caller that
+// rewrites both — the link repoint after a ledger record moves, capture's
+// migration of the promote join's back-edge (iss-2609261254247117,
+// iss-2609261941039204) — takes WithLedgerThenMintLock instead, which never
+// holds the ledger lock while it waits for this one. Every intent writer here reads
+// and writes under this lock, so a caller writing an intent record without it
+// can erase an edit landing between its read and its write.
+//
+// A tree with no intent store runs fn WITHOUT the lock: taking it creates the
+// store, and a verb that writes no intent must not plant an empty one — the
+// verdict ingest makes the same refusal without the lock for the same reason.
+// With no store there is no intent record for fn to race.
+//
+// It is NOT reentrant — an flock blocks a second acquisition in the same
+// process until the timeout — so a caller must not hold it across any exported
+// verb of this package that writes, every one of which takes it internally.
+//
+// Lock order: the capture ledger lock, THEN this one, THEN the spec store's
+// (spec.WithStoreLock). capture takes this lock inside its ledger lock, plan
+// mints its spec inside this one, and nothing may take them the other way
+// round. This package cannot take the ledger lock at all (capture imports it,
+// so it cannot import capture), and the spec package imports neither, which is
+// what keeps the order one-way inside the core.
+func WithMintLock(repoRoot string, fn func() error) error {
+	if _, err := os.Lstat(filepath.Join(repoRoot, IntentsRelDir)); errors.Is(err, fs.ErrNotExist) {
+		return fn()
+	}
+	return withIntentMintLock(repoRoot, fn)
 }

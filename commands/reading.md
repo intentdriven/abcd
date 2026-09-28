@@ -32,7 +32,8 @@ To render the assembler's state:
 Summarise the JSON for the user: `assembler_version`, `include_rows` and
 `exclusion_rows` (what the table admits and what it refuses), `definitions`
 (the reading definitions the locator RESOLVED), `staged_runs` (runs an
-assembly has parked in the local tier), `orphaned_ingests`, and
+assembly has parked in the local tier that no ingest has yet committed or
+refused), `orphaned_ingests`, and
 `leftover_stages`. Zero writes.
 
 **`definitions` is what resolved, not what is present.** A definition is
@@ -341,6 +342,16 @@ rule alone, and there is never an item 0. A refusal reached BEFORE that point �
 a wrong `_type`, a run id that resolves to nothing, a manifest hash that
 disagrees — writes nothing durable anywhere, because there is no proven run to
 record against.
+
+**An item citing a record id that names no record refuses the whole run, and
+writes nothing.** Wherever the repository's record-lint gates prose citations in
+the reading-record store, an item whose pattern or body field cites an `adr`,
+`itd`, `iss` or `spc` id that names no record refuses the ingest, naming the
+item, the field and the id — before the orphan sweep and before anything is
+staged. No refusal record is written, because one would give the run an outcome
+and turn away the same run re-worded: the run stays parked, so re-word the prose
+to describe the record rather than cite an id that does not exist, and ingest it
+again.
 
 **A rerun is a new run with a new run id, never an amendment.** Once a run id
 has an outcome — a commit marker or a refusal record — ingesting it again is

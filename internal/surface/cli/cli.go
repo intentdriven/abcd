@@ -38,9 +38,11 @@ import (
 	"github.com/intentdriven/abcd/internal/core/oracle"
 	"github.com/intentdriven/abcd/internal/core/provenance"
 	"github.com/intentdriven/abcd/internal/core/record"
+	"github.com/intentdriven/abcd/internal/core/record/match"
 	"github.com/intentdriven/abcd/internal/core/rules"
 	"github.com/intentdriven/abcd/internal/core/spec"
 	"github.com/intentdriven/abcd/internal/core/surface"
+	"github.com/intentdriven/abcd/internal/core/tools"
 	"github.com/intentdriven/abcd/internal/core/update"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -2022,7 +2024,14 @@ rules replaced, its state changed, or a custom domain declared — renders as
 "## NAME (user override)" or "## NAME (repo override)" here, in the injected
 block and in the hook's diagnostic, and carries "source": "user" or "repo" in
 --json; the last layer to name a domain labels it. An untouched bundled domain
-renders bare and carries "source": "bundled". Read-only.`,
+renders bare and carries "source": "bundled".
+
+A list an override sets replaces the bundled one, so an override can hold back
+an entry abcd ships. For the guardrail domains (COMMITTING, LOAD, PII), every
+bundled recall keyword, alias or rule that an override's list leaves out is
+named on stderr, with the file that set the list, here and on every hook
+prompt. To keep an entry, restate it in the list, or leave the field out to
+inherit the bundled list. Read-only.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cwd, err := os.Getwd()
@@ -2686,12 +2695,25 @@ func createIntentFromText(cmd *cobra.Command, repoRoot, text string, opts intent
 		return err
 	}
 	opts.ProductionMode = mode
-	it, err := intent.CreateFromText(repoRoot, text, opts)
+	// The filing-time match (itd-2609212137116617): the ledger gathers the
+	// candidates, the create runs the match under its mint lock.
+	var m *intent.Matcher
+	cfg, refused := resolveMatch(cmd.ErrOrStderr(), "intent", repoRoot)
+	if cfg != nil {
+		m = &intent.Matcher{Threshold: cfg.Threshold, Candidates: func() ([]match.Candidate, error) {
+			return capture.MatchCandidates(repoRoot, *cfg)
+		}}
+	}
+	it, err := intent.CreateFromTextMatched(repoRoot, text, opts, m)
 	if err != nil {
 		return &exitError{Code: 2, Msg: "abcd intent: " + err.Error()}
 	}
+	if it.Match == nil {
+		it.Match = refused
+	}
 	return render(cmd.OutOrStdout(), asJSON, it, func(w io.Writer) {
 		fmt.Fprintf(w, "created %s (%s) — %s\n", it.ID, it.Bucket, termsafe.Sanitize(it.Path))
+		renderMatch(w, it.Match)
 	})
 }
 
@@ -2763,8 +2785,19 @@ func newIntentAuditCommand(asJSON *bool) *cobra.Command {
 				route = nil
 			}
 			return render(cmd.OutOrStdout(), *asJSON, withRequest(res, route), func(w io.Writer) {
-				fmt.Fprintf(w, "abcd intent audit — %s %s (receipt %s)\n  request: %s\n",
-					res.IntentID, res.Status, res.ReceiptID, res.RequestPath)
+				fmt.Fprintf(w, "abcd intent audit — %s %s (receipt %s)\n", res.IntentID, res.Status, res.ReceiptID)
+				// The status is the receipt's state and the request line is the
+				// act: an owed receipt's request is rewritten on every re-emit,
+				// and a terminal one's is not written at all (iss-2609190337598356).
+				switch {
+				case !res.RequestWritten:
+					fmt.Fprintf(w, "  no request written: the review is %s\n",
+						strings.ReplaceAll(strings.TrimPrefix(res.Status, "already_"), "_", "-"))
+				case res.Status == "already_owed":
+					fmt.Fprintf(w, "  request rewritten: %s\n", res.RequestPath)
+				default:
+					fmt.Fprintf(w, "  request: %s\n", res.RequestPath)
+				}
 				renderRequestLine(w, route)
 			})
 		},
@@ -2832,7 +2865,7 @@ func newIntentAuditCommand(asJSON *bool) *cobra.Command {
 			})
 		},
 	}
-	ingestCmd.Flags().StringVar(&verdictJSON, "verdict-json", "", "path to the intent-audit verdict JSON")
+	ingestCmd.Flags().StringVar(&verdictJSON, "verdict-json", "", "path to the intent-audit verdict JSON, in the shape the Verdict shape section of its review request states")
 	ingestRoute = addRouteFlag(ingestCmd, auditAgent)
 	auditCmd.AddCommand(ingestCmd)
 	auditCmd.Flags().BoolVar(&issueDrift, "issue-drift", false,
@@ -3247,7 +3280,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 
 	ahoyCmd.Flags().BoolVar(&dryRun, "dry-run", false, "print the detection result as its JSON envelope, whether or not --json is passed")
 	ahoyCmd.Flags().BoolVar(&identityMode, "identity", false,
-		"check git's commit identity against .abcd/config/identity.json, exiting non-zero on a mismatch (for a pre-commit hook or CI)")
+		"check git's commit author and committer against .abcd/config/identity.json, exiting non-zero when either diverges (for a pre-commit hook or CI)")
 	ahoyCmd.Flags().BoolVar(&remoteMode, "remote", false,
 		"report this repository's GitHub secret-scanning settings and what the remote apply sub-verb would change")
 	ahoyCmd.Flags().BoolVar(&providersMode, "providers", false,
@@ -3267,6 +3300,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 		docsTarget    string
 		oracleBackend string
 		scanDeep      string
+		installTools  []string
 	)
 	installCmd := &cobra.Command{
 		Use:  "install",
@@ -3280,7 +3314,14 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			res, err := ahoy.Install(cwd, opts, newPrompter(cmd))
+			named, err := installToolNames(installTools)
+			if err != nil {
+				return err
+			}
+			p := newPrompter(cmd)
+			opts.ConfirmTool = toolConfirm(p, named, yes, cmd.ErrOrStderr())
+			opts.ApproveDependency = len(named) > 0
+			res, err := ahoy.Install(cwd, opts, p)
 			if err != nil {
 				return err
 			}
@@ -3334,7 +3375,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 	// No backquotes in a flag's usage string: cobra reads the first backquoted
 	// word as the flag's argument placeholder, so a quoted answer would render
 	// this boolean as "--yes y" in the help and the generated reference.
-	installCmd.Flags().BoolVar(&yes, "yes", false, "approve every resolvable change category without prompting; excludes the optional git-identity pin, the status line and the model-tier routing tables, which need an answered prompt (run without --yes, or answer every prompt with: yes | abcd ahoy install)")
+	installCmd.Flags().BoolVar(&yes, "yes", false, "approve every resolvable change category without prompting; excludes the optional git-identity pin, the status line and the model-tier routing tables, which need an answered prompt (run without --yes, or answer every prompt with: yes | abcd ahoy install); it never changes the repository's git identity, which is proposed only to a person at a terminal")
 	installCmd.Flags().BoolVar(&adopt, "adopt", false, "adopt an unmanaged repo without prompting")
 	installCmd.Flags().BoolVar(&refuseAdopt, "refuse-adopt", false, "decline to adopt an unmanaged repo")
 	installCmd.Flags().BoolVar(&dev, "dev", false, "track-latest dogfood mode: the PATH entry rebuilds from the source tip on every call instead of pinning the built binary")
@@ -3345,6 +3386,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 	installCmd.Flags().StringVar(&docsTarget, "docs-target", "", "which conventions file carries the managed block, which names abcd: claude_md | agents_md | both | skip (default skip)")
 	installCmd.Flags().StringVar(&oracleBackend, "oracle-backend", "", "oracle backend: host-delegated | native | cli | api | mcp")
 	installCmd.Flags().StringVar(&scanDeep, "scan-deep", "", "enable deep scan: true | false")
+	installCmd.Flags().StringSliceVar(&installTools, "install-tool", nil, "answer yes to installing this missing tool (repeatable): the answer a host's question tool relays; without it a tool is installed only on an answer typed at a terminal, never on the approve-everything flag, a piped answer or CI")
 	ahoyCmd.AddCommand(installCmd)
 
 	// uninstall
@@ -3428,19 +3470,41 @@ func runAhoyDryRun(cmd *cobra.Command, cwd string) error {
 }
 
 // runAhoyIdentity is `ahoy --identity`, the iss-62 gate's canonical, testable
-// entrypoint. It exits non-zero when the commit identity diverges from the
-// committed pin, so a pre-commit hook (or CI) can fail closed. A match, or an
-// un-pinned repo, exits zero.
+// entrypoint. It exits non-zero when the commit's author or committer diverges
+// from the committed pin (itd-131), so a pre-commit hook (or CI) can fail
+// closed. A match, or an un-pinned repo, exits zero; a machine identity is named
+// either way, because the routine case must be visible where the gate runs.
 func runAhoyIdentity(cmd *cobra.Command, cwd string) error {
 	res, err := identity.Check(cwd)
 	if err != nil {
 		return err
 	}
 	if res.Blocks() {
-		return fmt.Errorf("%s\n  fix: git config user.name %q && git config user.email %q",
-			res.Reason, res.Pin.Name, res.Pin.Email)
+		var why []string
+		if res.Status == identity.StatusMismatch || res.Status == identity.StatusUnset {
+			why = append(why, res.Reason)
+		}
+		fix := fmt.Sprintf("git config user.name %q && git config user.email %q", res.Pin.Name, res.Pin.Email)
+		if res.CommitterDiverges {
+			why = append(why, res.CommitterReason)
+			fix += " (and unset any GIT_COMMITTER_NAME/GIT_COMMITTER_EMAIL override and committer.name/committer.email key)"
+		}
+		return fmt.Errorf("%s\n  fix: %s", termsafe.Sanitize(strings.Join(why, "; ")), termsafe.Sanitize(fix))
 	}
 	fmt.Fprintf(cmd.OutOrStdout(), "identity ok (%s)\n", res.Status)
+	if res.CommitterDiverges {
+		fmt.Fprintf(cmd.OutOrStdout(), "  note: %s\n", termsafe.Sanitize(res.CommitterReason))
+	}
+	for _, t := range []struct {
+		is  bool
+		who identity.Effective
+		as  string
+	}{{res.AuthorIsTool, res.Effective, "author"}, {res.CommitterIsTool, res.Committer, "committer"}} {
+		if t.is {
+			fmt.Fprintf(cmd.OutOrStdout(), "  note: the %s %s is a machine identity; the human is the author of record (abcd ahoy reports it as %s)\n",
+				t.as, termsafe.Sanitize(t.who.Name+" <"+t.who.Email+">"), ahoy.ToolIdentityGapID)
+		}
+	}
 	return nil
 }
 
@@ -3634,6 +3698,57 @@ func optionalSkipReason(id string) string {
 	return ""
 }
 
+// installToolNames validates the --install-tool names against the tools
+// `ahoy install` checks for, refusing any other with the names it accepts.
+func installToolNames(names []string) (map[string]bool, error) {
+	accepted := map[string]bool{}
+	for _, n := range ahoy.DependencyTools {
+		accepted[n] = true
+	}
+	named := map[string]bool{}
+	for _, n := range names {
+		n = strings.TrimSpace(n)
+		if !accepted[n] {
+			return nil, &exitError{Code: 2, Msg: fmt.Sprintf("abcd ahoy install: --install-tool %q is not a tool ahoy install checks for; it checks for %s (nothing read, nothing written)",
+				termsafe.Sanitize(n), strings.Join(ahoy.DependencyTools, ", "))}
+		}
+		named[n] = true
+	}
+	return named, nil
+}
+
+// toolConfirm is the CLI's answer to the explain-then-install question
+// (itd-63). It is deliberately narrower than the category prompter: a piped
+// answer approves categories (iss-167), but installing a program is asked only
+// of a person at a terminal, or answered by naming the tool with
+// --install-tool, which is how a host relays the answer its own question tool
+// got. --yes never installs a tool. Every no carries the way to say yes.
+func toolConfirm(p ahoy.Prompter, named map[string]bool, yes bool, w io.Writer) tools.Confirm {
+	return func(e tools.Explanation) tools.Answer {
+		if named[e.Tool] {
+			return tools.Answer{Yes: true, Why: "named with --install-tool"}
+		}
+		if yes {
+			return tools.Answer{Why: "--yes never installs a tool; name it with --install-tool " + e.Tool + ", or run without --yes at a terminal"}
+		}
+		sp, ok := p.(*stdinPrompter)
+		if !ok || !sp.tty {
+			return tools.Answer{Why: "no terminal to ask at: abcd installs a tool only on an answer typed at a terminal, or with --install-tool " + e.Tool}
+		}
+		for _, line := range e.Lines() {
+			fmt.Fprintln(w, termsafe.Sanitize(line))
+		}
+		fmt.Fprintf(w, "Install %s now by running %s? [y/N] ", e.Tool, e.StepText())
+		line, _ := sp.r.ReadString('\n')
+		switch strings.ToLower(strings.TrimSpace(line)) {
+		case "y", "yes":
+			fmt.Fprintf(w, "running %s; a package manager can take a few minutes\n", e.StepText())
+			return tools.Answer{Yes: true, Why: "answered yes at the terminal"}
+		}
+		return tools.Answer{Why: "answered no at the terminal"}
+	}
+}
+
 // newPrompter returns the stdin-reading prompter. On a terminal it is the
 // interactive path, unchanged. When stdin is NOT a terminal the same prompter
 // reads the piped answers (iss-167): `yes | abcd ahoy install` is what a host
@@ -3681,6 +3796,11 @@ func (p *stdinPrompter) echo(answer string) {
 	}
 	fmt.Fprintf(p.w, "%s\n", termsafe.Sanitize(answer))
 }
+
+// AtTerminal reports whether a person is answering at a terminal, which makes
+// the prompter an ahoy.TerminalPrompter: the one question abcd asks only of a
+// person (whether to change who commits, itd-131) is never put to a pipe.
+func (p *stdinPrompter) AtTerminal() bool { return p.tty }
 
 func (p *stdinPrompter) Confirm(question string) bool {
 	fmt.Fprintf(p.w, "%s [y/N] ", question)
@@ -4094,6 +4214,10 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			if req.ProductionMode, err = resolveProductionMode(repoRoot, captureProductionMode); err != nil {
 				return err
 			}
+			// The filing-time match (itd-2609212137116617): configured through the
+			// layered reader, run by core under the ledger lock, never a refusal.
+			var matchRefused *match.Outcome
+			req.Match, matchRefused = resolveMatch(cmd.ErrOrStderr(), "capture", repoRoot)
 			// --lapsed-at has NO default and is never filled in for the caller: a
 			// lapse capture that omits the instant records none. The refusal that
 			// stood here is parked, not lifted (iss-2609091009111294): the instant stays
@@ -4110,8 +4234,12 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 				}
 				return captureRefusal("", err)
 			}
+			if res.Match == nil {
+				res.Match = matchRefused
+			}
 			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, res, func(w io.Writer) {
 				fmt.Fprintf(w, "captured %s (%s) — %s\n", res.ID, res.Status, termsafe.Sanitize(res.Path))
+				renderMatch(w, res.Match)
 				// Folder membership is a status only once the file is committed
 				// (iss-2609100508570527): say so at the write, where it is cheap.
 				if res.Uncommitted {

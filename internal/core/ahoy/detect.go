@@ -9,7 +9,9 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/adapter/gitleaks"
 	"github.com/intentdriven/abcd/internal/core/identity"
+	"github.com/intentdriven/abcd/internal/core/tools"
 )
 
 // Enumerations for config-value validation.
@@ -87,7 +89,7 @@ func Detect(cwd string) (DetectionResult, error) {
 	var gaps []Gap
 	gaps = append(gaps, detectPluginRoot(pluginOK)...)
 	if kind != UnmanagedFolder {
-		gaps = append(gaps, detectDependencies()...)
+		gaps = append(gaps, detectDependencies(abs)...)
 		gaps = append(gaps, detectSkeleton(abs)...)
 		gaps = append(gaps, detectLocalTier(abs)...)
 		gaps = append(gaps, detectIdentity(identity, idx)...)
@@ -199,23 +201,43 @@ func detectPluginRoot(ok bool) []Gap {
 	}}
 }
 
-func detectDependencies() []Gap {
-	var gaps []Gap
-	if !onPath("gitleaks") {
-		gaps = append(gaps, Gap{
-			ID: "deps.gitleaks_missing", Category: Dependency, Scope: "machine",
-			Title: "gitleaks not on PATH", Detail: "gitleaks enables a deeper secret scan.",
-			FixHint: "brew install gitleaks", Required: false, Resolvable: true,
-		})
+// DependencyTools names the tools detectDependencies checks for, and so the
+// tools `ahoy install --install-tool` can name: the front door refuses any
+// other, since no gap would ever put it to the question.
+var DependencyTools = []string{"gitleaks"}
+
+// detectDependencies names each external tool a capability here would use and
+// cannot find, with the tool registry's explanation rather than a bare command
+// (itd-63). gitleaks is the one ahoy checks: optional over the native secret
+// scanner, and REQUIRED in a repository that armed it in
+// .abcd/config/gitleaks.json, whose transcript capture refuses without it. An
+// armed repository that names an existing binary by path has no gap: the
+// adapter judges that path itself, and a refusal there is not a missing tool.
+//
+// trufflehog is not offered: nothing in abcd runs it (iss-2609261447331434),
+// and a gap asking a person to install a program abcd never uses is not an
+// explanation anyone can act on.
+func detectDependencies(cwd string) []Gap {
+	capability := tools.TranscriptScan
+	if cfg, err := gitleaks.LoadConfig(cwd); err == nil && cfg.Enabled {
+		capability = tools.TranscriptScanArmed
+		if p := strings.TrimSpace(cfg.Path); p != "" && fileExists(p) {
+			return nil
+		}
 	}
-	if !onPath("trufflehog") {
-		gaps = append(gaps, Gap{
-			ID: "deps.trufflehog_missing", Category: Dependency, Scope: "machine",
-			Title: "trufflehog not on PATH", Detail: "trufflehog enables deep secret scanning when scan.deep=true.",
-			FixHint: "brew install trufflehog", Required: false, Resolvable: true,
-		})
+	if onPath("gitleaks") {
+		return nil
 	}
-	return gaps
+	e := tools.Explain("gitleaks", capability)
+	return []Gap{{
+		ID: "deps.gitleaks_missing", Category: Dependency, Scope: "machine",
+		Title:      "gitleaks not on PATH",
+		Detail:     string(e.Requirement) + " for " + e.CapabilityName + "; without it: " + e.WithoutIt + ".",
+		FixHint:    e.StepText() + " (abcd ahoy install explains it and runs it only on your yes)",
+		Required:   e.Requirement == tools.Required,
+		Resolvable: true,
+		Tool:       &e,
+	}}
 }
 
 func onPath(tool string) bool {
@@ -266,10 +288,31 @@ func detectIdentity(id RepoIdentity, idx *historyIndex) []Gap {
 	return gaps
 }
 
-// detectGitIdentity compares the git author identity a commit would use against
-// the committed .abcd/config/identity.json pin (iss-62). A mismatch or an unset
-// identity is a required, resolvable gap; an un-pinned repo gets an advisory gap
-// (adopt the gate); a match yields nothing.
+// The identity gap ids the detector raises and the establish step reads.
+const (
+	MismatchGapID     = "git_identity.mismatch"
+	UnsetGapID        = "git_identity.unset"
+	CommitterGapID    = "git_identity.committer"
+	ToolIdentityGapID = "git_identity.tool"
+)
+
+// routineRunnerRecord is where establishing the human identity for an
+// autonomous routine is owned: the runner that launches it sets the identity
+// before the first commit, and this gate only detects (itd-131).
+const routineRunnerRecord = "iss-2608210932052003"
+
+// establishHint is the fix every resolvable identity gap shares: install
+// proposes the human identity and asks, and nothing writes it unasked.
+const establishHint = "run abcd ahoy install at a terminal: it proposes the pinned identity (else your global git identity) for this repository's user.name/user.email and writes it only if you confirm"
+
+// detectGitIdentity compares the git author and committer identities a commit
+// would use against the committed .abcd/config/identity.json pin (iss-62,
+// itd-131). An author mismatch or unset identity is a required, resolvable gap;
+// a committer that diverges is one too in a pinned repo and advisory in an
+// un-pinned one; a machine identity in either role is required wherever it is
+// found, because the human is the author of record whether or not the repo has
+// pinned who that is. An un-pinned repo also gets an advisory gap (adopt the
+// gate); a match yields nothing.
 func detectGitIdentity(cwd string) []Gap {
 	res, err := identity.Check(cwd)
 	if err != nil {
@@ -286,36 +329,73 @@ func detectGitIdentity(cwd string) []Gap {
 			Resolvable: false,
 		}}
 	}
+	var gaps []Gap
 	switch res.Status {
 	case identity.StatusMismatch:
-		return []Gap{{
-			ID: "git_identity.mismatch", Category: ConfigChange, Scope: "repo",
+		gaps = append(gaps, Gap{
+			ID: MismatchGapID, Category: ConfigChange, Scope: "repo",
 			Title:      "git commit identity does not match the pin",
 			Detail:     res.Reason,
-			FixHint:    "set this repo's git user.name/user.email to match the pin in " + identity.PinRelPath + " (or update the pin if the identity changed)",
+			FixHint:    establishHint + "; or set user.name/user.email by hand (or update the pin if the identity changed)",
 			Required:   true,
 			Resolvable: true,
-		}}
+		})
 	case identity.StatusUnset:
-		return []Gap{{
-			ID: "git_identity.unset", Category: ConfigChange, Scope: "repo",
+		gaps = append(gaps, Gap{
+			ID: UnsetGapID, Category: ConfigChange, Scope: "repo",
 			Title:      "git author identity is not configured",
 			Detail:     res.Reason,
-			FixHint:    "set git user.name/user.email to the pinned identity in " + identity.PinRelPath,
+			FixHint:    establishHint + "; or set git user.name/user.email to the pinned identity in " + identity.PinRelPath,
 			Required:   true,
 			Resolvable: true,
-		}}
+		})
 	case identity.StatusNoPin:
-		return []Gap{{
-			ID: "git_identity.unpinned", Category: ConfigChange, Scope: "repo",
+		gaps = append(gaps, Gap{
+			ID: OptionalPinGapID, Category: ConfigChange, Scope: "repo",
 			Title:      "no git identity pin",
 			Detail:     res.Reason,
 			FixHint:    "ahoy install can pin the current git identity to " + identity.PinRelPath,
 			Required:   false,
 			Resolvable: true,
-		}}
+		})
 	}
-	return nil
+	if res.CommitterDiverges {
+		gaps = append(gaps, Gap{
+			ID: CommitterGapID, Category: ConfigChange, Scope: "repo",
+			Title:      "git committer identity diverges",
+			Detail:     res.CommitterReason,
+			FixHint:    "unset any GIT_COMMITTER_NAME/GIT_COMMITTER_EMAIL override and committer.name/committer.email key; or " + establishHint,
+			Required:   res.Status != identity.StatusNoPin,
+			Resolvable: true,
+		})
+	}
+	if tool := toolRoles(res); tool != "" {
+		gaps = append(gaps, Gap{
+			ID: ToolIdentityGapID, Category: ConfigChange, Scope: "repo",
+			Title:      "commits would be made under a machine identity",
+			Detail:     tool + " is a machine identity; the human is the author of record, and the attribution gate refuses a machine in these fields",
+			FixHint:    establishHint + ". An autonomous routine has no one to ask: whatever launches it sets the human identity before the first commit (" + routineRunnerRecord + "), and abcd does not write it unasked",
+			Required:   true,
+			Resolvable: true,
+		})
+	}
+	return gaps
+}
+
+// toolRoles words which roles hold a machine identity, or "" when none does.
+func toolRoles(res identity.Result) string {
+	who := func(e identity.Effective) string { return e.Name + " <" + e.Email + ">" }
+	switch {
+	case res.AuthorIsTool && res.CommitterIsTool && res.Effective == res.Committer:
+		return "the author and committer " + who(res.Effective)
+	case res.AuthorIsTool && res.CommitterIsTool:
+		return "the author " + who(res.Effective) + " and the committer " + who(res.Committer)
+	case res.AuthorIsTool:
+		return "the author " + who(res.Effective)
+	case res.CommitterIsTool:
+		return "the committer " + who(res.Committer)
+	}
+	return ""
 }
 
 func detectHistoryStore(rootSHA string) []Gap {

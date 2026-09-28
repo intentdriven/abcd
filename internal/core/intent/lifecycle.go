@@ -315,7 +315,7 @@ func Plan(repoRoot, intentID string, opts PlanOptions) (PlanResult, error) {
 	// Repoint every link that named the draft's path, as a close does for the
 	// records it moves (iss-2609250846525896). Reported, not raised: the record
 	// is planned and the plan stands.
-	res.Relinked, err = relink.Repoint(repoRoot, []relink.Move{{From: draftRel, To: plannedRel, MovedNow: true}})
+	res.Relinked, err = repointUnderLock(repoRoot, []relink.Move{{From: draftRel, To: plannedRel, MovedNow: true}})
 	if err != nil {
 		res.RelinkError = err.Error()
 	}
@@ -569,7 +569,7 @@ func linkPlannedSpec(repoRoot string, it Intent, opts PlanOptions) (PlanResult, 
 			// intent write that would have linked it is what failed. Were the
 			// removal itself to fail, the spec is still one a retry reuses
 			// through ByIntent, and the refusal says so.
-			if rmErr := os.Remove(filepath.Join(repoRoot, sp.Path)); rmErr != nil && !os.IsNotExist(rmErr) {
+			if rmErr := spec.Discard(repoRoot, sp); rmErr != nil {
 				return fmt.Errorf("%w; the spec minted for it, %s, could not be removed (%v) and a retry reuses it", err, sp.ID, rmErr)
 			}
 		}
@@ -623,15 +623,20 @@ func Link(repoRoot, intentID, specID string) (LinkResult, error) {
 
 	rel := it.Path
 	abs := filepath.Join(repoRoot, rel)
-	data, err := readRepoFile(abs, rel)
-	if err != nil {
-		return LinkResult{}, err
-	}
-	updated, err := setFrontmatterFields(string(data), map[string]string{"spec_id": specID})
-	if err != nil {
-		return LinkResult{}, err
-	}
-	if err := writeIntentFile(abs, rel, updated); err != nil {
+	// The read and the write are ONE critical section under the store's
+	// advisory lock (iss-2609261935407995): a hold or any other write landing
+	// between an unlocked read and this write would be erased.
+	if err := withIntentMintLock(repoRoot, func() error {
+		data, err := readRepoFile(abs, rel)
+		if err != nil {
+			return err
+		}
+		updated, err := setFrontmatterFields(string(data), map[string]string{"spec_id": specID})
+		if err != nil {
+			return err
+		}
+		return writeIntentFile(abs, rel, updated)
+	}); err != nil {
 		return LinkResult{}, err
 	}
 
@@ -685,28 +690,43 @@ func AddRelatedIssue(repoRoot, intentID, source string) (Intent, error) {
 	}
 	rel := it.Path
 	abs := filepath.Join(repoRoot, rel)
-	data, err := readRepoFile(abs, rel)
-	if err != nil {
-		return Intent{}, err
-	}
-	if _, retired := frontmatter.Fields(strings.Split(string(data), "\n"))[RetiredRelatedIssuesKey]; retired {
-		return Intent{}, fmt.Errorf("%w: %s carries `%s`, renamed to `%s`; run `abcd capture migrate --apply` first, nothing written",
-			ErrRetiredField, intentID, RetiredRelatedIssuesKey, RelatedIssuesKey)
-	}
-	for _, have := range it.RelatedIssues {
-		if have == source {
-			return it, nil // already joined; the write would change no byte
+	// The read, the list judged on it and the write are ONE critical section
+	// under the store's advisory lock (iss-2609261935407995): the list is read
+	// from the bytes held there, not from the corpus, so an edge or any other
+	// write landing before this one is kept rather than overwritten.
+	if err := withIntentMintLock(repoRoot, func() error {
+		data, err := readRepoFile(abs, rel)
+		if err != nil {
+			return err
 		}
-	}
-	list := append(append([]string{}, it.RelatedIssues...), source)
-	updated, err := setFrontmatterFields(string(data), map[string]string{RelatedIssuesKey: "[" + strings.Join(list, ", ") + "]"})
-	if err != nil {
+		fields := frontmatter.Fields(strings.Split(string(data), "\n"))
+		if _, retired := fields[RetiredRelatedIssuesKey]; retired {
+			return fmt.Errorf("%w: %s carries `%s`, renamed to `%s`; run `abcd capture migrate --apply` first, nothing written",
+				ErrRetiredField, intentID, RetiredRelatedIssuesKey, RelatedIssuesKey)
+		}
+		var have []string
+		if f, ok := fields[RelatedIssuesKey]; ok && !frontmatter.IsNull(f.Value) {
+			have = frontmatter.StringList(f.Value)
+		}
+		it.RelatedIssues = have
+		for _, h := range have {
+			if h == source {
+				return nil // already joined; the write would change no byte
+			}
+		}
+		list := append(append([]string{}, have...), source)
+		updated, err := setFrontmatterFields(string(data), map[string]string{RelatedIssuesKey: "[" + strings.Join(list, ", ") + "]"})
+		if err != nil {
+			return err
+		}
+		if err := writeIntentFile(abs, rel, updated); err != nil {
+			return err
+		}
+		it.RelatedIssues = list
+		return nil
+	}); err != nil {
 		return Intent{}, err
 	}
-	if err := writeIntentFile(abs, rel, updated); err != nil {
-		return Intent{}, err
-	}
-	it.RelatedIssues = list
 	return it, nil
 }
 
@@ -1014,7 +1034,7 @@ func Reconcile(repoRoot, specID, impact string, remainder RemainderRequest) (Rec
 	// the folder it left: a record an earlier run moved may have been edited
 	// where it is now. A failure is reported, not raised: the records have moved
 	// and the close stands.
-	res.Relinked, err = relink.Repoint(repoRoot, closeMoves(res, specMovedNow))
+	res.Relinked, err = repointUnderLock(repoRoot, closeMoves(res, specMovedNow))
 	if err != nil {
 		res.RelinkError = err.Error()
 	}
@@ -1033,6 +1053,44 @@ func Reconcile(repoRoot, specID, impact string, remainder RemainderRequest) (Rec
 		}
 	}
 	return res, nil
+}
+
+// duringRepoint is a test seam, nil outside tests: called inside the hold
+// repointUnderLock takes — the ledger lock, the intent store's and the spec
+// store's all held — before the repoint reads anything, so a test can start a
+// concurrent ledger, intent or spec writer there and prove it waits for the
+// repoint's write instead of landing between its read and its write.
+var duringRepoint func()
+
+// repointUnderLock is relink.Repoint under the ledger lock, the intent store's
+// lock and the spec store's, in that order (WithLedgerThenMintLock). The
+// repoint is a read-modify-write of every record that links to a moved path,
+// intents, specs and ledger records among them, so outside the intent lock an
+// intent writer (a hold, a condition disposition, a verdict ingest, a
+// related-issue edge) landing on a linking record between the repoint's read
+// and its write was erased (iss-2609261254247117), outside the ledger lock a
+// ledger writer was (iss-2609262143209970), and outside the spec lock a spec
+// close landing there left the spec in both status folders
+// (iss-2609262218309668). Every record-moving verb calls it AFTER its own hold
+// is released — no lock is reentrant — and reports a repoint failure
+// rather than raising it, as before: the record has moved and the verb stands.
+// A lock that cannot be taken, or a ledger with no ledger lock registered, is
+// reported the same way, with nothing repointed.
+func repointUnderLock(repoRoot string, moves []relink.Move) ([]relink.Rewrite, error) {
+	var (
+		rewrites []relink.Rewrite
+		rpErr    error
+	)
+	if err := WithLedgerThenMintLock(repoRoot, repoLedgerLock(repoRoot), func() error {
+		if duringRepoint != nil {
+			duringRepoint()
+		}
+		rewrites, rpErr = relink.Repoint(repoRoot, moves)
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	return rewrites, rpErr
 }
 
 // closeMoves names the renames a close stands for, derived from where the two

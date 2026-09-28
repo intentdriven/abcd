@@ -151,13 +151,19 @@ func IsHarnessLeakKind(kind string) bool {
 // regex runs only over a prefix made entirely of markers: running it over the
 // whole line before every match cost the line's length per footer
 // (iss-2609251535277823).
+//
+// A line break inside the text starts a line too. A line as written carries
+// none, but a decoded view does — the \n escapes of a JSON string quoting a
+// pull-request body decode to the breaks the body had — and a footer after
+// one owns its line exactly as it did in the body (iss-2609261658553101).
 func footerOwnsItsLine(line string, start int) bool {
 	i := start
 	for i > 0 && footerPrefixByte(line[i-1]) {
 		i--
 	}
 	scanMeter.charge(stageSkipAt, start-i)
-	return i == 0 && footerLinePrefixRe.MatchString(line[:start])
+	atLineStart := i == 0 || line[i-1] == '\n' || line[i-1] == '\r'
+	return atLineStart && footerLinePrefixRe.MatchString(line[i:start])
 }
 
 // footerPrefixByte is every byte footerLinePrefixRe can match.

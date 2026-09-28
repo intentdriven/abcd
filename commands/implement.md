@@ -173,9 +173,24 @@ Without `--run`, both act on the one run in progress in this checkout, and are
 refused naming the runs when there are several. A refusal exits 2 (3 on a pause
 or a locked state), writes nothing, and under `--json` comes as its own document
 before the error envelope, naming `refusal.step`, `refusal.reason` and
-`refusal.remedy`. In this build no step body is carried yet: `step` refuses the
-lane's first step naming the spec piece that delivers it, and the run stays
-ready to resume. Report the refusal as it is.
+`refusal.remedy`.
+
+The lane's steps are `worktree` (the lane's worktree in
+`~/.abcd/worktrees/<root-sha>/<run-id>-<lane-id>`, on a branch
+`build/<run-id>-<lane-id>` cut from the default branch), `brief` (the lane's
+brief, rendered from that base into
+`.abcd/.work.local/run/<run-id>/<lane-id>/brief.md`), `implement` (awaits an
+`implementer`'s receipt at `.abcd/.work.local/run/<run-id>/<lane-id>/receipt.json`),
+then `validate` and `land`. An implementer's receipt is one strict JSON object:
+`schema_version`, `run_id`, `lane`, `branch`, `commits` (full object names),
+`definition_of_done` (`command`, `exit_code`, `output`), `report`, and an
+optional `model`, with `output` and `report` paths inside the lane's directory.
+`receipt` refuses it, naming every gap, unless each commit is on the lane's
+branch past its base, the definition of done's output exists with exit code 0,
+and the report exists; any other field, a verdict included, refuses it. This
+build carries no `validate` or `land` body: `step` refuses there naming the
+spec piece that delivers it, and the run stays ready to resume. Report the
+refusal as it is.
 
 ## Check the machine's load
 

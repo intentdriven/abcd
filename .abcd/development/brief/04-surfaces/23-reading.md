@@ -30,10 +30,10 @@ a reading whose account of itself can be checked rather than believed.
 
 Bare `abcd reading` is a third form and a **read-only status render**: the
 assembler's version and schema number, the include and exclusion row counts, the
-charter path, the position definitions the binary resolves, the staged runs, and
-any orphaned ingest waiting to be swept. It writes nothing, and it is where an
-operator reads what the instrument currently is before commissioning anything
-through it.
+charter path, the position definitions the binary resolves, the staged runs no
+ingest has yet committed or refused, and any orphaned ingest waiting to be
+swept. It writes nothing, and it is where an operator reads what the instrument
+currently is before commissioning anything through it.
 
 ## The invocation carries no free text
 
@@ -243,6 +243,18 @@ disagreement, and a manifest naming another run or another position each refuse
 before that point and leave no refusal record at all. That is deliberate: a refusal
 record is a record about a run, and a payload that has not yet shown which run it
 belongs to has nothing to be recorded against.
+
+One refusal after that point is deliberately unrecorded. An item whose pattern or
+body field cites a record id that names no record — wherever the repository's
+record-lint gates prose citations in the reading-record store, which reads every
+record the ingest would write — refuses the whole run, naming the item, the field
+and the id, before the orphan sweep and before anything is staged. It is the gate
+the verdict ingest asks, reached through the same registration. Recording it would
+give the run an outcome, and the same run re-worded would then be refused as a
+rerun; left parked, it is ingested again once its prose describes the record
+rather than citing an id that does not exist. Like every recorded refusal, it
+rolls back what an earlier, interrupted attempt at the same run left in the
+ledger, so a refused run leaves no reading records.
 
 Writes are staged. Nothing durable is written or deleted until the whole payload
 validates; the reading records land as one batch; and the run metadata is written

@@ -133,3 +133,22 @@ func TestWithFileLockContentionNamesTheCallersTimeout(t *testing.T) {
 		t.Fatalf("contention error %q does not name the caller's %s timeout", err, timeout)
 	}
 }
+
+// The poll interval a lock waiter sleeps never exceeds LockPollCeiling and
+// reaches it: the ceiling is what a caller freeing the lock for a window
+// derives that window from, so a ceiling the loop can overshoot — the doubling
+// once ran past it, 80ms to 160ms — breaks every guarantee built on it
+// (iss-2609262257227538).
+func TestTheLockPollNeverSleepsPastItsCeiling(t *testing.T) {
+	b, reached := lockPollStart, false
+	for i := 0; i < 64; i++ {
+		if b > LockPollCeiling {
+			t.Fatalf("the poll sleeps %s, past its ceiling of %s", b, LockPollCeiling)
+		}
+		reached = reached || b == LockPollCeiling
+		b = nextLockPoll(b)
+	}
+	if !reached {
+		t.Errorf("the poll never reaches its ceiling of %s", LockPollCeiling)
+	}
+}

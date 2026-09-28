@@ -20,12 +20,19 @@
 // state is written through the package's one atomic writer inside an os.Root, so
 // a symlinked component is refused rather than followed.
 //
-// What this package does NOT do is the work of a step. The lane's steps are a
-// sequence (Sequence), and each step's body is a Handler the piece of the spec
-// that delivers it registers in DefaultSteps: the worktree (piece 6), the brief
-// (piece 5), the receipt's verifier (piece 7), the validators (piece 8) and the
-// landing (piece 9). A step whose body this build does not carry is refused by
-// name, with the piece that delivers it, and the run is left unchanged. The
+// The lane's steps are a sequence (Sequence), and each step's body is a
+// Handler the piece of the spec that delivers it registers in DefaultSteps: the
+// worktree (piece 6, lane.go), the brief (piece 5, brief.go), the implement
+// step and its receipt's verifier (piece 7, receipt.go), the validators (piece
+// 8) and the landing (piece 9). A step whose body this build does not carry is
+// refused by name, with the piece that delivers it, and the run is left
+// unchanged. A lane's files live in its own directory of the run:
+//
+//	.abcd/.work.local/run/<run-id>/<lane-id>/brief.md      the brief the loop renders
+//	.abcd/.work.local/run/<run-id>/<lane-id>/receipt.json  the implementer's receipt
+//
+// and its worktree in the machine-scoped store,
+// ~/.abcd/worktrees/<root-sha>/<run-id>-<lane-id>. The
 // process driver (piece 3, waiting on the runner intent itd-2609201916056194)
 // is the same loop called by a process instead of a host: it starts the agent an
 // Await names through the runner and then calls Receipt, so it needs no seam
@@ -36,7 +43,6 @@
 package loop
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -46,6 +52,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core/jsonstrict"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
@@ -261,10 +268,10 @@ func readStateIn(root *os.Root, runID string) (State, error) {
 		return State{}, refuse("state", "", "", fmt.Sprintf("%s cannot be read as the run's state: %v", rel, err),
 			"the loop writes a regular file in a real directory; restore that, or remove the run directory "+runRel(runID))
 	}
+	// One strict decode, the lane receipt's: a repeated key, a field State
+	// does not name and a second document are each refused (iss-2609281204381700).
 	var st State
-	dec := json.NewDecoder(bytes.NewReader(data))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&st); err != nil {
+	if err := jsonstrict.Decode(data, &st); err != nil {
 		return State{}, refuse("state", "", "", fmt.Sprintf("%s does not parse as a run state: %v", rel, err),
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
 	}

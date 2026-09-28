@@ -1,7 +1,7 @@
 # Configuration Model
 
 Almost nothing here is a decision anyone has to make. Installing abcd asks four
-questions, records the answers, and gets on with it; two further keys can be
+questions, records the answers, and gets on with it; four further keys can be
 hand-set and are read but never written. That is the whole of the configuration
 surface the shipped binary consults. Everything else on this page is either a
 store abcd lays out for itself, a policy that follows from one of those four
@@ -15,13 +15,13 @@ shipped behaviour. Everything after them is **staged**, per the truth rule in
 
 ### The keys the binary reads
 
-Seven keys plus a `meta` block. Install asks about visibility, the docs target,
+Nine keys plus a `meta` block. Install asks about visibility, the docs target,
 the oracle backend, and the deep scan (the last only when visibility is private
 and the deep scanner is on `PATH`), and writes exactly those four values back.
-`attribution.hook` is written by `ahoy install --attribution`. The remaining two —
-whether abcd should enable the forge's own secret scanning, and the rules
-loader's refresh backstop — are hand-set: the binary reads them and never writes
-them.
+`attribution.hook` is written by `ahoy install --attribution`. The remaining four —
+whether abcd should enable the forge's own secret scanning, the rules loader's
+refresh backstop, and the filing-time match's threshold and compared fields —
+are hand-set: the binary reads them and never writes them.
 
 ```json
 {
@@ -57,9 +57,26 @@ them.
     "force_refresh_every_n": 15         // prompt-router refresh backstop (itd-3). The primary refresh is
                                         //   event-driven, on SessionStart and PreCompact, so this large
                                         //   counter only re-injects always-relevant domains
+  },
+  "match": {                            // the filing-time match of capture and the intent create
+                                        //   (itd-2609212137116617), a lexical heuristic
+    "threshold": 0.6,                   // share of the new text's terms a record must hold, in (0, 1],
+                                        //   for a duplicates/refines link to be written
+    "fields": ["issue.body", "intent.title", "intent.press_release"]
+                                        // what each candidate offers; one or more of the three
   }
 }
 ```
+
+The `match` keys are read through the layered configuration reader
+(`internal/core/layered`), as the provider adapter's `oracle` keys below are:
+`.abcd/config.json` wins, then
+`~/.abcd/config.json`, then the bundled default above, and each value is
+reported with the file it came from. The reader claims the `match` namespace,
+so a misspelt key, a threshold outside its range and a field outside the set
+are refused naming the file, never passed over for the default. A refusal
+there never refuses a filing: the record is written unlinked and the verb says
+which key was refused.
 
 There is no separate `.abcd/meta.json` at repo scope: setup metadata is the `meta`
 block. This repository's own config carries four of these blocks — `docs`, `meta`,
@@ -330,16 +347,18 @@ history registry, the transcript corpus, the voyage operations namespace, the
 lab store, the staged worktree store, the run state an autonomous run's sessions share
 ([`../04-surfaces/27-implement.md`](../04-surfaces/27-implement.md)), the inbox of reports managed repositories file back to abcd
 ([`../04-surfaces/29-report.md`](../04-surfaces/29-report.md)), the machine layer of the layered configuration in `config.json`
-(its one reader is the provider adapter's, and its one write the provider block
-`ahoy connect` adds; every other config read resolves the repo-scope
-`.abcd/config.json`), the load check's two limits in `load-limits` (read-only and
-never created, itd-2609231434459890), the external credentials adapters resolve
-by name in `credentials.json` (refused unless it is a regular file this uid owns
-at mode 0600 that names each credential once, a repeated key or a case twin
-included; `ahoy connect` adds one name at a time and never replaces a stored
-value, holding the file's lock across the read and the write as the provider
-block's write holds `config.json`'s, so concurrent setups lose nothing — the
-interim source the credential store, itd-2609221017023290, replaces), the
+(its readers are the provider adapter's and the filing-time match's `match`
+keys, each read beneath the repo-scope `.abcd/config.json`, and its one write
+the provider block `ahoy connect` adds; every other config read resolves the
+repo-scope `.abcd/config.json` alone), the load check's two limits in
+`load-limits` (read-only and never created, itd-2609231434459890), the external
+credentials adapters resolve by name in `credentials.json` (refused unless it is
+a regular file this uid owns at mode 0600 that names each credential once, a
+repeated key or a case twin included; `ahoy connect` adds one name at a time and
+never replaces a stored value, holding the file's lock across the read and the
+write as the provider block's write holds `config.json`'s, so concurrent setups
+lose nothing — the interim source the credential store, itd-2609221017023290,
+replaces), the
 machine's rule conventions in `rules.json` (the user layer of the rules loader,
 read-only and never created, itd-117 — see
 [the rules layers](#the-rules-layers--bundled-user-repo) below), user-scope memory for personal cross-project knowledge (a later
@@ -446,6 +465,16 @@ makes that grain more visible; finer-grained merging, detecting a repo file that
 duplicates the user layer, and moving conventions out of per-project harness
 memory are all recorded in itd-117 as follow-up questions.
 
+**A withheld guardrail is named.** Because a list replaces the bundled list, an
+override written before a release added an entry keeps withholding that entry.
+For the three guardrail domains — `PII`, `COMMITTING` and `LOAD` — the load
+compares every recall, alias and rule list an override set against the list the
+running binary bundles. It names each bundled entry left out, and the file whose
+list is in force, on stderr from `abcd rules` and from the hook on every prompt.
+The effective set is unchanged. Restating the entry keeps it; leaving the field
+out inherits the bundled list. The other bundled domains are conventions a
+repository restates in its own words, so a replacement there is not reported.
+
 ## The rules root — which `.abcd/` governs a session
 
 The rules, the hazard registry and the per-repo config are read from ONE resolved
@@ -473,11 +502,16 @@ second falls back to the `.git` marker, under two bounds:
 | **ownership** | a marker root whose owner is not the caller. Shape alone is not a trust boundary: `git init` in a shared world-writable directory produces a genuine repository, and git's refusal on ownership is the same signal in that attack as in the legitimate foreign-uid case (iss-2609020259564193) | a declaration, once, per foreign-uid checkout |
 
 A refused root is refused **loudly and fail-closed**: the session resolves to its
-own working directory with no walk, the bundled rule defaults (under the user
-layer, which is the caller's own) and bundled hazard registry stand in for the
-repository's, and every front door prints one line naming
-the refused directory, the two uids, and the exact command that re-admits it
+own working directory with no walk, and every front door prints one line naming
+the refused directory, the two uids, what the session reads instead, and the
+exact command that re-admits it
 ([`../../principles/loud-staging.md`](../../principles/loud-staging.md)). The
+refusal bounds the walk, not the working directory. From a directory with no
+`.abcd/` of its own, the bundled rule defaults (under the user layer, which is
+the caller's own) and the bundled hazard registry stand in for the repository's.
+A `.abcd/` at the working directory is still read, so a session started at the
+refused root reads that root's configuration, and the line says so rather than
+promising the defaults. The
 ownership bound applies only to the git-refused fallback: where git answers, the
 toplevel it named stands whoever owns it, because that is a repository git itself
 vouched for.
@@ -502,13 +536,15 @@ directory, and
 [adr-46](../../decisions/adrs/0046-persistence-never-weakens-the-verification-posture.md)
 treats home write as the ownership root.
 
-One residual stays open and recorded rather than assumed shut:
-**iss-2609020219198779**, the user scope when the home directory is itself a git
-working tree. The toplevel for a session in a non-repo directory beneath such a
-home is the home, so the user-scope `.abcd` governs it as the repo root too — its
-`rules.json` as the repo layer as well as the user layer, and its `guard.json` and
-`config.json` with it; closing it needs a decision on whether a home-directory
-toplevel is a legitimate repo-scope root.
+**The home directory is never a repo root.** Its `.abcd/` is the user layer, and
+a home that is itself a git working tree (dotfiles in the home) is not thereby a
+project. The walk passes over the home, and a toplevel that is the home resolves
+like a directory outside any repository — the working directory, no walk — when
+nothing below the home carries a `.abcd/`. So a session beneath such a home reads
+`~/.abcd/rules.json` once, as the user layer, and never the home's `guard.json`
+or `config.json` as a repository's own. A toplevel that contains the home — a
+test harness that points `HOME` inside its checkout — stays the root, because it
+is a repository git vouched for, and its own `.abcd/` stays its own.
 
 ## 1. Visibility-driven gitignore policy
 

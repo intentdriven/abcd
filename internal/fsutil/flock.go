@@ -114,7 +114,7 @@ func openLockFd(lockPath string) (int, error) {
 // budget: a revalidation retry spends one deadline across more than one
 // acquisition, and the slice left for the last one is not what was asked for.
 func acquireFlock(fd int, deadline time.Time, timeout time.Duration) error {
-	backoff := 5 * time.Millisecond
+	backoff := lockPollStart
 	for {
 		err := syscall.Flock(fd, syscall.LOCK_EX|syscall.LOCK_NB)
 		if err == nil {
@@ -131,10 +131,24 @@ func acquireFlock(fd int, deadline time.Time, timeout time.Duration) error {
 			backoff = remaining
 		}
 		time.Sleep(backoff)
-		if backoff < 100*time.Millisecond {
-			backoff *= 2
-		}
+		backoff = nextLockPoll(backoff)
 	}
+}
+
+// LockPollCeiling is the longest a waiter on a WithFileLock lock sleeps
+// between two attempts: the poll starts at lockPollStart and doubles up to it,
+// never past it. A caller that frees a lock for a window so that such a waiter
+// is sure to find it free — intent's pair acquisition, resting between attempts
+// — keeps that window longer than this, so it is derived from it rather than
+// restated (iss-2609262257227538).
+const LockPollCeiling = 100 * time.Millisecond
+
+// lockPollStart is the first interval of the poll.
+const lockPollStart = 5 * time.Millisecond
+
+// nextLockPoll is the interval after b: doubled, and held at LockPollCeiling.
+func nextLockPoll(b time.Duration) time.Duration {
+	return min(2*b, LockPollCeiling)
 }
 
 // WithFileLockIn is WithFileLock with the lock file resolved INSIDE root: rel is

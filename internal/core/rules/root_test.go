@@ -625,3 +625,97 @@ func TestResolveRootMatchesADeclaredRootExactly(t *testing.T) {
 	}
 	assertPlantNotRead(t, res.Root)
 }
+
+// TestResolveRootRefusalSaysWhatItStillReads (iss-2609251522588539): the
+// refusal bounds the WALK, not the working directory, so a session started at
+// the refused root — or in a directory beneath it carrying its own .abcd —
+// still reads the .abcd at its working directory. The note is the one account
+// the user gets of what governs the session, so it must not say that
+// configuration went unread, or that the bundled defaults stand in, when the
+// loaders are about to read it.
+func TestResolveRootRefusalSaysWhatItStillReads(t *testing.T) {
+	cases := []struct {
+		name string
+		cwd  func(plant, victim string) string
+	}{
+		{"session at the refused root", func(plant, _ string) string { return plant }},
+		{"session beneath it with its own .abcd", func(_, victim string) string {
+			plantConfiguration(t, victim)
+			return victim
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			plant, victim, _ := foreignPlant(t)
+			ownedByAnother(t, plant)
+			cwd := tc.cwd(plant, victim)
+
+			res := Resolve(cwd)
+			if res.Root != cwd {
+				t.Fatalf("Resolve(%q).Root = %q, want the working directory", cwd, res.Root)
+			}
+			rs, err := Load(res.Root)
+			if err != nil {
+				t.Fatalf("Load(%q): %v", res.Root, err)
+			}
+			if !rs.Disabled {
+				t.Fatalf("fixture: the working directory's rules.json was not read at %q", res.Root)
+			}
+			note := noteMentioning(res.Notes, "REFUSED")
+			if note == "" {
+				t.Fatalf("the refusal is silent; notes = %q", res.Notes)
+			}
+			for _, false_ := range []string{"NOT read", "fall back to the bundled defaults"} {
+				if strings.Contains(note, false_) {
+					t.Errorf("the note says %q while the working directory's .abcd is read: %s", false_, note)
+				}
+			}
+			if !strings.Contains(note, "IS read") {
+				t.Errorf("the note does not say the working directory's .abcd is read: %s", note)
+			}
+		})
+	}
+}
+
+// TestResolveRootRefusalBeneathTheRootStillSaysTheRootWentUnread: the other
+// geometry keeps its wording — a plain directory beneath the refused root, with
+// no .abcd of its own, reads nothing but the bundled defaults and the user layer.
+func TestResolveRootRefusalBeneathTheRootStillSaysTheRootWentUnread(t *testing.T) {
+	plant, victim, _ := foreignPlant(t)
+	ownedByAnother(t, plant)
+	note := noteMentioning(Resolve(victim).Notes, "REFUSED")
+	if !strings.Contains(note, "NOT read") || strings.Contains(note, "IS read") {
+		t.Errorf("a plain directory beneath the refused root must be told the root's configuration went unread: %s", note)
+	}
+}
+
+// TestResolveRootRefusalNeverSaysASymlinkedAbcdIsRead (iss-2609261753290536):
+// the note's "IS read" branch must ask the question the loaders ask. A .abcd at
+// the working directory that is a symlink is refused by the repo-layer read
+// (readRepoLayer Lstat-refuses it), so a note that followed the link and said
+// its configuration governs the session would tell the user the opposite of
+// what the loader does.
+func TestResolveRootRefusalNeverSaysASymlinkedAbcdIsRead(t *testing.T) {
+	plant, victim, _ := foreignPlant(t)
+	ownedByAnother(t, plant)
+	elsewhere := mustDir(t, filepath.Join(filepath.Dir(plant), "elsewhere"))
+	plantConfiguration(t, elsewhere)
+	if err := os.Symlink(filepath.Join(elsewhere, ".abcd"), filepath.Join(victim, ".abcd")); err != nil {
+		t.Fatal(err)
+	}
+
+	res := Resolve(victim)
+	if res.Root != victim {
+		t.Fatalf("Resolve(%q).Root = %q, want the working directory", victim, res.Root)
+	}
+	if _, err := Load(res.Root); err == nil {
+		t.Fatalf("fixture: the loader read a symlinked .abcd at %q; the note's claim rests on its refusing it", res.Root)
+	}
+	note := noteMentioning(res.Notes, "REFUSED")
+	if note == "" {
+		t.Fatalf("the refusal is silent; notes = %q", res.Notes)
+	}
+	if strings.Contains(note, "IS read") || !strings.Contains(note, "NOT read") {
+		t.Errorf("the note says a symlinked .abcd the loader refuses is read: %s", note)
+	}
+}

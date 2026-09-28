@@ -25,6 +25,13 @@ plugin surface, and a future MCP server share one engine.
   carries, and a record they disagree about is one that sits in the ledger unread
   by every surface. It is not inside `core/capture` because that package's own
   tests import `core/lint`, so a lint importing capture back is an import cycle.
+- **`core/issuerecord/`** — the ledger reader's judgement of one file in a status
+  directory: the guarded read, the frontmatter parse, the schema and the
+  folder-and-filename invariants, and the stage that refused a record it skips.
+  A leaf on the `core/issueschema` precedent: `core/capture` scans the ledger
+  through it, and `core/lint`'s reader-parity leg asks the same judgement through
+  `capture.ReadRefusal`, so the gate and the surfaces reach one verdict on one
+  file rather than two validators agreeing.
 - **`core/grounds/`** — the recorded-grounds vocabulary and its record form: the
   three values (`pursued`, `deferred`, `declined`), the `<token>: <text>` grammar,
   the substance floor that refuses a degenerate text, and the append-only
@@ -146,6 +153,13 @@ plugin surface, and a future MCP server share one engine.
   and it holds the seam a specialist link checker would later slot into — the
   baseline schema and the lint rules are the contract, the fetcher is a
   replaceable producer.
+- **`core/tools/`** — the explain-then-install mode (itd-63): the curated
+  registry of the external tools abcd knows, the plain-language explanation a
+  verb gives when one is missing, and the one place abcd runs a package
+  manager. It is a trust boundary, and a mode rather than a surface: a verb
+  hands `Install` a confirmation its front door supplies, and what runs is the
+  registry's fixed argv, never composed from input, never a shell, never in CI,
+  and never a program that resolves inside the repository.
 - **`core/lifeboat/`** — the brief↔lifeboat contract. `mapping.go` is the single
   source of truth for which brief section a lifeboat fills from which source
   tier, and it is rendered into the brief's `00-meta.md` with a test asserting

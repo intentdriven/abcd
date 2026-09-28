@@ -31,7 +31,7 @@ import (
 // detector has nothing of this package's to watch, and instrumenting
 // those passes cost 125s against 6s uninstrumented on the same machine: a third
 // of this package's race time, on the macOS leg whose job is held to the merge
-// queue's 30-minute cap (iss-2609261924541555). The uninstrumented lane asserts
+// queue's 45-minute cap (iss-2609261924541555). The uninstrumented lane asserts
 // the same cap on both CI legs.
 func TestHistoryCaptureAcceptsWhatTheHooksAccept(t *testing.T) {
 	if raceEnabled {

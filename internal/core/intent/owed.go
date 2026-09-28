@@ -126,14 +126,21 @@ func ReviewOf(repoRoot string, it Intent) (ReviewEntry, error) {
 // retained at <path>. ...". The reason is cut at the LAST retention clause,
 // because the reason is free text and the path after it is ours. A block in any
 // other shape yields the empty reason rather than a guess.
+//
+// The block is readReviewBlocks' block for rcp, so a marker quoted in a fenced
+// example is never the one the reason is read from.
 func deadLetterReason(content, rcp string) string {
-	loc := markerRe.FindStringIndex(content)
-	if loc == nil {
+	lines, b, ok := reviewBlockFor(content, rcp)
+	if !ok {
 		return ""
 	}
-	rest := strings.TrimLeft(content[loc[1]:], "\r\n")
-	line, _, _ := strings.Cut(rest, "\n")
-	line = strings.TrimRight(line, "\r")
+	line := ""
+	for _, ln := range lines[b.start+1 : b.end] {
+		if ln = strings.TrimRight(ln, "\r"); ln != "" {
+			line = ln
+			break
+		}
+	}
 	prefix := "Fidelity review DEAD_LETTER (receipt " + rcp + "): "
 	if !strings.HasPrefix(line, prefix) {
 		return ""

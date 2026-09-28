@@ -71,6 +71,13 @@ non-directory parent. On any such conflict the core **writes nothing**: it
 returns the conflict set it found, and the surface renders it. A refusal that
 writes a file would be a transport-agnostic-core violation.
 
+The write runs under the target's issue-ledger lock (when it writes an issue)
+and then its intent store's lock, the order every writer holding both takes,
+and every planned write is judged again under them. A record created at a
+planned target between the plan and the write — a capture, an intent minted in
+the target meanwhile — is a conflict like any other, so it refuses the whole
+write rather than being replaced.
+
 ## 3. Scaffold steps
 
 Embark is a deterministic Go run: it reads the lifeboat, plans, refuses on any

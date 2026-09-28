@@ -452,3 +452,159 @@ func TestAFencedMarkupExampleIsNotTheShape(t *testing.T) {
 		t.Errorf("the refusal does not name the shape: %v", err)
 	}
 }
+
+// TestANestedMappingRefusesBehindEveryBlockIndicator is shape 3's class, not its
+// one spelling (iss-2608301237450573). The refusal read one `- ` and then a key,
+// so every other way of reaching a compact nested mapping travelled: a second
+// sequence indicator, a node property between the indicator and the key, an
+// explicit key inside the entry, an explicit key's value on its `:` line, and a
+// single-pair mapping inside a flow sequence. Each is an `origin` key to YAML and
+// was nothing to the floor, and the manifest asserted its refusal.
+func TestANestedMappingRefusesBehindEveryBlockIndicator(t *testing.T) {
+	const pre, post = "---\nid: spc-1\n", "---\n\n# A record\n"
+	for name, front := range map[string]string{
+		"a sequence of sequences":        "links:\n  - - origin: ABCD-WARM-ORIGIN\n",
+		"a tab after the indicator":      "links:\n  -\t- origin: ABCD-WARM-ORIGIN\n",
+		"an anchored entry":              "links:\n  - &a origin: ABCD-WARM-ORIGIN\n",
+		"a tagged entry":                 "links:\n  - !t origin: ABCD-WARM-ORIGIN\n",
+		"an explicit key in an entry":    "links:\n  - ? origin\n    : ABCD-WARM-ORIGIN\n",
+		"an explicit value's mapping":    "? meta\n: origin: ABCD-WARM-ORIGIN\n",
+		"a flow pair in a flow sequence": "links: [origin: ABCD-WARM-ORIGIN]\n",
+		// Siblings refused before this change, kept refused.
+		"the recorded shape":                "links:\n  - origin: ABCD-WARM-ORIGIN\n",
+		"a quoted key in an entry":          "links:\n  - \"origin\": ABCD-WARM-ORIGIN\n",
+		"a flow mapping in an entry":        "links:\n  - {origin: ABCD-WARM-ORIGIN}\n",
+		"an anchored flow mapping":          "base: &b {origin: ABCD-WARM-ORIGIN}\nuse: *b\n",
+		"a key under a bare indicator":      "links:\n  -\n    origin: ABCD-WARM-ORIGIN\n",
+		"a multi-line flow mapping":         "meta: {a: 1,\n  origin: ABCD-WARM-ORIGIN}\n",
+		"a block scalar holding the key":    "note: |\n  origin: ABCD-WARM-ORIGIN\n",
+		"a quoted pair in a flow sequence":  "links: [\"origin\": ABCD-WARM-ORIGIN]\n",
+		"a second key in a nested mapping":  "links:\n  - name: a\n    origin: ABCD-WARM-ORIGIN\n",
+		"a flow pair after a flow sequence": "links: [a, origin: ABCD-WARM-ORIGIN]\n",
+	} {
+		err := refuses(t, "spc-1-a-record.md", pre+front+post, refusalKeys, refusalHeadings)
+		if err == nil {
+			t.Errorf("%s: admitted; the key is an origin key to YAML and travels", name)
+			continue
+		}
+		if !strings.Contains(err.Error(), "spc-1-a-record.md") {
+			t.Errorf("%s: the refusal does not name the document: %v", name, err)
+		}
+	}
+
+	// The anti-vacuity half: what committed records carry is admitted.
+	for name, front := range map[string]string{
+		"a sequence of scalars":       "builds_on:\n  - itd-183\n  - \"itd-199\"\n",
+		"a flow sequence of scalars":  "related: [itd-183, itd-199]\n",
+		"a URL in a flow sequence":    "sources: [https://example.com/a]\n",
+		"an explicit key and a value": "? meta\n: a plain value\n",
+		"an entry under a bare dash":  "builds_on:\n  -\n    itd-183\n",
+	} {
+		if err := refuses(t, "spc-1-a-record.md", pre+front+post, refusalKeys, refusalHeadings); err != nil {
+			t.Errorf("%s was refused: %v", name, err)
+		}
+	}
+}
+
+// TestAnAliasInAKeyPositionRefuses (iss-2609261900095459). An anchor sits
+// wherever a node can, a value included, and an alias written where a key
+// stands IS that anchored scalar to YAML: `k: &a origin` then `*a : X` reads as
+// {origin: X}. The anchor refusal fired only at line start and behind a block
+// indicator, and nothing read `*` at all, so the key travelled. The refusal is
+// of the alias in every key position — line start, behind a block indicator,
+// behind `{`, `[` or `,` — whatever the anchored scalar says.
+func TestAnAliasInAKeyPositionRefuses(t *testing.T) {
+	const pre, post = "---\nid: spc-1\n", "---\n\n# A record\n"
+	for name, front := range map[string]string{
+		"an alias key at line start":          "k: &a origin\n*a : ABCD-WARM-ORIGIN\n",
+		"an alias key in a flow mapping":      "k: &a origin\nm: {*a : ABCD-WARM-ORIGIN}\n",
+		"an alias key after a flow comma":     "k: &a origin\nm: {x: 1, *a : ABCD-WARM-ORIGIN}\n",
+		"an alias pair in a flow sequence":    "k: &a origin\nm: [*a : ABCD-WARM-ORIGIN]\n",
+		"an alias key on a flow continuation": "k: &a origin\nm: {x: 1,\n  *a : ABCD-WARM-ORIGIN}\n",
+		"a comma-first flow continuation":     "k: &a origin\nm: {x: 1\n  , *a : ABCD-WARM-ORIGIN}\n",
+		"an alias key in a nested mapping":    "k: &a origin\nm:\n  *a : ABCD-WARM-ORIGIN\n",
+		"an anchor behind a tag":              "k: !!str &a origin\n*a : ABCD-WARM-ORIGIN\n",
+		"an anchor in a flow mapping's value": "m: {k: &a origin}\n*a : ABCD-WARM-ORIGIN\n",
+		"an anchor in a flow sequence":        "l: [&a origin]\n*a : ABCD-WARM-ORIGIN\n",
+		"a tag before a flow alias key":       "k: &a origin\nm: {!!str *a : ABCD-WARM-ORIGIN}\n",
+		"a CRLF alias key":                    "k: &a origin\r\n*a : ABCD-WARM-ORIGIN\r\n",
+		// Siblings refused before this change, kept refused.
+		"an alias as an explicit key":           "k: &a origin\n? *a\n: ABCD-WARM-ORIGIN\n",
+		"an alias key in a sequence entry":      "k: &a origin\nlinks:\n  - *a : ABCD-WARM-ORIGIN\n",
+		"an alias key behind an explicit value": "k: &a origin\n? meta\n: *a : ABCD-WARM-ORIGIN\n",
+		"a merge over an anchored flow map":     "base: &m {origin: ABCD-WARM-ORIGIN}\nuse:\n  <<: *m\n",
+		"a merge over an anchored block map":    "base: &m\n  origin: ABCD-WARM-ORIGIN\nuse:\n  <<: *m\n",
+	} {
+		err := refuses(t, "spc-1-a-record.md", pre+front+post, refusalKeys, refusalHeadings)
+		if err == nil {
+			t.Errorf("%s: admitted; the alias is an origin key to YAML and travels", name)
+			continue
+		}
+		if !strings.Contains(err.Error(), "spc-1-a-record.md") {
+			t.Errorf("%s: the refusal does not name the document: %v", name, err)
+		}
+	}
+
+	// The anti-vacuity half: an alias in a VALUE position copies a node whose
+	// own text the floor already read where the anchor sits, and an asterisk
+	// that is not an alias is prose.
+	for name, front := range map[string]string{
+		"an alias as a value":            "k: &a origin\nuse: *a\n",
+		"an alias in a sequence entry":   "k: &a origin\nlist:\n  - *a\n",
+		"a merge over a harmless map":    "base: &m {name: x}\nuse:\n  <<: *m\n",
+		"an asterisk in a quoted value":  "note: \"see [*] and {*a : b}\"\n",
+		"an asterisk inside a plain one": "note: a*b, c *d\n",
+	} {
+		if err := refuses(t, "spc-1-a-record.md", pre+front+post, refusalKeys, refusalHeadings); err != nil {
+			t.Errorf("%s was refused: %v", name, err)
+		}
+	}
+}
+
+// TestTheEscapedKeyRefusalStatesOnlyWhatItKnows (iss-2608301421381157). The
+// escaped-key refusal shared the excluded-key message, which asserted that the
+// document still carried an excluded key and that its block was not closed the
+// way the field reader expects. Neither is known of an escape: the package does
+// not decode one, so which key it spells is exactly what it cannot say, and the
+// block is closed as expected. The refusal stands; its stated reason is the
+// escape.
+func TestTheEscapedKeyRefusalStatesOnlyWhatItKnows(t *testing.T) {
+	for name, doc := range map[string]string{
+		"a line-anchored escaped key":  "---\nid: spc-1\n\"C:\\tmp\\x\": v\n---\n\n# A record\n",
+		"an escaped key in a flow map": "---\nid: spc-1\nmeta: {a: 1, \"C:\\tmp\\x\": v}\n---\n\n# A record\n",
+	} {
+		err := refuses(t, "spc-1-a-record.md", doc, map[string]bool{"origin": true}, nil)
+		if err == nil {
+			t.Errorf("%s: an escaped key was admitted", name)
+			continue
+		}
+		msg := err.Error()
+		for _, want := range []string{"spc-1-a-record.md", "line 3", "escape", `C:\\tmp\\x`} {
+			if !strings.Contains(msg, want) {
+				t.Errorf("%s: the refusal does not state %q: %v", name, want, err)
+			}
+		}
+		for _, claim := range []string{"excluded key", "not closed"} {
+			if strings.Contains(msg, claim) {
+				t.Errorf("%s: the refusal asserts %q, which is not known of an escape: %v", name, claim, err)
+			}
+		}
+	}
+
+	// The general refusal names the key and the line, and claims no block shape
+	// it did not observe: a quoted key survives redaction in a block closed
+	// exactly as the field reader expects.
+	const quoted = "---\nid: spc-1\n\"origin\": ABCD-WARM-ORIGIN\n---\n\n# A record\n"
+	err := refuses(t, "spc-1-a-record.md", quoted, map[string]bool{"origin": true}, nil)
+	if err == nil {
+		t.Fatal("a quoted excluded key was admitted")
+	}
+	for _, want := range []string{"spc-1-a-record.md", `"origin"`, "line 3"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the refusal does not state %q: %v", want, err)
+		}
+	}
+	if strings.Contains(err.Error(), "not closed") {
+		t.Errorf("the refusal asserts a block shape the document does not have: %v", err)
+	}
+}

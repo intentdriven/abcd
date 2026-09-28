@@ -123,7 +123,7 @@ func TestCommitMsgHookRefusesASessionURL(t *testing.T) {
 
 func TestCommitMsgHookRefusesAToolFooter(t *testing.T) {
 	c := newCommitMsgHookCase(t)
-	refused, out := c.commitWith("a.txt", "fix: the walk\n\n🤖 Generated with [Some Tool](https://sometool.dev)\n")
+	refused, out := c.commitWith("a.txt", "fix: the walk\n\n🤖 Generated with [Some Tool](https://sometool.dev)\n") // abcd-lint:allow
 	if !refused {
 		t.Fatalf("a commit message carrying a tool attribution footer was committed\n%s", out)
 	}

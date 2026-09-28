@@ -44,7 +44,7 @@ Detect abcd's install state and list its gaps, or report one mode a flag names: 
 
 ```
       --dry-run     print the detection result as its JSON envelope, whether or not --json is passed
-      --identity    check git's commit identity against .abcd/config/identity.json, exiting non-zero on a mismatch (for a pre-commit hook or CI)
+      --identity    check git's commit author and committer against .abcd/config/identity.json, exiting non-zero when either diverges (for a pre-commit hook or CI)
       --providers   explain the optional OpenAI-compatible provider adapter, list the providers configured on this machine and where a key can live
       --remote      report this repository's GitHub secret-scanning settings and what the remote apply sub-verb would change
 ```
@@ -78,7 +78,7 @@ Report every install gap, user-scope state included: Writes nothing; refuses any
 
 #### `abcd ahoy install`
 
-Apply the install gaps the detection finds: Writes the .abcd/ scaffolding, the name-guard hooks, and the PATH entry; refuses a stale binary before any write.
+Apply the install gaps the detection finds: Writes .abcd/, the name-guard hooks and the PATH entry, and installs a tool only on a yes; refuses a stale binary.
 
 **Usage:** `abcd ahoy install [flags]`
 
@@ -91,11 +91,12 @@ Apply the install gaps the detection finds: Writes the .abcd/ scaffolding, the n
       --bin-dir string          directory for the PATH entry (default ~/.local/bin, or an existing abcd install adopted in place); fails when it is not writable — abcd never escalates privileges
       --dev                     track-latest dogfood mode: the PATH entry rebuilds from the source tip on every call instead of pinning the built binary
       --docs-target string      which conventions file carries the managed block, which names abcd: claude_md | agents_md | both | skip (default skip)
+      --install-tool strings    answer yes to installing this missing tool (repeatable): the answer a host's question tool relays; without it a tool is installed only on an answer typed at a terminal, never on the approve-everything flag, a piped answer or CI
       --oracle-backend string   oracle backend: host-delegated | native | cli | api | mcp
       --refuse-adopt            decline to adopt an unmanaged repo
       --scan-deep string        enable deep scan: true | false
       --visibility string       repo visibility: private | public
-      --yes                     approve every resolvable change category without prompting; excludes the optional git-identity pin, the status line and the model-tier routing tables, which need an answered prompt (run without --yes, or answer every prompt with: yes | abcd ahoy install)
+      --yes                     approve every resolvable change category without prompting; excludes the optional git-identity pin, the status line and the model-tier routing tables, which need an answered prompt (run without --yes, or answer every prompt with: yes | abcd ahoy install); it never changes the repository's git identity, which is proposed only to a person at a terminal
 ```
 
 #### `abcd ahoy remote`
@@ -1465,6 +1466,12 @@ that does not is refused naming what is missing, with the lane left where it was
 step whose verifier this abcd does not carry is refused naming the spec piece that
 delivers it.
 
+An implementer's receipt is read strictly (one JSON object, no field the brief does not
+name, within its size cap, never through a symlink) and verifies only when every commit
+it names is on the lane's branch past its base, the definition of done's output exists
+in the lane's directory with a zero exit code, and the report exists there. A receipt
+that verifies moves the lane's head to its branch's tip.
+
 --run names the run; without it, the one run in progress in this checkout. Exit 2 on a
 refusal, exit 3 on a locked run state.
 
@@ -1546,7 +1553,7 @@ and creates nothing. Exit 2 when --run names no run.
 
 #### `abcd implement step`
 
-Perform the next step of an implement loop run and exit: Writes the run's state; refuses a step whose body this abcd does not carry.
+Perform the next step of an implement loop run and exit: Writes the run's state, the lane's worktree or brief; refuses a step this abcd does not carry.
 
 **Usage:** `abcd implement step [--run <run-id>] [flags]`
 
@@ -1556,6 +1563,13 @@ and the path its receipt goes to; the lane then advances only on
 `abcd implement receipt`, and asking for a step again re-tells the same thing and
 moves nothing. When a lane is done the spec's next pending step opens the next lane.
 A complete run says so.
+
+The lane's steps, in order: worktree makes the lane's worktree in the machine-scoped
+store, ~/.abcd/worktrees/<root-sha>/<run-id>-<lane-id>, on a branch build/<run-id>-<lane-id>
+cut from the default branch; brief renders the lane's brief from that base (the intent,
+the spec, the conventions of AGENTS.md and the decisions the intent cites) into the
+lane's directory of the run; implement hands the lane to a fresh implementer and awaits
+its receipt; validate and land follow.
 
 A step whose body this abcd does not carry is refused naming the spec piece that
 delivers it, and the run is unchanged. A step that fails leaves the state as it was,
@@ -1668,7 +1682,7 @@ Ingest an intent-audit verdict into the shipped intent: Writes its Audit Notes; 
 
 ```
       --route stringArray     route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
-      --verdict-json string   path to the intent-audit verdict JSON
+      --verdict-json string   path to the intent-audit verdict JSON, in the shape the Verdict shape section of its review request states
 ```
 
 **Example:**
@@ -2387,7 +2401,14 @@ rules replaced, its state changed, or a custom domain declared — renders as
 "## NAME (user override)" or "## NAME (repo override)" here, in the injected
 block and in the hook's diagnostic, and carries "source": "user" or "repo" in
 --json; the last layer to name a domain labels it. An untouched bundled domain
-renders bare and carries "source": "bundled". Read-only.
+renders bare and carries "source": "bundled".
+
+A list an override sets replaces the bundled one, so an override can hold back
+an entry abcd ships. For the guardrail domains (COMMITTING, LOAD, PII), every
+bundled recall keyword, alias or rule that an override's list leaves out is
+named on stderr, with the file that set the list, here and on every hook
+prompt. To keep an entry, restate it in the list, or leave the field out to
+inherit the bundled list. Read-only.
 
 ### `abcd scribe`
 
