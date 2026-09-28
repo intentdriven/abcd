@@ -156,7 +156,11 @@ are the two the scanner's redactors read beside the text as written: the JSON
 escape layers and the percent view. The guard's reading is deliberately the wider
 one: a run of backslashes of any length before an escape decodes as one escape,
 so a JSON string nested inside another decodes all its layers at once, and a
-chain of `%25` layers before two hex digits decodes to the byte they name. The
+chain of `%25` layers before two hex digits decodes to the byte they name. A
+decoded reading is itself read again for the escapes it still holds, since a
+backslash or a percent sign that an escape spells (`%5C`) opens an escape of its
+own, for as many layers as the scanner reads a JSON line through; the hook
+declares that bound once and a test holds it equal to the scanner's. The
 decode runs in the hook itself, in `awk` and the shell's `printf`, not in the
 abcd binary, because the guard holds before abcd is built and in every clone the
 dispatcher runs it in. It adds readings and replaces none: the text as written

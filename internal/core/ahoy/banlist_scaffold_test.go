@@ -1297,6 +1297,10 @@ func TestScaffoldedGuardHookReadsEscapedSpellings(t *testing.T) {
 	for i, staged := range []string{
 		`{"author":"Zo\u00eb Q\u00FCxbar"}` + "\n",
 		"https://example.com/?who=Zo%C3%AB%20Q%C3%BCxbar\n",
+		// A backslash spelled as its unicode escape opens an escape on the
+		// next layer (iss-2609280944560197); built from parts so no tool that
+		// folds a written escape into its character can change it.
+		`{"author":"` + "\\" + "u005c" + "u005Ao" + "\\" + "u00eb Q" + "\\" + "u00fcxbar" + `"}` + "\n",
 	} {
 		name := filepath.Join(repo, "export.json")
 		if err := os.WriteFile(name, []byte(staged), 0o644); err != nil {
