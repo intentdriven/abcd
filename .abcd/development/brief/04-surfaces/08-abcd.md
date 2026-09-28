@@ -98,14 +98,31 @@ whether the attribution gate is wanted. The command decides; the binary writes.
 
 **The presence line** (itd-200, spc-70) adds to the four fields: in a repository abcd manages, the text render carries a
 `presence:` line and the JSON a `statusline` object, both the plain form of the
-same row the host's status line shows — the badge first (`abcd`, `waiting:
-facilitator`, `waiting: product thinker`), then the repository, the branch and
-the record's counts. The state behind the badge is what `abcd mode` stores at
+same row the host's status line shows — the badge first (`abcd-managed`,
+`waiting on the technical facilitator`, `waiting on the product thinker`), then
+the repository, the branch and the record's counts. The state behind the badge is what `abcd mode` stores at
 `.abcd/.work.local/mode`; the board reads it and never writes it. In an
 unmanaged repository the line is absent and the field omitted. The board is the
 fallback for a host with no status surface, so it renders the line even where
 the user-level setting has switched the status line off, and it never runs the
 previous status command that `abcd statusline` falls back to.
+
+**The badge is true at every stop** (itd-2609212130146198,
+spc-2609212139593041). The badge reads exactly one of its three labels and
+never the bare tool name, and its colour ends at the badge: the closing
+sequence restores the default foreground and background and nothing else, so
+the rest of the row keeps whatever styling the host gives it. The two moments
+the badge must change are two moments the hooks already see. The agent sets
+the state with `abcd mode` when it stops to ask, naming whom it addresses; the
+guard hook, on the host's question tool, refuses a question while the state
+reads managed, naming `abcd mode product-thinker` and `abcd mode facilitator`,
+and when it admits one it writes a `question_open` marker beside the state in
+`.abcd/.work.local/`. The next human message is the answer: the prompt hook
+finds the marker, resets the state to managed, clears the marker and says so in
+one line on stderr. With no marker the prompt hook changes nothing, so a state
+the human set by hand survives the message they type next. A repository abcd
+does not manage, or one without the local tier, has no badge, and its
+questions are not gated.
 
 **The peers line and `/abcd:peers`** (itd-2609091416295622,
 spc-2609202056480020). A peer is a linked worktree sharing this checkout's git

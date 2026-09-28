@@ -220,5 +220,57 @@ queued in `../../plans/2026-07-24-next-run-queue.md` (Track 1)._
 
 ## Audit Notes
 
-<!-- abcd-review: OWED receipt=rcp-1957b22ad5cc -->
-Fidelity review OWED (receipt rcp-1957b22ad5cc).
+<!-- abcd-review: INGESTED receipt=rcp-1957b22ad5cc -->
+Fidelity review — receipt rcp-1957b22ad5cc (verifier intent-auditor claude-fable-5-1).
+
+Provenance: intent-auditor@claude-fable-5-1 · rubric_hash sha256:effa65b3e9e88ff29433b443ec2be159522a8b0b71cf1434526514aa61edb13e · prompt_hash sha256:973d1c700a856b8b62db01f196dbd65d4e4def78c99456b1cbac4743eb54e436
+Input attestations: diff:internal/core/launch/scaffold and internal/surface/cli/launch_receipts.go at main 811fba17 (git ls-tree -r; delivered through 273f8cbc, 1cb31e21, 09e0af6c, 2ccf16b7 on 2026-09-25)@sha256:218f24486c3a5c40420205c1de4c2424083215692234048b0100a9dd77bc6947;
+
+Acceptance rollup: MET 8 · MET_WITH_CONCERNS 0 · NOT_MET 0 · INCONCLUSIVE 0
+
+Per-criterion verdicts:
+- ac-1 — MET: the scaffold renders release.yml, auto-release.yml and the runbook from one template set, wires the required checks from the repository's own pull-request workflow through DeriveCIChecks, and a test runs the workflow audit and the duplicate-key check over the rendered files
+  evidence: internal/core/launch/scaffold/scaffold.go:106 — "func Scaffold(req Request) (Report, error) {"
+  evidence: internal/core/launch/scaffold/cichecks.go:55 — "func DeriveCIChecks(repoRoot string) []string {"
+  evidence: internal/core/launch/scaffold/wiring_test.go:107 — "func TestScaffoldWiresTheRepositorysOwnCIChecks"
+  evidence: internal/core/launch/scaffold/wiring_test.go:227 — "func TestScaffoldedWorkflowsPassTheWorkflowAudit"
+- ac-2 — MET: a test drives a scaffolded repository's first release through the merge path and asserts a published release, with the gate armed against the reviewed content commit carried as content_sha from verify to the release job
+  evidence: internal/core/launch/scaffold/mergepath_release_test.go:41 — "func TestScaffoldedGateCutsAFirstReleaseThatPublishes"
+  evidence: internal/core/launch/scaffold/templates/release.yml.tmpl:131 — "content_sha: ${{ steps.receipts.outputs.content_sha }}"
+  evidence: internal/core/launch/scaffold/contentsha_workflow_test.go:20 — "func TestReleaseConsumesTheContentShaVerifyGated"
+- ac-3 — MET: the bare substitutions carry no semantic gates, the bare release.yml omits every abcd-specific detector while keeping the deterministic gates and the rehearsal, and the bare runbook states that no semantic detector is configured
+  evidence: internal/core/launch/scaffold/substitutions.go:56 — "SemanticGates: nil,"
+  evidence: internal/core/launch/scaffold/scaffold_test.go:96 — "func TestBareRenderOmitsAbcdMachinery"
+  evidence: internal/core/launch/scaffold/scaffold_test.go:132 — "No semantic detector is configured"
+- ac-4 — MET: a re-run over current machinery reports no_op with every file current, and a hand-edited file refuses the whole run with ErrScaffoldBlocked unless Confirm is set
+  evidence: internal/core/launch/scaffold/scaffold.go:22 — "var ErrScaffoldBlocked = errors.New("scaffold refused: an existing file was hand-edited (pass --confirm to overwrite)")"
+  evidence: internal/core/launch/scaffold/scaffold.go:129 — "report.NoOp = wrote == 0"
+  evidence: internal/core/launch/scaffold/scaffold_test.go:297 — "func TestScaffoldIdempotentAndRefusesHandEdit"
+- ac-5 — MET: the scaffolded reviews charter exempts sha-keyed receipt directories from the dated-review shape and a test asserts the exemption
+  evidence: internal/core/launch/scaffold/templates/check-reviews.sh.tmpl:9 — "receipt gate). They are exempt from the dated shape here, so the two review"
+  evidence: internal/core/launch/scaffold/wiring_test.go:160 — "func TestScaffoldedCharterExemptsShaKeyedReceiptDirs"
+- ac-6 — MET: workflow_dispatch runs the rehearsal job, which arms the gate's resolution path against a simulated release, and tests assert it publishes nothing and that the release job is gated off the rehearsal event
+  evidence: internal/core/launch/scaffold/templates/release.yml.tmpl:65 — "workflow_dispatch:"
+  evidence: internal/core/launch/scaffold/scaffold_test.go:240 — "func TestRehearsalPublishesNothing"
+  evidence: internal/core/launch/scaffold/scaffold_test.go:277 — "func TestReleaseJobGatedOffRehearsal"
+- ac-7 — MET: `abcd launch receipts` names each missing or non-PROMOTE receipt and the commit it must name, and a test holds its verdict identical to the release job's receipt gate on the same repository state
+  evidence: internal/surface/cli/launch_receipts.go:36 — "Use: "receipts","
+  evidence: internal/surface/cli/launch_receipts_test.go:63 — "func TestLaunchReceiptsNamesEachMissingReceiptAndTheCommit"
+  evidence: internal/surface/cli/launch_receipts_test.go:103 — "func TestLaunchReceiptsFailsIdenticallyToTheReleaseJobsGate"
+- ac-8 — MET: the emit step ends its render with the receipts protocol as a numbered checklist, rendered by renderReceiptsProtocol and asserted by a test on the ship output
+  evidence: internal/surface/cli/launch_receipts.go:123 — "func renderReceiptsProtocol(w io.Writer, p release.ReceiptsProtocol) {"
+  evidence: internal/surface/cli/launch_receipts_test.go:247 — "func TestLaunchShipEmitEndsWithTheReceiptsProtocol"
+
+Gap audit:
+- honoured:
+  - self-scaffold parity: one template regenerates abcd's own workflows under a test asserting the tree matches
+    evidence: internal/core/launch/scaffold/scaffold_test.go:33 — "func TestSelfScaffoldParity"
+  - GITHUB_TOKEN-only, injection-safe workflows
+    evidence: internal/core/launch/scaffold/scaffold_test.go:183 — "func TestGeneratedYAMLIsGithubTokenOnly"
+    evidence: internal/core/launch/scaffold/archive_workflow_test.go:129 — "func TestNoWorkflowCarriesTheRepositoryCheckInShell"
+  - the tag waits on the verify gate and the publish condition needs a green verify
+    evidence: internal/core/launch/scaffold/tagorder_workflow_test.go:30 — "func TestTheTagWaitsOnTheVerifyGate"
+  - idempotent and fail-safe: a refused file leaves nothing written
+    evidence: internal/core/launch/scaffold/scaffold.go:155 — "// A run that refuses any file writes NOTHING and returns ErrScaffoldBlocked with"
+- diverged: (none)
+- missing: (none)

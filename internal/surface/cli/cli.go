@@ -38,9 +38,11 @@ import (
 	"github.com/intentdriven/abcd/internal/core/oracle"
 	"github.com/intentdriven/abcd/internal/core/provenance"
 	"github.com/intentdriven/abcd/internal/core/record"
+	"github.com/intentdriven/abcd/internal/core/record/match"
 	"github.com/intentdriven/abcd/internal/core/rules"
 	"github.com/intentdriven/abcd/internal/core/spec"
 	"github.com/intentdriven/abcd/internal/core/surface"
+	"github.com/intentdriven/abcd/internal/core/tools"
 	"github.com/intentdriven/abcd/internal/core/update"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -1391,6 +1393,11 @@ func newHookCommand() *cobra.Command {
 			// strings are transcript paths and capture errors, which are the
 			// least appropriate text in the program to hand to a model.
 			drainWhileLive(cmd, cwd)
+			// The badge's reset (itd-2609212130146198): a human message after
+			// an admitted question is its answer. Before the rules work, for
+			// the drain's reason: a rules.json that will not load must not
+			// also leave the badge parked.
+			resetModeOnAnswer(cmd.ErrOrStderr(), cwd)
 			root := rulesRoot(cwd, cmd.ErrOrStderr())
 			rs, err := rules.Load(root)
 			if err != nil {
@@ -2660,12 +2667,25 @@ func createIntentFromText(cmd *cobra.Command, repoRoot, text string, opts intent
 		return err
 	}
 	opts.ProductionMode = mode
-	it, err := intent.CreateFromText(repoRoot, text, opts)
+	// The filing-time match (itd-2609212137116617): the ledger gathers the
+	// candidates, the create runs the match under its mint lock.
+	var m *intent.Matcher
+	cfg, refused := resolveMatch(cmd.ErrOrStderr(), "intent", repoRoot)
+	if cfg != nil {
+		m = &intent.Matcher{Threshold: cfg.Threshold, Candidates: func() ([]match.Candidate, error) {
+			return capture.MatchCandidates(repoRoot, *cfg)
+		}}
+	}
+	it, err := intent.CreateFromTextMatched(repoRoot, text, opts, m)
 	if err != nil {
 		return &exitError{Code: 2, Msg: "abcd intent: " + err.Error()}
 	}
+	if it.Match == nil {
+		it.Match = refused
+	}
 	return render(cmd.OutOrStdout(), asJSON, it, func(w io.Writer) {
 		fmt.Fprintf(w, "created %s (%s) — %s\n", it.ID, it.Bucket, termsafe.Sanitize(it.Path))
+		renderMatch(w, it.Match)
 	})
 }
 
@@ -3241,6 +3261,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 		docsTarget    string
 		oracleBackend string
 		scanDeep      string
+		installTools  []string
 	)
 	installCmd := &cobra.Command{
 		Use:  "install",
@@ -3254,7 +3275,14 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			res, err := ahoy.Install(cwd, opts, newPrompter(cmd))
+			named, err := installToolNames(installTools)
+			if err != nil {
+				return err
+			}
+			p := newPrompter(cmd)
+			opts.ConfirmTool = toolConfirm(p, named, yes, cmd.ErrOrStderr())
+			opts.ApproveDependency = len(named) > 0
+			res, err := ahoy.Install(cwd, opts, p)
 			if err != nil {
 				return err
 			}
@@ -3319,6 +3347,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 	installCmd.Flags().StringVar(&docsTarget, "docs-target", "", "which conventions file carries the managed block, which names abcd: claude_md | agents_md | both | skip (default skip)")
 	installCmd.Flags().StringVar(&oracleBackend, "oracle-backend", "", "oracle backend: host-delegated | native | cli | api | mcp")
 	installCmd.Flags().StringVar(&scanDeep, "scan-deep", "", "enable deep scan: true | false")
+	installCmd.Flags().StringSliceVar(&installTools, "install-tool", nil, "answer yes to installing this missing tool (repeatable): the answer a host's question tool relays; without it a tool is installed only on an answer typed at a terminal, never on the approve-everything flag, a piped answer or CI")
 	ahoyCmd.AddCommand(installCmd)
 
 	// uninstall
@@ -3628,6 +3657,57 @@ func optionalSkipReason(id string) string {
 		return "a routing table decides which model every delegated step asks for, so abcd's proposal is only accepted against an answered prompt"
 	}
 	return ""
+}
+
+// installToolNames validates the --install-tool names against the tools
+// `ahoy install` checks for, refusing any other with the names it accepts.
+func installToolNames(names []string) (map[string]bool, error) {
+	accepted := map[string]bool{}
+	for _, n := range ahoy.DependencyTools {
+		accepted[n] = true
+	}
+	named := map[string]bool{}
+	for _, n := range names {
+		n = strings.TrimSpace(n)
+		if !accepted[n] {
+			return nil, &exitError{Code: 2, Msg: fmt.Sprintf("abcd ahoy install: --install-tool %q is not a tool ahoy install checks for; it checks for %s (nothing read, nothing written)",
+				termsafe.Sanitize(n), strings.Join(ahoy.DependencyTools, ", "))}
+		}
+		named[n] = true
+	}
+	return named, nil
+}
+
+// toolConfirm is the CLI's answer to the explain-then-install question
+// (itd-63). It is deliberately narrower than the category prompter: a piped
+// answer approves categories (iss-167), but installing a program is asked only
+// of a person at a terminal, or answered by naming the tool with
+// --install-tool, which is how a host relays the answer its own question tool
+// got. --yes never installs a tool. Every no carries the way to say yes.
+func toolConfirm(p ahoy.Prompter, named map[string]bool, yes bool, w io.Writer) tools.Confirm {
+	return func(e tools.Explanation) tools.Answer {
+		if named[e.Tool] {
+			return tools.Answer{Yes: true, Why: "named with --install-tool"}
+		}
+		if yes {
+			return tools.Answer{Why: "--yes never installs a tool; name it with --install-tool " + e.Tool + ", or run without --yes at a terminal"}
+		}
+		sp, ok := p.(*stdinPrompter)
+		if !ok || !sp.tty {
+			return tools.Answer{Why: "no terminal to ask at: abcd installs a tool only on an answer typed at a terminal, or with --install-tool " + e.Tool}
+		}
+		for _, line := range e.Lines() {
+			fmt.Fprintln(w, termsafe.Sanitize(line))
+		}
+		fmt.Fprintf(w, "Install %s now by running %s? [y/N] ", e.Tool, e.StepText())
+		line, _ := sp.r.ReadString('\n')
+		switch strings.ToLower(strings.TrimSpace(line)) {
+		case "y", "yes":
+			fmt.Fprintf(w, "running %s; a package manager can take a few minutes\n", e.StepText())
+			return tools.Answer{Yes: true, Why: "answered yes at the terminal"}
+		}
+		return tools.Answer{Why: "answered no at the terminal"}
+	}
 }
 
 // newPrompter returns the stdin-reading prompter. On a terminal it is the
@@ -4095,6 +4175,10 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			if req.ProductionMode, err = resolveProductionMode(repoRoot, captureProductionMode); err != nil {
 				return err
 			}
+			// The filing-time match (itd-2609212137116617): configured through the
+			// layered reader, run by core under the ledger lock, never a refusal.
+			var matchRefused *match.Outcome
+			req.Match, matchRefused = resolveMatch(cmd.ErrOrStderr(), "capture", repoRoot)
 			// --lapsed-at has NO default and is never filled in for the caller: a
 			// lapse capture that omits the instant records none. The refusal that
 			// stood here is parked, not lifted (iss-2609091009111294): the instant stays
@@ -4109,10 +4193,14 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 					return &exitError{Code: 2, Msg: fmt.Sprintf("abcd capture: --%s %q is not accepted; accepted values: %s (nothing captured)",
 						fv.Field, fv.Value, enumHelp(fv.Accepted))}
 				}
-				return err
+				return captureRefusal("", err)
+			}
+			if res.Match == nil {
+				res.Match = matchRefused
 			}
 			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, res, func(w io.Writer) {
 				fmt.Fprintf(w, "captured %s (%s) — %s\n", res.ID, res.Status, termsafe.Sanitize(res.Path))
+				renderMatch(w, res.Match)
 				// Folder membership is a status only once the file is committed
 				// (iss-2609100508570527): say so at the write, where it is cheap.
 				if res.Uncommitted {
@@ -4210,7 +4298,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			}
 			res, err := capture.Mentions(capture.MentionsRequest{RepoRoot: repoRoot, Ref: mentionsRef})
 			if err != nil {
-				return err
+				return captureRefusal("mentions", err)
 			}
 			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, res, func(w io.Writer) {
 				fmt.Fprintf(w, "%s: %d open record(s), %d commit(s) walked, %d possibly already fixed\n",
@@ -4258,10 +4346,10 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 				ProductionMode: resolveModeRestamp,
 			})
 			if errors.Is(err, capture.ErrUnknownIssueID) {
-				return peerHeldRefusal(repoRoot, "abcd capture resolve: ", args[0], err)
+				err = peerHeldRefusal(repoRoot, "abcd capture resolve: ", args[0], err)
 			}
 			if err != nil {
-				return groundsUsageError("resolve", err)
+				return captureRefusal("resolve", err)
 			}
 			emitRelinkError(cmd.ErrOrStderr(), "capture resolve", res.RelinkError, "record-lint's links_resolve names each link left behind")
 			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, res, func(w io.Writer) {
@@ -4316,7 +4404,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 				BlockedBy: splitIDList(linkBlockedBy), Unblock: splitIDList(linkUnblock),
 			})
 			if err != nil {
-				return err
+				return captureRefusal("link", err)
 			}
 			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, res, func(w io.Writer) {
 				list := "[]"
@@ -4365,7 +4453,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 				ProductionMode: mode,
 			})
 			if err != nil {
-				return groundsUsageError("promote", err)
+				return captureRefusal("promote", err)
 			}
 			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, res, func(w io.Writer) {
 				verb := "minted"
@@ -4407,8 +4495,10 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 				return err
 			}
 			res, err := capture.Migrate(capture.MigrateRequest{RepoRoot: repoRoot, Apply: migrateApply})
+			// Migrate takes no input it could refuse, so what fails here is a
+			// fault and exits 1, as every ledger verb's fault does.
 			if err != nil {
-				return &exitError{Code: 2, Msg: "abcd capture migrate: " + err.Error()}
+				return fmt.Errorf("abcd capture migrate: %w", err)
 			}
 			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, res, func(w io.Writer) {
 				mode := "report only — nothing was written; re-run with --apply to write"
@@ -4463,7 +4553,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 				HoldFrameLocation: dispHoldFrame, HoldMoscow: dispHoldMoscow,
 			})
 			if err != nil {
-				return err
+				return captureRefusal("disposition", err)
 			}
 			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, res, func(w io.Writer) {
 				fmt.Fprintf(w, "%s  %s %s (%s) — %s\n",
@@ -4509,7 +4599,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			}
 			res, err := capture.Admit(capture.AdmitRequest{RepoRoot: repoRoot, Item: args[0], Grounds: admitGrounds})
 			if err != nil {
-				return err
+				return captureRefusal("admit", err)
 			}
 			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, res, func(w io.Writer) {
 				fmt.Fprintf(w, "%s  %s admitted into %s — %s\n",
@@ -4552,7 +4642,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			}
 			res, err := capture.Surprise(capture.SurpriseRequest{RepoRoot: repoRoot, OccasionedBy: surpriseOccasion, Text: args[0]})
 			if err != nil {
-				return err
+				return captureRefusal("surprise", err)
 			}
 			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, res, func(w io.Writer) {
 				fmt.Fprintf(w, "%s  occasioned by %s — %s\n", res.ID, res.OccasionedBy, termsafe.Sanitize(res.Path))
@@ -4595,7 +4685,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 				Open: reframeOpen, Complete: reframeComplete,
 			})
 			if err != nil {
-				return err
+				return captureRefusal("reframe", err)
 			}
 			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, res, func(w io.Writer) {
 				switch res.Half {
@@ -4639,7 +4729,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 				ProductionMode: wontfixProductionMode,
 			})
 			if err != nil {
-				return groundsUsageError("wontfix", err)
+				return captureRefusal("wontfix", err)
 			}
 			emitRelinkError(cmd.ErrOrStderr(), "capture wontfix", res.RelinkError, "record-lint's links_resolve names each link left behind")
 			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, res, func(w io.Writer) {
@@ -4676,7 +4766,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 				RepoRoot: repoRoot, ID: args[0], After: deferAfter, Reason: deferReason,
 			})
 			if err != nil {
-				return err
+				return captureRefusal("defer", err)
 			}
 			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, res, func(w io.Writer) {
 				fmt.Fprintf(w, "%s  deferred past %s (stays %s) — %s\n", res.ID, res.DeferredAfter, res.Status, termsafe.Sanitize(res.Path))
@@ -4735,20 +4825,39 @@ func emitGroundsReceipt(cmd *cobra.Command, asJSON bool, rec intent.GroundsResul
 var groundsFlagUsage = "optional; recorded when given — the conjecture being acted on, not the route taken: " +
 	"\"" + grounds.UsageSpelling() + ": <what is expected, and what would show it wrong>\""
 
-// groundsUsageError maps a core grounds refusal to exit 2, leaving every other
-// failure on its existing path.
-//
-// A MISSING --grounds exited 2 (the flag check above) while a MALFORMED one
-// exited 1, so a caller distinguishing usage errors from real failures learned
-// the wrong thing from the same flag (iss-2608300930057882). Both are one thing:
-// the argument was not usable and nothing was written. The core carries one
-// sentinel for the whole class, so this needs no second copy of the vocabulary,
-// the grammar, or the floor.
-func groundsUsageError(verb string, err error) error {
-	if errors.Is(err, capture.ErrGroundsRefused) {
-		return &exitError{Code: 2, Msg: "abcd capture " + verb + ": " + scrubPaths(err)}
+// captureRefusal maps every refusal of a ledger verb's own input to exit 2 (verb
+// "" is the capture write itself): a
+// malformed grounds value (iss-2608300930057882), an unknown id or one a peer
+// holds, a transition conflict, a request member outside its shape, and on the
+// reading ledger an admission or disposition asked for before characterisation. They
+// are one thing to a script — the request was not usable and nothing was
+// written — so they share one code, and exit 1 stays a fault's
+// (iss-2609260552251398). The core carries a sentinel for each class, so this
+// needs no second copy of any vocabulary or grammar. Every other error passes
+// through unchanged.
+func captureRefusal(verb string, err error) error {
+	if !errors.Is(err, capture.ErrGroundsRefused) && !errors.Is(err, capture.ErrUnknownIssueID) &&
+		!errors.Is(err, capture.ErrTransitionConflict) && !errors.Is(err, capture.ErrRequestRefused) &&
+		!errors.Is(err, capture.ErrNotCharacterised) {
+		return err
 	}
-	return err
+	msg := scrubPaths(err)
+	// The peer-held refusal already names the verb.
+	var held *peerHeldError
+	if errors.As(err, &held) {
+		return &exitError{Code: 2, Msg: msg}
+	}
+	// The core's own messages carry the verb, some as "capture link:", so it is
+	// trimmed before the surface names it once.
+	name := "capture"
+	if verb != "" {
+		name += " " + verb
+	}
+	msg = strings.TrimPrefix(msg, name+": ")
+	if verb != "" {
+		msg = strings.TrimPrefix(msg, verb+": ")
+	}
+	return &exitError{Code: 2, Msg: "abcd " + name + ": " + msg}
 }
 
 // emitRedactionNote says, on the human surface, that the written text differs
@@ -5060,7 +5169,7 @@ func parseRecurs(raw string) ([]string, error) {
 			continue
 		}
 		if !readingItemIDRe.MatchString(tok) {
-			return nil, fmt.Errorf("capture: --recurs token %q must match rdi-N", tok)
+			return nil, &exitError{Code: 2, Msg: fmt.Sprintf("abcd capture disposition: --recurs token %q must match rdi-N (nothing written)", tok)}
 		}
 		ids = append(ids, tok)
 	}

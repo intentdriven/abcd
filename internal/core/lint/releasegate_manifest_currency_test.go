@@ -12,10 +12,11 @@ import (
 	"testing"
 )
 
-// The release-gate manifest is the reproducibility anchor for the iss-35
-// brief<->surface crosscheck: a receipt echoes its sha256 as manifestHash and
-// receipt_gate refuses a mismatch. Pinning the inputs makes two runs comparable
-// to each other; it does not make them comparable to the tree, and twice the
+// The release-gate manifest pins the inputs of the iss-35 brief<->surface
+// crosscheck: a receipt echoes its sha256 as manifestHash and receipt_gate
+// refuses a mismatch. Pinning the inputs makes two runs comparable in scope to
+// each other (never in findings, which LLM checkers do not reproduce —
+// iss-2608231409595789); it does not make them comparable to the tree, and twice the
 // pinned inputs were found describing a surface that had moved on
 // (iss-387: five shipped chapters unpinned; iss-2609011423385217: the pinned
 // context naming 10 of 22 command pages and no agents, the scope omitting the

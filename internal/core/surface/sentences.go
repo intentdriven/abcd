@@ -31,7 +31,7 @@ var sentences = map[string]string{
 	"abcd ahoy doctor": "Report every install gap, user-scope state included: " +
 		"Writes nothing; refuses any argument.",
 	"abcd ahoy install": "Apply the install gaps the detection finds: " +
-		"Writes the .abcd/ scaffolding, the name-guard hooks, and the PATH entry; refuses a stale binary before any write.",
+		"Writes .abcd/, the name-guard hooks and the PATH entry, and installs a tool only on a yes; refuses a stale binary.",
 	"abcd ahoy remote": "Enable GitHub secret scanning and push protection: " +
 		"Writes nothing bare, only the settings and their mirror; refuses bare, naming `abcd ahoy --remote`.",
 	"abcd ahoy remote apply": "Enable GitHub secret scanning and push protection on this repository: " +

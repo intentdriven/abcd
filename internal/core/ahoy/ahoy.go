@@ -12,6 +12,8 @@
 // routed through the injected Prompter seam.
 package ahoy
 
+import "github.com/intentdriven/abcd/internal/core/tools"
+
 // FolderKind is the classification of the folder ahoy runs in. There is no
 // workspace layer: abcd manages exactly one kind of folder, a repository.
 type FolderKind string
@@ -36,7 +38,10 @@ const (
 	ConfigChange GapCategory = "config-change"
 	// PluginOwned covers the marker block and the (verify-only) hook manifest.
 	PluginOwned GapCategory = "plugin-owned"
-	// Dependency covers opt-in scanners on PATH (surfaced, never auto-run).
+	// Dependency covers the external tools a capability uses (itd-63): each gap
+	// carries the tool registry's explanation, and a tool is installed only on
+	// an answer the front door's confirmation returns, never on the category
+	// approval alone.
 	Dependency GapCategory = "dependency"
 	// UserState covers ~/.abcd/history registry state (guided, never auto-edited).
 	UserState GapCategory = "user-state"
@@ -63,6 +68,10 @@ type Gap struct {
 	FixHint    string      `json:"fix_hint"`
 	Required   bool        `json:"required"`   // advisory gaps set false
 	Resolvable bool        `json:"resolvable"` // false => diagnostic only
+	// Tool is the tool registry's explanation for a dependency gap (itd-63):
+	// what the tool is, whether this capability needs it, what works without
+	// it, and the exact install step. Absent on every other gap.
+	Tool *tools.Explanation `json:"tool,omitempty"`
 }
 
 // RepoIdentity is the deterministic identity of the repo under cwd.
@@ -146,6 +155,17 @@ type InstallOptions struct {
 	// cannot be determined, otherwise refuses before any write. The override is
 	// the documented escape when a rebuild is not an option. --allow-stale-binary.
 	AllowStaleBinary bool
+	// ConfirmTool is asked, once per missing tool, whether to run the tool
+	// registry's install step (itd-63). The front door supplies it: the CLI
+	// asks at a terminal, or answers yes for a tool the person named with
+	// --install-tool. Nil is a no for every tool, so a caller that asks nothing
+	// installs nothing. The category approval never stands in for it.
+	ConfirmTool tools.Confirm
+	// ApproveDependency answers the dependency category's question yes without
+	// asking it: the front door sets it when the person named a tool to
+	// install (--install-tool), which is that answer given in advance. Every
+	// other category is still asked, or pre-answered, as before.
+	ApproveDependency bool
 }
 
 // InstallResult is the outcome of Install.

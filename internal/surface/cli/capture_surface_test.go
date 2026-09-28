@@ -1051,6 +1051,110 @@ func TestCaptureMalformedGroundsExit2(t *testing.T) {
 	}
 }
 
+// TestCaptureTransitionRefusalsExit2 is iss-2609260552251398: every refusal of
+// a transition verb's own input exits 2 with nothing written, as a malformed
+// grounds value does, so a script reads one exit code for "the request was not
+// usable". An unknown id and a transition conflict exited 1, the code a fault
+// takes, and on resolve so did an impact, a --shipped-in or a --commit outside
+// its shape.
+func TestCaptureTransitionRefusalsExit2(t *testing.T) {
+	repo := captureLedgerRepo(t)
+	mint := func() string {
+		t.Helper()
+		var m struct {
+			ID string `json:"id"`
+		}
+		if err := json.Unmarshal(runCLI(t, "capture", "an observation that a transition will refuse", "--json"), &m); err != nil || m.ID == "" {
+			t.Fatalf("capture envelope unreadable: %v", err)
+		}
+		return m.ID
+	}
+	open, closed := mint(), mint()
+	runCLI(t, "capture", "resolve", closed, "fixed", "--impact", "fix")
+	unknown := "iss-99999"
+
+	for _, args := range [][]string{
+		{"capture", "resolve", unknown, "fixed", "--impact", "fix"},
+		{"capture", "resolve", closed, "fixed again", "--impact", "fix"},
+		{"capture", "resolve", open, "fixed", "--impact", "bogus"},
+		{"capture", "resolve", open, "fixed"},
+		{"capture", "resolve", open, "fixed", "--impact", "fix", "--shipped-in", "latest"},
+		{"capture", "resolve", open, "fixed", "--impact", "fix", "--commit", "not-a-sha"},
+		{"capture", "resolve", open, "fixed", "--impact", "fix", "--intent", "itd-99999"},
+		{"capture", "wontfix", unknown, "not worth it"},
+		{"capture", "wontfix", closed, "not worth it"},
+		{"capture", "promote", unknown},
+		{"capture", "defer", unknown, "--after", "v0.1.0", "--reason", "a reason that is long enough"},
+		{"capture", "link", unknown, "--blocked-by", open},
+		{"capture", "link", open, "--blocked-by", open},
+		{"capture", "link", open, "--blocked-by", unknown},
+		{"capture", "resolve", "iss-abc", "fixed", "--impact", "fix"},
+		{"capture", "defer", open, "--after", "latest", "--reason", "a reason that is long enough"},
+	} {
+		out, err := runCLIErr(t, args...)
+		if exitCodeOf(err) != 2 {
+			t.Errorf("%v: exit = %d (%v), want 2\n%s", args[1:], exitCodeOf(err), err, out)
+		}
+		if err != nil && (!strings.HasPrefix(err.Error(), "abcd capture "+args[1]+": ") ||
+			strings.Contains(err.Error(), ": capture "+args[1]+": ") || strings.Contains(err.Error(), ": "+args[1]+": ")) {
+			t.Errorf("%v: the refusal does not name its verb: %v", args[1:], err)
+		}
+	}
+	// The capture write refuses a blocker the ledger does not hold the same way.
+	if _, err := runCLIErr(t, "capture", "an observation blocked on nothing real", "--blocked-by", unknown); exitCodeOf(err) != 2 ||
+		!strings.HasPrefix(err.Error(), "abcd capture: ") || strings.Contains(err.Error(), "capture: capture") {
+		t.Errorf("capture --blocked-by %s: exit = %d (%v), want 2 naming the verb once", unknown, exitCodeOf(err), err)
+	}
+	// So does a --found-at that leaves the checkout or names nothing in it
+	// (iss-2609261241119343).
+	for _, at := range []string{"../outside/notes.md", "does/not/exist.go"} {
+		if _, err := runCLIErr(t, "capture", "an observation about a path that is not here", "--found-at", at); exitCodeOf(err) != 2 ||
+			!strings.HasPrefix(err.Error(), "abcd capture: ") || strings.Contains(err.Error(), "capture: capture") {
+			t.Errorf("capture --found-at %s: exit = %d (%v), want 2 naming the verb once", at, exitCodeOf(err), err)
+		}
+	}
+	if m, _ := filepath.Glob(filepath.Join(repo, ".abcd", "work", "issues", "open", open+"-*.md")); len(m) != 1 {
+		t.Fatalf("a refused transition moved %s", open)
+	}
+}
+
+// TestCaptureUnreadableStatusDirectoryExits1 is iss-2609261241121312's surface
+// half: a status directory the ledger cannot read is a fault, exit 1, and the
+// message says the directory could not be read. It read as an unknown id, the
+// refusal of the caller's input at exit 2.
+func TestCaptureUnreadableStatusDirectoryExits1(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root reads a directory whatever its mode")
+	}
+	repo := captureLedgerRepo(t)
+	var m struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(runCLI(t, "capture", "an observation behind a locked folder", "--json"), &m); err != nil || m.ID == "" {
+		t.Fatalf("capture envelope unreadable: %v", err)
+	}
+	open := filepath.Join(repo, ".abcd", "work", "issues", "open")
+	if err := os.Chmod(open, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(open, 0o755) })
+	for _, args := range [][]string{
+		{"capture", "resolve", m.ID, "fixed", "--impact", "fix"},
+		{"capture", "wontfix", m.ID, "not worth it"},
+		{"capture", "defer", m.ID, "--after", "v0.1.0", "--reason", "a reason that is long enough"},
+		// The board and the list read every folder too: an unreadable one is the
+		// same fault there, never a folder of no records (iss-2609261631120364).
+		{"capture", "list", "--all"},
+		{"capture"},
+	} {
+		out, err := runCLIErr(t, args...)
+		if exitCodeOf(err) != 1 || err == nil || strings.Contains(err.Error(), "unknown issue id") ||
+			!strings.Contains(err.Error(), "cannot read") {
+			t.Errorf("%v with open/ unreadable: exit = %d (%v), want 1 naming the unreadable folder\n%s", args[1:], exitCodeOf(err), err, out)
+		}
+	}
+}
+
 // TestGroundsFlagUsageRendersAStringPlaceholder: cobra's UnquoteUsage takes the
 // first backquoted word of a flag's usage string as the flag's value
 // placeholder and strips it from the prose, so backticks in the wontfix
@@ -1358,5 +1462,77 @@ func TestCaptureEnumRefusalNamesTheFlagAndItsSet(t *testing.T) {
 	}
 	if n := ledgerIssueCount(t, repo); n != 0 {
 		t.Fatalf("refused captures wrote %d record(s)", n)
+	}
+}
+
+// TestCaptureGroundsAndBodyRefusalsExit2 holds the exit-2 rule for every
+// ledger-verb input refusal (iss-2609260552251398, iss-2609262211082803) to the
+// refusals two later lanes brought: grounds text the site renderer refuses
+// (an image, a reference link), and a wontfix over a body that leaves an HTML
+// comment open, which is refused on the 2026-08-31 ruling. Each is the caller's
+// to fix with nothing written, so each exits 2, never the fault's 1.
+func TestCaptureGroundsAndBodyRefusalsExit2(t *testing.T) {
+	_ = captureLedgerRepo(t)
+	var plain, locked struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(runCLI(t, "capture", "an observation whose grounds will not render", "--json"), &plain); err != nil || plain.ID == "" {
+		t.Fatalf("capture envelope unreadable: %v", err)
+	}
+	for _, bad := range []string{
+		"pursued: the loader keeps its rules when the marker is fresh, as ![the diagram](x.png) shows",
+		"pursued: the loader keeps its rules when the marker is fresh, as [the note][n] records",
+	} {
+		for _, args := range [][]string{
+			{"capture", "promote", plain.ID, "--grounds", bad},
+			{"capture", "resolve", plain.ID, "fixed", "--impact", "fix", "--grounds", bad},
+		} {
+			if _, err := runCLIErr(t, args...); exitCodeOf(err) != 2 || !strings.Contains(err.Error(), "site renderer refuses") {
+				t.Errorf("%v with %q: exit = %d (%v), want 2 naming the renderer's refusal", args[:2], bad, exitCodeOf(err), err)
+			}
+		}
+	}
+	if err := json.Unmarshal(runCLI(t, "capture", "the loader drops rules when the <!-- abcd-review marker is stale", "--json"), &locked); err != nil || locked.ID == "" {
+		t.Fatalf("capture envelope unreadable: %v", err)
+	}
+	if _, err := runCLIErr(t, "capture", "wontfix", locked.ID, "superseded by the loader rewrite"); exitCodeOf(err) != 2 || !strings.Contains(err.Error(), "HTML comment") {
+		t.Errorf("wontfix over a locked body: exit = %d (%v), want 2 naming the open comment", exitCodeOf(err), err)
+	}
+}
+
+// TestCaptureWontfixRefusesALockedBody is the surface half of
+// iss-2608301908270888 as the 2026-08-31 ruling settled it. Ordinary prose can
+// carry a `<!--` nothing closes, and capture writes it verbatim into the body,
+// where it masks every line below it. Wontfix derives a `declined:` entry that
+// could not read back there, so it refuses, moves nothing, and tells the
+// operator which construct and line to fix and how: the hand edit is the repair.
+func TestCaptureWontfixRefusesALockedBody(t *testing.T) {
+	repo := captureLedgerRepo(t)
+	var m struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(runCLI(t, "capture", "the loader drops rules when the <!-- abcd-review marker is stale", "--json"), &m); err != nil || m.ID == "" {
+		t.Fatalf("capture envelope unreadable: %v", err)
+	}
+	_, _, err := runCLISplit(t, "capture", "wontfix", m.ID, "superseded by the loader rewrite")
+	if err == nil {
+		t.Fatal("wontfix over a locked body acted, want a refusal")
+	}
+	for _, frag := range []string{"HTML comment", "body line 2", "text editor", "re-run", "nothing written"} {
+		if !strings.Contains(err.Error(), frag) {
+			t.Fatalf("the refusal does not name %q: %v", frag, err)
+		}
+	}
+	var where []string
+	if werr := filepath.WalkDir(repo, func(p string, d fs.DirEntry, err error) error {
+		if err == nil && !d.IsDir() && strings.HasPrefix(d.Name(), m.ID+"-") {
+			where = append(where, filepath.Base(filepath.Dir(p)))
+		}
+		return err
+	}); werr != nil {
+		t.Fatal(werr)
+	}
+	if len(where) != 1 || where[0] != "open" {
+		t.Fatalf("after the refusal the record sits in %v, want [open]", where)
 	}
 }

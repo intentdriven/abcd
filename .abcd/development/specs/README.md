@@ -40,7 +40,7 @@ record-id seam (`recordid.Minter`, per
 The mint consults no maximum — not the store's, not the intents' `spec_id`
 reservations, not the refs' — so two checkouts minting in the same window
 allocate distinct ids by construction, with no coordination and no network. The
-ordinal ids minted before the seam (`spc-1` … `spc-69`) stay exactly as minted;
+ordinal ids minted before the seam (`spc-2` … `spc-70`) stay exactly as minted;
 the store is dual-vintage but single-grammar, and every consumer parses both.
 
 The write happens under an exclusive advisory lock: `flock(2)` on the `specs/`
@@ -139,32 +139,36 @@ mandating them — the spec body is a design record, not a form.
 
 ---
 
-## Two `spc-N` Namespaces — Always Qualify Above the Ceiling
+## Two `spc-N` Namespaces — Always Qualify a Predecessor Id
 
-The live store holds **spc-2 … spc-42** — 41 records, one per number. `spc-1` is
-reserved by itd-3 and has never been a file in this history.
+The live store holds the ordinals **spc-2 … spc-70**, one record per number, and
+every spec minted since through the timestamp seam. `spc-1` is reserved by itd-3
+and has never been a file in this history.
 
 A **retired predecessor store** minted its own `spc-1 … spc-83`, and prose across
 the record still cites those records — spc-56, spc-66, spc-75 and the bundle
-handle `spc-83-operator-surfaces` among them. The two namespaces overlap, so a
-bare `spc-N` is ambiguous wherever `N` falls inside the live range. Three rules
-follow:
+handle `spc-83-operator-surfaces` among them. The two namespaces overlap for
+every number up to the live ordinal ceiling, so a bare `spc-N` with `N` at or
+below 70 resolves, in the store, to a live spec about something else. Three
+rules follow:
 
 - **Every reference to a predecessor record carries a qualifier.** The
   convention in the record is the parenthetical *"(predecessor store)"* —
   "spc-12 (predecessor store)", or "the predecessor store's spc-66".
-- **An id above the live ceiling belongs to the predecessor store by
-  construction.** `spc-43` … `spc-83` name no live record, so prose citing one
-  means that store even where the qualifier is absent.
-- **Two ids collide outright.** `spc-33` and `spc-37` exist in both namespaces on
-  different subjects: live spc-33 is itd-114's collision-proof record-id mint and
-  live spc-37 is itd-135's abcdev.app landing page, while the predecessor's
-  spc-33 and spc-37 are the harness-security records itd-51 cites. An unqualified
-  reference to either resolves, in the store, to a spec about something else — so
-  it must never be written unqualified.
+- **An id above the live ordinal ceiling belongs to the predecessor store by
+  construction.** A `spc-N` with `N` from 71 to 83 names no live record, since
+  the live store mints no ordinals past `spc-70`, so prose citing one means that
+  store even where the qualifier is absent.
+- **An id at or below the ceiling collides outright.** The predecessor's spc-33
+  and spc-37 are the harness-security records itd-51 cites, while live spc-33 is
+  itd-114's collision-proof record-id mint and live spc-37 is itd-135's
+  abcdev.app landing page; the same holds for the predecessor's spc-48, spc-56,
+  spc-58, spc-60 and spc-62 that itd-44 and itd-57 cite. An unqualified
+  reference to any of them names the wrong spec, so it must never be written
+  unqualified.
 
-The backlog of draft intents citing predecessor ids as though they were live is
-tracked as iss-239 in the issue ledger.
+The draft intents qualify every predecessor id their prose cites (iss-239); a
+dated `reclassification_history` reason keeps the words it was written with.
 
 ---
 

@@ -37,7 +37,6 @@ const (
 	writeIdentityPin             writeKind = "identity-pin"
 	writeGitIdentity             writeKind = "git-identity"
 	writeArtefactKind            writeKind = "artefact-kind"
-	writeScannerHint             writeKind = "scanner-hint"
 )
 
 // allWriteKinds is every kind, in the order the summary lists them: the
@@ -46,7 +45,7 @@ var allWriteKinds = []writeKind{
 	writeSettings, writeGitignore, writeLocalTier, writeNameGuard, writePrivateNames,
 	writeDocsCheck, writeAttributionHook, writeRules, writeConventionsBlock,
 	writeConventionsBlockRemoved, writeGitIdentity, writeIdentityPin, writeArtefactKind, writeCommandEntry, writeSessionStore,
-	writeStatusLine, writeRouting, writeScannerHint,
+	writeStatusLine, writeRouting,
 }
 
 // writeKindHelp is the plain-language explanation of each kind of write.
@@ -135,11 +134,6 @@ var writeKindHelp = map[writeKind]SummaryItem{
 		What:   "Saved which size of AI model each of abcd's review steps asks for.",
 		Why:    "Larger models cost more; the table keeps the expensive ones for the steps that need them.",
 		Action: "Nothing. Edit the saved table if you want a different split.",
-	},
-	writeScannerHint: {
-		What:   "Listed the command that installs an optional extra scanner; abcd did not run it.",
-		Why:    "abcd's own checks work without it, and the extra scanner looks deeper for leaked secrets.",
-		Action: "If you want the deeper scan, run the command listed under the written items; abcd never runs an installer for you.",
 	},
 }
 

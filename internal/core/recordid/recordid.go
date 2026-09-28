@@ -21,14 +21,30 @@
 // scheme held — never the primary defence (adr-45 ruling 5).
 package recordid
 
-import "regexp"
+import (
+	"regexp"
+	"sync"
+)
 
 // idRe matches a record filename <prefix>-<N>[-<slug>].md and captures N. The
 // prefix is a fixed family tag (iss/itd/spc); it is regexp-quoted defensively so
 // a caller can never inject metacharacters through it.
+//
+// Each family's pattern is compiled once and shared: the resolver and peers read
+// it once per record file, and a *regexp.Regexp is safe for concurrent use
+// (iss-2609261943168303). The cache holds one entry per family tag a caller
+// names, and every caller names a fixed one.
 func idRe(prefix string) *regexp.Regexp {
-	return regexp.MustCompile(`^` + regexp.QuoteMeta(prefix) + `-([0-9]+)(?:-[a-z0-9-]+)?\.md$`)
+	if re, ok := idReByPrefix.Load(prefix); ok {
+		return re.(*regexp.Regexp)
+	}
+	re, _ := idReByPrefix.LoadOrStore(prefix,
+		regexp.MustCompile(`^`+regexp.QuoteMeta(prefix)+`-([0-9]+)(?:-[a-z0-9-]+)?\.md$`))
+	return re.(*regexp.Regexp)
 }
+
+// idReByPrefix is idRe's compiled pattern per family tag.
+var idReByPrefix sync.Map
 
 // FilenameNumRe is the canonical record-filename grammar for a prose-handle
 // family (iss/itd/spc): <prefix>-<N>[-<slug>].md, capturing N. It is the ONE

@@ -44,7 +44,7 @@ Ordering and item specs unchanged from that plan:
    — canonical per-choice help text lives in core; the foundation item.
 2. **[iss-164](../../work/issues/resolved/iss-164-the-ahoy-install-completion-summary-is-written-for-abcd-s-im.md)**
    (blocked by iss-163) — persona-readable result summaries.
-3. **[itd-63](../intents/planned/itd-63-setup-wizard-explains-installs.md)**
+3. **[itd-63](../intents/shipped/itd-63-setup-wizard-explains-installs.md)**
    — the intent frame A1/A2 deliver into. Lifecycle first: planned but
    spec-less, so the first milestone is the spec and `intent ready`, never
    code.

@@ -53,7 +53,9 @@ name is not a well-formed record name), `read` (the guarded read refused the
 file itself, such as a symlink or an oversize body), `frontmatter` (the bytes do
 not parse), `schema` (a key or value the issue schema does not accept) or
 `invariant` (the record disagrees with its filename or with the folder holding
-it).
+it). A status directory that exists and cannot be listed is not an entry:
+the board and `list` count nothing from a ledger they could not read, so they
+exit 1 naming the directory.
 
 **Which ledger?** A half-formed observation, question, or nitpick goes to
 `/abcd:capture "…"`; a user-facing change you want to ship goes to
@@ -74,8 +76,8 @@ default): `--severity` (`nitpick|minor|major|critical`, default `minor`),
 `--category` (default `observation`), `--source` (default `user-observation`),
 `--found-during` (session/command context, default `manual-capture`),
 `--found-at` (optional repo-relative path, which must exist in this checkout,
-or a conceptual location in words; a path that does not resolve is refused and
-nothing is written), `--lapsed-at` (RFC 3339 instant in
+or a conceptual location in words; a path that leaves the checkout or does not
+resolve in it is refused, exit 2, and nothing is written), `--lapsed-at` (RFC 3339 instant in
 UTC at which a recorded discipline gave way — the lapse itself, never the
 write-up), `--slug` (overrides the slug derived from the text), `--blocked-by`
 (comma-separated `iss-N` ids this issue depends on; each must already exist in
@@ -101,6 +103,36 @@ omitted instant is parked (iss-2609091009111294) until the rethink of the readin
 work settles what a lapse record must carry; the instant the discipline gave way
 is still what the flag exists to record, and a value that is given must be an
 RFC 3339 instant.
+
+### A likely double is linked, never refused
+
+Before the record is written, the text is matched against every open and
+resolved issue's body and every intent's title and press release. The match is
+a lexical heuristic and says so in its output: the score is the share of the
+new text's terms another record already holds, each term weighted by how rare
+it is across the records compared. A record at or above the threshold (`0.6`
+by default) is written onto the new one as a typed link, at most three of them,
+best first:
+
+- `duplicates: [<id>]` when the two hold each other's terms: the same finding
+  filed again;
+- `refines: [<id>]` when the other record holds this one's terms and a good
+  deal more: this one is the narrower case.
+
+Nothing is refused or dropped. The JSON's `match` object carries `matches`
+(each with `id`, `relation`, `score`, `reverse`, `linked` and `shared_terms`),
+`near_misses` (the best five below the threshold, with their scores),
+`threshold`, and `skipped` when nothing was compared: a text with fewer than
+eight distinct terms, a record set that could not be read, or a match
+configuration the reader refuses. Relay each match with its id and relation
+and ask the user to confirm it. A confirmed link is left as it is; a wrong one
+is removed by deleting its line, which leaves an ordinary record. The match
+never proposes `reverses` or `supersedes`: a reversal is a person's judgement.
+
+The threshold and the compared fields are configuration: `match.threshold`
+and `match.fields` (any of `issue.body`, `intent.title`,
+`intent.press_release`) in `.abcd/config.json`, or in `~/.abcd/config.json`
+for every checkout on the machine.
 
 ## Disclosure: where a record came from and how its text was produced
 
@@ -277,8 +309,11 @@ closed — `pursued`, `deferred`, `declined` — and the text is free prose:
 when it is not: the refusal on an absent value is parked (iss-2609091009111294)
 until the rethink of the reading work settles what a human is asked for at a
 triage. A malformed value is still refused — an unknown token, a missing colon,
-or a text below the substance floor. Every grounds refusal is a usage error at
-exit 2, on all three routes.
+a text below the substance floor, or a text the site cannot render (an unclosed
+backtick, an image, raw HTML, a reference link), since the entry is append-only
+and the record must still build. A wontfix reason is held to that last check
+too, because its `declined:` entry is written from it. Every grounds refusal is
+a usage error at exit 2, on all three routes.
 `promote <rdi-N>` is the one route that takes no grounds and refuses one handed
 to it: a reading item states its conjecture in its disposition, which promote
 already refuses to act without, so a second one here would reach no record.
@@ -287,6 +322,12 @@ already refuses to act without, so a second one here would reach no record.
 `--grounds "declined: <text>"` overrides that text for the case where the
 conjecture and the user-facing reason are not the same sentence.
 The token there stays `declined`: a wontfix IS the non-action that value names.
+When the record's body leaves an HTML comment or a fence open, every line below
+the opener is masked and no appended entry can be read, so every route that would
+append one refuses and writes nothing — a wontfix always, since it always appends.
+The refusal names the construct and its body line. The repair is a hand edit:
+close or remove the opener in a text editor, then re-run. Promote and resolve
+given no `--grounds` append nothing and act.
 
 **Ask for the expectation and its falsifier.** "Promoted it because it is next"
 restates the decision and records nothing; "promoted it because we expect a
@@ -328,6 +369,24 @@ An id this checkout's ledger does not hold is refused. When a peer holds it —
 a sibling worktree or a local branch (see `/abcd:peers`) — the refusal names
 the peer's branch, path and folder instead of answering not found: the record
 lives there, so relay that rather than capturing it again here.
+
+Every refusal of a ledger verb's own input exits 2 and writes nothing: an id
+the ledger does not hold (or one a peer holds), a record already out of
+`open/`, a malformed id, and a flag value outside its shape or naming nothing,
+on `resolve`, `wontfix`, `promote`, `defer`, `link` and the capture write alike.
+The reading ledger's verbs keep the same code. `disposition`, `admit`,
+`surprise` and `reframe` exit 2 on an item, occasion or record id that is
+malformed or names nothing, a ground or flag value outside its shape, a request
+the standing records do not admit (a second answer citing none, an item already
+admitted, an admission over an answer in another state, a second open reframe,
+a reframe with nothing to record or an occasion not committed before the
+rewrite), and an answer or admission before characterisation; `mentions` exits
+2 on a `--ref` that names no commit. Exit 1 is a fault: the ledger could not be
+read or moved, a record in it contradicts itself (a tangled or contested set of
+answers only a hand edit repairs), or a `--found-at` path could not be checked
+against the checkout for a reason other than its absence. `migrate` takes no
+input to refuse, so each of its failures is a fault. Tell the user which
+input was refused, from the message, rather than retrying the same command.
 
 `resolve` requires `--impact`: a resolved issue is in the release set, so it
 carries the product judgement the version derivation reads (`additive`,

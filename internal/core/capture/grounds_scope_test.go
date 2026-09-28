@@ -29,7 +29,7 @@ func rewriteIssue(t *testing.T, ir, issID string, fn func(string) string) {
 }
 
 // TestGroundsLandInTheBodyNotAFrontmatterComment is the writer/reader scope
-// agreement (iss-2608301805069999). parseFrontmatterBlock skips a line whose
+// agreement (iss-2608301805069999). issuerecord.ParseBlock skips a line whose
 // trimmed form starts with `#`, so `# Grounds` is a legal YAML comment inside
 // the frontmatter block — and an ATX heading pattern matches it as the section
 // heading. With the append judged over the WHOLE FILE the bullet landed in that
@@ -217,5 +217,76 @@ func TestAFrontmatterCommentMarkerDoesNotBlindTheRecord(t *testing.T) {
 	}
 	if got := theGround(t, ir, res.ID); got != strings.TrimSpace(testGrounds) {
 		t.Fatalf("the recorded ground = %q, want %q", got, testGrounds)
+	}
+}
+
+// TestALockedBodyRefusesWhatWouldWriteGroundsAndNothingElse is
+// iss-2608301908270888 as the 2026-08-31 ruling settled it: a body that leaves an
+// opener unclosed masks every line below it, so a grounds entry appended there
+// cannot read back, and refusing is correct — the hand edit is the repair. So
+// every route that WOULD write an entry refuses, a wontfix included, since it
+// derives a `declined:` entry from its reason when given no grounds, and nothing
+// moves. The refusal names the construct, its body line and the exit: close or
+// remove the opener in a text editor, then re-run. The routes that write no
+// entry — resolve and promote given no grounds — have nothing to refuse and act.
+func TestALockedBodyRefusesWhatWouldWriteGroundsAndNothingElse(t *testing.T) {
+	for _, lock := range []struct {
+		name  string
+		apply func(t *testing.T, ir, issID string)
+		frag  string
+	}{
+		{"unclosed fence", openFence, "fenced code block"},
+		{"unclosed comment", func(t *testing.T, ir, issID string) {
+			rewriteIssue(t, ir, issID, func(s string) string {
+				return strings.TrimRight(s, "\n") + "\n\nthe loader drops rules when the <!-- abcd-review marker is stale\n"
+			})
+		}, "HTML comment"},
+	} {
+		refused := func(t *testing.T, ir, issID string, err error) {
+			t.Helper()
+			if err == nil {
+				t.Fatal("the route acted over a locked body, want a refusal")
+			}
+			for _, frag := range []string{lock.frag, "body line", "text editor", "re-run", "nothing written"} {
+				if !strings.Contains(err.Error(), frag) {
+					t.Fatalf("the refusal does not name %q: %v", frag, err)
+				}
+			}
+			if _, status, ferr := findIssue(ir, issID); ferr != nil || status != StateOpen {
+				t.Fatalf("after the refusal the record is in %q (%v), want it left in open/", status, ferr)
+			}
+		}
+		t.Run(lock.name+"/wontfix derives", func(t *testing.T) {
+			repo, ir, issID := promoteFixture(t, "the loader drops rules silently when the config is stale")
+			lock.apply(t, ir, issID)
+			_, err := Wontfix(WontfixRequest{RepoRoot: repo, IssuesRoot: ir, ID: issID, Reason: "superseded by the loader rewrite"})
+			refused(t, ir, issID, err)
+		})
+		t.Run(lock.name+"/wontfix with supplied grounds", func(t *testing.T) {
+			repo, ir, issID := promoteFixture(t, "the loader drops rules silently when the config is stale")
+			lock.apply(t, ir, issID)
+			_, err := Wontfix(WontfixRequest{RepoRoot: repo, IssuesRoot: ir, ID: issID,
+				Reason: "superseded by the loader rewrite", Grounds: "declined: the rewrite retires the loader this record is about"})
+			refused(t, ir, issID, err)
+		})
+		t.Run(lock.name+"/resolve without grounds", func(t *testing.T) {
+			repo, ir, issID := promoteFixture(t, "the loader drops rules silently when the config is stale")
+			lock.apply(t, ir, issID)
+			if _, err := Resolve(ResolveRequest{RepoRoot: repo, IssuesRoot: ir, ID: issID,
+				Resolution: "closed by the fix under review", Impact: "fix"}); err != nil {
+				t.Fatalf("Resolve without grounds over a locked body refused: %v", err)
+			}
+		})
+		t.Run(lock.name+"/promote without grounds", func(t *testing.T) {
+			repo, ir, issID := promoteFixture(t, "the loader drops rules silently when the config is stale")
+			lock.apply(t, ir, issID)
+			res, err := Promote(PromoteRequest{RepoRoot: repo, IssuesRoot: ir, ID: issID})
+			if err != nil {
+				t.Fatalf("Promote without grounds over a locked body refused: %v", err)
+			}
+			if res.IntentID == "" {
+				t.Fatalf("Promote without grounds minted no intent: %+v", res)
+			}
+		})
 	}
 }

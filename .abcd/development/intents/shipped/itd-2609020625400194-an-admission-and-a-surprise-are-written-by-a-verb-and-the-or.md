@@ -83,8 +83,83 @@ None beyond the flagged decision above.
 
 ## Audit Notes
 
-<!-- abcd-review: OWED receipt=rcp-77c7c87559c2 -->
-Fidelity review OWED (receipt rcp-77c7c87559c2).
+<!-- abcd-review: INGESTED receipt=rcp-77c7c87559c2 -->
+Fidelity review — receipt rcp-77c7c87559c2 (verifier intent-auditor claude-fable-5-1).
+
+Provenance: intent-auditor@claude-fable-5-1 · rubric_hash sha256:effa65b3e9e88ff29433b443ec2be159522a8b0b71cf1434526514aa61edb13e · prompt_hash sha256:74f6cc68397cb66a0c07dd9ac2c494d47c595790bfdf769e0d66af279d595483
+Input attestations: diff:internal/core/capture/{admit,surprise,reading,itemfate}.go, internal/core/lint/readingoutstanding.go, internal/core/record/record.go, commands/capture.md at 4001d807 (git ls-tree -r)@sha256:22d51985481877746861848e96f958139e71e639b95589d4c2f753fe44bcac92;
+
+Acceptance rollup: MET 8 · MET_WITH_CONCERNS 0 · NOT_MET 0 · INCONCLUSIVE 0
+
+Per-criterion verdicts:
+- ac-1 — MET: Admit writes the accepted disposition through the shared writer and the admission record under one ledger lock, both naming the item and the run, and a second Admit refuses on the standing admission; TestAdmitWritesBothRecordsAndRefusesTwice passes at BASE
+  evidence: internal/core/capture/admit.go:124 — "written, err := writeDispositionLocked(repoRoot, issuesRoot, head, DispositionRequest{"
+  evidence: internal/core/capture/admit.go:114 — "if len(fate.Admissions) > 0 {"
+  evidence: internal/core/capture/admit_test.go:82 — "func TestAdmitWritesBothRecordsAndRefusesTwice"
+- ac-2 — MET: with exactly one standing disposition Admit reads it through requireStandingAcceptance and writes the admission alone, and the test asserts the disposition's bytes are untouched
+  evidence: internal/core/capture/admit.go:131 — "case 1:"
+  evidence: internal/core/capture/admit.go:187 — "func requireStandingAcceptance(issuesRoot, item, id, ground string)"
+  evidence: internal/core/capture/admit_test.go:115 — "func TestAdmitWritesTheAdmissionAloneOverAStandingAcceptance"
+- ac-3 — MET: requireCharacterised sits in writeDispositionLocked, the writer both Disposition and Admit route through, and the admission-alone branch calls it too; the refusal names the run and the comparative reading it waits for, and both TestDispositionRefusesBeforeTheComparativeRun and TestAdmitRefusesBeforeTheComparativeRun assert ErrNotCharacterised with nothing written
+  evidence: internal/core/capture/reading.go:454 — "if err := requireCharacterised(repoRoot, head); err != nil {"
+  evidence: internal/core/capture/reading.go:497 — "func requireCharacterised(repoRoot string, head itemHead) error {"
+  evidence: internal/core/capture/admit.go:138 — "if err := requireCharacterised(repoRoot, head); err != nil {"
+  evidence: internal/core/capture/reading_test.go:581 — "func TestDispositionRefusesBeforeTheComparativeRun"
+  evidence: internal/core/capture/admit_test.go:180 — "func TestAdmitRefusesBeforeTheComparativeRun"
+- ac-4 — MET: a standing disposition in any state but accepted refuses naming the disposition id and its state; TestAdmitRefusesAStandingNonAcceptance covers rejected, declined and held
+  evidence: internal/core/capture/admit.go:198 — "if state := asString(fm["state"]); state != issueschema.DispositionAccepted {"
+  evidence: internal/core/capture/admit_test.go:219 — "func TestAdmitRefusesAStandingNonAcceptance"
+- ac-5 — MET: the ground is settled through requireFreeGrounds (redact, fold, grounds.ValidateText) before the ledger is touched, so a blank, whitespace or degenerate ground refuses with nothing written; TestAdmitRefusesADegenerateGround asserts the ledger digest is unchanged
+  evidence: internal/core/capture/admit.go:76 — "ground, redacted, degraded, err := requireFreeGrounds(repoRoot, "admit", req.Grounds)"
+  evidence: internal/core/capture/admit.go:292 — "if err := grounds.ValidateText(folded); err != nil {"
+  evidence: internal/core/capture/admit_test.go:263 — "func TestAdmitRefusesADegenerateGround"
+- ac-6 — MET: Surprise writes surprises/srp-N.md as its own file after resolving the occasion under the lock, and TestSurpriseIsItsOwnRecord asserts the dispositions tree digest is unchanged; the CLI test dispatches abcd srp-N to it
+  evidence: internal/core/capture/surprise.go:99 — "path := filepath.Join(dir, id+".md")"
+  evidence: internal/core/capture/surprise_test.go:38 — "func TestSurpriseIsItsOwnRecord"
+  evidence: internal/surface/cli/capture_admit_test.go:113 — "func TestCaptureSurpriseRequiresAnOccasion"
+- ac-7 — MET: ReadReadingOutstanding renders one WideningRun per run with the admitted/declined/held counts and the outstanding list; TestWideningRunSummaryNamesTheOutstandingItem builds exactly the four-item run of the criterion and asserts the fourth item alone is named, and the capture board renders the count
+  evidence: internal/core/lint/readingoutstanding.go:140 — "type WideningRun struct {"
+  evidence: internal/core/lint/reading_outstanding_test.go:1097 — "func TestWideningRunSummaryNamesTheOutstandingItem"
+  evidence: internal/surface/cli/capture_admit_test.go:106 — "1 proposal(s): 1 admitted, 0 declined, 0 held, 0 outstanding"
+- ac-8 — MET: the record dispatcher's IDRe admits adm and srp and routes them to describeAdmission (run, proposal, proposal_path, standing disposition) and describeSurprise (occasioned_by, occasion_path); TestDescribeAdmission and TestDescribeSurprise assert the joins and the CLI test dispatches a minted srp-N
+  evidence: internal/core/record/record.go:36 — "var IDRe = regexp.MustCompile(`^(iss|itd|spc|adr|adm|srp|rfm)-[0-9]+$`)"
+  evidence: internal/core/record/record.go:113 — "case "adm":"
+  evidence: internal/core/record/record_test.go:786 — "func TestDescribeAdmission"
+  evidence: internal/core/record/record_test.go:818 — "func TestDescribeSurprise"
+  evidence: internal/surface/cli/capture_admit_test.go:142 — "// And `abcd srp-N` dispatches to it."
+
+Gap audit:
+- honoured:
+  - admission is one act with two records under the ledger lock, and where accepted stands the admission is written alone on the standing ground
+    evidence: internal/core/capture/admit.go:94 — "err = withLedgerLock(repoRoot, issuesRoot, func() error {"
+    evidence: internal/core/capture/admit_test.go:342 — "func TestAdmissionAndDispositionCarryOneGround"
+  - the ordering gate lives in the shared writer, so neither capture disposition nor the scribe's ingest lands an acceptance before characterisation
+    evidence: internal/core/capture/reading_test.go:677 — "func TestDispositionAndAdmitShareOneWritePath"
+    evidence: internal/core/scribe/ingest_test.go:385 — "if !errors.Is(err, capture.ErrNotCharacterised)"
+  - a comparative run committed with an empty item set (not exercised) satisfies the gate
+    evidence: internal/core/capture/admit_test.go:208 — "func TestAdmitProceedsOnAnEmptyComparativeRun"
+  - both-or-neither: a failed admission write removes the disposition the act wrote
+    evidence: internal/core/capture/admit.go:157 — "if rmErr := removeContained(ledgerBase(repoRoot, issuesRoot), dispPath); rmErr != nil {"
+    evidence: internal/core/capture/admit_test.go:300 — "func TestAdmitRemovesTheDispositionWhenTheAdmissionWriteFails"
+  - the plugin surface page documents both verbs and the ordering
+    evidence: commands/capture.md:435 — "**At the widening position, characterise first and admit second.**"
+    evidence: commands/capture.md:468 — "## Record a surprise"
+  - surprise refuses an occasion outside rdi/adm/dsp or one that does not resolve, before anything is minted
+    evidence: internal/core/capture/surprise.go:61 — "if !issueschema.ValidSurpriseOccasion(occasion) {"
+    evidence: internal/core/capture/surprise_test.go:78 — "func TestSurpriseRefusesAnUnresolvedOccasion"
+- diverged: (none)
+- missing: (none)
+
+Scope-condition dispositions:
+- cond-2609020626047113 — survived: the gate probes ComparativeRunFor over the committed run records the comparative channel writes, an empty item set counts as not exercised, and the channel intent itd-2609020625407419 is in shipped/
+  evidence: internal/core/capture/itemfate.go:145 — "func ComparativeRunFor(repoRoot, run string) (string, error) {"
+  evidence: internal/core/capture/reading.go:501 — "comp, err := ComparativeRunFor(repoRoot, head.run)"
+- cond-2609020626042968 — survived: admission grounds pass through grounds.ValidateText, the same floor every grounds primitive applies; no admission-specific floor exists
+  evidence: internal/core/capture/admit.go:289 — "func requireFreeGrounds(repoRoot, verb, raw string)"
+  evidence: internal/core/capture/admit.go:292 — "if err := grounds.ValidateText(folded); err != nil {"
+- cond-2609020626040151 — survived: requireWidening refuses every other position by name and the ordering gate is keyed on the widening position alone; TestAdmitRefusesANonWideningItem covers it
+  evidence: internal/core/capture/admit.go:174 — "func requireWidening(head itemHead) error {"
+  evidence: internal/core/capture/admit_test.go:247 — "func TestAdmitRefusesANonWideningItem"
 
 ## Grounds
 

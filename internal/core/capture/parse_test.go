@@ -3,6 +3,8 @@ package capture
 import (
 	"reflect"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/core/issuerecord"
 )
 
 // TestInlineListRoundTripQuotedCommas (B24) pins the quote-aware inline-list
@@ -34,7 +36,7 @@ func TestInlineListRoundTripQuotedCommas(t *testing.T) {
 // TestParseScalarOrListSkipsQuotedComma isolates the tokenizer: a comma inside a
 // quoted item is not a separator, so a two-item list is not blown apart.
 func TestParseScalarOrListSkipsQuotedComma(t *testing.T) {
-	v, err := parseScalarOrList(`["alpha, beta", "gamma"]`)
+	v, err := issuerecord.ParseScalarOrList(`["alpha, beta", "gamma"]`)
 	if err != nil {
 		t.Fatal(err)
 	}
