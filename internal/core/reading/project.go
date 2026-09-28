@@ -332,9 +332,9 @@ func unfencedBody(lines []string, fenced []bool) string {
 // Redaction is a positive act over what a parser reported, and three shapes slip
 // past a parser that reports one value per key and matches a title exactly. A
 // DUPLICATED key keeps its second copy, because Fields keeps the first
-// occurrence and drops the rest silently. A frontmatter block closed with four
-// dashes is cut from the body by StripFrontmatter, which closes on a `---`
-// PREFIX, while Fields wants the delimiter exactly and so reads no fields at all.
+// occurrence and drops the rest silently. A block whose bounds two readers draw
+// differently — a four-dash line, a delimiter carrying text, YAML's `...` —
+// leaves keys that one reader reads as frontmatter and another as prose.
 // And a heading spelled in another case is not the title the redactor looked for.
 //
 // In each case the field travels and the manifest still asserts it was refused,
@@ -692,8 +692,14 @@ func skipBlanks(s string, i int) int {
 	return i
 }
 
-// blockCloser reports whether a line closes a frontmatter block. YAML closes a
-// document with `---` or `...`, and both end the block a key scan is walking.
+// blockCloser reports whether a line closes the floor's reading of a frontmatter
+// block. YAML closes a document with `---` or `...`, and any line OPENING with
+// three dashes is taken as a close, so the floor's close lands at or before every
+// reader's. That is the right edge for where the BODY begins — the fence mask and
+// the heading scan start there, so they read every line some reader renders — and
+// the wrong edge for where the block's KEYS end: a `----` or `--- x` closes here
+// and not to frontmatter.IsDelimiter, so the key and shape scans read on to
+// blockScanEnd instead (iss-2609281627055603).
 func blockCloser(line string) bool {
 	// Column 0, not "after trimming". YAML closes a document at the left margin,
 	// and trimming first made an ellipsis or a rule INSIDE a block scalar close
@@ -1071,10 +1077,12 @@ func unresolvableFrontmatterShape(lines []string, fenced []bool) (int, string, b
 	if strings.HasPrefix(strings.TrimSpace(lines[close]), "...") {
 		return close + 1, "a frontmatter block closed by `...`", true
 	}
-	for i := open + 1; i < close; i++ {
-		if fenced[i] {
-			continue
-		}
+	// The mask is not consulted inside the block. It starts after the floor's
+	// close, so up to there it marks nothing; past it, up to the canonical
+	// close, it marks lines the canonical reader reads as frontmatter, and
+	// honouring it would hide exactly those.
+	end := blockScanEnd(lines, close)
+	for i := open + 1; i < end; i++ {
 		trimmed := strings.TrimLeft(lines[i], " \t")
 		switch {
 		// The fence delimiter is first because it is the shape that used to
@@ -1323,6 +1331,21 @@ func firstBlockRange(lines []string, fenced []bool) (int, int, bool) {
 	return 0, -1, true
 }
 
+// blockScanEnd is the line the key and shape scans stop at: the LATER of the
+// floor's close and the canonical reader's (frontmatter.Close, which closes on
+// IsDelimiter alone). Where both readers open a block, the floor's closer fires
+// on a prefix and so never lands after the canonical close; where only the floor
+// opens one (a `----` on line 0), Close reports none. Taking the later of the
+// two scans every line the canonical reader reads as frontmatter and every line
+// only the floor counts as frontmatter — a superset, never less. Where the two
+// closes agree, the extent is the floor's own.
+func blockScanEnd(lines []string, closed int) int {
+	if c := frontmatter.Close(lines); c > closed {
+		return c
+	}
+	return closed
+}
+
 // excludedKeyInFirstBlock reports an excluded key inside the document's
 // frontmatter block.
 //
@@ -1336,10 +1359,11 @@ func firstBlockRange(lines []string, fenced []bool) (int, int, bool) {
 // prose, which travels because inclusion admits it and not because redaction
 // missed it.
 //
-// The looseness kept is the block's own bounds: any line OPENING with three
-// dashes delimits it, not an exact `---`, because that is the rule the
-// frontmatter stripper applies and the gap between the two rules is where a key
-// survives.
+// The scan runs to blockScanEnd, not to the floor's own close: the floor OPENS
+// on any line beginning with three dashes, which refuses more, but closing on
+// that same prefix ended the scan at a `----` or a `--- x` that the canonical
+// reader reads through, and a key below it travelled (iss-2609281627055603).
+// The mask is not consulted, for the reason unresolvableFrontmatterShape gives.
 func excludedKeyInFirstBlock(lines []string, fenced []bool, keys map[string]bool) (int, string, bool) {
 	open, closed, ok := firstBlockRange(lines, fenced)
 	if !ok {
@@ -1347,13 +1371,10 @@ func excludedKeyInFirstBlock(lines []string, fenced []bool, keys map[string]bool
 	}
 	end := len(lines)
 	if closed >= 0 {
-		end = closed
+		end = blockScanEnd(lines, closed)
 	}
 	depth := 0
 	for i := open + 1; i < end; i++ {
-		if fenced[i] {
-			continue
-		}
 		// Four spellings, because the field reader reports one of them. A plain
 		// or quoted key at any indent; YAML's explicit-key form; a key inside a
 		// flow mapping at top level or nested; and a double-quoted key whose name

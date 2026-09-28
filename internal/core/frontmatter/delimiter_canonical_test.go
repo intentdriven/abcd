@@ -45,7 +45,7 @@ var delimiterSites = map[string]delimiterSite{
 	"internal/core/memory/yaml.go":     {3, "the memory store's opener tolerates an indented delimiter (documented at frontmatterOpenIndex and textOpensFrontmatter); joinFileFrontmatter WRITES the block's two delimiters; every close is IsDelimiter"},
 	"internal/core/memory/writer.go":   {3, "a WRITER rebuilding a region for parseFrontmatter, and a byte-0 test that leaves a page with a tolerated preamble alone because rebuilding it would drop the preamble"},
 	"internal/core/history/store.go":   {6, "the transcript store's own record format, written by marshalRecord and read back byte-exact: a record this store did not write is refused, which is the point"},
-	"internal/core/reading/project.go": {3, "the reading exclusion floor: it reads a block more broadly than IsDelimiter (any line OPENING with three dashes, and YAML's `...`) so an excluded key is refused in every block a YAML-aware reader could see; the floor refuses more, never less"},
+	"internal/core/reading/project.go": {3, "the reading exclusion floor: it OPENS a block on any line beginning with three dashes, more broadly than IsDelimiter, and scans its keys and shapes to the LATER of its own prefix close (or `...`) and frontmatter.Close (blockScanEnd), so every line the canonical reader reads as frontmatter is scanned; its body scans start at the earlier close, so every line a renderer shows is scanned too"},
 }
 
 // TestNoPrivateDelimiterCompare is the one-canonical-primitive detector for the
@@ -60,8 +60,9 @@ var delimiterSites = map[string]delimiterSite{
 //
 // The check reads string LITERALS through go/scanner, so a comment quoting a
 // delimiter is not a claim; a literal counts when its value opens with `---` or
-// carries one at the start of a later line. A delimiter assembled at run time is
-// outside its reach, and is left to review.
+// carries one at the start of a later line, a byte-order mark ahead of it or
+// not. A delimiter assembled at run time is outside its reach, and is left to
+// review.
 func TestNoPrivateDelimiterCompare(t *testing.T) {
 	root := filepath.Join("..", "..", "..") // internal/core/frontmatter -> repository root
 	var offenders []string
@@ -117,7 +118,8 @@ func TestNoPrivateDelimiterCompare(t *testing.T) {
 }
 
 // delimiterLiterals counts the Go string literals in src whose value opens with
-// `---` or carries `---` at the start of a later line.
+// `---` or carries `---` at the start of a later line, either one optionally led
+// by a byte-order mark.
 func delimiterLiterals(src []byte) int {
 	fset := token.NewFileSet()
 	file := fset.AddFile("", fset.Base(), len(src))
@@ -136,7 +138,8 @@ func delimiterLiterals(src []byte) int {
 		if err != nil {
 			continue
 		}
-		if strings.HasPrefix(v, "---") || strings.Contains(v, "\n---") {
+		if strings.HasPrefix(v, "---") || strings.Contains(v, "\n---") ||
+			strings.HasPrefix(v, "\ufeff---") || strings.Contains(v, "\n\ufeff---") {
 			n++
 		}
 	}
@@ -144,11 +147,15 @@ func delimiterLiterals(src []byte) int {
 
 // TestDelimiterLiteralsReadsLiteralsNotComments pins the counter the detector
 // stands on: a compare in code counts, a delimiter quoted in a comment does not,
-// and a raw string spelling a block counts once.
+// a raw string spelling a block counts once, and a delimiter led by a byte-order
+// mark counts — a private compare against "\ufeff---" is a second opener rule
+// that TrimBOM exists to make unnecessary, and a counter blind to it let one be
+// substituted for an allowlisted literal with the pinned count unchanged.
 func TestDelimiterLiteralsReadsLiteralsNotComments(t *testing.T) {
 	t.Parallel()
-	src := "package p\n// a comment quoting \"---\" is not a claim\nvar a = x == \"---\"\nvar b = `id: a\n---\n`\nvar c = \"-- \"\n"
-	if got := delimiterLiterals([]byte(src)); got != 2 {
-		t.Fatalf("delimiterLiterals = %d, want 2", got)
+	src := "package p\n// a comment quoting \"---\" is not a claim\nvar a = x == \"---\"\nvar b = `id: a\n---\n`\nvar c = \"-- \"\n" +
+		"var d = x == \"\\ufeff---\"\nvar e = \"id: a\\n\\ufeff---\"\n"
+	if got := delimiterLiterals([]byte(src)); got != 4 {
+		t.Fatalf("delimiterLiterals = %d, want 4", got)
 	}
 }
