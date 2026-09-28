@@ -984,3 +984,41 @@ func TestDescribeReframeReportsOccasionAndFingerprints(t *testing.T) {
 	}
 	assertZeroWrites(t, repo, before)
 }
+
+// TestDescribeUnparseableIssueIsNotNotFound pins iss-263's own shape: an issue
+// file whose frontmatter is broken (here, never closed) is present in a status
+// folder, so `abcd iss-N` names the file and the parse error rather than
+// answering "not found in the issue ledger".
+func TestDescribeUnparseableIssueIsNotNotFound(t *testing.T) {
+	repo := t.TempDir()
+	res, err := capture.Capture(capture.CaptureRequest{
+		RepoRoot: repo, Text: "a record whose frontmatter will break", Severity: capture.SeverityMinor,
+		Category: "observation", Source: "user-observation", FoundDuring: "t", Slug: "broken-block",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	abs := res.Path
+	if !filepath.IsAbs(abs) {
+		abs = filepath.Join(repo, abs)
+	}
+	raw, err := os.ReadFile(abs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Drop the closing delimiter: the block is never terminated.
+	head, body, ok := strings.Cut(string(raw), "\n---\n")
+	if !ok {
+		t.Fatalf("fixture has no closing delimiter: %q", raw)
+	}
+	if err := os.WriteFile(abs, []byte(head+"\n"+body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err = Describe(repo, res.ID)
+	if err == nil || strings.Contains(err.Error(), "not found") || !errors.Is(err, ErrSkippedRecord) {
+		t.Fatalf("an unparseable issue must fault as skipped, not as not found: %v", err)
+	}
+	if !strings.Contains(err.Error(), filepath.Base(abs)) || !strings.Contains(err.Error(), "not terminated") {
+		t.Fatalf("the fault must name the file and the parse error: %v", err)
+	}
+}
