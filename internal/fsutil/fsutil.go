@@ -697,11 +697,23 @@ func AppendLineIn(root *os.Root, rel string, line []byte, perm os.FileMode) erro
 // open of an existing file, and an exclusive create that exactly one racer wins
 // while the others see ErrExist and fall back to the plain open.
 //
-// The leaf is vetted as ReadGuardedInRoot vets it: an Lstat refuses a symlink
-// or a non-regular file before anything is opened, every open carries
-// O_NOFOLLOW (and O_NONBLOCK, so a FIFO swapped in cannot hang the writer), and
-// the opened descriptor must be a regular file — the same one the Lstat saw,
-// when it saw one.
+// The leaf is vetted as ReadGuardedInRoot vets it, and the refusal rests on
+// Lstat and SameFile, not on the open's flags: os.Root resolves an in-root leaf
+// symlink itself (it retries an ELOOP by reading the link), so the O_NOFOLLOW
+// the opens carry does not refuse one. An Lstat before the open refuses a
+// symlink or a non-regular file before anything is created. After the open, the
+// descriptor must be a regular file, and an unconditional second Lstat of rel
+// must see a regular file that is the same file as the descriptor — and the
+// same one the first Lstat saw, when it saw one. So a link planted at the leaf
+// between the first Lstat and the open, which the open follows, is refused and
+// its target is never written. O_NONBLOCK stays, so a FIFO swapped in cannot
+// hang the writer. A hard link to another file passes SameFile and is out of
+// this refusal's reach.
+// beforeAppendOpen, when set, runs between openAppendIn's pre-open Lstat and
+// its open. It is a test seam, nil outside tests: it lets a test plant a leaf
+// in the window a racer would, deterministically.
+var beforeAppendOpen func(root *os.Root, rel string)
+
 func openAppendIn(root *os.Root, rel string, perm os.FileMode) (*os.File, error) {
 	pre, lerr := root.Lstat(rel)
 	switch {
@@ -709,6 +721,9 @@ func openAppendIn(root *os.Root, rel string, perm os.FileMode) (*os.File, error)
 		return nil, ErrNotRegular
 	case lerr != nil && !errors.Is(lerr, os.ErrNotExist):
 		return nil, lerr
+	}
+	if beforeAppendOpen != nil {
+		beforeAppendOpen(root, rel)
 	}
 	const flag = os.O_APPEND | os.O_WRONLY | syscall.O_NOFOLLOW | syscall.O_NONBLOCK
 	f, err := root.OpenFile(rel, flag, 0)
@@ -730,6 +745,15 @@ func openAppendIn(root *os.Root, rel string, perm os.FileMode) (*os.File, error)
 		return nil, err
 	}
 	if !st.Mode().IsRegular() || (lerr == nil && !os.SameFile(pre, st)) {
+		f.Close()
+		return nil, ErrNotRegular
+	}
+	post, err := root.Lstat(rel)
+	if err != nil {
+		f.Close()
+		return nil, err
+	}
+	if !post.Mode().IsRegular() || !os.SameFile(post, st) {
 		f.Close()
 		return nil, ErrNotRegular
 	}

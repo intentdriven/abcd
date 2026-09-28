@@ -74,3 +74,38 @@ func TestLockFilesAreTheOwnersAlone(t *testing.T) {
 		}
 	}
 }
+
+// TestAppendLineInRefusesALeafLinkedAfterItsLstat: a symlink planted at the leaf
+// between the pre-open Lstat (which saw nothing) and the open is refused, and
+// the file it names is left untouched. os.Root follows an in-root leaf link
+// whatever flags the open carries, so the refusal rests on a post-open Lstat
+// that must name the very file opened (iss-2609281229109140).
+func TestAppendLineInRefusesALeafLinkedAfterItsLstat(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "claim.json"), []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	planted := false
+	beforeAppendOpen = func(_ *os.Root, rel string) {
+		if err := os.Symlink("claim.json", filepath.Join(dir, rel)); err != nil {
+			t.Skipf("symlinks unavailable: %v", err)
+		}
+		planted = true
+	}
+	t.Cleanup(func() { beforeAppendOpen = nil })
+	err = AppendLineIn(root, "log.jsonl", []byte(`{"a":1}`), 0o600)
+	if !planted {
+		t.Fatal("the seam never ran: the link was not planted between the Lstat and the open")
+	}
+	if !errors.Is(err, ErrNotRegular) {
+		t.Fatalf("append through a leaf linked after its Lstat = %v; want ErrNotRegular", err)
+	}
+	if got, _ := os.ReadFile(filepath.Join(dir, "claim.json")); string(got) != "{}\n" {
+		t.Fatalf("the planted link's target was appended to: %q", got)
+	}
+}
