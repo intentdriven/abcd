@@ -57,6 +57,13 @@ func foundAtPath(value string) (string, bool) {
 // gate can check without guessing. A conceptual location, and an absent value,
 // are written as given. The check runs at capture time only: a record already
 // in the ledger keeps naming the path it named when the tree moves on.
+//
+// A path that leaves the checkout or does not exist in it is the caller's input
+// with nothing written, so it is refused (ErrRequestRefused, exit 2 at the
+// surface) like any other flag value that names nothing (iss-2609261241119343).
+// A path the check could not stat for any other reason — a directory on the way
+// that cannot be searched, an I/O error — says nothing about the input: the
+// checkout could not be read, so that one stays a fault.
 func checkFoundAt(repoRoot, value string) error {
 	rel, ok := foundAtPath(value)
 	if !ok {
@@ -65,7 +72,7 @@ func checkFoundAt(repoRoot, value string) error {
 	given := strings.TrimSpace(value)
 	clean := filepath.Clean(filepath.FromSlash(rel))
 	if clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
-		return fmt.Errorf("capture: found_at %q leaves this checkout; a finding is filed in the ledger of the repository it is about (nothing written)", given)
+		return refused(fmt.Errorf("capture: found_at %q leaves this checkout; a finding is filed in the ledger of the repository it is about (nothing written)", given))
 	}
 	if _, err := os.Lstat(filepath.Join(repoRoot, clean)); err != nil {
 		if errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) {
@@ -73,7 +80,7 @@ func checkFoundAt(repoRoot, value string) error {
 			if given != rel {
 				names = " (the path " + rel + ")"
 			}
-			return fmt.Errorf("capture: found_at %q%s does not exist in this checkout; a finding is filed in the ledger of the repository it is about — correct the path, or give a conceptual location in words (nothing written)", given, names)
+			return refused(fmt.Errorf("capture: found_at %q%s does not exist in this checkout; a finding is filed in the ledger of the repository it is about — correct the path, or give a conceptual location in words (nothing written)", given, names))
 		}
 		// The stat error is not echoed: it carries the absolute path, and a
 		// refusal names the repo-relative locator only (iss-81).

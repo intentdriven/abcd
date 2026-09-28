@@ -121,9 +121,14 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 	}
 }
 
-// renderLaneLine renders one lane as a line.
+// renderLaneLine renders one lane as a line, and its footprint once its steps
+// have made one.
 func renderLaneLine(w io.Writer, l loop.Lane) {
 	fmt.Fprintf(w, "  %s:  spec step %d, %q — next: %s\n", l.ID, l.SpecStep, termsafe.Sanitize(l.StepTitle), l.Step)
+	if l.Branch != "" {
+		fmt.Fprintf(w, "    branch %s (%s..%s), worktree %s\n", termsafe.Sanitize(l.Branch), shortSHA(l.BaseSHA), shortSHA(l.HeadSHA),
+			termsafe.Sanitize(fsutil.RedactHome(l.Worktree)))
+	}
 	if l.Awaiting != nil {
 		fmt.Fprintf(w, "    awaiting the %s's receipt at %s (brief %s)\n", termsafe.Sanitize(l.Awaiting.Role),
 			termsafe.Sanitize(fsutil.RedactHome(l.Awaiting.Receipt)), termsafe.Sanitize(fsutil.RedactHome(l.Awaiting.Brief)))
@@ -245,6 +250,12 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			"`abcd implement receipt`, and asking for a step again re-tells the same thing and\n" +
 			"moves nothing. When a lane is done the spec's next pending step opens the next lane.\n" +
 			"A complete run says so.\n\n" +
+			"The lane's steps, in order: worktree makes the lane's worktree in the machine-scoped\n" +
+			"store, ~/.abcd/worktrees/<root-sha>/<run-id>-<lane-id>, on a branch build/<run-id>-<lane-id>\n" +
+			"cut from the default branch; brief renders the lane's brief from that base (the intent,\n" +
+			"the spec, the conventions of AGENTS.md and the decisions the intent cites) into the\n" +
+			"lane's directory of the run; implement hands the lane to a fresh implementer and awaits\n" +
+			"its receipt; validate and land follow.\n\n" +
 			"A step whose body this abcd does not carry is refused naming the spec piece that\n" +
 			"delivers it, and the run is unchanged. A step that fails leaves the state as it was,\n" +
 			"so the next invocation performs it again; a completed step is never repeated. Before\n" +
@@ -284,6 +295,11 @@ func newImplementReceiptCommand(asJSON *bool) *cobra.Command {
 			"that does not is refused naming what is missing, with the lane left where it was. A\n" +
 			"step whose verifier this abcd does not carry is refused naming the spec piece that\n" +
 			"delivers it.\n\n" +
+			"An implementer's receipt is read strictly (one JSON object, no field the brief does not\n" +
+			"name, within its size cap, never through a symlink) and verifies only when every commit\n" +
+			"it names is on the lane's branch past its base, the definition of done's output exists\n" +
+			"in the lane's directory with a zero exit code, and the report exists there. A receipt\n" +
+			"that verifies moves the lane's head to its branch's tip.\n\n" +
 			"--run names the run; without it, the one run in progress in this checkout. Exit 2 on a\n" +
 			"refusal, exit 3 on a locked run state.",
 		Args: cobra.ExactArgs(1),

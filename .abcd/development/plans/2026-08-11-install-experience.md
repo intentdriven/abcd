@@ -70,7 +70,7 @@ assume, and the contradictions are the point.
    mechanism the same release removes.
 8. **iss-163/iss-164 (plain-language prompt help, persona-readable summary) are
    out of both cuts**, deferred to
-   [itd-63](../intents/planned/itd-63-setup-wizard-explains-installs.md).
+   [itd-63](../intents/shipped/itd-63-setup-wizard-explains-installs.md).
    Real, and larger than everything else here combined; keeping them out keeps
    both cuts reviewable.
 

@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
+	"github.com/intentdriven/abcd/internal/core/issuerecord"
 )
 
 // kv is one ordered frontmatter entry. val is a string, int, or []string.
@@ -107,7 +108,7 @@ func buildIssueText(fields []kv, body string) (string, error) {
 }
 
 // yamlList encodes a string list as the inline flow form buildIssueText has
-// always written and parseScalarOrList reads back: `[]` when empty, bare ids
+// always written and issuerecord.ParseScalarOrList reads back: `[]` when empty, bare ids
 // when every item is an abcd id (`[itd-4, iss-12]`), per-item quoted otherwise.
 // It is the ONE list encoder, shared by the create path and the in-place list
 // rewrite (setListField), so a list a verb edits after capture is spelled
@@ -359,19 +360,6 @@ func frontmatterBounds(lines []string) (openIdx, closeIdx int, err error) {
 	return openIdx, closeIdx, nil
 }
 
-// splitKeepEnds splits s into lines preserving their trailing newline(s),
-// mirroring Python's str.splitlines(keepends=True) for \n and \r\n.
-func splitKeepEnds(s string) []string {
-	var out []string
-	start := 0
-	for i := 0; i < len(s); i++ {
-		if s[i] == '\n' {
-			out = append(out, s[start:i+1])
-			start = i + 1
-		}
-	}
-	if start < len(s) {
-		out = append(out, s[start:])
-	}
-	return out
-}
+// splitKeepEnds is the ledger reader's line splitter, so a writer and the
+// reader split one record's bytes the same way.
+func splitKeepEnds(s string) []string { return issuerecord.SplitKeepEnds(s) }

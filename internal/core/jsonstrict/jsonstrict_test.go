@@ -143,3 +143,62 @@ func TestFoldingMatchesEncodingJSONAndEqualFold(t *testing.T) {
 		}
 	}
 }
+
+type decodeTarget struct {
+	Name  string `json:"name"`
+	Inner struct {
+		Code *int `json:"code"`
+	} `json:"inner"`
+}
+
+// TestDecodeRefusesWhatAStrictReaderMustNotRead pins the strict decode every
+// trust-boundary reader shares: one document, no key repeated in any spelling
+// encoding/json binds as one, no field the target does not name, and nothing
+// after the document.
+func TestDecodeRefusesWhatAStrictReaderMustNotRead(t *testing.T) {
+	cases := []struct {
+		name  string
+		doc   string
+		check func(error) bool
+	}{
+		{"a repeated key", `{"name":"a","inner":{"code":1,"code":0}}`, func(err error) bool {
+			var d *DuplicateKeyError
+			return errors.As(err, &d) && d.Key == "code"
+		}},
+		{"a repeated key spelt as a case twin", `{"name":"a","NAME":"b"}`, func(err error) bool {
+			var d *DuplicateKeyError
+			return errors.As(err, &d) && d.Key == "NAME" && d.First == "name"
+		}},
+		{"an unknown field", `{"name":"a","verdict":"SHIP"}`, func(err error) bool {
+			var d *DuplicateKeyError
+			return err != nil && !errors.As(err, &d) && !errors.Is(err, ErrTrailing) && strings.Contains(err.Error(), `"verdict"`)
+		}},
+		{"a second document", `{"name":"a"} {}`, func(err error) bool { return errors.Is(err, ErrTrailing) }},
+		{"trailing bytes", `{"name":"a"} x`, func(err error) bool { return errors.Is(err, ErrTrailing) }},
+		{"not JSON", `{"name":`, func(err error) bool {
+			var d *DuplicateKeyError
+			return err != nil && !errors.As(err, &d) && !errors.Is(err, ErrTrailing)
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var v decodeTarget
+			err := Decode([]byte(tc.doc), &v)
+			if !tc.check(err) {
+				t.Fatalf("Decode(%s) = %v; want the %s refused", tc.doc, err, tc.name)
+			}
+		})
+	}
+}
+
+// TestDecodeReadsOneStrictDocument: a document that names only known fields,
+// once each, decodes, trailing whitespace included.
+func TestDecodeReadsOneStrictDocument(t *testing.T) {
+	var v decodeTarget
+	if err := Decode([]byte("{\"name\":\"a\",\"inner\":{\"code\":0}}\n\t "), &v); err != nil {
+		t.Fatal(err)
+	}
+	if v.Name != "a" || v.Inner.Code == nil || *v.Inner.Code != 0 {
+		t.Fatalf("decoded %+v", v)
+	}
+}

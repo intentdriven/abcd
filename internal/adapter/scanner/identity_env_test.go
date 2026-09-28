@@ -118,3 +118,76 @@ func TestProbeIdentityUnionsTheEnvironmentIdentity(t *testing.T) {
 		}
 	}
 }
+
+// TestProbeIdentityUnionsTheIdentityGitCommitsWith (iss-2609261614450166): git
+// stamps a commit from author.*/committer.* ahead of user.*, and from a
+// `git -c` persona (GIT_CONFIG_PARAMETERS, or the GIT_CONFIG_COUNT form) ahead
+// of every file, so each of those is an identity the caller's work carries.
+// The probe folds them in as OTHER identities to redact; none displaces the
+// identity the scrubbed config read resolves.
+func TestProbeIdentityUnionsTheIdentityGitCommitsWith(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	cases := []struct {
+		name   string
+		config [][2]string // repo-local keys
+		env    map[string]string
+		names  []string
+		emails []string
+	}{
+		{"author and committer keys", [][2]string{
+			{"author.name", "Author Key"}, {"author.email", "author@key.example"},
+			{"committer.name", "Committer Key"}, {"committer.email", "committer@key.example"},
+		}, nil, []string{"Author Key", "Committer Key"}, []string{"author@key.example", "committer@key.example"}},
+		{"a -c persona", nil, map[string]string{
+			"GIT_CONFIG_PARAMETERS": `'user.name'='Param Name' 'author.email'='param@cli.example'`,
+		}, []string{"Param Name"}, []string{"param@cli.example"}},
+		{"a -c persona in the counted form", nil, map[string]string{
+			"GIT_CONFIG_COUNT": "2",
+			"GIT_CONFIG_KEY_0": "committer.name", "GIT_CONFIG_VALUE_0": "Counted Name",
+			"GIT_CONFIG_KEY_1": "user.email", "GIT_CONFIG_VALUE_1": "counted@cli.example",
+		}, []string{"Counted Name"}, []string{"counted@cli.example"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+			t.Setenv("GIT_CONFIG_SYSTEM", os.DevNull)
+			for _, k := range []string{"GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL"} {
+				t.Setenv(k, "")
+			}
+			dir := t.TempDir()
+			mustGitIdentity(t, dir, "init")
+			mustGitIdentity(t, dir, "config", "user.email", "config@example.com")
+			mustGitIdentity(t, dir, "config", "user.name", "Config Name")
+			for _, kv := range tc.config {
+				mustGitIdentity(t, dir, "config", kv[0], kv[1])
+			}
+			for k, v := range tc.env {
+				t.Setenv(k, v)
+			}
+
+			id := ProbeIdentity(dir)
+			if id.GitUserEmail != "config@example.com" || id.GitUserName != "Config Name" {
+				t.Fatalf("a persona displaced the configured identity: %q <%s>", id.GitUserName, id.GitUserEmail)
+			}
+			for _, want := range tc.names {
+				if !containsFold(id.OtherGitUserNames, want) {
+					t.Errorf("OtherGitUserNames %v lacks %q", id.OtherGitUserNames, want)
+				}
+			}
+			for _, want := range tc.emails {
+				if !containsFold(id.OtherGitUserEmails, want) {
+					t.Errorf("OtherGitUserEmails %v lacks %q", id.OtherGitUserEmails, want)
+				}
+			}
+			text := "made by " + strings.Join(tc.names, ", ") + " <" + strings.Join(tc.emails, ">, <") + ">"
+			out, _ := Redact(text, ScanText(text, id, DefaultPatterns(), DefaultIdentitySeverities(), "t"))
+			for _, leak := range append(append([]string{}, tc.names...), tc.emails...) {
+				if strings.Contains(out, leak) {
+					t.Errorf("the identity %q survives redaction: %q", leak, out)
+				}
+			}
+		})
+	}
+}

@@ -5,6 +5,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/changelog"
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
+	"github.com/intentdriven/abcd/internal/core/issuerecord"
 )
 
 // gateImpactVerdict is record-lint's issue_impact_valid reading of one impact
@@ -48,7 +49,7 @@ func TestImpactQuotingReachesOneVerdict(t *testing.T) {
 		`impact: "sideways"`,
 	} {
 		t.Run(line, func(t *testing.T) {
-			fm, err := parseFrontmatterBlock([]string{line})
+			fm, err := issuerecord.ParseBlock([]string{line})
 			if err != nil {
 				t.Fatalf("parse %q: %v", line, err)
 			}

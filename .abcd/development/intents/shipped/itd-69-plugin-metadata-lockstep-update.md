@@ -104,8 +104,46 @@ _None open._
 
 ## Audit Notes
 
-<!-- abcd-review: OWED receipt=rcp-2cf45c57ec66 -->
-Fidelity review OWED (receipt rcp-2cf45c57ec66).
+<!-- abcd-review: INGESTED receipt=rcp-2cf45c57ec66 -->
+Fidelity review — receipt rcp-2cf45c57ec66 (verifier intent-auditor claude-fable-5-1).
+
+Provenance: intent-auditor@claude-fable-5-1 · rubric_hash sha256:effa65b3e9e88ff29433b443ec2be159522a8b0b71cf1434526514aa61edb13e · prompt_hash sha256:deb80d504ca7b06cab66460f9f830abbd03ac701f9552ad994fb4c4488af723a
+Input attestations: diff:internal/core/launch/lockstep.go, its two test files and internal/surface/cli at chore/audit-run-a-1 80b44890 (git ls-tree -r; spc-2609211957080006 closed, itd-69 shipped in v0.1.0)@sha256:11f3757706d47eee66e74275f84735bfaf8c3b41d56a37a624339073319e4fe9;
+
+Acceptance rollup: MET 1 · MET_WITH_CONCERNS 2 · NOT_MET 0 · INCONCLUSIVE 0
+
+Per-criterion verdicts:
+- ac-1 — MET_WITH_CONCERNS: CheckLockstep under TreePublic compares the version field across the pinned manifest paths, returns one Drifts line per disagreeing field, and its ExitCode distinguishes agreement (0), drift (1) and an unreadable contract (2); tests cover agreement, drift, non-semver and the unreadable contract; the concern is that no `--tree public` front door exists — the tree is a Go parameter, the public check runs only inside the payload render, and a public checkout cannot be checked from the CLI
+  evidence: internal/core/launch/lockstep.go:21 — "TreePublic LockstepTree = "public""
+  evidence: internal/core/launch/lockstep.go:28 — "Drifts []string `json:"drifts,omitempty"`"
+  evidence: internal/core/launch/lockstep.go:31 — "ExitCode int `json:"exit_code"` // 0 ok, 1 drift, 2 unreadable"
+  evidence: internal/core/launch/lockstep.go:51 — "func CheckLockstep(tree LockstepTree, repoRoot, versionLocationPath string) LockstepResult {"
+  evidence: internal/core/launch/lockstep_test.go:45 — "func TestLockstepDrift(t *testing.T) {"
+  evidence: internal/core/launch/lockstep_test.go:63 — "func TestLockstepBlockedContractUnreadable(t *testing.T) {"
+  evidence: internal/core/launch/render.go:444 — "res.Lockstep = payloadLockstep(TreePublic, dest, vlPath)"
+- ac-2 — MET_WITH_CONCERNS: under TreeDev the check requires the version keys absent per adr-19 and reports a present key as drift with exit 1 while a correctly absent key passes with exit 0, as TestLockstepDevKeysAbsent holds; dry-run and ship run it over the source tree; the same concern applies — the dev tree is selected by the calling verb, not by a `--tree dev` flag
+  evidence: internal/core/launch/lockstep.go:19 — "TreeDev LockstepTree = "dev""
+  evidence: internal/core/launch/lockstep_test.go:74 — "func TestLockstepDevKeysAbsent(t *testing.T) {"
+  evidence: internal/core/launch/dryrun.go:114 — "lockstep := CheckLockstep(TreeDev, req.RepoRoot, vlPath)"
+  evidence: internal/core/launch/ship.go:80 — "lockstep := CheckLockstep(TreeDev, req.RepoRoot, vlPath)"
+- ac-3 — MET: the checker takes no skip or dirty argument and the launch verb exposes no flag that reaches it; dry-run folds every drift line and an unreadable contract into WouldRefuseOn unconditionally, ship folds the same into BlockReasons, and the render refuses public-payload drift with ErrPayloadDrift — `--allow-dirty` concerns the working tree, not manifest agreement
+  evidence: internal/core/launch/dryrun.go:282 — "func wouldRefuseOn(bundle Bundle, scan scanner.ScanResult, lockstep LockstepResult, retention RetentionPlan, smoke SmokeReport) []string {"
+  evidence: internal/core/launch/ship.go:102 — "report.BlockReasons = wouldRefuseOn(bundle, scan, lockstep, report.Retention, report.Smoke)"
+  evidence: internal/core/launch/render.go:446 — "return res, fmt.Errorf("%w: %s", ErrPayloadDrift, strings.Join(lockstepDetail(res.Lockstep), "; "))"
+
+Gap audit:
+- honoured:
+  - per-field drift with three distinct exit outcomes
+    evidence: internal/core/launch/lockstep.go:31 — "ExitCode int `json:"exit_code"` // 0 ok, 1 drift, 2 unreadable"
+  - the dev tree carries absent version keys and a present one is drift
+    evidence: internal/core/launch/lockstep_test.go:74 — "func TestLockstepDevKeysAbsent(t *testing.T) {"
+  - no bypass at the checker's own layer
+    evidence: internal/core/launch/ship.go:102 — "report.BlockReasons = wouldRefuseOn(bundle, scan, lockstep, report.Retention, report.Smoke)"
+- diverged:
+  - the checker runs with `--tree public` or `--tree dev`
+    evidence: internal/core/launch/lockstep.go:51 — "func CheckLockstep(tree LockstepTree, repoRoot, versionLocationPath string) LockstepResult {"
+    evidence: internal/core/launch/render.go:444 — "res.Lockstep = payloadLockstep(TreePublic, dest, vlPath)"
+- missing: (none)
 
 ### Linkage note (spc-83.5)
 

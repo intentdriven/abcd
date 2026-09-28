@@ -18,4 +18,4 @@ An override `{"PII": {"rules": []}}` passes `Validate` (internal/core/rules/rule
 ## Grounds
 
 - pursued: the heading-only block must not render, and the drop must be loud — a domain that silently stops existing is the same suppression-nobody-sees the fix is about
-- rejected: refusing the whole file, the shape the empty-rule-body refusal (iss-2608261550497978) set. That refusal is on a rule BODY inside an otherwise loadable domain; this one would take every other domain down with it, on an upgrade, for a config that worked yesterday. Validate keeps the refusal where it guards abcd's own bundled defaults
+- declined: refusing the whole file, the shape the empty-rule-body refusal (iss-2608261550497978) set. That refusal is on a rule BODY inside an otherwise loadable domain; this one would take every other domain down with it, on an upgrade, for a config that worked yesterday. Validate keeps the refusal where it guards abcd's own bundled defaults

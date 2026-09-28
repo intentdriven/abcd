@@ -68,8 +68,8 @@ func Admit(req AdmitRequest) (AdmitResult, error) {
 		return AdmitResult{}, err
 	}
 	if !recordid.ValidReadingItemID(req.Item) {
-		return AdmitResult{}, fmt.Errorf("%w: item %q does not match ^%s-[0-9]+$",
-			ErrMalformedFrontmatter, req.Item, issueschema.ReadingItemFamily)
+		return AdmitResult{}, refused(fmt.Errorf("%w: item %q does not match ^%s-[0-9]+$",
+			ErrMalformedFrontmatter, req.Item, issueschema.ReadingItemFamily))
 	}
 	// The ground is settled first, before the ledger is touched at all: a refusal
 	// here writes nothing, and says so.
@@ -112,8 +112,8 @@ func Admit(req AdmitRequest) (AdmitResult, error) {
 				ErrInvariantViolation, head.item)
 		}
 		if len(fate.Admissions) > 0 {
-			return fmt.Errorf("%w: %s is already admitted into %s's candidate set (%s); an admission is written once, and nothing is written",
-				ErrInvariantViolation, head.item, head.run, renderList(fate.Admissions))
+			return refused(fmt.Errorf("%w: %s is already admitted into %s's candidate set (%s); an admission is written once, and nothing is written",
+				ErrInvariantViolation, head.item, head.run, renderList(fate.Admissions)))
 		}
 
 		var dispPath string
@@ -175,8 +175,8 @@ func requireWidening(head itemHead) error {
 	if head.position == issueschema.PositionWidening {
 		return nil
 	}
-	return fmt.Errorf("%w: %s is a %s item, and admission is the %s position's act alone — answer it with `abcd capture disposition` instead (nothing written)",
-		ErrInvariantViolation, head.item, head.position, issueschema.PositionWidening)
+	return refused(fmt.Errorf("%w: %s is a %s item, and admission is the %s position's act alone — answer it with `abcd capture disposition` instead (nothing written)",
+		ErrInvariantViolation, head.item, head.position, issueschema.PositionWidening))
 }
 
 // requireStandingAcceptance reads the one standing disposition of item and
@@ -196,12 +196,12 @@ func requireStandingAcceptance(issuesRoot, item, id, ground string) (string, err
 			ErrMalformedFrontmatter, id, item, err)
 	}
 	if state := asString(fm["state"]); state != issueschema.DispositionAccepted {
-		return "", fmt.Errorf("%w: %s carries the standing disposition %s in the %q state; an admission stands only on `%s`, so supersede %s first if the answer has changed (nothing written)",
-			ErrInvariantViolation, item, id, state, issueschema.DispositionAccepted, id)
+		return "", refused(fmt.Errorf("%w: %s carries the standing disposition %s in the %q state; an admission stands only on `%s`, so supersede %s first if the answer has changed (nothing written)",
+			ErrInvariantViolation, item, id, state, issueschema.DispositionAccepted, id))
 	}
 	if standing := grounds.Fold(asString(fm["disposition_grounds"])); standing != ground {
-		return "", fmt.Errorf("%w: %s's standing acceptance %s states the ground %q, and this admission states %q; one act carries one ground, so admit on the standing ground or supersede %s (nothing written)",
-			ErrInvariantViolation, item, id, standing, ground, id)
+		return "", refused(fmt.Errorf("%w: %s's standing acceptance %s states the ground %q, and this admission states %q; one act carries one ground, so admit on the standing ground or supersede %s (nothing written)",
+			ErrInvariantViolation, item, id, standing, ground, id))
 	}
 	return path, nil
 }

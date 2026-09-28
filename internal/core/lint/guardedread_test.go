@@ -45,9 +45,12 @@ func TestReadRepoFile(t *testing.T) {
 // new rule that reaches for os.ReadFile is refused here rather than found by the
 // next sweep. The check parses the source rather than matching text, so a read
 // spelled through an import alias, a dot import, fs.ReadFile over os.DirFS, or a
-// method on a handle (an os.Root's Open, an fs.FS's ReadFile) is caught too. What
-// it cannot see is a raw read done inside a callee package; the guard is this
-// package's own source.
+// method on a handle (an os.Root's Open, an fs.FS's ReadFile) is caught too, and
+// so is a file's content read out of git through the unbounded gitutil.Run (a
+// `cat-file blob` or a `show`), which reads a committed record whole as surely as
+// os.ReadFile reads a working-tree one (iss-2609261726015043); the bounded
+// gitutil.RunCapped and RunCappedBytes pass. What it cannot see is a raw read
+// done inside a callee package; the guard is this package's own source.
 func TestLintReadsNothingUnguarded(t *testing.T) {
 	entries, err := os.ReadDir(".")
 	if err != nil {
@@ -67,7 +70,7 @@ func TestLintReadsNothingUnguarded(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, h := range hits {
-			t.Errorf("%s reads without the guard (use readRepoFile, readRepoAbs, readRepoLeaf or an fsutil guarded read)", h)
+			t.Errorf("%s reads without the guard (use readRepoFile, readRepoAbs, readRepoLeaf or an fsutil guarded read; out of git, gitutil.RunCapped)", h)
 		}
 	}
 }
@@ -84,6 +87,7 @@ import (
 	. "os"
 
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 func planted(root *sys.Root, fsys fs.FS) {
@@ -96,6 +100,8 @@ func planted(root *sys.Root, fsys fs.FS) {
 	ioutil.ReadFile("g")
 	ReadFile("h")
 	sys.OpenInRoot(".", "i")
+	gitutil.Run(".", "cat-file", "blob", "HEAD:j")
+	gitutil.Run(".", "show", "HEAD:k")
 }
 
 func guarded(root *sys.Root) {
@@ -104,6 +110,9 @@ func guarded(root *sys.Root) {
 	sys.OpenRoot(".")
 	sys.ReadDir(".")
 	sys.Lstat("c")
+	gitutil.RunCapped(".", 1, "cat-file", "blob", "HEAD:d")
+	gitutil.Run(".", "cat-file", "-e", "HEAD:e")
+	gitutil.Run(".", "rev-parse", "HEAD")
 }
 `
 	hits, err := unguardedReads("planted.go", []byte(src))
@@ -111,10 +120,11 @@ func guarded(root *sys.Root) {
 		t.Fatal(err)
 	}
 	want := []string{
-		"planted.go:13 sys.ReadFile", "planted.go:14 sys.OpenFile", "planted.go:15 fs.ReadFile",
-		"planted.go:15 sys.DirFS", "planted.go:16 root.Open", "planted.go:17 root.ReadFile",
-		"planted.go:18 fsys.Open", "planted.go:19 ioutil.ReadFile", "planted.go:20 ReadFile",
-		"planted.go:21 sys.OpenInRoot",
+		"planted.go:14 sys.ReadFile", "planted.go:15 sys.OpenFile", "planted.go:16 fs.ReadFile",
+		"planted.go:16 sys.DirFS", "planted.go:17 root.Open", "planted.go:18 root.ReadFile",
+		"planted.go:19 fsys.Open", "planted.go:20 ioutil.ReadFile", "planted.go:21 ReadFile",
+		"planted.go:22 sys.OpenInRoot", "planted.go:23 gitutil.Run cat-file blob",
+		"planted.go:24 gitutil.Run show",
 	}
 	if strings.Join(hits, "\n") != strings.Join(want, "\n") {
 		t.Errorf("got:\n%s\nwant:\n%s", strings.Join(hits, "\n"), strings.Join(want, "\n"))
@@ -138,6 +148,9 @@ func unguardedReads(name string, src []byte) ([]string, error) {
 	// Any other receiver: a method with a reading name on a handle (an os.Root, an
 	// fs.FS, an *os.File's directory) is a read the guard never saw.
 	methods := map[string]bool{"Open": true, "OpenFile": true, "ReadFile": true}
+	// gitutil.Run returns git's whole output: asked for a file's content at a
+	// revision (`cat-file blob`, `show`), it is a read with no bound.
+	const gitutilPath = "github.com/intentdriven/abcd/internal/gitutil"
 
 	pkgOf := map[string]string{} // local name -> import path, for every import
 	dot := map[string]bool{}     // import paths imported with "."
@@ -176,6 +189,11 @@ func unguardedReads(name string, src []byte) ([]string, error) {
 					if banned[path][fn.Sel.Name] {
 						hit(call.Pos(), x.Name+"."+fn.Sel.Name)
 					}
+					if path == gitutilPath && fn.Sel.Name == "Run" {
+						if read := gitContentRead(call.Args); read != "" {
+							hit(call.Pos(), x.Name+".Run "+read)
+						}
+					}
 					return true
 				}
 			}
@@ -196,4 +214,26 @@ func unguardedReads(name string, src []byte) ([]string, error) {
 		return true
 	})
 	return hits, nil
+}
+
+// gitContentRead names the file-content read a git invocation's literal
+// arguments ask for — "cat-file blob" or "show" — or "" when they ask for none.
+func gitContentRead(args []ast.Expr) string {
+	var lits []string
+	for _, a := range args {
+		if b, ok := a.(*ast.BasicLit); ok && b.Kind == token.STRING {
+			if v, err := strconv.Unquote(b.Value); err == nil {
+				lits = append(lits, v)
+			}
+		}
+	}
+	for i, v := range lits {
+		switch {
+		case v == "show":
+			return "show"
+		case v == "cat-file" && i+1 < len(lits) && lits[i+1] == "blob":
+			return "cat-file blob"
+		}
+	}
+	return ""
 }

@@ -173,8 +173,74 @@ _None open; decisions 2 to 4 settle the three this record carried._
 
 ## Audit Notes
 
-<!-- abcd-review: OWED receipt=rcp-03d2e3b295e8 -->
-Fidelity review OWED (receipt rcp-03d2e3b295e8).
+<!-- abcd-review: INGESTED receipt=rcp-03d2e3b295e8 -->
+Fidelity review — receipt rcp-03d2e3b295e8 (verifier intent-auditor claude-fable-5-1).
+
+Provenance: intent-auditor@claude-fable-5-1 · rubric_hash sha256:effa65b3e9e88ff29433b443ec2be159522a8b0b71cf1434526514aa61edb13e · prompt_hash sha256:fffb8fec06cee1e4ff5bd2c1aab90e8fa48c762816ffcae3ee131aef637e1524
+Input attestations: diff:f91708205..4ce401c5f (internal/core/intent/{bundle,reclassify}.go, internal/core/intent/lifecycle.go, internal/core/lint/schema_bundle.go, internal/core/spec, internal/surface/cli/cli.go, commands/intent.md at BASE 4ce401c5; tree 376356ce669156f45b423eb7858a952ffeb0f9d6)@-;
+
+Acceptance rollup: MET 4 · MET_WITH_CONCERNS 1 · NOT_MET 0 · INCONCLUSIVE 0
+
+Per-criterion verdicts:
+- ac-1 — MET_WITH_CONCERNS: PlanBundle mints one shared spec listing every member, stamps kind: bundle-member and bundle: < name>, moves all under the mint lock, and refuseBundleBlocker refuses a member naming another in blocked_by naming the edge with nothing moved (tests at bundle_test.go:61,95,124 green); concern: the CLI does not ASK for the bundle name, it refuses without --bundle, and the ask is delegated to the plugin page's interview text, as spc-2609211859391533 scope 1 records
+  evidence: internal/core/intent/bundle.go:82 — "PlanBundle plans several drafts as one bundle (criterion 1)"
+  evidence: internal/core/intent/bundle.go:264 — "a bundle cannot contain its own blocker, since its members ship together — plan %s first, or drop the edge (nothing moved)"
+  evidence: internal/surface/cli/cli.go:2200 — "several intents are planned as one bundle, and --bundle < name> names it; re-run with --bundle (nothing moved)"
+  evidence: commands/intent.md:384 — "Ask the human for the bundle's name"
+  evidence: internal/core/intent/bundle_test.go:61 — "TestPlanBundleMintsOneSharedSpecAndMovesBothMembers"
+  evidence: internal/core/intent/bundle_test.go:95 — "TestPlanBundleRefusesAMemberBlockedByAnother"
+  evidence: internal/core/intent/bundle_test.go:124 — "TestPlanBundleRefusalMovesNothing"
+- ac-2 — MET: Reconcile dispatches a spec carrying bundle: and an intents: list to reconcileBundle, which ships every member whose bundle matches together and rolls every move back on a failure; TestReconcileShipsEveryBundleMemberTogether and TestSpecCloseShipsABundleCLI green
+  evidence: internal/core/intent/lifecycle.go:766 — "if sp.Bundle != "" && len(sp.Intents) > 0 { return reconcileBundle("
+  evidence: internal/core/intent/bundle.go:398 — "reconcileBundle is Reconcile for a bundle's shared spec (criterion 2)"
+  evidence: internal/core/intent/bundle.go:593 — "if it.Bundle != sp.Bundle { skipped = append(skipped, it.ID)"
+  evidence: internal/core/intent/bundle_test.go:189 — "TestReconcileShipsEveryBundleMemberTogether"
+  evidence: internal/surface/cli/intent_bundle_cli_test.go:105 — "TestSpecCloseShipsABundleCLI"
+- ac-3 — MET: Reclassify runs under the intent mint lock, sets kind and shelf, writes superseded_by on the record and appends supersedes on the successor (intent or ADR) as pending writes applied together with rollback, and refuses --kind discipline on a shipped record with the file-a-discipline-that-supersedes-it remedy; tests at reclassify_test.go:30,70,93,112 green
+  evidence: internal/core/intent/reclassify.go:340 — "recFields := map[string]string{"superseded_by": succID, "kind_at_supersession": kindAt, "kind": kindAt}"
+  evidence: internal/core/intent/reclassify.go:368 — "appendFrontmatterListItem(string(succData), "supersedes", it.ID)"
+  evidence: internal/core/intent/reclassify.go:152 — "a shipped intent never changes kind; a rule found after the fact is filed as a new discipline — file a discipline that supersedes it"
+  evidence: internal/core/intent/reclassify_test.go:30 — "TestReclassifySupersededWritesBothDirectionsAndMoves"
+  evidence: internal/core/intent/reclassify_test.go:70 — "TestReclassifySupersededByAnADRAppendsToItsList"
+  evidence: internal/core/intent/reclassify_test.go:93 — "TestReclassifyRefusesAShippedIntentBecomingADiscipline"
+  evidence: internal/surface/cli/cli.go:2481 — "reclassify < itd-N> --kind < standalone|bundle-member --bundle < name>|superseded --by < itd-M|adr-N> --reason"
+- ac-4 — MET: supersede finds the lone other member and appends a reclassification_history line 'bundle < name> now has one member' keeping its kind bundle-member; TestReclassifySupersedingABundleMemberLeavesASurvivorThatSaysSo asserts both
+  evidence: internal/core/intent/reclassify.go:380 — "line := intentbundle.OneMember(it.Bundle) + ": " + it.ID + " was superseded by " + succID"
+  evidence: internal/core/intent/reclassify.go:381 — "historyEntry(date, KindBundleMember, KindBundleMember, line)"
+  evidence: internal/core/intent/reclassify_test.go:200 — "TestReclassifySupersedingABundleMemberLeavesASurvivorThatSaysSo"
+  evidence: internal/core/intent/reclassify_test.go:226 — "the survivor's record must state the bundle now has one member"
+- ac-5 — MET: intent_lifecycle refuses a planned or shipped kind other than standalone/bundle-member and a disciplines/ record not of kind discipline, and record_schema's checkIntentBundles refuses a bundle-member whose bundle no other record names unless its history says it now has one member; both tests green
+  evidence: internal/core/lint/lint.go:2214 — "planned: kind must be standalone or bundle-member (non-null)"
+  evidence: internal/core/lint/schema_bundle.go:67 — "bundle-member names bundle '" + name + "', which no other record names and whose history does not say it now has one member"
+  evidence: internal/core/lint/schema_bundle_test.go:11 — "TestRecordSchemaBundleMemberNamesABundleOthersName"
+  evidence: internal/core/lint/schema_bundle_test.go:73 — "TestIntentLifecycleRefusesAKindThatDoesNotMatchItsShelf"
+
+Gap audit:
+- honoured:
+  - multi-arg plan mints one shared spec and moves every member drafts/ to planned/ together, refusing a member that names another in blocked_by
+    evidence: internal/core/intent/bundle.go:82 — "PlanBundle plans several drafts as one bundle"
+    evidence: internal/core/intent/bundle_test.go:61 — "TestPlanBundleMintsOneSharedSpecAndMovesBothMembers"
+  - a bundle's members ship together on the shared spec's close
+    evidence: internal/core/intent/lifecycle.go:766 — "return reconcileBundle("
+  - reclassify writes the two-way supersession link in one command and moves the shelf
+    evidence: internal/core/intent/reclassify.go:368 — "appendFrontmatterListItem(string(succData), "supersedes", it.ID)"
+  - a shipped intent never changes kind (decision 4)
+    evidence: internal/core/intent/reclassify.go:152 — "a shipped intent never changes kind"
+  - a survivor stays a bundle-member of a bundle of one and says so (decision 3)
+    evidence: internal/core/intent/reclassify.go:380 — "intentbundle.OneMember(it.Bundle)"
+  - lint refuses a kind off its shelf and a bundle-member naming a bundle nobody else names
+    evidence: internal/core/lint/schema_bundle.go:31 — "func checkIntentBundles("
+    evidence: internal/core/lint/lint.go:2214 — "planned: kind must be standalone or bundle-member"
+  - both verbs reachable from the CLI and the plugin page
+    evidence: internal/surface/cli/cli.go:2194 — "plan < itd-N> [< itd-N>…] [--bundle < name>]"
+    evidence: commands/intent.md:390 — "intent plan < itd-A> < itd-B> [< itd-C>…] --bundle < name>"
+- diverged:
+  - the command 'asks for a bundle name': the CLI refuses without --bundle rather than prompting, and the ask lives in the plugin page's interview text, as the spec's scope 1 records
+    evidence: internal/surface/cli/cli.go:2200 — "re-run with --bundle (nothing moved)"
+    evidence: commands/intent.md:384 — "Ask the human for the bundle's name"
+  - the press release's capture-time kind classifier, disciplines/< itd-N>.json gate registry and shape-classification role are read through the 2026-09-21 re-scope, which limits this record's remainder to the bundle command and reclassify; they are not part of this delivery
+    evidence: .abcd/development/intents/shipped/itd-34-three-intent-kinds.md:15 — "what remains, and what this record now plans, is the bundle command and the `reclassify` verb"
+- missing: (none)
 
 ## References
 

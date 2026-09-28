@@ -52,14 +52,20 @@ boundary) is minted before either path ships and is a delivery of this spec.
    Intent, spec, the conventions section of `AGENTS.md` and the decision lines
    the intent cites, into one Markdown file under the run directory
    (criterion 3).
+   - packages: internal/core/implement/loop
+   - landed: 72ae4a2b
 6. **The lane**
    Worktree at `~/.abcd/worktrees/<root-sha>/<run>-<lane>` in abcd's form (the
    store's verb once `itd-2609091014076309` ships; a plain `git worktree add`
    until then), branch off the default branch.
+   - packages: internal/core/implement/loop, internal/core/peers
+   - landed: 72ae4a2b
 7. **The receipt**
    Criterion 4: a file the agent writes naming its commits, the definition of
    done's output and its report; the verifier checks the commits exist on the
    branch and the report exists, and refuses otherwise.
+   - packages: internal/core/implement/loop, internal/surface/cli
+   - landed: 72ae4a2b
 8. **Validators**
    Criterion 5: the ruthless and security reviewer briefs on the lane's diff,
    each a fresh agent; findings are applied by a fresh implementer or rejected
@@ -142,12 +148,27 @@ spec stays open until the last lane closes it.
   `held:`, since iss-2609200830076665 shipped), the spec's steps through the
   spec store's reader, and the peers (the peer listing and the shared run's
   live claims). The end-to-end test plays the host with fake step bodies.
+- **Landed (lane 2): pieces 5, 6 and 7.** The lane's worktree in the
+  machine-scoped store, `~/.abcd/worktrees/<root-sha>/<run-id>-<lane-id>`, on a
+  branch `build/<run-id>-<lane-id>` cut from the default branch, its path derived
+  from the run and lane ids and refused on any component that could leave the
+  store; the brief, rendered from that base (the intent, the spec, the
+  conventions of `AGENTS.md`, the cited ADRs and the decision-log entries naming
+  the intent or spec) into the lane's directory of the run; and the implement
+  step, which awaits a fresh implementer's receipt and verifies it strictly:
+  every commit on the lane's branch past its base, a passing definition of
+  done's output and the report, each inside the lane's directory, or a refusal
+  naming every gap.
 - **Seam left, not built: piece 3**, the process driver. It waits on the runner
   intent (itd-2609201916056194) and calls the same `Advance` and `Receipt`.
-- **Remaining: pieces 5 to 8** (the brief, the lane's worktree, the receipt's
-  verifier, the validators with the itd-58 verdict invariant) and **9 to 11**
-  (the landing, the run record and transcripts, `--auto-plan` with its ADR).
-  Each registers its body in `loop.DefaultSteps`. The issue key (decision 10)
+- **Remaining: piece 8** (the validators with the itd-58 verdict invariant) and
+  **9 to 11** (the landing, the run record and transcripts, `--auto-plan` with
+  its ADR). Each registers its body in `loop.DefaultSteps`. Piece 8 carries one
+  question the record does not answer: the fidelity request is emitted today
+  only for a shipped intent, after `spec close` (piece 9's landing), while this
+  step orders the fidelity audit before the landing; whether the auditor runs
+  per lane on the lane's range or once, on the lane that closes the spec, is to
+  be settled before piece 8 is built. The issue key (decision 10)
   is refused by name at the key check; the lane that admits it adds the
   `remedy:` field schema, drain's eligibility rule and the `handback:` report
   field. `--auto-plan` is not a flag yet.

@@ -182,5 +182,64 @@ for art, text-only otherwise).
 
 ## Audit Notes
 
-<!-- abcd-review: OWED receipt=rcp-c0f8eb651646 -->
-Fidelity review OWED (receipt rcp-c0f8eb651646).
+<!-- abcd-review: INGESTED receipt=rcp-c0f8eb651646 -->
+Fidelity review — receipt rcp-c0f8eb651646 (verifier intent-auditor claude-fable-5-1).
+
+Provenance: intent-auditor@claude-fable-5-1 · rubric_hash sha256:effa65b3e9e88ff29433b443ec2be159522a8b0b71cf1434526514aa61edb13e · prompt_hash sha256:969936afc794c3d4550ca52dc1f15e03dbbba813eac98f9e074334017c8f4e58
+Input attestations: diff:tree at 4c09b5c749de3dc3d1a1e0ab85d9dcd58ffcb4d5 (main lineage, itd-112 shipped)@-;
+
+Acceptance rollup: MET 6 · MET_WITH_CONCERNS 0 · NOT_MET 0 · INCONCLUSIVE 0
+
+Per-criterion verdicts:
+- ac-1 — MET: the root RunE writes the banner before the board only when the TTY seam says yes; RenderHalfBlock yields 3 rows of 23 half-blocks on the panel colour, the name sits on strip[0], tagline and hints follow, the 66-column bound is asserted in display columns, and TestBannerRendersAboveBoard byte-compares the board with and without the banner
+  evidence: internal/surface/cli/cli.go:274 — "if !asJSON && bannerTTY(cmd.OutOrStdout()) {"
+  evidence: internal/surface/cli/banner.go:58 — "strip := livery.RenderHalfBlock(logo, mode)"
+  evidence: internal/surface/cli/banner.go:68 — "const bannerWidth = 66"
+  evidence: internal/livery/ansi_test.go:69 — "half-blocks, want 23"
+  evidence: internal/surface/cli/banner_test.go:126 — "board bytes changed under the banner"
+  evidence: internal/surface/cli/banner_test.go:236 — "if w := terminalColumns(line); w > 66 {"
+- ac-2 — MET: the seam is a package var defaulting to a real character-device check; TestBareInvocationMachineStreamClean asserts no escape byte and no banner on a buffer, TestBannerJSONNeverDecorated forces the seam true and asserts --json stays clean, TestBannerNeverOnASubcommandOrHook does the same for --version and hook prompt-router
+  evidence: internal/surface/cli/banner.go:28 — "var bannerTTY = func(w io.Writer) bool {"
+  evidence: internal/surface/cli/banner_test.go:76 — "machine stream carries an escape byte"
+  evidence: internal/surface/cli/banner_test.go:148 — "--json output decorated"
+  evidence: internal/surface/cli/banner_test.go:288 — "func TestBannerNeverOnASubcommandOrHook(t *testing.T) {"
+- ac-3 — MET: ResolveColorMode encodes the ruled precedence and TestResolveColorModePrecedence covers flag, NO_COLOR non-empty vs empty, TERM dumb/unset, COLORTERM truecolor/24bit, 256color, and the 16 floor; TestBannerLinesRungs asserts the mono rung is 5 shade rows with no escape byte and the non-UTF-8 rung is text only; TestWriteBannerHonoursNoColor covers the root-local flag
+  evidence: internal/term/term.go:35 — "func ResolveColorMode(getenv func(string) string, noColorFlag bool) ColorMode {"
+  evidence: internal/term/term_test.go:19 — "flag beats everything"
+  evidence: internal/term/term_test.go:21 — "NO_COLOR empty string does NOT count"
+  evidence: internal/surface/cli/banner_test.go:169 — "mono banner: %d lines, want %d (5 shade rows + name + %d tagline + hints)"
+  evidence: internal/surface/cli/banner_test.go:179 — "non-UTF-8 banner: %d lines, want %d"
+  evidence: internal/surface/cli/banner_test.go:196 — "--no-color output carries an escape byte"
+- ac-4 — MET: identitygen writes bakedTitle/bakedTagline into identity_gen.go through the one IdentityGenSource template, TestBakedIdentityInSync regenerates from the identity block and byte-compares, positioning.json registers the file as the banner-baked-identity surface, and bannerNameSegment renders (dev build) when core.Version is empty or dev
+  evidence: internal/surface/cli/banner.go:141 — "func IdentityGenSource(title, tagline string) []byte {"
+  evidence: internal/surface/cli/banner_test.go:33 — "func TestBakedIdentityInSync(t *testing.T) {"
+  evidence: .abcd/positioning.json:34 — ""id": "banner-baked-identity""
+  evidence: internal/surface/cli/banner.go:39 — "return "abcd (dev build)""
+  evidence: internal/surface/cli/banner_test.go:186 — "if text[0] != "abcd (dev build)" {"
+- ac-5 — MET: sgrFG/sgrBG decode the hex palette for truecolor, ansi256 and ansi16 live in livery/ansi.go beside the palette with TestAnsiTableParity holding key sets equal, and TestRenderHalfBlockGeometry asserts the render neither mutates the grid it was given nor the canonical asset; the livery package tests are green at BASE
+  evidence: internal/livery/ansi.go:55 — "r, g, b := hexRGB(palette[key])"
+  evidence: internal/livery/ansi.go:19 — "var ansi256 = map[rune]int{"
+  evidence: internal/livery/ansi_test.go:12 — "func TestAnsiTableParity(t *testing.T) {"
+  evidence: internal/livery/ansi_test.go:84 — "RenderHalfBlock mutated the grid it was given"
+  evidence: internal/livery/ansi_test.go:87 — "canonical grid changed"
+- ac-6 — MET: adr-49 is accepted and dated 2026-08-22, brief invariant 13 records the discipline and names adr-49, ResolveColorMode and IsTerminal are exported from internal/term with no banner dependency and IsTerminal is consumed by update.go, report.go and cli.go beyond the banner, and itd-110 carries builds_on: [itd-112]
+  evidence: .abcd/development/decisions/adrs/0049-terminal-emission-discipline.md:4 — "status: accepted"
+  evidence: .abcd/development/brief/02-constraints/03-invariants.md:39 — "13. **Decoration never reaches a machine-consumed stream, and untrusted text never carries ANSI**"
+  evidence: internal/term/term.go:59 — "func IsTerminal(f *os.File) bool {"
+  evidence: internal/surface/cli/report.go:27 — "var reportInteractive = func() bool { return term.IsTerminal(os.Stdin) && term.IsTerminal(os.Stdout) }"
+  evidence: .abcd/development/intents/shipped/itd-110-terminal-styling-for-abcd-output-the-abcd-house-style.md:8 — "builds_on: [itd-112]"
+
+Gap audit:
+- honoured:
+  - banner tops the unchanged status board on an interactive TTY only
+    evidence: internal/surface/cli/cli.go:274 — "if !asJSON && bannerTTY(cmd.OutOrStdout()) {"
+  - identity baked at build time behind a drift gate, never read from the cwd
+    evidence: internal/surface/cli/banner_test.go:33 — "func TestBakedIdentityInSync(t *testing.T) {"
+  - colour ladder and TTY seam exported as banner-independent primitives
+    evidence: internal/term/term.go:35 — "func ResolveColorMode(getenv func(string) string, noColorFlag bool) ColorMode {"
+  - fixed 66-column layout with no terminal-width detection
+    evidence: internal/surface/cli/banner.go:68 — "const bannerWidth = 66"
+- diverged:
+  - the tagline is laid full-width beneath the strip on one line; at BASE it is word-wrapped to the 66-column bound at render time (spc-2609230613206687), which moves line breaks only and keeps the text canonical
+    evidence: internal/surface/cli/banner.go:74 — "return wrapWords(bakedTagline, bannerWidth)"
+- missing: (none)

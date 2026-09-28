@@ -75,8 +75,10 @@ the table above is the sub-verb set, and the modes are the bare verb's flags.
   (iss-2608270512210664).
 - **The remote apply** is **the one abcd verb that mutates state outside this
   machine.** See below.
-- **The identity check** exits non-zero when the git commit identity does not
-  match the repo's identity pin. Read-only, CLI-only, for an operator or CI.
+- **The identity check** exits non-zero when the author or the committer a
+  commit would carry does not match the repo's identity pin, and names a machine
+  identity in either role whether or not it fails. Read-only, CLI-only, for an
+  operator or CI.
 - **The provider board** explains the optional OpenAI-compatible
   provider adapter (itd-2609081951381895): what an aggregator is, that abcd
   would use one for decision models and cheap judgements pointed at it by name,
@@ -273,8 +275,10 @@ What it probes, in behaviour rather than in step order: the folder's kind and
 the plugin root; which **opt-in** scanners are on `PATH` (the native secret and
 PII scan needs no external tool, so this step only reports what a deeper scan
 would find available); the repo skeleton; the repo's identity, both its
-root-commit SHA against the registry and the git author identity a commit would
-use against the committed identity pin; the registry's own wiring; the ignore
+root-commit SHA against the registry and the git author and committer a commit
+would carry, each resolved as git resolves it (the environment override, then
+the role's own `author.*` or `committer.*` key, then `user.*`), against the
+committed identity pin and the list of machine identities; the registry's own wiring; the ignore
 block against the visibility policy; marker-block drift against the current
 template; the `PATH` entry; the hook manifest; the recorded setup version; and
 the two-layer name-guard scaffolding.
@@ -380,9 +384,9 @@ about, one question per category present, never one per item.
 | `category` | Examples | Apply behaviour |
 |---|---|---|
 | `safe-autocreate` | the repo skeleton, history-store directories, the name-guard artefacts | applied once the category is approved, no per-item prompt; create-if-absent, never overwriting |
-| `config-change` | visibility, oracle adapter, the `PATH` entry, the git-identity pin, the artefact kind | transparent confirm; skip-if-set with a "current value" notice |
+| `config-change` | visibility, oracle adapter, the `PATH` entry, the git-identity pin, the repository's own git identity, the artefact kind | transparent confirm; skip-if-set with a "current value" notice |
 | `plugin-owned` | the marker block (itd-3); hook-manifest verification | silent overwrite on marker drift; a non-resolvable diagnostic for a malformed or missing manifest, and for a conventions file whose block would land inside a fence or HTML comment nothing closes (`marker.unplaceable`) |
-| `dependency` | the opt-in scanners | one category-level approval covering them; abcd never auto-executes a package manager, and the user runs the commands |
+| `dependency` | a tool a capability uses and cannot find: gitleaks, optional over the native secret scanner and required where the repository armed it in `.abcd/config/gitleaks.json` | the category approval reaches the step; each tool is then explained from the tool registry (what it is, optional or required here, what works without it, the exact install step, what the install does) and its install step runs only on a per-tool yes — typed at a terminal, or relayed by a host as a flag naming the tool — never under the approve-everything flag, a piped answer or CI; a no is reported as what the capability continues on |
 | `status-line` | the offer of abcd's status line in the host harness | an advisory offer asked after its own question, written only on an answered consent; never under the approve-everything flag, and reported as optional work it skipped |
 | `oracle-routing` | the offer of abcd's proposed model-tier routing table (itd-2609170822093401): the machine's `~/.abcd/oracle-routing.json`, then, as a separate question, the repository's `.abcd/config/oracle-routing.json` | the proposal rendered as a table (agent, tier, fan-out) and each file written only on its own answered consent, the machine one owner-only; never under the approve-everything flag, and reported as optional work it skipped; a decline records nothing, so the next install offers again; uninstall leaves both files |
 | `user-state` | the registry entry, re-founding, stale or duplicate entries | guided; never auto-edit user-scope state, report extras read-only |
@@ -448,6 +452,25 @@ prompt wait rather than decline, which is the contract every prompting CLI has.
 A run that must neither block nor prompt closes stdin and pre-answers with
 flags.
 
+**Installing a tool is the one question a piped answer never answers.** It runs
+a program on the machine, so it is asked only of a person at a terminal, after
+the tool registry's explanation is shown, and its default is no. Off a terminal
+the answer is a flag naming the tool, which is how a host relays the answer its
+own question tool got; the approve-everything flag never installs a tool, and a
+CI runner never installs one and is not asked: the canonical CI detector
+(`internal/cienv`, `GITHUB_ACTIONS=true` or a truthy `CI`) refuses, and so does
+`CI` set to any value, `false` and `0` included. What runs is the
+registry's fixed argv for the platform, never a shell string and never a command
+composed from input, and only when the package manager resolves on `PATH`
+outside the repository (`internal/core/tools`). The step runs in a process group
+of its own, bounded at 15 minutes (its verify at 30 seconds), and a timeout kills
+that group through the handle abcd holds. The kill has one limit: a process the
+step moves into another group or session (`setsid`, `setpgid`) is out of its
+reach and can outlive the run. abcd stops reading output 10 seconds after the
+step exits or is killed, so such a process holding the output open cannot hold
+the run past its bound, and a step that exits cleanly while leaving one behind
+is reported as failed, saying so.
+
 The non-interactive flags pre-answer the prompts: approve every resolvable
 category, decide the adoption question either way, set the marker target, the
 oracle backend, the deep-scan toggle and the repo visibility, select track-latest
@@ -472,6 +495,29 @@ identity: those still need their own answer. The identity-pin exclusion is
 stated rather than assumed — the flag's own help names it, the install envelope
 carries it as skipped-and-optional, and the completion output prints it with the
 way to apply it (iss-166).
+
+**Who commits is proposed, never assumed** (itd-131). Detection raises
+`git_identity.mismatch` or `git_identity.unset` for the author,
+`git_identity.committer` for a committer that diverges on its own (required
+where the repo pins an identity, advisory where it does not), and
+`git_identity.tool` wherever the author or the committer is a machine identity
+(the harness's own default, a `[bot]` account, a vendor's address), pinned or
+not, because the human is the author of record either way. The machine
+identities are one list, `internal/core/identity/tool-identities.txt`, which the
+CI attribution gate reads too, role asymmetry included: a `noreply@` mailbox is
+a machine as the author, and the forge's own committer stamp passes. Once the
+config-change category is approved, the install proposes the human identity
+(the pin, else the global git identity, read from disk and never looked up over
+the network, per adr-38, and never a machine's) and sets `user.name` and
+`user.email` in the repository's own `.git/config` only when the person confirms
+at a terminal. Otherwise it writes nothing and its notes say why: under the
+approve-everything flag; with no terminal, where it asks nothing at all, so a
+piped or routine run can neither write unasked nor wait on an answer no one can
+give; when an environment override or an `author.*` or `committer.*` key
+outranks `user.*`, so the write would change nothing; and when there is no human
+identity to propose. An autonomous routine is therefore detected here and
+established by whatever launches it, before its first commit
+(iss-2608210932052003). The pin is never recorded from a machine identity.
 
 ### What the apply pass writes
 
@@ -591,9 +637,12 @@ byte-identical to a fresh install save for the setup date.
 - **Given** a repo with the install run at an older setup version, **when**
   the install runs, **then** the version is updated, the marker block refreshed,
   and existing config keys preserved.
-- **Given** an opt-in scanner is not on `PATH`, **when** the dependency category
-  is approved, **then** the user is shown the install commands under one
-  category-level approval; abcd never auto-executes a package manager.
+- **Given** a tool a capability uses is not on `PATH`, **when** the dependency
+  category is approved, **then** the person is shown the tool registry's
+  explanation and asked per tool; the registry's fixed install step runs only
+  on a yes typed at a terminal or relayed by a host naming the tool, the result
+  reports what ran and whether its verify passed, and a no reports what the
+  capability continues on (itd-63).
 - **Given** no oracle adapter is wired, **when** detection resolves the oracle,
   **then** it stays host-delegated: abcd needs no API keys or model config,
   because it emits prompts the host runs (adr-25), and an adapter can be
@@ -618,6 +667,14 @@ byte-identical to a fresh install save for the setup date.
   the doctor runs, **then** detection notices the stale registered path and
   the install refreshes it: the root SHA is unchanged, so the entry is updated
   rather than duplicated.
+- **Given** a pinned repo whose repo-local `user.name` and `user.email` differ
+  from the pin, **when** the install runs at a terminal, **then** it proposes
+  the pinned identity and writes repo-local config only after the person
+  confirms; declined, git config is unchanged.
+- **Given** a committer that differs from the author or the pin, or an author or
+  committer that is a machine identity, **when** detection runs, **then** the
+  divergence is reported as its own gap, and with no terminal the install asks
+  nothing, writes nothing and says so.
 
 <!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
 
@@ -665,6 +722,7 @@ Sub-verbs: none.
 | `--bin-dir` | string |
 | `--dev` | bool |
 | `--docs-target` | string |
+| `--install-tool` | stringSlice |
 | `--oracle-backend` | string |
 | `--refuse-adopt` | bool |
 | `--scan-deep` | string |

@@ -187,10 +187,103 @@ func TestBuildRefusesAPeerHoldingTheIntentAtExit3(t *testing.T) {
 	runDirAbsent(t, repo.Root())
 }
 
-// TestImplementStepRefusesAStepThisBuildDoesNotCarry: the production sequence
-// carries no step body yet, so the first step is refused naming the piece that
-// delivers it, and the state is unchanged.
-func TestImplementStepRefusesAStepThisBuildDoesNotCarry(t *testing.T) {
+// stepJSON is `implement step` / `implement receipt` under --json.
+type stepJSON struct {
+	Performed string `json:"performed"`
+	Step      string `json:"step"`
+	Awaiting  *struct {
+		Role    string `json:"role"`
+		Brief   string `json:"brief"`
+		Receipt string `json:"receipt"`
+	} `json:"awaiting"`
+}
+
+func mustStep(t *testing.T, args ...string) stepJSON {
+	t.Helper()
+	var res stepJSON
+	if err := json.Unmarshal([]byte(mustImplement(t, args...)), &res); err != nil {
+		t.Fatal(err)
+	}
+	return res
+}
+
+// TestTheHostDrivesALaneThroughTheCLI plays the host through the front door:
+// `implement step` makes the lane's worktree, renders its brief and hands the
+// lane to an implementer, naming the brief and the receipt; a receipt short of
+// the lane is refused naming what is missing; a receipt that verifies advances
+// the lane to its validators.
+func TestTheHostDrivesALaneThroughTheCLI(t *testing.T) {
+	repo := buildRepo(t)
+	repo.Write("AGENTS.md", "# AGENTS.md\n\n- Run make check.\n")
+	repo.Commit("conventions")
+	var start struct {
+		RunID string `json:"run_id"`
+	}
+	if err := json.Unmarshal([]byte(mustImplement(t, "build", "itd-10", "--json")), &start); err != nil {
+		t.Fatal(err)
+	}
+	if res := mustStep(t, "implement", "step", "--json"); res.Performed != "worktree" {
+		t.Fatalf("first step = %+v", res)
+	}
+	if res := mustStep(t, "implement", "step", "--json"); res.Performed != "brief" {
+		t.Fatalf("second step = %+v", res)
+	}
+	await := mustStep(t, "implement", "step", "--json")
+	if await.Awaiting == nil || await.Awaiting.Role != "implementer" || !strings.HasSuffix(await.Awaiting.Receipt, "/lane-1/receipt.json") {
+		t.Fatalf("the implement step names the agent, the brief and the receipt: %+v", await)
+	}
+	brief, err := os.ReadFile(filepath.Join(repo.Root(), filepath.FromSlash(await.Awaiting.Brief)))
+	if err != nil || !strings.Contains(string(brief), "- Run make check.") {
+		t.Fatalf("the brief carries the conventions: %v", err)
+	}
+
+	st, err := os.ReadFile(filepath.Join(repo.Root(), ".abcd", ".work.local", "run", start.RunID, "state.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var state struct {
+		Lanes []struct {
+			Worktree, Branch string
+		} `json:"lanes"`
+	}
+	if err := json.Unmarshal(st, &state); err != nil {
+		t.Fatal(err)
+	}
+	wt := state.Lanes[0].Worktree
+	if !strings.HasPrefix(wt, filepath.Join(os.Getenv("HOME"), ".abcd", "worktrees")) {
+		t.Fatalf("the worktree is in the store: %q", wt)
+	}
+	if err := os.WriteFile(filepath.Join(wt, "built.txt"), []byte("built\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	repo.Git("-C", wt, "add", "built.txt")
+	repo.Git("-C", wt, "commit", "-q", "-m", "build it")
+	sha := strings.TrimSpace(repo.Git("-C", wt, "rev-parse", "HEAD"))
+
+	laneDir := filepath.Dir(filepath.Join(repo.Root(), filepath.FromSlash(await.Awaiting.Receipt)))
+	receipt := `{"schema_version":1,"run_id":"` + start.RunID + `","lane":"lane-1","branch":"` + state.Lanes[0].Branch +
+		`","commits":["` + sha + `"],"definition_of_done":{"command":"make check","exit_code":0,"output":"dod.log"},"report":"report.md"}`
+	if err := os.WriteFile(filepath.Join(laneDir, "receipt.json"), []byte(receipt), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ref := refusalDocs(t, 2, "implement", "receipt", await.Awaiting.Receipt, "--json")
+	if ref["step"] != "receipt" || !strings.Contains(ref["reason"].(string), "dod.log does not exist") ||
+		!strings.Contains(ref["reason"].(string), "report.md does not exist") {
+		t.Fatalf("a short receipt is refused naming what is missing: %v", ref)
+	}
+	for name, body := range map[string]string{"dod.log": "ok\n", "report.md": "built it\n"} {
+		if err := os.WriteFile(filepath.Join(laneDir, name), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if res := mustStep(t, "implement", "receipt", await.Awaiting.Receipt, "--json"); res.Performed != "implement" || res.Step != "validate" {
+		t.Fatalf("a verified receipt advances the lane to its validators: %+v", res)
+	}
+}
+
+// TestImplementReceiptNothingAwaitsIsRefused: a receipt no lane awaits is
+// refused, and the state is unchanged.
+func TestImplementReceiptNothingAwaitsIsRefused(t *testing.T) {
 	repo := buildRepo(t)
 	var res struct {
 		State string `json:"state"`
@@ -203,18 +296,12 @@ func TestImplementStepRefusesAStepThisBuildDoesNotCarry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ref := refusalDocs(t, 2, "implement", "step", "--json")
-	if ref["step"] != "worktree" || ref["lane"] != "lane-1" || !strings.Contains(ref["reason"].(string), "piece 6") {
-		t.Fatalf("refusal = %v", ref)
-	}
-	after, _ := os.ReadFile(statePath)
-	if !bytes.Equal(before, after) {
-		t.Fatal("a refused step must leave the state unchanged")
-	}
-
-	ref = refusalDocs(t, 2, "implement", "receipt", "receipt.json", "--json")
+	ref := refusalDocs(t, 2, "implement", "receipt", "receipt.json", "--json")
 	if ref["step"] != "receipt" || !strings.Contains(ref["reason"].(string), "awaits a receipt") {
 		t.Fatalf("a receipt nothing awaits is refused: %v", ref)
+	}
+	if after, _ := os.ReadFile(statePath); !bytes.Equal(before, after) {
+		t.Fatal("a refused receipt must leave the state unchanged")
 	}
 }
 

@@ -72,8 +72,56 @@ _None open; decisions 1 to 3 settle the three this record carried._
 
 ## Audit Notes
 
-<!-- abcd-review: OWED receipt=rcp-d2372b1cb47f -->
-Fidelity review OWED (receipt rcp-d2372b1cb47f).
+<!-- abcd-review: INGESTED receipt=rcp-d2372b1cb47f -->
+Fidelity review — receipt rcp-d2372b1cb47f (verifier intent-auditor claude-fable-5-1).
+
+Provenance: intent-auditor@claude-fable-5-1 · rubric_hash sha256:effa65b3e9e88ff29433b443ec2be159522a8b0b71cf1434526514aa61edb13e · prompt_hash sha256:43f905f19cd97de59ca5454a3361eb53a27b88049e9cc2848808ae1a0a4881c4
+Input attestations: diff:internal/core/intent/drain.go, internal/core/intent/lifecycle.go, internal/surface/cli/intent_drain.go, commands/intent.md (Drain section) at BASE 4ce401c5 (tree 376356ce669156f45b423eb7858a952ffeb0f9d6)@-;
+
+Acceptance rollup: MET 1 · MET_WITH_CONCERNS 3 · NOT_MET 0 · INCONCLUSIVE 0
+
+Per-criterion verdicts:
+- ac-1 — MET_WITH_CONCERNS: OwedQueue orders the owed reviews oldest shipped first and caps at --max with Remaining named, runOwedDrain prints the list and emits the head's request, and the tests pin the order, the cap and the remainder; concern: 'runs each as the host pass … ingesting each verdict' is delivered as the plugin page's prose loop (steps 1-4), not as code, and no test exercises an end-to-end drain that runs and ingests more than the emit of the head
+  evidence: internal/core/intent/drain.go:68 — "OwedQueue orders the owed fidelity reviews oldest shipped first and caps the"
+  evidence: internal/core/intent/drain.go:120 — "q.Remaining = q.Owed - len(q.Queue)"
+  evidence: internal/surface/cli/intent_drain.go:73 — "; %d listed (--max %d), %d remain"
+  evidence: internal/core/intent/drain_test.go:27 — "TestOwedQueueOrdersOldestShippedFirst"
+  evidence: internal/core/intent/drain_test.go:85 — "TestOwedQueueCapNamesTheRemainder"
+  evidence: internal/surface/cli/intent_drain_test.go:58 — "TestIntentAuditOwedOrdersOldestFirstAndEmitsTheHead"
+  evidence: commands/intent.md:765 — "For each entry in `queue`, in order:"
+- ac-2 — MET_WITH_CONCERNS: the CLI runs no reviewer, so every entry stays owed by construction, and the page's step 1 instructs the host to run no audit and to say why when no intent-auditor is listed or its launch is refused; concern: the no-reviewer detection and the summary wording exist only as page prose executed by the host agent, and nothing in code or a test verifies that path
+  evidence: internal/surface/cli/intent_drain.go:106 — "this command runs no reviewer: every entry stays owed until its verdict is ingested"
+  evidence: commands/intent.md:757 — "Check for an auditor first."
+  evidence: commands/intent.md:759 — "every entry stays owed, nothing is marked failed or dead-lettered for"
+- ac-3 — MET_WITH_CONCERNS: the drain emits through the same AuditEmitOptions path a single audit uses and the page ingests through the one `intent audit ingest` verb, so a verdict lands as a single audit's does (this lane ingested rcp-dd80727d7bd1 that way); the page's step 3 directs a NOT_MET verdict to `abcd capture … --source review-followup` and forbids a fix; concern: the capture-not-fix rule is page prose with no mechanical form
+  evidence: internal/core/intent/drain.go:151 — "func NextOwedAudit(repoRoot string, max int, shippedOn ShippedOn, opts AuditEmitOptions) (DrainStep, error)"
+  evidence: commands/intent.md:770 — "`intent audit ingest --verdict-json <file> --json`. The verdict lands exactly"
+  evidence: commands/intent.md:776 — "A NOT_MET verdict is captured, never fixed."
+  evidence: internal/core/intent/drain_test.go:150 — "TestNextOwedAuditEmitsTheHead"
+- ac-4 — MET: Reconcile's step 3 calls emitAuditForIntent to park the OWED stub and the ephemeral request and nothing more; no file in internal/core/intent imports os/exec, and the page states the close still only parks the marker with no hook, gate or schedule running a reviewer
+  evidence: internal/core/intent/lifecycle.go:1022 — "3. Emit the fidelity-review OWED stub + ephemeral request over the shipped"
+  evidence: internal/core/intent/lifecycle.go:1027 — "emit, err := emitAuditForIntent(repoRoot, res.Intent)"
+  evidence: commands/intent.md:796 — "the spec close still only parks the OWED marker, and no hook,"
+
+Gap audit:
+- honoured:
+  - one bounded command pays the backlog, oldest first, capped by --max (decisions 1 and 3)
+    evidence: internal/core/intent/drain.go:68 — "oldest shipped first and caps the"
+    evidence: internal/surface/cli/intent_drain.go:15 — "runOwedDrain is `abcd intent audit --owed [--max <n>]` (itd-53,"
+  - loop purity: the close hook enqueues and never starts a reviewer
+    evidence: internal/core/intent/lifecycle.go:1027 — "emit, err := emitAuditForIntent(repoRoot, res.Intent)"
+  - entries are left owed, never failed, when nothing runs them
+    evidence: internal/surface/cli/intent_drain.go:106 — "every entry stays owed until its verdict is ingested"
+  - one bad record never blocks the drain
+    evidence: internal/core/intent/drain_test.go:234 — "TestNextOwedAuditSkipsAHeadThatCannotBeEmitted"
+- diverged:
+  - the press release promised a drainer that runs at a safe boundary (after a loop, at a session edge, in a pre-commit or CI step); decision 1 replaced it with one bounded command run by hand, and nothing starts the drain on its own
+    evidence: commands/intent.md:795 — "Nothing starts the"
+    evidence: .abcd/development/intents/shipped/itd-53-review-queue-auto-drain-fidelity-gate.md:21 — "adds an opt-in drainer that runs queued reviews at a safe boundary"
+  - the press release promised a standing list of shipped intents whose latest review is missing OR not-met; decision 2 names the owed listing as that report, but the listing reads the marker state only, so an intent whose ingested verdict was NOT_MET reads INGESTED and leaves the list, and the unmet half survives only as a page-instructed capture per verdict
+    evidence: internal/core/intent/owed.go:36 — "State is OWED, INGESTED, DEAD_LETTER, or none."
+    evidence: commands/intent.md:776 — "A NOT_MET verdict is captured, never fixed."
+- missing: (none)
 
 ## References
 

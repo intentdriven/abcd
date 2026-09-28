@@ -44,7 +44,7 @@ Detect abcd's install state and list its gaps, or report one mode a flag names: 
 
 ```
       --dry-run     print the detection result as its JSON envelope, whether or not --json is passed
-      --identity    check git's commit identity against .abcd/config/identity.json, exiting non-zero on a mismatch (for a pre-commit hook or CI)
+      --identity    check git's commit author and committer against .abcd/config/identity.json, exiting non-zero when either diverges (for a pre-commit hook or CI)
       --providers   explain the optional OpenAI-compatible provider adapter, list the providers configured on this machine and where a key can live
       --remote      report this repository's GitHub secret-scanning settings and what the remote apply sub-verb would change
 ```
@@ -78,7 +78,7 @@ Report every install gap, user-scope state included: Writes nothing; refuses any
 
 #### `abcd ahoy install`
 
-Apply the install gaps the detection finds: Writes the .abcd/ scaffolding, the name-guard hooks, and the PATH entry; refuses a stale binary before any write.
+Apply the install gaps the detection finds: Writes .abcd/, the name-guard hooks and the PATH entry, and installs a tool only on a yes; refuses a stale binary.
 
 **Usage:** `abcd ahoy install [flags]`
 
@@ -91,11 +91,12 @@ Apply the install gaps the detection finds: Writes the .abcd/ scaffolding, the n
       --bin-dir string          directory for the PATH entry (default ~/.local/bin, or an existing abcd install adopted in place); fails when it is not writable — abcd never escalates privileges
       --dev                     track-latest dogfood mode: the PATH entry rebuilds from the source tip on every call instead of pinning the built binary
       --docs-target string      which conventions file carries the managed block, which names abcd: claude_md | agents_md | both | skip (default skip)
+      --install-tool strings    answer yes to installing this missing tool (repeatable): the answer a host's question tool relays; without it a tool is installed only on an answer typed at a terminal, never on the approve-everything flag, a piped answer or CI
       --oracle-backend string   oracle backend: host-delegated | native | cli | api | mcp
       --refuse-adopt            decline to adopt an unmanaged repo
       --scan-deep string        enable deep scan: true | false
       --visibility string       repo visibility: private | public
-      --yes                     approve every resolvable change category without prompting; excludes the optional git-identity pin, the status line and the model-tier routing tables, which need an answered prompt (run without --yes, or answer every prompt with: yes | abcd ahoy install)
+      --yes                     approve every resolvable change category without prompting; excludes the optional git-identity pin, the status line and the model-tier routing tables, which need an answered prompt (run without --yes, or answer every prompt with: yes | abcd ahoy install); it never changes the repository's git identity, which is proposed only to a person at a terminal
 ```
 
 #### `abcd ahoy remote`
@@ -999,6 +1000,13 @@ exists. A workdir that is not a string, or holds a NUL byte, a control
 character or invalid UTF-8, or is over 4096 bytes, is refused with the
 blocking status and the reason.
 
+On the host's question tool the hook gates the question on the mode, not
+the registry. In a checkout abcd manages, a question asked while `abcd mode`
+reads managed is refused with the blocking status, naming `abcd mode
+product-thinker` and `abcd mode facilitator`; once the mode names somebody
+the question runs and is marked open in the local tier, and the next human
+message resets the mode to managed. Elsewhere a question runs unchecked.
+
 ### `abcd help`
 
 Help about any command
@@ -1458,6 +1466,12 @@ that does not is refused naming what is missing, with the lane left where it was
 step whose verifier this abcd does not carry is refused naming the spec piece that
 delivers it.
 
+An implementer's receipt is read strictly (one JSON object, no field the brief does not
+name, within its size cap, never through a symlink) and verifies only when every commit
+it names is on the lane's branch past its base, the definition of done's output exists
+in the lane's directory with a zero exit code, and the report exists there. A receipt
+that verifies moves the lane's head to its branch's tip.
+
 --run names the run; without it, the one run in progress in this checkout. Exit 2 on a
 refusal, exit 3 on a locked run state.
 
@@ -1539,7 +1553,7 @@ and creates nothing. Exit 2 when --run names no run.
 
 #### `abcd implement step`
 
-Perform the next step of an implement loop run and exit: Writes the run's state; refuses a step whose body this abcd does not carry.
+Perform the next step of an implement loop run and exit: Writes the run's state, the lane's worktree or brief; refuses a step this abcd does not carry.
 
 **Usage:** `abcd implement step [--run <run-id>] [flags]`
 
@@ -1549,6 +1563,13 @@ and the path its receipt goes to; the lane then advances only on
 `abcd implement receipt`, and asking for a step again re-tells the same thing and
 moves nothing. When a lane is done the spec's next pending step opens the next lane.
 A complete run says so.
+
+The lane's steps, in order: worktree makes the lane's worktree in the machine-scoped
+store, ~/.abcd/worktrees/<root-sha>/<run-id>-<lane-id>, on a branch build/<run-id>-<lane-id>
+cut from the default branch; brief renders the lane's brief from that base (the intent,
+the spec, the conventions of AGENTS.md and the decisions the intent cites) into the
+lane's directory of the run; implement hands the lane to a fresh implementer and awaits
+its receipt; validate and land follow.
 
 A step whose body this abcd does not carry is refused naming the spec piece that
 delivers it, and the run is unchanged. A step that fails leaves the state as it was,
@@ -2186,6 +2207,12 @@ the local-ephemeral tier — can hold it; elsewhere the set refuses and creates
 nothing. The next status-line refresh and the bare `abcd` board read the
 same file.
 
+The guard holds the agent to it: a question through the host's question
+tool is refused while the state reads `managed`, and once the state names
+somebody the question runs and is marked open. The next human message is
+its answer, so the prompt hook resets the state to `managed` and says so
+once on stderr. A state set by hand with no question open is left as it is.
+
 Where this machine has no status surface — no `~/.abcd/statusline.json`, or
 one with `disabled` set — the set form prints one line naming whose answer
 is owed, once, because the verb call is the stop. Setting `managed` owes
@@ -2727,8 +2754,9 @@ Render abcd's row for the host harness's status line.
 
 The harness runs this on every status refresh, with its JSON status
 payload on stdin, and shows what it prints. In a checkout abcd manages the
-row is abcd's own: the presence badge first — `abcd`, `waiting: facilitator`
-or `waiting: product thinker`, from the state `abcd mode` stores — then the
+row is abcd's own: the presence badge first — `abcd-managed`, `waiting on
+the technical facilitator` or `waiting on the product thinker`, from the state
+`abcd mode` stores, its colour ending at the badge — then the
 repository name, the branch, the model, the context percentage, the
 five-hour and seven-day usage percentages, and the record's counts of
 intents not yet shipped and open issues. Each element after the badge is

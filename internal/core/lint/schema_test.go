@@ -2394,6 +2394,29 @@ func TestRecordProvenanceOutOfVocabulary(t *testing.T) {
 	}
 }
 
+// TestRecordProvenanceQuotedNullIsAValue: quoting is what makes "null" a string
+// rather than a null, so frontmatter.IsNull is asked of the RAW scalar. The rule
+// stripped the quotes first and read `origin: "null"` as an ABSENT origin, which
+// sent the author to a lone-key finding about a key the record carries; the value
+// is an origin no writer produces, and that is what the finding says
+// (iss-2608241347321759).
+func TestRecordProvenanceQuotedNullIsAValue(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "rec/intents/drafts/itd-1-quoted-null.md",
+		"---\nid: itd-1\nkind: null\nspec_id: null\norigin: \"null\" # hand typed\nproduction_mode: hand-written\n---\n# draft\n")
+	fs, err := Lint(provenanceConfig(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rel := filepath.Join("rec/intents/drafts", "itd-1-quoted-null.md")
+	if findingWith(fs, rel, ruleRecordProvenance, "with no `origin`") {
+		t.Errorf("a quoted \"null\" origin read as absent: %+v", fs)
+	}
+	if !findingWith(fs, rel, ruleRecordProvenance, "null") || countRule(fs, ruleRecordProvenance) != 1 {
+		t.Errorf("expected one finding refusing the origin value \"null\": %+v", fs)
+	}
+}
+
 // TestRecordProvenanceExtractedWithoutRelatedIssues: promote writes the back-edge
 // and the origin in one act, so the origin without the back-edge is a record no
 // promote could have produced.

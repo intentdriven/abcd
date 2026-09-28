@@ -229,12 +229,15 @@ func candidateVersionAt(root, rev string) (string, error) {
 }
 
 // changelogAt reads CHANGELOG.md out of rev's tree. present=false means rev
-// carries no such file; an unreadable blob is an error.
+// carries no such file; an unreadable blob is an error, and so is one past
+// maxChangelogBytes, the cap every other CHANGELOG read holds to: the blob is
+// never held whole in memory, and a truncated one is never parsed as if it were
+// the file (iss-2609261726015043).
 func changelogAt(root, rev string) (string, bool, error) {
 	if _, err := gitutil.Run(root, "cat-file", "-e", rev+":CHANGELOG.md"); err != nil {
 		return "", false, nil
 	}
-	blob, err := gitutil.Run(root, "cat-file", "blob", rev+":CHANGELOG.md")
+	blob, err := gitutil.RunCapped(root, maxChangelogBytes, "cat-file", "blob", rev+":CHANGELOG.md")
 	if err != nil {
 		return "", false, fmt.Errorf("release-gate: reading CHANGELOG.md at %s: %w", rev, err)
 	}

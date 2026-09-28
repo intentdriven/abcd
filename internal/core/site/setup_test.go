@@ -7,6 +7,7 @@ package site
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -37,16 +38,26 @@ type fakeForge struct {
 	// environment write replaces the whole set, so PutEnvironment clears it,
 	// as the real endpoint would.
 	protection map[string][]string
+	// defaultBranch is the repository's default branch as the forge names it.
+	defaultBranch string
 }
 
 func newFakeForge() *fakeForge {
 	return &fakeForge{
 		envs: map[string]EnvironmentState{}, policies: map[string][]BranchPolicy{},
 		secrets: map[string][]string{}, fail: map[string]error{}, protection: map[string][]string{},
+		defaultBranch: "main",
 	}
 }
 
 func (f *fakeForge) Repo() string { return "example-owner/example-site" }
+
+func (f *fakeForge) DefaultBranch(context.Context) (string, error) {
+	if err := f.fail["DefaultBranch"]; err != nil {
+		return "", err
+	}
+	return f.defaultBranch, nil
+}
 
 func (f *fakeForge) Environments(context.Context) (map[string]EnvironmentState, error) {
 	if err := f.fail["Environments"]; err != nil {
@@ -835,5 +846,124 @@ func TestTheWorkflowFiresOnEveryReleasePath(t *testing.T) {
 		if !strings.Contains(gate, want) {
 			t.Errorf("the render job's gate lacks %q:\n%s", want, gate)
 		}
+	}
+}
+
+// TestTheDefaultBranchIsTheForgesNotTheCheckouts is iss-2609260927214634: the
+// branch the workflow gates on and the environments admit is the one the forge
+// names as the repository's default, whatever this checkout has checked out.
+func TestTheDefaultBranchIsTheForgesNotTheCheckouts(t *testing.T) {
+	h := newHarness(t)
+	h.forge.defaultBranch = "trunk"
+	res := h.run(t)
+	for _, env := range []string{EnvRender, EnvDeploy} {
+		want := []BranchPolicy{{Name: "trunk", Type: "branch"}, {Name: "v*", Type: "tag"}}
+		if !reflect.DeepEqual(h.forge.policies[env], want) {
+			t.Errorf("%s admits %v, want %v", env, h.forge.policies[env], want)
+		}
+	}
+	wf := string(mustRead(t, h.repo.Root(), SiteWorkflowRelPath))
+	if !strings.Contains(wf, "head_branch == 'trunk'") || strings.Contains(wf, "'main'") {
+		t.Errorf("the workflow does not gate on the forge's default branch trunk")
+	}
+	if !strings.Contains(strings.Join(res.Remaining, "\n"), "push them to trunk") {
+		t.Errorf("the commit step does not name trunk: %v", res.Remaining)
+	}
+	if notes := strings.Join(res.Notes, "\n"); strings.Contains(notes, "default branch") {
+		t.Errorf("a forge that answered is reported as a fallback: %s", notes)
+	}
+
+	// An existing environment restricted to the forge's default branch is
+	// current, not told to remove its rule for the checkout's branch.
+	h2 := newHarness(t)
+	h2.forge.defaultBranch = "trunk"
+	for _, env := range []string{EnvRender, EnvDeploy} {
+		h2.forge.envs[env] = EnvironmentState{CustomBranchPolicies: true}
+		h2.forge.policies[env] = []BranchPolicy{{Name: "trunk", Type: "branch"}, {Name: "v*", Type: "tag"}}
+	}
+	res = h2.run(t)
+	for _, e := range res.Environments {
+		if e.Status != RemoteCurrent {
+			t.Errorf("environment %s restricted to trunk is %s", e.Name, e.Status)
+		}
+	}
+}
+
+// TestADefaultBranchTheForgeCannotNameFallsBackLoudly: the checkout's branch
+// stands in only when the forge cannot answer, and the report says so.
+func TestADefaultBranchTheForgeCannotNameFallsBackLoudly(t *testing.T) {
+	for name, mutate := range map[string]func(f *fakeForge){
+		"unreadable": func(f *fakeForge) { f.fail["DefaultBranch"] = errors.New("forge said no") },
+		"unsafe":     func(f *fakeForge) { f.defaultBranch = "main: [x]" },
+	} {
+		t.Run(name, func(t *testing.T) {
+			h := newHarness(t)
+			mutate(h.forge)
+			res := h.run(t)
+			if !reflect.DeepEqual(h.forge.policies[EnvDeploy], []BranchPolicy{{Name: "main", Type: "branch"}, {Name: "v*", Type: "tag"}}) {
+				t.Errorf("the fallback did not use the checkout's branch main: %v", h.forge.policies[EnvDeploy])
+			}
+			notes := strings.Join(res.Notes, "\n")
+			if !strings.Contains(notes, "default branch was not read from the forge") || !strings.Contains(notes, "main") {
+				t.Errorf("the fallback is not named in the notes:\n%s", notes)
+			}
+		})
+	}
+}
+
+// TestASiteWithNoDocsBuildLinksNoDocsTree is iss-2609260928152365: a managed
+// repository's composition that declares no docs surface renders no /docs/
+// tree, so no page links the header's Docs entry or a docs route; a link to a
+// documentation page goes to the forge's view of it instead. A composition that
+// declares one (abcd's own) keeps both.
+func TestASiteWithNoDocsBuildLinksNoDocsTree(t *testing.T) {
+	h := newHarness(t)
+	h.repo.Write("docs/README.md", "# Example Site\n\nThe example repository's documentation.\n\n"+
+		"## Why\n\nBecause a test needs one, as [the guide](how-to/guide.md) says.\n")
+	h.repo.Write("docs/how-to/guide.md", "# Guide\n\nA guide.\n")
+	h.repo.Write(".claude-plugin/plugin.json", `{"name": "example-site", "repository": "https://github.com/example-owner/example-site"}`+"\n")
+	h.repo.Commit("a guide")
+	h.run(t)
+	build := func() map[string]string {
+		out := t.TempDir()
+		if _, err := Build(Request{RepoRoot: h.repo.Root(), OutDir: out, Stamp: fixtureStamp}); err != nil {
+			t.Fatalf("build: %v", err)
+		}
+		return htmlPages(t, out)
+	}
+	docsLink := regexp.MustCompile(`href="/docs/[^"]*"`)
+	pages := build()
+	if !strings.Contains(pages["index.html"], "the guide") {
+		t.Fatal("the landing page does not carry the guide link this test follows")
+	}
+	for name, page := range pages {
+		if m := docsLink.FindString(page); m != "" {
+			t.Errorf("%s links %s, but this site renders no docs tree", name, m)
+		}
+	}
+	if !strings.Contains(pages["index.html"], `href="https://github.com/example-owner/example-site/blob/HEAD/docs/how-to/guide.md"`) {
+		t.Errorf("the guide link does not go to the forge's view of the page on the default branch")
+	}
+	// The forge's view of a file names the default branch as HEAD: the build
+	// reads no forge, and a repository's default need not be main
+	// (iss-2609261206437257).
+	for name, page := range pages {
+		if strings.Contains(page, "/blob/main/") {
+			t.Errorf("%s links a file on a branch named main, which this repository may not have", name)
+		}
+	}
+
+	// Declaring the docs surface brings the tree's links back.
+	m := string(mustRead(t, h.repo.Root(), ManifestRelPath))
+	var doc map[string]any
+	if err := json.Unmarshal([]byte(m), &doc); err != nil {
+		t.Fatal(err)
+	}
+	doc["docs"] = map[string]string{"index": "docs/README.md"}
+	raw, _ := json.Marshal(doc)
+	h.repo.Write(ManifestRelPath, string(raw))
+	pages = build()
+	if !strings.Contains(pages["index.html"], `href="/docs/"`) || !strings.Contains(pages["index.html"], `href="/docs/how-to/guide/"`) {
+		t.Error("a composition declaring its docs surface lost the header's Docs link or the docs route")
 	}
 }

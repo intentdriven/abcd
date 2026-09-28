@@ -36,7 +36,7 @@ func TestBoardPresenceLineIsTheRendersPlainForm(t *testing.T) {
 	if got := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "presence:")); got != want.Row.Plain() {
 		t.Errorf("presence line = %q, want the render's plain form %q", got, want.Row.Plain())
 	}
-	if !strings.HasPrefix(want.Row.Plain(), "waiting: product thinker") {
+	if !strings.HasPrefix(want.Row.Plain(), "waiting on the product thinker") {
 		t.Errorf("precondition: the render's plain form should lead with the parked badge, got %q", want.Row.Plain())
 	}
 

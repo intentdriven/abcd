@@ -35,8 +35,14 @@ line and the board while you wait:
 "${CLAUDE_PLUGIN_ROOT}/abcd" mode product-thinker --json
 ```
 
-Use `facilitator` when the verdict is the facilitator's to give. When the
-answer arrives and the loop resumes, set it back:
+Use `facilitator` when the verdict is the technical facilitator's to give.
+The guard holds you to this: a question through the host's question tool is
+refused while the state reads `managed`, and the refusal names the two
+settings. Choose the product thinker or the technical facilitator, set it,
+then ask. An admitted question is marked open, and the next human message is
+its answer: the prompt hook resets the state to `managed` and says so once on
+stderr, so you do not set it back yourself. At a stop with no question tool,
+set it back when the loop resumes:
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/abcd" mode managed --json
