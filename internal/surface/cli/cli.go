@@ -130,8 +130,9 @@ const hookPlaneSkewNote = "\nabcd: refusing at exit 1, not the host's blocking s
 // applyHookPlaneFailOpen installs the fail-open usage handling on every command a
 // host hook can reach — the paths named in hooks/hooks.json, plus the parents on
 // the way to them. It runs AFTER markUsageErrorsExitTwo, which sets a
-// FlagErrorFunc on every command and would otherwise replace this one; the same
-// ordering applyBanlistFlagErrors needs, and for the same reason.
+// FlagErrorFunc, an Args wrapper and a flag-group PreRunE on every command and
+// would otherwise replace these; the same ordering applyBanlistFlagErrors needs,
+// and for the same reason.
 //
 // The set is spelled out rather than "everything under guard and hook" because
 // `guard check` sits under the same parent and its contract is the OPPOSITE: it
@@ -149,7 +150,27 @@ func applyHookPlaneFailOpen(root *cobra.Command) {
 		if cmd := findByPath(root, path); cmd != nil {
 			cmd.SetFlagErrorFunc(failOpenFlagError)
 			cmd.Args = failOpenNoArgs
+			cmd.PreRunE = failOpenFlagGroups(cmd.PreRunE)
 		}
+	}
+}
+
+// failOpenFlagGroups wraps the PreRunE markUsageErrorsExitTwo installs, which
+// refuses a flag-group violation (two flags of a mutually exclusive group set
+// at once) at exit 2. The group check runs here first and refuses at 1, as the
+// other two hook-plane usage errors do, so the wrapped PreRunE's own check then
+// passes and it goes on to the command's own. No hook command declares a group
+// today; the first one declared would otherwise have been the host's BLOCK
+// (iss-2609251755278758, iss-269).
+func failOpenFlagGroups(next func(*cobra.Command, []string) error) func(*cobra.Command, []string) error {
+	return func(cmd *cobra.Command, args []string) error {
+		if err := cmd.ValidateFlagGroups(); err != nil {
+			return &exitError{Code: 1, Msg: err.Error() + hookPlaneSkewNote}
+		}
+		if next != nil {
+			return next(cmd, args)
+		}
+		return nil
 	}
 }
 
