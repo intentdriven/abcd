@@ -147,9 +147,44 @@ func TestAShippedBinaryFlushesWithTheOptInSet(t *testing.T) {
 	}
 }
 
-// flushCallRe matches a direct flush: a Sync() method call, an fsync syscall,
-// or the macOS full-flush fcntl.
-var flushCallRe = regexp.MustCompile(`\.Sync\(\)|\bFsync\(|F_FULLFSYNC`)
+// flushCallRe matches a direct flush: a Sync() method call, an fsync or
+// fdatasync wrapper named anywhere (called, or taken as a value to call later),
+// the raw fsync or fdatasync syscall number, or the macOS full-flush fcntl.
+var flushCallRe = regexp.MustCompile(`\.Sync\(\)|\bFsync\b|\bFdatasync\b|\bSYS_F(?:DATA)?SYNC\b|F_FULLFSYNC`)
+
+// TestFlushCallReNamesEveryDirectFlush pins the forms the walk below refuses,
+// the spellings a first version of the pattern let through among them: a
+// datasync, the raw fsync syscall number and an fsync taken as a function value
+// and called under another name. Each would flush in every test run with the
+// walk still green.
+func TestFlushCallReNamesEveryDirectFlush(t *testing.T) {
+	for _, line := range []string{
+		`if err := f.Sync(); err != nil {`,
+		`return unix.Fsync(fd)`,
+		`return unix.Fdatasync(fd)`,
+		`return syscall.Fdatasync(int(f.Fd()))`,
+		`_, _, e := syscall.Syscall(syscall.SYS_FSYNC, f.Fd(), 0, 0)`,
+		`_, _, e := unix.Syscall(unix.SYS_FDATASYNC, f.Fd(), 0, 0)`,
+		`fs := unix.Fsync`,
+		`_, err := unix.FcntlInt(f.Fd(), unix.F_FULLFSYNC, 0)`,
+	} {
+		if !flushCallRe.MatchString(line) {
+			t.Errorf("flushCallRe misses a direct flush: %s", line)
+		}
+	}
+	for _, line := range []string{
+		`return Flush(f)`,
+		`return syncFile(f)`,
+		`var mu sync.Mutex`,
+		`flags |= os.O_SYNC`,
+		`fsyncCount++`,
+		`FsyncCount++`,
+	} {
+		if flushCallRe.MatchString(line) {
+			t.Errorf("flushCallRe refuses a line that does not flush: %s", line)
+		}
+	}
+}
 
 // TestEveryFlushGoesThroughTheGate holds the gate to one place: no non-test Go
 // file in this module flushes except through Flush, whose only Sync is the
