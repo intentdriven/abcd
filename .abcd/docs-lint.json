@@ -10,7 +10,10 @@
     "scripts",
     "commands",
     "agents",
-    "hooks"
+    "hooks",
+    ".claude-plugin",
+    "LICENSE",
+    ".gitignore"
   ],
   "banned_tokens": [
     {

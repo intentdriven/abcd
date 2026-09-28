@@ -278,9 +278,17 @@ func TestDocsLintHarnessNameGate(t *testing.T) {
 	// The real docs-lint.json roots are ["docs", "README.md"]; both must resolve
 	// now that an unresolvable configured root fails loud (GitHub #360).
 	writeFile(t, root, "README.md", "# readme\n")
-	// Its name_roots must resolve too (iss-279).
-	for _, r := range []string{".abcd/README.md", "AGENTS.md", "CONTRIBUTING.md", "scripts/README.md",
-		"commands/README.md", "agents/README.md", "hooks/README.md"} {
+	// Its name_roots must resolve too (iss-279), each as the kind of path it is
+	// in this repository, read from the config so a root added there is built
+	// here without a second list to keep in step.
+	for _, r := range cfg.NameRoots {
+		st, err := os.Stat(filepath.Join("..", "..", "..", r))
+		if err != nil {
+			t.Fatalf("name_roots entry %q does not resolve in this repository: %v", r, err)
+		}
+		if st.IsDir() {
+			r += "/README.md"
+		}
 		writeFile(t, root, r, "# t\n")
 	}
 	writeFile(t, root, "docs/named.md", "# t\n\nRun this in Claude Code.\n")
