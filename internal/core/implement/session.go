@@ -88,12 +88,17 @@ type Session struct {
 
 // MaxCeiling bounds a stated agent ceiling.
 //
-// The ceiling is the second session's own limit on the agents it runs at once,
-// on top of the first session's (itd-2609221656373558, criterion 5). abcd runs
-// no agent and counts none — agent_start and agent_end are lines the session
-// writes by hand — so the ceiling is recorded and reported, never enforced
-// here: the session states it on joining, the record and the session_open line
-// carry it, and every check reports it back to the session about to act.
+// The ceiling is a session's own limit on the agents it runs at once — for the
+// second session, on top of the first session's (itd-2609221656373558,
+// criterion 5). The session states it on joining, and the record and the
+// session_open line carry it. abcd runs no agent, so what it holds the ceiling
+// against is what the session declares: the agents its own agent_start and
+// agent_end lines leave alive (Run.AgentsAlive). An agent_start past the
+// ceiling is refused and the refusal logged, and every check reports the count
+// beside the ceiling. An agent the session never logs — a fork, one the host
+// started outside the log — is invisible, so the count is a discipline the
+// session keeps with the verb's help, not a census of processes
+// (iss-2609240646542516).
 const MaxCeiling = 64
 
 // maxRecordBytes caps a session or claim record on read.
