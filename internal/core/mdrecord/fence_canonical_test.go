@@ -60,8 +60,11 @@ var fenceWriters = map[string]fenceWriter{
 // run tracking kept in a variable called `open`, and a flip written as an
 // if/else — carried none of them and escaped (iss-2609251510124162). Every
 // writer of a delimiter is now named with a reason, which is a short list: most
-// of the tree never spells one. A delimiter assembled at run time rather than
-// written as a literal is outside its reach, and is left to review.
+// of the tree never spells one. Two toggles spell no delimiter at all, a regexp
+// literal matching a fence RUN and a comparison of a line's first byte, and
+// TestNoFenceRunReaderOutsideMdrecord reads the parsed source for those
+// (iss-2609251600029607). A delimiter assembled at run time from non-constant
+// parts is outside both, and is left to review.
 func TestNoSecondFenceRule(t *testing.T) {
 	root := filepath.Join("..", "..", "..") // internal/core/mdrecord -> repository root
 	var offenders []string

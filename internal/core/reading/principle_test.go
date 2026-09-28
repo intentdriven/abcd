@@ -76,6 +76,16 @@ func TestLabelledParagraphCarriesTheTitle(t *testing.T) {
 	}
 }
 
+// TestSetextTitleTravelsAboveTheStatement: a title underlined with `===` is an
+// H1 too, so the statement does not travel bare (iss-2609261140284421).
+func TestSetextTitleTravelsAboveTheStatement(t *testing.T) {
+	doc := strings.Replace(principleDoc(defaultRule), "# Fix the detector\n", "Fix the detector\n================\n", 1)
+	text, _, _ := projectField(principleRel, doc, "The rule", KindPrinciple)
+	if !strings.HasPrefix(text, "# Fix the detector\n\n"+principleStatement) {
+		t.Errorf("the setext title did not travel above the statement: %q", text)
+	}
+}
+
 // TestLinksUnwrapInTheStatement: a link target is a citation and the label is
 // prose, so the target stays behind and the label travels.
 func TestLinksUnwrapInTheStatement(t *testing.T) {

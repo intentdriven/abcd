@@ -352,6 +352,58 @@ func TestPrincipleTitleMayNotCite(t *testing.T) {
 	}
 }
 
+// TestSetextPrincipleTitleIsCarried: an H1 written in setext form, the title
+// underlined with `===`, is the principle's title as much as an ATX one, so the
+// one derivation carries it (iss-2609261140284421) and principle_claims judges
+// it like any other title.
+func TestSetextPrincipleTitleIsCarried(t *testing.T) {
+	for name, tc := range map[string]struct {
+		title, want string
+		line        int
+	}{
+		"one line":         {"Fix the detector\n================", "Fix the detector", 4},
+		"indented rule":    {"Fix the detector\n   =  ", "Fix the detector", 4},
+		"two-line heading": {"Fix the\ndetector\n===", "Fix the detector", 4},
+		"after a comment":  {"<!-- a note -->\n\nFix the detector\n=", "Fix the detector", 6},
+	} {
+		t.Run(name, func(t *testing.T) {
+			doc := "---\nid: prn-p\n---\n\n" + tc.title + "\n\n**The rule.** Fix the class.\n"
+			st, ok := FindPrincipleStatement(strings.Split(doc, "\n"))
+			if !ok {
+				t.Fatalf("no statement found in %q", doc)
+			}
+			if st.Title != tc.want || st.TitleLine != tc.line {
+				t.Errorf("title = %q at line %d, want %q at line %d", st.Title, st.TitleLine, tc.want, tc.line)
+			}
+		})
+	}
+	// A `===` under a line that opens another block, or inside a fence, is no
+	// setext heading, and neither is the `---` form, which is an H2.
+	for name, body := range map[string]string{
+		"H2 underline":  "Fix the detector\n---\n",
+		"under a list":  "- Fix the detector\n===\n",
+		"fenced":        "```\nFix the detector\n===\n```\n",
+		"indented code": "    Fix the detector\n===\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			doc := "---\nid: prn-p\n---\n\n" + body + "\n**The rule.** Fix the class.\n"
+			st, _ := FindPrincipleStatement(strings.Split(doc, "\n"))
+			if st.Title != "" {
+				t.Errorf("read the title %q from %q", st.Title, body)
+			}
+		})
+	}
+	root := t.TempDir()
+	doc := strings.Replace(typedPrinciple("p", "causal", `"abcd lint"`, `"One against another."`, "[adr-1]",
+		"Fix the class, not the instance."), "# A principle\n", "A principle citing itd-79\n===\n", 1)
+	writeFile(t, root, prnDir+"/p.md", doc)
+	writeFile(t, root, "rec/decisions/adrs/0001-a.md", "---\nid: adr-1\n---\n# ADR-1\n")
+	fs := lintPrinciples(t, root)
+	if !findingWith(fs, filepath.Join(prnDir, "p.md"), rulePrincipleClaims, "title carries the record handle 'itd-79'") {
+		t.Errorf("a citation in a setext title is not refused: %v", rulesOf(fs, filepath.Join(prnDir, "p.md")))
+	}
+}
+
 // TestHeadingShapedPrincipleHasNoStatement: the statement is the labelled
 // paragraph and nothing else, in both readers (iss-2609261039132350). A typed
 // principle that writes it as a `## The rule` heading carries no statement the

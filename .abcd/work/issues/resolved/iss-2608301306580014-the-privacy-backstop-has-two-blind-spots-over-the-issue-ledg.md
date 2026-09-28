@@ -7,6 +7,10 @@ category: "security"
 source: "user-observation"
 found_during: "itd-179-round-3-security"
 found_at: "internal/core/lint"
+resolution: "Both blind spots closed: privacy-hygiene's Windows arm reads a separator as a backslash run at any escaping depth (the escaped C:\\\\Users\\\\<name> the serialiser writes), and record-lint's harness_leak reads .abcd/work through its own extra_roots. The folded DEL/C1/bidi half was closed at the record-write boundary by iss-2608301206073609; the write-time redactor's Windows arm is iss-2609251639261103's own record."
+impact: fix
+resolved_by:
+  commit: "922a2a6a3"
 ---
 
 the privacy backstop has two blind spots over the issue ledger: the escaped Windows home path yamlScalar writes and a harness_leak root that excludes the ledger
@@ -46,3 +50,7 @@ Trojan-Source-shaped display concern on committed prose. Pre-existing
 serialiser contract, unchanged by this branch. Refusal messages use %q, which
 Go escapes, so an ANSI escape in grounds can never reach a terminal raw
 through a refusal.
+
+## Grounds
+
+- pursued: a committed ledger record carrying an escaped Windows home or a session URL now fails abcd lint or record-lint; either shape passing both gates in a ledger file would show it wrong

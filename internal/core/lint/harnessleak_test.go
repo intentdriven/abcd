@@ -127,3 +127,61 @@ func TestHarnessLeakSecondMatchOnALine(t *testing.T) {
 		t.Fatalf("a skipped leftmost candidate hid a real session URL; got %d: %+v", n, fs)
 	}
 }
+
+// The issue ledger is committed free text a verb writes from operator input,
+// and it sits outside the record's Roots, so a harness_leak rooted at the
+// durable record alone never read it (iss-2608301306580014). The rule's own
+// extra_roots arm it over the ledger for the leak class alone, and a tree the
+// Roots walk already read is not read twice.
+func TestHarnessLeakReadsItsExtraRoots(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, filepath.Join("docs", "run.md"), "# Run\n\nRecorded at "+synthSessionURL(t, 31)+"\n")
+	writeFile(t, root, filepath.Join("work", "issues", "resolved", "iss-1-a.md"),
+		"---\nid: \"iss-1\"\nresolution: \"fixed in the run at "+synthSessionURL(t, 37)+"\"\n---\n\nBody.\n")
+	writeFile(t, root, filepath.Join("work", "reviews", "r.md"), "# Review\n\nAt "+synthSessionURL(t, 41)+"\n")
+
+	cfg := harnessLeakCfg()
+	rc := cfg.Rules[ruleHarnessLeak]
+	rc.ExtraRoots = []string{"work", "docs"}
+	rc.Exempt = []string{"work/reviews/*"}
+	cfg.Rules[ruleHarnessLeak] = rc
+	fs, err := Lint(cfg, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasFinding(fs, filepath.Join("work", "issues", "resolved", "iss-1-a.md"), ruleHarnessLeak, 3) {
+		t.Errorf("a session URL in a ledger record is not flagged: %+v", fs)
+	}
+	if n := countRule(fs, ruleHarnessLeak); n != 2 {
+		t.Fatalf("want one finding in the ledger and one in docs, the exempt review and the doubly-declared docs "+
+			"tree drawing no second one; got %d: %+v", n, fs)
+	}
+
+	// Without the extra root the ledger is outside the rule, as it was.
+	fs, err = Lint(harnessLeakCfg(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := countRule(fs, ruleHarnessLeak); n != 1 {
+		t.Fatalf("want the docs finding alone without extra_roots; got %d: %+v", n, fs)
+	}
+}
+
+// The repository's own record-lint configuration arms harness_leak over the
+// working tier, where the issue ledger lives (iss-2608301306580014).
+func TestRecordLintArmsHarnessLeakOverTheLedger(t *testing.T) {
+	cfg, err := LoadConfig(filepath.Join("..", "..", "..", ".abcd", "record-lint.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rc, ok := cfg.Rules[ruleHarnessLeak]
+	if !ok || !rc.Enabled {
+		t.Fatal("record-lint.json must enable harness_leak")
+	}
+	for _, r := range rc.ExtraRoots {
+		if r == ".abcd/work" {
+			return
+		}
+	}
+	t.Fatalf("record-lint.json harness_leak extra_roots = %v, want .abcd/work, the tree the issue ledger lives in", rc.ExtraRoots)
+}

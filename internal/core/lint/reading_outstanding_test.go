@@ -1174,6 +1174,40 @@ func TestWideningRunSummaryStandsDownOnAnUnreadableRun(t *testing.T) {
 	}
 }
 
+// An admission does not buy a count past an answer the walk could not read
+// (iss-2609251842112266): a run whose only admitted proposal carries a
+// contested or illegible disposition supports no count, so its summary stands
+// down as the WideningRun doc promises, rather than reporting "admitted 1,
+// outstanding []" over a disposition nobody could weigh.
+func TestWideningRunSummaryStandsDownOnAnAdmittedButContestedItem(t *testing.T) {
+	const run, item = "rdg-2608300000000001", "rdi-2608300000000011"
+	for name, write := range map[string]func(root string){
+		"contested": func(root string) {
+			dispositionRecord(t, root, item, "dsp-2608300000000021", issueschema.DispositionAccepted)
+			dispositionRecord(t, root, item, "dsp-2608300000000022", issueschema.DispositionAccepted)
+		},
+		"illegible": func(root string) {
+			// A duplicated top-level key: malformed to every reader of this ledger.
+			writeFile(t, root, ".abcd/work/issues/dispositions/"+item+"/dsp-2608300000000021.md",
+				"---\nschema_version: 1\nid: \"dsp-2608300000000021\"\nid: \"dsp-2608300000000021\"\n"+
+					"item: \""+item+"\"\nstate: \"accepted\"\ndisposition_grounds: \"a\"\n---\n\n")
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			root := readingLedger(t, run, item, "widening")
+			admissionRecord(t, root, run, "adm-2608300000000031", item)
+			write(root)
+			report, err := ReadReadingOutstanding(root, ".abcd/work/issues")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(report.WideningRuns) != 0 {
+				t.Fatalf("WideningRuns = %+v, want the summary stood down", report.WideningRuns)
+			}
+		})
+	}
+}
+
 // The summary is a report line, pinned at info whatever the configuration asks.
 func TestWideningRunSummaryIsInfoNotBlocker(t *testing.T) {
 	root := readingLedger(t, "rdg-2608300000000001", "rdi-2608300000000011", "widening")
