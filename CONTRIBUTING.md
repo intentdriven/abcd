@@ -15,8 +15,9 @@ inbound = outbound statement is the whole of it.
 ## How changes land
 
 - **Issue first.** External contributions start from an accepted issue: open one
-  (or pick an open one) and get the product thinker's nod before writing code. A pull
-  request with no accepted issue behind it may be declined on scope alone —
+  (or pick an open one) and get the product thinker's nod (the person who decides
+  what abcd builds) before writing code. A pull request with no accepted issue
+  behind it may be declined on scope alone —
   that is policy, not a judgement of the work.
 - **Branch + PR** for substantive changes; CI gates the merge. Its `check` job
   builds, vets and tests (plain and race-enabled) on macOS + Linux, and on the
