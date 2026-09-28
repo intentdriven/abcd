@@ -1852,6 +1852,21 @@ func scanRecordStores(repoRoot string, cfg RuleConfig) ([]schemaRecord, []Findin
 				}
 				continue
 			}
+			// A markdown-named link that is no record filename is named as well
+			// (iss-2609261208193041): whether `notes.md` points at a directory or
+			// a file could be told only by following it, which the walk never
+			// does, so every such link is reported whatever it points at. The
+			// store's README.md is the one link the root may carry, and a link
+			// with a record filename falls to the store-root record leg below.
+			if e.Type()&fs.ModeSymlink != 0 && !strings.EqualFold(e.Name(), "README.md") &&
+				!store.fileNumRe.MatchString(e.Name()) {
+				if !strings.HasPrefix(e.Name(), ".") {
+					add(rel, "'"+e.Name()+"' is a link at the "+store.noun+" store root; the gate never follows a link, "+
+						"so whether it points at a record or at a bucket nobody declared ("+store.bucketDesc()+
+						"), nothing behind it is checked")
+				}
+				continue
+			}
 			if e.IsDir() {
 				// A dot-directory is tooling state (an editor's, a scanner's), never
 				// a lifecycle the record authored — the record's own buckets are all
