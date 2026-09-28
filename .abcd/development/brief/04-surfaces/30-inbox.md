@@ -31,7 +31,11 @@ A waiting file this abcd cannot read is listed as unreadable with its reason,
 never dropped: a report written to a later template version names the version;
 a file that is not a report, is over the size bound, is not a regular file, or
 whose sender key disagrees with its file name says so. Its id and sender key come
-from the file name.
+from the file name. Its sender's name comes from the envelope alone, which is
+abcd's own writing and is read apart from the reporter's block: when the block
+names `sender_key` once, equal to the file name's key, and `sender_name` once,
+in the shape a filing writes, the listing names the sender beside the key;
+otherwise it names the key alone.
 
 Every value a report carries is another repository's words, and every front
 door sanitises it before it reaches the terminal. The list and show both reach

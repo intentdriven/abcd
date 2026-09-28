@@ -319,6 +319,7 @@ func readEntry(root *os.Root, rel, name, state string) Entry {
 	r, err := parseFiled(data)
 	if err != nil {
 		e.State = StateUnreadable
+		e.SenderName = EnvelopeSender(data, e.SenderKey)
 		var ve *VersionError
 		var fe *FieldError
 		switch {
