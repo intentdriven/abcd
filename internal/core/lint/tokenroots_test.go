@@ -88,3 +88,20 @@ func TestTokenExtraRootsLoadFromConfig(t *testing.T) {
 		t.Errorf("extra_roots from the config file did not reach the command page: %+v", fs)
 	}
 }
+
+// A file named in roots that is not markdown was walked, kept by the markdown
+// filter as nothing, and reported clean: a ban meant to reach a rules file read
+// zero lines of it and said so with a green. roots holds markdown; a
+// non-markdown file there is a configuration error that points at extra_roots.
+func TestRootsRefuseANonMarkdownFile(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "docs/page.md", "# Page\n")
+	writeFile(t, root, "rules.json", "{\"r\": \"a gatekeeper decision\"}\n")
+	cfg := Config{Roots: []string{"docs", "rules.json"}, BannedTokens: []BannedToken{roleToken()}}
+	if _, err := Lint(cfg, root); err == nil || !strings.Contains(err.Error(), "extra_roots") {
+		t.Errorf("want a configuration error naming the non-markdown root and extra_roots, got %v", err)
+	}
+	if _, err := DocumentsInRoots(cfg, root); err == nil {
+		t.Error("DocumentsInRoots counted a non-markdown root as zero documents instead of refusing it")
+	}
+}

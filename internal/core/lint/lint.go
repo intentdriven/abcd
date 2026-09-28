@@ -252,11 +252,15 @@ func LintAt(cfg Config, repoRoot string, now time.Time) ([]Finding, error) {
 		// shipped scaffold's `roots: ["docs", …]` does exactly this in an adopter
 		// whose docs live elsewhere. Fail loud instead (os.Stat, not IsDir: `roots`
 		// legitimately admits files such as README.md) — GitHub #360.
-		if _, err := os.Stat(rootAbs); err != nil {
+		st, err := os.Stat(rootAbs)
+		if err != nil {
 			if os.IsNotExist(err) {
 				return nil, &configError{"roots entry " + quote(root) +
 					" does not exist; a configured root that does not resolve silently disarms every per-file rule for that tree — fix the roots list or create the tree"}
 			}
+			return nil, err
+		}
+		if err := markdownRoot(root, st); err != nil {
 			return nil, err
 		}
 		ignored := ignoredUnderRoot(repoRoot, root)
@@ -3000,7 +3004,11 @@ func DocumentsInRoots(cfg Config, repoRoot string) (int, error) {
 			return 0, &configError{"roots entry " + quote(root) + " " + err.Error() +
 				"; the lint reads only inside the repository"}
 		}
-		if _, err := os.Stat(rootAbs); err != nil {
+		st, err := os.Stat(rootAbs)
+		if err != nil {
+			return 0, err
+		}
+		if err := markdownRoot(root, st); err != nil {
 			return 0, err
 		}
 		ignored := ignoredUnderRoot(repoRoot, root)
@@ -3011,6 +3019,18 @@ func DocumentsInRoots(cfg Config, repoRoot string) (int, error) {
 		n += len(files)
 	}
 	return n, nil
+}
+
+// markdownRoot refuses a roots entry that is a file but not markdown. The
+// per-root walk keeps markdown alone, so such a root would contribute nothing
+// while every rule reported it clean (iss-2609281045487620); a ban meant to
+// reach a non-markdown file declares it in that token's extra_roots.
+func markdownRoot(root string, st os.FileInfo) error {
+	if st.IsDir() || hasMarkdownExt(st.Name()) {
+		return nil
+	}
+	return &configError{"roots entry " + quote(root) +
+		" is not markdown; the per-file rules read markdown alone, so it would be checked by nothing — name a non-markdown file in a banned token's extra_roots instead"}
 }
 
 func markdownFiles(rootAbs string) ([]string, error) {

@@ -126,7 +126,9 @@ promotion is reachable only by a human typing the flag.
   only markdown (a rules file is JSON), with `exempt_paths`, the escape and the
   fence default applying as they do under `roots`; the rest of the family is
   not armed there, and a missing extra root is a configuration error, as a
-  missing root is. The escape covers an acknowledgement and a persona's outside
+  missing root is. `roots` itself holds markdown: a non-markdown file named
+  there would be read by nothing, so it is refused and pointed at
+  `extra_roots` (iss-2609281045487620). The escape covers an acknowledgement and a persona's outside
   job title, nothing else.
 - **Harness leak**, a separate rule from those tokens and armed here as a
   blocker, refusing the two shapes a harness stamps onto text the repository did
