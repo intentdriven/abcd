@@ -26,8 +26,11 @@ var bypassPatterns = []struct {
 // ruling 3): outside this package, no production code reads a credential any
 // way but Store(...).Resolve, writes one any way but Set or Walk, names the
 // store's files, runs a keychain command, or reads a secret-shaped
-// environment variable. A new reader that bypasses the store fails here,
-// naming the file and the line.
+// environment variable. It is a drift grep for an accidental bypass, not an
+// evasion gate: a new reader written the obvious way fails here, naming the
+// file and the line, while one written to slip past it (an aliased or dot
+// import, a variable's name held in a variable, os.Environ, an argv built by
+// concatenation) does not, and only cmd/ and internal/ are walked.
 func TestEveryReaderGoesThroughTheStore(t *testing.T) {
 	root, err := filepath.Abs(filepath.Join("..", "..", ".."))
 	if err != nil {
