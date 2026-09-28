@@ -3423,6 +3423,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 	ahoyCmd.AddCommand(movedStub("identity-check", "abcd ahoy --identity"))
 	ahoyCmd.AddCommand(newAhoyRemoteCommand(asJSON))
 	ahoyCmd.AddCommand(newAhoyConnectCommand(asJSON))
+	ahoyCmd.AddCommand(newAhoyCredentialCommand(asJSON))
 
 	return ahoyCmd
 }

@@ -53,7 +53,7 @@ Detect abcd's install state and list its gaps, or report one mode a flag names: 
 
 #### `abcd ahoy connect`
 
-Verify a model provider with one call, then configure it: Writes its block and its key under ~/.abcd/; refuses a key typed at a terminal.
+Verify a model provider with one call, then configure it: Writes its block under ~/.abcd/ and its key to the home chosen; refuses a key typed at a terminal.
 
 **Usage:** `abcd ahoy connect <provider> [flags]`
 
@@ -61,7 +61,10 @@ Verify a model provider with one call, then configure it: Writes its block and i
 
 ```
       --base-url string     the provider's OpenAI-compatible base URL: https, or http to a server on this machine
-      --home string         where the key lives: abcd (read from stdin into the owner-only ~/.abcd/credentials.json) | none (a server that takes no key); external and keychain arrive with the credential store
+      --env string          for --home external: the environment variable that holds the value
+      --field string        for --home external: the dotted field of --file that holds the value (auth.token)
+      --file string         for --home external: a tool's JSON configuration file under the home directory, written from ~/
+      --home string         where the key lives: external (--env, or --file and --field) | abcd (read from stdin into the owner-only ~/.abcd/credentials.json) | keychain (read from stdin into the platform keychain) | none (a server that takes no key)
       --key string          the credential's name (default: the provider's name)
       --model stringArray   a model the provider may serve, repeated for each (the first allowlist; the verification call asks for the first)
 ```
@@ -70,6 +73,21 @@ Verify a model provider with one call, then configure it: Writes its block and i
 
 ```
 abcd ahoy connect local --base-url http://127.0.0.1:8080/v1 --model example-model --home none
+```
+
+#### `abcd ahoy credential`
+
+List the credentials abcd reads, explain one, or verify and store it: Writes the chosen home only with --home; refuses a value the adapter's call fails.
+
+**Usage:** `abcd ahoy credential [<name>] [flags]`
+
+**Flags:**
+
+```
+      --env string     for --home external: the environment variable that holds the value
+      --field string   for --home external: the dotted field of --file that holds the value (auth.token)
+      --file string    for --home external: a tool's JSON configuration file under the home directory, written from ~/
+      --home string    where the credential lives: external (--env, or --file and --field) | abcd (read from stdin into the owner-only ~/.abcd/credentials.json) | keychain (read from stdin into the platform keychain)
 ```
 
 #### `abcd ahoy doctor`

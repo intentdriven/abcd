@@ -66,8 +66,12 @@ judged by the caller's output contract, the one the host sub-agent's payload is
 judged by. The request is the host's brief in the protocol's two roles: the
 agent's prompt as the system message, the verb's request as the user message.
 
-The key is resolved by name through `internal/core/credential`, the one reader;
-the adapter reads no file and no store of its own. The one environment it
+The key is resolved by name through the credential store
+(`internal/core/credential`, `Store(home).Resolve`), the one reader, from
+whichever of its three homes the person chose; the adapter reads no file and no
+store of its own, and a key that resolves to nothing refuses before any call,
+naming `abcd ahoy credential <name>`. A call's record names the credential it
+used, never the key. The one environment it
 honours is the HTTP stack's: the standard proxy variables (`HTTPS_PROXY`,
 `NO_PROXY`) and the platform's trust roots. An https call through a proxy is a
 tunnel, so the key and the brief stay inside TLS, and a call to this machine is
@@ -125,10 +129,18 @@ domain to it and reports the address, after a read that writes nothing.
 One provider ships: an assets-only Cloudflare Worker, the host abcd's own site
 uses. A second is one implementation of the interface and one entry in the
 site package's provider list; the verb does not change. The credential is
-resolved by name through `internal/core/credential`, whose interim source is
-`~/.abcd/credentials.json` until the credential store (itd-2609221017023290)
-replaces it; the connected adapter holds it, and it is scrubbed from every host
-message before one can reach an error.
+resolved by name through the credential store (`internal/core/credential`),
+the one reader; the connected adapter holds it, and it is scrubbed from every
+host message before one can reach an error. The provider's `Verify`, the same
+account read the host stage begins with, is the verification call the
+credential walkthrough makes before it stores a token.
+
+**Every external credential goes through one store** (adr-2609221017021499):
+configuration names a credential, and its value lives in the home the person
+chose once at `abcd ahoy credential`, the external setup, the abcd-only file or
+the platform keychain ([`04-surfaces/01-ahoy.md`](../04-surfaces/01-ahoy.md)).
+An adapter that reads a secret any other way is a defect, and a test walks the
+production tree for one.
 
 ## Lifeboat source readers
 

@@ -27,7 +27,9 @@ var sentences = map[string]string{
 	"abcd ahoy": "Detect abcd's install state and list its gaps, or report one mode a flag names: " +
 		"Writes nothing; refuses any argument or two modes at once.",
 	"abcd ahoy connect": "Verify a model provider with one call, then configure it: " +
-		"Writes its block and its key under ~/.abcd/; refuses a key typed at a terminal.",
+		"Writes its block under ~/.abcd/ and its key to the home chosen; refuses a key typed at a terminal.",
+	"abcd ahoy credential": "List the credentials abcd reads, explain one, or verify and store it: " +
+		"Writes the chosen home only with --home; refuses a value the adapter's call fails.",
 	"abcd ahoy doctor": "Report every install gap, user-scope state included: " +
 		"Writes nothing; refuses any argument.",
 	"abcd ahoy install": "Apply the install gaps the detection finds: " +
