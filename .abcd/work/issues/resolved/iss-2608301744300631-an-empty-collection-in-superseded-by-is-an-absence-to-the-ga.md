@@ -7,6 +7,10 @@ category: "bug"
 source: "impl-review"
 found_during: "itd-189-round-5-build"
 found_at: "internal/core/record/record.go (describeADR)"
+resolution: "Describe asks frontmatter.IsEmptyValue, the emptiness question record-lint's supersession gate asks through isAbsentValue, for the ADR and the intent page alike, so an empty collection or an empty node in superseded_by is no successor to both readers."
+impact: fix
+resolved_by:
+  commit: "63c8a613e"
 ---
 
 an empty collection in superseded_by is an absence to the gate and a rendered link to record Describe so the two readers disagree about whether the record names a successor
@@ -33,3 +37,7 @@ disagreement is between the two predicates and not between the two spellings.
 Remedy: give the dispatcher the same emptiness question the gate asks, so one
 value gets one answer — not a second special case in `isAbsentValue`, which
 would leave the dispatcher rendering `[]` as a link.
+
+## Grounds
+
+- pursued: the dispatcher and the gate agree on whether a record names a successor; an ADR or intent whose superseded_by the gate reads as absent but abcd renders as a link, as TestDescribeReadsAnEmptySupersededByAsNoSuccessor asserts for [], {}, !!null, [ ] and ~, would show it wrong
