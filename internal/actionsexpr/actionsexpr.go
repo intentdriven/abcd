@@ -16,6 +16,8 @@ package actionsexpr
 
 import (
 	"fmt"
+	"math"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -410,24 +412,65 @@ func Stringify(v any) string {
 	return fmt.Sprint(v)
 }
 
-// looseEqual is GitHub's `==`: null compares equal to the empty string, to zero
-// and to false, and everything else compares by its string rendering, which is
-// exact for the string-vs-string comparisons the workflows here make.
+// looseEqual is GitHub's `==`, per its documented loose equality: operands of
+// the same type compare directly (strings ignoring case); operands of different
+// types are both coerced to a number (see toNumber), and NaN equals nothing.
+// Objects and arrays are equal only as the same instance, which no value this
+// evaluator produces can be, so they compare unequal.
 func looseEqual(a, b any) bool {
-	if a == nil || b == nil {
-		other := a
-		if a == nil {
-			other = b
+	switch x := a.(type) {
+	case nil:
+		if b == nil {
+			return true
 		}
-		return other == nil || !Truthy(other)
+	case bool:
+		if y, ok := b.(bool); ok {
+			return x == y
+		}
+	case float64:
+		if y, ok := b.(float64); ok {
+			return x == y
+		}
+	case string:
+		if y, ok := b.(string); ok {
+			return strings.EqualFold(x, y)
+		}
+	default:
+		return false
 	}
-	if ab, ok := a.(bool); ok {
-		return ab == Truthy(b)
+	return toNumber(a) == toNumber(b)
+}
+
+// jsonNumber is the JSON number grammar (RFC 8259, section 6).
+var jsonNumber = regexp.MustCompile(`^-?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?$`)
+
+// toNumber is GitHub's coercion of a value to a number for a comparison of
+// mismatched types: null is 0, true 1 and false 0, a string is parsed from any
+// legal JSON number format with the empty string as 0 and anything else NaN,
+// and an array or object is NaN.
+func toNumber(v any) float64 {
+	switch x := v.(type) {
+	case nil:
+		return 0
+	case bool:
+		if x {
+			return 1
+		}
+		return 0
+	case float64:
+		return x
+	case string:
+		if x == "" {
+			return 0
+		}
+		if jsonNumber.MatchString(x) {
+			// A grammatical number out of float64's range parses to ±Inf or 0
+			// with a range error; that value is still the number it names.
+			n, _ := strconv.ParseFloat(x, 64)
+			return n
+		}
 	}
-	if bb, ok := b.(bool); ok {
-		return bb == Truthy(a)
-	}
-	return Stringify(a) == Stringify(b)
+	return math.NaN()
 }
 
 // EvalIf evaluates a job's or a step's `if:` condition the way GitHub decides

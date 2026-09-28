@@ -63,3 +63,51 @@ func TestEvalIfRefusesAValueGitHubWouldReadAsAString(t *testing.T) {
 		t.Error("EvalIf accepted an expression followed by text; GitHub reads that as a non-empty string, always true")
 	}
 }
+
+// TestLooseEqualFollowsGitHubsCoercionTable holds `==` to GitHub's documented
+// loose equality: operands of different types are both coerced to a number
+// (null 0, true 1, false 0, a string parsed as a JSON number with "" as 0 and
+// anything else NaN), NaN equals nothing, and strings compare ignoring case
+// (iss-2609251616248870).
+func TestLooseEqualFollowsGitHubsCoercionTable(t *testing.T) {
+	ctx := map[string]any{"success()": true}
+	for _, tc := range []struct {
+		expr string
+		want bool
+	}{
+		{"true == 'true'", false}, // 1 vs NaN
+		{"false == 'false'", false},
+		{"true == '1'", true},
+		{"false == '0'", true},
+		{"false == ''", true},
+		{"true == 1", true},
+		{"false == 0", true},
+		{"true == 2", false},
+		{"null == ''", true},
+		{"null == 0", true},
+		{"null == false", true},
+		{"null == '0'", true},
+		{"null == 'a'", false},
+		{"null == null", true},
+		{"1 == '1'", true},
+		{"1 == '1.0'", true},
+		{"1 == '1e0'", true},
+		{"0 == ''", true},
+		{"1 == 'abc'", false},
+		{"1 == '+1'", false}, // not a JSON number
+		{"'abc' == 'ABC'", true},
+		{"'abc' != 'abd'", true},
+		{"'1' == '1.0'", false}, // same type: compared as strings
+		{"true == true", true},
+		{"1 == 1", true},
+	} {
+		got, err := EvalIf(tc.expr, ctx)
+		if err != nil {
+			t.Errorf("EvalIf(%q): %v", tc.expr, err)
+			continue
+		}
+		if got != tc.want {
+			t.Errorf("EvalIf(%q) = %v, want %v", tc.expr, got, tc.want)
+		}
+	}
+}
