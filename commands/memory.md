@@ -29,8 +29,10 @@ of the checkout's store.
 ```
 
 Summarise the JSON: `pages` and `by_class` (page count per source class),
-`last_ingest`, any `contradictions`, and per-source `headroom` lines. The bare
-render never rebuilds or mutates the coverage index.
+`last_ingest`, any `contradictions`, per-source `headroom` lines, and every
+`drift` line verbatim — each says the index or the contradictions register is
+stale and names the ingest that rebuilds it. The bare render never rebuilds or
+mutates the coverage index.
 
 ## Ingest a source
 
@@ -95,7 +97,8 @@ and the line, never the span, and lint never rewrites the store):
 ```
 
 It rebuilds the regenerable `.coverage_index.json` and writes a report under
-`.abcd/.work.local/logs/memory/lint-<ts>/`. Summarise `summary.blockers` /
+`.abcd/.work.local/logs/memory/lint-<ts>/`. `report_dir`, `store_path` and each
+finding's `file` are named relative to the repository. Summarise `summary.blockers` /
 `summary.warnings` / `summary.infos` and each finding's `code` and `message`.
 Blockers exit nonzero; warn-only exits 0.
 

@@ -1,13 +1,13 @@
 # Contributing
 
-abcd is a public project under active development. See [`AGENTS.md`](AGENTS.md)
+abcd is a public project under active development. See [`AGENTS.md`](../AGENTS.md)
 for build/test/checks and working conventions, and
-[`.abcd/development/`](.abcd/development/) for the design record.
+[`.abcd/development/`](../.abcd/development/) for the design record.
 
 ## Licence
 
 Contributions are accepted under the project's licence, inbound = outbound: by
-submitting a change you agree it is licensed under the [MIT licence](LICENSE)
+submitting a change you agree it is licensed under the [MIT licence](../LICENSE)
 like the rest of the project, and that you are entitled to submit it under that
 licence. There is no CLA and no `Signed-off-by:` requirement — a plain
 inbound = outbound statement is the whole of it.
@@ -34,17 +34,17 @@ inbound = outbound statement is the whole of it.
   outside the queue until its branch is updated. `scripts/pr-keep-current.sh`
   performs that update for every armed pull request (`--watch` repeats until
   none is armed); run it after arming auto-merge, and after every merge that
-  moves `main`. A pull request confined to `docs/`,
-  `.abcd/development/`, `.abcd/work/` and the root prose files stands the macOS
-  leg, the race lane and the `zizmor`, `govulncheck` and smoke lanes down while
-  it is in review; the queue run is not a pull-request event, so the full set
-  gates the merge either way.
+  moves `main`. A pull request confined to `docs/`, `.abcd/development/`,
+  `.abcd/work/`, the root prose files, and this guide and the security policy
+  beside it in `.github/` stands the macOS leg, the race lane and the `zizmor`,
+  `govulncheck` and smoke lanes down while it is in review; the queue run is not
+  a pull-request event, so the full set gates the merge either way.
 - **Publish surface reviews.** Paths listed in
-  [`.github/CODEOWNERS`](.github/CODEOWNERS) ship behaviour to installed users
+  [`.github/CODEOWNERS`](CODEOWNERS) ship behaviour to installed users
   (plugin hooks and commands, agent prompts, workflows, gates and build
   config). Changes there additionally require a code-owner review. The applied
   branch rulesets are mirrored under
-  [`.abcd/work/rulesets/`](.abcd/work/rulesets/).
+  [`.abcd/work/rulesets/`](../.abcd/work/rulesets/).
 - **Volume cap.** At most three open pull requests per external author at a
   time — review attention is the scarce resource this protects.
 - **Local gates.** `make preflight` runs the load check first (load-check, a
@@ -58,7 +58,7 @@ inbound = outbound statement is the whole of it.
   (`make fmt` applies it); when the declared toolchain cannot be fetched,
   preflight refuses and names the skew rather than falling back to the `go` on
   PATH. The repository
-  ships its hooks in [`.githooks/`](.githooks/); they are per-machine opt-in —
+  ships its hooks in [`.githooks/`](../.githooks/); they are per-machine opt-in —
   run `git config core.hooksPath .githooks` once per clone to arm the
   pre-commit name guard (it reads this machine's private banlist,
   `.abcd/.work.local/private-names.txt`, which `abcd banlist add --private`
@@ -82,7 +82,7 @@ inbound = outbound statement is the whole of it.
   that means `abcd spec close <spc-N>` on every spec still open that names it.
 - **Docs** are Diátaxis (one type per page, present tense); the design record lives
   under `.abcd/`, never in `docs/`. Prose follows the canonical
-  [writing style guide](docs/reference/writing-style.md).
+  [writing style guide](../docs/reference/writing-style.md).
 - **New dependencies need explicit maintainer sign-off** before they land in
   `go.mod`.
 - **Run the plugin from your checkout.** The marketplace lists one plugin, and
@@ -161,7 +161,7 @@ a public issue for a security finding.
 
 ## Acknowledgements
 
-[`ACKNOWLEDGEMENTS.md`](ACKNOWLEDGEMENTS.md) credits the ideas, tools, and writing
+[`ACKNOWLEDGEMENTS.md`](../ACKNOWLEDGEMENTS.md) credits the ideas, tools, and writing
 behind abcd in three parts — development, inspirations, and references. Add an entry
 **in the same change that lands it**: the PR that adopts an external pattern, cites
 a source in an ADR, or integrates a tool. Adding it at the moment it lands is what

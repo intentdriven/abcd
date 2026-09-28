@@ -6,7 +6,7 @@
   "name_roots": [
     ".abcd",
     "AGENTS.md",
-    "CONTRIBUTING.md",
+    ".github/CONTRIBUTING.md",
     "scripts"
   ],
   "banned_tokens": [
@@ -257,10 +257,8 @@
       "severity": "blocker",
       "extra_roots": [
         "AGENTS.md",
-        "CONTRIBUTING.md",
         "CHANGELOG.md",
         "ACKNOWLEDGEMENTS.md",
-        "SECURITY.md",
         "RELEASE.md",
         ".abcd/README.md",
         ".github",
@@ -293,8 +291,6 @@
         "AGENTS",
         "CHANGELOG",
         "RELEASE",
-        "CONTRIBUTING",
-        "SECURITY",
         "LICENSE",
         "ACKNOWLEDGEMENTS"
       ]

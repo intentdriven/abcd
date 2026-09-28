@@ -222,9 +222,10 @@ func neutraliseCommentDelimiters(s string) string {
 }
 
 // neutraliseSpanAware is the single pass over s that draws CommonMark's code-span
-// boundaries and applies the right rule on each side of them. A span is a run of
-// N backticks followed, anywhere later, by the next run of exactly N; a run with
-// no such closer opens nothing. Backslash escapes are honoured outside a span (an
+// boundaries and applies the right rule on each side of them. PairCodeSpan draws
+// each span, the pairer every reader shares: a run of N backticks closed by the
+// next run of exactly N, and a run with no such closer opens nothing. Backslash
+// escapes are honoured outside a span (an
 // escaped backtick opens nothing) and ignored inside one (the spec parses none
 // there), so the boundary the renderer will draw is the boundary this draws.
 //
@@ -245,22 +246,18 @@ func neutraliseSpanAware(s string) string {
 			out.WriteString(neutraliseHTML(s[i:]))
 			break
 		}
-		openEnd := open
-		for openEnd < len(s) && s[openEnd] == '`' {
-			openEnd++
-		}
-		n := openEnd - open
 		out.WriteString(neutraliseHTML(s[i:open]))
-		closeAt := closingRun(s, openEnd, n)
-		if closeAt < 0 {
-			out.WriteString(strings.Repeat(`\`+"`", n))
+		sp, ok := PairCodeSpan(s, open)
+		if !ok {
+			openEnd := backtickRunEnd(s, open)
+			out.WriteString(strings.Repeat(`\`+"`", openEnd-open))
 			i = openEnd
 			continue
 		}
-		out.WriteString(s[open:openEnd])
-		out.WriteString(neutraliseCommentDelimiters(s[openEnd:closeAt]))
-		out.WriteString(s[closeAt : closeAt+n])
-		i = closeAt + n
+		out.WriteString(s[sp.Start:sp.ContentStart])
+		out.WriteString(neutraliseCommentDelimiters(sp.Raw(s)))
+		out.WriteString(s[sp.ContentEnd:sp.End])
+		i = sp.End
 	}
 	return out.String()
 }
@@ -287,7 +284,9 @@ func nextBacktickRun(s string, from int) int {
 
 // OpensBalancedCodeSpan reports whether s BEGINS with a backtick run that a
 // later run of exactly the same length closes — that is, whether s starts with a
-// code span rather than with literal backticks.
+// code span rather than with literal backticks. It asks PairCodeSpan, the pairer
+// the site renderer draws spans by, so a run judged balanced here is the span
+// the renderer renders.
 //
 // It exists so a caller that escapes leading block markers can ask the cleaner's
 // own grammar instead of guessing. A leading run that opens a balanced span opens
@@ -296,35 +295,8 @@ func nextBacktickRun(s string, from int) int {
 // escaping it would kill the shelter the cleaner's exemption relies on. Only an
 // unbalanced leading run is a fence, and the cleaner no longer emits one.
 func OpensBalancedCodeSpan(s string) bool {
-	if s == "" || s[0] != '`' {
-		return false
-	}
-	n := 0
-	for n < len(s) && s[n] == '`' {
-		n++
-	}
-	return closingRun(s, n, n) >= 0
-}
-
-// closingRun returns the index of the first run of exactly n backticks at or
-// after from, or -1. Runs of any other length are span content and skipped
-// whole, so a longer run never matches by its prefix.
-func closingRun(s string, from, n int) int {
-	for j := from; j < len(s); {
-		if s[j] != '`' {
-			j++
-			continue
-		}
-		k := j
-		for k < len(s) && s[k] == '`' {
-			k++
-		}
-		if k-j == n {
-			return j
-		}
-		j = k
-	}
-	return -1
+	_, ok := PairCodeSpan(s, 0)
+	return ok
 }
 
 // CodeSpan wraps one already-cleaned value in a CommonMark code span whose

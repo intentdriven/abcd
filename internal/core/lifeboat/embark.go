@@ -53,8 +53,8 @@ func EmbarkProbe(lifeboatDir, targetDir string) (EmbarkPlan, error) {
 	marker := embarkMarker(pr.targetAbs, true)
 	return EmbarkPlan{
 		SchemaVersion:        EmbarkSchemaVersion,
-		LifeboatDir:          pr.lifeboatAbs,
-		TargetDir:            pr.targetAbs,
+		LifeboatDir:          fsutil.RedactHome(pr.lifeboatAbs),
+		TargetDir:            fsutil.RedactHome(pr.targetAbs),
 		SourceName:           pr.prov.SourceName,
 		ManifestVerified:     true,
 		ManifestSHA256:       pr.prov.ManifestSHA256,
@@ -81,8 +81,8 @@ func EmbarkFrom(lifeboatDir, targetDir string) (EmbarkResult, error) {
 	}
 	res := EmbarkResult{
 		SchemaVersion: EmbarkSchemaVersion,
-		LifeboatDir:   pr.lifeboatAbs,
-		TargetDir:     pr.targetAbs,
+		LifeboatDir:   fsutil.RedactHome(pr.lifeboatAbs),
+		TargetDir:     fsutil.RedactHome(pr.targetAbs),
 		SourceName:    pr.prov.SourceName,
 		Coverage:      pr.coverage,
 		Ignored:       pr.ignored,
@@ -192,6 +192,9 @@ func VerifyManifest(dir string) error {
 	if err != nil {
 		return err
 	}
+	if err := proveOperand("lifeboat", abs); err != nil {
+		return err
+	}
 	if !fsutil.IsRealDir(abs) {
 		return fmt.Errorf("lifeboat %s is not a directory", filepath.Base(abs))
 	}
@@ -256,6 +259,15 @@ func runPlanner(lifeboatDir, targetDir string) (plannerResult, error) {
 	}
 	targetAbs, err := filepath.Abs(targetDir)
 	if err != nil {
+		return plannerResult{}, err
+	}
+
+	// Both operands are proved against a symlinked ancestor before either is
+	// read, so a refused target is refused before the lifeboat is verified.
+	if err := proveOperand("lifeboat", lifeboatAbs); err != nil {
+		return plannerResult{}, err
+	}
+	if err := proveOperand("target", targetAbs); err != nil {
 		return plannerResult{}, err
 	}
 

@@ -178,11 +178,17 @@ func TestMemoryLintFromSubdirectoryReadsAndReportsInsideTheCheckout(t *testing.T
 	if jerr := json.Unmarshal(out, &res); jerr != nil {
 		t.Fatalf("memory lint --json: not JSON: %v\n%s", jerr, out)
 	}
-	if res.StorePath != filepath.Join(repo, filepath.FromSlash(memory.RelDir)) {
-		t.Errorf("lint from a subdirectory read %q, want the checkout's store", res.StorePath)
+	// Both are reported relative to the checkout (iss-81), so the run log is
+	// found by joining report_dir onto the checkout's root: a lint rooted at
+	// the subdirectory would have written it there instead.
+	if res.StorePath != memory.RelDir {
+		t.Errorf("lint from a subdirectory read %q, want the checkout's store %q", res.StorePath, memory.RelDir)
 	}
-	if !strings.HasPrefix(res.ReportDir, repo+string(filepath.Separator)) {
-		t.Errorf("lint wrote its run log to %q, outside the checkout", res.ReportDir)
+	if filepath.IsAbs(res.ReportDir) {
+		t.Errorf("lint reported its run log absolutely: %q", res.ReportDir)
+	}
+	if _, err := os.Stat(filepath.Join(repo, filepath.FromSlash(res.ReportDir), "report.json")); err != nil {
+		t.Errorf("lint did not write its run log under the checkout at %q: %v", res.ReportDir, err)
 	}
 	noStrayMemoryStore(t, sub)
 }

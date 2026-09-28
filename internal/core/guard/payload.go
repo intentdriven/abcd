@@ -111,6 +111,10 @@ func expandPayloads(segs []segment) ([]segment, []payloadSignal) {
 				out = append(out, fs)
 				queue = append(queue, work{segs: []segment{fs}, depth: item.depth})
 			}
+			// What reaches the commands of a string s runs is read once per
+			// segment, however many strings it carries (payloadInput).
+			var stdin, args []feed
+			inputRead := false
 			for _, ref := range payloadRefsOf(s) {
 				kind, fam, payload, trailing := ref.kind, ref.family, ref.payload, ref.trailing
 				// Past the depth budget the guard cannot follow the nesting, so a
@@ -159,12 +163,31 @@ func expandPayloads(segs []segment) ([]segment, []payloadSignal) {
 				}
 
 				// Offset the payload's chains into a fresh disjoint range and append.
+				// Each command of the string is handed what reaches it from the
+				// command that runs it (segment.stdinIn, segment.argsIn), and the
+				// string is filed under that command, so a run holding it holds
+				// the string's commands too (segList.payloads).
+				if !inputRead {
+					stdin, args = payloadInput(s)
+					inputRead = true
+				}
 				offset := chainMax + 1
 				for i := range psegs {
 					psegs[i].chain += offset
 					if psegs[i].chain > chainMax {
 						chainMax = psegs[i].chain
 					}
+					// A command in a group of the string also reads what was
+					// piped into that group (tokenizeAt's groupIn).
+					if len(psegs[i].stdinIn) == 0 {
+						psegs[i].stdinIn = stdin
+					} else {
+						psegs[i].stdinIn = append(append([]feed(nil), psegs[i].stdinIn...), stdin...)
+					}
+					psegs[i].argsIn = args
+				}
+				if s.home != nil {
+					s.home.addPayload(s.at, psegs)
 				}
 				out = append(out, psegs...)
 				queue = append(queue, work{segs: psegs, depth: item.depth + 1})
@@ -175,6 +198,69 @@ func expandPayloads(segs []segment) ([]segment, []payloadSignal) {
 		signals = append(signals, ifsSplitSignal())
 	}
 	return out, signals
+}
+
+// payloadInput returns what reaches the commands of a command string s runs:
+// the standard input the running shell passes on — its pipe, what its
+// here-strings and redirected process substitutions print, and whatever
+// reached s itself — and, as their arguments, the input of an xargs that runs
+// the shell, which xargs replaces into the string (`-I{}`) or appends as its
+// positional parameters. Which of the string's commands reads it is not
+// modelled: every one of them is read as handed it.
+func payloadInput(s segment) (stdin, args []feed) {
+	if s.piped.list != nil {
+		stdin = append(stdin, s.piped)
+	}
+	stdin = append(stdin, s.stdinIn...)
+	stdin = append(stdin, redirectedInput(s)...)
+	return stdin, newArgsReader(s).before(len(s.tokens))
+}
+
+// redirectedInput returns the commands whose output s reads on its standard
+// input through a redirect, as one run of its list: a here-string's word (the
+// tokenizer keeps the operator as a word, and its text glued to it or as the
+// word after it) and a process substitution. The `<` that redirects a process
+// substitution is not kept, so one handed to s as an operand reads the same;
+// it hands the same output to whatever opens its path, and is read as input
+// all the same. nil when no redirect carries a command's output.
+//
+// The runs are held as one, as argsReader holds a segment's words: every
+// command the tokenizer emitted while it read s's words is a substitution in
+// one of them, in word order, so the covering run stays one feed however many
+// redirects s carries.
+func redirectedInput(s segment) []feed {
+	if len(s.feeds) == 0 {
+		return nil
+	}
+	var run feed
+	var rest []feed
+	add := func(i int) {
+		for _, f := range s.feeds[i] {
+			switch {
+			case run.list == nil:
+				run = f
+			case f.list == run.list:
+				run.lo, run.hi = min(run.lo, f.lo), max(run.hi, f.hi)
+			default:
+				// Not reached: a word's feeds name its own tokenize call. Kept
+				// whole rather than dropped, should that ever change.
+				rest = append(rest, f)
+			}
+		}
+	}
+	for i, tok := range s.tokens {
+		tally(1)
+		switch {
+		case tok == "<<<":
+			add(i + 1)
+		case strings.HasPrefix(tok, "<<<"), strings.Contains(tok, procSubOperand):
+			add(i)
+		}
+	}
+	if run.list == nil {
+		return rest
+	}
+	return append(rest, run)
 }
 
 // splitAfterIFS reports whether a segment carrying an unquoted fixed output

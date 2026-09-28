@@ -52,7 +52,7 @@ func SynthesizePrinciples(lifeboatDir string, raw []byte) (PrinciplesResult, err
 		return PrinciplesResult{}, err
 	}
 
-	res := PrinciplesResult{LifeboatDir: abs}
+	res := PrinciplesResult{LifeboatDir: fsutil.RedactHome(abs)}
 	var (
 		principles    []Principle
 		mode          SynthesisMode
@@ -382,35 +382,44 @@ func (r PrinciplesResult) Render() string {
 func renderPrinciplesMarkdown(f PrinciplesFile) string {
 	var b strings.Builder
 	b.WriteString("# Principles\n\n")
-	fmt.Fprintf(&b, "_mode: %s", sanitize(string(f.Mode)))
-	if f.PromptVersion != "" {
-		fmt.Fprintf(&b, "; prompt %s", sanitize(f.PromptVersion))
-	}
-	b.WriteString("_\n\n")
+	b.WriteString(renderSynthModeLine(f.Mode, f.PromptVersion))
 	if len(f.Principles) == 0 {
 		b.WriteString("_No principles distilled._\n")
 		return b.String()
 	}
 	for _, p := range f.Principles {
-		fmt.Fprintf(&b, "## %s (%s)\n\n", sanitize(p.ID), sanitize(string(p.Confidence)))
-		fmt.Fprintf(&b, "%s\n\n", sanitize(p.Principle))
+		fmt.Fprintf(&b, "## %s (%s)\n\n", mdInline(p.ID), mdInline(string(p.Confidence)))
+		// The principle is its own paragraph, so a leading marker is escaped
+		// rather than left to make it a heading, a list or a quote.
+		fmt.Fprintf(&b, "%s\n\n", mdBlock(p.Principle))
 		fmt.Fprintf(&b, "Claim type: %s\n\n", claimOrNone(p.ClaimType))
 		fmt.Fprintf(&b, "Reference: %s\n\n", claimOrNone(p.Reference))
 		fmt.Fprintf(&b, "Comparison: %s\n\n", claimOrNone(p.Comparison))
-		if len(p.Evidence) > 0 {
-			fmt.Fprintf(&b, "Evidence: %s\n\n", strings.Join(sanitizeAll(p.Evidence), ", "))
+		if refs := mdCodeList(p.Evidence); refs != "" {
+			fmt.Fprintf(&b, "Evidence: %s\n\n", refs)
 		}
 	}
 	return b.String()
 }
 
-// claimOrNone renders a claim key for principles.md: its sanitised value, or
+// claimOrNone renders a claim key for principles.md: its cleaned value, or
 // the words a declined claim reads as.
 func claimOrNone(v *string) string {
 	if v == nil {
 		return "none stated"
 	}
-	return sanitize(*v)
+	return mdInline(*v)
+}
+
+// renderSynthModeLine is the provenance line under a synthesis artefact's title:
+// the mode, and the prompt version in delegated mode. It is a plain paragraph —
+// no emphasis wrapped around the values it carries.
+func renderSynthModeLine(mode SynthesisMode, promptVersion string) string {
+	line := "Mode: " + mdInline(string(mode))
+	if promptVersion != "" {
+		line += "; prompt " + mdInline(promptVersion)
+	}
+	return line + "\n\n"
 }
 
 // ---------------------------------------------------------------------------
@@ -426,6 +435,9 @@ func claimOrNone(v *string) string {
 func gateSynthLifeboat(lifeboatDir string) (string, Provenance, error) {
 	abs, err := filepath.Abs(lifeboatDir)
 	if err != nil {
+		return "", Provenance{}, err
+	}
+	if err := proveOperand("lifeboat", abs); err != nil {
 		return "", Provenance{}, err
 	}
 	if !fsutil.IsRealDir(abs) {

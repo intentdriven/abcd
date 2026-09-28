@@ -136,12 +136,14 @@ jobs:
 
           # The inert allowlist: user-facing documentation, the durable record,
           # and the shared working tier, plus the root files that are prose or
-          # licence text. The harness routers (AGENTS.md, CLAUDE.md, GEMINI.md)
-          # are deliberately absent — they configure agent behaviour.
+          # licence text and the two community-health prose files in .github/.
+          # The harness routers (AGENTS.md, CLAUDE.md, GEMINI.md) are
+          # deliberately absent — they configure agent behaviour.
           is_inert_path() {
             case "$1" in
               docs/*|.abcd/development/*|.abcd/work/*) return 0 ;;
-              README.md|CHANGELOG.md|RELEASE.md|CONTRIBUTING.md|SECURITY.md|ACKNOWLEDGEMENTS.md|LICENSE|LICENSE.md) return 0 ;;
+              README.md|CHANGELOG.md|RELEASE.md|ACKNOWLEDGEMENTS.md|LICENSE|LICENSE.md) return 0 ;;
+              .github/CONTRIBUTING.md|.github/SECURITY.md) return 0 ;;
               *) return 1 ;;
             esac
           }

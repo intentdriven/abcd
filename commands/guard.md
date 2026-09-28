@@ -273,6 +273,29 @@ the repository's hooks exactly as `--no-verify` does, and blocks under the same
 entries whatever the value, because the guard cannot tell a directory of real
 hooks from an empty one. Setting the key with `git config` is not refused.
 
+A kill is read with where its pids come from. A `kill` handed what a process
+search prints — `kill $(pgrep -f make)`, `pgrep -f make | xargs kill`, `kill
+$(pidof make)` — is a **block** (`kill-by-search`), because it signals every
+matching process on the machine, as `pkill` does; a kill of a pid you name, one
+you recorded (`kill $(cat pidfile)`), or a search of your own group (`kill
+$(pgrep -g <pgid>)`) is not. The search is followed through a group (`{ pgrep
+…; } | xargs kill`) and into one, to every command in it (`pgrep … | { sleep 1;
+xargs kill; }`), through a shell string that runs it (`kill $(sh -c 'pgrep
+…')`), and into a shell string that `xargs` runs or that reads the pipe or a
+redirect (`pgrep … | xargs sh -c 'kill "$@"' _`, `pgrep … | sh -c 'xargs
+kill'`, `sh -c 'xargs kill' < <(pgrep …)`); behind `xargs` and a launcher the
+guard does not know, the fail-safe warns. Every command of a string `xargs`
+runs, and every command in a group a pipe feeds, is read as handed that input,
+so `pgrep … | xargs sh -c 'kill 4242'` is a **block** too: the guard does not
+read which of the commands uses it. A `pkill` or `killall` that selects by user, group or terminal
+(`-u`, `-t`, and `pkill`'s `-U` and `-G`, written apart from the value or
+against it, as `pkill -tpts/3`) is a **block** too, under `pkill-by-owner`,
+`killall-by-owner` or the entry for a kill by name, because every session under
+the account is among what it selects. `pkill`'s signal is read as a signal
+first, in any case and with or without its `SIG` prefix, as `pkill` reads it,
+so `pkill -term -g <pgid>` stops a group and stays allowed. A pid list carried
+through a variable or a file, or taken from a `ps | grep` chain, is not seen.
+
 What an allow still does not see is a hazard that never reaches command position
 at all: one launched through a known wrapper carrying a value-taking flag the
 guard does not name (`sudo -u bob <hazard>` is seen; the bundled short form

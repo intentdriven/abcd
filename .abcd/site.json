@@ -68,7 +68,7 @@
   "record_pages": {
     "contributors": {
       "policy": {
-        "file": "CONTRIBUTING.md",
+        "file": ".github/CONTRIBUTING.md",
         "heading": "AI assistance and authorship",
         "part": "first-bullet"
       }

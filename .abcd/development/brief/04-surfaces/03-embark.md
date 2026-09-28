@@ -88,7 +88,10 @@ scaffolder and no model sit in the write path.
    specs — plus the report-only files that inform the run. The lifeboat is
    untrusted input: embark verifies its `manifest_sha256` against the on-disk
    tree, over every hashed file, and refuses a symlink or an oversize file
-   anywhere inside. A tampered hashed record or an added stray file is refused.
+   anywhere inside. Both operands, the lifeboat and the target, are refused
+   when they are reached through a symlink at any level inside a checkout, the
+   one place a commit can plant one; outside every checkout the path is the
+   operator's own and is taken as given. A tampered hashed record or an added stray file is refused.
    The post-pack synthesis layer sits outside the manifest seal deliberately,
    because it is written after the hash: those files carry their own per-entry
    integrity (cite-or-be-dropped, the registered-verdict gate) rather than the

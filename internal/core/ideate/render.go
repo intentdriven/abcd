@@ -182,12 +182,15 @@ func blockText(s string) string {
 		return `\` + s
 	}
 	// An ordered-list opener ("1. ", "12) ") is the one multi-character marker.
+	// The escape goes before the delimiter: a backslash before a digit is a
+	// literal backslash in CommonMark, and would show in the record
+	// (iss-2609262241109876).
 	for i := 0; i < len(s); i++ {
 		if s[i] >= '0' && s[i] <= '9' {
 			continue
 		}
 		if i > 0 && (s[i] == '.' || s[i] == ')') {
-			return `\` + s
+			return s[:i] + `\` + s[i:]
 		}
 		break
 	}

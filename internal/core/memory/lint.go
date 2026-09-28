@@ -4,12 +4,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/fs"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
@@ -469,7 +471,8 @@ func (l *memoryLinter) checkQuotation() {
 func runMemoryCoverageLint(repoRoot string, store *storeHandle) ([]Finding, map[string]any, error) {
 	indexPath := CoverageIndexPath(repoRoot)
 	report := map[string]any{
-		"path":            indexPath,
+		// Display only, like every path Lint reports (iss-81).
+		"path":            fsutil.DisplayPath(repoRoot, indexPath),
 		"stale":           false,
 		"old_fingerprint": nil,
 		"new_fingerprint": nil,
@@ -609,6 +612,15 @@ func Lint(req LintRequest) (LintResult, error) {
 		return LintResult{}, err
 	}
 	findings = append(findings, corpusFindings...)
+	// Every path the result names travels into --json and into the run log, and
+	// machine output never carries an absolute developer-identity path (iss-81,
+	// iss-2609261950061900): each finding's file, the store and the run-log
+	// directory are named relative to the repository. The absolute values stay
+	// the working ones below.
+	for i := range findings {
+		findings[i].File = fsutil.DisplayPath(root, findings[i].File)
+	}
+	storeDisplay := fsutil.DisplayPath(root, mem)
 
 	summary := LintSummary{}
 	for _, f := range findings {
@@ -631,11 +643,8 @@ func Lint(req LintRequest) (LintResult, error) {
 		coverageIndex = coverageReport
 	}
 
-	reportDir, err := lintReportDir(root, now)
+	reportDir, err := makeLintReportDir(root, now)
 	if err != nil {
-		return LintResult{}, err
-	}
-	if err := os.MkdirAll(reportDir, 0o755); err != nil {
 		return LintResult{}, err
 	}
 	reportFields := map[string]any{
@@ -643,12 +652,9 @@ func Lint(req LintRequest) (LintResult, error) {
 		"summary":        map[string]any{"blockers": summary.Blockers, "warnings": summary.Warnings, "infos": summary.Infos},
 		"coverage_index": coverageIndex,
 		"generated_at":   generatedAt,
-		"store_path":     mem,
+		"store_path":     storeDisplay,
 	}
-	if err := writeStringAtomic(filepath.Join(reportDir, "report.json"), marshalIndentNoEscape(reportFields)); err != nil {
-		return LintResult{}, err
-	}
-	if err := writeStringAtomic(filepath.Join(reportDir, "report.md"), renderLintReportMD(reportFields)); err != nil {
+	if err := writeLintReports(reportDir, marshalIndentNoEscape(reportFields), renderLintReportMD(reportFields)); err != nil {
 		return LintResult{}, err
 	}
 
@@ -656,29 +662,45 @@ func Lint(req LintRequest) (LintResult, error) {
 		Findings:      findings,
 		Summary:       summary,
 		CoverageIndex: coverageIndex,
-		ReportDir:     reportDir,
+		ReportDir:     fsutil.DisplayPath(root, reportDir),
 		GeneratedAt:   generatedAt,
-		StorePath:     mem,
+		StorePath:     storeDisplay,
 		ExitCode:      exitCode,
 	}, nil
 }
 
-func lintReportDir(repoRoot string, now time.Time) (string, error) {
-	ts := now.Format("20060102T150405.000000Z")
-	// Runtime artefacts live in the gitignored .abcd/.work.local/logs/ tier, not
-	// the retired runtime location (iss-36/iss-56 adjudication, iss-73).
-	logs := filepath.Join(repoRoot, ".abcd", ".work.local", "logs", "memory")
-	base := filepath.Join(logs, "lint-"+ts)
-	if _, err := os.Stat(base); os.IsNotExist(err) {
-		return base, nil
+// lintLogsRelDir is where every lint run keeps its run log: the gitignored
+// local tier, not the retired runtime location (iss-36/iss-56 adjudication,
+// iss-73).
+const lintLogsRelDir = ".abcd/.work.local/logs/memory"
+
+// makeLintReportDir creates this run's own directory under lintLogsRelDir
+// through the local tier's run-log create path (fsutil.CreateRunDir): every
+// level from the checkout root down is proved a real directory first, so a
+// local tier — or any level below it — that a checkout carries as a committed
+// symlink is refused rather than followed out of the checkout
+// (iss-2609260948440803), and the run directory is created exclusively.
+func makeLintReportDir(repoRoot string, now time.Time) (string, error) {
+	dir, err := fsutil.CreateRunDir(repoRoot, lintLogsRelDir, "lint-"+now.Format("20060102T150405.000000Z"), 0o755)
+	if err != nil {
+		return "", fmt.Errorf("the lint run-log directory: %w", err)
 	}
-	for n := 1; n < 1000; n++ {
-		candidate := filepath.Join(logs, fmt.Sprintf("lint-%s-%03d", ts, n))
-		if _, err := os.Stat(candidate); os.IsNotExist(err) {
-			return candidate, nil
-		}
+	return dir, nil
+}
+
+// writeLintReports writes both reports through a handle on the run directory
+// makeLintReportDir just created (fsutil.OpenRealDir), so a level swapped for a
+// link after the proof cannot carry the writes elsewhere.
+func writeLintReports(dir, reportJSON, reportMD string) error {
+	root, err := fsutil.OpenRealDir(dir)
+	if err != nil {
+		return err
 	}
-	return "", fmt.Errorf("could not allocate a unique lint run-log dir for %s", ts)
+	defer root.Close()
+	if err := fsutil.WriteFileAtomicInRoot(root, "report.json", []byte(reportJSON), 0o644); err != nil {
+		return err
+	}
+	return fsutil.WriteFileAtomicInRoot(root, "report.md", []byte(reportMD), 0o644)
 }
 
 func findingsToMaps(findings []Finding) []any {
@@ -697,11 +719,14 @@ func findingsToMaps(findings []Finding) []any {
 const LintReportHeading = "abcd memory lint"
 
 // renderLintReportMD renders report.md, the local-tier file an operator opens in
-// a pager. Every free-text field — the store path, each finding's file, message
-// and suggestion — goes through termsafe.Sanitize, the primitive the CLI render
-// applies to the same findings: a degraded-scanner MR001 message carries a
-// pattern name read from the per-repo pii.json, and a finding's file is a name
-// the store holds, so either can carry a control sequence (iss-2609020239068243).
+// a pager or a markdown viewer. Every free-text field — the store path, each
+// finding's code, file, message and suggestion — goes through
+// termsafe.CleanProseLine, which masks a control sequence as Sanitize does
+// (iss-2609020239068243) and also neutralises an HTML opener and link syntax,
+// and the store path and each file are set off with termsafe.CodeSpan: a
+// degraded-scanner MR001 message carries a pattern name read from the per-repo
+// pii.json, and a finding's file is a name the store holds, so either can carry
+// markdown as well as a control sequence (iss-2609262148072415).
 func renderLintReportMD(fields map[string]any) string {
 	summary, _ := fields["summary"].(map[string]any)
 	cov, _ := fields["coverage_index"].(map[string]any)
@@ -709,7 +734,7 @@ func renderLintReportMD(fields map[string]any) string {
 		"# " + LintReportHeading + " — curator health-check",
 		"",
 		fmt.Sprintf("Generated: %v", fields["generated_at"]),
-		"Store: " + termsafe.Sanitize(fmt.Sprintf("%v", fields["store_path"])),
+		"Store: " + termsafe.CodeSpan(termsafe.CleanProseLine(fmt.Sprintf("%v", fields["store_path"]), math.MaxInt)),
 		fmt.Sprintf("Summary: %d blocker(s), %d warning(s), %d info(s)",
 			toInt(summary["blockers"]), toInt(summary["warnings"]), toInt(summary["infos"])),
 	}
@@ -736,13 +761,19 @@ func renderLintReportMD(fields map[string]any) string {
 				if f["severity"] != sev {
 					continue
 				}
-				loc := termsafe.Sanitize(fmt.Sprintf("%v", f["file"]))
+				// The file is set off with termsafe.CodeSpan and every prose field
+				// goes through CleanProseLine: Sanitize alone leaves an HTML comment
+				// opener or link syntax live in a markdown file
+				// (iss-2609262148072415).
+				loc := termsafe.CleanProseLine(fmt.Sprintf("%v", f["file"]), math.MaxInt)
 				if line := toInt(f["line"]); line != 0 {
 					loc += fmt.Sprintf(":%d", line)
 				}
-				lines = append(lines, fmt.Sprintf("- [%s] %v %s — %s", sev, f["code"], loc, termsafe.Sanitize(fmt.Sprintf("%v", f["message"]))))
+				lines = append(lines, fmt.Sprintf("- [%s] %s %s — %s", sev,
+					termsafe.CleanProseLine(fmt.Sprintf("%v", f["code"]), math.MaxInt), termsafe.CodeSpan(loc),
+					termsafe.CleanProseLine(fmt.Sprintf("%v", f["message"]), math.MaxInt)))
 				if sug, _ := f["suggestion"].(string); sug != "" {
-					lines = append(lines, "  fix: "+termsafe.Sanitize(sug))
+					lines = append(lines, "  fix: "+termsafe.CleanProseLine(sug, math.MaxInt))
 				}
 			}
 		}

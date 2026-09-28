@@ -237,6 +237,10 @@ manifest describes half of what is in it. Both files are written through a
 temporary name and renamed into place, so a reader never opens a half-written
 bundle.
 
+An output directory reached through a symlink at any level inside a checkout is
+refused, however `--out` spells it: a committed link would carry both files
+elsewhere. Outside every checkout the path is the operator's own.
+
 ### The host obligation this binary cannot discharge
 
 The assembled input carries no repository path: each item is an ordinal key, a
