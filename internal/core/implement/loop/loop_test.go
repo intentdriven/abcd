@@ -183,6 +183,9 @@ func TestStartRefusesAPeerHoldingTheRecord(t *testing.T) {
 // reached the refusal as an absolute local path, in its name and inside its
 // not-read reason (iss-2609281329007423). Both name it by its directory name.
 func TestThePeerRefusalNamesAWorktreeOutsideHomeByItsDirectoryName(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("chmod 0 on the shut worktree's planned folder does not deny root, so its could-not-be-read holder never forms")
+	}
 	repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
 	outside := t.TempDir()
 	held := filepath.Join(outside, "wt-held")

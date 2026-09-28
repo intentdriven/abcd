@@ -285,6 +285,9 @@ func TestTheScanBeforeMutatingConventionNamesThePeerListing(t *testing.T) {
 // worktree's path and the peer-held refusal alike (iss-2609281329007423). Each
 // names the worktree by its directory name instead, fsutil.DisplayPath's rule.
 func TestPeersNamesAWorktreeOutsideHomeByItsDirectoryName(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("chmod 0 on the shut worktree's record folder does not deny root, so its not-read reason never forms")
+	}
 	home, repo := peerCheckout(t)
 	outside := t.TempDir()
 	live := filepath.Join(outside, "wt-live")
