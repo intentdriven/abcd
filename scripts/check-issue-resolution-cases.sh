@@ -1377,6 +1377,80 @@ This reverts commit $(git -C "$d" rev-parse HEAD)."
 expect_refusal_naming "$d" "RS005 a hand-written revert line over a commit that reverts nothing withdraws nothing" \
 	"declares 'Delivers: itd-7', but itd-7 does not enter" -- commits main HEAD
 
+# The deed must also be the REVERTED commit's. A fix declares `Resolves:` and
+# moves nothing; a separate commit moves the record into resolved/; a third
+# undoes that move under a line naming the fix. The revert's diff does take
+# iss-999 out of resolved/, but the commit it names never put it there, so the
+# fix's declaration is not withdrawn: the record is open at head and RS001
+# refuses the trailer.
+d="$(newrepo rs001-revert-names-another-commit)"
+echo "the fix" >>"$d/README.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "fix: something
+
+Resolves: iss-999"
+a="$(git -C "$d" rev-parse HEAD)"
+resolve_record "$d"
+git -C "$d" commit -qm "chore: move the record"
+git -C "$d" mv "$ISS_DIR/resolved/iss-999-a-fixture.md" "$ISS_DIR/open/iss-999-a-fixture.md"
+git -C "$d" commit -qm "Revert \"fix: something\"
+
+This reverts commit $a."
+expect_refusal_naming "$d" "RS001 a revert naming a commit that never moved the record withdraws nothing" \
+	"declares 'Resolves: iss-999', but iss-999 does not enter" -- commits main HEAD
+
+# The RS005 twin: the delivery declared on a commit that ships nothing, the
+# intent shipped by a separate commit, and that shipping undone under a line
+# naming the declaring commit.
+d="$(newrepo_intents rs005-revert-names-another-commit)"
+echo "the thing" >>"$d/README.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "feat: build the thing
+
+Delivers: itd-7"
+a="$(git -C "$d" rev-parse HEAD)"
+ship_intent "$d" 7
+git -C "$d" commit -qm "chore: close the spec"
+git -C "$d" mv "$INT_DIR/shipped/itd-7-fixture-7.md" "$INT_DIR/planned/itd-7-fixture-7.md"
+git -C "$d" mv "$SPC_DIR/closed/spc-7-fixture-7.md" "$SPC_DIR/open/spc-7-fixture-7.md"
+git -C "$d" commit -qm "Revert \"feat: build the thing\"
+
+This reverts commit $a."
+expect_refusal_naming "$d" "RS005 a revert naming a commit that never shipped the intent withdraws nothing" \
+	"declares 'Delivers: itd-7', but itd-7 does not enter" -- commits main HEAD
+
+# The honest shape still withdraws when the reverted commit is not the tip: a
+# resolution, an unrelated commit after it, then `git revert` of the resolution
+# itself. The revert takes out of resolved/ exactly what the named commit put in.
+d="$(newrepo rs001-revert-of-earlier-resolution)"
+resolve_record "$d"
+git -C "$d" commit -qm "fix: something
+
+Resolves: iss-999"
+a="$(git -C "$d" rev-parse HEAD)"
+echo "later work" >>"$d/README.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "docs: later work"
+git -C "$d" revert --no-edit "$a" >/dev/null
+expect pass "$d" "RS001 a git revert of an earlier resolution still withdraws it" -- commits main HEAD
+
+# A file in a terminal folder that is not a record is not a move. Here the
+# resolution also adds wontfix/.gitkeep, so its revert's diff lists that file
+# last; the reader of the revert's diff once took the loop's last failed test
+# for its own status and ended the gate at exit 2 with no refusal line.
+d="$(newrepo rs001-revert-lists-a-non-record-last)"
+git -C "$d" rm -q "$ISS_DIR/wontfix/.gitkeep"
+git -C "$d" commit -qm "chore: drop the placeholder"
+resolve_record "$d"
+mkdir -p "$d/$ISS_DIR/wontfix"
+touch "$d/$ISS_DIR/wontfix/.gitkeep"
+git -C "$d" add -A
+git -C "$d" commit -qm "fix: something
+
+Resolves: iss-999"
+git -C "$d" revert --no-edit HEAD >/dev/null
+expect pass "$d" "RS001 a revert whose diff lists a non-record file last still withdraws" -- commits main HEAD
+
 # Criterion 5: the intent rule's refusal has the issue rule's shape and exit
 # code — compared here, not judged by a reviewer. Both fixtures are the ordinary
 # case (a trailer whose record stays where it was); each refusal is normalised by

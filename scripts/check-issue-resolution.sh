@@ -599,7 +599,7 @@ revert_pairs() {
 # itself reverted there (a revert of a revert reinstates), and returns 0, or
 # returns 1 when nothing does. Naming a commit is only the claim; which of its
 # declarations the revert withdraws is decided by what the revert DID
-# (ids_taken_out).
+# (ids_withdrawn).
 withdrawn_by() {
 	local sha="$1" pairs="$2" r found=1
 	for r in $(printf '%s\n' "$pairs" | awk -v s="$sha" '$2 == s { print $1 }'); do
@@ -611,49 +611,102 @@ withdrawn_by() {
 	return "$found"
 }
 
-# ids_taken_out prints the records commit r's OWN diff takes back out of their
-# terminal folder: an iss-N that leaves resolved/ or wontfix/ and enters neither,
-# or a canonical itd-N that leaves shipped/ and does not re-enter it. This is the
-# deed a withdrawal is judged on. The "This reverts commit" line is text anyone
-# can type, and honoured on the text alone a commit that reverts nothing — one
-# README line under a hand-written revert line — withdrew a `Resolves:` whose
-# record never moved, so a fix without its resolution passed RS001. A `git
-# revert` of a real resolution or delivery moves the record back out; a
-# hand-written line over a commit that moves nothing takes nothing out, and the
-# declaration stands to be judged. A move between terminal folders, or a reslug
-# inside one, leaves the record terminal and takes nothing out. Renames are off,
-# so every move reads as a delete plus an add and the two halves are paired by id.
-ids_taken_out() {
-	local r="$1" out rc=0
-	out="$(git diff-tree --no-commit-id --name-status -r --no-renames "$r^" "$r" -- \
+# terminal_moves prints "<D|A> <folder> <id>" for every record commit c's OWN diff
+# deletes from, or adds to, a terminal folder: an iss-N under resolved/ or
+# wontfix/, or a canonical itd-N under shipped/. Renames are off, so a move reads
+# as a delete plus an add, paired by id below. The one-commit form diffs c
+# against its single parent (a root commit against the empty tree); a merge
+# commit yields no lines, and none reaches here, since the range is read with
+# --no-merges.
+terminal_moves() {
+	local c="$1" out rc=0
+	out="$(git diff-tree --root --no-commit-id --name-status -r --no-renames "$c" -- \
 		"$ISSUES_DIR/resolved" "$ISSUES_DIR/wontfix" "$INTENTS_DIR/shipped" 2>&1)" || rc=$?
 	if [ "$rc" -ne 0 ]; then
-		echo "check-issue-resolution: git diff-tree failed for ${r:0:12} (exit $rc) — refusing rather than reporting a vacuous pass:" >&2
+		echo "check-issue-resolution: git diff-tree failed for ${c:0:12} (exit $rc) — refusing rather than reporting a vacuous pass:" >&2
 		echo "$out" >&2
 		exit 2
 	fi
 	printf '%s\n' "$out" | while IFS=$'\t' read -r status path; do
-		local id=""
+		local id="" folder=""
 		case "$status" in
 		D | A) ;;
 		*) continue ;;
 		esac
 		case "$path" in
-		"$ISSUES_DIR/"*) id="$(basename "$path" | grep -oE '^iss-[0-9]+' || true)" ;;
-		"$INTENTS_DIR/shipped/"*) id="$(canon_itd "$(basename "$path" | grep -oE '^itd-[0-9]+' || true)")" ;;
+		"$ISSUES_DIR/resolved/"*) folder=resolved ;;
+		"$ISSUES_DIR/wontfix/"*) folder=wontfix ;;
+		"$INTENTS_DIR/shipped/"*) folder=shipped ;;
 		esac
-		[ -n "$id" ] && printf '%s %s\n' "$status" "$id"
-	done | awk '$1 == "D" { d[$2] = 1 } $1 == "A" { a[$2] = 1 } END { for (k in d) if (!(k in a)) print k }' | sort -u
+		case "$folder" in
+		resolved | wontfix) id="$(basename "$path" | grep -oE '^iss-[0-9]+' || true)" ;;
+		shipped) id="$(canon_itd "$(basename "$path" | grep -oE '^itd-[0-9]+' || true)")" ;;
+		esac
+		# An if, not `[ ] && printf`: a false test as the last command the
+		# loop runs would become the loop's status, and a non-record file in a
+		# terminal folder (a .gitkeep) listed last would end the gate at exit 2.
+		if [ -n "$id" ]; then
+			printf '%s %s %s\n' "$status" "$folder" "$id"
+		fi
+	done
+}
+
+# ids_taken_out prints "<folder> <id>" for each record commit r's OWN diff takes
+# back out of its terminal folder: it leaves resolved/, wontfix/ or shipped/ and
+# enters no terminal folder. This is the deed a withdrawal is judged on. The
+# "This reverts commit" line is text anyone can type, and honoured on the text
+# alone a commit that reverts nothing — one README line under a hand-written
+# revert line — withdrew a `Resolves:` whose record never moved, so a fix
+# without its resolution passed RS001. A `git revert` of a real resolution or
+# delivery moves the record back out; a hand-written line over a commit that
+# moves nothing takes nothing out, and the declaration stands to be judged. A
+# move between terminal folders, or a reslug inside one, leaves the record
+# terminal and takes nothing out.
+ids_taken_out() {
+	local moves
+	moves="$(terminal_moves "$1")" || exit 2
+	printf '%s\n' "$moves" |
+		awk 'NF == 3 && $1 == "D" { d[$2 " " $3] = 1 } NF == 3 && $1 == "A" { a[$3] = 1 }
+			END { for (k in d) { split(k, p, " "); if (!(p[2] in a)) print k } }' | sort -u
+}
+
+# ids_put_in prints "<folder> <id>" for each record commit c's OWN diff moves
+# INTO a terminal folder it did not already sit in within that commit (a reslug
+# inside the folder is not an entry).
+ids_put_in() {
+	local moves
+	moves="$(terminal_moves "$1")" || exit 2
+	printf '%s\n' "$moves" |
+		awk 'NF == 3 && $1 == "A" { a[$2 " " $3] = 1 } NF == 3 && $1 == "D" { d[$2 " " $3] = 1 }
+			END { for (k in a) if (!(k in d)) print k }' | sort -u
+}
+
+# ids_withdrawn prints the ids a live revert r withdraws from the commit sha it
+# names: those r takes back out of a terminal folder that sha's OWN diff moved
+# them into, folder by folder. Taking a record out is not enough on its own: a
+# fix that declared `Resolves:` and moved nothing, a separate commit that moved
+# the record into resolved/, and a revert of THAT move under a line naming the
+# fix withdrew the fix's trailer, and the fix landed with its record open. Only
+# a revert of the move the named commit itself made undoes that commit's
+# declaration — which is what `git revert <sha>` of a real resolution does.
+ids_withdrawn() {
+	local r="$1" sha="$2" out put
+	out="$(ids_taken_out "$r")" || exit 2
+	[ -n "$out" ] || return 0
+	put="$(ids_put_in "$sha")" || exit 2
+	[ -n "$put" ] || return 0
+	comm -12 <(printf '%s\n' "$out") <(printf '%s\n' "$put") | awk '{ print $2 }' | sort -u
 }
 
 # withdrawn_note reports, and returns 0 for, a declared id that a live revert of
-# its commit takes back out of the terminal folder; it returns 1 for any other.
+# its commit takes back out of the terminal folder that commit moved it into; it
+# returns 1 for any other.
 withdrawn_note() {
 	local rule="$1" sha="$2" decl="$3" id="$4" withdrawn="$5" w
 	[ -n "$withdrawn" ] || return 1
 	w="$(awk -v id="$id" '$1 == id && !seen { print $2; seen = 1 }' <<<"$withdrawn")"
 	[ -n "$w" ] || return 1
-	echo "check-issue-resolution: $rule commit ${sha:0:12}'s '$decl' is withdrawn: ${w:0:12} reverts it and takes $id back out of its terminal folder"
+	echo "check-issue-resolution: $rule commit ${sha:0:12}'s '$decl' is withdrawn: ${w:0:12} reverts it and takes $id back out of the terminal folder that commit moved it into"
 	return 0
 }
 
@@ -735,9 +788,10 @@ check_commits() {
 
 	# A declaration a later commit of the range reverts is withdrawn: its
 	# `Resolves:` and `Delivers:` ids are not held to a move the revert undid —
-	# but only the ids whose record the revert's own diff takes back out of its
-	# terminal folder (ids_taken_out). RS004 still reads the message — a
-	# withdrawn commit named what it named.
+	# but only the ids whose record the revert's own diff takes back out of a
+	# terminal folder the reverted commit's own diff moved it into
+	# (ids_withdrawn). RS004 still reads the message — a withdrawn commit named
+	# what it named.
 	local reverts
 	reverts="$(revert_pairs "$base" "$head" "$range")"
 
@@ -759,12 +813,13 @@ check_commits() {
 		check_mentions "commit ${sha:0:12}" "$msg" "$(declared_ids "$msg")"
 		scanned=$((scanned + 1))
 		# withdrawn holds "<id> <withdrawer>" for each record a live revert of
-		# this commit takes back out; an id absent from it is judged as usual.
+		# this commit takes back out of a terminal folder this commit put it in;
+		# an id absent from it is judged as usual.
 		local withdrawn="" withdrawers w
 		if [ -n "$reverts" ] && withdrawers="$(withdrawn_by "$sha" "$reverts")"; then
 			for w in $withdrawers; do
 				local taken
-				taken="$(ids_taken_out "$w")" || exit 2
+				taken="$(ids_withdrawn "$w" "$sha")" || exit 2
 				[ -n "$taken" ] || continue
 				withdrawn="$withdrawn$(printf '%s\n' "$taken" | sed "s/\$/ $w/")
 "

@@ -348,8 +348,9 @@ irreversible; guessing downward costs nothing.**
   leaves no marker to find it by. Resolving without a trailer stays legal — a
   stale issue closed on its own merits has no fixing commit to name. A `git
   revert` later in the same range withdraws a `Resolves:` only for a record its
-  own diff takes back out of `resolved/` or `wontfix/`; a "This reverts commit"
-  line over a commit that moves no record withdraws nothing.
+  own diff takes back out of `resolved/` or `wontfix/`, a record the reverted
+  commit itself moved in; a "This reverts commit" line over a commit that moves
+  no record, or naming a commit that never moved that record, withdraws nothing.
 - **A change that delivers a planned intent closes its spec in the same
   change**: `go run ./cmd/abcd spec close <spc-N>` moves the spec to `closed/`
   and, as its close-hook, the intent from `planned/` to `shipped/`. Nothing
@@ -370,7 +371,7 @@ irreversible; guessing downward costs nothing.**
   refused before anything moves. Same shape as the issue rule above: the step
   that happens after the merge is the one that gets forgotten. A revert
   withdraws a `Delivers:` on the same terms, only for an intent its own diff
-  takes back out of `shipped/`.
+  takes back out of `shipped/`, an intent the reverted commit itself moved in.
 - **A `resolved_by.commit` stamp names a commit that is actually reachable.**
   `abcd capture resolve --commit` is shape-checked only, so a wrong sha reads
   exactly like a right one; RS002/RS003 check reachability instead. Note the
