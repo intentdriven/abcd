@@ -134,7 +134,7 @@ func TestAddPublicEntryGatesUserFacingContent(t *testing.T) {
 	// that an unresolvable configured root fails loud (GitHub #360).
 	write("README.md", "# readme\n")
 	// Its name_roots must resolve too (iss-279).
-	for _, r := range []string{".abcd/README.md", "AGENTS.md", "CONTRIBUTING.md", "scripts/README.md"} {
+	for _, r := range []string{".abcd/README.md", "AGENTS.md", ".github/CONTRIBUTING.md", "scripts/README.md"} {
 		write(r, "# t\n")
 	}
 	write("docs/named.md", "# t\n\nBuilt with widgetworks.\n")
@@ -438,7 +438,7 @@ func TestAddPublicIsCaseInsensitiveLikeTheCuratedEntries(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Its name_roots must resolve too (iss-279).
-	for _, r := range []string{".abcd/README.md", "AGENTS.md", "CONTRIBUTING.md", "scripts/README.md"} {
+	for _, r := range []string{".abcd/README.md", "AGENTS.md", ".github/CONTRIBUTING.md", "scripts/README.md"} {
 		p := filepath.Join(docs, filepath.FromSlash(r))
 		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 			t.Fatal(err)
