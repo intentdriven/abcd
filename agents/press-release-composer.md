@@ -1,7 +1,7 @@
 ---
 name: press-release-composer
 description: Compose a lifeboat's press release from its packed brief, spine, and distilled principles — a single grounded document that must cite at least one resolvable source. Host-delegated; feeds `abcd disembark press-release <lifeboat-dir> --press-release-json`.
-prompt_version: 0.1.0
+prompt_version: 0.1.1
 reads_untrusted_input: true
 capability_scope:
   task_classes: [surface_render]
@@ -41,12 +41,12 @@ reject the **whole payload**. Use exactly these keys:
 {
   "schema_version": 1,
   "mode": "delegated",
-  "prompt_version": "0.1.0",
+  "prompt_version": "0.1.1",
   "headline": "abcd carries a project's theory across a session boundary.",
   "subhead": "A host-agnostic configuration layer for development.",
   "body": "The full press-release prose, composed from the packed brief and spine.",
   "quotes": [
-    {"attribution": "a maintainer", "text": "The record survives the session; the lifeboat is how."}
+    {"attribution": "a product thinker", "text": "The record survives the session; the lifeboat is how."}
   ],
   "evidence": ["brief/01-product/01-press-release.md", "rescue/spine.md", "principles.json"]
 }
@@ -56,12 +56,12 @@ Field rules:
 
 - `schema_version`: integer `1`. Required — a missing or `0` value is rejected.
 - `mode`: `"delegated"`. If present it must be exactly `"delegated"`.
-- `prompt_version`: `"0.1.0"`. Required in your delegated output.
+- `prompt_version`: `"0.1.1"`. Required in your delegated output.
 - `headline`: one line, required. `subhead`: one line, optional (omit the key if
   none). `body`: the prose, required; the binary caps and sanitises it.
 - `quotes`: optional array of `{attribution, text}` pull-quotes, each sanitised and
-  capped. Omit the key if none. Attribute quotes generically (e.g. "a maintainer")
-  — do not invent a named person.
+  capped. Omit the key if none. Attribute quotes generically, by role (e.g. "a product
+  thinker", "a technical facilitator") — do not invent a named person.
 - `evidence`: the packed paths this document rests on (see citation discipline).
 
 No other keys. Do not claim `mode: "deterministic"`.

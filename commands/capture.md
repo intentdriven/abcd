@@ -288,12 +288,13 @@ already refuses to act without, so a second one here would reach no record.
 conjecture and the user-facing reason are not the same sentence.
 The token there stays `declined`: a wontfix IS the non-action that value names.
 
-**Ask for the expectation and its falsifier.** "Promoted it because it is next"
+**Ask the product thinker for the expectation and its falsifier** (set `abcd
+mode product-thinker` first). "Promoted it because it is next"
 restates the decision and records nothing; "promoted it because we expect a
 stamped identity to survive rewording, which nothing else does" is a conjecture
 somebody can later find wrong. abcd refuses only the degenerate texts — empty,
 too short, or the vocabulary word repeated back — and cannot tell a conjecture
-from a restatement. That part is yours: put the question to the user and write
+from a restatement. That part is yours: put the question to the product thinker and write
 down their answer.
 
 The value is APPENDED as a `- <token>: <text>` bullet under the record's

@@ -140,10 +140,10 @@ user (keys, tools, cost). When you relay such a question, relay that
 explanation verbatim with it; never describe an answer in your own words, and
 never offer an answer the question does not list.
 
-That is a channel for passing on an answer the user has GIVEN — ask first, then
-pipe; it is never a licence to answer on their behalf. Note that `yes |`
-approves EVERY question, so only reach for it once the user has agreed to all of
-them.
+That is a channel for passing on an answer the technical facilitator has GIVEN
+— set `abcd mode facilitator`, ask the technical facilitator first, then pipe;
+it is never a licence to answer on their behalf. Note that `yes |` approves
+EVERY question, so only reach for it once they have agreed to all of them.
 
 **Stdin must end, or the prompt waits.** With stdin at end-of-input every
 question declines, so a run that was told nothing writes nothing — but a stdin

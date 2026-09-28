@@ -115,7 +115,7 @@ ancestor is not a run at this target and is not listed; a run across which
 anything else changed is listed and refused, naming the first path that moved.
 The manifest records both commits — `candidate_run_target` beside
 `target_commit` — so a reader can diff them. *This reading of "at the target" is
-an interpretation, and the maintainer's ruling is owed* (iss-2609021857343626).
+an interpretation, and the product thinker's ruling is owed* (iss-2609021857343626).
 That run's items travel projected to two body fields —
 the configuration and what admits it — keyed by the item identifier the
 comparative body cites, and nothing else from the readings store travels with

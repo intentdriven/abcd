@@ -49,7 +49,7 @@
       "rules": [
         "Intents are press-release-first; acceptance criteria are BDD (Given/When/Then).",
         "Personas are always Alice, Bob, Carol — never other names.",
-        "Lifecycle is drafts/ -> planned/ -> shipped/; a planned intent's adoption is a maintainer decision.",
+        "Lifecycle is drafts/ -> planned/ -> shipped/; a planned intent's adoption is the product thinker's decision.",
         "The change that lands a planned intent's work closes its spec in the same change (abcd spec close <spc-N>), which ships the intent; nothing runs it for you, and a planned intent whose code is on main is invisible to the release cut."
       ]
     },

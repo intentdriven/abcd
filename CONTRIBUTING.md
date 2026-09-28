@@ -15,7 +15,7 @@ inbound = outbound statement is the whole of it.
 ## How changes land
 
 - **Issue first.** External contributions start from an accepted issue: open one
-  (or pick an open one) and get a maintainer's nod before writing code. A pull
+  (or pick an open one) and get the product thinker's nod before writing code. A pull
   request with no accepted issue behind it may be declined on scope alone —
   that is policy, not a judgement of the work.
 - **Branch + PR** for substantive changes; CI gates the merge. Its `check` job
@@ -79,8 +79,8 @@ inbound = outbound statement is the whole of it.
 - **Docs** are Diátaxis (one type per page, present tense); the design record lives
   under `.abcd/`, never in `docs/`. Prose follows the canonical
   [writing style guide](docs/reference/writing-style.md).
-- **New dependencies need explicit maintainer sign-off** before they land in
-  `go.mod`.
+- **New dependencies need the product thinker's explicit sign-off** before
+  they land in `go.mod`.
 - **Run the plugin from your checkout.** The marketplace lists one plugin, and
   its source is the latest release's pinned archive, so installing from the
   marketplace gives you the last cut release, never your working tree. There is

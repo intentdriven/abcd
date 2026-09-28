@@ -857,3 +857,29 @@ func TestReadyReportsTheStepsShape(t *testing.T) {
 		})
 	}
 }
+
+// TestReadyRemediesNameTheProductThinker: the readiness remedies that send an
+// agent to a human name the role that signs off an intent's acceptance
+// criteria — the product thinker — rather than one word for two people
+// (itd-2609212137129937).
+func TestReadyRemediesNameTheProductThinker(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, draftsDir+"/itd-10-alpha.md", draftWithAC("itd-10", "alpha"))
+	writeFile(t, root, draftsDir+"/itd-11-beta.md", draftSeeded("itd-11", "beta"))
+	withAC, err := Ready(root, "itd-10")
+	if err != nil {
+		t.Fatal(err)
+	}
+	seeded, err := Ready(root, "itd-11")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, remedy := range []string{
+		checkByName(t, withAC, "bucket").Remedy,
+		checkByName(t, seeded, "acceptance_criteria").Remedy,
+	} {
+		if !strings.Contains(remedy, "the product thinker") {
+			t.Errorf("remedy %q does not name the product thinker", remedy)
+		}
+	}
+}

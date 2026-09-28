@@ -78,8 +78,8 @@ page count rendered from the record, the
 record's size (records, links, mentions), the unresolved references against the
 committed baseline, the chart packing's overlap count (which is zero or the
 picture is wrong), and the version and commit stamped into the footer. An
-unresolved-reference count above the baseline is worth naming to the maintainer
-even though this verb does not gate on it.
+unresolved-reference count above the baseline is worth naming to the technical
+facilitator even though this verb does not gate on it.
 
 A failure names its cause and its place: a markdown construct outside the
 rendered subset is reported as `file:line`, and so is an image the page names

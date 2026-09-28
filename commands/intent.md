@@ -228,12 +228,13 @@ reconstructed. The refusal covers both, deliberately, because nothing in the
 enforcement can tell relocated text from invented text — which is why the state
 those three records are in is not reachable through this verb.
 
-**Ask for the expectation and its falsifier.** "Planned it because it is next"
+**Ask the product thinker for the expectation and its falsifier** (set `abcd
+mode product-thinker` first). "Planned it because it is next"
 restates the decision and records nothing; "planned it because we expect a
 stamped identity to survive rewording, which nothing else does" is a conjecture
 somebody can later find wrong. abcd refuses only the degenerate texts — empty,
 too short, or the vocabulary word repeated back — and cannot tell a conjecture
-from a restatement. That part is yours: put the question to the human and write
+from a restatement. That part is yours: put the question to the product thinker and write
 down their answer, not a paraphrase of the route taken. A hand-typed bullet is
 held to the same floor: `- pursued: yes` is not an entry, and the gate reports
 the record as carrying none.
@@ -296,9 +297,10 @@ scaffold prompt is reported as unanswered, never as a recorded claim.
 
 ## Planning interview (host-run, with the human present)
 
-The interview turns a draft into an intent the maintainer has signed off. Run
-it only in a live session with the human; deferral of any question is a valid
-answer, but silence is not consent.
+The interview turns a draft into an intent the product thinker has signed off.
+Every question in it is theirs: set `abcd mode product-thinker` before the
+first one. Run it only in a live session with the product thinker; deferral of
+any question is a valid answer, but silence is not consent.
 
 **How every question is asked (the GRILL rule domain).** One question at a
 time, through the harness's interactive question tool, never as a numbered
@@ -309,7 +311,9 @@ always offered. A recommendation the human asks for is given in prose apart
 from the question. The next question waits for the last answer. The register follows
 the addressee: a product thinker gets outcomes in product terms with no
 record ids or internals; a technical facilitator gets the mechanism and the
-ids. Where the hat is unknown, that is the first question.
+ids. Where the hat is unknown, that is the first question. The mode carries
+the addressee: before each question set `abcd mode product-thinker` or `abcd
+mode facilitator`, and the question names that role.
 
 **Prerequisite — two adversarial reviews.** Before the interview, the draft
 has been through two independent adversarial reviewers with different lenses
@@ -326,11 +330,12 @@ gate that will refuse the move mechanically is a recorded seed until built.
    parts → homes, typed links, advisory reversal flags. A part that is not
    this intent moves to its home (or is captured) before planning proceeds;
    grade the run into the calibration note either way.
-3. **Press release:** confirm or refine the user moment with the human.
-4. **Open questions:** resolve each with the human, or record an explicit
+3. **Press release:** confirm or refine the user moment with the product
+   thinker.
+4. **Open questions:** resolve each with the product thinker, or record an explicit
    deferral in the draft. An open question that gates scope blocks planning.
-5. **Mechanism claim (prompted, nullable):** ask why the authors expect this
-   to work, and record the answer in `## Mechanism` as a falsifiable "we
+5. **Mechanism claim (prompted, nullable):** ask the product thinker why the
+   authors expect this to work, and record the answer in `## Mechanism` as a falsifiable "we
    expect X because Y" — not the outcome restated. Declining is a real
    answer: record it as the exact token `None stated.` alone on its line.
    Silence is not a decline, and the draft's scaffold line is not a claim.
@@ -357,7 +362,7 @@ gate that will refuse the move mechanically is a recorded seed until built.
    "${CLAUDE_PLUGIN_ROOT}/abcd" intent plan <itd-N> [--impact <additive|breaking|fix>] [--production-mode <mode>] --json
    ```
 
-   This invocation IS the maintainer's sign-off act — never run it unattended
+   This invocation IS the product thinker's sign-off act — never run it unattended
    or infer consent. It mints the spec stub, links both sides, stamps an
    identity onto every unmarked scope condition, and moves the intent
    `drafts/ → planned/`. Every relative markdown link that named the draft's
@@ -368,8 +373,8 @@ gate that will refuse the move mechanically is a recorded seed until built.
    **`--impact` is the judgement the interview settled**, stamped here because
    this is the moment it is made: a draft filed without one gets it now, in the
    same shape the create path writes (`impact: <value>`), validated at the same
-   bar — one of `additive`, `breaking`, `fix`, never `internal`. Ask the human
-   for the class if the draft does not carry it, and pass their answer; never
+   bar — one of `additive`, `breaking`, `fix`, never `internal`. Ask the product
+   thinker for the class if the draft does not carry it, and pass their answer; never
    type it into the frontmatter. The rules are the close's: a value that
    disagrees with one the record already carries is refused before anything
    moves (a plan does not revise a recorded judgement — the human edits the
@@ -381,7 +386,7 @@ gate that will refuse the move mechanically is a recorded seed until built.
    **Several drafts as one bundle.** When the interview settles that two or
    more drafts are distinct user moments that only make sense delivered
    together, they are planned as one bundle: ONE shared spec, every member
-   moved together. Ask the human for the bundle's name — a short kebab-case
+   moved together. Ask the product thinker for the bundle's name — a short kebab-case
    name, which every member carries as `bundle: <name>` and which becomes the
    shared spec's slug — and pass their answer; never invent one. The CLI
    refuses several intents without `--bundle`, and `--bundle` with one:
@@ -818,8 +823,9 @@ condition carries rather than to its wording, and joined to what occasioned it.
 - **With a condition id** it appends one dated block to `## Audit Notes`:
   the identity, the value, the occasion and the grounds, with the narrowing
   under a `narrowed` value. The occasion is a reading item at any position, or
-  an intent in `shipped/` whose delivery changed the condition's standing. Ask
-  the researcher for the value and the grounds; the reading names the tension
+  an intent in `shipped/` whose delivery changed the condition's standing. Set
+  `abcd mode product-thinker` and ask the product thinker, who reads as the
+  researcher here, for the value and the grounds; the reading names the tension
   and never marks the condition itself.
 
 A condition's standing is its latest reading-occasioned block where it has one,
