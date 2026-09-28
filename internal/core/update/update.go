@@ -97,7 +97,7 @@ func (o Ownership) Prose() string {
 // Report is the update receipt: origin, tag, digest, and what happened. It
 // prints in both TTY and piped modes — silence is only ever about progress.
 type Report struct {
-	Origin     string    `json:"origin"`
+	Origin     string    `json:"origin,omitempty"`
 	Tag        string    `json:"tag,omitempty"`
 	Asset      string    `json:"asset,omitempty"`
 	Digest     string    `json:"digest,omitempty"`

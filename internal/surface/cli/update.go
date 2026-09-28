@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -59,9 +60,7 @@ func newUpdateCommand(asJSON *bool) *cobra.Command {
 			// the updater exists.
 			tgt := ahoy.ResolveUpdateTarget()
 			if r := update.Plan(tgt); r != nil {
-				rep := refusalReport(tgt, r)
-				renderUpdateReport(cmd.OutOrStdout(), *asJSON, rep)
-				return fmt.Errorf("update refused (%s)", r.Shape)
+				return refuseUpdate(cmd.OutOrStdout(), *asJSON, refusalReport(tgt, r))
 			}
 
 			u := newUpdater()
@@ -95,10 +94,10 @@ func newUpdateCommand(asJSON *bool) *cobra.Command {
 			if rep.Action == update.ActionSwapped || rep.Action == update.ActionCurrent {
 				ahoy.RefreshPathEntryDigest(tgt.Path, rep.Digest)
 			}
-			renderUpdateReport(cmd.OutOrStdout(), *asJSON, rep)
 			if rep.Refusal != nil {
-				return fmt.Errorf("update refused (%s)", rep.Refusal.Shape)
+				return refuseUpdate(cmd.OutOrStdout(), *asJSON, rep)
 			}
+			renderUpdateReport(cmd.OutOrStdout(), *asJSON, rep)
 			return nil
 		},
 	}
@@ -122,6 +121,34 @@ func isTTY(f *os.File) bool {
 // (iss-2608220142158516).
 func refusalReport(tgt ahoy.UpdateTarget, r *update.Refusal) update.Report {
 	return update.Report{Action: update.ActionRefused, TargetPath: fsutil.RedactHome(tgt.Path), Refusal: r}
+}
+
+// updateRefusal is the one --json document a refused update writes: the
+// receipt, carrying the refusal's shape, detail and remedy, with the global
+// --json refusal envelope's three fields (`"abcd": "error"`, the error, the
+// exit code) around it. Run would otherwise write the envelope as a second
+// document after the receipt, and a machine reader expecting one document
+// would read the receipt and miss the refusal, or fail on the second value
+// (iss-2609282105241960).
+type updateRefusal struct {
+	Abcd string `json:"abcd"`
+	update.Report
+	Error    string `json:"error"`
+	ExitCode int    `json:"exit_code"`
+}
+
+// refuseUpdate renders a refusal receipt and returns the error that exits 1.
+// In text mode the receipt goes to stdout and Run prints the error line on
+// stderr, as before. Under --json the receipt IS the refusal envelope, so the
+// returned error carries no message and Run adds no second document.
+func refuseUpdate(w io.Writer, asJSON bool, rep update.Report) error {
+	msg := fmt.Sprintf("update refused (%s)", rep.Refusal.Shape)
+	if !asJSON {
+		renderUpdateReport(w, false, rep)
+		return errors.New(msg)
+	}
+	_ = render(w, true, updateRefusal{Abcd: "error", Report: rep, Error: msg, ExitCode: 1}, nil)
+	return &exitError{Code: 1, Msg: ""}
 }
 
 // renderUpdateReport prints the receipt in both modes. Tags and paths pass

@@ -55,7 +55,9 @@ instead; relay it as an unpublished build with its digest, not as a missing
 value.
 
 **Expect a refusal in a plugin session, and relay it as the answer, not an
-error.** Every refusal is a named shape with a remedy in `refusal`:
+error.** Under `--json` a refusal is one document: the receipt, with
+`"abcd": "error"`, `error` and `exit_code` beside `action` and `refusal`. Every
+refusal is a named shape with a remedy in `refusal`:
 
 - `plugin-root` — the binary belongs to the plugin install, and `abcd update`
   never touches a plugin root. Tell the user to take a plugin update in the
