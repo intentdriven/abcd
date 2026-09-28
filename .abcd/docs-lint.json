@@ -6,7 +6,7 @@
   "name_roots": [
     ".abcd",
     "AGENTS.md",
-    "CONTRIBUTING.md",
+    ".github/CONTRIBUTING.md",
     "scripts"
   ],
   "banned_tokens": [

@@ -279,7 +279,7 @@ func TestDocsLintHarnessNameGate(t *testing.T) {
 	// now that an unresolvable configured root fails loud (GitHub #360).
 	writeFile(t, root, "README.md", "# readme\n")
 	// Its name_roots must resolve too (iss-279).
-	for _, r := range []string{".abcd/README.md", "AGENTS.md", "CONTRIBUTING.md", "scripts/README.md"} {
+	for _, r := range []string{".abcd/README.md", "AGENTS.md", ".github/CONTRIBUTING.md", "scripts/README.md"} {
 		writeFile(t, root, r, "# t\n")
 	}
 	writeFile(t, root, "docs/named.md", "# t\n\nRun this in Claude Code.\n")
