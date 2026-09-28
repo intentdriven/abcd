@@ -648,13 +648,51 @@ func isDir(p string) bool {
 // ~/.abcd/history store
 // ---------------------------------------------------------------------------
 
+// historyRelPath is the registry's directory relative to the caller's home.
+const historyRelPath = ".abcd/history"
+
 // historyRoot returns ~/.abcd/history. HOME is respected so tests can redirect.
+//
+// It is the registry's single chokepoint for the rule every reader and writer
+// of ~/.abcd applies (fsutil.HomeScopeLink): a symlinked ~/.abcd, or a
+// symlinked ~/.abcd/history, is refused with a *fsutil.HomeScopeLinkError
+// naming the link, so no caller reads a registry through the link or creates
+// one wherever it points (iss-2609281129171021). Every caller refuses on the
+// error; stepHistory reports it and writes nothing.
 func historyRoot() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".abcd", "history"), nil
+	if err := fsutil.HomeScopeLink(home, historyRelPath+"/index.json"); err != nil {
+		return "", err
+	}
+	return filepath.Join(home, filepath.FromSlash(historyRelPath)), nil
+}
+
+// ensureHistoryRoot is historyRoot for a writer: it creates ~/.abcd/history one
+// real directory at a time and proves every level, so a link planted after
+// historyRoot's check is refused rather than followed (os.MkdirAll would follow
+// it). The walk starts at home with its symlinks resolved, because home itself
+// reached through a link (/home -> /usr/home) is the machine's layout and is
+// never judged; ~/.abcd and ~/.abcd/history are.
+func ensureHistoryRoot() (string, error) {
+	root, err := historyRoot()
+	if err != nil {
+		return "", err
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	base, err := filepath.EvalSymlinks(home)
+	if err != nil {
+		return "", err
+	}
+	if err := fsutil.EnsureRealDirAll(base, historyRelPath, 0o755); err != nil {
+		return "", err
+	}
+	return root, nil
 }
 
 // historyIndex is the ~/.abcd/history/index.json registry.
@@ -838,11 +876,8 @@ var beforeHistoryIndexCreateHook func()
 // any prompting before acquiring it and re-check the answer-relevant state inside
 // fn after re-loading.
 func withHistoryLock(fn func() error) error {
-	root, err := historyRoot()
+	root, err := ensureHistoryRoot()
 	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(root, 0o755); err != nil {
 		return err
 	}
 	lockPath := filepath.Join(root, historyLockFilename)
@@ -864,11 +899,8 @@ func withHistoryLock(fn func() error) error {
 // sees either no file yet or the finished index — never a 0-byte one that would
 // make a concurrent loadHistoryIndex parse-fail and drop its own registration.
 func bootstrapHistory() (bool, error) {
-	root, err := historyRoot()
+	root, err := ensureHistoryRoot()
 	if err != nil {
-		return false, err
-	}
-	if err := os.MkdirAll(root, 0o755); err != nil {
 		return false, err
 	}
 	path := filepath.Join(root, "index.json")

@@ -760,6 +760,14 @@ func (a *applyCtx) stepHistory() {
 	// the store and the reason, never a silent omission.
 	root, err := historyRoot()
 	if err != nil {
+		// A symlinked ~/.abcd (or ~/.abcd/history) is refused like every other
+		// file abcd keeps there: the registry would land wherever the link
+		// points. The error is the whole sentence, the link and the remedy
+		// included (iss-2609281129171021).
+		if errors.Is(err, fsutil.ErrHomeScopeSymlinked) {
+			a.refuse("skipped this machine's history registration, so nothing was written: " + err.Error())
+			return
+		}
 		a.refuse("could not set up this machine's session store: " + errText(err))
 		return
 	}

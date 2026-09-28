@@ -371,9 +371,13 @@ link with a real directory. The hook shims refuse a `path-entry` behind the link
 too, before they read it. The home directory itself may be a link; only
 `~/.abcd` and what lies under it are judged. The stores are not declarations:
 `transcripts/`, `voyage/`, `lab/`, `inbox/` and `runs/` refuse a symlinked
-level through their own create-then-prove seam (`fsutil.EnsureRealDir`), the
-`history/` registry is created through the link (iss-2609281129171021), and the
-`sources/` corpus is the caller's to place.
+level through their own create-then-prove seam (`fsutil.EnsureRealDir`), and the
+`sources/` corpus is the caller's to place. The `history/` registry applies
+both: it is neither read nor written behind a symlinked `~/.abcd` or
+`~/.abcd/history`, and it is created through the same create-then-prove seam
+(iss-2609281129171021). `ahoy install` skips the registration with a note naming
+the link and the repair, and the detector reports it as a diagnostic rather
+than a gap install would try and fail to close.
 
 **Repo scope, in-tree `.abcd/`** — this repository's record and working files: the
 three-tier layout below, the config file with its `meta` block, the rules

@@ -1,6 +1,7 @@
 package ahoy
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -318,9 +319,25 @@ func detectGitIdentity(cwd string) []Gap {
 	return nil
 }
 
+// historyHomeLinkGapID is the diagnostic for a history registry behind a
+// symlinked ~/.abcd (iss-2609281129171021).
+const historyHomeLinkGapID = "history.home_symlinked"
+
 func detectHistoryStore(rootSHA string) []Gap {
 	var gaps []Gap
 	root, err := historyRoot()
+	if errors.Is(err, fsutil.ErrHomeScopeSymlinked) {
+		// A note, not an actionable gap: install refuses to create the registry
+		// through the link, so a required "not bootstrapped" gap would be one it
+		// reports as outstanding on every run and can never close. Only the
+		// operator can, by replacing the link.
+		return []Gap{{
+			ID: historyHomeLinkGapID, Category: UserState, Scope: "machine",
+			Title:   "history registry not kept behind a symlinked home directory",
+			Detail:  "This machine's history registry is not read or written: " + err.Error() + ".",
+			FixHint: "Replace the link with a real directory, then re-run `abcd ahoy install` to register this repository.",
+		}}
+	}
 	if err != nil {
 		return nil
 	}
