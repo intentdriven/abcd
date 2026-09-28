@@ -2272,8 +2272,9 @@ and its hash, so a run is reproducible from the commit it names.
 
 ```
       --dry-run           write nothing; with --out the two artefacts still land in that directory
-      --out string        an empty or absent directory the assembled input and the manifest are written to
-                          (default: the local-tier run directory)
+      --out string        an empty or absent directory the assembled input and the manifest are written to,
+                          for inspection: reading ingest finds a run only in the local-tier run directory,
+                          so a run written here cannot be ingested (default: the local-tier run directory)
       --position string   the reading position: widening, entailment, comparative, detection
                           (comparative derives its candidate set from the record: the one committed
                           widening run at the target whose items carry no disposition and no

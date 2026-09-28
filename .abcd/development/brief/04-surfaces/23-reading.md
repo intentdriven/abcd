@@ -134,7 +134,11 @@ copy there when the pair was sent elsewhere. A run assembled to any other direct
 ingest, and bare `abcd reading` does not list it among the staged runs either,
 because that listing reads the same one directory. A named directory is for a run whose
 artefacts are being inspected or archived; a run meant to come back through
-ingest lets the default run directory name itself.
+ingest lets the default run directory name itself. The assembly says which it
+made before the reading is commissioned: The result carries `ingestable`,
+false for a run written to a named directory and for a dry run, and a run
+written to a named directory renders an `ingest:` line naming the run directory
+the ingest reads.
 
 An output directory the include table can reach is refused when it is named,
 because writing a run where the table reaches it commits the next run's

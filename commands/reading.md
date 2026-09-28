@@ -212,15 +212,22 @@ many carry neither. No other position's report has the field.
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/abcd" reading assemble \
-  --position entailment --target HEAD \
-  --out .abcd/.work.local/scratch/reading-runs/manual --json
+  --position entailment --target HEAD --json
 ```
 
-With `--out`, the assembled input (`bundle.json`) and the manifest
-(`manifest.json`) are written into that directory as two separate files.
-Without it, they land in the local-tier run directory
-`.abcd/.work.local/scratch/reading-runs/<run-id>/`. With `--dry-run` and no
-`--out`, nothing is written anywhere and the result is rendered only.
+The assembled input (`bundle.json`) and the manifest (`manifest.json`) are
+written as two separate files into the local-tier run directory
+`.abcd/.work.local/scratch/reading-runs/<run-id>/`, which is where the run is
+parked: `reading ingest` resolves a run's manifest there by its run id, and
+nowhere else. With `--dry-run` and no `--out`, nothing is written anywhere and
+the result is rendered only.
+
+`--out <dir>` writes the two files into that directory instead, **as an
+inspection copy that can never be ingested**: No ingest looks for a manifest
+outside the run directory, so a reading commissioned on it has nowhere to
+land. The result says so at assembly time, as `"ingestable": false` in the JSON
+and an `ingest:` line in the text render; relay it before the reading is
+commissioned. To commission a reading, assemble without `--out`.
 
 An output directory the include table can reach is refused, and the refusal
 names the item that would be admitted. Writing a run where the table reaches it
