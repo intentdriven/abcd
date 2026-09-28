@@ -115,6 +115,28 @@ func Fields(lines []string) map[string]Field {
 	return fields
 }
 
+// Close returns the index in lines of the leading frontmatter block's closing
+// delimiter, or -1 when there is no block: no opening delimiter on line 0, or
+// nothing closing it. It reads the block exactly as Fields does — the BOM
+// trimmed at line 0 and nowhere else, every delimiter judged by IsDelimiter —
+// so a reader that needs the block's extent rather than its keys (a writer
+// splicing a key in, a reader taking the body after it) asks here instead of
+// re-deriving the walk. Private copies of this walk skipped the BOM Fields
+// trims, so a BOM-led record the reader accepted was refused by intent's
+// writers and had its whole frontmatter taken for body by the changelog
+// (iss-2608221126066379).
+func Close(lines []string) int {
+	if len(lines) == 0 || !IsDelimiter(TrimBOM(lines[0])) {
+		return -1
+	}
+	for i := 1; i < len(lines); i++ {
+		if IsDelimiter(lines[i]) {
+			return i
+		}
+	}
+	return -1
+}
+
 // StripComment removes a trailing YAML comment from the text that follows a
 // key's colon, returning the value alone.
 //

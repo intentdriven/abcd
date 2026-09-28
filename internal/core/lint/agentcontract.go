@@ -437,12 +437,14 @@ func changedPaths(repoRoot, rangeSpec string) (map[string]bool, error) {
 // value, so it reads as present either way; the inline-list convention
 // (agents/README.md) is a style rule this parser does not adjudicate.
 func agentCapabilityScope(lines []string) map[string]string {
-	if start := frontmatterOpen(lines); start > 0 {
-		lines = lines[start:]
-	}
-	if len(lines) == 0 || strings.TrimSpace(lines[0]) != "---" {
+	start := frontmatterOpen(lines)
+	if start < 0 {
 		return nil
 	}
+	// frontmatterOpen has judged the opening line, a BOM ahead of it included;
+	// re-judging it here without the trim refused a BOM-led prompt's block
+	// (iss-2608221126066379).
+	lines = lines[start:]
 	scope := map[string]string{}
 	inScope, member := false, ""
 	for i := 1; i < len(lines); i++ {

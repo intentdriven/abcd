@@ -780,15 +780,13 @@ func readRecordHead(absPath, fallbackTitle string) (map[string]frontmatter.Field
 // A refused file yields no fields and an empty body.
 func readRecordHeadAndBody(absPath string) (map[string]frontmatter.Field, string) {
 	fields, lines, ok := readGuardedLines(absPath)
-	if !ok || len(lines) == 0 || strings.TrimSpace(lines[0]) != "---" {
+	// The body starts where the block the fields came from closes: the same
+	// walk, a BOM at line 0 included (iss-2608221126066379).
+	closing := frontmatter.Close(lines)
+	if !ok || closing < 0 {
 		return fields, ""
 	}
-	for i := 1; i < len(lines); i++ {
-		if strings.TrimSpace(lines[i]) == "---" {
-			return fields, strings.Join(lines[i+1:], "\n")
-		}
-	}
-	return fields, ""
+	return fields, strings.Join(lines[closing+1:], "\n")
 }
 
 // readGuardedLines is the guarded read both head readers share: O_NOFOLLOW and

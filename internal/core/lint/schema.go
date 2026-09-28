@@ -2152,8 +2152,11 @@ func recordBodyStart(lines []string) int {
 	// The leading comments are mdrecord's to locate: a private walk on a
 	// `<!--` prefix took a multi-line comment's second line for the body
 	// (iss-2609251517210637).
+	// Whether that line opens frontmatter is frontmatterOpen's question, which
+	// trims a BOM ahead of the delimiter; a private compare here did not, and
+	// took a BOM-led issue's `---` for its title (iss-2608221126066379).
 	i, _ := mdrecord.FirstContent(lines)
-	if i < len(lines) && strings.TrimSpace(lines[i]) == "---" {
+	if i < len(lines) && frontmatterOpen(lines) == i {
 		i++
 		for i < len(lines) && strings.TrimSpace(lines[i]) != "---" {
 			i++

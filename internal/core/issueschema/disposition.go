@@ -21,6 +21,8 @@ package issueschema
 import (
 	"sort"
 	"strings"
+
+	"github.com/intentdriven/abcd/internal/core/frontmatter"
 )
 
 // DispositionRecord is one disposition as the standing computation sees it: the
@@ -70,7 +72,10 @@ func ParseDisposition(id, content string) DispositionRecord {
 	// The block must OPEN on the first line. A comment, a blank line, or any
 	// other preamble means the file is not the shape a record is written in, and
 	// tolerating it is precisely where the two readers parted company.
-	if len(lines) == 0 || strings.TrimSpace(lines[0]) != "---" {
+	// A BOM is not preamble: it is the file's encoding mark, which the strict
+	// ledger parser and frontmatter.Fields both trim at line 0 and only there
+	// (iss-2608221126066379).
+	if len(lines) == 0 || strings.TrimSpace(frontmatter.TrimBOM(lines[0])) != "---" {
 		return rec
 	}
 	closeAt := -1

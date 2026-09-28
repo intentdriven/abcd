@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/intentdriven/abcd/internal/core/frontmatter"
 	"github.com/intentdriven/abcd/internal/core/mdrecord"
 	"os"
 	"path"
@@ -257,7 +258,9 @@ func proseLines(data []byte) []proseLine {
 	lines := strings.Split(strings.ReplaceAll(string(data), "\r\n", "\n"), "\n")
 	var out []proseLine
 	frontEnd := -1 // index of the closing "---"; -1 when there is no frontmatter
-	if len(lines) > 0 && strings.TrimSpace(lines[0]) == "---" {
+	// A BOM ahead of the opening rule is the file's encoding mark, trimmed at
+	// line 0 as every frontmatter reader trims it (iss-2608221126066379).
+	if len(lines) > 0 && strings.TrimSpace(frontmatter.TrimBOM(lines[0])) == "---" {
 		for i := 1; i < len(lines); i++ {
 			if strings.TrimSpace(lines[i]) == "---" {
 				if isFrontmatter(lines[1:i]) {

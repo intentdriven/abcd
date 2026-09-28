@@ -17,6 +17,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/core/frontmatter"
 	"github.com/intentdriven/abcd/internal/core/mdrecord"
 )
 
@@ -70,6 +71,12 @@ type Block struct {
 func StripFrontmatter(t string) (string, int) {
 	lead := frontmatterLead(t)
 	rest := t[lead:]
+	// A BOM is the file's encoding mark, not content, and is trimmed at byte 0
+	// as every frontmatter reader trims it (iss-2608221126066379).
+	if lead == 0 {
+		rest = frontmatter.TrimBOM(rest)
+		lead = len(t) - len(rest)
+	}
 	if !strings.HasPrefix(rest, "---") {
 		return t, 0
 	}
