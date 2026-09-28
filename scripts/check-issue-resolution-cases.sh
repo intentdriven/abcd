@@ -1283,6 +1283,70 @@ Resolves: iss-999"
 git -C "$d" revert --no-edit HEAD >/dev/null
 expect pass "$d" "RS001 a resolution reverted in the same range is withdrawn" -- commits main HEAD
 
+# A wontfix/ disposition reverted by git takes the record back out too.
+d="$(newrepo rs001-reverted-wontfix)"
+git -C "$d" mv "$ISS_DIR/open/iss-999-a-fixture.md" "$ISS_DIR/wontfix/iss-999-a-fixture.md"
+git -C "$d" commit -qm "chore: wontfix the fixture
+
+Resolves: iss-999"
+git -C "$d" revert --no-edit HEAD >/dev/null
+expect pass "$d" "RS001 a wontfix disposition reverted in the same range is withdrawn" -- commits main HEAD
+
+# A withdrawal is judged on the deed, never on the line. The revert line is text
+# anyone can type: a fix with no ledger move, then one README line under a
+# hand-written "This reverts commit" naming it, withdrew the `Resolves:` — a fix
+# without its resolution passing RS001 on one added message line. The revert
+# takes no record out of a terminal folder, so the declaration stands.
+d="$(newrepo rs001-handwritten-revert)"
+echo "the fix" >>"$d/README.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "fix: something
+
+Resolves: iss-999"
+echo "an unrelated line" >>"$d/README.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "Revert \"fix: something\"
+
+This reverts commit $(git -C "$d" rev-parse HEAD)."
+expect_refusal_naming "$d" "RS001 a hand-written revert line over a commit that reverts nothing withdraws nothing" \
+	"declares 'Resolves: iss-999', but iss-999 does not enter" -- commits main HEAD
+
+# The deed must be the declared record's: a hand-written revert that takes a
+# DIFFERENT record out of resolved/ withdraws nothing for iss-999.
+d="$(newrepo rs001-handwritten-revert-other-record)"
+git -C "$d" checkout -q main
+printf -- '---\nschema_version: 1\nid: "iss-998"\n---\nAnother fixture issue.\n' >"$d/$ISS_DIR/resolved/iss-998-other.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "chore: resolve another record"
+git -C "$d" checkout -q -B work main
+echo "the fix" >>"$d/README.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "fix: something
+
+Resolves: iss-999"
+git -C "$d" rm -q "$ISS_DIR/resolved/iss-998-other.md"
+git -C "$d" commit -qm "Revert \"fix: something\"
+
+This reverts commit $(git -C "$d" rev-parse HEAD)."
+expect_refusal_naming "$d" "RS001 a hand-written revert taking another record out withdraws nothing for the declared one" \
+	"declares 'Resolves: iss-999', but iss-999 does not enter" -- commits main HEAD
+
+# The RS005 twin of the hand-written line: a delivery that shipped nothing is not
+# withdrawn by a commit that takes nothing out of shipped/.
+d="$(newrepo_intents rs005-handwritten-revert)"
+echo "the thing" >>"$d/README.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "feat: build the thing
+
+Delivers: itd-7"
+echo "an unrelated line" >>"$d/README.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "Revert \"feat: build the thing\"
+
+This reverts commit $(git -C "$d" rev-parse HEAD)."
+expect_refusal_naming "$d" "RS005 a hand-written revert line over a commit that reverts nothing withdraws nothing" \
+	"declares 'Delivers: itd-7', but itd-7 does not enter" -- commits main HEAD
+
 # Criterion 5: the intent rule's refusal has the issue rule's shape and exit
 # code — compared here, not judged by a reviewer. Both fixtures are the ordinary
 # case (a trailer whose record stays where it was); each refusal is normalised by

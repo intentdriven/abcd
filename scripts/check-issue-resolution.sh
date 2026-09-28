@@ -568,18 +568,66 @@ revert_pairs() {
 		done
 }
 
-# withdrawn_by prints the commit that withdraws sha's declarations — a revert of
-# it in the range that is not itself reverted there (a revert of a revert
-# reinstates) — and returns 0, or returns 1 when nothing withdraws it.
+# withdrawn_by prints every commit that reverts sha in the range and is not
+# itself reverted there (a revert of a revert reinstates), and returns 0, or
+# returns 1 when nothing does. Naming a commit is only the claim; which of its
+# declarations the revert withdraws is decided by what the revert DID
+# (ids_taken_out).
 withdrawn_by() {
-	local sha="$1" pairs="$2" r
+	local sha="$1" pairs="$2" r found=1
 	for r in $(printf '%s\n' "$pairs" | awk -v s="$sha" '$2 == s { print $1 }'); do
 		if ! withdrawn_by "$r" "$pairs" >/dev/null; then
 			printf '%s\n' "$r"
-			return 0
+			found=0
 		fi
 	done
-	return 1
+	return "$found"
+}
+
+# ids_taken_out prints the records commit r's OWN diff takes back out of their
+# terminal folder: an iss-N that leaves resolved/ or wontfix/ and enters neither,
+# or a canonical itd-N that leaves shipped/ and does not re-enter it. This is the
+# deed a withdrawal is judged on. The "This reverts commit" line is text anyone
+# can type, and honoured on the text alone a commit that reverts nothing — one
+# README line under a hand-written revert line — withdrew a `Resolves:` whose
+# record never moved, so a fix without its resolution passed RS001. A `git
+# revert` of a real resolution or delivery moves the record back out; a
+# hand-written line over a commit that moves nothing takes nothing out, and the
+# declaration stands to be judged. A move between terminal folders, or a reslug
+# inside one, leaves the record terminal and takes nothing out. Renames are off,
+# so every move reads as a delete plus an add and the two halves are paired by id.
+ids_taken_out() {
+	local r="$1" out rc=0
+	out="$(git diff-tree --no-commit-id --name-status -r --no-renames "$r^" "$r" -- \
+		"$ISSUES_DIR/resolved" "$ISSUES_DIR/wontfix" "$INTENTS_DIR/shipped" 2>&1)" || rc=$?
+	if [ "$rc" -ne 0 ]; then
+		echo "check-issue-resolution: git diff-tree failed for ${r:0:12} (exit $rc) — refusing rather than reporting a vacuous pass:" >&2
+		echo "$out" >&2
+		exit 2
+	fi
+	printf '%s\n' "$out" | while IFS=$'\t' read -r status path; do
+		local id=""
+		case "$status" in
+		D | A) ;;
+		*) continue ;;
+		esac
+		case "$path" in
+		"$ISSUES_DIR/"*) id="$(basename "$path" | grep -oE '^iss-[0-9]+' || true)" ;;
+		"$INTENTS_DIR/shipped/"*) id="$(canon_itd "$(basename "$path" | grep -oE '^itd-[0-9]+' || true)")" ;;
+		esac
+		[ -n "$id" ] && printf '%s %s\n' "$status" "$id"
+	done | awk '$1 == "D" { d[$2] = 1 } $1 == "A" { a[$2] = 1 } END { for (k in d) if (!(k in a)) print k }' | sort -u
+}
+
+# withdrawn_note reports, and returns 0 for, a declared id that a live revert of
+# its commit takes back out of the terminal folder; it returns 1 for any other.
+withdrawn_note() {
+	local rule="$1" sha="$2" decl="$3" id="$4" withdrawn="$5" w
+	[ -n "$withdrawn" ] || return 1
+	w="$(awk -v id="$id" '$1 == id && !seen { print $2; seen = 1 }' <<<"$withdrawn")"
+	[ -n "$w" ] || return 1
+	echo "check-issue-resolution: $rule commit ${sha:0:12}'s '$decl' is withdrawn: ${w:0:12} reverts it and takes $id back out of its terminal folder"
+	return 0
 }
 
 check_pr() {
@@ -652,8 +700,10 @@ check_commits() {
 	shipped="$(ids_entering_shipped "$base" "$head" | sort -u)"
 
 	# A declaration a later commit of the range reverts is withdrawn: its
-	# `Resolves:` and `Delivers:` lines are not held to a move the revert undid.
-	# RS004 still reads the message — a withdrawn commit named what it named.
+	# `Resolves:` and `Delivers:` ids are not held to a move the revert undid —
+	# but only the ids whose record the revert's own diff takes back out of its
+	# terminal folder (ids_taken_out). RS004 still reads the message — a
+	# withdrawn commit named what it named.
 	local reverts
 	reverts="$(revert_pairs "$base" "$head" "$range")"
 
@@ -679,14 +729,17 @@ check_commits() {
 		msg="$(git show -s --format='%B' "$sha")"
 		check_mentions "commit ${sha:0:12}" "$msg" "$(declared_ids "$msg")"
 		scanned=$((scanned + 1))
-		if [ -n "$reverts" ]; then
-			local withdrawer
-			if withdrawer="$(withdrawn_by "$sha" "$reverts")"; then
-				if grep -qE "$TRAILER_RE|$DELIVERS_LOOSE_RE" <<<"$msg"; then
-					echo "check-issue-resolution: RS001/RS005 commit ${sha:0:12} is reverted in this range by ${withdrawer:0:12}, so its Resolves:/Delivers: declarations are withdrawn"
-				fi
-				continue
-			fi
+		# withdrawn holds "<id> <withdrawer>" for each record a live revert of
+		# this commit takes back out; an id absent from it is judged as usual.
+		local withdrawn="" withdrawers w
+		if [ -n "$reverts" ] && withdrawers="$(withdrawn_by "$sha" "$reverts")"; then
+			for w in $withdrawers; do
+				local taken
+				taken="$(ids_taken_out "$w")" || exit 2
+				[ -n "$taken" ] || continue
+				withdrawn="$withdrawn$(printf '%s\n' "$taken" | sed "s/\$/ $w/")
+"
+			done
 		fi
 		while IFS= read -r line; do
 			# RS005 — a declared delivery must ship the intent. Judged on the same
@@ -707,6 +760,7 @@ check_commits() {
 				for raw in $(printf '%s\n' "$line" | grep -oE 'itd-[0-9]+'); do
 					local cid
 					cid="$(canon_itd "$raw")"
+					withdrawn_note RS005 "$sha" "Delivers: $cid" "$cid" "$withdrawn" && continue
 					delivered="$delivered $cid"
 					check_delivery "$sha" "$cid" "$base" "$head" "$shipped" "$behind" "$mb"
 				done
@@ -719,6 +773,7 @@ check_commits() {
 			# drift this rule exists to stop, reopened by a comma.
 			local id
 			for id in $(printf '%s\n' "$line" | grep -oE 'iss-[0-9]+'); do
+				withdrawn_note RS001 "$sha" "Resolves: $id" "$id" "$withdrawn" && continue
 				declared="$declared $id"
 				grep -qx "$id" <<<"$closed" && continue
 				local head_path base_path base_status
