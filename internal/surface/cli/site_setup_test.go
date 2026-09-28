@@ -129,3 +129,47 @@ func TestSiteSetupTextAlignsEveryStatus(t *testing.T) {
 		t.Fatalf("%d of %d names rendered:\n%s", seen, len(names), buf.String())
 	}
 }
+
+// TestSiteVerbsReadTheCheckoutFromASubdirectory: `abcd site`, `site build` and
+// `lint site` read the repository the working directory sits in, not the
+// working directory itself, so run from a subdirectory they report and build
+// the same site as from the root (iss-2609251750202525).
+func TestSiteVerbsReadTheCheckoutFromASubdirectory(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	r := gittest.NewRepo(t)
+	r.Write("AGENTS.md", "# Example\n\n<!-- BEGIN ABCD -->\nmanaged\n<!-- END ABCD -->\n")
+	r.Write(".abcd/positioning.json", `{"schema_version": 1, "block": {"file": ".abcd/development/IDENTITY.md", "heading": "Identity (canonical)"}, "severity": "warn", "surfaces": []}`+"\n")
+	r.Write(".abcd/development/IDENTITY.md", "# Identity\n\n## Identity (canonical)\n\n- **Title:** Example\n- **Tagline:** An example.\n")
+	r.Write("docs/README.md", "# Example\n\nThe example's documentation.\n")
+	r.Commit("the example")
+	t.Chdir(r.Root())
+	if out, err := runCLIErr(t, "--json", "site", "setup", "--name", "example-site"); err != nil {
+		t.Fatalf("site setup: %v\n%s", err, out)
+	}
+	atRoot, err := runCLIErr(t, "--json", "site")
+	if err != nil {
+		t.Fatalf("site at the root: %v\n%s", err, atRoot)
+	}
+	t.Chdir(filepath.Join(r.Root(), "docs"))
+	inSub, err := runCLIErr(t, "--json", "site")
+	if err != nil {
+		t.Fatalf("site in a subdirectory: %v\n%s", err, inSub)
+	}
+	if string(inSub) != string(atRoot) {
+		t.Fatalf("the board differs by working directory:\nroot: %s\nsub:  %s", atRoot, inSub)
+	}
+
+	// The default output directory is the checkout's, wherever the build runs.
+	if out, err := runCLIErr(t, "site", "build"); err != nil {
+		t.Fatalf("site build in a subdirectory: %v\n%s", err, out)
+	}
+	if _, err := os.Stat(filepath.Join(r.Root(), "site", "index.html")); err != nil {
+		t.Fatalf("the build did not land in the checkout's site directory: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(r.Root(), "docs", "site")); !os.IsNotExist(err) {
+		t.Fatalf("the build wrote beside the working directory: %v", err)
+	}
+	if out, err := runCLIErr(t, "lint", "site"); exitCodeOf(err) == 2 {
+		t.Fatalf("lint site in a subdirectory refused: %v\n%s", err, out)
+	}
+}

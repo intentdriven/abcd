@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -30,11 +31,11 @@ func newSiteCommand(asJSON *bool) *cobra.Command {
 
 	var statusOut string
 	siteCmd.RunE = func(cmd *cobra.Command, _ []string) error {
-		cwd, err := os.Getwd()
+		root, out, err := siteRootAndOut(cmd, statusOut)
 		if err != nil {
 			return err
 		}
-		st, err := site.Describe(cwd, statusOut)
+		st, err := site.Describe(root, out)
 		if err != nil {
 			return &exitError{Code: 2, Msg: "abcd site: " + scrubPaths(err)}
 		}
@@ -51,13 +52,13 @@ func newSiteCommand(asJSON *bool) *cobra.Command {
 		Use:  "build",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			cwd, err := os.Getwd()
+			root, out, err := siteRootAndOut(cmd, buildOut)
 			if err != nil {
 				return err
 			}
 			res, err := site.Build(site.Request{
-				RepoRoot: cwd,
-				OutDir:   buildOut,
+				RepoRoot: root,
+				OutDir:   out,
 				Stamp:    site.BuildStamp{Version: version, Commit: commit, GeneratedAt: stampDate, Preview: preview},
 			})
 			if err != nil {
@@ -85,6 +86,26 @@ func newSiteCommand(asJSON *bool) *cobra.Command {
 	return siteCmd
 }
 
+// siteRootAndOut resolves what a site verb reads and where it writes. The site
+// is a fact about the repository, not about the directory the operator stands
+// in, so the root is the checkout's, as the other per-repository verbs resolve
+// it (iss-2609251750202525). The default output directory is the checkout's
+// too; an --out the operator names means what the shell means by it.
+func siteRootAndOut(cmd *cobra.Command, out string) (string, string, error) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return "", "", err
+	}
+	root := captureRoot(cwd)
+	switch {
+	case !cmd.Flags().Changed("out"):
+		out = filepath.Join(root, site.DefaultOutDir)
+	case out != "" && !filepath.IsAbs(out):
+		out = filepath.Join(cwd, out)
+	}
+	return root, out, nil
+}
+
 // newLintSiteCommand builds `lint site`: the gates adr-47 decision 3 arms, run
 // over a built output directory, rendering it first when it holds no
 // index.html. It exits 1 when any gate fails, so a release job can stop on it.
@@ -94,11 +115,11 @@ func newLintSiteCommand(asJSON *bool) *cobra.Command {
 		Use:  "site",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			cwd, err := os.Getwd()
+			root, out, err := siteRootAndOut(cmd, checkOut)
 			if err != nil {
 				return err
 			}
-			res, err := site.Check(site.CheckRequest{RepoRoot: cwd, OutDir: checkOut})
+			res, err := site.Check(site.CheckRequest{RepoRoot: root, OutDir: out})
 			if err != nil {
 				return &exitError{Code: 2, Msg: "abcd lint site: " + scrubPaths(err)}
 			}
