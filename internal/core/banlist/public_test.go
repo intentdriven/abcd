@@ -13,6 +13,26 @@ import (
 	"github.com/intentdriven/abcd/internal/core/lint"
 )
 
+// nameRootFixtures names one file per name_roots entry of cfg, the entry itself
+// when this repository holds it as a file and a README under it when it holds a
+// directory, so a fixture tree resolves every root the real config declares
+// without a second list to keep in step with it.
+func nameRootFixtures(t *testing.T, cfg lint.Config) []string {
+	t.Helper()
+	var out []string
+	for _, r := range cfg.NameRoots {
+		st, err := os.Stat(filepath.Join("..", "..", "..", filepath.FromSlash(r)))
+		if err != nil {
+			t.Fatalf("name_roots entry %q does not resolve in this repository: %v", r, err)
+		}
+		if st.IsDir() {
+			r += "/README.md"
+		}
+		out = append(out, r)
+	}
+	return out
+}
+
 // realConfig copies this repo's own committed docs-lint config into a temp repo.
 // Editing the REAL file's bytes is the point of these tests: a surgical editor
 // proven only against a synthetic two-entry fixture is not proven at all.
@@ -134,8 +154,7 @@ func TestAddPublicEntryGatesUserFacingContent(t *testing.T) {
 	// that an unresolvable configured root fails loud (GitHub #360).
 	write("README.md", "# readme\n")
 	// Its name_roots must resolve too (iss-279).
-	for _, r := range []string{".abcd/README.md", "AGENTS.md", "CONTRIBUTING.md", "scripts/README.md",
-		"commands/README.md", "agents/README.md", "hooks/README.md"} {
+	for _, r := range nameRootFixtures(t, cfg) {
 		write(r, "# t\n")
 	}
 	write("docs/named.md", "# t\n\nBuilt with widgetworks.\n")
@@ -439,8 +458,7 @@ func TestAddPublicIsCaseInsensitiveLikeTheCuratedEntries(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Its name_roots must resolve too (iss-279).
-	for _, r := range []string{".abcd/README.md", "AGENTS.md", "CONTRIBUTING.md", "scripts/README.md",
-		"commands/README.md", "agents/README.md", "hooks/README.md"} {
+	for _, r := range nameRootFixtures(t, cfg) {
 		p := filepath.Join(docs, filepath.FromSlash(r))
 		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 			t.Fatal(err)
