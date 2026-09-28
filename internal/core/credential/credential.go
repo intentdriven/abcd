@@ -10,8 +10,10 @@
 //
 // The file is refused, loudly and never treated as absent, unless it is a
 // regular file (not a symlink), owned by the caller, and readable and writable
-// by the owner alone (mode 0600 or tighter): a secret that group or other can
-// read is not kept, and one that somebody else wrote is not the caller's.
+// by the owner alone (mode 0600 or tighter), in a ~/.abcd that is not itself a
+// symlink: a secret that group or other can read is not kept, one that
+// somebody else wrote is not the caller's, and one behind a symlinked ~/.abcd
+// lives in whatever the link points at.
 //
 // The value never leaves Resolve except as its return: no error formats it,
 // nothing logs it, and nothing here writes to the repository. The one write is
@@ -25,7 +27,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -79,6 +80,10 @@ type machine struct{ home string }
 // developer-identity path reaches output.
 const StorePath = "~/.abcd/" + StoreFileName
 
+// storeRel is the store's place in the home, in the slash form the
+// home-scoped primitives take.
+const storeRel = ".abcd/" + StoreFileName
+
 func (m machine) Resolve(name string) (string, error) {
 	if !nameRe.MatchString(name) {
 		return "", errors.New("credential: the name is not a plain credential name")
@@ -99,30 +104,36 @@ func (m machine) Resolve(name string) (string, error) {
 
 // readStore reads the store at home under every refusal the package doc
 // names. An absent store is an empty map and no error.
+//
+// Every guard is judged by fsutil.ReadHomeDeclarationDenying on the store it
+// reads, never on a path first: absence on the Lstat that decides it (a
+// symlinked ~/.abcd holding no store is no store), a store behind a symlinked
+// ~/.abcd — which sits wherever the link points, a dotfiles checkout
+// typically, and is refused as the rules loader refuses a rules.json there —
+// on the descriptor walk of ~/.abcd, and the leaf's type, owner and mode on
+// the opened file's own fstat. A mode judged by path would vouch for a file
+// other than the one read: a store swapped for a group-readable file after
+// that check would be read once (iss-2609281310017733).
 func readStore(home string) (map[string]string, error) {
-	p := filepath.Join(home, ".abcd", StoreFileName)
-	fi, err := os.Lstat(p)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return map[string]string{}, nil
-		}
-		return nil, fmt.Errorf("credential: %s could not be examined, so it is not read", StorePath)
-	}
-	if !fi.Mode().IsRegular() {
-		return nil, fmt.Errorf("credential: %s is not a regular file (a symlink is never followed), so it is not read", StorePath)
-	}
-	if fi.Mode().Perm()&0o077 != 0 {
-		return nil, fmt.Errorf("credential: %s can be read or written by group or other (mode %04o), so it is not read; `chmod 0600 %s`", StorePath, fi.Mode().Perm(), StorePath)
-	}
-	// ReadDeclaration re-checks the leaf on its own descriptor and refuses a
-	// file this uid does not own.
-	raw, refusal, err := fsutil.ReadDeclaration(p, maxStoreBytes)
+	raw, refusal, err := fsutil.ReadHomeDeclarationDenying(home, storeRel, maxStoreBytes, 0o077)
+	var mode *fsutil.DeclarationModeError
 	switch {
+	case refusal == fsutil.DeclarationOK:
 	case refusal == fsutil.DeclarationAbsent && errors.Is(err, os.ErrNotExist):
 		return map[string]string{}, nil
+	case refusal == fsutil.DeclarationAbsent:
+		return nil, fmt.Errorf("credential: %s could not be examined, so it is not read", StorePath)
+	case refusal == fsutil.DeclarationBehindSymlink:
+		return nil, fmt.Errorf("credential: %s is not read: %v", StorePath, err)
+	case refusal == fsutil.DeclarationNotRegular:
+		return nil, fmt.Errorf("credential: %s is not a regular file (a symlink is never followed), so it is not read", StorePath)
+	case refusal == fsutil.DeclarationExposed && errors.As(err, &mode):
+		return nil, fmt.Errorf("credential: %s can be read or written by group or other (mode %04o), so it is not read; `chmod 0600 %s`", StorePath, uint32(mode.Perm), StorePath)
+	case refusal == fsutil.DeclarationWritableByOthers:
+		return nil, fmt.Errorf("credential: %s can be written by group or other, so it is not read; `chmod 0600 %s`", StorePath, StorePath)
 	case refusal == fsutil.DeclarationForeignOwner:
 		return nil, fmt.Errorf("credential: %s is not owned by you, so it is not read", StorePath)
-	case err != nil:
+	default:
 		return nil, fmt.Errorf("credential: %s could not be read safely (mode 0600, owned by you, a regular file), so it is not read", StorePath)
 	}
 	// A repeated key, or a case twin encoding/json binds to the same entry, is
@@ -154,11 +165,13 @@ const MaxValueBytes = 4096
 // padded with white space or carrying a control, bidirectional or zero-width
 // character; a store Resolve would refuse (a symlink, group- or other-
 // readable, not owned by the caller, malformed), so a write never launders an
-// unsafe file; and a name already holding a different value, because a stored
-// secret is never replaced by a second one unasked. The same value already
+// unsafe file; a ~/.abcd that is a symlink, because the secret would land
+// wherever the link points (fsutil.EnsureHomeScope); and a name already holding a
+// different value, because a stored secret is never replaced by a second one
+// unasked. The same value already
 // stored is no change (changed is false). The file is written atomically at
 // mode 0600, and ~/.abcd is created owner-only when it is absent. The read,
-// the change and the write hold the store's lock (fsutil.WithFileLock, beside
+// the change and the write hold the store's lock (fsutil.WithFileLockIn, beside
 // the store), so concurrent writers never lose each other's entries.
 func SetMachine(home, name, value string) (changed bool, err error) {
 	if !nameRe.MatchString(name) {
@@ -170,14 +183,26 @@ func SetMachine(home, name, value string) (changed bool, err error) {
 	if err := CheckValue(value); err != nil {
 		return false, err
 	}
-	dir := filepath.Join(home, ".abcd")
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+	// A ~/.abcd symlinked into a dotfiles checkout would carry the secret into
+	// that repository, and the store's own read refuses a file behind the link
+	// (iss-2609260958587561). Refused before anything is created, the lock
+	// included.
+	// ~/.abcd is created, judged and opened in one walk relative to the
+	// descriptor of home (fsutil.EnsureHomeScope), and the lock and the store
+	// are reached through that descriptor, so a link swapped in after the
+	// judgement is refused rather than written through (iss-2609281310017733).
+	dir, err := fsutil.EnsureHomeScope(home, ".abcd", 0o700)
+	if errors.Is(err, fsutil.ErrHomeScopeSymlinked) {
+		return false, fmt.Errorf("credential: nothing was written to %s: %v", StorePath, err)
+	}
+	if err != nil {
 		return false, fmt.Errorf("credential: ~/.abcd could not be created, so nothing was written")
 	}
+	defer dir.Close()
 	// The store is read, changed and renamed into place, so a second writer
 	// between the read and the rename would lose this entry or its own; the
 	// write holds the store's lock across all three.
-	err = fsutil.WithFileLock(filepath.Join(dir, storeLockFileName), storeLockTimeout, func() error {
+	err = fsutil.WithFileLockIn(dir, storeLockFileName, storeLockTimeout, func() error {
 		var werr error
 		changed, werr = setLocked(home, dir, name, value)
 		return werr
@@ -201,7 +226,7 @@ var storeLockTimeout = 5 * time.Second
 
 // setLocked is SetMachine's read, change and write, run under the store's
 // lock.
-func setLocked(home, dir, name, value string) (bool, error) {
+func setLocked(home string, dir *os.Root, name, value string) (bool, error) {
 	store, err := readStore(home)
 	if err != nil {
 		return false, err
@@ -219,7 +244,7 @@ func setLocked(home, dir, name, value string) (bool, error) {
 	if err != nil {
 		return false, errors.New("credential: the store could not be encoded")
 	}
-	if err := fsutil.WriteFileAtomic(filepath.Join(dir, StoreFileName), append(body, '\n'), 0o600); err != nil {
+	if err := fsutil.WriteFileAtomicInRoot(dir, StoreFileName, append(body, '\n'), 0o600); err != nil {
 		return false, fmt.Errorf("credential: %s could not be written, so the credential was not stored", StorePath)
 	}
 	return true, nil

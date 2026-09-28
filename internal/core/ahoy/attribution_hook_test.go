@@ -20,12 +20,22 @@ func attributionOpts() InstallOptions {
 // TestAttributionHookScaffoldsFromTheBinary is itd-162's first acceptance
 // criterion. The adopt phase used to install the prepare-commit-msg hook from a
 // maintainer-local templates directory "if present", so on every other machine the
-// step silently did nothing. HOME points at an empty directory here: the template
-// comes out of the binary or it does not arrive at all.
+// step silently did nothing. HOME holds nothing but the cache attestation the
+// hermetic setup provisions: the template comes out of the binary or it does
+// not arrive at all.
 func TestAttributionHookScaffoldsFromTheBinary(t *testing.T) {
 	home, _ := setupHermetic(t)
-	if entries, err := os.ReadDir(home); err != nil || len(entries) != 0 {
-		t.Fatalf("the hermetic HOME is not empty (%d entries, err=%v); the fixture proves nothing", len(entries), err)
+	var found []string
+	if err := filepath.WalkDir(home, func(p string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !d.IsDir() {
+			found = append(found, p)
+		}
+		return nil
+	}); err != nil || len(found) != 1 || found[0] != userCacheAttestationPath() {
+		t.Fatalf("the hermetic HOME holds more than the cache attestation (%v, err=%v); the fixture proves nothing", found, err)
 	}
 	repo := t.TempDir()
 	if err := os.Mkdir(filepath.Join(repo, ".git"), 0o755); err != nil {

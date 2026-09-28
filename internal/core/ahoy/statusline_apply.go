@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -155,7 +156,13 @@ func (a *applyCtx) wireStatusLine(hs harnessSettings, entry string, switches map
 		a.refuse("the status line was not wired: the home directory could not be resolved, so " + statusline.SettingsDisplay + " has nowhere to go.")
 		return
 	}
-	settingBytes, created, err := statusLineSettingBytes(settingPath, switches, previous)
+	// The setting's reader refuses a file behind a symlinked ~/.abcd, so a write
+	// through the link would land wherever the link points and never be read.
+	if err := fsutil.HomeScopeLink(userHome(), statusline.SettingsRelPath); err != nil {
+		a.refuse("refused to wire the status line: " + err.Error() + "; nothing was written.")
+		return
+	}
+	settingBytes, created, err := statusLineSettingBytes(userHome(), switches, previous)
 	if err != nil {
 		a.refuse("refused to wire the status line: " + errText(err) + "; nothing was written.")
 		return
@@ -171,14 +178,28 @@ func (a *applyCtx) wireStatusLine(hs harnessSettings, entry string, switches map
 		a.refuse("refused to wire the status line: " + displayPath(hs.path) + " could not be re-encoded (" + errText(err) + "); nothing was written.")
 		return
 	}
+	// ~/.abcd is created, judged and opened relative to home's descriptor and
+	// the setting is written (and, on a failed harness write, removed) through
+	// it, so a link swapped in after the check above is refused rather than
+	// written through (iss-2609281310017733).
+	settingLeaf := path.Base(statusline.SettingsRelPath)
+	var settingDir *os.Root
 	if settingBytes != nil {
 		var werr error
-		if created {
-			// 0600, and never wider: the setting's reader refuses a file others
-			// can write, so a default 0644 would be a setting that is never read.
-			werr = fsutil.WriteFileAtomic(settingPath, settingBytes, 0o600)
-		} else {
-			werr = fsutil.WriteFileAtomicPreserveMode(settingPath, settingBytes)
+		settingDir, werr = fsutil.EnsureHomeScope(userHome(), path.Dir(statusline.SettingsRelPath), 0o755)
+		if errors.Is(werr, fsutil.ErrHomeScopeSymlinked) {
+			a.refuse("refused to wire the status line: " + werr.Error() + "; nothing was written.")
+			return
+		}
+		if werr == nil {
+			defer settingDir.Close()
+			if created {
+				// 0600, and never wider: the setting's reader refuses a file others
+				// can write, so a default 0644 would be a setting that is never read.
+				werr = fsutil.WriteFileAtomicInRoot(settingDir, settingLeaf, settingBytes, 0o600)
+			} else {
+				werr = fsutil.WriteFileAtomicPreserveModeInRoot(settingDir, settingLeaf, settingBytes)
+			}
 		}
 		if werr != nil {
 			a.refuse("could not write " + statusline.SettingsDisplay + " (" + errText(werr) + "); the status line was not wired.")
@@ -186,8 +207,8 @@ func (a *applyCtx) wireStatusLine(hs harnessSettings, entry string, switches map
 		}
 	}
 	if err := fsutil.WriteFileAtomicPreserveMode(hs.path, harnessBytes); err != nil {
-		if created {
-			_ = os.Remove(settingPath)
+		if created && settingDir != nil {
+			_ = settingDir.Remove(settingLeaf)
 		}
 		a.refuse("could not write " + displayPath(hs.path) + " (" + errText(err) + "); the status line was not wired and " +
 			statusline.SettingsDisplay + " was not left behind.")
@@ -301,8 +322,8 @@ func uninstallStatusLine() StatusLineReceipt {
 // is an error here rather than a file to fill: writing into a file that is
 // not the caller's word would be taking somebody else's configuration as
 // theirs.
-func statusLineSettingBytes(path string, switches map[statusline.ElementKey]bool, previous string) (data []byte, created bool, err error) {
-	raw, err := readUserStatusLineSetting(path)
+func statusLineSettingBytes(home string, switches map[statusline.ElementKey]bool, previous string) (data []byte, created bool, err error) {
+	raw, err := readUserStatusLineSetting(home)
 	switch {
 	case err != nil:
 		return nil, false, err
@@ -337,8 +358,8 @@ func statusLineSettingBytes(path string, switches map[statusline.ElementKey]bool
 // absent file; a file the guard refuses is an error naming the reason, never
 // a silent fallback, because what the callers take from the file is a shell
 // command the harness will run.
-func readUserStatusLineSetting(path string) ([]byte, error) {
-	raw, why, err := statusline.ReadSettingsFile(path)
+func readUserStatusLineSetting(home string) ([]byte, error) {
+	raw, why, err := statusline.ReadSettingsFile(home)
 	if err != nil {
 		return nil, err
 	}
@@ -355,11 +376,11 @@ func readUserStatusLineSetting(path string) ([]byte, error) {
 // that back to the harness is the recursion the wiring refuses to record,
 // from the other end.
 func recordedPreviousCommand() (string, error) {
-	path := userStatusLineSettingPath()
-	if path == "" {
+	home := userHome()
+	if home == "" {
 		return "", nil
 	}
-	raw, err := readUserStatusLineSetting(path)
+	raw, err := readUserStatusLineSetting(home)
 	if err != nil || raw == nil {
 		return "", err
 	}

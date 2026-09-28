@@ -40,6 +40,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	pathpkg "path"
 	"path/filepath"
 	"sort"
 
@@ -187,9 +188,7 @@ func Load() (Settings, []string, error) {
 // indistinguishable from a setting that was taken.
 func LoadFrom(home string) (Settings, []string, error) {
 	out := Defaults()
-	path := filepath.Join(home, filepath.FromSlash(SettingsRelPath))
-
-	raw, why, err := ReadSettingsFile(path)
+	raw, why, err := ReadSettingsFile(home)
 	if err != nil {
 		return Settings{}, nil, err
 	}
@@ -287,6 +286,13 @@ func refusedPresence(why string, fallback Pair) string {
 		"; the default " + fallback.Foreground + " on " + fallback.Background + " renders instead"
 }
 
+// settingsDirRel and settingsLeaf are SettingsRelPath's directory and file,
+// in the slash form fsutil.OpenHomeScope and an *os.Root take.
+var (
+	settingsDirRel = pathpkg.Dir(SettingsRelPath)
+	settingsLeaf   = pathpkg.Base(SettingsRelPath)
+)
+
 // ReadSettingsFile performs the trust-boundary read of the user-level setting
 // at path. It is the ONE reader of that file: Load reads through it to render
 // the row, and ahoy's install and uninstall steps read through it to record
@@ -310,12 +316,21 @@ func refusedPresence(why string, fallback Pair) string {
 //
 // The guard is the one the two sibling home-scoped declarations use
 // (rules.trustedRootDeclared, history.localDeclared): lstat first, the three
-// refusals above, then fsutil.ReadGuarded under the byte cap — one open,
-// O_NOFOLLOW, size-checked against both the fstat and the bytes read.
-func ReadSettingsFile(path string) (raw []byte, why string, err error) {
+// refusals above, then fsutil.ReadGuardedInRoot under the byte cap, relative
+// to the descriptor of the ~/.abcd fsutil.OpenHomeScope judged — a symlinked
+// leaf refused, the descriptor confirmed to be the file lstat'd, and the size
+// checked against both the fstat and the bytes read. A file
+// reached through a symlinked ~/.abcd is not the caller's word either
+// (fsutil.HomeScopeLink, the rule the rules loader applies to rules.json), so
+// the file is named by the home it lives in rather than by a path.
+func ReadSettingsFile(home string) (raw []byte, why string, err error) {
+	path := filepath.Join(home, filepath.FromSlash(SettingsRelPath))
 	fi, err := os.Lstat(path)
 	if err != nil {
 		return nil, "", nil
+	}
+	if lerr := fsutil.HomeScopeLink(home, SettingsRelPath); lerr != nil {
+		return nil, lerr.Error(), nil
 	}
 	if !fi.Mode().IsRegular() {
 		return nil, "it is not a regular file", nil
@@ -328,7 +343,21 @@ func ReadSettingsFile(path string) (raw []byte, why string, err error) {
 	case err != nil:
 		return nil, "it is not owned by this session's uid", nil
 	}
-	raw, err = fsutil.ReadGuarded(path, maxSettingsBytes)
+	// The bytes are read through the descriptor of the ~/.abcd that was
+	// judged (fsutil.OpenHomeScope), never by the path again, so a link
+	// swapped in after the check above is refused rather than read through
+	// (iss-2609281310017733).
+	dir, err := fsutil.OpenHomeScope(home, settingsDirRel)
+	switch {
+	case errors.Is(err, fsutil.ErrHomeScopeSymlinked):
+		return nil, err.Error(), nil
+	case os.IsNotExist(err):
+		return nil, "", nil
+	case err != nil:
+		return nil, "", fmt.Errorf("statusline: reading %s: %s", SettingsDisplay, termsafe.Sanitize(err.Error()))
+	}
+	defer dir.Close()
+	raw, err = fsutil.ReadGuardedInRoot(dir, settingsLeaf, maxSettingsBytes)
 	switch {
 	case err == nil:
 		return raw, "", nil
