@@ -358,7 +358,13 @@ scope whose contents abcd acts on — `rules.json`, `trusted-roots`,
 is refused when `~/.abcd`, or a directory below it on the way to the file, is a
 symlink: the rule the rules loader states for `rules.json`, applied by one check
 (`fsutil.HomeScopeLink`, read through `fsutil.ReadHomeDeclaration`) so it cannot
-drift per file. A symlinked `~/.abcd` holding no such file reads as absent and
+drift per file. The rule holds against a race as well as a layout: a reader or
+writer opens `~/.abcd` and each level below it relative to the descriptor of the
+level above (`fsutil.OpenHomeScope`, or `fsutil.EnsureHomeScope` to create the
+missing levels), confirms each descriptor is the real directory its judgement
+saw, and reaches the file only through that descriptor, so a process swapping
+`~/.abcd` for a link between the check and the use is refused rather than
+followed (iss-2609281310017733). A symlinked `~/.abcd` holding no such file reads as absent and
 costs nothing. A file that is there behind the link is refused the way its reader
 refuses any declaration that is not the caller's word: the rules load fails, a
 declaration is ignored with a note, the path entry and the cache attestation
@@ -374,8 +380,8 @@ too, before they read it. The home directory itself may be a link; only
 level through their own create-then-prove seam (`fsutil.EnsureRealDir`), and the
 `sources/` corpus is the caller's to place. The `history/` registry applies
 both: it is neither read nor written behind a symlinked `~/.abcd` or
-`~/.abcd/history`, and it is created through the same create-then-prove seam
-(iss-2609281129171021). `ahoy install` skips the registration with a note naming
+`~/.abcd/history`, and it is created, locked, read and written through
+`fsutil.EnsureHomeScope`'s descriptor (iss-2609281129171021). `ahoy install` skips the registration with a note naming
 the link and the repair, and the detector reports it as a diagnostic rather
 than a gap install would try and fail to close.
 

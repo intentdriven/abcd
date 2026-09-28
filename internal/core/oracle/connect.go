@@ -21,7 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
+	"path"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/adapter/openaiapi"
@@ -223,7 +223,7 @@ var configLockTimeout = 5 * time.Second
 
 // writeProviderBlock sets oracle.api.<name> in ~/.abcd/config.json, keeping
 // every other key, written atomically at mode 0600. The file is read, changed
-// and renamed into place under its lock (fsutil.WithFileLock), so concurrent
+// and renamed into place under its lock (fsutil.WithFileLockIn), so concurrent
 // setups never lose each other's blocks, and a block another setup wrote
 // after this one's check is refused rather than replaced.
 func writeProviderBlock(home, name string, block map[string]any) error {
@@ -232,15 +232,20 @@ func writeProviderBlock(home, name string, block map[string]any) error {
 	// The machine layer refuses a file behind a symlinked ~/.abcd, so a block
 	// written through the link would land wherever it points (a dotfiles
 	// checkout) and never be read back.
-	if err := fsutil.HomeScopeLink(home, rel); err != nil {
+	// ~/.abcd is created, judged and opened in one walk relative to home's
+	// descriptor, and the lock and the file are reached through it, so a link
+	// swapped in after the judgement is refused rather than written through
+	// (iss-2609281310017733).
+	dir, err := fsutil.EnsureHomeScope(home, path.Dir(rel), 0o700)
+	if errors.Is(err, fsutil.ErrHomeScopeSymlinked) {
 		return fmt.Errorf("oracle adapter: the provider block was not written to %s: %v", origin, err)
 	}
-	p := filepath.Join(home, filepath.FromSlash(rel))
-	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+	if err != nil {
 		return fmt.Errorf("oracle adapter: ~/.abcd could not be created, so the provider block was not written")
 	}
-	err := fsutil.WithFileLock(filepath.Join(filepath.Dir(p), configLockFileName), configLockTimeout, func() error {
-		return writeProviderBlockLocked(home, name, block)
+	defer dir.Close()
+	err = fsutil.WithFileLockIn(dir, configLockFileName, configLockTimeout, func() error {
+		return writeProviderBlockLocked(home, dir, name, block)
 	})
 	switch {
 	case errors.Is(err, fsutil.ErrLockContention):
@@ -255,10 +260,9 @@ func writeProviderBlock(home, name string, block map[string]any) error {
 
 // writeProviderBlockLocked is writeProviderBlock's read, change and write,
 // run under the file's lock.
-func writeProviderBlockLocked(home, name string, block map[string]any) error {
+func writeProviderBlockLocked(home string, dir *os.Root, name string, block map[string]any) error {
 	origin := layered.Config.MachineOrigin()
 	rel := ".abcd/" + layered.Config.MachineRel
-	p := filepath.Join(home, filepath.FromSlash(rel))
 	root := map[string]json.RawMessage{}
 	raw, refusal, err := fsutil.ReadHomeDeclaration(home, rel, layered.MaxFileBytes)
 	switch {
@@ -308,7 +312,7 @@ func writeProviderBlockLocked(home, name string, block map[string]any) error {
 	if err != nil {
 		return err
 	}
-	if err := fsutil.WriteFileAtomic(p, append(body, '\n'), 0o600); err != nil {
+	if err := fsutil.WriteFileAtomicInRoot(dir, path.Base(rel), append(body, '\n'), 0o600); err != nil {
 		return fmt.Errorf("oracle adapter: %s could not be written, so the provider block was not written", origin)
 	}
 	return nil

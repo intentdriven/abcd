@@ -170,12 +170,12 @@ const MaxValueBytes = 4096
 // character; a store Resolve would refuse (a symlink, group- or other-
 // readable, not owned by the caller, malformed), so a write never launders an
 // unsafe file; a ~/.abcd that is a symlink, because the secret would land
-// wherever the link points (fsutil.HomeScopeLink); and a name already holding a
+// wherever the link points (fsutil.EnsureHomeScope); and a name already holding a
 // different value, because a stored secret is never replaced by a second one
 // unasked. The same value already
 // stored is no change (changed is false). The file is written atomically at
 // mode 0600, and ~/.abcd is created owner-only when it is absent. The read,
-// the change and the write hold the store's lock (fsutil.WithFileLock, beside
+// the change and the write hold the store's lock (fsutil.WithFileLockIn, beside
 // the store), so concurrent writers never lose each other's entries.
 func SetMachine(home, name, value string) (changed bool, err error) {
 	if !nameRe.MatchString(name) {
@@ -191,17 +191,22 @@ func SetMachine(home, name, value string) (changed bool, err error) {
 	// that repository, and the store's own read refuses a file behind the link
 	// (iss-2609260958587561). Refused before anything is created, the lock
 	// included.
-	if err := fsutil.HomeScopeLink(home, storeRel); err != nil {
+	// ~/.abcd is created, judged and opened in one walk relative to the
+	// descriptor of home (fsutil.EnsureHomeScope), and the lock and the store
+	// are reached through that descriptor, so a link swapped in after the
+	// judgement is refused rather than written through (iss-2609281310017733).
+	dir, err := fsutil.EnsureHomeScope(home, ".abcd", 0o700)
+	if errors.Is(err, fsutil.ErrHomeScopeSymlinked) {
 		return false, fmt.Errorf("credential: nothing was written to %s: %v", StorePath, err)
 	}
-	dir := filepath.Join(home, ".abcd")
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+	if err != nil {
 		return false, fmt.Errorf("credential: ~/.abcd could not be created, so nothing was written")
 	}
+	defer dir.Close()
 	// The store is read, changed and renamed into place, so a second writer
 	// between the read and the rename would lose this entry or its own; the
 	// write holds the store's lock across all three.
-	err = fsutil.WithFileLock(filepath.Join(dir, storeLockFileName), storeLockTimeout, func() error {
+	err = fsutil.WithFileLockIn(dir, storeLockFileName, storeLockTimeout, func() error {
 		var werr error
 		changed, werr = setLocked(home, dir, name, value)
 		return werr
@@ -225,7 +230,7 @@ var storeLockTimeout = 5 * time.Second
 
 // setLocked is SetMachine's read, change and write, run under the store's
 // lock.
-func setLocked(home, dir, name, value string) (bool, error) {
+func setLocked(home string, dir *os.Root, name, value string) (bool, error) {
 	store, err := readStore(home)
 	if err != nil {
 		return false, err
@@ -243,7 +248,7 @@ func setLocked(home, dir, name, value string) (bool, error) {
 	if err != nil {
 		return false, errors.New("credential: the store could not be encoded")
 	}
-	if err := fsutil.WriteFileAtomic(filepath.Join(dir, StoreFileName), append(body, '\n'), 0o600); err != nil {
+	if err := fsutil.WriteFileAtomicInRoot(dir, StoreFileName, append(body, '\n'), 0o600); err != nil {
 		return false, fmt.Errorf("credential: %s could not be written, so the credential was not stored", StorePath)
 	}
 	return true, nil

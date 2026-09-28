@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
 // dotfilesHome returns a home whose ~/.abcd is a symlink to a directory in a
@@ -95,5 +97,48 @@ func assertOwnerOnly(t *testing.T, p string) {
 	}
 	if fi.Mode().Perm()&0o077 != 0 {
 		t.Fatalf("%s is mode %04o; the lock must be the owner's alone", filepath.Base(p), fi.Mode().Perm())
+	}
+}
+
+// TestSetMachineWritesNothingThroughAnAbcdHomeSwappedForALink is
+// iss-2609281310017733: ~/.abcd is a real directory when SetMachine judges it
+// and a symlink into a dotfiles checkout by the time it writes. A check by path
+// followed by a create by path lands the secret (and its lock) in the checkout;
+// the write through the descriptor of the directory that was judged is refused,
+// names the link, and leaves the checkout as it was.
+func TestSetMachineWritesNothingThroughAnAbcdHomeSwappedForALink(t *testing.T) {
+	home := t.TempDir()
+	dotfiles := filepath.Join(home, "dotfiles", "abcd")
+	for _, dir := range []string{filepath.Join(home, ".abcd"), dotfiles} {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	swapped := false
+	t.Cleanup(fsutil.SwapHomeScopeVettedForTest(func(dir string) {
+		if swapped || dir != filepath.Join(home, ".abcd") {
+			return
+		}
+		swapped = true
+		if err := os.Rename(dir, filepath.Join(home, "moved-aside")); err != nil {
+			t.Fatalf("swap: %v", err)
+		}
+		if err := os.Symlink(dotfiles, dir); err != nil {
+			t.Fatalf("swap: %v", err)
+		}
+	}))
+	changed, err := SetMachine(home, "openrouter", "sk-example-0123456789")
+	if !swapped {
+		t.Fatal("the vetting hook never ran, so the race was not staged")
+	}
+	if err == nil || changed || !strings.Contains(err.Error(), "~/.abcd is a symlink") {
+		t.Errorf("SetMachine must refuse a ~/.abcd swapped for a link, naming it: changed %v, err %v", changed, err)
+	}
+	entries, rerr := os.ReadDir(dotfiles)
+	if rerr != nil {
+		t.Fatal(rerr)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("SetMachine wrote %d file(s) through the swapped link, first %q", len(entries), entries[0].Name())
 	}
 }
