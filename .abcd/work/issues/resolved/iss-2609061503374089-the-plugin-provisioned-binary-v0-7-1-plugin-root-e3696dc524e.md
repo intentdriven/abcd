@@ -9,7 +9,7 @@ found_during: "2026-09-06 use in a managed repo"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "commands/decide.md"
-resolution: "commands/decide.md states the verb needs abcd 0.8.0 or later and routes an older binary's refusal to the release check in that binary's own spelling; the intent page says research/notes/ is not scaffolded, and ahoy install already writes identity.json"
+resolution: "commands/decide.md states the verb needs abcd 0.8.0 or later and routes an older binary's refusal to the release check in that binary's own spelling; the intent page says research/notes/ is not scaffolded, and ahoy install already writes identity.json. The record's second remedy, that the ahoy status should report the gap, is dropped rather than built: the payload lag that caused the gap is gone at 0.11.0, so the documented minimum version is the whole fix on the docs' merit"
 impact: fix
 resolved_by:
   commit: "07af2eb092552739a5360c39e5659457e7b3c734"
