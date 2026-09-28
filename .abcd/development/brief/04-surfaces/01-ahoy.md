@@ -177,9 +177,10 @@ user-scope directory for machine-local state.
                                  that write holds .config.json.lock beside it
   memory/                        user-scope memory (personal, cross-project — a later
                                  phase; the shipped store is repo-scope .abcd/memory/)
-  sources/                       the local sources corpus /abcd:ingest and /abcd:consult
-                                 read. abcd NEVER creates it: absent means both verbs
-                                 say so and stop
+  sources/                       the local sources corpus the source verb maintains and
+                                 /abcd:ingest and /abcd:consult read. Created only by
+                                 its explicit init: absent means every other verb and
+                                 both commands say so and stop
   load-limits                    the load check's per-machine limits (stray-minutes,
                                  extreme-load), read-only; abcd never creates it
                                  (itd-2609231434459890)
@@ -379,12 +380,30 @@ about, one question per category present, never one per item.
 | `category` | Examples | Apply behaviour |
 |---|---|---|
 | `safe-autocreate` | the repo skeleton, history-store directories, the name-guard artefacts | applied once the category is approved, no per-item prompt; create-if-absent, never overwriting |
-| `config-change` | visibility, oracle adapter, the `PATH` entry, the git-identity pin | transparent confirm; skip-if-set with a "current value" notice |
+| `config-change` | visibility, oracle adapter, the `PATH` entry, the git-identity pin, the artefact kind | transparent confirm; skip-if-set with a "current value" notice |
 | `plugin-owned` | the marker block (itd-3); hook-manifest verification | silent overwrite on marker drift; a non-resolvable diagnostic for a malformed or missing manifest, and for a conventions file whose block would land inside a fence or HTML comment nothing closes (`marker.unplaceable`) |
 | `dependency` | a tool a capability uses and cannot find: gitleaks, optional over the native secret scanner and required where the repository armed it in `.abcd/config/gitleaks.json` | the category approval reaches the step; each tool is then explained from the tool registry (what it is, optional or required here, what works without it, the exact install step, what the install does) and its install step runs only on a per-tool yes — typed at a terminal, or relayed by a host as a flag naming the tool — never under the approve-everything flag, a piped answer or CI; a no is reported as what the capability continues on |
 | `status-line` | the offer of abcd's status line in the host harness | an advisory offer asked after its own question, written only on an answered consent; never under the approve-everything flag, and reported as optional work it skipped |
 | `oracle-routing` | the offer of abcd's proposed model-tier routing table (itd-2609170822093401): the machine's `~/.abcd/oracle-routing.json`, then, as a separate question, the repository's `.abcd/config/oracle-routing.json` | the proposal rendered as a table (agent, tier, fan-out) and each file written only on its own answered consent, the machine one owner-only; never under the approve-everything flag, and reported as optional work it skipped; a decline records nothing, so the next install offers again; uninstall leaves both files |
 | `user-state` | the registry entry, re-founding, stale or duplicate entries | guided; never auto-edit user-scope state, report extras read-only |
+
+**The artefact kind is a gap until it is declared** (itd-2609150819432059). A
+managed repository with no `.abcd/config/artefact.json` raises a required,
+resolvable `artefact.missing` gap, because the launch verbs choose what to
+preview, check and scaffold by the kind declared there and refuse to guess it.
+The apply pass writes the file once config changes are approved: a repository
+carrying `.claude-plugin/plugin.json` takes `kind: plugin` without a question,
+so the shipped shape adopts silently; any other is asked its kind, last of all
+the install's questions. An unanswered prompt takes `application`, the kind that
+assumes least about the build. An unattended install is not asked, and an
+answer naming none of `plugin`, `binary` and `application` is not refused: both
+declare `application` with a note saying what was heard, as the house-style
+question does, because withholding the declaration would leave every launch verb
+refusing the repository. The file is validated by
+the one reader the launch verbs share, before it is written and whenever it is
+read, so a declaration that is present and refused raises a non-resolvable
+`artefact.invalid` diagnostic instead: it is the user's file, and the install
+never overwrites it.
 
 **The questions come in a fixed order**, and the order is a contract rather than
 a presentation choice: answers are positional, so without it the Nth piped
@@ -399,6 +418,28 @@ terminal a human types them; off one, a caller pipes them, which is how a host
 agent drives the git-identity pin, the one approval no flag covers. Off a
 terminal each answer is echoed to the diagnostic stream, so a piped run leaves a
 transcript rather than a column of questions with no visible reply.
+
+**Every value question carries its own explanation** (iss-163). A question that
+picks one of several values (the repo visibility, the docs target, the oracle
+backend, the deep-scan toggle, the house-style question and each status-line
+element) is rendered with core's canonical help above it: what is being
+decided, then what each answer means, including what it asks of the person in
+keys, tools or cost. The oracle question defines an oracle before asking for
+one, and says plainly that every answer but host-delegated is recorded without
+changing how reviews run, because no other adapter ships. The words live in core, so every
+front door shows the same explanation and none invents its own; the question
+line itself is unchanged, so a piped answer stream lines up with it.
+
+**The result explains itself to the person who ran it** (iss-164). Beside the
+exact record (every write, change, note, declined category, outstanding step and
+optional step left undone), the install returns a one-sentence headline for its
+status and a plain-language summary: one item per kind of write, per declined
+category, for the required work still outstanding, and per optional step left
+undone, each saying what it is, why it matters and what, if anything, to do, and
+naming the paths or identifiers it explains. The words are core's, written for
+the product thinker and the technical facilitator rather than abcd's
+implementers, with no raw environment names; the text render leads with them and
+prints the exact record after as detail.
 
 Answers that run out read as end-of-file, and end-of-file declines every confirm
 and takes the default for every prompt, so an unattended run adopts nothing it
@@ -472,9 +513,11 @@ hook as a running one.
 
 Two writes deserve their own note. The visibility step rewrites the ignore block
 under the config-change approval already given, with no confirmation of its own;
-its one extra line is a post-hoc note when a public fence had to be narrowed,
+its receipt adds a post-hoc note when a public fence had to be narrowed,
 because an ignore rule cannot untrack committed records, so the reader learns
-from the receipt that the committed record tiers stay published (iss-255). And a
+from the receipt that the committed record tiers stay published (iss-255). Like
+every install write, a block it could not write (a symlinked `.gitignore`, say)
+is a note naming the file and the reason, never a silent omission. And a
 remote URL recorded in the registry carries no credential: it is scrubbed where
 the identity is derived, scrubbed again as the index is *loaded* so every
 rewrite drops a credential from every entry rather than only the one being

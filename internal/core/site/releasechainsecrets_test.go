@@ -39,7 +39,10 @@ func TestReleaseChainPassesSecretsAtEveryLevel(t *testing.T) {
 	}{
 		{".github/workflows/auto-release.yml", "./.github/workflows/release.yml"},
 		{".github/workflows/release.yml", "./.github/workflows/site.yml"},
-		{"internal/core/launch/scaffold/templates/auto-release.yml.tmpl", "./.github/workflows/release.yml"},
+		// The template names the workflow it calls by substitution: release.yml
+		// for a plugin, the gate workflow for any other kind (spelt without spaces
+		// so the call reads as one token).
+		{"internal/core/launch/scaffold/templates/auto-release.yml.tmpl", "./.github/workflows/<%.ReleaseWorkflow%>"},
 		{"internal/core/launch/scaffold/templates/release.yml.tmpl", "./.github/workflows/site.yml"},
 	} {
 		t.Run(tc.file, func(t *testing.T) {

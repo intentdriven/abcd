@@ -83,6 +83,10 @@ const (
 	// planned-not-ready branch passes through verbatim. It is pinned here so
 	// the anti-drift test covers the pass-through path too.
 	verbIntentLink = "intent link"
+	// verbIntentAudit reaches NextMoves through intent.ReEmitCommand, the
+	// re-emit the review reader attaches to an owed entry; the record tests pin
+	// that the command is built from this path.
+	verbIntentAudit = "intent audit"
 )
 
 // RecommendedVerbPaths enumerates every abcd verb path the next-move table can
@@ -90,7 +94,7 @@ const (
 // for the surface-side anti-drift test.
 func RecommendedVerbPaths() []string {
 	return []string{
-		verbIntentPlan, verbIntentReady, verbIntentLink, verbIntentUnhold, verbSpecClose,
+		verbIntentPlan, verbIntentReady, verbIntentLink, verbIntentUnhold, verbIntentAudit, verbSpecClose,
 		verbCapturePromote, verbCaptureResolve, verbCaptureWontfix, verbCaptureReframe,
 	}
 }
@@ -295,7 +299,11 @@ func describeIntent(repoRoot, id string) (Description, error) {
 			d.NextMoves = append(d.NextMoves, "re-check with `abcd "+verbIntentReady+" "+id+"`")
 		}
 	case intent.BucketShipped:
-		d.NextMoves = []string{"none — shipped; its audit state lives in the record's Audit Notes"}
+		review, err := intent.ReviewOf(repoRoot, it)
+		if err != nil {
+			return Description{}, err
+		}
+		d.NextMoves = []string{shippedReviewMove(review)}
 	case intent.BucketSuperseded:
 		target := d.Links["superseded_by"]
 		if target == "" {
@@ -320,6 +328,30 @@ func describeIntent(repoRoot, id string) (Description, error) {
 		d.NextMoves = append([]string{move}, d.NextMoves...)
 	}
 	return d, nil
+}
+
+// shippedReviewMove renders a shipped intent's next move from its review state,
+// read by the intent store's one reader of the review marker
+// (itd-2609150819445595): owed names the receipt and the re-emit; a record with
+// no marker owes the review too, and the re-emit mints its receipt; a
+// dead-lettered review is unreviewed and says why; an ingested one owes nothing.
+// The re-emit command is the reader's own (intent.ReEmitCommand), built from
+// verbIntentAudit.
+func shippedReviewMove(r intent.ReviewEntry) string {
+	switch r.State {
+	case intent.ReviewOwed:
+		return "fidelity review owed, receipt " + r.ReceiptID + " — re-emit the request with `" + r.ReEmit + "`"
+	case intent.ReviewNone:
+		return "fidelity review owed, no receipt yet — `" + r.ReEmit + "` mints one and emits the request"
+	case intent.ReviewDeadLetter:
+		reason := r.Reason
+		if reason == "" {
+			reason = "the quarantine block records no reason"
+		}
+		return "fidelity review dead-lettered (unreviewed), receipt " + r.ReceiptID + ": " + reason
+	default:
+		return "none — shipped; fidelity review ingested (receipt " + r.ReceiptID + "), its verdict in the record's Audit Notes"
+	}
 }
 
 // holdMove renders the hold row for a held record, and reports false for a
@@ -387,6 +419,9 @@ func describeSpec(repoRoot, id string) (Description, error) {
 		Path:   sp.Path,
 		Links:  map[string]string{"intent": sp.Intent},
 	}
+	if members := sp.Members(); len(members) > 1 {
+		return describeBundleSpec(repoRoot, store, sp, members, d), nil
+	}
 	if sp.Status == spec.StatusClosed {
 		// A closed spec whose intent still has open specs delivered part of it: say
 		// which sibling the intent is now waiting on, rather than leaving the reader
@@ -419,6 +454,71 @@ func describeSpec(repoRoot, id string) (Description, error) {
 		}
 	}
 	return d, nil
+}
+
+// describeBundleSpec renders a bundle's shared spec through every member it
+// lists, as its close reads them (iss-2609261215160156): the links name them
+// all, a superseded member is passed over and named, and the move reads each
+// member still in force — the open specs a closed one waits on, or the
+// readiness an open one defers to.
+func describeBundleSpec(repoRoot string, store spec.Store, sp spec.Spec, members []string, d Description) Description {
+	d.Links["intents"] = strings.Join(members, ", ")
+	var live, superseded []string
+	corpus, err := intent.Load(repoRoot)
+	for _, m := range members {
+		if err == nil {
+			if it, ok := corpus.Lookup(m); ok && it.Bucket == intent.BucketSuperseded {
+				superseded = append(superseded, m)
+				continue
+			}
+		}
+		live = append(live, m)
+	}
+	passedOver := ""
+	if len(superseded) > 0 {
+		passedOver = " (" + strings.Join(superseded, ", ") + " superseded, passed over)"
+	}
+	if len(live) == 0 {
+		d.NextMoves = []string{"none — every member of bundle " + sp.Bundle + " is superseded" + passedOver}
+		return d
+	}
+	if sp.Status == spec.StatusClosed {
+		var waits []string
+		for _, m := range live {
+			if open := store.OpenSpecsForIntent(m); len(open) > 0 {
+				ids := make([]string, len(open))
+				for i, s := range open {
+					ids[i] = s.ID
+				}
+				waits = append(waits, m+" stays planned until "+strings.Join(ids, ", ")+" closes")
+			}
+		}
+		if len(waits) > 0 {
+			d.NextMoves = []string{"none — closed; " + strings.Join(waits, "; ") + passedOver}
+			return d
+		}
+		d.NextMoves = []string{"none — closed; the linked intents are " + strings.Join(live, ", ") + passedOver}
+		return d
+	}
+	var unread, notReady []string
+	for _, m := range live {
+		ready, err := intent.Ready(repoRoot, m)
+		switch {
+		case err != nil:
+			unread = append(unread, "the linked intent "+m+" could not be read: "+err.Error())
+		case !ready.Ready:
+			notReady = append(notReady, "`abcd "+verbIntentReady+" "+m+"`")
+		}
+	}
+	switch {
+	case len(unread) > 0:
+		d.NextMoves = unread
+	case len(notReady) > 0:
+		d.NextMoves = []string{"not ready — the gate defers to the failing checks of " + strings.Join(notReady, ", ") + passedOver}
+	default:
+		d.NextMoves = []string{"implement against this spec's body; when done, `abcd " + verbSpecClose + " " + sp.ID + "`" + passedOver}
+	}
+	return d
 }
 
 // describeADR probes decisions/adrs/ for the numbered file carrying the id and

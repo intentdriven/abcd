@@ -50,8 +50,9 @@ them and names, for each one, the reader layer that refused it: the filename,
 the guarded read, the frontmatter parse, the schema or the folder and filename
 invariants. The layer is what tells a reader whether the record or the reader is
 the side to fix (iss-2609120452071388). A status directory that exists and
-cannot be listed is named the same way, as a read-layer entry whose path is the
-directory, rather than counted as empty (iss-2609261631120364). The board also counts the records git
+cannot be listed is not counted as empty and is not an entry: the board faults
+naming the directory, as the list, the transitions and the mint do
+(iss-2609261241121312, iss-2609261631120364). The board also counts the records git
 reports as untracked or changed and marks each such row: folder membership is a
 status only once the file is committed, so an uncommitted record is in no state to
 any other branch, worktree or gate (iss-2609100508570527).
@@ -248,6 +249,26 @@ readings keep the record out by its store's path, so record-lint's
 reframe's text copied out with all three signals stripped is plain prose to
 that check and reaches a reading like any other prose, a limit of detecting
 the record by its signals.
+
+Every refusal of a ledger verb's own input exits 2 with nothing written, the
+one code a script reads for "the request was not usable": an id the ledger
+does not hold or a peer holds, a record already out of `open/`, a malformed id,
+malformed grounds, and a flag value outside its shape or naming nothing, on
+resolving, marking wontfix, promoting, deferring, linking and the capture write
+alike (iss-2609260552251398), a found-at path that leaves the checkout or does
+not exist in it included (iss-2609261241119343). The reading ledger's verbs
+share the code: a disposition, an admission, a surprise and a reframe exit 2 on
+an item, occasion or record id malformed or naming nothing, a ground or flag
+value outside its shape, a request the standing records do not admit (a second
+answer citing none, an item already admitted, an admission over an answer in
+another state, a second open reframe, a reframe with nothing to record or an
+occasion not committed before the rewrite) and an answer or admission before
+characterisation, and the mentions listing exits 2 on a named ref that names no
+commit. Exit 1 is left to a fault: a ledger that could not be read or moved, a
+record that contradicts itself (a tangled or contested set of answers only a
+hand edit repairs), or a found-at path the checkout would not let the write
+check for a reason other than its absence. Migration takes no input to refuse,
+so each of its failures is a fault.
 
 **Resolving** marks an issue resolved and moves it to
 `resolved/`. Impact is required, and resolving without it is refused with

@@ -67,8 +67,66 @@ _None open._
 
 ## Audit Notes
 
-<!-- abcd-review: OWED receipt=rcp-dd80f3fcae80 -->
-Fidelity review OWED (receipt rcp-dd80f3fcae80).
+<!-- abcd-review: INGESTED receipt=rcp-dd80f3fcae80 -->
+Fidelity review — receipt rcp-dd80f3fcae80 (verifier intent-auditor claude-fable-5-1).
+
+Provenance: intent-auditor@claude-fable-5-1 · rubric_hash sha256:effa65b3e9e88ff29433b443ec2be159522a8b0b71cf1434526514aa61edb13e · prompt_hash sha256:a7dec6f142b4d0effcdc25320638cce616b7883884e5365c9861437d3b0294be
+Input attestations: diff:tree at 7c476185 (main lineage, itd-2609212130136102 shipped)@-;
+
+Acceptance rollup: MET 5 · MET_WITH_CONCERNS 0 · NOT_MET 0 · INCONCLUSIVE 0
+
+Per-criterion verdicts:
+- ac-1 — MET: ahoy dry-run and ahoy identity-check are movedStub commands and bare ahoy remote is markMoved with its apply sub-verb live; each names its flag form on stderr and exits 2 (TestMovedSpellingsAnswerWithTheirSuccessor), the three flags are declared mutually exclusive on ahoy, and TestAhoyDryRunFlagPrintsTheDetectionEnvelope, TestAhoyIdentityFlagHoldsTheCommitIdentityToThePin and TestAhoyRemoteFlagReportsTheRemoteSettings show the flag doing what the sub-verb did; all green at BASE
+  evidence: internal/surface/cli/cli.go:3093 — "ahoyCmd.AddCommand(movedStub("dry-run", "abcd ahoy --dry-run"))"
+  evidence: internal/surface/cli/cli.go:3153 — "markMoved(remoteCmd, "abcd ahoy --remote")"
+  evidence: internal/surface/cli/cli.go:2950 — "ahoyCmd.MarkFlagsMutuallyExclusive("dry-run", "identity", "remote")"
+  evidence: internal/surface/cli/moved.go:58 — "func movedStub(use, successor string) *cobra.Command {"
+  evidence: internal/surface/cli/consolidate_test.go:54 — "func TestMovedSpellingsAnswerWithTheirSuccessor(t *testing.T) {"
+  evidence: internal/surface/cli/consolidate_test.go:141 — "func TestAhoyDryRunFlagPrintsTheDetectionEnvelope(t *testing.T) {"
+- ac-2 — MET: version is a movedStub naming abcd --version and its --check flag names update --check; update carries --check with the old report; TestRootVersionFlagPrintsWhatVersionPrinted and TestIntentNewIsUnknown (which also proves no draft titled new is filed) are green
+  evidence: internal/surface/cli/version.go:71 — "cmd := movedStub("version", "abcd --version")"
+  evidence: internal/surface/cli/version.go:79 — "cmd.Flags().BoolVar(&check, "check", false, "moved to: abcd update --check")"
+  evidence: internal/surface/cli/update.go:106 — "cmd.Flags().BoolVar(&check, "check", false, "fetch the latest release once and compare it with this binary"
+  evidence: internal/surface/cli/consolidate_test.go:276 — "func TestRootVersionFlagPrintsWhatVersionPrinted(t *testing.T) {"
+  evidence: internal/surface/cli/consolidate_test.go:295 — "func TestIntentNewIsUnknown(t *testing.T) {"
+- ac-3 — MET: lint registers outbound, docs, site and identity sub-verbs; docs lint and site check are stubs naming lint docs and lint site and bare identity names lint identity; TestLintTargetsAreRegistered, TestLintIdentityRendersTheIdentityReport, TestLintSiteRefusesWithoutAComposition and TestBareLintRunsEveryTarget are green, and docs cite and site build stay live; identity render stays as a distinct act by the 2026-09-25 ruling, so the fifth spelling is read as the bare identity report
+  evidence: internal/surface/cli/lint.go:90 — "cmd.AddCommand(newLintDocsCommand(asJSON))"
+  evidence: internal/surface/cli/cli.go:604 — "docsCmd.AddCommand(movedStub("lint", "abcd lint docs"))"
+  evidence: internal/surface/cli/site.go:83 — "siteCmd.AddCommand(movedStub("check", "abcd lint site"))"
+  evidence: internal/surface/cli/identity.go:35 — "markMoved(identityCmd, "abcd lint identity")"
+  evidence: internal/surface/cli/consolidate_test.go:311 — "func TestLintTargetsAreRegistered(t *testing.T) {"
+  evidence: internal/surface/cli/consolidate_test.go:359 — "func TestBareLintRunsEveryTarget(t *testing.T) {"
+  evidence: .abcd/work/DECISIONS.md:2556 — "`identity render` proposes a correction, a distinct act, and stays"
+- ac-4 — MET: the snapshot records moved_to per stub (TestMovedSpellingsAreRecordedWithTheirSuccessor), the brief appendix omits a whole-moved stub and prints the successor where a bare form moved, the generated reference and the pages carry no section for an old spelling (TestReferenceNamesTheNewFormsOnly, TestReferenceUsageNeverOffersAMovedBareForm), and the intent declares impact: breaking, which DeriveNext maps to the breaking bump
+  evidence: internal/surface/cli/consolidate_test.go:92 — "func TestMovedSpellingsAreRecordedWithTheirSuccessor(t *testing.T) {"
+  evidence: internal/core/surface/appendix.go:120 — "fmt.Fprintf(&b, "### `%s`\n\nIt moved to `%s`.\n\n", p, c.MovedTo)"
+  evidence: .abcd/development/brief/04-surfaces/12-version.md:100 — "It moved to `abcd --version`."
+  evidence: internal/surface/cli/consolidate_test.go:451 — "func TestReferenceNamesTheNewFormsOnly(t *testing.T) {"
+  evidence: .abcd/development/intents/shipped/itd-2609212130136102-abcd-s-verbs-consolidate-ahoy-s-three-modes-become-flags.md:10 — "impact: breaking"
+  evidence: internal/core/changelog/version.go:38 — "func DeriveNext(prev launch.Semver, bump Impact) (launch.Semver, bool) {"
+- ac-5 — MET: TestPersonsListHoldsAtMostFourteenVerbs counts the verbs the default help lists and TestPersonVerbsCountsEveryListedVerb is its negative control on a fifteen-verb tree; both green at BASE
+  evidence: internal/surface/cli/consolidate_test.go:420 — "func TestPersonsListHoldsAtMostFourteenVerbs(t *testing.T) {"
+  evidence: internal/surface/cli/consolidate_test.go:434 — "func TestPersonVerbsCountsEveryListedVerb(t *testing.T) {"
+
+Gap audit:
+- honoured:
+  - modes to flags: the old spellings answer with the new one and exit non-zero for one release
+    evidence: internal/surface/cli/consolidate_test.go:54 — "func TestMovedSpellingsAnswerWithTheirSuccessor(t *testing.T) {"
+  - a --json caller of a stub reads exactly one refusal on stdout
+    evidence: internal/surface/cli/moved.go:66 — "cmd.SetOut(stderrOf{cmd})"
+  - one lint with targets; docs cite and site build stay because they write
+    evidence: internal/surface/cli/lint.go:92 — "cmd.AddCommand(newLintIdentityCommand(asJSON))"
+    evidence: internal/surface/cli/consolidate_test.go:114 — "for _, live := range []string{"abcd lint docs", "abcd ahoy remote apply", "abcd identity init"} {"
+  - the person's default list is at most fourteen verbs
+    evidence: internal/surface/cli/consolidate_test.go:420 — "func TestPersonsListHoldsAtMostFourteenVerbs(t *testing.T) {"
+- diverged:
+  - the intent's Why names `identity render` among the five spellings of one check folded into `lint`; the delivery moves the bare `identity` report to `lint identity` and keeps `identity render` (a proposal, a distinct act) as a live sub-verb documented in the brief, by the 2026-09-25 ruling
+    evidence: internal/surface/cli/identity.go:38 — "Use: "render","
+    evidence: .abcd/development/brief/04-surfaces/19-identity.md:160 — "### `abcd identity render`"
+    evidence: .abcd/work/DECISIONS.md:2556 — "`identity render` proposes a correction, a distinct act, and stays"
+  - spec scope 3 says the old lint verbs become stubs for one release and the Approach names a follow-on remainder spec for their removal; the ruling records that no remainder spec is minted and the removal is captured as an issue instead
+    evidence: .abcd/work/DECISIONS.md:2556 — "The spec's remainder spec for removing the stubs is not minted"
+- missing: (none)
 
 ## Grounds
 

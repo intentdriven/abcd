@@ -8,7 +8,7 @@ source: "review-followup"
 found_during: "autonomous run A resumed 2026-09-25: review-match"
 origin: researcher-authored
 production_mode: hand-written
-resolution: "scanStatusDir separates an absent status directory from an unreadable one for every ledger reader: the filing-time match reports an unreadable open/ or resolved/ as an unread record set, and capture list and capture status name the directory in the skipped roster."
+resolution: "an unreadable status directory never reads as an empty one: scanStatusDir lists through readStatusDir, the one place an absent directory and an unreadable one part company (iss-2609261241121312), so the filing-time match reports an unreadable open/ or resolved/ as an unread record set, and capture list and capture status fault naming the directory."
 impact: fix
 resolved_by:
   commit: "b24ec86f"

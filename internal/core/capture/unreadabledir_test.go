@@ -31,74 +31,73 @@ func unreadableStatusDir(t *testing.T, ir string, sub State) string {
 // The filing-time match that cannot read resolved/ has not compared the
 // record, so it says the record set was unread, as it does when the intent
 // store cannot be read, instead of reporting the records it happened to reach.
+// A capture never gets that far: its mint cannot tell a free id from one the
+// unreadable directory holds, so it faults naming the directory
+// (iss-2609261241121312). The quoted-text intent create writes nothing into
+// the ledger and still matches against it, so the unread outcome is what it
+// files with: the content comes back unlinked.
 func TestMatchReportsAnUnreadableStatusDirectoryAsUnread(t *testing.T) {
 	repo, ir := ledger(t)
 	captureText(t, repo, ir, plantedFinding, nil)
 	captureText(t, repo, ir, matchFiller1, nil)
 	unreadableStatusDir(t, ir, StateResolved)
 
-	res := captureText(t, repo, ir, plantedDouble, bundled())
-	if res.Match == nil || !strings.Contains(res.Match.Skipped, "could not be read") {
-		t.Fatalf("an unreadable resolved/ did not read as an unread record set: %+v", res.Match)
+	if _, err := Capture(CaptureRequest{
+		RepoRoot: repo, IssuesRoot: ir, Text: plantedDouble, Severity: SeverityMinor,
+		Category: "bug", Source: "user-observation", FoundDuring: "t", Match: bundled(),
+	}); err == nil || !strings.Contains(err.Error(), statusDirName[StateResolved]+"/") {
+		t.Fatalf("a capture over an unreadable resolved/ was not refused naming it: %v", err)
 	}
-	if len(res.Match.Matches) != 0 {
-		t.Fatalf("an unread record set still linked: %+v", res.Match.Matches)
+	if _, err := MatchCandidates(repo, *bundled()); err == nil || !strings.Contains(err.Error(), statusDirName[StateResolved]+"/") {
+		t.Fatalf("the intent create's candidate set read an unreadable resolved/ as empty: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(repo, res.Path)); err != nil {
-		t.Fatalf("the capture was not written: %v", err)
+	const content = "---\nid: planted\n---\n"
+	got, o := matchAndLink(repo, ir, *bundled(), plantedDouble, content, map[string]any{})
+	if o == nil || !strings.Contains(o.Skipped, "could not be read") {
+		t.Fatalf("an unreadable resolved/ did not read as an unread record set: %+v", o)
+	}
+	if len(o.Matches) != 0 {
+		t.Fatalf("an unread record set still linked: %+v", o.Matches)
+	}
+	if got != content {
+		t.Fatalf("an unread match changed the content it was to file:\n%s", got)
 	}
 }
 
 // The board says the same thing: capture list and capture status name an
-// unreadable status directory in the skipped roster rather than counting it
-// as a directory with no records in it. An absent directory stays silent — a
-// virgin ledger has none.
+// unreadable status directory rather than counting it as a directory with no
+// records in it. The one mechanism is readStatusDir's (iss-2609261241121312):
+// the directory is a fault naming it, ledger-relatively, so neither surface
+// reports a count for a ledger it did not read. An absent directory stays
+// silent — a virgin ledger has none.
 func TestListAndStatusReportAnUnreadableStatusDirectory(t *testing.T) {
 	repo, ir := ledger(t)
 	captureText(t, repo, ir, plantedFinding, nil)
-	dir := unreadableStatusDir(t, ir, StateResolved)
+	unreadableStatusDir(t, ir, StateResolved)
 
-	named := func(skipped []SkipRecord) bool {
-		for _, sk := range skipped {
-			if filepath.Base(sk.Path) == filepath.Base(dir) && sk.Layer == SkipLayerRead {
-				return true
-			}
-		}
-		return false
+	named := func(err error) bool {
+		return err != nil && strings.Contains(err.Error(), statusDirName[StateResolved]+"/") &&
+			!strings.Contains(err.Error(), statusDirName[StateWontfix]+"/") && !strings.Contains(err.Error(), repo)
 	}
-	list, err := List(ListRequest{RepoRoot: repo, IssuesRoot: ir})
-	if err != nil {
-		t.Fatal(err)
+	if list, err := List(ListRequest{RepoRoot: repo, IssuesRoot: ir}); !named(err) {
+		t.Fatalf("capture list did not name the unreadable resolved/ alone: %v (%d rows)", err, len(list.Issues))
 	}
-	if !named(list.Skipped) {
-		t.Fatalf("capture list did not name the unreadable %s: %+v", dir, list.Skipped)
-	}
-	if len(list.Skipped) != 1 {
-		t.Fatalf("the absent wontfix/ was reported too: %+v", list.Skipped)
-	}
-	st, err := Status(StatusRequest{RepoRoot: repo, IssuesRoot: ir})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !named(st.Skipped) || st.SkippedCount != 1 {
-		t.Fatalf("capture status did not count the unreadable %s: %+v", dir, st.Skipped)
+	if st, err := Status(StatusRequest{RepoRoot: repo, IssuesRoot: ir}); !named(err) {
+		t.Fatalf("capture status did not name the unreadable resolved/ alone: %v (%d resolved)", err, st.ResolvedCount)
 	}
 }
 
 // A list scoped to resolved/ still reads open/ for the blocked_by projection;
 // an unreadable open/ there leaves every dependent looking unblocked, so the
-// roster names it even though the rows come from another directory.
+// list names it even though the rows come from another directory.
 func TestAScopedListNamesAnUnreadableOpenDirectory(t *testing.T) {
 	repo, ir := ledger(t)
 	if err := os.MkdirAll(filepath.Join(ir, statusDirName[StateResolved]), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	dir := unreadableStatusDir(t, ir, StateOpen)
-	list, err := List(ListRequest{RepoRoot: repo, IssuesRoot: ir, State: StateResolved})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(list.Skipped) != 1 || filepath.Base(list.Skipped[0].Path) != filepath.Base(dir) {
-		t.Fatalf("a resolved/ list did not name the unreadable open/: %+v", list.Skipped)
+	unreadableStatusDir(t, ir, StateOpen)
+	_, err := List(ListRequest{RepoRoot: repo, IssuesRoot: ir, State: StateResolved})
+	if err == nil || !strings.Contains(err.Error(), statusDirName[StateOpen]+"/") {
+		t.Fatalf("a resolved/ list did not name the unreadable open/: %v", err)
 	}
 }

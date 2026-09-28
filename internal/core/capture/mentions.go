@@ -211,8 +211,17 @@ func resolveMentionsRef(repoRoot, want string) (string, error) {
 	}
 	// A ref beginning with '-' would reach git as a flag: argument injection. No
 	// legitimate ref name starts with one.
+	// A ref the caller named and that names nothing is the caller's input to
+	// fix (exit 2 at the surface); a default the repository cannot supply is not.
+	named := strings.TrimSpace(want) != ""
+	refuse := func(err error) error {
+		if named {
+			return refused(err)
+		}
+		return err
+	}
 	if !gitutil.RefIsSafe(ref) {
-		return "", fmt.Errorf("cannot resolve a history to walk: no usable ref (%q)", ref)
+		return "", refuse(fmt.Errorf("cannot resolve a history to walk: no usable ref (%q)", ref))
 	}
 	// The probe's own error is deliberately not wrapped: `--quiet` suppresses
 	// git's stderr, so the cause is a bare "exit status 1" that adds nothing to
@@ -223,7 +232,7 @@ func resolveMentionsRef(repoRoot, want string) (string, error) {
 	// "ambiguous argument", and the advisory dies on the repositories most likely
 	// to need it.
 	if _, err := gitutil.Run(repoRoot, "rev-parse", "--verify", "--quiet", ref+"^{commit}", "--"); err != nil {
-		return "", fmt.Errorf("cannot walk %q: no such commit-ish in this repository", ref)
+		return "", refuse(fmt.Errorf("cannot walk %q: no such commit-ish in this repository", ref))
 	}
 	return ref, nil
 }

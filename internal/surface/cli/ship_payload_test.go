@@ -14,12 +14,14 @@ import (
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
-// shipRenderableRepo is shipReadyRepo plus the two config artefacts a payload
-// render needs: the adr-19 version-location contract (WHERE the version goes)
-// and the payload includes (WHAT ships).
+// shipRenderableRepo is shipReadyRepo plus the config artefacts a payload
+// render needs: the artefact declaration (a plugin), the adr-19
+// version-location contract (WHERE the version goes) and the payload includes
+// (WHAT ships).
 func shipRenderableRepo(t *testing.T) *gittest.Repo {
 	t.Helper()
 	r := shipReadyRepo(t)
+	r.Write(".abcd/config/artefact.json", `{"kind": "plugin"}`+"\n")
 	r.Write(".abcd/config/version-location.json",
 		`{"manifest_path": ".claude-plugin/plugin.json", "json_pointer": "/version"}`+"\n")
 	r.Write(".abcd/config/launch-payload.json",
@@ -332,6 +334,10 @@ func readJSON(t *testing.T, path string) map[string]any {
 func TestLaunchDryRunSanitisesRefusalReasons(t *testing.T) {
 	repo := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(repo, ".abcd", "config"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, ".abcd", "config", "artefact.json"),
+		[]byte(`{"kind": "plugin"}`+"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(repo, ".abcd", "config", "launch-payload.json"),

@@ -11,11 +11,10 @@ It is the write side of the corpus at `~/.abcd/sources/`; `/abcd:consult` is
 the read side and the provenance recorder.
 
 It is a **host-delegated command**: a markdown workflow that runs in the host
-agent, with **no Go verb** behind it. There is no top-level `abcd ingest` verb,
-no bare-status render, and no CLI flags of its own. Every ingest path the binary
-does have belongs to another verb, validates that verb's own input and never
-writes this corpus; the generated CLI reference lists them, so this chapter
-names none of them.
+agent. There is no top-level `abcd ingest` verb, no bare-status render, and no
+CLI flags of its own. The write it ends in is the source verb's add
+([`33-source.md`](33-source.md)), which stores and classifies what the host hands
+it and fetches and converts nothing.
 
 
 **Typing it at the CLI gets a second line that misdirects.** `abcd ingest` exits
@@ -48,19 +47,22 @@ format-checked.
 
 ## What it does
 
-The work is split. The corpus's own registrar script does the deterministic
-half: fetch, convert, store, guard the ledger. The command supplies the
-judgement half, in five steps.
+The work is split. The source verb's add does the deterministic half: store the
+document and its text under the class folder, write the entry, commit the corpus.
+The command supplies the judgement half, fetching and converting included, in
+five steps.
 
 1. **Read the document first**, then extract the exact title, authors
    (`Family, Given`), year, venue, canonical URL, and CSL type.
 2. **Decide class and key.** Web content is public by default; the signals for
    confidential are the user's own unpublished work, internal or NDA material,
-   AI-generated content, and a private repo's documentation. The key is
-   `<authorfamily><year><distinctiveword>`, checked for uniqueness against the
-   corpus metadata.
-3. **Register** through the corpus registrar. A URL alone is enough: the script
-   fetches and stores the page.
+   AI-generated content, and a private repo's documentation. A public key is
+   `<authorfamily><year><distinctiveword>`; a confidential key is opaque, because
+   the key is the one handle every refusal and scan prints. The verb refuses a
+   duplicate key.
+3. **Register** through the source verb's add, with the class declared and the
+   identifying strings in a metadata file rather than on the command line. A
+   URL alone registers a metadata stub.
 4. **Quality-check the extraction.** Inspect the stored text for a sane word
    count and real prose, and repair the known failure modes by hand rather than
    leaving a stub that reads as a source.
@@ -69,7 +71,8 @@ judgement half, in five steps.
    inherits the class by location, record an influence edge if a live decision
    motivated the ingest, and tell the user the key and class.
 
-If the corpus is absent, the command says so and stops. It never creates it.
+If the corpus is absent (`abcd source` exits 3), the command says so and stops.
+It never creates it.
 
 ## Confidentiality contract
 
@@ -100,15 +103,15 @@ they influenced. Both share the confidentiality guard and the store.
 
 The command prefers explicit registrar flags because it has better metadata in
 hand than a bare fetch would. There is **no one-argument quick path** into the
-registrar: no binary sub-verb and no repo-shipped script provides one, so where
-a reader finds such a command it is an operator-local convenience outside the
-corpus contract.
+registrar: the source verb's add requires the key and the class, so where a reader
+finds such a command it is an operator-local convenience outside the corpus
+contract.
 
 ## References
 
 - Plugin command: [`commands/ingest.md`](../../../../commands/ingest.md)
 - Read side of the same corpus: [`13-consult.md`](13-consult.md)
-- Corpus contract: `~/.abcd/sources/README.md`
+- The verb behind the write, and the corpus contract: [`33-source.md`](33-source.md)
 
 <!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
 

@@ -71,8 +71,70 @@ _None open._
 
 ## Audit Notes
 
-<!-- abcd-review: OWED receipt=rcp-2e848c471a09 -->
-Fidelity review OWED (receipt rcp-2e848c471a09).
+<!-- abcd-review: INGESTED receipt=rcp-2e848c471a09 -->
+Fidelity review — receipt rcp-2e848c471a09 (verifier intent-auditor claude-fable-5-1).
+
+Provenance: intent-auditor@claude-fable-5-1 · rubric_hash sha256:effa65b3e9e88ff29433b443ec2be159522a8b0b71cf1434526514aa61edb13e · prompt_hash sha256:db1fb13e6920b3bc6ba25cd8ce987662648bdc1d6cf5ce1ea5f9c67bc4bbbd82
+Input attestations: diff:internal/core/lab, internal/surface/cli/lab.go, commands/lab.md and intents/disciplines/itd-2609251624540864 at chore/audit-run-a-1 5b4a43b6 (git ls-tree -r; spc-2609212141418943 closed, itd-2609212137128014 shipped)@sha256:fba4544c04fa39af51fde0aabe9789398732117e51dee5531efbca65bc59499d;
+
+Acceptance rollup: MET 5 · MET_WITH_CONCERNS 1 · NOT_MET 0 · INCONCLUSIVE 0
+
+Per-criterion verdicts:
+- ac-1 — MET: Mint lays the lab home under ~/.abcd/lab/< root-sha>/ with one registry line, a detached snapshot at the pin, INTENTION.md carrying snapshot_pin and the lifecycle sections; the test asserts the registry line, the snapshot HEAD equals the pin, no remote, and git status --porcelain --ignored of the repository is empty afterwards
+  evidence: internal/core/lab/lab.go:9 — "// ~/.abcd/lab/< root-sha>/index.jsonl one registry line per lab"
+  evidence: internal/core/lab/mint.go:35 — "func Mint(repoRoot, question, pin string) (Minted, error) {"
+  evidence: internal/core/lab/mint.go:107 — "if _, err := gitutil.Run(snap, "checkout", "--quiet", "--detach", e.Pin); err != nil {"
+  evidence: internal/core/lab/lab_test.go:106 — "func TestMintLaysDownALabAndWritesNothingInTheRepo(t *testing.T) {"
+  evidence: internal/core/lab/lab_test.go:147 — "if got := r.Git("status", "--porcelain", "--ignored"); got != "" {"
+- ac-2 — MET: Preflight runs the harness-isolation checks (home, snapshot, remotes, hooks) and the dual-binary checks (work, pinned, test), writes state/preflight.md and .json, and on any failure halts with ErrHalted naming the failed check ids and recording a gate finding; the test asserts the halt names binary.work, the artefact records both groups, and Record refuses while halted
+  evidence: internal/core/lab/preflight.go:31 — "GroupIsolation = "harness-isolation""
+  evidence: internal/core/lab/preflight.go:68 — "func Preflight(repoRoot, id string) (Preflighted, error) {"
+  evidence: internal/core/lab/preflight.go:128 — "return res, fmt.Errorf("%w: the preflight refused %s; recorded as %s in %s", ErrHalted, strings.Join(failed, ", "), fid, l.display(findingsName))"
+  evidence: internal/core/lab/lab_test.go:234 — "func TestPreflightHaltsNamingTheFailedCheckAndRecordsIt(t *testing.T) {"
+- ac-3 — MET: Sweep searches every retracted literal across the lab's own documents, lists every instance by file and line, and an unapplied or unreadable correction fails the sweep with a halt; the test plants two retractions and asserts the instances in findings.md and review-1-triage.md are listed while probe stdout and the snapshot are not, and the sweep halts
+  evidence: internal/core/lab/sweep.go:109 — "// Sweep verifies every correction the lab recorded is applied: each retracted"
+  evidence: internal/core/lab/sweep.go:118 — "func Sweep(repoRoot, id string) (Swept, error) {"
+  evidence: internal/core/lab/lab_test.go:505 — "func TestSweepListsEveryInstanceAndFailsOnAnUnappliedCorrection(t *testing.T) {"
+- ac-4 — MET: Harvest assembles the lifeboat's sections from the intention, the findings and the probe records, refuses and writes nothing on a finding no record backs, and lists each product finding as a capture candidate carrying the abcd capture command; the tests cover the assembled shape with probe citations and the refusal
+  evidence: internal/core/lab/harvest.go:65 — "func Harvest(repoRoot, id string) (Harvested, error) {"
+  evidence: internal/core/lab/harvest.go:127 — "Command: "abcd capture " + shellQuote(f.Title) + " --found-during " + shellQuote(found),"
+  evidence: internal/core/lab/harvest.go:135 — "return res, fmt.Errorf("%w: %d finding citation(s) cannot be verified from the lab's records; nothing was written", ErrHalted, len(res.Gaps))"
+  evidence: internal/core/lab/lab_test.go:661 — "func TestHarvestAssemblesTheLifeboatShapeCitingProbes(t *testing.T) {"
+  evidence: internal/core/lab/lab_test.go:733 — "func TestHarvestRefusesAFindingItsRecordsCannotBackAndWritesNothing(t *testing.T) {"
+- ac-5 — MET_WITH_CONCERNS: haltAndRecord writes a gate finding and marks the lab halted so no probe is recorded until the gate passes, and a repeated refusal reuses its finding; the concern is reach: the verb enforces this for its own two gates (preflight, sweep) and the harvest's citation gaps only, while a refusal by the world's own gates during the mutate stage or a STOP condition is the discipline record's rule with nothing mechanical behind it, since the verb runs nothing inside the snapshot
+  evidence: internal/core/lab/findings.go:145 — "// haltAndRecord is the lab rule a gate refusal enforces: the refusal is written"
+  evidence: internal/core/lab/findings.go:137 — "for _, g := range []string{"preflight", "sweep"} {"
+  evidence: internal/core/lab/lab_test.go:272 — "// Halted, the lab records no probe: the refusal is not adapted around."
+  evidence: .abcd/development/intents/disciplines/itd-2609251624540864-a-lab-runs-one-procedure-from-intention-to-discard-and-every.md:172 — "- **Given** a gate refusal or a STOP condition during a lab, **when** it occurs,"
+  evidence: commands/lab.md:60 — "The verb runs nothing:"
+- ac-6 — MET: the discipline record itd-2609251624540864 states the six-stage procedure in present tense as the rule every lab inherits, with the amendments the hand-run labs earned folded in and a BDD gate section; no agent-harness name appears in it
+  evidence: .abcd/development/intents/disciplines/itd-2609251624540864-a-lab-runs-one-procedure-from-intention-to-discard-and-every.md:5 — "kind: discipline"
+  evidence: .abcd/development/intents/disciplines/itd-2609251624540864-a-lab-runs-one-procedure-from-intention-to-discard-and-every.md:20 — "A lab is a throwaway world pinned at one commit, run to answer one question. It"
+  evidence: .abcd/development/intents/disciplines/itd-2609251624540864-a-lab-runs-one-procedure-from-intention-to-discard-and-every.md:164 — "## The gate"
+
+Gap audit:
+- honoured:
+  - the five-verb family is wired on the CLI and the plugin page
+    evidence: internal/surface/cli/lab.go:60 — "Use: "mint < question>","
+    evidence: internal/surface/cli/lab.go:200 — "Use: "harvest < lab-id>","
+    evidence: commands/lab.md:28 — ""${CLAUDE_PLUGIN_ROOT}/abcd" lab mint --json "< question>""
+  - no lab verb writes into the repository; evidence stays at operator level
+    evidence: internal/core/lab/lab_test.go:147 — "if got := r.Git("status", "--porcelain", "--ignored"); got != "" {"
+    evidence: commands/lab.md:11 — "**no lab verb writes into"
+  - the procedure is a discipline record
+    evidence: .abcd/development/intents/disciplines/itd-2609251624540864-a-lab-runs-one-procedure-from-intention-to-discard-and-every.md:16 — "# A lab runs one procedure from intention to discard"
+- diverged:
+  - halt-and-record on a gate refusal as a lab rule the verb enforces
+    evidence: internal/core/lab/findings.go:137 — "for _, g := range []string{"preflight", "sweep"} {"
+    evidence: commands/lab.md:60 — "The verb runs nothing:"
+- missing: (none)
+
+Scope-condition dispositions:
+- cond-2609212141418357 — survived: the store is ~/.abcd/lab/< root-sha>/ keyed on the root commit like the other machine-scoped stores, and the mint test proves the repository top level and status are untouched
+  evidence: internal/core/lab/lab.go:6 — "// The store is machine-scoped and keyed on the repository's root commit, the way"
+  evidence: internal/core/lab/lab.go:49 — "const storeRelPath = ".abcd/lab""
+  evidence: internal/core/lab/lab_test.go:152 — "t.Errorf("repository top level changed: %d entries before, %d after", len(before), len(after))"
+- cond-2609212141414079 — untested: nothing in the lab package runs or checks a real-session smoke stage; the only mention is a fixture finding title in the harvest test
 
 ## Grounds
 

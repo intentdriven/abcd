@@ -115,8 +115,87 @@ _None open; the four this record carried were operational and are answered by wh
 
 ## Audit Notes
 
-<!-- abcd-review: OWED receipt=rcp-f3f5495f519e -->
-Fidelity review OWED (receipt rcp-f3f5495f519e).
+<!-- abcd-review: INGESTED receipt=rcp-f3f5495f519e -->
+Fidelity review — receipt rcp-f3f5495f519e (verifier intent-auditor claude-fable-5-1).
+
+Provenance: intent-auditor@claude-fable-5-1 · rubric_hash sha256:effa65b3e9e88ff29433b443ec2be159522a8b0b71cf1434526514aa61edb13e · prompt_hash sha256:fe668f0ff8a49b54b541d71193702b9a2e7a70f0834d839d33ae89ed0ecdb3e0
+Input attestations: diff:internal/core/memory, internal/surface/cli, commands/memory.md and .abcd/work/issues/open at chore/audit-run-a-1 80b44890 (git ls-tree -r; spc-2609211905174684 closed with criteria 3, 10, 11, 12 declared out of scope)@sha256:ac58bb5ee41ee25ad15be29a66180b35651db93a7b764206dcbbf6361f98ce0f;
+
+Acceptance rollup: MET 5 · MET_WITH_CONCERNS 4 · NOT_MET 4 · INCONCLUSIVE 0
+
+Per-criterion verdicts:
+- ac-1 — MET: DetectLicence reads an SPDX header, then a manifest or LICENSE file, and ingest writes the result as the page's licence; the original is copied under sources/ only when KeepOriginal is set; the registry at .abcd/memory/.sources_index.json is keyed by content hash and its entry's consumers map is written under the memory key
+  evidence: internal/core/memory/provenance.go:302 — "// DetectLicence detects the licence of a source. Priority: in-file SPDX header,"
+  evidence: internal/core/memory/ingest.go:227 — "if req.KeepOriginal {"
+  evidence: internal/core/memory/provenance.go:46 — "return filepath.Join(Dir(repoRoot), ".sources_index.json")"
+  evidence: internal/core/memory/ingest.go:170 — "memoryConsumer, _ = consumers["memory"].(map[string]any)"
+  evidence: internal/core/memory/ingest.go:205 — "ContentHash: contentHash, Consumer: "memory", SourceClass: sourceClass,"
+- ac-2 — MET_WITH_CONCERNS: ask returns AskCitation values carrying class, citation and source_hash copied from the page's source block, and reads only distilled pages, never a kept original; the concern is that no path in ask prompts a re-ingest when the original is needed — the only re-ingest suggestion in the package is lint's MQ003 fix text
+  evidence: internal/core/memory/ask.go:30 — "type AskCitation struct {"
+  evidence: internal/core/memory/ask.go:33 — "SourceHash string `json:"source_hash"`"
+  evidence: internal/core/memory/lint.go:446 — "fix := "Re-ingest the source (or backfill `source_token_count` in `.sources_index.json`).""
+- ac-3 — NOT_MET: disembark packs the record families by path and reads neither source.licence nor a kept original, so nothing refuses to surface .abcd/memory/sources/< sha256>.< ext> against the launch allowlist; the spec declares criterion 3 out of scope and the gap is the open issue iss-2609211905347458
+  evidence: .abcd/work/issues/open/iss-2609211905347458-the-lifeboat-s-restrictive-licence-gate-does-not-read-a-kept-memory-original.md:16 — "The lifeboat restrictive-licence gate does not read a kept memory original."
+  evidence: .abcd/development/specs/closed/spc-2609211905174684-memory-unification.md:44 — "criteria 3,"
+- ac-4 — MET: the quotation budget's MaxContiguousQuoteWords is 150 and lint emits MQ001 at the offending span's line when a contiguous quoted span exceeds it, with a test on the budget
+  evidence: internal/core/memory/coverage.go:44 — "MaxContiguousQuoteWords: 150,"
+  evidence: internal/core/memory/lint.go:432 — "l.emit("MQ001","
+  evidence: internal/core/memory/memory_test.go:326 — "func TestLintQuotationBudgetMQ001(t *testing.T) {"
+- ac-5 — MET_WITH_CONCERNS: the corpus pass computes deduplicated cumulative coverage per source hash and emits MQ002 as a blocker at or over the 25% CumulativeBlockPct, which fails the lint's exit until pages are rewritten; the concern is that only unambiguous single-source coverage blocks — the same coverage driven by ambiguous multi-source attribution is capped at warn — and the refusal is the blocker exit rather than a per-quotation-block refusal
+  evidence: internal/core/memory/coverage.go:47 — "CumulativeBlockPct: 0.25,"
+  evidence: internal/core/memory/lint.go:539 — "Code: "MQ002", Severity: "blocker", File: indexPath,"
+  evidence: internal/core/memory/lint.go:546 — "Code: "MQ002", Severity: "warn", File: indexPath,"
+- ac-6 — MET: a page whose sources resolve to one class emits MS001 at severity info, which the exit contract says never affects exit
+  evidence: internal/core/memory/lint.go:61 — ""MS001": "info","
+  evidence: internal/core/memory/lint.go:352 — "l.emit("MS001","
+  evidence: internal/core/memory/lint.go:727 — "Exit contract: blockers exit nonzero; warnings are curator-advisory (exit 0, non-blocking); infos never affect exit."
+- ac-7 — MET: a page mixing source classes with no weighting_note emits MS002 at severity blocker, so the lint exits non-zero until the note is added
+  evidence: internal/core/memory/lint.go:62 — ""MS002": "blocker","
+  evidence: internal/core/memory/lint.go:359 — "l.emit("MS002","
+- ac-8 — MET: an external source with no licence field emits ML001 at severity blocker on both the single-source and the plural-sources shapes, the message states that an explicit unknown is acceptable and a missing field is the violation, and the schema refuses an empty licence string; tests cover the plural-class and whitespace shapes
+  evidence: internal/core/memory/lint.go:63 — ""ML001": "blocker","
+  evidence: internal/core/memory/lint.go:385 — "l.emit("ML001","
+  evidence: internal/core/memory/schema.go:182 — "licence must be a non-empty string (explicit 'unknown' is acceptable)"
+  evidence: internal/core/memory/licence_plural_classes_test.go:44 — "func TestLicenceGateReadsPluralSourceClasses(t *testing.T) {"
+- ac-9 — MET_WITH_CONCERNS: backfillLegacy rewrites a flat pre-itd-36 page's frontmatter in place with source.class session_memory and never renames the file, and the bare verb renders index.md over the pages it finds; the concern is the trigger — the criterion names /abcd:ahoy, and ahoy has no memory step, so the backfill runs when a memory verb touches the store
+  evidence: internal/core/memory/writer.go:481 — "func backfillLegacy(mem string) ([]string, error) {"
+  evidence: internal/core/memory/schema.go:41 — "const backfillSourceClass = "session_memory""
+  evidence: internal/core/memory/bare.go:93 — ""index.md": RenderIndex(infos),"
+  evidence: internal/core/memory/backfill_preamble_test.go:120 — "func TestBackfillLegacyStillBackfillsGenuineLegacyPages(t *testing.T) {"
+  evidence: internal/core/ahoy/gitignore.go:39 — ""public": {"/.abcd/", "/memory/"},"
+- ac-10 — NOT_MET: no dredge synthesiser writes dredge_synthesis pages into the memory store; the spec declares criterion 10 out of scope and the gap is the open issue iss-2609211905340006
+  evidence: .abcd/work/issues/open/iss-2609211905340006-dredge-synthesis-output-lands-in-the-memory-store-as-its-own-source-class.md:3 — "id: "iss-2609211905340006""
+  evidence: .abcd/development/specs/closed/spc-2609211905174684-memory-unification.md:45 — "10, 11 and 12 are the out-of-scope items"
+- ac-11 — NOT_MET: the registry is written by memory ingest alone; no loot consumer shares it and no ingest_count of 2 with both keys can arise; the spec declares criterion 11 out of scope and the gap is the open issue iss-2609211905346507
+  evidence: .abcd/work/issues/open/iss-2609211905346507-one-registry-entry-for-a-source-ingested-as-documentation-and-vendored-as-code.md:3 — "id: "iss-2609211905346507""
+  evidence: internal/core/memory/ingest.go:205 — "ContentHash: contentHash, Consumer: "memory", SourceClass: sourceClass,"
+- ac-12 — NOT_MET: no disembark gate compares a citation's licence with the project's, and no --accept-licence-risk override exists anywhere under internal/; the spec declares criterion 12 out of scope and the open issue iss-2609211905347458 names the GPL-3.0-against-MIT refusal as wanted
+  evidence: .abcd/work/issues/open/iss-2609211905347458-the-lifeboat-s-restrictive-licence-gate-does-not-read-a-kept-memory-original.md:16 — "refuse a gated payload carrying a GPL-3.0 citation when the project publishes as MIT"
+- ac-13 — MET_WITH_CONCERNS: the page schema fails closed on any key outside it, so a known_failure_modes field cannot enter memory frontmatter without a schema change; the concern is that the criterion describes a proposal-review boundary, and no gate reviews proposals — the schema is the only mechanical form of the rejection
+  evidence: internal/core/memory/schema.go:425 — "DistilledPage carries unknown key(s) %v — the boundary fails closed on keys outside the schema"
+
+Gap audit:
+- honoured:
+  - ingest detects the licence, keeps no original unless asked, and registers the source under the memory consumer
+    evidence: internal/core/memory/ingest.go:227 — "if req.KeepOriginal {"
+  - the five lint codes with their promised severities
+    evidence: internal/core/memory/lint.go:58 — ""MQ001": "warn","
+  - legacy flat pages are backfilled in place, never renamed
+    evidence: internal/core/memory/writer.go:481 — "func backfillLegacy(mem string) ([]string, error) {"
+- diverged:
+  - MQ002 refuses any further quotation block from an over-budget source
+    evidence: internal/core/memory/lint.go:546 — "Code: "MQ002", Severity: "warn", File: indexPath,"
+  - the backfill runs under /abcd:ahoy
+    evidence: internal/core/memory/bare.go:93 — ""index.md": RenderIndex(infos),"
+  - ask prompts a re-ingest when the original is needed
+    evidence: internal/core/memory/lint.go:446 — "fix := "Re-ingest the source (or backfill `source_token_count` in `.sources_index.json`).""
+- missing:
+  - the disembark restrictive-licence gate over kept originals and licence mismatches (criteria 3 and 12)
+    evidence: .abcd/work/issues/open/iss-2609211905347458-the-lifeboat-s-restrictive-licence-gate-does-not-read-a-kept-memory-original.md:16 — "The lifeboat restrictive-licence gate does not read a kept memory original."
+  - dredge synthesis pages in the memory store (criterion 10)
+    evidence: .abcd/work/issues/open/iss-2609211905340006-dredge-synthesis-output-lands-in-the-memory-store-as-its-own-source-class.md:3 — "id: "iss-2609211905340006""
+  - one registry shared by memory and loot (criterion 11)
+    evidence: .abcd/work/issues/open/iss-2609211905346507-one-registry-entry-for-a-source-ingested-as-documentation-and-vendored-as-code.md:3 — "id: "iss-2609211905346507""
 
 ## References
 

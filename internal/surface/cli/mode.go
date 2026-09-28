@@ -43,6 +43,11 @@ func newModeCommand(asJSON *bool) *cobra.Command {
 			"the local-ephemeral tier — can hold it; elsewhere the set refuses and creates\n" +
 			"nothing. The next status-line refresh and the bare `abcd` board read the\n" +
 			"same file.\n\n" +
+			"The guard holds the agent to it: a question through the host's question\n" +
+			"tool is refused while the state reads `managed`, and once the state names\n" +
+			"somebody the question runs and is marked open. The next human message is\n" +
+			"its answer, so the prompt hook resets the state to `managed` and says so\n" +
+			"once on stderr. A state set by hand with no question open is left as it is.\n\n" +
 			"Where this machine has no status surface — no `~/.abcd/statusline.json`, or\n" +
 			"one with `disabled` set — the set form prints one line naming whose answer\n" +
 			"is owed, once, because the verb call is the stop. Setting `managed` owes\n" +
@@ -123,9 +128,9 @@ func statusSurfaceInstalled() bool {
 // answerOwedNotice is the one line the set form prints where there is no
 // status surface: "" for a state that owes nobody an answer.
 func answerOwedNotice(st mode.State) string {
-	who := st.Addressee()
-	if who == "" {
+	waiting := st.WaitingOn()
+	if waiting == "" {
 		return ""
 	}
-	return "abcd: waiting on the " + who + " — an answer is owed"
+	return "abcd: " + waiting + " — an answer is owed"
 }

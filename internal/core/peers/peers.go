@@ -96,6 +96,10 @@ type Peer struct {
 	Rows    []Row  `json:"rows"`
 
 	holdings holdings
+	// unjudged marks a NotRead peer whose holding is unknown — it could hold
+	// any record — rather than one that holds none of this repository's
+	// (another repository, or no records at the committed layout).
+	unjudged bool
 }
 
 // Skip reasons: a spent peer contributes no rows and is counted instead.

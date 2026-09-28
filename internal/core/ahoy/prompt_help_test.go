@@ -1,0 +1,123 @@
+package ahoy
+
+import (
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"testing"
+)
+
+// choiceRecordingPrompter approves every confirm, answers the visibility
+// question private (so the conditional deep-scan question is reached), takes
+// the default everywhere else, and keeps every value question it was asked
+// together with the choices it was offered.
+type choiceRecordingPrompter struct {
+	asked map[string][]string
+}
+
+func (p *choiceRecordingPrompter) Confirm(string) bool { return true }
+
+func (p *choiceRecordingPrompter) Prompt(key string, choices []string, def string) string {
+	p.asked[key] = append([]string(nil), choices...)
+	if key == "visibility" {
+		return "private"
+	}
+	return def
+}
+
+// TestEveryInstallQuestionCarriesPlainLanguageHelp is iss-163's detector: a
+// question core asks with bare enum values leaves the front door to invent
+// what each answer means, and an invented description can be wrong or
+// circular. It drives a real first install that reaches every value question
+// core has — the three required configuration values, the conditional
+// deep-scan question, the house-style question and the status-line element
+// switches — and holds each one to canonical help: what is being decided, and
+// a meaning for every choice offered, that is more than the value restated.
+func TestEveryInstallQuestionCarriesPlainLanguageHelp(t *testing.T) {
+	setupHermetic(t)
+	harnessFixture(t, harnessSettingsWith(""))
+	// Deep scanning is only asked about when trufflehog is on PATH; keep the
+	// rest of PATH so git still resolves.
+	th := t.TempDir()
+	if err := os.WriteFile(filepath.Join(th, "trufflehog"), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", th+string(os.PathListSeparator)+os.Getenv("PATH"))
+	repo := t.TempDir()
+	idMustGit(t, repo, "init")
+
+	p := &choiceRecordingPrompter{asked: map[string][]string{}}
+	if _, err := Install(repo, InstallOptions{}, p); err != nil {
+		t.Fatal(err)
+	}
+
+	// The drive must actually reach every family of question, or a passing run
+	// would say nothing about the one it skipped.
+	for _, want := range []string{"visibility", "docs_target", "oracle_backend", "scan_deep", emDashPromptKey, elementPromptPrefix + "repo"} {
+		if _, ok := p.asked[want]; !ok {
+			keys := make([]string, 0, len(p.asked))
+			for k := range p.asked {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+			t.Fatalf("the install never asked %q, so its help is untested; asked %v", want, keys)
+		}
+	}
+
+	for key, choices := range p.asked {
+		h, ok := HelpFor(key)
+		if !ok {
+			t.Errorf("%s: no canonical help, so a front door must invent what the question means", key)
+			continue
+		}
+		if h.Key != key {
+			t.Errorf("%s: help is keyed %q", key, h.Key)
+		}
+		if len(strings.Fields(h.About)) < 8 {
+			t.Errorf("%s: About %q does not say what is being decided", key, h.About)
+		}
+		if len(h.Choices) != len(choices) {
+			t.Errorf("%s: help explains %d choices, the question offers %d (%v)", key, len(h.Choices), len(choices), choices)
+		}
+		for _, c := range choices {
+			m := h.Meaning(c)
+			if len(strings.Fields(m)) < 5 {
+				t.Errorf("%s=%s: meaning %q is missing or too thin to explain the answer", key, c, m)
+			}
+			if strings.EqualFold(strings.TrimSpace(m), c) {
+				t.Errorf("%s=%s: meaning only restates the value", key, c)
+			}
+		}
+	}
+}
+
+// TestOracleHelpDefinesTheOracleAndItsCosts pins the specific gap iss-163
+// names: the backend question must say what an oracle is, and every answer
+// must state what it asks of the person (keys, tools, cost), not only its name.
+func TestOracleHelpDefinesTheOracleAndItsCosts(t *testing.T) {
+	h, ok := HelpFor("oracle_backend")
+	if !ok {
+		t.Fatal("no help for oracle_backend")
+	}
+	if !strings.Contains(h.About, "oracle") || !strings.Contains(h.About, "AI model") {
+		t.Errorf("About does not define an oracle: %q", h.About)
+	}
+	for _, c := range oracleBackendChoices {
+		m := h.Meaning(c)
+		if !strings.Contains(m, "cost") && !strings.Contains(m, "billed") && !strings.Contains(m, "key") {
+			t.Errorf("%s: meaning states no consequence (cost, credentials): %q", c, m)
+		}
+	}
+}
+
+// TestHelpForUnknownKeyIsAbsent keeps the lookup honest: a key core does not
+// ask about has no help, so a front door renders nothing rather than a guess.
+func TestHelpForUnknownKeyIsAbsent(t *testing.T) {
+	if _, ok := HelpFor("no_such_question"); ok {
+		t.Fatal("HelpFor invented help for an unknown key")
+	}
+	if _, ok := HelpFor(elementPromptPrefix + "no_such_element"); ok {
+		t.Fatal("HelpFor invented help for an unknown status-line element")
+	}
+}

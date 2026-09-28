@@ -21,6 +21,17 @@ import (
 // a re-run with zero required+resolvable gaps writes nothing and reports
 // "already_up_to_date".
 func Install(cwd string, opts InstallOptions, p Prompter) (InstallResult, error) {
+	res, err := install(cwd, opts, p)
+	if err != nil {
+		return res, err
+	}
+	res.explain()
+	return res, nil
+}
+
+// install is Install without the person-facing summary, which Install composes
+// once over whichever of the several outcomes below was reached.
+func install(cwd string, opts InstallOptions, p Prompter) (InstallResult, error) {
 	abs, err := filepath.Abs(cwd)
 	if err != nil {
 		return InstallResult{}, err
@@ -175,6 +186,9 @@ func Install(cwd string, opts InstallOptions, p Prompter) (InstallResult, error)
 	ac.stepRules()
 	ac.stepVersionStamp()
 	ac.stepIdentityPin()
+	// After every step that asks its questions first: the kind is the last
+	// answer a piped install gives (itd-2609150819432059).
+	ac.stepArtefact()
 	// Last, because it describes the entry the steps above actually wrote.
 	ac.noteReachability()
 
@@ -203,6 +217,7 @@ func Install(cwd string, opts InstallOptions, p Prompter) (InstallResult, error)
 		DeclinedCategories: declined,
 		Notes:              ac.notes,
 		OptionalSkipped:    optionalSkipped(opts, final.Gaps),
+		writeKinds:         ac.writeKinds,
 	}, nil
 }
 
@@ -302,13 +317,15 @@ func adoptedBinTarget(pluginRoot string) string {
 // applyCtx threads the approved-category set and accumulated writes through the
 // ordered apply steps.
 type applyCtx struct {
-	cwd         string
-	det         DetectionResult
-	approved    map[GapCategory]bool
-	overrides   map[string]string
-	prompter    Prompter
-	gapPresent  map[string]bool
-	writes      []string
+	cwd        string
+	det        DetectionResult
+	approved   map[GapCategory]bool
+	overrides  map[string]string
+	prompter   Prompter
+	gapPresent map[string]bool
+	writes     []string
+	// writeKinds runs parallel to writes: what each write is, for the summary.
+	writeKinds  []writeKind
 	changes     []string // human-readable value changes an explicit override forced
 	notes       []string // loud refusals: what abcd deliberately did not do, and why
 	autoYes     bool     // --yes: every category auto-approved without interaction
@@ -399,13 +416,21 @@ func (a *applyCtx) stepIdentityPin() {
 	if a.autoYes || !a.approved[ConfigChange] || !a.has(OptionalPinGapID) {
 		return
 	}
+	// Each way of recording nothing is said, not dropped (iss-2609260057127611).
 	eff, err := identity.EffectiveIdentity(a.cwd)
-	if err != nil || eff.Name == "" || eff.Email == "" {
+	if err != nil {
+		a.refuse("did not record who commits to this repository in " + identity.PinRelPath + ": git's user.name and user.email could not be read: " + errText(err))
 		return
 	}
-	if err := identity.WritePin(a.cwd, identity.Pin{Name: eff.Name, Email: eff.Email}); err == nil {
-		a.note(identity.PinRelPath)
+	if eff.Name == "" || eff.Email == "" {
+		a.refuse("did not record who commits to this repository in " + identity.PinRelPath + ": git has no user.name and user.email set here; set them and run abcd ahoy install again")
+		return
 	}
+	if err := identity.WritePin(a.cwd, identity.Pin{Name: eff.Name, Email: eff.Email}); err != nil {
+		a.refuse("could not record who commits to this repository in " + identity.PinRelPath + ": " + errText(err))
+		return
+	}
+	a.note(writeIdentityPin, identity.PinRelPath)
 }
 
 func (a *applyCtx) has(id string) bool { return a.gapPresent[id] }
@@ -453,9 +478,11 @@ func (a *applyCtx) stepSkeleton() {
 		return
 	}
 	cfg := map[string]any{"meta": map[string]any{"schema_version": 1}}
-	if err := writeConfig(a.cwd, cfg); err == nil {
-		a.note(configPath(a.cwd))
+	if err := writeConfig(a.cwd, cfg); err != nil {
+		a.refuse("could not write the starter settings file .abcd/config.json: " + errText(err))
+		return
 	}
+	a.note(writeSettings, configPath(a.cwd))
 }
 
 // stepConfigValues collects and persists the four config values. Returns nil on
@@ -564,7 +591,7 @@ func (a *applyCtx) stepConfigValues() *InstallConfig {
 		a.rollbackForced()
 		return nil
 	}
-	a.note(configPath(a.cwd))
+	a.note(writeSettings, configPath(a.cwd))
 	return ic
 }
 
@@ -705,17 +732,22 @@ func (a *applyCtx) stepVisibility(cfg *InstallConfig) {
 		return
 	}
 	wrote, err := applyVisibilityBlock(a.cwd, cfg.Visibility)
-	if err == nil && wrote {
-		a.note(filepath.Join(a.cwd, ".gitignore"))
+	if err != nil {
+		// Said, not dropped (iss-2609260057127611): without the block git is not
+		// told which abcd files stay on this machine.
+		a.refuse("could not write abcd's block into .gitignore: " + errText(err) + "; git is not told which abcd files stay on this machine")
+		return
+	}
+	if wrote {
+		a.note(writeGitignore, filepath.Join(a.cwd, ".gitignore"))
 	}
 	// A narrowed public fence is said out loud (iss-255): the reader must learn
 	// that the committed record tiers stay published, from the receipt rather
-	// than from a later surprise in git status. Gated on the write succeeding —
-	// a refused .gitignore holds no fence, and the note must not assert one.
-	if err == nil {
-		if _, narrowed := effectiveVisibilityEntries(a.cwd, cfg.Visibility); narrowed {
-			a.refuse("visibility is public, but .abcd/ holds tracked files — an ignore rule cannot untrack committed records, so the .abcd/ fence covers only the local tier (.abcd/.work.local/; the memory/ snapshot fence is kept) and the committed record tiers remain published")
-		}
+	// than from a later surprise in git status. Reached only when the write
+	// succeeded — a refused .gitignore holds no fence, and the note must not
+	// assert one.
+	if _, narrowed := effectiveVisibilityEntries(a.cwd, cfg.Visibility); narrowed {
+		a.refuse("visibility is public, but .abcd/ holds tracked files — an ignore rule cannot untrack committed records, so the .abcd/ fence covers only the local tier (.abcd/.work.local/; the memory/ snapshot fence is kept) and the committed record tiers remain published")
 	}
 }
 
@@ -733,16 +765,17 @@ func (a *applyCtx) stepHistory() {
 	if !a.approved[UserState] && !a.approved[SafeAutocreate] {
 		return
 	}
-	if a.approved[UserState] || a.approved[SafeAutocreate] {
-		if wrote, err := bootstrapHistory(); err == nil && wrote {
-			if root, e := historyRoot(); e == nil {
-				a.note(filepath.Join(root, "index.json"))
-			}
-		}
-	}
+	// Like every install write, a store it could not create is a note naming
+	// the store and the reason, never a silent omission.
 	root, err := historyRoot()
 	if err != nil {
+		a.refuse("could not set up this machine's session store: " + errText(err))
 		return
+	}
+	if wrote, err := bootstrapHistory(); err != nil {
+		a.refuse("could not set up this machine's session store (" + displayPath(root) + "): " + errText(err))
+	} else if wrote {
+		a.note(writeSessionStore, filepath.Join(root, "index.json"))
 	}
 	sha := a.det.RepoIdentity.RootSHA
 	if sha == "" {
@@ -750,8 +783,11 @@ func (a *applyCtx) stepHistory() {
 	}
 	repoDir := filepath.Join(root, sha)
 	store, storeErr := history.Resolve(a.cwd, sha)
-	if storeErr == nil && a.approved[SafeAutocreate] {
-		a.note(store.Records)
+	switch {
+	case storeErr != nil && a.approved[SafeAutocreate]:
+		a.refuse("could not set up this machine's session store for this repository: " + errText(storeErr))
+	case storeErr == nil && a.approved[SafeAutocreate]:
+		a.note(writeSessionStore, store.Records)
 	}
 	metaPath := filepath.Join(repoDir, "meta.json")
 	if a.approved[UserState] && !fileExists(metaPath) {
@@ -765,8 +801,10 @@ func (a *applyCtx) stepHistory() {
 			"github":      a.det.RepoIdentity.Github,
 			"corpus":      map[string]any{"transcripts": corpus},
 		}
-		if err := writeJSON(metaPath, meta); err == nil {
-			a.note(metaPath)
+		if err := writeJSON(metaPath, meta); err != nil {
+			a.refuse("could not register this repository on this machine (" + displayPath(metaPath) + "): " + errText(err))
+		} else {
+			a.note(writeSessionStore, metaPath)
 		}
 	}
 	if a.approved[UserState] {
@@ -777,7 +815,7 @@ func (a *applyCtx) stepHistory() {
 		// it reads, so registerRepo's rewrite below writes the whole file back
 		// clean, including entries this repo has nothing to do with.
 		if scrubMetaCredential(metaPath) {
-			a.note(metaPath)
+			a.note(writeSessionStore, metaPath)
 			a.changes = append(a.changes,
 				"history meta.json: dropped a credential from the recorded remote URL — revoke the token, it has been on disk")
 		}
@@ -798,7 +836,19 @@ func (a *applyCtx) stepHistory() {
 // state is refused rather than silently applied.
 func (a *applyCtx) registerRepo(sha string) {
 	idx, err := loadHistoryIndex()
-	if err != nil || idx == nil {
+	if err != nil {
+		// An index that exists but cannot be read (unreadable, oversize or
+		// malformed) skips the registration; like stepHistory's store failures,
+		// that is a note naming the index and the reason (iss-2609262032177818).
+		// An absent index is bootstrapHistory's to report, above.
+		where := "index.json"
+		if root, rerr := historyRoot(); rerr == nil {
+			where = displayPath(filepath.Join(root, "index.json"))
+		}
+		a.refuse("could not register this repository on this machine: the session store's index (" + where + ") could not be read: " + errText(err))
+		return
+	}
+	if idx == nil {
 		return
 	}
 	id := a.det.RepoIdentity
@@ -895,7 +945,7 @@ func (a *applyCtx) registerRepo(sha string) {
 	}
 	if wrote {
 		if root, e2 := historyRoot(); e2 == nil {
-			a.note(filepath.Join(root, "index.json"))
+			a.note(writeSessionStore, filepath.Join(root, "index.json"))
 		}
 	}
 }
@@ -926,16 +976,26 @@ func (a *applyCtx) stepMarker(cfg *InstallConfig) {
 	}
 	for _, name := range markerTargets(target) {
 		path := filepath.Join(a.cwd, name)
-		if wrote, ok := installMarkerFile(path); ok && wrote {
-			a.note(path)
+		wrote, err := installMarkerFile(path)
+		if err != nil {
+			a.refuse("could not write abcd's block into " + name + ": " + errText(err) + "; the file is left as it was")
+			continue
+		}
+		if wrote {
+			a.note(writeConventionsBlock, path)
 		}
 	}
 	// Retract the block from files a narrowed docs-target override de-selected,
 	// so a target change (e.g. both -> claude_md, or -> skip) leaves no orphan.
 	for _, name := range a.markerRetract {
 		path := filepath.Join(a.cwd, name)
-		if wrote, ok := removeMarkerFile(path); ok && wrote {
-			a.note(path)
+		wrote, err := removeMarkerFile(path)
+		if err != nil {
+			a.refuse("could not remove abcd's block from " + name + ", which you no longer chose: " + errText(err) + "; the file is left as it was")
+			continue
+		}
+		if wrote {
+			a.note(writeConventionsBlockRemoved, path)
 		}
 	}
 }
@@ -1115,7 +1175,7 @@ func (a *applyCtx) installOwnedEntry(target string, kind binTargetKind) {
 		return
 	}
 	a.recordEntry(target, want)
-	a.note(target)
+	a.note(writeCommandEntry, target)
 }
 
 // recordEntry stamps ~/.abcd/path-entry for the entry abcd just installed at
@@ -1134,7 +1194,7 @@ func (a *applyCtx) recordEntry(target, shaHex string) {
 		return
 	}
 	if p := userPathEntryPath(); p != "" {
-		a.note(p)
+		a.note(writeCommandEntry, p)
 	}
 }
 
@@ -1147,6 +1207,8 @@ func (a *applyCtx) installDevShim(target string, kind binTargetKind) {
 	}
 	if kind == binTargetOwnedSymlink || kind == binTargetOwnedCopy {
 		if err := os.Remove(target); err != nil {
+			a.refuse("could not replace the existing PATH entry " + displayPath(target) + " with the dev shim: " + errText(err) +
+				"; the pinned entry is left as it was")
 			return
 		}
 		// The provenance record vouches for an entry that is gone; keeping it
@@ -1157,6 +1219,7 @@ func (a *applyCtx) installDevShim(target string, kind binTargetKind) {
 		a.echoChange("install_mode", "pinned", "dev")
 	}
 	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		a.refuse("could not create the install directory " + displayPath(filepath.Dir(target)) + " for the dev shim: " + errText(err))
 		return
 	}
 	content := renderDevShim(a.det.pluginRoot, pluginBinaryPath(a.det.pluginRoot))
@@ -1164,9 +1227,10 @@ func (a *applyCtx) installDevShim(target string, kind binTargetKind) {
 	// store: a symlink pre-planted at the leaf is replaced, never written through,
 	// and the executable bit is set via fchmod on the temp descriptor.
 	if err := fsutil.WriteFileAtomic(target, []byte(content), 0o755); err != nil {
+		a.refuse("could not write the dev PATH entry " + displayPath(target) + ": " + errText(err) + "; no abcd was installed there")
 		return
 	}
-	a.note(target)
+	a.note(writeCommandEntry, target)
 }
 
 // stepPathEntry records the installed PATH entry in ~/.abcd/path-entry, for the
@@ -1295,6 +1359,8 @@ func (a *applyCtx) installPinnedSymlink(target string, kind binTargetKind) {
 	}
 	if kind == binTargetDevShim {
 		if err := os.Remove(target); err != nil {
+			a.refuse("could not replace the dev PATH entry " + displayPath(target) + " with the pinned one: " + errText(err) +
+				"; the dev entry is left as it was")
 			return
 		}
 		a.echoChange("install_mode", "dev", "pinned")
@@ -1304,7 +1370,7 @@ func (a *applyCtx) installPinnedSymlink(target string, kind binTargetKind) {
 		return
 	}
 	if err := os.Symlink(source, target); err == nil {
-		a.note(target)
+		a.note(writeCommandEntry, target)
 	} else {
 		a.refuse("could not write the PATH entry " + displayPath(target) + ": " + errText(err))
 	}
@@ -1382,9 +1448,11 @@ func (a *applyCtx) stepRules() {
 	rules := map[string]any{"schema_version": 1, "disabled": false, "domains": map[string]any{}}
 	// Contained through an os.Root opened at the repo: a committed `.abcd` ancestor
 	// symlink must not land rules.json outside the working tree (GHSA-xrf8-4432-gw2f).
-	if err := writeRepoJSON(a.cwd, rulesRelPath, rules); err == nil {
-		a.note(filepath.Join(a.cwd, ".abcd", "rules.json"))
+	if err := writeRepoJSON(a.cwd, rulesRelPath, rules); err != nil {
+		a.refuse("could not write .abcd/rules.json: " + errText(err))
+		return
 	}
+	a.note(writeRules, filepath.Join(a.cwd, ".abcd", "rules.json"))
 }
 
 // stepVersionStamp writes the meta setup block.
@@ -1411,9 +1479,11 @@ func (a *applyCtx) stepVersionStamp() {
 	meta["setup_date"] = time.Now().UTC().Format("2006-01-02")
 	meta["project_name"] = a.det.RepoIdentity.Name
 	cfgMap["meta"] = meta
-	if err := writeConfig(a.cwd, cfgMap); err == nil {
-		a.note(configPath(a.cwd))
+	if err := writeConfig(a.cwd, cfgMap); err != nil {
+		a.refuse("could not record the setup version in .abcd/config.json: " + errText(err))
+		return
 	}
+	a.note(writeSettings, configPath(a.cwd))
 }
 
 // Uninstall removes the marker block and the owned PATH entry (the spc-35 owned
@@ -1435,9 +1505,9 @@ func Uninstall(cwd, binDir string) (UninstallReceipt, error) {
 	// Marker: clean both surfaces regardless of the current docs.target.
 	for _, name := range []string{"CLAUDE.md", "AGENTS.md"} {
 		path := filepath.Join(abs, name)
-		if wrote, ok := removeMarkerFile(path); ok && wrote {
+		if wrote, err := removeMarkerFile(path); err == nil && wrote {
 			receipt.Marker.Removed = append(receipt.Marker.Removed, name)
-		} else if !ok {
+		} else if err != nil {
 			receipt.Marker.Skipped = append(receipt.Marker.Skipped, name)
 		}
 	}
@@ -1561,37 +1631,6 @@ func auditGaps(cwd string, det DetectionResult) []Gap {
 		})
 	}
 	return gaps
-}
-
-// Status renders the bare-command human summary. Zero writes.
-func Status(cwd string) (string, error) {
-	det, err := Detect(cwd)
-	if err != nil {
-		return "", err
-	}
-	var b strings.Builder
-	fmt.Fprintf(&b, "abcd ahoy — %s\n", det.FolderKind)
-	fmt.Fprintf(&b, "plugin root: %s\n", det.PluginRootStatus)
-	if det.RootSHA != "" {
-		fmt.Fprintf(&b, "root sha: %s\n", shortSHA(det.RootSHA))
-	}
-	if mode, _ := det.Signals["install_mode"].(string); mode != "" {
-		fmt.Fprintf(&b, "install: %s\n", mode)
-	}
-	act := actionable(det.Gaps)
-	switch det.FolderKind {
-	case UnmanagedFolder:
-		b.WriteString("nothing to act on (not a git repo, no abcd markers)\n")
-	case UnmanagedRepo:
-		b.WriteString("unmanaged repo — run `abcd ahoy install` to adopt it\n")
-	default:
-		if len(act) == 0 {
-			b.WriteString("already up to date\n")
-		} else {
-			fmt.Fprintf(&b, "%d actionable gap(s) — run `abcd ahoy install`\n", len(act))
-		}
-	}
-	return b.String(), nil
 }
 
 // ---------------------------------------------------------------------------

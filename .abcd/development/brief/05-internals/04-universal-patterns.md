@@ -84,20 +84,21 @@ What ships today is narrower. Most verbs write no report at all: `lint` and its 
 │   └── capture-report.{json,md}  # one per /abcd:capture invocation (per itd-4)
 ├── grill/<utc-ts>-<intent-id>/   # one per /abcd:intent grill session (per itd-27)
 │   └── grill-report.{json,md}    # glossary terms are written inline to terminology/, not batched here
-├── audit/<sub-tier>-<ts>/        # review/audit reports across six sub-tiers land here
-│   └── report.{json,md}          # sub-tier ∈ {review, spec-mg, consistency, shape, chain, lifeboat}:
+├── audit/<sub-tier>-<ts>/        # review/audit reports across five sub-tiers land here
+│   └── report.{json,md}          # sub-tier ∈ {review, spec-mg, shape, chain, lifeboat}:
 │                                 #   audit/review-<ts>/      (Role 1 itd-1 pass / /abcd:intent audit,        itd-1)
 │                                 #   audit/spec-mg-<ts>/     (Role 1 MG004 pass / itd-37 boilerplate receipt, itd-37)
-│                                 #   audit/consistency-<ts>/ (Role 2 / /abcd:intent consistency,   itd-48 — superseded itd-31; a later phase, spc-29 predecessor store, not yet a sub-verb)
+│                                 #   (Role 2, /abcd:intent consistency, itd-48, files its report on the
+│                                 #   reviews shelf, .abcd/work/reviews/<date>-consistency[-<itd-N>]/, not here)
 │                                 #   audit/shape-<ts>/       (Role 3 / /abcd:intent shape,         itd-34, later phase)
 │                                 #   audit/chain-<ts>/       (default app of /abcd:audit chain,    itd-16, later phase)
 │                                 #   audit/lifeboat-<ts>/    (sibling app of /abcd:audit lifeboat, itd-35, later phase)
 │                                 # Directory name (audit/) reflects "this is the on-disk audit trail"
 │                                 # regardless of which verb produced it; sub-tier prefix names the verb.
-│                                 # `audit` (with its `ingest` child) is the one registered sub-verb
-│                                 # of /abcd:intent; `consistency` and `shape` are designed sub-verbs
-│                                 # of it, and `chain` and `lifeboat` of the /abcd:audit umbrella,
-│                                 # none of the four registered on the shipped surface.
+│                                 # `audit` and `consistency` (each with its `ingest` child) are the
+│                                 # registered review sub-verbs of /abcd:intent; `shape` is a designed
+│                                 # sub-verb of it, and `chain` and `lifeboat` of the /abcd:audit
+│                                 # umbrella, none of the three registered on the shipped surface.
 │                                 # Bare /abcd:audit and bare /abcd:intent are status+help only.
 ├── sota-audits/<date>.{json,md}  # periodic prompt SOTA audit findings (option D)
 └── phase/<phase-id>/             # validation cadence outputs per phase (Phase 0 study, Phase 1 acceptance, etc.)

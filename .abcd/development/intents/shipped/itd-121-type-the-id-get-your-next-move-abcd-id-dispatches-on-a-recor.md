@@ -85,5 +85,67 @@ is a future consideration, deliberately not an AC._
 
 ## Audit Notes
 
-<!-- abcd-review: OWED receipt=rcp-e85e544ece36 -->
-Fidelity review OWED (receipt rcp-e85e544ece36).
+<!-- abcd-review: INGESTED receipt=rcp-e85e544ece36 -->
+Fidelity review — receipt rcp-e85e544ece36 (verifier intent-auditor claude-fable-5-1).
+
+Provenance: intent-auditor@claude-fable-5-1 · rubric_hash sha256:effa65b3e9e88ff29433b443ec2be159522a8b0b71cf1434526514aa61edb13e · prompt_hash sha256:1a3bed57f704412fe98cfd99c5d3424c42ed8272fec836dd3864f608e68a7e41
+Input attestations: diff:tree at 7c476185 (main lineage, itd-121 shipped)@-;
+
+Acceptance rollup: MET 10 · MET_WITH_CONCERNS 0 · NOT_MET 0 · INCONCLUSIVE 0
+
+Per-criterion verdicts:
+- ac-1 — MET: the root command's one-positional branch calls record.Describe, gated by IDRe ^(iss|itd|spc|adr)-[0-9]+$, and renders id, family, status, title, path, links and next moves; TestRootDispatchZeroWrites proves the tree is untouched and TestCaptureLoneRecordIDNeverWrites / TestIntentLoneRecordIDNeverWrites cover the family verbs; all green at BASE
+  evidence: internal/core/record/record.go:29 — "var IDRe = regexp.MustCompile(`^(iss|itd|spc|adr)-[0-9]+$`)"
+  evidence: internal/surface/cli/cli.go:234 — "if len(args) == 1 {"
+  evidence: internal/surface/cli/cli.go:235 — "d, err := record.Describe(cwd, args[0])"
+  evidence: internal/surface/cli/root_dispatch_test.go:85 — "func TestRootDispatchZeroWrites(t *testing.T) {"
+- ac-2 — MET: describeIntent maps drafts to the planning interview and intent plan, planned to the spec body or implement (re-checked through intent ready), shipped to the audit state, superseded to the superseding record; TestDescribeIntentLifecycleMoves and TestDescribeMultiSpecIntentAndItsClosedSpec are green
+  evidence: internal/core/record/record.go:209 — "func describeIntent(repoRoot, id string) (Description, error) {"
+  evidence: internal/core/record/record.go:284 — "d.NextMoves = []string{"none — shipped; its audit state lives in the record's Audit Notes"}"
+  evidence: internal/core/record/record.go:290 — "d.NextMoves = []string{"read the superseding record: " + target}"
+  evidence: internal/core/record/record_test.go:155 — "func TestDescribeIntentLifecycleMoves(t *testing.T) {"
+- ac-3 — MET: describeIssue offers capture promote / resolve / wontfix to an open unpromoted issue, the graduated intent to a promoted one, and the trail with resolved_by to a resolved or wontfix one; TestDescribeIssueNextMoves and TestDescribeResolvedIssueShowsTrail are green, and the front door names the ledger it read (TestRecordDispatcherNamesTheLedgerForAnIssue)
+  evidence: internal/core/record/record.go:151 — "d.NextMoves = []string{"
+  evidence: internal/core/record/record.go:160 — "d.NextMoves = []string{"none — the issue is " + string(iss.Status) + "; the trail is above"}"
+  evidence: internal/core/record/record_test.go:62 — "func TestDescribeIssueNextMoves(t *testing.T) {"
+  evidence: internal/core/record/record_test.go:115 — "func TestDescribeResolvedIssueShowsTrail(t *testing.T) {"
+- ac-4 — MET: describeSpec offers implement-then-spec-close to an open spec whose intent is ready, and for a closed spec names the linked intent (and the sibling specs still open on a multi-spec intent); TestDescribeSpecMoves is green
+  evidence: internal/core/record/record.go:358 — "func describeSpec(repoRoot, id string) (Description, error) {"
+  evidence: internal/core/record/record.go:388 — "d.NextMoves = []string{"none — closed; the linked intent is " + sp.Intent}"
+  evidence: internal/core/record/record_test.go:223 — "func TestDescribeSpecMoves(t *testing.T) {"
+- ac-5 — MET: describeADR renders id, status, title and path as family adr with no next move; TestDescribeADRReadOnly and TestDescribeADRAdmitsBothIDVintages are green
+  evidence: internal/core/record/record.go:412 — "func describeADR(repoRoot, id string) (Description, error) {"
+  evidence: internal/core/record/record.go:450 — "Family: "adr","
+  evidence: internal/core/record/record_test.go:266 — "func TestDescribeADRReadOnly(t *testing.T) {"
+- ac-6 — MET: a shape-matching id in no store is an error naming the stores searched, which the front door turns into a non-zero exit after the peer consult; TestDescribeUnknownIDFaults and TestRootDispatchUnknownIDFaults are green
+  evidence: internal/core/record/record.go:91 — "// the read-only description. A shape-matching id found in no store is an"
+  evidence: internal/surface/cli/cli.go:239 — "return peerHeldRefusal(cwd, "", args[0], err)"
+  evidence: internal/core/record/record_test.go:351 — "func TestDescribeUnknownIDFaults(t *testing.T) {"
+  evidence: internal/surface/cli/root_dispatch_test.go:51 — "func TestRootDispatchUnknownIDFaults(t *testing.T) {"
+- ac-7 — MET: TestRootNonIDPositionalUnchanged pins the unknown-command behaviour for any other positional; green at BASE
+  evidence: internal/surface/cli/root_dispatch_test.go:65 — "func TestRootNonIDPositionalUnchanged(t *testing.T) {"
+- ac-8 — MET: the same Description renders through the shared render helper under --json with next_moves as a field; TestRootDispatchJSONContract decodes it and checks the moves
+  evidence: internal/core/record/record.go:58 — "NextMoves []string `json:"next_moves,omitempty"`"
+  evidence: internal/surface/cli/root_dispatch_test.go:16 — "func TestRootDispatchJSONContract(t *testing.T) {"
+- ac-9 — MET: the recommended verbs are named constants gathered by RecommendedVerbPaths in the record package, TestRecommendedVerbPathsClosed pins the set and TestNextMoveVerbsResolveInLiveTree resolves every one against the live cobra tree; both green
+  evidence: internal/core/record/record.go:83 — "func RecommendedVerbPaths() []string {"
+  evidence: internal/core/record/record_test.go:367 — "func TestRecommendedVerbPathsClosed(t *testing.T) {"
+  evidence: internal/surface/cli/root_dispatch_test.go:129 — "func TestNextMoveVerbsResolveInLiveTree(t *testing.T) {"
+- ac-10 — MET: the root surface page carries a Record-id dispatch section, the 04-surfaces registry row for /abcd names the id form, and its chapter documents the positional and its not-found fault
+  evidence: commands/abcd.md:60 — "## Record-id dispatch"
+  evidence: .abcd/development/brief/04-surfaces/README.md:23 — "| 8 | `/abcd` | shipped | Find out where you are, or what one record id is and what to do with it | [`08-abcd.md`] (08-abcd.md) |"
+  evidence: .abcd/development/brief/04-surfaces/08-abcd.md:43 — "**`abcd <record-id>`** takes a single positional matching `iss-N`, `itd-N`,"
+
+Gap audit:
+- honoured:
+  - the id alone is the routing: one regex-gated positional over the existing store readers, no new dependency
+    evidence: internal/core/record/record.go:29 — "var IDRe = regexp.MustCompile(`^(iss|itd|spc|adr)-[0-9]+$`)"
+  - zero writes, ever
+    evidence: internal/surface/cli/root_dispatch_test.go:85 — "func TestRootDispatchZeroWrites(t *testing.T) {"
+  - a rename breaks the test instead of shipping stale advice
+    evidence: internal/surface/cli/root_dispatch_test.go:129 — "func TestNextMoveVerbsResolveInLiveTree(t *testing.T) {"
+- diverged:
+  - the not-found path consults peer worktrees before faulting (itd-2609091416295622) and an issue answer names the ledger it read (iss-2609202053570475), both later refinements of the plain structural fault the criterion states
+    evidence: internal/surface/cli/cli.go:239 — "return peerHeldRefusal(cwd, "", args[0], err)"
+    evidence: internal/surface/cli/cli.go:246 — "if strings.HasPrefix(args[0], "iss-") {"
+- missing: (none)

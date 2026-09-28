@@ -239,7 +239,13 @@ func newGuardHookCommand() *cobra.Command {
 			"field fails the call when the directory is missing, so no failed-cd hazard\n" +
 			"exists. A workdir that is not a string, or holds a NUL byte, a control\n" +
 			"character or invalid UTF-8, or is over 4096 bytes, is refused with the\n" +
-			"blocking status and the reason.",
+			"blocking status and the reason.\n\n" +
+			"On the host's question tool the hook gates the question on the mode, not\n" +
+			"the registry. In a checkout abcd manages, a question asked while `abcd mode`\n" +
+			"reads managed is refused with the blocking status, naming `abcd mode\n" +
+			"product-thinker` and `abcd mode facilitator`; once the mode names somebody\n" +
+			"the question runs and is marked open in the local tier, and the next human\n" +
+			"message resets the mode to managed. Elsewhere a question runs unchecked.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			// failOpen is the single exit for every non-decision path, so the
@@ -250,8 +256,8 @@ func newGuardHookCommand() *cobra.Command {
 			// the command run and puts the warning in front of a human. Only the
 			// blocking status (2) stops anything.
 			failOpen := func(format string, a ...any) error {
-				fmt.Fprintf(cmd.ErrOrStderr(),
-					"abcd guard: NOT CHECKED — "+format+". This command runs UNGUARDED.\n", a...)
+				diagnosticLine(cmd.ErrOrStderr(),
+					"abcd guard: NOT CHECKED — "+format+". This command runs UNGUARDED.", a...)
 				return &exitError{Code: 1}
 			}
 
@@ -269,8 +275,14 @@ func newGuardHookCommand() *cobra.Command {
 			if err := json.Unmarshal(raw, &in); err != nil {
 				return failOpen("the hook payload is not readable JSON (%v)", err)
 			}
-			// The manifest scopes this hook to the shell tool, so a different tool
-			// name means the wiring is wrong — worth saying rather than ignoring.
+			// A question to the human is gated on the mode, not the registry
+			// (itd-2609212130146198); guard_question.go holds the whole of it.
+			if isQuestionTool(in.ToolName) {
+				return questionGate(cmd, in.Cwd)
+			}
+			// The manifest scopes this hook to the shell tool and the question
+			// tools, so a different tool name means the wiring is wrong — worth
+			// saying rather than ignoring.
 			if !strings.EqualFold(in.ToolName, "Bash") {
 				return failOpen("the payload is a %q tool call, not a shell command", termsafe.Sanitize(in.ToolName))
 			}
@@ -306,7 +318,7 @@ func newGuardHookCommand() *cobra.Command {
 				return failOpen("no hazard registry is loaded")
 			case guard.LoadRepoDropped:
 				repoDropped = true
-				fmt.Fprintln(cmd.ErrOrStderr(), guardDropNotice("the repo", ld.Err))
+				diagnosticLine(cmd.ErrOrStderr(), "%s", guardDropNotice("the repo", ld.Err))
 			}
 			// A disabled registry allows everything, which makes it an unguarded
 			// session — and it is the CHEAPEST one to reach: the other unguarded
@@ -351,7 +363,7 @@ func newGuardHookCommand() *cobra.Command {
 					wreg := wld.Registry
 					if wld.Posture == guard.LoadRepoDropped {
 						repoDropped = true
-						fmt.Fprintln(cmd.ErrOrStderr(), guardDropNotice("the working directory's", wld.Err))
+						diagnosticLine(cmd.ErrOrStderr(), "%s", guardDropNotice("the working directory's", wld.Err))
 					}
 					if !wreg.Disabled && wld.Posture != guard.LoadUnavailable {
 						if wdec, cerr := wreg.Check(candidate); cerr == nil {

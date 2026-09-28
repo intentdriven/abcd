@@ -22,7 +22,7 @@ func TestMarkerRefusesToAppendInsideAnUnclosedSpan(t *testing.T) {
 		if err := os.WriteFile(path, []byte(original), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		if _, ok := installMarkerFile(path); ok {
+		if _, err := installMarkerFile(path); err == nil {
 			t.Errorf("%s: install reported ok", name)
 		}
 		if got, _ := os.ReadFile(path); !bytes.Equal(got, []byte(original)) {
@@ -41,7 +41,7 @@ func TestMarkerRefusesToAppendInsideAnUnclosedSpan(t *testing.T) {
 	if err := os.WriteFile(path, []byte("# Title\n\n```\nunclosed code\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if wrote, ok := installMarkerFile(path); !ok || !wrote {
-		t.Errorf("an H1 above an unclosed fence: wrote=%v ok=%v", wrote, ok)
+	if wrote, err := installMarkerFile(path); err != nil || !wrote {
+		t.Errorf("an H1 above an unclosed fence: wrote=%v err=%v", wrote, err)
 	}
 }

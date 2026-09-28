@@ -413,8 +413,18 @@ func ProseShapeClaims(prose string, own []string, tree []Command) []ShapeClaim {
 	// wherever the line fills, so `capture` ending one line and `resolve`
 	// opening the next is still the spelling. Every match is blanked once read,
 	// claim or not, so a shorter path inside it is not read a second time.
+	//
+	// The path's regex spells every word of the path literally, and blanking
+	// replaces bytes of masked with spaces, which can spell no word, so a path
+	// one of whose words masked does not contain cannot match and is not
+	// compiled or scanned. The regex
+	// opens on a character class, which gives the engine no literal to skip to,
+	// so each scan it is spared is a full pass over the chapter.
 	masked := text
 	for _, p := range paths {
+		if !containsEveryWord(masked, p) {
+			continue
+		}
 		re := regexp.MustCompile(`(^|[^\w-])((?:abcd\s+|/abcd:)?)(` + strings.ReplaceAll(regexp.QuoteMeta(p), " ", `\s+`) + `)([^\w-]|$)`)
 		for {
 			m := re.FindStringSubmatchIndex(masked)
@@ -502,6 +512,17 @@ func markFencedLines(code []bool, lines []string) {
 
 // blankKeepingNewlines replaces every byte of s but a newline with a space, so
 // a matched span cannot match again and offsets and line numbers hold.
+// containsEveryWord reports whether s contains each space-separated word of
+// path as a substring: the literal part of any spelling of that path.
+func containsEveryWord(s, path string) bool {
+	for _, w := range strings.Fields(path) {
+		if !strings.Contains(s, w) {
+			return false
+		}
+	}
+	return true
+}
+
 func blankKeepingNewlines(s string) string {
 	b := []byte(s)
 	for i := range b {

@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -98,6 +99,32 @@ func TestExplorerCoversEveryRecord(t *testing.T) {
 	}
 }
 
+// TestNoForgeLinkNamesABranchCalledMain: every link the site makes to the
+// forge's view of the repository — a file, a directory, a file's commit
+// history, the graph's history base — names the default branch as HEAD, since
+// the build reads no forge and a repository's default need not be main
+// (iss-2609261206437257, iss-2609261241126008). The fixture carries every kind.
+func TestNoForgeLinkNamesABranchCalledMain(t *testing.T) {
+	f := newFixture(t)
+	out := t.TempDir()
+	buildFixture(t, f, out)
+	onMain := regexp.MustCompile(`/(blob|tree|commits)/main/`)
+	kinds := map[string]bool{}
+	for name, page := range htmlPages(t, out) {
+		for _, m := range onMain.FindAllString(page, -1) {
+			t.Errorf("%s links %s, a branch this repository may not have", name, m)
+		}
+		for _, k := range regexp.MustCompile(`/(blob|tree|commits)/HEAD/`).FindAllStringSubmatch(page, -1) {
+			kinds[k[1]] = true
+		}
+	}
+	for _, k := range []string{"blob", "tree", "commits"} {
+		if !kinds[k] {
+			t.Errorf("no page carries a %s/HEAD/ link, so this test does not reach that kind", k)
+		}
+	}
+}
+
 // TestRecordPageRendersItsBodyAndLinks is the per-record page's contract: the
 // frontmatter, the body verbatim, the links phrased from this record's side, and
 // the two forge links.
@@ -118,8 +145,8 @@ func TestRecordPageRendersItsBodyAndLinks(t *testing.T) {
 		`implemented by`,
 		`href="/record/spec/spc-1/"`,
 		// the forge links: the file, and its commit history
-		`https://example.invalid/fixture/repo/blob/main/.abcd/development/intents/shipped/itd-2-the-shipped-one.md`,
-		`https://example.invalid/fixture/repo/commits/main/.abcd/development/intents/shipped/itd-2-the-shipped-one.md`,
+		`https://example.invalid/fixture/repo/blob/HEAD/.abcd/development/intents/shipped/itd-2-the-shipped-one.md`,
+		`https://example.invalid/fixture/repo/commits/HEAD/.abcd/development/intents/shipped/itd-2-the-shipped-one.md`,
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("itd-2's page is missing %q", want)
@@ -250,7 +277,7 @@ func TestRelativeNonMarkdownLinksResolve(t *testing.T) {
 	page := outFile(t, out, "record/principle/one-fixture-principle/index.html")
 
 	// A path the tree carries points at the forge's own view of it.
-	want := `<a href="https://example.invalid/fixture/repo/tree/main/.abcd/development/decisions">the decisions</a>`
+	want := `<a href="https://example.invalid/fixture/repo/tree/HEAD/.abcd/development/decisions">the decisions</a>`
 	if !strings.Contains(page, want) {
 		t.Errorf("a relative directory link was not resolved:\nwant %s", want)
 	}

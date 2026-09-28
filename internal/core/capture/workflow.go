@@ -1,9 +1,7 @@
 package capture
 
 import (
-	"errors"
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -294,7 +292,7 @@ func commitCapture(repoRoot, issuesRoot string, req CaptureRequest, issID, slug,
 func Resolve(req ResolveRequest) (TransitionResult, error) {
 	impact, err := changelog.ParseImpact(req.Impact)
 	if err != nil {
-		return TransitionResult{}, fmt.Errorf("resolve: %w", err)
+		return TransitionResult{}, refused(fmt.Errorf("resolve: %w", err))
 	}
 	rb, err := resolveProvenance(req)
 	if err != nil {
@@ -317,11 +315,11 @@ func Resolve(req ResolveRequest) (TransitionResult, error) {
 	// worse than no value at all — it would sit in the ledger looking like an
 	// exclusion and never be one.
 	if req.ShippedIn != "" && !reShippedIn.MatchString(req.ShippedIn) {
-		return TransitionResult{}, fmt.Errorf(
-			"resolve: --shipped-in %q is not a release tag (want vMAJOR.MINOR.PATCH); nothing written", req.ShippedIn)
+		return TransitionResult{}, refused(fmt.Errorf(
+			"resolve: --shipped-in %q is not a release tag (want vMAJOR.MINOR.PATCH); nothing written", req.ShippedIn))
 	}
 	if err := validateRestampMode(req.ProductionMode); err != nil {
-		return TransitionResult{}, fmt.Errorf("resolve: %w", err)
+		return TransitionResult{}, refused(fmt.Errorf("resolve: %w", err))
 	}
 	extras := []kv{{"impact", rawScalar(string(impact))}}
 	if req.ShippedIn != "" {
@@ -372,26 +370,26 @@ func resolveProvenance(req ResolveRequest) (*ResolvedBy, error) {
 	}
 	if req.ByIntent != "" {
 		if !reItdID.MatchString(req.ByIntent) {
-			return nil, fmt.Errorf("resolve: --intent %q does not match ^itd-[0-9]+$; nothing written", req.ByIntent)
+			return nil, refused(fmt.Errorf("resolve: --intent %q does not match ^itd-[0-9]+$; nothing written", req.ByIntent))
 		}
 		if _, ok, err := findRecordFile(repoRoot, intentStoreRelDirs(), req.ByIntent); err != nil {
 			return nil, fmt.Errorf("resolve: --intent %s: %w; nothing written", req.ByIntent, err)
 		} else if !ok {
-			return nil, fmt.Errorf("resolve: --intent %s not found in the intent store; nothing written", req.ByIntent)
+			return nil, refused(fmt.Errorf("resolve: --intent %s not found in the intent store; nothing written", req.ByIntent))
 		}
 	}
 	if req.BySpec != "" {
 		if !reSpcID.MatchString(req.BySpec) {
-			return nil, fmt.Errorf("resolve: --spec %q does not match ^spc-[0-9]+$; nothing written", req.BySpec)
+			return nil, refused(fmt.Errorf("resolve: --spec %q does not match ^spc-[0-9]+$; nothing written", req.BySpec))
 		}
 		if _, ok, err := findRecordFile(repoRoot, specStoreRelDirs(), req.BySpec); err != nil {
 			return nil, fmt.Errorf("resolve: --spec %s: %w; nothing written", req.BySpec, err)
 		} else if !ok {
-			return nil, fmt.Errorf("resolve: --spec %s not found in the spec store; nothing written", req.BySpec)
+			return nil, refused(fmt.Errorf("resolve: --spec %s not found in the spec store; nothing written", req.BySpec))
 		}
 	}
 	if req.ByCommit != "" && !reCommitSha.MatchString(req.ByCommit) {
-		return nil, fmt.Errorf("resolve: --commit %q is not a 7-64 char lowercase hex sha; nothing written", req.ByCommit)
+		return nil, refused(fmt.Errorf("resolve: --commit %q is not a 7-64 char lowercase hex sha; nothing written", req.ByCommit))
 	}
 	return &ResolvedBy{Intent: req.ByIntent, Spec: req.BySpec, Commit: req.ByCommit}, nil
 }
@@ -425,7 +423,7 @@ func Wontfix(req WontfixRequest) (TransitionResult, error) {
 		return TransitionResult{}, err
 	}
 	if err := validateRestampMode(req.ProductionMode); err != nil {
-		return TransitionResult{}, fmt.Errorf("wontfix: %w", err)
+		return TransitionResult{}, refused(fmt.Errorf("wontfix: %w", err))
 	}
 	res, err := transition(req.RepoRoot, req.IssuesRoot, req.ID, "wontfix", "wontfix_reason", req.Reason,
 		nil, &g, req.ProductionMode, StateWontfix)
@@ -517,10 +515,10 @@ func transition(repoRoot, issuesRoot, issID, verb, field, note string, extra []k
 		return TransitionResult{}, err
 	}
 	if !reIssID.MatchString(issID) {
-		return TransitionResult{}, fmt.Errorf("invalid iss-N identifier: %q", issID)
+		return TransitionResult{}, refused(fmt.Errorf("invalid iss-N identifier: %q", issID))
 	}
 	if strings.TrimSpace(note) == "" {
-		return TransitionResult{}, fmt.Errorf("%s must be a non-empty string", field)
+		return TransitionResult{}, refused(fmt.Errorf("%s must be a non-empty string", field))
 	}
 
 	// The find→read→move critical section runs under the ledger lock, the SAME
@@ -697,16 +695,19 @@ func List(req ListRequest) (ListResult, error) {
 	if state != StateAll && state != StateOpen && state != StateResolved && state != StateWontfix {
 		return ListResult{}, fmt.Errorf("state must be all/open/resolved/wontfix, got %q", state)
 	}
-	issues, skipped := scanLedger(ir, state)
-	sortIssues(issues)
-	openIDs, openUnread := openIDSet(ir)
-	prioritise(issues, openIDs)
-	// The blocked_by projection reads open/ whatever the scope. A list whose own
-	// rows come from open/ already names an unreadable open/; any other scope
-	// names it here, since every dependent it shows reads as unblocked.
-	if openUnread != nil && state != StateAll && state != StateOpen {
-		skipped = append(skipped, *openUnread)
+	issues, skipped, err := scanLedger(ir, state)
+	if err != nil {
+		return ListResult{}, err
 	}
+	sortIssues(issues)
+	// The blocked_by projection reads open/ whatever the scope, so an open/
+	// that cannot be listed is a fault here too: every dependent would read as
+	// unblocked.
+	openIDs, err := openIDSet(ir)
+	if err != nil {
+		return ListResult{}, err
+	}
+	prioritise(issues, openIDs)
 	relativiseLedgerPaths(repoRoot, issues, skipped)
 	if set, ok := uncommittedLedgerPaths(repoRoot, ir); ok {
 		markUncommitted(set, issues)
@@ -750,9 +751,18 @@ func Status(req StatusRequest) (StatusResult, error) {
 		return StatusResult{}, err
 	}
 	var res StatusResult
-	open, skOpen := scanLedger(ir, StateOpen)
-	resolved, skRes := scanLedger(ir, StateResolved)
-	wontfix, skWf := scanLedger(ir, StateWontfix)
+	open, skOpen, err := scanLedger(ir, StateOpen)
+	if err != nil {
+		return StatusResult{}, err
+	}
+	resolved, skRes, err := scanLedger(ir, StateResolved)
+	if err != nil {
+		return StatusResult{}, err
+	}
+	wontfix, skWf, err := scanLedger(ir, StateWontfix)
+	if err != nil {
+		return StatusResult{}, err
+	}
 	res.OpenCount = len(open)
 	res.ResolvedCount = len(resolved)
 	res.WontfixCount = len(wontfix)
@@ -820,13 +830,11 @@ func prioritise(issues []Issue, openIDs map[string]bool) {
 
 // openIDSet returns the set of ids currently in open/ — the predicate a
 // blocked_by target must satisfy to still count as blocking. Read-only. An
-// open/ that exists and cannot be listed yields no ids and its roster entry,
-// for the caller to report.
-func openIDSet(issuesRoot string) (map[string]bool, *SkipRecord) {
+// open/ that exists and cannot be listed is the fault readStatusDir names.
+func openIDSet(issuesRoot string) (map[string]bool, error) {
 	open, skipped, err := scanStatusDir(issuesRoot, StateOpen)
 	if err != nil {
-		sk := unreadableDirSkip(issuesRoot, StateOpen, err)
-		return map[string]bool{}, &sk
+		return nil, err
 	}
 	return openBlockingIDs(open, skipped), nil
 }
@@ -873,9 +881,10 @@ func idSet(issues []Issue) map[string]bool {
 }
 
 // scanLedger reads issues from the requested state(s). Stray/non-matching .md
-// files are silently ignored; corrupt matching files go into Skipped, and so
-// does a status directory that exists and cannot be read (unreadableDirSkip).
-func scanLedger(issuesRoot string, state State) ([]Issue, []SkipRecord) {
+// files are silently ignored; corrupt matching files go into Skipped. A status
+// directory that exists and cannot be listed is a fault, returned as
+// readStatusDir names it: the ledger was not read, so no count is reported.
+func scanLedger(issuesRoot string, state State) ([]Issue, []SkipRecord, error) {
 	var targets []State
 	if state == StateAll {
 		targets = statusDirs
@@ -887,48 +896,26 @@ func scanLedger(issuesRoot string, state State) ([]Issue, []SkipRecord) {
 	for _, sub := range targets {
 		got, sk, err := scanStatusDir(issuesRoot, sub)
 		if err != nil {
-			skipped = append(skipped, unreadableDirSkip(issuesRoot, sub, err))
-			continue
+			return nil, nil, err
 		}
 		issues = append(issues, got...)
 		skipped = append(skipped, sk...)
 	}
-	return issues, skipped
+	return issues, skipped, nil
 }
 
-// unreadableDirSkip is the roster entry for a status directory the scan could
-// not list. It is a read-layer skip because nothing about any record's content
-// was judged; its path is the directory, so it names no record id and blocks
-// nothing (skippedRecordID reads a record NAME).
-func unreadableDirSkip(issuesRoot string, sub State, err error) SkipRecord {
-	return SkipRecord{
-		Path:  filepath.Join(issuesRoot, statusDirName[sub]),
-		Layer: SkipLayerRead,
-		Error: fmt.Sprintf("the %s/ status directory could not be read, so none of its records were counted: %v", statusDirName[sub], err),
-	}
-}
-
-// scanStatusDir reads the records of ONE status directory. It is where an
-// absent directory and an unreadable one part company, once, for every reader
-// of the ledger: absent is a virgin ledger and reads as no records, while a
-// directory that exists and cannot be listed is returned as an error — a
-// reader that counted it as empty would report a ledger it never read
-// (iss-2609261631120364).
+// scanStatusDir reads the records of ONE status directory. The directory is
+// listed through readStatusDir, where an absent directory and an unreadable one
+// part company once for every reader of the ledger: absent is a virgin ledger
+// and reads as no records, while a directory that exists and cannot be listed
+// is returned as the error naming it — a reader that counted it as empty would
+// report a ledger it never read (iss-2609261241121312, iss-2609261631120364).
 func scanStatusDir(issuesRoot string, sub State) ([]Issue, []SkipRecord, error) {
 	var issues []Issue
 	var skipped []SkipRecord
 	dir := filepath.Join(issuesRoot, statusDirName[sub])
-	entries, err := os.ReadDir(dir)
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil, nil, nil // virgin/absent ledger tolerance
-	}
+	entries, err := readStatusDir(issuesRoot, statusDirName[sub])
 	if err != nil {
-		// The caller names the directory; the path error's own absolute path
-		// would only carry the checkout's location into a surface.
-		var pe *fs.PathError
-		if errors.As(err, &pe) {
-			err = pe.Err
-		}
 		return nil, nil, err
 	}
 	names := make([]string, 0, len(entries))
@@ -1013,9 +1000,13 @@ func checkOneStatusPerID(repoRoot, issuesRoot string) error {
 	var ids []string
 	for _, sub := range statusDirs {
 		dir := filepath.Join(issuesRoot, statusDirName[sub])
-		entries, err := os.ReadDir(dir)
+		entries, err := readStatusDir(issuesRoot, statusDirName[sub])
 		if err != nil {
-			continue // absent is a virgin ledger; an unreadable one is the scan's to report (scanStatusDir)
+			// Absent is tolerated (a virgin ledger); unreadable is a fault, so
+			// every read of the ledger that runs this check first — list and
+			// status, before scanLedger — never renders an unreadable folder as
+			// an empty one (iss-2609261241121312).
+			return err
 		}
 		names := make([]string, 0, len(entries))
 		for _, e := range entries {

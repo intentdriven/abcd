@@ -78,8 +78,69 @@ None. The flagged decisions are adopted as adr-2609021016288378; the family's id
 
 ## Audit Notes
 
-<!-- abcd-review: OWED receipt=rcp-987317795e99 -->
-Fidelity review OWED (receipt rcp-987317795e99).
+<!-- abcd-review: INGESTED receipt=rcp-987317795e99 -->
+Fidelity review — receipt rcp-987317795e99 (verifier intent-auditor claude-fable-5-1).
+
+Provenance: intent-auditor@claude-fable-5-1 · rubric_hash sha256:effa65b3e9e88ff29433b443ec2be159522a8b0b71cf1434526514aa61edb13e · prompt_hash sha256:a30a0680da0b947809e8292c496f6c476ca7cc55eb34a4f0c4a42671319f65f7
+Input attestations: diff:internal/core/capture/reframe.go, internal/core/reading/include.go, internal/core/record/record.go, internal/core/issueschema/, commands/capture.md at 4001d807 (git ls-tree -r)@sha256:2cf4f0f8ca16c675db08e24bf55dc586a85272ba8aa30d02ce0d3be9690bcee3;
+
+Acceptance rollup: MET 5 · MET_WITH_CONCERNS 0 · NOT_MET 0 · INCONCLUSIVE 0
+
+Per-criterion verdicts:
+- ac-1 — MET: the whole write fingerprints the frame at HEAD, walks the surfaces' history to the previous distinct committed triple, and writes occasion, the three before and three after fingerprints, changed and grounds; TestReframeRecordsACommittedRewrite asserts every field against the fixture's before/after frames and that no surface text reaches the record, with glossary and scope rewrites covered by their own tests
+  evidence: internal/core/capture/reframe.go:510 — "head, err := frameAtCommit(repoRoot, "HEAD", cache)"
+  evidence: internal/core/capture/reframe.go:558 — "result.Half, result.Before, result.After = ReframeHalfWhole, before, head"
+  evidence: internal/core/capture/reframe_test.go:257 — "func TestReframeRecordsACommittedRewrite"
+  evidence: internal/core/capture/reframe_test.go:301 — "func TestReframeRecordsAGlossaryRewrite"
+  evidence: internal/core/capture/reframe_test.go:317 — "func TestReframeRecordsAScopeRewrite"
+- ac-2 — MET: when every fingerprintable state in the walk equals HEAD's the verb refuses naming that no prior committed state matches and how far the history was searched; TestReframeRefusesAFrameWithNoPriorState and TestReframeRefusesNamingHowFarTheFingerprintableHistoryReaches assert the refusal and an unchanged ledger
+  evidence: internal/core/capture/reframe.go:548 — "the frame at HEAD matches no prior committed state, so there is no reframe to record"
+  evidence: internal/core/capture/reframe_test.go:332 — "func TestReframeRefusesAFrameWithNoPriorState"
+  evidence: internal/core/capture/reframe_test.go:349 — "func TestReframeRefusesNamingHowFarTheFingerprintableHistoryReaches"
+- ac-3 — MET: the occasion is held to the closed rdi/dsp/srp form and resolved through the shared occasion resolver before anything is minted and again under the lock; TestReframeRefusesAnUnresolvableOccasion covers an absent id of each family, a fourth family, prose and empty, each with the ledger unchanged
+  evidence: internal/core/capture/reframe.go:492 — "if !issueschema.ValidReframeOccasion(occasion) {"
+  evidence: internal/core/capture/reframe.go:500 — "occPath, err := resolveReframeOccasion(repoRoot, occasion)"
+  evidence: internal/core/capture/reframe_test.go:710 — "func TestReframeRefusesAnUnresolvableOccasion"
+- ac-4 — MET: the reframes directory is a denied path in the positive walk and the exclusion floor carries a row naming the reframe record at every position; TestReframeRecordsNeverReachTheBundle assembles every position over a committed rfm-1 and asserts neither the bundle nor the manifest carries it
+  evidence: internal/core/reading/include.go:699 — "{Rule: "absent from the positive walk", Signal: "record type in a denied path", Detail: "the reframe record"},"
+  evidence: internal/core/reading/reframe_test.go:19 — "func TestReframeRecordsNeverReachTheBundle"
+  evidence: internal/core/reading/reframe_test.go:62 — "func TestExclusionFloorNamesTheReframeRecord"
+- ac-5 — MET: the dispatcher routes rfm-N to describeReframe, which reports occasioned_by and its path, the three before fingerprints, the three after fingerprints and changed once complete, and the open status with its next move otherwise; TestDescribeReframeReportsOccasionAndFingerprints asserts each link
+  evidence: internal/core/record/record.go:117 — "case "rfm":"
+  evidence: internal/core/record/record.go:562 — "func describeReframe(repoRoot, id string) (Description, error) {"
+  evidence: internal/core/record/record_test.go:846 — "func TestDescribeReframeReportsOccasionAndFingerprints"
+
+Gap audit:
+- honoured:
+  - the record carries no construal, term or scope text, only fingerprints
+    evidence: internal/core/capture/reframe_test.go:294 — "if strings.Contains(raw, fxOldPhrase) || strings.Contains(raw, "record of judgement") {"
+  - the operator supplies no hash: the verb reads all three surfaces itself at HEAD and in their history
+    evidence: internal/core/capture/reframe.go:289 — "func frameAtCommit(repoRoot, rev string, cache blobCache) (Frame, error) {"
+    evidence: internal/core/capture/reframe.go:418 — "func frameHistory(repoRoot string, cache blobCache, mainline bool) (*frameWalk, error) {"
+  - the join to the occasion is operator-asserted with one check, that the occasion predates the rewrite
+    evidence: internal/core/capture/reframe.go:766 — "func requirePredates"
+    evidence: internal/core/capture/reframe_test.go:748 — "func TestReframeRefusesAnOccasionCommittedAfterTheRewrite"
+  - a ground below the substance floor refuses, and the ground is redacted
+    evidence: internal/core/capture/reframe.go:496 — "ground, redacted, degraded, err := requireFreeGrounds(repoRoot, "reframe", req.Grounds)"
+    evidence: internal/core/capture/reframe_test.go:672 — "func TestReframeHoldsTheGroundToTheFloor"
+  - the capture surface page documents the verb and its three halves
+    evidence: commands/capture.md:508 — "## Record a reframe"
+    evidence: commands/capture.md:529 — "A reframe is written in one of three halves, and every render names which:"
+  - the family is warm and excluded from every reading, with the manifest asserting the exclusion
+    evidence: internal/core/reading/include.go:72 — "It goes 1.8.0 to 1.9.0 with the reframe record: Exclusions gains the row"
+- diverged: (none)
+- missing: (none)
+
+Scope-condition dispositions:
+- cond-2609020626047674 — survived: FrameSurfaces fixes the three paths and the history walk is limited to them; ConstrualFingerprint refuses a framing chapter without exactly one Construal section, so a frame living elsewhere is refused rather than misread
+  evidence: internal/core/capture/reframe.go:54 — "FrameSurfaces"
+  evidence: internal/core/capture/reframe.go:257 — "func frameSurfacePaths() []string {"
+  evidence: internal/core/capture/reframe_test.go:174 — "func TestConstrualFingerprintRefusesAChapterWithoutTheSection"
+- cond-2609020626049770 — survived: the verb reads HEAD, refuses an uncommitted rewrite without --open, writes the before half from HEAD's triple under --open, completes it with --complete once HEAD differs, and every result names its half
+  evidence: internal/core/capture/reframe.go:521 — "result.Half, result.Before = ReframeHalfOpen, head"
+  evidence: internal/core/capture/reframe_test.go:444 — "func TestReframeRefusesUncommittedChangesWithoutOpen"
+  evidence: internal/core/capture/reframe_test.go:469 — "func TestReframeOpensAHalfBeforeTheCommit"
+  evidence: internal/core/capture/reframe_test.go:493 — "func TestCompleteFinishesAnOpenRecord"
 
 ## Grounds
 

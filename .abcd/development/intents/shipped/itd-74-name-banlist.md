@@ -59,5 +59,75 @@ _None — all three original questions resolved in the 2026-07-29 planning inter
 
 ## Audit Notes
 
-<!-- abcd-review: OWED receipt=rcp-3ceed52bdb99 -->
-Fidelity review OWED (receipt rcp-3ceed52bdb99).
+<!-- abcd-review: INGESTED receipt=rcp-3ceed52bdb99 -->
+Fidelity review — receipt rcp-3ceed52bdb99 (verifier intent-auditor claude-fable-5-1).
+
+Provenance: intent-auditor@claude-fable-5-1 · rubric_hash sha256:effa65b3e9e88ff29433b443ec2be159522a8b0b71cf1434526514aa61edb13e · prompt_hash sha256:adb1f626f42968e7eed5c70958482350603309715288f8683540ecbcd62ef5c7
+Input attestations: diff:internal/core/banlist, internal/core/ahoy/banlist_scaffold*.go, internal/surface/cli/banlist.go, .githooks/pre-commit, internal/core/lint/config.go and .abcd/docs-lint.json at chore/audit-run-a-1 5b4a43b6 (git ls-tree -r; spc-20 closed, itd-74 shipped)@sha256:cf94fb55003ac6ae6116bab8ea45d59a0f568e0de0a7e005bb9f2a4472190b8a;
+
+Acceptance rollup: MET 5 · MET_WITH_CONCERNS 2 · NOT_MET 0 · INCONCLUSIVE 0
+
+Per-criterion verdicts:
+- ac-1 — MET_WITH_CONCERNS: the banned_tokens family compiles per-token patterns with an allow_context escape and a blocker finding names file and line, as TestBannedTokens (bad.md:1) and TestDocsLintHarnessNameGate (docs/named.md:3, the docs-lint:allow line silent) hold; the concern is the reach: the configured roots are docs and README.md only, the payload render reuses those same roots, and the shipped artefact (commands/, agents/, skills/) is not a scanned root
+  evidence: internal/core/lint/config.go:47 — "type BannedToken struct {"
+  evidence: internal/core/lint/config.go:59 — "AllowContext []string `json:"allow_context"`"
+  evidence: internal/core/lint/lint.go:279 — "findings = append(findings, tokenChecks.lintLines(rel, lines, mask)...)"
+  evidence: internal/core/lint/lint_test.go:238 — "func TestBannedTokens(t *testing.T) {"
+  evidence: internal/core/lint/lint_test.go:262 — "if !hasFinding(fs, filepath.Join("rec", "bad.md"), "py", 1) {"
+  evidence: internal/core/lint/lint_test.go:289 — "if !hasFinding(fs, filepath.Join("docs", "named.md"), "harness/claude-code", 3) {"
+  evidence: .abcd/docs-lint.json:2 — ""roots": [ "docs", "README.md" ]"
+  evidence: internal/core/launch/gates.go:105 — "// Findings are the docs-lint findings over the configured doc roots."
+- ac-2 — MET: the committed guard refuses a staged match naming only the entry key and withholds the matched text and the pattern by design; TestPreCommitHook_RefusesByKeyOnly asserts the key is printed and neither the pattern, its upper-case form nor the matched line appears
+  evidence: .githooks/pre-commit:877 — "echo "pre-commit: BLOCKED — staged content matches private banlist entry '$key'." >&2"
+  evidence: .githooks/pre-commit:886 — "(the matched text and the pattern are withheld by design — only the key is named)"
+  evidence: internal/core/banlist/hook_test.go:195 — "func TestPreCommitHook_RefusesByKeyOnly(t *testing.T) {"
+- ac-3 — MET: machine identifiers are ordinary keyed patterns in the store format, and the keyed corpus carries a hostname, an IPv4 address, a CIDR prefix, a MAC address and an IPv6 address that TestPreCommitHook_KeyedCorpus proves block exactly as the name entry does, naming the key only
+  evidence: .githooks/pre-commit:27 — "hostnames, IPv4/IPv6 addresses, CIDR prefixes, MAC addresses,"
+  evidence: internal/core/banlist/testdata/parse-corpus.txt:19 — "lab-host alice-laptop\.example\.com"
+  evidence: internal/core/banlist/testdata/parse-corpus.txt:21 — "lab-cidr 203\.0\.113\.0/24"
+  evidence: internal/core/banlist/hook_test.go:215 — "func TestPreCommitHook_KeyedCorpus(t *testing.T) {"
+- ac-4 — MET: an absent store prints a starred WARNING that the private name guard is INACTIVE and the commit proceeds; an entryless store warns as loudly; both are pinned by TestPreCommitHook_AbsentBanlistWarnsLoudly and TestPreCommitHook_EntrylessStoreWarnsLoudly
+  evidence: .githooks/pre-commit:462 — "echo "pre-commit: WARNING — the private name guard is INACTIVE on this machine." >&2"
+  evidence: .githooks/pre-commit:681 — "echo "pre-commit: WARNING — the private name guard has NO ENTRIES in this store." >&2"
+  evidence: internal/core/banlist/hook_test.go:155 — "func TestPreCommitHook_AbsentBanlistWarnsLoudly(t *testing.T) {"
+  evidence: internal/core/banlist/hook_test.go:171 — "func TestPreCommitHook_EntrylessStoreWarnsLoudly(t *testing.T) {"
+- ac-5 — MET_WITH_CONCERNS: Install writes the executable guard hook, a docs-lint config whose public family ListPublic reports present, and a keyed private stub with only commented examples (TestInstallScaffoldsTheBanlistArtefacts); the stub's values are judged reserved by the repo's own network detector with an armed RFC 1918 control (TestBanlistStubSeedsOnlyReservedIdentifiers) and real git ignores it (TestInstalledStubIsIgnoredByRealGit); the concern is that where the docs-lint config path is gitignored (the public-visibility case) no public family is written and the gap is reported unresolvable, so the scaffold leaves that repo with no CI-enforced family
+  evidence: internal/core/ahoy/banlist_scaffold_test.go:19 — "func TestInstallScaffoldsTheBanlistArtefacts(t *testing.T) {"
+  evidence: internal/core/ahoy/banlist_scaffold_test.go:73 — "func TestBanlistStubSeedsOnlyReservedIdentifiers(t *testing.T) {"
+  evidence: internal/core/ahoy/banlist_scaffold_test.go:346 — "func TestInstalledStubIsIgnoredByRealGit(t *testing.T) {"
+  evidence: internal/core/ahoy/banlist_scaffold.go:164 — "# lab-ipv4 192\.0\.2\.17"
+  evidence: internal/core/ahoy/banlist_scaffold_test.go:495 — "t.Error("install wrote a docs-lint config into a path git ignores, delivering no enforcement")"
+  evidence: internal/core/ahoy/banlist_scaffold_test.go:509 — "t.Error("the gap offers a fix that would produce a config CI never sees")"
+- ac-6 — MET: renderPublicLayer prints id, severity, owner and the pattern in full; renderPrivateLayer prints each entry's key and line and states that pattern values never reach any output, and TestAddPrivateCreatesTheStoreAndListsKeysOnly asserts the marshalled private report carries no pattern
+  evidence: internal/surface/cli/banlist.go:478 — "fmt.Fprintf(w, " %-32s %-8s %-13s %s\n", termsafe.Sanitize(e.ID), termsafe.Sanitize(e.Severity), owner, termsafe.Sanitize(e.Pattern))"
+  evidence: internal/surface/cli/banlist.go:269 — "fmt.Fprintf(w, " %s (line %d)\n", termsafe.Sanitize(e.Key), e.Line)"
+  evidence: internal/surface/cli/banlist.go:274 — "keys only: the pattern values never reach any output, by design"
+  evidence: internal/core/banlist/private_test.go:225 — "func TestAddPrivateCreatesTheStoreAndListsKeysOnly(t *testing.T) {"
+- ac-7 — MET: one PrivateReachNote constant states that CI cannot enforce the layer and it protects only opted-in machines; the banlist render, the ahoy status board, its JSON envelope and the scaffolded stub all derive from it, with tests on the board and the envelope
+  evidence: internal/core/banlist/banlist.go:92 — "const PrivateReachNote = "CI cannot enforce this layer — it protects only machines that have opted in, " +"
+  evidence: internal/surface/cli/banlist.go:298 — "fmt.Fprintln(w, " reach: "+banlist.PrivateReachNote)"
+  evidence: internal/core/ahoy/banlist_scaffold.go:468 — "Reach: banlist.PrivateReachNote,"
+  evidence: internal/surface/cli/ahoy_banlist_reach_test.go:20 — "func TestAhoyStatusStatesThePrivateBanlistReach(t *testing.T) {"
+  evidence: internal/surface/cli/ahoy_banlist_reach_test.go:86 — "func TestAhoyEnvelopeCarriesTheReach(t *testing.T) {"
+
+Gap audit:
+- honoured:
+  - two layers, public in CI config and private in an untracked store the committed guard reads
+    evidence: .githooks/pre-commit:6 — "Refuses to commit any name listed in an UNTRACKED banlist."
+    evidence: internal/core/banlist/banlist.go:157 — "func validPublicPattern(stored string) bool {"
+  - a refusal names the key alone
+    evidence: .githooks/pre-commit:886 — "only the key is named"
+  - an absent private layer warns loudly and never impersonates protection
+    evidence: .githooks/pre-commit:462 — "WARNING — the private name guard is INACTIVE on this machine."
+  - ahoy scaffolds hook, public family and gitignored stub seeded with reserved values
+    evidence: internal/core/ahoy/banlist_scaffold_test.go:19 — "func TestInstallScaffoldsTheBanlistArtefacts(t *testing.T) {"
+  - every surface states what CI cannot enforce
+    evidence: internal/core/banlist/banlist.go:92 — "CI cannot enforce this layer"
+- diverged:
+  - the public family gates README, docs/ and the shipped artefact
+    evidence: .abcd/docs-lint.json:2 — ""roots": [ "docs", "README.md" ]"
+    evidence: internal/core/launch/gates.go:105 — "the docs-lint findings over the configured doc roots"
+  - a repo becomes name-safe by being abcd-managed: the public family is present after scaffolding
+    evidence: internal/core/ahoy/banlist_scaffold_test.go:485 — "func TestPublicFamilyUnderPublicVisibility(t *testing.T) {"
+    evidence: internal/core/ahoy/banlist_scaffold_test.go:509 — "the gap offers a fix that would produce a config CI never sees"
+- missing: (none)

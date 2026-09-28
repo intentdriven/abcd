@@ -100,7 +100,7 @@ func PrimaryWorktreeRoot(repoRoot string) (string, bool) {
 	}
 	// The candidate's own answers, from the candidate's own directory.
 	top, err := gitutil.Run(primary, "rev-parse", "--path-format=absolute", "--show-toplevel")
-	if err != nil || top != primary {
+	if err != nil || top != primary || !gitutil.ToplevelShaped(primary, top) {
 		return "", false
 	}
 	common, err := gitutil.Run(primary, "rev-parse", "--path-format=absolute", "--git-common-dir")

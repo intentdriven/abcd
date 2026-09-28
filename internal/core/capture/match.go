@@ -44,7 +44,7 @@ func matchCandidates(repoRoot, issuesRoot string, cfg match.Config) ([]match.Can
 		for _, st := range []State{StateOpen, StateResolved} {
 			issues, _, err := scanStatusDir(issuesRoot, st)
 			if err != nil {
-				return nil, fmt.Errorf("the %s/ status directory: %w", statusDirName[st], err)
+				return nil, err // readStatusDir names the directory
 			}
 			for _, iss := range issues {
 				out = append(out, match.Candidate{ID: iss.ID, Text: iss.Body})

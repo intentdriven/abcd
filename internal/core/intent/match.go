@@ -27,7 +27,7 @@ type MatchText struct {
 }
 
 var (
-	h1Re           = regexp.MustCompile(`^#\s+(.+?)\s*$`)
+	titleH1Re      = regexp.MustCompile(`^#\s+(.+?)\s*$`)
 	pressReleaseRe = regexp.MustCompile(`^##\s+Press Release\s*$`)
 	seedReduceRe   = regexp.MustCompile(`[>_*\s]+`)
 )
@@ -70,7 +70,7 @@ func matchTextOf(id, content string) MatchText {
 		if mask[i] != 0 {
 			continue
 		}
-		if m := h1Re.FindStringSubmatch(strings.TrimRight(ln, "\r")); m != nil {
+		if m := titleH1Re.FindStringSubmatch(strings.TrimRight(ln, "\r")); m != nil {
 			mt.Title = m[1]
 			break
 		}

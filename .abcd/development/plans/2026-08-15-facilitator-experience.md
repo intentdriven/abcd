@@ -40,9 +40,9 @@ string it blocks on. Auto-merge never inherited; authorised per cycle.
 
 Ordering and item specs unchanged from that plan:
 
-1. **[iss-163](../../work/issues/open/iss-163-the-ahoy-install-config-prompts-are-unexplainable-to-a-first.md)**
+1. **[iss-163](../../work/issues/resolved/iss-163-the-ahoy-install-config-prompts-are-unexplainable-to-a-first.md)**
    — canonical per-choice help text lives in core; the foundation item.
-2. **[iss-164](../../work/issues/open/iss-164-the-ahoy-install-completion-summary-is-written-for-abcd-s-im.md)**
+2. **[iss-164](../../work/issues/resolved/iss-164-the-ahoy-install-completion-summary-is-written-for-abcd-s-im.md)**
    (blocked by iss-163) — persona-readable result summaries.
 3. **[itd-63](../intents/shipped/itd-63-setup-wizard-explains-installs.md)**
    — the intent frame A1/A2 deliver into. Lifecycle first: planned but

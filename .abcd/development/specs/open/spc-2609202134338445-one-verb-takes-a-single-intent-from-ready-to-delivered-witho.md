@@ -16,54 +16,67 @@ the CLI adapter when opted in. The ADR decision 6 owes (the `--auto-plan`
 substitute for the sign-off act, and the opt-in reversal of the host-delegated
 boundary) is minted before either path ships and is a delivery of this spec.
 
-## Scope
+## Steps
 
-1. **The state file** under `.abcd/.work.local/run/<run-id>/state.json`:
-   run id, intent, lanes (each with branch, base sha, head sha, worktree
-   path, step, receipt path, PR number), window clock and
-   `next_eligible_at` (the pacing intent writes and reads those two), and
-   the run record accumulated as steps complete. One reader and one atomic
-   writer (`fsutil.WriteFileAtomic`); every verb below reads it first and
-   writes it last.
-2. **The step interface** (decision 5, the default): `abcd build <itd-N>`
-   creates the run after the checks (criteria 1 and 2); `abcd implement step`
-   performs the next binary-owned step and, when a step needs an agent,
-   returns the brief path, the agent role and the receipt path it expects
-   (criterion 8); `abcd implement receipt <path>` verifies and advances
-   (criterion 4); `abcd implement status` renders the state. Every
-   invocation exits after one step (criterion 7).
-3. **The process driver** (decision 5, opt-in by configuration): the same
-   loop calling itself through `step` and `receipt`, starting each agent
-   through the CLI adapter (`itd-2609201916056194`) and waiting for it;
-   named in the run record (criterion 9).
-4. **The checks** (criteria 1, 2): the readiness gate, the claim sections,
-   the open-question count, the hold (prose until `iss-2609200830076665`
-   ships), and the peer reader (`itd-2609091416295622`).
-5. **The brief renderer**: intent, spec, the conventions section of
-   `AGENTS.md` and the decision lines the intent cites, into one Markdown
-   file under the run directory (criterion 3).
-6. **The lane**: worktree at `~/.abcd/worktrees/<root-sha>/<run>-<lane>`
-   in abcd's form (the store's verb once `itd-2609091014076309` ships; a
-   plain `git worktree add` until then), branch off the default branch.
-7. **The receipt** (criterion 4): a file the agent writes naming its commits,
-   the definition of done's output and its report; the verifier checks the
-   commits exist on the branch and the report exists, and refuses otherwise.
-8. **Validators** (criterion 5): the ruthless and security reviewer briefs
-   on the lane's diff, each a fresh agent; findings are applied by a fresh
-   implementer or rejected in the report; the fidelity request is completed
-   with the delivered range from base to head before the auditor runs.
-9. **The landing** (criterion 6): `spec close` and `capture resolve` invoked
-   by the loop with the lane's commit, the pull request through the forge
-   client the repository already uses (`gh`), the merge rule from the
-   repository's ruleset, no push after arming, cleanup after the ancestor
-   check.
-10. **The run record and transcripts** (criterion 10): the state file's
-    record rendered at the end, and `history capture` per transcript path
-    (one call once `iss-2609202046145653` ships).
-11. **`--auto-plan`** (decision 6): the planning path run by the loop on a
-    draft whose decisions are all recorded, with the two adversarial reviews
-    as validator steps and the ADR's substitute checked before `plan`;
-    refused on anything less.
+1. **The state file**
+   Under `.abcd/.work.local/run/<run-id>/state.json`: run id, intent, lanes
+   (each with branch, base sha, head sha, worktree path, step, receipt path,
+   PR number), window clock and `next_eligible_at` (the pacing intent writes
+   and reads those two), and the run record accumulated as steps complete.
+   One reader and one atomic writer (`fsutil.WriteFileAtomic`); every verb
+   below reads it first and writes it last.
+   - packages: internal/core/implement/loop
+   - landed: 7d3f3276
+2. **The step interface**
+   Decision 5, the default: `abcd build <itd-N>` creates the run after the
+   checks (criteria 1 and 2); `abcd implement step` performs the next
+   binary-owned step and, when a step needs an agent, returns the brief path,
+   the agent role and the receipt path it expects (criterion 8); `abcd
+   implement receipt <path>` verifies and advances (criterion 4); `abcd
+   implement status` renders the state. Every invocation exits after one step
+   (criterion 7).
+   - packages: internal/core/implement/loop, internal/surface/cli
+   - landed: 7d3f3276
+3. **The process driver**
+   Decision 5, opt-in by configuration: the same loop calling itself through
+   `step` and `receipt`, starting each agent through the CLI adapter
+   (`itd-2609201916056194`) and waiting for it; named in the run record
+   (criterion 9).
+4. **The checks**
+   Criteria 1 and 2: the readiness gate, the claim sections, the
+   open-question count, the hold (prose until `iss-2609200830076665` ships),
+   and the peer reader (`itd-2609091416295622`).
+   - packages: internal/core/implement/loop, internal/core/intent, internal/core/peers
+   - landed: 7d3f3276
+5. **The brief renderer**
+   Intent, spec, the conventions section of `AGENTS.md` and the decision lines
+   the intent cites, into one Markdown file under the run directory
+   (criterion 3).
+6. **The lane**
+   Worktree at `~/.abcd/worktrees/<root-sha>/<run>-<lane>` in abcd's form (the
+   store's verb once `itd-2609091014076309` ships; a plain `git worktree add`
+   until then), branch off the default branch.
+7. **The receipt**
+   Criterion 4: a file the agent writes naming its commits, the definition of
+   done's output and its report; the verifier checks the commits exist on the
+   branch and the report exists, and refuses otherwise.
+8. **Validators**
+   Criterion 5: the ruthless and security reviewer briefs on the lane's diff,
+   each a fresh agent; findings are applied by a fresh implementer or rejected
+   in the report; the fidelity request is completed with the delivered range
+   from base to head before the auditor runs.
+9. **The landing**
+   Criterion 6: `spec close` and `capture resolve` invoked by the loop with
+   the lane's commit, the pull request through the forge client the
+   repository already uses (`gh`), the merge rule from the repository's
+   ruleset, no push after arming, cleanup after the ancestor check.
+10. **The run record and transcripts**
+   Criterion 10: the state file's record rendered at the end, and `history
+   capture` per transcript path (one call once `iss-2609202046145653` ships).
+11. **`--auto-plan`**
+   Decision 6: the planning path run by the loop on a draft whose decisions
+   are all recorded, with the two adversarial reviews as validator steps and
+   the ADR's substitute checked before `plan`; refused on anything less.
 
 ## Out of scope
 
@@ -110,3 +123,31 @@ itd-50's fix round runs from the reviewers' findings instead; the lane's definit
 schema gains `handback: {kind, reason}`; the loop reads it before the
 validators and ends the lane with that outcome when present. `abcd build
 <iss-N>` is the person's form; `drain` calls the same loop with the key.
+
+## Progress
+
+The run builds the steps above; this section says which have landed and which
+remain, and the `landed:` lines under `## Steps` say the same to the loop. The
+spec stays open until the last lane closes it.
+
+- **Landed (lane 1): pieces 1, 2 and 4.** The state file and its one reader and
+  one atomic writer (`internal/core/implement/loop`), under
+  `.abcd/.work.local/run/<run-id>/state.json` with the tier's advisory lock; the
+  step interface — `abcd build <itd-N>` creates the run after the checks,
+  `implement step` performs one step and exits, `implement receipt <path>`
+  completes an agent step on a verified receipt, `implement status` renders —
+  with the lane sequence (worktree, brief, implement, validate, land) named and
+  every step body left to the piece that delivers it; and the checks: the
+  readiness gate, the open questions, the claim sections, the hold (read from
+  `held:`, since iss-2609200830076665 shipped), the spec's steps through the
+  spec store's reader, and the peers (the peer listing and the shared run's
+  live claims). The end-to-end test plays the host with fake step bodies.
+- **Seam left, not built: piece 3**, the process driver. It waits on the runner
+  intent (itd-2609201916056194) and calls the same `Advance` and `Receipt`.
+- **Remaining: pieces 5 to 8** (the brief, the lane's worktree, the receipt's
+  verifier, the validators with the itd-58 verdict invariant) and **9 to 11**
+  (the landing, the run record and transcripts, `--auto-plan` with its ADR).
+  Each registers its body in `loop.DefaultSteps`. The issue key (decision 10)
+  is refused by name at the key check; the lane that admits it adds the
+  `remedy:` field schema, drain's eligibility rule and the `handback:` report
+  field. `--auto-plan` is not a flag yet.

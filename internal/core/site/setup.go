@@ -14,7 +14,7 @@ package site
 //     writer, so a file already current is not rewritten, a file the
 //     repository owns once it exists (the composition and the static inputs)
 //     is kept, and machinery that drifted refuses the whole stage — with
-//     nothing written and nothing remote attempted — unless it is confirmed.
+//     nothing written and no remote change attempted — unless it is confirmed.
 //  2. THE FORGE. The two deployment environments the workflow runs in,
 //     restricted to the default branch and release tags, created or corrected
 //     through the forge's API as the person who invoked the verb (adr-44: a
@@ -207,9 +207,21 @@ func Setup(req SetupRequest) (SetupResult, error) {
 		adapter = a
 	}
 	s := hosting.Site{Name: hostingBlock.Name, Domain: hostingBlock.Domain}
-	branch, _ := scaffold.DeriveRepoFacts(root)
+	forge, forgeNote := req.Forge, ""
+	if forge == nil {
+		f, ferr := GitHubForge(root)
+		if ferr != nil {
+			forgeNote = "the forge is not reachable from this checkout, so the environments were not created: " + ferr.Error()
+		} else {
+			forge = f
+		}
+	}
+	branch, branchNote := defaultBranch(ctx, root, forge)
 
 	res := SetupResult{Host: HostOutcome{Provider: adapter.Name(), Name: s.Name, Domain: s.Domain, Status: HostNotReached}}
+	if branchNote != "" {
+		res.Notes = append(res.Notes, branchNote)
+	}
 
 	// Stage 1: the repository.
 	planned, err := plannedFiles(root, manifest, manifestBytes, branch, adapter, s)
@@ -221,10 +233,10 @@ func Setup(req SetupRequest) (SetupResult, error) {
 	if werr != nil {
 		res.Status = StatusRefused
 		if errors.Is(werr, scaffold.ErrScaffoldBlocked) {
-			res.Notes = append(res.Notes, "a file setup owns was edited by hand, so nothing was written and nothing remote was attempted; "+
+			res.Notes = append(res.Notes, "a file setup owns was edited by hand, so nothing was written and no remote change was attempted; "+
 				"re-run with --confirm to replace it")
 		} else {
-			res.Notes = append(res.Notes, "a write failed, so nothing remote was attempted: "+scrubRoot(werr, root))
+			res.Notes = append(res.Notes, "a write failed, so no remote change was attempted: "+scrubRoot(werr, root))
 		}
 		for _, env := range []string{EnvRender, EnvDeploy} {
 			res.Environments = append(res.Environments, EnvironmentOutcome{Name: env, Status: RemoteNotReached})
@@ -235,14 +247,8 @@ func Setup(req SetupRequest) (SetupResult, error) {
 	declined, refused := false, false
 
 	// Stage 2: the forge.
-	forge := req.Forge
-	if forge == nil {
-		f, ferr := GitHubForge(root)
-		if ferr != nil {
-			res.Notes = append(res.Notes, "the forge is not reachable from this checkout, so the environments were not created: "+ferr.Error())
-		} else {
-			forge = f
-		}
+	if forgeNote != "" {
+		res.Notes = append(res.Notes, forgeNote)
 	}
 	envOK := true
 	// Without this step ahead of the secret steps, a person following them
@@ -333,17 +339,42 @@ func Setup(req SetupRequest) (SetupResult, error) {
 	return res, nil
 }
 
+// defaultBranch is the repository's default branch as the forge names it: the
+// branch the workflow gates on, the environments admit and the written files
+// are pushed to. The checkout's own answer (origin/HEAD, else the checked-out
+// branch, else main) stands in only when the forge cannot answer, and the note
+// it returns then says so: a feature branch standing in for the default would
+// restrict the environments to the wrong branch.
+func defaultBranch(ctx context.Context, root string, forge Forge) (branch, note string) {
+	local, _ := scaffold.DeriveRepoFacts(root)
+	why := "the forge is not reachable from this checkout"
+	if forge != nil {
+		b, err := forge.DefaultBranch(ctx)
+		switch {
+		case err != nil:
+			why = "the forge did not answer: " + err.Error()
+		case !scaffold.SafeBranchName(b):
+			why = "the forge's default-branch name has characters a workflow may not carry"
+		default:
+			return b, ""
+		}
+	}
+	return local, fmt.Sprintf("the repository's default branch was not read from the forge (%s), so this checkout's branch %s "+
+		"stands in for it in the workflow, the environments' branch rule and the steps below; if the forge's default "+
+		"branch is another, re-run where the forge answers", why, local)
+}
+
 // setupRoot anchors the run at the working-tree root.
 func setupRoot(dir string) (string, error) {
 	abs, err := filepath.Abs(dir)
 	if err != nil {
 		return "", err
 	}
-	top, err := gitutil.Run(abs, "rev-parse", "--show-toplevel")
-	if err != nil || strings.TrimSpace(top) == "" {
+	top, err := gitutil.Toplevel(abs)
+	if err != nil {
 		return "", errors.New("site setup: this is not inside a git checkout")
 	}
-	return strings.TrimSpace(top), nil
+	return top, nil
 }
 
 // scrubRoot keeps the checkout's absolute path out of a message.
@@ -519,8 +550,9 @@ func renderSiteWorkflow(branch string, adapter hosting.Adapter) ([]byte, error) 
 	rel, _ := adapter.HostConfig(hosting.Site{Name: "x"})
 	var buf bytes.Buffer
 	err = tmpl.Execute(&buf, map[string]any{
-		// The branch comes from scaffold.DeriveRepoFacts, allowlisted there
-		// against every YAML metacharacter.
+		// The branch is the forge's, held to scaffold.SafeBranchName, or
+		// scaffold.DeriveRepoFacts's, allowlisted there against every YAML
+		// metacharacter.
 		"DefaultBranch": branch,
 		"Provider":      adapter.Name(),
 		"Secrets":       adapter.Secrets(),

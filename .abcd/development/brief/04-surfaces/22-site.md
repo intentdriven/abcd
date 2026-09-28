@@ -58,11 +58,14 @@ rendered archive from a second job; and the provider's host configuration. The
 composition and the static inputs are the repository's own once they exist, so
 a later run keeps them as they are. The workflow and the host configuration are
 abcd's: a copy that differs refuses the whole run, with nothing written and
-nothing remote attempted, unless the run is told to replace it.
+no remote change attempted, unless the run is told to replace it.
 
 **The forge.** Two deployment environments, one for the render and one for the
 deploy, each admitting only the default branch and release tags, created
-through the forge's API as the person running the verb. An environment that
+through the forge's API as the person running the verb. The default branch is
+the one the forge names for the repository, and it is also the branch the
+workflow gates on; only when the forge cannot answer does the checkout's own
+stand in, and the report's notes say so. An environment that
 already exists is never rewritten, because the forge's environment write
 replaces its whole protection set, required reviewers included: one on named
 rules and no rule beyond those two gains the rules it lacks, and one that
@@ -93,6 +96,13 @@ cannot add one. A page switched off takes its navigation entry and every link to
 it with it, and switching the explorer off takes every explorer page. The landing
 page and the record pages carry the site, so a declaration switching either off
 beneath the explorer is refused.
+
+The documentation tree under `/docs/` is not among these pages: the docs build
+writes it beside them. The composition declaration's `docs` block says it is
+there, so the header's Docs entry and every link that reaches a documentation
+page's route appear only when that block names the docs index. Without it, a
+link to a documentation page goes to the forge's view of the file, like a link
+to any other file the site has no page for.
 
 ## The single-source rule
 

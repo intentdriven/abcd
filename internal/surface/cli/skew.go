@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/core/ahoy"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
@@ -84,7 +85,14 @@ func readSkewMeta(root string) map[string]string {
 	if meta := readBinaryMeta(filepath.Join(root, binaryMetaFile)); meta != nil {
 		return meta
 	}
+	// The data directory is believed only in the shape the harness gives it,
+	// through core's one check: a relative, in-checkout or world-writable one
+	// could otherwise fabricate or suppress the notice (iss-2609020630242279).
 	if data := os.Getenv("CLAUDE_PLUGIN_DATA"); data != "" {
+		cwd, err := os.Getwd()
+		if err != nil || ahoy.PluginDataDirHazard(data, cwd) != "" {
+			return nil
+		}
 		return readBinaryMeta(filepath.Join(data, "cache", "binary-meta"))
 	}
 	return nil

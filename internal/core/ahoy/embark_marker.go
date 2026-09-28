@@ -16,8 +16,8 @@ import (
 //
 // It wraps the existing unexported classify/install machinery: dryRun maps
 // classifyMarker(path) → current→(false,nil), missing/outdated→(true,nil),
-// symlink or unplaceable→(false, err); a real run calls installMarkerFile(path) → ok==false→
-// (false, err), else (wrote, nil).
+// symlink or unplaceable→(false, err); a real run calls installMarkerFile(path) → its
+// error wrapped as (false, err), else (wrote, nil).
 func EnsureMarker(path string, dryRun bool) (changed bool, err error) {
 	if dryRun {
 		switch classifyMarker(path) {
@@ -34,9 +34,9 @@ func EnsureMarker(path string, dryRun bool) (changed bool, err error) {
 			return false, fmt.Errorf("cannot classify marker at %s", filepath.Base(path))
 		}
 	}
-	wrote, ok := installMarkerFile(path)
-	if !ok {
-		return false, fmt.Errorf("cannot write marker to %s", filepath.Base(path))
+	wrote, err := installMarkerFile(path)
+	if err != nil {
+		return false, fmt.Errorf("cannot write marker to %s: %w", filepath.Base(path), err)
 	}
 	return wrote, nil
 }

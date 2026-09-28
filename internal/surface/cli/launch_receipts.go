@@ -40,6 +40,9 @@ func newLaunchReceiptsCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if _, err := launchArtefact("abcd launch receipts", cwd); err != nil {
+				return err
+			}
 			check, err := lint.CheckReleaseReceipts(cwd)
 			if err != nil {
 				return &exitError{Code: 2, Msg: "abcd launch receipts: " + scrubPaths(err)}

@@ -29,6 +29,48 @@ it reads the dated heading `ship` writes. A third verb, **archive**, is the rele
 workflow's half of the pin: it renders the plugin archive from a commit and proves
 the committed pin names exactly that archive.
 
+## The artefact declaration
+
+Every verb runs against what the repository says it ships, declared once in
+`.abcd/config/artefact.json`:
+
+```json
+{
+  "kind": "binary",
+  "lockstep": ["package.json", {"path": "app/meta.json", "json_pointer": "/release/version"}],
+  "site": false
+}
+```
+
+- `kind` — `plugin` (a harness plugin: the payload, manifests and catalog the
+  gates already judge), `binary` (a built program, a Go binary in the first cut)
+  or `application` (an application with its own build and publish steps). Any
+  other value is refused by every verb, naming the kind and the accepted set,
+  before anything is written. `binary` and `application` behave identically in
+  every verb: the same preview, lockstep check, scaffold file set and release
+  gate. Neither names a toolchain; the verify job's Go leg follows `go.mod`, not
+  the kind. The two names record what the repository ships, and choosing one
+  over the other changes nothing the release does.
+- `lockstep` — for a kind other than `plugin`, the JSON files held in lockstep
+  with the version-location primary: each carries the version at its own
+  `json_pointer`, or at the primary's when it names none. A plugin's lockstep is
+  the pinned manifest table, so a list declared for one is refused.
+- `site` — the release-rendered site opt-in, read and validated but not yet
+  acted on.
+
+The keys are read exactly as written: a key the declaration does not admit, a
+key repeated at any level, and a lockstep entry key spelt in another case
+(`PATH` for `path`) are each refused, before anything is written.
+
+`ahoy install` writes the declaration: a repository carrying
+`.claude-plugin/plugin.json` adopts `kind: plugin` without being asked, and any
+other is asked its kind. The preview and the scaffold choose what to read and
+write by the kind, so they refuse a repository that has declared none, naming the
+file and the kinds; `ship`, `archive` and `receipts` read an absent declaration as
+the plugin shape and hold a present one to the same reader. The cut itself — the
+derived version, the changelog, the findings gate and its deferral read — is the
+same for every kind.
+
 ## Release day: what a human actually does
 
 The rest of this page describes the verbs. This section describes the **day** —
@@ -186,11 +228,21 @@ Run:
 Then summarise the JSON for the user:
 
 - `version` — the version the release would carry.
+- `kind` — the declared artefact kind the preview ran against.
+- `scanned_tree` — which tree the bundle and its scan cover: the plugin payload
+  (the include set in `.abcd/config/launch-payload.json`), or, for a kind other
+  than `plugin` that declares no include set, the tree the release tag would
+  archive — `git archive`'s view of `HEAD`, `export-ignore` honoured — minus the
+  record namespace, denied by the same rule a plugin payload is held to. Links in
+  that tree are excluded (`symlink`): an archive carries a link as the path it
+  names, not as content.
 - `bundle.files` — the files the bundle would include (an array; report its length as the count).
 - `scan.hard_fails` — secret/PII findings that would block the release.
   `scan.findings` keeps at most 10,000 of them; `scan.findings_omitted`, when
   present, counts the rest, and `scan.hard_fails` counts every one.
-- `smoke.ok` — whether the payload would install: both plugin manifests parse,
+- `smoke.ok` — whether the payload would install (a plugin only; for another
+  kind the `installability-smoke` row is `not_armed`, as are `hook-compliance`,
+  the deep tier and the parity diff, each naming the declared kind): both plugin manifests parse,
   the marketplace source resolves, and every declared command, agent, skill and
   hook path is carried. `smoke.findings` names any path that is not.
 - `deep_smoke` — present only when the preview was run with `--deep-smoke`: the
@@ -260,7 +312,11 @@ Then summarise the JSON for the user:
   never publishes, so it is not a verdict on the release. Read `gates` and
   `would_refuse_on` for that.
 - `lockstep` and `retention` — the manifest-lockstep result and the release
-  retention plan. Both feed `would_refuse_on`, so a lockstep drift or a
+  retention plan. For a kind other than `plugin` the lockstep check reads the
+  primary from `.abcd/config/version-location.json` and every declared lockstep
+  file, reads no plugin manifest, and refuses a declared file it cannot read by
+  name; a kind with neither a contract nor a list holds nothing in lockstep, and
+  the result says so. Both feed `would_refuse_on`, so a lockstep drift or a
   retention refusal is invisible to anyone who reads only the gate list.
 - `would_refuse_on` — if non-empty, every finding a cut would refuse on, from
   every gate at once, so the user can fix them in one pass. A dirty working tree
@@ -275,10 +331,14 @@ Then summarise the JSON for the user:
 
 This is preview-only: publishing is not driven from this command.
 
-A repository with no `.abcd/config/launch-payload.json` has no plugin payload to
-preview. The preview says so and names the release path such a repository has:
-`launch scaffold`, `launch ship` writing the dated CHANGELOG heading, and the
-auto-release workflow. Relay that; it is not a misconfiguration.
+A repository with no `.abcd/config/artefact.json` is refused, naming the file
+as the declaration's home and the kinds it accepts; relay it and point the user
+at `ahoy install`. A repository that declares `kind: plugin` with no
+`.abcd/config/launch-payload.json` has no plugin payload to preview: the preview
+says so and names the release path a repository that ships no plugin has —
+declaring its kind as `binary` or `application`, `launch scaffold`, `launch ship`
+writing the dated CHANGELOG heading, and the auto-release workflow. Relay that;
+it is not a misconfiguration.
 
 ## Ship — the release cut
 
@@ -478,6 +538,9 @@ is written it refuses a payload with uncommitted changes, because the release
 renders the archive again from the tagged commit and publishes nothing unless the
 digests agree. These three files — `CHANGELOG.md`, the catalog and the snapshot —
 are the release-content commit.
+
+`--payload-dir` stages a plugin payload, so a repository that declares another
+artefact kind has it refused before anything is read or written (exit 2).
 
 Without that declaration the catalog is left untouched, and the report says so
 (`archive: not pinned — …`, or `archive_unpinned` in `--json`). The contract alone
@@ -759,6 +822,9 @@ both addresses, and the archive is removed so no later step can publish it;
 `--repository` that is not `owner/name`, an unusable `--out`, a render refusal),
 with nothing left behind.
 
+A repository that declares an artefact kind other than `plugin` ships no plugin
+archive, and `archive` refuses there (exit 2) before anything is rendered.
+
 Relay `archive.name`, `archive.sha256`, `url`, `pin` and `repository`. Between releases, `main`
 pins the last release's archive, which its moved-on tree no longer reproduces, so
 `--verify` there is expected to refuse: it proves a release commit, not a branch
@@ -774,10 +840,15 @@ already has the machinery). It **never publishes**.
 "${CLAUDE_PLUGIN_ROOT}/abcd" launch scaffold --json
 ```
 
-It writes four files, wired to the repo's own default branch and Go version and
-to the check names its own pull-request CI reports:
+What it writes follows the declared artefact kind (see *The artefact
+declaration* above); a repository that has declared none, or a kind abcd does not
+know, is refused with exit 2 before anything is written. Every file is wired to
+the repo's own default branch and Go version and to the check names its own
+pull-request CI reports. `kind` in the report names the kind it followed.
 
-- `.github/workflows/release.yml` — verify → build → publish. With semantic
+For **`kind: plugin`**, four files:
+
+- `.github/workflows/release.yml` — verify → tag → build → publish. With semantic
   gates configured, `verify` arms the receipt gate against the reviewed
   **content** commit it derives from the receipts directory of the released
   tree, so the first public release cannot hit the receipt-vs-tag
@@ -793,6 +864,34 @@ to the check names its own pull-request CI reports:
 - `.abcd/development/release-gate/check-reviews.sh` — the reviews charter (RD001):
   dated review directories keep their shape, and the sha-keyed receipt
   directories are exempt. The scaffolded `verify` job runs it.
+
+The `build` job in a managed repository's workflow is **empty by design**: abcd
+lays the gate plumbing and does not guess how the repository builds. It carries
+one step to fill (or to replace with a call to the repository's own build) and
+names `dist/` as its output: the publish job attaches every file left there to
+the GitHub Release, and with none the Release carries its generated notes alone.
+The verify job's Go leg (setup-go, gofmt, build, vet, test, race) is written only
+for a repository with a `go.mod`.
+
+For **`kind: binary`** or **`kind: application`**:
+
+- `.github/workflows/abcd-release-gate.yml` — the gate as a workflow of its own:
+  the same verify, tag, receipt and publish plumbing with the same empty `build`
+  job, rendered from the one template. It is only ever *called* — never triggered
+  by a tag push — so it cannot race a tag-driven workflow the repository already
+  runs, and a caller that builds and publishes itself passes `publish: false`.
+- `.github/workflows/auto-release.yml`, calling the gate — only when the
+  repository has no release workflow of its own.
+- `CHANGELOG.md` holding only the empty `## [Unreleased]` anchor, when the
+  repository has none. History before adoption is not represented; an existing
+  changelog is the release record and is reported `kept`, never opened.
+- The runbook and the reviews charter, as above.
+
+A repository with its own `.github/workflows/release.yml` (or `.yaml`) keeps it
+**byte-for-byte**: the report lists it as `kept`, "left alone", and prints the job
+to add to it so it calls the gate before its build step (`call_stanza` in
+`--json`). Relay that stanza verbatim; the scaffold never edits the repository's
+own workflow.
 
 The check names come from the repo's workflows triggered by `pull_request` or
 `merge_group`; a name only a run knows (a matrix job, an expression-named job, a
@@ -822,7 +921,8 @@ It is idempotent and fail-safe. Exit codes gate the flow:
   per-file disposition.
 - **1** — a file exists and **differs** (hand-edited or stale); the report names
   it and **nothing was written**. Relay it; re-run with `--confirm` to overwrite.
-- **2** — a structural fault (the repository or a template could not be read).
+- **2** — a structural fault (the repository or a template could not be read), or
+  no artefact declaration, or a kind abcd does not know. Nothing was written.
 
 A refusal is a result to relay, not a crash. Never hand-edit the workflows to work
 around it: re-run with `--confirm` when the operator intends to replace the drift.

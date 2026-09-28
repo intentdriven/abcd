@@ -1,6 +1,6 @@
 # Plan: Confidential-sources corpus and provenance ledger (convention-first scaffold)
 
-> Forward-looking record: [itd-76](../intents/planned/itd-76-source-provenance-ledger.md).
+> Forward-looking record: [itd-76](../intents/shipped/itd-76-source-provenance-ledger.md).
 > Research grounding: [SOTA survey](../research/notes/2026-07-08-confidential-sources-provenance-sota.md).
 > This plan documents the convention-first scaffold that dogfoods the intent
 > before any Go code lands.

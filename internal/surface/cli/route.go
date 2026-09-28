@@ -6,8 +6,9 @@ package cli
 // (itd-2609170822093401, spc-2609180535002478 steps 3 and 4).
 //
 // A delegating verb is one whose step is run by an agent in the roster under
-// agents/: `intent audit` (and its ingest), `launch ship`, `disembark review`,
-// `principles`, `press-release` and `graveyard`, and `reading ingest`. Each
+// agents/: `intent audit` and `intent consistency` (each with its ingest),
+// `launch ship`, `disembark review`, `principles`, `press-release` and
+// `graveyard`, and `reading ingest`. Each
 // registers the flag through addRouteFlag, naming the agents it can dispatch,
 // and TestEveryDelegatingVerbCarriesRoute holds the command tree to that list,
 // so a verb cannot gain delegation without gaining the flag.

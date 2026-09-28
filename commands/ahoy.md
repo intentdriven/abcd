@@ -81,9 +81,14 @@ them. If `folder_kind` is `unmanaged-folder`, note there is nothing to act on
 
 **This writes.** It applies the actionable gaps the detection pass found — the
 marker block (only where `--docs-target` names a conventions file; the
-default, `skip`, names none), the `.abcd/` scaffolding, the owned `PATH` entry. Report the
-returned `status`, what changed, and any `notes` — a note is a refusal, stating
-something abcd deliberately did not do and why. The engine prompts before an
+default, `skip`, names none), the `.abcd/` scaffolding, the owned `PATH` entry. Lead
+the report with the returned `headline`, then each `summary` item in its own
+three parts: `what` it is, `why` it matters, and the `action`, if any, the user
+should take. These are abcd's own plain words for the product thinker and the
+technical facilitator; relay them rather than rewording, and keep the `refs`
+(the exact paths and identifiers each item explains) for anyone who asks. Then
+report any `notes` — a note is a refusal, stating something abcd deliberately
+did not do and why. The engine prompts before an
 ambiguous adoption, so surface any prompt to the user rather than answering it
 for them.
 
@@ -130,6 +135,15 @@ transcript shows what was asked and what it was answered — read it back rather
 than assuming. Under `set -o pipefail` the pipeline reports 141: `yes` takes
 SIGPIPE when abcd stops reading, by design — judge the run by abcd's own output
 and exit status, not the pipeline's.
+
+**Every value question arrives explained.** A question that picks one of
+several values (`visibility`, `docs_target`, `oracle_backend`, `scan_deep`, the
+house-style question and each status-line element) is printed with abcd's own
+explanation above it: one paragraph saying what is being decided, then one
+line per answer saying what that answer means, including what it asks of the
+user (keys, tools, cost). When you relay such a question, relay that
+explanation verbatim with it; never describe an answer in your own words, and
+never offer an answer the question does not list.
 
 That is a channel for passing on an answer the user has GIVEN — ask first, then
 pipe; it is never a licence to answer on their behalf. Note that `yes |`
@@ -190,6 +204,23 @@ what was heard. The question comes after the category approvals and the
 configuration values and before the status-line offer, and is asked only when
 the config is being created: a repository that already has one keeps its own
 severity.
+
+**The artefact kind.** A repository with no `.abcd/config/artefact.json` carries
+an `artefact.missing` gap: the launch verbs choose what to preview, check and
+scaffold by the kind declared there, and refuse to guess it. Once config changes
+are approved, a repository carrying `.claude-plugin/plugin.json` is declared
+`kind: plugin` without a question. Any other is asked
+`artefact_kind (plugin/binary/application) [application]`: relay it and pass on
+the user's answer, never answering for them. End of input or a bare Enter takes
+`application` — gate plumbing with an empty build job, assuming nothing about the
+build. `--yes` does not ask and declares `application`, and the result's `notes`
+says so. An answer naming none of the three (the `y` of `yes |`) also declares
+`application`, with a note naming what was heard; the user edits the file to
+declare another. The question is the last one the install asks, after the
+status-line offer. A declaration that is present but
+refused by the reader the launch verbs share (an unknown kind, a malformed file)
+is an `artefact.invalid` gap instead: the file is the user's, so the install
+reports it and never overwrites it.
 
 **The status-line offer.** When the harness's user-level settings file exists
 (`$CLAUDE_CONFIG_DIR/settings.json`, or `~/.claude/settings.json`) and its

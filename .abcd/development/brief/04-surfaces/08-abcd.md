@@ -51,11 +51,22 @@ are the records they join to, and neither has a next move. A reframe record
 complete, the after fingerprints and the surfaces that changed, and an open one's
 next move is its completion. The reading families have no record dispatch. Bare answers *what can I
 do*; the id form answers *what is this, and what is my next move* (spc-26,
-itd-121). A positional on the namespace root is not a `show` sub-verb, so the
-form stays inside the naming discipline. For an issue id it also names the
-checkout and branch whose ledger it read, as every ledger verb does: a stderr
-line in the plain render and a `ledger` member in the machine-readable one
+itd-121). For a shipped intent the move is its fidelity-review state, read by
+the intent store's one reader of the review marker (itd-2609150819445595): an
+owed review names its receipt and the re-emit command; a shipped intent with no
+marker owes one too, and the re-emit mints its receipt; a dead-lettered review
+is reported unreviewed with its reason; an ingested one leaves nothing to do. A
+positional on the namespace root is not a `show` sub-verb, so the form stays
+inside the naming discipline. For an issue id it also names the checkout and
+branch whose ledger it read, as every ledger verb does: a stderr line in the
+plain render and a `ledger` member in the machine-readable one
 (iss-2609202053570475).
+
+A bundle's shared spec is read through every member it lists, as its close
+reads them (itd-34): its links carry `intents` beside `intent`, a superseded
+member is passed over and named, and the move reads each member still in force
+— the open specs a closed spec's members wait on, or the readiness of each
+member an open spec defers to.
 
 Any other positional is refused: the CLI exits **2** with `abcd: unknown command
 …` on stderr, which is the framework's usage-error convention. `abcd status` is
@@ -75,8 +86,9 @@ here too.
 Binary-backed `/abcd:` verbs route through the transport-agnostic core (the CLI
 is the front door today; an MCP server follows later, per
 [adr-23](../../decisions/adrs/0023-transport-agnostic-core.md)). Not every verb
-does: `consult` and `ingest` run entirely as host-side markdown over the
-sources corpus and never invoke the binary. `prepare-this-repo` is the mixed
+does: `consult` and `ingest` run as host-side markdown over the sources corpus,
+and reach the binary only through the `source` verb, which makes every write to
+the corpus. `prepare-this-repo` is the mixed
 case: its audit half runs `abcd lint`, and its adoption half is binary-backed
 too and writes — the identity verb's initialiser records the repo's identity
 block and registers the surfaces held to it, and the ahoy installer lays the hooks, the
@@ -86,14 +98,31 @@ whether the attribution gate is wanted. The command decides; the binary writes.
 
 **The presence line** (itd-200, spc-70) adds to the four fields: in a repository abcd manages, the text render carries a
 `presence:` line and the JSON a `statusline` object, both the plain form of the
-same row the host's status line shows — the badge first (`abcd`, `waiting:
-facilitator`, `waiting: product thinker`), then the repository, the branch and
-the record's counts. The state behind the badge is what `abcd mode` stores at
+same row the host's status line shows — the badge first (`abcd-managed`,
+`waiting on the technical facilitator`, `waiting on the product thinker`), then
+the repository, the branch and the record's counts. The state behind the badge is what `abcd mode` stores at
 `.abcd/.work.local/mode`; the board reads it and never writes it. In an
 unmanaged repository the line is absent and the field omitted. The board is the
 fallback for a host with no status surface, so it renders the line even where
 the user-level setting has switched the status line off, and it never runs the
 previous status command that `abcd statusline` falls back to.
+
+**The badge is true at every stop** (itd-2609212130146198,
+spc-2609212139593041). The badge reads exactly one of its three labels and
+never the bare tool name, and its colour ends at the badge: the closing
+sequence restores the default foreground and background and nothing else, so
+the rest of the row keeps whatever styling the host gives it. The two moments
+the badge must change are two moments the hooks already see. The agent sets
+the state with `abcd mode` when it stops to ask, naming whom it addresses; the
+guard hook, on the host's question tool, refuses a question while the state
+reads managed, naming `abcd mode product-thinker` and `abcd mode facilitator`,
+and when it admits one it writes a `question_open` marker beside the state in
+`.abcd/.work.local/`. The next human message is the answer: the prompt hook
+finds the marker, resets the state to managed, clears the marker and says so in
+one line on stderr. With no marker the prompt hook changes nothing, so a state
+the human set by hand survives the message they type next. A repository abcd
+does not manage, or one without the local tier, has no badge, and its
+questions are not gated.
 
 **The peers line and `/abcd:peers`** (itd-2609091416295622,
 spc-2609202056480020). A peer is a linked worktree sharing this checkout's git

@@ -53,8 +53,9 @@ name is not a well-formed record name), `read` (the guarded read refused the
 file itself, such as a symlink or an oversize body), `frontmatter` (the bytes do
 not parse), `schema` (a key or value the issue schema does not accept) or
 `invariant` (the record disagrees with its filename or with the folder holding
-it). A `read` entry whose `path` is a status directory itself means the
-directory exists and could not be listed, so none of its records were counted.
+it). A status directory that exists and cannot be listed is not an entry:
+the board and `list` count nothing from a ledger they could not read, so they
+exit 1 naming the directory.
 
 **Which ledger?** A half-formed observation, question, or nitpick goes to
 `/abcd:capture "…"`; a user-facing change you want to ship goes to
@@ -75,8 +76,8 @@ default): `--severity` (`nitpick|minor|major|critical`, default `minor`),
 `--category` (default `observation`), `--source` (default `user-observation`),
 `--found-during` (session/command context, default `manual-capture`),
 `--found-at` (optional repo-relative path, which must exist in this checkout,
-or a conceptual location in words; a path that does not resolve is refused and
-nothing is written), `--lapsed-at` (RFC 3339 instant in
+or a conceptual location in words; a path that leaves the checkout or does not
+resolve in it is refused, exit 2, and nothing is written), `--lapsed-at` (RFC 3339 instant in
 UTC at which a recorded discipline gave way — the lapse itself, never the
 write-up), `--slug` (overrides the slug derived from the text), `--blocked-by`
 (comma-separated `iss-N` ids this issue depends on; each must already exist in
@@ -368,6 +369,24 @@ An id this checkout's ledger does not hold is refused. When a peer holds it —
 a sibling worktree or a local branch (see `/abcd:peers`) — the refusal names
 the peer's branch, path and folder instead of answering not found: the record
 lives there, so relay that rather than capturing it again here.
+
+Every refusal of a ledger verb's own input exits 2 and writes nothing: an id
+the ledger does not hold (or one a peer holds), a record already out of
+`open/`, a malformed id, and a flag value outside its shape or naming nothing,
+on `resolve`, `wontfix`, `promote`, `defer`, `link` and the capture write alike.
+The reading ledger's verbs keep the same code. `disposition`, `admit`,
+`surprise` and `reframe` exit 2 on an item, occasion or record id that is
+malformed or names nothing, a ground or flag value outside its shape, a request
+the standing records do not admit (a second answer citing none, an item already
+admitted, an admission over an answer in another state, a second open reframe,
+a reframe with nothing to record or an occasion not committed before the
+rewrite), and an answer or admission before characterisation; `mentions` exits
+2 on a `--ref` that names no commit. Exit 1 is a fault: the ledger could not be
+read or moved, a record in it contradicts itself (a tangled or contested set of
+answers only a hand edit repairs), or a `--found-at` path could not be checked
+against the checkout for a reason other than its absence. `migrate` takes no
+input to refuse, so each of its failures is a fault. Tell the user which
+input was refused, from the message, rather than retrying the same command.
 
 `resolve` requires `--impact`: a resolved issue is in the release set, so it
 carries the product judgement the version derivation reads (`additive`,
