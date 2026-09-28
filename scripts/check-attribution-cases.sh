@@ -643,6 +643,38 @@ commit_as 'Alex Reppel' '77722411+REPPL@users.noreply.github.com' \
 	'GitHub' 'noreply@github.com' "$MSG_OK"
 commits_case accept "forge committer on a human-authored commit"
 
+# --- A configured automation name is a machine too (iss-2609090951276167) -----
+# The `[bot]` suffix is stamped by the forge, so an automation committing under a
+# name it was CONFIGURED with slipped past every list: semantic-release-bot at a
+# forge no-reply address matched no AI name, no AI domain, no `[bot]`, and no
+# author-only no-reply mailbox, and was judged a human. The widened signal is a
+# trailing bot/robot/automation word, standing alone, ending the name or the
+# mailbox's local part.
+commit_as 'semantic-release-bot' '12345+semantic-release-bot@users.noreply.github.com' \
+	'semantic-release-bot' '12345+semantic-release-bot@users.noreply.github.com' "$MSG_OK"
+commits_case reject "configured automation name at a forge no-reply address"
+
+commit_as 'Renovate Bot' 'renovate@example.invalid' \
+	REPPL human@example.invalid "$MSG_OK"
+commits_case reject "automation display name ending in the word Bot"
+
+commit_as 'Release' 'release_automation@example.invalid' \
+	REPPL human@example.invalid "$MSG_OK"
+commits_case reject "automation word ending the mailbox local part"
+
+commit_as REPPL human@example.invalid 'ci-robot' 'ci@example.invalid' "$MSG_OK"
+commits_case reject "configured automation committer on a human-authored commit"
+
+# The word must stand alone: names and addresses that merely END in the letters
+# are people's, and a dot in the local part is a person's ordinary separator.
+commit_as 'Ada Talbot' '1234+talbot@users.noreply.github.com' \
+	'Ada Talbot' '1234+talbot@users.noreply.github.com' "$MSG_OK"
+commits_case accept "human surname ending in the letters bot"
+
+commit_as 'Jean Abbott' 'jean.bot@example.invalid' \
+	'Jean Abbott' 'jean.bot@example.invalid' "$MSG_OK"
+commits_case accept "human whose local part ends .bot"
+
 # --- Merge commits carry an identity too (iss-2609082001204831) ----------------
 # The first hole: the commits arm walked `--no-merges`, so a merge commit's
 # identity was never read at all. 23f0a891 stands in main today, authored AND

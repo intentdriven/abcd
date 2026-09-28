@@ -136,7 +136,8 @@ AI_IDENT_MAIL_RE='@anthropic\.com$|@openai\.com$'
 # So these two are STRUCTURAL rather than nominal: the `[bot]` suffix the forge
 # itself stamps on an app's account name, and the mailbox shape it stamps on the
 # address — `49699333+dependabot[bot]@users.noreply.github.com`, or the older
-# `name[bot]@…`. A second automation lands in the right place with no edit here.
+# `name[bot]@…`. A second automation THE FORGE STAMPS lands in the right place
+# with no edit here; one it does not stamp is the next rule's.
 #
 # THE MAILBOX IS THE DISCRIMINATOR, NEVER THE HOST, and this is the line to read
 # twice before touching it. `1234+name@users.noreply.github.com` is a PERSON'S
@@ -152,6 +153,34 @@ AI_IDENT_MAIL_RE='@anthropic\.com$|@openai\.com$'
 # without Go — so they share a reading instead.
 MACHINE_NAME_RE='\[bot\][[:space:]]*$'
 MACHINE_MAIL_RE='\[bot\]@|@dependabot\.com$'
+
+# The forge's suffix is only the machines THE FORGE stamps. An automation that
+# commits under a name it was configured with — semantic-release-bot at a forge
+# no-reply address, a self-hosted CI account, a forge whose app suffix is not
+# `[bot]` — matched none of the lists above and was judged a human
+# (iss-2609090951276167). So the structural signal is widened to the SHAPE such
+# configured names take: a trailing `bot`, `robot` or `automation` word, ending
+# the display name or the mailbox's local part.
+#
+# The word must stand alone: at the start of the field, or after a separator.
+# Talbot and Abbott pass; semantic-release-bot, ci_bot, `Renovate Bot` and
+# `12345+semantic-release-bot@users.noreply.github.com` do not. In the local
+# part the separators are `-`, `_` and the forge's `+`, and deliberately not
+# `.`: `jean.bot@` is the ordinary shape of a person's address. In the display
+# name whitespace separates too, which is the one stated over-reach — a person
+# whose name's last word is Bot is refused, loudly and naming the identity —
+# accepted because the failure it prevents is silent, the reason this rule
+# exists. This is the line to revisit if such a contributor arrives.
+#
+# OUT OF REACH, said plainly: a machine whose configured name and mailbox look
+# like a person's (`Release Manager <release@example.com>`), a trailing word
+# other than these three (`-ci`, `-agent`), and `name.bot@` addresses. Nothing
+# structural separates those from a human; the reviewer reading the identity
+# is the check on them. internal/core/site/contributors.go's machineAddrRe does
+# not share this signal: the contributors page reads the published history, not
+# a pull request's range, and refusing is this gate's job alone.
+MACHINE_NAME_WORD_RE='(^|[-_[:space:]])(bot|robot|automation)[[:space:]]*$'
+MACHINE_LOCAL_WORD_RE='(^|[-_+])(bot|robot|automation)@'
 
 # A mailbox literally named for not being read. Refused in the AUTHOR role only,
 # and the asymmetry is load-bearing rather than a hedge: `GitHub
@@ -464,7 +493,9 @@ check_ident() {
 		grep -Eiq "$AI_IDENT_MAIL_RE" <<<"$mail"; then
 		kind="an AI"
 	elif grep -Eiq "$MACHINE_NAME_RE" <<<"$name" ||
-		grep -Eiq "$MACHINE_MAIL_RE" <<<"$mail"; then
+		grep -Eiq "$MACHINE_MAIL_RE" <<<"$mail" ||
+		grep -Eiq "$MACHINE_NAME_WORD_RE" <<<"$name" ||
+		grep -Eiq "$MACHINE_LOCAL_WORD_RE" <<<"$mail"; then
 		kind="a machine"
 	elif [ "$role" = author ] && grep -Eiq "$AUTHOR_ONLY_MAIL_RE" <<<"$mail"; then
 		kind="a machine"

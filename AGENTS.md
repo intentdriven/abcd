@@ -397,15 +397,19 @@ irreversible; guessing downward costs nothing.**
   there asserts an authorship it does not hold — and a squash merge re-appends a
   mis-identified branch author as a co-author, inflating the graph again on every
   squash. `scripts/check-attribution.sh commits` reads the identity of every
-  commit in a range, merge commits included, and refuses one on any of five
-  signals. Four are checked in both roles: an assistant vendor's name standing
+  commit in a range, merge commits included, and refuses one on any of six
+  signals. Five are checked in both roles: an assistant vendor's name standing
   alone as the identity name (`Claude`, `Copilot`, `Gemini` and their kin,
   matched whole so a human named Claudette passes); an assistant vendor's mail
   domain (`@anthropic.com`, `@openai.com`); the forge's own `[bot]` name suffix;
-  and a bot mailbox (`NNNN+name[bot]@users.noreply.github.com`, or
-  `@dependabot.com`). The last two are structural rather than nominal, which is
-  why a second automation lands in the right place with no edit to the list. The
-  fifth signal is checked in the AUTHOR role only: **any** address whose mailbox
+  a bot mailbox (`NNNN+name[bot]@users.noreply.github.com`, or
+  `@dependabot.com`); and a trailing `bot`, `robot` or `automation` word ending
+  the name or the mailbox's local part (`semantic-release-bot`, `Renovate Bot`,
+  `ci_bot@`), standing alone so Talbot and `jean.bot@` pass. The last three are
+  structural rather than nominal, which is why a second automation lands in the
+  right place with no edit to the list; a machine configured with a person-shaped
+  name and mailbox stays out of reach, and the reviewer is the check on it. The
+  sixth signal is checked in the AUTHOR role only: **any** address whose mailbox
   begins `noreply@` or `donotreply@` (with or without hyphens), whatever the host — it
   is not scoped to a vendor, because an address named for not being read names
   no person in the role that claims authorship. It is refuse-machines, not an
