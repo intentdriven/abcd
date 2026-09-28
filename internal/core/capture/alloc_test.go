@@ -191,3 +191,113 @@ func treeEntries(t *testing.T, dir string) []string {
 	sort.Strings(found)
 	return found
 }
+
+// lockStatusDir captures one record into open/, resolves a second into
+// resolved/, and then sets the named status directory's mode, restoring it when
+// the test ends. It returns the open record's id.
+func lockStatusDir(t *testing.T, repo, ir, status string, mode os.FileMode) string {
+	t.Helper()
+	if os.Geteuid() == 0 {
+		t.Skip("root reads a directory whatever its mode")
+	}
+	var ids []string
+	for _, slug := range []string{"kept-open", "then-resolved"} {
+		res, err := Capture(CaptureRequest{RepoRoot: repo, IssuesRoot: ir, Text: "a finding", Severity: SeverityMinor,
+			Category: "bug", Source: "manual-test", Slug: slug, FoundDuring: "t"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, res.ID)
+	}
+	if _, err := Resolve(ResolveRequest{RepoRoot: repo, IssuesRoot: ir, ID: ids[1], Resolution: "fixed", Impact: "fix"}); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(ir, status)
+	if err := os.Chmod(dir, mode); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
+	return ids[0]
+}
+
+// TestAnUnreadableStatusDirectoryIsAFaultNotAnUnknownID is
+// iss-2609261241121312: a status directory that cannot be read was skipped, so
+// an id it may well hold was reported as not found in any status directory —
+// ErrUnknownIssueID, a refusal of the caller's input (exit 2) — when the ledger
+// could not be read, which is a fault. An absent status directory is still
+// tolerated; any other read error is returned, never read as an empty folder.
+func TestAnUnreadableStatusDirectoryIsAFaultNotAnUnknownID(t *testing.T) {
+	for _, status := range []string{"open", "resolved"} {
+		t.Run("findIssue with "+status+"/ unreadable", func(t *testing.T) {
+			repo, ir := ledger(t)
+			id := lockStatusDir(t, repo, ir, status, 0)
+			_, _, err := findIssue(ir, id)
+			if err == nil || errors.Is(err, ErrUnknownIssueID) || !errors.Is(err, fs.ErrPermission) {
+				t.Fatalf("findIssue with %s/ unreadable: %v, want the read fault", status, err)
+			}
+			if !strings.Contains(err.Error(), status+"/") || strings.Contains(err.Error(), repo) {
+				t.Errorf("the fault must name the status directory repo-relatively: %v", err)
+			}
+		})
+	}
+	t.Run("resolve with open/ unreadable", func(t *testing.T) {
+		repo, ir := ledger(t)
+		id := lockStatusDir(t, repo, ir, "open", 0)
+		_, err := Resolve(ResolveRequest{RepoRoot: repo, IssuesRoot: ir, ID: id, Resolution: "fixed", Impact: "fix"})
+		if err == nil || errors.Is(err, ErrUnknownIssueID) || errors.Is(err, ErrRequestRefused) {
+			t.Fatalf("resolve with open/ unreadable: %v, want a fault", err)
+		}
+	})
+	t.Run("wontfix with resolved/ unreadable", func(t *testing.T) {
+		repo, ir := ledger(t)
+		id := lockStatusDir(t, repo, ir, "resolved", 0)
+		_, err := Wontfix(WontfixRequest{RepoRoot: repo, IssuesRoot: ir, ID: id, Reason: "not worth it"})
+		if err == nil || errors.Is(err, ErrUnknownIssueID) {
+			t.Fatalf("wontfix with resolved/ unreadable: %v, want a fault (the id may sit there too)", err)
+		}
+	})
+	t.Run("list and status with resolved/ unreadable", func(t *testing.T) {
+		repo, ir := ledger(t)
+		lockStatusDir(t, repo, ir, "resolved", 0)
+		if lr, err := List(ListRequest{RepoRoot: repo, IssuesRoot: ir, State: StateAll}); err == nil {
+			t.Errorf("list read an unreadable resolved/ as empty: %d issues", len(lr.Issues))
+		}
+		if st, err := Status(StatusRequest{RepoRoot: repo, IssuesRoot: ir}); err == nil {
+			t.Errorf("status read an unreadable resolved/ as empty: %d resolved", st.ResolvedCount)
+		}
+	})
+	t.Run("forced mint with resolved/ unreadable", func(t *testing.T) {
+		repo, ir := ledger(t)
+		lockStatusDir(t, repo, ir, "resolved", 0)
+		if _, _, err := reservePath(repo, ir, "forced", "iss-42"); err == nil || errors.Is(err, ErrDuplicateIssueID) {
+			t.Fatalf("a forced mint that could not read resolved/ reserved the id: %v", err)
+		}
+		if _, err := os.Stat(filepath.Join(ir, "open", "iss-42-forced.md")); !os.IsNotExist(err) {
+			t.Errorf("a refused mint left a placeholder behind (stat err=%v)", err)
+		}
+	})
+	t.Run("capture with open/ searchable but unreadable", func(t *testing.T) {
+		repo, ir := ledger(t)
+		lockStatusDir(t, repo, ir, "open", 0o300)
+		if res, err := Capture(CaptureRequest{RepoRoot: repo, IssuesRoot: ir, Text: "another", Severity: SeverityMinor,
+			Category: "bug", Source: "manual-test", Slug: "another", FoundDuring: "t"}); err == nil {
+			t.Fatalf("a capture minted %s into an open/ its sweep and occupancy check could not read", res.ID)
+		}
+	})
+	t.Run("an absent status directory is tolerated", func(t *testing.T) {
+		repo, ir := ledger(t)
+		id := lockStatusDir(t, repo, ir, "open", 0o755)
+		if err := os.Remove(filepath.Join(ir, "wontfix")); err != nil && !os.IsNotExist(err) {
+			t.Fatal(err)
+		}
+		if _, _, err := findIssue(ir, id); err != nil {
+			t.Fatalf("findIssue with wontfix/ absent: %v", err)
+		}
+		if _, _, err := findIssue(ir, "iss-42"); !errors.Is(err, ErrUnknownIssueID) {
+			t.Fatalf("an id no present directory holds: %v, want ErrUnknownIssueID", err)
+		}
+		if _, err := List(ListRequest{RepoRoot: repo, IssuesRoot: ir, State: StateAll}); err != nil {
+			t.Fatalf("list with wontfix/ absent: %v", err)
+		}
+	})
+}

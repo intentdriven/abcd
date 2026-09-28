@@ -1,6 +1,7 @@
 package reading
 
 import (
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -67,28 +68,108 @@ func TestAttributeMaskStaysOnItsOwnLine(t *testing.T) {
 	}
 }
 
-// TestRawHeadingScanStaysLinearInTheOpenerCount: the bound scan materialised
-// every candidate bound in the whole remainder of the document for every heading
-// opener, though it breaks at the first hard one. That is quadratic with a large
-// constant, and a committed markdown file up to the size cap the assembler sets
-// did not finish — a silent hang, which is the one staging a fail-closed floor
-// cannot afford. The bound is generous: the walk is milliseconds and the
-// materialising scan was minutes.
+// TestRawHeadingScanStaysLinearInTheOpenerCount: the raw heading scan finishes
+// in time linear in the document over every shape of opener run, not only the
+// cheap one.
+//
+// Three shapes, because each was once the expensive one:
+//
+//   - openers that each close at once. The bound scan materialised every
+//     candidate bound in the whole remainder for every opener, and a committed
+//     markdown file up to the size cap did not finish. At the cap the line each
+//     opener names was also counted from the top of the document, once per
+//     opener.
+//   - openers that never close, with no h-tag and no blank line anywhere
+//     (iss-2608301421382564). Each title ran to the end of the document, so the
+//     scan rendered the whole remainder once per opener: 4 000 openers took
+//     13.5 s and 8 000 took 57 s, where the closed shape above took 0.1 s. The
+//     test covered only the closed shape, so its name over-claimed.
+//   - openers that all share one bound far below them. Each title is bounded,
+//     so nothing refuses the shape as unbounded, and each is still read over
+//     most of the document.
+//
+// The last two are refusals as well as costs: a title that is never bounded is
+// refused rather than read, and titles that overlap past the floor's read budget
+// are refused rather than read in quadratic time. The bound is generous: the
+// linear scan is milliseconds. It is not asserted under -race (raceEnabled),
+// where the verdicts still are.
 func TestRawHeadingScanStaysLinearInTheOpenerCount(t *testing.T) {
-	var b strings.Builder
-	b.WriteString("# A spec\n\n")
-	for range 8000 {
-		b.WriteString("<h2>Ordinary heading</h2>\n")
-	}
-	doc := b.String()
 	headings := map[string]bool{"Audit Notes": true}
-	start := time.Now()
-	if err := verifyRedaction("spc-x.md", doc, doc, nil, headings); err != nil {
-		t.Fatalf("the scan refused an ordinary document: %v", err)
+	build := func(opener string, n int, tail string) string {
+		var b strings.Builder
+		b.WriteString("# A spec\n\n")
+		for range n {
+			b.WriteString(opener)
+		}
+		b.WriteString(tail)
+		return b.String()
 	}
-	if elapsed := time.Since(start); elapsed > 10*time.Second {
-		t.Errorf("the raw heading scan took %s over %d openers; it materialises the whole "+
-			"bound list per opener", elapsed, 8000)
+	closedAtCap := (MaxFileBytes - 64) / len("<h2>Ordinary heading</h2>\n")
+	cases := []struct {
+		name   string
+		doc    string
+		refuse string
+	}{
+		{"closed openers up to the size cap", build("<h2>Ordinary heading</h2>\n", closedAtCap, ""), ""},
+		{"unclosed openers with no bound", build(`<p role="heading">x`, 8000, ""), "never closed"},
+		{"unclosed openers sharing one far bound", build(`<p role="heading">x`, 8000, "</p>\n"), "read budget"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			start := time.Now()
+			err := verifyRedaction("spc-x.md", c.doc, c.doc, nil, headings)
+			elapsed := time.Since(start)
+			switch {
+			case c.refuse == "" && err != nil:
+				t.Fatalf("the scan refused an ordinary document: %v", err)
+			case c.refuse != "" && err == nil:
+				t.Fatalf("the scan admitted a run of openers it cannot read in linear time")
+			case c.refuse != "" && !strings.Contains(err.Error(), c.refuse):
+				t.Errorf("the refusal does not name %q: %v", c.refuse, err)
+			}
+			if !raceEnabled && elapsed > 10*time.Second {
+				t.Errorf("the raw heading scan took %s over a %d-byte document; it reads each "+
+					"title over the remainder, or counts each line from the top", elapsed, len(c.doc))
+			}
+		})
+	}
+}
+
+// TestIndexedHeadingBoundsAgreeWithTheWalk: the bound index answers exactly what
+// the walk from each opener answered, in every reading the scan takes, including
+// the masked reading where an opener's own `>` is blanked and a bound match can
+// straddle it — the one case the index hands back to the walk — and including
+// element names that fold under Go's case folding but not under lower-casing
+// (the long s, the Kelvin sign).
+func TestIndexedHeadingBoundsAgreeWithTheWalk(t *testing.T) {
+	docs := []string{
+		"<h2>Audit Notes</h2>\n\n<h3><em>x</em> y</h3>",
+		"<h2>\n\nAudit Notes</h2>\n<h2>never closed\n",
+		"<p role=\"heading\">a</P><div role=heading>b\n\nc</div><h4 id=x>d",
+		"<h2 title=\"<h3>\"\n\n>Audit Notes</h2>",
+		"<!--\n<h2\n>\n--> <h2>x</h2>",
+		"<!-- <h2>a <h3>b --> <h2>c\n\n</h2>",
+		"<\u017fpan role=\"heading\">Audit Notes</span> <bloc\u212a role=heading>x</block>",
+		"<h2 a=\"x\ny\">z</h2>\r\n\r\n<h1>w",
+	}
+	for _, doc := range docs {
+		lineBounded, _ := maskMarkupData(doc, true)
+		unbounded, _ := maskMarkupData(doc, false)
+		readings := []string{doc, lineBounded, unbounded}
+		for _, found := range readings {
+			for _, open := range rawHeadingOpenRe.FindAllStringSubmatchIndex(found, -1) {
+				name := openerName(found, open)
+				for _, r := range readings {
+					budget := newTitleReadBudget(len(r))
+					got, gotBounded := indexRawHeadingBounds(r).titleEnds(open[1], name, budget)
+					want, wantBounded, _ := walkRawHeadingBounds(r[open[1]:], name)
+					if !slices.Equal(got, want) || gotBounded != wantBounded {
+						t.Errorf("opener %q at %d over %q: the index says %v (bounded %v), the walk %v (bounded %v)",
+							found[open[0]:open[1]], open[1], r, got, gotBounded, want, wantBounded)
+					}
+				}
+			}
+		}
 	}
 }
 
@@ -369,5 +450,161 @@ func TestAFencedMarkupExampleIsNotTheShape(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "an attribute value that opens on the line after its equals sign") {
 		t.Errorf("the refusal does not name the shape: %v", err)
+	}
+}
+
+// TestANestedMappingRefusesBehindEveryBlockIndicator is shape 3's class, not its
+// one spelling (iss-2608301237450573). The refusal read one `- ` and then a key,
+// so every other way of reaching a compact nested mapping travelled: a second
+// sequence indicator, a node property between the indicator and the key, an
+// explicit key inside the entry, an explicit key's value on its `:` line, and a
+// single-pair mapping inside a flow sequence. Each is an `origin` key to YAML and
+// was nothing to the floor, and the manifest asserted its refusal.
+func TestANestedMappingRefusesBehindEveryBlockIndicator(t *testing.T) {
+	const pre, post = "---\nid: spc-1\n", "---\n\n# A record\n"
+	for name, front := range map[string]string{
+		"a sequence of sequences":        "links:\n  - - origin: ABCD-WARM-ORIGIN\n",
+		"a tab after the indicator":      "links:\n  -\t- origin: ABCD-WARM-ORIGIN\n",
+		"an anchored entry":              "links:\n  - &a origin: ABCD-WARM-ORIGIN\n",
+		"a tagged entry":                 "links:\n  - !t origin: ABCD-WARM-ORIGIN\n",
+		"an explicit key in an entry":    "links:\n  - ? origin\n    : ABCD-WARM-ORIGIN\n",
+		"an explicit value's mapping":    "? meta\n: origin: ABCD-WARM-ORIGIN\n",
+		"a flow pair in a flow sequence": "links: [origin: ABCD-WARM-ORIGIN]\n",
+		// Siblings refused before this change, kept refused.
+		"the recorded shape":                "links:\n  - origin: ABCD-WARM-ORIGIN\n",
+		"a quoted key in an entry":          "links:\n  - \"origin\": ABCD-WARM-ORIGIN\n",
+		"a flow mapping in an entry":        "links:\n  - {origin: ABCD-WARM-ORIGIN}\n",
+		"an anchored flow mapping":          "base: &b {origin: ABCD-WARM-ORIGIN}\nuse: *b\n",
+		"a key under a bare indicator":      "links:\n  -\n    origin: ABCD-WARM-ORIGIN\n",
+		"a multi-line flow mapping":         "meta: {a: 1,\n  origin: ABCD-WARM-ORIGIN}\n",
+		"a block scalar holding the key":    "note: |\n  origin: ABCD-WARM-ORIGIN\n",
+		"a quoted pair in a flow sequence":  "links: [\"origin\": ABCD-WARM-ORIGIN]\n",
+		"a second key in a nested mapping":  "links:\n  - name: a\n    origin: ABCD-WARM-ORIGIN\n",
+		"a flow pair after a flow sequence": "links: [a, origin: ABCD-WARM-ORIGIN]\n",
+	} {
+		err := refuses(t, "spc-1-a-record.md", pre+front+post, refusalKeys, refusalHeadings)
+		if err == nil {
+			t.Errorf("%s: admitted; the key is an origin key to YAML and travels", name)
+			continue
+		}
+		if !strings.Contains(err.Error(), "spc-1-a-record.md") {
+			t.Errorf("%s: the refusal does not name the document: %v", name, err)
+		}
+	}
+
+	// The anti-vacuity half: what committed records carry is admitted.
+	for name, front := range map[string]string{
+		"a sequence of scalars":       "builds_on:\n  - itd-183\n  - \"itd-199\"\n",
+		"a flow sequence of scalars":  "related: [itd-183, itd-199]\n",
+		"a URL in a flow sequence":    "sources: [https://example.com/a]\n",
+		"an explicit key and a value": "? meta\n: a plain value\n",
+		"an entry under a bare dash":  "builds_on:\n  -\n    itd-183\n",
+	} {
+		if err := refuses(t, "spc-1-a-record.md", pre+front+post, refusalKeys, refusalHeadings); err != nil {
+			t.Errorf("%s was refused: %v", name, err)
+		}
+	}
+}
+
+// TestAnAliasInAKeyPositionRefuses (iss-2609261900095459). An anchor sits
+// wherever a node can, a value included, and an alias written where a key
+// stands IS that anchored scalar to YAML: `k: &a origin` then `*a : X` reads as
+// {origin: X}. The anchor refusal fired only at line start and behind a block
+// indicator, and nothing read `*` at all, so the key travelled. The refusal is
+// of the alias in every key position — line start, behind a block indicator,
+// behind `{`, `[` or `,` — whatever the anchored scalar says.
+func TestAnAliasInAKeyPositionRefuses(t *testing.T) {
+	const pre, post = "---\nid: spc-1\n", "---\n\n# A record\n"
+	for name, front := range map[string]string{
+		"an alias key at line start":          "k: &a origin\n*a : ABCD-WARM-ORIGIN\n",
+		"an alias key in a flow mapping":      "k: &a origin\nm: {*a : ABCD-WARM-ORIGIN}\n",
+		"an alias key after a flow comma":     "k: &a origin\nm: {x: 1, *a : ABCD-WARM-ORIGIN}\n",
+		"an alias pair in a flow sequence":    "k: &a origin\nm: [*a : ABCD-WARM-ORIGIN]\n",
+		"an alias key on a flow continuation": "k: &a origin\nm: {x: 1,\n  *a : ABCD-WARM-ORIGIN}\n",
+		"a comma-first flow continuation":     "k: &a origin\nm: {x: 1\n  , *a : ABCD-WARM-ORIGIN}\n",
+		"an alias key in a nested mapping":    "k: &a origin\nm:\n  *a : ABCD-WARM-ORIGIN\n",
+		"an anchor behind a tag":              "k: !!str &a origin\n*a : ABCD-WARM-ORIGIN\n",
+		"an anchor in a flow mapping's value": "m: {k: &a origin}\n*a : ABCD-WARM-ORIGIN\n",
+		"an anchor in a flow sequence":        "l: [&a origin]\n*a : ABCD-WARM-ORIGIN\n",
+		"a tag before a flow alias key":       "k: &a origin\nm: {!!str *a : ABCD-WARM-ORIGIN}\n",
+		"a CRLF alias key":                    "k: &a origin\r\n*a : ABCD-WARM-ORIGIN\r\n",
+		// Siblings refused before this change, kept refused.
+		"an alias as an explicit key":           "k: &a origin\n? *a\n: ABCD-WARM-ORIGIN\n",
+		"an alias key in a sequence entry":      "k: &a origin\nlinks:\n  - *a : ABCD-WARM-ORIGIN\n",
+		"an alias key behind an explicit value": "k: &a origin\n? meta\n: *a : ABCD-WARM-ORIGIN\n",
+		"a merge over an anchored flow map":     "base: &m {origin: ABCD-WARM-ORIGIN}\nuse:\n  <<: *m\n",
+		"a merge over an anchored block map":    "base: &m\n  origin: ABCD-WARM-ORIGIN\nuse:\n  <<: *m\n",
+	} {
+		err := refuses(t, "spc-1-a-record.md", pre+front+post, refusalKeys, refusalHeadings)
+		if err == nil {
+			t.Errorf("%s: admitted; the alias is an origin key to YAML and travels", name)
+			continue
+		}
+		if !strings.Contains(err.Error(), "spc-1-a-record.md") {
+			t.Errorf("%s: the refusal does not name the document: %v", name, err)
+		}
+	}
+
+	// The anti-vacuity half: an alias in a VALUE position copies a node whose
+	// own text the floor already read where the anchor sits, and an asterisk
+	// that is not an alias is prose.
+	for name, front := range map[string]string{
+		"an alias as a value":            "k: &a origin\nuse: *a\n",
+		"an alias in a sequence entry":   "k: &a origin\nlist:\n  - *a\n",
+		"a merge over a harmless map":    "base: &m {name: x}\nuse:\n  <<: *m\n",
+		"an asterisk in a quoted value":  "note: \"see [*] and {*a : b}\"\n",
+		"an asterisk inside a plain one": "note: a*b, c *d\n",
+	} {
+		if err := refuses(t, "spc-1-a-record.md", pre+front+post, refusalKeys, refusalHeadings); err != nil {
+			t.Errorf("%s was refused: %v", name, err)
+		}
+	}
+}
+
+// TestTheEscapedKeyRefusalStatesOnlyWhatItKnows (iss-2608301421381157). The
+// escaped-key refusal shared the excluded-key message, which asserted that the
+// document still carried an excluded key and that its block was not closed the
+// way the field reader expects. Neither is known of an escape: the package does
+// not decode one, so which key it spells is exactly what it cannot say, and the
+// block is closed as expected. The refusal stands; its stated reason is the
+// escape.
+func TestTheEscapedKeyRefusalStatesOnlyWhatItKnows(t *testing.T) {
+	for name, doc := range map[string]string{
+		"a line-anchored escaped key":  "---\nid: spc-1\n\"C:\\tmp\\x\": v\n---\n\n# A record\n",
+		"an escaped key in a flow map": "---\nid: spc-1\nmeta: {a: 1, \"C:\\tmp\\x\": v}\n---\n\n# A record\n",
+	} {
+		err := refuses(t, "spc-1-a-record.md", doc, map[string]bool{"origin": true}, nil)
+		if err == nil {
+			t.Errorf("%s: an escaped key was admitted", name)
+			continue
+		}
+		msg := err.Error()
+		for _, want := range []string{"spc-1-a-record.md", "line 3", "escape", `C:\\tmp\\x`} {
+			if !strings.Contains(msg, want) {
+				t.Errorf("%s: the refusal does not state %q: %v", name, want, err)
+			}
+		}
+		for _, claim := range []string{"excluded key", "not closed"} {
+			if strings.Contains(msg, claim) {
+				t.Errorf("%s: the refusal asserts %q, which is not known of an escape: %v", name, claim, err)
+			}
+		}
+	}
+
+	// The general refusal names the key and the line, and claims no block shape
+	// it did not observe: a quoted key survives redaction in a block closed
+	// exactly as the field reader expects.
+	const quoted = "---\nid: spc-1\n\"origin\": ABCD-WARM-ORIGIN\n---\n\n# A record\n"
+	err := refuses(t, "spc-1-a-record.md", quoted, map[string]bool{"origin": true}, nil)
+	if err == nil {
+		t.Fatal("a quoted excluded key was admitted")
+	}
+	for _, want := range []string{"spc-1-a-record.md", `"origin"`, "line 3"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the refusal does not state %q: %v", want, err)
+		}
+	}
+	if strings.Contains(err.Error(), "not closed") {
+		t.Errorf("the refusal asserts a block shape the document does not have: %v", err)
 	}
 }

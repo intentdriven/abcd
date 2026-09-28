@@ -3,6 +3,7 @@ package capture
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -278,7 +279,9 @@ func reservePath(repoRoot, issuesRoot, slug, forceID string) (string, string, er
 	var resID, resTarget string
 	err := withLedgerLock(repoRoot, issuesRoot, func() error {
 		if forceID != "" {
-			if issPresent(issuesRoot, forceID) {
+			if present, pErr := issPresent(issuesRoot, forceID); pErr != nil {
+				return pErr
+			} else if present {
 				return fmt.Errorf("%w: %s already exists in the ledger", ErrDuplicateIssueID, forceID)
 			}
 			target := filepath.Join(issuesRoot, "open", forceID+"-"+slug+".md")
@@ -297,7 +300,9 @@ func reservePath(repoRoot, issuesRoot, slug, forceID string) (string, string, er
 			if mErr != nil {
 				return mErr
 			}
-			if issPresent(issuesRoot, issID) {
+			if present, pErr := issPresent(issuesRoot, issID); pErr != nil {
+				return pErr
+			} else if present {
 				continue
 			}
 			target := filepath.Join(issuesRoot, "open", issID+"-"+slug+".md")
@@ -339,23 +344,43 @@ func createPlaceholder(repoRoot, issuesRoot, target string) error {
 
 // issPresent reports whether issID exists in any status dir. It walks
 // issueschema.StatusDirs rather than a literal: a status folder this scan does
-// not visit is one the mint would happily re-issue an id into.
-func issPresent(issuesRoot, issID string) bool {
+// not visit is one the mint would happily re-issue an id into. For the same
+// reason a status folder it cannot read is an error, never an empty folder.
+func issPresent(issuesRoot, issID string) (bool, error) {
 	prefix := issID + "-"
 	exact := issID + ".md"
 	for _, sub := range issueschema.StatusDirs {
-		entries, err := os.ReadDir(filepath.Join(issuesRoot, sub))
+		entries, err := readStatusDir(issuesRoot, sub)
 		if err != nil {
-			continue
+			return false, err
 		}
 		for _, e := range entries {
 			n := e.Name()
 			if n == exact || (len(n) > len(prefix) && n[:len(prefix)] == prefix && filepath.Ext(n) == ".md") {
-				return true
+				return true, nil
 			}
 		}
 	}
-	return false
+	return false, nil
+}
+
+// readStatusDir lists one status directory of the ledger. An absent directory
+// is no entries (a ledger not yet provisioned, or a status nothing has reached);
+// any other read error is returned (iss-2609261241121312). A directory that
+// cannot be read may hold the very record a caller named, so reading it as
+// empty would answer "not found", or "free to mint", about a ledger nobody
+// read. The error names the directory ledger-relatively: the absolute path the
+// read error carries is dropped, as a refusal's is (iss-81).
+func readStatusDir(issuesRoot, status string) ([]os.DirEntry, error) {
+	entries, err := os.ReadDir(filepath.Join(issuesRoot, status))
+	if err == nil || errors.Is(err, fs.ErrNotExist) {
+		return entries, nil
+	}
+	var pe *fs.PathError
+	if errors.As(err, &pe) {
+		err = pe.Err
+	}
+	return nil, fmt.Errorf("cannot read the ledger status directory %s/: %w", status, err)
 }
 
 // cancelReservation removes a zero-byte placeholder idempotently. It refuses a
@@ -406,9 +431,9 @@ func cleanOrphanPlaceholders(repoRoot, issuesRoot string) error {
 	if ofi.Mode()&os.ModeSymlink != 0 {
 		return fmt.Errorf("%w: issuesRoot/open is a symlink: %s", ErrPathUnsafe, openDir)
 	}
-	entries, err := os.ReadDir(openDir)
+	entries, err := readStatusDir(issuesRoot, "open")
 	if err != nil {
-		return nil
+		return err
 	}
 	now := time.Now()
 	for _, e := range entries {
@@ -482,9 +507,9 @@ func findIssue(issuesRoot, issID string) (string, State, error) {
 	var matches []match
 	for _, sub := range statusDirs {
 		dir := filepath.Join(issuesRoot, statusDirName[sub])
-		entries, err := os.ReadDir(dir)
+		entries, err := readStatusDir(issuesRoot, statusDirName[sub])
 		if err != nil {
-			continue
+			return "", "", err
 		}
 		for _, e := range entries {
 			n := e.Name()

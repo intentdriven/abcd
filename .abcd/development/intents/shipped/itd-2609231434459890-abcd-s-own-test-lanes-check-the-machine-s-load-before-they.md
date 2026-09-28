@@ -138,8 +138,81 @@ We expect the foreign-sustained-CPU signal to flag both recorded incidents (the 
 
 ## Audit Notes
 
-<!-- abcd-review: OWED receipt=rcp-46f69cff6b50 -->
-Fidelity review OWED (receipt rcp-46f69cff6b50).
+<!-- abcd-review: INGESTED receipt=rcp-46f69cff6b50 -->
+Fidelity review — receipt rcp-46f69cff6b50 (verifier intent-auditor claude-fable-5-1).
+
+Provenance: intent-auditor@claude-fable-5-1 · rubric_hash sha256:effa65b3e9e88ff29433b443ec2be159522a8b0b71cf1434526514aa61edb13e · prompt_hash sha256:98e58bb42916e7f0648e4befdeefa2dea3cf5f9503c15495bec70b925497f3a1
+Input attestations: diff:tree at 4c09b5c749de3dc3d1a1e0ab85d9dcd58ffcb4d5 (main lineage, itd-2609231434459890 shipped)@-;
+
+Acceptance rollup: MET 8 · MET_WITH_CONCERNS 0 · NOT_MET 0 · INCONCLUSIVE 0
+
+Per-criterion verdicts:
+- ac-1 — MET: Classify names the caller's own processes past the stray limit at near-full share, excluding the invocation's ancestry; the render prints each with name, pid, group, age and CPU share and the pgrep/kill remedy, and ends with abcd carries on; TestImplementLoadNamesOwnStraysWithTheRemedy covers it and the Makefile target ignores the exit
+  evidence: internal/core/machineload/classify.go:146 — "if ancestry[p.PID] || p.Age <= limit {"
+  evidence: internal/surface/cli/implement_load.go:140 — "pid %d group %d running %s CPU %d%% of a core"
+  evidence: internal/surface/cli/implement_load.go:168 — "still shows it, then: kill %d%s"
+  evidence: internal/surface/cli/implement_load.go:201 — "abcd carries on; stopping them is your call."
+  evidence: internal/surface/cli/implement_load_test.go:69 — "func TestImplementLoadNamesOwnStraysWithTheRemedy(t *testing.T) {"
+  evidence: Makefile:343 — "-go run ./cmd/abcd implement load --site preflight"
+- ac-2 — MET: a stray with another uid only increments a count and a cores total, the OtherStrays type carries no identity field, and the render prints the count and share alone; TestImplementLoadKeepsOtherAccountsAnonymous and TestOtherStraysTypeCarriesNoIdentity cover it
+  evidence: internal/core/machineload/classify.go:157 — "v.Others.Count++"
+  evidence: internal/surface/cli/implement_load.go:173 — "Other accounts: %d programs at nearly all the CPU they can get, for over %s, using about %.1f cores."
+  evidence: internal/core/machineload/classify_test.go:355 — "func TestOtherStraysTypeCarriesNoIdentity(t *testing.T) {"
+  evidence: internal/surface/cli/implement_load_test.go:112 — "func TestImplementLoadKeepsOtherAccountsAnonymous(t *testing.T) {"
+- ac-3 — MET: TestEightConcurrentPreflightsAreQuiet models eight make/go/core.test/compile trees under the caller's uid and asserts no trigger, TestEightConcurrentShortLivedProcessesDoNotWarn does it with live busy children, and TestImplementLoadIsQuietUnderOwnParallelWork covers the front door; the machineload package is green at BASE
+  evidence: internal/core/machineload/classify_test.go:298 — "func TestEightConcurrentPreflightsAreQuiet(t *testing.T) {"
+  evidence: internal/core/machineload/live_test.go:47 — "func TestEightConcurrentShortLivedProcessesDoNotWarn(t *testing.T) {"
+  evidence: internal/surface/cli/implement_load_test.go:196 — "func TestImplementLoadIsQuietUnderOwnParallelWork(t *testing.T) {"
+- ac-4 — MET: the extreme trigger fires strictly above lim.ExtremeLoad, which defaults to four times the online cores, and the render states the load averages, the limit and the core count; TestExtremeTriggerIsStrictlyAbove and TestImplementLoadReportsLoadAndCores cover it
+  evidence: internal/core/machineload/classify.go:171 — "if snap.HasLoad && snap.Load1 > lim.ExtremeLoad {"
+  evidence: internal/core/machineload/limits.go:30 — "DefaultExtremeFactor = 4"
+  evidence: internal/surface/cli/implement_load.go:189 — "Load %.1f over 1 min (%.1f over 5, %.1f over 15) is above the extreme limit of %s (%s)."
+  evidence: internal/surface/cli/implement_load_test.go:213 — "func TestImplementLoadReportsLoadAndCores(t *testing.T) {"
+- ac-5 — MET: logLoadWarning appends an EventLoad event to the live run's log with the result's fields, LoadResultFromEvent reads it back, and a failed write is reported with the warning standing; TestLoadWarningIsLoggedInALiveRun, TestNoEventOutsideARun and TestLoggedEventRendersToThePrintedWarning cover it
+  evidence: internal/core/implement/log.go:62 — "EventLoad = "load""
+  evidence: internal/core/implement/load.go:402 — "_, err := run.append(session, EventLoad, fields)"
+  evidence: internal/core/implement/load_test.go:114 — "func TestLoadWarningIsLoggedInALiveRun(t *testing.T) {"
+  evidence: internal/surface/cli/implement_load_test.go:288 — "func TestLoggedEventRendersToThePrintedWarning(t *testing.T) {"
+- ac-6 — MET: readLimits reads ~/.abcd/load-limits with stray-minutes and extreme-load keys over DefaultLimits(cores), a fault discards the whole file and the render prints LOAD CHECK SETTINGS UNUSABLE with the defaults; TestLimitsFromTheSettingsFile, TestMalformedLimitsFileFallsBackWhole and TestImplementLoadMalformedLimitsIsLoud cover it
+  evidence: internal/core/implement/load.go:306 — "path := filepath.Join(home, ".abcd", machineload.LimitsFileName)"
+  evidence: internal/core/machineload/limits.go:53 — "func DefaultLimits(cores int) Limits {"
+  evidence: internal/surface/cli/implement_load.go:87 — "LOAD CHECK SETTINGS UNUSABLE: %s%s%s; using the defaults for both limits"
+  evidence: internal/core/implement/load_test.go:277 — "func TestMalformedLimitsFileFallsBackWhole(t *testing.T) {"
+- ac-7 — MET: load-check is the first prerequisite of make preflight and runs one `implement load` invocation, the eval harness runs its own once from TestMain with ABCD_LOAD_CHECKED keeping one preflight to one terminal report, and a CI runner is skipped with a reason the render prints; TestCheckLoadSkipsOnCIWithReason and TestImplementLoadSkipsOnCI cover it
+  evidence: Makefile:307 — "preflight: load-check lint-reviews lint-issues"
+  evidence: evals/harness_test.go:85 — "if os.Getenv("ABCD_LOAD_CHECKED") != "preflight" {"
+  evidence: internal/core/implement/load.go:196 — "skipped on a CI runner (" + reason + "): a fresh runner carries no programs left from earlier work"
+  evidence: internal/surface/cli/implement_load.go:93 — "load check (%s): %s"
+  evidence: internal/core/implement/load_test.go:77 — "func TestCheckLoadSkipsOnCIWithReason(t *testing.T) {"
+- ac-8 — MET: read_darwin.go shells /bin/ps and sysctl, read_linux.go reads /proc, read_other.go returns ErrUnsupported which CheckLoad turns into LOAD CHECK UNAVAILABLE naming the platform and carrying on; TestMachineLoadImportsOnlyTheStandardLibrary proves no dependency and TestImplementLoadCannotCheck covers the unavailable path
+  evidence: internal/core/machineload/read_other.go:10 — "func Read() (Snapshot, error) { return Snapshot{}, ErrUnsupported }"
+  evidence: internal/core/implement/load.go:211 — "abcd reads load and processes on macOS and Linux only, and this is"
+  evidence: internal/surface/cli/implement_load.go:98 — "LOAD CHECK UNAVAILABLE (%s): %s; carrying on without checking the machine's load"
+  evidence: internal/core/machineload/read_test.go:50 — "func TestMachineLoadImportsOnlyTheStandardLibrary(t *testing.T) {"
+  evidence: internal/surface/cli/implement_load_test.go:250 — "func TestImplementLoadCannotCheck(t *testing.T) {"
+
+Gap audit:
+- honoured:
+  - warn, never refuse: the check exits 0 on every status and the Makefile ignores even a build failure
+    evidence: Makefile:343 — "-go run ./cmd/abcd implement load --site preflight"
+  - own strays' names pass the private banned-names scrub
+    evidence: internal/core/implement/load.go:340 — "func scrubOwnNames(repoRoot string, own []LoadOwnStray) bool {"
+  - the remedy never group-kills a mixed or the caller's own group and never names a pattern kill
+    evidence: internal/surface/cli/implement_load.go:170 — "Never by pattern (pkill -f, killall)"
+  - the verb is reachable from the plugin surface
+    evidence: commands/implement.md:147 — "implement load --site preflight|eval-harness [--json]"
+- diverged: (none)
+- missing: (none)
+
+Scope-condition dispositions:
+- cond-2609231542464428 — survived: the readers are darwin and linux build files and every other platform takes read_other.go's ErrUnsupported, reported as unavailable
+  evidence: internal/core/machineload/read_other.go:10 — "return Snapshot{}, ErrUnsupported"
+- cond-2609231542466193 — survived: a CI runner is detected from GITHUB_ACTIONS or CI and the check is skipped there with a reason, as the condition assumed
+  evidence: internal/core/implement/load.go:273 — "if getenv("GITHUB_ACTIONS") == "true" {"
+- cond-2609231542465241 — survived: the classifier keys a stray on age past the limit and near-full share alone, excluding only the invocation's ancestry, so a test running flat out past the limit would read as a stray exactly as assumed; the eight-preflight fixtures stay under the limit
+  evidence: internal/core/machineload/classify.go:146 — "if ancestry[p.PID] || p.Age <= limit {"
+- cond-2609231542469551 — survived: strays under another uid are counted and summed with no identity carried, as the condition's reason requires
+  evidence: internal/core/machineload/classify_test.go:355 — "func TestOtherStraysTypeCarriesNoIdentity(t *testing.T) {"
 
 ## Grounds
 

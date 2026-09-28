@@ -118,9 +118,12 @@ for the session, and that root is never taken from a directory above your
 working tree. When `git` will not name the tree — a checkout owned by a
 different user account, a container bind mount, a shared CI checkout — the root
 is recovered from the `.git` marker instead, and a root your account does not
-own is refused: the session falls back to its own working directory, the
-bundled rule defaults and bundled hazard registry stand in for the
-repository's, and one line names the directory refused. Laying out a real
+own is refused: the session falls back to its own working directory, nothing
+above it is read, and one line names the directory refused and what the session
+reads instead. From a directory with no `.abcd/` of its own, the bundled rule
+defaults and bundled hazard registry stand in for the repository's. The refusal
+bounds the walk, not the working directory, so a session started at the refused
+checkout itself still reads that checkout's `.abcd/`. Laying out a real
 repository in a shared directory anyone can write is otherwise enough to supply
 both, and no property of the tree tells that apart from a checkout that is
 honestly someone else's. If such a checkout is genuinely yours to trust,

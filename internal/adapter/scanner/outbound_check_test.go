@@ -37,7 +37,7 @@ func TestCheckOutboundRefusesASessionURL(t *testing.T) {
 // is the position AGENTS.md states. What is not fine is a Go check that knows
 // only half the policy it claims to enforce.
 func TestCheckOutboundRefusesAnAttributionFooter(t *testing.T) {
-	body := "Closes the gate.\n\n🤖 Generated with [Some Tool](https://sometool.dev)\n"
+	body := "Closes the gate.\n\n🤖 Generated with [Some Tool](https://sometool.dev)\n" // abcd-lint:allow
 
 	findings, err := CheckOutbound(t.TempDir(), body, "pr-body")
 	if err == nil {

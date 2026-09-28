@@ -35,8 +35,8 @@ const (
 	writeRouting                 writeKind = "routing"
 	writeRules                   writeKind = "rules"
 	writeIdentityPin             writeKind = "identity-pin"
+	writeGitIdentity             writeKind = "git-identity"
 	writeArtefactKind            writeKind = "artefact-kind"
-	writeScannerHint             writeKind = "scanner-hint"
 )
 
 // allWriteKinds is every kind, in the order the summary lists them: the
@@ -44,8 +44,8 @@ const (
 var allWriteKinds = []writeKind{
 	writeSettings, writeGitignore, writeLocalTier, writeNameGuard, writePrivateNames,
 	writeDocsCheck, writeAttributionHook, writeRules, writeConventionsBlock,
-	writeConventionsBlockRemoved, writeIdentityPin, writeArtefactKind, writeCommandEntry, writeSessionStore,
-	writeStatusLine, writeRouting, writeScannerHint,
+	writeConventionsBlockRemoved, writeGitIdentity, writeIdentityPin, writeArtefactKind, writeCommandEntry, writeSessionStore,
+	writeStatusLine, writeRouting,
 }
 
 // writeKindHelp is the plain-language explanation of each kind of write.
@@ -100,6 +100,11 @@ var writeKindHelp = map[writeKind]SummaryItem{
 		Why:    "abcd names itself only in the files you pick.",
 		Action: "Nothing to do.",
 	},
+	writeGitIdentity: {
+		What:   "Set the git name and email this repository commits under, in its own .git/config, to the identity you confirmed.",
+		Why:    "Commits here were about to be made under a different identity, such as a leftover test account or an agent's, and the human is the author of record.",
+		Action: "Nothing. Your global git settings are unchanged; to undo it, run git config --local --unset user.name and git config --local --unset user.email.",
+	},
 	writeIdentityPin: {
 		What:   "Recorded the git name and email that commit to this repository.",
 		Why:    "abcd can then warn when a commit is about to be made under a different identity, such as an agent's.",
@@ -129,11 +134,6 @@ var writeKindHelp = map[writeKind]SummaryItem{
 		What:   "Saved which size of AI model each of abcd's review steps asks for.",
 		Why:    "Larger models cost more; the table keeps the expensive ones for the steps that need them.",
 		Action: "Nothing. Edit the saved table if you want a different split.",
-	},
-	writeScannerHint: {
-		What:   "Listed the command that installs an optional extra scanner; abcd did not run it.",
-		Why:    "abcd's own checks work without it, and the extra scanner looks deeper for leaked secrets.",
-		Action: "If you want the deeper scan, run the command listed under the written items; abcd never runs an installer for you.",
 	},
 }
 

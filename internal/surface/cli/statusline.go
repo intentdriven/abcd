@@ -56,8 +56,9 @@ func newStatuslineCommand(asJSON *bool) *cobra.Command {
 		Long: "Render abcd's row for the host harness's status line.\n\n" +
 			"The harness runs this on every status refresh, with its JSON status\n" +
 			"payload on stdin, and shows what it prints. In a checkout abcd manages the\n" +
-			"row is abcd's own: the presence badge first — `abcd`, `waiting: facilitator`\n" +
-			"or `waiting: product thinker`, from the state `abcd mode` stores — then the\n" +
+			"row is abcd's own: the presence badge first — `abcd-managed`, `waiting on\n" +
+			"the technical facilitator` or `waiting on the product thinker`, from the state\n" +
+			"`abcd mode` stores, its colour ending at the badge — then the\n" +
 			"repository name, the branch, the model, the context percentage, the\n" +
 			"five-hour and seven-day usage percentages, and the record's counts of\n" +
 			"intents not yet shipped and open issues. Each element after the badge is\n" +

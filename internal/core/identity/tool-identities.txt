@@ -1,0 +1,71 @@
+# The machine git identities abcd refuses as the author or committer of record.
+#
+# ONE LIST, TWO READERS. scripts/check-attribution.sh (the CI attribution gate,
+# its identity half) reads this file, and so does the identity package's
+# IsToolIdentity (the `ahoy` identity gate, which flags the same identities
+# before the first commit rather than after the pull request). Neither reader
+# carries a copy: an identity added here is refused by both, and one added
+# anywhere else is refused by neither.
+#
+# Format: one `key=pattern` per line; `#` starts a comment line; blank lines are
+# ignored. The pattern is everything after the FIRST `=`. Every pattern is matched
+# CASE-INSENSITIVELY and must be valid in both dialects that read it: POSIX ERE
+# (`grep -Ei`, bash 3.2 on stock macOS) and Go's RE2 (`regexp`). Stay inside
+# their intersection: bracket expressions, `[[:space:]]`, alternation, groups,
+# `?`, `*`, anchors. No `\s`, no `\d`, no lookaround, no back-references.
+#
+# The five keys, and which role each is refused in:
+#
+#   ai_name           both roles  an AI vendor's name standing alone as the name
+#   ai_mail           both roles  an AI vendor's mail domain
+#   machine_name      both roles  the forge's own `[bot]` account-name suffix
+#   machine_mail      both roles  a bot mailbox
+#   author_only_mail  AUTHOR only a mailbox named for not being read
+
+# The git IDENTITY itself, not only the message. A commit authored AND committed
+# as `Claude <noreply@anthropic.com>` carried a fully compliant message and
+# sailed through the message-only gate — but the contributor graph is built from
+# commit authorship plus Co-authored-by trailers, so it put an AI at #2 in the
+# graph. Worse, a squash merge auto-appends a Co-authored-by for any branch
+# author who is not the PR author, so one mis-identified branch commit inflates
+# the graph again on every squash.
+#
+# Names are matched whole (a human named Claudette is not an AI identity); the
+# address rule covers the vendor domains AI tools stamp by default. The intent is
+# vendor-agnostic, but an identity ban can only enumerate — extend both lists as
+# new defaults are met in the wild.
+ai_name=^[[:space:]]*(claude|chatgpt|copilot|github copilot|gemini|codex|devin)[[:space:]]*$
+ai_mail=@anthropic\.com$|@openai\.com$
+
+# A MACHINE identity that is not an AI vendor. The rule is refuse-machines,
+# allow-humans — not an allowlist of one name. The repository takes outside
+# contributions, so a roster of permitted names would refuse the next one; the
+# enumeration above is a roster of REFUSED names and has the opposite failure
+# mode, but it is still an enumeration, and dependabot walked straight past it —
+# three dependency bumps stand in main authored `dependabot[bot]`, matching
+# neither list (iss-2609082001204831).
+#
+# So these two are STRUCTURAL rather than nominal: the `[bot]` suffix the forge
+# itself stamps on an app's account name, and the mailbox shape it stamps on the
+# address — `49699333+dependabot[bot]@users.noreply.github.com`, or the older
+# `name[bot]@…`. A second automation lands in the right place with no edit here.
+#
+# THE MAILBOX IS THE DISCRIMINATOR, NEVER THE HOST, and this is the line to read
+# twice before touching it. `1234+name@users.noreply.github.com` is a PERSON'S
+# forge privacy address — the host says noreply, the mailbox is that person's own
+# account — and it is how nearly every commit in this repository is authored.
+# Reading `users.noreply.github.com` as a machine signal would refuse the entire
+# history and every outside contributor with privacy switched on. `[bot]` inside
+# the mailbox is what makes dependabot's address a machine's.
+machine_name=\[bot\][[:space:]]*$
+machine_mail=\[bot\]@|@dependabot\.com$
+
+# A mailbox literally named for not being read. Refused in the AUTHOR role only,
+# and the asymmetry is load-bearing rather than a hedge: `GitHub
+# <noreply@github.com>` is the COMMITTER of every merge and squash made through
+# the forge's web UI, on a human's click — hundreds of commits in this
+# repository's main are shaped exactly so, and refusing the mailbox in that role
+# would turn the whole history red while catching no machine that machine_mail
+# misses. In the author role there is no such reading: a person's forge address
+# names their account, and `noreply@` names none.
+author_only_mail=^[[:space:]]*(no-?reply|do-?not-?reply)@

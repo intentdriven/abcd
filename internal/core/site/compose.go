@@ -123,21 +123,41 @@ func (c *composer) renderer(p *docPage) *Renderer {
 		Image: func(src, alt string, at Source) (string, error) {
 			return c.assets.render(p.Dir, src, alt, at)
 		},
-		Link: func(href string, at Source) string { return siteHref(p.Dir, href, c.repo.Repository) },
+		Link: func(href string, at Source) string { return siteHref(p.Dir, href, c.repo.Repository, c.rendersDocs()) },
 	}
 }
+
+// forgeView is the forge's view of kind ("blob" a file, "tree" a directory,
+// "commits" a path's history) for the repository path rel on the default
+// branch. HEAD names that branch whatever it is called: the build reads no
+// forge to learn the name, and a repository's default need not be main
+// (iss-2609261206437257, iss-2609261241126008). Every forge link into the
+// repository is built here, so none names a branch.
+func forgeView(repo, kind, rel string) string { return repo + "/" + kind + "/HEAD/" + rel }
+
+// forgeBlob is the forge's view of the repository file rel on the default
+// branch.
+func forgeBlob(repo, rel string) string { return forgeView(repo, "blob", rel) }
+
+// rendersDocs reports whether this site serves a /docs/ tree. The tree is not
+// this build's output (the docs build writes it beside it), so the composition
+// is what says it is there: a `docs` block naming the index the docs surface
+// renders. Without one, nothing links the tree, the header's Docs entry
+// included, because every such link would 404.
+func (c *composer) rendersDocs() bool { return c.manifest.Docs.Index != "" }
 
 // siteHref maps a link as the record wrote it to a link the site serves.
 //
 // An absolute URL and an in-page fragment are already right. A repo-relative
-// markdown path under `docs/` becomes the docs route that renders it. A
-// repo-relative markdown path ANYWHERE ELSE — a record file, a root document —
-// has no page on this site yet, so it becomes the forge's own view of that file:
-// a link that works today, rather than a relative path that 404s the moment
-// somebody follows it. When the record explorer ships those targets get real
-// pages and this arm narrows; a broken link in the meantime is not an
+// markdown path under `docs/` becomes the docs route that renders it, when the
+// site renders a docs tree (docs). A repo-relative markdown path ANYWHERE ELSE
+// — a record file, a root document — or under `docs/` on a site with no docs
+// tree has no page on this site, so it becomes the forge's own view of that
+// file: a link that works today, rather than a relative path that 404s the
+// moment somebody follows it. When the record explorer ships those targets get
+// real pages and this arm narrows; a broken link in the meantime is not an
 // acceptable placeholder.
-func siteHref(pageDir, href, forge string) string {
+func siteHref(pageDir, href, forge string, docs bool) string {
 	switch {
 	case href == "",
 		strings.HasPrefix(href, "http://"),
@@ -152,11 +172,11 @@ func siteHref(pageDir, href, forge string) string {
 		return href
 	}
 	rel := path.Clean(path.Join(pageDir, target))
-	if !strings.HasPrefix(rel, "docs/") {
+	if !docs || !strings.HasPrefix(rel, "docs/") {
 		if forge == "" || !fsutil.ValidRelPath(rel) {
 			return href
 		}
-		out := forge + "/blob/main/" + rel
+		out := forgeBlob(forge, rel)
 		if frag != "" {
 			out += "#" + frag
 		}
@@ -331,7 +351,9 @@ func (c *composer) headerFor(active string) string {
 	}
 	b.WriteString(`<a href="/#` + escapeAttr(c.firstChapterAnchor()) + `">` + escapeText(c.ui.NavStory) + `</a>`)
 	b.WriteString(`<a href="/#` + escapeAttr(c.installChapterAnchor()) + `">` + escapeText(c.ui.NavInstall) + `</a>`)
-	b.WriteString(`<a href="/docs/">` + escapeText(c.ui.NavDocs) + `</a>`)
+	if c.rendersDocs() {
+		b.WriteString(`<a href="/docs/">` + escapeText(c.ui.NavDocs) + `</a>`)
+	}
 	if c.manifest.Pages.resolve().explorer {
 		b.WriteString(`<a href="/record/"` + on("/record/") + `>` + escapeText(c.ui.NavRecord) + `</a>`)
 	}
@@ -402,7 +424,7 @@ func (c *composer) footer() string {
 			if _, err := c.root.Stat(f); err != nil {
 				continue
 			}
-			b.WriteString(`<a href="` + escapeAttr(c.repo.Repository+"/blob/main/"+f) + `">` + escapeText(f) + `</a>`)
+			b.WriteString(`<a href="` + escapeAttr(forgeBlob(c.repo.Repository, f)) + `">` + escapeText(f) + `</a>`)
 		}
 		b.WriteString(`<a href="` + escapeAttr(c.repo.Repository) + `">` + escapeText(c.forgeLabel()) + `</a>`)
 	}
@@ -736,9 +758,6 @@ func leadIn(text string) (title, rest string, ok bool) {
 	}
 	return "", "", false
 }
-
-// isSpace reports whether a byte is markdown whitespace.
-func isSpace(c byte) bool { return c == ' ' || c == '\t' || c == '\n' || c == '\r' }
 
 // tablePortraits puts the role portraits above the column labels they name. The
 // portrait is not configured by asset name: the manifest names the PAGE the
@@ -1074,7 +1093,7 @@ func (c *composer) install(p *docPage, ch Chapter) (string, error) {
 		b.WriteString(`<p class="small muted">` +
 			`<a href="` + escapeAttr(rr+"/releases/latest") + `">` + escapeText(c.ui.LatestRelease) + `</a> · ` +
 			`<a href="` + escapeAttr(rr+"/releases/latest/download/"+AssetChecksums) + `">` + escapeText(AssetChecksums) + `</a> · ` +
-			`<a href="` + escapeAttr(rr+"/blob/main/CHANGELOG.md") + `">CHANGELOG.md</a> · ` +
+			`<a href="` + escapeAttr(forgeBlob(rr, "CHANGELOG.md")) + `">CHANGELOG.md</a> · ` +
 			`<a href="` + escapeAttr(rr+"/releases") + `">` + escapeText(c.ui.AllReleases) + `</a></p>`)
 	}
 	b.WriteString(`</div>`)
@@ -1161,7 +1180,7 @@ func (c *composer) featureBlock(f *Feature) (string, error) {
 	var b strings.Builder
 	b.WriteString(`<div class="quote"` + srcAttr(node.Path, Slug("Press Release")) + `><div class="pr"><span>`)
 	if c.repo.Repository != "" {
-		b.WriteString(`<a href="` + escapeAttr(c.repo.Repository+"/blob/main/"+node.Path) + `">` + escapeText(node.ID) + `</a>`)
+		b.WriteString(`<a href="` + escapeAttr(forgeBlob(c.repo.Repository, node.Path)) + `">` + escapeText(node.ID) + `</a>`)
 	} else {
 		b.WriteString(escapeText(node.ID))
 	}

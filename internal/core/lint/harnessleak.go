@@ -61,7 +61,28 @@ func checkHarnessLeak(rel string, lines []string, mask []bool, cfg RuleConfig) [
 //
 // At most one finding per line, as the audit rule does: the citation points a
 // reader at the line, and the line is what gets fixed.
+//
+// The line is read in every spelling the scanner reads (scanner.DecodedViews):
+// as written, then through its percent and JSON-escape views, so a session URL
+// written straight after a \n escape in a quoted JSON string — where the
+// escape's letter defeats the pattern's leading word boundary — or a footer on
+// a line of its own inside one is the leak the plain spelling is
+// (iss-2609261658553101).
 func harnessLeakOnLine(rel string, lineNo int, line, severity string) (Finding, bool) {
+	for _, spelling := range append([]string{line}, scanner.DecodedViews(line)...) {
+		if label, ok := harnessLeakIn(spelling); ok {
+			return Finding{
+				File: rel, Line: lineNo, RuleID: ruleHarnessLeak, Severity: severity,
+				Message: "committed text carries a " + label + "; " + scanner.OutboundPolicy +
+					" (add `" + harnessLeakWaiver + "` on the line if it is deliberately illustrative)",
+			}, true
+		}
+	}
+	return Finding{}, false
+}
+
+// harnessLeakIn returns the label of the first leak on one spelling of a line.
+func harnessLeakIn(line string) (string, bool) {
 	for _, p := range scanner.HarnessLeakPatterns() {
 		for _, loc := range p.Re.FindAllStringIndex(line, -1) {
 			if p.Skip != nil && p.Skip(line[loc[0]:loc[1]]) {
@@ -70,12 +91,8 @@ func harnessLeakOnLine(rel string, lineNo int, line, severity string) (Finding, 
 			if p.SkipAt != nil && p.SkipAt(line, loc[0], loc[1]) {
 				continue
 			}
-			return Finding{
-				File: rel, Line: lineNo, RuleID: ruleHarnessLeak, Severity: severity,
-				Message: "committed text carries a " + p.Label + "; " + scanner.OutboundPolicy +
-					" (add `" + harnessLeakWaiver + "` on the line if it is deliberately illustrative)",
-			}, true
+			return p.Label, true
 		}
 	}
-	return Finding{}, false
+	return "", false
 }

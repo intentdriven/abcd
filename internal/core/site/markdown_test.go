@@ -473,18 +473,23 @@ func TestSiteHref(t *testing.T) {
 		{"docs/explanation", "https://example.invalid/", "https://example.invalid/"},
 		// Outside docs/ there is no page on this site yet, so the link goes to
 		// the forge's view of the file rather than to a relative path that 404s.
-		{"docs/explanation", "../../CONTRIBUTING.md", forge + "/blob/main/CONTRIBUTING.md"},
+		{"docs/explanation", "../../CONTRIBUTING.md", forge + "/blob/HEAD/CONTRIBUTING.md"},
 		{"docs/explanation", "../../.abcd/development/decisions/adrs/0047-x.md#decision",
-			forge + "/blob/main/.abcd/development/decisions/adrs/0047-x.md#decision"},
+			forge + "/blob/HEAD/.abcd/development/decisions/adrs/0047-x.md#decision"},
 	}
 	for _, c := range cases {
-		if got := siteHref(c.dir, c.in, forge); got != c.want {
+		if got := siteHref(c.dir, c.in, forge, true); got != c.want {
 			t.Errorf("siteHref(%q, %q) = %q, want %q", c.dir, c.in, got, c.want)
 		}
 	}
 	// With no forge URL there is nothing to point at, and the record's own text
 	// is left exactly as written.
-	if got := siteHref("docs/explanation", "../../CONTRIBUTING.md", ""); got != "../../CONTRIBUTING.md" {
+	if got := siteHref("docs/explanation", "../../CONTRIBUTING.md", "", true); got != "../../CONTRIBUTING.md" {
 		t.Errorf("siteHref with no forge = %q, want the href unchanged", got)
+	}
+	// A site with no docs tree has no docs route to send a docs page to, so
+	// it goes to the forge's view like any other file.
+	if got := siteHref("docs/explanation", "roles.md#x", forge, false); got != forge+"/blob/HEAD/docs/explanation/roles.md#x" {
+		t.Errorf("siteHref with no docs tree = %q, want the forge's view of the page", got)
 	}
 }

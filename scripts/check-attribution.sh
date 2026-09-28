@@ -109,59 +109,40 @@ GENERATED_RE='^[[:space:]]*(🤖[[:space:]]*)?([_*]{1,3})?(🤖[[:space:]]*)?[Gg
 # direction. If a real human co-author arrives, this is the line to revisit.
 COAUTHOR_RE='^[[:space:]]*[Cc]o-[Aa]uthored-[Bb]y:'
 
-# The git IDENTITY itself, not only the message. A commit authored AND committed
-# as `Claude <noreply@anthropic.com>` carried a fully compliant message and
-# sailed through the message-only gate — but the contributor graph is built from
-# commit authorship plus Co-authored-by trailers, so it put an AI at #2 in the
-# graph. Worse, a squash merge auto-appends a Co-authored-by for any branch
-# author who is not the PR author, so one mis-identified branch commit inflates
-# the graph again on every squash. Refusing the identity here closes both routes.
+# The git IDENTITY itself, not only the message: the machine identities refused
+# as the author or committer of record. The patterns, and the reasoning behind
+# each — the AI-vendor names and domains, the structural `[bot]` signals, and the
+# noreply mailbox refused in the AUTHOR role only — live in ONE list,
+# internal/core/identity/tool-identities.txt, which `abcd ahoy`'s identity gate
+# reads too (identity.IsToolIdentity), so a machine identity is flagged before
+# the first commit as well as refused here. This file defines no pattern of its
+# own; a copy here would be a second list that drifts (TestToolIdentityListIsTheGatesOwn).
 #
-# Names are matched whole (a human named Claudette is not an AI identity) and
-# case-insensitively; the address rule covers the vendor domains AI tools stamp
-# by default. As with COAUTHOR_RE the intent is vendor-agnostic, but an identity
-# ban can only enumerate — extend both lists as new defaults are met in the wild.
-AI_IDENT_NAME_RE='^[[:space:]]*(claude|chatgpt|copilot|github copilot|gemini|codex|devin)[[:space:]]*$'
-AI_IDENT_MAIL_RE='@anthropic\.com$|@openai\.com$'
+# Resolved against this script's own location, not the working directory: the
+# cases harness runs the gate from inside a scratch repository.
+IDENTITY_LIST="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/internal/core/identity/tool-identities.txt"
 
-# A MACHINE identity that is not an AI vendor. The rule is refuse-machines,
-# allow-humans — not an allowlist of one name. This repository takes outside
-# contributions (.abcd/work/intake.md) and already carries a commit from an
-# outside human, so a roster of permitted names would refuse the next one; the
-# enumeration above is a roster of REFUSED names and has the opposite failure
-# mode, but it is still an enumeration, and dependabot walked straight past it —
-# three dependency bumps stand in main authored `dependabot[bot]`, matching
-# neither list (iss-2609082001204831).
-#
-# So these two are STRUCTURAL rather than nominal: the `[bot]` suffix the forge
-# itself stamps on an app's account name, and the mailbox shape it stamps on the
-# address — `49699333+dependabot[bot]@users.noreply.github.com`, or the older
-# `name[bot]@…`. A second automation lands in the right place with no edit here.
-#
-# THE MAILBOX IS THE DISCRIMINATOR, NEVER THE HOST, and this is the line to read
-# twice before touching it. `1234+name@users.noreply.github.com` is a PERSON'S
-# forge privacy address — the host says noreply, the mailbox is that person's own
-# account — and it is how nearly every commit in this repository is authored.
-# Reading `users.noreply.github.com` as a machine signal would refuse the entire
-# history and every outside contributor with privacy switched on. `[bot]` inside
-# the mailbox is what makes dependabot's address a machine's.
-#
-# This matches internal/core/site/contributors.go's machineAddrRe, which draws
-# the same local-part/host distinction for the published contributors page
-# (iss-2609081940550352). The two cannot share code — that gate runs in CI
-# without Go — so they share a reading instead.
-MACHINE_NAME_RE='\[bot\][[:space:]]*$'
-MACHINE_MAIL_RE='\[bot\]@|@dependabot\.com$'
-
-# A mailbox literally named for not being read. Refused in the AUTHOR role only,
-# and the asymmetry is load-bearing rather than a hedge: `GitHub
-# <noreply@github.com>` is the COMMITTER of every merge and squash made through
-# the forge's web UI, on a human's click — 638 commits in this repository's main
-# are shaped exactly so, and refusing the mailbox in that role would turn the
-# whole history red while catching no machine that MACHINE_MAIL_RE misses. In the
-# author role there is no such reading: a person's forge address names their
-# account, and `noreply@` names none.
-AUTHOR_ONLY_MAIL_RE='^[[:space:]]*(no-?reply|do-?not-?reply)@'
+# identity_pattern prints one named pattern, and fails closed at exit 2 when the
+# list or the key is missing: an empty pattern would match every identity, and
+# a gate that cannot read its list has not cleared anything.
+identity_pattern() {
+	local pat
+	if [ ! -r "$IDENTITY_LIST" ]; then
+		echo "check-attribution: cannot read the identity list $IDENTITY_LIST" >&2
+		exit 2
+	fi
+	pat="$(sed -n "s/^$1=//p" "$IDENTITY_LIST" | head -n1)"
+	if [ -z "$pat" ]; then
+		echo "check-attribution: the identity list has no $1 pattern" >&2
+		exit 2
+	fi
+	printf '%s' "$pat"
+}
+AI_IDENT_NAME_RE="$(identity_pattern ai_name)"
+AI_IDENT_MAIL_RE="$(identity_pattern ai_mail)"
+MACHINE_NAME_RE="$(identity_pattern machine_name)"
+MACHINE_MAIL_RE="$(identity_pattern machine_mail)"
+AUTHOR_ONLY_MAIL_RE="$(identity_pattern author_only_mail)"
 
 fail=0
 note() { echo "  $1" >&2; }
@@ -453,6 +434,10 @@ strip_fenced_blocks() {
 # check_ident refuses a MACHINE git identity in one role (author or committer) of
 # one commit; a human is the author of record, and machine assistance is disclosed
 # by the trailer, never by the identity fields the contributor graph reads.
+#
+# Ownership: this identity half is itd-131's (the managed-repo identity gate,
+# which flags the same list before the first commit); the message half below —
+# trailer, footer, co-author — is itd-91's. Neither claims the other's pass.
 #
 # Returns non-zero when it refuses, so the caller can leave the message alone: a
 # machine-authored commit has no trailer, and reporting that too would hand back

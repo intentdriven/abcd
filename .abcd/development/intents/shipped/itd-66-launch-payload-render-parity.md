@@ -157,5 +157,58 @@ Both delivered on 2026-09-25; the Decisions below cite them.
 
 ## Audit Notes
 
-<!-- abcd-review: OWED receipt=rcp-04706634ba21 -->
-Fidelity review OWED (receipt rcp-04706634ba21).
+<!-- abcd-review: INGESTED receipt=rcp-04706634ba21 -->
+Fidelity review — receipt rcp-04706634ba21 (verifier intent-auditor claude-fable-5-1).
+
+Provenance: intent-auditor@claude-fable-5-1 · rubric_hash sha256:effa65b3e9e88ff29433b443ec2be159522a8b0b71cf1434526514aa61edb13e · prompt_hash sha256:a64cc13441a073183a99f59e2760d86ac7ec242999c85bf400b4ef087c82525d
+Input attestations: diff:internal/core/launch at main 811fba17 (git ls-tree -r; the render, parity and deep-smoke modules as delivered through 2026-09-25)@sha256:3a6ae83973dc3e803e7fa3c69deb981dc4b1790082324964db59f244d046210f;
+
+Acceptance rollup: MET 6 · MET_WITH_CONCERNS 2 · NOT_MET 0 · INCONCLUSIVE 0
+
+Per-criterion verdicts:
+- ac-1 — MET: the bundle's denied set names .abcd, .specstory and memory beside .git, .flow and .work, a test proves the namespace is structurally excluded at every depth, and another proves every plugin surface the manifests declare is in the bundle
+  evidence: internal/core/launch/bundle.go:35 — "".git": {}, ".abcd": {}, ".flow": {}, ".work": {}, ".specstory": {}, "memory": {},"
+  evidence: internal/core/launch/bundle_test.go:78 — "func TestAbcdNamespaceStructurallyExcluded"
+  evidence: internal/core/launch/bundle_denyseg_test.go:10 — "func TestNestedDeniedNamespaceExcluded"
+  evidence: internal/core/launch/payload_completeness_test.go:40 — "func TestBundleShipsEveryPluginSurface"
+- ac-2 — MET_WITH_CONCERNS: an include naming a denied namespace is refused at load with the pattern named, and even a hand-forced include slice cannot promote a .abcd path; the concern is the name: the criterion says `.abcd/launch.allow`, and the delivered allowlist is the includes list of `.abcd/config/launch-payload.json`, which the canonical launch brief names, so the delta the intent's open question deferred to spec time was settled by the brief rather than by the spec
+  evidence: internal/core/launch/includes.go:149 — "return preflight("include pattern names a denied namespace segment %q: %q", seg, pattern)"
+  evidence: internal/core/launch/includes_test.go:70 — "func TestAbcdCannotBeReincluded"
+  evidence: .abcd/development/brief/04-surfaces/04-launch.md:335 — "`.abcd/config/launch-payload.json`, over one tree. Everything not named is"
+- ac-3 — MET: PayloadParity lists every path added, changed or removed against a render at the previous tag with its SHA-256, and the preview reports it
+  evidence: internal/core/launch/parity.go:186 — "func PayloadParity(repoRoot string, bundle Bundle, in ParityInput) ParityReport {"
+  evidence: internal/core/launch/parity_test.go:66 — "func TestParityAgainstARenderAtTheTagReportsEveryChange"
+  evidence: internal/surface/cli/launch_parity_test.go:52 — "func TestLaunchDryRunReportsTheParityDiff"
+- ac-4 — MET_WITH_CONCERNS: the light tier resolves every declared command, skill and hook and the deep tier loads every declared page in an isolated subprocess so a page that resolves but does not load fails; the Python-import clause is moot because nothing shipped imports, recorded on the intent on 2026-09-25 with the criterion text unchanged
+  evidence: internal/core/launch/deepsmoke.go:373 — "func SmokeDeep(root string, run PageRunner) DeepSmokeReport {"
+  evidence: internal/core/launch/deepsmoke_test.go:165 — "func TestSmokeDeepCatchesAPageThatResolvesButDoesNotLoad"
+  evidence: internal/surface/cli/launch_parity_test.go:449 — "func TestLaunchShipRunsTheDeepTierAndParity"
+  evidence: .abcd/development/intents/shipped/itd-66-launch-payload-render-parity.md:80 — "the Python-import clause of the smoke criterion (fourth) is"
+- ac-5 — MET: the render leaves the source tree unversioned and the deep smoke runs in an isolated subprocess rooted at a materialised temporary copy that is removed
+  evidence: internal/core/launch/render_test.go:94 — "func TestRenderPayloadLeavesSourceTreeUnversioned"
+  evidence: internal/surface/cli/launch_parity_test.go:390 — "func TestLaunchDryRunDeepSmokeRunsInAnIsolatedSubprocess"
+- ac-6 — MET: a symlink to the repository root inside the payload does not leak the denied namespace: the test plants .abcd/secret.txt and asserts the render fails to carry it
+  evidence: internal/core/launch/bundle_test.go:177 — "func TestSymlinkToRepoRootDoesNotLeakDenied"
+- ac-7 — MET: no previous release, or a tag that shipped no payload, is all-added with the reason stated; an unreadable baseline is a named refusal and a configured baseline that is not a release tag exits 2 by name
+  evidence: internal/core/launch/parity_test.go:113 — "func TestParityWithNoPreviousReleaseIsAllAdded"
+  evidence: internal/core/launch/parity_test.go:138 — "func TestParityWithAnUnreadableBaselineIsANamedRefusal"
+  evidence: internal/core/launch/parity.go:173 — "func ValidateBaselineTag(repoRoot, tag string) error {"
+  evidence: internal/surface/cli/launch_parity_test.go:83 — "func TestLaunchDryRunConfiguredBaseline"
+- ac-8 — MET: the two payload-tree implementations the render and the gate walk are proved to resolve identically over the repository, so the gate reads the render's resolution and cannot disagree with it
+  evidence: internal/core/launch/installsurface_test.go:263 — "func TestPayloadTreeImplementationsResolveIdentically"
+
+Gap audit:
+- honoured:
+  - render, prove-no-leak, parity diff and installed-surface smoke, all read-only with respect to the checkout
+    evidence: internal/core/launch/render_test.go:94 — "TestRenderPayloadLeavesSourceTreeUnversioned"
+    evidence: internal/core/launch/parity.go:186 — "func PayloadParity("
+  - the baseline is read from disk unless the operator asks for the network, and a fetched archive is refused unless the release's own checksums vouch for it
+    evidence: .abcd/development/intents/shipped/itd-66-launch-payload-render-parity.md:112 — "the baseline is read from the disk unless the operator asks"
+    evidence: internal/core/launch/parity.go:268 — "func (rep *ParityReport) fillFromAsset("
+- diverged:
+  - the allowlist is `.abcd/launch.allow`; delivered as the includes list of `.abcd/config/launch-payload.json`, which the canonical brief names, so the predecessor delta was settled by the brief and not by a spec-time adjudication
+    evidence: .abcd/development/brief/04-surfaces/04-launch.md:18 — "(`.abcd/config/launch-payload.json`) has nothing to preview, and the preview"
+    evidence: .abcd/development/intents/shipped/itd-66-launch-payload-render-parity.md:152 — "Predecessor delta (spc-78)"
+  - every shipped Python entrypoint imports; nothing shipped is Python, so the clause is moot by the intent's own 2026-09-25 decision
+    evidence: .abcd/development/intents/shipped/itd-66-launch-payload-render-parity.md:80 — "the Python-import clause of the smoke criterion (fourth) is"
+- missing: (none)

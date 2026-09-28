@@ -59,11 +59,11 @@ This is voyage-agnostic: every voyage that runs an autonomous loop eventually ne
 
 ## Audit Notes
 
-Captured 2026-06-12 from a facilitator decision while planning the session-layer activation spec (spc-58): the spec needed to be planned and double-backend reviewed but hard-blocked from run-seam pickup. The never-done-dependency mechanism was used ad hoc; this intent promotes it to a configure-time primitive. Hand-authored draft — validate via `/abcd:intent` or the record lint (`abcd docs lint`) before promotion.
+Captured 2026-06-12 from a facilitator decision while planning the session-layer activation spec (spc-58, predecessor store): the spec needed to be planned and double-backend reviewed but hard-blocked from run-seam pickup. The never-done-dependency mechanism was used ad hoc; this intent promotes it to a configure-time primitive. Hand-authored draft — validate via `/abcd:intent` or the record lint (`abcd docs lint`) before promotion.
 
 ## References
 
 - The native spec store's selector — the "skip specs blocked by a non-done spec-level dependency" rule this rides (referenced by behaviour, not a fixed location).
 - The native spec store's close path — the accidental-completion path the sentinel must be guarded against (a zero-task sentinel vacuously satisfies "no incomplete tasks"); the productized primitive should make `spec close` refuse the sentinel.
 - The native spec store's `spec add-dep` / `rm-dep` and task-block (task-grain precedent).
-- spc-60 (`spc-60-manual-hold-sentinel-never-completes`) — the current ad-hoc sentinel precursor this intent generalizes; spc-62 (`spc-62-session-enforcement-wiring-n1-a1-a4b2`) — its first real held consumer. spc-48 linkage lint — the guard that must exempt the sentinel.
+- The predecessor store's spc-60 (`spc-60-manual-hold-sentinel-never-completes`) — the ad-hoc sentinel precursor this intent generalizes; its spc-62 (`spc-62-session-enforcement-wiring-n1-a1-a4b2`) — the first held consumer; its spc-48 linkage lint — the guard that had to exempt the sentinel. None of the three was carried into the Go rebuild, and the live `spc-48`, `spc-58`, `spc-60` and `spc-62` are unrelated records (amended 2026-09-26, iss-239; see the specs charter, "Two `spc-N` Namespaces").

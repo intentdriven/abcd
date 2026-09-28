@@ -127,8 +127,59 @@ _None open; the hook-coverage and the danger-threshold questions this record car
 
 ## Audit Notes
 
-<!-- abcd-review: OWED receipt=rcp-9945c0269d6c -->
-Fidelity review OWED (receipt rcp-9945c0269d6c).
+<!-- abcd-review: INGESTED receipt=rcp-9945c0269d6c -->
+Fidelity review — receipt rcp-9945c0269d6c (verifier intent-auditor claude-fable-5-1).
+
+Provenance: intent-auditor@claude-fable-5-1 · rubric_hash sha256:effa65b3e9e88ff29433b443ec2be159522a8b0b71cf1434526514aa61edb13e · prompt_hash sha256:565bf63cfe2266fe1b8d8389b2955c9bb35be1e35e034e51e76672935d9dee7c
+Input attestations: diff:internal/core/reviews, internal/surface/cli/board*.go, scripts/check-reviews.sh, .abcd/work/reviews/README.md and .github/workflows/ci.yml at chore/audit-run-a-1 5b4a43b6 (git ls-tree -r; spc-2609211854150455 closed, itd-28 shipped)@sha256:625f07f0bdf3c6c3b488a0d4933a0187e486175e205fa48d88d79ee9449336a3;
+
+Acceptance rollup: MET 2 · MET_WITH_CONCERNS 3 · NOT_MET 0 · INCONCLUSIVE 0
+
+Per-criterion verdicts:
+- ac-1 — MET_WITH_CONCERNS: RD004 in scripts/check-reviews.sh refuses a dated review folder whose 00-summary.md frontmatter carries no bare full-sha review_of_commit, names the three pre-rule folders as legacy without refusing them, and the charter's summary template carries the key; the gate runs clean at BASE; the concern is the clause 'written by the tool': no abcd path writes a dated review folder (the gate receipts, abcd's only writer there, pin by directory name and are exempt), so the pin is an obligation on the human author enforced by the gate, settled by the implementer in Decision 3 rather than by the product thinker
+  evidence: scripts/check-reviews.sh:89 — "# RD004 — the pin (itd-28): the summary's leading frontmatter block names the"
+  evidence: scripts/check-reviews.sh:99 — "echo " RD004 legacy $d — predates the review_of_commit pin; named, not refused""
+  evidence: scripts/check-reviews.sh:146 — "note "RD004 $d — 00-summary.md names no review_of_commit in its frontmatter (the full sha of the commit the review read)""
+  evidence: .abcd/work/reviews/README.md:20 — "review_of_commit: 0123456789abcdef0123456789abcdef01234567"
+  evidence: .abcd/work/reviews/README.md:37 — "The sha-keyed receipt directories are pinned by their own names and are exempt."
+  evidence: .abcd/development/intents/shipped/itd-28-rp-reviews-into-flow.md:117 — "3. **Where the pin is written.** No abcd verb files a dated review folder"
+- ac-2 — MET: the bare board renders a reviews block listing each dated folder with its commits-since count against the default branch and its pin, flags a row past StaleAfter (20) with ! and a re-run notice in the heading; the test builds 21 commits past a pin and asserts the flagged row, the unflagged legacy row and the heading
+  evidence: internal/core/reviews/reviews.go:38 — "const StaleAfter = 20"
+  evidence: internal/core/reviews/reviews.go:205 — "func Staleness(root string) (Board, error) {"
+  evidence: internal/surface/cli/board_reviews.go:75 — "heading := fmt.Sprintf(" reviews: %s, %d past %d commits since the pin on %s","
+  evidence: internal/surface/cli/board_reviews.go:81 — "for _, r := range dated {"
+  evidence: internal/surface/cli/board_reviews_test.go:34 — "func TestBoardListsEachReviewWithItsAgeStalestFirst(t *testing.T) {"
+  evidence: internal/surface/cli/board_reviews_test.go:60 — "{"!", "21", old[:7], "2026-09-01-spc-7-plan"},"
+- ac-3 — MET_WITH_CONCERNS: the charter states the naming convention < YYYY-MM-DD>-< spc-N>-< slug>/ and the reader extracts the spec id from a dated folder's scope into the row the board carries, proven on a fixture folder in the board test; the concern is that the convention is not gated (Decision 7) and no committed dated folder at BASE carries a spec id, so it is demonstrated by a test fixture only
+  evidence: .abcd/work/reviews/README.md:14 — "- A review of a spec carries the spec's id at the head of its scope, `<YYYY-MM-DD>-<spc-N>-<slug>/`"
+  evidence: internal/core/reviews/reviews.go:70 — "specRe = regexp.MustCompile(`(?:^|-)(spc-[0-9]+)(?:-|$)`)"
+  evidence: internal/core/reviews/reviews.go:167 — "if m := specRe.FindStringSubmatch(f.Scope); m != nil {"
+  evidence: internal/surface/cli/board_reviews_test.go:97 — "if first.Spec != "spc-7" || first.ReviewOfCommit != old"
+- ac-4 — MET_WITH_CONCERNS: no second scrubber was built and the repository's existing scanner is the CI gitleaks job, pinned and checksum-verified, whose non-zero exit fails the pull request; the concern is timing: the refusal lands after push in CI rather than at the commit, since the committed pre-commit hook is the name guard and Decision 8 records that the privacy rule leaves API-key shapes out
+  evidence: .github/workflows/ci.yml:400 — "# non-zero exit means gitleaks found a secret."
+  evidence: .github/workflows/ci.yml:401 — "gitleaks:"
+  evidence: .github/workflows/ci.yml:414 — "- name: Install gitleaks (pinned, checksum-verified)"
+  evidence: .abcd/development/intents/shipped/itd-28-rp-reviews-into-flow.md:122 — "8. **The scrub is CI's full-history `gitleaks` pass** (criterion 4)"
+- ac-5 — MET: the board's JSON payload carries a reviews member with threshold, default_ref and the rows (folder, kind, spec, review_of_commit, state, commits_since, stale), and the test decodes --json and asserts threshold 20, the stalest row's count and flag, and the legacy row's unpinned state
+  evidence: internal/surface/cli/board.go:40 — "Reviews *reviews.Board `json:"reviews,omitempty"`"
+  evidence: internal/core/reviews/reviews.go:102 — "Threshold int `json:"threshold"`"
+  evidence: internal/surface/cli/board_reviews_test.go:93 — "if rv.Threshold != 20 || rv.DefaultRef != "main" || len(rv.Rows) != 3 {"
+
+Gap audit:
+- honoured:
+  - every review names the commit it read, and the gate refuses its absence
+    evidence: scripts/check-reviews.sh:146 — "00-summary.md names no review_of_commit in its frontmatter"
+  - the status board says how stale each review has become, flagged past twenty
+    evidence: internal/surface/cli/board_reviews.go:75 — "%d past %d commits since the pin on %s"
+  - no second scrubber: the scrub rides the scanner that already exists
+    evidence: .github/workflows/ci.yml:401 — "gitleaks:"
+- diverged:
+  - the pin is written by the tool
+    evidence: .abcd/development/intents/shipped/itd-28-rp-reviews-into-flow.md:117 — "No abcd verb files a dated review folder"
+    evidence: .abcd/work/reviews/README.md:37 — "The sha-keyed receipt directories are pinned by their own names and are exempt."
+  - a secret in a review is refused when it is committed
+    evidence: .abcd/development/intents/shipped/itd-28-rp-reviews-into-flow.md:122 — "the scanner that refuses a secret in a review is the CI job"
+- missing: (none)
 
 ## References
 

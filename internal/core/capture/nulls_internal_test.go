@@ -1,6 +1,10 @@
 package capture
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/intentdriven/abcd/internal/core/issuerecord"
+)
 
 // capture and record-lint must reach the SAME verdict on one record's impact,
 // whatever spelling and quoting it uses (iss-285, coupled to iss-287).
@@ -27,7 +31,7 @@ func TestBareAndQuotedNullsPartTheSameWay(t *testing.T) {
 		{"a real impact", "impact: fix", false},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			fm, err := parseFrontmatterBlock([]string{c.line})
+			fm, err := issuerecord.ParseBlock([]string{c.line})
 			if err != nil {
 				t.Fatalf("parse %q: %v", c.line, err)
 			}
@@ -90,7 +94,7 @@ func TestQuotedNullImpactPartsAtTheGate(t *testing.T) {
 		{"quoted tilde", `impact: "~"`, false},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			fm, err := parseFrontmatterBlock([]string{c.line})
+			fm, err := issuerecord.ParseBlock([]string{c.line})
 			if err != nil {
 				t.Fatalf("parse %q: %v", c.line, err)
 			}

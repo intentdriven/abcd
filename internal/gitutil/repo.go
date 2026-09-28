@@ -120,6 +120,25 @@ func ScrubbedEnv() []string {
 	return env
 }
 
+// CommandLineConfig is the `git -c` configuration the parent environment
+// carries — GIT_CONFIG_PARAMETERS and the GIT_CONFIG_COUNT/GIT_CONFIG_KEY_n/
+// GIT_CONFIG_VALUE_n form, the entries ScrubbedEnv strips — as "KEY=value"
+// entries, in environment order. git hands exactly these to a command it runs
+// (a hook, an alias), so a reader that must see the configuration git itself
+// is running with appends them to ScrubbedEnv for its own command; no other
+// caller's scrub changes.
+func CommandLineConfig() []string {
+	var out []string
+	for _, kv := range os.Environ() {
+		key, _, _ := strings.Cut(kv, "=")
+		if key == "GIT_CONFIG_PARAMETERS" || key == "GIT_CONFIG_COUNT" ||
+			strings.HasPrefix(key, "GIT_CONFIG_KEY_") || strings.HasPrefix(key, "GIT_CONFIG_VALUE_") {
+			out = append(out, kv)
+		}
+	}
+	return out
+}
+
 // scrubGitVar reports whether an "KEY=value" environment entry names a git
 // repo-selection or config-injection variable that must not leak into an
 // isolated command. It is deliberately a denylist: unrelated GIT_* pass-throughs

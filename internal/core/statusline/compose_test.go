@@ -94,7 +94,7 @@ func TestComposeReadsTheThreeInputs(t *testing.T) {
 	if res.State != StateProductThinker {
 		t.Errorf("State = %q, want %q", res.State, StateProductThinker)
 	}
-	if res.Row.Elements[0].Key != KeyPresence || res.Row.Elements[0].Plain != "waiting: product thinker" {
+	if res.Row.Elements[0].Key != KeyPresence || res.Row.Elements[0].Plain != "waiting on the product thinker" {
 		t.Errorf("the badge is not element one: %+v", res.Row.Elements[0])
 	}
 	if got := plainOf(t, res.Row, KeyRepo); got != filepath.Base(root) {
@@ -139,7 +139,7 @@ func TestComposeWithoutARecordDropsTheCounts(t *testing.T) {
 	if !set.Enabled(KeyIssues) || !set.Enabled(KeyIntents) {
 		t.Error("Compose switched the caller's own settings off")
 	}
-	want := "abcd · " + filepath.Base(root) + " · main"
+	want := "abcd-managed · " + filepath.Base(root) + " · main"
 	if res.Row.Plain() != want {
 		t.Errorf("Plain = %q, want %q", res.Row.Plain(), want)
 	}

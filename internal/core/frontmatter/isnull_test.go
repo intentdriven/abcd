@@ -56,3 +56,23 @@ func TestIsNullRequiresTheRawScalar(t *testing.T) {
 		t.Fatal(`IsNull("\"null\"") must be false: quotes make it the three-character string`)
 	}
 }
+
+// A null spelled with a trailing comment is a null to every reader of Fields:
+// the scanner strips the comment before the value reaches IsNull, so
+// `superseded_by: NULL # no successor` reads as the null token and not as the
+// string `NULL # no successor` (iss-2608241347321759). The strip landed with
+// iss-2608301744268001; this pins the null half of it, for every spelling.
+func TestFieldsReadsACommentedNullAsNull(t *testing.T) {
+	for _, v := range []string{"", "~", "null", "Null", "NULL"} {
+		t.Run(v, func(t *testing.T) {
+			lines := []string{"---", "superseded_by: " + v + " # no successor", "---"}
+			got := frontmatter.Fields(lines)["superseded_by"].Value
+			if !frontmatter.IsNull(got) {
+				t.Errorf("superseded_by %q read as %q, which IsNull calls a value", v, got)
+			}
+		})
+	}
+	if got := frontmatter.Fields([]string{"---", `superseded_by: "null" # quoted`, "---"})["superseded_by"].Value; frontmatter.IsNull(got) {
+		t.Errorf("a quoted \"null\" read as %q, which IsNull calls null; quoting makes it a string", got)
+	}
+}

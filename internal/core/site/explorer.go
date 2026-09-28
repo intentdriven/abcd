@@ -867,7 +867,7 @@ func (e *explorer) policyQuote() (string, error) {
 		}
 		out := `<div class="prose small policy"` + srcAttr(p.File, s.Anchor) + `>` + h
 		if e.c.repo.Repository != "" {
-			out += `<p class="small"><a href="` + escapeAttr(e.c.repo.Repository+"/blob/main/"+p.File) + `">` +
+			out += `<p class="small"><a href="` + escapeAttr(forgeBlob(e.c.repo.Repository, p.File)) + `">` +
 				escapeText(p.File) + `</a></p>`
 		}
 		return out + `</div>`, nil
@@ -913,7 +913,7 @@ func (e *explorer) href(fromPath, target string) string {
 			}
 			return out
 		}
-		return siteHref(path.Dir(fromPath), target, e.c.repo.Repository)
+		return siteHref(path.Dir(fromPath), target, e.c.repo.Repository, e.c.rendersDocs())
 	}
 	// A relative target that is NOT markdown — a directory, a script, a
 	// configuration file. `siteHref` leaves those exactly as the record wrote
@@ -933,7 +933,7 @@ func (e *explorer) href(fromPath, target string) string {
 		// for a confident 404.
 		return target
 	}
-	out := e.c.repo.Repository + "/" + kind + "/main/" + rel
+	out := forgeView(e.c.repo.Repository, kind, rel)
 	if frag != "" {
 		out += "#" + frag
 	}
@@ -945,7 +945,7 @@ func (e *explorer) forgeBlob(rel string) string {
 	if e.c.repo.Repository == "" {
 		return ""
 	}
-	return e.c.repo.Repository + "/blob/main/" + rel
+	return forgeBlob(e.c.repo.Repository, rel)
 }
 
 // forgeCommits is the record file's commit history on the forge — the link that
@@ -954,7 +954,7 @@ func (e *explorer) forgeCommits(rel string) string {
 	if e.c.repo.Repository == "" {
 		return ""
 	}
-	return e.c.repo.Repository + "/commits/main/" + rel
+	return forgeView(e.c.repo.Repository, "commits", rel)
 }
 
 // nodesOfType is every record of one store, in the export's order.

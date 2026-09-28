@@ -40,7 +40,7 @@ This is also a *symmetry* failure, not just a missing feature: the native transc
 
 ## What's Out of Scope
 
-- **Re-architecting the transcript corpus.** `~/.abcd/history/<root_sha>/` and its single-owner provisioning (spc-15) stay as-is; this intent FEEDS that store, it does not redesign it.
+- **Re-architecting the transcript corpus.** `~/.abcd/history/<root_sha>/` and its single-owner provisioning (spc-15, predecessor store) stay as-is; this intent FEEDS that store, it does not redesign it.
 - **Capturing the operator's interactive sessions** — already solved (native transcript-corpus redirect). This is only the autonomous-worker half.
 - **The live run-console view** — that is orthogonal to durable capture; unchanged.
 - **Retroactive recovery of already-pruned runs** — this is forward-looking capture, not archaeology of lost logs.
@@ -66,7 +66,7 @@ Open questions for grill: does capturing a headless (non-interactive) run need a
 
 ## References
 
-- The native transcript corpus at `~/.abcd/history/<root_sha>/` and its single-owner provisioning (spc-15) — the store this feeds
+- The native transcript corpus at `~/.abcd/history/<root_sha>/` and its single-owner provisioning (spc-15, predecessor store) — the store this feeds
 - `.abcd/development/research/notes/ahoy-history-store-manual-scaffolding.md` (the transcript-store design this feeds)
 - ADR-29 (native transcript corpus), ADR-27 (pluggable autonomous seam)
 - Related: the abcd transparency/provenance promise in the brief (`01-product/`), itd-58 (a sibling autonomous-run-provenance closure)

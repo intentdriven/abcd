@@ -62,15 +62,15 @@ func Defer(req DeferRequest) (DeferResult, error) {
 		return DeferResult{}, err
 	}
 	if !reIssID.MatchString(req.ID) {
-		return DeferResult{}, fmt.Errorf("defer: invalid iss-N identifier: %q; nothing written", req.ID)
+		return DeferResult{}, refused(fmt.Errorf("defer: invalid iss-N identifier: %q; nothing written", req.ID))
 	}
 	if !reShippedIn.MatchString(req.After) {
-		return DeferResult{}, fmt.Errorf("defer: --after %q is not a release tag (want vMAJOR.MINOR.PATCH); nothing written", req.After)
+		return DeferResult{}, refused(fmt.Errorf("defer: --after %q is not a release tag (want vMAJOR.MINOR.PATCH); nothing written", req.After))
 	}
 	redReason, redacted, degraded := redactLedgerText(repoRoot, req.Reason)
 	reason := grounds.Fold(redReason)
 	if reason == "" {
-		return DeferResult{}, fmt.Errorf("defer: the reason is empty — a deferral with no stated reason records nothing; nothing written")
+		return DeferResult{}, refused(fmt.Errorf("defer: the reason is empty — a deferral with no stated reason records nothing; nothing written"))
 	}
 	reason = termsafe.EncodeHiddenRunes(reason)
 	if err := mutationPreamble(repoRoot, issuesRoot); err != nil {
@@ -96,8 +96,8 @@ func Defer(req DeferRequest) (DeferResult, error) {
 			return err
 		}
 		if sev := Severity(asString(fm["severity"])); !deferrableSeverities[sev] {
-			return fmt.Errorf("defer: %s is %s — only a major or critical record blocks a cut, so there is nothing to defer; nothing written",
-				req.ID, sev)
+			return refused(fmt.Errorf("defer: %s is %s — only a major or critical record blocks a cut, so there is nothing to defer; nothing written",
+				req.ID, sev))
 		}
 		// The record is judged first, so a refusal about it names the record the
 		// checkout's ledger holds; the anchor is then the checkout's own.
@@ -160,12 +160,12 @@ func requireCurrentAnchor(repoRoot, after string) error {
 		return fmt.Errorf("defer: reading the release tags: %w", err)
 	}
 	if !found {
-		return fmt.Errorf("defer: this checkout has no release tag, so there is no cut to defer past; nothing written")
+		return refused(fmt.Errorf("defer: this checkout has no release tag, so there is no cut to defer past; nothing written"))
 	}
 	if after != anchor.Tag() {
-		return fmt.Errorf(
+		return refused(fmt.Errorf(
 			"defer: --after %s is not the current anchor %s — the cut honours a deferral past its own anchor only, and one past any other tag has lapsed or never applied; nothing written",
-			after, anchor.Tag())
+			after, anchor.Tag()))
 	}
 	return nil
 }

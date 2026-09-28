@@ -540,8 +540,8 @@ func TestAKilledStepRepeatsAndACompletedStepDoesNot(t *testing.T) {
 }
 
 // TestAStepThisBuildDoesNotCarryIsRefusedByName: the production sequence names
-// every step; one whose body is not built is refused with the piece that
-// delivers it, and the run is unchanged.
+// every step; one whose body is not built (here, every body stripped) is
+// refused with the piece that delivers it, and the run is unchanged.
 func TestAStepThisBuildDoesNotCarryIsRefusedByName(t *testing.T) {
 	repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
 	start, err := Start(repo.Root(), "itd-10", Options{})
@@ -549,7 +549,11 @@ func TestAStepThisBuildDoesNotCarryIsRefusedByName(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := stateBytes(t, repo.Root(), start.RunID)
-	_, err = Advance(repo.Root(), start.RunID, DefaultSteps(), Options{})
+	bare := DefaultSteps()
+	for i := range bare {
+		bare[i].Run, bare[i].Verify = nil, nil
+	}
+	_, err = Advance(repo.Root(), start.RunID, bare, Options{})
 	r := mustRefusal(t, err)
 	if r.Step != string(StepWorktree) || r.Lane != "lane-1" || !strings.Contains(r.Reason, "piece 6") {
 		t.Fatalf("want the unbuilt step and its piece named: %+v", r)
@@ -597,6 +601,9 @@ func TestAPauseRefusesUntilNextEligibleAt(t *testing.T) {
 
 // TestReadStateFailsClosed: a run id of the wrong shape, an unknown field and
 // another schema version are each refused rather than read.
+// A repeated key (exact or a case twin encoding/json binds to the same field)
+// and a second document are refused too, not read last-wins or first-only
+// (iss-2609281204381700).
 func TestReadStateFailsClosed(t *testing.T) {
 	repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
 	start, err := Start(repo.Root(), "itd-10", Options{})
@@ -617,6 +624,30 @@ func TestReadStateFailsClosed(t *testing.T) {
 		}
 		if _, err := ReadState(repo.Root(), start.RunID); err == nil {
 			t.Fatalf("%s: the reader must refuse", name)
+		}
+	}
+	// Each of these reads as version 1 under a last-wins or first-document
+	// decode, so only a strict reader refuses them; the reason names why.
+	for name, tc := range map[string]struct{ bad, want string }{
+		"a repeated key": {
+			strings.Replace(string(good), `"schema_version": 1,`, `"schema_version": 2, "schema_version": 1,`, 1),
+			`duplicate key "schema_version"`,
+		},
+		"a repeated key spelt as a case twin": {
+			strings.Replace(string(good), `"schema_version": 1,`, `"schema_version": 2, "SCHEMA_VERSION": 1,`, 1),
+			`duplicate key "SCHEMA_VERSION"`,
+		},
+		"a second document": {string(good) + "\n{}\n", "content after the one JSON document"},
+	} {
+		if err := os.WriteFile(path, []byte(tc.bad), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		_, err := ReadState(repo.Root(), start.RunID)
+		if err == nil {
+			t.Fatalf("%s: the reader must refuse", name)
+		}
+		if r := mustRefusal(t, err); r.Step != "state" || !strings.Contains(r.Reason, tc.want) {
+			t.Fatalf("%s: want a state refusal naming %q, got %+v", name, tc.want, r)
 		}
 	}
 }
@@ -695,5 +726,43 @@ func TestRefusalRendersStepReasonAndRemedy(t *testing.T) {
 	r := &Refusal{Step: "check", Check: CheckHold, Reason: "itd-10 is held", Remedy: "run `abcd intent unhold itd-10`"}
 	if got := r.Error(); got != "refused at check (hold): itd-10 is held; remedy: run `abcd intent unhold itd-10`" {
 		t.Fatalf("Error() = %q", got)
+	}
+}
+
+// TestAReceiptNamedThroughASymlinkedPathIsTheReceiptAwaited: the host may
+// reach the checkout through a symlinked spelling of its path (macOS's /var
+// and /tmp are symlinks) while the loop's root is git's resolved toplevel; the
+// receipt the lane awaits is the same file under either spelling, and is
+// taken rather than refused as "not at the path given" (iss-2609261534097255).
+func TestAReceiptNamedThroughASymlinkedPathIsTheReceiptAwaited(t *testing.T) {
+	repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
+	start, err := Start(repo.Root(), "itd-10", Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := &fakeSteps{calls: map[StepName]int{}}
+	var res StepResult
+	for range 3 {
+		if res, err = Advance(repo.Root(), start.RunID, f.steps(), Options{}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if res.Awaiting == nil {
+		t.Fatalf("want the lane awaiting: %+v", res)
+	}
+	if err := os.WriteFile(res.Awaiting.Receipt, []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(t.TempDir(), "checkout")
+	if err := os.Symlink(repo.Root(), link); err != nil {
+		t.Fatal(err)
+	}
+	via := filepath.Join(link, filepath.Base(res.Awaiting.Receipt))
+	got, err := Receipt(repo.Root(), start.RunID, via, f.steps(), Options{})
+	if err != nil {
+		t.Fatalf("the awaited receipt named through a symlinked path is the same receipt: %v", err)
+	}
+	if got.Performed != StepImplement {
+		t.Fatalf("the receipt completes the step: %+v", got)
 	}
 }

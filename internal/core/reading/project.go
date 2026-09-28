@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"unicode"
 
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
 	"github.com/intentdriven/abcd/internal/core/lint"
@@ -121,12 +122,27 @@ func redactExcluded(rel, doc string, exclusions []Exclusion) (string, error) {
 	}
 
 	kept := make([]string, 0, len(lines))
+	lastKept := -1
 	for i, line := range lines {
 		if !drop[i] {
 			kept = append(kept, line)
+			lastKept = i
 		}
 	}
 	out := strings.Join(kept, "\n")
+	// A CRLF pair is kept or dropped whole. The split is on "\n", so a line's
+	// carriage return is the first half of the pair that ends it; when the drop
+	// runs to the end of the document it takes the newline after the last kept
+	// line, and the join left that line's carriage return behind alone — a lone
+	// CR the source does not carry, which the verifier then refused as the
+	// source's (iss-2609251600019863). The carriage return goes with its
+	// newline, which is what an LF document already loses at the same place, so
+	// the two line endings redact to the same text. A carriage return ending the
+	// document's own last line had no newline to lose and is left for the
+	// verifier to refuse.
+	if lastKept >= 0 && lastKept < len(lines)-1 {
+		out = strings.TrimSuffix(out, "\r")
+	}
 	if err := verifyRedaction(rel, doc, out, keys, headings); err != nil {
 		return "", err
 	}
@@ -189,8 +205,11 @@ var (
 	mdLinkRe = regexp.MustCompile(`\[([^\]]*)\]\([^)]*\)`)
 	// explicitYAMLKeyRe matches YAML's explicit-key form, `? origin`.
 	explicitYAMLKeyRe = regexp.MustCompile(`^\s*\?\s+["']?([A-Za-z_][A-Za-z0-9_-]*)["']?\s*$`)
-	// flowKeyRe matches a key inside a flow mapping, at top level or nested.
-	flowKeyRe = regexp.MustCompile(`[{,]\s*["']?([A-Za-z_][A-Za-z0-9_-]*)["']?\s*:`)
+	// flowKeyRe matches a key inside a flow mapping, at top level or nested, and
+	// a single-pair mapping written straight into a flow sequence: `[origin: x]`
+	// is a sequence holding the mapping {origin: x} to YAML, and a scan that
+	// wanted a `{` or a `,` before the key let it travel (iss-2608301237450573).
+	flowKeyRe = regexp.MustCompile(`[{\[,]\s*["']?([A-Za-z_][A-Za-z0-9_-]*)["']?\s*:`)
 	// doubleQuotedKeyRe captures a double-quoted key's raw spelling, escapes and
 	// all, so escapedQuotedKey can judge it. The whitespace is `\s`, YAML's own
 	// class, because a carriage return between the key and its colon is a break
@@ -211,15 +230,23 @@ var (
 	// bound an unclosed element has was missing there and the title was read
 	// past the blank line into whatever followed (iss-2608301421380392).
 	rawHeadingBoundRe = regexp.MustCompile(`(?is)</([a-z][a-z0-9-]*)\s*>|<h[1-6](?:\s[^>]*)?/?>|\n[ \t\r]*\n`)
-	// nestedMappingRe matches a block-sequence entry whose item opens a mapping:
-	// `- key:` at any indent, bare or quoted. A key nested that way is invisible
-	// to a reader anchored to the line, and the fix the records ask for is to
-	// refuse the NESTING rather than to learn one more spelling of the key
-	// (iss-2608301237450573, iss-2608301251398360).
-	nestedMappingRe = regexp.MustCompile(`^\s*-\s+(?:"[^"]*"|'[^']*'|[A-Za-z_][A-Za-z0-9_-]*)\s*:(\s|$)`)
+	// blockIndicatorsRe matches the run of block indicators a frontmatter line
+	// can open with before its content: sequence entries (`- `) and an explicit
+	// key's value (`: `), each followed by the whitespace YAML requires of it.
+	// What follows the run is a node of its own, so a key written there is nested
+	// and invisible to a reader anchored to the line (nestedBlockEntry).
+	blockIndicatorsRe = regexp.MustCompile(`^[ \t]*(?:[-:][ \t]+)+`)
+	// compactKeyRe matches a mapping indicator in a line whose quoted scalars are
+	// blanked: a colon before whitespace or the end of the line.
+	compactKeyRe = regexp.MustCompile(`:(\s|$)`)
 	// flowExplicitKeyRe matches YAML's explicit-key indicator inside a flow
 	// mapping: a `?` following `{` or `,`. Same class, same answer.
 	flowExplicitKeyRe = regexp.MustCompile(`[{,]\s*\?`)
+	// flowAliasKeyRe matches an alias where a flow collection's key can stand:
+	// a `*` following `{`, `[` or `,`, in a line whose quoted scalars are
+	// blanked. Node properties are allowed between the two. YAML gives an alias
+	// none, but the floor does not rest a refusal on a reader refusing one.
+	flowAliasKeyRe = regexp.MustCompile(`[{\[,]\s*(?:[!&][^\s{}\[\],]*\s+)*\*`)
 )
 
 // One shape this floor does NOT see, disclosed rather than claimed: a title
@@ -386,9 +413,23 @@ func verifyRedaction(rel, original, redacted string, keys, headings map[string]b
 				"whose keys this package cannot resolve without becoming a YAML parser; a record has no "+
 				"reason to use one, so it is refused rather than guessed at", rel, shape, line)
 		}
-		if line, key, ok := excludedKeyInFirstBlock(lines, fenced, keys); ok {
+		// Each message states what the scan observed and nothing more. The one
+		// message both findings shared asserted an excluded key and a block closed
+		// the wrong way, and for an escape neither is known: the key is undecoded
+		// and the block may be closed exactly as expected (iss-2608301421381157).
+		// Nor is a block shape known for an excluded key: a quoted, indented or
+		// flow spelling survives in a block closed as expected, because the field
+		// reader reports none of them as the key and the redactor removes only what
+		// it reports.
+		if line, key, escaped, ok := excludedKeyInFirstBlock(lines, fenced, keys); ok {
+			if escaped {
+				return fmt.Errorf("reading: %s spells the double-quoted frontmatter key %q at line %d with a "+
+					"YAML escape; this package does not decode escapes, so which key it names is unknown, "+
+					"and it is refused rather than guessed at", rel, key, line)
+			}
 			return fmt.Errorf("reading: %s still carries the excluded key %q at line %d after redaction; "+
-				"the frontmatter block is not closed the way the field reader expects it", rel, key, line)
+				"the field reader did not report it as a key, so the redactor did not remove it",
+				rel, key, line)
 		}
 	}
 	if len(headings) == 0 {
@@ -498,7 +539,8 @@ func verifyRedaction(rel, original, redacted string, keys, headings map[string]b
 	// The scan runs over the unfenced body JOINED, not line by line, because
 	// `<h2>` and its text and its close need not share a line. The match offset
 	// maps back to a line so the refusal still names one.
-	if line, title, ok := rawHTMLHeading(lines, fenced, offset, headings); ok {
+	line, title, ok, overBudget := rawHTMLHeading(lines, fenced, offset, headings)
+	if ok {
 		if want, hit := namesExcludedHeading(title, headings); hit {
 			return fmt.Errorf("reading: %s carries the excluded heading %q as raw HTML at line %d; "+
 				"the floor names %q, and a heading is excluded however it is spelled",
@@ -508,13 +550,22 @@ func verifyRedaction(rel, original, redacted string, keys, headings map[string]b
 
 	// An opener that reaches the end of the document with neither a hard nor a
 	// soft bound has its title read over the whole remainder, which is the shape
-	// that admitted the heading sitting under it. The refusal removes the
-	// shape's admission and claims nothing about the scan's COST, which stays
-	// with iss-2608301421382564 (iss-2608301421380392).
+	// that admitted the heading sitting under it (iss-2608301421380392). It is
+	// asked before the budget below is, so a document that is both is refused
+	// by the shape it has rather than by what reading it would cost.
 	if line, ok := unboundedRawHeading(lines, fenced, offset); ok {
 		return fmt.Errorf("reading: %s opens a raw heading element that is never closed at line "+
 			"%d, and nothing bounds its title short of the end of the document; the title is "+
 			"refused rather than read over the remainder", rel, line)
+	}
+
+	// Titles that overlap past the read budget are refused rather than read in
+	// time quadratic in the opener count (iss-2608301421382564). The scan above
+	// stopped at the opener that spent the budget and read no title past it.
+	if overBudget {
+		return fmt.Errorf("reading: %s opens raw heading elements whose titles overlap past the "+
+			"floor's read budget (from line %d); each title would be read over most of the "+
+			"document, so the titles are refused rather than read in quadratic time", rel, line)
 	}
 
 	// Setext headings are a refusal rather than a redaction. The section scan
@@ -738,8 +789,8 @@ func escapedQuotedKey(line string) (string, bool) {
 	return m[1], true
 }
 
-// rawHeadingTitleEnds bounds the text one heading element introduces, and
-// returns EVERY reading of that bound rather than one.
+// rawHeadingBounds bounds the text one heading element introduces, and returns
+// EVERY reading of that bound rather than one.
 //
 // The hard bound is the element's OWN closing tag or the next heading open,
 // whichever comes first. Bounding at any closing tag instead cut the title at
@@ -758,21 +809,88 @@ func escapedQuotedKey(line string) (string, bool) {
 // caller refuses on either: a title read two ways is excluded if EITHER way
 // names an excluded heading.
 //
-// The walk is incremental rather than a materialised match list. Listing every
-// candidate bound in the whole remainder for every opener, only to break at the
-// first hard one, is quadratic with a large constant: a committed markdown file
-// of repeated openers up to the size cap this package sets did not finish, and a
-// silent hang is the one staging a fail-closed floor cannot afford.
+// The bounds are indexed once per reading, not searched once per opener. A
+// walk from each opener to its first hard bound is linear per opener and
+// quadratic per document: listing every candidate bound in the remainder for
+// every opener did not finish on a committed file up to the size cap, and even
+// the incremental walk read the whole remainder once per opener when no bound
+// followed (iss-2608301421382564). One pass lists every candidate bound in the
+// reading, and each opener finds its own by binary search. The list is the one
+// the walk visited: a bound match ends at a `>` or is a blank line, so no match
+// straddles the `>` that ends an opener, and the matches at or after an opener
+// are exactly the ones a walk starting there would have found.
+//
 // The second return says whether ANY bound was found. An opener with neither a
 // hard nor a soft bound has its title read over the whole remainder of the
 // document, which is the shape that admitted the heading sitting under it; the
 // caller refuses it rather than reading the remainder as a title
 // (iss-2608301421380392).
-func rawHeadingTitleEnds(rest, name string) ([]int, bool) {
-	hard, soft := -1, -1
-	for off := 0; off < len(rest); {
+type rawHeadingBounds struct {
+	text   string
+	starts []int            // every candidate bound's start, ascending
+	endsAt []int            // and its end, index for index
+	blanks []int            // starts of blank lines: the soft bound
+	hOpens []int            // starts of h-tag openers: a hard bound for every element
+	closes map[string][]int // starts of closing tags, keyed by the name's case fold
+}
+
+// indexRawHeadingBounds lists every candidate bound in one reading of the
+// document, in a single pass.
+func indexRawHeadingBounds(text string) *rawHeadingBounds {
+	ix := &rawHeadingBounds{text: text, closes: map[string][]int{}}
+	for _, m := range rawHeadingBoundRe.FindAllStringSubmatchIndex(text, -1) {
+		ix.starts = append(ix.starts, m[0])
+		ix.endsAt = append(ix.endsAt, m[1])
+		switch {
+		case text[m[0]] == '\n':
+			ix.blanks = append(ix.blanks, m[0])
+		case m[2] >= 0:
+			key := elementFoldKey(text[m[2]:m[3]])
+			ix.closes[key] = append(ix.closes[key], m[0])
+		default:
+			ix.hOpens = append(ix.hOpens, m[0])
+		}
+	}
+	return ix
+}
+
+// titleEnds bounds the title of the opener whose tag ends at p, returning each
+// reading of the bound as an offset from p, and whether any bound was found.
+//
+// One case is walked rather than looked up. An opener is found in one reading
+// and bounded in every reading, and in a MASKED reading the `>` that ends it
+// may be blanked, because it sat inside a comment or an attribute value there.
+// A bound match of that reading can then straddle p, and a walk starting at p
+// finds matches the single pass never listed. For that opener the walk from p
+// runs as it always did, and the bytes it reads are charged to the budget, so a
+// document built of such openers is refused rather than read in quadratic time.
+func (ix *rawHeadingBounds) titleEnds(p int, name string, budget *titleReadBudget) ([]int, bool) {
+	if i, _ := slices.BinarySearch(ix.starts, p); i > 0 && ix.endsAt[i-1] > p {
+		ends, bounded, scanned := walkRawHeadingBounds(ix.text[p:], name)
+		budget.charge(scanned)
+		return ends, bounded
+	}
+	hard := min(nextAt(ix.hOpens, p), nextAt(ix.closes[elementFoldKey(name)], p))
+	soft := nextAt(ix.blanks, p)
+	bounded := hard != noBound || soft != noBound
+	if hard == noBound {
+		hard = len(ix.text)
+	}
+	ends := []int{hard - p}
+	if soft < hard {
+		ends = append(ends, soft-p)
+	}
+	return ends, bounded
+}
+
+// walkRawHeadingBounds is the bound walk titleEnds indexes, run from one opener
+// over the remainder of its reading. It also returns how far it read.
+func walkRawHeadingBounds(rest, name string) ([]int, bool, int) {
+	hard, soft, off := -1, -1, 0
+	for off < len(rest) {
 		m := rawHeadingBoundRe.FindStringSubmatchIndex(rest[off:])
 		if m == nil {
+			off = len(rest)
 			break
 		}
 		at := off + m[0]
@@ -789,7 +907,7 @@ func rawHeadingTitleEnds(rest, name string) ([]int, bool) {
 				continue
 			}
 		}
-		hard = at
+		hard, off = at, off+m[1]
 		break
 	}
 	bounded := hard >= 0 || soft >= 0
@@ -800,7 +918,73 @@ func rawHeadingTitleEnds(rest, name string) ([]int, bool) {
 	if soft >= 0 && soft < hard {
 		ends = append(ends, soft)
 	}
-	return ends, bounded
+	return ends, bounded, off
+}
+
+// titleReadBudget bounds the bytes the raw heading scan reads to a multiple of
+// the document's own length.
+//
+// Indexing the bounds makes FINDING each title linear; READING the titles is
+// another matter. A title is rendered and compared over the whole span its
+// bound gives it, and titles overlap: a run of openers that all share one far
+// bound gives each of them most of the document, so the rendering alone is
+// quadratic in the opener count however the bound is found. Truncating a long
+// title is not an answer — padding a heading with a comment or with tags is how
+// an excluded one would be walked past a cap — and a long title is not a refusal
+// on its own either, because the committed corpus holds single spans of tens of
+// kilobytes that read in no time.
+//
+// So the budget is on the TOTAL. Every title rendered, and every walk titleEnds
+// falls back to, is charged; a document whose titles overlap past the budget
+// is refused by name, which is the fail-closed answer the floor gives every
+// shape it cannot read, and the scan is linear in the document by construction.
+// The allowance is generous: the committed corpus reads under one times its own
+// length in titles, and the budget is eight times plus a floor.
+type titleReadBudget struct {
+	left      int
+	exhausted bool
+}
+
+// newTitleReadBudget sizes the budget for a document of n bytes.
+func newTitleReadBudget(n int) *titleReadBudget {
+	return &titleReadBudget{left: 8*n + 1<<20}
+}
+
+// charge spends n bytes, recording exhaustion once the budget is spent.
+func (b *titleReadBudget) charge(n int) {
+	b.left -= n
+	if b.left < 0 {
+		b.exhausted = true
+	}
+}
+
+// nextAt returns the first position in the sorted list at or after p, or
+// noBound when there is none, so that min over two lookups picks the one that
+// exists.
+func nextAt(sorted []int, p int) int {
+	i, _ := slices.BinarySearch(sorted, p)
+	if i == len(sorted) {
+		return noBound
+	}
+	return sorted[i]
+}
+
+// noBound stands for a missing bound. It is larger than every offset, so min
+// prefers any real bound.
+const noBound = int(^uint(0) >> 1)
+
+// elementFoldKey reduces an element name to one spelling per case-fold class, which
+// is the equivalence strings.EqualFold decides: the pattern matches names
+// case-insensitively, and under Go's folding that admits the Kelvin sign for
+// `k` and the long s for `s`, which a plain lower-casing would miss.
+func elementFoldKey(name string) string {
+	return strings.Map(func(r rune) rune {
+		least := r
+		for f := unicode.SimpleFold(r); f != r; f = unicode.SimpleFold(f) {
+			least = min(least, f)
+		}
+		return least
+	}, name)
 }
 
 // maskMarkupData blanks, length-preservingly, the angle brackets that stand
@@ -956,7 +1140,17 @@ func maskAngles(out []byte, from, to int) {
 // of it — the refusal has to name a line a human can go and look at.
 //
 // An opener sitting on a fenced line is skipped, so an example inside a code
-// block still cannot fire.
+// block still cannot fire. That is ALL the fence does here, and nothing more is
+// claimed for it (iss-2608301237450573): the lines are joined as they stand, not
+// blanked, so a fenced region below an unfenced opener is read as part of that
+// opener's text. It can supply the title, which only adds text a refusal may
+// name. And it can supply the hard BOUND — a closing tag or the next heading
+// open written inside the fence ends the title there — while a renderer escapes
+// a fence's text, so on the page that tag is literal text inside the heading
+// and ends nothing. The shorter title is still judged, the heading on the page
+// then carries the tag's own name as text, and a fence inside an HTML block,
+// where a renderer reads the delimiter as markup, is refused on its own by
+// fenceInHTMLBlock.
 //
 // The document is read TWICE: once as it stands, and once with its markup DATA
 // masked — see maskMarkupData — because the opener and the bound are structure
@@ -972,7 +1166,10 @@ func maskAngles(out []byte, from, to int) {
 // structure; it must never stop them from being read as content. Reading both
 // makes the mask purely additive: every refusal the unmasked text supports still
 // stands, and the masked text can only add more.
-func rawHTMLHeading(lines []string, fenced []bool, offset int, headings map[string]bool) (int, string, bool) {
+//
+// The fourth return reports that the titles overlapped past the read budget
+// (titleReadBudget); the scan stops there, and the caller refuses.
+func rawHTMLHeading(lines []string, fenced []bool, offset int, headings map[string]bool) (int, string, bool, bool) {
 	raw := strings.Join(lines, "\n")
 	lineBounded, _ := maskMarkupData(raw, true)
 	unbounded, _ := maskMarkupData(raw, false)
@@ -982,32 +1179,60 @@ func rawHTMLHeading(lines []string, fenced []bool, offset int, headings map[stri
 			readings = append(readings, masked)
 		}
 	}
+	bounds := make([]*rawHeadingBounds, len(readings))
+	for i, r := range readings {
+		bounds[i] = indexRawHeadingBounds(r)
+	}
+	budget := newTitleReadBudget(len(raw))
 
 	for _, text := range readings {
+		at := lineCounter{text: text}
 		for _, open := range rawHeadingOpenRe.FindAllStringSubmatchIndex(text, -1) {
-			line := strings.Count(text[:open[0]], "\n")
+			line := at.at(open[0])
 			if line < offset || (line < len(fenced) && fenced[line]) {
 				continue
 			}
-			name := ""
-			for _, g := range [][2]int{{open[2], open[3]}, {open[4], open[5]}} {
-				if g[0] >= 0 {
-					name = text[g[0]:g[1]]
-				}
-			}
+			name := openerName(text, open)
 			if name == "" {
 				continue
 			}
-			rests := make([]string, 0, len(readings))
-			for _, r := range readings {
-				rests = append(rests, r[open[1]:])
+			title, ok := excludedRawTitle(readings, bounds, open[1], name, headings, budget)
+			if ok {
+				return line + 1, title, true, false
 			}
-			if title, ok := excludedRawTitle(rests, name, headings); ok {
-				return line + 1, title, true
+			if budget.exhausted {
+				return line + 1, "", false, true
 			}
 		}
 	}
-	return 0, "", false
+	return 0, "", false, false
+}
+
+// openerName returns the element name a rawHeadingOpenRe match captured: the
+// h-tag's, or the name of the element carrying the heading role.
+func openerName(text string, open []int) string {
+	name := ""
+	for _, g := range [][2]int{{open[2], open[3]}, {open[4], open[5]}} {
+		if g[0] >= 0 {
+			name = text[g[0]:g[1]]
+		}
+	}
+	return name
+}
+
+// lineCounter maps ascending byte offsets to 0-based line numbers, counting
+// each newline once. Counting from the top of the document for every opener is
+// quadratic in the opener count: at the size cap it alone took seconds.
+type lineCounter struct {
+	text      string
+	pos, line int
+}
+
+// at returns the line holding offset. Offsets must not decrease between calls.
+func (c *lineCounter) at(offset int) int {
+	c.line += strings.Count(c.text[c.pos:offset], "\n")
+	c.pos = offset
+	return c.line
 }
 
 // excludedRawTitle reports the excluded heading the text after one raw opener
@@ -1018,17 +1243,25 @@ func rawHTMLHeading(lines []string, fenced []bool, offset int, headings map[stri
 // `</h2>` written inside an attribute value bounds nothing; the unmasked text
 // answers what the title SAYS, since a heading written inside a comment is still
 // carried by the file. Taking either alone lost the other.
-func excludedRawTitle(rests []string, name string, headings map[string]bool) (string, bool) {
+//
+// Every title rendered is charged to the budget first; once it is spent the
+// answer is no longer trusted and the caller refuses the document.
+func excludedRawTitle(readings []string, bounds []*rawHeadingBounds, p int, name string,
+	headings map[string]bool, budget *titleReadBudget) (string, bool) {
 	seen := map[int]bool{}
-	for _, bound := range rests {
-		ends, _ := rawHeadingTitleEnds(bound, name)
+	for _, ix := range bounds {
+		ends, _ := ix.titleEnds(p, name, budget)
 		for _, end := range ends {
 			if seen[end] {
 				continue
 			}
 			seen[end] = true
-			for _, text := range rests {
-				for _, read := range renderedTexts(text[:end]) {
+			for _, text := range readings {
+				budget.charge(end)
+				if budget.exhausted {
+					return "", false
+				}
+				for _, read := range renderedTexts(text[p : p+end]) {
 					title := normaliseHeadingTitle(read)
 					if title == "" {
 						continue
@@ -1055,6 +1288,18 @@ func excludedRawTitle(rests []string, name string, headings map[string]bool) (st
 // any explicit-key line the readable-key pattern cannot fully read is a key
 // whose name this package is not entitled to assume.
 //
+// An ALIAS in a key position is refused wherever that position is: at line
+// start, behind a block indicator (a compact mapping there, nestedBlockEntry),
+// in an explicit key (the unreadable-key rule), and behind `{`, `[` or `,`. An
+// anchor may sit on any node, a value included, so `k: &a origin` then
+// `*a : X` is the key `origin` to YAML (iss-2609261900095459). The rule is on
+// the alias rather than the anchor because it is the smaller complete one:
+// every node position can carry an anchor, while a key position is a short,
+// closed list, and a `*` can never open a plain scalar, so one there is an
+// alias and nothing else. An alias in a VALUE position is admitted: it copies a
+// node whose own text the floor has already read where the anchor sits, and a
+// key inside that node was refused there.
+//
 // The block BOUNDS matter for the same reason the keys do. The frontmatter
 // stripper closes on `---`, so a block closed by `...`, or opened and never
 // closed, makes the offset it reports overshoot into the body — and a scan that
@@ -1076,6 +1321,7 @@ func unresolvableFrontmatterShape(lines []string, fenced []bool) (int, string, b
 			continue
 		}
 		trimmed := strings.TrimLeft(lines[i], " \t")
+		bare, _ := blankQuoted(lines[i])
 		switch {
 		// The fence delimiter is first because it is the shape that used to
 		// switch the rest of this scan off. It can no longer do so — the mask
@@ -1089,8 +1335,12 @@ func unresolvableFrontmatterShape(lines []string, fenced []bool) (int, string, b
 			return i + 1, "a YAML tag", true
 		case strings.HasPrefix(trimmed, "&"):
 			return i + 1, "a YAML anchor", true
-		case nestedMappingRe.MatchString(lines[i]):
-			return i + 1, "a mapping nested in a block sequence", true
+		case strings.HasPrefix(trimmed, "*"):
+			return i + 1, "a YAML alias as a key", true
+		case flowAliasKeyRe.MatchString(bare):
+			return i + 1, "a YAML alias where a flow collection's key can stand", true
+		case nestedBlockEntry(lines[i]) != "":
+			return i + 1, nestedBlockEntry(lines[i]), true
 		case flowExplicitKeyRe.MatchString(lines[i]):
 			return i + 1, "an explicit key in a flow mapping", true
 		case questionLineRe.MatchString(lines[i]) && !explicitYAMLKeyRe.MatchString(lines[i]):
@@ -1098,6 +1348,52 @@ func unresolvableFrontmatterShape(lines []string, fenced []bool) (int, string, b
 		}
 	}
 	return 0, "", false
+}
+
+// nestedBlockEntry reports what a block-sequence entry, or an explicit key's
+// value, opens on its own line when that is a node whose keys this package
+// cannot resolve, or "" when it opens none.
+//
+// The refusal is of the NESTING, whatever the key is named, because a key
+// written behind an indicator is invisible to every reader here that is anchored
+// to the line (iss-2608301237450573, iss-2608301251398360). Reading one `- ` and
+// then a key covered the recorded spelling and none of its siblings, and each of
+// them was an excluded key to YAML that travelled under a manifest asserting its
+// refusal: a second indicator (`- - origin: x`), a node property between the
+// indicator and the key (`- &a origin: x`, `- !t origin: x`), an explicit key in
+// the entry (`- ? origin`), and a compact mapping as an explicit key's value
+// (`: origin: x`). So the whole run of indicators is read off first, and what
+// follows it is judged as the start of a line would be.
+//
+// A FLOW collection behind the indicators is left to the flow scan, which reads
+// its keys wherever they stand: committed intents carry their history as
+// `- { date: …, reason: "…" }`, and refusing the nesting there would refuse the
+// corpus. A sequence of scalars opens nothing — `- itd-183`, a quoted scalar
+// holding a colon, a URL, whose colon is not followed by whitespace.
+func nestedBlockEntry(line string) string {
+	run := blockIndicatorsRe.FindString(line)
+	if run == "" {
+		return ""
+	}
+	inner := line[len(run):]
+	within := "a block sequence"
+	if last := strings.TrimRight(run, " \t"); last[len(last)-1] == ':' {
+		within = "an explicit key's value"
+	}
+	switch {
+	case strings.HasPrefix(inner, "{"), strings.HasPrefix(inner, "["):
+		return ""
+	case strings.HasPrefix(inner, "!"):
+		return "a YAML tag in " + within
+	case strings.HasPrefix(inner, "&"):
+		return "a YAML anchor in " + within
+	case questionLineRe.MatchString(inner):
+		return "an explicit key nested in " + within
+	}
+	if bare, _ := blankQuoted(inner); compactKeyRe.MatchString(bare) {
+		return "a mapping nested in " + within
+	}
+	return ""
 }
 
 // floorFences reports, per line, whether that line is code to the floor's
@@ -1267,23 +1563,25 @@ func displacedFrontmatter(lines []string) (int, string, bool) {
 // an attribute value's brackets from being read as structure, and a bound it
 // erases was never a bound; a mask that could manufacture this refusal would be
 // a mask deciding, which is what every other reading here refuses to let it do.
+//
+// The document is its own only reading here, so every opener's `>` is a `>` in
+// the reading its bounds come from and titleEnds never walks: the scan is one
+// pass to index and a lookup per opener.
 func unboundedRawHeading(lines []string, fenced []bool, offset int) (int, bool) {
 	text := strings.Join(lines, "\n")
+	bounds := indexRawHeadingBounds(text)
+	budget := newTitleReadBudget(len(text))
+	at := lineCounter{text: text}
 	for _, open := range rawHeadingOpenRe.FindAllStringSubmatchIndex(text, -1) {
-		line := strings.Count(text[:open[0]], "\n")
+		line := at.at(open[0])
 		if line < offset || (line < len(fenced) && fenced[line]) {
 			continue
 		}
-		name := ""
-		for _, g := range [][2]int{{open[2], open[3]}, {open[4], open[5]}} {
-			if g[0] >= 0 {
-				name = text[g[0]:g[1]]
-			}
-		}
+		name := openerName(text, open)
 		if name == "" {
 			continue
 		}
-		if _, bounded := rawHeadingTitleEnds(text[open[1]:], name); !bounded {
+		if _, bounded := bounds.titleEnds(open[1], name, budget); !bounded {
 			return line + 1, true
 		}
 	}
@@ -1340,10 +1638,16 @@ func firstBlockRange(lines []string, fenced []bool) (int, int, bool) {
 // dashes delimits it, not an exact `---`, because that is the rule the
 // frontmatter stripper applies and the gap between the two rules is where a key
 // survives.
-func excludedKeyInFirstBlock(lines []string, fenced []bool, keys map[string]bool) (int, string, bool) {
+//
+// The third return says the finding is an ESCAPED double-quoted key rather than
+// an excluded one. The two are refused for different reasons and are reported
+// that way: an excluded key is a name this package read, while an escape is a
+// name it declined to decode, so which key it spells is exactly what it does not
+// know (iss-2608301421381157).
+func excludedKeyInFirstBlock(lines []string, fenced []bool, keys map[string]bool) (int, string, bool, bool) {
 	open, closed, ok := firstBlockRange(lines, fenced)
 	if !ok {
-		return 0, "", false
+		return 0, "", false, false
 	}
 	end := len(lines)
 	if closed >= 0 {
@@ -1366,12 +1670,12 @@ func excludedKeyInFirstBlock(lines []string, fenced []bool, keys map[string]bool
 		} {
 			for _, key := range submatches(m) {
 				if keys[key] {
-					return i + 1, key, true
+					return i + 1, key, false, true
 				}
 			}
 		}
 		if key, ok := escapedQuotedKey(lines[i]); ok {
-			return i + 1, key, true
+			return i + 1, key, true, true
 		}
 		// The flow scan runs UNANCHORED over the line with its quoted scalars
 		// blanked. Blanking is what closes the false positive — a quoted reason
@@ -1393,10 +1697,10 @@ func excludedKeyInFirstBlock(lines []string, fenced []bool, keys map[string]bool
 			// wherever the key stands, and escapedQuotedKey below reaches only
 			// the line-anchored spelling of it.
 			if tok[0] == '"' && strings.Contains(name, `\`) {
-				return i + 1, name, true
+				return i + 1, name, true, true
 			}
 			if keys[name] {
-				return i + 1, name, true
+				return i + 1, name, false, true
 			}
 		}
 		scan := bare
@@ -1406,7 +1710,7 @@ func excludedKeyInFirstBlock(lines []string, fenced []bool, keys map[string]bool
 		for _, m := range flowKeyRe.FindAllStringSubmatch(scan, -1) {
 			for _, key := range submatches(m) {
 				if keys[key] {
-					return i + 1, key, true
+					return i + 1, key, false, true
 				}
 			}
 		}
@@ -1416,7 +1720,7 @@ func excludedKeyInFirstBlock(lines []string, fenced []bool, keys map[string]bool
 			depth = 0
 		}
 	}
-	return 0, "", false
+	return 0, "", false, false
 }
 
 // sectionSpan is the half-open line range one heading OWNS: the heading itself

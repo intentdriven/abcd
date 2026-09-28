@@ -72,8 +72,70 @@ None.
 
 ## Audit Notes
 
-<!-- abcd-review: OWED receipt=rcp-dd287c31bbb6 -->
-Fidelity review OWED (receipt rcp-dd287c31bbb6).
+<!-- abcd-review: INGESTED receipt=rcp-dd287c31bbb6 -->
+Fidelity review — receipt rcp-dd287c31bbb6 (verifier intent-auditor claude-fable-5-1).
+
+Provenance: intent-auditor@claude-fable-5-1 · rubric_hash sha256:effa65b3e9e88ff29433b443ec2be159522a8b0b71cf1434526514aa61edb13e · prompt_hash sha256:4f9e27e505c21858685d219d0835a99f4744a7df7f57843237ff172f3632ce76
+Input attestations: diff:tree at 4c09b5c749de3dc3d1a1e0ab85d9dcd58ffcb4d5 (main lineage, itd-2609020625405251 shipped)@-;
+
+Acceptance rollup: MET 7 · MET_WITH_CONCERNS 1 · NOT_MET 0 · INCONCLUSIVE 0
+
+Per-criterion verdicts:
+- ac-1 — MET: DispositionCondition writes one dated block under Audit Notes carrying the condition marker, the occasion, the value and the ground; TestConditionWritesADatedBlock asserts the block's exact text, and the CLI front door renders the standing with the block it came from
+  evidence: internal/core/intent/condition.go:113 — "func DispositionCondition(repoRoot string, req ConditionRequest) (ConditionResult, error) {"
+  evidence: internal/core/intent/condition.go:239 — "func conditionBlock(id, value, ground, narrowing, occasion, date string) string {"
+  evidence: internal/core/intent/condition_test.go:64 — "func TestConditionWritesADatedBlock(t *testing.T) {"
+  evidence: internal/surface/cli/cli.go:2373 — "func newIntentConditionCommand(asJSON *bool) *cobra.Command {"
+- ac-2 — MET: a narrowed value with no narrowing is refused with nothing written and the message names the missing narrowing; TestConditionNarrowedRequiresNarrowing covers it
+  evidence: internal/core/intent/condition.go:159 — "is narrowed but states no narrowing; say what now holds (nothing written)"
+  evidence: internal/core/intent/condition_test.go:125 — "func TestConditionNarrowedRequiresNarrowing(t *testing.T) {"
+- ac-3 — MET: a narrowing beside any value but narrowed is refused; TestConditionNarrowingOnlyOnNarrowed covers it
+  evidence: internal/core/intent/condition.go:162 — "but states a narrowing; only a narrowed condition carries one (nothing written)"
+  evidence: internal/core/intent/condition_test.go:130 — "func TestConditionNarrowingOnlyOnNarrowed(t *testing.T) {"
+- ac-4 — MET: a value outside condition.Enum is refused and the message lists the enum; TestConditionRefusesOutOfEnum covers it
+  evidence: internal/core/intent/condition.go:143 — "is not one of %s (nothing written)", req.Disposition, strings.Join(condition.Enum, ", ")"
+  evidence: internal/core/intent/condition_test.go:139 — "func TestConditionRefusesOutOfEnum(t *testing.T) {"
+- ac-5 — MET: the occasion is resolved through readingitem.ResolveOccasion over the item and intent families and an unresolved one is refused with nothing written; TestConditionOccasionMustResolve and TestConditionOccasionIntentMustBeShipped cover it
+  evidence: internal/core/intent/condition.go:170 — "occasion %q does not resolve: %v (nothing written)"
+  evidence: internal/core/intent/condition_test.go:146 — "func TestConditionOccasionMustResolve(t *testing.T) {"
+- ac-6 — MET: an intent outside shipped/ is refused and the message names the bucket it is in; TestConditionRefusesUnshippedBucket covers it
+  evidence: internal/core/intent/condition.go:122 — "%s is in %s, not shipped; a condition is dispositioned against a delivered state"
+  evidence: internal/core/intent/condition_test.go:182 — "func TestConditionRefusesUnshippedBucket(t *testing.T) {"
+- ac-7 — MET_WITH_CONCERNS: a verdict block and a later condition block both stand in the record and Standing reports the condition block, so the criterion's direction holds (condition_test.go:100-111, TestVerdictIngestUnchangedBesideConditionBlocks). Concern: standing is folded by source precedence, not by position — a verdict ingested after a reading-occasioned block does not stand unless its rationale names that occasion — which refines the intent's In Scope statement that the latest block names the standing; the refinement is recorded in the spec and the 2026-09-25 ruling in DECISIONS.md
+  evidence: internal/core/condition/condition.go:183 — "func Standing(content string) map[string]Disposition {"
+  evidence: internal/core/condition/condition.go:167 — "The fold is by source precedence, not by position."
+  evidence: internal/core/condition/condition_test.go:113 — "func TestVerdictDoesNotOverrideAReadingOccasionedBlock(t *testing.T) {"
+  evidence: internal/core/intent/condition_test.go:329 — "func TestVerdictIngestUnchangedBesideConditionBlocks(t *testing.T) {"
+  evidence: .abcd/development/specs/closed/spc-2609020626046252-a-scope-condition-is-dispositioned-from-a-reading-run-keyed.md:27 — "a verdict overrides a reading-occasioned block only where its rationale"
+- ac-8 — MET: TestConditionBlockNeverReachesTheBundle assembles a reading over an intent carrying a condition block and asserts the block's text is absent from the bundle, the condition's identity marker travels, and the manifest asserts the Audit Notes exclusion
+  evidence: internal/core/reading/assemble_test.go:1822 — "func TestConditionBlockNeverReachesTheBundle(t *testing.T) {"
+  evidence: internal/core/reading/assemble_test.go:1857 — "the manifest does not assert the Audit Notes exclusion"
+
+Gap audit:
+- honoured:
+  - a second writer into the same disposition surface, keyed to the condition identity and joined to its occasion
+    evidence: internal/core/intent/condition.go:239 — "func conditionBlock(id, value, ground, narrowing, occasion, date string) string {"
+  - every refusal exits with nothing written
+    evidence: internal/core/intent/condition.go:205 — "did not read back as written; nothing written"
+  - the ground is held to the substance floor and neutralised before it is written
+    evidence: internal/core/intent/condition_test.go:226 — "func TestConditionGroundsBelowTheFloorRefuse(t *testing.T) {"
+  - the render says which block a standing came from
+    evidence: internal/surface/cli/cli.go:2430 — "func renderConditionStanding(w io.Writer, standing []intent.StandingEntry) {"
+- diverged:
+  - the standing disposition is the one in the latest block that names the condition: delivered as source precedence, where a condition block stands over a verdict unless the verdict names its occasion
+    evidence: internal/core/condition/condition.go:167 — "The fold is by source precedence, not by position."
+- missing: (none)
+
+Scope-condition dispositions:
+- cond-2609020626040782 — survived: the verb refuses any intent outside shipped/ and names the bucket, so a condition on a planned intent is never written
+  evidence: internal/core/intent/condition.go:122 — "%s is in %s, not shipped"
+- cond-2609020626040385 — narrowed: the occasion resolves through the item family across every run directory and through the shipped-intent family, but the intent under disposition is refused as its own occasion, so a shipped intent occasions a condition only on another intent
+  narrowing: holds for a reading item at any position and for a shipped intent other than the one whose condition is dispositioned; the intent's own delivery stays the verdict ingest's ground
+  evidence: internal/core/intent/condition.go:166 — "readingitem.FamilyItem, readingitem.FamilyIntent)"
+  evidence: internal/core/intent/condition.go:173 — "occasion %s is the intent itself; its own delivery is the verdict ingest's ground, not this verb's"
+- cond-2609020626040303 — survived: the join is read from the intent's side by ConditionStanding and no dispatcher reaches a reading item at BASE, as the condition assumed
+  evidence: internal/core/intent/condition.go:91 — "func ConditionStanding(repoRoot, intentID string) (ConditionStandingView, error) {"
+  evidence: .abcd/development/specs/closed/spc-2609020626046252-a-scope-condition-is-dispositioned-from-a-reading-run-keyed.md:317 — "### Dispatch, from the intent's side only"
 
 ## Grounds
 

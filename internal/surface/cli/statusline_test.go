@@ -41,10 +41,10 @@ func TestStatuslineManagedRendersTheRowBadgeFirst(t *testing.T) {
 	if !strings.HasPrefix(stdout, "\x1b[") {
 		t.Errorf("the row does not open with the badge's colour run: %q", stdout)
 	}
-	if !strings.Contains(stdout, "waiting: facilitator") {
+	if !strings.Contains(stdout, "waiting on the technical facilitator") {
 		t.Errorf("the badge word is missing: %q", stdout)
 	}
-	if i, j := strings.Index(stdout, "waiting: facilitator"), strings.Index(stdout, "Opus"); j < 0 || i > j {
+	if i, j := strings.Index(stdout, "waiting on the technical facilitator"), strings.Index(stdout, "Opus"); j < 0 || i > j {
 		t.Errorf("the badge must precede the payload elements: %q", stdout)
 	}
 	if !strings.Contains(stdout, "ctx 8%") {
@@ -145,7 +145,7 @@ func TestStatuslineEmptyStdinStillRendersTheBadge(t *testing.T) {
 	if stderr != "" {
 		t.Errorf("empty stdin is not a diagnostic; stderr = %q", stderr)
 	}
-	if !strings.Contains(stdout, "abcd") || !strings.Contains(stdout, filepath.Base(root)) {
+	if !strings.Contains(stdout, "abcd-managed") || !strings.Contains(stdout, filepath.Base(root)) {
 		t.Errorf("stdout = %q, want the badge and the repository", stdout)
 	}
 	if strings.Contains(stdout, "ctx") {
@@ -166,7 +166,7 @@ func TestStatuslineBadPayloadStillRendersTheBadge(t *testing.T) {
 	if err != nil {
 		t.Fatalf("bad payload: %v", err)
 	}
-	if !strings.Contains(stdout, "waiting: product thinker") {
+	if !strings.Contains(stdout, "waiting on the product thinker") {
 		t.Errorf("the badge went missing on a bad payload: %q", stdout)
 	}
 	if !strings.HasPrefix(stderr, "abcd statusline:") || !strings.Contains(stderr, "payload") {

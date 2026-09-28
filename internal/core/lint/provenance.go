@@ -318,7 +318,7 @@ func containsID(list []string, id string) bool {
 }
 
 // provenanceValue reads one frontmatter scalar as the record's readers see it:
-// the same-line value, quotes stripped, an explicit YAML null read as ABSENT.
+// the same-line value, quotes stripped, an explicit (bare) YAML null read as ABSENT.
 //
 // Null-is-absent matches how every other gate in this package reads a record's
 // scalars, and it is the right reading here too: `origin: null` says the record
@@ -328,9 +328,12 @@ func provenanceValue(r schemaRecord, key string) (value string, line int, presen
 	if !ok {
 		return "", 0, false
 	}
-	v := strings.Trim(strings.TrimSpace(f.value), `"'`)
-	if frontmatter.IsNull(v) {
+	// Null is asked of the RAW scalar, before the quotes go: quoting is what
+	// makes "null" a string, and stripping first read `origin: "null"` as an
+	// absent origin (iss-2608241347321759).
+	raw := strings.TrimSpace(f.value)
+	if frontmatter.IsNull(raw) {
 		return "", f.line, false
 	}
-	return v, f.line, true
+	return strings.Trim(raw, `"'`), f.line, true
 }

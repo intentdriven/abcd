@@ -62,7 +62,12 @@ Then summarise the JSON for the user:
   verbatim: it is the one sentence stating what the private layer does NOT cover,
   and a paraphrase drops the half that matters.
 - `gaps` — how many are outstanding, and for each actionable one its `title`,
-  `category`, and `fix_hint`; call out which are `required`.
+  `category`, and `fix_hint`; call out which are `required`. A `dependency` gap
+  carries `tool`, the tool registry's explanation: relay `what`, the
+  `requirement` for `capability_name`, `without_it`, `does`, the exact `step`
+  and `effects` (what the install does on the machine and over the network,
+  Homebrew's own analytics included) rather than a bare command, so the
+  person can judge the install.
 
 If there are actionable gaps, tell the user to run `/abcd:ahoy install` to apply
 them. If `folder_kind` is `unmanaged-folder`, note there is nothing to act on
@@ -158,6 +163,45 @@ configured, never wires the status line (below), because that rewrites a
 harness-wide setting, and never accepts a model-tier routing table (below),
 because a table decides which model every delegated step asks for. When the result carries `optional_skipped`, report it and
 offer the `yes |` form above as the way to apply it.
+
+**The git identity question is a person's alone.** When the author or committer
+a commit would carry diverges from the identity pin, or is a machine identity
+(`git_identity.mismatch`, `git_identity.unset`, `git_identity.committer`,
+`git_identity.tool`), the install proposes the human identity (the pin, else
+the global git identity) and asks whether to commit to this repository as it,
+but only at a terminal. Off a terminal it asks nothing and writes nothing, and a
+piped `yes` does not answer it; neither does `--yes`. Relay the result's note to
+the user and tell them to run `abcd ahoy install` in their own terminal, or to
+set `user.name` and `user.email` themselves; never set them on the user's
+behalf. For an autonomous routine the human identity is set by whatever launches
+it, before its first commit.
+
+**The tool question.** When a `dependency` gap is present and its category is
+approved, each missing tool is its own question, and a piped answer never
+answers it: installing runs a program on the machine. At a terminal the install
+shows the explanation and asks `Install <tool> now by running <step>? [y/N]`.
+Through this page, ask the user with the host's question tool instead: present
+the gap's `tool` explanation (what it is, whether this capability needs it, what
+works without it, the exact step, what the install does), and only on their yes
+run
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" ahoy install --install-tool <tool> --json
+```
+
+`--install-tool` is the relayed yes, for the named tool only, and it also
+answers the `dependency` category's question, which is then not asked (so a
+piped answer stream has one question fewer); never pass it without the user's
+answer. The result's `changes` reports what ran and whether
+its verify passed; a no, a failed step or a missing package manager is a `notes`
+line ending in what the capability continues on (`continuing on the native
+secret scanner`). The step runs in its own process group, bounded at 15
+minutes, and a timeout kills that group; a process the step moves out of the
+group (`setsid`) escapes the kill and can outlive the run, so abcd stops
+waiting on its output 10 seconds after the step ends and reports a step that
+left one behind as failed. `--yes` never installs a tool, and a run with `CI` set
+to any value, or with `GITHUB_ACTIONS=true`, installs none and is not asked. A name that is not a tool `ahoy install` checks
+for is refused, naming the ones it does.
 
 **The house-style question.** When the install seeds `.abcd/docs-lint.json`,
 it asks `docs_lint.em_dash_in_list_item (blocking/warning) [warning]`: whether an
@@ -328,7 +372,9 @@ named.
 
 The call goes through the GitHub CLI (`gh`), so the write is made by the user's
 own authenticated identity and abcd never holds a token; if `gh` is absent the
-verb refuses and says so. It is idempotent — a repository already in the desired
+verb refuses, and the refusal carries the tool registry's explanation of `gh`:
+what it is, that these verbs require it, the exact install step and what that
+install does. Relay it; the step is the user's to run. It is idempotent — a repository already in the desired
 state takes no write, and a re-run rewrites nothing in the tree — and it stops
 at the first failed step rather than attempting one that cannot succeed. Relay
 `status`, the resolved `repo`, every `change`, and every `note`: a note is a
@@ -390,8 +436,8 @@ exactly what an install would do before letting it run.
 
 ## Scoping note: `--identity` is CLI-only
 
-`abcd ahoy --identity` exits non-zero when the git commit identity diverges
-from the committed pin. It exists to be wired into a pre-commit hook or CI, where
+`abcd ahoy --identity` exits non-zero when the author or the committer a commit
+would carry diverges from the committed pin. It exists to be wired into a pre-commit hook or CI, where
 its exit code is the whole point, so it stays a bare-CLI entrypoint rather than a
 plugin mode; report it only if a user asks how the identity gate fails
 closed.

@@ -96,5 +96,69 @@ human is the author of record; the trailer is disclosure.
 
 ## Audit Notes
 
-<!-- abcd-review: OWED receipt=rcp-5a9275d115bd -->
-Fidelity review OWED (receipt rcp-5a9275d115bd).
+<!-- abcd-review: INGESTED receipt=rcp-5a9275d115bd -->
+Fidelity review — receipt rcp-5a9275d115bd (verifier intent-auditor claude-fable-5-1).
+
+Provenance: intent-auditor@claude-fable-5-1 · rubric_hash sha256:effa65b3e9e88ff29433b443ec2be159522a8b0b71cf1434526514aa61edb13e · prompt_hash sha256:d5f0a5c6380f27b2d6b50190f4ccebb2223dab1a47f54a5182e1c05f40642de5
+Input attestations: diff:tree at 7c476185 (main lineage, itd-136 shipped)@-;
+
+Acceptance rollup: MET 7 · MET_WITH_CONCERNS 1 · NOT_MET 0 · INCONCLUSIVE 0
+
+Per-criterion verdicts:
+- ac-1 — MET_WITH_CONCERNS: the build writes record.json into the output directory, which .gitignore excludes, TestBuildRecordExportShape pins its shape and TestDashboardVisualsCarryTheirNumbersAsText proves every visual carries its numbers as text; determinism is asserted by TestBuildIsDeterministic, which builds twice and diffs in the Go test lane CI runs, rather than by a distinct double-build step in a workflow — the assertion exists, its home differs from the criterion's letter
+  evidence: internal/core/site/build.go:518 — "if err := write("record.json", recordJSON); err != nil {"
+  evidence: .gitignore:68 — "/site/"
+  evidence: internal/core/site/build_test.go:696 — "func TestBuildIsDeterministic(t *testing.T) {"
+  evidence: internal/core/site/build_test.go:721 — "func TestBuildRecordExportShape(t *testing.T) {"
+  evidence: internal/core/site/explorer_test.go:324 — "func TestDashboardVisualsCarryTheirNumbersAsText(t *testing.T) {"
+- ac-2 — MET: TestExplorerCoversEveryRecord walks every record in the tree to its /record/< type>/< id>/ page and TestRecordPageRendersItsBodyAndLinks checks frontmatter, rendered body, typed links both ways and the forge links recordpage.go's fileLinks adds; both green at BASE
+  evidence: internal/core/site/explorer_test.go:63 — "func TestExplorerCoversEveryRecord(t *testing.T) {"
+  evidence: internal/core/site/explorer_test.go:104 — "func TestRecordPageRendersItsBodyAndLinks(t *testing.T) {"
+  evidence: internal/core/site/recordpage.go:213 — "// fileLinks names the record's file and offers the two views of it the forge"
+  evidence: internal/core/site/explorer_test.go:140 — "func TestBlockedByReadsBothWays(t *testing.T) {"
+- ac-3 — MET: the baseline check refuses an unresolved reference outside .abcd/site-baseline.json naming it, refuses a grown baseline and invites a shrink when a baselined target arrives; TestCheckRefusesADanglingSpecTarget, TestCheckRefusesAGrownBaseline, TestCheckInvitesAShrinkingBaseline and TestHealthUnresolvedListsTheDanglingReference are green
+  evidence: internal/core/site/check.go:20 — "// 5. Baseline ratchet — unresolved references outside the committed baseline"
+  evidence: internal/core/site/check.go:150 — "CheckBaseline = "baseline""
+  evidence: internal/core/site/check_test.go:674 — "func TestCheckRefusesADanglingSpecTarget(t *testing.T) {"
+  evidence: internal/core/site/check_test.go:561 — "func TestCheckRefusesAGrownBaseline(t *testing.T) {"
+  evidence: internal/core/site/check_test.go:570 — "func TestCheckInvitesAShrinkingBaseline(t *testing.T) {"
+- ac-4 — MET: collapseEdges normalises each typed reference to one direction and drops the mirrored duplicate; TestBuildRecordExportShape asserts the implements pair collapses to one edge
+  evidence: internal/core/site/recordjson.go:288 — "// collapseEdges normalises each typed reference to one direction and drops the"
+  evidence: internal/core/site/recordjson.go:224 — "edges, typedPairs := collapseEdges(graph.Edges, index)"
+  evidence: internal/core/site/build_test.go:778 — "t.Errorf("implements edges: %d, want 1 (the mirrored pair collapses)", implements)"
+- ac-5 — MET: contributors.go folds git shortlog through .mailmap, derives the bots-and-tools row from the [bot] suffix and the tool vocabulary, tallies Assisted-by values as disclosure, and the page carries the CONTRIBUTING.md attribution policy and a link to it; TestContributorsSeparatesAuthorshipFromDisclosure and TestContributorsRefuseWithoutTheirPolicy are green
+  evidence: internal/core/site/contributors.go:6 — "// `git shortlog` folded through `.mailmap` — the authors of record, humans"
+  evidence: internal/core/site/contributors.go:146 — "// Bots are the forge bots and tool-authored commits, kept in a separate row"
+  evidence: internal/core/site/contributors.go:126 — "// ModelTally is one distinct `Assisted-by:` value and how often it appears."
+  evidence: internal/core/site/explorer_test.go:391 — "func TestContributorsSeparatesAuthorshipFromDisclosure(t *testing.T) {"
+  evidence: internal/core/site/explorer_test.go:403 — "`data-src="CONTRIBUTING.md#attribution"`,"
+- ac-6 — MET: the foundations page lists each principle and discipline as a card linking its record page, and is omitted with its navigation entry when neither directory exists; TestFoundationsListsAndLinks and TestBuildWithoutFoundations are green
+  evidence: internal/core/site/explorer_test.go:361 — "func TestFoundationsListsAndLinks(t *testing.T) {"
+  evidence: internal/core/site/explorer_test.go:941 — "func TestBuildWithoutFoundations(t *testing.T) {"
+- ac-7 — MET: csl.go renders the bibliography from the CSL JSON and holds its numbering to ACKNOWLEDGEMENTS.md's numbered list; TestReferencesRenderFromCSL and TestBuildWithoutBibliography (page and navigation omitted) are green
+  evidence: internal/core/site/csl.go:11 — "// The load-bearing part is not the formatting, it is the NUMBERING. The record"
+  evidence: internal/core/site/csl.go:32 — "const AcknowledgementsRelPath = "ACKNOWLEDGEMENTS.md""
+  evidence: internal/core/site/explorer_test.go:780 — "func TestReferencesRenderFromCSL(t *testing.T) {"
+  evidence: internal/core/site/explorer_test.go:916 — "func TestBuildWithoutBibliography(t *testing.T) {"
+- ac-8 — MET: the static mobile gate refuses a missing viewport, an unwrapped table and an inline width over 390 px, and the CI screenshot audit measures overflow at 390 among its widths; TestCheckRefusesAMissingViewport and TestEveryTableScrollsInsideItsOwnBox are green
+  evidence: internal/core/site/check.go:1427 — "const maxInlineWidthPx = 390"
+  evidence: internal/core/site/check_test.go:817 — "func TestCheckRefusesAMissingViewport(t *testing.T) {"
+  evidence: internal/core/site/explorer_test.go:466 — "func TestEveryTableScrollsInsideItsOwnBox(t *testing.T) {"
+  evidence: site-src/audit/overflow-audit.js:40 — "const WIDTHS = [360, 390, 768, 1360];"
+  evidence: .github/workflows/site-screenshots.yml:162 — "node site-src/audit/overflow-audit.js "$base" "$RUNNER_TEMP/screenshots""
+
+Gap audit:
+- honoured:
+  - rendered at build time from one export of the record — no API calls, no hand-written summaries
+    evidence: internal/core/site/recordjson.go:3 — "// record.json — the whole development record as one machine-readable file."
+  - the build fails on a cross-reference the tree cannot resolve, and the baseline can only shrink
+    evidence: internal/core/site/check_test.go:561 — "func TestCheckRefusesAGrownBaseline(t *testing.T) {"
+  - a retired target in the baseline renders as a stub rather than a broken link
+    evidence: internal/core/site/explorer_test.go:267 — "func TestRecordPageRendersARetiredTargetAsAStub(t *testing.T) {"
+- diverged:
+  - the determinism assertion lives in the Go test lane CI runs, not in a separate double-build workflow step as the criterion's letter says
+    evidence: internal/core/site/build_test.go:696 — "func TestBuildIsDeterministic(t *testing.T) {"
+    evidence: .github/workflows/ci.yml:392 — "go run ./cmd/abcd site build --out "$RUNNER_TEMP/site-render-check""
+  - the criterion names `abcd site check`; the static checks answer to `abcd lint site` after itd-2609212130136102, with `site check` a stub for one release
+    evidence: .github/workflows/ci.yml:393 — "go run ./cmd/abcd lint site --out "$RUNNER_TEMP/site-render-check""
+- missing: (none)

@@ -392,3 +392,22 @@ func TestReleasedVersion_ReadsTheStrictHead(t *testing.T) {
 		})
 	}
 }
+
+// TestReleasedVersion_RefusesAnOversizedChangelog (iss-2609261726015043): the
+// release-gate derivation reads CHANGELOG.md out of a git tree, and that read is
+// bounded like every other CHANGELOG read (4 MiB): a blob past the cap is
+// refused, fail-closed, rather than held whole in memory and parsed.
+func TestReleasedVersion_RefusesAnOversizedChangelog(t *testing.T) {
+	r := gittest.NewRepo(t)
+	head := "## [Unreleased]\n\n## [1.0.0] - 2026-01-01\n\n"
+	filler := strings.Repeat("- an entry that pads the release notes past the cap\n", (4<<20)/50+1)
+	r.Write("CHANGELOG.md", head+filler)
+	r.Commit("an oversized released tree")
+	got, err := lint.ReleasedVersion(r.Root(), r.Git("rev-parse", "HEAD"))
+	if err == nil {
+		t.Fatalf("read %q out of a CHANGELOG.md past the 4 MiB cap; must refuse", got)
+	}
+	if !strings.Contains(err.Error(), "cap") {
+		t.Errorf("error = %q, want it to name the cap", err)
+	}
+}

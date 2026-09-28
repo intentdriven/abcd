@@ -157,12 +157,23 @@ brief doc plus one per surface), and the prompt (context plus both direction
 templates, with the prompt's own `sha256` over the three parts joined by blank
 lines). The context names every `commands/` page and every `agents/` prompt,
 and says that a surface claim found outside the pinned chapters is in scope.
-Two honest runs of the same tier therefore mean the same thing — the
-maintainer no longer chooses the scope per run. The
+Two honest runs of the same tier therefore examine the same scope — no run
+chooses its own. The
 [`brief-surface-crosscheck.js`](brief-surface-crosscheck.js) detector consumes
 this manifest as its input rather than composing an ad-hoc list.
 
-Pinning makes runs comparable to each other, not to the tree: a surface that
+Pinning fixes the inputs, not the findings. The checkers are LLM agents, so two
+runs of one tier over byte-identical inputs return different findings: three
+full-tier runs on 2026-08-23 against one manifest returned 125, 126 and 147,
+and the two whose brief was byte-identical differed by 21 findings, with
+per-chapter counts moving in both directions (iss-2608231409595789). Which
+chapters a run implicates is broadly stable across runs; how many findings each
+holds, and which class each takes, is not. A receipt's `failing` count is
+therefore an observation from one run, not a metric: comparing it with another
+release's count says nothing about whether drift grew or shrank, and a finding
+class's count is no basis for scoping an intent.
+
+Pinning makes runs comparable in scope to each other, not to the tree: a surface that
 ships without joining the pin is invisible to a run that obeys it, and the
 receipt attests coverage it never had. `TestReleaseGateManifestIsCurrent`
 (`internal/core/lint`) holds the manifest to the tree — every `04-surfaces/`
