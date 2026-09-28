@@ -277,7 +277,7 @@ ids_entering_closed() {
 			"$ISSUES_DIR/resolved/"* | "$ISSUES_DIR/wontfix/"*)
 				id="$(basename "$landed" | grep -oE '^iss-[0-9]+' || true)"
 				[ -n "$id" ] || continue
-				printf '%s\n' "$terminal_at_base" | grep -qx "$id" && continue
+				grep -qx "$id" <<<"$terminal_at_base" && continue
 				printf '%s\n' "$id"
 				;;
 			esac
@@ -363,7 +363,7 @@ mentioned_ids() {
 check_mentions() {
 	local label="$1" text="$2" declared="$3" id
 	for id in $(mentioned_ids "$text"); do
-		printf '%s\n' "$declared" | grep -qx "$id" && continue
+		grep -qx "$id" <<<"$declared" && continue
 		fail "RS004 $label names $id without declaring its relation to it. Add exactly one declaration line: 'Resolves: $id' if this change fixes it (RS001 then requires the record to enter $ISSUES_DIR/resolved/ or $ISSUES_DIR/wontfix/ in the same change), or 'Refs: $id' if it is touched but not fixed (informational; no ledger move required). Those two spellings are the whole vocabulary — 'Ref:', 'See:' and 'Related:' are not declarations."
 	done
 }
@@ -413,7 +413,7 @@ ids_entering_shipped() {
 			"$INTENTS_DIR/shipped/"*)
 				id="$(canon_itd "$(basename "$landed" | grep -oE '^itd-[0-9]+' || true)")"
 				[ -n "$id" ] || continue
-				printf '%s\n' "$shipped_at_base" | grep -qx "$id" && continue
+				grep -qx "$id" <<<"$shipped_at_base" && continue
 				printf '%s\n' "$id"
 				;;
 			esac
@@ -468,7 +468,7 @@ open_specs_for() {
 # $shipped is the set of ids entering shipped/ in the range.
 check_delivery() {
 	local sha="$1" id="$2" base="$3" head="$4" shipped="$5" behind="$6" mb="$7"
-	printf '%s\n' "$shipped" | grep -qx "$id" && return 0
+	grep -qx "$id" <<<"$shipped" && return 0
 	local says="RS005 commit ${sha:0:12} declares 'Delivers: $id', but"
 	local head_path base_path base_bucket=""
 	head_path="$(intent_path "$head" "$id")"
@@ -561,7 +561,7 @@ revert_pairs() {
 			for x in $(git show -s --format='%B' "$r" | grep -E '^This reverts commit [0-9a-f]{7,64}' | grep -oE '[0-9a-f]{7,64}' || true); do
 				full="$(git rev-parse -q --verify "${x}^{commit}" 2>/dev/null || true)"
 				[ -n "$full" ] && [ "$full" != "$r" ] || continue
-				printf '%s\n' "$range" | grep -qx "$full" || continue
+				grep -qx "$full" <<<"$range" || continue
 				git merge-base --is-ancestor "$full" "$r" 2>/dev/null || continue
 				printf '%s %s\n' "$r" "$full"
 			done
@@ -682,7 +682,7 @@ check_commits() {
 		if [ -n "$reverts" ]; then
 			local withdrawer
 			if withdrawer="$(withdrawn_by "$sha" "$reverts")"; then
-				if printf '%s\n' "$msg" | grep -qE "$TRAILER_RE|$DELIVERS_LOOSE_RE"; then
+				if grep -qE "$TRAILER_RE|$DELIVERS_LOOSE_RE" <<<"$msg"; then
 					echo "check-issue-resolution: RS001/RS005 commit ${sha:0:12} is reverted in this range by ${withdrawer:0:12}, so its Resolves:/Delivers: declarations are withdrawn"
 				fi
 				continue
@@ -720,7 +720,7 @@ check_commits() {
 			local id
 			for id in $(printf '%s\n' "$line" | grep -oE 'iss-[0-9]+'); do
 				declared="$declared $id"
-				printf '%s\n' "$closed" | grep -qx "$id" && continue
+				grep -qx "$id" <<<"$closed" && continue
 				local head_path base_path base_status
 				head_path="$(record_path "$head" "$id")"
 				base_path="$(record_path "$base" "$id")"

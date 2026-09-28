@@ -698,6 +698,17 @@ merge_as 'Alex Reppel' '77722411+REPPL@users.noreply.github.com' \
 	'GitHub' 'noreply@github.com' 'Merge pull request #1 from intentdriven/side'
 commits_case accept "forge merge commit, human author, no trailer"
 
+# --- A long artefact is read whole (iss-2609281314564762) ---------------------
+# printf piped into grep -q under pipefail is a race: grep exits at its first
+# match, printf's next write takes SIGPIPE, and the pipeline reads as "no
+# match". Past one pipe buffer (64 KiB) it is the rule, so a banned line
+# matched early in a long body passed. This body is about 200 KiB.
+long_filler="$(awk 'BEGIN { for (i = 0; i < 4000; i++) print "Filler line to push the body past a pipe buffer." }')"
+case_is reject "co-authorship early in a long body" "Co-authored-by: Someone <someone@example.invalid>
+$long_filler
+
+Assisted-by: Claude:claude-opus-5"
+
 # --- The human-only declaration -----------------------------------------------
 # A change no AI touched discloses that positively; silence stays refused,
 # because an absent trailer and a forgotten one are indistinguishable.

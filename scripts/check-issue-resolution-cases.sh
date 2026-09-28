@@ -91,7 +91,7 @@ expect_refusal_naming() {
 	if [ "$rc" -ne 1 ]; then
 		printf 'cases: FAIL %s — expected a refusal (exit 1), got exit %d:\n%s\n' "$label" "$rc" "$out" >&2
 		failures=$((failures + 1))
-	elif ! printf '%s\n' "$out" | grep -qE -- "$pattern"; then
+	elif ! grep -qE -- "$pattern" <<<"$out"; then
 		printf 'cases: FAIL %s — refused, but the message does not carry the diagnosis (want /%s/):\n%s\n' "$label" "$pattern" "$out" >&2
 		failures=$((failures + 1))
 	else
@@ -113,7 +113,7 @@ expect_refusal_not_naming() {
 	if [ "$rc" -ne 1 ]; then
 		printf 'cases: FAIL %s — expected a refusal (exit 1), got exit %d:\n%s\n' "$label" "$rc" "$out" >&2
 		failures=$((failures + 1))
-	elif printf '%s\n' "$out" | grep -qE -- "$pattern"; then
+	elif grep -qE -- "$pattern" <<<"$out"; then
 		printf 'cases: FAIL %s — refused, but the message names a remedy that does not apply (/%s/):\n%s\n' "$label" "$pattern" "$out" >&2
 		failures=$((failures + 1))
 	else
@@ -459,6 +459,24 @@ expect_refusal_naming "$d" "RS001 still names a placer whose subject carried con
 	"placed there on main's side by [0-9a-f]+ fix: \\[31mred\\[0m squash" -- commits main HEAD
 expect_refusal_not_naming "$d" "RS001 does not replay the placer subject's control bytes" \
 	"$(printf '\033')" -- commits main HEAD
+
+# --- Membership on a large set is deterministic (iss-2609281314564762) ------
+#
+# printf piped into grep -q under pipefail is a race: grep exits at its first
+# match, printf's next write takes SIGPIPE, the pipeline returns 141 and the
+# test reads as "no match". Past one pipe buffer (64 KiB) it stops being a race
+# and becomes the rule, and the same membership idiom tested RS001's entering
+# set, RS004's declared set and RS005's shipped set. Here a message declares
+# 1,100 long ids (about 70 KiB) and names them all: every mention is declared,
+# and the ones sorting first were read as undeclared.
+d="$(newrepo large-declared-set)"
+refs="$(awk 'BEGIN { for (i = 1000; i < 2100; i++) printf "Refs: iss-%s%s\n", i, "00000000000000000000000000000000000000000000000000000000" }')"
+echo "touched" >>"$d/README.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "chore: touch many records
+
+$refs"
+expect pass "$d" "RS004 a declaration set past one pipe buffer is read whole" -- commits main HEAD
 
 # --- RS002: a stamp added here must name a reachable commit ------------------
 
@@ -1294,7 +1312,7 @@ shape_itd="$(shape_of "$d_itd")"
 if [ "$shape_iss" != "$shape_itd" ]; then
 	printf 'cases: FAIL RS005 refusal shape differs from RS001'"'"'s:\n--- RS001\n%s\n--- RS005\n%s\n' "$shape_iss" "$shape_itd" >&2
 	failures=$((failures + 1))
-elif ! printf '%s\n' "$shape_itd" | grep -q '<RULE> commit <SHA>' || ! printf '%s\n' "$shape_itd" | grep -qx 'exit=1'; then
+elif ! grep -q '<RULE> commit <SHA>' <<<"$shape_itd" || ! grep -qx 'exit=1' <<<"$shape_itd"; then
 	printf 'cases: FAIL RS005 refusal shape — the normaliser matched neither refusal, so the comparison proves nothing:\n%s\n' "$shape_itd" >&2
 	failures=$((failures + 1))
 else
