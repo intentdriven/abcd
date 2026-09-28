@@ -1391,9 +1391,9 @@ func disposition(t *testing.T, f fixture, item string, args ...string) dispositi
 // which is right and makes an item a single-use subject. Assembling another run
 // is what the operator would do, and it is cheap on this corpus.
 // placeComparativeRunRecord writes the committed run record of a comparative run
-// over wideningRun into the durable run directory: the commit marker
-// capture's ordering gate reads (ComparativeRunFor), carrying the
-// candidate-join subset it decodes.
+// over wideningRun into the durable run directory, with the manifest beside it:
+// the commit marker capture's ordering gate reads (ComparativeRunFor), carrying
+// the candidate-join subset it decodes.
 func placeComparativeRunRecord(t *testing.T, f fixture, wideningRun string) {
 	t.Helper()
 	const compRun = "rdg-2609259999999999"
@@ -1401,9 +1401,14 @@ func placeComparativeRunRecord(t *testing.T, f fixture, wideningRun string) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "run.json"), []byte(`{"run_id":"`+compRun+
-		`","position":"comparative","candidate_run":"`+wideningRun+`"}`), 0o644); err != nil {
-		t.Fatal(err)
+	// The channel's pair: the manifest it promotes and the run record after it,
+	// agreeing on the run and the candidate join, which is what the gate holds a
+	// committed run to (iss-2609251842111593).
+	head := []byte(`{"run_id":"` + compRun + `","position":"comparative","candidate_run":"` + wideningRun + `"}`)
+	for _, name := range []string{"manifest.json", "run.json"} {
+		if err := os.WriteFile(filepath.Join(dir, name), head, 0o644); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 

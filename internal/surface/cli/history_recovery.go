@@ -220,7 +220,7 @@ func resolveDestination(into string) (history.Destination, error) {
 	}
 	if det.RootSHA == "" {
 		return history.Destination{}, fmt.Errorf("history ingest: %s is not a git repository with commits, so it has no store key",
-			termsafe.Sanitize(fsutil.RedactHome(abs)))
+			termsafe.Sanitize(fsutil.DisplayPath(abs)))
 	}
 	return history.Destination{RepoRoot: abs, RootSHA: det.RootSHA}, nil
 }
@@ -269,7 +269,7 @@ func renderHistoryIngest(w io.Writer, verb string, dest history.Destination, res
 		}
 	}
 	fmt.Fprintf(w, "abcd history %s — into %s (root %s)\n",
-		verb, termsafe.Sanitize(fsutil.RedactHome(dest.RepoRoot)), dest.RootSHA)
+		verb, termsafe.Sanitize(fsutil.DisplayPath(dest.RepoRoot)), dest.RootSHA)
 	fmt.Fprintf(w, "  stored %d of %d owned transcript(s); %d skipped, %d orphaned, %d failed\n",
 		wrote, len(res.Captured), len(res.Skipped), len(res.Orphans), len(res.Failed))
 	for _, c := range res.Captured {

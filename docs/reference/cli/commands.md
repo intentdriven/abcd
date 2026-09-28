@@ -2243,8 +2243,9 @@ two status folders is named with the reason and not read; a gone or refused
 worktree's branch is then read from the object store instead.
 
 Strictly read-only: it writes nothing, takes no lock, and fetches nothing.
-Home paths are redacted to ~ on every stream. Exit 0 whatever the peers
-hold; exit 2 outside a git checkout.
+A worktree is named home-relative (~/...), or by its directory name when it
+sits outside HOME, on every stream. Exit 0 whatever the peers hold; exit 2
+outside a git checkout.
 
 ### `abcd reading`
 

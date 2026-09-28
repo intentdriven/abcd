@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -1534,5 +1535,63 @@ func TestCaptureWontfixRefusesALockedBody(t *testing.T) {
 	}
 	if len(where) != 1 || where[0] != "open" {
 		t.Fatalf("after the refusal the record sits in %v, want [open]", where)
+	}
+}
+
+// TestTheLedgerIdentityNeverPrintsAnAbsoluteCheckout is iss-2609251823560369:
+// the checkout a capture verb names was home-redacted only, so a checkout
+// outside HOME was printed as a full absolute path — in --json and on stderr —
+// in output that is pasted elsewhere. A checkout outside HOME is named by its
+// directory name, the base-name rule the CLI's error scrub already applies to an
+// absolute path outside both identity roots.
+func TestTheLedgerIdentityNeverPrintsAnAbsoluteCheckout(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	repo := captureLedgerRepo(t)
+	gitCommitAt(t, repo, "root")
+	absForms := []string{repo}
+	if real, err := filepath.EvalSymlinks(repo); err == nil && real != repo {
+		absForms = append(absForms, real)
+	}
+	var env struct {
+		Ledger struct {
+			Checkout string `json:"checkout"`
+		} `json:"ledger"`
+	}
+	out := runCLI(t, "capture", "an observation outside the home", "--json")
+	if err := json.Unmarshal(out, &env); err != nil {
+		t.Fatalf("not JSON: %v\n%s", err, out)
+	}
+	if env.Ledger.Checkout != filepath.Base(repo) {
+		t.Fatalf("ledger.checkout = %q, want the checkout's directory name %q", env.Ledger.Checkout, filepath.Base(repo))
+	}
+	text := string(runCLI(t, "capture", "list", "--open"))
+	if !strings.Contains(text, "abcd capture: ledger of "+filepath.Base(repo)+" on branch main") {
+		t.Fatalf("the stderr identity line does not name the checkout by its directory name:\n%s", text)
+	}
+	for _, abs := range absForms {
+		for what, s := range map[string]string{"--json": string(out), "stderr": text} {
+			if strings.Contains(s, abs) {
+				t.Errorf("%s prints the absolute checkout path %s:\n%s", what, abs, s)
+			}
+		}
+	}
+}
+
+// TestRenderLedgerRefusesANonObjectResult: the `ledger` member is added to an
+// object envelope, and a result that is not an object has no member to add it
+// to. It used to be skipped silently, dropping the identity the envelope exists
+// to carry; it is an error instead (iss-2609251823560369).
+func TestRenderLedgerRefusesANonObjectResult(t *testing.T) {
+	var buf bytes.Buffer
+	if err := renderLedger(&buf, true, t.TempDir(), []string{"a", "b"}, func(io.Writer) {}); err == nil {
+		t.Fatalf("a non-object result rendered without its ledger member:\n%s", buf.String())
+	}
+	buf.Reset()
+	if err := renderLedger(&buf, true, t.TempDir(), struct{}{}, func(io.Writer) {}); err != nil {
+		t.Fatal(err)
+	}
+	var env map[string]json.RawMessage
+	if err := json.Unmarshal(buf.Bytes(), &env); err != nil || env["ledger"] == nil {
+		t.Fatalf("an empty object result lost its ledger member: %v\n%s", err, buf.String())
 	}
 }

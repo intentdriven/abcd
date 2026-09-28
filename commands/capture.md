@@ -432,6 +432,8 @@ since the last release and still open, and one sanctioned way past it is a
 deferral stated out loud. `defer` writes it: `deferred_after` (the anchor tag)
 and `deferral_reason` in the record's frontmatter, and a dated
 `## Deferral <date>` section appended to its body. The record stays in `open/`.
+A second deferral past the same anchor replaces that cycle's pair and section
+rather than adding another, so the body carries one section per cycle.
 Report the `id`, `deferred_after` and `deferral_reason` from the JSON, and tell
 the user that the waiver lapses when the next release re-anchors, so it must be
 renewed then or the finding fixed. Report `redacted` whenever it is non-zero.
@@ -498,7 +500,8 @@ run. The refusal names the run and says what it is waiting for: the comparative
 reading over that run, ingested through `/abcd:reading`. A comparative run
 committed with an empty item set, the position not exercised, satisfies it too.
 Every other position is answered with no comparative run anywhere. Relay the
-refusal; do not write the record by hand to get past it.
+refusal; do not write the record by hand to get past it: a run record without the
+manifest the ingest writes beside it, or disagreeing with it, is refused by name.
 
 ## Admit a widening proposal
 
@@ -592,7 +595,12 @@ A reframe is written in one of three halves, and every render names which:
   not. It walks the surfaces' history along first parents to the previous
   distinct committed state and writes both halves at once, so a rewrite a merge
   brought in is recorded against the state the merge's first parent held, as a
-  squash of the same branch would be, whatever the commits' timestamps.
+  squash of the same branch would be, whatever the commits' timestamps. A
+  rewrite that lands as several commits on the first-parent line, a rebased
+  branch among them, is different: the previous distinct state is the one
+  before its last commit, so the whole write records that step alone. To record
+  such a rewrite whole, open the record before its first commit and complete it
+  after its last.
 - **Open**, before the rewrite is committed (`--open`). The before fingerprints
   are `HEAD`'s and the after half is absent; the render names the completion.
   Only one record may be open at a time.

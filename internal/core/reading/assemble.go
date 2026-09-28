@@ -278,7 +278,7 @@ func estimateTokens(b int) int {
 // stays with the auditor.
 const (
 	BundleFileName   = "bundle.json"
-	ManifestFileName = "manifest.json"
+	ManifestFileName = issueschema.RunManifestFileName
 )
 
 // DefaultRunDir is the local-tier parent an unnamed run is parked under.
@@ -287,7 +287,7 @@ const DefaultRunDir = ".abcd/.work.local/scratch/reading-runs"
 // MaxFileBytes bounds one admitted file. A file past the cap is a refusal, not
 // a truncation: a silently shortened item would be an assembled input no re-run
 // could reproduce from the manifest's hash.
-const MaxFileBytes = 4 << 20
+const MaxFileBytes = issueschema.RunArtefactReadLimit
 
 // LintConfigPath is the record-lint configuration the record scan reads its
 // stores from. Enumeration comes from that scan and nowhere else: there is one

@@ -317,3 +317,53 @@ func TestImplementStepWithoutARunIsRefused(t *testing.T) {
 	}
 	runDirAbsent(t, repo.Root())
 }
+
+// TestImplementStatusNamesALaneWorktreeOutsideHomeByItsDirectoryName: status
+// --json named a lane's worktree through the home redaction alone, so one
+// outside HOME was printed as an absolute local path (iss-2609281329007423).
+// It is named by its directory name.
+func TestImplementStatusNamesALaneWorktreeOutsideHomeByItsDirectoryName(t *testing.T) {
+	repo := buildRepo(t)
+	var res struct {
+		State string `json:"state"`
+	}
+	if err := json.Unmarshal([]byte(mustImplement(t, "build", "itd-10", "--json")), &res); err != nil {
+		t.Fatal(err)
+	}
+	statePath := filepath.Join(repo.Root(), filepath.FromSlash(res.State))
+	raw, err := os.ReadFile(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var state map[string]any
+	if err := json.Unmarshal(raw, &state); err != nil {
+		t.Fatal(err)
+	}
+	outside := filepath.Join(t.TempDir(), "lane-wt")
+	state["lanes"].([]any)[0].(map[string]any)["worktree"] = outside
+	raw, err = json.Marshal(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(statePath, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	out := mustImplement(t, "implement", "status", "--json")
+	var st struct {
+		Runs []struct {
+			Lanes []struct {
+				Worktree string `json:"worktree"`
+			} `json:"lanes"`
+		} `json:"runs"`
+	}
+	if err := json.Unmarshal([]byte(out), &st); err != nil || len(st.Runs) != 1 || len(st.Runs[0].Lanes) != 1 {
+		t.Fatalf("status --json = %v: %s", err, out)
+	}
+	if got := st.Runs[0].Lanes[0].Worktree; got != "lane-wt" {
+		t.Errorf("the lane worktree is shown as %q, want its directory name lane-wt", got)
+	}
+	if strings.Contains(out, filepath.Dir(outside)) {
+		t.Errorf("status --json prints the absolute worktree path:\n%s", out)
+	}
+}

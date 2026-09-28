@@ -194,7 +194,13 @@ second** (itd-2609020625400194, spc-2609020626040342). No disposition in any
 state, and no admission, is written for a widening item until a committed
 comparative run names the item's run; a comparative run committed with an empty
 item set, the position not exercised, satisfies this as a characterising run
-does. The refusal names the run it is waiting on. It is one gate in the one
+does. A committed run is the pair the channel's ingest leaves in the run's
+directory, its manifest and its run record, agreeing on the run id, the position
+and the candidate join; a run record naming the item's run without that
+agreement, such as a marker written by hand, is refused by name as a record that
+contradicts itself (iss-2609251842111593). Whether git tracks the pair is not
+asked, because the gate answers between an ingest and the commit that carries
+it. The refusal names the run it is waiting on. It is one gate in the one
 disposition writer every verb routes through, so the disposition verb, the
 admission verb and a scribe's ingest all refuse the same way. The other
 positions are answered with no comparative run anywhere.
@@ -231,8 +237,12 @@ any surface. The verb reads the surfaces at `HEAD`, in the working tree and
 along their history, so the operator supplies no hash. Written after the
 rewrite's commit it is one write, against the previous distinct state along
 first parents, so a rewrite a merge brought in is recorded as a squash of the
-same branch would record it, whatever the commits' timestamps; written before
-it, a first half records the
+same branch would record it, whatever the commits' timestamps. A rewrite that
+lands as several commits on the first-parent line, a rebased branch among them,
+is recorded by that one write as its last step alone, because the previous
+distinct state is the one before that step (iss-2609261325441711); the open and
+complete pair below records such a rewrite whole. Written before
+the rewrite's commit, a first half records the
 before fingerprints and a second write finishes it once the rewrite is
 committed, walking back across as many commits as the rewrite took, merges
 included. Every render names the half it wrote. The occasion
@@ -288,7 +298,10 @@ tag that is not the checkout's newest release tag, an empty reason, a record tha
 is not open, and a record whose grade is neither `major` nor `critical`, which
 the guard never blocks on. The grade is judged before the tag. A record deferred
 past an earlier anchor is deferred again: the pair is replaced and a new section
-appended, so each cycle's deferral stays readable in the record.
+appended, so each cycle's deferral stays readable in the record. A record
+deferred again past the SAME anchor has the pair and that cycle's section
+rewritten in place, so the body keeps one section per cycle
+(iss-2609251823555125).
 
 **Marking an issue wontfix** records an explicit non-action decision and moves
 the issue to `wontfix/`. Grounds are optional here and override the recorded
@@ -330,7 +343,8 @@ Every verb also says which checkout's ledger it addressed, and the record
 dispatcher says it for an issue id (iss-2609202053570475): one stderr line naming
 the checkout and its branch in the plain render, and a `ledger` member with
 `checkout` and `branch` in the machine-readable one. The checkout is written home-relative where
-it can be. A record filed in another worktree is invisible here, and a refusal
+it can be, and by its directory name where it cannot, so neither render carries an
+absolute local path (iss-2609251823560369). A record filed in another worktree is invisible here, and a refusal
 that says "not found" without naming where it looked sends the reader to the
 wrong conclusion.
 

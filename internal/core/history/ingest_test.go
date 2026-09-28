@@ -443,3 +443,37 @@ func TestIngestRefusesADestinationRootThatIsNoRepository(t *testing.T) {
 		t.Errorf("the refusal must say what it could not resolve: %v", err)
 	}
 }
+
+// TestIngestNamesADirectoryOutsideHomeByItsBaseName: the destination refusals
+// and an orphan's recorded directory named a path through the home redaction
+// alone, so a repository or working directory outside HOME reached them as an
+// absolute local path (iss-2609281329007423). Each names it by its directory
+// name instead.
+func TestIngestNamesADirectoryOutsideHomeByItsBaseName(t *testing.T) {
+	repoRoot, _ := setupStore(t)
+	outside := t.TempDir()
+	unresolved := filepath.Join(outside, "dest-unresolved")
+	mismatched := filepath.Join(outside, "dest-mismatched")
+	orphanCwd := filepath.Join(outside, "orphan-cwd")
+	fakeRepos(t, map[string]string{repoRoot: testRootSHA, mismatched: otherRootSHA})
+
+	for root, name := range map[string]string{unresolved: "dest-unresolved", mismatched: "dest-mismatched"} {
+		_, err := Ingest(Destination{RepoRoot: root, RootSHA: testRootSHA}, []string{t.TempDir()}, IngestOptions{})
+		if err == nil {
+			t.Fatalf("Ingest accepted the destination %s", name)
+		}
+		if !strings.Contains(err.Error(), "repository at "+name) || strings.Contains(err.Error(), outside) {
+			t.Errorf("the refusal must name the destination by its directory name %q, got %q", name, err)
+		}
+	}
+
+	src := t.TempDir()
+	transcriptFile(t, filepath.Join(src, "some-project"), "s1.jsonl", "sess-orphan", "", orphanCwd)
+	res, err := Ingest(Destination{RepoRoot: repoRoot, RootSHA: testRootSHA}, []string{src}, IngestOptions{})
+	if err != nil {
+		t.Fatalf("Ingest: %v", err)
+	}
+	if len(res.Orphans) != 1 || res.Orphans[0].Cwd != "orphan-cwd" {
+		t.Fatalf("want one orphan whose directory is named orphan-cwd, got %+v", res.Orphans)
+	}
+}

@@ -312,6 +312,47 @@ func RedactHome(s string) string {
 	return s
 }
 
+// DisplayPath is the one statement of how a surface prints a directory it names
+// — a checkout, a worktree, a repository root: under HOME it is the
+// home-relative form RedactHome gives ("~/rel", or "~" for HOME itself), and
+// outside HOME it is the directory's base name. RedactHome alone leaves a path
+// outside HOME whole, and printed whole it is an absolute local path in output a
+// person pastes elsewhere (iss-2609281329007423). A relative or empty p is
+// returned unchanged.
+//
+// It is for a path shown so a reader can recognise it, not one the reader must
+// type to act: a store directory the person passed with a flag, a brief an
+// agent is handed or a receipt it must write keep RedactHome, because a base
+// name there would leave the reader unable to act on it.
+func DisplayPath(p string) string {
+	if shown := RedactHome(p); !filepath.IsAbs(shown) {
+		return shown
+	}
+	return filepath.Base(p)
+}
+
+// DisplayPathsIn is DisplayPath inside a message: s is home-redacted, and each
+// absolute path in paths is replaced by its DisplayPath wherever it starts a
+// path in s (RedactRoot's boundary rule), in both the spelling given and its
+// symlink-resolved one (the one git and the kernel report back). A longer path
+// under it keeps its tail ("/tmp/wt/.git" becomes "wt/.git"). It is for a
+// reason or an error that carries a path the caller already knows, such as a
+// peer's not-read reason naming the peer's directory.
+func DisplayPathsIn(s string, paths ...string) string {
+	s = RedactHome(s)
+	for _, p := range paths {
+		if !filepath.IsAbs(p) {
+			continue
+		}
+		shown := DisplayPath(p)
+		s = RedactRoot(s, p, shown)
+		if real, err := filepath.EvalSymlinks(p); err == nil && real != p {
+			s = RedactRoot(s, real, shown)
+		}
+	}
+	return s
+}
+
 // isPathBoundary reports whether c cannot be part of a path segment, so a root
 // immediately followed by c is a whole path rather than a prefix of a longer one.
 func isPathBoundary(c byte) bool {
