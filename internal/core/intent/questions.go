@@ -30,12 +30,14 @@ var (
 	settledBoldRe = regexp.MustCompile(`(?i)\*\*(resolved|deferred|explicitly deferred|explicit deferral)\b`)
 	// settledLabelRe is the disposition as a LABEL (`resolved:`, `RESOLVED:`,
 	// `Deferred:`), and a label only where a label is written: opening a line of
-	// the item, after a closing bold (`**Which surface?** RESOLVED:`), or after
-	// a dash (`**Refusal breadth** — resolved:`). Mid-sentence the same word
-	// and colon are prose — "once the split is resolved: the old or the new?"
-	// is a question — and reading them as a marker let build start past it
+	// the item — a nested sub-bullet continuation (`  - Resolved: …`) opens one
+	// too — after a closing bold, with or without a colon after it
+	// (`**Which surface?** RESOLVED:`, `**Which id?**: Resolved:`), or after a
+	// dash (`**Refusal breadth** — resolved:`). Mid-sentence the same word and
+	// colon are prose — "once the split is resolved: the old or the new?" is a
+	// question — and reading them as a marker let build start past it
 	// (iss-2609260932374727).
-	settledLabelRe = regexp.MustCompile(`(?i)(^|\*\*[ \t]*|[—–][ \t]*|[ \t]-[ \t]+)(resolved|deferred)[ \t]*:`)
+	settledLabelRe = regexp.MustCompile(`(?i)(^|^[-*][ \t]+|\*\*:?[ \t]*|[—–][ \t]*|[ \t]-[ \t]+)(resolved|deferred)[ \t]*:`)
 )
 
 // OpenQuestions returns the questions an intent's `## Open Questions` section
@@ -55,8 +57,9 @@ var (
 //     with the word (`**Resolved — …**`, `**Deferred**`, `**explicitly
 //     deferred**`, `**explicit deferral**`) anywhere in the item, continuation
 //     lines included, or the word as a label (`resolved:`, `Deferred:`)
-//     opening a line of the item, after a closing bold, or after a dash — is
-//     not a question. The same word and colon mid-sentence are prose.
+//     opening a line of the item (a nested sub-bullet included), after a
+//     closing bold (and an optional colon), or after a dash — is not a
+//     question. The same word and colon mid-sentence are prose.
 //
 // Everything else under the heading that is a list item is a question
 // whatever it says: an item led `**Open`, an item that only points elsewhere,

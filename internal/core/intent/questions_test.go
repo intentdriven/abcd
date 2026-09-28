@@ -91,6 +91,15 @@ func TestOpenQuestionsReadsTheSettledConvention(t *testing.T) {
 			"- Which runner?\n  Deferred: to the runner intent.\n", nil},
 		{"a label after a closing bold and a parenthetical dash (itd-93)", head +
 			"- **Relationship to itd-73** (derived versioning) — RESOLVED: the CHANGELOG.\n", nil},
+		{"a label opening a nested sub-bullet continuation", head +
+			"- Which id wins?\n  - Resolved: the new one.\n" +
+			"- Which runner?\n  * Deferred: to the runner intent.\n", nil},
+		{"a label after a colon that follows the closing bold", head +
+			"- **Which id?**: Resolved: the new one.\n" +
+			"- **Which runner?**:Deferred: to the runner intent.\n", nil},
+		{"a sub-bullet that only mentions resolution mid-sentence is still a question", head +
+			"- Which id wins?\n  - once the split is resolved: the old or the new?\n",
+			[]string{"Which id wins?"}},
 		{"an opener below the first item does not open the section", head +
 			"- Which runner?\n\n_All resolved at planning._\n", []string{"Which runner?"}},
 		{"an opener that settles only some", head +

@@ -41,8 +41,9 @@ No run is created until every check passes, and each is a read (criteria 1 and 2
   is settled whole, and an item explicitly marked resolved or deferred — a bold
   span opening with the word (`**Resolved — …**`, `**Deferred**`, `**explicitly
   deferred**`, `**explicit deferral**`) or the word as a label (`resolved:`,
-  `Deferred:`) opening a line of the item, after a closing bold or after a
-  dash — is not a question; the same word and colon mid-sentence are prose.
+  `Deferred:`) opening a line of the item (a nested sub-bullet included),
+  after a closing bold (with or without a colon after it) or after a dash — is
+  not a question; the same word and colon mid-sentence are prose.
   Every other list item is a question whatever it says: one led `**Open`, one
   that only points to another record, and one that merely mentions deferral
   all count (the 2026-09-25 entry in `.abcd/work/DECISIONS.md`, and its
