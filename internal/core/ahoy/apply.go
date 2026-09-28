@@ -1474,18 +1474,24 @@ func modeWouldChange(opts InstallOptions, det DetectionResult, target string) bo
 // defaults: the default domains live once in the abcd binary (itd-3), and this
 // file only overrides them per-field (one-canonical-primitive). An empty
 // domains map inherits every bundled default as-is.
+//
+// Detection saw no file, but that was before the interactive prompts: a
+// rules.json written since is a hand-written override and is kept, never
+// replaced by the skeleton (iss-2609281931185016). The exclusive create is the
+// re-check and the write in one act, so it needs no lock.
 func (a *applyCtx) stepRules() {
 	if !a.approved[SafeAutocreate] || !a.has("rules.missing") {
 		return
 	}
 	rules := map[string]any{"schema_version": 1, "disabled": false, "domains": map[string]any{}}
-	// Contained through an os.Root opened at the repo: a committed `.abcd` ancestor
-	// symlink must not land rules.json outside the working tree (GHSA-xrf8-4432-gw2f).
-	if err := writeRepoJSON(a.cwd, rulesRelPath, rules); err != nil {
-		a.refuse("could not write .abcd/rules.json: " + errText(err))
-		return
+	wrote, err := createRepoJSON(a.cwd, rulesRelPath, rules)
+	if wrote {
+		a.note(writeRules, filepath.Join(a.cwd, ".abcd", "rules.json"))
 	}
-	a.note(writeRules, filepath.Join(a.cwd, ".abcd", "rules.json"))
+	if err != nil {
+		// A fault after the create (the mode pin) still reports the file it made.
+		a.refuse("could not write .abcd/rules.json: " + errText(err))
+	}
 }
 
 // stepVersionStamp writes the meta setup block.

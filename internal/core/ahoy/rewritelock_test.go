@@ -185,6 +185,80 @@ func TestSkeletonNeverReplacesAConfigWrittenMeanwhile(t *testing.T) {
 	}
 }
 
+// TestRulesSkeletonNeverReplacesARulesFileWrittenMeanwhile: detection sets
+// rules.missing before the interactive prompts, and stepRules runs after them.
+// A rules.json written in that window holds a hand-written override; the
+// skeleton must keep it byte for byte and must not report a write it did not
+// make (iss-2609281931185016).
+func TestRulesSkeletonNeverReplacesARulesFileWrittenMeanwhile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, filepath.FromSlash(rulesRelPath))
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	a := &applyCtx{
+		cwd:        dir,
+		approved:   map[GapCategory]bool{SafeAutocreate: true},
+		gapPresent: map[string]bool{"rules.missing": true},
+	}
+	// Written after detection saw no file, before the step runs.
+	written := []byte(`{"schema_version": 1, "domains": {"HOUSE": {"recall": ["house"], "rules": ["keep it"]}}}` + "\n")
+	if err := os.WriteFile(path, written, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	a.stepRules()
+
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, written) {
+		t.Errorf("the skeleton replaced a rules.json written after detection:\n got %s\nwant %s", got, written)
+	}
+	for _, k := range a.writeKinds {
+		if k == writeRules {
+			t.Errorf("the receipt reports a rules write that did not happen: writes = %v", a.writes)
+		}
+	}
+	if len(a.notes) != 0 {
+		t.Errorf("a kept rules.json is not a refusal; notes = %q", a.notes)
+	}
+	if fi, err := os.Stat(path); err != nil || fi.Mode().Perm() != 0o600 {
+		t.Errorf("the kept file's mode changed: %v %v", fi.Mode().Perm(), err)
+	}
+}
+
+// TestRulesSkeletonIsWrittenWhenAbsent is the other half: with no rules.json
+// the skeleton is planted, at 0644 whatever the umask, and reported.
+func TestRulesSkeletonIsWrittenWhenAbsent(t *testing.T) {
+	dir := t.TempDir()
+	a := &applyCtx{
+		cwd:        dir,
+		approved:   map[GapCategory]bool{SafeAutocreate: true},
+		gapPresent: map[string]bool{"rules.missing": true},
+	}
+	a.stepRules()
+
+	path := filepath.Join(dir, filepath.FromSlash(rulesRelPath))
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("the skeleton was not written: %v (notes %q)", err, a.notes)
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(got, &doc); err != nil {
+		t.Fatalf("the skeleton is not JSON: %v\n%s", err, got)
+	}
+	if d, ok := doc["domains"].(map[string]any); !ok || len(d) != 0 {
+		t.Errorf("the skeleton is not the empty-domains override: %s", got)
+	}
+	if fi, err := os.Stat(path); err != nil || fi.Mode().Perm() != 0o644 {
+		t.Errorf("the skeleton's mode is not 0644: %v %v", fi.Mode().Perm(), err)
+	}
+	if len(a.writeKinds) != 1 || a.writeKinds[0] != writeRules {
+		t.Errorf("the receipt does not report the rules write: kinds = %v", a.writeKinds)
+	}
+}
+
 // TestGitignoreBlockKeepsAConcurrentEdit is the iss-127 detector for the
 // .gitignore block rewrite.
 func TestGitignoreBlockKeepsAConcurrentEdit(t *testing.T) {
