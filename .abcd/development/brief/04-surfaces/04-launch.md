@@ -66,6 +66,7 @@ refuses to stage one and the archive render refuses outright.
 | Verb | Bucket | Status |
 |---|---|---|
 | `archive` | gate | shipped |
+| `manifests` | gate | shipped |
 | `receipts` | gate | shipped |
 | `scaffold` | — | shipped |
 | `ship` | gate | shipped |
@@ -592,8 +593,12 @@ read-only lockstep checker proves this over the path list adr-20 records, and a
 half-state is drift. The cut's bump step runs it against the staged artefact at
 the **public** polarity and refuses to publish on drift; the **dev** polarity
 runs in `dry-run` over the working tree, asserting the committed manifests carry
-no version key. The checker has no bypass flag, and adr-20 records that
-a dirty-tree override must not bypass manifest consistency.
+no version key. The checker also has a front door of its own, read-only, over
+any tree a person holds at the polarity they choose (a marketplace install or a
+release source archive at public, a checkout at dev), exiting 0 consistent, 1
+drift with a line per field, and 2 when an input cannot be read. The checker
+has no bypass flag, and adr-20 records that a dirty-tree override must not
+bypass manifest consistency.
 
 The release commit message format — carrying the bump tier and its reason — is
 a **full-cut design target** (itd-72). The shipped cut never
@@ -777,7 +782,7 @@ _Generated from the command tree; a drift test fails `go test` when this appendi
 
 ### `abcd launch`
 
-Sub-verbs: `abcd launch archive`, `abcd launch receipts`, `abcd launch scaffold`, `abcd launch ship`, `abcd launch smoke-pages`.
+Sub-verbs: `abcd launch archive`, `abcd launch manifests`, `abcd launch receipts`, `abcd launch scaffold`, `abcd launch ship`, `abcd launch smoke-pages`.
 
 | Flag | Type |
 |---|---|
@@ -796,6 +801,15 @@ Sub-verbs: none.
 | `--repository` | string |
 | `--tag` | string |
 | `--verify` | bool |
+
+### `abcd launch manifests`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--root` | string |
+| `--tree` | string |
 
 ### `abcd launch receipts`
 

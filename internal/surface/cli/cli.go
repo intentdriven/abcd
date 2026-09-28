@@ -453,6 +453,10 @@ func NewRootCommand() *cobra.Command {
 	// `receipts` runs the release job's semantic-receipt gate locally, before
 	// the merge, through the same reader the job runs (itd-93 AC7).
 	launchCmd.AddCommand(newLaunchReceiptsCommand(&asJSON))
+	// `manifests` is the manifest lockstep checker's own front door (itd-69):
+	// the check the preview, the cut and the render run, over a named tree at
+	// the polarity the caller chooses.
+	launchCmd.AddCommand(newLaunchManifestsCommand(&asJSON))
 	// `smoke-pages` is the deep installability tier's child process (itd-66):
 	// hidden and operator-internal, re-executed by the preview and the cut.
 	launchCmd.AddCommand(newLaunchSmokePagesCommand())
