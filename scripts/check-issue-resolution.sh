@@ -251,21 +251,33 @@ usage() {
 # caught here. A record that only LEAVES open/ (a bare delete) enters nothing and
 # is deliberately absent, so RS001 refuses a trailer that merely deletes.
 #
-# ENTERING means from outside: a record the base already holds in a terminal
-# folder enters nothing, whatever the diff shows (iss-2609012047551175). Keyed on
-# the destination alone, a move BETWEEN terminal folders counted — so a stale
-# branch whose base had since moved the record resolved/ -> wontfix/, or reslugged
-# it inside resolved/, read the two-dot diff's rename back into place as this
-# branch's resolution, and a trailer satisfied by a move it did not make passed
-# silently. The base's own listing is the test rather than the rename's source,
-# because a move rewritten past rename detection arrives as a plain add and has
-# no source to read. Such a trailer falls through to RS001's diagnosis instead.
+# ENTERING means from outside: a record the MERGE BASE already holds in the very
+# terminal folder it lands in enters nothing, whatever the diff shows
+# (iss-2609012047551175). Keyed on the destination alone, a move BETWEEN terminal
+# folders counted — so a stale branch whose base had since moved the record
+# resolved/ -> wontfix/, or reslugged it inside resolved/, read the two-dot
+# diff's rename back into place as this branch's resolution, and a trailer
+# satisfied by a move it did not make passed silently. In both shapes the record
+# lands where it already sat at the fork, so neither enters.
+#
+# The fork, never the base's tip, is the reference: an honest re-disposition on
+# the branch — wontfix/ -> resolved/ of a record the base still holds in
+# wontfix/ — lands in a folder the record did not sit in at the fork, and is
+# this branch's own move. Asked of the base's tip, the record was "already
+# terminal" and the true trailer was refused with a diagnosis naming a
+# resolution before this commit. The merge base's listing is the test rather
+# than the rename's source, because a move rewritten past rename detection
+# arrives as a plain add and has no source to read. A trailer that enters
+# nothing falls through to RS001's diagnosis. With no merge base (unrelated
+# histories) nothing sat anywhere at the fork, and every landing enters.
 ids_entering_closed() {
-	local base="$1" head="$2" terminal_at_base
+	local base="$1" head="$2" mb="$3" terminal_at_mb=""
 	# `|| exit 2`: this runs inside the caller's command substitution, where
 	# errexit is cleared, so a failed listing must end the subshell itself for
 	# pipefail to carry it out.
-	terminal_at_base="$(terminal_ids "$base" "$ISSUES_DIR/resolved" "$ISSUES_DIR/wontfix" 'iss-[0-9]+')" || exit 2
+	if [ -n "$mb" ]; then
+		terminal_at_mb="$(terminal_folders "$mb")" || exit 2
+	fi
 	git diff --name-status --find-renames "$base".."$head" -- "${STATUS_PATHSPECS[@]}" |
 		while IFS=$'\t' read -r status path dest; do
 			local landed="" id
@@ -277,11 +289,26 @@ ids_entering_closed() {
 			"$ISSUES_DIR/resolved/"* | "$ISSUES_DIR/wontfix/"*)
 				id="$(basename "$landed" | grep -oE '^iss-[0-9]+' || true)"
 				[ -n "$id" ] || continue
-				grep -qx "$id" <<<"$terminal_at_base" && continue
+				grep -qx "$id $(status_of "$landed")" <<<"$terminal_at_mb" && continue
 				printf '%s\n' "$id"
 				;;
 			esac
 		done
+}
+
+# terminal_folders prints "iss-N <folder>" for every record ref holds in
+# resolved/ or wontfix/ — the folder is what ids_entering_closed compares a
+# landing against. rc-checked as terminal_ids is, for the same reason.
+terminal_folders() {
+	local ref="$1" listing rc=0
+	listing="$(git ls-tree -r --name-only "$ref" -- "$ISSUES_DIR/resolved" "$ISSUES_DIR/wontfix" 2>&1)" || rc=$?
+	if [ "$rc" -ne 0 ]; then
+		echo "check-issue-resolution: git ls-tree failed at $ref (exit $rc) — refusing rather than reporting a vacuous pass:" >&2
+		echo "$listing" >&2
+		exit 2
+	fi
+	printf '%s\n' "$listing" | sed "s|^$ISSUES_DIR/||" |
+		awk -F/ 'NF >= 2 && match($NF, /^iss-[0-9]+/) { print substr($NF, RSTART, RLENGTH) " " $1 }' | sort -u
 }
 
 # terminal_ids prints, one per line, the id (matched by the ERE in $4, anchored
@@ -683,8 +710,15 @@ check_commits() {
 	# otherwise vanish from the ledger, its changelog line lost, with no other gate
 	# to catch it. (A record that enters resolved/ while a copy stays in open/ is a
 	# duplicate id, which record-lint's issue_id_unique refuses.)
+	#
+	# The fork point both the entering test and the stale-branch diagnoses ask
+	# about. None (unrelated histories) leaves it empty, and every record then
+	# reads as placed after the fork, which is where head..base puts all of
+	# base's history anyway.
+	local mb
+	mb="$(git merge-base "$base" "$head" 2>/dev/null || true)"
 	local closed
-	closed="$(ids_entering_closed "$base" "$head" | sort -u)"
+	closed="$(ids_entering_closed "$base" "$head" "$mb" | sort -u)"
 
 	# RS001 — a declared resolution must move the record. Every shape below is a
 	# refusal; they differ in the diagnosis, and the diagnosis is what a reader
@@ -710,11 +744,6 @@ check_commits() {
 	local declared="" delivered=""
 	local behind
 	behind="$(git rev-list --count "$head".."$base")"
-	# The fork point the stale-branch diagnoses ask about. None (unrelated
-	# histories) leaves it empty, and every record then reads as placed after
-	# the fork, which is where head..base puts all of base's history anyway.
-	local mb
-	mb="$(git merge-base "$base" "$head" 2>/dev/null || true)"
 	local scanned=0
 	while IFS= read -r sha; do
 		[ -n "$sha" ] || continue

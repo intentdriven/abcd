@@ -410,6 +410,22 @@ git -C "$d" commit -qm "chore: reclassify and rewrite"
 git -C "$d" checkout -q work
 expect fail "$d" "RS001 a base-side move rewritten past rename detection does not satisfy a stale trailer" -- commits main HEAD
 
+# The fork is the reference, not the base's tip: an honest re-disposition on the
+# branch — wontfix/ -> resolved/ of a record the base still holds in wontfix/ —
+# lands in a folder the record did not sit in at the merge base, so it enters,
+# and its true trailer passes. Keyed on the base's listing, the record read as
+# "already terminal" and the trailer was refused as naming an earlier resolution.
+d="$(newrepo rs001-branch-redisposes-wontfix)"
+git -C "$d" checkout -q main
+git -C "$d" mv "$ISS_DIR/open/iss-999-a-fixture.md" "$ISS_DIR/wontfix/iss-999-a-fixture.md"
+git -C "$d" commit -qm "chore: wontfix iss-999"
+git -C "$d" checkout -q -B work main
+git -C "$d" mv "$ISS_DIR/wontfix/iss-999-a-fixture.md" "$ISS_DIR/resolved/iss-999-a-fixture.md"
+git -C "$d" commit -qm "fix: something after all
+
+Resolves: iss-999"
+expect pass "$d" "RS001 a branch's own wontfix/ -> resolved/ move enters resolved/" -- commits main HEAD
+
 # --- RS001's stale-branch split asks the merge base (iss-2609012047566360) ----
 #
 # Terminal at the merge base, then merely EDITED on the base's side: the edit is
