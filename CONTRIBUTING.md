@@ -111,9 +111,10 @@ disclosure, and never an authorship assertion for a tool. The rules:
   domain (`@anthropic.com`, `@openai.com`); the forge's own `[bot]` name suffix;
   a bot mailbox (`NNNN+name[bot]@users.noreply.github.com`, or
   `@dependabot.com`); and a trailing `bot`, `robot` or `automation` word ending
-  the name or the mailbox's local part (`semantic-release-bot`, `Renovate Bot`,
-  `ci_bot@`), standing alone so Talbot and `jean.bot@` pass (a person whose name
-  ends in the word Bot is refused too, the one over-reach the rule accepts).
+  the name or the mailbox's local part, standing alone or joined by `-` or `_`
+  (`semantic-release-bot`, `ci_bot@`, and `Renovate Bot` at its default
+  `bot@renovateapp.com`), so Talbot, `jean.bot@` and a person named `Jan Bot`
+  pass.
   The sixth applies to the AUTHOR role only: **any** address
   whose mailbox begins `noreply@` or `donotreply@`, with or without hyphens and
   whatever the host, not just a vendor's. Your forge privacy address

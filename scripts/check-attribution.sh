@@ -158,28 +158,31 @@ MACHINE_MAIL_RE='\[bot\]@|@dependabot\.com$'
 # commits under a name it was configured with — semantic-release-bot at a forge
 # no-reply address, a self-hosted CI account, a forge whose app suffix is not
 # `[bot]` — matched none of the lists above and was judged a human
-# (iss-2609090951276167). So the structural signal is widened to the SHAPE such
-# configured names take: a trailing `bot`, `robot` or `automation` word, ending
-# the display name or the mailbox's local part.
+# (iss-2609090951276167). So a second signal reads the SHAPE such configured
+# names take: a trailing `bot`, `robot` or `automation` word, ending the display
+# name or the mailbox's local part. It is a name shape, not a forge stamp, so
+# unlike the two above it is nominal, and it is drawn narrowly for that reason.
 #
-# The word must stand alone: at the start of the field, or after a separator.
-# Talbot and Abbott pass; semantic-release-bot, ci_bot, `Renovate Bot` and
-# `12345+semantic-release-bot@users.noreply.github.com` do not. In the local
-# part the separators are `-`, `_` and the forge's `+`, and deliberately not
-# `.`: `jean.bot@` is the ordinary shape of a person's address. In the display
-# name whitespace separates too, which is the one stated over-reach — a person
-# whose name's last word is Bot is refused, loudly and naming the identity —
-# accepted because the failure it prevents is silent, the reason this rule
-# exists. This is the line to revisit if such a contributor arrives.
+# The word must stand alone: at the start of the field, or after a `-` or `_`
+# joining it to the rest — the separators a configured account name uses and a
+# person's name does not. Talbot and Abbott pass; semantic-release-bot, ci_bot
+# and `12345+semantic-release-bot@users.noreply.github.com` do not. In the local
+# part the forge's `+` separates too, and deliberately not `.`: `jean.bot@` is
+# the ordinary shape of a person's address. In the display name WHITESPACE DOES
+# NOT SEPARATE: `Jan Bot` is a person whose surname is Bot, and refusing a
+# person's name is the thing refuse-machines-not-an-allowlist rules out.
+# `Renovate Bot` is still refused, at its default address `bot@renovateapp.com`,
+# by the local-part half.
 #
 # OUT OF REACH, said plainly: a machine whose configured name and mailbox look
-# like a person's (`Release Manager <release@example.com>`), a trailing word
-# other than these three (`-ci`, `-agent`), and `name.bot@` addresses. Nothing
-# structural separates those from a human; the reviewer reading the identity
+# like a person's (`Release Manager <release@example.com>`, or `Renovate Bot`
+# reconfigured to `renovate@example.com`), a trailing word other than these
+# three (`-ci`, `-agent`), and `name.bot@` addresses. Nothing in the identity
+# separates those from a human; the reviewer reading the identity
 # is the check on them. internal/core/site/contributors.go's machineAddrRe does
 # not share this signal: the contributors page reads the published history, not
 # a pull request's range, and refusing is this gate's job alone.
-MACHINE_NAME_WORD_RE='(^|[-_[:space:]])(bot|robot|automation)[[:space:]]*$'
+MACHINE_NAME_WORD_RE='(^|[-_])(bot|robot|automation)[[:space:]]*$'
 MACHINE_LOCAL_WORD_RE='(^|[-_+])(bot|robot|automation)@'
 
 # A mailbox literally named for not being read. Refused in the AUTHOR role only,

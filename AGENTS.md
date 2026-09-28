@@ -409,11 +409,14 @@ irreversible; guessing downward costs nothing.**
   domain (`@anthropic.com`, `@openai.com`); the forge's own `[bot]` name suffix;
   a bot mailbox (`NNNN+name[bot]@users.noreply.github.com`, or
   `@dependabot.com`); and a trailing `bot`, `robot` or `automation` word ending
-  the name or the mailbox's local part (`semantic-release-bot`, `Renovate Bot`,
-  `ci_bot@`), standing alone so Talbot and `jean.bot@` pass. The last three are
-  structural rather than nominal, which is why a second automation lands in the
-  right place with no edit to the list; a machine configured with a person-shaped
-  name and mailbox stays out of reach, and the reviewer is the check on it. The
+  the name or the mailbox's local part, standing alone or joined by `-` or `_`
+  (`semantic-release-bot`, `ci_bot@`, and `Renovate Bot` at its default
+  `bot@renovateapp.com`), so Talbot, `jean.bot@` and a person named `Jan Bot`
+  pass. The `[bot]` suffix and the bot mailbox are structural rather than
+  nominal, which is why a second automation the forge stamps lands in the right
+  place with no edit to the list; the trailing word is a name shape, drawn
+  narrowly, and a machine configured with a person-shaped name and mailbox stays
+  out of reach, and the reviewer is the check on it. The
   sixth signal is checked in the AUTHOR role only: **any** address whose mailbox
   begins `noreply@` or `donotreply@` (with or without hyphens), whatever the host — it
   is not scoped to a vendor, because an address named for not being read names

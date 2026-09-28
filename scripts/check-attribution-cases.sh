@@ -654,9 +654,20 @@ commit_as 'semantic-release-bot' '12345+semantic-release-bot@users.noreply.githu
 	'semantic-release-bot' '12345+semantic-release-bot@users.noreply.github.com' "$MSG_OK"
 commits_case reject "configured automation name at a forge no-reply address"
 
-commit_as 'Renovate Bot' 'renovate@example.invalid' \
+# A display name with the word joined by `-` or `_` is a configured account's.
+commit_as 'semantic-release-bot' 'release@example.invalid' \
 	REPPL human@example.invalid "$MSG_OK"
-commits_case reject "automation display name ending in the word Bot"
+commits_case reject "automation display name joined to the word bot by a hyphen"
+
+commit_as 'ci_bot' 'ci@example.invalid' \
+	REPPL human@example.invalid "$MSG_OK"
+commits_case reject "automation display name joined to the word bot by an underscore"
+
+# Renovate's default identity: whitespace does not separate in the display
+# name, so its local part is what refuses it.
+commit_as 'Renovate Bot' 'bot@renovateapp.com' \
+	REPPL human@example.invalid "$MSG_OK"
+commits_case reject "Renovate Bot at its default address, refused by the local part"
 
 commit_as 'Release' 'release_automation@example.invalid' \
 	REPPL human@example.invalid "$MSG_OK"
@@ -674,6 +685,12 @@ commits_case accept "human surname ending in the letters bot"
 commit_as 'Jean Abbott' 'jean.bot@example.invalid' \
 	'Jean Abbott' 'jean.bot@example.invalid' "$MSG_OK"
 commits_case accept "human whose local part ends .bot"
+
+# Whitespace does not separate the word in a display name: a person whose
+# surname is Bot is a person.
+commit_as 'Jan Bot' 'jan@example.invalid' \
+	'Jan Bot' 'jan@example.invalid' "$MSG_OK"
+commits_case accept "human whose surname is Bot"
 
 # --- Merge commits carry an identity too (iss-2609082001204831) ----------------
 # The first hole: the commits arm walked `--no-merges`, so a merge commit's
