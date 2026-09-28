@@ -172,7 +172,8 @@ func Where(home, name string) (string, error) {
 // Set stores a credential under name in the chosen home: the one write every
 // setup goes through (the walkthrough, Walk, is its only caller outside this
 // package's tests). It refuses, before writing a value or an index entry and
-// never echoing a value: the abcd home inside a git working tree; a name
+// never echoing a value: a ~/.abcd that is a symlink, in every home, before
+// anything is created; the abcd home inside a git working tree; a name
 // another home already holds, or a different value in the same home, because a
 // stored secret is never replaced unasked; a keychain on a platform without
 // one; and a pointer that does not resolve. The same value again is no change.
@@ -204,6 +205,16 @@ func Set(home, name string, c Choice) (changed bool, err error) {
 	default:
 		return false, fmt.Errorf("credential: home %q is not one of external, abcd, keychain", boundHome(c.Home))
 	}
+	// A ~/.abcd that is a symlink (into a dotfiles repository, say) is
+	// refused first, in every home, before anything is created: the value,
+	// the index and both locks would land wherever the link points, and a
+	// working-tree check of the lexical path below cannot see a repository
+	// the link leads into. It is the rule every other reader and writer of
+	// ~/.abcd applies (fsutil.HomeScopeLink); the walk below holds it against
+	// a race.
+	if err := fsutil.HomeScopeLink(home, indexRel); err != nil {
+		return false, fmt.Errorf("credential: nothing was written: %v", err)
+	}
 	// The abcd home is the one home that writes a value under ~/.abcd, so it
 	// alone is refused inside a git working tree. The keychain keeps its value
 	// outside the home, and the index holds names and pointers only, scanned
@@ -212,18 +223,27 @@ func Set(home, name string, c Choice) (changed bool, err error) {
 	if c.Home == HomeABCD && workingTreeAbove(filepath.Join(home, ".abcd")) != "" {
 		return false, errors.New("credential: ~/.abcd lies inside a git working tree, where a commit could carry the credential, so the abcd home is refused and nothing was written; choose the keychain or an external home")
 	}
-	dir := filepath.Join(home, ".abcd")
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+	// ~/.abcd is created, judged and opened in one walk relative to the
+	// descriptor of home (fsutil.EnsureHomeScope), and the index's lock and
+	// its write are reached through that descriptor, so a link swapped in
+	// after the judgement is refused rather than written through
+	// (iss-2609281310017733).
+	dir, err := fsutil.EnsureHomeScope(home, ".abcd", 0o700)
+	if errors.Is(err, fsutil.ErrHomeScopeSymlinked) {
+		return false, fmt.Errorf("credential: nothing was written: %v", err)
+	}
+	if err != nil {
 		return false, errors.New("credential: ~/.abcd could not be created, so nothing was written")
 	}
+	defer dir.Close()
 	// One lock, the index's, is held across the whole write: where the name
 	// is held, the value's write and the index's. Two Sets of one name to two
 	// homes therefore cannot both land. The abcd home's own lock (SetMachine)
 	// is taken inside this one, always in that order; no writer takes the two
 	// the other way round.
-	err = fsutil.WithFileLock(filepath.Join(dir, indexLockFileName), indexLockTimeout, func() error {
+	err = fsutil.WithFileLockIn(dir, indexLockFileName, indexLockTimeout, func() error {
 		var werr error
-		changed, werr = setUnderLock(home, name, c)
+		changed, werr = setUnderLock(home, dir, name, c)
 		return werr
 	})
 	switch {
@@ -236,8 +256,9 @@ func Set(home, name string, c Choice) (changed bool, err error) {
 }
 
 // setUnderLock is Set's read of where name is held and its write, run under
-// the index's lock.
-func setUnderLock(home, name string, c Choice) (bool, error) {
+// the index's lock. dir is ~/.abcd as Set's walk opened it; the index is
+// written through it.
+func setUnderLock(home string, dir *os.Root, name string, c Choice) (bool, error) {
 	held, err := Where(home, name)
 	if err != nil {
 		return false, err
@@ -257,7 +278,7 @@ func setUnderLock(home, name string, c Choice) (bool, error) {
 		}
 		// The index is judged before the keychain is touched, so a refusal
 		// leaves nothing in either.
-		if err := setIndex(home, name, indexEntry{Home: HomeKeychain}, true); err != nil {
+		if err := setIndex(home, dir, name, indexEntry{Home: HomeKeychain}, true); err != nil {
 			return false, err
 		}
 		// An item a failed earlier write left behind is adopted when it holds
@@ -273,7 +294,7 @@ func setUnderLock(home, name string, c Choice) (bool, error) {
 				return false, err
 			}
 		}
-		if err := setIndex(home, name, indexEntry{Home: HomeKeychain}, false); err != nil {
+		if err := setIndex(home, dir, name, indexEntry{Home: HomeKeychain}, false); err != nil {
 			return false, fmt.Errorf("%w; the keychain holds the item, and the next write of the same value records it", err)
 		}
 		return true, nil
@@ -284,7 +305,7 @@ func setUnderLock(home, name string, c Choice) (bool, error) {
 	if held == HomeExternal {
 		return false, samePointer(home, name, c.Pointer)
 	}
-	if err := setIndex(home, name, indexEntry{Home: HomeExternal, Pointer: c.Pointer}, false); err != nil {
+	if err := setIndex(home, dir, name, indexEntry{Home: HomeExternal, Pointer: c.Pointer}, false); err != nil {
 		return false, err
 	}
 	return true, nil
@@ -341,31 +362,38 @@ func boundHome(h string) string {
 // maxIndexBytes bounds the index read.
 const maxIndexBytes = 64 << 10
 
+// indexRel is the index's place in the home, in the slash form the
+// home-scoped primitives take.
+const indexRel = ".abcd/" + IndexFileName
+
 // readIndex reads the index under the same refusals as the abcd home: a
 // regular file, owned by the caller, owner-only, naming each credential once,
 // every entry a known home. An absent index is empty.
+//
+// Every guard is judged by fsutil.ReadHomeDeclarationDenying, as readStore's
+// are: an index behind a symlinked ~/.abcd is refused on the descriptor walk
+// of ~/.abcd, and the leaf's type, owner and mode on the opened file's own
+// fstat, never on a path first.
 func readIndex(home string) (map[string]indexEntry, error) {
-	p := filepath.Join(home, ".abcd", IndexFileName)
-	fi, err := os.Lstat(p)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return map[string]indexEntry{}, nil
-		}
-		return nil, fmt.Errorf("credential: %s could not be examined, so it is not read", IndexPath)
-	}
-	if !fi.Mode().IsRegular() {
-		return nil, fmt.Errorf("credential: %s is not a regular file (a symlink is never followed), so it is not read", IndexPath)
-	}
-	if fi.Mode().Perm()&0o077 != 0 {
-		return nil, fmt.Errorf("credential: %s can be read or written by group or other (mode %04o), so it is not read; `chmod 0600 %s`", IndexPath, fi.Mode().Perm(), IndexPath)
-	}
-	raw, refusal, err := fsutil.ReadDeclaration(p, maxIndexBytes)
+	raw, refusal, err := fsutil.ReadHomeDeclarationDenying(home, indexRel, maxIndexBytes, 0o077)
+	var mode *fsutil.DeclarationModeError
 	switch {
+	case refusal == fsutil.DeclarationOK:
 	case refusal == fsutil.DeclarationAbsent && errors.Is(err, os.ErrNotExist):
 		return map[string]indexEntry{}, nil
+	case refusal == fsutil.DeclarationAbsent:
+		return nil, fmt.Errorf("credential: %s could not be examined, so it is not read", IndexPath)
+	case refusal == fsutil.DeclarationBehindSymlink:
+		return nil, fmt.Errorf("credential: %s is not read: %v", IndexPath, err)
+	case refusal == fsutil.DeclarationNotRegular:
+		return nil, fmt.Errorf("credential: %s is not a regular file (a symlink is never followed), so it is not read", IndexPath)
+	case refusal == fsutil.DeclarationExposed && errors.As(err, &mode):
+		return nil, fmt.Errorf("credential: %s can be read or written by group or other (mode %04o), so it is not read; `chmod 0600 %s`", IndexPath, uint32(mode.Perm), IndexPath)
+	case refusal == fsutil.DeclarationWritableByOthers:
+		return nil, fmt.Errorf("credential: %s can be written by group or other, so it is not read; `chmod 0600 %s`", IndexPath, IndexPath)
 	case refusal == fsutil.DeclarationForeignOwner:
 		return nil, fmt.Errorf("credential: %s is not owned by you, so it is not read", IndexPath)
-	case err != nil:
+	default:
 		return nil, fmt.Errorf("credential: %s could not be read safely (mode 0600, owned by you, a regular file), so it is not read", IndexPath)
 	}
 	var idx map[string]indexEntry
@@ -398,8 +426,9 @@ var indexLockTimeout = 5 * time.Second
 
 // setIndex adds e under name to the index, or, with dryRun, judges the write
 // (the scanner included) without making it. The caller, Set, holds the index's
-// lock across the read, the scan and the write, and has created ~/.abcd.
-func setIndex(home, name string, e indexEntry, dryRun bool) error {
+// lock across the read, the scan and the write, and passes dir, ~/.abcd as its
+// walk created, judged and opened it; the write goes through that descriptor.
+func setIndex(home string, dir *os.Root, name string, e indexEntry, dryRun bool) error {
 	idx, err := readIndex(home)
 	if err != nil {
 		return err
@@ -419,7 +448,7 @@ func setIndex(home, name string, e indexEntry, dryRun bool) error {
 	if dryRun {
 		return nil
 	}
-	if err := fsutil.WriteFileAtomic(filepath.Join(home, ".abcd", IndexFileName), body, 0o600); err != nil {
+	if err := fsutil.WriteFileAtomicInRoot(dir, IndexFileName, body, 0o600); err != nil {
 		return fmt.Errorf("credential: %s could not be written, so the credential's home was not recorded", IndexPath)
 	}
 	return nil

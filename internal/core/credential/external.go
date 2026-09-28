@@ -72,14 +72,26 @@ func resolvePointer(home, name string, p Pointer) (string, error) {
 		}
 		return v, nil
 	}
-	path := filepath.Join(home, filepath.FromSlash(strings.TrimPrefix(p.File, "~/")))
+	// A directory on the way to the file that is a symlink (~/.config linked
+	// into a dotfiles repository, say) is refused first, naming the link: the
+	// working-tree check below judges the lexical path and cannot see a
+	// repository the link leads into. The read then goes through the
+	// descriptor walk of the directories judged (fsutil.ReadHomeDeclaration),
+	// never the path again.
+	rel := strings.TrimPrefix(p.File, "~/")
+	if err := fsutil.HomeScopeLink(home, rel); err != nil {
+		return "", fmt.Errorf("credential: %s points at %s, which is not read: %v", name, p.File, err)
+	}
+	path := filepath.Join(home, filepath.FromSlash(rel))
 	if tree := workingTreeAbove(filepath.Dir(path)); tree != "" {
 		return "", fmt.Errorf("credential: %s points at %s, which lies inside a git working tree, where a commit could carry it, so it is not read", name, p.File)
 	}
-	raw, refusal, err := fsutil.ReadDeclaration(path, maxToolFileBytes)
+	raw, refusal, err := fsutil.ReadHomeDeclaration(home, rel, maxToolFileBytes)
 	switch {
 	case refusal == fsutil.DeclarationAbsent && errors.Is(err, os.ErrNotExist):
 		return "", notSetError{name: name, why: "the file " + p.File + " it points at does not exist"}
+	case refusal == fsutil.DeclarationBehindSymlink:
+		return "", fmt.Errorf("credential: %s points at %s, which is not read: %v", name, p.File, err)
 	case refusal == fsutil.DeclarationNotRegular:
 		return "", fmt.Errorf("credential: %s points at %s, which is not a regular file (a symlink is never followed), so it is not read", name, p.File)
 	case refusal == fsutil.DeclarationWritableByOthers:
