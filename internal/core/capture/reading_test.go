@@ -555,8 +555,19 @@ const fixtureRun = "rdg-2608300000000001"
 // because the gate only READS the channel's output (spc-2609020626040342, Out).
 func commitComparativeRun(t *testing.T, repo, compRun, candidateRun string) {
 	t.Helper()
-	writeFile(t, filepath.Join(repo, filepath.FromSlash(issueschema.ReadingsRecordDir), compRun, issueschema.RunRecordFileName),
-		`{"run_id":"`+compRun+`","position":"comparative","candidate_run":"`+candidateRun+`"}`)
+	writeComparativeRun(t, repo, compRun, candidateRun)
+}
+
+// writeComparativeRun writes the pair the comparative channel's ingest leaves in
+// a committed run's directory — the manifest it promotes and the run record
+// after it — agreeing on the run id, the position and the candidate join, which
+// is what ComparativeRunFor holds a committed run to (iss-2609251842111593).
+func writeComparativeRun(t *testing.T, repo, compRun, candidateRun string) {
+	t.Helper()
+	dir := filepath.Join(repo, filepath.FromSlash(issueschema.ReadingsRecordDir), compRun)
+	head := `{"run_id":"` + compRun + `","position":"comparative","candidate_run":"` + candidateRun + `"}`
+	writeFile(t, filepath.Join(dir, issueschema.RunManifestFileName), head)
+	writeFile(t, filepath.Join(dir, issueschema.RunRecordFileName), head)
 }
 
 // dispositionFiles lists every file under the dispositions tree, for a test that

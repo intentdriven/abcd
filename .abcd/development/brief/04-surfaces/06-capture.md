@@ -194,7 +194,13 @@ second** (itd-2609020625400194, spc-2609020626040342). No disposition in any
 state, and no admission, is written for a widening item until a committed
 comparative run names the item's run; a comparative run committed with an empty
 item set, the position not exercised, satisfies this as a characterising run
-does. The refusal names the run it is waiting on. It is one gate in the one
+does. A committed run is the pair the channel's ingest leaves in the run's
+directory, its manifest and its run record, agreeing on the run id, the position
+and the candidate join; a run record naming the item's run without that
+agreement, such as a marker written by hand, is refused by name as a record that
+contradicts itself (iss-2609251842111593). Whether git tracks the pair is not
+asked, because the gate answers between an ingest and the commit that carries
+it. The refusal names the run it is waiting on. It is one gate in the one
 disposition writer every verb routes through, so the disposition verb, the
 admission verb and a scribe's ingest all refuse the same way. The other
 positions are answered with no comparative run anywhere.

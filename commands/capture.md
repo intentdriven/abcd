@@ -500,7 +500,8 @@ run. The refusal names the run and says what it is waiting for: the comparative
 reading over that run, ingested through `/abcd:reading`. A comparative run
 committed with an empty item set, the position not exercised, satisfies it too.
 Every other position is answered with no comparative run anywhere. Relay the
-refusal; do not write the record by hand to get past it.
+refusal; do not write the record by hand to get past it: a run record without the
+manifest the ingest writes beside it, or disagreeing with it, is refused by name.
 
 ## Admit a widening proposal
 
