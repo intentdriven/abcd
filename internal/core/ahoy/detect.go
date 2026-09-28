@@ -86,7 +86,10 @@ func Detect(cwd string) (DetectionResult, error) {
 		pluginRoot:       pluginRoot,
 	}
 
-	var gaps []Gap
+	// Seeded non-nil: a folder with nothing outstanding renders "gaps": [], never
+	// null, so a consumer iterating the list does not fail on the healthy case
+	// (iss-2609120447487070).
+	gaps := []Gap{}
 	gaps = append(gaps, detectPluginRoot(pluginOK)...)
 	if kind != UnmanagedFolder {
 		gaps = append(gaps, detectDependencies(abs)...)
