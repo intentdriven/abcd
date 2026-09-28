@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"io/fs"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"time"
 
@@ -972,6 +974,41 @@ func writeRepoJSON(cwd, rel string, v any) error {
 	}
 	defer root.Close()
 	return fsutil.WriteFileAtomicPreserveModeInRoot(root, rel, data)
+}
+
+// createRepoJSON creates v at a repo-.abcd path only when nothing is there,
+// through an os.Root opened at cwd like writeRepoJSON. It reports wrote=false
+// with no error when the path already exists: a file that appeared after
+// detection is kept, not replaced. The exclusive create resolves every
+// component through the Root, so a symlinked `.abcd` ancestor escaping the
+// tree is refused rather than followed (GHSA-xrf8-4432-gw2f). The new file's
+// mode is pinned to 0644, the mode the atomic writer gives it, whatever the
+// umask.
+func createRepoJSON(cwd, rel string, v any) (wrote bool, err error) {
+	data, err := marshalJSON(v)
+	if err != nil {
+		return false, err
+	}
+	root, err := os.OpenRoot(cwd)
+	if err != nil {
+		return false, err
+	}
+	defer root.Close()
+	if dir := path.Dir(rel); dir != "." {
+		if err := root.MkdirAll(dir, 0o755); err != nil {
+			return false, err
+		}
+	}
+	if err := fsutil.CreateExclusiveIn(root, rel, data, 0o644); err != nil {
+		if errors.Is(err, fs.ErrExist) {
+			return false, nil
+		}
+		return false, err
+	}
+	if err := root.Chmod(rel, 0o644); err != nil {
+		return true, err
+	}
+	return true, nil
 }
 
 // writeConfig persists a config map deterministically, contained under cwd.
