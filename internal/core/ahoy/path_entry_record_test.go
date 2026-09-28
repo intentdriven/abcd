@@ -70,36 +70,37 @@ func repoForInstall(t *testing.T) string {
 	return repo
 }
 
-// TestPinnedSymlinkInstallRecordsThePathEntry is the headline defect. With no
-// verified cache artefact to copy from, install degrades — loudly, and by
-// design — to the spc-21 pinned symlink. That symlink is a working `abcd` on
-// PATH, and docs/how-to/install.md routes readers to this very path, yet
-// nothing recorded it, so every hook refused the binary the guide had just told
-// the user to install.
+// TestPinnedSymlinkInstallRecordsThePathEntry is the headline defect. The
+// spc-21 pinned symlink an earlier release wrote into the plugin root is a
+// working `abcd` on PATH, yet nothing recorded it, so every hook refused the
+// binary the guide had just told the user to install. With no verified cache
+// artefact to replace it with, install leaves the working pin where it stands
+// (iss-2609100506263330) — and records it, so the hooks accept it meanwhile.
 func TestPinnedSymlinkInstallRecordsThePathEntry(t *testing.T) {
 	home, pluginRoot := setupUserScope(t)
+	coldCache(t)
 	binDir := filepath.Join(home, ".local", "bin")
 	t.Setenv("PATH", binDir)
-	// No seedDataCache: this is the documented degraded path.
+	target := filepath.Join(binDir, "abcd")
+	linkOwned(t, target, pluginRoot)
 
 	res, err := Install(repoForInstall(t), installOpts(), RefusingPrompter{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	target := filepath.Join(binDir, "abcd")
 	fi, err := os.Lstat(target)
 	if err != nil {
-		t.Fatalf("install did not create %s: %v (notes %v)", target, err, res.Notes)
+		t.Fatalf("install removed %s: %v (notes %v)", target, err, res.Notes)
 	}
 	if fi.Mode()&os.ModeSymlink == 0 {
-		t.Fatalf("this test must exercise the degraded pinned-symlink path; got a regular file")
+		t.Fatalf("this test must exercise the pinned-symlink path; got a regular file")
 	}
 	if dest, _ := os.Readlink(target); resolveSymlinkDest(target, dest) != resolvePath(pluginBinaryPath(pluginRoot)) {
 		t.Fatalf("the pinned symlink does not point at the plugin binary")
 	}
 	assertShimWouldAccept(t, binDir)
-	if res.Status != "clean" {
-		t.Errorf("status = %q (remaining %v), want clean — an install the hooks accept has nothing left over", res.Status, res.Remaining)
+	if containsString(res.Remaining, "symlink.unrecorded") {
+		t.Errorf("the pin is still unrecorded after the install that records it; remaining %v", res.Remaining)
 	}
 }
 
@@ -157,9 +158,11 @@ func TestUnrecordedOwnedEntryIsItsOwnGap(t *testing.T) {
 		still func(t *testing.T, target string) bool
 	}{
 		{
+			// On a cold cache: with a verified artefact, install heals the pin
+			// to the owned copy, which is a change of shape by design.
 			name:  "pinned symlink",
 			opts:  installOpts,
-			plant: func(t *testing.T, target, pluginRoot string) { linkOwned(t, target, pluginRoot) },
+			plant: func(t *testing.T, target, pluginRoot string) { coldCache(t); linkOwned(t, target, pluginRoot) },
 			still: func(t *testing.T, target string) bool {
 				fi, err := os.Lstat(target)
 				return err == nil && fi.Mode()&os.ModeSymlink != 0

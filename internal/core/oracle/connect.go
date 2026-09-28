@@ -228,12 +228,19 @@ var configLockTimeout = 5 * time.Second
 // after this one's check is refused rather than replaced.
 func writeProviderBlock(home, name string, block map[string]any) error {
 	origin := layered.Config.MachineOrigin()
-	p := filepath.Join(home, ".abcd", filepath.FromSlash(layered.Config.MachineRel))
+	rel := ".abcd/" + layered.Config.MachineRel
+	// The machine layer refuses a file behind a symlinked ~/.abcd, so a block
+	// written through the link would land wherever it points (a dotfiles
+	// checkout) and never be read back.
+	if err := fsutil.HomeScopeLink(home, rel); err != nil {
+		return fmt.Errorf("oracle adapter: the provider block was not written to %s: %v", origin, err)
+	}
+	p := filepath.Join(home, filepath.FromSlash(rel))
 	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
 		return fmt.Errorf("oracle adapter: ~/.abcd could not be created, so the provider block was not written")
 	}
 	err := fsutil.WithFileLock(filepath.Join(filepath.Dir(p), configLockFileName), configLockTimeout, func() error {
-		return writeProviderBlockLocked(p, name, block)
+		return writeProviderBlockLocked(home, name, block)
 	})
 	switch {
 	case errors.Is(err, fsutil.ErrLockContention):
@@ -248,10 +255,12 @@ func writeProviderBlock(home, name string, block map[string]any) error {
 
 // writeProviderBlockLocked is writeProviderBlock's read, change and write,
 // run under the file's lock.
-func writeProviderBlockLocked(p, name string, block map[string]any) error {
+func writeProviderBlockLocked(home, name string, block map[string]any) error {
 	origin := layered.Config.MachineOrigin()
+	rel := ".abcd/" + layered.Config.MachineRel
+	p := filepath.Join(home, filepath.FromSlash(rel))
 	root := map[string]json.RawMessage{}
-	raw, refusal, err := fsutil.ReadDeclaration(p, layered.MaxFileBytes)
+	raw, refusal, err := fsutil.ReadHomeDeclaration(home, rel, layered.MaxFileBytes)
 	switch {
 	case refusal == fsutil.DeclarationAbsent && errors.Is(err, os.ErrNotExist):
 	case refusal != fsutil.DeclarationOK || err != nil:

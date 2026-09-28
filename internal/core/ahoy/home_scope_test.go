@@ -152,3 +152,75 @@ func TestInstallSendsARefusedHomeToTheRightRemedy(t *testing.T) {
 		t.Errorf("a refused home must not be answered with the re-authenticate remedy; notes = %v", res.Notes)
 	}
 }
+
+// symlinkAbcdHome replaces home's ~/.abcd with a symlink to a directory
+// elsewhere holding the same records — the dotfiles shape — and returns that
+// directory, so a test can see what a write through the link would land in.
+func symlinkAbcdHome(t *testing.T, home string) string {
+	t.Helper()
+	elsewhere := t.TempDir()
+	plantHomeRecords(t, elsewhere)
+	if err := os.RemoveAll(filepath.Join(home, ".abcd")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(elsewhere, ".abcd"), filepath.Join(home, ".abcd")); err != nil {
+		t.Fatal(err)
+	}
+	return filepath.Join(elsewhere, ".abcd")
+}
+
+// TestHomeScopedRecordsRefuseASymlinkedAbcdHome is iss-2609281017573862: the
+// rules loader refuses a rules.json behind a symlinked ~/.abcd, and the two
+// records that decide which binary the hooks run and which binary is promoted
+// onto PATH were read through the very same link. Well-formed records, owned
+// and owner-only: the ONLY defect is that ~/.abcd is a link.
+func TestHomeScopedRecordsRefuseASymlinkedAbcdHome(t *testing.T) {
+	home, _ := setupHermetic(t)
+	target := symlinkAbcdHome(t, home)
+	t.Chdir(adoptableRepo(t))
+	assertHomeScopeRefused(t, "reaches its records through a symlinked ~/.abcd")
+
+	_, problem := cacheBindingProblem("/harness/data")
+	if !strings.Contains(problem, "~/.abcd is a symlink") {
+		t.Errorf("the binding refusal must name the symlinked ~/.abcd, got %q", problem)
+	}
+
+	// The writer refuses too: a record written through the link is one every
+	// reader then refuses, and it lands in whatever the link points at.
+	if err := os.Remove(filepath.Join(target, "path-entry")); err != nil {
+		t.Fatal(err)
+	}
+	if err := writePathEntry(filepath.Join(t.TempDir(), "abcd"), strings.Repeat("b", 64), ""); err == nil {
+		t.Error("writePathEntry wrote through a symlinked ~/.abcd")
+	}
+	if _, err := os.Lstat(filepath.Join(target, "path-entry")); !os.IsNotExist(err) {
+		t.Errorf("a path-entry landed behind the symlinked ~/.abcd: %v", err)
+	}
+}
+
+// TestInstallSendsASymlinkedAbcdHomeToTheRightRemedy: a symlinked ~/.abcd is a
+// refused home like the two shapes above, and its remedy is replacing the
+// link, never "start a session with network access" — the hooks decline to
+// write the attestation through the link for the same reason this run declines
+// to read it.
+func TestInstallSendsASymlinkedAbcdHomeToTheRightRemedy(t *testing.T) {
+	setupUserScope(t)
+	repo := adoptableRepo(t)
+	home := t.TempDir()
+	symlinkAbcdHome(t, home)
+	seedDataCache(t, cacheArtefact)
+	t.Chdir(repo)
+	t.Setenv("HOME", home)
+
+	res, err := Install(repo, installOpts(), RefusingPrompter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	joined := notesJoined(res.Notes)
+	if !strings.Contains(joined, "~/.abcd is a symlink") {
+		t.Errorf("the refusal must name the symlinked ~/.abcd; notes = %v", res.Notes)
+	}
+	if strings.Contains(joined, "Start a session with network access") {
+		t.Errorf("a symlinked ~/.abcd must not be answered with the re-authenticate remedy; notes = %v", res.Notes)
+	}
+}

@@ -109,11 +109,11 @@ func TestDevInstallWritesShimAndSurfacesMode(t *testing.T) {
 	}
 }
 
-// TestNormalInstallRegressionPin is coverage (b): a plain normal install still
-// creates the pinned-binary symlink and records NO install section — byte-for-byte
-// the pre-dev-mode behaviour.
+// TestNormalInstallRegressionPin is coverage (b): a plain normal install
+// creates the pinned entry — the owned copy of the verified release artefact —
+// and records NO install section.
 func TestNormalInstallRegressionPin(t *testing.T) {
-	_, pluginRoot := setupHermetic(t)
+	setupHermetic(t)
 	repo := t.TempDir()
 	if err := os.Mkdir(filepath.Join(repo, ".git"), 0o755); err != nil {
 		t.Fatal(err)
@@ -121,18 +121,7 @@ func TestNormalInstallRegressionPin(t *testing.T) {
 	if _, err := Install(repo, installOpts(), RefusingPrompter{}); err != nil {
 		t.Fatal(err)
 	}
-	target := binTarget()
-	fi, err := os.Lstat(target)
-	if err != nil {
-		t.Fatalf("PATH target not created: %v", err)
-	}
-	if fi.Mode()&os.ModeSymlink == 0 {
-		t.Fatalf("normal install did not create a symlink")
-	}
-	dest, _ := os.Readlink(target)
-	if resolveSymlinkDest(target, dest) != resolvePath(pluginBinaryPath(pluginRoot)) {
-		t.Errorf("symlink dest = %q, want %q", dest, pluginBinaryPath(pluginRoot))
-	}
+	assertOwnedCopyAt(t, binTarget())
 	if configHasInstallSection(t, repo) {
 		t.Errorf("normal install wrote an install section; want none (regression)")
 	}
@@ -188,9 +177,10 @@ func TestInstallPinnedToDevTransition(t *testing.T) {
 }
 
 // TestInstallDevToPinnedTransition is coverage (c), the other direction: a --dev
-// install followed by a plain install applies-as-update, restoring the symlink.
+// install followed by a plain install applies-as-update, restoring the pinned
+// owned copy.
 func TestInstallDevToPinnedTransition(t *testing.T) {
-	_, pluginRoot := setupHermetic(t)
+	setupHermetic(t)
 	repo := t.TempDir()
 	if err := os.Mkdir(filepath.Join(repo, ".git"), 0o755); err != nil {
 		t.Fatal(err)
@@ -208,17 +198,7 @@ func TestInstallDevToPinnedTransition(t *testing.T) {
 	if !containsChange(res.Changes, "install_mode: dev -> pinned") {
 		t.Errorf("changes = %v, want an install_mode dev -> pinned echo", res.Changes)
 	}
-	fi, err := os.Lstat(binTarget())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if fi.Mode()&os.ModeSymlink == 0 {
-		t.Errorf("transition did not restore the symlink")
-	}
-	dest, _ := os.Readlink(binTarget())
-	if resolveSymlinkDest(binTarget(), dest) != resolvePath(pluginBinaryPath(pluginRoot)) {
-		t.Errorf("restored symlink dest = %q, want %q", dest, pluginBinaryPath(pluginRoot))
-	}
+	assertOwnedCopyAt(t, binTarget())
 	if got := detectInstallModeSignal(t, repo); got != "pinned" {
 		t.Errorf("install_mode signal = %q, want pinned", got)
 	}

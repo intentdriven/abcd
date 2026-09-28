@@ -86,11 +86,32 @@ func lockStillNamesFd(lockPath string, fd int) (bool, error) {
 	return held.Dev == named.Dev && held.Ino == named.Ino, nil
 }
 
+// lockPerm is the mode a lock file is created at: the owner's alone. flock
+// needs no write access — a READ-ONLY descriptor holds LOCK_EX — so a lock any
+// other local user can open is one they can hold for as long as they like,
+// stalling every writer behind it for its whole wait (iss-2609260958587561).
+// Every writer that takes the lock opens it O_RDWR, which a 0644 file already
+// admitted to the owner alone, so nothing that could take the lock before loses
+// it.
+const lockPerm = 0o600
+
+// tightenLock narrows a lock file an earlier version created group- or
+// other-readable to lockPerm, on the descriptor already open, so the file the
+// guard judged is the file changed. It is best-effort: a lock this uid does not
+// own cannot be changed, and refusing the lock over its mode would fail a
+// writer that worked before.
+func tightenLock(fd int, mode uint32) {
+	if mode&0o077 != 0 {
+		_ = syscall.Fchmod(fd, lockPerm)
+	}
+}
+
 // openLockFd opens lockPath with O_CREAT|O_RDWR|O_NOFOLLOW and verifies, on the
 // same descriptor, that it is a regular file — refusing a symlinked or
-// non-regular lock path with ErrLockPathUnsafe.
+// non-regular lock path with ErrLockPathUnsafe. The file is created, or
+// narrowed, to lockPerm.
 func openLockFd(lockPath string) (int, error) {
-	fd, err := syscall.Open(lockPath, syscall.O_CREAT|syscall.O_RDWR|syscall.O_NOFOLLOW, 0o644)
+	fd, err := syscall.Open(lockPath, syscall.O_CREAT|syscall.O_RDWR|syscall.O_NOFOLLOW, lockPerm)
 	if err != nil {
 		if err == syscall.ELOOP {
 			return -1, fmt.Errorf("%w: lock path is a symlink: %s", ErrLockPathUnsafe, lockPath)
@@ -106,6 +127,7 @@ func openLockFd(lockPath string) (int, error) {
 		syscall.Close(fd)
 		return -1, fmt.Errorf("%w: lock path is not a regular file: %s", ErrLockPathUnsafe, lockPath)
 	}
+	tightenLock(fd, uint32(st.Mode))
 	return fd, nil
 }
 
@@ -169,7 +191,7 @@ func openLockIn(root *os.Root, rel string) (*os.File, error) {
 	case lerr != nil && !errors.Is(lerr, os.ErrNotExist):
 		return nil, lerr
 	}
-	f, err := openOrCreateIn(root, rel, os.O_RDWR|syscall.O_NOFOLLOW, 0o644)
+	f, err := openOrCreateIn(root, rel, os.O_RDWR|syscall.O_NOFOLLOW, lockPerm)
 	if err != nil {
 		return nil, err
 	}
@@ -182,6 +204,7 @@ func openLockIn(root *os.Root, rel string) (*os.File, error) {
 		f.Close()
 		return nil, fmt.Errorf("%w: lock path changed or is not a regular file: %s", ErrLockPathUnsafe, rel)
 	}
+	tightenLock(int(f.Fd()), uint32(st.Mode().Perm()))
 	return f, nil
 }
 

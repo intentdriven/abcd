@@ -109,13 +109,31 @@ failure and let the user pick a directory they own. If the report carries a
 `path.bin_dir_not_on_path` gap, relay its one-line `export` fix verbatim and
 leave the user's shell profile alone.
 
+The entry install writes is the abcd-owned copy of the verified release binary,
+taken from the persistent plugin data directory a session's hooks provision.
+When no verified copy is there, install writes no entry at all rather than a
+symlink into the plugin root, which stops working at the next plugin update, and
+its note names the command to run first: the install one-liner in the README,
+which downloads the release binary, verifies it against that release's own
+checksums and records it, after which a re-run of `ahoy install` adopts it.
+Relay that note verbatim. A `symlink.legacy` gap is a symlink into the plugin
+root that an earlier release wrote: it works until the next plugin update, and
+its fix hint says whether install replaces it now or which command comes first.
+A `symlink.dangling` gap whose detail calls the entry abcd-owned — including an
+entry `~/.abcd/path-entry` records — is repaired by install the same way. When
+that entry is not the one install acts on (a link a plugin update stranded ahead
+of the copy the one-liner wrote), install removes it with its record once the
+entry it does act on is working, and a note names what it removed.
+
 A `symlink.shadowed` gap (or a note saying the same) means another `abcd` comes
 first on `PATH`, so the entry abcd just wrote is NOT what runs — typically a
 binary an older install copied into a system directory. Relay it prominently:
 the install is not finished from the user's point of view. abcd will not remove
 that binary, and neither should you offer to; state the two remedies it gives
 (delete the stale one, or install ahead of it with `--bin-dir`) and let the user
-choose.
+choose. When the occupant is a link whose target is gone, the gap says it runs
+nothing (the shell skips it) and asks for it to be removed; relay that, not the
+"not what runs" framing above.
 
 Prompts read stdin whether or not stdin is a terminal, so an answer can be
 relayed without one:
@@ -298,7 +316,9 @@ the source tip on every call and fails loudly on a broken build. Re-running
 
 **This writes.** It removes the BEGIN/END marker block and abcd's own `PATH`
 entry — the owned copy (or a legacy pinned symlink), found wherever it sits on
-`PATH`, along with its provenance record — and leaves `.abcd/` intact, so the
+`PATH`, along with its provenance record; a dangling link that record names is
+removed with it even when no plugin root resolves any more — and leaves
+`.abcd/` intact, so the
 repo's record survives. The persistent download cache is left to the harness's
 own uninstall to delete. Report `marker.removed` and the entry note; the
 receipt's `symlink.target` is already rendered in tilde form, so relay it as
@@ -412,7 +432,9 @@ to the first model listed, and only when that call succeeds writes the key into
 the owner-only `~/.abcd/credentials.json` and the provider block (the base URL,
 the key's name and the models, the allowlist) into `~/.abcd/config.json`.
 Nothing goes into the repository or the harness's settings, and a failed
-verification writes nothing. `--home none` sets up a server that takes no key.
+verification writes nothing. A `~/.abcd` that is a symlink (into a dotfiles
+checkout, say) is refused with nothing written, naming the link: the key would
+otherwise land wherever it points. `--home none` sets up a server that takes no key.
 The `external` and `keychain` homes arrive with the credential store
 (itd-2609221017023290) and are refused, naming it, before any call.
 

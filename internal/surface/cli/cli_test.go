@@ -235,6 +235,7 @@ func hermeticRepo(t *testing.T) string {
 	// status line to a hermetic install (spc-70).
 	t.Setenv("CLAUDE_CONFIG_DIR", "")
 	t.Setenv("ABCD_BIN_TARGET", filepath.Join(t.TempDir(), "bin", "abcd"))
+	provisionHermeticCache(t, home)
 
 	repo := t.TempDir()
 	if err := os.Mkdir(filepath.Join(repo, ".git"), 0o755); err != nil {
@@ -821,6 +822,19 @@ func TestDocsLintCleanTreePasses(t *testing.T) {
 	}
 }
 
+// provisionHermeticCache lays down the persistent plugin data dir a session's
+// hooks provision — a verified cache the home-scoped attestation binds — and
+// points CLAUDE_PLUGIN_DATA at it. It is the ordinary state `ahoy install`
+// meets, and the only one in which it writes a PATH entry at all
+// (iss-2609100506263330). Setting the variable also keeps a data dir the
+// developer's own session exports out of a hermetic run.
+func provisionHermeticCache(t *testing.T, home string) {
+	t.Helper()
+	data := seedInstallShapeCache(t, []byte("#!/bin/sh\n# abcd release artefact fixture\nexit 0\n"))
+	attestInstallShapeCache(t, home, data)
+	t.Setenv("CLAUDE_PLUGIN_DATA", data)
+}
+
 // hermeticEnv redirects HOME, the plugin root and the PATH symlink target to
 // temp locations without chdir'ing anywhere, so a caller can classify an
 // arbitrary folder shape. It never touches the real machine.
@@ -841,6 +855,7 @@ func hermeticEnv(t *testing.T) {
 	t.Setenv("ABCD_PLUGIN_ROOT", pluginRoot)
 	t.Setenv("CLAUDE_PLUGIN_ROOT", "")
 	t.Setenv("ABCD_BIN_TARGET", filepath.Join(t.TempDir(), "bin", "abcd"))
+	provisionHermeticCache(t, home)
 	// Scrub any real abcd off PATH (iss-249, and the same guard setupHermetic in the
 	// ahoy package applies). Without it, effectiveBinTarget finds the developer's own
 	// installed abcd — exactly the machines that dogfood the installer — and `ahoy

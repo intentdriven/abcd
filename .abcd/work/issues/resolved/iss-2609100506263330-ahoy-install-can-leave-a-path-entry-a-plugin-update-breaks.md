@@ -9,6 +9,10 @@ found_during: "autonomous-run field experiment in a managed repository, 2026-09-
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal (ahoy install, PATH entry)"
+resolution: "ahoy install on a cold cache writes no PATH entry and names the README install one-liner as the command to run first, instead of a symlink into the plugin root the next plugin update strands; a working plugin-root pin an earlier release wrote is a required symlink.legacy gap whatever the cache holds and is left in place until a verified copy exists; a dangling link ~/.abcd/path-entry names, read through the hook's own ownership guard, classifies as abcd's own, so ahoy offers its repair, install replaces it with the verified copy and uninstall removes it with its record, while an unrecorded dangling link claims no provenance. Follow-up commit 2c804452e makes the uninstall half hold when no plugin root resolves, the case the owned dangling gap names uninstall for: the record is judged before the root, and the recorded dangling link is found wherever it sits on PATH."
+impact: fix
+resolved_by:
+  commit: "e390beafd4f017b1554769d5317fd06d406fe6b0"
 ---
 
 `ahoy install` can report success while leaving a PATH entry that a later plugin update silently breaks, and the condition that decides which happens is invisible to the operator.
@@ -51,3 +55,7 @@ entered `open/` since the anchor, and this record sat in `open/` at v0.9.0, so
 it counts as standing backlog, while iss-2609120447482506 entered after that
 anchor. The raised severity keeps the grade honest; it does not put the finding
 back in front of this cut's guard.
+
+## Grounds
+
+- pursued: we expect a refusal naming a runnable command to be easier to act on than a warned-about link that dangles later, and the recorded path to be sufficient provenance for a dangling link because the record is written only by an install the operator ran and read under the hook's ownership guard; it is shown wrong if operators routinely lack a way to run the one-liner (no network, no curl) while their hooks can provision the cache, or if a recorded path is ever re-occupied by a dangling link abcd did not write
