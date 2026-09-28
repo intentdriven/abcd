@@ -688,6 +688,11 @@ func AppendLineIn(root *os.Root, rel string, line []byte, perm os.FileMode) erro
 	return err
 }
 
+// beforeAppendOpen, when set, runs between openAppendIn's pre-open Lstat and
+// its open. It is a test seam, nil outside tests: it lets a test plant a leaf
+// in the window a racer would, deterministically.
+var beforeAppendOpen func(root *os.Root, rel string)
+
 // openAppendIn opens rel for appending, creating it at perm when absent, without
 // ever asking the kernel for a NON-exclusive create relative to the root's
 // directory descriptor. That single call — openat(dirfd, O_CREAT|O_APPEND) — was
@@ -709,11 +714,6 @@ func AppendLineIn(root *os.Root, rel string, line []byte, perm os.FileMode) erro
 // its target is never written. O_NONBLOCK stays, so a FIFO swapped in cannot
 // hang the writer. A hard link to another file passes SameFile and is out of
 // this refusal's reach.
-// beforeAppendOpen, when set, runs between openAppendIn's pre-open Lstat and
-// its open. It is a test seam, nil outside tests: it lets a test plant a leaf
-// in the window a racer would, deterministically.
-var beforeAppendOpen func(root *os.Root, rel string)
-
 func openAppendIn(root *os.Root, rel string, perm os.FileMode) (*os.File, error) {
 	pre, lerr := root.Lstat(rel)
 	switch {
