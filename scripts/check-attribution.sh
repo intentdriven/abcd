@@ -142,6 +142,8 @@ AI_IDENT_NAME_RE="$(identity_pattern ai_name)"
 AI_IDENT_MAIL_RE="$(identity_pattern ai_mail)"
 MACHINE_NAME_RE="$(identity_pattern machine_name)"
 MACHINE_MAIL_RE="$(identity_pattern machine_mail)"
+MACHINE_NAME_WORD_RE="$(identity_pattern machine_name_word)"
+MACHINE_LOCAL_WORD_RE="$(identity_pattern machine_local_word)"
 AUTHOR_ONLY_MAIL_RE="$(identity_pattern author_only_mail)"
 
 fail=0
@@ -445,13 +447,15 @@ strip_fenced_blocks() {
 # bump; landing it as a human is.
 check_ident() {
 	local label="$1" role="$2" name="$3" mail="$4" kind=""
-	if printf '%s' "$name" | grep -Eiq "$AI_IDENT_NAME_RE" ||
-		printf '%s' "$mail" | grep -Eiq "$AI_IDENT_MAIL_RE"; then
+	if grep -Eiq "$AI_IDENT_NAME_RE" <<<"$name" ||
+		grep -Eiq "$AI_IDENT_MAIL_RE" <<<"$mail"; then
 		kind="an AI"
-	elif printf '%s' "$name" | grep -Eiq "$MACHINE_NAME_RE" ||
-		printf '%s' "$mail" | grep -Eiq "$MACHINE_MAIL_RE"; then
+	elif grep -Eiq "$MACHINE_NAME_RE" <<<"$name" ||
+		grep -Eiq "$MACHINE_MAIL_RE" <<<"$mail" ||
+		grep -Eiq "$MACHINE_NAME_WORD_RE" <<<"$name" ||
+		grep -Eiq "$MACHINE_LOCAL_WORD_RE" <<<"$mail"; then
 		kind="a machine"
-	elif [ "$role" = author ] && printf '%s' "$mail" | grep -Eiq "$AUTHOR_ONLY_MAIL_RE"; then
+	elif [ "$role" = author ] && grep -Eiq "$AUTHOR_ONLY_MAIL_RE" <<<"$mail"; then
 		kind="a machine"
 	else
 		return 0
@@ -481,7 +485,7 @@ check_text() {
 	# ban regexes are unanchored at line end and so are unaffected; the commits arm
 	# is already LF (git normalises %B), so this is a no-op there.
 	text="$(printf '%s' "$text" | tr -d '\r')"
-	if printf '%s' "$text" | grep -Eq "$GENERATED_RE"; then
+	if grep -Eq "$GENERATED_RE" <<<"$text"; then
 		echo "check-attribution: $label carries a tool's default 'generated with' footer" >&2
 		note "A 'Generated with <tool>' footer names a tool outside the two credit surfaces"
 		note "AGENTS.md sanctions (the README badge and ACKNOWLEDGEMENTS.md). Replace it with"
@@ -489,7 +493,7 @@ check_text() {
 		fail=1
 		return
 	fi
-	if printf '%s' "$text" | grep -Eq "$COAUTHOR_RE"; then
+	if grep -Eq "$COAUTHOR_RE" <<<"$text"; then
 		echo "check-attribution: $label carries a 'Co-authored-by:' trailer" >&2
 		note "abcd never uses Co-Authored-By: for AI — it asserts an authorship the tool does"
 		note "not hold and inflates the contributor graph. Disclosure goes in the kernel"
@@ -500,7 +504,7 @@ check_text() {
 		fail=1
 		return
 	fi
-	if ! printf '%s' "$text" | grep -Eq "$TRAILER_RE" && ! printf '%s' "$text" | grep -Eq "$NONE_RE"; then
+	if ! grep -Eq "$TRAILER_RE" <<<"$text" && ! grep -Eq "$NONE_RE" <<<"$text"; then
 		echo "check-attribution: $label has no 'Assisted-by:' trailer" >&2
 		note "Add a final line of the form: Assisted-by: <Vendor>:<model-version>"
 		note "for example  Assisted-by: Claude:claude-opus-5  or  Assisted-by: Claude:claude-opus-5[1m]"

@@ -91,7 +91,7 @@ expect_refusal_naming() {
 	if [ "$rc" -ne 1 ]; then
 		printf 'cases: FAIL %s — expected a refusal (exit 1), got exit %d:\n%s\n' "$label" "$rc" "$out" >&2
 		failures=$((failures + 1))
-	elif ! printf '%s\n' "$out" | grep -qE -- "$pattern"; then
+	elif ! grep -qE -- "$pattern" <<<"$out"; then
 		printf 'cases: FAIL %s — refused, but the message does not carry the diagnosis (want /%s/):\n%s\n' "$label" "$pattern" "$out" >&2
 		failures=$((failures + 1))
 	else
@@ -113,7 +113,7 @@ expect_refusal_not_naming() {
 	if [ "$rc" -ne 1 ]; then
 		printf 'cases: FAIL %s — expected a refusal (exit 1), got exit %d:\n%s\n' "$label" "$rc" "$out" >&2
 		failures=$((failures + 1))
-	elif printf '%s\n' "$out" | grep -qE -- "$pattern"; then
+	elif grep -qE -- "$pattern" <<<"$out"; then
 		printf 'cases: FAIL %s — refused, but the message names a remedy that does not apply (/%s/):\n%s\n' "$label" "$pattern" "$out" >&2
 		failures=$((failures + 1))
 	else
@@ -358,6 +358,155 @@ git -C "$d" commit -qm "fix: something (squash of work)"
 git -C "$d" checkout -q work
 expect_refusal_naming "$d" "RS001 on a stale branch diagnoses a record with a non-ASCII slug" \
 	"iss-998 already sits in $ISS_DIR/resolved/ at main .*squash of work.*[Rr]ebase onto main" -- commits main HEAD
+
+# --- RS001: entering is from outside a terminal folder (iss-2609012047551175) --
+#
+# A stale trailer must not be satisfied by a move the branch did not make. In
+# each case the record is terminal at the merge base, the branch carries a
+# `Resolves:` for it anyway, and the BASE then moves the record between or
+# within terminal folders — so the two-dot diff shows it arriving in a terminal
+# folder, back where the branch still has it. Keyed on the destination alone,
+# every one of these passed.
+stale_trailer_on_terminal_record() {
+	local d
+	d="$(newrepo "$1")"
+	git -C "$d" checkout -q main
+	resolve_record "$d"
+	git -C "$d" add -A
+	git -C "$d" commit -qm "chore: resolve a stale issue"
+	git -C "$d" checkout -q -B work main
+	echo "touched" >>"$d/README.md"
+	git -C "$d" add -A
+	git -C "$d" commit -qm "fix: something else
+
+Resolves: iss-999"
+	git -C "$d" checkout -q main
+	echo "$d"
+}
+
+d="$(stale_trailer_on_terminal_record rs001-base-moved-to-wontfix)"
+git -C "$d" mv "$ISS_DIR/resolved/iss-999-a-fixture.md" "$ISS_DIR/wontfix/iss-999-a-fixture.md"
+git -C "$d" commit -qm "chore: reclassify as wontfix"
+git -C "$d" checkout -q work
+expect_refusal_naming "$d" "RS001 a base-side move resolved/ -> wontfix/ does not satisfy a stale trailer" \
+	"iss-999 already sat in $ISS_DIR/wontfix/ before this branch diverged from main.*[Dd]rop the trailer" -- commits main HEAD
+
+d="$(stale_trailer_on_terminal_record rs001-base-reslugged)"
+git -C "$d" mv "$ISS_DIR/resolved/iss-999-a-fixture.md" "$ISS_DIR/resolved/iss-999-reslugged.md"
+git -C "$d" commit -qm "chore: reslug the record"
+git -C "$d" checkout -q work
+expect_refusal_naming "$d" "RS001 a base-side reslug inside resolved/ does not satisfy a stale trailer" \
+	"iss-999 already sat in $ISS_DIR/resolved/ before this branch diverged from main.*[Dd]rop the trailer" -- commits main HEAD
+
+# The same move rewritten past rename detection arrives as a plain add, with no
+# rename source to read — which is why the test is the base's listing.
+d="$(stale_trailer_on_terminal_record rs001-base-moved-rewritten)"
+git -C "$d" mv "$ISS_DIR/resolved/iss-999-a-fixture.md" "$ISS_DIR/wontfix/iss-999-a-fixture.md"
+for i in 1 2 3 4 5 6 7 8 9 10; do
+	echo "Rewritten line $i so git reports the move as a delete plus an add." >>"$d/$ISS_DIR/wontfix/iss-999-a-fixture.md"
+done
+git -C "$d" add -A
+git -C "$d" commit -qm "chore: reclassify and rewrite"
+git -C "$d" checkout -q work
+expect fail "$d" "RS001 a base-side move rewritten past rename detection does not satisfy a stale trailer" -- commits main HEAD
+
+# The fork is the reference, not the base's tip: an honest re-disposition on the
+# branch — wontfix/ -> resolved/ of a record the base still holds in wontfix/ —
+# lands in a folder the record did not sit in at the merge base, so it enters,
+# and its true trailer passes. Keyed on the base's listing, the record read as
+# "already terminal" and the trailer was refused as naming an earlier resolution.
+d="$(newrepo rs001-branch-redisposes-wontfix)"
+git -C "$d" checkout -q main
+git -C "$d" mv "$ISS_DIR/open/iss-999-a-fixture.md" "$ISS_DIR/wontfix/iss-999-a-fixture.md"
+git -C "$d" commit -qm "chore: wontfix iss-999"
+git -C "$d" checkout -q -B work main
+git -C "$d" mv "$ISS_DIR/wontfix/iss-999-a-fixture.md" "$ISS_DIR/resolved/iss-999-a-fixture.md"
+git -C "$d" commit -qm "fix: something after all
+
+Resolves: iss-999"
+expect pass "$d" "RS001 a branch's own wontfix/ -> resolved/ move enters resolved/" -- commits main HEAD
+
+# --- RS001's stale-branch split asks the merge base (iss-2609012047566360) ----
+#
+# Terminal at the merge base, then merely EDITED on the base's side: the edit is
+# not a placement, and a rebase cures nothing. The honest verdict is the one
+# the untouched case already gets — drop the trailer.
+d="$(stale_trailer_on_terminal_record rs001-base-body-edit)"
+echo "A later note on the resolved record." >>"$d/$ISS_DIR/resolved/iss-999-a-fixture.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "docs: annotate the resolved record"
+git -C "$d" checkout -q work
+expect_refusal_naming "$d" "RS001 a base-side body edit of a record terminal at the merge base says to drop the trailer" \
+	"iss-999 already sat in $ISS_DIR/resolved/ before this branch diverged from main.*[Dd]rop the trailer" -- commits main HEAD
+expect_refusal_not_naming "$d" "RS001 a base-side body edit of a record terminal at the merge base does not prescribe a rebase" \
+	"[Rr]ebase" -- commits main HEAD
+
+# Open at the merge base and placed on the base's side, then edited there: the
+# placer named is the commit that MOVED it into resolved/, not the later edit.
+d="$(newrepo rs001-placer-names-the-move)"
+resolve_record "$d"
+git -C "$d" add -A
+git -C "$d" commit -qm "fix: something
+
+Resolves: iss-999"
+git -C "$d" checkout -q main
+git -C "$d" mv "$ISS_DIR/open/iss-999-a-fixture.md" "$ISS_DIR/resolved/iss-999-a-fixture.md"
+git -C "$d" commit -qm "fix: something (squash of work)"
+echo "A later note on the resolved record." >>"$d/$ISS_DIR/resolved/iss-999-a-fixture.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "docs: annotate the resolved record"
+git -C "$d" checkout -q work
+expect_refusal_naming "$d" "RS001 names the base-side commit that placed the record, not a later edit" \
+	"placed there on main's side by [0-9a-f]+ fix: something \\(squash of work\\).*[Rr]ebase onto main" -- commits main HEAD
+
+# The placer's subject is text the base's history controls. A control sequence
+# in it must not reach the terminal through the gate's output.
+d="$(newrepo rs001-placer-control-bytes)"
+resolve_record "$d"
+git -C "$d" add -A
+git -C "$d" commit -qm "fix: something
+
+Resolves: iss-999"
+git -C "$d" checkout -q main
+git -C "$d" mv "$ISS_DIR/open/iss-999-a-fixture.md" "$ISS_DIR/resolved/iss-999-a-fixture.md"
+git -C "$d" commit -qm "$(printf 'fix: \033[31mred\033[0m squash')"
+git -C "$d" checkout -q work
+expect_refusal_naming "$d" "RS001 still names a placer whose subject carried control bytes" \
+	"placed there on main's side by [0-9a-f]+ fix: \\[31mred\\[0m squash" -- commits main HEAD
+expect_refusal_not_naming "$d" "RS001 does not replay the placer subject's control bytes" \
+	"$(printf '\033')" -- commits main HEAD
+
+# --- Membership on a large set is deterministic (iss-2609281314564762) ------
+#
+# printf piped into grep -q under pipefail is a race: grep exits at its first
+# match, printf's next write takes SIGPIPE, the pipeline returns 141 and the
+# test reads as "no match". Past one pipe buffer (64 KiB) it stops being a race
+# and becomes the rule, and the same membership idiom tested RS001's entering
+# set, RS004's declared set and RS005's shipped set. Here a message declares
+# 1,100 long ids (about 70 KiB) and names them all: every mention is declared,
+# and the ones sorting first were read as undeclared.
+d="$(newrepo large-declared-set)"
+refs="$(awk 'BEGIN { for (i = 1000; i < 2100; i++) printf "Refs: iss-%s%s\n", i, "00000000000000000000000000000000000000000000000000000000" }')"
+echo "touched" >>"$d/README.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "chore: touch many records
+
+$refs"
+expect pass "$d" "RS004 a declaration set past one pipe buffer is read whole" -- commits main HEAD
+
+# RS006 reads the resolution of every record entering a terminal folder. A reader
+# that stops at the closing delimiter hands git show a SIGPIPE on a record past
+# one pipe buffer, and under pipefail the unguarded read ended the gate at exit
+# 141 with no FAILED line. A resolved record of about 200 KiB must pass cleanly.
+d="$(newrepo rs006-large-record)"
+resolve_record "$d"
+awk 'BEGIN { for (i = 0; i < 2500; i++) printf "Body line %d of a long resolved record, past one pipe buffer.\n", i }' \
+	>>"$d/$ISS_DIR/resolved/iss-999-a-fixture.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "fix: something
+
+Resolves: iss-999"
+expect pass "$d" "RS006 a resolved record past one pipe buffer is read whole" -- commits main HEAD
 
 # --- RS002: a stamp added here must name a reachable commit ------------------
 
@@ -1077,6 +1226,343 @@ Delivers: itd-8"
 expect_refusal_naming "$d" "RS005 with an empty open/ still diagnoses the planned intent" \
 	"itd-8 .*no spec to close" -- commits main HEAD
 
+# RS001's entering-from-outside fix on the intent store: a reslug inside
+# shipped/ on the base's side does not satisfy a stale `Delivers:`
+# (iss-2609012047551175's twin).
+d="$(newrepo_intents rs005-base-reslugged)"
+echo "touched" >>"$d/README.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "feat: build the thing again
+
+Delivers: itd-6"
+git -C "$d" checkout -q main
+git -C "$d" mv "$INT_DIR/shipped/itd-6-fixture-6.md" "$INT_DIR/shipped/itd-6-reslugged.md"
+git -C "$d" commit -qm "docs: reslug itd-6"
+git -C "$d" checkout -q work
+expect_refusal_naming "$d" "RS005 a base-side reslug inside shipped/ does not satisfy a stale trailer" \
+	"itd-6 already sat in $INT_DIR/shipped/ before this branch diverged from main.*[Dd]rop the trailer" -- commits main HEAD
+
+# RS001's merge-base split on the intent store: a base-side edit of an intent
+# already shipped at the merge base is not a placement (iss-2609012047566360's
+# twin).
+d="$(newrepo_intents rs005-base-body-edit)"
+echo "touched" >>"$d/README.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "feat: build the thing again
+
+Delivers: itd-6"
+git -C "$d" checkout -q main
+echo "A later note on the shipped intent." >>"$d/$INT_DIR/shipped/itd-6-fixture-6.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "docs: annotate itd-6"
+git -C "$d" checkout -q work
+expect_refusal_not_naming "$d" "RS005 a base-side edit of an intent shipped at the merge base does not prescribe a rebase" \
+	"[Rr]ebase" -- commits main HEAD
+
+# --- A revert in the range withdraws a declaration (iss-2609240646533487) -----
+#
+# Once a commit carrying `Delivers:` is on a pushed branch, a revert is the one
+# honest way to take the delivery back — and the trailer stays in the range. The
+# revert names the reverted commit in git's own words, and that withdraws it.
+d="$(newrepo_intents rs005-reverted-delivery)"
+echo "touched" >>"$d/README.md"
+ship_intent "$d" 7
+git -C "$d" add -A
+git -C "$d" commit -qm "feat: build the thing
+
+Delivers: itd-7"
+git -C "$d" revert --no-edit HEAD >/dev/null
+expect pass "$d" "RS005 a delivery reverted in the same range is withdrawn" -- commits main HEAD
+
+# A revert of the revert reinstates the declaration, and the rule holds it again.
+d="$(newrepo_intents rs005-revert-reverted)"
+echo "touched" >>"$d/README.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "feat: build the thing
+
+Delivers: itd-7"
+git -C "$d" revert --no-edit HEAD >/dev/null
+git -C "$d" revert --no-edit HEAD >/dev/null
+expect_refusal_naming "$d" "RS005 a revert of the revert reinstates the declaration" \
+	"declares 'Delivers: itd-7', but itd-7 does not enter" -- commits main HEAD
+
+# A "reverts" line naming a commit OUTSIDE the range withdraws nothing: the
+# range's own declaration stands.
+d="$(newrepo_intents rs005-revert-outside-range)"
+echo "touched" >>"$d/README.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "feat: build the thing
+
+Delivers: itd-7"
+echo "more" >>"$d/README.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "Revert something on main
+
+This reverts commit $(git -C "$d" rev-parse main)."
+expect_refusal_naming "$d" "RS005 a revert naming a commit outside the range withdraws nothing" \
+	"declares 'Delivers: itd-7', but itd-7 does not enter" -- commits main HEAD
+
+# The same withdrawal for RS001: a resolution reverted on the branch puts the
+# record back in open/, and its `Resolves:` goes with it.
+d="$(newrepo rs001-reverted-resolution)"
+resolve_record "$d"
+git -C "$d" add -A
+git -C "$d" commit -qm "fix: something
+
+Resolves: iss-999"
+git -C "$d" revert --no-edit HEAD >/dev/null
+expect pass "$d" "RS001 a resolution reverted in the same range is withdrawn" -- commits main HEAD
+
+# A wontfix/ disposition reverted by git takes the record back out too.
+d="$(newrepo rs001-reverted-wontfix)"
+git -C "$d" mv "$ISS_DIR/open/iss-999-a-fixture.md" "$ISS_DIR/wontfix/iss-999-a-fixture.md"
+git -C "$d" commit -qm "chore: wontfix the fixture
+
+Resolves: iss-999"
+git -C "$d" revert --no-edit HEAD >/dev/null
+expect pass "$d" "RS001 a wontfix disposition reverted in the same range is withdrawn" -- commits main HEAD
+
+# A withdrawal is judged on the deed, never on the line. The revert line is text
+# anyone can type: a fix with no ledger move, then one README line under a
+# hand-written "This reverts commit" naming it, withdrew the `Resolves:` — a fix
+# without its resolution passing RS001 on one added message line. The revert
+# takes no record out of a terminal folder, so the declaration stands.
+d="$(newrepo rs001-handwritten-revert)"
+echo "the fix" >>"$d/README.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "fix: something
+
+Resolves: iss-999"
+echo "an unrelated line" >>"$d/README.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "Revert \"fix: something\"
+
+This reverts commit $(git -C "$d" rev-parse HEAD)."
+expect_refusal_naming "$d" "RS001 a hand-written revert line over a commit that reverts nothing withdraws nothing" \
+	"declares 'Resolves: iss-999', but iss-999 does not enter" -- commits main HEAD
+
+# The deed must be the declared record's: a hand-written revert that takes a
+# DIFFERENT record out of resolved/ withdraws nothing for iss-999.
+d="$(newrepo rs001-handwritten-revert-other-record)"
+git -C "$d" checkout -q main
+printf -- '---\nschema_version: 1\nid: "iss-998"\n---\nAnother fixture issue.\n' >"$d/$ISS_DIR/resolved/iss-998-other.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "chore: resolve another record"
+git -C "$d" checkout -q -B work main
+echo "the fix" >>"$d/README.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "fix: something
+
+Resolves: iss-999"
+git -C "$d" rm -q "$ISS_DIR/resolved/iss-998-other.md"
+git -C "$d" commit -qm "Revert \"fix: something\"
+
+This reverts commit $(git -C "$d" rev-parse HEAD)."
+expect_refusal_naming "$d" "RS001 a hand-written revert taking another record out withdraws nothing for the declared one" \
+	"declares 'Resolves: iss-999', but iss-999 does not enter" -- commits main HEAD
+
+# The RS005 twin of the hand-written line: a delivery that shipped nothing is not
+# withdrawn by a commit that takes nothing out of shipped/.
+d="$(newrepo_intents rs005-handwritten-revert)"
+echo "the thing" >>"$d/README.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "feat: build the thing
+
+Delivers: itd-7"
+echo "an unrelated line" >>"$d/README.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "Revert \"feat: build the thing\"
+
+This reverts commit $(git -C "$d" rev-parse HEAD)."
+expect_refusal_naming "$d" "RS005 a hand-written revert line over a commit that reverts nothing withdraws nothing" \
+	"declares 'Delivers: itd-7', but itd-7 does not enter" -- commits main HEAD
+
+# The deed must also be the REVERTED commit's. A fix declares `Resolves:` and
+# moves nothing; a separate commit moves the record into resolved/; a third
+# undoes that move under a line naming the fix. The revert's diff does take
+# iss-999 out of resolved/, but the commit it names never put it there, so the
+# fix's declaration is not withdrawn: the record is open at head and RS001
+# refuses the trailer.
+d="$(newrepo rs001-revert-names-another-commit)"
+echo "the fix" >>"$d/README.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "fix: something
+
+Resolves: iss-999"
+a="$(git -C "$d" rev-parse HEAD)"
+resolve_record "$d"
+git -C "$d" commit -qm "chore: move the record"
+git -C "$d" mv "$ISS_DIR/resolved/iss-999-a-fixture.md" "$ISS_DIR/open/iss-999-a-fixture.md"
+git -C "$d" commit -qm "Revert \"fix: something\"
+
+This reverts commit $a."
+expect_refusal_naming "$d" "RS001 a revert naming a commit that never moved the record withdraws nothing" \
+	"declares 'Resolves: iss-999', but iss-999 does not enter" -- commits main HEAD
+
+# The RS005 twin: the delivery declared on a commit that ships nothing, the
+# intent shipped by a separate commit, and that shipping undone under a line
+# naming the declaring commit.
+d="$(newrepo_intents rs005-revert-names-another-commit)"
+echo "the thing" >>"$d/README.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "feat: build the thing
+
+Delivers: itd-7"
+a="$(git -C "$d" rev-parse HEAD)"
+ship_intent "$d" 7
+git -C "$d" commit -qm "chore: close the spec"
+git -C "$d" mv "$INT_DIR/shipped/itd-7-fixture-7.md" "$INT_DIR/planned/itd-7-fixture-7.md"
+git -C "$d" mv "$SPC_DIR/closed/spc-7-fixture-7.md" "$SPC_DIR/open/spc-7-fixture-7.md"
+git -C "$d" commit -qm "Revert \"feat: build the thing\"
+
+This reverts commit $a."
+expect_refusal_naming "$d" "RS005 a revert naming a commit that never shipped the intent withdraws nothing" \
+	"declares 'Delivers: itd-7', but itd-7 does not enter" -- commits main HEAD
+
+# The honest shape still withdraws when the reverted commit is not the tip: a
+# resolution, an unrelated commit after it, then `git revert` of the resolution
+# itself. The revert takes out of resolved/ exactly what the named commit put in.
+d="$(newrepo rs001-revert-of-earlier-resolution)"
+resolve_record "$d"
+git -C "$d" commit -qm "fix: something
+
+Resolves: iss-999"
+a="$(git -C "$d" rev-parse HEAD)"
+echo "later work" >>"$d/README.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "docs: later work"
+git -C "$d" revert --no-edit "$a" >/dev/null
+expect pass "$d" "RS001 a git revert of an earlier resolution still withdraws it" -- commits main HEAD
+
+# A file in a terminal folder that is not a record is not a move. Here the
+# resolution also adds wontfix/.gitkeep, so its revert's diff lists that file
+# last; the reader of the revert's diff once took the loop's last failed test
+# for its own status and ended the gate at exit 2 with no refusal line.
+d="$(newrepo rs001-revert-lists-a-non-record-last)"
+git -C "$d" rm -q "$ISS_DIR/wontfix/.gitkeep"
+git -C "$d" commit -qm "chore: drop the placeholder"
+resolve_record "$d"
+mkdir -p "$d/$ISS_DIR/wontfix"
+touch "$d/$ISS_DIR/wontfix/.gitkeep"
+git -C "$d" add -A
+git -C "$d" commit -qm "fix: something
+
+Resolves: iss-999"
+git -C "$d" revert --no-edit HEAD >/dev/null
+expect pass "$d" "RS001 a revert whose diff lists a non-record file last still withdraws" -- commits main HEAD
+
+# A record file sits directly in its status folder and is named <id>.md or
+# <id>-<slug>.md. A file under a terminal folder that has an id-shaped name but
+# not that shape — nested one directory down, or not markdown — names no record,
+# so it neither enters the folder nor, reverted, leaves it. When the id was read
+# from the basename alone, adding such a file satisfied a trailer, and a
+# `git revert` of the commit that added it withdrew the trailer.
+d="$(newrepo rs001-nested-file-enters-nothing)"
+mkdir -p "$d/$ISS_DIR/resolved/x"
+printf -- '---\nschema_version: 1\nid: "iss-1"\n---\nNested.\n' >"$d/$ISS_DIR/resolved/x/iss-1.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "fix: something
+
+Resolves: iss-1"
+expect_refusal_naming "$d" "RS001 a nested file under resolved/ is not a record entering it" \
+	"declares 'Resolves: iss-1', but iss-1 does not enter" -- commits main HEAD
+
+d="$(newrepo rs001-non-md-file-enters-nothing)"
+echo "not a record" >"$d/$ISS_DIR/resolved/iss-4242.txt"
+git -C "$d" add -A
+git -C "$d" commit -qm "fix: something
+
+Resolves: iss-4242"
+expect_refusal_naming "$d" "RS001 a non-.md file under resolved/ is not a record entering it" \
+	"declares 'Resolves: iss-4242', but iss-4242 has no record" -- commits main HEAD
+
+# The revert half: odd files added under resolved/ and declared, then the commit
+# reverted. Nothing was put in, so nothing is withdrawn, and each trailer is
+# judged — and refused — as not entering.
+d="$(newrepo rs001-odd-files-revert)"
+mkdir -p "$d/$ISS_DIR/resolved/x"
+echo "not a record" >"$d/$ISS_DIR/resolved/README.md"
+printf -- '---\nschema_version: 1\nid: "iss-1"\n---\nNested.\n' >"$d/$ISS_DIR/resolved/x/iss-1.md"
+echo "not a record" >"$d/$ISS_DIR/resolved/iss-4242.txt"
+git -C "$d" add -A
+git -C "$d" commit -qm "fix: something
+
+Resolves: iss-1, iss-4242"
+git -C "$d" revert --no-edit HEAD >/dev/null
+expect_refusal_naming "$d" "RS001 reverting a nested file withdraws nothing for its id" \
+	"declares 'Resolves: iss-1', but iss-1 has no record" -- commits main HEAD
+expect_refusal_naming "$d" "RS001 reverting a non-.md file withdraws nothing for its id" \
+	"declares 'Resolves: iss-4242', but iss-4242 has no record" -- commits main HEAD
+expect_refusal_not_naming "$d" "RS001 reverting odd files reports no withdrawal" \
+	"is withdrawn" -- commits main HEAD
+
+# The merge-base half: a nested id-shaped file already under resolved/ at the
+# fork is not the record sitting there, so the honest move of the real record
+# out of open/ still enters.
+d="$(newrepo rs001-nested-file-at-base-is-not-terminal)"
+git -C "$d" checkout -q main
+mkdir -p "$d/$ISS_DIR/resolved/x"
+printf -- '---\nschema_version: 1\nid: "iss-999"\n---\nNested.\n' >"$d/$ISS_DIR/resolved/x/iss-999.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "chore: a nested file"
+git -C "$d" checkout -q -B work main
+resolve_record "$d"
+git -C "$d" commit -qm "fix: something
+
+Resolves: iss-999"
+expect pass "$d" "RS001 a nested file under resolved/ at the fork does not make the record terminal" -- commits main HEAD
+
+# The RS005 twins: under shipped/, a nested or non-.md file names no intent, so
+# it neither ships one nor, reverted, withdraws a delivery.
+d="$(newrepo_intents rs005-nested-file-enters-nothing)"
+mkdir -p "$d/$INT_DIR/shipped/x"
+cat "$d/$INT_DIR/planned/itd-7-fixture-7.md" >"$d/$INT_DIR/shipped/x/itd-7-fixture-7.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "feat: build the thing
+
+Delivers: itd-7"
+expect_refusal_naming "$d" "RS005 a nested file under shipped/ is not an intent entering it" \
+	"declares 'Delivers: itd-7', but itd-7 does not enter" -- commits main HEAD
+
+d="$(newrepo_intents rs005-non-md-file-enters-nothing)"
+echo "not a record" >"$d/$INT_DIR/shipped/itd-7.txt"
+git -C "$d" add -A
+git -C "$d" commit -qm "feat: build the thing
+
+Delivers: itd-7"
+expect_refusal_naming "$d" "RS005 a non-.md file under shipped/ is not an intent entering it" \
+	"declares 'Delivers: itd-7', but itd-7 does not enter" -- commits main HEAD
+
+d="$(newrepo_intents rs005-odd-files-revert)"
+mkdir -p "$d/$INT_DIR/shipped/x"
+cat "$d/$INT_DIR/planned/itd-7-fixture-7.md" >"$d/$INT_DIR/shipped/x/itd-7-fixture-7.md"
+echo "not a record" >"$d/$INT_DIR/shipped/itd-8.txt"
+git -C "$d" add -A
+git -C "$d" commit -qm "feat: build the things
+
+Delivers: itd-7, itd-8"
+git -C "$d" revert --no-edit HEAD >/dev/null
+expect_refusal_naming "$d" "RS005 reverting a nested file withdraws nothing for its id" \
+	"declares 'Delivers: itd-7', but itd-7 does not enter" -- commits main HEAD
+expect_refusal_naming "$d" "RS005 reverting a non-.md file withdraws nothing for its id" \
+	"declares 'Delivers: itd-8', but itd-8 does not enter" -- commits main HEAD
+expect_refusal_not_naming "$d" "RS005 reverting odd files reports no withdrawal" \
+	"is withdrawn" -- commits main HEAD
+
+# The base half: a non-.md id-shaped file already under shipped/ at the base is
+# not the intent sitting there, so the honest close still ships it.
+d="$(newrepo_intents rs005-non-md-file-at-base-is-not-shipped)"
+git -C "$d" checkout -q main
+echo "not a record" >"$d/$INT_DIR/shipped/itd-7.txt"
+git -C "$d" add -A
+git -C "$d" commit -qm "chore: a stray file"
+git -C "$d" checkout -q -B work main
+ship_intent "$d" 7
+git -C "$d" commit -qm "feat: build the thing
+
+Delivers: itd-7"
+expect pass "$d" "RS005 a non-.md file under shipped/ at the base does not make the intent shipped" -- commits main HEAD
+
 # Criterion 5: the intent rule's refusal has the issue rule's shape and exit
 # code — compared here, not judged by a reviewer. Both fixtures are the ordinary
 # case (a trailer whose record stays where it was); each refusal is normalised by
@@ -1106,7 +1592,7 @@ shape_itd="$(shape_of "$d_itd")"
 if [ "$shape_iss" != "$shape_itd" ]; then
 	printf 'cases: FAIL RS005 refusal shape differs from RS001'"'"'s:\n--- RS001\n%s\n--- RS005\n%s\n' "$shape_iss" "$shape_itd" >&2
 	failures=$((failures + 1))
-elif ! printf '%s\n' "$shape_itd" | grep -q '<RULE> commit <SHA>' || ! printf '%s\n' "$shape_itd" | grep -qx 'exit=1'; then
+elif ! grep -q '<RULE> commit <SHA>' <<<"$shape_itd" || ! grep -qx 'exit=1' <<<"$shape_itd"; then
 	printf 'cases: FAIL RS005 refusal shape — the normaliser matched neither refusal, so the comparison proves nothing:\n%s\n' "$shape_itd" >&2
 	failures=$((failures + 1))
 else

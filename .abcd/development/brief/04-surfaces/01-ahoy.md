@@ -501,8 +501,9 @@ way to apply it (iss-166).
 `git_identity.committer` for a committer that diverges on its own (required
 where the repo pins an identity, advisory where it does not), and
 `git_identity.tool` wherever the author or the committer is a machine identity
-(the harness's own default, a `[bot]` account, a vendor's address), pinned or
-not, because the human is the author of record either way. The machine
+(the harness's own default, a `[bot]` account, a vendor's address, a configured
+automation's name such as `semantic-release-bot`), pinned or not, because the
+human is the author of record either way. The machine
 identities are one list, `internal/core/identity/tool-identities.txt`, which the
 CI attribution gate reads too, role asymmetry included: a `noreply@` mailbox is
 a machine as the author, and the forge's own committer stamp passes. Once the
