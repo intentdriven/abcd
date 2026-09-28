@@ -116,8 +116,8 @@ origin, the tag, the asset and its digest, the target path (redacted to `~`), an
 the ownership proof that allowed the swap. It carries `env_ignored` when proxy or
 CA overrides were scrubbed. A refusal receipt is deliberately thinner: a refusal
 raised before any fetch carries the target path and a block naming shape, detail
-and remedy, and nothing else, because there is no release it could name. Under
-`--json` a refusal of either kind is one document on stdout: the receipt,
+and remedy, and nothing else, because there is no release it could name. In the
+JSON form a refusal of either kind is one document on stdout: the receipt,
 carrying the three fields of the global refusal envelope (`"abcd": "error"`,
 `error`, `exit_code`) beside its own, so a reader expecting one document gets
 the refusal whole rather than a receipt followed by a second envelope.
