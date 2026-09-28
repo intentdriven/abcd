@@ -1046,8 +1046,9 @@ func (a *applyCtx) stepSymlink() {
 // refuses loudly and installs nothing — and the very bytes that were verified
 // are written 0755 with the provenance recorded in the data dir's path-entry.
 // A legacy owned symlink or a dev shim at the target is replaced (the heal); an
-// owned copy already matching is left alone. Without a usable cache it writes
-// nothing and refuses, naming the command that provides a verified copy
+// owned copy already matching is left alone, and so is any owned copy when
+// there is no usable cache to refresh it from. Otherwise, without a usable
+// cache it writes nothing and refuses, naming the command that provides a verified copy
 // (coldCacheRefusal): the only other entry there is to write is a symlink into
 // the plugin root, which the next plugin update strands
 // (iss-2609100506263330). The cache is reached through the
@@ -1099,6 +1100,14 @@ func (a *applyCtx) installOwnedEntry(target string, kind binTargetKind) {
 		}
 	}
 	if !present || unbound != "" {
+		if kind == binTargetOwnedCopy {
+			// The verified copy is already in place — the one the install
+			// one-liner writes is exactly this shape — and a cold cache has
+			// nothing to refresh it from, so it is adopted as it stands.
+			// Refusing here would answer the operator who has just run the
+			// remedy below with that same remedy, a loop it cannot close.
+			return
+		}
 		// No verified artefact, so no entry is written (iss-2609100506263330).
 		// A symlink into the plugin root is the only other thing there is to
 		// write, and it is known to dangle at the next plugin update — a
