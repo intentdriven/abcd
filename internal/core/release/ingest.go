@@ -304,8 +304,19 @@ type IngestResult struct {
 //	                                    unreadable file, a missing anchor, an
 //	                                    archive collision, a failed write that was
 //	                                    rolled back): stop.
+//
+// The whole ingest — the derivation, the reads the plan is built from, and the
+// writes — holds the CHANGELOG's lock (withChangelogLock), so two cuts of one
+// working tree never write from the same stale read: the second derives after
+// the first has written, and is refused as a release in flight (iss-127).
 func Ingest(root string, current surface.Snapshot, raw []byte, at time.Time) (IngestResult, error) {
-	return ingest(root, current, raw, at, osOps{root: root})
+	var res IngestResult
+	err := withChangelogLock(root, func() error {
+		var err error
+		res, err = ingest(root, current, raw, at, osOps{root: root})
+		return err
+	})
+	return res, err
 }
 
 // ingest is Ingest with the writer seam exposed, so a test can observe the

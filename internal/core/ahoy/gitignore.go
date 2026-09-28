@@ -187,7 +187,19 @@ func applyVisibilityBlock(cwd, visibility string) (bool, error) {
 	}
 	entries, _ := effectiveVisibilityEntries(cwd, visibility)
 	path := filepath.Join(cwd, ".gitignore")
+	var wrote bool
+	err := withRewriteLock(path, func() error {
+		var err error
+		wrote, err = rewriteVisibilityBlock(path, entries)
+		return err
+	})
+	return wrote, err
+}
 
+// rewriteVisibilityBlock is applyVisibilityBlock's read, change and write of
+// path, run under the file's lock (withRewriteLock) so an edit another abcd
+// makes to .gitignore between the read and the write is kept (iss-127).
+func rewriteVisibilityBlock(path string, entries []string) (bool, error) {
 	// Keep the symlink pre-check: it yields a DISTINCT refusal that ReadGuarded's
 	// O_NOFOLLOW would otherwise collapse into a raw ELOOP passthrough error.
 	if fi, err := os.Lstat(path); err == nil && fi.Mode()&os.ModeSymlink != 0 {

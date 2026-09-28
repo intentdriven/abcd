@@ -114,7 +114,20 @@ func classifyMarker(targetPath string) markerState {
 // file untouched, and says why, so the install can tell the person which file
 // kept no block and for what reason (iss-2609260057127611). Byte-stable: a
 // current block is not rewritten.
+//
+// The read and the write hold the file's lock (withRewriteLock), so an edit
+// another abcd makes to the file between them is kept (iss-127).
 func installMarkerFile(targetPath string) (wrote bool, err error) {
+	err = withRewriteLock(targetPath, func() error {
+		var ierr error
+		wrote, ierr = installMarkerFileLocked(targetPath)
+		return ierr
+	})
+	return wrote, err
+}
+
+// installMarkerFileLocked is installMarkerFile's read, change and write.
+func installMarkerFileLocked(targetPath string) (wrote bool, err error) {
 	// Reject a symlinked leaf so a planted symlink cannot redirect the write.
 	if fi, lerr := os.Lstat(targetPath); lerr == nil && fi.Mode()&os.ModeSymlink != 0 {
 		return false, &ahoyError{"it is a symlink, and abcd never writes through one"}
@@ -258,7 +271,18 @@ func composeMarkerReplacement(existing []byte, matches [][]int, synth []byte) []
 // install introduced so install->uninstall round-trips. Returns (wrote, err): a
 // symlinked leaf, a non-regular file, or a failed read or write leaves the file
 // untouched and returns why.
+// The read and the write hold the file's lock, as installMarkerFile's do.
 func removeMarkerFile(targetPath string) (wrote bool, err error) {
+	err = withRewriteLock(targetPath, func() error {
+		var rerr error
+		wrote, rerr = removeMarkerFileLocked(targetPath)
+		return rerr
+	})
+	return wrote, err
+}
+
+// removeMarkerFileLocked is removeMarkerFile's read, change and write.
+func removeMarkerFileLocked(targetPath string) (wrote bool, err error) {
 	fi, lerr := os.Lstat(targetPath)
 	if lerr != nil {
 		if os.IsNotExist(lerr) {

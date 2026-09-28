@@ -3,7 +3,9 @@ package ahoy
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 
@@ -481,16 +483,31 @@ func (a *applyCtx) stepDependencies() {
 var newToolInstaller = tools.Default
 
 // stepSkeleton writes .abcd/config.json seed when the skeleton gap is present.
+// Detection saw no file, but that read was before the lock: a config another
+// abcd wrote since is kept, never replaced by the seed (iss-127).
 func (a *applyCtx) stepSkeleton() {
 	if !a.approved[SafeAutocreate] || !a.has("skeleton.config_missing") {
 		return
 	}
-	cfg := map[string]any{"meta": map[string]any{"schema_version": 1}}
-	if err := writeConfig(a.cwd, cfg); err != nil {
+	wrote := false
+	err := withConfigLock(a.cwd, func() error {
+		if _, err := os.Lstat(configPath(a.cwd)); !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
+		cfg := map[string]any{"meta": map[string]any{"schema_version": 1}}
+		if err := writeConfig(a.cwd, cfg); err != nil {
+			return err
+		}
+		wrote = true
+		return nil
+	})
+	if err != nil {
 		a.refuse("could not write the starter settings file .abcd/config.json: " + errText(err))
 		return
 	}
-	a.note(writeSettings, configPath(a.cwd))
+	if wrote {
+		a.note(writeSettings, configPath(a.cwd))
+	}
 }
 
 // stepConfigValues collects and persists the four config values. Returns nil on
@@ -577,26 +594,34 @@ func (a *applyCtx) stepConfigValues() *InstallConfig {
 		ic.ScanDeep = &v
 	}
 
-	// Persist into the config map (read-modify-write). Re-read defensively; if the
-	// file turned malformed since the first read, refuse rather than clobber it.
-	cfgMap, cfgErr := readConfig(a.cwd)
-	if cfgErr != nil {
-		a.rollbackForced()
-		return nil
-	}
-	if cfgMap == nil {
-		cfgMap = map[string]any{}
-	}
-	setSub(cfgMap, "repo", "visibility", ic.Visibility)
-	setSub(cfgMap, "docs", "target", ic.DocsTarget)
-	setSub(cfgMap, "oracle", "backend", ic.OracleBackend)
-	if ic.ScanDeep != nil {
-		setSub(cfgMap, "scan", "deep", *ic.ScanDeep)
-	}
-	if err := writeConfig(a.cwd, cfgMap); err != nil {
+	// Persist into the config map (read-modify-write), under the file's lock and
+	// only after every prompt above has been answered: the re-read is the one
+	// the write is made from, so a key another abcd wrote since the first read
+	// is kept (iss-127). If the file turned malformed since the first read,
+	// refuse rather than clobber it.
+	err = withConfigLock(a.cwd, func() error {
+		cfgMap, cfgErr := readConfig(a.cwd)
+		if cfgErr != nil {
+			return cfgErr
+		}
+		if cfgMap == nil {
+			cfgMap = map[string]any{}
+		}
+		setSub(cfgMap, "repo", "visibility", ic.Visibility)
+		setSub(cfgMap, "docs", "target", ic.DocsTarget)
+		setSub(cfgMap, "oracle", "backend", ic.OracleBackend)
+		if ic.ScanDeep != nil {
+			setSub(cfgMap, "scan", "deep", *ic.ScanDeep)
+		}
+		return writeConfig(a.cwd, cfgMap)
+	})
+	if err != nil {
 		// The write did not land; do not echo a change or let downstream steps
 		// reconcile .gitignore/markers against a config value that was not saved.
 		a.rollbackForced()
+		if errors.Is(err, fsutil.ErrLockContention) || errors.Is(err, fsutil.ErrLockPathUnsafe) {
+			a.refuse("could not save the settings to .abcd/config.json: " + errText(err))
+		}
 		return nil
 	}
 	a.note(writeSettings, configPath(a.cwd))
@@ -1471,23 +1496,32 @@ func (a *applyCtx) stepVersionStamp() {
 	if !a.has("install_meta.missing") && !a.has("version.upgrade") {
 		return
 	}
-	cfgMap, err := readConfig(a.cwd)
-	if err != nil {
+	// Read, stamped and written under the file's lock (iss-127).
+	var malformed error
+	err := withConfigLock(a.cwd, func() error {
+		cfgMap, err := readConfig(a.cwd)
+		if err != nil {
+			malformed = err
+			return nil
+		}
+		if cfgMap == nil {
+			cfgMap = map[string]any{}
+		}
+		meta := subMap(cfgMap, "meta")
+		meta["schema_version"] = 1
+		meta["setup_version"] = pluginVersion()
+		meta["setup_date"] = time.Now().UTC().Format("2006-01-02")
+		meta["project_name"] = a.det.RepoIdentity.Name
+		cfgMap["meta"] = meta
+		return writeConfig(a.cwd, cfgMap)
+	})
+	if malformed != nil {
 		// The same posture as stepConfigValues: a file that cannot be parsed is
 		// never rebuilt from an empty map (GHSA-mchq-gm34-3j34).
-		a.refuseMalformedConfig(err)
+		a.refuseMalformedConfig(malformed)
 		return
 	}
-	if cfgMap == nil {
-		cfgMap = map[string]any{}
-	}
-	meta := subMap(cfgMap, "meta")
-	meta["schema_version"] = 1
-	meta["setup_version"] = pluginVersion()
-	meta["setup_date"] = time.Now().UTC().Format("2006-01-02")
-	meta["project_name"] = a.det.RepoIdentity.Name
-	cfgMap["meta"] = meta
-	if err := writeConfig(a.cwd, cfgMap); err != nil {
+	if err != nil {
 		a.refuse("could not record the setup version in .abcd/config.json: " + errText(err))
 		return
 	}
