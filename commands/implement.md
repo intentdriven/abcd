@@ -89,7 +89,8 @@ naming the holder, and logged as `claim_denied` (the second session also logs a
 `backoff` naming the reason and the minutes the attempt spent). Take other work;
 do not retry the same record in a loop. A locked run state is the same exit,
 and the second session's backoff from it is logged the same way, with the
-minutes it waited for the lock.
+minutes it waited for the lock, a `join` that meets it included. A backoff that
+cannot be logged (the session never joined) says so in the refusal.
 
 ## The second session's bounds
 

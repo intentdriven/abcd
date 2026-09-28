@@ -128,7 +128,7 @@ func (r *Run) Join(id string, role Role, model, reason string, ceiling int) (Joi
 		return JoinResult{}, refusal("ceiling %d is outside 0 (none stated) to %d", ceiling, MaxCeiling)
 	}
 	var out JoinResult
-	err := r.withLock(id, func() error {
+	err := r.withLockAs(id, role, func() error {
 		root, err := r.root()
 		if err != nil {
 			return err

@@ -121,8 +121,11 @@ step. On a refused claim the second session
 also logs a `backoff` with its reason and minutes, the minutes being what the
 attempt spent, measured from its start; a run state locked past the lock's
 timeout by another session's change is contention too, and the second session's
-`backoff` from it carries `on: run_state` and the minutes it waited. The
-append takes no lock, so that line reaches the log while the lock is held.
+`backoff` from it carries `on: run_state` and the minutes it waited. A second
+session whose join meets the lock has no record yet, so the role it is joining
+with places the line; a session that never joined has no role to place it by,
+and the refusal says the backoff went unlogged. The append takes no lock, so
+that line reaches the log while the lock is held.
 
 The reading corpus is derived, never restated: the union of every position's
 `object.paths` in the checkout's committed `.abcd/config/reading-presets.json`,

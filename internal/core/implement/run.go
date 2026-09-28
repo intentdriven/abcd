@@ -182,11 +182,18 @@ func (r *Run) root() (*os.Root, error) {
 // race. A lock another session's change holds past lockTimeout is contention,
 // and the second session's backoff from it is logged with the minutes it waited.
 func (r *Run) withLock(session string, fn func() error) error {
+	return r.withLockAs(session, "", fn)
+}
+
+// withLockAs is withLock for a change that writes session's record under the
+// lock (Join): joining is the role that record will carry, so a backoff from
+// contention met before the record exists is still attributed to the session.
+func (r *Run) withLockAs(session string, joining Role, fn func() error) error {
 	start := time.Now()
 	err := fsutil.WithFileLock(filepath.Join(r.Dir, lockFileName), lockTimeout, fn)
 	if errors.Is(err, fsutil.ErrLockContention) {
 		const msg = "the run state is locked by another session's change; back off and retry"
-		if lerr := r.logBackoff(session, "run_state", "run state locked by another session's change", time.Since(start), nil); lerr != nil {
+		if lerr := r.logBackoff(session, joining, "run_state", "run state locked by another session's change", time.Since(start), nil); lerr != nil {
 			return fmt.Errorf("%w: %s (and the backoff could not be logged: %v)", ErrContention, msg, lerr)
 		}
 		return fmt.Errorf("%w: %s", ErrContention, msg)
@@ -197,15 +204,27 @@ func (r *Run) withLock(session string, fn func() error) error {
 // logBackoff writes the second session's backoff from contention the verb
 // itself met: where it backed off (on), the reason, and the minutes the attempt
 // spent, measured from its start. The bound is the second session's
-// (itd-2609221656373558 criterion 6), so a first session, or a session whose
-// record cannot be read, logs nothing. The append takes no lock, so a backoff
-// from the lock itself still reaches the log.
-func (r *Run) logBackoff(session, on, reason string, spent time.Duration, extra map[string]any) error {
+// (itd-2609221656373558 criterion 6), so a first session logs nothing. The role
+// is the session record's; a session that has not joined yet takes joining, the
+// role its Join is about to record, and with none the refusal is returned, as
+// is a record that cannot be read, so the caller says the backoff went unlogged
+// rather than dropping it. The append takes no lock, so a backoff from the lock
+// itself still reaches the log.
+func (r *Run) logBackoff(session string, joining Role, on, reason string, spent time.Duration, extra map[string]any) error {
 	if session == "" {
 		return nil
 	}
+	role := joining
 	s, err := r.requireSession(session)
-	if err != nil || s.Role != RoleSecond {
+	switch {
+	case err == nil:
+		role = s.Role
+	case joining != "" && errors.Is(err, ErrRefused):
+		// Not joined yet: the role stays the one its Join is recording.
+	default:
+		return err
+	}
+	if role != RoleSecond {
 		return nil
 	}
 	f := map[string]any{"on": on, "reason": reason, "minutes": round2(spent.Minutes())}

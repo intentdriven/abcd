@@ -181,7 +181,7 @@ func (r *Run) Claim(req ClaimRequest) (ClaimResult, error) {
 				// Nobody can say who holds it. Within the grace it is contention;
 				// after it the file has lapsed, and the lapse is logged as one.
 				if now.Before(bad.LapsesAt) {
-					if err := r.logBackoff(req.Session, "claim", "unreadable claim file within its grace",
+					if err := r.logBackoff(req.Session, "", "claim", "unreadable claim file within its grace",
 						time.Since(start), map[string]any{"record": req.Record}); err != nil {
 						return err
 					}
@@ -231,7 +231,7 @@ func (r *Run) Claim(req ClaimRequest) (ClaimResult, error) {
 				}); err != nil {
 					return err
 				}
-				if err := r.logBackoff(req.Session, "claim", "record claimed by session "+held.Session,
+				if err := r.logBackoff(req.Session, "", "claim", "record claimed by session "+held.Session,
 					time.Since(start), map[string]any{"record": req.Record}); err != nil {
 					return err
 				}
