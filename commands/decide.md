@@ -34,6 +34,15 @@ and user-facing capability is an intent.
 The title is one quoted operand — a short noun phrase stating the decision in a
 line. The verb derives the record's slug from it, so keep it in plain words.
 
+**The verb needs abcd 0.8.0 or later.** An older binary has no `decide` and
+refuses the call as an unknown command, with nothing written. When that is the
+refusal, run the release check through the same binary. A binary that old
+spells it `"${CLAUDE_PLUGIN_ROOT}/abcd" version --check --json`, where 0.11.0
+and later spell it `update --check`. Relay the installed `version` and relay
+`check.next_step` verbatim: It names the command that takes the update for this
+install's shape, the host's plugin update for a plugin-root binary included. Do
+not mint the record by hand in the meantime.
+
 Report the `id` and the `path` from the JSON, then open the record and write the
 four sections with the user. Nothing else about the decision is the binary's to
 supply.

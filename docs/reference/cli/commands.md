@@ -20,9 +20,11 @@ Render the status board, or say what one record id is and its next move: Writes 
 Agent-based configuration for development.
 
 Bare `abcd` renders the read-only status board — what can I do. A single
-positional matching a record id (`iss-N`, `itd-N`, `spc-N`, `adr-N`) instead
-reports what that record is, where it lives, and the next move for its
-lifecycle state — what is this. Both forms are strictly read-only; any other
+positional matching a record id (`iss-N`, `itd-N`, `spc-N`, `adr-N`, `adm-N`,
+`srp-N` or `rfm-N`) instead reports what that record is, where it lives, and
+the next move for its lifecycle state — what is this. N is either a short
+ordinal from before ids were minted or the sixteen-digit stamp minted since;
+both resolve. The bare and the id form are strictly read-only; any other
 positional is refused as an unknown command.
 
 **Flags:**
@@ -789,7 +791,7 @@ Name the URLs directly, or pass --receipt with a receipt file. Both write the sa
 
 ```
       --config string    path to docs-lint.json (default: <root>/.abcd/docs-lint.json)
-      --receipt string   path to a receipt file listing the confirmed citations (the format the generated checklist page emits)
+      --receipt string   path to a JSON receipt listing the confirmed citations: schema_version 1 and a confirmed list, each entry a url with an optional final_url and verified_on (YYYY-MM-DD)
       --root string      repo root (default: current working directory)
 ```
 

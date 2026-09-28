@@ -251,7 +251,12 @@ is a merge artefact rather than a hand edit: a record committed to the default
 branch after a branch was cut from it, and then resolved on that branch, arrives
 as an add on one side and a delete-plus-add on the other, which rename detection
 does not pair. Relay the refusal; the fix is to move or remove one of the two
-files so the ledger says which status the record is in. Summarise each issue's `id`, `status`,
+files so the ledger says which status the record is in. The convention that
+keeps the state from arising holds in any repository abcd manages: A record is
+resolved on the branch that carries it. A record captured on a branch is
+resolved on that branch, or after it lands, and never re-added to the default
+branch while the branch is still open; resolving it from a second branch
+produces the same duplicate once both land. Summarise each issue's `id`, `status`,
 `severity`, and `slug`. The list is returned in **derived-priority order**:
 unblocked issues first, then by severity (`critical` → `nitpick`); rows still
 blocked by an open dependency are demoted and annotated `[blocked-by iss-N,…]`.
