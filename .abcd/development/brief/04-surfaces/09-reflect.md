@@ -89,8 +89,8 @@ they are rendered into link text.
 
 The receipt shape this surface consumes is the predecessor store's phase-audit
 report, and the predecessor wrote it under `.abcd/logbook/`. **That location is
-retired here.** A 2026-07-12 maintainer adjudication, made on iss-56, placed
-runtime artefacts in the gitignored `.abcd/.work.local/logs/` tier instead;
+retired here.** A 2026-07-12 adjudication on iss-56 placed runtime artefacts
+in the gitignored `.abcd/.work.local/logs/` tier instead;
 iss-73 carried out the relocation, and a detector holds it:
 `TestNoRetiredLogbookLocationInSource` fails the build if any non-test Go source
 under `internal/` so much as names `logbook`. A delivered `reflect` therefore

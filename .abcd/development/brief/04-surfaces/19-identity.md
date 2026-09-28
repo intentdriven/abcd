@@ -3,7 +3,7 @@
 A project's tagline gets written once and copied four times: the README
 strapline, the plugin manifest, the conventions file, a string baked into the
 binary's banner. Then one of them is improved. `/abcd:identity` records the
-canonical wording in one place, tells the maintainer which surfaces have drifted
+canonical wording in one place, tells the product thinker which surfaces have drifted
 away from it, and prints the exact diff that would bring each back.
 
 The report and the rendered diff are **strictly read-only**. Initialisation
@@ -104,7 +104,7 @@ skipped rather than reported, because a file that does not exist carries no
 drift.
 
 **Autonomous rewriting is permanently out of scope.** The render proposes; the
-maintainer adopts. Changing the positioning deliberately is an edit to the block,
+product thinker adopts. Changing the positioning deliberately is an edit to the block,
 after which the same proposal flow chases the surfaces.
 
 Initialisation never re-interviews a repo that already has a block — it adopts it. Run

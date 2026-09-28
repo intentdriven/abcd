@@ -139,6 +139,11 @@ var deliberateSeedOmissions = map[string]string{
 	// it is seeded once it has run there, not into every prepared repository
 	// on its first release.
 	"link_anchors": "warn-first in abcd's own tree before it is seeded",
+	// abcd's own role vocabulary (itd-2609212137129937): the ban holds abcd's
+	// text to naming the product thinker or the technical facilitator, and its
+	// extra_roots name abcd's own trees (the plugin command pages, the bundled
+	// rules source), which a prepared repository does not have.
+	"roles/": "abcd's own role vocabulary, over abcd's own trees",
 }
 
 // deliberatelyOmitted reports whether a canonical token id or rule name is named

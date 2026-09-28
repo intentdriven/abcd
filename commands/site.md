@@ -78,8 +78,8 @@ page count rendered from the record, the
 record's size (records, links, mentions), the unresolved references against the
 committed baseline, the chart packing's overlap count (which is zero or the
 picture is wrong), and the version and commit stamped into the footer. An
-unresolved-reference count above the baseline is worth naming to the maintainer
-even though this verb does not gate on it.
+unresolved-reference count above the baseline is worth naming to the technical
+facilitator even though this verb does not gate on it.
 
 A failure names its cause and its place: a markdown construct outside the
 rendered subset is reported as `file:line`, and so is an image the page names
@@ -121,7 +121,8 @@ sets up the site of a repository abcd manages, in three stages, and emits
 
 Both remote stages ask before they write, naming each change. An unanswered
 run declines them and exits `1`; `--yes` confirms in advance — pass it only
-when the user has asked for the forge and host changes. A second run over an
+when the technical facilitator has asked for the forge and host changes, and set
+`abcd mode facilitator` before asking them. A second run over an
 unchanged repository reports `no_change` and writes nothing.
 
 The first run names the host after the repository; `--name` and `--domain`

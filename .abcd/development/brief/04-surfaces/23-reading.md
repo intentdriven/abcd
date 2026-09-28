@@ -72,7 +72,7 @@ ingest and the next reading — moves the commit the next assembly names. A run
 whose target is not an ancestor is not a run at this target and is not listed; a
 run across which anything else moved is listed and refused, naming the first such
 path, because the material it read is not the material this assembly names. That
-is a reading of the rule rather than the rule itself, and a maintainer's ruling on
+is a reading of the rule rather than the rule itself, and the product thinker's ruling on
 it is owed. Everything else in the readings store stays excluded there as at every
 other position, and the manifest asserts it family by family.
 None or more than one qualifying run refuses and lists what it looked at, so the

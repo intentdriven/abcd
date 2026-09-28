@@ -27,9 +27,10 @@ records the block.
 ```
 
 prints a unified diff per drifted surface. It **writes nothing**, and no flag
-makes it: adopting a proposal is the maintainer's move. Show the diff, then ask
-whether to apply it. If the maintainer would rather change what the project says
-than what its surfaces say, the fix is an edit to the identity block, after which
+makes it: adopting a proposal is the product thinker's move, because what the
+project says is theirs to decide. Show the diff, set `abcd mode product-thinker`,
+then ask the product thinker whether to apply it. If they would rather change
+what the project says than what its surfaces say, the fix is an edit to the identity block, after which
 this same command chases the surfaces.
 
 ## `init` — record the block
@@ -49,7 +50,8 @@ repointing the canon is a deliberate edit.
 
 ### The interview
 
-Ask once, in the maintainer's own words:
+Set `abcd mode product-thinker`, then ask the product thinker once, in their
+own words:
 
 1. **Title** (required) — what the project is called, as it should read in a
    heading.

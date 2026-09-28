@@ -12,6 +12,17 @@ over the brief's earlier `1.0.0`-at-close expectation). The four M6 synthesis
 agents below entered at `0.1.0`, wired to their `abcd disembark` verbs and
 unmeasured; `lifeboat-oracle` has since become `lifeboat-reviewer` at `0.1.1`.
 
+## 2026-09-28 (itd-2609212137129937 — quotes are attributed by role)
+
+abcd's own text names the product thinker or the technical facilitator, and the
+composer's example attribution was the one word that named neither.
+
+### press-release-composer 0.1.1
+
+PATCH: the example quote and the attribution rule attribute by role ("a product
+thinker", "a technical facilitator"). The output schema is unchanged, so a
+document that was valid before stays valid. Unmeasured, as before.
+
 ## 2026-09-26 (itd-48 — the intent auditor gains its cross-document role)
 
 `abcd intent consistency` assembles the brief and every live intent into one
