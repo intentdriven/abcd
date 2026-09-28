@@ -12,10 +12,13 @@ import (
 //
 // A command substitution (`$( … )`, or its backtick spelling) runs a command
 // and hands its OUTPUT to the word it sits in, and the output is not in the
-// command line. The tokenizer therefore writes unknownMark into the word where
-// the output goes, and every reader of a token asks this file what the word
-// can be. An arithmetic expansion is not unknown in that sense: its output is a
-// number, which no flag, subcommand or path the registry names can be.
+// command line. Nor is a parameter expansion's value (`$X`, `$1`, `$@`,
+// `${X:-git}`, iss-2609251824244354). The tokenizer therefore writes
+// unknownMark into the word where the output or the value goes, and every
+// reader of a token asks this file what the word can be. An arithmetic
+// expansion is not unknown in that sense: its output is a number, which no
+// flag, subcommand or path the registry names can be, and neither are `$$`,
+// `$!`, `$?` and `$#`.
 //
 // The rule is that an unknown word fails closed in every role it could play,
 // and a reader that can read a word more than one way reads it every way — the
@@ -56,7 +59,10 @@ import (
 // and its branch (`git commit -m "$(cat msg)"`, `git push origin
 // "$(git branch --show-current)"`), and reading it as every flag would refuse
 // both. The same reason keeps an operand's `+` refspec prefix read from its
-// known text only. Both residuals are recorded in .abcd/work/DECISIONS.md.
+// known text only. Both residuals are recorded in .abcd/work/DECISIONS.md,
+// and a word that is wholly a variable reads the same way (`git push origin
+// "$branch"`). A variable's value is read as a flag and a program name, and
+// not as data an earlier command carried (variableCarried).
 
 // unknownMark stands, inside a token, for the output of a substitution the
 // guard did not run. It is the NUL byte, and it is unforgeable by construction:
@@ -99,9 +105,10 @@ func knownLead(tok string) string {
 // could only end in a brace and a flag that could only be one that did. The
 // outermost `${` still open where a mark lands starts the unknown; the text
 // before it is kept, so `--${X:-$(x)}` is a dash-word and `${X:-$(x)}` a
-// word that is wholly unknown. A `${…}` that closes before any mark, and a
-// `$X` with no substitution in it, are left as written: that is the half
-// iss-2609251824244354 defers.
+// word that is wholly unknown. The tokenizer reads a `${…}` whole where it
+// finds its `}` (parameterExpansion), so a `${` reaches here only as text it
+// could not close, or behind an escaped `$`, where reading the rest as
+// unknown is the fail-closed side.
 func unknownFromOpenExpansion(tok string) string {
 	if !isUnknown(tok) {
 		return tok
@@ -122,6 +129,32 @@ func unknownFromOpenExpansion(tok string) string {
 		}
 	}
 	return tok
+}
+
+// variableCarried reports whether the word at index i of s is unknown only
+// because it holds parameter expansions (segment.variable): its value is a
+// variable's, set before the line ran. Such a word is read as every flag and
+// every program name its known text allows, as a substitution's output is,
+// with two exceptions, each because a variable is how ordinary commands
+// carry a path and a program between commands, and reading it the other way
+// refuses them (iss-2609251824244354's false-positive sweep). As a shell's or
+// `source`'s script it is not a stream (`bash "$script"`, `. "$ENV_FILE"`): a
+// stream path in a variable is data an earlier command carried, the half
+// DECISIONS 2026-09-25 (c) defers for a pid list. As a program name nothing
+// fixes, it fires no entry that names only its program and a count of
+// operands (namesOnlyItsProgram): every command with an operand fits one, so
+// `"$GO" build` would read as a pkill.
+func variableCarried(s segment, i int) bool {
+	_, ok := s.variable[i]
+	return ok && i < len(s.tokens) && isUnknown(s.tokens[i])
+}
+
+// namesOnlyItsProgram reports whether an entry's pattern constrains nothing
+// but its program and how many operands follow it (pkill-by-pattern,
+// killall-by-name).
+func namesOnlyItsProgram(p Pattern) bool {
+	return p.Subcommand == "" && p.Subcommand2 == "" && len(p.Flags) == 0 && len(p.FlagValues) == 0 &&
+		len(p.ArgPaths) == 0 && len(p.ArgPrefixes) == 0 && len(p.ArgsFrom) == 0 && p.AfterCD == nil
 }
 
 // vanishable reports whether a word is nothing but substitutions, so an

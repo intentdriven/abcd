@@ -181,12 +181,24 @@ Text written beside one in the same word is also read as bash leaves it when the
 output is empty, so a flag glued to one is still the flag. A word that is wholly
 a substitution is read as an operand, not as a flag: that is how a commit
 message or a branch name is spelled every day (`git commit -m "$(cat msg)"`), so
-`git push $(printf -- --force)` is not seen. A parameter expansion holding a
-substitution (`${X:-$(…)}`) prints that substitution's output, so its word is
-unknown from the `${` on: `--${X:-$(…)}` is every long flag, and a wholly
-`${…}` word is read as a wholly-substituted one is. Inside double quotes a
-`${…}` ends at its own `}`, and a `"` in it opens a nested string rather than
-closing the outer one, so `echo "${MSG:-"don't"}"` is one word and runs. A
+`git push $(printf -- --force)` is not seen. A parameter expansion (`$VAR`,
+`$1`, `$@`, `${VAR:-git}`, `${X:-$(…)}`) prints a value the line does not
+hold, so it is read by the same rule: `--$VAR` is every long flag, `-$F` every
+short one, and `$GIT` or `${GIT:-git}` as the program is any program its known
+text allows; a single-quoted or escaped `$` is text. A word that is wholly a
+variable is read as an operand, as a wholly-substituted one is, so `git push
+origin "$branch"` stays allowed and `git push $X origin main` is not seen. A
+string handed to a shell carries its variables for that shell to expand
+(`sh -c "git push --$X …"` is read as that shell reads it). A variable's value
+is not read as what an earlier command carried into it: as a shell's or
+`source`'s script it is not a stream (`bash "$script"`), and as the program's
+name it is not `pkill` or `killall`, whose entries name only the program and an
+operand, nor a bare interpreter inside a string, so `"$GO" build ./...` and
+`$EDITOR notes.md` stay allowed. A variable standing as the program with
+another variable as its first operand (`exec "$BIN" "$@"`) can be `git clean`
+and warns, as a substitution there does. Inside double quotes a `${…}` ends at
+its own `}`, and a `"` in it opens a nested string rather than closing the
+outer one, so `echo "${MSG:-"don't"}"` is one word and runs. A
 here-document body is data,
 but where its delimiter is unquoted (`<<EOF`, not `<<'EOF'`, `<<"EOF"` or
 `<<\EOF`) the shell runs the command substitutions in it, and each is read as a
@@ -272,8 +284,12 @@ $(pgrep -g <pgid>)`) is not. The search is followed through a group (`{ pgrep
 xargs kill; }`), through a shell string that runs it (`kill $(sh -c 'pgrep
 …')`), and into a shell string that `xargs` runs or that reads the pipe or a
 redirect (`pgrep … | xargs sh -c 'kill "$@"' _`, `pgrep … | sh -c 'xargs
-kill'`, `sh -c 'xargs kill' < <(pgrep …)`); behind `xargs` and a launcher the
-guard does not know, the fail-safe warns. Every command of a string `xargs`
+kill'`, `sh -c 'xargs kill' < <(pgrep …)`), or whose positional parameters or
+own text hold the search's output (`sh -c 'kill "$1"' _ "$(pgrep …)"`); out
+of an unquoted here-document whose body holds the search (`xargs kill <<EOF`
+over `$(pgrep …)`); and into a substitution in a command that reads a pipe,
+which runs with that pipe as its input (`pgrep … | echo "$(xargs kill)"`);
+behind `xargs` and a launcher the guard does not know, the fail-safe warns. Every command of a string `xargs`
 runs, and every command in a group a pipe feeds, is read as handed that input,
 so `pgrep … | xargs sh -c 'kill 4242'` is a **block** too: the guard does not
 read which of the commands uses it. A `pkill` or `killall` that selects by user, group or terminal
@@ -284,6 +300,8 @@ the account is among what it selects. `pkill`'s signal is read as a signal
 first, in any case and with or without its `SIG` prefix, as `pkill` reads it,
 so `pkill -term -g <pgid>` stops a group and stays allowed. A pid list carried
 through a variable or a file, or taken from a `ps | grep` chain, is not seen.
+Every command of a string a shell is handed with such output in its words is
+read as handed it, so `sh -c 'kill 4242' _ "$(pgrep …)"` is a **block** too.
 
 What an allow still does not see is a hazard that never reaches command position
 at all: one launched through a known wrapper carrying a value-taking flag the
@@ -292,10 +310,11 @@ guard does not name (`sudo -u bob <hazard>` is seen; the bundled short form
 whose API path an entry names by its ROOT
 segment but the host serves under a prefix (a GitHub Enterprise Server install
 mounts the same endpoints under `/api/v3/`; the `https://api.github.com/…` URL
-form **is** read), a parameter expansion that carries no substitution (`$VAR`,
-`${VAR:-git}`) wherever it stands — as the program's name, as a flag
-(`--$VAR`), or inside a payload the guard reads — because the guard sees the
-variable, not what the shell expands it to, an IFS the shell already holds when
+form **is** read), what a variable carries in from an earlier command — a pid
+list, a stream path, shell text run through `eval "$X"` or a string a shell
+runs, or `pkill` or `killall` as the program a variable names (`$P make`) —
+because reading each would refuse the ordinary commands a variable carries a
+value for, an IFS the shell already holds when
 the line starts or gains during the line through a name the guard does not read
 (`declare $(echo I)FS=x`, a sourced file; every line is read from the default IFS), a hazard inside a non-shell interpreter's payload (`python -c`,
 `perl -e`) — one opaque token the tokenizer cannot read, today a silent allow, not
