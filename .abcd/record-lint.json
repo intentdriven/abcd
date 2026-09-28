@@ -238,10 +238,6 @@
       "severity": "blocker",
       "extra_roots": [
         ".abcd/work"
-      ],
-      "exempt": [
-        ".abcd/work/reviews/*",
-        ".abcd/work/reviews/*/*"
       ]
     },
     "directory_coverage": {
