@@ -16,8 +16,18 @@ last one stopped.
 ## Start the run
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/abcd" build <itd-N> --json
+"${CLAUDE_PLUGIN_ROOT}/abcd" build <itd-N> [--session <id>] --json
 ```
+
+Pass `--session` with the host session's id when it has joined the shared run
+(`implement join`): a new run then claims the intent there for that session,
+with the run id as the lane, so a build of the same intent from any other
+checkout of the repository is refused as held from the start, before this run's
+lane has moved or claimed anything. The session's own live claim on the intent
+is not counted as a peer's. A session that has not joined is refused at the
+`claim` step with nothing written. Without `--session` the run holds no claim,
+and the result says so (`claim` is absent): another checkout cannot see the run
+until its lane shows.
 
 For an intent with no run in progress, the checks run first, and every one must
 pass:
@@ -35,7 +45,8 @@ pass:
 - `hold` — the intent carries no `held:`.
 - `steps` — the spec's `## Steps` reads, and at least one step is not landed.
 - `peers` — no peer holds the intent: no sibling worktree or local branch holds
-  it in another bucket, and no session holds a live claim on it. A peer that
+  it in another bucket, and no session other than `--session` holds a live
+  claim on it. A peer that
   cannot be read (a worktree git will not answer for, a ledger holding one id
   twice) and an unreadable claim count as holding it: what they hold is unknown.
 
@@ -48,7 +59,8 @@ goes back to the planning interview, a hold to the person who placed it.
 
 When the checks pass, the payload names the `run_id`, the `state` file
 (`.abcd/.work.local/run/<run-id>/state.json`), the first `lane` (the spec's first
-unlanded step), the `pending` spec steps, and `next`, the move to make. The
+unlanded step), the `pending` spec steps, `claim` when `--session` took one,
+and `next`, the move to make. The
 local tier is never created: in a repository abcd does not manage the verb
 refuses. Starting again while the run is in progress creates nothing, runs no
 check, and reports `resumed: true` with the same run and an empty `checks`: the

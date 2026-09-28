@@ -230,3 +230,33 @@ func TestImplementStepWithoutARunIsRefused(t *testing.T) {
 	}
 	runDirAbsent(t, repo.Root())
 }
+
+// TestBuildForASessionClaimsTheIntent: `build --session` claims the intent in
+// the shared run state for a joined session and says so; an unjoined session
+// is refused at exit 2 with nothing written; a build without it says the run
+// holds no claim (iss-2609252050506863).
+func TestBuildForASessionClaimsTheIntent(t *testing.T) {
+	repo := buildRepo(t)
+	ref := refusalDocs(t, 2, "build", "itd-10", "--session", "ghost", "--json")
+	if ref["step"] != "claim" {
+		t.Fatalf("an unjoined session's build = %v; want the claim step refused", ref)
+	}
+	runDirAbsent(t, repo.Root())
+	mustImplement(t, "implement", "join", "--session", "host-a", "--role", "first", "--json")
+	out := mustImplement(t, "build", "itd-10", "--session", "host-a")
+	if !strings.Contains(out, "claim:   itd-10 for session host-a") {
+		t.Fatalf("build --session does not report its claim:\n%s", out)
+	}
+	if out := mustImplement(t, "implement", "--json"); !strings.Contains(out, `"record": "itd-10"`) {
+		t.Fatalf("the shared run holds no claim on itd-10:\n%s", out)
+	}
+}
+
+// TestBuildWithoutASessionSaysItHoldsNoClaim: the invisibility of a run started
+// without --session is named, not silent.
+func TestBuildWithoutASessionSaysItHoldsNoClaim(t *testing.T) {
+	buildRepo(t)
+	if out := mustImplement(t, "build", "itd-10"); !strings.Contains(out, "claim:   none (no --session)") {
+		t.Fatalf("build without --session is silent about its claim:\n%s", out)
+	}
+}

@@ -275,6 +275,11 @@ func (r *Run) requireSession(id string) (Session, error) {
 	return s, err
 }
 
+// Joined returns a joined session's record, or refuses one the run does not
+// hold, writing nothing: for a caller that acts for a session in the run state
+// and must know it has joined before it creates anything of its own.
+func (r *Run) Joined(id string) (Session, error) { return r.requireSession(id) }
+
 // Sessions lists the joined sessions, by join time.
 func (r *Run) Sessions() ([]Session, error) {
 	out := []Session{}

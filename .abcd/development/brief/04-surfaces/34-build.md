@@ -56,16 +56,27 @@ No run is created until every check passes, and each is a read (criteria 1 and 2
   is one step, the whole spec.
 - **peers** — no peer holds the intent: no sibling worktree or local branch
   holds it in a bucket other than this checkout's (a lane that shipped or
-  re-drafted it), read through the peer listing, and no session holds a live
-  claim on it in the shared run state. A copy in the same bucket is not a
+  re-drafted it), read through the peer listing, and no session other than the
+  one the build is started for holds a live claim on it in the shared run
+  state. A copy in the same bucket is not a
   holding: every branch cut from the default branch carries one. The check
   fails closed on what it cannot see into, on both sides: a peer the listing
   names and cannot read (git or the filesystem will not answer for it, or its
   ledger holds one id in two folders) and an unreadable claim file each count
   as a holding, naming why. A peer of another repository, or one holding no
   records at the committed layout, holds nothing of this checkout's and does
-  not count. A lane that has neither moved nor claimed the intent is invisible
-  to both sources (iss-2609252050506863).
+  not count.
+
+A build started for a named session, one joined to the shared run, claims its intent in the shared run state when it creates the run, with
+the run id as the lane and the longest lease a claim takes, so a build of the
+same intent from any other checkout of the repository — another worktree or a
+second clone on the machine — meets the claim at its peers check before this
+run's lane has moved or claimed anything (iss-2609252050506863). The session's
+own claim on the intent is its own, not a peer's. A session the shared run does
+not hold is refused at the `claim` step before anything is created; a claim
+refused under the lock leaves no run behind; a run whose state cannot be written
+releases the claim it took. A build started without a session holds no claim
+and says so: until its lane shows, another checkout cannot see it.
 
 A refusal names the check, the reason and the remedy, carries every check's row,
 and writes nothing. A peer's holding is contention rather than a fault in the
@@ -158,6 +169,8 @@ _Generated from the command tree; a drift test fails `go test` when this appendi
 
 Sub-verbs: none.
 
-Flags: none.
+| Flag | Type |
+|---|---|
+| `--session` | string |
 
 <!-- surface-appendix:end -->

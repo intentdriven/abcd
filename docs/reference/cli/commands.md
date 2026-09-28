@@ -204,7 +204,7 @@ abcd banlist remove --private acme-internal
 
 Start the loop that takes one READY intent to delivered: Writes the run's state file in the local tier; refuses an open question, a hold or a peer holding it.
 
-**Usage:** `abcd build <itd-N>`
+**Usage:** `abcd build <itd-N> [--session <id>] [flags]`
 
 Start the implement loop for one intent, or resume the run already in progress for it.
 A new run's checks run first, and every one must pass:
@@ -222,10 +222,23 @@ never created: only a repository abcd manages has one. Starting again while the 
 in progress creates nothing and names the run without judging the checks again (the
 run's own lanes change what they read), so a killed process resumes where it stopped.
 
+--session names the host session's id in the shared run state (`abcd implement join`):
+a new run then claims the intent there for that session, the run id as its lane, so a
+build of the same intent from any other checkout of the repository is refused as held
+before this run's lane has moved or claimed anything, and the session's own claim on the
+intent is not counted as a peer's. A session that has not joined is refused. Without it
+the run holds no claim, and the result says so.
+
 The run then moves one step per `abcd implement step`, driven by the host session.
 
 Exit 2 on a refusal, exit 3 when a peer holds the intent or the run state is locked
 (back off and take other work).
+
+**Flags:**
+
+```
+      --session string   the host session's id in the shared run state; a new run claims the intent for it
+```
 
 **Example:**
 
