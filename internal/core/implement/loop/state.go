@@ -43,7 +43,6 @@
 package loop
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -53,6 +52,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core/jsonstrict"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
@@ -268,10 +268,10 @@ func readStateIn(root *os.Root, runID string) (State, error) {
 		return State{}, refuse("state", "", "", fmt.Sprintf("%s cannot be read as the run's state: %v", rel, err),
 			"the loop writes a regular file in a real directory; restore that, or remove the run directory "+runRel(runID))
 	}
+	// One strict decode, the lane receipt's: a repeated key, a field State
+	// does not name and a second document are each refused (iss-2609281204381700).
 	var st State
-	dec := json.NewDecoder(bytes.NewReader(data))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&st); err != nil {
+	if err := jsonstrict.Decode(data, &st); err != nil {
 		return State{}, refuse("state", "", "", fmt.Sprintf("%s does not parse as a run state: %v", rel, err),
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
 	}

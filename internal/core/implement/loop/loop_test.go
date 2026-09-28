@@ -601,6 +601,9 @@ func TestAPauseRefusesUntilNextEligibleAt(t *testing.T) {
 
 // TestReadStateFailsClosed: a run id of the wrong shape, an unknown field and
 // another schema version are each refused rather than read.
+// A repeated key (exact or a case twin encoding/json binds to the same field)
+// and a second document are refused too, not read last-wins or first-only
+// (iss-2609281204381700).
 func TestReadStateFailsClosed(t *testing.T) {
 	repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
 	start, err := Start(repo.Root(), "itd-10", Options{})
@@ -621,6 +624,30 @@ func TestReadStateFailsClosed(t *testing.T) {
 		}
 		if _, err := ReadState(repo.Root(), start.RunID); err == nil {
 			t.Fatalf("%s: the reader must refuse", name)
+		}
+	}
+	// Each of these reads as version 1 under a last-wins or first-document
+	// decode, so only a strict reader refuses them; the reason names why.
+	for name, tc := range map[string]struct{ bad, want string }{
+		"a repeated key": {
+			strings.Replace(string(good), `"schema_version": 1,`, `"schema_version": 2, "schema_version": 1,`, 1),
+			`duplicate key "schema_version"`,
+		},
+		"a repeated key spelt as a case twin": {
+			strings.Replace(string(good), `"schema_version": 1,`, `"schema_version": 2, "SCHEMA_VERSION": 1,`, 1),
+			`duplicate key "SCHEMA_VERSION"`,
+		},
+		"a second document": {string(good) + "\n{}\n", "content after the one JSON document"},
+	} {
+		if err := os.WriteFile(path, []byte(tc.bad), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		_, err := ReadState(repo.Root(), start.RunID)
+		if err == nil {
+			t.Fatalf("%s: the reader must refuse", name)
+		}
+		if r := mustRefusal(t, err); r.Step != "state" || !strings.Contains(r.Reason, tc.want) {
+			t.Fatalf("%s: want a state refusal naming %q, got %+v", name, tc.want, r)
 		}
 	}
 }
