@@ -39,6 +39,73 @@
         ]
       }
     },
+    "rm-rf-root-or-home": {
+      "tier": "blocker",
+      "pattern": {
+        "command": "rm",
+        "flags": ["-r|-R|--recursive"],
+        "arg_values": ["/", "/*", "~", "~/", "~/*", "$HOME", "$HOME/", "$HOME/*", "${HOME}", "${HOME}/", "${HOME}/*"]
+      },
+      "why": "A recursive delete of `/` or of the home directory destroys the whole machine or every file the account owns — other projects, keys, settings — and nothing brings any of it back.",
+      "successor": "Name the one directory you mean, by its full path (`rm -rf -- /absolute/path/to/target`), and never the root or the home directory itself.",
+      "fixtures": {
+        "known_bad": [
+          "rm -rf /",
+          "rm -rf /*",
+          "rm -fr ~",
+          "rm -r -f ~/",
+          "rm --recursive --force $HOME",
+          "rm -rf \"$HOME\"/*",
+          "rm -rf ${HOME}",
+          "rm -r /",
+          "sudo rm -rf --no-preserve-root /",
+          "env rm -rf ~/*",
+          "sh -c 'rm -rf ~'"
+        ],
+        "known_good": [
+          "rm -rf /tmp/build",
+          "rm -rf ~/scratch/build",
+          "rm -rf \"$HOME/.cache/abcd-test\"",
+          "rm ~/notes.txt",
+          "rm -f /",
+          "ls -la /",
+          "printf '%s\\n' \"rm -rf /\"",
+          "abcd capture \"an agent ran rm -rf ~ and the home directory was gone\"",
+          "cat > NOTES.md <<'EOF'\nNever run rm -rf / or rm -rf ~.\nEOF"
+        ]
+      }
+    },
+    "rm-rf-working-directory": {
+      "tier": "warn",
+      "pattern": {
+        "command": "rm",
+        "flags": ["-r|-R|--recursive"],
+        "arg_values": ["*", ".", "./", "./*", "..", "../", "../*", ".*"]
+      },
+      "why": "A recursive delete of `*`, `.` or `..` removes everything in the directory the shell is in, or the one above it — and the directory the shell is in is usually the repository itself, uncommitted work included.",
+      "successor": "Name the directory you mean by its path (`rm -rf -- ./build`), or check where you are first (`pwd`) and delete from the directory's parent by name.",
+      "fixtures": {
+        "known_bad": [
+          "rm -rf *",
+          "rm -fr .",
+          "rm -r -f ./*",
+          "rm --recursive --force ..",
+          "rm -rf ../*",
+          "rm -rf .*",
+          "sudo rm -rf *",
+          "rm -r *"
+        ],
+        "known_good": [
+          "rm -rf ./build",
+          "rm -rf build/*",
+          "rm -rf node_modules",
+          "rm -f *.o",
+          "rm *",
+          "ls -la *",
+          "abcd capture \"an agent ran rm -rf * in the repository root\""
+        ]
+      }
+    },
     "git-push-force": {
       "tier": "blocker",
       "pattern": {

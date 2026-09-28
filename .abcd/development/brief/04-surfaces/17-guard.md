@@ -273,10 +273,24 @@ than one worktree, a stash or pop that does not name its entry is warned about,
 because the stash stack is shared across worktrees. Where the reading is a
 guess, over-blocking is the direction the guard takes.
 
+A recursive delete is read by what it deletes. Of the filesystem root or the
+home directory (`/`, `/*`, `~`, `$HOME`, `${HOME}`, each also with a trailing
+`/` or `/*`) it is a block wherever it stands, with or without `-f`. Of the
+directory the shell is in or the one above it (`*`, `.`, `..`, `./*`, `../*`,
+`.*`) it is a warn, graded like `git clean`, because that directory is usually
+the repository and emptying a build directory the same way is ordinary work.
+Chained after a `cd` any recursive forced delete blocks, as above. The target is
+compared as written, before the shell expands it, so `$HOME` is seen as the
+word `$HOME` although no other parameter expansion is.
+
 What an allow still does not see is a hazard that never reaches command position
 at all: a word that is wholly a command substitution standing where a flag
 would be, which is read as an operand because that is how a commit message or a
-branch name is spelled every day; one behind a wrapper flag the per-wrapper
+branch name is spelled every day; a delete target printed whole by a
+substitution (`rm -rf $(echo /)`), which is read by its known text because that
+is how an everyday delete names what it removes (`rm -rf $(find . -name
+'*.pyc')`); a target spelled any other way than the words above (`rm -rf
+"$DIR"/*` with `DIR` unset, `rm -rf /?*`); one behind a wrapper flag the per-wrapper
 table does not name; a REST
 path an entry names by its root segment when the host serves that API under a
 prefix; an IFS the shell already holds when the line starts, or gains during the line

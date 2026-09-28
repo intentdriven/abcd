@@ -550,7 +550,7 @@ func newEntryMatcher(p Pattern, tokens []string, glob func(int) bool) entryMatch
 	n := len(tokens)
 	want := operandWant{
 		sub: p.Subcommand, sub2: p.Subcommand2, min: p.MinOperands,
-		prefixes: p.ArgPrefixes, paths: p.ArgPaths,
+		prefixes: p.ArgPrefixes, paths: p.ArgPaths, values: p.ArgValues,
 	}
 	m := entryMatcher{accept: operandAcceptance(tokens, p.ValueFlags, want, glob), nextStop: make([]int, n+1)}
 	m.nextStop[n] = n
@@ -673,6 +673,23 @@ func argPrefixMatches(prefix string, ops []string) bool {
 	for _, op := range ops {
 		if strings.HasPrefix(knownText(op), prefix) {
 			return true
+		}
+	}
+	return false
+}
+
+// argValueMatches reports whether some operand is one of the words. Only
+// operands are considered, and each by its known text, as argPrefixMatches
+// reads a prefix: a word that is wholly a substitution is how an everyday
+// delete names its target (`rm -rf "$(mktemp -d)"`), so reading it as every
+// target would refuse them all (unknown.go's operand residual).
+func argValueMatches(values []string, ops []string) bool {
+	for _, op := range ops {
+		k := knownText(op)
+		for _, v := range values {
+			if k == v {
+				return true
+			}
 		}
 	}
 	return false

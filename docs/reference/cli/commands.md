@@ -924,7 +924,9 @@ An unquoted brace group IS
 expanded as bash expands it, and one past 4096 words is blocked. What an
 allow still does not see is a hazard that never reaches command position at
 all: a word that is wholly a `$(…)` standing where a flag would be (read as
-an operand, the way a commit message or a branch is spelled), one launched
+an operand, the way a commit message or a branch is spelled), a delete
+target printed whole by one (`rm -rf $(echo /)`, read by its known text
+the way `rm -rf $(find …)` names its targets every day), one launched
 through a known
 wrapper carrying a value-taking flag the guard does not name (`sudo -u bob
 <hazard>` is seen; the bundled short form `sudo -Hu bob <hazard>` reaches

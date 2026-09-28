@@ -135,17 +135,24 @@ func TestGuardHookWorkdirRegistryCannotDisarmTheSession(t *testing.T) {
 // the session directory. So the failed-cd hazard rm-rf-after-cd-chain exists for
 // does not exist for a host workdir, and the guard must not manufacture it by
 // reading the workdir as `cd <workdir> &&`. The cd chain spelled in the command
-// string still blocks, workdir or not.
+// string still blocks, workdir or not. A bare `rm -rf *` meets only the
+// working-directory warn, as it does with no workdir at all.
 func TestGuardHookMissingWorkdirIsNotAFailedCd(t *testing.T) {
 	dir := workdirSession(t)
 	if err := os.WriteFile(filepath.Join(dir, "afile"), nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	for _, wd := range []string{"missing", "afile", "cold"} {
-		t.Run("rm -rf * in workdir "+wd, func(t *testing.T) {
-			_, stderr, code := runGuard(preToolUseIn(t, "rm -rf *", dir, wd), "guard", "hook")
+		t.Run("rm -rf ./build in workdir "+wd, func(t *testing.T) {
+			_, stderr, code := runGuard(preToolUseIn(t, "rm -rf ./build", dir, wd), "guard", "hook")
 			if code != 0 {
 				t.Errorf("a host workdir is not a shell cd: want exit 0, got %d (stderr %q)", code, stderr)
+			}
+		})
+		t.Run("rm -rf * in workdir "+wd, func(t *testing.T) {
+			_, stderr, code := runGuard(preToolUseIn(t, "rm -rf *", dir, wd), "guard", "hook")
+			if code == 2 || strings.Contains(stderr, "rm-rf-after-cd-chain") {
+				t.Errorf("a host workdir is not a shell cd: want no cd-chain block, got exit %d (stderr %q)", code, stderr)
 			}
 		})
 	}

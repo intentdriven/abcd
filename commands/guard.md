@@ -296,8 +296,17 @@ first, in any case and with or without its `SIG` prefix, as `pkill` reads it,
 so `pkill -term -g <pgid>` stops a group and stays allowed. A pid list carried
 through a variable or a file, or taken from a `ps | grep` chain, is not seen.
 
+A recursive delete of the filesystem root or the home directory (`/`, `/*`,
+`~`, `$HOME`, `${HOME}`, each also with a trailing `/` or `/*`) is a **block**
+(`rm-rf-root-or-home`), with or without `-f`; one of the directory the shell is
+in or the one above it (`*`, `.`, `..`, `./*`, `../*`, `.*`) is a **warn**
+(`rm-rf-working-directory`). The target is compared as written, so `$HOME` is
+seen as that word.
+
 What an allow still does not see is a hazard that never reaches command position
-at all: one launched through a known wrapper carrying a value-taking flag the
+at all: a delete target printed whole by a substitution (`rm -rf $(echo /)`),
+read by its known text the way `rm -rf $(find …)` names its targets every day,
+or spelled any other way than the words above; one launched through a known wrapper carrying a value-taking flag the
 guard does not name (`sudo -u bob <hazard>` is seen; the bundled short form
 `sudo -Hu bob <hazard>` reaches only the warn, not the entry that names it), one
 whose API path an entry names by its ROOT

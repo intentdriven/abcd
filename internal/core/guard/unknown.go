@@ -56,7 +56,10 @@ import (
 // and its branch (`git commit -m "$(cat msg)"`, `git push origin
 // "$(git branch --show-current)"`), and reading it as every flag would refuse
 // both. The same reason keeps an operand's `+` refspec prefix read from its
-// known text only. Both residuals are recorded in .abcd/work/DECISIONS.md.
+// known text only, and an operand an entry names by its exact word
+// (arg_values): `rm -rf $(find . -name '*.pyc')` is how an everyday delete
+// names its targets, and reading its operand as every target would refuse it
+// as a delete of `/`. The residuals are recorded in .abcd/work/DECISIONS.md.
 
 // unknownMark stands, inside a token, for the output of a substitution the
 // guard did not run. It is the NUL byte, and it is unforgeable by construction:
@@ -573,12 +576,13 @@ func sitesNamed(s segment, name string) []arrival {
 
 // operandWant is what an entry asks of a command's operands: operand 0 and 1
 // by name, a count, an argument prefix and a resource path carried by some
-// operand.
+// operand, and one of a set of exact words standing as some operand.
 type operandWant struct {
 	sub, sub2 string
 	min       int
 	prefixes  []string
 	paths     []PathArg
+	values    []string
 }
 
 // operandAcceptance returns, for each index i of tokens, whether some reading
@@ -592,7 +596,11 @@ type operandWant struct {
 // sit.
 func operandAcceptance(tokens, valueFlags []string, want operandWant, glob func(int) bool) []bool {
 	need := want.need()
-	nb := uint(len(want.prefixes) + len(want.paths))
+	nv := 0
+	if len(want.values) > 0 {
+		nv = 1 // the values are one clause: any one of them meets it
+	}
+	nb := uint(len(want.prefixes) + len(want.paths) + nv)
 	full := 1<<nb - 1
 	width := (need + 1) << nb
 	n := len(tokens)
@@ -621,6 +629,9 @@ func operandAcceptance(tokens, valueFlags []string, want operandWant, glob func(
 				if pathArgMatches(pa, []string{a}) {
 					hits |= 1 << (len(want.prefixes) + j)
 				}
+			}
+			if nv > 0 && argValueMatches(want.values, []string{a}) {
+				hits |= 1 << (len(want.prefixes) + len(want.paths))
 			}
 		}
 		for k := 0; k <= need; k++ {
