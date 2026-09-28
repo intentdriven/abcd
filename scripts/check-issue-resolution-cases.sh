@@ -1451,6 +1451,118 @@ Resolves: iss-999"
 git -C "$d" revert --no-edit HEAD >/dev/null
 expect pass "$d" "RS001 a revert whose diff lists a non-record file last still withdraws" -- commits main HEAD
 
+# A record file sits directly in its status folder and is named <id>.md or
+# <id>-<slug>.md. A file under a terminal folder that has an id-shaped name but
+# not that shape — nested one directory down, or not markdown — names no record,
+# so it neither enters the folder nor, reverted, leaves it. When the id was read
+# from the basename alone, adding such a file satisfied a trailer, and a
+# `git revert` of the commit that added it withdrew the trailer.
+d="$(newrepo rs001-nested-file-enters-nothing)"
+mkdir -p "$d/$ISS_DIR/resolved/x"
+printf -- '---\nschema_version: 1\nid: "iss-1"\n---\nNested.\n' >"$d/$ISS_DIR/resolved/x/iss-1.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "fix: something
+
+Resolves: iss-1"
+expect_refusal_naming "$d" "RS001 a nested file under resolved/ is not a record entering it" \
+	"declares 'Resolves: iss-1', but iss-1 does not enter" -- commits main HEAD
+
+d="$(newrepo rs001-non-md-file-enters-nothing)"
+echo "not a record" >"$d/$ISS_DIR/resolved/iss-4242.txt"
+git -C "$d" add -A
+git -C "$d" commit -qm "fix: something
+
+Resolves: iss-4242"
+expect_refusal_naming "$d" "RS001 a non-.md file under resolved/ is not a record entering it" \
+	"declares 'Resolves: iss-4242', but iss-4242 has no record" -- commits main HEAD
+
+# The revert half: odd files added under resolved/ and declared, then the commit
+# reverted. Nothing was put in, so nothing is withdrawn, and each trailer is
+# judged — and refused — as not entering.
+d="$(newrepo rs001-odd-files-revert)"
+mkdir -p "$d/$ISS_DIR/resolved/x"
+echo "not a record" >"$d/$ISS_DIR/resolved/README.md"
+printf -- '---\nschema_version: 1\nid: "iss-1"\n---\nNested.\n' >"$d/$ISS_DIR/resolved/x/iss-1.md"
+echo "not a record" >"$d/$ISS_DIR/resolved/iss-4242.txt"
+git -C "$d" add -A
+git -C "$d" commit -qm "fix: something
+
+Resolves: iss-1, iss-4242"
+git -C "$d" revert --no-edit HEAD >/dev/null
+expect_refusal_naming "$d" "RS001 reverting a nested file withdraws nothing for its id" \
+	"declares 'Resolves: iss-1', but iss-1 has no record" -- commits main HEAD
+expect_refusal_naming "$d" "RS001 reverting a non-.md file withdraws nothing for its id" \
+	"declares 'Resolves: iss-4242', but iss-4242 has no record" -- commits main HEAD
+expect_refusal_not_naming "$d" "RS001 reverting odd files reports no withdrawal" \
+	"is withdrawn" -- commits main HEAD
+
+# The merge-base half: a nested id-shaped file already under resolved/ at the
+# fork is not the record sitting there, so the honest move of the real record
+# out of open/ still enters.
+d="$(newrepo rs001-nested-file-at-base-is-not-terminal)"
+git -C "$d" checkout -q main
+mkdir -p "$d/$ISS_DIR/resolved/x"
+printf -- '---\nschema_version: 1\nid: "iss-999"\n---\nNested.\n' >"$d/$ISS_DIR/resolved/x/iss-999.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "chore: a nested file"
+git -C "$d" checkout -q -B work main
+resolve_record "$d"
+git -C "$d" commit -qm "fix: something
+
+Resolves: iss-999"
+expect pass "$d" "RS001 a nested file under resolved/ at the fork does not make the record terminal" -- commits main HEAD
+
+# The RS005 twins: under shipped/, a nested or non-.md file names no intent, so
+# it neither ships one nor, reverted, withdraws a delivery.
+d="$(newrepo_intents rs005-nested-file-enters-nothing)"
+mkdir -p "$d/$INT_DIR/shipped/x"
+cat "$d/$INT_DIR/planned/itd-7-fixture-7.md" >"$d/$INT_DIR/shipped/x/itd-7-fixture-7.md"
+git -C "$d" add -A
+git -C "$d" commit -qm "feat: build the thing
+
+Delivers: itd-7"
+expect_refusal_naming "$d" "RS005 a nested file under shipped/ is not an intent entering it" \
+	"declares 'Delivers: itd-7', but itd-7 does not enter" -- commits main HEAD
+
+d="$(newrepo_intents rs005-non-md-file-enters-nothing)"
+echo "not a record" >"$d/$INT_DIR/shipped/itd-7.txt"
+git -C "$d" add -A
+git -C "$d" commit -qm "feat: build the thing
+
+Delivers: itd-7"
+expect_refusal_naming "$d" "RS005 a non-.md file under shipped/ is not an intent entering it" \
+	"declares 'Delivers: itd-7', but itd-7 does not enter" -- commits main HEAD
+
+d="$(newrepo_intents rs005-odd-files-revert)"
+mkdir -p "$d/$INT_DIR/shipped/x"
+cat "$d/$INT_DIR/planned/itd-7-fixture-7.md" >"$d/$INT_DIR/shipped/x/itd-7-fixture-7.md"
+echo "not a record" >"$d/$INT_DIR/shipped/itd-8.txt"
+git -C "$d" add -A
+git -C "$d" commit -qm "feat: build the things
+
+Delivers: itd-7, itd-8"
+git -C "$d" revert --no-edit HEAD >/dev/null
+expect_refusal_naming "$d" "RS005 reverting a nested file withdraws nothing for its id" \
+	"declares 'Delivers: itd-7', but itd-7 does not enter" -- commits main HEAD
+expect_refusal_naming "$d" "RS005 reverting a non-.md file withdraws nothing for its id" \
+	"declares 'Delivers: itd-8', but itd-8 does not enter" -- commits main HEAD
+expect_refusal_not_naming "$d" "RS005 reverting odd files reports no withdrawal" \
+	"is withdrawn" -- commits main HEAD
+
+# The base half: a non-.md id-shaped file already under shipped/ at the base is
+# not the intent sitting there, so the honest close still ships it.
+d="$(newrepo_intents rs005-non-md-file-at-base-is-not-shipped)"
+git -C "$d" checkout -q main
+echo "not a record" >"$d/$INT_DIR/shipped/itd-7.txt"
+git -C "$d" add -A
+git -C "$d" commit -qm "chore: a stray file"
+git -C "$d" checkout -q -B work main
+ship_intent "$d" 7
+git -C "$d" commit -qm "feat: build the thing
+
+Delivers: itd-7"
+expect pass "$d" "RS005 a non-.md file under shipped/ at the base does not make the intent shipped" -- commits main HEAD
+
 # Criterion 5: the intent rule's refusal has the issue rule's shape and exit
 # code — compared here, not judged by a reviewer. Both fixtures are the ordinary
 # case (a trailer whose record stays where it was); each refusal is normalised by

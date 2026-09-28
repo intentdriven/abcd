@@ -243,6 +243,45 @@ usage() {
 	exit 2
 }
 
+# record_files is the one reading of which paths are records. It reads
+# repository paths on stdin and prints "<id> <folder>" for each that is a record
+# file of kind $1 (iss or itd): a file sitting DIRECTLY in a folder of its store
+# ($ISSUES_DIR or $INTENTS_DIR) and named <id>.md or <id>-<slug>.md, the shape
+# record_path and intent_path look an id up by. The caller scopes the folders;
+# the id is printed as the filename spells it, and an itd id is canonicalised by
+# the caller through canon_itd. Anything else in a status folder names no
+# record — a nested file (resolved/x/iss-1.md), a non-.md file
+# (resolved/iss-4242.txt), a README — so it neither enters a folder nor,
+# reverted, leaves one. Read from the basename alone, such a file satisfied a
+# trailer by being added, and withdrew it by being reverted (iss-2609240646533487).
+record_files() {
+	local kind="$1" root
+	case "$kind" in
+	iss) root="$ISSUES_DIR" ;;
+	itd) root="$INTENTS_DIR" ;;
+	*)
+		echo "check-issue-resolution: record_files: unknown record kind '$kind'" >&2
+		exit 2
+		;;
+	esac
+	awk -v root="$root/" -v kind="$kind" '
+		BEGIN { shape = "^[^/]+/" kind "-[0-9]+(-[^/]*)?\\.md$" }
+		index($0, root) == 1 {
+			rest = substr($0, length(root) + 1)
+			if (rest !~ shape) next
+			slash = index(rest, "/")
+			name = substr(rest, slash + 1)
+			match(name, "^" kind "-[0-9]+")
+			print substr(name, RSTART, RLENGTH) " " substr(rest, 1, slash - 1)
+		}'
+}
+
+# record_id prints the id of the record file at path $2 of kind $1, or nothing
+# when the path is not a record file (record_files).
+record_id() {
+	printf '%s\n' "$2" | record_files "$1" | cut -d' ' -f1
+}
+
 # ids_entering_closed prints every iss-N whose record ENTERS resolved/ or wontfix/
 # across the range — the destination half of a resolution. A record moved from
 # open/ shows as a rename (or, without rename detection, as an add into the
@@ -287,7 +326,7 @@ ids_entering_closed() {
 			esac
 			case "$landed" in
 			"$ISSUES_DIR/resolved/"* | "$ISSUES_DIR/wontfix/"*)
-				id="$(basename "$landed" | grep -oE '^iss-[0-9]+' || true)"
+				id="$(record_id iss "$landed")"
 				[ -n "$id" ] || continue
 				grep -qx "$id $(status_of "$landed")" <<<"$terminal_at_mb" && continue
 				printf '%s\n' "$id"
@@ -307,16 +346,15 @@ terminal_folders() {
 		echo "$listing" >&2
 		exit 2
 	fi
-	printf '%s\n' "$listing" | sed "s|^$ISSUES_DIR/||" |
-		awk -F/ 'NF >= 2 && match($NF, /^iss-[0-9]+/) { print substr($NF, RSTART, RLENGTH) " " $1 }' | sort -u
+	printf '%s\n' "$listing" | record_files iss | sort -u
 }
 
-# terminal_ids prints, one per line, the id (matched by the ERE in $4, anchored
-# at the basename's start) of every record ref holds under the terminal folders
-# $2 and $3 ($3 may be empty). The listing is rc-checked: a git failure must not
+# terminal_ids prints, one per line, the id of every record of kind $4
+# (record_files) ref holds under the terminal folders $2 and $3 ($3 may be
+# empty). The listing is rc-checked: a git failure must not
 # read as "nothing was terminal", which would re-open the hole this closes.
 terminal_ids() {
-	local ref="$1" d1="$2" d2="$3" idre="$4" listing rc=0
+	local ref="$1" d1="$2" d2="$3" kind="$4" listing rc=0
 	if [ -n "$d2" ]; then
 		listing="$(git ls-tree -r --name-only "$ref" -- "$d1" "$d2" 2>&1)" || rc=$?
 	else
@@ -327,7 +365,7 @@ terminal_ids() {
 		echo "$listing" >&2
 		exit 2
 	fi
-	printf '%s\n' "$listing" | sed 's|.*/||' | { grep -oE "^$idre" || true; } | sort -u
+	printf '%s\n' "$listing" | record_files "$kind" | cut -d' ' -f1 | sort -u
 }
 
 # record_path prints the ledger path of iss-N's record at ref — its status
@@ -427,7 +465,7 @@ canon_itd() {
 ids_entering_shipped() {
 	local base="$1" head="$2" shipped_at_base
 	# `|| exit 2` for the reason ids_entering_closed gives.
-	shipped_at_base="$(terminal_ids "$base" "$INTENTS_DIR/shipped" "" 'itd-[0-9]+')" || exit 2
+	shipped_at_base="$(terminal_ids "$base" "$INTENTS_DIR/shipped" "" itd)" || exit 2
 	shipped_at_base="$(printf '%s\n' "$shipped_at_base" | while IFS= read -r raw; do canon_itd "$raw"; done)"
 	git diff --name-status --find-renames "$base".."$head" -- "${INTENT_PATHSPECS[@]}" |
 		while IFS=$'\t' read -r status path dest; do
@@ -438,7 +476,7 @@ ids_entering_shipped() {
 			esac
 			case "$landed" in
 			"$INTENTS_DIR/shipped/"*)
-				id="$(canon_itd "$(basename "$landed" | grep -oE '^itd-[0-9]+' || true)")"
+				id="$(canon_itd "$(record_id itd "$landed")")"
 				[ -n "$id" ] || continue
 				grep -qx "$id" <<<"$shipped_at_base" && continue
 				printf '%s\n' "$id"
@@ -639,8 +677,8 @@ terminal_moves() {
 		"$INTENTS_DIR/shipped/"*) folder=shipped ;;
 		esac
 		case "$folder" in
-		resolved | wontfix) id="$(basename "$path" | grep -oE '^iss-[0-9]+' || true)" ;;
-		shipped) id="$(canon_itd "$(basename "$path" | grep -oE '^itd-[0-9]+' || true)")" ;;
+		resolved | wontfix) id="$(record_id iss "$path")" ;;
+		shipped) id="$(canon_itd "$(record_id itd "$path")")" ;;
 		esac
 		# An if, not `[ ] && printf`: a false test as the last command the
 		# loop runs would become the loop's status, and a non-record file in a
