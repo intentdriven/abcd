@@ -75,19 +75,10 @@ func ParseDisposition(id, content string) DispositionRecord {
 	// A BOM is not preamble: it is the file's encoding mark, which the strict
 	// ledger parser and frontmatter.Fields both trim at line 0 and only there
 	// (iss-2608221126066379).
-	if len(lines) == 0 || strings.TrimSpace(frontmatter.TrimBOM(lines[0])) != "---" {
-		return rec
-	}
-	closeAt := -1
-	for i := 1; i < len(lines); i++ {
-		if strings.HasPrefix(lines[i], " ") || strings.HasPrefix(lines[i], "\t") {
-			continue
-		}
-		if strings.TrimSpace(lines[i]) == "---" {
-			closeAt = i
-			break
-		}
-	}
+	// The block's extent is frontmatter.Close's, the walk the strict ledger
+	// parser takes, so an indented opening rule opens nothing here either
+	// (iss-2608270908348042).
+	closeAt := frontmatter.Close(lines)
 	if closeAt == -1 {
 		return rec
 	}

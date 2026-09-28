@@ -129,7 +129,23 @@ func Close(lines []string) int {
 	if len(lines) == 0 || !IsDelimiter(TrimBOM(lines[0])) {
 		return -1
 	}
-	for i := 1; i < len(lines); i++ {
+	return CloseAfter(lines, 0)
+}
+
+// CloseAfter returns the index of the first delimiter after the opening one at
+// lines[open], or -1 when nothing closes the block. It is Close's walk for a
+// reader that has located the opening delimiter itself — record-lint and the
+// glossary admit an attribution comment above it, so their block need not open
+// at line 0 — and it judges every closing line by IsDelimiter exactly as Close
+// does: an indented `  ---` and a mid-file "\ufeff---" are body lines, never a
+// close. Whether lines[open] opens a block is the caller's question.
+//
+// The lines may carry their end-of-line bytes or not; IsDelimiter trims both.
+func CloseAfter(lines []string, open int) int {
+	if open < 0 {
+		return -1
+	}
+	for i := open + 1; i < len(lines); i++ {
 		if IsDelimiter(lines[i]) {
 			return i
 		}

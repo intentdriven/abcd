@@ -31,6 +31,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/core/frontmatter"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
@@ -445,13 +446,17 @@ func agentCapabilityScope(lines []string) map[string]string {
 	// re-judging it here without the trim refused a BOM-led prompt's block
 	// (iss-2608221126066379).
 	lines = lines[start:]
+	// The block ends at frontmatter.CloseAfter's close, the one closing walk
+	// (iss-2608270908348042); an unclosed block is read to the end of the file,
+	// as this reader always has.
+	end := frontmatter.CloseAfter(lines, 0)
+	if end < 0 {
+		end = len(lines)
+	}
 	scope := map[string]string{}
 	inScope, member := false, ""
-	for i := 1; i < len(lines); i++ {
+	for i := 1; i < end; i++ {
 		line := strings.TrimRight(lines[i], "\r")
-		if strings.TrimSpace(line) == "---" {
-			break
-		}
 		indented := line != "" && (line[0] == ' ' || line[0] == '\t')
 		if !indented {
 			inScope, member = strings.HasPrefix(line, "capability_scope:"), ""

@@ -77,18 +77,23 @@ func StripFrontmatter(t string) (string, int) {
 		rest = frontmatter.TrimBOM(rest)
 		lead = len(t) - len(rest)
 	}
-	if !strings.HasPrefix(rest, "---") {
+	// Both delimiters are judged by frontmatter.IsDelimiter, the one rule: a
+	// bare prefix test opened a block on `----` or `--- yaml` and closed one on
+	// any line that merely began with three dashes (iss-2608270908348042). The
+	// cut lands after the closing delimiter's dashes, on its own line ending.
+	lines := strings.SplitAfter(rest, "\n")
+	if !frontmatter.IsDelimiter(lines[0]) {
 		return t, 0
 	}
-	end := strings.Index(rest[3:], "\n---")
+	end := frontmatter.CloseAfter(lines, 0)
 	if end < 0 {
 		return t, 0
 	}
-	end += 3
-	cut := end + 4
-	if cut > len(rest) {
-		return t, 0
+	cut := 0
+	for _, ln := range lines[:end] {
+		cut += len(ln)
 	}
+	cut += len(strings.TrimRight(lines[end], "\r\n"))
 	return rest[cut:], strings.Count(t[:lead+cut], "\n")
 }
 

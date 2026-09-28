@@ -2155,15 +2155,16 @@ func recordBodyStart(lines []string) int {
 	// Whether that line opens frontmatter is frontmatterOpen's question, which
 	// trims a BOM ahead of the delimiter; a private compare here did not, and
 	// took a BOM-led issue's `---` for its title (iss-2608221126066379).
+	// The close is frontmatter.CloseAfter's, the one closing walk; a private
+	// TrimSpace compare closed on an indented rule no other reader closes on
+	// (iss-2608270908348042). An unclosed block still reads as swallowing the
+	// document, so no frontmatter line is taken for a title.
 	i, _ := mdrecord.FirstContent(lines)
 	if i < len(lines) && frontmatterOpen(lines) == i {
-		i++
-		for i < len(lines) && strings.TrimSpace(lines[i]) != "---" {
-			i++
+		if end := frontmatter.CloseAfter(lines, i); end >= 0 {
+			return end + 1
 		}
-		if i < len(lines) {
-			i++
-		}
+		return len(lines)
 	}
 	return i
 }

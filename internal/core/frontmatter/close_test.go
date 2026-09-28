@@ -41,3 +41,38 @@ func TestCloseFindsTheBlockFieldsReads(t *testing.T) {
 		})
 	}
 }
+
+// TestCloseAfterJudgesTheCloseAsCloseDoes: a reader that located the opening
+// delimiter itself (past an attribution comment) asks CloseAfter for the close,
+// and gets Close's answer about which lines close a block — IsDelimiter's, so an
+// indented rule and a mid-file ZWNBSP rule are body lines
+// (iss-2608270908348042).
+func TestCloseAfterJudgesTheCloseAsCloseDoes(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		doc  string
+		open int
+		want int
+	}{
+		{"opening past a comment", "<!-- c -->\n---\nid: a\n---\nbody\n", 1, 3},
+		{"an indented rule is not a close", "<!-- c -->\n---\nid: a\n  ---\n---\n", 1, 4},
+		{"a mid-file ZWNBSP rule is not a close", "<!-- c -->\n---\nid: a\n\ufeff---\n---\n", 1, 4},
+		{"trailing whitespace and CRLF", "<!-- c -->\r\n---\r\nid: a\r\n--- \r\n", 1, 3},
+		{"unclosed", "<!-- c -->\n---\nid: a\n", 1, -1},
+		{"no opening", "body\n", -1, -1},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			lines := strings.Split(tc.doc, "\n")
+			if got := CloseAfter(lines, tc.open); got != tc.want {
+				t.Fatalf("CloseAfter = %d, want %d", got, tc.want)
+			}
+			// With line ends kept, the answer is the same.
+			if got := CloseAfter(strings.SplitAfter(tc.doc, "\n"), tc.open); got != tc.want {
+				t.Fatalf("CloseAfter (ends kept) = %d, want %d", got, tc.want)
+			}
+		})
+	}
+}
