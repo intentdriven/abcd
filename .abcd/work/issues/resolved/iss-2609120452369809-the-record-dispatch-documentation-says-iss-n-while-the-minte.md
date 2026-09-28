@@ -9,6 +9,10 @@ found_during: "peer session report from a downstream repo, 2026-09-12"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "commands/abcd.md"
+resolution: "commands/abcd.md and the root help state both id shapes resolve (short ordinal and sixteen-digit stamp) and nothing renumbers; placeholders keep their <iss-N> form"
+impact: fix
+resolved_by:
+  commit: "07af2eb092552739a5360c39e5659457e7b3c734"
 ---
 
 Reported from a downstream repository using abcd: `abcd capture "<text>"` mints
@@ -58,3 +62,7 @@ from after it, and both resolve.
 - **Given** the surfaces that spell an id, **when** the sweep runs, **then**
   placeholders keep their `<iss-N>` form and claims about the shape are
   corrected.
+
+## Grounds
+
+- pursued: a reader of the dispatch surface learns both shapes resolve; a surface claiming ids are short ordinals would show it wrong
