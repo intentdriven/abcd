@@ -2764,8 +2764,19 @@ func newIntentAuditCommand(asJSON *bool) *cobra.Command {
 				route = nil
 			}
 			return render(cmd.OutOrStdout(), *asJSON, withRequest(res, route), func(w io.Writer) {
-				fmt.Fprintf(w, "abcd intent audit — %s %s (receipt %s)\n  request: %s\n",
-					res.IntentID, res.Status, res.ReceiptID, res.RequestPath)
+				fmt.Fprintf(w, "abcd intent audit — %s %s (receipt %s)\n", res.IntentID, res.Status, res.ReceiptID)
+				// The status is the receipt's state and the request line is the
+				// act: an owed receipt's request is rewritten on every re-emit,
+				// and a terminal one's is not written at all (iss-2609190337598356).
+				switch {
+				case !res.RequestWritten:
+					fmt.Fprintf(w, "  no request written: the review is %s\n",
+						strings.ReplaceAll(strings.TrimPrefix(res.Status, "already_"), "_", "-"))
+				case res.Status == "already_owed":
+					fmt.Fprintf(w, "  request rewritten: %s\n", res.RequestPath)
+				default:
+					fmt.Fprintf(w, "  request: %s\n", res.RequestPath)
+				}
 				renderRequestLine(w, route)
 			})
 		},
@@ -2833,7 +2844,7 @@ func newIntentAuditCommand(asJSON *bool) *cobra.Command {
 			})
 		},
 	}
-	ingestCmd.Flags().StringVar(&verdictJSON, "verdict-json", "", "path to the intent-audit verdict JSON")
+	ingestCmd.Flags().StringVar(&verdictJSON, "verdict-json", "", "path to the intent-audit verdict JSON, in the shape the Verdict shape section of its review request states")
 	ingestRoute = addRouteFlag(ingestCmd, auditAgent)
 	auditCmd.AddCommand(ingestCmd)
 	auditCmd.Flags().BoolVar(&issueDrift, "issue-drift", false,

@@ -282,6 +282,17 @@ func TestDocsLintHarnessNameGate(t *testing.T) {
 	for _, r := range []string{".abcd/README.md", "AGENTS.md", "CONTRIBUTING.md", "scripts/README.md"} {
 		writeFile(t, root, r, "# t\n")
 	}
+	// So must links_resolve's extra roots (iss-46), read from the config so a
+	// new one needs no edit here, and the persona rule needs its roster.
+	for _, r := range cfg.Rules["links_resolve"].ExtraRoots {
+		if !strings.HasSuffix(r, ".md") {
+			r += "/README.md"
+		}
+		writeFile(t, root, r, "# t\n")
+	}
+	if reg := cfg.Rules["persona_registry"].Registry; reg != "" {
+		writeFile(t, root, reg, `{"personas": [{"name": "Kira"}]}`+"\n")
+	}
 	writeFile(t, root, "docs/named.md", "# t\n\nRun this in Claude Code.\n")
 	writeFile(t, root, "docs/allowed.md", "# t\n\n<!-- docs-lint: allow --> Claude Code is named deliberately.\n")
 	writeFile(t, root, "docs/clean.md", "# t\n\nUse the agent harness.\n")

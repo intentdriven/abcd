@@ -1,7 +1,9 @@
 package intent
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -635,8 +637,17 @@ var beforeIntentMintLock func()
 // need to: the mint reads no maximum, so two checkouts never share the state a
 // lock would have to protect. It flocks the intents/ directory file descriptor
 // itself, so no lock artifact is left in the committed record tree (mirroring
-// the spec store's mint lock). O_NOFOLLOW refuses a symlinked intents/.
+// the spec store's lock). O_NOFOLLOW refuses a symlinked intents/.
 func withIntentMintLock(repoRoot string, fn func() error) error {
+	return withIntentMintLockWithin(repoRoot, mintLockTimeout, fn)
+}
+
+// errIntentLockBusy is the intent store's lock not granted within a budget.
+var errIntentLockBusy = errors.New("intent: could not acquire mint lock")
+
+// withIntentMintLockWithin is withIntentMintLock with its own acquisition
+// budget; a lock not granted within it is errIntentLockBusy.
+func withIntentMintLockWithin(repoRoot string, timeout time.Duration, fn func() error) error {
 	if beforeIntentMintLock != nil {
 		beforeIntentMintLock()
 	}
@@ -650,7 +661,7 @@ func withIntentMintLock(repoRoot string, fn func() error) error {
 	}
 	defer syscall.Close(fd)
 
-	deadline := time.Now().Add(mintLockTimeout)
+	deadline := time.Now().Add(timeout)
 	for {
 		lockErr := syscall.Flock(fd, syscall.LOCK_EX|syscall.LOCK_NB)
 		if lockErr == nil {
@@ -660,11 +671,43 @@ func withIntentMintLock(repoRoot string, fn func() error) error {
 			return fmt.Errorf("intent: acquiring mint lock: %w", lockErr)
 		}
 		if time.Now().After(deadline) {
-			return fmt.Errorf("intent: could not acquire mint lock within %s", mintLockTimeout)
+			return fmt.Errorf("%w within %s", errIntentLockBusy, timeout)
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
 	defer syscall.Flock(fd, syscall.LOCK_UN)
 
 	return fn()
+}
+
+// WithMintLock runs fn while holding the intent store's lock — the one
+// withIntentMintLock takes, not a second one — for a caller OUTSIDE this
+// package that rewrites intent records and no ledger record. A caller that
+// rewrites both — the link repoint after a ledger record moves, capture's
+// migration of the promote join's back-edge (iss-2609261254247117,
+// iss-2609261941039204) — takes WithLedgerThenMintLock instead, which never
+// holds the ledger lock while it waits for this one. Every intent writer here reads
+// and writes under this lock, so a caller writing an intent record without it
+// can erase an edit landing between its read and its write.
+//
+// A tree with no intent store runs fn WITHOUT the lock: taking it creates the
+// store, and a verb that writes no intent must not plant an empty one — the
+// verdict ingest makes the same refusal without the lock for the same reason.
+// With no store there is no intent record for fn to race.
+//
+// It is NOT reentrant — an flock blocks a second acquisition in the same
+// process until the timeout — so a caller must not hold it across any exported
+// verb of this package that writes, every one of which takes it internally.
+//
+// Lock order: the capture ledger lock, THEN this one, THEN the spec store's
+// (spec.WithStoreLock). capture takes this lock inside its ledger lock, plan
+// mints its spec inside this one, and nothing may take them the other way
+// round. This package cannot take the ledger lock at all (capture imports it,
+// so it cannot import capture), and the spec package imports neither, which is
+// what keeps the order one-way inside the core.
+func WithMintLock(repoRoot string, fn func() error) error {
+	if _, err := os.Lstat(filepath.Join(repoRoot, IntentsRelDir)); errors.Is(err, fs.ErrNotExist) {
+		return fn()
+	}
+	return withIntentMintLock(repoRoot, fn)
 }

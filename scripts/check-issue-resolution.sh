@@ -27,7 +27,10 @@
 #          The refusal names the shape it can prove (iss-2609012023256534): a
 #          record already terminal at the base — the stale-branch shape, where a
 #          rebase is the remedy and "resolve it" is not — is told apart from a
-#          record left open, one the head tree lacks, and an id with no record.
+#          record left open, one the head tree lacks, and an id with no record;
+#          and a record a competitor made terminal while a merge-queue entry
+#          waited is told apart from one terminal before the branch was cut
+#          (iss-2609091433422134).
 #
 #   RS002  A resolved_by.commit sha ADDED in the range must name a commit that
 #          exists and is reachable from the head being pushed. The --commit flag
@@ -288,6 +291,23 @@ frontmatter_commit() {
 		grep -oE '[0-9a-f]{7,64}' | head -1 || true
 }
 
+# landed_while_waiting prints the base-side commit ("<sha> <subject>") that put
+# path where base holds it AFTER the branch carrying sha diverged from base, in
+# the one shape the stale-branch probe cannot see: base an ANCESTOR of head. A
+# merge-queue entry is that shape — its head is the would-be merge of the
+# entry's base with the branch — so head..base is empty by construction, and a
+# competitor that resolved (or shipped) the same record while the entry waited
+# read as history from before the branch was cut (iss-2609091433422134). The
+# walk that sees the landing starts at sha's own fork point. Prints nothing when
+# base is not an ancestor of head, where the head..base probe already answers,
+# or when the record already sat there at the fork point.
+landed_while_waiting() {
+	local sha="$1" base="$2" head="$3" path="$4" fork
+	git merge-base --is-ancestor "$base" "$head" 2>/dev/null || return 0
+	fork="$(git merge-base "$sha" "$base" 2>/dev/null)" || return 0
+	git log -n1 --format='%h %s' "$fork".."$base" -- "$path" 2>/dev/null || true
+}
+
 # reachable reports whether sha names a real commit that ref can see. A sha that
 # does not resolve at all and one that resolves but is unreachable are distinct
 # faults, so they are reported separately rather than folded into "bad sha".
@@ -433,9 +453,12 @@ check_delivery() {
 	if [ "$base_bucket" = shipped ]; then
 		# The stale-branch split RS001 draws, for the same reason: whether a rebase
 		# is the remedy turns on WHEN the record reached shipped/.
-		local placer
+		local placer landed
+		landed="$(landed_while_waiting "$sha" "$base" "$head" "$base_path")"
 		placer="$(git log -n1 --format='%h %s' "$head".."$base" -- "$base_path" || true)"
-		if [ -n "$placer" ]; then
+		if [ -n "$landed" ]; then
+			fail "$says $id already sits in $INTENTS_DIR/shipped/ at $base, placed there by $landed after this branch diverged from $base: another change delivered it while this change waited (a merge-queue collision), so it enters nothing in $base..$head. Rebase onto $base, reconcile this change with that one, and drop the trailer — the intent ships once, and $base already holds it shipped."
+		elif [ -n "$placer" ]; then
 			fail "$says $id already sits in $INTENTS_DIR/shipped/ at $base (placed there on $base's side by $placer), and $head is $behind commit(s) behind $base: the delivery reached $base outside $base..$head, so this trailer describes work $base already holds. Rebase onto $base; if this commit survives the rebase, drop the trailer."
 		else
 			fail "$says $id already sat in $INTENTS_DIR/shipped/ before this branch diverged from $base: the trailer names an intent delivered before this commit. Drop the trailer."
@@ -625,9 +648,12 @@ check_commits() {
 					# names an issue resolved before this commit and nothing but
 					# dropping it helps. The behind-count alone cannot tell them apart;
 					# the record's base-side history can.
-					local placer
+					local placer landed
+					landed="$(landed_while_waiting "$sha" "$base" "$head" "$base_path")"
 					placer="$(git log -n1 --format='%h %s' "$head".."$base" -- "$base_path" || true)"
-					if [ -n "$placer" ]; then
+					if [ -n "$landed" ]; then
+						fail "RS001 commit ${sha:0:12} declares 'Resolves: $id', but $id already sits in $ISSUES_DIR/$base_status/ at $base, placed there by $landed after this branch diverged from $base: another change resolved it while this change waited (a merge-queue collision), so it enters nothing in $base..$head. Rebase onto $base, reconcile this change with that one, and drop the trailer — the record is terminal once, and $base already holds it so."
+					elif [ -n "$placer" ]; then
 						fail "RS001 commit ${sha:0:12} declares 'Resolves: $id', but $id already sits in $ISSUES_DIR/$base_status/ at $base (placed there on $base's side by $placer), and $head is $behind commit(s) behind $base: the resolution reached $base outside $base..$head, so this trailer describes work $base already holds. Rebase onto $base; if this commit survives the rebase, drop the trailer."
 					else
 						fail "RS001 commit ${sha:0:12} declares 'Resolves: $id', but $id already sat in $ISSUES_DIR/$base_status/ before this branch diverged from $base: the trailer names an issue that was resolved before this commit. Drop the trailer."

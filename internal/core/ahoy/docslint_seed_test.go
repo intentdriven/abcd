@@ -139,6 +139,10 @@ var deliberateSeedOmissions = map[string]string{
 	// it is seeded once it has run there, not into every prepared repository
 	// on its first release.
 	"link_anchors": "warn-first in abcd's own tree before it is seeded",
+	// The persona rule reads abcd's persona roster
+	// (.abcd/development/personas.json), which a prepared repository does not
+	// have; armed there, it refuses to load for want of a registry.
+	"persona_registry": "abcd's persona roster",
 }
 
 // deliberatelyOmitted reports whether a canonical token id or rule name is named
