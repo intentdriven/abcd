@@ -41,7 +41,10 @@ and which of the `.abcd/` work tiers exist. The directory is named home-relative
 (`~/…`), or by its directory name outside HOME, in the text form's first line
 and in the JSON form's `dir` alike, never by an absolute path
 (iss-2609281613094952): the board is the output most often pasted, and no
-consumer acts on `dir`. The plugin command invokes its JSON form.
+consumer acts on `dir`. The text line masks a control character or bidi control
+in that name, as every other board line does (iss-2609281736483740); `dir`
+carries the name as it is, escaped by the JSON encoder where it is a control
+byte. The plugin command invokes its JSON form.
 
 **`abcd <record-id>`** takes a single positional matching `iss-N`, `itd-N`,
 `spc-N`, `adr-N`, `adm-N`, `srp-N` or `rfm-N` and reports, read-only, what that

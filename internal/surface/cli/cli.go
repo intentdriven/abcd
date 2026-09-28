@@ -289,7 +289,11 @@ func NewRootCommand() *cobra.Command {
 			st.Dir = fsutil.DisplayPath(st.Dir)
 			board := boardOutput{StatusInfo: st, Statusline: boardPresence(cwd, cmd.ErrOrStderr()), Peers: boardPeers(cwd, cmd.ErrOrStderr()), Inbox: boardInbox(cmd.ErrOrStderr()), Oracle: boardOracle(cwd, cmd.ErrOrStderr()), Reviews: boardReviews(cwd, cmd.ErrOrStderr())}
 			return render(cmd.OutOrStdout(), asJSON, board, func(w io.Writer) {
-				fmt.Fprintf(w, "abcd — %s\n", st.Dir)
+				// Sanitised like every other board line: the directory name is the
+				// checkout's own, and a name carrying an ESC sequence or a bidi
+				// control must not reach the terminal raw (iss-2609281736483740).
+				// --json keeps the true name; the encoder escapes a control byte.
+				fmt.Fprintf(w, "abcd — %s\n", termsafe.Sanitize(st.Dir))
 				fmt.Fprintf(w, "  git repo:   %v\n", st.IsGitRepo)
 				fmt.Fprintf(w, "  record:     %v\n", st.HasRecord)
 				fmt.Fprintf(w, "  work tiers: %v\n", st.WorkTiers)

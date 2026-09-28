@@ -123,3 +123,37 @@ func TestBoardPeersNoticeNamesACheckoutOutsideHomeByItsDirectoryName(t *testing.
 		}
 	}
 }
+
+// The board's first line is the one board value that reached the terminal
+// unsanitised: every other line goes through termsafe.Sanitize, but the
+// checkout's display name was written raw, so a directory whose name carries an
+// ESC sequence or a bidi override recoloured or reordered the board a person
+// reads and pastes (iss-2609281736483740). The text line masks each control;
+// --json carries the directory's true name, which the encoder escapes where it
+// is a control byte and a reader renders on its own terms, as it does every
+// other board field.
+func TestBoardFirstLineMasksControlsInTheCheckoutName(t *testing.T) {
+	for _, tc := range []struct{ label, name, masked, raw string }{
+		{"an ESC sequence", "the\x1b[31mrepo", "the?[31mrepo", "\x1b"},
+		{"a right-to-left override", "the\u202erepo", "the?repo", "\u202e"},
+	} {
+		t.Run(tc.label, func(t *testing.T) {
+			outside := t.TempDir()
+			boardCheckout(t, t.TempDir(), filepath.Join(outside, tc.name))
+
+			textDir, jsonDir, text := boardDir(t)
+			if textDir != tc.masked {
+				t.Errorf("the board's first line names %q, want the masked %q", textDir, tc.masked)
+			}
+			if strings.Contains(text, tc.raw) {
+				t.Errorf("the board's text carries the raw control %q:\n%q", tc.raw, text)
+			}
+			if jsonDir != tc.name {
+				t.Errorf("--json dir = %q, want the directory's true name %q", jsonDir, tc.name)
+			}
+			if raw := runCLI(t, "--json"); strings.Contains(string(raw), "\x1b") {
+				t.Errorf("--json carries a raw ESC byte; the encoder escapes it:\n%q", raw)
+			}
+		})
+	}
+}
