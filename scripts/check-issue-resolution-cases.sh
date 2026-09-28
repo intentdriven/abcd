@@ -1464,8 +1464,12 @@ git -C "$d" add -A
 git -C "$d" commit -qm "fix: something
 
 Resolves: iss-1"
+# The lookup agrees with the derivation: record_path answers only a record
+# file, so the nested file is no record at all, and the diagnosis says so as it
+# does for the non-.md file below, rather than reading the nested path's folder
+# as the record's status.
 expect_refusal_naming "$d" "RS001 a nested file under resolved/ is not a record entering it" \
-	"declares 'Resolves: iss-1', but iss-1 does not enter" -- commits main HEAD
+	"declares 'Resolves: iss-1', but iss-1 has no record" -- commits main HEAD
 
 d="$(newrepo rs001-non-md-file-enters-nothing)"
 echo "not a record" >"$d/$ISS_DIR/resolved/iss-4242.txt"
@@ -1562,6 +1566,34 @@ git -C "$d" commit -qm "feat: build the thing
 
 Delivers: itd-7"
 expect pass "$d" "RS005 a non-.md file under shipped/ at the base does not make the intent shipped" -- commits main HEAD
+
+# The lookups share the predicate too. intent_path answers only an intent file,
+# so a nested planned/x/itd-77.md is no intent and the delivery is told there is
+# no record, not diagnosed from the nested path's bucket.
+d="$(newrepo_intents rs005-nested-intent-is-no-record)"
+mkdir -p "$d/$INT_DIR/planned/x"
+intent_fixture "$d" planned/x 77 null
+git -C "$d" add -A
+git -C "$d" commit -qm "feat: build the thing
+
+Delivers: itd-77"
+expect_refusal_naming "$d" "RS005 a nested file under planned/ is not the intent the lookup finds" \
+	"declares 'Delivers: itd-77', but itd-77 has no record" -- commits main HEAD
+
+# open_specs_for derives spec ids through the same predicate: a nested
+# open/x/spc-88.md naming itd-8 is not an open spec, so the refusal does not
+# send the reader to close it.
+d="$(newrepo_intents rs005-nested-spec-is-not-open)"
+mkdir -p "$d/$SPC_DIR/open/x"
+spec_fixture "$d" open/x 88 itd-8
+git -C "$d" add -A
+git -C "$d" commit -qm "feat: build the thing
+
+Delivers: itd-8"
+expect_refusal_not_naming "$d" "RS005 a nested file under specs/open/ is not an open spec naming the intent" \
+	"spc-88" -- commits main HEAD
+expect_refusal_naming "$d" "RS005 a nested spec leaves the intent with no spec to close" \
+	"itd-8 does not enter .* with no spec to close" -- commits main HEAD
 
 # Criterion 5: the intent rule's refusal has the issue rule's shape and exit
 # code — compared here, not judged by a reviewer. Both fixtures are the ordinary

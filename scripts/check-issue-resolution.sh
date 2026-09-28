@@ -245,26 +245,29 @@ usage() {
 
 # record_files is the one reading of which paths are records. It reads
 # repository paths on stdin and prints "<id> <folder>" for each that is a record
-# file of kind $1 (iss or itd): a file sitting DIRECTLY in a folder of its store
-# ($ISSUES_DIR or $INTENTS_DIR) and named <id>.md or <id>-<slug>.md, the shape
-# record_path and intent_path look an id up by. The caller scopes the folders;
-# the id is printed as the filename spells it, and an itd id is canonicalised by
-# the caller through canon_itd. Anything else in a status folder names no
-# record — a nested file (resolved/x/iss-1.md), a non-.md file
+# file of kind $1 (iss, itd or spc): a file sitting DIRECTLY in a folder of its
+# store ($ISSUES_DIR, $INTENTS_DIR or $SPECS_DIR) and named <id>.md or
+# <id>-<slug>.md. With a second argument `path` it prints "<id> <path>" instead,
+# the form record_path, intent_path and open_specs_for look an id up by, so a
+# lookup and a derivation cannot disagree on what a record is. The caller scopes
+# the folders; the id is printed as the filename spells it, and an itd id is
+# canonicalised by the caller through canon_itd. Anything else in a status
+# folder names no record — a nested file (resolved/x/iss-1.md), a non-.md file
 # (resolved/iss-4242.txt), a README — so it neither enters a folder nor,
 # reverted, leaves one. Read from the basename alone, such a file satisfied a
 # trailer by being added, and withdrew it by being reverted (iss-2609240646533487).
 record_files() {
-	local kind="$1" root
+	local kind="$1" form="${2:-}" root
 	case "$kind" in
 	iss) root="$ISSUES_DIR" ;;
 	itd) root="$INTENTS_DIR" ;;
+	spc) root="$SPECS_DIR" ;;
 	*)
 		echo "check-issue-resolution: record_files: unknown record kind '$kind'" >&2
 		exit 2
 		;;
 	esac
-	awk -v root="$root/" -v kind="$kind" '
+	awk -v root="$root/" -v kind="$kind" -v form="$form" '
 		BEGIN { shape = "^[^/]+/" kind "-[0-9]+(-[^/]*)?\\.md$" }
 		index($0, root) == 1 {
 			rest = substr($0, length(root) + 1)
@@ -272,7 +275,9 @@ record_files() {
 			slash = index(rest, "/")
 			name = substr(rest, slash + 1)
 			match(name, "^" kind "-[0-9]+")
-			print substr(name, RSTART, RLENGTH) " " substr(rest, 1, slash - 1)
+			id = substr(name, RSTART, RLENGTH)
+			if (form == "path") print id " " $0
+			else print id " " substr(rest, 1, slash - 1)
 		}'
 }
 
@@ -370,11 +375,14 @@ terminal_ids() {
 
 # record_path prints the ledger path of iss-N's record at ref — its status
 # folder is the diagnosis RS001 needs — or nothing when the ref holds none. The
-# id is matched as a whole basename prefix, so iss-99 never answers for iss-999.
+# id is compared whole, so iss-99 never answers for iss-999, and only a record
+# file (record_files) answers: a nested resolved/x/iss-N.md is not the record,
+# so it never diagnoses one as terminal. The first match wins, as before, and
+# the listing is read to the end so no early exit hands git a SIGPIPE.
 record_path() {
 	local ref="$1" id="$2"
 	git ls-tree -r --name-only "$ref" -- "${STATUS_PATHSPECS[@]}" 2>/dev/null |
-		grep -E "/${id}(-[^/]*)?\.md\$" | head -1 || true
+		record_files iss path | awk -v id="$id" '!found && $1 == id { sub(/^[^ ]+ /, ""); print; found = 1 }' || true
 }
 
 # status_of prints the status folder (open, resolved, wontfix) a ledger path sits in.
@@ -486,12 +494,13 @@ ids_entering_shipped() {
 }
 
 # intent_path prints the store path of a canonical itd-N at ref, or nothing. The
-# id is matched as a whole basename prefix, zero padding admitted, so itd-7 never
-# answers for itd-70.
+# id is compared whole, zero padding admitted, so itd-7 never answers for itd-70,
+# and only a record file (record_files) answers, as in record_path.
 intent_path() {
 	local ref="$1" id="$2"
 	git ls-tree -r --name-only "$ref" -- "${INTENT_PATHSPECS[@]}" 2>/dev/null |
-		grep -E "/itd-0*${id#itd-}(-[^/]*)?\.md\$" | head -1 || true
+		record_files itd path | awk -v n="${id#itd-}" '
+			!found { k = $1; sub(/^itd-0*/, "", k); if (k == n) { sub(/^[^ ]+ /, ""); print; found = 1 } }' || true
 }
 
 # bucket_of prints the lifecycle bucket an intent path sits in.
@@ -514,18 +523,18 @@ frontmatter_field() {
 # `intent:` back-link names the canonical itd-N. The back-link, not the intent's
 # scalar spec_id, is the source of truth for which specs realise an intent
 # (adr-2609151513118583): a remainder spec is named by nothing on the intent.
-# An open/ holding no spec at all is an answer (none), not an error: grep's
-# no-match exit (1) is accepted, or pipefail would carry it out through the
-# caller's assignment and errexit would end the run with no message. Only that
-# status: a git failure, or grep's own (2), still fails the pipeline, because a
+# Only a spec file (record_files) counts: a nested open/x/spc-N.md is not an
+# open spec, so it never tells a delivery to close one. An open/ holding no
+# spec at all is an answer (none), not an error — record_files prints nothing
+# and exits 0 — while a git failure still fails the pipeline, because a
 # swallowed git error reads exactly like an empty store.
 open_specs_for() {
-	local ref="$1" id="$2" f back
-	git ls-tree -r --name-only "$ref" -- "$SPECS_DIR/open" 2>/dev/null | { grep -E '\.md$' || [ "$?" -eq 1 ]; } |
-		while IFS= read -r f; do
+	local ref="$1" id="$2" spc f back
+	git ls-tree -r --name-only "$ref" -- "$SPECS_DIR/open" 2>/dev/null | record_files spc path |
+		while IFS=' ' read -r spc f; do
 			back="$(frontmatter_field "$ref" "$f" intent)"
 			[ "$(canon_itd "$back")" = "$id" ] || continue
-			basename "$f" | grep -oE '^spc-[0-9]+' || true
+			printf '%s\n' "$spc"
 		done
 }
 
