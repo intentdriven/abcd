@@ -236,9 +236,10 @@ jobs:
     # the remedy for a leg near the cap is a faster suite. The ubuntu leg runs
     # well inside 30 minutes and keeps that ceiling. The race step's -timeout lifts go test's 10m
     # per-package default, so a slow package runs on to this ceiling instead of
-    # failing at ten minutes; it does not fit inside the ceiling on the macOS
-    # leg, which spends about 18m before the slowest package starts, so a hang
-    # there is cancelled without a goroutine dump.
+    # failing at ten minutes. The step names its slowest packages first, so they
+    # start with the step, about 9m into the macOS leg, rather than behind every
+    # faster package; a hang in one of them fails at the package timeout, with a
+    # goroutine dump, before this ceiling cancels the job.
     # TestRaceLaneBudgetIsDeclaredAndFitsItsJob holds every leg at or below the
     # cap, and TestCheckJobWarnsBeforeTheQueueCap holds the warning step at the
     # end of the job below it.
@@ -305,8 +306,14 @@ jobs:
         if: matrix.os == 'ubuntu-latest' || needs.changes.outputs.inert != 'true'
         run: go vet ./...
 
+      # ABCD_TEST_SKIP_FLUSH lets the test binaries skip the flush to stable
+      # storage (internal/fsutil/flush.go), an F_FULLFSYNC of about 8.8 ms per
+      # synced write on macOS that no test asserts anything about. It needs a
+      # test binary as well, so nothing built here stops flushing.
       - name: Test
         if: matrix.os == 'ubuntu-latest' || needs.changes.outputs.inert != 'true'
+        env:
+          ABCD_TEST_SKIP_FLUSH: "1"
         run: go test ./...
 
       # Only a source change can introduce a data race, and the plain lane above
@@ -323,9 +330,18 @@ jobs:
       # header). The Makefile's preflight recipe and release.yml's verify
       # job carry the same flag; TestRaceLaneBudgetIsDeclaredAndFitsItsJob
       # holds all three.
+      #
+      # The packages named ahead of ./internal/... are the slowest under -race
+      # (iss-2609281715083637). go test starts packages in the
+      # order its arguments list them, three at a time on the macOS runner, and
+      # in import-path order internal/surface/cli started among the last and ran
+      # alone as the step's tail. go test runs a package named twice once, so the
+      # set is still exactly ./internal/...; the same test pins that with go list.
       - name: Test (race, internal)
         if: needs.changes.outputs.inert != 'true'
-        run: go test -race -timeout 20m ./internal/...
+        env:
+          ABCD_TEST_SKIP_FLUSH: "1"
+        run: go test -race -timeout 20m ./internal/surface/cli ./internal/core/reading ./internal/core/launch ./internal/core/lifeboat ./internal/core/lint ./internal/adapter/scanner ./internal/core/capture ./internal/core/ahoy ./internal/core/site ./internal/...
 
       # Drift gate for the .abcd/development design record. Blocking: a
       # blocker-severity finding exits non-zero and fails the job; warn-level

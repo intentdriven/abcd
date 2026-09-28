@@ -2,8 +2,10 @@ package lint_test
 
 import (
 	"encoding/json"
+	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -45,6 +47,13 @@ import (
 // package timeout plus the time its slowest package waits before it starts:
 // the steps ahead of the race step, and the packages `go test` runs ahead of
 // it inside the step.
+//
+// The three commands also name one package list, in one order. go test starts
+// packages in the order its arguments list them, a few at a time on a runner
+// with few cores, so the slowest packages are named ahead of the pattern and
+// start first instead of last (iss-2609281715083637). The order may change; the
+// set may not: go list must resolve the command's packages to exactly the ones
+// ./internal/... matches.
 func TestRaceLaneBudgetIsDeclaredAndFitsItsJob(t *testing.T) {
 	root := filepath.Join("..", "..", "..")
 
@@ -53,6 +62,8 @@ func TestRaceLaneBudgetIsDeclaredAndFitsItsJob(t *testing.T) {
 		t.Fatal("Makefile declares no `preflight:` recipe")
 	}
 	local := raceTimeout(t, "Makefile preflight", recipe)
+	localPkgs := racePackages(t, "Makefile preflight", recipe)
+	sameRacePackageSet(t, root, "Makefile preflight", localPkgs)
 
 	// raceJob returns a workflow job's block and the -timeout its race step
 	// carries, holding that timeout to the local gate's.
@@ -72,6 +83,10 @@ func TestRaceLaneBudgetIsDeclaredAndFitsItsJob(t *testing.T) {
 		if pkg != local {
 			t.Errorf("%s runs the race lane under -timeout %s but make preflight uses %s; "+
 				"local and CI must judge the lane against one budget", where, pkg, local)
+		}
+		if pkgs := racePackages(t, where, step); !slices.Equal(pkgs, localPkgs) {
+			t.Errorf("%s runs the race lane over %q but make preflight runs it over %q; "+
+				"local and CI start the same packages in the same order", where, pkgs, localPkgs)
 		}
 		return block, pkg, true
 	}
@@ -270,9 +285,9 @@ func mergeQueueResponseTimeout(t *testing.T, root string) time.Duration {
 	return 0
 }
 
-// raceTimeout returns the -timeout the one `go test -race` command in text
-// carries, failing the test when there is none.
-func raceTimeout(t *testing.T, where, text string) time.Duration {
+// raceCommand returns the one `go test -race` command in text, failing the
+// test when there is not exactly one.
+func raceCommand(t *testing.T, where, text string) string {
 	t.Helper()
 	var cmds []string
 	for _, l := range strings.Split(text, "\n") {
@@ -284,10 +299,83 @@ func raceTimeout(t *testing.T, where, text string) time.Duration {
 	if len(cmds) != 1 {
 		t.Fatalf("%s: want one `go test -race` command, found %d", where, len(cmds))
 	}
-	m := regexp.MustCompile(`\s-timeout[ =](\S+)`).FindStringSubmatch(cmds[0])
+	return cmds[0]
+}
+
+// racePackages returns the package arguments of the one `go test -race`
+// command in text, in the order written: every word after `go test` that is
+// neither a flag nor a flag's value.
+func racePackages(t *testing.T, where, text string) []string {
+	t.Helper()
+	var pkgs []string
+	words := strings.Fields(raceCommand(t, where, text))[2:]
+	for i := 0; i < len(words); i++ {
+		switch w := words[i]; {
+		case w == "-timeout":
+			i++ // its value is the next word
+		case strings.HasPrefix(w, "-"):
+		default:
+			pkgs = append(pkgs, w)
+		}
+	}
+	if len(pkgs) == 0 {
+		t.Fatalf("%s: the `go test -race` command names no packages", where)
+	}
+	return pkgs
+}
+
+// raceLanePattern is the package set the race lane covers. The command may
+// name packages ahead of it, so go test starts the slowest first on a runner
+// with few cores, but it may neither add nor drop one.
+const raceLanePattern = "./internal/..."
+
+// sameRacePackageSet holds the race lane's packages to exactly the ones
+// raceLanePattern matches, as go list resolves both: the slowest-first order
+// (iss-2609281715083637) names packages twice, once explicitly and once in the
+// pattern, and go test runs each once, so the order is free while the set is
+// not.
+func sameRacePackageSet(t *testing.T, root, where string, pkgs []string) {
+	t.Helper()
+	if pkgs[len(pkgs)-1] != raceLanePattern {
+		t.Errorf("%s: the race lane's packages are %q; want %s last, so every package it matches runs",
+			where, pkgs, raceLanePattern)
+	}
+	seen := map[string]bool{}
+	for _, p := range pkgs {
+		if seen[p] {
+			t.Errorf("%s: the race lane names %s twice", where, p)
+		}
+		seen[p] = true
+	}
+	list := func(args ...string) []string {
+		cmd := exec.Command("go", append([]string{"list"}, args...)...)
+		cmd.Dir = root
+		out, err := cmd.Output()
+		if err != nil {
+			t.Fatalf("%s: go list %s: %v", where, strings.Join(args, " "), err)
+		}
+		return strings.Fields(string(out))
+	}
+	got, want := list(pkgs...), list(raceLanePattern)
+	if len(got) != len(want) {
+		t.Errorf("%s: go list resolves the race lane to %d packages, %s to %d", where, len(got), raceLanePattern, len(want))
+	}
+	slices.Sort(got)
+	slices.Sort(want)
+	if !slices.Equal(got, want) {
+		t.Errorf("%s: the race lane's packages differ from %s's:\n  lane: %q\n  want: %q", where, raceLanePattern, got, want)
+	}
+}
+
+// raceTimeout returns the -timeout the one `go test -race` command in text
+// carries, failing the test when there is none.
+func raceTimeout(t *testing.T, where, text string) time.Duration {
+	t.Helper()
+	cmd := raceCommand(t, where, text)
+	m := regexp.MustCompile(`\s-timeout[ =](\S+)`).FindStringSubmatch(cmd)
 	if m == nil {
 		t.Fatalf("%s: `%s` sets no -timeout, so the lane inherits go test's 10m default "+
-			"per package, which internal/surface/cli under -race has already crossed", where, cmds[0])
+			"per package, which internal/surface/cli under -race has already crossed", where, cmd)
 	}
 	d, err := time.ParseDuration(m[1])
 	if err != nil {

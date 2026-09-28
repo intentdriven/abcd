@@ -15,6 +15,9 @@
 // the transcript store all call them rather than each carrying the sequence
 // (iss-2609091128479544).
 //
+// Every flush to stable storage goes through Flush, the one place a test binary
+// that opted in with SkipFlushEnv skips it; a shipped binary always flushes.
+//
 // An append-only log has its own primitive, AppendLineIn: one line, one
 // O_APPEND write, so concurrent writers land whole lines (the lifeboat voyage
 // ledger and the implement run log both write through it).
@@ -328,7 +331,7 @@ func WriteFileAtomic(path string, data []byte, perm os.FileMode) error {
 		os.Remove(tmpName)
 		return err
 	}
-	if err := tmp.Sync(); err != nil {
+	if err := Flush(tmp); err != nil {
 		tmp.Close()
 		os.Remove(tmpName)
 		return err
@@ -398,7 +401,7 @@ func WriteFileAtomicInRoot(root *os.Root, rel string, data []byte, perm os.FileM
 	if err := tmp.Chmod(perm); err != nil {
 		return abandon(err)
 	}
-	if err := tmp.Sync(); err != nil {
+	if err := Flush(tmp); err != nil {
 		return abandon(err)
 	}
 	if err := tmp.Close(); err != nil {
@@ -466,7 +469,7 @@ func syncDirInRoot(root *os.Root, dir string) {
 	if err != nil {
 		return
 	}
-	_ = d.Sync()
+	_ = Flush(d)
 	_ = d.Close()
 }
 
@@ -477,7 +480,7 @@ func syncParent(dir string) {
 	if err != nil {
 		return
 	}
-	_ = d.Sync()
+	_ = Flush(d)
 	_ = d.Close()
 }
 
@@ -624,7 +627,7 @@ func CreateExclusiveIn(root *os.Root, rel string, data []byte, perm os.FileMode)
 		_ = root.Remove(rel)
 		return err
 	}
-	if err := f.Sync(); err != nil {
+	if err := Flush(f); err != nil {
 		f.Close()
 		_ = root.Remove(rel)
 		return err
@@ -640,7 +643,7 @@ func CreateExclusiveIn(root *os.Root, rel string, data []byte, perm os.FileMode)
 	// the exact state such a caller's rollback exists to prevent. Best-effort:
 	// some filesystems refuse a directory fsync.
 	if d, err := root.Open(path.Dir(rel)); err == nil {
-		_ = d.Sync()
+		_ = Flush(d)
 		_ = d.Close()
 	}
 	return nil
