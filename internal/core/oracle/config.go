@@ -475,7 +475,8 @@ func (c *APIConfig) Routes() []PointedRoute {
 // reached by a role or a judgement type pointed at it, or by a --route naming
 // it, never by a tier alone, so Serves answers false for every tier and the
 // tier-only steps stay on the harness. Named returns the provider's connection
-// carrying its allowlist and the settings the adapter accepts.
+// carrying its allowlist, the settings the adapter accepts, and the model each
+// role pointed at it asks for.
 func (c *APIConfig) Connections() Connections { return apiConnections{c: c} }
 
 type apiConnections struct{ c *APIConfig }
@@ -487,9 +488,19 @@ func (a apiConnections) Named(name string) (Connection, bool) {
 	if !ok {
 		return Connection{}, false
 	}
+	var roles map[string]string
+	for agent, t := range a.c.roles {
+		if t.Provider == name {
+			if roles == nil {
+				roles = map[string]string{}
+			}
+			roles[agent] = t.Model
+		}
+	}
 	return Connection{
 		Name:    p.Name,
 		Models:  append([]string(nil), p.Models...),
 		Accepts: openaiapi.AcceptedSettings(),
+		Roles:   roles,
 	}, true
 }
