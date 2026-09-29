@@ -1253,6 +1253,15 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 				}
 				i = next
 				pending, docOwners = nil, nil
+				// A command a substitution still suspends can have opened
+				// these documents (`cat <<E $(x`, then the newline): their
+				// bodies are read, so the record it resumes with names none
+				// of them (iss-2609290521415701).
+				for _, p := range parens {
+					if p.saved != nil {
+						p.saved.curDocs = nil
+					}
+				}
 			}
 			// lastList is NOT cleared here: a blank or comment-only line after a
 			// list operator does not end the list, and every token-producing

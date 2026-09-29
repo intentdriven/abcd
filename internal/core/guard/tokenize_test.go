@@ -486,3 +486,43 @@ func TestArithmeticShiftCoincidentalDelimiterStillBlocks(t *testing.T) {
 		}
 	}
 }
+
+// TestPendingHereDocumentInsideAnUnterminatedSubstitution —
+// iss-2609290521415701. A here-document opened before a substitution that
+// never closes has its body read at the newline inside the substitution, and
+// the command that opened it is resumed only when the input ends. Its record
+// of the documents it opened pointed at bodies already read, and flushing it
+// panicked. It is read with no panic, and no less strictly than the same line
+// without the document.
+func TestPendingHereDocumentInsideAnUnterminatedSubstitution(t *testing.T) {
+	rank := map[Verdict]int{VerdictAllow: 0, VerdictWarn: 1, VerdictBlock: 2}
+	for _, cmd := range []string{"cat", "rm -rf /", "rm -rf ~"} {
+		for _, open := range []string{"<(x", "$(x", "`x", "$(x <(y", "<(x `y"} {
+			for _, doc := range []string{"<<E", "<<-E", "<<'E'", "<<E <<F"} {
+				line := cmd + " " + doc + " " + open + "\nE\nF"
+				sibling := cmd + " " + open + "\nE\nF"
+				t.Run(line, func(t *testing.T) {
+					var d Decision
+					func() {
+						defer func() {
+							if r := recover(); r != nil {
+								t.Fatalf("Check(%q) panicked: %v", line, r)
+							}
+						}()
+						var err error
+						if d, err = Defaults().Check(line); err != nil {
+							t.Fatalf("Check(%q): %v", line, err)
+						}
+					}()
+					s := verdictOf(t, sibling)
+					if rank[d.Verdict] < rank[s.Verdict] {
+						t.Errorf("Check(%q) = %q, below %q for %q", line, d.Verdict, s.Verdict, sibling)
+					}
+					if cmd != "cat" && d.Verdict != VerdictBlock {
+						t.Errorf("Check(%q) = %q via %q, want block", line, d.Verdict, d.EntryID)
+					}
+				})
+			}
+		}
+	}
+}
