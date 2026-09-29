@@ -11,6 +11,10 @@ production_mode: hand-written
 found_at: "conventions (agent runbook guidance for managed repos)"
 deferred_after: "v0.9.0"
 deferral_reason: "Ruled by the product thinker at the 2026-09-23 run A interview (M26: adopt both halves (a verification tag on third-party UI guidance, a stated purpose on every redaction rule), recorded in DECISIONS.md; the home in the managed-repository agent conventions or a principle is still to be written). Earlier deferral: Runbook steps that navigate a third party's interface cannot be verified by anything abcd runs, and the record's own measurement shows doc-sourced instructions failing where screenshot-sourced ones held. What to do about instructions whose truth abcd cannot check is a question about what a runbook is allowed to claim, not a defect to patch."
+resolution: "The ruling (M26, 2026-09-23) has its home: .abcd/development/principles/guidance-carries-its-evidence-and-its-purpose.md states the verification tag on third-party interface guidance, the screenshot before the second guess, and the stated purpose on every redaction rule, with its evidence and bounds; DECISIONS.md records why the home is a principle. Carrying it into the bundled rules domains and a purpose field on redaction rules are the next rungs, named in the principle."
+impact: internal
+resolved_by:
+  commit: "62e48633b"
 ---
 
 An agent walking an operator through a third-party hosting dashboard produced four successive sets of instructions, none of which matched the screen in front of them. The task — create a hosting API token, put it in two forge secrets, run a workflow — is mechanically trivial and took roughly ten exchanges, most of them the operator saying the instruction did not match what they could see.
@@ -32,3 +36,7 @@ Proposed rule for a managed repo. An instruction that navigates a third-party UI
 What would falsify it: if UI-navigation instructions sourced from current vendor docs land, say, four times in five across a handful of vendors, the tag is unnecessary ceremony and should be dropped. The prediction here is the opposite — that redesigned dashboards make doc-sourced navigation fail most of the time, and that the failure is invisible to the agent, which is what makes a tag worth carrying.
 
 Residue worth keeping: the corrected sequence is now known-good and was established empirically, not from any document. A verified runbook is worth committing precisely because it rots — the value is the date stamp and the screenshots, not the prose — and it should be re-verified rather than trusted on next use.
+
+## Grounds
+
+- pursued: an agent reading the record meets the rule where principles live; a managed-repository run repeating the doc-sourced guessing with this principle in force would show the principle rung insufficient and argue for the rules-domain rung
