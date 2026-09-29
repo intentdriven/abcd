@@ -7,8 +7,8 @@ category: "observation"
 source: "user-observation"
 found_during: "itd-179-round-4-recheck"
 found_at: "internal/core/grounds/grounds.go"
-deferred_after: "v0.10.0"
-deferral_reason: "ruling owed to the product thinker (away; run A 2026-09-25): Accept the grounds floor's scriptio-continua/CJK letter asymmetry as a stated limit, or re-weight MinTextLetters?"
+deferred_after: "v0.11.1"
+deferral_reason: "ruling F owed to the product thinker: internal/core/grounds/grounds.go states both limits in its comments (a scriptio-continua script it does not name still reads as one word, and MinTextLetters demands twenty letters whatever the script). Accept that as the stated limit, or re-weight the floor. (re-checked at e792a2314 by lane drainDQ3, run A, 2026-09-29)"
 ---
 
 the grounds floor's stated limits: mark-free text in an unnamed scriptio-continua script is refused, and the letter floor is far heavier for CJK than for English

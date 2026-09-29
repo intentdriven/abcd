@@ -9,8 +9,8 @@ found_during: "autonomous-run field experiment in a managed repository, 2026-09-
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal (decide, record-lint)"
-deferred_after: "v0.10.0"
-deferral_reason: "ruling owed to the product thinker (away; run A 2026-09-25): Add --supersedes and a record-lint row for ADR README rows with two-ended supersedes agreement?"
+deferred_after: "v0.11.1"
+deferral_reason: "planning F owed to the product thinker: partly present. record_schema already refuses a one-way supersession in either direction (internal/core/lint/schema.go, since 2026-08-02), but only in this repository's record-lint, not in abcd lint for a managed repository (the fold iss-45 asks about). Still unbuilt: abcd decide --supersedes (decide takes no flags) and a check that every ADR has a row in the ADRs README (index_drift has no ADR index). (re-checked at e792a2314 by lane drainDQ3, run A, 2026-09-29)"
 ---
 
 Superseding an ADR is a five-file hand ritual and nothing checks that the two ends of the link agree.
