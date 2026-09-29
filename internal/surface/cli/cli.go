@@ -2938,6 +2938,14 @@ func runIssueDrift(cmd *cobra.Command, asJSON, strict bool) error {
 	if err != nil {
 		return err
 	}
+	// The check reads this checkout's issue ledger, so it names the ledger it
+	// read as every capture verb does (iss-2609251235119402): on stderr before
+	// the read in the text render, as the `ledger` member under --json.
+	if !asJSON {
+		id := ledgerIdentityOf(repoRoot)
+		fmt.Fprintf(cmd.ErrOrStderr(), "abcd intent audit --issue-drift: ledger of %s%s\n",
+			termsafe.Sanitize(id.Checkout), branchPhrase(id.Branch))
+	}
 	res, err := capture.IssueDrift(capture.IssueDriftRequest{RepoRoot: repoRoot})
 	if err != nil {
 		return &exitError{Code: 2, Msg: "abcd intent audit --issue-drift: " + err.Error()}
@@ -2951,7 +2959,7 @@ func runIssueDrift(cmd *cobra.Command, asJSON, strict bool) error {
 		fmt.Fprintf(cmd.ErrOrStderr(), "warning: issue-drift %s %s -> %s (%s): %s\n",
 			f.Kind, f.Record, f.Other, termsafe.Sanitize(f.Path), termsafe.Sanitize(f.Message))
 	}
-	if err := render(cmd.OutOrStdout(), asJSON, res, func(w io.Writer) {
+	if err := renderLedger(cmd.OutOrStdout(), asJSON, repoRoot, res, func(w io.Writer) {
 		fmt.Fprintf(w, "abcd intent audit --issue-drift — %d record(s) scanned, %d finding(s) (receipt %s)\n",
 			res.Scanned, len(res.Findings), termsafe.Sanitize(res.ReceiptPath))
 	}); err != nil {

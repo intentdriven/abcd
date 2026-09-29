@@ -110,3 +110,37 @@ func TestCaptureMigrateReportsThenApplies(t *testing.T) {
 		t.Fatalf("the migrated record must read back:\n%s", list)
 	}
 }
+
+// TestIntentAuditIssueDriftNamesTheLedgerItRead is iss-2609251235119402: the
+// drift check reads the issue ledger, which is per checkout, so it names the
+// checkout and branch it read the way every capture verb does — on stderr in
+// the text render, as the envelope's `ledger` member under --json.
+func TestIntentAuditIssueDriftNamesTheLedgerItRead(t *testing.T) {
+	repo := oneSidedRepo(t)
+	gitCommitAt(t, repo, "root")
+
+	_, stderr, err := runCLISplit(t, "intent", "audit", "--issue-drift")
+	if err != nil {
+		t.Fatalf("the default mode must exit 0: %v\n%s", err, stderr)
+	}
+	if !strings.Contains(stderr, "abcd intent audit --issue-drift: ledger of ") || !strings.Contains(stderr, "on branch main") {
+		t.Fatalf("the text render does not name the ledger it read:\n%s", stderr)
+	}
+
+	out, err := runCLIErr(t, "intent", "audit", "--issue-drift", "--json")
+	if err != nil {
+		t.Fatalf("--json: %v\n%s", err, out)
+	}
+	var env struct {
+		Ledger struct {
+			Checkout string `json:"checkout"`
+			Branch   string `json:"branch"`
+		} `json:"ledger"`
+	}
+	if err := json.Unmarshal(out, &env); err != nil {
+		t.Fatalf("--json output is not one envelope: %v\n%s", err, out)
+	}
+	if env.Ledger.Branch != "main" || !strings.HasSuffix(env.Ledger.Checkout, filepath.Base(repo)) {
+		t.Fatalf("ledger member = %+v, want the checkout %s on main", env.Ledger, filepath.Base(repo))
+	}
+}
