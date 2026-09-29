@@ -462,6 +462,10 @@ gate that will refuse the move mechanically is a recorded seed until built.
     acceptance criterion. Where the work is larger than one implementer can
     hold and land, list its steps under the minted `## Steps` section (see
     [Steps](#steps-the-unit-below-a-spec)); a spec that lists none is one step.
+    Fill the minted `## Footprint` section: `- packages:` the packages the
+    spec expects to touch, comma-separated, and `- tests:` the tests that will
+    show it works. `abcd build next` scores a spec's test path and footprint
+    from it, and reads a spec without it as carrying no footprint.
 12. Re-run `abcd intent ready <itd-N>` and report READY to the user.
 
 ## Steps: the unit below a spec

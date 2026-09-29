@@ -21,19 +21,19 @@ impact: additive
 
 ## Press Release
 
-> **abcd ships `/abcd:reflect` for phase retrospectives.** Run `/abcd:reflect phase-1-substrate` and abcd walks an interview-driven retrospective: what went well, what could improve, lessons learned, decisions made, metrics. The interview is *seeded* by the phase audit — abcd reads the phase-fidelity-reviewer's per-bullet verdicts and opens the conversation from what actually passed and failed. Output is a structured `.abcd/retrospectives/phase-1-substrate/README.md` — committed as part of the phase's permanent record. Future lifeboats carry the retrospective forward; future intents reference past lessons. Reflection becomes a first-class abcd primitive, not an afterthought.
+> **abcd ships `/abcd:reflect` for release retrospectives.** Run `/abcd:reflect v0.11.0` and abcd walks an interview-driven retrospective: what went well, what could improve, lessons learned, decisions made, metrics. The interview is *seeded* by what the release shipped — the intents whose `shipped_in` names the tag, each with the audit notes the intent auditor wrote on it, and the changelog section the cut composed — so the conversation opens from what actually passed and failed. Output is a structured `.abcd/development/retrospectives/v0.11.0/README.md`, committed as part of the permanent record. Future lifeboats carry the retrospective forward; future intents reference past lessons. Reflection becomes a first-class abcd primitive, not an afterthought.
 >
-> "abcd's brief and intents captured *what* I'd done," said Henry, a junior-developer persona. "Reflect captures *what I learned* — and because it starts from the phase audit, it doesn't ask me to re-remember the work, it asks me what the verdicts *mean*. When I started a new voyage six months later, embark surfaced past retrospectives in the lifeboat unpack — the lessons came with the work. I didn't re-make the mistakes."
+> "abcd's brief and intents captured *what* I'd done," said Henry, a junior-developer persona. "Reflect captures *what I learned* — and because it starts from what the release shipped and how each audit went, it doesn't ask me to re-remember the work, it asks me what the verdicts *mean*. When I started a new voyage six months later, embark surfaced past retrospectives in the lifeboat unpack — the lessons came with the work. I didn't re-make the mistakes."
 
 ## Why This Matters
 
-abcd ships strong post-implementation transparency: shipped intents have audit notes (per `itd-1` acceptance criteria); the native spec store's completion records capture what was built; and per [adr-9](../../decisions/adrs/0009-phase-as-product-layer.md) a completed phase gets a **phase audit** — the phase-fidelity-reviewer comparing delivered reality against the phase's `## Phase Acceptance`. What's missing is **post-phase reflection** — the structured "what did we learn" doc that's bigger than per-intent audit notes, bigger than a pass/fail audit verdict, and smaller than a brief rewrite.
+abcd ships strong post-implementation transparency: shipped intents have audit notes (per `itd-1` acceptance criteria); the native spec store's completion records capture what was built; and each release cut composes a changelog from the records that shipped in it. What's missing is **post-release reflection** — the structured "what did we learn" doc that's bigger than per-intent audit notes, bigger than a pass/fail audit verdict, and smaller than a brief rewrite.
 
 The legacy `~/.claude/templates/retrospective.md.template` had the right prompt structure (what went well, what could improve, lessons learned, decisions made, metrics) but lived as a manual template that rarely got used. It was deferred (see [`research/legacy-harvest.md`](../../research/legacy-harvest.md) Pass 4 retrospective decision); `/abcd:reflect` promotes it to a first-class command with structured interview + structured output.
 
-`/abcd:reflect` is the *phase-level* reflection surface — broader than per-intent audit notes (which `intent-fidelity-reviewer`'s Role 1 already produces on ship per the itd-1 discipline) and narrower than a brief rewrite. It spans the intents and plumbing a phase bundled and captures what's transferable to future voyages.
+`/abcd:reflect` is the *release-level* reflection surface — broader than per-intent audit notes (which the intent auditor already produces on ship per the itd-1 discipline) and narrower than a brief rewrite. It spans the intents a release shipped and captures what's transferable to future voyages. It was first written at the grain of a roadmap phase (adr-9); phases are retired (adr-2609212115255771), and the release is the unit that replaced them (decisions 4 and 5).
 
-A phase audit and a phase retrospective are **distinct activities**, the same split `intent-fidelity-reviewer` Role 1 draws at the intent grain — one grain up. The audit asks *did the phase's `## Phase Acceptance` pass* (a per-bullet verdict). The retrospective asks *what did we learn* (transferable insight, interview-driven). `/abcd:reflect` does not replace the audit — it **consumes** it: the audit's verdicts are the seed material the retrospective interview opens from.
+An audit and a retrospective are **distinct activities**. The audit asks *did each intent deliver its criteria* (a per-criterion verdict). The retrospective asks *what did we learn* (transferable insight, interview-driven). `/abcd:reflect` does not replace the audit — it **consumes** it: the release's audit verdicts are the seed material the retrospective interview opens from.
 
 ## Mechanism
 
@@ -41,28 +41,29 @@ We expect the value of a retrospective to be in the lifeboat: a new project that
 
 ## What's In Scope
 
-- **`/abcd:reflect <phase-id>`** — retrospective for a completed phase, and the command's *only* argument form. Examples: `/abcd:reflect phase-1-substrate`, `/abcd:reflect phase-2-ahoy`. Per-intent reflection is out of scope (see below) — `/abcd:reflect` operates at the phase grain only.
-- **Audit-seeded interview.** `/abcd:reflect` reads the phase-fidelity-reviewer's per-bullet `## Phase Acceptance` verdicts and opens the interview from them — the seed grounds the conversation in delivered reality rather than starting from a blank prompt.
-- **Audit-missing handling.** If `/abcd:reflect <phase-id>` is run before the phase audit exists, the command detects the gap and **offers to run the phase-fidelity-reviewer inline** first, then continues into the retrospective.
-- **Empty-phase refusal.** If no spec carries the named phase's `phase:` anchor, the command refuses — there is no delivered work to reflect on.
+- **`/abcd:reflect <release-tag>`** — retrospective for a cut release, and the command's *only* argument form. Examples: `/abcd:reflect v0.10.0`, `/abcd:reflect v0.11.1`. Per-intent reflection is out of scope (see below) — `/abcd:reflect` operates at the release grain only.
+- **Seeded from the release** (decision 5). The seed is the intents a tag shipped (`shipped_in` names the tag), with their `## Audit Notes` (per-criterion verdicts, honoured / diverged / missing), their `impact`, and the changelog section the cut composed; the interview opens from them rather than from a blank prompt.
+- **Audit-missing handling.** A shipped intent in the release with no audit notes is named, and the command offers `abcd intent audit <itd-N>` for it first; the interview continues either way.
+- **Empty-release refusal.** A tag whose release shipped no intent refuses — there is no delivered work to reflect on.
 - **Interview-driven structure**:
   - What went well (successes and strengths, with specific examples)
   - What could improve (issues and gaps, ranked)
   - Lessons learned (transferable insights, framed for future-you)
-  - Decisions made (architectural / design choices crystallised during the phase)
+  - Decisions made (architectural / design choices crystallised during the release)
   - Metrics (intents shipped, audit-note severity distribution, time-to-ship if measurable)
-- **Output**: `.abcd/development/retrospectives/<phase-id>/README.md` — a peer of `.abcd/development/intents/`, committed as part of the phase's permanent record.
-- **Lifeboat integration**: `/abcd:disembark pack <repo> <path>` packs *all* of the voyage's phase retrospectives into the lifeboat — the full reflection arc travels. `/abcd:embark from <path>` surfaces predecessor retrospectives during the press-release interview ("here's what the previous voyage learned about X — does that apply here?").
-- **Reference back to intents and the audit**: the retrospective links to the phase doc, to the intents the phase bundled, and to the phase audit; per-intent reviewer notes are referenced (not duplicated).
+- **Output**: `.abcd/development/retrospectives/<release-tag>/README.md` — a peer of `.abcd/development/intents/`, committed as part of the permanent record.
+- **Lifeboat integration**: `/abcd:disembark pack <repo> <path>` packs *all* of the voyage's retrospectives into the lifeboat — the full reflection arc travels. `/abcd:embark from <path>` surfaces predecessor retrospectives during the press-release interview ("here's what the previous voyage learned about X — does that apply here?").
+- **Reference back to intents and the audit**: the retrospective links to the release's changelog section, to the intents it shipped, and to their audit notes; the audit notes are referenced, not duplicated.
 - **`reflection-composer` agent** — runs the interview, drafts the structured output, asks clarifying questions when answers feel thin.
 
 ## What's Out of Scope
 
-- **The phase audit itself** — comparing delivered reality against `## Phase Acceptance` is the phase-fidelity-reviewer's job (per adr-9). `/abcd:reflect` consumes that verdict; it does not produce it.
-- **Per-intent reflection** — `intent-fidelity-reviewer`'s Role 1 already produces per-criterion verdicts and a three-bucket prose audit on every shipped intent (per the itd-1 discipline). That *is* per-intent reflection; `/abcd:reflect` does not duplicate it. There is no `/abcd:reflect <itd-N>` form — the command takes a phase ID only.
+- **The audit itself** — judging delivered reality against each intent's criteria is the intent auditor's job. `/abcd:reflect` consumes those verdicts; it does not produce them.
+- **Per-intent reflection** — the intent auditor already produces per-criterion verdicts and a three-bucket prose audit on every shipped intent (per the itd-1 discipline). That *is* per-intent reflection; `/abcd:reflect` does not duplicate it. There is no `/abcd:reflect <itd-N>` form — the command takes a release tag only.
+- **A date or tag range** as the seed, and **phase documents** as the seed: the alternatives decision 5 did not take.
 - **Quantitative retrospective metrics** (DORA, velocity, etc.) — abcd doesn't gather the underlying telemetry. Metrics section is qualitative + simple counts only.
 - **Team retrospectives** — abcd is single-developer-shaped (or pair-shaped); team retrospective patterns belong elsewhere.
-- **Automatic triggering** — reflection requires the persona's deliberate engagement; no auto-prompting after phase close.
+- **Automatic triggering** — reflection requires the persona's deliberate engagement; beyond the one-line nudge of decision 1, nothing prompts for it.
 
 ## Scope Conditions
 
@@ -70,14 +71,14 @@ None stated.
 
 ## Acceptance Criteria
 
-- **Given** an abcd repo with a completed phase (`phase-1-substrate.md` exists, every spec carrying `phase: phase-1-substrate` is closed, and a phase audit has been recorded), **when** the persona runs `/abcd:reflect phase-1-substrate`, **then** the reflection-composer agent runs an interview *seeded by the phase audit's per-bullet verdicts* and writes `.abcd/retrospectives/phase-1-substrate/README.md` with all five required sections populated.
-- **Given** a completed phase with no phase audit yet recorded, **when** the persona runs `/abcd:reflect <phase-id>`, **then** the command reports the missing audit and offers to run the phase-fidelity-reviewer inline before continuing into the retrospective.
-- **Given** a phase doc that exists but has no spec carrying its `phase:` anchor, **when** the persona runs `/abcd:reflect <phase-id>`, **then** the command refuses with "no specs anchored to `<phase-id>` — nothing shipped to reflect on" and writes no output.
+- **Given** an abcd repo with a cut release (`v0.11.0` is tagged and at least one intent's `shipped_in` names it), **when** the persona runs `/abcd:reflect v0.11.0`, **then** the reflection-composer agent runs an interview *seeded by that release's shipped intents and their audit notes* and writes `.abcd/development/retrospectives/v0.11.0/README.md` with all five required sections populated.
+- **Given** a release one of whose shipped intents carries no audit notes, **when** the persona runs `/abcd:reflect <release-tag>`, **then** the command names that intent and offers `abcd intent audit <itd-N>` before continuing into the retrospective.
+- **Given** a release tag that shipped no intent, **when** the persona runs `/abcd:reflect <release-tag>`, **then** the command refuses with "no intent shipped in `<release-tag>` — nothing shipped to reflect on" and writes no output.
 - **Given** a draft retrospective with thin answers (e.g. "what went well: it worked"), **when** the agent drafts the output, **then** the agent surfaces the thinness as a clarifying question rather than committing the thin answer.
-- **Given** the same repo's lifeboat is then packed via `/abcd:disembark pack <repo> <path>`, **when** the lifeboat is inspected, **then** every `.abcd/development/retrospectives/<phase-id>/README.md` the voyage produced is included in the lifeboat artefact.
+- **Given** the same repo's lifeboat is then packed via `/abcd:disembark pack <repo> <path>`, **when** the lifeboat is inspected, **then** every `.abcd/development/retrospectives/<release-tag>/README.md` the voyage produced is included in the lifeboat artefact.
 - **Given** a target repo embarked from a lifeboat that includes retrospectives, **when** `/abcd:embark from <path>` runs the press-release interview, **then** the persona is shown the few predecessor lessons ranked most like the new voyage's brief, with the rest as a list, and asked which apply.
-- **Given** an attempt to reflect on a phase whose specs are not all closed, **when** `/abcd:reflect <phase-id>` runs, **then** the command warns the persona, lists the open specs anchored to that phase, and asks for confirmation to proceed anyway.
-- **Given** the last piece of work anchored to a phase closes, **when** that close completes, **then** abcd says once that a retrospective for the phase is owed and names the command, and says nothing further about it.
+- **Given** a release with intents still unshipped whose `target_release` names it, **when** `/abcd:reflect <release-tag>` runs, **then** the command warns the persona, lists those intents, and asks for confirmation to proceed anyway.
+- **Given** a release cut is written, **when** that cut completes, **then** abcd says once that a retrospective for the release is owed and names the command, and says nothing further about it.
 
 ## Decisions
 
@@ -87,12 +88,15 @@ Ruled by the product thinker on 2026-09-21, in the interview that gave this inte
 2. **A ranked few on embark.** Predecessor lessons most like the new voyage's brief are shown; the rest are a list opened on request.
 3. **Layout.** The retrospective lives under the durable record tier, `.abcd/development/retrospectives/<phase-id>/README.md`; the paths this record was written against predate the three-tier layout and are read as that.
 4. **The unit is the release** (ruled 2026-09-21, adr-2609212115255771): phases are retired, so `<phase-id>` reads as the release tag (`v0.10.0`), the seed is the release's shipped intents and their audit notes with the derived changelog, the empty case is a release that shipped no intent, the nudge fires once when the cut is written, and criterion 7's warning names intents targeted at the release (`target_release`) still unshipped. Every criterion below is read with "phase" meaning "release".
+5. **Seed from a release** (ruled by the product thinker on 2026-09-29, ruling AD of autonomous run A's owed list): a retrospective starts from the intents a tag shipped. Seeding from a date or tag range the person names, and keeping phase documents as the anchor, were the alternatives not taken. The press release, scope and criteria were rewritten to the release on 2026-09-29, so decision 4's reading rule is now the text itself; the Blocking Dependency and v1 notes below record the phase-grain design this replaces.
 
 ## Open Questions
 
 _None open; decisions 1 and 2 settle the two this record carried (the reflection cadence and the lifeboat surfacing on embark)._
 
 ## Blocking Dependency
+
+_Superseded by decisions 4 and 5: the seed is the per-intent audit notes, which exist, so no phase-fidelity output is awaited. The text below is the phase-grain history._
 
 `/abcd:reflect` **cannot be planned until the phase-fidelity-reviewer ships** and its output artefact is stable and machine-readable. The reviewer is deferred in adr-9. Because `/abcd:reflect`'s core design is to *consume* the audit's per-bullet verdicts as interview seed material, and the audit-missing AC depends on running the reviewer inline, the command has no buildable contract until the reviewer's output format exists. `/abcd:intent plan itd-24` must not proceed while the phase-fidelity-reviewer remains unbuilt.
 
@@ -103,6 +107,8 @@ _None open; decisions 1 and 2 settle the two this record carried (the reflection
 _Empty. Populated by intent-fidelity-reviewer when intent moves to shipped/._
 
 ### Implementation notes (v1 scope)
+
+_Phase-grain history of a thin V1 that is not in the tree; superseded by decision 5, which seeds from a release._
 
 `/abcd:reflect` (thin V1) refines two acceptance behaviours from
 their originally-drafted form; both are recorded here so the fidelity review

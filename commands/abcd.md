@@ -77,15 +77,22 @@ to do. The field is omitted when the tree holds no folder.
 
 In a repository abcd manages the board ends with the Now / Next / Later block,
 the `status` object in the JSON (`now`, `next`, `later`, `order`), rendered as
-a `status:` heading with the three counts and one line per intent under `Now:`,
-`Next:` and `Later:`. Now is every intent a build run has in a lane (each row's
-`lane` names the run, the lane, its next step and the role it waits on), then
-the intent marked `next_up`; Next is every planned intent the readiness gate
-reports READY; Later is every planned intent the gate refuses, its
-`failing_checks` named, then the drafts. Relay Now first: it is what is being
-built and what comes next. Until `abcd build next` exists the READY intents are
-read oldest id first (`order` is `record-id`), so say so when relaying the
-`next_up` intent. The block is computed each time and nothing stores it.
+a `status:` heading with the three counts, one line per intent under `Now:` and
+`Next:`, and a closing `Later: N intents` line that gives Later as a count
+alone: its rows are in the JSON and on the site's Status page. Now is every
+intent a build run has in a lane (each row's `lane` names the run, the lane,
+its next step and the role it waits on), then the intent marked `next_up`; Next
+is every planned intent the readiness gate reports READY; Later is every
+planned intent the gate refuses, its `failing_checks` named, then the drafts.
+An intent in a lane is listed under Now only, never also under Next or Later.
+Next and the `next_up` intent are read
+in `abcd build next`'s pick order (`order` is `pick`): the readiest first by the
+pick's score, the oldest among equals, and the head passes over an intent that
+`abcd build next` refuses from the record alone (an open question, an
+unanswered claim section, a hold, an unshipped blocker, no step left to build)
+or that is already in a lane. The head does not consult other checkouts, so an
+intent a peer holds can still be marked `next_up`. Relay Now first: it is what is being built and
+what comes next. The block is computed each time and nothing stores it.
 
 ## Record-id dispatch
 

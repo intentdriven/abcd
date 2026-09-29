@@ -47,7 +47,7 @@ func TestParseClaimsThreeByteStates(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			c := ParseClaims(claimRecord(tt.mechanism, tt.conditions))
+			c := parseClaims(claimRecord(tt.mechanism, tt.conditions))
 			if c.Mechanism != tt.wantMech {
 				t.Errorf("Mechanism = %q, want %q", c.Mechanism, tt.wantMech)
 			}
@@ -75,12 +75,12 @@ func TestNullityTokenIsExact(t *testing.T) {
 	}
 	for _, body := range stated {
 		t.Run(body, func(t *testing.T) {
-			if got := ParseClaims(claimRecord(str(body), nil)).Mechanism; got != ClaimStated {
+			if got := parseClaims(claimRecord(str(body), nil)).Mechanism; got != ClaimStated {
 				t.Fatalf("Mechanism for %q = %q, want %q", body, got, ClaimStated)
 			}
 		})
 	}
-	if got := ParseClaims(claimRecord(str("None stated."), nil)).Mechanism; got != ClaimNullity {
+	if got := parseClaims(claimRecord(str("None stated."), nil)).Mechanism; got != ClaimNullity {
 		t.Fatalf("the exact token = %q, want %q", got, ClaimNullity)
 	}
 }
@@ -91,7 +91,7 @@ func TestParseConditionsMarkerExtraction(t *testing.T) {
 		"  - an indented sub-bullet is detail, not a condition\n" +
 		"- a wrapped condition whose sentence <!-- cond: cond-2608300102030406 -->\n" +
 		"  continues on the next line\n"
-	c := ParseClaims(claimRecord(nil, str(body)))
+	c := parseClaims(claimRecord(nil, str(body)))
 	if c.ConditionsState != ClaimStated {
 		t.Fatalf("ConditionsState = %q, want %q", c.ConditionsState, ClaimStated)
 	}
@@ -119,8 +119,8 @@ func TestParseConditionsMarkerExtraction(t *testing.T) {
 // is bytes inside the bullet, so rewriting the prose around it changes nothing.
 func TestConditionIdentitySurvivesEdit(t *testing.T) {
 	const id = "cond-2608300102030405"
-	before := ParseClaims(claimRecord(nil, str("- holds on POSIX <!-- cond: "+id+" -->")))
-	after := ParseClaims(claimRecord(nil, str("- holds only where a POSIX shell exists <!-- cond: "+id+" -->")))
+	before := parseClaims(claimRecord(nil, str("- holds on POSIX <!-- cond: "+id+" -->")))
+	after := parseClaims(claimRecord(nil, str("- holds only where a POSIX shell exists <!-- cond: "+id+" -->")))
 	if len(before.Conditions) != 1 || len(after.Conditions) != 1 {
 		t.Fatalf("expected one condition either side: %+v / %+v", before.Conditions, after.Conditions)
 	}
@@ -159,7 +159,7 @@ func TestStampScopeConditionsMarksOnlyUnmarkedBullets(t *testing.T) {
 	if n != 1 {
 		t.Fatalf("stamped %d bullets, want 1", n)
 	}
-	conds := ParseClaims(stamped).Conditions
+	conds := parseClaims(stamped).Conditions
 	if len(conds) != 2 {
 		t.Fatalf("got %d conditions, want 2: %+v", len(conds), conds)
 	}
@@ -209,7 +209,7 @@ func TestStampScopeConditionsRedrawsOnCollision(t *testing.T) {
 	if n != 2 {
 		t.Fatalf("stamped %d, want 2", n)
 	}
-	conds := ParseClaims(stamped).Conditions
+	conds := parseClaims(stamped).Conditions
 	if conds[0].ID == conds[1].ID {
 		t.Fatalf("both conditions carry %q", conds[0].ID)
 	}
@@ -248,7 +248,7 @@ func TestPlanStampsConditionIdentities(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	conds := ParseClaims(string(body)).Conditions
+	conds := parseClaims(string(body)).Conditions
 	if len(conds) != 2 {
 		t.Fatalf("got %d conditions, want 2: %+v", len(conds), conds)
 	}
@@ -284,7 +284,7 @@ func TestPlanLeavesTheNullityTokenAlone(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := ParseClaims(string(body)).ConditionsState; got != ClaimNullity {
+	if got := parseClaims(string(body)).ConditionsState; got != ClaimNullity {
 		t.Fatalf("ConditionsState = %q, want %q", got, ClaimNullity)
 	}
 }
@@ -309,7 +309,7 @@ func TestSeedDraftCarriesClaimSections(t *testing.T) {
 	}
 	// Both scaffolded sections must read as a prompt, never as a recorded claim:
 	// a seeded nullity would be a decline nobody made.
-	c := ParseClaims(body)
+	c := parseClaims(body)
 	if c.Mechanism != ClaimStated || c.ConditionsState != ClaimStated {
 		t.Fatalf("scaffold states = (%q, %q), want both %q (the one-line contract)", c.Mechanism, c.ConditionsState, ClaimStated)
 	}
@@ -357,7 +357,7 @@ func TestPlanStampsAPlannedRecordInPlace(t *testing.T) {
 	if !strings.Contains(body, markedLine+"\n") {
 		t.Errorf("the already-marked bullet was rewritten:\n%s", body)
 	}
-	conds := ParseClaims(body).Conditions
+	conds := parseClaims(body).Conditions
 	if len(conds) != 2 || conds[1].ID == "" || conds[1].ID == kept {
 		t.Fatalf("conditions after the stamp = %+v", conds)
 	}
@@ -409,7 +409,7 @@ func TestConditionMarkerSurvivesAReflow(t *testing.T) {
 
 	for name, body := range map[string]string{"flat": flat, "reflowed": reflowed, "marker on its own line": onOwnLine} {
 		t.Run(name, func(t *testing.T) {
-			conds := ParseClaims(claimRecord(nil, str(body))).Conditions
+			conds := parseClaims(claimRecord(nil, str(body))).Conditions
 			if len(conds) != 1 {
 				t.Fatalf("got %d conditions, want 1: %+v", len(conds), conds)
 			}
@@ -435,7 +435,7 @@ func TestConditionMarkerSurvivesAReflow(t *testing.T) {
 func TestConditionMarkerFollowedByProse(t *testing.T) {
 	const id = "cond-2608300102030405"
 	body := "- holds only where a POSIX <!-- cond: " + id + " --> shell exists\n"
-	conds := ParseClaims(claimRecord(nil, str(body))).Conditions
+	conds := parseClaims(claimRecord(nil, str(body))).Conditions
 	if len(conds) != 1 || conds[0].ID != id {
 		t.Fatalf("conditions = %+v, want one carrying %s", conds, id)
 	}
@@ -449,7 +449,7 @@ func TestConditionMarkerFollowedByProse(t *testing.T) {
 // reader reached first. The bullet is reported and never stamped.
 func TestConditionWithTwoMarkersIsAFault(t *testing.T) {
 	body := "- one condition <!-- cond: cond-2608300102030405 --> <!-- cond: cond-2608300102030406 -->\n"
-	conds := ParseClaims(claimRecord(nil, str(body))).Conditions
+	conds := parseClaims(claimRecord(nil, str(body))).Conditions
 	if len(conds) != 1 {
 		t.Fatalf("got %d conditions, want 1", len(conds))
 	}

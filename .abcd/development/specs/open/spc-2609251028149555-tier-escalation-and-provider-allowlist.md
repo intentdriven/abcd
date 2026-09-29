@@ -70,7 +70,11 @@ all four:
 10. A lane whose round N failed resolves round N+1 through `Escalate`, and the
     state file carries the round, the gate output and the switch.
 11. `Resolve` consults the connection's allowlist before it returns a provider
-    leg. An unlisted route is an error that names the refusal.
+    leg. An unlisted route is an error that names the refusal. A
+    `--route <agent>=<tier>@<conn>` whose agent's `oracle.roles.<agent>` does
+    not point at that connection is refused, naming the one setting to add
+    (the product thinker's ruling BR1 of 2026-09-29, which took the refusal as
+    built in e1c4e38ad and 35100512e), so AC 11 is complete as built.
 
 ## Tests
 
@@ -85,11 +89,6 @@ all four:
 ## Blocked on
 
 - The implement loop's per-lane state file, for AC 10.
-- A ruling, for the rest of AC 11: which model a `--route <agent>=<tier>@<conn>`
-  asks for when the agent's `oracle.roles.<agent>` does not point at that
-  connection. `Resolve` refuses such a leg until the ruling. The API adapter's
-  `Connections` carries the allowlist and the model each role points at, and
-  `Resolve` holds a role-pointed leg's model to the allowlist.
 - Provider dispatch in the delegating verbs, for AC 3. The adapter
   (itd-2609081951381895) exists and declares the settings it accepts, and
   `Resolve` refuses a setting outside them (AC 8); no verb yet hands `Resolve`

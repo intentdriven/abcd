@@ -120,10 +120,10 @@ type Claims struct {
 	ConditionsDuplicated bool `json:"conditions_duplicated,omitempty"`
 }
 
-// ParseClaims reads an intent record's `## Mechanism` and `## Scope Conditions`
+// parseClaims reads an intent record's `## Mechanism` and `## Scope Conditions`
 // sections. It is the single reader for both: every downstream consumer asks it
 // rather than re-deciding what a section, a bullet, or the nullity token is.
-func ParseClaims(content string) Claims {
+func parseClaims(content string) Claims {
 	lines := strings.Split(content, "\n")
 	mask := mdrecord.Mask(lines)
 	c := Claims{

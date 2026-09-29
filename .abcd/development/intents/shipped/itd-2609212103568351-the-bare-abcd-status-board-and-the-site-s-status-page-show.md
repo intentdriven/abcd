@@ -71,7 +71,11 @@ _None open._
 
 ## Audit Notes
 
-_Empty. Populated by intent-auditor when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-4d55b6f29ab8 -->
+Fidelity review OWED (receipt rcp-4d55b6f29ab8).
+<!-- abcd-review-end receipt=rcp-4d55b6f29ab8 -->
+
+Changed on 2026-09-29 by the product thinker's rulings BV1 and BV2 of that day (DECISIONS.md entry landing with lane recRulings), recorded as iss-2609292011569133: the text board gives Later as a count alone while `--json` and the site's Status page keep its rows (criterion 1), and an intent in a lane is listed under Now only, never also under Next or Later, so without the state file that intent returns to the list the gate places it in (criteria 1 and 3). The criterion text above stands as shipped; adr-2609292012006845 supersedes adr-2609212115255771 and restates decision 2.
 
 ## Grounds
 
