@@ -47,7 +47,13 @@ binary_quoted="'$(printf '%s' "$binary" | sed "s/'/'\\\\''/g")'"
 #     committed fakehome/.abcd/cache-attestation would become the record the
 #     PATH promotion trusts, reopening through repository content the very class
 #     the attestation exists to outrank;
-#   - a HOME INSIDE that directory is the same shape by another spelling.
+#   - a HOME INSIDE that directory is the same shape by another spelling;
+#   - a ~/.abcd that is a SYMLINK (a dotfiles checkout, typically) is the rule
+#     the rules loader applies to rules.json and every Go reader and writer of
+#     ~/.abcd applies through fsutil.HomeScopeLink: a record written through
+#     the link lands wherever it points and is one every reader refuses, so
+#     `ahoy install` would send the reader back here for a record this script
+#     would write the same way (iss-2609281017573862).
 #
 # HOME being the working directory itself is ordinary (a session started in the
 # home directory) and is not refused. A refusal empties home_dir, so every
@@ -108,6 +114,9 @@ elif [ "${home_dir#/}" = "$home_dir" ]; then
 	home_dir=''
 elif home_inside_cwd; then
 	home_refusal='HOME lies inside the directory this hook is running in, so its ~/.abcd records would be repository content rather than a write into your own home'
+	home_dir=''
+elif [ -L "$home_dir/.abcd" ]; then
+	home_refusal='~/.abcd is a symlink, which abcd refuses rather than follows (replace the link with a real directory)'
 	home_dir=''
 fi
 

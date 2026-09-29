@@ -312,17 +312,63 @@ func RedactHome(s string) string {
 	return s
 }
 
-// DisplayPath is a path as a report names it. A report travels into --json, and
-// machine output never carries an absolute developer-identity path (iss-81): a
-// path inside repoRoot is named relative to it, slash-separated; one outside it
-// has the home directory redacted to "~" (RedactHome); a relative path is
-// reported as it was given. It is for display only — a caller that acts on the
-// path keeps the working value beside it.
+// DisplayPath is the one statement of how a surface prints a directory it names
+// — a checkout, a worktree, a repository root: under HOME it is the
+// home-relative form RedactHome gives ("~/rel", or "~" for HOME itself), and
+// outside HOME it is the directory's base name. RedactHome alone leaves a path
+// outside HOME whole, and printed whole it is an absolute local path in output a
+// person pastes elsewhere (iss-2609281329007423). A relative or empty p is
+// returned unchanged.
+//
+// It is for a path shown so a reader can recognise it, not one the reader must
+// type to act: a store directory the person passed with a flag, a brief an
+// agent is handed or a receipt it must write keep RedactHome, because a base
+// name there would leave the reader unable to act on it.
+func DisplayPath(p string) string {
+	if shown := RedactHome(p); !filepath.IsAbs(shown) {
+		return shown
+	}
+	return filepath.Base(p)
+}
+
+// DisplayPathsIn is DisplayPath inside a message: s is home-redacted, and each
+// absolute path in paths is replaced by its DisplayPath wherever it starts a
+// path in s (RedactRoot's boundary rule), in both the spelling given and its
+// symlink-resolved one (the one git and the kernel report back). A longer path
+// under it keeps its tail ("/tmp/wt/.git" becomes "wt/.git"). It is for a
+// reason or an error that carries a path the caller already knows, such as a
+// peer's not-read reason naming the peer's directory.
+func DisplayPathsIn(s string, paths ...string) string {
+	s = RedactHome(s)
+	for _, p := range paths {
+		if !filepath.IsAbs(p) {
+			continue
+		}
+		shown := DisplayPath(p)
+		s = RedactRoot(s, p, shown)
+		if real, err := filepath.EvalSymlinks(p); err == nil && real != p {
+			s = RedactRoot(s, real, shown)
+		}
+	}
+	return s
+}
+
+// RepoRelativePath is a path as a report names it when the report is about the
+// inside of a root the caller passes. A report travels into --json, and machine
+// output never carries an absolute developer-identity path (iss-81): a path
+// inside repoRoot is named relative to it, slash-separated; one outside it has
+// the home directory redacted to "~" (RedactHome); a relative path is reported
+// as it was given. It is for display only — a caller that acts on the path keeps
+// the working value beside it.
+//
+// Three primitives, three rules: RedactHome names the home directory "~" in any
+// text; DisplayPath names a directory a surface points at (a checkout, a
+// worktree); RepoRelativePath names a path reported inside a root.
 //
 // Inside is judged lexically first and then over the real locations, so a path
 // the kernel resolved (macOS's /private/var for /var) still reads as inside a
 // repoRoot spelled the other way.
-func DisplayPath(repoRoot, p string) string {
+func RepoRelativePath(repoRoot, p string) string {
 	if !filepath.IsAbs(p) {
 		return p
 	}

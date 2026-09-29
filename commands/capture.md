@@ -124,9 +124,10 @@ Nothing is refused or dropped. The JSON's `match` object carries `matches`
 `near_misses` (the best five below the threshold, with their scores),
 `threshold`, and `skipped` when nothing was compared: a text with fewer than
 eight distinct terms, a record set that could not be read, or a match
-configuration the reader refuses. Relay each match with its id and relation
-and ask the user to confirm it. A confirmed link is left as it is; a wrong one
-is removed by deleting its line, which leaves an ordinary record. The match
+configuration the reader refuses. Set `abcd mode facilitator`, relay each
+match with its id and relation, and ask the technical facilitator to confirm
+it. A confirmed link is left as it is; a wrong one is removed by deleting its
+line, which leaves an ordinary record. The match
 never proposes `reverses` or `supersedes`: a reversal is a person's judgement.
 
 The threshold and the compared fields are configuration: `match.threshold`
@@ -329,12 +330,13 @@ The refusal names the construct and its body line. The repair is a hand edit:
 close or remove the opener in a text editor, then re-run. Promote and resolve
 given no `--grounds` append nothing and act.
 
-**Ask for the expectation and its falsifier.** "Promoted it because it is next"
+**Ask the product thinker for the expectation and its falsifier** (set `abcd
+mode product-thinker` first). "Promoted it because it is next"
 restates the decision and records nothing; "promoted it because we expect a
 stamped identity to survive rewording, which nothing else does" is a conjecture
 somebody can later find wrong. abcd refuses only the degenerate texts — empty,
 too short, or the vocabulary word repeated back — and cannot tell a conjecture
-from a restatement. That part is yours: put the question to the user and write
+from a restatement. That part is yours: put the question to the product thinker and write
 down their answer.
 
 The value is APPENDED as a `- <token>: <text>` bullet under the record's
@@ -432,6 +434,8 @@ since the last release and still open, and one sanctioned way past it is a
 deferral stated out loud. `defer` writes it: `deferred_after` (the anchor tag)
 and `deferral_reason` in the record's frontmatter, and a dated
 `## Deferral <date>` section appended to its body. The record stays in `open/`.
+A second deferral past the same anchor replaces that cycle's pair and section
+rather than adding another, so the body carries one section per cycle.
 Report the `id`, `deferred_after` and `deferral_reason` from the JSON, and tell
 the user that the waiver lapses when the next release re-anchors, so it must be
 renewed then or the finding fixed. Report `redacted` whenever it is non-zero.
@@ -498,7 +502,8 @@ run. The refusal names the run and says what it is waiting for: the comparative
 reading over that run, ingested through `/abcd:reading`. A comparative run
 committed with an empty item set, the position not exercised, satisfies it too.
 Every other position is answered with no comparative run anywhere. Relay the
-refusal; do not write the record by hand to get past it.
+refusal; do not write the record by hand to get past it: a run record without the
+manifest the ingest writes beside it, or disagreeing with it, is refused by name.
 
 ## Admit a widening proposal
 
@@ -592,7 +597,12 @@ A reframe is written in one of three halves, and every render names which:
   not. It walks the surfaces' history along first parents to the previous
   distinct committed state and writes both halves at once, so a rewrite a merge
   brought in is recorded against the state the merge's first parent held, as a
-  squash of the same branch would be, whatever the commits' timestamps.
+  squash of the same branch would be, whatever the commits' timestamps. A
+  rewrite that lands as several commits on the first-parent line, a rebased
+  branch among them, is different: the previous distinct state is the one
+  before its last commit, so the whole write records that step alone. To record
+  such a rewrite whole, open the record before its first commit and complete it
+  after its last.
 - **Open**, before the rewrite is committed (`--open`). The before fingerprints
   are `HEAD`'s and the after half is absent; the render names the completion.
   Only one record may be open at a time.

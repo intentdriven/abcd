@@ -32,6 +32,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/readingitem"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // The disposition family's id grammar. It is checked BEFORE the value is used to
@@ -383,7 +384,10 @@ func readItemHead(issuesRoot, item string) (itemHead, error) {
 }
 
 // redactDispositionRequest redacts every free-text value a disposition carries,
-// with one scanner, before the lock is taken.
+// with one scanner, before the lock is taken, and encodes the hidden runes in it
+// the way every other free-text record write does: a bidi override or a
+// zero-width rune in --grounds or --exit-condition would otherwise reach the
+// committed record verbatim (iss-2609251823551349).
 func redactDispositionRequest(repoRoot string, req DispositionRequest) (DispositionRequest, int, string) {
 	r := newLedgerRedactor(repoRoot)
 	total := 0
@@ -393,7 +397,7 @@ func redactDispositionRequest(repoRoot string, req DispositionRequest) (Disposit
 		}
 		out, n := r.redact(s)
 		total += n
-		return out
+		return termsafe.EncodeHiddenRunes(out)
 	}
 	req.Grounds = scrub(req.Grounds)
 	req.ExitCondition = scrub(req.ExitCondition)

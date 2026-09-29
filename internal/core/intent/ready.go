@@ -139,7 +139,7 @@ func Ready(repoRoot, intentID string) (ReadyResult, error) {
 
 // bucketCheck reports the lifecycle-state gate: only a planned intent may be
 // implemented. For a draft the remedy names the exact route to planned —
-// through the maintainer's sign-off, via the planning interview when the
+// through the product thinker's sign-off, via the planning interview when the
 // Acceptance Criteria are not yet enumerable. Terminal buckets carry no remedy:
 // there is nothing to fix, the answer is simply no.
 func bucketCheck(it Intent, acCount int, content string) ReadyCheck {
@@ -151,7 +151,7 @@ func bucketCheck(it Intent, acCount int, content string) ReadyCheck {
 	case BucketDrafts:
 		c.Detail = fmt.Sprintf("%s is a draft — an intent that is not planned cannot be implemented", it.ID)
 		if acCount > 0 {
-			c.Remedy = fmt.Sprintf("confirm the Acceptance Criteria with the maintainer, then run `abcd intent plan %s`", it.ID)
+			c.Remedy = fmt.Sprintf("confirm the Acceptance Criteria with the product thinker, then run `abcd intent plan %s`", it.ID)
 		} else {
 			c.Remedy = fmt.Sprintf("run the planning interview (/abcd:intent) to write and confirm Acceptance Criteria, then run `abcd intent plan %s`", it.ID)
 		}
@@ -180,7 +180,7 @@ func acCheck(acCount int) ReadyCheck {
 		c.Detail = fmt.Sprintf("%d top-level bullet(s) in '## Acceptance Criteria'", acCount)
 	} else {
 		c.Detail = "no top-level bullets in '## Acceptance Criteria' (itd-1 discipline)"
-		c.Remedy = "add at least one Given-When-Then bullet — the planning interview walks this with the maintainer"
+		c.Remedy = "add at least one Given-When-Then bullet — the planning interview walks this with the product thinker"
 	}
 	return c
 }

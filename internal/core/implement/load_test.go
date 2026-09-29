@@ -294,6 +294,24 @@ func TestMalformedLimitsFileFallsBackWhole(t *testing.T) {
 				t.Fatal(err)
 			}
 		}, "not a regular file"},
+		// iss-2609281017573862: behind a ~/.abcd symlinked into a dotfiles
+		// checkout the file is not the caller's word, as rules.json is not.
+		"symlinked abcd home": {func(t *testing.T) {
+			path := writeLimits(t, "stray-minutes 5\n", 0o600)
+			dir := filepath.Dir(path)
+			moved := filepath.Join(t.TempDir(), "dotfiles-abcd")
+			if err := os.Rename(dir, moved); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(moved, dir); err != nil {
+				t.Fatal(err)
+			}
+			// The cases share one home: put the real directory back.
+			t.Cleanup(func() {
+				_ = os.Remove(dir)
+				_ = os.Rename(moved, dir)
+			})
+		}, "~/.abcd is a symlink"},
 		"another owner": {func(t *testing.T) {
 			writeLimits(t, "stray-minutes 5\n", 0o600)
 			restore := fsutil.SwapOwnerUIDForTest(func(string) (uint32, error) { return uint32(os.Getuid()) + 1, nil })

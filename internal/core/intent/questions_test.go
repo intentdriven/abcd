@@ -80,6 +80,26 @@ func TestOpenQuestionsReadsTheSettledConvention(t *testing.T) {
 		{"a question that mentions deferral", head +
 			"- Should the check be deferred until the runner ships?\n- **Out of scope, recorded for clarity**: a workspace layer.\n",
 			[]string{"Should the check be deferred until the runner ships?", "**Out of scope, recorded for clarity**: a workspace layer."}},
+		{"a label mid-sentence is not a marker (iss-2609260932374727)", head +
+			"- Which id wins once the split is resolved: the old or the new?\n" +
+			"- Once the flag is deferred: who picks it up?\n" +
+			"- Which runner?\n  It stays a question until it is resolved: see below.\n",
+			[]string{"Which id wins once the split is resolved: the old or the new?",
+				"Once the flag is deferred: who picks it up?", "Which runner?"}},
+		{"a label opening the item or a continuation line (iss-2609260932374727)", head +
+			"- Resolved: the local runner.\n" +
+			"- Which runner?\n  Deferred: to the runner intent.\n", nil},
+		{"a label after a closing bold and a parenthetical dash (itd-93)", head +
+			"- **Relationship to itd-73** (derived versioning) — RESOLVED: the CHANGELOG.\n", nil},
+		{"a label opening a nested sub-bullet continuation", head +
+			"- Which id wins?\n  - Resolved: the new one.\n" +
+			"- Which runner?\n  * Deferred: to the runner intent.\n", nil},
+		{"a label after a colon that follows the closing bold", head +
+			"- **Which id?**: Resolved: the new one.\n" +
+			"- **Which runner?**:Deferred: to the runner intent.\n", nil},
+		{"a sub-bullet that only mentions resolution mid-sentence is still a question", head +
+			"- Which id wins?\n  - once the split is resolved: the old or the new?\n",
+			[]string{"Which id wins?"}},
 		{"an opener below the first item does not open the section", head +
 			"- Which runner?\n\n_All resolved at planning._\n", []string{"Which runner?"}},
 		{"an opener that settles only some", head +

@@ -1,6 +1,7 @@
 package ahoy
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -401,9 +402,25 @@ func toolRoles(res identity.Result) string {
 	return ""
 }
 
+// historyHomeLinkGapID is the diagnostic for a history registry behind a
+// symlinked ~/.abcd (iss-2609281129171021).
+const historyHomeLinkGapID = "history.home_symlinked"
+
 func detectHistoryStore(rootSHA string) []Gap {
 	var gaps []Gap
 	root, err := historyRoot()
+	if errors.Is(err, fsutil.ErrHomeScopeSymlinked) {
+		// A note, not an actionable gap: install refuses to create the registry
+		// through the link, so a required "not bootstrapped" gap would be one it
+		// reports as outstanding on every run and can never close. Only the
+		// operator can, by replacing the link.
+		return []Gap{{
+			ID: historyHomeLinkGapID, Category: UserState, Scope: "machine",
+			Title:   "history registry not kept behind a symlinked home directory",
+			Detail:  "This machine's history registry is not read or written: " + err.Error() + ".",
+			FixHint: "Replace the link with a real directory, then re-run `abcd ahoy install` to register this repository.",
+		}}
+	}
 	if err != nil {
 		return nil
 	}
@@ -601,10 +618,12 @@ func detectPathSymlink(cwd, pluginRoot string, pluginOK bool) []Gap {
 	}
 	var gaps []Gap
 
-	// A link of ours whose binary has gone shadows whatever else on PATH would
-	// have answered. It is neither "installed" nor "missing" — it is its own gap.
-	if e, ok := danglingPathEntry(pluginRoot); ok {
-		gaps = append(gaps, danglingEntryGap(e.path, true))
+	// A link of ours whose binary has gone runs nothing (the shell skips it), and
+	// answers again whatever reappears at its target. It is neither
+	// "installed" nor "missing" — it is its own gap.
+	top, topOK := danglingPathEntry(pluginRoot)
+	if topOK {
+		gaps = append(gaps, danglingEntryGap(top.path, true))
 	}
 
 	target := effectiveBinTarget(pluginRoot)
@@ -652,18 +671,28 @@ func detectPathSymlink(cwd, pluginRoot string, pluginOK bool) []Gap {
 			gaps = append(gaps, unrecordedEntryGap(target)...)
 			// A working install TODAY, and a casualty of the next plugin
 			// update: the link points into a directory the harness replaces and
-			// garbage-collects (spc-35). Heal-able only while a verified cache
-			// artefact exists to copy from — without one there is nothing
-			// better to offer than the symlink that works.
-			if ownedCopySourceReady(cwd, pluginRoot) {
-				gaps = append(gaps, Gap{
-					ID: "symlink.legacy", Category: ConfigChange, Scope: "machine",
-					Title:    "PATH entry is a symlink into the plugin root",
-					Detail:   displayPath(target) + " points into the harness-owned plugin directory, which every plugin update replaces and later deletes — the entry will dangle after the next update.",
-					FixHint:  "ahoy install replaces it with an abcd-owned copy of the verified release binary, which survives updates.",
-					Required: true, Resolvable: true,
-				})
+			// garbage-collects (spc-35). It is a gap whatever the cache holds
+			// (iss-2609100506263330): silence on a cold cache reported a pin
+			// the next update breaks as a clean install. With a verified cache
+			// artefact install heals it to the owned copy; without one install
+			// leaves the working pin where it stands, and the hint names the
+			// command that provides the verified copy first.
+			// A pin whose plugin binary is already gone is not working today:
+			// the symlink.dangling gap above carries it.
+			if linkIsDangling(target) {
+				break
 			}
+			fix := "ahoy install replaces it with an abcd-owned copy of the verified release binary, which survives updates."
+			if !ownedCopySourceReady(cwd, pluginRoot) {
+				fix = "No verified release binary is available to replace it with yet. " + coldCacheRemedy
+			}
+			gaps = append(gaps, Gap{
+				ID: "symlink.legacy", Category: ConfigChange, Scope: "machine",
+				Title:    "PATH entry is a symlink into the plugin root",
+				Detail:   displayPath(target) + " points into the harness-owned plugin directory, which every plugin update replaces and later deletes — the entry will dangle after the next update.",
+				FixHint:  fix,
+				Required: true, Resolvable: true,
+			})
 		case supersededSiblingDest(target, dest, pluginRoot):
 			// Ours, pinned into a vintage the harness has moved past but not yet
 			// deleted (iss-2609161805447092): a working install that answers an
@@ -676,16 +705,22 @@ func detectPathSymlink(cwd, pluginRoot string, pluginOK bool) []Gap {
 				FixHint:  "ahoy install replaces it with the current release.",
 				Required: true, Resolvable: true,
 			})
-		case strandedSiblingDest(target, dest, pluginRoot):
-			// Ours, stranded by a plugin update: the symlink.dangling gap above
-			// already carries it, and a foreign-worded gap here would tell the
-			// user to hand-resolve a link abcd itself wrote (iss-345).
+		case strandedSiblingDest(target, dest, pluginRoot) || recordedDanglingLink(target):
+			// Ours, stranded by a plugin update (iss-345) or named by the
+			// provenance record (iss-2609100506263330): a foreign-worded gap
+			// would tell the user to hand-resolve a link abcd itself wrote. The
+			// symlink.dangling gap above carries it when the entry is on PATH;
+			// an entry off PATH (an explicit --bin-dir, a bin dir not yet on
+			// PATH) is not in that scan, so it is named here, once.
+			if !topOK || !sameEntry(top.path, target) {
+				gaps = append(gaps, danglingEntryGap(target, true))
+			}
 		case linkIsDangling(target):
 			// A link abcd cannot prove it wrote, that resolves to NOTHING
 			// (iss-2609100506256636). Refusing to clobber a foreign entry is
 			// right — it is somebody's working install — but this one is
-			// nobody's: it runs nothing, and it shadows every later PATH entry
-			// including a healthy abcd. Reporting it as foreign made the state
+			// nobody's: it runs nothing, and it answers whatever reappears at
+			// its target ahead of a healthy abcd. Reporting it as foreign made the state
 			// unreachable from inside the tool, because that gap is
 			// `resolvable: false` and there is no --force and no uninstall path
 			// for an entry abcd does not own, so `ahoy install` could never
@@ -718,11 +753,11 @@ func detectPathSymlink(cwd, pluginRoot string, pluginOK bool) []Gap {
 // prove it wrote, and never points at `ahoy uninstall`, which removes only what
 // abcd owns.
 func danglingEntryGap(path string, owned bool) Gap {
-	detail := displayPath(path) + " points at a target that does not exist, so it runs nothing and shadows every later PATH entry."
-	fix := "ahoy install replaces it once the plugin binary is present: a link that resolves to nothing is nobody's working install."
+	detail := displayPath(path) + " points at a target that does not exist. It runs nothing — the shell skips it — but whatever reappears at that target would answer `abcd` first."
+	fix := "ahoy install replaces it with a verified copy of the release binary once one is available: a link that resolves to nothing is nobody's working install."
 	if owned {
-		detail = displayPath(path) + " is an abcd-owned entry whose target no longer exists, so it shadows every later PATH entry."
-		fix = "ahoy install repoints it once the plugin binary is present; remove it with `ahoy uninstall` if abcd is gone."
+		detail = displayPath(path) + " is an abcd-owned entry whose target no longer exists. It runs nothing — the shell skips it — but whatever reappears at that target would answer `abcd` first."
+		fix = "ahoy install replaces it with a verified copy of the release binary, and names the command to run first when none is available; remove it with `ahoy uninstall` if abcd is gone."
 	}
 	return Gap{
 		ID: "symlink.dangling", Category: ConfigChange, Scope: "machine",

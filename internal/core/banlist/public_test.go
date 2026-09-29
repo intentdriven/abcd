@@ -133,8 +133,10 @@ func TestAddPublicEntryGatesUserFacingContent(t *testing.T) {
 	// The public config's roots are ["docs", "README.md"]; both must resolve now
 	// that an unresolvable configured root fails loud (GitHub #360).
 	write("README.md", "# readme\n")
-	// Its name_roots must resolve too (iss-279).
-	for _, r := range []string{".abcd/README.md", "AGENTS.md", ".github/CONTRIBUTING.md", "scripts/README.md"} {
+	// Its name_roots must resolve too (iss-279), and the role ban's extra_roots
+	// (itd-2609212137129937).
+	for _, r := range []string{".abcd/README.md", "AGENTS.md", ".github/CONTRIBUTING.md", "scripts/README.md",
+		"commands/README.md", ".abcd/rules.json", "internal/core/rules/defaults/rules.json"} {
 		write(r, "# t\n")
 	}
 	provisionDocsLintTrees(t, cfg, docs)
@@ -438,8 +440,10 @@ func TestAddPublicIsCaseInsensitiveLikeTheCuratedEntries(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(docs, "README.md"), []byte("# readme\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	// Its name_roots must resolve too (iss-279).
-	for _, r := range []string{".abcd/README.md", "AGENTS.md", ".github/CONTRIBUTING.md", "scripts/README.md"} {
+	// Its name_roots must resolve too (iss-279), and the role ban's extra_roots
+	// (itd-2609212137129937).
+	for _, r := range []string{".abcd/README.md", "AGENTS.md", ".github/CONTRIBUTING.md", "scripts/README.md",
+		"commands/README.md", ".abcd/rules.json", "internal/core/rules/defaults/rules.json"} {
 		p := filepath.Join(docs, filepath.FromSlash(r))
 		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 			t.Fatal(err)

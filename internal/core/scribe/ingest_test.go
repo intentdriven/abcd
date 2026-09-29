@@ -446,8 +446,7 @@ func TestScribeIngestWritesAdmissionsAndSurprises(t *testing.T) {
 		"{0}: admit it — "+groundA+".\nSurprise at {0}: "+surprise+".\n")
 	// Characterise the widening run, so the ordering gate lets the admission
 	// through.
-	writeFile(t, s.repo, filepath.Join(issueschema.ReadingsRecordDir, "rdg-2609250000000009", issueschema.RunRecordFileName),
-		`{"run_id":"rdg-2609250000000009","position":"comparative","candidate_run":"`+fixtureRun+`"}`)
+	characterise(t, s.repo)
 	o := s.out()
 	o.Admissions = []OutAdmission{{Item: s.items[0], Grounds: groundA}}
 	o.Surprises = []OutSurprise{{OccasionedBy: s.items[0], Text: surprise}}
@@ -513,8 +512,7 @@ func TestScribeIngestHoldsTheStateToTheItemsLine(t *testing.T) {
 func TestScribeIngestHoldsAnAdmissionToTheItemsLine(t *testing.T) {
 	s := assembleSession(t, issueschema.PositionWidening, 2,
 		"{0}: declined — "+groundA+".\n{1}: admit it — "+groundA+".\n")
-	writeFile(t, s.repo, filepath.Join(issueschema.ReadingsRecordDir, "rdg-2609250000000009", issueschema.RunRecordFileName),
-		`{"run_id":"rdg-2609250000000009","position":"comparative","candidate_run":"`+fixtureRun+`"}`)
+	characterise(t, s.repo)
 	before := s.ledger(t)
 	o := s.out()
 	o.Admissions = []OutAdmission{{Item: s.items[0], Grounds: groundA}, {Item: s.items[1], Grounds: groundA}}
@@ -740,8 +738,7 @@ func TestScribeIngestHoldsTheStateToTheItemsPartOfALine(t *testing.T) {
 	// An admission is held by the same rule.
 	s3 := assembleSession(t, issueschema.PositionWidening, 2,
 		"{0}: declined — "+groundA+"."+termLF+"{1}: admit it — "+groundA+" (not {0})."+termLF)
-	writeFile(t, s3.repo, filepath.Join(issueschema.ReadingsRecordDir, "rdg-2609250000000009", issueschema.RunRecordFileName),
-		`{"run_id":"rdg-2609250000000009","position":"comparative","candidate_run":"`+fixtureRun+`"}`)
+	characterise(t, s3.repo)
 	o3 := s3.out()
 	o3.Admissions = []OutAdmission{{Item: s3.items[0], Grounds: groundA}, {Item: s3.items[1], Grounds: groundA}}
 	if _, err := s3.ingest(t, s3.write(t, o3)); err == nil || !strings.Contains(err.Error(), "admission") ||
@@ -788,4 +785,16 @@ func TestScribeIngestRefusesASymlinkedReadingsOrRunDir(t *testing.T) {
 			}
 		})
 	}
+}
+
+// characterise writes the pair the comparative channel's ingest leaves for a
+// committed comparative run over fixtureRun — the manifest and the run record,
+// agreeing on the run and the candidate join — which is what the ordering gate
+// reads (capture.ComparativeRunFor; iss-2609251842111593).
+func characterise(t *testing.T, repo string) {
+	t.Helper()
+	const comp = "rdg-2609250000000009"
+	head := `{"run_id":"` + comp + `","position":"comparative","candidate_run":"` + fixtureRun + `"}`
+	writeFile(t, repo, filepath.Join(issueschema.ReadingsRecordDir, comp, issueschema.RunManifestFileName), head)
+	writeFile(t, repo, filepath.Join(issueschema.ReadingsRecordDir, comp, issueschema.RunRecordFileName), head)
 }

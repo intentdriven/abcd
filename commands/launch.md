@@ -77,8 +77,9 @@ The rest of this page describes the verbs. This section describes the **day** â€
 what you click, what runs on its own, and where it stops and waits for you. Read
 it if you are cutting a release and are not the person who built the machinery.
 
-Nothing here publishes by accident. The release stops and asks for a human twice:
-once when you merge, and once at a deployment gate that no merge can bypass.
+Nothing here publishes by accident. The release stops for a human twice:
+for the technical facilitator at the merge, and for the product thinker at a
+deployment gate that no merge can bypass, because publishing cannot be undone.
 
 ### The shape of it
 

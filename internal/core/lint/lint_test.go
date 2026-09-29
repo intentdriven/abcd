@@ -278,8 +278,10 @@ func TestDocsLintHarnessNameGate(t *testing.T) {
 	// The real docs-lint.json roots are ["docs", "README.md"]; both must resolve
 	// now that an unresolvable configured root fails loud (GitHub #360).
 	writeFile(t, root, "README.md", "# readme\n")
-	// Its name_roots must resolve too (iss-279).
-	for _, r := range []string{".abcd/README.md", "AGENTS.md", ".github/CONTRIBUTING.md", "scripts/README.md"} {
+	// Its name_roots must resolve too (iss-279), and the role ban's extra_roots
+	// (itd-2609212137129937).
+	for _, r := range []string{".abcd/README.md", "AGENTS.md", ".github/CONTRIBUTING.md", "scripts/README.md",
+		"commands/README.md", ".abcd/rules.json", "internal/core/rules/defaults/rules.json"} {
 		writeFile(t, root, r, "# t\n")
 	}
 	// So must links_resolve's extra roots (iss-46), read from the config so a

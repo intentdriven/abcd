@@ -115,6 +115,44 @@ func Fields(lines []string) map[string]Field {
 	return fields
 }
 
+// Close returns the index in lines of the leading frontmatter block's closing
+// delimiter, or -1 when there is no block: no opening delimiter on line 0, or
+// nothing closing it. It reads the block exactly as Fields does — the BOM
+// trimmed at line 0 and nowhere else, every delimiter judged by IsDelimiter —
+// so a reader that needs the block's extent rather than its keys (a writer
+// splicing a key in, a reader taking the body after it) asks here instead of
+// re-deriving the walk. Private copies of this walk skipped the BOM Fields
+// trims, so a BOM-led record the reader accepted was refused by intent's
+// writers and had its whole frontmatter taken for body by the changelog
+// (iss-2608221126066379).
+func Close(lines []string) int {
+	if len(lines) == 0 || !IsDelimiter(TrimBOM(lines[0])) {
+		return -1
+	}
+	return CloseAfter(lines, 0)
+}
+
+// CloseAfter returns the index of the first delimiter after the opening one at
+// lines[open], or -1 when nothing closes the block. It is Close's walk for a
+// reader that has located the opening delimiter itself — record-lint and the
+// glossary admit an attribution comment above it, so their block need not open
+// at line 0 — and it judges every closing line by IsDelimiter exactly as Close
+// does: an indented `  ---` and a mid-file "\ufeff---" are body lines, never a
+// close. Whether lines[open] opens a block is the caller's question.
+//
+// The lines may carry their end-of-line bytes or not; IsDelimiter trims both.
+func CloseAfter(lines []string, open int) int {
+	if open < 0 {
+		return -1
+	}
+	for i := open + 1; i < len(lines); i++ {
+		if IsDelimiter(lines[i]) {
+			return i
+		}
+	}
+	return -1
+}
+
 // StripComment removes a trailing YAML comment from the text that follows a
 // key's colon, returning the value alone.
 //

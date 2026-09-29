@@ -134,6 +134,9 @@ const (
 	DeclarationForeignOwner
 	// DeclarationUnreadable: it passed the guards but the read itself failed.
 	DeclarationUnreadable
+	// DeclarationBehindSymlink: the file is there, but a directory between the
+	// home and it (~/.abcd first) is a symlink (ReadHomeDeclaration only).
+	DeclarationBehindSymlink
 )
 
 // ErrDeclarationWritable and ErrDeclarationForeignOwner are the two guards that
@@ -680,8 +683,12 @@ var ErrNotOneLine = errors.New("fsutil: payload is not exactly one line")
 // line must be one line: empty, or carrying '\n' or '\r', is ErrNotOneLine and
 // nothing is opened. The newline is added here, so a caller cannot forget it and
 // run two records together. rel is resolved inside root, so a symlinked ancestor
-// is refused rather than followed; a new file is created at perm, and an existing
-// one keeps its mode. A short write is reported as io.ErrShortWrite.
+// is refused rather than followed, and the leaf gets the refusal its read twin
+// ReadGuardedInRoot applies: a symlink or anything but a regular file at rel is
+// ErrNotRegular, even when the symlink stays inside the root, so a log leaf
+// planted as a link onto another file of the store can never append into it. A
+// new file is created at perm, and an existing one keeps its mode. A short write
+// is reported as io.ErrShortWrite.
 func AppendLineIn(root *os.Root, rel string, line []byte, perm os.FileMode) error {
 	if len(line) == 0 || strings.ContainsAny(string(line), "\n\r") {
 		return ErrNotOneLine
@@ -702,6 +709,11 @@ func AppendLineIn(root *os.Root, rel string, line []byte, perm os.FileMode) erro
 	return err
 }
 
+// beforeAppendOpen, when set, runs between openAppendIn's pre-open Lstat and
+// its open. It is a test seam, nil outside tests: it lets a test plant a leaf
+// in the window a racer would, deterministically.
+var beforeAppendOpen func(root *os.Root, rel string)
+
 // openAppendIn opens rel for appending, creating it at perm when absent, without
 // ever asking the kernel for a NON-exclusive create relative to the root's
 // directory descriptor. That single call — openat(dirfd, O_CREAT|O_APPEND) — was
@@ -710,14 +722,61 @@ func AppendLineIn(root *os.Root, rel string, line []byte, perm os.FileMode) erro
 // sequence below uses only the two opens that behave under the race: a plain
 // open of an existing file, and an exclusive create that exactly one racer wins
 // while the others see ErrExist and fall back to the plain open.
+//
+// The leaf is vetted as ReadGuardedInRoot vets it, and the refusal rests on
+// Lstat and SameFile, not on the open's flags: os.Root resolves an in-root leaf
+// symlink itself (it retries an ELOOP by reading the link), so the O_NOFOLLOW
+// the opens carry does not refuse one. An Lstat before the open refuses a
+// symlink or a non-regular file before anything is created. After the open, the
+// descriptor must be a regular file, and an unconditional second Lstat of rel
+// must see a regular file that is the same file as the descriptor — and the
+// same one the first Lstat saw, when it saw one. So a link planted at the leaf
+// between the first Lstat and the open, which the open follows, is refused and
+// its target is never written. O_NONBLOCK stays, so a FIFO swapped in cannot
+// hang the writer. A hard link to another file passes SameFile and is out of
+// this refusal's reach.
 func openAppendIn(root *os.Root, rel string, perm os.FileMode) (*os.File, error) {
-	f, err := root.OpenFile(rel, os.O_APPEND|os.O_WRONLY, 0)
-	if err == nil || !errors.Is(err, os.ErrNotExist) {
-		return f, err
+	pre, lerr := root.Lstat(rel)
+	switch {
+	case lerr == nil && !pre.Mode().IsRegular():
+		return nil, ErrNotRegular
+	case lerr != nil && !errors.Is(lerr, os.ErrNotExist):
+		return nil, lerr
 	}
-	f, err = root.OpenFile(rel, os.O_APPEND|os.O_WRONLY|os.O_CREATE|os.O_EXCL, perm)
-	if err == nil || !errors.Is(err, os.ErrExist) {
-		return f, err
+	if beforeAppendOpen != nil {
+		beforeAppendOpen(root, rel)
 	}
-	return root.OpenFile(rel, os.O_APPEND|os.O_WRONLY, 0)
+	const flag = os.O_APPEND | os.O_WRONLY | syscall.O_NOFOLLOW | syscall.O_NONBLOCK
+	f, err := root.OpenFile(rel, flag, 0)
+	if err != nil && errors.Is(err, os.ErrNotExist) {
+		f, err = root.OpenFile(rel, flag|os.O_CREATE|os.O_EXCL, perm)
+		if err != nil && errors.Is(err, os.ErrExist) {
+			f, err = root.OpenFile(rel, flag, 0)
+		}
+	}
+	if err != nil {
+		if errors.Is(err, syscall.ELOOP) {
+			return nil, ErrNotRegular
+		}
+		return nil, err
+	}
+	st, err := f.Stat()
+	if err != nil {
+		f.Close()
+		return nil, err
+	}
+	if !st.Mode().IsRegular() || (lerr == nil && !os.SameFile(pre, st)) {
+		f.Close()
+		return nil, ErrNotRegular
+	}
+	post, err := root.Lstat(rel)
+	if err != nil {
+		f.Close()
+		return nil, err
+	}
+	if !post.Mode().IsRegular() || !os.SameFile(post, st) {
+		f.Close()
+		return nil, ErrNotRegular
+	}
+	return f, nil
 }

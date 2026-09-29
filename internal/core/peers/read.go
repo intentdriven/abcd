@@ -12,6 +12,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/intentdriven/abcd/internal/core/capture"
+	"github.com/intentdriven/abcd/internal/core/frontmatter"
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/recordid"
@@ -362,16 +363,9 @@ func parseTitle(data []byte, family string) string {
 		return ""
 	}
 	lines := strings.Split(strings.ReplaceAll(string(data), "\r\n", "\n"), "\n")
-	if len(lines) == 0 || strings.TrimSpace(lines[0]) != "---" {
-		return ""
-	}
-	end := -1
-	for i := 1; i < len(lines); i++ {
-		if strings.TrimSpace(lines[i]) == "---" {
-			end = i
-			break
-		}
-	}
+	// The block is the one frontmatter.Fields reads, a BOM at line 0 included
+	// (iss-2608221126066379).
+	end := frontmatter.Close(lines)
 	if end < 0 {
 		return ""
 	}

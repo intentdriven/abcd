@@ -35,17 +35,10 @@ func Parse(text string) (map[string]any, string, error) {
 	if len(lines) == 0 || !frontmatter.IsDelimiter(frontmatter.TrimBOM(lines[0])) {
 		return nil, "", fmt.Errorf("%w: frontmatter must start with '---' on the first line", ErrMalformedFrontmatter)
 	}
-	closeIdx := -1
-	for i := 1; i < len(lines); i++ {
-		ln := lines[i]
-		if strings.HasPrefix(ln, " ") || strings.HasPrefix(ln, "\t") {
-			continue
-		}
-		if frontmatter.IsDelimiter(ln) {
-			closeIdx = i
-			break
-		}
-	}
+	// The close is frontmatter.CloseAfter's, the one closing walk: an indented
+	// line is never a close there, which is the refusal this parser needs
+	// (iss-2608270908348042).
+	closeIdx := frontmatter.CloseAfter(lines, 0)
 	if closeIdx == -1 {
 		return nil, "", fmt.Errorf("%w: frontmatter not terminated: missing closing '---'", ErrMalformedFrontmatter)
 	}

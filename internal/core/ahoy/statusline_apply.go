@@ -155,7 +155,13 @@ func (a *applyCtx) wireStatusLine(hs harnessSettings, entry string, switches map
 		a.refuse("the status line was not wired: the home directory could not be resolved, so " + statusline.SettingsDisplay + " has nowhere to go.")
 		return
 	}
-	settingBytes, created, err := statusLineSettingBytes(settingPath, switches, previous)
+	// The setting's reader refuses a file behind a symlinked ~/.abcd, so a write
+	// through the link would land wherever the link points and never be read.
+	if err := fsutil.HomeScopeLink(userHome(), statusline.SettingsRelPath); err != nil {
+		a.refuse("refused to wire the status line: " + err.Error() + "; nothing was written.")
+		return
+	}
+	settingBytes, created, err := statusLineSettingBytes(userHome(), switches, previous)
 	if err != nil {
 		a.refuse("refused to wire the status line: " + errText(err) + "; nothing was written.")
 		return
@@ -301,8 +307,8 @@ func uninstallStatusLine() StatusLineReceipt {
 // is an error here rather than a file to fill: writing into a file that is
 // not the caller's word would be taking somebody else's configuration as
 // theirs.
-func statusLineSettingBytes(path string, switches map[statusline.ElementKey]bool, previous string) (data []byte, created bool, err error) {
-	raw, err := readUserStatusLineSetting(path)
+func statusLineSettingBytes(home string, switches map[statusline.ElementKey]bool, previous string) (data []byte, created bool, err error) {
+	raw, err := readUserStatusLineSetting(home)
 	switch {
 	case err != nil:
 		return nil, false, err
@@ -337,8 +343,8 @@ func statusLineSettingBytes(path string, switches map[statusline.ElementKey]bool
 // absent file; a file the guard refuses is an error naming the reason, never
 // a silent fallback, because what the callers take from the file is a shell
 // command the harness will run.
-func readUserStatusLineSetting(path string) ([]byte, error) {
-	raw, why, err := statusline.ReadSettingsFile(path)
+func readUserStatusLineSetting(home string) ([]byte, error) {
+	raw, why, err := statusline.ReadSettingsFile(home)
 	if err != nil {
 		return nil, err
 	}
@@ -355,11 +361,11 @@ func readUserStatusLineSetting(path string) ([]byte, error) {
 // that back to the harness is the recursion the wiring refuses to record,
 // from the other end.
 func recordedPreviousCommand() (string, error) {
-	path := userStatusLineSettingPath()
-	if path == "" {
+	home := userHome()
+	if home == "" {
 		return "", nil
 	}
-	raw, err := readUserStatusLineSetting(path)
+	raw, err := readUserStatusLineSetting(home)
 	if err != nil || raw == nil {
 		return "", err
 	}

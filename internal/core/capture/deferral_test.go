@@ -15,7 +15,15 @@ import (
 // name — holding one open major record and one open minor record.
 func deferralLedger(t *testing.T) (repo, ir, major, minor string) {
 	t.Helper()
-	r := gittest.NewRepo(t)
+	_, repo, ir, major, minor = deferralLedgerRepo(t)
+	return repo, ir, major, minor
+}
+
+// deferralLedgerRepo is deferralLedger with the repository handle, for a test
+// that cuts a later tag.
+func deferralLedgerRepo(t *testing.T) (r *gittest.Repo, repo, ir, major, minor string) {
+	t.Helper()
+	r = gittest.NewRepo(t)
 	r.Commit("root")
 	r.Git("tag", "v0.1.0")
 	repo = r.Root()
@@ -28,7 +36,7 @@ func deferralLedger(t *testing.T) (repo, ir, major, minor string) {
 		}
 		return res.ID
 	}
-	return repo, ir, mk(SeverityMajor, "big"), mk(SeverityMinor, "small")
+	return r, repo, ir, mk(SeverityMajor, "big"), mk(SeverityMinor, "small")
 }
 
 // TestDeferWritesTheWaiverPairAndABodySection is iss-2609181223260994: the
@@ -125,5 +133,52 @@ func TestADeferralTheVerbWritesIsOneTheCutHonours(t *testing.T) {
 	}
 	if g.Status != changelog.FindingGuardPassed || len(g.Waived) != 1 || g.Waived[0].ID != res.ID {
 		t.Fatalf("the cut did not honour the verb's deferral: %+v", g)
+	}
+}
+
+// TestReDeferringPastTheSameAnchorKeepsOneSection is iss-2609251823555125: the
+// body carries one `## Deferral` section per cycle, so a second deferral past
+// the SAME anchor — a corrected reason, or the verb run twice — replaces that
+// cycle's section rather than appending a second one. A deferral past a later
+// anchor still appends, so each cycle's history stays in the record.
+func TestReDeferringPastTheSameAnchorKeepsOneSection(t *testing.T) {
+	r, repo, ir, major, _ := deferralLedgerRepo(t)
+	deferralNow = func() time.Time { return time.Date(2026, 9, 25, 10, 0, 0, 0, time.UTC) }
+	t.Cleanup(func() { deferralNow = time.Now })
+	if _, err := Defer(DeferRequest{RepoRoot: repo, IssuesRoot: ir, ID: major, After: "v0.1.0", Reason: "the first reason"}); err != nil {
+		t.Fatal(err)
+	}
+	deferralNow = func() time.Time { return time.Date(2026, 9, 26, 10, 0, 0, 0, time.UTC) }
+	if _, err := Defer(DeferRequest{RepoRoot: repo, IssuesRoot: ir, ID: major, After: "v0.1.0", Reason: "the corrected reason"}); err != nil {
+		t.Fatal(err)
+	}
+	raw := readRaw(t, ir, major)
+	if n := strings.Count(raw, "\n## Deferral "); n != 1 {
+		t.Fatalf("two deferrals past one anchor left %d `## Deferral` sections, want 1:\n%s", n, raw)
+	}
+	for _, want := range []string{
+		"\ndeferral_reason: \"the corrected reason\"\n",
+		"\n## Deferral 2026-09-26\n\nDeferred past v0.1.0: the corrected reason\n",
+	} {
+		if !strings.Contains(raw, want) {
+			t.Errorf("the re-deferred record lacks %q:\n%s", want, raw)
+		}
+	}
+	if strings.Contains(raw, "the first reason") {
+		t.Errorf("the superseded reason for the same cycle survived:\n%s", raw)
+	}
+
+	// The next cycle appends: its section is new history, not a correction.
+	r.Commit("next")
+	r.Git("tag", "v0.2.0")
+	if _, err := Defer(DeferRequest{RepoRoot: repo, IssuesRoot: ir, ID: major, After: "v0.2.0", Reason: "the next cycle's reason"}); err != nil {
+		t.Fatal(err)
+	}
+	raw = readRaw(t, ir, major)
+	if n := strings.Count(raw, "\n## Deferral "); n != 2 {
+		t.Fatalf("a deferral past a later anchor left %d sections, want 2 (one per cycle):\n%s", n, raw)
+	}
+	if !strings.Contains(raw, "Deferred past v0.1.0: the corrected reason\n") || !strings.Contains(raw, "Deferred past v0.2.0: the next cycle's reason\n") {
+		t.Errorf("each cycle's section must survive:\n%s", raw)
 	}
 }

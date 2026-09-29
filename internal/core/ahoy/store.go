@@ -251,8 +251,8 @@ func scanPathEntries(pluginRoot string) []pathEntry {
 // cannot be anyone's install.
 //
 // Stat FOLLOWS the link, so this is asked of EVERY entry, ours or not: a
-// foreign dangling `abcd` still occupies the name and still shadows the entries
-// behind it, and a check that only looked at our own would report it as nothing
+// foreign dangling `abcd` still occupies the name — it runs nothing, the shell
+// skips it — and a check that only looked at our own would report it as nothing
 // at all. A stat error other than not-exist is not proof of a dangling link, so
 // it reads as healthy rather than manufacturing a gap.
 func linkIsDangling(path string) bool {
@@ -273,7 +273,8 @@ func ownedPathEntry(pluginRoot string) (pathEntry, bool) {
 }
 
 // danglingPathEntry returns the first abcd-owned entry on PATH whose target has
-// gone — a link that shadows whatever else on PATH would have answered.
+// gone — a link that runs nothing now and answers whatever reappears at its
+// target.
 func danglingPathEntry(pluginRoot string) (pathEntry, bool) {
 	for _, e := range scanPathEntries(pluginRoot) {
 		if e.owned() && e.dangling {
@@ -281,6 +282,24 @@ func danglingPathEntry(pluginRoot string) (pathEntry, bool) {
 		}
 	}
 	return pathEntry{}, false
+}
+
+// recordedDanglingPathEntry returns the first `abcd` on PATH that is a dangling
+// link ~/.abcd/path-entry names — the one owned shape that needs no plugin root
+// to recognise, so it is found when none resolves.
+func recordedDanglingPathEntry() (string, bool) {
+	for _, dir := range pathDirs() {
+		candidate := filepath.Join(dir, binName)
+		// Lstat first: recordedDanglingLink reads an ABSENT path as dangling,
+		// and a record naming a path nothing occupies is no entry at all.
+		if fi, err := os.Lstat(candidate); err != nil || fi.Mode()&os.ModeSymlink == 0 {
+			continue
+		}
+		if recordedDanglingLink(candidate) {
+			return candidate, true
+		}
+	}
+	return "", false
 }
 
 // effectiveBinTarget is the PATH entry every verb acts on: an existing owned
@@ -377,7 +396,17 @@ func describeEntry(e pathEntry) string {
 
 // shadowMessage is the single wording for a shadowed install, shared by the
 // detection gap and the install-time note so the two can never drift.
+//
+// A link whose target is gone gets its own wording: it runs nothing — the
+// shell skips an entry it cannot execute — so it neither "is what runs" nor is
+// "a binary" of anyone's. What is still true of it is that it answers again the
+// moment something reappears at the path it points to.
 func shadowMessage(e pathEntry, target string) string {
+	if e.dangling {
+		return displayPath(e.path) + " (" + describeEntry(e) + ") comes before " +
+			displayPath(target) + " on PATH. It runs nothing — the shell skips a link whose target is gone — " +
+			"but whatever reappears at the path it points to would run instead of " + displayPath(target) + ". Remove it."
+	}
 	return displayPath(e.path) + " (" + describeEntry(e) + ") comes before " +
 		displayPath(target) + " on PATH, so it is what runs when you type `abcd`. " +
 		"Remove or rename it, or install ahead of it with `abcd ahoy install --bin-dir <dir>`. " +
@@ -502,6 +531,9 @@ func classifyBinTarget(target, pluginRoot string) binTargetKind {
 		if supersededSiblingDest(target, dest, pluginRoot) {
 			return binTargetOwnedSymlink
 		}
+		if recordedDanglingLink(target) {
+			return binTargetOwnedSymlink
+		}
 		return binTargetForeign
 	}
 	if isDevShimFile(target) {
@@ -539,6 +571,25 @@ func strandedSiblingDest(symlinkPath, dest, pluginRoot string) bool {
 	}
 	present, err := fsutil.Exists(dest)
 	return err == nil && !present
+}
+
+// recordedDanglingLink reports whether the symlink at target resolves to
+// nothing AND ~/.abcd/path-entry names this very entry (iss-2609100506263330).
+// The sibling rules above recognise the stranded link only while the plugin
+// root it pointed into still shares a parent with the current one; once that
+// no longer holds, the link abcd wrote and recorded would otherwise read as
+// foreign, and the repair its own record entitles it to would never be offered.
+//
+// The record is read exactly as the hook shims read it — through
+// readPathEntry's fsutil.ReadDeclaration, so a record another uid owns or that
+// group or other can write vouches for nothing — and it claims the link only
+// while the link is DANGLING: a recorded link that resolves to a live binary
+// somewhere else was retargeted by something other than abcd, and stays
+// foreign. A dangling link runs nothing and the shims' `command -v` never
+// yields it, so claiming it widens no execution path; it lets `ahoy install`
+// repair it and `ahoy uninstall` remove it with its record.
+func recordedDanglingLink(target string) bool {
+	return linkIsDangling(target) && pathEntryNames(target)
 }
 
 // supersededSiblingDest is the live twin of strandedSiblingDest
@@ -603,13 +654,51 @@ func isDir(p string) bool {
 // ~/.abcd/history store
 // ---------------------------------------------------------------------------
 
+// historyRelPath is the registry's directory relative to the caller's home.
+const historyRelPath = ".abcd/history"
+
 // historyRoot returns ~/.abcd/history. HOME is respected so tests can redirect.
+//
+// It is the registry's single chokepoint for the rule every reader and writer
+// of ~/.abcd applies (fsutil.HomeScopeLink): a symlinked ~/.abcd, or a
+// symlinked ~/.abcd/history, is refused with a *fsutil.HomeScopeLinkError
+// naming the link, so no caller reads a registry through the link or creates
+// one wherever it points (iss-2609281129171021). Every caller refuses on the
+// error; stepHistory reports it and writes nothing.
 func historyRoot() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".abcd", "history"), nil
+	if err := fsutil.HomeScopeLink(home, historyRelPath+"/index.json"); err != nil {
+		return "", err
+	}
+	return filepath.Join(home, filepath.FromSlash(historyRelPath)), nil
+}
+
+// ensureHistoryRoot is historyRoot for a writer: it creates ~/.abcd/history one
+// real directory at a time and proves every level, so a link planted after
+// historyRoot's check is refused rather than followed (os.MkdirAll would follow
+// it). The walk starts at home with its symlinks resolved, because home itself
+// reached through a link (/home -> /usr/home) is the machine's layout and is
+// never judged; ~/.abcd and ~/.abcd/history are.
+func ensureHistoryRoot() (string, error) {
+	root, err := historyRoot()
+	if err != nil {
+		return "", err
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	base, err := filepath.EvalSymlinks(home)
+	if err != nil {
+		return "", err
+	}
+	if err := fsutil.EnsureRealDirAll(base, historyRelPath, 0o755); err != nil {
+		return "", err
+	}
+	return root, nil
 }
 
 // historyIndex is the ~/.abcd/history/index.json registry.
@@ -793,11 +882,8 @@ var beforeHistoryIndexCreateHook func()
 // any prompting before acquiring it and re-check the answer-relevant state inside
 // fn after re-loading.
 func withHistoryLock(fn func() error) error {
-	root, err := historyRoot()
+	root, err := ensureHistoryRoot()
 	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(root, 0o755); err != nil {
 		return err
 	}
 	lockPath := filepath.Join(root, historyLockFilename)
@@ -819,11 +905,8 @@ func withHistoryLock(fn func() error) error {
 // sees either no file yet or the finished index — never a 0-byte one that would
 // make a concurrent loadHistoryIndex parse-fail and drop its own registration.
 func bootstrapHistory() (bool, error) {
-	root, err := historyRoot()
+	root, err := ensureHistoryRoot()
 	if err != nil {
-		return false, err
-	}
-	if err := os.MkdirAll(root, 0o755); err != nil {
 		return false, err
 	}
 	path := filepath.Join(root, "index.json")

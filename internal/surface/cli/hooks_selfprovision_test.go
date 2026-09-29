@@ -579,6 +579,7 @@ var pathRefusalReasons = []string{
 	"its directory is world-writable",
 	pathRefusalUnowned,
 	pathRefusalUnownedRecord,
+	pathRefusalSymlinkedHome,
 }
 
 // pathRefusalUnownedRecord is the refusal when the RECORD ITSELF is not this
@@ -846,5 +847,36 @@ func TestSubagentStopNeverBootstraps(t *testing.T) {
 	}
 	if !strings.Contains(stderr, "transcript was not captured") || !strings.Contains(stderr, "#install") {
 		t.Fatalf("SubagentStop stderr must keep the one-line transcript-not-captured remedy: %q", stderr)
+	}
+}
+
+// pathRefusalSymlinkedHome is the refusal when the record sits behind a
+// symlinked ~/.abcd: the file itself may be well-formed and owned, but the
+// directory holding it is a link the rules loader refuses too.
+const pathRefusalSymlinkedHome = "~/.abcd is a symlink, so its path-entry record is not read"
+
+// TestBinaryHooksRefuseAPathBinaryVouchedForBehindASymlinkedAbcdHome is
+// iss-2609281017573862 at the shim. `[ -f "$e" ]` and the `find` guard judge
+// the record and follow the directory above it, so a ~/.abcd symlinked into a
+// dotfiles checkout hosted a record that decides which binary every hook runs
+// — while the rules loader in the same home refuses its rules.json. The record
+// here is well-formed, owned and owner-only; the ONLY defect is the link.
+func TestBinaryHooksRefuseAPathBinaryVouchedForBehindASymlinkedAbcdHome(t *testing.T) {
+	for _, h := range binaryHooks {
+		t.Run(h.event, func(t *testing.T) {
+			root := hookRoot(t, failingBootstrap, false)
+			pathDir := t.TempDir()
+			pathStub(t, pathDir)
+			dotfiles := t.TempDir()
+			writeHookPathEntry(t, dotfiles, filepath.Join(pathDir, "abcd"))
+			home := t.TempDir()
+			if err := os.Symlink(filepath.Join(dotfiles, ".abcd"), filepath.Join(home, ".abcd")); err != nil {
+				t.Fatal(err)
+			}
+			_, stderr, code := hookRunHome(t, h.event, root, pathDir, t.TempDir(), home)
+			assertPathBinaryRefused(t, h, root, stderr, code,
+				[]string{filepath.Join(pathDir, "abcd")},
+				[]string{pathRefusalSymlinkedHome})
+		})
 	}
 }

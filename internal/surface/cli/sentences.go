@@ -107,16 +107,15 @@ func SentencePages(repoRoot string) ([]SentencePage, error) {
 // withDescription returns page with its frontmatter `description:` line
 // replaced by the sentence, double-quoted because every sentence carries a
 // colon followed by a space, which a plain YAML scalar may not. Nothing else in
-// the page changes.
+// the page changes. The block's extent is frontmatter.Close's, so a leading
+// `---` nothing closes is no frontmatter here exactly as it is to the reader.
 func withDescription(page, sentence string) (string, error) {
 	lines := strings.Split(page, "\n")
-	if len(lines) == 0 || !frontmatter.IsDelimiter(frontmatter.TrimBOM(lines[0])) {
+	closing := frontmatter.Close(lines)
+	if closing < 0 {
 		return "", errors.New("the page has no frontmatter to carry the sentence")
 	}
-	for i := 1; i < len(lines); i++ {
-		if frontmatter.IsDelimiter(lines[i]) {
-			break
-		}
+	for i := 1; i < closing; i++ {
 		if strings.HasPrefix(lines[i], "description:") {
 			lines[i] = "description: " + frontmatter.QuoteScalar(sentence)
 			return strings.Join(lines, "\n"), nil

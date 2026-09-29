@@ -28,6 +28,7 @@ func userScopeEnv(t *testing.T, pathDirs ...string) (home, pluginRoot string) {
 	t.Setenv("CLAUDE_PLUGIN_ROOT", "")
 	t.Setenv("ABCD_BIN_TARGET", "")
 	t.Setenv("PATH", strings.Join(pathDirs, string(os.PathListSeparator)))
+	provisionHermeticCache(t, home)
 	return home, pluginRoot
 }
 

@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/core/capture"
 )
 
 // ac-7. TestIngestRefusesACandidateOutsideTheRun: a comparative item naming a
@@ -403,4 +405,34 @@ func TestIngestValidatesTheBytesTheFrontDoorRead(t *testing.T) {
 	if err != nil || res.RunID != f.runID {
 		t.Fatalf("res %+v err %v", res, err)
 	}
+}
+
+// TestTheChannelsCommittedComparativeRunSatisfiesTheGate joins the writer to the
+// reader it feeds (iss-2609251842111593): the ordering gate holds a committed
+// comparative run to the pair this ingest leaves — the manifest it promotes and
+// the run record after it, agreeing on the run and the candidate join — so the
+// channel's own output, exercised or not, must be what satisfies it. A fixture
+// that hand-writes the pair proves the gate's rule; this proves the channel
+// meets it.
+func TestTheChannelsCommittedComparativeRunSatisfiesTheGate(t *testing.T) {
+	t.Run("exercised", func(t *testing.T) {
+		f := newIngestFixture(t, PositionComparative)
+		f.mustIngest(f.payload(2))
+		if got, err := capture.ComparativeRunFor(f.root, fixtureIngestCandidateRun); err != nil || got != f.runID {
+			t.Fatalf("ComparativeRunFor after the channel's ingest = %q, %v; want %s", got, err, f.runID)
+		}
+	})
+	t.Run("not exercised", func(t *testing.T) {
+		f := newIngestFixture(t, PositionComparative)
+		notExercised := false
+		f.parkComparative(f.runID, fixtureIngestCandidateRun, 1, &notExercised, nil)
+		doc := f.payload(0)
+		doc["manifest_sha256"] = f.manifestHashOf(f.runID)
+		if _, err := f.ingest(doc); err != nil {
+			t.Fatal(err)
+		}
+		if got, err := capture.ComparativeRunFor(f.root, fixtureIngestCandidateRun); err != nil || got != f.runID {
+			t.Fatalf("ComparativeRunFor after the channel's empty ingest = %q, %v; want %s", got, err, f.runID)
+		}
+	})
 }

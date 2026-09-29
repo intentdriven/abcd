@@ -159,22 +159,13 @@ func hasAcceptanceCriteria(content string) bool {
 // leading frontmatter block is an error (fail closed rather than corrupt a file).
 func setFrontmatterFields(content string, updates map[string]string) (string, error) {
 	lines := strings.Split(content, "\n")
-	// Match frontmatter.Fields's delimiter tolerance exactly: a `---` line may
-	// carry trailing whitespace ("--- "). Trimming only "\r" here (stricter than
-	// the reader) makes the writer skip a delimiter the reader accepts and insert
-	// keys into the body instead of the frontmatter — corrupting the record.
-	if len(lines) == 0 || strings.TrimRight(lines[0], " \t\r") != "---" {
-		return "", fmt.Errorf("intent: file has no leading frontmatter block")
-	}
-	closing := -1
-	for i := 1; i < len(lines); i++ {
-		if strings.TrimRight(lines[i], " \t\r") == "---" {
-			closing = i
-			break
-		}
-	}
-	if closing < 0 {
-		return "", fmt.Errorf("intent: frontmatter block is not closed")
+	// The block is frontmatter.Fields's block, found by the same walk: a writer
+	// stricter than the reader about a delimiter (a trailing space, a BOM ahead
+	// of the opening `---`) skips one the reader accepts and inserts keys into
+	// the body, or refuses a record the reader reads (iss-2608221126066379).
+	closing, err := frontmatterClose(lines)
+	if err != nil {
+		return "", err
 	}
 
 	remaining := make(map[string]string, len(updates))

@@ -17,6 +17,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/core/frontmatter"
 	"github.com/intentdriven/abcd/internal/core/mdrecord"
 )
 
@@ -61,18 +62,29 @@ type Section struct {
 func StripFrontmatter(t string) (string, int) {
 	lead := frontmatterLead(t)
 	rest := t[lead:]
-	if !strings.HasPrefix(rest, "---") {
+	// A BOM is the file's encoding mark, not content, and is trimmed at byte 0
+	// as every frontmatter reader trims it (iss-2608221126066379).
+	if lead == 0 {
+		rest = frontmatter.TrimBOM(rest)
+		lead = len(t) - len(rest)
+	}
+	// Both delimiters are judged by frontmatter.IsDelimiter, the one rule: a
+	// bare prefix test opened a block on `----` or `--- yaml` and closed one on
+	// any line that merely began with three dashes (iss-2608270908348042). The
+	// cut lands after the closing delimiter's dashes, on its own line ending.
+	lines := strings.SplitAfter(rest, "\n")
+	if !frontmatter.IsDelimiter(lines[0]) {
 		return t, 0
 	}
-	end := strings.Index(rest[3:], "\n---")
+	end := frontmatter.CloseAfter(lines, 0)
 	if end < 0 {
 		return t, 0
 	}
-	end += 3
-	cut := end + 4
-	if cut > len(rest) {
-		return t, 0
+	cut := 0
+	for _, ln := range lines[:end] {
+		cut += len(ln)
 	}
+	cut += len(strings.TrimRight(lines[end], "\r\n"))
 	return rest[cut:], strings.Count(t[:lead+cut], "\n")
 }
 

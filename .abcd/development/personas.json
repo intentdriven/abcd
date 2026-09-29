@@ -13,7 +13,7 @@
     { "name": "Henry", "role_hints": ["junior developer", "new hire"] },
     { "name": "Iris", "role_hints": ["product manager", "designer", "product lead", "product thinker"] },
     { "name": "Jack", "role_hints": ["consultant", "agency lead"] },
-    { "name": "Kira", "role_hints": ["open-source maintainer", "DX engineer", "framework author"] },
+    { "name": "Kira", "role_hints": ["open-source project lead", "DX engineer", "framework author"] },
     { "name": "Liam", "role_hints": ["mobile developer", "iOS/Android lead"] },
     { "name": "Maya", "role_hints": ["AI/agent researcher", "prompt engineer", "researcher-developer", "autonomous-development practitioner"] },
     { "name": "Nia", "role_hints": ["facilitator", "scrum master"] }
