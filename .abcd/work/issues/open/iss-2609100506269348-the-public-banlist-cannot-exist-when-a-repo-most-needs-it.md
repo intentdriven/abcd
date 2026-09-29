@@ -10,8 +10,8 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal (ahoy gitignore policy, banlist public layer)"
 related_intents: [itd-2609151516525843]
-deferred_after: "v0.10.0"
-deferral_reason: "ruling owed to the product thinker (away; run A 2026-09-25): In the merged itd-159 planning interview: is the committed-record declaration a switch value or an exception to the public-visibility fence?"
+deferred_after: v0.11.1
+deferral_reason: "planning owed (re-deferred at v0.11.1 by run A's major-triage lane): the fix is itd-2609151516525843, which ruling M27 (2026-09-23) folds into draft itd-159 to be planned as one intent; both are still in drafts. That planning interview owes one ruling: is the committed-record declaration a switch value or an exception to the public-visibility fence?"
 ---
 
 On a fresh PUBLIC repo the committed banned-names layer cannot be created, and the window in which it cannot is exactly the window in which a repo is being set up to ban a name.
@@ -29,3 +29,7 @@ Adjacent to iss-223, which reports the same fence hiding already-committed recor
 ## Grounds
 
 - pursued: the bootstrap paradox closes on a committed DECLARATION rather than on detected evidence — narrowing the fence waits on tracked files under the record namespace and the fence is what stops them existing, while a declaration is evidence a repository can give on its first commit — and the second half closes on scope: the names a person must never publish belong to that person and their machine rather than to any one repository, so a machine-global private list in the user-level home bans them everywhere at once. What would show it wrong: a fresh public repository that still cannot create its committed list with the declaration present; a machine-global entry that fails to ban a name in a second repository on the same machine; or either layer crossing the other's boundary — the home list read by CI, or any of its patterns reaching a committed file.
+
+## Deferral 2026-09-29
+
+Deferred past v0.11.1: planning owed (re-deferred at v0.11.1 by run A's major-triage lane): the fix is itd-2609151516525843, which ruling M27 (2026-09-23) folds into draft itd-159 to be planned as one intent; both are still in drafts. That planning interview owes one ruling: is the committed-record declaration a switch value or an exception to the public-visibility fence?
