@@ -31,6 +31,7 @@ import (
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/intent"
+	"github.com/intentdriven/abcd/internal/core/spec"
 )
 
 // OrderRecordID is the order Next and the head are read in until `abcd build
@@ -94,17 +95,25 @@ type LaneReader func(repoRoot string) ([]Started, error)
 func Read(repoRoot string, lanes LaneReader) (Block, error) {
 	b := Block{Now: []Row{}, Next: []Row{}, Later: []Row{}, Order: OrderRecordID}
 
-	view, err := intent.Status(repoRoot)
-	if err != nil {
-		return Block{}, err
-	}
 	corpus, err := intent.Load(repoRoot)
 	if err != nil {
 		return Block{}, err
 	}
-	listing := make(map[string]intent.IntentListing, len(view.Intents))
-	for _, l := range view.Intents {
-		listing[l.ID] = l
+	// Every planned intent is judged against the one corpus and the one spec
+	// store loaded here, rather than reloading both once per intent.
+	store, err := spec.Load(repoRoot)
+	if err != nil {
+		return Block{}, err
+	}
+	// Each row's title is the status listing's, read for the intents the block
+	// names rather than through intent.Status, which also judges every shipped
+	// intent's review.
+	row := func(it intent.Intent) (Row, error) {
+		l, err := intent.Listing(repoRoot, it)
+		if err != nil {
+			return Row{}, err
+		}
+		return Row{ID: it.ID, Title: l.Title, Bucket: it.Bucket}, nil
 	}
 
 	var planned, drafts []intent.Intent
@@ -119,18 +128,17 @@ func Read(repoRoot string, lanes LaneReader) (Block, error) {
 	sortByID(planned)
 	sortByID(drafts)
 
-	row := func(it intent.Intent) Row {
-		return Row{ID: it.ID, Title: listing[it.ID].Title, Bucket: it.Bucket}
-	}
-
 	var head *Row
 	var notReady []Row
 	for _, it := range planned {
-		res, err := intent.Ready(repoRoot, it.ID)
+		res, err := intent.ReadyIn(repoRoot, store, it)
 		if err != nil {
 			return Block{}, fmt.Errorf("reading the readiness of %s: %w", it.ID, err)
 		}
-		r := row(it)
+		r, err := row(it)
+		if err != nil {
+			return Block{}, err
+		}
 		if res.Ready {
 			b.Next = append(b.Next, r)
 			// The head is the first READY intent the build would not refuse
@@ -151,7 +159,11 @@ func Read(repoRoot string, lanes LaneReader) (Block, error) {
 	}
 	b.Later = append(b.Later, notReady...)
 	for _, it := range drafts {
-		b.Later = append(b.Later, row(it))
+		r, err := row(it)
+		if err != nil {
+			return Block{}, err
+		}
+		b.Later = append(b.Later, r)
 	}
 
 	if lanes != nil {
@@ -161,8 +173,10 @@ func Read(repoRoot string, lanes LaneReader) (Block, error) {
 		}
 		for _, s := range started {
 			r := Row{ID: s.Intent}
-			if l, ok := listing[s.Intent]; ok {
-				r.Title, r.Bucket = l.Title, l.Bucket
+			if it, ok := corpus.Lookup(s.Intent); ok {
+				if r, err = row(it); err != nil {
+					return Block{}, err
+				}
 			}
 			lane := s.Lane
 			r.Lane = &lane

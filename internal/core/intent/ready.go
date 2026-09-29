@@ -86,6 +86,15 @@ func Ready(repoRoot, intentID string) (ReadyResult, error) {
 	if err != nil {
 		return ReadyResult{}, err
 	}
+	return ReadyIn(repoRoot, store, it)
+}
+
+// ReadyIn is Ready for an intent the caller has already looked up, judged
+// against a spec store the caller has already loaded: the same eight checks
+// and the same verdict, without reloading either store. A caller judging every
+// planned intent (the Now / Next / Later block) loads each store once rather
+// than once per intent. store must be spec.Load's for repoRoot.
+func ReadyIn(repoRoot string, store spec.Store, it Intent) (ReadyResult, error) {
 	data, err := readRepoFile(filepath.Join(repoRoot, it.Path), it.Path)
 	if err != nil {
 		return ReadyResult{}, err
