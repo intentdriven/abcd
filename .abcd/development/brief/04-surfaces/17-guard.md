@@ -219,7 +219,14 @@ hazard behind a launcher it does not recognise is a **warn** naming the entry it
 matched rather than an allow, because the guard cannot tell whether that program
 runs the rest of the line. An unquoted glob is treated as producing whatever
 literal it could produce, at every position an entry constrains, so a force push
-spelled `git pus? --force` blocks. A git long flag written short of its full
+spelled `git pus? --force` blocks. A bracket expression is read exactly only
+where it is one plain set (`--for[c]e`); a class (`[[:lower:]]`), a set that
+opens with `!`, `^` or `]` or holds `-`, `[` or a backslash, and a pattern
+with a `]` after the set closes (a second set among them) are read as any
+run of characters, since the guard sees the
+line with its backslashes already taken out and `r[m\]]` is the set of `m`
+and `]`. So `r[[:lower:]] -rf /` and `git clea[!n] -fd` are read as `rm` and
+`git clean`, an over-block where no escape was written. A git long flag written short of its full
 name is read as git reads it, as the one option that prefix can mean. A command
 or process substitution, unquoted
 or inside double quotes, is followed into command position, and the words
@@ -305,8 +312,8 @@ guess, over-blocking is the direction the guard takes.
 
 A recursive delete is read by what it deletes. Of the filesystem root or the
 home directory (`/`, `/*`, `~`, `$HOME`, `${HOME}`, each also with a trailing
-`/` or `/*`, and the home's dotfiles `~/.*`, `$HOME/.*`, `${HOME}/.*`) it is a
-block wherever it stands, with or without `-f`. Of the directory the shell is
+`/`, `/*` or `/*/`, and the home's dotfiles `~/.*`, `$HOME/.*`, `${HOME}/.*`,
+each also with a trailing `/`) it is a block wherever it stands, with or without `-f`. Of the directory the shell is
 in or the one above it (`*`, `*/`, `.`, `..`, `./*`, `./*/`, `../*`, `.*`,
 `./.*`, and `$PWD` or `${PWD}`, each also with `/*`) it is a warn, graded like
 `git clean`, because that directory is usually the repository and emptying a
@@ -339,7 +346,33 @@ the path reads lexically: `/tmp/../*` and `/tmp/x/../..` are the root, and a
 `~/../*` and `$HOME/../../*` read as the home and `~/../*/*` as `~/*`, while
 `~/../x` stays a sibling. The kernel reads a `..` otherwise only after a
 symlink, and the lexical reading is the one that blocks; a trailing `..` is
-folded too, though rm refuses it.
+folded too, though rm refuses it. A target that begins at the working
+directory is folded the same way: a `..` past `$PWD` or `${PWD}`, or past the
+start of a relative path, is the directory above it, so `$PWD/../*`,
+`./../*` and `x/../../*` warn as `../*` does, and `$PWD/x/../*` as `$PWD/*`;
+a relative path whose `..` stays inside the working directory is compared as
+written. A trailing `.` after such a `..` (`../.`) warns too, though rm
+refuses it. Each target is also read the way its glob can expand: a run of
+`*` is one `*`, which is what every shell without globstar expands `**` to
+(with globstar it matches more), so `/**`, `~/**` and `~/../**` block as
+`/*`, `~/*` and `~/../*` do; and a segment written with a leading `.` whose
+glob can match the name `..` (`.?`, `.*`, `.[.]`, `.[!x]`, `..*`) reads as
+`..` where a further segment follows it, since the bash 3.2 and `/bin/sh` of
+macOS have no globskipdots and expand `~/.?/*` and `~/.*/*` to include
+`~/../*`, and `/.?/*` to the root's entries. A bracket expression in such a
+segment is read as the glob compare above reads it, so one it cannot decide
+reads as able to match `..`: `~/.[[:punct:]]/*`, `~/.[].]/*`, `~/.[--.]/*` and
+`~/.[\!.]/*`, which the bash 3.2 and `/bin/sh` of macOS expand to the
+directory holding the home, block, and so does `~/.[a-z]/*`, which no shell
+expands that far. That reading is an over-block on bash 5.3, which leaves
+such a segment unexpanded, and on a directory of that name. The guard sees an
+escaped `*`, `?` or `[` as the glob it would be unescaped, so `~/*\*` and
+`~/.\?/*` block as `~/*` and `~/.?/*` do. A glob whose leading `.` is not written (`??`, `?.`, `[.]?`) never
+matches a dot name and is compared as written, and a dot-glob as the final
+segment (`~/.?`) is not read as `..`, since rm refuses an operand whose last
+segment is one; `~/.*` blocks as the home's dotfiles. A glob or a `..` inside
+quotes is read the same way, so `'/**'` and `"~/.?"/*` block as `"/*"` and
+`'~/*'` do, over-blocking a name that holds those characters.
 
 What an allow still does not see is a hazard that never reaches command position
 at all: a word that is wholly a command substitution or a variable standing
@@ -354,7 +387,10 @@ prints only when the variable is unset (`rm -rf ${DIR:-$HOME}`, and
 subscript), a `..` after a symlink, which is read past lexically (a link to
 the root under a named directory), or after a segment holding a variable,
 which is not folded (`/tmp/$X/../../*` is the root with `X` unset), a `..`
-past the home followed by a glob other than `*` (`~/../?*`, as `/?*`), an
+past the home followed by a glob other than `*` (`~/../?*`, as `/?*`), a
+relative `..` that stays inside the working directory (`x/../*`, the
+directory `*` names), a `..` after a `~user` home, whose depth is not known
+(`~root/../../*`), an
 alternative nested more than three deep, and a substring of `$PWD` that
 prints the root (`${PWD:0:1}`), which warns as `$PWD` does; one behind a wrapper flag the per-wrapper
 table does not name; a REST
