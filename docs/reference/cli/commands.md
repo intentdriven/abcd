@@ -8,8 +8,7 @@ tree disagree, so the reference can never silently go stale. Regenerate it with
 
 Every user-facing command is listed with its sentence (what it does, what it
 writes, and when it refuses), its usage line, and its flags; the
-operator-internal hook entrypoints, and the old spellings of moved commands,
-are omitted.
+operator-internal hook entrypoints are omitted.
 
 ## `abcd`
 
@@ -121,9 +120,9 @@ Apply the install gaps the detection finds: Writes .abcd/, the name-guard hooks 
 
 #### `abcd ahoy remote`
 
-Enable GitHub secret scanning and push protection: Writes nothing bare, only the settings and their mirror; refuses bare, naming `abcd ahoy --remote`.
+Enable GitHub secret scanning and push protection: Writes nothing bare, only the settings and their mirror through apply; refuses an unknown sub-verb.
 
-**Usage:** `abcd ahoy remote [command]` (the bare form's work is `abcd ahoy --remote`)
+**Usage:** `abcd ahoy remote`
 
 ##### `abcd ahoy remote apply`
 
@@ -1320,9 +1319,9 @@ abcd ideate record widen-the-public-api --verdict-json verdict.json
 
 ### `abcd identity`
 
-Record the identity block and propose drift corrections: Writes nothing bare, only the block and its pointer; refuses bare, naming `abcd lint identity`.
+Record the identity block and propose drift corrections: Writes nothing bare, only the block and its pointer; refuses an unknown sub-verb.
 
-**Usage:** `abcd identity [command]` (the bare form's work is `abcd lint identity`)
+**Usage:** `abcd identity`
 
 #### `abcd identity init`
 

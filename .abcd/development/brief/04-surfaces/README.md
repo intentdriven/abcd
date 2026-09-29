@@ -145,10 +145,9 @@ the command's sentence (the section below).
 
 The placement is presentation. No verb is hidden, renamed, moved or nested by
 it, every verb runs the same whichever block lists it, and the group titles
-carry no adr-40 bucket meaning. A spelling that moved (itd-2609212130136102) is
-listed in neither block: `version` became the root's `--version` flag, and the
-stub it leaves for one release is deprecated, which keeps it out of every list
-and out of the person's count, held by a test at fourteen verbs at most. The
+carry no adr-40 bucket meaning. `version` is the root's `--version` flag
+(itd-2609212130136102), not a verb, so it is in neither block, and the person's
+count is held by a test at fourteen verbs at most. The
 product thinker placed the people's verbs
 and nine of the agent entries; the rest are the technical ruling of 2026-09-25 in
 [`DECISIONS.md`](../../../work/DECISIONS.md), which gives each its reason.
@@ -204,9 +203,8 @@ starts a run for; the run's state renders through `abcd implement status`. Bare
 built; what a drain would do renders through its dry run. Bare
 `abcd source` renders the corpus under the user-level home rather than anything
 in the repository, so where there is no corpus it refuses naming `abcd source
-init`. Bare `abcd identity` and bare `abcd ahoy remote` answer with the
-invocation their report moved to (`abcd lint identity`, `abcd ahoy --remote`) and exit non-zero for one
-release, because their sub-verbs stay. Bare `abcd report` opens the editor on a
+init`. Bare `abcd identity` and bare `abcd ahoy remote` list their sub-verbs,
+because their reports are `abcd lint identity` and `abcd ahoy --remote`. Bare `abcd report` opens the editor on a
 terminal and refuses anywhere else, because it files a report rather than
 rendering one, and bare `abcd statusline` renders abcd's row only in a managed
 repository, where it needs none of the payload the harness hands it on stdin,

@@ -98,12 +98,6 @@ build, not from a literal in the record
 
 <!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
 
-## Appendix: the shipped surface
-
-_Generated from the command tree; a drift test fails `go test` when this appendix and the tree disagree. It lists flags and sub-verbs only. What each flag means is in the [CLI reference](../../../../docs/reference/cli/commands.md), and exit codes, output fields and behaviour are the prose's to state._
-
-### `abcd version`
-
-It moved to `abcd --version`.
+It ships as a host-delegated command page: the command tree registers no `abcd version` verb, so there are no flags and no sub-verbs to list.
 
 <!-- surface-appendix:end -->

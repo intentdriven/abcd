@@ -83,10 +83,6 @@ func newSiteCommand(asJSON *bool) *cobra.Command {
 
 	siteCmd.AddCommand(newSiteSetupCommand(asJSON))
 
-	// The gate over the built site is `abcd lint site` (itd-2609212130136102);
-	// `site check` answers with it for one release.
-	siteCmd.AddCommand(movedStub("check", "abcd lint site"))
-
 	return siteCmd
 }
 

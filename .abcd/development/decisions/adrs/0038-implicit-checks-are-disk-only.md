@@ -51,6 +51,11 @@ Three tiers, exhaustive — every network touch in abcd falls into exactly one:
    user's update action was the ask; the pin and checksum bound what may
    arrive.
 
+> **Spelling note (2026-09-30).** Tier 2's first example is spelt
+> `abcd update --check`: `abcd version --check` moved there
+> (itd-2609212130136102) and the old spelling is removed in v0.12.0 (BT1,
+> iss-2609251324599468), so it is an unknown command. The rule is unchanged.
+
 ## Consequences
 
 - The zero-network test harness the citation gate already uses is the
