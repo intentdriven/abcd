@@ -403,12 +403,26 @@ const maxRepoNameLen = 100
 //     an owner nor a dotted name (a letter, a digit, '_', '-' or '.'), so the
 //     owner as the tail of another owner ("not-<owner>/x") or of a hostname
 //     stays a finding.
-//   - Where a '/' or ':' puts it after another segment, that segment is either
-//     a path segment ("repos/<owner>/x", no '.') or the forge's host: github.com
-//     or a subdomain of it, with or without a port, compared case-insensitively.
-//     A host-shaped segment naming any other host ("gitlab.example.com/<owner>/x")
-//     names an account on THAT host, and sparing the handle there would tie the
-//     two accounts together, so it stays a finding.
+//   - The host rule judges the WHOLE path token the owner sits in, read back
+//     from the owner to whitespace, a quote, a bracket or the start of the line
+//     (ownerPathVerdict), with '/' and '\\' as segment separators. A segment is
+//     host-shaped when it holds a '.' or a dot lookalike (U+FF0E, U+3002,
+//     U+FF61, U+2024) and is not dots alone; its host is what follows its last
+//     '@', up to a ':' and port. A host-shaped segment ANYWHERE in the token
+//     that is not the forge's host (github.com or a subdomain of it, spelled
+//     with ASCII dots, with or without a port, compared case-insensitively)
+//     names an account on THAT host ("gitlab.example.com/groups/<owner>/x",
+//     "gitlab.example.com/~<owner>/x"), and sparing the handle there would tie
+//     the two accounts together, so it stays a finding. Where the forge's host
+//     is in the token, the owner must stand where GitHub puts an account:
+//     straight after the host ("github.com/<owner>/x", "github.com:<owner>/x")
+//     or after exactly one of its account path words, repos, orgs or users
+//     ("api.github.com/repos/<owner>/x"); anywhere deeper
+//     ("github.com/<other>/<owner>/x") it is not the owner half of a slug and
+//     stays a finding. A token with no host-shaped segment is a bare slug or a
+//     relative path ("repos/<owner>/x", "<owner>/x") and is spared. A token
+//     longer than maxSlugPathLen before the owner stays a finding, which
+//     bounds the walk.
 //   - '/' follows the owner, then a run of the repository-name class
 //     [A-Za-z0-9._-] of 1 to maxRepoNameLen bytes that is not all dots, ended by
 //     a rune that cannot continue a name.
@@ -441,32 +455,91 @@ func isOwnerSlug(line string, start, end int) (nameEnd int, ok bool) {
 	if isWordRune(r) || r == '-' || r == '.' {
 		return 0, false
 	}
-	if r != '/' && r != ':' {
-		return j, true
-	}
-	seg := start - 1
-	for seg > 0 && isHostSegmentByte(line[seg-1]) {
-		seg--
-	}
-	prev := line[seg : start-1]
-	if !strings.Contains(prev, ".") {
-		return j, true
-	}
-	if !isForgeHost(prev) {
+	if !ownerPathVerdict(line, start) {
 		return 0, false
 	}
 	return j, true
 }
 
+// maxSlugPathLen is the longest path token read back from the owner. No path
+// written before an owner/repo slug runs this long, and the cap keeps a line
+// of many owner matches in one token linear.
+const maxSlugPathLen = 1024
+
+// forgeAccountWords are the path words GitHub puts directly before an account
+// name after its host (api.github.com/repos/<owner>, github.com/orgs/<owner>).
+var forgeAccountWords = map[string]bool{"repos": true, "orgs": true, "users": true}
+
+// ownerPathVerdict reports whether the path token that ends at line[start],
+// where the owner begins, allows the owner/repo exemption: no host-shaped
+// segment in it names a host other than the forge's, and where the forge's
+// host is present the owner stands in an account position after it. The
+// rule is stated on isOwnerSlug.
+func ownerPathVerdict(line string, start int) bool {
+	tok := start
+	for tok > 0 {
+		r, size := utf8.DecodeLastRuneInString(line[:tok])
+		if isPathTokenBoundary(r) {
+			break
+		}
+		tok -= size
+		if start-tok > maxSlugPathLen {
+			return false
+		}
+	}
+	segs := strings.FieldsFunc(line[tok:start]+"\x00", func(r rune) bool { return r == '/' || r == '\\' })
+	// The sentinel keeps the segment between the last separator and the owner,
+	// empty when a separator directly precedes it.
+	segs[len(segs)-1] = strings.TrimSuffix(segs[len(segs)-1], "\x00")
+	forge := -1
+	for i, seg := range segs {
+		if !isHostShapedSegment(seg) {
+			continue
+		}
+		host := seg[strings.LastIndexByte(seg, '@')+1:]
+		if !isForgeHost(host) {
+			return false
+		}
+		forge = i
+	}
+	if forge < 0 {
+		return true
+	}
+	rest := segs[forge+1:]
+	switch len(rest) {
+	case 0:
+		// The owner follows the host inside its segment: "github.com:<owner>".
+		return strings.HasSuffix(segs[forge], ":")
+	case 1:
+		return rest[0] == ""
+	case 2:
+		return forgeAccountWords[strings.ToLower(rest[0])] && rest[1] == ""
+	}
+	return false
+}
+
+// isPathTokenBoundary ends the path token read back from an owner: whitespace,
+// a quote, or a bracket.
+func isPathTokenBoundary(r rune) bool {
+	switch r {
+	case '"', '\'', '`', '(', ')', '[', ']', '{', '}', '<', '>':
+		return true
+	}
+	return unicode.IsSpace(r)
+}
+
+// isHostShapedSegment reports whether a path segment reads as a hostname: it
+// holds a '.' or a dot lookalike and is not dots alone ("." and "..").
+func isHostShapedSegment(seg string) bool {
+	if strings.ContainsAny(seg, "\uff0e\u3002\uff61\u2024") {
+		return true
+	}
+	return strings.Contains(seg, ".") && strings.Trim(seg, ".") != ""
+}
+
 // isRepoNameByte is the class GitHub admits in a repository name.
 func isRepoNameByte(b byte) bool {
 	return isAlnumByte(b) || b == '.' || b == '-' || b == '_'
-}
-
-// isHostSegmentByte is the class of a hostname with an optional port, read
-// backwards from the separator before an owner.
-func isHostSegmentByte(b byte) bool {
-	return isAlnumByte(b) || b == '.' || b == '-' || b == ':'
 }
 
 // isForgeHost reports whether a host-shaped segment (with an optional port) is

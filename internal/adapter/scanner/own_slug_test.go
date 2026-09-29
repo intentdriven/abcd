@@ -112,6 +112,70 @@ func TestGithubUsernameSlugExemptionIsAnchored(t *testing.T) {
 	}
 }
 
+// The host rule bounds the whole path the owner sits in, not only the segment
+// next to it: a host other than GitHub's anywhere earlier in the same path
+// token names an account on that host, whatever sits between the host and the
+// owner ("groups/", "-/", "~", a backslash) and however its dots are spelled.
+// On GitHub's own host the owner must stand where GitHub puts an owner:
+// straight after the host, or after one of its account path words.
+func TestGithubUsernameSlugExemptionJudgesTheWholePath(t *testing.T) {
+	id := Identity{GitRemoteUsername: "acme"}
+	pats, sev := DefaultPatterns(), DefaultIdentitySeverities()
+	for _, line := range []string{
+		"gitlab.example.com/groups/acme/tool",
+		"gitlab.example.com/groups/sub/acme/tool",
+		"gitlab.example.com/-/acme/tool",
+		"gitlab.example.com/~acme/tool",
+		"gitlab.example.com\\acme/tool",
+		"gitlab．example．com/acme/tool",
+		"gitlab。example。com/acme/tool",
+		"gitlab｡example｡com/acme/tool",
+		"gitlab․example․com/acme/tool",
+		"x．acme/tool",
+		"see gitlab.example.com/groups/acme/tool today",
+		"(gitlab.example.com/groups/acme/tool)",
+		"user@evil.example/acme/x",
+		"evil.example:github.com/acme/x",
+		"example.org:8080/acme/x",
+		"github.com/someone/acme/x",
+		"github.com/someone/repos/acme/x",
+		strings.Repeat("d/", 1200) + "acme/tool",
+	} {
+		short := line
+		if len(short) > 80 {
+			short = "..." + short[len(short)-40:]
+		}
+		f := ScanText(line, id, pats, sev, "f")
+		if !hasKind(f, kindGithubUser) {
+			t.Errorf("the owner under another host's path was not reported: %q", short)
+		}
+		if red, _ := Redact(line, f); strings.Contains(strings.ToLower(red), "acme") {
+			t.Errorf("the owner survived redaction: %q", short)
+		}
+	}
+	for _, line := range []string{
+		"github.com/acme/x",
+		"github.com/orgs/acme/x",
+		"github.com/users/acme/x",
+		"api.github.com/repos/acme/x",
+		"github.com:443/acme/x",
+		"user@github.com/acme/x",
+		"repos/acme/x",
+		"src/vendor/acme/x",
+		"./acme/x",
+		"../vendor/acme/x",
+		"acme/x",
+		"acme/acme.github.io",
+		"see gitlab.example.com and acme/tool",
+		"(github.com/acme/x)",
+	} {
+		f := ScanText(line, id, pats, sev, "f")
+		if hasKind(f, kindGithubUser) {
+			t.Errorf("the owner in a forge slug was reported: %q %+v", line, f)
+		}
+	}
+}
+
 // The byte scan runs the same identity matcher with a narrower Identity; a
 // repository that raised github_username for its bytes must see the slug rule
 // hold there exactly as on text, or renaming notes.md to notes.pdf changes
