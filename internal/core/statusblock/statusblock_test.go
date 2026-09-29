@@ -192,3 +192,49 @@ func TestIDLessOrdersOrdinalsBeforeStamps(t *testing.T) {
 		}
 	}
 }
+
+// TestTheHeadSkipsAHeldIntent is the hold rule on the head: a READY intent held
+// by `abcd intent hold` stays in Next, but the head passes over it, and so does
+// one whose `held:` key is in a shape no verb writes (the loader marks it
+// malformed, and a malformed hold fails closed as the build's own check does).
+// With every READY intent held there is no head, and Now is empty.
+func TestTheHeadSkipsAHeldIntent(t *testing.T) {
+	root := t.TempDir()
+	w := func(rel, body string) {
+		t.Helper()
+		p := filepath.Join(root, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	const in = ".abcd/development/intents/planned/"
+	const sp = ".abcd/development/specs/open/"
+	w(in+"itd-2-malformed.md", readyIntent("itd-2", "The malformed hold", "spc-12", "held: [a, b]\n"))
+	w(sp+"spc-12-malformed.md", writtenSpec("spc-12", "itd-2"))
+	w(in+"itd-3-held.md", readyIntent("itd-3", "The held one", "spc-13", "held: \"awaiting a ruling\"\n"))
+	w(sp+"spc-13-held.md", writtenSpec("spc-13", "itd-3"))
+
+	b, err := Read(root, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := ids(b.Next), []string{"itd-2", "itd-3"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("Next = %v, want %v: a held intent is still READY", got, want)
+	}
+	if len(b.Now) != 0 {
+		t.Errorf("Now = %+v, want no head: every READY intent is held, one of them malformed", b.Now)
+	}
+
+	w(in+"itd-4-free.md", readyIntent("itd-4", "The free one", "spc-14", ""))
+	w(sp+"spc-14-free.md", writtenSpec("spc-14", "itd-4"))
+	b, err = Read(root, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := ids(b.Now); !reflect.DeepEqual(got, []string{"itd-4"}) || !b.Now[0].NextUp {
+		t.Errorf("Now = %+v, want only itd-4 marked next up: the oldest READY intent no hold covers", b.Now)
+	}
+}
