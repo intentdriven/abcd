@@ -63,7 +63,10 @@ func pickMessage(st State) string {
 		"Assisted-by: None\n"
 }
 
-// pickGit runs one git command in the lane's worktree for the pick commit.
+// pickGit runs one git command in the lane's worktree for the pick commit and
+// returns its stdout verbatim: a porcelain status line opens with a space when
+// the change is unstaged, and the comparison below is made against the line as
+// git wrote it.
 func pickGit(dir string, args ...string) (string, error) {
 	full := append([]string{"-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", "-c", "core.quotePath=false", "-C", dir}, args...)
 	cmd := exec.Command("git", full...)
@@ -80,28 +83,13 @@ func pickGit(dir string, args ...string) (string, error) {
 	if stdout.Len() > maxGitOutput {
 		return "", fmt.Errorf("git %s wrote more than %d bytes", args[0], maxGitOutput)
 	}
-	return strings.TrimSpace(stdout.String()), nil
+	return stdout.String(), nil
 }
 
 // pickCommit makes, or finds, the pick's record-only commit on the lane's
 // branch and returns its object name.
 func pickCommit(c Context, lane *Lane, wt, branch, base string) (string, error) {
 	st := c.State
-	branchRef := "refs/heads/" + branch
-	revs, err := gitutil.Run(c.RepoRoot, "rev-list", "--reverse", base+".."+branchRef, "--")
-	if err != nil {
-		return "", fmt.Errorf("listing %s past its base: %v", branch, err)
-	}
-	if revs != "" {
-		first := strings.Fields(revs)[0]
-		if ok, why := isPickCommit(c.RepoRoot, st, first, base); !ok {
-			return "", refuse(string(StepWorktree), "", lane.ID,
-				fmt.Sprintf("%s carries commits past its base, and the first (%s) is not the pick's record commit: %s", branch, shortSHA(first), why),
-				"the pick's entry is the lane's first commit; remove the lane's worktree and branch, then run the step again")
-		}
-		return first, nil
-	}
-
 	corpus, err := intent.Load(wt)
 	if err != nil {
 		return "", fmt.Errorf("reading the intent store in the lane's worktree: %w", err)
@@ -109,10 +97,27 @@ func pickCommit(c Context, lane *Lane, wt, branch, base string) (string, error) 
 	it, ok := corpus.Lookup(st.Intent)
 	if !ok || it.Bucket != intent.BucketPlanned {
 		return "", refuse(string(StepWorktree), "", lane.ID,
-			st.Intent+" is not planned on the default branch the lane was cut from, so the pick's entry has no record to land on",
+			st.Intent+" is not planned in the lane's worktree, cut from the default branch, so the pick's entry has no record to land on",
 			"land the intent's planning on the default branch, then run the step again")
 	}
-	dirty, err := pickGit(wt, "status", "--porcelain", "--untracked-files=all")
+	rel := filepath.ToSlash(it.Path)
+
+	branchRef := "refs/heads/" + branch
+	revs, err := gitutil.Run(c.RepoRoot, "rev-list", "--reverse", base+".."+branchRef, "--")
+	if err != nil {
+		return "", fmt.Errorf("listing %s past its base: %v", branch, err)
+	}
+	if revs != "" {
+		first := strings.Fields(revs)[0]
+		if ok, why := isPickCommit(c.RepoRoot, wt, st, rel, first, base); !ok {
+			return "", refuse(string(StepWorktree), "", lane.ID,
+				fmt.Sprintf("%s carries commits past its base, and the first (%s) is not the pick's record commit: %s", branch, shortSHA(first), why),
+				"the pick's entry is the lane's first commit; remove the lane's worktree and branch, then run the step again")
+		}
+		return first, nil
+	}
+
+	dirty, err := pickGit(wt, "status", "--porcelain", "-z", "--untracked-files=all")
 	if err != nil {
 		return "", fmt.Errorf("reading the lane's worktree: %w", err)
 	}
@@ -127,11 +132,12 @@ func pickCommit(c Context, lane *Lane, wt, branch, base string) (string, error) 
 			return "", refuse(string(StepWorktree), "", lane.ID, "the pick's entry could not be written: "+fsutil.RedactHome(err.Error()),
 				"settle what the reason names, then run the step again")
 		}
-	case dirty == "M "+it.Path || dirty == "M  "+it.Path:
-		// Written before a kill and not committed: the entry must be ours.
-		if !carriesPickEntry(filepath.Join(wt, filepath.FromSlash(it.Path)), st) {
+	case dirty == " M "+rel+"\x00" || dirty == "M  "+rel+"\x00":
+		// Written before a kill and not committed: the file must be exactly
+		// what the loop writes, the base's record plus this run's entry.
+		if why := carriesPickEntry(c.RepoRoot, wt, st, rel, base); why != "" {
 			return "", refuse(string(StepWorktree), "", lane.ID,
-				it.Path+" is changed in the lane's worktree, and its last grounds entry is not this run's pick",
+				rel+" is changed in the lane's worktree, and it is not the base's record with this run's pick appended: "+why,
 				"the loop never commits what it did not write; restore the file (`git restore`), then run the step again")
 		}
 	default:
@@ -139,7 +145,7 @@ func pickCommit(c Context, lane *Lane, wt, branch, base string) (string, error) 
 			"the lane's worktree holds changes the pick did not make, so its record-only commit is not made over them",
 			"clean the lane's worktree, then run the step again")
 	}
-	if _, err := pickGit(wt, "commit", "-q", "-m", pickMessage(st), "--", it.Path); err != nil {
+	if _, err := pickGit(wt, "commit", "-q", "-m", pickMessage(st), "--", rel); err != nil {
 		return "", refuse(string(StepWorktree), "", lane.ID,
 			"git could not make the pick's record commit (is a git identity configured?): "+fsutil.RedactHome(err.Error()),
 			"settle what git reports, then run the step again")
@@ -148,16 +154,40 @@ func pickCommit(c Context, lane *Lane, wt, branch, base string) (string, error) 
 	if err != nil || !gitutil.IsFullSHA(sha) {
 		return "", fmt.Errorf("resolving the lane branch %s after the pick commit: %v", branch, err)
 	}
-	if ok, why := isPickCommit(c.RepoRoot, st, sha, base); !ok {
+	if ok, why := isPickCommit(c.RepoRoot, wt, st, rel, sha, base); !ok {
 		return "", fmt.Errorf("the pick commit %s is not the one the loop made: %s", shortSHA(sha), why)
 	}
 	return sha, nil
 }
 
+// expectedPickRecord is the content the pick commit gives the intent's record
+// at rel: the record at the lane's base with this run's entry appended, built
+// as intent.RecordGrounds builds it in the lane's worktree (the same entry,
+// prepared by the same redactor and validator, appended by the same writer).
+func expectedPickRecord(repoRoot, wt string, st State, rel, base string) (string, error) {
+	if st.Pick == nil {
+		return "", fmt.Errorf("the run carries no pick")
+	}
+	g, err := grounds.New(grounds.Pursued, st.Pick.Entry)
+	if err != nil {
+		return "", err
+	}
+	prepared, _, err := intent.PrepareGrounds(wt, g)
+	if err != nil {
+		return "", err
+	}
+	was, err := gitutil.RunCappedBytes(repoRoot, maxIntentBytes, "cat-file", "blob", base+":"+rel)
+	if err != nil {
+		return "", fmt.Errorf("the record at the lane's base cannot be read: %v", err)
+	}
+	return grounds.AppendToRecord(string(was), prepared)
+}
+
 // isPickCommit reports whether sha is this run's record-only commit: its
-// parent is the base, its subject is the pick's, and it changes the intent's
-// record alone, adding this run's entry.
-func isPickCommit(repoRoot string, st State, sha, base string) (bool, string) {
+// parent is the base, its subject is the pick's, it changes the picked
+// intent's record at rel and no other path, and that record is byte for byte
+// the base's with this run's one entry appended.
+func isPickCommit(repoRoot, wt string, st State, rel, sha, base string) (bool, string) {
 	parent, err := gitutil.Run(repoRoot, "rev-parse", "--verify", "--quiet", sha+"^1^{commit}", "--")
 	if err != nil || parent != base {
 		return false, "its parent is not the lane's base"
@@ -166,32 +196,37 @@ func isPickCommit(repoRoot string, st State, sha, base string) (bool, string) {
 	if err != nil || subject != pickSubject(st) {
 		return false, "its subject is not the pick's"
 	}
-	files, err := gitutil.Run(repoRoot, "diff-tree", "--no-commit-id", "--name-only", "-r", "--no-renames", sha, "--")
-	if err != nil || len(strings.Fields(files)) != 1 || !strings.HasPrefix(files, intent.IntentsRelDir+"/"+intent.BucketPlanned+"/") {
-		return false, "it changes more than the intent's record"
+	files, err := gitutil.RunCappedBytes(repoRoot, maxGitOutput, "diff-tree", "--no-commit-id", "--name-only", "-z", "-r", "--no-renames", sha, "--")
+	if err != nil || string(files) != rel+"\x00" {
+		return false, "it changes a path other than " + st.Intent + "'s record, or more than that record"
 	}
-	body, err := gitutil.RunLimited(repoRoot, maxIntentBytes, "cat-file", "blob", sha+":"+files)
+	want, err := expectedPickRecord(repoRoot, wt, st, rel, base)
+	if err != nil {
+		return false, "the record it should carry cannot be built: " + fsutil.RedactHome(err.Error())
+	}
+	got, err := gitutil.RunCappedBytes(repoRoot, maxIntentBytes, "cat-file", "blob", sha+":"+rel)
 	if err != nil {
 		return false, "its record cannot be read"
 	}
-	entries := intent.ParseGrounds(body)
-	if len(entries) == 0 || !intent.IsRunPick(entries[len(entries)-1]) || !strings.HasPrefix(entries[len(entries)-1].Text, intent.RunPickMarker+st.RunID+" ") {
-		return false, "its record's last grounds entry is not this run's pick"
+	if string(got) != want {
+		return false, "its record is not the base's with this run's one entry appended and nothing else changed"
 	}
 	return true, ""
 }
 
-// carriesPickEntry reports whether the intent file's last grounds entry is
-// this run's pick.
-func carriesPickEntry(abs string, st State) bool {
-	data, err := fsutil.ReadGuarded(abs, maxIntentBytes)
+// carriesPickEntry names why the intent's record in the lane's worktree is not
+// the base's record with this run's entry appended, or returns "" when it is.
+func carriesPickEntry(repoRoot, wt string, st State, rel, base string) string {
+	data, err := fsutil.ReadGuarded(filepath.Join(wt, filepath.FromSlash(rel)), maxIntentBytes)
 	if err != nil {
-		return false
+		return "it cannot be read"
 	}
-	entries := intent.ParseGrounds(string(data))
-	if len(entries) == 0 {
-		return false
+	want, err := expectedPickRecord(repoRoot, wt, st, rel, base)
+	if err != nil {
+		return "the record it should carry cannot be built: " + fsutil.RedactHome(err.Error())
 	}
-	last := entries[len(entries)-1]
-	return intent.IsRunPick(last) && strings.HasPrefix(last.Text, intent.RunPickMarker+st.RunID+" ")
+	if string(data) != want {
+		return "it differs from that record"
+	}
+	return ""
 }

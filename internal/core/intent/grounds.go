@@ -84,16 +84,9 @@ func RecordGrounds(repoRoot, intentID string, g grounds.Grounds) (GroundsResult,
 			"intent: %s is %s — grounds are recorded at the moment of pursuit and %s records are never backfilled; nothing written",
 			it.ID, it.Bucket, it.Bucket)
 	}
-	redText, redacted, err := redactIntentText(repoRoot, g.Text)
+	validated, redacted, err := PrepareGrounds(repoRoot, g)
 	if err != nil {
 		return GroundsResult{}, err
-	}
-	// Re-validated on the redacted text: the token against the closed set, the
-	// text against the substance floor. A redaction that emptied the text, or a
-	// token no caller checked, is refused here with nothing written.
-	validated, err := grounds.New(g.Token, redText)
-	if err != nil {
-		return GroundsResult{}, fmt.Errorf("intent: %w", err)
 	}
 
 	abs := filepath.Join(repoRoot, it.Path)
@@ -132,6 +125,27 @@ func RecordGrounds(repoRoot, intentID string, g grounds.Grounds) (GroundsResult,
 		Entries:  entries,
 		Redacted: redacted,
 	}, nil
+}
+
+// PrepareGrounds is the entry RecordGrounds appends for g in repoRoot: the
+// text redacted, then re-validated on the redacted text, the token against the
+// closed set and the text against the substance floor. A redaction that emptied
+// the text, or a token no caller checked, is refused here with nothing written.
+// It also returns how many spans the redactor rewrote.
+//
+// It is exported so a caller that must recognise a record this writer produced
+// can rebuild the exact entry (grounds.AppendToRecord over the record it was
+// appended to) and compare bytes, rather than judge the result by its shape.
+func PrepareGrounds(repoRoot string, g grounds.Grounds) (grounds.Grounds, int, error) {
+	redText, redacted, err := redactIntentText(repoRoot, g.Text)
+	if err != nil {
+		return grounds.Grounds{}, 0, err
+	}
+	validated, err := grounds.New(g.Token, redText)
+	if err != nil {
+		return grounds.Grounds{}, 0, fmt.Errorf("intent: %w", err)
+	}
+	return validated, redacted, nil
 }
 
 // ParseGrounds reads an intent record's recorded grounds, in the order they were

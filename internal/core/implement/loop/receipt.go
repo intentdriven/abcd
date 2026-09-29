@@ -120,6 +120,9 @@ func verifyReceipt(c Context, lane *Lane, receiptRel string) error {
 	if rc.Branch != lane.Branch {
 		missing = append(missing, fmt.Sprintf("the lane's branch (it names %s, not %s)", termsafe.DescribeRefused(rc.Branch), lane.Branch))
 	}
+	if err := pickKept(c.RepoRoot, lane, receiptRel); err != nil {
+		return err
+	}
 	missing = append(missing, commitGaps(c.RepoRoot, lane, rc.Commits)...)
 
 	dir, err := root.OpenRoot(dirRel)
@@ -188,6 +191,29 @@ func readReceipt(repoRoot string, root *os.Root, rel, laneID string) (LaneReceip
 			"write exactly the fields the brief names, each once; a verdict is the loop's to record, never the lane's")
 	}
 	return rc, nil
+}
+
+// pickKept refuses a receipt over a lane branch that no longer carries the
+// pick's record-only commit (itd-2609211116005482, decision 6): the pick's
+// reason reaches the default branch with the work only while that commit stays
+// the branch's first past its base, and a rebase or an amend of it drops the
+// reason silently. A lane without a pick commit has nothing to keep.
+func pickKept(repoRoot string, lane *Lane, receiptRel string) error {
+	if !gitutil.IsFullSHA(lane.PickSHA) {
+		return nil
+	}
+	kept, err := gitutil.IsAncestor(repoRoot, lane.PickSHA, "refs/heads/"+lane.Branch)
+	if err != nil {
+		return fmt.Errorf("placing the pick's commit %s on %s: %v", shortSHA(lane.PickSHA), lane.Branch, err)
+	}
+	if kept {
+		return nil
+	}
+	return refuse("receipt", "", lane.ID,
+		fmt.Sprintf("%s no longer carries the pick's record-only commit %s, its first commit past the base: a rebase or an amend dropped it, and with it the pick's reason, which reaches the default branch only with the work",
+			lane.Branch, shortSHA(lane.PickSHA)),
+		fmt.Sprintf("in the lane's worktree, rebuild %s as %s followed by the implementer's own commits (e.g. `git reset --hard %s`, then cherry-pick them onto it), name those commits in the receipt, then hand it back to `abcd implement receipt %s`",
+			lane.Branch, lane.PickSHA, lane.PickSHA, receiptRel))
 }
 
 // commitGaps names what is wrong with the commits a receipt names: none named,

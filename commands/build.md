@@ -101,7 +101,8 @@ hand-back). The lane's `worktree` step appends it to the intent in the lane's
 own worktree and commits it there as the lane branch's first commit, a
 record-only commit made before the brief. The receipt verifier does not count
 it: a receipt naming it is refused, so the implementer names only its own
-commits. No existing entry changes, the checkout you run in is not written but
+commits, and so is a receipt over a branch that no longer carries it after a
+rebase or an amend. No existing entry changes, the checkout you run in is not written but
 for the run state, and `intent ready` keeps reporting the person's entry as the
 most recent conjecture.
 

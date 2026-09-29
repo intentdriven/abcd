@@ -116,11 +116,15 @@ runner-up and why it lost, and the falsifier. The first lane's worktree step
 appends it to the intent in the lane's own worktree, through the intent store's
 grounds writer and lock, and commits that one file as the lane branch's first
 commit (decision 6), under the configured git identity, with hooks off and the
-isolated environment less the global-config neutralisers. The lane records the
-commit as `pick_sha`, and the receipt verifier refuses a receipt naming it: it
-is not the implementer's work. The readiness gate's grounds row skips a
-run-marked entry when it names the most recent conjecture, so the person's
-entry stays the one it reports.
+isolated environment less the global-config neutralisers. A worktree step run
+again adopts a commit already on the branch only when it is that commit byte
+for byte: the pick's subject, the picked intent's record the one path changed,
+and that record the base's with the one entry appended. The lane records the
+commit as `pick_sha`, and the receipt verifier refuses a receipt naming it (it
+is not the implementer's work) and a receipt over a branch that no longer
+carries it, since a rebase or an amend that drops it drops the reason. The
+readiness gate's grounds row skips a run-marked entry when it names the most
+recent conjecture, so the person's entry stays the one it reports.
 
 One pick per invocation. A run count above one, and a run until no candidate
 is left, which continue under the pace rule (criterion 5), are refused by name; so is a pick whose

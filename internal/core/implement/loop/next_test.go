@@ -270,6 +270,124 @@ func TestThePickCommitIsFoundNotRemade(t *testing.T) {
 	}
 }
 
+// TestAPickCommitIsAdoptedByContentNotShape: a commit on the lane's branch that
+// carries the pick's subject and ends a record with this run's entry is adopted
+// only when it is the base's record of the picked intent plus exactly that one
+// entry. One that also guts the intent's criteria, or lands the entry on a
+// different planned intent, is refused and left where it is.
+func TestAPickCommitIsAdoptedByContentNotShape(t *testing.T) {
+	repo := pickRepo(t, map[string][2]string{
+		"10": {pickIntent("10", "", settledQuestions, gwt), pickSpec("10", fpSmall)},
+		"11": {pickIntent("11", "", settledQuestions, gwt), pickSpec("11", "")},
+	})
+	res, err := Next(repo.Root(), Options{}, NextOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, err := ReadState(repo.Root(), res.Start.RunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Intent != "itd-10" {
+		t.Fatalf("the fixture's readiest is itd-10, got %s", st.Intent)
+	}
+	c := Context{RepoRoot: repo.Root(), RunDir: runRel(st.RunID), State: st}
+	first := st.Lanes[0]
+	if _, err := worktreeStep(c, &first); err != nil {
+		t.Fatal(err)
+	}
+	ir10, _ := pickRel("10")
+	ir11, _ := pickRel("11")
+	wt := first.Worktree
+	genuine, err := os.ReadFile(filepath.Join(wt, ir10))
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimRight(string(genuine), "\n"), "\n")
+	entry := lines[len(lines)-1] + "\n"
+	if !strings.HasPrefix(entry, "- pursued: picked by run "+st.RunID+" ") {
+		t.Fatalf("the genuine record ends with the run's entry: %q", entry)
+	}
+
+	for name, craft := range map[string]func() (string, string){
+		"guts the picked intent's criteria": func() (string, string) {
+			return ir10, strings.Replace(string(genuine), gwt, "", 1)
+		},
+		"rewrites a different planned intent": func() (string, string) {
+			return ir11, pickIntent("11", "", settledQuestions, gwt) + entry
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			repo.Git("-C", wt, "reset", "-q", "--hard", first.BaseSHA)
+			rel, body := craft()
+			if err := os.WriteFile(filepath.Join(wt, filepath.FromSlash(rel)), []byte(body), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			repo.Git("-C", wt, "commit", "-q", "-am", pickSubject(st))
+			crafted := strings.TrimSpace(repo.Git("-C", wt, "rev-parse", "HEAD"))
+			lane := st.Lanes[0]
+			_, err := worktreeStep(c, &lane)
+			r := mustRefusal(t, err)
+			if !strings.Contains(r.Reason, "is not the pick's record commit") || lane.PickSHA == crafted {
+				t.Fatalf("a crafted commit is refused, never adopted: %+v (pick %s)", r, lane.PickSHA)
+			}
+			if head := strings.TrimSpace(repo.Git("-C", wt, "rev-parse", "HEAD")); head != crafted {
+				t.Fatalf("the refused commit is left where it is: %s vs %s", head, crafted)
+			}
+		})
+	}
+
+	// Written and not committed takes the same test: a record that ends with
+	// the run's entry but guts the criteria is not committed.
+	repo.Git("-C", wt, "reset", "-q", "--hard", first.BaseSHA)
+	if err := os.WriteFile(filepath.Join(wt, filepath.FromSlash(ir10)), []byte(strings.Replace(string(genuine), gwt, "", 1)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	lane := st.Lanes[0]
+	_, err = worktreeStep(c, &lane)
+	if r := mustRefusal(t, err); !strings.Contains(r.Reason, "not the base's record with this run's pick appended") {
+		t.Fatalf("an uncommitted crafted record is refused: %+v", r)
+	}
+	if head := strings.TrimSpace(repo.Git("-C", wt, "rev-parse", "HEAD")); head != first.BaseSHA {
+		t.Fatalf("nothing is committed over a crafted record: %s", head)
+	}
+}
+
+// TestAReceiptRefusesABranchThatDroppedThePick is decision 6's verifier: the
+// pick's reason reaches the default branch with the work only while the pick
+// commit stays on the lane's branch, so a receipt over a branch whose first
+// commit was amended away is refused, naming the remedy.
+func TestAReceiptRefusesABranchThatDroppedThePick(t *testing.T) {
+	repo := pickRepo(t, map[string][2]string{"10": {pickIntent("10", "", settledQuestions, gwt), pickSpec("10", fpSmall)}})
+	res, err := Next(repo.Root(), Options{}, NextOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	runID := res.Start.RunID
+	advanceTo(t, repo, runID, StepImplement)
+	if _, err := Advance(repo.Root(), runID, DefaultSteps(), Options{}); err != nil {
+		t.Fatal(err)
+	}
+	st, err := ReadState(repo.Root(), runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	l := st.Lanes[0]
+	if !isFullHex(l.PickSHA) {
+		t.Fatalf("the lane records its pick commit: %+v", l)
+	}
+	repo.Git("-C", l.Worktree, "commit", "-q", "--amend", "-m", "chore: reword the first commit")
+	work := laneCommit(t, repo, l, "work.txt")
+	dir := filepath.Join(repo.Root(), filepath.FromSlash(RunRelDir), runID, "lane-1")
+	rel := writeReceipt(t, dir, goodReceipt(t, runID, l, dir, work))
+	_, err = Receipt(repo.Root(), runID, rel, DefaultSteps(), Options{})
+	r := mustRefusal(t, err)
+	if !strings.Contains(r.Reason, "no longer carries the pick's record-only commit "+shortSHA(l.PickSHA)) ||
+		!strings.Contains(r.Remedy, l.PickSHA[:12]) {
+		t.Fatalf("a branch that dropped the pick commit is refused, naming the remedy: %+v", r)
+	}
+}
+
 // TestNextRefusesMoreThanOnePick: continuing under the pace rule (criterion 5)
 // is not built, so asking for it is refused by name and writes nothing.
 func TestNextRefusesMoreThanOnePick(t *testing.T) {
