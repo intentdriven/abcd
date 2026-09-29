@@ -101,3 +101,29 @@ func TestUndeclaredFieldRefusalFailsClosedOnADegradedScanner(t *testing.T) {
 		t.Errorf("a degraded scanner did not describe the message: %v", err)
 	}
 }
+
+// TestParkedManifestRefusalRedactsTheKey — iss-2609290218032954. The parked
+// manifest sits in the local tier, where a reading session with tools can
+// rewrite it (and re-point manifest_sha256 at the rewrite), so a key in it is
+// payload-chosen too. The strict decoder names an undeclared key by that
+// spelling, and the refusal returned it raw; it is named redacted now.
+func TestParkedManifestRefusalRedactsTheKey(t *testing.T) {
+	f := newIngestFixture(t, "detection")
+	rel := DefaultRunDir + "/" + f.runID + "/" + ManifestFileName
+	raw, err := os.ReadFile(filepath.Join(f.root, filepath.FromSlash(rel)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	planted := strings.Replace(string(raw), "{", `{"reviewer_notes /Users/zzotherperson/notes":1,`, 1) // abcd-lint:allow — a planted home path in a KEY
+	f.write(rel, []byte(planted))
+	_, err = f.ingest(f.payload(1))
+	if err == nil {
+		t.Fatal("a parked manifest carrying an undeclared key was accepted")
+	}
+	if strings.Contains(err.Error(), "zzotherperson") {
+		t.Errorf("the refusal echoes the parked manifest's key: %v", err)
+	}
+	if !strings.Contains(err.Error(), "reviewer_notes") {
+		t.Errorf("the refusal no longer names the undeclared field: %v", err)
+	}
+}

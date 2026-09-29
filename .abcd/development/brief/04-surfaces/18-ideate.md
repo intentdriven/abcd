@@ -110,7 +110,9 @@ something a later reader depends on:
 - **The payload cannot be tied to a definition**: no `schema_version`, one this
   build does not support, or no semver `prompt_version`. A verdict is the output
   of a named prompt at a named version, and an unstamped payload cannot be traced
-  back to what produced it.
+  back to what produced it. A key the contract does not declare refuses the
+  document too; the refusal names it redacted through the canonical scanner, and
+  describes it when the scanner cannot be trusted.
 - **The evidence does not hold up**: a cited record id that does not resolve, a
   cited value that is not a record id at all, a claim naming no primary source, an
   out-of-enum verdict or outcome. Every closed set is closed, and an unregistered

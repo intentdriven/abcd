@@ -587,7 +587,7 @@ func ingestUnderLock(root *os.Root, repoRoot string, req IngestRequest, res *Ing
 	res.RunID = out.RunID
 	res.Position = pos
 
-	manifest, err := resolveParkedManifest(root, out)
+	manifest, err := resolveParkedManifest(root, repoRoot, out)
 	if err != nil {
 		return err
 	}
@@ -819,7 +819,7 @@ var sha256HexRe = regexp.MustCompile(`^[0-9a-f]{64}$`)
 // unforgeable reference, because it cannot be asserted without the bytes. A
 // reference that resolves to nothing, or to a manifest whose hash disagrees,
 // refuses the run.
-func resolveParkedManifest(root *os.Root, out Output) (Manifest, error) {
+func resolveParkedManifest(root *os.Root, repoRoot string, out Output) (Manifest, error) {
 	// out.RunID has already been matched against the run-id grammar, which makes
 	// it a single safe path COMPONENT: it holds no separator and no dot. That
 	// says nothing about the components above it, so the read is resolved through
@@ -837,7 +837,10 @@ func resolveParkedManifest(root *os.Root, out Output) (Manifest, error) {
 	}
 	m, err := DecodeManifest(raw)
 	if err != nil {
-		return Manifest{}, fmt.Errorf("reading: the manifest of run %s: %w", out.RunID, err)
+		// The parked manifest is rewritable by the session that answers it, and
+		// the decoder names an undeclared key by its spelling: redacted, never
+		// raw (iss-2609290218032954).
+		return Manifest{}, fmt.Errorf("reading: the manifest of run %s: %s", out.RunID, redactRefused(repoRoot, err.Error()))
 	}
 	if got := sha256Hex(raw); got != out.ManifestSHA256 {
 		return Manifest{}, fmt.Errorf("reading: manifest_sha256 is %s, and the manifest parked at %s hashes "+

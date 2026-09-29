@@ -27,6 +27,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/adapter/scanner"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
@@ -68,7 +69,7 @@ func ComposePressRelease(lifeboatDir string, raw []byte) (PressReleaseResult, er
 	if raw == nil {
 		file = deterministicPressRelease(abs, paths)
 	} else {
-		file, err = validateDelegatedPressRelease(raw, paths)
+		file, err = validateDelegatedPressRelease(abs, raw, paths)
 		if err != nil {
 			return PressReleaseResult{}, err
 		}
@@ -146,7 +147,7 @@ func deterministicPressRelease(abs string, paths map[string]bool) PressReleaseFi
 // schema/mode/prompt_version) are fatal; evidence resolving to nothing in the
 // restricted packed-path set is the whole-document refusal (ErrPressReleaseUncited).
 // Prose fields are sanitised and capped; the document is written whole on success.
-func validateDelegatedPressRelease(raw []byte, paths map[string]bool) (PressReleaseFile, error) {
+func validateDelegatedPressRelease(abs string, raw []byte, paths map[string]bool) (PressReleaseFile, error) {
 	if len(raw) > maxSynthesisBytes {
 		return PressReleaseFile{}, fmt.Errorf("press-release payload exceeds the %d-byte cap", maxSynthesisBytes)
 	}
@@ -154,7 +155,9 @@ func validateDelegatedPressRelease(raw []byte, paths map[string]bool) (PressRele
 	dec.DisallowUnknownFields()
 	var pf PressReleaseFile
 	if err := dec.Decode(&pf); err != nil {
-		return PressReleaseFile{}, fmt.Errorf("malformed press-release JSON: %v", err)
+		// The decoder names an undeclared field by the payload's own key:
+		// redacted, never raw (iss-2609290218032954).
+		return PressReleaseFile{}, fmt.Errorf("malformed press-release JSON: %s", scanner.RedactRefusal(abs, err.Error()))
 	}
 	if err := synthSchemaGate("press-release", pf.SchemaVersion, PressReleaseSchemaVersion); err != nil {
 		return PressReleaseFile{}, err

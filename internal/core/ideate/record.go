@@ -32,6 +32,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/adapter/scanner"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/core/update"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -110,7 +111,7 @@ func Record(repoRoot, slug string, raw []byte, at time.Time) (Result, error) {
 	if err := validateSlug(slug); err != nil {
 		return Result{}, err
 	}
-	p, err := decodePayload(raw)
+	p, err := decodePayload(repoRoot, raw)
 	if err != nil {
 		return Result{}, err
 	}
@@ -237,7 +238,11 @@ func validateSlug(slug string) error {
 // an unknown-field refusal (an invented key means the composer and this core
 // disagree about the contract), a trailing-data refusal, the three-branch schema
 // gate, and the prompt_version stamp.
-func decodePayload(raw []byte) (Payload, error) {
+//
+// The decoder's message names an undeclared field by the payload's own key, the
+// one value the composer needs to find the fault, so it is redacted through the
+// canonical scanner for repoRoot rather than returned raw (iss-2609290218032954).
+func decodePayload(repoRoot string, raw []byte) (Payload, error) {
 	if len(raw) > MaxPayloadBytes {
 		return Payload{}, fmt.Errorf("verdict payload exceeds the %d-byte cap", MaxPayloadBytes)
 	}
@@ -245,7 +250,7 @@ func decodePayload(raw []byte) (Payload, error) {
 	dec.DisallowUnknownFields()
 	var p Payload
 	if err := dec.Decode(&p); err != nil {
-		return Payload{}, fmt.Errorf("malformed verdict JSON: %v", err)
+		return Payload{}, fmt.Errorf("malformed verdict JSON: %s", scanner.RedactRefusal(repoRoot, err.Error()))
 	}
 	if dec.More() {
 		return Payload{}, errors.New("the verdict payload carries trailing data after the JSON document")

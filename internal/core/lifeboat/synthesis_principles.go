@@ -32,6 +32,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/adapter/scanner"
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
 	"github.com/intentdriven/abcd/internal/core/lint"
 	"github.com/intentdriven/abcd/internal/core/update"
@@ -214,7 +215,9 @@ func validateDelegatedPrinciples(abs string, raw []byte) ([]Principle, string, [
 	dec.DisallowUnknownFields()
 	var pf PrinciplesFile
 	if err := dec.Decode(&pf); err != nil {
-		return nil, "", nil, fmt.Errorf("malformed principles JSON: %v", err)
+		// The decoder names an undeclared field by the payload's own key:
+		// redacted, never raw (iss-2609290218032954).
+		return nil, "", nil, fmt.Errorf("malformed principles JSON: %s", scanner.RedactRefusal(abs, err.Error()))
 	}
 	if err := synthSchemaGate("principles", pf.SchemaVersion, PrinciplesSchemaVersion); err != nil {
 		return nil, "", nil, err

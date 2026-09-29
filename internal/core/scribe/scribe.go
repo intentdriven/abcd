@@ -37,9 +37,11 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/adapter/scanner"
 	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/jsonstrict"
+	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
@@ -185,17 +187,24 @@ func encode(v any) ([]byte, error) {
 // decodeStrict decodes one document, refusing a repeated key at any depth,
 // unknown fields and trailing content. The scribe output, the manifest and the
 // context all decode through it.
-func decodeStrict(data []byte, into any, what string) error {
+//
+// Both refusals name a key by the document's own spelling, a repeated key and
+// an undeclared one, and all three documents are payload-chosen (the parked
+// pair sits where a scribe session with tools can rewrite it). The key is what
+// the reader needs to find the fault, so the message is redacted through the
+// canonical scanner rather than described (iss-2609290218032954).
+func decodeStrict(data []byte, into any, what, repoRoot string) error {
 	// A repeated key at any depth is refused, not read last-wins: encoding/json
 	// would take {"state":"declined","state":"accepted"} as accepted. jsonstrict
 	// is the one check every trust-boundary reader shares (iss-2609261036363114).
 	if err := jsonstrict.NoDuplicateKeys(data); err != nil {
-		return fmt.Errorf("scribe: decoding %s: %w; nothing is written", what, err)
+		return fmt.Errorf("scribe: decoding %s: %s; nothing is written", what,
+			scanner.RedactRefusal(repoRoot, err.Error()))
 	}
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(into); err != nil {
-		return fmt.Errorf("scribe: decoding %s: %w", what, err)
+		return fmt.Errorf("scribe: decoding %s: %s", what, scanner.RedactRefusal(repoRoot, err.Error()))
 	}
 	if dec.More() {
 		return fmt.Errorf("scribe: decoding %s: trailing content after the document", what)
@@ -203,28 +212,29 @@ func decodeStrict(data []byte, into any, what string) error {
 	return nil
 }
 
-// DecodeManifest reads a scribe manifest strictly.
-func DecodeManifest(data []byte) (Manifest, error) {
+// DecodeManifest reads a scribe manifest strictly. repoRoot is the repository
+// whose scanner redacts a refusal's key names.
+func DecodeManifest(data []byte, repoRoot string) (Manifest, error) {
 	var m Manifest
-	if err := decodeStrict(data, &m, "the scribe manifest"); err != nil {
+	if err := decodeStrict(data, &m, "the scribe manifest", repoRoot); err != nil {
 		return Manifest{}, err
 	}
 	if m.Type != ManifestType || m.SchemaVersion != SchemaVersion {
-		return Manifest{}, fmt.Errorf("scribe: the manifest is %q version %d, want %q version %d",
-			echo(m.Type), m.SchemaVersion, ManifestType, SchemaVersion)
+		return Manifest{}, fmt.Errorf("scribe: the manifest's _type is %s at version %d, want %q version %d",
+			typeTag(m.Type, ManifestType), m.SchemaVersion, ManifestType, SchemaVersion)
 	}
 	return m, nil
 }
 
 // decodeContext reads a scribe context strictly.
-func decodeContext(data []byte) (Context, error) {
+func decodeContext(data []byte, repoRoot string) (Context, error) {
 	var c Context
-	if err := decodeStrict(data, &c, "the scribe context"); err != nil {
+	if err := decodeStrict(data, &c, "the scribe context", repoRoot); err != nil {
 		return Context{}, err
 	}
 	if c.Type != ContextType || c.SchemaVersion != SchemaVersion {
-		return Context{}, fmt.Errorf("scribe: the context is %q version %d, want %q version %d",
-			echo(c.Type), c.SchemaVersion, ContextType, SchemaVersion)
+		return Context{}, fmt.Errorf("scribe: the context's _type is %s at version %d, want %q version %d",
+			typeTag(c.Type, ContextType), c.SchemaVersion, ContextType, SchemaVersion)
 	}
 	return c, nil
 }
@@ -254,6 +264,60 @@ func echo(s string) string {
 // utf8Start reports whether b begins a UTF-8 sequence, so a cap never splits
 // a rune.
 func utf8Start(b byte) bool { return b&0xC0 != 0x80 }
+
+// The renderings below are for a payload-chosen value in a REFUSAL, which
+// returns to the terminal and the transcript with nothing written. echo cleans
+// and caps but does not redact, so a value is quoted only when it has a closed
+// shape that can carry nothing to redact, and is otherwise described by
+// termsafe.DescribeRefused: the refusal's field name and position already say
+// where the fault is (iss-2609290218032954).
+
+// handle renders a record handle the payload names: a run id (rdg-N) or an
+// item, admission or disposition handle (rdi-N, adm-N, dsp-N).
+func handle(id string) string {
+	if recordid.ValidReadingRunID(id) || issueschema.ValidSurpriseOccasion(id) {
+		return id
+	}
+	return termsafe.DescribeRefused(id)
+}
+
+// entryLabel names one entry of a payload list, with its handle when the
+// handle has the closed shape, and by its position alone otherwise.
+func entryLabel(list string, i int, id string) string {
+	if h := handle(id); h == id {
+		return fmt.Sprintf("%s[%d] (%s)", list, i, id)
+	}
+	return fmt.Sprintf("%s[%d]", list, i)
+}
+
+// stateTag renders a disposition state: one of the shipped vocabulary is
+// quoted, anything else described.
+func stateTag(state string) string {
+	for _, s := range issueschema.DispositionStates {
+		if state == s {
+			return fmt.Sprintf("%q", state)
+		}
+	}
+	return termsafe.DescribeRefused(state)
+}
+
+// digestTag renders a sha-256 digest: 64 lower-case hex digits are quoted,
+// anything else described.
+func digestTag(d string) string {
+	if len(d) == 64 && strings.Trim(d, "0123456789abcdef") == "" {
+		return d
+	}
+	return termsafe.DescribeRefused(d)
+}
+
+// typeTag renders a document's _type, which is refused only when it is not the
+// one tag wanted, so it is always described.
+func typeTag(got, want string) string {
+	if got == want {
+		return fmt.Sprintf("%q", got)
+	}
+	return termsafe.DescribeRefused(got)
+}
 
 // joinEchoed renders a list of payload-derived names for a message.
 func joinEchoed(in []string) string {

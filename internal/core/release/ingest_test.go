@@ -394,7 +394,7 @@ func TestIngestPayloadGuards(t *testing.T) {
 			name: "an unregistered Keep-a-Changelog section",
 			raw: `{"schema_version":2,"prompt_version":"1.0.0","next_tag":"v0.4.1",` +
 				`"entries":[{"section":"Miscellaneous","records":["itd-73"],"text":"x"}]}`,
-			wantSaid: "Miscellaneous",
+			wantSaid: "section",
 		},
 		{
 			name: "a malformed record id",
