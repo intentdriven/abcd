@@ -184,6 +184,92 @@ _All resolved or explicitly deferred at planning (2026-08-15):_
 
 ## Audit Notes
 
-<!-- abcd-review: OWED receipt=rcp-69424cae8106 -->
-Fidelity review OWED (receipt rcp-69424cae8106).
+<!-- abcd-review: INGESTED receipt=rcp-69424cae8106 -->
+Fidelity review — receipt rcp-69424cae8106 (verifier intent-auditor claude-fable-5-1).
+
+Provenance: intent-auditor@claude-fable-5-1 · rubric_hash sha256:effa65b3e9e88ff29433b443ec2be159522a8b0b71cf1434526514aa61edb13e · prompt_hash sha256:826d0d983d9ba33c40ce27386862f78a1b69f70dcfa0af491ab32d1abda59ee8
+Input attestations: diff:ce8e1c9ae..8ffb6d069 (feat/itd-111-close; spc-22 behaviour judged in the tree at 8ffb6d069)@sha256:95e8eba0442aba7b2e180d12914484e2715c4a0b68d5f2808bea280a0176e2ed;
+
+Acceptance rollup: MET 3 · MET_WITH_CONCERNS 5 · NOT_MET 0 · INCONCLUSIVE 0
+
+Per-criterion verdicts:
+- ac-1 — MET: the session-start hook runs the plugin-root binary, which renders a notice naming the binary path, its embedded revision, the checkout tip and `make build` when the dogfood comparison is stale; TestFormatStalenessNotice asserts all four tokens
+  evidence: internal/surface/cli/cli.go:1735 — "if exe, err := os.Executable(); err == nil { if n := stalenessNotice(cwd, exe)"
+  evidence: internal/surface/cli/staleness.go:32 — ""abcd: %s was built from commit %s but this checkout is at %s — the binary is behind its own source. Rebuild it with `make build`.""
+  evidence: internal/surface/cli/staleness_test.go:18 — "for _, want := range []string{exe, rev[:12], tip[:12], "make build"}"
+  evidence: hooks/hooks.json:19 — ""$CLAUDE_PLUGIN_ROOT/abcd" hook session-start"
+- ac-2 — MET_WITH_CONCERNS: the refusal sits before the first apply step and names both revisions; TestInstallRefusesStaleAgainstTip proves no repo write and TestInstallProceedsThroughFreshBinary proves the fresh path; the concern is that under an explicit --bin-dir the writability probe at apply.go:91 (dirWritable, store.go:431) creates and removes a temp file BEFORE the refusal fires, while its comment at apply.go:267 claims it creates nothing
+  evidence: internal/core/ahoy/apply.go:157 — "if !opts.AllowStaleBinary { if reason := staleBinaryRefusal(currentVintage(), abs); reason != """
+  evidence: internal/core/ahoy/vintage.go:158 — ""the running abcd binary was built from commit %s but this checkout is at %s — it is behind its own source"
+  evidence: internal/core/ahoy/refusal_test.go:49 — "func TestInstallRefusesStaleAgainstTip"
+  evidence: internal/core/ahoy/refusal_test.go:97 — "func TestInstallProceedsThroughFreshBinary"
+  evidence: internal/core/ahoy/store.go:431 — "f, err := os.CreateTemp(dir, ".abcd-write-probe-*")"
+  evidence: internal/core/ahoy/apply.go:267 — "Probe writability without creating anything"
+- ac-3 — MET_WITH_CONCERNS: `abcd --version` and `abcd ahoy` both render install mode, vintage and staleness from the one ahoy.Vintage comparator, in text and JSON; the concern is wording drift: the literal `abcd version` the criterion names is a moved stub that refuses and points at `abcd --version` (itd-2609212130136102)
+  evidence: internal/surface/cli/version.go:105 — "fmt.Fprintf(w, " install: %s\n", out.InstallMode) ... vintage ... staleness"
+  evidence: internal/surface/cli/cli.go:252 — "return runVersion(cmd, asJSON, false)"
+  evidence: internal/surface/cli/cli.go:3298 — "vin := ahoy.Vintage(cwd)"
+  evidence: internal/surface/cli/cli.go:3312 — "fmt.Fprintf(w, " vintage: %s\n", out.Vintage)"
+  evidence: internal/surface/cli/version.go:77 — "return movedRefusal("abcd version", "abcd --version")"
+  evidence: internal/core/ahoy/vintage_test.go:77 — "func TestVintageDisplayAndStaleness"
+- ac-4 — MET: the release fetcher is constructed only behind the explicit check; TestOnlyUpdateCheckTouchesTheNetwork counts zero fetcher constructions across --version, ahoy and session-start, and TestModeAndStatuslineTouchNoNetwork counts http.DefaultTransport hits at zero for mode, statusline and the bare verb
+  evidence: internal/surface/cli/version_check_test.go:44 — "if got := atomic.LoadInt32(&calls); got != 0 { t.Fatalf("an implicit path fetched"
+  evidence: internal/surface/cli/version.go:102 — "if check { out.Check = runReleaseCheck(v.Version) }"
+  evidence: internal/core/vintage/release.go:23 — "ReleaseFetcher ... reached only by an explicit `abcd update --check`. A disk path never constructs one."
+  evidence: internal/surface/cli/statusline_test.go:252 — "http.DefaultTransport = countingTransport{&hits}"
+- ac-5 — MET_WITH_CONCERNS: the explicit check fetches the latest tag exactly once, compares through vintage.Compare and names its source; the concern is wording drift: the criterion names `abcd version --check`, which is a moved stub refusing towards `abcd update --check` (itd-2609212130136102), where the behaviour lives
+  evidence: internal/surface/cli/update.go:49 — "if check {"
+  evidence: internal/surface/cli/update.go:53 — "return runVersion(cmd, *asJSON, true)"
+  evidence: internal/surface/cli/version.go:129 — "exp := vintage.ReleaseProvider(newReleaseFetcher()).Expected()"
+  evidence: internal/surface/cli/version.go:30 — "const checkSource = "github.com/intentdriven/abcd releases""
+  evidence: internal/surface/cli/version_check_test.go:50 — "if got := atomic.LoadInt32(&calls); got != 1 { t.Fatalf("update --check fetched %d time(s), want exactly 1""
+  evidence: internal/surface/cli/version.go:75 — "return movedRefusal("abcd version --check", "abcd update --check")"
+- ac-6 — MET_WITH_CONCERNS: the session-start hook reports a running version that differs from the repo's recorded meta.setup_version, proven by TestSessionStartReportsVersionTransition; the concern is the narrower mechanism: the reference is the per-repo setup_version written by `ahoy install` (not a record beside the plugin-cache metadata as spc-22 stated), so a repo never set up reports no transition, and a dev build on either side is never a transition
+  evidence: internal/surface/cli/cli.go:1744 — "if from, to, changed := ahoy.VersionTransition(cwd); changed {"
+  evidence: internal/core/ahoy/vintage.go:221 — "return versionTransitionFrom(recordedSetupVersion(cwd), core.Version)"
+  evidence: internal/core/ahoy/vintage.go:230 — "if isDevOrUnknown(running) || isDevOrUnknown(recorded) { return recorded, running, false }"
+  evidence: internal/surface/cli/transition_test.go:15 — "func TestSessionStartReportsVersionTransition"
+- ac-7 — MET: an unstamped or vcs.modified build yields Current{Known:false}, Compare returns Unknown before consulting any provider, vintageFrom reports it terminally, and staleBinaryRefusal refuses naming `make build`; TestInstallRefusesUnknownVintage proves no write
+  evidence: internal/core/vintage/vintage.go:80 — "if !cur.Known { return Report{Outcome: Unknown, Current: cur.Revision} }"
+  evidence: internal/core/vintage/vintage.go:138 — "if haveModified && modified { return Current{Revision: rev, Known: false} }"
+  evidence: internal/core/ahoy/vintage.go:155 — ""the running abcd binary's vintage cannot be determined (an unstamped or modified/dirty build) ... Rebuild it with `make build`"
+  evidence: internal/core/ahoy/refusal_test.go:23 — "func TestInstallRefusesUnknownVintage"
+  evidence: internal/core/ahoy/vintage_test.go:41 — "func TestVintageFromUnknownCurrentIsTerminal"
+- ac-8 — MET_WITH_CONCERNS: the closed spec names both runs; the Linux run (36608836118 at de42f275a, job check (ubuntu-latest) 109544802516) reads success on the forge, and the auditor re-ran the 25 named tests on darwin/arm64 (25 pass, 0 skipped); the concerns are that the amendment cites a 2026-09-29 ruling 'recorded in .abcd/work/DECISIONS.md' which no line of that file carries at 8ffb6d069 or on main, and that the end-to-end scratch-copy check is narrative only, with no script or log in the tree to re-run
+  evidence: .abcd/development/specs/closed/spc-2609230613208843-per-platform-staleness-calibration.md:36 — "CI workflow run 36608836118, job `check (ubuntu-latest)` (job 109544802516)"
+  evidence: .abcd/development/specs/closed/spc-2609230613208843-per-platform-staleness-calibration.md:42 — "**macOS: the agent's check, 2026-09-29, at the same commit (darwin/arm64).**"
+  evidence: .abcd/development/intents/shipped/itd-111-a-stale-abcd-never-answers-silently-every-surface-that-runs.md:160 — "`.abcd/work/DECISIONS.md` under that date"
+  evidence: .abcd/work/DECISIONS.md:2587 — "2026-09-29 — An autonomous run keeps at most five sub-agents alive at once (the last 2026-09-29 line; none names itd-111, platform parity or a stand-in check)"
+
+Gap audit:
+- honoured:
+  - one comparator with a first-class unknown outcome, fed by a provider interface (fit-challenge seam)
+    evidence: internal/core/vintage/vintage.go:64 — "type Provider interface { Expected() Expected }"
+    evidence: internal/core/vintage/vintage.go:79 — "func Compare(cur Current, p Provider) Report"
+  - `ahoy install` refuses through a stale or unknown-vintage binary before the first apply step, with a documented override
+    evidence: internal/core/ahoy/apply.go:157 — "if !opts.AllowStaleBinary {"
+    evidence: internal/core/ahoy/refusal_test.go:73 — "func TestInstallOverrideProceedsThroughStaleBinary"
+  - implicit checks are disk-only; the network answers only the explicit check (adr-38)
+    evidence: internal/surface/cli/version_check_test.go:38 — "// Every implicit path: none may fetch."
+  - the session-start notice names binary, revision, tip and the one-command rebuild
+    evidence: internal/surface/cli/staleness.go:32 — "Rebuild it with `make build`."
+  - both platforms exercised the staleness tests: Linux CI success and a macOS re-run by the auditor
+    evidence: .abcd/development/specs/closed/spc-2609230613208843-per-platform-staleness-calibration.md:36 — "CI workflow run 36608836118"
+- diverged:
+  - the explicit check is at `abcd update --check`, not the `abcd version --check` AC5 and design decision 6 name (wording drift from itd-2609212130136102, judged on behaviour)
+    evidence: internal/surface/cli/version.go:75 — "return movedRefusal("abcd version --check", "abcd update --check")"
+    evidence: internal/surface/cli/update.go:53 — "return runVersion(cmd, *asJSON, true)"
+  - the vintage report AC3 places on `abcd version` is at `abcd --version`; `abcd version` refuses with a moved notice (same consolidation)
+    evidence: internal/surface/cli/version.go:72 — "cmd.Deprecated = "its report moved to `abcd --version` and its check to `abcd update --check`""
+  - the amended AC8 cites a 2026-09-29 product-thinker ruling recorded in .abcd/work/DECISIONS.md; no such line exists at 8ffb6d069 or on main (the PR body says a separate rulings lane appends it)
+    evidence: .abcd/development/intents/shipped/itd-111-a-stale-abcd-never-answers-silently-every-surface-that-runs.md:160 — "`.abcd/work/DECISIONS.md` under that date"
+    evidence: .abcd/work/DECISIONS.md:2587 — "2026-09-29 — An autonomous run keeps at most five sub-agents alive"
+  - under an explicit --bin-dir a writability probe creates and removes a temp file before the stale refusal, and its comment says it creates nothing
+    evidence: internal/core/ahoy/apply.go:91 — "binTargetPath, err := resolveInstallTarget(opts, det.pluginRoot)"
+    evidence: internal/core/ahoy/store.go:431 — "f, err := os.CreateTemp(dir, ".abcd-write-probe-*")"
+    evidence: internal/core/ahoy/apply.go:267 — "Probe writability without creating anything"
+  - the transition report keys on the repo's meta.setup_version (per repo, silent for dev builds and for a repo never set up), not on a record beside the plugin-cache metadata as spc-22 stated
+    evidence: internal/core/ahoy/vintage.go:242 — "func recordedSetupVersion(cwd string) string"
+    evidence: .abcd/development/specs/closed/spc-22-a-stale-abcd-never-answers-silently-every-surface-that-runs.md:84 — "the last-reported one recorded beside the plugin-cache"
+- missing: (none)
 <!-- abcd-review-end receipt=rcp-69424cae8106 -->
