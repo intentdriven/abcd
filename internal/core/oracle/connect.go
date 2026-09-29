@@ -256,7 +256,11 @@ func writeProviderBlockLocked(home string, dir *os.Root, name string, block map[
 	origin := layered.Config.MachineOrigin()
 	rel := ".abcd/" + layered.Config.MachineRel
 	root := map[string]json.RawMessage{}
-	raw, refusal, err := fsutil.ReadHomeDeclaration(home, rel, layered.MaxFileBytes)
+	// Read through dir, the directory the write below goes through, never by
+	// walking ~/.abcd again: a same-uid swap of ~/.abcd between the two walks
+	// would otherwise read one directory's file and write it, with the new
+	// block, into the other (iss-2609290300313698).
+	raw, refusal, err := fsutil.ReadHomeDeclarationDenyingIn(dir, home, rel, layered.MaxFileBytes, 0)
 	switch {
 	case refusal == fsutil.DeclarationAbsent && errors.Is(err, os.ErrNotExist):
 	case refusal != fsutil.DeclarationOK || err != nil:

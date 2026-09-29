@@ -106,6 +106,22 @@ func (m machine) Resolve(name string) (string, error) {
 // that check would be read once (iss-2609281310017733).
 func readStore(home string) (map[string]string, error) {
 	raw, refusal, err := fsutil.ReadHomeDeclarationDenying(home, storeRel, maxStoreBytes, 0o077)
+	return decodeStore(raw, refusal, err)
+}
+
+// readStoreIn is readStore through dir, ~/.abcd as SetMachine's walk opened
+// it. The writer under the store's lock reads the store here, through the
+// directory it writes through, never by walking ~/.abcd again: a same-uid swap
+// of ~/.abcd between the two walks would otherwise read one directory's
+// entries and write them, with the new value, into the other
+// (iss-2609290300313698).
+func readStoreIn(home string, dir *os.Root) (map[string]string, error) {
+	raw, refusal, err := fsutil.ReadHomeDeclarationDenyingIn(dir, home, storeRel, maxStoreBytes, 0o077)
+	return decodeStore(raw, refusal, err)
+}
+
+// decodeStore judges one read of the store and decodes what it read.
+func decodeStore(raw []byte, refusal fsutil.DeclarationRefusal, err error) (map[string]string, error) {
 	var mode *fsutil.DeclarationModeError
 	switch {
 	case refusal == fsutil.DeclarationOK:
@@ -214,9 +230,9 @@ const storeLockFileName = "." + StoreFileName + ".lock"
 var storeLockTimeout = 5 * time.Second
 
 // setLocked is SetMachine's read, change and write, run under the store's
-// lock.
+// lock, the read and the write both through dir.
 func setLocked(home string, dir *os.Root, name, value string) (bool, error) {
-	store, err := readStore(home)
+	store, err := readStoreIn(home, dir)
 	if err != nil {
 		return false, err
 	}

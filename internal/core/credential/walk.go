@@ -99,7 +99,7 @@ func Walk(ctx context.Context, home string, s Service, c Choice) (WalkResult, er
 		return WalkResult{}, err
 	}
 	if held == HomeExternal && c.Home == HomeExternal {
-		if err := samePointer(home, s.Name, c.Pointer); err != nil {
+		if err := samePointer(home, nil, s.Name, c.Pointer); err != nil {
 			return WalkResult{}, err
 		}
 	} else if held == c.Home {

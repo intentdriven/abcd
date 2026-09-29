@@ -303,7 +303,7 @@ func setUnderLock(home string, dir *os.Root, name string, c Choice) (bool, error
 		return false, err
 	}
 	if held == HomeExternal {
-		return false, samePointer(home, name, c.Pointer)
+		return false, samePointer(home, dir, name, c.Pointer)
 	}
 	if err := setIndex(home, dir, name, indexEntry{Home: HomeExternal, Pointer: c.Pointer}, false); err != nil {
 		return false, err
@@ -312,8 +312,15 @@ func setUnderLock(home string, dir *os.Root, name string, c Choice) (bool, error
 }
 
 // samePointer refuses a pointer other than the one the index holds for name.
-func samePointer(home, name string, p Pointer) error {
-	idx, err := readIndex(home)
+// Under the index's lock dir is the ~/.abcd Set holds and the index is read
+// through it; a caller holding no directory (Walk's check before any write)
+// passes nil and the index is read by walking ~/.abcd.
+func samePointer(home string, dir *os.Root, name string, p Pointer) error {
+	read := func() (map[string]indexEntry, error) { return readIndex(home) }
+	if dir != nil {
+		read = func() (map[string]indexEntry, error) { return readIndexIn(home, dir) }
+	}
+	idx, err := read()
 	if err != nil {
 		return err
 	}
@@ -395,6 +402,21 @@ const indexRel = ".abcd/" + IndexFileName
 // fstat, never on a path first.
 func readIndex(home string) (map[string]indexEntry, error) {
 	raw, refusal, err := fsutil.ReadHomeDeclarationDenying(home, indexRel, maxIndexBytes, 0o077)
+	return decodeIndex(raw, refusal, err)
+}
+
+// readIndexIn is readIndex through dir, ~/.abcd as Set's walk opened it. A
+// writer that holds the index's lock reads the index here, through the
+// directory it writes through, never by walking ~/.abcd again: a same-uid swap
+// of ~/.abcd between the two walks would otherwise read one directory's index
+// and write it, with the new name, into the other (iss-2609290300313698).
+func readIndexIn(home string, dir *os.Root) (map[string]indexEntry, error) {
+	raw, refusal, err := fsutil.ReadHomeDeclarationDenyingIn(dir, home, indexRel, maxIndexBytes, 0o077)
+	return decodeIndex(raw, refusal, err)
+}
+
+// decodeIndex judges one read of the index and decodes what it read.
+func decodeIndex(raw []byte, refusal fsutil.DeclarationRefusal, err error) (map[string]indexEntry, error) {
 	var mode *fsutil.DeclarationModeError
 	switch {
 	case refusal == fsutil.DeclarationOK:
@@ -446,9 +468,10 @@ var indexLockTimeout = 5 * time.Second
 // setIndex adds e under name to the index, or, with dryRun, judges the write
 // (the scanner included) without making it. The caller, Set, holds the index's
 // lock across the read, the scan and the write, and passes dir, ~/.abcd as its
-// walk created, judged and opened it; the write goes through that descriptor.
+// walk created, judged and opened it; the read and the write both go through
+// that descriptor.
 func setIndex(home string, dir *os.Root, name string, e indexEntry, dryRun bool) error {
-	idx, err := readIndex(home)
+	idx, err := readIndexIn(home, dir)
 	if err != nil {
 		return err
 	}
