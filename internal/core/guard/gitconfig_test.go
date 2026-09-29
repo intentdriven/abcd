@@ -163,12 +163,12 @@ func TestEachBangAliasBodyGetsItsOwnChainRange(t *testing.T) {
 	}{
 		{
 			"a cd in one bang body does not reach an rm in another",
-			`git -c alias.a='!cd /tmp' a && git -c alias.b='!rm -rf .' b`,
+			`git -c alias.a='!cd /tmp' a && git -c alias.b='!rm -rf ./build' b`,
 			VerdictAllow, "",
 		},
 		{
 			"the sh -c twin, which already read it that way",
-			`sh -c 'cd /tmp' && sh -c 'rm -rf .'`,
+			`sh -c 'cd /tmp' && sh -c 'rm -rf ./build'`,
 			VerdictAllow, "",
 		},
 		{

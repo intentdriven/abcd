@@ -937,7 +937,9 @@ An unquoted brace group IS
 expanded as bash expands it, and one past 4096 words is blocked. What an
 allow still does not see is a hazard that never reaches command position at
 all: a word that is wholly a `$(…)` standing where a flag would be (read as
-an operand, the way a commit message or a branch is spelled), one launched
+an operand, the way a commit message or a branch is spelled), a delete
+target printed whole by one (`rm -rf $(echo /)`, read by its known text
+the way `rm -rf $(find …)` names its targets every day), one launched
 through a known
 wrapper carrying a value-taking flag the guard does not name (`sudo -u bob
 <hazard>` is seen; the bundled short form `sudo -Hu bob <hazard>` reaches
@@ -2096,7 +2098,7 @@ Cut a release, deriving its version and records from what shipped: Writes the CH
 
 ### `abcd lint`
 
-Check this repository against the conventions, every target included: Writes nothing; refuses with exit 2 on an error finding and exit 1 on warnings alone.
+Check this repository against the conventions, every target but outbound: Writes nothing; refuses with exit 2 on an error finding and exit 1 on warnings alone.
 
 **Usage:** `abcd lint [flags]`
 

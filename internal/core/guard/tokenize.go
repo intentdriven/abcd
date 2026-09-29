@@ -81,6 +81,16 @@ type segment struct {
 	// unknown.go), and a string handed to a shell carries the value's mark
 	// for the re-read to take as a variable's (payloadView).
 	variable map[int]string
+	// spelled records, per token index, a word holding a parameter
+	// expansion's mark as the line WROTE it: each variable's mark replaced by
+	// its expansion's text (`$HOME`, `${PWD}`; a simple name the next byte
+	// would extend is braced), every substitution's mark dropped, and a mark
+	// whose text is not known — a varMark carried into a payload's text —
+	// kept as unknownMark. Only an entry's arg_values read it
+	// (writtenOperand): every other reading takes the token, where the
+	// variable is the unknown word's mark (iss-2609290321312087). nil when no
+	// word holds a variable.
+	spelled map[int]string
 	// arrivals caches commandArrivals(tokens) once Check has its final
 	// segments (walked records that it is set), so the walk to command position
 	// is paid once per segment rather than once per entry. A segment built
@@ -373,6 +383,11 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		// substitution left their mark in it (addCur).
 		vars           map[int]string
 		curVar, curSub bool
+		// spells rides with the segment (segment.spelled); curVarAt records,
+		// for the word being built, where in cur each variable's mark stands
+		// and the expansion's text, "" where it is not known.
+		spells   map[int]string
+		curVarAt []varSite
 		// curMask is parallel to cur and records, per byte, whether it reached
 		// the tokenizer unquoted (wordStruct) and whether it began its word
 		// (wordRawStart) — what the brace expander needs to read a word the way
@@ -548,6 +563,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			case varMark:
 				c = unknownMark
 				curVar = true
+				curVarAt = append(curVarAt, varSite{at: len(cur)})
 			case unknownMark:
 				curSub = true
 			}
@@ -594,9 +610,31 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		}
 		vars[len(toks)] = text
 	}
-	// addVar leaves the mark of a parameter expansion where its value goes.
-	addVar := func() {
+	// addVar leaves the mark of a parameter expansion where its value goes,
+	// and records the expansion's text as the line wrote it (segment.spelled).
+	addVar := func(text string) {
 		addCur([]byte{varMark}, 0)
+		curVarAt[len(curVarAt)-1].text = text
+	}
+	// recordSpelling files the word being built under segment.spelled when a
+	// variable's mark is in it: word is the token it becomes, and whole
+	// reports that the token is cur as built, so each mark's place is known.
+	// A word whose marks cannot be placed — one brace expansion made, or one
+	// unknownFromOpenExpansion rewrote — is filed as unknownText, which no
+	// value names.
+	recordSpelling := func(word string, whole bool) {
+		if !curVar {
+			return
+		}
+		if spells == nil {
+			spells = map[int]string{}
+		}
+		switch {
+		case whole:
+			spells[len(toks)] = spellWritten(cur, curVarAt)
+		case isUnknown(word):
+			spells[len(toks)] = unknownText
+		}
 	}
 	flushToken := func() {
 		if !hasCur {
@@ -619,11 +657,13 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 				for _, w := range words {
 					recordFeeds()
 					recordVar(false)
-					toks = append(toks, unknownFromOpenExpansion(string(w.b)))
+					word := unknownFromOpenExpansion(string(w.b))
+					recordSpelling(word, false)
+					toks = append(toks, word)
 					globs = append(globs, w.globbed())
 				}
 				cur, curMask, hasCur, curGlob, curBrace = nil, nil, false, false, false
-				curPieces, curFeeds, curVar, curSub = nil, nil, false, false
+				curPieces, curFeeds, curVar, curSub, curVarAt = nil, nil, false, false, nil
 				return
 			}
 			braceGroup = true
@@ -641,7 +681,8 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		curPieces = nil
 		recordFeeds()
 		recordVar(true)
-		curFeeds, curVar, curSub = nil, false, false
+		recordSpelling(tok, tok == string(cur))
+		curFeeds, curVar, curSub, curVarAt = nil, false, false, nil
 		// An unquoted `{` or `}` in command position opens or closes a group.
 		if len(curMask) == 1 && curMask[0]&wordStruct != 0 && allReserved(toks) {
 			switch tok {
@@ -670,12 +711,13 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			segs = append(segs, segment{
 				tokens: toks, chain: chain, braceGroup: braceGroup, globbed: globsOrNil(globs),
 				stdinStream: curStdin || pipeNext || len(groupIn) > 0, literal: lits, feeds: feeds, piped: piped,
-				stdinIn: groupIn, home: list, at: len(segs), variable: vars,
+				stdinIn: groupIn, home: list, at: len(segs), variable: vars, spelled: spells,
 			})
 			toks = nil
 			globs = nil
 			lits = nil
 			vars = nil
+			spells = nil
 			feeds = nil
 			braceGroup = false
 			pipeNext = false
@@ -815,6 +857,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 	openSubstitution := func(kind parenKind, pos int, procSub bool) {
 		saved := &enclosing{
 			toks: toks, globs: globs, lits: lits, vars: vars, curVar: curVar, curSub: curSub,
+			spells: spells, curVarAt: curVarAt,
 			cur: cur, curMask: curMask, hasCur: hasCur, curGlob: curGlob,
 			curBrace: curBrace, braceGroup: braceGroup, chain: chain, procSub: procSub,
 			curStdin: curStdin, pipeNext: pipeNext, curDocs: curDocs, pieces: curPieces,
@@ -823,6 +866,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		}
 		toks, globs, lits, cur, curMask, hasCur, curGlob, curBrace, braceGroup = nil, nil, nil, nil, nil, false, false, false, false
 		curPieces, vars, curVar, curSub = nil, nil, false, false
+		spells, curVarAt = nil, nil
 		// A substitution is a command string of its own: its pipelines begin
 		// inside it. Its standard input is its command's: what was piped into
 		// the groups around it, and the pipe into the command it sits in
@@ -872,6 +916,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		curStdin, pipeNext, curDocs, curPieces = e.curStdin, e.pipeNext, e.curDocs, e.pieces
 		feeds, curFeeds, pipeFrom, braceFrom, groupIn = e.feeds, e.curFeeds, e.pipeFrom, e.braceFrom, e.groupIn
 		vars, curVar, curSub = e.vars, e.curVar, e.curSub
+		spells, curVarAt = e.spells, e.curVarAt
 		if !f.bare {
 			addCur([]byte(arithmeticOperand), 0)
 			// The number it prints is computed from what the substitutions
@@ -893,6 +938,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		curStdin, pipeNext, curDocs, curPieces = e.curStdin, e.pipeNext, e.curDocs, e.pieces
 		feeds, curFeeds, pipeFrom, braceFrom, groupIn = e.feeds, e.curFeeds, e.pipeFrom, e.braceFrom, e.groupIn
 		vars, curVar, curSub = e.vars, e.curVar, e.curSub
+		spells, curVarAt = e.spells, e.curVarAt
 		feedFrom(e.segStart)
 		if e.procSub {
 			addCur([]byte(procSubOperand), 0)
@@ -917,7 +963,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		start := len(segs)
 		expandedBody(body)
 		feedFrom(start)
-		addVar()
+		addVar("${" + body + "}")
 		if len(segs) > start {
 			curSub = true
 		}
@@ -1041,7 +1087,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 					continue
 				}
 				if k := simpleParamEnd(line, j+1); line[j] == '$' && k >= 0 {
-					addVar()
+					addVar(line[j:k])
 					j = k
 					continue
 				}
@@ -1365,9 +1411,10 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			// is not in the command line, so the word holds unknownMark where
 			// it goes (unknown.go), and `--$X` is a flag of unknown name as
 			// `--$(x)` is. A `$` that is quoted or escaped never reaches here.
-			addVar()
+			end := simpleParamEnd(line, i+1)
+			addVar(line[i:end])
 			lastList = false
-			i = simpleParamEnd(line, i+1)
+			i = end
 		case c == '$' && i+1 < len(line) && line[i+1] == '{':
 			// A `${…}` expansion, read as the double-quoted one is. One whose
 			// `}` is missing is a syntax error bash refuses, and stays text.
@@ -2049,6 +2096,8 @@ type enclosing struct {
 	vars       map[int]string
 	curVar     bool
 	curSub     bool
+	spells     map[int]string
+	curVarAt   []varSite
 	cur        []byte
 	curMask    []byte
 	hasCur     bool

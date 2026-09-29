@@ -200,9 +200,11 @@ func plainWord(w string) bool {
 // that the unknown-word rule must read as the word itself could be: the whole
 // word printed, its dash kept and its name printed, and its text glued to an
 // output that may be empty, and each of those printed through a parameter
-// expansion's default (`${X:-$(echo w)}`). Two spellings are the recorded residuals and are
-// not generated: a wholly-substituted word standing where a flag could be, and
-// a `+` refspec whose prefix a substitution prints.
+// expansion's default (`${X:-$(echo w)}`). Three spellings are the recorded residuals and are
+// not generated: a wholly-substituted word standing where a flag could be, a
+// `+` refspec whose prefix a substitution prints, and an operand an entry names
+// by its exact word (arg_values) printed whole by a substitution — the last
+// filtered by the caller, which knows the entry.
 func substitutionsOf(w string) []string {
 	glued := `"$(true)"` + w
 	switch {
@@ -250,7 +252,14 @@ func TestEverySubstitutionPositionKeepsTheVerdict(t *testing.T) {
 				if !plainWord(w) || (i > 0 && words[i-1] == "for") {
 					continue
 				}
-				for _, sub := range substitutionsOf(w) {
+				subs := substitutionsOf(w)
+				if containsWord(e.Pattern.ArgValues, w) {
+					// The arg_values residual: a target word printed whole by a
+					// substitution is read by its known text, so only the glued
+					// spelling keeps the verdict (argValueMatches).
+					subs = []string{`"$(true)"` + w}
+				}
+				for _, sub := range subs {
 					// Inside single quotes a payload is text until the program
 					// it is handed to reads it: a shell runs a substitution in
 					// it, and env -S never does, so a backtick there is literal
@@ -366,6 +375,15 @@ func unknownWrapperPrefixes() []string {
 		}
 	}
 	return out
+}
+
+func containsWord(xs []string, w string) bool {
+	for _, x := range xs {
+		if x == w {
+			return true
+		}
+	}
+	return false
 }
 
 func sortedEntryIDs(r Registry) []string {

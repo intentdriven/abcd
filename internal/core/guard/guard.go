@@ -78,6 +78,13 @@ type Pattern struct {
 	// leading `+` on the refspec is a force push by another name and Flags has
 	// nothing to look at.
 	ArgPrefixes []string `json:"arg_prefixes,omitempty"`
+	// ArgValues constrain an OPERAND to one exact word: some non-flag argument
+	// must be one of the listed words, compared by its known text. It is what
+	// separates `rm -rf /` and `rm -rf ~`, which destroy the machine or the
+	// home directory, from `rm -rf /tmp/build`, which a prefix could not tell
+	// apart. The words are compared as written, before the shell expands them:
+	// `$HOME` is the word `$HOME`, and `*` the word `*`.
+	ArgValues []string `json:"arg_values,omitempty"`
 	// MinOperands, when set, requires at least that many non-flag arguments
 	// (value_flags stepped over). It is what separates a kill BY PATTERN —
 	// `pkill make`, whose operand is the pattern — from `pkill -g 4242`, which
@@ -330,6 +337,17 @@ func validatePattern(id string, p Pattern) error {
 		// defang again, one field along. A flag belongs in Flags.
 		if strings.HasPrefix(prefix, "-") {
 			return fmt.Errorf("%w: entry %s argument prefix %q starts with a dash and could never match a non-flag argument", ErrInvalidEntry, id, prefix)
+		}
+	}
+	// An empty argument value matches an empty operand nobody meant, and a
+	// dashed one describes an operand nothing can be: the two defangs the
+	// prefix check above refuses, one field along.
+	for i, value := range p.ArgValues {
+		if strings.TrimSpace(value) == "" {
+			return fmt.Errorf("%w: entry %s argument value %d is empty and could never name a target", ErrInvalidEntry, id, i)
+		}
+		if strings.HasPrefix(value, "-") {
+			return fmt.Errorf("%w: entry %s argument value %q starts with a dash and could never match a non-flag argument", ErrInvalidEntry, id, value)
 		}
 	}
 	// A flag-value constraint with no flag, or with no accepted value, can
@@ -790,6 +808,7 @@ func clonePattern(p Pattern) Pattern {
 	out.ValueFlags = append([]string(nil), p.ValueFlags...)
 	out.Flags = append([]string(nil), p.Flags...)
 	out.ArgPrefixes = append([]string(nil), p.ArgPrefixes...)
+	out.ArgValues = append([]string(nil), p.ArgValues...)
 	out.ArgPaths = append([]PathArg(nil), p.ArgPaths...)
 	out.FlagValues = cloneFlagValues(p.FlagValues)
 	out.ArgsFrom = clonePatterns(p.ArgsFrom)

@@ -280,3 +280,21 @@ func TestSentenceChangesNamesEachRewordedVerb(t *testing.T) {
 		t.Fatalf("SentenceChanges(same, same) = %v, want none", again)
 	}
 }
+
+// TestBareLintSentenceNamesWhatTheBareRunLeavesOut — iss-2609282105240689. The
+// bare `abcd lint` runs every target that judges the repository and leaves the
+// outbound target out (repolint.DefaultRules carries no outbound rule, and the
+// lint chapter says so), so its one-line sentence may not claim every target,
+// and must name the one it leaves out.
+func TestBareLintSentenceNamesWhatTheBareRunLeavesOut(t *testing.T) {
+	s, ok := SentenceFor("abcd lint")
+	if !ok {
+		t.Fatal("no sentence for abcd lint")
+	}
+	if strings.Contains(s, "every target included") {
+		t.Errorf("the bare lint sentence claims every target, but the bare run leaves outbound out: %q", s)
+	}
+	if !strings.Contains(s, "outbound") {
+		t.Errorf("the bare lint sentence does not name the outbound target it leaves out: %q", s)
+	}
+}

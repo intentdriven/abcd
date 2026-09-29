@@ -109,7 +109,9 @@ func newGuardCommand(asJSON *bool) *cobra.Command {
 			"expanded as bash expands it, and one past 4096 words is blocked. What an\n" +
 			"allow still does not see is a hazard that never reaches command position at\n" +
 			"all: a word that is wholly a `$(…)` standing where a flag would be (read as\n" +
-			"an operand, the way a commit message or a branch is spelled), one launched\n" +
+			"an operand, the way a commit message or a branch is spelled), a delete\n" +
+			"target printed whole by one (`rm -rf $(echo /)`, read by its known text\n" +
+			"the way `rm -rf $(find …)` names its targets every day), one launched\n" +
 			"through a known\n" +
 			"wrapper carrying a value-taking flag the guard does not name (`sudo -u bob\n" +
 			"<hazard>` is seen; the bundled short form `sudo -Hu bob <hazard>` reaches\n" +

@@ -2048,7 +2048,7 @@
       "hidden": false,
       "group": "checks",
       "block": "people",
-      "sentence": "Check this repository against the conventions, every target included: Writes nothing; refuses with exit 2 on an error finding and exit 1 on warnings alone.",
+      "sentence": "Check this repository against the conventions, every target but outbound: Writes nothing; refuses with exit 2 on an error finding and exit 1 on warnings alone.",
       "flags": [
         {
           "name": "root",
