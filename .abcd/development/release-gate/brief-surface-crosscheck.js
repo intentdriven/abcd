@@ -66,7 +66,14 @@ const surfFindings = input.surfaces.map(s => () => agent(
 //     hand. When given, no checker is spawned and the merge below runs over
 //     them, so a hand-run calls the merge rather than re-typing it.
 // The bound changes when checkers run, never which ones or with what prompt.
-const bound = Number.isInteger(input.concurrency) && input.concurrency > 0 ? input.concurrency : 0
+// A concurrency that is present but not a positive integer (the string "3", 0,
+// 2.5) is refused rather than read as absent: read as absent it would start
+// every checker at once, the unbounded run the caller passed a bound to avoid.
+if (input.concurrency !== undefined && input.concurrency !== null &&
+    !(Number.isInteger(input.concurrency) && input.concurrency > 0)) {
+  throw new Error(`concurrency must be a positive integer, got ${JSON.stringify(input.concurrency)}`)
+}
+const bound = input.concurrency ?? 0
 const runBounded = async (thunks, n) => {
   if (!n || n >= thunks.length) return parallel(thunks)
   const out = []
@@ -74,10 +81,17 @@ const runBounded = async (thunks, n) => {
   return out
 }
 // mergeFindings is the one merge: dedup on `where` plus the first sixty
-// characters of `claim`, first occurrence kept, tallied by class.
+// characters of `claim`, first occurrence kept, tallied by class. A result
+// without a `discrepancies` array is refused by name rather than skipped: a
+// skipped entry would read as a checker that found nothing.
 const mergeFindings = results => {
   const merged = []
   const seen = new Set()
+  results.forEach((r, i) => {
+    if (!Array.isArray(r.discrepancies)) {
+      throw new Error(`checker result ${i} (item ${JSON.stringify(r.item)}) has no discrepancies array`)
+    }
+  })
   for (const r of results) for (const d of r.discrepancies) {
     const k = `${d.where}|${d.claim.slice(0,60)}`
     if (seen.has(k)) continue

@@ -165,7 +165,10 @@ ride beside the manifest in the invocation's arguments without touching the
 file or its hash: `concurrency`, a positive integer bounding how many checkers
 run at once (a run under an agent ceiling passes its own), and `results`, an
 array of hand-gathered checker returns that the script merges without spawning
-any checker, so a hand-run uses the script's own dedup rather than a copy.
+any checker, so a hand-run uses the script's own dedup rather than a copy. The
+script refuses a `concurrency` that is present but not a positive integer, and
+a result without a `discrepancies` array, naming the value or the entry, rather
+than running unbounded or reading the entry as a clean checker.
 
 Pinning fixes the inputs, not the findings. The checkers are LLM agents, so two
 runs of one tier over byte-identical inputs return different findings: three
