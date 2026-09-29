@@ -80,6 +80,9 @@ count on a live development machine.
 
 `SessionStart` and `PreCompact` clear the per-session dedup ledger, so a matched
 domain re-injects on the next prompt (the event-driven refresh that recovers
-after compaction). Within a session the hook does not re-inject unchanged rules.
+after compaction). Within a session a domain that stays in force is never
+re-injected unchanged; one that leaves the active set (deleted, renamed, made
+dormant, or a `*<DOMAIN>` activation the next prompt does not repeat) is
+injected again when it returns.
 
 For internals see `.abcd/development/brief/05-internals/03-configuration.md`.

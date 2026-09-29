@@ -581,7 +581,14 @@ turn it leaves the active set, so if it comes back its text is injected again
 the next time a prompt matches it, even when its rules are unchanged. A client
 that pruned it gets it back, and a host that appends to a transcript pays one
 re-render of that domain for the round trip; a domain that stays in force is
-still never re-injected unchanged within a session.
+still never re-injected unchanged within a session. The plain path meets this
+in two cases:
+
+- a domain whose `rules.json` entry is deleted, renamed or made dormant and
+  later restored is rendered again the next time a prompt matches it;
+- a dormant domain activated with `*NAME` is in force for that prompt alone, so
+  a prompt without the prefix drops it from the set, and the next `*NAME`
+  renders it again, with no edit to `rules.json`.
 
 ## The rules root — which `.abcd/` governs a session
 
