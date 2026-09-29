@@ -266,8 +266,8 @@ or removed without the same edit here fails the record gate.
 
 **This documentation lives here rather than in `commands/README.md` because the
 loader registers every markdown file under `commands/` as a slash command** — with
-no frontmatter requirement and no name exemption, as `agents/README.md`
-registering as an agent independently shows (iss-110). A readme beside the verbs
+no frontmatter requirement and no name exemption, exactly as the agent loader
+treats `agents/` (iss-110). A readme beside the verbs
 is therefore a spurious `/abcd:README` on every installed surface (iss-160), and
 the only reliable fix is a home outside the auto-discovery root.
 

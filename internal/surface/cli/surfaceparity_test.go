@@ -103,6 +103,39 @@ func TestPluginCommandSurfaceRegistersOnlyCommands(t *testing.T) {
 	}
 }
 
+// pluginAgentsDir is the plugin's agent auto-discovery root.
+const pluginAgentsDir = "agents"
+
+// TestPluginAgentSurfaceRegistersOnlyAgents is the iss-110 detector, the agent
+// half of the iss-160 one above. A harness registers every markdown file at the
+// top of agents/ as an agent, with no frontmatter requirement and no name
+// exemption, so a README or a changelog kept there shows up as a spurious
+// abcd:README or abcd:CHANGELOG agent that nothing can dispatch. Every markdown
+// file there must therefore be a prompt: it opens a frontmatter block that
+// names itself after its file.
+func TestPluginAgentSurfaceRegistersOnlyAgents(t *testing.T) {
+	dir := filepath.Join(testRepoRoot(), pluginAgentsDir)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("reading the plugin agent surface %s: %v", pluginAgentsDir, err)
+	}
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".md") {
+			continue
+		}
+		raw, err := os.ReadFile(filepath.Join(dir, e.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := "---\nname: " + strings.TrimSuffix(e.Name(), ".md") + "\n"
+		if !strings.HasPrefix(strings.ReplaceAll(string(raw), "\r\n", "\n"), want) {
+			t.Errorf("%s/%s registers as an agent, but it is not a prompt that names itself (%q): the "+
+				"loader reads every markdown file here as one (iss-110). Documentation of this "+
+				"directory belongs outside the auto-discovery root", pluginAgentsDir, e.Name(), want)
+		}
+	}
+}
+
 // TestPluginSurfaceReachesEveryBinaryVerb is the iss-44 parity check proper:
 // every verb and sub-verb the binary registers is either named by its command
 // file or carries a scoping note here. `ahoy` is the instance that motivated it

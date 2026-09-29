@@ -30,7 +30,7 @@ so the per-file rules do not reach it; this rule walks the tree directly from th
 non-markdown files, and the README and changelog stems. It is configured as a
 blocker, so it runs on every `make record-lint`, every `make preflight` and the CI
 record gate. The operator-facing statement of the same contract is
-[`agents/README.md`](../../../../agents/README.md).
+[`agents/README.md`](../../agents/README.md) in the durable record.
 
 What it enforces on every invocation:
 
@@ -45,7 +45,8 @@ What it enforces on every invocation:
 - On the same prompt: `agents/<name>/fixtures/injection-canary.json`, present, a
   regular file and non-empty. An empty file or a symlink is refused, because a
   canary that asserts nothing reports the contract met without testing it.
-- A `### <agent> <version>` entry in `agents/CHANGELOG.md` for every prompt's
+- A `### <agent> <version>` entry in the prompt-version log,
+  [`agents/CHANGELOG.md`](../../agents/CHANGELOG.md) in the durable record, for every prompt's
   current version. This half needs no git, so a new prompt with no entry and a
   bumped version with no entry both fail.
 
@@ -97,7 +98,7 @@ gated on the research files besides, which do not exist for any shipped agent.
 ## The itd-5 additions
 
 - **`prompt_version` frontmatter (ships).** Every prompt carries a semver, and
-  `agents/CHANGELOG.md` records each bump with a one-line rationale. A new prompt
+  The prompt-version log (`.abcd/development/agents/CHANGELOG.md`) records each bump with a one-line rationale. A new prompt
   normally starts at `0.1.0`; the four review and research prompts enter the
   changelog at `0.2.0` instead, the bump that first gave them the untrusted-input
   contract. Bump rules, semver-adapted: MAJOR for a behaviour-breaking output

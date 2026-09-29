@@ -147,7 +147,7 @@ check-attribution:
 # concepts, lifecycle or reference breakage) fails preflight and CI.
 #
 # `-agent-diff` arms agent_contract's unbumped-edit check — a changed agent
-# prompt must bump its prompt_version and add its agents/CHANGELOG.md entry —
+# prompt must bump its prompt_version and add its prompt-version log entry —
 # over the branch's own changes, the merge-base range `origin/main...HEAD`. CI's
 # step passes the same three-dot range from its base commit. Unarmed, the check
 # is a no-op, and a prompt edit passed three green preflights to be refused in
