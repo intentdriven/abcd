@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
-	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // redactIntentText sanitises caller-supplied free text bound for a committed
@@ -84,14 +83,10 @@ func newIntentRedactor(repoRoot string) (intentRedactor, error) {
 // to find the fault, so it is kept and redacted rather than described
 // (iss-2609290144116254).
 //
-// The detector is built on the refusal path alone, and it FAILS CLOSED the way
-// newIntentRedactor does: a scanner that cannot be built, or runs degraded,
-// leaves the text described and never echoed.
+// It is scanner.RedactRefusal, the one canonical refusal redactor (canonical
+// patterns, then the literal sweep of the caller's home), followed by oneLine's
+// cap. It FAILS CLOSED the way newIntentRedactor does: a scanner that cannot be
+// built, or runs degraded, leaves the text described and never echoed.
 func redactRefused(repoRoot, s string) string {
-	redact, err := newIntentRedactor(repoRoot)
-	if err != nil {
-		return termsafe.DescribeRefused(s)
-	}
-	out, _ := redact(s)
-	return oneLine(out)
+	return oneLine(scanner.RedactRefusal(repoRoot, s))
 }
