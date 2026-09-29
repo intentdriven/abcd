@@ -9,6 +9,14 @@ found_during: "adversarial-review"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/rules/root.go"
+resolution: "The entry match, the refusal-to-reason switch and resolveOrClean are lifted into fsutil.HomeDeclarationNames; the rules and history readers call it and keep only their wording. The five file checks were already lifted into ReadHomeDeclaration at the base (iss-2609091927085132)."
+impact: internal
+resolved_by:
+  commit: "cd89fa4536c529ecda0d640f8347e5287e497c2f"
 ---
 
 The user-scope declaration reader now exists twice, hand-kept: trustedRootDeclared in the rules resolver and localDeclared in the transcript-store locator run the same five checks in the same order, an lstat for a regular file, a refusal of group or world write, a requirement that the caller own it, a read through the guarded reader under a byte cap, and a comparison of each absolute entry against the target in both its written and its symlink-resolved spelling under the platform fold. Each also carries its own ignored-declaration renderer and its own verbatim copy of resolveOrClean. They have already diverged in one place: the rules copy owns a local ownership seam so a test can force a foreign uid, and the history copy calls the canonical lookup directly, so the refusal branch is provable in one package and not in the other. It matters because this is a trust boundary whose next hardening, a caller-owned parent requirement or a same-file re-check between the ownership stat and the read, will land in whichever copy the fixer happens to be looking at, and the omission compiles green in both. Fix direction: lift the reader into one primitive taking the declaration location and the value to match and returning the verdict plus the ignored-declaration reason, and have both packages call it. Detector: a change to the declaration reader checks must be visible to both callers through one definition, so a test that removes a check fails in both packages.
+
+## Grounds
+
+- pursued: both callers answer every declaration identically through one definition; a second copy of the match reappearing in either package, or a mutation of the primitive passing the rules or history fold tests, would show it wrong

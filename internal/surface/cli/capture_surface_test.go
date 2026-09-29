@@ -1575,7 +1575,9 @@ func TestCaptureWontfixRefusesALockedBody(t *testing.T) {
 	if err == nil {
 		t.Fatal("wontfix over a locked body acted, want a refusal")
 	}
-	for _, frag := range []string{"HTML comment", "body line 2", "text editor", "re-run", "nothing written"} {
+	// The captured prose is the first line of the body the ledger reader
+	// renders; line 2 was the off-by-one count of iss-2608301908288212.
+	for _, frag := range []string{"HTML comment", "body line 1,", "text editor", "re-run", "nothing written"} {
 		if !strings.Contains(err.Error(), frag) {
 			t.Fatalf("the refusal does not name %q: %v", frag, err)
 		}

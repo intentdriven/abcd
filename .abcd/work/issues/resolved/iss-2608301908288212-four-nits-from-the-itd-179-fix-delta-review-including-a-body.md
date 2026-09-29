@@ -7,6 +7,10 @@ category: "tech-debt"
 source: "user-observation"
 found_during: "itd-179-fix-delta-ruthless"
 found_at: "internal/core/grounds/record.go"
+resolution: "All seven nits fixed: rendered-body line numbers, corrected Body/ParseGrounds doc claims, depth-free two-headings refusal naming each heading's line, one blank line above a section in a frontmatter-only record, the writer's opener on line 0 as every reader requires, and clipped quotes."
+impact: internal
+resolved_by:
+  commit: "0118ba198a36cf41e3794b45986d1084f184aba2"
 ---
 
 four nits from the itd-179 fix delta review including a body line offset that is one ahead of the rendered body
@@ -47,3 +51,6 @@ reviews converged on it.
    256 KiB, so the refusal's `%q` can quote an arbitrarily long body line into an
    error string. Cosmetic.
 
+## Grounds
+
+- pursued: every append refusal now names a line an operator finds in the body the reader renders and quotes it bounded; a refusal naming the line below the opener, or the writer accepting a leading-blank record, would show it wrong
