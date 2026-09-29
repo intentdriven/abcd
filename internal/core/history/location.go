@@ -223,7 +223,7 @@ func localDeclared(repoRoot string) (bool, string) {
 	case fsutil.DeclarationOK:
 	case fsutil.DeclarationAbsent:
 		return false, "" // no declaration is the ordinary case, not a diagnostic.
-	case fsutil.DeclarationBehindSymlink:
+	case fsutil.DeclarationBehindSymlink, fsutil.DeclarationDirectoryExposed:
 		return false, ignoredDeclaration(termsafe.Sanitize(err.Error()))
 	case fsutil.DeclarationNotRegular:
 		return false, ignoredDeclaration("it is not a regular file")

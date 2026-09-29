@@ -145,6 +145,11 @@ const (
 	// reader denies — a secret group or other can read
 	// (ReadHomeDeclarationDenying only). The error is a *DeclarationModeError.
 	DeclarationExposed
+	// DeclarationDirectoryExposed: the file is there, but a directory between
+	// the home and it (~/.abcd first) can be written by every account or is
+	// owned by another (ReadHomeDeclaration only). The error is a
+	// *HomeScopeExposedError naming the directory.
+	DeclarationDirectoryExposed
 )
 
 // ErrDeclarationWritable and ErrDeclarationForeignOwner are the two guards that
