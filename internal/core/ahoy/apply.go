@@ -65,6 +65,19 @@ func install(cwd string, opts InstallOptions, p Prompter) (InstallResult, error)
 		return InstallResult{Status: "refused", Notes: []string{reason}}, nil
 	}
 
+	// itd-111 refusal: a binary that is stale against its own source tip, or
+	// whose vintage cannot be determined, must not run stale install logic
+	// against the machine — the trap the evidence session (iss-228) fell into.
+	// The check is disk-only; an explicit --allow-stale-binary override proceeds.
+	// It sits before the adoption question and before resolveInstallTarget, whose
+	// --bin-dir writability probe creates and removes a temp file, so a refusal
+	// asks nothing and touches nothing (AC2, iss-2609291942529461).
+	if !opts.AllowStaleBinary {
+		if reason := staleBinaryRefusal(currentVintage(), abs); reason != "" {
+			return InstallResult{Status: "refused", Notes: []string{reason}}, nil
+		}
+	}
+
 	// Adoption gate for an unmanaged repo.
 	adopted := false
 	if det.FolderKind == UnmanagedRepo {
@@ -147,18 +160,6 @@ func install(cwd string, opts InstallOptions, p Prompter) (InstallResult, error)
 		binTarget:   binTargetPath,
 		attribution: opts.Attribution,
 		confirmTool: opts.ConfirmTool,
-	}
-
-	// itd-111 refusal: a binary that is stale against its own source tip, or
-	// whose vintage cannot be determined, must not run stale install logic
-	// against the machine — the trap the evidence session (iss-228) fell into.
-	// The check is disk-only; an explicit --allow-stale-binary override proceeds.
-	// It sits before the first apply step so nothing is written on a refusal.
-	if !opts.AllowStaleBinary {
-		if reason := staleBinaryRefusal(currentVintage(), abs); reason != "" {
-			ac.refuse(reason)
-			return InstallResult{Status: "refused", Notes: ac.notes}, nil
-		}
 	}
 
 	// Ordered apply steps.
@@ -264,8 +265,10 @@ func resolveInstallTarget(opts InstallOptions, pluginRoot string) (string, error
 	if err != nil {
 		return "", fmt.Errorf("abcd ahoy install: --bin-dir %s is not a usable path: %w", opts.BinDir, err)
 	}
-	// Probe writability without creating anything: the directory is created by
-	// the apply step, under the same approval as every other write.
+	// Probe writability without creating the directory: dirWritable creates and
+	// removes one temp file in it (or in its nearest existing parent), and the
+	// directory itself is created by the apply step, under the same approval as
+	// every other write. install runs the stale-binary refusal before this probe.
 	probe, existing := dir, false
 	if fi, serr := os.Stat(dir); serr == nil {
 		if !fi.IsDir() {
