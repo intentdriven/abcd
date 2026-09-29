@@ -40,17 +40,19 @@ type gluedSweep struct {
 	patterns  []Pattern
 	probes    []matcher
 	junctions junctionSet
-	// complete is false when a pattern's boundary-free form would not compile.
+	// unbuilt names each pattern whose boundary-free form would not compile.
 	// The sweep then runs the patterns it could build — never narrower than
-	// the bounded scan alone — and a caller that must never echo a token fails
-	// closed on it (RedactRefusal).
-	complete bool
+	// the bounded scan alone — and New reports the gap as a degraded scanner
+	// (Unavailable), so every write-time redactor, the launch scan and
+	// RedactRefusal fail closed on it rather than trust a narrower sweep
+	// (iss-2609290743362554).
+	unbuilt []string
 }
 
 // newGluedSweep builds the sweep for a pattern set.
 func newGluedSweep(patterns []Pattern) gluedSweep {
-	glued, complete := gluedPatterns(patterns)
-	g := gluedSweep{patterns: glued, complete: complete}
+	glued, unbuilt := gluedPatterns(patterns)
+	g := gluedSweep{patterns: glued, unbuilt: unbuilt}
 	if len(glued) == 0 {
 		return g
 	}
@@ -88,8 +90,8 @@ func (g gluedSweep) findings(line string, lineno int, file string) []Finding {
 }
 
 // gluedFindings runs the sweep alone over text, line by line — the raw line
-// and each of its decoded views, as scanText runs it; ok is the sweep's
-// completeness. The cost guard and the fail-closed test read it.
+// and each of its decoded views, as scanText runs it; ok is false when a
+// pattern's boundary-free form could not be built. The cost guard and the fail-closed test read it.
 func gluedFindings(text string, patterns []Pattern, file string) (findings []Finding, ok bool) {
 	g := newGluedSweep(patterns)
 	for i, line := range strings.Split(text, "\n") {
@@ -102,7 +104,7 @@ func gluedFindings(text string, patterns []Pattern, file string) (findings []Fin
 			findings = append(findings, viewTokenFindings(g.patterns, g.probes, g.junctions, line, v, i+1, file)...)
 		}
 	}
-	return findings, g.complete
+	return findings, len(g.unbuilt) == 0
 }
 
 // gluedPatterns is the sweep's pattern set: every hard_fail secret pattern
@@ -110,9 +112,8 @@ func gluedFindings(text string, patterns []Pattern, file string) (findings []Fin
 // that one anchor. A pattern that does not open on \b is left out: its bounded
 // form already matches a glued token in ScanText. A boundary-free form that will
 // not compile (a configured pattern whose \b carries a quantifier) is left out
-// and reported: ok is false, never a silently narrower set.
-func gluedPatterns(patterns []Pattern) (out []Pattern, ok bool) {
-	ok = true
+// and named in unbuilt, never a silently narrower set.
+func gluedPatterns(patterns []Pattern) (out []Pattern, unbuilt []string) {
 	for _, p := range secretPatterns(patterns) {
 		src := p.Re.String()
 		flags := leadingFlagGroup.FindString(src)
@@ -121,11 +122,11 @@ func gluedPatterns(patterns []Pattern) (out []Pattern, ok bool) {
 		}
 		re, err := regexp.Compile(flags + src[len(flags)+len(`\b`):])
 		if err != nil {
-			ok = false
+			unbuilt = append(unbuilt, p.Name)
 			continue
 		}
 		p.Re = re
 		out = append(out, p)
 	}
-	return out, ok
+	return out, unbuilt
 }

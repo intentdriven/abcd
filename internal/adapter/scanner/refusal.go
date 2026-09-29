@@ -28,10 +28,8 @@ func RedactRefusal(repoRoot, text string) string {
 	if err != nil {
 		return termsafe.DescribeRefused(text)
 	}
+	// Unavailable covers a glued sweep New could not build whole.
 	if unavail, _ := sc.Unavailable(); unavail {
-		return termsafe.DescribeRefused(text)
-	}
-	if !newGluedSweep(sc.patterns).complete {
 		return termsafe.DescribeRefused(text)
 	}
 	out, _ := Redact(text, sc.ScanText(text, "refusal"))

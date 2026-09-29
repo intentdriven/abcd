@@ -100,3 +100,46 @@ func TestRedactRefusalSealsAnEscapedGluedToken(t *testing.T) {
 		})
 	}
 }
+
+// TestUnavailableNamesAnIncompleteGluedSweep — iss-2609290743362554. A
+// configured secret pattern whose leading \b carries a quantifier loads, but
+// the glued sweep cannot build its boundary-free form, so every ScanText
+// consumer ran a narrower sweep and only RedactRefusal knew. The scanner now
+// says so where every write-time redactor and the launch scan already look:
+// Unavailable, with a reason naming the pattern. A configured pattern the
+// sweep can build leaves the scanner available.
+func TestUnavailableNamesAnIncompleteGluedSweep(t *testing.T) {
+	for _, tc := range []struct {
+		name, regex string
+		degraded    bool
+	}{
+		{"quantified boundary", `\\b*zz[0-9]{8}`, true},
+		{"plain boundary", `\\bzz[0-9]{8}\\b`, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			writeFile(t, root, ".abcd/config/pii.json", `{ "patterns": { "zz_custom": { "regex": "`+tc.regex+`", "severity": "hard_fail" } } }`)
+			sc, err := New(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			degraded, reason := sc.Unavailable()
+			if degraded != tc.degraded {
+				t.Fatalf("Unavailable() = %v (%q), want %v", degraded, reason, tc.degraded)
+			}
+			if !tc.degraded {
+				return
+			}
+			if !strings.Contains(reason, "zz_custom") || !strings.Contains(reason, "glued") {
+				t.Errorf("the reason does not name the pattern and the sweep: %q", reason)
+			}
+			res, err := sc.ScanBundle(nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !res.Unavailable || res.UnavailableReason != reason {
+				t.Errorf("ScanBundle did not surface the degraded sweep: %+v", res)
+			}
+		})
+	}
+}

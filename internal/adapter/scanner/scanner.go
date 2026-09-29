@@ -275,12 +275,24 @@ func New(repoRoot string) (*Scanner, error) {
 		s.unavailReason = err.Error()
 		return s, nil
 	}
+	// A configured secret pattern the glued sweep cannot build (its leading \b
+	// carries a quantifier) leaves every ScanText narrower than the bundled
+	// set promises, and ScanText has no channel to say so. The scanner reports
+	// it here instead, where every write-time redactor and the launch scan
+	// already look (iss-2609290743362554).
+	if _, unbuilt := gluedPatterns(s.patterns); len(unbuilt) > 0 {
+		s.unavailable = true
+		s.unavailReason = "per-repo scanner config: the glued-token sweep cannot build a boundary-free form of pattern(s) " +
+			strings.Join(unbuilt, ", ") + " (a leading \\b with a quantifier); write the pattern with a plain leading \\b"
+		return s, nil
+	}
 	return s, nil
 }
 
 // Unavailable reports whether the scanner is in the fail-closed degraded state
-// (the per-repo config exists but is unreadable, invalid JSON, or carries a bad
-// override regex) and, if so, a human reason. A write-time redactor MUST consult
+// (the per-repo config exists but is unreadable, invalid JSON, carries a bad
+// override regex, or carries a secret pattern the glued-token sweep cannot
+// build) and, if so, a human reason. A write-time redactor MUST consult
 // this before trusting ScanText/Redact: unlike ScanBundle, those entry points
 // cannot signal degradation in-band, so a caller that skips this check would
 // sanitise with a silently weakened pattern set. Mirrors ScanBundle's guard.
