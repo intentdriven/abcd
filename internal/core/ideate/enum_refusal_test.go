@@ -29,7 +29,7 @@ func TestEnumRefusalsDoNotEchoTheValue(t *testing.T) {
 		mutate func(p map[string]any)
 		names  string
 	}{
-		"verdict": {func(p map[string]any) { p["verdict"] = enumLeak }, "verdict"},
+		"verdict":  {func(p map[string]any) { p["verdict"] = enumLeak }, "verdict"},
 		"leg kind": {func(p map[string]any) { legs(p, 0)["kind"] = enumLeak }, "leg 1"},
 		"claim status": {func(p map[string]any) {
 			legs(p, 0)["claims"].([]any)[0].(map[string]any)["status"] = enumLeak

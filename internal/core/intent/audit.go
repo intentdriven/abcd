@@ -1305,7 +1305,10 @@ func deadLetter(repoRoot string, it Intent, content, rcp string, raw []byte, rea
 	return IngestVerdictResult{
 		Status: "dead_letter", ReceiptID: rcp, IntentID: it.ID,
 		Conditions: len(untested), Untested: len(untested),
-		DeadLetterPath: dlRel, Reason: reason,
+		// The reason quotes the payload, and it reaches the terminal and the
+		// transcript from here, so it is redacted exactly as the record's copy
+		// is: a surface must not print what the record was protected from.
+		DeadLetterPath: dlRel, Reason: free(reason),
 		ReadingOccasionedStanding: occasionedStanding(updated),
 	}, nil
 }

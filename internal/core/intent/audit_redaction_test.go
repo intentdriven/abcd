@@ -315,3 +315,30 @@ func TestVerdictHashesAreValidatedShapes(t *testing.T) {
 			"so an unknown digest is empty rather than wrong", res.Status)
 	}
 }
+
+// TestDeadLetterReasonIsRedactedWhereItIsReturned — iss-2609290033521472. The
+// dead-letter RECORD redacts its reason, which quotes the payload, but the
+// result handed back to the surface carried the same reason raw, so the
+// terminal and the transcript got what the record was protected from.
+func TestDeadLetterReasonIsRedactedWhereItIsReturned(t *testing.T) {
+	root := identityRepo(t)
+	const rcp = "rcp-0123456789ab"
+	writeFile(t, root, shippedDir+"/itd-10-alpha.md", shippedWithMarker("itd-10", "alpha", "spc-1", "OWED", rcp))
+	var m map[string]any
+	if err := json.Unmarshal([]byte(leakyVerdict(t, rcp, "cond-2609021016272867")), &m); err != nil {
+		t.Fatal(err)
+	}
+	m["criteria"].([]any)[0].(map[string]any)["verdict"] = "MET on buildbox.local per Jonathan Kensington-Pryce at /Users/zzotherperson/x" // abcd-lint:allow — planted leak
+	raw, err := json.MarshalIndent(m, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := IngestVerdict(root, writeVerdict(t, root, string(raw)))
+	if err != nil {
+		t.Fatalf("IngestVerdict: %v", err)
+	}
+	if res.Status != "dead_letter" {
+		t.Fatalf("status = %q, want dead_letter", res.Status)
+	}
+	assertNoLeak(t, res.Reason)
+}
