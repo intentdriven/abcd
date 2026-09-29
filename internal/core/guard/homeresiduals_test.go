@@ -71,6 +71,39 @@ func TestHomeSpellingsTheWrittenCompareReads(t *testing.T) {
 		{`rm -rf ${HOME%/}/*`, bare | sq | dq, VerdictBlock, home},
 		{`rm -rf "${HOME%/}"/.*`, bare | sq, VerdictBlock, home},
 		{`rm -rf ${PWD%/}`, bare | sq, VerdictWarn, cwd},
+		// A subscript is read to its matching `]`, and what follows it that
+		// is no alternative can leave the value: bash 3.2, the /bin/sh and
+		// /bin/bash of macOS, prints the value past `${HOME[0]]}`,
+		// `${HOME[0]x}` and `${HOME[0]@Q}`. A subscript whose `]` never
+		// comes is spelled as the variable too.
+		{`rm -rf ${HOME[x[0]]}`, bare | sq | dq, VerdictBlock, home},
+		{`rm -rf ${HOME[x[0]]%/}`, bare | sq | dq, VerdictBlock, home},
+		{`rm -rf ${HOME[0]]}`, bare | sq | dq, VerdictBlock, home},
+		{`rm -rf ${HOME[a]]}`, bare | sq | dq, VerdictBlock, home},
+		{`rm -rf ${HOME[0]x}`, bare | sq | dq, VerdictBlock, home},
+		{`rm -rf ${HOME[0]@Q}`, bare | sq | dq, VerdictBlock, home},
+		{`rm -rf ${HOME[0}`, bare | sq | dq, VerdictBlock, home},
+		{`rm -rf ${HOME[$X]}`, bare | sq, VerdictBlock, home},
+		{`rm -rf ${HOME[0]:+/}`, bare | sq | dq, VerdictBlock, home},
+		// A sequence expression's letters are unquoted name bytes, which a
+		// bare name runs on into as it does into a list's.
+		{`rm -rf $HO{M..M}E`, bare | sq, VerdictBlock, home},
+		{`rm -rf $HOM{E..E}`, bare | sq, VerdictBlock, home},
+		{`rm -rf $H{O..O}ME`, bare | sq, VerdictBlock, home},
+		{`rm -rf $HO{M..N}E`, bare | sq, VerdictBlock, home},
+		{`rm -rf $HO{M..M}E/*`, bare | sq, VerdictBlock, home},
+		{`rm -rf $HOM{E..E}/.*`, bare | sq, VerdictBlock, home},
+		// An alternative prints its word or nothing, one text, so its word is
+		// spelled as written, through its own expansions.
+		{`rm -rf ${X:+/}`, bare | sq | dq, VerdictBlock, home},
+		{`rm -rf ${X:+/*}`, bare | sq | dq, VerdictBlock, home},
+		{`rm -rf ${X:+~}`, bare | sq | dq, VerdictBlock, home},
+		{`rm -rf ${X:+~/}`, bare | sq | dq, VerdictBlock, home},
+		{`rm -rf ${X:+$HOME/}`, bare | sq | dq, VerdictBlock, home},
+		{`rm -rf ${X:+$HOME/*}`, bare | sq | dq, VerdictBlock, home},
+		{`rm -rf ${X:+"$HOME"/}`, bare | sq, VerdictBlock, home},
+		{`rm -rf ${X:+${HOME%/}/.*}`, bare | sq | dq, VerdictBlock, home},
+		{`rm -rf ${X+$HOME/}`, bare | sq | dq, VerdictBlock, home},
 		// What stays off the home: a suffix glued on, a quoted value, a
 		// length, an indirection, an alternative that is not the home, and
 		// quoting that ends the name before the brace.
@@ -83,6 +116,12 @@ func TestHomeSpellingsTheWrittenCompareReads(t *testing.T) {
 		{`rm -rf ${HO}{ME,}`, bare | sq, VerdictAllow, ""},
 		{"rm -rf $HO\\ME", bare | sq, VerdictAllow, ""},
 		{`rm -rf {$OUT,x}/`, bare | sq, VerdictAllow, ""},
+		{`rm -rf ${X:+$HOME/x}`, bare | sq, VerdictAllow, ""},
+		{`rm -rf ${X:+$HOMEx}`, bare | sq, VerdictAllow, ""},
+		{`rm -rf ${X:+$HO}ME`, bare | sq, VerdictAllow, ""},
+		{`rm -rf ${X:+/}x`, bare | sq, VerdictAllow, ""},
+		{`rm -rf $HOME{1..2}`, bare | sq, VerdictAllow, ""},
+		{`rm -rf "$HO"{M..M}E`, bare | sq, VerdictAllow, ""},
 	}
 	for _, tc := range cases {
 		var spellings []string
@@ -136,6 +175,15 @@ func TestHomeSpellingsStayLinear(t *testing.T) {
 		}},
 		{"brace groups", func(n int) string {
 			return "rm -rf " + strings.Repeat("{$A,$HO}{ME,x}/ ", n/16)
+		}},
+		{"nested subscripts", func(n int) string {
+			return "rm -rf ${HOME" + strings.Repeat("[x", n/3) + strings.Repeat("]", n/3) + "}"
+		}},
+		{"alternative words", func(n int) string {
+			return "rm -rf " + strings.Repeat(`${X:+"$HOME"/${Y:+~/${Z:+\x$A}}} `, n/32)
+		}},
+		{"sequence terms", func(n int) string {
+			return "rm -rf " + strings.Repeat("$HO{M..M}E/ ", n/12)
 		}},
 		{"continued names", func(n int) string {
 			return "rm -rf $H" + strings.Repeat("\\\nO", n/3)

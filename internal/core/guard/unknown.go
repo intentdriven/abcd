@@ -143,7 +143,9 @@ func spellWritten(word []byte, sites []varSite, mask []byte) string {
 			b.WriteByte(unknownMark)
 			continue
 		}
-		if len(text) > 1 && text[1] != '{' {
+		// Only a simple name is braced: an alternative's word is spelled as
+		// written (`$HOME/`, `~`), and bracing that would change it.
+		if len(text) > 1 && text[0] == '$' && simpleParamEnd(text, 1) == len(text) {
 			next := p + 1
 			for next < len(word) && word[next] == unknownMark && !isVar(next) {
 				next++
@@ -180,13 +182,16 @@ func paramText(text string) string { return strings.ReplaceAll(text, "\\\n", "")
 //   - a substring (`${HOME:0}`), whose offset is arithmetic and can be 0;
 //   - a case change (`${HOME^^}`, `${HOME@U}`), which names the same directory
 //     on a case-insensitive disk, and `@E` and `@P`, which change no path;
-//   - a subscript before any of these (`${HOME[0]}`), which can be 0.
+//   - a subscript (`${HOME[0]}`, `${HOME[x[0]]}`), which can be 0, read to
+//     its matching `]`, with anything after it but an alternative: bash 3.2
+//     prints the value past any other text (`${HOME[0]]}`, `${HOME[0]@Q}`),
+//     and a subscript with no `]` cannot be read further.
 //
-// An alternative (`${X:+w}`, `${X+w}`) prints w or nothing, and is spelled as
-// w where w is itself one expansion, bare or double-quoted. Every other
-// expansion keeps its text as written and names no variable an entry names:
-// a length (`${#HOME}`), an indirection (`${!X}`), `@Q` and the other
-// transforms, and a default word that is not the variable's own value
+// An alternative (`${X:+w}`, `${X+w}`) prints w or nothing, one text, and is
+// spelled as w is written, through its own expansions (spellAlternative).
+// Every other expansion keeps its text as written and names no variable an
+// entry names: a length (`${#HOME}`), an indirection (`${!X}`), `@Q` and the
+// other transforms, and a default word that is not the variable's own value
 // (`${DIR:-$HOME}`), which is a recorded residual (17-guard.md).
 func spellParameter(body string) string {
 	return spellParameterAt(paramText(body), 0)
@@ -206,14 +211,26 @@ func spellParameterAt(body string, depth int) string {
 		return raw
 	}
 	name, rest := body[:n], body[n:]
+	same := "${" + name + "}"
 	if strings.HasPrefix(rest, "[") {
-		k := strings.IndexByte(rest, ']')
+		// The subscript runs to its matching `]`, and what follows it is read
+		// only for an alternative: bash 3.2, the /bin/sh and /bin/bash of
+		// macOS, prints the value past any other text (`${HOME[0]]}`,
+		// `${HOME[0]x}`, `${HOME[0]@Q}`), and a subscript that does not close
+		// can be read no further, so both are spelled as the variable.
+		k := subscriptEnd(rest)
 		if k < 0 {
-			return raw
+			return same
 		}
 		rest = rest[k+1:]
+		switch {
+		case strings.HasPrefix(rest, "+"):
+			return spellAlternative(rest[1:], raw, depth)
+		case strings.HasPrefix(rest, ":+"):
+			return spellAlternative(rest[2:], raw, depth)
+		}
+		return same
 	}
-	same := "${" + name + "}"
 	if rest == "" {
 		return same
 	}
@@ -238,29 +255,87 @@ func spellParameterAt(body string, depth int) string {
 	return raw
 }
 
-// spellAlternative is the spelling of an alternative whose word is w: w's
-// own, where w is one expansion (`$HOME`, `"${HOME%/}"`), else raw.
+// subscriptEnd returns the index of the `]` that closes the subscript opening
+// at s[0], counting the brackets nested in it (`[x[0]]`), or -1 where none
+// does.
+func subscriptEnd(s string) int {
+	depth := 0
+	for i := 0; i < len(s); i++ {
+		switch s[i] {
+		case '[':
+			depth++
+		case ']':
+			if depth--; depth == 0 {
+				return i
+			}
+		}
+	}
+	return -1
+}
+
+// spellAlternative is the spelling of an alternative whose word is w. An
+// alternative prints w or nothing, one text, so w is spelled as it is
+// written: its quotes and escapes removed, and each expansion in it a site
+// spelled as a word's own are (spellWritten), `${…}` through
+// spellParameterAt. `${X:+$HOME/}` is `$HOME/`, `${X:+/}` is `/` and
+// `${X:+"${HOME%/}"}` is `${HOME}`. A word holding a command substitution, a
+// quote that does not close or an expansion past spellAlternativeDepth, and a
+// word that spells to nothing, keep raw.
 func spellAlternative(w, raw string, depth int) string {
 	if depth >= spellAlternativeDepth {
 		return raw
 	}
-	if len(w) >= 2 && w[0] == '"' && w[len(w)-1] == '"' && strings.IndexByte(w[1:len(w)-1], '"') < 0 {
-		w = w[1 : len(w)-1]
+	var word []byte
+	var sites []varSite
+	budget := 4*len(w) + 16
+	dq := false
+	for i := 0; i < len(w); {
+		switch c := w[i]; {
+		case c == '"':
+			dq = !dq
+			i++
+		case c == '\\':
+			// Inside double quotes a backslash escapes only `$`, a
+			// backtick, `"` and itself, and stays text before any other.
+			if i+1 < len(w) && (!dq || strings.IndexByte("$`\"\\", w[i+1]) >= 0) {
+				i++
+			}
+			word = append(word, w[i])
+			i++
+		case c == '\'' && !dq:
+			k := strings.IndexByte(w[i+1:], '\'')
+			if k < 0 {
+				return raw
+			}
+			word = append(word, w[i+1:i+1+k]...)
+			i += k + 2
+		case c == '$' && i+1 < len(w) && w[i+1] == '{':
+			end := closingDolBrace(w, i+2, &budget)
+			if end < 0 {
+				return raw
+			}
+			sites = append(sites, varSite{at: len(word), text: spellParameterAt(w[i+2:end], depth+1)})
+			word = append(word, varMark)
+			i = end + 1
+		case c == '$':
+			end := simpleParamEnd(w, i+1)
+			if end < 0 {
+				return raw
+			}
+			sites = append(sites, varSite{at: len(word), text: w[i:end]})
+			word = append(word, varMark)
+			i = end
+		case c == '`':
+			return raw
+		default:
+			word = append(word, c)
+			i++
+		}
 	}
-	if len(w) < 2 || w[0] != '$' {
+	if dq || len(word) == 0 {
 		return raw
 	}
-	if w[1] == '{' {
-		budget := 4*len(w) + 16
-		if closingDolBrace(w, 2, &budget) != len(w)-1 {
-			return raw
-		}
-		return spellParameterAt(w[2:len(w)-1], depth+1)
-	}
-	if isNameByte(w[1]) && !(w[1] >= '0' && w[1] <= '9') && simpleParamEnd(w, 1) == len(w) {
-		return w
-	}
-	return raw
+	return spellWritten(word, sites, nil)
 }
 
 // isNameByte reports whether c can continue a shell variable's name.

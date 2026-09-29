@@ -325,8 +325,9 @@ in or the one above it (`*`, `*/`, `.`, `..`, `./*`, `./*/`, `../*`, `.*`,
 (`rm-rf-working-directory`). The target is compared as written, so `$HOME` and
 `$PWD` are seen as those words, and read the way bash reads its text first: a
 backslash-newline inside the name is dropped, a brace group's words keep their
-variables (`{$HOME,x}`), and an expansion that can leave the value as it is
-reads as the variable (`${HOME%/}`, `${HOME:-x}`, `${X:+$HOME}`).
+variables (`{$HOME,x}`, `$HO{M..M}E`), an expansion that can leave the value
+as it is reads as the variable (`${HOME%/}`, `${HOME:-x}`, `${HOME[0]}`), and
+an alternative reads as its word (`${X:+$HOME}`, `${X:+/}`).
 
 What an allow still does not see is a hazard that never reaches command position
 at all: a delete target printed whole by a substitution (`rm -rf $(echo /)`),

@@ -297,13 +297,17 @@ recursive forced delete blocks, as above. The target is compared as written,
 before the shell expands it, so `$HOME` and `$PWD` are seen as those words. It
 is first read the way bash reads its text: a backslash-newline inside a name
 is dropped (`$HO\⏎ME` is `$HOME`); each word a brace group makes keeps the
-variables its text holds (`{$HOME,x}`, `$HOME/{.*,}`, `$HO{ME,}`); and an
-expansion whose operator can leave the value as it is reads as the variable
-itself — a default, an assignment or an error message (`${HOME:-x}`), a trim
-or a pattern replacement (`${HOME%/}`, `${HOME#x}`, `${HOME/x/y}`), a
-substring, a case change and a subscript — as does an alternative whose word
-is one of these (`${X:+$HOME}`). A trim that leaves the path above the home
-(`${HOME%/*}`) blocks as the home does.
+variables its text holds, and a name runs on into the letters a list or a
+sequence places after it (`{$HOME,x}`, `$HOME/{.*,}`, `$HO{ME,}`,
+`$HO{M..M}E`); an expansion whose operator can leave the value as it is reads
+as the variable itself — a default, an assignment or an error message
+(`${HOME:-x}`), a trim or a pattern replacement (`${HOME%/}`, `${HOME#x}`,
+`${HOME/x/y}`), a substring, a case change, and a subscript read to its
+matching `]` with any text after it (`${HOME[x[0]]}`, `${HOME[0]]}`, which the
+bash 3.2 of macOS prints as the value); and an alternative, which prints its
+word or nothing, reads as that word as written (`${X:+$HOME}`, `${X:+/}`,
+`${X:+$HOME/*}`). A trim that leaves the path above the home (`${HOME%/*}`)
+blocks as the home does.
 
 What an allow still does not see is a hazard that never reaches command position
 at all: a word that is wholly a command substitution or a variable standing

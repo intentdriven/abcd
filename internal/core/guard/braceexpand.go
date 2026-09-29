@@ -370,9 +370,24 @@ func braceSequence(amble bword, lim *braceLimits) (out []bword, ok, valid bool) 
 		if lim.bytes -= len(text); lim.bytes < 0 {
 			return nil, false, true
 		}
-		out = append(out, bword{b: []byte(text), m: make([]byte, len(text))})
+		out = append(out, bword{b: []byte(text), m: seqMask(text)})
 	}
 	return out, true, true
+}
+
+// seqMask is the flags of one term a sequence expression prints: wordStruct
+// on its letters, digits and underscores, which the amble wrote unquoted and
+// a bare name directly before the group runs on into (`$HO{M..M}E` is
+// `$HOME`, as `$HO{ME,}` is), and nothing on any other byte, so a term such
+// as `[` from `{Z..a}` is never read as a glob.
+func seqMask(text string) []byte {
+	m := make([]byte, len(text))
+	for i := 0; i < len(text); i++ {
+		if isNameByte(text[i]) {
+			m[i] = wordStruct
+		}
+	}
+	return m
 }
 
 func isLetter(c byte) bool { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') }
