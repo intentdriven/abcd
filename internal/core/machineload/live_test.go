@@ -70,7 +70,7 @@ func TestEightConcurrentShortLivedProcessesDoNotWarn(t *testing.T) {
 			_ = c.Wait()
 		}
 		// Proven gone by what is running, never by the list of what was started.
-		snap, err := Read()
+		snap, err := readMachine(t)
 		if err != nil {
 			t.Errorf("re-reading after the cleanup: %v", err)
 			return
@@ -96,7 +96,7 @@ func TestEightConcurrentShortLivedProcessesDoNotWarn(t *testing.T) {
 	}
 	time.Sleep(500 * time.Millisecond)
 
-	snap, err := Read()
+	snap, err := readMachine(t)
 	if err != nil {
 		t.Fatalf("Read: %v", err)
 	}
