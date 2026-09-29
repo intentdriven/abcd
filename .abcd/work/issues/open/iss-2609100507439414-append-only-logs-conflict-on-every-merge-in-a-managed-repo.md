@@ -10,8 +10,8 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/work/DECISIONS.md, CHANGELOG.md (in a managed repo)"
 related_intents: [itd-2609151138388536]
-deferred_after: "v0.10.0"
-deferral_reason: "ruling owed to the product thinker (away; run A 2026-09-25): Decision log as a folder of records: convert, offer, or new-only for managed repos?"
+deferred_after: v0.11.1
+deferral_reason: "Promoted to itd-2609151138388536 (draft), and a promoted issue keeps its folder until the intent ships (commands/capture.md, promote). The product thinker's ruling M28 of 2026-09-23 plans it next cycle as its own intent. Owed: that planning interview, which opens on one question: for a managed repository's existing decision log, convert it, offer to convert it, or apply the folder of records to new entries only?"
 ---
 
 A managed repository's shared append-only files conflict on nearly every merge, and abcd propagates neither of the two remedies it has already adopted for itself.
@@ -50,3 +50,7 @@ recipe so the pattern is abcd's rather than each repository's.
 Same day, second session (gropiusllm-97): the two-session append to
 DECISIONS.md and NEXT.md held by convention only, and the ask is the same
 append-only `decide line` verb.
+
+## Deferral 2026-09-29
+
+Deferred past v0.11.1: Promoted to itd-2609151138388536 (draft), and a promoted issue keeps its folder until the intent ships (commands/capture.md, promote). The product thinker's ruling M28 of 2026-09-23 plans it next cycle as its own intent. Owed: that planning interview, which opens on one question: for a managed repository's existing decision log, convert it, offer to convert it, or apply the folder of records to new entries only?

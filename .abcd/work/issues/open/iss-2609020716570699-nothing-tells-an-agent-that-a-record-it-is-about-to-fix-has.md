@@ -10,8 +10,8 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/work/issues"
 related_intents: [itd-2609091416295622, itd-2609091416304128, itd-2609091034175565]
-deferred_after: "v0.10.0"
-deferral_reason: "ruling owed to the product thinker (away; run A 2026-09-25): Where does the claim signal's stop sit, and how is an abandoned claim told from a live one?"
+deferred_after: v0.11.1
+deferral_reason: "Promoted to itd-2609091034175565 (draft), and a promoted issue keeps its folder until the intent ships. The product thinker's ruling M20 of 2026-09-23 plans it next cycle; the interview answers the draft's open questions. Owed: that interview, which opens on one question: where does the claim signal's stop sit, and how is an abandoned claim told from a live one?"
 ---
 
 Nothing tells an agent that a record it is about to fix has been claimed or resolved by another session until the resolution gate refuses the push. In one night a peer session re-fixed two issues a paused branch also fixed, and two of its open PRs duplicate merged work. The claim signal that worked in every published multi-agent run is the repository itself: a claim written into the open record (claimed_by: account and harness, branch) and pushed alone through the queue before any fix starts, so a losing race is a push rejection; plus a duplicate-guard required check that fails a PR whose Resolves trailer names a record already resolved on origin/main; plus capture resolve refusing a record that is already terminal on the fetched origin/main. Folder membership is already the status signal, so the claim extends the one canonical primitive rather than adding a lock file that rots. Refines iss-2608220750029993.
@@ -33,3 +33,7 @@ have every ledger verb print which checkout's ledger it addressed. Note the
 same mechanism produced this batch's "not found in any bucket" diagnosis from
 `intent audit`, which at v0.9.0 does distinguish a draft from a never-minted id
 in the same checkout; what it cannot see is a record on another worktree.
+
+## Deferral 2026-09-29
+
+Deferred past v0.11.1: Promoted to itd-2609091034175565 (draft), and a promoted issue keeps its folder until the intent ships. The product thinker's ruling M20 of 2026-09-23 plans it next cycle; the interview answers the draft's open questions. Owed: that interview, which opens on one question: where does the claim signal's stop sit, and how is an abandoned claim told from a live one?
