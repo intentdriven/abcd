@@ -5,8 +5,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-
-	"github.com/intentdriven/abcd/internal/core/frontmatter"
 )
 
 // rewriteIssue re-reads an issue file, applies fn to its text and writes it
@@ -72,7 +70,10 @@ func openFence(t *testing.T, ir, issID string) {
 // message alone. It is deliberately body-relative rather than file-relative: the
 // triage verbs append after setting their note field, so by then the content
 // carries frontmatter lines the record on disk does not, and a file-relative
-// number would name a line the operator's own copy does not have.
+// number would name a line the operator's own copy does not have. It is counted
+// in the body the ledger's own reader renders, which drops the blank separator
+// below the frontmatter; counted in frontmatter.Split's body instead, the
+// number named the line below the fence (iss-2608301908288212).
 func fenceBodyLine(t *testing.T, ir, issID string) int {
 	t.Helper()
 	path, _, err := findIssue(ir, issID)
@@ -83,7 +84,10 @@ func fenceBodyLine(t *testing.T, ir, issID string) int {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, body := frontmatter.Split(string(data))
+	_, body, err := parseFrontmatterAndBody(string(data))
+	if err != nil {
+		t.Fatal(err)
+	}
 	for i, ln := range strings.Split(body, "\n") {
 		if strings.HasPrefix(ln, "```") {
 			return i + 1

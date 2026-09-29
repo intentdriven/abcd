@@ -25,6 +25,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
 	"github.com/intentdriven/abcd/internal/core/mdrecord"
+	"github.com/intentdriven/abcd/internal/core/mdrender"
 )
 
 // Body returns the part of a record FILE the `## Grounds` section lives in —
@@ -37,8 +38,11 @@ import (
 // skips and an ATX heading pattern matches. Writer and reader could then agree
 // an entry had landed while disagreeing about where (iss-2608301805069999).
 //
-// A text that carries no frontmatter is already a body and comes back unchanged,
-// which is what lets a caller holding either shape ask.
+// Hand it the record FILE. A text with no opening delimiter comes back whole,
+// but that is not a licence to pass a bare body: a body that opens with a
+// thematic break (`---`) reads as a frontmatter opener, and everything down to
+// the next such line is taken as frontmatter and dropped, the section with it
+// (iss-2608301908288212).
 func Body(content string) string {
 	_, body := frontmatter.Split(content)
 	return body
@@ -226,10 +230,7 @@ func AppendToRecord(content string, g Grounds) (string, error) {
 	// report has nowhere to raise this, so the refusal lives at the write.
 	bodyLines := strings.Split(body, "\n")
 	if n := mdrecord.CountHeadings(bodyLines, mdrecord.Mask(bodyLines), headingRe); n > 1 {
-		return "", fmt.Errorf(
-			"the record's body carries %d live `## %s` headings and the reader takes the first, so "+
-				"entries under the others are invisible to every surface; merge them into one section "+
-				"before recording another; nothing written", n, Heading)
+		return "", ambiguousRefusal(body, n)
 	}
 	updated := appendBullet(body, g)
 	if want, got := len(ParseSection(body))+1, len(ParseSection(updated)); got != want {
@@ -258,8 +259,8 @@ func AppendToRecord(content string, g Grounds) (string, error) {
 // the hand edit the 2026-08-31 ruling accepted: close or remove the opener in a
 // text editor, then re-run the verb (iss-2608301908270888).
 //
-// The line is counted from the start of the BODY, and the opener's own text is
-// quoted beside it. A file-relative number would be wrong: the triage verbs
+// The line is counted from the start of the BODY as a reader renders it
+// (bodyLine), and the opener's own text is quoted beside it. A file-relative number would be wrong: the triage verbs
 // append after setting their note field, so the content in hand carries
 // frontmatter lines the record on disk — the one the operator opens, since
 // nothing is written — does not. The body is what those writes leave alone, so a
@@ -273,11 +274,51 @@ func readBackRefusal(body string, got, want int) error {
 				"to end of file, so every line below it — the appended entry included — is masked and "+
 				"does not read back. Close it or remove it in a text editor, then re-run; the grounds text is "+
 				"not the fault; nothing written",
-			maskConstruct(flag), i+1, strings.TrimRight(lines[i], "\r"))
+			maskConstruct(flag), bodyLine(body, i), quotedLine(lines[i]))
 	}
 	return fmt.Errorf(
 		"the appended grounds entry does not read back (%d entries after the append, expected %d); "+
 			"nothing written", got, want)
+}
+
+// ambiguousRefusal explains a body carrying more than one live Grounds heading,
+// to the standard readBackRefusal sets: each heading by its body line and its
+// own text, so the operator can find both from the message alone. The heading
+// is named without a depth because the pattern matches every depth, and a
+// record whose second heading is `### Grounds` must not be told it has two
+// `## Grounds` (iss-2608301908288212).
+func ambiguousRefusal(body string, n int) error {
+	lines := strings.Split(body, "\n")
+	mask := mdrecord.Mask(lines)
+	var where []string
+	for i, ln := range lines {
+		if (i >= len(mask) || mask[i] == 0) && headingRe.MatchString(strings.TrimRight(ln, "\r")) {
+			where = append(where, fmt.Sprintf("body line %d, %q", bodyLine(body, i), quotedLine(ln)))
+		}
+	}
+	return fmt.Errorf(
+		"the record's body carries %d live %s headings (%s) and the reader takes the first, so "+
+			"entries under the others are invisible to every surface; merge them into one section "+
+			"before recording another; nothing written", n, Heading, strings.Join(where, "; "))
+}
+
+// bodyLine is the 1-based number a refusal gives line i of body, counted in
+// the body a record reader renders. Split's body starts with the line ending
+// the blank separator below the closing delimiter leaves, and the readers strip
+// exactly that one, so counting from Split's first line would name the line
+// below the one meant (iss-2608301908288212).
+func bodyLine(body string, i int) int {
+	if strings.HasPrefix(body, "\n") || strings.HasPrefix(body, "\r\n") {
+		return i
+	}
+	return i + 1
+}
+
+// quotedLine is a body line as a refusal quotes it: its carriage return
+// dropped and its length clipped, since a record read without a byte cap can
+// carry a line of any length (iss-2608301908288212).
+func quotedLine(ln string) string {
+	return mdrender.Clip(strings.TrimRight(ln, "\r"))
 }
 
 // maskConstruct names a mask flag the way the record spells it, so the operator
@@ -300,6 +341,12 @@ func appendBullet(content string, g Grounds) string {
 	start, end, ok := mdrecord.SectionLineRangeIn(lines, mask, headingRe)
 	if !ok {
 		body := strings.TrimRight(content, "\n")
+		if body == "" {
+			// A frontmatter-only record: the file already ends on the closing
+			// delimiter's line, so one blank line separates the section, as
+			// it does below any prose (iss-2608301908288212).
+			return "\n## " + Heading + "\n\n" + g.Bullet() + "\n"
+		}
 		return body + "\n\n## " + Heading + "\n\n" + g.Bullet() + "\n"
 	}
 	section := append([]string{}, lines[start:end]...)

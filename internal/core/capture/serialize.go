@@ -313,8 +313,10 @@ func setMapField(content, key string, members []kv) (string, error) {
 
 // frontmatterBounds locates the leading frontmatter block's opening and closing
 // delimiter lines in lines (as produced by splitKeepEnds, so ends are kept). The
-// open must be the first non-empty line; the close is the next un-indented
-// delimiter after it.
+// open must be the first line, as every reader requires (parseFrontmatterAndBody,
+// frontmatter.Fields, frontmatter.Split): a writer that skipped blank lines to
+// find it judged a shape no reader accepts (iss-2608301908288212). The close is
+// the next un-indented delimiter after it.
 //
 // The two rewrite paths (setScalarField, setMapField) held byte-identical copies
 // of this scan, and both matched `---` byte-exact — the same divergence from the
@@ -324,22 +326,12 @@ func setMapField(content, key string, members []kv) (string, error) {
 // is the same split verdict pointing the other way.
 func frontmatterBounds(lines []string) (openIdx, closeIdx int, err error) {
 	openIdx, closeIdx = -1, -1
-	for i, ln := range lines {
-		// A BOM is only a BOM at the file's first line; past it, U+FEFF is an
-		// ordinary character and must not make a body line a delimiter
-		// (iss-2608270926036966). Trimming it at i == 0 keeps this writer able to
-		// rewrite exactly the BOM'd records parseFrontmatterAndBody accepts.
-		if i == 0 {
-			ln = frontmatter.TrimBOM(ln)
-		}
-		if strings.TrimRight(ln, "\r\n") == "" {
-			continue
-		}
-		if frontmatter.IsDelimiter(ln) {
-			openIdx = i
-			break
-		}
-		return -1, -1, fmt.Errorf("%w: content has no frontmatter block", ErrMalformedFrontmatter)
+	// A BOM is only a BOM at the file's first line; past it, U+FEFF is an
+	// ordinary character and must not make a body line a delimiter
+	// (iss-2608270926036966). Trimming it here keeps this writer able to
+	// rewrite exactly the BOM'd records parseFrontmatterAndBody accepts.
+	if len(lines) > 0 && frontmatter.IsDelimiter(frontmatter.TrimBOM(lines[0])) {
+		openIdx = 0
 	}
 	if openIdx == -1 {
 		return -1, -1, fmt.Errorf("%w: content has no frontmatter block", ErrMalformedFrontmatter)

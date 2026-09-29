@@ -119,6 +119,23 @@ func TestParseRejectsMissingOpener(t *testing.T) {
 	}
 }
 
+// TestWriterAndReaderAgreeTheOpenerIsTheFirstLine: a record whose opener sits
+// below a blank line is refused by the reader, and the rewrite paths refuse it
+// the same way rather than finding the block the reader never reads
+// (iss-2608301908288212).
+func TestWriterAndReaderAgreeTheOpenerIsTheFirstLine(t *testing.T) {
+	text := "\n---\nid: \"iss-1\"\n---\n\nbody\n"
+	if _, _, err := parseFrontmatterAndBody(text); err == nil {
+		t.Fatal("the reader accepted an opener below a blank line; this test's premise is gone")
+	}
+	if got, err := setScalarField(text, "resolution", "x"); err == nil {
+		t.Fatalf("the writer rewrote a record the reader refuses:\n%s", got)
+	}
+	if _, err := setScalarField(strings.TrimPrefix(text, "\n"), "resolution", "x"); err != nil {
+		t.Fatalf("the same record with its opener on the first line must be rewritable: %v", err)
+	}
+}
+
 func TestYamlScalarRejectsControlChar(t *testing.T) {
 	if _, err := yamlScalar("bad\nvalue"); err == nil {
 		t.Fatal("expected control-char rejection")
