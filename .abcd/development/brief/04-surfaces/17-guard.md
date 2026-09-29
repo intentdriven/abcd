@@ -268,9 +268,9 @@ runs or a pipe or redirect feeds, whose every command is read as handed its
 input — and a `pkill` or
 `killall` selecting by user, group or terminal, its value written apart or
 attached, as selecting every session under the account; `pkill`'s signal name
-is read as a signal first, in any case. A flip of a source-ledger line to
-public citation (`abcd source ledger --flip`) is blocked, because the ledger
-records that a person chose to cite the source. In a repository with more
+is read as a signal first, in any case. Flipping a source-ledger line to
+public citation is blocked, because the ledger records that a person chose to
+cite the source, and that choice is the person's to make. In a repository with more
 than one worktree, a stash or pop that does not name its entry is warned about,
 because the stash stack is shared across worktrees. Where the reading is a
 guess, over-blocking is the direction the guard takes.
