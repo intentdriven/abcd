@@ -85,12 +85,14 @@ const maxIFDEntries = 512
 // byte, and records each person tag's raw value span (identity.go's span, as
 // raw offsets) in meta. The walk reads
 // at most len(data)/12 entries plus a slack of one directory in all, each
-// directory once and each value once, so a file dense in headers that share
-// one directory costs what its bytes do.
+// directory once and each value once, and value bytes to the data's length
+// plus the slack's inline values, so neither headers that share a directory
+// nor entries that name overlapping values cost more than the bytes do.
 func exifView(data []byte, meta *metadataFields) (decodedView, bool) {
 	w := exifWalk{
 		data:    data,
 		entries: len(data)/12 + maxIFDEntries,
+		bytes:   len(data) + 4*maxIFDEntries,
 		dirs:    map[int]bool{},
 		values:  map[int]bool{},
 		meta:    meta,
@@ -117,11 +119,12 @@ func exifView(data []byte, meta *metadataFields) (decodedView, bool) {
 	return decodedView{text: string(w.text), posMap: append(w.pos, len(data))}, true
 }
 
-// exifWalk is one exifView's state: the entry budget left, the directories
-// and values already read, and the view built so far.
+// exifWalk is one exifView's state: the entry and value-byte budgets left,
+// the directories and values already read, and the view built so far.
 type exifWalk struct {
 	data    []byte
 	entries int
+	bytes   int
 	dirs    map[int]bool
 	values  map[int]bool
 	meta    *metadataFields
@@ -166,10 +169,11 @@ func (w *exifWalk) dir(base, at int, bo binary.ByteOrder, top bool) {
 			continue
 		}
 		v, size, ok := w.value(base, e, bo, count)
-		if !ok || w.values[v] {
+		if !ok || w.values[v] || size > w.bytes {
 			continue
 		}
 		w.values[v] = true
+		w.bytes -= size
 		w.read(w.data[v:v+size], v, t.enc, bo)
 		if t.person {
 			w.meta.persons = append(w.meta.persons, span{v, v + size})

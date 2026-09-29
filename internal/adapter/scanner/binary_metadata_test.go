@@ -297,11 +297,34 @@ func TestMetadataViewsWorkIsLinear(t *testing.T) {
 		}
 		return append(out, ifd...)
 	}
+	// Every entry of every directory names a long value at its own offset in
+	// one shared tail, so a walk without a value budget reads the tail once
+	// per entry.
+	overlapping := func(n int) []byte {
+		const perDir = 16
+		block := 8 + 2 + 12*perDir + 4
+		tail := 64 * n
+		var out []byte
+		for i := 0; i < n; i++ {
+			base := len(out)
+			out = append(out, "II*\x00"...)
+			out = binary.LittleEndian.AppendUint32(out, 8)
+			out = binary.LittleEndian.AppendUint16(out, perDir)
+			for k := 0; k < perDir; k++ {
+				out = append(out, 0x3b, 0x01, 0x02, 0x00)
+				out = binary.LittleEndian.AppendUint32(out, uint32(tail/2))
+				out = binary.LittleEndian.AppendUint32(out, uint32(n*block-base+i*perDir+k))
+			}
+			out = binary.LittleEndian.AppendUint32(out, 0)
+		}
+		return append(out, bytes.Repeat([]byte("q"), tail)...)
+	}
 	shapes := []struct {
 		name  string
 		build func(n int) []byte
 	}{
 		{"TIFF headers sharing one IFD", headers},
+		{"IFD entries naming overlapping values", overlapping},
 		{"literal strings that never close", func(n int) []byte {
 			return append([]byte("%PDF-1.7\n"), bytes.Repeat([]byte(`(\376\377\000Z`), n)...)
 		}},
