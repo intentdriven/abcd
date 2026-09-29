@@ -120,6 +120,8 @@ gate. That is what keeps "not hand-counted" true after the day it was written.
 - `itd-2609090746414083` — A lifeboat packs from a lab session home, the throwaway experiment's intention, harvest and bundle, with the same coverage honesty as a repository (refines itd-88 and adr-35; the non-git half, sequenced after the lab verb family)
 - `itd-2609180517121254` — every payload a host hands back from a delegated step names the model that produced it and the number of agents that ran, and the ingesting verb refuses one that does not
 - `itd-2609231507251267` — Release pages on the project website, rendered from `RELEASE.md` and the release archive (builds on itd-2609231013154443; next cycle)
+- `itd-2609291923559186` — The consistency pass runs where records are written and names each finding the same way every time: the five itd-48 follow-ups as one intent (from iss-2609260926323349; ruling BT2)
+- `itd-2609291924469783` — Every lint warning rule shares one baseline file that only shrinks, so a new warning fails the change that introduces it (from iss-46; ruling BT3)
 <!-- /index -->
 
 **Later-phase items with no intent id.** These four were written into the brief
