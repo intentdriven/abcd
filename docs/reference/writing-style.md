@@ -88,3 +88,10 @@ reviewable, never a default. The other
 machine-enforced rules have no line escape: `links_resolve`, `stray_root_docs`
 and the `citation_*` rules are satisfied by fixing the link, the file placement,
 or the citation itself, not by annotating the line.
+
+`harness_leak` is the one rule with an escape of its own: a deliberately
+illustrative line carries `abcd-lint:allow` (the older spelling
+`abcd-audit:allow` is honoured too, because the token lives in committed
+content), and the rule does not read the `<!-- docs-lint: allow -->` comment the
+banned-token families take. A fenced block is never flagged, so a page showing
+the banned shape as an example needs no escape at all.
