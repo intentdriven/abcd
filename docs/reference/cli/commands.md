@@ -493,11 +493,12 @@ abcd capture surprise --occasioned-by rdi-2609010000000001 "the proposal nobody 
 
 Move an open issue to wontfix/ with the reason it is not acted on: Writes the moved record; refuses an id this ledger does not hold.
 
-**Usage:** `abcd capture wontfix <iss-N> <reason> [--grounds "declined: <text>"] [flags]`
+**Usage:** `abcd capture wontfix <iss-N> <reason> [--grounds "declined: <text>"] [--duplicates <iss-N|itd-N,...>] [flags]`
 
 **Flags:**
 
 ```
+      --duplicates string        comma-separated iss-N or itd-N ids this issue duplicates, written to its typed duplicates link; each must exist, and a link the record already carries is kept
       --grounds string           override the recorded grounds text (the token stays declined — a wontfix IS that non-action)
       --production-mode string   restamp how this record's text was produced: hand-written|dictated-and-formatted|scribe-transcribed (default: leave the record's existing stamp alone; refused on a record that predates disclosure)
 ```

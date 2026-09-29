@@ -252,3 +252,37 @@ func TestNonAlphabeticHeredocDelimiterOpensADocument(t *testing.T) {
 		})
 	}
 }
+
+// TestDeprecatedArithmeticBracketStaysFailClosed pins why bash's deprecated
+// `$[ … ]` is NOT modelled as an arithmetic context (iss-2609020544031234).
+// bash and zsh read `echo $[ 1 << EOF ]` as a shift, but dash — /bin/sh on
+// Debian and Ubuntu, and what an `sh -c` string runs there — has no `$[` and
+// reads the same `<<` as a here-document, expanding the substitutions its
+// unquoted body holds. Read as a shift, a body line holding an apostrophe is an
+// unparsable command to the guard, which the pre-tool-use hook maps to
+// fail-OPEN, while dash runs the substitution beside it. Read as a document, as
+// the guard reads it, the substitution is checked. The shift reading's cost is
+// an over-block, loud and fail-closed; this test keeps a future model of `$[`
+// from trading it for that silent allow.
+func TestDeprecatedArithmeticBracketStaysFailClosed(t *testing.T) {
+	const hazard = "gh repo delete owner/repo"
+	cases := []struct {
+		name  string
+		line  string
+		entry string
+	}{
+		{"a substitution in the body dash reads as a document", "echo $[ 1 << EOF ]\nit's $(" + hazard + ")\nEOF", "gh-repo-delete"},
+		{"a document that never closes", "echo $[ 1 << EOF ]\necho done", "heredoc-unterminated"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			d, err := Defaults().Check(tc.line)
+			if err != nil {
+				t.Fatalf("Check(%q): %v — an error here is the hook's fail-open", tc.line, err)
+			}
+			if d.Verdict != VerdictBlock || d.EntryID != tc.entry {
+				t.Fatalf("Check(%q) = %q via %q, want block via %q", tc.line, d.Verdict, d.EntryID, tc.entry)
+			}
+		})
+	}
+}

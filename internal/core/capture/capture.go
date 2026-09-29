@@ -269,6 +269,13 @@ type WontfixRequest struct {
 	// ProductionMode restamps production_mode on the same terms as
 	// ResolveRequest's: declared restamps, absent leaves the stamp alone.
 	ProductionMode string
+	// Duplicates names the records this one duplicates (iss-N or itd-N), written
+	// to the typed `duplicates` link the filing-time match also writes, so a
+	// machine reader sees a duplicate closure rather than a wontfix whose
+	// relation lives only in the reason's prose (iss-2609291118049254). Each
+	// target must exist, in any status folder or intent bucket, and may not be
+	// the record itself; a link the record already carries is kept.
+	Duplicates []string
 }
 
 // TransitionResult is the outcome of a Resolve or Wontfix. ResolvedBy echoes
