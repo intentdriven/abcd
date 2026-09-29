@@ -894,7 +894,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			curBrace: curBrace, braceGroup: braceGroup, chain: chain, procSub: procSub,
 			curStdin: curStdin, pipeNext: pipeNext, curDocs: curDocs, pieces: curPieces,
 			feeds: feeds, curFeeds: curFeeds, pipeFrom: pipeFrom, segStart: len(segs), braceFrom: braceFrom,
-			groupIn: groupIn,
+			groupIn: groupIn, pending: pending, docOwners: docOwners,
 		}
 		toks, globs, lits, cur, curMask, hasCur, curGlob, curBrace, braceGroup = nil, nil, nil, nil, nil, false, false, false, false
 		curPieces, vars, curVar, curSub = nil, nil, false, false
@@ -908,6 +908,12 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		openGroup()
 		curStdin, pipeNext, curDocs = false, false, nil
 		feeds, curFeeds, pipeFrom, braceFrom = nil, nil, len(segs), nil
+		// The documents pending here are suspended with the command: bash
+		// reads no body at a newline inside the substitution, whose lines run
+		// as its commands, and the bodies begin on the line after it closes
+		// (iss-2609290521415701). A newline inside reads only the documents
+		// the substitution opened itself.
+		pending, docOwners = nil, nil
 		parens = append(parens, parenFrame{kind: kind, pos: pos, saved: saved})
 	}
 	// prePassedBacktick reads a backtick opening at line[i] whose text bash's
@@ -937,6 +943,24 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		closeSubstitution(top.saved)
 		return k + 1, true
 	}
+	// resumeDocs restores the documents a substitution suspended when it
+	// closes. One the substitution opened and never read is pending in one
+	// shell and dropped in another: bash 5 reads its body on the lines after
+	// the close, while bash 3.2 and /bin/sh RUN those lines (`x=$(cat <<E)`,
+	// then a line, then `E`). The guard cannot tell which shell runs the
+	// line, so the document stays pending after the enclosing ones, as bash 5
+	// reads it, and the line takes the fail-closed verdict of a document
+	// whose delimiter never came: the lines it covers are commands the guard
+	// has not read.
+	resumeDocs := func(e *enclosing) {
+		if len(pending) > 0 {
+			markHeredocUnterminated(&segs, chain)
+			pending = append(append([]heredoc(nil), e.pending...), pending...)
+			docOwners = append(append([]int(nil), e.docOwners...), docOwners...)
+			return
+		}
+		pending, docOwners = e.pending, e.docOwners
+	}
 	// closeArithmetic resumes the command an arithmetic expansion suspended,
 	// with the number it prints in the word it sat in. What the loop gathered
 	// while it stepped the expression is dropped: none of it is a word. The
@@ -949,6 +973,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		feeds, curFeeds, pipeFrom, braceFrom, groupIn = e.feeds, e.curFeeds, e.pipeFrom, e.braceFrom, e.groupIn
 		vars, curVar, curSub = e.vars, e.curVar, e.curSub
 		spells, curVarAt = e.spells, e.curVarAt
+		resumeDocs(e)
 		if !f.bare {
 			addCur([]byte(arithmeticOperand), 0)
 			// The number it prints is computed from what the substitutions
@@ -965,6 +990,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 	// shell hands the command, so the operands after it keep their positions.
 	closeSubstitution = func(e *enclosing) {
 		flushSegment()
+		resumeDocs(e)
 		toks, globs, lits, cur, curMask, hasCur, curGlob, curBrace, braceGroup, chain =
 			e.toks, e.globs, e.lits, e.cur, e.curMask, e.hasCur, e.curGlob, e.curBrace, e.braceGroup, e.chain
 		curStdin, pipeNext, curDocs, curPieces = e.curStdin, e.pipeNext, e.curDocs, e.pieces
@@ -1253,15 +1279,6 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 				}
 				i = next
 				pending, docOwners = nil, nil
-				// A command a substitution still suspends can have opened
-				// these documents (`cat <<E $(x`, then the newline): their
-				// bodies are read, so the record it resumes with names none
-				// of them (iss-2609290521415701).
-				for _, p := range parens {
-					if p.saved != nil {
-						p.saved.curDocs = nil
-					}
-				}
 			}
 			// lastList is NOT cleared here: a blank or comment-only line after a
 			// list operator does not end the list, and every token-producing
@@ -2178,6 +2195,10 @@ type enclosing struct {
 	// groupIn what was piped into the groups open around it.
 	braceFrom []groupOpen
 	groupIn   []feed
+	// pending and docOwners are the here-documents pending where the
+	// substitution opened, whose bodies wait for the line after it closes.
+	pending   []heredoc
+	docOwners []int
 }
 
 // procSubOperand is the word a process substitution leaves in the enclosing
