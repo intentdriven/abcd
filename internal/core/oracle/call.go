@@ -23,12 +23,17 @@ import (
 
 // CallRecord is the per-call record the run record carries (criterion 5,
 // adr-2609221009491186 Decision 5): the provider, the model asked for and the
-// model the provider reported, side by side, so a substitution is visible. It
-// never carries a key, a key's name or the brief.
+// model the provider reported, side by side, so a substitution is visible, and
+// the name of the credential the call used. It never carries a key or the
+// brief.
 type CallRecord struct {
 	Provider      string `json:"provider"`
 	ModelAsked    string `json:"model_asked"`
 	ModelReported string `json:"model_reported"`
+	// Credential is the name of the credential the call used, never its
+	// value; empty for a provider that takes no key (itd-2609221017023290
+	// criterion 5).
+	Credential string `json:"credential,omitempty"`
 }
 
 // CallRequest is one call: where it goes, the brief, the settings as sent and
@@ -59,7 +64,11 @@ func (c *APIConfig) Call(ctx context.Context, creds credential.Source, req CallR
 	if err != nil {
 		return nil, CallRecord{}, err
 	}
-	return complete(ctx, p.Name, p.BaseURL, key, t.Model, req.Brief, req.Settings, req.Contract, c.denylist, opts...)
+	payload, rec, err := complete(ctx, p.Name, p.BaseURL, key, t.Model, req.Brief, req.Settings, req.Contract, c.denylist, opts...)
+	if err == nil {
+		rec.Credential = p.Key
+	}
+	return payload, rec, err
 }
 
 // resolveKey resolves a provider's key by name; a keyless block resolves to
@@ -69,13 +78,13 @@ func resolveKey(creds credential.Source, p Provider) (string, error) {
 		return "", nil
 	}
 	if creds == nil {
-		creds = credential.UserMachine()
+		creds = credential.UserStore()
 	}
 	key, err := creds.Resolve(p.Key)
 	switch {
 	case errors.Is(err, credential.ErrNotSet):
 		return "", fmt.Errorf("oracle adapter: provider %s names credential %q, which is not set on this machine, so no call is made; "+
-			"`abcd ahoy connect` stores one (`abcd ahoy --providers` explains where it can live)", p.Name, p.Key)
+			"`%s` explains where it can live and stores it", p.Name, p.Key, credential.Walkthrough(p.Key))
 	case err != nil:
 		return "", fmt.Errorf("oracle adapter: provider %s: %w", p.Name, err)
 	}

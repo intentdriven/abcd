@@ -85,6 +85,13 @@ record in its store — any status folder or bucket — and renders it read-only
 "${CLAUDE_PLUGIN_ROOT}/abcd" <record-id> --json
 ```
 
+The digits take one of two shapes, and both resolve: A short ordinal from
+before ids were minted (`iss-188`), or the sixteen-digit timestamp the
+minting verbs allocate (`iss-2609120452369809`). A ledger part-way through
+adoption holds both, and neither is migrated away: Nothing renumbers an
+existing record, because an id is a citation. An `N` in a placeholder such as
+`<iss-N>` stands for either shape.
+
 Summarise the `id`, `family`, `status`, `title`, `path`, the `links` edges
 (`spec_id`, `intent`, `intents`, `related_intents`, `related_issues`, `resolved_by.*`,
 `superseded_by` as present; `intents` is every member a bundle's shared spec lists), and each entry in `next_moves` — the concrete lifecycle move

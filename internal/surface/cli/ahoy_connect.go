@@ -37,10 +37,11 @@ const dispatchPending = "no delegating verb sends a step to a provider until pro
 	"(spc-2609251028149555); until then every delegated step runs on the host"
 
 // providerView is one configured provider as the board shows it: the block,
-// and whether its key resolves (never the key).
+// whether its key resolves and the home it resolves from (never the key).
 type providerView struct {
 	oracle.Provider
 	KeyState string `json:"key_state"`
+	KeyHome  string `json:"key_home,omitempty"`
 }
 
 // providersBoard is `ahoy --providers`.
@@ -70,7 +71,6 @@ func runAhoyProviders(cmd *cobra.Command, cwd string, asJSON bool) error {
 	if err != nil {
 		return &exitError{Code: 2, Msg: "abcd ahoy --providers: " + termsafe.Sanitize(fsutil.RedactHome(err.Error()))}
 	}
-	creds := credential.Machine(roots.Home)
 	b := providersBoard{
 		Explanation: oracle.AdapterExplanation,
 		Providers:   []providerView{},
@@ -86,7 +86,8 @@ func runAhoyProviders(cmd *cobra.Command, cwd string, asJSON bool) error {
 		b.Routes = []oracle.PointedRoute{}
 	}
 	for _, p := range cfg.Providers() {
-		b.Providers = append(b.Providers, providerView{Provider: p, KeyState: keyState(creds, p.Key)})
+		state, home := keyState(roots.Home, p.Key)
+		b.Providers = append(b.Providers, providerView{Provider: p, KeyState: state, KeyHome: home})
 	}
 	return render(cmd.OutOrStdout(), asJSON, b, func(w io.Writer) {
 		line := func(s string) { fmt.Fprintf(w, "  %s\n", termsafe.Sanitize(s)) }
@@ -99,6 +100,9 @@ func runAhoyProviders(cmd *cobra.Command, cwd string, asJSON bool) error {
 			key := "no key"
 			if p.Key != "" {
 				key = "key " + p.Key + " (" + p.KeyState + ")"
+				if p.KeyHome != "" {
+					key = "key " + p.Key + " (" + p.KeyState + ", " + p.KeyHome + " home)"
+				}
 			}
 			line(fmt.Sprintf("provider %s: %s, %s, models %s", p.Name, p.BaseURL, key, strings.Join(p.Models, ", ")))
 		}
@@ -119,26 +123,29 @@ func runAhoyProviders(cmd *cobra.Command, cwd string, asJSON bool) error {
 	})
 }
 
-// keyState says whether a named key resolves: set, not set, refused (the
-// store is unsafe), or none for a keyless provider. Never the value.
-func keyState(creds credential.Source, name string) string {
+// keyState says whether a named credential resolves through the store, and
+// from which home: set, not set, refused (the store is unsafe), or none for a
+// keyless provider. Never the value.
+func keyState(home, name string) (state, from string) {
 	if name == "" {
-		return "none"
+		return "none", ""
 	}
-	_, err := creds.Resolve(name)
+	_, err := credential.Store(home).Resolve(name)
 	switch {
 	case err == nil:
-		return "set"
+		from, _ = credential.Where(home, name)
+		return "set", from
 	case errors.Is(err, credential.ErrNotSet):
-		return "not set"
+		return "not set", ""
 	}
-	return "refused: " + err.Error()
+	return "refused: " + err.Error(), ""
 }
 
 // newAhoyConnectCommand builds `ahoy connect <provider>`.
 func newAhoyConnectCommand(asJSON *bool) *cobra.Command {
 	var baseURL, home, keyName string
 	var models []string
+	var ptr credential.Pointer
 	cmd := &cobra.Command{
 		Use:  "connect <provider>",
 		Args: cobra.MaximumNArgs(1),
@@ -154,8 +161,8 @@ func newAhoyConnectCommand(asJSON *bool) *cobra.Command {
 			for _, n := range notes {
 				fmt.Fprintf(cmd.ErrOrStderr(), "abcd %s\n", termsafe.Sanitize(fsutil.RedactHome(n)))
 			}
-			req := oracle.ConnectRequest{Roots: roots, Provider: args[0], BaseURL: baseURL, Models: models, Home: home, KeyName: keyName}
-			if home == oracle.KeyHomeABCD {
+			req := oracle.ConnectRequest{Roots: roots, Provider: args[0], BaseURL: baseURL, Models: models, Home: home, KeyName: keyName, Pointer: ptr}
+			if home == oracle.KeyHomeABCD || home == oracle.KeyHomeKeychain {
 				key, err := readKey(cmd.InOrStdin())
 				if err != nil {
 					return &exitError{Code: 2, Msg: "abcd ahoy connect: " + err.Error()}
@@ -184,8 +191,9 @@ func newAhoyConnectCommand(asJSON *bool) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&baseURL, "base-url", "", "the provider's OpenAI-compatible base URL: https, or http to a server on this machine")
 	cmd.Flags().StringArrayVar(&models, "model", nil, "a model the provider may serve, repeated for each (the first allowlist; the verification call asks for the first)")
-	cmd.Flags().StringVar(&home, "home", "", "where the key lives: abcd (read from stdin into the owner-only ~/.abcd/credentials.json) | none (a server that takes no key); external and keychain arrive with the credential store")
+	cmd.Flags().StringVar(&home, "home", "", "where the key lives: external (--env, or --file and --field) | abcd (read from stdin into the owner-only ~/.abcd/credentials.json) | keychain (read from stdin into the platform keychain) | none (a server that takes no key)")
 	cmd.Flags().StringVar(&keyName, "key", "", "the credential's name (default: the provider's name)")
+	pointerFlags(cmd, &ptr)
 	return cmd
 }
 
@@ -204,7 +212,7 @@ func readKey(in io.Reader) (string, error) {
 	}
 	key := strings.TrimSuffix(strings.TrimSuffix(string(raw), "\n"), "\r")
 	if key == "" {
-		return "", errors.New("the abcd home stores a key, and none arrived on stdin; pipe it in (" + setupExample + ")")
+		return "", errors.New("the chosen home stores a key, and none arrived on stdin; pipe it in (" + setupExample + ")")
 	}
 	return key, nil
 }

@@ -21,9 +21,11 @@ Agent-based configuration for development.
 
 Bare `abcd` renders the read-only status board — what can I do. A single
 positional matching a record id (`iss-N`, `itd-N`, `spc-N`, `adr-N`, `adm-N`,
-`srp-N`, `rfm-N`) instead reports what that record is, where it lives, and
-the next move for its lifecycle state — what is this. Both forms are strictly
-read-only; any other positional is refused as an unknown command.
+`srp-N` or `rfm-N`) instead reports what that record is, where it lives, and
+the next move for its lifecycle state — what is this. N is either a short
+ordinal from before ids were minted or the sixteen-digit stamp minted since;
+both resolve. The bare and the id form are strictly read-only; any other
+positional is refused as an unknown command.
 
 **Flags:**
 
@@ -51,7 +53,7 @@ Detect abcd's install state and list its gaps, or report one mode a flag names: 
 
 #### `abcd ahoy connect`
 
-Verify a model provider with one call, then configure it: Writes its block and its key under ~/.abcd/; refuses a key typed at a terminal.
+Verify a model provider with one call, then configure it: Writes its block under ~/.abcd/ and its key to the home chosen; refuses a key typed at a terminal.
 
 **Usage:** `abcd ahoy connect <provider> [flags]`
 
@@ -59,7 +61,10 @@ Verify a model provider with one call, then configure it: Writes its block and i
 
 ```
       --base-url string     the provider's OpenAI-compatible base URL: https, or http to a server on this machine
-      --home string         where the key lives: abcd (read from stdin into the owner-only ~/.abcd/credentials.json) | none (a server that takes no key); external and keychain arrive with the credential store
+      --env string          for --home external: the environment variable that holds the value
+      --field string        for --home external: the dotted field of --file that holds the value (auth.token)
+      --file string         for --home external: a tool's JSON configuration file under the home directory, written from ~/
+      --home string         where the key lives: external (--env, or --file and --field) | abcd (read from stdin into the owner-only ~/.abcd/credentials.json) | keychain (read from stdin into the platform keychain) | none (a server that takes no key)
       --key string          the credential's name (default: the provider's name)
       --model stringArray   a model the provider may serve, repeated for each (the first allowlist; the verification call asks for the first)
 ```
@@ -68,6 +73,21 @@ Verify a model provider with one call, then configure it: Writes its block and i
 
 ```
 abcd ahoy connect local --base-url http://127.0.0.1:8080/v1 --model example-model --home none
+```
+
+#### `abcd ahoy credential`
+
+List the credentials abcd reads, explain one, or verify and store it: Writes the chosen home only with --home; refuses a value the adapter's call fails.
+
+**Usage:** `abcd ahoy credential [<name>] [flags]`
+
+**Flags:**
+
+```
+      --env string     for --home external: the environment variable that holds the value
+      --field string   for --home external: the dotted field of --file that holds the value (auth.token)
+      --file string    for --home external: a tool's JSON configuration file under the home directory, written from ~/
+      --home string    where the credential lives: external (--env, or --file and --field) | abcd (read from stdin into the owner-only ~/.abcd/credentials.json) | keychain (read from stdin into the platform keychain)
 ```
 
 #### `abcd ahoy doctor`
@@ -802,7 +822,7 @@ Name the URLs directly, or pass --receipt with a receipt file. Both write the sa
 
 ```
       --config string    path to docs-lint.json (default: <root>/.abcd/docs-lint.json)
-      --receipt string   path to a receipt file listing the confirmed citations (the format the generated checklist page emits)
+      --receipt string   path to a JSON receipt listing the confirmed citations: schema_version 1 and a confirmed list, each entry a url with an optional final_url and verified_on (YYYY-MM-DD)
       --root string      repo root (default: current working directory)
 ```
 
@@ -2313,8 +2333,9 @@ and its hash, so a run is reproducible from the commit it names.
 
 ```
       --dry-run           write nothing; with --out the two artefacts still land in that directory
-      --out string        an empty or absent directory the assembled input and the manifest are written to
-                          (default: the local-tier run directory)
+      --out string        an empty or absent directory the assembled input and the manifest are written to,
+                          for inspection: reading ingest finds a run only in the local-tier run directory,
+                          so a run written here cannot be ingested (default: the local-tier run directory)
       --position string   the reading position: widening, entailment, comparative, detection
                           (comparative derives its candidate set from the record: the one committed
                           widening run at the target whose items carry no disposition and no

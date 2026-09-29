@@ -88,6 +88,11 @@ Ideas and methodologies that shaped the design — not code abcd depends on.
   *brevity bias* and *context collapse* — which itd-81 cites to strike itd-5's
   "shorter by >10%" prompt tiebreak.
 - **Amazon "Working Backwards"** — the press-release format of abcd's intents.
+- **Apple's Keychain and its `security` command (Apple)** — the macOS home of
+  the credential store's keychain home: an item per credential under the
+  service name `abcd`, added through the command's interactive mode with the
+  value as hex on stdin so it never reaches an argument, and read back with
+  `find-generic-password -w` (itd-2609221017023290).
 - **Architecture Decision Records (MADR)** — the shape of the decision record.
 - **CARL (Context Augmentation & Reinforcement Layer, Christopher Kahler,
   MIT)** — the just-in-time rule-injection mechanism (a prompt hook, a JSON
@@ -192,6 +197,11 @@ Ideas and methodologies that shaped the design — not code abcd depends on.
   once it has passed (itd-2609221656373558). "Leases: an efficient
   fault-tolerant mechanism for distributed file cache consistency", SOSP 1989.
   <https://doi.org/10.1145/74850.74870>
+- **libsecret's `secret-tool` (GNOME, LGPL)** — the Linux home of the
+  credential store's keychain home, reached through the freedesktop secret
+  service: `store` reads the value from stdin and `lookup` prints it, each
+  item keyed by service `abcd` and the credential's name
+  (itd-2609221017023290).
 - **The Linux kernel's coding-assistants policy** — the `Assisted-by:` attribution
   model abcd adopts for AI-assisted commits.
 - **mattpocock/skills (Matt Pocock, MIT)** — four adaptations: the
