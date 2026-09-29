@@ -9,7 +9,7 @@ found_during: "autonomous run A resumed 2026-09-25"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/lifeboat/synthesis_review.go"
-resolution: "Fixed: lifeboat review describes a refused mode, prompt_version and verdict through termsafe.DescribeRefused, and intent audit's dead-letter result returns its reason through the same redactor as the record's copy. The reading ingest's unredacted echo was split out as iss-2609290043245353 and deferred with its reason."
+resolution: "Fixed: lifeboat review describes a refused mode, prompt_version and verdict through termsafe.DescribeRefused, and intent audit's dead-letter result returns its reason through the same redactor as the record's copy. The reading ingest's unredacted echo was split out as iss-2609290043245353 and deferred with its reason. The pre-receipt _type refusal, which quoted the value outside the dead-letter path, describes it through termsafe.DescribeRefused since commit 4ad272505."
 impact: fix
 resolved_by:
   commit: "950b69ca2"
