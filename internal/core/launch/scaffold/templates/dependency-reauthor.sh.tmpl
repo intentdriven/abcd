@@ -4,11 +4,12 @@
 #
 # A bot-opened dependency bump is re-authored as the repository owner when, and
 # only when, it is inside the BOUND: the pull request was opened by a bot the
-# repository declares, from a branch in this repository under that bot's prefix
-# for an ecosystem the repository declares, carrying exactly one commit, authored
-# by that bot, whose diff touches nothing but that ecosystem's manifest and lock
-# files. Anything else is left exactly as it is, and the run names the clause the
-# commit failed. The attribution gate is not involved and not changed: the
+# repository declares, the event that started the run was that bot's, from a
+# branch in this repository under that bot's prefix for an ecosystem the
+# repository declares, carrying exactly one commit, authored by that bot, whose
+# diff modifies nothing but that ecosystem's manifest and lock files in the
+# directory the row declares, and adds, deletes or renames nothing. Anything else
+# is left exactly as it is, and the run names the clause the commit failed. The attribution gate is not involved and not changed: the
 # re-authored commit passes it because a person is its author and committer.
 #
 # The declaration is .abcd/config/dependency-reauthor.conf, read from the
@@ -17,7 +18,11 @@
 #
 #   owner_name=<the person whose authorship the re-authored commit carries>
 #   owner_email=<that person's address>
-#   ecosystem=<bot login> <branch prefix> <file name> [<file name>...]
+#   ecosystem=<bot login> <branch prefix> <directory> <file name> [<file name>...]
+#
+# <directory> is the one the dependency bot's own configuration opens bumps in,
+# written as it writes it (`/` for the root, `/docs`); a file matches only at
+# that directory joined to its name.
 #
 # The owner is the person's to set; while either value is empty an in-bound bump
 # is REFUSED, never re-authored as anybody else.
@@ -36,7 +41,7 @@
 #
 # Inputs come from the environment, which the workflow fills from the event;
 # nothing the pull request's author wrote is ever spliced into this script:
-#   PR_AUTHOR HEAD_REF HEAD_SHA BASE_SHA HEAD_REPO GITHUB_REPOSITORY
+#   PR_AUTHOR ACTOR HEAD_REF HEAD_SHA BASE_SHA HEAD_REPO GITHUB_REPOSITORY
 #   DEPENDENCY_REAUTHOR_APP_ID DEPENDENCY_REAUTHOR_APP_KEY   (run, in bound only)
 #   REAUTHOR_CONF      default .abcd/config/dependency-reauthor.conf
 #   REAUTHOR_WORKFLOW  the workflow named in the message (default
@@ -103,7 +108,14 @@ while IFS= read -r line || [ -n "$line" ]; do
 	ecosystem)
 		# shellcheck disable=SC2086 # word-splitting the row is the point
 		set -- $val
-		[ $# -ge 3 ] || refuse "$CONF line $lineno: an ecosystem row is <bot> <branch prefix> <file>..."
+		[ $# -ge 4 ] || refuse "$CONF line $lineno: an ecosystem row is <bot> <branch prefix> <directory> <file>..."
+		case "$3" in
+		/*) ;;
+		*) refuse "$CONF line $lineno: an ecosystem row is <bot> <branch prefix> <directory> <file>...; '$3' is not a directory such as / or /docs" ;;
+		esac
+		case "/$3/" in
+		*/../* | */./*) refuse "$CONF line $lineno: the directory '$3' is not a plain path" ;;
+		esac
 		rows="$rows$val
 "
 		;;
@@ -112,7 +124,7 @@ while IFS= read -r line || [ -n "$line" ]; do
 done <"$CONF"
 
 # --- The bound -----------------------------------------------------------------
-: "${PR_AUTHOR:?PR_AUTHOR is required}" "${HEAD_REF:?HEAD_REF is required}"
+: "${PR_AUTHOR:?PR_AUTHOR is required}" "${ACTOR:?ACTOR is required}" "${HEAD_REF:?HEAD_REF is required}"
 : "${HEAD_SHA:?HEAD_SHA is required}" "${BASE_SHA:?BASE_SHA is required}"
 : "${HEAD_REPO:?HEAD_REPO is required}" "${GITHUB_REPOSITORY:?GITHUB_REPOSITORY is required}"
 
@@ -130,8 +142,21 @@ while IFS= read -r row; do
 	"$2"*)
 		bot="$1"
 		prefix="$2"
-		shift 2
-		files=" $* "
+		dir="$3"
+		shift 3
+		# The directory as the bot's configuration writes it, joined to each
+		# name: `/` is the root, `/docs/` and `/docs` are docs/.
+		while :; do
+			case "$dir" in
+			/*) dir="${dir#/}" ;;
+			*/) dir="${dir%/}" ;;
+			*) break ;;
+			esac
+		done
+		files=" "
+		for name in "$@"; do
+			files="$files${dir:+$dir/}$name "
+		done
 		break
 		;;
 	esac
@@ -140,11 +165,16 @@ $rows
 EOF
 
 [ "$known_bot" -eq 1 ] || leave_alone author "the pull request's author $PR_AUTHOR is not a bot this repository declares"
+# The pusher, not only the opener: a person who pushes a bot-authored commit onto
+# the bot's branch starts a run whose actor is that person.
+[ "$ACTOR" = "$PR_AUTHOR" ] || leave_alone actor "the event's actor $ACTOR is not $PR_AUTHOR"
 [ "$HEAD_REPO" = "$GITHUB_REPOSITORY" ] ||
 	leave_alone head-repo "the branch lives in $HEAD_REPO, not in $GITHUB_REPOSITORY"
-[ -n "$bot" ] || leave_alone ecosystem "the branch $HEAD_REF matches no ecosystem this repository declares for $PR_AUTHOR"
+# The branch name is judged before any message repeats it.
 printf '%s' "$HEAD_REF" | grep -Eq '^[A-Za-z0-9._/+-]+$' ||
 	leave_alone branch "the branch name carries a character outside [A-Za-z0-9._/+-]"
+[ "${#HEAD_REF}" -le 255 ] || leave_alone branch "the branch name is ${#HEAD_REF} characters; the cap is 255"
+[ -n "$bot" ] || leave_alone ecosystem "the branch $HEAD_REF matches no ecosystem this repository declares for $PR_AUTHOR"
 for sha in "$HEAD_SHA" "$BASE_SHA"; do
 	printf '%s' "$sha" | grep -Eq '^([0-9a-f]{40}|[0-9a-f]{64})$' || refuse "'$sha' is not a full commit id"
 	git cat-file -e "$sha^{commit}" 2>/dev/null || refuse "commit $sha is not in this checkout"
@@ -168,17 +198,18 @@ while IFS= read -r raw; do
 	set -- $meta
 	newmode="$2"
 	status="$5"
+	# Modified only: an added manifest in any directory carves a new module or
+	# project out of the tree the checks run over, so it is never a bump.
 	case "$status" in
-	M | A) ;;
-	*) leave_alone diff "$path is $status in the diff; a bump only modifies or adds" ;;
+	M) ;;
+	*) leave_alone diff "$path is $status in the diff; a bump only modifies" ;;
 	esac
 	case "$newmode" in
 	100644 | 100755) ;;
 	*) leave_alone diff "$path has mode $newmode; a bump changes regular files" ;;
 	esac
-	base_name="${path##*/}"
 	case "$files" in
-	*" $base_name "*) ;;
+	*" $path "*) ;;
 	*) leave_alone diff "$path is not one of the declared files for $prefix:$files" ;;
 	esac
 	changed=$((changed + 1))

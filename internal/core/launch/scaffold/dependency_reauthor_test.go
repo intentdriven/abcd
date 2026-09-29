@@ -84,6 +84,18 @@ func botIdentity() []string {
 
 func newReauthorFixture(t *testing.T, owner string, bump map[string]string) reauthorFixture {
 	t.Helper()
+	rendered, err := Render(AbcdSubstitutions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	conf := strings.Replace(string(rendered.ReauthorConf), "owner_name=\nowner_email=\n", owner, 1)
+	return newReauthorFixtureConf(t, conf, nil, bump)
+}
+
+// newReauthorFixtureConf is newReauthorFixture with the declaration given
+// whole and extra files in the base commit.
+func newReauthorFixtureConf(t *testing.T, conf string, base, bump map[string]string) reauthorFixture {
+	t.Helper()
 	reauthorTools(t)
 	rendered, err := Render(AbcdSubstitutions())
 	if err != nil {
@@ -94,11 +106,13 @@ func newReauthorFixture(t *testing.T, owner string, bump map[string]string) reau
 	if err := os.WriteFile(f.script, rendered.ReauthorScript, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	conf := strings.Replace(string(rendered.ReauthorConf), "owner_name=\nowner_email=\n", owner, 1)
 	mustWrite(t, filepath.Join(f.dir, filepath.FromSlash(ReauthorConfPath)), conf)
 	mustWrite(t, filepath.Join(f.dir, "go.mod"), "module example.com/fixture\n\nrequire example.com/lib v1.2.2\n")
 	mustWrite(t, filepath.Join(f.dir, "go.sum"), "example.com/lib v1.2.2 h1:old=\n")
 	mustWrite(t, filepath.Join(f.dir, "README.md"), "fixture\n")
+	for name, body := range base {
+		mustWrite(t, filepath.Join(f.dir, filepath.FromSlash(name)), body)
+	}
 	f.git(t, nil, "init", "-q", "-b", "main")
 	f.git(t, nil, "add", "-A")
 	f.git(t, identity("Base Person", "base@example.com"), "commit", "-q", "-m", "base\n\nAssisted-by: None")
@@ -126,7 +140,7 @@ const ownerDeclared = "owner_name=" + reauthorOwner + "\nowner_email=" + reautho
 // event is the environment the workflow fills from a pull request by the bot.
 func (f reauthorFixture) event() map[string]string {
 	return map[string]string{
-		"PR_AUTHOR": reauthorBot, "HEAD_REF": reauthorBranch, "HEAD_SHA": f.head,
+		"PR_AUTHOR": reauthorBot, "ACTOR": reauthorBot, "HEAD_REF": reauthorBranch, "HEAD_SHA": f.head,
 		"BASE_SHA": f.base, "HEAD_REPO": reauthorRepo, "GITHUB_REPOSITORY": reauthorRepo,
 	}
 }
@@ -189,6 +203,18 @@ func TestReauthorBoundLeavesEverythingElseAloneAndNamesTheClause(t *testing.T) {
 			"left alone (ecosystem): the branch dependabot/github_actions/actions/checkout-7 matches no ecosystem"},
 		{"a fork's branch", nil, map[string]string{"HEAD_REPO": "someone/fixture"},
 			"left alone (head-repo): the branch lives in someone/fixture"},
+		// A new manifest elsewhere carves a module out of the tree the checks
+		// run over, so an added file is never a bump, wherever it lands.
+		{"an added manifest in another directory", map[string]string{"internal/go.mod": "module example.com/fixture/internal\n"}, nil,
+			"left alone (diff): internal/go.mod is A in the diff"},
+		{"an added manifest where the row declares it", map[string]string{"requirements.txt": "lib==1.2.3\n"},
+			map[string]string{"HEAD_REF": "dependabot/pip/lib-1.2.3"},
+			"left alone (diff): requirements.txt is A in the diff"},
+		// The bot opened it but a person pushed it: the pusher is judged too.
+		{"a pusher who is not the bot", nil, map[string]string{"ACTOR": "some-person"},
+			"left alone (actor): the event's actor some-person is not dependabot[bot]"},
+		{"a branch name past the cap", nil, map[string]string{"HEAD_REF": "dependabot/go_modules/" + strings.Repeat("a", 256-len("dependabot/go_modules/"))},
+			"left alone (branch): the branch name is 256 characters; the cap is 255"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -201,6 +227,77 @@ func TestReauthorBoundLeavesEverythingElseAloneAndNamesTheClause(t *testing.T) {
 				t.Fatalf("a commit outside the bound was re-authored:\n%s", out)
 			}
 		})
+	}
+}
+
+// A row matches the full path: its directory, as .github/dependabot.yml
+// declares it, joined to each file it names. The same file name in any other
+// directory is outside the bound, and a row without a directory is malformed.
+func TestReauthorBoundMatchesTheDeclaredDirectory(t *testing.T) {
+	rows := "ecosystem=dependabot[bot] dependabot/go_modules/ / go.mod go.sum\n" +
+		"ecosystem=dependabot[bot] dependabot/pip/ /docs requirements.txt\n"
+	base := map[string]string{"docs/requirements.txt": "lib==1.2.2\n", "requirements.txt": "lib==1.2.2\n", "tools/go.mod": "module example.com/tools\n"}
+	pip := map[string]string{"HEAD_REF": "dependabot/pip/docs/lib-1.2.3"}
+	cases := []struct {
+		name string
+		bump map[string]string
+		over map[string]string
+		want string
+	}{
+		{"the declared directory", map[string]string{"docs/requirements.txt": "lib==1.2.3\n"}, pip,
+			"in bound: dependabot[bot], dependabot/pip/, 1 file(s)"},
+		{"the file name at the root", map[string]string{"requirements.txt": "lib==1.2.3\n"}, pip,
+			"left alone (diff): requirements.txt is not one of the declared files for dependabot/pip/: docs/requirements.txt"},
+		{"the file name in another directory", map[string]string{"tools/go.mod": "module example.com/tools\n\ngo 1.26\n"}, nil,
+			"left alone (diff): tools/go.mod is not one of the declared files for dependabot/go_modules/: go.mod go.sum"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			f := newReauthorFixtureConf(t, ownerDeclared+rows, base, c.bump)
+			out, code := f.runScript(t, "check", c.over)
+			if code != 0 || !strings.Contains(out, c.want) {
+				t.Fatalf("want exit 0 with %q, got exit %d:\n%s", c.want, code, out)
+			}
+		})
+	}
+	t.Run("a row without a directory", func(t *testing.T) {
+		f := newReauthorFixtureConf(t, ownerDeclared+"ecosystem=dependabot[bot] dependabot/go_modules/ go.mod go.sum\n", nil, nil)
+		out, code := f.runScript(t, "check", nil)
+		if want := "an ecosystem row is <bot> <branch prefix> <directory> <file>..."; code != 1 || !strings.Contains(out, want) {
+			t.Fatalf("want exit 1 with %q, got exit %d:\n%s", want, code, out)
+		}
+	})
+}
+
+// abcd's own rows carry, for each ecosystem, the directory its
+// .github/dependabot.yml opens bumps in.
+func TestAbcdsReauthorRowsCarryTheDirectoriesDependabotDeclares(t *testing.T) {
+	branchSegment := map[string]string{"gomod": "go_modules", "pip": "pip", "github-actions": "github_actions",
+		"npm": "npm_and_yarn", "bundler": "bundler", "cargo": "cargo"}
+	declared := map[string]bool{}
+	ecosystem := ""
+	for _, line := range strings.Split(readFile(t, filepath.Join(repoRoot(t), ".github", "dependabot.yml")), "\n") {
+		line = strings.TrimSpace(line)
+		if v, ok := strings.CutPrefix(line, "- package-ecosystem:"); ok {
+			ecosystem = branchSegment[strings.TrimSpace(v)]
+		} else if v, ok := strings.CutPrefix(line, "directory:"); ok && ecosystem != "" {
+			declared["dependabot/"+ecosystem+"/ "+strings.TrimSpace(v)] = true
+		}
+	}
+	rows := 0
+	for _, line := range strings.Split(readFile(t, filepath.Join(repoRoot(t), filepath.FromSlash(ReauthorConfPath))), "\n") {
+		v, ok := strings.CutPrefix(line, "ecosystem=")
+		if !ok {
+			continue
+		}
+		rows++
+		fields := strings.Fields(v)
+		if len(fields) < 4 || !declared[fields[1]+" "+fields[2]] {
+			t.Errorf("the row %q names no directory .github/dependabot.yml declares for its ecosystem (%v)", line, declared)
+		}
+	}
+	if rows == 0 {
+		t.Fatalf("abcd's declaration carries no ecosystem row")
 	}
 }
 
@@ -526,7 +623,7 @@ func TestReauthorWorkflowHoldsTheLeastItNeeds(t *testing.T) {
 			t.Errorf("%s: a ${{ }} expression inside a run script: %s", name, inj)
 		}
 		for _, want := range []string{"\npermissions: {}\n", "      contents: read\n", "persist-credentials: false",
-			"ref: ${{ github.event.pull_request.base.sha }}"} {
+			"ref: ${{ github.event.pull_request.base.sha }}", "          ACTOR: ${{ github.actor }}\n"} {
 			if !strings.Contains(doc, want) {
 				t.Errorf("%s: the workflow lacks %q", name, want)
 			}

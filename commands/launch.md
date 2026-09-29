@@ -951,18 +951,22 @@ Three files:
   once written (reported `kept`, never rewritten): `owner_name` and
   `owner_email`, the person the re-authored commit names as author and
   committer, both empty until that person sets them; and one `ecosystem=` row per
-  ecosystem, `<bot login> <branch prefix> <file name>...`.
+  ecosystem, `<bot login> <branch prefix> <directory> <file name>...`, the
+  directory written as the bot's own configuration writes it (`/`, `/docs`).
 - `.github/workflows/dependency-reauthor.yml` — runs on every pull request, from
   the pull request's base, with a read-only token.
 - `.abcd/development/release-gate/dependency-reauthor.sh` — the bound and the
   push.
 
 A pull request is re-authored only inside the bound: opened by a declared bot,
-from a branch in this repository under that bot's prefix for a declared
-ecosystem, carrying one commit by that bot that touches nothing but the row's
-files. Anything else is left alone and the run names the clause it failed
-(`author`, `head-repo`, `ecosystem`, `branch`, `commits`, `commit-author`,
-`diff`). An in-bound bump is replayed with the owner as author and committer, a
+in a run that bot's own event started, from a branch in this repository under
+that bot's prefix for a declared ecosystem, carrying one commit by that bot that
+only modifies the row's files at the row's directory (an added file is never a
+bump). Anything else is left alone and the run names the clause it failed
+(`author`, `actor`, `head-repo`, `branch`, `ecosystem`, `commits`,
+`commit-author`, `diff`). The bound judges which files change, never their
+content, so tell the operator that a manifest's content inside it is
+re-authored unreviewed. An in-bound bump is replayed with the owner as author and committer, a
 message naming the bot and the workflow, and `Assisted-by: None`; a GitHub App
 pushes it under a lease, and the run's summary records the bot, the bump and
 both commits. The App is never an identity on the commit.

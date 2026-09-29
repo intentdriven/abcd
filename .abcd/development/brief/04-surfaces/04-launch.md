@@ -196,12 +196,18 @@ without it nothing of this is written. Beside the release workflows the scaffold
 lays `dependency-reauthor.yml` and the script it runs (abcd keeps its copy at
 `scripts/dependency-reauthor.sh`, byte-exact with the template). The declaration
 is the repository's once written: the owner, empty until the person sets it, and
-one row per ecosystem naming the bot, its branch prefix and the manifest and lock
-files. The workflow runs from the pull request's base with a read-only token and
-re-authors only a pull request the declared bot opened from its own branch in
-this repository, carrying one commit by the bot whose diff touches nothing but
-the row's files; anything else is left alone and the run names the clause it
-failed. The in-bound commit is replayed with the owner as author and committer,
+one row per ecosystem naming the bot, its branch prefix, the directory the bot's
+own configuration declares and the manifest and lock files. The script and the
+declaration come from the pull request's base, with a read-only token, and
+re-author only a pull request the declared bot opened, and last pushed, from its
+own branch in this repository, carrying one commit by the bot whose diff only
+modifies the row's files at the row's directory; an added file, wherever it
+lands, is outside the bound, and anything else is left alone with the clause it
+failed named. The bound judges which files change, never their content: a
+manifest's content inside the bound (a `go.mod` `replace`, `toolchain` or `tool`
+directive, a `go.sum` line) is re-authored unreviewed, the residual
+[adr-2609292116133348](../../decisions/adrs/2609292116133348-a-dependency-bump-inside-the-bound-is-re-authored-as-the.md)
+accepts. The in-bound commit is replayed with the owner as author and committer,
 a message naming the bot and the workflow, and `Assisted-by: None`, pushed under
 a lease by a GitHub App whose id and key are Dependabot secrets
 (`DEPENDENCY_REAUTHOR_APP_ID`, `DEPENDENCY_REAUTHOR_APP_KEY`), and recorded in
