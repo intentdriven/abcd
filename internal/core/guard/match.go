@@ -699,20 +699,49 @@ func argPrefixMatches(prefix string, ops []string) bool {
 // it, so `$HOME` names the home and `"$OUT"/` names no root; one whose text is
 // not known names nothing. A spelling holding fieldMark is the fields bash
 // splits it into, and each is compared on its own; quotedFieldMark is the
-// space a quoted word keeps.
+// space a quoted word keeps. Each field is also compared with its redundant
+// separators taken out (cleanSeparators), as the kernel reads the path.
 func argValueMatches(values []string, written string) bool {
 	written = strings.ReplaceAll(written, quotedFieldText, " ")
 	for _, field := range strings.Split(written, fieldText) {
 		if field == "" || isUnknown(field) {
 			continue
 		}
+		clean := cleanSeparators(field)
 		for _, v := range values {
-			if field == v {
+			if field == v || clean == v {
 				return true
 			}
 		}
 	}
 	return false
+}
+
+// cleanSeparators is a path with what the kernel reads as nothing taken
+// out (iss-2609290625482831): a run of slashes is one separator (`//*` is
+// `/*`, `$HOME//` is `$HOME/`), a `.` segment between two slashes is the
+// directory itself (`/./*` is `/*`), and a `..` segment directly under the
+// root is the root, its own parent (`/../*` is `/*`). A trailing `.` or `..`
+// is kept: rm refuses an operand whose last segment is one.
+func cleanSeparators(p string) string {
+	if !strings.Contains(p, "//") && !strings.Contains(p, "/./") && !strings.HasPrefix(p, "/../") {
+		return p
+	}
+	b := make([]byte, 0, len(p))
+	for i := 0; i < len(p); i++ {
+		if p[i] == '/' && len(b) > 0 && b[len(b)-1] == '/' {
+			continue
+		}
+		b = append(b, p[i])
+	}
+	out := string(b)
+	for strings.Contains(out, "/./") {
+		out = strings.ReplaceAll(out, "/./", "/")
+	}
+	for strings.HasPrefix(out, "/../") {
+		out = out[3:]
+	}
+	return out
 }
 
 // flagGroupHit reports whether the token at i is an alternative of one "a|b"

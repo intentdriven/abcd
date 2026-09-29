@@ -221,3 +221,47 @@ func TestHomeSpellingsStayLinear(t *testing.T) {
 		})
 	}
 }
+
+// TestRootAndHomeWithRedundantSeparators — iss-2609290625482831. The kernel
+// reads a run of slashes as one, a `.` segment as the directory itself and
+// the root as its own parent, so an operand written with them names the root
+// or the home as its plain spelling does.
+func TestRootAndHomeWithRedundantSeparators(t *testing.T) {
+	const home, cwd = "rm-rf-root-or-home", "rm-rf-working-directory"
+	cases := []struct {
+		cmd   string
+		want  Verdict
+		entry string
+	}{
+		{`rm -rf //`, VerdictBlock, home},
+		{`rm -rf //*`, VerdictBlock, home},
+		{`rm -rf ///*`, VerdictBlock, home},
+		{`rm -rf /./*`, VerdictBlock, home},
+		{`rm -rf /.//./*`, VerdictBlock, home},
+		{`rm -rf /../*`, VerdictBlock, home},
+		{`rm -rf /../../*`, VerdictBlock, home},
+		{`rm -rf $HOME//`, VerdictBlock, home},
+		{`rm -rf $HOME//*`, VerdictBlock, home},
+		{`rm -rf "$HOME"//.*`, VerdictBlock, home},
+		{`rm -rf ~//*`, VerdictBlock, home},
+		{`rm -rf ~/./`, VerdictBlock, home},
+		{`rm -rf ${HOME}/.//*`, VerdictBlock, home},
+		{`rm -rf .//*`, VerdictWarn, cwd},
+		{`rm -rf ././*`, VerdictWarn, cwd},
+		{`rm -rf //tmp/x`, VerdictAllow, ""},
+		{`rm -rf /tmp//x`, VerdictAllow, ""},
+		{`rm -rf $HOME//x`, VerdictAllow, ""},
+		{`rm -rf ~/./x`, VerdictAllow, ""},
+		{`rm -rf /../tmp`, VerdictAllow, ""},
+	}
+	for _, tc := range cases {
+		for _, cmd := range []string{tc.cmd, `bash -c '` + tc.cmd + `'`} {
+			t.Run(cmd, func(t *testing.T) {
+				d := verdictOf(t, cmd)
+				if d.Verdict != tc.want || (cmd == tc.cmd && d.EntryID != tc.entry) || (tc.want == VerdictBlock && d.EntryID != tc.entry) {
+					t.Errorf("Check(%q) = %q via %q, want %q via %q", cmd, d.Verdict, d.EntryID, tc.want, tc.entry)
+				}
+			})
+		}
+	}
+}
