@@ -204,8 +204,10 @@ func RepoRel(base, target string) string {
 
 // RedactRoot replaces every occurrence of the absolute directory root in s with
 // repl — both a path UNDER the root (root + separator + …) and the BARE root
-// itself when it sits at a right boundary (end of string or a non-path
-// character). The bare-root case matters because a message that names exactly
+// itself when it sits at a right boundary: the end of s, or any byte that is not
+// a letter or a digit (NameContinues), so "<root>.", "<root>-old" and
+// "<root>_snapshot" are redacted while "/rootfs" under "/root" is not. The
+// bare-root case matters because a message that names exactly
 // $HOME (e.g. "cannot access /Users/alex") would otherwise leak the developer abcd-audit:allow
 // identity — its base segment IS the username. The filesystem root ("/") and
 // empty or relative roots are skipped so a message is never mangled.
