@@ -188,6 +188,27 @@ rehearsal is the runbook's precondition for a first real release. A bare repo
 with no semantic detector degrades cleanly to the deterministic gates and the
 empty build job.
 
+**Dependency-bump re-authoring is opt-in per repository**
+([itd-2609221842494980](../../intents/planned/itd-2609221842494980-a-dependency-bump-lands-without-a-person-re-authoring-it-a.md)).
+Opting in seeds the declaration, `.abcd/config/dependency-reauthor.conf`, and
+the declaration's presence keeps the repository opted in on every later run;
+without it nothing of this is written. Beside the release workflows the scaffold
+lays `dependency-reauthor.yml` and the script it runs (abcd keeps its copy at
+`scripts/dependency-reauthor.sh`, byte-exact with the template). The declaration
+is the repository's once written: the owner, empty until the person sets it, and
+one row per ecosystem naming the bot, its branch prefix and the manifest and lock
+files. The workflow runs from the pull request's base with a read-only token and
+re-authors only a pull request the declared bot opened from its own branch in
+this repository, carrying one commit by the bot whose diff touches nothing but
+the row's files; anything else is left alone and the run names the clause it
+failed. The in-bound commit is replayed with the owner as author and committer,
+a message naming the bot and the workflow, and `Assisted-by: None`, pushed under
+a lease by a GitHub App whose id and key are Dependabot secrets
+(`DEPENDENCY_REAUTHOR_APP_ID`, `DEPENDENCY_REAUTHOR_APP_KEY`), and recorded in
+the run's summary. A missing owner or secret refuses the bump by name; the
+workflow never pushes with its own token and never keeps the bot as author. The
+attribution gate is unchanged and judges the result like any other commit.
+
 It is idempotent and fail-safe: a re-run on current machinery is a no-op
 (exit 0), a hand-edited file is refused (exit 1) rather than clobbered unless
 the caller confirms, and a structural fault, a missing declaration or an unknown
@@ -833,6 +854,7 @@ Sub-verbs: none.
 | Flag | Type |
 |---|---|
 | `--confirm` | bool |
+| `--dependency-reauthor` | bool |
 
 ### `abcd launch ship`
 

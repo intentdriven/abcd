@@ -2196,12 +2196,13 @@ Run the release job's semantic-receipt gate locally, before the merge: Writes no
 
 Scaffold the release gate for the declared artefact kind: Writes its workflows and runbook; refuses an undeclared kind, or a hand-edited file without --confirm.
 
-**Usage:** `abcd launch scaffold [--confirm] [flags]`
+**Usage:** `abcd launch scaffold [--confirm] [--dependency-reauthor] [flags]`
 
 **Flags:**
 
 ```
-      --confirm   overwrite a hand-edited scaffolded file with the current machinery
+      --confirm               overwrite a hand-edited scaffolded file with the current machinery
+      --dependency-reauthor   opt in to re-authoring bot-opened dependency bumps as the repository owner (seeds .abcd/config/dependency-reauthor.conf)
 ```
 
 #### `abcd launch ship`

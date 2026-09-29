@@ -1,0 +1,25 @@
+# Dependency-bump re-authoring: this repository's declaration
+# (itd-2609221842494980). Its presence is the opt-in: `abcd launch scaffold`
+# keeps the dependency-reauthor workflow current while this file exists, and
+# never rewrites the file itself.
+#
+# THE OWNER. A bot's in-bound bump is re-authored with this person as author and
+# committer. Setting it is that person's act: it is the one-time acceptance that
+# a workflow asserts their authorship, with no person in the loop, for commits
+# inside the bound below and no others. While either value is empty, an in-bound
+# bump is refused rather than re-authored as anybody else.
+owner_name=
+owner_email=
+
+# THE BOUND. One row per ecosystem:
+#   ecosystem=<bot login> <branch prefix> <file name> [<file name>...]
+# A pull request is re-authored only when its author is the row's bot, its branch
+# starts with the row's prefix, it carries one commit by that bot, and every file
+# that commit changes is named in the row (matched by file name, in any
+# directory). A bot or an ecosystem with no row is left alone. A workflow file is
+# never a manifest: an Actions bump stays a person's to land.
+ecosystem=dependabot[bot] dependabot/go_modules/ go.mod go.sum
+ecosystem=dependabot[bot] dependabot/npm_and_yarn/ package.json package-lock.json
+ecosystem=dependabot[bot] dependabot/pip/ requirements.txt pyproject.toml poetry.lock
+ecosystem=dependabot[bot] dependabot/bundler/ Gemfile Gemfile.lock
+ecosystem=dependabot[bot] dependabot/cargo/ Cargo.toml Cargo.lock

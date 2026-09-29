@@ -130,8 +130,10 @@ disclosure, and never an authorship assertion for a tool. The rules:
   web-UI merge passes too, which is why the sixth signal is author-only. Set
   `user.name` and `user.email` to a human before you commit; the assistant
   belongs in the trailer, never in the identity fields the contributor graph
-  reads. An automated dependency bump is therefore landed by a human rather than
-  merged as the bot authored it.
+  reads. An automated dependency bump is therefore never merged as the bot
+  authored it: one confined to a declared ecosystem's manifest and lock files is
+  re-authored as the repository owner by the `dependency-reauthor` workflow, and
+  any other is landed by a human.
 - **Disclosure by trailer, not co-authorship.** AI-assisted commits carry an
   `Assisted-by: <Agent>:<model-version>` trailer (the kernel format) —
   disclosure only. abcd never uses `Co-Authored-By:` for AI: it asserts an

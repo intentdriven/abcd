@@ -23,6 +23,7 @@ import (
 const (
 	releaseTemplateRel     = "internal/core/launch/scaffold/templates/release.yml.tmpl"
 	autoReleaseTemplateRel = "internal/core/launch/scaffold/templates/auto-release.yml.tmpl"
+	reauthorTemplateRel    = "internal/core/launch/scaffold/templates/dependency-reauthor.yml.tmpl"
 )
 
 // maxTemplateBytes caps the guarded reads below, matching maxWorkflowBytes: these
@@ -30,10 +31,11 @@ const (
 const maxTemplateBytes = maxWorkflowBytes
 
 // pinSyncPairs maps each committed workflow to the template it was rendered from.
-// Only these two carry action pins; runbook.md.tmpl has none.
+// Only these three carry action pins; runbook.md.tmpl has none.
 var pinSyncPairs = []struct{ workflow, template string }{
 	{ReleaseYMLPath, releaseTemplateRel},
 	{AutoReleaseYMLPath, autoReleaseTemplateRel},
+	{ReauthorYMLPath, reauthorTemplateRel},
 }
 
 // usesLineRe splits a workflow `uses:` line into the parts the propagation must

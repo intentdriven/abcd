@@ -76,9 +76,11 @@ jobs:
     # about the MESSAGE, which the body half still exempts. It says nothing about
     # AUTHORSHIP, and authorship is what the gate is now enforcing: a commit is
     # authored by a human, machine assistance is disclosed by the trailer alone. So
-    # a dependabot pull request is now red until a human lands the bump, which is
-    # the correct answer rather than a cost, and the gate is not made to lie in
-    # order to keep a bot's pull request green.
+    # a dependabot pull request is red as the bot authored it, and the gate is
+    # not made to lie in order to keep a bot's pull request green: a bump inside
+    # the declared bound is re-authored as the owner by dependency-reauthor.yml,
+    # whose push re-runs this on the person's commit, and any other is landed by
+    # a human.
     # 10 rather than 5: the job now compiles the outbound checker from source, and
     # the corpus compiles it again to prove a bare checkout can. A required check
     # that goes red on a cold module cache is a false red on every pull request.
@@ -213,6 +215,6 @@ jobs:
             exit 1
           fi
           # No bot exemption here: the commit half reads AUTHORSHIP, and a machine
-          # author is exactly what it now refuses (iss-2609082001204831). A bump a
-          # bot proposed is landed by a human.
+          # author is exactly what it refuses (iss-2609082001204831). A bump a
+          # bot proposed reaches this re-authored as a person, or not at all.
           bash scripts/check-attribution.sh commits "$BASE_SHA" "$HEAD_SHA"
