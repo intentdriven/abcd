@@ -26,12 +26,12 @@ import (
 // string are decoded to bytes, each mapped to the raw offset of its first
 // digit, and the bytes are handed to the same view (pdfHexView); that needs
 // no escape grammar (iss-2609261909108726). A string written with octal
-// escapes inside parentheses (\376\377...) does, and stays with
-// iss-2609261831352258.
+// escapes inside parentheses (\376\377...) needs the literal-string syntax,
+// which pdfLiteralView (metaview.go) decodes before handing the bytes here.
 //
-// A run without a mark (EXIF's XPAuthor tag, a legacy binary document) is not
-// read: telling UTF-16 from chance bytes there needs the structure the text
-// sits in, which is iss-2609261659051539's IFD reader, not a decode.
+// A run without a mark is not read here: telling UTF-16 from chance bytes
+// needs the structure the text sits in, which is exifView's IFD walk for the
+// EXIF XP* tags (metaview.go).
 
 // minUTF16Run is the fewest code units a run needs to be read: a mark before
 // a single unit is chance far more often than text.
@@ -143,6 +143,29 @@ func utf16TextRune(r rune) bool {
 func pdfHexView(data []byte) (decodedView, bool) {
 	var text []byte
 	var pos []int
+	pdfHexStrings(data, func(raw []byte, off []int) {
+		if len(raw) < 2 || !(raw[0] == 0xfe && raw[1] == 0xff || raw[0] == 0xff && raw[1] == 0xfe) {
+			return
+		}
+		v, ok := utf16View(raw)
+		if !ok {
+			return
+		}
+		for k := 0; k < len(v.text); k++ {
+			text = append(text, v.text[k])
+			pos = append(pos, off[v.posMap[k]])
+		}
+	})
+	if len(text) == 0 {
+		return decodedView{}, false
+	}
+	return decodedView{text: string(text), posMap: append(pos, len(data))}, true
+}
+
+// pdfHexStrings hands fn the bytes of every closed PDF hex string in data,
+// with the raw offset of the first hex digit of each byte and, one entry past
+// them, the offset of the closing '>'. The slices are reused between calls.
+func pdfHexStrings(data []byte, fn func(raw []byte, off []int)) {
 	var raw []byte
 	var off []int
 	for i := 0; i < len(data); i++ {
@@ -186,23 +209,11 @@ func pdfHexView(data []byte) (decodedView, bool) {
 			raw = append(raw, byte(hi<<4))
 			off = append(off, hiAt)
 		}
-		if len(raw) < 2 || !(raw[0] == 0xfe && raw[1] == 0xff || raw[0] == 0xff && raw[1] == 0xfe) {
+		if len(raw) == 0 {
 			continue
 		}
-		v, ok := utf16View(raw)
-		if !ok {
-			continue
-		}
-		off = append(off, j)
-		for k := 0; k < len(v.text); k++ {
-			text = append(text, v.text[k])
-			pos = append(pos, off[v.posMap[k]])
-		}
+		fn(raw, append(off, j))
 	}
-	if len(text) == 0 {
-		return decodedView{}, false
-	}
-	return decodedView{text: string(text), posMap: append(pos, len(data))}, true
 }
 
 // isPDFSpace reports whether c is one of the six bytes PDF reads as white
@@ -211,16 +222,44 @@ func isPDFSpace(c byte) bool {
 	return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f' || c == 0
 }
 
-// utf16Findings scans the UTF-16 views of data (the marked runs as written, and
-// those a PDF hex string spells) with the byte rules and re-homes each finding
-// onto the raw bytes: Line and Column name the raw position of
-// the value's first code unit (meta's line starts), while Matched and the
-// snippet stay the decoded text, so the short-name length rule counts the
-// name's own bytes rather than its zero-interleaved spelling, and a serialized
-// finding masks the name as it reads.
-func (s *Scanner) utf16Findings(data []byte, id Identity, secrets []Pattern, logical string, meta *metadataFields) []Finding {
+// byteViewFindings scans the decoded views of data with the byte rules and
+// re-homes each finding onto the raw bytes: Line and Column name the raw
+// position of the value's first source byte (meta's line starts), while
+// Matched and the snippet stay the decoded text, so the short-name length rule
+// counts the name's own bytes rather than its spelling on disk, and a
+// serialized finding masks the name as it reads.
+//
+// The views are the UTF-16 runs a mark opens (as written, and as a PDF hex
+// string spells them), then the metadata views (metaview.go): the EXIF text
+// tags, the PDF literal strings, and the PDF hex strings with no mark. A
+// metadata view adds only what nothing before it found: its finding at the
+// same raw span and kind as one the raw scan or a UTF-16 view already made is
+// the same finding, not a second one. The IPTC person datasets and exifView
+// record their person spans in meta here, before any finding is judged.
+func (s *Scanner) byteViewFindings(data []byte, id Identity, secrets []Pattern, logical string, meta *metadataFields, prior []Finding) []Finding {
+	meta.persons = iptcPersonSpans(data, meta.persons)
+	views := []func([]byte) (decodedView, bool){
+		utf16View, pdfHexView,
+		func(d []byte) (decodedView, bool) { return exifView(d, meta) },
+		pdfLiteralView, pdfDocHexView,
+	}
+	const firstMetadataView = 2
+	type key struct {
+		kind         string
+		line, column int
+		matchLen     int
+	}
+	var seen map[key]bool
 	var out []Finding
-	for _, view := range []func([]byte) (decodedView, bool){utf16View, pdfHexView} {
+	for n, view := range views {
+		if n == firstMetadataView {
+			seen = map[key]bool{}
+			for _, list := range [][]Finding{prior, out} {
+				for _, f := range list {
+					seen[key{f.Kind, f.Line, f.Column, len(f.Matched)}] = true
+				}
+			}
+		}
 		v, ok := view(data)
 		if !ok {
 			continue
@@ -235,6 +274,13 @@ func (s *Scanner) utf16Findings(data []byte, id Identity, secrets []Pattern, log
 				continue
 			}
 			f.Line, f.Column = meta.position(v.posMap[at])
+			if seen != nil {
+				k := key{f.Kind, f.Line, f.Column, len(f.Matched)}
+				if seen[k] {
+					continue
+				}
+				seen[k] = true
+			}
 			out = append(out, f)
 		}
 	}

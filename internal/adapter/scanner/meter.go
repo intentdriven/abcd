@@ -46,6 +46,11 @@ const (
 	stageJSONEscape = "json_escape"
 	// stageUTF16 is the byte scan's walk for byte-order-marked UTF-16 runs.
 	stageUTF16 = "utf16"
+	// stageEXIF is the byte scan's walk of TIFF image file directories: each
+	// header, entry and value read.
+	stageEXIF = "exif"
+	// stagePDFLiteral is the byte scan's decode of PDF literal strings.
+	stagePDFLiteral = "pdf_literal"
 )
 
 // costMeter records per-stage scan work. The zero value charges nothing.
