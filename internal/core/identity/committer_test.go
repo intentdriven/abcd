@@ -197,11 +197,33 @@ func TestIsToolIdentity(t *testing.T) {
 		{RoleCommitter, "GitHub", "noreply@github.com", false},
 		{RoleAuthor, "Some Tool", "do-not-reply@example.com", true},
 		{RoleAuthor, "Alex Reppel", "alex@example.com", false},
+		// A configured automation's name shape: the machine_name_word and
+		// machine_local_word keys the attribution gate reads are refused here
+		// too, since the list has two readers (iss-2609090951276167).
+		{RoleAuthor, "semantic-release-bot", "12345+semantic-release-bot@users.noreply.github.com", true},
+		{RoleCommitter, "ci_bot", "carol@example.com", true},
+		{RoleAuthor, "Renovate Bot", "bot@renovateapp.com", true},
+		{RoleAuthor, "release-automation", "carol@example.com", true},
+		{RoleAuthor, "Jan Bot", "jan@example.com", false},
+		{RoleAuthor, "Carol Talbot", "carol.talbot@example.com", false},
+		{RoleAuthor, "Jean", "jean.bot@example.com", false},
 	}
 	for _, c := range cases {
 		if got := IsToolIdentity(c.role, c.name, c.email); got != c.want {
 			t.Errorf("IsToolIdentity(%s, %q, %q) = %v, want %v", c.role, c.name, c.email, got, c.want)
 		}
+	}
+}
+
+// TestStructuralSignalsLeaveTheNameShapeOut: the contributors page reads the
+// structural signals alone, so the name-shape keys never reach it — refusing a
+// configured name is the gates' job, not the published history's.
+func TestStructuralSignalsLeaveTheNameShapeOut(t *testing.T) {
+	if IsMachineName("semantic-release-bot") {
+		t.Error("IsMachineName reads the name-shape word; it is the structural `[bot]` suffix alone")
+	}
+	if IsMachineAddress(RoleAuthor, "ci-bot@example.com") {
+		t.Error("IsMachineAddress reads the local-part word; it is the structural bot mailbox alone")
 	}
 }
 
@@ -233,7 +255,7 @@ func TestToolIdentityListIsTheGatesOwn(t *testing.T) {
 // TestToolIdentityPatternsSpeakBothDialects: every pattern is read by POSIX ERE
 // (grep -Ei, in the gate) and by RE2 (here), so each must parse in both.
 func TestToolIdentityPatternsSpeakBothDialects(t *testing.T) {
-	want := []string{"ai_name", "ai_mail", "machine_name", "machine_mail", "author_only_mail"}
+	want := []string{"ai_name", "ai_mail", "machine_name", "machine_mail", "machine_name_word", "machine_local_word", "author_only_mail"}
 	if len(toolPatternSource) != len(want) {
 		t.Fatalf("the list carries %d keys, want exactly %v", len(toolPatternSource), want)
 	}

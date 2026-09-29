@@ -24,11 +24,20 @@ var (
 	// openLeadRe is an item led by a bold "Open": a question, whatever else
 	// the item says.
 	openLeadRe = regexp.MustCompile(`(?i)^\*\*open\b`)
-	// settledMarkRe is an item's explicit disposition: a bold span that opens
+	// settledBoldRe is an item's explicit disposition as a bold span that opens
 	// with it (`**Resolved — …**`, `**Deferred**`, `**explicitly deferred**`,
-	// `**explicit deferral**`), or the word as a label (`resolved:`,
-	// `RESOLVED:`, `Deferred:`).
-	settledMarkRe = regexp.MustCompile(`(?i)\*\*(resolved|deferred|explicitly deferred|explicit deferral)\b|\b(resolved|deferred)\s*:`)
+	// `**explicit deferral**`), wherever in the item the span sits.
+	settledBoldRe = regexp.MustCompile(`(?i)\*\*(resolved|deferred|explicitly deferred|explicit deferral)\b`)
+	// settledLabelRe is the disposition as a LABEL (`resolved:`, `RESOLVED:`,
+	// `Deferred:`), and a label only where a label is written: opening a line of
+	// the item — a nested sub-bullet continuation (`  - Resolved: …`) opens one
+	// too — after a closing bold, with or without a colon after it
+	// (`**Which surface?** RESOLVED:`, `**Which id?**: Resolved:`), or after a
+	// dash (`**Refusal breadth** — resolved:`). Mid-sentence the same word and
+	// colon are prose — "once the split is resolved: the old or the new?" is a
+	// question — and reading them as a marker let build start past it
+	// (iss-2609260932374727).
+	settledLabelRe = regexp.MustCompile(`(?i)(^|^[-*][ \t]+|\*\*:?[ \t]*|[—–][ \t]*|[ \t]-[ \t]+)(resolved|deferred)[ \t]*:`)
 )
 
 // OpenQuestions returns the questions an intent's `## Open Questions` section
@@ -46,9 +55,11 @@ var (
 //     kept for the reader;
 //   - an item explicitly marked resolved or deferred — a bold span opening
 //     with the word (`**Resolved — …**`, `**Deferred**`, `**explicitly
-//     deferred**`, `**explicit deferral**`) or the word as a label
-//     (`resolved:`, `Deferred:`) anywhere in the item, continuation lines
-//     included — is not a question.
+//     deferred**`, `**explicit deferral**`) anywhere in the item, continuation
+//     lines included, or the word as a label (`resolved:`, `Deferred:`)
+//     opening a line of the item (a nested sub-bullet included), after a
+//     closing bold (and an optional colon), or after a dash — is not a
+//     question. The same word and colon mid-sentence are prose.
 //
 // Everything else under the heading that is a list item is a question
 // whatever it says: an item led `**Open`, an item that only points elsewhere,
@@ -62,7 +73,7 @@ func OpenQuestions(content string) []string {
 		if item == nil {
 			return
 		}
-		if !settledItem(strings.Join(item, " ")) {
+		if !settledItem(item) {
 			out = append(out, item[0])
 		}
 		item = nil
@@ -97,8 +108,21 @@ func OpenQuestions(content string) []string {
 	return out
 }
 
-// settledItem reports whether an item's text, its continuation lines joined,
-// carries an explicit resolved or deferred marker and is not led "Open".
-func settledItem(text string) bool {
-	return !openLeadRe.MatchString(text) && settledMarkRe.MatchString(text)
+// settledItem reports whether an item — its first line's text, then its
+// continuation lines, each trimmed — carries an explicit resolved or deferred
+// marker and is not led "Open". The lines are judged apart for the label, whose
+// place is the start of a line, and joined for the bold span, which may wrap.
+func settledItem(lines []string) bool {
+	if openLeadRe.MatchString(lines[0]) {
+		return false
+	}
+	if settledBoldRe.MatchString(strings.Join(lines, " ")) {
+		return true
+	}
+	for _, ln := range lines {
+		if settledLabelRe.MatchString(ln) {
+			return true
+		}
+	}
+	return false
 }

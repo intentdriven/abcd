@@ -108,7 +108,9 @@ type RuleConfig struct {
 	// ExtraRoots are repo-relative trees links_resolve walks for links ALONE,
 	// beyond Roots: the working tier (.abcd/work) holds relative links in the issue
 	// ledger, DECISIONS.md and CONTEXT.md, and adding it to Roots would arm every
-	// content rule there too (iss-2608230752354927).
+	// content rule there too (iss-2608230752354927). harness_leak reads its own
+	// ExtraRoots the same way, for the leak class alone: the ledger is committed
+	// free text outside the record's Roots (iss-2608301306580014).
 	ExtraRoots []string `json:"extra_roots"`
 	// IntentsDir is the intents subdirectory (relative to a root) read by the
 	// intent-tree rules, intent_lifecycle and intent_impact_valid. Rules that name

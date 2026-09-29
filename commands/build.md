@@ -88,7 +88,9 @@ returns hand the receipt back:
 The lane advances only on a receipt that verifies. Asking for a step while the
 lane awaits a receipt re-tells what it awaits and moves nothing.
 `"${CLAUDE_PLUGIN_ROOT}/abcd" implement status --json` renders every run, its
-lanes and its record, and writes nothing.
+lanes and its record, and writes nothing. A lane's `worktree` is home-relative,
+or its directory name when it sits outside HOME; its `brief` and `receipt` keep
+their full home-relative paths, because the agent acts on them.
 
 A lane's steps run in order:
 

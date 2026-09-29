@@ -330,6 +330,8 @@ func migrateLegacy(home, rootSHA string, dst Resolution) string {
 	if movedRecords == 0 && movedStaged == 0 && complete {
 		return "" // the legacy dirs existed but were empty: nothing worth saying.
 	}
+	// Store paths, not checkouts: the note is the one notice of where the corpus
+	// went, so both keep RedactHome rather than fsutil.DisplayPath's base name.
 	note := fmt.Sprintf("history: moved %d transcript(s) and %d staged file(s) out of %s into %s",
 		movedRecords, movedStaged, fsutil.RedactHome(legacyRepo), fsutil.RedactHome(dst.Base))
 	if !complete {

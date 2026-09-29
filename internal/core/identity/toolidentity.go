@@ -25,13 +25,17 @@ var (
 	aiMailRe         = toolPattern("ai_mail")
 	machineNameRe    = toolPattern("machine_name")
 	machineMailRe    = toolPattern("machine_mail")
+	machineNameWord  = toolPattern("machine_name_word")
+	machineLocalWord = toolPattern("machine_local_word")
 	authorOnlyMailRe = toolPattern("author_only_mail")
 )
 
 // IsToolIdentity reports whether name <email> is a machine identity in the
 // given role of a commit: an AI vendor's name or mail domain, the forge's own
-// `[bot]` account, or a bot mailbox, in either role; and, in the AUTHOR role
-// only, a mailbox named for not being read (`noreply@`). The asymmetry is the
+// `[bot]` account, a bot mailbox, or a configured automation's name shape (a
+// trailing `bot`, `robot` or `automation` word ending the name or the mailbox's
+// local part), in either role; and, in the AUTHOR role only, a mailbox named for
+// not being read (`noreply@`). The asymmetry is the
 // attribution gate's own — the forge stamps `GitHub <noreply@github.com>` as the
 // committer of every web-UI merge made on a human's click, so it passes as a
 // committer and nowhere else.
@@ -41,7 +45,8 @@ var (
 // gate runs, before the attribution gate refuses the pull request in CI.
 func IsToolIdentity(role Role, name, email string) bool {
 	return aiNameRe.MatchString(name) || aiMailRe.MatchString(email) ||
-		IsMachineName(name) || IsMachineAddress(role, email)
+		IsMachineName(name) || IsMachineAddress(role, email) ||
+		machineNameWord.MatchString(name) || machineLocalWord.MatchString(email)
 }
 
 // IsMachineName reports the STRUCTURAL name signal alone: the `[bot]` suffix the

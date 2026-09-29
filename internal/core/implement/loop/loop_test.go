@@ -178,6 +178,60 @@ func TestStartRefusesAPeerHoldingTheRecord(t *testing.T) {
 	})
 }
 
+// TestThePeerRefusalNamesAWorktreeOutsideHomeByItsDirectoryName: the refusal
+// named a peer worktree through the home redaction alone, so one outside HOME
+// reached the refusal as an absolute local path, in its name and inside its
+// not-read reason (iss-2609281329007423). Both name it by its directory name.
+func TestThePeerRefusalNamesAWorktreeOutsideHomeByItsDirectoryName(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("chmod 0 on the shut worktree's planned folder does not deny root, so its could-not-be-read holder never forms")
+	}
+	repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
+	outside := t.TempDir()
+	held := filepath.Join(outside, "wt-held")
+	repo.Git("worktree", "add", "-q", "-b", "lane-alpha", held)
+	shipped := ".abcd/development/intents/shipped/itd-10-alpha.md"
+	if err := os.MkdirAll(filepath.Dir(filepath.Join(held, shipped)), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(filepath.Join(held, plannedRel), filepath.Join(held, shipped)); err != nil {
+		t.Fatal(err)
+	}
+	shut := filepath.Join(outside, "wt-shut")
+	repo.Git("worktree", "add", "-q", "-b", "lane-shut", shut)
+	if err := os.WriteFile(filepath.Join(shut, "note"), []byte("ahead\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	repo.Git("-C", shut, "add", "note")
+	repo.Git("-C", shut, "commit", "-q", "-m", "ahead of main")
+	locked := filepath.Join(shut, ".abcd", "development", "intents", "planned")
+	if err := os.Chmod(locked, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(locked, 0o755) })
+
+	_, err := Start(repo.Root(), "itd-10", Options{})
+	r := mustRefusal(t, err)
+	if r.Check != CheckPeers || !r.Contention {
+		t.Fatalf("want the peers check as contention: %+v", r)
+	}
+	for _, want := range []string{"the worktree at wt-held (branch lane-alpha)", "the worktree at wt-shut (branch lane-shut) could not be read", "wt-shut/"} {
+		if !strings.Contains(r.Reason, want) {
+			t.Errorf("the refusal lacks %q: %q", want, r.Reason)
+		}
+	}
+	abs := []string{outside}
+	if real, err := filepath.EvalSymlinks(outside); err == nil && real != outside {
+		abs = append(abs, real)
+	}
+	for _, a := range abs {
+		if strings.Contains(r.Reason, a) {
+			t.Errorf("the refusal prints the absolute worktree path under %s: %q", a, r.Reason)
+		}
+	}
+	runTierAbsent(t, repo.Root())
+}
+
 // TestStartAgainResumesTheRunItsOwnLaneChanged is criterion 7's resume once
 // the run has changed the tree it was judged on: its lane's worktree (in the
 // machine-scoped store, piece 6's shape) delivers the intent to shipped/, or

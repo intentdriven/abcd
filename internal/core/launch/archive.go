@@ -88,7 +88,7 @@ type PluginArchive struct {
 	// caller removes or reads the archive through. It never reaches machine
 	// output (iss-81); DisplayPath is what a report names.
 	Path string `json:"-"`
-	// DisplayPath is Path as a report names it (fsutil.DisplayPath): relative
+	// DisplayPath is Path as a report names it (fsutil.RepoRelativePath): relative
 	// to the repository when --out is inside it, the home redacted to "~"
 	// otherwise (iss-2609261950077063).
 	DisplayPath string `json:"path"`
@@ -140,7 +140,7 @@ func RenderPluginArchive(req PayloadRenderRequest, outDir string) (PluginArchive
 	a.Name = PluginArchiveName(name, req.Version)
 	a.Version = req.Version
 	a.Path = filepath.Join(outDir, a.Name)
-	a.DisplayPath = fsutil.DisplayPath(req.RepoRoot, a.Path)
+	a.DisplayPath = fsutil.RepoRelativePath(req.RepoRoot, a.Path)
 	if _, err := os.Lstat(a.Path); err == nil {
 		return a, res, fmt.Errorf("%s already exists in the output directory — refusing to replace a release archive", a.Name)
 	}

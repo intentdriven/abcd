@@ -124,6 +124,9 @@ var (
 	// closing sequence, which is not part of the title.
 	principleTitleRe      = regexp.MustCompile(`^#[ \t]+(.*)$`)
 	principleTitleCloseRe = regexp.MustCompile(`[ \t]+#+[ \t]*$`)
+	// principleSetextRuleRe is the `===` underline that makes the paragraph
+	// above it a setext H1 (iss-2609261140284421); the `---` form is an H2.
+	principleSetextRuleRe = regexp.MustCompile(`^ {0,3}=+[ \t]*$`)
 )
 
 // PrincipleStatement is where a principle's statement sits in its document:
@@ -137,8 +140,9 @@ var (
 // are how a gate came to judge a paragraph while the projection sent a title
 // above it (iss-2609261039134673).
 type PrincipleStatement struct {
-	// Title is the H1 title with any closing hashes removed, and TitleLine its
-	// 0-based line; TitleLine is -1 when the document carries no H1.
+	// Title is the H1 title, ATX with any closing hashes removed or setext with
+	// its lines joined, and TitleLine its first 0-based line; TitleLine is -1
+	// when the document carries no H1.
 	Title     string
 	TitleLine int
 	// Start and End bound the paragraph's lines, [Start, End), 0-based, the
@@ -157,9 +161,14 @@ func FindPrincipleStatement(lines []string) (PrincipleStatement, bool) {
 	}
 	st := PrincipleStatement{TitleLine: -1, Start: body + start, End: body + end}
 	mask := mdrecord.Mask(lines[body:])
-	for i, ln := range lines[body:] {
+	rest := lines[body:]
+	for i, ln := range rest {
 		if i < len(mask) && mask[i] != 0 {
 			continue
+		}
+		if first, title := setextPrincipleTitle(rest, mask, i); title != "" {
+			st.Title, st.TitleLine = title, body+first
+			break
 		}
 		m := principleTitleRe.FindStringSubmatch(strings.TrimRight(ln, "\r"))
 		if m == nil {
@@ -173,16 +182,39 @@ func FindPrincipleStatement(lines []string) (PrincipleStatement, bool) {
 	return st, true
 }
 
+// setextPrincipleTitle reads the setext H1 whose underline sits directly under
+// line i: the paragraph ending at i, its lines joined by one space, and its
+// first line. The title is empty when line i+1 is no `===` underline or line i
+// opens a block other than a paragraph, under which the run is no underline.
+// A setext heading's content is the whole paragraph above the underline, so
+// the walk runs up to the blank line, a masked line, or a line opening another
+// block that ends it.
+func setextPrincipleTitle(lines []string, mask []uint8, i int) (int, string) {
+	masked := func(j int) bool { return j < len(mask) && mask[j] != 0 }
+	isPara := func(j int) bool {
+		ln := strings.TrimRight(lines[j], "\r")
+		return strings.TrimSpace(ln) != "" && !masked(j) && !notParagraphRe.MatchString(ln)
+	}
+	if i+1 >= len(lines) || masked(i+1) || !principleSetextRuleRe.MatchString(strings.TrimRight(lines[i+1], "\r")) || !isPara(i) {
+		return 0, ""
+	}
+	first := i
+	for first > 0 && isPara(first-1) {
+		first--
+	}
+	words := make([]string, 0, i-first+1)
+	for _, ln := range lines[first : i+1] {
+		words = append(words, strings.TrimSpace(ln))
+	}
+	return first, strings.Join(words, " ")
+}
+
 // principleBodyStart is the first line after the leading frontmatter block, 0
 // when there is none: a YAML comment is a `#` line, and it is not a title.
 func principleBodyStart(lines []string) int {
-	if len(lines) == 0 || !frontmatter.IsDelimiter(frontmatter.TrimBOM(lines[0])) {
-		return 0
-	}
-	for i := 1; i < len(lines); i++ {
-		if !strings.HasPrefix(lines[i], " ") && !strings.HasPrefix(lines[i], "\t") && frontmatter.IsDelimiter(lines[i]) {
-			return i + 1
-		}
+	// frontmatter.Close is the one walk (iss-2608270908348042).
+	if end := frontmatter.Close(lines); end >= 0 {
+		return end + 1
 	}
 	return 0
 }

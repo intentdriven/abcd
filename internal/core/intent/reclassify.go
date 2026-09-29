@@ -473,17 +473,21 @@ func historyEntry(date, from, to, reason string) string {
 }
 
 // frontmatterClose returns the index of the frontmatter block's closing
-// delimiter in lines, with setFrontmatterFields's delimiter tolerance.
+// delimiter in lines. It is this package's one form of frontmatter.Close, the
+// walk frontmatter.Fields makes, so every intent writer agrees with the reader
+// about where the block ends — a BOM ahead of the opening delimiter included,
+// which a private walk here refused while the reader accepted the record
+// (iss-2608221126066379). The two refusals stay apart, because they name
+// different repairs.
 func frontmatterClose(lines []string) (int, error) {
-	if len(lines) == 0 || strings.TrimRight(lines[0], " \t\r") != "---" {
+	if len(lines) == 0 || !frontmatter.IsDelimiter(frontmatter.TrimBOM(lines[0])) {
 		return 0, fmt.Errorf("intent: file has no leading frontmatter block")
 	}
-	for i := 1; i < len(lines); i++ {
-		if strings.TrimRight(lines[i], " \t\r") == "---" {
-			return i, nil
-		}
+	closing := frontmatter.Close(lines)
+	if closing < 0 {
+		return 0, fmt.Errorf("intent: frontmatter block is not closed")
 	}
-	return 0, fmt.Errorf("intent: frontmatter block is not closed")
+	return closing, nil
 }
 
 // frontmatterKeyLine returns the index of key's top-level line, or -1.

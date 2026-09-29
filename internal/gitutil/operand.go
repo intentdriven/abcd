@@ -84,7 +84,7 @@ func ProveOperandDir(operand string) error {
 				var pe *os.PathError
 				if errors.As(err, &pe) {
 					if filepath.IsAbs(pe.Path) {
-						level = fsutil.DisplayPath(realBase, pe.Path)
+						level = fsutil.RepoRelativePath(realBase, pe.Path)
 					}
 					cause = pe.Err
 				}

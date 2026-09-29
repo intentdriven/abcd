@@ -42,10 +42,13 @@ No run is created until every check passes, and each is a read (criteria 1 and 2
   is settled whole, and an item explicitly marked resolved or deferred — a bold
   span opening with the word (`**Resolved — …**`, `**Deferred**`, `**explicitly
   deferred**`, `**explicit deferral**`) or the word as a label (`resolved:`,
-  `Deferred:`) — is not a question. Every other list item is a question
-  whatever it says: one led `**Open`, one that only points to another record,
-  and one that merely mentions deferral all count (the 2026-09-25 entry in
-  `.abcd/work/DECISIONS.md`).
+  `Deferred:`) opening a line of the item (a nested sub-bullet included),
+  after a closing bold (with or without a colon after it) or after a dash — is
+  not a question; the same word and colon mid-sentence are prose.
+  Every other list item is a question whatever it says: one led `**Open`, one
+  that only points to another record, and one that merely mentions deferral
+  all count (the 2026-09-25 entry in `.abcd/work/DECISIONS.md`, and its
+  2026-09-28 correction).
 - **claim sections** — the mechanism prompt is answered or the section absent,
   and the scope conditions are recorded. The readiness gate reports both as
   advisory; a run is where they bind, because an autonomous lane has nobody to
@@ -109,7 +112,10 @@ default); the window clock the pacing intent writes (`window_started_at`,
 the run record, one line per completed step. A lane carries its spec step and
 title, its next step, what it awaits when a step has handed work to an agent,
 and the footprint its steps fill in: branch, base and head, worktree, brief,
-receipt and pull request.
+receipt and pull request. The status render names the worktree home-relative,
+or by its directory name outside HOME (iss-2609281329007423); the brief and the
+receipt stay whole paths, home-redacted, because the agent reads the one and
+writes the other.
 
 Starting creates one lane, for the first unlanded spec step, and records the
 rest as pending. Starting again while that run is in progress creates nothing

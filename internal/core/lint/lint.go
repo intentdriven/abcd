@@ -425,6 +425,13 @@ func LintAt(cfg Config, repoRoot string, now time.Time) ([]Finding, error) {
 		}
 		findings = append(findings, lx...)
 	}
+	if leakOn && len(leakCfg.ExtraRoots) > 0 {
+		hx, err := checkHarnessLeakExtraRoots(repoRoot, leakCfg, scanned)
+		if err != nil {
+			return nil, err
+		}
+		findings = append(findings, hx...)
+	}
 
 	if len(cfg.NameRoots) > 0 {
 		nf, err := lintNameRoots(cfg, repoRoot, scanned)
@@ -2733,6 +2740,11 @@ func parseYAMLStringList(v string) []string { return frontmatter.StringList(v) }
 // untrimmed BOM ahead of the `---` (or ahead of a leading comment) would make a
 // well-formed record read as having no frontmatter and slip every
 // frontmatter-keyed blocker.
+//
+// The comment preamble is this reader's deliberate tolerance; the delimiter
+// line itself is judged by frontmatter.IsDelimiter, the one rule, so an
+// indented `  ---` opens nothing here exactly as it opens nothing to Fields
+// (iss-2608270908348042).
 func frontmatterOpen(lines []string) int {
 	// The comments are mdrecord's to locate (iss-2609251518418878); a line
 	// holding prose after a comment's closer is content, not a comment.
@@ -2740,7 +2752,7 @@ func frontmatterOpen(lines []string) int {
 	if i >= len(lines) {
 		return -1
 	}
-	if strings.TrimSpace(lines[i][col:]) == "---" && strings.TrimSpace(frontmatter.TrimBOM(lines[i][:col])) == "" {
+	if frontmatter.TrimBOM(lines[i][:col]) == "" && frontmatter.IsDelimiter(lines[i][col:]) {
 		return i
 	}
 	return -1
@@ -2752,16 +2764,11 @@ func frontmatterOpen(lines []string) int {
 // file whose frontmatter carries a `core/epic` term reference is never scanned as
 // prose just because a comment precedes its `---`.
 func frontmatterBodyStart(lines []string) int {
-	open := frontmatterOpen(lines)
-	if open < 0 {
-		return 0
+	// The close is frontmatter.CloseAfter's (iss-2608270908348042).
+	if end := frontmatter.CloseAfter(lines, frontmatterOpen(lines)); end >= 0 {
+		return end + 1
 	}
-	for j := open + 1; j < len(lines); j++ {
-		if strings.TrimSpace(lines[j]) == "---" {
-			return j + 1
-		}
-	}
-	return 0 // unterminated frontmatter: treat all as body rather than swallow the file
+	return 0 // no frontmatter, or unterminated: treat all as body rather than swallow the file
 }
 
 // stripInlineCode blanks every inline code span on a line, its delimiters and

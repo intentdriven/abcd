@@ -3,6 +3,7 @@ package lint
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"syscall"
 	"testing"
@@ -266,6 +267,46 @@ func TestRecordSchemaNamesEveryUndeclaredLink(t *testing.T) {
 				t.Fatalf("the unlinked resolved bucket must still be checked: %+v", fs)
 			}
 		})
+	}
+}
+
+// A markdown-named link at a bucketed store's root that is no record filename
+// is named too, without being followed (iss-2609261208193041): telling whether
+// `notes.md` points at a directory or a file would mean following it, so every
+// such link is reported, whatever it points at. The store's README.md is the
+// one link the root may carry, and a dot-named link is tooling state.
+func TestRecordSchemaNamesAMarkdownNamedLinkAtAStoreRoot(t *testing.T) {
+	cfg := Config{Rules: map[string]RuleConfig{
+		ruleRecordSchema: {Enabled: true, Severity: "blocker", RecordStores: map[string]string{"iss": "work/issues"}},
+	}}
+	forged := map[string]string{"iss-9-x.md": "---\nid: \"iss-9\"\nseverity: \"SECRET-TARGET\"\n---\n"}
+	root := t.TempDir()
+	writeFile(t, root, "work/issues/resolved/iss-5-a.md", "---\nid: \"iss-5\"\n---\n")
+	symlinkDirOut(t, root, "work/issues/notes.md", forged)
+	writeFile(t, root, "elsewhere/target.md", "---\nid: \"iss-9\"\nseverity: \"SECRET-TARGET\"\n---\n")
+	for _, name := range []string{"filed.md", "README.md", ".scratch.md"} {
+		if err := os.Symlink(filepath.Join(root, "elsewhere", "target.md"), filepath.Join(root, "work", "issues", name)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	fs, err := lintWithin(t, cfg, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	named := map[string]int{}
+	for _, f := range fs {
+		if strings.Contains(f.Message, "SECRET-TARGET") || strings.Contains(f.File, "iss-9") {
+			t.Fatalf("something behind a link was read: %+v", f)
+		}
+		if f.RuleID == ruleRecordSchema && filepath.Dir(f.File) == filepath.Join("work", "issues") {
+			named[filepath.Base(f.File)]++
+			if !strings.Contains(f.Message, "is a link at the issue store root") {
+				t.Errorf("finding on %s: %q", f.File, f.Message)
+			}
+		}
+	}
+	if want := map[string]int{"notes.md": 1, "filed.md": 1}; !reflect.DeepEqual(named, want) {
+		t.Fatalf("links named at the store root = %v, want %v; findings %+v", named, want, fs)
 	}
 }
 
