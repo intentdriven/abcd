@@ -14,7 +14,7 @@ The core is a transport-agnostic Go package ([adr-23](../../decisions/adrs/0023-
 
 ## Lifeboat path
 
-**Out-of-tree, at an operator-chosen destination** — `disembark <source-repo> to <dest>`. There is no in-tree lifeboat home and nothing to gitignore in the source, because **disembark never writes to the source repo** (a test hashes its tree before and after). Per [adr-35](../../decisions/adrs/0035-lifeboat-as-coverage-experiment.md), superseding adr-4's `.abcd/lifeboat/`: mining a dead or archived project must not require installing abcd into a repo we only want to read.
+**Out-of-tree, at an operator-chosen destination** — `disembark pack <source-repo> <dest>`. There is no in-tree lifeboat home and nothing to gitignore in the source, because **disembark never writes to the source repo** (a test hashes its tree before and after). Per [adr-35](../../decisions/adrs/0035-lifeboat-as-coverage-experiment.md), superseding adr-4's `.abcd/lifeboat/`: mining a dead or archived project must not require installing abcd into a repo we only want to read.
 
 **Lifeboat is always *output*.** `<dest>` holds the latest snapshot only — produced by `disembark`, regenerable from current state; there is no `lifeboat-v1/` / `lifeboat-v2/` proliferation. Re-running is governed by a **destination safety gate**, not adr-4's `.bak` overwrite: refuse unless the destination is absent, an empty directory, or one carrying a parseable `_provenance.json`. **abcd never overwrites a directory it did not produce.** Past disembarks are recorded as manifests (hash + file list + label) at the operator level, not as preserved snapshots — see [`04-surfaces/03-embark.md § 7`](../04-surfaces/03-embark.md#7-voyage-layout--embarkdisembark-provenance-and-history).
 
@@ -24,7 +24,7 @@ The core is a transport-agnostic Go package ([adr-23](../../decisions/adrs/0023-
 
 **Embark sources, in order (post bare-as-help refactor — see [`04-surfaces/03-embark.md`](../04-surfaces/03-embark.md)):**
 
-1. `embark from <path>` (any explicit path to a lifeboat destination a disembark wrote) — **there is no `home` shorthand**, because there is no in-tree lifeboat home to expand it to (adr-35). The round-trip / self-test case is just `disembark <repo> to <dest>` followed by `embark from <dest>`.
+1. `embark from <path>` (any explicit path to a lifeboat destination a disembark wrote) — **there is no `home` shorthand**, because there is no in-tree lifeboat home to expand it to (adr-35). The round-trip / self-test case is just `disembark pack <repo> <dest>` followed by `embark from <dest>`.
 2. `embark scan` (or `embark scan --deep`) → discovery sub-verb that walks sibling directories (`../`), lists **lifeboat destinations** — directories carrying a parseable `_provenance.json`, the same marker the destination safety gate keys on — ranked by mtime; does not unpack; pass the chosen path to `embark from <path>`
 3. Free-text path input via the embark interview if `<path>` is omitted on `from`
 
