@@ -8,7 +8,6 @@ package loop
 
 import (
 	"fmt"
-	"path/filepath"
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/implement"
@@ -24,11 +23,11 @@ import (
 const (
 	CheckKey           = "key"
 	CheckReady         = "ready"
-	CheckOpenQuestions = "open_questions"
-	CheckClaimSections = "claim_sections"
-	CheckHold          = "hold"
-	CheckBlocked       = "blocked"
-	CheckSteps         = "steps"
+	CheckOpenQuestions = intent.StartCheckOpenQuestions
+	CheckClaimSections = intent.StartCheckClaimSections
+	CheckHold          = intent.StartCheckHold
+	CheckBlocked       = intent.StartCheckBlocked
+	CheckSteps         = intent.StartCheckSteps
 	CheckPeers         = "peers"
 )
 
@@ -69,7 +68,7 @@ func (r CheckResult) refusal() *Refusal {
 	return nil
 }
 
-// maxIntentBytes caps the intent read the section checks make.
+// maxIntentBytes caps an intent read the loop makes.
 const maxIntentBytes = 256 * 1024
 
 // Check runs the pre-start checks for key against the checkout at repoRoot. It
@@ -120,27 +119,26 @@ func check(repoRoot, key, session string, snap *peerSnapshot) (CheckResult, erro
 	res.Intent, res.Spec = ready.IntentID, ready.SpecID
 	res.Checks = append(res.Checks, readyRow(ready))
 
-	content, err := fsutil.ReadGuarded(filepath.Join(repoRoot, filepath.FromSlash(ready.Path)), maxIntentBytes)
-	if err != nil {
-		return res, fmt.Errorf("reading %s: %w", ready.Path, err)
-	}
-	res.Checks = append(res.Checks, openQuestionsRow(ready.IntentID, string(content)))
-	res.Checks = append(res.Checks, claimSectionsRow(ready, string(content)))
-
 	corpus, err := intent.Load(repoRoot)
 	if err != nil {
 		return res, err
 	}
-	it, _ := corpus.Lookup(ready.IntentID)
-	res.Checks = append(res.Checks, holdRow(it))
-	res.Checks = append(res.Checks, blockedRow(corpus, ready.IntentID, string(content)))
-
-	stepsRow, steps, err := stepsCheck(repoRoot, ready)
+	store, err := spec.Load(repoRoot)
 	if err != nil {
 		return res, err
 	}
-	res.steps = steps
-	res.Checks = append(res.Checks, stepsRow)
+	// The record-only checks are intent.StartChecksIn's, the one statement of
+	// them the status board's "next up" reads too (iss-2609291803334904).
+	record, err := intent.StartChecksIn(repoRoot, corpus, store, ready)
+	if err != nil {
+		return res, err
+	}
+	for _, r := range record.Rows {
+		res.Checks = append(res.Checks, CheckRow{Name: r.Name, OK: r.OK, Detail: r.Detail, Remedy: r.Remedy})
+	}
+	for _, st := range record.Steps {
+		res.steps = append(res.steps, PendingStep{Number: st.Number, Title: st.Title})
+	}
 
 	if snap == nil {
 		if snap, err = readPeers(repoRoot); err != nil {
@@ -198,130 +196,6 @@ func readyRow(r intent.ReadyResult) CheckRow {
 		row.Remedy = "run `abcd intent ready " + r.IntentID + "` and settle what it reports"
 	}
 	return row
-}
-
-// openQuestionsRow refuses a record that still asks a question.
-func openQuestionsRow(id, content string) CheckRow {
-	row := CheckRow{Name: CheckOpenQuestions}
-	qs := intent.OpenQuestions(content)
-	if len(qs) == 0 {
-		row.OK = true
-		row.Detail = "no open question"
-		return row
-	}
-	row.Detail = fmt.Sprintf("%s asks %d open question(s): %s", id, len(qs), strings.Join(qs, " | "))
-	row.Remedy = "answer each in the record's `## Decisions` and mark it settled (an item marked `resolved:` or `**Deferred**`, or a section opening `_All resolved …_`), through the planning interview (/abcd:intent)"
-	return row
-}
-
-// claimSectionsRow refuses an unanswered claim section. The readiness gate
-// reports both claim rows as advisory; a run is the point they bind, because an
-// autonomous lane has nobody to ask what the record meant.
-func claimSectionsRow(r intent.ReadyResult, content string) CheckRow {
-	row := CheckRow{Name: CheckClaimSections}
-	var why, remedy []string
-	if intent.ParseClaims(content).MechanismPrompt {
-		why = append(why, "the '## Mechanism' prompt is unanswered")
-		remedy = append(remedy, "write the falsifiable claim under '## Mechanism', or record `"+intent.NullityToken+"` alone on its line to decline it")
-	}
-	for _, c := range r.Checks {
-		if (c.Name == intent.CheckMechanismClaim || c.Name == intent.CheckScopeConditions) && !c.OK {
-			why = append(why, c.Detail)
-			remedy = append(remedy, c.Remedy)
-		}
-	}
-	if len(why) == 0 {
-		row.OK = true
-		row.Detail = "the claim sections are answered"
-		return row
-	}
-	row.Detail = strings.Join(why, "; ")
-	row.Remedy = strings.Join(remedy, "; ")
-	return row
-}
-
-// holdRow refuses a held record, and a malformed hold with it: the key's
-// presence is somebody's attempt at a hold, whatever its shape.
-func holdRow(it intent.Intent) CheckRow {
-	row := CheckRow{Name: CheckHold}
-	switch {
-	case it.HeldMalformed:
-		row.Detail = it.ID + " carries a `held:` key in a shape no verb writes"
-		row.Remedy = "repair the line by hand (record-lint names it), then `abcd intent unhold " + it.ID + "`"
-	case it.Held != "":
-		row.Detail = it.ID + " is held: " + it.Held
-		row.Remedy = "settle the hold, then `abcd intent unhold " + it.ID + "`"
-	default:
-		row.OK = true
-		row.Detail = it.ID + " is not held"
-	}
-	return row
-}
-
-// blockedRow refuses a record that names, in `blocked_by`, an intent that has
-// not shipped. A blocker the corpus does not hold is unshipped as far as this
-// checkout can tell, and refuses too: the edge says something must ship first.
-func blockedRow(corpus intent.Corpus, id, content string) CheckRow {
-	row := CheckRow{Name: CheckBlocked}
-	var open []string
-	for _, b := range intent.BlockedBy(content) {
-		it, ok := corpus.Lookup(b)
-		switch {
-		case !ok:
-			open = append(open, b+" (not in this checkout's intent store)")
-		case it.Bucket != intent.BucketShipped:
-			open = append(open, b+" ("+it.Bucket+")")
-		}
-	}
-	if len(open) == 0 {
-		row.OK = true
-		row.Detail = id + " names no unshipped blocker"
-		return row
-	}
-	row.Detail = id + " is blocked by " + strings.Join(open, ", ")
-	row.Remedy = "ship the blocker first, or drop the edge from `blocked_by` if it no longer holds"
-	return row
-}
-
-// stepsCheck reads the open spec's steps through the spec store's reader: the
-// unlanded steps are the lanes, one at a time; a spec listing none is one
-// implicit step. A section the reader refuses is refused here, because the
-// lanes are made from it (unrecognized-input-never-writes).
-func stepsCheck(repoRoot string, r intent.ReadyResult) (CheckRow, []PendingStep, error) {
-	row := CheckRow{Name: CheckSteps}
-	store, err := spec.Load(repoRoot)
-	if err != nil {
-		return row, nil, err
-	}
-	sp, ok := store.Lookup(r.SpecID)
-	if !ok {
-		row.Detail = "no spec to read steps from"
-		row.Remedy = "link a written spec first: `abcd intent ready " + r.IntentID + "` names how"
-		return row, nil, nil
-	}
-	listed, err := spec.ReadSteps(repoRoot, sp)
-	if err != nil {
-		row.Detail = err.Error()
-		row.Remedy = "rewrite " + spec.StepsHeading + " in " + sp.Path + " as the numbered list `abcd intent ready " + r.IntentID + "` describes, or empty it to build the spec as one step"
-		return row, nil, nil
-	}
-	if len(listed) == 0 {
-		row.OK = true
-		row.Detail = sp.ID + " lists no steps: it is built as one step"
-		return row, []PendingStep{{Number: 1, Title: spec.ImplicitStepTitle}}, nil
-	}
-	var steps []PendingStep
-	for _, s := range spec.Unlanded(listed) {
-		steps = append(steps, PendingStep{Number: s.Number, Title: s.Title})
-	}
-	if len(steps) == 0 {
-		row.Detail = fmt.Sprintf("every one of %s's %d step(s) is landed: nothing is left to build", sp.ID, len(listed))
-		row.Remedy = "close the spec: `abcd spec close " + sp.ID + "`"
-		return row, nil, nil
-	}
-	row.OK = true
-	row.Detail = fmt.Sprintf("%s: %d of %d step(s) to build", sp.ID, len(steps), len(listed))
-	return row, steps, nil
 }
 
 // peerSnapshot is what the peers check reads: the peer listing and the run's

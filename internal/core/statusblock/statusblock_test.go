@@ -294,3 +294,77 @@ func TestTheHeadIsThePicksChoice(t *testing.T) {
 		t.Errorf("Now = %+v, want itd-4's lane row then itd-9 marked next up", b.Now)
 	}
 }
+
+// TestTheHeadPassesOverWhatTheBuildRefusesFromTheRecord is the head under the
+// build's record-only pre-start checks (iss-2609291803334904): a READY intent
+// with an open question, an unanswered claim section, an unshipped blocker, or
+// a spec that leaves no step to build is one `abcd build next` excludes, so it
+// stays in Next but is never the head, however ready it scores. The free,
+// less ready intent beside it is the head; alone, it leaves no head at all.
+func TestTheHeadPassesOverWhatTheBuildRefusesFromTheRecord(t *testing.T) {
+	const answered = "We expect it to work because it is small; shown wrong if it is not."
+	cases := []struct {
+		name, check    string
+		extra, specAdd string
+		edit           func(string) string
+	}{
+		{name: "an open question", check: intent.StartCheckOpenQuestions,
+			edit: func(s string) string {
+				return strings.Replace(s, "## Grounds", "## Open Questions\n\n- Which runner?\n\n## Grounds", 1)
+			}},
+		{name: "an unanswered mechanism prompt", check: intent.StartCheckClaimSections,
+			edit: func(s string) string { return strings.Replace(s, answered, intent.MechanismPrompt, 1) }},
+		{name: "an unrecorded scope condition", check: intent.StartCheckClaimSections,
+			edit: func(s string) string { return strings.Replace(s, "## Scope Conditions\n\nNone stated.\n\n", "", 1) }},
+		{name: "an unshipped blocker", check: intent.StartCheckBlocked, extra: "blocked_by: [itd-99]\n"},
+		{name: "every step landed", check: intent.StartCheckSteps, specAdd: "\n## Steps\n\n1. The parser\n   - landed: #1\n"},
+		{name: "an unreadable steps section", check: intent.StartCheckSteps, specAdd: "\n## Steps\n\nthe parser, then the loop\n"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			w := func(rel, body string) {
+				t.Helper()
+				p := filepath.Join(root, filepath.FromSlash(rel))
+				if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			const in = ".abcd/development/intents/planned/"
+			const sp = ".abcd/development/specs/open/"
+			refused := readyIntent("itd-4", "The refused one", "spc-14", tc.extra)
+			if tc.edit != nil {
+				refused = tc.edit(refused)
+			}
+			// itd-4 is the readiest and the oldest: without the check it heads.
+			w(in+"itd-4-refused.md", refused)
+			w(sp+"spc-14-refused.md", scoredSpec("spc-14", "itd-4")+tc.specAdd)
+
+			b, err := Read(root, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := ids(b.Next); !reflect.DeepEqual(got, []string{"itd-4"}) {
+				t.Fatalf("Next = %v, want [itd-4]: the intent is READY, so it stays in Next", got)
+			}
+			if len(b.Now) != 0 {
+				t.Errorf("Now = %+v, want no head: the build refuses itd-4 on %s", b.Now, tc.check)
+			}
+
+			w(in+"itd-9-free.md", readyIntent("itd-9", "The free one", "spc-19", ""))
+			w(sp+"spc-19-free.md", writtenSpec("spc-19", "itd-9"))
+			if b, err = Read(root, nil); err != nil {
+				t.Fatal(err)
+			}
+			if got := ids(b.Next); !reflect.DeepEqual(got, []string{"itd-4", "itd-9"}) {
+				t.Errorf("Next = %v, want [itd-4 itd-9] in pick order", got)
+			}
+			if got := ids(b.Now); !reflect.DeepEqual(got, []string{"itd-9"}) || !b.Now[0].NextUp {
+				t.Errorf("Now = %+v, want only itd-9 marked next up: itd-4 fails %s", b.Now, tc.check)
+			}
+		})
+	}
+}

@@ -3,6 +3,7 @@ package loop
 import (
 	"os"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -122,5 +123,50 @@ func TestTheStatusHeadIsTheIntentBuildNextPicks(t *testing.T) {
 				t.Errorf("Next = %v, want the pick's order %v with itd-21 first", next, cands)
 			}
 		}
+	}
+}
+
+// TestTheStatusHeadPassesOverWhatBuildNextExcludesFromTheRecord
+// (iss-2609291803334904): the readiest READY intents each fail one of build
+// next's record-only pre-start checks — an open question, an unanswered claim
+// section, an unshipped blocker, a spec with no step left to build — and no
+// peer holds anything, so the head is exactly the intent the pick chooses: the
+// less ready one every check passes.
+func TestTheStatusHeadPassesOverWhatBuildNextExcludesFromTheRecord(t *testing.T) {
+	landed := "\n## Steps\n\n1. The parser\n   - landed: #1\n"
+	repo := pickRepo(t, map[string][2]string{
+		"20": {pickIntent("20", "", settledQuestions, gwt), pickSpec("20", "")},
+		"21": {pickIntent("21", "", unsolved, gwt), pickSpec("21", fpSmall)},
+		"22": {strings.Replace(pickIntent("22", "", settledQuestions, gwt), "We expect it to work because it is small; shown wrong if it is not.",
+			intent.MechanismPrompt, 1), pickSpec("22", fpSmall)},
+		"23": {pickIntent("23", "blocked_by: [itd-20]\n", settledQuestions, gwt), pickSpec("23", fpSmall)},
+		"24": {pickIntent("24", "", settledQuestions, gwt), pickSpec("24", fpSmall) + landed},
+	})
+	set, err := Candidates(repo.Root(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pick, ok := intent.Choose(set.Candidates)
+	if !ok || pick.Chosen.ID != "itd-20" {
+		t.Fatalf("precondition: build next picks itd-20, the one every check passes: %+v", set)
+	}
+	want := map[string]string{"itd-21": CheckOpenQuestions, "itd-22": CheckClaimSections, "itd-23": CheckBlocked, "itd-24": CheckSteps}
+	for _, e := range set.Excluded {
+		if want[e.ID] != e.Check {
+			t.Fatalf("precondition: %s is excluded by %q, got %+v", e.ID, want[e.ID], e)
+		}
+	}
+	b, err := statusblock.Read(repo.Root(), StatusLanes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var head string
+	for _, r := range b.Now {
+		if r.NextUp {
+			head = r.ID
+		}
+	}
+	if head != pick.Chosen.ID {
+		t.Errorf("the head is %q, build next picks %q", head, pick.Chosen.ID)
 	}
 }

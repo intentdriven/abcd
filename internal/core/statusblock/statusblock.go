@@ -6,8 +6,10 @@
 // edited into a lie.
 //
 //   - Now is every intent the build's state file shows in a lane, with its lane
-//     state, then the head of the pick order marked "next up", so Now is never
-//     empty while anything is READY.
+//     state, then the head marked "next up": the first READY intent in pick
+//     order that the build's record-only pre-start checks
+//     (intent.StartChecksIn) let start and that is in no lane. Now is empty
+//     only when no READY intent passes them.
 //   - Next is every planned intent the readiness gate reports READY, in pick
 //     order: `abcd build next`'s one order (intent.PickLess), each intent
 //     scored by the read the pick scores through (intent.ReadinessIn), the
@@ -142,11 +144,13 @@ func Read(repoRoot string, lanes LaneReader) (Block, error) {
 		inLane[s.Intent] = true
 	}
 
-	// ready pairs a READY intent with its row and the pick's view of it.
+	// ready pairs a READY intent with its row, the pick's view of it, and
+	// whether the build's record-only pre-start checks let it start.
 	type ready struct {
-		it   intent.Intent
-		row  Row
-		cand intent.PickCandidate
+		it        intent.Intent
+		row       Row
+		cand      intent.PickCandidate
+		startable bool
 	}
 	var readies []ready
 	var notReady []Row
@@ -164,7 +168,11 @@ func Read(repoRoot string, lanes LaneReader) (Block, error) {
 			if err != nil {
 				return Block{}, fmt.Errorf("scoring %s for the pick order: %w", it.ID, err)
 			}
-			readies = append(readies, ready{it: it, row: r, cand: intent.PickCandidate{ID: it.ID, Score: score}})
+			chk, err := intent.StartChecksIn(repoRoot, corpus, store, res)
+			if err != nil {
+				return Block{}, fmt.Errorf("reading the pre-start checks of %s: %w", it.ID, err)
+			}
+			readies = append(readies, ready{it: it, row: r, cand: intent.PickCandidate{ID: it.ID, Score: score}, startable: chk.OK()})
 			continue
 		}
 		for _, c := range res.Checks {
@@ -180,9 +188,11 @@ func Read(repoRoot string, lanes LaneReader) (Block, error) {
 	for _, rd := range readies {
 		b.Next = append(b.Next, rd.row)
 		// The head is the first READY intent in pick order the build would
-		// start: not one it refuses for its hold, and not one already in a
-		// lane.
-		if head == nil && rd.it.Held == "" && !rd.it.HeldMalformed && !inLane[rd.it.ID] {
+		// start: not one its record-only pre-start checks refuse (an open
+		// question, an unanswered claim section, a hold, an unshipped blocker,
+		// no step left to build), and not one already in a lane. The build's
+		// peers check is not run: the block does not consult other checkouts.
+		if head == nil && rd.startable && !inLane[rd.it.ID] {
 			h := rd.row
 			h.NextUp = true
 			head = &h
