@@ -264,12 +264,11 @@ func TestBannedTokens(t *testing.T) {
 	}
 }
 
-// TestDocsLintHarnessNameGate guards the real .abcd/docs-lint.json harness-name
-// family (the prevention gate): a specific agent-harness name in user-facing
-// content is a blocker, and the docs-lint:allow comment on the same line
-// suppresses it. Loading the actual config means deleting the family (or dropping
-// its blocker severity) fails this test.
-func TestDocsLintHarnessNameGate(t *testing.T) {
+// shippedDocsLintFixture loads the shipped docs-lint config and lays a temp tree
+// every one of its configured roots resolves in, so a test can aim content at
+// the real rules.
+func shippedDocsLintFixture(t *testing.T) (Config, string) {
+	t.Helper()
 	cfg, err := LoadConfig(filepath.Join("..", "..", "..", ".abcd", "docs-lint.json"))
 	if err != nil {
 		t.Fatalf("LoadConfig: %v", err)
@@ -307,6 +306,16 @@ func TestDocsLintHarnessNameGate(t *testing.T) {
 	if reg := cfg.Rules["persona_registry"].Registry; reg != "" {
 		writeFile(t, root, reg, `{"personas": [{"name": "Kira"}]}`+"\n")
 	}
+	return cfg, root
+}
+
+// TestDocsLintHarnessNameGate guards the real .abcd/docs-lint.json harness-name
+// family (the prevention gate): a specific agent-harness name in user-facing
+// content is a blocker, and the docs-lint:allow comment on the same line
+// suppresses it. Loading the actual config means deleting the family (or dropping
+// its blocker severity) fails this test.
+func TestDocsLintHarnessNameGate(t *testing.T) {
+	cfg, root := shippedDocsLintFixture(t)
 	writeFile(t, root, "docs/named.md", "# t\n\nRun this in Claude Code.\n")
 	writeFile(t, root, "docs/allowed.md", "# t\n\n<!-- docs-lint: allow --> Claude Code is named deliberately.\n")
 	writeFile(t, root, "docs/clean.md", "# t\n\nUse the agent harness.\n")
@@ -326,6 +335,43 @@ func TestDocsLintHarnessNameGate(t *testing.T) {
 			if f.File != filepath.Join("docs", "named.md") {
 				t.Errorf("harness gate fired outside named.md (allow-context/clean leaked): %+v", f)
 			}
+		}
+	}
+}
+
+// TestDocsLintHarnessNameGateReachesPathsAndEnvVars (iss-2608271711539855): the
+// harness family matched the product name only as two words, so a page naming
+// the host through its plugin directory (`.claude-plugin/`) or one of its
+// environment variables (`$CLAUDE_PLUGIN_DATA`) passed with no finding. The
+// shipped pattern catches both shapes, and stays quiet on a documentation host
+// in a URL and on a lowercase identifier that merely starts with the word.
+func TestDocsLintHarnessNameGateReachesPathsAndEnvVars(t *testing.T) {
+	cfg, root := shippedDocsLintFixture(t)
+	writeFile(t, root, "docs/path.md", "# t\n\nDeclared in [`.claude-plugin/`](https://example.com/tree/main/.claude-plugin/).\n")
+	writeFile(t, root, "docs/env.md", "# t\n\nThe cache (`$CLAUDE_PLUGIN_DATA`) survives an update.\n")
+	writeFile(t, root, "docs/braced.md", "# t\n\nRun `${CLAUDE_PLUGIN_ROOT}/bin/tool`.\n")
+	writeFile(t, root, "docs/clean.md", "# t\n\nSee https://platform.claude.com/docs and the `claude_md` value.\n")
+	// The two harnesses banned by bare name are caught in a path already (a dot
+	// is a word boundary); an environment variable joins the name to the rest
+	// with an underscore, which is not, so each needs the same widening.
+	writeFile(t, root, "docs/codexenv.md", "# t\n\nSet `CODEX_HOME` first.\n")
+	writeFile(t, root, "docs/geminienv.md", "# t\n\nExport `GEMINI_API_KEY` first.\n")
+
+	fs, err := Lint(cfg, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, rule := range map[string]string{
+		"path.md": "harness/claude-code", "env.md": "harness/claude-code", "braced.md": "harness/claude-code",
+		"codexenv.md": "harness/codex", "geminienv.md": "harness/gemini",
+	} {
+		if !hasFinding(fs, filepath.Join("docs", name), rule, 3) {
+			t.Errorf("expected %s on docs/%s:3: %+v", rule, name, fs)
+		}
+	}
+	for _, f := range fs {
+		if f.RuleID == "harness/claude-code" && f.File == filepath.Join("docs", "clean.md") {
+			t.Errorf("the harness gate fired on a URL host or a lowercase identifier: %+v", f)
 		}
 	}
 }

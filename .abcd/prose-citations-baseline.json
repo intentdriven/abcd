@@ -82,6 +82,11 @@
       "note": "an id of the retired predecessor spec store, above the live ceiling. Cited by itd-69 and itd-72."
     },
     {
+      "id": "spc-82",
+      "class": "never-minted",
+      "note": "an id of the retired predecessor spec store, above the live ceiling (.abcd/development/specs/README.md). Cited by the predecessor's own triage note .abcd/development/decisions/notes/spc-82-gl001-triage.md, which the gate reaches since it reads the whole durable record (iss-2608271804497247)."
+    },
+    {
       "id": "spc-83",
       "class": "never-minted",
       "note": "an id of the retired predecessor spec store — the bundle handle spc-83-operator-surfaces named in .abcd/development/specs/README.md. Cited by itd-20, itd-24, itd-63, itd-69 and the specs charter itself."

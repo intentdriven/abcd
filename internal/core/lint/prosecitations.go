@@ -258,6 +258,12 @@ func checkProseCitations(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 			": the configured record stores hold no record files; the gate would pass by not looking"}
 	}
 
+	extra, err := proseExtraRootFiles(repoRoot, cfg.ExtraRoots)
+	if err != nil {
+		return nil, err
+	}
+	files = mergeFileLists(files, extra)
+
 	resolver, err := recordid.NewResolver(repoRoot)
 	if err != nil {
 		return nil, &configError{ruleProseCitationResolves + ": " + err.Error()}
@@ -420,7 +426,7 @@ func UnresolvedProseCitationsInRecord(repoRoot, rel, text string) ([]ProseCitati
 // body, never its frontmatter.
 func UnresolvedProseCitationsInText(cfg Config, repoRoot, rel, text string) ([]ProseCitation, error) {
 	rc, on := cfg.Rules[ruleProseCitationResolves]
-	if !on || !rc.Enabled || !underAnyStore(rel, rc.RecordStores) {
+	if !on || !rc.Enabled || (!underAnyStore(rel, rc.RecordStores) && !underAnyExtraRoot(rel, rc.ExtraRoots)) {
 		return nil, nil
 	}
 	resolver, err := recordid.NewResolver(repoRoot)
@@ -446,6 +452,19 @@ func underAnyStore(rel string, stores map[string]string) bool {
 	for _, dir := range stores {
 		dir = strings.TrimSuffix(filepath.ToSlash(filepath.Clean(dir)), "/")
 		if strings.HasPrefix(rel, dir+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+// underAnyExtraRoot reports whether rel is one of the rule's extra roots or sits
+// beneath one: an entry names a directory or a single file.
+func underAnyExtraRoot(rel string, roots []string) bool {
+	rel = filepath.ToSlash(filepath.Clean(rel))
+	for _, r := range roots {
+		r = strings.TrimSuffix(filepath.ToSlash(filepath.Clean(r)), "/")
+		if rel == r || strings.HasPrefix(rel, r+"/") {
 			return true
 		}
 	}
@@ -535,6 +554,57 @@ func proseRecordFiles(repoRoot string, stores map[string]string) ([]string, erro
 	}
 	sort.Strings(out)
 	return out, nil
+}
+
+// proseExtraRootFiles lists the markdown files under the rule's extra_roots: the
+// parts of the durable record that are not a record store — the brief, the
+// principles, the roadmap — whose prose names records as surely as a record's
+// does (iss-2608271804497247). An entry is a directory or a single file, held
+// inside the repository the way links_resolve holds its own extra roots, and an
+// entry that does not exist is refused: a configured tree that does not resolve
+// would disarm the rule for it without a word.
+func proseExtraRootFiles(repoRoot string, roots []string) ([]string, error) {
+	var out []string
+	for _, root := range roots {
+		if err := containedRepoPath(root); err != nil {
+			return nil, &configError{ruleProseCitationResolves + " extra_roots entry " + quote(root) + " " + err.Error() +
+				"; the lint reads only inside the repository"}
+		}
+		rootAbs := filepath.Join(repoRoot, filepath.FromSlash(root))
+		if err := resolvedInsideRoot(repoRoot, rootAbs); err != nil {
+			return nil, &configError{ruleProseCitationResolves + " extra_roots entry " + quote(root) + " " + err.Error() +
+				"; the lint reads only inside the repository"}
+		}
+		if _, err := os.Stat(rootAbs); err != nil {
+			if os.IsNotExist(err) {
+				return nil, &configError{ruleProseCitationResolves + " extra_roots entry " + quote(root) +
+					" does not exist; a configured tree that does not resolve silently disarms the rule for it"}
+			}
+			return nil, err
+		}
+		files, err := markdownFiles(rootAbs)
+		if err != nil {
+			return nil, &configError{ruleProseCitationResolves + ": walking " + root + ": " + err.Error()}
+		}
+		out = append(out, files...)
+	}
+	return out, nil
+}
+
+// mergeFileLists joins two file lists into one sorted list with no repeats, so a
+// file an extra root shares with a store is read once.
+func mergeFileLists(a, b []string) []string {
+	seen := make(map[string]bool, len(a)+len(b))
+	out := make([]string, 0, len(a)+len(b))
+	for _, f := range append(append([]string{}, a...), b...) {
+		if seen[f] {
+			continue
+		}
+		seen[f] = true
+		out = append(out, f)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // loadProseBaseline reads the committed baseline, keyed by id.
