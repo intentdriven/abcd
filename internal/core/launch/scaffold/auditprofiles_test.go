@@ -10,7 +10,8 @@ import (
 
 // TestWriteAuditProfilesWritesEveryProfile holds the renderer CI's workflow
 // audit reads (iss-2609251939472371): every profile the in-repo audit
-// renders is written, both workflows of each, byte for byte as Render
+// renders is written, all three workflows of each (the opt-in re-authoring
+// included), byte for byte as Render
 // produces them, under <dir>/<profile>/.github/workflows/.
 func TestWriteAuditProfilesWritesEveryProfile(t *testing.T) {
 	dir := t.TempDir()
@@ -19,15 +20,16 @@ func TestWriteAuditProfilesWritesEveryProfile(t *testing.T) {
 		t.Fatal(err)
 	}
 	profiles := AuditProfiles()
-	if len(profiles) < 2 || len(written) != 2*len(profiles) {
-		t.Fatalf("wrote %d file(s) for %d profile(s); want two per profile", len(written), len(profiles))
+	if len(profiles) < 2 || len(written) != 3*len(profiles) {
+		t.Fatalf("wrote %d file(s) for %d profile(s); want three per profile", len(written), len(profiles))
 	}
 	for name, subs := range profiles {
 		r, err := Render(subs)
 		if err != nil {
 			t.Fatal(err)
 		}
-		for file, want := range map[string][]byte{"release.yml": r.ReleaseYML, "auto-release.yml": r.AutoReleaseYML} {
+		for file, want := range map[string][]byte{"release.yml": r.ReleaseYML, "auto-release.yml": r.AutoReleaseYML,
+			"dependency-reauthor.yml": r.ReauthorYML} {
 			got, err := os.ReadFile(filepath.Join(dir, name, ".github", "workflows", file))
 			if err != nil {
 				t.Fatalf("%s/%s was not written: %v", name, file, err)

@@ -160,6 +160,12 @@ Ideas and methodologies that shaped the design — not code abcd depends on.
 - **GEPA (reflective prompt evolution)** — the score → reflect-on-failing-traces
   → minimal-delta → re-score loop that itd-81 adopts as a human-approved manual
   procedure rather than as a library dependency.
+- **GitHub Apps' documented installation-token flow** — a JSON Web Token signed
+  RS256 with the App's private key, exchanged for an installation access token
+  scoped to one repository's contents and revoked after use, which
+  `scripts/dependency-reauthor.sh` performs with openssl, curl and jq rather than
+  through an added action (itd-2609221842494980).
+  <https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/generating-a-json-web-token-jwt-for-a-github-app>
 - **Go's embedded build info (`runtime/debug.BuildInfo` VCS stamping)** — the
   source of the running binary's vintage that itd-111's staleness detection
   reads (build revision and the `vcs.modified` dirty flag), with its documented

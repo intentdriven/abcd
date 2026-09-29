@@ -21,7 +21,9 @@ import (
 // kind receives the gate workflow abcd-release-gate.yml with a named empty build
 // job, the runbook, the charter check, the empty [Unreleased] anchor when it has
 // no changelog, and auto-release.yml unless its own release workflow — left
-// byte-for-byte — stays in charge. A repository that has declared no kind, or a
+// byte-for-byte — stays in charge. --dependency-reauthor (or a declaration already
+// present) adds the dependency-bump re-authoring workflow, its script and the
+// seeded declaration (itd-2609221842494980). A repository that has declared no kind, or a
 // kind abcd does not know, is refused before anything is written (exit 2).
 //
 // It is idempotent and fail-safe (AC4): a re-run on current machinery is a no-op,
@@ -33,16 +35,17 @@ import (
 //     Re-run with --confirm to overwrite (the rendered report is the output).
 //   - 2 — a structural fault (the repository or a template could not be read).
 func newLaunchScaffoldCommand(asJSON *bool) *cobra.Command {
-	var confirm bool
+	var confirm, reauthor bool
 	cmd := &cobra.Command{
-		Use:  "scaffold [--confirm]",
+		Use:  "scaffold [--confirm] [--dependency-reauthor]",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cwd, err := os.Getwd()
 			if err != nil {
 				return err
 			}
-			rep, err := scaffold.Scaffold(scaffold.Request{RepoRoot: cwd, Confirm: confirm})
+			rep, err := scaffold.Scaffold(scaffold.Request{RepoRoot: cwd, Confirm: confirm,
+				DependencyReauthor: reauthor})
 			if err != nil && !errors.Is(err, scaffold.ErrScaffoldBlocked) {
 				// A structural fault (unreadable repo/template, failed write): exit 2,
 				// scrubbed to one line so no absolute path leaks (iss-81). A mid-write
@@ -72,6 +75,8 @@ func newLaunchScaffoldCommand(asJSON *bool) *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&confirm, "confirm", false, "overwrite a hand-edited scaffolded file with the current machinery")
+	cmd.Flags().BoolVar(&reauthor, "dependency-reauthor", false,
+		"opt in to re-authoring bot-opened dependency bumps as the repository owner (seeds "+scaffold.ReauthorConfPath+")")
 	return cmd
 }
 
@@ -115,6 +120,11 @@ func renderScaffold(w io.Writer, rep scaffold.Report, blocked bool) {
 		for _, line := range strings.Split(strings.TrimRight(rep.CallStanza, "\n"), "\n") {
 			fmt.Fprintf(w, "    %s\n", line)
 		}
+	}
+	if rep.DependencyReauthor {
+		fmt.Fprintf(w, "  dependency re-authoring: opted in; the owner in %s and the Dependabot secrets\n", scaffold.ReauthorConfPath)
+		fmt.Fprintln(w, "    DEPENDENCY_REAUTHOR_APP_ID and DEPENDENCY_REAUTHOR_APP_KEY are the person's to set;")
+		fmt.Fprintln(w, "    until they are, an in-bound bump is refused and left for a person to land.")
 	}
 	if blocked {
 		fmt.Fprintln(w, "  re-run with --confirm to overwrite the hand-edited file(s) with the machinery.")

@@ -43,6 +43,8 @@ func TestSelfScaffoldParity(t *testing.T) {
 	}{
 		{"release.yml", ReleaseYMLPath, rendered.ReleaseYML},
 		{"auto-release.yml", AutoReleaseYMLPath, rendered.AutoReleaseYML},
+		{"dependency-reauthor.yml", ReauthorYMLPath, rendered.ReauthorYML},
+		{"dependency-reauthor.sh", AbcdReauthorScriptPath, rendered.ReauthorScript},
 	}
 	for _, c := range cases {
 		want, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(c.rel)))

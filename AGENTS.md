@@ -447,7 +447,23 @@ irreversible; guessing downward costs nothing.**
   green: the forge as COMMITTER (`GitHub <noreply@github.com>`) is how every
   web-UI merge and squash is stamped on a human's click, and passes in that role
   alone. **The consequence is deliberate: a dependabot pull request is not
-  mergeable as authored, so a dependency bump is landed by a human.**
+  mergeable as authored.** A bump inside a declared bound is re-authored before
+  the gate runs, and the gate is unchanged: `.github/workflows/dependency-reauthor.yml`
+  replays a pull request that dependabot opened and last pushed from its own
+  branch, carrying one commit by the bot that only modifies a declared
+  ecosystem's manifest and lock files at the directory `.github/dependabot.yml`
+  declares for it (an added file, anywhere, is outside the bound), with the
+  owner named in `.abcd/config/dependency-reauthor.conf` as author AND committer
+  and `Assisted-by: None`, and a GitHub App pushes it (Dependabot secrets
+  `DEPENDENCY_REAUTHOR_APP_ID` and `DEPENDENCY_REAUTHOR_APP_KEY`). The App is
+  never an identity on the commit. The bound judges which files a bump changes,
+  never what it writes in them: a manifest's content inside the bound (a
+  `go.mod` `replace`, `toolchain` or `tool` directive, a `go.sum` line) is
+  re-authored unreviewed, an accepted residual. Every other bot change, an
+  Actions bump included, is landed by a human, and so is an in-bound bump while
+  the owner or either secret is unset: the workflow refuses it by name rather
+  than push it as anybody else. The rule and its residual are
+  [adr-2609292116133348](.abcd/development/decisions/adrs/2609292116133348-a-dependency-bump-inside-the-bound-is-re-authored-as-the.md).
 - **A human-only change declares itself: `Assisted-by: None`.** The convention is
   disclosure, and work no AI touched has nothing to disclose — but silence cannot
   say so, because an absent trailer and a forgotten one are the same bytes. The

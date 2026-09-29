@@ -28,10 +28,12 @@ func AuditProfiles() map[string]Substitutions {
 	}
 }
 
-// WriteAuditProfiles renders every AuditProfiles profile and writes its two
+// WriteAuditProfiles renders every AuditProfiles profile and writes its
 // workflows under dir/<profile>/.github/workflows/, the layout a workflow
 // auditor discovers, returning the files written in a stable order. dir is a
-// scratch directory the caller owns; nothing outside it is written.
+// scratch directory the caller owns; nothing outside it is written. The opt-in
+// dependency-reauthor workflow is written with them, so zizmor audits the
+// rendering a managed repository receives when it opts in.
 func WriteAuditProfiles(dir string) ([]string, error) {
 	profiles := AuditProfiles()
 	names := make([]string, 0, len(profiles))
@@ -52,7 +54,8 @@ func WriteAuditProfiles(dir string) ([]string, error) {
 		for _, f := range []struct {
 			name string
 			body []byte
-		}{{"release.yml", r.ReleaseYML}, {"auto-release.yml", r.AutoReleaseYML}} {
+		}{{"release.yml", r.ReleaseYML}, {"auto-release.yml", r.AutoReleaseYML},
+			{"dependency-reauthor.yml", r.ReauthorYML}} {
 			p := filepath.Join(wf, f.name)
 			if err := os.WriteFile(p, f.body, 0o644); err != nil {
 				return written, err

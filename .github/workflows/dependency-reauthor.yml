@@ -1,0 +1,72 @@
+name: dependency-reauthor
+
+# Re-authors a bot-opened dependency bump as the repository owner, so it lands
+# through the same attribution gate as every other change with no person
+# re-authoring it by hand (itd-2609221842494980). Scaffolded by
+# `abcd launch scaffold --dependency-reauthor`; the repository opts in by
+# carrying .abcd/config/dependency-reauthor.conf.
+#
+# THE BOUND is the diff's shape, not trust in the bot: a pull request opened by
+# a declared bot, in a run that bot's own event started, from a branch in this
+# repository under that bot's prefix for a declared ecosystem, carrying one
+# commit by that bot that only modifies the ecosystem's manifest and lock files
+# in the directory the declaration names. Anything else is left alone and the
+# run names the clause it failed. The logic is scripts/dependency-reauthor.sh
+# and the declaration it reads, both checked out from the pull request's BASE,
+# so the branch under judgement cannot alter the script or the declaration that
+# judge it. This workflow file itself is read from the pull request's merge ref,
+# as every pull_request workflow is: a branch that edits it runs its own
+# edit, and only a pull request that dependabot opens receives the Dependabot
+# secrets the push needs.
+#
+# WHO IS WHO in the re-authored commit: the owner named in the declaration is
+# its author AND its committer. The GitHub App only pushes. The attribution gate
+# refuses a `[bot]` identity in either role, so the App's name appears in
+# neither, and the gate itself is unchanged.
+#
+# WHY pull_request AND NOT pull_request_target: on a pull request dependabot
+# opens, this trigger reads Dependabot secrets and runs with a read-only
+# GITHUB_TOKEN, and it never runs a fork's code with this repository's secrets.
+# The two secrets the push needs are therefore DEPENDABOT secrets
+# (DEPENDENCY_REAUTHOR_APP_ID, DEPENDENCY_REAUTHOR_APP_KEY) that the person
+# creates with the App; without either, an in-bound bump is refused, never
+# pushed with GITHUB_TOKEN (whose push would start no checks) and never left
+# with the bot as author.
+#
+# Every event field reaches the script only through the environment; none is
+# spliced into a run: block.
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+concurrency:
+  group: dependency-reauthor-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  reauthor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      # The BASE, with every branch: the script and the declaration come from
+      # it, and the bump's commit is fetched with the branches.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Re-author an in-bound dependency bump
+        env:
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          ACTOR: ${{ github.actor }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          DEPENDENCY_REAUTHOR_APP_ID: ${{ secrets.DEPENDENCY_REAUTHOR_APP_ID }}
+          DEPENDENCY_REAUTHOR_APP_KEY: ${{ secrets.DEPENDENCY_REAUTHOR_APP_KEY }}
+        run: bash scripts/dependency-reauthor.sh run

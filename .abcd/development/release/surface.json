@@ -2169,6 +2169,13 @@
           "type": "bool",
           "required": false,
           "hidden": false
+        },
+        {
+          "name": "dependency-reauthor",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
         }
       ]
     },

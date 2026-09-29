@@ -49,7 +49,8 @@ var jobKeyRe = regexp.MustCompile(`^([A-Za-z_][A-Za-z0-9_-]*):\s*(#.*)?$`)
 // DeriveCIChecks reads repoRoot's own CI workflows and returns the check names
 // its pull requests report, sorted and de-duplicated. Only workflows triggered
 // by `pull_request`, `pull_request_target` or `merge_group` gate a merge, and
-// the scaffold's own release workflows are never counted. An unreadable or
+// the scaffold's own workflows (the release pair and the dependency
+// re-authoring) are never counted. An unreadable or
 // absent workflows directory yields nil: the runbook then says no merge gate
 // was found.
 func DeriveCIChecks(repoRoot string) []string {
@@ -65,7 +66,10 @@ func DeriveCIChecks(repoRoot string) []string {
 		if e.IsDir() || !(strings.HasSuffix(name, ".yml") || strings.HasSuffix(name, ".yaml")) {
 			continue
 		}
-		if rel := workflowsDir + "/" + name; rel == ReleaseYMLPath || rel == AutoReleaseYMLPath {
+		// The re-authoring workflow runs on pull requests but judges none: it is
+		// the scaffold's own, and counting it would change the release rendering
+		// the moment a repository opted in.
+		if rel := workflowsDir + "/" + name; rel == ReleaseYMLPath || rel == AutoReleaseYMLPath || rel == ReauthorYMLPath {
 			continue
 		}
 		if files++; files > maxWorkflowFiles {

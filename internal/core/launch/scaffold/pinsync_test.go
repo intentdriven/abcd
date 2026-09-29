@@ -149,11 +149,9 @@ func TestSyncRepoPinsPropagatesABumpIntoTheTemplate(t *testing.T) {
 	root := t.TempDir()
 	realRoot := repoRoot(t)
 
-	for _, rel := range []string{ReleaseYMLPath, AutoReleaseYMLPath} {
-		copyInto(t, realRoot, root, rel)
-	}
-	for _, rel := range []string{releaseTemplateRel, autoReleaseTemplateRel} {
-		copyInto(t, realRoot, root, rel)
+	for _, pair := range pinSyncPairs {
+		copyInto(t, realRoot, root, pair.workflow)
+		copyInto(t, realRoot, root, pair.template)
 	}
 
 	// Bump actions/attest in the workflow alone, the way dependabot would: every
