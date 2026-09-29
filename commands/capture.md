@@ -411,6 +411,15 @@ what keeps the trail six months later. Ids must exist in their record store
 the remote). An unknown id or malformed value refuses the whole resolve and
 writes nothing.
 
+**A fix and its resolution are two commits in one change.** `--commit` names a
+commit that already exists, so the resolution cannot ride the commit it names.
+The protocol is: commit the fix (its message carries `Refs: iss-N`), run
+`capture resolve iss-N "<what fixed it>" --commit <that sha>`, then commit the
+move to `resolved/` with the `Resolves: iss-N` trailer. Both commits land in the
+same pull request, so the change that fixes the issue is also the change that
+resolves it. A squash or rebase merge rewrites the named sha away; re-point the
+record at the commit that landed when that happens.
+
 `resolve` also takes `--shipped-in <vX.Y.Z>`, a MIGRATION flag for the
 ledger-hygiene case: closing a record whose fix was RELEASED LONG AGO. A
 repository abcd manages from its first commit should never need it — resolution
