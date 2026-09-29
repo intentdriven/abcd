@@ -68,8 +68,9 @@ or a "sprint" (a time box, not a record of runs).
 
 ## Examples
 
-- "Each disembark run appends one line to the voyage log: `manifest_sha256`, the file list, the
-  oracle backend used, and the verdict."
+- "Each `disembark pack` appends one line to the voyage log: `manifest_sha256`, the source's name
+  and root SHA, the destination, and the file and byte counts; the file list stays in the
+  lifeboat's own `_provenance.json`."
 - "The voyage is keyed on the root-commit SHA, so two clones of the same repository share one
   voyage."
 
