@@ -22,9 +22,11 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/adapter/scanner"
 	"github.com/intentdriven/abcd/internal/core/jsonstrict"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // ReceiptSchemaVersion is the receipt's shape.
@@ -100,7 +102,7 @@ func verifyReceipt(c Context, lane *Lane, receiptRel string) error {
 		return fmt.Errorf("opening the checkout: %w", err)
 	}
 	defer root.Close()
-	rc, err := readReceipt(root, receiptRel, lane.ID)
+	rc, err := readReceipt(c.RepoRoot, root, receiptRel, lane.ID)
 	if err != nil {
 		return err
 	}
@@ -109,11 +111,14 @@ func verifyReceipt(c Context, lane *Lane, receiptRel string) error {
 	if rc.SchemaVersion != ReceiptSchemaVersion {
 		missing = append(missing, fmt.Sprintf("schema_version %d (this abcd reads %d)", rc.SchemaVersion, ReceiptSchemaVersion))
 	}
+	// The receipt is the implementer's, a host payload: a value it names that
+	// is not the lane's own is described, never quoted (iss-2609290300462829).
 	if rc.RunID != c.State.RunID || rc.Lane != lane.ID {
-		missing = append(missing, fmt.Sprintf("the run and lane (it names %q %q, not %s %s)", rc.RunID, rc.Lane, c.State.RunID, lane.ID))
+		missing = append(missing, fmt.Sprintf("the run and lane (it names %s and %s, not %s %s)",
+			termsafe.DescribeRefused(rc.RunID), termsafe.DescribeRefused(rc.Lane), c.State.RunID, lane.ID))
 	}
 	if rc.Branch != lane.Branch {
-		missing = append(missing, fmt.Sprintf("the lane's branch (it names %q, not %s)", rc.Branch, lane.Branch))
+		missing = append(missing, fmt.Sprintf("the lane's branch (it names %s, not %s)", termsafe.DescribeRefused(rc.Branch), lane.Branch))
 	}
 	missing = append(missing, commitGaps(c.RepoRoot, lane, rc.Commits)...)
 
@@ -134,11 +139,11 @@ func verifyReceipt(c Context, lane *Lane, receiptRel string) error {
 		} else if *dod.ExitCode != 0 {
 			missing = append(missing, fmt.Sprintf("a passing definition of done (it exited %d)", *dod.ExitCode))
 		}
-		if gap := laneFileGap(dir, dod.Output, "the definition of done's output"); gap != "" {
+		if gap := laneFileGap(c.RepoRoot, dir, dod.Output, "the definition of done's output"); gap != "" {
 			missing = append(missing, gap)
 		}
 	}
-	if gap := laneFileGap(dir, rc.Report, "the report"); gap != "" {
+	if gap := laneFileGap(c.RepoRoot, dir, rc.Report, "the report"); gap != "" {
 		missing = append(missing, gap)
 	}
 	if len(missing) > 0 {
@@ -156,8 +161,11 @@ func verifyReceipt(c Context, lane *Lane, receiptRel string) error {
 
 // readReceipt reads a receipt through the guarded reader and decodes it
 // strictly: one JSON document, no key repeated, no field the schema does not
-// name.
-func readReceipt(root *os.Root, rel, laneID string) (LaneReceipt, error) {
+// name. The decoder's message names an undeclared or repeated key by the
+// receipt's own spelling, the one value the implementer needs to find the
+// fault, so it is redacted through the canonical scanner for repoRoot rather
+// than quoted raw (iss-2609290300462829).
+func readReceipt(repoRoot string, root *os.Root, rel, laneID string) (LaneReceipt, error) {
 	var rc LaneReceipt
 	data, err := fsutil.ReadGuardedInRoot(root, rel, maxReceiptBytes)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -176,7 +184,7 @@ func readReceipt(root *os.Root, rel, laneID string) (LaneReceipt, error) {
 			return rc, refuse("receipt", "", laneID, rel+" carries more than one JSON document",
 				"write the receipt as one JSON object and nothing after it")
 		}
-		return rc, refuse("receipt", "", laneID, fmt.Sprintf("%s does not parse as a receipt: %v", rel, err),
+		return rc, refuse("receipt", "", laneID, fmt.Sprintf("%s does not parse as a receipt: %s", rel, scanner.RedactRefusal(repoRoot, err.Error())),
 			"write exactly the fields the brief names, each once; a verdict is the loop's to record, never the lane's")
 	}
 	return rc, nil
@@ -198,7 +206,7 @@ func commitGaps(repoRoot string, lane *Lane, commits []string) []string {
 	var off []string
 	for _, sha := range commits {
 		if !gitutil.IsFullSHA(sha) {
-			off = append(off, fmt.Sprintf("%q (not a full object name)", sha))
+			off = append(off, termsafe.DescribeRefused(sha)+" (not a full object name)")
 			continue
 		}
 		onBranch, err := gitutil.IsAncestor(repoRoot, sha, branch)
@@ -227,23 +235,37 @@ func commitGaps(repoRoot string, lane *Lane, commits []string) []string {
 // laneFileGap names a file a receipt must point at inside the lane's
 // directory, when the receipt names none, names a path that could leave the
 // directory, or names one that is not a non-empty regular file there.
-func laneFileGap(dir *os.Root, rel, what string) string {
+//
+// The path is the receipt's, a host payload. One that could leave the directory
+// is described; one inside it is what the implementer needs to find, so it is
+// named redacted through the canonical scanner for repoRoot, and a read error
+// is reported by its cause alone, since its text repeats the path
+// (iss-2609290300462829).
+func laneFileGap(repoRoot string, dir *os.Root, rel, what string) string {
 	switch {
 	case rel == "":
 		return what + " (none named)"
 	case !fsutil.ValidRelPath(rel) || filepath.IsAbs(rel):
-		return fmt.Sprintf("%s (%q is not a path inside the lane's directory)", what, rel)
+		return fmt.Sprintf("%s (%s is not a path inside the lane's directory)", what, termsafe.DescribeRefused(rel))
 	}
 	fi, err := dir.Lstat(rel)
+	if err == nil && fi.Mode().IsRegular() && fi.Size() > 0 {
+		return ""
+	}
+	named := scanner.RedactRefusal(repoRoot, rel)
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
-		return fmt.Sprintf("%s (%s does not exist)", what, rel)
+		return fmt.Sprintf("%s (%s does not exist)", what, named)
 	case err != nil:
-		return fmt.Sprintf("%s (%s cannot be read: %v)", what, rel, err)
+		cause := err
+		var pe *fs.PathError
+		if errors.As(err, &pe) {
+			cause = pe.Err
+		}
+		return fmt.Sprintf("%s (%s cannot be read: %v)", what, named, cause)
 	case !fi.Mode().IsRegular():
-		return fmt.Sprintf("%s (%s is not a regular file)", what, rel)
-	case fi.Size() == 0:
-		return fmt.Sprintf("%s (%s is empty)", what, rel)
+		return fmt.Sprintf("%s (%s is not a regular file)", what, named)
+	default:
+		return fmt.Sprintf("%s (%s is empty)", what, named)
 	}
-	return ""
 }
