@@ -184,7 +184,6 @@ internal/core/site.RecordRoute
 internal/core/source.Load
 internal/core/spec.RenderSteps
 internal/core/spec.SortByNumber
-internal/core/spec.Steps
 internal/core/spec.Validate
 internal/core/spec.WithStoreLock
 internal/core/statusline.Contrast

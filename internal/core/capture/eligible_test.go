@@ -115,30 +115,30 @@ func TestDrainRoutesAMixedLedgerByField(t *testing.T) {
 func TestEligibilityIsTheFieldRuleAndNothingElse(t *testing.T) {
 	for _, cat := range []Category{"tech-debt", "documentation", "inconsistency", "drift", "bug", "ux"} {
 		for _, sev := range []Severity{SeverityNitpick, SeverityMinor} {
-			v := Eligibility(Issue{ID: "iss-1", Category: cat, Severity: sev, Remedy: "r", Status: StateOpen})
+			v := eligibility(Issue{ID: "iss-1", Category: cat, Severity: sev, Remedy: "r", Status: StateOpen})
 			if v.Outcome != DrainEligible {
 				t.Errorf("%s/%s with a remedy: %s (%s), want eligible", cat, sev, v.Outcome, v.Reason)
 			}
 		}
 	}
 	for _, cat := range []Category{"process", "observation", "architectural-insight", "future-work-seed", "lapse"} {
-		v := Eligibility(Issue{ID: "iss-1", Category: cat, Severity: SeverityMinor, Remedy: "r", Status: StateOpen})
+		v := eligibility(Issue{ID: "iss-1", Category: cat, Severity: SeverityMinor, Remedy: "r", Status: StateOpen})
 		if v.Outcome != DrainHandBack || v.Rule != RuleCategory {
 			t.Errorf("%s: %s/%s, want handback/category", cat, v.Outcome, v.Rule)
 		}
 	}
 	for _, sev := range []Severity{SeverityMajor, SeverityCritical} {
-		v := Eligibility(Issue{ID: "iss-1", Category: "bug", Severity: sev, Remedy: "r", Status: StateOpen})
+		v := eligibility(Issue{ID: "iss-1", Category: "bug", Severity: sev, Remedy: "r", Status: StateOpen})
 		if v.Outcome != DrainHandBack || v.Rule != RuleSeverity {
 			t.Errorf("%s: %s/%s, want handback/severity", sev, v.Outcome, v.Rule)
 		}
 	}
 	// A remedy of blanks is no remedy.
-	if v := Eligibility(Issue{ID: "iss-1", Category: "bug", Severity: SeverityMinor, Remedy: "  \t", Status: StateOpen}); v.Outcome != DrainIneligible {
+	if v := eligibility(Issue{ID: "iss-1", Category: "bug", Severity: SeverityMinor, Remedy: "  \t", Status: StateOpen}); v.Outcome != DrainIneligible {
 		t.Errorf("a blank remedy: %s, want ineligible", v.Outcome)
 	}
 	// A record that is not open is never a drain's to take.
-	if v := Eligibility(Issue{ID: "iss-1", Category: "bug", Severity: SeverityMinor, Remedy: "r", Status: StateResolved}); v.Outcome == DrainEligible {
+	if v := eligibility(Issue{ID: "iss-1", Category: "bug", Severity: SeverityMinor, Remedy: "r", Status: StateResolved}); v.Outcome == DrainEligible {
 		t.Errorf("a resolved record was eligible")
 	}
 }
