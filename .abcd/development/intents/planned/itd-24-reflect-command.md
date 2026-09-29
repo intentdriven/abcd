@@ -52,7 +52,7 @@ We expect the value of a retrospective to be in the lifeboat: a new project that
   - Decisions made (architectural / design choices crystallised during the phase)
   - Metrics (intents shipped, audit-note severity distribution, time-to-ship if measurable)
 - **Output**: `.abcd/development/retrospectives/<phase-id>/README.md` — a peer of `.abcd/development/intents/`, committed as part of the phase's permanent record.
-- **Lifeboat integration**: `/abcd:disembark to <path>` packs *all* of the voyage's phase retrospectives into the lifeboat — the full reflection arc travels. `/abcd:embark from <path>` surfaces predecessor retrospectives during the press-release interview ("here's what the previous voyage learned about X — does that apply here?").
+- **Lifeboat integration**: `/abcd:disembark pack <repo> <path>` packs *all* of the voyage's phase retrospectives into the lifeboat — the full reflection arc travels. `/abcd:embark from <path>` surfaces predecessor retrospectives during the press-release interview ("here's what the previous voyage learned about X — does that apply here?").
 - **Reference back to intents and the audit**: the retrospective links to the phase doc, to the intents the phase bundled, and to the phase audit; per-intent reviewer notes are referenced (not duplicated).
 - **`reflection-composer` agent** — runs the interview, drafts the structured output, asks clarifying questions when answers feel thin.
 
@@ -74,7 +74,7 @@ None stated.
 - **Given** a completed phase with no phase audit yet recorded, **when** the persona runs `/abcd:reflect <phase-id>`, **then** the command reports the missing audit and offers to run the phase-fidelity-reviewer inline before continuing into the retrospective.
 - **Given** a phase doc that exists but has no spec carrying its `phase:` anchor, **when** the persona runs `/abcd:reflect <phase-id>`, **then** the command refuses with "no specs anchored to `<phase-id>` — nothing shipped to reflect on" and writes no output.
 - **Given** a draft retrospective with thin answers (e.g. "what went well: it worked"), **when** the agent drafts the output, **then** the agent surfaces the thinness as a clarifying question rather than committing the thin answer.
-- **Given** the same repo's lifeboat is then packed via `/abcd:disembark to <path>`, **when** the lifeboat is inspected, **then** every `.abcd/development/retrospectives/<phase-id>/README.md` the voyage produced is included in the lifeboat artefact.
+- **Given** the same repo's lifeboat is then packed via `/abcd:disembark pack <repo> <path>`, **when** the lifeboat is inspected, **then** every `.abcd/development/retrospectives/<phase-id>/README.md` the voyage produced is included in the lifeboat artefact.
 - **Given** a target repo embarked from a lifeboat that includes retrospectives, **when** `/abcd:embark from <path>` runs the press-release interview, **then** the persona is shown the few predecessor lessons ranked most like the new voyage's brief, with the rest as a list, and asked which apply.
 - **Given** an attempt to reflect on a phase whose specs are not all closed, **when** `/abcd:reflect <phase-id>` runs, **then** the command warns the persona, lists the open specs anchored to that phase, and asks for confirmation to proceed anyway.
 - **Given** the last piece of work anchored to a phase closes, **when** that close completes, **then** abcd says once that a retrospective for the phase is owed and names the command, and says nothing further about it.

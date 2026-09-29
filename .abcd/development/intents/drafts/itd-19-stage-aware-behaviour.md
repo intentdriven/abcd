@@ -50,7 +50,7 @@ The ABCDevelopment workflow has stages with genuinely different intent (Autonomo
 - **Given** a project moves from `Autonomous/<name>/` to `Validation/<name>/`, **when** the user re-runs `/abcd:ahoy install` in the new location, **then** stage detection identifies "Validation", proposes the Validation profile (visibility=public-prep, dev_sync=read-only, scan.deep=true, oracle=rp+codex), and surfaces a diff of what would change vs. the current `.abcd/config.json`.
 - **Given** the user has explicitly overridden a config setting (e.g., set `dev_sync.rp.enabled = false` in Autonomous), **when** the stage transitions and the new profile would re-enable that setting, **then** the user is asked specifically about that override (preserve / re-prompt-each / accept-new-default) rather than silently overwriting.
 - **Given** a Validation-stage project with `oracle.backend = "rp+codex"` requested by the profile, **when** RP is unavailable, **then** the project gracefully falls back per the resolution chain AND the disembark report flags "stage profile requested rp+codex but only Codex available".
-- **Given** a stage-aware project, **when** `/abcd:disembark to <path>` runs, **then** the resulting lifeboat's `.abcd/config.json["meta"]` records the stage detected at disembark time so a downstream `/abcd:embark from <path>` can suggest the matching stage profile if its target location indicates the same stage.
+- **Given** a stage-aware project, **when** `/abcd:disembark pack <repo> <path>` runs, **then** the resulting lifeboat's `.abcd/config.json["meta"]` records the stage detected at disembark time so a downstream `/abcd:embark from <path>` can suggest the matching stage profile if its target location indicates the same stage.
 
 ## Open Questions
 
