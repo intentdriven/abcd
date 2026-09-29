@@ -1856,6 +1856,13 @@
           "type": "string",
           "required": false,
           "hidden": false
+        },
+        {
+          "name": "target",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
         }
       ]
     },
@@ -1907,6 +1914,12 @@
           "hidden": false
         }
       ]
+    },
+    {
+      "path": "abcd intent target",
+      "hidden": false,
+      "sentence": "Name the release a planned intent must land by: Writes its target_release line; refuses a draft, a shipped intent, or a value not vX.Y.Z or next.",
+      "flags": []
     },
     {
       "path": "abcd intent unhold",

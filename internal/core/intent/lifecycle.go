@@ -11,6 +11,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/changelog"
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
+	"github.com/intentdriven/abcd/internal/core/launch"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/core/relink"
 	"github.com/intentdriven/abcd/internal/core/spec"
@@ -102,6 +103,14 @@ func parseIntent(relPath, content, bucket string) (Intent, error) {
 			it.HeldMalformed = true
 		}
 	}
+	// The target is read leniently too, for the hold's reason: a value in a
+	// shape no verb writes is carried raw, so the report lists it and the record
+	// lint names it, rather than one hand edit failing every intent verb.
+	if v, malformed := targetField(fields); malformed {
+		it.TargetRelease = strings.TrimSpace(fields[launch.TargetReleaseKey].Value)
+	} else {
+		it.TargetRelease = v
+	}
 	if err := Validate(it); err != nil {
 		return Intent{}, fmt.Errorf("intent: malformed %s: %w", relPath, err)
 	}
@@ -127,6 +136,13 @@ func Plan(repoRoot, intentID string, opts PlanOptions) (PlanResult, error) {
 	if !recordid.ValidIntentID(intentID) {
 		return PlanResult{}, fmt.Errorf("intent: id %q must match ^itd-[0-9]+$", intentID)
 	}
+	// The target is judged before the store is read, so an illegal one leaves
+	// every record byte-identical and no spec minted.
+	if opts.Target != "" {
+		if err := launch.ValidTargetRelease(opts.Target); err != nil {
+			return PlanResult{}, fmt.Errorf("intent: plan --target: %w (nothing moved)", err)
+		}
+	}
 	corpus, err := Load(repoRoot)
 	if err != nil {
 		return PlanResult{}, err
@@ -137,6 +153,13 @@ func Plan(repoRoot, intentID string, opts PlanOptions) (PlanResult, error) {
 	}
 	if it.Bucket != BucketPlanned && it.Bucket != BucketDrafts {
 		return PlanResult{}, fmt.Errorf("intent: %s is in %s, not drafts; only a draft can be planned", intentID, it.Bucket)
+	}
+	// On a record already planned, a target is the target verb's to write: the
+	// planned faces below stamp identities and an impact, and a target riding
+	// them would make "nothing to stamp" mean two things.
+	if it.Bucket == BucketPlanned && opts.Target != "" {
+		return PlanResult{}, fmt.Errorf("intent: %s is already planned; its target is written by `abcd intent target %s %s` (nothing written)",
+			it.ID, it.ID, opts.Target)
 	}
 	// A hold stops Plan before anything moves, on BOTH buckets it acts on: the
 	// draft's plan and the planned record's identity-only re-run are the same
@@ -205,6 +228,12 @@ func Plan(repoRoot, intentID string, opts PlanOptions) (PlanResult, error) {
 		if !hasAcceptanceCriteria(content) {
 			return fmt.Errorf("intent: %s has no non-empty '## Acceptance Criteria' section (itd-1 discipline); refusing to plan", intentID)
 		}
+		// A target rewrites the key's own line, so a hand-typed value spread over
+		// several lines is refused rather than half-overwritten.
+		if _, malformed := targetField(frontmatter.Fields(strings.Split(content, "\n"))); malformed && opts.Target != "" {
+			return fmt.Errorf("intent: %s carries a `%s:` value in a shape no verb writes; repair or remove the line by hand, then plan with --target (nothing moved)",
+				intentID, launch.TargetReleaseKey)
+		}
 		// A draft that already carries a non-null spec_id is half-planned (and
 		// lint-invalid): refuse rather than mint a second spec for it.
 		if !frontmatter.IsNull(it.SpecID) {
@@ -248,7 +277,7 @@ func Plan(repoRoot, intentID string, opts PlanOptions) (PlanResult, error) {
 				return err
 			}
 		}
-		if err := checkDraftFaceSize(content, it, specID, impactStamp, draftRel); err != nil {
+		if err := checkDraftFaceSize(content, it, specID, impactStamp, opts.Target, draftRel); err != nil {
 			return err
 		}
 
@@ -278,7 +307,7 @@ func Plan(repoRoot, intentID string, opts PlanOptions) (PlanResult, error) {
 		if frontmatter.IsNull(kind) {
 			kind = KindStandalone
 		}
-		withKind, err := setFrontmatterFields(stampedContent, draftFaceFields(kind, impactStamp))
+		withKind, err := setFrontmatterFields(stampedContent, draftFaceFields(kind, impactStamp, opts.Target))
 		if err != nil {
 			return err
 		}
@@ -311,7 +340,10 @@ func Plan(repoRoot, intentID string, opts PlanOptions) (PlanResult, error) {
 	it.SpecID = sp.ID
 	it.Bucket = BucketPlanned
 	it.Path = plannedRel
-	res := PlanResult{Intent: it, Spec: sp, ConditionsStamped: conditionsStamped, ImpactStamped: impactStamp}
+	if opts.Target != "" {
+		it.TargetRelease = opts.Target
+	}
+	res := PlanResult{Intent: it, Spec: sp, ConditionsStamped: conditionsStamped, ImpactStamped: impactStamp, TargetStamped: opts.Target}
 	// Repoint every link that named the draft's path, as a close does for the
 	// records it moves (iss-2609250846525896). Reported, not raised: the record
 	// is planned and the plan stands.
@@ -323,13 +355,16 @@ func Plan(repoRoot, intentID string, opts PlanOptions) (PlanResult, error) {
 }
 
 // draftFaceFields is the frontmatter rewrite the draft face makes in one
-// write: the binding kind, plus the impact judgement when the run carries one
-// to stamp. One function so the size probe and the real write cannot disagree
-// about what that write contains.
-func draftFaceFields(kind, impact string) map[string]string {
+// write: the binding kind, plus the impact judgement and the target release
+// when the run carries them to stamp. One function so the size probe and the
+// real write cannot disagree about what that write contains.
+func draftFaceFields(kind, impact, target string) map[string]string {
 	fields := map[string]string{"kind": kind}
 	if impact != "" {
 		fields["impact"] = impact
+	}
+	if target != "" {
+		fields[launch.TargetReleaseKey] = target
 	}
 	return fields
 }
@@ -338,7 +373,7 @@ func draftFaceFields(kind, impact string) map[string]string {
 // cap its own reader enforces, BEFORE the first write and before the bucket
 // move. It reproduces the three growth steps in order and judges the largest;
 // impact is the judgement the kind write will carry alongside it, or empty.
-func checkDraftFaceSize(content string, it Intent, specID, impact, rel string) error {
+func checkDraftFaceSize(content string, it Intent, specID, impact, target, rel string) error {
 	// The probe's entropy has to advance: a constant source hands the second
 	// bullet the id the first already used, the redraw loop exhausts, and the
 	// whole judgement is lost behind a mint error on every record with more than
@@ -353,7 +388,7 @@ func checkDraftFaceSize(content string, it Intent, specID, impact, rel string) e
 	if frontmatter.IsNull(kind) {
 		kind = KindStandalone
 	}
-	withKind, err := setFrontmatterFields(stamped, draftFaceFields(kind, impact))
+	withKind, err := setFrontmatterFields(stamped, draftFaceFields(kind, impact, target))
 	if err != nil {
 		return err
 	}
@@ -536,7 +571,8 @@ func linkPlannedSpec(repoRoot string, it Intent, opts PlanOptions) (PlanResult, 
 				return err
 			}
 		}
-		if err := checkDraftFaceSize(content, it, specID, impactStamp, rel); err != nil {
+		// No target: Plan refuses one on a record already planned.
+		if err := checkDraftFaceSize(content, it, specID, impactStamp, "", rel); err != nil {
 			return err
 		}
 		if !reused {
@@ -554,7 +590,7 @@ func linkPlannedSpec(repoRoot string, it Intent, opts PlanOptions) (PlanResult, 
 			if frontmatter.IsNull(kind) {
 				kind = KindStandalone
 			}
-			fields := draftFaceFields(kind, impactStamp)
+			fields := draftFaceFields(kind, impactStamp, "")
 			fields["spec_id"] = sp.ID
 			linked, err := setFrontmatterFields(stamped, fields)
 			if err != nil {
@@ -998,11 +1034,14 @@ func Reconcile(repoRoot, specID, impact string, remainder RemainderRequest) (Rec
 			// The stamp is written while the record is still in planned/, where a
 			// valid impact is equally lint-legal, so a failure at the move leaves a
 			// consistent record and the retry finds the judgement already recorded.
-			if stamp != "" {
-				updated, err := setFrontmatterFields(content, map[string]string{"impact": stamp})
-				if err != nil {
-					return err
-				}
+			// The target is dropped in the same write: it names the release
+			// unshipped work must land by, and the record lint refuses one on a
+			// shipped record (itd-2609212103572513).
+			updated, err := shipFace(content, stamp)
+			if err != nil {
+				return err
+			}
+			if updated != content {
 				if err := writeIntentFile(abs, it.Path, updated); err != nil {
 					return err
 				}
@@ -1338,6 +1377,20 @@ func validShipImpact(value string) error {
 		return fmt.Errorf("impact internal, which an intent may not hold — a press-release-first intent is user-facing by definition; declare one of %s, or record the work as an issue instead", shipImpactValues)
 	}
 	return nil
+}
+
+// shipFace is the rewrite a record takes on its way to shipped/: the impact
+// stamp when the close carries one, and the target dropped. A record needing
+// neither is returned unchanged, so the close writes nothing before the move.
+func shipFace(content, stamp string) (string, error) {
+	updated := content
+	if stamp != "" {
+		var err error
+		if updated, err = setFrontmatterFields(updated, map[string]string{"impact": stamp}); err != nil {
+			return "", err
+		}
+	}
+	return dropTarget(updated)
 }
 
 // writeIntentFile is the one way this package writes an intent record — the

@@ -702,6 +702,7 @@ func checkRecordSchema(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 		}
 		out = append(out, checkIssueBodyRenders(r, cfg.Severity)...)
 		out = append(out, checkRecordGroundsBullets(r, cfg.Severity)...)
+		out = append(out, checkIntentTarget(r, cfg.Severity)...)
 
 		// Cross-references: a named record must be in the corpus, or declared
 		// retired by the record that replaced it.

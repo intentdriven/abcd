@@ -221,6 +221,8 @@ var sentences = map[string]string{
 		"Writes the record and its successor together; refuses a shipped intent's kind change.",
 	"abcd intent ready": "Report whether an intent is ready to implement, exiting 1 when not: " +
 		"Writes its grounds only with --grounds; refuses malformed grounds.",
+	"abcd intent target": "Name the release a planned intent must land by: " +
+		"Writes its target_release line; refuses a draft, a shipped intent, or a value not vX.Y.Z or next.",
 	"abcd intent unhold": "Lift an intent's hold: " +
 		"Writes the removal of its held line; refuses a record not held.",
 
