@@ -765,7 +765,12 @@ plugin-root binary is missing, throttled by a `.bootstrap.attempt` marker within
 ten-minute window, and then fall back to a PATH-resolved abcd that must be
 absolute, outside the working directory, in a directory and a file that are not
 world-writable, and recorded as this
-machine's own, before failing loudly. `SessionEnd` and `SubagentStop` are the two
+machine's own, before failing loudly. Each of those declares a 120-second
+`timeout` and a `statusMessage` naming the wait, the host's spinner text while the
+hook runs, because the salvage sends the script's output nowhere; `SessionStart`
+declares 240 seconds, and the transcript hooks declare none. A test pins every
+event's timeout (`internal/surface/cli/hooks_timeout_test.go`). `SessionEnd` and
+`SubagentStop` are the two
 exceptions and download nothing at all: each fires where the harness cancels a slow
 hook rather than wait — one as the session exits, the other inside a live session as
 a sub-agent finishes — so a fetch there races that cancellation and loses the

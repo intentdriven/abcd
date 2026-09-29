@@ -399,7 +399,13 @@ resolving shim rather than a plain binary call. Four of them self-provision.
 `UserPromptSubmit`, `PreToolUse` and `PreCompact` each attempt
 `hooks/bootstrap.sh` only when the plugin-root binary is missing, recording the
 try in a `.bootstrap.attempt` marker that throttles the next one to a ten-minute
-window. `SessionStart` runs it once at the top of every session instead,
+window. Each of them declares a 120-second `timeout`, the time a salvage on a
+slow link has before the host cancels it, and a `statusMessage` the host
+shows as its spinner text while the hook runs, so the wait is never a silent
+stall: the salvage itself sends the script's output nowhere. `SessionStart`
+declares 240 seconds, the script's worst case with room to spare, and
+`SessionEnd` and `SubagentStop` declare none. `SessionStart` runs it once at the
+top of every session instead,
 whether or not the binary is already there, and relays whatever it says: with
 the binary in place the script's own fast path costs a file test and does the
 provisioning housekeeping that keeps the next plugin update served from the
