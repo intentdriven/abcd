@@ -697,14 +697,19 @@ func argPrefixMatches(prefix string, ops []string) bool {
 // "$(mktemp -d)"`), so reading it as every target would refuse them all
 // (unknown.go's operand residual). A variable is compared as the line wrote
 // it, so `$HOME` names the home and `"$OUT"/` names no root; one whose text is
-// not known names nothing.
+// not known names nothing. A spelling holding fieldMark is the fields bash
+// splits it into, and each is compared on its own; quotedFieldMark is the
+// space a quoted word keeps.
 func argValueMatches(values []string, written string) bool {
-	if isUnknown(written) {
-		return false
-	}
-	for _, v := range values {
-		if written == v {
-			return true
+	written = strings.ReplaceAll(written, quotedFieldText, " ")
+	for _, field := range strings.Split(written, fieldText) {
+		if field == "" || isUnknown(field) {
+			continue
+		}
+		for _, v := range values {
+			if field == v {
+				return true
+			}
 		}
 	}
 	return false

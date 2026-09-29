@@ -1017,11 +1017,13 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 	// One whose text ran no substitution prints a variable's value, or a word
 	// the line spells, and the word is filed as a variable's
 	// (segment.variable); one that ran a substitution may print its output.
-	parameterExpansion := func(body string) {
+	// split reports that the `${…}` stands unquoted, where bash splits what
+	// it prints (spellParameter).
+	parameterExpansion := func(body string, split bool) {
 		start := len(segs)
 		expandedBody(body)
 		feedFrom(start)
-		addVar(spellParameter(body))
+		addVar(spellParameter(body, split))
 		if len(segs) > start {
 			curSub = true
 		}
@@ -1128,7 +1130,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 				if braces && line[j] == '$' && j+1 < len(line) && line[j+1] == '{' {
 					switch end := closingDolBrace(line, j+2, budget); {
 					case end >= 0:
-						parameterExpansion(line[j+2 : end])
+						parameterExpansion(line[j+2:end], false)
 						j = end + 1
 						continue
 					case end == closeUnread:
@@ -1487,7 +1489,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 				i++
 				break
 			}
-			parameterExpansion(line[i+2 : end])
+			parameterExpansion(line[i+2:end], true)
 			lastList = false
 			i = end + 1
 		case c == '&' || c == '|' || c == ';' || c == '(' || c == ')' || c == '`':

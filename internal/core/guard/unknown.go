@@ -188,21 +188,44 @@ func paramText(text string) string { return strings.ReplaceAll(text, "\\\n", "")
 //     (`${HOME[0]]}`, `${HOME[0]@Q}`), and a subscript with no `]` cannot be
 //     read further.
 //
-// An alternative (`${X:+w}`, `${X+w}`) prints w or nothing, one text, and is
+// An alternative (`${X:+w}`, `${X+w}`) prints w or nothing, and is
 // spelled as w is written, through its own expansions (spellAlternative).
 // Every other expansion keeps its text as written and names no variable an
 // entry names: a length (`${#HOME}`), an indirection (`${!X}`), `@Q` and the
 // other transforms, and a default word that is not the variable's own value
 // (`${DIR:-$HOME}`), which is a recorded residual (17-guard.md).
-func spellParameter(body string) string {
-	return spellParameterAt(paramText(body), 0)
+//
+// split reports that the expansion stands unquoted, where bash splits an
+// alternative's word on whitespace: each unquoted whitespace run in it is
+// spelled fieldMark, which the compare splits on (argValueMatches).
+func spellParameter(body string, split bool) string {
+	return spellParameterAt(paramText(body), 0, split)
 }
+
+// fieldMark stands in a spelling where bash splits a word into fields: at an
+// unquoted whitespace run in an unquoted alternative's word (`${X:+$HOME }`
+// hands rm the home). Only the arg_values compare splits on it; a payload
+// re-read reads it as the space it was (spelledView).
+const fieldMark = '\x02'
+
+// fieldText is fieldMark as a string.
+const fieldText = "\x02"
+
+// quotedFieldMark stands where a double-quoted alternative's word holds
+// unquoted whitespace (`sh -c "rm -rf ${X:+$HOME x}"`): the word is one
+// field here, which the compare reads as a space, but a shell re-reading the
+// string splits it there, so a payload re-read takes it for fieldMark
+// (spelledView), and the string's words pair with its marked reading's.
+const quotedFieldMark = '\x03'
+
+// quotedFieldText is quotedFieldMark as a string.
+const quotedFieldText = "\x03"
 
 // spellAlternativeDepth bounds how deep spellParameter follows an
 // alternative's word into another expansion.
 const spellAlternativeDepth = 3
 
-func spellParameterAt(body string, depth int) string {
+func spellParameterAt(body string, depth int, split bool) string {
 	raw := "${" + body + "}"
 	n := 0
 	for n < len(body) && isNameByte(body[n]) {
@@ -230,9 +253,9 @@ func spellParameterAt(body string, depth int) string {
 		if op := strings.IndexAny(rest, subscriptOperators); op >= 0 {
 			switch {
 			case rest[op] == '+':
-				return spellAlternative(rest[op+1:], raw, depth)
+				return spellAlternative(rest[op+1:], raw, depth, split)
 			case strings.HasPrefix(rest[op:], ":+"):
-				return spellAlternative(rest[op+2:], raw, depth)
+				return spellAlternative(rest[op+2:], raw, depth, split)
 			}
 		}
 		return same
@@ -251,10 +274,10 @@ func spellParameterAt(body string, depth int) string {
 			return same
 		}
 	case '+':
-		return spellAlternative(rest[1:], raw, depth)
+		return spellAlternative(rest[1:], raw, depth, split)
 	case ':':
 		if len(rest) > 1 && rest[1] == '+' {
-			return spellAlternative(rest[2:], raw, depth)
+			return spellAlternative(rest[2:], raw, depth, split)
 		}
 		return same
 	}
@@ -286,14 +309,17 @@ func subscriptEnd(s string) int {
 }
 
 // spellAlternative is the spelling of an alternative whose word is w. An
-// alternative prints w or nothing, one text, so w is spelled as it is
-// written: its quotes and escapes removed, and each expansion in it a site
-// spelled as a word's own are (spellWritten), `${…}` through
-// spellParameterAt. `${X:+$HOME/}` is `$HOME/`, `${X:+/}` is `/` and
-// `${X:+"${HOME%/}"}` is `${HOME}`. A word holding a command substitution, a
-// quote that does not close or an expansion past spellAlternativeDepth, and a
-// word that spells to nothing, keep raw.
-func spellAlternative(w, raw string, depth int) string {
+// alternative prints w or nothing, so w is spelled as it is written: its
+// quotes and escapes removed, and each expansion in it a site spelled as a
+// word's own are (spellWritten), `${…}` through spellParameterAt.
+// `${X:+$HOME/}` is `$HOME/`, `${X:+/}` is `/` and `${X:+"${HOME%/}"}` is
+// `${HOME}`. A command substitution in it is its unknown output, which
+// spellWritten drops as knownText does (`${X:+$(true)$HOME}` is `$HOME`).
+// Where split is set, each unquoted whitespace run is fieldMark, where bash
+// splits the word (`${X:+$HOME }` is `$HOME`). A word holding a quote that
+// does not close or an expansion past spellAlternativeDepth, and a word that
+// spells to nothing, keep raw.
+func spellAlternative(w, raw string, depth int, split bool) string {
 	if depth >= spellAlternativeDepth {
 		return raw
 	}
@@ -326,9 +352,32 @@ func spellAlternative(w, raw string, depth int) string {
 			if end < 0 {
 				return raw
 			}
-			sites = append(sites, varSite{at: len(word), text: spellParameterAt(w[i+2:end], depth+1)})
+			sites = append(sites, varSite{at: len(word), text: spellParameterAt(w[i+2:end], depth+1, split && !dq)})
 			word = append(word, varMark)
 			i = end + 1
+		case c == '$' && i+1 < len(w) && w[i+1] == '(':
+			end := closingParen(w, i+2, &budget)
+			if end < 0 {
+				return raw
+			}
+			word = append(word, unknownMark)
+			i = end + 1
+		case c == '`':
+			end := closingBacktick(w, i+1, &budget)
+			if end < 0 {
+				return raw
+			}
+			word = append(word, unknownMark)
+			i = end + 1
+		case !dq && (c == ' ' || c == '\t' || c == '\n'):
+			mark := byte(quotedFieldMark)
+			if split {
+				mark = fieldMark
+			}
+			if len(word) == 0 || word[len(word)-1] != mark {
+				word = append(word, mark)
+			}
+			i++
 		case c == '$':
 			end := simpleParamEnd(w, i+1)
 			if end < 0 {
@@ -337,8 +386,6 @@ func spellAlternative(w, raw string, depth int) string {
 			sites = append(sites, varSite{at: len(word), text: w[i:end]})
 			word = append(word, varMark)
 			i = end
-		case c == '`':
-			return raw
 		default:
 			word = append(word, c)
 			i++

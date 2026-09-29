@@ -113,6 +113,17 @@ func TestHomeSpellingsTheWrittenCompareReads(t *testing.T) {
 		{`rm -rf ${X:+"$HOME"/}`, bare | sq, VerdictBlock, home},
 		{`rm -rf ${X:+${HOME%/}/.*}`, bare | sq | dq, VerdictBlock, home},
 		{`rm -rf ${X+$HOME/}`, bare | sq | dq, VerdictBlock, home},
+		// An unquoted alternative's word is split on whitespace, and a
+		// substitution that prints nothing drops out of it.
+		{`rm -rf ${X:+$HOME }`, bare | sq | dq, VerdictBlock, home},
+		{`rm -rf ${X:+ $HOME}`, bare | sq | dq, VerdictBlock, home},
+		{"rm -rf ${X:+$HOME\tx}", bare | sq | dq, VerdictBlock, home},
+		{`rm -rf ${X:+$(true)$HOME}`, bare | sq, VerdictBlock, home},
+		{"rm -rf ${X:+`echo`$HOME}", bare | sq, VerdictBlock, home},
+		{`rm -rf ${X:+$HOME$(x)}`, bare | sq, VerdictBlock, home},
+		{`rm -rf ${X:+a${Y:+ $HOME}}`, bare | sq | dq, VerdictBlock, home},
+		{`rm -rf ${X:+$HOME }x`, bare | sq | dq, VerdictBlock, home},
+		{`rm -rf ${X:+x /}`, bare | sq | dq, VerdictBlock, home},
 		// What stays off the home: a suffix glued on, a quoted value, a
 		// length, an indirection, an alternative that is not the home, and
 		// quoting that ends the name before the brace.
@@ -132,6 +143,9 @@ func TestHomeSpellingsTheWrittenCompareReads(t *testing.T) {
 		{`rm -rf $HOME{1..2}`, bare | sq, VerdictAllow, ""},
 		{`rm -rf "$HO"{M..M}E`, bare | sq, VerdictAllow, ""},
 		{`rm -rf ${X[0]]-$HOME}`, bare | sq, VerdictAllow, ""},
+		{`rm -rf "${X:+$HOME }"`, bare | sq, VerdictAllow, ""},
+		{`rm -rf ${X:+"$HOME "}`, bare | sq, VerdictAllow, ""},
+		{`rm -rf ${X:+'x /'}`, bare, VerdictAllow, ""},
 		{`rm -rf ${X[0]a-b+$HOME}`, bare | sq, VerdictAllow, ""},
 		{`rm -rf ${X[0]]\+$HOME}`, bare | sq, VerdictAllow, ""},
 	}
