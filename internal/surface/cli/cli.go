@@ -512,7 +512,7 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newSourceCommand(&asJSON))
 	root.AddCommand(newMemoryCommand(&asJSON))
 	root.AddCommand(newRulesCommand(&asJSON))
-	root.AddCommand(newHookCommand())
+	root.AddCommand(newHookCommand(&asJSON))
 	root.AddCommand(newHistoryCommand(&asJSON))
 	root.AddCommand(newDocsCommand(&asJSON))
 	root.AddCommand(newIntentCommand(&asJSON))
@@ -1390,6 +1390,33 @@ func hookSession(in hookInput) string {
 	return in.SessionID
 }
 
+// routerView is the prompt router's machine-reader envelope, emitted instead
+// of the bare injected block when the hook is invoked with --json (ruling J15,
+// iss-2608261550580260). Text is byte for byte what the plain form writes to
+// the host's context; Injected names the domains whose text it carries; Active
+// is the full set of domain names in force this turn, present on every
+// evaluated prompt and an empty list when nothing is in force, so a client
+// that snapshots injected rules prunes every name it holds that Active omits.
+// Active is absent only when the router could not evaluate the prompt — an
+// unreadable payload or a rules.json that will not load — and Error says why:
+// that is "unknown, change nothing", never "every domain stopped".
+type routerView struct {
+	Text     string    `json:"text"`
+	Injected []string  `json:"injected"`
+	Active   *[]string `json:"active,omitempty"`
+	Error    string    `json:"error,omitempty"`
+}
+
+// routerRefused is the prompt router's fail-open exit when it cannot evaluate
+// a prompt: nothing is injected and the process exits 0 either way, and a
+// machine reader is handed an envelope naming the error with no active set.
+func routerRefused(cmd *cobra.Command, asJSON bool, msg string) error {
+	if !asJSON {
+		return nil
+	}
+	return render(cmd.OutOrStdout(), true, routerView{Injected: []string{}, Error: msg}, nil)
+}
+
 // newHookCommand builds the operator-internal `hook` sub-tree: the Claude Code
 // prompt-router entrypoints (itd-3). These are NOT a user surface — they are the
 // injection transport, one front door onto internal/core/rules alongside the
@@ -1397,7 +1424,7 @@ func hookSession(in hookInput) string {
 // payload, an unreadable rules.json, or a state error injects nothing, logs a
 // diagnostic to stderr (out-of-band, per D3), and exits 0 so it can never wedge
 // a session.
-func newHookCommand() *cobra.Command {
+func newHookCommand(asJSON *bool) *cobra.Command {
 	hookCmd := &cobra.Command{
 		Use:    "hook",
 		Short:  "Claude Code hook entrypoints (operator-internal)",
@@ -1415,7 +1442,7 @@ func newHookCommand() *cobra.Command {
 			in, err := readHookInput(cmd)
 			if err != nil {
 				fmt.Fprintf(cmd.ErrOrStderr(), "abcd rules: unreadable hook payload (%s); injecting nothing\n", termsafe.Sanitize(err.Error()))
-				return nil
+				return routerRefused(cmd, *asJSON, "unreadable hook payload: "+err.Error())
 			}
 			cwd := in.Cwd
 			if cwd == "" {
@@ -1455,7 +1482,7 @@ func newHookCommand() *cobra.Command {
 				// wrap with a bare "abcd" to avoid "abcd rules: rules: …"
 				// (iss-2608261550491547).
 				fmt.Fprintf(cmd.ErrOrStderr(), "abcd %s; injecting nothing\n", termsafe.Sanitize(err.Error()))
-				return nil
+				return routerRefused(cmd, *asJSON, err.Error())
 			}
 			// A domain Load dropped (no rules of its own) is skipped, not
 			// fatal — but silently missing is the shape the drop exists to
@@ -1475,6 +1502,13 @@ func newHookCommand() *cobra.Command {
 			// whose words went into the context (GHSA-22f8-qf5r-gjgq).
 			fmt.Fprintf(cmd.ErrOrStderr(), "abcd rules: turn %d, injected %d domain(s) %v, %d bytes\n",
 				res.State.Count, len(res.Injected), res.Labels(), len(res.Text))
+			if *asJSON {
+				injected := res.Injected
+				if injected == nil {
+					injected = []string{}
+				}
+				return render(cmd.OutOrStdout(), true, routerView{Text: res.Text, Injected: injected, Active: &res.Active}, nil)
+			}
 			if res.Text != "" {
 				fmt.Fprint(cmd.OutOrStdout(), res.Text)
 			}

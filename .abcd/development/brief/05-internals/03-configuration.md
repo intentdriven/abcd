@@ -524,6 +524,65 @@ The effective set is unchanged. Restating the entry keeps it; leaving the field
 out inherits the bundled list. The other bundled domains are conventions a
 repository restates in its own words, so a replacement there is not reported.
 
+## The prompt router's output
+
+`abcd hook prompt-router` is the `UserPromptSubmit` entrypoint the hook manifest
+wires. It reads the host's hook payload on stdin, recall-matches the prompt
+against the loaded set, and exits 0 on every path, so it can never wedge a
+session. It writes to two streams:
+
+| Stream | What it carries | Who reads it |
+|---|---|---|
+| **stdout** | the rendered block of the domains new this turn, and nothing else. A prompt that matches no domain, or matches only domains already injected unchanged this session, writes zero bytes | the host, which adds it to the model's context |
+| **stderr** | one diagnostic line per prompt — the turn, the labels of the injected domains, the byte count — plus the load's notes and refusals | the operator, out of band |
+
+**The machine reader's envelope.** With `--json`, the flag every verb takes for
+a machine reader, stdout carries one JSON document in place of the bare block.
+It is for a client that snapshots injected rules rather than appending them to
+a transcript — a host adaptor that stages them into a system prompt, or a later
+MCP consumer — and it is the protocol's removal signal (ruling J15,
+iss-2608261550580260):
+
+```json
+{
+  "text": "# abcd rules — 1 domain(s) active\n## WIDGETS (repo override)\n- Widgets are counted twice.\n",
+  "injected": ["WIDGETS"],
+  "active": ["COMMITTING", "DOCUMENTATION", "INTENTS", "ISSUES", "LIFEBOAT",
+             "LOAD", "OPINIONS", "PII", "ROADMAP", "WIDGETS"]
+}
+```
+
+That is the bundled set with one repo domain, `WIDGETS`, declared in
+`.abcd/rules.json` and matched by the prompt: the text carries one domain and
+the set names all ten.
+
+| Field | Meaning |
+|---|---|
+| `text` | byte for byte what the plain form writes to stdout: empty on a turn with nothing new |
+| `injected` | the domains whose text `text` carries; an empty list when it carries none |
+| `active` | the FULL set of domain names in force this turn, sorted, on every evaluated prompt: every domain that is not dormant, plus a dormant one this prompt activated with `*NAME`. An empty list when nothing is in force, as under the kill switch |
+| `error` | present only when the router could not evaluate the prompt — an unreadable payload, or a `rules.json` that will not load |
+
+A client keeps a snapshotted domain while its name is in `active` and prunes it
+the first turn the name is absent: absence is the stop, whether the domain was
+deleted, renamed or made dormant. A renamed domain arrives under its new name
+the next time a prompt matches it. An envelope with `error` carries no `active`
+field at all, which means the set is unknown and the client changes nothing; an
+empty list is a set, and a missing one is not, so a typo in `rules.json` never
+reads as every domain stopping.
+
+**The set never enters the model's context.** The hook manifest invokes the
+plain form, so what the host injects is exactly the block above and the
+zero-token promise holds unchanged: a turn with nothing new adds nothing, and
+the active set is written only to a reader that asked for the envelope.
+
+**A domain that stops is forgotten.** The per-session ledger drops a domain the
+turn it leaves the active set, so if it comes back its text is injected again
+the next time a prompt matches it, even when its rules are unchanged. A client
+that pruned it gets it back, and a host that appends to a transcript pays one
+re-render of that domain for the round trip; a domain that stays in force is
+still never re-injected unchanged within a session.
+
 ## The rules root — which `.abcd/` governs a session
 
 The rules, the hazard registry and the per-repo config are read from ONE resolved
