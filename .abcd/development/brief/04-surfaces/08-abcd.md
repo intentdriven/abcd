@@ -212,6 +212,32 @@ refuse the summaries the reader treats as no pin — a symlink, one past 1 MiB,
 one with a NUL byte in its frontmatter — so every row after the rule can be
 counted.
 
+**The status block** (itd-2609212103568351, spc-2609212138241908) says what
+is being built, what is ready, and what waits, computed from the record each
+time and stored nowhere (adr-2609212115255771 decision 2). Now lists every
+intent the build's state file shows in a lane — a run in progress, with the
+lane the loop works on, its next step and the role it waits on, or the step
+`pending` between lanes — then the head of the pick order marked `next up`, so
+Now is never empty while anything is READY. Next lists every planned intent
+the readiness gate reports READY; Later lists every planned intent it refuses,
+naming the gating checks each fails, then every draft. Next, Later and the
+head are read from the shelves and the gate alone, so removing the state file
+empties Now's lane rows and changes nothing else. Until `abcd build next`'s
+pick order exists (itd-2609211116005482) the READY intents are read oldest
+record id first, the tie-break that pick uses, and the head is the first of
+them not held; the block's `order` field names that order (`record-id`), so a
+reader can tell it from the pick's. The text render is a `status:` heading
+with the three counts and the order, then `Now:`, `Next:` and `Later:`, one
+line per intent: its id, its title, and in brackets its lane state, `next
+up`, `fails:` with the checks, or `draft`. The JSON carries a `status` object
+with `now`, `next` and `later`, each row `id`, `title`, `bucket`, and
+`next_up`, `lane` (`run`, `lane`, `step`, `awaiting`) or `failing_checks` when
+they apply, and `order`. The block is present in a repository abcd manages and
+absent elsewhere, and a record that cannot be read omits it with the reason on
+stderr. The read is `internal/core/statusblock`, the one the site's Status
+page renders too ([`22-site.md`](22-site.md#the-page-set)); the state file is
+read through the implement loop (`loop.StatusLanes`).
+
 ## The board itself is not built
 
 > **Design target (itd-20, `intents/planned/`, `spec_id: null`).** Everything in

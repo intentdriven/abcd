@@ -79,7 +79,9 @@ default): `--severity` (`nitpick|minor|major|critical`, default `minor`),
 or a conceptual location in words; a path that leaves the checkout or does not
 resolve in it is refused, exit 2, and nothing is written), `--lapsed-at` (RFC 3339 instant in
 UTC at which a recorded discipline gave way — the lapse itself, never the
-write-up), `--slug` (overrides the slug derived from the text), `--blocked-by`
+write-up), `--remedy` (the proposed fix, one line, written as the record's
+`remedy:` field; optional, and `abcd drain` takes no issue without one, so ask
+for it whenever the fix is known), `--slug` (overrides the slug derived from the text), `--blocked-by`
 (comma-separated `iss-N` ids this issue depends on; each must already exist in
 the ledger, and an edge to a record captured later is written afterwards with
 `link`, below), `--production-mode`

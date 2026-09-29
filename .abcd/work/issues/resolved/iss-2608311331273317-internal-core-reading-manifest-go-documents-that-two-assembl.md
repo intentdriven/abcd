@@ -8,6 +8,10 @@ source: "agent-observation"
 found_during: "manual-capture"
 origin: researcher-authored
 production_mode: hand-written
+resolution: "The amnesia eval now compares the two manifests of its two-path assembly byte for byte with each side's run identifier set aside (evals/coldreading_determinism_test.go), so a manifest value that varies with the tree's location or per run, beside the run identifier, fails the eval. Watched red on a scratch copy whose manifest encoder appended a random suffix to preset_hash; the base eval passed that mutation."
+impact: internal
+resolved_by:
+  commit: "75422def0"
 ---
 
 internal/core/reading/manifest.go documents that two assemblies of one repository state at one commit produce manifests differing in run_id and in nothing else. Nothing asserts it. spc-65 scopes the manifest to two weaker properties (no timestamp-shaped key or scalar, item paths in lexicographic order) and excludes it from the byte comparison, so a nondeterminism confined to the manifest — a changed content hash, an item recorded at a different field — is invisible to the amnesia eval. The cheap closure is a manifest comparison modulo run_id in the same eval.
@@ -23,3 +27,7 @@ amnesia, and the eval's distinct contribution there is the two-path dimension th
 package test cannot see, since it runs both assemblies in one directory. A record
 that overstates a gap is the same defect as one that understates it, pointing the
 other way.
+
+## Grounds
+
+- pursued: a manifest nondeterminism confined to the manifest now fails the cold-reading eval lane; shown wrong if a mutation of a manifest field other than run_id passes TestAssembledInputIsByteIdenticalAcrossRuns

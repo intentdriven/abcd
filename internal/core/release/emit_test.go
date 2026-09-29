@@ -550,3 +550,54 @@ func TestEmitMarksInPressRelease(t *testing.T) {
 		t.Error("the press-release source text leaked into the cut JSON")
 	}
 }
+
+// TestEmitListsTargetedIntentsAndProceeds is itd-2609212103572513 criterion 2
+// on the cut: given a targeted intent still planned, when the cut runs, then
+// it is listed as targeted and unshipped — in the cut value the text render
+// and --json both read — and the cut proceeds exactly as it would without it.
+func TestEmitListsTargetedIntentsAndProceeds(t *testing.T) {
+	r := releasedRepo(t)
+	r.Write(shippedDir+"itd-73-derived-versioning.md",
+		"---\nid: itd-73\nimpact: additive\n---\n\n# A Version Is A Fact\n\nthe version is derived from what shipped.\n")
+	r.Write(plannedDir+"itd-90-later.md", "---\nid: itd-90\nimpact: additive\n---\n# Later\n")
+	r.Commit("ship an intent; one stays planned")
+	without := emit(t, r)
+
+	r.Write(plannedDir+"itd-91-targeted.md", "---\nid: itd-91\nimpact: additive\ntarget_release: v0.4.1\n---\n# Targeted\n")
+	r.Write(plannedDir+"itd-92-next.md", "---\nid: itd-92\nimpact: additive\ntarget_release: next\n---\n# Next\n")
+	r.Commit("two planned intents name a release")
+	cut := emit(t, r)
+
+	if !cut.Ready || cut.NextTag != without.NextTag || strings.Join(refusalKinds(cut), ",") != strings.Join(refusalKinds(without), ",") {
+		t.Fatalf("a target must never refuse or move the cut: ready=%v next=%s refusals=%v", cut.Ready, cut.NextTag, cut.Refusals)
+	}
+	var got []string
+	for _, tg := range cut.Targets {
+		got = append(got, tg.ID+"="+tg.Target)
+	}
+	if strings.Join(got, ",") != "itd-91=v0.4.1,itd-92=next" {
+		t.Fatalf("the cut must list every targeted planned intent: %v", got)
+	}
+	if cut.Targets[0].Path != plannedDir+"itd-91-targeted.md" {
+		t.Errorf("the row's path is repo-relative: %q", cut.Targets[0].Path)
+	}
+	raw, err := json.Marshal(cut)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `"targets":[{"id":"itd-91"`) {
+		t.Fatalf("--json must carry the targeted list:\n%s", raw)
+	}
+	if len(without.Targets) != 0 || strings.Contains(mustJSON(t, without), `"targets"`) {
+		t.Errorf("a cut with no target lists none: %+v", without.Targets)
+	}
+}
+
+func mustJSON(t *testing.T, v any) string {
+	t.Helper()
+	raw, err := json.Marshal(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(raw)
+}

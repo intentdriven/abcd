@@ -116,6 +116,9 @@ var sentences = map[string]string{
 	"abcd docs cite refresh": "Fetch every cited URL once, the one documentation verb that reaches the network: " +
 		"Writes the citation baseline; refuses an unreadable docs-lint configuration.",
 
+	"abcd drain": "Sort the open issues by the drain's field rule, eligible first in drain order: " +
+		"Writes nothing; refuses to start without --dry-run, as the run is not built.",
+
 	"abcd embark": "Unpack a verified lifeboat into a target repository, probing first: " +
 		"Writes only its record families and marker block; refuses the whole write on any conflict.",
 	"abcd embark from": "Unpack a lifeboat's record families into a target repository: " +
@@ -221,6 +224,8 @@ var sentences = map[string]string{
 		"Writes the record and its successor together; refuses a shipped intent's kind change.",
 	"abcd intent ready": "Report whether an intent is ready to implement, exiting 1 when not: " +
 		"Writes its grounds only with --grounds; refuses malformed grounds.",
+	"abcd intent target": "Name the release a planned intent must land by: " +
+		"Writes its target_release line; refuses a draft, a shipped intent, or a value not vX.Y.Z or next.",
 	"abcd intent unhold": "Lift an intent's hold: " +
 		"Writes the removal of its held line; refuses a record not held.",
 

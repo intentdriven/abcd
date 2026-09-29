@@ -2,6 +2,8 @@ package oracle
 
 import (
 	"fmt"
+	"sort"
+	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/layered"
 )
@@ -24,6 +26,12 @@ type Connection struct {
 	// outside it is refused before a step runs, never dropped
 	// (spc-2609251028149555, AC 8). nil on a connection no adapter backs.
 	Accepts []string
+	// Roles is the model each agent whose oracle.roles.<agent> points at this
+	// connection asks it for, keyed by agent: a provider is reached by a role
+	// pointed at <provider>/<model> (itd-2609081951381895 Decision 9), so the
+	// role is where a provider leg's model is chosen. nil when no role points
+	// here.
+	Roles map[string]string
 }
 
 // Admits reports whether model is on the connection's allowlist.
@@ -116,6 +124,9 @@ func Resolve(agent string, l *Layered, conns Connections) (Route, error) {
 	var flag *flagRow
 	var flagText string
 	var base *Row
+	// baseWhere names where the base row came from, for a refusal of one of
+	// its settings; r.Origin is overwritten when a flag governs the step.
+	var baseWhere string
 	for _, fd := range found {
 		if fd.Layer == layered.Flag {
 			fr, err := layered.Decode[flagRow](fd.Raw)
@@ -131,6 +142,7 @@ func Resolve(agent string, l *Layered, conns Connections) (Route, error) {
 				return Route{}, fmt.Errorf("oracle routing: %s (%s layer): agents.%s: %w", fd.Origin, fd.Layer, agent, err)
 			}
 			base, r.Source, r.Origin = &row, fd.Layer, fd.Origin
+			baseWhere = fmt.Sprintf("%s (%s layer)", fd.Origin, fd.Layer)
 		}
 	}
 	if base == nil {
@@ -160,20 +172,31 @@ func Resolve(agent string, l *Layered, conns Connections) (Route, error) {
 	}
 	r.Row = row
 
+	leg := providerLeg{agent: agent, flagText: flagText, baseWhere: baseWhere, base: base.Settings}
+	if flag != nil {
+		leg.flag = flag.Settings
+	}
 	switch {
 	case flag != nil && flag.Connection != "":
 		c, ok := conns.Named(flag.Connection)
 		if !ok {
 			return Route{}, fmt.Errorf("oracle routing: %s names connection %q, which is not configured on this machine", flagText, layered.BoundKey(flag.Connection))
 		}
-		r.ConnectionTried, r.ConnectionUsed = c.Name, c.Name
-		r.SettingsSent = merge(merge(nil, c.Defaults), row.Settings)
+		leg.via = "named by --route " + flagText
+		if err := leg.take(&r, c, row.Settings); err != nil {
+			return Route{}, err
+		}
 	case row.Tier == HostDecides:
 		r.ConnectionUsed = Harness
 	default:
 		if c, ok := conns.Serves(row.Tier); ok {
-			r.ConnectionTried, r.ConnectionUsed = c.Name, c.Name
-			r.SettingsSent = merge(merge(nil, c.Defaults), row.Settings)
+			leg.via = fmt.Sprintf("serving tier %s", row.Tier)
+			if flagText != "" {
+				leg.via += " under --route " + flagText
+			}
+			if err := leg.take(&r, c, row.Settings); err != nil {
+				return Route{}, err
+			}
 		} else {
 			r.ConnectionUsed = Harness
 			r.Fallback = fmt.Sprintf("no configured connection reachable from this machine serves tier %s, "+
@@ -181,6 +204,94 @@ func Resolve(agent string, l *Layered, conns Connections) (Route, error) {
 		}
 	}
 	return r, nil
+}
+
+// providerLeg is what a refusal on a provider leg names: the agent, how the
+// leg was reached, and where each layer's settings came from.
+type providerLeg struct {
+	agent     string
+	via       string
+	flagText  string
+	flag      Settings
+	baseWhere string
+	base      Settings
+}
+
+// take gives r the provider leg through c, or refuses it before the step runs
+// (spc-2609251028149555). The allowlist is consulted first, before any
+// settings merge: a provider serves only the models it lists
+// (adr-2609221009491186), so a connection that lists none admits no route, and
+// the model the agent's role points at on c must be one it lists (AC 11). A
+// leg to a connection the agent's role does not point at names no model, and
+// the record does not yet decide which model it asks for, so it is refused
+// rather than guessed. The merged settings are then held to the set c's adapter
+// accepts: a setting outside it is refused, never dropped (AC 8), and a
+// connection no adapter backs accepts none.
+func (p providerLeg) take(r *Route, c Connection, rowSettings Settings) error {
+	if len(c.Models) == 0 {
+		return fmt.Errorf("oracle routing: %s resolves to connection %s (%s), whose allowlist lists no model; "+
+			"a provider serves only the models it lists (adr-2609221009491186), so the step is refused rather than sent: "+
+			"list the models %s may serve in its provider block, or route %s to the harness with tier %s",
+			p.agent, c.Name, p.via, c.Name, p.agent, HostDecides)
+	}
+	model, pointed := c.Roles[p.agent]
+	if !pointed {
+		return fmt.Errorf("oracle routing: %s resolves to connection %s (%s), but oracle.roles.%s does not point at %s, "+
+			"so the route names no model for %s to serve; which model such a route asks for is not yet decided, "+
+			"so the step is refused rather than sent: point oracle.roles.%s at %s/<model> with a model its allowlist lists (%s), "+
+			"or route %s to the harness with tier %s",
+			p.agent, c.Name, p.via, p.agent, c.Name, c.Name, p.agent, c.Name, listNames(c.Models), p.agent, HostDecides)
+	}
+	if !c.Admits(model) {
+		return fmt.Errorf("oracle routing: %s resolves to connection %s (%s), where oracle.roles.%s points at model %s, "+
+			"which is not on %s's allowlist (%s); a provider serves only the models it lists (adr-2609221009491186), "+
+			"so the step is refused rather than sent: add %s to %s's models in its provider block, point oracle.roles.%s "+
+			"at a model the list holds, or route %s to the harness with tier %s",
+			p.agent, c.Name, p.via, p.agent, layered.BoundKey(model), c.Name, listNames(c.Models),
+			layered.BoundKey(model), c.Name, p.agent, p.agent, HostDecides)
+	}
+	sent := merge(merge(nil, c.Defaults), rowSettings)
+	var refused []string
+	for _, k := range sortedKeys(sent) {
+		if !c.Accepted(k) {
+			refused = append(refused, fmt.Sprintf("%s (from %s)", k, p.where(k, c.Name)))
+		}
+	}
+	if len(refused) > 0 {
+		accepts := "it accepts no setting"
+		if len(c.Accepts) > 0 {
+			sorted := append([]string(nil), c.Accepts...)
+			sort.Strings(sorted)
+			accepts = "it accepts " + strings.Join(sorted, ", ")
+		}
+		return fmt.Errorf("oracle routing: %s resolves to connection %s (%s), whose adapter does not accept %s; %s. "+
+			"A setting is refused rather than dropped, so the step does not run: remove each one from where it is set",
+			p.agent, c.Name, p.via, strings.Join(refused, ", "), accepts)
+	}
+	r.ConnectionTried, r.ConnectionUsed = c.Name, c.Name
+	r.SettingsSent = sent
+	return nil
+}
+
+// where names the layer whose value of setting k is the one sent: the
+// --route's over the row's over the connection's own defaults.
+func (p providerLeg) where(k, conn string) string {
+	if _, ok := p.flag[k]; ok {
+		return "--route " + p.flagText
+	}
+	if _, ok := p.base[k]; ok {
+		return p.baseWhere
+	}
+	return conn + "'s defaults"
+}
+
+func sortedKeys(s Settings) []string {
+	keys := make([]string, 0, len(s))
+	for k := range s {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 // merge returns dst with src's keys laid over it, allocating when dst is nil.

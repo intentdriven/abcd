@@ -389,6 +389,22 @@ func ReadHomeDeclarationDenying(home, rel string, limit int64, deny os.FileMode)
 	return readDeclarationIn(root, path.Base(rel), p, limit, deny.Perm())
 }
 
+// ReadHomeDeclarationDenyingIn is ReadHomeDeclarationDenying over a directory
+// the caller already holds: dir is the directory of rel under home, opened by
+// the caller's own walk (EnsureHomeScope or OpenHomeScope), and the file is
+// read relative to that descriptor rather than by walking home again. A caller
+// that writes through dir reads through it too, so a same-uid swap of the
+// directory between its walk and the read cannot make it read one directory
+// and write another (iss-2609290300313698). Every guard on the file, and its
+// order, is ReadHomeDeclarationDenying's; an absent file is DeclarationAbsent
+// with an error satisfying os.ErrNotExist.
+func ReadHomeDeclarationDenyingIn(dir *os.Root, home, rel string, limit int64, deny os.FileMode) ([]byte, DeclarationRefusal, error) {
+	if !ValidRelPath(rel) {
+		return nil, DeclarationUnreadable, &os.PathError{Op: "readhomedeclaration", Path: rel, Err: os.ErrInvalid}
+	}
+	return readDeclarationIn(dir, path.Base(rel), filepath.Join(home, filepath.FromSlash(rel)), limit, deny.Perm())
+}
+
 // readDeclarationIn is ReadDeclaration for the file leaf directly inside root:
 // the same guards in the same order, with the Lstat, the open and the confirming
 // fstat all relative to root's descriptor. p is the file's full path, which the

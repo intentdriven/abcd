@@ -65,7 +65,12 @@ var Known = map[string]bool{
 	// from. Optional for every category and required for one; LapsedAtRequired
 	// below is the single copy of which.
 	"lapsed_at": true,
-	"details":   true, "suggested_fix": true, "related_intents": true,
+	"details":   true,
+	// remedy is the proposed fix, the field a drain reads to decide whether an
+	// issue needs no decision (itd-82 decision 6). suggested_fix is its older
+	// spelling: still KNOWN, so no record written with it is refused, and read
+	// as the remedy wherever a record carries no remedy (RemedyOf).
+	"remedy": true, "suggested_fix": true, "related_intents": true,
 	"related_specs": true, "related_issues": true,
 	"synthesis_clusters": true, "wontfix_reason": true, "resolution": true,
 	"resolved_by": true, "blocked_by": true,
@@ -138,6 +143,20 @@ var Known = map[string]bool{
 // name the successor and the one verb that rewrites it, `abcd capture migrate`,
 // instead of reporting an unexplained unknown property.
 var Retired = map[string]string{"promoted_to": "related_intents"}
+
+// RemedyOf is a record's remedy read from its frontmatter: the `remedy:` value
+// when the record carries a non-blank one, else the older `suggested_fix:`
+// (spc-2609212015054359 scope 1: the migration reads the old key as the new
+// one where present). Every reader asks this, so the two spellings have one
+// precedence. A value that is not a string reads as absent; the strict
+// validator is what refuses it.
+func RemedyOf(fm map[string]any) string {
+	if s, _ := fm["remedy"].(string); strings.TrimSpace(s) != "" {
+		return s
+	}
+	s, _ := fm["suggested_fix"].(string)
+	return s
+}
 
 // MigrateHint is the remedy every refusal of a retired key names.
 const MigrateHint = "run `abcd capture migrate --apply` to rewrite it"

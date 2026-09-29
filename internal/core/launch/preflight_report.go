@@ -51,6 +51,10 @@ type PreflightReport struct {
 	// and DeepSmoke the deep installability tier, when the run made them.
 	Parity    *ParityReport    `json:"parity,omitempty"`
 	DeepSmoke *DeepSmokeReport `json:"deep_smoke,omitempty"`
+	// Targets lists every planned intent that names a release it must land by
+	// and has not shipped (itd-2609212103572513). It is a report, not a gate:
+	// it never changes the verdict.
+	Targets []TargetedIntent `json:"targets,omitempty"`
 }
 
 // PreflightReport is the preview's pre-flight record. The clock is the
@@ -59,6 +63,7 @@ type PreflightReport struct {
 func (r DryRunReport) PreflightReport(at time.Time) PreflightReport {
 	rep := newPreflightReport(ModePreview, at, r.Version, r.WouldRefuseOn, r.Warnings, r.Gates, false, nil)
 	rep.Parity, rep.DeepSmoke = r.Parity, r.DeepSmoke
+	rep.Targets = r.Targets
 	return rep
 }
 
@@ -155,6 +160,17 @@ func (rep PreflightReport) Markdown() string {
 	section("Warnings", rep.Warnings)
 	if rep.AllowDirty {
 		section("Carried by --allow-dirty", rep.Dirty)
+	}
+	if len(rep.Targets) > 0 {
+		lines := make([]string, 0, len(rep.Targets))
+		for _, t := range rep.Targets {
+			line := fmt.Sprintf("%s targets %s (%s)", t.ID, t.Target, t.Path)
+			if t.Invalid != "" {
+				line += "; not a legal target: " + t.Invalid
+			}
+			lines = append(lines, line)
+		}
+		section("Targeted, not shipped", lines)
 	}
 	if rep.Parity != nil {
 		b.WriteString(rep.Parity.Markdown())

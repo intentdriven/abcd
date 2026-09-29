@@ -84,11 +84,14 @@ type helpPlacement struct {
 }
 
 // helpPlacements is every placement, keyed by the path below the root. Decision
-// 2 of itd-146 places the people's thirteen (build and drain are not built yet)
-// and the agent block's nine; the rest are the technical ruling recorded in
-// .abcd/work/DECISIONS.md on 2026-09-25, which gives each its reason. cobra's own
-// `help` and `completion` are filed under set-up by applyHelpPlacement, because
-// they exist only once the tree executes.
+// 2 of itd-146 places the people's thirteen and the agent block's nine. Twelve of
+// the thirteen sit in the person's groups; drain sits in the agents block, because
+// the person's list holds at most fourteen verbs and is full, until the product
+// thinker rules on where it goes. The rest are the technical ruling recorded in
+// .abcd/work/DECISIONS.md on 2026-09-25, which gives each its reason, except
+// source, which the merge that landed it placed under records, the block its
+// page declares. cobra's own `help` and `completion` are filed under set-up by
+// applyHelpPlacement, because they exist only once the tree executes.
 var helpPlacements = map[string]helpPlacement{
 	// The person's groups.
 	"ahoy":      {group: groupSetUp},
@@ -130,6 +133,11 @@ var helpPlacements = map[string]helpPlacement{
 
 	// Role 2's ingest sits in the agents block beside Role 1's.
 	"intent consistency ingest": {page: "commands/intent.md"},
+
+	// itd-146 decision 2 files drain under records, but the person's list is at
+	// its fourteen-verb ceiling, and until the run is built the verb's one form
+	// is a dry run an agent reads. Listed here until the product thinker rules.
+	"drain": {group: groupAgents, page: "commands/drain.md"},
 }
 
 // applyHelpPlacement declares the groups on root, files every placed entry, and

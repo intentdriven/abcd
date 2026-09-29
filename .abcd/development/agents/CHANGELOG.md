@@ -12,6 +12,15 @@ over the brief's earlier `1.0.0`-at-close expectation). The four M6 synthesis
 agents below entered at `0.1.0`, wired to their `abcd disembark` verbs and
 unmeasured; `lifeboat-oracle` has since become `lifeboat-reviewer` at `0.1.1`.
 
+## 2026-09-29 (itd-2609212103572513 — the cut lists targeted intents)
+
+### release-changelog-composer 0.4.1
+
+PATCH: the cut the composer reads gains `targets[]`, the planned intents that
+name a release they must land by (`target_release`). The prompt names the field
+and says what the no-forecast rule already implies: the intents are not in the
+cut, so none is cited or mentioned. The payload schema is unchanged, so a
+document that was valid before stays valid. Unmeasured, as before.
 ## 2026-09-29 (iss-2609020716572828 — a security review reports within a budget)
 
 A security review on the ahoy branch ran for over three and a half hours with no

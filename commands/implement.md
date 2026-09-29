@@ -203,18 +203,28 @@ last:
 "${CLAUDE_PLUGIN_ROOT}/abcd" implement receipt <path> [--run <run-id>] --json
 ```
 
-`status` renders every run (or the one `--run` names): its lanes, each lane's
-spec step and next step, what an awaiting lane waits on, the pending spec steps
-and the run record. It writes nothing.
+`status` renders every run (or the one `--run` names): its pace and the layer
+each number came from, whether it is paused and until when, its lanes, each
+lane's spec step and next step, what an awaiting lane waits on, the pending spec
+steps and the run record. It writes nothing.
 
 `step` performs one step of the current lane and exits. When a step hands work
 to an agent the result's `awaiting` names the `role` to start as a fresh agent,
 the `brief` to hand it and the `receipt` path it writes; the lane then moves
 only when `receipt` is called with that path and the receipt verifies. A step
 while the lane awaits re-tells the await and moves nothing; a complete run says
-`complete: true`. A step that fails leaves the state as it was, so the next call
-performs it again, and a completed step is never repeated. Before the run's
-`next_eligible_at` the step is refused as a pause (exit 3).
+`complete: true`. When a lane is done, the spec's next pending step opens the
+next lane and the run record names it. A step that fails leaves the state as it
+was, so the next call performs it again, and a completed step is never repeated.
+
+`step` keeps the run's window clock, on the pace the run started with
+(`/abcd:build`). Once the window's working minutes have elapsed, `step` starts
+nothing, writes `next_eligible_at` (now plus the run's pause), records the
+pause, and exits 0 with `next_eligible_at` in the result and `next` naming the
+time; an agent already started may still hand its receipt back. Before the
+run's `next_eligible_at` the step is refused as a pause (exit 3) naming the
+time, and nothing changes; at or after it a new window opens and the step
+proceeds.
 
 Without `--run`, both act on the one run in progress in this checkout, and are
 refused naming the runs when there are several. A refusal exits 2 (3 on a pause
@@ -226,7 +236,8 @@ The lane's steps are `worktree` (the lane's worktree in
 `~/.abcd/worktrees/<root-sha>/<run-id>-<lane-id>`, on a branch
 `build/<run-id>-<lane-id>` cut from the default branch), `brief` (the lane's
 brief, rendered from that base into
-`.abcd/.work.local/run/<run-id>/<lane-id>/brief.md`), `implement` (awaits an
+`.abcd/.work.local/run/<run-id>/<lane-id>/brief.md`, naming the spec step the
+lane builds and each step before it with what landed it), `implement` (awaits an
 `implementer`'s receipt at `.abcd/.work.local/run/<run-id>/<lane-id>/receipt.json`),
 then `validate` and `land`. An implementer's receipt is one strict JSON object:
 `schema_version`, `run_id`, `lane`, `branch`, `commits` (full object names),

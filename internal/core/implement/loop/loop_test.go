@@ -3,6 +3,7 @@ package loop
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -388,8 +389,8 @@ func TestStartCreatesOneLaneAndAStartAgainResumesIt(t *testing.T) {
 	if len(st.Pending) != 1 || st.Pending[0].Number != 3 {
 		t.Fatalf("the unlanded steps after the first wait as pending: %+v", st.Pending)
 	}
-	if len(st.Record) != 1 || st.Record[0].Step != "start" {
-		t.Fatalf("the record opens with the start: %+v", st.Record)
+	if len(st.Record) != 2 || st.Record[0].Step != "start" || st.Record[1].Step != StepPace {
+		t.Fatalf("the record opens with the start, then names the pace: %+v", st.Record)
 	}
 	fi, err := os.Stat(filepath.Join(repo.Root(), filepath.FromSlash(res.State)))
 	if err != nil || fi.Mode().Perm() != filePerm {
@@ -669,9 +670,10 @@ func TestReadStateFailsClosed(t *testing.T) {
 	}
 	path := filepath.Join(repo.Root(), filepath.FromSlash(StateRelPath(start.RunID)))
 	good := stateBytes(t, repo.Root(), start.RunID)
+	cur := fmt.Sprintf(`"schema_version": %d,`, SchemaVersion)
 	for name, bad := range map[string]string{
-		"unknown field":  strings.Replace(string(good), `"schema_version": 1,`, `"schema_version": 1, "verdict": "SHIP",`, 1),
-		"schema version": strings.Replace(string(good), `"schema_version": 1,`, `"schema_version": 2,`, 1),
+		"unknown field":  strings.Replace(string(good), cur, cur+` "verdict": "SHIP",`, 1),
+		"schema version": strings.Replace(string(good), cur, fmt.Sprintf(`"schema_version": %d,`, SchemaVersion+1), 1),
 	} {
 		if err := os.WriteFile(path, []byte(bad), 0o600); err != nil {
 			t.Fatal(err)
@@ -680,15 +682,16 @@ func TestReadStateFailsClosed(t *testing.T) {
 			t.Fatalf("%s: the reader must refuse", name)
 		}
 	}
-	// Each of these reads as version 1 under a last-wins or first-document
-	// decode, so only a strict reader refuses them; the reason names why.
+	// Each of these reads as the current version under a last-wins or
+	// first-document decode, so only a strict reader refuses them; the reason
+	// names why.
 	for name, tc := range map[string]struct{ bad, want string }{
 		"a repeated key": {
-			strings.Replace(string(good), `"schema_version": 1,`, `"schema_version": 2, "schema_version": 1,`, 1),
+			strings.Replace(string(good), cur, `"schema_version": 9, `+cur, 1),
 			`duplicate key "schema_version"`,
 		},
 		"a repeated key spelt as a case twin": {
-			strings.Replace(string(good), `"schema_version": 1,`, `"schema_version": 2, "SCHEMA_VERSION": 1,`, 1),
+			strings.Replace(string(good), cur, `"schema_version": 9, "SCHEMA_VERSION"`+strings.TrimPrefix(cur, `"schema_version"`), 1),
 			`duplicate key "SCHEMA_VERSION"`,
 		},
 		"a second document": {string(good) + "\n{}\n", "content after the one JSON document"},
@@ -818,5 +821,64 @@ func TestAReceiptNamedThroughASymlinkedPathIsTheReceiptAwaited(t *testing.T) {
 	}
 	if got.Performed != StepImplement {
 		t.Fatalf("the receipt completes the step: %+v", got)
+	}
+}
+
+// TestTheRecordNamesEachLaneAsItOpens is itd-2609212103565953's fourth
+// criterion, the record half: the run record lists the spec's steps as it
+// lists the lanes, one line for each lane opened, naming the spec step it
+// builds, the first at the start and each later one when the lane before it is
+// done.
+func TestTheRecordNamesEachLaneAsItOpens(t *testing.T) {
+	repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps("1. The parser\n2. The loop\n3. The page\n"))
+	start, err := Start(repo.Root(), "itd-10", Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := &fakeSteps{calls: map[StepName]int{}}
+	steps := f.steps()
+	id := start.RunID
+	for range 64 {
+		st, err := ReadState(repo.Root(), id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		i := st.current()
+		if i < 0 {
+			break
+		}
+		if a := st.Lanes[i].Awaiting; a != nil {
+			if err := os.WriteFile(a.Receipt, []byte("{}\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := Receipt(repo.Root(), id, a.Receipt, steps, Options{}); err != nil {
+				t.Fatal(err)
+			}
+			continue
+		}
+		if _, err := Advance(repo.Root(), id, steps, Options{}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	st, err := ReadState(repo.Root(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !st.Complete() {
+		t.Fatalf("the run did not complete: %+v", st)
+	}
+	var opened []string
+	for _, e := range st.Record {
+		if e.Step == "start" || e.Step == "open" {
+			opened = append(opened, e.Lane+": "+e.Note)
+		}
+	}
+	want := []string{
+		"lane-1: checks passed; lane-1 opened for step 1 of spc-1 (The parser)",
+		"lane-2: lane-2 opened for step 2 of spc-1 (The loop)",
+		"lane-3: lane-3 opened for step 3 of spc-1 (The page)",
+	}
+	if strings.Join(opened, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("the record names each lane's step as it opens:\n got %q\nwant %q", opened, want)
 	}
 }

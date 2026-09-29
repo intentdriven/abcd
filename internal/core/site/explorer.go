@@ -28,6 +28,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/core/statusblock"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
@@ -93,6 +94,9 @@ type explorer struct {
 	bib *Bibliography
 	// pages is the page set the manifest's switches leave on.
 	pages pageSet
+	// status is the Now / Next / Later block the Status page opens with, or
+	// nil where the page is switched off.
+	status *statusblock.Block
 }
 
 // newExplorer indexes the export for the pages.

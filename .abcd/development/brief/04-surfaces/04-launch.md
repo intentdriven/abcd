@@ -644,7 +644,11 @@ Every preview, and every cut that renders a payload, writes a pre-flight report:
 local tier (per the iss-36 and iss-56 adjudication resolved as iss-73). The
 report carries the mode (preview or cut), the verdict, every refusal, every
 warning, every gate row, the dirty-tree override with the paths it carried, and
-the parity diff and the deep smoke tier where the run made them.
+the parity diff and the deep smoke tier where the run made them, and every
+planned intent that names a release it must land by, under *Targeted, not
+shipped* (itd-2609212103572513): the preview, the cut's emit and its ingest list
+the same intents in their human and machine-readable output too, and none of
+them refuses on one.
 A refused cut writes its report too, and the refusal names where it landed. The
 preview's JSON carries `report_path`, the cut's `preflight_report`. A detector
 fails the build if any non-test Go source under `internal/` so much as names the

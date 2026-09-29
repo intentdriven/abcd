@@ -621,58 +621,67 @@ func (m entryMatcher) matchesAfter(site int) bool {
 	return true
 }
 
-// globMatches reports whether the shell pattern can produce the literal. A
-// pattern path.Match cannot parse (an unmatched `[`) is one bash leaves
-// unexpanded too, so it produces nothing but itself and the literal compare
-// has already had its say.
+// globMatches reports whether the shell pattern can produce the literal.
+// path.Match decides a pattern whose one bracket expression is a plain set
+// (plainBrackets), which it reads as bash does. Any other bracket expression
+// is one this compare cannot decide (iss-2609291233468970): path.Match has no
+// POSIX, equivalence or collating class, refuses a set whose first member is
+// `]` or `-`, and reads bash's negation `[!…]` as a set holding `!`, while
+// bash expands `r[[:lower:]]` to `rm` and `ba[].s]h` to `bash`; and the
+// tokenizer removes a backslash before the compare, so `clea[\!n]` and
+// `r[m\]]`, which every shell expands to `clean` and `rm`, arrive as the
+// negation `clea[!n]` and the set `r[m]` followed by `]`. Such a pattern is
+// compared with its bracket expressions read as any run of characters
+// (bracketsAsStar), which matches whatever any reading of them can produce.
+// An unterminated `[` is a literal in bash and a syntax error to path.Match;
+// no literal compared here holds a `[`, so neither produces one.
 func globMatches(pattern, literal string) bool {
-	ok, err := path.Match(bashGlobPattern(pattern), literal)
+	if !plainBrackets(pattern) {
+		pattern = bracketsAsStar(pattern)
+	}
+	ok, err := path.Match(pattern, literal)
 	return err == nil && ok
 }
 
-// bashGlobPattern rewrites a bash pattern into the dialect path.Match reads.
-// One difference changes an answer: bash spells a negated character class
-// `[!…]`, path.Match spells it `[^…]`, and path.Match reads bash's `!` as an
-// ordinary member of the set. So `git clea[!x] -fd` — which bash expands to
-// `git clean -fd` whenever a file called `clean` is there — compared as "clea
-// followed by `!` or `x`", matched nothing, and allowed.
-//
-// A `]` first in the set is a literal member in both dialects (`[!]a]`), and a
-// `[` inside an open set is literal in both, so the scan walks each class to
-// its close rather than translating every `[!` it sees. An unterminated class
-// is left as it stands: bash leaves such a word unexpanded too, and the literal
-// compare beside this one has already had its say.
-func bashGlobPattern(pattern string) string {
-	if !strings.Contains(pattern, "[!") {
+// plainBrackets reports whether a pattern's bracket expression is a set whose
+// meaning no removed backslash can change and path.Match reads as bash does:
+// it is not empty, its members are bytes other than `!`, `^`, `-`, `[` and
+// `\`, and no `]` follows its close, where an escaped `]` would have kept it
+// open or a second set would close. A pattern with no `[` that a later `]`
+// closes holds no bracket expression: every shell reads an unterminated `[`
+// as a literal.
+func plainBrackets(pattern string) bool {
+	first := strings.IndexByte(pattern, '[')
+	if first < 0 {
+		return true
+	}
+	end := strings.IndexByte(pattern[first+1:], ']')
+	if end < 0 {
+		return true
+	}
+	tally(len(pattern))
+	end += first + 1
+	return end > first+1 && !strings.ContainsAny(pattern[first+1:end], `!^-[\`) &&
+		strings.IndexByte(pattern[end+1:], ']') < 0
+}
+
+// bracketsAsStar is a pattern with the span from its first `[` to its last
+// `]` written as one `*`, a backslash directly before that `[` taken in with
+// it. The span holds every bracket expression the pattern has, however a
+// removed backslash would have opened or closed them, and each matches one
+// character that is never a slash, so `*` matches whatever the span can
+// produce. A `[` after the span has no `]` to close it and is kept as the
+// literal it is. Its one pass is counted with plainBrackets', which every
+// call follows.
+func bracketsAsStar(pattern string) string {
+	first, last := strings.IndexByte(pattern, '['), strings.LastIndexByte(pattern, ']')
+	if first < 0 || last < first {
 		return pattern
 	}
-	b := []byte(pattern)
-	for i := 0; i < len(b); i++ {
-		switch b[i] {
-		case '\\':
-			i++ // an escaped byte never opens a class
-		case '[':
-			j := i + 1
-			if j < len(b) && (b[j] == '!' || b[j] == '^') {
-				b[j] = '^'
-				j++
-			}
-			if j < len(b) && b[j] == ']' {
-				j++ // a `]` first in the set is a member, not the close
-			}
-			for j < len(b) && b[j] != ']' {
-				if b[j] == '\\' {
-					j++
-				}
-				j++
-			}
-			if j >= len(b) {
-				return string(b)
-			}
-			i = j
-		}
+	if first > 0 && pattern[first-1] == '\\' {
+		first--
 	}
-	return string(b)
+	return pattern[:first] + "*" + strings.ReplaceAll(pattern[last+1:], "[", `\[`)
 }
 
 // argPrefixMatches reports whether some operand carries the prefix. Only
@@ -707,9 +716,9 @@ func argValueMatches(values []string, written string) bool {
 		if field == "" || isUnknown(field) {
 			continue
 		}
-		clean := cleanSeparators(field)
+		clean, glob := cleanSeparators(field), globReading(field)
 		for _, v := range values {
-			if field == v || clean == v {
+			if field == v || clean == v || glob == v {
 				return true
 			}
 		}
@@ -717,18 +726,99 @@ func argValueMatches(values []string, written string) bool {
 	return false
 }
 
+// globReading is a path read the way a shell's glob can expand it, beside
+// the path as written (argValueMatches compares both, so it can only add a
+// hit): a run of `*` is one `*` (collapseStars), and a segment written with a
+// leading `.` that can match the name `..` is that `..` where a further
+// segment follows it (dotParents), its redundant separators then taken out
+// and its `..` folded (cleanSeparators). It is "" where the glob reading is
+// the path as written, which no value is.
+func globReading(p string) string {
+	g := dotParents(collapseStars(p))
+	if g == p {
+		return ""
+	}
+	return cleanSeparators(g)
+}
+
+// collapseStars is a glob with each run of `*` written as one `*`
+// (iss-2609290925320493). A run matches what one `*` matches, so every shell
+// without globstar expands `/**` as `/*`; with globstar set, `**` matches
+// every path beneath as well, never fewer. The tokenizer removes a backslash
+// before the operand reaches here, so an escaped `*` or `?` is read as the
+// glob it would otherwise be: `~/*\*` reads as `~/*` and `~/.\?/*` as
+// `~/.?/*`, and both block though the shell expands neither that far.
+func collapseStars(p string) string {
+	if !strings.Contains(p, "**") {
+		return p
+	}
+	tally(len(p))
+	b := make([]byte, 0, len(p))
+	for i := 0; i < len(p); i++ {
+		if p[i] == '*' && len(b) > 0 && b[len(b)-1] == '*' {
+			continue
+		}
+		b = append(b, p[i])
+	}
+	return string(b)
+}
+
+// dotParents is a path with each segment that can match the name `..`
+// written as `..`, where a further segment follows it (iss-2609290925333487).
+// bash 3.2 and /bin/sh, the shells macOS runs, have no globskipdots, so a
+// segment whose leading `.` is written lets its glob match `..`: `~/.?/*`,
+// `~/.[.]/*` and `~/.*/*` expand to include `~/../*`, and `/.?/*` to the
+// root's entries. A glob whose leading `.` is not written (`??`, `?.`,
+// `[.]?`) never matches a dot name, and a final segment is left as it is:
+// rm refuses an operand whose last segment is `..`. Reading every such
+// segment as `..` climbs at least as far as any mix of the names it
+// matches, so it is the reading that reaches the root or the home first.
+func dotParents(p string) string {
+	if !strings.Contains(p, "/.") && !strings.HasPrefix(p, ".") {
+		return p
+	}
+	segs := strings.Split(p, "/")
+	last := len(segs) - 1
+	for last > 0 && segs[last] == "" {
+		last--
+	}
+	changed := false
+	for i := 0; i < last; i++ {
+		tally(len(segs[i]))
+		if dotGlob(segs[i]) {
+			segs[i] = ".."
+			changed = true
+		}
+	}
+	if !changed {
+		return p
+	}
+	return strings.Join(segs, "/")
+}
+
+// dotGlob reports whether a path segment is a glob with a written leading
+// `.` that can match the name `..` (`.?`, `.*`, `.[.]`, `.[!x]`, `..*`), as
+// globMatches decides it: a bracket expression it cannot decide
+// (`.[[:punct:]]`, `.[].]`, `.[--.]`, and `.[!.]`, which is also what
+// `.[\!.]` arrives as) reads as able to match `..`, and so does `.[a-z]`,
+// which no shell matches with `..` (iss-2609291233390280).
+func dotGlob(seg string) bool {
+	return len(seg) >= 2 && seg[0] == '.' && strings.ContainsAny(seg[1:], "*?[") &&
+		literalSegment(seg) && globMatches(seg, "..")
+}
+
 // cleanSeparators is a path with what the kernel reads as nothing taken
 // out (iss-2609290625482831): a run of slashes is one separator (`//*` is
 // `/*`, `$HOME//` is `$HOME/`), a `.` segment between two slashes is the
 // directory itself (`/./*` is `/*`), and a `..` segment directly under the
 // root is the root, its own parent (`/../*` is `/*`). A trailing `.` or `..`
-// is kept here: rm refuses an operand whose last segment is one. A path
-// that begins at the root or the home also has its `..` segments folded
-// (foldParents).
+// is kept here: rm refuses an operand whose last segment is one. A path's
+// `..` segments are then folded (foldParents).
 func cleanSeparators(p string) string {
 	if !strings.Contains(p, "//") && !strings.Contains(p, "/./") && !strings.Contains(p, "/..") {
 		return p
 	}
+	tally(len(p))
 	b := make([]byte, 0, len(p))
 	for i := 0; i < len(p); i++ {
 		if p[i] == '/' && len(b) > 0 && b[len(b)-1] == '/' {
@@ -749,42 +839,68 @@ func cleanSeparators(p string) string {
 // homePrefixes are the spellings of the home a folded path may begin with.
 var homePrefixes = []string{"~", "$HOME", "${HOME}"}
 
-// foldParents folds each `..` segment of a path that begins at the root or
-// the home into the segment before it, as the path reads lexically
-// (iss-2609290745243990): `/tmp/../*` is `/*`, `~/x/..` is `~`. The kernel
-// reads `..` otherwise only where the segment before it is a symlink, and
-// the lexical reading is the one that blocks. A `..` past the home climbs to
-// a directory that holds the home, so the path is the home where each
-// segment it then descends through is `*`, which matches the home's own
-// name among the rest: `~/../*` and `~/..` are `~`, `~/../*/*` is `~/*`, and
-// `~/../x` stays a sibling. A trailing `.` or `..` is folded as well, since
-// what it names is the root or holds the home, though rm refuses it. A
-// segment holding a variable or a substitution is not a known count of
-// directories, so nothing is folded across one, and a path of any other
-// beginning is returned as it is.
+// pwdPrefixes are the spellings of the working directory a folded path may
+// begin with.
+var pwdPrefixes = []string{"$PWD", "${PWD}"}
+
+// foldBase is where a folded path begins.
+type foldBase int
+
+const (
+	foldRoot foldBase = iota
+	foldHome
+	foldPWD
+	foldRelative
+)
+
+// foldParents folds each `..` segment of a path into the segment before it,
+// as the path reads lexically (iss-2609290745243990): `/tmp/../*` is `/*`,
+// `~/x/..` is `~`. The kernel reads `..` otherwise only where the segment
+// before it is a symlink, and the lexical reading is the one that blocks. A
+// `..` past the home climbs to a directory that holds the home, so the path
+// is the home where each segment it then descends through is `*`, which
+// matches the home's own name among the rest: `~/../*` and `~/..` are `~`,
+// `~/../*/*` is `~/*`, and `~/../x` stays a sibling. A trailing `.` or `..`
+// is folded as well, since what it names is the root or holds the home,
+// though rm refuses it. A path that begins at the working directory, `$PWD`
+// or a relative name, is folded the same way (iss-2609290925346181): a `..`
+// past its beginning is the working directory's parent, so `$PWD/../*`,
+// `./../*` and `x/../../*` are `../*`, while a relative path that stays
+// inside the working directory is returned as it is (`x/../*`). A segment
+// holding a variable or a substitution is not a known count of directories,
+// so nothing is folded across one, and a path of any other beginning (a
+// `~user`) is returned as it is.
 func foldParents(p string) string {
 	if !strings.Contains(p, "..") {
 		return p
 	}
-	prefix, rest := "", ""
+	base, prefix, rest := foldRelative, "", p
 	switch {
 	case strings.HasPrefix(p, "/"):
-		rest = p[1:]
-	default:
+		base, rest = foldRoot, p[1:]
+	case strings.HasPrefix(p, "~") || strings.HasPrefix(p, "$"):
+		found := false
 		for _, h := range homePrefixes {
 			if p == h || strings.HasPrefix(p, h+"/") {
-				prefix, rest = h, strings.TrimPrefix(p[len(h):], "/")
+				base, prefix, found = foldHome, h, true
 				break
 			}
 		}
-		if prefix == "" {
+		for _, w := range pwdPrefixes {
+			if !found && (p == w || strings.HasPrefix(p, w+"/")) {
+				base, prefix, found = foldPWD, w, true
+			}
+		}
+		if !found {
 			return p
 		}
+		rest = strings.TrimPrefix(p[len(prefix):], "/")
 	}
 	trailing := strings.HasSuffix(rest, "/")
 	var stack []string
 	climb := 0
 	for _, seg := range strings.Split(strings.TrimSuffix(rest, "/"), "/") {
+		tally(len(seg) + 1)
 		switch seg {
 		case "", ".":
 		case "..":
@@ -794,18 +910,37 @@ func foldParents(p string) string {
 					return p
 				}
 				stack = stack[:len(stack)-1]
-			case prefix != "":
+			case base != foldRoot:
 				climb++
 			}
 		default:
 			stack = append(stack, seg)
 		}
 	}
-	if prefix == "" {
+	switch base {
+	case foldRoot:
 		if len(stack) == 0 {
 			return "/"
 		}
 		return joinFolded("", stack, trailing)
+	case foldPWD, foldRelative:
+		if climb == 0 {
+			if base == foldRelative {
+				return p
+			}
+			if len(stack) > 0 {
+				return joinFolded(prefix, stack, trailing)
+			}
+			if trailing {
+				return prefix + "/"
+			}
+			return prefix
+		}
+		up := make([]string, climb, climb+len(stack))
+		for i := range up {
+			up[i] = ".."
+		}
+		return strings.TrimPrefix(joinFolded("", append(up, stack...), trailing), "/")
 	}
 	for i := 0; i < climb && i < len(stack); i++ {
 		if stack[i] != "*" {
@@ -841,6 +976,7 @@ func joinFolded(prefix string, segs []string, trailing bool) string {
 // substitution is spelled as one), only name bytes and glob characters,
 // which never match a slash.
 func literalSegment(seg string) bool {
+	tally(len(seg) + 1)
 	for i := 0; i < len(seg); i++ {
 		if c := seg[i]; c == '$' || c < 0x20 || c == 0x7f {
 			return false

@@ -89,6 +89,15 @@ func Capture(req CaptureRequest) (CaptureResult, error) {
 	var degraded string
 	req.Text, req.Slug, req.FoundAt, req.FoundDuring, redacted, degraded =
 		redactCaptureInputs(repoRoot, req.Text, req.Slug, req.FoundAt, req.FoundDuring)
+	// The remedy is free text too, and the drain hands it to a lane as the brief
+	// (itd-82), so it is redacted by the same redactor and counted with the rest.
+	if req.Remedy != "" {
+		r, n, deg := redactLedgerText(repoRoot, req.Remedy)
+		req.Remedy, redacted = r, redacted+n
+		if deg != "" {
+			degraded = deg
+		}
+	}
 
 	// When no explicit slug was supplied, derive it HERE — from the text that
 	// redaction has already rewritten — never from the raw caller text upstream. A
@@ -115,6 +124,7 @@ func Capture(req CaptureRequest) (CaptureResult, error) {
 	req.Text = termsafe.EncodeHiddenRunesBlock(req.Text)
 	req.FoundAt = termsafe.EncodeHiddenRunesBlock(req.FoundAt)
 	req.FoundDuring = termsafe.EncodeHiddenRunesBlock(req.FoundDuring)
+	req.Remedy = termsafe.EncodeHiddenRunesBlock(req.Remedy)
 
 	// The mint is timestamp-numeric (adr-45; mechanics per spc-33): it consults
 	// no maximum, so the refs-union scan the max+1 allocator needed (iss-115,
@@ -211,6 +221,12 @@ func commitCapture(repoRoot, issuesRoot string, req CaptureRequest, issID, slug,
 	if lapsedAt := strings.TrimSpace(req.LapsedAt); lapsedAt != "" {
 		fields = append(fields, kv{"lapsed_at", lapsedAt})
 		fm["lapsed_at"] = lapsedAt
+	}
+	// The remedy is trimmed for the same reason lapsed_at is: an all-blank value
+	// is no remedy, and writing it would commit a key that says nothing.
+	if remedy := strings.TrimSpace(req.Remedy); remedy != "" {
+		fields = append(fields, kv{"remedy", remedy})
+		fm["remedy"] = remedy
 	}
 	if req.RelatedIntents != nil {
 		fields = append(fields, kv{"related_intents", req.RelatedIntents})

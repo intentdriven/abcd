@@ -1247,7 +1247,8 @@ func guardedReadWhy(err error) string {
 // the caller's own and long enough that a chance collision with binary
 // content is negligible — the home path, the email, and a real name that is
 // multi-word or 8+ bytes, or a short single token standing in a metadata
-// field that names a person (metadataPersonKeys). A home path in PDF
+// field that names a person (metadataPersonKeys, or an EXIF or IPTC person
+// field, metaview.go). A home path in PDF
 // /Creator, an /Author stamp, or a session URL in PNG tEXt metadata is the
 // same release-blocking leak it is in prose, and renaming deck.md to deck.pdf
 // must not change the verdict. The short/generic identity kinds
@@ -1270,7 +1271,7 @@ func (s *Scanner) scanBytes(data []byte, secrets []Pattern, logical string) []Fi
 	}
 	all := scanText(string(data), long, secrets, s.identSev, logical, true)
 	meta := metadataFields{data: data}
-	all = append(all, s.utf16Findings(data, long, secrets, logical, &meta)...)
+	all = append(all, s.byteViewFindings(data, long, secrets, logical, &meta, all)...)
 	out := all[:0]
 	for _, f := range all {
 		if s.byteScanDrops(f, &meta) {
@@ -1305,16 +1306,21 @@ const byteScanLongLiteral = 8
 
 // metadataPersonKeys are the metadata keys that name a person, lower-cased: a
 // PDF Info dictionary's /Author, XMP's dc:creator, pdf:Author and tiff:Artist,
-// a PNG text chunk's Author and Artist keywords, and an OOXML or ODF
-// document's dc:creator and cp:lastModifiedBy. Each is written as text in the
-// raw bytes (or in a region the container decoder inflates), so a short name
-// after one is the name the file was stamped with rather than a chance run of
-// bytes (iss-2609090934372160). A UTF-16 value behind a byte-order mark is
-// decoded first (utf16.go) and judged by the raw bytes before it, so a PDF
-// "/Author (" before a UTF-16 string reaches its name. A key read from binary
-// structure — EXIF's Artist tag — is not text in the bytes and is not reached
-// here (iss-2609261659051539).
-var metadataPersonKeys = [][]byte{[]byte("author"), []byte("artist"), []byte("creator"), []byte("lastmodifiedby")}
+// a PNG text chunk's Author, Artist and Copyright keywords, XMP's dc:rights,
+// xmpRights:Owner and CameraOwnerName, and an OOXML or ODF document's
+// dc:creator and cp:lastModifiedBy. Each is written as text in the raw bytes
+// (or in a region the container decoder inflates), so a short name after one
+// is the name the file was stamped with rather than a chance run of bytes
+// (iss-2609090934372160). A UTF-16 value behind a byte-order mark is decoded
+// first (utf16.go) and judged by the raw bytes before it, so a PDF "/Author ("
+// before a UTF-16 string reaches its name. A key read from binary structure —
+// EXIF's Artist, Copyright, XPAuthor and CameraOwnerName tags — has no text
+// before its value; exifView records the value's span instead
+// (metadataFields.persons, iss-2609261659051539).
+var metadataPersonKeys = [][]byte{
+	[]byte("author"), []byte("artist"), []byte("creator"), []byte("lastmodifiedby"),
+	[]byte("copyright"), []byte("rights"), []byte("ownername"),
+}
 
 // maxMetadataKeyGap is how far before a short name metadataFields looks for a
 // person key: the markup between an XMP dc:creator and its rdf:li value, laid
@@ -1329,10 +1335,15 @@ const maxMetadataKeyGap = 96
 type metadataFields struct {
 	data   []byte
 	starts []int
+	// persons are the raw value spans of the EXIF person tags (exifView),
+	// sorted and merged: a person field whose key is binary structure, not
+	// text before the value.
+	persons []span
 }
 
-// holds reports whether a person key ends within maxMetadataKeyGap bytes
-// before f. scanText splits on '\n', so f's line starts after the (Line-1)th
+// holds reports whether f stands in a person field: inside an EXIF person
+// tag's value, or with a person key ending within maxMetadataKeyGap bytes
+// before it. scanText splits on '\n', so f's line starts after the (Line-1)th
 // newline and its Column is the byte offset on that line.
 func (m *metadataFields) holds(f Finding) bool {
 	if m.starts == nil {
@@ -1344,6 +1355,9 @@ func (m *metadataFields) holds(f Finding) bool {
 	at := m.starts[f.Line-1] + f.Column - 1
 	if at > len(m.data) {
 		return false
+	}
+	if m.inPersonSpan(at) {
+		return true
 	}
 	window := bytes.ToLower(m.data[max(0, at-maxMetadataKeyGap):at])
 	for _, k := range metadataPersonKeys {

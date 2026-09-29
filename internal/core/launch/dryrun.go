@@ -41,6 +41,11 @@ type DryRunRequest struct {
 	// tier renders every page through. Nil keeps the preview at the light tier:
 	// the deep tier is opt-in here and always on in the cut.
 	DeepSmoke PageRunner
+	// Targets are the planned intents that name a release they must land by
+	// (itd-2609212103572513), MEASURED by the caller for the reason Citations
+	// is: reading them needs the intent store, which sits above this package.
+	// The preview lists them and refuses nothing on them.
+	Targets []TargetedIntent
 }
 
 // GateSummary records one gate's disposition.
@@ -85,6 +90,9 @@ type DryRunReport struct {
 	// preview's pre-flight report into; ReportError says why it could not.
 	ReportPath  string `json:"report_path,omitempty"`
 	ReportError string `json:"report_error,omitempty"`
+	// Targets lists every planned intent that names a release it must land by
+	// and has not shipped (itd-2609212103572513): reported, never refused on.
+	Targets []TargetedIntent `json:"targets,omitempty"`
 }
 
 // DryRun assembles the bundle, scans it, checks lockstep, previews retention and
@@ -104,6 +112,7 @@ func DryRun(req DryRunRequest) (DryRunReport, error) {
 		return DryRunReport{}, err // preflight fault only
 	}
 	report.Kind = art.Kind
+	report.Targets = req.Targets
 
 	bundle, tree, err := kindBundle(req.RepoRoot, art)
 	if err != nil {

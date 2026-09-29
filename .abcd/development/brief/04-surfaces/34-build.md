@@ -8,9 +8,10 @@ writes the state and exits. `build` is the person's word and `implement` is the
 machinery's (decision 8): the steps after the start are driven through the
 [`/abcd:implement`](27-implement.md) family.
 
-This chapter describes the part of the loop that ships: the checks, the state
-file, the step interface a host session drives, and the lane's first three
-steps (its worktree, its brief and the implementer's receipt). The validators
+This chapter describes the part of the loop that ships: the checks, the pace
+(itd-2609201925079472, spc-2609202134341288), the state file, the step
+interface a host session drives with its window clock, and the lane's first
+three steps (its worktree, its brief and the implementer's receipt). The validators
 and the landing are named in the sequence and delivered by later pieces of the
 spec; until each lands, the loop refuses at it by name.
 
@@ -87,6 +88,43 @@ A refusal names the check, the reason and the remedy, carries every check's row,
 and writes nothing. A peer's holding is contention rather than a fault in the
 record.
 
+## The pace
+
+A run is paced without being told: a working window, a pause after it, and a
+ceiling on the run's lanes and validators alive at once. The three numbers are
+resolved once, when a new run is created, through the one layered configuration
+reader (`internal/core/layered`), each key on its own, highest layer first:
+the build's own pace and sub-agent flags, the pace written as
+`<work-minutes>/<pause-minutes>`; `pace.work_minutes`, `pace.pause_minutes` and `pace.sub_agents` in the
+repository's `.abcd/config.json`; the same keys in `~/.abcd/config.json`; and
+the bundled default, 120 minutes of work, 300 of pause and 2 sub-agents
+(decision 5), held in one set of constants. The files are read through the
+reader's guards (a regular file inside the checkout; on the machine, one the
+caller owns and nobody else can write), and the reader claims the `pace`
+namespace, so a key under it the loop does not read is refused rather than
+ignored.
+
+The resolved pace is written into the run's state with each number's layer
+(`flag`, `repo`, `machine` or `bundled`) and origin (the flag as typed, or the
+file), the build's result carries it, and the run record's `pace` line names
+it. A later invocation honours the pace the run started on, whatever the files
+say by then; starting again with a flag naming another pace is refused, and one
+naming the same pace resumes.
+
+A malformed pace or ceiling is refused at the `pace` step naming the value and
+the accepted form, and nothing is written (criterion 9): the pace flag is two
+runs of digits around one slash, the work window 1 to 10080 minutes and the pause 0
+to 10080, and the ceiling a whole number from 1 to 64; a configured value is
+held to the same ranges, and one that does not decode as a whole number (a
+string, a fraction, a null) is refused naming its file. A week bounds the
+minutes so the window arithmetic stays far inside the clock's range and a typed
+extra digit is refused rather than run. A pause of 0 minutes is a run that does
+not pause.
+
+The ceiling is recorded with the run; this build does not count lanes against
+it (criterion 6), and the budget check and the rate-limit checkpoint (criteria
+7 and 8) wait on a runner that reports its quota.
+
 ## The state file
 
 A run lives in the checkout's local tier, one directory per run:
@@ -101,15 +139,20 @@ in one second draw distinct ids. The tier itself is never created: only a
 repository abcd manages has one, so a run is managed-only by construction. Each
 run directory is created one level at a time and proved real, the state file is
 replaced atomically inside an `os.Root`, and the reader decodes strictly,
-refusing an unknown field, another schema version, or a file stored under a run
-id it does not name. A state file or run directory that is a symlink, or that
+refusing an unknown field, a schema version it does not know, or a file stored
+under a run id it does not name. The state is schema version 2, which added the
+pace. Version 1 is its strict subset, so a version-1 file is read as a run
+started before the loop paced a run: it carries no pace, runs unpaced, and is
+written back at version 2 by its next mutation. A version-1 file carrying a
+pace is not one version 1 wrote, and is refused. A state file or run directory that is a symlink, or that
 the filesystem will not hand over, is refused in the same shape (exit 2, naming
 the file and the remedy), never followed.
 
 The state holds the run's key, intent, spec and driver (the host session, by
-default); the window clock the pacing intent writes (`window_started_at`,
+default); the run's pace; the window clock (`window_started_at`,
 `next_eligible_at`); the lanes opened so far; the spec steps still pending; and
-the run record, one line per completed step. A lane carries its spec step and
+the run record, one line per completed step and one per lane opened, naming the
+spec step it builds (the start's line names the first). A lane carries its spec step and
 title, its next step, what it awaits when a step has handed work to an agent,
 and the footprint its steps fill in: branch, base and head, worktree, brief,
 receipt and pull request. The status render names the worktree home-relative,
@@ -141,8 +184,20 @@ awaits, naming the agent's role, the brief it is handed and the path its receipt
 goes to (criterion 8). Asking again re-tells the same thing and moves nothing,
 and the lane advances only when that receipt is handed back at that path and its
 verifier accepts it. When a lane is done, the next pending spec step opens the
-next lane, so the spec's steps land one lane at a time. Before
-`next_eligible_at` the loop refuses as a pause and nothing moves (decision 2).
+next lane, so the spec's steps land one lane at a time.
+
+The loop keeps the run's window clock (criteria 4 and 5). A new run's first
+window opens at its start. Once the window's working minutes have elapsed, a
+step starts nothing: it writes `next_eligible_at`, now plus the run's pause,
+records the pause, and exits 0 naming the time. The pause runs from the moment
+the loop closes the window, not from the window's nominal end, so an invocation
+that comes late never shortens it. An agent the lane already started may still
+hand its receipt back during the pause, so the running lane finishes its step
+and checkpoints to its branch; the receipt is not gated by the clock. Before
+`next_eligible_at` a step is refused as a pause, naming the time, and nothing
+moves (decision 1: no process sleeps through it); at or after it the next step
+opens a new window, which the record names, and proceeds. A complete run is
+reported complete and closes no window.
 
 A step whose body this build does not carry is refused naming the step, the lane
 and the spec piece that delivers it, and the run is unchanged, ready to resume in
@@ -188,12 +243,25 @@ section between `<!-- working-conventions … -->` and
 not), and the decisions the intent cites (each ADR id in the intent, with its
 title and path, and every entry of `.abcd/work/DECISIONS.md` that names the
 intent or its spec). It opens by naming each source and the base it was read
-at, then gives the lane (the spec step it builds, the worktree, the branch) and
+at, then gives the lane (the spec step it builds, the worktree, the branch), the
+spec's steps before the lane's (itd-2609212103565953, criterion 4), each with
+what landed it — the `landed:` line the spec at the base records, and the lane
+of this run that built it, with its branch, head and pull request — or that no
+step comes before it, and
 what the implementer hands back: its report, the definition of done's output,
 and the receipt with its exact shape, each at an absolute path in the lane's
-directory. An intent the default branch does not carry as planned, a spec not
+directory. Before the record it carries, the brief states the outbound policy
+in its own right, quoted from `scanner.OutboundPolicy`, the value the lint
+rules and the commit gates quote (itd-152): no live session URL and no tool
+attribution footer in a pull request, an issue, a comment, a commit message or
+a release note, and a re-read-and-strip of every pull request, issue and
+comment the implementer creates, whatever the repository's own conventions
+say. An intent the default branch does not carry as planned, a spec not
 open there, or no `AGENTS.md` is refused rather than briefed from elsewhere, and
-so is a source the base holds as a link or past its size cap.
+so is a source the base holds as a link or past its size cap, and a spec whose
+steps the base cannot read, or lists the lane's step under another title than
+the run opened it for: a run does not follow steps reordered mid-run, so a brief
+naming the wrong predecessors is never written.
 The brief is written atomically, mode `0600`.
 
 **The receipt** (piece 7; criterion 4). The implement step hands the lane to a
@@ -216,8 +284,8 @@ its branch's tip and the lane to its validators.
 
 ## Exit codes
 
-`0` done, including a resumed start, a step that re-tells an await, and a
-complete run; `2` refused, naming the step, the reason and the remedy, with
+`0` done, including a resumed start, a step that re-tells an await, a step
+that closes an elapsed window, and a complete run; `2` refused, naming the step, the reason and the remedy, with
 nothing written; `3` contention: a peer holds the intent, the run is paused, or
 the run state is locked by another invocation. A refusal in the JSON form is its
 own document before the error envelope, with the step, the check, the reason and
@@ -227,6 +295,9 @@ the remedy as fields.
 
 - The intent and its decisions: itd-2609201916151817; the design record:
   spc-2609202134338445, whose Progress section says which pieces have landed.
+- The pace and the window clock: itd-2609201925079472 and its design record,
+  spc-2609202134341288; the layered reader it resolves through is the model
+  tier's (itd-2609170822093401).
 - The worktree store the lane's checkout lives in: itd-2609091014076309 (a
   draft), and the rule it enacts, adr-2609091248200336.
 - The shared run state and the claim the peers check reads:
@@ -245,6 +316,8 @@ Sub-verbs: none.
 
 | Flag | Type |
 |---|---|
+| `--pace` | string |
 | `--session` | string |
+| `--sub-agents` | string |
 
 <!-- surface-appendix:end -->

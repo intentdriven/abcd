@@ -56,7 +56,7 @@ func TestMachineWritesRefuseAnAbcdHomeSwappedForALink(t *testing.T) {
 		"path entry":       func(a *applyCtx) { _ = writePathEntry("/example/bin/abcd", strings.Repeat("0", 64), "") },
 		"oracle routing":   func(a *applyCtx) { a.writeMachineRouting([]byte("{}\n")) },
 		"history registry": func(a *applyCtx) { _, _ = bootstrapHistory() },
-		"history lock":     func(a *applyCtx) { _ = withHistoryLock(func() error { return nil }) },
+		"history lock":     func(a *applyCtx) { _ = withHistoryLock(func(*os.Root) error { return nil }) },
 	}
 	for name, write := range writers {
 		t.Run(name, func(t *testing.T) {

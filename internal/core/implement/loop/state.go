@@ -69,10 +69,20 @@ const StateFileName = "state.json"
 // lockFileName is the advisory lock every mutation of any run takes.
 const lockFileName = ".lock"
 
-// SchemaVersion is the state file's shape. A file carrying any other version is
-// refused rather than read as this one: a field a later build added and this
-// one would drop on its next write is a run silently losing state.
-const SchemaVersion = 1
+// SchemaVersion is the state file's shape. A file carrying a version this
+// build does not know is refused rather than read as this one: a field a later
+// build added and this one would drop on its next write is a run silently
+// losing state.
+//
+// Version 2 added the run's pace (itd-2609201925079472). Version 1 is its
+// strict subset, so a version-1 file is read as a run started before the loop
+// paced a run: it carries no pace, runs unpaced, and is written back at version
+// 2 by its next mutation. A version-1 file carrying a pace is not one version 1
+// wrote, and is refused.
+const SchemaVersion = 2
+
+// schemaVersionUnpaced is the version before the pace: read, never written.
+const schemaVersionUnpaced = 1
 
 // RunIDFamily is the run id's prefix; the id is minted through the record-id
 // seam (adr-45), so two checkouts starting runs in one second draw distinct ids.
@@ -141,6 +151,10 @@ type State struct {
 	// before it, a step is refused as a pause and nothing moves (decision 2).
 	WindowStartedAt *time.Time `json:"window_started_at,omitempty"`
 	NextEligibleAt  *time.Time `json:"next_eligible_at,omitempty"`
+	// Pace is the pace the run started on, each number with the layer that
+	// supplied it (itd-2609201925079472). Nil in a run a version-1 state file
+	// holds: it started before the loop paced a run, and runs unpaced.
+	Pace *Pace `json:"pace,omitempty"`
 	// Lanes are the lanes opened so far, one at a time, in order. A lane lands
 	// one step of the spec's `## Steps` (the whole spec when it lists none).
 	Lanes []Lane `json:"lanes"`
@@ -200,7 +214,8 @@ type Await struct {
 type Entry struct {
 	At   time.Time `json:"at"`
 	Lane string    `json:"lane,omitempty"`
-	// Step is the step the entry records: a lane step, "start" or "receipt".
+	// Step is the step the entry records: a lane step, "start", "open" (a
+	// later lane opened for its spec step) or "receipt".
 	Step string `json:"step"`
 	Note string `json:"note,omitempty"`
 }
@@ -275,8 +290,15 @@ func readStateIn(root *os.Root, runID string) (State, error) {
 		return State{}, refuse("state", "", "", fmt.Sprintf("%s does not parse as a run state: %v", rel, err),
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
 	}
-	if st.SchemaVersion != SchemaVersion {
-		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d; this abcd reads version %d", rel, st.SchemaVersion, SchemaVersion),
+	switch {
+	case st.SchemaVersion == schemaVersionUnpaced && st.Pace != nil:
+		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries a pace, which version %d never wrote", rel, st.SchemaVersion, schemaVersionUnpaced),
+			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
+	case st.SchemaVersion == schemaVersionUnpaced:
+		// Read as the current version; the next write carries it.
+		st.SchemaVersion = SchemaVersion
+	case st.SchemaVersion != SchemaVersion:
+		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d; this abcd reads versions %d and %d", rel, st.SchemaVersion, schemaVersionUnpaced, SchemaVersion),
 			"run the abcd that wrote it")
 	}
 	if st.RunID != runID {

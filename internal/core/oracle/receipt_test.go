@@ -71,7 +71,8 @@ func TestReceiptCarriesTheThreeConnectionFieldsAndTheModel(t *testing.T) {
 // leg the receipt records the connection's defaults with the row's and then the
 // flag's laid over them.
 func TestReceiptRecordsTheMergedSettingsSent(t *testing.T) {
-	c := Connection{Name: "lab", Defaults: Settings{"temperature": raw("0.2"), "seed": raw("1"), "top_p": raw("0.9")}}
+	c := Connection{Name: "lab", Models: []string{"example/model-1"}, Roles: map[string]string{"scribe": "example/model-1"}, Accepts: []string{"seed", "temperature", "top_p"},
+		Defaults: Settings{"temperature": raw("0.2"), "seed": raw("1"), "top_p": raw("0.9")}}
 	conns := &spy{serves: map[Tier]Connection{Local: c}, named: map[string]Connection{"lab": c}}
 	f := newFx(t)
 	f.repo(`{"scribe":{"tier":"local","settings":{"seed":2}}}`)

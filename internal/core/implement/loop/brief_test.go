@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/adapter/scanner"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
@@ -145,6 +146,44 @@ func TestTheBriefCarriesAnUnmarkedAgentsFileWhole(t *testing.T) {
 		if !strings.Contains(string(raw), want) {
 			t.Fatalf("want %q in the brief", want)
 		}
+	}
+}
+
+// TestTheBriefCarriesTheOutboundPolicy is itd-152's fifth criterion: the prompt
+// an autonomous run hands its implementer carries the policy that bans a live
+// session URL and a tool's attribution footer in public text and mandates the
+// re-read-and-strip of every pull request, issue and comment it creates. The
+// policy is quoted from scanner.OutboundPolicy, the one value the scanner, the
+// lint rules and the gates already quote, so the text is compared to that value
+// rather than to a copy of it. A managed repository's AGENTS.md need not say a
+// word about it (this one says nothing), and the policy is the brief's own
+// instruction, outside every block it carries from the record.
+func TestTheBriefCarriesTheOutboundPolicy(t *testing.T) {
+	repo := briefRepo(t, agentsMarked)
+	start, err := Start(repo.Root(), "itd-10", Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	advanceTo(t, repo, start.RunID, StepImplement)
+	st, err := ReadState(repo.Root(), start.RunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(filepath.Join(repo.Root(), filepath.FromSlash(st.Lanes[0].Brief)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	brief := string(raw)
+	if n := strings.Count(brief, scanner.OutboundPolicy); n != 1 {
+		t.Fatalf("the brief must quote the outbound policy once, verbatim; it does %d time(s):\n%s", n, brief)
+	}
+	at := strings.Index(brief, scanner.OutboundPolicy)
+	if record := strings.Index(brief, "<!-- begin "); record < 0 || at > record {
+		t.Fatalf("the policy is the brief's own instruction, before the record it carries (policy at %d, record at %d)", at, record)
+	}
+	heading := strings.Index(brief, "## Outward-facing text\n")
+	if heading < 0 || heading > at {
+		t.Fatalf("the policy sits under its own heading:\n%s", brief)
 	}
 }
 

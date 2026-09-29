@@ -111,7 +111,8 @@ make preflight      # the pre-push gate: the load check first (load-check,
                     # a warning, never a failure), then fmt-check +
                     # lint-reviews +
                     # lint-issues + lint-decisions + record-lint +
-                    # issue-drift + docs-lint + site-render +
+                    # issue-drift + docs-lint + check-attribution +
+                    # site-render +
                     # smoke + evals-cold-reading,
                     # then build + vet +
                     # test + race (internal), all on the go.mod toolchain
@@ -322,9 +323,9 @@ irreversible; guessing downward costs nothing.**
 
 ## Definition of done
 
-- `make preflight` is clean — the eight gates (`fmt-check`, `lint-reviews`,
+- `make preflight` is clean — the nine gates (`fmt-check`, `lint-reviews`,
   `lint-issues`, `lint-decisions`, `record-lint`, `issue-drift`, `docs-lint`,
-  `site-render`), both tagged eval
+  `check-attribution`, `site-render`), both tagged eval
   lanes (`smoke`, `evals-cold-reading`), plus `go build ./...`,
   `go vet ./...`, `go test ./...`, and
   `go test -race -timeout 20m ./internal/...`. The load

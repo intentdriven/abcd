@@ -16,8 +16,9 @@
 // takes the machine's connections as a value (Connections), so a test hands it
 // a provider that is "reachable" without a socket. The provider adapter
 // (itd-2609081951381895, config.go) implements Connections from the machine's
-// provider blocks, each connection carrying its allowlist and the settings its
-// adapter accepts; the delegating verbs still hand every resolution
+// provider blocks, each connection carrying its allowlist, the settings its
+// adapter accepts and the model each role pointed at it asks for; the
+// delegating verbs still hand every resolution
 // NoConnections, so every row resolves to the harness until provider dispatch
 // lands (spc-2609251028149555).
 //
@@ -25,10 +26,17 @@
 // the proposal and its roster test, the store readers, the --route parser,
 // Resolve, the bare board's oracle lines, the request block and receipt every
 // delegating verb carries (Route.Request, Route.Receipt), and the ahoy consent
-// step that writes an accepted table. Escalating a tier after a failed fix
-// round, the allowlist check inside Resolve and dispatching a step to a
-// provider are spc-2609251028149555's; until they land, every step resolves to
-// the harness.
+// step that writes an accepted table. spc-2609251028149555 adds the refusals
+// Resolve makes on a provider leg before the step runs: a connection whose
+// allowlist lists no model admits no route; the model the agent's
+// oracle.roles.<agent> points at on the connection must be on its allowlist;
+// a leg to a connection the agent's role does not point at names no model and
+// is refused, because the record does not yet decide which model it asks for;
+// and a merged setting outside the set the connection's adapter accepts is
+// refused, never dropped. Escalating a tier after a failed fix round and dispatching a
+// step to a provider are still that spec's; until dispatch lands every
+// delegating verb resolves against NoConnections, so every step resolves to
+// the harness and no front door reaches a provider-leg refusal.
 package oracle
 
 import (
