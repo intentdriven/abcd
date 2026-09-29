@@ -2,8 +2,12 @@ package capture
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/core/issueschema"
 )
 
 // hiddenRunes is one of each class the record-write boundary must encode: a
@@ -106,5 +110,34 @@ func TestWontfixDerivedGroundsRefuseAControlCharacter(t *testing.T) {
 	// The floor is not applied to a derived value: a one-word reason stands.
 	if _, err := Wontfix(WontfixRequest{RepoRoot: repo, IssuesRoot: ir, ID: res.ID, Reason: "duplicate"}); err != nil {
 		t.Fatalf("a terse wontfix reason must still be accepted: %v", err)
+	}
+}
+
+// TestDispositionGroundsAndExitConditionEncodeHiddenRunes: `capture disposition`
+// writes two free-text values into a committed record, and both are held to the
+// same boundary every other capture write is: a bidi override or a zero-width
+// rune in --grounds or --exit-condition is encoded, never written verbatim
+// (iss-2609251823551349).
+func TestDispositionGroundsAndExitConditionEncodeHiddenRunes(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		req  DispositionRequest
+	}{
+		{"grounds", DispositionRequest{State: issueschema.DispositionAccepted, Grounds: hiddenText("the grounds")}},
+		{"exit condition", DispositionRequest{State: issueschema.DispositionHeld, ExitCondition: hiddenText("the exit")}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			repo, ir, item := readingFixture(t, "detection")
+			tc.req.RepoRoot, tc.req.IssuesRoot, tc.req.Item = repo, ir, item
+			res, err := Disposition(tc.req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			raw, err := os.ReadFile(filepath.Join(repo, filepath.FromSlash(res.Path)))
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertNoHiddenRune(t, "disposition "+tc.name, string(raw))
+		})
 	}
 }

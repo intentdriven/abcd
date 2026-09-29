@@ -30,10 +30,6 @@ This is a designed obligation that silently accumulates, which is a sharper fail
 
 Wanted: a row in the status render or in `abcd lint` that names the number of owed fidelity reviews and the intents they belong to, and a listing verb that enumerates them. Related and filed separately: two defects that make an owed review expensive to discharge once found — the request carries no provenance hashes that `ingest` nevertheless requires, and it asks the host for a delivered diff range it has no mechanism to supply.
 
-## Grounds
-
-- pursued: we expect a count of owed fidelity reviews on the bare status surfaces to be enough to make the debt get paid, because the debt was invisible rather than resisted, and a session that was asked what was outstanding discharged three in one sitting; it is shown wrong if the count is rendered and the debt still accumulates, which would mean visibility was not the constraint
-
 **Corroboration (2026-09-18, Gropius managed-repo session gropiusllm-56, relayed
 to abcd-17).** Second managed repository, at v0.9.0, after twelve fidelity
 audits in one day: `abcd spec close` prints "fidelity review OWED, receipt
@@ -42,5 +38,9 @@ the session closed the loop by grepping the decision log for receipt ids. Its
 ask is a read-only listing, `abcd intent audit --owed`, so a session can find
 what is outstanding without enumerating shipped intents by hand. Same shape as
 the filing; the number this time was twelve, all paid, found by grep.
+
+## Grounds
+
+- pursued: we expect a count of owed fidelity reviews on the bare status surfaces to be enough to make the debt get paid, because the debt was invisible rather than resisted, and a session that was asked what was outstanding discharged three in one sitting; it is shown wrong if the count is rendered and the debt still accumulates, which would mean visibility was not the constraint
 
 - pursued: we expect a count of owed fidelity reviews on the bare status surfaces to be enough to make the debt get paid, because the debt was invisible rather than resisted; it is shown wrong if the count is rendered and the debt still accumulates, which would mean visibility was not the constraint

@@ -207,8 +207,10 @@ func TestAdmitRefusesBeforeTheComparativeRun(t *testing.T) {
 // gate exactly as a characterising run does.
 func TestAdmitProceedsOnAnEmptyComparativeRun(t *testing.T) {
 	repo, ir, item := readingFixture(t, issueschema.PositionWidening)
-	writeFile(t, filepath.Join(repo, filepath.FromSlash(issueschema.ReadingsRecordDir), "rdg-2608300000000003", issueschema.RunRecordFileName),
-		`{"run_id":"rdg-2608300000000003","position":"comparative","candidate_run":"`+fixtureRun+`","candidates":1,"exercised":false,"records":[]}`)
+	dir := filepath.Join(repo, filepath.FromSlash(issueschema.ReadingsRecordDir), "rdg-2608300000000003")
+	empty := `{"run_id":"rdg-2608300000000003","position":"comparative","candidate_run":"` + fixtureRun + `","candidates":1,"exercised":false,"records":[]}`
+	writeFile(t, filepath.Join(dir, issueschema.RunManifestFileName), empty)
+	writeFile(t, filepath.Join(dir, issueschema.RunRecordFileName), empty)
 	if _, err := Admit(AdmitRequest{RepoRoot: repo, IssuesRoot: ir, Item: item, Grounds: admitGround}); err != nil {
 		t.Fatalf("Admit after an empty comparative run: %v", err)
 	}

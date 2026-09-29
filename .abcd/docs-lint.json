@@ -177,6 +177,21 @@
       "message": "names a specific bundled tool in user-facing content; abcd's published surface stays host-agnostic. Use a generic term (a spec/task backend), or add <!-- docs-lint: allow --> if naming it is genuinely necessary."
     },
     {
+      "id": "roles/retired-role-word",
+      "pattern": "(?i)\\bmaintainer",
+      "severity": "blocker",
+      "successor": "the product thinker (what to build, rulings, sign-off) or the technical facilitator (how: gates, merges, mechanics); the person, or both, where it is genuinely either",
+      "allow_context": [
+        "(?i)<!--\\s*docs-lint:\\s*allow\\b"
+      ],
+      "extra_roots": [
+        "commands",
+        ".abcd/rules.json",
+        "internal/core/rules/defaults"
+      ],
+      "message": "one word for two people; abcd's own text names the role it means (itd-2609212137129937). Rewrite to the role the sentence asks of the person, or add <!-- docs-lint: allow --> for an acknowledgement or a persona's outside job title only."
+    },
+    {
       "id": "names/record/glossary-self-identification",
       "pattern": "(?i)this glossary file",
       "severity": "blocker",

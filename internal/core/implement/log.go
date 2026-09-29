@@ -55,6 +55,21 @@ const (
 	// of its context window in use), role and note. The run measures it because
 	// it is also an experiment in keeping a session alive for days.
 	EventContext = "context"
+	// EventCeilingOverrun is a session going over its agent ceiling: alive (the
+	// agents alive), ceiling, lane and minutes (how long it was over). The verb
+	// refuses an agent_start past the ceiling, so an overrun is what the host
+	// did anyway — a fork, an agent started outside the log — and says so.
+	EventCeilingOverrun = "ceiling_overrun"
+
+	// The evidence events: what an autonomous run records so a later run can be
+	// built to need no person. An intervention is a person acting on the run
+	// (kind, by, what, why, autonomy_gap — what abcd or the host would need so
+	// no person is needed — and optionally at and detected_after_min); a stop is
+	// a stall (cause, and optionally last_productive, noticed_after_min and
+	// recovery); a decision is a judgement call a person would normally make
+	// (what, alternative, why, and optionally at).
+	EventIntervention = "intervention"
+	EventDecision     = "decision"
 
 	// EventLoad is the load check's warning (itd-2609231434459890), written by
 	// `implement load` alone and only when it warns inside a live run. The run's
@@ -75,7 +90,104 @@ var verbOwnedEvents = []string{
 var loggableEvents = []string{
 	EventBackoff, EventLaneOpen, EventLaneClose, EventAgentStart, EventAgentEnd,
 	EventCeilingWait, EventGateRun, EventReview, EventFallback, EventStop,
-	EventRefusal, EventPR, EventCapture, EventContext,
+	EventRefusal, EventPR, EventCapture, EventContext, EventCeilingOverrun,
+	EventIntervention, EventDecision,
+}
+
+// InterventionKinds is the closed vocabulary of an intervention's kind.
+var InterventionKinds = []string{
+	"session_open", "account", "ruling", "restart", "close_session", "file_restore", "permission", "other",
+}
+
+// fieldKind is what a checked field must hold.
+type fieldKind int
+
+const (
+	fieldText   fieldKind = iota // any non-empty value
+	fieldNumber                  // a non-negative number
+	fieldTime                    // an RFC 3339 timestamp
+	fieldKindOf                  // one of InterventionKinds
+)
+
+// fieldRule is one field an event is checked for. A rule with alternatives is
+// met by any one of them (agent_end's minutes under the keys the report reads).
+type fieldRule struct {
+	names    []string
+	kind     fieldKind
+	optional bool
+}
+
+// eventFields are the fields `implement log` requires, or checks when given, per
+// event: the ones the report counts, so a line it would read as absent is
+// refused when it is written rather than found missing afterwards
+// (iss-2609240646555891). An event not listed takes any fields.
+var eventFields = map[string][]fieldRule{
+	EventLaneClose:  {{names: []string{"lane"}}, {names: []string{"outcome"}}},
+	EventAgentStart: {{names: []string{"agent"}}},
+	EventAgentEnd: {{names: []string{"agent"}}, {names: []string{"role"}}, {names: []string{"model"}},
+		{names: []string{"minutes", "wall_minutes", "wall_min"}, kind: fieldNumber}},
+	EventCeilingOverrun: {{names: []string{"alive"}, kind: fieldNumber}, {names: []string{"ceiling"}, kind: fieldNumber},
+		{names: []string{"lane"}}, {names: []string{"minutes"}, kind: fieldNumber}},
+	EventIntervention: {{names: []string{"kind"}, kind: fieldKindOf}, {names: []string{"by"}}, {names: []string{"what"}},
+		{names: []string{"why"}}, {names: []string{"autonomy_gap"}},
+		{names: []string{"at"}, kind: fieldTime, optional: true},
+		{names: []string{"detected_after_min"}, kind: fieldNumber, optional: true}},
+	EventStop: {{names: []string{"cause"}},
+		{names: []string{"last_productive"}, kind: fieldTime, optional: true},
+		{names: []string{"noticed_after_min"}, kind: fieldNumber, optional: true}},
+	EventDecision: {{names: []string{"what"}}, {names: []string{"alternative"}}, {names: []string{"why"}},
+		{names: []string{"at"}, kind: fieldTime, optional: true}},
+}
+
+// RequiredFields returns the fields `implement log` requires on event, each as
+// its accepted names ("minutes|wall_minutes|wall_min"), for help text and the
+// report's missing-field count.
+func RequiredFields(event string) []string {
+	var out []string
+	for _, r := range eventFields[event] {
+		if !r.optional {
+			out = append(out, strings.Join(r.names, "|"))
+		}
+	}
+	return out
+}
+
+// checkFields refuses an event whose fields break its rules, naming the field.
+func checkFields(event string, fields map[string]string) error {
+	for _, r := range eventFields[event] {
+		name, v, ok := "", "", false
+		for _, n := range r.names {
+			if val, has := fields[n]; has {
+				name, v, ok = n, val, true
+				break
+			}
+		}
+		if !ok {
+			if r.optional {
+				continue
+			}
+			return refusal("%s needs the field %s (the report reads it; required: %s)",
+				event, strings.Join(r.names, " or "), strings.Join(RequiredFields(event), ", "))
+		}
+		if strings.TrimSpace(v) == "" {
+			return refusal("%s field %s is empty", event, name)
+		}
+		switch r.kind {
+		case fieldNumber:
+			if f, err := strconv.ParseFloat(v, 64); err != nil || f < 0 || math.IsNaN(f) || math.IsInf(f, 0) {
+				return refusal("%s field %s is %q, not a number of zero or more", event, name, v)
+			}
+		case fieldTime:
+			if _, err := time.Parse(time.RFC3339, v); err != nil {
+				return refusal("%s field %s is %q, not an RFC 3339 time (2006-01-02T15:04:05Z)", event, name, v)
+			}
+		case fieldKindOf:
+			if !slices.Contains(InterventionKinds, v) {
+				return refusal("%s field %s is %q (one of: %s)", event, name, v, strings.Join(InterventionKinds, ", "))
+			}
+		}
+	}
+	return nil
 }
 
 // LoggableEvents returns the events `implement log` accepts, for help text and
@@ -216,6 +328,61 @@ func (r *Run) append(session, event string, fields map[string]any) (time.Time, e
 // logFileName is the day file an event at ts belongs in.
 func logFileName(ts time.Time) string { return ts.UTC().Format(time.DateOnly) + ".jsonl" }
 
+// AgentsAlive counts the agents a session has declared alive: the agents named
+// by its agent_start lines since it joined, each with no agent_end of the same
+// agent after it. It counts what the session wrote and nothing else — abcd runs
+// no agent, and a line the session never wrote (a fork, an agent the host
+// started outside the log) is invisible here — so it is the declared count the
+// ceiling is held against, not a census of processes. Lines naming no agent
+// cannot be matched and are not counted.
+func (r *Run) AgentsAlive(s Session) (int, error) {
+	alive, err := r.aliveAgents(s)
+	return len(alive), err
+}
+
+// aliveAgents is AgentsAlive's set: the agent names alive, by the log.
+func (r *Run) aliveAgents(s Session) (map[string]bool, error) {
+	events, _, err := r.ReadLog()
+	if err != nil {
+		return nil, err
+	}
+	sort.SliceStable(events, func(i, j int) bool { return events[i].TS.Before(events[j].TS) })
+	alive := map[string]bool{}
+	for _, e := range events {
+		if e.Session != s.Session || e.TS.Before(s.JoinedAt) {
+			continue
+		}
+		name := e.String("agent")
+		if name == "" {
+			continue
+		}
+		switch e.Event {
+		case EventAgentStart:
+			alive[name] = true
+		case EventAgentEnd:
+			delete(alive, name)
+		}
+	}
+	return alive, nil
+}
+
+// agentCeiling refuses, and logs the refusal of, an agent_start that would take
+// the session past its ceiling. An agent already alive, restated, is not a new
+// one. The caller holds the lock.
+func (r *Run) agentCeiling(s Session, agent string) error {
+	alive, err := r.aliveAgents(s)
+	if err != nil {
+		return err
+	}
+	if len(alive) < s.Ceiling || alive[agent] {
+		return nil
+	}
+	return r.refuseLogged(s.Session, "agent_ceiling",
+		map[string]any{"agent": agent, "alive": len(alive), "ceiling": s.Ceiling},
+		fmt.Sprintf("session %s has %d agent(s) alive of its ceiling %d; log the agent_end of one before starting %s",
+			s.Session, len(alive), s.Ceiling, agent))
+}
+
 // Log appends one event on a joined session's word: the run's hand-kept events
 // (lane_open, agent_end, backoff, …) through the same single-write append the
 // verbs use. The event must be one of LoggableEvents — the verb-owned events are
@@ -251,10 +418,19 @@ func (r *Run) Log(session, event string, fields map[string]string) (Event, error
 			return Event{}, err
 		}
 	}
+	if err := checkFields(event, fields); err != nil {
+		return Event{}, err
+	}
 	var out Event
 	err := r.withLock(session, func() error {
-		if _, err := r.requireSession(session); err != nil {
+		s, err := r.requireSession(session)
+		if err != nil {
 			return err
+		}
+		if event == EventAgentStart && s.Ceiling > 0 {
+			if err := r.agentCeiling(s, fields["agent"]); err != nil {
+				return err
+			}
 		}
 		ts, err := r.append(session, event, typed)
 		out = Event{TS: ts, Session: session, Event: event}

@@ -49,7 +49,10 @@ func sourceCorpusDir(flag string) (string, error) {
 	return dir, nil
 }
 
-// sourceError maps a core error to the verb's exit code and one line.
+// sourceError maps a core error to the verb's exit code and one line. The
+// corpus directory keeps RedactHome, not fsutil.DisplayPath: it is the store the
+// person names with --corpus or creates with `source init`, and a base name
+// would not say where to create or find it.
 func sourceError(verb, dir string, err error) error {
 	if errors.Is(err, source.ErrNoCorpus) {
 		return &exitError{Code: 3, Msg: fmt.Sprintf("abcd source %s: no sources corpus at %s — nothing read or written (create one with `abcd source init`)",

@@ -493,3 +493,18 @@ func TestSiteHref(t *testing.T) {
 		t.Errorf("siteHref with no docs tree = %q, want the forge's view of the page", got)
 	}
 }
+
+// TestStripFrontmatterJudgesDelimitersByTheOneRule: both delimiters are judged
+// by frontmatter.IsDelimiter. A bare prefix test opened a block on `----` and
+// closed one on a line that merely began with three dashes, so the site cut a
+// different block from the one every record reader reads (iss-2608270908348042).
+func TestStripFrontmatterJudgesDelimitersByTheOneRule(t *testing.T) {
+	t.Parallel()
+	if body, n := StripFrontmatter("----\n\n# Title\n\n---\n"); body != "----\n\n# Title\n\n---\n" || n != 0 {
+		t.Errorf("a four-dash rule opened a block: %q, %d", body, n)
+	}
+	body, n := StripFrontmatter("---\nid: a\n---- not a close\n--- \n# Title\n")
+	if body != "\n# Title\n" || n != 3 {
+		t.Errorf("StripFrontmatter = %q, %d; want the block closed at the trailing-space delimiter", body, n)
+	}
+}

@@ -382,3 +382,48 @@ func TestArgsReaderReadsEachWordOnce(t *testing.T) {
 		t.Errorf("asking every place of a %d-word segment counted %d units, want at most %d: the words are read once", len(s.tokens), n, 2*len(s.tokens))
 	}
 }
+
+// TestKillFedThroughAHereDocOrAnInheritedPipeIsBlocked — iss-2609270036253187
+// (found fixing iss-2609270028388291). Three more paths from a process search
+// to a kill. (1) An unquoted here-document is expanded before its command
+// reads it, so a substitution in its body is the command's standard input as
+// a here-string's is: `xargs kill <<EOF` over `$(pgrep make)` is the
+// here-string twin that already blocked. (2) A command substitution runs with
+// its command's standard input, so an xargs kill inside a substitution in a
+// command that reads a pipe reads the search piped into that command. (3) A
+// shell string's positional parameters are the words after it, so a search
+// printed into one reaches the string's commands the way xargs's input does
+// (DECISIONS 2026-09-27): every command of the string is read as handed it.
+func TestKillFedThroughAHereDocOrAnInheritedPipeIsBlocked(t *testing.T) {
+	runVerdictCases(t, []verdictCase{
+		{"xargs kill <<EOF\n$(pgrep make)\nEOF", VerdictBlock, "kill-by-search"},
+		{"xargs kill -9 <<-EOF\n\t$(pgrep -f node)\n\tEOF", VerdictBlock, "kill-by-search"},
+		{"xargs kill <<EOF\n`pgrep make`\nEOF", VerdictBlock, "kill-by-search"},
+		{"xargs kill <<EOF\npids: $(echo $(pgrep make))\nEOF", VerdictBlock, "kill-by-search"},
+		{"cat <<A; xargs kill <<B\nx\nA\n$(pgrep make)\nB", VerdictBlock, "kill-by-search"},
+		{"sh -c 'xargs kill' <<EOF\n$(pgrep make)\nEOF", VerdictBlock, "kill-by-search"},
+
+		{`pgrep make | echo $(xargs kill)`, VerdictBlock, "kill-by-search"},
+		{`pgrep make | echo "$(xargs kill)"`, VerdictBlock, "kill-by-search"},
+		{"pgrep make | echo `xargs kill`", VerdictBlock, "kill-by-search"},
+		{`pgrep make | echo $(sleep 1; xargs kill)`, VerdictBlock, "kill-by-search"},
+		{`pgrep make | echo $(echo $(xargs kill))`, VerdictBlock, "kill-by-search"},
+		{`pgrep make | { echo "$(xargs kill)"; }`, VerdictBlock, "kill-by-search"},
+
+		{`sh -c 'kill "$1"' _ "$(pgrep make)"`, VerdictBlock, "kill-by-search"},
+		{`bash -c 'kill $@' _ $(pgrep -f node)`, VerdictBlock, "kill-by-search"},
+		{`sh -c "kill $(pgrep make)"`, VerdictBlock, "kill-by-search"},
+
+		// The quoted document is text, and what reaches a substitution is its
+		// own command's input, no other's.
+		{"xargs kill <<'EOF'\n$(pgrep make)\nEOF", VerdictAllow, ""},
+		{"xargs kill <<EOF\n\\$(pgrep make)\nEOF", VerdictAllow, ""},
+		{"cat <<EOF\n$(pgrep make)\nEOF\necho 4242 | xargs kill", VerdictAllow, ""},
+		{"xargs kill <<EOF\n4242\nEOF\necho $(pgrep make)", VerdictAllow, ""},
+		{`echo 4242 | echo $(xargs kill)`, VerdictAllow, ""},
+		{`pgrep make; echo $(xargs kill)`, VerdictAllow, ""},
+		{`pgrep make | wc -l; echo $(xargs kill < pidfile)`, VerdictAllow, ""},
+		{`sh -c 'kill "$1"' _ 4242`, VerdictAllow, ""},
+		{`sh -c 'echo "$1"' _ "$(pgrep make)"`, VerdictAllow, ""},
+	})
+}

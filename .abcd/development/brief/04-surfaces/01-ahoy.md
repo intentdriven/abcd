@@ -69,7 +69,7 @@ the table above is the sub-verb set, and the modes are the bare verb's flags.
   the repository this checkout's own origin names, and the changes an apply
   would make. A toggle it could not read reports `unknown`, never `disabled`.
   The same request also reads the repository's merge hygiene, which abcd mirrors
-  and never sets: those settings encode a maintainer's workflow rather than a
+  and never sets: those settings encode the technical facilitator's workflow rather than a
   security posture, and each is reported only when the API answered for it,
   because `false` and "the API did not say" are different facts
   (iss-2608270512210664).
@@ -216,16 +216,21 @@ are caller-controlled and line-oriented. `trusted-roots` and
 `local-transcript-roots` are the two that widen what a session will trust, so
 each is honoured only when it is a regular file this uid owns that no one else
 can write, and a file failing either test is ignored with one line saying which
-test it failed. `path-entry` is read through the shared guarded read instead:
-a symlinked, non-regular or oversized file is refused, but its ownership and its
-permissions are not checked, and the hook shims that consult it check neither.
+test it failed. `path-entry` and `cache-attestation` are held to the same test,
+by the install verb and by the hook shims that consult `path-entry`, and a record
+failing it vouches for nothing.
 `load-limits` is a setting, not a declaration, but it is read through the same
 guard as the two that widen trust, and a file failing it, or holding a line that
 does not parse, is reported loudly and both of its limits take their defaults.
 `rules.json` is read through that guard too, because it injects text into every
 session on the machine, but a file failing it — or failing to parse — fails the
 rules load outright: nothing injects until it is fixed, and the file is named on
-stderr.
+stderr. None of these files is honoured behind a `~/.abcd` that is itself a
+symlink, and nothing ahoy or the bootstrap writes there goes through one: each
+refuses the link and names it, as the rules loader does for `rules.json`, while a
+symlinked `~/.abcd` holding none of them reads as absent (the rule is stated once,
+under *The two `.abcd/` scopes* in
+[`05-internals/03-configuration.md`](../05-internals/03-configuration.md#the-two-abcd-scopes)).
 
 There is **no workspace, host, or development-environment layer.** A folder a
 user keeps their repos in groups nothing, and abcd does not privilege it. abcd
@@ -293,19 +298,31 @@ which is false (iss-95).
 **The `PATH` entry is classified, not assumed.** Detection scans `PATH`,
 resolving symlinks, and classifies each hit as abcd's own entry, the dev shim,
 or a foreign binary. An abcd-owned entry anywhere on `PATH` is the install; with
-none, the default location answers the same question. Three states are named
+none, the default location answers the same question. A symlink whose target
+has gone is abcd's own when it is the one a plugin update stranded or when the
+home-scoped `path-entry` record names it, read exactly as the hook shims read
+it; any other dangling link asserts no provenance (iss-2609100506263330).
+Three states are named
 rather than lumped together: an owned entry whose target has gone is dangling; an
 install directory absent from `PATH` is required but not resolvable, for which
 abcd prints a one-line export fix and never edits a shell profile; and any
 `abcd` that comes *before* abcd's own entry is shadowed, because an entry that is
-correct and never reached is not an install (iss-171). Install carries the two
+correct and never reached is not an install (iss-171). A link whose target has
+gone is the exception to "never reached" in wording, not in the gap: it runs
+nothing, because the shell skips it, and what it still threatens is to answer
+whatever reappears at its target, so neither the gap nor the note says it is what
+runs. An owned one that is not the entry install acts on — typically a link a
+plugin update stranded ahead of the one-liner's copy — is removed with its record
+by an install that leaves a working entry of abcd's own behind it
+(iss-2609280932480608), the same danglingness rule that clears one at the target
+(iss-2609100506256636); an unowned one is named and left. Install carries the two
 non-resolvable ones on its own result as notes, since a fresh user cannot run
 the doctor by name on a machine where abcd is not yet on `PATH`.
 
-**The name-guard scaffolding is reported at the granularity a maintainer can
-act on.** Each absent artefact is a gap abcd will create; every other state is a
-diagnostic, because abcd writes what is missing and never replaces what a
-maintainer put there. A pre-commit guard present without abcd's own marker line is
+**The name-guard scaffolding is reported at the granularity the technical
+facilitator can act on.** Each absent artefact is a gap abcd will create; every other state is a
+diagnostic, because abcd writes what is missing and never replaces what the
+technical facilitator put there. A pre-commit guard present without abcd's own marker line is
 foreign, and is reported rather than claimed as installed. A lint config with no
 usable banned-names array, one that cannot be read, and one git ignores — so CI
 never sees it, the state a public repo is in by default — are three distinct
@@ -353,8 +370,14 @@ produces (iss-2609012039117381) — and only when the home-scoped `path-entry`
 record names that exact path as this machine's installed binary. The record is a
 string comparison and no hashing, because adr-46 keeps the fast path at one file
 test. Both install routes write it, and the ahoy installer writes it for **every**
-entry shape it leaves on `PATH`: the owned copy, the pinned symlink it degrades
-to when there is no verified artefact to copy from, and the dev shim. An entry
+entry shape it leaves on `PATH`: the owned copy, the dev shim, and a working
+pinned symlink into the plugin root that an earlier release wrote. The installer
+never writes that symlink itself: with no verified artefact to copy from it
+writes no entry, because a link into the plugin root dangles at the next plugin
+update, and it names the install one-liner as the command to run first — the
+one route that fetches and verifies the release binary on an explicit ask
+(adr-38) — after which a re-run adopts the copy in place. A pin into the plugin
+root is a required `symlink.legacy` gap whatever the cache holds (iss-2609100506263330). An entry
 the record does not name is an install this rung refuses, and it is the one
 state where a filesystem test alone would call the install healthy while every
 hook quietly degrades, so the board raises it as a gap in its own right and
@@ -501,8 +524,9 @@ way to apply it (iss-166).
 `git_identity.committer` for a committer that diverges on its own (required
 where the repo pins an identity, advisory where it does not), and
 `git_identity.tool` wherever the author or the committer is a machine identity
-(the harness's own default, a `[bot]` account, a vendor's address), pinned or
-not, because the human is the author of record either way. The machine
+(the harness's own default, a `[bot]` account, a vendor's address, a configured
+automation's name such as `semantic-release-bot`), pinned or not, because the
+human is the author of record either way. The machine
 identities are one list, `internal/core/identity/tool-identities.txt`, which the
 CI attribution gate reads too, role asymmetry included: a `noreply@` mailbox is
 a machine as the author, and the forge's own committer stamp passes. Once the
@@ -602,8 +626,11 @@ the same three-shape predicate detection classifies with, and only one of the
 three is a pointer at all: the dev shim; the owned copy the `path-entry` record
 names and whose bytes still hash to the recorded value, which is the default
 install and a regular file pointing at nothing; and lastly a legacy symlink
-whose target is this plugin's binary. Anything else is foreign and is left where
-it stands. It leaves the entire `.abcd/` namespace and the history store intact.
+whose target is this plugin's binary, or whose target has gone when it is the
+link a plugin update stranded or the one the `path-entry` record names. The
+recorded dangling link needs no plugin root to be recognised, so uninstall finds
+it on `PATH` and removes it with its record on a machine where abcd itself is
+gone. Anything else is foreign and is left where it stands. It leaves the entire `.abcd/` namespace and the history store intact.
 
 **Uninstall then install is a tested round-trip invariant**: afterwards the
 detection pass must report zero actionable gaps, and the resulting state must be

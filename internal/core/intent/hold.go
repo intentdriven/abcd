@@ -315,18 +315,9 @@ func validateHoldReason(reason string) error {
 // frontmatter block is an error (fail closed rather than corrupt a file).
 func removeFrontmatterField(content, key string) (string, error) {
 	lines := strings.Split(content, "\n")
-	if len(lines) == 0 || strings.TrimRight(lines[0], " \t\r") != "---" {
-		return "", fmt.Errorf("intent: file has no leading frontmatter block")
-	}
-	closing := -1
-	for i := 1; i < len(lines); i++ {
-		if strings.TrimRight(lines[i], " \t\r") == "---" {
-			closing = i
-			break
-		}
-	}
-	if closing < 0 {
-		return "", fmt.Errorf("intent: frontmatter block is not closed")
+	closing, err := frontmatterClose(lines)
+	if err != nil {
+		return "", err
 	}
 	out := make([]string, 0, len(lines))
 	for i, line := range lines {

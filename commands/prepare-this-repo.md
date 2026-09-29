@@ -146,7 +146,8 @@ target's `.abcd/.work.local/scratch/` (create the directory via
    Re-interviewing over an answer the repo already gives is how a project ends
    up with two canons.
 
-   **Only if there is no block**, ask once, in the maintainer's own words:
+   **Only if there is no block**, set `abcd mode product-thinker`, then ask the
+   product thinker once, in their own words:
 
    - **Title** (required) — what the project is called, as it should read in a
      heading.
@@ -166,7 +167,7 @@ target's `.abcd/.work.local/scratch/` (create the directory via
    surfaces render from it. From then on `abcd lint` reports any surface that
    drifts from it, and `abcd identity render` proposes the correction as a
    diff. abcd never rewrites a surface itself — adopting a proposal is always
-   the maintainer's move.
+   the product thinker's move.
 
 5. **Commit gates.** Scaffold them from the binary — every hook it writes is
    embedded in it, so the step applies the same artefacts on a fresh clone as on
@@ -221,7 +222,8 @@ substance:
   private repository names in anything committed; repo-relative paths only.
 - Examples and user stories use the personas Alice, Bob, and Carol — never
   other names.
-- Refer to the maintainer as they/them in every artefact.
+- Refer to the product thinker and the technical facilitator as they/them in
+  every artefact.
 - Never commit or push without being asked; substantive work goes on a branch
   and PR; new dependencies need explicit sign-off first.
 
@@ -237,7 +239,7 @@ are committed.
 ## Definition of done
 
 - The gap report exists in the target's `.abcd/.work.local/scratch/` and was
-  presented to the maintainer.
+  presented to the technical facilitator.
 - The three-tier layout exists with a repo-specific `CONTEXT.md`; any legacy
   `.work/` layout was fully migrated (with sign-off) or fully left alone.
 - `AGENTS.md` carries verified repo facts and the marked, nameless
@@ -245,7 +247,7 @@ are committed.
 - One identity block is recorded and registered — adopted where the repo
   already had one, interviewed only where it did not — and `abcd lint identity`
   reports every registered surface as `ok`, or the drift it reports was shown
-  to the maintainer with the proposed diff.
+  to the product thinker with the proposed diff.
 - Nothing from `private-names.txt` and no abcd-internal content appears in any
   committed or published artefact.
 - Every asset the adopt phase applied resolved from this record or from the

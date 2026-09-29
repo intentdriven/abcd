@@ -70,6 +70,11 @@ func TestReconcileRefusesImpactWhenAnotherSpecStaysOpen(t *testing.T) {
 	if !strings.Contains(err.Error(), "spc-2") || !strings.Contains(err.Error(), "still open") {
 		t.Fatalf("refusal must name the open spec that keeps the intent planned: %v", err)
 	}
+	// The judgement need not wait for the close that ships: the refusal names
+	// the verb that records it now (iss-2609240646522330).
+	if !strings.Contains(err.Error(), "abcd intent plan itd-10 --impact fix") {
+		t.Fatalf("refusal must name `abcd intent plan itd-10 --impact fix` as the way to record the impact now: %v", err)
+	}
 	if _, err := os.Stat(filepath.Join(root, specsOpen, "spc-1-alpha.md")); err != nil {
 		t.Fatalf("nothing may move on the refusal: %v", err)
 	}
@@ -142,13 +147,21 @@ func TestReconcileMintsTheRemainderSpec(t *testing.T) {
 
 // An --impact at a close that mints a remainder is refused: that close ships
 // nothing, so the judgement would be written against a record staying planned.
+// The refusal names `abcd intent plan <itd-N> --impact <value>`, which keeps
+// the judgement now, and the close that ships then needs no flag
+// (iss-2609240646522330).
 func TestReconcileRefusesImpactWithARemainder(t *testing.T) {
 	root := t.TempDir()
-	writeFile(t, root, plannedDir+"/itd-10-alpha.md", plannedLinked("itd-10", "alpha", "spc-1"))
+	unjudged := strings.Replace(plannedLinked("itd-10", "alpha", "spc-1"), "impact: fix\n", "", 1)
+	writeFile(t, root, plannedDir+"/itd-10-alpha.md", unjudged)
 	writeFile(t, root, specsOpen+"/spc-1-alpha.md", specNaming("spc-1", "alpha", "itd-10"))
 
-	if _, err := Reconcile(root, "spc-1", "fix", RemainderRequest{Slug: "the-rest"}); err == nil {
+	_, err := Reconcile(root, "spc-1", "fix", RemainderRequest{Slug: "the-rest"})
+	if err == nil {
 		t.Fatal("--impact with a remainder must be refused")
+	}
+	if !strings.Contains(err.Error(), "abcd intent plan itd-10 --impact fix") {
+		t.Fatalf("refusal must name `abcd intent plan itd-10 --impact fix` as the way to record the impact now: %v", err)
 	}
 	// Nothing was minted and nothing moved.
 	entries, err := os.ReadDir(filepath.Join(root, specsOpen))
@@ -157,6 +170,24 @@ func TestReconcileRefusesImpactWithARemainder(t *testing.T) {
 	}
 	if len(entries) != 1 {
 		t.Fatalf("the refusal must mint nothing: %d specs in open/", len(entries))
+	}
+
+	// The way the refusal names works: the plan stamps the impact on the
+	// planned record, the remainder close goes through without the flag, and
+	// the close that ships needs none.
+	if _, err := Plan(root, "itd-10", PlanOptions{Impact: "fix"}); err != nil {
+		t.Fatalf("intent plan --impact on the planned intent: %v", err)
+	}
+	res, err := Reconcile(root, "spc-1", "", RemainderRequest{Slug: "the-rest"})
+	if err != nil {
+		t.Fatalf("the remainder close without --impact: %v", err)
+	}
+	last, err := Reconcile(root, res.Remainder.ID, "", RemainderRequest{})
+	if err != nil {
+		t.Fatalf("the close that ships must need no --impact once plan recorded it: %v", err)
+	}
+	if !last.IntentMoved || last.To != BucketShipped {
+		t.Fatalf("the last close must ship the intent: %+v", last)
 	}
 }
 

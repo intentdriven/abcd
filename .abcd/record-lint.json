@@ -235,7 +235,10 @@
     },
     "harness_leak": {
       "enabled": true,
-      "severity": "blocker"
+      "severity": "blocker",
+      "extra_roots": [
+        ".abcd/work"
+      ]
     },
     "directory_coverage": {
       "enabled": true,

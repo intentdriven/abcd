@@ -330,7 +330,7 @@ func (r *resolver) included(c candidate) IncludedFile {
 	return IncludedFile{
 		LogicalPath:         c.logical,
 		ResolvedPath:        c.resolved,
-		DisplayResolvedPath: fsutil.DisplayPath(r.root, c.resolved),
+		DisplayResolvedPath: fsutil.RepoRelativePath(r.root, c.resolved),
 		GitMode:             c.gitMode,
 	}
 }

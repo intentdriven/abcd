@@ -90,7 +90,11 @@ const maxIntentBytes = 256 * 1024
 //   - steps: the spec's `## Steps` reads, and leaves a step to build.
 //   - peers: no peer holds the record — no sibling worktree or local branch
 //     holds it in another bucket, and no session holds a live claim on it.
-func Check(repoRoot, key string) (CheckResult, error) {
+func Check(repoRoot, key string) (CheckResult, error) { return check(repoRoot, key, "") }
+
+// check is Check on behalf of session: a live claim session itself holds on the
+// record is its own, not a peer's. An empty session owns no claim.
+func check(repoRoot, key, session string) (CheckResult, error) {
 	res := CheckResult{Key: key}
 	if row, ok := keyCheck(key); !ok {
 		res.Checks = append(res.Checks, row)
@@ -131,7 +135,7 @@ func Check(repoRoot, key string) (CheckResult, error) {
 	res.steps = steps
 	res.Checks = append(res.Checks, stepsRow)
 
-	peersRow, err := peersCheck(repoRoot, ready)
+	peersRow, err := peersCheck(repoRoot, ready, session)
 	if err != nil {
 		return res, err
 	}
@@ -291,8 +295,9 @@ func stepsCheck(repoRoot string, r intent.ReadyResult) (CheckRow, []PendingStep,
 // branch holding the intent in another bucket than this checkout's — a lane
 // that shipped or re-drafted it), and the run's claim store (a session holding
 // a live claim on it). A peer holding the record in the same bucket holds a
-// copy, not the record: every branch cut from the default branch does.
-func peersCheck(repoRoot string, r intent.ReadyResult) (CheckRow, error) {
+// copy, not the record: every branch cut from the default branch does. A live
+// claim held by session — the one the build is started for — is its own.
+func peersCheck(repoRoot string, r intent.ReadyResult, session string) (CheckRow, error) {
 	row := CheckRow{Name: CheckPeers}
 	rep, err := peers.Scan(repoRoot)
 	if err != nil {
@@ -308,7 +313,7 @@ func peersCheck(repoRoot string, r intent.ReadyResult) (CheckRow, error) {
 	// A peer the listing names and cannot read may hold the record; the check
 	// fails closed on it, as it does on an unreadable claim below.
 	for _, p := range rep.Unjudged() {
-		holders = append(holders, peerName(p.Source, p.Branch, p.Path)+" could not be read, so what it holds is unknown ("+fsutil.RedactHome(p.NotRead)+")")
+		holders = append(holders, peerName(p.Source, p.Branch, p.Path)+" could not be read, so what it holds is unknown ("+fsutil.DisplayPathsIn(p.NotRead, p.Path)+")")
 	}
 	if sha := gitutil.RootCommit(repoRoot); gitutil.IsFullSHA(sha) {
 		run, err := implement.Peek(sha)
@@ -321,6 +326,9 @@ func peersCheck(repoRoot string, r intent.ReadyResult) (CheckRow, error) {
 		}
 		for _, c := range claims {
 			if (c.Live || c.Unreadable) && recordid.SameID(c.Record, r.IntentID) {
+				if session != "" && !c.Unreadable && c.Session == session {
+					continue
+				}
 				if c.Unreadable {
 					holders = append(holders, "an unreadable claim file holds it")
 					continue
@@ -340,12 +348,14 @@ func peersCheck(repoRoot string, r intent.ReadyResult) (CheckRow, error) {
 	return row, nil
 }
 
-// peerName names a peer for a refusal.
+// peerName names a peer for a refusal, a worktree by fsutil.DisplayPath so one
+// outside HOME is its directory name, not an absolute local path
+// (iss-2609281329007423).
 func peerName(src peers.Source, branch, path string) string {
 	if src != peers.SourceWorktree {
 		return "branch " + branch
 	}
-	who := "the worktree at " + fsutil.RedactHome(path)
+	who := "the worktree at " + fsutil.DisplayPath(path)
 	if branch != "" {
 		who += " (branch " + branch + ")"
 	}

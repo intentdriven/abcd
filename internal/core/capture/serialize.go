@@ -344,16 +344,9 @@ func frontmatterBounds(lines []string) (openIdx, closeIdx int, err error) {
 	if openIdx == -1 {
 		return -1, -1, fmt.Errorf("%w: content has no frontmatter block", ErrMalformedFrontmatter)
 	}
-	for j := openIdx + 1; j < len(lines); j++ {
-		ln := lines[j]
-		if strings.HasPrefix(ln, " ") || strings.HasPrefix(ln, "\t") {
-			continue
-		}
-		if frontmatter.IsDelimiter(ln) {
-			closeIdx = j
-			break
-		}
-	}
+	// The close is frontmatter.CloseAfter's, the one closing walk
+	// (iss-2608270908348042).
+	closeIdx = frontmatter.CloseAfter(lines, openIdx)
 	if closeIdx == -1 {
 		return -1, -1, fmt.Errorf("%w: frontmatter not terminated", ErrMalformedFrontmatter)
 	}

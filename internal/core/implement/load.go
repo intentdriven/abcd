@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"path/filepath"
 	"runtime"
 	"time"
 
@@ -285,12 +284,13 @@ func readLimits(home string, cores int) (machineload.Limits, LoadLimits) {
 		}
 		home = h
 	}
-	path := filepath.Join(home, ".abcd", machineload.LimitsFileName)
-	raw, refusal, err := fsutil.ReadDeclaration(path, maxLimitsBytes)
+	raw, refusal, err := fsutil.ReadHomeDeclaration(home, ".abcd/"+machineload.LimitsFileName, maxLimitsBytes)
 	switch refusal {
 	case fsutil.DeclarationOK:
 	case fsutil.DeclarationAbsent:
 		return out(def, LimitsDefault, "")
+	case fsutil.DeclarationBehindSymlink:
+		return out(def, LimitsDefaultAfterMalformed, err.Error())
 	case fsutil.DeclarationNotRegular:
 		return out(def, LimitsDefaultAfterMalformed, "it is not a regular file (a symlink, a directory or a device)")
 	case fsutil.DeclarationWritableByOthers:

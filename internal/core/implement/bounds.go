@@ -124,9 +124,13 @@ type Verdict struct {
 	Mode    Mode   `json:"mode,omitempty"`
 	Allowed bool   `json:"allowed"`
 	// Ceiling is the session's own agent ceiling as it joined with it, zero when
-	// it stated none: reported with every verdict so the session about to act
-	// sees the limit it keeps (see MaxCeiling).
+	// it stated none: reported with every verdict, beside AgentsAlive, so the
+	// session about to act sees the limit it keeps (see MaxCeiling).
 	Ceiling int `json:"ceiling,omitempty"`
+	// AgentsAlive is the count of the session's agents its own log lines declare
+	// alive (see Run.AgentsAlive): what an agent_start is held against when the
+	// session stated a ceiling.
+	AgentsAlive int `json:"agents_alive"`
 }
 
 // Check says whether a session may take a step, and logs the refusal when it may
@@ -155,6 +159,9 @@ func (r *Run) Check(session string, step Step, paths []string) (Verdict, error) 
 			return err
 		}
 		out = Verdict{Session: session, Role: s.Role, Step: step, Allowed: true, Ceiling: s.Ceiling}
+		if out.AgentsAlive, err = r.AgentsAlive(s); err != nil {
+			return err
+		}
 		w, ok, err := r.CurrentMode()
 		if err != nil {
 			return err

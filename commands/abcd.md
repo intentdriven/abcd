@@ -15,10 +15,10 @@ Run:
 "${CLAUDE_PLUGIN_ROOT}/abcd" --json
 ```
 
-Then summarise the JSON for the user: the directory (`dir`, with the home
-directory written as `~`), whether it is a git repo,
-whether the abcd development record is present, and which `.abcd/` work tiers
-exist.
+Then summarise the JSON for the user: the directory (`dir`, named
+home-relative as `~/…`, or by its directory name outside HOME, never by an
+absolute path), whether it is a git repo, whether the abcd development record is
+present, and which `.abcd/` work tiers exist.
 
 In a repository abcd manages the board also carries one line of presence — the
 `statusline` object in the JSON (`state`, `plain`, `elements`), rendered as a

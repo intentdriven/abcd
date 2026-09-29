@@ -1,6 +1,7 @@
 package capture
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -62,6 +63,12 @@ func TestLedgerMkdirCannotBeRedirectedOutsideTheCheckout(t *testing.T) {
 	if err == nil {
 		t.Fatal("a capture whose ledger ancestor was swapped for an outside symlink succeeded")
 	}
+	// The refusal is the ledger's own path-unsafe sentinel, not merely an error:
+	// mapEscape classifies os.Root's escape by its message, and this pins the
+	// match against the Go release in use (iss-2609251823559111).
+	if !errors.Is(err, ErrPathUnsafe) {
+		t.Fatalf("the swapped-ancestor mkdir was refused with %v, want ErrPathUnsafe", err)
+	}
 	if entries, _ := os.ReadDir(outside); len(entries) != 0 {
 		t.Fatalf("the ledger walk created %d entr(ies) outside the checkout: %v", len(entries), entries)
 	}
@@ -97,9 +104,33 @@ func TestLedgerRecordWriteCannotBeRedirectedOutsideTheCheckout(t *testing.T) {
 	if err == nil {
 		t.Fatal("a capture whose ledger ancestor was swapped at the write succeeded")
 	}
+	if !errors.Is(err, ErrPathUnsafe) {
+		t.Fatalf("the swapped-ancestor write was refused with %v, want ErrPathUnsafe", err)
+	}
 	for _, f := range walkFiles(t, outside) {
 		if strings.HasSuffix(f, ".md") || strings.Contains(filepath.Base(f), "abcd-tmp") {
 			t.Fatalf("the record write landed outside the checkout: %s", f)
 		}
+	}
+}
+
+// TestMapEscapeClassifiesTheRealOSRootEscape pins mapEscape's message match to
+// the error os.Root actually returns on the Go release in use. The os package
+// does not export its escape error, so the match is by text; a release that
+// rewords it would still refuse the write but degrade ErrPathUnsafe to a
+// generic error, and this test is what notices (iss-2609251823559111).
+func TestMapEscapeClassifiesTheRealOSRootEscape(t *testing.T) {
+	base := t.TempDir()
+	root, err := os.OpenRoot(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	_, escErr := root.Open("../outside")
+	if escErr == nil {
+		t.Fatal("os.Root opened a path outside its root")
+	}
+	if got := mapEscape(escErr, filepath.Join(base, "..", "outside")); !errors.Is(got, ErrPathUnsafe) {
+		t.Fatalf("mapEscape(%v) = %v, want ErrPathUnsafe", escErr, got)
 	}
 }

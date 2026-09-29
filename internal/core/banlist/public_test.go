@@ -13,17 +13,22 @@ import (
 	"github.com/intentdriven/abcd/internal/core/lint"
 )
 
-// nameRootFixtures names one file per name_roots entry of cfg, the entry itself
-// when this repository holds it as a file and a README under it when it holds a
-// directory, so a fixture tree resolves every root the real config declares
-// without a second list to keep in step with it.
+// nameRootFixtures names one file per name_roots entry of cfg, and per
+// extra_roots entry of any banned token (the role ban's, itd-2609212137129937),
+// the entry itself when this repository holds it as a file and a README under it
+// when it holds a directory, so a fixture tree resolves every root the real
+// config declares without a second list to keep in step with it.
 func nameRootFixtures(t *testing.T, cfg lint.Config) []string {
 	t.Helper()
 	var out []string
-	for _, r := range cfg.NameRoots {
+	roots := append([]string(nil), cfg.NameRoots...)
+	for _, bt := range cfg.BannedTokens {
+		roots = append(roots, bt.ExtraRoots...)
+	}
+	for _, r := range roots {
 		st, err := os.Stat(filepath.Join("..", "..", "..", filepath.FromSlash(r)))
 		if err != nil {
-			t.Fatalf("name_roots entry %q does not resolve in this repository: %v", r, err)
+			t.Fatalf("configured root %q does not resolve in this repository: %v", r, err)
 		}
 		if st.IsDir() {
 			r += "/README.md"
@@ -153,7 +158,8 @@ func TestAddPublicEntryGatesUserFacingContent(t *testing.T) {
 	// The public config's roots are ["docs", "README.md"]; both must resolve now
 	// that an unresolvable configured root fails loud (GitHub #360).
 	write("README.md", "# readme\n")
-	// Its name_roots must resolve too (iss-279).
+	// Its name_roots must resolve too (iss-279), and the role ban's extra_roots
+	// (itd-2609212137129937).
 	for _, r := range nameRootFixtures(t, cfg) {
 		write(r, "# t\n")
 	}
@@ -458,7 +464,8 @@ func TestAddPublicIsCaseInsensitiveLikeTheCuratedEntries(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(docs, "README.md"), []byte("# readme\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	// Its name_roots must resolve too (iss-279).
+	// Its name_roots must resolve too (iss-279), and the role ban's extra_roots
+	// (itd-2609212137129937).
 	for _, r := range nameRootFixtures(t, cfg) {
 		p := filepath.Join(docs, filepath.FromSlash(r))
 		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {

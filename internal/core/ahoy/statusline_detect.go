@@ -292,11 +292,20 @@ func statusCommandFor(entry string) string {
 // userStatusLineSettingPath is ~/.abcd/statusline.json, or "" when no home
 // resolves.
 func userStatusLineSettingPath() string {
-	home, err := os.UserHomeDir()
-	if err != nil || home == "" {
+	home := userHome()
+	if home == "" {
 		return ""
 	}
 	return filepath.Join(home, filepath.FromSlash(statusline.SettingsRelPath))
+}
+
+// userHome is the caller's home directory, or "" when none resolves.
+func userHome() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return home
 }
 
 // detectStatusLine raises the status-line gaps for one read of the harness.

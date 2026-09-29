@@ -262,6 +262,11 @@ func marshalBody(body string) string {
 // parseRecord splits a record file into its metadata and redacted body. The
 // Path field is set by the caller. Returns an error when the frontmatter fence
 // is missing or a required field is malformed.
+//
+// The delimiters are matched byte-exact, deliberately NOT by
+// frontmatter.IsDelimiter: this is the store's own format, written only by this
+// file, so a record whose fence is not the one the writer emits was not written
+// here and is refused rather than read leniently (iss-2608270908348042).
 func parseRecord(data []byte) (Record, string, error) {
 	text := string(data)
 	if !strings.HasPrefix(text, "---\n") {

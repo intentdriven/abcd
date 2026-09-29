@@ -49,7 +49,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"unicode/utf8"
@@ -251,14 +250,16 @@ func readRepo(repoRoot, rel string) ([]byte, error) {
 }
 
 // readMachine reads ~/.abcd/<rel> through the home-declaration guard: a regular
-// file, owned by the caller and writable by nobody else, because what it says
-// decides which model a step reaches. An absent file returns (nil, nil).
+// file, owned by the caller and writable by nobody else, reached through no
+// symlinked directory, because what it says decides which model a step
+// reaches. An absent file returns (nil, nil).
 func readMachine(home, rel string) ([]byte, error) {
-	p := filepath.Join(home, ".abcd", filepath.FromSlash(rel))
-	raw, refusal, err := fsutil.ReadDeclaration(p, MaxFileBytes)
+	raw, refusal, err := fsutil.ReadHomeDeclaration(home, ".abcd/"+rel, MaxFileBytes)
 	switch refusal {
 	case fsutil.DeclarationOK:
 		return raw, nil
+	case fsutil.DeclarationBehindSymlink:
+		return nil, err
 	case fsutil.DeclarationAbsent:
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, nil

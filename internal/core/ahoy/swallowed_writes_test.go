@@ -99,7 +99,9 @@ func TestSessionStoreFailureIsNoted(t *testing.T) {
 		}
 		a := &applyCtx{cwd: t.TempDir(), approved: map[GapCategory]bool{SafeAutocreate: true}}
 		a.stepHistory()
-		if !notesCarryAll(a.notes, "session store", "not a directory") {
+		// The registry is created one real directory at a time
+		// (fsutil.EnsureRealDirAll), so the reason is the level it refused.
+		if !notesCarryAll(a.notes, "session store", "~/.abcd", "not a real directory") {
 			t.Errorf("no note says the session store was not created, and why; notes: %v", a.notes)
 		}
 	})

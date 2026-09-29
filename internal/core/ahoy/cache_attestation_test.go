@@ -78,6 +78,7 @@ func assertNoOwnedCopy(t *testing.T, target string, res InstallResult) {
 // it, and the note says which record is missing.
 func TestInstallRefusesUnattestedEnvDataDir(t *testing.T) {
 	home, _ := setupUserScope(t)
+	coldCache(t)
 	binDir := filepath.Join(home, ".local", "bin")
 	t.Setenv("PATH", binDir)
 	data := t.TempDir()
@@ -100,13 +101,13 @@ func TestInstallRefusesUnattestedEnvDataDir(t *testing.T) {
 	if strings.Contains(joined, home) {
 		t.Errorf("notes must render home paths in tilde form, never absolute; notes = %v", res.Notes)
 	}
-	// Install degrades exactly as it does with no cache at all: the pinned
-	// symlink, said out loud.
-	if fi, err := os.Lstat(target); err != nil || fi.Mode()&os.ModeSymlink == 0 {
-		t.Errorf("an unattested cache must degrade to the spc-21 symlink: %v (%v)", fi, err)
+	// Install refuses exactly as it does with no cache at all: no entry, and
+	// the command to run first, said out loud (iss-2609100506263330).
+	if fi, err := os.Lstat(target); !os.IsNotExist(err) {
+		t.Errorf("an unattested cache must leave no PATH entry at all: %v (%v)", fi, err)
 	}
-	if !strings.Contains(joined, "symlink") {
-		t.Errorf("the degradation must be named; notes = %v", res.Notes)
+	if !strings.Contains(joined, installRemedyAnchor) {
+		t.Errorf("the refusal must name the command to run first; notes = %v", res.Notes)
 	}
 }
 
@@ -229,12 +230,14 @@ func TestInstallPromotesAttestedCacheByEitherRoute(t *testing.T) {
 	}
 }
 
-// TestDetectOffersNoHealFromUnattestedCache: the symlink.legacy gap promises a
-// heal to the owned copy, so it is offered only when install would actually
-// perform it — never from a cache no attestation binds, or detection and
-// install would disagree about the same directory.
+// TestDetectOffersNoHealFromUnattestedCache: the symlink.legacy gap's fix hint
+// promises a heal to the owned copy only when install would actually perform
+// it — never from a cache no attestation binds, or detection and install would
+// disagree about the same directory. Unbound, the hint names the command that
+// provides a verified copy first.
 func TestDetectOffersNoHealFromUnattestedCache(t *testing.T) {
 	home, pluginRoot := setupUserScope(t)
+	coldCache(t)
 	binDir := filepath.Join(home, ".local", "bin")
 	t.Setenv("PATH", binDir)
 	linkOwned(t, filepath.Join(binDir, "abcd"), pluginRoot)
@@ -246,8 +249,8 @@ func TestDetectOffersNoHealFromUnattestedCache(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if g := gapByID(det.Gaps, "symlink.legacy"); g != nil {
-		t.Fatalf("detection offers a heal from an unattested cache: %+v", *g)
+	if g := gapByID(det.Gaps, "symlink.legacy"); g == nil || strings.Contains(g.FixHint, "abcd-owned copy") || !strings.Contains(g.FixHint, installRemedyAnchor) {
+		t.Fatalf("detection offers a heal from an unattested cache, or names no command to run first: %+v", g)
 	}
 
 	attestDataCache(t, data, cacheArtefact)
@@ -255,7 +258,7 @@ func TestDetectOffersNoHealFromUnattestedCache(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if g := gapByID(det.Gaps, "symlink.legacy"); g == nil {
+	if g := gapByID(det.Gaps, "symlink.legacy"); g == nil || !strings.Contains(g.FixHint, "abcd-owned copy") {
 		t.Fatalf("once attested, the same cache must be offered as the heal: %+v", det.Gaps)
 	}
 }
@@ -297,6 +300,7 @@ func TestReadCacheAttestationIgnoresMalformed(t *testing.T) {
 
 	t.Run("absent", func(t *testing.T) {
 		setupHermetic(t)
+		coldCache(t)
 		if rec, ok := readCacheAttestation(); ok {
 			t.Errorf("no record must read as absent, got %+v", rec)
 		}
@@ -304,6 +308,7 @@ func TestReadCacheAttestationIgnoresMalformed(t *testing.T) {
 
 	t.Run("symlinked record", func(t *testing.T) {
 		home, _ := setupHermetic(t)
+		coldCache(t)
 		real := filepath.Join(t.TempDir(), "elsewhere")
 		if err := os.WriteFile(real, []byte(good), 0o600); err != nil {
 			t.Fatal(err)

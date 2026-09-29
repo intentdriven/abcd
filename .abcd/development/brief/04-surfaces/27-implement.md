@@ -110,22 +110,33 @@ the condition, when it claims while holding another live claim
 Checking a step that is not a claim — a lane, the release, a review, an audit or
 a landing — asks before it; an allowed step writes nothing.
 
-The second session's own agent ceiling (criterion 5) is recorded and reported,
-not enforced. The session states it when it joins (1 to 64); the
-record and the `session_open` line carry it, a resume cannot restate it, and
-every check verdict reports it (`ceiling`). abcd runs no agent and counts none
-— `agent_start` and `agent_end` are lines the session writes — so there is no
-count here to hold it against; keeping it, and logging a `ceiling_wait` at it,
-is the session's discipline, which the verdict puts in front of it at every
-step. On a refused claim the second session
-also logs a `backoff` with its reason and minutes, the minutes being what the
-attempt spent, measured from its start; a run state locked past the lock's
-timeout by another session's change is contention too, and the second session's
-`backoff` from it carries `on: run_state` and the minutes it waited. A second
-session whose join meets the lock has no record yet, so the role it is joining
-with places the line; a session that never joined has no role to place it by,
-and the refusal says the backoff went unlogged. The append takes no lock, so
-that line reaches the log while the lock is held.
+A session's own agent ceiling (criterion 5; for the second session, on top of
+the first's) is held against the agents the session declares. The session
+states it when it joins (1 to 64); the record and the `session_open` line carry
+it, and a resume cannot restate it. abcd runs no agent, so the count it holds
+the ceiling against is the session's own lines: the agents its `agent_start`
+lines since it joined name, less those an `agent_end` of the same `agent` has
+ended. An `agent_start` that would take the count past the ceiling is refused at
+exit 2 with a `refusal` line (`agent_ceiling`, naming the agent, the agents
+alive and the ceiling); restating an agent already alive is not a new one. Every
+check verdict reports the count (`agents_alive`) beside the ceiling
+(`ceiling`). An agent the session never logs — a fork, one the host started
+outside the log — is invisible to the count, which is why the run's no-fork
+rule stays the discipline for that half (iss-2609240646542516); a run that went
+over anyway says so with a `ceiling_overrun` line. On a refused claim the
+second session also logs a `backoff` with its reason and minutes, the minutes
+being what the attempt spent, measured from its start; a run state locked past
+the lock's timeout by another session's change is contention too, and the second
+session's `backoff` from it carries `on: run_state` and the minutes it waited. A
+second session whose join meets the lock has no record yet, so the role it is
+joining with places the line; a session that never joined has no role to place
+it by, and the refusal says the backoff went unlogged. The append takes no lock,
+so that line reaches the log while the lock is held.
+
+Every bound keys on the role in the session's record, which is the session's
+own statement: the release refusal, like the others, rests on a cooperative,
+unauthenticated role, a discipline between cooperating sessions rather than a
+wall against one that lies about its role.
 
 The reading corpus is derived, never restated: the union of every position's
 `object.paths` in the checkout's committed `.abcd/config/reading-presets.json`,
@@ -146,9 +157,11 @@ keyed on a flag the second session could omit would guard nothing.
 Logging appends one of the run's own events, with its key-value fields
 (`backoff`, `lane_open`, `lane_close`, `agent_start`, `agent_end`,
 `ceiling_wait`, `gate_run`, `review`, `fallback`, `stop`, `refusal`, `pr`,
-`capture`, `context`). Every line carries `ts` (RFC 3339, UTC), `session` and `event`, then
+`capture`, `context`, `ceiling_overrun`, `intervention`, `decision`). Every line carries `ts` (RFC 3339, UTC), `session` and `event`, then
 the fields; it reaches the file in one `O_APPEND` write through
-`fsutil.AppendLineIn`, so two writers each land whole lines. The session, window,
+`fsutil.AppendLineIn`, which refuses a symlinked or non-regular leaf as its read
+twin does, so two writers each land whole lines and a log leaf planted as a link
+onto a claim file appends nothing. The session, window,
 claim and load events are refused here: they are written by their own sub-verbs,
 so the log cannot record a claim the run state does not hold, or a load warning
 the check did not give. A hand-logged `backoff` names its `reason` and the
@@ -157,18 +170,43 @@ written: contention the verb cannot see, such as the merge queue, reaches the
 comparison only this way, and a backoff with neither would count as one that
 cost nothing for no reason.
 
+An event missing a field the report reads is refused when it is written, naming
+the field, rather than found missing afterwards (iss-2609240646555891): a
+`lane_close` needs `lane` and `outcome`; an `agent_start` its `agent`; an
+`agent_end` its `agent`, `role`, `model` and a number under `minutes`,
+`wall_minutes` or `wall_min`; a `ceiling_overrun` (iss-2609240646549900) the
+agents `alive`, the `ceiling`, the `lane` and the `minutes` over. The evidence
+events an autonomous run keeps so a later run can need no person carry theirs:
+an `intervention` its `kind` (`session_open`, `account`, `ruling`, `restart`,
+`close_session`, `file_restore`, `permission` or `other`), `by`, `what`, `why`
+and `autonomy_gap`; a `stop` its `cause`; a `decision` its `what`, the
+`alternative` not taken and `why`. An `at` or `last_productive` given is an
+RFC 3339 time, and a `detected_after_min` or `noticed_after_min` a number.
+
 The report derives, per mode, the windows, wall clock, lanes opened and
 landed (a `lane_close` whose outcome is `merged` or `landed`), the second
 session's lanes landed, collisions (`claim_denied`), lapsed claims, backoffs and
 their minutes, agent minutes (`agent_end`'s `minutes`, `wall_minutes` or
-`wall_min`, the key the run's hand-kept lines carry), ceiling wait and refusals,
-with each session's share. An event belongs to the window open when it happened.
+`wall_min`, the key the run's hand-kept lines carry), ceiling wait, ceiling
+overruns and refusals, with each session's share. An event belongs to the window
+open when it happened, save a `session_open` logged at most a minute before the
+next `window_mode`, which belongs to that window: a session joining a second
+before the first sets the mode is joining that window (iss-2609240646544930).
 A `context` line is an orchestrator's context measurement (`used_pct`, `role`,
 `note`); the report totals them per session across the whole run, not per mode,
 with the last `used_pct` seen, because a session's context is carried across
 windows. `leader`
 is the mode with the most lanes landed per wall-clock hour — a figure the run's
 report cites when it names the mode it would keep, not a verdict of the verb's.
+Over the whole run the report counts the evidence (interventions by kind with
+the minutes they went undetected, stops with the minutes before each was
+noticed, decisions), names per event the lines lacking a field logging requires
+(`missing_fields`: lines written by hand or before the requirement, which every
+figure above reads as absent), and names each of `lane_open`, `lane_close`,
+`agent_start`, `agent_end` and `gate_run` whose last line falls more than six
+hours before the run's last line, load samples aside (`coverage`). Every line
+still parses in those cases, so without the two lists nothing would say that a
+figure is short.
 Lines that are not a JSON object with `ts`, `session` and `event` are listed as
 `unparsed`, never dropped silently. The report can read one day, or one log file
 named directly.

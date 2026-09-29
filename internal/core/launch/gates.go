@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/intentdriven/abcd/internal/core/frontmatter"
 	"github.com/intentdriven/abcd/internal/core/mdrecord"
 	"os"
 	"path"
@@ -257,15 +258,12 @@ func proseLines(data []byte) []proseLine {
 	lines := strings.Split(strings.ReplaceAll(string(data), "\r\n", "\n"), "\n")
 	var out []proseLine
 	frontEnd := -1 // index of the closing "---"; -1 when there is no frontmatter
-	if len(lines) > 0 && strings.TrimSpace(lines[0]) == "---" {
-		for i := 1; i < len(lines); i++ {
-			if strings.TrimSpace(lines[i]) == "---" {
-				if isFrontmatter(lines[1:i]) {
-					frontEnd = i
-				}
-				break
-			}
-		}
+	// The block's extent is frontmatter.Close's: a BOM ahead of the opening
+	// rule trimmed at line 0 (iss-2608221126066379), and every delimiter judged
+	// by the one rule, so an indented rule neither opens nor closes it
+	// (iss-2608270908348042).
+	if end := frontmatter.Close(lines); end > 0 && isFrontmatter(lines[1:end]) {
+		frontEnd = end
 	}
 	// Fenced code is read through the tree's one fence rule (mdrecord), so a
 	// longer run, a mismatched closer or an unclosed fence reads here exactly

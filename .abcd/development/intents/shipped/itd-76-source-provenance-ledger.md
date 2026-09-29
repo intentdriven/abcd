@@ -61,5 +61,78 @@ None stated.
 
 ## Audit Notes
 
-<!-- abcd-review: OWED receipt=rcp-595934bbc552 -->
-Fidelity review OWED (receipt rcp-595934bbc552).
+<!-- abcd-review: INGESTED receipt=rcp-595934bbc552 -->
+Fidelity review — receipt rcp-595934bbc552 (verifier intent-auditor claude-fable-5-1).
+
+Provenance: intent-auditor@claude-fable-5-1 · rubric_hash sha256:effa65b3e9e88ff29433b443ec2be159522a8b0b71cf1434526514aa61edb13e · prompt_hash sha256:9c702d8c1070e2b1d1a46d9c4e1b52d251dc706e2e889b0e0f24d95adb3998a0
+Input attestations: commit:5bc0ebdc2b235a1221fc43934547906fe4b02bae (spc-31 close, itd-76 ships); tree audited at 52c2236a55830421c2af5fa58f5a196c4eb7fdd5@-;
+
+Acceptance rollup: MET 5 · MET_WITH_CONCERNS 2 · NOT_MET 0 · INCONCLUSIVE 0
+
+Per-criterion verdicts:
+- ac-1 — MET: Add refuses without a declared class, writes the CSL-JSON entry with its custom block and lays original plus text.md under < class>/< key>/, committed in the corpus; TestAddConfidentialLandsUnderItsClassFolder passes at BASE
+  evidence: internal/core/source/add.go:154 — "declare the class — confidential or public; it is decided once, here, and never defaulted"
+  evidence: internal/core/source/add.go:98 — "folder := filepath.Join(c.Dir, req.Class, entry.ID)"
+  evidence: internal/core/source/add.go:129 — "writeSources(c.Dir, append(fresh.raw, raw))"
+  evidence: internal/core/source/source_test.go:119 — "func TestAddConfidentialLandsUnderItsClassFolder"
+- ac-2 — MET: Record carries decision_ref, claim, source_key, locator, influence and cited_publicly; Append never sets cited_publicly and writes through AppendLineIn only, a correction is a new line naming the earlier one; TestLedgerAppendsAndNeverEdits proves the prefix is preserved
+  evidence: internal/core/source/ledger.go:25 — "type Record struct"
+  evidence: internal/core/source/ledger.go:118 — "cited_publicly is always false here: exercising the right to cite is Flip's, and only Flip's"
+  evidence: internal/core/source/ledger.go:237 — "fsutil.AppendLineIn(root, rel, b, 0o600)"
+  evidence: internal/core/source/source_test.go:229 — "a correction rewrote an earlier line"
+- ac-3 — MET_WITH_CONCERNS: Projection bans titles and aliases always and authors only under ban_authors; SyncBanlist writes the owned block; this repository's guard rebuilds ./cmd/abcd and refreshes on every commit (TestTheRepositoryGuardRefreshesWithItsOwnBuild) and a banned string refuses the commit (TestSyncBanlistFeedsTheGuard). Concern: the hook `ahoy install` scaffolds into a MANAGED repository refreshes only after a repo-local opt-in (`git config --local abcd.sourcesBinary`), otherwise one line and no refresh — a signed-off narrowing (DECISIONS.md 2026-09-25) pending the ruling in open iss-2609250834251447
+  evidence: internal/core/source/guard.go:17 — "func (c *Corpus) Projection() ([]banlist.KeyedPattern, error)"
+  evidence: internal/core/source/add.go:441 — "if e.Custom.BanAuthors {"
+  evidence: .githooks/pre-commit:599 — "if declares_format "$sources_first"; then sources_refresh"
+  evidence: internal/core/source/source_test.go:572 — "func TestTheRepositoryGuardRefreshesWithItsOwnBuild"
+  evidence: internal/core/source/source_test.go:401 — "the guard let a confidential title through"
+  evidence: internal/core/ahoy/defaults/pre-commit:481 — "elif [ -z "$sources_bin" ]; then"
+  evidence: .abcd/work/DECISIONS.md:2562 — "The copy `abcd ahoy` scaffolds refreshes only when the clone opts in with \`git config --local abcd.sourcesBinary"
+- ac-4 — MET: CiteCheck scans through the private layer's matcher and a Finding carries source key, field, line and offset only; TestCiteCheckReportsByKeyOnly asserts the JSON report holds no title, alias or author
+  evidence: internal/core/source/guard.go:91 — "type Finding struct"
+  evidence: internal/core/source/guard.go:135 — "Finding{Source: key, Field: field, Line: h.Line, Offset: h.Offset}"
+  evidence: internal/core/source/source_test.go:415 — "func TestCiteCheckReportsByKeyOnly"
+- ac-5 — MET: Flip refuses naming gate 1 when permission_status is not citable or the folder is not public/, appends nothing on refusal, and a successful flip is a new line with flips naming the original; TestFlipNeedsBothGates covers both outcomes
+  evidence: internal/core/source/ledger.go:194 — "gate 1 — source %q has permission_status %q, and only %q grants the right to cite"
+  evidence: internal/core/source/ledger.go:202 — "flip := orig flip.TS = stamp(now) flip.CitedPublicly = true"
+  evidence: internal/core/source/source_test.go:270 — "func TestFlipNeedsBothGates"
+- ac-6 — MET_WITH_CONCERNS: Every core step returns ErrNoCorpus and creates nothing (TestNoCorpusIsNamedByEveryStep); the guard prints one line and proceeds; `sync-banlist --refresh` is one line and exit 0; every other verb says so on one line. Concern: the verbs exit 3, a non-zero code, where the criterion says 'never a failure' — the spec's design (item 6) chose a distinct no-corpus exit for the verbs and 0 for the guard, so the narrowing is signed off
+  evidence: internal/core/source/source.go:92 — "ErrNoCorpus = errors.New("sources corpus is absent")"
+  evidence: internal/surface/cli/source.go:54 — "if errors.Is(err, source.ErrNoCorpus) { return &exitError{Code: 3"
+  evidence: internal/surface/cli/source.go:451 — "if refresh && errors.Is(err, source.ErrNoCorpus) {"
+  evidence: .githooks/pre-commit:593 — "no sources corpus at ~/.abcd/sources — generated banlist block not refreshed (skipped)"
+  evidence: internal/core/source/source_test.go:518 — "func TestNoCorpusIsNamedByEveryStep"
+  evidence: internal/surface/cli/source_surface_test.go:42 — "func TestSourceNoCorpusSaysSoOnEveryVerb"
+  evidence: .abcd/development/specs/closed/spc-31-source-provenance-ledger.md:73 — "exit 0 (guard) / a distinct no-corpus exit (verbs)"
+- ac-7 — MET: Declassify is a `git mv confidential/<key> public/<key>` plus the entry update in one commit; the next SyncBanlist drops the key's block lines and Flip then succeeds; TestDeclassifyDropsTheBanAndOpensTheFlip proves all three
+  evidence: internal/core/source/add.go:405 — "corpusGit(c.Dir, "mv", "--", from, to)"
+  evidence: internal/core/source/guard.go:20 — "if c.Class(e.ID) != ClassConfidential { continue"
+  evidence: internal/core/source/source_test.go:449 — "func TestDeclassifyDropsTheBanAndOpensTheFlip"
+
+Gap audit:
+- honoured:
+  - folder location is the classification and a corpus whose folders and entries disagree is refused by every step that derives a ban
+    evidence: internal/core/source/source.go:297 — "func (c *Corpus) requireConsistent() error"
+    evidence: internal/core/source/source_test.go:488 — "func TestAMismatchedClassRefusesTheSync"
+  - the two-gate citation boundary of adr-41: permission_status grants and a human-flipped ledger line exercises
+    evidence: internal/core/source/ledger.go:161 — "Flip exercises the right to cite for one ledger line (adr-41 gate 2), and only after gate 1 grants it"
+  - one matcher for guard and cite-check: the projection runs through banlist.PhrasePattern and banlist.ScanText
+    evidence: internal/core/source/add.go:426 — "p, err := banlist.PhrasePattern(phrases...)"
+    evidence: internal/core/source/guard.go:127 — "hits, err := banlist.ScanText(pats, text)"
+  - the corpus is a no-remote git repository in the user-level home and every write is committed
+    evidence: internal/core/source/source.go:411 — "corpusGit(dir, "init", "-q")"
+    evidence: internal/core/source/source.go:405 — "the location is inside another git working tree"
+  - the verbs are wired on the CLI and the plugin surface
+    evidence: commands/source.md:4 — "add [document] --key K --confidential|--public [...] | declassify < key> | ledger"
+    evidence: internal/surface/cli/source.go:62 — "func newSourceCommand(asJSON *bool) *cobra.Command"
+- diverged:
+  - the pre-commit guard auto-refreshes the block on every commit in a managed repo — delivered as opt-in per clone (abcd.sourcesBinary) for the scaffolded hook, automatic only in abcd's own checkout, pending the ruling in iss-2609250834251447
+    evidence: internal/core/ahoy/defaults/pre-commit:482 — "this hook refreshes its banlist block only on opt-in: git config --local abcd.sourcesBinary"
+    evidence: .abcd/work/issues/resolved/iss-2609252007419997-the-scaffolded-pre-commit-template-refreshes-the-sources.md:14 — "iss-2609250834251447's ruling stays open and can widen it"
+  - every corpus-dependent step no-ops and says so, never a failure — the verbs answer with exit 3 (the spec's distinct no-corpus code), the guard with exit 0
+    evidence: internal/surface/cli/source.go:8 — "3 there is no corpus at the configured location — the distinct no-corpus code"
+- missing:
+  - the dogfood target — re-establishing this repository's own corpus through the shipped verbs as the first validation — is not evidenced; the ship commit records it as left to the person whose corpus it is
+    evidence: .abcd/development/specs/closed/spc-31-source-provenance-ledger.md:79 — "## First validation"
+    evidence: .abcd/development/intents/shipped/itd-76-source-provenance-ledger.md:41 — "re-establishing this repo's own corpus through those verbs is the first validation"
+<!-- abcd-review-end receipt=rcp-595934bbc552 -->

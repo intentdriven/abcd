@@ -87,19 +87,13 @@ func pressReleaseSection(blob string) string {
 }
 
 // bodyStart returns the index of the first line after the frontmatter block, or
-// 0 when the document has none. The block is delimited by the first TWO `---`
-// lines, exactly as internal/core/frontmatter reads it, so the two never
-// disagree about where the body begins.
+// 0 when the document has none. The block is frontmatter.Close's, the one walk
+// frontmatter.Fields makes, so the two never disagree about where the body
+// begins — a private copy skipped the BOM Fields trims and handed a BOM-led
+// record's whole frontmatter to the changelog as its body
+// (iss-2608221126066379).
 func bodyStart(lines []string) int {
-	if len(lines) == 0 || strings.TrimRight(lines[0], " \t\r") != "---" {
-		return 0
-	}
-	for i := 1; i < len(lines); i++ {
-		if strings.TrimRight(lines[i], " \t\r") == "---" {
-			return i + 1
-		}
-	}
-	return 0
+	return frontmatter.Close(lines) + 1
 }
 
 // firstHeading returns the text of the first level-one heading in body, or "".

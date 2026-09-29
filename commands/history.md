@@ -263,7 +263,9 @@ gone is placed by the session that spawned it. Report all four populations:
 root SHA), `orphans`, and `failed`.
 
 An **orphan** — a transcript whose repository is not on this machine — is
-ignored and reported, never guessed at. It is stored only when this repository
+ignored and reported, never guessed at; its recorded `cwd` is shown
+home-relative, or by its directory name when it sits outside HOME, as is the
+destination the report leads with. It is stored only when this repository
 claims its project name, through `adopt_projects` in the configuration or
 `--adopt` for one run, and an adopted record carries `adopted_project` so the
 adoption is on the artefact. When the configuration sets `on_orphan` to

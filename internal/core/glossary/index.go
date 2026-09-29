@@ -237,7 +237,10 @@ func frontmatterOpen(lines []string) int {
 	if i >= len(lines) {
 		return -1
 	}
-	if strings.TrimSpace(lines[i][col:]) == "---" && strings.TrimSpace(frontmatter.TrimBOM(lines[i][:col])) == "" {
+	// The comment preamble is tolerated; the delimiter line is judged by
+	// frontmatter.IsDelimiter, the one rule, so an indented `  ---` opens
+	// nothing here as it opens nothing to Fields (iss-2608270908348042).
+	if frontmatter.TrimBOM(lines[i][:col]) == "" && frontmatter.IsDelimiter(lines[i][col:]) {
 		return i
 	}
 	return -1

@@ -58,10 +58,11 @@ most valuable thing left. Reach that with an explicit flag on any of the three:
 "${CLAUDE_PLUGIN_ROOT}/abcd" disembark probe <source-repo> --include-ignored --json
 ```
 
-**Offer it; never assume it.** Widening the scan is the user's choice to make,
-not a default to infer from a repo looking abandoned. When a probe comes back
-thin over a repo that plainly had work in it, say the scan honoured `.gitignore`
-and ask whether to widen — do not re-run wide on your own judgement.
+**Offer it; never assume it.** Widening the scan is the technical facilitator's
+choice to make, not a default to infer from a repo looking abandoned. When a
+probe comes back thin over a repo that plainly had work in it, say the scan
+honoured `.gitignore`, set `abcd mode facilitator`, and ask the technical
+facilitator whether to widen — do not re-run wide on your own judgement.
 
 The wide scan declares itself: the report carries `included_ignored: true`
 (`scope: WIDE` in the text rendering), and the marker scan's `searched` line says

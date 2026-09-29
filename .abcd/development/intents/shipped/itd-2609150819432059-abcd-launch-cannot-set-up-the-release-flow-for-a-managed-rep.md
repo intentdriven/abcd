@@ -77,8 +77,86 @@ Settled in the planning interview with the product thinker on 2026-09-20; each r
 
 ## Audit Notes
 
-<!-- abcd-review: OWED receipt=rcp-97519c4308ad -->
-Fidelity review OWED (receipt rcp-97519c4308ad).
+<!-- abcd-review: INGESTED receipt=rcp-97519c4308ad -->
+Fidelity review — receipt rcp-97519c4308ad (verifier intent-auditor claude-fable-5-1).
+
+Provenance: intent-auditor@claude-fable-5-1 · rubric_hash sha256:effa65b3e9e88ff29433b443ec2be159522a8b0b71cf1434526514aa61edb13e · prompt_hash sha256:0ba7df9fbbcf7cab4dc9553e264ddd0f97116f904f3f870ce848e360105749ed
+Input attestations: commit:b52746fb3 (spc-2609202019026366 close, itd-2609150819432059 ships); tree audited at 52c2236a55830421c2af5fa58f5a196c4eb7fdd5@-;
+
+Acceptance rollup: MET 9 · MET_WITH_CONCERNS 0 · NOT_MET 0 · INCONCLUSIVE 0
+
+Per-criterion verdicts:
+- ac-1 — MET: LoadArtefact turns an absent file into a PreflightError wrapping ErrNoArtefact whose message names .abcd/config/artefact.json and the three kinds; DryRun surfaces it (TestDryRunWithNoArtefactDeclarationRefusesNamingItsHome); ahoy raises artefact.missing as Required and Resolvable inside the managed-repo branch, and install writes it (TestDetectRaisesArtefactMissingUntilTheKindIsDeclared, TestInstallPromptsForTheKindAndWritesIt); all pass at BASE
+  evidence: internal/core/launch/artefact.go:117 — "return Artefact{}, &PreflightError{msg: noArtefactMessage(), err: ErrNoArtefact}"
+  evidence: internal/core/launch/artefact.go:97 — "this repository declares no artefact kind: " + ArtefactRelPath + " is where it is declared"
+  evidence: internal/core/launch/dryrun_kind_test.go:15 — "func TestDryRunWithNoArtefactDeclarationRefusesNamingItsHome"
+  evidence: internal/core/ahoy/artefact.go:58 — "Required: true, Resolvable: true,"
+  evidence: internal/core/ahoy/detect.go:124 — "gaps = append(gaps, detectArtefact(abs)...)"
+  evidence: internal/core/ahoy/artefact_test.go:46 — "func TestDetectRaisesArtefactMissingUntilTheKindIsDeclared"
+- ac-2 — MET: CheckDeclaredLockstep reads the primary through version-location.json and every declared file, refuses an unreadable declared path by name, and reads no plugin manifest; the dry-run test for a binary previews with no payload include config and no plugin-only refusal
+  evidence: internal/core/launch/lockstep.go:317 — "No plugin manifest is read."
+  evidence: internal/core/launch/lockstep.go:358 — "declared lockstep file "+f.Path+" not readable"
+  evidence: internal/core/launch/lockstep_declared_test.go:23 — "func TestDeclaredLockstepDevPassesWithEveryKeyAbsentAndReadsNoPluginManifest"
+  evidence: internal/core/launch/lockstep_declared_test.go:47 — "func TestDeclaredLockstepRefusesADeclaredPathItCannotRead"
+  evidence: internal/core/launch/dryrun_kind_test.go:57 — "func TestDryRunForABinaryScansTheArchivedTreeAndChecksTheDeclaredLockstep"
+- ac-3 — MET: For a non-plugin kind the scaffold writes CHANGELOG.md as the empty [Unreleased] anchor only, abcd-release-gate.yml as its own file with a build job that is `mkdir -p dist` and no guessed build, and the report names every written file; TestScaffoldForABinaryLaysTheChangelogAndTheGateWorkflow passes
+  evidence: internal/core/launch/scaffold/kind.go:28 — "ChangelogAnchor = "# Changelog\n\n## [Unreleased]\n""
+  evidence: internal/core/launch/scaffold/kind.go:23 — "GateWorkflowPath = ".github/workflows/" + GateWorkflowName"
+  evidence: internal/core/launch/scaffold/kind_test.go:105 — "func TestScaffoldForABinaryLaysTheChangelogAndTheGateWorkflow"
+  evidence: internal/core/launch/scaffold/kind_test.go:118 — "run: mkdir -p dist"
+- ac-4 — MET: An existing release.yml/release.yaml is found by Lstat and never opened, the gate is written beside it, the report marks it kept with 'left alone' and carries the workflow_call stanza; proven at the core (TestScaffoldLeavesAnExistingReleaseWorkflowByteForByte) and at the front door (TestLaunchScaffoldForABinaryWithItsOwnReleaseWorkflowPrintsTheStanza)
+  evidence: internal/core/launch/scaffold/kind.go:34 — "var ownReleaseWorkflows = []string{".github/workflows/release.yml", ".github/workflows/release.yaml"}"
+  evidence: internal/core/launch/scaffold/kind.go:40 — "const gateCallStanza = \`jobs: abcd-release-gate:"
+  evidence: internal/core/launch/scaffold/kind_test.go:169 — "func TestScaffoldLeavesAnExistingReleaseWorkflowByteForByte"
+  evidence: internal/surface/cli/launch_kind_test.go:137 — ""[kept] .github/workflows/release.yml", "[written] .github/workflows/abcd-release-gate.yml""
+- ac-5 — MET: A hand-edited gate workflow makes the next scaffold return ErrScaffoldBlocked with the file marked refused and the edit kept; Confirm restores the machinery — the same drift class as the plugin scaffold's
+  evidence: internal/core/launch/scaffold/kind_test.go:205 — "func TestScaffoldRefusesAHandEditedGateWorkflowUntilConfirm"
+  evidence: internal/core/launch/scaffold/kind_test.go:214 — "if !errors.Is(err, ErrScaffoldBlocked) {"
+  evidence: internal/core/launch/scaffold/writefiles_test.go:14 — "func TestWriteFilesKeepsASeedAndRefusesDriftedMachinery"
+- ac-6 — MET: A declared binary's `launch ship` with an open major captured since the anchor tag and no deferral exits 1 naming the record (TestLaunchShipForADeclaredBinaryRefusesAnOpenMajor); the GuardFindings path is unchanged for every kind
+  evidence: internal/surface/cli/launch_kind_test.go:76 — "func TestLaunchShipForADeclaredBinaryRefusesAnOpenMajor"
+  evidence: internal/surface/cli/launch_kind_test.go:87 — "if !strings.Contains(string(out), "iss-90") {"
+- ac-7 — MET: The same cut with deferred_after naming the anchor tag and a deferral_reason exits 0 and the report names 'deferred: iss-90' with its reason (TestLaunchShipForADeclaredBinaryPassesAndNamesADeferral)
+  evidence: internal/surface/cli/launch_kind_test.go:94 — "func TestLaunchShipForADeclaredBinaryPassesAndNamesADeferral"
+  evidence: internal/surface/cli/launch_kind_test.go:106 — ""deferred: iss-90""
+- ac-8 — MET: For a non-plugin kind the bundle is git archive's view of HEAD minus the record namespace, the dry-run report's ScannedTree carries ArchiveTreeDescription and the CLI prints 'scanned tree: the tree the release tag would archive'; a secret under .abcd/ is not scanned as shipping
+  evidence: internal/core/launch/bundle.go:1053 — "const ArchiveTreeDescription = "the tree the release tag would archive (git archive's view of HEAD, export-ignore honoured), minus the record namespace""
+  evidence: internal/core/launch/dryrun.go:112 — "report.Bundle, report.ScannedTree = bundle, tree"
+  evidence: internal/core/launch/dryrun_kind_test.go:63 — "report.ScannedTree != ArchiveTreeDescription"
+  evidence: internal/surface/cli/launch_nopayload_test.go:57 — "func TestLaunchDryRunForADeclaredBinarySaysWhichTreeItScanned"
+- ac-9 — MET: ParseArtefact refuses an unknown kind naming it and the accepted set, and TestEveryLaunchVerbRefusesAnUnknownKind drives dry-run, ship, scaffold, receipts and archive, asserting the refusal text and that neither the repository nor --out gained a file
+  evidence: internal/core/launch/artefact.go:152 — "names the kind %q, which abcd does not know: the accepted kinds are %s"
+  evidence: internal/surface/cli/launch_kind_test.go:36 — "func TestEveryLaunchVerbRefusesAnUnknownKind"
+  evidence: internal/surface/cli/launch_kind_test.go:64 — "if status := r.Git("status", "--porcelain", "--ignored"); status != "" {"
+
+Gap audit:
+- honoured:
+  - one reader of the declaration shared by every launch verb and ahoy, and ahoy proves what it writes through it before writing
+    evidence: internal/core/launch/artefact.go:9 — "Every launch verb and ahoy go through it, so a kind one of them accepts is a kind all of them accept."
+    evidence: internal/core/ahoy/artefact.go:79 — "if _, err := launch.ParseArtefact(data); err != nil {"
+  - the shipped plugin shape adopts silently: a plugin manifest declares kind plugin without a prompt
+    evidence: internal/core/ahoy/artefact.go:51 — "it carries a plugin manifest, so install declares kind plugin without asking"
+    evidence: internal/core/ahoy/artefact_test.go:87 — "func TestInstallAdoptsKindPluginSilentlyForAPluginRepository"
+  - the changelog and the version stay derived for every kind; the site opt-in is read and validated but not acted on
+    evidence: internal/core/launch/artefact.go:81 — "Site is the release-rendered site opt-in (decision 9). It is read and validated here and acted on by itd-2609061543533170, not by this intent."
+  - a plugin declaring a lockstep list is refused: the plugin keeps the pinned manifest table
+    evidence: internal/core/launch/artefact.go:169 — "declares a lockstep list for kind plugin"
+  - a repository whose own workflow releases receives no second release chain
+    evidence: internal/core/launch/scaffold/kind_test.go:191 — "a repository whose own workflow releases must not receive a second release chain"
+- diverged: (none)
+- missing:
+  - the acceptance rehearsal the spec names — a managed repository's next cut run through launch --dry-run and launch ship with the gate enforced by the binary — is not evidenced in this tree; the Grounds' falsifier (the two managed repositories still cutting by hand) remains unobserved either way
+    evidence: .abcd/development/specs/closed/spc-2609202019026366-abcd-launch-cannot-set-up-the-release-flow-for-a-managed-rep.md:63 — "The Gropius repository's own release is the acceptance rehearsal"
+    evidence: .abcd/development/intents/shipped/itd-2609150819432059-abcd-launch-cannot-set-up-the-release-flow-for-a-managed-rep.md:85 — "shown wrong if the two managed repositories still cut by hand after this ships"
+
+Scope-condition dispositions:
+- cond-2609202019020629 — survived: the artefact gap is raised only inside ahoy's managed-repository branch (marker block fired), and the delivery supplies both halves of the tagging assumption — a gate workflow abcd scaffolds and a call stanza for a workflow the repository already has; nothing delivered contradicts the forge assumption
+  evidence: internal/core/ahoy/detect.go:124 — "gaps = append(gaps, detectArtefact(abs)...)"
+  evidence: internal/core/launch/scaffold/kind.go:40 — "const gateCallStanza = \`jobs: abcd-release-gate:"
+- cond-2609202019027680 — survived: the declaration admits exactly one kind as a single JSON string and refuses anything else, so a repository can only ever declare one artefact
+  evidence: internal/core/launch/artefact.go:147 — "if err := json.Unmarshal(raw["kind"], &kind); err != nil || kind == "" {"
+  evidence: internal/core/launch/artefact_test.go:112 — "func TestParseArtefactRefusesRepeatedAndCaseFoldedKeys"
+<!-- abcd-review-end receipt=rcp-97519c4308ad -->
 
 ## Grounds
 
