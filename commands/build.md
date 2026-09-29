@@ -86,7 +86,9 @@ returns hand the receipt back:
 ```
 
 The lane advances only on a receipt that verifies. Asking for a step while the
-lane awaits a receipt re-tells what it awaits and moves nothing.
+lane awaits a receipt re-tells what it awaits and moves nothing. When a lane is
+done, the spec's next pending step opens the next lane, and the run record gets
+a line naming it, as the start line names the first.
 `"${CLAUDE_PLUGIN_ROOT}/abcd" implement status --json` renders every run, its
 lanes and its record, and writes nothing. A lane's `worktree` is home-relative,
 or its directory name when it sits outside HOME; its `brief` and `receipt` keep
@@ -99,12 +101,16 @@ A lane's steps run in order:
    `build/<run-id>-<lane-id>` cut from the default branch. Nothing is made
    beside the checkout.
 2. `brief` — the loop renders the lane's brief from that base: the intent, the
-   spec, the conventions of `AGENTS.md` and the decisions the intent cites, with
+   spec, the conventions of `AGENTS.md` and the decisions the intent cites; the
+   spec step the lane builds and each step before it, with what landed it (the
+   spec's `landed:` line, or the earlier lane of the run that built it); and
    where the implementer's report, the definition of done's output and its
    receipt go, and the outbound policy: no session URL or tool attribution
    footer in public text, and a re-read-and-strip of every pull request, issue
    and comment the implementer creates. An intent the default branch does not carry as planned is
-   refused here: land its planning first.
+   refused here: land its planning first. So is a spec whose steps the base no
+   longer lists as the run started from them: a run does not follow steps
+   reordered mid-run.
 3. `implement` — `awaiting` names an `implementer`. Start a fresh agent with
    nothing but the brief; it works in the lane's worktree, commits on the
    lane's branch and writes its receipt. Hand the receipt back unedited. A

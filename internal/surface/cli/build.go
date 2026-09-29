@@ -268,13 +268,14 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			"hands work to an agent, the result names the agent to start, the brief it is handed\n" +
 			"and the path its receipt goes to; the lane then advances only on\n" +
 			"`abcd implement receipt`, and asking for a step again re-tells the same thing and\n" +
-			"moves nothing. When a lane is done the spec's next pending step opens the next lane.\n" +
-			"A complete run says so.\n\n" +
+			"moves nothing. When a lane is done the spec's next pending step opens the next lane,\n" +
+			"and the run record names it. A complete run says so.\n\n" +
 			"The lane's steps, in order: worktree makes the lane's worktree in the machine-scoped\n" +
 			"store, ~/.abcd/worktrees/<root-sha>/<run-id>-<lane-id>, on a branch build/<run-id>-<lane-id>\n" +
 			"cut from the default branch; brief renders the lane's brief from that base (the intent,\n" +
-			"the spec, the conventions of AGENTS.md and the decisions the intent cites) into the\n" +
-			"lane's directory of the run; implement hands the lane to a fresh implementer and awaits\n" +
+			"the spec, the conventions of AGENTS.md, the decisions the intent cites, and the spec\n" +
+			"steps before the lane's with what landed each) into the lane's directory of the run;\n" +
+			"implement hands the lane to a fresh implementer and awaits\n" +
 			"its receipt; validate and land follow.\n\n" +
 			"A step whose body this abcd does not carry is refused naming the spec piece that\n" +
 			"delivers it, and the run is unchanged. A step that fails leaves the state as it was,\n" +

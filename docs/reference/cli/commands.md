@@ -1611,14 +1611,15 @@ Perform one step of the run's current lane, write the state, and exit. At a step
 hands work to an agent, the result names the agent to start, the brief it is handed
 and the path its receipt goes to; the lane then advances only on
 `abcd implement receipt`, and asking for a step again re-tells the same thing and
-moves nothing. When a lane is done the spec's next pending step opens the next lane.
-A complete run says so.
+moves nothing. When a lane is done the spec's next pending step opens the next lane,
+and the run record names it. A complete run says so.
 
 The lane's steps, in order: worktree makes the lane's worktree in the machine-scoped
 store, ~/.abcd/worktrees/<root-sha>/<run-id>-<lane-id>, on a branch build/<run-id>-<lane-id>
 cut from the default branch; brief renders the lane's brief from that base (the intent,
-the spec, the conventions of AGENTS.md and the decisions the intent cites) into the
-lane's directory of the run; implement hands the lane to a fresh implementer and awaits
+the spec, the conventions of AGENTS.md, the decisions the intent cites, and the spec
+steps before the lane's with what landed each) into the lane's directory of the run;
+implement hands the lane to a fresh implementer and awaits
 its receipt; validate and land follow.
 
 A step whose body this abcd does not carry is refused naming the spec piece that
