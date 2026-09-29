@@ -46,3 +46,17 @@ run without one.
 ## Grounds
 
 - pursued: an operator in a non-plugin repository reads why the preview does not apply and where their releases come from; a preview there that still ends in the raw 'include config not found' would show it wrong.
+
+## Correction, 2026-09-29
+
+The resolution was true when it was written, and one of the two tests it names
+is not in the tree. `950218be8` ("feat(launch): read the declared artefact kind
+in every launch verb") made the dry run refuse a repository that declares no
+artefact kind, naming `.abcd/config/artefact.json` and the kinds it accepts, so
+the release-path message this record added applies to a repository that
+declares the plugin kind and has no launch payload. The same commit replaced
+`TestLaunchDryRunInANonPayloadRepoNamesTheReleasePath` with
+`TestLaunchDryRunInANonPayloadPluginNamesTheReleasePath` (this record's case)
+and `TestLaunchDryRunWithNoDeclarationNamesItsHome` (the undeclared case), both
+in `internal/surface/cli/launch_nopayload_test.go`. `TestMissingPayloadConfigIsNamed`
+still stands.
