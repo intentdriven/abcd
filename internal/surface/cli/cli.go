@@ -238,7 +238,7 @@ func NewRootCommand() *cobra.Command {
 			// --agent modifies the help and nothing else; on the board it would
 			// be a flag that silently does nothing (itd-146).
 			if agentHelp {
-				return &exitError{Code: 2, Msg: "--agent expands the help listing; run `abcd --help --agent`"}
+				return &exitError{Code: 2, Msg: helpAgentRefusal}
 			}
 			// --version is where every tool keeps its version
 			// (itd-2609212130136102). It answers alone: a record id beside it
@@ -534,6 +534,9 @@ func NewRootCommand() *cobra.Command {
 	// two operands the design admits, because the operand it most often refuses
 	// is one it used to take (adr-2609021016286571).
 	applyReadingFlagErrors(root)
+	// Also after the generic tagging: cobra's help verb inherits the root's
+	// flag-error function, and `abcd help --agent` names the spelling that works.
+	applyHelpVerbAgentRefusal(root)
 	// Also after the generic tagging, and last: on the hook plane exit 2 is the
 	// host's instruction to BLOCK, so every usage error a hook can provoke refuses
 	// at exit 1 instead (iss-269).

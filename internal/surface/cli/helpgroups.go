@@ -59,6 +59,10 @@ const (
 	// helpAgentsTitle heads the agents-and-hosts block. It is also the cobra
 	// title of groupAgents, so the one list has one name.
 	helpAgentsTitle = "For agents and hosts (each line names the page to read next):"
+	// helpAgentRefusal is the refusal of --agent anywhere but beside --help:
+	// on the bare board and on the help verb alike, it names the spelling that
+	// works.
+	helpAgentRefusal = "--agent expands the help listing; run `abcd --help --agent`"
 )
 
 // Annotation keys the placement writes onto a command.
@@ -167,6 +171,24 @@ func applyHelpPlacement(root *cobra.Command, agent *bool) {
 	})
 }
 
+// applyHelpVerbAgentRefusal answers `abcd help --agent` with the refusal the
+// bare `abcd --agent` gives, naming the spelling that works, instead of cobra's
+// bare "unknown flag: --agent" (iss-2609251645376019). cobra builds its help
+// verb inside Execute, after every flag-error function in the tree is set, so
+// the verb inherits the root's; the root's is wrapped here, after the generic
+// tagging, and passes every other error through unchanged.
+func applyHelpVerbAgentRefusal(root *cobra.Command) {
+	inner := root.FlagErrorFunc()
+	root.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
+		if cmd != root && cmd.Parent() == root && cmd.Name() == "help" {
+			if m := unknownFlagRe.FindStringSubmatch(err.Error()); m != nil && m[1] == "--agent" {
+				return &exitError{Code: 2, Msg: helpAgentRefusal}
+			}
+		}
+		return inner(cmd, err)
+	})
+}
+
 func annotate(cmd *cobra.Command, key, value string) {
 	if cmd.Annotations == nil {
 		cmd.Annotations = map[string]string{}
@@ -272,9 +294,12 @@ func renderRootHelp(w io.Writer, root *cobra.Command, agent bool) {
 	if agent {
 		agents = agentEntries(root)
 	}
-	width := 0
+	// Each block is sized over its own names, so the person's block reads byte
+	// for byte the same whether or not --agent adds the second one
+	// (iss-2609251645374557).
+	width, agentWidth := 0, 0
 	for _, e := range agents {
-		width = max(width, len(e.name))
+		agentWidth = max(agentWidth, len(e.name))
 	}
 	for _, entries := range groups {
 		for _, e := range entries {
@@ -310,7 +335,7 @@ func renderRootHelp(w io.Writer, root *cobra.Command, agent bool) {
 	if agent {
 		fmt.Fprintf(w, "%s\n", helpAgentsTitle)
 		for _, e := range agents {
-			fmt.Fprintf(w, "  %-*s  %s (read %s)\n", width, e.name, e.short, e.page)
+			fmt.Fprintf(w, "  %-*s  %s (read %s)\n", agentWidth, e.name, e.short, e.page)
 		}
 		fmt.Fprintln(w)
 	}
