@@ -91,8 +91,10 @@ func TestAttributeMaskStaysOnItsOwnLine(t *testing.T) {
 // The last two are refusals as well as costs: a title that is never bounded is
 // refused rather than read, and titles that overlap past the floor's read budget
 // are refused rather than read in quadratic time. The bound is generous: the
-// linear scan is milliseconds. It is not asserted under -race (raceEnabled),
-// where the verdicts still are.
+// linear scan is milliseconds. It is a bound on the process's CPU time
+// (processCPU), not the wall clock, so a loaded machine that keeps the scan off
+// a core cannot trip it (iss-2609240046582859). It is not asserted under -race
+// (raceEnabled), where the verdicts still are.
 func TestRawHeadingScanStaysLinearInTheOpenerCount(t *testing.T) {
 	headings := map[string]bool{"Audit Notes": true}
 	build := func(opener string, n int, tail string) string {
@@ -116,9 +118,9 @@ func TestRawHeadingScanStaysLinearInTheOpenerCount(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			start := time.Now()
+			start := processCPU()
 			err := verifyRedaction("spc-x.md", c.doc, c.doc, nil, headings)
-			elapsed := time.Since(start)
+			elapsed := processCPU() - start
 			switch {
 			case c.refuse == "" && err != nil:
 				t.Fatalf("the scan refused an ordinary document: %v", err)
@@ -128,7 +130,7 @@ func TestRawHeadingScanStaysLinearInTheOpenerCount(t *testing.T) {
 				t.Errorf("the refusal does not name %q: %v", c.refuse, err)
 			}
 			if !raceEnabled && elapsed > 10*time.Second {
-				t.Errorf("the raw heading scan took %s over a %d-byte document; it reads each "+
+				t.Errorf("the raw heading scan took %s of CPU over a %d-byte document; it reads each "+
 					"title over the remainder, or counts each line from the top", elapsed, len(c.doc))
 			}
 		})
@@ -186,12 +188,12 @@ func TestMaskStaysLinearInTheAssignmentCount(t *testing.T) {
 		b.WriteString("=\"x\"")
 	}
 	doc := b.String()
-	start := time.Now()
+	start := processCPU()
 	if got, _ := maskMarkupData(doc, true); len(got) != len(doc) {
 		t.Fatalf("the mask changed the document length from %d to %d", len(doc), len(got))
 	}
-	if elapsed := time.Since(start); elapsed > 5*time.Second {
-		t.Errorf("the mask took %s over 800000 assignments on one line; it searches the whole "+
+	if elapsed := processCPU() - start; elapsed > 5*time.Second {
+		t.Errorf("the mask took %s of CPU over 800000 assignments on one line; it searches the whole "+
 			"remainder for a newline per assignment", elapsed)
 	}
 }
