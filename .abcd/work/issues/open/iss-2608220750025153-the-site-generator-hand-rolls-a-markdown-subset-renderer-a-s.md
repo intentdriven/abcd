@@ -7,8 +7,8 @@ category: "future-work-seed"
 source: "user-observation"
 found_during: "agent-observation"
 found_at: "internal/core/site"
-deferred_after: "v0.10.0"
-deferral_reason: "ruling owed to the product thinker (away; run A 2026-09-25): Sign off goldmark and x/net/html as the site generator's dependencies?"
+deferred_after: "v0.11.1"
+deferral_reason: "ruling owed to the product thinker (away; run A 2026-09-25; rulings-owed C): Sign off goldmark and x/net/html as the site generator's dependencies?"
 ---
 
 the site generator hand-rolls a Markdown-subset renderer, a strict HTML tokenizer and a CSL formatter to stay dependency-free; adopting goldmark and x/net/html instead is a maintainer dependency decision

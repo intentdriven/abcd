@@ -9,8 +9,8 @@ found_during: "manual-capture"
 details: "SOTA-researched 2026-07-30, decision recorded (DECISIONS.md 2026-07-30): a cross-agent capture source is the current default SOTA upgrade once cross-harness compatibility becomes a concern, import-only over the native store via the pre-declared specstory-import seam. Candidate tool, target harness, and provider caveats are named in .abcd/development/research/notes/2026-07-30-session-recording-sota.md"
 suggested_fix: "Build the specified-but-unbuilt import path: parse the capture tool's per-session markdown and merge by timestamp/content hash through history.Capture(kind=specstory-import), so the two-stage fail-closed redaction applies to imported material; telemetry opt-out in any wiring, cloud/sharing tiers out of scope, the tool's in-repo history directory never tracked."
 related_issues: ["iss-95", "iss-96", "iss-125", "iss-157"]
-deferred_after: "v0.10.0"
-deferral_reason: "ruling owed to the product thinker (away; run A 2026-09-25): Keep the cross-agent capture source parked until a second harness matters, or close it now?"
+deferred_after: "v0.11.1"
+deferral_reason: "ruling owed to the product thinker (away; run A 2026-09-25; rulings-owed K): Keep the cross-agent capture source parked until a second harness matters, or close it now?"
 ---
 
 add a cross-agent session-capture source as an optional plugin

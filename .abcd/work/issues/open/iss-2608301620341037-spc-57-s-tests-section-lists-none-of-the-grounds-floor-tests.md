@@ -7,8 +7,8 @@ category: "observation"
 source: "user-observation"
 found_during: "itd-179-round-5-builder"
 found_at: ".abcd/development/specs/open"
-deferred_after: "v0.10.0"
-deferral_reason: "ruling owed to the product thinker (away; run A 2026-09-25): Under the errata convention (M25), where does a correction to a closed spec's Tests section go?"
+deferred_after: "v0.11.1"
+deferral_reason: "ruling owed to the product thinker (away; run A 2026-09-25; rulings-owed A): Under the errata convention (M25), where does a correction to a closed spec's Tests section go?"
 ---
 
 spc-57's Tests section lists none of the grounds floor tests added in rounds three to five
