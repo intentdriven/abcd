@@ -221,6 +221,9 @@ func TestHomeSpellingsStayLinear(t *testing.T) {
 		{"redundant separators", func(n int) string {
 			return "rm -rf " + strings.Repeat("/", n/2) + "./" + strings.Repeat("/./", n/6) + "*"
 		}},
+		{"parent segments", func(n int) string {
+			return "rm -rf ~/" + strings.Repeat("x/", n/8) + strings.Repeat("../", n/6) + "* /tmp/" + strings.Repeat("a/../", n/10) + "*"
+		}},
 		{"sequence terms", func(n int) string {
 			return "rm -rf " + strings.Repeat("$HO{M..M}E/ ", n/12)
 		}},
