@@ -118,3 +118,51 @@ func TestHookPromptRouterPlainOutputUnchanged(t *testing.T) {
 		t.Fatalf("a deduped turn must add zero model-facing bytes, got %q", out)
 	}
 }
+
+// brokenStdout is a stdout whose every write fails, the shape a host that
+// closed its end of the pipe hands the hook.
+type brokenStdout struct{}
+
+func (brokenStdout) Write([]byte) (int, error) { return 0, os.ErrClosed }
+
+// TestHookPromptRouterJSONEncodeFailureExitsZero: the --json envelope fails
+// open like every other hook verb. An envelope the hook cannot write — on an
+// evaluated prompt or on a refused one — is named on stderr and the process
+// still exits 0, so a broken stdout can never wedge a session.
+func TestHookPromptRouterJSONEncodeFailureExitsZero(t *testing.T) {
+	for name, rulesBody := range map[string]string{
+		"evaluated": widgetsRules,
+		"refused":   "{not json",
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Setenv("ABCD_RULES_STATE_DIR", t.TempDir())
+			dir := t.TempDir()
+			writeRepoRules(t, dir, rulesBody)
+			cmd := NewRootCommand()
+			var se strings.Builder
+			cmd.SetOut(brokenStdout{})
+			cmd.SetErr(&se)
+			cmd.SetIn(strings.NewReader(hookInputJSON(t, "j15-broken-"+name, dir, "count the widget")))
+			cmd.SetArgs([]string{"hook", "prompt-router", "--json"})
+			if err := cmd.Execute(); err != nil {
+				t.Fatalf("an unwritable envelope must still exit 0, got %v\n%s", err, se.String())
+			}
+			if !strings.Contains(se.String(), "envelope") {
+				t.Fatalf("the unwritable envelope is not named on stderr:\n%s", se.String())
+			}
+		})
+	}
+}
+
+// TestHookPromptRouterHelpNamesItsEnvelope: the generic --json text promises
+// an {"abcd":"error"} document and a non-zero exit, which this verb never
+// writes, so its own help states the envelope it does write and that an error
+// still exits 0.
+func TestHookPromptRouterHelpNamesItsEnvelope(t *testing.T) {
+	out, _ := runHook(t, "", "hook", "prompt-router", "--help")
+	for _, want := range []string{"text", "injected", "active", "error", "exits 0"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("prompt-router --help does not name %q:\n%s", want, out)
+		}
+	}
+}
