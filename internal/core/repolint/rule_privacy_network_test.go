@@ -169,7 +169,7 @@ func TestAC_PrivacyNetworkHonoursRepoSeverityOverride(t *testing.T) {
 // ("/Users/Shared/abcd-data/x") is an entry in a shared folder, not a home path,
 // and flagging it taxed the product code that has to name its own shared
 // directory — 147-213 errors on a conforming repo, every one benign. What the
-// shield rule was really protecting is the traversal escape: "/Users/Shared/../x"
+// shield rule was really protecting is the traversal escape: "/Users/Shared/../x" abcd-lint:allow
 // leaves the shared root, so the name after it is a home segment again, and those
 // cases all still flag below.
 //

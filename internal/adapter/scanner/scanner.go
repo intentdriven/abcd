@@ -497,7 +497,7 @@ func junctionProbe(patterns []Pattern) *regexp.Regexp {
 // Behind a NETWORK match only the secret patterns are. Network tokens do not
 // abut one another with no separator — an address, a MAC and a host name are
 // each delimited — so a network token "found" inside another is never a
-// second token: it is a suffix of the same one ("a9fe::" inside
+// second token: it is a suffix of the same one ("a9fe::" inside abcd-lint:allow
 // "2001:db8:a9fe::"), which was reported as a duplicate finding per suffix,
 // and offering every hex run of a colon-hex line as a candidate made the
 // search the dominant cost of scanning one. A secret a network match over-ran

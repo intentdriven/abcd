@@ -329,8 +329,8 @@ func hasAbsHomePath(line string) bool {
 			// ("/Users/Shared/...") and what the product needs, because it creates
 			// such a directory and has to name it in comments, tests and docs.
 			//
-			// The exemption stops at a TRAVERSAL segment. "/Users/Shared/../bob"
-			// and "/Users/Shared//bob" leave the shared root again, so the name
+			// The exemption stops at a TRAVERSAL segment. "/Users/Shared/../bob" abcd-lint:allow
+			// and "/Users/Shared//bob" leave the shared root again, so the name abcd-lint:allow
 			// after them is back in the username position — this is the half of
 			// the old narrowing that was actually load-bearing, and it stays.
 			//

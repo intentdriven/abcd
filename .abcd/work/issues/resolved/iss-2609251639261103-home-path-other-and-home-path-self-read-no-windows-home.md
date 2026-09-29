@@ -17,7 +17,7 @@ resolved_by:
   commit: "40136106"
 ---
 
-home_path_other and home_path_self read no Windows home spelling beyond the literal one. genericHomeRe (internal/adapter/scanner/identity.go) is POSIX-only, so C:\Users\OTHER\Desktop and its JSON-escaped spelling C:\\Users\\OTHER\\Desktop raise no home_path_other, and home_path_self matches the configured home verbatim, so the escaped spelling of the caller's own Windows home is reached only through local_username on its last segment. A Windows spelling threads through genericHomeRe, the path-segment byte class, the system-directory allowlist, the traversal walk and the lint audit rule that shares them, so it is not a contained change.
+home_path_other and home_path_self read no Windows home spelling beyond the literal one. genericHomeRe (internal/adapter/scanner/identity.go) is POSIX-only, so C:\Users\OTHER\Desktop and its JSON-escaped spelling C:\\Users\\OTHER\\Desktop raise no home_path_other, and home_path_self matches the configured home verbatim, so the escaped spelling of the caller's own Windows home is reached only through local_username on its last segment. A Windows spelling threads through genericHomeRe, the path-segment byte class, the system-directory allowlist, the traversal walk and the lint audit rule that shares them, so it is not a contained change. <!-- abcd-lint:allow -->
 
 ## Grounds
 

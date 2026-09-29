@@ -273,14 +273,14 @@
         "item": ".abcd/development/brief/04-surfaces/06-capture.md",
         "where": ".abcd/development/brief/04-surfaces/06-capture.md:27",
         "claim": "The fast-path row describes `/abcd:capture \"<text>\"` as appending the free-form text with caller-supplied provenance flags; the chapter documents no processing of the text between input and disk, and \u00a72/\u00a75 list no redaction stage.",
-        "reality": "Both write paths run the PII/secret scanner over the free text before writing and report what was rewritten. `internal/core/capture/redact.go` (`redactLedgerText`) redacts capture text, slug, found_at and found_during (`workflow.go:59-61`) and the resolution note (`workflow.go:290`), returning a `Redacted` count and a `Degraded` reason that the CLI prints (`internal/surface/cli/cli.go`: \"redacted N span(s) before writing\u2026\" plus a degraded-scanner WARNING) and that `commands/capture.md` instructs the agent to report. Observed live: `abcd capture \"...reading /Users/someone/secret/config...\"` printed \"redacted 1 span(s)\" and wrote `[redacted-path]/secret/config` to the body. The brief chapter documents none of this.",
+        "reality": "Both write paths run the PII/secret scanner over the free text before writing and report what was rewritten. `internal/core/capture/redact.go` (`redactLedgerText`) redacts capture text, slug, found_at and found_during (`workflow.go:59-61`) and the resolution note (`workflow.go:290`), returning a `Redacted` count and a `Degraded` reason that the CLI prints (`internal/surface/cli/cli.go`: \"redacted N span(s) before writing\u2026\" plus a degraded-scanner WARNING) and that `commands/capture.md` instructs the agent to report. Observed live: `abcd capture \"...reading /Users/someone/secret/config...\"` printed \"redacted 1 span(s)\" and wrote `[redacted-path]/secret/config` to the body. The brief chapter documents none of this. (placeholder home path; abcd-lint:allow)",
         "class": "undocumented-surface"
       },
       {
         "item": ".abcd/development/brief/04-surfaces/06-capture.md",
         "where": ".abcd/development/brief/04-surfaces/06-capture.md:106",
         "claim": "Acceptance criterion 1: \"a new file `.abcd/work/issues/open/iss-N-<slug>.md` exists with frontmatter populated and the captured text in the body.\"",
-        "reality": "The body holds the *redacted* text, which can differ from the captured text \u2014 the scanner rewrites spans before the record is rendered (`redactLedgerText`, `workflow.go:48-61`). Verified: capturing text containing `/Users/someone/secret/config` wrote `[redacted-path]/secret/config` to the body. As written the criterion passes only for text the scanner leaves untouched.",
+        "reality": "The body holds the *redacted* text, which can differ from the captured text \u2014 the scanner rewrites spans before the record is rendered (`redactLedgerText`, `workflow.go:48-61`). Verified: capturing text containing `/Users/someone/secret/config` wrote `[redacted-path]/secret/config` to the body. As written the criterion passes only for text the scanner leaves untouched. (placeholder home path; abcd-lint:allow)",
         "class": "criterion-violation"
       },
       {

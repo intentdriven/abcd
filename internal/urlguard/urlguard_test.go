@@ -48,9 +48,9 @@ func TestBlockedIP(t *testing.T) {
 // TestBlockedIPRefusesProviderPlatformMagicIPs pins the fixed, provider-owned
 // magic addresses that live in PUBLIC (globally-unicast) space and so match none
 // of net.IP's range predicates, yet serve a VM's cloud-platform/metadata plane.
-// Azure's 168.63.129.16 (the WireServer / host-platform endpoint delivering
+// Azure's 168.63.129.16 (the WireServer / host-platform endpoint delivering abcd-lint:allow
 // goal-state and protected extension settings) is the case gh-324 caught. Its
-// siblings — Alibaba 100.100.100.200 and Oracle OCI 192.0.0.192 — are already
+// siblings — Alibaba 100.100.100.200 and Oracle OCI 192.0.0.192 — are already abcd-lint:allow
 // refused structurally (CGNAT 100.64/10 and the 192.0.0.0/24 protocol block),
 // and are pinned here so the sweep is regression-guarded in one place.
 func TestBlockedIPRefusesProviderPlatformMagicIPs(t *testing.T) {

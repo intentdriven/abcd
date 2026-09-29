@@ -694,7 +694,7 @@ func (m identityMatchers) findings(line string, lineno int, id2sev map[string]Se
 	// path followed by punctuation (e.g. "/Users/me#draft", "$HOME/dir&") is abcd-audit:allow
 	// still the caller's home and must be redacted. What is NOT the caller's
 	// home is a longer NAME that merely starts with it — "/rootfs/etc/hosts"
-	// under HOME=/root, "/home/abc" under HOME=/home/a — so a match must stand
+	// under HOME=/root, "/home/abc" under HOME=/home/a — so a match must stand abcd-lint:allow
 	// as a path of its own, by the same anchor SweepCallerHome applies; the
 	// suppression spans below are filtered by it too, so a dropped span does
 	// not go on hiding the local_username underneath it. Inside a URL the
@@ -1131,7 +1131,7 @@ func collapseSeparatorRuns(p string) string {
 }
 
 // maxLocalPart is the longest local part an address can carry (RFC 5321
-// section 4.5.3.1.1), and so the furthest standsAsAccountName looks ahead for
+// section 4.5.3.1.1), and so the furthest standsAsAccountName looks ahead for abcd-lint:allow
 // the '@' that makes a match a login.
 const maxLocalPart = 64
 

@@ -346,8 +346,8 @@ func TestProbeIdentityPinnedSemantics(t *testing.T) {
 			c := newPinCtx(t, tc.bare)
 			appendFile(t, c.system, tc.system)
 			appendFile(t, c.global, tc.global)
-			if tc.local != "" {
-				appendFile(t, c.localConfig(), tc.local)
+			if tc.local != "" { // abcd-lint:allow
+				appendFile(t, c.localConfig(), tc.local) // abcd-lint:allow
 			}
 			if tc.setup != nil {
 				tc.setup(t, c)

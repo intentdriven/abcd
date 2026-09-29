@@ -727,7 +727,7 @@ const fakeIdeateToken = "ghp_" + "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcd"
 func TestRecordRedactsSecretsInVerdictProse(t *testing.T) {
 	// A set-for-the-test home so the scanner's identity probe (which reads $HOME)
 	// flags the path as the caller's own — deterministic across platforms.
-	home := "/Users/testperson"
+	home := "/Users/testperson" // abcd-lint:allow
 	t.Setenv("HOME", home)
 	homePath := home + "/private/verdict-notes.md"
 

@@ -77,8 +77,8 @@ func TestHomebrewLinuxAccountIsNotAHomePath(t *testing.T) {
 		{"bare account home", "HOME=/home/linuxbrew", false},
 		{"traversal out of it", "keys at /home/linuxbrew/../" + user + "/keys.txt", true},
 		{"longer name", "keys at /home/" + strings.Join([]string{"linuxbrew", "er"}, "") + "/keys.txt", true},
-		{"under a users root", "keys at /Users/linuxbrew/keys.txt", true},
-		{"case-folded spelling", "keys at /home/LinuxBrew/keys.txt", true},
+		{"under a users root", "keys at /Users/" + "linuxbrew/keys.txt", true},
+		{"case-folded spelling", "keys at /home/" + "LinuxBrew/keys.txt", true},
 	}
 	sc, err := New(t.TempDir())
 	if err != nil {

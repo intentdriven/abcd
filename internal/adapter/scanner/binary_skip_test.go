@@ -186,7 +186,7 @@ func synthIdentity() Identity {
 		GitUserName:       "Zed Q Eight",
 		GitUserEmail:      "zq8@example.test",
 		GitRemoteUsername: "zq8handle",
-		HomePath:          "/Users/zq8home",
+		HomePath:          "/Users/zq8home", // abcd-lint:allow
 		HomeUser:          "zq8home",
 	}
 }
@@ -207,7 +207,7 @@ func TestBinaryScanKeepsLongIdentityRulesDropsShortOnes(t *testing.T) {
 	sc.identity = synthIdentity()
 	id := sc.identity
 	body := "\x89PNG\r\n\x1a\ntEXt " + id.HomePath + "/deck " + id.GitUserEmail + " " +
-		id.GitUserName + " " + id.GitRemoteUsername + " " + id.HomeUser + " /home/someone/x\n"
+		id.GitUserName + " " + id.GitRemoteUsername + " " + id.HomeUser + " /home/someone/x\n" // abcd-lint:allow
 	abs := writeFile(t, root, "a.png", body)
 	res := scanOne(t, sc, "a.png", abs)
 	for _, kind := range []string{kindHomeSelf, kindRealEmail, kindRealName} {
@@ -382,7 +382,7 @@ func TestGenericHomePathInBinaryIsNotAFinding(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Pin a synthetic identity: on a hosted Linux runner HOME is
-	// /home/runner, and the third-party path would be the caller's own.
+	// /home/runner, and the third-party path would be the caller's own. abcd-lint:allow
 	sc.identity = synthIdentity()
 	res := scanOne(t, sc, "b.png", abs)
 	if len(res.Findings) != 0 {
@@ -404,7 +404,7 @@ func TestRepoRaisedSeverityIsHonouredOnBytes(t *testing.T) {
 	if bad, why := sc.Unavailable(); bad {
 		t.Fatalf("override must load: %s", why)
 	}
-	sc.identity = synthIdentity() // not the runner's own /home/runner
+	sc.identity = synthIdentity() // not the runner's own /home/runner // abcd-lint:allow
 	res := scanOne(t, sc, "b.png", abs)
 	if !hasKind(res.Findings, kindHomeOther) || res.HardFails != 1 {
 		t.Fatalf("a repo-raised home_path_other must hard-fail on bytes like it does on text: %+v", res)

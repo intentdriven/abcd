@@ -130,8 +130,8 @@ func TestAC_PrivacyHomebrewLinuxPrefixIsNotALeak(t *testing.T) {
 		{"bare account home", "HOME=/home/linuxbrew\n", false},
 		{"traversal out of it", "keys at /home/linuxbrew/../" + strings.Join([]string{"j", "doe"}, "") + "/keys.txt\n", true},
 		{"longer name", "keys at /home/" + strings.Join([]string{"linuxbrew", "er"}, "") + "/keys.txt\n", true},
-		{"under a users root", "keys at /Users/linuxbrew/keys.txt\n", true},
-		{"case-folded spelling", "keys at /home/LinuxBrew/keys.txt\n", true},
+		{"under a users root", "keys at /Users/" + "linuxbrew/keys.txt\n", true},
+		{"case-folded spelling", "keys at /home/" + "LinuxBrew/keys.txt\n", true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
