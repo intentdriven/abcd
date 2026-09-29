@@ -335,7 +335,7 @@ func matchSegmentNamed(p Pattern, s segment) (hit, named bool) {
 		tally(len(s.tokens))
 		// glob reports, per TOKEN index, whether bash would expand that token.
 		glob := func(i int) bool { return !noglob && s.globAt(i) }
-		m := newEntryMatcher(p, s.tokens, glob)
+		m := newEntryMatcher(p, s.tokens, s.spelled, glob)
 		for _, a := range group {
 			if m.matchesAfter(a.idx) && argsFed(p, s, a.idx) {
 				hit = true
@@ -556,14 +556,15 @@ type entryMatcher struct {
 // -C $(pwd) push` is a push); an unknown dash-word both stands alone and takes
 // a value (`git -$(x) /tmp push`); a word that may print nothing both is and is
 // not an operand (`git $(true) push`). The subcommands, the count, the prefix
-// and the path are all met by one reading.
-func newEntryMatcher(p Pattern, tokens []string, glob func(int) bool) entryMatcher {
+// and the path are all met by one reading. spelled is the segment's
+// segment.spelled, which only the arg_values clause reads (writtenOperand).
+func newEntryMatcher(p Pattern, tokens []string, spelled map[int]string, glob func(int) bool) entryMatcher {
 	n := len(tokens)
 	want := operandWant{
 		sub: p.Subcommand, sub2: p.Subcommand2, min: p.MinOperands,
 		prefixes: p.ArgPrefixes, paths: p.ArgPaths, values: p.ArgValues,
 	}
-	m := entryMatcher{accept: operandAcceptance(tokens, p.ValueFlags, want, glob), nextStop: make([]int, n+1)}
+	m := entryMatcher{accept: operandAcceptance(tokens, spelled, p.ValueFlags, want, glob), nextStop: make([]int, n+1)}
 	m.nextStop[n] = n
 	for i := n - 1; i >= 0; i-- {
 		m.nextStop[i] = m.nextStop[i+1]
@@ -689,18 +690,21 @@ func argPrefixMatches(prefix string, ops []string) bool {
 	return false
 }
 
-// argValueMatches reports whether some operand is one of the words. Only
-// operands are considered, and each by its known text, as argPrefixMatches
-// reads a prefix: a word that is wholly a substitution is how an everyday
-// delete names its target (`rm -rf "$(mktemp -d)"`), so reading it as every
-// target would refuse them all (unknown.go's operand residual).
-func argValueMatches(values []string, ops []string) bool {
-	for _, op := range ops {
-		k := knownText(op)
-		for _, v := range values {
-			if k == v {
-				return true
-			}
+// argValueMatches reports whether an operand, as writtenOperand reads it, is
+// one of the words. Only operands are considered, and a substitution's output
+// is taken as empty, as argPrefixMatches reads a prefix: a word that is wholly
+// a substitution is how an everyday delete names its target (`rm -rf
+// "$(mktemp -d)"`), so reading it as every target would refuse them all
+// (unknown.go's operand residual). A variable is compared as the line wrote
+// it, so `$HOME` names the home and `"$OUT"/` names no root; one whose text is
+// not known names nothing.
+func argValueMatches(values []string, written string) bool {
+	if isUnknown(written) {
+		return false
+	}
+	for _, v := range values {
+		if written == v {
+			return true
 		}
 	}
 	return false

@@ -102,6 +102,69 @@ const varMark = '\x01'
 // varText is varMark as a string, for spelling a payload's text.
 const varText = "\x01"
 
+// varSite is one variable's mark in a word being built: its offset in the
+// word, and the expansion's text as the line wrote it (`$HOME`, `${PWD}`), ""
+// for a varMark read from a payload's text, whose name the string no longer
+// holds.
+type varSite struct {
+	at   int
+	text string
+}
+
+// spellWritten is a word as the line wrote its variables (segment.spelled):
+// each variable's mark replaced by its expansion's text, each substitution's
+// mark dropped as knownText drops it, and a variable whose text is not known
+// kept as unknownMark. A simple name the next byte kept would extend is
+// braced (`"$A"B` is `${A}B`, not `$AB`), so the spelling reads as the same
+// expansions when it is read again (spelledView). sites is in word order.
+func spellWritten(word []byte, sites []varSite) string {
+	var b strings.Builder
+	k := 0
+	isVar := func(p int) bool { return k < len(sites) && sites[k].at == p }
+	for p := 0; p < len(word); p++ {
+		if !isVar(p) {
+			if word[p] != unknownMark {
+				b.WriteByte(word[p])
+			}
+			continue
+		}
+		text := sites[k].text
+		k++
+		if text == "" {
+			b.WriteByte(unknownMark)
+			continue
+		}
+		if text[1] != '{' {
+			next := p + 1
+			for next < len(word) && word[next] == unknownMark && !isVar(next) {
+				next++
+			}
+			if next < len(word) && word[next] != unknownMark && isNameByte(word[next]) {
+				text = "${" + text[1:] + "}"
+			}
+		}
+		b.WriteString(text)
+	}
+	return b.String()
+}
+
+// isNameByte reports whether c can continue a shell variable's name.
+func isNameByte(c byte) bool {
+	return c == '_' || c >= '0' && c <= '9' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z'
+}
+
+// writtenOperand is the text an entry's arg_values compare reads for the
+// word at i: the word as the line wrote its variables where it holds one
+// (segment.spelled), else its known text. It is read by nothing else, so
+// `rm -rf $HOME` names `$HOME` to arg_values while every other reading takes
+// the variable as the unknown word it is (iss-2609290321312087).
+func writtenOperand(tokens []string, spelled map[int]string, i int) string {
+	if w, ok := spelled[i]; ok {
+		return w
+	}
+	return knownText(tokens[i])
+}
+
 // isUnknown reports whether a word carries a substitution's output.
 func isUnknown(tok string) bool { return strings.IndexByte(tok, unknownMark) >= 0 }
 
@@ -650,8 +713,9 @@ type operandWant struct {
 // satisfy every clause together — operand 0 and 1 are the same reading's — so
 // the table's state is (word, operands so far, clauses met), filled from the
 // end once: linear in the words, whatever the number of places a command can
-// sit.
-func operandAcceptance(tokens, valueFlags []string, want operandWant, glob func(int) bool) []bool {
+// sit. spelled is the segment's segment.spelled, read by the arg_values
+// clause alone (writtenOperand).
+func operandAcceptance(tokens []string, spelled map[int]string, valueFlags []string, want operandWant, glob func(int) bool) []bool {
 	need := want.need()
 	nv := 0
 	if len(want.values) > 0 {
@@ -687,7 +751,7 @@ func operandAcceptance(tokens, valueFlags []string, want operandWant, glob func(
 					hits |= 1 << (len(want.prefixes) + j)
 				}
 			}
-			if nv > 0 && argValueMatches(want.values, []string{a}) {
+			if nv > 0 && argValueMatches(want.values, writtenOperand(tokens, spelled, i)) {
 				hits |= 1 << (len(want.prefixes) + len(want.paths))
 			}
 		}
