@@ -49,8 +49,10 @@ in a gate, which is what keeps the lint itself deterministic and offline.
 - **The citation refresh** fetches every cited URL once and rewrites the
   committed citation baseline. Each URL gets exactly one bounded attempt with no
   retries, and no response body is read: liveness is judged from the status
-  line. Sources that refuse automated fetchers are printed as a manual checklist
-  rather than recorded as broken.
+  line. A redirect chain that has reached https is never followed back to
+  plaintext http. Sources that refuse automated fetchers, and sources whose
+  redirects leave https, are printed as a manual checklist rather than recorded
+  as broken.
 - **The citation confirmation** records that a human verified a citation the fetcher
   could not read, either from named URLs or from a receipt file. Today the
   maintainer clears the printed checklist and names the URLs on the command line;
