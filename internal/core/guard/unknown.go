@@ -183,9 +183,10 @@ func paramText(text string) string { return strings.ReplaceAll(text, "\\\n", "")
 //   - a case change (`${HOME^^}`, `${HOME@U}`), which names the same directory
 //     on a case-insensitive disk, and `@E` and `@P`, which change no path;
 //   - a subscript (`${HOME[0]}`, `${HOME[x[0]]}`), which can be 0, read to
-//     its matching `]`, with anything after it but an alternative: bash 3.2
-//     prints the value past any other text (`${HOME[0]]}`, `${HOME[0]@Q}`),
-//     and a subscript with no `]` cannot be read further.
+//     its matching `]`, with anything after it but an alternative at the
+//     first operator byte: bash 3.2 prints the value past any other text
+//     (`${HOME[0]]}`, `${HOME[0]@Q}`), and a subscript with no `]` cannot be
+//     read further.
 //
 // An alternative (`${X:+w}`, `${X+w}`) prints w or nothing, one text, and is
 // spelled as w is written, through its own expansions (spellAlternative).
@@ -215,19 +216,24 @@ func spellParameterAt(body string, depth int) string {
 	if strings.HasPrefix(rest, "[") {
 		// The subscript runs to its matching `]`, and what follows it is read
 		// only for an alternative: bash 3.2, the /bin/sh and /bin/bash of
-		// macOS, prints the value past any other text (`${HOME[0]]}`,
-		// `${HOME[0]x}`, `${HOME[0]@Q}`), and a subscript that does not close
-		// can be read no further, so both are spelled as the variable.
+		// macOS, steps over any other text to the first operator byte
+		// (subscriptOperators) and reads an alternative there
+		// (`${X[0]]:+$HOME}`, `${X[0]x:+$HOME}`, `${X[0]]^+$HOME}` print the
+		// home), and prints the value past text that holds none
+		// (`${HOME[0]]}`, `${HOME[0]@Q}`). A subscript that does not close
+		// can be read no further. Every other case is spelled as the variable.
 		k := subscriptEnd(rest)
 		if k < 0 {
 			return same
 		}
 		rest = rest[k+1:]
-		switch {
-		case strings.HasPrefix(rest, "+"):
-			return spellAlternative(rest[1:], raw, depth)
-		case strings.HasPrefix(rest, ":+"):
-			return spellAlternative(rest[2:], raw, depth)
+		if op := strings.IndexAny(rest, subscriptOperators); op >= 0 {
+			switch {
+			case rest[op] == '+':
+				return spellAlternative(rest[op+1:], raw, depth)
+			case strings.HasPrefix(rest[op:], ":+"):
+				return spellAlternative(rest[op+2:], raw, depth)
+			}
 		}
 		return same
 	}
@@ -254,6 +260,12 @@ func spellParameterAt(body string, depth int) string {
 	}
 	return raw
 }
+
+// subscriptOperators are the bytes bash 3.2 stops at in the text after a
+// subscript's `]`: an operator, or a backslash, which quotes the next byte.
+// Only a `+` or `:+` there reads an alternative; `${X[0]]-$HOME}` and
+// `${X[0]a-b+$HOME}` print X's value, and `${X[0]]\+$HOME}` does too.
+const subscriptOperators = "-=?+%#/:\\"
 
 // subscriptEnd returns the index of the `]` that closes the subscript opening
 // at s[0], counting the brackets nested in it (`[x[0]]`), or -1 where none

@@ -85,6 +85,15 @@ func TestHomeSpellingsTheWrittenCompareReads(t *testing.T) {
 		{`rm -rf ${HOME[0}`, bare | sq | dq, VerdictBlock, home},
 		{`rm -rf ${HOME[$X]}`, bare | sq, VerdictBlock, home},
 		{`rm -rf ${HOME[0]:+/}`, bare | sq | dq, VerdictBlock, home},
+		// After a subscript, bash 3.2 takes the first operator byte past any
+		// other text: a `+` or `:+` there reads an alternative.
+		{`rm -rf ${X[0]]:+$HOME}`, bare | sq | dq, VerdictBlock, home},
+		{`rm -rf ${PATH[0]]:+$HOME}`, bare | sq | dq, VerdictBlock, home},
+		{`rm -rf ${X[0]x:+$HOME}`, bare | sq | dq, VerdictBlock, home},
+		{`rm -rf ${X[0]]]:+$HOME}`, bare | sq | dq, VerdictBlock, home},
+		{`rm -rf ${X[0]]+$HOME/}`, bare | sq | dq, VerdictBlock, home},
+		{`rm -rf ${X[0]]^+$HOME}`, bare | sq | dq, VerdictBlock, home},
+		{`rm -rf ${X[0]]x:+/*}`, bare | sq | dq, VerdictBlock, home},
 		// A sequence expression's letters are unquoted name bytes, which a
 		// bare name runs on into as it does into a list's.
 		{`rm -rf $HO{M..M}E`, bare | sq, VerdictBlock, home},
@@ -122,6 +131,9 @@ func TestHomeSpellingsTheWrittenCompareReads(t *testing.T) {
 		{`rm -rf ${X:+/}x`, bare | sq, VerdictAllow, ""},
 		{`rm -rf $HOME{1..2}`, bare | sq, VerdictAllow, ""},
 		{`rm -rf "$HO"{M..M}E`, bare | sq, VerdictAllow, ""},
+		{`rm -rf ${X[0]]-$HOME}`, bare | sq, VerdictAllow, ""},
+		{`rm -rf ${X[0]a-b+$HOME}`, bare | sq, VerdictAllow, ""},
+		{`rm -rf ${X[0]]\+$HOME}`, bare | sq, VerdictAllow, ""},
 	}
 	for _, tc := range cases {
 		var spellings []string
