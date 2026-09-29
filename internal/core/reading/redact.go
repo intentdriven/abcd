@@ -98,10 +98,15 @@ func noteDegraded(res *IngestResult, note string) {
 // The scanner is built here, on the refusal path alone, so a payload that
 // decodes pays nothing for it. It FAILS CLOSED where newPayloadField degrades
 // loudly: a returned refusal has no record to note a degradation in, and a
-// scanner that cannot be built leaves the text described, never echoed.
+// scanner that cannot be built, or runs degraded, leaves the text described,
+// never echoed: a degraded scanner redacts with a weakened pattern set, and
+// ScanText cannot say so in-band.
 func redactRefused(repoRoot, s string) string {
 	sc, err := scanner.New(repoRoot)
 	if err != nil {
+		return termsafe.DescribeRefused(s)
+	}
+	if unavail, _ := sc.Unavailable(); unavail {
 		return termsafe.DescribeRefused(s)
 	}
 	if findings := sc.ScanText(s, "issue"); len(findings) > 0 {
