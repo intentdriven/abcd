@@ -73,7 +73,7 @@ Ruled by the product thinker on 2026-09-21, in the interview that filed this dra
 
 ## Open Questions
 
-- **Whether a run-made grounds entry needs its own token.** `pursued:` with the run's identity in the text is the shape assumed here; if the vocabulary gains a token for a machine's conjecture, this intent takes it.
+- **Whether a run-made grounds entry needs its own token.** RESOLVED: no. The product thinker ruled on 2026-09-29 (ruling BZ1 of autonomous run A's owed list, recorded in `.abcd/work/DECISIONS.md` under that date) that a run-made entry keeps the shared `pursued:` kind with the run's marker opening its text, as built; a token of its own for a machine's conjecture was the alternative not taken.
 
 ## Acceptance Criteria
 
