@@ -56,13 +56,24 @@ func newBraceLimits() braceLimits {
 }
 
 // bword is a word under expansion: its bytes and, parallel to them, the flags
-// above.
+// above. s, when not nil, is parallel to them too and holds, for a variable's
+// mark, one more than the index of its varSite in the word the expansion
+// began from, and 0 for every other byte: bash expands braces before it reads
+// a variable, so each word a group makes keeps the variables its bytes came
+// from (iss-2609290419119456).
 type bword struct {
 	b []byte
 	m []byte
+	s []int32
 }
 
-func (w bword) slice(lo, hi int) bword { return bword{b: w.b[lo:hi], m: w.m[lo:hi]} }
+func (w bword) slice(lo, hi int) bword {
+	x := bword{b: w.b[lo:hi], m: w.m[lo:hi]}
+	if w.s != nil {
+		x.s = w.s[lo:hi]
+	}
+	return x
+}
 
 func (w bword) structAt(i int) bool { return i >= 0 && i < len(w.m) && w.m[i]&wordStruct != 0 }
 
@@ -74,6 +85,16 @@ func concat(parts ...bword) bword {
 	}
 	out := bword{b: make([]byte, 0, n), m: make([]byte, 0, n)}
 	for _, p := range parts {
+		if p.s != nil && out.s == nil {
+			out.s = make([]int32, len(out.b), n)
+		}
+		if out.s != nil {
+			if p.s != nil {
+				out.s = append(out.s, p.s...)
+			} else {
+				out.s = append(out.s, make([]int32, len(p.b))...)
+			}
+		}
 		out.b = append(out.b, p.b...)
 		out.m = append(out.m, p.m...)
 	}
@@ -197,7 +218,11 @@ func braceExpand(w bword, lim *braceLimits) ([]bword, bool) {
 // literal returns w with every structural flag cleared, so no later pass reads
 // its braces as structure.
 func literal(w bword) bword {
-	return bword{b: append([]byte(nil), w.b...), m: make([]byte, len(w.b))}
+	x := bword{b: append([]byte(nil), w.b...), m: make([]byte, len(w.b))}
+	if w.s != nil {
+		x.s = append([]int32(nil), w.s...)
+	}
+	return x
 }
 
 // braceGobble is bash's brace_gobbler: from index i, find the byte satisfy

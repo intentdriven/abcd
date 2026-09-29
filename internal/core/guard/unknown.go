@@ -105,10 +105,12 @@ const varText = "\x01"
 // varSite is one variable's mark in a word being built: its offset in the
 // word, and the expansion's text as the line wrote it (`$HOME`, `${PWD}`), ""
 // for a varMark read from a payload's text, whose name the string no longer
-// holds.
+// holds. bare records a name written unquoted and without braces, which the
+// unquoted text a brace group places after it runs on from (spellWritten).
 type varSite struct {
 	at   int
 	text string
+	bare bool
 }
 
 // spellWritten is a word as the line wrote its variables (segment.spelled):
@@ -117,7 +119,13 @@ type varSite struct {
 // kept as unknownMark. A simple name the next byte kept would extend is
 // braced (`"$A"B` is `${A}B`, not `$AB`), so the spelling reads as the same
 // expansions when it is read again (spelledView). sites is in word order.
-func spellWritten(word []byte, sites []varSite) string {
+//
+// mask is nil for a word as the line wrote it. For a word a brace group made
+// it is the word's bword.m, and a bare name directly followed by unquoted
+// name bytes is not braced: bash expands the group first and reads the name
+// after, so `$HO{ME,}` makes `$HOME` (iss-2609290419119456). A quote or
+// escape between them leaves the byte quoted, and the name ends there.
+func spellWritten(word []byte, sites []varSite, mask []byte) string {
 	var b strings.Builder
 	k := 0
 	isVar := func(p int) bool { return k < len(sites) && sites[k].at == p }
@@ -128,24 +136,128 @@ func spellWritten(word []byte, sites []varSite) string {
 			}
 			continue
 		}
-		text := sites[k].text
+		site := sites[k]
+		text := site.text
 		k++
 		if text == "" {
 			b.WriteByte(unknownMark)
 			continue
 		}
-		if text[1] != '{' {
+		if len(text) > 1 && text[1] != '{' {
 			next := p + 1
 			for next < len(word) && word[next] == unknownMark && !isVar(next) {
 				next++
 			}
 			if next < len(word) && word[next] != unknownMark && isNameByte(word[next]) {
-				text = "${" + text[1:] + "}"
+				runsOn := mask != nil && site.bare && next == p+1 && mask[next]&wordStruct != 0
+				if !runsOn {
+					text = "${" + text[1:] + "}"
+				}
 			}
 		}
 		b.WriteString(text)
 	}
 	return b.String()
+}
+
+// paramText is a parameter expansion's text as bash reads it: without the
+// backslash-newlines it drops before it reads a name (simpleParamEnd) or the
+// text between a `${` and its `}`.
+func paramText(text string) string { return strings.ReplaceAll(text, "\\\n", "") }
+
+// spellParameter is the written spelling (segment.spelled) of a `${…}`
+// expansion whose text between the braces is body. Where the expansion can
+// print its variable's value unchanged, it is spelled as that variable, so
+// arg_values reads `${HOME%/}` as the `${HOME}` it can be
+// (iss-2609290419119456):
+//
+//   - a default, an assignment or an error message, with or without the colon
+//     (`${HOME:-x}`, `${HOME=x}`, `${HOME:?x}`): the value when the variable
+//     is set, and the home always is;
+//   - a trimmed prefix or suffix and a pattern replacement (`${HOME%/}`,
+//     `${HOME#x}`, `${HOME/x/y}`): the value when the pattern does not match,
+//     and what a suffix trim leaves otherwise is the path above it;
+//   - a substring (`${HOME:0}`), whose offset is arithmetic and can be 0;
+//   - a case change (`${HOME^^}`, `${HOME@U}`), which names the same directory
+//     on a case-insensitive disk, and `@E` and `@P`, which change no path;
+//   - a subscript before any of these (`${HOME[0]}`), which can be 0.
+//
+// An alternative (`${X:+w}`, `${X+w}`) prints w or nothing, and is spelled as
+// w where w is itself one expansion, bare or double-quoted. Every other
+// expansion keeps its text as written and names no variable an entry names:
+// a length (`${#HOME}`), an indirection (`${!X}`), `@Q` and the other
+// transforms, and a default word that is not the variable's own value
+// (`${DIR:-$HOME}`), which is a recorded residual (17-guard.md).
+func spellParameter(body string) string {
+	return spellParameterAt(paramText(body), 0)
+}
+
+// spellAlternativeDepth bounds how deep spellParameter follows an
+// alternative's word into another expansion.
+const spellAlternativeDepth = 3
+
+func spellParameterAt(body string, depth int) string {
+	raw := "${" + body + "}"
+	n := 0
+	for n < len(body) && isNameByte(body[n]) {
+		n++
+	}
+	if n == 0 || body[0] >= '0' && body[0] <= '9' {
+		return raw
+	}
+	name, rest := body[:n], body[n:]
+	if strings.HasPrefix(rest, "[") {
+		k := strings.IndexByte(rest, ']')
+		if k < 0 {
+			return raw
+		}
+		rest = rest[k+1:]
+	}
+	same := "${" + name + "}"
+	if rest == "" {
+		return same
+	}
+	switch rest[0] {
+	case '-', '=', '?', '#', '%', '/', '^', ',', '~':
+		return same
+	case '@':
+		if len(rest) == 2 && strings.IndexByte("EPULu", rest[1]) >= 0 {
+			return same
+		}
+	case '+':
+		return spellAlternative(rest[1:], raw, depth)
+	case ':':
+		if len(rest) > 1 && rest[1] == '+' {
+			return spellAlternative(rest[2:], raw, depth)
+		}
+		return same
+	}
+	return raw
+}
+
+// spellAlternative is the spelling of an alternative whose word is w: w's
+// own, where w is one expansion (`$HOME`, `"${HOME%/}"`), else raw.
+func spellAlternative(w, raw string, depth int) string {
+	if depth >= spellAlternativeDepth {
+		return raw
+	}
+	if len(w) >= 2 && w[0] == '"' && w[len(w)-1] == '"' && strings.IndexByte(w[1:len(w)-1], '"') < 0 {
+		w = w[1 : len(w)-1]
+	}
+	if len(w) < 2 || w[0] != '$' {
+		return raw
+	}
+	if w[1] == '{' {
+		budget := 4*len(w) + 16
+		if closingDolBrace(w, 2, &budget) != len(w)-1 {
+			return raw
+		}
+		return spellParameterAt(w[2:len(w)-1], depth+1)
+	}
+	if isNameByte(w[1]) && !(w[1] >= '0' && w[1] <= '9') && simpleParamEnd(w, 1) == len(w) {
+		return w
+	}
+	return raw
 }
 
 // isNameByte reports whether c can continue a shell variable's name.

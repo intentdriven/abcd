@@ -323,12 +323,16 @@ dotfiles `~/.*`, `$HOME/.*`, `${HOME}/.*`) is a **block**
 in or the one above it (`*`, `*/`, `.`, `..`, `./*`, `./*/`, `../*`, `.*`,
 `./.*`, and `$PWD` or `${PWD}`, each also with `/*`) is a **warn**
 (`rm-rf-working-directory`). The target is compared as written, so `$HOME` and
-`$PWD` are seen as those words.
+`$PWD` are seen as those words, and read the way bash reads its text first: a
+backslash-newline inside the name is dropped, a brace group's words keep their
+variables (`{$HOME,x}`), and an expansion that can leave the value as it is
+reads as the variable (`${HOME%/}`, `${HOME:-x}`, `${X:+$HOME}`).
 
 What an allow still does not see is a hazard that never reaches command position
 at all: a delete target printed whole by a substitution (`rm -rf $(echo /)`),
 read by its known text the way `rm -rf $(find …)` names its targets every day,
-or spelled any other way than the words above; one launched through a known wrapper carrying a value-taking flag the
+or spelled any other way than the words above, a default's own word included
+(`rm -rf ${DIR:-$HOME}`); one launched through a known wrapper carrying a value-taking flag the
 guard does not name (`sudo -u bob <hazard>` is seen; the bundled short form
 `sudo -Hu bob <hazard>` reaches only the warn, not the entry that names it), one
 whose API path an entry names by its ROOT

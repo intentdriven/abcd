@@ -631,10 +631,35 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		}
 		switch {
 		case whole:
-			spells[len(toks)] = spellWritten(cur, curVarAt)
+			spells[len(toks)] = spellWritten(cur, curVarAt, nil)
 		case isUnknown(word):
 			spells[len(toks)] = unknownText
 		}
+	}
+	// recordBraceSpelling is recordSpelling for one word a brace group made:
+	// its variables are the sites its marks came from (bword.s), and a bare
+	// name the group's unquoted text runs on from is read as bash reads it
+	// after the expansion (`$HO{ME,}` is `$HOME`).
+	recordBraceSpelling := func(word string, w bword) {
+		if !curVar {
+			return
+		}
+		var sites []varSite
+		for p, k := range w.s {
+			if k > 0 {
+				site := curVarAt[k-1]
+				site.at = p
+				sites = append(sites, site)
+			}
+		}
+		if word != string(w.b) || len(sites) == 0 {
+			recordSpelling(word, false)
+			return
+		}
+		if spells == nil {
+			spells = map[int]string{}
+		}
+		spells[len(toks)] = spellWritten(w.b, sites, w.m)
 	}
 	flushToken := func() {
 		if !hasCur {
@@ -653,12 +678,19 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		// word bash does not brace-expand (`x={a,b} cmd` sets x to `{a,b}`). A
 		// word past the expansion cap stays as written and refuses its segment.
 		if curBrace && !(isAssignment(string(cur)) && allAssignments(toks)) {
-			if words, ok := expandBraces(bword{b: cur, m: curMask}, &braceLim); ok {
+			in := bword{b: cur, m: curMask}
+			if len(curVarAt) > 0 {
+				in.s = make([]int32, len(cur))
+				for k, site := range curVarAt {
+					in.s[site.at] = int32(k + 1)
+				}
+			}
+			if words, ok := expandBraces(in, &braceLim); ok {
 				for _, w := range words {
 					recordFeeds()
 					recordVar(false)
 					word := unknownFromOpenExpansion(string(w.b))
-					recordSpelling(word, false)
+					recordBraceSpelling(word, w)
 					toks = append(toks, word)
 					globs = append(globs, w.globbed())
 				}
@@ -963,7 +995,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		start := len(segs)
 		expandedBody(body)
 		feedFrom(start)
-		addVar("${" + body + "}")
+		addVar(spellParameter(body))
 		if len(segs) > start {
 			curSub = true
 		}
@@ -1087,7 +1119,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 					continue
 				}
 				if k := simpleParamEnd(line, j+1); line[j] == '$' && k >= 0 {
-					addVar(line[j:k])
+					addVar(paramText(line[j:k]))
 					j = k
 					continue
 				}
@@ -1412,7 +1444,8 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			// it goes (unknown.go), and `--$X` is a flag of unknown name as
 			// `--$(x)` is. A `$` that is quoted or escaped never reaches here.
 			end := simpleParamEnd(line, i+1)
-			addVar(line[i:end])
+			addVar(paramText(line[i:end]))
+			curVarAt[len(curVarAt)-1].bare = true
 			lastList = false
 			i = end
 		case c == '$' && i+1 < len(line) && line[i+1] == '{':
@@ -1888,7 +1921,9 @@ func closingDoubleQuote(line string, i int, budget *int) int {
 // 0), or `$@`, `$*` or `$-`, whose values are any text. It returns -1 where
 // the `$` opens no such expansion. `$$`, `$!`, `$?` and `$#` print a number,
 // which no flag, name or path an entry names can be, as an arithmetic
-// expansion's does, and stay the text they are.
+// expansion's does, and stay the text they are. A name runs on across a
+// backslash-newline, which bash drops before it reads the name, so `$HO\⏎ME`
+// is `$HOME` (iss-2609290419119456); paramText is the name as bash reads it.
 func simpleParamEnd(line string, i int) int {
 	if i >= len(line) {
 		return -1
@@ -1896,11 +1931,19 @@ func simpleParamEnd(line string, i int) int {
 	switch c := line[i]; {
 	case c == '_' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'):
 		j := i + 1
-		for j < len(line) && (line[j] == '_' || (line[j] >= 'a' && line[j] <= 'z') ||
-			(line[j] >= 'A' && line[j] <= 'Z') || (line[j] >= '0' && line[j] <= '9')) {
-			j++
+		for {
+			for j < len(line) && isNameByte(line[j]) {
+				j++
+			}
+			k := j
+			for k+1 < len(line) && line[k] == '\\' && line[k+1] == '\n' {
+				k += 2
+			}
+			if k == j || k >= len(line) || !isNameByte(line[k]) {
+				return j
+			}
+			j = k
 		}
-		return j
 	case (c >= '0' && c <= '9') || c == '@' || c == '*' || c == '-':
 		return i + 1
 	}

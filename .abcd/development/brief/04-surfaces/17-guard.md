@@ -294,8 +294,16 @@ in or the one above it (`*`, `*/`, `.`, `..`, `./*`, `./*/`, `../*`, `.*`,
 `git clean`, because that directory is usually the repository and emptying a
 build directory the same way is ordinary work. Chained after a `cd` any
 recursive forced delete blocks, as above. The target is compared as written,
-before the shell expands it, so `$HOME` and `$PWD` are seen as those words
-although no other parameter expansion is.
+before the shell expands it, so `$HOME` and `$PWD` are seen as those words. It
+is first read the way bash reads its text: a backslash-newline inside a name
+is dropped (`$HO\⏎ME` is `$HOME`); each word a brace group makes keeps the
+variables its text holds (`{$HOME,x}`, `$HOME/{.*,}`, `$HO{ME,}`); and an
+expansion whose operator can leave the value as it is reads as the variable
+itself — a default, an assignment or an error message (`${HOME:-x}`), a trim
+or a pattern replacement (`${HOME%/}`, `${HOME#x}`, `${HOME/x/y}`), a
+substring, a case change and a subscript — as does an alternative whose word
+is one of these (`${X:+$HOME}`). A trim that leaves the path above the home
+(`${HOME%/*}`) blocks as the home does.
 
 What an allow still does not see is a hazard that never reaches command position
 at all: a word that is wholly a command substitution or a variable standing
@@ -304,7 +312,10 @@ message or a branch name is spelled every day; a delete target printed whole by 
 substitution (`rm -rf $(echo /)`), which is read by its known text because that
 is how an everyday delete names what it removes (`rm -rf $(find . -name
 '*.pyc')`); a target spelled any other way than the words above (`rm -rf
-"$DIR"/*` with `DIR` unset, `rm -rf /?*`); one behind a wrapper flag the per-wrapper
+"$DIR"/*` with `DIR` unset, `rm -rf /?*`), a default's own word, which bash
+prints only when the variable is unset (`rm -rf ${DIR:-$HOME}`), an
+alternative nested more than three deep, and a substring of `$PWD` that
+prints the root (`${PWD:0:1}`), which warns as `$PWD` does; one behind a wrapper flag the per-wrapper
 table does not name; a REST
 path an entry names by its root segment when the host serves that API under a
 prefix; an IFS the shell already holds when the line starts, or gains during the line
