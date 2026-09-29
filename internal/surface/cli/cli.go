@@ -310,7 +310,7 @@ func NewRootCommand() *cobra.Command {
 			// plugin page relays it, and a reader that needs the path already
 			// has its own working directory.
 			st.Dir = fsutil.DisplayPath(st.Dir)
-			board := boardOutput{StatusInfo: st, Statusline: boardPresence(cwd, cmd.ErrOrStderr()), Peers: boardPeers(cwd, cmd.ErrOrStderr()), Inbox: boardInbox(cmd.ErrOrStderr()), Oracle: boardOracle(cwd, cmd.ErrOrStderr()), Reviews: boardReviews(cwd, cmd.ErrOrStderr())}
+			board := boardOutput{StatusInfo: st, Statusline: boardPresence(cwd, cmd.ErrOrStderr()), Peers: boardPeers(cwd, cmd.ErrOrStderr()), Inbox: boardInbox(cmd.ErrOrStderr()), Oracle: boardOracle(cwd, cmd.ErrOrStderr()), Reviews: boardReviews(cwd, cmd.ErrOrStderr()), Status: boardStatus(cwd, cmd.ErrOrStderr())}
 			return render(cmd.OutOrStdout(), asJSON, board, func(w io.Writer) {
 				// Sanitised like every other board line: the directory name is the
 				// checkout's own, and a name carrying an ESC sequence or a bidi
@@ -333,6 +333,7 @@ func NewRootCommand() *cobra.Command {
 				}
 				renderBoardOracle(w, board.Oracle)
 				renderBoardReviews(w, board.Reviews)
+				renderBoardStatus(w, board.Status)
 			})
 		},
 	}

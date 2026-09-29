@@ -537,3 +537,25 @@ func TestAuditIsMetOnTheCommittedIntents(t *testing.T) {
 	}
 	t.Logf("%d of %d shipped intents read MET:\n%s", len(met), len(entries), strings.Join(met, "\n"))
 }
+
+// A missing nested string is named with its parent, so the refusal tells a
+// repository exactly which key of its ui.json to add.
+func TestUIMissingNamesANestedKeyWithItsParent(t *testing.T) {
+	got := UI{}.missing()
+	for _, want := range []string{"status.next_up", "health.unresolved", "record_nav.dashboard", "more"} {
+		found := false
+		for _, m := range got {
+			if m == want {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("missing() does not name %q: %v", want, got)
+		}
+	}
+	for _, m := range got {
+		if m == "next_up" {
+			t.Errorf("missing() names a nested key bare: %q", m)
+		}
+	}
+}

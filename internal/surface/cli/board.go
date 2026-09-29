@@ -9,6 +9,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/oracle"
 	"github.com/intentdriven/abcd/internal/core/report"
 	"github.com/intentdriven/abcd/internal/core/reviews"
+	"github.com/intentdriven/abcd/internal/core/statusblock"
 	"github.com/intentdriven/abcd/internal/core/statusline"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -38,6 +39,9 @@ type boardOutput struct {
 	// is flagged (itd-28); omitted when the tree holds none. The text render
 	// lists the dated reviews and folds the release receipts into one line.
 	Reviews *reviews.Board `json:"reviews,omitempty"`
+	// Status is the Now / Next / Later block (itd-2609212103568351), present
+	// in a checkout abcd manages and omitted elsewhere.
+	Status *statusblock.Block `json:"status,omitempty"`
 }
 
 // boardStatusline is the board's view of the row: the state the badge

@@ -10,6 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/intentdriven/abcd/internal/core/implement/loop"
 	"github.com/intentdriven/abcd/internal/core/site"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
@@ -60,6 +61,9 @@ func newSiteCommand(asJSON *bool) *cobra.Command {
 				RepoRoot: root,
 				OutDir:   out,
 				Stamp:    site.BuildStamp{Version: version, Commit: commit, GeneratedAt: stampDate, Preview: preview},
+				// The Status page's Now / Next / Later block reads the
+				// build's state file through the loop, as the bare board does.
+				Lanes: loop.StatusLanes,
 			})
 			if err != nil {
 				return &exitError{Code: 2, Msg: "abcd site build: " + scrubPaths(err)}
@@ -119,7 +123,7 @@ func newLintSiteCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			res, err := site.Check(site.CheckRequest{RepoRoot: root, OutDir: out})
+			res, err := site.Check(site.CheckRequest{RepoRoot: root, OutDir: out, Lanes: loop.StatusLanes})
 			if err != nil {
 				return &exitError{Code: 2, Msg: "abcd lint site: " + scrubPaths(err)}
 			}

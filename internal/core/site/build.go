@@ -26,6 +26,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/changelog"
 	"github.com/intentdriven/abcd/internal/core/lint"
+	"github.com/intentdriven/abcd/internal/core/statusblock"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
@@ -282,6 +283,11 @@ type Request struct {
 	// filled from the repository (the version from the changelog, the commit
 	// from git HEAD).
 	Stamp BuildStamp
+	// Lanes reads the build's state file for the Status page's Now / Next /
+	// Later block (itd-2609212103568351); nil reads as an absent state file.
+	// The front door hands in the implement loop's reader, which this package
+	// cannot import.
+	Lanes statusblock.LaneReader
 }
 
 // Result describes what a build wrote.
@@ -460,6 +466,13 @@ func Build(req Request) (Result, error) {
 	ex, err := newExplorer(c, export, bib, recordRoot)
 	if err != nil {
 		return Result{}, err
+	}
+	if ex.pages.status {
+		block, err := statusblock.Read(repoRoot, req.Lanes)
+		if err != nil {
+			return Result{}, err
+		}
+		ex.status = &block
 	}
 	pages, err := ex.Pages()
 	if err != nil {

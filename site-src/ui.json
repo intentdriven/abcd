@@ -112,5 +112,15 @@
     "clean": "Nothing to report",
     "suggestion": "Suggested",
     "supersedes_lead": "Not a fault: the record on the left replaced the one on the right"
+  },
+  "status": {
+    "now": "Now",
+    "next": "Next",
+    "later": "Later",
+    "next_up": "next up",
+    "fails": "fails",
+    "draft": "draft",
+    "none": "None",
+    "order_record_id": "READY intents read oldest id first"
   }
 }
