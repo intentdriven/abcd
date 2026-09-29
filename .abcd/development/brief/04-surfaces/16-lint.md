@@ -138,7 +138,7 @@ iss-2608231000561060.
 
 | id | severity | checks |
 |---|---|---|
-| `three-tier-layout` | error | `.abcd/development/` and `.abcd/work/` present as directories on disk; `.abcd/.work.local/`, when present, gitignored, which is the rule's one committedness assertion; no local-tier artefacts (`NEXT.md`, `scratch/`, `logs/`) sitting directly in one of the two shared tiers |
+| `three-tier-layout` | error | `.abcd/development/` and `.abcd/work/` present as directories on disk; `.abcd/.work.local/`, when present, gitignored, which is the rule's one committedness assertion; no local-tier artefacts (`NEXT.md`, `scratch/`, `logs/`, in any case) directly in one of the two shared tiers or at the `.abcd/` root, and no `NEXT.md` at any depth in a shared tier |
 | `conventions-router` | error | `AGENTS.md` present at the repo root |
 | `decision-durability` | warn | a committed `.abcd/work/DECISIONS.md`; decisions not living only in the gitignored layer |
 | `docs-currency` | warn | reuses the docs-lint engine where `docs/` exists, and says so where it cannot: a repo with a `docs/` tree but no docs-lint configuration, and a configuration that will not load, each raise a finding against `.abcd/docs-lint.json` rather than passing quietly |

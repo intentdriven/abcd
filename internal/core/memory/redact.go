@@ -7,6 +7,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // redact.go — the write-time secret/PII sanitiser for the committed
@@ -326,12 +327,55 @@ func (r *storeRedactor) judgeKey(key, label string) error {
 // joined form hides in the scanner exactly the token the slug carries plainly.
 // The underscore SUFFIXES are judged for the same reason carried one step
 // further — see filenameJudgeTexts.
+//
+// The refusal names the page with every refused span sealed (sealedFilename):
+// the name is what the operator repairs, and the span is what must not reach
+// the terminal or the transcript (iss-2609290411321963).
 func (r *storeRedactor) judgeFilename(filename string) error {
 	kinds := r.filenameHardFailKinds(filename)
 	if len(kinds) == 0 {
 		return nil
 	}
-	return newIngestError("refusing to write %s: the page filename carries %d hard-fail span(s) [%s]; a page name cannot be redacted without renaming the page the store resolves, so repair the slug at the source", filename, len(kinds), strings.Join(kinds, ", "))
+	return newIngestError("refusing to write %s: the page filename carries %d hard-fail span(s) [%s]; a page name cannot be redacted without renaming the page the store resolves, so repair the slug at the source", r.sealedFilename(filename), len(kinds), strings.Join(kinds, ", "))
+}
+
+// sealedFilename is filename with every span a hard_fail finding over
+// filenameJudgeTexts matched replaced by `[sealed]`, so a refusal can name the
+// page without quoting the secret it refuses. The spans are marked byte by byte
+// in the joined name and each marked run is sealed once, so two overlapping
+// matches cannot leave a raw tail. A match that cannot be located in the name
+// (a finding read through a decoded view) leaves the whole name described,
+// never echoed.
+func (r *storeRedactor) sealedFilename(filename string) string {
+	mask := make([]bool, len(filename))
+	for _, text := range filenameJudgeTexts(filename) {
+		for _, f := range r.hardFailResidue(text, filename) {
+			if f.Matched == "" || !strings.Contains(filename, f.Matched) {
+				return termsafe.DescribeRefused(filename)
+			}
+			for from := 0; ; {
+				i := strings.Index(filename[from:], f.Matched)
+				if i < 0 {
+					break
+				}
+				for j := from + i; j < from+i+len(f.Matched); j++ {
+					mask[j] = true
+				}
+				from += i + 1
+			}
+		}
+	}
+	var b strings.Builder
+	for i := 0; i < len(filename); i++ {
+		if !mask[i] {
+			b.WriteByte(filename[i])
+			continue
+		}
+		if i == 0 || !mask[i-1] {
+			b.WriteString("[sealed]")
+		}
+	}
+	return b.String()
 }
 
 // filenameHardFailKinds is the page-name verdict itself: the distinct hard_fail

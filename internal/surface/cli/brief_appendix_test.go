@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -114,5 +116,35 @@ func TestSurfaceAppendixFromCobraTree(t *testing.T) {
 		if !strings.Contains(d, w) {
 			t.Errorf("drift message lacks %q:\n%s", w, d)
 		}
+	}
+}
+
+// TestShippedChapterNeverClaimsNoShippedSurface: a chapter whose register row
+// reads shipped never states there is no shipped surface (iss-2609231931006041).
+// The host-delegated commands ship as command pages with no Go verb, and the
+// committed appendix of each once said the opposite of its own register row.
+func TestShippedChapterNeverClaimsNoShippedSurface(t *testing.T) {
+	dir := filepath.Join(testRepoRoot(), filepath.FromSlash(surface.BriefSurfacesDir))
+	register, err := os.ReadFile(filepath.Join(dir, surface.RegisterFile))
+	if err != nil {
+		t.Fatal(err)
+	}
+	checked := 0
+	for _, row := range surface.ParseRegister(string(register)) {
+		if row.Status != "shipped" || row.Chapter == "" {
+			continue
+		}
+		text, err := os.ReadFile(filepath.Join(dir, row.Chapter))
+		if err != nil {
+			t.Fatal(err)
+		}
+		checked++
+		if strings.Contains(string(text), "There is no shipped surface") {
+			t.Errorf("%s/%s: register row %d reads shipped, but the chapter says there is no shipped surface",
+				surface.BriefSurfacesDir, row.Chapter, row.Line)
+		}
+	}
+	if checked == 0 {
+		t.Fatal("no shipped register rows found; the check would pass vacuously")
 	}
 }

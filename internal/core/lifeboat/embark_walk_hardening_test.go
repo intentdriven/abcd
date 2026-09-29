@@ -114,3 +114,39 @@ func TestWalkLifeboatFilesReturnsRegularFilesWithinBounds(t *testing.T) {
 		t.Fatalf("walk = %q, want the three regular files sorted", got)
 	}
 }
+
+// TestWalkLifeboatFilesNamesTheEntryItCannotOpen is iss-2609252004013212: a
+// directory the descent cannot open refused with the raw open error, whose path
+// carries the "/." suffix openWalkDir adds and names only the last component, so
+// the refusal named a path that does not exist. It names the entry by its path
+// in the lifeboat instead. An unreadable directory stands in for the swapped-in
+// FIFO the suffix exists to refuse, because both fail the same open.
+func TestWalkLifeboatFilesNamesTheEntryItCannotOpen(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root opens a directory whatever its mode")
+	}
+	dir := t.TempDir()
+	writeTree(t, dir, map[string]string{"sub/locked/a.txt": "x\n"})
+	locked := filepath.Join(dir, "sub", "locked")
+	if err := os.Chmod(locked, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(locked, 0o755) })
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+
+	_, err = walkLifeboatFilesBounded(root, 1000, 50, 64)
+	if err == nil {
+		t.Fatal("an unopenable lifeboat directory was walked as if it were readable")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, `"sub/locked"`) {
+		t.Errorf("the refusal must name the entry by its lifeboat path, got %q", msg)
+	}
+	if strings.Contains(msg, "/.") {
+		t.Errorf("the refusal leaks the descent's internal \"/.\" suffix: %q", msg)
+	}
+}

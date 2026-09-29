@@ -148,8 +148,9 @@ func RecordGrounds(repoRoot, intentID string, g grounds.Grounds) (GroundsResult,
 // the whole file it would match a frontmatter `# Grounds` comment — a legal YAML
 // comment the block parser skips and an ATX heading pattern matches — as the
 // section, and report an empty pseudo-section about a record whose body carries
-// its entries (iss-2608301805069999). Callers pass whole records and bodies
-// alike; grounds.Body takes either.
+// its entries (iss-2608301805069999). Callers pass the whole record: a bare
+// body passes through grounds.Body whole only while it does not open with a
+// thematic break, which Body reads as a frontmatter opener.
 func ParseGrounds(content string) []grounds.Grounds {
 	return grounds.ParseSectionAboveFloor(grounds.Body(content))
 }

@@ -491,6 +491,30 @@
           "abcd capture \"killall -u bob stopped every session\""
         ]
       }
+    },
+    "abcd-source-ledger-flip": {
+      "tier": "blocker",
+      "pattern": {
+        "command": "abcd",
+        "subcommand": "source",
+        "subcommand2": "ledger",
+        "value_flags": ["--corpus"],
+        "flags": ["--flip"]
+      },
+      "why": "Flipping a source-ledger line to public citation is the person's own act: the ledger records that a human chose to cite that source, so a flip an agent makes writes a false record of who decided.",
+      "successor": "Leave this one to the person: tell them which ledger line you believe is ready to cite publicly and why, and let them run `abcd source ledger --flip N` themselves.",
+      "fixtures": {
+        "known_bad": [
+          "abcd source ledger --flip 3",
+          "abcd source ledger --flip=3",
+          "abcd source --corpus /srv/corpus ledger --flip 3"
+        ],
+        "known_good": [
+          "abcd source ledger --list",
+          "abcd source ledger --decision adr-7 --claim c --source k --influence i",
+          "abcd capture \"an agent ran abcd source ledger --flip 3\""
+        ]
+      }
     }
   }
 }

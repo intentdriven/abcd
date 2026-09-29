@@ -542,10 +542,18 @@ jobs:
             ghcr.io/zizmorcore/zizmor@sha256:d1117e5dbd9ee4970644067b534ab6ab50371f3c6f7f4d05446eb603a6e78f48 \
             --persona regular /src
 
-  # Deterministic gate for the .abcd/work/reviews/ charter (RD001-RD004). Needs
-  # full history: RD002 (append-only) checks committed history for post-creation
-  # edits, so fetch-depth: 0 (the default shallow checkout would miss them).
-  # Stopgap until the RD codes land in internal/core/lint.
+  # The working-tier ledger gates: the .abcd/work/reviews/ charter (RD001-RD004),
+  # the issue-resolution gate (RS001-RS006) and the decisions-append gate
+  # (DA001-DA004), each after the cases that prove it can fail. The design-record
+  # drift gate, cmd/record-lint, is NOT here: it is a step of the `check` job.
+  # The job keeps the id `record-lint` because that id is the required status
+  # check the main-protection ruleset names (.abcd/work/rulesets/
+  # main-protection.json); renaming the job alone leaves the merge gate waiting
+  # on a check that never reports, so a rename lands only together with the
+  # live ruleset edit (iss-2609251358062952). Needs full history: RD002
+  # (append-only) checks committed history for post-creation edits, so
+  # fetch-depth: 0 (the default shallow checkout would miss them). The RD half
+  # is a stopgap until the RD codes land in internal/core/lint.
   record-lint:
     timeout-minutes: 5
     runs-on: ubuntu-latest

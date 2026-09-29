@@ -97,9 +97,10 @@ what map a chapter to its commands, so a chapter with no row here, or a row
 naming a chapter that does not exist, is refused by name, as is a chapter
 without its markers. The generator still writes every other chapter and then
 exits 1 naming each refusal, and the drift test fails the same way. A chapter whose
-command the tree does not register — a staged design target, or a host-delegated
-command with no verb — carries one sentence saying there is no shipped surface,
-so no chapter lacks the block.
+command the tree does not register carries one sentence instead, so no chapter
+lacks the block: a staged design target's says there is no shipped surface, and
+a host-delegated command's, whose row here reads shipped, says it ships as a
+command page with no verb, so the block never contradicts its own row.
 
 Two tests in `internal/surface/cli` hold it, and both run in `go test ./...`,
 so in `make preflight` and in CI. `TestSurfaceAppendicesMatchCommandTree`
@@ -126,6 +127,9 @@ say what the surface is for, and let the appendix say how it is spelled.
 line above them saying that `abcd --help --agent` expands the list. With
 `--agent` the help renders two blocks: the person's groups, then the verbs agents
 and hosts call, each line naming the command page an agent reads next (itd-146).
+Each block sizes its own name column, so the person's groups read the same in
+both forms, and asking for the expanded list any other way, on the bare call or
+through the help verb, is refused naming the one spelling that works.
 Every other command's help is the framework's own, except that it opens with
 the command's sentence (the section below).
 

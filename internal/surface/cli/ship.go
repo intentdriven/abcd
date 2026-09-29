@@ -474,7 +474,21 @@ func runShipIngest(cmd *cobra.Command, cwd string, raw []byte, payloadDir string
 		res           shipResult
 		preflightNote string
 	)
+	// A release already in flight is the cut's own refusal (release-in-flight,
+	// exit 1), and that is the one to show. The pre-flight's parity diff would
+	// refuse the same window first, as a baseline this checkout cannot read, and
+	// name --baseline, a flag this verb does not take (iss-2609252117203691). The
+	// ingest below refuses without writing, so skipping the pre-flight keeps
+	// nothing from a cut that could have landed.
+	precheck := stage
 	if stage {
+		inFlight, _, err := changelog.ReleaseInFlight(cwd)
+		if err != nil {
+			return &exitError{Code: 2, Msg: "abcd launch ship: " + scrubPaths(err)}
+		}
+		precheck = !inFlight
+	}
+	if precheck {
 		if archive {
 			scratch, err := os.MkdirTemp("", "abcd-ship-")
 			if err != nil {

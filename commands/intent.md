@@ -905,7 +905,10 @@ an issue's one-way `related_intents` is a loose relation and is not reported),
 `resolved/`), and `retired_field` (a record still carrying a retired back-link
 key — `/abcd:capture migrate --apply` rewrites it). Report the finding count,
 each finding's kind and records, and the receipt path the run left under
-`.abcd/.work.local/logs/audit/`. It writes to neither store. `--strict` without
+`.abcd/.work.local/logs/audit/`. The ledger is per checkout, so the check names
+the one it read: a stderr line `abcd intent audit --issue-drift: ledger of
+<checkout> on branch <branch>`, or with `--json` a `ledger` member carrying
+`checkout` and `branch`. It writes to neither store. `--strict` without
 `--issue-drift` is refused.
 
 ## Consistency: where do two records contradict each other?

@@ -240,7 +240,7 @@ func NewRootCommand() *cobra.Command {
 			// --agent modifies the help and nothing else; on the board it would
 			// be a flag that silently does nothing (itd-146).
 			if agentHelp {
-				return &exitError{Code: 2, Msg: "--agent expands the help listing; run `abcd --help --agent`"}
+				return &exitError{Code: 2, Msg: helpAgentRefusal}
 			}
 			// --version is where every tool keeps its version
 			// (itd-2609212130136102). It answers alone: a record id beside it
@@ -552,6 +552,9 @@ func NewRootCommand() *cobra.Command {
 	// two operands the design admits, because the operand it most often refuses
 	// is one it used to take (adr-2609021016286571).
 	applyReadingFlagErrors(root)
+	// Also after the generic tagging: cobra's help verb inherits the root's
+	// flag-error function, and `abcd help --agent` names the spelling that works.
+	applyHelpVerbAgentRefusal(root)
 	// Also after the generic tagging, and last: on the hook plane exit 2 is the
 	// host's instruction to BLOCK, so every usage error a hook can provoke refuses
 	// at exit 1 instead (iss-269).
@@ -2953,6 +2956,14 @@ func runIssueDrift(cmd *cobra.Command, asJSON, strict bool) error {
 	if err != nil {
 		return err
 	}
+	// The check reads this checkout's issue ledger, so it names the ledger it
+	// read as every capture verb does (iss-2609251235119402): on stderr before
+	// the read in the text render, as the `ledger` member under --json.
+	if !asJSON {
+		id := ledgerIdentityOf(repoRoot)
+		fmt.Fprintf(cmd.ErrOrStderr(), "abcd intent audit --issue-drift: ledger of %s%s\n",
+			termsafe.Sanitize(id.Checkout), branchPhrase(id.Branch))
+	}
 	res, err := capture.IssueDrift(capture.IssueDriftRequest{RepoRoot: repoRoot})
 	if err != nil {
 		return &exitError{Code: 2, Msg: "abcd intent audit --issue-drift: " + err.Error()}
@@ -2966,7 +2977,7 @@ func runIssueDrift(cmd *cobra.Command, asJSON, strict bool) error {
 		fmt.Fprintf(cmd.ErrOrStderr(), "warning: issue-drift %s %s -> %s (%s): %s\n",
 			f.Kind, f.Record, f.Other, termsafe.Sanitize(f.Path), termsafe.Sanitize(f.Message))
 	}
-	if err := render(cmd.OutOrStdout(), asJSON, res, func(w io.Writer) {
+	if err := renderLedger(cmd.OutOrStdout(), asJSON, repoRoot, res, func(w io.Writer) {
 		fmt.Fprintf(w, "abcd intent audit --issue-drift — %d record(s) scanned, %d finding(s) (receipt %s)\n",
 			res.Scanned, len(res.Findings), termsafe.Sanitize(res.ReceiptPath))
 	}); err != nil {
@@ -4354,7 +4365,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			}
 			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, res, func(w io.Writer) {
 				for _, iss := range res.Issues {
-					fmt.Fprintf(w, "%s  %s  %s  %s%s\n", iss.ID, iss.Status, iss.Severity, iss.Slug, blockedNote(iss))
+					fmt.Fprintf(w, "%s  %s  %s  %s%s%s\n", iss.ID, iss.Status, iss.Severity, iss.Slug, blockedNote(iss), summaryNote(iss.Body))
 				}
 				for _, sk := range res.Skipped {
 					// Path and Error echo a malformed issue file's own name and content
@@ -5301,6 +5312,50 @@ func blockedNote(iss capture.Issue) string {
 		return ""
 	}
 	return " [blocked-by " + strings.Join(iss.BlockedByOpen, ",") + "]"
+}
+
+// listSummaryRunes caps the one-line summary a `capture list` row carries.
+const listSummaryRunes = 80
+
+// summaryNote renders the tail of a `capture list` row: the first non-blank
+// line of the record's body, less a leading markdown heading or blockquote
+// marker, sanitised for the terminal and clipped to listSummaryRunes, so each
+// row carries the one-line summary itd-4's AC5 names and stays one line. The
+// whole body is in --json.
+func summaryNote(body string) string {
+	var line string
+	for _, l := range strings.Split(body, "\n") {
+		if l = strings.TrimSpace(l); l != "" {
+			line = l
+			break
+		}
+	}
+	line = strings.TrimSpace(termsafe.Sanitize(stripMarkdownMarker(line)))
+	if line == "" {
+		return ""
+	}
+	if r := []rune(line); len(r) > listSummaryRunes {
+		line = strings.TrimSpace(string(r[:listSummaryRunes])) + "…"
+	}
+	return " — " + line
+}
+
+// stripMarkdownMarker removes one leading CommonMark marker from a trimmed
+// line: an ATX heading's run of one to six "#" when a space, a tab or the end
+// of the line follows it, or a blockquote's ">" with its optional space. A
+// longer hash run or one glued to a word is text, and is left alone.
+func stripMarkdownMarker(line string) string {
+	if strings.HasPrefix(line, ">") {
+		return strings.TrimPrefix(line[1:], " ")
+	}
+	n := len(line) - len(strings.TrimLeft(line, "#"))
+	if n == 0 || n > 6 {
+		return line
+	}
+	if rest := line[n:]; rest == "" || rest[0] == ' ' || rest[0] == '\t' {
+		return rest
+	}
+	return line
 }
 
 // moreEvidenceNote renders the tail of a `capture mentions` row: the render shows

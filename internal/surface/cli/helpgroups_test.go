@@ -271,6 +271,62 @@ func TestAgentFlagOutsideHelpRefuses(t *testing.T) {
 	}
 }
 
+// TestAgentFlagOnTheHelpVerbNamesTheSpellingThatWorks is iss-2609251645376019:
+// `abcd help --agent` reached cobra's bare "unknown flag: --agent", while the
+// root's own refusal of --agent names `abcd --help --agent`. The help verb's
+// path names the same spelling, and stays a usage error.
+func TestAgentFlagOnTheHelpVerbNamesTheSpellingThatWorks(t *testing.T) {
+	for _, args := range [][]string{{"help", "--agent"}, {"help", "lint", "--agent"}} {
+		out, err := runCLIErr(t, args...)
+		if err == nil {
+			t.Fatalf("`abcd %s` must refuse:\n%s", strings.Join(args, " "), out)
+		}
+		if code := exitCodeOf(err); code != 2 {
+			t.Errorf("`abcd %s` exit = %d, want 2 (a usage error)", strings.Join(args, " "), code)
+		}
+		if !strings.Contains(err.Error(), "abcd --help --agent") {
+			t.Errorf("`abcd %s` must name the spelling that works, got %v", strings.Join(args, " "), err)
+		}
+	}
+}
+
+// helpPeopleBlock is the person's groups as rendered: every line from the first
+// group title to the line before the agents block or the flags.
+func helpPeopleBlock(help string) string {
+	lines := strings.Split(help, "\n")
+	start, end := -1, len(lines)
+	for i, line := range lines {
+		if start < 0 && line == peopleGroupTitles[0] {
+			start = i
+		}
+		if start >= 0 && (line == helpAgentsTitle || line == "Flags:") {
+			end = i
+			break
+		}
+	}
+	if start < 0 {
+		return ""
+	}
+	return strings.Join(lines[start:end], "\n")
+}
+
+// TestPeopleBlockIsTheSameUnderBothHelps is iss-2609251645374557: the name
+// column was sized over both blocks, so the person's groups padded to 12 under
+// --help and to the agent block's longest path under --help --agent. Each block
+// is sized over its own names, so the person's block reads byte for byte the
+// same in both forms.
+func TestPeopleBlockIsTheSameUnderBothHelps(t *testing.T) {
+	plain, _ := executedHelp(t, "--help")
+	agent, _ := executedHelp(t, "--help", "--agent")
+	p, a := helpPeopleBlock(plain), helpPeopleBlock(agent)
+	if p == "" {
+		t.Fatalf("no person's block in the plain help:\n%s", plain)
+	}
+	if p != a {
+		t.Errorf("the person's block differs between --help and --help --agent:\n--- --help\n%s\n--- --help --agent\n%s", p, a)
+	}
+}
+
 // TestCommandPagesDeclareTheirBlock is criterion 5 on the page side: every
 // command page backing a visible top-level verb says in its frontmatter which
 // help block lists that verb, and says the one the tree says.

@@ -73,6 +73,22 @@ func TestReadHomeDeclarationNamesTheExposedLevel(t *testing.T) {
 	}
 }
 
+// HomeDeclarationNames carries the exposed-directory refusal in the same
+// clause ReadHomeDeclaration wrote, naming the directory and the chmod that
+// repairs it, rather than falling through to the generic could-not-be-read
+// wording: the trusted-roots and local-transcript-roots callers render this
+// clause as their only diagnostic.
+func TestHomeDeclarationNamesNamesTheExposedDirectory(t *testing.T) {
+	home := abcdHomeAt(t, ".abcd/trusted-roots", 0o777, "/example/checkout\n")
+	declared, ignored := HomeDeclarationNames(home, ".abcd/trusted-roots", 1024, "/example/checkout", false)
+	if declared {
+		t.Fatal("a declaration in a directory every account can write re-admitted the target")
+	}
+	if !strings.Contains(ignored, "~/.abcd") || !strings.Contains(ignored, "chmod o-w") || strings.Contains(ignored, "could not be read") {
+		t.Fatalf("the ignored declaration must name the exposed directory and the repair: %q", ignored)
+	}
+}
+
 // A directory another account owns is refused, since that account can replace
 // anything in it; one root owns is not, since root can replace anything
 // anywhere and refusing it would protect nothing. The owner is read from the

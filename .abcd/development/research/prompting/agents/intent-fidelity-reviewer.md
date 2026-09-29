@@ -214,3 +214,15 @@ material § 0–6 rewrite that would change the findings' scope.
 - `../../../../agents/intent-fidelity-reviewer/fixtures/` — golden-test + injection-canary fixtures
 - `../../intents/disciplines/itd-1-acceptance-gates.md` — the acceptance-gate discipline Role 1's itd-1 pass enforces
 - `../../intents/disciplines/itd-37-modification-grammar.md` — the modification-grammar discipline Role 1's `MG004` pass enforces
+
+---
+
+## 2026-09-29 — the agent's shipped name
+
+The agent this research informs ships as `agents/intent-auditor.md`, with its
+fixtures under `agents/intent-auditor/fixtures/`: itd-123 (spc-28) renamed
+`intent-fidelity-reviewer` to `intent-auditor` when `abcd intent review` became
+`abcd intent audit`. The two `agents/intent-fidelity-reviewer` paths under
+Related Documentation above name the agent by the name this file was written
+under, and read as those two paths. The findings above are unchanged by the
+rename.

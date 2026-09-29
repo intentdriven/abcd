@@ -51,7 +51,7 @@ But for projects that genuinely leave abcd (acquired, deprecated, pivot), the li
 
 ## Open Questions
 
-- Should `destroy` offer to back up `.abcd/lifeboat/` somewhere first (since it may be valuable independently)?
+- ~~Should `destroy` offer to back up `.abcd/lifeboat/` somewhere first (since it may be valuable independently)?~~ Moot under adr-35: a lifeboat is written out of tree, to a destination `disembark pack` is handed, so `destroy` finds none inside the repository.
 - Same question for `.abcd/development/` (it's design history, not just runtime state)?
 - **Naming — resolved 2026-05-07.** Two-tier on `/abcd:ahoy`: `/abcd:ahoy uninstall` is reversible marker-only removal (re-running `ahoy` re-installs cleanly); the deeper destroy surfaces as `/abcd:ahoy destroy` — fits the nautical metaphor (scuttling a ship has a name and a weight) and the verb's danger is encoded in the verb itself. The `uninstall` description ("reversible marker-only removal") makes the distinction discoverable. Plan-review for this intent treats this naming as decided rather than re-opening.
 

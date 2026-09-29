@@ -18,3 +18,11 @@ The pre-push gate is blind to both eval lanes, so the read-block eval is guarded
 ## Grounds
 
 - pursued: a defect in the read-block or amnesia eval now fails locally before it reaches CI; it would be shown wrong by a preflight run that is green while make evals-cold-reading or make smoke is red.
+
+## Correction, 2026-09-29
+
+The test the resolution names, `TestPreflightRunsBothEvalLanes`, is
+`TestPreflightRunsEveryTaggedEvalLane` in `internal/core/lint/preflightgates_test.go`
+since `3eb4b549`, which derives the eval lanes from the Makefile rather than
+naming two. The rename changes nothing the resolution claims: the pre-push gate
+still runs every tagged eval lane.

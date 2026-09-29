@@ -31,11 +31,11 @@ The `intent-fidelity-reviewer` agent is named in `docs/reference/commands.md` as
 
 | Verb | Role | Status |
 |---|---|---|
-| `review <itd-N>` | Role 1 — per-intent fidelity | **Shipped (spc-12)** |
+| `review <itd-N>` | Role 1 — per-intent fidelity | **Shipped (spc-12, predecessor store)** |
 | `consistency [<itd-N>]` | Role 2 — cross-doc fidelity | **Documented, not built** |
 | `shape [<itd-N>]` | Role 3 — kind classification | **Documented, not built** |
 
-A 2026-05-16 working-log entry named this gap: "No flow-next spec owns `internal/core/lint` or the `intent-fidelity-reviewer` agent" — partially addressed by spc-12 for Role 1, but Roles 2 and 3 still have no owner. spc-12's spec explicitly bounded itself to Role 1; the other two roles "are NOT in scope: they are a later Pass A/B/C agent spec" (spc-12 `## Overview`).
+A 2026-05-16 working-log entry named this gap: "No flow-next spec owns `internal/core/lint` or the `intent-fidelity-reviewer` agent" — partially addressed by spc-12 (predecessor store) for Role 1, but Roles 2 and 3 still have no owner. spc-12 (predecessor store)'s spec explicitly bounded itself to Role 1; the other two roles "are NOT in scope: they are a later Pass A/B/C agent spec" (spc-12 (predecessor store) `## Overview`).
 
 This intent ships those later epics as a **standalone intent whose scope covers both roles** — the two roles share substrate that should land together:
 
@@ -69,7 +69,7 @@ The intent is project-agnostic: every abcd project that uses the intent corpus b
   routing is stubbed).
 - Findings emitted as structured records grouped by judgement category
   (terminology drift, premise contradictions, scope leakage, sequencing
-  impossibilities, naming conflicts) — spc-29 ships finding categories,
+  impossibilities, naming conflicts) — spc-29 (predecessor store) ships finding categories,
   not mechanical lint codes. Mechanical cross-doc categories
   (schema/state contradictions, reference rot, acknowledgement gaps)
   and any associated lint-code namespace are deferred to a follow-up
@@ -90,7 +90,7 @@ The intent is project-agnostic: every abcd project that uses the intent corpus b
   `suggestions[]` (matched by `finding_signature`).
 - Implement `/abcd:intent shape [<itd-N>]` routing as an **on-demand**
   verb. Continuous pre-commit shape scanning is **deferred** to a
-  follow-up intent — spc-29 ships only the on-demand surface.
+  follow-up intent — spc-29 (predecessor store) ships only the on-demand surface.
 - Pairs with `/abcd:intent reclassify` (already documented) — when Role 3
   surfaces a finding, `reclassify` is the action verb that commits it.
 - Reports land at `.abcd/logbook/audit/shape-<ts>/report.{json,md}`.
@@ -98,24 +98,24 @@ The intent is project-agnostic: every abcd project that uses the intent corpus b
   `{kind_change, bundle, supersession}` with the matching arm fields
   (`current_kind` + `suggested_kind`, `bundle_members`, or
   `superseded_by`); scoped runs additionally emit the
-  `KIND_OK` / `KIND_DRIFT` / `INCONCLUSIVE` `scoped_verdict`. spc-29 does
+  `KIND_OK` / `KIND_DRIFT` / `INCONCLUSIVE` `scoped_verdict`. spc-29 (predecessor store) does
   not introduce a mechanical lint-code namespace for this persona.
 
 ### Shared
 
-- Both roles share spc-12's testing pattern: golden fixtures + at least one
+- Both roles share spc-12 (predecessor store)'s testing pattern: golden fixtures + at least one
   injection-canary per role (per itd-5).
 - Both roles call `_build_cli_oracle()` from itd-47's extended version, so
   they run in headless Ralph mode.
 - **Pre-commit hook wiring is deferred** to a follow-up intent for both
-  roles. spc-29 ships the on-demand verbs (`/abcd:intent consistency` and
+  roles. spc-29 (predecessor store) ships the on-demand verbs (`/abcd:intent consistency` and
   `/abcd:intent shape`) only; the previous draft's promise of a
   `intent-fidelity-consistency` pre-commit hook and Role 3's
   "runs continuously in pre-commit" surface are explicitly out of scope.
 
 ## What's Out Of Scope
 
-- **Role 1 modifications.** spc-12 shipped Role 1; this intent does not
+- **Role 1 modifications.** spc-12 (predecessor store) shipped Role 1; this intent does not
   edit it.
 - **`lifeboat-oracle` agent.** itd-5's named reviewer; out of scope here.
 - **Auto-fix for findings.** Role 2 and Role 3 surface findings; a
@@ -151,38 +151,38 @@ Ruled by the product thinker on 2026-09-21, in the interview that gave this inte
 
 _None open; the standalone-versus-two question this record carried is moot with one role left._
 
-## Routed Deferrals (spc-33)
+## Routed Deferrals (spc-33, predecessor store)
 
-spc-33's Phase 3→4 cleanup sweep routed its cluster-A and G1 deferrals into this
+spc-33 (predecessor store)'s Phase 3→4 cleanup sweep routed its cluster-A and G1 deferrals into this
 intent (the `routed_from` frontmatter backlinks). This intent shipped the
 consistency pass alone and none of the five, so they are tracked by the ledger
 record iss-2609260926323349, a future-work seed that names them and hands the
 Role-3 item to the kinds lint in itd-34. The list below is what was routed here,
 kept as the record of that routing, not as scope this intent delivered:
 
-- **`spc-33:A1`** — Role-2 mechanical half: schema/state contradictions,
+- **`spc-33:A1`** (predecessor store) — Role-2 mechanical half: schema/state contradictions,
   reference rot, acknowledgement gaps → `internal/core/lint --cross-doc` lint codes
   `XD002` / `XD006` / `XD007` (the mechanical cross-doc categories this intent
   defers under "Open Questions → Mechanical Role 2 categories").
-- **`spc-33:A2`** — Role-2 pre-commit hook (blocking-vs-advisory policy) — the
+- **`spc-33:A2`** (predecessor store) — Role-2 pre-commit hook (blocking-vs-advisory policy) — the
   hook wiring this intent lists as deferred under "Shared → Pre-commit hook
   wiring is deferred".
-- **`spc-33:A3`** — Role-3 pre-commit scheduling: the `mode="pre_commit"` seam
+- **`spc-33:A3`** (predecessor store) — Role-3 pre-commit scheduling: the `mode="pre_commit"` seam
   exists; the hook wrapper + per-commit-cost policy is the deferred follow-up.
-- **`spc-33:A4`** — chunked corpus review. **DORMANT — triggered-by
+- **`spc-33:A4`** (predecessor store) — chunked corpus review. **DORMANT — triggered-by
   `bundle_overflow: true`.** The Role-2 collector / Role-3 classifier set a
   `bundle_overflow` manifest flag on overflow and stop; this item activates ONLY
   when a persisted report actually shows `bundle_overflow: true`. Routing it here
   does NOT make it active implementation scope.
-- **`spc-33:G1`** — consistency-report reconciliation key non-convergence: the
+- **`spc-33:G1`** (predecessor store) — consistency-report reconciliation key non-convergence: the
   R1 `finding_id` recipe is prose-derived and re-hashes differently across
   re-runs. Fix is structural-key / deterministic-decode / an `addressed` report
-  state on `consistency_report.schema.json` — spc-29-owned (this intent owns the
+  state on `consistency_report.schema.json` — owned by the predecessor store's spc-29 (this intent owns the
   reviewer + the consistency-report contract).
 
 ## Related
 
-- **spc-12** (`intent-fidelity-reviewer` agent — Role 1) — the foundation
+- **spc-12** (predecessor store) (`intent-fidelity-reviewer` agent — Role 1) — the foundation
   this intent extends, via the shared agent file.
 - **itd-47** (autonomous-mode oracle gates) — precondition. Roles 2 and 3
   need headless oracle access; itd-47 ships it.

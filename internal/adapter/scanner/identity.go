@@ -10,6 +10,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
@@ -1403,10 +1404,11 @@ func isDottedIdentifierByte(b byte) bool {
 }
 
 // isPathSegmentByte reports whether b can be part of a path segment, used to
-// decide whether a '/' begins an absolute path or continues a nested one.
+// decide whether a '/' begins an absolute path or continues a nested one. The
+// byte class lives in fsutil (IsPathSegmentByte), the one statement RedactRoot
+// reads too (iss-2608292037564347).
 func isPathSegmentByte(b byte) bool {
-	return b == '/' || b == '.' || b == '-' || b == '_' ||
-		(b >= 'A' && b <= 'Z') || (b >= 'a' && b <= 'z') || (b >= '0' && b <= '9')
+	return fsutil.IsPathSegmentByte(b)
 }
 
 func boundaryBefore(line string, pos int) bool {

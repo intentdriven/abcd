@@ -84,7 +84,7 @@ func TestValidateSingleSourceRequiresExternalProvenance(t *testing.T) {
 	// the reachable path: `ask --file-back --page-json` skips fileBackSource
 	// (which demands all five fields) whenever the supplied page carries its own
 	// source block, handing it straight to ValidateDistilledPage.
-	if _, err := ValidateDistilledPage(map[string]any{
+	if _, err := ValidateDistilledPage(t.TempDir(), map[string]any{
 		"type": "topic", "domain": "auth", "slug": "x", "body": "# Subject line",
 		"source": map[string]any{
 			"class": "external_pdf", "citation": citation, "licence": "CC-BY-4.0", "ingested_at": "2026-08-19",
@@ -92,7 +92,7 @@ func TestValidateSingleSourceRequiresExternalProvenance(t *testing.T) {
 	}); err == nil {
 		t.Fatal("ValidateDistilledPage accepted an external_pdf page with no source_hash")
 	}
-	if _, err := ValidateDistilledPage(map[string]any{
+	if _, err := ValidateDistilledPage(t.TempDir(), map[string]any{
 		"type": "topic", "domain": "auth", "slug": "x", "body": "# Subject line",
 		"source": full(),
 	}); err != nil {

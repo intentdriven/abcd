@@ -395,3 +395,32 @@ func TestRegenerateChaptersSkipsAndReportsARefusedChapter(t *testing.T) {
 		t.Errorf("regenerated %v; want every chapter but the refused ones", names)
 	}
 }
+
+// iss-2609231931006041: a host-delegated command ships as a command page with no
+// Go verb, so its register row reads shipped while the tree registers nothing.
+// Its appendix must not claim there is no shipped surface; only a staged row
+// earns that sentence.
+func TestChapterAppendixTellsHostDelegatedFromUnbuilt(t *testing.T) {
+	register := "| # | Command | Status | Purpose | File |\n" +
+		"|---|---|---|---|---|\n" +
+		"| 1 | `/abcd:consult` | shipped | Ask the corpus | [`13-consult.md`](13-consult.md) |\n" +
+		"| 2 | `/abcd:reflect` | staged | Retrospective | [`09-reflect.md`](09-reflect.md) |\n"
+	chapters, err := Chapters(ParseRegister(register), []string{"09-reflect.md", "13-consult.md"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, ch := range chapters {
+		got[ch.File] = ch.Appendix(fixtureTree())
+	}
+	if want := "\n" + UnbuiltSentence("abcd reflect") + "\n\n"; got["09-reflect.md"] != want {
+		t.Errorf("staged chapter appendix = %q, want %q", got["09-reflect.md"], want)
+	}
+	consult := got["13-consult.md"]
+	if strings.Contains(consult, "no shipped surface") {
+		t.Errorf("a shipped host-delegated chapter claims there is no shipped surface: %q", consult)
+	}
+	if want := "\n" + HostDelegatedSentence("abcd consult") + "\n\n"; consult != want {
+		t.Errorf("host-delegated chapter appendix = %q, want %q", consult, want)
+	}
+}

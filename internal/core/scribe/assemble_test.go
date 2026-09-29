@@ -108,7 +108,7 @@ func TestScribeManifestNamesEveryPathPassed(t *testing.T) {
 	f := newFixture(t, positionDetection, 2)
 	res := assembleFixture(t, f, suppliedText)
 	contextRaw := readParked(t, f, ContextFileName)
-	m, err := DecodeManifest(readParked(t, f, ManifestFileName))
+	m, err := DecodeManifest(readParked(t, f, ManifestFileName), f.repo)
 	if err != nil {
 		t.Fatalf("the parked manifest does not decode: %v", err)
 	}

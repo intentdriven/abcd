@@ -20,3 +20,14 @@ spc-64's Positions exercised paragraph is stale against the eval it specifies. I
 ## Grounds
 
 - pursued: a reader sizing up the eval's coverage from spc-64 must reach the same answer the eval's own position tables give; falsified if the spec's paragraph and the position sets in evals/coldreading_fixture_test.go disagree again, or if a reader concludes from it that some position carries less than the full assertion set for a reason other than refusing to assemble.
+
+## Correction, 2026-09-29
+
+The resolution was true when it was written, and the refusal it describes no
+longer exists. `3b62c967` ("feat: a comparative reading receives the widening
+run's items as its candidate set, and characterises them before anyone admits
+one") made the comparative position assemble from the widening run's items, and
+removed `TestComparativeRefusesToAssemble`, which the resolution names.
+`TestComparativeChannelCarriesCandidatesAndNothingElse` in
+`evals/coldreading_test.go` and the candidate tests in
+`internal/core/reading/candidates_test.go` pin what replaced the refusal.

@@ -173,6 +173,6 @@ layout the shipped abcd surfaces then operate over.
 
 <!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
 
-There is no shipped surface: the command tree registers no `abcd prepare-this-repo` verb, so there are no flags and no sub-verbs to list.
+It ships as a host-delegated command page: the command tree registers no `abcd prepare-this-repo` verb, so there are no flags and no sub-verbs to list.
 
 <!-- surface-appendix:end -->

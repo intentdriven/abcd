@@ -1,10 +1,13 @@
 package cli
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core/oracle"
+	"github.com/intentdriven/abcd/internal/core/reading"
 )
 
 // TestReadingIngestCarriesTheReceipt is step 4's golden receipt for `reading
@@ -47,5 +50,27 @@ func TestReadingIngestCarriesTheReceipt(t *testing.T) {
 		ModelReported: "a-model"}
 	if rc.FallbackReason == "" || !receiptEqual(rc, want) {
 		t.Fatalf("route = %+v", rc)
+	}
+}
+
+// TestReadingIngestRouteOnAnUnreadableOutputGivesTheReadsReason: an output the
+// ingest cannot read (here, one past the size cap) is refused for that reason
+// with or without a --route, never as an output that "names no reading
+// position" (iss-2609251606553359).
+func TestReadingIngestRouteOnAnUnreadableOutputGivesTheReadsReason(t *testing.T) {
+	repo := readingRepo(t)
+	t.Setenv("HOME", t.TempDir())
+	t.Chdir(repo)
+	big := filepath.Join(t.TempDir(), "big.json")
+	if err := os.WriteFile(big, make([]byte, reading.MaxFileBytes+1), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, routes := range [][]string{nil, {"--route", "cold-reading-detection=economy"}} {
+		args := append([]string{"reading", "ingest", "--reading-json", big}, routes...)
+		_, _, err := runCLISplit(t, args...)
+		if exitCodeOf(err) != 2 || !strings.Contains(err.Error(), "-byte cap") ||
+			strings.Contains(err.Error(), "names no reading position") {
+			t.Fatalf("%v: err %v", routes, err)
+		}
 	}
 }

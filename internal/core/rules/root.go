@@ -33,6 +33,13 @@ const maxTrustedRootsBytes = 64 << 10
 // with it left alone, that a root the caller really owns is admitted unchanged.
 var ownerUID = fsutil.OwnerUID
 
+// caseFoldingFS is the package's view of fsutil.CaseFoldingFS, held as a var
+// for the reason ownerUID is: the case-folding branch of the trusted-roots
+// match cannot be provoked on a case-sensitive host, so substituting the
+// predicate is the only way a detector can prove what a case-variant
+// declaration does (iss-2609090951297149).
+var caseFoldingFS = fsutil.CaseFoldingFS
+
 // ResolveRoot resolves the repo root the per-repo configuration under .abcd/ is
 // read from — rules.json and config.json here, guard.json for the shell guard,
 // which shares this resolver so a session's rules and its guard can never come
@@ -358,46 +365,17 @@ func trustedRootDeclared(marker string) (bool, string) {
 	if err != nil || home == "" {
 		return false, ""
 	}
-	// The guard is fsutil.ReadHomeDeclaration's, not this function's: the
-	// three home-scoped declaration records differ in what they declare, never in
-	// what makes a declaration trustworthy, and the copy that skipped two of the
-	// checks was the one whose consequence is code execution
-	// (iss-2609091927085132). Only the WORDING stays here.
-	raw, refusal, err := fsutil.ReadHomeDeclaration(home, TrustedRootsRelPath, maxTrustedRootsBytes)
-	switch refusal {
-	case fsutil.DeclarationOK:
-	case fsutil.DeclarationAbsent:
-		return false, "" // no declaration is the ordinary case, not a diagnostic.
-	case fsutil.DeclarationBehindSymlink, fsutil.DeclarationDirectoryExposed:
-		return false, ignoredDeclaration(termsafe.Sanitize(err.Error()))
-	case fsutil.DeclarationNotRegular:
-		return false, ignoredDeclaration("it is not a regular file")
-	case fsutil.DeclarationWritableByOthers:
-		return false, ignoredDeclaration("it is writable by others, so its contents are not necessarily yours")
-	case fsutil.DeclarationForeignOwner:
-		return false, ignoredDeclaration("it is not owned by this session's uid")
-	default:
-		return false, ignoredDeclaration("it could not be read (" + termsafe.Sanitize(err.Error()) + ")")
+	// The guard and the match are fsutil.HomeDeclarationNames', not this
+	// function's: the home-scoped declaration records differ in what they
+	// declare, never in what makes a declaration trustworthy or how an entry
+	// names a path, and the copy that skipped two of the checks was the one
+	// whose consequence is code execution (iss-2609091927085132,
+	// iss-2609090951283654). Only the WORDING stays here.
+	declared, why := fsutil.HomeDeclarationNames(home, TrustedRootsRelPath, maxTrustedRootsBytes, marker, caseFoldingFS())
+	if why != "" {
+		return false, ignoredDeclaration(why)
 	}
-	fold := fsutil.CaseFoldingFS()
-	want := fsutil.FoldPath(marker, fold)
-	for _, line := range strings.Split(string(raw), "\n") {
-		entry := strings.TrimSpace(line)
-		if entry == "" || strings.HasPrefix(entry, "#") {
-			continue
-		}
-		if !filepath.IsAbs(entry) {
-			continue // a relative entry names a different directory per caller.
-		}
-		// Both spellings: the entry as written, and symlink-resolved, because
-		// marker is already resolved and a declared path may not be.
-		for _, cand := range []string{filepath.Clean(entry), resolveOrClean(entry)} {
-			if fsutil.FoldPath(cand, fold) == want {
-				return true, ""
-			}
-		}
-	}
-	return false, ""
+	return declared, ""
 }
 
 // ignoredDeclaration renders the one-line reason a present declaration was not
@@ -405,13 +383,4 @@ func trustedRootDeclared(marker string) (bool, string) {
 // developer-identity home path.
 func ignoredDeclaration(why string) string {
 	return "rules: IGNORED " + TrustedRootsDisplay + " — " + why + "; it re-admitted nothing"
-}
-
-// resolveOrClean is EvalSymlinks with a lexical fallback, so a declared path
-// that does not exist (a bind mount not currently mounted) still compares.
-func resolveOrClean(p string) string {
-	if real, err := filepath.EvalSymlinks(p); err == nil {
-		return real
-	}
-	return filepath.Clean(p)
 }

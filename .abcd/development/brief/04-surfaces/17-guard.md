@@ -291,7 +291,9 @@ document and every command its output is piped on to; and into a substitution in
 with that pipe as its input — and a `pkill` or
 `killall` selecting by user, group or terminal, its value written apart or
 attached, as selecting every session under the account; `pkill`'s signal name
-is read as a signal first, in any case. In a repository with more
+is read as a signal first, in any case. Flipping a source-ledger line to
+public citation is blocked, because the ledger records that a person chose to
+cite the source, and that choice is the person's to make. In a repository with more
 than one worktree, a stash or pop that does not name its entry is warned about,
 because the stash stack is shared across worktrees. Where the reading is a
 guess, over-blocking is the direction the guard takes.

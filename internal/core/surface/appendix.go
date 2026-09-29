@@ -68,11 +68,21 @@ var (
 )
 
 // UnbuiltSentence is the whole appendix of a chapter whose surface the command
-// tree does not register: a staged design target, or a host-delegated command
-// with no Go verb. Every chapter carries a block, so a reader learns the surface
+// tree does not register and whose register row does not read shipped: a staged
+// design target. Every chapter carries a block, so a reader learns the surface
 // is unbuilt from the place they would have read its flags, never from absence.
 func UnbuiltSentence(path string) string {
 	return "There is no shipped surface: the command tree registers no `" + path +
+		"` verb, so there are no flags and no sub-verbs to list."
+}
+
+// HostDelegatedSentence is the whole appendix of a chapter whose register row
+// reads shipped while the command tree registers no verb for it: a
+// host-delegated command, which ships as a command page the host carries out
+// (iss-2609231931006041). Saying there is no shipped surface there would
+// contradict the register row it pairs with.
+func HostDelegatedSentence(path string) string {
+	return "It ships as a host-delegated command page: the command tree registers no `" + path +
 		"` verb, so there are no flags and no sub-verbs to list."
 }
 
@@ -88,6 +98,24 @@ func UnbuiltSentence(path string) string {
 // exit code or an output field cannot reach the block until the tree records it
 // somewhere this function is handed.
 func ComposeAppendix(paths []string, tree []Command) string {
+	return composeAppendix(paths, nil, tree)
+}
+
+// Appendix renders the chapter's generated region against tree. It is
+// ComposeAppendix with the register's word on each command: a command the tree
+// does not register is host-delegated when its row reads shipped, and unbuilt
+// otherwise.
+func (ch Chapter) Appendix(tree []Command) string {
+	return composeAppendix(ch.Commands, ch.Shipped, tree)
+}
+
+func composeAppendix(paths []string, shippedRow map[string]bool, tree []Command) string {
+	absent := func(p string) string {
+		if shippedRow[p] {
+			return HostDelegatedSentence(p)
+		}
+		return UnbuiltSentence(p)
+	}
 	byPath := make(map[string]Command, len(tree))
 	for _, c := range tree {
 		byPath[c.Path] = c
@@ -102,7 +130,7 @@ func ComposeAppendix(paths []string, tree []Command) string {
 	b.WriteString("\n")
 	if !shipped {
 		for _, p := range paths {
-			b.WriteString(UnbuiltSentence(p) + "\n\n")
+			b.WriteString(absent(p) + "\n\n")
 		}
 		return b.String()
 	}
@@ -111,7 +139,7 @@ func ComposeAppendix(paths []string, tree []Command) string {
 	for _, p := range paths {
 		c, ok := byPath[p]
 		if !ok {
-			fmt.Fprintf(&b, "### `%s`\n\n%s\n\n", p, UnbuiltSentence(p))
+			fmt.Fprintf(&b, "### `%s`\n\n%s\n\n", p, absent(p))
 			continue
 		}
 		if movedWhole(c, tree) {
@@ -600,6 +628,8 @@ func cells(line string) []string {
 type Chapter struct {
 	File     string
 	Commands []string
+	// Shipped holds the commands whose register row reads shipped.
+	Shipped map[string]bool
 }
 
 // Chapters pairs the chapter files with the register's rows. Every chapter file
@@ -615,6 +645,7 @@ func Chapters(rows []RegisterRow, files []string) ([]Chapter, error) {
 	}
 	var refusals []error
 	byFile := map[string][]string{}
+	shipped := map[string]bool{}
 	for _, r := range rows {
 		if r.Chapter == "" {
 			continue
@@ -624,6 +655,9 @@ func Chapters(rows []RegisterRow, files []string) ([]Chapter, error) {
 			continue
 		}
 		byFile[r.Chapter] = append(byFile[r.Chapter], r.Command)
+		if r.Status == "shipped" {
+			shipped[r.Command] = true
+		}
 	}
 	sorted := append([]string(nil), files...)
 	sort.Strings(sorted)
@@ -634,7 +668,13 @@ func Chapters(rows []RegisterRow, files []string) ([]Chapter, error) {
 			refusals = append(refusals, fmt.Errorf("%s: %w; add its row to %s/%s", f, ErrChapterWithoutRow, BriefSurfacesDir, RegisterFile))
 			continue
 		}
-		out = append(out, Chapter{File: f, Commands: cmds})
+		ch := Chapter{File: f, Commands: cmds, Shipped: map[string]bool{}}
+		for _, c := range cmds {
+			if shipped[c] {
+				ch.Shipped[c] = true
+			}
+		}
+		out = append(out, ch)
 	}
 	return out, errors.Join(refusals...)
 }
@@ -680,7 +720,7 @@ func RegenerateChapters(dir string, tree []Command) ([]RegeneratedChapter, error
 		if err != nil {
 			return nil, err
 		}
-		want, err := RenderChapter(string(text), ComposeAppendix(ch.Commands, tree))
+		want, err := RenderChapter(string(text), ch.Appendix(tree))
 		if err != nil {
 			refusals = append(refusals, fmt.Errorf("%s: %w", ch.File, err))
 			continue

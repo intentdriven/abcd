@@ -52,7 +52,6 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/fsutil"
-	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 const (
@@ -216,58 +215,24 @@ func localDeclared(repoRoot string) (bool, string) {
 	if err != nil || home == "" {
 		return false, ""
 	}
-	// The guard is fsutil.ReadHomeDeclaration's, not this function's — see the
-	// note at rules.trustedRootDeclared. Only the WORDING stays here.
-	raw, refusal, err := fsutil.ReadHomeDeclaration(home, LocalRootsRelPath, maxLocalRootsBytes)
-	switch refusal {
-	case fsutil.DeclarationOK:
-	case fsutil.DeclarationAbsent:
-		return false, "" // no declaration is the ordinary case, not a diagnostic.
-	case fsutil.DeclarationBehindSymlink, fsutil.DeclarationDirectoryExposed:
-		return false, ignoredDeclaration(termsafe.Sanitize(err.Error()))
-	case fsutil.DeclarationNotRegular:
-		return false, ignoredDeclaration("it is not a regular file")
-	case fsutil.DeclarationWritableByOthers:
-		return false, ignoredDeclaration("it is writable by others, so its contents are not necessarily yours")
-	case fsutil.DeclarationForeignOwner:
-		return false, ignoredDeclaration("it is not owned by this session's uid")
-	default:
-		return false, ignoredDeclaration("it could not be read (" + termsafe.Sanitize(err.Error()) + ")")
+	// The guard and the match are fsutil.HomeDeclarationNames' — see the note
+	// at rules.trustedRootDeclared. Only the WORDING stays here.
+	declared, why := fsutil.HomeDeclarationNames(home, LocalRootsRelPath, maxLocalRootsBytes, repoRoot, caseFoldingFS())
+	if why != "" {
+		return false, ignoredDeclaration(why)
 	}
-	fold := fsutil.CaseFoldingFS()
-	want := fsutil.FoldPath(repoRoot, fold)
-	for _, line := range strings.Split(string(raw), "\n") {
-		entry := strings.TrimSpace(line)
-		if entry == "" || strings.HasPrefix(entry, "#") {
-			continue
-		}
-		if !filepath.IsAbs(entry) {
-			continue // a relative entry names a different directory per caller.
-		}
-		// Both spellings: the entry as written, and symlink-resolved, because a
-		// declared path may not be resolved and repoRoot may be either.
-		for _, cand := range []string{filepath.Clean(entry), resolveOrClean(entry)} {
-			if fsutil.FoldPath(cand, fold) == want || fsutil.FoldPath(cand, fold) == fsutil.FoldPath(resolveOrClean(repoRoot), fold) {
-				return true, ""
-			}
-		}
-	}
-	return false, ""
+	return declared, ""
 }
+
+// caseFoldingFS is the package's view of fsutil.CaseFoldingFS, held as a var
+// so a detector can force the case-folding branch of the local-roots match on
+// a case-sensitive host (iss-2609090951297149).
+var caseFoldingFS = fsutil.CaseFoldingFS
 
 // ignoredDeclaration renders the one-line reason a present declaration was not
 // honoured, naming the file in tilde form so no home path is carried.
 func ignoredDeclaration(why string) string {
 	return "history: IGNORED " + LocalRootsDisplay + " — " + why + "; transcripts stay in " + "~/" + userStoreRelPath
-}
-
-// resolveOrClean is EvalSymlinks with a lexical fallback, so a declared path
-// that does not currently exist still compares.
-func resolveOrClean(p string) string {
-	if real, err := filepath.EvalSymlinks(p); err == nil {
-		return real
-	}
-	return filepath.Clean(p)
 }
 
 // migrateLegacy moves a corpus stored under the legacy location into the

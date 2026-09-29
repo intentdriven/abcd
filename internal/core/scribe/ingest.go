@@ -7,8 +7,10 @@ package scribe
 // This is a trust boundary. The payload is an agent's output, read behind the
 // guarded reader with a byte cap, decoded strictly with every key checked
 // against the closed shapes, and no payload string is joined into a path before
-// its grammar is checked: the run id is matched against recordid first. Every
-// payload string quoted into a message is neutralised and capped.
+// its grammar is checked: the run id is matched against recordid first. A
+// payload string in a refusal is quoted only when it has a closed shape, and is
+// described otherwise; a key name the reader needs is redacted through the
+// canonical scanner (iss-2609290218032954).
 //
 // The one validation this verb adds is the one only it can make: that the scribe
 // AUTHORED NOTHING. The scribe reformats; it never adds a word. So every item it
@@ -28,11 +30,13 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/adapter/scanner"
 	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/reading"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // IngestRequest is one scribe ingest.
@@ -169,15 +173,16 @@ func Ingest(req IngestRequest) (IngestResult, error) {
 	if err != nil {
 		return IngestResult{}, fmt.Errorf("scribe: reading the scribe output: %w", err)
 	}
-	out, err := decodeOutput(raw)
+	out, err := decodeOutput(raw, req.RepoRoot)
 	if err != nil {
 		return IngestResult{}, err
 	}
 	if out.Type != OutputType {
-		return IngestResult{}, fmt.Errorf("scribe: the output's _type is %q, want %q", echo(out.Type), OutputType)
+		return IngestResult{}, fmt.Errorf("scribe: the output's _type is %s, want %q", typeTag(out.Type, OutputType), OutputType)
 	}
 	if !recordid.ValidReadingRunID(out.Run) {
-		return IngestResult{}, fmt.Errorf("scribe: the output names run %q, which is not a reading run id (rdg-N)", echo(out.Run))
+		return IngestResult{}, fmt.Errorf("scribe: the output's run is %s, which is not a reading run id (rdg-N)",
+			termsafe.DescribeRefused(out.Run))
 	}
 
 	// The run's identity, proven before anything is written: the context on
@@ -239,7 +244,7 @@ func Ingest(req IngestRequest) (IngestResult, error) {
 	for i, s := range out.Surprises {
 		r, err := capture.Surprise(capture.SurpriseRequest{RepoRoot: req.RepoRoot, OccasionedBy: s.OccasionedBy, Text: s.Text})
 		if err != nil {
-			return res, stopped(res, fmt.Sprintf("surprises[%d] (%s)", i, s.OccasionedBy), err)
+			return res, stopped(res, entryLabel("surprises", i, s.OccasionedBy), err)
 		}
 		res.Surprises = append(res.Surprises, r)
 	}
@@ -282,12 +287,12 @@ func landedList(res IngestResult) string {
 // decodes strictly. The key walk comes first so a refusal names the field the
 // scribe authored and the entry it sat on, which the decoder's own message does
 // not.
-func decodeOutput(raw []byte) (Output, error) {
+func decodeOutput(raw []byte, repoRoot string) (Output, error) {
 	var top map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &top); err != nil {
 		return Output{}, fmt.Errorf("scribe: the output is not a JSON object: %w", err)
 	}
-	if err := refuseKeys("the output", top, topKeys); err != nil {
+	if err := refuseKeys(repoRoot, "the output", top, topKeys); err != nil {
 		return Output{}, err
 	}
 	for _, k := range requiredTopKeys {
@@ -308,7 +313,6 @@ func decodeOutput(raw []byte) (Output, error) {
 			return Output{}, fmt.Errorf("scribe: %q is not a list of objects: %w", list, err)
 		}
 		for i, e := range entries {
-			where := fmt.Sprintf("%s[%d]", list, i)
 			var subject string
 			for _, k := range []string{"item", "occasioned_by", "subject"} {
 				if v, ok := e[k]; ok {
@@ -316,23 +320,23 @@ func decodeOutput(raw []byte) (Output, error) {
 					break
 				}
 			}
-			if subject != "" {
-				where += " (" + echo(subject) + ")"
-			}
-			if err := refuseKeys(where, e, allowed); err != nil {
+			if err := refuseKeys(repoRoot, entryLabel(list, i, subject), e, allowed); err != nil {
 				return Output{}, err
 			}
 		}
 	}
 	var out Output
-	if err := decodeStrict(raw, &out, "the scribe output"); err != nil {
+	if err := decodeStrict(raw, &out, "the scribe output", repoRoot); err != nil {
 		return Output{}, err
 	}
 	return out, nil
 }
 
 // refuseKeys refuses the first key, in sorted order, that is not in allowed.
-func refuseKeys(where string, obj map[string]json.RawMessage, allowed map[string]bool) error {
+// The key is the payload's own spelling and the one thing the reader needs to
+// find the fault, so it is named redacted through the canonical scanner
+// (iss-2609290218032954).
+func refuseKeys(repoRoot, where string, obj map[string]json.RawMessage, allowed map[string]bool) error {
 	keys := make([]string, 0, len(obj))
 	for k := range obj {
 		keys = append(keys, k)
@@ -342,7 +346,7 @@ func refuseKeys(where string, obj map[string]json.RawMessage, allowed map[string
 		if !allowed[k] {
 			return fmt.Errorf("scribe: %s carries %q, a field the scribe may not author; the scribe transcribes "+
 				"the declared shapes and authors nothing, so the payload is refused and nothing is written",
-				where, echo(k))
+				where, echo(scanner.RedactRefusal(repoRoot, k)))
 		}
 	}
 	return nil
@@ -364,7 +368,7 @@ func proveContext(req IngestRequest, out Output) (Context, Manifest, error) {
 		return Context{}, Manifest{}, fmt.Errorf("scribe: reading the parked manifest for %s: %w; assemble the "+
 			"session first, and ingest against the context it parked", out.Run, err)
 	}
-	m, err := DecodeManifest(mRaw)
+	m, err := DecodeManifest(mRaw, req.RepoRoot)
 	if err != nil {
 		return Context{}, Manifest{}, err
 	}
@@ -378,15 +382,15 @@ func proveContext(req IngestRequest, out Output) (Context, Manifest, error) {
 	}
 	if out.ContextSHA256 != m.ContextSHA256 {
 		return Context{}, Manifest{}, fmt.Errorf("scribe: the output cites context %s and the parked context "+
-			"is %s, so the output is not from this session; nothing is written", echo(out.ContextSHA256), m.ContextSHA256)
+			"is %s, so the output is not from this session; nothing is written", digestTag(out.ContextSHA256), m.ContextSHA256)
 	}
-	ctx, err := decodeContext(cRaw)
+	ctx, err := decodeContext(cRaw, req.RepoRoot)
 	if err != nil {
 		return Context{}, Manifest{}, err
 	}
 	if ctx.Run != out.Run || m.Run != out.Run || ctx.ContextStamp != m.ContextStamp {
 		return Context{}, Manifest{}, fmt.Errorf("scribe: the output names run %s, the context %s and the "+
-			"manifest %s; one session is over one run", echo(out.Run), ctx.Run, m.Run)
+			"manifest %s; one session is over one run", out.Run, handle(ctx.Run), handle(m.Run))
 	}
 	return ctx, m, nil
 }
@@ -408,7 +412,7 @@ func proveSupplied(req IngestRequest, ctx Context, m Manifest) (string, error) {
 	if got := sha256Hex([]byte(supplied)); got != m.Supplied.DispositionsSHA256 {
 		return "", fmt.Errorf("scribe: the supplied dispositions hash to %s and the parked manifest records %s, "+
 			"so the session was not assembled over this text, or the parked pair was rewritten; nothing is "+
-			"written", got, echo(m.Supplied.DispositionsSHA256))
+			"written", got, digestTag(m.Supplied.DispositionsSHA256))
 	}
 	if ctx.Supplied.Dispositions != supplied {
 		return "", fmt.Errorf("scribe: the context's copy of the supplied dispositions is not the researcher's " +
@@ -478,14 +482,14 @@ func refuseAuthored(out Output, supplied string, items map[string]bool) error {
 		if text == "" || strings.Contains(folded, fold(text)) {
 			return nil
 		}
-		return fmt.Errorf("scribe: %s carries a %s the researcher did not write (%q does not stand in the "+
-			"supplied dispositions); the scribe reformats and never adds a word, so the payload is refused and "+
-			"nothing is written", where, field, echo(text))
+		return fmt.Errorf("scribe: %s carries a %s the researcher did not write (the %s, %s, does not stand in "+
+			"the supplied dispositions); the scribe reformats and never adds a word, so the payload is refused and "+
+			"nothing is written", where, field, field, termsafe.DescribeRefused(text))
 	}
 	ofRun := func(where, id string) error {
 		if _, ok := items[id]; !ok {
 			return fmt.Errorf("scribe: %s names %s, which is not an item of %s; a scribe session transcribes "+
-				"one run", where, echo(id), out.Run)
+				"one run", where, handle(id), out.Run)
 		}
 		return nil
 	}
@@ -494,32 +498,32 @@ func refuseAuthored(out Output, supplied string, items map[string]bool) error {
 	answer := func(where, id string) error {
 		if prior, dup := answered[id]; dup {
 			return fmt.Errorf("scribe: %s answers %s, which %s already answers; one item takes one answer in "+
-				"one payload", where, echo(id), prior)
+				"one payload", where, handle(id), prior)
 		}
 		answered[id] = where
 		return nil
 	}
 	for i, d := range out.Dispositions {
-		where := fmt.Sprintf("dispositions[%d] (%s)", i, echo(d.Item))
+		where := entryLabel("dispositions", i, d.Item)
 		if err := ofRun(where, d.Item); err != nil {
 			return err
 		}
 		if !named(d.Item) {
 			return fmt.Errorf("scribe: %s is a disposition the researcher did not supply: the supplied "+
-				"dispositions never name %s", where, echo(d.Item))
+				"dispositions never name %s", where, handle(d.Item))
 		}
 		// The state is the ruling itself, so it is held to the supplied text as
 		// the grounds are, and more tightly: it must stand whole-word on a line
 		// that names the item, because a state another item's line carries is not
 		// the researcher's answer to this one.
 		if !lineCarries(supplied, d.Item, d.State) {
-			return fmt.Errorf("scribe: %s carries state %q, and no line of the supplied dispositions that names "+
+			return fmt.Errorf("scribe: %s carries state %s, and no line of the supplied dispositions that names "+
 				"%s carries it; the state is the researcher's ruling and the scribe never supplies one, so the "+
-				"payload is refused and nothing is written", where, echo(d.State), echo(d.Item))
+				"payload is refused and nothing is written", where, stateTag(d.State), handle(d.Item))
 		}
 		for _, id := range append([]string{d.Supersedes}, d.Recurs...) {
 			if id != "" && !named(id) {
-				return fmt.Errorf("scribe: %s cites %s, which the supplied dispositions never name", where, echo(id))
+				return fmt.Errorf("scribe: %s cites %s, which the supplied dispositions never name", where, handle(id))
 			}
 		}
 		if err := verbatim(where, "grounds", d.Grounds); err != nil {
@@ -533,13 +537,13 @@ func refuseAuthored(out Output, supplied string, items map[string]bool) error {
 		}
 	}
 	for i, a := range out.Admissions {
-		where := fmt.Sprintf("admissions[%d] (%s)", i, echo(a.Item))
+		where := entryLabel("admissions", i, a.Item)
 		if err := ofRun(where, a.Item); err != nil {
 			return err
 		}
 		if !named(a.Item) {
 			return fmt.Errorf("scribe: %s is an admission the researcher did not supply: the supplied "+
-				"dispositions never name %s", where, echo(a.Item))
+				"dispositions never name %s", where, handle(a.Item))
 		}
 		// An admission writes an accepted disposition, so it is a state too, held
 		// by the same rule: the item's own line admits or accepts the proposal.
@@ -547,7 +551,7 @@ func refuseAuthored(out Output, supplied string, items map[string]bool) error {
 			return fmt.Errorf("scribe: %s is an admission, and no line of the supplied dispositions that names "+
 				"%s admits or accepts it (%s); an admission writes an acceptance, which is the researcher's "+
 				"ruling and never the scribe's, so the payload is refused and nothing is written",
-				where, echo(a.Item), strings.Join(admissionTokens, ", "))
+				where, handle(a.Item), strings.Join(admissionTokens, ", "))
 		}
 		if err := verbatim(where, "grounds", a.Grounds); err != nil {
 			return err
@@ -555,17 +559,17 @@ func refuseAuthored(out Output, supplied string, items map[string]bool) error {
 		// An admission and a disposition of one item are one act when their
 		// grounds agree, which Admit holds; a second admission is not.
 		if prior, dup := answered[a.Item]; dup && strings.HasPrefix(prior, "admissions") {
-			return fmt.Errorf("scribe: %s admits %s, which %s already admits", where, echo(a.Item), prior)
+			return fmt.Errorf("scribe: %s admits %s, which %s already admits", where, handle(a.Item), prior)
 		}
 		if _, dup := answered[a.Item]; !dup {
 			answered[a.Item] = where
 		}
 	}
 	for i, s := range out.Surprises {
-		where := fmt.Sprintf("surprises[%d] (%s)", i, echo(s.OccasionedBy))
+		where := entryLabel("surprises", i, s.OccasionedBy)
 		if !named(s.OccasionedBy) {
 			return fmt.Errorf("scribe: %s is keyed to %s, which the supplied dispositions never name",
-				where, echo(s.OccasionedBy))
+				where, handle(s.OccasionedBy))
 		}
 		if strings.TrimSpace(s.Text) == "" {
 			return fmt.Errorf("scribe: %s carries no text", where)
@@ -581,7 +585,7 @@ func refuseAuthored(out Output, supplied string, items map[string]bool) error {
 		}
 		if prior, dup := answered[id]; dup {
 			return fmt.Errorf("scribe: %s lists %s as outstanding and %s answers it; an outstanding item is "+
-				"one given no disposition", where, echo(id), prior)
+				"one given no disposition", where, handle(id), prior)
 		}
 		answered[id] = where
 	}

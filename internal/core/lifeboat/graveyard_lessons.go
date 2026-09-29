@@ -12,6 +12,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/intentdriven/abcd/internal/adapter/scanner"
 	"github.com/intentdriven/abcd/internal/core/update"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -80,7 +81,9 @@ func IngestLessons(lifeboatDir string, raw []byte) (LessonsResult, error) {
 	dec.DisallowUnknownFields() // reject smuggled extra fields
 	var lf LessonsFile
 	if err := dec.Decode(&lf); err != nil {
-		return LessonsResult{}, fmt.Errorf("malformed lessons JSON: %v", err)
+		// The decoder names an undeclared field by the payload's own key:
+		// redacted, never raw (iss-2609290218032954).
+		return LessonsResult{}, fmt.Errorf("malformed lessons JSON: %s", scanner.RedactRefusal(abs, err.Error()))
 	}
 	if lf.SchemaVersion == 0 {
 		return LessonsResult{}, errors.New("lessons payload is missing schema_version")

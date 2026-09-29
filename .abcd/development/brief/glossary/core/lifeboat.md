@@ -6,7 +6,7 @@ aliases: ["lifeboat artefact", "disembark artefact"]
 forbidden_synonyms: ["backup", "archive", "snapshot", "checkpoint"]
 status: stable
 introduced_in: phase-1
-starts_when: disembark (`abcd disembark <source-repo> to <dest>`) writes the artefact to the operator-chosen destination; the source repository is never written to.
+starts_when: disembark (`abcd disembark pack <source-repo> <dest>`) writes the artefact to the operator-chosen destination; the source repository is never written to.
 ends_when: The lifeboat is unpacked by `/abcd:embark` into a target project, or discarded.
 not_to_be_confused_with: core/record-families
 versions: null
@@ -40,7 +40,7 @@ flow-control connotations in the abcd pipeline context).
 
 ## Examples
 
-- "Run `abcd disembark ../old-project to /tmp/project-lifeboat` to pack a lifeboat before
+- "Run `abcd disembark pack ../old-project /tmp/project-lifeboat` to pack a lifeboat before
   starting the rebuild — the old repo is only read."
 - "The lifeboat at `/tmp/project-lifeboat/` was passed to `/abcd:embark` to bootstrap the
   new context."

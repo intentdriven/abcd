@@ -150,6 +150,19 @@ func newHTTPChecker(blocked func(net.IP) bool, timeout time.Duration) *HTTPCheck
 				if len(via) >= maxRedirects {
 					return &redirectRefusal{errors.New("more than " + strconv.Itoa(maxRedirects) + " redirects")}
 				}
+				// A chain that has reached https never leaves it. The hop's
+				// scheme is the redirecting host's choice, so without this pin
+				// an https citation walked down to plaintext is followed, and
+				// whatever answers on the plaintext leg — which anyone on the
+				// path can forge — supplies the final address the baseline
+				// records (iss-2609012037440084; memory ingest and update pin
+				// the same way). It stands ahead of the host guard so the
+				// refusal names the scheme. An http citation, and an http hop
+				// before any https one, are followed as before: the pin is
+				// against a downgrade, not against http.
+				if r.URL.Scheme != "https" && reachedHTTPS(via) {
+					return &redirectRefusal{errHTTPSDowngrade}
+				}
 				// Every hop is re-guarded: a public address that redirects to
 				// 169.254.169.254 must not be followed.
 				if err := urlguard.CheckHostWith(r.URL.Hostname(), blocked); err != nil {
@@ -186,6 +199,16 @@ func (c *HTTPChecker) Check(rawURL string) CheckOutcome {
 	req.Header.Set("Accept", "text/html,application/xhtml+xml,*/*;q=0.8")
 
 	resp, err := c.client.Do(req)
+	if errors.Is(err, errHTTPSDowngrade) {
+		// Not evidence the source is dead — the host answered, and pointed
+		// somewhere this checker will not follow — so it goes to the manual
+		// queue, never into the baseline as broken. The detail names the
+		// scheme only: the plaintext hop's URL is redirect-controlled and may
+		// carry a credential in its query.
+		out.Status, out.Answered = StatusBlocked, true
+		out.Detail = "the redirect chain left https for plaintext http, which is not followed — confirm the source by hand"
+		return out
+	}
 	if err != nil {
 		out.Status, out.Detail = StatusBroken, transportDetail(err)
 		// A refused redirect chain is still a chain: a host answered 3xx to get
@@ -234,6 +257,21 @@ func classify(code int) (Status, string) {
 	default:
 		return StatusBroken, "HTTP " + strconv.Itoa(code) + " " + http.StatusText(code)
 	}
+}
+
+// errHTTPSDowngrade is the redirect policy's refusal of a hop that leaves
+// https once the chain has reached it.
+var errHTTPSDowngrade = errors.New("a redirect left https for plaintext http")
+
+// reachedHTTPS reports whether any request already made in the chain was
+// https, so the next hop may not be anything else.
+func reachedHTTPS(via []*http.Request) bool {
+	for _, r := range via {
+		if r.URL != nil && r.URL.Scheme == "https" {
+			return true
+		}
+	}
+	return false
 }
 
 // redirectRefusal marks an error raised from CheckRedirect — one where a host

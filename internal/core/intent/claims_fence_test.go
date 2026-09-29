@@ -6,7 +6,6 @@ import (
 	"regexp"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/intentdriven/abcd/internal/core/mdrecord"
 )
@@ -176,33 +175,25 @@ func fenceBlindSectionBody(content string, headRe *regexp.Regexp) string {
 // record two sessions can reach at once, and the ids it writes come from a mint
 // that reads no ledger. It takes the same advisory lock every other mint in this
 // package takes, so a concurrent create cannot interleave with it.
+//
+// It asserts the observed ordering its sibling in grounds_test.go asserts,
+// never a wait, so no machine speed can flip the verdict
+// (iss-2608301301041887).
 func TestStampPlannedHoldsTheMintLock(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, plannedDir+"/itd-10-alpha.md",
 		"---\nid: itd-10\nslug: alpha\nspec_id: spc-1\nkind: standalone\n---\n# alpha\n\n"+
 			"## Scope Conditions\n\n- holds on POSIX\n\n## Acceptance Criteria\n\n- ok\n")
 
-	held := make(chan struct{})
-	done := make(chan error, 1)
-	go func() {
-		done <- withIntentMintLock(root, func() error {
-			close(held)
-			// Hold the lock long enough that an unlocked stamp would finish inside it.
-			time.Sleep(150 * time.Millisecond)
-			return nil
-		})
-	}()
-	<-held
-	start := time.Now()
-	if _, err := Plan(root, "itd-10", PlanOptions{}); err != nil {
+	released, finish := holdMintLockUntilContended(t, root)
+	_, err := Plan(root, "itd-10", PlanOptions{})
+	wasReleased := released.Load()
+	finish()
+	if err != nil {
 		t.Fatal(err)
 	}
-	waited := time.Since(start)
-	if err := <-done; err != nil {
-		t.Fatal(err)
-	}
-	if waited < 100*time.Millisecond {
-		t.Fatalf("the stamp completed in %v while the mint lock was held — it took no lock", waited)
+	if !wasReleased {
+		t.Fatal("the stamp returned while the mint lock was still held, having never contended for it — it took no lock")
 	}
 }
 

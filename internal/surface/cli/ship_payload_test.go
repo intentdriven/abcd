@@ -367,3 +367,34 @@ func TestLaunchDryRunSanitisesRefusalReasons(t *testing.T) {
 		t.Errorf("dry-run output leaked a raw ESC from a repo filename:\n%q", out)
 	}
 }
+
+// TestLaunchShipInTheShipToTagWindowRefusesAsInFlight is iss-2609252117203691:
+// a re-run of a rendering ship after the cut landed and before its tag refused
+// on the pre-flight's parity diff, whose reason named --baseline, a flag launch
+// ship does not take. The window is a release in flight, and the ship says so
+// the way the emit step does: the cut's own refusal, exit 1, nothing written.
+func TestLaunchShipInTheShipToTagWindowRefusesAsInFlight(t *testing.T) {
+	r := shipRenderableRepo(t)
+	r.Write("CHANGELOG.md", "# Changelog\n\n## [Unreleased]\n\n## [0.4.1] - 2026-07-20\n\n### Added\n\n- the cut that landed.\n\n"+
+		"## [0.4.0] - 2026-07-01\n\n### Added\n\n- the base.\n")
+	r.Commit("the ship PR merged; auto-release has not tagged it yet")
+	before := readFileString(t, filepath.Join(r.Root(), "CHANGELOG.md"))
+
+	dest := filepath.Join(t.TempDir(), "payload")
+	payload := composedPayload(t, t.TempDir(), "v0.4.2", "itd-73")
+	out, err := shipIn(t, r, "launch", "ship", "--changelog-json", payload, "--payload-dir", dest)
+	if code := exitCodeOf(err); code != 1 {
+		t.Fatalf("exit = %d, want 1 (the cut's in-flight refusal): %v\n%s", code, err, out)
+	}
+	for _, want := range []string{"release-in-flight", "v0.4.1"} {
+		if !strings.Contains(string(out), want) {
+			t.Errorf("the refusal does not mention %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(string(out), "--baseline") || (err != nil && strings.Contains(err.Error(), "--baseline")) {
+		t.Errorf("the ship's refusal names --baseline, a flag launch ship does not take: %v\n%s", err, out)
+	}
+	if after := readFileString(t, filepath.Join(r.Root(), "CHANGELOG.md")); after != before {
+		t.Error("a refused ship must write nothing")
+	}
+}

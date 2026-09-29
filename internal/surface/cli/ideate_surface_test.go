@@ -200,3 +200,32 @@ func TestIdeateRoutingHintIsAPointerNotAGate(t *testing.T) {
 		t.Errorf("capture was blocked: %v\n%s", err, out)
 	}
 }
+
+// TestIdeateRenderSaysWhatEachVerdictLeavesNext is iss-2609100508573400: a
+// reframed idea survives in another shape, so its next line must not read as
+// the killed one's. Each verdict gets its own line, and the reframed one names
+// the reframing as what may graduate.
+func TestIdeateRenderSaysWhatEachVerdictLeavesNext(t *testing.T) {
+	next := func(v ideate.Verdict) string {
+		out := renderIdeateResult(ideate.Result{Slug: "x", Verdict: v, Graduates: v == ideate.VerdictSurvives})
+		for _, line := range strings.Split(out, "\n") {
+			if strings.HasPrefix(strings.TrimSpace(line), "next:") {
+				return line
+			}
+		}
+		t.Fatalf("no next line for %s:\n%s", v, out)
+		return ""
+	}
+	killed, reframed, survives := next(ideate.VerdictKilled), next(ideate.VerdictReframed), next(ideate.VerdictSurvives)
+	if reframed == killed || reframed == survives {
+		t.Errorf("the reframed verdict borrows another verdict's next line: %q", reframed)
+	}
+	for _, want := range []string{"reframing", "abcd intent"} {
+		if !strings.Contains(reframed, want) {
+			t.Errorf("the reframed next line must name %q: %q", want, reframed)
+		}
+	}
+	if strings.Contains(reframed, "does not graduate;") {
+		t.Errorf("the reframed next line reads as the killed one: %q", reframed)
+	}
+}

@@ -577,6 +577,7 @@ var pathRefusalReasons = []string{
 	"it did not resolve to an absolute path",
 	"its directory could not be resolved",
 	"its directory is world-writable",
+	pathRefusalWritableBinary,
 	pathRefusalUnowned,
 	pathRefusalUnownedRecord,
 	pathRefusalSymlinkedHome,
@@ -717,6 +718,49 @@ func TestBinaryHooksRefuseAWorldWritablePathBinary(t *testing.T) {
 			assertPathBinaryRefused(t, h, root, stderr, code,
 				[]string{filepath.Join(pathDir, "abcd")},
 				[]string{"its directory is world-writable"})
+		})
+	}
+}
+
+// pathRefusalWritableBinary is the refusal of a binary whose OWN mode lets
+// every local user rewrite it, whatever directory it sits in.
+const pathRefusalWritableBinary = "the binary itself is world-writable"
+
+// TestBinaryHooksRefuseAWorldWritablePathBinaryFile: the rung judged only the
+// directory the PATH entry lives in, so a 0777 binary in an ordinary 0755
+// directory — recorded, owned, outside the tree — passed every check, and any
+// local user could replace the bytes every prompt and tool call then executes
+// (iss-2609020352438590, shape 2). The file's own mode is judged too, through a
+// symlink to the file it names, because that is the file the hook executes: a
+// link in an ordinary directory must not launder a writable target.
+func TestBinaryHooksRefuseAWorldWritablePathBinaryFile(t *testing.T) {
+	for _, shape := range []string{"file", "symlink"} {
+		t.Run(shape, func(t *testing.T) {
+			for _, h := range binaryHooks {
+				t.Run(h.event, func(t *testing.T) {
+					root := hookRoot(t, failingBootstrap, false)
+					pathDir := t.TempDir()
+					home := t.TempDir()
+					target := pathDir
+					if shape == "symlink" {
+						target = t.TempDir()
+					}
+					pathStub(t, target)
+					if err := os.Chmod(filepath.Join(target, "abcd"), 0o777); err != nil {
+						t.Fatal(err)
+					}
+					if shape == "symlink" {
+						if err := os.Symlink(filepath.Join(target, "abcd"), filepath.Join(pathDir, "abcd")); err != nil {
+							t.Fatal(err)
+						}
+					}
+					writeHookPathEntry(t, home, filepath.Join(pathDir, "abcd"))
+					_, stderr, code := hookRunHome(t, h.event, root, pathDir, t.TempDir(), home)
+					assertPathBinaryRefused(t, h, root, stderr, code,
+						[]string{filepath.Join(pathDir, "abcd")},
+						[]string{pathRefusalWritableBinary})
+				})
+			}
 		})
 	}
 }

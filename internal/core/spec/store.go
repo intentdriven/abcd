@@ -210,7 +210,7 @@ func create(repoRoot, intentID string, intents []string, bundle, slug, productio
 			return err
 		}
 		openDir := filepath.Join(repoRoot, SpecsRelDir, StatusOpen)
-		if err := ensureDir(openDir, filepath.Join(SpecsRelDir, StatusOpen)); err != nil {
+		if err := ensureDir(repoRoot, filepath.Join(SpecsRelDir, StatusOpen)); err != nil {
 			return err
 		}
 		name := fmt.Sprintf("%s-%s.md", id, slug)
@@ -302,11 +302,15 @@ func withStoreLock(repoRoot string, timeout time.Duration, mode storeLockMode, f
 	}
 	specsDir := filepath.Join(repoRoot, SpecsRelDir)
 	if mode == createStore {
-		if err := ensureDir(specsDir, SpecsRelDir); err != nil {
+		if err := ensureDir(repoRoot, SpecsRelDir); err != nil {
 			return err
 		}
-	} else if di, err := os.Lstat(specsDir); err == nil && di.Mode()&os.ModeSymlink != 0 {
-		return fmt.Errorf("spec: %s is a symlink (refusing to follow)", SpecsRelDir)
+	} else if _, err := fsutil.ProbeRealDirAll(repoRoot, filepath.ToSlash(SpecsRelDir)); err != nil {
+		// The read-only twin of the create walk: an existing store reached
+		// through a symlinked ancestor is refused, not locked and written
+		// through. An absent level is no error here; the lock's own open below
+		// reports it as errStoreAbsent.
+		return fmt.Errorf("spec: %s: %w", SpecsRelDir, err)
 	}
 	fd, err := syscall.Open(specsDir, syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_NOFOLLOW, 0)
 	if mode == storeMustExist && errors.Is(err, syscall.ENOENT) {
@@ -424,7 +428,7 @@ func closeLocked(repoRoot, specID string) (Spec, error) {
 	}
 	name := filepath.Base(sp.Path)
 	closedDir := filepath.Join(repoRoot, SpecsRelDir, StatusClosed)
-	if err := ensureDir(closedDir, filepath.Join(SpecsRelDir, StatusClosed)); err != nil {
+	if err := ensureDir(repoRoot, filepath.Join(SpecsRelDir, StatusClosed)); err != nil {
 		return Spec{}, err
 	}
 	dstRel := filepath.Join(SpecsRelDir, StatusClosed, name)
@@ -504,15 +508,13 @@ func readRepoFile(abs, rel string) ([]byte, error) {
 	return data, nil
 }
 
-// ensureDir creates dir if absent, refusing a symlinked leaf directory.
-// NOTE: a symlinked ANCESTOR (e.g. a symlinked specs/) is not caught here — a
-// low-severity follow-up under the trusted-worktree model (planting one needs
-// write access equal to editing the record directly).
-func ensureDir(dir, rel string) error {
-	if di, err := os.Lstat(dir); err == nil && di.Mode()&os.ModeSymlink != 0 {
-		return fmt.Errorf("spec: %s is a symlink (refusing to follow)", rel)
-	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+// ensureDir creates repoRoot/rel one level at a time, proving every level —
+// ancestors included — a real directory (fsutil.EnsureRealDirAll). A committed
+// symlink at .abcd, .abcd/development or specs/ is refused rather than followed,
+// so a mint or a close cannot write outside the checkout (iss-2609012037137250,
+// the create site the intent store closed in iss-2609091128479544).
+func ensureDir(repoRoot, rel string) error {
+	if err := fsutil.EnsureRealDirAll(repoRoot, filepath.ToSlash(rel), 0o755); err != nil {
 		return fmt.Errorf("spec: creating %s: %w", rel, err)
 	}
 	return nil
