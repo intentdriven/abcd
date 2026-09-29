@@ -9,7 +9,7 @@ found_during: "autonomous-run-2026-09-01"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/memory/ingest.go"
-remedy: "Waits on ruling CA2; if https-only stays, move the record to wontfix naming invariant 12 and abcd update's same posture; if a flag is added, admit an http source only under an explicit --allow-http, and have ingestRedirectPolicy (internal/core/memory/ingest.go) refuse every hop from https to http whatever the flag, the two flag variants differing only on whether an http source may redirect to http. Prove it with httptest servers: an https source redirecting to http refused with and without the flag, and an http source refused without it."
+remedy: "Waits on ruling CA2: if https-only stays, move the record to wontfix naming invariant 12 and abcd update's same posture; if a flag is added, admit an http source only under an explicit --allow-http, and have ingestRedirectPolicy (internal/core/memory/ingest.go) refuse every hop from https to http whatever the flag, the two flag variants differing only on whether an http source may redirect to http. Prove it with httptest servers: an https source redirecting to http refused with and without the flag, and an http source refused without it."
 deferred_after: "v0.11.1"
 deferral_reason: "ruling owed to the product thinker (lane drainFresh of autonomous run A, 2026-09-29): Add an explicit --allow-http to memory ingest, and if so may a hop be plaintext only when the source itself is? An implementation of exactly that shape was written on 2026-09-02 (commit 300968594, branch feat/ruled-security-forks) and never merged; main still admits https only."
 ---

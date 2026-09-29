@@ -9,7 +9,7 @@ found_during: "abcd lab 3 (lab-260831163412-c3e59af), filed from the capstone ha
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/banlist (add path); the private tier's pattern validation"
-remedy: "Waits on the owed ruling (BP, private-name item); in the banlist add path (internal/core/banlist): if warn, print a warning naming the risk when a private pattern has fewer than six literal alphanumerics and no explicit (^|[^[:alnum:]]) boundary; if refuse, refuse such a pattern unless --allow-short is given. Either way the pre-commit refusal names the entry's key and its length class, and a test adds a five-character unbounded pattern and asserts the ruled outcome."
+remedy: "Waits on the owed ruling (BP, private-name item): in the banlist add path (internal/core/banlist): if warn, print a warning naming the risk when a private pattern has fewer than six literal alphanumerics and no explicit (^|[^[:alnum:]]) boundary; if refuse, refuse such a pattern unless --allow-short is given. Either way the pre-commit refusal names the entry's key and its length class, and a test adds a five-character unbounded pattern and asserts the ruled outcome."
 deferred_after: "v0.11.1"
 deferral_reason: "ruling owed to the product thinker: the want is a warning on a short or unbounded private pattern plus an explicit flag to keep it, which leaves open what counts as too short for a regular expression (generated.go's minPhraseAlnum of 3 covers phrases, and the incident was five characters), whether the add warns or refuses, and the new flag on the banlist surface (drain lane drainRest, run A, 2026-09-29)."
 ---

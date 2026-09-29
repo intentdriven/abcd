@@ -8,7 +8,7 @@ source: "user-observation"
 found_during: "manual-capture"
 deferred_after: v0.11.1
 deferral_reason: "The product thinker's ruling M2 of 2026-09-23 folds this into itd-131 and spc-34, but itd-131 shipped and spc-34 closed without it: nothing in internal/ pins an identity at install or sets user.useConfigOnly. Owed: a successor intent for the pinning half, which needs the product thinker's adoption, and one ruling: may ahoy install look up the canonical GitHub identity although adr-38 keeps implicit paths disk-only, since install is an explicit act?"
-remedy: "Have ahoy install set user.useConfigOnly=true in the managed repository's local config and report an unset or unpinned local identity as a gap; for the pin itself, per the owed ruling: if a lookup is allowed at install, resolve the account's no-reply address through gh and write user.name and user.email locally; if disk-only, write them from the person's global config or an install flag. Prove it with an install test in which a commit with no identity fails instead of inventing one."
+remedy: "Waits on the owed ruling for the pin half only (a lookup at install, or disk-only): have ahoy install set user.useConfigOnly=true in the managed repository's local config and report an unset or unpinned local identity as a gap; for the pin itself: if a lookup is allowed at install, resolve the account's no-reply address through gh and write user.name and user.email locally; if disk-only, write them from the person's global config or an install flag. Prove it with an install test in which a commit with no identity fails instead of inventing one."
 ---
 
 A managed repo commits under whatever identity git happens to resolve, and when

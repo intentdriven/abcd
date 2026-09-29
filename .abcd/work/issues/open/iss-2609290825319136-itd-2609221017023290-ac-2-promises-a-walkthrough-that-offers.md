@@ -9,7 +9,7 @@ found_during: "autonomous run A resumed 2026-09-25: fidelity audit itd-260922101
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/surface/cli/ahoy_credential.go"
-remedy: "Waits on ruling CA9; if the flag is recorded, add an Audit Notes line to shipped itd-2609221017023290 saying the CLI takes --home and only the plugin page asks; if the CLI asks, prompt for the home in newAhoyCredentialCommand only when stdin and stdout are terminals and --home is absent, keeping --home as the non-interactive route and the value on stdin only. Prove the prompt with a test that a non-terminal run without --home still lists the homes and writes nothing."
+remedy: "Waits on ruling CA9: if the flag is recorded, add an Audit Notes line to shipped itd-2609221017023290 saying the CLI takes --home and only the plugin page asks; if the CLI asks, prompt for the home in newAhoyCredentialCommand only when stdin and stdout are terminals and --home is absent, keeping --home as the non-interactive route and the value on stdin only. Prove the prompt with a test that a non-terminal run without --home still lists the homes and writes nothing."
 deferred_after: "v0.11.1"
 deferral_reason: "ruling owed to the product thinker (lane drainFresh of autonomous run A, 2026-09-29): Does the record say the CLI takes the credential's home as a --home flag on a second invocation, or should abcd ahoy credential ask on the terminal as the spec and press release say? No recorded decision drops the CLI's ask; the plugin page asks."
 ---

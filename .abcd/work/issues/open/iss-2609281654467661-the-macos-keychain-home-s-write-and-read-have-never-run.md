@@ -9,7 +9,7 @@ found_during: "autonomous run A resumed 2026-09-25: review-cred"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/credential/keychain.go"
-remedy: "The technical facilitator runs the owed round trip once on a real Mac: store a MaxValueBytes value through abcd ahoy credential with the keychain home, read it back and compare byte for byte, delete the item, and record the result on this record. If the value truncates, cap the keychain home's accepted size below the measured limit in internal/core/credential/keychain.go and pin the cap with a fake-keychain test that refuses an oversized value before anything is written."
+remedy: "Waits on the technical facilitator's owed round trip, run once on a real Mac: store a MaxValueBytes value through abcd ahoy credential with the keychain home, read it back and compare byte for byte, delete the item, and record the result on this record. If the value truncates, cap the keychain home's accepted size below the measured limit in internal/core/credential/keychain.go and pin the cap with a fake-keychain test that refuses an oversized value before anything is written."
 deferred_after: "v0.11.1"
 deferral_reason: "owed to the technical facilitator as a human act outside the tree (lane drainFresh of autonomous run A, 2026-09-29): one real-machine round trip of a MaxValueBytes value through the macOS keychain home, read back byte for byte, then the item removed. An autonomous run must not write to the real keychain, so it cannot run here; until it runs, the fake keychain is the only proof."
 ---

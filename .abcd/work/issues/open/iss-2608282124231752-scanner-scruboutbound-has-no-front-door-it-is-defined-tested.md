@@ -9,7 +9,7 @@ found_during: "intent-implementation-run"
 found_at: "internal/adapter/scanner/outbound.go"
 related_intents: [itd-107, itd-152]
 related_issues: [iss-178]
-remedy: "Waits on the owed planning ruling; if a scrub verb, add abcd scrub --label <kind>, reading stdin and writing ScrubOutbound's text to stdout with findings on stderr, wired on the CLI and a commands page, and have the routine prompts pipe every pull-request body, issue and comment through it; if itd-107's posting path, call ScrubOutbound inside that path so an assembled routine scrubs by construction. Either way the re-read-and-strip step stays until a test proves a session URL and a tool footer on the input come out stripped."
+remedy: "Waits on the owed planning ruling: if a scrub verb, add abcd scrub --label <kind>, reading stdin and writing ScrubOutbound's text to stdout with findings on stderr, wired on the CLI and a commands page, and have the routine prompts pipe every pull-request body, issue and comment through it; if itd-107's posting path, call ScrubOutbound inside that path so an assembled routine scrubs by construction. Either way the re-read-and-strip step stays until a test proves a session URL and a tool footer on the input come out stripped."
 deferred_after: "v0.11.1"
 deferral_reason: "ruling owed to the product thinker (renewed by run A 2026-09-29 after the v0.10.0 grant lapsed at the v0.11.0 anchor): Which front door does scanner.ScrubOutbound get: a scrub verb, or itd-107's posting path?"
 ---

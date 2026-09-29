@@ -9,7 +9,7 @@ found_during: "autonomous run 2026-09-23"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/fsutil/home.go"
-remedy: "Waits on ruling BO (CA7); in internal/fsutil/home.go: if refused, reject a ~/.abcd whose mode has 0o020 and change the documented setup to mkdir -m 700 ~/.abcd; if accepted only for a private group, admit 0o020 only when the directory's group has its owner as sole member, as Debian's OpenSSH does; if kept, record why beside the stricter readings of the declaration file and ensureStore so the three agree by statement. Prove the answer with a mode-table test over 0755, 0775 and 0777."
+remedy: "Waits on ruling BO (CA7): in internal/fsutil/home.go: if refused, reject a ~/.abcd whose mode has 0o020 and change the documented setup to mkdir -m 700 ~/.abcd; if accepted only for a private group, admit 0o020 only when the directory's group has its owner as sole member, as Debian's OpenSSH does; if kept, record why beside the stricter readings of the declaration file and ensureStore so the three agree by statement. Prove the answer with a mode-table test over 0755, 0775 and 0777."
 deferred_after: "v0.11.1"
 deferral_reason: "ruling owed to the product thinker (lane drainFresh of autonomous run A, 2026-09-29): Should abcd refuse to read its settings from a ~/.abcd folder its owner's group can write (0775)? Refusing protects a machine whose group is shared, and newly refuses a hand-made folder on Debian and Ubuntu, where the default umask makes one; today the declaration file and the worktree store already refuse it while the settings read admits it."
 ---

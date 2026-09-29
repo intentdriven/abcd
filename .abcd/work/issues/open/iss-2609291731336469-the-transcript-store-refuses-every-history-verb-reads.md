@@ -9,7 +9,7 @@ found_during: "autonomous run 2026-09-23"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/history/location.go"
-remedy: "Waits on ruling CB1; in Resolve (internal/core/history/location.go): if (a) the refusal of every verb stands, word it per verb ('refusing to read or write transcripts in it') so history list no longer reports a write; if (b), a read skips the mode narrowing with a Note and only a write refuses. Prove the answer with a test that stubs the records leaf's owner lookup to a foreign uid and asserts list, show and capture each get the ruled outcome."
+remedy: "Waits on ruling CB1: in Resolve (internal/core/history/location.go): if (a) the refusal of every verb stands, word it per verb ('refusing to read or write transcripts in it') so history list no longer reports a write; if (b), a read skips the mode narrowing with a Note and only a write refuses. Prove the answer with a test that stubs the records leaf's owner lookup to a foreign uid and asserts list, show and capture each get the ruled outcome."
 deferred_after: "v0.11.1"
 deferral_reason: "owes ruling CB1 (rulings-owed 2026-09-25): whether a foreign-owned records leaf keeps refusing every verb, or a read skips the narrowing with a Note and only a write refuses; the choice is a trust-boundary ruling for the product thinker, not a lane's call, and no working setup is lost meanwhile (the owner's writes into a root-owned 0o700 leaf already failed)."
 ---

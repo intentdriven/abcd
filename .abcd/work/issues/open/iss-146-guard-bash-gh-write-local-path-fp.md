@@ -7,7 +7,7 @@ category: "observation"
 source: "user-observation"
 found_during: "2026-07-27 session"
 found_at: "guard hook, agent shell usage"
-remedy: "Waits on ruling G; if a fixture, add the compound gh-write-plus-local-path line, with a reserved example path, to the guard's false-positive corpus (internal/core/guard/testdata/corpus) so abcd's own guard is pinned to allow it, and note that the user-level regex hook stays outside the repository; if closed, move the record to wontfix with the reason that the blocking hook is user-level and not abcd's."
+remedy: "Waits on ruling G: if a fixture, add the compound gh-write-plus-local-path line, with a reserved example path, to the guard's false-positive corpus (internal/core/guard/testdata/corpus) so abcd's own guard is pinned to allow it, and note that the user-level regex hook stays outside the repository; if closed, move the record to wontfix with the reason that the blocking hook is user-level and not abcd's."
 deferred_after: "v0.11.1"
 deferral_reason: "ruling owed to the product thinker (away; run A 2026-09-25; rulings-owed G): Give the user-level privacy regex hook a calibration-corpus fixture in this repo, or close since the hook lives outside it?"
 ---

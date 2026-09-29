@@ -9,7 +9,7 @@ found_during: "autonomous run A resumed 2026-09-25"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/release/ingest.go"
-remedy: "Waits on ruling BC; in checkPrivacy (internal/core/release/ingest.go): if (a), keep the launch bar, state it in the brief's release chapter and pin a test that a home_path_other line is accepted; if (b), refuse every identity kind the store-before-commit redactors refuse, the owner's bare name included; if (c), refuse home_path_other and admit github_username. Any refusal names the kind and the line, never the path, proven by a test on a changelog payload carrying a third-party home path."
+remedy: "Waits on ruling BC: in checkPrivacy (internal/core/release/ingest.go): if (a), keep the launch bar, state it in the brief's release chapter and pin a test that a home_path_other line is accepted; if (b), refuse every identity kind the store-before-commit redactors refuse, the owner's bare name included; if (c), refuse home_path_other and admit github_username. Any refusal names the kind and the line, never the path, proven by a test on a changelog payload carrying a third-party home path."
 deferred_after: "v0.11.1"
 deferral_reason: "ruling owed to the product thinker (rulings-owed BC; lane reanchor, run A 2026-09-29): which bar public release text is held to, the launch bar (hard_fail only, as checkPrivacy in internal/core/release/ingest.go applies it now), the store-before-commit bar (every identity kind, refusing the repository owner's bare name as well), or a middle bar (third-party home paths refused, usernames allowed)"
 ---

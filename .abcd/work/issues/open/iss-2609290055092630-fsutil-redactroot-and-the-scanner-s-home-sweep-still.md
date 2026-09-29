@@ -9,7 +9,7 @@ found_during: "autonomous run A resumed 2026-09-25"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/fsutil/paths.go"
-remedy: "Waits on ruling BB; if (a), make fsutil.RedactRoot redact a multi-segment home under a longer root as SweepCallerHome does, accepting the '/private~/...' rendering; if (b), write the difference and its reason beside both functions. Either way add one table test that runs both redactors over the same inputs (a home under a longer root, a trailing '.' or '.git' on the repo root, a case-variant home on a case-folding host) and asserts the ruled agreement, so the two cannot drift apart again."
+remedy: "Waits on ruling BB: if (a), make fsutil.RedactRoot redact a multi-segment home under a longer root as SweepCallerHome does, accepting the '/private~/...' rendering; if (b), write the difference and its reason beside both functions. Either way add one table test that runs both redactors over the same inputs (a home under a longer root, a trailing '.' or '.git' on the repo root, a case-variant home on a case-folding host) and asserts the ruled agreement, so the two cannot drift apart again."
 deferred_after: "v0.11.1"
 deferral_reason: "ruling owed to the technical facilitator (rulings-owed BB; lane reanchor, run A 2026-09-29): which leading-boundary rule both redactors follow for a home of two or more segments under a longer root, the scanner sweep's (redact it, iss-324) or fsutil.RedactRoot's (leave it whole, iss-2609230641546141, so '/private~/wt/a' is never produced); the '.' polarity's rendering and the case-folding split in the 2026-09-29 evidence ride on the same ruling"
 ---
