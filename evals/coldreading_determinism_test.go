@@ -12,8 +12,9 @@ package evals
 // identifier that differs between runs, and with the bundle's per-run context
 // stamp set aside after it is held to its run and to one digest across the pair
 // (adr-2609021016275803). The manifest is not therefore
-// unasserted: it is held to two weaker properties — no timestamp-shaped key or
-// scalar (here), and item paths in lexicographic order
+// unasserted: its two assemblies are compared byte for byte with the run
+// identifier set aside, and it is held to two further properties — no
+// timestamp-shaped key or scalar (here), and item paths in lexicographic order
 // (coldreading_order_test.go).
 //
 // An identity assertion fails the way an absence assertion fails: a comparator
@@ -124,6 +125,17 @@ func TestAssembledInputIsByteIdenticalAcrossRuns(t *testing.T) {
 				t.Fatalf("the assembled input at %s differs between two assemblies of ONE commit "+
 					"at two paths (%d difference(s)):\n%s\nthis is the assembler failing to be "+
 					"deterministic, not the eval being strict", position, len(diffs), reportDifferences(diffs))
+			}
+
+			// The manifest, modulo its run identifier (iss-2608311331273317). The
+			// package test holds this in one directory; only here do the two
+			// assemblies run at two paths, so a manifest field that varies with
+			// the tree's location, or any other per-run value beside the run
+			// identifier, is seen by this comparison and by no other.
+			if diffs := compareArtefacts(manifestFile, setRunIDAside(t, a), setRunIDAside(t, b)); len(diffs) > 0 {
+				t.Fatalf("the manifest at %s differs between two assemblies of ONE commit at two "+
+					"paths in something other than its run identifier (%d difference(s)):\n%s",
+					position, len(diffs), reportDifferences(diffs))
 			}
 		})
 	}
@@ -441,6 +453,20 @@ func setStampAside(t *testing.T, a assembled) ([]byte, string) {
 	aside := strings.Replace(string(a.BundleRaw), doc.ContextStamp,
 		"abcd.context-stamp/reading/<run>/"+m[2], 1)
 	return []byte(aside), m[2]
+}
+
+// setRunIDAside returns one assembly's manifest with every occurrence of its
+// run identifier replaced by a fixed token, so two manifests compare byte for
+// byte on everything else. The identifier must occur at least once: a manifest
+// that does not carry the run it names has nothing to set aside, and comparing
+// it as though it had would hide that.
+func setRunIDAside(t *testing.T, a assembled) []byte {
+	t.Helper()
+	run := runIdentifier(t, a)
+	if !strings.Contains(string(a.ManifestRaw), run) {
+		t.Fatalf("the manifest at %s does not carry its own run identifier %s", a.Position, run)
+	}
+	return []byte(strings.ReplaceAll(string(a.ManifestRaw), run, "<run>"))
 }
 
 // compareArtefacts is the comparison ac-1 rests on. The RELATION it asserts is
