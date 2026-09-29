@@ -9,8 +9,8 @@ found_during: "v0.8.0 release gate crosscheck rounds 1 and 2"
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/"
-deferred_after: "v0.7.1"
-deferral_reason: "The finding is about the shape of the work rather than any one claim, and the evidence for it was only complete once the second round returned. Fixing it inside the release it was found in would mean another sampling round, which is the thing it says does not converge. Recorded here so the next cycle starts from the measurement instead of rediscovering it. The waiver lapses at v0.8.0 and the finding returns to the gate."
+deferred_after: v0.11.1
+deferral_reason: "No ruling is owed; this is a lane of its own. itd-147 (shipped) made the surface chapters' shape claims generated, and its audit deferred here the 16 crosscheck findings outside that seam, in 01-product, 02-constraints, 05-internals and the glossary. Owed: a systematic pass over those chapters, one chapter to a session with the binary open, ending in two consecutive full-tier crosscheck armings with a stable finding count."
 ---
 
 The iss-35 brief-surface crosscheck does not converge on a clean run. Three
@@ -76,3 +76,7 @@ material. Candidate shapes, in rising order of cost:
   against an unchanged tree, rather than drawing a fresh sample each time.
 - **Given** a chapter that has had the pass, **when** a reader opens it, **then**
   they can tell when its claims were last checked against the binary.
+
+## Deferral 2026-09-29
+
+Deferred past v0.11.1: No ruling is owed; this is a lane of its own. itd-147 (shipped) made the surface chapters' shape claims generated, and its audit deferred here the 16 crosscheck findings outside that seam, in 01-product, 02-constraints, 05-internals and the glossary. Owed: a systematic pass over those chapters, one chapter to a session with the binary open, ending in two consecutive full-tier crosscheck armings with a stable finding count.
