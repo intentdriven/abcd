@@ -296,6 +296,13 @@ first, in any case and with or without its `SIG` prefix, as `pkill` reads it,
 so `pkill -term -g <pgid>` stops a group and stays allowed. A pid list carried
 through a variable or a file, or taken from a `ps | grep` chain, is not seen.
 
+A verb that is the person's own act is left to the person. `abcd source ledger
+--flip N` records that a human chose to cite a source publicly, so an agent
+running it is a **block** (`abcd-source-ledger-flip`); recording a line and
+listing the ledger are not. The entry names the program `abcd`, so it matches
+the binary on `PATH` and the plugin root's by basename, not a `go run` of the
+source or a copy under another name.
+
 What an allow still does not see is a hazard that never reaches command position
 at all: one launched through a known wrapper carrying a value-taking flag the
 guard does not name (`sudo -u bob <hazard>` is seen; the bundled short form
