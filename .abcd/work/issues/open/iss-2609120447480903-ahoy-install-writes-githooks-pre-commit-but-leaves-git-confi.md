@@ -10,6 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 deferred_after: "v0.11.1"
 deferral_reason: "ruling owed to the product thinker (away; run A 2026-09-28, lane drainAhoy; rulings-owed AW): still real at ed4647299 (hooks_path_armed=false raises no gap). Arming the clone writes its local git config, and a local core.hooksPath silently overrides a user-level hooks dispatcher (a global core.hooksPath), which BanlistHealth deliberately does not claim to see; whether install arms, offers to arm, or keeps printing the instruction is a choice about touching the user's git configuration."
+remedy: "Per the owed ruling (AW): if armed automatically, set core.hooksPath only when no global or system core.hooksPath is set and .git/hooks holds no non-sample hook, and otherwise refuse with a note naming what would be bypassed; if asked, a yes/no prompt that is never answered yes by a say-yes-to-everything run; if printed only, raise a gap for hooks_path_armed=false naming the command. Prove each branch with an install test on a clone with and without a global hooksPath."
 ---
 
 ahoy install writes .githooks/pre-commit but leaves 'git config core.hooksPath .githooks' to the user, so the hook is committed but not running on the clone that just installed it. Detection knows this (hooks_path_armed=false) yet emits no gap for it. Proposal: a user-state gap that arms the clone after checking .git/hooks has no non-sample hooks the redirect would bypass, refusing with a note when it does.
@@ -24,3 +25,8 @@ the `found_during` stamp and the body are unchanged; only the ledger it sits in
 has moved. The store resolved correctly — it wrote to the repository it was
 standing in — and the reason nothing refused the write is recorded as
 iss-2609120511058115._
+
+## Remedy grounds (2026-09-29)
+
+- The pre-commit framework refuses to install when core.hooksPath is set rather than override a person's hook dispatcher: https://github.com/pre-commit/pre-commit/issues/1198 and https://github.com/pre-commit/pre-commit/issues/1298 (consulted 2026-09-29), the same override the deferral names, so the automatic branch copies that refusal.
+- Rejected: arming unconditionally, which silently disables a person's global hooks in that clone.
