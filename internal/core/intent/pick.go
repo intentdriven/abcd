@@ -20,6 +20,7 @@ package intent
 
 import (
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -120,6 +121,27 @@ func ReadinessWith(w ReadinessWeights, intentContent, specContent string) Readin
 	}
 	s.Total = w.Criteria*s.Criteria.Points + w.TestPath*s.TestPath.Points + w.Footprint*s.Footprint.Points
 	return s
+}
+
+// ReadinessIn scores an intent the caller has already looked up, from its
+// record and the record of specID read through a spec store the caller has
+// already loaded. It is the one read both orderings score through, the build's
+// pick and the status board's "next up", so the two cannot score an intent
+// differently.
+func ReadinessIn(repoRoot string, store spec.Store, it Intent, specID string) (ReadinessScore, error) {
+	ic, err := readRepoFile(filepath.Join(repoRoot, filepath.FromSlash(it.Path)), it.Path)
+	if err != nil {
+		return ReadinessScore{}, err
+	}
+	sp, ok := store.Lookup(specID)
+	if !ok {
+		return ReadinessScore{}, fmt.Errorf("intent: %s's spec %s is not in the spec store", it.ID, specID)
+	}
+	sc, err := readRepoFile(filepath.Join(repoRoot, filepath.FromSlash(sp.Path)), sp.Path)
+	if err != nil {
+		return ReadinessScore{}, err
+	}
+	return Readiness(string(ic), string(sc)), nil
 }
 
 // PickCandidate is one intent the pick may take, with its score.

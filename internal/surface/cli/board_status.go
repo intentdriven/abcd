@@ -37,19 +37,15 @@ func boardStatus(cwd string, stderr io.Writer) *statusblock.Block {
 	return &b
 }
 
-// renderBoardStatus writes the block: a heading naming the order the lists are
-// read in, then Now, Next and Later, one row per intent — its id, its title,
-// and in brackets what places it there (its lane state, "next up", the gating
-// checks it fails, or "draft").
+// renderBoardStatus writes the block: a heading with the three counts, then
+// Now, Next and Later, one row per intent (Next in the pick order) — its id,
+// its title, and in brackets what places it there (its lane state, "next up",
+// the gating checks it fails, or "draft").
 func renderBoardStatus(w io.Writer, b *statusblock.Block) {
 	if b == nil {
 		return
 	}
-	order := "oldest id first"
-	if b.Order != statusblock.OrderRecordID {
-		order = termsafe.Sanitize(b.Order)
-	}
-	fmt.Fprintf(w, "  status:     Now %d · Next %d · Later %d (READY intents read %s)\n", len(b.Now), len(b.Next), len(b.Later), order)
+	fmt.Fprintf(w, "  status:     Now %d · Next %d · Later %d\n", len(b.Now), len(b.Next), len(b.Later))
 	for _, list := range []struct {
 		name string
 		rows []statusblock.Row

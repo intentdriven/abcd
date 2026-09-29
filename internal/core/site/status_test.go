@@ -93,11 +93,11 @@ func TestStatusSurfacesNeverSayRoadmap(t *testing.T) {
 	}
 }
 
-// TestStatusPageNamesTheInterimOrder: the built Status page says the head and
-// Next are read oldest id first while the block's order is the interim
-// record-id one, as the board does, from the same Block.Order; a block read in
-// any other order carries no such note.
-func TestStatusPageNamesTheInterimOrder(t *testing.T) {
+// TestStatusPageCarriesNoOrderNote: the head and Next are read in the pick
+// order, the one order the block has, so the built Status page leads the block
+// with no note about its order — not the record-id note the interface strings
+// still declare for a managed repository's ui.json, nor any other.
+func TestStatusPageCarriesNoOrderNote(t *testing.T) {
 	f := newFixture(t)
 	out := t.TempDir()
 	buildFixture(t, f, out)
@@ -108,16 +108,13 @@ func TestStatusPageNamesTheInterimOrder(t *testing.T) {
 	}
 	note := html.EscapeString(ui.Status.OrderRecordID)
 	if note == "" {
-		t.Fatal("precondition: the fixture declares the order note")
+		t.Fatal("precondition: the fixture declares the retired order note")
 	}
-	if !strings.Contains(page, note) {
-		t.Errorf("the Status page does not name the interim order %q", ui.Status.OrderRecordID)
+	if strings.Contains(page, note) {
+		t.Errorf("the Status page names an interim order %q", ui.Status.OrderRecordID)
 	}
-	if strings.Index(page, note) > strings.Index(page, ">Now<span>") {
-		t.Error("the order note does not lead the block")
-	}
-	other := &explorer{c: &composer{ui: ui}, status: &statusblock.Block{Order: "pick"}}
-	if strings.Contains(other.statusSection(), note) {
-		t.Error("a block read in another order carries the record-id note")
+	block := (&explorer{c: &composer{ui: ui}, status: &statusblock.Block{Order: statusblock.OrderPick}}).statusSection()
+	if !strings.HasPrefix(block, `<div class="dash reading status-block">`) {
+		t.Errorf("the block does not open on its panels:\n%s", block)
 	}
 }

@@ -7,6 +7,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/core/intent"
 )
 
 // readyIntent is a planned intent the readiness gate reports READY: criteria,
@@ -23,13 +25,20 @@ func writtenSpec(id, intentID string) string {
 	return "---\nid: " + id + "\nslug: s\nintent: " + intentID + "\n---\n# s\n\n## Summary\n\nA written design record.\n"
 }
 
+// scoredSpec is writtenSpec carrying a `## Footprint` that names its tests and
+// one package, so the pick's score gives it full marks on both parts.
+func scoredSpec(id, intentID string) string {
+	return writtenSpec(id, intentID) + "\n## Footprint\n\n- packages: internal/core/intent\n- tests: the score over fixtures\n"
+}
+
 func draft(id, title string) string {
 	return "---\nid: " + id + "\nslug: s\nspec_id: null\nkind: standalone\n---\n# " + title + "\n\n## Acceptance Criteria\n\n- Given x, when y, then z.\n"
 }
 
 // store lays a record with three READY planned intents (one of them held), one
 // planned intent the gate refuses, and two drafts, in an order that is not
-// their id order.
+// their id order. The youngest READY intent's spec carries a footprint, so the
+// pick order puts it first: the readiest, not the oldest.
 func store(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
@@ -46,7 +55,7 @@ func store(t *testing.T) string {
 	const in = ".abcd/development/intents/"
 	const sp = ".abcd/development/specs/open/"
 	w(in+"planned/itd-2609010000000001-late.md", readyIntent("itd-2609010000000001", "The stamped one", "spc-2609010000000011", ""))
-	w(sp+"spc-2609010000000011-late.md", writtenSpec("spc-2609010000000011", "itd-2609010000000001"))
+	w(sp+"spc-2609010000000011-late.md", scoredSpec("spc-2609010000000011", "itd-2609010000000001"))
 	w(in+"planned/itd-7-seven.md", readyIntent("itd-7", "The seventh", "spc-17", ""))
 	w(sp+"spc-17-seven.md", writtenSpec("spc-17", "itd-7"))
 	w(in+"planned/itd-5-held.md", readyIntent("itd-5", "The held one", "spc-15", "held: \"awaiting a ruling\"\n"))
@@ -71,9 +80,9 @@ func lanesOf(started ...Started) LaneReader {
 
 // TestBlockPlacesEveryIntent is criterion 1: Now holds the intents the state
 // file shows in a lane with their lane state, then the head marked next up;
-// Next every READY planned intent in order; Later the planned intents the gate
-// refuses, each naming its failing checks, then the drafts; every row carries
-// its id and title.
+// Next every READY planned intent in pick order; Later the planned intents the
+// gate refuses, each naming its failing checks, then the drafts; every row
+// carries its id and title.
 func TestBlockPlacesEveryIntent(t *testing.T) {
 	root := store(t)
 	lane := Lane{Run: "run-2609290000000001", Lane: "lane-1", Step: "implement", Awaiting: "implementer"}
@@ -92,11 +101,11 @@ func TestBlockPlacesEveryIntent(t *testing.T) {
 		t.Errorf("Now[0].Title = %q, want the intent's title", b.Now[0].Title)
 	}
 	if !b.Now[1].NextUp || b.Now[1].Lane != nil || b.Now[1].Title != "The seventh" {
-		t.Errorf("Now[1] = %+v, want itd-7 marked next up: the oldest READY intent that is not held", b.Now[1])
+		t.Errorf("Now[1] = %+v, want itd-7 marked next up: the first READY intent in pick order neither in a lane nor held", b.Now[1])
 	}
 
-	if got, want := ids(b.Next), []string{"itd-5", "itd-7", "itd-2609010000000001"}; !reflect.DeepEqual(got, want) {
-		t.Errorf("Next = %v, want %v: every READY planned intent, oldest id first", got, want)
+	if got, want := ids(b.Next), []string{"itd-2609010000000001", "itd-5", "itd-7"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("Next = %v, want %v: every READY planned intent in pick order, the readiest first, the oldest among equals", got, want)
 	}
 	if got, want := ids(b.Later), []string{"itd-8", "itd-3", "itd-2609020000000002"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("Later = %v, want %v: the planned intents not READY, then the drafts", got, want)
@@ -112,8 +121,8 @@ func TestBlockPlacesEveryIntent(t *testing.T) {
 			t.Errorf("row %+v lacks its id or title", r)
 		}
 	}
-	if b.Order != OrderRecordID {
-		t.Errorf("Order = %q, want %q until the pick order exists", b.Order, OrderRecordID)
+	if b.Order != OrderPick || OrderPick != "pick" {
+		t.Errorf("Order = %q, want %q: Next and the head are read in the pick order", b.Order, "pick")
 	}
 }
 
@@ -130,8 +139,8 @@ func TestBlockWithoutAStateFileKeepsOnlyTheHead(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got := ids(without.Now); !reflect.DeepEqual(got, []string{"itd-7"}) || !without.Now[0].NextUp {
-			t.Errorf("%s: Now = %v, want only the head itd-7 marked next up", name, without.Now)
+		if got := ids(without.Now); !reflect.DeepEqual(got, []string{"itd-2609010000000001"}) || !without.Now[0].NextUp {
+			t.Errorf("%s: Now = %v, want only the head itd-2609010000000001 marked next up", name, without.Now)
 		}
 		if !reflect.DeepEqual(with.Next, without.Next) || !reflect.DeepEqual(with.Later, without.Later) {
 			t.Errorf("%s: Next or Later changed with the state file:\nwith    %+v %+v\nwithout %+v %+v", name, with.Next, with.Later, without.Next, without.Later)
@@ -153,7 +162,7 @@ func TestBlockJSONCarriesTheThreeLists(t *testing.T) {
 	}
 	s := string(data)
 	for _, want := range []string{
-		`"now":[`, `"next":[`, `"later":[`, `"order":"record-id"`,
+		`"now":[`, `"next":[`, `"later":[`, `"order":"pick"`,
 		`"lane":{"run":"run-1","lane":"lane-2","step":"validate","awaiting":"validator"}`,
 		`"next_up":true`, `"failing_checks":["spec_link"`, `"title":"An old idea"`,
 	} {
@@ -171,25 +180,8 @@ func TestBlockOnAnEmptyStoreHasEmptyLists(t *testing.T) {
 		t.Fatal(err)
 	}
 	data, _ := json.Marshal(b)
-	if want := `{"now":[],"next":[],"later":[],"order":"record-id"}`; string(data) != want {
+	if want := `{"now":[],"next":[],"later":[],"order":"pick"}`; string(data) != want {
 		t.Errorf("empty block = %s, want %s", data, want)
-	}
-}
-
-func TestIDLessOrdersOrdinalsBeforeStamps(t *testing.T) {
-	for _, c := range []struct {
-		a, b string
-		want bool
-	}{
-		{"itd-7", "itd-50", true},
-		{"itd-50", "itd-7", false},
-		{"itd-100", "itd-2609010000000001", true},
-		{"itd-2609010000000001", "itd-2609020000000002", true},
-		{"itd-007", "itd-8", true},
-	} {
-		if got := idLess(c.a, c.b); got != c.want {
-			t.Errorf("idLess(%s, %s) = %v, want %v", c.a, c.b, got, c.want)
-		}
 	}
 }
 
@@ -236,5 +228,69 @@ func TestTheHeadSkipsAHeldIntent(t *testing.T) {
 	}
 	if got := ids(b.Now); !reflect.DeepEqual(got, []string{"itd-4"}) || !b.Now[0].NextUp {
 		t.Errorf("Now = %+v, want only itd-4 marked next up: the oldest READY intent no hold covers", b.Now)
+	}
+}
+
+// TestTheHeadIsThePicksChoice: the head and Next are read in the pick order
+// `build next` takes, scored by the same function from the same records —
+// the readiest first, the oldest among equals — so the head is the intent the
+// pick would choose, not the oldest id. An intent the state file shows in a
+// lane is one the pick would not start, so the head passes over it.
+func TestTheHeadIsThePicksChoice(t *testing.T) {
+	root := t.TempDir()
+	type rec struct{ id, spec, specBody string }
+	recs := []rec{
+		{"itd-3", "spc-13", writtenSpec("spc-13", "itd-3")}, // oldest, least ready
+		{"itd-4", "spc-14", scoredSpec("spc-14", "itd-4")},  // tied with itd-9, older
+		{"itd-9", "spc-19", scoredSpec("spc-19", "itd-9")},  // tied with itd-4, younger
+		{"itd-2609010000000001", "spc-2609010000000011", writtenSpec("spc-2609010000000011", "itd-2609010000000001") +
+			"\n## Footprint\n\n- packages: internal/core/intent, internal/core/spec\n- tests: the score\n"}, // youngest, between
+	}
+	var cands []intent.PickCandidate
+	for _, r := range recs {
+		ic := readyIntent(r.id, "Title of "+r.id, r.spec, "")
+		p := filepath.Join(root, ".abcd/development/intents/planned", r.id+"-s.md")
+		q := filepath.Join(root, ".abcd/development/specs/open", r.spec+"-s.md")
+		for path, body := range map[string]string{p: ic, q: r.specBody} {
+			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		cands = append(cands, intent.PickCandidate{ID: r.id, Score: intent.Readiness(ic, r.specBody)})
+	}
+	pick, ok := intent.Choose(cands)
+	if !ok || pick.Chosen.ID != "itd-4" || !pick.TieBrokenByAge {
+		t.Fatalf("precondition: the pick takes itd-4 over its tie with itd-9: %+v", pick)
+	}
+
+	b, err := Read(root, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var order []string
+	for _, c := range pick.Candidates {
+		order = append(order, c.ID)
+	}
+	if got := ids(b.Next); !reflect.DeepEqual(got, order) {
+		t.Errorf("Next = %v, want the pick order %v", got, order)
+	}
+	if got := ids(b.Now); !reflect.DeepEqual(got, []string{"itd-4"}) || !b.Now[0].NextUp {
+		t.Errorf("Now = %+v, want only itd-4 marked next up: the pick's choice, not the oldest id itd-3", b.Now)
+	}
+	if b.Order != OrderPick {
+		t.Errorf("Order = %q, want %q", b.Order, OrderPick)
+	}
+
+	// itd-4 in a lane: the pick would not start it again, so the head is the
+	// runner-up.
+	b, err = Read(root, lanesOf(Started{Intent: "itd-4", Lane: Lane{Run: "run-1", Lane: "lane-1", Step: "implement"}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := ids(b.Now); !reflect.DeepEqual(got, []string{"itd-4", "itd-9"}) || b.Now[0].NextUp || !b.Now[1].NextUp {
+		t.Errorf("Now = %+v, want itd-4's lane row then itd-9 marked next up", b.Now)
 	}
 }

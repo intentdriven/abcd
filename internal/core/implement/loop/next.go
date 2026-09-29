@@ -155,25 +155,14 @@ func Candidates(repoRoot, session string) (CandidateSet, error) {
 	return set, nil
 }
 
-// readiness scores one candidate from its record and its open spec's.
+// readiness scores one candidate from its record and its open spec's, through
+// the one scoring read the status block's head uses too.
 func readiness(repoRoot string, corpus intent.Corpus, store spec.Store, id, specID string) (intent.ReadinessScore, error) {
 	it, ok := corpus.Lookup(id)
 	if !ok {
 		return intent.ReadinessScore{}, fmt.Errorf("%s left the intent store while the pick read it", id)
 	}
-	ic, err := fsutil.ReadGuarded(filepath.Join(repoRoot, filepath.FromSlash(it.Path)), maxIntentBytes)
-	if err != nil {
-		return intent.ReadinessScore{}, fmt.Errorf("reading %s: %w", it.Path, err)
-	}
-	sp, ok := store.Lookup(specID)
-	if !ok {
-		return intent.ReadinessScore{}, fmt.Errorf("%s's spec %s left the spec store while the pick read it", id, specID)
-	}
-	sc, err := fsutil.ReadGuarded(filepath.Join(repoRoot, filepath.FromSlash(sp.Path)), maxIntentBytes)
-	if err != nil {
-		return intent.ReadinessScore{}, fmt.Errorf("reading %s: %w", sp.Path, err)
-	}
-	return intent.Readiness(string(ic), string(sc)), nil
+	return intent.ReadinessIn(repoRoot, store, it, specID)
 }
 
 // Next picks the readiest planned intent and starts its run. A run count past

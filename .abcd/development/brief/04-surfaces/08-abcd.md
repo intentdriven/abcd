@@ -220,16 +220,18 @@ lane the loop works on, its next step and the role it waits on, or the step
 `pending` between lanes — then the head of the pick order marked `next up`, so
 Now is never empty while anything is READY. Next lists every planned intent
 the readiness gate reports READY; Later lists every planned intent it refuses,
-naming the gating checks each fails, then every draft. Next, Later and the
-head are read from the shelves and the gate alone, so removing the state file
-empties Now's lane rows and changes nothing else. Until the block reads build
-next's pick order (itd-2609211116005482) the READY intents are read oldest
-record id first, the tie-break that pick uses, and the head is the first of
-them not held; the block's `order` field names that order (`record-id`), so a
-reader can tell it from the pick's. The text render is a `status:` heading
-with the three counts and the order, then `Now:`, `Next:` and `Later:`, one
-line per intent: its id, its title, and in brackets its lane state, `next
-up`, `fails:` with the checks, or `draft`. The JSON carries a `status` object
+naming the gating checks each fails, then every draft. Next and Later are
+read from the shelves and the gate alone, so removing the state file empties
+Now's lane rows and leaves Next and Later as they were. Next and the head are
+read in build next's pick order (itd-2609211116005482): each READY intent is
+scored by the read the pick scores through (`intent.ReadinessIn`) and ordered
+by the pick's one rule (`intent.PickLess`), the readiest first and the oldest
+among equals. The head is the first of them the pick would start: not held,
+and not one the state file shows in a lane, as the pick passes over an intent
+with a run in progress. The block's `order` field names that order (`pick`).
+The text render is a `status:` heading with the three counts, then `Now:`,
+`Next:` and `Later:`, one line per intent: its id, its title, and in brackets
+its lane state, `next up`, `fails:` with the checks, or `draft`. The JSON carries a `status` object
 with `now`, `next` and `later`, each row `id`, `title`, `bucket`, and
 `next_up`, `lane` (`run`, `lane`, `step`, `awaiting`) or `failing_checks` when
 they apply, and `order`. The block is present in a repository abcd manages and

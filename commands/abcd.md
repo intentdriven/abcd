@@ -82,10 +82,11 @@ a `status:` heading with the three counts and one line per intent under `Now:`,
 `lane` names the run, the lane, its next step and the role it waits on), then
 the intent marked `next_up`; Next is every planned intent the readiness gate
 reports READY; Later is every planned intent the gate refuses, its
-`failing_checks` named, then the drafts. Relay Now first: it is what is being
-built and what comes next. Until `abcd build next` exists the READY intents are
-read oldest id first (`order` is `record-id`), so say so when relaying the
-`next_up` intent. The block is computed each time and nothing stores it.
+`failing_checks` named, then the drafts. Next and the `next_up` intent are read
+in `abcd build next`'s pick order (`order` is `pick`): the readiest first by the
+pick's score, the oldest among equals, and the head passes over an intent that
+is held or already in a lane. Relay Now first: it is what is being built and
+what comes next. The block is computed each time and nothing stores it.
 
 ## Record-id dispatch
 

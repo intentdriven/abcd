@@ -85,6 +85,11 @@ func TestBoardCarriesTheStatusBlock(t *testing.T) {
 	if strings.Contains(strings.ToLower(text), "roadmap") {
 		t.Errorf("the board says roadmap:\n%s", text)
 	}
+	// The lists are read in the pick order, the one order there is, so the
+	// heading carries the counts and no note about the order.
+	if !strings.Contains(text, "  status:     Now 2 · Next 1 · Later 2\n") || strings.Contains(text, "READY intents read") {
+		t.Errorf("the heading is not the three counts alone:\n%s", text)
+	}
 
 	var got struct {
 		Status *struct {
@@ -104,6 +109,7 @@ func TestBoardCarriesTheStatusBlock(t *testing.T) {
 				Title   string   `json:"title"`
 				Failing []string `json:"failing_checks"`
 			} `json:"later"`
+			Order string `json:"order"`
 		} `json:"status"`
 	}
 	if err := json.Unmarshal(runCLI(t, "--json"), &got); err != nil {
@@ -118,6 +124,9 @@ func TestBoardCarriesTheStatusBlock(t *testing.T) {
 	}
 	if s.Later[0].ID != "itd-7" || s.Later[0].Title != "The unlinked one" || len(s.Later[0].Failing) == 0 {
 		t.Errorf("--json Later[0] = %+v, want itd-7 with its title and failing checks", s.Later[0])
+	}
+	if s.Order != "pick" {
+		t.Errorf("--json status.order = %q, want %q", s.Order, "pick")
 	}
 }
 
