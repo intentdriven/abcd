@@ -558,8 +558,8 @@ The non-interactive flags pre-answer the prompts: approve every resolvable
 category, decide the adoption question either way, set the marker target, the
 oracle backend, the deep-scan toggle and the repo visibility, select track-latest
 dogfood mode, proceed despite a stale running binary (the default refuses before
-the adoption question and before any write, the `--bin-dir` writability probe
-included, and names the rebuild fix), name the directory for the `PATH` entry,
+the adoption question and before any write, the writability probe of a named
+`PATH` directory included, and names the rebuild fix), name the directory for the `PATH` entry,
 and opt the repo into the attribution prompt hook.
 
 **The house-style question.** When the install seeds the docs-lint config, it
