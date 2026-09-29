@@ -558,7 +558,10 @@ the back-link to be written by hand.
 
 Reading records and dispositions (itd-180, spc-58) have their schemas in
 `internal/core/issueschema`, with one writer and refusing gate in
-`internal/core/capture/reading.go`. The **producer** of a reading item is not
+`internal/core/capture/reading.go`. `record_schema` holds a disposition written
+by hand to the same required set and allow-list its writer refuses without, and
+to the item it is filed under: an `item` field naming another item is a blocker,
+as an admission's `run` naming another run is. The **producer** of a reading item is not
 this surface and it ships: the reading verb's ingest owns the output contract and is
 the only caller that writes them (see [`23-reading.md`](23-reading.md)). That
 sequencing is spc-58's own, and it is why the ingest primitive is exported
