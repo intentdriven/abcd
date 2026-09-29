@@ -18,3 +18,7 @@ rm-rf-root-or-home reads a default expansion by its variable only: rm -rf ${DIR:
 ## Deferral 2026-09-29
 
 Deferred past v0.11.1: Reading a default's word needs a written spelling that holds more than one text (the variable's value or the default's word), which changes segment.spelled from one string per word to a set and the payload pairing that copies it (spellPayload); owed: that representation, then the default word, deep alternatives and a substring's root read through it, test first.
+
+## Evidence 2026-09-29: a default after a subscript
+
+The class includes a default the bash 3.2 of macOS reads at the first operator after a subscript's `]`. With X unset, bash 3.2 and /bin/sh print the word for `${X[0]]-$HOME}`, `${X[0]]:-$HOME}`, `${X[0]]=$HOME}`, `${X[0]]:=$HOME}` and `${X[0]]x-$HOME}` (the home), and for `${X[0]]-/}` (the root); bash 5 refuses each as a bad substitution. With X set each prints X's value. The guard reads the subscript's operator (unknown.go subscriptOperators) and spells a `-` or `=` there as the variable, as it spells `${X:-$HOME}`, so each allows. The pin `${X[0]]-$HOME}` in homeresiduals_test.go is this residual, not a claim that the form stays off the home. The same owed representation, a spelling that holds both texts, reads them.

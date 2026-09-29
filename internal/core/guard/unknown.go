@@ -286,8 +286,12 @@ func spellParameterAt(body string, depth int, split bool) string {
 
 // subscriptOperators are the bytes bash 3.2 stops at in the text after a
 // subscript's `]`: an operator, or a backslash, which quotes the next byte.
-// Only a `+` or `:+` there reads an alternative; `${X[0]]-$HOME}` and
-// `${X[0]a-b+$HOME}` print X's value, and `${X[0]]\+$HOME}` does too.
+// Only a `+` or `:+` there reads an alternative; with X set,
+// `${X[0]]-$HOME}` and `${X[0]a-b+$HOME}` print X's value, and
+// `${X[0]]\+$HOME}` does too. With X unset, a `-`, `:-`, `=` or `:=` there
+// prints the word: `${X[0]]-$HOME}`, `${X[0]]:-$HOME}` and `${X[0]]=$HOME}`
+// print the home on bash 3.2 and /bin/sh. That is the default's word, which
+// this spelling does not read (iss-2609290426544292, deferred).
 const subscriptOperators = "-=?+%#/:\\"
 
 // subscriptEnd returns the index of the `]` that closes the subscript opening

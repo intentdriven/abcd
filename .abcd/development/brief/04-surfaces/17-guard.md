@@ -329,7 +329,9 @@ substitution (`rm -rf $(echo /)`), which is read by its known text because that
 is how an everyday delete names what it removes (`rm -rf $(find . -name
 '*.pyc')`); a target spelled any other way than the words above (`rm -rf
 "$DIR"/*` with `DIR` unset, `rm -rf /?*`), a default's own word, which bash
-prints only when the variable is unset (`rm -rf ${DIR:-$HOME}`), an
+prints only when the variable is unset (`rm -rf ${DIR:-$HOME}`, and
+`${X[0]]-$HOME}`, which the bash 3.2 of macOS reads as a default after the
+subscript), an
 alternative nested more than three deep, and a substring of `$PWD` that
 prints the root (`${PWD:0:1}`), which warns as `$PWD` does; one behind a wrapper flag the per-wrapper
 table does not name; a REST
