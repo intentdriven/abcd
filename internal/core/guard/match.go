@@ -722,9 +722,11 @@ func argValueMatches(values []string, written string) bool {
 // `/*`, `$HOME//` is `$HOME/`), a `.` segment between two slashes is the
 // directory itself (`/./*` is `/*`), and a `..` segment directly under the
 // root is the root, its own parent (`/../*` is `/*`). A trailing `.` or `..`
-// is kept: rm refuses an operand whose last segment is one.
+// is kept here: rm refuses an operand whose last segment is one. A path
+// that begins at the root or the home also has its `..` segments folded
+// (foldParents).
 func cleanSeparators(p string) string {
-	if !strings.Contains(p, "//") && !strings.Contains(p, "/./") && !strings.HasPrefix(p, "/../") {
+	if !strings.Contains(p, "//") && !strings.Contains(p, "/./") && !strings.Contains(p, "/..") {
 		return p
 	}
 	b := make([]byte, 0, len(p))
@@ -741,7 +743,109 @@ func cleanSeparators(p string) string {
 	for strings.HasPrefix(out, "/../") {
 		out = out[3:]
 	}
+	return foldParents(out)
+}
+
+// homePrefixes are the spellings of the home a folded path may begin with.
+var homePrefixes = []string{"~", "$HOME", "${HOME}"}
+
+// foldParents folds each `..` segment of a path that begins at the root or
+// the home into the segment before it, as the path reads lexically
+// (iss-2609290745243990): `/tmp/../*` is `/*`, `~/x/..` is `~`. The kernel
+// reads `..` otherwise only where the segment before it is a symlink, and
+// the lexical reading is the one that blocks. A `..` past the home climbs to
+// a directory that holds the home, so the path is the home where each
+// segment it then descends through is `*`, which matches the home's own
+// name among the rest: `~/../*` and `~/..` are `~`, `~/../*/*` is `~/*`, and
+// `~/../x` stays a sibling. A trailing `.` or `..` is folded as well, since
+// what it names is the root or holds the home, though rm refuses it. A
+// segment holding a variable or a substitution is not a known count of
+// directories, so nothing is folded across one, and a path of any other
+// beginning is returned as it is.
+func foldParents(p string) string {
+	if !strings.Contains(p, "..") {
+		return p
+	}
+	prefix, rest := "", ""
+	switch {
+	case strings.HasPrefix(p, "/"):
+		rest = p[1:]
+	default:
+		for _, h := range homePrefixes {
+			if p == h || strings.HasPrefix(p, h+"/") {
+				prefix, rest = h, strings.TrimPrefix(p[len(h):], "/")
+				break
+			}
+		}
+		if prefix == "" {
+			return p
+		}
+	}
+	trailing := strings.HasSuffix(rest, "/")
+	var stack []string
+	climb := 0
+	for _, seg := range strings.Split(strings.TrimSuffix(rest, "/"), "/") {
+		switch seg {
+		case "", ".":
+		case "..":
+			switch {
+			case len(stack) > 0:
+				if !literalSegment(stack[len(stack)-1]) {
+					return p
+				}
+				stack = stack[:len(stack)-1]
+			case prefix != "":
+				climb++
+			}
+		default:
+			stack = append(stack, seg)
+		}
+	}
+	if prefix == "" {
+		if len(stack) == 0 {
+			return "/"
+		}
+		return joinFolded("", stack, trailing)
+	}
+	for i := 0; i < climb && i < len(stack); i++ {
+		if stack[i] != "*" {
+			return p
+		}
+	}
+	if climb >= len(stack) {
+		stack = nil
+	} else {
+		stack = stack[climb:]
+	}
+	if len(stack) == 0 {
+		if trailing {
+			return prefix + "/"
+		}
+		return prefix
+	}
+	return joinFolded(prefix, stack, trailing)
+}
+
+// joinFolded writes a folded path back: its beginning, each segment after a
+// slash, and the trailing slash the operand was written with.
+func joinFolded(prefix string, segs []string, trailing bool) string {
+	out := prefix + "/" + strings.Join(segs, "/")
+	if trailing {
+		out += "/"
+	}
 	return out
+}
+
+// literalSegment reports whether a path segment is one directory whatever
+// the shell does with it: its text holds no variable, substitution or mark,
+// only name bytes and glob characters, which never match a slash.
+func literalSegment(seg string) bool {
+	for i := 0; i < len(seg); i++ {
+		if c := seg[i]; c == '$' || c == '`' || c < 0x20 || c == 0x7f {
+			return false
+		}
+	}
+	return true
 }
 
 // flagGroupHit reports whether the token at i is an alternative of one "a|b"

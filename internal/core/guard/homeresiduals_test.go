@@ -278,3 +278,85 @@ func TestRootAndHomeWithRedundantSeparators(t *testing.T) {
 		}
 	}
 }
+
+// TestParentSegmentsThatReachTheRootOrTheHome — iss-2609290745243990. A `..`
+// after a named directory is folded as the path reads lexically where the
+// operand begins at the root or the home: `/tmp/../*` is `/*`, and `~/../*`
+// globs the home's parent, which holds the home, so it deletes the home as
+// `~` does. The kernel reads `..` differently only through a symlink, and
+// the lexical reading is the one that blocks. A trailing `..` is folded too,
+// though rm refuses it, since what it names is the root or holds the home.
+func TestParentSegmentsThatReachTheRootOrTheHome(t *testing.T) {
+	const home, cwd = "rm-rf-root-or-home", "rm-rf-working-directory"
+	cases := []struct {
+		cmd   string
+		want  Verdict
+		entry string
+	}{
+		{`rm -rf ~/../*`, VerdictBlock, home},
+		{`rm -rf ~/../../*`, VerdictBlock, home},
+		{`rm -rf $HOME/../*`, VerdictBlock, home},
+		{`rm -rf $HOME/../../*`, VerdictBlock, home},
+		{`rm -rf ${HOME}/../*`, VerdictBlock, home},
+		{`rm -rf "$HOME"/../*`, VerdictBlock, home},
+		{`rm -rf "$HOME/../"*`, VerdictBlock, home},
+		{`rm -rf ~/..`, VerdictBlock, home},
+		{`rm -rf ~/../`, VerdictBlock, home},
+		{`rm -rf ~/../..`, VerdictBlock, home},
+		{`rm -rf ~/..//*`, VerdictBlock, home},
+		{`rm -rf ~/.././*`, VerdictBlock, home},
+		{`rm -rf ~/x/../*`, VerdictBlock, home},
+		{`rm -rf ~/x/..`, VerdictBlock, home},
+		{`rm -rf ~/x/../.*`, VerdictBlock, home},
+		{`rm -rf ~/x/../../*`, VerdictBlock, home},
+		{`rm -rf $HOME/x/y/../../*`, VerdictBlock, home},
+		{`rm -rf ~/../*/*`, VerdictBlock, home},
+		{`rm -rf ~/../*/.*`, VerdictBlock, home},
+		{`rm -rf ~/../*/`, VerdictBlock, home},
+		{`rm -rf ~/../../*/*`, VerdictBlock, home},
+		{`rm -rf /tmp/../*`, VerdictBlock, home},
+		{`rm -rf /etc/../*`, VerdictBlock, home},
+		{`rm -rf /tmp/..`, VerdictBlock, home},
+		{`rm -rf /tmp/x/../..`, VerdictBlock, home},
+		{`rm -rf /tmp/x/../../*`, VerdictBlock, home},
+		{`rm -rf /a/b/../../../*`, VerdictBlock, home},
+		{`rm -rf /tmp/./../*`, VerdictBlock, home},
+		{`rm -rf /tmp//../*`, VerdictBlock, home},
+		{`rm -rf /tmp/*/../../*`, VerdictBlock, home},
+		{`rm -rf /../tmp/../*`, VerdictBlock, home},
+		{`rm -rf "/tmp/.."/*`, VerdictBlock, home},
+		{`rm -rf ../*`, VerdictWarn, cwd},
+		{`rm -rf ~/../x`, VerdictAllow, ""},
+		{`rm -rf ~/../x/*`, VerdictAllow, ""},
+		{`rm -rf ~/x/../y`, VerdictAllow, ""},
+		{`rm -rf ~/../.*`, VerdictAllow, ""},
+		{`rm -rf ~/../x/../y`, VerdictAllow, ""},
+		{`rm -rf /tmp/../tmp/x`, VerdictAllow, ""},
+		{`rm -rf /tmp/x/..`, VerdictAllow, ""},
+		{`rm -rf /tmp/x/../*`, VerdictAllow, ""},
+		{`rm -rf /usr/../usr/local/../*`, VerdictAllow, ""},
+		{`rm -rf x/../y`, VerdictAllow, ""},
+	}
+	for _, tc := range cases {
+		spellings := []string{tc.cmd, `bash -c '` + tc.cmd + `'`, `sh -c "` + strings.ReplaceAll(tc.cmd, `"`, `\"`) + `"`}
+		for n, cmd := range spellings {
+			t.Run(cmd, func(t *testing.T) {
+				d := verdictOf(t, cmd)
+				switch tc.want {
+				case VerdictBlock:
+					if d.Verdict != VerdictBlock || d.EntryID != tc.entry {
+						t.Errorf("Check(%q) = %q via %q, want block via %q", cmd, d.Verdict, d.EntryID, tc.entry)
+					}
+				case VerdictWarn:
+					if d.Verdict != VerdictWarn || (n == 0 && d.EntryID != tc.entry) {
+						t.Errorf("Check(%q) = %q via %q, want warn via %q", cmd, d.Verdict, d.EntryID, tc.entry)
+					}
+				default:
+					if d.EntryID == home || d.Verdict == VerdictBlock || (n == 0 && d.Verdict != VerdictAllow) {
+						t.Errorf("Check(%q) = %q via %q, want no root-or-home verdict", cmd, d.Verdict, d.EntryID)
+					}
+				}
+			})
+		}
+	}
+}

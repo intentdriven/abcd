@@ -319,7 +319,14 @@ drops out, as bash splits and drops them (`${X:+$HOME }`,
 (`${HOME%/*}`) blocks as the home does. Each target is also compared as a path
 with its redundant separators taken out, since the kernel reads a run of
 slashes as one, a `.` segment as the directory itself and the root as its own
-parent (`//*`, `$HOME//`, `/./*`, `/../*`, `.//*`).
+parent (`//*`, `$HOME//`, `/./*`, `/../*`, `.//*`). A target that begins at
+the root or the home has each `..` folded into the directory before it, as
+the path reads lexically: `/tmp/../*` and `/tmp/x/../..` are the root, and a
+`..` past the home climbs to a directory that holds the home, so `~/..`,
+`~/../*` and `$HOME/../../*` read as the home and `~/../*/*` as `~/*`, while
+`~/../x` stays a sibling. The kernel reads a `..` otherwise only after a
+symlink, and the lexical reading is the one that blocks; a trailing `..` is
+folded too, though rm refuses it.
 
 What an allow still does not see is a hazard that never reaches command position
 at all: a word that is wholly a command substitution or a variable standing
@@ -331,7 +338,10 @@ is how an everyday delete names what it removes (`rm -rf $(find . -name
 "$DIR"/*` with `DIR` unset, `rm -rf /?*`), a default's own word, which bash
 prints only when the variable is unset (`rm -rf ${DIR:-$HOME}`, and
 `${X[0]]-$HOME}`, which the bash 3.2 of macOS reads as a default after the
-subscript), an
+subscript), a `..` after a symlink, which is read past lexically (a link to
+the root under a named directory), or after a segment holding a variable,
+which is not folded (`/tmp/$X/../../*` is the root with `X` unset), a `..`
+past the home followed by a glob other than `*` (`~/../?*`, as `/?*`), an
 alternative nested more than three deep, and a substring of `$PWD` that
 prints the root (`${PWD:0:1}`), which warns as `$PWD` does; one behind a wrapper flag the per-wrapper
 table does not name; a REST

@@ -331,13 +331,17 @@ variables (`{$HOME,x}`, `$HO{M..M}E`), an expansion that can leave the value
 as it is reads as the variable (`${HOME%/}`, `${HOME:-x}`, `${HOME[0]}`), and
 an alternative reads as its word (`${X:+$HOME}`, `${X:+/}`), split on
 whitespace where it stands unquoted (`${X:+$HOME }`). A target is also read
-with its redundant separators taken out (`//*`, `$HOME//`, `/./*`, `/../*`).
+with its redundant separators taken out (`//*`, `$HOME//`, `/./*`, `/../*`),
+and one that begins at the root or the home with each `..` folded into the
+directory before it, as the path reads: `/tmp/../*` is `/*`, and `~/../*`
+globs the home's parent, which holds the home, so it is a **block** as `~` is.
 
 What an allow still does not see is a hazard that never reaches command position
 at all: a delete target printed whole by a substitution (`rm -rf $(echo /)`),
 read by its known text the way `rm -rf $(find …)` names its targets every day,
 or spelled any other way than the words above, a default's own word included
-(`rm -rf ${DIR:-$HOME}`); one launched through a known wrapper carrying a value-taking flag the
+(`rm -rf ${DIR:-$HOME}`), as is a `..` after a symlink, which the path is read
+past lexically, or after a segment holding a variable (`/tmp/$X/../*`); one launched through a known wrapper carrying a value-taking flag the
 guard does not name (`sudo -u bob <hazard>` is seen; the bundled short form
 `sudo -Hu bob <hazard>` reaches only the warn, not the entry that names it), one
 whose API path an entry names by its ROOT
