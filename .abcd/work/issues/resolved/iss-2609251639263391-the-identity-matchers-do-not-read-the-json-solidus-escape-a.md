@@ -17,7 +17,7 @@ resolved_by:
   commit: "c55ae5ef"
 ---
 
-The identity matchers do not read the JSON solidus escape. A home path written with escaped forward slashes (\/Users\/LOGIN\/Desktop, \/home\/OTHER\/) raises neither home_path_self nor home_path_other, and a login on the generic list in it raises no local_username; a named login is still caught by its bare word. Only PHP json_encode and org.json write the escape; none of the encoders that feed abcd (Go encoding/json, JSON.stringify for transcripts, Python json) does.
+The identity matchers do not read the JSON solidus escape. A home path written with escaped forward slashes (\/Users\/LOGIN\/Desktop, \/home\/OTHER\/) raises neither home_path_self nor home_path_other, and a login on the generic list in it raises no local_username; a named login is still caught by its bare word. Only PHP json_encode and org.json write the escape; none of the encoders that feed abcd (Go encoding/json, JSON.stringify for transcripts, Python json) does. <!-- abcd-lint:allow -->
 
 ## Grounds
 

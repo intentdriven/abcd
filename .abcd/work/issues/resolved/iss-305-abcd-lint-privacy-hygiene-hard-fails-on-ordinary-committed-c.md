@@ -19,7 +19,7 @@ abcd lint privacy-hygiene hard-fails on ordinary committed content because hasAb
 unlike its scanner twin `genericHomeRe` which is gated by `leadingBoundaryOK`
 (`internal/adapter/scanner/identity.go:238`). Any relative path segment
 `home/<x>` or `Users/<x>` — `src/pages/home/index.tsx`, `const Route =
-"/home/dashboard"`, a docs URL `https://docs.example.com/home/getting-started` —
+"/home/dashboard"`, a docs URL `https://docs.example.com/home/getting-started` — <!-- abcd-lint:allow -->
 matches and returns `SeverityError`, exit 2, on the shipped `abcd lint`
 conformance gate.
 
@@ -34,7 +34,7 @@ error beyond the four iss-274 documents:
 
 A shipped conformance gate hard-fails on ordinary committed content. Fix:
 mirror the scanner's leading-boundary gate using repolint's own
-`isPathSegmentChar` (which excludes `/`, keeping `file:///home/...` flagged).
+`isPathSegmentChar` (which excludes `/`, keeping `file:///home/...` flagged). <!-- abcd-lint:allow -->
 Measured: FP corpus 6→2, the fossil-scm URL FP cleared, iss-274's four true
 findings untouched, 12/12 genuine leak shapes still caught, package tests pass.
 

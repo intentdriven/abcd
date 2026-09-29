@@ -7,10 +7,10 @@ import (
 
 // TestNameContinuationIsAlphanumericOnly pins the ONE rule the home-path
 // anchor uses for "the name goes on": a letter or digit continues it, and
-// nothing else does. '.', '-' and '_' are boundaries — "/Users/me.zip",
-// "/Users/me-old" and "/Users/me_snapshot" are the caller's name with a
+// nothing else does. '.', '-' and '_' are boundaries — "/Users/me.zip", abcd-lint:allow
+// "/Users/me-old" and "/Users/me_snapshot" are the caller's name with a abcd-lint:allow
 // suffix, not another user, and main redacted every one of them; the alnum
-// case ("/Users/alexandra" against "/Users/alex") is the only false positive
+// case ("/Users/alexandra" against "/Users/alex") is the only false positive abcd-lint:allow
 // the trailing anchor exists for.
 func TestNameContinuationIsAlphanumericOnly(t *testing.T) {
 	home := "/Users/zzhomeuser42" // abcd-audit:allow

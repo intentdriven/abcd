@@ -16,9 +16,9 @@ func TestUnderFoldsCaseOnFoldingFS(t *testing.T) {
 	restore := caseFoldingFS
 	t.Cleanup(func() { caseFoldingFS = restore })
 
-	root := filepath.FromSlash("/Users/dev/repo")
-	variant := filepath.FromSlash("/Users/dev/REPO/.abcd/config.json")
-	sibling := filepath.FromSlash("/Users/dev/other/x")
+	root := filepath.FromSlash("/Users/alice/repo")
+	variant := filepath.FromSlash("/Users/alice/REPO/.abcd/config.json")
+	sibling := filepath.FromSlash("/Users/alice/other/x")
 
 	t.Run("folding FS classifies a case-variant path as under", func(t *testing.T) {
 		caseFoldingFS = func() bool { return true }
@@ -35,7 +35,7 @@ func TestUnderFoldsCaseOnFoldingFS(t *testing.T) {
 		if under(root, variant) {
 			t.Errorf("under(%q, %q) = true with fold off, want false", root, variant)
 		}
-		exact := filepath.FromSlash("/Users/dev/repo/.abcd/config.json")
+		exact := filepath.FromSlash("/Users/alice/repo/.abcd/config.json")
 		if !under(root, exact) {
 			t.Errorf("under(%q, %q) = false with fold off, want true (exact case is still under)", root, exact)
 		}
@@ -53,9 +53,9 @@ func TestReceiptPathRedactsCaseVariantRepoRoot(t *testing.T) {
 	restore := caseFoldingFS
 	t.Cleanup(func() { caseFoldingFS = restore })
 
-	repo := filepath.FromSlash("/Users/dev/code/proj")
-	identityRoot := filepath.FromSlash("/Users/dev")
-	in := filepath.FromSlash("/Users/dev/code/PROJ/.abcd/config.json")
+	repo := filepath.FromSlash("/Users/alice/code/proj")
+	identityRoot := filepath.FromSlash("/Users/alice")
+	in := filepath.FromSlash("/Users/alice/code/PROJ/.abcd/config.json")
 
 	caseFoldingFS = func() bool { return true }
 	got := receiptPath(repo, in)

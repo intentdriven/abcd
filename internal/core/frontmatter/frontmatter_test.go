@@ -62,7 +62,7 @@ func TestFieldsTrimsCarriageReturn(t *testing.T) {
 }
 
 func TestIsNull(t *testing.T) {
-	// The four YAML nulls (YAML 1.1 !!null / YAML 1.2 core schema §10.2.1.1:
+	// The four YAML nulls (YAML 1.1 !!null / YAML 1.2 core schema §10.2.1.1: abcd-lint:allow
 	// null | Null | NULL | ~) plus the empty scalar all read as null. The
 	// uppercase spellings were previously missed (iss #290) even though the
 	// repo's own YAML scalar parser already holds the full set.

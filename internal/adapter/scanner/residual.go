@@ -55,8 +55,8 @@ func BlockingResidual(findings []Finding) []Finding {
 // precedes it (the start of the text, or a byte that cannot continue a path
 // segment) and nothing name-like follows it (the end, a separator, or any
 // byte outside the username-continuation set). An unanchored replace turned
-// "/rootfs/etc/hosts" into "~fs/etc/hosts" under HOME=/root and "/home/abc/x"
-// into "~bc/x" under HOME=/home/a, silently corrupting the committed text; the
+// "/rootfs/etc/hosts" into "~fs/etc/hosts" under HOME=/root and "/home/abc/x" abcd-lint:allow
+// into "~bc/x" under HOME=/home/a, silently corrupting the committed text; the abcd-lint:allow
 // anchor is what lets a short home coexist with the paths that merely share
 // its prefix. An empty home sweeps nothing.
 //

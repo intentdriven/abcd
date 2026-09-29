@@ -32,8 +32,8 @@ func TestAC_PrivacyPersonaHomePathIsNotALeak(t *testing.T) {
 		{"non-persona username", "keys at /Users/" + strings.Join([]string{"zq", "xwv"}, "") + "/secret\n", true},
 		// The registry spells personas as given names. A segment that merely
 		// CONTAINS one is a different account.
-		{"persona as a prefix", "keys at /Users/alicexyz/secret\n", true},
-		{"persona as a suffix", "keys at /Users/xyzalice/secret\n", true},
+		{"persona as a prefix", "keys at /Users/" + strings.Join([]string{"alice", "xyz"}, "") + "/secret\n", true},
+		{"persona as a suffix", "keys at /Users/" + strings.Join([]string{"xyz", "alice"}, "") + "/secret\n", true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -94,10 +94,44 @@ func TestAC_PrivacySharedRootSubtreeIsNotALeak(t *testing.T) {
 		{"windows mixed separator traversal", `keys at C:\Users\Public/../` + strings.Join([]string{"j", "doe"}, "") + "\n", true},
 		// A segment that merely BEGINS with a system-directory name is an
 		// ordinary account and is not a shared root at all.
-		{"segment beginning with a system name", "notes at /Users/sharedstuff/notes.md\n", true},
+		{"segment beginning with a system name", "notes at /Users/" + strings.Join([]string{"shared", "stuff"}, "") + "/notes.md\n", true},
 		// The bare directory and the prose forms stay clean, as iss-153 fixed.
 		{"bare system directory", "the installer writes to /Users/Shared\n", false},
 		{"prose ellipsis", "privacy-hygiene flags /Users/Shared/... in committed files\n", false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			res := newFixtureRepo(t).conforming().
+				file("reference/paths.md", c.body).
+				commit().run()
+			got := findingFor(res, "privacy-hygiene") != nil
+			if got != c.want {
+				t.Fatalf("finding = %v, want %v for %q", got, c.want, c.body)
+			}
+		})
+	}
+}
+
+// Homebrew on Linux installs under its own system account, /home/linuxbrew,
+// and names that prefix wherever it detects a Homebrew install. The account
+// names no person, so the path is not a home-path leak, exactly as a macOS
+// shared root is not (iss-2609290845269642). The exemption is the one account
+// under the POSIX /home root, spelt as Linux spells it: a traversal back out of
+// it, a longer name that merely begins with it, the same name under a /Users
+// root and a case-folded spelling all stay findings.
+func TestAC_PrivacyHomebrewLinuxPrefixIsNotALeak(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+		want bool
+	}{
+		{"prefix", "brew prefix /home/linuxbrew/.linuxbrew\n", false},
+		{"cellar", "\"/home/linuxbrew/.linuxbrew/Cellar/\",\n", false},
+		{"bare account home", "HOME=/home/linuxbrew\n", false},
+		{"traversal out of it", "keys at /home/linuxbrew/../" + strings.Join([]string{"j", "doe"}, "") + "/keys.txt\n", true},
+		{"longer name", "keys at /home/" + strings.Join([]string{"linuxbrew", "er"}, "") + "/keys.txt\n", true},
+		{"under a users root", "keys at /Users/" + "linuxbrew/keys.txt\n", true},
+		{"case-folded spelling", "keys at /home/" + "LinuxBrew/keys.txt\n", true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

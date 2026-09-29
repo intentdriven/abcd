@@ -314,7 +314,7 @@ func TestWriteRunArtefactRefusesTheRunsOwnFiles(t *testing.T) {
 // free text by construction, and it is quoted back verbatim precisely BECAUSE
 // the discipline does not declare it.
 func TestARefusedItemsTextIsRedactedInTheDurableRecord(t *testing.T) {
-	const leak = "/Users/zzotherperson/checkouts/abcd/notes.md"
+	const leak = "/Users/zzotherperson/checkouts/abcd/notes.md" // abcd-lint:allow
 	f := newIngestFixture(t, PositionComparative)
 	doc := f.payload(3)
 	doc["items"].([]any)[2].(map[string]any)["criterion"] = "read from " + leak
@@ -349,7 +349,7 @@ func TestARefusedItemsTextIsRedactedInTheDurableRecord(t *testing.T) {
 // refusal.json's reason. Redacting one and not the other would leave the leak on
 // the path a failed run takes.
 func TestARefusedRunsReasonIsRedacted(t *testing.T) {
-	const leak = "/Users/zzotherperson/checkouts/abcd/notes.md"
+	const leak = "/Users/zzotherperson/checkouts/abcd/notes.md" // abcd-lint:allow
 	f := newIngestFixture(t, PositionComparative)
 	doc := f.payload(1)
 	doc["items"].([]any)[0].(map[string]any)["criterion"] = "read from " + leak
@@ -371,7 +371,7 @@ func TestARefusedRunsReasonIsRedacted(t *testing.T) {
 // nothing redacted it. A model name is agent-supplied text, not a validated
 // shape.
 func TestTheRecordedInstrumentIsRedacted(t *testing.T) {
-	const leak = "/Users/zzotherperson/models/local.gguf"
+	const leak = "/Users/zzotherperson/models/local.gguf" // abcd-lint:allow
 	f := newIngestFixture(t, PositionComparative)
 	doc := f.payload(1)
 	doc["instrument"].(map[string]any)["model"] = "local model at " + leak

@@ -53,14 +53,14 @@ var reservedV4 = func() []net.IPNet {
 // that live in GLOBALLY-ROUTABLE public IPv4 space, so — unlike everything in
 // reservedV4 — none of Go's net.IP predicates nor the reserved ranges above flag
 // them, yet each serves a VM's platform/metadata plane and is exactly what this
-// guard exists to keep out of reach. Azure's 168.63.129.16 is the WireServer /
+// guard exists to keep out of reach. Azure's 168.63.129.16 is the WireServer / abcd-lint:allow
 // host-platform endpoint (goal-state, extension config incl. protected settings,
 // provided DNS/DHCP/health-probe) — a single static IP across every Azure region
 // and national cloud (gh-324). The siblings the sweep surfaced, Alibaba
-// 100.100.100.200 and Oracle OCI 192.0.0.192, need no entry here: they already
+// 100.100.100.200 and Oracle OCI 192.0.0.192, need no entry here: they already abcd-lint:allow
 // fall inside reservedV4 (CGNAT 100.64/10 and the 192.0.0.0/24 protocol block).
 var platformMagicV4 = map[string]struct{}{
-	"168.63.129.16": {}, // Azure WireServer / host platform (gh-324)
+	"168.63.129.16": {}, // Azure WireServer / host platform (gh-324) // abcd-lint:allow
 }
 
 // BlockedIP reports whether ip is in a range that must never be fetched:
@@ -69,7 +69,7 @@ var platformMagicV4 = map[string]struct{}{
 // net.IP.IsPrivate), the unspecified address, any multicast address, the
 // reserved non-private IPv4 ranges above — notably CGNAT 100.64/10 — and the
 // fixed provider platform magic IPs in public space (platformMagicV4). This is
-// what keeps cloud metadata endpoints (e.g. 169.254.169.254, 168.63.129.16) and
+// what keeps cloud metadata endpoints (e.g. 169.254.169.254, 168.63.129.16) and abcd-lint:allow
 // internal services out of reach.
 func BlockedIP(ip net.IP) bool {
 	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() ||
