@@ -9,8 +9,8 @@ found_during: "autonomous-run field experiment in a managed repository, 2026-09-
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal (capture list)"
-deferred_after: "v0.10.0"
-deferral_reason: "ruling owed to the product thinker (away; run A 2026-09-25): Decided/blocked-on-decision signal in capture list --open: a frontmatter field or a recognised heading?"
+deferred_after: "v0.11.1"
+deferral_reason: "planning F owed to the product thinker: capture list --open still renders no decided or blocked-on-decision column. A frontmatter field or a recognised heading is the choice owed. (re-checked at e792a2314 by lane drainDQ3, run A, 2026-09-29)"
 ---
 
 No status surface says whether an open issue already carries a decision, so triage means reading every record in full.

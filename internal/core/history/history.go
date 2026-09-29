@@ -377,7 +377,7 @@ func Capture(repoRoot, rootSHA string, raw []byte, meta CaptureMeta) (CaptureRes
 		AdoptedProject:   meta.AdoptedProject,
 		ContextStamps:    stamps,
 	}
-	if err := fsutil.WriteFileAtomic(path, marshalRecord(rec, body), 0o644); err != nil {
+	if err := fsutil.WriteFileAtomic(path, marshalRecord(rec, body), recordPerm); err != nil {
 		return CaptureResult{}, fmt.Errorf("history: write record: %w", err)
 	}
 	// Retire the records this one grew out of, AFTER the replacement is safely on

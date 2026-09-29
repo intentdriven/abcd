@@ -18,7 +18,7 @@ import (
 // each eligible issue to an issue-keyed lane is not built yet, and DrainStart
 // says so rather than pretending to run.
 
-// EligibilityRecord is the decision record that states the rule Eligibility
+// EligibilityRecord is the decision record that states the rule eligibility
 // applies (itd-82 decision 4). It is the record the drain refuses to start
 // without; TestTheEligibilityRuleIsRecordedAndAccepted holds it to an accepted
 // record in this repository's decision store, cited by the brief's invariants.
@@ -46,7 +46,7 @@ const (
 // DrainRule names the rule that decided a disposition.
 type DrainRule string
 
-// The rules, in the order Eligibility asks them.
+// The rules, in the order eligibility asks them.
 const (
 	RuleUnreadable DrainRule = "unreadable"
 	RuleNotOpen    DrainRule = "not-open"
@@ -85,7 +85,7 @@ type DrainVerdict struct {
 	Blockers []string `json:"blockers,omitempty"`
 }
 
-// Eligibility judges one issue by its fields alone. iss.BlockedByOpen must be
+// eligibility judges one issue by its fields alone. iss.BlockedByOpen must be
 // the derived projection List fills (the blockers still in open/). The rules
 // are asked in a fixed order, and the first that excludes the issue decides:
 // not open, blocked, security, a category outside the fixable set, a severity
@@ -95,7 +95,7 @@ type DrainVerdict struct {
 // its blocker clears; the severity and category hand-backs come before the
 // missing remedy because adding a remedy would not make such an issue
 // eligible, so naming the remedy would send a reader to the wrong fix.
-func Eligibility(iss Issue) DrainVerdict {
+func eligibility(iss Issue) DrainVerdict {
 	v := DrainVerdict{ID: iss.ID, Path: iss.Path, Severity: iss.Severity, Category: iss.Category}
 	decide := func(o DrainOutcome, r DrainRule, reason string) DrainVerdict {
 		v.Outcome, v.Rule, v.Reason = o, r, reason
@@ -171,7 +171,7 @@ func PlanDrain(req DrainPlanRequest) (DrainPlan, error) {
 	}
 	var eligible, rest []DrainVerdict
 	for _, iss := range lr.Issues {
-		v := Eligibility(iss)
+		v := eligibility(iss)
 		if v.Outcome == DrainEligible {
 			eligible = append(eligible, v)
 		} else {

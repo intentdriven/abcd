@@ -442,8 +442,16 @@ func Wontfix(req WontfixRequest) (TransitionResult, error) {
 	if err := validateRestampMode(req.ProductionMode); err != nil {
 		return TransitionResult{}, refused(fmt.Errorf("wontfix: %w", err))
 	}
+	var extras []kv
+	if len(req.Duplicates) > 0 {
+		dups, err := validateDuplicates(req.RepoRoot, req.IssuesRoot, req.ID, req.Duplicates)
+		if err != nil {
+			return TransitionResult{}, err
+		}
+		extras = append(extras, kv{"duplicates", unionList(dups)})
+	}
 	res, err := transition(req.RepoRoot, req.IssuesRoot, req.ID, "wontfix", "wontfix_reason", req.Reason,
-		nil, &g, req.ProductionMode, StateWontfix)
+		extras, &g, req.ProductionMode, StateWontfix)
 	if err != nil {
 		return TransitionResult{}, err
 	}
@@ -582,9 +590,15 @@ func transition(repoRoot, issuesRoot, issID, verb, field, note string, extra []k
 			return err
 		}
 		for _, f := range append(append([]kv{}, extra...), restamp...) {
-			if members, isNested := f.val.(nested); isNested {
-				newContent, err = setMapField(newContent, f.key, members)
-			} else {
+			switch v := f.val.(type) {
+			case nested:
+				newContent, err = setMapField(newContent, f.key, v)
+			case unionList:
+				// Judged against the record's own bytes, read under the lock: a
+				// link the record already carries is kept, and the new ones
+				// follow it in the order given.
+				newContent, err = setListField(newContent, f.key, unionStrings(asStrList(currentFM[f.key]), v))
+			default:
 				newContent, err = setScalarField(newContent, f.key, f.val)
 			}
 			if err != nil {

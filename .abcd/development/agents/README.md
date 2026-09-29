@@ -103,8 +103,10 @@ nothing resolvable.
 docs-lint roots (`docs`, `README.md`), so the per-file record and docs rules do not
 reach the prompts. The itd-5 contract is enforced instead by record-lint's
 dedicated `agent_contract` rule, which walks that tree directly (`agents_dir` in
-`.abcd/record-lint.json`, with `changelog` naming the log beside this page) and
-holds each prompt to three things:
+`.abcd/record-lint.json`, with `changelog` naming the log beside this page, which
+is also where the rule looks when the key is absent: never inside `agents/`, which
+a harness loads whole, so a log there would be read as one more agent) and holds
+each prompt to three things:
 
 1. **The trust-contract frontmatter.** Every prompt declares `prompt_version` (a
    semver) and `reads_untrusted_input` — the declaration is required of ALL of

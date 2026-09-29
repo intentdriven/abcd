@@ -216,3 +216,67 @@ func renderIDList(ids []string) string {
 	}
 	return "[" + strings.Join(ids, ", ") + "]"
 }
+
+// unionList is a list field a transition MERGES into the record rather than
+// sets: the record's current items first, then each new one it does not already
+// hold. It is judged under the ledger lock against the bytes the transition
+// read, so a link written between the caller's request and the write is kept.
+type unionList []string
+
+// unionStrings returns current followed by each of add it does not already
+// hold, order preserved.
+func unionStrings(current, add []string) []string {
+	out := append([]string(nil), current...)
+	for _, v := range add {
+		if !containsString(out, v) {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+// DuplicatesFlagHelp is the --duplicates flag's help, exported so the front
+// door renders the sentence the core documents.
+const DuplicatesFlagHelp = "comma-separated iss-N or itd-N ids this issue duplicates, written to its typed duplicates link; each must exist, and a link the record already carries is kept"
+
+// validateDuplicates is the wontfix --duplicates validator. Before anything is
+// written it checks each target's shape (an issue or an intent, the ids the
+// record's `duplicates` link admits), that none names the subject, and that
+// every one exists — an issue in any status folder, an intent in any bucket —
+// because record-lint's record_schema refuses a cross-reference whose target
+// is not in the corpus, and a verb that wrote one would hand back a record its
+// own gate rejects. Repeats collapse, order preserved.
+func validateDuplicates(repoRoot, issuesRoot, subject string, ids []string) ([]string, error) {
+	const verb = "wontfix"
+	rr, ir, err := resolveRoots(repoRoot, issuesRoot)
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, id := range ids {
+		isIss, isItd := reIssID.MatchString(id), reItdID.MatchString(id)
+		if !isIss && !isItd {
+			return nil, refused(fmt.Errorf("%s: --duplicates token %q must be an iss-N or itd-N id; nothing written", verb, id))
+		}
+		if id == subject {
+			return nil, refused(fmt.Errorf("%s: --duplicates %s names the record itself, and a record cannot duplicate itself; nothing written", verb, id))
+		}
+		if containsString(out, id) {
+			continue
+		}
+		if isIss {
+			if _, _, err := findIssue(ir, id); err != nil {
+				if errors.Is(err, ErrUnknownIssueID) {
+					return nil, refused(fmt.Errorf("%s: --duplicates %s not found in the issue ledger; nothing written", verb, id))
+				}
+				return nil, fmt.Errorf("%s: --duplicates %s: %w; nothing written", verb, id, err)
+			}
+		} else if _, ok, err := findRecordFile(rr, intentStoreRelDirs(), id); err != nil {
+			return nil, fmt.Errorf("%s: --duplicates %s: %w; nothing written", verb, id, err)
+		} else if !ok {
+			return nil, refused(fmt.Errorf("%s: --duplicates %s not found in the intent store; nothing written", verb, id))
+		}
+		out = append(out, id)
+	}
+	return out, nil
+}

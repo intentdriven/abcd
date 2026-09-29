@@ -7,8 +7,8 @@ category: "future-work-seed"
 source: "user-observation"
 found_during: "agent-finding"
 found_at: ".github/workflows/site-screenshots.yml"
-deferred_after: "v0.10.0"
-deferral_reason: "ruling owed to the product thinker (away; run A 2026-09-25): Sign off a committed playwright lockfile (the dependency gate; it changes wrangler-action's package-manager inference)?"
+deferred_after: "v0.11.1"
+deferral_reason: "ruling owed to the product thinker (away; run A 2026-09-25; rulings-owed C): Sign off a committed playwright lockfile (the dependency gate; it changes wrangler-action's package-manager inference)?"
 ---
 
 the screenshot audit installs playwright by pinned version through npx with no lockfile; a committed lockfile would harden it but changes wrangler-action's package-manager inference and needs the dependency gate

@@ -308,6 +308,13 @@ rewritten in place, so the body keeps one section per cycle
 **Marking an issue wontfix** records an explicit non-action decision and moves
 the issue to `wontfix/`. Grounds are optional here and override the recorded
 text only: the token stays `declined`, because a wontfix **is** that non-action.
+A record closed because it duplicates another can name the issues or intents
+it duplicates, and the wontfix writes them to the typed `duplicates:` link the
+filing-time match also writes, so a machine reader of the ledger sees a
+duplicate rather than a wontfix whose relation lives only in the reason's prose.
+Each target must exist, an issue in any status folder or an intent in any
+bucket, and none may name the record itself; every refusal is raised before
+anything is written, and a link the record already carries is kept.
 
 **Both moves repoint the links that named the issue.** Resolving and marking
 wontfix each rename the record out of `open/`, and in the same operation every
@@ -377,7 +384,7 @@ related_specs: [spc-N, ...]
 related_issues: [iss-N, ...]
 synthesis_clusters: [<label>, ...]  # optional synthesis grouping
 blocked_by: [iss-N, ...]   # dependency edges, written at capture or afterwards by linking; blocked/priority is derived, never stored
-duplicates: [iss-N|itd-N, ...]  # written by the filing-time match: a near-identical double; removed by hand when wrong
+duplicates: [iss-N|itd-N, ...]  # written by the filing-time match (a near-identical double; removed by hand when wrong) or by a wontfix that names what the record duplicates
 refines: [iss-N|itd-N, ...]     # written by the filing-time match: this record is the narrower case
 wontfix_reason: "<text>"   # required when in wontfix/
 resolution: "<one-line>"   # required when in resolved/
@@ -728,6 +735,7 @@ Sub-verbs: none.
 
 | Flag | Type |
 |---|---|
+| `--duplicates` | string |
 | `--grounds` | string |
 | `--production-mode` | string |
 

@@ -11,6 +11,26 @@ import (
 	"testing"
 )
 
+// readAttempts bounds how often a test reads the real machine. On a machine
+// loaded far past its core count the one ps run can outlast the reader's own
+// timeout and be killed (iss-2609291430223385): that is the machine, not the
+// code under test, so the read is tried again before the test fails. Nothing a
+// caller asserts is loosened by it: the snapshot a retry returns is held to
+// every assertion the first would have been.
+const readAttempts = 3
+
+// readMachine is Read for a test: tried up to readAttempts times, each failure
+// logged, and the last error returned.
+func readMachine(t *testing.T) (Snapshot, error) {
+	t.Helper()
+	snap, err := Read()
+	for attempt := 1; err != nil && attempt < readAttempts; attempt++ {
+		t.Logf("reading the machine, attempt %d of %d, failed: %v", attempt, readAttempts, err)
+		snap, err = Read()
+	}
+	return snap, err
+}
+
 // TestReadSeesThisProcess runs the real reader on whichever platform runs the
 // test (CI's macOS and Linux legs cover both): the snapshot holds this process
 // under its own effective uid, at least one core, and non-negative loads.
@@ -18,7 +38,7 @@ func TestReadSeesThisProcess(t *testing.T) {
 	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
 		t.Skipf("no reader on %s; TestMachineLoadCompilesElsewhere covers the stub", runtime.GOOS)
 	}
-	snap, err := Read()
+	snap, err := readMachine(t)
 	if err != nil {
 		t.Fatalf("Read: %v", err)
 	}

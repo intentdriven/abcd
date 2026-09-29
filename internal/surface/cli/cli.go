@@ -4871,9 +4871,9 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 	// without grounds — what it lacked was the TYPE, which it stamps as
 	// `declined: <reason>`. The flag overrides the TEXT for the case where the
 	// conjecture is worth stating separately from the user-facing reason.
-	var wontfixGrounds, wontfixProductionMode string
+	var wontfixGrounds, wontfixProductionMode, wontfixDuplicates string
 	wontfixCmd := &cobra.Command{
-		Use:  "wontfix <iss-N> <reason> [--grounds \"declined: <text>\"]",
+		Use:  "wontfix <iss-N> <reason> [--grounds \"declined: <text>\"] [--duplicates <iss-N|itd-N,...>]",
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			repoRoot, err := captureLedgerRoot(cmd)
@@ -4882,7 +4882,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			}
 			res, err := capture.Wontfix(capture.WontfixRequest{
 				RepoRoot: repoRoot, ID: args[0], Reason: args[1], Grounds: wontfixGrounds,
-				ProductionMode: wontfixProductionMode,
+				ProductionMode: wontfixProductionMode, Duplicates: splitIDList(wontfixDuplicates),
 			})
 			if err != nil {
 				return captureRefusal("wontfix", err)
@@ -4902,6 +4902,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 		"override the recorded grounds text (the token stays declined — a wontfix IS that non-action)")
 	wontfixCmd.Flags().StringVar(&wontfixProductionMode, "production-mode", "",
 		"restamp how this record's text was produced: "+provenance.ModeList()+" (default: leave the record's existing stamp alone; refused on a record that predates disclosure)")
+	wontfixCmd.Flags().StringVar(&wontfixDuplicates, "duplicates", "", capture.DuplicatesFlagHelp)
 	captureCmd.AddCommand(wontfixCmd)
 
 	// defer — the release cut's waiver, written by a verb (iss-2609181223260994).
