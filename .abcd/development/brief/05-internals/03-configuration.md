@@ -101,8 +101,8 @@ rather than skipped:
       }
     },
     "denylist": ["openai/*"],            // extends the bundled vendor denylist; repo or machine
-    "roles": { "scribe": "openrouter/typesafe/jev-1.13" },            // an agent in the roster
-    "judgements": { "duplicate-match": "openrouter/typesafe/jev-1.13" } // a judgement type
+    "roles": { "scribe": "openrouter/typesafe/jev-1.13" },            // an agent in the roster; a keyed
+    "judgements": { "duplicate-match": "openrouter/typesafe/jev-1.13" } //   provider's routes: machine only
   }
 }
 ```
@@ -122,6 +122,15 @@ rather than skipped:
   a provider this machine has not configured is a diagnostic: the step stays on
   the host, as it would with nothing configured (adr-25). A role outside the
   roster is named and skipped, like an orphan routing row.
+- **A route to a provider that holds a key sits on the machine alone.** Only a
+  route the person set up on their own machine may spend their paid key (the
+  product thinker's ruling AA(b) of 2026-09-29), so a repository's
+  `.abcd/config.json` pointing a role or a judgement type at such a provider is
+  refused, naming the route and `~/.abcd/config.json` as where to set it. A
+  provider holds a key when its block names `key`, judged from the block and
+  never by reading the credential store. A repository's route to a provider
+  whose block names no key (a local server) is admitted and wins over the
+  machine's per name, and a `--route` the person types is unaffected.
 - **The model a provider reports is held to the denylist too.** An aggregator
   that answers with a denied model has substituted a frontier model; the answer
   is discarded and the refusal names what it reported. Every call records the
