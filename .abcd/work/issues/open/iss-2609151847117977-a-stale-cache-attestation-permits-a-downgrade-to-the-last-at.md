@@ -11,6 +11,7 @@ production_mode: hand-written
 found_at: "internal/core/ahoy/cache_attestation.go, hooks/bootstrap.sh"
 deferred_after: "v0.11.1"
 deferral_reason: "ruling owed to the product thinker (renewed by run A 2026-09-29 after the v0.10.0 grant lapsed at the v0.11.0 anchor): Cache attestation freshness: a release_tag binding, an attested_at bound, or a rewrite on every manifest-reaching run?"
+remedy: "Add the freshness term the ruling picks to the cache attestation in internal/core/ahoy/cache_attestation.go and hooks/bootstrap.sh: if a release binding, write release_tag and refuse promotion when the cache's binary-meta tag differs or is older than the newest tag this machine has recorded; if a time bound, read the already-written attested_at and refuse past the bound until an online session re-attests; if both, both; if kept, document the downgrade window in the threat model. Prove it with a test that replays the record's four steps (restore an older attested artefact) and expects the promotion refused."
 ---
 
 The home-scoped cache attestation (GHSA-4q78-ccfv-f374) binds exactly two
@@ -73,3 +74,8 @@ Not fixed in the cut this was found in: the advisory's own property holds, the
 finding is a strictly narrower residual, and each candidate above changes when
 the record moves — which is a decision about the record's contract, not a
 patch.
+
+## Remedy grounds (2026-09-29)
+
+- The threat is a downgrade (rollback) or freeze to a previously attested release; TUF names exactly these two and answers them with a monotonic version check (spec section 5.4.3) and an expiry on the metadata (sections 1.5.2, 5.4): https://theupdateframework.github.io/specification/latest/ (consulted 2026-09-29). Each ruling option maps to one of those two defences, so the remedy states each and picks none (ruling W is unanswered).
+- Rejected: adopting a TUF client library, which is a new dependency needing the person's sign-off and far heavier than one field and one comparison.
