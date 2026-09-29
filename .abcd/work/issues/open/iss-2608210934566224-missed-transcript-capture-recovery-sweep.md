@@ -8,6 +8,7 @@ source: "user-observation"
 found_during: "plugin-update post-mortem 2026-08-21"
 deferred_after: v0.11.1
 deferral_reason: "The product thinker's ruling M7 of 2026-09-23: planned next cycle as its own intent. history staged lists ended transcripts not yet redacted, but nothing sees a session whose end hook never ran, which is this record's case. Owed: that intent's filing and interview, which opens on one question: does the recovery sweep report the ended-but-unsaved sessions it finds at the next start, or save them automatically?"
+remedy: "Waits on the M7 planning interview (report the ended-but-unsaved sessions, or save them automatically): for either answer, have the session-start hook write a begun marker per session id into the history store and the session-end capture clear it once the staging contract succeeds, so the next start finds markers with no stored record whose transcript has not advanced across a re-check; if report, print one line naming them and the history capture command; if save, stage each through the existing capture path with an atomic per-session watermark. Prove it with a test that kills a session before its end hook and expects the next start to name, or stage, it."
 ---
 
 Session-end transcript capture is best-effort and its loss is silent: a cancelled or killed SessionEnd hook (update-then-quit, crash, SIGKILL) leaves no trace that a session was never captured into the history store. Add a recovery sweep — at session start or in ahoy doctor — that compares harness transcripts against the history store index and reports (or captures) the gap, turning silent loss into a caught-on-next-start notice. abcd history capture already ingests retroactively.
@@ -45,3 +46,8 @@ per-session failure isolation keeps one bad export from abandoning the batch.
 ## Deferral 2026-09-29
 
 Deferred past v0.11.1: The product thinker's ruling M7 of 2026-09-23: planned next cycle as its own intent. history staged lists ended transcripts not yet redacted, but nothing sees a session whose end hook never ran, which is this record's case. Owed: that intent's filing and interview, which opens on one question: does the recovery sweep report the ended-but-unsaved sessions it finds at the next start, or save them automatically?
+
+## Remedy grounds (2026-09-29)
+
+- The harness's hooks reference (https://code.claude.com/docs/en/hooks, consulted 2026-09-29) says a session-end hook cannot block the exit and shares a 1.5-second budget, while the session-start hook receives the session id and transcript path, so a start-side marker (write-ahead) is the only point guaranteed to run; the lab's proven design points (advancement re-check, success keyed on staging, atomic watermarks, per-session isolation) are kept.
+- Rejected: raising the end-hook budget, which only moves the transcript size at which loss begins (iss-2608230817034768).
