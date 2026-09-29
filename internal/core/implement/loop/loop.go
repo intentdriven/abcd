@@ -15,6 +15,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/implement"
 	"github.com/intentdriven/abcd/internal/core/recordid"
+	"github.com/intentdriven/abcd/internal/core/statusblock"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
@@ -671,4 +672,37 @@ func freeRunID(root *os.Root, m recordid.Minter) (string, error) {
 		last = id
 	}
 	return "", fmt.Errorf("%d draws in a row named a run directory that already exists (last %s)", runIDDraws, last)
+}
+
+// StatusLanes is the state file read the status block's Now takes
+// (itd-2609212103568351): one row per run in progress, naming its intent and the
+// lane the loop works on — its next step, and the role it waits on — or, while
+// every opened lane is done and a spec step still waits, the run with its step
+// "pending". A complete run is not in a lane. An absent tier or run directory
+// holds none. It is a statusblock.LaneReader.
+func StatusLanes(repoRoot string) ([]statusblock.Started, error) {
+	runs, err := Runs(repoRoot)
+	if err != nil {
+		return nil, err
+	}
+	out := []statusblock.Started{}
+	for _, st := range runs {
+		if st.Complete() {
+			continue
+		}
+		id := st.Intent
+		if id == "" {
+			id = st.Key
+		}
+		lane := statusblock.Lane{Run: st.RunID, Step: "pending"}
+		if i := st.current(); i >= 0 {
+			l := st.Lanes[i]
+			lane.Lane, lane.Step = l.ID, string(l.Step)
+			if l.Awaiting != nil {
+				lane.Awaiting = l.Awaiting.Role
+			}
+		}
+		out = append(out, statusblock.Started{Intent: id, Lane: lane})
+	}
+	return out, nil
 }

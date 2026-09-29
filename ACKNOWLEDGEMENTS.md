@@ -42,6 +42,14 @@ Ideas and methodologies that shaped the design — not code abcd depends on.
   normalised modes, stored uncompressed), because its digest is committed by the
   ship and must be reproduced from the tagged commit before the release can
   publish (adr-2609231048308186).
+- **The Now / Next / Later view (Janna Bastow, ProdPad)** — the undated
+  view of product sequence in three horizons, offered as the field's
+  replacement for a dated plan. abcd renders it rather than keeping it
+  (adr-2609212115255771, itd-2609212103568351, `internal/core/statusblock`):
+  the bare board and the site's Status page compute Now from the build's lanes
+  and the pick's head, Next from the readiness gate and Later from the rest of
+  the shelves, so the three horizons are a report of the record and no one
+  maintains them.
 - **The grouped command lists of kubectl and Terraform** — kubectl's help lists
   its commands under labelled sections (beginner, intermediate, deploy, cluster
   management) and Terraform's separates its main commands from all the others.
