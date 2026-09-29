@@ -9,8 +9,8 @@ production_mode: hand-written
 
 ## Summary
 
-The remainder of [itd-152](../../intents/planned/itd-152-autonomous-cloud-runs-in-sibling-repos-leaked-harness-attrib.md)
-that [spc-45](../closed/spc-45-autonomous-cloud-runs-in-sibling-repos-leaked-harness-attrib.md)
+The remainder of [itd-152](../../intents/shipped/itd-152-autonomous-cloud-runs-in-sibling-repos-leaked-harness-attrib.md)
+that [spc-45](spc-45-autonomous-cloud-runs-in-sibling-repos-leaked-harness-attrib.md)
 did not deliver. spc-45 closed on 2026-09-23 with acceptance criteria 1 to 4
 delivered: the `scanner.ScrubOutbound` primitive, its session-URL and
 clean-pass tests, and the shared harness-leak pattern set enforced by
