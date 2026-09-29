@@ -114,7 +114,10 @@ something a later reader depends on:
 - **The evidence does not hold up**: a cited record id that does not resolve, a
   cited value that is not a record id at all, a claim naming no primary source, an
   out-of-enum verdict or outcome. Every closed set is closed, and an unregistered
-  value refuses the document rather than being coerced.
+  value refuses the document rather than being coerced. The refusal names the
+  field and describes the value by its length, never quoting it: closed-set
+  members are not redacted on the way in, so a quote would carry whatever was
+  pasted there into the terminal and the transcript.
 - **The record would mislead a later reader**: an empty `rejected_alternatives`
   list with no explicit marker saying nothing was weighed, because silence and
   "nothing was weighed" read identically; or a verdict record that already exists
