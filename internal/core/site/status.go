@@ -20,18 +20,13 @@ import (
 )
 
 // statusSection renders the block as three panels, Now, Next and Later, each
-// noted with its count, led by the order the head and Next are read in while
-// that is the interim record-id one — the note the board prints from the same
-// Block.Order. It is empty when the page carries no block.
+// noted with its count. It is empty when the page carries no block.
 func (e *explorer) statusSection() string {
 	if e.status == nil {
 		return ""
 	}
 	ui := e.c.ui.Status
 	var b strings.Builder
-	if e.status.Order == statusblock.OrderRecordID {
-		b.WriteString(`<p class="muted">` + escapeText(ui.OrderRecordID) + `</p>`)
-	}
 	b.WriteString(`<div class="dash reading status-block">`)
 	for _, list := range []struct {
 		heading string

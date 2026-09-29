@@ -170,9 +170,11 @@ type StatusUI struct {
 	Draft string `json:"draft"`
 	// None stands in an empty list.
 	None string `json:"none"`
-	// OrderRecordID says the head and Next are read oldest id first, the
-	// interim order a block carries as statusblock.OrderRecordID until `abcd
-	// build next`'s pick order exists.
+	// OrderRecordID is the note a block read oldest id first carried. The
+	// block is read in the pick order, the one order it has, so no page renders
+	// it; the key stays declared because the file is decoded with unknown
+	// fields refused, and a managed repository's ui.json that declares it must
+	// still build.
 	OrderRecordID string `json:"order_record_id"`
 }
 

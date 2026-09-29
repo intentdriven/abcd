@@ -79,10 +79,18 @@ const lockFileName = ".lock"
 // paced a run: it carries no pace, runs unpaced, and is written back at version
 // 2 by its next mutation. A version-1 file carrying a pace is not one version 1
 // wrote, and is refused.
-const SchemaVersion = 2
+//
+// Version 3 added the pick `abcd build next` made (itd-2609211116005482): the
+// run's `pick` and a lane's `pick_sha`. Versions 1 and 2 are its strict
+// subsets, read as runs no pick started and written back at version 3; one of
+// them carrying a pick is not one its version wrote, and is refused.
+const SchemaVersion = 3
 
 // schemaVersionUnpaced is the version before the pace: read, never written.
 const schemaVersionUnpaced = 1
+
+// schemaVersionUnpicked is the version before the pick: read, never written.
+const schemaVersionUnpicked = 2
 
 // RunIDFamily is the run id's prefix; the id is minted through the record-id
 // seam (adr-45), so two checkouts starting runs in one second draw distinct ids.
@@ -155,6 +163,10 @@ type State struct {
 	// supplied it (itd-2609201925079472). Nil in a run a version-1 state file
 	// holds: it started before the loop paced a run, and runs unpaced.
 	Pace *Pace `json:"pace,omitempty"`
+	// Pick is the pick `abcd build next` made to start the run: the
+	// candidates, their scores and the grounds entry its first lane commits.
+	// Nil for a run `abcd build <itd-N>` started.
+	Pick *RunPick `json:"pick,omitempty"`
 	// Lanes are the lanes opened so far, one at a time, in order. A lane lands
 	// one step of the spec's `## Steps` (the whole spec when it lists none).
 	Lanes []Lane `json:"lanes"`
@@ -194,6 +206,10 @@ type Lane struct {
 	Brief    string `json:"brief,omitempty"`
 	Receipt  string `json:"receipt,omitempty"`
 	PR       int    `json:"pr,omitempty"`
+	// PickSHA is the record-only commit at the branch base carrying the run's
+	// pick entry, on the lane a picked run commits it on; the receipt verifier
+	// counts the implementer's commits from after it.
+	PickSHA string `json:"pick_sha,omitempty"`
 }
 
 // Await is what a lane waits on: the agent a host must start, the brief it is
@@ -232,6 +248,19 @@ func (s State) Complete() bool {
 		}
 	}
 	return true
+}
+
+// picked reports whether the state carries anything only a pick writes.
+func (s State) picked() bool {
+	if s.Pick != nil {
+		return true
+	}
+	for _, l := range s.Lanes {
+		if l.PickSHA != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // current returns the index of the lane the loop works on — the first lane not
@@ -294,11 +323,14 @@ func readStateIn(root *os.Root, runID string) (State, error) {
 	case st.SchemaVersion == schemaVersionUnpaced && st.Pace != nil:
 		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries a pace, which version %d never wrote", rel, st.SchemaVersion, schemaVersionUnpaced),
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
-	case st.SchemaVersion == schemaVersionUnpaced:
+	case (st.SchemaVersion == schemaVersionUnpaced || st.SchemaVersion == schemaVersionUnpicked) && st.picked():
+		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries a pick, which version %d never wrote", rel, st.SchemaVersion, st.SchemaVersion),
+			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
+	case st.SchemaVersion == schemaVersionUnpaced || st.SchemaVersion == schemaVersionUnpicked:
 		// Read as the current version; the next write carries it.
 		st.SchemaVersion = SchemaVersion
 	case st.SchemaVersion != SchemaVersion:
-		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d; this abcd reads versions %d and %d", rel, st.SchemaVersion, schemaVersionUnpaced, SchemaVersion),
+		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d; this abcd reads versions %d to %d", rel, st.SchemaVersion, schemaVersionUnpaced, SchemaVersion),
 			"run the abcd that wrote it")
 	}
 	if st.RunID != runID {

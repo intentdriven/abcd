@@ -54,6 +54,14 @@ func loopFail(w io.Writer, asJSON bool, prefix string, err error) error {
 		red := *r
 		red.Reason = fsutil.RedactHome(red.Reason)
 		red.Remedy = fsutil.RedactHome(red.Remedy)
+		if len(red.Excluded) > 0 {
+			ex := make([]loop.Excluded, len(red.Excluded))
+			for i, e := range red.Excluded {
+				e.Reason = fsutil.RedactHome(e.Reason)
+				ex[i] = e
+			}
+			red.Excluded = ex
+		}
 		code := 2
 		if red.Contention {
 			code = 3
@@ -84,11 +92,12 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 		Long: "Start the implement loop for one intent, or resume the run already in progress for it.\n" +
 			"A new run's checks run first, and every one must pass:\n" +
 			"the intent is READY (planned, criteria written, its spec linked and written), asks no\n" +
-			"open question, has no unanswered claim section, is not held, its spec leaves a step to\n" +
-			"build, and no peer holds it (no sibling worktree or local branch holds it in another\n" +
-			"bucket, and no session holds a live claim on it; a peer or claim that cannot be read\n" +
-			"counts as holding it). A refusal names the check, the reason\n" +
-			"and the remedy, and writes nothing.\n\n" +
+			"open question, has no unanswered claim section, is not held, names no unshipped intent\n" +
+			"in `blocked_by`, its spec leaves a step to build, and no peer holds it (no sibling\n" +
+			"worktree or local branch holds it in another bucket, and no session holds a live claim\n" +
+			"on it; a peer or claim that cannot be read counts as holding it). A refusal names the\n" +
+			"check, the reason and the remedy, and writes nothing. `abcd build next` picks the intent\n" +
+			"instead of taking one named.\n\n" +
 			"When the checks pass, the run is created in this checkout's local tier,\n" +
 			"`.abcd/.work.local/run/<run-id>/state.json`: one lane for the spec's first unlanded step,\n" +
 			"the other unlanded steps pending, and the run record's first line. The tier itself is\n" +
@@ -160,7 +169,114 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 	cmd.Flags().StringVar(&session, "session", "", "the host session's id in the shared run state; a new run claims the intent for it")
 	cmd.Flags().StringVar(&pace, "pace", "", "this run's working window and pause, <work-minutes>/<pause-minutes> (e.g. 90/240); wins over every configured layer")
 	cmd.Flags().StringVar(&subAgents, "sub-agents", "", "this run's ceiling on lanes and validators alive at once, a whole number; wins over every configured layer")
+	cmd.AddCommand(newBuildNextCommand(asJSON))
 	return cmd
+}
+
+// newBuildNextCommand builds `abcd build next` (itd-2609211116005482).
+func newBuildNextCommand(asJSON *bool) *cobra.Command {
+	var session, pace, subAgents string
+	var maxPicks int
+	var untilEmpty bool
+	cmd := &cobra.Command{
+		Use: "next [--session <id>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--max <n>] [--until-empty]",
+		Long: "Pick the readiest planned intent, write down why, and start its run.\n\n" +
+			"The candidates are the planned intents that pass every check `abcd build <itd-N>` runs\n" +
+			"(READY, no open question, no unanswered claim section, not held, no unshipped intent in\n" +
+			"`blocked_by`, a step left to build, no peer holding it), less one this checkout already has\n" +
+			"a run in progress for. Each is scored from its record, three parts at equal weight, each 0\n" +
+			"to 100: criteria clarity (the share of its acceptance criteria in Given-When-Then form), a\n" +
+			"test path (its spec's `## Footprint` names tests) and the expected footprint (100 divided by\n" +
+			"the packages that section names). A part whose section is absent reads zero, and the\n" +
+			"reason says the spec carries no footprint. The readiest is taken; the oldest among equals,\n" +
+			"and the reason then says the tie was broken by age.\n\n" +
+			"The pick starts the run `abcd build <itd-N>` would start for that intent, with the pick in\n" +
+			"the run's state. The reason is one `pursued:` grounds entry opening `picked by run <run-id>\n" +
+			"on <date>`: every candidate with its score, the rule, the runner-up and why it lost, and the\n" +
+			"falsifier. The lane's worktree step appends it to the intent in the lane's own worktree and\n" +
+			"commits it there as the lane branch's first commit, record-only, before the brief; the\n" +
+			"receipt verifier does not count that commit as the implementer's. The checkout you run this\n" +
+			"in is never written but for the run state. `abcd intent ready` keeps reporting the person's\n" +
+			"entry as the most recent conjecture.\n\n" +
+			"One pick per invocation. --max <n> above 1 and --until-empty, which continue under the pace\n" +
+			"rule, are refused: that half of the verb is not built in this abcd. --session, --pace and\n" +
+			"--sub-agents are `abcd build`'s own.\n\n" +
+			"No candidate is refused, naming each excluded intent and the check that excluded it, and\n" +
+			"nothing is written. Exit 2 on a refusal, exit 3 when the chosen intent's run is already in\n" +
+			"progress or the run state is locked.",
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			const prefix = "abcd build next"
+			root, err := loopRoot()
+			if err != nil {
+				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
+			}
+			roots, notes := layered.RootsFor(root)
+			for _, n := range notes {
+				fmt.Fprintln(cmd.ErrOrStderr(), termsafe.Sanitize(n))
+			}
+			o := loop.Options{Session: session, Roots: &roots}
+			if cmd.Flags().Changed("pace") {
+				o.Pace = &pace
+			}
+			if cmd.Flags().Changed("sub-agents") {
+				o.SubAgents = &subAgents
+			}
+			res, err := loop.Next(root, o, loop.NextOptions{Max: maxPicks, UntilEmpty: untilEmpty})
+			if err != nil {
+				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
+			}
+			for i := range res.Excluded {
+				res.Excluded[i].Reason = fsutil.RedactHome(res.Excluded[i].Reason)
+			}
+			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) { renderNext(w, res) })
+		},
+	}
+	cmd.Flags().StringVar(&session, "session", "", "the host session's id in the shared run state; the new run claims the picked intent for it")
+	cmd.Flags().StringVar(&pace, "pace", "", "the new run's working window and pause, <work-minutes>/<pause-minutes>; wins over every configured layer")
+	cmd.Flags().StringVar(&subAgents, "sub-agents", "", "the new run's ceiling on lanes and validators alive at once; wins over every configured layer")
+	cmd.Flags().IntVar(&maxPicks, "max", 0, "how many picks to make; only 1 is built, and more is refused")
+	cmd.Flags().BoolVar(&untilEmpty, "until-empty", false, "pick until no candidate is left; not built, and refused")
+	return cmd
+}
+
+// renderNext is the text form of a pick.
+func renderNext(w io.Writer, res loop.NextResult) {
+	p := res.Pick
+	fmt.Fprintf(w, "build next: picked %s (score %d) from %d candidate(s); run %s started\n",
+		p.Chosen.ID, p.Chosen.Score.Total, len(res.Candidates), res.Start.RunID)
+	fmt.Fprintln(w, "  candidates, in the pick order:")
+	for _, c := range res.Candidates {
+		s := c.Score
+		line := fmt.Sprintf("    %s  %d  criteria %d (%s), test path %d, footprint %d", c.ID, s.Total,
+			s.Criteria.Points, s.Criteria.Detail, s.TestPath.Points, s.Footprint.Points)
+		if s.NoFootprint {
+			line += "; its spec carries no footprint"
+		}
+		fmt.Fprintln(w, termsafe.Sanitize(line))
+	}
+	if len(res.Excluded) > 0 {
+		fmt.Fprintln(w, "  excluded:")
+		for _, e := range res.Excluded {
+			fmt.Fprintf(w, "    %s  %s: %s\n", e.ID, e.Check, termsafe.Sanitize(e.Reason))
+		}
+	}
+	fmt.Fprintf(w, "  rule:    %s\n", p.Rule)
+	switch {
+	case p.RunnerUp == nil:
+		fmt.Fprintln(w, "  runner-up: none (the only candidate)")
+	case p.TieBrokenByAge:
+		fmt.Fprintf(w, "  runner-up: %s, tied at %d; the tie was broken by age\n", p.RunnerUp.ID, p.RunnerUp.Score.Total)
+	default:
+		fmt.Fprintf(w, "  runner-up: %s at %d, lost on score\n", p.RunnerUp.ID, p.RunnerUp.Score.Total)
+	}
+	fmt.Fprintf(w, "  entry:   pursued: %s\n", termsafe.Sanitize(res.Entry))
+	fmt.Fprintf(w, "           (the lane's worktree step commits it as %s's first commit)\n", res.Start.Lane.ID)
+	fmt.Fprintf(w, "  state:   %s\n", res.Start.State)
+	renderPace(w, res.Start.Pace)
+	renderLaneLine(w, res.Start.Lane)
+	renderPending(w, res.Start.Pending)
+	fmt.Fprintf(w, "next: %s\n", termsafe.Sanitize(fsutil.RedactHome(res.Start.Next)))
 }
 
 // renderPace renders a run's pace and the layer each number came from; a run

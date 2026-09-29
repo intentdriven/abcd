@@ -3,11 +3,9 @@ package cli
 import (
 	"fmt"
 	"io"
-	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/ahoy"
 	"github.com/intentdriven/abcd/internal/core/implement/loop"
-	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/statusblock"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -37,23 +35,21 @@ func boardStatus(cwd string, stderr io.Writer) *statusblock.Block {
 	return &b
 }
 
-// renderBoardStatus writes the block: a heading naming the order the lists are
-// read in, then Now, Next and Later, one row per intent — its id, its title,
-// and in brackets what places it there (its lane state, "next up", the gating
-// checks it fails, or "draft").
+// renderBoardStatus writes the block: a heading with the three counts, then
+// Now and Next, one row per intent (Next in the pick order) — its id, its
+// title, and in brackets what places it there (its lane state or "next up") —
+// then Later as a count of intents alone (ruling BV1 of 2026-09-29): its rows,
+// with the gating checks each fails, are in --json and on the site's Status
+// page.
 func renderBoardStatus(w io.Writer, b *statusblock.Block) {
 	if b == nil {
 		return
 	}
-	order := "oldest id first"
-	if b.Order != statusblock.OrderRecordID {
-		order = termsafe.Sanitize(b.Order)
-	}
-	fmt.Fprintf(w, "  status:     Now %d · Next %d · Later %d (READY intents read %s)\n", len(b.Now), len(b.Next), len(b.Later), order)
+	fmt.Fprintf(w, "  status:     Now %d · Next %d · Later %d\n", len(b.Now), len(b.Next), len(b.Later))
 	for _, list := range []struct {
 		name string
 		rows []statusblock.Row
-	}{{"Now", b.Now}, {"Next", b.Next}, {"Later", b.Later}} {
+	}{{"Now", b.Now}, {"Next", b.Next}} {
 		fmt.Fprintf(w, "    %s:\n", list.name)
 		if len(list.rows) == 0 {
 			fmt.Fprintln(w, "      (none)")
@@ -67,9 +63,15 @@ func renderBoardStatus(w io.Writer, b *statusblock.Block) {
 			fmt.Fprintln(w, line)
 		}
 	}
+	noun := "intents"
+	if len(b.Later) == 1 {
+		noun = "intent"
+	}
+	fmt.Fprintf(w, "    Later: %d %s\n", len(b.Later), noun)
 }
 
-// statusRowTag is what places a row where it is, in words.
+// statusRowTag is what places a Now or Next row where it is, in words: its
+// lane state or "next up"; a READY intent in no lane carries none.
 func statusRowTag(r statusblock.Row) string {
 	switch {
 	case r.Lane != nil:
@@ -84,10 +86,6 @@ func statusRowTag(r statusblock.Row) string {
 		return tag + " (" + termsafe.Sanitize(l.Run) + ")"
 	case r.NextUp:
 		return "next up"
-	case len(r.Failing) > 0:
-		return "fails: " + termsafe.Sanitize(strings.Join(r.Failing, ", "))
-	case r.Bucket == intent.BucketDrafts:
-		return "draft"
 	}
 	return ""
 }

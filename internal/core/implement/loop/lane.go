@@ -191,6 +191,18 @@ func worktreeStep(c Context, lane *Lane) (Outcome, error) {
 	if err != nil || !gitutil.IsFullSHA(head) {
 		return Outcome{}, fmt.Errorf("resolving the lane branch %s: %v", lw.Branch, err)
 	}
+	// A picked run's first lane carries the pick's reason as its first
+	// commit, made here, before the brief and the implementer
+	// (itd-2609211116005482; pickcommit.go).
+	picked := ""
+	if p := c.State.Pick; p != nil && p.Lane == lane.ID {
+		sha, err := pickCommit(c, lane, lw.Path, lw.Branch, base)
+		if err != nil {
+			return Outcome{}, err
+		}
+		lane.PickSHA, head = sha, sha
+		picked = fmt.Sprintf("; the pick's entry is its first commit, %s", sha[:12])
+	}
 	lane.Worktree = lw.Path
 	lane.Branch = lw.Branch
 	lane.BaseSHA = base
@@ -199,8 +211,8 @@ func worktreeStep(c Context, lane *Lane) (Outcome, error) {
 	if adopted {
 		verb = "found"
 	}
-	return Outcome{Note: fmt.Sprintf("%s the worktree ~/%s/%s on %s, cut from %s at %s",
-		verb, lw.StoreRel, filepath.Base(lw.Path), lw.Branch, gitutil.ShortRef(defRef), base[:12])}, nil
+	return Outcome{Note: fmt.Sprintf("%s the worktree ~/%s/%s on %s, cut from %s at %s%s",
+		verb, lw.StoreRel, filepath.Base(lw.Path), lw.Branch, gitutil.ShortRef(defRef), base[:12], picked)}, nil
 }
 
 // ensureStore makes the store's levels under home one at a time, from the top

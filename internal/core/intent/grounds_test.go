@@ -212,7 +212,7 @@ func TestRecordGroundsRefusesTextThatMasksTheRecord(t *testing.T) {
 	if n := len(ParseGrounds(readIntent(t, root, rel))); n != 1 {
 		t.Fatalf("entries after the refusal = %d, want 1", n)
 	}
-	if c := ParseClaims(readIntent(t, root, rel)); c.ConditionsState != ClaimNullity {
+	if c := parseClaims(readIntent(t, root, rel)); c.ConditionsState != ClaimNullity {
 		t.Fatalf("the scope-conditions claim reads as %q, want the nullity it carried", c.ConditionsState)
 	}
 }

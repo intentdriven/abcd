@@ -533,12 +533,12 @@ func auditPromptBody(it Intent, rcp, content string, realised []string) string {
 // dispose it under, with its text (iss-2609181121301638). The identities used to
 // reach the auditor only as HTML comments in the record, which the request did
 // not quote, so an auditor scraped them by hand and a miscount quarantined the
-// verdict. They are read through ParseClaims, the reader the ingest's coverage
+// verdict. They are read through parseClaims, the reader the ingest's coverage
 // check reads them through, so the set stated here is the set it enforces. An
 // unstamped condition is listed as one, since the ingest refuses a verdict for
 // an intent carrying it and the auditor should see why.
 func writeScopeConditions(b *strings.Builder, content string) {
-	conds := ParseClaims(content).Conditions
+	conds := parseClaims(content).Conditions
 	if len(conds) == 0 {
 		b.WriteString("\n## Scope Conditions (authority; none recorded, so scope_conditions is an empty list)\n\n")
 		b.WriteString("(none recorded)\n")
@@ -1200,7 +1200,7 @@ func validateVerdict(raw []byte, rcp, intentContent string) (verdict, error) {
 
 // validateConditionDispositions checks the scope-condition dispositions against
 // the identities the RECORD carries, never against the payload's own claims —
-// the conditions are read through ParseClaims (spc-55's single claim reader), so
+// the conditions are read through parseClaims (spc-55's single claim reader), so
 // no second parser can disagree with the readiness gate about what a condition
 // is.
 //
@@ -1211,7 +1211,7 @@ func validateVerdict(raw []byte, rcp, intentContent string) (verdict, error) {
 // rollout safe — an intent shipped before the identity mint existed carries no
 // conditions, so the check is vacuous rather than blocking.
 func validateConditionDispositions(v verdict, intentContent string) error {
-	conds := ParseClaims(intentContent).Conditions
+	conds := parseClaims(intentContent).Conditions
 	known := map[string]bool{}
 	for _, c := range conds {
 		// An unstamped condition has no identity for a disposition to attach to,
@@ -1736,7 +1736,7 @@ func closeReviewBlock(b *strings.Builder, rcp string) string {
 // recorded `untested`. A condition with no minted identity is skipped: there is
 // nothing to key a disposition on, and the ingest refuses such a record anyway.
 func untestedDispositions(intentContent string) []verdictCondition {
-	conds := ParseClaims(intentContent).Conditions
+	conds := parseClaims(intentContent).Conditions
 	out := make([]verdictCondition, 0, len(conds))
 	for _, c := range conds {
 		if c.ID == "" {

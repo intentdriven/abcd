@@ -1,21 +1,31 @@
 // Package statusblock computes the Now / Next / Later block the bare `abcd`
 // board and the site's Status page render (itd-2609212103568351,
 // spc-2609212138241908). The block is rendered status, never stored
-// (adr-2609212115255771 decision 2): it is read from the lifecycle shelves, the
+// (adr-2609292012006845 decision 2): it is read from the lifecycle shelves, the
 // readiness gate and the build's state file each time, so nothing on it can be
 // edited into a lie.
 //
 //   - Now is every intent the build's state file shows in a lane, with its lane
-//     state, then the head of the pick order marked "next up", so Now is never
-//     empty while anything is READY.
-//   - Next is every planned intent the readiness gate reports READY, in pick
-//     order.
+//     state, then the head marked "next up": the first READY intent in pick
+//     order that the build's record-only pre-start checks
+//     (intent.StartChecksIn) let start and that is in no lane. Now is empty
+//     only when no READY intent passes them.
+//   - Next is every planned intent the readiness gate reports READY and the
+//     state file shows in no lane, in pick order: `abcd build next`'s one
+//     order (intent.PickLess), each intent scored by the read the pick scores
+//     through (intent.ReadinessIn), the readiest first and the oldest among
+//     equals.
 //   - Later is every planned intent the gate reports not READY, each with the
-//     gating checks it fails, then every draft.
+//     gating checks it fails, then every draft, again leaving out an intent
+//     in a lane.
 //
-// Next, Later and the head are read from the record alone; the state file adds
-// the lane rows to Now and changes nothing else, so removing it empties Now's
-// lane rows and leaves the head (criterion 3).
+// An intent the state file shows in a lane is listed under Now alone, never
+// also under Next or Later (ruling BV2 of 2026-09-29). Next and Later are
+// otherwise read from the record alone. The state file adds the lane rows to
+// Now, and the head passes over an intent it shows in a lane, as the pick does
+// over an intent with a run in progress; removing it empties Now's lane rows,
+// returns each such intent to the list the gate places it in, and leaves a
+// head (criterion 3).
 //
 // The package reads the state file through a LaneReader its caller supplies
 // rather than importing the implement loop: the loop's own imports reach the
@@ -28,17 +38,15 @@ package statusblock
 import (
 	"fmt"
 	"sort"
-	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/spec"
 )
 
-// OrderRecordID is the order Next and the head are read in until `abcd build
-// next`'s pick order exists (itd-2609211116005482): oldest first by record id,
-// the tie-break that pick uses. It is carried on the Block so a reader, and a
-// later build, can tell the interim order from the pick's.
-const OrderRecordID = "record-id"
+// OrderPick names the order Next and the head are read in: the pick order of
+// `abcd build next` (itd-2609211116005482), the readiest first by the pick's
+// score and the oldest among equals.
+const OrderPick = "pick"
 
 // Block is the three lists. Each is non-nil, so --json carries [] rather than
 // null for an empty one.
@@ -93,7 +101,7 @@ type LaneReader func(repoRoot string) ([]Started, error)
 // Read computes the block for the checkout at repoRoot. lanes may be nil, which
 // reads as an absent state file. It writes nothing.
 func Read(repoRoot string, lanes LaneReader) (Block, error) {
-	b := Block{Now: []Row{}, Next: []Row{}, Later: []Row{}, Order: OrderRecordID}
+	b := Block{Now: []Row{}, Next: []Row{}, Later: []Row{}, Order: OrderPick}
 
 	corpus, err := intent.Load(repoRoot)
 	if err != nil {
@@ -116,8 +124,25 @@ func Read(repoRoot string, lanes LaneReader) (Block, error) {
 		return Row{ID: it.ID, Title: l.Title, Bucket: it.Bucket}, nil
 	}
 
+	// The state file is read first: an intent it shows in a lane is listed
+	// under Now alone, so Next and Later leave it out and the head passes over
+	// it, as the pick passes over an intent with a run in progress.
+	var started []Started
+	if lanes != nil {
+		if started, err = lanes(repoRoot); err != nil {
+			return Block{}, err
+		}
+	}
+	inLane := map[string]bool{}
+	for _, s := range started {
+		inLane[s.Intent] = true
+	}
+
 	var planned, drafts []intent.Intent
 	for _, it := range corpus.Intents {
+		if inLane[it.ID] {
+			continue
+		}
 		switch it.Bucket {
 		case intent.BucketPlanned:
 			planned = append(planned, it)
@@ -128,7 +153,15 @@ func Read(repoRoot string, lanes LaneReader) (Block, error) {
 	sortByID(planned)
 	sortByID(drafts)
 
-	var head *Row
+	// ready pairs a READY intent with its row, the pick's view of it, and
+	// whether the build's record-only pre-start checks let it start.
+	type ready struct {
+		it        intent.Intent
+		row       Row
+		cand      intent.PickCandidate
+		startable bool
+	}
+	var readies []ready
 	var notReady []Row
 	for _, it := range planned {
 		res, err := intent.ReadyIn(repoRoot, store, it)
@@ -140,14 +173,15 @@ func Read(repoRoot string, lanes LaneReader) (Block, error) {
 			return Block{}, err
 		}
 		if res.Ready {
-			b.Next = append(b.Next, r)
-			// The head is the first READY intent the build would not refuse
-			// for its hold: a held intent is not one the pick may take.
-			if head == nil && it.Held == "" && !it.HeldMalformed {
-				h := r
-				h.NextUp = true
-				head = &h
+			score, err := intent.ReadinessIn(repoRoot, store, it, res.SpecID)
+			if err != nil {
+				return Block{}, fmt.Errorf("scoring %s for the pick order: %w", it.ID, err)
 			}
+			chk, err := intent.StartChecksIn(repoRoot, corpus, store, res)
+			if err != nil {
+				return Block{}, fmt.Errorf("reading the pre-start checks of %s: %w", it.ID, err)
+			}
+			readies = append(readies, ready{it: it, row: r, cand: intent.PickCandidate{ID: it.ID, Score: score}, startable: chk.OK()})
 			continue
 		}
 		for _, c := range res.Checks {
@@ -156,6 +190,23 @@ func Read(repoRoot string, lanes LaneReader) (Block, error) {
 			}
 		}
 		notReady = append(notReady, r)
+	}
+	sort.SliceStable(readies, func(i, j int) bool { return intent.PickLess(readies[i].cand, readies[j].cand) })
+
+	var head *Row
+	for _, rd := range readies {
+		b.Next = append(b.Next, rd.row)
+		// The head is the first READY intent in pick order the build would
+		// start: not one its record-only pre-start checks refuse (an open
+		// question, an unanswered claim section, a hold, an unshipped blocker,
+		// no step left to build); one already in a lane is not in readies at
+		// all. The build's peers check is not run: the block does not consult
+		// other checkouts.
+		if head == nil && rd.startable {
+			h := rd.row
+			h.NextUp = true
+			head = &h
+		}
 	}
 	b.Later = append(b.Later, notReady...)
 	for _, it := range drafts {
@@ -166,22 +217,16 @@ func Read(repoRoot string, lanes LaneReader) (Block, error) {
 		b.Later = append(b.Later, r)
 	}
 
-	if lanes != nil {
-		started, err := lanes(repoRoot)
-		if err != nil {
-			return Block{}, err
-		}
-		for _, s := range started {
-			r := Row{ID: s.Intent}
-			if it, ok := corpus.Lookup(s.Intent); ok {
-				if r, err = row(it); err != nil {
-					return Block{}, err
-				}
+	for _, s := range started {
+		r := Row{ID: s.Intent}
+		if it, ok := corpus.Lookup(s.Intent); ok {
+			if r, err = row(it); err != nil {
+				return Block{}, err
 			}
-			lane := s.Lane
-			r.Lane = &lane
-			b.Now = append(b.Now, r)
 		}
+		lane := s.Lane
+		r.Lane = &lane
+		b.Now = append(b.Now, r)
 	}
 	if head != nil {
 		b.Now = append(b.Now, *head)
@@ -189,19 +234,8 @@ func Read(repoRoot string, lanes LaneReader) (Block, error) {
 	return b, nil
 }
 
-// sortByID orders intents oldest first by record id: an ordinal id predates
-// every timestamp id (adr-45), and ids of one kind order by their number.
+// sortByID orders intents oldest first by record id (intent.IDOlder, the
+// pick's tie-break): the order Later is listed in.
 func sortByID(its []intent.Intent) {
-	sort.SliceStable(its, func(i, j int) bool { return idLess(its[i].ID, its[j].ID) })
-}
-
-// idLess orders two intent ids by their number: the shorter number is the
-// smaller, and numbers of one length compare as text.
-func idLess(a, b string) bool {
-	na, nb := strings.TrimPrefix(a, "itd-"), strings.TrimPrefix(b, "itd-")
-	na, nb = strings.TrimLeft(na, "0"), strings.TrimLeft(nb, "0")
-	if len(na) != len(nb) {
-		return len(na) < len(nb)
-	}
-	return na < nb
+	sort.SliceStable(its, func(i, j int) bool { return intent.IDOlder(its[i].ID, its[j].ID) })
 }

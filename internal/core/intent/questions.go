@@ -40,7 +40,7 @@ var (
 	settledLabelRe = regexp.MustCompile(`(?i)(^|^[-*][ \t]+|\*\*:?[ \t]*|[—–][ \t]*|[ \t]-[ \t]+)(resolved|deferred)[ \t]*:`)
 )
 
-// OpenQuestions returns the questions an intent's `## Open Questions` section
+// openQuestions returns the questions an intent's `## Open Questions` section
 // still asks: one per top-level list item, bulleted or numbered, in document
 // order, each as its first line's text. A settled record says so in prose — the
 // minted `_None recorded yet._`, or `_None open; …_` naming the decisions that
@@ -66,7 +66,7 @@ var (
 // and a question that merely mentions deferral all count. The remedy is the
 // record's own convention — the answer moves to `## Decisions` and the item or
 // the section says it is settled.
-func OpenQuestions(content string) []string {
+func openQuestions(content string) []string {
 	var out []string
 	var item []string // the current item's first line, then its continuation lines
 	flush := func() {

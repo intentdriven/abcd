@@ -29,8 +29,8 @@ func TestOpenQuestionsCountsListItemsAndNothingElse(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			if got := OpenQuestions(tc.content); !reflect.DeepEqual(got, tc.want) {
-				t.Fatalf("OpenQuestions = %q, want %q", got, tc.want)
+			if got := openQuestions(tc.content); !reflect.DeepEqual(got, tc.want) {
+				t.Fatalf("openQuestions = %q, want %q", got, tc.want)
 			}
 		})
 	}
@@ -108,8 +108,8 @@ func TestOpenQuestionsReadsTheSettledConvention(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			if got := OpenQuestions(tc.content); !reflect.DeepEqual(got, tc.want) {
-				t.Fatalf("OpenQuestions = %q, want %q", got, tc.want)
+			if got := openQuestions(tc.content); !reflect.DeepEqual(got, tc.want) {
+				t.Fatalf("openQuestions = %q, want %q", got, tc.want)
 			}
 		})
 	}

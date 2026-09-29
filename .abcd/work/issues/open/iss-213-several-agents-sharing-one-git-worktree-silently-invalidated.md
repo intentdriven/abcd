@@ -8,7 +8,7 @@ source: "user-observation"
 found_during: "install-test round with concurrent agents (2026-08-11)"
 found_at: ".abcd/work/CONTEXT.md"
 deferred_after: v0.11.1
-deferral_reason: "Carried by the planned itd-148, whose spec spc-42 is open and which lists this record as resolved by its shipping; the per-agent worktree direction this record proposed is the convention in AGENTS.md meanwhile. Owed: the product-thinker ruling itd-148 waits on (run A theme L): whether session worktrees live in the machine-scoped store or inside the checkout, which record owns the add, list and prune verbs, and whether the block on writes in the primary checkout spares a coordinating session."
+deferral_reason: "Carried by the planned itd-148, rewritten on 2026-09-29 to the product thinker's rulings and now blocked on the store draft itd-2609091014076309, which owns adding, listing and clearing away worktrees; the per-agent worktree direction this record proposed is the convention in AGENTS.md meanwhile. Owed: the store draft's planning interview with the product thinker, before which nothing from the store draft is built (ruling Q4, 2026-09-29); itd-148 waits on the store's verbs through its blocked_by (ruling Q2)."
 ---
 
 Several agents sharing ONE git worktree silently invalidated a verification result and came close to losing committed work. Observed repeatedly during the 2026-08-11 install-test round, in a repo that is about to run more agents, not fewer.
@@ -23,4 +23,4 @@ Directions, none adopted. Give each agent its own git worktree (git worktree add
 
 ## Deferral 2026-09-29
 
-Deferred past v0.11.1: Carried by the planned itd-148, whose spec spc-42 is open and which lists this record as resolved by its shipping; the per-agent worktree direction this record proposed is the convention in AGENTS.md meanwhile. Owed: the product-thinker ruling itd-148 waits on (run A theme L): whether session worktrees live in the machine-scoped store or inside the checkout, which record owns the add, list and prune verbs, and whether the block on writes in the primary checkout spares a coordinating session.
+Deferred past v0.11.1: Carried by the planned itd-148, rewritten on 2026-09-29 to the product thinker's rulings and now blocked on the store draft itd-2609091014076309, which owns adding, listing and clearing away worktrees; the per-agent worktree direction this record proposed is the convention in AGENTS.md meanwhile. Owed: the store draft's planning interview with the product thinker, before which nothing from the store draft is built (ruling Q4, 2026-09-29); itd-148 waits on the store's verbs through its blocked_by (ruling Q2).

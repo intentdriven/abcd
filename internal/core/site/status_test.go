@@ -11,9 +11,14 @@ import (
 // TestStatusPageRendersTheBlockFromTheSameRead is criterion 2: the built
 // Status page carries Now, Next and Later, and every row statusblock.Read
 // returns for the same repository and the same lane reader is on it, with its
-// id and title; the lane row carries its lane state.
+// id and title; the lane row carries its lane state, and the intent in a lane
+// is on the block once, under Now (ruling BV2 of 2026-09-29).
 func TestStatusPageRendersTheBlockFromTheSameRead(t *testing.T) {
 	f := newFixture(t)
+	// A second draft, so Later keeps a row while the fixture's first draft is
+	// in a lane.
+	f.write(".abcd/development/intents/drafts/itd-9-a-second-draft.md", "---\nid: itd-9\nslug: a-second-draft\nspec_id: null\nkind: standalone\n---\n\n# A Second Draft\n\n## Acceptance Criteria\n\n- Given nothing, when nothing, then nothing.\n")
+	f.commitAt("2026-03-07T09:00:00+00:00", "feat: a second draft", "None")
 	out := t.TempDir()
 	lanes := func(string) ([]statusblock.Started, error) {
 		return []statusblock.Started{{Intent: "itd-1", Lane: statusblock.Lane{Run: "run-2609290000000001", Lane: "lane-1", Step: "implement"}}}, nil
@@ -44,6 +49,10 @@ func TestStatusPageRendersTheBlockFromTheSameRead(t *testing.T) {
 	}
 	if !strings.Contains(page, "lane-1 · implement") {
 		t.Error("the lane row does not carry its lane state")
+	}
+	block := page[strings.Index(page, ">Now<span>"):strings.Index(page, "References a record the tree does not hold")]
+	if n := strings.Count(block, ">itd-1<"); n != 1 {
+		t.Errorf("the intent in a lane is on the block %d times, want once, under Now", n)
 	}
 	if !strings.Contains(page, `<span class="s">draft</span>`) {
 		t.Error("the draft row is not marked a draft")
@@ -93,11 +102,11 @@ func TestStatusSurfacesNeverSayRoadmap(t *testing.T) {
 	}
 }
 
-// TestStatusPageNamesTheInterimOrder: the built Status page says the head and
-// Next are read oldest id first while the block's order is the interim
-// record-id one, as the board does, from the same Block.Order; a block read in
-// any other order carries no such note.
-func TestStatusPageNamesTheInterimOrder(t *testing.T) {
+// TestStatusPageCarriesNoOrderNote: the head and Next are read in the pick
+// order, the one order the block has, so the built Status page leads the block
+// with no note about its order — not the record-id note the interface strings
+// still declare for a managed repository's ui.json, nor any other.
+func TestStatusPageCarriesNoOrderNote(t *testing.T) {
 	f := newFixture(t)
 	out := t.TempDir()
 	buildFixture(t, f, out)
@@ -108,16 +117,13 @@ func TestStatusPageNamesTheInterimOrder(t *testing.T) {
 	}
 	note := html.EscapeString(ui.Status.OrderRecordID)
 	if note == "" {
-		t.Fatal("precondition: the fixture declares the order note")
+		t.Fatal("precondition: the fixture declares the retired order note")
 	}
-	if !strings.Contains(page, note) {
-		t.Errorf("the Status page does not name the interim order %q", ui.Status.OrderRecordID)
+	if strings.Contains(page, note) {
+		t.Errorf("the Status page names an interim order %q", ui.Status.OrderRecordID)
 	}
-	if strings.Index(page, note) > strings.Index(page, ">Now<span>") {
-		t.Error("the order note does not lead the block")
-	}
-	other := &explorer{c: &composer{ui: ui}, status: &statusblock.Block{Order: "pick"}}
-	if strings.Contains(other.statusSection(), note) {
-		t.Error("a block read in another order carries the record-id note")
+	block := (&explorer{c: &composer{ui: ui}, status: &statusblock.Block{Order: statusblock.OrderPick}}).statusSection()
+	if !strings.HasPrefix(block, `<div class="dash reading status-block">`) {
+		t.Errorf("the block does not open on its panels:\n%s", block)
 	}
 }

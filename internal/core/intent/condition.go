@@ -124,7 +124,7 @@ func DispositionCondition(repoRoot string, req ConditionRequest) (ConditionResul
 	if !condition.MarkerIDRe.MatchString(req.ConditionID) {
 		return ConditionResult{}, fmt.Errorf("intent: condition id %q is not cond-<16 digits> (nothing written)", req.ConditionID)
 	}
-	conds := ParseClaims(content).Conditions
+	conds := parseClaims(content).Conditions
 	carried := false
 	for _, c := range conds {
 		if c.ID == req.ConditionID {
@@ -264,7 +264,7 @@ func standingEntries(content string) []StandingEntry {
 	standing := condition.Standing(content)
 	out := []StandingEntry{}
 	seen := map[string]bool{}
-	for _, c := range ParseClaims(content).Conditions {
+	for _, c := range parseClaims(content).Conditions {
 		if c.ID == "" || seen[c.ID] {
 			continue
 		}

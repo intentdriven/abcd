@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/implement"
+	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/core/statusblock"
@@ -209,7 +210,13 @@ type StepResult struct {
 // refused under the lock (a racing holder, a second session's bound) leaves no
 // run behind; and a run whose state cannot be written releases the claim it
 // took.
-func Start(repoRoot, key string, o Options) (StartResult, error) {
+func Start(repoRoot, key string, o Options) (StartResult, error) { return start(repoRoot, key, o, nil) }
+
+// start is Start, carrying the pick `abcd build next` made when pick is not
+// nil: the run's state records it, with the entry its first lane commits
+// composed from the run id minted here. A picked start never resumes: a live
+// run for the key is refused, since the pick is a new run's reason.
+func start(repoRoot, key string, o Options, pick *RunPick) (StartResult, error) {
 	if err := tierPresent(repoRoot); err != nil {
 		return StartResult{}, err
 	}
@@ -221,6 +228,9 @@ func Start(repoRoot, key string, o Options) (StartResult, error) {
 		return StartResult{}, err
 	}
 	if res, ok, err := resumeLive(repoRoot, key); err != nil || ok {
+		if err == nil && pick != nil {
+			err = pickedLive(res)
+		}
 		if err == nil && flags.set {
 			err = resumeWithFlags(res, flags)
 		}
@@ -241,7 +251,7 @@ func Start(repoRoot, key string, o Options) (StartResult, error) {
 		}
 		shared = run
 	}
-	chk, err := check(repoRoot, key, o.Session)
+	chk, err := check(repoRoot, key, o.Session, nil)
 	if err != nil {
 		return StartResult{}, err
 	}
@@ -261,6 +271,9 @@ func Start(repoRoot, key string, o Options) (StartResult, error) {
 		// while the checks ran: it is resumed, not duplicated.
 		if st, ok := liveRun(runs, chk.Key); ok {
 			res = startResult(st, nil, true)
+			if pick != nil {
+				return pickedLive(res)
+			}
 			if flags.set {
 				return resumeWithFlags(res, flags)
 			}
@@ -304,6 +317,17 @@ func Start(repoRoot, key string, o Options) (StartResult, error) {
 			Note: fmt.Sprintf("checks passed; %s opened for step %d of %s (%s)", st.Lanes[0].ID, st.Lanes[0].SpecStep, st.Spec, st.Lanes[0].StepTitle)})
 		st.Record = append(st.Record, Entry{At: now, Step: StepPace,
 			Note: "pace " + pace.String() + "; the first window opens now"})
+		if pick != nil {
+			rp := *pick
+			rp.Lane = st.Lanes[0].ID
+			rp.Entry = intent.PickEntryText(id, now, rp.Pick)
+			if rp.Excluded == nil {
+				rp.Excluded = []Excluded{}
+			}
+			st.Pick = &rp
+			st.Record = append(st.Record, Entry{At: now, Lane: rp.Lane, Step: StepPick,
+				Note: pickNote(rp)})
+		}
 		if err := writeState(root, st); err != nil {
 			if claim != nil && !claim.Renewed {
 				_, _ = shared.Release(o.Session, chk.Intent)
@@ -315,6 +339,28 @@ func Start(repoRoot, key string, o Options) (StartResult, error) {
 		return nil
 	})
 	return res, err
+}
+
+// pickedLive refuses a pick whose intent already has a run in progress: the
+// pick starts a run, and that run is resumed with `abcd implement step`.
+func pickedLive(res StartResult) error {
+	return contend(StepPick, "", "", res.RunID+" is already in progress for the intent the pick chose",
+		"resume it with `abcd implement step`, or run `abcd build next` again to pick among the rest")
+}
+
+// pickNote is the run record's line for the pick: the chosen intent, its
+// score table and the runner-up.
+func pickNote(p RunPick) string {
+	var rows []string
+	for _, c := range p.Pick.Candidates {
+		rows = append(rows, fmt.Sprintf("%s %d", c.ID, c.Score.Total))
+	}
+	note := fmt.Sprintf("picked %s from %d candidate(s) (%s), %d excluded; its entry is %s's first commit",
+		p.Pick.Chosen.ID, len(p.Pick.Candidates), strings.Join(rows, ", "), len(p.Excluded), p.Lane)
+	if p.Pick.TieBrokenByAge {
+		note += "; the tie was broken by age"
+	}
+	return note
 }
 
 // sharedRunFor opens the shared run state for session, refusing at the claim
