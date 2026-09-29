@@ -64,8 +64,10 @@ func TestReadHomeDeclarationRefusesAnAbcdHomeSwappedForALinkAfterItsCheck(t *tes
 }
 
 // The file's own guards still hold on the descriptor route: a leaf that is a
-// symlink is refused as not regular, and a leaf swapped after its judgement is
-// refused as swapped, even inside a real ~/.abcd.
+// symlink is refused as not regular, and a leaf that is swapped again after
+// every judgement is refused as swapped, even inside a real ~/.abcd. (A single
+// benign swap is re-judged and read: TestReadHomeDeclarationReadsABenign-
+// ReplacementAfterRevetting, iss-2609291157309818.)
 func TestReadHomeDeclarationStillRefusesAHostileLeaf(t *testing.T) {
 	home, dotfiles := raceableHome(t, "trusted-roots")
 	if err := os.Symlink(filepath.Join(dotfiles, "trusted-roots"), filepath.Join(home, ".abcd", "linked")); err != nil {
@@ -75,10 +77,10 @@ func TestReadHomeDeclarationStillRefusesAHostileLeaf(t *testing.T) {
 		t.Fatalf("a symlinked leaf must be refused as not regular: refusal %d, err %v, raw %q", refusal, err, raw)
 	}
 
-	other := writeDeclaration(t, filepath.Join(home, ".abcd"), "other", "/swapped\n")
 	prev := declarationVetted
 	t.Cleanup(func() { declarationVetted = prev })
 	declarationVetted = func(p string) {
+		other := writeDeclaration(t, filepath.Join(home, ".abcd"), "other", "/swapped\n")
 		if err := os.Rename(other, p); err != nil {
 			t.Fatalf("swap: %v", err)
 		}

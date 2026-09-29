@@ -335,7 +335,10 @@ func swappedLevel(parent *os.Root, part, full, shown string, err error) error {
 // leaf that is not a regular file is DeclarationNotRegular, one writable by
 // group or other or owned by another uid is DeclarationWritableByOthers or
 // DeclarationForeignOwner, and a leaf replaced between its judgement and its
-// open is DeclarationUnreadable with ErrDeclarationSwapped. A directory level
+// open is judged again from scratch, as ReadDeclaration judges one: read when
+// the replacement passes every guard, refused by the guard it fails, and
+// DeclarationUnreadable with ErrDeclarationSwapped when it is still being
+// replaced after declarationAttempts judgements. A directory level
 // replaced while it was opened is DeclarationBehindSymlink when a symlink
 // stands there now and DeclarationUnreadable otherwise.
 //
@@ -393,7 +396,28 @@ func ReadHomeDeclarationDenying(home, rel string, limit int64, deny os.FileMode)
 // given; the owner is confirmed again on the opened descriptor, so the lookup
 // by path cannot vouch for a file other than the one read. deny is judged on
 // that same descriptor (ReadHomeDeclarationDenying).
+//
+// A leaf replaced between its Lstat and its open is judged again from scratch,
+// up to declarationAttempts times, exactly as ReadDeclaration judges one: the
+// benign replacement is a concurrent abcd's WriteFileAtomic, and refusing it on
+// sight made a reader refuse its own ~/.abcd/config.json
+// (iss-2609291157309818). Every guard runs again on the replacement, so one
+// that is not a same-owner regular file this reader's mode rules admit is
+// refused by the guard that judges it; one still unsettled after the last
+// attempt is DeclarationUnreadable with ErrDeclarationSwapped.
 func readDeclarationIn(root *os.Root, leaf, p string, limit int64, deny os.FileMode) ([]byte, DeclarationRefusal, error) {
+	for attempt := 1; ; attempt++ {
+		raw, refusal, err := readDeclarationInOnce(root, leaf, p, limit, deny)
+		if errors.Is(err, ErrDeclarationSwapped) && attempt < declarationAttempts {
+			// Replaced after the vetting: judge the replacement from scratch.
+			continue
+		}
+		return raw, refusal, err
+	}
+}
+
+// readDeclarationInOnce is one vetting and one read of readDeclarationIn.
+func readDeclarationInOnce(root *os.Root, leaf, p string, limit int64, deny os.FileMode) ([]byte, DeclarationRefusal, error) {
 	fi, err := root.Lstat(leaf)
 	if err != nil {
 		return nil, DeclarationAbsent, err
