@@ -54,8 +54,8 @@ The discipline is project-agnostic: any project shipping LLM-driven agents under
 
 - Before each agent's prompt is locked at `1.0.0`, the author runs the self-improvement pre-flight:
   1. Submit the candidate prompt to `lifeboat-oracle` with the rewrite-for-clarity directive.
-  2. Run all golden-test fixtures against both candidate and oracle-rewritten variants.
-  3. If oracle variant ≥ candidate on goldens AND shorter by >10%, accept oracle variant; otherwise keep candidate.
+  2. Run the agent's calibration corpus ([itd-81](itd-81-judge-calibration.md)) against both the candidate and the oracle-rewritten variant.
+  3. If the oracle variant scores better on the corpus, accept it; on a tie, keep the candidate. Length is not a tiebreak (see § Why).
   4. Log decision + diff in `agents/CHANGELOG.md` as the agent's first entry.
 - Pre-flight is a one-time gate per agent at v1.0.0 lock-time, not a recurring step.
 - Documented as a checklist item in each agent's native spec (after the "task #1: SOTA research" task already mandated by the brief).
