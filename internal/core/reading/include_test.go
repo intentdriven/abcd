@@ -607,3 +607,27 @@ func TestTheEvidenceChapterIsExcludedAsVerdictMaterial(t *testing.T) {
 		t.Error("the exclusion floor names no entry for the brief's evidence chapter")
 	}
 }
+
+// TestTheMatchFormsFollowTheOneCaseRule pins the case rule Row.Match states
+// (iss-2608311949421873): a form naming a kind of file folds case, a form
+// naming one file or following a tool's own rule matches the spelling exactly.
+// The two Match forms had disagreed with no rule stated, so the next form had
+// nothing to follow; this holds each form to the rule the doc states.
+func TestTheMatchFormsFollowTheOneCaseRule(t *testing.T) {
+	row := Row{Match: []string{".md", "Makefile"}, MatchSuffix: []string{"_test.go"}}
+	for base, want := range map[string]bool{
+		"notes.md":      true,  // the kind, as spelled
+		"NOTES.MD":      true,  // the kind folds
+		"Makefile":      true,  // the named file, as spelled
+		"makefile":      false, // a named file matches its spelling only
+		"MAKEFILE":      false,
+		"a_test.go":     true,  // the toolchain's rule, as spelled
+		"a_TEST.go":     false, // the toolchain builds only the lowercase suffix
+		"Makefile.bak":  false,
+		"notes.md.orig": false,
+	} {
+		if got := row.matches(base); got != want {
+			t.Errorf("matches(%q) = %v, want %v", base, got, want)
+		}
+	}
+}
