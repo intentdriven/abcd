@@ -151,7 +151,19 @@ func Assemble(req AssembleRequest) (AssembleResult, error) {
 	if label == "" {
 		label = outDir
 	}
-	if err := writePair(dir, label, contextRaw, manifestRaw); err != nil {
+	// A run directory named inside the repository by a relative path — the
+	// local-tier default above all — is created one level at a time, each level
+	// proved real (fsutil.EnsureRealDirAll), as the reading assembler does: a
+	// committed symlink at .abcd or .abcd/.work.local must not carry the
+	// session's artefacts out of the checkout.
+	rel := path.Clean(filepath.ToSlash(outDir))
+	inRepo := !filepath.IsAbs(outDir) && fsutil.ValidRelPath(rel)
+	if inRepo && path.Dir(rel) != "." {
+		if err := fsutil.EnsureRealDirAll(req.RepoRoot, path.Dir(rel), 0o755); err != nil {
+			return AssembleResult{}, fmt.Errorf("scribe: creating the output directory: %w", err)
+		}
+	}
+	if err := writePair(dir, label, inRepo, contextRaw, manifestRaw); err != nil {
 		return AssembleResult{}, err
 	}
 	res.Written = true
@@ -356,7 +368,7 @@ func definitionHash(repoRoot string) (string, error) {
 
 // writePair writes the context and the manifest into an empty or absent
 // directory, both or neither, on the reading assembler's rules.
-func writePair(dir, label string, contextRaw, manifestRaw []byte) error {
+func writePair(dir, label string, inRepo bool, contextRaw, manifestRaw []byte) error {
 	entries, err := os.ReadDir(dir)
 	switch {
 	case os.IsNotExist(err):
@@ -367,7 +379,13 @@ func writePair(dir, label string, contextRaw, manifestRaw []byte) error {
 			"session's artefacts are one session's evidence, so ingest or clear the session parked there, "+
 			"or name an empty directory", label, len(entries))
 	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if inRepo {
+		// The leaf is proved too: ReadDir above follows a symlinked leaf, and
+		// an empty directory behind one would read as a fresh run directory.
+		if err := fsutil.EnsureRealDir(dir, 0o755); err != nil {
+			return fmt.Errorf("scribe: creating the output directory: %w", err)
+		}
+	} else if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("scribe: creating the output directory: %w", err)
 	}
 	ctxPath := filepath.Join(dir, ContextFileName)
