@@ -90,3 +90,25 @@ ADR is minted in the first delivery and reviewed with the diff.
 | 9 ids by shape | scope 10 |
 | 10 the page | scope 10 |
 | 11 refuses without the ADR | scope 9 |
+
+## Progress
+
+This section says which pieces of the scope have landed; the spec stays open
+until the run itself closes it.
+
+- **Landed (the field-only slice): scope 1, 2, 6 and 9, and the dry-run half
+  of scope 8 and 10.** The `remedy:` field (`capture --remedy`, the schema's
+  allow-list, the reader and the committed-ledger gate; a record carrying only
+  `suggested_fix:` reads that value as its remedy, and no record is rewritten);
+  the field-only eligibility rule and the order (`internal/core/capture/eligible.go`);
+  `abcd drain --dry-run`, which gives every open issue one disposition with its
+  rule and reason, in text and `--json`, and writes nothing; the eligibility
+  decision record (adr-2609291342092738) and invariant 19; and the start
+  refusal, which names the record when the rule has none and otherwise refuses
+  because the issue-keyed lane is not built. The command page is
+  `commands/drain.md`, listed in the agents block until the product thinker
+  rules on the person's fourteen-verb ceiling.
+- **Remaining:** scope 3 (the host judgement), 4 (the issue-keyed lane, which
+  needs `implement` to take an `iss-` key), 5 (the hand-back writes), 7 (the
+  pace window and `--max`), the run's summary of scope 8, and the id-shape
+  criterion of scope 10 for the run's own inputs.

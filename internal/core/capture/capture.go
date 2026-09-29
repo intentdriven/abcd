@@ -105,7 +105,11 @@ type Issue struct {
 	// LapsedAt is the RFC 3339 instant at which a recorded discipline gave way —
 	// the lapse itself, never the write-up (spc-60). Required exactly when
 	// Category is lapse; optional, and rarely meaningful, for every other.
-	LapsedAt       string   `json:"lapsed_at,omitempty"`
+	LapsedAt string `json:"lapsed_at,omitempty"`
+	// Remedy is the proposed fix (itd-82 decision 6): the `remedy:` value, or
+	// the older `suggested_fix:` a record carries in its place
+	// (issueschema.RemedyOf). A drain takes no issue without one.
+	Remedy         string   `json:"remedy,omitempty"`
 	RelatedIntents []string `json:"related_intents,omitempty"`
 	RelatedSpecs   []string `json:"related_specs,omitempty"`
 	RelatedIssues  []string `json:"related_issues,omitempty"`
@@ -160,7 +164,12 @@ type CaptureRequest struct {
 	// LapsedAt is the RFC 3339 instant the discipline gave way. There is no
 	// default and none may be invented: the wall clock at write-up is exactly the
 	// value the lapse log exists to distinguish itself from (spc-60).
-	LapsedAt       string
+	LapsedAt string
+	// Remedy is the proposed fix, written as `remedy:` (itd-82 decision 6).
+	// Optional here, and "" omits the key; a drain lists a record without one
+	// as ineligible rather than refusing its capture. One line: the
+	// serialiser refuses a scalar carrying a line break.
+	Remedy         string
 	RelatedIntents []string
 	RelatedSpecs   []string
 	BlockedBy      []string // iss-N dependency edges; each must match ^iss-[0-9]+$

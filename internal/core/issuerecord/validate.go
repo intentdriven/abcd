@@ -160,7 +160,7 @@ func ValidateStrict(fm map[string]any) error {
 	}
 
 	// Optional scalar strings.
-	for _, opt := range []string{"found_at", "lapsed_at", "details", "suggested_fix", "wontfix_reason", "resolution"} {
+	for _, opt := range []string{"found_at", "lapsed_at", "details", "remedy", "suggested_fix", "wontfix_reason", "resolution"} {
 		if v, present := fm[opt]; present {
 			if _, isStr := v.(string); !isStr {
 				return fmt.Errorf("%w: %q must be a string", ErrMalformedFrontmatter, opt)

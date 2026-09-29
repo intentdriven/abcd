@@ -361,6 +361,7 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newUpdateCommand(&asJSON))
 	root.AddCommand(newModeCommand(&asJSON))
 	root.AddCommand(newPeersCommand(&asJSON))
+	root.AddCommand(newDrainCommand(&asJSON))
 	root.AddCommand(newBuildCommand(&asJSON))
 	root.AddCommand(newLabCommand(&asJSON))
 	root.AddCommand(newImplementCommand(&asJSON))
@@ -3945,16 +3946,23 @@ func (p *stdinPrompter) Prompt(key string, choices []string, def string) string 
 // nothing will ever look again. It REPORTS and moves nothing — no verb here
 // migrates a record, and the bare board stays read-only.
 func captureLedgerRoot(cmd *cobra.Command) (string, error) {
+	return ledgerRootFor(cmd, "abcd capture")
+}
+
+// ledgerRootFor is captureLedgerRoot for any verb that reads the ledger, its
+// refusals and notes prefixed with that verb (`abcd drain` reads the same
+// ledger through the same resolution).
+func ledgerRootFor(cmd *cobra.Command, verb string) (string, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return "", err
 	}
 	root, err := capture.LedgerRoot(cwd)
 	if err != nil {
-		return "", &exitError{Code: 2, Msg: "abcd capture: " + err.Error() + " (nothing read, nothing written)"}
+		return "", &exitError{Code: 2, Msg: verb + ": " + err.Error() + " (nothing read, nothing written)"}
 	}
 	for _, note := range strayStoreNotes(cwd, root, capture.LedgerRelPath, "ledger") {
-		fmt.Fprintf(cmd.ErrOrStderr(), "abcd capture: %s\n", termsafe.Sanitize(note))
+		fmt.Fprintf(cmd.ErrOrStderr(), "%s: %s\n", verb, termsafe.Sanitize(note))
 	}
 	// The ledger is per checkout, so every verb says which one it addressed
 	// (iss-2609202053570475): a record filed in another worktree is otherwise
@@ -3964,8 +3972,8 @@ func captureLedgerRoot(cmd *cobra.Command) (string, error) {
 	// (renderLedger).
 	if asJSON, _ := cmd.Flags().GetBool("json"); !asJSON {
 		id := ledgerIdentityOf(root)
-		fmt.Fprintf(cmd.ErrOrStderr(), "abcd capture: ledger of %s%s\n",
-			termsafe.Sanitize(id.Checkout), branchPhrase(id.Branch))
+		fmt.Fprintf(cmd.ErrOrStderr(), "%s: ledger of %s%s\n",
+			verb, termsafe.Sanitize(id.Checkout), branchPhrase(id.Branch))
 	}
 	return root, nil
 }
@@ -4149,7 +4157,7 @@ func indefiniteArticle(noun string) string {
 // appends an issue; list/resolve/wontfix/promote are thin consumers of capture
 // core.
 func newCaptureCommand(asJSON *bool) *cobra.Command {
-	var severity, category, source, slug, foundDuring, foundAt, lapsedAt, blockedBy, captureProductionMode string
+	var severity, category, source, slug, foundDuring, foundAt, lapsedAt, remedy, blockedBy, captureProductionMode string
 
 	captureCmd := &cobra.Command{
 		Use:  "capture [text]",
@@ -4314,6 +4322,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 				FoundDuring: orDefault(foundDuring, "manual-capture"),
 				FoundAt:     foundAt,
 				LapsedAt:    lapsedAt,
+				Remedy:      remedy,
 				BlockedBy:   splitIDList(blockedBy),
 			}
 			if req.ProductionMode, err = resolveProductionMode(repoRoot, captureProductionMode); err != nil {
@@ -4381,6 +4390,9 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 	// No default, deliberately: an unsupplied lapse time would default to the wall
 	// clock at write-up, which is the one value the lapse log exists to rule out.
 	captureCmd.Flags().StringVar(&lapsedAt, "lapsed-at", "", "RFC 3339 instant a discipline gave way (the lapse, not the write-up)")
+	// The field `abcd drain` reads (itd-82 decision 6): optional at capture, and
+	// a record without it is listed as ineligible rather than refused here.
+	captureCmd.Flags().StringVar(&remedy, "remedy", "", "the proposed fix, one line; `abcd drain` takes no issue without one")
 	// The help names where the field is documented, as the refusal does: the
 	// session behind iss-2609200951237670 found the key's shape by running
 	// strings on the binary, with two documents already carrying it.
