@@ -440,6 +440,9 @@ into `~/.abcd/config.json`. Nothing goes into the repository or the harness's
 settings, and a failed verification writes nothing. A `~/.abcd` that is a
 symlink (into a dotfiles checkout, say) is refused with nothing written, in
 any home, naming the link: the key would otherwise land wherever it points.
+A `--file` pointer is refused, naming the link, when any directory between the
+home and the tool's file is a symlink, wherever it leads (a `~/.config` linked
+elsewhere, say); `--env` stays open.
 `--home none` sets up a server that takes no key.
 
 The key is read from stdin and nowhere else, and never from a terminal, where it

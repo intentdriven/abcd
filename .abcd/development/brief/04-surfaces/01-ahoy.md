@@ -167,7 +167,10 @@ The three homes:
 - `external` — a setup outside abcd: an environment variable, or a dotted
   field of a tool's JSON configuration file under the home directory. The
   store keeps only the pointer, in
-  `~/.abcd/credential-homes.json`, and follows it on every read.
+  `~/.abcd/credential-homes.json`, and follows it on every read. A file
+  pointer is refused, naming the link, when any directory between the home and
+  the tool's file is a symlink, wherever the link leads; the
+  environment-variable pointer stays open.
 - `abcd` — the owner-only `~/.abcd/credentials.json`, which holds the value.
 - `keychain` — the platform keychain under the service name `abcd` (the
   Keychain through `/usr/bin/security` on macOS, the secret service through

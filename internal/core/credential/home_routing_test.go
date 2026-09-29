@@ -236,3 +236,43 @@ func TestAHomeThatIsItselfALinkIntoACheckoutIsJudgedWhereItLeads(t *testing.T) {
 		t.Errorf("the pointer's refusal must name the working tree: %v", err)
 	}
 }
+
+// TestAPointerThroughALinkIsRefusedInAPointersWords is review-integ14 LOW (c):
+// the file a pointer names is the tool's, not abcd's, so the refusal of a
+// pointer whose directory passes through a symlink says what a pointer needs
+// (directories that are real, or the environment-variable pointer) and never
+// tells the person to keep abcd's files there. The link here leads outside any
+// repository: the rule is the link, wherever it leads.
+func TestAPointerThroughALinkIsRefusedInAPointersWords(t *testing.T) {
+	home := t.TempDir()
+	elsewhere := filepath.Join(t.TempDir(), "cfg")
+	if err := os.MkdirAll(elsewhere, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(elsewhere, "tool.json"), []byte(`{"auth":{"token":"`+secretValue+`"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(elsewhere, filepath.Join(home, ".config")); err != nil {
+		t.Fatal(err)
+	}
+	p := Pointer{File: "~/.config/tool.json", Field: "auth.token"}
+	_, rerr := resolvePointer(home, "svc", p)
+	_, serr := Set(home, "svc", Choice{Home: HomeExternal, Pointer: p})
+	for what, err := range map[string]error{"resolve": rerr, "Set": serr} {
+		if err == nil {
+			t.Fatalf("%s: a pointer through a symlinked ~/.config was followed", what)
+		}
+		msg := err.Error()
+		for _, want := range []string{"~/.config is a symlink", "a pointer", "real directories", "environment-variable pointer"} {
+			if !strings.Contains(msg, want) {
+				t.Errorf("%s: the refusal lacks %q: %s", what, want, msg)
+			}
+		}
+		if strings.Contains(msg, "abcd's files") {
+			t.Errorf("%s: the refusal calls the tool's file abcd's: %s", what, msg)
+		}
+		if strings.Contains(msg, secretValue) {
+			t.Fatalf("%s: the refusal echoes the value", what)
+		}
+	}
+}

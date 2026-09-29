@@ -56,6 +56,22 @@ func checkPointer(p Pointer) error {
 	return nil
 }
 
+// pointerLinkRefusal words the refusal of a pointer whose directory passes
+// through a symlink. The file is the tool's, not abcd's, so the remedy
+// fsutil.HomeScopeLinkError gives for abcd's own files (replace the link to
+// keep abcd's files there) does not fit: a pointer is refused when any
+// directory between the home and the tool's file is a symlink, wherever the
+// link leads, and the person either names the file through real directories
+// or uses the environment-variable pointer, which no link affects. Any other
+// error keeps its own words.
+func pointerLinkRefusal(name, file string, err error) error {
+	var le *fsutil.HomeScopeLinkError
+	if !errors.As(err, &le) {
+		return fmt.Errorf("credential: %s points at %s, which is not read: %v", name, file, err)
+	}
+	return fmt.Errorf("credential: %s points at %s, which is not read: %s is a symlink, and a pointer is refused when any directory between the home and the tool's file is one, wherever it leads; name the file through real directories under the home, or use an environment-variable pointer", name, file, le.Link)
+}
+
 // resolvePointer follows p for name. What it points at being empty or absent
 // is ErrNotSet, naming what was followed; anything unsafe is refused.
 func resolvePointer(home, name string, p Pointer) (string, error) {
@@ -80,7 +96,7 @@ func resolvePointer(home, name string, p Pointer) (string, error) {
 	// never the path again.
 	rel := strings.TrimPrefix(p.File, "~/")
 	if err := fsutil.HomeScopeLink(home, rel); err != nil {
-		return "", fmt.Errorf("credential: %s points at %s, which is not read: %v", name, p.File, err)
+		return "", pointerLinkRefusal(name, p.File, err)
 	}
 	if tree := workingTreeAbove(home, filepath.Dir(filepath.FromSlash(rel))); tree != "" {
 		return "", fmt.Errorf("credential: %s points at %s, which lies inside a git working tree, where a commit could carry it, so it is not read", name, p.File)
@@ -90,7 +106,7 @@ func resolvePointer(home, name string, p Pointer) (string, error) {
 	case refusal == fsutil.DeclarationAbsent && errors.Is(err, os.ErrNotExist):
 		return "", notSetError{name: name, why: "the file " + p.File + " it points at does not exist"}
 	case refusal == fsutil.DeclarationBehindSymlink:
-		return "", fmt.Errorf("credential: %s points at %s, which is not read: %v", name, p.File, err)
+		return "", pointerLinkRefusal(name, p.File, err)
 	case refusal == fsutil.DeclarationNotRegular:
 		return "", fmt.Errorf("credential: %s points at %s, which is not a regular file (a symlink is never followed), so it is not read", name, p.File)
 	case refusal == fsutil.DeclarationWritableByOthers:
