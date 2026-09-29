@@ -6,6 +6,8 @@ severity: "minor"
 category: "tech-debt"
 source: "impl-review"
 found_during: "memory-graduation principle work"
+deferred_after: "v0.11.1"
+deferral_reason: "ruling owed to the product thinker: the six bundled OPINIONS lines point at .abcd/development/principles/, which a managed repository does not have, and itd-3 (shipped) and a test pin the point-do-not-copy design, so every remedy (ship the principles at adoption, make the lines self-contained, go dormant when the directory is absent, resolve to the plugin's bundled copies) changes that shipped choice. Not fixable by a lane without the ruling (drain lane drainRest, run A, 2026-09-29)."
 ---
 
 The six bundled OPINIONS rules each end with a pointer to a file under .abcd/development/principles/ that exists only in the abcd repo itself — a managed repo inherits the injected lines verbatim, so every prompt whose recall matches the domain hands its agent six dangling references (the principles corpus is not part of adoption). Either the bundled lines need self-contained phrasings with the pointer marked as abcd-repo-only, or adoption (prepare-this-repo / ahoy) should ship a distilled principles set the pointers can resolve against. Found while adding the memory-graduation rule, whose line was written self-contained for exactly this reason
