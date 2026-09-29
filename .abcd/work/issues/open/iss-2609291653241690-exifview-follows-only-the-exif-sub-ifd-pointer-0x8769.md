@@ -1,0 +1,16 @@
+---
+schema_version: 1
+id: "iss-2609291653241690"
+slug: "exifview-follows-only-the-exif-sub-ifd-pointer-0x8769"
+severity: "minor"
+category: "bug"
+source: "review-followup"
+found_during: "autonomous run 2026-09-23"
+origin: researcher-authored
+production_mode: hand-written
+found_at: "internal/adapter/scanner/metaview.go"
+deferred_after: "v0.11.1"
+deferral_reason: "a vendor MakerNote parser is its own lane: each vendor lays out its MakerNote differently (Canon keeps TIFF byte order and header-relative offsets, others add their own header or base), so following 0x927c is a per-vendor reader, not a pointer the Exif walk can take; the raw ASCII scan still reads a long or multi-word owner name meanwhile"
+---
+
+exifView follows only the Exif sub-IFD pointer 0x8769 (internal/adapter/scanner/metaview.go:161-166) and never the MakerNote 0x927c, so a camera owner's name a vendor writes there (Canon's MakerNote tag 0x0009 OwnerName, in the TIFF byte order with header-relative offsets) is not read as a person tag: a short single-token owner name in a JPEG's or TIFF's Canon MakerNote is dropped as chance. A name of eight or more bytes, or one of several words, is still caught by the raw ASCII scan. Found by review-scanMeta (fixture 'Canon MakerNote OwnerName' scans clean at the integration tip).

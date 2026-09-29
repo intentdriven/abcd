@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/implement/loop"
+	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -77,9 +78,9 @@ func errorsIsNoCheckout(err error) bool { return errors.Is(err, gitutil.ErrNoChe
 
 // newBuildCommand builds `abcd build <itd-N>`.
 func newBuildCommand(asJSON *bool) *cobra.Command {
-	var session string
+	var session, pace, subAgents string
 	cmd := &cobra.Command{
-		Use: "build <itd-N> [--session <id>]",
+		Use: "build <itd-N> [--session <id>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>]",
 		Long: "Start the implement loop for one intent, or resume the run already in progress for it.\n" +
 			"A new run's checks run first, and every one must pass:\n" +
 			"the intent is READY (planned, criteria written, its spec linked and written), asks no\n" +
@@ -100,6 +101,16 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 			"before this run's lane has moved or claimed anything, and the session's own claim on the\n" +
 			"intent is not counted as a peer's. A session that has not joined is refused. Without it\n" +
 			"the run holds no claim, and the result says so.\n\n" +
+			"A new run is paced: a working window, a pause after it, and a ceiling on the run's lanes\n" +
+			"and validators alive at once. The three numbers are read once, when the run starts:\n" +
+			"--pace <work-minutes>/<pause-minutes> and --sub-agents <n> for this run, else pace.work_minutes,\n" +
+			"pace.pause_minutes and pace.sub_agents in the repository's .abcd/config.json, else in\n" +
+			"~/.abcd/config.json, else the bundled 120/300 with 2 sub-agents. The result and the run\n" +
+			"record name each number's layer. A malformed pace or ceiling, typed or configured, is\n" +
+			"refused naming the value and the accepted form, and writes nothing. Starting again keeps\n" +
+			"the run's pace; a flag naming another is refused. The window and the pause bind through\n" +
+			"`abcd implement step`; the ceiling is recorded with the run, and this build does not\n" +
+			"count lanes against it.\n\n" +
 			"The run then moves one step per `abcd implement step`, driven by the host session.\n\n" +
 			"Exit 2 on a refusal, exit 3 when a peer holds the intent or the run state is locked\n" +
 			"(back off and take other work).",
@@ -110,7 +121,18 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
 			}
-			res, err := loop.Start(root, args[0], loop.Options{Session: session})
+			roots, notes := layered.RootsFor(root)
+			for _, n := range notes {
+				fmt.Fprintln(cmd.ErrOrStderr(), termsafe.Sanitize(n))
+			}
+			o := loop.Options{Session: session, Roots: &roots}
+			if cmd.Flags().Changed("pace") {
+				o.Pace = &pace
+			}
+			if cmd.Flags().Changed("sub-agents") {
+				o.SubAgents = &subAgents
+			}
+			res, err := loop.Start(root, args[0], o)
 			if err != nil {
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
 			}
@@ -121,6 +143,7 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 				}
 				fmt.Fprintf(w, "build %s: %s run %s\n", termsafe.Sanitize(args[0]), verb, res.RunID)
 				fmt.Fprintf(w, "  state:   %s\n", res.State)
+				renderPace(w, res.Pace)
 				renderLaneLine(w, res.Lane)
 				renderPending(w, res.Pending)
 				switch {
@@ -135,7 +158,19 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&session, "session", "", "the host session's id in the shared run state; a new run claims the intent for it")
+	cmd.Flags().StringVar(&pace, "pace", "", "this run's working window and pause, <work-minutes>/<pause-minutes> (e.g. 90/240); wins over every configured layer")
+	cmd.Flags().StringVar(&subAgents, "sub-agents", "", "this run's ceiling on lanes and validators alive at once, a whole number; wins over every configured layer")
 	return cmd
+}
+
+// renderPace renders a run's pace and the layer each number came from; a run
+// started before the loop paced a run says so.
+func renderPace(w io.Writer, p *loop.Pace) {
+	if p == nil {
+		fmt.Fprintln(w, "  pace:    none (the run started before the loop paced a run)")
+		return
+	}
+	fmt.Fprintf(w, "  pace:    %s\n", termsafe.Sanitize(p.String()))
 }
 
 // renderLaneLine renders one lane as a line, and its footprint once its steps
@@ -226,6 +261,7 @@ func newImplementStatusCommand(asJSON *bool) *cobra.Command {
 					}
 					fmt.Fprintf(w, "run %s  %s (%s)  %s, driven by the %s\n", st.RunID, st.Key, st.Spec, state, st.Driver)
 					fmt.Fprintf(w, "  state:   %s\n", loop.StateRelPath(st.RunID))
+					renderPace(w, st.Pace)
 					if st.NextEligibleAt != nil {
 						fmt.Fprintf(w, "  paused until %s\n", st.NextEligibleAt.UTC().Format("2006-01-02T15:04:05Z07:00"))
 					}
@@ -249,6 +285,8 @@ func newImplementStatusCommand(asJSON *bool) *cobra.Command {
 // renderStepResult is the text form of a step or receipt result.
 func renderStepResult(w io.Writer, verb string, res loop.StepResult) {
 	switch {
+	case res.NextEligibleAt != nil:
+		fmt.Fprintf(w, "%s: %s's window has elapsed; paused until %s\n", verb, res.RunID, res.NextEligibleAt.UTC().Format(time.RFC3339))
 	case res.Performed != "":
 		fmt.Fprintf(w, "%s: %s completed %s's %s step\n", verb, res.RunID, res.Lane, res.Performed)
 	case res.Awaiting != nil:
@@ -279,8 +317,11 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			"its receipt; validate and land follow.\n\n" +
 			"A step whose body this abcd does not carry is refused naming the spec piece that\n" +
 			"delivers it, and the run is unchanged. A step that fails leaves the state as it was,\n" +
-			"so the next invocation performs it again; a completed step is never repeated. Before\n" +
-			"the run's next_eligible_at the step is refused as a pause.\n\n" +
+			"so the next invocation performs it again; a completed step is never repeated.\n\n" +
+			"The run's window clock: once the run's working window has elapsed, the step starts\n" +
+			"nothing, writes next_eligible_at (now plus the run's pause) and exits 0 naming it; an\n" +
+			"agent already started may still hand back its receipt. Before next_eligible_at the step\n" +
+			"is refused as a pause and nothing changes; at or after it, a new window opens.\n\n" +
 			"--run names the run; without it, the one run in progress in this checkout. Exit 2 on a\n" +
 			"refusal, exit 3 on a pause or a locked run state.",
 		Args: cobra.NoArgs,

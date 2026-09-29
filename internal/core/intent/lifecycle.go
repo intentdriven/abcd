@@ -1496,6 +1496,13 @@ func Status(repoRoot string) (StatusView, error) {
 	return v, nil
 }
 
+// Listing is one intent's row of the status listing, read alone: a caller that
+// needs the titles of a few intents it already holds reads them here rather
+// than through Status, which also judges every shipped intent's review.
+func Listing(repoRoot string, it Intent) (IntentListing, error) {
+	return listIntent(repoRoot, it)
+}
+
 // listIntent reads one intent for the status listing (iss-242): its H1 title,
 // masked for the terminal a JSON consumer may print it to; whether its
 // Acceptance Criteria clear the bar plan applies; and the date its id encodes.

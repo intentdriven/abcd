@@ -407,7 +407,21 @@
       "sentence": "Start the loop that takes one READY intent to delivered: Writes the run's state file in the local tier; refuses an open question, a hold or a peer holding it.",
       "flags": [
         {
+          "name": "pace",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "session",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "sub-agents",
           "shorthand": "",
           "type": "string",
           "required": false,
@@ -459,6 +473,13 @@
         },
         {
           "name": "production-mode",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "remedy",
           "shorthand": "",
           "type": "string",
           "required": false,
@@ -1040,6 +1061,22 @@
       "hidden": false,
       "moved_to": "abcd lint docs",
       "flags": []
+    },
+    {
+      "path": "abcd drain",
+      "hidden": false,
+      "group": "agents",
+      "block": "agents",
+      "sentence": "Sort the open issues by the drain's field rule, eligible first in drain order: Writes nothing; refuses to start without --dry-run, as the run is not built.",
+      "flags": [
+        {
+          "name": "dry-run",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        }
+      ]
     },
     {
       "path": "abcd embark",

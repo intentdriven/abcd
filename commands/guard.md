@@ -160,7 +160,13 @@ command may run, and the user decides.
 An unquoted glob (`*`, `?`, `[…]`) at a position an entry constrains is read as
 the pattern it is: bash expands it against the working directory before the
 command runs, so a spelling the pattern *can* produce (`git pus? --force`,
-`git push --forc?`) is treated as produced and blocks. A glob anywhere else
+`git push --forc?`) is treated as produced and blocks. A bracket expression is
+read exactly only where it is one plain set (`--for[c]e`); a class
+(`[[:lower:]]`), a set that opens with `!`, `^` or `]` or holds `-`, `[` or a
+backslash, and a pattern with a `]` after the set closes (a second set among
+them) can produce any run of characters,
+since the guard sees the line with its backslashes taken out, so
+`r[[:lower:]] -rf /` blocks and `git clea[!n] -fd` warns. A glob anywhere else
 (`ls *`, `git add *.md`) changes nothing, and a quoted one is literal.
 
 A long flag of `git push` or `git commit` written short of its full name is read
@@ -333,8 +339,9 @@ the binary on `PATH` and the plugin root's by basename, not a `go run` of the
 source or a copy under another name.
 
 A recursive delete of the filesystem root or the home directory (`/`, `/*`,
-`~`, `$HOME`, `${HOME}`, each also with a trailing `/` or `/*`, and the home's
-dotfiles `~/.*`, `$HOME/.*`, `${HOME}/.*`) is a **block**
+`~`, `$HOME`, `${HOME}`, each also with a trailing `/`, `/*` or `/*/`, and the
+home's dotfiles `~/.*`, `$HOME/.*`, `${HOME}/.*`, each also with a trailing `/`)
+is a **block**
 (`rm-rf-root-or-home`), with or without `-f`; one of the directory the shell is
 in or the one above it (`*`, `*/`, `.`, `..`, `./*`, `./*/`, `../*`, `.*`,
 `./.*`, and `$PWD` or `${PWD}`, each also with `/*`) is a **warn**
@@ -349,13 +356,29 @@ with its redundant separators taken out (`//*`, `$HOME//`, `/./*`, `/../*`),
 and one that begins at the root or the home with each `..` folded into the
 directory before it, as the path reads: `/tmp/../*` is `/*`, and `~/../*`
 globs the home's parent, which holds the home, so it is a **block** as `~` is.
+A `..` past `$PWD` or past the start of a relative path is the directory above
+the working directory, so `$PWD/../*` and `x/../../*` are a **warn** as `../*`
+is, while `x/../*`, which stays inside it, is compared as written. A target is
+also read the way its glob can expand: a run of `*` as one `*`, as every shell
+without globstar expands `**`, so `/**` and `~/../**` are a **block**; and a
+segment written with a leading `.` that can match `..` (`.?`, `.*`, `.[.]`) as
+`..` where a further segment follows it, as the bash 3.2 and `/bin/sh` of
+macOS expand `~/.?/*` to include `~/../*`. A bracket expression there that the
+guard cannot decide reads as able to match `..`, so `~/.[[:punct:]]/*`,
+`~/.[].]/*` and `~/.[--.]/*` are a **block**, and so is `~/.[a-z]/*`, which no
+shell expands that far. That is an over-block on bash 5.3, which leaves the
+segment unexpanded, and an escaped glob is read as unescaped (`~/*\*` blocks
+as `~/*` does); a final dot-glob (`~/.?`) is not read so,
+since rm refuses a last segment `..`. Quoted, `'/**'` and `"~/.?"/*` block as
+`"/*"` does.
 
 What an allow still does not see is a hazard that never reaches command position
 at all: a delete target printed whole by a substitution (`rm -rf $(echo /)`),
 read by its known text the way `rm -rf $(find …)` names its targets every day,
 or spelled any other way than the words above, a default's own word included
 (`rm -rf ${DIR:-$HOME}`), as is a `..` after a symlink, which the path is read
-past lexically, or after a segment holding a variable (`/tmp/$X/../*`); one launched through a known wrapper carrying a value-taking flag the
+past lexically, or after a segment holding a variable (`/tmp/$X/../*`) or a
+`~user` home (`~root/../../*`); one launched through a known wrapper carrying a value-taking flag the
 guard does not name (`sudo -u bob <hazard>` is seen; the bundled short form
 `sudo -Hu bob <hazard>` reaches only the warn, not the entry that names it), one
 whose API path an entry names by its ROOT

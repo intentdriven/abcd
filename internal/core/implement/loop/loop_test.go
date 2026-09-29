@@ -3,6 +3,7 @@ package loop
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -388,8 +389,8 @@ func TestStartCreatesOneLaneAndAStartAgainResumesIt(t *testing.T) {
 	if len(st.Pending) != 1 || st.Pending[0].Number != 3 {
 		t.Fatalf("the unlanded steps after the first wait as pending: %+v", st.Pending)
 	}
-	if len(st.Record) != 1 || st.Record[0].Step != "start" {
-		t.Fatalf("the record opens with the start: %+v", st.Record)
+	if len(st.Record) != 2 || st.Record[0].Step != "start" || st.Record[1].Step != StepPace {
+		t.Fatalf("the record opens with the start, then names the pace: %+v", st.Record)
 	}
 	fi, err := os.Stat(filepath.Join(repo.Root(), filepath.FromSlash(res.State)))
 	if err != nil || fi.Mode().Perm() != filePerm {
@@ -669,9 +670,10 @@ func TestReadStateFailsClosed(t *testing.T) {
 	}
 	path := filepath.Join(repo.Root(), filepath.FromSlash(StateRelPath(start.RunID)))
 	good := stateBytes(t, repo.Root(), start.RunID)
+	cur := fmt.Sprintf(`"schema_version": %d,`, SchemaVersion)
 	for name, bad := range map[string]string{
-		"unknown field":  strings.Replace(string(good), `"schema_version": 1,`, `"schema_version": 1, "verdict": "SHIP",`, 1),
-		"schema version": strings.Replace(string(good), `"schema_version": 1,`, `"schema_version": 2,`, 1),
+		"unknown field":  strings.Replace(string(good), cur, cur+` "verdict": "SHIP",`, 1),
+		"schema version": strings.Replace(string(good), cur, fmt.Sprintf(`"schema_version": %d,`, SchemaVersion+1), 1),
 	} {
 		if err := os.WriteFile(path, []byte(bad), 0o600); err != nil {
 			t.Fatal(err)
@@ -680,15 +682,16 @@ func TestReadStateFailsClosed(t *testing.T) {
 			t.Fatalf("%s: the reader must refuse", name)
 		}
 	}
-	// Each of these reads as version 1 under a last-wins or first-document
-	// decode, so only a strict reader refuses them; the reason names why.
+	// Each of these reads as the current version under a last-wins or
+	// first-document decode, so only a strict reader refuses them; the reason
+	// names why.
 	for name, tc := range map[string]struct{ bad, want string }{
 		"a repeated key": {
-			strings.Replace(string(good), `"schema_version": 1,`, `"schema_version": 2, "schema_version": 1,`, 1),
+			strings.Replace(string(good), cur, `"schema_version": 9, `+cur, 1),
 			`duplicate key "schema_version"`,
 		},
 		"a repeated key spelt as a case twin": {
-			strings.Replace(string(good), `"schema_version": 1,`, `"schema_version": 2, "SCHEMA_VERSION": 1,`, 1),
+			strings.Replace(string(good), cur, `"schema_version": 9, "SCHEMA_VERSION"`+strings.TrimPrefix(cur, `"schema_version"`), 1),
 			`duplicate key "SCHEMA_VERSION"`,
 		},
 		"a second document": {string(good) + "\n{}\n", "content after the one JSON document"},

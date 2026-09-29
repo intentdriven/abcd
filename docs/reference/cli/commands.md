@@ -225,7 +225,7 @@ abcd banlist remove --private acme-internal
 
 Start the loop that takes one READY intent to delivered: Writes the run's state file in the local tier; refuses an open question, a hold or a peer holding it.
 
-**Usage:** `abcd build <itd-N> [--session <id>] [flags]`
+**Usage:** `abcd build <itd-N> [--session <id>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [flags]`
 
 Start the implement loop for one intent, or resume the run already in progress for it.
 A new run's checks run first, and every one must pass:
@@ -250,6 +250,17 @@ before this run's lane has moved or claimed anything, and the session's own clai
 intent is not counted as a peer's. A session that has not joined is refused. Without it
 the run holds no claim, and the result says so.
 
+A new run is paced: a working window, a pause after it, and a ceiling on the run's lanes
+and validators alive at once. The three numbers are read once, when the run starts:
+--pace <work-minutes>/<pause-minutes> and --sub-agents <n> for this run, else pace.work_minutes,
+pace.pause_minutes and pace.sub_agents in the repository's .abcd/config.json, else in
+~/.abcd/config.json, else the bundled 120/300 with 2 sub-agents. The result and the run
+record name each number's layer. A malformed pace or ceiling, typed or configured, is
+refused naming the value and the accepted form, and writes nothing. Starting again keeps
+the run's pace; a flag naming another is refused. The window and the pause bind through
+`abcd implement step`; the ceiling is recorded with the run, and this build does not
+count lanes against it.
+
 The run then moves one step per `abcd implement step`, driven by the host session.
 
 Exit 2 on a refusal, exit 3 when a peer holds the intent or the run state is locked
@@ -258,7 +269,9 @@ Exit 2 on a refusal, exit 3 when a peer holds the intent or the run state is loc
 **Flags:**
 
 ```
-      --session string   the host session's id in the shared run state; a new run claims the intent for it
+      --pace string         this run's working window and pause, <work-minutes>/<pause-minutes> (e.g. 90/240); wins over every configured layer
+      --session string      the host session's id in the shared run state; a new run claims the intent for it
+      --sub-agents string   this run's ceiling on lanes and validators alive at once, a whole number; wins over every configured layer
 ```
 
 **Example:**
@@ -282,6 +295,7 @@ File an issue from quoted text, or render the ledger's status bare: Writes one r
       --found-during string      session/command context (default manual-capture)
       --lapsed-at string         RFC 3339 instant a discipline gave way (the lapse, not the write-up)
       --production-mode string   how this record's text was produced: hand-written|dictated-and-formatted|scribe-transcribed (default: the repo's declared mode, else hand-written)
+      --remedy abcd drain        the proposed fix, one line; abcd drain takes no issue without one
       --severity string          severity: nitpick | minor | major | critical (default minor)
       --slug string              override the slug derived from the text
       --source string            surfacing channel: plan-review | impl-review | manual-test | review-followup | agent-finding | agent-observation | user-observation | drift-detection | memory-curation | managed-repo (default user-observation)
@@ -841,6 +855,42 @@ This is the only abcd verb that reaches the network on behalf of documentation. 
 ```
       --config string   path to docs-lint.json (default: <root>/.abcd/docs-lint.json)
       --root string     repo root (default: current working directory)
+```
+
+### `abcd drain`
+
+Sort the open issues by the drain's field rule, eligible first in drain order: Writes nothing; refuses to start without --dry-run, as the run is not built.
+
+**Usage:** `abcd drain [flags]`
+
+Work the open issue ledger unattended: fix the issues that need no decision, and
+hand the rest back by kind. The rule for which issues need no decision is a
+recorded decision, and it reads the record's fields alone: nothing open in
+blocked_by; a category in the fixable set (tech-debt, documentation,
+inconsistency, drift, bug, ux); severity nitpick or minor; and a remedy: field.
+A security issue is always a person's. Every other open issue is handed back,
+listed as ineligible, or skipped naming its blocker, by the rule that excluded it.
+
+--dry-run shows every open issue's disposition, the eligible ones first in the
+order a drain takes them (category tech-debt, documentation, inconsistency,
+drift, bug, ux; then nitpick before minor; then oldest first), and writes
+nothing. The host judgement over each eligible remedy does not run in a dry
+run; it can only ever hand an issue back.
+
+The run itself is not built: without --dry-run the verb refuses to start, and
+exits 2 with nothing read or written.
+
+**Flags:**
+
+```
+      --dry-run   show every open issue's disposition and the order a drain takes them; writes nothing
+```
+
+**Example:**
+
+```
+abcd drain --dry-run
+  abcd drain --dry-run --json
 ```
 
 ### `abcd embark`
@@ -1631,8 +1681,12 @@ its receipt; validate and land follow.
 
 A step whose body this abcd does not carry is refused naming the spec piece that
 delivers it, and the run is unchanged. A step that fails leaves the state as it was,
-so the next invocation performs it again; a completed step is never repeated. Before
-the run's next_eligible_at the step is refused as a pause.
+so the next invocation performs it again; a completed step is never repeated.
+
+The run's window clock: once the run's working window has elapsed, the step starts
+nothing, writes next_eligible_at (now plus the run's pause) and exits 0 naming it; an
+agent already started may still hand back its receipt. Before next_eligible_at the step
+is refused as a pause and nothing changes; at or after it, a new window opens.
 
 --run names the run; without it, the one run in progress in this checkout. Exit 2 on a
 refusal, exit 3 on a pause or a locked run state.

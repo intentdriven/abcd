@@ -47,6 +47,7 @@ are wiring rather than user-facing surface are listed separately under
 | 32 | `/abcd:scribe` | shipped | Build the ledger scribe's context from the ledger alone, and ingest what it transcribed without letting it author anything | [`32-scribe.md`](32-scribe.md) |
 | 33 | `/abcd:source` | shipped | Keep the documents you consult in a local corpus, record what each one changed, and ban the confidential ones' names at commit time | [`33-source.md`](33-source.md) |
 | 34 | `/abcd:build` | shipped | Start the loop that takes one READY intent to delivered, refusing while a question is open or a peer holds it | [`34-build.md`](34-build.md) |
+| 35 | `/abcd:drain` | shipped | Preview with `--dry-run` which open issues a machine may fix alone, in what order, and what happens to the rest; the shipped surface is that preview, and bare `drain`, the run itself, refuses to start | [`35-drain.md`](35-drain.md) |
 
 ## How much of this table a machine keeps honest
 
@@ -136,11 +137,11 @@ the command's sentence (the section below).
 | Block | Group | Verbs |
 |---|---|---|
 | people | set-up | `ahoy`, `rules`, `update`, and the framework's `help` and `completion` |
-| people | records | `capture`, `decide`, `intent`, `memory`, `spec` |
+| people | records | `build`, `capture`, `decide`, `intent`, `memory`, `source`, `spec` |
 | people | checks | `lint` |
 | people | portability | `disembark`, `embark` |
 | people | release | `launch` |
-| agents and hosts | — | `banlist`, `changelog`, `docs`, `guard`, `guard hook`, `history`, `ideate`, `ideate record`, `identity`, `implement`, `inbox`, `intent audit ingest`, `mode`, `peers`, `reading`, `report`, `scribe`, `site`, `statusline` |
+| agents and hosts | — | `banlist`, `changelog`, `docs`, `drain`, `guard`, `guard hook`, `history`, `ideate`, `ideate record`, `identity`, `implement`, `inbox`, `intent audit ingest`, `mode`, `peers`, `reading`, `report`, `scribe`, `site`, `statusline` |
 
 The placement is presentation. No verb is hidden, renamed, moved or nested by
 it, every verb runs the same whichever block lists it, and the group titles
@@ -199,6 +200,8 @@ at all: `disembark`, `docs`, `embark`, `guard`, `history`, `ideate`, and `scribe
 because its one operand is the quoted title it mints a record from, and bare
 `abcd build` refuses as a usage error because its one operand is the intent it
 starts a run for; the run's state renders through `abcd implement status`. Bare
+`abcd drain` refuses to start, because bare is the run itself and the run is not
+built; what a drain would do renders through its dry run. Bare
 `abcd source` renders the corpus under the user-level home rather than anything
 in the repository, so where there is no corpus it refuses naming `abcd source
 init`. Bare `abcd identity` and bare `abcd ahoy remote` answer with the
@@ -256,7 +259,7 @@ documents is then an unknown command (iss-161). One file per verb, directly unde
 `commands/`:
 
 <!-- index: commands -->
-`abcd`, `ahoy`, `banlist`, `build`, `capture`, `consult`, `decide`, `disembark`, `docs`,
+`abcd`, `ahoy`, `banlist`, `build`, `capture`, `consult`, `decide`, `disembark`, `docs`, `drain`,
 `embark`, `guard`, `history`, `ideate`, `identity`, `implement`, `inbox`,
 `ingest`, `intent`, `lab`, `launch`, `lint`, `memory`, `mode`, `peers`,
 `prepare-this-repo`, `reading`, `report`, `scribe`, `site`, `source`, `update`,

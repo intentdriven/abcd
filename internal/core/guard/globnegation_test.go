@@ -9,9 +9,11 @@ import "testing"
 // `git clean -fd` whenever a file called `clean` is there — was compared as "clea
 // followed by `!` or `x`", matched nothing, and allowed.
 //
-// The last two rows are what stops the translation over-reaching: a class that
-// genuinely excludes the literal must still not match, and an unconstrained
-// position is never compared at all.
+// The last two rows are what stops the translation over-reaching: a plain set
+// that excludes the literal does not match, and an unconstrained position is
+// never compared at all. `clea[!n]` is not such a set: the tokenizer removes a
+// backslash before the compare, so it is also what `clea[\!n]` arrives as, and
+// every shell expands that set of `!` and `n` to `clean` (iss-2609291233468970).
 func TestBashNegatedClassGlobMatches(t *testing.T) {
 	cases := []struct {
 		line    string
@@ -20,7 +22,8 @@ func TestBashNegatedClassGlobMatches(t *testing.T) {
 		{"git clea[!x] -fd", VerdictWarn},
 		{"git clean -f[!x]", VerdictWarn},
 		{"git push --forc[!x] origin main", VerdictBlock},
-		{"git clea[!n] -fd", VerdictAllow},
+		{"git clea[!n] -fd", VerdictWarn},
+		{"git clea[x] -fd", VerdictAllow},
 		{"git add [!x].md", VerdictAllow},
 	}
 	for _, tc := range cases {
