@@ -22,6 +22,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // consistency.go — Role 2 of the intent-auditor: the cross-document
@@ -801,7 +802,8 @@ func validateConsistency(repoRoot string, raw []byte) (consistencyReview, error)
 		return consistencyReview{}, fmt.Errorf("intent: findings are not parseable JSON; refusing to ingest: %w", err)
 	}
 	if lenient.Type != ConsistencyType {
-		return consistencyReview{}, fmt.Errorf("intent: findings _type %q is not %q; refusing to ingest", lenient.Type, ConsistencyType)
+		return consistencyReview{}, fmt.Errorf("intent: findings _type is %s, which is not %q; refusing to ingest",
+			termsafe.DescribeRefused(lenient.Type), ConsistencyType)
 	}
 	if !rcpIDRe.MatchString(lenient.ReceiptID) {
 		return consistencyReview{}, fmt.Errorf("intent: findings carry no resolvable receipt_id (malformed or absent); refusing to ingest")
@@ -863,14 +865,15 @@ func validateConsistency(repoRoot string, raw []byte) (consistencyReview, error)
 	dec.DisallowUnknownFields()
 	var p consistencyPayload
 	if err := dec.Decode(&p); err != nil {
-		return consistencyReview{}, fmt.Errorf("intent: malformed findings JSON: %v; refusing to ingest", err)
+		return consistencyReview{}, fmt.Errorf("intent: malformed findings JSON: %s; refusing to ingest", redactRefused(repoRoot, err.Error()))
 	}
 	if dec.More() {
 		return consistencyReview{}, fmt.Errorf("intent: findings JSON carries more than one value; refusing to ingest")
 	}
 	for _, h := range [][2]string{{"policy.rubric_hash", p.Policy.RubricHash}, {"policy.prompt_hash", p.Policy.PromptHash}} {
 		if !sha256FieldRe.MatchString(h[1]) {
-			return consistencyReview{}, fmt.Errorf("intent: %s is required as sha256:<64 lowercase hex>, not %q; refusing to ingest", h[0], oneLine(h[1]))
+			return consistencyReview{}, fmt.Errorf("intent: %s is required as sha256:<64 lowercase hex>, not %s; refusing to ingest",
+				h[0], termsafe.DescribeRefused(h[1]))
 		}
 	}
 	want := consistencyPolicyFor(consistencyPromptBody(c, rcp))
@@ -935,10 +938,10 @@ func validateConsistencyFindings(repoRoot string, c consistencyCorpus, in []cons
 	for i, f := range in {
 		n := i + 1
 		if !classes[f.Class] {
-			return nil, fmt.Errorf("finding %d has class %q, not one of %s", n, oneLine(f.Class), strings.Join(ConsistencyClasses, " | "))
+			return nil, fmt.Errorf("finding %d has class %s, not one of %s", n, termsafe.DescribeRefused(f.Class), strings.Join(ConsistencyClasses, " | "))
 		}
 		if !severities[f.Severity] {
-			return nil, fmt.Errorf("finding %d has severity %q, not one of %s", n, oneLine(f.Severity), strings.Join(issueschema.Severities, " | "))
+			return nil, fmt.Errorf("finding %d has severity %s, not one of %s", n, termsafe.DescribeRefused(f.Severity), strings.Join(issueschema.Severities, " | "))
 		}
 		if strings.TrimSpace(f.Summary) == "" || strings.TrimSpace(f.Explanation) == "" {
 			return nil, fmt.Errorf("finding %d states no summary or no explanation", n)
@@ -986,18 +989,23 @@ func collapseSpace(s string) string { return strings.Join(strings.Fields(s), " "
 // locateEnd resolves one end against the corpus: its path must be a manifest
 // document, and its quote must occur in the document as the corpus presents it.
 // The line is where the quote begins in the file on disk.
+//
+// A refused path or quote is DESCRIBED, never quoted: the finding and end
+// numbers the caller prefixes locate it in the payload, and the value itself
+// reaches the terminal and the transcript with no redaction on the way
+// (iss-2609290144116254).
 func locateEnd(repoRoot string, c consistencyCorpus, e consistencyEndJSON) (ConsistencyEnd, error) {
 	path := strings.TrimSpace(e.Path)
 	d, ok := c.doc(path)
 	if !ok {
-		return ConsistencyEnd{}, fmt.Errorf("path %q is not a document in the corpus manifest", oneLine(path))
+		return ConsistencyEnd{}, fmt.Errorf("path is %s, which is not a document in the corpus manifest", termsafe.DescribeRefused(path))
 	}
 	q := collapseSpace(e.Quote)
 	if len([]rune(q)) < minQuoteChars {
 		return ConsistencyEnd{}, fmt.Errorf("the quote from %s is shorter than %d characters; quote enough to locate it", path, minQuoteChars)
 	}
 	if _, ok := findCollapsed(d.Text, q); !ok {
-		return ConsistencyEnd{}, fmt.Errorf("the quote %q does not occur in %s as the corpus presents it", oneLine(q), path)
+		return ConsistencyEnd{}, fmt.Errorf("the quote (%s) does not occur in %s as the corpus presents it", termsafe.DescribeRefused(q), path)
 	}
 	line := 0
 	if data, err := readRepoFile(filepath.Join(repoRoot, filepath.FromSlash(path)), path); err == nil {
