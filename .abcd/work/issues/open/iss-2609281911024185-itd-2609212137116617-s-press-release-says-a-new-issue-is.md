@@ -9,6 +9,8 @@ found_during: "autonomous run A resumed 2026-09-25: fidelity audit itd-260921213
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/report/inbox.go"
+deferred_after: "v0.11.1"
+deferral_reason: "a lane of its own, or a ruling: routing inbox promote, IngestConsistency and IngestReading through the filing-time match threads the layered match config through the report package and moves the two ingests behind matchAndLink, more than an hour with tests; the alternative, narrowing itd-2609212137116617's press release to the two verbs, is the product thinker's text to change."
 ---
 
 itd-2609212137116617's press release says a new issue is matched against the record at filing, but only the capture verb and the quoted-text intent create run the filing-time match. The ledger's other writers file without it: inbox promote builds a capture.CaptureRequest with no Match (internal/core/report/inbox.go captureRequest), and IngestConsistency and IngestReading (internal/core/capture/consistency.go, reading.go) write issue records outside matchAndLink (internal/core/capture/workflow.go). The unattended paths the intent's Grounds name as the reason for the match are exactly the ones that skip it, so a double promoted from a peer report or filed by a consistency pass is never linked at filing. Either these writers pass the layered match config through CaptureRequest.Match, or the record narrows its claim to the two verbs.

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"regexp/syntax"
 	"sort"
 	"strconv"
 	"strings"
@@ -275,12 +276,24 @@ func New(repoRoot string) (*Scanner, error) {
 		s.unavailReason = err.Error()
 		return s, nil
 	}
+	// A configured secret pattern the glued sweep cannot build (its leading \b
+	// carries a quantifier) leaves every ScanText narrower than the bundled
+	// set promises, and ScanText has no channel to say so. The scanner reports
+	// it here instead, where every write-time redactor and the launch scan
+	// already look (iss-2609290743362554).
+	if _, unbuilt := gluedPatterns(s.patterns); len(unbuilt) > 0 {
+		s.unavailable = true
+		s.unavailReason = "per-repo scanner config: the glued-token sweep cannot build a boundary-free form of pattern(s) " +
+			strings.Join(unbuilt, ", ") + " (a leading \\b with a quantifier); write the pattern with a plain leading \\b"
+		return s, nil
+	}
 	return s, nil
 }
 
 // Unavailable reports whether the scanner is in the fail-closed degraded state
-// (the per-repo config exists but is unreadable, invalid JSON, or carries a bad
-// override regex) and, if so, a human reason. A write-time redactor MUST consult
+// (the per-repo config exists but is unreadable, invalid JSON, carries a bad
+// override regex, or carries a secret pattern the glued-token sweep cannot
+// build) and, if so, a human reason. A write-time redactor MUST consult
 // this before trusting ScanText/Redact: unlike ScanBundle, those entry points
 // cannot signal degradation in-band, so a caller that skips this check would
 // sanitise with a silently weakened pattern set. Mirrors ScanBundle's guard.
@@ -469,10 +482,10 @@ func adjacencyProbe(re *regexp.Regexp) *regexp.Regexp {
 //
 // Each pattern's own inline flag group is rewritten into a SCOPED one
 // (`(?i)x` → `(?i:x)`) so a case-insensitive pattern cannot fold the case of
-// every alternative after it. If the alternation somehow will not compile, the
-// fallback is a regexp that matches at every offset: slower, never blinder —
-// the generator may over-produce, never under-produce.
-func junctionProbe(patterns []Pattern) *regexp.Regexp {
+// every alternative after it. If the alternation will not compile, the
+// generator is the union of one probe per pattern (junctionUnion): slower by
+// the size of the set, never blinder, and never a per-byte walk.
+func junctionProbe(patterns []Pattern) matcher {
 	alts := make([]string, 0, len(patterns))
 	for _, cp := range patterns {
 		flags, body := probeParts(cp.Re)
@@ -484,9 +497,98 @@ func junctionProbe(patterns []Pattern) *regexp.Regexp {
 	}
 	combined, err := regexp.Compile(strings.Join(alts, `|`))
 	if err != nil {
-		return regexp.MustCompile(`(?s).`)
+		return junctionUnion(patterns, alts)
 	}
 	return combined
+}
+
+// junctionUnion is the generator when the combined alternation will not
+// compile. A custom pattern reaches that with nothing pathological about it: a
+// QUANTIFIED leading boundary (`\b+ACME[0-9]{8}`) compiles, so the merge admits
+// it, while the body probeParts strips it to (`+ACME…`) does not, and one bad
+// alternative sinks the whole alternation. The fallback used to be a regexp
+// matching at every offset, which kept the generator from under-producing but
+// made the walk behind every match a per-byte one, each byte paying a
+// whole-match validation over the match: roughly 500x slower on one 200KB
+// match (iss-191).
+//
+// Each pattern gets its own probe instead: its boundary-free alternative where
+// that compiles alone, and otherwise the boundary-free body read off the
+// parsed pattern (boundaryFreeBody). Only a pattern neither reading can
+// compile keeps the every-offset probe, so the per-byte walk is left to a
+// pattern at the regexp engine's own size limits rather than to any pattern
+// whose alternative fails. The cost is one search per pattern per candidate,
+// a constant factor over the combined probe.
+func junctionUnion(patterns []Pattern, alts []string) matcher {
+	u := make(unionMatcher, len(patterns))
+	for i, cp := range patterns {
+		re, err := regexp.Compile(alts[i])
+		if err != nil {
+			re = boundaryFreeBody(cp.Re)
+		}
+		u[i] = re
+	}
+	return u
+}
+
+// everyOffset matches at every offset: the generator of last resort, which
+// over-produces everywhere and so can never be blinder than the validators.
+var everyOffset = regexp.MustCompile(`(?s).`)
+
+// boundaryFreeBody is a pattern with every leading word-boundary assertion
+// removed, read off its parse tree rather than its source text, so a
+// quantified boundary (`\b+`, `\b{2}`, `\b?`) goes with its quantifier. An
+// assertion only narrows a pattern, so dropping one only widens it: as a
+// candidate generator it finds every start the pattern's own validator can
+// accept, the abutting junctions its boundary would refuse included. A
+// pattern that does not parse or re-compile gets everyOffset.
+func boundaryFreeBody(re *regexp.Regexp) *regexp.Regexp {
+	t, err := syntax.Parse(re.String(), syntax.Perl)
+	if err != nil {
+		return everyOffset
+	}
+	for t.Op == syntax.OpConcat && len(t.Sub) > 0 && isBoundaryAssertion(t.Sub[0]) {
+		t.Sub = t.Sub[1:]
+	}
+	if isBoundaryAssertion(t) {
+		return everyOffset
+	}
+	body, err := regexp.Compile(t.String())
+	if err != nil {
+		return everyOffset
+	}
+	return body
+}
+
+// isBoundaryAssertion reports whether t is a word-boundary assertion, bare or
+// under any quantifier: every such node matches only the empty string.
+func isBoundaryAssertion(t *syntax.Regexp) bool {
+	switch t.Op {
+	case syntax.OpWordBoundary:
+		return true
+	case syntax.OpStar, syntax.OpPlus, syntax.OpQuest, syntax.OpRepeat, syntax.OpCapture:
+		return len(t.Sub) == 1 && isBoundaryAssertion(t.Sub[0])
+	}
+	return false
+}
+
+// unionMatcher answers the leftmost match any of its regexps finds, the
+// longest where two start at one offset — the question the combined
+// alternation answers, as a candidate generator needs it.
+type unionMatcher []*regexp.Regexp
+
+func (u unionMatcher) FindStringIndex(s string) []int {
+	var best []int
+	for _, re := range u {
+		loc := re.FindStringIndex(s)
+		if loc == nil {
+			continue
+		}
+		if best == nil || loc[0] < best[0] || (loc[0] == best[0] && loc[1] > best[1]) {
+			best = loc
+		}
+	}
+	return best
 }
 
 // junctionSet is the pair of candidate generators stolenJunctions draws from,
@@ -497,7 +599,7 @@ func junctionProbe(patterns []Pattern) *regexp.Regexp {
 // Behind a NETWORK match only the secret patterns are. Network tokens do not
 // abut one another with no separator — an address, a MAC and a host name are
 // each delimited — so a network token "found" inside another is never a
-// second token: it is a suffix of the same one ("a9fe::" inside
+// second token: it is a suffix of the same one ("a9fe::" inside abcd-lint:allow
 // "2001:db8:a9fe::"), which was reported as a duplicate finding per suffix,
 // and offering every hex run of a colon-hex line as a candidate made the
 // search the dominant cost of scanning one. A secret a network match over-ran
@@ -842,6 +944,7 @@ func scanText(text string, id Identity, patterns []Pattern, id2sev map[string]Se
 		probes[i] = adjacencyProbe(cp.Re)
 	}
 	junctions := newJunctionSet(patterns)
+	glued := newGluedSweep(patterns)
 	var findings []Finding
 	lineno := 0
 	for _, line := range strings.Split(text, "\n") {
@@ -864,13 +967,17 @@ func scanText(text string, id Identity, patterns []Pattern, id2sev map[string]Se
 				Suggested: cp.Suggestion, line: line,
 			})
 		}
+		// The glued sweep (glued.go, iss-2609290541525428): a secret token right
+		// behind a letter, a digit or an underscore has no leading \b, so the
+		// pass above never matched it.
+		findings = append(findings, glued.findings(line, lineno, file)...)
 		// Percent-decode pre-pass (gh-370): a URL-encoded delimiter (%3D, %2F,
 		// %22) leaves a hex word-char before a literal token, defeating the
 		// leading \b so the raw scan above never fires. Scan bounded
 		// percent-decoded copies of the line and map every hit back to its raw
 		// byte span, so Redact masks the live token where it sits on disk. The
 		// same pass reads the line's JSON-escape layers (jsonescape.go).
-		findings = append(findings, decodedLineFindings(patterns, probes, junctions, matchers, id2sev, line, lineno, file)...)
+		findings = append(findings, decodedLineFindings(patterns, probes, junctions, glued, matchers, id2sev, line, lineno, file)...)
 	}
 	findings = dedupFindings(findings)
 	sealSnippets(findings)

@@ -19,7 +19,7 @@ import (
 // set-for-the-test $HOME). Nothing here is a live credential.
 func TestFileBackRedactsSecretsBeforeTheStoreWrite(t *testing.T) {
 	repo := t.TempDir()
-	home := "/Users/testperson"
+	home := "/Users/testperson" // abcd-lint:allow
 	t.Setenv("HOME", home)
 	seedAskStore(t, repo)
 

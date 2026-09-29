@@ -7,8 +7,8 @@ category: "bug"
 source: "agent-finding"
 found_during: "bughunt-round-1"
 found_at: "hooks/hooks.json"
-deferred_after: "v0.10.0"
-deferral_reason: "ruling owed to the product thinker (away; run A 2026-09-25): Salvage-hook timeout: keep 60s, or 90-120s at the cost of prompt stalls?"
+deferred_after: "v0.11.1"
+deferral_reason: "ruling owed to the product thinker (renewed by run A 2026-09-29 after the v0.10.0 grant lapsed at the v0.11.0 anchor): Give the three salvage hooks that still run bootstrap.sh (UserPromptSubmit, PreToolUse, PreCompact; SessionEnd no longer does) an explicit 90-120s timeout, at the cost of a first prompt stalling that long on a slow link, or keep the harness's 60s default?"
 ---
 
 hook salvage entries invoke bootstrap.sh with no timeout budget below its 180s curl worst case so a slow-link provision is killed and suppressed for ten minutes

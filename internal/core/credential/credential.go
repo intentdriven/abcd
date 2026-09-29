@@ -129,7 +129,7 @@ func decodeStore(raw []byte, refusal fsutil.DeclarationRefusal, err error) (map[
 		return map[string]string{}, nil
 	case refusal == fsutil.DeclarationAbsent:
 		return nil, fmt.Errorf("credential: %s could not be examined, so it is not read", StorePath)
-	case refusal == fsutil.DeclarationBehindSymlink:
+	case refusal == fsutil.DeclarationBehindSymlink, refusal == fsutil.DeclarationDirectoryExposed:
 		return nil, fmt.Errorf("credential: %s is not read: %v", StorePath, err)
 	case refusal == fsutil.DeclarationNotRegular:
 		return nil, fmt.Errorf("credential: %s is not a regular file (a symlink is never followed), so it is not read", StorePath)

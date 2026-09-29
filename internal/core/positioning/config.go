@@ -200,6 +200,9 @@ func (c Config) Validate() error {
 	if !fsutil.ValidRelPath(c.Block.File) {
 		return fmt.Errorf("%w: block.file %q is not a repo-relative path", ErrConfigInvalid, c.Block.File)
 	}
+	if fsutil.InsideGitDir(c.Block.File) {
+		return fmt.Errorf("%w: block.file %q is inside .git", ErrConfigInvalid, c.Block.File)
+	}
 	if strings.TrimSpace(c.Block.Heading) == "" {
 		return fmt.Errorf("%w: block.heading is required", ErrConfigInvalid)
 	}

@@ -31,7 +31,7 @@ impact: additive
 
 ## Why This Matters
 
-abcd's safety gate (itd-62/spc-76) ALWAYS blocks on a missing scanner rather than degrading to advisory — the right call for the guarantee, but it puts an install prerequisite in front of an amateur who may not recognise the tool. The thesis says keep the human's judgment the constraint; an install prompt the human cannot evaluate is judgment removed, not preserved. A setup wizard restores it: by explaining what and why, it lets the product thinker make an INFORMED decision rather than a blind one. This is a general need. Most abcd capabilities run on a native default and expose an optional adapter (adr-22) — the wizard explains that the native default already works and names what the adapter would add, so an optional install is never mistaken for a requirement. The few capabilities with a genuine external prerequisite (a security scanner, a runtime, a CLI, a model) get the same explain-then-install surface; itd-62 is the first caller.
+abcd's safety gate (itd-62/spc-76) is designed to ALWAYS block on a missing scanner rather than degrade to advisory — the right call for the guarantee, but it puts an install prerequisite in front of an amateur who may not recognise the tool. That gate is a draft, not shipped: no gate on the default branch blocks on a missing scanner today, and the first shipped consumer of the explain-then-install mode is the history store's refusal when a repository has armed gitleaks for transcript capture. The thesis says keep the human's judgment the constraint; an install prompt the human cannot evaluate is judgment removed, not preserved. A setup wizard restores it: by explaining what and why, it lets the product thinker make an INFORMED decision rather than a blind one. This is a general need. Most abcd capabilities run on a native default and expose an optional adapter (adr-22) — the wizard explains that the native default already works and names what the adapter would add, so an optional install is never mistaken for a requirement. The few capabilities with a genuine external prerequisite (a security scanner, a runtime, a CLI, a model) get the same explain-then-install surface; itd-62 is the first caller.
 
 ## What's In Scope
 
@@ -156,7 +156,7 @@ for GR001). Full record in the spec's process-exception note.
 
 - Originating context: the itd-62/spc-76 grill (2026-06-29) — "always block on a missing
   scanner; provide a setup wizard that guides install" rather than degrade to advisory.
-- First consumer: [[itd-62-pluggable-safety-gate]] (the safety gate's missing-scanner path).
+- Intended first consumer: [[itd-62-pluggable-safety-gate]] (the safety gate's missing-scanner path), still a draft; its missing-scanner path must call `tools.Missing` / `tools.Install` rather than print a bare command. The shipped consumers are the history store's armed-gitleaks refusal and ahoy's remote verbs' missing-`gh` refusal; both route through `tools.Missing`.
 - Thesis tie: keeping human JUDGMENT the constraint requires the human to understand what
   they are consenting to, not just be handed a command.
 

@@ -730,6 +730,13 @@ func (c Config) validateConfiguredPaths() error {
 // a message that says only "a path escapes the repository" sends the reader
 // hunting through a config with two dozen path keys.
 func checkConfiguredPath(p configuredPath) error {
+	if fsutil.InsideGitDir(p.value) {
+		// ValidRelPath accepts ".git/config", but the git directory holds a
+		// credential-bearing remote URL and is never a lint subject: the rule would
+		// read it and echo it into the output (iss-2608291814578333).
+		return &configError{p.field + " " + quote(p.value) +
+			" is inside .git, which holds the repository's remote configuration and is never a lint subject"}
+	}
 	if p.value == "" || fsutil.ValidRelPath(p.value) {
 		return nil
 	}

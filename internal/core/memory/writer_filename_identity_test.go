@@ -17,7 +17,7 @@ import (
 // is the secret patterns; a token-shaped slug is still refused
 // (TestWriteRefusesASecretShapedFilename).
 func TestFilenameBarHoldsToSecretsOnly(t *testing.T) {
-	t.Setenv("HOME", "/Users/garden")
+	t.Setenv("HOME", "/Users/garden") // abcd-lint:allow
 	repo := t.TempDir()
 	src := writeSource(t, repo, "notes.md", "Plan the garden beds before spring.\n")
 	distiller := func(_ string, sourceBlock map[string]any) ([]map[string]any, error) {

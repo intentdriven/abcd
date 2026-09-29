@@ -6,8 +6,8 @@ severity: "major"
 category: "process"
 source: "user-observation"
 found_during: "manual-capture"
-deferred_after: "v0.10.0"
-deferral_reason: "ruling owed to the product thinker (away; run A 2026-09-25): May ahoy install resolve the canonical GitHub identity (a gh lookup) although adr-38 keeps implicit paths disk-only, since install is an explicit act?"
+deferred_after: v0.11.1
+deferral_reason: "The product thinker's ruling M2 of 2026-09-23 folds this into itd-131 and spc-34, but itd-131 shipped and spc-34 closed without it: nothing in internal/ pins an identity at install or sets user.useConfigOnly. Owed: a successor intent for the pinning half, which needs the product thinker's adoption, and one ruling: may ahoy install look up the canonical GitHub identity although adr-38 keeps implicit paths disk-only, since install is an explicit act?"
 ---
 
 A managed repo commits under whatever identity git happens to resolve, and when
@@ -56,3 +56,7 @@ duplicate, iss-84 (managed pre-commit gates — the hook seam this would use),
 iss-85 (managed attribution config — the nearest neighbour; check whether this
 supersedes it or lands inside it) and iss-119 (`Assisted-by` declared but
 unenforced — the trailer half, deliberately left out of this scope).
+
+## Deferral 2026-09-29
+
+Deferred past v0.11.1: The product thinker's ruling M2 of 2026-09-23 folds this into itd-131 and spc-34, but itd-131 shipped and spc-34 closed without it: nothing in internal/ pins an identity at install or sets user.useConfigOnly. Owed: a successor intent for the pinning half, which needs the product thinker's adoption, and one ruling: may ahoy install look up the canonical GitHub identity although adr-38 keeps implicit paths disk-only, since install is an explicit act?

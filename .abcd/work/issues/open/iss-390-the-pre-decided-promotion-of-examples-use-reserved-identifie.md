@@ -7,8 +7,8 @@ category: "process"
 source: "agent-finding"
 found_during: "bughunt-round-3"
 found_at: ".abcd/development/principles/README.md"
-deferred_after: "v0.10.0"
-deferral_reason: "ruling owed to the product thinker (away; run A 2026-09-25): Mint and adopt the discipline intent for examples-use-reserved-identifiers?"
+deferred_after: "v0.11.1"
+deferral_reason: "ruling owed to the product thinker (lapsed-deferral triage, run A 2026-09-29): When a principle gains a mechanical gate, may an agent lane mint its discipline-kind intent and retire the principle file on the itd-79 precedent, or is that ceremony yours? examples-use-reserved-identifiers is enforced by the privacy-hygiene rule; one ruling answers iss-2608261041210476 and iss-2608261338035835 as well."
 ---
 
 the pre-decided promotion of examples-use-reserved-identifiers to a discipline-kind intent never happened — the iss-154 lint shipped, the principles README contract says a mechanical gate promotes the principle, and no discipline intent exists

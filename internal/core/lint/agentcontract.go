@@ -5,8 +5,8 @@ package lint
 //
 // `agents/` holds host-delegated PROMPTS — the one part of the shipped surface a
 // model reads as instruction — and it sits in neither lint root (record-lint
-// walks .abcd/development, docs-lint walks docs/ and README.md). agents/README.md
-// has documented the contract since M6 and named the linter that would enforce it
+// walks .abcd/development, docs-lint walks docs/ and README.md). The agents
+// README (.abcd/development/agents/README.md) has documented the contract since M6 and named the linter that would enforce it
 // as not yet built, so the five prompts that read the most attacker-influenceable
 // input in the repository acquired the contract by hand and nothing checked that
 // the sixth would (iss-278).
@@ -18,7 +18,7 @@ package lint
 // once-outside-the-loop, repo-root-scoped style of checkStrayRootDocs and
 // checkDeliveryState.
 //
-// Three sub-checks, per agents/README.md § The itd-5 contract:
+// Three sub-checks, per .abcd/development/agents/README.md § The itd-5 contract:
 //
 //  1. the trust-contract frontmatter (prompt_version, reads_untrusted_input,
 //     capability_scope.task_classes, capability_scope.designed_for);
@@ -45,7 +45,7 @@ const defaultAgentsDir = "agents"
 
 // agentCanaryFixture is the per-agent injection-canary contract: an agent that
 // reads attacker-influenceable input carries at least one, under its own
-// fixtures directory (agents/README.md § Injection canaries).
+// fixtures directory (.abcd/development/agents/README.md § Injection canaries).
 const agentCanaryFixture = "injection-canary.json"
 
 var (
@@ -116,7 +116,10 @@ func checkAgentContract(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 		if e.IsDir() || !hasMarkdownExt(name) {
 			continue
 		}
-		// README.md and CHANGELOG.md are the tree's own prose, not prompts.
+		// A README or CHANGELOG stem is prose, never a prompt, so the contract
+		// does not judge it. The harness still registers it as an agent, which
+		// is why this repository keeps both outside agents/ (iss-110) and the
+		// surface test TestPluginAgentSurfaceRegistersOnlyAgents refuses one.
 		stem := strings.TrimSuffix(name, filepath.Ext(name))
 		if strings.EqualFold(stem, "README") || strings.EqualFold(stem, "CHANGELOG") {
 			continue
@@ -144,7 +147,7 @@ func checkAgentContract(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 		out = append(out, checkAgentTrustContract(repoRoot, dir, p, cfg.Severity)...)
 	}
 
-	// The layout is flat (agents/README.md): a prompt is agents/<name>.md and a
+	// The layout is flat (.abcd/development/agents/README.md): a prompt is agents/<name>.md and a
 	// subdirectory holds that agent's fixtures. A markdown file anywhere below the
 	// top level, outside a fixtures/ directory, is therefore a misfiled prompt,
 	// and it is refused rather than skipped: skipping it let a prompt opt out of
@@ -190,7 +193,7 @@ func checkAgentTrustContract(repoRoot, dir string, p agentPrompt, severity strin
 		// every prompt, declared or not, and checkAgentChangelog relies on it
 		// having run when it treats an empty version as already reported.
 		out = append(out, add("agent prompt declares no 'reads_untrusted_input': the itd-5 trust contract "+
-			"(agents/README.md) is declared, never inferred — an undeclared prompt reads as safe to every reader "+
+			"(.abcd/development/agents/README.md) is declared, never inferred — an undeclared prompt reads as safe to every reader "+
 			"and to this gate, which is how a prompt that reads attacker-influenceable input ships without a canary. "+
 			"Declare 'reads_untrusted_input: true' (and carry the contract fields) or 'false'"))
 	}
@@ -436,7 +439,7 @@ func changedPaths(repoRoot, rangeSpec string) (map[string]bool, error) {
 // after it, and the gate told its author to add a `designed_for` that was
 // plainly there. A member written as a block sequence takes its items as its
 // value, so it reads as present either way; the inline-list convention
-// (agents/README.md) is a style rule this parser does not adjudicate.
+// (.abcd/development/agents/README.md) is a style rule this parser does not adjudicate.
 func agentCapabilityScope(lines []string) map[string]string {
 	start := frontmatterOpen(lines)
 	if start < 0 {

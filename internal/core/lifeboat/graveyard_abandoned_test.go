@@ -174,11 +174,8 @@ func TestAbandonedAcceptedADRWithUppercaseNullIsNotReported(t *testing.T) {
 	// `'Null'`) is deliberately NOT in this table: per YAML scalar semantics a
 	// quoted value is a string, and frontmatter.IsNull — which sees what Fields
 	// captured, quotes intact — must keep reading it as non-null (asserted by
-	// TestIsNull's negative controls). gvSupersededADRs currently calls
-	// gvUnquote BEFORE IsNull, so in the lifeboat path alone a quoted null
-	// happens to read as absent today; that is quote-insensitive sentinel
-	// behaviour of gvUnquote, not YAML null semantics, and it is an open
-	// heuristic decision for lifeboat supersession handling tracked separately —
+	// TestIsNull's negative controls), and the lifeboat path asks IsNull of that
+	// raw scalar too (TestAbandonedQuotedNullIsAStringOnTheLifeboatPath) —
 	// this regression pins only the unquoted spellings. A real record handle
 	// (`adr-9`) is the positive control: widening the null set must not
 	// suppress a genuine superseding pointer.
@@ -199,6 +196,37 @@ func TestAbandonedAcceptedADRWithUppercaseNullIsNotReported(t *testing.T) {
 	fs := gvSupersededADRs(abandonedCtx(t, dir))
 	if _, ok := gvFindingByID(fs, "adr-35"); !ok {
 		t.Fatalf("superseded_by: adr-9 is a real handle and must still be reported, got %v", fs)
+	}
+}
+
+// TestAbandonedQuotedNullIsAStringOnTheLifeboatPath pins iss-2608241347321758:
+// null is asked of the RAW scalar, the contract frontmatter.IsNull states and
+// the one lint's provenance reader already follows (iss-2608241347321759). A
+// quoted "NULL" is the four-character string, so an accepted ADR carrying it is
+// reported with the unquoted text as its evidence; a quoted empty string names
+// no successor at all, so it stays absent exactly as it read before.
+func TestAbandonedQuotedNullIsAStringOnTheLifeboatPath(t *testing.T) {
+	for _, quoted := range []string{`"NULL"`, `'null'`, `"~"`} {
+		dir, write := abandonedWriter(t)
+		write(".abcd/development/decisions/adrs/0035-live.md",
+			"---\nid: adr-35\nstatus: accepted\nsuperseded_by: "+quoted+"\n---\n\n# Live decision\n")
+		fs := gvSupersededADRs(abandonedCtx(t, dir))
+		f, ok := gvFindingByID(fs, "adr-35")
+		if !ok {
+			t.Fatalf("superseded_by: %s is a quoted string, not a YAML null, and must be reported, got %v", quoted, fs)
+		}
+		want := "superseded_by: " + quoted[1:len(quoted)-1]
+		if len(f.Evidence) == 0 || f.Evidence[0] != want {
+			t.Fatalf("superseded_by: %s evidence = %v, want first entry %q", quoted, f.Evidence, want)
+		}
+	}
+	for _, empty := range []string{`""`, `''`} {
+		dir, write := abandonedWriter(t)
+		write(".abcd/development/decisions/adrs/0035-live.md",
+			"---\nid: adr-35\nstatus: accepted\nsuperseded_by: "+empty+"\n---\n\n# Live decision\n")
+		if fs := gvSupersededADRs(abandonedCtx(t, dir)); len(fs) != 0 {
+			t.Fatalf("superseded_by: %s names no successor and must not be reported, got %v", empty, fs)
+		}
 	}
 }
 

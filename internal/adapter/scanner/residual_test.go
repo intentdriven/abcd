@@ -43,7 +43,7 @@ func TestBlockingResidualGatesOnKindNotSeverityAlone(t *testing.T) {
 // followed by a separator or the end — and left alone where it is merely a
 // prefix of something else. An unanchored replace turned "/rootfs/etc/hosts"
 // into "~fs/etc/hosts" and "the /root-cause" into "the ~-cause" under
-// HOME=/root, and "/home/abc/x" into "~bc/x" under HOME=/home/a, silently
+// HOME=/root, and "/home/abc/x" into "~bc/x" under HOME=/home/a, silently abcd-lint:allow
 // corrupting the committed page.
 func TestSweepCallerHomeIsAnchoredOnAPathBoundary(t *testing.T) {
 	cases := []struct{ home, in, want string }{
@@ -57,11 +57,11 @@ func TestSweepCallerHomeIsAnchoredOnAPathBoundary(t *testing.T) {
 		{"/root", "the /root-cause analysis", "the ~-cause analysis"},
 		{"/root", "/var/root/x", "/var/root/x"},
 		{"/root", "~/root/x", "~/root/x"},
-		{"/home/a", "/home/abc/x", "/home/abc/x"},
+		{"/home/a", "/home/abc/x", "/home/abc/x"}, // abcd-lint:allow
 		// A multi-segment home under a longer root is still the caller's home.
-		{"/home/a", "/Volumes/T7/home/a/x", "/Volumes/T7~/x"},
-		{"/home/a", "/Volumes/T7/home/a_snapshot/x", "/Volumes/T7~_snapshot/x"},
-		{"/home/a", "HOME=/home/a /home/a/x", "HOME=~ ~/x"},
+		{"/home/a", "/Volumes/T7/home/a/x", "/Volumes/T7~/x"},                   // abcd-lint:allow
+		{"/home/a", "/Volumes/T7/home/a_snapshot/x", "/Volumes/T7~_snapshot/x"}, // abcd-lint:allow
+		{"/home/a", "HOME=/home/a /home/a/x", "HOME=~ ~/x"},                     // abcd-lint:allow
 		{"", "/root/x", "/root/x"},
 		// Punctuation after the home is not a longer name — only a letter or
 		// digit is.

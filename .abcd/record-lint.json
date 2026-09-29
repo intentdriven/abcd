@@ -318,7 +318,10 @@
         "adm": ".abcd/work/issues/admissions",
         "srp": ".abcd/work/issues/surprises",
         "rfm": ".abcd/work/issues/reframes"
-      }
+      },
+      "extra_roots": [
+        ".abcd/development"
+      ]
     },
     "record_provenance": {
       "enabled": true,
@@ -344,7 +347,7 @@
       "enabled": true,
       "severity": "blocker",
       "agents_dir": "agents",
-      "changelog": "agents/CHANGELOG.md"
+      "changelog": ".abcd/development/agents/CHANGELOG.md"
     },
     "cross_store_id_claim": {
       "enabled": true,

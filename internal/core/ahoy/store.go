@@ -194,7 +194,7 @@ func pathDirs() []string {
 }
 
 // dirOnPath reports whether dir is one of the PATH entries, comparing canonical
-// forms so /home/x/.local/bin and a symlinked route to it are the same entry.
+// forms so /home/alice/.local/bin and a symlinked route to it are the same entry.
 func dirOnPath(dir string) bool {
 	if dir == "" {
 		return false

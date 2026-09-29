@@ -26,7 +26,7 @@ func TestIngestRedactsSecretsFromEveryStoreWrite(t *testing.T) {
 
 	// A set-for-the-test home so the scanner's identity probe (which reads $HOME)
 	// flags the path as the caller's own — deterministic across platforms.
-	home := "/Users/testperson"
+	home := "/Users/testperson" // abcd-lint:allow
 	t.Setenv("HOME", home)
 
 	token := "ghp_" + strings.Repeat("A", 40)          // FAKE GitHub PAT shape

@@ -12,12 +12,12 @@ func TestRedactRootFoldsRootSpellingWhenFS(t *testing.T) {
 	restore := caseFoldingFS
 	t.Cleanup(func() { caseFoldingFS = restore })
 
-	root := "/Users/dev/repo"
+	root := "/Users/alice/repo"
 
 	// A case-variant spelling of the root, both as a bare mention at a boundary
 	// and as a prefix of a path under it.
-	variantBare := "cannot access /Users/dev/REPO"
-	variantUnder := "wrote /Users/dev/REPO/dist/out.bin"
+	variantBare := "cannot access /Users/alice/REPO"
+	variantUnder := "wrote /Users/alice/REPO/dist/out.bin"
 
 	t.Run("folding FS redacts a case-variant root", func(t *testing.T) {
 		caseFoldingFS = func() bool { return true }
@@ -35,7 +35,7 @@ func TestRedactRootFoldsRootSpellingWhenFS(t *testing.T) {
 			t.Errorf("RedactRoot(%q) with fold off = %q, want it unchanged", variantBare, got)
 		}
 		// An exact-case root is still redacted with folding off.
-		exact := "cannot access /Users/dev/repo"
+		exact := "cannot access /Users/alice/repo"
 		if got := RedactRoot(exact, root, "."); got != "cannot access ." {
 			t.Errorf("RedactRoot(%q) with fold off = %q, want %q", exact, got, "cannot access .")
 		}

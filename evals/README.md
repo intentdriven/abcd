@@ -10,7 +10,7 @@ walks the Cobra command tree **in-process** (via `cli.NewRootCommand()`) to
 discover every command and flag, and exercises each against the built binary — so
 a command added tomorrow is covered here with no edit.
 
-## What it checks (v1)
+## What it checks
 
 - **Every** command and subcommand: `abcd <cmd> --help` exits 0, produces output,
   and never panics. This catches the failure unit tests miss — a command that
@@ -18,6 +18,14 @@ a command added tomorrow is covered here with no edit.
 - **Read-only, no-argument verbs** (`version`, the bare status board) run for real
   to a graceful exit.
 - **Flag hygiene:** an unknown flag is a clean non-zero error, not a panic.
+- **Record-writing verbs** (`smoke_write_test.go`): `capture`, `capture resolve`
+  and `decide` run against a scratch git repository under a fixture `HOME`, and
+  the test reads what landed on disk — the record's folder, its kebab-case slug
+  in the filename and the frontmatter, the note a transition carries, and the
+  absence of the home path's account segment — then reads the new issue back
+  through `capture list`. A unit test that builds a request by hand exercises a
+  caller production does not have; the built binary is the one artefact that
+  answers whether the verb works.
 
 ## The cold-reading evals
 

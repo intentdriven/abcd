@@ -11,6 +11,7 @@ artefact type**, one canonical home per concept:
 | [`brief/`](brief) | The living canvas: what abcd IS (product … delivery) + the [glossary](brief/glossary). |
 | [`intents/`](intents) | Press-release intents — the WHY of each user-facing change. Lifecycle by directory: `disciplines/` `drafts/` `planned/` `shipped/` `superseded/`. |
 | [`specs/`](specs) | Specs (`spc-N`) — the HOW derived from an intent. Lifecycle by directory: `open/` `closed/`. |
+| [`agents/`](agents) | The agent prompts' operator statement and their prompt-version log; the prompts themselves are the repository's top-level `agents/`, which a harness loads whole (iss-110). |
 | [`principles/`](principles) | Distilled cross-cutting design principles (first-class — the lifeboat packs these). |
 | [`decisions/`](decisions) | ADRs (MADR) — ratified architecture decisions, one canonical home; plus `notes/`. |
 | [`roadmap/`](roadmap) | Sequencing: `phases/` + `rfcs/` (an accepted RFC produces an ADR). |

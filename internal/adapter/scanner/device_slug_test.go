@@ -20,9 +20,9 @@ func TestDeviceHostnameSparesAProseSlug(t *testing.T) {
 		}
 	}
 	for _, line := range []string{
-		"ssh bobs-macbook",
-		"mounted office-nas over smb",
-		"the lab machine lab3-thinkpad",
+		"ssh bobs-macbook",              // abcd-lint:allow
+		"mounted office-nas over smb",   // abcd-lint:allow
+		"the lab machine lab3-thinkpad", // abcd-lint:allow
 	} {
 		if f := ScanText(line, Identity{}, pats, sev, "f"); !hasKind(f, kindNetDeviceHost) {
 			t.Errorf("a device hostname was not reported: %q", line)

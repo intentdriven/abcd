@@ -696,3 +696,44 @@ func TestTheBareRenderListsOnlyTheParkedRunsAwaitingAnOutcome(t *testing.T) {
 			"and the refused run %s have one", status.StagedRuns, waiting, f.runID, refused["run_id"])
 	}
 }
+
+// TestTheBareRenderListsTheLocalTierThroughTheOneRoot (iss-2609012043432648).
+// The render listed the assembly parking area and the ingest stage with a plain
+// os.ReadDir on a joined path, so a clone that commits `.abcd/.work.local` — or
+// either listed directory — as a symlink pointing out of the checkout had the
+// render echo whatever run-id-shaped names sat at the far end into
+// `staged_runs` and `orphaned_ingests`. The write and delete side (the sweep)
+// already lists through the root and refuses a symlinked directory; the read
+// side lists the same way, so a listing that leaves the checkout refuses the
+// render, as a commit-marker probe that leaves it already does.
+func TestTheBareRenderListsTheLocalTierThroughTheOneRoot(t *testing.T) {
+	cases := []struct {
+		name string
+		rel  string // the in-repo directory replaced with a link out of the checkout
+	}{
+		{"the local tier is a link out of the checkout", ".abcd/.work.local"},
+		{"the ingest stage is a link out of the checkout", IngestStageDir},
+		{"the parking area is a link out of the checkout", DefaultRunDir},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newIngestFixture(t, "detection")
+			f.write(IngestStageDir+"/"+f.runID+"/"+stageFileName,
+				[]byte(`{"_type":"`+StageType+`","run_id":"`+f.runID+`","records":[]}`))
+			in := filepath.Join(f.root, filepath.FromSlash(tc.rel))
+			outside := filepath.Join(t.TempDir(), "elsewhere")
+			if err := os.Rename(in, outside); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(outside, in); err != nil {
+				t.Fatal(err)
+			}
+
+			status, err := Describe(f.root)
+			if err == nil {
+				t.Fatalf("the render listed a directory outside the repository: staged %v, orphaned %v, leftover %v",
+					status.StagedRuns, status.OrphanedIngests, status.LeftoverStages)
+			}
+		})
+	}
+}

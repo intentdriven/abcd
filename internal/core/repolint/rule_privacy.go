@@ -289,9 +289,11 @@ func lintSeverity(s scanner.Severity) Severity {
 // hasAbsHomePath reports whether a line carries an absolute home path whose
 // final segment is a real username. A segment naming a well-known system
 // directory under /Users — Shared, Guest, Public — is NOT a username (iss-153),
-// so product code that legitimately writes to /Users/Shared needs no waiver. The
-// exemption is scoped to the /Users root: a /home/<name> segment is always a
-// user, and the allowlist is a macOS convention.
+// so product code that legitimately writes to /Users/Shared needs no waiver.
+// Under /home the exemption is narrower: a /home/<name> segment is a user except
+// for linuxbrew, the account Homebrew's Linux prefix (/home/linuxbrew) lives
+// under, which names a package prefix rather than a person
+// (scanner.IsNonUserPosixHomeSegment).
 //
 // Two further shapes are exempt because the conventions MANDATE them, and a
 // detector that is red at baseline on its own conventions is one nobody reads
@@ -319,7 +321,8 @@ func hasAbsHomePath(line string) bool {
 		if i := strings.LastIndexAny(m, `/\`); i >= 0 {
 			seg = m[i+1:]
 		}
-		if isUsersRoot(m) && scanner.IsNonUserHomeSegment(seg) {
+		if (isUsersRoot(m) && scanner.IsNonUserHomeSegment(seg)) ||
+			(strings.HasPrefix(m, "/home/") && scanner.IsNonUserPosixHomeSegment(seg)) {
 			// A system root (/Users/Shared, /Users/Guest, C:\Users\Public) is not
 			// a home root: the username position is the segment immediately after
 			// /Users or /home, and that position is held here by a directory that
@@ -328,10 +331,13 @@ func hasAbsHomePath(line string) bool {
 			// ("/Users/Shared/...") and what the product needs, because it creates
 			// such a directory and has to name it in comments, tests and docs.
 			//
-			// The exemption stops at a TRAVERSAL segment. "/Users/Shared/../bob"
-			// and "/Users/Shared//bob" leave the shared root again, so the name
+			// The exemption stops at a TRAVERSAL segment. "/Users/Shared/../bob" abcd-lint:allow
+			// and "/Users/Shared//bob" leave the shared root again, so the name abcd-lint:allow
 			// after them is back in the username position — this is the half of
 			// the old narrowing that was actually load-bearing, and it stays.
+			//
+			// The same holds for a system account under the POSIX /home root
+			// (/home/linuxbrew, Homebrew's Linux prefix): it names no person.
 			//
 			// Deliberately no longer caught: a personal name used as an ordinary
 			// directory name inside a shared folder (/Users/Shared/<name>/x). That

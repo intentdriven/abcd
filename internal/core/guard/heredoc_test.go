@@ -155,9 +155,14 @@ func TestParenthesisedArithmeticIsNotAHeredoc(t *testing.T) {
 			VerdictAllow, "",
 		},
 		{
+			// A document its substitution closes over is pending in bash 5,
+			// which reads the next lines as its body, but bash 3.2 and
+			// /bin/sh drop it and RUN them: `echo $(( $(echo <<echo) 1 ))`,
+			// `echo B`, `echo`, `echo C` prints `1`, `B`, an empty line and `C` there. The guard
+			// cannot tell the shells apart, so the line blocks fail-closed.
 			"a here-document inside a command substitution inside arithmetic",
 			"echo $(( $(cat <<EOF) ))\ngit clean -fd\nEOF",
-			VerdictAllow, "",
+			VerdictBlock, heredocEntryID,
 		},
 	}
 	for _, tc := range cases {

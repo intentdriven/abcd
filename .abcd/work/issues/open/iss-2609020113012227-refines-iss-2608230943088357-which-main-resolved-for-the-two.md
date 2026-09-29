@@ -9,6 +9,8 @@ found_during: "autonomous-run-2026-09-01"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "commands/version.md"
+deferred_after: "v0.11.1"
+deferral_reason: "a lane of its own: the superseded-root note (version and bare ahoy name the plugin root this session resolves when it differs from the root the running binary sits in) was built on the unmerged branch fix/launch-preview-and-skill-path (f3d4cb8dc, fb3344302, 692281138; about 440 lines with tests) and never reached main; relanding it against current ahoy, sanitising included, is a lane rather than a triage fix."
 ---
 
 Refines iss-2608230943088357, which main resolved for the two LOUD shapes (an unknown flag, an unknown command) by naming the stale binary in the refusal. This record carries the third shape, which is SILENT and which that fix cannot reach: the verb exists, is served by the old plugin root, and answers confidently. Observed 2026-09-01 immediately after the v0.7.0 release; the mechanism is that plugin roots are keyed by the commit they were installed from, so a hash-pinned path baked into a skill page is designed to expire, and the old root stays on disk ready to answer. The section that follows is the observation as recorded on the day.

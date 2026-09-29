@@ -108,17 +108,17 @@
     },
     {
       "id": "harness/claude-code",
-      "pattern": "(?i)\\bclaude[ -]?code\\b",
+      "pattern": "(?i:\\bclaude[ -]?code\\b)|(?i:\\.claude(?:-plugin)?/)|\\bCLAUDE_[A-Z][A-Z0-9_]*\\b",
       "severity": "blocker",
       "successor": "a generic term (the agent harness / an MCP host / the plugin surface)",
       "allow_context": [
         "(?i)<!--\\s*docs-lint:\\s*allow\\b"
       ],
-      "message": "names a specific agent harness in user-facing content; abcd's published surface stays host-agnostic. Use a generic term (an MCP host, the agent harness, the plugin surface), or add <!-- docs-lint: allow --> if naming it is genuinely necessary."
+      "message": "names a specific agent harness in user-facing content — by name, by its plugin directory or by one of its environment variables; abcd's published surface stays host-agnostic. Use a generic term (an MCP host, the agent harness, the plugin surface), or add <!-- docs-lint: allow --> if naming it is genuinely necessary."
     },
     {
       "id": "harness/codex",
-      "pattern": "(?i)\\bcodex\\b",
+      "pattern": "(?i:\\bcodex\\b)|\\bCODEX_[A-Z][A-Z0-9_]*\\b",
       "severity": "blocker",
       "successor": "a generic term (the agent harness)",
       "allow_context": [
@@ -128,7 +128,7 @@
     },
     {
       "id": "harness/gemini",
-      "pattern": "(?i)\\bgemini\\b",
+      "pattern": "(?i:\\bgemini\\b)|\\bGEMINI_[A-Z][A-Z0-9_]*\\b",
       "severity": "blocker",
       "successor": "a generic term (the agent harness)",
       "allow_context": [

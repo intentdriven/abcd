@@ -59,6 +59,19 @@ managed repository's rules file the way it writes the other conventions.
   the trade-offs. When the agent does not know which hat the human wears, the
   first question asks that, and the itd-200 mode records the answer so the
   next question does not ask again.
+- **Only real choices are asked** (ruled by the product thinker, 2026-09-20;
+  iss-2609202055103741). A question is asked only where two or more answers
+  are each defensible on the record; its options are exactly those answers
+  plus the null answer. A decision with one defensible answer is recorded as a
+  decision line naming why no question was put, not asked.
+- **The question shows what it asks about** (ruled by the product thinker,
+  2026-09-20; iss-2609202058058301). Text the human is asked to accept, edit
+  or strike is quoted in the question itself, never referred to.
+- **Each register has a knowledge floor** (iss-2609020716236446). The product
+  thinker is not assumed to know version control, a shell, permissions, CI,
+  hooks, environment variables, checksums, symbolic links or record ids; a
+  concept below that floor is introduced in one product-terms sentence before
+  it is used. The GRILL domain and the interview page carry the text.
 
 ## What's In Scope
 

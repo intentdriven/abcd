@@ -258,3 +258,141 @@ func TestReadGuardedInRootRefusesANonBenignReplacement(t *testing.T) {
 		}
 	})
 }
+
+// ReadHomeDeclaration reads every home-scoped declaration abcd trusts
+// (~/.abcd/config.json, rules.json, the credential store and index) through a
+// descriptor walk, and it closes the same lstat->open window the path read
+// does. It lost the same race to the same benign rewrite — a concurrent abcd's
+// WriteFileAtomic under the writers' lock — because the re-vetting fix went
+// into ReadDeclaration only, which no home-scoped reader calls any more
+// (iss-2609291157309818 regressing iss-2609290518278152). The replacement is
+// re-vetted and read.
+func TestReadHomeDeclarationReadsABenignReplacementAfterRevetting(t *testing.T) {
+	home, _ := raceableHome(t, "config.json")
+	prev := declarationVetted
+	t.Cleanup(func() { declarationVetted = prev })
+	calls := 0
+	declarationVetted = func(p string) {
+		calls++
+		if calls == 1 {
+			if err := WriteFileAtomic(p, []byte("after\n"), 0o600); err != nil {
+				t.Fatalf("replace: %v", err)
+			}
+		}
+	}
+	for _, deny := range []os.FileMode{0, 0o077} {
+		calls = 0
+		raw, refusal, err := ReadHomeDeclarationDenying(home, ".abcd/config.json", 1024, deny)
+		if err != nil || refusal != DeclarationOK {
+			t.Fatalf("deny %#o: a same-owner regular file renamed into place must be re-vetted and read: refusal %d, err %v", deny, refusal, err)
+		}
+		if string(raw) != "after\n" {
+			t.Fatalf("deny %#o: read %q, want the replacement's bytes", deny, raw)
+		}
+		if calls != 2 {
+			t.Fatalf("deny %#o: the replacement must be vetted before it is read: %d vetting(s), want 2", deny, calls)
+		}
+	}
+}
+
+// A replacement that keeps happening under ReadHomeDeclaration is refused
+// after declarationAttempts vettings, named as the swap it is.
+func TestReadHomeDeclarationRefusesAnEndlessReplacement(t *testing.T) {
+	home, _ := raceableHome(t, "config.json")
+	prev := declarationVetted
+	t.Cleanup(func() { declarationVetted = prev })
+	calls := 0
+	declarationVetted = func(p string) {
+		calls++
+		if err := WriteFileAtomic(p, []byte("again\n"), 0o600); err != nil {
+			t.Fatalf("replace: %v", err)
+		}
+	}
+	raw, refusal, err := ReadHomeDeclaration(home, ".abcd/config.json", 1024)
+	if raw != nil || refusal != DeclarationUnreadable || !errors.Is(err, ErrDeclarationSwapped) {
+		t.Fatalf("an endless replacement must be refused as a swap: raw %q, refusal %d, err %v", raw, refusal, err)
+	}
+	if calls != declarationAttempts {
+		t.Fatalf("%d vetting(s), want the bound %d", calls, declarationAttempts)
+	}
+}
+
+// What ReadHomeDeclaration's re-vetting still refuses: a replacement that is
+// not a same-owner, owner-only-writable regular file, and — for a reader that
+// denies more of the mode (the credential store's 0o077) — one whose mode that
+// reader refuses. Each is renamed into place once, after the first vetting, so
+// only the judgement of the replacement itself can refuse it; the retry must
+// never promote it into a read.
+func TestReadHomeDeclarationRefusesANonBenignReplacement(t *testing.T) {
+	cases := []struct {
+		name    string
+		plant   func(t *testing.T, dir, dst string)
+		foreign bool
+		deny    os.FileMode
+		want    DeclarationRefusal
+	}{
+		{name: "symlink to an owned file", plant: func(t *testing.T, dir, dst string) {
+			target := writeDeclaration(t, dir, "target", "linked\n")
+			if err := os.Symlink(target, dst); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{name: "fifo", want: DeclarationNotRegular, plant: func(t *testing.T, _, dst string) {
+			if err := syscall.Mkfifo(dst, 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{name: "directory", want: DeclarationNotRegular, plant: func(t *testing.T, _, dst string) {
+			if err := os.Mkdir(dst, 0o700); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{name: "group-writable file", want: DeclarationWritableByOthers, plant: func(t *testing.T, dir, dst string) {
+			writeDeclaration(t, dir, filepath.Base(dst), "writable\n")
+			if err := os.Chmod(dst, 0o664); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{name: "foreign-owned file", foreign: true, want: DeclarationForeignOwner, plant: func(t *testing.T, dir, dst string) {
+			writeDeclaration(t, dir, filepath.Base(dst), "foreign\n")
+		}},
+		{name: "world-readable file under a secret's deny", deny: 0o077, want: DeclarationExposed, plant: func(t *testing.T, dir, dst string) {
+			writeDeclaration(t, dir, filepath.Base(dst), "readable\n")
+			if err := os.Chmod(dst, 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			home, _ := raceableHome(t, "config.json")
+			dir := filepath.Join(home, ".abcd")
+			staged := filepath.Join(dir, "staged")
+			tc.plant(t, dir, staged)
+			swapped := false
+			restore := SwapOwnerUIDForTest(func(p string) (uint32, error) {
+				if tc.foreign && swapped {
+					return uint32(os.Getuid()) + 1, nil
+				}
+				return OwnerUID(p)
+			})
+			t.Cleanup(restore)
+			prev := declarationVetted
+			t.Cleanup(func() { declarationVetted = prev })
+			declarationVetted = func(p string) {
+				if swapped {
+					return
+				}
+				swapped = true
+				swapIn(t, staged, p)
+			}
+			raw, refusal, err := ReadHomeDeclarationDenying(home, ".abcd/config.json", 1024, tc.deny)
+			if refusal == DeclarationOK || err == nil || raw != nil {
+				t.Fatalf("a %s swapped in after vetting must be refused: raw %q, refusal %d, err %v", tc.name, raw, refusal, err)
+			}
+			if tc.want != 0 && refusal != tc.want {
+				t.Fatalf("a %s must be refused by the guard that judges it: refusal %d, want %d (err %v)", tc.name, refusal, tc.want, err)
+			}
+		})
+	}
+}

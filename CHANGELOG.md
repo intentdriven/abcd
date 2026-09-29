@@ -1280,7 +1280,7 @@ These notes list what was added and what was fixed; changes to earlier behaviour
 - **Redaction no longer misses an address glued to a word character.** The
   scanner's IPv4 and MAC patterns ended in an ASCII word boundary that a
   fixed-length, pure-word-char token can never satisfy before another word
-  char, so `192.168.1.44_gw` or `a4:83:e7:11:22:33_eth0` was silently dropped
+  char, so `192.168.1.44_gw` or `a4:83:e7:11:22:33_eth0` was silently dropped <!-- abcd-lint:allow -->
   from a hard-fail redaction path. The trailing boundary is gone, with a
   compensating truncated-number guard keeping dotted version strings and
   four-digit tails silent — measured zero added false positives. (iss-307)

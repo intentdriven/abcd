@@ -7,9 +7,10 @@ package evals
 // exercises each one against the binary harness_test.go builds. Gated behind
 // the `smoke` build tag so it does not slow the unit-test lane.
 //
-// v1 smokes structure only (help renders, no panic, flags parse, read-only verbs
-// run). Fixture-driven per-command scenarios (evals/data/) are future work — see
-// intent itd-75.
+// This file smokes structure (help renders, no panic, flags parse, read-only
+// verbs run); smoke_write_test.go runs the record-writing verbs against a scratch
+// repository and asserts what lands on disk. Fixture-driven per-command
+// scenarios (evals/data/) are future work — see intent itd-75.
 
 import (
 	"strings"

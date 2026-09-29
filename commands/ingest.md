@@ -26,6 +26,16 @@ publication year, venue, canonical URL. Map the type to CSL: `article-journal`
 (papers), `webpage` (posts/docs), `book`, `report` (white papers, internal
 docs), `motion_picture` (video).
 
+Two rules hold for author names:
+
+- **Resolve a name before caveating it.** An author given by initials only is
+  looked up through the entry's own DOI or URL, which usually resolves the
+  full name in one fetch. A "to be checked" caveat is for a fact that is
+  genuinely unreachable, never for a lookup that was skipped.
+- **Take names from the publisher's current record.** A name that has changed
+  since publication is recorded as the publisher now gives it, never reverted
+  to a former name found in an older copy, a citation elsewhere, or an index.
+
 ## 2. Decide class and key
 
 - **Class.** Web content is `public` by default. Signals for

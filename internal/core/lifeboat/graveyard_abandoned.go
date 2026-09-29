@@ -137,8 +137,15 @@ func gvSupersededADRs(ctx *SourceContext) []Finding {
 	claims := newGvIDClaims()
 	truncated := gvEachADR(ctx, func(name, path string, fields map[string]frontmatter.Field) {
 		status := strings.ToLower(gvUnquote(fields["status"].Value))
-		supBy := gvUnquote(fields["superseded_by"].Value)
-		if status != "superseded" && frontmatter.IsNull(supBy) {
+		// Null is asked of the RAW scalar, before the quotes go: quoting is what
+		// makes "null" a string (frontmatter.IsNull's contract, the rule lint's
+		// provenance reader follows), so a quoted "NULL" is a value here as it is
+		// everywhere else. A quoted empty string names no successor, so it stays
+		// absent (iss-2608241347321758).
+		rawSupBy := strings.TrimSpace(fields["superseded_by"].Value)
+		supBy := gvUnquote(rawSupBy)
+		noSuccessor := frontmatter.IsNull(rawSupBy) || supBy == ""
+		if status != "superseded" && noSuccessor {
 			return
 		}
 		id := gvADRID(fields, name)
@@ -147,7 +154,7 @@ func gvSupersededADRs(ctx *SourceContext) []Finding {
 		}
 		claims.take(id, len(out))
 		var ev []string
-		if !frontmatter.IsNull(supBy) {
+		if !noSuccessor {
 			ev = append(ev, gvText("superseded_by: "+supBy))
 		}
 		ev = append(ev, gvText(path))

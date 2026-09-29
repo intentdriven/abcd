@@ -695,7 +695,7 @@ func (m identityMatchers) findings(line string, lineno int, id2sev map[string]Se
 	// path followed by punctuation (e.g. "/Users/me#draft", "$HOME/dir&") is abcd-audit:allow
 	// still the caller's home and must be redacted. What is NOT the caller's
 	// home is a longer NAME that merely starts with it — "/rootfs/etc/hosts"
-	// under HOME=/root, "/home/abc" under HOME=/home/a — so a match must stand
+	// under HOME=/root, "/home/abc" under HOME=/home/a — so a match must stand abcd-lint:allow
 	// as a path of its own, by the same anchor SweepCallerHome applies; the
 	// suppression spans below are filtered by it too, so a dropped span does
 	// not go on hiding the local_username underneath it. Inside a URL the
@@ -1132,7 +1132,7 @@ func collapseSeparatorRuns(p string) string {
 }
 
 // maxLocalPart is the longest local part an address can carry (RFC 5321
-// section 4.5.3.1.1), and so the furthest standsAsAccountName looks ahead for
+// section 4.5.3.1.1), and so the furthest standsAsAccountName looks ahead for abcd-lint:allow
 // the '@' that makes a match a login.
 const maxLocalPart = 64
 
@@ -1150,15 +1150,22 @@ func isLocalPartByte(b byte) bool {
 }
 
 // isNonUserHomeMatch reports whether a generic-home match's final segment is a
-// well-known non-user directory under a /Users root, POSIX or Windows.
+// well-known non-user directory under a /Users root, POSIX or Windows, or a
+// system account under the POSIX /home root (IsNonUserPosixHomeSegment).
 func isNonUserHomeMatch(matched string) bool {
 	scanMeter.charge(stageIdentity, len(matched))
+	i := strings.LastIndexAny(matched, `/\`)
+	if i < 0 {
+		return false
+	}
+	if strings.HasPrefix(matched, "/home/") {
+		return IsNonUserPosixHomeSegment(matched[i+1:])
+	}
 	lower := strings.ToLower(matched)
 	if !strings.HasPrefix(lower, "/users/") && !(len(lower) > 2 && lower[1] == ':' && lower[2] == '\\') {
 		return false
 	}
-	i := strings.LastIndexAny(matched, `/\`)
-	return i >= 0 && IsNonUserHomeSegment(matched[i+1:])
+	return IsNonUserHomeSegment(matched[i+1:])
 }
 
 // nextPathSegmentEnd returns the end offset of a NAME-BEARING path segment that
