@@ -241,7 +241,12 @@ bare interpreter inside a string, because a variable is how ordinary commands
 carry a program or a path between commands. A here-document body is data, but the substitutions the shell
 runs in a body whose delimiter is unquoted are read as commands, and such a body
 is read by the lines bash compares with its delimiter, joined across a trailing
-odd run of backslashes. A backtick's text is read after bash's own pass over
+odd run of backslashes. A body begins on the line after the one that opened
+it, and a command or process substitution still open at that line's end holds
+it back: the substitution's own lines run as commands, and the body begins on
+the line after it closes. A document a substitution opens and never reads is
+pending after the close in bash 5 and dropped in bash 3.2, which runs the
+lines it would cover, so that line is refused as an unterminated document. A backtick's text is read after bash's own pass over
 it, which drops a backslash before `$`, a backtick or a backslash (and, directly
 inside double quotes, a `"`), so an escaped substitution between backticks is
 read as the one bash runs. A payload that is wholly a substitution printing a
@@ -306,8 +311,15 @@ as the variable itself — a default, an assignment or an error message
 matching `]` with any text after it (`${HOME[x[0]]}`, `${HOME[0]]}`, which the
 bash 3.2 of macOS prints as the value); and an alternative, which prints its
 word or nothing, reads as that word as written (`${X:+$HOME}`, `${X:+/}`,
-`${X:+$HOME/*}`). A trim that leaves the path above the home (`${HOME%/*}`)
-blocks as the home does.
+`${X:+$HOME/*}`), including one the bash 3.2 of macOS reads at the first
+operator after a subscript (`${X[0]]:+$HOME}`). Unquoted, the alternative's
+word is split on whitespace and a substitution in it that prints nothing
+drops out, as bash splits and drops them (`${X:+$HOME }`,
+`${X:+$(true)$HOME}`). A trim that leaves the path above the home
+(`${HOME%/*}`) blocks as the home does. Each target is also compared as a path
+with its redundant separators taken out, since the kernel reads a run of
+slashes as one, a `.` segment as the directory itself and the root as its own
+parent (`//*`, `$HOME//`, `/./*`, `/../*`, `.//*`).
 
 What an allow still does not see is a hazard that never reaches command position
 at all: a word that is wholly a command substitution or a variable standing

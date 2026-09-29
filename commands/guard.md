@@ -90,7 +90,9 @@ line the guard misreads may be one bash runs, and letting it through would pass
 every hazard in it; a trailing backslash and an unterminated here-document are
 decided too. A here-document body is read as data, even when the line that
 opened it ends in `&&`, and the command substitutions an unquoted delimiter lets
-the shell run in it are read as commands.
+the shell run in it are read as commands. A substitution still open where that
+line ends holds the body back until the line after it closes, and its own
+lines are read as commands, as the shell runs them.
 
 A host whose shell tool takes a per-call working directory passes it beside the
 command as `tool_input.workdir`. The adapter resolves it against the session
@@ -327,7 +329,9 @@ in or the one above it (`*`, `*/`, `.`, `..`, `./*`, `./*/`, `../*`, `.*`,
 backslash-newline inside the name is dropped, a brace group's words keep their
 variables (`{$HOME,x}`, `$HO{M..M}E`), an expansion that can leave the value
 as it is reads as the variable (`${HOME%/}`, `${HOME:-x}`, `${HOME[0]}`), and
-an alternative reads as its word (`${X:+$HOME}`, `${X:+/}`).
+an alternative reads as its word (`${X:+$HOME}`, `${X:+/}`), split on
+whitespace where it stands unquoted (`${X:+$HOME }`). A target is also read
+with its redundant separators taken out (`//*`, `$HOME//`, `/./*`, `/../*`).
 
 What an allow still does not see is a hazard that never reaches command position
 at all: a delete target printed whole by a substitution (`rm -rf $(echo /)`),
