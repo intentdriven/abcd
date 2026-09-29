@@ -230,7 +230,7 @@ jobs:
 <%- if .Abcd %>
 
       - name: Test (race, internal)
-        run: go test -race -timeout 20m ./internal/...
+        run: go test -race -timeout 20m ./internal/surface/cli ./internal/core/reading ./internal/core/launch ./internal/core/lifeboat ./internal/core/lint ./internal/adapter/scanner ./internal/core/capture ./internal/core/ahoy ./internal/core/site ./internal/...
 <%- else %>
 
       # A generic module may have no internal tree, so the race leg runs over the

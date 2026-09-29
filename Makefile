@@ -307,7 +307,7 @@ preflight: load-check fmt-check lint-reviews lint-issues lint-decisions record-l
 	go build ./...
 	go vet ./...
 	go test ./...
-	go test -race -timeout 20m ./internal/...
+	go test -race -timeout 20m ./internal/surface/cli ./internal/core/reading ./internal/core/launch ./internal/core/lifeboat ./internal/core/lint ./internal/adapter/scanner ./internal/core/capture ./internal/core/ahoy ./internal/core/site ./internal/...
 	@scripts/preflight-receipt.sh mint "$(PREFLIGHT_BEGAN)"
 
 # The push receipt (iss-2608290810036869, iss-2608210738378295). The pre-push hook
@@ -344,6 +344,13 @@ preflight: export ABCD_LOAD_CHECKED := preflight
 # and its resolver (scripts/pinned-toolchain.sh) refuses, naming the skew, when
 # the release cannot be fetched, before any gate runs on it.
 preflight: export GOTOOLCHAIN := go$(GO_TOOLCHAIN_VERSION)
+
+# The test binaries these targets run skip the flush to stable storage
+# (internal/fsutil/flush.go): on macOS every synced write is an F_FULLFSYNC of
+# about 8.8 ms, and no test asserts what a flush makes true. The skip needs a
+# test binary as well as this opt-in, so a binary built or run here, the lint
+# gates' `go run` tools included, still flushes. CI's test steps set the same.
+test preflight: export ABCD_TEST_SKIP_FLUSH := 1
 
 # The load check (itd-2609231434459890): reads the machine's load and process
 # table once and warns about programs left running and extreme load. It exits 0

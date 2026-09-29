@@ -279,9 +279,21 @@ func TestDocsLintHarnessNameGate(t *testing.T) {
 	// now that an unresolvable configured root fails loud (GitHub #360).
 	writeFile(t, root, "README.md", "# readme\n")
 	// Its name_roots must resolve too (iss-279), and the role ban's extra_roots
-	// (itd-2609212137129937).
-	for _, r := range []string{".abcd/README.md", "AGENTS.md", ".github/CONTRIBUTING.md", "scripts/README.md",
-		"commands/README.md", ".abcd/rules.json", "internal/core/rules/defaults/rules.json"} {
+	// (itd-2609212137129937), each as the kind of path it is in this repository,
+	// read from the config so a root added there is built here without a second
+	// list to keep in step.
+	roots := append([]string(nil), cfg.NameRoots...)
+	for _, bt := range cfg.BannedTokens {
+		roots = append(roots, bt.ExtraRoots...)
+	}
+	for _, r := range roots {
+		st, err := os.Stat(filepath.Join("..", "..", "..", r))
+		if err != nil {
+			t.Fatalf("configured root %q does not resolve in this repository: %v", r, err)
+		}
+		if st.IsDir() {
+			r += "/README.md"
+		}
 		writeFile(t, root, r, "# t\n")
 	}
 	// So must links_resolve's extra roots (iss-46), read from the config so a

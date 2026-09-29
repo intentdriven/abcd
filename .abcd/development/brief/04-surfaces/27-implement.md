@@ -124,7 +124,14 @@ check verdict reports the count (`agents_alive`) beside the ceiling
 outside the log — is invisible to the count, which is why the run's no-fork
 rule stays the discipline for that half (iss-2609240646542516); a run that went
 over anyway says so with a `ceiling_overrun` line. On a refused claim the
-second session also logs a `backoff` with its reason and minutes.
+second session also logs a `backoff` with its reason and minutes, the minutes
+being what the attempt spent, measured from its start; a run state locked past
+the lock's timeout by another session's change is contention too, and the second
+session's `backoff` from it carries `on: run_state` and the minutes it waited. A
+second session whose join meets the lock has no record yet, so the role it is
+joining with places the line; a session that never joined has no role to place
+it by, and the refusal says the backoff went unlogged. The append takes no lock,
+so that line reaches the log while the lock is held.
 
 Every bound keys on the role in the session's record, which is the session's
 own statement: the release refusal, like the others, rests on a cooperative,
@@ -157,7 +164,11 @@ twin does, so two writers each land whole lines and a log leaf planted as a link
 onto a claim file appends nothing. The session, window,
 claim and load events are refused here: they are written by their own sub-verbs,
 so the log cannot record a claim the run state does not hold, or a load warning
-the check did not give.
+the check did not give. A hand-logged `backoff` names its `reason` and the
+`minutes` it spent (a number no smaller than zero), or it is refused with nothing
+written: contention the verb cannot see, such as the merge queue, reaches the
+comparison only this way, and a backoff with neither would count as one that
+cost nothing for no reason.
 
 An event missing a field the report reads is refused when it is written, naming
 the field, rather than found missing afterwards (iss-2609240646555891): a

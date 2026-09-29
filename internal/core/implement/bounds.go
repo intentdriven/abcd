@@ -153,7 +153,7 @@ func (r *Run) Check(session string, step Step, paths []string) (Verdict, error) 
 		}
 	}
 	var out Verdict
-	err := r.withLock(func() error {
+	err := r.withLock(session, func() error {
 		s, err := r.requireSession(session)
 		if err != nil {
 			return err

@@ -73,8 +73,18 @@ type UndoPlan struct {
 
 // Apply undoes every write the cut made, in reverse, and returns a description
 // of each undo that failed (empty when the tree is restored).
+//
+// It holds the CHANGELOG's lock, as the cut's writes did, so the restore is not
+// interleaved with another cut's read of the files it puts back.
 func (u UndoPlan) Apply(root string) []string {
-	return u.apply(osOps{root: root}, root)
+	var failures []string
+	if err := withChangelogLock(root, func() error {
+		failures = u.apply(osOps{root: root}, root)
+		return nil
+	}); err != nil {
+		failures = append(failures, changelogFile+": "+err.Error())
+	}
+	return failures
 }
 
 func (u UndoPlan) apply(ops fileOps, root string) []string {

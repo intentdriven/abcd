@@ -2033,6 +2033,27 @@
       ]
     },
     {
+      "path": "abcd launch manifests",
+      "hidden": false,
+      "sentence": "Check the release manifests agree on the version, or carry none on a dev tree: Writes nothing; refuses with exit 1 on drift and exit 2 on an unreadable input.",
+      "flags": [
+        {
+          "name": "root",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "tree",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd launch receipts",
       "hidden": false,
       "sentence": "Run the release job's semantic-receipt gate locally, before the merge: Writes nothing; refuses with exit 1 when the release job would refuse the receipts.",

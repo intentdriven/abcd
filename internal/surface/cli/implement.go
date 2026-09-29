@@ -360,7 +360,9 @@ func newImplementClaimCommand(asJSON *bool) *cobra.Command {
 			"already holds renews the lease. A claim whose lease has passed is claimable again,\n" +
 			"and the lapse is logged as claim_lapsed. A record another session holds is refused\n" +
 			"at exit 3 and logged as claim_denied naming the holder; the second session also\n" +
-			"logs a backoff.\n\n" +
+			"logs a backoff with its reason and the minutes the attempt spent. A run state\n" +
+			"locked by another session's change is exit 3 too, and the second session's\n" +
+			"backoff from it is logged the same way.\n\n" +
 			"The second session is refused (exit 2, logged as a refusal) when it already holds\n" +
 			"a live claim, when the window is split-roles, or when a --path it declares is in the\n" +
 			"reading corpus.",
@@ -493,7 +495,8 @@ func newImplementLogCommand(asJSON *bool) *cobra.Command {
 			"The claim, window and session events are written by their own sub-verbs and are\n" +
 			"refused here, so the log cannot record a claim the run state does not hold.\n\n" +
 			"An event missing a field the report reads is refused, naming it: " + requiredFieldsHelp() + ".\n" +
-			"An intervention's kind is one of " + strings.Join(implement.InterventionKinds, ", ") + "; an at or\n" +
+			"A backoff names its reason and the minutes it spent (reason=<why>, minutes=<n>),\n" +
+			"or it is refused. An intervention's kind is one of " + strings.Join(implement.InterventionKinds, ", ") + "; an at or\n" +
 			"last_productive is an RFC 3339 time, and a *_min or minutes field a number. An agent_start\n" +
 			"that would take a session past the ceiling it joined with is refused, and the refusal logged.",
 		Args: cobra.ExactArgs(1),

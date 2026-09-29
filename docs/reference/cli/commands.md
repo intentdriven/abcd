@@ -1312,7 +1312,9 @@ claim is a lease (--lease, default 2h, 1m to 24h). Claiming a record this sessio
 already holds renews the lease. A claim whose lease has passed is claimable again,
 and the lapse is logged as claim_lapsed. A record another session holds is refused
 at exit 3 and logged as claim_denied naming the holder; the second session also
-logs a backoff.
+logs a backoff with its reason and the minutes the attempt spent. A run state
+locked by another session's change is exit 3 too, and the second session's
+backoff from it is logged the same way.
 
 The second session is refused (exit 2, logged as a refusal) when it already holds
 a live claim, when the window is split-roles, or when a --path it declares is in the
@@ -1454,7 +1456,8 @@ The claim, window and session events are written by their own sub-verbs and are
 refused here, so the log cannot record a claim the run state does not hold.
 
 An event missing a field the report reads is refused, naming it: lane_close (lane, outcome); agent_start (agent); agent_end (agent, role, model, minutes|wall_minutes|wall_min); stop (cause); ceiling_overrun (alive, ceiling, lane, minutes); intervention (kind, by, what, why, autonomy_gap); decision (what, alternative, why).
-An intervention's kind is one of session_open, account, ruling, restart, close_session, file_restore, permission, other; an at or
+A backoff names its reason and the minutes it spent (reason=<why>, minutes=<n>),
+or it is refused. An intervention's kind is one of session_open, account, ruling, restart, close_session, file_restore, permission, other; an at or
 last_productive is an RFC 3339 time, and a *_min or minutes field a number. An agent_start
 that would take a session past the ceiling it joined with is refused, and the refusal logged.
 
@@ -2080,6 +2083,31 @@ is written to --out.
 
 ```
 abcd launch archive --out dist
+```
+
+#### `abcd launch manifests`
+
+Check the release manifests agree on the version, or carry none on a dev tree: Writes nothing; refuses with exit 1 on drift and exit 2 on an unreadable input.
+
+**Usage:** `abcd launch manifests --tree public|dev [--root <dir>] [flags]`
+
+Run the manifest lockstep check over a tree. --tree public requires the
+version-location primary present as strict SemVer and every pinned secondary
+to agree with it; --tree dev requires every version key absent (adr-19). The
+tree is the working directory, or --root. Exit 0 consistent, 1 drift (one
+line per field), 2 unreadable. Nothing is written.
+
+**Flags:**
+
+```
+      --root string   the tree to check (default: the working directory)
+      --tree string   the polarity to check: public (versions present and agreeing) or dev (versions absent)
+```
+
+**Example:**
+
+```
+abcd launch manifests --tree public
 ```
 
 #### `abcd launch receipts`
