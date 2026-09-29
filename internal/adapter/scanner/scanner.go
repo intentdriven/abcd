@@ -842,6 +842,7 @@ func scanText(text string, id Identity, patterns []Pattern, id2sev map[string]Se
 		probes[i] = adjacencyProbe(cp.Re)
 	}
 	junctions := newJunctionSet(patterns)
+	glued := newGluedSweep(patterns)
 	var findings []Finding
 	lineno := 0
 	for _, line := range strings.Split(text, "\n") {
@@ -864,6 +865,10 @@ func scanText(text string, id Identity, patterns []Pattern, id2sev map[string]Se
 				Suggested: cp.Suggestion, line: line,
 			})
 		}
+		// The glued sweep (glued.go, iss-2609290541525428): a secret token right
+		// behind a letter, a digit or an underscore has no leading \b, so the
+		// pass above never matched it.
+		findings = append(findings, glued.findings(line, lineno, file)...)
 		// Percent-decode pre-pass (gh-370): a URL-encoded delimiter (%3D, %2F,
 		// %22) leaves a hex word-char before a literal token, defeating the
 		// leading \b so the raw scan above never fires. Scan bounded

@@ -13,15 +13,16 @@ import "github.com/intentdriven/abcd/internal/termsafe"
 // sweep of the caller's home (independent of the pattern heuristic, the
 // defence-in-depth every store-before-commit redactor applies), then
 // termsafe.Sanitize, so the result is inert on a terminal. The pattern pass
-// includes the glued sweep (refusalFindings): a token right behind an
+// includes ScanText's glued sweep (glued.go): a token right behind an
 // underscore or a letter, which the patterns' leading \b cannot see, is sealed
-// byte for byte like any other.
+// byte for byte like any other (iss-2609290541525428).
 //
 // It FAILS CLOSED. A returned refusal has no record to note a degradation in, so
-// a scanner that cannot be built, runs degraded, or leaves a secret span in the
-// redacted text leaves the text DESCRIBED by termsafe.DescribeRefused and never
-// echoed. The scanner is built per call: this
-// runs on the refusal path alone, so a payload that decodes pays nothing for it.
+// a scanner that cannot be built, runs degraded, cannot build its whole glued
+// sweep, or leaves a secret span in the redacted text leaves the text
+// DESCRIBED by termsafe.DescribeRefused and never echoed. The scanner is built
+// per call: this runs on the refusal path alone, so a payload that decodes
+// pays nothing for it.
 func RedactRefusal(repoRoot, text string) string {
 	sc, err := New(repoRoot)
 	if err != nil {
@@ -30,32 +31,17 @@ func RedactRefusal(repoRoot, text string) string {
 	if unavail, _ := sc.Unavailable(); unavail {
 		return termsafe.DescribeRefused(text)
 	}
-	findings, ok := sc.refusalFindings(text)
-	if !ok {
+	if !newGluedSweep(sc.patterns).complete {
 		return termsafe.DescribeRefused(text)
 	}
-	out, _ := Redact(text, findings)
+	out, _ := Redact(text, sc.ScanText(text, "refusal"))
 	// Redact is stage one: a secret span it could not seal leaves the text
 	// described rather than echoed.
-	if residue, ok := sc.refusalFindings(out); !ok || hasSecret(residue) {
+	if hasSecret(sc.ScanText(out, "refusal")) {
 		return termsafe.DescribeRefused(text)
 	}
 	out = SweepCallerHome(out, CallerHome())
 	return termsafe.Sanitize(out)
-}
-
-// refusalFindings is what RedactRefusal seals: every ScanText finding, plus the
-// secret tokens glued behind a word character that ScanText's leading \b cannot
-// see (gluedFindings, iss-2609290541525428) — a key spelled notes_<token>, a
-// path spelled x<token>y. A span both passes found is kept once, so a bounded
-// token keeps the fingerprint it always had. ok is false when the glued sweep
-// cannot be built, and the caller fails closed on it.
-func (s *Scanner) refusalFindings(text string) ([]Finding, bool) {
-	glued, ok := gluedFindings(text, s.patterns, "refusal")
-	if !ok {
-		return nil, false
-	}
-	return dedupFindings(append(s.ScanText(text, "refusal"), glued...)), true
 }
 
 // hasSecret reports whether any finding is a hard_fail secret span, the class
