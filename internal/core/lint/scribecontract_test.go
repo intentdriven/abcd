@@ -531,11 +531,20 @@ func TestScribeCanaryAssertsTheRefusals(t *testing.T) {
 // half arms the rule id: a rule renamed out from under this case would otherwise
 // leave it filtering for findings that can never appear.
 func TestScribePromptSatisfiesTheContract(t *testing.T) {
+	// The shipped rule, not a bare one: the real tree keeps its prompt-version
+	// log outside agents/ (iss-110), and only the shipped config says where.
+	shipped, err := lint.LoadConfig(filepath.Join("..", "..", "..", ".abcd", "record-lint.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rc := shipped.Rules[scribeAgentContractRule]
+	rc.Enabled, rc.Severity = true, "blocker"
+	real := lint.Config{Rules: map[string]lint.RuleConfig{scribeAgentContractRule: rc}}
 	cfg := lint.Config{Rules: map[string]lint.RuleConfig{
 		scribeAgentContractRule: {Enabled: true, Severity: "blocker"},
 	}}
 
-	fs, err := lint.Lint(cfg, filepath.Join("..", "..", ".."))
+	fs, err := lint.Lint(real, filepath.Join("..", "..", ".."))
 	if err != nil {
 		t.Fatal(err)
 	}
