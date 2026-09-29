@@ -90,7 +90,9 @@ line the guard misreads may be one bash runs, and letting it through would pass
 every hazard in it; a trailing backslash and an unterminated here-document are
 decided too. A here-document body is read as data, even when the line that
 opened it ends in `&&`, and the command substitutions an unquoted delimiter lets
-the shell run in it are read as commands.
+the shell run in it are read as commands. A substitution still open where that
+line ends holds the body back until the line after it closes, and its own
+lines are read as commands, as the shell runs them.
 
 The hook judges only what the host hands it, and the plugin's hook manifest
 hands it the shell tool and the question tool and nothing else. A call through
@@ -337,12 +339,23 @@ dotfiles `~/.*`, `$HOME/.*`, `${HOME}/.*`) is a **block**
 in or the one above it (`*`, `*/`, `.`, `..`, `./*`, `./*/`, `../*`, `.*`,
 `./.*`, and `$PWD` or `${PWD}`, each also with `/*`) is a **warn**
 (`rm-rf-working-directory`). The target is compared as written, so `$HOME` and
-`$PWD` are seen as those words.
+`$PWD` are seen as those words, and read the way bash reads its text first: a
+backslash-newline inside the name is dropped, a brace group's words keep their
+variables (`{$HOME,x}`, `$HO{M..M}E`), an expansion that can leave the value
+as it is reads as the variable (`${HOME%/}`, `${HOME:-x}`, `${HOME[0]}`), and
+an alternative reads as its word (`${X:+$HOME}`, `${X:+/}`), split on
+whitespace where it stands unquoted (`${X:+$HOME }`). A target is also read
+with its redundant separators taken out (`//*`, `$HOME//`, `/./*`, `/../*`),
+and one that begins at the root or the home with each `..` folded into the
+directory before it, as the path reads: `/tmp/../*` is `/*`, and `~/../*`
+globs the home's parent, which holds the home, so it is a **block** as `~` is.
 
 What an allow still does not see is a hazard that never reaches command position
 at all: a delete target printed whole by a substitution (`rm -rf $(echo /)`),
 read by its known text the way `rm -rf $(find …)` names its targets every day,
-or spelled any other way than the words above; one launched through a known wrapper carrying a value-taking flag the
+or spelled any other way than the words above, a default's own word included
+(`rm -rf ${DIR:-$HOME}`), as is a `..` after a symlink, which the path is read
+past lexically, or after a segment holding a variable (`/tmp/$X/../*`); one launched through a known wrapper carrying a value-taking flag the
 guard does not name (`sudo -u bob <hazard>` is seen; the bundled short form
 `sudo -Hu bob <hazard>` reaches only the warn, not the entry that names it), one
 whose API path an entry names by its ROOT

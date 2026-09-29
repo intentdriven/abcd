@@ -83,7 +83,9 @@ type Pattern struct {
 	// separates `rm -rf /` and `rm -rf ~`, which destroy the machine or the
 	// home directory, from `rm -rf /tmp/build`, which a prefix could not tell
 	// apart. The words are compared as written, before the shell expands them:
-	// `$HOME` is the word `$HOME`, and `*` the word `*`.
+	// `$HOME` is the word `$HOME`, and `*` the word `*`. An operand is also
+	// compared as a path with its redundant separators taken out: `//*` is
+	// the word `/*`, and `$HOME/./` the word `$HOME/`.
 	ArgValues []string `json:"arg_values,omitempty"`
 	// MinOperands, when set, requires at least that many non-flag arguments
 	// (value_flags stepped over). It is what separates a kill BY PATTERN —

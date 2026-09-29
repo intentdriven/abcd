@@ -486,3 +486,103 @@ func TestArithmeticShiftCoincidentalDelimiterStillBlocks(t *testing.T) {
 		}
 	}
 }
+
+// TestPendingHereDocumentInsideAnUnterminatedSubstitution —
+// iss-2609290521415701. A here-document opened before a substitution that
+// never closes stays pending through it (the substitution's lines are its
+// commands), and the command that opened it is resumed only when the input
+// ends. Reading the body at the newline inside left that command's record of
+// its documents pointing at bodies already read, and flushing it panicked. It
+// is read with no panic, and no less strictly than the same line without the
+// document.
+func TestPendingHereDocumentInsideAnUnterminatedSubstitution(t *testing.T) {
+	rank := map[Verdict]int{VerdictAllow: 0, VerdictWarn: 1, VerdictBlock: 2}
+	for _, cmd := range []string{"cat", "rm -rf /", "rm -rf ~"} {
+		for _, open := range []string{"<(x", "$(x", "`x", "$(x <(y", "<(x `y"} {
+			for _, doc := range []string{"<<E", "<<-E", "<<'E'", "<<E <<F"} {
+				line := cmd + " " + doc + " " + open + "\nE\nF"
+				sibling := cmd + " " + open + "\nE\nF"
+				t.Run(line, func(t *testing.T) {
+					var d Decision
+					func() {
+						defer func() {
+							if r := recover(); r != nil {
+								t.Fatalf("Check(%q) panicked: %v", line, r)
+							}
+						}()
+						var err error
+						if d, err = Defaults().Check(line); err != nil {
+							t.Fatalf("Check(%q): %v", line, err)
+						}
+					}()
+					s := verdictOf(t, sibling)
+					if rank[d.Verdict] < rank[s.Verdict] {
+						t.Errorf("Check(%q) = %q, below %q for %q", line, d.Verdict, s.Verdict, sibling)
+					}
+					if cmd != "cat" && d.Verdict != VerdictBlock {
+						t.Errorf("Check(%q) = %q via %q, want block", line, d.Verdict, d.EntryID)
+					}
+				})
+			}
+		}
+	}
+}
+
+// TestPendingHereDocumentWaitsOutItsSubstitution — iss-2609290521415701's
+// true model. bash 3.2, bash 5 and /bin/sh do not read a pending document's
+// body at a newline inside a substitution that opened after it: the document
+// stays pending and the lines RUN inside the substitution (`echo <<echo
+// $(echo A⏎echo B⏎echo⏎echo C⏎)` prints `A B C`), and the body begins on the
+// line after the substitution closes. Each line reaches at least the verdict
+// of its sibling without the document, and a hazard inside blocks.
+func TestPendingHereDocumentWaitsOutItsSubstitution(t *testing.T) {
+	rank := map[Verdict]int{VerdictAllow: 0, VerdictWarn: 1, VerdictBlock: 2}
+	forced := "git push --" + "force origin main"
+	for _, hazard := range []string{"rm -rf ~", "rm -rf /", "rm -rf $HOME", forced} {
+		for _, doc := range []string{"<<E", "<<-E", "<<'E'", "<<E <<F"} {
+			for _, sub := range [][2]string{{"$(", ")"}, {"`", "`"}, {"<(", ")"}} {
+				inner := sub[0] + "x\n" + hazard + "\nE\nF\n" + sub[1]
+				for _, pair := range [][2]string{
+					{"cat " + doc + " " + inner, "cat " + inner},
+					{"echo $(cat " + doc + " " + inner + ")", "echo $(cat " + inner + ")"},
+					{"cat " + doc + " " + inner + "\nE\nF", "cat " + inner + "\nE\nF"},
+				} {
+					line, sibling := pair[0], pair[1]
+					t.Run(line, func(t *testing.T) {
+						d := verdictOf(t, line)
+						s := verdictOf(t, sibling)
+						if s.Verdict != VerdictBlock {
+							t.Fatalf("sibling Check(%q) = %q, want block", sibling, s.Verdict)
+						}
+						if rank[d.Verdict] < rank[s.Verdict] {
+							t.Errorf("Check(%q) = %q via %q, below %q for %q", line, d.Verdict, d.EntryID, s.Verdict, sibling)
+						}
+					})
+				}
+			}
+		}
+	}
+	// The body begins on the line after the substitution closes, and is data:
+	// the line reads as its sibling without that body does.
+	for _, pair := range [][2]string{
+		{"cat <<E $(x\n)\nrm -rf ~\nE", "cat <<E $(x\n)\nE"},
+		{"cat <<E `x\n`\nrm -rf ~\nE", "cat <<E `x\n`\nE"},
+		{"cat <<E $(cat <<F\nrm -rf /\nF\n)\nrm -rf ~\nE", "cat <<E $(cat <<F\nrm -rf /\nF\n)\nE"},
+	} {
+		d, s := verdictOf(t, pair[0]), verdictOf(t, pair[1])
+		if d.Verdict != s.Verdict || d.EntryID != s.EntryID || d.Verdict == VerdictBlock {
+			t.Errorf("Check(%q) = %q via %q, want %q via %q as for %q: the hazard is the document's text", pair[0], d.Verdict, d.EntryID, s.Verdict, s.EntryID, pair[1])
+		}
+	}
+	// A document its substitution closes over is pending in one shell and
+	// dropped in another, so what follows is read fail-closed.
+	for _, line := range []string{
+		"echo $(cat <<E) x\nrm -rf ~\nE",
+		"echo `cat <<E` x\nrm -rf ~\nE",
+		"echo $(cat <<E) x\nE",
+	} {
+		if d := verdictOf(t, line); d.Verdict != VerdictBlock {
+			t.Errorf("Check(%q) = %q via %q, want block", line, d.Verdict, d.EntryID)
+		}
+	}
+}

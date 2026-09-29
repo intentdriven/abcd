@@ -75,7 +75,8 @@ func TestArgValuesReadAVariableAsWritten(t *testing.T) {
 // value; a nested string carries the name down; and a mark whose name the
 // string does not hold — a raw 0x01 byte — names nothing, where reading it as
 // empty text read `\x01/` as the root. A brace expansion's words and a
-// default (`${HOME:-/}`) are the recorded residual: no written spelling.
+// default (`${HOME:-/}`) spell the variable they hold
+// (iss-2609290419119456, homeresiduals_test.go).
 func TestArgValuesWrittenSpellingEdges(t *testing.T) {
 	const home = "rm-rf-root-or-home"
 	runVerdictCases(t, []verdictCase{
@@ -92,7 +93,7 @@ func TestArgValuesWrittenSpellingEdges(t *testing.T) {
 		{`sh -c "rm -rf \"$HOM\"E"`, VerdictAllow, ""},
 		{"rm -rf \x01/", VerdictAllow, ""},
 		{"rm -rf \"\x01\"/", VerdictAllow, ""},
-		{`rm -rf ${HOME:-/}`, VerdictAllow, ""},
-		{`rm -rf {$HOME,x}`, VerdictAllow, ""},
+		{`rm -rf ${HOME:-/}`, VerdictBlock, home},
+		{`rm -rf {$HOME,x}`, VerdictBlock, home},
 	})
 }
