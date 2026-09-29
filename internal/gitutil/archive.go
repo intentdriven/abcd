@@ -2,6 +2,7 @@ package gitutil
 
 import (
 	"errors"
+	"fmt"
 	"path"
 	"strings"
 )
@@ -28,16 +29,21 @@ type ArchiveEntry struct {
 // directory archive keeps, and the scan would miss files the tag ships.
 // Submodules are skipped: archive carries no submodule content.
 //
-// Attributes are read from the index (--cached), the committed view, so an
-// uncommitted .gitattributes edit does not change the answer. An error is a tree
-// git could not list — no commit at rev, not a repository, git absent — and is
-// never reported as an empty tree.
+// Attributes are read from rev's own .gitattributes, the files git archive
+// reads, so neither a working-tree edit nor a staged one changes the answer
+// (iss-2609260933592838). Where the index holds exactly rev's .gitattributes
+// they are asked of the index (--cached), which every git answers; where they
+// differ they are asked of rev itself (--source, git 2.40 or later), and a git
+// that cannot is refused by name rather than answered from the index. An error
+// is a tree git could not list — no commit at rev, not a repository, git
+// absent — and is never reported as an empty tree.
 func ArchiveTree(root, rev string) ([]ArchiveEntry, error) {
 	out, err := isolatedGit(root, "ls-tree", "-r", "-z", "--full-tree", "--end-of-options", rev).Output()
 	if err != nil {
 		return nil, withStderr(err)
 	}
 	var entries []ArchiveEntry
+	treeAttrs := map[string]string{}
 	for _, rec := range strings.Split(string(out), "\x00") {
 		if rec == "" {
 			continue
@@ -51,6 +57,9 @@ func ArchiveTree(root, rev string) ([]ArchiveEntry, error) {
 			continue // a submodule (commit) carries no content into an archive
 		}
 		entries = append(entries, ArchiveEntry{Path: p, Mode: fields[0]})
+		if path.Base(p) == ".gitattributes" {
+			treeAttrs[p] = fields[0] + " " + fields[2]
+		}
 	}
 	if len(entries) == 0 {
 		return nil, nil
@@ -68,10 +77,19 @@ func ArchiveTree(root, rev string) ([]ArchiveEntry, error) {
 	for p := range candidates {
 		list = append(list, p)
 	}
-	cmd := isolatedGit(root, "check-attr", "--cached", "-z", "--stdin", "export-ignore")
+	source, err := attrSource(root, rev, treeAttrs)
+	if err != nil {
+		return nil, err
+	}
+	cmd := isolatedGit(root, "check-attr", source, "-z", "--stdin", "export-ignore")
 	cmd.Stdin = strings.NewReader(strings.Join(list, "\x00") + "\x00")
 	attrs, err := cmd.Output()
 	if err != nil {
+		if source != "--cached" {
+			return nil, fmt.Errorf("the index's .gitattributes differ from %s's, and reading %s's own needs "+
+				"check-attr --source (git 2.40 or later): commit or unstage the .gitattributes change (%w)",
+				rev, rev, withStderr(err))
+		}
 		return nil, withStderr(err)
 	}
 	ignored := map[string]struct{}{}
@@ -96,4 +114,35 @@ func ArchiveTree(root, rev string) ([]ArchiveEntry, error) {
 		}
 	}
 	return kept, nil
+}
+
+// attrSource is the check-attr option that reads rev's .gitattributes: --cached
+// when the index holds exactly the .gitattributes files rev does (same paths,
+// modes and blobs, none conflicted), which any git answers, and --source=<rev>
+// otherwise. treeAttrs maps each .gitattributes path in rev to "mode sha".
+func attrSource(root, rev string, treeAttrs map[string]string) (string, error) {
+	out, err := isolatedGit(root, "ls-files", "--stage", "-z", "--", ":(glob)**/.gitattributes").Output()
+	if err != nil {
+		return "", withStderr(err)
+	}
+	same := true
+	n := 0
+	for _, rec := range strings.Split(string(out), "\x00") {
+		if rec == "" {
+			continue
+		}
+		meta, p, ok := strings.Cut(rec, "\t")
+		fields := strings.Fields(meta)
+		if !ok || len(fields) != 3 {
+			return "", errors.New("git ls-files returned a record it does not document: " + rec)
+		}
+		n++
+		if fields[2] != "0" || treeAttrs[p] != fields[0]+" "+fields[1] {
+			same = false
+		}
+	}
+	if same && n == len(treeAttrs) {
+		return "--cached", nil
+	}
+	return "--source=" + rev, nil
 }
