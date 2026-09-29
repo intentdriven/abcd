@@ -252,8 +252,12 @@ func TestLoadConfigRefusesEscapingPathFields(t *testing.T) {
 		{"index doc", `{"roots":["rec"],"rules":{"index_drift":{"enabled":true,"severity":"blocker","indexes":[{"id":"i","doc":"%s","dir":"d","entry":"^x$"}]}}}`},
 		{"index dir", `{"roots":["rec"],"rules":{"index_drift":{"enabled":true,"severity":"blocker","indexes":[{"id":"i","doc":"d.md","dir":"%s","entry":"^x$"}]}}}`},
 	}
+	// The last two are inside the repository but inside its git directory, which
+	// holds a credential-bearing remote URL in .git/config: the rules read what a
+	// path names and echo it into the lint output, so .git is refused as firmly as
+	// an escape, in either case (iss-2608291814578333).
 	for _, f := range fields {
-		for _, bad := range []string{"../outside", "/etc"} {
+		for _, bad := range []string{"../outside", "/etc", ".git/config", ".GIT"} {
 			path := writeConfig(t, strings.Replace(f.body, "%s", bad, 1))
 			err := func() error { _, e := LoadConfig(path); return e }()
 			if err == nil {

@@ -9,6 +9,10 @@ found_during: "fidelity-audits"
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/specs"
+resolution: "spc-57's staging count (wrong on all three numbers) is replaced by the effect without a count, pointing at abcd intent ready for the current set; spc-67's 'declared once, in spc-58' is corrected to what the tree holds: spc-58 reserves the shape, spc-67 declares the family, store, required keys and allow-list. The class is itd-195's; no gate can check prose facts, which is that discipline's point."
+impact: internal
+resolved_by:
+  commit: "99494b090"
 ---
 
 two specs state prose facts about the tree that are false including a staging count wrong on all three numbers
@@ -32,3 +36,7 @@ the declaration is honest; the spec prose is not.
 
 Both are the shape itd-195 covers, and both argue the same thing it does: the
 remedy is to stop stating such facts in prose, not to correct them again.
+
+## Grounds
+
+- pursued: neither spec now states a count or ownership claim the tree contradicts; shown wrong if a reader can find a number or declaration claim in either passage that the code or spc-58 refutes

@@ -57,11 +57,12 @@ proposal's record sits in `dispositions/rdi-N/` with `state: declined`, and it a
 the one thing that is genuinely missing: the report that notices a widening
 proposal which is neither admitted nor declined.
 
-**The surprise entry is declared once, in spc-58's family.** itd-180's own scope
+**The surprise entry is one record, declared here.** itd-180's own scope
 reserves the surprise entry's schema "in this family now", populated in
 Iteration 2, and itd-189 also lists it. The two intents describe one record.
-The declaration lives with the reservation, in spc-58; spc-67 states its keying
-and its separateness and declares nothing a second time. A surprise entry is
+spc-58 reserves its shape, keyed by `occasioned_by`, and leaves it unpopulated;
+this spec declares the entry itself — its family, its store, its required keys
+and its allow-list (the schemas below). A surprise entry is
 `srp-N`, filed at `.abcd/work/issues/surprises/`, carrying `occasioned_by`
 naming whatever occasioned it (an `rdi-N` detection, an `adm-N` admission, a
 consequence). It is never a field on a disposition and never shares a key with
