@@ -92,3 +92,32 @@ func TestStatusSurfacesNeverSayRoadmap(t *testing.T) {
 		t.Error("the Status page says roadmap")
 	}
 }
+
+// TestStatusPageNamesTheInterimOrder: the built Status page says the head and
+// Next are read oldest id first while the block's order is the interim
+// record-id one, as the board does, from the same Block.Order; a block read in
+// any other order carries no such note.
+func TestStatusPageNamesTheInterimOrder(t *testing.T) {
+	f := newFixture(t)
+	out := t.TempDir()
+	buildFixture(t, f, out)
+	page := outFile(t, out, "record/health/index.html")
+	ui, err := LoadUI(f.Root(), "site-src/ui.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	note := html.EscapeString(ui.Status.OrderRecordID)
+	if note == "" {
+		t.Fatal("precondition: the fixture declares the order note")
+	}
+	if !strings.Contains(page, note) {
+		t.Errorf("the Status page does not name the interim order %q", ui.Status.OrderRecordID)
+	}
+	if strings.Index(page, note) > strings.Index(page, ">Now<span>") {
+		t.Error("the order note does not lead the block")
+	}
+	other := &explorer{c: &composer{ui: ui}, status: &statusblock.Block{Order: "pick"}}
+	if strings.Contains(other.statusSection(), note) {
+		t.Error("a block read in another order carries the record-id note")
+	}
+}

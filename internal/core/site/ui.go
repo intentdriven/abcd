@@ -157,9 +157,6 @@ type Relations struct {
 	BuildsOn   string `json:"builds_on"`
 }
 
-// HealthUI labels the health page's finding families. Every one of them is a
-// check the record can be run against ITSELF — nothing here is a judgement, an
-// opinion, or a number a human has to interpret before acting on it.
 // StatusUI labels the Now / Next / Later block (itd-2609212103568351).
 type StatusUI struct {
 	Now   string `json:"now"`
@@ -173,8 +170,15 @@ type StatusUI struct {
 	Draft string `json:"draft"`
 	// None stands in an empty list.
 	None string `json:"none"`
+	// OrderRecordID says the head and Next are read oldest id first, the
+	// interim order a block carries as statusblock.OrderRecordID until `abcd
+	// build next`'s pick order exists.
+	OrderRecordID string `json:"order_record_id"`
 }
 
+// HealthUI labels the health page's finding families. Every one of them is a
+// check the record can be run against ITSELF — nothing here is a judgement, an
+// opinion, or a number a human has to interpret before acting on it.
 type HealthUI struct {
 	// Unresolved is a typed reference whose target no file answers to.
 	Unresolved string `json:"unresolved"`
