@@ -541,6 +541,21 @@ jobs:
           docker run --rm -v "$GITHUB_WORKSPACE:/src:ro" \
             ghcr.io/zizmorcore/zizmor@sha256:d1117e5dbd9ee4970644067b534ab6ab50371f3c6f7f4d05446eb603a6e78f48 \
             --persona regular /src
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      # The committed workflows above are the abcd profile alone. Every profile
+      # the scaffold lays down in a managed repository is rendered and audited
+      # by the same pinned zizmor, so action pinning, permissions and
+      # credential handling are held there too, not only the injection and
+      # duplicate-key classes the in-repo audit covers (iss-2609251939472371).
+      - name: Audit the scaffolded workflow profiles
+        run: |
+          go run ./cmd/scaffold-render "$RUNNER_TEMP/scaffold-profiles"
+          docker run --rm -v "$RUNNER_TEMP/scaffold-profiles:/profiles:ro" \
+            ghcr.io/zizmorcore/zizmor@sha256:d1117e5dbd9ee4970644067b534ab6ab50371f3c6f7f4d05446eb603a6e78f48 \
+            --persona regular /profiles
 
   # The working-tier ledger gates: the .abcd/work/reviews/ charter (RD001-RD004),
   # the issue-resolution gate (RS001-RS006) and the decisions-append gate
