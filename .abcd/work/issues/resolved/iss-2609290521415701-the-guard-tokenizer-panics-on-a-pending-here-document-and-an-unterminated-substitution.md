@@ -9,7 +9,7 @@ found_during: "autonomous run A resumed 2026-09-25"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/guard/tokenize.go"
-resolution: "A here-document's bodies read inside a substitution clear the record of them the suspended command holds, so resuming it at the end of the input indexes nothing; TestPendingHereDocumentInsideAnUnterminatedSubstitution pins 60 lines with no panic and no verdict below the same line without the document."
+resolution: "A substitution suspends the here-documents pending where it opens, as bash 3.2, bash 5 and /bin/sh do: a newline inside it reads only the documents it opened, its own lines are read as commands, and its close restores the pending ones, whose bodies begin on the line after it, so the suspended command's record of its documents never points at a body already read; TestPendingHereDocumentInsideAnUnterminatedSubstitution pins 60 lines with no panic and TestPendingHereDocumentWaitsOutItsSubstitution 144 lines whose substitution holds a newline and a hazard, none below the same line without the document."
 impact: fix
 resolved_by:
   commit: "627a73a4d"
@@ -19,4 +19,4 @@ The shell guard's tokenizer panics with index out of range when a here-document 
 
 ## Grounds
 
-- pursued: every pending-document shape with an unterminated process, command or backtick substitution reads with no panic and at least as strictly as its sibling, and a 3-minute tokenizer fuzz finds no panic; a panic, or a line that reads more leniently than its sibling, would show it wrong
+- pursued: every pending-document shape with a process, command or backtick substitution holding a newline, closed or not, reads with no panic and at least as strictly as its sibling without the document, and a 3-minute tokenizer fuzz finds no panic; a panic, or a line that reads more leniently than its sibling, would show it wrong
