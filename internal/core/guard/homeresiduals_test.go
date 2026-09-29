@@ -224,6 +224,12 @@ func TestHomeSpellingsStayLinear(t *testing.T) {
 		{"parent segments", func(n int) string {
 			return "rm -rf ~/" + strings.Repeat("x/", n/8) + strings.Repeat("../", n/6) + "* /tmp/" + strings.Repeat("a/../", n/10) + "*"
 		}},
+		{"glob segments", func(n int) string {
+			return "rm -rf ~/" + strings.Repeat(".?/", n/9) + strings.Repeat("**/", n/9) + "* /" + strings.Repeat("x/.*/", n/15) + "*"
+		}},
+		{"working-directory parents", func(n int) string {
+			return "rm -rf $PWD/" + strings.Repeat("x/", n/8) + strings.Repeat("../", n/6) + "* " + strings.Repeat("a/../", n/10) + "../*"
+		}},
 		{"sequence terms", func(n int) string {
 			return "rm -rf " + strings.Repeat("$HO{M..M}E/ ", n/12)
 		}},

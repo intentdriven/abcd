@@ -44,7 +44,7 @@
       "pattern": {
         "command": "rm",
         "flags": ["-r|-R|--recursive"],
-        "arg_values": ["/", "/*", "~", "~/", "~/*", "~/.*", "$HOME", "$HOME/", "$HOME/*", "$HOME/.*", "${HOME}", "${HOME}/", "${HOME}/*", "${HOME}/.*"]
+        "arg_values": ["/", "/*", "/*/", "~", "~/", "~/*", "~/*/", "~/.*", "~/.*/", "$HOME", "$HOME/", "$HOME/*", "$HOME/*/", "$HOME/.*", "$HOME/.*/", "${HOME}", "${HOME}/", "${HOME}/*", "${HOME}/*/", "${HOME}/.*", "${HOME}/.*/"]
       },
       "why": "A recursive delete of `/` or of the home directory destroys the whole machine or every file the account owns — other projects, keys, settings — and nothing brings any of it back.",
       "successor": "Name the one directory you mean, by its full path (`rm -rf -- /absolute/path/to/target`), and never the root or the home directory itself.",
@@ -62,13 +62,17 @@
           "env rm -rf ~/*",
           "sh -c 'rm -rf ~'",
           "rm -rf ~/.*",
-          "rm -rf \"$HOME\"/.*"
+          "rm -rf \"$HOME\"/.*",
+          "rm -rf /*/",
+          "rm -rf ~/*/"
         ],
         "known_good": [
           "rm -rf /tmp/build",
           "rm -rf ~/scratch/build",
           "rm -rf \"$HOME/.cache/abcd-test\"",
           "rm -rf ~/.cache/x",
+          "rm -rf /tmp/*/",
+          "rm -rf ~/.cache/**",
           "rm ~/notes.txt",
           "rm -f /",
           "ls -la /",
