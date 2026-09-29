@@ -177,6 +177,60 @@ func TestEXIFBareTIFFIsRead(t *testing.T) {
 	}
 }
 
+// chainedTIFF builds a TIFF whose IFD0 holds only a Make and links, through
+// its next-IFD offset, to a second directory holding second: page two of a
+// multi-page TIFF, or the thumbnail's IFD1 in a JPEG's Exif segment. A cycle
+// back to IFD0 closes the chain when loop is set.
+func chainedTIFF(second []exifEntry, loop bool) []byte {
+	bo := binary.LittleEndian
+	const ifd0At, ifd1At = 8, 8 + 2 + 12 + 4
+	valuesAt := ifd1At + 2 + 12*len(second) + 4
+	out := []byte("II*\x00")
+	out = bo.AppendUint32(out, ifd0At)
+	out = bo.AppendUint16(out, 1)
+	out = append(out, 0x0f, 0x01, 0x02, 0x00, 0x04, 0, 0, 0, 'Q', 'q', 'x', 0)
+	out = bo.AppendUint32(out, ifd1At)
+	var values []byte
+	out = bo.AppendUint16(out, uint16(len(second)))
+	for _, e := range second {
+		out = bo.AppendUint16(out, e.tag)
+		out = bo.AppendUint16(out, e.typ)
+		out = bo.AppendUint32(out, uint32(len(e.value)))
+		out = bo.AppendUint32(out, uint32(valuesAt+len(values)))
+		values = append(values, e.value...)
+	}
+	next := uint32(0)
+	if loop {
+		next = ifd0At
+	}
+	out = bo.AppendUint32(out, next)
+	return append(out, values...)
+}
+
+// TestEXIFNextIFDIsRead pins the EXIF walk's second pointer, found by the
+// sweep for iss-2609291653241690: a TIFF directory ends with the offset of
+// the next one (TIFF 6.0, section 2), which chains a multi-page TIFF's pages
+// and a JPEG Exif segment's IFD0 to the thumbnail's IFD1. The walk read IFD0
+// alone, so a short Artist on page two was dropped as chance. A chain that
+// loops back is walked once.
+func TestEXIFNextIFDIsRead(t *testing.T) {
+	sc := &Scanner{identity: Identity{GitUserName: "Zedqx"}, identSev: DefaultIdentitySeverities()}
+	secrets := secretPatterns(DefaultPatterns())
+	artist := []exifEntry{{0x013b, 2, asciiValue("Zedqx")}}
+	for name, body := range map[string][]byte{
+		"page two of a TIFF":          chainedTIFF(artist, false),
+		"a chain that loops":          chainedTIFF(artist, true),
+		"IFD1 of a JPEG Exif segment": jpegWithExif(chainedTIFF(artist, false)),
+	} {
+		if !hasKind(sc.scanBytes(body, secrets, "scan.tif"), kindRealName) {
+			t.Errorf("%s: a short Artist in the second directory is not reported", name)
+		}
+	}
+	if hasKind(sc.scanBytes(chainedTIFF([]exifEntry{{0x0110, 2, asciiValue("Zedqx")}}, false), secrets, "scan.tif"), kindRealName) {
+		t.Error("a short name in page two's Model tag was reported")
+	}
+}
+
 // TestEXIFFindingIsNotDoubled pins that the IFD view adds only what the raw
 // scan missed: a long name the raw bytes already hold is reported once.
 func TestEXIFFindingIsNotDoubled(t *testing.T) {
@@ -325,6 +379,25 @@ func TestMetadataViewsWorkIsLinear(t *testing.T) {
 	}{
 		{"TIFF headers sharing one IFD", headers},
 		{"IFD entries naming overlapping values", overlapping},
+		// Every header points at the head of one long next-IFD chain of
+		// empty directories, so a walk that did not end at a directory
+		// already walked would follow the whole chain once per header.
+		{"TIFF headers sharing one next-IFD chain", func(n int) []byte {
+			var out []byte
+			for i := 0; i < n; i++ {
+				out = append(out, "II*\x00"...)
+				out = binary.LittleEndian.AppendUint32(out, uint32(n*8-i*8))
+			}
+			for i := 0; i < n; i++ {
+				out = binary.LittleEndian.AppendUint16(out, 0)
+				next := uint32(n*8 + 6*(i+1))
+				if i == n-1 {
+					next = 0
+				}
+				out = binary.LittleEndian.AppendUint32(out, next)
+			}
+			return out
+		}},
 		{"literal strings that never close", func(n int) []byte {
 			return append([]byte("%PDF-1.7\n"), bytes.Repeat([]byte(`(\376\377\000Z`), n)...)
 		}},

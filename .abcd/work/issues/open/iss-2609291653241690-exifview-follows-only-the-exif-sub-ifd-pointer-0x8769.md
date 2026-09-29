@@ -9,6 +9,7 @@ found_during: "autonomous run 2026-09-23"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/adapter/scanner/metaview.go"
+remedy: "Follow the Exif sub-IFD's MakerNote (0x927c) through a per-vendor reader, Canon first: when IFD0's Make begins Canon, walk the MakerNote as a header-less IFD in the byte order its entry count fits, value offsets relative to the TIFF header and also at the base a matching Canon TIFF footer implies, and read OwnerName (0x0009) as a person tag; read a CR3 file's CMT3 box as the same directory; skip every other vendor's MakerNote with no finding. Every offset and count bounds-checked, the entry count capped, both charged to the walk's shared budgets."
 deferred_after: "v0.11.1"
 deferral_reason: "a vendor MakerNote parser is its own lane: each vendor lays out its MakerNote differently (Canon keeps TIFF byte order and header-relative offsets, others add their own header or base), so following 0x927c is a per-vendor reader, not a pointer the Exif walk can take; the raw ASCII scan still reads a long or multi-word owner name meanwhile"
 ---
