@@ -12,6 +12,10 @@ suggested_fix: "Correct the floor's justification rather than moving the floor. 
 related_issues: ["iss-2608230847432286", "iss-2608230752354926"]
 deferred_after: "v0.10.0"
 deferral_reason: "ruling owed to the product thinker (away; run A 2026-09-25): Restate the floor reason in adversarial-review-scales-with-blast-radius as proposed (split, hold)?"
+resolution: "The floor's justification in adversarial-review-scales-with-blast-radius is corrected without moving the floor: below-the-line artefacts are unblocked because review friction would cost more than the errors it catches, and a new bound records that their gates check form, not routing, citing the four 2026-08-22/23 errors. The optional peer-as-reviewer bound is not adopted; the record itself offered it weakly and routed its capability half to itd-33 and iss-2608220750029993."
+impact: internal
+resolved_by:
+  commit: "6508adfffb3b"
 ---
 
 the adversarial-review floor assumes below-the-line artefacts are covered by their gates, and today they were not
@@ -97,3 +101,7 @@ treats a peer as a resource. Verdict SPLIT, HOLD on the intent.
 Promotion trigger, per [recurrence-is-signal](../../../development/principles/recurrence-is-signal.md):
 if this recurs among sessions that are not coincidentally co-present, the
 convention has earned more than a caveat.
+
+## Grounds
+
+- pursued: a principle whose stated reason matches its evidence keeps readers compensating for the gates' routing blind spot; shown wrong if a later reading of the principle again infers that record-lint or docs-lint vouch for a capture's routing
