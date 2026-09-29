@@ -108,7 +108,7 @@ These questions were settled by the spc-5 spec and the Phase 0 harness-interface
 
 _Prerequisites, recorded 2026-09-29 (iss-2609240227236354)._ The readiness gate
 reads this record READY, but its spec (spc-2609211950427074) stands on four
-things the tree does not hold yet, and `builds_on` names the three intents
+things the tree does not hold yet, and `builds_on` names the four intents
 behind them:
 
 - **The validator stage the adapter implements.** `abcd build` ships its loop's
