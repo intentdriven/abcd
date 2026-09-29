@@ -368,7 +368,8 @@ lapsed_at: <rfc3339>       # on a lapse: the instant the discipline gave way, no
 origin: researcher-authored|extracted-from-record|contributed-by-reading <rdg-N>/<rdi-N>
 production_mode: hand-written|dictated-and-formatted|scribe-transcribed
 details: "<text>"          # optional structured detail
-suggested_fix: "<text>"    # optional proposed remedy
+remedy: "<text>"           # the proposed fix, one line; abcd drain takes no issue without one (itd-82)
+suggested_fix: "<text>"    # the older spelling of remedy, read as it where a record carries no remedy
 related_intents: [itd-N, ...]  # an intent naming this issue back in related_issues is the one it was promoted into
 related_specs: [spc-N, ...]
 related_issues: [iss-N, ...]

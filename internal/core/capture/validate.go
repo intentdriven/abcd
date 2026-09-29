@@ -47,6 +47,7 @@ func issueFromFrontmatter(fm map[string]any, status State, path, body string) Is
 		FoundDuring:   asString(fm["found_during"]),
 		FoundAt:       asString(fm["found_at"]),
 		LapsedAt:      asString(fm["lapsed_at"]),
+		Remedy:        issueschema.RemedyOf(fm),
 		Grounds:       groundsEntries(body),
 		Resolution:    asString(fm["resolution"]),
 		WontfixReason: asString(fm["wontfix_reason"]),
