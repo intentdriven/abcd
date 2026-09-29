@@ -75,6 +75,18 @@ each receipt as a row. Relay the reviews marked `!` as reviews to re-run before
 they are trusted, and a receipt's count as how old that release is, not as work
 to do. The field is omitted when the tree holds no folder.
 
+In a repository abcd manages the board ends with the Now / Next / Later block,
+the `status` object in the JSON (`now`, `next`, `later`, `order`), rendered as
+a `status:` heading with the three counts and one line per intent under `Now:`,
+`Next:` and `Later:`. Now is every intent a build run has in a lane (each row's
+`lane` names the run, the lane, its next step and the role it waits on), then
+the intent marked `next_up`; Next is every planned intent the readiness gate
+reports READY; Later is every planned intent the gate refuses, its
+`failing_checks` named, then the drafts. Relay Now first: it is what is being
+built and what comes next. Until `abcd build next` exists the READY intents are
+read oldest id first (`order` is `record-id`), so say so when relaying the
+`next_up` intent. The block is computed each time and nothing stores it.
+
 ## Record-id dispatch
 
 Bare answers *what can I do*; `abcd <id>` answers *what is this, and what is
