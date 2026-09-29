@@ -31,7 +31,7 @@ store/loop/scan for the rest). A missing or misbehaving external backend degrade
 to the native default rather than breaking abcd — each seam carries its own thin
 capability contract. Adding a backend = implement the interface and register it in a
 registry (the design target `internal/registry`, which does not exist yet);
-consumers are untouched. Of the five, only `scanner` is a directory under `internal/adapter/` in the tree; `oracle`, `history`, `spec` and `run` are design targets, each introduced by the phase that first consumes it, and today their native paths live in `internal/core` (`oracle`, `history`, `spec`, `implement`). `internal/adapter/` also holds adapters that are not capability seams: `gitleaks`, `hosting` and `openaiapi`. [`internal/README.md`](../../../../internal/README.md) § Planned seams is the gated list. See
+consumers are untouched. Of the five, only `scanner` is a directory under `internal/adapter/` in the tree; `oracle`, `history`, `spec` and `run` are design targets, each introduced by the first intent that consumes it, and today their native paths live in `internal/core` (`oracle`, `history`, `spec`, `implement`). `internal/adapter/` also holds adapters that are not capability seams: `gitleaks`, `hosting` and `openaiapi`. [`internal/README.md`](../../../../internal/README.md) § Planned seams is the gated list. See
 [`03-configuration.md`](03-configuration.md) for the config schema.
 
 **Oracle consumers.** `lifeboat-reviewer`, `press-release-composer`, and
