@@ -103,6 +103,7 @@ func TestStartRefusesEachFailedCheckAndWritesNoState(t *testing.T) {
 			specWithSteps(""), CheckClaimSections, "Scope Conditions"},
 		{"a hold", "itd-10", plannedRel, readyIntent("held: \"awaiting the pacing ruling\"\n", settledQuestions), specWithSteps(""), CheckHold, "awaiting the pacing ruling"},
 		{"an unshipped blocker", "itd-10", plannedRel, readyIntent("blocked_by: [itd-99]\n", settledQuestions), specWithSteps(""), CheckBlocked, "itd-99"},
+		{"a superseded blocker whose replacement is unshipped", "itd-10", plannedRel, readyIntent("blocked_by: [itd-27]\n", settledQuestions), specWithSteps(""), CheckBlocked, "itd-27 → itd-94"},
 		{"every step landed", "itd-10", plannedRel, readyIntent("", settledQuestions),
 			specWithSteps("1. The parser\n   - landed: #1\n"), CheckSteps, "landed"},
 		{"an unreadable steps section", "itd-10", plannedRel, readyIntent("", settledQuestions),
@@ -116,6 +117,8 @@ func TestStartRefusesEachFailedCheckAndWritesNoState(t *testing.T) {
 			}
 			repo.Write(tc.intentRel, tc.intent)
 			repo.Write(specRel, tc.spec)
+			repo.Write(supersededBlockerRel, supersededBlocker)
+			repo.Write(".abcd/development/intents/planned/itd-94-replacement.md", replacementIntent)
 			repo.Commit("fixture")
 
 			_, err := Start(repo.Root(), tc.key, Options{})
@@ -408,6 +411,28 @@ func TestStartCreatesOneLaneAndAStartAgainResumesIt(t *testing.T) {
 	runs, err := Runs(repo.Root())
 	if err != nil || len(runs) != 1 {
 		t.Fatalf("one run, not two: %d %v", len(runs), err)
+	}
+}
+
+// The blocked check's supersession fixture: itd-27 is superseded by itd-94.
+const (
+	supersededBlockerRel = ".abcd/development/intents/superseded/itd-27-replaced.md"
+	supersededBlocker    = "---\nid: itd-27\nslug: replaced\nkind: standalone\nsuperseded_by: itd-94\nkind_at_supersession: standalone\n---\n# replaced\n"
+	replacementIntent    = "---\nid: itd-94\nslug: replacement\nkind: standalone\n---\n# replacement\n"
+)
+
+// TestStartFollowsASupersededBlockerToItsShippedReplacement is ruling BZ2 of
+// 2026-09-29 at the build: an intent whose blocker was superseded waits on the
+// intent that replaced it, so once that replacement has shipped the blocked
+// check passes and the run starts.
+func TestStartFollowsASupersededBlockerToItsShippedReplacement(t *testing.T) {
+	repo := loopRepo(t, readyIntent("blocked_by: [itd-27]\n", settledQuestions), specWithSteps(""))
+	repo.Write(supersededBlockerRel, supersededBlocker)
+	repo.Write(".abcd/development/intents/shipped/itd-94-replacement.md", replacementIntent)
+	repo.Commit("the blocker's replacement shipped")
+
+	if _, err := Start(repo.Root(), "itd-10", Options{}); err != nil {
+		t.Fatalf("a blocker whose replacement shipped no longer blocks: %v", err)
 	}
 }
 

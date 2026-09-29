@@ -64,7 +64,13 @@ No run is created until every check passes, and each is a read (criteria 1 and 2
   (iss-2609200830076665).
 - **blocked** — nothing the record names in `blocked_by` is unshipped: an
   intent outside `shipped/`, or one this checkout's store does not hold, blocks
-  it (itd-2609211116005482).
+  it (itd-2609211116005482). A blocker in `superseded/` is followed along its
+  `superseded_by` to the intent that replaced it, transitively, and the record
+  waits on that replacement: it blocks exactly when the last intent of the
+  chain has not shipped (ruling BZ2 of 2026-09-29). A chain that loops, names a
+  record this checkout does not hold, stops at a superseded record naming no
+  successor, or ends at a decision (`adr-N`) rather than an intent blocks, and
+  the reason names the chain.
 - **steps** — the open spec's `## Steps`, read through the spec store's own
   reader, parses and leaves at least one step unlanded. A spec listing no steps
   is one step, the whole spec.

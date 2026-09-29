@@ -111,6 +111,12 @@ func parseIntent(relPath, content, bucket string) (Intent, error) {
 	} else {
 		it.TargetRelease = v
 	}
+	// The successor is read leniently as well: a value in a shape no verb
+	// writes reads as naming none, which the blocked check refuses on, and the
+	// record lint names the line.
+	if v, ok := frontmatter.ScalarString(fields["superseded_by"].Value); ok {
+		it.SupersededBy = v
+	}
 	if err := Validate(it); err != nil {
 		return Intent{}, fmt.Errorf("intent: malformed %s: %w", relPath, err)
 	}

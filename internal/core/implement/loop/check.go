@@ -89,7 +89,9 @@ const maxIntentBytes = 256 * 1024
 //   - hold: no `held:` on the record (iss-2609200830076665).
 //   - blocked: nothing the record names in `blocked_by` is unshipped
 //     (itd-2609211116005482: an intent with an unshipped blocker is not one
-//     a run may take).
+//     a run may take); a superseded blocker is followed along
+//     `superseded_by` to its replacement, transitively (ruling BZ2 of
+//     2026-09-29).
 //   - steps: the spec's `## Steps` reads, and leaves a step to build.
 //   - peers: no peer holds the record — no sibling worktree or local branch
 //     holds it in another bucket, and no session holds a live claim on it.

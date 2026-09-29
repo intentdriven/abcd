@@ -104,6 +104,11 @@ type Intent struct {
 	// `target_release:` carries it, and empty when it names none
 	// (itd-2609212103572513).
 	TargetRelease string `json:"target_release,omitempty"`
+	// SupersededBy is the successor a superseded record names in its
+	// `superseded_by:`, an intent (itd-M) or a decision (adr-N), and empty
+	// when it names none. The build's blocked check follows it (ruling BZ2 of
+	// 2026-09-29).
+	SupersededBy string `json:"superseded_by,omitempty"`
 }
 
 // Corpus is the in-memory set of intent records discovered across every bucket.
