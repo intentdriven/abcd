@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/core/vintage"
 	"github.com/intentdriven/abcd/internal/gittest"
@@ -117,5 +118,66 @@ func TestInstallProceedsThroughFreshBinary(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(repo, ".abcd", "config.json")); err != nil {
 		t.Errorf("fresh install wrote nothing: %v", err)
+	}
+}
+
+// TestStaleRefusalPrecedesTheBinDirProbe pins AC2's "refuses before any write"
+// under an explicit --bin-dir (iss-2609291942529461). The writability probe
+// creates and removes a temp file in the named directory (or, when it does not
+// exist yet, in its nearest existing parent), so a stale binary that probed
+// first touched the filesystem before refusing. Creating or removing an entry
+// moves the directory's modification time, so a watched directory whose mtime
+// is pinned in the past shows whether the probe ever ran.
+func TestStaleRefusalPrecedesTheBinDirProbe(t *testing.T) {
+	cases := []struct {
+		name string
+		// binDir returns the --bin-dir to pass and the directory the probe
+		// would write into.
+		binDir func(root string) (binDir, watched string)
+	}{
+		{"existing bin dir", func(root string) (string, string) { return root, root }},
+		{"bin dir to be created", func(root string) (string, string) { return filepath.Join(root, "opt", "bin"), root }},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			setupHermetic(t)
+			repo := t.TempDir()
+			if err := os.Mkdir(filepath.Join(repo, ".git"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			binDir, watched := tc.binDir(t.TempDir())
+			past := time.Date(2001, 1, 1, 0, 0, 0, 0, time.UTC)
+			if err := os.Chtimes(watched, past, past); err != nil {
+				t.Fatal(err)
+			}
+			orig := currentVintage
+			t.Cleanup(func() { currentVintage = orig })
+			currentVintage = func() vintage.Current { return vintage.Current{Known: false} }
+
+			opts := installOpts()
+			opts.BinDir = binDir
+			res, err := Install(repo, opts, RefusingPrompter{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if res.Status != "refused" {
+				t.Fatalf("status = %q, want refused", res.Status)
+			}
+			fi, err := os.Stat(watched)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !fi.ModTime().Equal(past) {
+				t.Errorf("the --bin-dir probe touched %s before the stale refusal (mtime moved to %v)", watched, fi.ModTime())
+			}
+			entries, err := os.ReadDir(watched)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(entries) != 0 {
+				t.Errorf("the refusal left entries in %s: %v", watched, entries)
+			}
+			noWrites(t, repo)
+		})
 	}
 }
