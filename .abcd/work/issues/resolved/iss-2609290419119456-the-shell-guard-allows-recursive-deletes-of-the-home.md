@@ -9,7 +9,7 @@ found_during: "autonomous run 2026-09-23"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/guard/unknown.go"
-resolution: "rm-rf-root-or-home reads the home through a backslash-newline inside the name, a brace group's words and a parameter expansion whose operator can leave the value as it is; homeresiduals_test.go pins 98 spellings."
+resolution: "rm-rf-root-or-home reads the home through a backslash-newline inside the name, a brace group's words (a name runs on into a list's or a sequence's letters), a parameter expansion whose operator can leave the value as it is (a subscript read to its matching bracket, with any text after it but an alternative), and an alternative read as its word as written, up to three alternatives deep; homeresiduals_test.go pins 193 spellings."
 impact: fix
 resolved_by:
   commit: "ad44726df"
