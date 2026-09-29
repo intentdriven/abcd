@@ -29,9 +29,12 @@ import (
 type sessionStartHooks struct {
 	Hooks map[string][]struct {
 		Hooks []struct {
-			Type    string `json:"type"`
-			Timeout int    `json:"timeout"`
-			Command string `json:"command"`
+			Type string `json:"type"`
+			// Timeout is a pointer so an absent field (the host's per-event
+			// default) reads differently from a declared one.
+			Timeout       *int   `json:"timeout"`
+			StatusMessage string `json:"statusMessage"`
+			Command       string `json:"command"`
 		} `json:"hooks"`
 	} `json:"hooks"`
 }
