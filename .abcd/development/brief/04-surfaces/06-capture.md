@@ -602,6 +602,7 @@ Sub-verbs: `abcd capture admit`, `abcd capture defer`, `abcd capture disposition
 | `--found-during` | string |
 | `--lapsed-at` | string |
 | `--production-mode` | string |
+| `--remedy` | string |
 | `--severity` | string |
 | `--slug` | string |
 | `--source` | string |

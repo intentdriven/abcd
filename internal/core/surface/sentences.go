@@ -116,6 +116,9 @@ var sentences = map[string]string{
 	"abcd docs cite refresh": "Fetch every cited URL once, the one documentation verb that reaches the network: " +
 		"Writes the citation baseline; refuses an unreadable docs-lint configuration.",
 
+	"abcd drain": "Sort the open issues by the drain's field rule, eligible first in drain order: " +
+		"Writes nothing; refuses to start without --dry-run, as the run is not built.",
+
 	"abcd embark": "Unpack a verified lifeboat into a target repository, probing first: " +
 		"Writes only its record families and marker block; refuses the whole write on any conflict.",
 	"abcd embark from": "Unpack a lifeboat's record families into a target repository: " +

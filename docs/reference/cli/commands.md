@@ -282,6 +282,7 @@ File an issue from quoted text, or render the ledger's status bare: Writes one r
       --found-during string      session/command context (default manual-capture)
       --lapsed-at string         RFC 3339 instant a discipline gave way (the lapse, not the write-up)
       --production-mode string   how this record's text was produced: hand-written|dictated-and-formatted|scribe-transcribed (default: the repo's declared mode, else hand-written)
+      --remedy abcd drain        the proposed fix, one line; abcd drain takes no issue without one
       --severity string          severity: nitpick | minor | major | critical (default minor)
       --slug string              override the slug derived from the text
       --source string            surfacing channel: plan-review | impl-review | manual-test | review-followup | agent-finding | agent-observation | user-observation | drift-detection | memory-curation | managed-repo (default user-observation)
@@ -841,6 +842,42 @@ This is the only abcd verb that reaches the network on behalf of documentation. 
 ```
       --config string   path to docs-lint.json (default: <root>/.abcd/docs-lint.json)
       --root string     repo root (default: current working directory)
+```
+
+### `abcd drain`
+
+Sort the open issues by the drain's field rule, eligible first in drain order: Writes nothing; refuses to start without --dry-run, as the run is not built.
+
+**Usage:** `abcd drain [flags]`
+
+Work the open issue ledger unattended: fix the issues that need no decision, and
+hand the rest back by kind. The rule for which issues need no decision is a
+recorded decision, and it reads the record's fields alone: nothing open in
+blocked_by; a category in the fixable set (tech-debt, documentation,
+inconsistency, drift, bug, ux); severity nitpick or minor; and a remedy: field.
+A security issue is always a person's. Every other open issue is handed back,
+listed as ineligible, or skipped naming its blocker, by the rule that excluded it.
+
+--dry-run shows every open issue's disposition, the eligible ones first in the
+order a drain takes them (category tech-debt, documentation, inconsistency,
+drift, bug, ux; then nitpick before minor; then oldest first), and writes
+nothing. The host judgement over each eligible remedy does not run in a dry
+run; it can only ever hand an issue back.
+
+The run itself is not built: without --dry-run the verb refuses to start, and
+exits 2 with nothing read or written.
+
+**Flags:**
+
+```
+      --dry-run   show every open issue's disposition and the order a drain takes them; writes nothing
+```
+
+**Example:**
+
+```
+abcd drain --dry-run
+  abcd drain --dry-run --json
 ```
 
 ### `abcd embark`
