@@ -318,7 +318,10 @@
         "adm": ".abcd/work/issues/admissions",
         "srp": ".abcd/work/issues/surprises",
         "rfm": ".abcd/work/issues/reframes"
-      }
+      },
+      "extra_roots": [
+        ".abcd/development"
+      ]
     },
     "record_provenance": {
       "enabled": true,
