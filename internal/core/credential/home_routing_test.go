@@ -276,3 +276,132 @@ func TestAPointerThroughALinkIsRefusedInAPointersWords(t *testing.T) {
 		}
 	}
 }
+
+// TestSetKeepsTheIndexInTheDirectoryItHolds is iss-2609290300313698
+// (review-integ14 item 4, LOW (b)): ~/.abcd is renamed aside and a different
+// real directory, carrying an index of its own, is put in its place after Set
+// has opened ~/.abcd and taken the index's lock, and before the index is read
+// (a same-uid race, staged when the keychain home locates its tool). The index
+// is written through the directory Set holds, so it must be READ through that
+// directory too: the held index keeps its own entries and gains the new name,
+// and the directory swapped in is left as it was. Reading the index by path
+// under the lock read the swapped-in directory's entries and wrote them, with
+// the new name, over the held directory's own.
+func TestSetKeepsTheIndexInTheDirectoryItHolds(t *testing.T) {
+	withFakeKeychain(t, keychainSecretService)
+	home := t.TempDir()
+	abcd := filepath.Join(home, ".abcd")
+	fresh := filepath.Join(home, "fresh")
+	aside := filepath.Join(home, "moved-aside")
+	for _, c := range []struct{ dir, body string }{
+		{abcd, `{"held-own":{"home":"keychain"}}` + "\n"},
+		{fresh, `{"swapped-in":{"home":"keychain"}}` + "\n"},
+	} {
+		if err := os.MkdirAll(c.dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(c.dir, IndexFileName), []byte(c.body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	freshBefore, err := os.ReadFile(filepath.Join(fresh, IndexFileName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	swapped := false
+	locate := locateKeychain
+	locateKeychain = func() (keychainTool, error) {
+		if !swapped {
+			swapped = true
+			if err := os.Rename(abcd, aside); err != nil {
+				t.Fatalf("swap: %v", err)
+			}
+			if err := os.Rename(fresh, abcd); err != nil {
+				t.Fatalf("swap: %v", err)
+			}
+		}
+		return locate()
+	}
+	t.Cleanup(func() { locateKeychain = locate })
+	changed, err := Set(home, "svc", Choice{Home: HomeKeychain, Value: secretValue})
+	if !swapped {
+		t.Fatalf("Set never located the keychain under the lock, so the race could not be staged: changed %v, err %v", changed, err)
+	}
+	if err != nil || !changed {
+		t.Fatalf("Set must record the new name in the directory it holds: changed %v, err %v", changed, err)
+	}
+	held, err := os.ReadFile(filepath.Join(aside, IndexFileName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`"held-own"`, `"svc"`} {
+		if !strings.Contains(string(held), want) {
+			t.Errorf("the held directory's index lost or never gained %s:\n%s", want, held)
+		}
+	}
+	if strings.Contains(string(held), `"swapped-in"`) {
+		t.Errorf("the held directory's index carries the swapped-in directory's entry:\n%s", held)
+	}
+	if after, err := os.ReadFile(filepath.Join(abcd, IndexFileName)); err != nil || string(after) != string(freshBefore) {
+		t.Errorf("the directory swapped in was changed: err %v, index now\n%s", err, after)
+	}
+}
+
+// TestSetMachineKeepsTheStoreInTheDirectoryItHolds is the store's half of
+// iss-2609290300313698: setLocked writes the store through the ~/.abcd
+// SetMachine's walk opened, so it reads the store through it too. ~/.abcd is
+// swapped for a different real directory, carrying a store of its own, after
+// that walk; the held store keeps its own entries and gains the new one, and
+// neither the swapped-in directory's entries nor the new value cross between
+// the two.
+func TestSetMachineKeepsTheStoreInTheDirectoryItHolds(t *testing.T) {
+	home := t.TempDir()
+	abcd := filepath.Join(home, ".abcd")
+	fresh := filepath.Join(home, "fresh")
+	aside := filepath.Join(home, "moved-aside")
+	for _, c := range []struct{ dir, body string }{
+		{abcd, `{"held-own":"held-value-0001"}` + "\n"},
+		{fresh, `{"swapped-in":"swapped-value-0002"}` + "\n"},
+	} {
+		if err := os.MkdirAll(c.dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(c.dir, StoreFileName), []byte(c.body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	freshBefore, err := os.ReadFile(filepath.Join(fresh, StoreFileName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir, err := fsutil.EnsureHomeScope(home, ".abcd", 0o700)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dir.Close()
+	if err := os.Rename(abcd, aside); err != nil {
+		t.Fatalf("swap: %v", err)
+	}
+	if err := os.Rename(fresh, abcd); err != nil {
+		t.Fatalf("swap: %v", err)
+	}
+	changed, err := setLocked(home, dir, "svc", secretValue)
+	if err != nil || !changed {
+		t.Fatalf("setLocked must store the value in the directory it holds: changed %v, err %v", changed, err)
+	}
+	held, err := os.ReadFile(filepath.Join(aside, StoreFileName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`"held-own"`, `"svc"`} {
+		if !strings.Contains(string(held), want) {
+			t.Errorf("the held directory's store lost or never gained %s", want)
+		}
+	}
+	if strings.Contains(string(held), "swapped-value-0002") {
+		t.Error("the held directory's store carries the swapped-in directory's value")
+	}
+	if after, err := os.ReadFile(filepath.Join(abcd, StoreFileName)); err != nil || string(after) != string(freshBefore) {
+		t.Errorf("the directory swapped in was changed: err %v", err)
+	}
+}

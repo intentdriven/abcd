@@ -100,6 +100,10 @@ type Intent struct {
 	// Bundle is the bundle a bundle-member names in its `bundle:` field, and
 	// empty when the record names none (itd-34).
 	Bundle string `json:"bundle,omitempty"`
+	// TargetRelease is the release the intent must land by, as its
+	// `target_release:` carries it, and empty when it names none
+	// (itd-2609212103572513).
+	TargetRelease string `json:"target_release,omitempty"`
 }
 
 // Corpus is the in-memory set of intent records discovered across every bucket.
@@ -229,6 +233,11 @@ type PlanOptions struct {
 	// when it disagrees with a judgement the record already carries, and
 	// accepted as a no-op when it agrees; empty leaves the record unjudged.
 	Impact string
+	// Target is the release the planned intent must land by, written as
+	// `target_release:` in the same write that plans the draft
+	// (itd-2609212103572513). It is validated before anything moves; empty
+	// writes none.
+	Target string
 }
 
 // PlanResult reports a completed Plan: the updated planned intent and the spec
@@ -252,6 +261,9 @@ type PlanResult struct {
 	// empty when it wrote none — because no --impact was supplied, or because the
 	// record already carried the same value.
 	ImpactStamped string `json:"impact_stamped"`
+	// TargetStamped is the target release this run wrote onto the record
+	// (PlanOptions.Target), and empty when it wrote none.
+	TargetStamped string `json:"target_stamped,omitempty"`
 	// Relinked and RelinkError report the repoint of links that named the
 	// draft's old path, as ReconcileResult's do for a close.
 	Relinked    []relink.Rewrite `json:"relinked,omitempty"`

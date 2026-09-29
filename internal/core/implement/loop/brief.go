@@ -19,6 +19,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/adapter/scanner"
 	"github.com/intentdriven/abcd/internal/core/decide"
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
 	"github.com/intentdriven/abcd/internal/core/intent"
@@ -87,6 +88,9 @@ type briefSources struct {
 	conventions, conventionsFrom string
 	adrs                         []citedADR
 	decisions                    []string
+	// steps is the spec's build view at the base (spec.Steps): the steps it
+	// lists, or its one implicit step.
+	steps []spec.Step
 }
 
 // citedADR is one ADR the intent cites, as the lane's base holds it.
@@ -202,6 +206,9 @@ func readBriefSources(repoRoot string, st State, lane *Lane) (briefSources, erro
 	}
 	src.intentPath, src.intentText = it[0].path, string(intentText)
 	src.specPath, src.specText = sp[0].path, string(specText)
+	if src.steps, err = laneSteps(st, lane, base, src.specText); err != nil {
+		return src, err
+	}
 	src.conventions, src.conventionsFrom = conventionsSection(string(agents))
 
 	ids := adrCiteRe.FindAllString(src.intentText, -1)
@@ -227,6 +234,28 @@ func readBriefSources(repoRoot string, st State, lane *Lane) (briefSources, erro
 		src.decisions = decisionsNaming(string(log), st.Intent, st.Spec)
 	}
 	return src, nil
+}
+
+// laneSteps reads the spec's steps at the lane's base and holds the lane's own
+// step to them: the lane was opened for a step as the spec listed it when the
+// run started, and the brief names the steps before it, so a base whose spec
+// lists that step under another title — reordered or rewritten since, which a
+// run does not follow — or whose steps cannot be read is refused rather than
+// briefed with the wrong predecessors (unrecognized-input-never-writes).
+func laneSteps(st State, lane *Lane, base, specText string) ([]spec.Step, error) {
+	steps, err := spec.Steps(specText)
+	if err != nil {
+		return nil, refuse(string(StepBrief), "", lane.ID, fmt.Sprintf("%s's steps cannot be read at %s: %v", st.Spec, base, err),
+			"rewrite "+spec.StepsHeading+" on the default branch as `abcd intent ready "+st.Intent+"` describes")
+	}
+	remedy := "restore " + st.Spec + "'s steps on the default branch as the run started from them: a run does not follow steps reordered mid-run"
+	if n := lane.SpecStep; n < 1 || n > len(steps) {
+		return nil, refuse(string(StepBrief), "", lane.ID, fmt.Sprintf("%s at %s lists %d step(s), none numbered %d, the step this lane was opened for", st.Spec, base, len(steps), n), remedy)
+	}
+	if got := steps[lane.SpecStep-1]; got.Title != lane.StepTitle {
+		return nil, refuse(string(StepBrief), "", lane.ID, fmt.Sprintf("%s at %s lists step %d as %q, not the %q this lane was opened for", st.Spec, base, got.Number, got.Title, lane.StepTitle), remedy)
+	}
+	return steps, nil
 }
 
 // baseTree reads the record out of one commit's objects through the isolated
@@ -449,6 +478,12 @@ func renderBrief(st State, lane Lane, laneDir string, src briefSources) []byte {
 	p("- Commit on its branch, `%s`, cut from the default branch at `%s`. Never push, never switch\n", lane.Branch, lane.BaseSHA)
 	p("  branch, and never commit anywhere else.\n\n")
 
+	// The steps before the lane's (itd-2609212103565953, criterion 4): what the
+	// spec's author ordered ahead of this step, and what landed each, so the
+	// implementer builds on them rather than again.
+	p("## The spec's steps before yours\n\n")
+	renderEarlierSteps(&b, st, lane, src.steps)
+
 	p("## What you hand back\n\n")
 	p("Write these three files, then stop:\n\n")
 	p("1. Your report, `%s`: what you built, what you did not, and what a reviewer should look at.\n", at(ReportFileName))
@@ -473,6 +508,18 @@ func renderBrief(st State, lane Lane, laneDir string, src briefSources) []byte {
 	p("its exit code is 0, and the report exists. A receipt short of any of these is refused, naming what\n")
 	p("is missing, and the lane waits for a corrected one.\n\n")
 
+	// The outbound policy (itd-152): the harness stamps a session URL and an
+	// attribution footer onto what an agent posts, outside the agent's own
+	// output, so the prompt that starts the agent is where the rule has to be.
+	// It is quoted from scanner.OutboundPolicy, the one value the scanner, the
+	// lint rules and the commit gates quote, never restated here, and it is the
+	// brief's own instruction: a managed repository's conventions need not
+	// carry it.
+	p("## Outward-facing text\n\n")
+	p("A pull-request body, an issue, a comment, a commit message and a release note are public the moment\n")
+	p("they exist. This holds whatever the conventions below say:\n\n")
+	p("> %s\n\n", scanner.OutboundPolicy)
+
 	p("---\n\n## The intent: %s\n\n<!-- begin %s -->\n\n%s\n\n<!-- end %s -->\n\n", st.Intent, src.intentPath, strings.TrimSpace(src.intentText), src.intentPath)
 	p("## The spec: %s\n\n<!-- begin %s -->\n\n%s\n\n<!-- end %s -->\n\n", st.Spec, src.specPath, strings.TrimSpace(src.specText), src.specPath)
 	p("## The conventions: %s\n\n<!-- begin %s -->\n\n%s\n\n<!-- end %s -->\n\n", ConventionsFile, ConventionsFile, src.conventions, ConventionsFile)
@@ -496,6 +543,46 @@ func renderBrief(st State, lane Lane, laneDir string, src briefSources) []byte {
 		p("%s\n", d)
 	}
 	return b.Bytes()
+}
+
+// renderEarlierSteps writes the brief's steps section: the lane's step among
+// the spec's, and each step before it with what landed it — the `landed:` the
+// spec at the base records, and the lane of this run that built it.
+func renderEarlierSteps(b *bytes.Buffer, st State, lane Lane, steps []spec.Step) {
+	if len(steps) == 1 && steps[0].Implicit {
+		fmt.Fprintf(b, "%s lists no steps, so this lane builds the whole spec: no step comes before it.\n\n", st.Spec)
+		return
+	}
+	fmt.Fprintf(b, "This lane builds step %d of the %d %s lists", lane.SpecStep, len(steps), st.Spec)
+	if lane.SpecStep <= 1 {
+		fmt.Fprintf(b, ": no step comes before it.\n\n")
+		return
+	}
+	fmt.Fprintf(b, ". The steps before it, and what landed each:\n\n")
+	for _, s := range steps[:lane.SpecStep-1] {
+		var what []string
+		if s.Landed != "" {
+			what = append(what, "landed: "+s.Landed+" (the spec at the lane's base)")
+		}
+		for _, l := range st.Lanes {
+			if l.ID == lane.ID || l.SpecStep != s.Number {
+				continue
+			}
+			built := "built by " + l.ID + " of this run"
+			if l.Branch != "" {
+				built += fmt.Sprintf(": branch `%s` at %s", l.Branch, l.HeadSHA)
+			}
+			if l.PR > 0 {
+				built += fmt.Sprintf(", pull request #%d", l.PR)
+			}
+			what = append(what, built)
+		}
+		if len(what) == 0 {
+			what = append(what, "not marked landed at the lane's base, and no lane of this run built it")
+		}
+		fmt.Fprintf(b, "%d. %q — %s\n", s.Number, s.Title, strings.Join(what, "; "))
+	}
+	b.WriteString("\n")
 }
 
 // relabel re-labels a refusal made for another step as this step's, so the

@@ -200,7 +200,8 @@ type Await struct {
 type Entry struct {
 	At   time.Time `json:"at"`
 	Lane string    `json:"lane,omitempty"`
-	// Step is the step the entry records: a lane step, "start" or "receipt".
+	// Step is the step the entry records: a lane step, "start", "open" (a
+	// later lane opened for its spec step) or "receipt".
 	Step string `json:"step"`
 	Note string `json:"note,omitempty"`
 }

@@ -1,7 +1,7 @@
 ---
 name: release-changelog-composer
 description: Compose the prose of one release cut from the records that shipped in it — the changelog lines and the release page, every line and headline citing the record id it reports, so the binary can prove both documents describe exactly the cut. Host-delegated; feeds `abcd launch ship --changelog-json`.
-prompt_version: 0.4.0
+prompt_version: 0.4.1
 reads_untrusted_input: true
 capability_scope:
   task_classes: [surface_render]
@@ -34,6 +34,9 @@ read-only preview `abcd changelog --json`):
   superseded or withdrawn: that is a real, user-visible change.
 - each entry carries `id`, `path`, `impact`, `title`, `summary`, `in_changelog`,
   `in_press_release`.
+- `targets[]` — planned intents that name a release they must land by. They are
+  NOT in the cut: never cite one, never mention one, never say what is coming.
+  The list is the operator's report, and the no-forecast rule below covers it.
 
 Then read the records themselves at their `path` — an intent's press release, an
 issue's body — for the material to write an honest line. `summary` is the record's

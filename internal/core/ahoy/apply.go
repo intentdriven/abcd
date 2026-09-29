@@ -921,10 +921,11 @@ func (a *applyCtx) registerRepo(sha string) {
 
 	wrote := false
 	lineageConflict := false
-	lockErr := withHistoryLock(func() error {
+	lockErr := withHistoryLock(func(dir *os.Root) error {
 		// Re-load inside the lock: the pre-lock read may be stale after a concurrent
-		// install's write, and the mutation must build on the current index.
-		locked, lerr := loadHistoryIndex()
+		// install's write, and the mutation must build on the current index. The
+		// load and the write go through dir, the directory whose lock is held.
+		locked, lerr := loadHistoryIndexIn(dir)
 		if lerr != nil || locked == nil {
 			return lerr
 		}
@@ -950,7 +951,7 @@ func (a *applyCtx) registerRepo(sha string) {
 					cand.Status = "superseded"
 				}
 			}
-			if werr := writeHistoryIndex(locked); werr != nil {
+			if werr := writeHistoryIndexIn(dir, locked); werr != nil {
 				return werr
 			}
 			wrote = true
@@ -974,7 +975,7 @@ func (a *applyCtx) registerRepo(sha string) {
 			}
 		}
 		locked.Repos = append(locked.Repos, newEntry)
-		if werr := writeHistoryIndex(locked); werr != nil {
+		if werr := writeHistoryIndexIn(dir, locked); werr != nil {
 			return werr
 		}
 		wrote = true

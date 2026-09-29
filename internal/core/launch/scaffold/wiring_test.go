@@ -224,22 +224,12 @@ func TestScaffoldedCharterExemptsShaKeyedReceiptDirs(t *testing.T) {
 //     an attacker-controlled context such as a pull request's title fails the
 //     evaluation instead of passing unnoticed.
 //
-// Every profile the templates render is audited, with the hostile managed CI
-// above feeding the derived check names.
+// Every profile the templates render (AuditProfiles) is audited, with the
+// hostile managed CI above feeding the derived check names. CI's zizmor job
+// audits the same set for what these two classes leave out: action pinning,
+// permissions and credential handling (iss-2609251939472371).
 func TestScaffoldedWorkflowsPassTheWorkflowAudit(t *testing.T) {
-	semantic := BareSubstitutions("main")
-	semantic.SemanticGates = []string{"docs-currency-reviewer"}
-	withChecks := BareSubstitutions("trunk")
-	withChecks.CIChecks = []string{"Unit tests (linux)", "lint"}
-	profiles := map[string]Substitutions{
-		"abcd":           AbcdSubstitutions(),
-		"bare":           BareSubstitutions("main"),
-		"bare+ci-checks": withChecks,
-		"bare+semantic":  semantic,
-		"gate":           GateSubstitutions("main", ""),
-		"gate+own":       GateSubstitutions("main", ".github/workflows/release.yml"),
-	}
-	for name, subs := range profiles {
+	for name, subs := range AuditProfiles() {
 		rendered, err := Render(subs)
 		if err != nil {
 			t.Fatal(err)

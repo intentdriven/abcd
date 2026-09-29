@@ -212,8 +212,9 @@ to an agent the result's `awaiting` names the `role` to start as a fresh agent,
 the `brief` to hand it and the `receipt` path it writes; the lane then moves
 only when `receipt` is called with that path and the receipt verifies. A step
 while the lane awaits re-tells the await and moves nothing; a complete run says
-`complete: true`. A step that fails leaves the state as it was, so the next call
-performs it again, and a completed step is never repeated. Before the run's
+`complete: true`. When a lane is done, the spec's next pending step opens the
+next lane and the run record names it. A step that fails leaves the state as it
+was, so the next call performs it again, and a completed step is never repeated. Before the run's
 `next_eligible_at` the step is refused as a pause (exit 3).
 
 Without `--run`, both act on the one run in progress in this checkout, and are
@@ -226,7 +227,8 @@ The lane's steps are `worktree` (the lane's worktree in
 `~/.abcd/worktrees/<root-sha>/<run-id>-<lane-id>`, on a branch
 `build/<run-id>-<lane-id>` cut from the default branch), `brief` (the lane's
 brief, rendered from that base into
-`.abcd/.work.local/run/<run-id>/<lane-id>/brief.md`), `implement` (awaits an
+`.abcd/.work.local/run/<run-id>/<lane-id>/brief.md`, naming the spec step the
+lane builds and each step before it with what landed it), `implement` (awaits an
 `implementer`'s receipt at `.abcd/.work.local/run/<run-id>/<lane-id>/receipt.json`),
 then `validate` and `land`. An implementer's receipt is one strict JSON object:
 `schema_version`, `run_id`, `lane`, `branch`, `commits` (full object names),

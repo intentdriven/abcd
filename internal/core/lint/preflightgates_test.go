@@ -159,6 +159,41 @@ func TestPreflightRunsEveryTaggedEvalLane(t *testing.T) {
 	}
 }
 
+// TestPreflightRunsTheAttributionCommitsGate holds the local mirror of the
+// attribution gate (iss-2608210738363966). CI judges the author and committer
+// identity and the trailers of every commit a pull request carries; a commit
+// that fails there is refused after the push, and a pushed commit is repaired
+// only by a new branch, because a force push is refused. The commit half needs
+// nothing a push has not already made (the pull-request body is CI's alone),
+// so preflight, whose receipt the pre-push hook requires, runs it: the target
+// is a prerequisite, and its recipe walks the commits.
+func TestPreflightRunsTheAttributionCommitsGate(t *testing.T) {
+	root := filepath.Join("..", "..", "..")
+	const gate = "check-attribution"
+	if declared := preflightPrereqs(t, root); !slices.Contains(declared, gate) {
+		t.Fatalf("preflight does not run %s (it declares: %s), so a commit whose identity or "+
+			"trailers the attribution gate refuses passes every local gate and fails only in CI, "+
+			"after the push", gate, strings.Join(declared, " "))
+	}
+	var recipe []string
+	in := false
+	for _, line := range strings.Split(readRepoFile(t, root, "Makefile"), "\n") {
+		if strings.HasPrefix(line, gate+":") {
+			in = true
+			continue
+		}
+		if in && !strings.HasPrefix(line, "\t") {
+			break
+		}
+		if in {
+			recipe = append(recipe, line)
+		}
+	}
+	if body := strings.Join(recipe, "\n"); !strings.Contains(body, "scripts/check-attribution.sh commits origin/main HEAD") {
+		t.Fatalf("the %s recipe does not walk the branch's commits with scripts/check-attribution.sh:\n%s", gate, body)
+	}
+}
+
 // taggedEvalLanes returns the Makefile targets whose recipe runs `go test` with
 // a `-tags` selector — hand-parsed, for the reason preflightPrereqs is.
 func taggedEvalLanes(t *testing.T, root string) []string {

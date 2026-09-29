@@ -109,7 +109,8 @@ the file and the remedy), never followed.
 The state holds the run's key, intent, spec and driver (the host session, by
 default); the window clock the pacing intent writes (`window_started_at`,
 `next_eligible_at`); the lanes opened so far; the spec steps still pending; and
-the run record, one line per completed step. A lane carries its spec step and
+the run record, one line per completed step and one per lane opened, naming the
+spec step it builds (the start's line names the first). A lane carries its spec step and
 title, its next step, what it awaits when a step has handed work to an agent,
 and the footprint its steps fill in: branch, base and head, worktree, brief,
 receipt and pull request. The status render names the worktree home-relative,
@@ -188,12 +189,25 @@ section between `<!-- working-conventions … -->` and
 not), and the decisions the intent cites (each ADR id in the intent, with its
 title and path, and every entry of `.abcd/work/DECISIONS.md` that names the
 intent or its spec). It opens by naming each source and the base it was read
-at, then gives the lane (the spec step it builds, the worktree, the branch) and
+at, then gives the lane (the spec step it builds, the worktree, the branch), the
+spec's steps before the lane's (itd-2609212103565953, criterion 4), each with
+what landed it — the `landed:` line the spec at the base records, and the lane
+of this run that built it, with its branch, head and pull request — or that no
+step comes before it, and
 what the implementer hands back: its report, the definition of done's output,
 and the receipt with its exact shape, each at an absolute path in the lane's
-directory. An intent the default branch does not carry as planned, a spec not
+directory. Before the record it carries, the brief states the outbound policy
+in its own right, quoted from `scanner.OutboundPolicy`, the value the lint
+rules and the commit gates quote (itd-152): no live session URL and no tool
+attribution footer in a pull request, an issue, a comment, a commit message or
+a release note, and a re-read-and-strip of every pull request, issue and
+comment the implementer creates, whatever the repository's own conventions
+say. An intent the default branch does not carry as planned, a spec not
 open there, or no `AGENTS.md` is refused rather than briefed from elsewhere, and
-so is a source the base holds as a link or past its size cap.
+so is a source the base holds as a link or past its size cap, and a spec whose
+steps the base cannot read, or lists the lane's step under another title than
+the run opened it for: a run does not follow steps reordered mid-run, so a brief
+naming the wrong predecessors is never written.
 The brief is written atomically, mode `0600`.
 
 **The receipt** (piece 7; criterion 4). The implement step hands the lane to a

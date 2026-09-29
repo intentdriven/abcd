@@ -1618,14 +1618,15 @@ Perform one step of the run's current lane, write the state, and exit. At a step
 hands work to an agent, the result names the agent to start, the brief it is handed
 and the path its receipt goes to; the lane then advances only on
 `abcd implement receipt`, and asking for a step again re-tells the same thing and
-moves nothing. When a lane is done the spec's next pending step opens the next lane.
-A complete run says so.
+moves nothing. When a lane is done the spec's next pending step opens the next lane,
+and the run record names it. A complete run says so.
 
 The lane's steps, in order: worktree makes the lane's worktree in the machine-scoped
 store, ~/.abcd/worktrees/<root-sha>/<run-id>-<lane-id>, on a branch build/<run-id>-<lane-id>
 cut from the default branch; brief renders the lane's brief from that base (the intent,
-the spec, the conventions of AGENTS.md and the decisions the intent cites) into the
-lane's directory of the run; implement hands the lane to a fresh implementer and awaits
+the spec, the conventions of AGENTS.md, the decisions the intent cites, and the spec
+steps before the lane's with what landed each) into the lane's directory of the run;
+implement hands the lane to a fresh implementer and awaits
 its receipt; validate and land follow.
 
 A step whose body this abcd does not carry is refused naming the spec piece that
@@ -1834,7 +1835,7 @@ abcd intent link itd-2609010000000001 spc-2609010000000002
 
 Plan a draft, or several as a named bundle, or stamp a planned one's conditions: Writes the intents and their spec; refuses a held intent or a bundle's blocker.
 
-**Usage:** `abcd intent plan <itd-N> [<itd-N>…] [--bundle <name>] [flags]`
+**Usage:** `abcd intent plan <itd-N> [<itd-N>…] [--bundle <name>] [--target <vX.Y.Z|next>] [flags]`
 
 **Flags:**
 
@@ -1842,6 +1843,7 @@ Plan a draft, or several as a named bundle, or stamp a planned one's conditions:
       --bundle string            the name of the bundle several intents are planned as: kebab-case, required with two or more intents and refused with one
       --impact string            stamp the intent's product impact: additive|breaking|fix (optional; refused when it disagrees with one already recorded)
       --production-mode string   how this record's text was produced: hand-written|dictated-and-formatted|scribe-transcribed (default: the repo's declared mode, else hand-written)
+      --target string            the release the planned intent must land by: vX.Y.Z or next, written as target_release (optional; one intent only)
 ```
 
 **Example:**
@@ -1887,6 +1889,18 @@ Change an intent's kind, or retire it as superseded by a named successor: Writes
 
 ```
 abcd intent reclassify itd-2609010000000001 --kind superseded --by itd-2609010000000002 --reason "absorbed by the later intent"
+```
+
+#### `abcd intent target`
+
+Name the release a planned intent must land by: Writes its target_release line; refuses a draft, a shipped intent, or a value not vX.Y.Z or next.
+
+**Usage:** `abcd intent target <itd-N> <vX.Y.Z|next>`
+
+**Example:**
+
+```
+abcd intent target itd-2609010000000001 v0.11.0
 ```
 
 #### `abcd intent unhold`

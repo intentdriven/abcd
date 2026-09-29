@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/credential"
+	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
 // The setup's write (criterion 8, the abcd-only home): verify with one call,
@@ -413,5 +414,59 @@ func TestTheProviderBlockWriteRefusesAConfigNamingAKeyTwice(t *testing.T) {
 				t.Fatalf("config.json was rewritten:\n%s", raw)
 			}
 		})
+	}
+}
+
+// TestTheProviderBlockIsReadWhereItIsWritten is iss-2609290300313698's
+// sibling in the machine configuration: writeProviderBlockLocked writes
+// ~/.abcd/config.json through the ~/.abcd its walk opened, so it reads the
+// file through it too. ~/.abcd is swapped for a different real directory,
+// carrying a configuration of its own, after that walk; the held file keeps
+// its own keys and gains the provider block, and the swapped-in directory is
+// left as it was.
+func TestTheProviderBlockIsReadWhereItIsWritten(t *testing.T) {
+	home := t.TempDir()
+	abcd := filepath.Join(home, ".abcd")
+	fresh := filepath.Join(home, "fresh")
+	aside := filepath.Join(home, "moved-aside")
+	for _, c := range []struct{ dir, body string }{
+		{abcd, `{"held_own": 1}` + "\n"},
+		{fresh, `{"swapped_in": 2}` + "\n"},
+	} {
+		if err := os.MkdirAll(c.dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(c.dir, "config.json"), []byte(c.body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	dir, err := fsutil.EnsureHomeScope(home, ".abcd", 0o700)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dir.Close()
+	if err := os.Rename(abcd, aside); err != nil {
+		t.Fatalf("swap: %v", err)
+	}
+	if err := os.Rename(fresh, abcd); err != nil {
+		t.Fatalf("swap: %v", err)
+	}
+	if err := writeProviderBlockLocked(home, dir, "desk", map[string]any{"base_url": "http://127.0.0.1:1"}); err != nil {
+		t.Fatalf("the provider block was not written into the directory held: %v", err)
+	}
+	held, err := os.ReadFile(filepath.Join(aside, "config.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`"held_own"`, `"desk"`} {
+		if !strings.Contains(string(held), want) {
+			t.Errorf("the held configuration lost or never gained %s:\n%s", want, held)
+		}
+	}
+	if strings.Contains(string(held), `"swapped_in"`) {
+		t.Errorf("the held configuration carries the swapped-in directory's key:\n%s", held)
+	}
+	if after, err := os.ReadFile(filepath.Join(abcd, "config.json")); err != nil || string(after) != `{"swapped_in": 2}`+"\n" {
+		t.Errorf("the directory swapped in was changed: err %v, now\n%s", err, after)
 	}
 }

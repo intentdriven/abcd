@@ -1,7 +1,9 @@
 package ahoy
 
 import (
+	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"testing"
 )
@@ -210,5 +212,66 @@ func TestRegisterRepoDoesNotHoldLockAcrossPrompt(t *testing.T) {
 	e := indexEntry(idx, "sha-new")
 	if e == nil || e.Supersedes != "sha-old" {
 		t.Fatalf("confirmed lineage link not recorded: %+v", e)
+	}
+}
+
+// TestRegisterRepoWritesTheIndexItLocked is the history registry's case of
+// iss-2609290300313698's pattern: registerRepo takes the lock beside
+// ~/.abcd/history/index.json through one walk of ~/.abcd/history, and the
+// load and the write under it must go through that same directory. Here the
+// directory is swapped for a different real one, carrying an index of its
+// own, once the lock is held; the registration lands in the index whose lock
+// was taken, and the directory swapped in is left as it was. Loading and
+// writing by walking ~/.abcd/history again wrote the swapped-in index, which
+// the lock never covered.
+func TestRegisterRepoWritesTheIndexItLocked(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	if _, err := bootstrapHistory(); err != nil {
+		t.Fatal(err)
+	}
+	hist := filepath.Join(home, ".abcd", "history")
+	aside := filepath.Join(home, ".abcd", "history-aside")
+	fresh := filepath.Join(home, ".abcd", "history-fresh")
+	if err := os.MkdirAll(fresh, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	freshBody := []byte(`{"repos":[{"root_commit":"sha-swapped","name":"swapped"}]}` + "\n")
+	if err := os.WriteFile(filepath.Join(fresh, "index.json"), freshBody, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	swapped := false
+	afterHistoryReloadHook = func() {
+		if swapped {
+			return
+		}
+		swapped = true
+		if err := os.Rename(hist, aside); err != nil {
+			t.Errorf("swap: %v", err)
+		}
+		if err := os.Rename(fresh, hist); err != nil {
+			t.Errorf("swap: %v", err)
+		}
+	}
+	defer func() { afterHistoryReloadHook = nil }()
+
+	a := &applyCtx{
+		cwd:      filepath.Join(home, "repo-a"),
+		det:      DetectionResult{RepoIdentity: RepoIdentity{Name: "repo-a", RootSHA: "sha-aaaaaaaa"}},
+		prompter: RefusingPrompter{},
+	}
+	a.registerRepo("sha-aaaaaaaa")
+	if !swapped {
+		t.Fatal("registerRepo never took the history lock, so the swap could not be staged")
+	}
+	held, err := os.ReadFile(filepath.Join(aside, "index.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(held), "sha-aaaaaaaa") {
+		t.Errorf("the registration did not land in the index whose lock was taken:\n%s", held)
+	}
+	if after, err := os.ReadFile(filepath.Join(hist, "index.json")); err != nil || string(after) != string(freshBody) {
+		t.Errorf("the directory swapped in was written although its lock was never taken: err %v, now\n%s", err, after)
 	}
 }

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/changelog"
+	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/launch"
 	"github.com/intentdriven/abcd/internal/core/oracle"
 	"github.com/intentdriven/abcd/internal/core/release"
@@ -521,7 +522,9 @@ func runShipIngest(cmd *cobra.Command, cwd string, raw []byte, payloadDir string
 		// whose record matters most. A precheck that stopped before its gates (a
 		// structural fault) has no gate to report, and writes nothing.
 		if len(pre.Gates) > 0 {
-			preflightDir, failure := writePreflight(cwd, pre.PreflightReport(time.Now(), ""))
+			report := pre.PreflightReport(time.Now(), "")
+			report.Targets = launchTargets(cwd, cmd.ErrOrStderr())
+			preflightDir, failure := writePreflight(cwd, report)
 			preflightNote = "; pre-flight report: " + preflightDir
 			if failure != "" {
 				preflightNote = "; the pre-flight report was not written: " + failure
@@ -698,6 +701,14 @@ func renderCut(w io.Writer, verb string, cut release.Cut) {
 	renderEntries(w, "added", cut.Added)
 	renderEntries(w, "removed", cut.Removed)
 	renderPageSet(w, cut)
+	// Every planned intent that names a release it must land by, reported and
+	// never refused on (itd-2609212103572513).
+	for _, tg := range cut.Targets {
+		fmt.Fprintf(w, "  targeted:   %s\n", targetLine(tg))
+	}
+	if cut.TargetsError != "" {
+		fmt.Fprintf(w, "  targeted:   not read — %s\n", termsafe.Sanitize(scrubPaths(errors.New(cut.TargetsError))))
+	}
 	for _, refusal := range cut.Refusals {
 		fmt.Fprintf(w, "  refused (%s):\n", refusal.Kind)
 		// SanitizeBlock, not Sanitize: a refusal reason IS lines — the surface
@@ -853,4 +864,33 @@ func renderEntries(w io.Writer, label string, entries []release.Entry) {
 			fmt.Fprintf(w, "      ! %s — still in this cut\n", termsafe.Sanitize(e.ShippedInErr))
 		}
 	}
+}
+
+// targetLine renders one targeted intent for a terminal. Every value came out
+// of a record, so each is sanitised.
+func targetLine(tg launch.TargetedIntent) string {
+	line := fmt.Sprintf("%s targets %s, not shipped (%s)",
+		termsafe.Sanitize(tg.ID), termsafe.Sanitize(tg.Target), termsafe.Sanitize(tg.Path))
+	if tg.Invalid != "" {
+		line += "; " + termsafe.Sanitize(tg.Invalid)
+	}
+	return line
+}
+
+// launchTargets reads the targeted intents the preview and the cut's
+// pre-flight report list, from the intent store of the checkout dir sits in.
+// A store it cannot read is said on stderr and lists nothing: the list is a
+// report, and a report must never stop a launch.
+func launchTargets(dir string, stderr io.Writer) []launch.TargetedIntent {
+	repoRoot, err := gitutil.CheckoutRoot(dir, "the intent store")
+	if err != nil {
+		fmt.Fprintf(stderr, "abcd launch: the targeted intents were not read: %s\n", termsafe.Sanitize(scrubPaths(err)))
+		return nil
+	}
+	targets, err := intent.Targets(repoRoot)
+	if err != nil {
+		fmt.Fprintf(stderr, "abcd launch: the targeted intents were not read: %s\n", termsafe.Sanitize(scrubPaths(err)))
+		return nil
+	}
+	return targets
 }

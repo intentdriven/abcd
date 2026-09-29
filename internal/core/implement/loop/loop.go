@@ -372,6 +372,21 @@ func openNextLane(st *State) {
 	})
 }
 
+// openNextLaneRecorded opens the next pending step's lane, when one is
+// pending, and records it: the run record lists the spec's steps as it lists
+// the lanes (itd-2609212103565953, criterion 4), the first at the start and
+// each later one here.
+func openNextLaneRecorded(st *State, now time.Time) {
+	n := len(st.Lanes)
+	openNextLane(st)
+	if len(st.Lanes) == n {
+		return
+	}
+	l := st.Lanes[n]
+	st.Record = append(st.Record, Entry{At: now, Lane: l.ID, Step: "open",
+		Note: fmt.Sprintf("%s opened for step %d of %s (%s)", l.ID, l.SpecStep, st.Spec, l.StepTitle)})
+}
+
 // Advance performs the next step of the run's current lane and returns. A lane
 // that awaits a receipt performs nothing and re-tells what it awaits; a run
 // that is complete says so; a run paused by its window clock is refused until
@@ -429,7 +444,7 @@ func Advance(repoRoot, runID string, steps Steps, o Options) (StepResult, error)
 		}
 		st.Lanes[i] = lane
 		if lane.Step == StepDone {
-			openNextLane(st)
+			openNextLaneRecorded(st, now)
 		}
 		st.UpdatedAt = now
 		res = laneResult(*st, lane, performed)
@@ -476,7 +491,7 @@ func Receipt(repoRoot, runID, receipt string, steps Steps, o Options) (StepResul
 		lane.Step = after(lane.Step)
 		st.Lanes[i] = lane
 		if lane.Step == StepDone {
-			openNextLane(st)
+			openNextLaneRecorded(st, now)
 		}
 		st.UpdatedAt = now
 		res = laneResult(*st, lane, performed)
