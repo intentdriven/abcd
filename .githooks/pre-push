@@ -28,9 +28,10 @@
 #      CI on the commit; here it earns no receipt, so the push is refused.
 #
 #      What the preflight runs: the load check first (load-check, a warning,
-#      never a failure), then the `make fmt-check` format gate, the six lint
+#      never a failure), then the `make fmt-check` format gate, the seven lint
 #      gates (lint-reviews, lint-issues, lint-decisions, record-lint,
-#      issue-drift, docs-lint), the site-render gate and both tagged eval lanes
+#      issue-drift, docs-lint, check-attribution over the branch's commits),
+#      the site-render gate and both tagged eval lanes
 #      (smoke, evals-cold-reading), then build, vet, test and the race-enabled
 #      internal tests, every Go step on the toolchain go.mod declares, as CI's
 #      are. The eval lanes are named because the untagged `go test` step cannot
