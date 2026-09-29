@@ -9,7 +9,7 @@ found_during: "autonomous run A resumed 2026-09-25: review-lintA item 4"
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/work/issues/resolved"
-resolution: "Annotated, not corrected: a resolution note true when written stays as written (RS006 re-reads only records entering a terminal folder, for that reason), and each record whose note names a removed test gains a dated Correction section naming the superseding commit, the successor test and which part of the claim still holds. Six records carry one from this change (iss-184, iss-2608301808193750, iss-2608311632382737, iss-2608311632439831, iss-275, iss-354); iss-2609012039117381 already carried one from 2026-09-09 (2eeaab68a); iss-2609090951291799's mention stays accurate. No gate would have caught it, and none should: a terminal record's note is history."
+resolution: "Annotated, not corrected: a resolution note true when written stays as written (RS006 re-reads only records entering a terminal folder, for that reason), and each record whose note names a removed test gains a dated Correction section naming the superseding commit, the successor test and which part of the claim still holds. Six records carry one from this change (iss-184, iss-2608301808193750, iss-2608311632382737, iss-2608311632439831, iss-275, iss-354); iss-2609012039117381 already carried one from 2026-09-09 (2eeaab68a); iss-2609090951291799's mention stays accurate. A ledger-wide sweep found a ninth, iss-2608270559313719, which gains the same section in the commit after this record's resolution. No gate would have caught it, and none should: a terminal record's note is history."
 impact: internal
 resolved_by:
   commit: "99452aba0"
