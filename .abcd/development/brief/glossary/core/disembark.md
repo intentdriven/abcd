@@ -30,7 +30,7 @@ adr-4).
 
 `abcd disembark probe <source-repo>` inspects without writing a lifeboat, reporting **coverage**:
 which brief sections the repository can ground, which come back blank, and what was searched. A
-blank is a first-class result, not a failure. `dry-run` likewise inspects without writing.
+blank is a first-class result, not a failure. `abcd disembark plan <source-repo>` likewise writes nothing: it shows the file set a pack would write.
 
 ## When to use
 
