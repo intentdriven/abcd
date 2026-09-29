@@ -55,7 +55,7 @@ func TestLedgerMkdirCannotBeRedirectedOutsideTheCheckout(t *testing.T) {
 	}
 	t.Cleanup(func() { ledgerRaceHook = nil })
 
-	_, err := Capture(CaptureRequest{RepoRoot: repo, IssuesRoot: ir, Text: "a finding",
+	_, err := testCapture(CaptureRequest{RepoRoot: repo, IssuesRoot: ir, Text: "a finding",
 		Severity: SeverityMinor, Category: "bug", Source: "manual-test", Slug: "raced", FoundDuring: "t"})
 	if !swapped {
 		t.Fatal("the race hook never fired at the .abcd/work mkdir")
@@ -79,7 +79,7 @@ func TestLedgerMkdirCannotBeRedirectedOutsideTheCheckout(t *testing.T) {
 // ancestor used to carry the record out of the checkout.
 func TestLedgerRecordWriteCannotBeRedirectedOutsideTheCheckout(t *testing.T) {
 	repo, ir := ledger(t)
-	if _, err := Capture(CaptureRequest{RepoRoot: repo, IssuesRoot: ir, Text: "a first finding",
+	if _, err := testCapture(CaptureRequest{RepoRoot: repo, IssuesRoot: ir, Text: "a first finding",
 		Severity: SeverityMinor, Category: "bug", Source: "manual-test", Slug: "first", FoundDuring: "t"}); err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +96,7 @@ func TestLedgerRecordWriteCannotBeRedirectedOutsideTheCheckout(t *testing.T) {
 	}
 	t.Cleanup(func() { ledgerRaceHook = nil })
 
-	_, err := Capture(CaptureRequest{RepoRoot: repo, IssuesRoot: ir, Text: "a second finding",
+	_, err := testCapture(CaptureRequest{RepoRoot: repo, IssuesRoot: ir, Text: "a second finding",
 		Severity: SeverityMinor, Category: "bug", Source: "manual-test", Slug: "second", FoundDuring: "t"})
 	if !swapped {
 		t.Fatal("the race hook never fired before the record write")

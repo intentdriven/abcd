@@ -203,7 +203,7 @@ func TestVerbPrefixIsTheVerbNotTheState(t *testing.T) {
 // ever sees.
 func TestAFrontmatterCommentMarkerDoesNotBlindTheRecord(t *testing.T) {
 	repo, ir := ledger(t)
-	res, err := Capture(CaptureRequest{
+	res, err := testCapture(CaptureRequest{
 		RepoRoot: repo, IssuesRoot: ir,
 		Text:     "the loader drops rules silently when the config is stale",
 		Severity: SeverityMinor, Category: "observation", Source: "user-observation",

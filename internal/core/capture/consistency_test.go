@@ -123,7 +123,7 @@ func TestConsistencyLinksAFindingAnOpenRecordHolds(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			root := consistencyLedgerRepo(t)
-			held, err := Capture(CaptureRequest{RepoRoot: root, Text: tc.body, Severity: "minor",
+			held, err := testCapture(CaptureRequest{RepoRoot: root, Text: tc.body, Severity: "minor",
 				Category: "inconsistency", Source: "user-observation", FoundDuring: "fixture"})
 			if err != nil {
 				t.Fatal(err)

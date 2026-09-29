@@ -50,7 +50,7 @@ a flag and the filled report is a positional; neither is a sub-verb.
 | `title` | one line saying what was found |
 | `abcd_version` | the abcd in play, filled in by the template |
 | `surface` | the verb, hook or page in play |
-| `remedy` | optional: what the reporter would change |
+| `remedy` | optional: what the reporter would change; a promoted report files it as the issue's `remedy:`, and one without it is filed with `none (filed automatically)`, which a drain skips until a person writes a fix |
 | `evidence` | optional pointers, one `  - pointer` per line: record ids, commit SHAs, URLs |
 
 The prose below the block is required; the template's placeholder is an HTML

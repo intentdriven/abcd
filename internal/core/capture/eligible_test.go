@@ -25,15 +25,62 @@ func newDrainFixture(t *testing.T) drainFixture {
 	return drainFixture{t: t, repo: repo, ir: ir}
 }
 
+// file captures one open record. An empty remedy files a LEGACY record:
+// capture refuses a new issue without a remedy (ruling BX3), so the record is
+// filed with one and the key is then taken out, which is the shape every
+// record filed before the rule has.
 func (f drainFixture) file(id string, sev Severity, cat Category, remedy string, blockedBy ...string) {
 	f.t.Helper()
-	if _, err := Capture(CaptureRequest{
+	legacy := remedy == ""
+	if legacy {
+		remedy = "a remedy the legacy shape then loses"
+	}
+	res, err := Capture(CaptureRequest{
 		RepoRoot: f.repo, IssuesRoot: f.ir, Text: "text of " + id, Severity: sev,
 		Category: cat, Source: "manual-test", Slug: "s", FoundDuring: "t", ForceID: id,
 		Remedy: remedy, BlockedBy: blockedBy,
-	}); err != nil {
+	})
+	if err != nil {
 		f.t.Fatalf("capture %s: %v", id, err)
 	}
+	if legacy {
+		stripRemedy(f.t, filepath.Join(f.repo, res.Path))
+	}
+}
+
+// stripRemedy takes the remedy: line out of a record, leaving the legacy shape
+// a record filed before the field was required has.
+func stripRemedy(t *testing.T, path string) {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var kept []string
+	for _, ln := range strings.SplitAfter(string(raw), "\n") {
+		if !strings.HasPrefix(ln, "remedy: ") {
+			kept = append(kept, ln)
+		}
+	}
+	if err := os.WriteFile(path, []byte(strings.Join(kept, "")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// writeLegacyRecord writes an open record in the shape the ledger held before
+// the remedy was required: every required key and no remedy.
+func writeLegacyRecord(t *testing.T, issuesRoot, id string) string {
+	t.Helper()
+	dir := filepath.Join(issuesRoot, "open")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, id+"-s.md")
+	body := "---\nschema_version: 1\nid: " + id + "\nslug: s\nseverity: minor\ncategory: bug\nsource: manual-test\nfound_during: t\n---\n\nbody\n"
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return path
 }
 
 func (f drainFixture) plan() DrainPlan {

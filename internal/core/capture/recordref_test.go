@@ -16,7 +16,7 @@ import (
 // absent bucket stays soft; an unreadable one is reported as what it is.
 func TestRecordProbeReportsAnUnreadableBucketAsItself(t *testing.T) {
 	repo, ir := ledger(t)
-	res, err := Capture(CaptureRequest{RepoRoot: repo, IssuesRoot: ir, Text: "a finding",
+	res, err := testCapture(CaptureRequest{RepoRoot: repo, IssuesRoot: ir, Text: "a finding",
 		Severity: SeverityMinor, Category: "bug", Source: "manual-test", Slug: "probe", FoundDuring: "t"})
 	if err != nil {
 		t.Fatal(err)

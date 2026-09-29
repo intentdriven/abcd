@@ -46,7 +46,7 @@ the verb names it on stderr and leaves it alone; relay that line, because record
 sitting there reach no gate and no release cut.
 
 **Which ledger?** A half-formed observation, question, or nitpick goes to
-`/abcd:capture "…"`; a user-facing change you want to ship goes to
+`/abcd:capture "…" --remedy "…"` (every new issue names the fix it proposes); a user-facing change you want to ship goes to
 `/abcd:intent "…"`. For a big, unproven idea there is an optional third route:
 `/abcd:ideate` runs the admission gauntlet and records the verdict either way.
 It is a pointer, never a precondition — filing a draft without it is a normal
@@ -876,8 +876,11 @@ auditor at a time are what bound the cost:
 3. **A NOT_MET verdict is captured, never fixed.** Every intent the drain
    reaches has already shipped, so a criterion it did not meet is a finding
    against delivered work: file it with
-   `abcd capture "<itd-N> fidelity audit NOT_MET: <criterion> (receipt <rcp-…>)" --category drift --severity <minor|major> --source review-followup`,
-   naming the receipt, and continue the loop. The drain changes no code and
+   `abcd capture "<itd-N> fidelity audit NOT_MET: <criterion> (receipt <rcp-…>)" --category drift --severity <minor|major> --source review-followup --remedy "<the fix the criterion asks for>"`,
+   naming the receipt, and continue the loop. The remedy is required: name the
+   change that would meet the criterion as its text states it, and where that
+   fix depends on outside practice, cite the prior-art or state-of-the-art
+   check it rests on (principle `prefer-sota`) in the capture's text. The drain changes no code and
    re-opens nothing; the fix round belongs to the build that owns the work. A
    `dead_letter` ingest is reported with its reason and is listed apart by
    bare `intent audit` from then on.

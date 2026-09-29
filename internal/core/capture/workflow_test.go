@@ -23,7 +23,7 @@ import (
 // (rather than proceeding lock-free, which is how the split-brain arises).
 func TestTransitionSerializesOnLedgerLock(t *testing.T) {
 	repo, ir := ledger(t)
-	res, err := Capture(CaptureRequest{
+	res, err := testCapture(CaptureRequest{
 		RepoRoot: repo, IssuesRoot: ir, Text: "b", Severity: SeverityMinor,
 		Category: "bug", Source: "user-observation", FoundDuring: "t", Slug: "note",
 	})
@@ -141,7 +141,7 @@ func TestCaptureAppendAndReadBack(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			res, err := Capture(tc.req)
+			res, err := testCapture(tc.req)
 			if err != nil {
 				t.Fatalf("Capture: %v", err)
 			}
@@ -186,7 +186,7 @@ func TestCaptureMintsTimeOrderedDistinctIDs(t *testing.T) {
 	setSeqMinter(t)
 	var prev string
 	for i := 1; i <= 3; i++ {
-		res, err := Capture(CaptureRequest{
+		res, err := testCapture(CaptureRequest{
 			RepoRoot: repo, IssuesRoot: ir, Text: "x", Severity: SeverityNitpick,
 			Category: "observation", Source: "manual-test", Slug: "note", FoundDuring: "loop",
 		})
@@ -210,7 +210,7 @@ func TestCaptureForceIDAndDuplicate(t *testing.T) {
 		Category: "bug", Source: "manual-test", Slug: "forced", FoundDuring: "migration",
 	}
 	base.ForceID = "iss-42"
-	res, err := Capture(base)
+	res, err := testCapture(base)
 	if err != nil {
 		t.Fatalf("forceID capture: %v", err)
 	}
@@ -218,14 +218,14 @@ func TestCaptureForceIDAndDuplicate(t *testing.T) {
 		t.Fatalf("id = %s want iss-42", res.ID)
 	}
 	// Re-forcing the same id must be a duplicate error.
-	if _, err := Capture(base); !errors.Is(err, ErrDuplicateIssueID) {
+	if _, err := testCapture(base); !errors.Is(err, ErrDuplicateIssueID) {
 		t.Fatalf("want ErrDuplicateIssueID, got %v", err)
 	}
 }
 
 func TestCaptureRejectsEmptyFoundDuring(t *testing.T) {
 	repo, ir := ledger(t)
-	_, err := Capture(CaptureRequest{
+	_, err := testCapture(CaptureRequest{
 		RepoRoot: repo, IssuesRoot: ir, Text: "x", Severity: SeverityMinor,
 		Category: "bug", Source: "manual-test", Slug: "s", FoundDuring: "  ",
 	})
@@ -241,7 +241,7 @@ func TestCaptureRejectsEmptyFoundDuring(t *testing.T) {
 
 func TestCaptureRejectsBadEnumAndSweepsPlaceholder(t *testing.T) {
 	repo, ir := ledger(t)
-	_, err := Capture(CaptureRequest{
+	_, err := testCapture(CaptureRequest{
 		RepoRoot: repo, IssuesRoot: ir, Text: "x", Severity: "bogus",
 		Category: "bug", Source: "manual-test", Slug: "s", FoundDuring: "ctx",
 	})
@@ -263,13 +263,13 @@ func TestCaptureAcceptsAgentObservationSourceAndRejectsBogus(t *testing.T) {
 	// iss-57: an autonomous run's self-observation needs an honest --source; the
 	// honest value is agent-observation. A made-up source must still be rejected.
 	repo, ir := ledger(t)
-	if _, err := Capture(CaptureRequest{
+	if _, err := testCapture(CaptureRequest{
 		RepoRoot: repo, IssuesRoot: ir, Text: "x", Severity: SeverityMinor,
 		Category: "observation", Source: "agent-observation", Slug: "s", FoundDuring: "ctx",
 	}); err != nil {
 		t.Fatalf("agent-observation should be a valid source, got %v", err)
 	}
-	_, err := Capture(CaptureRequest{
+	_, err := testCapture(CaptureRequest{
 		RepoRoot: repo, IssuesRoot: ir, Text: "x", Severity: SeverityMinor,
 		Category: "observation", Source: "made-up-source", Slug: "s2", FoundDuring: "ctx",
 	})
@@ -281,7 +281,7 @@ func TestCaptureAcceptsAgentObservationSourceAndRejectsBogus(t *testing.T) {
 
 func TestResolveTransition(t *testing.T) {
 	repo, ir := ledger(t)
-	res, err := Capture(CaptureRequest{
+	res, err := testCapture(CaptureRequest{
 		RepoRoot: repo, IssuesRoot: ir, Text: "body", Severity: SeverityMajor,
 		Category: "bug", Source: "manual-test", Slug: "fixme", FoundDuring: "test",
 	})
@@ -307,7 +307,7 @@ func TestResolveTransition(t *testing.T) {
 
 func TestResolveConflictAndUnknown(t *testing.T) {
 	repo, ir := ledger(t)
-	res, _ := Capture(CaptureRequest{
+	res, _ := testCapture(CaptureRequest{
 		RepoRoot: repo, IssuesRoot: ir, Text: "b", Severity: SeverityMinor,
 		Category: "bug", Source: "manual-test", Slug: "s", FoundDuring: "t",
 	})
@@ -332,7 +332,7 @@ func TestResolveConflictAndUnknown(t *testing.T) {
 // later transition on that id as ErrDuplicateIssueID.
 func TestTransitionRemoveFailureDoesNotStrandIssueInTwoDirs(t *testing.T) {
 	repo, ir := ledger(t)
-	res, err := Capture(CaptureRequest{
+	res, err := testCapture(CaptureRequest{
 		RepoRoot: repo, IssuesRoot: ir, Text: "body", Severity: SeverityMinor,
 		Category: "bug", Source: "manual-test", Slug: "strand", FoundDuring: "test",
 	})
@@ -367,7 +367,7 @@ func TestTransitionRemoveFailureDoesNotStrandIssueInTwoDirs(t *testing.T) {
 
 func TestWontfixTransition(t *testing.T) {
 	repo, ir := ledger(t)
-	res, _ := Capture(CaptureRequest{
+	res, _ := testCapture(CaptureRequest{
 		RepoRoot: repo, IssuesRoot: ir, Text: "b", Severity: SeverityMinor,
 		Category: "process", Source: "user-observation", Slug: "meh", FoundDuring: "t",
 	})
@@ -384,7 +384,7 @@ func TestListSortsNumericallyAndAll(t *testing.T) {
 	repo, ir := ledger(t)
 	// Force ids out of lexical order: iss-2, iss-10, iss-1.
 	for _, id := range []string{"iss-2", "iss-10", "iss-1"} {
-		if _, err := Capture(CaptureRequest{
+		if _, err := testCapture(CaptureRequest{
 			RepoRoot: repo, IssuesRoot: ir, Text: "b", Severity: SeverityMinor,
 			Category: "bug", Source: "manual-test", Slug: "s", FoundDuring: "t", ForceID: id,
 		}); err != nil {
@@ -419,7 +419,7 @@ func TestListToleratesVirginLedgerAndStrayFiles(t *testing.T) {
 		t.Errorf("List must not create the ledger dir")
 	}
 	// Stray README is ignored; corrupt iss file is surfaced in Skipped.
-	if _, err := Capture(CaptureRequest{
+	if _, err := testCapture(CaptureRequest{
 		RepoRoot: repo, IssuesRoot: ir, Text: "b", Severity: SeverityMinor,
 		Category: "bug", Source: "manual-test", Slug: "ok", FoundDuring: "t",
 	}); err != nil {
@@ -445,7 +445,7 @@ func TestStatusCountsAndRecentOpen(t *testing.T) {
 	setSeqMinter(t)
 	var ids []string
 	for i := 0; i < 3; i++ {
-		res, _ := Capture(CaptureRequest{
+		res, _ := testCapture(CaptureRequest{
 			RepoRoot: repo, IssuesRoot: ir, Text: "b", Severity: SeverityMinor,
 			Category: "bug", Source: "manual-test", Slug: "s", FoundDuring: "t",
 		})
@@ -487,7 +487,7 @@ func TestStatusRecentOpenDerivedPriority(t *testing.T) {
 		{"iss-4", SeverityNitpick, nil},                // unblocked
 	}
 	for _, s := range seed {
-		if _, err := Capture(CaptureRequest{
+		if _, err := testCapture(CaptureRequest{
 			RepoRoot: repo, IssuesRoot: ir, Text: "b", Severity: s.sev,
 			Category: "bug", Source: "manual-test", Slug: "s", FoundDuring: "t",
 			ForceID: s.id, BlockedBy: s.by,
@@ -557,7 +557,7 @@ func TestPathUnsafeSymlinkedLedger(t *testing.T) {
 	if err := os.Symlink(real, link); err != nil {
 		t.Skipf("symlink unsupported: %v", err)
 	}
-	_, err := Capture(CaptureRequest{
+	_, err := testCapture(CaptureRequest{
 		RepoRoot: repo, IssuesRoot: link, Text: "b", Severity: SeverityMinor,
 		Category: "bug", Source: "manual-test", Slug: "s", FoundDuring: "t",
 	})
@@ -569,14 +569,14 @@ func TestPathUnsafeSymlinkedLedger(t *testing.T) {
 func TestCaptureWritesBlockedByAndReadsBack(t *testing.T) {
 	repo, ir := ledger(t)
 	setSeqMinter(t)
-	rootRes, err := Capture(CaptureRequest{
+	rootRes, err := testCapture(CaptureRequest{
 		RepoRoot: repo, IssuesRoot: ir, Text: "root cause", Severity: SeverityMinor,
 		Category: "bug", Source: "manual-test", Slug: "root", FoundDuring: "t",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	res, err := Capture(CaptureRequest{
+	res, err := testCapture(CaptureRequest{
 		RepoRoot: repo, IssuesRoot: ir, Text: "dependent", Severity: SeverityMajor,
 		Category: "bug", Source: "manual-test", Slug: "dep", FoundDuring: "t",
 		BlockedBy: []string{rootRes.ID},
@@ -609,7 +609,7 @@ func TestCaptureWritesBlockedByAndReadsBack(t *testing.T) {
 // anyway hands the caller a ledger entry the tool's own gate rejects.
 func TestCaptureRefusesDanglingBlockedBy(t *testing.T) {
 	repo, ir := ledger(t)
-	_, err := Capture(CaptureRequest{
+	_, err := testCapture(CaptureRequest{
 		RepoRoot: repo, IssuesRoot: ir, Text: "dependent", Severity: SeverityMinor,
 		Category: "bug", Source: "manual-test", Slug: "dep", FoundDuring: "t",
 		BlockedBy: []string{"iss-999999"},
@@ -635,7 +635,7 @@ func TestCaptureRefusesDanglingBlockedBy(t *testing.T) {
 func TestCaptureAcceptsResolvedBlockedByTarget(t *testing.T) {
 	repo, ir := ledger(t)
 	setSeqMinter(t)
-	root, err := Capture(CaptureRequest{
+	root, err := testCapture(CaptureRequest{
 		RepoRoot: repo, IssuesRoot: ir, Text: "root cause", Severity: SeverityMinor,
 		Category: "bug", Source: "manual-test", Slug: "root", FoundDuring: "t",
 	})
@@ -648,7 +648,7 @@ func TestCaptureAcceptsResolvedBlockedByTarget(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Capture(CaptureRequest{
+	if _, err := testCapture(CaptureRequest{
 		RepoRoot: repo, IssuesRoot: ir, Text: "dependent", Severity: SeverityMinor,
 		Category: "bug", Source: "manual-test", Slug: "dep", FoundDuring: "t",
 		BlockedBy: []string{root.ID},
@@ -674,7 +674,7 @@ func TestDerivedPriorityUnblockedFirstThenSeverity(t *testing.T) {
 		{"iss-4", SeverityNitpick, nil},                // unblocked
 	}
 	for _, s := range seed {
-		if _, err := Capture(CaptureRequest{
+		if _, err := testCapture(CaptureRequest{
 			RepoRoot: repo, IssuesRoot: ir, Text: "b", Severity: s.sev,
 			Category: "bug", Source: "manual-test", Slug: "s", FoundDuring: "t",
 			ForceID: s.id, BlockedBy: s.by,
@@ -771,7 +771,7 @@ func TestListSkippedErrorIsPathFree(t *testing.T) {
 // lint-side grammar and the citation path).
 func TestMalformedRecordNameIsVisiblySkipped(t *testing.T) {
 	repo, ir := ledger(t)
-	if _, err := Capture(CaptureRequest{
+	if _, err := testCapture(CaptureRequest{
 		RepoRoot: repo, IssuesRoot: ir, Text: "a finding", Severity: SeverityMinor,
 		Category: "bug", Source: "manual-test", Slug: "good-record", FoundDuring: "t",
 	}); err != nil {
@@ -836,7 +836,7 @@ func TestCaptureBlankLapsedAtIsNotWritten(t *testing.T) {
 	for _, blank := range []string{" ", "   "} {
 		t.Run(strconv.Quote(blank), func(t *testing.T) {
 			repo, ir := ledger(t)
-			res, err := Capture(CaptureRequest{
+			res, err := testCapture(CaptureRequest{
 				RepoRoot: repo, IssuesRoot: ir,
 				Text: "a plain observation", Severity: SeverityMinor,
 				Category: "observation", Source: "user-observation",
@@ -864,7 +864,7 @@ func TestCaptureBlankLapsedAtIsNotWritten(t *testing.T) {
 // than overwriting it with a default.
 func TestTransitionRestampsProductionMode(t *testing.T) {
 	repo, ir := ledger(t)
-	res, err := Capture(CaptureRequest{
+	res, err := testCapture(CaptureRequest{
 		RepoRoot: repo, IssuesRoot: ir, Text: "b", Severity: SeverityMinor,
 		Category: "bug", Source: "user-observation", FoundDuring: "t", Slug: "note",
 		ProductionMode: "dictated-and-formatted",
@@ -885,7 +885,7 @@ func TestTransitionRestampsProductionMode(t *testing.T) {
 	}
 
 	// A transition that declares no mode leaves the stamp alone.
-	res2, err := Capture(CaptureRequest{
+	res2, err := testCapture(CaptureRequest{
 		RepoRoot: repo, IssuesRoot: ir, Text: "c", Severity: SeverityMinor,
 		Category: "bug", Source: "user-observation", FoundDuring: "t", Slug: "other",
 		ProductionMode: "dictated-and-formatted",
@@ -917,7 +917,7 @@ func TestTransitionRestampsProductionMode(t *testing.T) {
 // about the text; origin is stamped at mint and never rewritten.
 func TestTransitionLeavesOriginAlone(t *testing.T) {
 	repo, ir := ledger(t)
-	res, err := Capture(CaptureRequest{
+	res, err := testCapture(CaptureRequest{
 		RepoRoot: repo, IssuesRoot: ir, Text: "b", Severity: SeverityMinor,
 		Category: "bug", Source: "user-observation", FoundDuring: "t", Slug: "note",
 	})
@@ -946,7 +946,7 @@ func TestTransitionLeavesOriginAlone(t *testing.T) {
 // resolvable when no mode is declared.
 func TestTransitionRefusesRestampOnUnstampedRecord(t *testing.T) {
 	repo, ir := ledger(t)
-	res, err := Capture(CaptureRequest{
+	res, err := testCapture(CaptureRequest{
 		RepoRoot: repo, IssuesRoot: ir, Text: "b", Severity: SeverityMinor,
 		Category: "bug", Source: "user-observation", FoundDuring: "t", Slug: "note",
 	})
@@ -1043,7 +1043,7 @@ func readRaw(t *testing.T, issuesRoot, id string) string {
 func hostileRecordLedger(t *testing.T) (repo, ir, realID, frontmatter string) {
 	t.Helper()
 	repo, ir = ledger(t)
-	res, err := Capture(CaptureRequest{
+	res, err := testCapture(CaptureRequest{
 		RepoRoot: repo, IssuesRoot: ir, Text: "a real finding", Severity: SeverityMinor,
 		Category: "bug", Source: "manual-test", Slug: "real", FoundDuring: "t",
 	})
@@ -1206,14 +1206,14 @@ func TestScanLedgerRefusesNonRegularOversizeAndSymlinkedRecords(t *testing.T) {
 // progress is recoverable, inviting work whose blocker nobody can read is not.
 func TestASkippedOpenRecordStillBlocksItsDependents(t *testing.T) {
 	repo, ir := ledger(t)
-	blocker, err := Capture(CaptureRequest{
+	blocker, err := testCapture(CaptureRequest{
 		RepoRoot: repo, IssuesRoot: ir, Text: "the blocker", Severity: SeverityMinor,
 		Category: "bug", Source: "manual-test", Slug: "blocker", FoundDuring: "t",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	dependent, err := Capture(CaptureRequest{
+	dependent, err := testCapture(CaptureRequest{
 		RepoRoot: repo, IssuesRoot: ir, Text: "the dependent", Severity: SeverityMinor,
 		Category: "bug", Source: "manual-test", Slug: "dependent", FoundDuring: "t",
 		BlockedBy: []string{blocker.ID},

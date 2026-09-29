@@ -46,23 +46,18 @@ func TestCaptureWritesTheRemedyAndListReadsItBack(t *testing.T) {
 	}
 }
 
-// TestCaptureWithoutARemedyWritesNoKey keeps the field optional at capture: a
-// record filed without one carries no `remedy:` line, and reads an empty remedy.
-func TestCaptureWithoutARemedyWritesNoKey(t *testing.T) {
+// TestALegacyRecordWithoutARemedyStaysReadable: capture refuses a NEW issue
+// without a remedy (ruling BX3), and a record filed before the rule, which
+// carries none, still reads, with an empty remedy and nothing skipped.
+func TestALegacyRecordWithoutARemedyStaysReadable(t *testing.T) {
 	repo, ir := ledger(t)
-	res, err := Capture(CaptureRequest{
-		RepoRoot: repo, IssuesRoot: ir, Text: "b", Severity: SeverityMinor,
-		Category: "bug", Source: "manual-test", Slug: "s", FoundDuring: "t",
-	})
+	writeLegacyRecord(t, ir, "iss-1")
+	lr, err := List(ListRequest{RepoRoot: repo, IssuesRoot: ir, State: StateOpen})
 	if err != nil {
 		t.Fatal(err)
 	}
-	raw, err := os.ReadFile(filepath.Join(repo, res.Path))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(string(raw), "remedy:") {
-		t.Fatalf("a capture without a remedy wrote the key:\n%s", raw)
+	if len(lr.Skipped) != 0 || len(lr.Issues) != 1 || lr.Issues[0].Remedy != "" {
+		t.Fatalf("want one readable legacy record with no remedy, got %+v (skipped %v)", lr.Issues, lr.Skipped)
 	}
 }
 

@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/lint"
 	"github.com/intentdriven/abcd/internal/gittest"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -758,5 +759,23 @@ func TestAnUnreadableReportStillNamesItsSender(t *testing.T) {
 	}
 	if e.SenderName != "widget-repo" {
 		t.Errorf("Show sender name = %q; want the envelope's", e.SenderName)
+	}
+}
+
+// TestAPromotedReportCarriesItsRemedyOrTheMachineValue: every new issue carries
+// a remedy (ruling BX3 of 2026-09-29). A report's remedy becomes the capture's,
+// scrubbed as every other free-text value is and folded to one line; a report
+// without one is promoted with the machine value (ruling H12), so the record
+// is filed and a drain skips it until a person writes a real remedy.
+func TestAPromotedReportCarriesItsRemedyOrTheMachineValue(t *testing.T) {
+	r := mustParse(t, filled(t))
+	r.SenderName = "capo"
+	r.Remedy = "ask Capo, then undo iss-12\n  as before"
+	if got := captureRequest("root", "id", r).Remedy; got != "ask "+GenericSender+", then undo iss12 as before" {
+		t.Errorf("the capture's remedy = %q", got)
+	}
+	r.Remedy = "  "
+	if got := captureRequest("root", "id", r).Remedy; got != issueschema.MachineRemedy {
+		t.Errorf("a report without a remedy promoted with remedy %q, want %q", got, issueschema.MachineRemedy)
 	}
 }

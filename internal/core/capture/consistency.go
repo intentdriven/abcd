@@ -6,6 +6,7 @@ import (
 	"unicode"
 
 	"github.com/intentdriven/abcd/internal/core/intent"
+	"github.com/intentdriven/abcd/internal/core/issueschema"
 )
 
 // consistency.go is the ledger half of the intent consistency pass (itd-48,
@@ -46,6 +47,10 @@ func IngestConsistency(repoRoot string, payload []byte, date string) (intent.Con
 			FoundDuring:    fmt.Sprintf("abcd intent consistency, finding %d of %s", f.Number, reportRel),
 			FoundAt:        endLocator(f.Ends[0]),
 			RelatedIntents: f.IntentIDs(),
+			// The pass is an automatic filer with no fix to propose (ruling
+			// H12): the record is filed, and a drain skips it until a person
+			// writes a real remedy.
+			Remedy: issueschema.MachineRemedy,
 		}
 	}
 	// A finding an open record already holds is linked, and writes nothing, so

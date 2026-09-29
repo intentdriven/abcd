@@ -166,9 +166,10 @@ type CaptureRequest struct {
 	// value the lapse log exists to distinguish itself from (spc-60).
 	LapsedAt string
 	// Remedy is the proposed fix, written as `remedy:` (itd-82 decision 6).
-	// Optional here, and "" omits the key; a drain lists a record without one
-	// as ineligible rather than refusing its capture. One line: the
-	// serialiser refuses a scalar carrying a line break.
+	// Required: a blank one is refused with ErrRemedyRequired (ruling BX3 of
+	// 2026-09-29), and an automatic filer with no fix yet passes
+	// issueschema.MachineRemedy (ruling H12), which a drain skips. One line:
+	// the serialiser refuses a scalar carrying a line break.
 	Remedy         string
 	RelatedIntents []string
 	RelatedSpecs   []string
@@ -423,6 +424,11 @@ var (
 	// written, and the surface gives both the one exit code a refusal takes
 	// (iss-2609260552251398).
 	ErrRequestRefused = errors.New("request refused")
+	// ErrRemedyRequired means a new issue was filed without a remedy: every new
+	// issue carries the fix it proposes (ruling BX3 of 2026-09-29, itd-82
+	// decision 6), and an automatic filer with none writes
+	// issueschema.MachineRemedy. It is a request refusal, with nothing written.
+	ErrRemedyRequired = errors.New("remedy required")
 	// The record reader's own sentinels (core/issuerecord), re-exported: one
 	// value under either name, so errors.Is holds across the two packages.
 	//

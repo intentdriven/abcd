@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/capture"
+	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -681,6 +682,15 @@ func captureRequest(ledgerRoot, id string, r Report) capture.CaptureRequest {
 		b.WriteString("\nEvery record id the report names is its sender's own, not this repository's, " +
 			"so each is written as one word, family and number together, and cites nothing here.\n")
 	}
+	// Every new issue carries a remedy (ruling BX3 of 2026-09-29). The
+	// reporter's is scrubbed like every other free-text value and folded to the
+	// one line the field holds; a report without one is promoted with the
+	// machine value (ruling H12), so the record is filed and a drain skips it
+	// until a person writes a real remedy.
+	remedy := strings.Join(strings.Fields(scrub(r.Remedy)), " ")
+	if remedy == "" {
+		remedy = issueschema.MachineRemedy
+	}
 	return capture.CaptureRequest{
 		RepoRoot:    ledgerRoot,
 		Text:        b.String(),
@@ -689,6 +699,7 @@ func captureRequest(ledgerRoot, id string, r Report) capture.CaptureRequest {
 		Source:      capture.Source(Source),
 		FoundDuring: fmt.Sprintf("abcd inbox report %s from %s (root commit %s)", id, GenericSender, r.SenderKey),
 		FoundAt:     foundAt,
+		Remedy:      remedy,
 	}
 }
 

@@ -33,6 +33,7 @@ binary.
 | `migrate` | — | shipped |
 | `promote` | — | shipped |
 | `reframe` | — | shipped |
+| `remedy` | — | shipped |
 | `resolve` | — | shipped |
 | `surprise` | — | shipped |
 | `wontfix` | — | shipped |
@@ -62,7 +63,22 @@ with an auto-assigned `iss-N` and writes it to `open/`, and says that the record
 is not committed yet whenever git reports it so, which for a new record is always. Provenance and taxonomy
 are caller-supplied flags. Severity, category, source and the found-during
 context each carry a default, so the fast path stays fast; the location, slug
-and dependency flags have none. The `origin` field is derived from the verb that
+and dependency flags have none. The remedy has no default and is required:
+every new issue names the fix it proposes, one line, because a drain reads that
+field to decide whether the issue needs no decision, and a filing without one is
+refused with nothing written (ruling BX3 of 2026-09-29, recorded in the decision
+log; itd-82 decision 6). This tightens the one-line capture on purpose: a capture
+is one line of text and one line of remedy. A remedy chosen in an autonomous run
+cites its grounds in the record's text, a prior-art or state-of-the-art check
+where the fix depends on outside practice (principle `prefer-sota`). The one
+exception is abcd's own automatic filers, the consistency pass and an inbox
+report promoted without a remedy of its own: with no fix to propose they write
+`none (filed automatically)` (ruling H12 of the same day), the record is filed,
+and a drain skips it until a person writes a real remedy through the remedy
+sub-verb, which writes or replaces the field on an open issue. The fast path
+refuses that value from a person, in any case, so it always means a machine
+filed the record. A record filed before the remedy was required carries none; it
+stays readable and valid, and a drain lists it as ineligible. The `origin` field is derived from the verb that
 ran and is carried by no flag at all (itd-178), and a production-mode flag records
 how the text was produced. That last flag is not the fast path's alone:
 promotion stamps the draft it mints with it, and resolving and marking wontfix each
@@ -377,7 +393,7 @@ lapsed_at: <rfc3339>       # on a lapse: the instant the discipline gave way, no
 origin: researcher-authored|extracted-from-record|contributed-by-reading <rdg-N>/<rdi-N>
 production_mode: hand-written|dictated-and-formatted|scribe-transcribed
 details: "<text>"          # optional structured detail
-remedy: "<text>"           # the proposed fix, one line; abcd drain takes no issue without one (itd-82)
+remedy: "<text>"           # the proposed fix, one line; required of every new issue, "none (filed automatically)" from an automatic filer (itd-82)
 suggested_fix: "<text>"    # the older spelling of remedy, read as it where a record carries no remedy
 related_intents: [itd-N, ...]  # an intent naming this issue back in related_issues is the one it was promoted into
 related_specs: [spc-N, ...]
@@ -604,7 +620,7 @@ _Generated from the command tree; a drift test fails `go test` when this appendi
 
 ### `abcd capture`
 
-Sub-verbs: `abcd capture admit`, `abcd capture defer`, `abcd capture disposition`, `abcd capture link`, `abcd capture list`, `abcd capture mentions`, `abcd capture migrate`, `abcd capture promote`, `abcd capture reframe`, `abcd capture resolve`, `abcd capture surprise`, `abcd capture wontfix`.
+Sub-verbs: `abcd capture admit`, `abcd capture defer`, `abcd capture disposition`, `abcd capture link`, `abcd capture list`, `abcd capture mentions`, `abcd capture migrate`, `abcd capture promote`, `abcd capture reframe`, `abcd capture remedy`, `abcd capture resolve`, `abcd capture surprise`, `abcd capture wontfix`.
 
 | Flag | Type |
 |---|---|
@@ -706,6 +722,12 @@ Sub-verbs: none.
 | `--grounds` | string |
 | `--occasioned-by` | string |
 | `--open` | bool |
+
+### `abcd capture remedy`
+
+Sub-verbs: none.
+
+Flags: none.
 
 ### `abcd capture resolve`
 

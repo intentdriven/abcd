@@ -17,7 +17,7 @@ func TestCaptureRedactsEveryGitIdentity(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	global, local := gittest.SplitIdentity(t, repo)
 
-	res, err := Capture(CaptureRequest{
+	res, err := testCapture(CaptureRequest{
 		RepoRoot: repo, IssuesRoot: ir,
 		Text:     "contact " + global.Email + " or " + local.Email + " about this flake; " + global.Name + " and " + local.Name + " both saw it",
 		Severity: SeverityMinor, Category: "process", Source: "user-observation", FoundDuring: "t",
