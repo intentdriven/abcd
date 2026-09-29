@@ -4,7 +4,7 @@ package loop
 // the run picks the intent it builds. The candidates are every planned intent
 // that passes every pre-start check `abcd build <itd-N>` runs, judged by the
 // same function (Check's rows, scope 1), less one this checkout already has a
-// run for; each is scored from its record (intent.Readiness) and the pick
+// run for; each is scored from its record (intent.ReadinessIn) and the pick
 // order (intent.PickLess) takes the readiest, the oldest among equals. The
 // pick then starts the run `abcd build <itd-N>` would start for that intent,
 // with the pick and its reason in the state, and the lane's worktree step
@@ -82,10 +82,10 @@ type NextResult struct {
 	Start StartResult `json:"start"`
 }
 
-// Candidates judges every planned intent with the pre-start checks and scores
+// candidates judges every planned intent with the pre-start checks and scores
 // the ones that pass. It writes nothing. A fault in reading the checkout is an
 // error; an intent that may not start is an exclusion.
-func Candidates(repoRoot, session string) (CandidateSet, error) {
+func candidates(repoRoot, session string) (CandidateSet, error) {
 	set := CandidateSet{Candidates: []intent.PickCandidate{}, Excluded: []Excluded{}}
 	corpus, err := intent.Load(repoRoot)
 	if err != nil {
@@ -185,7 +185,7 @@ func Next(repoRoot string, o Options, n NextOptions) (NextResult, error) {
 	if err := tierPresent(repoRoot); err != nil {
 		return NextResult{}, err
 	}
-	set, err := Candidates(repoRoot, o.Session)
+	set, err := candidates(repoRoot, o.Session)
 	if err != nil {
 		return NextResult{}, err
 	}

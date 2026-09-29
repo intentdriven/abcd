@@ -463,7 +463,7 @@ func TestPlanOnAPlannedRecordStampsConditionsAndImpactTogether(t *testing.T) {
 	if !strings.Contains(body, "\nimpact: breaking\n") {
 		t.Fatalf("the impact was not stamped:\n%s", body)
 	}
-	if conds := ParseClaims(body).Conditions; len(conds) != 1 || conds[0].ID == "" {
+	if conds := parseClaims(body).Conditions; len(conds) != 1 || conds[0].ID == "" {
 		t.Fatalf("the condition was not stamped: %+v", conds)
 	}
 }

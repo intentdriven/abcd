@@ -85,7 +85,7 @@ func StartChecksIn(repoRoot string, corpus Corpus, store spec.Store, r ReadyResu
 // startOpenQuestionsRow refuses a record that still asks a question.
 func startOpenQuestionsRow(id, content string) StartRow {
 	row := StartRow{Name: StartCheckOpenQuestions}
-	qs := OpenQuestions(content)
+	qs := openQuestions(content)
 	if len(qs) == 0 {
 		row.OK = true
 		row.Detail = "no open question"
@@ -102,7 +102,7 @@ func startOpenQuestionsRow(id, content string) StartRow {
 func startClaimSectionsRow(r ReadyResult, content string) StartRow {
 	row := StartRow{Name: StartCheckClaimSections}
 	var why, remedy []string
-	if ParseClaims(content).MechanismPrompt {
+	if parseClaims(content).MechanismPrompt {
 		why = append(why, "the '## Mechanism' prompt is unanswered")
 		remedy = append(remedy, "write the falsifiable claim under '## Mechanism', or record `"+NullityToken+"` alone on its line to decline it")
 	}
@@ -155,7 +155,7 @@ func startHoldRow(it Intent) StartRow {
 func startBlockedRow(corpus Corpus, id, content string) StartRow {
 	row := StartRow{Name: StartCheckBlocked}
 	var open, followed []string
-	for _, b := range BlockedBy(content) {
+	for _, b := range blockedBy(content) {
 		chain, final, problem := followBlocker(corpus, b)
 		path := strings.Join(chain, " → ")
 		switch {

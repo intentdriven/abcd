@@ -512,7 +512,7 @@ func TestShippedVerdictsSurviveTheStagedRollout(t *testing.T) {
 		// A record that DOES carry conditions is judged by its own verdict's
 		// dispositions, not by this vacuity assertion — including it would turn
 		// the test red on a correct corpus the moment a conditioned intent ships.
-		if len(ParseClaims(content).Conditions) > 0 {
+		if len(parseClaims(content).Conditions) > 0 {
 			continue
 		}
 		checked++

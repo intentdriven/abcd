@@ -92,7 +92,7 @@ func TestNextCandidatesAreWhatTheBuildWouldStart(t *testing.T) {
 	repo.Commit("deliver sixteen")
 	repo.Git("checkout", "-q", "main")
 
-	set, err := Candidates(repo.Root(), "")
+	set, err := candidates(repo.Root(), "")
 	if err != nil {
 		t.Fatal(err)
 	}

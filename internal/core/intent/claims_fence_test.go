@@ -26,7 +26,7 @@ const fencedShadow = "---\nid: itd-10\nslug: alpha\nspec_id: null\nkind: standal
 	"## Acceptance Criteria\n\n- ok\n"
 
 func TestSectionBoundIgnoresAFencedHeading(t *testing.T) {
-	c := ParseClaims(fencedShadow)
+	c := parseClaims(fencedShadow)
 	if c.ConditionsState != ClaimStated {
 		t.Fatalf("ConditionsState = %q, want %q", c.ConditionsState, ClaimStated)
 	}
@@ -45,7 +45,7 @@ func TestSectionBoundIgnoresAFencedTerminator(t *testing.T) {
 		"~~~\n## Acceptance Criteria\n~~~\n\n" +
 		"- holds below 10k records\n\n" +
 		"## Acceptance Criteria\n\n- ok\n"
-	conds := ParseClaims(content).Conditions
+	conds := parseClaims(content).Conditions
 	if len(conds) != 2 {
 		t.Fatalf("got %d conditions, want 2 (the fenced heading is not a terminator): %+v", len(conds), conds)
 	}
@@ -54,7 +54,7 @@ func TestSectionBoundIgnoresAFencedTerminator(t *testing.T) {
 // A fenced bullet UNDER the real heading is an example, not a condition.
 func TestFencedBulletIsNotACondition(t *testing.T) {
 	body := "- holds on POSIX\n\n```\n- not a condition\n```\n"
-	conds := ParseClaims(claimRecord(nil, str(body))).Conditions
+	conds := parseClaims(claimRecord(nil, str(body))).Conditions
 	if len(conds) != 1 {
 		t.Fatalf("got %d conditions, want 1: %+v", len(conds), conds)
 	}
@@ -94,7 +94,7 @@ func TestStampRefusesADuplicateHeading(t *testing.T) {
 // it. The bullet is now refused and reported instead.
 func TestMalformedMarkerIsNeverGluedBesideARealOne(t *testing.T) {
 	body := "- holds on POSIX <!-- cond: cond-123 -->\n- properly unmarked\n"
-	c := ParseClaims(claimRecord(nil, str(body)))
+	c := parseClaims(claimRecord(nil, str(body)))
 	if !c.Conditions[0].MalformedMarker {
 		t.Fatalf("condition 1 must be flagged as carrying a malformed marker: %+v", c.Conditions[0])
 	}
@@ -205,7 +205,7 @@ func TestStampPlannedHoldsTheMintLock(t *testing.T) {
 const commentedSection = "- holds on a POSIX shell\n\n<!--\n- parked while we decide\n-->\n"
 
 func TestCommentedBulletIsNotACondition(t *testing.T) {
-	c := ParseClaims(claimRecord(nil, str(commentedSection)))
+	c := parseClaims(claimRecord(nil, str(commentedSection)))
 	if len(c.Conditions) != 1 {
 		t.Fatalf("got %d conditions, want 1 (the parked bullet is not live): %+v", len(c.Conditions), c.Conditions)
 	}
@@ -218,7 +218,7 @@ func TestCommentedBulletIsNotACondition(t *testing.T) {
 // live bullet either — the whole span is masked.
 func TestBulletOpeningACommentIsMasked(t *testing.T) {
 	body := "- holds on a POSIX shell\n- parked <!--\n  because we are unsure -->\n"
-	c := ParseClaims(claimRecord(nil, str(body)))
+	c := parseClaims(claimRecord(nil, str(body)))
 	if len(c.Conditions) != 1 {
 		t.Fatalf("got %d conditions, want 1: %+v", len(c.Conditions), c.Conditions)
 	}
@@ -270,7 +270,7 @@ func TestPlanLeavesACommentedSectionByteIdentical(t *testing.T) {
 // grammar this way.
 func TestMarkerInsideACodeSpanIsNotAnIdentity(t *testing.T) {
 	body := "- the identity looks like `<!-- cond: cond-2608300102030405 -->`\n"
-	c := ParseClaims(claimRecord(nil, str(body)))
+	c := parseClaims(claimRecord(nil, str(body)))
 	if len(c.Conditions) != 1 {
 		t.Fatalf("got %d conditions, want 1", len(c.Conditions))
 	}
@@ -290,7 +290,7 @@ func TestMarkerInsideACodeSpanIsNotAnIdentity(t *testing.T) {
 func TestMalformedMarkerGuardIsCaseInsensitive(t *testing.T) {
 	for _, near := range []string{"<!-- Cond: cond-1 -->", "<!-- COND: whatever -->"} {
 		t.Run(near, func(t *testing.T) {
-			c := ParseClaims(claimRecord(nil, str("- holds on POSIX "+near+"\n")))
+			c := parseClaims(claimRecord(nil, str("- holds on POSIX "+near+"\n")))
 			if !c.Conditions[0].MalformedMarker {
 				t.Fatalf("%q was not reported as a malformed marker", near)
 			}
@@ -381,7 +381,7 @@ func TestQuotedCommentOpenerDoesNotMaskTheRecord(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c := ParseClaims(string(data))
+	c := parseClaims(string(data))
 	if c.ConditionsState != ClaimStated || len(c.Conditions) != 1 {
 		t.Fatalf("the quoted opener masked the section: state=%q conditions=%+v", c.ConditionsState, c.Conditions)
 	}
@@ -404,7 +404,7 @@ func TestQuotedCommentOpenerDoesNotMaskTheRecord(t *testing.T) {
 // A genuinely unclosed opener still masks to end of file.
 func TestUnclosedCommentOpenerStillMasksToEOF(t *testing.T) {
 	body := "- holds on POSIX\n\n<!-- we never closed this\n- parked\n"
-	c := ParseClaims(claimRecord(nil, str(body)))
+	c := parseClaims(claimRecord(nil, str(body)))
 	if !c.ConditionsCommented {
 		t.Fatal("an unclosed opener must still mask")
 	}
@@ -515,7 +515,7 @@ func TestStampPreservesAHardLineBreak(t *testing.T) {
 	if !strings.Contains(stamped, "-->  \n") {
 		t.Fatalf("the hard line break was trimmed away:\n%s", stamped)
 	}
-	if conds := ParseClaims(stamped).Conditions; len(conds) != 1 || conds[0].ID == "" {
+	if conds := parseClaims(stamped).Conditions; len(conds) != 1 || conds[0].ID == "" {
 		t.Fatalf("the stamped bullet no longer reads back: %+v", conds)
 	}
 }

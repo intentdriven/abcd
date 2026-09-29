@@ -83,7 +83,7 @@ const maxIntentBytes = 256 * 1024
 //   - ready: the implement-readiness gate (intent.Ready) — planned, criteria,
 //     the spec linked and written. Its advisory rows stay advisory here.
 //   - open_questions: no open question under `## Open Questions`
-//     (intent.OpenQuestions: every list item, less the settled markers).
+//     (intent.StartChecksIn: every list item, less the settled markers).
 //   - claim_sections: no unanswered claim section — the mechanism prompt
 //     answered or the section absent, the scope conditions recorded.
 //   - hold: no `held:` on the record (iss-2609200830076665).

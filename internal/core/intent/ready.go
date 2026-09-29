@@ -101,7 +101,7 @@ func ReadyIn(repoRoot string, store spec.Store, it Intent) (ReadyResult, error) 
 	}
 	content := string(data)
 	acCount := countAcceptanceCriteria(content)
-	claims := ParseClaims(content)
+	claims := parseClaims(content)
 
 	res := ReadyResult{
 		IntentID: it.ID,
@@ -348,7 +348,7 @@ func groundsCheck(it Intent, content string) ReadyCheck {
 	// the row names is a person's, so the pick never displaces it.
 	var human []grounds.Grounds
 	for _, g := range entries {
-		if !IsRunPick(g) {
+		if !isRunPick(g) {
 			human = append(human, g)
 		}
 	}

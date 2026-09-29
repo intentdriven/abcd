@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core/intent"
+	"github.com/intentdriven/abcd/internal/core/spec"
 )
 
 // readyIntent is a planned intent the readiness gate reports READY: criteria,
@@ -285,7 +286,6 @@ func TestTheHeadIsThePicksChoice(t *testing.T) {
 		{"itd-2609010000000001", "spc-2609010000000011", writtenSpec("spc-2609010000000011", "itd-2609010000000001") +
 			"\n## Footprint\n\n- packages: internal/core/intent, internal/core/spec\n- tests: the score\n"}, // youngest, between
 	}
-	var cands []intent.PickCandidate
 	for _, r := range recs {
 		ic := readyIntent(r.id, "Title of "+r.id, r.spec, "")
 		p := filepath.Join(root, ".abcd/development/intents/planned", r.id+"-s.md")
@@ -298,7 +298,26 @@ func TestTheHeadIsThePicksChoice(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		cands = append(cands, intent.PickCandidate{ID: r.id, Score: intent.Readiness(ic, r.specBody)})
+	}
+	corpus, err := intent.Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := spec.Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cands []intent.PickCandidate
+	for _, r := range recs {
+		it, ok := corpus.Lookup(r.id)
+		if !ok {
+			t.Fatalf("precondition: %s is in the corpus", r.id)
+		}
+		score, err := intent.ReadinessIn(root, store, it, r.spec)
+		if err != nil {
+			t.Fatal(err)
+		}
+		cands = append(cands, intent.PickCandidate{ID: r.id, Score: score})
 	}
 	pick, ok := intent.Choose(cands)
 	if !ok || pick.Chosen.ID != "itd-4" || !pick.TieBrokenByAge {

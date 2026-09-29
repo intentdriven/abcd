@@ -72,14 +72,14 @@ var (
 	thenRe  = regexp.MustCompile(`(?i)\bthen\b`)
 )
 
-// Readiness scores an intent from its record and its spec's content, with the
+// readiness scores an intent from its record and its spec's content, with the
 // bundled weights.
-func Readiness(intentContent, specContent string) ReadinessScore {
-	return ReadinessWith(BundledReadinessWeights, intentContent, specContent)
+func readiness(intentContent, specContent string) ReadinessScore {
+	return readinessWith(BundledReadinessWeights, intentContent, specContent)
 }
 
-// ReadinessWith is Readiness under the given weights.
-func ReadinessWith(w ReadinessWeights, intentContent, specContent string) ReadinessScore {
+// readinessWith is readiness under the given weights.
+func readinessWith(w ReadinessWeights, intentContent, specContent string) ReadinessScore {
 	var s ReadinessScore
 
 	lines := strings.Split(intentContent, "\n")
@@ -141,7 +141,7 @@ func ReadinessIn(repoRoot string, store spec.Store, it Intent, specID string) (R
 	if err != nil {
 		return ReadinessScore{}, err
 	}
-	return Readiness(string(ic), string(sc)), nil
+	return readiness(string(ic), string(sc)), nil
 }
 
 // PickCandidate is one intent the pick may take, with its score.
@@ -223,8 +223,8 @@ const RunPickMarker = "picked by run "
 // runPickRe is the marker as the gate recognises it.
 var runPickRe = regexp.MustCompile(`^picked by run run-[0-9]+ on [0-9]{4}-[0-9]{2}-[0-9]{2}\b`)
 
-// IsRunPick reports whether a grounds entry is one a run's pick wrote.
-func IsRunPick(g grounds.Grounds) bool { return runPickRe.MatchString(g.Text) }
+// isRunPick reports whether a grounds entry is one a run's pick wrote.
+func isRunPick(g grounds.Grounds) bool { return runPickRe.MatchString(g.Text) }
 
 // PickEntryText is the reason the pick writes onto the chosen intent: the
 // marker, every candidate with its score, the rule, the runner-up and why it

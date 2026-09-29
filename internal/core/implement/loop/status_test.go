@@ -90,7 +90,7 @@ func TestTheStatusHeadIsTheIntentBuildNextPicks(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		set, err := Candidates(repo.Root(), "")
+		set, err := candidates(repo.Root(), "")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -142,7 +142,7 @@ func TestTheStatusHeadPassesOverWhatBuildNextExcludesFromTheRecord(t *testing.T)
 		"23": {pickIntent("23", "blocked_by: [itd-20]\n", settledQuestions, gwt), pickSpec("23", fpSmall)},
 		"24": {pickIntent("24", "", settledQuestions, gwt), pickSpec("24", fpSmall) + landed},
 	})
-	set, err := Candidates(repo.Root(), "")
+	set, err := candidates(repo.Root(), "")
 	if err != nil {
 		t.Fatal(err)
 	}
