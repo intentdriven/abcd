@@ -11,6 +11,7 @@ production_mode: hand-written
 found_at: "conventions (decomposition grading, planning interview)"
 deferred_after: "v0.11.1"
 deferral_reason: "ruling owed to the product thinker (away; run A 2026-09-25; rulings-owed H): Plan tool support for decomposition grading and the planning interview, enforcing feasibility before routing?"
+remedy: "Waits on ruling (plan tool support for grading and the interview): if planned, fold it with iss-2609100509524742 into one intent whose verb runs the sequence feasibility review first, routing second, refusing a routing answer recorded before a feasibility verdict on the same draft hash, proven by a test that routing before feasibility is refused; if declined, state the feasibility-before-routing order in the planning-interview prose and wontfix the tool half."
 ---
 
 The decomposition grading and the planning interview are hand-run rituals with no tool support, and running them repeatedly surfaced an ordering rule the tool could enforce.
@@ -22,3 +23,7 @@ Running them that many times in a day made a pattern visible that a single run w
 The suggestion the pattern implies: the feasibility review should PRECEDE the routing question, not follow it, and a tool that runs the sequence could enforce that order rather than leaving it to whoever remembers. That is a claim about the sequence, testable by running it the other way round and seeing whether routing decisions still get invalidated.
 
 Related and filed separately: the graded row a decomposition produces has no write path of its own.
+
+## Remedy grounds (2026-09-29)
+
+Why: the ordering is the record's testable claim, and a refusal keyed to the draft hash is the cheapest way to enforce it. Rejected: scaffolding the grading without the order, which would record the ritual but keep the invalidated routing the record observed twice.

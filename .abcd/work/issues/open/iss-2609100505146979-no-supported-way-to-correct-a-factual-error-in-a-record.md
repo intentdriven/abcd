@@ -12,6 +12,7 @@ found_at: "internal (intent, decide, capture) / conventions"
 related_intents: [itd-2609150819439571]
 deferred_after: v0.11.1
 deferral_reason: "Promoted to itd-2609150819439571 (draft), and a promoted issue keeps its folder until the intent ships. The product thinker's ruling M25 of 2026-09-23: a convention first, then possibly a verb, through the draft's planning interview. Owed: that interview, which opens on one question: per record family, where does a correction go, what does it carry, and why does the original stay?"
+remedy: "Waits on the itd-2609150819439571 planning interview (M25, convention first): take into it one candidate, an appended dated Errata section on any record family that quotes the wrong sentence, states the correction and says why the original stands, never editing the original; if the interview places it per family instead, the same three fields go into each family's existing append-only section (Audit Notes for a shipped intent) and a new dated section elsewhere; either way a record-lint check that an erratum carries all three fields proves it, and a verb follows only if the interview asks for one."
 ---
 
 abcd has no supported operation for correcting a factual error inside a durable record, and no documented convention saying what to do instead. The record is deliberately not rewritten, which is right, but "not rewritten" and "wrong" are different states and only the first has a mechanism.
@@ -34,3 +35,7 @@ Needed, in rough order of cost: a documented convention for errata on a durable 
 ## Deferral 2026-09-29
 
 Deferred past v0.11.1: Promoted to itd-2609150819439571 (draft), and a promoted issue keeps its folder until the intent ships. The product thinker's ruling M25 of 2026-09-23: a convention first, then possibly a verb, through the draft's planning interview. Owed: that interview, which opens on one question: per record family, where does a correction go, what does it carry, and why does the original stay?
+
+## Remedy grounds (2026-09-29)
+
+Why: ruling M25 (2026-09-23) orders a convention before any verb, and the three fields are what let a reader tell a correction from a finding. SOTA check: RFCs do not change after publication; errors are recorded as separate errata with a status of Reported, Verified, Rejected or Held for Document Update (https://www.rfc-editor.org/errata-definitions/, read 2026-09-29). Rejected: an in-place edit pointing at git history, which erases the evidence an audit reasoned from and breaks the append-only record families.
