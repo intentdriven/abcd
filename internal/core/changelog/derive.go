@@ -98,12 +98,12 @@ func Derive(root string) (Derivation, error) {
 	}
 	d.Base, d.BaseTag = base, base.Tag()
 
-	heading, hasHeading, err := LatestChangelogVersion(root)
+	inFlight, reason, err := releaseInFlight(root, base)
 	if err != nil {
 		return Derivation{}, err
 	}
-	if hasHeading && launch.CoreGreater(heading, base) {
-		return refuse(d, RefusalReleaseInFlight, "release "+heading.Tag()+" in flight — tag pending (the newest CHANGELOG heading is ahead of "+d.BaseTag+")"), nil
+	if inFlight {
+		return refuse(d, RefusalReleaseInFlight, reason), nil
 	}
 
 	records, err := ShippedSince(root, d.BaseTag)
@@ -140,4 +140,32 @@ func refuse(d Derivation, kind RefusalKind, reason string) Derivation {
 	d.Next = launch.Semver{}
 	d.NextTag = ""
 	return d
+}
+
+// ReleaseInFlight reports whether a release sits between its cut and its tag —
+// the newest CHANGELOG heading ahead of the newest release tag — and the reason
+// Derive refuses it with. It reads only the tags and the CHANGELOG, so a caller
+// can ask it before work that would otherwise refuse first on a symptom of the
+// same window: the ship's payload parity diff, whose baseline advice names a flag
+// the ship does not take (iss-2609252117203691). No tag is not in flight; Derive
+// refuses that case on its own.
+func ReleaseInFlight(root string) (bool, string, error) {
+	base, hasTag, err := LatestReleaseTag(root)
+	if err != nil || !hasTag {
+		return false, "", err
+	}
+	return releaseInFlight(root, base)
+}
+
+// releaseInFlight is the one statement of the in-flight rule, against base, the
+// newest release tag.
+func releaseInFlight(root string, base launch.Semver) (bool, string, error) {
+	heading, hasHeading, err := LatestChangelogVersion(root)
+	if err != nil {
+		return false, "", err
+	}
+	if hasHeading && launch.CoreGreater(heading, base) {
+		return true, "release " + heading.Tag() + " in flight — tag pending (the newest CHANGELOG heading is ahead of " + base.Tag() + ")", nil
+	}
+	return false, "", nil
 }

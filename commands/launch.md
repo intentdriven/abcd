@@ -278,7 +278,9 @@ Then summarise the JSON for the user:
   the same way — `CHANGELOG.md` dates the release just cut, which has no tag
   yet — so the preview refuses there too, naming the release as not tagged yet
   and `--baseline <newest tag>`, which measures against the release before it;
-  the cut itself diffs before it writes its heading. `parity.entries` lists
+  the cut itself diffs before it writes its heading, and a second cut in that
+  window refuses as a release in flight (exit 1) before any pre-flight runs.
+  `parity.entries` lists
   every path `added`, `changed` or `removed` with its `digest` and
   `baseline_digest` (SHA-256); report the counts and the paths. The two stamped manifests are compared with their
   version keys removed (`parity.normalised`), and against a release asset the

@@ -126,6 +126,9 @@ say what the surface is for, and let the appendix say how it is spelled.
 line above them saying that `abcd --help --agent` expands the list. With
 `--agent` the help renders two blocks: the person's groups, then the verbs agents
 and hosts call, each line naming the command page an agent reads next (itd-146).
+Each block sizes its own name column, so the person's groups read the same in
+both forms, and asking for the expanded list any other way, on the bare call or
+through the help verb, is refused naming the one spelling that works.
 Every other command's help is the framework's own, except that it opens with
 the command's sentence (the section below).
 
