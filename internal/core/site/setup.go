@@ -152,13 +152,16 @@ type EnvironmentOutcome struct {
 
 // HostOutcome is the host stage's result.
 type HostOutcome struct {
-	Provider string   `json:"provider"`
-	Name     string   `json:"name"`
-	Domain   string   `json:"domain,omitempty"`
-	Status   string   `json:"status"`
-	Changes  []string `json:"changes,omitempty"`
-	Address  string   `json:"address,omitempty"`
-	Detail   string   `json:"detail,omitempty"`
+	Provider string `json:"provider"`
+	Name     string `json:"name"`
+	Domain   string `json:"domain,omitempty"`
+	// Credential is the name of the credential the stage resolved, never
+	// its value (itd-2609221017023290 criterion 5).
+	Credential string   `json:"credential"`
+	Status     string   `json:"status"`
+	Changes    []string `json:"changes,omitempty"`
+	Address    string   `json:"address,omitempty"`
+	Detail     string   `json:"detail,omitempty"`
 }
 
 // SetupResult is what the verb did, stage by stage, and what remains.
@@ -297,8 +300,9 @@ func Setup(req SetupRequest) (SetupResult, error) {
 			changed = true
 		}
 		if hc.Status == HostNoCredential {
-			step := fmt.Sprintf("store a %s API token under the name %s in %s (mode 0600) and re-run `abcd site setup`, "+
-				"or create the host %s", adapter.Name(), adapter.CredentialName(), credential.StorePath, s.Name)
+			step := fmt.Sprintf("store a %s API token under the name %s with `%s` (it explains where the token can live and "+
+				"verifies it) and re-run `abcd site setup`, or create the host %s", adapter.Name(), adapter.CredentialName(),
+				credential.Walkthrough(adapter.CredentialName()), s.Name)
 			if s.Domain != "" {
 				step += " and route " + s.Domain + " to it"
 			}
@@ -694,10 +698,10 @@ func containsPolicy(have []BranchPolicy, want BranchPolicy) bool {
 
 // setupHost is the host stage.
 func setupHost(ctx context.Context, adapter hosting.Adapter, s hosting.Site, req SetupRequest) (out HostOutcome, declined, refused bool) {
-	out = HostOutcome{Provider: adapter.Name(), Name: s.Name, Domain: s.Domain}
+	out = HostOutcome{Provider: adapter.Name(), Name: s.Name, Domain: s.Domain, Credential: adapter.CredentialName()}
 	src := req.Credentials
 	if src == nil {
-		src = credential.UserMachine()
+		src = credential.UserStore()
 	}
 	token, err := src.Resolve(adapter.CredentialName())
 	if errors.Is(err, credential.ErrNotSet) {

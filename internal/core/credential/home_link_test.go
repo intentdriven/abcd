@@ -3,10 +3,13 @@
 package credential
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
 // dotfilesHome returns a home whose ~/.abcd is a symlink to a directory in a
@@ -95,5 +98,86 @@ func assertOwnerOnly(t *testing.T, p string) {
 	}
 	if fi.Mode().Perm()&0o077 != 0 {
 		t.Fatalf("%s is mode %04o; the lock must be the owner's alone", filepath.Base(p), fi.Mode().Perm())
+	}
+}
+
+// TestSetMachineWritesNothingThroughAnAbcdHomeSwappedForALink is
+// iss-2609281310017733: ~/.abcd is a real directory when SetMachine judges it
+// and a symlink into a dotfiles checkout by the time it writes. A check by path
+// followed by a create by path lands the secret (and its lock) in the checkout;
+// the write through the descriptor of the directory that was judged is refused,
+// names the link, and leaves the checkout as it was.
+func TestSetMachineWritesNothingThroughAnAbcdHomeSwappedForALink(t *testing.T) {
+	home := t.TempDir()
+	dotfiles := filepath.Join(home, "dotfiles", "abcd")
+	for _, dir := range []string{filepath.Join(home, ".abcd"), dotfiles} {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	swapped := false
+	t.Cleanup(fsutil.SwapHomeScopeVettedForTest(func(dir string) {
+		if swapped || dir != filepath.Join(home, ".abcd") {
+			return
+		}
+		swapped = true
+		if err := os.Rename(dir, filepath.Join(home, "moved-aside")); err != nil {
+			t.Fatalf("swap: %v", err)
+		}
+		if err := os.Symlink(dotfiles, dir); err != nil {
+			t.Fatalf("swap: %v", err)
+		}
+	}))
+	changed, err := SetMachine(home, "openrouter", "sk-example-0123456789")
+	if !swapped {
+		t.Fatal("the vetting hook never ran, so the race was not staged")
+	}
+	if err == nil || changed || !strings.Contains(err.Error(), "~/.abcd is a symlink") {
+		t.Errorf("SetMachine must refuse a ~/.abcd swapped for a link, naming it: changed %v, err %v", changed, err)
+	}
+	entries, rerr := os.ReadDir(dotfiles)
+	if rerr != nil {
+		t.Fatal(rerr)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("SetMachine wrote %d file(s) through the swapped link, first %q", len(entries), entries[0].Name())
+	}
+}
+
+// TestResolveRefusesAStoreSwappedForAGroupReadableOneAfterItsCheck is the
+// mode half of iss-2609281310017733: the store is 0600 when a check by path
+// judges it and a group- and other-readable file by the time it is opened (a
+// same-uid race, staged through the vetting hook of the ~/.abcd walk). A mode
+// judged by path vouches for a file other than the one read; the mode judged
+// on the opened file's own fstat refuses it, and the value is never returned.
+func TestResolveRefusesAStoreSwappedForAGroupReadableOneAfterItsCheck(t *testing.T) {
+	home := t.TempDir()
+	store := writeStore(t, home, `{"openrouter": "sk-example-owner-only"}`, 0o600)
+	exposed := filepath.Join(home, "exposed.json")
+	if err := os.WriteFile(exposed, []byte(`{"openrouter": "`+secretValue+`"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(exposed, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	swapped := false
+	t.Cleanup(fsutil.SwapHomeScopeVettedForTest(func(dir string) {
+		if swapped || dir != filepath.Join(home, ".abcd") {
+			return
+		}
+		swapped = true
+		if err := os.Rename(exposed, store); err != nil {
+			t.Fatalf("swap: %v", err)
+		}
+	}))
+	v, err := Machine(home).Resolve("openrouter")
+	if !swapped {
+		t.Fatal("the vetting hook never ran, so the race was not staged")
+	}
+	if err == nil || errors.Is(err, ErrNotSet) || v != "" {
+		t.Fatalf("a store swapped for a 0644 file after its check must be refused: value %q, err %v", v, err)
+	}
+	if strings.Contains(err.Error(), secretValue) || !strings.Contains(err.Error(), "chmod 0600") {
+		t.Fatalf("the refusal must name the remedy and never the value: %v", err)
 	}
 }

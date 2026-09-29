@@ -76,10 +76,31 @@
     {
       "path": "abcd ahoy connect",
       "hidden": false,
-      "sentence": "Verify a model provider with one call, then configure it: Writes its block and its key under ~/.abcd/; refuses a key typed at a terminal.",
+      "sentence": "Verify a model provider with one call, then configure it: Writes its block under ~/.abcd/ and its key to the home chosen; refuses a key typed at a terminal.",
       "flags": [
         {
           "name": "base-url",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "env",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "field",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "file",
           "shorthand": "",
           "type": "string",
           "required": false,
@@ -103,6 +124,41 @@
           "name": "model",
           "shorthand": "",
           "type": "stringArray",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd ahoy credential",
+      "hidden": false,
+      "sentence": "List the credentials abcd reads, explain one, or verify and store it: Writes the chosen home only with --home; refuses a value the adapter's call fails.",
+      "flags": [
+        {
+          "name": "env",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "field",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "file",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "home",
+          "shorthand": "",
+          "type": "string",
           "required": false,
           "hidden": false
         }
@@ -2069,7 +2125,7 @@
       "hidden": false,
       "group": "checks",
       "block": "people",
-      "sentence": "Check this repository against the conventions, every target included: Writes nothing; refuses with exit 2 on an error finding and exit 1 on warnings alone.",
+      "sentence": "Check this repository against the conventions, every target but outbound: Writes nothing; refuses with exit 2 on an error finding and exit 1 on warnings alone.",
       "flags": [
         {
           "name": "root",

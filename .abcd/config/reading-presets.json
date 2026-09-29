@@ -61,9 +61,9 @@
       ],
       "window": {
         "tokens_est": 1370000,
-        "measured_tokens_est": 1346734,
-        "measured_bytes": 5184929,
-        "measured_at": "3a282f5fee1dfb46da002e41b9193ab8a1ca2ce0"
+        "measured_tokens_est": 1346832,
+        "measured_bytes": 5185304,
+        "measured_at": "a887092f79d847680e09a6f0a7a447bfb6f01749"
       }
     },
     "entailment": {

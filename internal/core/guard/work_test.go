@@ -23,8 +23,15 @@ const linearWorkBar = 6.0
 // floor of well over a million units to the bounded operand enumeration
 // (maxOperandStates), so their per-byte figure falls as the line grows — about
 // 89 at 18 KB and 28 at the 64 KB cap (review4-guard). Dropping one bound
-// measures well over a hundred on a line of any length.
-const workPerByteBar = 20.0
+// measures well over a hundred on a line of any length. The operand walk reads
+// every token once per entry whose command the name can be, so the constant
+// grows with the registry: an unknown program name followed by unknown
+// dash-words (`$(a) -$(b) x` repeated) measured about 18 units per byte with
+// fourteen bundled entries and about 20 with sixteen, the two rm-target
+// entries of iss-2609282105242542. The bar sits at 24, which keeps that shape
+// under it with room for a few more entries and stays far below the hundred a
+// dropped bound costs.
+const workPerByteBar = 24.0
 
 // checkWork runs one check over line against the bundled registry and returns
 // the work the guard counted doing it (tally in work.go): bytes tokenized, bytes

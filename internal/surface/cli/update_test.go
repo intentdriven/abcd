@@ -2,6 +2,8 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -199,5 +201,55 @@ func TestUpdateReceiptKeepsTheOrdinaryVersionLine(t *testing.T) {
 	}
 	if strings.Contains(got, "unpublished") {
 		t.Errorf("a provable old build must not be reported as unpublished:\n%s", got)
+	}
+}
+
+// TestUpdateJSONRefusalIsOneDocument — iss-2609282105241960. `update --json` on
+// a dispatch refusal printed the receipt and then Run's error envelope: two
+// JSON documents where a machine reader expects one. The refusal is ONE
+// document that is both the receipt the chapter describes (action, the
+// refusal's shape, detail and remedy) and the refusal the global --json
+// contract describes (`"abcd": "error"`, the error, the exit code), and it
+// carries no empty origin, since no release origin was reached.
+func TestUpdateJSONRefusalIsOneDocument(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ABCD_PLUGIN_ROOT", "")
+	t.Setenv("CLAUDE_PLUGIN_ROOT", "")
+	t.Setenv("ABCD_BIN_TARGET", "")
+	t.Setenv("PATH", filepath.Join(home, ".local", "bin"))
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"update", "--json"}, &stdout, &stderr)
+	if code != 1 {
+		t.Fatalf("exit = %d, want 1 for a refusal; stdout %q stderr %q", code, stdout.String(), stderr.String())
+	}
+	dec := json.NewDecoder(bytes.NewReader(stdout.Bytes()))
+	var doc map[string]any
+	if err := dec.Decode(&doc); err != nil {
+		t.Fatalf("stdout is not JSON: %v\n%s", err, stdout.String())
+	}
+	var extra json.RawMessage
+	if err := dec.Decode(&extra); err != io.EOF {
+		t.Fatalf("stdout holds more than one JSON document (second: %s, err %v):\n%s", extra, err, stdout.String())
+	}
+	if doc["abcd"] != "error" || doc["action"] != "refused" {
+		t.Errorf("the document is not both the refusal envelope and the receipt: %v", doc)
+	}
+	if ec, _ := doc["exit_code"].(float64); ec != 1 {
+		t.Errorf("exit_code = %v, want 1", doc["exit_code"])
+	}
+	if msg, _ := doc["error"].(string); !strings.Contains(msg, "update refused (absent)") {
+		t.Errorf("error = %q, want it to name the refusal", doc["error"])
+	}
+	ref, _ := doc["refusal"].(map[string]any)
+	if ref == nil || ref["shape"] != "absent" || ref["remedy"] == "" || ref["remedy"] == nil {
+		t.Errorf("the refusal block does not name its shape and remedy: %v", doc["refusal"])
+	}
+	if _, ok := doc["origin"]; ok {
+		t.Errorf("a refusal raised before any fetch carries an origin key: %v", doc)
+	}
+	if stderr.Len() != 0 {
+		t.Errorf("--json wrote to stderr: %q", stderr.String())
 	}
 }

@@ -225,7 +225,10 @@ irreversible; guessing downward costs nothing.**
   session's own checkout lives at `~/.abcd/worktrees/<root-sha>/<name>/`, keyed
   on the repository's root commit the way the history, transcript and voyage
   stores already are — a checkout moves, is renamed and is cloned twice on one
-  machine, while its root commit does none of that. Not beside the checkout,
+  machine, while its root commit does none of that. `<root-sha>` is the full
+  object name (forty hex digits under SHA-1, sixty-four under SHA-256), as the
+  verbs that create a store key it; an abbreviated key names a second directory
+  that no verb reads. Not beside the checkout,
   not in the directory the user keeps their projects in, and not inside the
   working tree, which every tree scan walks. A tool never creates a directory
   in space the user did not hand it, and beside a checkout there is no declared

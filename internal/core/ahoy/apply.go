@@ -1606,7 +1606,9 @@ func Uninstall(cwd, binDir string) (UninstallReceipt, error) {
 	if err != nil {
 		return UninstallReceipt{}, err
 	}
-	var receipt UninstallReceipt
+	// The two lists are seeded non-nil so an uninstall that touched no file
+	// renders [] rather than null (iss-2609120447487070).
+	receipt := UninstallReceipt{Marker: MarkerReceipt{Removed: []string{}, Skipped: []string{}}}
 
 	// Marker: clean both surfaces regardless of the current docs.target.
 	for _, name := range []string{"CLAUDE.md", "AGENTS.md"} {
@@ -1725,18 +1727,21 @@ func Doctor(cwd string) (DoctorReport, error) {
 // under the home directory would otherwise carry the username
 // (GHSA-m8pg-chhv-hxvq). A foreign machine's home in the registered path is
 // the user's own cross-machine registry and is left as recorded.
+//
+// It never returns nil: doctor renders the list as [] when there is nothing to
+// reconcile (iss-2609120447487070).
 func auditGaps(cwd string, det DetectionResult) []Gap {
-	var gaps []Gap
+	gaps := []Gap{}
 	if det.RootSHA == "" {
-		return nil
+		return gaps
 	}
 	idx, err := loadHistoryIndex()
 	if err != nil || idx == nil {
-		return nil
+		return gaps
 	}
 	entry := indexEntry(idx, det.RootSHA)
 	if entry == nil {
-		return nil
+		return gaps
 	}
 	abs, _ := filepath.Abs(cwd)
 	if entry.Path != "" && entry.Path != abs {

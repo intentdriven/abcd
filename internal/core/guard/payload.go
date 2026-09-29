@@ -115,7 +115,9 @@ func expandPayloads(segs []segment) ([]segment, []payloadSignal) {
 			// segment, however many strings it carries (payloadInput).
 			var stdin, args []feed
 			inputRead := false
-			for _, ref := range payloadRefsOf(payloadView(s)) {
+			refs := payloadRefsOf(payloadView(s))
+			named := namedPayloads(s, refs)
+			for r, ref := range refs {
 				kind, fam, payload, trailing := ref.kind, ref.family, ref.payload, ref.trailing
 				// Past the depth budget the guard cannot follow the nesting, so a
 				// family member here is fail-closed regardless of family.
@@ -142,6 +144,7 @@ func expandPayloads(segs []segment) ([]segment, []payloadSignal) {
 						continue
 					}
 					psegs = pseg
+					spellPayload(psegs, named[r])
 				case kindShellWarn:
 					signals = append(signals, shellUnresolvedSignal())
 					continue
@@ -157,6 +160,7 @@ func expandPayloads(segs []segment) ([]segment, []payloadSignal) {
 						continue
 					}
 					psegs = pseg
+					spellPayload(psegs, named[r])
 				case kindExecStringWarn:
 					signals = append(signals, execStringWarnSignal(fam))
 					continue
@@ -238,6 +242,125 @@ func payloadView(s segment) segment {
 	v := s
 	v.tokens = toks
 	return v
+}
+
+// namedPayloads returns, parallel to refs, the text of each string as the
+// line wrote its variables (segment.spelled), "" where it is no other text or
+// cannot be paired: payloadView hands a string the mark of each value the
+// enclosing shell put in it, which reads as an unknown word with no name, so
+// `sh -c "rm -rf $HOME"` holds a mark where `$HOME` was written. Only the
+// arg_values compare reads what spellPayload takes from it; every reading of
+// the string reads the marks (iss-2609290321312087). The words are paired by
+// payloadsOf's own order, and a pair whose kind or family differs is not
+// paired.
+func namedPayloads(s segment, refs []payloadRef) []string {
+	named := make([]string, len(refs))
+	v, ok := spelledView(s)
+	if !ok {
+		return named
+	}
+	nrefs := payloadRefsOf(v)
+	if len(nrefs) != len(refs) {
+		return named
+	}
+	for r, ref := range refs {
+		if n := nrefs[r]; n.kind == ref.kind && n.family == ref.family && n.payload != ref.payload {
+			named[r] = n.payload
+		}
+	}
+	return named
+}
+
+// spelledView is payloadView with each word the line wrote with a known
+// variable spelled as the line wrote it (segment.spelled) instead of with
+// varMark, where payloadView spells it; a variable whose text is not known
+// stays varMark. ok is false when no word changes.
+func spelledView(s segment) (segment, bool) {
+	if len(s.spelled) == 0 {
+		return s, false
+	}
+	v := payloadView(s)
+	var toks []string
+	for i, text := range s.variable {
+		// payloadView spelled this word with varMark (text); a word it left,
+		// where a command can sit, keeps its unknownMark and is left here too.
+		w, ok := s.spelled[i]
+		if !ok || v.tokens[i] != text {
+			continue
+		}
+		if w = strings.ReplaceAll(w, unknownText, varText); w == text {
+			continue
+		}
+		if toks == nil {
+			toks = append([]string(nil), v.tokens...)
+		}
+		toks[i] = w
+	}
+	if toks == nil {
+		return v, false
+	}
+	v.tokens = toks
+	return v, true
+}
+
+// spellPayload reads the string named, the same string as the one psegs
+// were read from with its variables written out (namedPayloads), and gives
+// each word of psegs that holds a variable the spelling of the word at the
+// same place of named: its own segment.spelled, or its text where the string
+// quotes the name (`sh -c "rm -rf '$HOME'"`). A word is paired only when
+// both readings have the same segments and words, and the word read from
+// named has the mark-view word's known text in the same order around it
+// (fitsWritten); an unpaired word keeps the spelling it has, which names no
+// variable. Nothing else of psegs is changed.
+func spellPayload(psegs []segment, named string) {
+	if named == "" {
+		return
+	}
+	nsegs, err := tokenize(named)
+	if err != nil || len(nsegs) != len(psegs) {
+		return
+	}
+	for i := range psegs {
+		m, n := psegs[i], nsegs[i]
+		if len(m.spelled) == 0 || len(m.tokens) != len(n.tokens) {
+			continue
+		}
+		for j := range m.spelled {
+			w, ok := n.spelled[j]
+			if !ok {
+				if isUnknown(n.tokens[j]) {
+					continue
+				}
+				w = n.tokens[j]
+			}
+			if fitsWritten(m.tokens[j], n.tokens[j]) && fitsWritten(m.tokens[j], w) {
+				m.spelled[j] = w
+			}
+		}
+	}
+}
+
+// fitsWritten reports whether word, read from a string's named text, can be
+// marked, read from its mark view, at the same place: marked's known text,
+// split at its marks, stands in word in the same order, the first part
+// leading and the last trailing.
+func fitsWritten(marked, word string) bool {
+	parts := strings.Split(marked, unknownText)
+	if len(parts) == 1 {
+		return marked == word
+	}
+	if !strings.HasPrefix(word, parts[0]) {
+		return false
+	}
+	rest := word[len(parts[0]):]
+	for _, p := range parts[1 : len(parts)-1] {
+		k := strings.Index(rest, p)
+		if k < 0 {
+			return false
+		}
+		rest = rest[k+len(p):]
+	}
+	return strings.HasSuffix(rest, parts[len(parts)-1])
 }
 
 // payloadInput returns what reaches the commands of a command string s runs:

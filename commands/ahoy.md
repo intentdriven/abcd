@@ -161,7 +161,13 @@ explanation above it: one paragraph saying what is being decided, then one
 line per answer saying what that answer means, including what it asks of the
 user (keys, tools, cost). When you relay such a question, relay that
 explanation verbatim with it; never describe an answer in your own words, and
-never offer an answer the question does not list.
+never offer an answer the question does not list. The four config values also
+name the flag that answers them without the question (`--visibility`,
+`--docs-target`, `--oracle-backend`, `--scan-deep`), and the matching gap's fix
+hint names it too: in a scripted run, pass the user's answer through the flag
+rather than lining a piped answer up with the question. `--yes` chooses no
+value, so a `--yes` run that still has a value to ask says so once, above the
+first such question.
 
 That is a channel for passing on an answer the technical facilitator has GIVEN
 — set `abcd mode facilitator`, ask the technical facilitator first, then pipe;
@@ -415,7 +421,7 @@ never for a frontier model, which a bundled vendor denylist (`anthropic/*` at
 minimum) keeps on the host. Everything works without one: with no provider
 configured, every delegated step runs on the host. Relay `explanation`, each of
 `providers` with its `key_state` (`set`, `not set`, `none`, or a refusal; never
-the key), the `denylist`, the `routes`, every line of `diagnostics`, and the
+the key) and `key_home` (the home it resolves from), the `denylist`, the `routes`, every line of `diagnostics`, and the
 `key_homes` prose verbatim: it recommends the platform keychain in prose, and
 the choice stays the person's, so never present one home as the marked option.
 Relay `dispatch` too: no delegating verb sends a step to a provider yet, so a
@@ -427,24 +433,62 @@ adapter refuses as `oracle_api.config_refused`, naming the file and the key.
 Declining is not running `connect`, and it changes nothing.
 
 The setup is `abcd ahoy connect <provider> --base-url <url> --model <model>
-[--model <model>…] --home abcd [--key <name>]`, with the key piped in on stdin
-from a file or a variable. **This writes, under `~/.abcd/` alone.** It verifies the provider with one call
-to the first model listed, and only when that call succeeds writes the key into
-the owner-only `~/.abcd/credentials.json` and the provider block (the base URL,
-the key's name and the models, the allowlist) into `~/.abcd/config.json`.
-Nothing goes into the repository or the harness's settings, and a failed
-verification writes nothing. A `~/.abcd` that is a symlink (into a dotfiles
-checkout, say) is refused with nothing written, naming the link: the key would
-otherwise land wherever it points. `--home none` sets up a server that takes no key.
-The `external` and `keychain` homes arrive with the credential store
-(itd-2609221017023290) and are refused, naming it, before any call.
+[--model <model>…] --home <home> [--key <name>]`. **This writes, under
+`~/.abcd/` and, for the keychain home, into the platform keychain.** Set
+`abcd mode facilitator` and ask the technical facilitator which home through
+your question tool, after relaying `key_homes`, and offer the three without
+marking one: `external` takes `--env <VARIABLE>` or
+`--file ~/<file>.json --field <dotted.field>` (abcd keeps only where the key
+is); `abcd` and `keychain` take the key piped in on stdin from a file or a
+variable. It verifies the provider with one call to the first model listed,
+and only when that call succeeds keeps the key in that home and writes the
+provider block (the base URL, the key's name and the models, the allowlist)
+into `~/.abcd/config.json`. Nothing goes into the repository or the harness's
+settings, and a failed verification writes nothing. A `~/.abcd` that is a
+symlink (into a dotfiles checkout, say) is refused with nothing written, in
+any home, naming the link: the key would otherwise land wherever it points.
+A `--file` pointer is refused, naming the link, when any directory between the
+home and the tool's file is a symlink, wherever it leads (a `~/.config` linked
+elsewhere, say); `--env` stays open.
+`--home none` sets up a server that takes no key.
 
 The key is read from stdin and nowhere else, and never from a terminal, where it
 would be echoed. **Never ask the person for the key and never pass it
 yourself**: it would enter this conversation. Give them the command to run in
 their own shell, with the key piped in from a file or a variable they hold, and
-relay the result — `verified` (the provider, the model asked for and the model
-it reported), each `wrote` path, and `dispatch`.
+relay the result — `verified` (the provider, the model asked for, the model
+it reported and the credential's name), each `wrote` path, and `dispatch`.
+
+## `credential` — the credential store's walkthrough
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" ahoy credential --json
+"${CLAUDE_PLUGIN_ROOT}/abcd" ahoy credential <name> --json
+```
+
+Every external credential abcd holds lives in one store, in the home the person
+chooses once per credential. Bare, the sub-verb lists each credential an
+adapter reads (`hosting.cloudflare` for the site setup, each configured
+provider's key) with its `state` (`set`, `not set`, or a refusal) and `home`;
+never a value. With a name it explains that credential and writes nothing:
+relay `unlocks`, `without_it`, then `homes_prose` verbatim (it recommends the
+platform keychain in the prose; never present one home as the marked option),
+then the `homes` and the `setup` command for each.
+
+The walkthrough is `abcd ahoy credential <name> --home <home>`, with the same
+three homes as `connect`: `external` with `--env`, or `--file` and `--field`;
+`abcd` and `keychain` with the value piped in on stdin. **This writes the
+chosen home only after the reading adapter's own verification call succeeds**
+(the provider's one short exchange, the hosting provider's account read). Set
+`abcd mode facilitator` and ask the technical facilitator for the home through
+your question tool; never ask for the value, and never pass it yourself: give
+the person the command to run in their own shell and relay `name`, `home`,
+`verified` and each `wrote` entry. A name another home already holds, or a
+different value for a name already kept, is refused: abcd never replaces a
+stored secret. The abcd home is refused when `~/.abcd` lies inside a git
+working tree (the keychain and an external home stay open
+there), and a platform with no keychain tool refuses the keychain home and
+names the other two.
 
 ## `--dry-run` — the canonical detection envelope
 

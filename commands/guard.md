@@ -316,8 +316,19 @@ through a variable or a file, or taken from a `ps | grep` chain, is not seen.
 Every command of a string a shell is handed with such output in its words is
 read as handed it, so `sh -c 'kill 4242' _ "$(pgrep …)"` is a **block** too.
 
+A recursive delete of the filesystem root or the home directory (`/`, `/*`,
+`~`, `$HOME`, `${HOME}`, each also with a trailing `/` or `/*`, and the home's
+dotfiles `~/.*`, `$HOME/.*`, `${HOME}/.*`) is a **block**
+(`rm-rf-root-or-home`), with or without `-f`; one of the directory the shell is
+in or the one above it (`*`, `*/`, `.`, `..`, `./*`, `./*/`, `../*`, `.*`,
+`./.*`, and `$PWD` or `${PWD}`, each also with `/*`) is a **warn**
+(`rm-rf-working-directory`). The target is compared as written, so `$HOME` and
+`$PWD` are seen as those words.
+
 What an allow still does not see is a hazard that never reaches command position
-at all: one launched through a known wrapper carrying a value-taking flag the
+at all: a delete target printed whole by a substitution (`rm -rf $(echo /)`),
+read by its known text the way `rm -rf $(find …)` names its targets every day,
+or spelled any other way than the words above; one launched through a known wrapper carrying a value-taking flag the
 guard does not name (`sudo -u bob <hazard>` is seen; the bundled short form
 `sudo -Hu bob <hazard>` reaches only the warn, not the entry that names it), one
 whose API path an entry names by its ROOT

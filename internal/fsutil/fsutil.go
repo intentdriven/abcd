@@ -33,6 +33,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path"
@@ -62,22 +63,40 @@ func ReadGuarded(path string, limit int64) ([]byte, error) {
 	return readGuarded(path, limit, nil)
 }
 
+// OpenRegular is the open half of ReadGuarded, for a caller that reads through
+// the descriptor itself rather than taking the whole file into memory (a
+// ReaderAt consumer such as debug/buildinfo over a binary). It opens path once,
+// read-only, with O_NOFOLLOW and O_NONBLOCK, and judges the SAME descriptor with
+// fstat: a symlinked leaf fails the open (ELOOP, returned raw), and anything but
+// a regular file — a FIFO swapped in after the caller's lstat included — is
+// closed and refused with ErrNotRegular instead of blocking. The FileInfo
+// returned is the descriptor's own; the caller closes the file.
+func OpenRegular(path string) (*os.File, os.FileInfo, error) {
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return nil, nil, err
+	}
+	fi, err := f.Stat()
+	if err != nil {
+		f.Close()
+		return nil, nil, err
+	}
+	if !fi.Mode().IsRegular() {
+		f.Close()
+		return nil, nil, ErrNotRegular
+	}
+	return f, fi, nil
+}
+
 // readGuarded is ReadGuarded, and when vetted is non-nil it also confirms on
 // the opened descriptor that the file is the one vetted describes (os.SameFile),
 // refusing a replacement with ErrDeclarationSwapped.
 func readGuarded(path string, limit int64, vetted os.FileInfo) ([]byte, error) {
-	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+	f, fi, err := OpenRegular(path)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
-	fi, err := f.Stat()
-	if err != nil {
-		return nil, err
-	}
-	if !fi.Mode().IsRegular() {
-		return nil, ErrNotRegular
-	}
 	if vetted != nil && !os.SameFile(vetted, fi) {
 		return nil, ErrDeclarationSwapped
 	}
@@ -122,6 +141,10 @@ const (
 	// DeclarationBehindSymlink: the file is there, but a directory between the
 	// home and it (~/.abcd first) is a symlink (ReadHomeDeclaration only).
 	DeclarationBehindSymlink
+	// DeclarationExposed: the opened file's mode carries a permission bit its
+	// reader denies — a secret group or other can read
+	// (ReadHomeDeclarationDenying only). The error is a *DeclarationModeError.
+	DeclarationExposed
 )
 
 // ErrDeclarationWritable and ErrDeclarationForeignOwner are the two guards that
@@ -135,6 +158,18 @@ var (
 	// (replaced between the vetting lstat and the open).
 	ErrDeclarationSwapped = errors.New("fsutil: declaration was replaced between its vetting and its read")
 )
+
+// DeclarationModeError is the error of a DeclarationExposed refusal: Perm is
+// the permission bits of the file that was opened, judged on its own
+// descriptor, so a caller can name the mode it refused and the chmod that
+// repairs it.
+type DeclarationModeError struct {
+	Perm os.FileMode
+}
+
+func (e *DeclarationModeError) Error() string {
+	return fmt.Sprintf("fsutil: declaration's mode %04o carries a permission bit its reader refuses", uint32(e.Perm))
+}
 
 // ownerUID is the package's own view of OwnerUID, held as a var for the same
 // reason caseFoldingFS is: the foreign-owner branch cannot be provoked on a host

@@ -260,7 +260,7 @@ func TestSetupWithoutACredentialWritesTheRepositoryHalfAndSaysWhatRemains(t *tes
 	}
 	remaining := strings.Join(res.Remaining, "\n")
 	for _, want := range []string{
-		cloudflare.CredentialName, credential.StorePath,
+		cloudflare.CredentialName, credential.Walkthrough(cloudflare.CredentialName),
 		"gh secret set CLOUDFLARE_API_TOKEN --env site --repo example-owner/example-site",
 		"gh secret set CLOUDFLARE_ACCOUNT_ID --env site --repo example-owner/example-site",
 		"git add",

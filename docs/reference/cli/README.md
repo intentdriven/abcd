@@ -17,5 +17,9 @@ To refresh the page after changing a command, run:
 go generate ./internal/surface/cli
 ```
 
-For interactive help, the binary also documents itself: `abcd --help` and
-`abcd <verb> --help` (e.g. `abcd disembark --help`).
+For interactive help, the binary also documents itself: `abcd <verb> --help`
+(e.g. `abcd disembark --help`) documents any verb, and `abcd --help` lists the
+verbs a person types. The verbs agents and hosts call, such as `abcd peers`,
+`abcd history` and `abcd reading`, are left off that list to keep it short;
+`abcd --help --agent` lists them as well, each naming the command page to read
+next. Every one of them is in [`commands.md`](commands.md) either way.

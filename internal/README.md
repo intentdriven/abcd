@@ -18,6 +18,15 @@ plugin surface, and a future MCP server share one engine.
   entered the terminal folders since the anchor tag. It owns the enum so the
   lints that GATE the judgement (`core/lint`), the ledger reader that VALIDATES
   it (`core/capture`), and the derivation that CONSUMES it cannot drift apart.
+- **`core/frontmatter/`** — the one record-frontmatter reader, a line scanner
+  rather than a YAML parser: the `---` delimiter rule, the top-level fields of
+  the leading block (first key wins, a trailing comment stripped), the duplicate
+  keys, and the scalar decoding every reader shares: `Unquote` is the one
+  scalar decoder and `QuoteScalar` the encoder it mirrors, and `EmptinessOf` is
+  the one blank-value judgement. A leaf importing only the standard library, because every
+  record family's reader and writer (`core/capture`, `core/intent`, `core/spec`,
+  `core/lint` and more) imports it, so a gate and the writer it judges read a
+  field the same way.
 - **`core/issueschema/`** — the issue record's required frontmatter properties,
   and nothing else. It is a leaf for the same reason `core/changelog` owns the
   impact enum: the ledger reader (`core/capture`) and the lint that gates the

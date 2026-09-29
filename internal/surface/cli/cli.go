@@ -218,9 +218,11 @@ func NewRootCommand() *cobra.Command {
 		Long: "Agent-based configuration for development.\n\n" +
 			"Bare `abcd` renders the read-only status board — what can I do. A single\n" +
 			"positional matching a record id (`iss-N`, `itd-N`, `spc-N`, `adr-N`, `adm-N`,\n" +
-			"`srp-N`, `rfm-N`) instead reports what that record is, where it lives, and\n" +
-			"the next move for its lifecycle state — what is this. Both forms are strictly\n" +
-			"read-only; any other positional is refused as an unknown command.",
+			"`srp-N` or `rfm-N`) instead reports what that record is, where it lives, and\n" +
+			"the next move for its lifecycle state — what is this. N is either a short\n" +
+			"ordinal from before ids were minted or the sixteen-digit stamp minted since;\n" +
+			"both resolve. The bare and the id form are strictly read-only; any other\n" +
+			"positional is refused as an unknown command.",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		// Bare answers "what can I do"; `abcd <id>` answers "what is this, and
@@ -3335,6 +3337,11 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 				return err
 			}
 			p := newPrompter(cmd)
+			if sp, ok := p.(*stdinPrompter); ok {
+				// --yes answers the category questions and no value question, so
+				// the first value question still asked says so (iss-2609120447486547).
+				sp.yesApproved = yes
+			}
 			opts.ConfirmTool = toolConfirm(p, named, yes, cmd.ErrOrStderr())
 			opts.ApproveDependency = len(named) > 0
 			res, err := ahoy.Install(cwd, opts, p)
@@ -3469,6 +3476,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 	ahoyCmd.AddCommand(movedStub("identity-check", "abcd ahoy --identity"))
 	ahoyCmd.AddCommand(newAhoyRemoteCommand(asJSON))
 	ahoyCmd.AddCommand(newAhoyConnectCommand(asJSON))
+	ahoyCmd.AddCommand(newAhoyCredentialCommand(asJSON))
 
 	return ahoyCmd
 }
@@ -3799,6 +3807,10 @@ type stdinPrompter struct {
 	// leaves a transcript of what was asked and what it was answered, instead
 	// of a column of unanswered-looking questions.
 	tty bool
+	// yesApproved records an install run under --yes, which approves each kind
+	// of change and chooses no value; yesTold that the run has said so, once,
+	// above the first value question it still asks.
+	yesApproved, yesTold bool
 }
 
 // echo reports the answer read off a non-terminal stdin. The bytes come from
@@ -3834,9 +3846,16 @@ func (p *stdinPrompter) Confirm(question string) bool {
 // has no help for is asked bare: the door never writes help of its own.
 func (p *stdinPrompter) Prompt(key string, choices []string, def string) string {
 	if h, ok := ahoy.HelpFor(key); ok {
+		if h.Flag != "" && p.yesApproved && !p.yesTold {
+			p.yesTold = true
+			fmt.Fprintf(p.w, "\n%s\n", ahoy.YesStillAsksValues)
+		}
 		fmt.Fprintf(p.w, "\n%s\n", h.About)
 		for _, c := range h.Choices {
 			fmt.Fprintf(p.w, "  %s — %s\n", c.Value, c.Meaning)
+		}
+		if hint := h.FlagHint(); hint != "" {
+			fmt.Fprintf(p.w, "  (%s)\n", hint)
 		}
 	}
 	fmt.Fprintf(p.w, "%s (%s) [%s]: ", key, strings.Join(choices, "/"), def)

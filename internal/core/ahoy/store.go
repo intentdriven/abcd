@@ -2,6 +2,8 @@ package ahoy
 
 import (
 	"bytes"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io/fs"
@@ -381,11 +383,17 @@ func describeEntry(e pathEntry) string {
 	case e.dangling:
 		return "a symlink whose target is gone"
 	}
-	if fi, err := os.Lstat(e.path); err == nil && fi.Mode()&os.ModeSymlink != 0 {
+	fi, err := os.Lstat(e.path)
+	if err == nil && fi.Mode()&os.ModeSymlink != 0 {
 		if dest, rerr := os.Readlink(e.path); rerr == nil {
 			return "a symlink to " + displayPath(dest) + ", which abcd does not own"
 		}
 		return "a symlink abcd does not own"
+	}
+	if err == nil {
+		// Say what the file is, so the reader can decide without inspecting it
+		// by hand (iss-2609120447482255).
+		return foreignOccupant(fi, "a file") + " abcd does not own (" + describeForeignFile(e.path, fi) + ")"
 	}
 	return "a file abcd does not own"
 }
@@ -672,29 +680,27 @@ func historyRoot() (string, error) {
 	return filepath.Join(home, filepath.FromSlash(historyRelPath)), nil
 }
 
-// ensureHistoryRoot is historyRoot for a writer: it creates ~/.abcd/history one
-// real directory at a time and proves every level, so a link planted after
-// historyRoot's check is refused rather than followed (os.MkdirAll would follow
-// it). The walk starts at home with its symlinks resolved, because home itself
-// reached through a link (/home -> /usr/home) is the machine's layout and is
-// never judged; ~/.abcd and ~/.abcd/history are.
-func ensureHistoryRoot() (string, error) {
-	root, err := historyRoot()
-	if err != nil {
-		return "", err
+// historyDir opens ~/.abcd/history as an *os.Root through
+// fsutil.OpenHomeScope, after historyRoot's check, so the registry's files are
+// read and written relative to the descriptor of the directory that was judged
+// and never through a link swapped in after the judgement
+// (iss-2609281310017733). create makes each missing level first
+// (fsutil.EnsureHomeScope), one real directory at a time, where os.MkdirAll
+// would follow a link. home itself reached through a link (/home -> /usr/home)
+// is the machine's layout and is opened, never judged; ~/.abcd and
+// ~/.abcd/history are. An absent registry without create is os.ErrNotExist.
+func historyDir(create bool) (*os.Root, error) {
+	if _, err := historyRoot(); err != nil {
+		return nil, err
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	base, err := filepath.EvalSymlinks(home)
-	if err != nil {
-		return "", err
+	if create {
+		return fsutil.EnsureHomeScope(home, historyRelPath, 0o755)
 	}
-	if err := fsutil.EnsureRealDirAll(base, historyRelPath, 0o755); err != nil {
-		return "", err
-	}
-	return root, nil
+	return fsutil.OpenHomeScope(home, historyRelPath)
 }
 
 // historyIndex is the ~/.abcd/history/index.json registry.
@@ -744,11 +750,15 @@ func loadHistoryIndex() (*historyIndex, error) {
 // included. Only the detector wants this: everything else goes through
 // loadHistoryIndex, which scrubs.
 func readHistoryIndexFile() (*historyIndex, error) {
-	root, err := historyRoot()
+	dir, err := historyDir(false)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
 		return nil, err
 	}
-	data, err := fsutil.ReadGuarded(filepath.Join(root, "index.json"), maxAhoyFileBytes)
+	defer dir.Close()
+	data, err := fsutil.ReadGuardedInRoot(dir, "index.json", maxAhoyFileBytes)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
@@ -878,12 +888,12 @@ var beforeHistoryIndexCreateHook func()
 // any prompting before acquiring it and re-check the answer-relevant state inside
 // fn after re-loading.
 func withHistoryLock(fn func() error) error {
-	root, err := ensureHistoryRoot()
+	dir, err := historyDir(true)
 	if err != nil {
 		return err
 	}
-	lockPath := filepath.Join(root, historyLockFilename)
-	return fsutil.WithFileLock(lockPath, historyLockTimeout, func() error {
+	defer dir.Close()
+	return fsutil.WithFileLockIn(dir, historyLockFilename, historyLockTimeout, func() error {
 		if afterHistoryReloadHook != nil {
 			afterHistoryReloadHook()
 		}
@@ -901,13 +911,13 @@ func withHistoryLock(fn func() error) error {
 // sees either no file yet or the finished index — never a 0-byte one that would
 // make a concurrent loadHistoryIndex parse-fail and drop its own registration.
 func bootstrapHistory() (bool, error) {
-	root, err := ensureHistoryRoot()
+	dir, err := historyDir(true)
 	if err != nil {
 		return false, err
 	}
-	path := filepath.Join(root, "index.json")
+	defer dir.Close()
 	// Fast path: already seeded (the common idempotent re-run).
-	if _, err := os.Stat(path); err == nil {
+	if _, err := dir.Stat("index.json"); err == nil {
 		return false, nil
 	}
 	idx := historyIndex{Schema: 1, Description: historyIndexDescription, Repos: []historyRepo{}}
@@ -919,12 +929,11 @@ func bootstrapHistory() (bool, error) {
 
 	// Write a complete temp file first, then link it into place as the atomic,
 	// single-winner publish. The temp is always cleaned up.
-	tmp, err := os.CreateTemp(root, ".index-*.tmp")
+	tmp, tmpName, err := createHistoryTemp(dir)
 	if err != nil {
 		return false, err
 	}
-	tmpName := tmp.Name()
-	defer os.Remove(tmpName)
+	defer dir.Remove(tmpName)
 	if _, err := tmp.Write(data); err != nil {
 		tmp.Close()
 		return false, err
@@ -944,7 +953,7 @@ func bootstrapHistory() (bool, error) {
 	if beforeHistoryIndexCreateHook != nil {
 		beforeHistoryIndexCreateHook()
 	}
-	if err := os.Link(tmpName, path); err != nil {
+	if err := dir.Link(tmpName, "index.json"); err != nil {
 		if os.IsExist(err) {
 			return false, nil // already seeded (or won by a concurrent run)
 		}
@@ -953,14 +962,40 @@ func bootstrapHistory() (bool, error) {
 	return true, nil
 }
 
+// createHistoryTemp creates bootstrapHistory's temp file exclusively inside
+// dir under an unpredictable name (the ".index-*.tmp" shape os.CreateTemp
+// gave it), returning the file and its name.
+func createHistoryTemp(dir *os.Root) (*os.File, string, error) {
+	var buf [8]byte
+	for range 100 {
+		if _, err := rand.Read(buf[:]); err != nil {
+			return nil, "", err
+		}
+		name := ".index-" + hex.EncodeToString(buf[:]) + ".tmp"
+		f, err := dir.OpenFile(name, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o600)
+		if err == nil {
+			return f, name, nil
+		}
+		if !errors.Is(err, os.ErrExist) {
+			return nil, "", err
+		}
+	}
+	return nil, "", errors.New("could not create a temp file in the history registry")
+}
+
 // writeHistoryIndex persists idx. It must be called from inside withHistoryLock
 // (registerRepo) so a re-loaded index is not clobbered by a concurrent writer.
 func writeHistoryIndex(idx *historyIndex) error {
-	root, err := historyRoot()
+	dir, err := historyDir(false)
 	if err != nil {
 		return err
 	}
-	return writeJSON(filepath.Join(root, "index.json"), *idx)
+	defer dir.Close()
+	data, err := marshalJSON(*idx)
+	if err != nil {
+		return err
+	}
+	return fsutil.WriteFileAtomicPreserveModeInRoot(dir, "index.json", data)
 }
 
 // ---------------------------------------------------------------------------
