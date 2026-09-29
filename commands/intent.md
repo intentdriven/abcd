@@ -326,13 +326,39 @@ time, through the harness's interactive question tool, never as a numbered
 list inside prose. Each question carries one sentence of context, one concrete
 example of what each answer means in practice, and options that widen rather
 than recommend: no starred default, no recommended label, the null answer
-always offered. A recommendation the human asks for is given in prose apart
-from the question. The next question waits for the last answer. The register follows
+always offered. A question is asked only where two or more answers are each
+defensible on the record, and its options are exactly those answers plus the
+null answer, never alternatives made up to fill a set; a decision with one
+defensible answer is not asked, but recorded as a decision line naming the
+answer and why no question was put. What the human is asked to accept, edit
+or strike is quoted in the question itself, never referred to: prose written
+between questions does not reliably reach them, so a question that asks "are
+these yours?" about text they cannot see cannot be answered. A recommendation
+the human asks for is given in prose apart from the question. The next
+question waits for the last answer. The register follows
 the addressee: a product thinker gets outcomes in product terms with no
 record ids or internals; a technical facilitator gets the mechanism and the
 ids. Where the hat is unknown, that is the first question. The mode carries
 the addressee: before each question set `abcd mode product-thinker` or `abcd
 mode facilitator`, and the question names that role.
+
+**What each register is assumed to know.** The register sets the tone; the
+knowledge floor is what an explanation is measured against. The product
+thinker knows the product, its users, what done looks like, and the ordinary
+vocabulary of using software: a file, a folder, a name, a version, an account,
+a link, a permission someone grants. They are not assumed to know version
+control (a checkout, a branch, a merge, a commit, a worktree), a shell, file
+ownership and permission bits, continuous integration or a merge queue, a hook,
+an environment variable, a checksum, a symbolic link, or the record ids. The
+technical facilitator knows all of that as well, so explaining it to them is
+padding, and leaving the ids out of their answer withholds the handle they act
+on. A concept below the product thinker's floor that cannot be avoided is
+introduced in one sentence in product terms before it is used, without naming
+the tool that implements it: a lock is one person holding the pen, a checksum
+is a fingerprint saying two copies are identical. A question that fails this is
+rewritten, not annotated. The floor is stated here rather than pointed at,
+because this page ships to every repository abcd is installed in and the rule
+domain that carries the same text is declared in abcd's own repository alone.
 
 **Prerequisite — two adversarial reviews.** Before the interview, the draft
 has been through two independent adversarial reviewers with different lenses
@@ -350,7 +376,7 @@ gate that will refuse the move mechanically is a recorded seed until built.
    this intent moves to its home (or is captured) before planning proceeds;
    grade the run into the calibration note either way.
 3. **Press release:** confirm or refine the user moment with the product
-   thinker.
+   thinker, quoting the press release in the confirming question itself.
 4. **Open questions:** resolve each with the product thinker, or record an explicit
    deferral in the draft. An open question that gates scope blocks planning.
 5. **Mechanism claim (prompted, nullable):** ask the product thinker why the
@@ -371,7 +397,8 @@ gate that will refuse the move mechanically is a recorded seed until built.
    down is `declined:`. Never write the restated decision; if the honest
    answer is "it is next in the queue", say so to the human and ask what they
    expect the work to prove.
-8. **Acceptance criteria:** walk EVERY Given-When-Then bullet; the human
+8. **Acceptance criteria:** walk EVERY Given-When-Then bullet, one question
+   per criterion with the criterion quoted in the question; the human
    accepts, edits, or strikes each, and adds what is missing. Seeded criteria
    are proposals, never approvals.
 9. Edit the draft file to the confirmed content.
