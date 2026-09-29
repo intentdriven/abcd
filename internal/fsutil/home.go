@@ -6,6 +6,8 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // ErrHomeScopeSymlinked is the refusal for a home-scoped path whose DIRECTORY
@@ -111,4 +113,68 @@ func ReadHomeDeclaration(home, rel string, limit int64) ([]byte, DeclarationRefu
 		return nil, DeclarationBehindSymlink, err
 	}
 	return ReadDeclaration(p, limit)
+}
+
+// HomeDeclarationNames reads the line-oriented path declaration at rel under
+// home through ReadHomeDeclaration and reports whether one of its entries names
+// target. It is the one reader behind every "declare this checkout" opt-in —
+// ~/.abcd/trusted-roots for the rules resolver, ~/.abcd/local-transcript-roots
+// for the transcript store — so a hardening of what a declaration must be, or
+// of how an entry is matched, lands once and reaches every caller
+// (iss-2609090951283654).
+//
+// An entry is a trimmed line that is neither blank nor a "#" comment and is
+// absolute: a relative entry names a different directory per caller and names
+// nothing here. Each entry is compared in two spellings, as written and
+// symlink-resolved, against target in the same two spellings, because a
+// declared path need not be resolved and a caller's target may be either.
+// The comparison key is FoldPath under fold; fold is a parameter, not a call to
+// CaseFoldingFS, so each caller holds the predicate in a variable a test can
+// force and the case-folding branch is provable on a case-sensitive host
+// (iss-2609090951297149).
+//
+// ignored is empty when there is no declaration (the ordinary case, never a
+// diagnostic) or when it was read; otherwise it is the terminal-safe clause
+// saying why a present declaration was not honoured, for the caller to render
+// in its own voice. A declaration that was not honoured names nothing.
+func HomeDeclarationNames(home, rel string, limit int64, target string, fold bool) (declared bool, ignored string) {
+	raw, refusal, err := ReadHomeDeclaration(home, rel, limit)
+	switch refusal {
+	case DeclarationOK:
+	case DeclarationAbsent:
+		return false, ""
+	case DeclarationBehindSymlink:
+		return false, termsafe.Sanitize(err.Error())
+	case DeclarationNotRegular:
+		return false, "it is not a regular file"
+	case DeclarationWritableByOthers:
+		return false, "it is writable by others, so its contents are not necessarily yours"
+	case DeclarationForeignOwner:
+		return false, "it is not owned by this session's uid"
+	default:
+		return false, "it could not be read (" + termsafe.Sanitize(err.Error()) + ")"
+	}
+	want := []string{FoldPath(filepath.Clean(target), fold), FoldPath(resolveOrClean(target), fold)}
+	for _, line := range strings.Split(string(raw), "\n") {
+		entry := strings.TrimSpace(line)
+		if entry == "" || strings.HasPrefix(entry, "#") || !filepath.IsAbs(entry) {
+			continue
+		}
+		for _, cand := range []string{filepath.Clean(entry), resolveOrClean(entry)} {
+			key := FoldPath(cand, fold)
+			if key == want[0] || key == want[1] {
+				return true, ""
+			}
+		}
+	}
+	return false, ""
+}
+
+// resolveOrClean is EvalSymlinks with a lexical fallback, so a declared path
+// that does not currently exist (a bind mount not mounted) still compares.
+func resolveOrClean(p string) string {
+	if real, err := filepath.EvalSymlinks(p); err == nil {
+		return real
+	}
+	return filepath.Clean(p)
 }
