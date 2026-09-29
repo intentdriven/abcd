@@ -1,6 +1,10 @@
 package guard
 
-import "testing"
+import (
+	"runtime"
+	"strings"
+	"testing"
+)
 
 // linearWorkBar is the most the guard's counted work may grow when its input
 // grows fourfold. Linear work grows 4x; the bar leaves 1.5x of room over that,
@@ -82,4 +86,35 @@ func assertWorkGrowth(t *testing.T, build func(int) string, base int, why string
 			growth, lo, hi, linearWorkBar, why)
 	}
 	return small, large
+}
+
+// TestClosedOverDocumentsStayLinear — iss-2609290625381759. A document a
+// substitution opens and never reads stays pending after the close, behind
+// the documents pending around it; carrying it must not copy what is already
+// pending at every close, which a document opened at every depth of a deep
+// nest would make quadratic. The copies are not counted work, so the bytes
+// the check allocates are held to the growth bar instead.
+func TestClosedOverDocumentsStayLinear(t *testing.T) {
+	if raceEnabled {
+		t.Skip("allocation counts under -race measure the instrumentation")
+	}
+	build := func(n int) string {
+		return strings.Repeat("cat <<E $(", n) + strings.Repeat(")", n)
+	}
+	allocated := func(line string) uint64 {
+		var before, after runtime.MemStats
+		runtime.GC()
+		runtime.ReadMemStats(&before)
+		if _, err := Defaults().Check(line); err != nil {
+			t.Fatalf("Check: %v", err)
+		}
+		runtime.ReadMemStats(&after)
+		return after.TotalAlloc - before.TotalAlloc
+	}
+	small, large := allocated(build(1000)), allocated(build(4000))
+	growth := float64(large) / float64(small)
+	t.Logf("%d -> %d bytes allocated; growth %.2fx (bar %.1fx)", small, large, growth, linearWorkBar)
+	if growth > linearWorkBar {
+		t.Errorf("quadrupling the nest multiplied the bytes allocated by %.2fx, want at most %.1fx", growth, linearWorkBar)
+	}
 }

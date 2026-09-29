@@ -288,6 +288,7 @@ func spelledView(s segment) (segment, bool) {
 		if !ok || v.tokens[i] != text {
 			continue
 		}
+		w = strings.ReplaceAll(strings.ReplaceAll(w, fieldText, " "), quotedFieldText, fieldText)
 		if w = strings.ReplaceAll(w, unknownText, varText); w == text {
 			continue
 		}

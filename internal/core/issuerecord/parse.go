@@ -76,8 +76,8 @@ func nextLineIsIndented(lines []string, i int) bool {
 // quotedScalar reports whether a raw scalar token is double-quoted, which in
 // YAML makes it a string whatever it spells.
 func quotedScalar(rest string) bool {
-	t := strings.TrimSpace(rest)
-	return len(t) >= 2 && strings.HasPrefix(t, `"`) && strings.HasSuffix(t, `"`)
+	_, quoted := frontmatter.UnquoteScalar(strings.TrimSpace(rest))
+	return quoted
 }
 
 // ParseBlock parses the interior lines of a frontmatter block,
@@ -269,8 +269,8 @@ func splitInlineListItems(inner string) []string {
 
 // decodeScalar decodes a single non-list scalar token.
 func decodeScalar(s string) (any, error) {
-	if strings.HasPrefix(s, `"`) && strings.HasSuffix(s, `"`) && len(s) >= 2 {
-		return frontmatter.Unquote(s[1 : len(s)-1]), nil
+	if v, quoted := frontmatter.UnquoteScalar(s); quoted {
+		return v, nil
 	}
 	if n, err := strconv.Atoi(s); err == nil {
 		return n, nil

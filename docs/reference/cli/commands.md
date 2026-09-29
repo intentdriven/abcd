@@ -1024,6 +1024,13 @@ and a here-document with no delimiter line are grammar a shell does run,
 so each gets a verdict — the backslash is read as bash reads it, the
 unterminated document blocks.
 
+The hook judges only what the host hands it, and the plugin's hook
+manifest hands it the shell tool and the question tool and nothing else.
+A call through any other tool never reaches the guard: a file the host's
+own tools write or edit, or a command a tool from another extension runs,
+is neither checked nor warned about. That is the guard's standing scope,
+not a degradation, and the guard: line of abcd ahoy does not report it.
+
 A host whose shell tool takes a per-call working directory passes it as
 tool_input.workdir. It is resolved against the session directory, and a
 command whose workdir is an existing directory in another repository is

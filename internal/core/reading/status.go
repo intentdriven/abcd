@@ -3,7 +3,6 @@ package reading
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 
@@ -89,11 +88,26 @@ func Describe(repoRoot string) (Status, error) {
 	}
 	sort.Strings(s.Definitions)
 
-	runs, err := os.ReadDir(filepath.Join(repoRoot, filepath.FromSlash(DefaultRunDir)))
+	// Every read of the local tier and every probe of the durable tier goes
+	// through ONE root over the repository. The listings are included: a
+	// parking area or a stage reached through a link out of the checkout would
+	// otherwise have its run-id-shaped names echoed into the render, while the
+	// sweep that deletes from the same stage lists it through the root and
+	// refuses a linked directory (readDirIn). A parked run and a stage agree on
+	// a symlink too: a record directory that escapes the checkout refuses the
+	// render for both, rather than refusing it for one and classifying the other
+	// by a marker read outside the repository (iss-2609261905354450,
+	// iss-2609012043432648).
+	root, err := os.OpenRoot(repoRoot)
+	if err != nil {
+		return Status{}, fmt.Errorf("reading: opening the repository to probe the staged runs: %w", err)
+	}
+	defer root.Close()
+	runs, err := readDirIn(root, DefaultRunDir)
 	if err != nil && !os.IsNotExist(err) {
 		return Status{}, fmt.Errorf("reading: listing the staged runs: %w", err)
 	}
-	stages, err := os.ReadDir(filepath.Join(repoRoot, filepath.FromSlash(IngestStageDir)))
+	stages, err := readDirIn(root, IngestStageDir)
 	if err != nil && !os.IsNotExist(err) {
 		return Status{}, fmt.Errorf("reading: listing the ingest stage: %w", err)
 	}
@@ -101,16 +115,6 @@ func Describe(repoRoot string) (Status, error) {
 		return s, nil
 	}
 
-	// Every probe of the durable tier goes through ONE root over the
-	// repository, so a parked run and a stage agree on a symlink: a record
-	// directory that escapes the checkout refuses the render for both, rather
-	// than refusing it for one and classifying the other by a marker read
-	// outside the repository (iss-2609261905354450).
-	root, err := os.OpenRoot(repoRoot)
-	if err != nil {
-		return Status{}, fmt.Errorf("reading: opening the repository to probe the staged runs: %w", err)
-	}
-	defer root.Close()
 	if s.StagedRuns, err = awaitingOutcome(root, runs); err != nil {
 		return Status{}, err
 	}

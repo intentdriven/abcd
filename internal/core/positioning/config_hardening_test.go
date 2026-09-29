@@ -62,6 +62,36 @@ func TestValidateRefusesSurfaceUnderGitDir(t *testing.T) {
 	}
 }
 
+// TestTheBlockFileIsRefusedUnderGitDir holds the identity block's own file to the
+// same .git refusal the surfaces carry. It is read and its lines are rendered as
+// the identity block, so a registry pointing it at .git/config would quote the
+// git directory into identity output exactly as a surface would
+// (iss-2608291814578333), and Init would WRITE the block into it. Every gate is
+// checked: the registry's Validate, and ParseBlock and Init, which a caller
+// reaches with a location it built itself.
+func TestTheBlockFileIsRefusedUnderGitDir(t *testing.T) {
+	for _, f := range []string{".git/config", ".GIT/config", ".git"} {
+		t.Run(f, func(t *testing.T) {
+			cfg := validConfig(validSurface("s", "README.md"))
+			cfg.Block.File = f
+			if err := cfg.Validate(); err == nil || !errors.Is(err, ErrConfigInvalid) {
+				t.Errorf("Validate accepted block.file %q under .git (err = %v)", f, err)
+			}
+			if _, err := ParseBlock(t.TempDir(), BlockLocation{File: f, Heading: "H"}); !errors.Is(err, ErrBadLocation) {
+				t.Errorf("ParseBlock read block file %q under .git (err = %v), want ErrBadLocation", f, err)
+			}
+			if _, err := Init(t.TempDir(), InitRequest{Title: "T", Tagline: "L", Location: BlockLocation{File: f, Heading: "H"}}); !errors.Is(err, ErrBadLocation) {
+				t.Errorf("Init accepted block file %q under .git as a place to write (err = %v), want ErrBadLocation", f, err)
+			}
+		})
+	}
+	cfg := validConfig(validSurface("s", "README.md"))
+	cfg.Block.File = ".github/identity.md"
+	if err := cfg.Validate(); err != nil {
+		t.Errorf("Validate refused a block file that merely starts with .git: %v", err)
+	}
+}
+
 // TestValidateBoundsSurfaceCount pins that a registry declaring more than the
 // fixed surface cap is refused, so one audit run over a hostile repo cannot be
 // made to hold an unbounded multiple of the per-surface 1 MiB read cap

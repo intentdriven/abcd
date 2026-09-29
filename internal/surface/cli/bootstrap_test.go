@@ -670,6 +670,32 @@ func TestBootstrapRefusesAbsentManifestEntry(t *testing.T) {
 	assertNothingInstalled(t, root, out)
 }
 
+// TestBootstrapNetworkRefusalNamesTheIgnoredEnvironment: the script unsets the
+// proxy and CA-bundle variables before any fetch (GHSA-x4v8-rxvx-8v89), so on a
+// host that reaches GitHub only through HTTPS_PROXY, or trusts its CA only
+// through SSL_CERT_FILE, every fetch fails and "there may be no network" is the
+// wrong diagnosis. The refusal names what it ignored, as the public installer's
+// does (iss-2608291814562032); the lockdown itself is unchanged.
+func TestBootstrapNetworkRefusalNamesTheIgnoredEnvironment(t *testing.T) {
+	root := bootstrapRoot(t)
+	fx := bootstrapServer(t, []byte("payload"), bootstrapManifest([]byte("payload")))
+	atomic.StoreInt32(fx.failLatest, 1)
+
+	out, code := runBootstrap(t, root, fx, "")
+	if code == 0 {
+		t.Fatalf("an unresolvable release must fail loudly, got exit 0 (output %q)", out)
+	}
+	if !strings.Contains(out, "could not be resolved") {
+		t.Fatalf("the case must reach the tag-resolution refusal; output %q", out)
+	}
+	for _, want := range []string{"HTTPS_PROXY", "ALL_PROXY", "SSL_CERT_FILE", "CURL_CA_BUNDLE"} {
+		if !strings.Contains(firstLine(out), want) {
+			t.Errorf("the refusal's first line, the one a transcript keeps, must name the ignored %s; got %q", want, firstLine(out))
+		}
+	}
+	assertNothingInstalled(t, root, out)
+}
+
 // assertNothingInstalled is the shared refusal contract: no binary, no meta file,
 // no leftover lock or temp dir, and an actionable message rather than a raw
 // shell error.

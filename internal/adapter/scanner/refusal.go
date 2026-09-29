@@ -12,21 +12,43 @@ import "github.com/intentdriven/abcd/internal/termsafe"
 // The text goes through the canonical pattern set for repoRoot, then the literal
 // sweep of the caller's home (independent of the pattern heuristic, the
 // defence-in-depth every store-before-commit redactor applies), then
-// termsafe.Sanitize, so the result is inert on a terminal.
+// termsafe.Sanitize, so the result is inert on a terminal. The pattern pass
+// includes ScanText's glued sweep (glued.go): a token right behind an
+// underscore or a letter, which the patterns' leading \b cannot see, is sealed
+// byte for byte like any other (iss-2609290541525428).
 //
 // It FAILS CLOSED. A returned refusal has no record to note a degradation in, so
-// a scanner that cannot be built, or runs degraded, leaves the text DESCRIBED by
-// termsafe.DescribeRefused and never echoed. The scanner is built per call: this
-// runs on the refusal path alone, so a payload that decodes pays nothing for it.
+// a scanner that cannot be built, runs degraded, cannot build its whole glued
+// sweep, or leaves a secret span in the redacted text leaves the text
+// DESCRIBED by termsafe.DescribeRefused and never echoed. The scanner is built
+// per call: this runs on the refusal path alone, so a payload that decodes
+// pays nothing for it.
 func RedactRefusal(repoRoot, text string) string {
 	sc, err := New(repoRoot)
 	if err != nil {
 		return termsafe.DescribeRefused(text)
 	}
+	// Unavailable covers a glued sweep New could not build whole.
 	if unavail, _ := sc.Unavailable(); unavail {
 		return termsafe.DescribeRefused(text)
 	}
 	out, _ := Redact(text, sc.ScanText(text, "refusal"))
+	// Redact is stage one: a secret span it could not seal leaves the text
+	// described rather than echoed.
+	if hasSecret(sc.ScanText(out, "refusal")) {
+		return termsafe.DescribeRefused(text)
+	}
 	out = SweepCallerHome(out, CallerHome())
 	return termsafe.Sanitize(out)
+}
+
+// hasSecret reports whether any finding is a hard_fail secret span, the class
+// Redact seals and a returned refusal must never carry.
+func hasSecret(findings []Finding) bool {
+	for _, f := range findings {
+		if f.Severity == SeverityHardFail && !IsIdentityKind(f.Kind) {
+			return true
+		}
+	}
+	return false
 }

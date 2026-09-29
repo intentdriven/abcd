@@ -1,21 +1,30 @@
 # Agents
 
-Host-delegated agent prompt definitions. Each `*.md` file here is a **prompt**, not
-code: abcd's core does the deterministic work and hands the prompt to the host's
+Host-delegated agent prompt definitions live in the repository's top-level
+[`agents/`](../../../agents/). Each `*.md` file there is a **prompt**, not code:
+abcd's core does the deterministic work and hands the prompt to the host's
 subagent dispatch, which owns model choice, credentials, and execution and returns
 a structured result the core consumes (adr-25, host-delegated by default). The Go
 side never executes these prompts.
 
-## What lives here
+This page and the prompt-version log beside it live here, in the durable record,
+rather than in `agents/`: the harness registers every markdown file at the top of
+that directory as an agent, with no frontmatter requirement and no name
+exemption, so a readme or a changelog kept there is a spurious agent on every
+installed surface (iss-110). `TestPluginAgentSurfaceRegistersOnlyAgents` holds the
+directory to prompts alone.
 
-- `*.md` — one agent prompt per file, carrying itd-5 frontmatter (below).
-- `<name>/fixtures/` — per-agent fixtures. Every agent that reads untrusted input
-  carries at least one `injection-canary.json`.
-- `CHANGELOG.md` — one entry per agent per version bump (itd-5).
+## What lives where
 
-The layout is flat. A markdown file anywhere below the top level, outside a
-`fixtures/` directory, is a misfiled prompt, and record-lint's `agent_contract`
-rule refuses it rather than skipping it.
+- `agents/*.md` — one agent prompt per file, carrying itd-5 frontmatter (below).
+- `agents/<name>/fixtures/` — per-agent fixtures. Every agent that reads untrusted
+  input carries at least one `injection-canary.json`.
+- [`CHANGELOG.md`](CHANGELOG.md), beside this page — one entry per agent per
+  version bump (itd-5).
+
+The prompt layout is flat. A markdown file anywhere below the top level of
+`agents/`, outside a `fixtures/` directory, is a misfiled prompt, and
+record-lint's `agent_contract` rule refuses it rather than skipping it.
 
 The four M6 synthesis agents (itd-88) — dispatched by the `/abcd:disembark`
 orchestration sections:
@@ -34,7 +43,7 @@ the delegated path.
 
 ## The itd-5 contract
 
-Every agent prompt here conforms to [itd-5](../.abcd/development/intents/disciplines/itd-5-prompt-quality-additions.md),
+Every agent prompt in `agents/` conforms to [itd-5](../intents/disciplines/itd-5-prompt-quality-additions.md),
 the prompt-quality discipline, and record-lint's `agent_contract` rule enforces it
 (itd-151). The frontmatter fields:
 
@@ -53,7 +62,7 @@ the prompt-quality discipline, and record-lint's `agent_contract` rule enforces 
 - **`capability_scope`** — an object `{ task_classes: [...], designed_for: "..." }`.
   `task_classes` is a **YAML inline list** (a block list of `- token` items would
   trip the future PQ005) of tokens drawn from the closed enum in
-  [`02-constraints/04-naming.md`](../.abcd/development/brief/02-constraints/04-naming.md)
+  [`02-constraints/04-naming.md`](../brief/02-constraints/04-naming.md)
   (`oracle_review`, `intent_audit`, `spec_planning`, `code_rescue`,
   `principle_distillation`, `lifeboat_packing`, `audit`, `lint`, `surface_render`,
   `cross_document_audit`, `cold_reading`). `designed_for` is a free-text one-liner for human readers
@@ -92,9 +101,10 @@ nothing resolvable.
 
 `agents/` is outside both the record-lint roots (`.abcd/development`) and the
 docs-lint roots (`docs`, `README.md`), so the per-file record and docs rules do not
-reach these files. The itd-5 contract is enforced instead by record-lint's
-dedicated `agent_contract` rule, which walks this tree directly (`agents_dir` in
-`.abcd/record-lint.json`) and holds each prompt to three things:
+reach the prompts. The itd-5 contract is enforced instead by record-lint's
+dedicated `agent_contract` rule, which walks that tree directly (`agents_dir` in
+`.abcd/record-lint.json`, with `changelog` naming the log beside this page) and
+holds each prompt to three things:
 
 1. **The trust-contract frontmatter.** Every prompt declares `prompt_version` (a
    semver) and `reads_untrusted_input` — the declaration is required of ALL of

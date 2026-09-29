@@ -289,7 +289,7 @@ func readLimits(home string, cores int) (machineload.Limits, LoadLimits) {
 	case fsutil.DeclarationOK:
 	case fsutil.DeclarationAbsent:
 		return out(def, LimitsDefault, "")
-	case fsutil.DeclarationBehindSymlink:
+	case fsutil.DeclarationBehindSymlink, fsutil.DeclarationDirectoryExposed:
 		return out(def, LimitsDefaultAfterMalformed, err.Error())
 	case fsutil.DeclarationNotRegular:
 		return out(def, LimitsDefaultAfterMalformed, "it is not a regular file (a symlink, a directory or a device)")

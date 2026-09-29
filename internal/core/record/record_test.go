@@ -197,6 +197,19 @@ func TestDescribeIntentLifecycleMoves(t *testing.T) {
 	if !strings.Contains(moves, "implement") || !strings.Contains(moves, "spec close spc-2") {
 		t.Fatalf("planned+ready next move wrong: %v", d.NextMoves)
 	}
+	// The move says what the close does to the intent, from both ends of the link:
+	// that closing the spec is what ships the intent was reachable only by reading
+	// a skill page (iss-2609100508566033).
+	if !strings.Contains(moves, "ships itd-3 when no open spec still names it") {
+		t.Fatalf("the planned+ready move must say the close ships the intent: %v", d.NextMoves)
+	}
+	ds, err := Describe(repo, "spc-2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(ds.NextMoves, "\n"); !strings.Contains(got, "ships itd-3 when no open spec still names it") {
+		t.Fatalf("the open spec's move must say its close ships the intent: %v", ds.NextMoves)
+	}
 
 	// shipped/ with no review marker → the review is owed, and the re-emit
 	// mints its receipt (itd-2609150819445595 decision 3: nothing is

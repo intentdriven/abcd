@@ -1,5 +1,13 @@
-# Keep-both union merge for the changelog: parallel PRs each append to
-# [Unreleased], so a literal merge conflicts. The union driver keeps both sides.
+# Keep-both union merge for the changelog: two branches that each add lines to
+# it would conflict under a literal merge, and the union driver keeps both sides.
+#
+# A merge driver named here holds for a LOCAL `git merge` only. The forge does
+# not apply it: a pull request's mergeability and the merge queue's merge are
+# computed on the forge, so two open pull requests that each append to one of
+# the files below still conflict there as soon as the first merges, while a
+# local merge of the same two is clean. The remedy that removes the conflict on
+# the forge too is one file per entry (adr-2609151138420062), not this
+# attribute (iss-2609240646538011).
 CHANGELOG.md merge=union
 
 # Same shape, same remedy (iss-118): DECISIONS.md is an append-only ledger of

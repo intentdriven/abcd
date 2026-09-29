@@ -10,6 +10,10 @@ found_at: "CLAUDE.md"
 details: "AGENTS.md's concurrency rule reads 'Before a commit, branch switch, stash, or rebase in a checkout that might be shared, check for peer sessions... and announce the mutation'. That is a closed list of four git operations. On 2026-08-23 a session rebuilt the PATH binary and swapped the artefact every session on the machine executes as `abcd`, which is none of the four and has a wider blast radius than a branch switch in one checkout. The session announced it anyway, on its own judgement; no rule required it. The gap is the enumeration, not the operator."
 suggested_fix: "State the rule by blast radius rather than by operation list: announce before mutating anything a peer session reads or executes, naming the four git operations and the shared build artefacts as examples rather than as the set. Same shape as the narrowed subject set recorded against the proxy-gate class, so weigh the two together."
 related_issues: ["iss-2608230847432285", "iss-2608220750029993", "iss-2608230847432286"]
+resolution: "AGENTS.md's concurrency rule is restated by blast radius ('Scan before mutating anything a peer reads or runs'), with the git operations and a replaced build artefact outside git as examples rather than the set. The peers surface test cuts the step on its new heading. Planned itd-148 lists this rewrite in its scope; that bullet is now already met."
+impact: internal
+resolved_by:
+  commit: "be5c7ffeb"
 ---
 
 the scan-before-mutating rule enumerates four git operations and misses shared artefacts outside git
@@ -91,3 +95,7 @@ reader has no way to tell the current artefact from the stale ones without
 running each.
 
 Recorded with the home path written as `~`. The absolute form names the operator's account, and `abcd capture` does not run the redaction scanner: the scanner is wired into `launch`, `repolint` and `history` only, so the ledger write path has no PII gate. The first draft of this very record carried the absolute path and every lint gate passed on it.
+
+## Grounds
+
+- pursued: a session asking whether rebuilding the PATH binary needs an announcement now gets a yes from the rule's own words; shown wrong if a mutation a peer executes still reads as outside the rule

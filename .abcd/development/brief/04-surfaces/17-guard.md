@@ -122,6 +122,17 @@ than folded into either extreme. The three states — clean, repo layer dropped,
 no registry at all — are decided once, in the core, and every caller formats
 the same answer.
 
+One limit is not among those states, because it is never false: the guard's
+reach. The manifest's pre-tool-use matcher hands the hook the shell tool and
+the question tool and nothing else, so a call through any other tool never
+reaches the guard — a file the host's own tools write or edit, a command a tool
+from another extension runs — and nothing warns about it, since nothing
+failed. It is the guard's standing scope, not a degradation, and the `guard:`
+line does not report it. Whether the guard should adjudicate more than the
+shell is a separate question with a real cost: every further tool class needs
+its own hazard vocabulary, and a guard that refuses a tool it cannot reason
+about is worse than one that says plainly what it covers.
+
 The two callers part company on exactly that file, deliberately. **On the hook,
 the session keeps its protection:** the repo's overrides are dropped with a
 notice on stderr, the bundled hazards still decide, and a hazardous command is
@@ -241,7 +252,12 @@ bare interpreter inside a string, because a variable is how ordinary commands
 carry a program or a path between commands. A here-document body is data, but the substitutions the shell
 runs in a body whose delimiter is unquoted are read as commands, and such a body
 is read by the lines bash compares with its delimiter, joined across a trailing
-odd run of backslashes. A backtick's text is read after bash's own pass over
+odd run of backslashes. A body begins on the line after the one that opened
+it, and a command or process substitution still open at that line's end holds
+it back: the substitution's own lines run as commands, and the body begins on
+the line after it closes. A document a substitution opens and never reads is
+pending after the close in bash 5 and dropped in bash 3.2, which runs the
+lines it would cover, so that line is refused as an unterminated document. A backtick's text is read after bash's own pass over
 it, which drops a backslash before `$`, a backtick or a backslash (and, directly
 inside double quotes, a `"`), so an escaped substitution between backticks is
 read as the one bash runs. A payload that is wholly a substitution printing a
@@ -296,8 +312,34 @@ in or the one above it (`*`, `*/`, `.`, `..`, `./*`, `./*/`, `../*`, `.*`,
 `git clean`, because that directory is usually the repository and emptying a
 build directory the same way is ordinary work. Chained after a `cd` any
 recursive forced delete blocks, as above. The target is compared as written,
-before the shell expands it, so `$HOME` and `$PWD` are seen as those words
-although no other parameter expansion is.
+before the shell expands it, so `$HOME` and `$PWD` are seen as those words. It
+is first read the way bash reads its text: a backslash-newline inside a name
+is dropped (`$HO\⏎ME` is `$HOME`); each word a brace group makes keeps the
+variables its text holds, and a name runs on into the letters a list or a
+sequence places after it (`{$HOME,x}`, `$HOME/{.*,}`, `$HO{ME,}`,
+`$HO{M..M}E`); an expansion whose operator can leave the value as it is reads
+as the variable itself — a default, an assignment or an error message
+(`${HOME:-x}`), a trim or a pattern replacement (`${HOME%/}`, `${HOME#x}`,
+`${HOME/x/y}`), a substring, a case change, and a subscript read to its
+matching `]` with any text after it (`${HOME[x[0]]}`, `${HOME[0]]}`, which the
+bash 3.2 of macOS prints as the value); and an alternative, which prints its
+word or nothing, reads as that word as written (`${X:+$HOME}`, `${X:+/}`,
+`${X:+$HOME/*}`), including one the bash 3.2 of macOS reads at the first
+operator after a subscript (`${X[0]]:+$HOME}`). Unquoted, the alternative's
+word is split on whitespace and a substitution in it that prints nothing
+drops out, as bash splits and drops them (`${X:+$HOME }`,
+`${X:+$(true)$HOME}`). A trim that leaves the path above the home
+(`${HOME%/*}`) blocks as the home does. Each target is also compared as a path
+with its redundant separators taken out, since the kernel reads a run of
+slashes as one, a `.` segment as the directory itself and the root as its own
+parent (`//*`, `$HOME//`, `/./*`, `/../*`, `.//*`). A target that begins at
+the root or the home has each `..` folded into the directory before it, as
+the path reads lexically: `/tmp/../*` and `/tmp/x/../..` are the root, and a
+`..` past the home climbs to a directory that holds the home, so `~/..`,
+`~/../*` and `$HOME/../../*` read as the home and `~/../*/*` as `~/*`, while
+`~/../x` stays a sibling. The kernel reads a `..` otherwise only after a
+symlink, and the lexical reading is the one that blocks; a trailing `..` is
+folded too, though rm refuses it.
 
 What an allow still does not see is a hazard that never reaches command position
 at all: a word that is wholly a command substitution or a variable standing
@@ -306,7 +348,15 @@ message or a branch name is spelled every day; a delete target printed whole by 
 substitution (`rm -rf $(echo /)`), which is read by its known text because that
 is how an everyday delete names what it removes (`rm -rf $(find . -name
 '*.pyc')`); a target spelled any other way than the words above (`rm -rf
-"$DIR"/*` with `DIR` unset, `rm -rf /?*`); one behind a wrapper flag the per-wrapper
+"$DIR"/*` with `DIR` unset, `rm -rf /?*`), a default's own word, which bash
+prints only when the variable is unset (`rm -rf ${DIR:-$HOME}`, and
+`${X[0]]-$HOME}`, which the bash 3.2 of macOS reads as a default after the
+subscript), a `..` after a symlink, which is read past lexically (a link to
+the root under a named directory), or after a segment holding a variable,
+which is not folded (`/tmp/$X/../../*` is the root with `X` unset), a `..`
+past the home followed by a glob other than `*` (`~/../?*`, as `/?*`), an
+alternative nested more than three deep, and a substring of `$PWD` that
+prints the root (`${PWD:0:1}`), which warns as `$PWD` does; one behind a wrapper flag the per-wrapper
 table does not name; a REST
 path an entry names by its root segment when the host serves that API under a
 prefix; an IFS the shell already holds when the line starts, or gains during the line

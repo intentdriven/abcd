@@ -10,8 +10,8 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal (intent, decide, capture) / conventions"
 related_intents: [itd-2609150819439571]
-deferred_after: "v0.10.0"
-deferral_reason: "ruling owed to the product thinker (away; run A 2026-09-25): Per record family, where does a correction go, what does it carry, and why does the original stay?"
+deferred_after: v0.11.1
+deferral_reason: "Promoted to itd-2609150819439571 (draft), and a promoted issue keeps its folder until the intent ships. The product thinker's ruling M25 of 2026-09-23: a convention first, then possibly a verb, through the draft's planning interview. Owed: that interview, which opens on one question: per record family, where does a correction go, what does it carry, and why does the original stay?"
 ---
 
 abcd has no supported operation for correcting a factual error inside a durable record, and no documented convention saying what to do instead. The record is deliberately not rewritten, which is right, but "not rewritten" and "wrong" are different states and only the first has a mechanism.
@@ -30,3 +30,7 @@ Needed, in rough order of cost: a documented convention for errata on a durable 
 ## Grounds
 
 - pursued: we expect errata to be a fourth terminal disposition appended to a record rather than an edit of it, because the record families are append-only by conviction and a correction that rewrites history is indistinguishable from the error it corrects; it is shown wrong if appended errata prove unreadable in practice and readers keep acting on the uncorrected text
+
+## Deferral 2026-09-29
+
+Deferred past v0.11.1: Promoted to itd-2609150819439571 (draft), and a promoted issue keeps its folder until the intent ships. The product thinker's ruling M25 of 2026-09-23: a convention first, then possibly a verb, through the draft's planning interview. Owed: that interview, which opens on one question: per record family, where does a correction go, what does it carry, and why does the original stay?

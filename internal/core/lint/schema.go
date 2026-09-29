@@ -1605,10 +1605,7 @@ func issueScalar(value string) string {
 // into the value the reader parses, so a gate that strips it judges a string that
 // never existed (iss-2608300927577163).
 func readerScalar(value string) string {
-	v := strings.TrimSpace(value)
-	if len(v) >= 2 && strings.HasPrefix(v, `"`) && strings.HasSuffix(v, `"`) {
-		return frontmatter.Unquote(v[1 : len(v)-1])
-	}
+	v, _ := frontmatter.UnquoteScalar(strings.TrimSpace(value))
 	return v
 }
 

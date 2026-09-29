@@ -258,7 +258,7 @@ func readMachine(home, rel string) ([]byte, error) {
 	switch refusal {
 	case fsutil.DeclarationOK:
 		return raw, nil
-	case fsutil.DeclarationBehindSymlink:
+	case fsutil.DeclarationBehindSymlink, fsutil.DeclarationDirectoryExposed:
 		return nil, err
 	case fsutil.DeclarationAbsent:
 		if errors.Is(err, os.ErrNotExist) {
