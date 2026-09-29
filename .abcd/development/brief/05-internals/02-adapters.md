@@ -78,11 +78,16 @@ honours is the HTTP stack's: the standard proxy variables (`HTTPS_PROXY`,
 tunnel, so the key and the brief stay inside TLS, and a call to this machine is
 never proxied. Its
 connection (`oracle.Connections`) carries the provider's allowlist and the
-settings the adapter accepts, which is what the model tier's allowlist check and
-its accepted-settings refusal read (spc-2609251028149555). A provider claims no
+settings the adapter accepts, and the model tier's `Resolve` holds a provider leg
+to both before the step runs (spc-2609251028149555): a connection whose allowlist
+lists no model admits no route, and a merged setting outside the accepted set is
+refused naming the setting, where it was set and what the adapter accepts, never
+dropped. `model` is the adapter's own and is never a setting, so no setting can
+choose a model past the allowlist. A provider claims no
 tier: it is reached by a role or a judgement type pointed at it, never by a tier
-alone. No delegating verb dispatches a step through it yet, and no test reaches a
-real provider: the client is exercised end to end against a fake on the loopback
+alone. No delegating verb dispatches a step through it yet, or hands `Resolve` its
+connection, so neither refusal reaches a front door until dispatch does, and no
+test reaches a real provider: the client is exercised end to end against a fake on the loopback
 address that fails in every way a provider can.
 
 ### RepoPrompt oracle adapter — `dev-sync reviews` harvesting

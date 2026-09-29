@@ -25,10 +25,15 @@
 // the proposal and its roster test, the store readers, the --route parser,
 // Resolve, the bare board's oracle lines, the request block and receipt every
 // delegating verb carries (Route.Request, Route.Receipt), and the ahoy consent
-// step that writes an accepted table. Escalating a tier after a failed fix
-// round, the allowlist check inside Resolve and dispatching a step to a
-// provider are spc-2609251028149555's; until they land, every step resolves to
-// the harness.
+// step that writes an accepted table. spc-2609251028149555 adds the refusals
+// Resolve makes on a provider leg before the step runs: a connection whose
+// allowlist lists no model admits no route, and a merged setting outside the
+// set the connection's adapter accepts is refused, never dropped. Which model
+// a provider-leg route asks for, and so the allowlist check of that model,
+// escalating a tier after a failed fix round, and dispatching a step to a
+// provider are still that spec's; until dispatch lands every delegating verb
+// resolves against NoConnections, so every step resolves to the harness and no
+// front door reaches a provider-leg refusal.
 package oracle
 
 import (
