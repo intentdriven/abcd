@@ -11,9 +11,11 @@ The store is **user-level** and lives outside every repo at
 `~/.abcd/transcripts/<root-sha>/records/`, keyed on the repo's root-commit SHA.
 ahoy's registry stays under `~/.abcd/history/` and holds no transcripts.
 The store is private to the account: each level it creates is `0o700`, and each
-record is written `0o600`, including a record a migration rewrites. A level that
-already exists keeps its mode, so a chain an earlier layout created wider is not
-narrowed (iss-2609291610432030).
+record is written `0o600`, including a record a migration rewrites or a legacy
+record it moves in. An ancestor level that already exists keeps its mode; the
+`records/` leaf is closed to its owner on every resolve, so a leaf an earlier
+layout created wider loses its group and other bits, and a leaf another account
+owns is refused and left untouched (iss-2609291610432030).
 
 ## Sub-verbs
 
