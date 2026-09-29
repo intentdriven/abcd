@@ -321,7 +321,7 @@ func ReadSettingsFile(home string) (raw []byte, why string, err error) {
 		return raw, "", nil
 	case fsutil.DeclarationAbsent:
 		return nil, "", nil
-	case fsutil.DeclarationBehindSymlink:
+	case fsutil.DeclarationBehindSymlink, fsutil.DeclarationDirectoryExposed:
 		return nil, err.Error(), nil
 	case fsutil.DeclarationNotRegular:
 		return nil, "it is not a regular file", nil

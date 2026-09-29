@@ -105,7 +105,7 @@ func resolvePointer(home, name string, p Pointer) (string, error) {
 	switch {
 	case refusal == fsutil.DeclarationAbsent && errors.Is(err, os.ErrNotExist):
 		return "", notSetError{name: name, why: "the file " + p.File + " it points at does not exist"}
-	case refusal == fsutil.DeclarationBehindSymlink:
+	case refusal == fsutil.DeclarationBehindSymlink, refusal == fsutil.DeclarationDirectoryExposed:
 		return "", pointerLinkRefusal(name, p.File, err)
 	case refusal == fsutil.DeclarationNotRegular:
 		return "", fmt.Errorf("credential: %s points at %s, which is not a regular file (a symlink is never followed), so it is not read", name, p.File)

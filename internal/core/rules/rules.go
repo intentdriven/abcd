@@ -438,6 +438,8 @@ func readUserLayer(home string) (over RuleSet, ok bool, err error) {
 	case fsutil.DeclarationOK:
 	case fsutil.DeclarationBehindSymlink:
 		return RuleSet{}, false, fmt.Errorf("rules: ~/.abcd is a symlink (refusing to follow it to %s)", UserDisplayPath)
+	case fsutil.DeclarationDirectoryExposed:
+		return RuleSet{}, false, fmt.Errorf("rules: %s is not read: %w", UserDisplayPath, err)
 	case fsutil.DeclarationNotRegular:
 		return RuleSet{}, false, fmt.Errorf("rules: %s is not a regular file (a symlink, FIFO or device is refused)", UserDisplayPath)
 	case fsutil.DeclarationWritableByOthers:

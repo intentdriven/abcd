@@ -50,3 +50,25 @@ func TestReadSettingsFileJudgesTheFileItReads(t *testing.T) {
 		t.Fatalf("why = %q, err = %v; want the replacement refused for its own mode", why, err)
 	}
 }
+
+// TestLoadIgnoresASettingInAnAbcdHomeEveryAccountCanWrite: a ~/.abcd every
+// account can write hosts no setting of the caller's, whatever the file's own
+// mode says (iss-2609290656480443); the note names the directory and the
+// repair, and the defaults render.
+func TestLoadIgnoresASettingInAnAbcdHomeEveryAccountCanWrite(t *testing.T) {
+	home := t.TempDir()
+	writeSettings(t, home, `{"schema_version":1,"disabled":true}`)
+	if err := os.Chmod(filepath.Join(home, ".abcd"), 0o777); err != nil {
+		t.Fatal(err)
+	}
+	got, notes, err := LoadFrom(home)
+	if err != nil {
+		t.Fatalf("LoadFrom: %v", err)
+	}
+	if got.Disabled {
+		t.Fatal("a setting in a ~/.abcd every account can write was honoured")
+	}
+	if len(notes) != 1 || !strings.Contains(notes[0], "~/.abcd can be written by every account") || !strings.Contains(notes[0], "chmod o-w ~/.abcd") {
+		t.Fatalf("notes = %v, want one note naming the directory and the repair", notes)
+	}
+}
