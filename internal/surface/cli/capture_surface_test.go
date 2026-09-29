@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/intentdriven/abcd/internal/gittest"
 )
@@ -235,6 +236,38 @@ func TestCaptureListOpenRendersIssueFields(t *testing.T) {
 		if got.sev != c.sev {
 			t.Errorf("summary %q: severity = %q, want %q", c.text, got.sev, c.sev)
 		}
+	}
+}
+
+// TestCaptureListOpenHumanRenderCarriesSummary is AC5's other surface
+// (iss-2609240307549105): the human render of `capture list --open` carries
+// each issue's one-line summary, not only the --json body.
+func TestCaptureListOpenHumanRenderCarriesSummary(t *testing.T) {
+	_ = captureLedgerRepo(t)
+	runCLI(t, "capture", "the parser flakes on a trailing tab\n\nA second paragraph the row leaves out.",
+		"--severity", "minor", "--slug", "parser-tab")
+	long := "a summary long enough to be clipped " + strings.Repeat("word ", 40)
+	runCLI(t, "capture", long, "--severity", "minor", "--slug", "long-one")
+
+	list := string(runCLI(t, "capture", "list", "--open"))
+	var row, longRow string
+	for _, l := range strings.Split(list, "\n") {
+		switch {
+		case strings.Contains(l, "parser-tab"):
+			row = l
+		case strings.Contains(l, "long-one"):
+			longRow = l
+		}
+	}
+	if !strings.Contains(row, "the parser flakes on a trailing tab") {
+		t.Fatalf("the human row carries no one-line summary:\n%s", list)
+	}
+	if strings.Contains(list, "A second paragraph") {
+		t.Fatalf("the human row carries more than the first line of the body:\n%s", list)
+	}
+	if !strings.Contains(longRow, "a summary long enough to be clipped") || !strings.HasSuffix(longRow, "…") ||
+		utf8.RuneCountInString(longRow) > 200 {
+		t.Fatalf("a long summary is not clipped to one short line:\n%q", longRow)
 	}
 }
 

@@ -4347,7 +4347,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			}
 			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, res, func(w io.Writer) {
 				for _, iss := range res.Issues {
-					fmt.Fprintf(w, "%s  %s  %s  %s%s\n", iss.ID, iss.Status, iss.Severity, iss.Slug, blockedNote(iss))
+					fmt.Fprintf(w, "%s  %s  %s  %s%s%s\n", iss.ID, iss.Status, iss.Severity, iss.Slug, blockedNote(iss), summaryNote(iss.Body))
 				}
 				for _, sk := range res.Skipped {
 					// Path and Error echo a malformed issue file's own name and content
@@ -5294,6 +5294,31 @@ func blockedNote(iss capture.Issue) string {
 		return ""
 	}
 	return " [blocked-by " + strings.Join(iss.BlockedByOpen, ",") + "]"
+}
+
+// listSummaryRunes caps the one-line summary a `capture list` row carries.
+const listSummaryRunes = 80
+
+// summaryNote renders the tail of a `capture list` row: the first non-blank
+// line of the record's body, sanitised for the terminal and clipped to
+// listSummaryRunes, so each row carries the one-line summary itd-4's AC5 names
+// and stays one line. The whole body is in --json.
+func summaryNote(body string) string {
+	var line string
+	for _, l := range strings.Split(body, "\n") {
+		if l = strings.TrimSpace(l); l != "" {
+			line = l
+			break
+		}
+	}
+	line = strings.TrimSpace(termsafe.Sanitize(line))
+	if line == "" {
+		return ""
+	}
+	if r := []rune(line); len(r) > listSummaryRunes {
+		line = strings.TrimSpace(string(r[:listSummaryRunes])) + "…"
+	}
+	return " — " + line
 }
 
 // moreEvidenceNote renders the tail of a `capture mentions` row: the render shows
