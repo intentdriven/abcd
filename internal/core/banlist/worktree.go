@@ -71,17 +71,21 @@ type InheritedReport struct {
 //     `.git`, never the mirror planted inside it, so the two common dirs differ and
 //     the candidate is refused.
 //
+// Every rev-parse answer is held to one absolute path (gitutil.RevParseAbsPath):
+// on a git older than 2.31, which echoes the unknown --path-format option, the
+// resolution fails closed, as the guard's does (iss-2608291924452604).
+//
 // It is the Go half of the resolution the committed pre-commit guard makes, and it
 // is deliberately the same three-way answer: resolution failure is ok=false, never
 // an error. A read surface that refused to render because it could not find a
 // SECOND store would be less useful than one that renders the first.
 func PrimaryWorktreeRoot(repoRoot string) (string, bool) {
-	gitDir, err := gitutil.Run(repoRoot, "rev-parse", "--path-format=absolute", "--git-dir")
-	if err != nil || gitDir == "" {
+	gitDir, err := gitutil.RevParseAbsPath(repoRoot, "--git-dir")
+	if err != nil {
 		return "", false
 	}
-	commonDir, err := gitutil.Run(repoRoot, "rev-parse", "--path-format=absolute", "--git-common-dir")
-	if err != nil || commonDir == "" || gitDir == commonDir {
+	commonDir, err := gitutil.RevParseAbsPath(repoRoot, "--git-common-dir")
+	if err != nil || gitDir == commonDir {
 		return "", false
 	}
 	wts, err := gitutil.ListWorktrees(repoRoot, maxWorktreeListing)
@@ -99,11 +103,11 @@ func PrimaryWorktreeRoot(repoRoot string) (string, bool) {
 		return "", false
 	}
 	// The candidate's own answers, from the candidate's own directory.
-	top, err := gitutil.Run(primary, "rev-parse", "--path-format=absolute", "--show-toplevel")
+	top, err := gitutil.RevParseAbsPath(primary, "--show-toplevel")
 	if err != nil || top != primary || !gitutil.ToplevelShaped(primary, top) {
 		return "", false
 	}
-	common, err := gitutil.Run(primary, "rev-parse", "--path-format=absolute", "--git-common-dir")
+	common, err := gitutil.RevParseAbsPath(primary, "--git-common-dir")
 	if err != nil || common != commonDir {
 		return "", false
 	}

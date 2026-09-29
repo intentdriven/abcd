@@ -16,6 +16,8 @@ package actionsexpr
 
 import (
 	"fmt"
+	"math"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -410,24 +412,115 @@ func Stringify(v any) string {
 	return fmt.Sprint(v)
 }
 
-// looseEqual is GitHub's `==`: null compares equal to the empty string, to zero
-// and to false, and everything else compares by its string rendering, which is
-// exact for the string-vs-string comparisons the workflows here make.
+// looseEqual is GitHub's `==`, per its documented loose equality: operands of
+// the same type compare directly (strings ignoring case); operands of different
+// types are both coerced to a number (see toNumber), and NaN equals nothing.
+// Objects and arrays are equal only as the same instance, which no value this
+// evaluator produces can be, so they compare unequal.
 func looseEqual(a, b any) bool {
-	if a == nil || b == nil {
-		other := a
-		if a == nil {
-			other = b
+	switch x := a.(type) {
+	case nil:
+		if b == nil {
+			return true
 		}
-		return other == nil || !Truthy(other)
+	case bool:
+		if y, ok := b.(bool); ok {
+			return x == y
+		}
+	case float64:
+		if y, ok := b.(float64); ok {
+			return x == y
+		}
+	case string:
+		if y, ok := b.(string); ok {
+			return strings.EqualFold(x, y)
+		}
+	default:
+		return false
 	}
-	if ab, ok := a.(bool); ok {
-		return ab == Truthy(b)
+	return toNumber(a) == toNumber(b)
+}
+
+// runnerDecimal is the string .NET's Double.TryParse accepts under the styles
+// the Actions runner passes it (AllowLeadingSign | AllowDecimalPoint |
+// AllowExponent, invariant culture): an optional sign, ASCII digits with at
+// most one decimal point and at least one digit, and an optional exponent that
+// carries at least one digit.
+var runnerDecimal = regexp.MustCompile(`^[+-]?([0-9]+\.?[0-9]*|\.[0-9]+)([eE][+-]?[0-9]+)?$`)
+
+// toNumber is GitHub's coercion of a value to a number for a comparison of
+// mismatched types: null is 0, true 1 and false 0, a string is parsed as the
+// runner parses it (see parseRunnerNumber), and an array or object is NaN.
+func toNumber(v any) float64 {
+	switch x := v.(type) {
+	case nil:
+		return 0
+	case bool:
+		if x {
+			return 1
+		}
+		return 0
+	case float64:
+		return x
+	case string:
+		return parseRunnerNumber(x)
 	}
-	if bb, ok := b.(bool); ok {
-		return bb == Truthy(a)
+	return math.NaN()
+}
+
+// parseRunnerNumber follows the Actions runner's ExpressionUtility.ParseNumber
+// (actions/runner, src/Sdk/DTExpressions2/Expressions2/Sdk/ExpressionUtility.cs)
+// on .NET 8, the runtime the runner targets, rule for rule and in its order:
+//
+//  1. Trim Unicode white space; a string left empty is 0.
+//  2. Double.TryParse: runnerDecimal, where .NET also tolerates trailing NULs
+//     after the number, reads an out-of-range magnitude as ±Infinity, and
+//     falls back to "Infinity", "+Infinity" and "-Infinity" ignoring case
+//     ("NaN" in any spelling is NaN, as is everything unparsed).
+//  3. "0x" and one or more hex digits: Int32 with AllowHexSpecifier, so at
+//     most eight significant digits read as a 32-bit two's-complement integer.
+//  4. "0o" and one or more octal digits: Convert.ToInt32(s, 8), the same
+//     32-bit two's-complement reading of a value that fits in 32 bits.
+//  5. Anything else, a wider hex or octal value included, is NaN.
+//
+// The prefixes are lower case only and take no sign, as the runner writes
+// them. The runner's own ordinal "Infinity" checks follow TryParse, which on
+// .NET 8 has already answered those spellings, so they add nothing here.
+func parseRunnerNumber(s string) float64 {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0
 	}
-	return Stringify(a) == Stringify(b)
+	if d := strings.TrimRight(s, "\x00"); runnerDecimal.MatchString(d) {
+		// An out-of-range value parses to ±Inf or 0 with a range error;
+		// .NET returns the same value and reports success.
+		n, _ := strconv.ParseFloat(d, 64)
+		return n
+	}
+	switch {
+	case strings.EqualFold(s, "Infinity"), strings.EqualFold(s, "+Infinity"):
+		return math.Inf(1)
+	case strings.EqualFold(s, "-Infinity"):
+		return math.Inf(-1)
+	case len(s) > 2 && s[0] == '0' && s[1] == 'x':
+		return runnerInt32(s[2:], 16)
+	case len(s) > 2 && s[0] == '0' && s[1] == 'o':
+		return runnerInt32(s[2:], 8)
+	}
+	return math.NaN()
+}
+
+// runnerInt32 reads digits, all of the given base, as the runner's .NET
+// integer parse does: a value that fits in 32 bits, reinterpreted as a signed
+// 32-bit integer, and NaN for anything wider or any character outside the
+// base. ParseUint with an explicit base takes no sign and no underscore, and
+// its base-16 digits are the .NET hex set.
+func runnerInt32(digits string, base int) float64 {
+	u, err := strconv.ParseUint(digits, base, 32)
+	if err != nil {
+		return math.NaN()
+	}
+	return float64(int32(uint32(u)))
 }
 
 // EvalIf evaluates a job's or a step's `if:` condition the way GitHub decides
