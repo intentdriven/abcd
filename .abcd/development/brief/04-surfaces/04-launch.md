@@ -371,7 +371,9 @@ same way, with the opposite meaning: the dated release is the one just cut and
 the newest tag is the right baseline. The preview refuses there too, calling the
 release not tagged yet rather than the previous one and naming the explicit
 baseline that measures against the release before it; the cut is not blocked,
-because it diffs before it writes its heading. A baseline that cannot be read is
+because it diffs before it writes its heading. A second cut in that window is a
+release in flight, and it refuses as one before any pre-flight runs, so it never
+names that explicit baseline, which the cut does not take. A baseline that cannot be read is
 a named refusal, never an empty diff.
 
 Every preview, and every cut that renders a payload, writes its pre-flight
