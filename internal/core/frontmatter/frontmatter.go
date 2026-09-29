@@ -408,3 +408,27 @@ func Unquote(s string) string {
 	}
 	return b.String()
 }
+
+// UnquoteScalar reads a raw value that may be a double-quoted scalar: a value
+// that opens AND closes with a double quote has the pair stripped and its inner
+// text decoded through Unquote, and quoted reports true; any other value is
+// returned unchanged with quoted false, so a caller that reads a bare value
+// differently (as a number, say) branches on it rather than re-testing the
+// quotes.
+//
+// Unquote takes the scalar's INNER text, so every reader holding a raw value has
+// to strip the quotes first. Capture's reader, record-lint's schema gate and the
+// cold-reading definition locator each kept a private copy of that strip, and a
+// caller that forgot it refused well-formed records with a message comparing a
+// value against itself (iss-2608311039531552). The strip lives here, beside the
+// decoder, so a reader comes here rather than re-deriving it.
+//
+// It trims nothing: whitespace around the value is the caller's to remove, as
+// it was at every call site this replaces. A single-quoted value is returned
+// as it stands; ScalarString is the reader that folds that spelling.
+func UnquoteScalar(v string) (value string, quoted bool) {
+	if len(v) >= 2 && v[0] == '"' && v[len(v)-1] == '"' {
+		return Unquote(v[1 : len(v)-1]), true
+	}
+	return v, false
+}
