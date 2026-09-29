@@ -837,11 +837,12 @@ func joinFolded(prefix string, segs []string, trailing bool) string {
 }
 
 // literalSegment reports whether a path segment is one directory whatever
-// the shell does with it: its text holds no variable, substitution or mark,
-// only name bytes and glob characters, which never match a slash.
+// the shell does with it: its text holds no variable and no mark (a
+// substitution is spelled as one), only name bytes and glob characters,
+// which never match a slash.
 func literalSegment(seg string) bool {
 	for i := 0; i < len(seg); i++ {
-		if c := seg[i]; c == '$' || c == '`' || c < 0x20 || c == 0x7f {
+		if c := seg[i]; c == '$' || c < 0x20 || c == 0x7f {
 			return false
 		}
 	}
