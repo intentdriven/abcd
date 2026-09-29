@@ -28,6 +28,32 @@ type PromptHelp struct {
 	Key     string       `json:"key"`
 	About   string       `json:"about"`
 	Choices []ChoiceHelp `json:"choices"`
+	// Flag is the install flag that answers this question without asking it,
+	// or "" for a question no flag answers. A piped run cannot rely on its
+	// answers lining up with the questions, so the flag is the reliable route
+	// there, and the question and the gap both name it (iss-2609120447486547).
+	Flag string `json:"flag,omitempty"`
+}
+
+// YesStillAsksValues is said once, before the first value question, by a run
+// that approved every kind of change with --yes and still has a value to ask:
+// the approval chooses no value, so the questions below are asked all the same
+// (iss-2609120447486547). The words are core's so every front door says the
+// same thing.
+const YesStillAsksValues = "--yes approves each kind of change but chooses no value, so the questions below are still asked; " +
+	"each names the flag that answers it without asking."
+
+// FlagHint is the sentence naming the flag that answers this question without
+// asking it, or "" when no flag does.
+func (h PromptHelp) FlagHint() string {
+	if h.Flag == "" {
+		return ""
+	}
+	values := make([]string, len(h.Choices))
+	for i, c := range h.Choices {
+		values[i] = c.Value
+	}
+	return "to answer without being asked, pass " + h.Flag + " " + strings.Join(values, "|")
 }
 
 // Meaning returns what answering value means, or "" for a value the question
@@ -51,7 +77,8 @@ const noAdapterYet = " abcd does not ship this adapter yet, so the choice is rec
 // order matches the order the question offers them.
 var promptHelp = map[string]PromptHelp{
 	"visibility": {
-		Key: "visibility",
+		Key:  "visibility",
+		Flag: "--visibility",
 		About: "Whether abcd's records for this repository (its decisions, intents and issues, kept under .abcd/) " +
 			"are committed with your code or kept out of git. It decides what the block abcd writes into .gitignore contains.",
 		Choices: []ChoiceHelp{
@@ -63,7 +90,8 @@ var promptHelp = map[string]PromptHelp{
 		},
 	},
 	"docs_target": {
-		Key: "docs_target",
+		Key:  "docs_target",
+		Flag: "--docs-target",
 		About: "Which conventions file, if any, gets a short block explaining how abcd works in this repository. " +
 			"AI coding assistants read these files at the start of every session; the block names abcd, so it goes only where you choose.",
 		Choices: []ChoiceHelp{
@@ -75,7 +103,8 @@ var promptHelp = map[string]PromptHelp{
 		},
 	},
 	"oracle_backend": {
-		Key: "oracle_backend",
+		Key:  "oracle_backend",
+		Flag: "--oracle-backend",
 		About: "Which AI reviewer abcd uses. abcd calls it an oracle: the AI model asked to review or check your work, " +
 			"for example to read a change and say whether it is ready. The choice decides who runs that model, and so what it costs and which keys or tools it needs.",
 		Choices: []ChoiceHelp{
@@ -89,7 +118,8 @@ var promptHelp = map[string]PromptHelp{
 		},
 	},
 	"scan_deep": {
-		Key: "scan_deep",
+		Key:  "scan_deep",
+		Flag: "--scan-deep",
 		About: "Whether this private repository also wants a deep secret scan with trufflehog, a scanner found on this machine " +
 			"that can check whether a leaked password or key still works. abcd's own built-in secret scan is not affected by the answer.",
 		Choices: []ChoiceHelp{

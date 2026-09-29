@@ -317,7 +317,12 @@ by an install that leaves a working entry of abcd's own behind it
 (iss-2609280932480608), the same danglingness rule that clears one at the target
 (iss-2609100506256636); an unowned one is named and left. Install carries the two
 non-resolvable ones on its own result as notes, since a fresh user cannot run
-the doctor by name on a machine where abcd is not yet on `PATH`.
+the doctor by name on a machine where abcd is not yet on `PATH`. A foreign
+regular file at an entry abcd would write, or ahead of its own, is described
+rather than only named: its size, when it was last modified, and whether its
+embedded Go build metadata identifies it as an abcd build and of which version,
+read without running it, so the person deciding whether to clear it need not
+inspect it by hand (iss-2609120447482255).
 
 **The name-guard scaffolding is reported at the granularity the technical
 facilitator can act on.** Each absent artefact is a gap abcd will create; every other state is a
@@ -455,7 +460,13 @@ keys, tools or cost. The oracle question defines an oracle before asking for
 one, and says plainly that every answer but host-delegated is recorded without
 changing how reviews run, because no other adapter ships. The words live in core, so every
 front door shows the same explanation and none invents its own; the question
-line itself is unchanged, so a piped answer stream lines up with it.
+line itself is unchanged, so a piped answer stream lines up with it. The four
+config values' help also carries the install flag that answers the question
+without asking it, and both the question and the missing-value gap's fix hint
+name it, because a flag is the reliable answer in a piped run
+(iss-2609120447486547). Approving every kind of change up front chooses no
+value, so a run approved that way that still has a value to ask says so once,
+in core's words, above the first value question.
 
 **The result explains itself to the person who ran it** (iss-164). Beside the
 exact record (every write, change, note, declined category, outstanding step and

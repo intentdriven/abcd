@@ -9,6 +9,8 @@ found_during: "autonomous run A resumed 2026-09-25"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/ahoy/exported_reach_test.go"
+deferred_after: "v0.11.1"
+deferral_reason: "not a product ruling but a lane of its own (run A 2026-09-28, lane drainAhoy): still real at ed4647299 (launch.Ship has no production caller). Generalising the audit across the 57 core packages means sorting about 140 exported names into delete, wire, unexport or declared test seam, each a separate judgement in packages other lanes edit, which is beyond a drain lane's reach; the orchestrator schedules it."
 ---
 
 The exported-reach caller audit iss-33 asked for exists only for internal/core/ahoy (TestEveryExportedAhoyFunctionHasAFrontDoor). A crude survey of the other internal/core packages (an exported top-level function with no 'pkg.Name' selector in non-test Go outside its package) lists about 140 names; many are reached only inside their own package, which is over-export rather than dead code, but some have no production caller anywhere, e.g. launch.Ship (grep for '.Ship(' outside tests finds none). Each hit needs sorting into dead scaffolding (delete or wire), in-package-only (unexport), or a declared test seam (name it ...ForTest), and the audit then generalised to every core package.
