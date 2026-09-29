@@ -216,10 +216,10 @@
         "test"
       ],
       "window": {
-        "tokens_est": 1370000,
-        "measured_tokens_est": 1355770,
-        "measured_bytes": 5219717,
-        "measured_at": "3a282f5fee1dfb46da002e41b9193ab8a1ca2ce0"
+        "tokens_est": 1380000,
+        "measured_tokens_est": 1358267,
+        "measured_bytes": 5229331,
+        "measured_at": "24e78506b9e7d4471d9c9110d6217e6e5f2c4b88"
       }
     }
   }
