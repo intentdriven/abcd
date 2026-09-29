@@ -62,9 +62,9 @@ the intent store's one reader of the review marker (itd-2609150819445595): an
 owed review names its receipt and the re-emit command; a shipped intent with no
 marker owes one too, and the re-emit mints its receipt; a dead-lettered review
 is reported unreviewed with its reason; an ingested one leaves nothing to do.
-For a ready planned intent, and for its open spec, the move names `abcd spec
-close` and says that the close ships the intent when no open spec still names
-it. A positional on the namespace root is not a `show` sub-verb, so the form stays
+For a ready planned intent, and for its open spec, the move is closing the spec,
+and it says that the close ships the intent when no open spec still names it. A
+positional on the namespace root is not a `show` sub-verb, so the form stays
 inside the naming discipline. For an issue id it also names the checkout and
 branch whose ledger it read, as every ledger verb does: a stderr line in the
 plain render and a `ledger` member in the machine-readable one
