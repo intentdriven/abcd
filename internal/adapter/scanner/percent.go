@@ -38,10 +38,15 @@ const maxPercentDecodePasses = 3
 // copy and mapping each hit back to its raw span is what stops such an identity
 // leak surviving into a committed memory/intent/capture artifact
 // (iss-2608270720336165).
-func decodedLineFindings(patterns []Pattern, probes []matcher, junctions junctionSet, matchers identityMatchers, id2sev map[string]Severity, rawLine string, lineno int, file string) []Finding {
+//
+// The glued sweep (glued.go) runs over each decoded view too: a token glued
+// behind a word byte whose OWN bytes are escaped (`notes_%67hp_…`, a JSON
+// \u escape of its first letter) is whole only on the decoded view, and there
+// the bounded patterns' leading \b cannot hold (iss-2609290743362554).
+func decodedLineFindings(patterns []Pattern, probes []matcher, junctions junctionSet, glued gluedSweep, matchers identityMatchers, id2sev map[string]Severity, rawLine string, lineno int, file string) []Finding {
 	var out []Finding
 	for _, v := range lineViews(rawLine) {
-		out = append(out, viewFindings(patterns, probes, junctions, matchers, id2sev, rawLine, v, lineno, file)...)
+		out = append(out, viewFindings(patterns, probes, junctions, glued, matchers, id2sev, rawLine, v, lineno, file)...)
 	}
 	return out
 }
@@ -85,28 +90,11 @@ func DecodedViews(line string) []string {
 // viewFindings runs every detector over one decoded view of rawLine and maps
 // each hit back to the raw bytes it came from. A view with nothing decoded in
 // it is never handed here; the raw scan already covers the raw line.
-func viewFindings(patterns []Pattern, probes []matcher, junctions junctionSet, matchers identityMatchers, id2sev map[string]Severity, rawLine string, v decodedView, lineno int, file string) []Finding {
+func viewFindings(patterns []Pattern, probes []matcher, junctions junctionSet, glued gluedSweep, matchers identityMatchers, id2sev map[string]Severity, rawLine string, v decodedView, lineno int, file string) []Finding {
 	decoded, posMap := v.text, v.posMap
-	var out []Finding
-	for _, m := range scanAllPatterns(patterns, probes, junctions, decoded) {
-		cp := patterns[m.patIdx]
-		matchedDecoded := decoded[m.start:m.end]
-		scanMeter.charge(stageSkip, len(matchedDecoded))
-		if cp.Skip != nil && cp.Skip(matchedDecoded) {
-			continue
-		}
-		if cp.SkipAt != nil && cp.SkipAt(decoded, m.start, m.end) {
-			continue
-		}
-		rawStart, rawEnd, ok := mapDecodedSpan(posMap, m.start, m.end, len(rawLine))
-		if !ok {
-			continue
-		}
-		out = append(out, Finding{
-			File: file, Line: lineno, Column: rawStart + 1, Kind: cp.Kind,
-			Severity: cp.Severity, Snippet: snippet(rawLine), Matched: rawLine[rawStart:rawEnd],
-			Suggested: cp.Suggestion, line: rawLine,
-		})
+	out := viewTokenFindings(patterns, probes, junctions, rawLine, v, lineno, file)
+	if len(glued.patterns) > 0 {
+		out = append(out, viewTokenFindings(glued.patterns, glued.probes, glued.junctions, rawLine, v, lineno, file)...)
 	}
 	// Identity matchers over the decoded copy. matchers.findings runs its whole
 	// suppression discipline (URL spans, home/email suppression of a username,
@@ -131,6 +119,36 @@ func viewFindings(patterns []Pattern, probes []matcher, junctions junctionSet, m
 		f.Snippet = snippet(rawLine)
 		f.line = rawLine
 		out = append(out, f)
+	}
+	return out
+}
+
+// viewTokenFindings runs one pattern set over one decoded view of rawLine,
+// applies each pattern's Skip and SkipAt on the decoded text, and maps every
+// surviving hit back to the raw bytes it came from. The bounded patterns and
+// the glued sweep's boundary-free set both run through it.
+func viewTokenFindings(patterns []Pattern, probes []matcher, junctions junctionSet, rawLine string, v decodedView, lineno int, file string) []Finding {
+	decoded, posMap := v.text, v.posMap
+	var out []Finding
+	for _, m := range scanAllPatterns(patterns, probes, junctions, decoded) {
+		cp := patterns[m.patIdx]
+		matchedDecoded := decoded[m.start:m.end]
+		scanMeter.charge(stageSkip, len(matchedDecoded))
+		if cp.Skip != nil && cp.Skip(matchedDecoded) {
+			continue
+		}
+		if cp.SkipAt != nil && cp.SkipAt(decoded, m.start, m.end) {
+			continue
+		}
+		rawStart, rawEnd, ok := mapDecodedSpan(posMap, m.start, m.end, len(rawLine))
+		if !ok {
+			continue
+		}
+		out = append(out, Finding{
+			File: file, Line: lineno, Column: rawStart + 1, Kind: cp.Kind,
+			Severity: cp.Severity, Snippet: snippet(rawLine), Matched: rawLine[rawStart:rawEnd],
+			Suggested: cp.Suggestion, line: rawLine,
+		})
 	}
 	return out
 }
