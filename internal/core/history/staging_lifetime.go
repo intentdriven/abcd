@@ -211,10 +211,11 @@ func quarantineStaged(sdir, qdir string, s Staged, read []byte, reason string) (
 		if err := fsutil.WriteFileAtomic(notePath, append(data, '\n'), 0o600); err != nil {
 			return err
 		}
-		// Rename, not copy: both paths are inside ~/.abcd/history/<rootSHA>, so
-		// this is one filesystem and the bytes are never duplicated. A copy
-		// would briefly put a second unredacted copy on disk, which is the one
-		// thing this subsystem must not do casually.
+		// Rename, not copy: both paths are inside the store's <root-sha> lane
+		// (staging/ and quarantine/ are siblings there), so this is one
+		// filesystem and the bytes are never duplicated. A copy would briefly
+		// put a second unredacted copy on disk, which is the one thing this
+		// subsystem must not do casually.
 		if err := os.Rename(s.Path, qpath); err != nil {
 			_ = os.Remove(notePath)
 			return err
