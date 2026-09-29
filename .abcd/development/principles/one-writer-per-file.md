@@ -35,7 +35,12 @@ on main that ADR-37 names.
 - The rule names the shape, not the remedy. For an existing hotspot the
   smallest compliant fix may be a `merge=union` attribute (legitimate for an
   append-only ledger whose entries never need identity) rather than full
-  atomicisation; the choice is a design call per record.
+  atomicisation; the choice is a design call per record. The attribute holds
+  for a local `git merge` only: the forge computes a pull request's
+  mergeability and the merge queue's merge without it, so two open pull
+  requests appending to the same file still conflict there. Counting that
+  cost is what makes one file per entry the remedy that removes the conflict
+  everywhere (adr-2609151138420062).
 
 **Promotion.** The detector half is already discipline-shaped for issues and
 intents (`issue_id_unique`, `intent_lifecycle` via the shared
