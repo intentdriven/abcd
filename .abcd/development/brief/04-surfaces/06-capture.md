@@ -286,7 +286,9 @@ nothing written; grounds are recorded when given, their absence parked by
 iss-2609091009111294. Three optional provenance flags name what fixed
 it: an intent, a spec, or a commit sha. A fourth, the shipped-in release, is migration
 use only: it names the release that already carried the work, so the record
-stays out of the current cut.
+stays out of the current cut. The commit a resolution names already exists, so a
+fix and its resolution are two commits in one change: the fix, then the move to
+`resolved/` carrying the `Resolves:` trailer.
 
 **Deferring** writes the release cut's waiver onto an open record
 (iss-2609181223260994): `deferred_after` naming the anchor tag, `deferral_reason`

@@ -160,7 +160,12 @@ and says that a surface claim found outside the pinned chapters is in scope.
 Two honest runs of the same tier therefore examine the same scope — no run
 chooses its own. The
 [`brief-surface-crosscheck.js`](brief-surface-crosscheck.js) detector consumes
-this manifest as its input rather than composing an ad-hoc list.
+this manifest as its input rather than composing an ad-hoc list. Two keys may
+ride beside the manifest in the invocation's arguments without touching the
+file or its hash: `concurrency`, a positive integer bounding how many checkers
+run at once (a run under an agent ceiling passes its own), and `results`, an
+array of hand-gathered checker returns that the script merges without spawning
+any checker, so a hand-run uses the script's own dedup rather than a copy.
 
 Pinning fixes the inputs, not the findings. The checkers are LLM agents, so two
 runs of one tier over byte-identical inputs return different findings: three
