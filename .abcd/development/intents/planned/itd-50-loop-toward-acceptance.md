@@ -28,7 +28,7 @@ impact: additive
 
 ## Why This Matters
 
-abcd's headline discipline is the audit loop: the dotted edge that compares delivered reality back against an intent's acceptance criteria. But in its current form the edge is **trigger-and-record, not enforcing**. When a spec closes, abcd moves the intent to `shipped/` and enqueues a review (spc-28); the `intent-fidelity-reviewer` (spc-12) emits per-criterion verdicts (`MET` / `MET_WITH_CONCERNS` / `NOT_MET` / `INCONCLUSIVE`) and writes them to the intent's `## Audit Notes`. A `NOT_MET` is faithfully recorded — and then nothing happens. The loop detects the miss but does not close it.
+abcd's headline discipline is the audit loop: the dotted edge that compares delivered reality back against an intent's acceptance criteria. But in its current form the edge is **trigger-and-record, not enforcing**. When a spec closes, abcd moves the intent to `shipped/` and enqueues a review (spc-28, predecessor store); the `intent-fidelity-reviewer` (spc-12, predecessor store) emits per-criterion verdicts (`MET` / `MET_WITH_CONCERNS` / `NOT_MET` / `INCONCLUSIVE`) and writes them to the intent's `## Audit Notes`. A `NOT_MET` is faithfully recorded — and then nothing happens. The loop detects the miss but does not close it.
 
 This leaves two real gaps:
 
@@ -51,7 +51,7 @@ This intent is **project-agnostic**: every abcd project ships intents whose deli
 
 - A new terminal audit outcome distinct from `NOT_MET`: *the intent as written cannot be met*. It bounds the loop (a loop-to-acceptance intent that exhausts its budget or is judged unachievable terminates here rather than thrashing).
 - `UNACHIEVABLE` **summons a replan**: it surfaces an explicit invitation for the product thinker and facilitator to revisit the intent together (re-open to `drafts/`, or a dedicated replan surface — decided at plan). It is never an automatic rollback and never a silent give-up.
-- Generalises spc-31's one-off `HOLD` outcome (flag-for-follow-up, never auto-rollback) into a first-class loop-exit state.
+- Generalises spc-31 (predecessor store)'s one-off `HOLD` outcome (flag-for-follow-up, never auto-rollback) into a first-class loop-exit state.
 
 ### Manual verification gated on machine-acceptance
 
@@ -106,10 +106,10 @@ _None open; decisions 2 to 4 settle the four this record carried._
 
 ## Related
 
-- **spc-28** (intent lifecycle hook + review queue) — ships the on-close move + review *enqueue*; this intent is the policy layer that decides what happens to a queued/recorded verdict.
-- **spc-12** (intent-fidelity-reviewer) — ships the Role 1 per-criterion verdicts (`MET`/`NOT_MET`/…) this loop consumes; this intent adds the terminal `UNACHIEVABLE` outcome the current enum lacks.
+- **spc-28** (predecessor store) (intent lifecycle hook + review queue) — ships the on-close move + review *enqueue*; this intent is the policy layer that decides what happens to a queued/recorded verdict.
+- **spc-12** (predecessor store) (intent-fidelity-reviewer) — ships the Role 1 per-criterion verdicts (`MET`/`NOT_MET`/…) this loop consumes; this intent adds the terminal `UNACHIEVABLE` outcome the current enum lacks.
 - **itd-47** (Codex leg in `_build_cli_oracle`) — `loop-to-acceptance` needs a reachable oracle to iterate headlessly; dependency, not scope.
-- **spc-31** `HOLD` outcome (`desync_report.run_fn31_gates`) — the one-off "flag-for-follow-up, never rollback" precedent this intent generalises into a first-class loop-exit state.
+- **spc-31** (predecessor store) `HOLD` outcome (`desync_report.run_fn31_gates`) — the one-off "flag-for-follow-up, never rollback" precedent this intent generalises into a first-class loop-exit state.
 - **itd-44** (fourth intent kind / decision) and **itd-43** (terminology) — the product-thinker / facilitator two-vocabulary split this intent leans on.
 - **a dated working-log entry (2026-06-02)** — the `[Design/Spec-candidate]` entry and the upstream `[Design/Decision-needed]` auto-drain recommendation that produced this intent; the auto-drainer is this intent's substrate.
 
@@ -119,21 +119,21 @@ _None open; decisions 2 to 4 settle the four this record carried._
 
 ### Predecessor AC reconciliation (spc-52)
 
-In the predecessor implementation each acceptance criterion above is satisfied and the open questions are resolved at its plan + build time; the table attributes which spc-52 task owns which behaviour.
+In the predecessor implementation each acceptance criterion above is satisfied and the open questions are resolved at its plan + build time; the table attributes which spc-52 (predecessor store) task owns which behaviour.
 
 | itd-50 Acceptance Criterion | Status | Where delivered |
 |---|---|---|
-| `loop-to-acceptance` re-opens + re-reviews a `NOT_MET` until `MET` or budget exhausted | Satisfied | spc-52.2 — `audit_loop_policy.decide_loop_action` + the queue-layer re-enqueue in `review_queue._apply_loop_policy` (reopen de-risk gate: no clean native spec-store reopen surface, so the loop re-enqueues at the queue layer) |
-| budget-exhausted / unmeetable → `UNACHIEVABLE` rollup, loop stops, written explanation + replan invitation naming both roles, no rollback, no machine-authored replan | Satisfied | spc-52.2 — `UNACHIEVABLE` is a rollup-layer terminal; `write_replan_invitation` writes the `why-unachievable` block; intent stays `shipped/` |
-| machine criteria all `MET` → manual-verification offered, recorded as a receipt distinct from the machine verdict | Satisfied | spc-52.3 — `verification_receipt.write_receipt` (`offered` receipt under `.abcd/logbook/audit/verify-<ts>/`, never merged into `## Audit Notes`) |
-| `MET` but product thinker rejects (wrong criteria) → replan path, NOT a synthetic `NOT_MET` | Satisfied | spc-52.3 — `verification_receipt.record_rejection_replan` re-enters the SHARED replan surface (one writer, two entry points); test-pinned that no `NOT_MET` is written |
-| machine criteria NOT all `MET` → product thinker not asked (loop / replan runs first) | Satisfied | spc-52.3 — `is_acceptance_eligible` gate; the gate API refuses an ineligible rollup (premature-suppression test) |
-| `INCONCLUSIVE` → recorded as today, no summons, no replan | Satisfied | spc-52.2 — `decide_loop_action` fail-closed branch; never flips to `UNACHIEVABLE` |
-| `record-only` (default) → behaviour unchanged from today | Satisfied | spc-52.1 — absent mode resolves to `record-only`; queue-entry shape regression-pinned |
-| `UNACHIEVABLE` / rejection seeds `/abcd:intent grill` | Satisfied | spc-52.2 / .3 — both replan blocks name the grill seed |
-| on-close hook stays a pure data function (no subprocess / oracle) | Satisfied | The mode logic rides the spc-43 drainer / policy layer; `intent_lifecycle` is untouched by the loop |
+| `loop-to-acceptance` re-opens + re-reviews a `NOT_MET` until `MET` or budget exhausted | Satisfied | spc-52.2 (predecessor store) — `audit_loop_policy.decide_loop_action` + the queue-layer re-enqueue in `review_queue._apply_loop_policy` (reopen de-risk gate: no clean native spec-store reopen surface, so the loop re-enqueues at the queue layer) |
+| budget-exhausted / unmeetable → `UNACHIEVABLE` rollup, loop stops, written explanation + replan invitation naming both roles, no rollback, no machine-authored replan | Satisfied | spc-52.2 (predecessor store) — `UNACHIEVABLE` is a rollup-layer terminal; `write_replan_invitation` writes the `why-unachievable` block; intent stays `shipped/` |
+| machine criteria all `MET` → manual-verification offered, recorded as a receipt distinct from the machine verdict | Satisfied | spc-52.3 (predecessor store) — `verification_receipt.write_receipt` (`offered` receipt under `.abcd/logbook/audit/verify-<ts>/`, never merged into `## Audit Notes`) |
+| `MET` but product thinker rejects (wrong criteria) → replan path, NOT a synthetic `NOT_MET` | Satisfied | spc-52.3 (predecessor store) — `verification_receipt.record_rejection_replan` re-enters the SHARED replan surface (one writer, two entry points); test-pinned that no `NOT_MET` is written |
+| machine criteria NOT all `MET` → product thinker not asked (loop / replan runs first) | Satisfied | spc-52.3 (predecessor store) — `is_acceptance_eligible` gate; the gate API refuses an ineligible rollup (premature-suppression test) |
+| `INCONCLUSIVE` → recorded as today, no summons, no replan | Satisfied | spc-52.2 (predecessor store) — `decide_loop_action` fail-closed branch; never flips to `UNACHIEVABLE` |
+| `record-only` (default) → behaviour unchanged from today | Satisfied | spc-52.1 (predecessor store) — absent mode resolves to `record-only`; queue-entry shape regression-pinned |
+| `UNACHIEVABLE` / rejection seeds `/abcd:intent grill` | Satisfied | spc-52.2 (predecessor store) / .3 — both replan blocks name the grill seed |
+| on-close hook stays a pure data function (no subprocess / oracle) | Satisfied | The mode logic rides the spc-43 (predecessor store) drainer / policy layer; `intent_lifecycle` is untouched by the loop |
 
-**Open questions (predecessor answers, to re-adjudicate at spec time):** loop budget = one re-open+re-review cycle per iteration, default `3` (spc-52.1 § Decision context); replan surface = no `drafts/` move, a `why-unachievable` + replan block in `## Audit Notes` with the intent kept in `shipped/` (spc-52.2 R4); manual-verification sign-off = the receipt schema `{intent_id, machine_rollup, state, justification?, recorded_by_role, ts}` with the `rejected_wrong_criteria` state carrying the justification to the shared replan surface (spc-52.3 R5).
+**Open questions (predecessor answers, to re-adjudicate at spec time):** loop budget = one re-open+re-review cycle per iteration, default `3` (spc-52.1 (predecessor store) § Decision context); replan surface = no `drafts/` move, a `why-unachievable` + replan block in `## Audit Notes` with the intent kept in `shipped/` (spc-52.2 (predecessor store) R4); manual-verification sign-off = the receipt schema `{intent_id, machine_rollup, state, justification?, recorded_by_role, ts}` with the `rejected_wrong_criteria` state carrying the justification to the shared replan surface (spc-52.3 (predecessor store) R5).
 
 ## Grounds
 

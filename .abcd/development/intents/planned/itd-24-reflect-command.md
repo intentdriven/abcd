@@ -52,7 +52,7 @@ We expect the value of a retrospective to be in the lifeboat: a new project that
   - Decisions made (architectural / design choices crystallised during the phase)
   - Metrics (intents shipped, audit-note severity distribution, time-to-ship if measurable)
 - **Output**: `.abcd/development/retrospectives/<phase-id>/README.md` — a peer of `.abcd/development/intents/`, committed as part of the phase's permanent record.
-- **Lifeboat integration**: `/abcd:disembark to <path>` packs *all* of the voyage's phase retrospectives into the lifeboat — the full reflection arc travels. `/abcd:embark from <path>` surfaces predecessor retrospectives during the press-release interview ("here's what the previous voyage learned about X — does that apply here?").
+- **Lifeboat integration**: `/abcd:disembark pack <repo> <path>` packs *all* of the voyage's phase retrospectives into the lifeboat — the full reflection arc travels. `/abcd:embark from <path>` surfaces predecessor retrospectives during the press-release interview ("here's what the previous voyage learned about X — does that apply here?").
 - **Reference back to intents and the audit**: the retrospective links to the phase doc, to the intents the phase bundled, and to the phase audit; per-intent reviewer notes are referenced (not duplicated).
 - **`reflection-composer` agent** — runs the interview, drafts the structured output, asks clarifying questions when answers feel thin.
 
@@ -74,7 +74,7 @@ None stated.
 - **Given** a completed phase with no phase audit yet recorded, **when** the persona runs `/abcd:reflect <phase-id>`, **then** the command reports the missing audit and offers to run the phase-fidelity-reviewer inline before continuing into the retrospective.
 - **Given** a phase doc that exists but has no spec carrying its `phase:` anchor, **when** the persona runs `/abcd:reflect <phase-id>`, **then** the command refuses with "no specs anchored to `<phase-id>` — nothing shipped to reflect on" and writes no output.
 - **Given** a draft retrospective with thin answers (e.g. "what went well: it worked"), **when** the agent drafts the output, **then** the agent surfaces the thinness as a clarifying question rather than committing the thin answer.
-- **Given** the same repo's lifeboat is then packed via `/abcd:disembark to <path>`, **when** the lifeboat is inspected, **then** every `.abcd/development/retrospectives/<phase-id>/README.md` the voyage produced is included in the lifeboat artefact.
+- **Given** the same repo's lifeboat is then packed via `/abcd:disembark pack <repo> <path>`, **when** the lifeboat is inspected, **then** every `.abcd/development/retrospectives/<phase-id>/README.md` the voyage produced is included in the lifeboat artefact.
 - **Given** a target repo embarked from a lifeboat that includes retrospectives, **when** `/abcd:embark from <path>` runs the press-release interview, **then** the persona is shown the few predecessor lessons ranked most like the new voyage's brief, with the rest as a list, and asked which apply.
 - **Given** an attempt to reflect on a phase whose specs are not all closed, **when** `/abcd:reflect <phase-id>` runs, **then** the command warns the persona, lists the open specs anchored to that phase, and asks for confirmation to proceed anyway.
 - **Given** the last piece of work anchored to a phase closes, **when** that close completes, **then** abcd says once that a retrospective for the phase is owed and names the command, and says nothing further about it.
@@ -96,7 +96,7 @@ _None open; decisions 1 and 2 settle the two this record carried (the reflection
 
 `/abcd:reflect` **cannot be planned until the phase-fidelity-reviewer ships** and its output artefact is stable and machine-readable. The reviewer is deferred in adr-9. Because `/abcd:reflect`'s core design is to *consume* the audit's per-bullet verdicts as interview seed material, and the audit-missing AC depends on running the reviewer inline, the command has no buildable contract until the reviewer's output format exists. `/abcd:intent plan itd-24` must not proceed while the phase-fidelity-reviewer remains unbuilt.
 
-**Satisfied:** the stable machine-readable phase-fidelity output is provided by spc-66 (`phase_review_report.schema.json` + `.abcd/logbook/audit/phase-<ts>/report.{json,md}`), so this dependency is met and `/abcd:reflect` is planned under spc-83. V1 keys empty-phase detection off the spc-66 receipts (not a `phase:` anchor) and refuses on a missing/empty-audited receipt rather than offering the inline reviewer — see the `### Implementation notes (spc-83.3 — v1 scope)` block below.
+**Satisfied:** the stable machine-readable phase-fidelity output is provided by spc-66 (predecessor store) (`phase_review_report.schema.json` + `.abcd/logbook/audit/phase-<ts>/report.{json,md}`), so this dependency is met and `/abcd:reflect` is planned under spc-83. V1 keys empty-phase detection off the spc-66 (predecessor store) receipts (not a `phase:` anchor) and refuses on a missing/empty-audited receipt rather than offering the inline reviewer — see the `### Implementation notes (spc-83.3 — v1 scope)` block below.
 
 ## Audit Notes
 
@@ -110,9 +110,9 @@ reads them as deliberate v1 scope, not gaps:
 
 - **Missing-audit inline-reviewer offer → refusal (deferred).** The draft AC
   had the command "offer to run the phase-fidelity-reviewer inline" when no
-  audit exists. V1 instead **refuses** when no spc-66 phase-audit receipt exists
+  audit exists. V1 instead **refuses** when no spc-66 (predecessor store) phase-audit receipt exists
   for the named phase (and when the latest matching receipt is empty-audited).
-  Empty-phase detection keys off the spc-66 receipts, not a `phase:` spec anchor
+  Empty-phase detection keys off the spc-66 (predecessor store) receipts, not a `phase:` spec anchor
   (that anchor is deferred; phase membership is editorial). Running the reviewer
   inline from reflect is a recorded future extension.
 - **Open-spec warn/confirm (deferred).** The draft AC had reflect warn and ask
@@ -121,9 +121,9 @@ reads them as deliberate v1 scope, not gaps:
   semantics above are the v1 gate.
 - **Phase-only grain, source links, lifeboat.** `/abcd:reflect <itd-N>` is
   refused (phase-only grain). V1 links to the phase doc + audit report + member
-  specs only (no intent links — the spc-66 receipt carries no intent ids;
+  specs only (no intent links — the spc-66 (predecessor store) receipt carries no intent ids;
   recorded future extension). The lifeboat-packs-all-retrospectives requirement
-  is a DOCUMENTED forward requirement on the future disembark spec (spc-17 stubs),
+  is a DOCUMENTED forward requirement on the future disembark spec (spc-17 (predecessor store) stubs),
   not a behaviour this surface implements — recorded in the surface doc.
 
 The interview is a single seeded pass (per-bullet verdicts → five questions);

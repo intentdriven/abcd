@@ -29,8 +29,9 @@ Each dropped hard dependency maps to exactly one seam under `internal/adapter/`:
 its default is the seam's native path (host-delegated for `oracle`, the native
 store/loop/scan for the rest). A missing or misbehaving external backend degrades
 to the native default rather than breaking abcd — each seam carries its own thin
-capability contract. Adding a backend = implement the interface and register it in
-`internal/registry`; consumers are untouched. See
+capability contract. Adding a backend = implement the interface and register it in a
+registry (the design target `internal/registry`, which does not exist yet);
+consumers are untouched. Of the five, only `scanner` is a directory under `internal/adapter/` in the tree; `oracle`, `history`, `spec` and `run` are design targets, each introduced by the first intent that consumes it, and today their native paths live in `internal/core` (`oracle`, `history`, `spec`, `implement`). `internal/adapter/` also holds adapters that are not capability seams: `gitleaks`, `hosting` and `openaiapi`. [`internal/README.md`](../../../../internal/README.md) § Planned seams is the gated list. See
 [`03-configuration.md`](03-configuration.md) for the config schema.
 
 **Oracle consumers.** `lifeboat-reviewer`, `press-release-composer`, and
@@ -153,8 +154,8 @@ structure is ambiguous.
 
 | Source reader | Source / Role | Notes |
 |---|---|---|
-| spec reader | native spec store (`internal/adapter/spec`) | Reads the native spec/task tree, newest-first; powers spec-essence |
-| transcript reader | native transcript store (`internal/adapter/history`) | Reads the root-SHA-keyed local corpus; merge by timestamp/content hash when an imported specstory source is also present |
+| spec reader | native spec store (`internal/core/spec`) | Reads the native spec/task tree, newest-first; powers spec-essence |
+| transcript reader | native transcript store (`internal/core/history`) | Reads the root-SHA-keyed local corpus; merge by timestamp/content hash when an imported specstory source is also present |
 | memory reader | `.abcd/memory/` | Reads the curated memory substrate (repo by default; see [`07-memory.md § 0`](07-memory.md#0-memory-scopes-and-routing)). **Read-only on any vendor harvest source** — see invariant below |
 | reviews reader | `.abcd/work/reviews/<YYYY-MM-DD>-<scope>/*.md` (charter grammar) + spec-tied reviews | Reads oracle/review artefacts written by the `oracle` seam's capture side; powers review-collator |
 | `claude_md` reader | `CLAUDE.md` + `git log -p CLAUDE.md` | Snapshot + history |

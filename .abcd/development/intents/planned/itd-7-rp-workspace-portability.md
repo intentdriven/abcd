@@ -11,6 +11,8 @@ severity: minor
 # Lifeboats Carry RepoPrompt Workspace Definitions Forward
 
 > **Waiting on itd-6** (ruled 2026-09-21 by the product thinker): the RepoPrompt route is one opt-in reviewer adapter now; this record is planned as written and gets its spec after that adapter ships. It is not in the autonomous run.
+>
+> **Two more prerequisites do not exist yet** (recorded 2026-09-29, iss-2609240227447110). The pull hangs on `abcd dev-sync`, which has no verb and no code: the command tree carries none, and the only record of it is the draft itd-13 (scheduled dev-sync). The lifeboat route is missing too: embark writes only the four record families in `embarkFamilies` (`internal/core/lifeboat/embark_types.go`: ADRs, issues, intents and specs) and reports every other file as one it does not write, so `.abcd/rp/workspace.json` has no path from a lifeboat into a target repository, as acceptance criteria 6 and 7 (the two embark criteria) require. Specifying this record needs both, beside itd-6.
 
 
 ## Press Release

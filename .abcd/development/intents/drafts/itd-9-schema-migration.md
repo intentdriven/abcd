@@ -41,11 +41,11 @@ This intent commits abcd to taking lifeboat portability seriously: schemas evolv
 > _BDD format, per `itd-1-acceptance-gates`. These gates are checked by `intent-fidelity-reviewer` when this intent moves to `shipped/`._
 
 - **Given** a lifeboat produced by an older abcd version with `schema_version: 1` on every JSON artefact, **when** the user runs `/abcd:embark from <path>`, **then** embark detects the schema delta, runs the registered migrators, unpacks the lifeboat into the target repo, and writes a migration log to `embark-report.{json,md}` listing each schema upgrade applied.
-- **Given** a lifeboat too old to migrate cleanly (e.g. its schema is below the lowest registered migrator's source version), **when** embark runs, **then** the command refuses with a "re-disembark required" error AND the error message includes the exact one-line command the user should run on the source repo (e.g., `cd <source> && /abcd:disembark to home`).
+- **Given** a lifeboat too old to migrate cleanly (e.g. its schema is below the lowest registered migrator's source version), **when** embark runs, **then** the command refuses with a "re-disembark required" error AND the error message includes the exact one-line command the user should run on the source repo (e.g., `/abcd:disembark pack <source> <dest>`).
 - **Given** a newer-schema lifeboat, **when** an older abcd binary tries to embark from it, **then** the binary fails fast with a "lifeboat is from a newer abcd version; upgrade abcd to embark this lifeboat" message — two-way compatibility is explicitly not supported and the failure mode is clear.
 - **Given** a successful migration during embark, **when** the migration log is written, **then** it records: source schema version, target schema version, list of migrators applied (in order), per-artefact field changes, and any non-fatal warnings.
 - **Given** the registered v1→v2 migrator, **when** it runs against a v1 artefact, **then** it produces a v2 artefact that round-trips cleanly through the v2 schema validator (no unknown fields, no missing required fields, all enums valid).
-- **Given** a lifeboat is migrated during embark, **when** the resulting `.abcd/development/voyage/embark/provenance.json` is written, **then** it records the migration history (`was_schema: 1`, `now_schema: 2`, `migrators_applied: [...]`) so future audits can reconstruct what was changed.
+- **Given** a lifeboat is migrated during embark, **when** the resulting `~/.abcd/voyage/<source-root-sha>/embark/provenance.json` (the operator-level voyage store adr-35 moved it to) is written, **then** it records the migration history (`was_schema: 1`, `now_schema: 2`, `migrators_applied: [...]`) so future audits can reconstruct what was changed.
 
 ## Open Questions
 

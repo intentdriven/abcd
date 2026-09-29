@@ -63,7 +63,7 @@ or a "sprint" (a time box, not a record of runs).
 
 | Phase | Condition |
 |-------|-----------|
-| Starts when | The first `abcd disembark <source-repo> to <dest>` creates `~/.abcd/voyage/<source-root-sha>/` |
+| Starts when | The first `abcd disembark pack <source-repo> <dest>` creates `~/.abcd/voyage/<source-root-sha>/` |
 | Ends when | Only if the operator deletes it — the log is appended to, never rewritten or truncated |
 
 ## Examples
