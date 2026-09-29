@@ -16,7 +16,7 @@ last one stopped.
 ## Start the run
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/abcd" build <itd-N> [--session <id>] --json
+"${CLAUDE_PLUGIN_ROOT}/abcd" build <itd-N> [--session <id>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] --json
 ```
 
 Pass `--session` with the host session's id when it has joined the shared run
@@ -68,6 +68,31 @@ check, and reports `resumed: true` with the same run and an empty `checks`: the
 run's own lanes move and claim the intent, so judging it again would refuse the
 run as its own peer.
 
+## The pace
+
+A new run is paced without being told: a working window, a pause after it, and
+a ceiling on the run's lanes and validators alive at once. The three numbers are
+read once, when the run starts, each from the highest layer that sets it:
+
+1. `--pace <work-minutes>/<pause-minutes>` (for example `--pace 90/240`) and
+   `--sub-agents <n>`, for this run only;
+2. `pace.work_minutes`, `pace.pause_minutes` and `pace.sub_agents` in the
+   repository's `.abcd/config.json`;
+3. the same keys in `~/.abcd/config.json`, for every checkout on the machine;
+4. the bundled 120/300 with 2 sub-agents.
+
+The payload's `pace` carries each number as `value`, `layer` (`flag`, `repo`,
+`machine` or `bundled`) and `origin` (the flag as typed, or the file), and the
+run record's `pace` line names the same. Tell the user which layer set the pace.
+A malformed pace or ceiling, typed or configured (`--pace 90`, a work window of
+0, `--sub-agents two`, a misspelt key under `pace`), is refused at the `pace`
+step with exit 2, naming the value and the accepted form, and nothing is
+written. Starting again keeps the run's pace: a flag naming another pace is
+refused, and one naming the same pace resumes.
+
+The window and the pause bind through `implement step` (below). The ceiling is
+recorded with the run; this build does not count lanes against it.
+
 ## Drive it
 
 The host session drives the loop. Take one step at a time:
@@ -89,6 +114,16 @@ The lane advances only on a receipt that verifies. Asking for a step while the
 lane awaits a receipt re-tells what it awaits and moves nothing. When a lane is
 done, the spec's next pending step opens the next lane, and the run record gets
 a line naming it, as the start line names the first.
+
+The run's window opens when the run starts. Once its working minutes have
+elapsed, `implement step` starts nothing: it writes `next_eligible_at` (now plus
+the run's pause) into the state, records the pause, and exits 0 with
+`next_eligible_at` in the payload and `next` naming the time. An agent already
+started may still finish: hand its receipt back as usual. Before
+`next_eligible_at`, `implement step` is refused at the `pause` step with exit 3,
+naming the time, and nothing changes; stop driving the run and invoke it again
+at or after that time, when a new window opens. The pause lives in the state
+file, so no process waits through it.
 `"${CLAUDE_PLUGIN_ROOT}/abcd" implement status --json` renders every run, its
 lanes and its record, and writes nothing. A lane's `worktree` is home-relative,
 or its directory name when it sits outside HOME; its `brief` and `receipt` keep

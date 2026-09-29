@@ -225,7 +225,7 @@ abcd banlist remove --private acme-internal
 
 Start the loop that takes one READY intent to delivered: Writes the run's state file in the local tier; refuses an open question, a hold or a peer holding it.
 
-**Usage:** `abcd build <itd-N> [--session <id>] [flags]`
+**Usage:** `abcd build <itd-N> [--session <id>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [flags]`
 
 Start the implement loop for one intent, or resume the run already in progress for it.
 A new run's checks run first, and every one must pass:
@@ -250,6 +250,17 @@ before this run's lane has moved or claimed anything, and the session's own clai
 intent is not counted as a peer's. A session that has not joined is refused. Without it
 the run holds no claim, and the result says so.
 
+A new run is paced: a working window, a pause after it, and a ceiling on the run's lanes
+and validators alive at once. The three numbers are read once, when the run starts:
+--pace <work-minutes>/<pause-minutes> and --sub-agents <n> for this run, else pace.work_minutes,
+pace.pause_minutes and pace.sub_agents in the repository's .abcd/config.json, else in
+~/.abcd/config.json, else the bundled 120/300 with 2 sub-agents. The result and the run
+record name each number's layer. A malformed pace or ceiling, typed or configured, is
+refused naming the value and the accepted form, and writes nothing. Starting again keeps
+the run's pace; a flag naming another is refused. The window and the pause bind through
+`abcd implement step`; the ceiling is recorded with the run, and this build does not
+count lanes against it.
+
 The run then moves one step per `abcd implement step`, driven by the host session.
 
 Exit 2 on a refusal, exit 3 when a peer holds the intent or the run state is locked
@@ -258,7 +269,9 @@ Exit 2 on a refusal, exit 3 when a peer holds the intent or the run state is loc
 **Flags:**
 
 ```
-      --session string   the host session's id in the shared run state; a new run claims the intent for it
+      --pace string         this run's working window and pause, <work-minutes>/<pause-minutes> (e.g. 90/240); wins over every configured layer
+      --session string      the host session's id in the shared run state; a new run claims the intent for it
+      --sub-agents string   this run's ceiling on lanes and validators alive at once, a whole number; wins over every configured layer
 ```
 
 **Example:**
@@ -1624,8 +1637,12 @@ its receipt; validate and land follow.
 
 A step whose body this abcd does not carry is refused naming the spec piece that
 delivers it, and the run is unchanged. A step that fails leaves the state as it was,
-so the next invocation performs it again; a completed step is never repeated. Before
-the run's next_eligible_at the step is refused as a pause.
+so the next invocation performs it again; a completed step is never repeated.
+
+The run's window clock: once the run's working window has elapsed, the step starts
+nothing, writes next_eligible_at (now plus the run's pause) and exits 0 naming it; an
+agent already started may still hand back its receipt. Before next_eligible_at the step
+is refused as a pause and nothing changes; at or after it, a new window opens.
 
 --run names the run; without it, the one run in progress in this checkout. Exit 2 on a
 refusal, exit 3 on a pause or a locked run state.
