@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
-	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // payloadField renders one payload-derived string bound for a DURABLE record:
@@ -95,22 +94,11 @@ func noteDegraded(res *IngestResult, note string) {
 // That name is what the reader needs to find the fault, so it is kept and
 // redacted rather than described (iss-2609290043245353).
 //
-// The scanner is built here, on the refusal path alone, so a payload that
-// decodes pays nothing for it. It FAILS CLOSED where newPayloadField degrades
-// loudly: a returned refusal has no record to note a degradation in, and a
-// scanner that cannot be built, or runs degraded, leaves the text described,
-// never echoed: a degraded scanner redacts with a weakened pattern set, and
-// ScanText cannot say so in-band.
+// It is scanner.RedactRefusal, the one canonical refusal redactor (canonical
+// patterns, then the literal sweep of the caller's home), followed by echo's
+// cap. It FAILS CLOSED where newPayloadField degrades loudly: a returned refusal
+// has no record to note a degradation in, so a scanner that cannot be built, or
+// runs degraded, leaves the text described, never echoed.
 func redactRefused(repoRoot, s string) string {
-	sc, err := scanner.New(repoRoot)
-	if err != nil {
-		return termsafe.DescribeRefused(s)
-	}
-	if unavail, _ := sc.Unavailable(); unavail {
-		return termsafe.DescribeRefused(s)
-	}
-	if findings := sc.ScanText(s, "issue"); len(findings) > 0 {
-		s, _ = scanner.Redact(s, findings)
-	}
-	return echo(s)
+	return echo(scanner.RedactRefusal(repoRoot, s))
 }

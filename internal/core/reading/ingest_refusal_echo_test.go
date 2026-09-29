@@ -127,3 +127,20 @@ func TestParkedManifestRefusalRedactsTheKey(t *testing.T) {
 		t.Errorf("the refusal no longer names the undeclared field: %v", err)
 	}
 }
+
+// TestRefusedKeySweepsTheCallerHome — iss-2609290043245353. redactRefused was a
+// second copy of scanner.RedactRefusal without its literal sweep of the caller's
+// home, so on a checkout the identity probe says nothing about, a key carrying
+// the caller's own home path was named with it. It routes through the one
+// canonical primitive now: the home is swept to `~` and the key still named.
+func TestRefusedKeySweepsTheCallerHome(t *testing.T) {
+	home := filepath.Join(t.TempDir(), "zzcallerhome")
+	t.Setenv("HOME", home)
+	got := redactRefused(t.TempDir(), `json: unknown field "reviewer_notes `+home+`/notes"`)
+	if strings.Contains(got, "zzcallerhome") {
+		t.Errorf("the refusal names the caller's home: %q", got)
+	}
+	if !strings.Contains(got, "reviewer_notes ~/notes") {
+		t.Errorf("the refusal lost the key or did not sweep the home to ~: %q", got)
+	}
+}

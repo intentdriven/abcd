@@ -76,9 +76,13 @@ func TestWriteRefusesASecretShapedFilename(t *testing.T) {
 	}
 	// Unlike judgeKey, the refusal names the page: the filename is the write's
 	// identity, and a batch refusal that withheld it would leave the operator
-	// with no way to say which page to repair.
-	if !strings.Contains(err.Error(), page) {
-		t.Errorf("the refusal does not name the refused page %q: %v", page, err)
+	// with no way to say which page to repair. The token itself is sealed, so
+	// the refusal does not echo what it refuses (iss-2609290411321963).
+	if sealed := strings.Replace(page, token, "[sealed]", 1); !strings.Contains(err.Error(), sealed) {
+		t.Errorf("the refusal does not name the refused page as %q: %v", sealed, err)
+	}
+	if strings.Contains(err.Error(), token) {
+		t.Errorf("the refusal echoes the token it refuses: %v", err)
 	}
 
 	mem := Dir(repo)
@@ -228,8 +232,11 @@ func TestWriteRefusesACredentialSplitAcrossTheSeparator(t *testing.T) {
 			if err == nil {
 				t.Fatalf("a page FILENAME spelling %s across the separator was accepted into the store", tc.token)
 			}
-			if !strings.Contains(err.Error(), page) {
-				t.Errorf("the refusal does not name the refused page %q: %v", page, err)
+			if sealed := strings.Replace(page, tc.token, "[sealed]", 1); !strings.Contains(err.Error(), sealed) {
+				t.Errorf("the refusal does not name the refused page as %q: %v", sealed, err)
+			}
+			if strings.Contains(err.Error(), tc.token) {
+				t.Errorf("the refusal echoes the token it refuses: %v", err)
 			}
 
 			mem := Dir(repo)

@@ -480,9 +480,9 @@ func TestPageRefusesAnUnregisteredPersona(t *testing.T) {
 		headline string
 		quote    Quote
 		want     ReasonCode // "" when the page passes
-		speaker  string
+		speaker  string     // what the reason must carry: the line, never the name
 	}{
-		{"a quote from an unregistered persona", "", Quote{Record: "itd-73", Text: niaQuote, Attribution: "Nia"}, ReasonPersonaRegistry, "Nia"},
+		{"a quote from an unregistered persona", "", Quote{Record: "itd-73", Text: niaQuote, Attribution: "Nia"}, ReasonPersonaRegistry, "line 5"},
 		{"a quote from a registered persona", "", goodPage().Quotes[0], "", ""},
 		{"a registered persona in headline prose", `"It works," said Iris, who cut the release.`, goodPage().Quotes[0], ReasonBlockquote, ""},
 	} {

@@ -706,6 +706,7 @@ The reason codes:
 | `quote-not-verbatim` | carries a quote that is not word for word from its intent's press release, with its attribution |
 | `outbound-policy` | would put a session URL or a tool attribution footer in the page or the changelog |
 | `persona-registry` | would put on the page words attributed to a persona the registry does not hold |
+| `privacy` | would put a secret, a key, or the caller's own home path or identity in the page or the changelog |
 
 Then show the user the written heading and the diff, so a human reviews the release
 record before it is committed. This command never commits, tags, or publishes.

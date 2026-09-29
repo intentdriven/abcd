@@ -95,7 +95,10 @@ since the last tag: headline intents told as prose, the rest listed by title,
 persona quotes carried word for word. The binary holds it to the changelog's
 rule (every intent in that set cited once, nothing else, nothing planned),
 checks each quote against its source, and runs the outbound policy and the
-persona registry over it. The outgoing page moves to
+persona registry over it. Both rendered documents are also held to the bar the
+launch scan holds the same files to: a hard_fail finding of the canonical
+scanner (a token, a key, the caller's own home or identity) refuses the cut,
+named by kind and line, never quoted (iss-2609290405381338). The outgoing page moves to
 `.abcd/development/releases/<version>.md`, then the page is written, then the
 changelog heading; a failure rolls the earlier writes back. A fixes-only cut
 writes no page. A refused payload returns every reason as data, and the host
