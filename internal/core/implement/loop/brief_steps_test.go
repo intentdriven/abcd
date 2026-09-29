@@ -51,8 +51,8 @@ const stepsHeading = "## The spec's steps before yours"
 // TestTheBriefNamesTheStepsBeforeItsOwn is itd-2609212103565953's fourth
 // criterion, the brief half: a lane's brief names the step it builds and the
 // steps before it, each with what landed it as the spec at the lane's base
-// records, and names no step after it. The section sits before the record the
-// brief carries, and after the outbound policy's own section.
+// records, and names no step after it. The section sits before the outbound
+// policy's own section, and before the record the brief carries.
 func TestTheBriefNamesTheStepsBeforeItsOwn(t *testing.T) {
 	repo := steppedBriefRepo(t,
 		"1. The parser\n   - packages: internal/core/spec\n   - landed: #12\n"+
