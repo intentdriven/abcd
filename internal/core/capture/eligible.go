@@ -3,6 +3,7 @@ package capture
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -84,16 +85,6 @@ type DrainVerdict struct {
 	Blockers []string `json:"blockers,omitempty"`
 }
 
-// indexOf returns v's position in list, or -1.
-func indexOf[T comparable](list []T, v T) int {
-	for i, x := range list {
-		if x == v {
-			return i
-		}
-	}
-	return -1
-}
-
 // Eligibility judges one issue by its fields alone. iss.BlockedByOpen must be
 // the derived projection List fills (the blockers still in open/). The rules
 // are asked in a fixed order, and the first that excludes the issue decides:
@@ -118,10 +109,10 @@ func Eligibility(iss Issue) DrainVerdict {
 		return decide(DrainSkipped, RuleBlocked, "blocked by "+strings.Join(iss.BlockedByOpen, ", ")+", still open")
 	case iss.Category == "security":
 		return decide(DrainHandBack, RuleSecurity, "category security is always a person's")
-	case indexOf(DrainCategories, iss.Category) < 0:
+	case slices.Index(DrainCategories, iss.Category) < 0:
 		return decide(DrainHandBack, RuleCategory, fmt.Sprintf("category %s is outside the fixable set (%s)",
 			iss.Category, joinCategories(DrainCategories)))
-	case indexOf(DrainSeverities, iss.Severity) < 0:
+	case slices.Index(DrainSeverities, iss.Severity) < 0:
 		return decide(DrainHandBack, RuleSeverity, fmt.Sprintf("severity %s is above the drain's (nitpick, minor)", iss.Severity))
 	case strings.TrimSpace(iss.Remedy) == "":
 		return decide(DrainIneligible, RuleRemedy, "no remedy: field; ineligible until someone adds one")
@@ -144,10 +135,10 @@ func joinCategories(cs []Category) string {
 func orderEligible(vs []DrainVerdict) {
 	sort.SliceStable(vs, func(i, j int) bool {
 		a, b := vs[i], vs[j]
-		if ca, cb := indexOf(DrainCategories, a.Category), indexOf(DrainCategories, b.Category); ca != cb {
+		if ca, cb := slices.Index(DrainCategories, a.Category), slices.Index(DrainCategories, b.Category); ca != cb {
 			return ca < cb
 		}
-		if sa, sb := indexOf(DrainSeverities, a.Severity), indexOf(DrainSeverities, b.Severity); sa != sb {
+		if sa, sb := slices.Index(DrainSeverities, a.Severity), slices.Index(DrainSeverities, b.Severity); sa != sb {
 			return sa < sb
 		}
 		return issNumber(a.ID) < issNumber(b.ID)
