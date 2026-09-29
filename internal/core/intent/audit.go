@@ -865,7 +865,11 @@ func IngestVerdictBytes(repoRoot string, raw []byte) (IngestVerdictResult, error
 		return IngestVerdictResult{}, fmt.Errorf("intent: verdict is not parseable JSON; refusing to ingest: %w", err)
 	}
 	if lenient.Type != VerdictType {
-		return IngestVerdictResult{}, fmt.Errorf("intent: verdict _type %q is not %q; refusing to ingest", lenient.Type, VerdictType)
+		// Refused before any receipt resolves, so no redactor is built yet: the
+		// value is described, never quoted, as every other host-payload refusal
+		// is (iss-2609290033521472). The wanted type beside it finds a typo.
+		return IngestVerdictResult{}, fmt.Errorf("intent: verdict _type is %s, not %q; refusing to ingest",
+			termsafe.DescribeRefused(lenient.Type), VerdictType)
 	}
 	if !rcpIDRe.MatchString(lenient.ReceiptID) {
 		return IngestVerdictResult{}, fmt.Errorf("intent: verdict has no resolvable receipt_id (malformed or absent); refusing to ingest")

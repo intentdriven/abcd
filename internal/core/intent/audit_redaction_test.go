@@ -342,3 +342,30 @@ func TestDeadLetterReasonIsRedactedWhereItIsReturned(t *testing.T) {
 	}
 	assertNoLeak(t, res.Reason)
 }
+
+// TestWrongTypeRefusalDoesNotEchoTheValue — iss-2609290033521472. A payload
+// whose _type is not the fidelity-verdict type is refused before any receipt
+// resolves, and that refusal quoted the _type verbatim, so a home path or a
+// token pasted there reached the terminal and the transcript. The refusal
+// describes the value instead and still names the field and the wanted type.
+func TestWrongTypeRefusalDoesNotEchoTheValue(t *testing.T) {
+	root := t.TempDir()
+	rcp := shipOne(t, root)
+	const planted = "/Users/zzotherperson/.config/tok-SENTINEL-7f3a" // abcd-lint:allow — planted leak
+	payload := strings.Replace(validVerdict(rcp), "abcd/intent-fidelity-verdict/v1", planted, 1)
+	_, err := IngestVerdict(root, writeVerdict(t, root, payload))
+	if err == nil {
+		t.Fatal("ingest must reject a payload whose _type is not the fidelity-verdict type")
+	}
+	msg := err.Error()
+	for _, leak := range []string{"zzotherperson", "SENTINEL"} {
+		if strings.Contains(msg, leak) {
+			t.Errorf("the refusal echoes the refused _type (%q found): %s", leak, msg)
+		}
+	}
+	for _, want := range []string{"_type", VerdictType, "not quoted"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("the refusal does not carry %q: %s", want, msg)
+		}
+	}
+}
