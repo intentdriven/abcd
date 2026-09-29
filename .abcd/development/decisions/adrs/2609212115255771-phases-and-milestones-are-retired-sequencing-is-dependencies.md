@@ -1,13 +1,13 @@
 ---
 id: adr-2609212115255771
 slug: phases-and-milestones-are-retired-sequencing-is-dependencies
-status: accepted
+status: superseded
 date: 2026-09-21
 supersedes: adr-9
-superseded_by: null
+superseded_by: adr-2609292012006845
 related_intents: [itd-2609211913453478, itd-2609212103568351, itd-2609212103565953, itd-2609212103572513, itd-24, itd-34, itd-78]
 related_rfcs: []
-related_adrs: [adr-1, adr-9, adr-45]
+related_adrs: [adr-1, adr-9, adr-45, adr-2609292012006845]
 ---
 
 # ADR-2609212115255771: Phases and milestones are retired: sequencing is dependencies rendered as status, the checkpoint is the derived release
