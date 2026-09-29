@@ -1112,6 +1112,49 @@ func TestBuildLandingCarriesProvenance(t *testing.T) {
 	}
 }
 
+// TestBuildAtAV1ReleaseDropsTheBetaBadge is the other half of itd-135 ac-6:
+// the badge is a rule on the release version, so the same sources built at a
+// v1 release carry no badge and no "beta" in the footer, with no copy change
+// (iss-2609261423210391).
+func TestBuildAtAV1ReleaseDropsTheBetaBadge(t *testing.T) {
+	f := newFixture(t)
+	f.write("CHANGELOG.md", strings.Join([]string{
+		"# Changelog",
+		"",
+		"## [Unreleased]",
+		"",
+		"## [1.0.0] - 2026-02-11",
+		"",
+		"### Added",
+		"",
+		"- The shipped one. (itd-2)",
+		"",
+	}, "\n"))
+	out := t.TempDir()
+	res, err := Build(Request{RepoRoot: f.Root(), OutDir: out,
+		Stamp: BuildStamp{Version: "1.0.0", Commit: "abcdef1", GeneratedAt: "2026-02-11"}})
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	if res.Version != "1.0.0" {
+		t.Fatalf("version %q, want the v1 release this test builds at", res.Version)
+	}
+	data, err := os.ReadFile(filepath.Join(out, "index.html"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	html := string(data)
+	if strings.Contains(html, `class="beta"`) {
+		t.Error("the Beta badge rendered at a v1 release")
+	}
+	if strings.Contains(html, "<span>beta</span>") {
+		t.Error("the footer still says beta at a v1 release")
+	}
+	if !strings.Contains(html, "<span>v1.0.0</span>") {
+		t.Error("the footer does not name the v1 release, so this is not the build the test claims")
+	}
+}
+
 // TestBuildWithoutChangelog is the graceful-absence rule (itd-140): a missing
 // optional source omits what depends on it and the build still succeeds.
 func TestBuildWithoutChangelog(t *testing.T) {
