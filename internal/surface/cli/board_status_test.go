@@ -48,7 +48,7 @@ func writeRunState(t *testing.T, root, intentID string) {
 	st := loop.State{
 		SchemaVersion: loop.SchemaVersion, RunID: runID, Key: intentID, Intent: intentID, Spec: "spc-2609010000000011",
 		Driver: loop.DriverHost, CreatedAt: now, UpdatedAt: now,
-		Lanes:   []loop.Lane{{ID: "lane-1", Key: intentID, SpecStep: 1, StepTitle: "the whole spec", Step: loop.StepImplement}},
+		Lanes:   []loop.Lane{{ID: "lane-1", Key: intentID, SpecStep: 1, StepTitle: "the whole spec", Stage: loop.StageImplement}},
 		Pending: []loop.PendingStep{}, Record: []loop.Entry{},
 	}
 	data, err := json.Marshal(st)
@@ -111,7 +111,7 @@ func TestBoardCarriesTheStatusBlock(t *testing.T) {
 				Title  string `json:"title"`
 				NextUp bool   `json:"next_up"`
 				Lane   *struct {
-					Run, Lane, Step string
+					Run, Lane, Stage string
 				} `json:"lane"`
 			} `json:"now"`
 			Next []struct {
@@ -133,7 +133,7 @@ func TestBoardCarriesTheStatusBlock(t *testing.T) {
 	if s == nil || len(s.Now) != 2 || len(s.Next) != 1 || len(s.Later) != 2 {
 		t.Fatalf("--json status = %+v, want two Now rows, one Next, two Later", s)
 	}
-	if s.Now[0].Lane == nil || s.Now[0].Lane.Step != "implement" || s.Now[0].Lane.Run != "run-2609290000000001" || !s.Now[1].NextUp {
+	if s.Now[0].Lane == nil || s.Now[0].Lane.Stage != "implement" || s.Now[0].Lane.Run != "run-2609290000000001" || !s.Now[1].NextUp {
 		t.Errorf("--json Now = %+v, want the lane state then the head", s.Now)
 	}
 	if s.Later[0].ID != "itd-8" || s.Later[0].Title != "The other unlinked one" || len(s.Later[0].Failing) == 0 {

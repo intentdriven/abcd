@@ -9,9 +9,15 @@ block: people
 
 Take one intent from READY towards delivered with the loop holding the run, not
 this conversation. The run lives in a state file; every invocation reads it,
-does at most one step, writes it and exits, so a session that stops, is
+does at most one stage, writes it and exits, so a session that stops, is
 compacted or is killed loses nothing, and the next invocation resumes where the
 last one stopped.
+
+Two words, two things. A **step** is a piece of the spec: the spec lists its
+steps under `## Steps`, and each lands as one lane and one pull request. A
+**stage** is what the loop does to a lane on the way: `worktree`, `brief`,
+`implement`, `validate`, `land`. `implement step` performs one stage; the
+payloads name the stage under `stage` and the spec's step under `spec_step`.
 
 ## Start the run
 
@@ -25,7 +31,7 @@ with the run id as the lane, so a build of the same intent from any other
 checkout of the repository is refused as held from the start, before this run's
 lane has moved or claimed anything. The session's own live claim on the intent
 is not counted as a peer's. A session that has not joined is refused at the
-`claim` step with nothing written. Without `--session` the run holds no claim,
+`claim` stage with nothing written. Without `--session` the run holds no claim,
 and the result says so (`claim` is null): another checkout cannot see the run
 until its lane shows.
 
@@ -59,7 +65,7 @@ pass:
 
 A refusal writes nothing. It exits 2, or 3 when a peer holds the intent (back
 off and take other work). Under `--json` the refusal comes as its own document
-before the error envelope: `refusal.step`, `refusal.check`, `refusal.reason`,
+before the error envelope: `refusal.stage`, `refusal.check`, `refusal.reason`,
 `refusal.remedy` and every check's row in `refusal.checks`. Tell the user the
 check, the reason and the remedy, and do not work around it: an open question
 goes back to the planning interview, a hold to the person who placed it.
@@ -102,7 +108,7 @@ same brief, worktree and receipt, and records the pick in the run's state. Its
 reason is one grounds entry, `pursued: picked by run <run-id> on <date>; …`,
 naming every candidate with its score, the rule, the runner-up and why it lost,
 and the falsifier (fix rounds past the pace rule's count, or an unachievable
-hand-back). The lane's `worktree` step appends it to the intent in the lane's
+hand-back). The lane's `worktree` stage appends it to the intent in the lane's
 own worktree and commits it there as the lane branch's first commit, a
 record-only commit made before the brief. The receipt verifier does not count
 it: a receipt naming it is refused, so the implementer names only its own
@@ -120,19 +126,19 @@ drive the run as below.
 
 Refusals, each writing nothing:
 
-- no candidate: refused at the `pick` step, exit 2; `refusal.excluded` names
+- no candidate: refused at the `pick` stage, exit 2; `refusal.excluded` names
   every planned intent and the check that excluded it. Tell the user each one
   and do not work around it.
-- `--max` above 1 or `--until-empty`: refused at the `pick` step, exit 2.
+- `--max` above 1 or `--until-empty`: refused at the `pick` stage, exit 2.
   Picking again under the pace rule is not built in this abcd: run
   `build next` once per pick.
-- the picked intent already has a run in progress: refused at the `pick` step,
+- the picked intent already has a run in progress: refused at the `pick` stage,
   exit 3; resume that run with `implement step`.
-- a refusal of `build <itd-N>` itself (the pace, the claim step) comes as that
+- a refusal of `build <itd-N>` itself (the pace, the claim stage) comes as that
   verb's refusal.
 
 The pick commit is made with the git identity the repository's commits are
-made with; with none configured the `worktree` step is refused naming it.
+made with; with none configured the `worktree` stage is refused naming it.
 
 ## The pace
 
@@ -152,7 +158,7 @@ The payload's `pace` carries each number as `value`, `layer` (`flag`, `repo`,
 run record's `pace` line names the same. Tell the user which layer set the pace.
 A malformed pace or ceiling, typed or configured (`--pace 90`, a work window of
 0, `--sub-agents two`, a misspelt key under `pace`), is refused at the `pace`
-step with exit 2, naming the value and the accepted form, and nothing is
+stage with exit 2, naming the value and the accepted form, and nothing is
 written. Starting again keeps the run's pace: a flag naming another pace is
 refused, and one naming the same pace resumes.
 
@@ -161,14 +167,14 @@ recorded with the run; this build does not count lanes against it.
 
 ## Drive it
 
-The host session drives the loop. Take one step at a time:
+The host session drives the loop. Take one stage at a time:
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/abcd" implement step --json
 ```
 
-`performed` names the step the call completed. When a step hands work to an
-agent, `awaiting` names the `role` to start as a fresh agent, the `brief` to
+`performed_stage` names the stage the call completed and `stage` the lane's
+next one. When a stage hands work to an agent, `awaiting` names the `role` to start as a fresh agent, the `brief` to
 hand it and the `receipt` path it writes to. Start that agent, and when it
 returns hand the receipt back:
 
@@ -176,7 +182,7 @@ returns hand the receipt back:
 "${CLAUDE_PLUGIN_ROOT}/abcd" implement receipt <path> --json
 ```
 
-The lane advances only on a receipt that verifies. Asking for a step while the
+The lane advances only on a receipt that verifies. Running `implement step` while the
 lane awaits a receipt re-tells what it awaits and moves nothing. When a lane is
 done, the spec's next pending step opens the next lane, and the run record gets
 a line naming it, as the start line names the first.
@@ -186,7 +192,7 @@ elapsed, `implement step` starts nothing: it writes `next_eligible_at` (now plus
 the run's pause) into the state, records the pause, and exits 0 with
 `next_eligible_at` in the payload and `next` naming the time. An agent already
 started may still finish: hand its receipt back as usual. Before
-`next_eligible_at`, `implement step` is refused at the `pause` step with exit 3,
+`next_eligible_at`, `implement step` is refused at the `pause` stage with exit 3,
 naming the time, and nothing changes; stop driving the run and invoke it again
 at or after that time, when a new window opens. The pause lives in the state
 file, so no process waits through it.
@@ -195,13 +201,13 @@ lanes and its record, and writes nothing. A lane's `worktree` is home-relative,
 or its directory name when it sits outside HOME; its `brief` and `receipt` keep
 their full home-relative paths, because the agent acts on them.
 
-A lane's steps run in order:
+A lane's stages run in order:
 
 1. `worktree` — the loop makes the lane's worktree in the machine-scoped store,
    `~/.abcd/worktrees/<root-sha>/<run-id>-<lane-id>`, on a branch
    `build/<run-id>-<lane-id>` cut from the default branch. Nothing is made
    beside the checkout. In a run `build next` started, the first lane's
-   worktree step also commits the pick's reason as the branch's first commit.
+   worktree stage also commits the pick's reason as the branch's first commit.
 2. `brief` — the loop renders the lane's brief from that base: the intent, the
    spec, the conventions of `AGENTS.md` and the decisions the intent cites; the
    spec step the lane builds and each step before it, with what landed it (the
@@ -220,7 +226,7 @@ A lane's steps run in order:
    definition of done's output or no report is refused naming what is missing;
    relay the refusal to a fresh implementer rather than completing the receipt
    yourself.
-4. `validate` and `land` — not carried in this build: `step` refuses at
+4. `validate` and `land` — not carried in this build: `implement step` refuses at
    `validate` naming the spec piece that delivers it, and the run stays ready
    to resume in an abcd that carries it. Report that refusal as it is; do not
    review, open the pull request or close the spec by hand on the run's behalf.

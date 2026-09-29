@@ -76,7 +76,7 @@ func statusRowTag(r statusblock.Row) string {
 	switch {
 	case r.Lane != nil:
 		l := r.Lane
-		tag := termsafe.Sanitize(l.Step)
+		tag := termsafe.Sanitize(l.Stage)
 		if l.Lane != "" {
 			tag = termsafe.Sanitize(l.Lane) + ": " + tag
 		}

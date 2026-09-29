@@ -256,13 +256,15 @@ signals anything.
 Three sub-verbs drive the loop a build starts, each over the run's state file in
 the checkout's local tier ([`34-build.md`](34-build.md) states the file, the
 checks and the step interface). The status render reads every run, or the one
-named, and writes nothing. The step performs the current lane's next step and
-exits; at a step that hands work to an agent it names the agent, the brief and
-the receipt path, and asking again moves nothing. The receipt hands that file
-back, and the step completes only when the path is the one named and its
-verifier accepts it. Without a named run, the step and the receipt act on the
-one run in progress in the checkout and refuse naming the runs when there are
-several. Their refusals name the step, the reason and the remedy, and a pause
+named, and writes nothing. The step verb performs the current lane's next stage and
+exits (a lane's stages are worktree, brief, implement, validate and land; the
+lane as a whole lands one of the spec's steps); at a stage that hands work to an
+agent it names the agent, the brief and the receipt path, and asking again moves
+nothing. The receipt hands that file back, and the stage completes only when the
+path is the one named and its verifier accepts it. Without a named run, the step
+and receipt verbs act on the one run in progress in the checkout and refuse naming
+the runs when there are several. Their refusals name the stage, the reason and
+the remedy, and a pause
 before the run's next eligible time, or a lock held by another invocation, is
 contention at exit 3.
 

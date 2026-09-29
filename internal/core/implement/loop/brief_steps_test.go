@@ -63,7 +63,7 @@ func TestTheBriefNamesTheStepsBeforeItsOwn(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	advanceTo(t, repo, start.RunID, StepImplement)
+	advanceTo(t, repo, start.RunID, StageImplement)
 	brief := laneBrief(t, repo, start.RunID, 0)
 
 	if !strings.Contains(brief, "- Build spec step 3, \"The loop\", and nothing else of the spec.") {
@@ -106,7 +106,7 @@ func TestTheBriefSaysWhenNoStepComesBefore(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			advanceTo(t, repo, start.RunID, StepImplement)
+			advanceTo(t, repo, start.RunID, StageImplement)
 			if got := section(t, laneBrief(t, repo, start.RunID, 0), stepsHeading); !strings.Contains(got, tc.want) {
 				t.Fatalf("want %q:\n%s", tc.want, got)
 			}
@@ -124,9 +124,9 @@ func TestTheBriefNamesWhatAnEarlierLaneOfTheRunBuilt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f := &fakeSteps{calls: map[StepName]int{}}
+	f := &fakeSteps{calls: map[Stage]int{}}
 	steps := f.steps()
-	steps[0].Run, steps[1].Run = worktreeStep, briefStep
+	steps[0].Run, steps[1].Run = worktreeStage, briefStage
 	steps[4].Run = func(c Context, lane *Lane) (Outcome, error) {
 		lane.PR = 7
 		return Outcome{Note: "landed"}, nil
@@ -138,7 +138,7 @@ func TestTheBriefNamesWhatAnEarlierLaneOfTheRunBuilt(t *testing.T) {
 			t.Fatal(err)
 		}
 		i := st.current()
-		if i == 1 && st.Lanes[1].Step == StepImplement {
+		if i == 1 && st.Lanes[1].Stage == StageImplement {
 			break
 		}
 		if i < 0 {
@@ -189,12 +189,12 @@ func TestABriefWhoseStepTheBaseListsOtherwiseIsRefused(t *testing.T) {
 			}
 			repo.Write(specRel, specWithSteps(tc.steps))
 			repo.Commit("the steps change on the default branch")
-			advanceTo(t, repo, start.RunID, StepBrief)
-			_, err = Advance(repo.Root(), start.RunID, DefaultSteps(), Options{})
-			if r := mustRefusal(t, err); r.Step != string(StepBrief) || !strings.Contains(r.Reason, tc.want) {
+			advanceTo(t, repo, start.RunID, StageBrief)
+			_, err = Advance(repo.Root(), start.RunID, DefaultStages(), Options{})
+			if r := mustRefusal(t, err); r.Stage != string(StageBrief) || !strings.Contains(r.Reason, tc.want) {
 				t.Fatalf("want the brief refused naming %q: %+v", tc.want, r)
 			}
-			if st, _ := ReadState(repo.Root(), start.RunID); st.Lanes[0].Step != StepBrief || st.Lanes[0].Brief != "" {
+			if st, _ := ReadState(repo.Root(), start.RunID); st.Lanes[0].Stage != StageBrief || st.Lanes[0].Brief != "" {
 				t.Fatalf("the lane stays at its brief: %+v", st.Lanes[0])
 			}
 		})

@@ -1638,7 +1638,7 @@
     {
       "path": "abcd implement receipt",
       "hidden": false,
-      "sentence": "Hand back the receipt an agent step of a loop run awaits: Writes the run's state when the receipt verifies; refuses a receipt that does not verify.",
+      "sentence": "Hand back the receipt an agent stage of a loop run awaits: Writes the run's state when the receipt verifies; refuses a receipt that does not verify.",
       "flags": [
         {
           "name": "run",
@@ -1701,7 +1701,7 @@
     {
       "path": "abcd implement step",
       "hidden": false,
-      "sentence": "Perform the next step of an implement loop run and exit: Writes the run's state, the lane's worktree or brief; refuses a step this abcd does not carry.",
+      "sentence": "Perform the next stage of an implement loop run's lane and exit: Writes the run's state, the lane's worktree or brief; refuses a stage this abcd does not carry.",
       "flags": [
         {
           "name": "run",

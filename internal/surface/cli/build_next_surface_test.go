@@ -42,8 +42,8 @@ func TestBuildNextPicksAndCarriesTheReasonInJSON(t *testing.T) {
 		Start struct {
 			RunID string `json:"run_id"`
 			Lane  struct {
-				ID   string `json:"id"`
-				Step string `json:"step"`
+				ID    string `json:"id"`
+				Stage string `json:"stage"`
 			} `json:"lane"`
 		} `json:"start"`
 	}
@@ -58,7 +58,7 @@ func TestBuildNextPicksAndCarriesTheReasonInJSON(t *testing.T) {
 		res.Pick.Rule == "" || res.Pick.Falsifier == "" {
 		t.Fatalf("the pick carries the chosen, the runner-up, the rule and the falsifier: %s", out)
 	}
-	if !strings.HasPrefix(res.Entry, "picked by run "+res.Start.RunID+" on ") || res.Start.Lane.ID != "lane-1" || res.Start.Lane.Step != "worktree" {
+	if !strings.HasPrefix(res.Entry, "picked by run "+res.Start.RunID+" on ") || res.Start.Lane.ID != "lane-1" || res.Start.Lane.Stage != "worktree" {
 		t.Fatalf("the entry is the run's, and the run is the build's: %s", out)
 	}
 }
@@ -74,7 +74,7 @@ func TestBuildNextRefusalCarriesEveryExclusion(t *testing.T) {
 
 	ref := refusalDocs(t, 2, "build", "next", "--json")
 	ex, _ := ref["excluded"].([]any)
-	if ref["step"] != "pick" || len(ex) != 1 {
+	if ref["stage"] != "pick" || len(ex) != 1 {
 		t.Fatalf("the refusal is the pick's, with every exclusion: %v", ref)
 	}
 	if e, _ := ex[0].(map[string]any); e["id"] != "itd-10" || e["check"] != "hold" || e["reason"] == "" {

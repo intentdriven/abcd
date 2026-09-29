@@ -45,8 +45,8 @@ const (
 	keySubAgents    = "sub_agents"
 )
 
-// StepPace is the refusal step of a pace or ceiling the loop cannot run on.
-const StepPace = "pace"
+// StagePace is the refusal stage of a pace or ceiling the loop cannot run on.
+const StagePace = "pace"
 
 // paceForm is the accepted form every pace refusal names.
 const paceForm = "--pace takes <work-minutes>/<pause-minutes> in whole minutes (work 1 to 10080, pause 0 to 10080, e.g. 120/300) " +
@@ -140,7 +140,7 @@ func wholeNumber(s string) (int, error) {
 }
 
 func paceRefusal(reason string) error {
-	return refuse(StepPace, "", "", reason, paceForm)
+	return refuse(StagePace, "", "", reason, paceForm)
 }
 
 // resolvePace reads the pace through the layered configuration: the flags,

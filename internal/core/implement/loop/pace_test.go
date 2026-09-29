@@ -41,7 +41,7 @@ func repoConfig(t *testing.T, repo *gittest.Repo, body string) {
 func paceRecord(t *testing.T, st State) string {
 	t.Helper()
 	for _, e := range st.Record {
-		if e.Step == "pace" {
+		if e.Stage == "pace" {
 			return e.Note
 		}
 	}
@@ -187,7 +187,7 @@ func TestAMalformedPaceIsRefusedAndWritesNoState(t *testing.T) {
 			}
 			_, err := Start(repo.Root(), "itd-10", Options{Pace: tc.pace, SubAgents: tc.subs})
 			r := mustRefusal(t, err)
-			if r.Step != "pace" || r.Contention {
+			if r.Stage != "pace" || r.Contention {
 				t.Fatalf("want the pace step's refusal: %+v", r)
 			}
 			if !strings.Contains(r.Reason, strings.Trim(tc.value, `"`)) {
@@ -223,11 +223,11 @@ func TestAResumeKeepsTheRunsPace(t *testing.T) {
 	}
 	_, err = Start(repo.Root(), "itd-10", Options{Pace: strp("60/240")})
 	r := mustRefusal(t, err)
-	if r.Step != "pace" || !strings.Contains(r.Reason, "90/240") || !strings.Contains(r.Reason, "60/240") {
+	if r.Stage != "pace" || !strings.Contains(r.Reason, "90/240") || !strings.Contains(r.Reason, "60/240") {
 		t.Fatalf("a resume with another pace names both: %+v", r)
 	}
 	_, err = Start(repo.Root(), "itd-10", Options{SubAgents: strp("0")})
-	if r := mustRefusal(t, err); r.Step != "pace" {
+	if r := mustRefusal(t, err); r.Stage != "pace" {
 		t.Fatalf("a malformed flag is refused on a resume too: %+v", r)
 	}
 	if !bytes.Equal(before, stateBytes(t, repo.Root(), first.RunID)) {
@@ -250,11 +250,11 @@ func TestAnElapsedWindowStartsNothingAndWritesNextEligibleAt(t *testing.T) {
 		t.Fatal(err)
 	}
 	id := start.RunID
-	f := &fakeSteps{calls: map[StepName]int{}}
+	f := &fakeSteps{calls: map[Stage]int{}}
 	steps := f.steps()
-	for i, want := range []StepName{StepWorktree, StepBrief} {
+	for i, want := range []Stage{StageWorktree, StageBrief} {
 		res, err := Advance(repo.Root(), id, steps, at(time.Duration(i+1)*time.Minute))
-		if err != nil || res.Performed != want {
+		if err != nil || res.PerformedStage != want {
 			t.Fatalf("inside the window the loop moves: %+v %v", res, err)
 		}
 	}
@@ -271,7 +271,7 @@ func TestAnElapsedWindowStartsNothingAndWritesNextEligibleAt(t *testing.T) {
 		t.Fatalf("closing the window is not a failure: %v", err)
 	}
 	wantNext := closed.Add(30 * time.Minute)
-	if res.Performed != "" || res.NextEligibleAt == nil || !res.NextEligibleAt.Equal(wantNext) ||
+	if res.PerformedStage != "" || res.NextEligibleAt == nil || !res.NextEligibleAt.Equal(wantNext) ||
 		!strings.Contains(res.Next, wantNext.Format(time.RFC3339)) {
 		t.Fatalf("an elapsed window performs nothing and names next_eligible_at %s: %+v", wantNext, res)
 	}
@@ -279,7 +279,7 @@ func TestAnElapsedWindowStartsNothingAndWritesNextEligibleAt(t *testing.T) {
 	if st.NextEligibleAt == nil || !st.NextEligibleAt.Equal(wantNext) {
 		t.Fatalf("next_eligible_at is written into the state: %v", st.NextEligibleAt)
 	}
-	if last := st.Record[len(st.Record)-1]; last.Step != "pause" || !strings.Contains(last.Note, wantNext.Format(time.RFC3339)) {
+	if last := st.Record[len(st.Record)-1]; last.Stage != "pause" || !strings.Contains(last.Note, wantNext.Format(time.RFC3339)) {
 		t.Fatalf("the record names the pause: %+v", last)
 	}
 
@@ -288,7 +288,7 @@ func TestAnElapsedWindowStartsNothingAndWritesNextEligibleAt(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, err := Receipt(repo.Root(), id, receipt, steps, at(70*time.Minute))
-	if err != nil || got.Performed != StepImplement {
+	if err != nil || got.PerformedStage != StageImplement {
 		t.Fatalf("the running lane checkpoints inside the pause: %+v %v", got, err)
 	}
 
@@ -296,16 +296,16 @@ func TestAnElapsedWindowStartsNothingAndWritesNextEligibleAt(t *testing.T) {
 	before := stateBytes(t, repo.Root(), id)
 	_, err = Advance(repo.Root(), id, steps, at(80*time.Minute))
 	r := mustRefusal(t, err)
-	if r.Step != "pause" || !r.Contention || !strings.Contains(r.Reason, wantNext.Format(time.RFC3339)) {
+	if r.Stage != "pause" || !r.Contention || !strings.Contains(r.Reason, wantNext.Format(time.RFC3339)) {
 		t.Fatalf("a step inside the pause is refused naming the time: %+v", r)
 	}
-	if !bytes.Equal(before, stateBytes(t, repo.Root(), id)) || f.calls[StepValidate] != 0 {
+	if !bytes.Equal(before, stateBytes(t, repo.Root(), id)) || f.calls[StageValidate] != 0 {
 		t.Fatal("a refused step inside the pause changes no state and performs nothing")
 	}
 
 	// At next_eligible_at a new window opens and the loop moves again.
 	res, err = Advance(repo.Root(), id, steps, at(91*time.Minute))
-	if err != nil || res.Performed != StepValidate {
+	if err != nil || res.PerformedStage != StageValidate {
 		t.Fatalf("after the pause the loop moves: %+v %v", res, err)
 	}
 	st, _ = ReadState(repo.Root(), id)
@@ -349,9 +349,9 @@ func TestAVersionOneStateIsReadAsAnUnpacedRun(t *testing.T) {
 	if st.Pace != nil || st.WindowStartedAt != nil {
 		t.Fatalf("a version-1 run is unpaced: %+v", st)
 	}
-	f := &fakeSteps{calls: map[StepName]int{}}
+	f := &fakeSteps{calls: map[Stage]int{}}
 	res, err := Advance(repo.Root(), start.RunID, f.steps(), Options{})
-	if err != nil || res.Performed != StepWorktree {
+	if err != nil || res.PerformedStage != StageWorktree {
 		t.Fatalf("a version-1 run steps on, days after it started: %+v %v", res, err)
 	}
 	if !bytes.Contains(stateBytes(t, repo.Root(), start.RunID), []byte(`"schema_version": `+strconv.Itoa(SchemaVersion))) {

@@ -1,12 +1,12 @@
 // Package loop is the implement loop's engine (itd-2609201916151817,
 // spc-2609202134338445): the state file a run lives in, the checks that decide
 // whether a run may start, and the step interface a driving host calls. `abcd
-// build <itd-N>` starts a run; `abcd implement step` performs the next step and
-// exits; `abcd implement receipt <path>` hands back what an agent step waited
-// on; `abcd implement status` renders the state. Nothing here holds a run in
+// build <itd-N>` starts a run; `abcd implement step` performs the next stage of
+// the current lane and exits; `abcd implement receipt <path>` hands back what an
+// agent stage waited on; `abcd implement status` renders the state. Nothing here holds a run in
 // memory between invocations: every call reads the state file first, does at
-// most one step, writes the state file last and returns (decisions 1 and 2), so
-// a killed process loses only the step it was in, which the next call repeats.
+// most one stage, writes the state file last and returns (decisions 1 and 2), so
+// a killed process loses only the stage it was in, which the next call repeats.
 //
 // The state lives in the checkout's local tier:
 //
@@ -20,11 +20,11 @@
 // state is written through the package's one atomic writer inside an os.Root, so
 // a symlinked component is refused rather than followed.
 //
-// The lane's steps are a sequence (Sequence), and each step's body is a
-// Handler the piece of the spec that delivers it registers in DefaultSteps: the
+// The lane's stages are a sequence (Sequence), and each stage's body is a
+// Handler the piece of the spec that delivers it registers in DefaultStages: the
 // worktree (piece 6, lane.go), the brief (piece 5, brief.go), the implement
-// step and its receipt's verifier (piece 7, receipt.go), the validators (piece
-// 8) and the landing (piece 9). A step whose body this build does not carry is
+// stage and its receipt's verifier (piece 7, receipt.go), the validators (piece
+// 8) and the landing (piece 9). A stage whose body this build does not carry is
 // refused by name, with the piece that delivers it, and the run is left
 // unchanged. A lane's files live in its own directory of the run:
 //
@@ -84,13 +84,25 @@ const lockFileName = ".lock"
 // run's `pick` and a lane's `pick_sha`. Versions 1 and 2 are its strict
 // subsets, read as runs no pick started and written back at version 3; one of
 // them carrying a pick is not one its version wrote, and is refused.
-const SchemaVersion = 3
+//
+// Version 4 renamed the lane's stage (BU1, iss-2609291313276243): a lane's and
+// a record line's `step` became `stage`, so the word "step" names only the
+// spec's steps. Versions 1 to 3 wrote `step`, and are migrated on read: the
+// read carries each `step` over to `stage` and writes nothing, and the run's
+// next mutation writes the file back at version 4, as it does for the versions
+// before. One of them that already says `stage` is not one its version wrote,
+// and is refused.
+const SchemaVersion = 4
 
 // schemaVersionUnpaced is the version before the pace: read, never written.
 const schemaVersionUnpaced = 1
 
 // schemaVersionUnpicked is the version before the pick: read, never written.
 const schemaVersionUnpicked = 2
+
+// schemaVersionStepNamed is the last version that named the lane's stage
+// `step`: read and migrated, never written.
+const schemaVersionStepNamed = 3
 
 // RunIDFamily is the run id's prefix; the id is minted through the record-id
 // seam (adr-45), so two checkouts starting runs in one second draw distinct ids.
@@ -104,7 +116,7 @@ const (
 )
 
 // maxStateBytes caps a state file read. A run's record grows by one entry per
-// step; a file past this is not one the loop wrote.
+// stage; a file past this is not one the loop wrote.
 const maxStateBytes = 4 << 20
 
 // lockTimeout bounds how long a mutation waits for another invocation's
@@ -117,25 +129,27 @@ var runIDRe = regexp.MustCompile(`^run-[0-9]{16}$`)
 // ValidRunID reports whether id is a run id this package mints.
 func ValidRunID(id string) bool { return runIDRe.MatchString(id) }
 
-// StepName is one step of a lane.
-type StepName string
+// Stage is one stage of a lane: the loop performs a lane's stages in order, and
+// the lane as a whole lands one step of the spec (a spec's steps keep that
+// word; BU1, iss-2609291313276243).
+type Stage string
 
-// The lane's steps, in the order Sequence performs them. StepDone is the state
-// of a lane with nothing left to do, never a step with a body.
+// The lane's stages, in the order Sequence performs them. StageDone is the state
+// of a lane with nothing left to do, never a stage with a body.
 const (
-	StepWorktree  StepName = "worktree"
-	StepBrief     StepName = "brief"
-	StepImplement StepName = "implement"
-	StepValidate  StepName = "validate"
-	StepLand      StepName = "land"
-	StepDone      StepName = "done"
+	StageWorktree  Stage = "worktree"
+	StageBrief     Stage = "brief"
+	StageImplement Stage = "implement"
+	StageValidate  Stage = "validate"
+	StageLand      Stage = "land"
+	StageDone      Stage = "done"
 )
 
 // Driver names what drives the loop. The host session is decision 5's default;
 // the process driver is piece 3's, opt-in by configuration.
 type Driver string
 
-// DriverHost is a host session calling step and receipt itself.
+// DriverHost is a host session calling `implement step` and `implement receipt` itself.
 const DriverHost Driver = "host"
 
 // State is one run: everything the loop needs between two invocations.
@@ -156,7 +170,7 @@ type State struct {
 	UpdatedAt time.Time `json:"updated_at"`
 	// WindowStartedAt and NextEligibleAt are the window clock the pacing intent
 	// (itd-2609201925079472) writes and reads. The loop honours NextEligibleAt:
-	// before it, a step is refused as a pause and nothing moves (decision 2).
+	// before it, a stage is refused as a pause and nothing moves (decision 2).
 	WindowStartedAt *time.Time `json:"window_started_at,omitempty"`
 	NextEligibleAt  *time.Time `json:"next_eligible_at,omitempty"`
 	// Pace is the pace the run started on, each number with the layer that
@@ -172,7 +186,7 @@ type State struct {
 	Lanes []Lane `json:"lanes"`
 	// Pending are the spec's unlanded steps no lane has been opened for yet.
 	Pending []PendingStep `json:"pending"`
-	// Record is the run record, accumulated as steps complete.
+	// Record is the run record, accumulated as stages complete.
 	Record []Entry `json:"record"`
 }
 
@@ -192,13 +206,13 @@ type Lane struct {
 	// title. An unstepped spec is one implicit step, number 1.
 	SpecStep  int    `json:"spec_step"`
 	StepTitle string `json:"step_title"`
-	// Step is the next step the loop performs for this lane; StepDone when the
+	// Stage is the next stage the loop performs for this lane; StageDone when the
 	// lane has nothing left.
-	Step StepName `json:"step"`
-	// Awaiting is set while the lane waits on an agent: the step handed its
+	Stage Stage `json:"stage"`
+	// Awaiting is set while the lane waits on an agent: the stage handed its
 	// work out and advances only on the receipt it names (criterion 8).
 	Awaiting *Await `json:"awaiting,omitempty"`
-	// The lane's footprint, filled by the steps that make it.
+	// The lane's footprint, filled by the stages that make it.
 	Branch   string `json:"branch,omitempty"`
 	BaseSHA  string `json:"base_sha,omitempty"`
 	HeadSHA  string `json:"head_sha,omitempty"`
@@ -230,10 +244,10 @@ type Await struct {
 type Entry struct {
 	At   time.Time `json:"at"`
 	Lane string    `json:"lane,omitempty"`
-	// Step is the step the entry records: a lane step, "start", "open" (a
+	// Stage is the stage the entry records: a lane stage, "start", "open" (a
 	// later lane opened for its spec step) or "receipt".
-	Step string `json:"step"`
-	Note string `json:"note,omitempty"`
+	Stage string `json:"stage"`
+	Note  string `json:"note,omitempty"`
 }
 
 // Complete reports whether the run has nothing left: every lane is done and no
@@ -243,7 +257,7 @@ func (s State) Complete() bool {
 		return false
 	}
 	for _, l := range s.Lanes {
-		if l.Step != StepDone {
+		if l.Stage != StageDone {
 			return false
 		}
 	}
@@ -267,7 +281,7 @@ func (s State) picked() bool {
 // done — or -1 when every opened lane is done.
 func (s State) current() int {
 	for i, l := range s.Lanes {
-		if l.Step != StepDone {
+		if l.Stage != StageDone {
 			return i
 		}
 	}
@@ -314,8 +328,17 @@ func readStateIn(root *os.Root, runID string) (State, error) {
 	}
 	// One strict decode, the lane receipt's: a repeated key, a field State
 	// does not name and a second document are each refused (iss-2609281204381700).
-	var st State
-	if err := jsonstrict.Decode(data, &st); err != nil {
+	// A file of a version that named the lane's stage `step` is decoded as
+	// strictly in its own shape and migrated; the version is peeked first, and
+	// the peek decides only which shape the strict decode holds the file to.
+	st, err := decodeState(data)
+	if err != nil {
+		var sr *Refusal
+		if errors.As(err, &sr) {
+			sr.Reason = rel + " " + sr.Reason
+			sr.Remedy = "the loop is the file's only writer; restore it or remove the run directory " + runRel(runID)
+			return State{}, sr
+		}
 		return State{}, refuse("state", "", "", fmt.Sprintf("%s does not parse as a run state: %v", rel, err),
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
 	}
@@ -326,8 +349,9 @@ func readStateIn(root *os.Root, runID string) (State, error) {
 	case (st.SchemaVersion == schemaVersionUnpaced || st.SchemaVersion == schemaVersionUnpicked) && st.picked():
 		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries a pick, which version %d never wrote", rel, st.SchemaVersion, st.SchemaVersion),
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
-	case st.SchemaVersion == schemaVersionUnpaced || st.SchemaVersion == schemaVersionUnpicked:
-		// Read as the current version; the next write carries it.
+	case st.SchemaVersion >= schemaVersionUnpaced && st.SchemaVersion <= schemaVersionStepNamed:
+		// Read as the current version, its stages already carried over by
+		// decodeState; the next write carries it, and this read writes nothing.
 		st.SchemaVersion = SchemaVersion
 	case st.SchemaVersion != SchemaVersion:
 		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d; this abcd reads versions %d to %d", rel, st.SchemaVersion, schemaVersionUnpaced, SchemaVersion),
@@ -336,6 +360,78 @@ func readStateIn(root *os.Root, runID string) (State, error) {
 	if st.RunID != runID {
 		return State{}, refuse("state", "", "", fmt.Sprintf("%s names run %q, not the run it is stored under", rel, st.RunID),
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
+	}
+	return st, nil
+}
+
+// stateStepNamed is a state file of versions 1 to 3, which named the lane's
+// stage `step`: State with its lanes and its record in that shape. The outer
+// fields shadow the embedded ones of the same name, so a strict decode into it
+// refuses a field none of those versions wrote, exactly as one into State does.
+type stateStepNamed struct {
+	State
+	Lanes  []laneStepNamed  `json:"lanes"`
+	Record []entryStepNamed `json:"record"`
+}
+
+// laneStepNamed is a lane in a file of versions 1 to 3.
+type laneStepNamed struct {
+	Lane
+	Step Stage `json:"step"`
+}
+
+// entryStepNamed is a record line in a file of versions 1 to 3.
+type entryStepNamed struct {
+	Entry
+	Step string `json:"step"`
+}
+
+// decodeState decodes a state file strictly in the shape its version wrote:
+// the current shape, or, for versions 1 to 3, the shape that named the lane's
+// stage `step`, carried over to `stage` here. A file of one of those versions
+// that already says `stage` is not one its version wrote, and is refused. The
+// version the file states is returned as it was; the caller holds it to what
+// the version could have written.
+func decodeState(data []byte) (State, error) {
+	var peek struct {
+		SchemaVersion int `json:"schema_version"`
+	}
+	if err := json.Unmarshal(data, &peek); err != nil || peek.SchemaVersion < schemaVersionUnpaced || peek.SchemaVersion > schemaVersionStepNamed {
+		var st State
+		err := jsonstrict.Decode(data, &st)
+		return st, err
+	}
+	var old stateStepNamed
+	if err := jsonstrict.Decode(data, &old); err != nil {
+		return State{}, err
+	}
+	st := old.State
+	neverWrote := func(what string) error {
+		return refuse("state", "", "", fmt.Sprintf("is schema version %d but %s says `stage`, which version %d never wrote", old.SchemaVersion, what, old.SchemaVersion), "")
+	}
+	st.Lanes = nil
+	if old.Lanes != nil {
+		st.Lanes = make([]Lane, 0, len(old.Lanes))
+	}
+	for _, l := range old.Lanes {
+		if l.Lane.Stage != "" {
+			return State{}, neverWrote("lane " + l.ID)
+		}
+		lane := l.Lane
+		lane.Stage = l.Step
+		st.Lanes = append(st.Lanes, lane)
+	}
+	st.Record = nil
+	if old.Record != nil {
+		st.Record = make([]Entry, 0, len(old.Record))
+	}
+	for i, e := range old.Record {
+		if e.Entry.Stage != "" {
+			return State{}, neverWrote(fmt.Sprintf("record line %d", i+1))
+		}
+		entry := e.Entry
+		entry.Stage = e.Step
+		st.Record = append(st.Record, entry)
 	}
 	return st, nil
 }

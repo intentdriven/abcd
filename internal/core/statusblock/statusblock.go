@@ -81,9 +81,9 @@ type Lane struct {
 	// Lane is the lane's id inside the run (lane-1, …); empty while the run
 	// waits to open its next lane.
 	Lane string `json:"lane,omitempty"`
-	// Step is the lane's next step (worktree, brief, implement, validate,
+	// Stage is the lane's next stage (worktree, brief, implement, validate,
 	// land), or "pending" while the run waits to open its next lane.
-	Step string `json:"step"`
+	Stage string `json:"stage"`
 	// Awaiting is the agent role the lane waits on, when it waits on one.
 	Awaiting string `json:"awaiting,omitempty"`
 }

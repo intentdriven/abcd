@@ -1,7 +1,7 @@
 package loop
 
 // receipt.go is the lane's receipt (spec piece 7; criterion 4). The implement
-// step hands the lane to a fresh implementer and awaits the receipt the brief
+// stage hands the lane to a fresh implementer and awaits the receipt the brief
 // told it to write; the verifier reads that receipt and refuses it, naming
 // everything missing, unless every commit it names is on the lane's branch past
 // its base, the definition of done's output exists with a zero exit, and the
@@ -32,7 +32,7 @@ import (
 // ReceiptSchemaVersion is the receipt's shape.
 const ReceiptSchemaVersion = 1
 
-// RoleImplementer is the agent the implement step hands a lane to.
+// RoleImplementer is the agent the implement stage hands a lane to.
 const RoleImplementer = "implementer"
 
 // maxReceiptBytes caps a receipt read; maxReceiptCommits caps the commits one
@@ -69,22 +69,22 @@ type DoDRun struct {
 	Output string `json:"output"`
 }
 
-// implementStep is the implement step's body: it hands the lane to a fresh
+// implementStage is the implement stage's body: it hands the lane to a fresh
 // implementer with the lane's brief and awaits its receipt. It makes nothing,
 // so running it twice is running it once.
-func implementStep(c Context, lane *Lane) (Outcome, error) {
+func implementStage(c Context, lane *Lane) (Outcome, error) {
 	if lane.Brief == "" || lane.Worktree == "" {
-		return Outcome{}, refuse(string(StepImplement), "", lane.ID, "the lane has no brief or no worktree to hand an implementer",
-			"the worktree and brief steps make them; restore the run's state file")
+		return Outcome{}, refuse(string(StageImplement), "", lane.ID, "the lane has no brief or no worktree to hand an implementer",
+			"the worktree and brief stages make them; restore the run's state file")
 	}
-	rel, err := laneFile(c.State.RunID, lane.ID, StepImplement, ReceiptFileName)
+	rel, err := laneFile(c.State.RunID, lane.ID, StageImplement, ReceiptFileName)
 	if err != nil {
 		return Outcome{}, err
 	}
 	return Outcome{Await: &Await{Role: RoleImplementer, Brief: lane.Brief, Receipt: rel}}, nil
 }
 
-// verifyReceipt is the implement step's receipt verifier. It reads the receipt
+// verifyReceipt is the implement stage's receipt verifier. It reads the receipt
 // strictly, then checks everything the receipt must carry and refuses naming
 // every gap at once, so one corrected receipt answers the refusal. A receipt
 // that verifies moves the lane's head to its branch's tip.
