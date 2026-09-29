@@ -85,7 +85,12 @@ all four:
 ## Blocked on
 
 - The implement loop's per-lane state file, for AC 10.
-- The API adapter's `Connections` and its allowlist (itd-2609081951381895,
-  adr-2609221009491186), for AC 11.
-- The same adapter (itd-2609081951381895), for AC 3's dispatch to a provider
-  and AC 8's refusal of a setting the adapter does not accept.
+- A ruling, for the rest of AC 11: which model a `--route <agent>=<tier>@<conn>`
+  asks for when the agent's `oracle.roles.<agent>` does not point at that
+  connection. `Resolve` refuses such a leg until the ruling. The API adapter's
+  `Connections` carries the allowlist and the model each role points at, and
+  `Resolve` holds a role-pointed leg's model to the allowlist.
+- Provider dispatch in the delegating verbs, for AC 3. The adapter
+  (itd-2609081951381895) exists and declares the settings it accepts, and
+  `Resolve` refuses a setting outside them (AC 8); no verb yet hands `Resolve`
+  its connections or sends a step through them.

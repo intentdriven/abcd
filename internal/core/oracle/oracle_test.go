@@ -359,7 +359,7 @@ func TestAProviderThatServesTheTierTakesTheStep(t *testing.T) {
 	f := newFx(t)
 	f.machine(`{"scribe":{"tier":"local"}}`)
 	l := f.load()
-	s := &spy{serves: map[Tier]Connection{Local: {Name: "ollama-desk", Models: []string{"example/model-1"}}}}
+	s := &spy{serves: map[Tier]Connection{Local: {Name: "ollama-desk", Models: []string{"example/model-1"}, Roles: map[string]string{"scribe": "example/model-1"}}}}
 	r, err := Resolve("scribe", l, s)
 	if err != nil {
 		t.Fatal(err)
@@ -398,7 +398,7 @@ func TestSettingsMergeConnectionThenRowThenFlag(t *testing.T) {
 	f := newFx(t)
 	f.repo(`{"scribe":{"tier":"economy","settings":{"temperature":0.2,"top_p":0.9}}}`)
 	l := f.load()
-	conn := Connection{Name: "openrouter", Models: []string{"example/model-1"}, Accepts: []string{"seed", "temperature", "top_p"},
+	conn := Connection{Name: "openrouter", Models: []string{"example/model-1"}, Roles: map[string]string{"scribe": "example/model-1"}, Accepts: []string{"seed", "temperature", "top_p"},
 		Defaults: Settings{"temperature": raw("1"), "seed": raw("7"), "top_p": raw("1")}}
 	s := &spy{serves: map[Tier]Connection{Economy: conn}, named: map[string]Connection{"openrouter": conn}}
 	routes, err := ParseRoutes([]string{"scribe=economy?seed=42"}, []string{"scribe"}, s)
@@ -436,7 +436,7 @@ func TestRouteFlagForms(t *testing.T) {
 	f := newFx(t)
 	f.repo(`{"scribe":{"tier":"economy"},"intent-auditor":{"tier":"economy"}}`)
 	l := f.load()
-	conn := Connection{Name: "desk", Models: []string{"example/model-1"}}
+	conn := Connection{Name: "desk", Models: []string{"example/model-1"}, Roles: map[string]string{"scribe": "example/model-1"}}
 	s := &spy{named: map[string]Connection{"desk": conn}}
 	routes, err := ParseRoutes(
 		[]string{"scribe=local@desk", "intent-auditor=frontier"},

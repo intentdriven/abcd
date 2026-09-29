@@ -26,6 +26,12 @@ type Connection struct {
 	// outside it is refused before a step runs, never dropped
 	// (spc-2609251028149555, AC 8). nil on a connection no adapter backs.
 	Accepts []string
+	// Roles is the model each agent whose oracle.roles.<agent> points at this
+	// connection asks it for, keyed by agent: a provider is reached by a role
+	// pointed at <provider>/<model> (itd-2609081951381895 Decision 9), so the
+	// role is where a provider leg's model is chosen. nil when no role points
+	// here.
+	Roles map[string]string
 }
 
 // Admits reports whether model is on the connection's allowlist.
@@ -214,16 +220,35 @@ type providerLeg struct {
 // take gives r the provider leg through c, or refuses it before the step runs
 // (spc-2609251028149555). The allowlist is consulted first, before any
 // settings merge: a provider serves only the models it lists
-// (adr-2609221009491186), so a connection that lists none admits no route. The
-// merged settings are then held to the set c's adapter accepts: a setting
-// outside it is refused, never dropped (AC 8), and a connection no adapter
-// backs accepts none.
+// (adr-2609221009491186), so a connection that lists none admits no route, and
+// the model the agent's role points at on c must be one it lists (AC 11). A
+// leg to a connection the agent's role does not point at names no model, and
+// the record does not yet decide which model it asks for, so it is refused
+// rather than guessed. The merged settings are then held to the set c's adapter
+// accepts: a setting outside it is refused, never dropped (AC 8), and a
+// connection no adapter backs accepts none.
 func (p providerLeg) take(r *Route, c Connection, rowSettings Settings) error {
 	if len(c.Models) == 0 {
 		return fmt.Errorf("oracle routing: %s resolves to connection %s (%s), whose allowlist lists no model; "+
 			"a provider serves only the models it lists (adr-2609221009491186), so the step is refused rather than sent: "+
 			"list the models %s may serve in its provider block, or route %s to the harness with tier %s",
 			p.agent, c.Name, p.via, c.Name, p.agent, HostDecides)
+	}
+	model, pointed := c.Roles[p.agent]
+	if !pointed {
+		return fmt.Errorf("oracle routing: %s resolves to connection %s (%s), but oracle.roles.%s does not point at %s, "+
+			"so the route names no model for %s to serve; which model such a route asks for is not yet decided, "+
+			"so the step is refused rather than sent: point oracle.roles.%s at %s/<model> with a model its allowlist lists (%s), "+
+			"or route %s to the harness with tier %s",
+			p.agent, c.Name, p.via, p.agent, c.Name, c.Name, p.agent, c.Name, listNames(c.Models), p.agent, HostDecides)
+	}
+	if !c.Admits(model) {
+		return fmt.Errorf("oracle routing: %s resolves to connection %s (%s), where oracle.roles.%s points at model %s, "+
+			"which is not on %s's allowlist (%s); a provider serves only the models it lists (adr-2609221009491186), "+
+			"so the step is refused rather than sent: add %s to %s's models in its provider block, point oracle.roles.%s "+
+			"at a model the list holds, or route %s to the harness with tier %s",
+			p.agent, c.Name, p.via, p.agent, layered.BoundKey(model), c.Name, listNames(c.Models),
+			layered.BoundKey(model), c.Name, p.agent, p.agent, HostDecides)
 	}
 	sent := merge(merge(nil, c.Defaults), rowSettings)
 	var refused []string

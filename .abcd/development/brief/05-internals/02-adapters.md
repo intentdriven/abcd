@@ -77,16 +77,21 @@ honours is the HTTP stack's: the standard proxy variables (`HTTPS_PROXY`,
 `NO_PROXY`) and the platform's trust roots. An https call through a proxy is a
 tunnel, so the key and the brief stay inside TLS, and a call to this machine is
 never proxied. Its
-connection (`oracle.Connections`) carries the provider's allowlist and the
-settings the adapter accepts, and the model tier's `Resolve` holds a provider leg
-to both before the step runs (spc-2609251028149555): a connection whose allowlist
-lists no model admits no route, and a merged setting outside the accepted set is
-refused naming the setting, where it was set and what the adapter accepts, never
-dropped. `model` is the adapter's own and is never a setting, so no setting can
+connection (`oracle.Connections`) carries the provider's allowlist, the
+settings the adapter accepts and the model each role pointed at it asks for, and
+the model tier's `Resolve` holds a provider leg to them before the step runs
+(spc-2609251028149555): a connection whose allowlist lists no model admits no
+route; the model the agent's `oracle.roles.<agent>` points at on the connection
+must be on its allowlist, or the leg is refused naming the agent, the
+connection, the model, the allowlist and the remedy; a leg to a connection the
+agent's role does not point at names no model and is refused, because which
+model it asks for is not yet decided; and a merged setting outside the
+accepted set is refused naming the setting, where it was set and what the
+adapter accepts, never dropped. `model` is the adapter's own and is never a setting, so no setting can
 choose a model past the allowlist. A provider claims no
 tier: it is reached by a role or a judgement type pointed at it, never by a tier
 alone. No delegating verb dispatches a step through it yet, or hands `Resolve` its
-connection, so neither refusal reaches a front door until dispatch does, and no
+connection, so none of these refusals reaches a front door until dispatch does, and no
 test reaches a real provider: the client is exercised end to end against a fake on the loopback
 address that fails in every way a provider can.
 

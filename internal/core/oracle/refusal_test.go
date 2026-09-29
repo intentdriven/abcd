@@ -33,13 +33,14 @@ func wantAll(t *testing.T, err error, parts ...string) {
 func TestResolveRefusesASettingTheAdapterDoesNotAccept(t *testing.T) {
 	accepts := []string{"seed", "temperature"}
 	models := []string{"example/model-1"}
+	roles := map[string]string{"scribe": "example/model-1"}
 
 	t.Run("from the routing row", func(t *testing.T) {
 		// Given a repository row setting top_k, which the adapter does not accept
 		f := newFx(t)
 		f.repo(`{"scribe":{"tier":"economy","settings":{"temperature":0.2,"top_k":40}}}`)
 		l := f.load()
-		c := Connection{Name: "openrouter", Models: models, Accepts: accepts}
+		c := Connection{Name: "openrouter", Models: models, Accepts: accepts, Roles: roles}
 		s := &spy{named: map[string]Connection{"openrouter": c}}
 		routes, err := ParseRoutes([]string{"scribe=economy@openrouter"}, []string{"scribe"}, s)
 		if err != nil {
@@ -60,7 +61,7 @@ func TestResolveRefusesASettingTheAdapterDoesNotAccept(t *testing.T) {
 	t.Run("from the --route", func(t *testing.T) {
 		f := newFx(t)
 		l := f.load()
-		c := Connection{Name: "openrouter", Models: models, Accepts: accepts}
+		c := Connection{Name: "openrouter", Models: models, Accepts: accepts, Roles: roles}
 		s := &spy{named: map[string]Connection{"openrouter": c}}
 		routes, err := ParseRoutes([]string{"scribe=economy@openrouter?top_k=40"}, []string{"scribe"}, s)
 		if err != nil {
@@ -77,7 +78,7 @@ func TestResolveRefusesASettingTheAdapterDoesNotAccept(t *testing.T) {
 		f := newFx(t)
 		f.machine(`{"scribe":{"tier":"local"}}`)
 		l := f.load()
-		c := Connection{Name: "desk", Models: models, Accepts: accepts, Defaults: Settings{"mirostat": raw("2")}}
+		c := Connection{Name: "desk", Models: models, Accepts: accepts, Roles: roles, Defaults: Settings{"mirostat": raw("2")}}
 		// When the tier itself proposes the provider leg
 		s := &spy{serves: map[Tier]Connection{Local: c}}
 		_, err := Resolve("scribe", l, s)
@@ -88,7 +89,7 @@ func TestResolveRefusesASettingTheAdapterDoesNotAccept(t *testing.T) {
 		f := newFx(t)
 		f.repo(`{"scribe":{"tier":"local","settings":{"seed":1}}}`)
 		l := f.load()
-		s := &spy{serves: map[Tier]Connection{Local: {Name: "desk", Models: models}}}
+		s := &spy{serves: map[Tier]Connection{Local: {Name: "desk", Models: models, Roles: roles}}}
 		_, err := Resolve("scribe", l, s)
 		wantAll(t, err, "seed", "desk", "accepts no setting")
 	})
@@ -97,7 +98,7 @@ func TestResolveRefusesASettingTheAdapterDoesNotAccept(t *testing.T) {
 		f := newFx(t)
 		f.repo(`{"scribe":{"tier":"local","settings":{"seed":1}}}`)
 		l := f.load()
-		c := Connection{Name: "desk", Models: models, Accepts: accepts, Defaults: Settings{"temperature": raw("0")}}
+		c := Connection{Name: "desk", Models: models, Accepts: accepts, Roles: roles, Defaults: Settings{"temperature": raw("0")}}
 		r, err := Resolve("scribe", l, &spy{serves: map[Tier]Connection{Local: c}})
 		if err != nil {
 			t.Fatal(err)
@@ -119,8 +120,8 @@ func TestResolveRefusesASettingTheAdapterDoesNotAccept(t *testing.T) {
 	})
 }
 
-// TestResolveRefusesAProviderLegWhoseAllowlistListsNothing is the half of AC
-// 11 that does not wait on how a route names its model: a provider serves only
+// TestResolveRefusesAProviderLegWhoseAllowlistListsNothing is the part of AC
+// 11 that needs no model to judge: a provider serves only
 // the models it lists (adr-2609221009491186), so a connection that lists none
 // admits no route at all.
 //
@@ -171,7 +172,7 @@ func TestResolveRefusesAProviderLegWhoseAllowlistListsNothing(t *testing.T) {
 // returns the provider leg with the settings as sent.
 func TestResolveHoldsTheConfiguredAdapterToItsAcceptedSet(t *testing.T) {
 	f := newFx(t)
-	f.machineConfig(`{"oracle":{"api":{` + openrouterBlock + `}}}`)
+	f.machineConfig(`{"oracle":{"api":{` + openrouterBlock + `},"roles":{"scribe":"openrouter/typesafe/jev-1.13"}}}`)
 	conns := f.loadAPI().Connections()
 
 	resolve := func(route string) (Route, error) {
@@ -198,4 +199,137 @@ func TestResolveHoldsTheConfiguredAdapterToItsAcceptedSet(t *testing.T) {
 	if r.ConnectionUsed != "openrouter" || dump(r.SettingsSent) != `{"seed":1,"temperature":0.2}` {
 		t.Fatalf("%+v settings %s", r, dump(r.SettingsSent))
 	}
+}
+
+// TestResolveRefusesARoleModelTheAllowlistDoesNotAdmit is AC 11's model half
+// for a role-pointed leg: a provider is reached by a role pointed at
+// <provider>/<model> (itd-2609081951381895 Decision 9), so the model that role
+// names is the one the leg asks for, and it must be on the allowlist
+// (adr-2609221009491186).
+//
+// Given a proposed route through a provider adapter, the agent's role pointed
+// at a model on that connection,
+// when a --route names the connection or the tier proposes it,
+// then it is one the provider's allowlist admits, or Resolve names the refusal
+// (agent, connection, model, allowlist, remedy) instead of returning the leg.
+func TestResolveRefusesARoleModelTheAllowlistDoesNotAdmit(t *testing.T) {
+	models := []string{"example/model-1", "example/model-2"}
+	accepts := []string{"seed"}
+
+	t.Run("named by --route, model unlisted", func(t *testing.T) {
+		// Given scribe's role pointed at a model the connection does not list
+		f := newFx(t)
+		l := f.load()
+		c := Connection{Name: "desk", Models: models, Accepts: accepts, Roles: map[string]string{"scribe": "example/model-9"}}
+		s := &spy{named: map[string]Connection{"desk": c}}
+		routes, err := ParseRoutes([]string{"scribe=local@desk?top_k=1"}, []string{"scribe"}, s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := l.Apply(routes); err != nil {
+			t.Fatal(err)
+		}
+		// When the step resolves
+		_, err = Resolve("scribe", l, s)
+		// Then it is refused naming the agent, the connection, the model, the
+		// allowlist and the remedy, before any settings are judged
+		wantAll(t, err, "scribe", "desk", "--route scribe=local@desk?top_k=1", "example/model-9",
+			"example/model-1, example/model-2", "oracle.roles.scribe", "host-decides")
+		if strings.Contains(err.Error(), "does not accept") {
+			t.Fatalf("refusal %q judged settings before the allowlist", err)
+		}
+	})
+
+	t.Run("proposed by the tier, model unlisted", func(t *testing.T) {
+		f := newFx(t)
+		f.machine(`{"scribe":{"tier":"local"}}`)
+		c := Connection{Name: "desk", Models: models, Accepts: accepts, Roles: map[string]string{"scribe": "example/model-9"}}
+		_, err := Resolve("scribe", f.load(), &spy{serves: map[Tier]Connection{Local: c}})
+		wantAll(t, err, "scribe", "desk", "tier local", "example/model-9", "example/model-1, example/model-2")
+	})
+
+	t.Run("model listed", func(t *testing.T) {
+		// Given the role pointed at a model the connection lists, the leg is returned
+		f := newFx(t)
+		f.machine(`{"scribe":{"tier":"local"}}`)
+		c := Connection{Name: "desk", Models: models, Accepts: accepts, Roles: map[string]string{"scribe": "example/model-2"}}
+		r, err := Resolve("scribe", f.load(), &spy{serves: map[Tier]Connection{Local: c}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if r.ConnectionUsed != "desk" {
+			t.Fatalf("%+v", r)
+		}
+	})
+}
+
+// TestResolveRefusesALegTheAgentsRoleDoesNotPointAt is the case AC 11 leaves
+// open until a ruling:
+// a route to a provider connection for an agent whose oracle.roles.<agent>
+// does not point at that connection names no model, and the record does not
+// say which model it asks for, so Resolve refuses it rather than choose one.
+//
+// Given a connection that lists models and an agent whose role points
+// elsewhere or nowhere,
+// when a --route or the tier sends the agent there,
+// then Resolve refuses, naming the agent, the connection, the ruling and the
+// remedy.
+func TestResolveRefusesALegTheAgentsRoleDoesNotPointAt(t *testing.T) {
+	models := []string{"example/model-1"}
+
+	t.Run("no role at all, named by --route", func(t *testing.T) {
+		f := newFx(t)
+		l := f.load()
+		c := Connection{Name: "desk", Models: models, Accepts: []string{"seed"}}
+		s := &spy{named: map[string]Connection{"desk": c}}
+		routes, err := ParseRoutes([]string{"scribe=economy@desk"}, []string{"scribe"}, s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := l.Apply(routes); err != nil {
+			t.Fatal(err)
+		}
+		_, err = Resolve("scribe", l, s)
+		wantAll(t, err, "scribe", "desk", "--route scribe=economy@desk", "oracle.roles.scribe", "not yet decided", "example/model-1", "host-decides")
+	})
+
+	t.Run("another agent's role points here, proposed by the tier", func(t *testing.T) {
+		f := newFx(t)
+		f.machine(`{"scribe":{"tier":"local"}}`)
+		c := Connection{Name: "desk", Models: models, Roles: map[string]string{"intent-auditor": "example/model-1"}}
+		_, err := Resolve("scribe", f.load(), &spy{serves: map[Tier]Connection{Local: c}})
+		wantAll(t, err, "scribe", "desk", "tier local", "oracle.roles.scribe", "not yet decided")
+	})
+
+	t.Run("through the machine's configuration", func(t *testing.T) {
+		// Given a provider block and scribe's role pointed at another provider
+		f := newFx(t)
+		f.machineConfig(`{"oracle":{"api":{` + openrouterBlock + `,` +
+			`"desk":{"base_url":"http://127.0.0.1:11434/v1","models":["example/model-1"]}},` +
+			`"roles":{"scribe":"desk/example/model-1","intent-auditor":"openrouter/typesafe/jev-1.13"}}}`)
+		conns := f.loadAPI().Connections()
+		resolve := func(agent, route string) error {
+			t.Helper()
+			l := f.load()
+			routes, err := ParseRoutes([]string{route}, []string{agent}, conns)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := l.Apply(routes); err != nil {
+				t.Fatal(err)
+			}
+			_, err = Resolve(agent, l, conns)
+			return err
+		}
+		// When --route sends scribe to openrouter, which its role does not point at
+		// Then it is refused, the model undecided
+		wantAll(t, resolve("scribe", "scribe=economy@openrouter"), "scribe", "openrouter", "oracle.roles.scribe", "not yet decided")
+		// And the agents whose roles point at the named connection resolve
+		if err := resolve("scribe", "scribe=local@desk"); err != nil {
+			t.Fatal(err)
+		}
+		if err := resolve("intent-auditor", "intent-auditor=economy@openrouter"); err != nil {
+			t.Fatal(err)
+		}
+	})
 }
