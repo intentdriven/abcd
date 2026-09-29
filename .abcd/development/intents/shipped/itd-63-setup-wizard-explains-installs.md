@@ -156,7 +156,7 @@ for GR001). Full record in the spec's process-exception note.
 
 - Originating context: the itd-62/spc-76 grill (2026-06-29) — "always block on a missing
   scanner; provide a setup wizard that guides install" rather than degrade to advisory.
-- Intended first consumer: [[itd-62-pluggable-safety-gate]] (the safety gate's missing-scanner path), still a draft; its missing-scanner path must call `tools.Missing` / `tools.Install` rather than print a bare command. The shipped consumer is the history store's armed-gitleaks refusal.
+- Intended first consumer: [[itd-62-pluggable-safety-gate]] (the safety gate's missing-scanner path), still a draft; its missing-scanner path must call `tools.Missing` / `tools.Install` rather than print a bare command. The shipped consumers are the history store's armed-gitleaks refusal and ahoy's remote verbs' missing-`gh` refusal; both route through `tools.Missing`.
 - Thesis tie: keeping human JUDGMENT the constraint requires the human to understand what
   they are consenting to, not just be handed a command.
 
