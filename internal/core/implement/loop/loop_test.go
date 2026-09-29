@@ -102,6 +102,7 @@ func TestStartRefusesEachFailedCheckAndWritesNoState(t *testing.T) {
 			strings.Replace(readyIntent("", settledQuestions), "## Scope Conditions\n\nNone stated.\n\n", "", 1),
 			specWithSteps(""), CheckClaimSections, "Scope Conditions"},
 		{"a hold", "itd-10", plannedRel, readyIntent("held: \"awaiting the pacing ruling\"\n", settledQuestions), specWithSteps(""), CheckHold, "awaiting the pacing ruling"},
+		{"an unshipped blocker", "itd-10", plannedRel, readyIntent("blocked_by: [itd-99]\n", settledQuestions), specWithSteps(""), CheckBlocked, "itd-99"},
 		{"every step landed", "itd-10", plannedRel, readyIntent("", settledQuestions),
 			specWithSteps("1. The parser\n   - landed: #1\n"), CheckSteps, "landed"},
 		{"an unreadable steps section", "itd-10", plannedRel, readyIntent("", settledQuestions),

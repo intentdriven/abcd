@@ -28,6 +28,9 @@ type Refusal struct {
 	// Checks is every pre-start check's row, when Step is "check", so a caller
 	// sees the whole picture rather than the first failure.
 	Checks []CheckRow `json:"checks,omitempty"`
+	// Excluded is every planned intent a pick excluded and the check that
+	// excluded it, when a pick found no candidate.
+	Excluded []Excluded `json:"excluded,omitempty"`
 }
 
 // Error renders the refusal as one line: step, reason, remedy.

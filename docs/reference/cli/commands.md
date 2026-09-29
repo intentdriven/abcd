@@ -230,11 +230,12 @@ Start the loop that takes one READY intent to delivered: Writes the run's state 
 Start the implement loop for one intent, or resume the run already in progress for it.
 A new run's checks run first, and every one must pass:
 the intent is READY (planned, criteria written, its spec linked and written), asks no
-open question, has no unanswered claim section, is not held, its spec leaves a step to
-build, and no peer holds it (no sibling worktree or local branch holds it in another
-bucket, and no session holds a live claim on it; a peer or claim that cannot be read
-counts as holding it). A refusal names the check, the reason
-and the remedy, and writes nothing.
+open question, has no unanswered claim section, is not held, names no unshipped intent
+in `blocked_by`, its spec leaves a step to build, and no peer holds it (no sibling
+worktree or local branch holds it in another bucket, and no session holds a live claim
+on it; a peer or claim that cannot be read counts as holding it). A refusal names the
+check, the reason and the remedy, and writes nothing. `abcd build next` picks the intent
+instead of taking one named.
 
 When the checks pass, the run is created in this checkout's local tier,
 `.abcd/.work.local/run/<run-id>/state.json`: one lane for the spec's first unlanded step,
@@ -278,6 +279,51 @@ Exit 2 on a refusal, exit 3 when a peer holds the intent or the run state is loc
 
 ```
 abcd build itd-2609010000000001
+```
+
+#### `abcd build next`
+
+Pick the readiest planned intent and start its run: Writes the run's state and the reason as the lane's first commit; refuses when nothing passes the checks.
+
+**Usage:** `abcd build next [--session <id>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--max <n>] [--until-empty] [flags]`
+
+Pick the readiest planned intent, write down why, and start its run.
+
+The candidates are the planned intents that pass every check `abcd build <itd-N>` runs
+(READY, no open question, no unanswered claim section, not held, no unshipped intent in
+`blocked_by`, a step left to build, no peer holding it), less one this checkout already has
+a run in progress for. Each is scored from its record, three parts at equal weight, each 0
+to 100: criteria clarity (the share of its acceptance criteria in Given-When-Then form), a
+test path (its spec's `## Footprint` names tests) and the expected footprint (100 divided by
+the packages that section names). A part whose section is absent reads zero, and the
+reason says the spec carries no footprint. The readiest is taken; the oldest among equals,
+and the reason then says the tie was broken by age.
+
+The pick starts the run `abcd build <itd-N>` would start for that intent, with the pick in
+the run's state. The reason is one `pursued:` grounds entry opening `picked by run <run-id>
+on <date>`: every candidate with its score, the rule, the runner-up and why it lost, and the
+falsifier. The lane's worktree step appends it to the intent in the lane's own worktree and
+commits it there as the lane branch's first commit, record-only, before the brief; the
+receipt verifier does not count that commit as the implementer's. The checkout you run this
+in is never written but for the run state. `abcd intent ready` keeps reporting the person's
+entry as the most recent conjecture.
+
+One pick per invocation. --max <n> above 1 and --until-empty, which continue under the pace
+rule, are refused: that half of the verb is not built in this abcd. --session, --pace and
+--sub-agents are `abcd build`'s own.
+
+No candidate is refused, naming each excluded intent and the check that excluded it, and
+nothing is written. Exit 2 on a refusal, exit 3 when the chosen intent's run is already in
+progress or the run state is locked.
+
+**Flags:**
+
+```
+      --max int             how many picks to make; only 1 is built, and more is refused
+      --pace string         the new run's working window and pause, <work-minutes>/<pause-minutes>; wins over every configured layer
+      --session string      the host session's id in the shared run state; the new run claims the picked intent for it
+      --sub-agents string   the new run's ceiling on lanes and validators alive at once; wins over every configured layer
+      --until-empty         pick until no candidate is left; not built, and refused
 ```
 
 ### `abcd capture`

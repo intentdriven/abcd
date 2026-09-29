@@ -307,6 +307,7 @@ func stubSections(id, intentID string, steps []Step) []stubSection {
 	}
 	return []stubSection{
 		{heading: "## Summary", body: summary},
+		{heading: FootprintHeading, body: footprintStubBody},
 		{heading: StepsHeading, body: stepsBody},
 	}
 }

@@ -430,6 +430,48 @@
       ]
     },
     {
+      "path": "abcd build next",
+      "hidden": false,
+      "sentence": "Pick the readiest planned intent and start its run: Writes the run's state and the reason as the lane's first commit; refuses when nothing passes the checks.",
+      "flags": [
+        {
+          "name": "max",
+          "shorthand": "",
+          "type": "int",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "pace",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "session",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "sub-agents",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "until-empty",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd capture",
       "hidden": false,
       "group": "records",

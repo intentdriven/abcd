@@ -222,8 +222,8 @@ Now is never empty while anything is READY. Next lists every planned intent
 the readiness gate reports READY; Later lists every planned intent it refuses,
 naming the gating checks each fails, then every draft. Next, Later and the
 head are read from the shelves and the gate alone, so removing the state file
-empties Now's lane rows and changes nothing else. Until `abcd build next`'s
-pick order exists (itd-2609211116005482) the READY intents are read oldest
+empties Now's lane rows and changes nothing else. Until the block reads build
+next's pick order (itd-2609211116005482) the READY intents are read oldest
 record id first, the tie-break that pick uses, and the head is the first of
 them not held; the block's `order` field names that order (`record-id`), so a
 reader can tell it from the pick's. The text render is a `status:` heading

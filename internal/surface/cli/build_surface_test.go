@@ -160,7 +160,7 @@ func TestBuildRefusalNamesStepReasonAndRemedy(t *testing.T) {
 	if ref["step"] != "check" || ref["check"] != "hold" || !strings.Contains(ref["reason"].(string), "awaiting the pacing ruling") {
 		t.Fatalf("refusal = %v", ref)
 	}
-	if checks, _ := ref["checks"].([]any); len(checks) != 7 {
+	if checks, _ := ref["checks"].([]any); len(checks) != 8 {
 		t.Fatalf("the refusal carries every check's row, got %d", len(checks))
 	}
 	code, _, errOut := implementCLI(t, "build", "itd-10")

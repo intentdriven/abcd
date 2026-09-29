@@ -620,3 +620,8 @@ func judgeBundleMembers(store spec.Store, corpus Corpus, sp spec.Spec) ([]Bundle
 	}
 	return members, skipped, nil
 }
+
+// BlockedBy returns the intents a record names in its `blocked_by` list, as
+// written. The build's pre-start checks refuse a record whose blocker has not
+// shipped (itd-2609211116005482).
+func BlockedBy(content string) []string { return frontmatterList(content, BlockedByKey) }
