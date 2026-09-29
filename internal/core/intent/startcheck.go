@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/core/spec"
 )
 
@@ -142,26 +143,77 @@ func startHoldRow(it Intent) StartRow {
 // startBlockedRow refuses a record that names, in `blocked_by`, an intent that has
 // not shipped. A blocker the corpus does not hold is unshipped as far as this
 // checkout can tell, and refuses too: the edge says something must ship first.
+//
+// A blocker that was superseded is followed along `superseded_by` to the intent
+// that replaced it, transitively, and the record waits on that replacement
+// (ruling BZ2 of 2026-09-29): it is blocked exactly when the last intent of the
+// chain has not shipped. A chain the check cannot finish refuses, naming the
+// chain: one that loops, one whose next record this checkout does not hold, a
+// superseded record naming no successor, and one ending at a decision (adr-N),
+// because a decision replacing the work is not an intent that ships and nothing
+// on the record says the edge is settled by it.
 func startBlockedRow(corpus Corpus, id, content string) StartRow {
 	row := StartRow{Name: StartCheckBlocked}
-	var open []string
+	var open, followed []string
 	for _, b := range BlockedBy(content) {
-		it, ok := corpus.Lookup(b)
+		chain, final, problem := followBlocker(corpus, b)
+		path := strings.Join(chain, " → ")
 		switch {
-		case !ok:
-			open = append(open, b+" (not in this checkout's intent store)")
-		case it.Bucket != BucketShipped:
-			open = append(open, b+" ("+it.Bucket+")")
+		case problem != "" && len(chain) == 1:
+			open = append(open, b+" ("+problem+")")
+		case problem != "":
+			open = append(open, b+" (superseded: "+path+": "+problem+")")
+		case final.Bucket != BucketShipped && len(chain) == 1:
+			open = append(open, b+" ("+final.Bucket+")")
+		case final.Bucket != BucketShipped:
+			open = append(open, b+" (superseded: "+path+", "+final.Bucket+")")
+		case len(chain) > 1:
+			followed = append(followed, path+" (shipped)")
 		}
 	}
 	if len(open) == 0 {
 		row.OK = true
 		row.Detail = id + " names no unshipped blocker"
+		if len(followed) > 0 {
+			row.Detail += "; a superseded blocker waits on its replacement: " + strings.Join(followed, ", ")
+		}
 		return row
 	}
 	row.Detail = id + " is blocked by " + strings.Join(open, ", ")
-	row.Remedy = "ship the blocker first, or drop the edge from `blocked_by` if it no longer holds"
+	row.Remedy = "ship the blocker first, or the intent its supersession chain ends at (each superseded record names its successor in `superseded_by`; repair a chain that loops or ends nowhere); or drop the edge from `blocked_by` if it no longer holds"
 	return row
+}
+
+// followBlocker walks one blocker along `superseded_by` until it reaches a
+// record that is not superseded. chain names every record visited, the blocker
+// first; final is the record the chain ends at, and problem is non-empty when
+// the chain cannot be finished (then final is meaningless).
+func followBlocker(corpus Corpus, blocker string) (chain []string, final Intent, problem string) {
+	chain = []string{blocker}
+	seen := map[string]bool{}
+	cur := blocker
+	for {
+		it, ok := corpus.Lookup(cur)
+		if !ok {
+			return chain, Intent{}, "not in this checkout's intent store"
+		}
+		if seen[it.ID] {
+			return chain, Intent{}, "a supersession cycle"
+		}
+		seen[it.ID] = true
+		if it.Bucket != BucketSuperseded {
+			return chain, it, ""
+		}
+		next := it.SupersededBy
+		if next == "" {
+			return chain, Intent{}, it.ID + " is superseded and names no successor"
+		}
+		chain = append(chain, next)
+		if !recordid.ValidIntentID(next) {
+			return chain, Intent{}, next + " is not an intent: a decision replaced the blocker, and nothing on the record says that settles the edge"
+		}
+		cur = next
+	}
 }
 
 // startStepsRow reads the open spec's steps through the spec store's reader: the
