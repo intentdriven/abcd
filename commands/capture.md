@@ -83,8 +83,9 @@ inventing a fix for them. A remedy chosen in an autonomous run cites its
 grounds in the record's text: where the fix depends on outside practice, a
 prior-art or state-of-the-art check (principle `prefer-sota`) names what it
 rests on, so the choice is not a guess repeated from memory. `none (filed automatically)` is the one value abcd's own
-automatic filers write when they have no fix (the consistency pass, and an
-inbox report promoted without one); a drain skips a record carrying it until a
+automatic filers write when they have no fix of a person's (the consistency
+pass, and every promoted inbox report, whose sender's proposal stays in its
+text); a drain skips a record carrying it until a
 person writes a real remedy with `capture remedy`, below, and `--remedy` refuses
 it from a person, whatever its case, so the value always means a machine filed
 the record. A record filed before the remedy was required carries none; it

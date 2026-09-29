@@ -71,8 +71,8 @@ log; itd-82 decision 6). This tightens the one-line capture on purpose: a captur
 is one line of text and one line of remedy. A remedy chosen in an autonomous run
 cites its grounds in the record's text, a prior-art or state-of-the-art check
 where the fix depends on outside practice (principle `prefer-sota`). The one
-exception is abcd's own automatic filers, the consistency pass and an inbox
-report promoted without a remedy of its own: with no fix to propose they write
+exception is abcd's own automatic filers, the consistency pass and every
+promoted inbox report: with no fix of a person's to propose they write
 `none (filed automatically)` (ruling H12 of the same day), the record is filed,
 and a drain skips it until a person writes a real remedy through the remedy
 sub-verb, which writes or replaces the field on an open issue. The fast path

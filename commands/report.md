@@ -25,9 +25,11 @@ It prints the skeleton and writes nothing: a block between `---` lines —
 `kind` (`defect` or `enhancement`), `severity`, `category`, `title`, the
 `abcd_version` already filled in, the `surface` in play, an optional `remedy`,
 and `evidence` pointers — with the prose below it. A promoted report becomes an
-issue, and every new issue carries a remedy: the report's `remedy` when it
-gives one, otherwise `none (filed automatically)`, which a drain skips until a
-person writes the fix with `abcd capture remedy`.
+issue, and every new issue carries a remedy: a promoted report's is always
+`none (filed automatically)`, which a drain skips until a person writes the fix
+with `abcd capture remedy`. The report's own `remedy`, when it gives one, is
+kept in the issue's text for that person to adopt: outside text never becomes a
+remedy a drain acts on without a person naming it.
 
 ## Fill it and file it
 

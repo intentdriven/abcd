@@ -110,7 +110,7 @@ until the run itself closes it.
   rules on the person's fourteen-verb ceiling.
 - **Landed (the remedy required, rulings BX3 and H12 of 2026-09-29):**
   `capture` refuses a new issue without a remedy; the automatic filers (the
-  consistency pass, an inbox report promoted without one) write the one machine
+  consistency pass, every promoted inbox report) write the one machine
   value `none (filed automatically)`, which the capture surface refuses from a
   person; the dry run lists a record carrying it as ineligible until a person
   writes a real remedy with `capture remedy`, the verb that writes or replaces

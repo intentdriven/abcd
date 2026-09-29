@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/lint"
 	"github.com/intentdriven/abcd/internal/gittest"
@@ -762,20 +763,70 @@ func TestAnUnreadableReportStillNamesItsSender(t *testing.T) {
 	}
 }
 
-// TestAPromotedReportCarriesItsRemedyOrTheMachineValue: every new issue carries
-// a remedy (ruling BX3 of 2026-09-29). A report's remedy becomes the capture's,
-// scrubbed as every other free-text value is and folded to one line; a report
-// without one is promoted with the machine value (ruling H12), so the record
-// is filed and a drain skips it until a person writes a real remedy.
-func TestAPromotedReportCarriesItsRemedyOrTheMachineValue(t *testing.T) {
+// TestAPromotedReportFilesTheMachineRemedy: every new issue carries a remedy
+// (ruling BX3 of 2026-09-29), and a promoted report's is always the machine
+// value (ruling H12), whatever its sender proposed. Pending the person's
+// ruling CL1, outside text never becomes a drain-eligible remedy without a
+// person naming it: the sender's remedy stays in the body, scrubbed, for a
+// person to adopt with `capture remedy`.
+func TestAPromotedReportFilesTheMachineRemedy(t *testing.T) {
 	r := mustParse(t, filled(t))
 	r.SenderName = "capo"
-	r.Remedy = "ask Capo, then undo iss-12\n  as before"
-	if got := captureRequest("root", "id", r).Remedy; got != "ask "+GenericSender+", then undo iss12 as before" {
-		t.Errorf("the capture's remedy = %q", got)
+	for _, proposed := range []string{"ask Capo, then undo iss-12\n  as before", "  "} {
+		r.Remedy = proposed
+		req := captureRequest("root", "id", r)
+		if req.Remedy != issueschema.MachineRemedy {
+			t.Errorf("a report proposing %q promoted with remedy %q, want %q", proposed, req.Remedy, issueschema.MachineRemedy)
+		}
 	}
-	r.Remedy = "  "
-	if got := captureRequest("root", "id", r).Remedy; got != issueschema.MachineRemedy {
-		t.Errorf("a report without a remedy promoted with remedy %q, want %q", got, issueschema.MachineRemedy)
+	r.Remedy = "ask Capo, then undo iss-12"
+	if body := captureRequest("root", "id", r).Text; !strings.Contains(body,
+		"Remedy the reporter proposes: ask "+GenericSender+", then undo iss12") {
+		t.Errorf("the body lacks the sender's scrubbed remedy:\n%s", body)
+	}
+}
+
+// TestAPromotedReportIsIneligibleForADrain: a promoted report whose sender
+// proposed a remedy, at a severity and category a drain would otherwise take,
+// is listed ineligible by the drain's dry run until a person writes a remedy;
+// the sender's text is in the body, not in the remedy field.
+func TestAPromotedReportIsIneligibleForADrain(t *testing.T) {
+	sandbox(t, time.Date(2026, 9, 30, 9, 0, 0, 0, time.UTC))
+	ledger := abcdCheckout(t)
+	rep := mustParse(t, filled(t))
+	if rep.Severity != "minor" || rep.Category != "bug" || rep.Remedy == "" {
+		t.Fatalf("the fixture is not a drain-shaped report with a remedy: %+v", rep)
+	}
+	f, err := File(rep, Sender{Key: strings.Repeat("c", 40), Name: "sender"})
+	if err != nil {
+		t.Fatalf("File: %v", err)
+	}
+	p, err := Promote(ledger.Root(), f.ID)
+	if err != nil {
+		t.Fatalf("Promote: %v", err)
+	}
+	body, err := os.ReadFile(filepath.Join(ledger.Root(), filepath.FromSlash(p.Path)))
+	if err != nil {
+		t.Fatalf("read capture: %v", err)
+	}
+	if !strings.Contains(string(body), "Remedy the reporter proposes: accept a leading digit") {
+		t.Errorf("the body lacks the sender's remedy:\n%s", body)
+	}
+	plan, err := capture.PlanDrain(capture.DrainPlanRequest{RepoRoot: ledger.Root()})
+	if err != nil {
+		t.Fatalf("PlanDrain: %v", err)
+	}
+	var found bool
+	for _, v := range plan.Dispositions {
+		if v.ID != p.Capture {
+			continue
+		}
+		found = true
+		if v.Outcome != capture.DrainIneligible || v.Rule != capture.RuleRemedy {
+			t.Errorf("the promoted report's disposition = %+v, want ineligible on the remedy rule", v)
+		}
+	}
+	if !found {
+		t.Fatalf("the dry run lists no disposition for %s: %+v", p.Capture, plan.Dispositions)
 	}
 }
