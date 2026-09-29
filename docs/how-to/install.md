@@ -61,10 +61,12 @@ root that already holds the binary costs one file test and no network.
 Session start is not the only chance. Every other live-session hook that needs
 the binary resolves it the same way the command files do — the plugin root
 first, then an `abcd` on `PATH` — and when the plugin root is empty it first
-attempts the bootstrap itself, at most once per ten-minute window. That attempt
-has two minutes before the host gives up on it, and while it runs the host shows
-a one-line abcd status message in place of its usual spinner text, so a slow
-first download reads as a wait rather than a hang.
+attempts the bootstrap itself, at most once per ten-minute window. The attempt
+made when you send a message has two minutes before the host gives up on it;
+the attempt made before a command or a compaction has the host's own ten-minute
+limit. While any bootstrap runs, the one at session start included, the host
+shows a one-line abcd status message in place of its usual spinner text, so a
+slow first download reads as a wait rather than a hang.
 Session end is the deliberate exception: it resolves the plugin root then
 `PATH` but never downloads, because a fetch there would race the host's
 shutdown and lose the very transcript it exists to capture — so it says in one
