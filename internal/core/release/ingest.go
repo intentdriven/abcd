@@ -452,12 +452,15 @@ func checkPersonas(root, page string, rs *reasons) error {
 	if err != nil {
 		return err
 	}
+	registry := cfg.Rules["persona_registry"].Registry
 	for _, f := range findings {
-		// The finding names the persona the page attributes words to, which is
-		// payload prose and may be a person's name: redacted, never raw
-		// (iss-2609290218032954).
-		rs.add(ReasonPersonaRegistry, "press_release", "line %d of the rendered page: %s", f.Line,
-			scanner.RedactRefusal(root, f.Message))
+		// The finding's message names the persona the page attributes words to,
+		// which is payload prose and may be a person's name. No redactor knows a
+		// name, so it is described, as the headline refusal describes the same
+		// value; the line number locates it (iss-2609290218032954).
+		rs.add(ReasonPersonaRegistry, "press_release", "line %d of the rendered page attributes words to a persona that is "+
+			"not in the registry (%s), a name not quoted; personas are selected by role and use the role's registered name",
+			f.Line, registry)
 	}
 	return nil
 }
