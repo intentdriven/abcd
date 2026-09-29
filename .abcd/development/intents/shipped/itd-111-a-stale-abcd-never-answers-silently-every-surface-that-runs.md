@@ -273,3 +273,5 @@ Gap audit:
     evidence: .abcd/development/specs/closed/spc-22-a-stale-abcd-never-answers-silently-every-surface-that-runs.md:84 — "the last-reported one recorded beside the plugin-cache"
 - missing: (none)
 <!-- abcd-review-end receipt=rcp-69424cae8106 -->
+
+Surfaces named, recorded on 2026-09-29 as iss-2609292057441479 after the fidelity review above: criterion 3's `abcd version` report is met by `abcd --version` (and by `abcd ahoy`), and criterion 5's `abcd version --check` is met by `abcd update --check`, the spellings itd-2609212130136102 consolidated them into; both old spellings refuse with a notice naming the new one. Design decision 6 and the resolved open question on check naming read the same way. The criterion text above stands as shipped, and adr-38's rule is unchanged, so it is not superseded.
