@@ -49,6 +49,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -157,6 +158,13 @@ func Resolve(repoRoot, rootSHA string) (Resolution, error) {
 			return Resolution{}, storeDirFault(d, err)
 		}
 	}
+	leafNote, err := narrowRecordsLeaf(res.Records)
+	if err != nil {
+		return Resolution{}, err
+	}
+	if leafNote != "" {
+		res.Notes = append(res.Notes, leafNote)
+	}
 
 	if n := migrateLegacy(home, rootSHA, res); n != "" {
 		res.Notes = append(res.Notes, n)
@@ -168,8 +176,78 @@ func Resolve(repoRoot, rootSHA string) (Resolution, error) {
 // store is private: records are redacted but still a verbatim account of the
 // caller's sessions, and staging holds them unredacted. An already-existing
 // level keeps whatever mode it has — fsutil.EnsureRealDir never widens or
-// narrows a directory the caller made themselves.
+// narrows a directory the caller made themselves — except the records leaf,
+// which narrowRecordsLeaf closes to its owner.
 const storeDirPerm = 0o700
+
+// narrowRecordsLeaf removes the group and other bits from the records leaf when
+// an earlier binary created it wider (iss-2609291610432030). storeDirPerm only
+// governs a directory this store creates, and fsutil.EnsureRealDir leaves an
+// existing one alone by contract, so without this step a leaf laid out 0o755
+// stays readable by every local account however each record inside is written.
+//
+// It is the leaf and nothing else. The ancestors are shared ground (~/.abcd, or
+// a checkout's .abcd/.work.local) whose modes other readers depend on; closing
+// the leaf is enough, because nothing below it can be listed or opened through a
+// directory other accounts cannot search.
+//
+// The change is made on a descriptor, the shape of fsutil's tightenLock: the
+// directory is opened through fsutil.OpenRealDir, which refuses a symlink or a
+// non-directory, and the open descriptor is checked against a fresh Lstat of the
+// path, so a leaf swapped for a link between the proof and the open is refused
+// rather than followed. The owner comes from fstat on that descriptor. A leaf
+// another account owns, or whose owner cannot be read, is refused and never
+// changed: its owner can read it whatever its mode, so the store's privacy
+// cannot hold there. A failed fchmod on a leaf this account owns is reported as
+// a note rather than refused, the way tightenLock is best-effort, because
+// refusing would stop capture on a filesystem that has no modes to narrow.
+func narrowRecordsLeaf(dir string) (string, error) {
+	root, err := fsutil.OpenRealDir(dir)
+	if err != nil {
+		return "", storeDirFault(dir, err)
+	}
+	defer root.Close()
+	f, err := root.Open(".")
+	if err != nil {
+		return "", &StorePathError{Path: dir, Msg: "cannot open the records directory: " + err.Error()}
+	}
+	defer f.Close()
+	held, err := f.Stat()
+	if err != nil {
+		return "", &StorePathError{Path: dir, Msg: "cannot stat the records directory: " + err.Error()}
+	}
+	if named, err := os.Lstat(dir); err != nil || !os.SameFile(held, named) {
+		return "", storeDirFault(dir, fsutil.ErrNotRealDir)
+	}
+	if uid, ok := recordsLeafOwner(held); !ok || uid != uint32(os.Geteuid()) {
+		return "", &StorePathError{Path: dir, Msg: "the records directory is not owned by this account; refusing to write transcripts into it"}
+	}
+	perm := held.Mode().Perm()
+	if perm&0o077 == 0 {
+		return "", nil
+	}
+	if err := f.Chmod(perm &^ 0o077); err != nil {
+		// The path error names the descriptor, not the store; the errno alone
+		// is what the note needs, beside the home-redacted directory.
+		var pe *os.PathError
+		if errors.As(err, &pe) {
+			err = pe.Err
+		}
+		return fmt.Sprintf("history: could not narrow %s from %#o to owner-only: %v", fsutil.RedactHome(dir), perm, err), nil
+	}
+	return "", nil
+}
+
+// recordsLeafOwner reads the owning uid off the records leaf's fstat, reporting
+// false when the platform did not supply one. It is a var so a test can stand a
+// second account up without one existing.
+var recordsLeafOwner = func(fi os.FileInfo) (uint32, bool) {
+	st, ok := fi.Sys().(*syscall.Stat_t)
+	if !ok {
+		return 0, false
+	}
+	return st.Uid, true
+}
 
 // recordPerm is the mode every record is written with, for the same reason as
 // storeDirPerm: owner-only, so a record stays private even in a chain level an
