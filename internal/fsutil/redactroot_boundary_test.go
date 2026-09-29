@@ -71,3 +71,30 @@ func TestRedactHomeRedactsBothSpellingsOfASymlinkedHome(t *testing.T) {
 		}
 	}
 }
+
+// The right-hand boundary is the name rule: a root is a whole path unless a
+// letter or a digit follows it, so punctuation after it — a sentence's full
+// stop, a "-old" or "_snapshot" suffix — ends the root and the identity it
+// carries is redacted. Only an alphanumeric continuation names a longer,
+// different directory. The scanner's home sweep reads the same rule
+// (fsutil.NameContinues), so the CLI error scrub, the install receipt and the
+// store redactors agree about one sentence (iss-2608292037564347).
+func TestRedactRootEndsTheRootAtAnyNonAlphanumericByte(t *testing.T) {
+	root := "/srv/qzhome"
+	for _, tc := range []struct{ in, want string }{
+		{"cannot access /srv/qzhome.", "cannot access ~."},
+		{"cannot access /srv/qzhome. Then", "cannot access ~. Then"},
+		{"/srv/qzhome.old", "~.old"},
+		{"/srv/qzhome-old/x", "~-old/x"},
+		{"/srv/qzhome_snapshot/x", "~_snapshot/x"},
+		{"/srv/qzhome/x", "~/x"},
+		{"/srv/qzhome", "~"},
+		// A letter or digit continues the name: a longer, different directory.
+		{"/srv/qzhomes/x", "/srv/qzhomes/x"},
+		{"/srv/qzhome2", "/srv/qzhome2"},
+	} {
+		if got := fsutil.RedactRoot(tc.in, root, "~"); got != tc.want {
+			t.Errorf("RedactRoot(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
