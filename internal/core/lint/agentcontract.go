@@ -43,6 +43,15 @@ const ruleAgentContract = "agent_contract"
 // cfg.Roots.
 const defaultAgentsDir = "agents"
 
+// defaultAgentChangelog is the per-agent prompt-version log a config that names
+// no changelog path reads, repo-relative. It sits OUTSIDE the agents tree on
+// purpose: a harness loads that tree whole, so a CHANGELOG.md inside it is read
+// as one more agent (iss-110), and a default there handed every repository that
+// took it the defect this repository fixed by moving its own log here
+// (iss-2609290630234596). It does not follow a configured agents_dir, for the
+// same reason.
+const defaultAgentChangelog = ".abcd/development/agents/CHANGELOG.md"
+
 // agentCanaryFixture is the per-agent injection-canary contract: an agent that
 // reads attacker-influenceable input carries at least one, under its own
 // fixtures directory (.abcd/development/agents/README.md § Injection canaries).
@@ -165,7 +174,7 @@ func checkAgentContract(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 		})
 	}
 
-	changelogFindings, err := checkAgentChangelog(repoRoot, dir, prompts, cfg)
+	changelogFindings, err := checkAgentChangelog(repoRoot, prompts, cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -266,16 +275,16 @@ func checkAgentTrustContract(repoRoot, dir string, p agentPrompt, severity strin
 // The range is supplied by the CALLER (ArmAgentDiff, from a CI invocation), never
 // read out of the in-tree config, for the reason ArmReceiptGate states: a gate a
 // committer can point at an empty range is a gate a committer can disarm.
-func checkAgentChangelog(repoRoot, dir string, prompts []agentPrompt, cfg RuleConfig) ([]Finding, error) {
+func checkAgentChangelog(repoRoot string, prompts []agentPrompt, cfg RuleConfig) ([]Finding, error) {
 	changelogRel := cfg.Changelog
 	if changelogRel == "" {
-		changelogRel = filepath.ToSlash(filepath.Join(dir, "CHANGELOG.md"))
+		changelogRel = defaultAgentChangelog
 	}
 	// The changelog read is guarded exactly as the prompt read above is, and for
 	// the same reason: BOTH the path and the file it names are repo-controlled —
 	// the path out of the in-tree lint config, the file out of the tree — so a
 	// fork pull request supplies them and CI's `go run ./cmd/record-lint` is what
-	// reads them. Unguarded, `agents/CHANGELOG.md` as a symlink to /dev/zero was
+	// reads them. Unguarded, the changelog as a symlink to /dev/zero was
 	// read until the runner ran out of memory, and a configured
 	// `"changelog": "../../../../etc/hosts"` read outside the checkout and echoed
 	// the traversed path into the finding's File field.
