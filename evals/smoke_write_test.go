@@ -20,6 +20,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // kebab is the slug grammar a record's filename and frontmatter must satisfy.
@@ -41,7 +43,7 @@ func scratchRepo(t *testing.T) (repo, home string) {
 	}
 	initCmd := exec.Command("git", "init", "-q", ".")
 	initCmd.Dir = repo
-	initCmd.Env = append(os.Environ(), "HOME="+home, "GIT_CONFIG_NOSYSTEM=1")
+	initCmd.Env = append(gittest.Env(t), "HOME="+home)
 	if out, err := initCmd.CombinedOutput(); err != nil {
 		t.Fatalf("git init: %v\n%s", err, out)
 	}
