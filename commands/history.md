@@ -263,7 +263,9 @@ gone is placed by the session that spawned it. Report all four populations:
 root SHA), `orphans`, and `failed`.
 
 An **orphan** — a transcript whose repository is not on this machine — is
-ignored and reported, never guessed at. It is stored only when this repository
+ignored and reported, never guessed at; its recorded `cwd` is shown
+home-relative, or by its directory name when it sits outside HOME, as is the
+destination the report leads with. It is stored only when this repository
 claims its project name, through `adopt_projects` in the configuration or
 `--adopt` for one run, and an adopted record carries `adopted_project` so the
 adoption is on the artefact. When the configuration sets `on_orphan` to
@@ -320,7 +322,9 @@ artefact would not fit the context it is being read into.
 `--max-block-bytes` caps one rendered tool input or result; what it removes is
 marked where it happens and counted in the telemetry.
 
-`--out` defaults to the working directory. In a repo that follows abcd's
+`--out` defaults to the working directory. It must already exist, and it is
+refused when it is reached through a symlink at any level inside a checkout
+(a committed link would carry both files elsewhere). In a repo that follows abcd's
 three-tier layout, write into `.abcd/.work.local/scratch/` rather than the repo
 root — a reconstruction is a derived artefact, and the root is not where derived
 artefacts belong.

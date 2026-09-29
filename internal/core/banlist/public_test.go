@@ -133,10 +133,13 @@ func TestAddPublicEntryGatesUserFacingContent(t *testing.T) {
 	// The public config's roots are ["docs", "README.md"]; both must resolve now
 	// that an unresolvable configured root fails loud (GitHub #360).
 	write("README.md", "# readme\n")
-	// Its name_roots must resolve too (iss-279).
-	for _, r := range []string{".abcd/README.md", "AGENTS.md", "CONTRIBUTING.md", "scripts/README.md"} {
+	// Its name_roots must resolve too (iss-279), and the role ban's extra_roots
+	// (itd-2609212137129937).
+	for _, r := range []string{".abcd/README.md", "AGENTS.md", ".github/CONTRIBUTING.md", "scripts/README.md",
+		"commands/README.md", ".abcd/rules.json", "internal/core/rules/defaults/rules.json"} {
 		write(r, "# t\n")
 	}
+	provisionDocsLintTrees(t, cfg, docs)
 	write("docs/named.md", "# t\n\nBuilt with widgetworks.\n")
 	write("docs/allowed.md", "# t\n\n<!-- docs-lint: allow --> widgetworks is named deliberately.\n")
 	write("docs/clean.md", "# t\n\nBuilt with a generic term.\n")
@@ -437,8 +440,10 @@ func TestAddPublicIsCaseInsensitiveLikeTheCuratedEntries(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(docs, "README.md"), []byte("# readme\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	// Its name_roots must resolve too (iss-279).
-	for _, r := range []string{".abcd/README.md", "AGENTS.md", "CONTRIBUTING.md", "scripts/README.md"} {
+	// Its name_roots must resolve too (iss-279), and the role ban's extra_roots
+	// (itd-2609212137129937).
+	for _, r := range []string{".abcd/README.md", "AGENTS.md", ".github/CONTRIBUTING.md", "scripts/README.md",
+		"commands/README.md", ".abcd/rules.json", "internal/core/rules/defaults/rules.json"} {
 		p := filepath.Join(docs, filepath.FromSlash(r))
 		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 			t.Fatal(err)
@@ -447,6 +452,7 @@ func TestAddPublicIsCaseInsensitiveLikeTheCuratedEntries(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	provisionDocsLintTrees(t, cfg, docs)
 	findings, err := lint.Lint(cfg, docs)
 	if err != nil {
 		t.Fatal(err)
@@ -643,5 +649,32 @@ func TestConcurrentPublicAddsAllLand(t *testing.T) {
 	}
 	if len(after.Entries) != len(before.Entries)+n {
 		t.Errorf("entries = %d, want %d — a concurrent add was lost", len(after.Entries), len(before.Entries)+n)
+	}
+}
+
+// provisionDocsLintTrees creates, in a fixture repository, every tree the real
+// docs-lint config reads beyond its roots and name_roots: links_resolve's extra
+// roots and the persona roster (iss-46). A configured tree that does not resolve
+// is a load error, so a fixture that lints with the real config needs them, and
+// reading them from the config means a new one needs no edit here.
+func provisionDocsLintTrees(t *testing.T, cfg lint.Config, root string) {
+	t.Helper()
+	write := func(rel, body string) {
+		p := filepath.Join(root, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, r := range cfg.Rules["links_resolve"].ExtraRoots {
+		if !strings.HasSuffix(r, ".md") {
+			r += "/README.md"
+		}
+		write(r, "# t\n")
+	}
+	if reg := cfg.Rules["persona_registry"].Registry; reg != "" {
+		write(reg, `{"personas": [{"name": "Kira"}]}`+"\n")
 	}
 }

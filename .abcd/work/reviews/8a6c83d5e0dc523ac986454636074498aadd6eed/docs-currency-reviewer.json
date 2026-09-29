@@ -1,0 +1,63 @@
+{
+  "subject": {
+    "digest": {
+      "gitCommit": "8a6c83d5e0dc523ac986454636074498aadd6eed"
+    }
+  },
+  "verifier": {
+    "id": "docs-currency-reviewer@release"
+  },
+  "timeVerified": "2026-09-28T21:05:44Z",
+  "verificationResult": "PROMOTE",
+  "judgeModel": "claude-fable-5-1",
+  "tier": "full",
+  "manifestHash": "sha256:0262c01bf524de04de8f56fbfd14ea435dc2933fd9ae8bb1cad78aabfa4a6c1e",
+  "policy": {
+    "detector": "docs-currency-reviewer",
+    "version": "1",
+    "promptHash": "sha256:host-run-agent-harness-review-no-pinned-prompt",
+    "briefVersion": "0.11.1"
+  },
+  "categories": {
+    "false-claim": 1,
+    "stale-record": 2,
+    "stale-count": 0,
+    "incomplete": 1,
+    "criterion-violation": 0
+  },
+  "_reviewProvenance": "Host-run docs-currency-reviewer (Fable 5.1) read the first roll 7c7f55256cdafd65ad91b7a3089532c580fe5903, which differs from this content commit 8a6c83d5e0dc523ac986454636074498aadd6eed only by the corrections of its own four findings, all fixed in 9ead1d1bf (docs/reference/terminology.md, README.md, the root command sentence in internal/surface/cli/cli.go and its regenerated docs/reference/cli/commands.md, plus a pinning test). Every finding carries its disposition.",
+  "failing": [
+    {
+      "id": "dc-1",
+      "category": "stale-record",
+      "severity": "minor",
+      "summary": "docs/reference/terminology.md:44: The Agent identity row says iss-62 'tracks guaranteeing the user's chosen git identity on every commit in managed repos' (and :50 'iss-62 covers identity'), but iss-62 is resolved and this release ships that guarantee.",
+      "disposition": "fixed",
+      "note": "Fixed in 9ead1d1bf (docs: bring the reference pages current for v0.11.1), the parent of content commit 8a6c83d5e0dc523ac986454636074498aadd6eed; docs/reference/terminology.md:44."
+    },
+    {
+      "id": "dc-2",
+      "category": "stale-record",
+      "severity": "minor",
+      "summary": "docs/reference/terminology.md:53: Durable execution calls itd-29 'planned run resilience ... not yet shipped' and Observability (:61) calls itd-29 'a planned intent' and itd-17 'a draft'; both intents are superseded.",
+      "disposition": "fixed",
+      "note": "Fixed in 9ead1d1bf (docs: bring the reference pages current for v0.11.1), the parent of content commit 8a6c83d5e0dc523ac986454636074498aadd6eed; docs/reference/terminology.md:53."
+    },
+    {
+      "id": "dc-3",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": "README.md:125: The sample status board shows 'presence:   abcd \u00b7 your-repo \u00b7 main \u00b7 itd 0 \u00b7 iss 0'; in a managed repository the badge word is 'abcd-managed', and no state renders the bare word 'abcd'.",
+      "disposition": "fixed",
+      "note": "Fixed in 9ead1d1bf (docs: bring the reference pages current for v0.11.1), the parent of content commit 8a6c83d5e0dc523ac986454636074498aadd6eed; README.md:125."
+    },
+    {
+      "id": "dc-4",
+      "category": "incomplete",
+      "severity": "minor",
+      "summary": "docs/reference/cli/commands.md:23: The root command's sentence (generated from internal/surface/cli/cli.go:220) says a positional 'matching a record id (`iss-N`, `itd-N`, `spc-N`, `adr-N`)' is dispatched; the dispatcher also takes `adm-N`, `srp-N` and `rfm-N`, which this release's changelog claims.",
+      "disposition": "fixed",
+      "note": "Fixed in 9ead1d1bf (docs: bring the reference pages current for v0.11.1), the parent of content commit 8a6c83d5e0dc523ac986454636074498aadd6eed; docs/reference/cli/commands.md:23."
+    }
+  ]
+}

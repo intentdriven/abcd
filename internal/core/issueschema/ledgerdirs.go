@@ -45,6 +45,20 @@ const ReadingsRecordDir = ".abcd/development/readings"
 // records are the next ingest sweep's to roll back.
 const RunRecordFileName = "run.json"
 
+// RunManifestFileName is the manifest a run was assembled from. The channel's
+// ingest promotes it into the durable run directory BEFORE it writes the run
+// record, so a committed run holds both, and the two agree on the run id, the
+// position and the candidate join. The ordering gate reads that agreement
+// (capture.ComparativeRunFor), which is why the name lives here rather than in
+// core/reading alone.
+const RunManifestFileName = "manifest.json"
+
+// RunArtefactReadLimit is the ceiling a run's own artefacts (its manifest, its
+// bundle) are read under, by the reading channel and by the gate that reads a
+// committed run's manifest back. A manifest carries the run's whole item list,
+// so it is bounded by the channel's ceiling rather than a single record's.
+const RunArtefactReadLimit = 4 << 20
+
 // RunHead is the strictly decoded subset of a committed run record that answers
 // one question: which widening run did this comparative run characterise?
 //

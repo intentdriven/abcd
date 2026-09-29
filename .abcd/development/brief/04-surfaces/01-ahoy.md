@@ -70,7 +70,7 @@ the table above is the sub-verb set, and the modes are the bare verb's flags.
   the repository this checkout's own origin names, and the changes an apply
   would make. A toggle it could not read reports `unknown`, never `disabled`.
   The same request also reads the repository's merge hygiene, which abcd mirrors
-  and never sets: those settings encode a maintainer's workflow rather than a
+  and never sets: those settings encode the technical facilitator's workflow rather than a
   security posture, and each is reported only when the API answered for it,
   because `false` and "the API did not say" are different facts
   (iss-2608270512210664).
@@ -363,10 +363,10 @@ by an install that leaves a working entry of abcd's own behind it
 non-resolvable ones on its own result as notes, since a fresh user cannot run
 the doctor by name on a machine where abcd is not yet on `PATH`.
 
-**The name-guard scaffolding is reported at the granularity a maintainer can
-act on.** Each absent artefact is a gap abcd will create; every other state is a
-diagnostic, because abcd writes what is missing and never replaces what a
-maintainer put there. A pre-commit guard present without abcd's own marker line is
+**The name-guard scaffolding is reported at the granularity the technical
+facilitator can act on.** Each absent artefact is a gap abcd will create; every other state is a
+diagnostic, because abcd writes what is missing and never replaces what the
+technical facilitator put there. A pre-commit guard present without abcd's own marker line is
 foreign, and is reported rather than claimed as installed. A lint config with no
 usable banned-names array, one that cannot be read, and one git ignores — so CI
 never sees it, the state a public repo is in by default — are three distinct
@@ -568,8 +568,9 @@ way to apply it (iss-166).
 `git_identity.committer` for a committer that diverges on its own (required
 where the repo pins an identity, advisory where it does not), and
 `git_identity.tool` wherever the author or the committer is a machine identity
-(the harness's own default, a `[bot]` account, a vendor's address), pinned or
-not, because the human is the author of record either way. The machine
+(the harness's own default, a `[bot]` account, a vendor's address, a configured
+automation's name such as `semantic-release-bot`), pinned or not, because the
+human is the author of record either way. The machine
 identities are one list, `internal/core/identity/tool-identities.txt`, which the
 CI attribution gate reads too, role asymmetry included: a `noreply@` mailbox is
 a machine as the author, and the forge's own committer stamp passes. Once the

@@ -28,6 +28,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // Finding is one lint violation. File is repo-relative; Line is 1-based (0 when
@@ -252,11 +253,15 @@ func LintAt(cfg Config, repoRoot string, now time.Time) ([]Finding, error) {
 		// shipped scaffold's `roots: ["docs", …]` does exactly this in an adopter
 		// whose docs live elsewhere. Fail loud instead (os.Stat, not IsDir: `roots`
 		// legitimately admits files such as README.md) — GitHub #360.
-		if _, err := os.Stat(rootAbs); err != nil {
+		st, err := os.Stat(rootAbs)
+		if err != nil {
 			if os.IsNotExist(err) {
 				return nil, &configError{"roots entry " + quote(root) +
 					" does not exist; a configured root that does not resolve silently disarms every per-file rule for that tree — fix the roots list or create the tree"}
 			}
+			return nil, err
+		}
+		if err := markdownRoot(root, st); err != nil {
 			return nil, err
 		}
 		ignored := ignoredUnderRoot(repoRoot, root)
@@ -420,6 +425,13 @@ func LintAt(cfg Config, repoRoot string, now time.Time) ([]Finding, error) {
 		}
 		findings = append(findings, lx...)
 	}
+	if leakOn && len(leakCfg.ExtraRoots) > 0 {
+		hx, err := checkHarnessLeakExtraRoots(repoRoot, leakCfg, scanned)
+		if err != nil {
+			return nil, err
+		}
+		findings = append(findings, hx...)
+	}
 
 	if len(cfg.NameRoots) > 0 {
 		nf, err := lintNameRoots(cfg, repoRoot, scanned)
@@ -428,6 +440,12 @@ func LintAt(cfg Config, repoRoot string, now time.Time) ([]Finding, error) {
 		}
 		findings = append(findings, nf...)
 	}
+
+	tf, err := lintTokenExtraRoots(cfg, repoRoot, scanned)
+	if err != nil {
+		return nil, err
+	}
+	findings = append(findings, tf...)
 
 	// stray_root_docs is repo-root scoped and non-recursive — independent of
 	// cfg.Roots, so it runs once, outside the per-root loop.
@@ -2722,6 +2740,11 @@ func parseYAMLStringList(v string) []string { return frontmatter.StringList(v) }
 // untrimmed BOM ahead of the `---` (or ahead of a leading comment) would make a
 // well-formed record read as having no frontmatter and slip every
 // frontmatter-keyed blocker.
+//
+// The comment preamble is this reader's deliberate tolerance; the delimiter
+// line itself is judged by frontmatter.IsDelimiter, the one rule, so an
+// indented `  ---` opens nothing here exactly as it opens nothing to Fields
+// (iss-2608270908348042).
 func frontmatterOpen(lines []string) int {
 	// The comments are mdrecord's to locate (iss-2609251518418878); a line
 	// holding prose after a comment's closer is content, not a comment.
@@ -2729,7 +2752,7 @@ func frontmatterOpen(lines []string) int {
 	if i >= len(lines) {
 		return -1
 	}
-	if strings.TrimSpace(lines[i][col:]) == "---" && strings.TrimSpace(frontmatter.TrimBOM(lines[i][:col])) == "" {
+	if frontmatter.TrimBOM(lines[i][:col]) == "" && frontmatter.IsDelimiter(lines[i][col:]) {
 		return i
 	}
 	return -1
@@ -2741,61 +2764,59 @@ func frontmatterOpen(lines []string) int {
 // file whose frontmatter carries a `core/epic` term reference is never scanned as
 // prose just because a comment precedes its `---`.
 func frontmatterBodyStart(lines []string) int {
-	open := frontmatterOpen(lines)
-	if open < 0 {
-		return 0
+	// The close is frontmatter.CloseAfter's (iss-2608270908348042).
+	if end := frontmatter.CloseAfter(lines, frontmatterOpen(lines)); end >= 0 {
+		return end + 1
 	}
-	for j := open + 1; j < len(lines); j++ {
-		if strings.TrimSpace(lines[j]) == "---" {
-			return j + 1
-		}
-	}
-	return 0 // unterminated frontmatter: treat all as body rather than swallow the file
+	return 0 // no frontmatter, or unterminated: treat all as body rather than swallow the file
 }
 
-// stripInlineCode blanks the contents of single-backtick inline code spans (and
-// their delimiters) so a forbidden synonym named inside a code span is a mention,
-// not a match. It blanks matched backtick pairs only; a trailing unpaired backtick
-// and its tail are left literal so an earlier, correctly-closed span stays blanked
-// (double-backtick spans are out of scope — this masks single-backtick pairs).
+// stripInlineCode blanks every inline code span on a line, its delimiters and
+// its content, so a forbidden synonym or a link named inside one is a mention,
+// not a match. Spans are paired by termsafe.PairCodeSpan, the pairer every
+// reader shares: a run of backticks closed by the next run of exactly its
+// length. Pairing single backticks one at a time read a double-backtick span as
+// two empty spans with live prose between them (iss-2609262350446885). An
+// unpaired run and its tail stay literal, so an earlier, correctly closed span
+// stays blanked (iss-106). Each blanked rune becomes one space, so a rune's
+// column on the line is unchanged.
 func stripInlineCode(line string) string {
-	b := []rune(line)
-	out := make([]rune, len(b))
-	copy(out, b)
-	// open tracks the index of an as-yet-unclosed opening backtick; -1 when none.
-	open := -1
-	for i, r := range b {
-		if r != '`' {
+	var out strings.Builder
+	last := 0
+	for i := 0; i < len(line); {
+		if line[i] != '`' {
+			i++
 			continue
 		}
-		if open < 0 {
-			// Outside a span, a backtick behind an odd run of backslashes is
-			// escaped: a literal character, never a delimiter (CommonMark), so
-			// it opens nothing and a link after it is still read
-			// (iss-2609251004336500). Inside a span backslashes are literal, so
-			// a closer is never escaped.
-			if escapedAt(b, i) {
-				continue
+		// Outside a span, a backtick behind an odd run of backslashes is
+		// escaped: a literal character, never a delimiter (CommonMark), so it
+		// opens nothing and a link after it is still read
+		// (iss-2609251004336500). The run after it may still open one. Inside
+		// a span backslashes are literal, so a closer is never escaped.
+		if escapedAt(line, i) {
+			i++
+			continue
+		}
+		sp, ok := termsafe.PairCodeSpan(line, i)
+		if !ok {
+			for i < len(line) && line[i] == '`' {
+				i++
 			}
-			open = i // provisional opener; blanked only once its pair closes
 			continue
 		}
-		// Closing backtick: blank the delimiters and the span between them.
-		for j := open; j <= i; j++ {
-			out[j] = ' '
-		}
-		open = -1
+		out.WriteString(line[last:sp.Start])
+		out.WriteString(strings.Repeat(" ", utf8.RuneCountInString(line[sp.Start:sp.End])))
+		last, i = sp.End, sp.End
 	}
-	// A leftover unpaired backtick (open >= 0) and its tail stay literal, so the
-	// earlier paired spans that were already blanked are preserved.
-	return string(out)
+	out.WriteString(line[last:])
+	return out.String()
 }
 
-// escapedAt reports whether the rune at i sits behind an odd number of
+// escapedAt reports whether the byte at i sits behind an odd number of
 // backslashes, which escape it.
-func escapedAt(b []rune, i int) bool {
+func escapedAt(s string, i int) bool {
 	n := 0
-	for j := i - 1; j >= 0 && b[j] == '\\'; j-- {
+	for j := i - 1; j >= 0 && s[j] == '\\'; j-- {
 		n++
 	}
 	return n%2 == 1
@@ -2994,7 +3015,11 @@ func DocumentsInRoots(cfg Config, repoRoot string) (int, error) {
 			return 0, &configError{"roots entry " + quote(root) + " " + err.Error() +
 				"; the lint reads only inside the repository"}
 		}
-		if _, err := os.Stat(rootAbs); err != nil {
+		st, err := os.Stat(rootAbs)
+		if err != nil {
+			return 0, err
+		}
+		if err := markdownRoot(root, st); err != nil {
 			return 0, err
 		}
 		ignored := ignoredUnderRoot(repoRoot, root)
@@ -3005,6 +3030,18 @@ func DocumentsInRoots(cfg Config, repoRoot string) (int, error) {
 		n += len(files)
 	}
 	return n, nil
+}
+
+// markdownRoot refuses a roots entry that is a file but not markdown. The
+// per-root walk keeps markdown alone, so such a root would contribute nothing
+// while every rule reported it clean (iss-2609281045487620); a ban meant to
+// reach a non-markdown file declares it in that token's extra_roots.
+func markdownRoot(root string, st os.FileInfo) error {
+	if st.IsDir() || hasMarkdownExt(st.Name()) {
+		return nil
+	}
+	return &configError{"roots entry " + quote(root) +
+		" is not markdown; the per-file rules read markdown alone, so it would be checked by nothing — name a non-markdown file in a banned token's extra_roots instead"}
 }
 
 func markdownFiles(rootAbs string) ([]string, error) {
@@ -3164,36 +3201,63 @@ const nameTokenPrefix = "names/"
 // lintNameRoots runs the name gate — the `names/` banned tokens alone — over
 // cfg.NameRoots (iss-279). A name ban is about the whole public surface, not
 // the documentation's writing, so it reads every text file there, markdown or
-// not; the rest of the token family stays a docs rule. Roots are contained and
-// gitignore-pruned exactly as the per-root walk's are, a file that walk already
-// read is not read twice, a binary file (a NUL in it) is not text, and
-// exempt_paths / exempt_if_status excuse a file here as they do there.
-func lintNameRoots(cfg Config, repoRoot string, scanned map[string]bool) ([]Finding, error) {
+// not; the rest of the token family stays a docs rule.
+func lintNameRoots(cfg Config, repoRoot string, walked map[string]bool) ([]Finding, error) {
 	var names []BannedToken
 	for _, t := range cfg.BannedTokens {
 		if strings.HasPrefix(t.ID, nameTokenPrefix) {
 			names = append(names, t)
 		}
 	}
-	checker, err := NewTokenChecker(names)
+	return lintTokensOver(cfg, repoRoot, walked, names, cfg.NameRoots, "name_roots", "the name gate")
+}
+
+// lintTokenExtraRoots runs each banned token that declares extra_roots over
+// those roots, that token alone (itd-2609212137129937): a ban widened past the
+// documentation without arming the rest of the family there.
+func lintTokenExtraRoots(cfg Config, repoRoot string, walked map[string]bool) ([]Finding, error) {
+	var out []Finding
+	for _, t := range cfg.BannedTokens {
+		if len(t.ExtraRoots) == 0 {
+			continue
+		}
+		fs, err := lintTokensOver(cfg, repoRoot, walked, []BannedToken{t}, t.ExtraRoots,
+			"extra_roots of banned token "+quote(t.ID), "the "+quote(t.ID)+" ban")
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, fs...)
+	}
+	return out, nil
+}
+
+// lintTokensOver runs tokens over roots beyond cfg.Roots, reading every text
+// file there. Roots are contained and gitignore-pruned exactly as the per-root
+// walk's are, a file that walk already read (walked) or this pass already read
+// is not read twice, a binary file (a NUL in it) is not text, and exempt_paths /
+// exempt_if_status excuse a file here as they do there. key names the
+// configuration field in a refusal and gate the check a missing root disarms.
+func lintTokensOver(cfg Config, repoRoot string, walked map[string]bool, tokens []BannedToken, roots []string, key, gate string) ([]Finding, error) {
+	checker, err := NewTokenChecker(tokens)
 	if err != nil || checker.Len() == 0 {
 		return nil, err
 	}
+	seen := map[string]bool{}
 	var out []Finding
-	for _, root := range cfg.NameRoots {
+	for _, root := range roots {
 		if err := containedRepoPath(root); err != nil {
-			return nil, &configError{"name_roots entry " + quote(root) + " " + err.Error() +
+			return nil, &configError{key + " entry " + quote(root) + " " + err.Error() +
 				"; the lint reads only inside the repository"}
 		}
 		rootAbs := filepath.Join(repoRoot, root)
 		if err := resolvedInsideRoot(repoRoot, rootAbs); err != nil {
-			return nil, &configError{"name_roots entry " + quote(root) + " " + err.Error() +
+			return nil, &configError{key + " entry " + quote(root) + " " + err.Error() +
 				"; the lint reads only inside the repository"}
 		}
 		if _, err := os.Stat(rootAbs); err != nil {
 			if os.IsNotExist(err) {
-				return nil, &configError{"name_roots entry " + quote(root) +
-					" does not exist; a configured root that does not resolve silently disarms the name gate for that tree — fix the list or create the tree"}
+				return nil, &configError{key + " entry " + quote(root) +
+					" does not exist; a configured root that does not resolve silently disarms " + gate + " for that tree — fix the list or create the tree"}
 			}
 			return nil, err
 		}
@@ -3203,10 +3267,10 @@ func lintNameRoots(cfg Config, repoRoot string, scanned map[string]bool) ([]Find
 			return nil, err
 		}
 		for _, fileAbs := range files {
-			if scanned[fileAbs] {
+			if walked[fileAbs] || seen[fileAbs] {
 				continue
 			}
-			scanned[fileAbs] = true
+			seen[fileAbs] = true
 			rel := repoRel(repoRoot, fileAbs)
 			if contentExempt(rel, nil, cfg) {
 				continue
@@ -3224,8 +3288,8 @@ func lintNameRoots(cfg Config, repoRoot string, scanned map[string]bool) ([]Find
 			// link, its target being read wherever a root reaches it.
 			st, err := os.Stat(realPath)
 			if err != nil {
-				return nil, errors.New("name_roots file " + quote(rel) + " cannot be examined (" + bareCause(err) +
-					"); the name gate refuses to pass a file it could not read")
+				return nil, errors.New(key + " file " + quote(rel) + " cannot be examined (" + bareCause(err) +
+					"); " + gate + " refuses to pass a file it could not read")
 			}
 			if !st.Mode().IsRegular() {
 				continue

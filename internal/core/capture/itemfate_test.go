@@ -1,6 +1,7 @@
 package capture
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -141,10 +142,8 @@ func TestComparativeRunForNamesTheLowestMatch(t *testing.T) {
 	// Two comparative runs over the same widening run, plus a comparative run
 	// over another and a widening run of its own. The lowest match is what comes
 	// back, so the answer does not depend on directory order.
-	writeFile(t, filepath.Join(runs, "rdg-2608300000000009", issueschema.RunRecordFileName),
-		`{"run_id":"rdg-2608300000000009","position":"comparative","candidate_run":"`+widening+`"}`)
-	writeFile(t, filepath.Join(runs, "rdg-2608300000000005", issueschema.RunRecordFileName),
-		`{"run_id":"rdg-2608300000000005","position":"comparative","candidate_run":"`+widening+`"}`)
+	writeComparativeRun(t, repo, "rdg-2608300000000009", widening)
+	writeComparativeRun(t, repo, "rdg-2608300000000005", widening)
 	writeFile(t, filepath.Join(runs, "rdg-2608300000000007", issueschema.RunRecordFileName),
 		`{"run_id":"rdg-2608300000000007","position":"comparative","candidate_run":"rdg-2608300000000002"}`)
 	writeFile(t, filepath.Join(runs, widening, issueschema.RunRecordFileName),
@@ -206,5 +205,53 @@ func TestIngestReadingCommitsARunWithNoItems(t *testing.T) {
 	}
 	if res.Run != "rdg-2608300000000001" {
 		t.Errorf("the result names run %q", res.Run)
+	}
+}
+
+// TestComparativeRunForRefusesAMarkerTheChannelDidNotWrite is
+// iss-2609251842111593: the gate read "committed comparative run" as any
+// run.json decoding to position comparative with a candidate_run, so an id-less,
+// manifest-less two-key marker written by hand opened it. The channel's ingest
+// writes the run's manifest into the run directory before the run record, and
+// both carry the run id and the candidate join, so a run that satisfies the gate
+// is one whose record names its own directory and whose manifest agrees with it.
+// A marker that names the widening run and fails either check is a record
+// contradicting itself, refused by name rather than read as "no run yet".
+func TestComparativeRunForRefusesAMarkerTheChannelDidNotWrite(t *testing.T) {
+	const widening, comp = "rdg-2608300000000001", "rdg-2608300000000005"
+	record := `{"run_id":"` + comp + `","position":"comparative","candidate_run":"` + widening + `"}`
+	manifest := `{"run_id":"` + comp + `","position":"comparative","candidate_run":"` + widening + `"}`
+	for _, tc := range []struct {
+		name, record, manifest string
+	}{
+		{"an id-less two-key marker", `{"position":"comparative","candidate_run":"` + widening + `"}`, manifest},
+		{"a run id naming another directory", `{"run_id":"rdg-2608300000000006","position":"comparative","candidate_run":"` + widening + `"}`, manifest},
+		{"no manifest beside the record", record, ""},
+		{"a manifest naming another candidate", record, `{"run_id":"` + comp + `","position":"comparative","candidate_run":"rdg-2608300000000002"}`},
+		{"a manifest at another position", record, `{"run_id":"` + comp + `","position":"widening","candidate_run":"` + widening + `"}`},
+		{"a manifest naming another run", record, `{"run_id":"rdg-2608300000000006","position":"comparative","candidate_run":"` + widening + `"}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			repo, _ := ledger(t)
+			dir := filepath.Join(repo, filepath.FromSlash(issueschema.ReadingsRecordDir), comp)
+			writeFile(t, filepath.Join(dir, issueschema.RunRecordFileName), tc.record)
+			if tc.manifest != "" {
+				writeFile(t, filepath.Join(dir, issueschema.RunManifestFileName), tc.manifest)
+			}
+			got, err := ComparativeRunFor(repo, widening)
+			if got != "" {
+				t.Fatalf("a marker the channel did not write satisfied the gate as %q", got)
+			}
+			if !errors.Is(err, ErrInvariantViolation) || !strings.Contains(err.Error(), comp) {
+				t.Fatalf("err = %v, want ErrInvariantViolation naming %s", err, comp)
+			}
+		})
+	}
+
+	// The channel's own pair satisfies it.
+	repo, _ := ledger(t)
+	writeComparativeRun(t, repo, comp, widening)
+	if got, err := ComparativeRunFor(repo, widening); err != nil || got != comp {
+		t.Fatalf("ComparativeRunFor over the channel's pair = %q, %v; want %s", got, err, comp)
 	}
 }

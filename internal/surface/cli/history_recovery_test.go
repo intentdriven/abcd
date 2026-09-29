@@ -315,3 +315,48 @@ func TestHistoryIngestRefusesWithoutAnExplicitDestination(t *testing.T) {
 		t.Errorf("the refusal must name the flag that answers it, got: %v", runErr)
 	}
 }
+
+// TestHistoryIngestNamesADestinationOutsideHomeByItsDirectoryName: the report's
+// destination line and the not-a-repository refusal named --into through the
+// home redaction alone, so a repository outside HOME was printed as an absolute
+// local path (iss-2609281329007423). Both name it by its directory name.
+func TestHistoryIngestNamesADestinationOutsideHomeByItsDirectoryName(t *testing.T) {
+	sessionEndRepo(t)
+	repo, _ := secondRepo(t)
+	t.Chdir(repo)
+	if home, err := os.UserHomeDir(); err != nil || strings.HasPrefix(repo, home) {
+		t.Fatalf("the fixture repository must sit outside HOME (%v)", err)
+	}
+	abs := []string{repo}
+	if r, err := filepath.EvalSymlinks(repo); err == nil && r != repo {
+		abs = append(abs, r)
+	}
+
+	out, _, runErr := runRecovery("", "history", "ingest", "--into", repo, t.TempDir())
+	if runErr != nil {
+		t.Fatalf("history ingest: %v\n%s", runErr, out)
+	}
+	if !strings.Contains(out, "into "+filepath.Base(repo)+" (root ") {
+		t.Errorf("the report must name the destination by its directory name, got:\n%s", out)
+	}
+
+	notRepo := filepath.Join(t.TempDir(), "not-a-repo")
+	if err := os.Mkdir(notRepo, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	_, _, runErr = runRecovery("", "history", "ingest", "--into", notRepo, t.TempDir())
+	if runErr == nil || !strings.Contains(runErr.Error(), "history ingest: not-a-repo is not a git repository") {
+		t.Errorf("the refusal must name the destination by its directory name, got: %v", runErr)
+	}
+	refusal := ""
+	if runErr != nil {
+		refusal = runErr.Error()
+	}
+	for _, a := range append(abs, filepath.Dir(notRepo)) {
+		for what, s := range map[string]string{"report": out, "refusal": refusal} {
+			if strings.Contains(s, a) {
+				t.Errorf("the %s prints the absolute path %s:\n%s", what, a, s)
+			}
+		}
+	}
+}

@@ -1081,3 +1081,26 @@ func containsSource(sources []string, want string) bool {
 	}
 	return false
 }
+
+// TestHasConventionsReadsTheGithubContributionGuide: the forge reads a
+// repository's contribution guide from `.github/` as readily as from the root,
+// so a repository whose only convention document is `.github/CONTRIBUTING.md`
+// still carries the conventions tier (iss-2608270540523859).
+func TestHasConventionsReadsTheGithubContributionGuide(t *testing.T) {
+	dir := t.TempDir()
+	full := filepath.Join(dir, ".github", "CONTRIBUTING.md")
+	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(full, []byte("# Contributing\n\nOpen a pull request.\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ctx, err := newSourceContext(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ctx.Close()
+	if !hasConventions(ctx) {
+		t.Fatal("hasConventions=false for a repository whose contribution guide is in .github/")
+	}
+}

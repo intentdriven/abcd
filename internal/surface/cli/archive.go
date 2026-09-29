@@ -256,7 +256,7 @@ func renderArchive(w io.Writer, rep archiveReport) {
 	if rep.refused() {
 		fmt.Fprintln(w, "  written: nothing (the archive was removed)")
 	} else {
-		fmt.Fprintf(w, "  written: %s\n", termsafe.Sanitize(a.Path))
+		fmt.Fprintf(w, "  written: %s\n", termsafe.Sanitize(a.DisplayPath))
 	}
 	switch {
 	case !rep.Pin.Checked:

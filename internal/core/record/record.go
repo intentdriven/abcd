@@ -264,7 +264,10 @@ func describeIntent(repoRoot, id string) (Description, error) {
 	if len(it.RelatedIssues) > 0 {
 		d.Links["related_issues"] = strings.Join(it.RelatedIssues, ", ")
 	}
-	if sup := fields["superseded_by"].Value; sup != "" && !frontmatter.IsNull(sup) {
+	// Absence is frontmatter.IsEmptyValue's, the question record-lint's
+	// supersession gate asks, so `[]`, `{}` and `!!null` name no successor here
+	// either (iss-2608301744300631).
+	if sup := fields["superseded_by"].Value; !frontmatter.IsEmptyValue(sup) {
 		d.Links["superseded_by"] = sup
 	}
 	if it.Held != "" {
@@ -567,7 +570,10 @@ func describeADR(repoRoot, id string) (Description, error) {
 			Path:   rel,
 			Links:  map[string]string{},
 		}
-		if sup := fields["superseded_by"].Value; sup != "" && !frontmatter.IsNull(sup) {
+		// One emptiness question with the supersession gate: an empty collection
+		// or an empty node is no successor, never a link to a bracket pair
+		// (iss-2608301744300631).
+		if sup := fields["superseded_by"].Value; !frontmatter.IsEmptyValue(sup) {
 			d.Links["superseded_by"] = sup
 		}
 		d.NextMoves = []string{"none — decisions are read"}
@@ -780,15 +786,13 @@ func readRecordHead(absPath, fallbackTitle string) (map[string]frontmatter.Field
 // A refused file yields no fields and an empty body.
 func readRecordHeadAndBody(absPath string) (map[string]frontmatter.Field, string) {
 	fields, lines, ok := readGuardedLines(absPath)
-	if !ok || len(lines) == 0 || strings.TrimSpace(lines[0]) != "---" {
+	// The body starts where the block the fields came from closes: the same
+	// walk, a BOM at line 0 included (iss-2608221126066379).
+	closing := frontmatter.Close(lines)
+	if !ok || closing < 0 {
 		return fields, ""
 	}
-	for i := 1; i < len(lines); i++ {
-		if strings.TrimSpace(lines[i]) == "---" {
-			return fields, strings.Join(lines[i+1:], "\n")
-		}
-	}
-	return fields, ""
+	return fields, strings.Join(lines[closing+1:], "\n")
 }
 
 // readGuardedLines is the guarded read both head readers share: O_NOFOLLOW and

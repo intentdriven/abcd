@@ -444,12 +444,17 @@ func ReadReadingOutstanding(repoRoot, issuesDir string) (OutstandingReadings, er
 			report.OpenHolds = append(report.OpenHolds, answer.holds...)
 
 			if widening {
+				// The stand-down comes first: an admission does not buy a count
+				// past an answer the walk could not read, so an admitted proposal
+				// carrying an unreadable, contested, cyclic or illegible
+				// disposition stands the run's summary down like any other
+				// (iss-2609251842112266).
 				switch {
-				case admissions.admits(run.Name(), item):
-					summary.Admitted++
 				case len(answer.unsafe) > 0 || answer.cyclic || len(answer.contested) > 1 ||
 					(answer.standing != nil && !answer.standing.wellFormed):
 					standDown = true
+				case admissions.admits(run.Name(), item):
+					summary.Admitted++
 				case answer.standing != nil && answer.standing.state == issueschema.DispositionDeclined:
 					summary.Declined++
 				case answer.standing != nil && answer.standing.state == issueschema.DispositionHeld:

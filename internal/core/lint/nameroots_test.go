@@ -73,7 +73,7 @@ func TestRepoNameRootsCoverThePublicSurface(t *testing.T) {
 	for _, r := range append(append([]string{}, cfg.Roots...), cfg.NameRoots...) {
 		have[r] = true
 	}
-	for _, want := range []string{".abcd", "AGENTS.md", "CONTRIBUTING.md", "scripts", "README.md", "docs"} {
+	for _, want := range []string{".abcd", "AGENTS.md", ".github/CONTRIBUTING.md", "scripts", "README.md", "docs"} {
 		if !have[want] {
 			t.Errorf("the name gate does not reach %s (roots %q, name_roots %q)", want, cfg.Roots, cfg.NameRoots)
 		}

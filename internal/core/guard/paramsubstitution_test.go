@@ -8,8 +8,8 @@ import "testing"
 // with the expansion's closing `}` as fixed text after the output, so the name
 // could only end in `}` and a dash-word only be a flag that did. A word whose
 // text holds an unclosed `${` where a substitution's output lands is unknown
-// from that `${` on. A plain `$X` or `${X}` with no substitution in it is the
-// half iss-2609251824244354 still defers.
+// from that `${` on. A plain `$X` or `${X}` with no substitution in it is
+// read by TestParameterExpansionIsAnUnknownWord (iss-2609251824244354).
 func TestParameterExpansionCarryingASubstitutionIsUnknown(t *testing.T) {
 	runVerdictCases(t, []verdictCase{
 		{`${X:-$(echo git)} push --force origin main`, VerdictBlock, ""},

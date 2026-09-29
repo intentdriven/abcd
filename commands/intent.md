@@ -110,8 +110,9 @@ is written onto the draft as `duplicates: [<id>]` (the same proposal filed
 again) or `refines: [<id>]` (the other record is broader), at most three links.
 The create is never refused by the match. The JSON's `match` object carries the
 matches, the `near_misses` below the threshold with their scores, and `skipped`
-when nothing was compared. Relay each match and ask the user to confirm it; a
-wrong link is removed by deleting its line, which leaves an ordinary draft.
+when nothing was compared. Set `abcd mode product-thinker`, relay each match
+and ask the product thinker to confirm it; a wrong link is removed by deleting
+its line, which leaves an ordinary draft.
 
 A single whitespace-free word is refused (exit 2, nothing written): a lone
 token reads as a mistyped sub-verb, never as a draft title. A near-miss of a
@@ -244,14 +245,15 @@ reconstructed. The refusal covers both, deliberately, because nothing in the
 enforcement can tell relocated text from invented text — which is why the state
 those three records are in is not reachable through this verb.
 
-**Ask for the expectation and its falsifier.** "Planned it because it is next"
+**Ask the product thinker for the expectation and its falsifier** (set `abcd
+mode product-thinker` first). "Planned it because it is next"
 restates the decision and records nothing; "planned it because we expect a
 stamped identity to survive rewording, which nothing else does" is a conjecture
 somebody can later find wrong. abcd refuses only the degenerate texts — empty,
 too short, or the vocabulary word repeated back — and text the site cannot
 render, such as an unclosed backtick, an image or raw HTML, because the entry is
 append-only and the record must still build; it cannot tell a conjecture from a
-restatement. That part is yours: put the question to the human and write
+restatement. That part is yours: put the question to the product thinker and write
 down their answer, not a paraphrase of the route taken. A hand-typed bullet is
 held to the same floor: `- pursued: yes` is not an entry, and the gate reports
 the record as carrying none.
@@ -314,9 +316,10 @@ scaffold prompt is reported as unanswered, never as a recorded claim.
 
 ## Planning interview (host-run, with the human present)
 
-The interview turns a draft into an intent the maintainer has signed off. Run
-it only in a live session with the human; deferral of any question is a valid
-answer, but silence is not consent.
+The interview turns a draft into an intent the product thinker has signed off.
+The sign-off is the product thinker's; set the mode before the first question
+and reset it whenever the hat changes, as the rule below says. Run it only in a live session with the product thinker; deferral of
+any question is a valid answer, but silence is not consent.
 
 **How every question is asked (the GRILL rule domain).** One question at a
 time, through the harness's interactive question tool, never as a numbered
@@ -327,7 +330,9 @@ always offered. A recommendation the human asks for is given in prose apart
 from the question. The next question waits for the last answer. The register follows
 the addressee: a product thinker gets outcomes in product terms with no
 record ids or internals; a technical facilitator gets the mechanism and the
-ids. Where the hat is unknown, that is the first question.
+ids. Where the hat is unknown, that is the first question. The mode carries
+the addressee: before each question set `abcd mode product-thinker` or `abcd
+mode facilitator`, and the question names that role.
 
 **Prerequisite — two adversarial reviews.** Before the interview, the draft
 has been through two independent adversarial reviewers with different lenses
@@ -344,11 +349,12 @@ gate that will refuse the move mechanically is a recorded seed until built.
    parts → homes, typed links, advisory reversal flags. A part that is not
    this intent moves to its home (or is captured) before planning proceeds;
    grade the run into the calibration note either way.
-3. **Press release:** confirm or refine the user moment with the human.
-4. **Open questions:** resolve each with the human, or record an explicit
+3. **Press release:** confirm or refine the user moment with the product
+   thinker.
+4. **Open questions:** resolve each with the product thinker, or record an explicit
    deferral in the draft. An open question that gates scope blocks planning.
-5. **Mechanism claim (prompted, nullable):** ask why the authors expect this
-   to work, and record the answer in `## Mechanism` as a falsifiable "we
+5. **Mechanism claim (prompted, nullable):** ask the product thinker why the
+   authors expect this to work, and record the answer in `## Mechanism` as a falsifiable "we
    expect X because Y" — not the outcome restated. Declining is a real
    answer: record it as the exact token `None stated.` alone on its line.
    Silence is not a decline, and the draft's scaffold line is not a claim.
@@ -375,7 +381,7 @@ gate that will refuse the move mechanically is a recorded seed until built.
    "${CLAUDE_PLUGIN_ROOT}/abcd" intent plan <itd-N> [--impact <additive|breaking|fix>] [--production-mode <mode>] --json
    ```
 
-   This invocation IS the maintainer's sign-off act — never run it unattended
+   This invocation IS the product thinker's sign-off act — never run it unattended
    or infer consent. It mints the spec stub, links both sides, stamps an
    identity onto every unmarked scope condition, and moves the intent
    `drafts/ → planned/`. Every relative markdown link that named the draft's
@@ -386,8 +392,8 @@ gate that will refuse the move mechanically is a recorded seed until built.
    **`--impact` is the judgement the interview settled**, stamped here because
    this is the moment it is made: a draft filed without one gets it now, in the
    same shape the create path writes (`impact: <value>`), validated at the same
-   bar — one of `additive`, `breaking`, `fix`, never `internal`. Ask the human
-   for the class if the draft does not carry it, and pass their answer; never
+   bar — one of `additive`, `breaking`, `fix`, never `internal`. Ask the product
+   thinker for the class if the draft does not carry it, and pass their answer; never
    type it into the frontmatter. The rules are the close's: a value that
    disagrees with one the record already carries is refused before anything
    moves (a plan does not revise a recorded judgement — the human edits the
@@ -399,7 +405,7 @@ gate that will refuse the move mechanically is a recorded seed until built.
    **Several drafts as one bundle.** When the interview settles that two or
    more drafts are distinct user moments that only make sense delivered
    together, they are planned as one bundle: ONE shared spec, every member
-   moved together. Ask the human for the bundle's name — a short kebab-case
+   moved together. Ask the product thinker for the bundle's name — a short kebab-case
    name, which every member carries as `bundle: <name>` and which becomes the
    shared spec's slug — and pass their answer; never invent one. The CLI
    refuses several intents without `--bundle`, and `--bundle` with one:
@@ -696,11 +702,24 @@ sibling worktree or a local branch, see `/abcd:peers`) the refusal names the
 peer's branch, path and bucket instead of answering not found.
 
 Ingest is fail-closed: report the returned status (`ingested`, `dead_letter`,
-or `noop`) and, for `dead_letter`, the reason. A second ingest for a receipt
+or `noop`) and, for `dead_letter`, the reason. The `--json` result's `recorded`
+says what the ingest wrote into the record: `verdict`, `quarantine` or
+`nothing`. The acceptance rollup and the disposition split (`criteria`, `met`,
+`met_with_concerns`, `not_met`, `inconclusive`, `conditions`, `survived`,
+`narrowed`, `falsified`, `untested`) appear only beside a recorded verdict; a
+quarantine carries `conditions_untested` (every scope condition it recorded
+untested), `dead_letter_path` and `reason` instead. A second ingest for a receipt
 already ingested is a `noop` when its payload renders to the block on the record,
 replaces that block in place when it renders differently (`ingested`, reported
 as `replaced`), and is refused with nothing written when it does not validate:
-a bad re-ingest never dead-letters a verdict already ingested.
+a bad re-ingest never dead-letters a verdict already ingested. A verdict whose
+prose cites a record id that names no record is refused too, naming the id, with
+nothing written, wherever the repository's record-lint gates prose citations in
+the intent store: re-word the prose to describe the record and ingest again.
+Each review block closes on its own `<!-- abcd-review-end receipt=rcp-… -->`
+line, and only a marker on a live line of `## Audit Notes` counts: a note written
+below a block stays when the block is replaced, and a marker quoted in a fenced
+example or an HTML comment is not review state.
 
 **Model-tier routing.** Both `intent audit <itd-N>` and `intent audit ingest`
 dispatch the `intent-auditor` agent, and each resolves that agent's model tier
@@ -732,8 +751,16 @@ anything is written. With no table accepted and no `--route`, the step asks for
 `host-decides` and nothing is printed.
 
 **Hand the auditor the whole request file.** `intent audit` writes it to the
-reported `request_path`, and its `## Provenance` block states the
-`rubric_hash` and `prompt_hash` the host computed. The auditor echoes both
+reported `request_path`. It states the criteria count, lists every scope
+condition under the `cond-…` identity the verdict disposes it by, and carries a
+`## Verdict shape` section rendered from the structure the ingest decodes, so a
+reviewer working from the request alone has the shape to write against. The
+result's `status` names the receipt's state and `request_written` the act: a
+re-emit of an owed receipt rewrites its request (`already_owed`,
+`request_written: true`, text `request rewritten:`), and a re-emit of an
+ingested or dead-lettered receipt writes none and names no `request_path`. Its
+`## Provenance` block states the `rubric_hash` and `prompt_hash` the host
+computed. The auditor echoes both
 verbatim into `policy`; it never computes either itself. The ingest recomputes
 them and refuses a verdict carrying any other value, leaving the receipt parked
 so the request can be re-emitted and the audit re-run — so a made-up hash costs
@@ -836,8 +863,9 @@ condition carries rather than to its wording, and joined to what occasioned it.
 - **With a condition id** it appends one dated block to `## Audit Notes`:
   the identity, the value, the occasion and the grounds, with the narrowing
   under a `narrowed` value. The occasion is a reading item at any position, or
-  an intent in `shipped/` whose delivery changed the condition's standing. Ask
-  the researcher for the value and the grounds; the reading names the tension
+  an intent in `shipped/` whose delivery changed the condition's standing. Set
+  `abcd mode product-thinker` and ask the product thinker, who reads as the
+  researcher here, for the value and the grounds; the reading names the tension
   and never marks the condition itself.
 
 A condition's standing is its latest reading-occasioned block where it has one,
@@ -894,7 +922,8 @@ title, press release, scope, decisions and rule — and the second narrows it to
 one intent against the rest. Neither judges anything: each assembles the corpus
 into `corpus_path` and writes the request to `request_path`, both under
 `.abcd/.work.local/reviews/`, names the commit the tree stood at
-(`review_of_commit`), and writes nothing else. A superseded or unknown intent is
+(`review_of_commit`), and writes nothing else. The request carries a
+`## Findings shape` section rendered from the structure the ingest decodes. A superseded or unknown intent is
 refused. The corpus is read from the working tree, so when a corpus document is
 edited, untracked or deleted relative to that commit the emit says `dirty: true`,
 names the paths in `dirty_paths`, and the report carries the mark beside its pin
@@ -914,11 +943,16 @@ Then run the pass, one request at a time:
 
 The ingest validates before it writes anything. It refuses, with nothing
 written: a receipt no request here was issued for, a corpus that moved since the
-request (re-emit and run the pass again), provenance hashes the request did not
-state, a class or severity outside its set, an end whose path is not a corpus
+request (re-emit and run the pass again), provenance hashes the host does not
+issue for the receipt (likewise: a request an earlier binary wrote no longer
+matches, so re-emit and run the pass again), a class or severity outside its set, an end whose path is not a corpus
 document or whose quote is not in it (twelve characters at least), and a
 finding with fewer or more than two ends or one that repeats another. A scoped
-run also refuses a finding with no end in its intent.
+run also refuses a finding with no end in its intent. And a finding it would
+file whose text cites a record id that names no record is refused, naming the
+finding and the id, wherever the repository's record-lint gates prose
+citations in the issue ledger: every finding is checked before the first is
+filed, so re-word the prose to describe the record and ingest again.
 
 A payload that validates is written in two places. Each finding is filed as one
 issue (`inconsistency`, from an `agent-finding`, located at its first end, with

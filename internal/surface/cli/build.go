@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/core/implement/loop"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -76,8 +77,9 @@ func errorsIsNoCheckout(err error) bool { return errors.Is(err, gitutil.ErrNoChe
 
 // newBuildCommand builds `abcd build <itd-N>`.
 func newBuildCommand(asJSON *bool) *cobra.Command {
-	return &cobra.Command{
-		Use: "build <itd-N>",
+	var session string
+	cmd := &cobra.Command{
+		Use: "build <itd-N> [--session <id>]",
 		Long: "Start the implement loop for one intent, or resume the run already in progress for it.\n" +
 			"A new run's checks run first, and every one must pass:\n" +
 			"the intent is READY (planned, criteria written, its spec linked and written), asks no\n" +
@@ -92,6 +94,12 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 			"never created: only a repository abcd manages has one. Starting again while the run is\n" +
 			"in progress creates nothing and names the run without judging the checks again (the\n" +
 			"run's own lanes change what they read), so a killed process resumes where it stopped.\n\n" +
+			"--session names the host session's id in the shared run state (`abcd implement join`):\n" +
+			"a new run then claims the intent there for that session, the run id as its lane, so a\n" +
+			"build of the same intent from any other checkout of the repository is refused as held\n" +
+			"before this run's lane has moved or claimed anything, and the session's own claim on the\n" +
+			"intent is not counted as a peer's. A session that has not joined is refused. Without it\n" +
+			"the run holds no claim, and the result says so.\n\n" +
 			"The run then moves one step per `abcd implement step`, driven by the host session.\n\n" +
 			"Exit 2 on a refusal, exit 3 when a peer holds the intent or the run state is locked\n" +
 			"(back off and take other work).",
@@ -102,7 +110,7 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
 			}
-			res, err := loop.Start(root, args[0], loop.Options{})
+			res, err := loop.Start(root, args[0], loop.Options{Session: session})
 			if err != nil {
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
 			}
@@ -115,10 +123,19 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 				fmt.Fprintf(w, "  state:   %s\n", res.State)
 				renderLaneLine(w, res.Lane)
 				renderPending(w, res.Pending)
+				switch {
+				case res.Claim != nil:
+					fmt.Fprintf(w, "  claim:   %s for session %s until %s\n", res.Claim.Claim.Record,
+						termsafe.Sanitize(res.Claim.Claim.Session), res.Claim.Claim.ExpiresAt.Format(time.RFC3339))
+				case !res.Resumed:
+					fmt.Fprintln(w, "  claim:   none (no --session): a build in another checkout cannot see this run until its lane shows")
+				}
 				fmt.Fprintf(w, "next: %s\n", termsafe.Sanitize(fsutil.RedactHome(res.Next)))
 			})
 		},
 	}
+	cmd.Flags().StringVar(&session, "session", "", "the host session's id in the shared run state; a new run claims the intent for it")
+	return cmd
 }
 
 // renderLaneLine renders one lane as a line, and its footprint once its steps
@@ -147,7 +164,10 @@ func renderPending(w io.Writer, pending []loop.PendingStep) {
 	fmt.Fprintf(w, "  pending: spec step %s\n", strings.Join(parts, ", "))
 }
 
-// redactAwait home-redacts the paths an await carries, for a stream.
+// redactAwait home-redacts the paths an await carries, for a stream. They keep
+// RedactHome rather than fsutil.DisplayPath: the brief is the file the agent is
+// handed and the receipt the path it writes and passes to `implement receipt`,
+// so a base name would leave it unable to act on either.
 func redactAwait(a *loop.Await) *loop.Await {
 	if a == nil {
 		return nil
@@ -191,7 +211,7 @@ func newImplementStatusCommand(asJSON *bool) *cobra.Command {
 			for i := range runs {
 				for j := range runs[i].Lanes {
 					runs[i].Lanes[j].Awaiting = redactAwait(runs[i].Lanes[j].Awaiting)
-					runs[i].Lanes[j].Worktree = fsutil.RedactHome(runs[i].Lanes[j].Worktree)
+					runs[i].Lanes[j].Worktree = fsutil.DisplayPath(runs[i].Lanes[j].Worktree)
 				}
 			}
 			return render(cmd.OutOrStdout(), *asJSON, implementStatusRuns{Runs: runs}, func(w io.Writer) {

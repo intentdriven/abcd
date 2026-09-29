@@ -83,6 +83,15 @@ type Pattern struct {
 	// `pkill make`, whose operand is the pattern — from `pkill -g 4242`, which
 	// names a process group and carries no pattern at all.
 	MinOperands int `json:"min_operands,omitempty"`
+	// ArgsFrom, when set, additionally requires that the command's arguments
+	// come, at least in part, from the output of a command matching one of
+	// these patterns: a command substitution in a word after the command, or,
+	// where `xargs` runs the command, the commands before it in the pipeline
+	// that feeds xargs. It is what reads `kill $(pgrep -f make)` and `pgrep -f
+	// make | xargs kill` as the kill by name they are, while `kill 4242` and
+	// `kill $(cat pidfile)` stay a kill of the pid named. A pattern listed here
+	// is a plain one: it may not itself carry args_from or after_cd.
+	ArgsFrom []Pattern `json:"args_from,omitempty"`
 	// AfterCD, when true, additionally requires that some EARLIER command in the
 	// same chain is a `cd`, `pushd` or `popd` — the cd-chain structure (`cd
 	// scratch && rm -rf *`) whose hazard is that a failed directory change
@@ -250,22 +259,6 @@ func Validate(r Registry) error {
 		default:
 			return fmt.Errorf("%w: entry %s has tier %q, want %q or %q", ErrUnknownTier, id, e.Tier, TierBlocker, TierWarn)
 		}
-		if strings.TrimSpace(e.Pattern.Command) == "" {
-			return fmt.Errorf("%w: entry %s has no pattern command", ErrInvalidEntry, id)
-		}
-		// The command is compared against a token's BASENAME, and a subcommand is
-		// only ever a non-flag argument, so a path, a phrase, or a leading dash
-		// describes a pattern nothing can satisfy. Reject it here rather than
-		// ship an entry that looks armed and never fires.
-		if strings.ContainsAny(e.Pattern.Command, "/ \t") {
-			return fmt.Errorf("%w: entry %s pattern command %q is a path or phrase and could never match a command name", ErrInvalidEntry, id, e.Pattern.Command)
-		}
-		if strings.HasPrefix(e.Pattern.Subcommand, "-") {
-			return fmt.Errorf("%w: entry %s subcommand %q starts with a dash and could never match a non-flag argument", ErrInvalidEntry, id, e.Pattern.Subcommand)
-		}
-		if strings.HasPrefix(e.Pattern.Subcommand2, "-") {
-			return fmt.Errorf("%w: entry %s subcommand2 %q starts with a dash and could never match a non-flag argument", ErrInvalidEntry, id, e.Pattern.Subcommand2)
-		}
 		// A refusal with no successor leaves its replacement in prose only, and
 		// one with no why cannot teach — both are load-time rejections, as in
 		// the record-lint banned_tokens family (iss-51).
@@ -275,60 +268,99 @@ func Validate(r Registry) error {
 		if strings.TrimSpace(e.Why) == "" {
 			return fmt.Errorf("%w: entry %s has no why", ErrInvalidEntry, id)
 		}
-		// An empty flag group can never be satisfied, so it would silently
-		// defang the entry rather than fail loudly — the one failure mode a
-		// guard must not have.
-		for i, group := range e.Pattern.Flags {
-			if !hasAlternative(group) {
-				return fmt.Errorf("%w: entry %s flag group %d is empty and could never match", ErrInvalidEntry, id, i)
+		if err := validatePattern(id, e.Pattern); err != nil {
+			return err
+		}
+		// A source an entry reads its arguments from is a pattern in its own
+		// right, held to the same checks, and a plain one: a source that named
+		// its own sources, or a cd chain, would describe a reading the matcher
+		// does not make.
+		for i, src := range e.Pattern.ArgsFrom {
+			where := fmt.Sprintf("%s args_from %d", id, i)
+			if len(src.ArgsFrom) > 0 || src.AfterCD != nil {
+				return fmt.Errorf("%w: entry %s may not carry args_from or after_cd of its own", ErrInvalidEntry, where)
+			}
+			if err := validatePattern(where, src); err != nil {
+				return err
 			}
 		}
-		// An empty argument prefix is carried by every operand, so the entry
-		// would fire on anything that reached it: the over-blocking twin of the
-		// empty flag group, and as invisible in the file.
-		for i, prefix := range e.Pattern.ArgPrefixes {
-			if strings.TrimSpace(prefix) == "" {
-				return fmt.Errorf("%w: entry %s argument prefix %d is empty and would match every argument", ErrInvalidEntry, id, i)
-			}
-			// A prefix constrains an OPERAND, and `operandIndexes` never
-			// returns a token that starts with a dash — it reads those as
-			// flags. A dashed
-			// prefix therefore describes an argument nothing can be: the silent
-			// defang again, one field along. A flag belongs in Flags.
-			if strings.HasPrefix(prefix, "-") {
-				return fmt.Errorf("%w: entry %s argument prefix %q starts with a dash and could never match a non-flag argument", ErrInvalidEntry, id, prefix)
-			}
+	}
+	return nil
+}
+
+// validatePattern checks one pattern's own constraints: the ones that would
+// otherwise describe a command nothing can be, and so an entry that looks armed
+// and never fires. id names the entry, or the entry's source, in the refusal.
+func validatePattern(id string, p Pattern) error {
+	if strings.TrimSpace(p.Command) == "" {
+		return fmt.Errorf("%w: entry %s has no pattern command", ErrInvalidEntry, id)
+	}
+	// The command is compared against a token's BASENAME, and a subcommand is
+	// only ever a non-flag argument, so a path, a phrase, or a leading dash
+	// describes a pattern nothing can satisfy. Reject it here rather than
+	// ship an entry that looks armed and never fires.
+	if strings.ContainsAny(p.Command, "/ \t") {
+		return fmt.Errorf("%w: entry %s pattern command %q is a path or phrase and could never match a command name", ErrInvalidEntry, id, p.Command)
+	}
+	if strings.HasPrefix(p.Subcommand, "-") {
+		return fmt.Errorf("%w: entry %s subcommand %q starts with a dash and could never match a non-flag argument", ErrInvalidEntry, id, p.Subcommand)
+	}
+	if strings.HasPrefix(p.Subcommand2, "-") {
+		return fmt.Errorf("%w: entry %s subcommand2 %q starts with a dash and could never match a non-flag argument", ErrInvalidEntry, id, p.Subcommand2)
+	}
+	// An empty flag group can never be satisfied, so it would silently
+	// defang the entry rather than fail loudly — the one failure mode a
+	// guard must not have.
+	for i, group := range p.Flags {
+		if !hasAlternative(group) {
+			return fmt.Errorf("%w: entry %s flag group %d is empty and could never match", ErrInvalidEntry, id, i)
 		}
-		// A flag-value constraint with no flag, or with no accepted value, can
-		// never be satisfied — the silent defang again, one field along.
-		for i, fv := range e.Pattern.FlagValues {
-			if !hasAlternative(fv.Flag) {
-				return fmt.Errorf("%w: entry %s flag-value constraint %d names no flag and could never match", ErrInvalidEntry, id, i)
-			}
-			if !hasAnyValue(fv.Values) {
-				return fmt.Errorf("%w: entry %s flag-value constraint %d accepts no value and could never match", ErrInvalidEntry, id, i)
-			}
+	}
+	// An empty argument prefix is carried by every operand, so the entry
+	// would fire on anything that reached it: the over-blocking twin of the
+	// empty flag group, and as invisible in the file.
+	for i, prefix := range p.ArgPrefixes {
+		if strings.TrimSpace(prefix) == "" {
+			return fmt.Errorf("%w: entry %s argument prefix %d is empty and would match every argument", ErrInvalidEntry, id, i)
 		}
-		// A negative operand count describes nothing a command line can hold.
-		if e.Pattern.MinOperands < 0 {
-			return fmt.Errorf("%w: entry %s min_operands %d is negative", ErrInvalidEntry, id, e.Pattern.MinOperands)
+		// A prefix constrains an OPERAND, and `operandIndexes` never
+		// returns a token that starts with a dash — it reads those as
+		// flags. A dashed
+		// prefix therefore describes an argument nothing can be: the silent
+		// defang again, one field along. A flag belongs in Flags.
+		if strings.HasPrefix(prefix, "-") {
+			return fmt.Errorf("%w: entry %s argument prefix %q starts with a dash and could never match a non-flag argument", ErrInvalidEntry, id, prefix)
 		}
-		// A path constraint with no root would depth-limit every operand that
-		// happened to look like a path, and one with no depth describes no path
-		// at all.
-		for i, pa := range e.Pattern.ArgPaths {
-			if strings.TrimSpace(pa.Root) == "" {
-				return fmt.Errorf("%w: entry %s path constraint %d names no root segment", ErrInvalidEntry, id, i)
-			}
-			if pa.Segments < 1 {
-				return fmt.Errorf("%w: entry %s path constraint %d wants %d segments; a path has at least one", ErrInvalidEntry, id, i, pa.Segments)
-			}
-			// The root is compared against the FIRST segment of an operand split
-			// on "/", so a root that carries a slash is not a segment and could
-			// never be one. Depth is what the Segments field is for.
-			if strings.Contains(pa.Root, "/") {
-				return fmt.Errorf("%w: entry %s path root %q holds a slash and could never match a single path segment; use segments for depth", ErrInvalidEntry, id, pa.Root)
-			}
+	}
+	// A flag-value constraint with no flag, or with no accepted value, can
+	// never be satisfied — the silent defang again, one field along.
+	for i, fv := range p.FlagValues {
+		if !hasAlternative(fv.Flag) {
+			return fmt.Errorf("%w: entry %s flag-value constraint %d names no flag and could never match", ErrInvalidEntry, id, i)
+		}
+		if !hasAnyValue(fv.Values) {
+			return fmt.Errorf("%w: entry %s flag-value constraint %d accepts no value and could never match", ErrInvalidEntry, id, i)
+		}
+	}
+	// A negative operand count describes nothing a command line can hold.
+	if p.MinOperands < 0 {
+		return fmt.Errorf("%w: entry %s min_operands %d is negative", ErrInvalidEntry, id, p.MinOperands)
+	}
+	// A path constraint with no root would depth-limit every operand that
+	// happened to look like a path, and one with no depth describes no path
+	// at all.
+	for i, pa := range p.ArgPaths {
+		if strings.TrimSpace(pa.Root) == "" {
+			return fmt.Errorf("%w: entry %s path constraint %d names no root segment", ErrInvalidEntry, id, i)
+		}
+		if pa.Segments < 1 {
+			return fmt.Errorf("%w: entry %s path constraint %d wants %d segments; a path has at least one", ErrInvalidEntry, id, i, pa.Segments)
+		}
+		// The root is compared against the FIRST segment of an operand split
+		// on "/", so a root that carries a slash is not a segment and could
+		// never be one. Depth is what the Segments field is for.
+		if strings.Contains(pa.Root, "/") {
+			return fmt.Errorf("%w: entry %s path root %q holds a slash and could never match a single path segment; use segments for depth", ErrInvalidEntry, id, pa.Root)
 		}
 	}
 	return nil
@@ -745,17 +777,38 @@ func cloneRegistry(r Registry) Registry {
 
 func cloneEntry(e Entry) Entry {
 	out := e
-	out.Pattern.ValueFlags = append([]string(nil), e.Pattern.ValueFlags...)
-	out.Pattern.Flags = append([]string(nil), e.Pattern.Flags...)
-	out.Pattern.ArgPrefixes = append([]string(nil), e.Pattern.ArgPrefixes...)
-	out.Pattern.ArgPaths = append([]PathArg(nil), e.Pattern.ArgPaths...)
-	out.Pattern.FlagValues = cloneFlagValues(e.Pattern.FlagValues)
-	if e.Pattern.AfterCD != nil {
-		v := *e.Pattern.AfterCD
-		out.Pattern.AfterCD = &v
-	}
+	out.Pattern = clonePattern(e.Pattern)
 	out.Fixtures.KnownBad = append([]string(nil), e.Fixtures.KnownBad...)
 	out.Fixtures.KnownGood = append([]string(nil), e.Fixtures.KnownGood...)
+	return out
+}
+
+// clonePattern deep-copies a pattern, its sources included, so a registry a
+// caller mutates shares no slice with the one it was cloned from.
+func clonePattern(p Pattern) Pattern {
+	out := p
+	out.ValueFlags = append([]string(nil), p.ValueFlags...)
+	out.Flags = append([]string(nil), p.Flags...)
+	out.ArgPrefixes = append([]string(nil), p.ArgPrefixes...)
+	out.ArgPaths = append([]PathArg(nil), p.ArgPaths...)
+	out.FlagValues = cloneFlagValues(p.FlagValues)
+	out.ArgsFrom = clonePatterns(p.ArgsFrom)
+	if p.AfterCD != nil {
+		v := *p.AfterCD
+		out.AfterCD = &v
+	}
+	return out
+}
+
+// clonePatterns deep-copies a list of patterns, keeping nil as nil.
+func clonePatterns(in []Pattern) []Pattern {
+	if in == nil {
+		return nil
+	}
+	out := make([]Pattern, len(in))
+	for i, p := range in {
+		out[i] = clonePattern(p)
+	}
 	return out
 }
 

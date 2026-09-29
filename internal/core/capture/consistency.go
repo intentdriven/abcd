@@ -22,21 +22,22 @@ import (
 func IngestConsistency(repoRoot string, payload []byte, date string) (intent.ConsistencyIngestResult, error) {
 	var open []Issue
 	loaded := false
-	filer := func(f intent.ConsistencyFinding, reportRel string) (intent.ConsistencyFiling, error) {
-		// The open records are read once, on the first finding, and only records
-		// that were open BEFORE this pass count: two findings of one pass that
-		// share an end are two findings, not one.
-		if !loaded {
-			list, err := List(ListRequest{RepoRoot: repoRoot, State: StateOpen})
-			if err != nil {
-				return intent.ConsistencyFiling{}, err
-			}
-			open, loaded = list.Issues, true
+	// The open records are read once, on the first finding, and only records
+	// that were open BEFORE this pass count: two findings of one pass that
+	// share an end are two findings, not one.
+	loadOpen := func() error {
+		if loaded {
+			return nil
 		}
-		if id := openRecordHolding(open, f); id != "" {
-			return intent.ConsistencyFiling{IssueID: id, Linked: true}, nil
+		list, err := List(ListRequest{RepoRoot: repoRoot, State: StateOpen})
+		if err != nil {
+			return err
 		}
-		res, err := Capture(CaptureRequest{
+		open, loaded = list.Issues, true
+		return nil
+	}
+	filed := func(f intent.ConsistencyFinding, reportRel string) CaptureRequest {
+		return CaptureRequest{
 			RepoRoot:       repoRoot,
 			Text:           consistencyIssueText(f, reportRel),
 			Severity:       Severity(f.Severity),
@@ -45,14 +46,41 @@ func IngestConsistency(repoRoot string, payload []byte, date string) (intent.Con
 			FoundDuring:    fmt.Sprintf("abcd intent consistency, finding %d of %s", f.Number, reportRel),
 			FoundAt:        endLocator(f.Ends[0]),
 			RelatedIntents: f.IntentIDs(),
-		})
+		}
+	}
+	// A finding an open record already holds is linked, and writes nothing, so
+	// only a finding that would be FILED is held to the gate — as the record
+	// it would be filed as: its free-text frontmatter, then its body.
+	check := func(f intent.ConsistencyFinding, reportRel string) error {
+		if err := loadOpen(); err != nil {
+			return err
+		}
+		if openRecordHolding(open, f) != "" {
+			return nil
+		}
+		req := filed(f, reportRel)
+		text, err := buildIssueText([]kv{{"found_during", req.FoundDuring}, {"found_at", req.FoundAt}}, req.Text)
+		if err != nil {
+			return err
+		}
+		return refuseUnresolvedCitations(repoRoot, LedgerRelPath+"/"+statusDirName[StateOpen],
+			[]citedPart{{what: fmt.Sprintf("consistency finding %d", f.Number), text: text}})
+	}
+	filer := func(f intent.ConsistencyFinding, reportRel string) (intent.ConsistencyFiling, error) {
+		if err := loadOpen(); err != nil {
+			return intent.ConsistencyFiling{}, err
+		}
+		if id := openRecordHolding(open, f); id != "" {
+			return intent.ConsistencyFiling{IssueID: id, Linked: true}, nil
+		}
+		res, err := Capture(filed(f, reportRel))
 		if err != nil {
 			return intent.ConsistencyFiling{}, err
 		}
 		return intent.ConsistencyFiling{IssueID: res.ID}, nil
 	}
 	return intent.IngestConsistency(intent.ConsistencyIngestRequest{
-		RepoRoot: repoRoot, Payload: payload, Date: date, File: filer,
+		RepoRoot: repoRoot, Payload: payload, Date: date, File: filer, Check: check,
 	})
 }
 

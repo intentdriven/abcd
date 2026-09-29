@@ -68,7 +68,8 @@ Read the prefix as the place the verb writes, not as proof of what wrote an
 entry.
 
 The prefix is also the gate's reach. The rest of the `banned_tokens` family is
-a writing rule for the documentation and reads the configuration's `roots`; a
+a writing rule for the documentation and reads the configuration's `roots`
+(and any `extra_roots` an entry declares for itself, [`10-docs.md`](10-docs.md)); a
 name ban is about the whole public surface, so the `names/` entries alone also
 read the configuration's `name_roots`, every text file there and not only
 markdown, with `exempt_paths` excusing a historical tree as it does under
@@ -76,7 +77,7 @@ markdown, with `exempt_paths` excusing a historical tree as it does under
 blocks, which the rest of the family skips by default: a fenced example is not
 prose, but a fence is published as readily as prose, so an entry that means to
 skip fences declares `skip_code_fences: true`. This repository's `name_roots` are `.abcd`, `AGENTS.md`,
-`CONTRIBUTING.md` and `scripts`, and its `exempt_paths` excuse the
+`.github/CONTRIBUTING.md` and `scripts`, and its `exempt_paths` excuse the
 configuration itself (whose entries spell every ban), the research data and the
 review archive.
 
@@ -222,25 +223,25 @@ would immediately declare unenforceable is worse than an absent one.
 | artefact | where | written when |
 |---|---|---|
 | commit guard | `.githooks/pre-commit` | when absent. Committed, so every clone inherits it; a clone arms it once with `git config core.hooksPath .githooks` |
-| merge guard | `.githooks/pre-merge-commit` | only beside abcd's own guard. git runs no `pre-commit` for a merge commit, so the same guard needs a second entry point; the shim delegates to whatever occupies `pre-commit`, so beside a foreign hook it would both claim coverage it has not got and silently start running the maintainer's hook on merges |
+| merge guard | `.githooks/pre-merge-commit` | only beside abcd's own guard. git runs no `pre-commit` for a merge commit, so the same guard needs a second entry point; the shim delegates to whatever occupies `pre-commit`, so beside a foreign hook it would both claim coverage it has not got and silently start running the technical facilitator's hook on merges |
 | EOL pin | `.gitattributes` | only beside abcd's own guard. One appended line keeps the hooks at LF, because a `core.autocrlf` checkout rewrites a script git executes and its shebang stops resolving |
-| public family | `.abcd/docs-lint.json` | only where git says the path would be tracked. Seeded with abcd's own Writing-Guide rules armed (the `present_tense` and `spelling` token families, held to the set abcd runs on itself, and the `links_resolve`, `harness_leak` and `stray_root_docs` rules) and with **no** banned names: abcd cannot know which names a repo may not publish, and a ban nobody declared would fail a build over a word the repository never chose. The `harness` token family is left for the repository to declare, since refusing to name a specific agent tool is wrong for a repository whose content teaches those tools (iss-2609150805167646). The `punctuation/em-dash-in-list-item` token is abcd's house style, so it is seeded at the severity the adopter chooses at install, blocking or warning, and at warning under blanket approval (the product thinker's ruling of 2026-09-23 in the decision log) |
+| public family | `.abcd/docs-lint.json` | only where git says the path would be tracked. Seeded with abcd's own Writing-Guide rules armed (the `present_tense` and `spelling` token families, held to the set abcd runs on itself, and the `links_resolve`, `harness_leak` and `stray_root_docs` rules) and with **no** banned names: abcd cannot know which names a repo may not publish, and a ban nobody declared would fail a build over a word the repository never chose. The `harness` token family is left for the repository to declare, since refusing to name a specific agent tool is wrong for a repository whose content teaches those tools (iss-2609150805167646), and the `roles` family is abcd's own vocabulary over abcd's own trees, so it is not seeded. The `punctuation/em-dash-in-list-item` token is abcd's house style, so it is seeded at the severity the adopter chooses at install, blocking or warning, and at warning under blanket approval (the product thinker's ruling of 2026-09-23 in the decision log) |
 | private stub | `.abcd/.work.local/private-names.txt` | only where git itself reports the path as ignored. A stub git would track is the hazard, not the remedy |
 
 Every write is create-if-absent and keyed on the gap actually detected, so nothing
-overwrites a file the maintainer owns. Every write is also **contained**: paths
+overwrites a file the technical facilitator owns. Every write is also **contained**: paths
 resolve through an `os.Root` opened at the repo, so a symlink committed at
 `.githooks` or at the local tier cannot land a hook or a stub outside the repo
 while the surfaces report the in-repo path.
 
 Presence is not identity, and identity is not integrity. Each hook carries an
 `# abcd-name-guard: v1` line, matched as a whole line; a hook without it is a
-**foreign** hook that abcd reports and never replaces, because a maintainer's own
+**foreign** hook that abcd reports and never replaces, because the technical facilitator's own
 `pre-commit` is legitimate and calling it "the abcd guard" would mean nothing
 checks the banlist while the status board says something does. But any file
 carrying that line is treated as abcd's, including one edited to check nothing.
-The marker answers "did abcd put this here", well enough to keep abcd off a
-maintainer's hook; it is not a signature. "Committed" is likewise not "armed" —
+The marker answers "did abcd put this here", well enough to keep abcd off the
+technical facilitator's hook; it is not a signature. "Committed" is likewise not "armed" —
 git runs the hook the clone's hooks path selects, which abcd neither sets nor
 fully observes, so every surface prints the arming instruction rather than
 claiming the guard is running.

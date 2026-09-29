@@ -212,3 +212,40 @@ func telemetryKeys(m map[string]any) []string {
 	}
 	return out
 }
+
+// TestReconstructRefusesAnOutReachedThroughASymlinkedAncestor: --out is an
+// operand like a lifeboat's, and a committed link above its leaf inside the
+// checkout would carry both files to the link's target; it is proved the same
+// way (iss-2609262156124513). A plain nested --out inside the checkout still
+// receives both files.
+func TestReconstructRefusesAnOutReachedThroughASymlinkedAncestor(t *testing.T) {
+	repo, rootSHA := sessionEndRepo(t)
+	t.Chdir(repo)
+	plantReconstructSession(t, rootSHA)
+
+	elsewhere := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(elsewhere, "out"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(elsewhere, filepath.Join(repo, "link")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	_, _, err := runRecovery("", "history", "reconstruct", "sess-cli", "--out", filepath.Join(repo, "link", "out"))
+	if err == nil || !strings.Contains(err.Error(), "symlink") {
+		t.Errorf("want a refusal naming the symlinked level, got %v", err)
+	}
+	if entries, _ := os.ReadDir(filepath.Join(elsewhere, "out")); len(entries) != 0 {
+		t.Errorf("reconstruct wrote %d file(s) at the link's target outside the checkout", len(entries))
+	}
+
+	nested := filepath.Join(repo, "a", "b")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := runRecovery("", "history", "reconstruct", "sess-cli", "--out", nested); err != nil {
+		t.Fatalf("a plain nested --out was refused: %v", err)
+	}
+	if entries, _ := os.ReadDir(nested); len(entries) != 2 {
+		t.Errorf("a plain nested --out holds %d file(s), want the artefact and its telemetry", len(entries))
+	}
+}

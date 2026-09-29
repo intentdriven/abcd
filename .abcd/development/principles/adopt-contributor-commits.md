@@ -12,6 +12,6 @@ the same diff — a missing entry is a follow-up debt, not a separate decision.
 Surfaced by the second operator in the 2026-08-27 security-advisory pilot
 (F-W): the issue-sweep's re-author-with-`Reported-by` default cost a
 contributor with a ready branch their contributor-graph authorship. The
-enabling convention beneath this principle is `CONTRIBUTING.md`'s attribution
+enabling convention beneath this principle is `.github/CONTRIBUTING.md`'s attribution
 section; the discipline rung (a gate that notices an adopted-and-rewritten
 external branch) is unfiled.

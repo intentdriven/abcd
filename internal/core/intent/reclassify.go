@@ -175,12 +175,13 @@ func Reclassify(repoRoot, intentID string, req ReclassifyRequest) (ReclassifyRes
 	if res.ToKind != KindSuperseded {
 		return res, nil
 	}
-	// After the lock, as every close's repoint is: the record has moved and the
-	// supersession stands, so what follows is reported, never raised.
+	// After the hold, as every close's repoint is: the record has moved and the
+	// supersession stands, so what follows is reported, never raised. The
+	// repoint takes the lock again for its own read-modify-write.
 	if store, err := spec.Load(repoRoot); err == nil {
 		res.OpenSpecs = specIDs(store.OpenSpecsForIntent(res.IntentID))
 	}
-	relinked, err := relink.Repoint(repoRoot, []relink.Move{{From: res.Moved[0].From, To: res.Moved[0].To, MovedNow: true}})
+	relinked, err := repointUnderLock(repoRoot, []relink.Move{{From: res.Moved[0].From, To: res.Moved[0].To, MovedNow: true}})
 	res.Relinked = relinked
 	if err != nil {
 		res.RelinkError = err.Error()
@@ -472,17 +473,21 @@ func historyEntry(date, from, to, reason string) string {
 }
 
 // frontmatterClose returns the index of the frontmatter block's closing
-// delimiter in lines, with setFrontmatterFields's delimiter tolerance.
+// delimiter in lines. It is this package's one form of frontmatter.Close, the
+// walk frontmatter.Fields makes, so every intent writer agrees with the reader
+// about where the block ends — a BOM ahead of the opening delimiter included,
+// which a private walk here refused while the reader accepted the record
+// (iss-2608221126066379). The two refusals stay apart, because they name
+// different repairs.
 func frontmatterClose(lines []string) (int, error) {
-	if len(lines) == 0 || strings.TrimRight(lines[0], " \t\r") != "---" {
+	if len(lines) == 0 || !frontmatter.IsDelimiter(frontmatter.TrimBOM(lines[0])) {
 		return 0, fmt.Errorf("intent: file has no leading frontmatter block")
 	}
-	for i := 1; i < len(lines); i++ {
-		if strings.TrimRight(lines[i], " \t\r") == "---" {
-			return i, nil
-		}
+	closing := frontmatter.Close(lines)
+	if closing < 0 {
+		return 0, fmt.Errorf("intent: frontmatter block is not closed")
 	}
-	return 0, fmt.Errorf("intent: frontmatter block is not closed")
+	return closing, nil
 }
 
 // frontmatterKeyLine returns the index of key's top-level line, or -1.

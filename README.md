@@ -118,11 +118,11 @@ In a plugin session, inside a repository you own, `/abcd:prepare-this-repo` audi
 
 ```text
 $ abcd
-abcd — /path/to/your-repo
+abcd — ~/code/your-repo
   git repo:   true
   record:     true
   work tiers: [development work work.local]
-  presence:   abcd · your-repo · main · itd 0 · iss 0
+  presence:   abcd-managed · your-repo · main · itd 0 · iss 0
 ```
 
 
@@ -152,5 +152,5 @@ repository* button reads:
 ## Resources
 
 - [`LICENSE`](LICENSE): MIT.
-- [`SECURITY.md`](SECURITY.md): Report a vulnerability privately.
+- [`SECURITY.md`](.github/SECURITY.md): Report a vulnerability privately.
 - [`ACKNOWLEDGEMENTS.md`](ACKNOWLEDGEMENTS.md): The ideas, tools, and writing `abcd` stands on.

@@ -54,7 +54,7 @@ func TestLintReportMDSanitisesADegradedScannerPatternName(t *testing.T) {
 	if !degraded {
 		t.Fatalf("fixture drift: no degraded-scanner MR001 naming the pattern: %+v", res.Findings)
 	}
-	raw, err := os.ReadFile(filepath.Join(res.ReportDir, "report.md"))
+	raw, err := os.ReadFile(filepath.Join(repo, res.ReportDir, "report.md"))
 	if err != nil {
 		t.Fatal(err)
 	}

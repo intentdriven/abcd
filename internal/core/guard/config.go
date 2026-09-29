@@ -270,6 +270,9 @@ func mergePattern(base, over Pattern) Pattern {
 	if over.MinOperands != 0 {
 		r.MinOperands = over.MinOperands
 	}
+	if over.ArgsFrom != nil {
+		r.ArgsFrom = clonePatterns(over.ArgsFrom)
+	}
 	// AfterCD is a pointer precisely so an override can set it to false — a
 	// bool field could only ever tighten the requirement, never lift it.
 	if over.AfterCD != nil {

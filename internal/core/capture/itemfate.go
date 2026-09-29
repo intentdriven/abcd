@@ -138,6 +138,18 @@ func admissionsNaming(issuesRoot, run, item string) ([]string, error) {
 // run's commit marker lives: a directory holding a parked manifest and no run
 // record is a run that never happened, and it answers nothing here.
 //
+// A committed run is the channel's PAIR, not a run record alone
+// (iss-2609251842111593). The ingest promotes the run's manifest into its
+// durable directory before it writes the run record, and both carry the run id
+// and the candidate join, so a run record that names this widening run is held
+// to them: its run_id names its own directory, and the manifest beside it names
+// the same run, the comparative position and the same candidate_run. A record
+// that names the widening run and fails either is refused by name, as a record
+// contradicting itself, never read as "no run yet" — the id-less, manifest-less
+// two-key marker a session could write by hand is exactly that record. Whether
+// the pair is tracked by git is not asked: the gate answers between an ingest
+// and the commit that carries it, which is the order the channel is used in.
+//
 // The LOWEST match rather than any match, so two comparative runs over one
 // widening run — a legitimate state, since a second comparative run before any
 // disposition is a second run — resolve to one answer that does not depend on
@@ -171,7 +183,7 @@ func ComparativeRunFor(repoRoot, run string) (string, error) {
 		if err := refuseSymlinkedDir(dir); err != nil {
 			return "", err
 		}
-		head, ok, err := readRunHead(filepath.Join(dir, issueschema.RunRecordFileName))
+		head, ok, err := readRunHead(filepath.Join(dir, issueschema.RunRecordFileName), issueschema.RecordReadLimit)
 		if err != nil {
 			return "", err
 		}
@@ -179,10 +191,40 @@ func ComparativeRunFor(repoRoot, run string) (string, error) {
 			continue
 		}
 		if head.Position == PositionComparative && head.CandidateRun == run {
+			if err := requireChannelPair(dir, name, head); err != nil {
+				return "", err
+			}
 			return name, nil
 		}
 	}
 	return "", nil
+}
+
+// requireChannelPair holds a comparative run record that names a widening run
+// to the shape the channel's ingest leaves: its run_id is its directory's name,
+// and the manifest beside it agrees on the run, the position and the candidate
+// join. A missing or disagreeing half is a fault named with the directory, so a
+// hand-placed marker is refused out loud rather than opening the gate.
+func requireChannelPair(dir, name string, head issueschema.RunHead) error {
+	record := filepath.Join(dir, issueschema.RunRecordFileName)
+	if head.RunID != name {
+		return fmt.Errorf("%w: the comparative run record %s declares run_id %q but is filed under %s; the channel writes a run's record into its own directory, so this record contradicts itself and does not characterise %s",
+			ErrInvariantViolation, record, head.RunID, name, head.CandidateRun)
+	}
+	manifest := filepath.Join(dir, issueschema.RunManifestFileName)
+	m, ok, err := readRunHead(manifest, issueschema.RunArtefactReadLimit)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return fmt.Errorf("%w: the comparative run %s has a run record naming %s but no %s beside it; the channel's ingest writes the manifest before the record, so this run was not committed by it and does not characterise %s",
+			ErrInvariantViolation, name, head.CandidateRun, issueschema.RunManifestFileName, head.CandidateRun)
+	}
+	if m.RunID != head.RunID || m.Position != head.Position || m.CandidateRun != head.CandidateRun {
+		return fmt.Errorf("%w: the comparative run %s's manifest (run_id %q, position %q, candidate_run %q) disagrees with its run record (run_id %q, position %q, candidate_run %q), so it does not characterise %s",
+			ErrInvariantViolation, name, m.RunID, m.Position, m.CandidateRun, head.RunID, head.Position, head.CandidateRun, head.CandidateRun)
+	}
+	return nil
 }
 
 // PositionComparative is the comparative position's token, as the run record
@@ -193,8 +235,8 @@ const PositionComparative = "comparative"
 
 // readRunHead decodes one run record's candidate-join subset. A missing file is
 // "not a committed run", not a fault: the marker's absence is the state.
-func readRunHead(path string) (issueschema.RunHead, bool, error) {
-	raw, err := fsutil.ReadGuarded(path, issueschema.RecordReadLimit)
+func readRunHead(path string, limit int64) (issueschema.RunHead, bool, error) {
+	raw, err := fsutil.ReadGuarded(path, limit)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return issueschema.RunHead{}, false, nil

@@ -31,8 +31,10 @@ docs), `motion_picture` (video).
 - **Class.** Web content is `public` by default. Signals for
   `--confidential`: the user says so; it is their own unpublished/submitted
   work; internal or NDA material; AI-generated content (never citable); a
-  private repo's documentation. When confidential, ask the user for every
-  identifying name variant (aliases — repo names, codenames, domains) and
+  private repo's documentation. When confidential, set `abcd mode
+  product-thinker` or `abcd mode facilitator` for whichever of the product
+  thinker or the technical facilitator is adding the source, then ask them for
+  every identifying name variant (aliases — repo names, codenames, domains) and
   pick `--permission`: `no-public-citation`, `internal-never-cite`,
   `ai-generated-never-cite`, or `ask-author`. The class is declared once, here;
   `add` refuses to guess it.

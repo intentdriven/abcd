@@ -2,6 +2,7 @@ package intent
 
 import (
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -116,9 +117,23 @@ func ReviewOf(repoRoot string, it Intent) (ReviewEntry, error) {
 	case ReviewOwed, ReviewNone:
 		e.ReEmit = ReEmitCommand(it.ID)
 	case ReviewDeadLetter:
-		e.Reason = deadLetterReason(content, e.ReceiptID)
+		e.Reason = withholdLocalTier(deadLetterReason(content, e.ReceiptID))
 	}
 	return e, nil
+}
+
+// localTierTokenRe is one whitespace-delimited token that names the local tier.
+var localTierTokenRe = regexp.MustCompile(`\S*\.work\.local\S*`)
+
+// withholdLocalTier replaces every token of a dead-letter reason that names the
+// local tier. The reader cuts OUR retention clause off the reason, but the
+// reason itself is free text a host's payload supplied (an out-of-enum token
+// quoted back), so it can carry a clause of the same shape, and the listing
+// promises never to hand out a path into the gitignored tier whoever wrote it
+// (iss-2609252038344132). Only the path is withheld; the rest of the reason is
+// what the reader is for.
+func withholdLocalTier(reason string) string {
+	return localTierTokenRe.ReplaceAllString(reason, "[local-tier path withheld]")
 }
 
 // deadLetterReason recovers the reason deadLetterBlock wrote on the line after
@@ -126,14 +141,21 @@ func ReviewOf(repoRoot string, it Intent) (ReviewEntry, error) {
 // retained at <path>. ...". The reason is cut at the LAST retention clause,
 // because the reason is free text and the path after it is ours. A block in any
 // other shape yields the empty reason rather than a guess.
+//
+// The block is readReviewBlocks' block for rcp, so a marker quoted in a fenced
+// example is never the one the reason is read from.
 func deadLetterReason(content, rcp string) string {
-	loc := markerRe.FindStringIndex(content)
-	if loc == nil {
+	lines, b, ok := reviewBlockFor(content, rcp)
+	if !ok {
 		return ""
 	}
-	rest := strings.TrimLeft(content[loc[1]:], "\r\n")
-	line, _, _ := strings.Cut(rest, "\n")
-	line = strings.TrimRight(line, "\r")
+	line := ""
+	for _, ln := range lines[b.start+1 : b.end] {
+		if ln = strings.TrimRight(ln, "\r"); ln != "" {
+			line = ln
+			break
+		}
+	}
 	prefix := "Fidelity review DEAD_LETTER (receipt " + rcp + "): "
 	if !strings.HasPrefix(line, prefix) {
 		return ""

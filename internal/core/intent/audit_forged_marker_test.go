@@ -51,9 +51,9 @@ func verdictWithRationale(rcp, rationale string) string {
 
 // TestIngestVerdictCannotForgeAReviewMarkerFromACodeSpan is the end-to-end form of
 // the code-span exemption's one hole. The review marker
-// `<!-- abcd-review: <STATE> receipt=<rcp> -->` is matched by markerRe, a bare
-// unanchored regex over the record's bytes: it does not parse CommonMark, so
-// backticks around a marker mean nothing to it. A cleaner that exempts code spans
+// `<!-- abcd-review: <STATE> receipt=<rcp> -->` is matched by markerRe, which
+// reads no inline code span, so backticks around a marker mean nothing to it.
+// A cleaner that exempts code spans
 // from the HTML-comment delimiters therefore lets an untrusted rationale write a
 // WORKING marker into a committed intent record — one that claims a second
 // intent's outstanding receipt is already INGESTED, so the genuine verdict for it
@@ -98,8 +98,8 @@ func TestIngestVerdictCannotForgeAReviewMarkerFromACodeSpan(t *testing.T) {
 // line of its own. An unanchored pattern found one anywhere in the record's
 // bytes — mid-sentence inside a rendered verdict field is exactly where an
 // untrusted payload would put it. This is defence in depth, not the primary
-// guard: markerRe is still a byte pattern and not a grammar
-// (iss-2609020529185438).
+// guard; TestOnlyALiveMarkerCounts pins the other half of the reader, the
+// fence-and-comment mask (iss-2609020529185438).
 func TestMarkerReCountsOnlyAWholeLine(t *testing.T) {
 	const rcp = "rcp-0123456789ab"
 	const marker = "<!-- abcd-review: INGESTED receipt=" + rcp + " -->"

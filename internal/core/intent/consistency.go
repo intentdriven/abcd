@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"sort"
 	"strconv"
@@ -479,10 +480,39 @@ func consistencyPromptBody(c consistencyCorpus, rcp string) string {
 	}
 	b.WriteString("\n## Rubric (authority; the contract the ingest enforces)\n\n")
 	b.WriteString(consistencyRubricText())
-	b.WriteString("\nRun the intent-auditor agent's Role 2 over the corpus file, then ingest\n")
-	b.WriteString("its findings JSON:\n\n")
+	b.WriteString("\n## Findings shape (authority; the fields the ingest decodes, and no other)\n\n")
+	b.WriteString(consistencyShape(rcp))
+	b.WriteString("\nRun the intent-auditor agent's Role 2 over the corpus file; its findings\n")
+	b.WriteString("JSON takes the shape above. Ingest it with:\n\n")
 	fmt.Fprintf(&b, "    abcd intent consistency ingest --findings-json <path>   # receipt %s\n", rcp)
 	return b.String()
+}
+
+// consistencyShapeHints are the placeholders the stated findings shape shows,
+// keyed by JSON name; the class and severity vocabularies are the ones the
+// rubric states and the ingest checks.
+func consistencyShapeHints(rcp string) map[string]string {
+	return map[string]string{
+		"_type":       ConsistencyType,
+		"receipt_id":  rcp,
+		"rubric_hash": "sha256:<the Provenance block's rubric_hash>",
+		"prompt_hash": "sha256:<the Provenance block's prompt_hash>",
+		"class":       strings.Join(ConsistencyClasses, " | "),
+		"severity":    strings.Join(issueschema.Severities, " | "),
+		"path":        "<a path the corpus manifest lists>",
+		"quote":       "<verbatim from that document, at least 12 characters>",
+	}
+}
+
+// consistencyShape renders the findings payload the consistency ingest decodes
+// as one example object (iss-2609262011046013), from the struct itself, as the
+// fidelity request states its verdict. A finding shows both of its ends,
+// because the ingest requires exactly two.
+func consistencyShape(rcp string) string {
+	return renderShape(reflect.TypeOf(consistencyPayload{}), shapeSpec{
+		hints: consistencyShapeHints(rcp),
+		lens:  map[string]int{"ends": 2},
+	})
 }
 
 // consistencyPolicyFor computes the provenance the host issues for one request.
@@ -598,13 +628,22 @@ type ConsistencyFiling struct {
 // the caller supplies it.
 type ConsistencyFiler func(f ConsistencyFinding, reportRel string) (ConsistencyFiling, error)
 
+// ConsistencyCheck holds one finding, as the filer would write it, to the
+// record gate the filed record must pass, and refuses it with nothing written.
+// It is asked of EVERY finding before the first is filed, so a refusal leaves
+// the ledger as it was. The filer's caller supplies it beside the filer,
+// because only the ledger knows the text a finding is filed as
+// (iss-2609261835118276).
+type ConsistencyCheck func(f ConsistencyFinding, reportRel string) error
+
 // ConsistencyIngestRequest is one ingest.
 type ConsistencyIngestRequest struct {
 	RepoRoot string
 	Payload  []byte
 	// Date is the report's date, YYYY-MM-DD; empty is today in UTC.
-	Date string
-	File ConsistencyFiler
+	Date  string
+	File  ConsistencyFiler
+	Check ConsistencyCheck
 }
 
 // ConsistencyRow is one finding as the report and the result carry it.
@@ -643,6 +682,9 @@ func IngestConsistency(req ConsistencyIngestRequest) (ConsistencyIngestResult, e
 	if req.File == nil {
 		return ConsistencyIngestResult{}, fmt.Errorf("intent: consistency ingest has no ledger to file findings in")
 	}
+	if req.Check == nil {
+		return ConsistencyIngestResult{}, fmt.Errorf("intent: consistency ingest has no prose-citation check for the records it files; refusing to ingest (nothing written)")
+	}
 	date := req.Date
 	if date == "" {
 		date = time.Now().UTC().Format(time.DateOnly)
@@ -678,6 +720,14 @@ func IngestConsistency(req ConsistencyIngestRequest) (ConsistencyIngestResult, e
 	}
 	reportRel := ReviewsShelfRelDir + "/" + dirName + "/00-summary.md"
 
+	// Every finding is held to the record gate before the first is filed: a
+	// refusal part-way through the filing would leave the findings before it
+	// in the ledger with no report to cite.
+	for _, f := range rv.Findings {
+		if err := req.Check(f, reportRel); err != nil {
+			return ConsistencyIngestResult{}, fmt.Errorf("intent: finding %d of %d: %w", f.Number, len(rv.Findings), err)
+		}
+	}
 	for _, f := range rv.Findings {
 		filing, err := req.File(f, reportRel)
 		if err != nil {
@@ -825,10 +875,7 @@ func validateConsistency(repoRoot string, raw []byte) (consistencyReview, error)
 	}
 	want := consistencyPolicyFor(consistencyPromptBody(c, rcp))
 	if p.Policy.RubricHash != want.RubricHash || p.Policy.PromptHash != want.PromptHash {
-		return consistencyReview{}, fmt.Errorf("intent: findings %s carry policy hashes this request never issued; refusing to ingest.\n"+
-			"  rubric_hash: got %s, issued %s\n  prompt_hash: got %s, issued %s\n"+
-			"Echo the two values the request's Provenance block states, rather than computing a hash yourself.",
-			rcp, p.Policy.RubricHash, want.RubricHash, p.Policy.PromptHash, want.PromptHash)
+		return consistencyReview{}, issuedPolicyRefusal("findings payload", rcp, p.Policy, want, "abcd intent consistency"+scopeArg(scope))
 	}
 	if strings.TrimSpace(p.Verifier.ID) == "" {
 		return consistencyReview{}, fmt.Errorf("intent: verifier.id is required; refusing to ingest")

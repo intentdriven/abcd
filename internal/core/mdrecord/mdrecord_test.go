@@ -544,3 +544,45 @@ func TestFirstContentSkipsBlanksAndComments(t *testing.T) {
 		}
 	}
 }
+
+// TestOpensFenceIsReadsOpener pins the exported opener to the one Read applies
+// (iss-2609262309556167): a reader judging a single line — the site renderer
+// asking whether the block it was handed opens a fence — must take the rule the
+// walk that cut the block took, not a prefix test of its own. A backtick run
+// whose info string holds a backtick opens nothing; a tilde run's info string
+// may hold one.
+func TestOpensFenceIsReadsOpener(t *testing.T) {
+	for _, tc := range []struct {
+		line        string
+		top, nested bool
+	}{
+		{"```", true, true},
+		{"```go", true, true},
+		{"   ```sh", true, true},
+		{"````md", true, true},
+		{"~~~", true, true},
+		{"~~~ `x`", true, true},
+		{"``` ```", false, false},
+		{"```x```", false, false},
+		{"``` x ```", false, false},
+		{"```` ``` ````", false, false},
+		{"    ```", false, true},
+		{"``", false, false},
+		{"prose", false, false},
+	} {
+		for _, c := range []struct {
+			rule Rule
+			want bool
+		}{{TopLevel, tc.top}, {ListNested, tc.nested}} {
+			if got := OpensFence(tc.line, c.rule); got != c.want {
+				t.Errorf("OpensFence(%q, rule %d) = %v, want %v", tc.line, c.rule, got, c.want)
+			}
+			// The same line as the first of a body: Read opens a fence at it
+			// exactly when OpensFence says one opens.
+			fs := Read([]string{tc.line, "body"}, c.rule).Fences
+			if opened := len(fs) > 0 && fs[0].Start == 0; opened != c.want {
+				t.Errorf("Read opens a fence at %q under rule %d: %v; OpensFence says %v", tc.line, c.rule, opened, c.want)
+			}
+		}
+	}
+}

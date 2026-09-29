@@ -49,8 +49,9 @@ func newPeersCommand(asJSON *bool) *cobra.Command {
 			"two status folders is named with the reason and not read; a gone or refused\n" +
 			"worktree's branch is then read from the object store instead.\n\n" +
 			"Strictly read-only: it writes nothing, takes no lock, and fetches nothing.\n" +
-			"Home paths are redacted to ~ on every stream. Exit 0 whatever the peers\n" +
-			"hold; exit 2 outside a git checkout.",
+			"A worktree is named home-relative (~/...), or by its directory name when it\n" +
+			"sits outside HOME, on every stream. Exit 0 whatever the peers hold; exit 2\n" +
+			"outside a git checkout.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cwd, err := os.Getwd()
@@ -71,17 +72,19 @@ func newPeersCommand(asJSON *bool) *cobra.Command {
 	}
 }
 
-// peersView is the report as a surface shows it: paths and reasons redacted.
+// peersView is the report as a surface shows it: paths and reasons redacted,
+// each worktree named by fsutil.DisplayPath, so one outside HOME is its
+// directory name rather than an absolute local path (iss-2609281329007423).
 func peersView(rep peers.Report) peersOutput {
 	out := peersOutput{Sources: rep.Sources, DefaultRef: rep.DefaultRef, Live: rep.Live(), IDs: rep.IDCount(),
 		Peers: make([]peers.Peer, 0, len(rep.Peers)), Skipped: make([]peers.Skipped, 0, len(rep.Skipped))}
 	for _, p := range rep.Peers {
-		p.Path = fsutil.RedactHome(p.Path)
-		p.NotRead = fsutil.RedactHome(p.NotRead)
+		p.NotRead = fsutil.DisplayPathsIn(p.NotRead, p.Path)
+		p.Path = fsutil.DisplayPath(p.Path)
 		out.Peers = append(out.Peers, p)
 	}
 	for _, s := range rep.Skipped {
-		s.Path = fsutil.RedactHome(s.Path)
+		s.Path = fsutil.DisplayPath(s.Path)
 		out.Skipped = append(out.Skipped, s)
 	}
 	return out
@@ -180,7 +183,10 @@ func boardPeers(cwd string, stderr io.Writer) *boardPeersLine {
 	}
 	rep, err := peers.Scan(root)
 	if err != nil {
-		fmt.Fprintf(stderr, "abcd: the peers line is omitted — %s\n", termsafe.Sanitize(fsutil.RedactHome(err.Error())))
+		// The reader's error can name a record folder by its absolute path,
+		// so the checkout is named by the board's display rule here too
+		// (iss-2609281613094952).
+		fmt.Fprintf(stderr, "abcd: the peers line is omitted — %s\n", termsafe.Sanitize(fsutil.DisplayPathsIn(err.Error(), root)))
 		return nil
 	}
 	if rep.IDCount() == 0 {
@@ -228,7 +234,7 @@ func peerHeldRefusal(cwd, prefix, id string, err error) error {
 			h = "a detached worktree"
 		}
 		if l.Path != "" {
-			h += " at " + termsafe.Sanitize(fsutil.RedactHome(l.Path))
+			h += " at " + termsafe.Sanitize(fsutil.DisplayPath(l.Path))
 		} else {
 			h += " (checked out nowhere)"
 		}

@@ -70,9 +70,9 @@ func TestLintReportsASecretEmbeddedInAPageName(t *testing.T) {
 			t.Errorf("MR001 message carries the raw span: %q", f.Message)
 		}
 		switch f.File {
-		case page:
+		case inRepo(t, repo, page):
 			onPage = true
-		case SourcesIndexPath(repo):
+		case inRepo(t, repo, SourcesIndexPath(repo)):
 			onRegistry = true
 			if f.Line <= 0 {
 				t.Errorf("the registry back-link finding must locate its line, got %d", f.Line)
@@ -122,7 +122,7 @@ func TestLintReportsASecretInAnOrphanBackLink(t *testing.T) {
 	}
 	var onRegistry bool
 	for _, f := range pageNameMR001(res) {
-		if f.File == SourcesIndexPath(repo) {
+		if f.File == inRepo(t, repo, SourcesIndexPath(repo)) {
 			onRegistry = true
 		}
 	}
@@ -183,7 +183,7 @@ func TestLintStillScansTheRegistryTextBesideTheBackLinks(t *testing.T) {
 		t.Fatalf("lint: %v", err)
 	}
 	var text int
-	for _, f := range residueFindingsFor(res, SourcesIndexPath(repo)) {
+	for _, f := range residueFindingsFor(res, inRepo(t, repo, SourcesIndexPath(repo))) {
 		if strings.Contains(f.Message, "stored text") {
 			text++
 		}

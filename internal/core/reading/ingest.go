@@ -602,15 +602,18 @@ func ingestUnderLock(root *os.Root, repoRoot string, req IngestRequest, res *Ing
 
 	// The redactor for everything payload-derived that this invocation may now
 	// commit, built ONCE and here: the identity is proven, so from this line on
-	// a refusal is recordable, and a recordable refusal is durable committed
-	// material. Constructing it earlier would make every payload that never
-	// reaches a recordable state pay for a scanner that probes the machine
-	// identity (iss-2609022002241168).
+	// a refusal is recordable, and a recorded refusal is durable committed
+	// material. Every refusal below is recorded through refuse() except the
+	// prose-citation refusal, which is returned unrecorded (see there).
+	// Constructing it earlier would make every payload that never reaches a
+	// recordable state pay for a scanner that probes the machine identity
+	// (iss-2609022002241168).
 	free, degraded := newPayloadField(repoRoot)
 	noteDegraded(res, degraded)
 
 	// A definition that does not resolve refuses the run, and the refusal is
-	// RECORDED like every other one from this point on: the identity is proven
+	// RECORDED like every other one from this point on but the prose-citation
+	// refusal below: the identity is proven
 	// above, so the run happened. The record states no regime, because the
 	// regime is the definition's and this definition did not resolve — an empty
 	// field is the honest value, and a substituted one would be the verb
@@ -634,6 +637,34 @@ func ingestUnderLock(root *os.Root, repoRoot string, req IngestRequest, res *Ing
 	res.RefusedCount = refusedCount
 	if err != nil {
 		return refuse(root, res, out, manifest, def, free, err)
+	}
+
+	// The items are the host's words, bound for reading records that
+	// record-lint's prose_citation_resolves reads, so they are held to that gate
+	// here, before the sweep and the stage (iss-2609261835118276). An item
+	// citing a record id that names no record refuses the whole ingest
+	// UNRECORDED — the one refusal past the identity point that writes no
+	// refusal record, and no sweep runs — as the verdict ingest refuses: a
+	// recorded refusal would give the run an outcome, and refuseARerun would
+	// then turn away the same run re-worded, where the run left parked is
+	// ingested again once the prose describes the record rather than citing
+	// an id that does not exist.
+	//
+	// It still owes the rollback refuse() performs on every other refusal
+	// here: an earlier attempt at this run id that died between its ledger
+	// write and its commit marker left records the run never committed, and
+	// a refused run leaves no reading records. refuseARerun proved the id
+	// carries no outcome, so they are this run's own, and the rollback writes
+	// no outcome, so the re-worded run is still admitted.
+	if err := capture.CheckReadingCitations(capture.IngestReadingRequest{
+		RepoRoot: repoRoot, Run: out.RunID, Items: items,
+	}); err != nil {
+		cause := fmt.Errorf("reading: run %s: %w", out.RunID, err)
+		if rbErr := rollbackThisRun(root, res, out.RunID); rbErr != nil {
+			return fmt.Errorf("%w (and the earlier attempt at run %s could not be rolled back: %v)",
+				cause, out.RunID, rbErr)
+		}
+		return cause
 	}
 
 	// The whole payload has validated: this is the first point at which the
@@ -1026,7 +1057,9 @@ func runOutcome(root *os.Root, runID string) (string, error) {
 // refuse records a list-level refusal and returns it. It is the ONE writer of a
 // refusal record: every list-level refusal past the identity point routes
 // through here, and a refusal that returns bare instead is the defect
-// iss-2608311518250688 names.
+// iss-2608311518250688 names. The one deliberate exception is the
+// prose-citation refusal, returned unrecorded so the run stays parked for its
+// re-worded ingest; it still performs this function's rollback.
 //
 // The record is durable because the event is: a refused run is a run that
 // happened, and a rerun is a NEW run with a new run id, never an amendment. It
