@@ -435,6 +435,7 @@ func moveFile(from, to string) error {
 		return os.Remove(from)
 	}
 	if err := os.Rename(from, to); err == nil {
+		narrowMoved(to)
 		return nil
 	}
 	// Cross-device, or a rename the filesystem refused: copy then remove, and
@@ -447,6 +448,25 @@ func moveFile(from, to string) error {
 		return err
 	}
 	return os.Remove(from)
+}
+
+// narrowMoved sets a file rename carried into the store to 0o600, the mode the
+// copy branch of moveFile writes. A rename keeps the inode and so the mode an
+// earlier binary gave it, often 0o644. The file is opened O_NOFOLLOW and checked
+// regular on its own descriptor, so a link at the destination is never
+// followed, and the mode is set with fchmod on that descriptor. It is
+// best-effort: the file has already moved, reporting it left behind would be
+// false, and it sits inside an owner-only leaf (records, which
+// narrowRecordsLeaf closes, or staging, which is created 0o700).
+func narrowMoved(path string) {
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	if fi, err := f.Stat(); err == nil && fi.Mode().IsRegular() && fi.Mode().Perm() != 0o600 {
+		_ = f.Chmod(0o600)
+	}
 }
 
 // sameBytes reports whether two files hold identical content.
