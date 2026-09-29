@@ -249,6 +249,12 @@ func TestPDFLiteralTextStringIsRead(t *testing.T) {
 		{"escaped name after a stray parenthesis in a stream", "Zoë Qüxbar",
 			"%PDF-1.7\n1 0 obj\n<< /Length 7 >>\nstream\n\x78\x9c(\x01\x02\x03\nendstream\nendobj\n" +
 				"2 0 obj\n<< /Author (Zo\\353 Q\\374xbar) >>\nendobj\n", true},
+		// PDF 2.0 admits UTF-8 text strings behind EF BB BF; escaped, their
+		// bytes read as PDFDocEncoding would be mojibake.
+		{"PDF 2.0 UTF-8 name with octal escapes", "Zoë Qüxbar",
+			"%PDF-2.0\n<< /Author (" + pdfOctal([]byte("\xef\xbb\xbfZoë Qüxbar")) + ") >>\n", true},
+		{"PDF 2.0 UTF-8 name in a hex string", "Zoë Qüxbar",
+			"%PDF-2.0\n<< /Author " + pdfHex([]byte("\xef\xbb\xbfZoë Qüxbar"), false, 0) + " >>\n", true},
 		{"short name with no person key in reach", "Zedqx",
 			"%PDF-1.7\n<< /Title (" + pdfOctal(utf16Bytes("scanned "+strings.Repeat("q", 100)+" Zedqx", true)) + ") >>\n", false},
 	}

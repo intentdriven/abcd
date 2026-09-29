@@ -9,7 +9,8 @@ import (
 // metaview.go — the byte scan's views of document metadata that a plain byte
 // read cannot see (iss-2609261659051539, iss-2609261831352258).
 //
-// Two metadata stores hide their text from the raw bytes, each in its own way.
+// Two metadata stores hide their text from the raw bytes, each in its own way,
+// and a third hides the key that makes a short name in it a person field.
 //
 // EXIF keeps its tags in a TIFF image file directory: a binary table whose
 // twelve-byte entries name a tag, a type, a count and the offset of the value.
@@ -22,14 +23,18 @@ import (
 // sub-IFD it points at — and decodes the text tags one value to a line. The
 // person tags (Artist, Copyright, XPAuthor, CameraOwnerName) register their
 // raw value span with metadataFields, which is what keeps a short name there.
+// The IPTC-IIM record in a JPEG's APP13 segment has the same shape for a
+// person: its By-line and kin are binary datasets with no key text, so
+// iptcPersonSpans records their value spans too.
 //
 // A PDF literal string is written between balanced parentheses with backslash
 // escapes, so a UTF-16 /Author spelled \376\377\000Z..., a raw UTF-16 string
 // whose escaped parenthesis knocks every later unit out of step, and a
 // PDFDocEncoding name with an escaped or raw accented letter never put the
 // text's bytes in the file. pdfLiteralView decodes the string syntax and hands
-// the bytes to the UTF-16 view, and reads them as PDFDocEncoding besides;
-// pdfDocHexView does the second for a hex string with no mark.
+// the bytes to the UTF-16 view, and reads an unmarked string as UTF-8 behind
+// its PDF 2.0 mark or as PDFDocEncoding otherwise; pdfDocHexView does the
+// same for a hex string with no UTF-16 mark.
 //
 // Every view feeds the SAME byte rules the raw bytes get (byteViewFindings),
 // and each decoded byte maps to the raw offset it came from, so a finding is
@@ -289,7 +294,8 @@ func isPDFData(data []byte) bool {
 // pdfLiteralView returns the text of every PDF literal string whose bytes the
 // raw scan cannot read as written — one holding an escape or a byte above
 // ASCII — decoded from the string syntax and read two ways: its byte-order
-// marked runs as UTF-16 (utf16View), and the whole string as PDFDocEncoding.
+// marked runs as UTF-16 (utf16View), and the whole string as UTF-8 behind its
+// mark or as PDFDocEncoding (appendPDFText).
 // Each decoded byte maps to the raw offset of the first byte of its escape or
 // code unit (a separator to the string's end).
 //
@@ -343,7 +349,7 @@ func pdfLiteralView(data []byte) (decodedView, bool) {
 		if !pdfTextLike(raw) {
 			continue
 		}
-		text, pos = appendPDFDoc(text, pos, raw, off)
+		text, pos = appendPDFText(text, pos, raw, off)
 	}
 	if len(text) == 0 {
 		return decodedView{}, false
@@ -476,10 +482,19 @@ var pdfDocHigh = [...]rune{
 	0x20ac,
 }
 
-// appendPDFDoc appends raw read as PDFDocEncoding to text as one line, each
-// UTF-8 byte of a character mapped through off to its source's raw offset;
-// off carries one entry past raw, the string's end, for the separator.
-func appendPDFDoc(text []byte, pos []int, raw []byte, off []int) ([]byte, []int) {
+// appendPDFText appends the bytes of an unmarked PDF text string to text as
+// one line: behind a UTF-8 mark (EF BB BF, which PDF 2.0 admits) as UTF-8,
+// and otherwise read as PDFDocEncoding. Each UTF-8 byte of a character maps
+// through off to its source's raw offset; off carries one entry past raw, the
+// string's end, for the separator.
+func appendPDFText(text []byte, pos []int, raw []byte, off []int) ([]byte, []int) {
+	if len(raw) >= 3 && raw[0] == 0xef && raw[1] == 0xbb && raw[2] == 0xbf {
+		for k := 3; k < len(raw); k++ {
+			text = append(text, raw[k])
+			pos = append(pos, off[k])
+		}
+		return append(text, '\n'), append(pos, off[len(raw)])
+	}
 	for k, c := range raw {
 		r := rune(c)
 		if c >= 0x80 && c <= 0xa0 {
@@ -497,9 +512,10 @@ func appendPDFDoc(text []byte, pos []int, raw []byte, off []int) ([]byte, []int)
 	return append(text, '\n'), append(pos, off[len(raw)])
 }
 
-// pdfDocHexView returns every PDF hex string whose bytes open with no
-// byte-order mark, read as PDFDocEncoding: a hex /Author is spelled in digits,
-// so its name is in no raw byte. The marked ones are pdfHexView's.
+// pdfDocHexView returns every PDF hex string whose bytes open with no UTF-16
+// mark, read as UTF-8 behind its mark or as PDFDocEncoding (appendPDFText): a
+// hex /Author is spelled in digits, so its name is in no raw byte. The UTF-16
+// ones are pdfHexView's.
 func pdfDocHexView(data []byte) (decodedView, bool) {
 	if !isPDFData(data) {
 		return decodedView{}, false
@@ -510,7 +526,7 @@ func pdfDocHexView(data []byte) (decodedView, bool) {
 		if len(raw) >= 2 && (raw[0] == 0xfe && raw[1] == 0xff || raw[0] == 0xff && raw[1] == 0xfe) {
 			return
 		}
-		text, pos = appendPDFDoc(text, pos, raw, off)
+		text, pos = appendPDFText(text, pos, raw, off)
 	})
 	if len(text) == 0 {
 		return decodedView{}, false
