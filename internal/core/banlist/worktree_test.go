@@ -346,3 +346,27 @@ func TestPrimaryWorktreeRootRefusesASeparateGitDirInsideAnotherCheckout(t *testi
 		t.Errorf("an unrelated checkout's private store was reported as inherited: %+v", inh)
 	}
 }
+
+// TestPrimaryWorktreeRootRefusesAnAnswerThatIsNotOnePath: git before 2.31 does
+// not know --path-format, echoes the option to stdout and exits 0, so a
+// rev-parse answer can carry the flag's text as well as a path. Every answer
+// the resolution compares must be one absolute path or the resolution fails
+// closed, as the pre-commit guard's does (iss-2608291924452604). The git on
+// PATH here prefixes the echoed option to its --git-dir and --git-common-dir
+// answers only, so the --show-toplevel confirmation alone cannot refuse it.
+func TestPrimaryWorktreeRootRefusesAnAnswerThatIsNotOnePath(t *testing.T) {
+	_, linked := worktreePair(t)
+	real, err := exec.LookPath("git")
+	if err != nil {
+		t.Skip("git unavailable")
+	}
+	bin := t.TempDir()
+	script := "#!/bin/sh\nfor a in \"$@\"; do case \"$a\" in --git-dir|--git-common-dir) echo \"--path-format=absolute\";; esac; done\nexec '" + real + "' \"$@\"\n"
+	if err := os.WriteFile(filepath.Join(bin, "git"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	if got, ok := PrimaryWorktreeRoot(linked); ok {
+		t.Fatalf("resolved %q from rev-parse answers that are not one absolute path", got)
+	}
+}
