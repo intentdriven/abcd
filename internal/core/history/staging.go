@@ -398,7 +398,8 @@ func Stage(repoRoot, rootSHA string, meta StageMeta, raw []byte) (StageResult, e
 	// The sidecar carries no source labels and the drain stores every entry as
 	// the host's own native transcript, so a stage labelled anything else would
 	// be relabelled on the way through. It is refused here instead.
-	if route, tool := sourceLabels(meta.Lineage.Kind, meta.Lineage.Tool); route != RouteNative || tool != ToolHost {
+	// The labels validated above, so settling them cannot fail here.
+	if route, tool, _ := sourceLabels(meta.Lineage.Kind, meta.Lineage.Tool); route != RouteNative || tool != ToolHost {
 		return StageResult{}, fmt.Errorf("history: staging holds only the host's own native transcripts, not route %q tool %q; capture the transcript instead", route, tool)
 	}
 	if strings.ContainsAny(meta.SourcePath, "\r\n") {

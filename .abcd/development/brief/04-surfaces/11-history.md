@@ -68,7 +68,10 @@ owns is refused and left untouched (iss-2609291610432030).
   would change refuses the capture. A record stored before the split carries
   the route alone and reads under both labels, derived without rewriting it:
   `native` from `host`, and the fused `specstory-import` as an import from
-  `specstory`.
+  `specstory`. The fused value names its tool already, so a capture that pairs
+  it with a different tool is refused, naming both and the two-label spelling,
+  and a stored record that pairs them is not read; the same tool named twice
+  is accepted.
   Asked for a whole session instead, capture stores the named session's main
   thread and every sub-agent transcript it spawned in one call — the write-side
   twin of listing a session — finding them under the paths given, or the

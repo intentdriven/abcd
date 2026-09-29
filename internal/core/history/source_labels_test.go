@@ -227,3 +227,104 @@ func TestStagingHoldsOnlyTheHostsOwnTranscripts(t *testing.T) {
 		t.Errorf("staging refused the host's own transcript: %v", err)
 	}
 }
+
+// TestLegacyFusedKindRefusesAConflictingTool: the fused spelling already names
+// its tool, so a caller that also names a DIFFERENT tool has given two answers
+// to one question. Neither is picked silently: the capture is refused, naming
+// both values and the two-label spelling to use, and nothing is written. The
+// same tool named twice is one answer, and is accepted.
+func TestLegacyFusedKindRefusesAConflictingTool(t *testing.T) {
+	repoRoot, home := setupStore(t)
+
+	_, err := Capture(repoRoot, testRootSHA, []byte("user: two answers\n"),
+		CaptureMeta{SessionID: "sess-conflict", Kind: "specstory-import", Tool: "cursor"})
+	if err == nil {
+		t.Fatal("a fused specstory-import kind with tool cursor was accepted")
+	}
+	for _, want := range []string{`"specstory-import"`, `"specstory"`, `"cursor"`, "kind import with tool cursor"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("refusal does not name %s:\n%v", want, err)
+		}
+	}
+	entries, _ := os.ReadDir(filepath.Join(home, ".abcd", "transcripts", testRootSHA, "records"))
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), ".md") {
+			t.Errorf("the refused capture wrote %s", e.Name())
+		}
+	}
+
+	res, err := Capture(repoRoot, testRootSHA, []byte("user: one answer twice\n"),
+		CaptureMeta{SessionID: "sess-agree", Kind: "specstory-import", Tool: "specstory"})
+	if err != nil {
+		t.Fatalf("the fused kind with its own tool was refused: %v", err)
+	}
+	if res.Record.SourceKind != RouteImport || res.Record.SourceTool != "specstory" {
+		t.Errorf("stored as route %q tool %q, want import / specstory", res.Record.SourceKind, res.Record.SourceTool)
+	}
+}
+
+// TestRecordWithConflictingLabelsIsNotRead: the read side of the same rule. No
+// writer produces a record whose fused source_kind names one tool and whose
+// source_tool names another, so one on disk is malformed. It is not read under
+// either answer: Read does not return it, and migrate — the one writer that
+// re-stamps an existing record's labels — leaves it byte-for-byte alone.
+func TestRecordWithConflictingLabelsIsNotRead(t *testing.T) {
+	repoRoot, home := setupStore(t)
+	const full = "5a9221e2-fa77-4be5-84d3-779199c449d7"
+	content := strings.Replace(compositeRecord("5a9221e2--agent-acf07c33", full),
+		"source_kind: native\n", "source_kind: specstory-import\nsource_tool: cursor\n", 1)
+	path := planted(t, home, "20260101T000000.000000000Z-5a9221e2--agent-acf07c33.md", content)
+
+	if rec, _, err := Read(repoRoot, testRootSHA, "5a9221e2--agent-acf07c33"); err == nil {
+		t.Errorf("a record with conflicting labels was read as route %q tool %q", rec.SourceKind, rec.SourceTool)
+	}
+	res, err := Migrate(testRootSHA, MigrateOptions{RepoRoot: repoRoot, Apply: true})
+	if err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+	if len(res.Migrated) != 0 {
+		t.Errorf("migrate re-stamped a record with conflicting labels: %+v", res.Migrated)
+	}
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != content {
+		t.Errorf("migrate rewrote a record with conflicting labels:\n%s", after)
+	}
+}
+
+// TestMigrateRefusesARedactedToolLabel is Capture's rule on migrate's write:
+// the tool label is a name, and a name the redaction pass rewrote is not the
+// tool's name. Migrate refuses the record with that reason, in the same words
+// Capture uses, rather than leaving the refusal to whether the mask happens to
+// fail the slug shape on the re-validate.
+func TestMigrateRefusesARedactedToolLabel(t *testing.T) {
+	repoRoot, home := setupStore(t)
+	cfgDir := filepath.Join(repoRoot, ".abcd", "config")
+	if err := os.MkdirAll(cfgDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfg := `{"patterns":{"leaky":{"regex":"zzleaktool[0-9]+","kind":"token","label":"leaky tool","severity":"hard_fail"}}}`
+	if err := os.WriteFile(filepath.Join(cfgDir, "pii.json"), []byte(cfg), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	const full = "5a9221e2-fa77-4be5-84d3-779199c449d7"
+	content := strings.Replace(compositeRecord("5a9221e2--agent-acf07c33", full),
+		"source_kind: native\n", "source_kind: import\nsource_tool: zzleaktool42\n", 1)
+	path := planted(t, home, "20260101T000000.000000000Z-5a9221e2--agent-acf07c33.md", content)
+
+	res, err := Migrate(testRootSHA, MigrateOptions{RepoRoot: repoRoot, Apply: true})
+	if err != nil {
+		t.Fatalf("Migrate: %v", err)
+	}
+	if len(res.Migrated) != 0 || len(res.Refused) != 1 {
+		t.Fatalf("want 0 migrated and 1 refused, got %d/%d (%+v)", len(res.Migrated), len(res.Refused), res)
+	}
+	if !strings.Contains(res.Refused[0].Refused, "source tool label was redacted") {
+		t.Errorf("refusal does not say the tool label was redacted: %q", res.Refused[0].Refused)
+	}
+	if after, _ := os.ReadFile(path); string(after) != content {
+		t.Errorf("migrate rewrote the refused record:\n%s", after)
+	}
+}

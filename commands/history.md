@@ -227,7 +227,9 @@ that names none records `host`, and an import must name its tool, which is
 never `host`. A route word is never accepted as a tool, nor a tool as the route.
 A record stored before the two labels were split carries `source_kind` alone and
 reads under both: `native` as `native` from `host`, and `specstory-import` as
-`import` from `specstory`. The write is idempotent on the source's content hash: an
+`import` from `specstory`. The fused `specstory-import` names its tool already, so
+`--kind specstory-import` with a `--tool` naming a different tool is refused; name
+the two labels separately (`--kind import --tool <tool>`). The write is idempotent on the source's content hash: an
 identical transcript already stored under the same session and labels is a no-op. If any hard-fail secret or the
 caller's own home path survives redaction, capture refuses to write.
 

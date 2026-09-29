@@ -71,3 +71,27 @@ func TestHistoryCaptureRefusesAForgedLabel(t *testing.T) {
 		}
 	}
 }
+
+// TestHistoryCaptureRefusesAFusedKindWithAnotherTool: the legacy fused --kind
+// already names its tool, so a --tool naming a different one is refused at the
+// CLI, naming both values and the two-label spelling; the same tool is accepted.
+func TestHistoryCaptureRefusesAFusedKindWithAnotherTool(t *testing.T) {
+	historySourceRepo(t)
+
+	out, err := runCLIStdinErr(t, "user: hi\n",
+		"history", "capture", "--session", "sess-conflict", "--kind", "specstory-import", "--tool", "cursor")
+	if err == nil {
+		t.Fatalf("--kind specstory-import --tool cursor was accepted:\n%s", out)
+	}
+	msg := err.Error() + string(out)
+	for _, want := range []string{"specstory-import", "cursor", "kind import with tool cursor"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("refusal does not name %q:\n%s", want, msg)
+		}
+	}
+	runCLIStdin(t, "user: hi\n",
+		"history", "capture", "--session", "sess-agree", "--kind", "specstory-import", "--tool", "specstory")
+	if list := string(runCLI(t, "history", "list")); !strings.Contains(list, "import (specstory)") {
+		t.Errorf("the fused kind with its own tool did not store as import (specstory):\n%s", list)
+	}
+}

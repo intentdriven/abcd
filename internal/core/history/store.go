@@ -1,6 +1,7 @@
 package history
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -70,6 +71,11 @@ var legacyKinds = map[string][2]string{
 	"specstory-import": {RouteImport, "specstory"},
 }
 
+// errToolRedacted refuses a source_tool label the redaction pass rewrote. The
+// label is a name, and a name redaction changed is not the tool's name, so
+// Capture and migrate stop rather than store a record under a masked label.
+var errToolRedacted = errors.New("history: the source tool label was redacted; name the tool with a label the scanner does not match")
+
 // toolRe is the source_tool shape: a lowercase slug, so the label can be
 // neither a sentence nor a second frontmatter line.
 var toolRe = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}$`)
@@ -79,17 +85,23 @@ var toolRe = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}$`)
 // fused kind splits into its route and tool, and a native record that names no
 // tool names the host. Anything else passes through for validateSource to
 // judge.
-func sourceLabels(kind, tool string) (route, sourceTool string) {
+//
+// A fused kind already names its tool, so a tool that names a different one is
+// a second answer to the same question. It is refused, never resolved in favour
+// of either: the store cannot know which one the caller meant. Naming the same
+// tool twice is one answer and passes.
+func sourceLabels(kind, tool string) (route, sourceTool string, err error) {
 	if pair, ok := legacyKinds[kind]; ok {
-		kind = pair[0]
-		if tool == "" {
-			tool = pair[1]
+		if tool != "" && tool != pair[1] {
+			return "", "", fmt.Errorf("history: source kind %q already names the tool %q, which conflicts with the tool %q; name the two labels separately: kind %s with tool %s, or kind %s with tool %s",
+				kind, pair[1], tool, pair[0], tool, pair[0], pair[1])
 		}
+		kind, tool = pair[0], pair[1]
 	}
 	if kind == RouteNative && tool == "" {
 		tool = ToolHost
 	}
-	return kind, tool
+	return kind, tool, nil
 }
 
 // validateSource holds the two labels apart. The route is one of the closed
@@ -159,7 +171,11 @@ func (m CaptureMeta) validate() error {
 	}
 	// Judged as they will be stored: staging validates a meta long before
 	// Capture settles its labels, and must accept exactly what Capture will.
-	if err := validateSource(sourceLabels(m.Kind, m.Tool)); err != nil {
+	route, tool, err := sourceLabels(m.Kind, m.Tool)
+	if err != nil {
+		return err
+	}
+	if err := validateSource(route, tool); err != nil {
 		return err
 	}
 	if m.AgentID != "" && !agentIDRe.MatchString(m.AgentID) {
@@ -376,8 +392,14 @@ func parseRecord(data []byte) (Record, string, error) {
 	r.SessionID = fields[fmSessionID]
 	r.RootCommit = fields[fmRootCommit]
 	// Both vintages read: a record written before the route and the tool were
-	// split carries source_kind alone, and its labels are derived here.
-	r.SourceKind, r.SourceTool = sourceLabels(fields[fmSourceKind], fields[fmSourceTool])
+	// split carries source_kind alone, and its labels are derived here. No
+	// writer pairs a fused kind with a different tool, so a record that does is
+	// malformed and is not read under either answer.
+	var err error
+	r.SourceKind, r.SourceTool, err = sourceLabels(fields[fmSourceKind], fields[fmSourceTool])
+	if err != nil {
+		return Record{}, "", err
+	}
 	r.SourceSHA256 = fields[fmSourceSHA]
 	if r.SessionID == "" || r.RootCommit == "" || r.SourceSHA256 == "" {
 		return Record{}, "", fmt.Errorf("history: record frontmatter missing a required field")

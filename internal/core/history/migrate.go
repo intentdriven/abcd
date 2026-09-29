@@ -240,9 +240,16 @@ func migrateOne(sc *scanner.Scanner, opts MigrateOptions, r Record, prefix, agen
 	// sanitise-then-verify pass a captured body does. The recovered session id
 	// does NOT need one: it came out of a body that was already redacted on the
 	// way in.
+	tool := meta.Tool
 	meta, err = redactLineage(sc, meta)
 	if err != nil {
 		return err
+	}
+	// The tool label refuses rather than being stored changed, as in Capture.
+	// The re-validate below would also refuse most masks, but only because a
+	// mask happens to fail the slug shape; this check does not rest on that.
+	if meta.Tool != tool {
+		return errToolRedacted
 	}
 	// Re-validated: redaction rewrites these scalars, and a rewrite that
 	// produced a value the store will not accept must be caught before it is

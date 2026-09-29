@@ -193,7 +193,11 @@ func Capture(repoRoot, rootSHA string, raw []byte, meta CaptureMeta) (CaptureRes
 	// The labels are settled before they are judged: a pre-split fused kind is
 	// recorded under the two labels it meant, and a native capture that names
 	// no tool records the host.
-	meta.Kind, meta.Tool = sourceLabels(meta.Kind, meta.Tool)
+	var err error
+	meta.Kind, meta.Tool, err = sourceLabels(meta.Kind, meta.Tool)
+	if err != nil {
+		return CaptureResult{}, err
+	}
 	if err := meta.validate(); err != nil {
 		return CaptureResult{}, err
 	}
@@ -331,7 +335,7 @@ func Capture(repoRoot, rootSHA string, raw []byte, meta CaptureMeta) (CaptureRes
 	tool := meta.Tool
 	meta = applyLineageScalars(meta, scalars)
 	if meta.Tool != tool {
-		return CaptureResult{}, fmt.Errorf("history: the source tool label was redacted; name the tool with a label the scanner does not match")
+		return CaptureResult{}, errToolRedacted
 	}
 
 	// Supersession: the unit of the store is one (session_id, agent_id), not one
