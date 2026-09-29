@@ -232,6 +232,12 @@ func newGuardHookCommand() *cobra.Command {
 			"and a here-document with no delimiter line are grammar a shell does run,\n" +
 			"so each gets a verdict — the backslash is read as bash reads it, the\n" +
 			"unterminated document blocks.\n\n" +
+			"The hook judges only what the host hands it, and the plugin's hook\n" +
+			"manifest hands it the shell tool and the question tool and nothing else.\n" +
+			"A call through any other tool never reaches the guard: a file the host's\n" +
+			"own tools write or edit, or a command a tool from another extension runs,\n" +
+			"is neither checked nor warned about. That is the guard's standing scope,\n" +
+			"not a degradation, and the guard: line of abcd ahoy does not report it.\n\n" +
 			"A host whose shell tool takes a per-call working directory passes it as\n" +
 			"tool_input.workdir. It is resolved against the session directory, and a\n" +
 			"command whose workdir is an existing directory in another repository is\n" +
