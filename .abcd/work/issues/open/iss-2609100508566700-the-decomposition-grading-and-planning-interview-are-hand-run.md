@@ -9,8 +9,8 @@ found_during: "autonomous-run field experiment in a managed repository, 2026-09-
 origin: researcher-authored
 production_mode: hand-written
 found_at: "conventions (decomposition grading, planning interview)"
-deferred_after: "v0.10.0"
-deferral_reason: "ruling owed to the product thinker (away; run A 2026-09-25): Plan tool support for decomposition grading and the planning interview, enforcing feasibility before routing?"
+deferred_after: "v0.11.1"
+deferral_reason: "ruling owed to the product thinker (away; run A 2026-09-25; rulings-owed H): Plan tool support for decomposition grading and the planning interview, enforcing feasibility before routing?"
 ---
 
 The decomposition grading and the planning interview are hand-run rituals with no tool support, and running them repeatedly surfaced an ordering rule the tool could enforce.

@@ -9,8 +9,8 @@ found_during: "autonomous-run field experiment in a managed repository, 2026-09-
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal (intent plan) / conventions"
-deferred_after: "v0.10.0"
-deferral_reason: "ruling owed to the product thinker (away; run A 2026-09-25): Add an intent plan --delegated-by stamp and a gate for delegated planning?"
+deferred_after: "v0.11.1"
+deferral_reason: "ruling owed to the product thinker (away; run A 2026-09-25; rulings-owed H): Add an intent plan --delegated-by stamp and a gate for delegated planning?"
 ---
 
 The planning interview is human-only by rule, so an autonomous run has no sanctioned way to record that the human delegated it.
