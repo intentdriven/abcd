@@ -52,8 +52,9 @@ the other two in full every time.
 
 ## When NOT to use
 
-Do not use "the loop" for a [phase](phase.md) — a phase is a stretch of the sequence, and the
-loop is the cycle each change runs through, whatever phase it lands in. Do not use it for the
+Do not use "the loop" for a stretch of the sequence: the loop is the cycle each change runs
+through, and the sequence is dependencies plus the lifecycle shelves
+([record families](record-families.md)); the [phase](phase.md) that once named a stretch is retired. Do not use it for the
 agent loop of the wider literature; the terminology crosswalk records abcd's position on that
 term separately.
 
@@ -61,11 +62,11 @@ term separately.
 
 - "Shipping closes the loop twice: the verdict lands on the intent and the brief passage is rewritten."
 - "The run loop gates each iteration on a receipt, whichever adapter provides it."
-- "The lifeboat round-trip — disembark on a corpus repo, embark into an empty target — is the integration milestone."
+- "The lifeboat round-trip, disembark on a corpus repo and embark into an empty target, is the end-to-end check of both halves."
 
 ## Related terms
 
 - [record families](record-families.md) — the one page that maps the record families and how they relate
 - [intent](intent.md), [spec](spec.md), [brief](brief.md) — the record loop's three record kinds
-- [phase](phase.md) — the sequencing unit, not a stage of the loop
+- [phase](phase.md): the retired sequencing unit (adr-2609212115255771), never a stage of the loop
 - [disembark](disembark.md), [lifeboat](lifeboat.md) — the round-trip's two halves

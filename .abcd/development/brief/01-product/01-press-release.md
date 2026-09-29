@@ -30,7 +30,7 @@ See [`04-scope.md`](04-scope.md) for the full scope boundary and [`04-surfaces/`
 
 ## What's Out of Scope
 
-Code-bundling lifeboats, cross-corpus synthesis, public-source vendoring with provenance, scheduled `dev-sync`, opencode harness portability, hash-chain conversation audit, and 13 more later-phase items — all live as press-release intents in `.abcd/development/intents/drafts/`. See [`06-delivery/03-out-of-scope.md`](../06-delivery/03-out-of-scope.md) for the canonical later-phase list.
+Code-bundling lifeboats, cross-corpus synthesis, public-source vendoring with provenance, scheduled `dev-sync`, opencode harness portability, hash-chain conversation audit, and 13 more items not yet under way — all live as press-release intents in `.abcd/development/intents/drafts/`. See [`06-delivery/03-out-of-scope.md`](../06-delivery/03-out-of-scope.md) for the canonical later-phase list.
 
 ## Acceptance Criteria
 
@@ -46,7 +46,7 @@ Code-bundling lifeboats, cross-corpus synthesis, public-source vendoring with pr
 
 ## Open Questions
 
-- **Pass B signal density.** chat-distiller's effectiveness depends on the native transcript store's signal-to-noise. Phase 0 sampling on idelphiDev measures actual density before Pass B's design locks. If signal is too thin, transcript-noise mitigation moves up from itd-11 (a later-phase item) into an earlier phase.
+- **Pass B signal density.** chat-distiller's effectiveness depends on the native transcript store's signal-to-noise. Sampling on idelphiDev measures actual density before Pass B's design locks. If signal is too thin, transcript-noise mitigation moves up from itd-11 (a draft intent) into an earlier phase.
 - **Brief-skeleton enforcement.** The numbered-folder layout for `.abcd/development/brief/` is a current convention but not enforced by `intent-auditor` or `documentation-auditor`. See [`05-internals/README.md § enforcement policy`](../05-internals/README.md#policy-no-skeleton-enforcement-deferred) for the candidates list and the deferred-rigidity rationale (this "defer" means deferring the rigidity decision itself, not a release horizon).
 - **Round-trip fidelity floor.** What's the minimum percentage of source-repo principles, decisions, and pitfalls that must survive `disembark → embark` for the round-trip to be considered "successful"? abcd ships without an explicit floor; the lifeboat review verdict is the proxy. A future intent (likely paired with itd-15 self-dogfooded SOTA audit) may quantify it.
 

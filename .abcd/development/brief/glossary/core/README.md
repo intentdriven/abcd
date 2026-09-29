@@ -1,7 +1,7 @@
 # Core context
 
 The `core` bounded context holds terms that apply across all of abcd — the
-foundational vocabulary (brief, intent, spec, oracle, persona, phase, voyage,
+foundational vocabulary (brief, intent, spec, bundle, step, oracle, persona, voyage,
 transport, lifeboat, disembark) that other contexts build on rather than redefine,
 together with the words the record uses in more than one sense: construal, ledger,
 loop, plan, reading-position, record, roadmap and surface. Each of those carries a

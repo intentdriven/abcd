@@ -53,5 +53,5 @@ no peer present.
 ## Out of scope
 
 - **Cross-version schema migration** — abcd stamps `schema_version: 1`
-  everywhere; migrators are added if/when a later phase changes the shape (itd-9,
-  a later phase).
+  everywhere; migrators are added if a later intent changes the shape (itd-9,
+  a draft).

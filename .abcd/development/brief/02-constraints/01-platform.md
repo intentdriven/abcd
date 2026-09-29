@@ -34,4 +34,4 @@ The core is a transport-agnostic Go package ([adr-23](../../decisions/adrs/0023-
 
 ## Validation corpus
 
-See [`01-product/02-context.md`](../01-product/02-context.md) for the canonical validation-corpus list (SSOT). Summary: `idelphiDev/` (primary), `abcdSubZero/`, `idelphiSubZero/`. Per-phase acceptance runs against the corpus with documented exemptions where a feature genuinely doesn't apply.
+See [`01-product/02-context.md`](../01-product/02-context.md) for the canonical validation-corpus list (SSOT). Summary: `idelphiDev/` (primary), `abcdSubZero/`, `idelphiSubZero/`. Acceptance runs against the corpus with documented exemptions where a feature genuinely doesn't apply.
