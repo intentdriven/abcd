@@ -334,9 +334,38 @@ func groundsCheck(it Intent, content string) ReadyCheck {
 		c.Remedy = groundsRemedy(it.ID)
 		return c
 	}
-	last := entries[len(entries)-1]
-	c.Detail = fmt.Sprintf("%d recorded ground(s), most recent %s", len(entries), last.Token)
+	// A run's pick writes its reason as an entry of its own
+	// (itd-2609211116005482); it is counted, but the most recent conjecture
+	// the row names is a person's, so the pick never displaces it.
+	var human []grounds.Grounds
+	for _, g := range entries {
+		if !IsRunPick(g) {
+			human = append(human, g)
+		}
+	}
+	picks := len(entries) - len(human)
+	if len(human) == 0 {
+		c.Detail = fmt.Sprintf("%d recorded ground(s), every one a run pick entry; no person's conjecture is recorded", len(entries))
+		return c
+	}
+	last := human[len(human)-1]
+	c.Detail = fmt.Sprintf("%d recorded ground(s), most recent %s: %s", len(entries), last.Token, clip(last.Text, groundsDetailRunes))
+	if picks > 0 {
+		c.Detail += fmt.Sprintf(" (%d run pick entry(ies) skipped: a run's reason for a pick, not the conjecture)", picks)
+	}
 	return c
+}
+
+// groundsDetailRunes caps the conjecture the grounds row quotes.
+const groundsDetailRunes = 120
+
+// clip shortens s to at most n runes, marking a cut with an ellipsis.
+func clip(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n]) + "…"
 }
 
 // groundsRemedy is the one spelling of how a ground is recorded, so the gate and
