@@ -5,7 +5,7 @@ spec_id: spc-2609211950427074
 kind: standalone
 suggested_kind: null
 reclassification_history: []
-builds_on: [itd-2]
+builds_on: [itd-2, itd-2609201916151817, itd-2609170822093401, itd-2609201925079472, itd-2609201916056194]
 severity: minor
 impact: additive
 ---
@@ -105,6 +105,27 @@ These questions were settled by the spc-5 spec and the Phase 0 harness-interface
   default 30 s with per-tool overrides. See ADR-02 §§ 4–6.
 
 ## Implementation status
+
+_Prerequisites, recorded 2026-09-29 (iss-2609240227236354)._ The readiness gate
+reads this record READY, but its spec (spc-2609211950427074) stands on four
+things the tree does not hold yet, and `builds_on` names the three intents
+behind them:
+
+- **The validator stage the adapter implements.** `abcd build` ships its loop's
+  first pieces, and the validators are a later piece of the same spec
+  (itd-2609201916151817, spec spc-2609202134338445 open; see
+  `internal/core/implement/loop/loop.go`).
+- **The `oracle.review` route.** The layered configuration reader
+  (`internal/core/layered`) exists; the review-route intents it serves,
+  itd-2609170822093401 and itd-2609201925079472, are still planned with specs
+  open.
+- **The command-line runner** the adapters chapter entry sits beside
+  (itd-2609201916056194, spec spc-2609221533057881 open).
+- **An MCP client.** The spec's Approach names one as a new dependency, subject
+  to the new-dependency sign-off; `go.mod` carries none.
+
+The readiness gate does not read `builds_on`, so these edges inform a reader
+and a run that picks this record; they do not change the gate's verdict.
 
 _Added post-spc-5. The spc-5 spec (`spc-5-rp-mcp-integration-declare`) implemented the RP
 MCP bridge/foundation — the typed `RPUnavailable` error (`internal/core/...`,
