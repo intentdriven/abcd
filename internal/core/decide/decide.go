@@ -266,10 +266,10 @@ func redactDecisionText(repoRoot, text string) (string, error) {
 // O_NOFOLLOW refuses a symlinked store.
 func withMintLock(repoRoot string, fn func() error) error {
 	dir := filepath.Join(repoRoot, filepath.FromSlash(ADRsRelDir))
-	if di, err := os.Lstat(dir); err == nil && di.Mode()&os.ModeSymlink != 0 {
-		return fmt.Errorf("decide: %s is a symlink (refusing to follow)", ADRsRelDir)
-	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	// Every level is created and proved real, ancestors included: a leaf
+	// Lstat followed by os.MkdirAll refuses a symlinked adrs/ but follows a
+	// symlinked .abcd/development and mints the ADR under its target.
+	if err := fsutil.EnsureRealDirAll(repoRoot, ADRsRelDir, 0o755); err != nil {
 		return fmt.Errorf("decide: creating %s: %w", ADRsRelDir, err)
 	}
 	fd, err := syscall.Open(dir, syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_NOFOLLOW, 0)

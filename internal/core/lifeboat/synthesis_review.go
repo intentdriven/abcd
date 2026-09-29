@@ -45,6 +45,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/update"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // reviewArtefactDir is where the verdict artefact lives; legacyReviewDir is the
@@ -287,16 +288,16 @@ func validateReview(abs string, raw []byte) (ReviewVerdict, []ReviewFinding, rev
 	// Mode gate: a delegated payload must not claim deterministic. An absent mode is
 	// allowed (the core stamps delegated on write regardless).
 	if in.Mode != "" && in.Mode != ModeDelegated {
-		return "", nil, rep, fmt.Errorf("a delegated payload must not claim mode %q", in.Mode)
+		return "", nil, rep, fmt.Errorf("a delegated payload must not claim mode (%s)", termsafe.DescribeRefused(string(in.Mode)))
 	}
 	// prompt_version gate: required and semver-shaped in delegated mode.
 	if !promptVersionRe.MatchString(in.PromptVersion) {
-		return "", nil, rep, fmt.Errorf("prompt_version %q is not semver-shaped", in.PromptVersion)
+		return "", nil, rep, fmt.Errorf("prompt_version (%s) is not semver-shaped", termsafe.DescribeRefused(in.PromptVersion))
 	}
 	rep.promptVersion = in.PromptVersion
 	// Whole-payload verdict membership gate.
 	if !in.Verdict.Valid() {
-		return "", nil, rep, fmt.Errorf("out-of-enum verdict %q", in.Verdict)
+		return "", nil, rep, fmt.Errorf("out-of-enum verdict (%s)", termsafe.DescribeRefused(string(in.Verdict)))
 	}
 	if len(in.Findings) > maxReviewFindings {
 		return "", nil, rep, fmt.Errorf("too many findings (%d > %d)", len(in.Findings), maxReviewFindings)

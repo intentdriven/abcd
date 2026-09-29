@@ -1,7 +1,12 @@
 package repolint
 
 import (
+	"errors"
+	"io/fs"
+	"os"
 	"path/filepath"
+	"strings"
+	"syscall"
 
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -60,30 +65,27 @@ func (threeTierLayout) Eval(ctx Context) ([]Finding, error) {
 
 		// Local-tier artefacts in a committed tier: NEXT.md, scratch/ and logs/
 		// are the local-ephemeral tier's conventional contents, so their presence
-		// directly under a committed tier is a placement error of the leak class —
-		// per-worktree ephemera about to enter (or already in) history. Presence
-		// is checked on the filesystem, like the tiers themselves: an untracked
-		// NEXT.md in .abcd/work/ is one `git add -A` from being committed. The
-		// check is no-follow: the NAME occupying the path is the violation
-		// regardless of what it is — a dangling symlink named NEXT.md still gets
-		// committed, and its target string can itself be a private path.
-		for _, artefact := range []string{"NEXT.md", "scratch", "logs"} {
-			rel := tier.rel + "/" + artefact
-			present, err := fsutil.ExistsNoFollow(filepath.Join(ctx.RepoRoot, filepath.FromSlash(rel)))
-			if err != nil {
-				return nil, err
-			}
-			if present {
-				out = append(out, Finding{
-					RuleID:   "three-tier-layout",
-					Severity: SeverityError,
-					File:     rel,
-					Message:  "local-tier artefact " + artefact + " found in the " + tier.label + " — per-worktree ephemera must never enter a committed tier",
-					Fix:      "move " + rel + " to the local-ephemeral tier .abcd/.work.local/",
-				})
-			}
+		// in a committed tier is a placement error of the leak class — per-worktree
+		// ephemera about to enter (or already in) history. Presence is checked on
+		// the filesystem, like the tiers themselves: an untracked NEXT.md in
+		// .abcd/work/ is one `git add -A` from being committed. The listing is
+		// no-follow: the NAME occupying the path is the violation regardless of
+		// what it is — a dangling symlink named NEXT.md still gets committed, and
+		// its target string can itself be a private path.
+		found, err := misplacedLocalArtefacts(ctx.RepoRoot, tier.rel, tier.label)
+		if err != nil {
+			return nil, err
 		}
+		out = append(out, found...)
 	}
+
+	// The .abcd/ root is one directory off the modelled incident and just as
+	// committed: a handover dropped there rides the same `git add -A`.
+	rootFound, err := misplacedAt(ctx.RepoRoot, ".abcd", ".abcd/ root", localArtefactNames)
+	if err != nil {
+		return nil, err
+	}
+	out = append(out, rootFound...)
 
 	// The local tier: only an issue when it is present but not gitignored, and
 	// only when git can actually answer — git-absent is "cannot tell", never a
@@ -105,4 +107,88 @@ func (threeTierLayout) Eval(ctx Context) ([]Finding, error) {
 	}
 
 	return out, nil
+}
+
+// localArtefactNames are the local-ephemeral tier's conventional contents. They
+// are matched in any case: on a case-sensitive filesystem `next.md` is a
+// different file from NEXT.md and is committed just the same (iss-173).
+var localArtefactNames = []string{"NEXT.md", "scratch", "logs"}
+
+// handoverName is the one artefact flagged at ANY depth in a committed tier. The
+// handover file is a name the local tier owns outright, so a NEXT.md nested
+// under a tier is the incident one directory down. scratch/ and logs/ are
+// ordinary words a durable record may legitimately nest (a study's own logs/),
+// so they are flagged only where the local tier would put them: directly under
+// a tier root and at the .abcd/ root.
+const handoverName = "NEXT.md"
+
+// misplacedLocalArtefacts reports the local-tier artefacts in the committed tier
+// at tierRel: any of the three names directly under it, and a handover file at
+// any depth below that. The walk never follows a symlink, so a linked directory
+// is judged by its own name and never walked into.
+func misplacedLocalArtefacts(repoRoot, tierRel, label string) ([]Finding, error) {
+	out, err := misplacedAt(repoRoot, tierRel, label, localArtefactNames)
+	if err != nil {
+		return nil, err
+	}
+	tierAbs := filepath.Join(repoRoot, filepath.FromSlash(tierRel))
+	err = filepath.WalkDir(tierAbs, func(p string, d fs.DirEntry, werr error) error {
+		if werr != nil {
+			return werr
+		}
+		// Direct children were judged by misplacedAt; a handover below them is
+		// what the walk is for.
+		if filepath.Dir(p) == tierAbs || p == tierAbs {
+			return nil
+		}
+		if !strings.EqualFold(d.Name(), handoverName) {
+			return nil
+		}
+		rel, rerr := filepath.Rel(repoRoot, p)
+		if rerr != nil {
+			return rerr
+		}
+		out = append(out, artefactFinding(filepath.ToSlash(rel), d.Name(), label))
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// misplacedAt reports each entry directly inside dirRel whose name is one of
+// names in any case. An absent directory holds nothing to report.
+func misplacedAt(repoRoot, dirRel, label string, names []string) ([]Finding, error) {
+	entries, err := os.ReadDir(filepath.Join(repoRoot, filepath.FromSlash(dirRel)))
+	if os.IsNotExist(err) || errors.Is(err, syscall.ENOTDIR) {
+		// Absent, or not a directory at all: nothing sits inside it, and the
+		// missing tier is reported as itself.
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	var out []Finding
+	for _, e := range entries {
+		for _, n := range names {
+			if strings.EqualFold(e.Name(), n) {
+				out = append(out, artefactFinding(dirRel+"/"+e.Name(), e.Name(), label))
+				break
+			}
+		}
+	}
+	return out, nil
+}
+
+// artefactFinding is the one finding shape every misplacement produces, naming
+// the path as it is spelled on disk.
+func artefactFinding(rel, name, label string) Finding {
+	return Finding{
+		RuleID:   "three-tier-layout",
+		Severity: SeverityError,
+		File:     rel,
+		Message:  "local-tier artefact " + name + " found in the " + label + " — per-worktree ephemera must never enter a committed tier",
+		Fix:      "move " + rel + " to the local-ephemeral tier .abcd/.work.local/",
+	}
 }

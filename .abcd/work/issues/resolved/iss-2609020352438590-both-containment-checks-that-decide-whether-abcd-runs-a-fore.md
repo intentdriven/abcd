@@ -9,6 +9,10 @@ found_during: "autonomous-run-2026-09-01"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "hooks/hooks.json"
+resolution: "Fixed shape 2 in the hook shims: every PATH-resolving event also refuses a candidate whose own file is world-writable, judged through a symlink to the file it names (ls -ldL). The remaining shapes were closed by later work: the working-directory containment, the relative PATH element the two shells read differently, and a symlink naming an in-tree binary all end at the owned-only pin of c637a734 (GHSA-gx3m-3224-qqcv), which runs a PATH abcd only when ~/.abcd/path-entry names that exact path; dataDirHazard's artefact and ancestor shapes are closed by the ownership test on the data and cache directories (iss-2609260057111315) and the attested hash the promotion re-checks (GHSA-4q78-ccfv-f374). Residual: the directory holding a symlink's target is not judged; the path-entry pin means only a path the user's own install recorded can reach it."
+impact: fix
+resolved_by:
+  commit: "0ea3161e0"
 ---
 
 Both containment checks that decide whether abcd runs a foreign binary or reads a foreign cache are weaker than the prose around them claims, in two shared ways. (1) The hook shims' PATH rung (hooks/hooks.json, all four PATH-resolving events) compares the candidate binary's directory against the shim's own `pwd -P`, not against the root of the repository the session is working on, so `<repo>/vendor/bin/abcd` is refused from `<repo>` and accepted from `<repo>/sub` — the same hostile clone, a different working directory. (2) Both that rung and dataDirHazard in internal/core/ahoy/data_dir.go judge only the containing directory's mode, so a world-writable file (0777) inside an ordinary 0755 directory passes every check; on a system where the directory's owner is not the only writer of its contents, the binary that is executed is still anyone's to replace. A fix must establish that containment is measured against the repository root the shim is protecting (git rev-parse --show-toplevel, or the harness's project dir), and that the trust test covers the artefact's own mode and ownership, not just its parent's.
@@ -39,3 +43,6 @@ this with the other two.
   non-sticky ANCESTOR (rename-and-substitute) and a world-writable artefact file
   inside a 0755 cache both pass.
 
+## Grounds
+
+- pursued: a PATH abcd that any local user can rewrite is never executed by a hook; a recorded 0777 binary, or a symlink to one, that a hook still runs would show it wrong

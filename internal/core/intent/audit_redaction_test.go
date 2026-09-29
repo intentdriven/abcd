@@ -315,3 +315,57 @@ func TestVerdictHashesAreValidatedShapes(t *testing.T) {
 			"so an unknown digest is empty rather than wrong", res.Status)
 	}
 }
+
+// TestDeadLetterReasonIsRedactedWhereItIsReturned — iss-2609290033521472. The
+// dead-letter RECORD redacts its reason, which quotes the payload, but the
+// result handed back to the surface carried the same reason raw, so the
+// terminal and the transcript got what the record was protected from.
+func TestDeadLetterReasonIsRedactedWhereItIsReturned(t *testing.T) {
+	root := identityRepo(t)
+	const rcp = "rcp-0123456789ab"
+	writeFile(t, root, shippedDir+"/itd-10-alpha.md", shippedWithMarker("itd-10", "alpha", "spc-1", "OWED", rcp))
+	var m map[string]any
+	if err := json.Unmarshal([]byte(leakyVerdict(t, rcp, "cond-2609021016272867")), &m); err != nil {
+		t.Fatal(err)
+	}
+	m["criteria"].([]any)[0].(map[string]any)["verdict"] = "MET on buildbox.local per Jonathan Kensington-Pryce at /Users/zzotherperson/x" // abcd-lint:allow — planted leak
+	raw, err := json.MarshalIndent(m, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := IngestVerdict(root, writeVerdict(t, root, string(raw)))
+	if err != nil {
+		t.Fatalf("IngestVerdict: %v", err)
+	}
+	if res.Status != "dead_letter" {
+		t.Fatalf("status = %q, want dead_letter", res.Status)
+	}
+	assertNoLeak(t, res.Reason)
+}
+
+// TestWrongTypeRefusalDoesNotEchoTheValue — iss-2609290033521472. A payload
+// whose _type is not the fidelity-verdict type is refused before any receipt
+// resolves, and that refusal quoted the _type verbatim, so a home path or a
+// token pasted there reached the terminal and the transcript. The refusal
+// describes the value instead and still names the field and the wanted type.
+func TestWrongTypeRefusalDoesNotEchoTheValue(t *testing.T) {
+	root := t.TempDir()
+	rcp := shipOne(t, root)
+	const planted = "/Users/zzotherperson/.config/tok-SENTINEL-7f3a" // abcd-lint:allow — planted leak
+	payload := strings.Replace(validVerdict(rcp), "abcd/intent-fidelity-verdict/v1", planted, 1)
+	_, err := IngestVerdict(root, writeVerdict(t, root, payload))
+	if err == nil {
+		t.Fatal("ingest must reject a payload whose _type is not the fidelity-verdict type")
+	}
+	msg := err.Error()
+	for _, leak := range []string{"zzotherperson", "SENTINEL"} {
+		if strings.Contains(msg, leak) {
+			t.Errorf("the refusal echoes the refused _type (%q found): %s", leak, msg)
+		}
+	}
+	for _, want := range []string{"_type", VerdictType, "not quoted"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("the refusal does not carry %q: %s", want, msg)
+		}
+	}
+}

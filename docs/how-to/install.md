@@ -77,7 +77,9 @@ the binary as this machine's own.
 
 That `PATH` rung is narrow on purpose, and it is owned-only. A hook takes an
 `abcd` from `PATH` only when the lookup yields an absolute path, in a directory
-outside the one the session is working in, that is not world-writable, **and**
+outside the one the session is working in, where neither that directory nor the
+binary it holds (followed through a symlink to the file it names) is
+world-writable, **and**
 `~/.abcd/path-entry` records that exact path as the `abcd` installed on this
 machine. The [install](#cli) one-liner writes that record, and so does abcd's
 own install verb — whichever entry it leaves on `PATH`: the copy of the

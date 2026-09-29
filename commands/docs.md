@@ -27,14 +27,17 @@ baseline. Report from the JSON:
 - `outcomes` — each URL's `status` (`ok`, `broken`, `blocked`, `preserved`),
   its `final_url`, and the `detail`. List every `broken` one: those are dead
   citations the gate will block on.
-- `queue` — sources that refuse automated fetchers. Present these as a checklist
+- `queue` — sources that refuse automated fetchers, and sources whose redirect
+  chain leaves https for plaintext http, which the fetcher does not follow.
+  Present these as a checklist
   with the `sites` that cite each one, and tell the user to open each link and
   confirm it.
 - `dropped` — receipts removed because the docs no longer cite those addresses.
 
 A `blocked` source is **not** recorded as broken and gets no invented entry: a
 403 says the fetcher may not look, which is a different fact from the citation
-being dead. Never suggest editing the baseline by hand to clear one.
+being dead, and so is a redirect off https. Never suggest editing the baseline
+by hand to clear one.
 
 ## `cite confirm` — closing the manual queue
 
