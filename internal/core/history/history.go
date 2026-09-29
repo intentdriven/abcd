@@ -71,7 +71,8 @@ type Record struct {
 	SessionID    string    `json:"session_id"`
 	RootCommit   string    `json:"root_commit"`
 	CapturedAt   time.Time `json:"captured_at"`
-	SourceKind   string    `json:"source_kind"`
+	SourceKind   string    `json:"source_kind"` // the route: native | import
+	SourceTool   string    `json:"source_tool"` // the producing tool; host on a native capture
 	SourceSHA256 string    `json:"source_sha256"`
 	Path         string    `json:"path"`
 	Secrets      int       `json:"redacted_secrets"`
@@ -122,7 +123,8 @@ type Record struct {
 // this record the scanner does not see.
 type CaptureMeta struct {
 	SessionID string // the session the transcript belongs to (required)
-	Kind      string // source_kind: native | specstory-import (default native)
+	Kind      string // source_kind, the route: native | import (a legacy specstory-import is read as import + specstory)
+	Tool      string // source_tool, the producing tool: a lowercase slug; empty on a native capture means the host
 
 	AgentID        string // the sub-agent's own id; empty on the main thread
 	ParentAgentID  string // the agent that spawned it; empty when the main thread did
@@ -188,6 +190,10 @@ func Capture(repoRoot, rootSHA string, raw []byte, meta CaptureMeta) (CaptureRes
 	if !rootSHARe.MatchString(rootSHA) {
 		return CaptureResult{}, errors.New(rootSHAErrMsg)
 	}
+	// The labels are settled before they are judged: a pre-split fused kind is
+	// recorded under the two labels it meant, and a native capture that names
+	// no tool records the host.
+	meta.Kind, meta.Tool = sourceLabels(meta.Kind, meta.Tool)
 	if err := meta.validate(); err != nil {
 		return CaptureResult{}, err
 	}
@@ -228,7 +234,7 @@ func Capture(repoRoot, rootSHA string, raw []byte, meta CaptureMeta) (CaptureRes
 	}
 	for _, r := range existing {
 		if r.SourceSHA256 == sourceSHA && r.SessionID == sessionID &&
-			r.AgentID == meta.AgentID && r.SourceKind == kind {
+			r.AgentID == meta.AgentID && r.SourceKind == kind && r.SourceTool == meta.Tool {
 			return CaptureResult{Record: r, Wrote: false}, nil
 		}
 	}
@@ -318,8 +324,15 @@ func Capture(repoRoot, rootSHA string, raw []byte, meta CaptureMeta) (CaptureRes
 		return CaptureResult{}, err
 	}
 	// From here on the meta carries the REDACTED scalars, never the caller's
-	// originals: a scalar whose redaction changed it is stored changed.
+	// originals: a scalar whose redaction changed it is stored changed. The
+	// tool label is the exception that refuses instead: it is a name, and a name
+	// redaction rewrote is not the tool's name, so the capture stops rather than
+	// store the transcript under a masked label.
+	tool := meta.Tool
 	meta = applyLineageScalars(meta, scalars)
+	if meta.Tool != tool {
+		return CaptureResult{}, fmt.Errorf("history: the source tool label was redacted; name the tool with a label the scanner does not match")
+	}
 
 	// Supersession: the unit of the store is one (session_id, agent_id), not one
 	// transcript. A harness fires its stop event on EVERY stop, so an agent
@@ -363,6 +376,7 @@ func Capture(repoRoot, rootSHA string, raw []byte, meta CaptureMeta) (CaptureRes
 		RootCommit:       rootSHA,
 		CapturedAt:       capturedAt,
 		SourceKind:       kind,
+		SourceTool:       meta.Tool,
 		SourceSHA256:     sourceSHA,
 		Path:             path,
 		Secrets:          secrets,
@@ -413,7 +427,8 @@ func Capture(repoRoot, rootSHA string, raw []byte, meta CaptureMeta) (CaptureRes
 func resolveSupersession(existing []Record, meta CaptureMeta, kind, body string) ([]Record, *Record) {
 	var superseded []Record
 	for _, p := range existing {
-		if p.SessionID != meta.SessionID || p.AgentID != meta.AgentID || p.SourceKind != kind {
+		if p.SessionID != meta.SessionID || p.AgentID != meta.AgentID ||
+			p.SourceKind != kind || p.SourceTool != meta.Tool {
 			continue
 		}
 		data, err := fsutil.ReadGuarded(p.Path, maxTranscriptBytes)
@@ -544,11 +559,13 @@ const lineageFrameEnd = "abcd-history-lineage-frame-end"
 // lineageScalars is the ordered scalar block that goes through redaction with
 // the body. SpawnDepth is absent by construction: it is an integer, so there is
 // nothing in it for a detector to find and nothing for a redactor to change.
+// The route (Kind) is absent for the same reason: it is one of a closed set.
+// The tool is present, because its vocabulary is open and a caller names it.
 // The order here IS the contract with unframeLineage and with the Record fields
 // Capture fills from it.
 func lineageScalars(m CaptureMeta) []string {
 	return []string{m.AgentID, m.ParentAgentID, m.AgentType, m.SpawnToolUseID,
-		m.LineageSource, m.SpawnAttribution, m.AdoptedProject}
+		m.LineageSource, m.SpawnAttribution, m.AdoptedProject, m.Tool}
 }
 
 // applyLineageScalars is lineageScalars' inverse: it writes the block back onto
@@ -559,7 +576,7 @@ func lineageScalars(m CaptureMeta) []string {
 func applyLineageScalars(m CaptureMeta, s []string) CaptureMeta {
 	m.AgentID, m.ParentAgentID, m.AgentType = s[0], s[1], s[2]
 	m.SpawnToolUseID, m.LineageSource, m.SpawnAttribution = s[3], s[4], s[5]
-	m.AdoptedProject = s[6]
+	m.AdoptedProject, m.Tool = s[6], s[7]
 	return m
 }
 

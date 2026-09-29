@@ -205,6 +205,7 @@ func migrateOne(sc *scanner.Scanner, opts MigrateOptions, r Record, prefix, agen
 	meta := CaptureMeta{
 		SessionID:        full,
 		Kind:             rec.SourceKind,
+		Tool:             rec.SourceTool,
 		AgentID:          agentID,
 		LineageSource:    "migrated",
 		SpawnAttribution: "unattributed",
