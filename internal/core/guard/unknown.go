@@ -217,9 +217,12 @@ func spellParameterAt(body string, depth int) string {
 	if rest == "" {
 		return same
 	}
-	switch rest[0] {
-	case '-', '=', '?', '#', '%', '/', '^', ',', '~':
+	// valueKeeping is every operator that can print the value unchanged.
+	const valueKeeping = "-=?#%/^,~"
+	if strings.IndexByte(valueKeeping, rest[0]) >= 0 {
 		return same
+	}
+	switch rest[0] {
 	case '@':
 		if len(rest) == 2 && strings.IndexByte("EPULu", rest[1]) >= 0 {
 			return same
