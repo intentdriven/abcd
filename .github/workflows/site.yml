@@ -695,7 +695,7 @@ jobs:
           test -n "$(ls -A site)"
 
       - name: Deploy to the production Worker
-        uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0 # v4.0.0
+        uses: cloudflare/wrangler-action@4e88846969242f7752bcfdaf5511bfbb3985ca47 # v4.1.1
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -814,7 +814,7 @@ jobs:
           ./abcd lint site --out site
 
       - name: Upload a non-production Worker version
-        uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0 # v4.0.0
+        uses: cloudflare/wrangler-action@4e88846969242f7752bcfdaf5511bfbb3985ca47 # v4.1.1
         with:
           # The PREVIEW-named secrets, so a missing `site-preview` environment cannot
           # silently resolve to a production token of the same name.
