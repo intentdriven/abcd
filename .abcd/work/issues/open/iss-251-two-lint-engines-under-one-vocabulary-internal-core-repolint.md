@@ -7,8 +7,8 @@ category: "architectural-insight"
 source: "user-observation"
 found_during: "intent-planning-interview"
 found_at: "internal/core/audit"
-deferred_after: "v0.10.0"
-deferral_reason: "ruling owed to the product thinker (away; run A 2026-09-25): Plan consolidating the repolint and lint rule models as its own intent?"
+deferred_after: "v0.11.1"
+deferral_reason: "ruling owed to the product thinker: should consolidating the repolint and lint rule models become an intent? An architectural insight that proposes new work is not filed without the product thinker's adoption."
 ---
 
 Two lint engines under one vocabulary: internal/core/repolint (post-itd-6 rename; Rule/Evaluate/tri-state exit) and internal/core/lint (RuleConfig/Finding stream) are separate engines with separate rule models and config schemas, already entangled (repolint's rule_docs.go wraps docs-lint as a conformance rule). Every new rule author must pick an engine. Consolidating the rule models is a deliberate future intent - deliberately kept out of the itd-123-era rename sweep after adversarial review of merge-now vs rename-only.
