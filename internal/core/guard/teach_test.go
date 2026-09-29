@@ -1,0 +1,110 @@
+package guard
+
+import (
+	"reflect"
+	"sort"
+	"strings"
+	"testing"
+)
+
+// The teaching plane of spc-16 ("Two planes, one registry") renders every
+// registry entry as a rule the rules loader injects before shell-heavy work.
+// These tests pin the rendering the guard owns: the lesson an entry teaches,
+// the command-position description of its pattern, and the recall terms the
+// registry offers.
+
+// TestEveryBundledEntryTeachesItsLesson: each bundled entry renders to one
+// lesson naming the entry, its tier's consequence, its why and its successor,
+// so what an agent is taught up front is what the guard would tell it at the
+// moment of refusal.
+func TestEveryBundledEntryTeachesItsLesson(t *testing.T) {
+	r := Defaults()
+	lessons := r.Lessons()
+	if len(lessons) != len(r.Entries) {
+		t.Fatalf("Lessons() = %d lessons for %d entries: one lesson per entry", len(lessons), len(r.Entries))
+	}
+	ids := make([]string, 0, len(r.Entries))
+	for id := range r.Entries {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	for i, id := range ids {
+		e := r.Entries[id]
+		got := lessons[i]
+		if got != e.Lesson() {
+			t.Errorf("lesson %d is not entry %s's (lessons come in id order):\n%s", i, id, got)
+		}
+		for _, want := range []string{"(" + id + ")", e.Why, "Instead: " + e.Successor, "`" + e.Pattern.Command} {
+			if !strings.Contains(got, want) {
+				t.Errorf("entry %s lesson does not carry %q:\n%s", id, want, got)
+			}
+		}
+		lead := "Refused by the guard"
+		if e.Tier == TierWarn {
+			lead = "Warned by the guard"
+		}
+		if !strings.HasPrefix(got, lead+" ") {
+			t.Errorf("entry %s (%s) lesson does not open with %q:\n%s", id, e.Tier, lead, got)
+		}
+		if strings.Contains(got, "\n") {
+			t.Errorf("entry %s lesson spans lines; a rule is one bullet:\n%s", id, got)
+		}
+	}
+}
+
+// TestPatternDescribeReadsAsTheCommand: the description is written over the
+// pattern's own fields, so every constraint an entry declares is visible in
+// the lesson, in command-position order.
+func TestPatternDescribeReadsAsTheCommand(t *testing.T) {
+	yes := true
+	for _, tc := range []struct {
+		name string
+		p    Pattern
+		want string
+	}{
+		{"command only", Pattern{Command: "git", Subcommand: "clean"}, "`git clean`"},
+		{"two-level subcommand", Pattern{Command: "gh", Subcommand: "repo", Subcommand2: "delete"}, "`gh repo delete`"},
+		{"one flag group", Pattern{Command: "git", Subcommand: "reset", Flags: []string{"--hard"}}, "`git reset` with `--hard`"},
+		{"alternatives and two groups", Pattern{Command: "rm", Flags: []string{"-r|-R|--recursive", "-f|--force"}, AfterCD: &yes},
+			"`rm` with `-r`, `-R` or `--recursive` and `-f` or `--force`, after a `cd`, `pushd` or `popd` earlier in the same chain"},
+		{"flag value and path", Pattern{Command: "gh", Subcommand: "api", FlagValues: []FlagValue{{Flag: "-X|--method", Values: []string{"DELETE"}}}, ArgPaths: []PathArg{{Root: "repos", Segments: 3}}},
+			"`gh api` with `-X` or `--method` set to `DELETE`, on a `repos/*/*` path"},
+		{"operand prefix", Pattern{Command: "git", Subcommand: "push", ArgPrefixes: []string{"+"}}, "`git push` with an operand starting `+`"},
+		{"operand count", Pattern{Command: "pkill", MinOperands: 1}, "`pkill` with an operand"},
+		{"operand count plural", Pattern{Command: "pkill", MinOperands: 2}, "`pkill` with at least 2 operands"},
+		{"args from", Pattern{Command: "kill", ArgsFrom: []Pattern{{Command: "pgrep"}, {Command: "pgrep", MinOperands: 1}, {Command: "pidof"}}},
+			"`kill` given pids printed by `pgrep` or `pidof`"},
+		{"operand words, capped", Pattern{Command: "rm", Flags: []string{"-r"}, ArgValues: []string{"/", "/*", "~", "~/", "$HOME", "$HOME/", "${HOME}", "${HOME}/"}},
+			"`rm` with `-r`, on `/`, `/*`, `~`, `~/`, `$HOME`, `$HOME/` or 2 more spellings like them"},
+		{"operand words, few", Pattern{Command: "rm", ArgValues: []string{"*", "."}}, "`rm`, on `*` or `.`"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.p.Describe(); got != tc.want {
+				t.Errorf("Describe() =\n  %s\nwant\n  %s", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestRecallTermsAreTheCommandHeads: the registry offers its own recall
+// vocabulary — the command head each entry matches in command position — so
+// an entry for a new command recalls the teaching domain with no second edit.
+// The head carries the subcommands, which keeps the recall narrow: `git push`
+// recalls it, the bare word "push" does not.
+func TestRecallTermsAreTheCommandHeads(t *testing.T) {
+	r := Registry{SchemaVersion: SchemaVersion, Entries: map[string]Entry{
+		"a": {Pattern: Pattern{Command: "git", Subcommand: "push"}},
+		"b": {Pattern: Pattern{Command: "git", Subcommand: "push", Flags: []string{"--no-verify"}}},
+		"c": {Pattern: Pattern{Command: "gh", Subcommand: "repo", Subcommand2: "delete"}},
+		"d": {Pattern: Pattern{Command: "rm"}},
+	}}
+	want := []string{"gh repo delete", "git push", "rm"}
+	if got := r.RecallTerms(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("RecallTerms() = %q, want %q", got, want)
+	}
+	for _, term := range Defaults().RecallTerms() {
+		if strings.TrimSpace(term) == "" {
+			t.Fatal("the bundled registry yields an empty recall term")
+		}
+	}
+}

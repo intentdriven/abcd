@@ -516,13 +516,33 @@ memory are all recorded in itd-117 as follow-up questions.
 
 **A withheld guardrail is named.** Because a list replaces the bundled list, an
 override written before a release added an entry keeps withholding that entry.
-For the three guardrail domains — `PII`, `COMMITTING` and `LOAD` — the load
-compares every recall, alias and rule list an override set against the list the
+For the four guardrail domains — `PII`, `COMMITTING`, `LOAD` and `SHELL` — the
+load compares every recall, alias and rule list an override set against the list the
 running binary bundles. It names each bundled entry left out, and the file whose
 list is in force, on stderr from `abcd rules` and from the hook on every prompt.
 The effective set is unchanged. Restating the entry keeps it; leaving the field
 out inherits the bundled list. The other bundled domains are conventions a
 repository restates in its own words, so a replacement there is not reported.
+
+**One bundled domain is generated.** `SHELL` is the teaching plane of the
+shell-hazard guard (itd-103, spc-16 "Two planes, one registry"): its rules and
+recall keywords are built at start-up from the same bundled hazard registry
+`abcd guard` enforces, never written in the bundled `rules.json`. Each registry
+entry becomes one rule — whether the guard refuses or warns, the entry id, the
+command it matches, the plain-language why, and the safe successor — in entry-id
+order. The recall keywords are the command heads the registry matches (`rm`,
+`git push`, `gh repo delete`, `pkill`, …), which carry their subcommands so
+the bare words "push" or "reset" never recall the domain, plus a short fixed
+list for shell work in general (`shell`, `bash`, `zsh`, `command line`,
+`force push`). An entry added to or removed from the registry changes the
+domain with no second edit, and a test fails the build if the domain and the
+registry ever part. To every other contract it is an ordinary bundled domain:
+a user or repo layer overrides it per field, `dormant` silences it, `*SHELL`
+activates it, the kill switch suppresses it, and dedup and provenance treat it
+like any other. It is built from the bundled registry only: a repo's
+`.abcd/guard.json` changes what the guard refuses there, and the two features
+keep independent switches, so a repo that wants its own entries taught states
+them in its `rules.json`.
 
 ## The prompt router's output
 
@@ -548,13 +568,13 @@ iss-2608261550580260):
   "text": "# abcd rules — 1 domain(s) active\n## WIDGETS (repo override)\n- Widgets are counted twice.\n",
   "injected": ["WIDGETS"],
   "active": ["COMMITTING", "DOCUMENTATION", "INTENTS", "ISSUES", "LIFEBOAT",
-             "LOAD", "OPINIONS", "PII", "ROADMAP", "WIDGETS"]
+             "LOAD", "OPINIONS", "PII", "ROADMAP", "SHELL", "WIDGETS"]
 }
 ```
 
 That is the bundled set with one repo domain, `WIDGETS`, declared in
 `.abcd/rules.json` and matched by the prompt: the text carries one domain and
-the set names all ten.
+the set names all eleven.
 
 | Field | Meaning |
 |---|---|
