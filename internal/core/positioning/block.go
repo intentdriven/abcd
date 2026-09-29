@@ -93,7 +93,7 @@ var bulletRe = regexp.MustCompile(`^ {0,3}[-*]\s+\*\*([A-Za-z]+):\*\*\s*(.*)$`)
 // sentinel-wrapped error, never a zero Block with a nil error — a caller must
 // not read "no block" as "the block says nothing".
 func ParseBlock(root string, loc BlockLocation) (Block, error) {
-	if !fsutil.ValidRelPath(loc.File) {
+	if !validBlockFile(loc.File) {
 		return Block{}, fmt.Errorf("%w: %q", ErrBadLocation, loc.File)
 	}
 	r, err := openRepoRoot(root)
@@ -102,6 +102,16 @@ func ParseBlock(root string, loc BlockLocation) (Block, error) {
 	}
 	defer r.Close()
 	return parseBlockIn(r, loc)
+}
+
+// validBlockFile is the one gate on a block location's file, shared by every
+// entry that reads the block (ParseBlock, parseBlockIn) or writes it (Init). A
+// clean repo-relative path is not enough: ".git/config" is one, and the block is
+// read and rendered as identity output — or, through Init, written into — so the
+// git directory is refused here as the registry's surfaces refuse it
+// (fsutil.InsideGitDir, iss-2608291814578333).
+func validBlockFile(p string) bool {
+	return fsutil.ValidRelPath(p) && !fsutil.InsideGitDir(p)
 }
 
 // openRepoRoot opens root as an os.Root containment scope. Every positioning
@@ -121,7 +131,7 @@ func openRepoRoot(root string) (*os.Root, error) {
 // that is already reading the repo (Check, Init) opens one root for the whole
 // operation.
 func parseBlockIn(r *os.Root, loc BlockLocation) (Block, error) {
-	if !fsutil.ValidRelPath(loc.File) {
+	if !validBlockFile(loc.File) {
 		return Block{}, fmt.Errorf("%w: %q", ErrBadLocation, loc.File)
 	}
 	heading := strings.TrimSpace(loc.Heading)
