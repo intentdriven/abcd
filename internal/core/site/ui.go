@@ -304,19 +304,20 @@ func LoadUI(repoRoot, rel string) (UI, error) {
 	return ui, nil
 }
 
-// missing names every interface string the file leaves empty. An empty string
-// renders as a blank button or an unlabelled tab, which reads as a rendering
-// bug rather than as the missing declaration it is.
+// missing names every interface string the file leaves empty, each by its
+// path in the file (`status.next_up`), so the refusal names the exact key to
+// add. An empty string renders as a blank button or an unlabelled tab, which
+// reads as a rendering bug rather than as the missing declaration it is.
 func (ui UI) missing() []string {
 	var out []string
-	var walk func(v reflect.Value, t reflect.Type)
-	walk = func(v reflect.Value, t reflect.Type) {
+	var walk func(v reflect.Value, t reflect.Type, prefix string)
+	walk = func(v reflect.Value, t reflect.Type, prefix string) {
 		for i := 0; i < t.NumField(); i++ {
 			f := t.Field(i)
-			name := strings.Split(f.Tag.Get("json"), ",")[0]
+			name := prefix + strings.Split(f.Tag.Get("json"), ",")[0]
 			switch f.Type.Kind() {
 			case reflect.Struct:
-				walk(v.Field(i), f.Type)
+				walk(v.Field(i), f.Type, name+".")
 			case reflect.Map:
 				// An ABSENT key is a declaration the repository chose not to
 				// make, and the renderer degrades by absence. A key declared
@@ -337,6 +338,6 @@ func (ui UI) missing() []string {
 			}
 		}
 	}
-	walk(reflect.ValueOf(ui), reflect.TypeOf(ui))
+	walk(reflect.ValueOf(ui), reflect.TypeOf(ui), "")
 	return out
 }
