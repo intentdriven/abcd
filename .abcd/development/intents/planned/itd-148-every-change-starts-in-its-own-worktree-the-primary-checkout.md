@@ -14,7 +14,7 @@ impact: additive
 
 # Every change starts in its own worktree in abcd's store: the primary checkout is a read-only surface, and abcd blocks mutations there for every session but a declared coordinator
 
-Typed links: `blocked_by` [itd-2609091014076309](../drafts/itd-2609091014076309-session-and-agent-worktrees-live-in-a-machine-scoped-store-t.md) (the store under the home folder, which owns adding, listing and clearing away worktrees; nothing of this intent is built before that draft's planning interview); `related_adrs` [adr-2609091248200336](../../decisions/adrs/2609091248200336-a-tool-never-creates-directories-in-user-owned-project-space.md) (the rule the store enacts). This record was rewritten on 2026-09-29 to the product thinker's rulings (see `## Decisions`); the rewrite **reverses** the scope its 2026-08-26 planning interview gave it, a worktree verb family and a sweep of its own, with worktrees placed inside the primary checkout.
+Typed links: `blocked_by` [itd-2609091014076309](../drafts/itd-2609091014076309-session-and-agent-worktrees-live-in-a-machine-scoped-store-t.md) (the store under the home folder, which owns adding, listing and clearing away worktrees; this intent uses those verbs, so it waits on that draft); `related_adrs` [adr-2609091248200336](../../decisions/adrs/2609091248200336-a-tool-never-creates-directories-in-user-owned-project-space.md) (the rule the store enacts). This record was rewritten on 2026-09-29 to the product thinker's rulings (see `## Decisions`); the rewrite **reverses** the scope its 2026-08-26 planning interview gave it, a worktree verb family and a sweep of its own, with worktrees placed inside the primary checkout.
 
 ## Press Release
 
@@ -189,9 +189,11 @@ of autonomous run A; recorded in `.abcd/work/DECISIONS.md` under that date):
    this intent uses them and builds no worktree verb of its own.
 3. **A session that declares itself the coordinator is exempt** from the
    write block in the primary checkout; every other session is blocked.
-4. **The store draft is planned first**: nothing of this intent, the
-   merged-worktree clean-up included, is built before that draft's planning
-   interview.
+4. **The store draft is planned first**: nothing from the store draft, the
+   merged-worktree clean-up included, is built before its planning
+   interview. This intent's own wait is not part of the ruling: it follows
+   from decision 2, because this intent uses the store's verbs, and is
+   carried by its `blocked_by` on the store draft.
 
 ## Open Questions
 

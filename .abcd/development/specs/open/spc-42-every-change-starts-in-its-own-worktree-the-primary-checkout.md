@@ -24,9 +24,12 @@ the peer visibility stand.
 
 ## Blocked on
 
-- **The store draft's planning interview** (itd-2609091014076309). Nothing in
-  this spec, the merged-worktree clean-up included, is built before it
-  (ruling Q4 of 2026-09-29).
+- **The store draft's planning interview** (itd-2609091014076309). Ruling Q4
+  of 2026-09-29 plans the store draft first: nothing from the store draft,
+  the merged-worktree clean-up included, is built before its planning
+  interview. This spec waits on it because it calls the store's verbs
+  (ruling Q2), which is what itd-148's `blocked_by` on the store draft
+  carries.
 - **The store's add, list and clean-up verbs shipping**, because the
   refusal names the add verb as the route and the seeding runs on the
   worktrees the store adds.
