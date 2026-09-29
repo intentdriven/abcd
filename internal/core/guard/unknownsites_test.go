@@ -96,7 +96,7 @@ var wordReaders = map[string]string{
 	"keywordAt":         "exempt: reserved words are grammar, which no substitution prints",
 	"readHeredocDelim":  "exempt: the `<<-` operator is grammar",
 	"simpleParamEnd":    "exempt: reads the `$-` special parameter's name, grammar that makes the word unknown",
-	"spellParameterAt":  "exempt: reads a `${…}` expansion's `-` operator (`${HOME:-x}`), grammar that spells the variable for arg_values",
+	"spellParameterAt":  "exempt: reads a `${…}` expansion's `-` operator (`${HOME:-x}`), grammar that spells the variable and the default's word for arg_values",
 	"validatePattern":   "exempt: reads registry patterns, not command words",
 	"validEntryID":      "exempt: reads a registry id, not a command word",
 }

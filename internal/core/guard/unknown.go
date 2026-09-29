@@ -103,63 +103,134 @@ const varMark = '\x01'
 const varText = "\x01"
 
 // varSite is one variable's mark in a word being built: its offset in the
-// word, and the expansion's text as the line wrote it (`$HOME`, `${PWD}`), ""
+// word, and the texts the expansion can print as the line wrote them (`$HOME`,
+// `${PWD}`; `${DIR}` and `$HOME` for `${DIR:-$HOME}`, spellParameter), nil
 // for a varMark read from a payload's text, whose name the string no longer
 // holds. bare records a name written unquoted and without braces, which the
 // unquoted text a brace group places after it runs on from (spellWritten).
 type varSite struct {
-	at   int
-	text string
-	bare bool
+	at    int
+	texts []string
+	bare  bool
 }
 
+// A written spelling (segment.spelled) is a SET of texts, one for each thing
+// the word can print as the line wrote it: `${DIR:-$HOME}` prints DIR's value
+// or the home, and is `${DIR}` and `$HOME` (iss-2609290426544292). A word's
+// set is every combination of its sites' sets, bounded by maxSpellings, and a
+// site's word is followed into its own expansions at most spellWordDepth
+// deep. Past either bound the site is spellCapped: a spelling the guard
+// stopped reading, which the arg_values compare reads as every value an entry
+// names (writtenMatches), so a bound refuses rather than lets the word pass.
+const (
+	// maxSpellings bounds how many texts one word's written spelling holds,
+	// and so how many times a string handed to a shell is re-read to pair
+	// them (namedPayloads).
+	maxSpellings = 16
+	// spellWordDepth bounds how deep a spelling follows a default's or an
+	// alternative's word into another expansion.
+	spellWordDepth = 8
+	// spellCapped is the one text of a spelling past either bound.
+	spellCapped = "\x04"
+)
+
 // spellWritten is a word as the line wrote its variables (segment.spelled):
-// each variable's mark replaced by its expansion's text, each substitution's
-// mark dropped as knownText drops it, and a variable whose text is not known
-// kept as unknownMark. A simple name the next byte kept would extend is
-// braced (`"$A"B` is `${A}B`, not `$AB`), so the spelling reads as the same
-// expansions when it is read again (spelledView). sites is in word order.
+// each variable's mark replaced by each text its expansion can print, each
+// substitution's mark dropped as knownText drops it, and a variable whose
+// text is not known kept as unknownMark. The result is every combination of
+// the sites' texts, in word order; a site already past a bound, or one that
+// would make more than maxSpellings of them, is spellCapped in each. A simple name the next byte
+// kept would extend is braced (`"$A"B` is `${A}B`, not `$AB`), so the
+// spelling reads as the same expansions when it is read again (spelledViews).
+// sites is in word order.
 //
 // mask is nil for a word as the line wrote it. For a word a brace group made
 // it is the word's bword.m, and a bare name directly followed by unquoted
 // name bytes is not braced: bash expands the group first and reads the name
 // after, so `$HO{ME,}` makes `$HOME` (iss-2609290419119456). A quote or
 // escape between them leaves the byte quoted, and the name ends there.
-func spellWritten(word []byte, sites []varSite, mask []byte) string {
-	var b strings.Builder
+func spellWritten(word []byte, sites []varSite, mask []byte) []string {
+	outs := [][]byte{nil}
+	add := func(c byte) {
+		for i := range outs {
+			outs[i] = append(outs[i], c)
+		}
+	}
 	k := 0
 	isVar := func(p int) bool { return k < len(sites) && sites[k].at == p }
 	for p := 0; p < len(word); p++ {
 		if !isVar(p) {
 			if word[p] != unknownMark {
-				b.WriteByte(word[p])
+				add(word[p])
 			}
 			continue
 		}
 		site := sites[k]
-		text := site.text
 		k++
-		if text == "" {
-			b.WriteByte(unknownMark)
+		if len(site.texts) == 0 {
+			add(unknownMark)
 			continue
 		}
-		// Only a simple name is braced: an alternative's word is spelled as
-		// written (`$HOME/`, `~`), and bracing that would change it.
-		if len(text) > 1 && text[0] == '$' && simpleParamEnd(text, 1) == len(text) {
-			next := p + 1
-			for next < len(word) && word[next] == unknownMark && !isVar(next) {
-				next++
-			}
-			if next < len(word) && word[next] != unknownMark && isNameByte(word[next]) {
-				runsOn := mask != nil && site.bare && next == p+1 && mask[next]&wordStruct != 0
-				if !runsOn {
+		if capped(site.texts) || len(outs)*len(site.texts) > maxSpellings {
+			// The site is past a bound: it is spellCapped in every text, and
+			// the text around it is kept, so a string handed to a shell still
+			// pairs its words (spellPayload).
+			add(spellCapped[0])
+			continue
+		}
+		// Only a simple name is braced: a default's or an alternative's word
+		// is spelled as written (`$HOME/`, `~`), and bracing that would
+		// change it.
+		braced := false
+		next := p + 1
+		for next < len(word) && word[next] == unknownMark && !isVar(next) {
+			next++
+		}
+		if next < len(word) && word[next] != unknownMark && isNameByte(word[next]) {
+			runsOn := mask != nil && site.bare && next == p+1 && mask[next]&wordStruct != 0
+			braced = !runsOn
+		}
+		grown := make([][]byte, 0, len(outs)*len(site.texts))
+		for _, o := range outs {
+			for n, text := range site.texts {
+				if braced && len(text) > 1 && text[0] == '$' && simpleParamEnd(text, 1) == len(text) {
 					text = "${" + text[1:] + "}"
 				}
+				b := o
+				if n < len(site.texts)-1 {
+					b = append([]byte(nil), o...)
+				}
+				grown = append(grown, append(b, text...))
 			}
 		}
-		b.WriteString(text)
+		outs = grown
 	}
-	return b.String()
+	texts := make([]string, 0, len(outs))
+	for _, o := range outs {
+		tally(len(o))
+		texts = appendText(texts, string(o))
+	}
+	return texts
+}
+
+// appendText adds text to a spelling's texts unless it is already there.
+func appendText(texts []string, text string) []string {
+	for _, t := range texts {
+		if t == text {
+			return texts
+		}
+	}
+	return append(texts, text)
+}
+
+// capped reports whether a spelling is past a bound (spellCapped).
+func capped(texts []string) bool {
+	for _, t := range texts {
+		if strings.Contains(t, spellCapped) {
+			return true
+		}
+	}
+	return false
 }
 
 // paramText is a parameter expansion's text as bash reads it: without the
@@ -168,44 +239,53 @@ func spellWritten(word []byte, sites []varSite, mask []byte) string {
 func paramText(text string) string { return strings.ReplaceAll(text, "\\\n", "") }
 
 // spellParameter is the written spelling (segment.spelled) of a `${…}`
-// expansion whose text between the braces is body. Where the expansion can
-// print its variable's value unchanged, it is spelled as that variable, so
-// arg_values reads `${HOME%/}` as the `${HOME}` it can be
-// (iss-2609290419119456):
+// expansion whose text between the braces is body: every text it can print
+// as the line wrote it. Where the expansion can print its variable's value
+// unchanged, the set holds that variable, so arg_values reads `${HOME%/}` as
+// the `${HOME}` it can be (iss-2609290419119456):
 //
-//   - a default, an assignment or an error message, with or without the colon
-//     (`${HOME:-x}`, `${HOME=x}`, `${HOME:?x}`): the value when the variable
-//     is set, and the home always is;
+//   - a default or an assignment, with or without the colon (`${DIR:-w}`,
+//     `${DIR=w}`), prints the value when the variable is set and its word w
+//     when it is not, so the set holds the variable and every text w can
+//     print, through its own expansions (spellWord): `${DIR:-$HOME}` is
+//     `${DIR}` and `$HOME` (iss-2609290426544292);
+//   - an error message (`${HOME:?x}`) prints the value or nothing: the
+//     message goes to the standard error, never into the word;
 //   - a trimmed prefix or suffix and a pattern replacement (`${HOME%/}`,
 //     `${HOME#x}`, `${HOME/x/y}`): the value when the pattern does not match,
-//     and what a suffix trim leaves otherwise is the path above it;
-//   - a substring (`${HOME:0}`), whose offset is arithmetic and can be 0;
+//     and what a suffix trim leaves otherwise is the path above it. A
+//     replacement whose pattern is only `*` replaces the whole value, so it
+//     also prints its string (`${X/*/$HOME}` is `${X}` and `$HOME`);
+//   - a substring (`${HOME:0}`), whose offset is arithmetic and can be 0,
+//     and which can print the `/` an absolute path begins with
+//     (`${PWD:0:1}` is `${PWD}` and `/`);
 //   - a case change (`${HOME^^}`, `${HOME@U}`), which names the same directory
 //     on a case-insensitive disk, and `@E` and `@P`, which change no path;
 //   - a subscript (`${HOME[0]}`, `${HOME[x[0]]}`), which can be 0, read to
-//     its matching `]`, with anything after it but an alternative at the
-//     first operator byte: bash 3.2 prints the value past any other text
-//     (`${HOME[0]]}`, `${HOME[0]@Q}`), and a subscript with no `]` cannot be
-//     read further.
+//     its matching `]`. bash 3.2, the /bin/sh and /bin/bash of macOS, steps
+//     over any text after it to the first operator byte
+//     (subscriptOperators): an alternative there prints its word, a default
+//     or an assignment the value or its word (`${X[0]]-$HOME}` is the home
+//     with X unset), and anything else the value (`${HOME[0]]}`,
+//     `${HOME[0]@Q}`). A subscript with no `]` cannot be read further.
 //
-// An alternative (`${X:+w}`, `${X+w}`) prints w or nothing, and is
-// spelled as w is written, through its own expansions (spellAlternative).
-// Every other expansion keeps its text as written and names no variable an
-// entry names: a length (`${#HOME}`), an indirection (`${!X}`), `@Q` and the
-// other transforms, and a default word that is not the variable's own value
-// (`${DIR:-$HOME}`), which is a recorded residual (17-guard.md).
+// An alternative (`${X:+w}`, `${X+w}`) prints w or nothing, and is the texts
+// w can print and the empty text. Every other expansion keeps its text as written and names no
+// variable an entry names: a length (`${#HOME}`), an indirection (`${!X}`),
+// and `@Q` and the other transforms.
 //
-// split reports that the expansion stands unquoted, where bash splits an
-// alternative's word on whitespace: each unquoted whitespace run in it is
-// spelled fieldMark, which the compare splits on (argValueMatches).
-func spellParameter(body string, split bool) string {
+// split reports that the expansion stands unquoted, where bash splits a
+// default's or an alternative's word on whitespace: each unquoted whitespace
+// run in it is spelled fieldMark, which the compare splits on
+// (argValueMatches).
+func spellParameter(body string, split bool) []string {
 	return spellParameterAt(paramText(body), 0, split)
 }
 
 // fieldMark stands in a spelling where bash splits a word into fields: at an
 // unquoted whitespace run in an unquoted alternative's word (`${X:+$HOME }`
 // hands rm the home). Only the arg_values compare splits on it; a payload
-// re-read reads it as the space it was (spelledView).
+// re-read reads it as the space it was (spelledViews).
 const fieldMark = '\x02'
 
 // fieldText is fieldMark as a string.
@@ -215,18 +295,14 @@ const fieldText = "\x02"
 // unquoted whitespace (`sh -c "rm -rf ${X:+$HOME x}"`): the word is one
 // field here, which the compare reads as a space, but a shell re-reading the
 // string splits it there, so a payload re-read takes it for fieldMark
-// (spelledView), and the string's words pair with its marked reading's.
+// (spelledViews), and the string's words pair with its marked reading's.
 const quotedFieldMark = '\x03'
 
 // quotedFieldText is quotedFieldMark as a string.
 const quotedFieldText = "\x03"
 
-// spellAlternativeDepth bounds how deep spellParameter follows an
-// alternative's word into another expansion.
-const spellAlternativeDepth = 3
-
-func spellParameterAt(body string, depth int, split bool) string {
-	raw := "${" + body + "}"
+func spellParameterAt(body string, depth int, split bool) []string {
+	raw := []string{"${" + body + "}"}
 	n := 0
 	for n < len(body) && isNameByte(body[n]) {
 		n++
@@ -236,62 +312,93 @@ func spellParameterAt(body string, depth int, split bool) string {
 	}
 	name, rest := body[:n], body[n:]
 	same := "${" + name + "}"
+	value := []string{same}
+	// orWord is the value, or the texts the word w can print.
+	orWord := func(w string) []string {
+		texts := value
+		for _, t := range spellWord(w, depth, split) {
+			texts = appendText(texts, t)
+		}
+		if capped(texts) || len(texts) > maxSpellings {
+			return []string{spellCapped}
+		}
+		return texts
+	}
+	// alternative is the texts the word w can print, or nothing: with the
+	// variable unset or empty the expansion prints no text, so
+	// `${X:+x}$HOME` is `x$HOME` and `$HOME`. A word the guard cannot read
+	// is the expansion as written, which names nothing.
+	alternative := func(w string) []string {
+		texts := spellWord(w, depth, split)
+		if len(texts) == 0 {
+			texts = raw
+		}
+		return appendText(texts, "")
+	}
+	subscript := false
 	if strings.HasPrefix(rest, "[") {
-		// The subscript runs to its matching `]`, and what follows it is read
-		// only for an alternative: bash 3.2, the /bin/sh and /bin/bash of
-		// macOS, steps over any other text to the first operator byte
-		// (subscriptOperators) and reads an alternative there
-		// (`${X[0]]:+$HOME}`, `${X[0]x:+$HOME}`, `${X[0]]^+$HOME}` print the
-		// home), and prints the value past text that holds none
-		// (`${HOME[0]]}`, `${HOME[0]@Q}`). A subscript that does not close
-		// can be read no further. Every other case is spelled as the variable.
 		k := subscriptEnd(rest)
 		if k < 0 {
-			return same
+			return value
 		}
 		rest = rest[k+1:]
-		if op := strings.IndexAny(rest, subscriptOperators); op >= 0 {
-			switch {
-			case rest[op] == '+':
-				return spellAlternative(rest[op+1:], raw, depth, split)
-			case strings.HasPrefix(rest[op:], ":+"):
-				return spellAlternative(rest[op+2:], raw, depth, split)
-			}
+		op := strings.IndexAny(rest, subscriptOperators)
+		if op < 0 {
+			return value
 		}
-		return same
+		rest, subscript = rest[op:], true
 	}
 	if rest == "" {
-		return same
+		return value
 	}
-	// valueKeeping is every operator that can print the value unchanged.
-	const valueKeeping = "-=?#%/^,~"
-	if strings.IndexByte(valueKeeping, rest[0]) >= 0 {
-		return same
-	}
-	switch rest[0] {
-	case '@':
+	switch {
+	case rest[0] == '+':
+		return alternative(rest[1:])
+	case strings.HasPrefix(rest, ":+"):
+		return alternative(rest[2:])
+	case rest[0] == '-' || rest[0] == '=':
+		return orWord(rest[1:])
+	case strings.HasPrefix(rest, ":-") || strings.HasPrefix(rest, ":="):
+		return orWord(rest[2:])
+	case subscript, strings.HasPrefix(rest, ":?"):
+		return value
+	case rest[0] == ':':
+		// A substring: a part of the value, the whole of it at offset 0, and
+		// the `/` an absolute path begins with.
+		return []string{same, "/"}
+	case rest[0] == '/':
+		// A pattern replacement, `/`, `//`, `/#` or `/%`. A pattern of only
+		// `*` matches the whole value, which its string replaces.
+		p := rest[1:]
+		if p != "" && strings.IndexByte("/#%", p[0]) >= 0 {
+			p = p[1:]
+		}
+		s := 0
+		for s < len(p) && p[s] == '*' {
+			s++
+		}
+		if s > 0 && s < len(p) && p[s] == '/' {
+			return orWord(p[s+1:])
+		}
+		return value
+	case strings.IndexByte("?#%^,~", rest[0]) >= 0:
+		// Every other operator that can print the value unchanged.
+		return value
+	case rest[0] == '@':
 		if len(rest) == 2 && strings.IndexByte("EPULu", rest[1]) >= 0 {
-			return same
+			return value
 		}
-	case '+':
-		return spellAlternative(rest[1:], raw, depth, split)
-	case ':':
-		if len(rest) > 1 && rest[1] == '+' {
-			return spellAlternative(rest[2:], raw, depth, split)
-		}
-		return same
 	}
 	return raw
 }
 
 // subscriptOperators are the bytes bash 3.2 stops at in the text after a
 // subscript's `]`: an operator, or a backslash, which quotes the next byte.
-// Only a `+` or `:+` there reads an alternative; with X set,
-// `${X[0]]-$HOME}` and `${X[0]a-b+$HOME}` print X's value, and
-// `${X[0]]\+$HOME}` does too. With X unset, a `-`, `:-`, `=` or `:=` there
-// prints the word: `${X[0]]-$HOME}`, `${X[0]]:-$HOME}` and `${X[0]]=$HOME}`
-// print the home on bash 3.2 and /bin/sh. That is the default's word, which
-// this spelling does not read (iss-2609290426544292, deferred).
+// A `+` or `:+` there reads an alternative, and a `-`, `:-`, `=` or `:=` a
+// default or an assignment: with X unset, `${X[0]]-$HOME}`,
+// `${X[0]]:-$HOME}` and `${X[0]]=$HOME}` print the home on bash 3.2 and
+// /bin/sh, and with X set they print X's value. Any other byte there prints
+// the value: `${X[0]]?$HOME}`, and `${X[0]]\+$HOME}`.
 const subscriptOperators = "-=?+%#/:\\"
 
 // subscriptEnd returns the index of the `]` that closes the subscript opening
@@ -312,21 +419,23 @@ func subscriptEnd(s string) int {
 	return -1
 }
 
-// spellAlternative is the spelling of an alternative whose word is w. An
-// alternative prints w or nothing, so w is spelled as it is written: its
-// quotes and escapes removed, and each expansion in it a site spelled as a
-// word's own are (spellWritten), `${…}` through spellParameterAt.
+// spellWord is the texts a default's or an alternative's word w can print,
+// at depth expansions deep. w is spelled as it is written: its quotes and
+// escapes removed, and each expansion in it a site spelled as a word's own
+// are (spellWritten), `${…}` through spellParameterAt one level deeper.
 // `${X:+$HOME/}` is `$HOME/`, `${X:+/}` is `/` and `${X:+"${HOME%/}"}` is
 // `${HOME}`. A command substitution in it is its unknown output, which
 // spellWritten drops as knownText does (`${X:+$(true)$HOME}` is `$HOME`).
 // Where split is set, each unquoted whitespace run is fieldMark, where bash
-// splits the word (`${X:+$HOME }` is `$HOME`). A word holding a quote that
-// does not close or an expansion past spellAlternativeDepth, and a word that
-// spells to nothing, keep raw.
-func spellAlternative(w, raw string, depth int, split bool) string {
-	if depth >= spellAlternativeDepth {
-		return raw
+// splits the word (`${X:+$HOME }` is `$HOME`). A word holding a quote or an
+// expansion that does not close, and a word that spells to nothing, print no
+// text the guard reads, and are nil. A word at spellWordDepth is not read,
+// and is spellCapped: the bound refuses, never passes (writtenMatches).
+func spellWord(w string, depth int, split bool) []string {
+	if depth >= spellWordDepth {
+		return []string{spellCapped}
 	}
+	tally(len(w))
 	var word []byte
 	var sites []varSite
 	budget := 4*len(w) + 16
@@ -347,29 +456,29 @@ func spellAlternative(w, raw string, depth int, split bool) string {
 		case c == '\'' && !dq:
 			k := strings.IndexByte(w[i+1:], '\'')
 			if k < 0 {
-				return raw
+				return nil
 			}
 			word = append(word, w[i+1:i+1+k]...)
 			i += k + 2
 		case c == '$' && i+1 < len(w) && w[i+1] == '{':
 			end := closingDolBrace(w, i+2, &budget)
 			if end < 0 {
-				return raw
+				return nil
 			}
-			sites = append(sites, varSite{at: len(word), text: spellParameterAt(w[i+2:end], depth+1, split && !dq)})
+			sites = append(sites, varSite{at: len(word), texts: spellParameterAt(w[i+2:end], depth+1, split && !dq)})
 			word = append(word, varMark)
 			i = end + 1
 		case c == '$' && i+1 < len(w) && w[i+1] == '(':
 			end := closingParen(w, i+2, &budget)
 			if end < 0 {
-				return raw
+				return nil
 			}
 			word = append(word, unknownMark)
 			i = end + 1
 		case c == '`':
 			end := closingBacktick(w, i+1, &budget)
 			if end < 0 {
-				return raw
+				return nil
 			}
 			word = append(word, unknownMark)
 			i = end + 1
@@ -385,9 +494,9 @@ func spellAlternative(w, raw string, depth int, split bool) string {
 		case c == '$':
 			end := simpleParamEnd(w, i+1)
 			if end < 0 {
-				return raw
+				return nil
 			}
-			sites = append(sites, varSite{at: len(word), text: w[i:end]})
+			sites = append(sites, varSite{at: len(word), texts: []string{w[i:end]}})
 			word = append(word, varMark)
 			i = end
 		default:
@@ -396,7 +505,7 @@ func spellAlternative(w, raw string, depth int, split bool) string {
 		}
 	}
 	if dq || len(word) == 0 {
-		return raw
+		return nil
 	}
 	return spellWritten(word, sites, nil)
 }
@@ -406,16 +515,29 @@ func isNameByte(c byte) bool {
 	return c == '_' || c >= '0' && c <= '9' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z'
 }
 
-// writtenOperand is the text an entry's arg_values compare reads for the
-// word at i: the word as the line wrote its variables where it holds one
-// (segment.spelled), else its known text. It is read by nothing else, so
-// `rm -rf $HOME` names `$HOME` to arg_values while every other reading takes
-// the variable as the unknown word it is (iss-2609290321312087).
-func writtenOperand(tokens []string, spelled map[int]string, i int) string {
-	if w, ok := spelled[i]; ok {
-		return w
+// writtenMatches reports whether the word at i names one of an entry's
+// arg_values as the line wrote it: some text of its written spelling
+// (segment.spelled) where it holds a variable, else its known text
+// (argValueMatches). It is read by nothing else, so `rm -rf $HOME` names
+// `$HOME` to arg_values while every other reading takes the variable as the
+// unknown word it is (iss-2609290321312087), and `rm -rf ${DIR:-/}` names the
+// root as its default's word does (iss-2609290426544292). A spelling past its
+// bound (spellCapped) names every value: the guard stopped reading it, and a
+// bound refuses rather than passes.
+func writtenMatches(values []string, tokens []string, spelled map[int][]string, i int) bool {
+	texts, ok := spelled[i]
+	if !ok {
+		return argValueMatches(values, knownText(tokens[i]))
 	}
-	return knownText(tokens[i])
+	if capped(texts) {
+		return true
+	}
+	for _, w := range texts {
+		if argValueMatches(values, w) {
+			return true
+		}
+	}
+	return false
 }
 
 // isUnknown reports whether a word carries a substitution's output.
@@ -967,8 +1089,8 @@ type operandWant struct {
 // the table's state is (word, operands so far, clauses met), filled from the
 // end once: linear in the words, whatever the number of places a command can
 // sit. spelled is the segment's segment.spelled, read by the arg_values
-// clause alone (writtenOperand).
-func operandAcceptance(tokens []string, spelled map[int]string, valueFlags []string, want operandWant, glob func(int) bool) []bool {
+// clause alone (writtenMatches).
+func operandAcceptance(tokens []string, spelled map[int][]string, valueFlags []string, want operandWant, glob func(int) bool) []bool {
 	need := want.need()
 	nv := 0
 	if len(want.values) > 0 {
@@ -1004,7 +1126,7 @@ func operandAcceptance(tokens []string, spelled map[int]string, valueFlags []str
 					hits |= 1 << (len(want.prefixes) + j)
 				}
 			}
-			if nv > 0 && argValueMatches(want.values, writtenOperand(tokens, spelled, i)) {
+			if nv > 0 && writtenMatches(want.values, tokens, spelled, i) {
 				hits |= 1 << (len(want.prefixes) + len(want.paths))
 			}
 		}

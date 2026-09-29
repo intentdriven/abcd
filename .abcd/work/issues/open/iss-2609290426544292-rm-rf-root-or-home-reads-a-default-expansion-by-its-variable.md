@@ -9,6 +9,7 @@ found_during: "autonomous run 2026-09-23"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/guard/unknown.go"
+remedy: "Make segment.spelled a set of the texts a word can print (varSite.texts, spellWritten), read a default's and an alternative's word through it (spellWord, the alternative also printing nothing), a substring's leading /, and a * replacement's string, pair every text through spellPayload, and bound depth and size so past either the word refuses, test first."
 deferred_after: v0.11.1
 deferral_reason: "Reading a default's word needs a written spelling that holds more than one text (the variable's value or the default's word), which changes segment.spelled from one string per word to a set and the payload pairing that copies it (spellPayload); owed: that representation, then the default word, deep alternatives and a substring's root read through it, test first."
 ---

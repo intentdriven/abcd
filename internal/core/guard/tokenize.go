@@ -82,15 +82,16 @@ type segment struct {
 	// for the re-read to take as a variable's (payloadView).
 	variable map[int]string
 	// spelled records, per token index, a word holding a parameter
-	// expansion's mark as the line WROTE it: each variable's mark replaced by
-	// its expansion's text (`$HOME`, `${PWD}`; a simple name the next byte
-	// would extend is braced), every substitution's mark dropped, and a mark
-	// whose text is not known — a varMark carried into a payload's text —
-	// kept as unknownMark. Only an entry's arg_values read it
-	// (writtenOperand): every other reading takes the token, where the
-	// variable is the unknown word's mark (iss-2609290321312087). nil when no
-	// word holds a variable.
-	spelled map[int]string
+	// expansion's mark as the line WROTE it, as the set of texts it can
+	// print (spellWritten): each variable's mark replaced by each text its
+	// expansion can print (`$HOME`, `${PWD}`; `${DIR}` and `$HOME` for
+	// `${DIR:-$HOME}`; a simple name the next byte would extend is braced),
+	// every substitution's mark dropped, and a mark whose text is not known —
+	// a varMark carried into a payload's text — kept as unknownMark. Only an
+	// entry's arg_values read it (writtenMatches): every other reading takes
+	// the token, where the variable is the unknown word's mark
+	// (iss-2609290321312087). nil when no word holds a variable.
+	spelled map[int][]string
 	// arrivals caches commandArrivals(tokens) once Check has its final
 	// segments (walked records that it is set), so the walk to command position
 	// is paid once per segment rather than once per entry. A segment built
@@ -386,7 +387,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		// spells rides with the segment (segment.spelled); curVarAt records,
 		// for the word being built, where in cur each variable's mark stands
 		// and the expansion's text, "" where it is not known.
-		spells   map[int]string
+		spells   map[int][]string
 		curVarAt []varSite
 		// curMask is parallel to cur and records, per byte, whether it reached
 		// the tokenizer unquoted (wordStruct) and whether it began its word
@@ -615,10 +616,11 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		vars[len(toks)] = text
 	}
 	// addVar leaves the mark of a parameter expansion where its value goes,
-	// and records the expansion's text as the line wrote it (segment.spelled).
-	addVar := func(text string) {
+	// and records the texts it can print as the line wrote them
+	// (segment.spelled).
+	addVar := func(texts ...string) {
 		addCur([]byte{varMark}, 0)
-		curVarAt[len(curVarAt)-1].text = text
+		curVarAt[len(curVarAt)-1].texts = texts
 	}
 	// recordSpelling files the word being built under segment.spelled when a
 	// variable's mark is in it: word is the token it becomes, and whole
@@ -631,13 +633,13 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			return
 		}
 		if spells == nil {
-			spells = map[int]string{}
+			spells = map[int][]string{}
 		}
 		switch {
 		case whole:
 			spells[len(toks)] = spellWritten(cur, curVarAt, nil)
 		case isUnknown(word):
-			spells[len(toks)] = unknownText
+			spells[len(toks)] = []string{unknownText}
 		}
 	}
 	// recordBraceSpelling is recordSpelling for one word a brace group made:
@@ -661,7 +663,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			return
 		}
 		if spells == nil {
-			spells = map[int]string{}
+			spells = map[int][]string{}
 		}
 		spells[len(toks)] = spellWritten(w.b, sites, w.m)
 	}
@@ -1025,7 +1027,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		start := len(segs)
 		expandedBody(body)
 		feedFrom(start)
-		addVar(spellParameter(body, split))
+		addVar(spellParameter(body, split)...)
 		if len(segs) > start {
 			curSub = true
 		}
@@ -2169,7 +2171,7 @@ type enclosing struct {
 	vars       map[int]string
 	curVar     bool
 	curSub     bool
-	spells     map[int]string
+	spells     map[int][]string
 	curVarAt   []varSite
 	cur        []byte
 	curMask    []byte

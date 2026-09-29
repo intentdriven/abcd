@@ -139,6 +139,41 @@ quiet	flock /tmp/lock /bin/echo -c "git push --force origin main"
 quiet	flock -w 5 /tmp/lock /bin/echo --command "git push --force origin main"
 warn	flock /tmp/lock kubectl exec -c app pod -- gh repo delete owner/repo
 
+# --- block: a parameter expansion that can print the root or the home ------
+# iss-2609290426544292. A default prints its word when the variable is unset,
+# an alternative prints its word or nothing, a substring can print the `/` a
+# path begins with, and bash 3.2 reads a default after a subscript's `]`. A
+# spelling nested past the depth the guard follows refuses rather than passes.
+block	rm -rf ${DIR:-$HOME}
+block	rm -rf "${DIR:-$HOME}"
+block	rm -rf ${DIR:-/}
+block	rm -rf ${DIR-$HOME}/*
+block	rm -rf ${DIR:=/}
+block	rm -rf ${DIR:-~}
+block	rm -rf ${X[0]]-$HOME}
+block	rm -rf ${X[0]]:-/}
+block	rm -rf ${X:+${X:+${X:+${X:+$HOME}}}}
+block	rm -rf ${PREFIX:+$PREFIX}/
+block	rm -rf ${PWD:0:1}
+block	rm -rf ${X/*/$HOME}
+block	sh -c "rm -rf ${DIR:-$HOME}"
+block	bash -c 'rm -rf ${DIR:-/}'
+block	rm -rf ${X:+${X:+${X:+${X:+${X:+${X:+${X:+${X:+${X:+./build}}}}}}}}}
+
+# --- quiet: the same expansions naming a safe path ---------------------------
+quiet	rm -rf ${DIR:-./build}
+quiet	rm -rf "${BUILD_DIR:-./build}"
+quiet	rm -rf "${TMPDIR:-/tmp}/abcd-x"
+quiet	rm -rf "${XDG_CACHE_HOME:-$HOME/.cache}/abcd"
+quiet	rm -rf ${DIR:-$HOME}/build
+quiet	rm -rf ${DIR:?}
+quiet	rm -rf ${DIR:?set DIR}
+quiet	rm -rf "${OUT%/}"
+quiet	rm -rf "${DIR/#\~/$HOME}"
+quiet	rm -rf ${X:+${X:+${X:+${X:+./build}}}}
+quiet	sh -c "rm -rf ${DIR:-./build}"
+quiet	echo ${X:+${X:+${X:+${X:+${X:+${X:+${X:+${X:+${X:+x}}}}}}}}}
+
 # --- fp: accepted false positives, and the exact shape they take ------------
 fp	rg git push --force docs/
 fp	grep -rn gh repo delete .

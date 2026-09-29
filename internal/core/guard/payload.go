@@ -244,99 +244,136 @@ func payloadView(s segment) segment {
 	return v
 }
 
-// namedPayloads returns, parallel to refs, the text of each string as the
-// line wrote its variables (segment.spelled), "" where it is no other text or
-// cannot be paired: payloadView hands a string the mark of each value the
+// namedPayloads returns, parallel to refs, the texts of each string as the
+// line wrote its variables (segment.spelled), none where it is no other text
+// or cannot be paired: payloadView hands a string the mark of each value the
 // enclosing shell put in it, which reads as an unknown word with no name, so
-// `sh -c "rm -rf $HOME"` holds a mark where `$HOME` was written. Only the
-// arg_values compare reads what spellPayload takes from it; every reading of
-// the string reads the marks (iss-2609290321312087). The words are paired by
-// payloadsOf's own order, and a pair whose kind or family differs is not
-// paired.
-func namedPayloads(s segment, refs []payloadRef) []string {
-	named := make([]string, len(refs))
-	v, ok := spelledView(s)
-	if !ok {
-		return named
+// `sh -c "rm -rf $HOME"` holds a mark where `$HOME` was written. A word's
+// spelling is a set (`${DIR:-$HOME}` is `${DIR}` and `$HOME`), so the string
+// is written out once for each text (spelledViews), and each reading is
+// paired on its own. Only the arg_values compare reads what spellPayload
+// takes from them; every reading of the string reads the marks
+// (iss-2609290321312087). The words are paired by payloadsOf's own order, and
+// a pair whose kind or family differs is not paired.
+func namedPayloads(s segment, refs []payloadRef) [][]string {
+	if len(refs) == 0 {
+		return nil
 	}
-	nrefs := payloadRefsOf(v)
-	if len(nrefs) != len(refs) {
-		return named
-	}
-	for r, ref := range refs {
-		if n := nrefs[r]; n.kind == ref.kind && n.family == ref.family && n.payload != ref.payload {
-			named[r] = n.payload
+	named := make([][]string, len(refs))
+	for _, v := range spelledViews(s) {
+		nrefs := payloadRefsOf(v)
+		if len(nrefs) != len(refs) {
+			continue
+		}
+		for r, ref := range refs {
+			if n := nrefs[r]; n.kind == ref.kind && n.family == ref.family && n.payload != ref.payload {
+				named[r] = appendText(named[r], n.payload)
+			}
 		}
 	}
 	return named
 }
 
-// spelledView is payloadView with each word the line wrote with a known
+// spelledViews is payloadView with each word the line wrote with a known
 // variable spelled as the line wrote it (segment.spelled) instead of with
 // varMark, where payloadView spells it; a variable whose text is not known
-// stays varMark. ok is false when no word changes.
-func spelledView(s segment) (segment, bool) {
+// stays varMark. A word's spelling is a set, so there is one view for each
+// place in the largest set, and view k writes each word's k-th text (its last
+// where it has fewer): every text of every word is written in some view, and
+// the views number at most maxSpellings. nil when no word changes.
+func spelledViews(s segment) []segment {
 	if len(s.spelled) == 0 {
-		return s, false
+		return nil
 	}
 	v := payloadView(s)
-	var toks []string
+	written := map[int][]string{}
+	most := 0
 	for i, text := range s.variable {
 		// payloadView spelled this word with varMark (text); a word it left,
 		// where a command can sit, keeps its unknownMark and is left here too.
-		w, ok := s.spelled[i]
+		ws, ok := s.spelled[i]
 		if !ok || v.tokens[i] != text {
 			continue
 		}
-		w = strings.ReplaceAll(strings.ReplaceAll(w, fieldText, " "), quotedFieldText, fieldText)
-		if w = strings.ReplaceAll(w, unknownText, varText); w == text {
+		var texts []string
+		changed := false
+		for _, w := range ws {
+			w = strings.ReplaceAll(strings.ReplaceAll(w, fieldText, " "), quotedFieldText, fieldText)
+			w = strings.ReplaceAll(w, unknownText, varText)
+			changed = changed || w != text
+			texts = append(texts, w)
+		}
+		if !changed {
 			continue
 		}
-		if toks == nil {
-			toks = append([]string(nil), v.tokens...)
+		written[i] = texts
+		most = max(most, len(texts))
+	}
+	if most == 0 {
+		return nil
+	}
+	views := make([]segment, most)
+	for k := range views {
+		toks := append([]string(nil), v.tokens...)
+		for i, texts := range written {
+			toks[i] = texts[min(k, len(texts)-1)]
 		}
-		toks[i] = w
+		views[k] = v
+		views[k].tokens = toks
 	}
-	if toks == nil {
-		return v, false
-	}
-	v.tokens = toks
-	return v, true
+	return views
 }
 
-// spellPayload reads the string named, the same string as the one psegs
+// spellPayload reads each string named, the same string as the one psegs
 // were read from with its variables written out (namedPayloads), and gives
-// each word of psegs that holds a variable the spelling of the word at the
-// same place of named: its own segment.spelled, or its text where the string
-// quotes the name (`sh -c "rm -rf '$HOME'"`). A word is paired only when
-// both readings have the same segments and words, and the word read from
-// named has the mark-view word's known text in the same order around it
-// (fitsWritten); an unpaired word keeps the spelling it has, which names no
-// variable. Nothing else of psegs is changed.
-func spellPayload(psegs []segment, named string) {
-	if named == "" {
-		return
-	}
-	nsegs, err := tokenize(named)
-	if err != nil || len(nsegs) != len(psegs) {
-		return
-	}
-	for i := range psegs {
-		m, n := psegs[i], nsegs[i]
-		if len(m.spelled) == 0 || len(m.tokens) != len(n.tokens) {
+// each word of psegs that holds a variable the texts of the word at the same
+// place of each: its own segment.spelled, or its text where the string quotes
+// the name (`sh -c "rm -rf '$HOME'"`). A word is paired only when both
+// readings have the same segments and words, and the word read from named has
+// the mark-view word's known text in the same order around it (fitsWritten);
+// a word no reading pairs keeps the spelling it has, which names no variable.
+// A word paired with more than maxSpellings texts, or with a text past a
+// bound, is spellCapped. Nothing else of psegs is changed.
+func spellPayload(psegs []segment, named []string) {
+	paired := make([]map[int][]string, len(psegs))
+	for _, nm := range named {
+		nsegs, err := tokenize(nm)
+		if err != nil || len(nsegs) != len(psegs) {
 			continue
 		}
-		for j := range m.spelled {
-			w, ok := n.spelled[j]
-			if !ok {
-				if isUnknown(n.tokens[j]) {
+		for i := range psegs {
+			m, n := psegs[i], nsegs[i]
+			if len(m.spelled) == 0 || len(m.tokens) != len(n.tokens) {
+				continue
+			}
+			for j := range m.spelled {
+				ws, ok := n.spelled[j]
+				if !ok {
+					if isUnknown(n.tokens[j]) {
+						continue
+					}
+					ws = []string{n.tokens[j]}
+				}
+				if !fitsWritten(m.tokens[j], n.tokens[j]) {
 					continue
 				}
-				w = n.tokens[j]
+				for _, w := range ws {
+					if fitsWritten(m.tokens[j], w) {
+						if paired[i] == nil {
+							paired[i] = map[int][]string{}
+						}
+						paired[i][j] = appendText(paired[i][j], w)
+					}
+				}
 			}
-			if fitsWritten(m.tokens[j], n.tokens[j]) && fitsWritten(m.tokens[j], w) {
-				m.spelled[j] = w
+		}
+	}
+	for i, words := range paired {
+		for j, texts := range words {
+			if capped(texts) || len(texts) > maxSpellings {
+				texts = []string{spellCapped}
 			}
+			psegs[i].spelled[j] = texts
 		}
 	}
 }
