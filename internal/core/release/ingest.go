@@ -389,8 +389,14 @@ func ingest(root string, current surface.Snapshot, raw []byte, at time.Time, ops
 	if err := checkOutbound(root, strings.Join(section, "\n"), "changelog section", "entries", &rs); err != nil {
 		return res, err
 	}
+	if err := checkPrivacy(root, strings.Join(section, "\n"), "changelog section", "entries", &rs); err != nil {
+		return res, err
+	}
 	if hasPage {
 		if err := checkOutbound(root, pageText, "release page", "press_release", &rs); err != nil {
+			return res, err
+		}
+		if err := checkPrivacy(root, pageText, "release page", "press_release", &rs); err != nil {
 			return res, err
 		}
 		if err := checkPersonas(root, pageText, &rs); err != nil {
@@ -478,6 +484,32 @@ func checkOutbound(root, text, label, at string, rs *reasons) error {
 		// a session URL into a report would carry it one step further.
 		rs.add(ReasonOutboundPolicy, at, "the rendered %s carries a %s on line %d; remove it (%s)",
 			label, f.Kind, f.Line, "no session URL and no tool attribution footer in public text")
+	}
+	return nil
+}
+
+// checkPrivacy holds one rendered document to the bar the launch scan holds the
+// same file to: any hard_fail finding of the canonical scanner (a token, a key,
+// the caller's own home or identity) adds a reason. The documents are public
+// release text, so a finding is refused here, where the composer can drop it,
+// rather than written and found by the launch scan after a person may have
+// committed it (iss-2609290405381338). The detail names the kind and the line,
+// never the matched text. A scanner that cannot be built, or runs degraded, is a
+// stop: a weakened pattern set that reports nothing is not a check.
+func checkPrivacy(root, text, label, at string, rs *reasons) error {
+	sc, err := scanner.New(root)
+	if err != nil {
+		return fmt.Errorf("the %s's privacy check: %w", label, err)
+	}
+	if unavail, reason := sc.Unavailable(); unavail {
+		return fmt.Errorf("the %s's privacy check: refusing to judge with a degraded scanner config: %s", label, reason)
+	}
+	for _, f := range sc.ScanText(text, label) {
+		if f.Severity != scanner.SeverityHardFail {
+			continue
+		}
+		rs.add(ReasonPrivacy, at, "the rendered %s carries a %s on line %d; remove it (release text is public, "+
+			"and a secret or the composer's own identity has no place in it)", label, f.Kind, f.Line)
 	}
 	return nil
 }
