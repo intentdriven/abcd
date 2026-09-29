@@ -57,3 +57,48 @@ func TestScanTextGluedSweepKeepsTheDocumentationKey(t *testing.T) {
 		t.Errorf("a bounded token was reported %d times, want once", n)
 	}
 }
+
+// escapedGluedLines builds the lines of iss-2609290743362554: a glued token whose own
+// bytes are percent- or JSON-escaped. The raw line carries no token (the escape
+// breaks it) and the decoded view carries it glued behind a word byte, where
+// the bounded patterns' leading \b cannot see it. Every token and escape is
+// built at runtime.
+func escapedGluedLines() []struct{ name, line, kind, token string } {
+	pat, _, akia, _ := gluedTokens()
+	bs := string(rune(0x5c))
+	patTail := pat[len("gh"+"p_"):]
+	akiaTail := akia[len("AK"+"IA"):]
+	return []struct{ name, line, kind, token string }{
+		{"pat with its first byte percent-encoded, behind an underscore", "notes_%67" + pat[1:], "token:github_pat", "%67" + pat[1:]},
+		{"pat with its prefix's last letter percent-encoded, behind an underscore", "notes_gh%70_" + patTail, "token:github_pat", "gh%70_" + patTail},
+		{"pat with its first byte JSON-escaped, behind an underscore", `{"k":"notes_` + bs + "u0067" + pat[1:] + `"}`, "token:github_pat", bs + "u0067" + pat[1:]},
+		{"access key with its first byte JSON-escaped, behind a letter", `{"k":"x` + bs + "u0041" + "KIA" + akiaTail + `"}`, "token:aws_access_key", bs + "u0041" + "KIA" + akiaTail},
+	}
+}
+
+// TestScanTextFindsAnEscapedGluedToken — the decoded layers (percent.go) ran
+// the bounded patterns alone, so a glued token spelled with escaped bytes
+// survived ScanText and Redact raw. Each is found on the decoded view and
+// reported at the raw bytes it sits in, which Redact seals.
+func TestScanTextFindsAnEscapedGluedToken(t *testing.T) {
+	for _, tc := range escapedGluedLines() {
+		t.Run(tc.name, func(t *testing.T) {
+			var hit *Finding
+			fs := ScanText(tc.line, Identity{}, DefaultPatterns(), nil, "f")
+			for i := range fs {
+				if fs[i].Kind == tc.kind {
+					hit = &fs[i]
+				}
+			}
+			if hit == nil {
+				t.Fatalf("ScanText did not find the escaped glued %s: %+v", tc.kind, fs)
+			}
+			if want := strings.Index(tc.line, tc.token) + 1; hit.Column != want || hit.Matched != tc.token {
+				t.Errorf("the finding's span is column %d %q, want column %d %q", hit.Column, hit.Matched, want, tc.token)
+			}
+			if out, _ := Redact(tc.line, fs); strings.Contains(out, tc.token[len(tc.token)-12:]) {
+				t.Errorf("Redact left the escaped glued token raw: %q", out)
+			}
+		})
+	}
+}

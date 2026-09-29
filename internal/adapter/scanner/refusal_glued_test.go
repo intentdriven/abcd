@@ -86,3 +86,17 @@ func TestGluedSweepFailsClosedOnAnUncompilablePattern(t *testing.T) {
 		t.Error("the sweep could not build the bundled pattern set")
 	}
 }
+
+// TestRedactRefusalSealsAnEscapedGluedToken — RedactRefusal reads ScanText, so
+// a glued token spelled with escaped bytes came back raw from it too.
+func TestRedactRefusalSealsAnEscapedGluedToken(t *testing.T) {
+	repo := t.TempDir()
+	for _, tc := range escapedGluedLines() {
+		t.Run(tc.name, func(t *testing.T) {
+			got := RedactRefusal(repo, tc.line)
+			if tail := tc.token[len(tc.token)-12:]; strings.Contains(got, tail) {
+				t.Errorf("RedactRefusal echoed the escaped glued token: %q", got)
+			}
+		})
+	}
+}

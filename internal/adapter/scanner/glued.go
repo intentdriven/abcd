@@ -87,12 +87,20 @@ func (g gluedSweep) findings(line string, lineno int, file string) []Finding {
 	return out
 }
 
-// gluedFindings runs the sweep alone over text, line by line; ok is the
-// sweep's completeness. The cost guard and the fail-closed test read it.
+// gluedFindings runs the sweep alone over text, line by line — the raw line
+// and each of its decoded views, as scanText runs it; ok is the sweep's
+// completeness. The cost guard and the fail-closed test read it.
 func gluedFindings(text string, patterns []Pattern, file string) (findings []Finding, ok bool) {
 	g := newGluedSweep(patterns)
 	for i, line := range strings.Split(text, "\n") {
-		findings = append(findings, g.findings(strings.TrimRight(line, "\r"), i+1, file)...)
+		line = strings.TrimRight(line, "\r")
+		findings = append(findings, g.findings(line, i+1, file)...)
+		if len(g.patterns) == 0 {
+			continue
+		}
+		for _, v := range lineViews(line) {
+			findings = append(findings, viewTokenFindings(g.patterns, g.probes, g.junctions, line, v, i+1, file)...)
+		}
 	}
 	return findings, g.complete
 }

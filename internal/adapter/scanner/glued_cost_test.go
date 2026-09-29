@@ -8,12 +8,14 @@ import (
 // TestGluedSweepWorkIsLinear pins the sweep's cost class in the manner of the
 // adjacency guards: a line of underscore-joined words, with and without glued
 // tokens in it, quadrupled, at most multiplies the sweep's charge by the
-// package's linear bar. Re-scanning every suffix would square it.
+// package's linear bar. Re-scanning every suffix would square it. The escaped
+// shapes pin the sweep over the decoded views (iss-2609290743362554).
 func TestGluedSweepWorkIsLinear(t *testing.T) {
 	if raceEnabled {
 		t.Skip("a deterministic count gains nothing under -race; the uninstrumented run asserts it")
 	}
 	pat, _, akia, _ := gluedTokens()
+	bs := string(rune(0x5c))
 	shapes := []struct {
 		name  string
 		build func(n int) string
@@ -22,6 +24,8 @@ func TestGluedSweepWorkIsLinear(t *testing.T) {
 		{"underscore-joined glued tokens", func(n int) string { return strings.Repeat("notes_"+pat+"_", n) }},
 		{"letter-glued access keys", func(n int) string { return strings.Repeat("x"+akia, n) }},
 		{"a long word run with a prefix at every step", func(n int) string { return strings.Repeat("ghp_AKIA", n) }},
+		{"percent-escaped glued tokens", func(n int) string { return strings.Repeat("notes_%67"+pat[1:]+"_", n) }},
+		{"JSON-escaped glued keys", func(n int) string { return strings.Repeat("x"+bs+"u0041"+akia[1:], n) }},
 	}
 	patterns := DefaultPatterns()
 	for _, sh := range shapes {
