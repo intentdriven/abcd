@@ -220,7 +220,7 @@ func Set(home, name string, c Choice) (changed bool, err error) {
 	// outside the home, and the index holds names and pointers only, scanned
 	// before every write, so a home directory that is itself a working tree (a
 	// dotfiles repository) keeps those homes.
-	if c.Home == HomeABCD && workingTreeAbove(filepath.Join(home, ".abcd")) != "" {
+	if c.Home == HomeABCD && workingTreeAbove(home, ".abcd") != "" {
 		return false, errors.New("credential: ~/.abcd lies inside a git working tree, where a commit could carry the credential, so the abcd home is refused and nothing was written; choose the keychain or an external home")
 	}
 	// ~/.abcd is created, judged and opened in one walk relative to the
@@ -336,9 +336,28 @@ func sameOrRefuse(home, name, value string) (bool, error) {
 	return false, fmt.Errorf("credential: the keychain already holds a value for %s, and abcd never replaces a stored secret; remove that item by hand to store a new one", name)
 }
 
-// workingTreeAbove returns the first directory at or above dir that carries a
-// .git entry, or "" when none does.
-func workingTreeAbove(dir string) string {
+// workingTreeAbove returns the first directory at or above home/rel that
+// carries a .git entry, or "" when none does. The place is judged twice: by
+// its lexical path, and with home replaced by where home resolves
+// (filepath.EvalSymlinks), so a home directory that is itself a symlink into
+// a checkout (~ -> <repo>/home) is seen as lying inside it
+// (iss-2609290259108077). Home is never refused for being a link; only the
+// working tree it leads into is judged. A home that does not resolve is
+// judged by its lexical path alone: nothing can then be written under it.
+func workingTreeAbove(home, rel string) string {
+	if tree := gitEntryAbove(filepath.Join(home, rel)); tree != "" {
+		return tree
+	}
+	real, err := filepath.EvalSymlinks(home)
+	if err != nil || real == filepath.Clean(home) {
+		return ""
+	}
+	return gitEntryAbove(filepath.Join(real, rel))
+}
+
+// gitEntryAbove returns the first directory at or above dir, climbed
+// lexically, that carries a .git entry, or "" when none does.
+func gitEntryAbove(dir string) string {
 	d := filepath.Clean(dir)
 	for {
 		if _, err := os.Lstat(filepath.Join(d, ".git")); err == nil {

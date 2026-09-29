@@ -82,8 +82,7 @@ func resolvePointer(home, name string, p Pointer) (string, error) {
 	if err := fsutil.HomeScopeLink(home, rel); err != nil {
 		return "", fmt.Errorf("credential: %s points at %s, which is not read: %v", name, p.File, err)
 	}
-	path := filepath.Join(home, filepath.FromSlash(rel))
-	if tree := workingTreeAbove(filepath.Dir(path)); tree != "" {
+	if tree := workingTreeAbove(home, filepath.Dir(filepath.FromSlash(rel))); tree != "" {
 		return "", fmt.Errorf("credential: %s points at %s, which lies inside a git working tree, where a commit could carry it, so it is not read", name, p.File)
 	}
 	raw, refusal, err := fsutil.ReadHomeDeclaration(home, rel, maxToolFileBytes)

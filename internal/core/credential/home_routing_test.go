@@ -184,3 +184,55 @@ func TestSetWritesNoIndexThroughAnAbcdHomeSwappedForALink(t *testing.T) {
 		})
 	}
 }
+
+// TestAHomeThatIsItselfALinkIntoACheckoutIsJudgedWhereItLeads is
+// iss-2609290259108077 (review-integ14 LOW (a)): the home directory is itself
+// a symlink into a git checkout (~ -> <repo>/home). The home is never refused
+// for being a link, but the working-tree check judges where it leads as well
+// as its lexical path, so the abcd home is refused with nothing written in the
+// checkout and the keychain untouched, and a pointer at a file under that home
+// is not read.
+func TestAHomeThatIsItselfALinkIntoACheckoutIsJudgedWhereItLeads(t *testing.T) {
+	keychain := withFakeKeychain(t, "security")
+	base := t.TempDir()
+	repo := filepath.Join(base, "checkout")
+	real := filepath.Join(repo, "home")
+	for _, dir := range []string{filepath.Join(repo, ".git"), filepath.Join(real, ".config")} {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	home := filepath.Join(base, "account")
+	if err := os.Symlink(real, home); err != nil {
+		t.Fatal(err)
+	}
+
+	changed, err := Set(home, "svc", Choice{Home: HomeABCD, Value: secretValue})
+	if err == nil || changed {
+		t.Fatalf("Set kept the value under a home that leads into a checkout: changed %v, err %v", changed, err)
+	}
+	if !strings.Contains(err.Error(), "git working tree") {
+		t.Errorf("the refusal must name the working tree: %v", err)
+	}
+	if strings.Contains(err.Error(), secretValue) {
+		t.Fatal("the refusal echoes the value")
+	}
+	if _, serr := os.Lstat(filepath.Join(real, ".abcd", StoreFileName)); !os.IsNotExist(serr) {
+		t.Fatalf("%s was written inside the checkout: %v", StoreFileName, serr)
+	}
+	assertNowhere(t, repo, secretValue)
+	if entries, _ := os.ReadDir(keychain); len(entries) != 0 {
+		t.Fatalf("the keychain was written: %d item(s)", len(entries))
+	}
+
+	if err := os.WriteFile(filepath.Join(real, ".config", "tool.json"), []byte(`{"auth":{"token":"`+secretValue+`"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	v, err := resolvePointer(home, "svc", Pointer{File: "~/.config/tool.json", Field: "auth.token"})
+	if err == nil || v != "" {
+		t.Fatalf("a pointer under a home that leads into a checkout was read: value %q, err %v", v, err)
+	}
+	if !strings.Contains(err.Error(), "git working tree") {
+		t.Errorf("the pointer's refusal must name the working tree: %v", err)
+	}
+}
