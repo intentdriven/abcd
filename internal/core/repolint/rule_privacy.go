@@ -289,9 +289,11 @@ func lintSeverity(s scanner.Severity) Severity {
 // hasAbsHomePath reports whether a line carries an absolute home path whose
 // final segment is a real username. A segment naming a well-known system
 // directory under /Users — Shared, Guest, Public — is NOT a username (iss-153),
-// so product code that legitimately writes to /Users/Shared needs no waiver. The
-// exemption is scoped to the /Users root: a /home/<name> segment is always a
-// user, and the allowlist is a macOS convention.
+// so product code that legitimately writes to /Users/Shared needs no waiver.
+// Under /home the exemption is narrower: a /home/<name> segment is a user except
+// for linuxbrew, the account Homebrew's Linux prefix (/home/linuxbrew) lives
+// under, which names a package prefix rather than a person
+// (scanner.IsNonUserPosixHomeSegment).
 //
 // Two further shapes are exempt because the conventions MANDATE them, and a
 // detector that is red at baseline on its own conventions is one nobody reads
