@@ -2,6 +2,7 @@
 id: itd-70
 slug: launch-release-retention-newest-per-line
 severity: minor
+related_issues: [iss-282]
 ---
 
 # Drawn-out intent
