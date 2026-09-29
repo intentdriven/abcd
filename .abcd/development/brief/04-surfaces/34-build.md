@@ -191,7 +191,13 @@ intent or its spec). It opens by naming each source and the base it was read
 at, then gives the lane (the spec step it builds, the worktree, the branch) and
 what the implementer hands back: its report, the definition of done's output,
 and the receipt with its exact shape, each at an absolute path in the lane's
-directory. An intent the default branch does not carry as planned, a spec not
+directory. Before the record it carries, the brief states the outbound policy
+in its own right, quoted from `scanner.OutboundPolicy`, the value the lint
+rules and the commit gates quote (itd-152): no live session URL and no tool
+attribution footer in a pull request, an issue, a comment, a commit message or
+a release note, and a re-read-and-strip of every pull request, issue and
+comment the implementer creates, whatever the repository's own conventions
+say. An intent the default branch does not carry as planned, a spec not
 open there, or no `AGENTS.md` is refused rather than briefed from elsewhere, and
 so is a source the base holds as a link or past its size cap.
 The brief is written atomically, mode `0600`.

@@ -19,6 +19,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/adapter/scanner"
 	"github.com/intentdriven/abcd/internal/core/decide"
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
 	"github.com/intentdriven/abcd/internal/core/intent"
@@ -472,6 +473,18 @@ func renderBrief(st State, lane Lane, laneDir string, src briefSources) []byte {
 	p("runs: every commit exists on the branch past its base, the definition of done's output exists and\n")
 	p("its exit code is 0, and the report exists. A receipt short of any of these is refused, naming what\n")
 	p("is missing, and the lane waits for a corrected one.\n\n")
+
+	// The outbound policy (itd-152): the harness stamps a session URL and an
+	// attribution footer onto what an agent posts, outside the agent's own
+	// output, so the prompt that starts the agent is where the rule has to be.
+	// It is quoted from scanner.OutboundPolicy, the one value the scanner, the
+	// lint rules and the commit gates quote, never restated here, and it is the
+	// brief's own instruction: a managed repository's conventions need not
+	// carry it.
+	p("## Outward-facing text\n\n")
+	p("A pull-request body, an issue, a comment, a commit message and a release note are public the moment\n")
+	p("they exist. This holds whatever the conventions below say:\n\n")
+	p("> %s\n\n", scanner.OutboundPolicy)
 
 	p("---\n\n## The intent: %s\n\n<!-- begin %s -->\n\n%s\n\n<!-- end %s -->\n\n", st.Intent, src.intentPath, strings.TrimSpace(src.intentText), src.intentPath)
 	p("## The spec: %s\n\n<!-- begin %s -->\n\n%s\n\n<!-- end %s -->\n\n", st.Spec, src.specPath, strings.TrimSpace(src.specText), src.specPath)

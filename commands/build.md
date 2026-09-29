@@ -101,7 +101,9 @@ A lane's steps run in order:
 2. `brief` — the loop renders the lane's brief from that base: the intent, the
    spec, the conventions of `AGENTS.md` and the decisions the intent cites, with
    where the implementer's report, the definition of done's output and its
-   receipt go. An intent the default branch does not carry as planned is
+   receipt go, and the outbound policy: no session URL or tool attribution
+   footer in public text, and a re-read-and-strip of every pull request, issue
+   and comment the implementer creates. An intent the default branch does not carry as planned is
    refused here: land its planning first.
 3. `implement` — `awaiting` names an `implementer`. Start a fresh agent with
    nothing but the brief; it works in the lane's worktree, commits on the
