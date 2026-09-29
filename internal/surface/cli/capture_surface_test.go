@@ -271,6 +271,29 @@ func TestCaptureListOpenHumanRenderCarriesSummary(t *testing.T) {
 	}
 }
 
+// TestSummaryNoteStripsLeadingMarkdownMarker pins that a `capture list` row's
+// summary drops a leading heading or blockquote marker, so a body opening
+// "# Title" reads "— Title" rather than "— # Title" (iss-2609240307549105).
+// Only a CommonMark marker is stripped: a hash run followed by a space, of one
+// to six hashes, or a ">" with its optional space.
+func TestSummaryNoteStripsLeadingMarkdownMarker(t *testing.T) {
+	for _, tc := range []struct{ body, want string }{
+		{"# Title\n\nmore", " — Title"},
+		{"\n\n## Second level", " — Second level"},
+		{"###### Six deep", " — Six deep"},
+		{"> quoted line", " — quoted line"},
+		{">quoted tight", " — quoted tight"},
+		{"####### seven is not a heading", " — ####### seven is not a heading"},
+		{"#hashtag is not a heading", " — #hashtag is not a heading"},
+		{"plain first line", " — plain first line"},
+		{"# ", ""},
+	} {
+		if got := summaryNote(tc.body); got != tc.want {
+			t.Errorf("summaryNote(%q) = %q, want %q", tc.body, got, tc.want)
+		}
+	}
+}
+
 // TestDocsLintUnreadableConfigNoPathLeak covers a non-not-exist load failure
 // (the config path is a directory → EISDIR): a *PathError's Error() embeds the
 // absolute path, so the branch must strip it. Guards the security-review BLOCK.

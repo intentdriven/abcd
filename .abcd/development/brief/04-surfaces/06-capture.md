@@ -539,7 +539,8 @@ for ad-hoc scribbles.
   the record does not hold is refused with nothing written.
 - **Given** a ledger of open issues, **when** the user lists them, **then** the
   output carries id, state, severity, slug and a one-line summary (the first
-  line of the body, clipped) in derived-priority order:
+  line of the body, less a leading markdown heading or blockquote marker,
+  clipped) in derived-priority order:
   unblocked first, then severity, with rows blocked by an open dependency
   demoted and annotated with their blockers.
 - **Given** an abcd-installed repo, **when** the user runs bare

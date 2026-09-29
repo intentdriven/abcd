@@ -5300,9 +5300,10 @@ func blockedNote(iss capture.Issue) string {
 const listSummaryRunes = 80
 
 // summaryNote renders the tail of a `capture list` row: the first non-blank
-// line of the record's body, sanitised for the terminal and clipped to
-// listSummaryRunes, so each row carries the one-line summary itd-4's AC5 names
-// and stays one line. The whole body is in --json.
+// line of the record's body, less a leading markdown heading or blockquote
+// marker, sanitised for the terminal and clipped to listSummaryRunes, so each
+// row carries the one-line summary itd-4's AC5 names and stays one line. The
+// whole body is in --json.
 func summaryNote(body string) string {
 	var line string
 	for _, l := range strings.Split(body, "\n") {
@@ -5311,7 +5312,7 @@ func summaryNote(body string) string {
 			break
 		}
 	}
-	line = strings.TrimSpace(termsafe.Sanitize(line))
+	line = strings.TrimSpace(termsafe.Sanitize(stripMarkdownMarker(line)))
 	if line == "" {
 		return ""
 	}
@@ -5319,6 +5320,24 @@ func summaryNote(body string) string {
 		line = strings.TrimSpace(string(r[:listSummaryRunes])) + "…"
 	}
 	return " — " + line
+}
+
+// stripMarkdownMarker removes one leading CommonMark marker from a trimmed
+// line: an ATX heading's run of one to six "#" when a space, a tab or the end
+// of the line follows it, or a blockquote's ">" with its optional space. A
+// longer hash run or one glued to a word is text, and is left alone.
+func stripMarkdownMarker(line string) string {
+	if strings.HasPrefix(line, ">") {
+		return strings.TrimPrefix(line[1:], " ")
+	}
+	n := len(line) - len(strings.TrimLeft(line, "#"))
+	if n == 0 || n > 6 {
+		return line
+	}
+	if rest := line[n:]; rest == "" || rest[0] == ' ' || rest[0] == '\t' {
+		return rest
+	}
+	return line
 }
 
 // moreEvidenceNote renders the tail of a `capture mentions` row: the render shows
