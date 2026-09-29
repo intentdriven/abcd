@@ -47,7 +47,7 @@ are wiring rather than user-facing surface are listed separately under
 | 32 | `/abcd:scribe` | shipped | Build the ledger scribe's context from the ledger alone, and ingest what it transcribed without letting it author anything | [`32-scribe.md`](32-scribe.md) |
 | 33 | `/abcd:source` | shipped | Keep the documents you consult in a local corpus, record what each one changed, and ban the confidential ones' names at commit time | [`33-source.md`](33-source.md) |
 | 34 | `/abcd:build` | shipped | Start the loop that takes one READY intent to delivered, refusing while a question is open or a peer holds it | [`34-build.md`](34-build.md) |
-| 35 | `/abcd:drain` | shipped | See which open issues a machine may fix alone and in what order, and what happens to the rest; the run itself is not built | [`35-drain.md`](35-drain.md) |
+| 35 | `/abcd:drain` | shipped | Preview with `--dry-run` which open issues a machine may fix alone, in what order, and what happens to the rest; the shipped surface is that preview, and bare `drain`, the run itself, refuses to start | [`35-drain.md`](35-drain.md) |
 
 ## How much of this table a machine keeps honest
 
