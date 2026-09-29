@@ -428,9 +428,10 @@ Declining is not running `connect`, and it changes nothing.
 
 The setup is `abcd ahoy connect <provider> --base-url <url> --model <model>
 [--model <model>…] --home <home> [--key <name>]`. **This writes, under
-`~/.abcd/` and, for the keychain home, into the platform keychain.** Ask the
-person which home through your question tool, after relaying `key_homes`, and
-offer the three without marking one: `external` takes `--env <VARIABLE>` or
+`~/.abcd/` and, for the keychain home, into the platform keychain.** Set
+`abcd mode facilitator` and ask the technical facilitator which home through
+your question tool, after relaying `key_homes`, and offer the three without
+marking one: `external` takes `--env <VARIABLE>` or
 `--file ~/<file>.json --field <dotted.field>` (abcd keeps only where the key
 is); `abcd` and `keychain` take the key piped in on stdin from a file or a
 variable. It verifies the provider with one call to the first model listed,
@@ -472,13 +473,14 @@ The walkthrough is `abcd ahoy credential <name> --home <home>`, with the same
 three homes as `connect`: `external` with `--env`, or `--file` and `--field`;
 `abcd` and `keychain` with the value piped in on stdin. **This writes the
 chosen home only after the reading adapter's own verification call succeeds**
-(the provider's one short exchange, the hosting provider's account read). Ask
-for the home through your question tool; never ask for the value, and never
-pass it yourself: give the person the command to run in their own shell and
-relay `name`, `home`, `verified` and each `wrote` entry. A name another home
-already holds, or a different value for a name already kept, is refused:
-abcd never replaces a stored secret. The abcd home is refused when `~/.abcd`
-lies inside a git working tree (the keychain and an external home stay open
+(the provider's one short exchange, the hosting provider's account read). Set
+`abcd mode facilitator` and ask the technical facilitator for the home through
+your question tool; never ask for the value, and never pass it yourself: give
+the person the command to run in their own shell and relay `name`, `home`,
+`verified` and each `wrote` entry. A name another home already holds, or a
+different value for a name already kept, is refused: abcd never replaces a
+stored secret. The abcd home is refused when `~/.abcd` lies inside a git
+working tree (the keychain and an external home stay open
 there), and a platform with no keychain tool refuses the keychain home and
 names the other two.
 
