@@ -43,6 +43,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/adapter/scanner"
 	"github.com/intentdriven/abcd/internal/core/update"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -272,7 +273,9 @@ func validateReview(abs string, raw []byte) (ReviewVerdict, []ReviewFinding, rev
 	dec.DisallowUnknownFields() // reject smuggled extra fields
 	var in ReviewArtefact
 	if err := dec.Decode(&in); err != nil {
-		return "", nil, rep, fmt.Errorf("malformed review JSON: %v", err)
+		// The decoder names an undeclared field by the payload's own key:
+		// redacted, never raw (iss-2609290218032954).
+		return "", nil, rep, fmt.Errorf("malformed review JSON: %s", scanner.RedactRefusal(abs, err.Error()))
 	}
 	// Three-branch schema gate (mirrors IngestLessons).
 	if in.SchemaVersion == 0 {

@@ -1,6 +1,8 @@
 package reading
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -68,4 +70,60 @@ func TestEnvelopeRefusalsDoNotEchoThePayload(t *testing.T) {
 func TestWriteRunArtefactDoesNotEchoARefusedRunID(t *testing.T) {
 	_, err := WriteRunArtefact(t.TempDir(), refusalLeak, "scribe-manifest.json", map[string]string{})
 	assertNoRefusalLeak(t, err, "run")
+}
+
+// TestUndeclaredFieldRefusalFailsClosedOnADegradedScanner — the refusal's
+// redactor must consult the scanner's degraded state, as every write-time
+// redactor does (iss-2609290043245353). A per-repo scanner config that does not
+// parse leaves the scanner degraded; the undeclared field's name is then
+// described, never echoed through a weakened pattern set.
+func TestUndeclaredFieldRefusalFailsClosedOnADegradedScanner(t *testing.T) {
+	f := newIngestFixture(t, "detection")
+	cfg := filepath.Join(f.root, ".abcd", "config", "pii.json")
+	if err := os.MkdirAll(filepath.Dir(cfg), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(cfg, []byte("{not json"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	doc := f.payload(1)
+	doc["reviewer_notes /Users/zzotherperson/notes"] = "x" // abcd-lint:allow — a planted home path in a KEY
+	_, err := f.ingest(doc)
+	if err == nil {
+		t.Fatal("an undeclared envelope field was accepted")
+	}
+	for _, part := range []string{"zzotherperson", "reviewer_notes"} {
+		if strings.Contains(err.Error(), part) {
+			t.Errorf("a degraded scanner let the refusal echo the decoder's message (%q): %v", part, err)
+		}
+	}
+	if !strings.Contains(err.Error(), "not quoted") {
+		t.Errorf("a degraded scanner did not describe the message: %v", err)
+	}
+}
+
+// TestParkedManifestRefusalRedactsTheKey — iss-2609290218032954. The parked
+// manifest sits in the local tier, where a reading session with tools can
+// rewrite it (and re-point manifest_sha256 at the rewrite), so a key in it is
+// payload-chosen too. The strict decoder names an undeclared key by that
+// spelling, and the refusal returned it raw; it is named redacted now.
+func TestParkedManifestRefusalRedactsTheKey(t *testing.T) {
+	f := newIngestFixture(t, "detection")
+	rel := DefaultRunDir + "/" + f.runID + "/" + ManifestFileName
+	raw, err := os.ReadFile(filepath.Join(f.root, filepath.FromSlash(rel)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	planted := strings.Replace(string(raw), "{", `{"reviewer_notes /Users/zzotherperson/notes":1,`, 1) // abcd-lint:allow — a planted home path in a KEY
+	f.write(rel, []byte(planted))
+	_, err = f.ingest(f.payload(1))
+	if err == nil {
+		t.Fatal("a parked manifest carrying an undeclared key was accepted")
+	}
+	if strings.Contains(err.Error(), "zzotherperson") {
+		t.Errorf("the refusal echoes the parked manifest's key: %v", err)
+	}
+	if !strings.Contains(err.Error(), "reviewer_notes") {
+		t.Errorf("the refusal no longer names the undeclared field: %v", err)
+	}
 }

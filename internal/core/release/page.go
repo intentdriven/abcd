@@ -197,8 +197,10 @@ func validatePage(cut Cut, p *PressReleasePayload, rs *reasons) validatedPage {
 			rs.add(ReasonEmptyProse, at+".text", "the headline citing %s has no prose", strings.Join(ids, ", "))
 		}
 		if name, found := lint.PersonaAttribution(h.Text); ok && found {
-			rs.add(ReasonBlockquote, at+".text", "the headline attributes words to %q (`said <Name>,` or `says <Name>,`), which only a verified quote may do; "+
-				"carry the quote in quotes, or drop the attribution", termsafe.Sanitize(name))
+			// The name is payload prose and may be a person's: described, never
+			// quoted (iss-2609290218032954).
+			rs.add(ReasonBlockquote, at+".text", "the headline attributes words to a name, %s (`said <Name>,` or `says <Name>,`), which only a verified quote may do; "+
+				"carry the quote in quotes, or drop the attribution", termsafe.DescribeRefused(name))
 		}
 		out.headlines = append(out.headlines, Headline{Records: ids, Text: text})
 	}
@@ -266,7 +268,7 @@ func checkID(id, at string, rs *reasons) bool {
 		return false
 	}
 	if !payloadRecordIDRe.MatchString(id) {
-		rs.add(ReasonMalformedID, at, "%q is not a record id (want itd-N or iss-N)", termsafe.Sanitize(id))
+		rs.add(ReasonMalformedID, at, "%s is not a record id (want itd-N or iss-N)", termsafe.DescribeRefused(id))
 		return false
 	}
 	return true

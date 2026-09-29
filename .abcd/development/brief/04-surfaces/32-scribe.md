@@ -99,6 +99,15 @@ until all of the following hold:
   condition or a surprise that does not stand verbatim in the supplied text,
   once whitespace is folded, is one the researcher did not write. The scribe
   reformats; the check is that every word it carries was already there.
+- **A refusal carries no payload value it cannot vouch for.** A refusal returns
+  to the terminal and the transcript, so it quotes a payload value only when the
+  value has a closed shape: a record handle, a state of the vocabulary, a
+  sha-256 digest. Any other value, free text included, is described by its
+  length, and the field and entry position say where the fault is. A key the
+  refusal names, undeclared or repeated, is the one value the reader needs, so
+  it is named redacted through the canonical scanner, and described when the
+  scanner cannot be trusted. The parked context and manifest are held to the
+  same rule, because a session could have rewritten them.
 - **Every answer is the run's, once.** An answered or outstanding item must be one
   of the run's items, and one item takes one answer. The run's items are listed
   through the ledger's directories down to the run's own, and a symlink at any

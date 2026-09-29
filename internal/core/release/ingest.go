@@ -157,7 +157,20 @@ var (
 	// promptVersionRe validates the composing agent's prompt_version (itd-5), so a
 	// release record can be traced to the prompt that worded it.
 	promptVersionRe = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+$`)
+	// payloadTagRe is the shape of a release tag a stale-cut refusal may quote:
+	// `v` and a bare semver, which can carry nothing to redact.
+	payloadTagRe = regexp.MustCompile(`^v[0-9]+\.[0-9]+\.[0-9]+$`)
 )
+
+// tagOrDescribed renders the payload's next_tag for a refusal: quoted when it
+// has a release tag's shape, and described otherwise, so a token or a path
+// pasted there never reaches the terminal (iss-2609290218032954).
+func tagOrDescribed(tag string) string {
+	if payloadTagRe.MatchString(tag) {
+		return fmt.Sprintf("%q", tag)
+	}
+	return termsafe.DescribeRefused(tag)
+}
 
 // ChangelogEntry is one composed changelog line — the untrusted input shape.
 type ChangelogEntry struct {
@@ -331,14 +344,14 @@ func ingest(root string, current surface.Snapshot, raw []byte, at time.Time, ops
 		return res, nil
 	}
 
-	payload, perr := decodeChangelogPayload(raw)
+	payload, perr := decodeChangelogPayload(root, raw)
 	if perr != nil {
 		return res, perr
 	}
 	if payload.NextTag != cut.NextTag {
-		return res, refusal(ReasonStaleCut, "next_tag", "the payload was composed against %q but this cut derives %q — "+
+		return res, refusal(ReasonStaleCut, "next_tag", "the payload was composed against %s but this cut derives %q — "+
 			"the record set moved under the composer; re-run the emit step and compose again",
-			termsafe.Sanitize(payload.NextTag), cut.NextTag)
+			tagOrDescribed(payload.NextTag), cut.NextTag)
 	}
 
 	// Every fault after decoding is collected in one pass, so the composer sees
@@ -451,7 +464,11 @@ func checkPersonas(root, page string, rs *reasons) error {
 		return err
 	}
 	for _, f := range findings {
-		rs.add(ReasonPersonaRegistry, "press_release", "line %d of the rendered page: %s", f.Line, termsafe.Sanitize(f.Message))
+		// The finding names the persona the page attributes words to, which is
+		// payload prose and may be a person's name: redacted, never raw
+		// (iss-2609290218032954).
+		rs.add(ReasonPersonaRegistry, "press_release", "line %d of the rendered page: %s", f.Line,
+			scanner.RedactRefusal(root, f.Message))
 	}
 	return nil
 }
@@ -478,7 +495,11 @@ func checkOutbound(root, text, label, at string, rs *reasons) error {
 // composer and this core disagree about the contract), the schema gate, and the
 // prompt_version stamp. Every fault here is structural — the document is
 // unusable, so nothing is written.
-func decodeChangelogPayload(raw []byte) (ChangelogPayload, *PayloadRefusal) {
+//
+// The decoder's message names an undeclared field by the payload's own key, the
+// one value the composer needs to find the fault, so it is redacted through the
+// canonical scanner for root rather than quoted raw (iss-2609290218032954).
+func decodeChangelogPayload(root string, raw []byte) (ChangelogPayload, *PayloadRefusal) {
 	if len(raw) > MaxPayloadBytes {
 		return ChangelogPayload{}, refusal(ReasonPayloadOversize, "", "changelog payload exceeds the %d-byte cap", MaxPayloadBytes)
 	}
@@ -486,7 +507,7 @@ func decodeChangelogPayload(raw []byte) (ChangelogPayload, *PayloadRefusal) {
 	dec.DisallowUnknownFields()
 	var p ChangelogPayload
 	if err := dec.Decode(&p); err != nil {
-		msg := termsafe.Sanitize(err.Error())
+		msg := scanner.RedactRefusal(root, err.Error())
 		if strings.HasPrefix(err.Error(), "json: unknown field") {
 			return ChangelogPayload{}, refusal(ReasonUnknownField, "", "the payload carries a key this contract does not have: %s", msg)
 		}
@@ -540,8 +561,8 @@ func validateEntries(entries []ChangelogEntry, rs *reasons) ([]ChangelogEntry, m
 		at := fmt.Sprintf("entries[%d]", i)
 		switch {
 		case !registeredSection[in.Section]:
-			rs.add(ReasonSection, at+".section", "entry %d names section %q; a changelog section must be one of %s",
-				n, termsafe.Sanitize(string(in.Section)), sectionList())
+			rs.add(ReasonSection, at+".section", "entry %d names a section that is %s; a changelog section must be one of %s",
+				n, termsafe.DescribeRefused(string(in.Section)), sectionList())
 		case !writableSection[in.Section]:
 			// Registered, so the shape is right; refused because the claim is one
 			// the composer cannot check. Named apart from the structural refusal so
@@ -568,8 +589,8 @@ func validateEntries(entries []ChangelogEntry, rs *reasons) ([]ChangelogEntry, m
 				continue
 			}
 			if !payloadRecordIDRe.MatchString(id) {
-				rs.add(ReasonMalformedID, idAt, "entry %d cites %q, which is not a record id (want itd-N or iss-N)",
-					n, termsafe.Sanitize(id))
+				rs.add(ReasonMalformedID, idAt, "entry %d cites %s, which is not a record id (want itd-N or iss-N)",
+					n, termsafe.DescribeRefused(id))
 				continue
 			}
 			if seen[id] {
