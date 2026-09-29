@@ -8,6 +8,7 @@ reclassification_history: []
 builds_on: [itd-108]
 severity: minor
 impact: additive
+shipped_in: v0.5.0
 ---
 
 # A Stale abcd Never Answers Silently
@@ -152,9 +153,18 @@ None stated.
   `vcs.modified` rebuild), when staleness is evaluated, then the state is
   reported as unknown — never as fresh — and `abcd ahoy install` run through
   it refuses before any write, naming the rebuild fix.
-- Given the same staleness scenarios on macOS and on Linux, when the itd-109
-  calibration runs, then observed behaviour matches — recorded as a
-  machine-class criterion, human-verified per platform.
+- Given the same staleness scenarios on macOS and on Linux, when they run on
+  each platform, then observed behaviour matches — verified by an agent's
+  check on macOS plus the Linux leg of CI, with the record naming both runs.
+  _Amended 2026-09-29 by the product thinker's ruling (recorded in
+  `.abcd/work/DECISIONS.md` under that date): the agent's check on macOS and
+  the Linux CI run stand in for the per-platform check by a person that this
+  criterion first asked for ("recorded as a machine-class criterion,
+  human-verified per platform", with the itd-109 calibration as the harness).
+  itd-109 is still a draft, so no calibration harness exists to run; the
+  ruling refines this criterion and no record link type names a ruling, so
+  the amendment is stated here. The two runs are recorded in
+  [spc-2609230613208843](../../specs/closed/spc-2609230613208843-per-platform-staleness-calibration.md)._
 
 ## Open Questions
 
@@ -174,4 +184,6 @@ _All resolved or explicitly deferred at planning (2026-08-15):_
 
 ## Audit Notes
 
-_Empty. Populated by intent-fidelity-reviewer when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-69424cae8106 -->
+Fidelity review OWED (receipt rcp-69424cae8106).
+<!-- abcd-review-end receipt=rcp-69424cae8106 -->
