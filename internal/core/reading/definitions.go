@@ -165,16 +165,10 @@ func LoadDefinitions(repoRoot string) ([]Definition, error) {
 // the raw value keeps the quote characters, and `position: "detection"` then
 // refuses itself with a message reading detection against detection.
 //
-// This is the THIRD copy of the strip-then-decode idiom — capture's reader and
-// record-lint's schema gate hold the other two — and it belongs in
-// internal/core/frontmatter beside Unquote rather than in any of the three.
-// Consolidating it is captured; this call site cannot wait for that, because
-// without it the locator refuses well-formed definitions.
+// The strip-then-decode idiom is frontmatter.UnquoteScalar, the one the ledger's
+// reader and record-lint's schema gate read through too (iss-2608311039531552).
 func scalar(value string) string {
-	v := strings.TrimSpace(value)
-	if len(v) >= 2 && strings.HasPrefix(v, `"`) && strings.HasSuffix(v, `"`) {
-		return frontmatter.Unquote(v[1 : len(v)-1])
-	}
+	v, _ := frontmatter.UnquoteScalar(strings.TrimSpace(value))
 	return v
 }
 

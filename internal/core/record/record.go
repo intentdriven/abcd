@@ -99,6 +99,15 @@ func RecommendedVerbPaths() []string {
 	}
 }
 
+// closeShips says what a spec close does to its intent, in the words `abcd spec
+// close` itself uses, so a reader of the next move learns that the close is the
+// act that ships the intent rather than finding it on a skill page
+// (iss-2609100508566033). "When no open spec still names it" keeps it true of an
+// intent realised by more than one spec, and of a close that mints a remainder.
+func closeShips(intentID string) string {
+	return " — the close ships " + intentID + " when no open spec still names it"
+}
+
 // Describe locates id in its store (any status folder or bucket) and renders
 // the read-only description. A shape-matching id found in no store is an
 // error naming the stores searched; Describe never writes.
@@ -286,7 +295,7 @@ func describeIntent(repoRoot, id string) (Description, error) {
 		}
 		if ready.Ready {
 			d.NextMoves = []string{
-				"ready — implement against the spec body; when done, `abcd " + verbSpecClose + " " + ready.SpecID + "`",
+				"ready — implement against the spec body; when done, `abcd " + verbSpecClose + " " + ready.SpecID + "`" + closeShips(id),
 			}
 		} else {
 			for _, c := range ready.Checks {
@@ -449,7 +458,7 @@ func describeSpec(repoRoot, id string) (Description, error) {
 	}
 	if ready.Ready {
 		d.NextMoves = []string{
-			"implement against this spec's body; when done, `abcd " + verbSpecClose + " " + id + "`",
+			"implement against this spec's body; when done, `abcd " + verbSpecClose + " " + id + "`" + closeShips(sp.Intent),
 		}
 	} else {
 		d.NextMoves = []string{

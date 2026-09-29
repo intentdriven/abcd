@@ -1,6 +1,6 @@
 # Agent prompt changelog
 
-Per [itd-5](../.abcd/development/intents/disciplines/itd-5-prompt-quality-additions.md),
+Per [itd-5](../intents/disciplines/itd-5-prompt-quality-additions.md),
 every `agents/*.md` prompt carries a `prompt_version` and a corresponding entry
 here recording the bump rationale (and, at `1.0.0` lock, the self-improvement
 pre-flight outcome and calibration-corpus delta).

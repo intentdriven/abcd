@@ -437,6 +437,10 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		// here-string's do.
 		docOwners []int
 		curDocs   []int
+		// docFloor is where, in pending, the documents the innermost open
+		// substitution opened begin: the ones before it wait for the line
+		// after that substitution closes (openSubstitution).
+		docFloor int
 		// feeds rides with the segment and records, per token index, the
 		// commands whose output the word holds (segment.feeds); curFeeds holds
 		// them for the word being built. pipeFrom is where, in segs, the
@@ -631,10 +635,35 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		}
 		switch {
 		case whole:
-			spells[len(toks)] = spellWritten(cur, curVarAt)
+			spells[len(toks)] = spellWritten(cur, curVarAt, nil)
 		case isUnknown(word):
 			spells[len(toks)] = unknownText
 		}
+	}
+	// recordBraceSpelling is recordSpelling for one word a brace group made:
+	// its variables are the sites its marks came from (bword.s), and a bare
+	// name the group's unquoted text runs on from is read as bash reads it
+	// after the expansion (`$HO{ME,}` is `$HOME`).
+	recordBraceSpelling := func(word string, w bword) {
+		if !curVar {
+			return
+		}
+		var sites []varSite
+		for p, k := range w.s {
+			if k > 0 {
+				site := curVarAt[k-1]
+				site.at = p
+				sites = append(sites, site)
+			}
+		}
+		if word != string(w.b) || len(sites) == 0 {
+			recordSpelling(word, false)
+			return
+		}
+		if spells == nil {
+			spells = map[int]string{}
+		}
+		spells[len(toks)] = spellWritten(w.b, sites, w.m)
 	}
 	flushToken := func() {
 		if !hasCur {
@@ -653,12 +682,19 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		// word bash does not brace-expand (`x={a,b} cmd` sets x to `{a,b}`). A
 		// word past the expansion cap stays as written and refuses its segment.
 		if curBrace && !(isAssignment(string(cur)) && allAssignments(toks)) {
-			if words, ok := expandBraces(bword{b: cur, m: curMask}, &braceLim); ok {
+			in := bword{b: cur, m: curMask}
+			if len(curVarAt) > 0 {
+				in.s = make([]int32, len(cur))
+				for k, site := range curVarAt {
+					in.s[site.at] = int32(k + 1)
+				}
+			}
+			if words, ok := expandBraces(in, &braceLim); ok {
 				for _, w := range words {
 					recordFeeds()
 					recordVar(false)
 					word := unknownFromOpenExpansion(string(w.b))
-					recordSpelling(word, false)
+					recordBraceSpelling(word, w)
 					toks = append(toks, word)
 					globs = append(globs, w.globbed())
 				}
@@ -862,7 +898,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			curBrace: curBrace, braceGroup: braceGroup, chain: chain, procSub: procSub,
 			curStdin: curStdin, pipeNext: pipeNext, curDocs: curDocs, pieces: curPieces,
 			feeds: feeds, curFeeds: curFeeds, pipeFrom: pipeFrom, segStart: len(segs), braceFrom: braceFrom,
-			groupIn: groupIn,
+			groupIn: groupIn, docFloor: docFloor,
 		}
 		toks, globs, lits, cur, curMask, hasCur, curGlob, curBrace, braceGroup = nil, nil, nil, nil, nil, false, false, false, false
 		curPieces, vars, curVar, curSub = nil, nil, false, false
@@ -876,6 +912,12 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		openGroup()
 		curStdin, pipeNext, curDocs = false, false, nil
 		feeds, curFeeds, pipeFrom, braceFrom = nil, nil, len(segs), nil
+		// The documents pending here are suspended with the command: bash
+		// reads no body at a newline inside the substitution, whose lines run
+		// as its commands, and the bodies begin on the line after it closes
+		// (iss-2609290521415701). A newline inside reads only the documents
+		// the substitution opened itself: those from docFloor on.
+		docFloor = len(pending)
 		parens = append(parens, parenFrame{kind: kind, pos: pos, saved: saved})
 	}
 	// prePassedBacktick reads a backtick opening at line[i] whose text bash's
@@ -905,6 +947,22 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		closeSubstitution(top.saved)
 		return k + 1, true
 	}
+	// resumeDocs restores the documents a substitution suspended when it
+	// closes. One the substitution opened and never read is pending in one
+	// shell and dropped in another: bash 5 reads its body on the lines after
+	// the close, while bash 3.2 and /bin/sh RUN those lines (`x=$(cat <<E)`,
+	// then a line, then `E`). The guard cannot tell which shell runs the
+	// line, so the document stays pending after the enclosing ones, as bash 5
+	// reads it, and the line takes the fail-closed verdict of a document
+	// whose delimiter never came: the lines it covers are commands the guard
+	// has not read. It stays where it stands in pending, so carrying it
+	// copies nothing.
+	resumeDocs := func(e *enclosing) {
+		if len(pending) > docFloor {
+			markHeredocUnterminated(&segs, chain)
+		}
+		docFloor = e.docFloor
+	}
 	// closeArithmetic resumes the command an arithmetic expansion suspended,
 	// with the number it prints in the word it sat in. What the loop gathered
 	// while it stepped the expression is dropped: none of it is a word. The
@@ -917,6 +975,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		feeds, curFeeds, pipeFrom, braceFrom, groupIn = e.feeds, e.curFeeds, e.pipeFrom, e.braceFrom, e.groupIn
 		vars, curVar, curSub = e.vars, e.curVar, e.curSub
 		spells, curVarAt = e.spells, e.curVarAt
+		resumeDocs(e)
 		if !f.bare {
 			addCur([]byte(arithmeticOperand), 0)
 			// The number it prints is computed from what the substitutions
@@ -933,6 +992,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 	// shell hands the command, so the operands after it keep their positions.
 	closeSubstitution = func(e *enclosing) {
 		flushSegment()
+		resumeDocs(e)
 		toks, globs, lits, cur, curMask, hasCur, curGlob, curBrace, braceGroup, chain =
 			e.toks, e.globs, e.lits, e.cur, e.curMask, e.hasCur, e.curGlob, e.curBrace, e.braceGroup, e.chain
 		curStdin, pipeNext, curDocs, curPieces = e.curStdin, e.pipeNext, e.curDocs, e.pieces
@@ -959,11 +1019,13 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 	// One whose text ran no substitution prints a variable's value, or a word
 	// the line spells, and the word is filed as a variable's
 	// (segment.variable); one that ran a substitution may print its output.
-	parameterExpansion := func(body string) {
+	// split reports that the `${…}` stands unquoted, where bash splits what
+	// it prints (spellParameter).
+	parameterExpansion := func(body string, split bool) {
 		start := len(segs)
 		expandedBody(body)
 		feedFrom(start)
-		addVar("${" + body + "}")
+		addVar(spellParameter(body, split))
 		if len(segs) > start {
 			curSub = true
 		}
@@ -1070,7 +1132,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 				if braces && line[j] == '$' && j+1 < len(line) && line[j+1] == '{' {
 					switch end := closingDolBrace(line, j+2, budget); {
 					case end >= 0:
-						parameterExpansion(line[j+2 : end])
+						parameterExpansion(line[j+2:end], false)
 						j = end + 1
 						continue
 					case end == closeUnread:
@@ -1087,7 +1149,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 					continue
 				}
 				if k := simpleParamEnd(line, j+1); line[j] == '$' && k >= 0 {
-					addVar(line[j:k])
+					addVar(paramText(line[j:k]))
 					j = k
 					continue
 				}
@@ -1183,8 +1245,8 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			// apostrophe in a document became ErrUnparsableCommand, which the
 			// hook maps to fail-OPEN, and a delimiter line reached early
 			// swallowed the real commands that followed it as body.
-			if len(pending) > 0 {
-				next, bodies, ok := skipHeredocBodies(line, i, pending, true)
+			if len(pending) > docFloor {
+				next, bodies, ok := skipHeredocBodies(line, i, pending[docFloor:], true)
 				// A body whose delimiter is unquoted is expanded before the
 				// command reads it, and every command substitution in it runs
 				// (review4-guard finding 1). Its text stays data; what runs is
@@ -1199,7 +1261,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 				for k, body := range bodies {
 					start := len(segs)
 					expandedBody(body)
-					if o := docOwners[k]; o >= 0 && len(segs) > start {
+					if o := docOwners[docFloor+k]; o >= 0 && len(segs) > start {
 						run := feed{list: list, lo: start, hi: len(segs)}
 						segs[o].stdinIn = append(append([]feed(nil), segs[o].stdinIn...), run)
 						docs = append(docs, docRun{owner: o, run: run})
@@ -1220,7 +1282,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 					markHeredocUnterminated(&segs, chain)
 				}
 				i = next
-				pending, docOwners = nil, nil
+				pending, docOwners = pending[:docFloor], docOwners[:docFloor]
 			}
 			// lastList is NOT cleared here: a blank or comment-only line after a
 			// list operator does not end the list, and every token-producing
@@ -1412,7 +1474,8 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			// it goes (unknown.go), and `--$X` is a flag of unknown name as
 			// `--$(x)` is. A `$` that is quoted or escaped never reaches here.
 			end := simpleParamEnd(line, i+1)
-			addVar(line[i:end])
+			addVar(paramText(line[i:end]))
+			curVarAt[len(curVarAt)-1].bare = true
 			lastList = false
 			i = end
 		case c == '$' && i+1 < len(line) && line[i+1] == '{':
@@ -1428,7 +1491,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 				i++
 				break
 			}
-			parameterExpansion(line[i+2 : end])
+			parameterExpansion(line[i+2:end], true)
 			lastList = false
 			i = end + 1
 		case c == '&' || c == '|' || c == ';' || c == '(' || c == ')' || c == '`':
@@ -1888,7 +1951,9 @@ func closingDoubleQuote(line string, i int, budget *int) int {
 // 0), or `$@`, `$*` or `$-`, whose values are any text. It returns -1 where
 // the `$` opens no such expansion. `$$`, `$!`, `$?` and `$#` print a number,
 // which no flag, name or path an entry names can be, as an arithmetic
-// expansion's does, and stay the text they are.
+// expansion's does, and stay the text they are. A name runs on across a
+// backslash-newline, which bash drops before it reads the name, so `$HO\⏎ME`
+// is `$HOME` (iss-2609290419119456); paramText is the name as bash reads it.
 func simpleParamEnd(line string, i int) int {
 	if i >= len(line) {
 		return -1
@@ -1896,11 +1961,19 @@ func simpleParamEnd(line string, i int) int {
 	switch c := line[i]; {
 	case c == '_' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'):
 		j := i + 1
-		for j < len(line) && (line[j] == '_' || (line[j] >= 'a' && line[j] <= 'z') ||
-			(line[j] >= 'A' && line[j] <= 'Z') || (line[j] >= '0' && line[j] <= '9')) {
-			j++
+		for {
+			for j < len(line) && isNameByte(line[j]) {
+				j++
+			}
+			k := j
+			for k+1 < len(line) && line[k] == '\\' && line[k+1] == '\n' {
+				k += 2
+			}
+			if k == j || k >= len(line) || !isNameByte(line[k]) {
+				return j
+			}
+			j = k
 		}
-		return j
 	case (c >= '0' && c <= '9') || c == '@' || c == '*' || c == '-':
 		return i + 1
 	}
@@ -2126,6 +2199,10 @@ type enclosing struct {
 	// groupIn what was piped into the groups open around it.
 	braceFrom []groupOpen
 	groupIn   []feed
+	// docFloor is the enclosing command string's own docFloor: the
+	// documents pending where the substitution opened stand before the one
+	// the substitution sets, and wait for the line after it closes.
+	docFloor int
 }
 
 // procSubOperand is the word a process substitution leaves in the enclosing

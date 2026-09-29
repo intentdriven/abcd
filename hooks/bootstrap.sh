@@ -166,6 +166,11 @@ api_url="https://api.github.com/repos/intentdriven/abcd"
 # manual install and build-from-source ways out.
 unset HTTPS_PROXY https_proxy HTTP_PROXY http_proxy ALL_PROXY all_proxy CURL_HOME
 unset CURL_CA_BUNDLE SSL_CERT_FILE SSL_CERT_DIR
+# What the scrub above costs a reader, said in the refusal it can cause: on a host
+# that reaches GitHub only through a proxy, or trusts its CA only through
+# SSL_CERT_FILE, every fetch fails, and "there may be no network" alone
+# misdiagnoses it (iss-2608291814562032). Plain text; nothing here is expanded.
+ignored_env='this script deliberately ignores HTTPS_PROXY, HTTP_PROXY, ALL_PROXY (and their lowercase forms), CURL_HOME, CURL_CA_BUNDLE, SSL_CERT_FILE and SSL_CERT_DIR, so a host that reaches GitHub only through a proxy or a custom CA bundle cannot provision this way'
 
 lock=''
 tmp=''
@@ -668,7 +673,7 @@ else
 	command -v curl >/dev/null 2>&1 ||
 		refuse 'curl is not available, so the release binary cannot be downloaded'
 	[ -n "$resolved_tag" ] ||
-		refuse 'the latest release tag could not be resolved, so the download cannot be pinned to a single release — there may be no network'
+		refuse "the latest release tag could not be resolved, so the download cannot be pinned to a single release — there may be no network; $ignored_env"
 	release_tag="$resolved_tag"
 
 	# 6. Download into the mode's temp dir — the data dir in cache mode (same
@@ -689,7 +694,7 @@ else
 		refuse "a temporary directory cannot be created at $tmp"
 
 	curl -q -fsSL --proto '=https' --proto-redir '=https' --max-time 120 -o "$tmp/$asset" "$download_url/$asset" 2>/dev/null ||
-		refuse "downloading $asset from release $release_tag failed — there may be no network, or that release may carry no asset for this platform"
+		refuse "downloading $asset from release $release_tag failed — there may be no network, or that release may carry no asset for this platform; $ignored_env"
 	curl -q -fsSL --proto '=https' --proto-redir '=https' --max-time 30 -o "$tmp/checksums.txt" "$download_url/checksums.txt" 2>/dev/null ||
 		refuse "downloading checksums.txt from release $release_tag failed, so the download cannot be verified and is not installed"
 

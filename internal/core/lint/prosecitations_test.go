@@ -375,3 +375,49 @@ func TestProseCitationEmptyBaselineNamesTheRemedy(t *testing.T) {
 		t.Fatalf("the refusal must name the minimal valid document; got %v", err)
 	}
 }
+
+// TestProseCitationReadsItsExtraRoots (iss-2608271804497247): the record stores
+// are not the whole durable record. The brief, the principles, the roadmap and
+// the plans carry record ids in prose too, and with the rule reading the stores
+// alone an id invented in a brief chapter was judged by no gate. The rule reads
+// its extra_roots — a directory or a single file — for prose as it reads a
+// store, and the write-path check a verb makes before it files text agrees.
+func TestProseCitationReadsItsExtraRoots(t *testing.T) {
+	root := t.TempDir()
+	proseCorpus(t, root)
+	chapter := filepath.Join(".abcd", "development", "brief", "05-internals", "06-lint.md")
+	writeFile(t, root, chapter, "# Lint\n\nThe rule landed with spc-21 and iss-2608231243286557.\n")
+	readme := filepath.Join(".abcd", "development", "README.md")
+	writeFile(t, root, readme, "# Record\n\nSee adr-2 and itd-9999.\n")
+
+	fs, err := Lint(proseCfg(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := countRule(fs, ruleProseCitationResolves); n != 0 {
+		t.Fatalf("with no extra roots the rule reads the stores alone, got %d: %+v", n, fs)
+	}
+
+	cfg := proseCfg()
+	rc := cfg.Rules[ruleProseCitationResolves]
+	rc.ExtraRoots = []string{".abcd/development/brief", ".abcd/development/README.md"}
+	cfg.Rules[ruleProseCitationResolves] = rc
+	fs, err = Lint(cfg, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := countRule(fs, ruleProseCitationResolves); n != 2 {
+		t.Fatalf("expected the invented id in each extra root to fire once, got %d: %+v", n, fs)
+	}
+	if !hasFinding(fs, chapter, ruleProseCitationResolves, 3) || !hasFinding(fs, readme, ruleProseCitationResolves, 3) {
+		t.Errorf("expected findings on the citing lines of both extra roots; got %+v", fs)
+	}
+
+	got, err := UnresolvedProseCitationsInText(cfg, root, filepath.ToSlash(chapter), "cites iss-2608231243286557\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 {
+		t.Errorf("the write-path check reads an extra root as the gate does; got %+v", got)
+	}
+}

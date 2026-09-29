@@ -6,8 +6,8 @@ severity: "major"
 category: "future-work-seed"
 source: "user-observation"
 found_during: "plugin-update post-mortem 2026-08-21"
-deferred_after: "v0.10.0"
-deferral_reason: "ruling owed to the product thinker (away; run A 2026-09-25): Transcript recovery sweep: report the ended-but-unsaved sessions it finds at next start, or save them automatically?"
+deferred_after: v0.11.1
+deferral_reason: "The product thinker's ruling M7 of 2026-09-23: planned next cycle as its own intent. history staged lists ended transcripts not yet redacted, but nothing sees a session whose end hook never ran, which is this record's case. Owed: that intent's filing and interview, which opens on one question: does the recovery sweep report the ended-but-unsaved sessions it finds at the next start, or save them automatically?"
 ---
 
 Session-end transcript capture is best-effort and its loss is silent: a cancelled or killed SessionEnd hook (update-then-quit, crash, SIGKILL) leaves no trace that a session was never captured into the history store. Add a recovery sweep — at session start or in ahoy doctor — that compares harness transcripts against the history store index and reports (or captures) the gap, turning silent loss into a caught-on-next-start notice. abcd history capture already ingests retroactively.
@@ -41,3 +41,7 @@ treating that as success watermarked failed stagings as captured, a silent
 permanent loss (now iss-2608261550596333); watermark writes must be atomic,
 since a torn state file reads as empty and mass re-exports the backlog; and
 per-session failure isolation keeps one bad export from abandoning the batch.
+
+## Deferral 2026-09-29
+
+Deferred past v0.11.1: The product thinker's ruling M7 of 2026-09-23: planned next cycle as its own intent. history staged lists ended transcripts not yet redacted, but nothing sees a session whose end hook never ran, which is this record's case. Owed: that intent's filing and interview, which opens on one question: does the recovery sweep report the ended-but-unsaved sessions it finds at the next start, or save them automatically?

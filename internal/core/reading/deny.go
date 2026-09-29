@@ -72,9 +72,11 @@ func prefixDenied(rel string) bool {
 
 // matches reports whether a basename satisfies either of the row's two match
 // forms. MatchSuffix is a basename suffix, matched case-sensitively; in Match,
-// an entry beginning with "." is an extension and any other entry is an exact
-// basename. The two are ORed, and only a row declaring NEITHER admits every
-// file.
+// an entry beginning with "." is an extension, compared folding case, and any
+// other entry is an exact basename, compared exactly. The case of each compare
+// follows the one rule stated on Row.Match: a kind folds, a named file or a
+// tool's own rule does not. The two fields are ORed, and only a row declaring
+// NEITHER admits every file.
 func (r Row) matches(base string) bool {
 	// Both forms empty admits every file, which no row uses. A row that
 	// declares only MatchSuffix must NOT fall through to that: an empty Match

@@ -2,6 +2,7 @@ package fsutil
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path"
@@ -94,6 +95,74 @@ func HomeScopeLink(home, rel string) error {
 	return nil
 }
 
+// ErrHomeScopeExposed is the refusal for a home-scoped declaration whose
+// DIRECTORY another account can change: one every account can write (sticky or
+// not), or one owned by an account that is neither the caller nor root. The
+// declaration file's own guards judge who wrote the file; anyone who can write
+// the directory can rename or hard-link a file of the caller's own shape in
+// under the declaration's name, so those guards would judge a file the caller
+// never put there (iss-2609290656480443). ReadHomeDeclaration returns it
+// wrapped in a *HomeScopeExposedError, so errors.Is finds it.
+//
+// A directory its group can write is deliberately not refused here: under a
+// user-private-group umask of 002, a ~/.abcd made by hand is 0775 and its
+// group is the caller alone, and refusing it is an open question on that
+// record rather than a decision this read takes.
+var ErrHomeScopeExposed = errors.New("fsutil: a directory of this home-scoped path can be changed by another account")
+
+// HomeScopeExposedError names the exposed directory in tilde form. Its message
+// is the whole operator-facing sentence, the remedy included.
+type HomeScopeExposedError struct {
+	// Dir is the exposed directory in tilde form ("~/.abcd").
+	Dir string
+	// Perm is the directory's permission bits, judged on its descriptor.
+	Perm os.FileMode
+	// Foreign is true when the refusal is the owner, not the mode.
+	Foreign bool
+}
+
+func (e *HomeScopeExposedError) Error() string {
+	if e.Foreign {
+		return e.Dir + " is owned by another account, or its owner could not be read, so nothing in it is necessarily yours; abcd reads no declaration there"
+	}
+	return fmt.Sprintf("%s can be written by every account (mode %04o), so nothing in it is necessarily yours; `chmod o-w %s`", e.Dir, uint32(e.Perm), e.Dir)
+}
+
+func (e *HomeScopeExposedError) Unwrap() error { return ErrHomeScopeExposed }
+
+// homeScopeDirOwner reads the owner of a directory level from the FileInfo of
+// its own descriptor. It is a var because a test process cannot create a
+// directory another account owns; production never reassigns it.
+var homeScopeDirOwner = func(fi os.FileInfo) (uint32, bool) {
+	sys, ok := fi.Sys().(*syscall.Stat_t)
+	if !ok {
+		return 0, false
+	}
+	return sys.Uid, true
+}
+
+func swapHomeScopeDirOwnerForTest(fn func(os.FileInfo) (uint32, bool)) (restore func()) {
+	prev := homeScopeDirOwner
+	homeScopeDirOwner = fn
+	return func() { homeScopeDirOwner = prev }
+}
+
+// vetDeclarationDir is ReadHomeDeclaration's judgement of one directory level
+// below home, made on the FileInfo of the descriptor that was opened and
+// confirmed to be the level vetted, so it judges the directory the read goes
+// through and not a name: refused when every account can write it or when it
+// is owned by an account that is neither this uid nor root (root can replace
+// anything anywhere, so refusing it would protect nothing).
+func vetDeclarationDir(st os.FileInfo, shown string) error {
+	if perm := st.Mode().Perm(); perm&0o002 != 0 {
+		return &HomeScopeExposedError{Dir: shown, Perm: perm}
+	}
+	if uid, ok := homeScopeDirOwner(st); !ok || (uid != uint32(os.Getuid()) && uid != 0) {
+		return &HomeScopeExposedError{Dir: shown, Perm: st.Mode().Perm(), Foreign: true}
+	}
+	return nil
+}
+
 // ErrHomeScopeSwapped is the refusal for a directory of a home-scoped path that
 // was a real directory when judged and was something else by the time it was
 // opened: the descriptor OpenHomeScope obtained is not the directory its Lstat
@@ -148,7 +217,7 @@ func SwapHomeScopeVettedForTest(fn func(dir string)) (restore func()) {
 // held to ValidRelPath, or is "." for home itself. An absent level returns the
 // Lstat's error, which os.IsNotExist recognises. The caller closes the root.
 func OpenHomeScope(home, dir string) (*os.Root, error) {
-	return openHomeScope(home, dir, false, 0)
+	return openHomeScope(home, dir, false, 0, nil)
 }
 
 // EnsureHomeScope is OpenHomeScope for a writer: each missing level is created
@@ -158,10 +227,13 @@ func OpenHomeScope(home, dir string) (*os.Root, error) {
 // uses in place of os.MkdirAll, which follows a symlinked ~/.abcd and creates
 // under its target. A level that already exists keeps its mode.
 func EnsureHomeScope(home, dir string, perm os.FileMode) (*os.Root, error) {
-	return openHomeScope(home, dir, true, perm)
+	return openHomeScope(home, dir, true, perm, nil)
 }
 
-func openHomeScope(home, dir string, create bool, perm os.FileMode) (*os.Root, error) {
+// openHomeScope is OpenHomeScope and EnsureHomeScope; vet, when non-nil, is
+// also given the FileInfo of each level's own descriptor, once that descriptor
+// is confirmed to be the level vetted, and its error ends the walk.
+func openHomeScope(home, dir string, create bool, perm os.FileMode, vet func(st os.FileInfo, shown string) error) (*os.Root, error) {
 	if dir != "." && !ValidRelPath(dir) {
 		return nil, &os.PathError{Op: "openhomescope", Path: dir, Err: os.ErrInvalid}
 	}
@@ -177,7 +249,7 @@ func openHomeScope(home, dir string, create bool, perm os.FileMode) (*os.Root, e
 	for _, part := range strings.Split(dir, "/") {
 		full = filepath.Join(full, part)
 		shown += "/" + part
-		next, err := openHomeScopeLevel(cur, part, full, shown, create, perm)
+		next, err := openHomeScopeLevel(cur, part, full, shown, create, perm, vet)
 		cur.Close()
 		if err != nil {
 			return nil, err
@@ -189,7 +261,7 @@ func openHomeScope(home, dir string, create bool, perm os.FileMode) (*os.Root, e
 
 // openHomeScopeLevel is one level of openHomeScope: part, inside parent, judged
 // and then opened as the directory that was judged.
-func openHomeScopeLevel(parent *os.Root, part, full, shown string, create bool, perm os.FileMode) (*os.Root, error) {
+func openHomeScopeLevel(parent *os.Root, part, full, shown string, create bool, perm os.FileMode, vet func(os.FileInfo, string) error) (*os.Root, error) {
 	if create {
 		if err := parent.Mkdir(part, perm); err != nil && !errors.Is(err, os.ErrExist) {
 			return nil, err
@@ -218,6 +290,12 @@ func openHomeScopeLevel(parent *os.Root, part, full, shown string, create bool, 
 	if !os.SameFile(fi, st) {
 		next.Close()
 		return nil, swappedLevel(parent, part, full, shown, ErrHomeScopeSwapped)
+	}
+	if vet != nil {
+		if err := vet(st, shown); err != nil {
+			next.Close()
+			return nil, err
+		}
 	}
 	return next, nil
 }
@@ -257,9 +335,21 @@ func swappedLevel(parent *os.Root, part, full, shown string, err error) error {
 // leaf that is not a regular file is DeclarationNotRegular, one writable by
 // group or other or owned by another uid is DeclarationWritableByOthers or
 // DeclarationForeignOwner, and a leaf replaced between its judgement and its
-// open is DeclarationUnreadable with ErrDeclarationSwapped. A directory level
+// open is judged again from scratch, as ReadDeclaration judges one: read when
+// the replacement passes every guard, refused by the guard it fails, and
+// DeclarationUnreadable with ErrDeclarationSwapped when it is still being
+// replaced after declarationAttempts judgements. A directory level
 // replaced while it was opened is DeclarationBehindSymlink when a symlink
 // stands there now and DeclarationUnreadable otherwise.
+//
+// Each directory level below home is judged too, on the descriptor opened for
+// it: one every account can write, or one owned by an account that is neither
+// this uid nor root, is DeclarationDirectoryExposed with a
+// *HomeScopeExposedError naming it, because whoever can change the directory
+// can put a file of the caller's own shape in it under the declaration's name
+// (iss-2609290656480443). The check follows the absence check, so an exposed
+// directory holding no such file still reads as absent; home itself is not
+// judged, for HomeScopeLink's reason.
 //
 // A rel that is not a clean relative path is DeclarationUnreadable before
 // anything is looked at: it names no place in the home to read.
@@ -283,11 +373,13 @@ func ReadHomeDeclarationDenying(home, rel string, limit int64, deny os.FileMode)
 	if _, err := os.Lstat(p); err != nil {
 		return nil, DeclarationAbsent, err
 	}
-	root, err := OpenHomeScope(home, path.Dir(rel))
+	root, err := openHomeScope(home, path.Dir(rel), false, 0, vetDeclarationDir)
 	switch {
 	case err == nil:
 	case errors.Is(err, ErrHomeScopeSymlinked):
 		return nil, DeclarationBehindSymlink, err
+	case errors.Is(err, ErrHomeScopeExposed):
+		return nil, DeclarationDirectoryExposed, err
 	case notPresent(err):
 		return nil, DeclarationAbsent, err
 	default:
@@ -304,7 +396,28 @@ func ReadHomeDeclarationDenying(home, rel string, limit int64, deny os.FileMode)
 // given; the owner is confirmed again on the opened descriptor, so the lookup
 // by path cannot vouch for a file other than the one read. deny is judged on
 // that same descriptor (ReadHomeDeclarationDenying).
+//
+// A leaf replaced between its Lstat and its open is judged again from scratch,
+// up to declarationAttempts times, exactly as ReadDeclaration judges one: the
+// benign replacement is a concurrent abcd's WriteFileAtomic, and refusing it on
+// sight made a reader refuse its own ~/.abcd/config.json
+// (iss-2609291157309818). Every guard runs again on the replacement, so one
+// that is not a same-owner regular file this reader's mode rules admit is
+// refused by the guard that judges it; one still unsettled after the last
+// attempt is DeclarationUnreadable with ErrDeclarationSwapped.
 func readDeclarationIn(root *os.Root, leaf, p string, limit int64, deny os.FileMode) ([]byte, DeclarationRefusal, error) {
+	for attempt := 1; ; attempt++ {
+		raw, refusal, err := readDeclarationInOnce(root, leaf, p, limit, deny)
+		if errors.Is(err, ErrDeclarationSwapped) && attempt < declarationAttempts {
+			// Replaced after the vetting: judge the replacement from scratch.
+			continue
+		}
+		return raw, refusal, err
+	}
+}
+
+// readDeclarationInOnce is one vetting and one read of readDeclarationIn.
+func readDeclarationInOnce(root *os.Root, leaf, p string, limit int64, deny os.FileMode) ([]byte, DeclarationRefusal, error) {
 	fi, err := root.Lstat(leaf)
 	if err != nil {
 		return nil, DeclarationAbsent, err
@@ -378,7 +491,7 @@ func HomeDeclarationNames(home, rel string, limit int64, target string, fold boo
 	case DeclarationOK:
 	case DeclarationAbsent:
 		return false, ""
-	case DeclarationBehindSymlink:
+	case DeclarationBehindSymlink, DeclarationDirectoryExposed:
 		return false, termsafe.Sanitize(err.Error())
 	case DeclarationNotRegular:
 		return false, "it is not a regular file"

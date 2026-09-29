@@ -7,8 +7,8 @@ category: "process"
 source: "user-observation"
 found_during: "install-test round with concurrent agents (2026-08-11)"
 found_at: ".abcd/work/CONTEXT.md"
-deferred_after: "v0.10.0"
-deferral_reason: "bound to itd-148 (worktrees for every change), which waits on a product-thinker ruling owed in run A (2026-09-25, theme L): whether worktrees live in the machine-scoped store or inside the checkout, which record owns the add/list/prune verbs, and whether the block on writes in the main checkout spares a coordinating session; the fix is built once that ruling lands"
+deferred_after: v0.11.1
+deferral_reason: "Carried by the planned itd-148, whose spec spc-42 is open and which lists this record as resolved by its shipping; the per-agent worktree direction this record proposed is the convention in AGENTS.md meanwhile. Owed: the product-thinker ruling itd-148 waits on (run A theme L): whether session worktrees live in the machine-scoped store or inside the checkout, which record owns the add, list and prune verbs, and whether the block on writes in the primary checkout spares a coordinating session."
 ---
 
 Several agents sharing ONE git worktree silently invalidated a verification result and came close to losing committed work. Observed repeatedly during the 2026-08-11 install-test round, in a repo that is about to run more agents, not fewer.
@@ -20,3 +20,7 @@ The last one is the dangerous member of the set. A long verification (preflight 
 The near-miss on work: two commits existed only on a local branch while another agent was pruning branches and worktrees. Pushing early is what protected them, which is a habit rather than a guarantee.
 
 Directions, none adopted. Give each agent its own git worktree (git worktree add), so branch state is per-agent and the whole class disappears — the harness already supports worktree isolation for subagents. Or, if a shared tree is kept, treat any verification longer than a moment as untrustworthy and defer to CI, and have agents assert the expected branch immediately before and after a long-running gate rather than assuming it held. Worth settling before the next multi-agent round rather than after the first bad merge.
+
+## Deferral 2026-09-29
+
+Deferred past v0.11.1: Carried by the planned itd-148, whose spec spc-42 is open and which lists this record as resolved by its shipping; the per-agent worktree direction this record proposed is the convention in AGENTS.md meanwhile. Owed: the product-thinker ruling itd-148 waits on (run A theme L): whether session worktrees live in the machine-scoped store or inside the checkout, which record owns the add, list and prune verbs, and whether the block on writes in the primary checkout spares a coordinating session.

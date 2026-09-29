@@ -9,6 +9,10 @@ found_during: "autonomous-run field experiment in a managed repository, 2026-09-
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/surface (lint, docs lint, intent status, spec close)"
+resolution: "At BASE two of the three instances were already answered: bare abcd lint runs the docs-lint engine as its docs-currency rule and names abcd lint docs in its fix, and abcd <itd-N> names abcd intent ready --grounds for a record missing grounds. The third is fixed here: the ready-intent and open-spec moves say the close ships the intent when no open spec still names it. The broader 'next verb on the board' want is carried by iss-2609201954342967."
+impact: additive
+resolved_by:
+  commit: "401094487"
 ---
 
 abcd does not name its own adjacent capabilities, so a verb that exactly answers the operator's need is found by accident or not at all. Three instances in one run, from two independent sessions.
@@ -24,3 +28,7 @@ The common shape: the capability exists, is correct, and is reachable only by so
 Wanted, cheapest first: have each status render name the verb that advances the state it is reporting, and have `abcd lint` name the sibling lints it does not itself run. Then, more broadly, treat "which verb do I reach for next" as something the surface owes the operator rather than something the skill pages happen to record.
 
 Distinct from the sibling finding about required flags learned from a refusal: that one is a verb the operator has found and cannot call.
+
+## Grounds
+
+- pursued: a session reading abcd <itd-N> or abcd <spc-N> learns the close is what ships the intent without a skill page; shown wrong if either move names spec close without saying what it does to the intent

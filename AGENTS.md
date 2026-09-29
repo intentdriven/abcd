@@ -243,10 +243,15 @@ irreversible; guessing downward costs nothing.**
   in `drafts/`, so until it ships nothing enumerates the lane or prunes a spent
   worktree for you, and a worktree in the store is retired with
   `git worktree remove` like any other.
-- **Scan before mutating git state.** Before a commit, branch switch, stash,
-  rebase, or `git worktree add`/`remove` in a checkout that might be shared,
-  check for peer sessions via the harness's session listing, and announce the
-  mutation to any peer found. Before capturing, resolving or picking a record,
+- **Scan before mutating anything a peer reads or runs.** Before a mutation
+  another session could read or execute, check for peer sessions via the
+  harness's session listing, and announce the mutation to any peer found. The
+  test is the blast radius, not the operation: a commit, branch switch, stash,
+  rebase, or `git worktree add`/`remove` in a checkout that might be shared are
+  examples, and so is a rebuilt or replaced build artefact outside git — the
+  gitignored binary a PATH entry points at runs under every session on the
+  machine at once, a wider reach than a branch switch in one checkout.
+  Before capturing, resolving or picking a record,
   also run `go run ./cmd/abcd peers` (`--json` for a machine reader): it lists
   what every sibling worktree and local branch of this checkout holds that this
   tree does not, uncommitted captures included, and writes nothing. It sees

@@ -268,7 +268,7 @@ func TestTheScanBeforeMutatingConventionNamesThePeerListing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, step, ok := strings.Cut(string(body), "- **Scan before mutating git state.**")
+	_, step, ok := strings.Cut(string(body), "- **Scan before mutating anything a peer reads or runs.**")
 	if !ok {
 		t.Fatal("AGENTS.md has no scan-before-mutating step")
 	}

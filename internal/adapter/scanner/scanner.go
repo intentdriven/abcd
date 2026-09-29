@@ -276,12 +276,24 @@ func New(repoRoot string) (*Scanner, error) {
 		s.unavailReason = err.Error()
 		return s, nil
 	}
+	// A configured secret pattern the glued sweep cannot build (its leading \b
+	// carries a quantifier) leaves every ScanText narrower than the bundled
+	// set promises, and ScanText has no channel to say so. The scanner reports
+	// it here instead, where every write-time redactor and the launch scan
+	// already look (iss-2609290743362554).
+	if _, unbuilt := gluedPatterns(s.patterns); len(unbuilt) > 0 {
+		s.unavailable = true
+		s.unavailReason = "per-repo scanner config: the glued-token sweep cannot build a boundary-free form of pattern(s) " +
+			strings.Join(unbuilt, ", ") + " (a leading \\b with a quantifier); write the pattern with a plain leading \\b"
+		return s, nil
+	}
 	return s, nil
 }
 
 // Unavailable reports whether the scanner is in the fail-closed degraded state
-// (the per-repo config exists but is unreadable, invalid JSON, or carries a bad
-// override regex) and, if so, a human reason. A write-time redactor MUST consult
+// (the per-repo config exists but is unreadable, invalid JSON, carries a bad
+// override regex, or carries a secret pattern the glued-token sweep cannot
+// build) and, if so, a human reason. A write-time redactor MUST consult
 // this before trusting ScanText/Redact: unlike ScanBundle, those entry points
 // cannot signal degradation in-band, so a caller that skips this check would
 // sanitise with a silently weakened pattern set. Mirrors ScanBundle's guard.
@@ -932,6 +944,7 @@ func scanText(text string, id Identity, patterns []Pattern, id2sev map[string]Se
 		probes[i] = adjacencyProbe(cp.Re)
 	}
 	junctions := newJunctionSet(patterns)
+	glued := newGluedSweep(patterns)
 	var findings []Finding
 	lineno := 0
 	for _, line := range strings.Split(text, "\n") {
@@ -954,13 +967,17 @@ func scanText(text string, id Identity, patterns []Pattern, id2sev map[string]Se
 				Suggested: cp.Suggestion, line: line,
 			})
 		}
+		// The glued sweep (glued.go, iss-2609290541525428): a secret token right
+		// behind a letter, a digit or an underscore has no leading \b, so the
+		// pass above never matched it.
+		findings = append(findings, glued.findings(line, lineno, file)...)
 		// Percent-decode pre-pass (gh-370): a URL-encoded delimiter (%3D, %2F,
 		// %22) leaves a hex word-char before a literal token, defeating the
 		// leading \b so the raw scan above never fires. Scan bounded
 		// percent-decoded copies of the line and map every hit back to its raw
 		// byte span, so Redact masks the live token where it sits on disk. The
 		// same pass reads the line's JSON-escape layers (jsonescape.go).
-		findings = append(findings, decodedLineFindings(patterns, probes, junctions, matchers, id2sev, line, lineno, file)...)
+		findings = append(findings, decodedLineFindings(patterns, probes, junctions, glued, matchers, id2sev, line, lineno, file)...)
 	}
 	findings = dedupFindings(findings)
 	sealSnippets(findings)

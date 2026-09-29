@@ -145,6 +145,11 @@ const (
 	// reader denies — a secret group or other can read
 	// (ReadHomeDeclarationDenying only). The error is a *DeclarationModeError.
 	DeclarationExposed
+	// DeclarationDirectoryExposed: the file is there, but a directory between
+	// the home and it (~/.abcd first) can be written by every account or is
+	// owned by another (ReadHomeDeclaration only). The error is a
+	// *HomeScopeExposedError naming the directory.
+	DeclarationDirectoryExposed
 )
 
 // ErrDeclarationWritable and ErrDeclarationForeignOwner are the two guards that
@@ -201,9 +206,9 @@ var declarationVetted = func(string) {}
 // same detectors.
 var inRootVetted = func(*os.Root, string) {}
 
-// declarationAttempts bounds how many times ReadDeclaration and
-// ReadGuardedInRoot vet a path whose file was replaced between the vetting and
-// the open before they refuse it. A replacement is not refused on sight
+// declarationAttempts bounds how many times ReadDeclaration,
+// ReadHomeDeclaration and ReadGuardedInRoot vet a path whose file was replaced
+// between the vetting and the open before they refuse it. A replacement is not refused on sight
 // because the ordinary one is benign: another abcd process of the same user
 // rewriting the file through WriteFileAtomic, a temp file renamed over it,
 // which lands inside that window often enough on a loaded machine to make one

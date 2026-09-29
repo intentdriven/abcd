@@ -402,7 +402,7 @@ func readIndex(home string) (map[string]indexEntry, error) {
 		return map[string]indexEntry{}, nil
 	case refusal == fsutil.DeclarationAbsent:
 		return nil, fmt.Errorf("credential: %s could not be examined, so it is not read", IndexPath)
-	case refusal == fsutil.DeclarationBehindSymlink:
+	case refusal == fsutil.DeclarationBehindSymlink, refusal == fsutil.DeclarationDirectoryExposed:
 		return nil, fmt.Errorf("credential: %s is not read: %v", IndexPath, err)
 	case refusal == fsutil.DeclarationNotRegular:
 		return nil, fmt.Errorf("credential: %s is not a regular file (a symlink is never followed), so it is not read", IndexPath)

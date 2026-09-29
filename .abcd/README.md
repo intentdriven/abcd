@@ -30,8 +30,11 @@ second home for the schemas:
 |---|---|---|
 | `config.json` | the ahoy surface (repo-scope config + `meta` setup block) | `development/brief/05-internals/03-configuration.md` |
 | `rules.json` | the rules loader (per-repo domain overrides) | itd-3; `AGENTS.md` § abcd rule loader |
-| `config/` | per-surface machine records (`identity.json`, `launch-payload.json`, `version-location.json`) | iss-62 / adr-28 / the version-location note |
+| `config/` | per-surface machine records (`identity.json`, `launch-payload.json`, `version-location.json`, `artefact.json`, `reading-presets.json`) | iss-62 / adr-28 / the version-location note |
+| `config/pii.json` (optional, absent here) | the redaction scanner's per-repo pattern override, read by every redacting write path and the privacy lint; absent, the bundled patterns apply | [`internal/README.md`](../internal/README.md) § `adapter/scanner/` |
+| `config/scripts-closure.json` (optional, absent here) | the pinned `scripts/` runtime closure the launch payload scopes that include to; absent, `scripts/` is included like any other path | `internal/core/launch/includes.go` (`defaultClosureFn`); no chapter states its schema |
 | `positioning.json` | the identity surface | `development/brief/04-surfaces/19-identity.md` |
 | `site.json`, `site-baseline.json` | the site renderer and its ratchet | the site surface chapter |
 | `docs-lint.json`, `record-lint.json` | the docs and record gates | the lint surface chapter |
 | `citations-baseline.json` | the citation-health baseline | the docs `cite` surface |
+| `prose-citations-baseline.json` | record-lint's `prose_citation_resolves` baseline (the unresolvable ids the record has ruled on) | `development/brief/05-internals/06-lint.md` |

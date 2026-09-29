@@ -28,15 +28,15 @@ package launch
 //
 //   - CONVENTION — the auto-discovery roots a harness loads with no manifest
 //     help at all: commands/**/*.md (nested directories namespace the command),
-//     agents/*.md (a flat glob — iss-110 is the evidence: agents/README.md IS
-//     registered), skills/*/SKILL.md, and hooks/hooks.json.
+//     agents/*.md (a flat glob — iss-110 is the evidence: a README.md there
+//     is registered as an agent), skills/*/SKILL.md, and hooks/hooks.json.
 //   - MANIFEST — the optional commands/agents/skills/hooks keys in plugin.json,
 //     each a path, a list of paths, or an inline definition.
 //
 // Every entry records which register it came from, so a later, stricter tier can
 // treat the two differently WITHOUT re-resolving. The resolver reports what a
-// harness would register, including the iss-110 mis-registrations; filtering
-// those here would hide the defect that issue tracks.
+// harness would register, including an iss-110 mis-registration; filtering
+// one here would hide the defect that issue records.
 //
 // # Why resolution is separate from assertion
 //

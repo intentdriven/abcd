@@ -247,6 +247,20 @@ type Row struct {
 	// Match selects files inside Source: an entry beginning with "." is a file
 	// extension, any other entry is an exact basename. An empty Match admits
 	// every file, which no row uses — inclusion is positive at every grain.
+	//
+	// THE CASE RULE, for these two forms, MatchSuffix and any form added after
+	// them: a form that names a KIND of file folds case, and a form that names
+	// a FILE, or follows a tool's own rule, matches the spelling exactly.
+	//   - An extension names a kind: `.MD` is markdown to every reader of it,
+	//     so the extension form folds (strings.EqualFold).
+	//   - A basename names one file by the spelling the repository commits:
+	//     `Makefile` admits that file and not `makefile`, and a row that wants
+	//     another spelling lists it. Folding here would admit, on a
+	//     case-sensitive checkout, a second file the row never named.
+	//   - A suffix follows the Go toolchain's rule, which is case-sensitive; see
+	//     MatchSuffix.
+	// A new form states which of the three it is, beside its field, and takes
+	// that form's compare (iss-2608311949421873).
 	Match []string
 	// MatchSuffix selects files inside Source by basename suffix, matched
 	// case-sensitively. It is a separate field rather than a third convention

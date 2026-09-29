@@ -70,7 +70,7 @@ func Init(root string, req InitRequest) (InitResult, error) {
 	if strings.TrimSpace(loc.Heading) == "" {
 		loc.Heading = DefaultBlockLocation.Heading
 	}
-	if !fsutil.ValidRelPath(loc.File) {
+	if !validBlockFile(loc.File) {
 		return InitResult{}, fmt.Errorf("%w: %q", ErrBadLocation, loc.File)
 	}
 

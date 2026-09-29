@@ -216,6 +216,19 @@ func TestWriteRefusesACredentialSplitAcrossTheSeparator(t *testing.T) {
 			typ:  "topic", domain: "auth", slug: "x_ghp_" + a36,
 			token: "ghp_" + a36,
 		},
+		{
+			// A letter before the prefix is a word character too, so no
+			// underscore suffix starts at the token (iss-2609290541525428):
+			// the scanner's own glued sweep is what finds it.
+			name: "github pat glued behind a letter inside the slug",
+			typ:  "topic", domain: "auth", slug: "x" + "ghp_" + a36 + "y",
+			token: "ghp_" + a36 + "y",
+		},
+		{
+			name: "access key glued between two letters inside the slug",
+			typ:  "topic", domain: "auth", slug: "x" + "AK" + "IA" + strings.Repeat("Q", 16) + "y",
+			token: "AK" + "IA" + strings.Repeat("Q", 16),
+		},
 	}
 
 	for _, tc := range cases {

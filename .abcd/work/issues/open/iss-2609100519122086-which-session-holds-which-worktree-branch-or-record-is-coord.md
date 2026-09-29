@@ -10,8 +10,8 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/work"
 related_intents: [itd-2609150819440345]
-deferred_after: "v0.10.0"
-deferral_reason: "ruling owed to the product thinker (away; run A 2026-09-25): Session register transport: the code host, a per-machine helper, or both?"
+deferred_after: v0.11.1
+deferral_reason: "Promoted to itd-2609150819440345 (draft), and a promoted issue keeps its folder until the intent ships. abcd peers (itd-2609091416295622, shipped) shows what sibling worktrees hold, not which session holds what. The product thinker's ruling M30 of 2026-09-23 plans it next cycle as its own intent. Owed: that interview, which opens on transport: the code host, a per-machine helper, or both?"
 ---
 
 Which session holds which worktree, branch or record is coordinated entirely by conversation, so every new session repeats a handshake that nothing records. A session joining work in progress has no way to ask what is already claimed: it messages the peers it can see, waits for replies, and rebuilds a picture that the sessions before it had already built and did not write down. One measured encounter cost four messages and about fifteen minutes before any work began, and the picture it produced is not durable, so the session after that pays again. The convention that a diff you did not make is a peer's work depends on knowing who the peers are and what they hold, which is precisely the thing no artefact carries. The repository already records this gap for the narrow case of detecting a peer session before mutating git state; the wider case is claim rather than presence, and the two want the same substrate. Whatever holds it should be as cheap to write as it is to read, because a coordination record nobody updates is worse than the chat it replaced.
@@ -23,3 +23,7 @@ The original evidence was a session paying four messages and about fifteen minut
 ## Grounds
 
 - pursued: we expect a claim record keyed on the root-commit SHA beside the worktree store to remove the handshake, because the worktree store is already the machine-scoped place a session's lane lives and a claim is one more fact about that lane; it is shown wrong if claims go stale faster than sessions release them, in which case a record nobody updates is worse than the conversation it replaced
+
+## Deferral 2026-09-29
+
+Deferred past v0.11.1: Promoted to itd-2609150819440345 (draft), and a promoted issue keeps its folder until the intent ships. abcd peers (itd-2609091416295622, shipped) shows what sibling worktrees hold, not which session holds what. The product thinker's ruling M30 of 2026-09-23 plans it next cycle as its own intent. Owed: that interview, which opens on transport: the code host, a per-machine helper, or both?
