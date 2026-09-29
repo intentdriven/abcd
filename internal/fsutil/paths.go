@@ -204,8 +204,10 @@ func RepoRel(base, target string) string {
 
 // RedactRoot replaces every occurrence of the absolute directory root in s with
 // repl — both a path UNDER the root (root + separator + …) and the BARE root
-// itself when it sits at a right boundary (end of string or a non-path
-// character). The bare-root case matters because a message that names exactly
+// itself when it sits at a right boundary: the end of s, or any byte that is not
+// a letter or a digit (NameContinues), so "<root>.", "<root>-old" and
+// "<root>_snapshot" are redacted while "/rootfs" under "/root" is not. The
+// bare-root case matters because a message that names exactly
 // $HOME (e.g. "cannot access /Users/alex") would otherwise leak the developer abcd-audit:allow
 // identity — its base segment IS the username. The filesystem root ("/") and
 // empty or relative roots are skipped so a message is never mangled.
@@ -239,7 +241,7 @@ func RedactRoot(s, root, repl string) string {
 
 // replaceRoot replaces each occurrence of root that starts a path (a left
 // boundary) and is either the whole path or its directory prefix (a right
-// boundary: end of string, a separator, or a non-path character). A span that
+// boundary: no letter or digit follows it, NameContinues). A span that
 // is not redacted is re-emitted in its original casing, and the scan resumes
 // one byte on so an occurrence overlapping a rejected one is still judged.
 func replaceRoot(s, root, repl string, fold bool) string {
@@ -252,8 +254,8 @@ func replaceRoot(s, root, repl string, fold bool) string {
 		}
 		i := from + j
 		after := i + len(root)
-		left := i == 0 || s[i-1] == os.PathSeparator || isPathBoundary(s[i-1])
-		right := after == len(s) || s[after] == os.PathSeparator || isPathBoundary(s[after])
+		left := i == 0 || s[i-1] == os.PathSeparator || !IsPathSegmentByte(s[i-1])
+		right := !NameContinues(s, after)
 		if !left || !right {
 			from = i + 1
 			continue
@@ -393,16 +395,27 @@ func relInside(root, p string) (string, bool) {
 	return rel, true
 }
 
-// isPathBoundary reports whether c cannot be part of a path segment, so a root
-// immediately followed by c is a whole path rather than a prefix of a longer one.
-func isPathBoundary(c byte) bool {
-	switch {
-	case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9':
-		return false
-	case c == '/' || c == '.' || c == '-' || c == '_':
-		return false
-	}
-	return true
+// IsPathSegmentByte reports whether b can be part of a path segment — a
+// letter, a digit, '.', '-', '_' or the '/' separator — so a root that starts
+// straight after such a byte is the tail of a longer path rather than a path
+// of its own. It is the one statement of the leading boundary: RedactRoot reads
+// it here and the scanner's home detectors import it (iss-2608292037564347).
+func IsPathSegmentByte(b byte) bool {
+	return b == '/' || b == '.' || b == '-' || b == '_' ||
+		(b >= 'A' && b <= 'Z') || (b >= 'a' && b <= 'z') || (b >= '0' && b <= '9')
+}
+
+// NameContinues reports whether the name ending at byte offset end of s goes
+// on: a letter or a digit at end continues it, and nothing else does. It is the
+// one statement of the trailing boundary, shared by RedactRoot and the
+// scanner's home sweep, detector and backstop (iss-2608292037564347). The only
+// false positive a trailing anchor exists for is a longer alphanumeric name
+// that starts with the root ("/rootfs" under "/root"); '.', '-' and '_' end
+// the name, so "<root>." at a sentence end, "<root>-old" and "<root>_snapshot"
+// carry the root with a suffix and are redacted. Over-redacting a suffixed
+// sibling is the safe side for an identity-bearing root.
+func NameContinues(s string, end int) bool {
+	return end < len(s) && ((s[end] >= 'A' && s[end] <= 'Z') || (s[end] >= 'a' && s[end] <= 'z') || (s[end] >= '0' && s[end] <= '9'))
 }
 
 // notPresent reports whether a stat/open error means the path cannot exist: it

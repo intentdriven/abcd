@@ -9,6 +9,8 @@
       "rules": [
         "Conventional prefix (feat/fix/chore/refactor/docs/test, no scopes); small atomic commits, one purpose each.",
         "AI-assisted commits carry an Assisted-by trailer (kernel format); never Co-Authored-By for AI.",
+        "Commit as the human: an agent or autonomous run sets its git identity to the person responsible, never the tool's name or a bot address.",
+        "Outward text (a pull-request body, an issue, a comment) carries no agent-session URL and no tool 'generated with' footer: after creating one, re-read what was posted and strip either shape the harness appended.",
         "Substantive work goes on a branch + PR; never force-push, never --no-verify.",
         "Never commit or push unless asked."
       ]

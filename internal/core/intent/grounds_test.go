@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/intentdriven/abcd/internal/core/grounds"
 )
@@ -312,32 +312,64 @@ func TestRecordGroundsConcurrentAppendsBothLand(t *testing.T) {
 // TestRecordGroundsHoldsTheMintLock is the deterministic half: the read, the
 // append and the write are one critical section under the same advisory lock
 // every other writer in this package takes, so a concurrent holder blocks it.
+//
+// It asserts an observed ORDERING, not a wait (iss-2608301301041887): the holder
+// releases only once the writer's own attempt on the lock has been refused, so a
+// writer that takes no lock never contends and returns while the holder still
+// has it — whatever the machine's load or the writer's own speed.
 func TestRecordGroundsHoldsTheMintLock(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, root, plannedDir+"/itd-10-alpha.md", plannedUnlinked("itd-10", "alpha"))
 
+	released, finish := holdMintLockUntilContended(t, root)
+	g := mustGrounds(t, grounds.Pursued, "we expect the grounds write to serialize with every other writer")
+	_, err := RecordGrounds(root, "itd-10", g)
+	wasReleased := released.Load()
+	finish()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !wasReleased {
+		t.Fatal("the grounds write returned while the mint lock was still held, having never contended for it — it took no lock")
+	}
+}
+
+// holdMintLockUntilContended takes the intent mint lock on another goroutine and
+// holds it until a second attempt on the lock is refused, then releases it. The
+// flag it returns is raised as the last act inside the holder's critical
+// section, so a writer that returns with it down never waited for the lock.
+// finish releases a holder that saw no contention (the failing direction) and
+// waits for it, so no goroutine outlives the test.
+func holdMintLockUntilContended(t *testing.T, root string) (*atomic.Bool, func()) {
+	t.Helper()
+	contended := make(chan struct{})
+	var once sync.Once
+	onIntentMintLockBusy = func() { once.Do(func() { close(contended) }) }
+	t.Cleanup(func() { onIntentMintLockBusy = nil })
+
+	released := &atomic.Bool{}
 	held := make(chan struct{})
+	stop := make(chan struct{})
 	done := make(chan error, 1)
 	go func() {
 		done <- withIntentMintLock(root, func() error {
 			close(held)
-			// Hold the lock long enough that an unlocked write would finish inside it.
-			time.Sleep(150 * time.Millisecond)
+			select {
+			case <-contended:
+			case <-stop:
+				return nil // released without contention: the flag stays down
+			}
+			released.Store(true)
 			return nil
 		})
 	}()
 	<-held
-	start := time.Now()
-	g := mustGrounds(t, grounds.Pursued, "we expect the grounds write to serialize with every other writer")
-	if _, err := RecordGrounds(root, "itd-10", g); err != nil {
-		t.Fatal(err)
-	}
-	waited := time.Since(start)
-	if err := <-done; err != nil {
-		t.Fatal(err)
-	}
-	if waited < 100*time.Millisecond {
-		t.Fatalf("the grounds write completed in %v while the mint lock was held — it took no lock", waited)
+	var stopOnce sync.Once
+	return released, func() {
+		stopOnce.Do(func() { close(stop) })
+		if err := <-done; err != nil {
+			t.Fatalf("the lock holder: %v", err)
+		}
 	}
 }
 

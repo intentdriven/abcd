@@ -160,7 +160,7 @@ home: no registry package exists and no code refers to one.
 
 **Owed-review draining (staged)** is receipt gating in the `run` seam
 ([adr-27](../../decisions/adrs/0027-autonomous-run-pluggable-seam.md)). No `run`
-seam ships, so nothing drains today. When it does, owed fidelity reviews drain at
+seam ships, so nothing drains today. When it does, owed intent audits drain at
 the seam's iteration boundary: each iteration gates on a receipt and applies the
 safety guard, report-not-block, whichever adapter provides the loop. There is
 deliberately no autodrain config knob — receipt gating is part of the seam
@@ -763,7 +763,8 @@ because siblings would run in parallel and share one stdin.
 that reach `bootstrap.sh` at all. The last three self-provision only when the
 plugin-root binary is missing, throttled by a `.bootstrap.attempt` marker within a
 ten-minute window, and then fall back to a PATH-resolved abcd that must be
-absolute, outside the working directory, not world-writable, and recorded as this
+absolute, outside the working directory, in a directory and a file that are not
+world-writable, and recorded as this
 machine's own, before failing loudly. `SessionEnd` and `SubagentStop` are the two
 exceptions and download nothing at all: each fires where the harness cancels a slow
 hook rather than wait — one as the session exits, the other inside a live session as

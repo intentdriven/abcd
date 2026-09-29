@@ -224,6 +224,42 @@ func TestPIIDomainForbidsCommittingNetworkIdentifiers(t *testing.T) {
 	t.Fatalf("no PII rule forbids committing hostnames, IP addresses, MAC addresses, or live network identifiers: %v", pii.Rules)
 }
 
+// TestCommittingDomainCarriesTheRecurringAttributionRules: the bundled
+// COMMITTING domain is what every managed repo's agents are handed per prompt,
+// so it carries the two attribution failures that keep recurring rather than
+// leaving them to per-agent memory and routine prompts (iss-2608210923437502):
+// outward text the harness decorated is read back and stripped after it is
+// created, and a commit is made as the human, never as the tool.
+func TestCommittingDomainCarriesTheRecurringAttributionRules(t *testing.T) {
+	committing, ok := Defaults().Lookup("COMMITTING")
+	if !ok {
+		t.Fatal("COMMITTING domain missing from the bundled defaults")
+	}
+	for name, words := range map[string][]string{
+		"read back and strip what the harness appended": {"re-read", "strip", "session url", "footer"},
+		"commit as the human, never as the tool":        {"git identity", "human", "never the tool"},
+	} {
+		found := false
+		for _, rule := range committing.Rules {
+			low := strings.ToLower(rule)
+			hit := true
+			for _, w := range words {
+				if !strings.Contains(low, w) {
+					hit = false
+					break
+				}
+			}
+			if hit {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("no COMMITTING rule says to %s (wanting all of %q): %q", name, words, committing.Rules)
+		}
+	}
+}
+
 func TestMatchRecallKeyword(t *testing.T) {
 	rs := Defaults()
 	got := rs.Match("let's commit and push this")

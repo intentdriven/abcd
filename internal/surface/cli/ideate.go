@@ -167,9 +167,15 @@ func renderIdeateResult(res ideate.Result) string {
 		out += fmt.Sprintf("  redacted:  %d secret/PII span(s) rewritten out of the verdict text before it was recorded\n",
 			res.Redactions)
 	}
-	if res.Graduates {
+	// One line per verdict: a reframed idea survives in another shape, so its
+	// line must not read as the killed one's (iss-2609100508573400).
+	switch {
+	case res.Graduates:
 		out += "  next:      the idea may graduate to a draft intent — `abcd intent \"<text>\"`\n"
-	} else {
+	case res.Verdict == ideate.VerdictReframed:
+		out += "  next:      the idea as posed does not graduate, but its reframing may — " +
+			"`abcd intent \"<text>\"` with the reframing the record carries, not the original wording\n"
+	default:
 		out += "  next:      the idea does not graduate; the record is why\n"
 	}
 	return out

@@ -575,7 +575,7 @@ func ingestUnderLock(root *os.Root, repoRoot string, req IngestRequest, res *Ing
 			return err
 		}
 	}
-	out, err := decodeOutput(raw)
+	out, err := decodeOutput(raw, repoRoot)
 	if err != nil {
 		return err
 	}
@@ -587,7 +587,7 @@ func ingestUnderLock(root *os.Root, repoRoot string, req IngestRequest, res *Ing
 	res.RunID = out.RunID
 	res.Position = pos
 
-	manifest, err := resolveParkedManifest(root, out)
+	manifest, err := resolveParkedManifest(root, repoRoot, out)
 	if err != nil {
 		return err
 	}
@@ -745,12 +745,16 @@ func readOutputFile(path string) ([]byte, error) {
 // decodeOutput decodes the payload strictly. Unknown fields are refused at every
 // declared level, and trailing content after the document is refused too: a
 // second document appended to the first is a payload nobody has read.
-func decodeOutput(raw []byte) (Output, error) {
+//
+// The decoder's message names an undeclared field by the payload's own key, and
+// that name is what the reader needs to find the fault, so it is redacted rather
+// than described (iss-2609290043245353).
+func decodeOutput(raw []byte, repoRoot string) (Output, error) {
 	dec := json.NewDecoder(strings.NewReader(string(raw)))
 	dec.DisallowUnknownFields()
 	var out Output
 	if err := dec.Decode(&out); err != nil {
-		return Output{}, fmt.Errorf("reading: the output is malformed: %s", echo(err.Error()))
+		return Output{}, fmt.Errorf("reading: the output is malformed: %s", redactRefused(repoRoot, err.Error()))
 	}
 	if dec.More() {
 		return Output{}, errors.New("reading: the output carries trailing content after the document")
@@ -761,23 +765,29 @@ func decodeOutput(raw []byte) (Output, error) {
 // checkEnvelope validates the run-level fields that must hold before any path is
 // built or any file is opened. The run id is checked FIRST among the values a
 // path is built from, because it is the only payload value that ever becomes one.
+//
+// Each of these fields has a closed shape, so a refused value is DESCRIBED and
+// never quoted: the field's name says where the fault is, and the value itself
+// is only ever a token or a path pasted into the wrong place, which would reach
+// the terminal and the transcript unredacted (iss-2609290043245353).
 func checkEnvelope(out Output) (Position, error) {
 	if out.Type != OutputType {
-		return "", fmt.Errorf("reading: the output states _type %q, want %q", echo(out.Type), OutputType)
+		return "", fmt.Errorf("reading: the output states _type as %s, want %q",
+			termsafe.DescribeRefused(out.Type), OutputType)
 	}
 	if !recordid.ValidReadingRunID(out.RunID) {
-		return "", fmt.Errorf("reading: run_id %q is not a run identifier (%s-N); "+
+		return "", fmt.Errorf("reading: run_id is %s, which is not a run identifier (%s-N); "+
 			"an ingest names the run an assembly parked, and a run id becomes a directory name",
-			echo(out.RunID), RunIDFamily)
+			termsafe.DescribeRefused(out.RunID), RunIDFamily)
 	}
-	// The parser quotes the token it refused, and that token is payload text, so
-	// the whole message goes through echo rather than the value alone.
 	pos, err := ParsePosition(string(out.Position))
 	if err != nil {
-		return "", fmt.Errorf("reading: %s", echo(err.Error()))
+		return "", fmt.Errorf("reading: position is %s, which is not a reading position; the set is closed: %s",
+			termsafe.DescribeRefused(string(out.Position)), sortedPositions(Positions()))
 	}
 	if !sha256HexRe.MatchString(out.ManifestSHA256) {
-		return "", fmt.Errorf("reading: manifest_sha256 %q is not a sha-256 digest", echo(out.ManifestSHA256))
+		return "", fmt.Errorf("reading: manifest_sha256 is %s, which is not a sha-256 digest",
+			termsafe.DescribeRefused(out.ManifestSHA256))
 	}
 	if isBlank(out.Instrument.Model) || isBlank(out.Instrument.DefinitionSHA256) ||
 		isBlank(out.Instrument.AssemblerVersion) {
@@ -809,7 +819,7 @@ var sha256HexRe = regexp.MustCompile(`^[0-9a-f]{64}$`)
 // unforgeable reference, because it cannot be asserted without the bytes. A
 // reference that resolves to nothing, or to a manifest whose hash disagrees,
 // refuses the run.
-func resolveParkedManifest(root *os.Root, out Output) (Manifest, error) {
+func resolveParkedManifest(root *os.Root, repoRoot string, out Output) (Manifest, error) {
 	// out.RunID has already been matched against the run-id grammar, which makes
 	// it a single safe path COMPONENT: it holds no separator and no dot. That
 	// says nothing about the components above it, so the read is resolved through
@@ -827,7 +837,10 @@ func resolveParkedManifest(root *os.Root, out Output) (Manifest, error) {
 	}
 	m, err := DecodeManifest(raw)
 	if err != nil {
-		return Manifest{}, fmt.Errorf("reading: the manifest of run %s: %w", out.RunID, err)
+		// The parked manifest is rewritable by the session that answers it, and
+		// the decoder names an undeclared key by its spelling: redacted, never
+		// raw (iss-2609290218032954).
+		return Manifest{}, fmt.Errorf("reading: the manifest of run %s: %s", out.RunID, redactRefused(repoRoot, err.Error()))
 	}
 	if got := sha256Hex(raw); got != out.ManifestSHA256 {
 		return Manifest{}, fmt.Errorf("reading: manifest_sha256 is %s, and the manifest parked at %s hashes "+
@@ -956,8 +969,8 @@ func WriteRunArtefact(repoRoot, runID, name string, v any) (string, error) {
 		return "", errors.New("reading: writing a run artefact needs a repository root")
 	}
 	if !recordid.ValidReadingRunID(runID) {
-		return "", fmt.Errorf("reading: run %q is not a run identifier (%s-N); a run id becomes a "+
-			"directory name", echo(runID), RunIDFamily)
+		return "", fmt.Errorf("reading: run is %s, which is not a run identifier (%s-N); a run id "+
+			"becomes a directory name", termsafe.DescribeRefused(runID), RunIDFamily)
 	}
 	if err := validArtefactName(name); err != nil {
 		return "", err

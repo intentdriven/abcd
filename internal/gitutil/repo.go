@@ -501,6 +501,25 @@ func Toplevel(dir string) (string, error) {
 	return top, nil
 }
 
+// RevParseAbsPath asks `git rev-parse --path-format=absolute <flag>` for one
+// path (--git-dir, --git-common-dir, --show-toplevel) and refuses any answer
+// that is not exactly one absolute line. --path-format arrived in git 2.31: an
+// older rev-parse echoes the option it does not know to stdout and exits 0, so
+// its answer is the flag's text and a path on two lines, which a caller that
+// compared it would read as a path. Refusing it keeps a resolution on an old
+// git failing closed where it compares, never on a string that only looks
+// like an answer.
+func RevParseAbsPath(dir, flag string) (string, error) {
+	out, err := Run(dir, "rev-parse", "--path-format=absolute", flag)
+	if err != nil {
+		return "", err
+	}
+	if out == "" || strings.ContainsAny(out, "\r\n") || !filepath.IsAbs(out) {
+		return "", fmt.Errorf("git rev-parse %s named no single absolute path (--path-format needs git 2.31 or later)", flag)
+	}
+	return out, nil
+}
+
 // ToplevelShaped reports whether top has the shape of git's toplevel answer
 // for dir: one absolute line naming a directory that contains dir. It is
 // Toplevel's check, for the callers that must run git themselves (a command

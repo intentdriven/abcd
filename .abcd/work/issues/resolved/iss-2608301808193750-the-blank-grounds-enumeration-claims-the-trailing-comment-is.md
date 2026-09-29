@@ -48,3 +48,14 @@ Remedy for THIS record is the reword: scope both sentences to the spellings the
 predicate actually tests. The gate is strictly better than it was either way;
 what may not stand is a sentence telling a reader the hole is closed when it is
 not. The widening is `iss-2608301808198621` and is deliberately separate.
+
+## Correction, 2026-09-29
+
+The resolution was true when it was written, and its "deliberately NOT
+widened" is not true at this tip. `3eb4b549` ("fix: gate the cold-reading evals
+and close the eval, ledger and ingest hygiene issues") took the widening this
+record left to iss-2608301808198621: absence is decided by the class of YAML
+node a value spells (`internal/core/frontmatter.IsEmptyValue`), not by a list of
+spellings. The same commit removed `TestIsAbsentValueIsASpellingTestNotANullTest`,
+which the resolution names; `TestAbsenceIsDecidedByClassNotBySpelling` in
+`internal/core/lint/schema_absence_test.go` pins the class rule.

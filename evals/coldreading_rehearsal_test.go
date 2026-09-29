@@ -447,12 +447,33 @@ func TestTheComparativeAssemblyFollowsTheCommittedWideningIngest(t *testing.T) {
 			"characterisation": "how a configuration of this shape ordinarily behaves against " + criterion,
 		})
 	}
+	//
+	// The ordering gate is closed until that ingest lands: a widening item is
+	// not answered while no committed comparative run names its run. It is
+	// opened below by the run record the comparative channel's own writer
+	// commits, never by a hand-placed marker, so a writer that stopped carrying
+	// candidate_run forward would leave every widening run unanswerable and fail
+	// here (iss-2609251842111403).
+	const declineGrounds = "the configuration is admissible and this iteration does not take it up"
+	early, code := runIn(t, f.Root, []string{"HOME=" + f.Home}, "capture", "disposition", ingested.Records[1].ID,
+		"--state", "declined", "--grounds", declineGrounds)
+	if code == 0 {
+		t.Fatalf("a widening item was dispositioned before the comparative run over its run was ingested:\n%s", early)
+	}
+	if !strings.Contains(early, widening.RunID) {
+		t.Errorf("the ordering refusal does not name the widening run it waits on:\n%s", early)
+	}
 	res := ingestAccepted(t, f, comparative, items)
 	if len(res.Records) != len(rehearsalCriteria) {
 		t.Fatalf("the comparative ingest recorded %d item(s), want one per declared criterion (%d)",
 			len(res.Records), len(rehearsalCriteria))
 	}
 	requireCommittedRun(t, f, comparative.RunID, res)
+	answered := disposition(t, f, ingested.Records[1].ID, "--state", "declined", "--grounds", declineGrounds)
+	if answered.State != "declined" || answered.Position != posWidening {
+		t.Errorf("after the comparative ingest the decline records state %q at %q, want declined at %s",
+			answered.State, answered.Position, posWidening)
+	}
 }
 
 // rehearsalFixtureWithoutPlantedRuns is the rehearsal fixture with the corpus's

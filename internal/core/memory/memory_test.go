@@ -752,7 +752,7 @@ func TestIngestRefusesSSRFTargets(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestValidateDistilledPageRejectsSuppliedTopicHash(t *testing.T) {
-	_, err := ValidateDistilledPage(map[string]any{
+	_, err := ValidateDistilledPage(t.TempDir(), map[string]any{
 		"type": "topic", "domain": "auth", "slug": "x", "body": "# b",
 		"source":     map[string]any{"class": "session_memory"},
 		"topic_hash": strings.Repeat("a", 64),
@@ -763,7 +763,7 @@ func TestValidateDistilledPageRejectsSuppliedTopicHash(t *testing.T) {
 }
 
 func TestValidateDistilledPageComputesTopicHash(t *testing.T) {
-	p, err := ValidateDistilledPage(map[string]any{
+	p, err := ValidateDistilledPage(t.TempDir(), map[string]any{
 		"type": "topic", "domain": "auth", "slug": "x", "body": "# Subject line",
 		"source": map[string]any{"class": "session_memory"},
 	})

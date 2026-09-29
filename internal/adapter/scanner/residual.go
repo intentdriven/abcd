@@ -4,6 +4,8 @@ import (
 	"os"
 	"sort"
 	"strings"
+
+	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
 // residual.go — the stage-two discipline the committed stores share.
@@ -255,8 +257,11 @@ func atURLPathRoot(at int, urls urlSet) bool {
 // bare username as a word, where '_' must continue the word so "me" does not
 // fire inside "me_2"; the home path is a longer literal that carries its own
 // separators, so a suffix after it is a boundary here.
+//
+// The rule itself lives in fsutil (NameContinues), so RedactRoot's trailing
+// boundary and this one cannot drift apart (iss-2608292037564347).
 func nameContinues(text string, end int) bool {
-	return end < len(text) && isAlnumByte(text[end])
+	return fsutil.NameContinues(text, end)
 }
 
 func isAlnumByte(b byte) bool {

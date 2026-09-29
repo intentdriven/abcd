@@ -278,7 +278,9 @@ Then summarise the JSON for the user:
   the same way — `CHANGELOG.md` dates the release just cut, which has no tag
   yet — so the preview refuses there too, naming the release as not tagged yet
   and `--baseline <newest tag>`, which measures against the release before it;
-  the cut itself diffs before it writes its heading. `parity.entries` lists
+  the cut itself diffs before it writes its heading, and a second cut in that
+  window refuses as a release in flight (exit 1) before any pre-flight runs.
+  `parity.entries` lists
   every path `added`, `changed` or `removed` with its `digest` and
   `baseline_digest` (SHA-256); report the counts and the paths. The two stamped manifests are compared with their
   version keys removed (`parity.normalised`), and against a release asset the
@@ -704,6 +706,7 @@ The reason codes:
 | `quote-not-verbatim` | carries a quote that is not word for word from its intent's press release, with its attribution |
 | `outbound-policy` | would put a session URL or a tool attribution footer in the page or the changelog |
 | `persona-registry` | would put on the page words attributed to a persona the registry does not hold |
+| `privacy` | would put a secret, a key, or the caller's own home path or identity in the page or the changelog |
 
 Then show the user the written heading and the diff, so a human reviews the release
 record before it is committed. This command never commits, tags, or publishes.

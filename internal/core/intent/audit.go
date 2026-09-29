@@ -865,7 +865,11 @@ func IngestVerdictBytes(repoRoot string, raw []byte) (IngestVerdictResult, error
 		return IngestVerdictResult{}, fmt.Errorf("intent: verdict is not parseable JSON; refusing to ingest: %w", err)
 	}
 	if lenient.Type != VerdictType {
-		return IngestVerdictResult{}, fmt.Errorf("intent: verdict _type %q is not %q; refusing to ingest", lenient.Type, VerdictType)
+		// Refused before any receipt resolves, so no redactor is built yet: the
+		// value is described, never quoted, as every other host-payload refusal
+		// is (iss-2609290033521472). The wanted type beside it finds a typo.
+		return IngestVerdictResult{}, fmt.Errorf("intent: verdict _type is %s, not %q; refusing to ingest",
+			termsafe.DescribeRefused(lenient.Type), VerdictType)
 	}
 	if !rcpIDRe.MatchString(lenient.ReceiptID) {
 		return IngestVerdictResult{}, fmt.Errorf("intent: verdict has no resolvable receipt_id (malformed or absent); refusing to ingest")
@@ -1305,7 +1309,10 @@ func deadLetter(repoRoot string, it Intent, content, rcp string, raw []byte, rea
 	return IngestVerdictResult{
 		Status: "dead_letter", ReceiptID: rcp, IntentID: it.ID,
 		Conditions: len(untested), Untested: len(untested),
-		DeadLetterPath: dlRel, Reason: reason,
+		// The reason quotes the payload, and it reaches the terminal and the
+		// transcript from here, so it is redacted exactly as the record's copy
+		// is: a surface must not print what the record was protected from.
+		DeadLetterPath: dlRel, Reason: free(reason),
 		ReadingOccasionedStanding: occasionedStanding(updated),
 	}, nil
 }

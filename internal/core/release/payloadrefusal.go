@@ -74,6 +74,10 @@ const (
 	// repository's registry does not hold (record-lint's persona_registry rule,
 	// run at the cut because the root page sits outside record-lint's roots).
 	ReasonPersonaRegistry ReasonCode = "persona-registry"
+	// ReasonPrivacy: the rendered page or changelog section carries a hard_fail
+	// finding of the canonical scanner (a token, a key, the caller's own home or
+	// identity), the bar the launch scan holds the same files to.
+	ReasonPrivacy ReasonCode = "privacy"
 )
 
 // ReasonCodes is every code, in the order above. commands/launch.md is pinned to
@@ -87,7 +91,7 @@ var ReasonCodes = []ReasonCode{
 	ReasonChangelogMissing, ReasonChangelogInvented, ReasonChangelogInternal,
 	ReasonMissing, ReasonOutsideSet, ReasonDuplicateCitation, ReasonNoHeadline, ReasonPageForEmptySet,
 	ReasonHeading, ReasonFence, ReasonBlockquote, ReasonQuoteSource, ReasonQuoteNotVerbatim,
-	ReasonOutboundPolicy, ReasonPersonaRegistry,
+	ReasonOutboundPolicy, ReasonPersonaRegistry, ReasonPrivacy,
 }
 
 // Reason is one fault: what kind, where in the payload, and what exactly.

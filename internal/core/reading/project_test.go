@@ -608,3 +608,22 @@ func TestTheEscapedKeyRefusalStatesOnlyWhatItKnows(t *testing.T) {
 		t.Errorf("the refusal asserts a block shape the document does not have: %v", err)
 	}
 }
+
+// TestOpensTagIsHTMLTagResRule is iss-2608301251394412: the attribute walk's
+// opensTag and the title stripper's htmlTagRe are one definition of what opens
+// a tag, so on any input the pattern can read to its `>`, the walk opens exactly
+// where the pattern matches. The hand-written copy took a `<` and a letter for
+// a tag, so it opened on an autolink its own comment said opens nothing.
+func TestOpensTagIsHTMLTagResRule(t *testing.T) {
+	for _, s := range []string{
+		"<h2>", "</h2>", "<h2 id=\"a\">", "<br/>", "<br />", "<my-tag>", "<a\nhref=\"x\">",
+		"<https://example.com>", "<mailto:someone@example.com>", "<h2:x>",
+		"< h2>", "<2>", "<-x>", "<>", "</>", "a < b >",
+	} {
+		loc := htmlTagRe.FindStringIndex(s)
+		want := loc != nil && loc[0] == 0
+		if got := opensTag(s, 0); got != want {
+			t.Errorf("opensTag(%q) = %v, htmlTagRe matches at 0 = %v", s, got, want)
+		}
+	}
+}

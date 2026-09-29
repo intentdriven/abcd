@@ -407,7 +407,7 @@ func fileBack(root string, matches []MatchedPage, rawPage map[string]any, decide
 		merged["source"] = src
 		rawPage = merged
 	}
-	page, err := ValidateDistilledPage(rawPage)
+	page, err := ValidateDistilledPage(root, rawPage)
 	if err != nil {
 		return FileBackResult{}, err
 	}

@@ -87,3 +87,18 @@ func noteDegraded(res *IngestResult, note string) {
 	}
 	res.Degraded += " " + note
 }
+
+// redactRefused renders payload text for a refusal that is RETURNED before the
+// run's identity is proven, so before Ingest builds its payloadField: the
+// decoder's message, which names an undeclared field by the payload's own key.
+// That name is what the reader needs to find the fault, so it is kept and
+// redacted rather than described (iss-2609290043245353).
+//
+// It is scanner.RedactRefusal, the one canonical refusal redactor (canonical
+// patterns, then the literal sweep of the caller's home), followed by echo's
+// cap. It FAILS CLOSED where newPayloadField degrades loudly: a returned refusal
+// has no record to note a degradation in, so a scanner that cannot be built, or
+// runs degraded, leaves the text described, never echoed.
+func redactRefused(repoRoot, s string) string {
+	return echo(scanner.RedactRefusal(repoRoot, s))
+}

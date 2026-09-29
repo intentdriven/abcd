@@ -32,6 +32,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/adapter/scanner"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/core/update"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -110,7 +111,7 @@ func Record(repoRoot, slug string, raw []byte, at time.Time) (Result, error) {
 	if err := validateSlug(slug); err != nil {
 		return Result{}, err
 	}
-	p, err := decodePayload(raw)
+	p, err := decodePayload(repoRoot, raw)
 	if err != nil {
 		return Result{}, err
 	}
@@ -237,7 +238,11 @@ func validateSlug(slug string) error {
 // an unknown-field refusal (an invented key means the composer and this core
 // disagree about the contract), a trailing-data refusal, the three-branch schema
 // gate, and the prompt_version stamp.
-func decodePayload(raw []byte) (Payload, error) {
+//
+// The decoder's message names an undeclared field by the payload's own key, the
+// one value the composer needs to find the fault, so it is redacted through the
+// canonical scanner for repoRoot rather than returned raw (iss-2609290218032954).
+func decodePayload(repoRoot string, raw []byte) (Payload, error) {
 	if len(raw) > MaxPayloadBytes {
 		return Payload{}, fmt.Errorf("verdict payload exceeds the %d-byte cap", MaxPayloadBytes)
 	}
@@ -245,7 +250,7 @@ func decodePayload(raw []byte) (Payload, error) {
 	dec.DisallowUnknownFields()
 	var p Payload
 	if err := dec.Decode(&p); err != nil {
-		return Payload{}, fmt.Errorf("malformed verdict JSON: %v", err)
+		return Payload{}, fmt.Errorf("malformed verdict JSON: %s", scanner.RedactRefusal(repoRoot, err.Error()))
 	}
 	if dec.More() {
 		return Payload{}, errors.New("the verdict payload carries trailing data after the JSON document")
@@ -306,8 +311,8 @@ func validate(repoRoot string, red *recordRedactor, p Payload) (verdictDoc, erro
 		return v, errors.New("the verdict payload carries no idea text; the record is about an idea, so the idea is required")
 	}
 	if !p.Verdict.Valid() {
-		return v, fmt.Errorf("out-of-enum verdict %q; a verdict is one of %s|%s|%s",
-			termsafe.Sanitize(string(p.Verdict)), VerdictSurvives, VerdictKilled, VerdictReframed)
+		return v, fmt.Errorf("out-of-enum verdict (%s); a verdict is one of %s|%s|%s",
+			termsafe.DescribeRefused(string(p.Verdict)), VerdictSurvives, VerdictKilled, VerdictReframed)
 	}
 	v.verdict = p.Verdict
 
@@ -317,8 +322,8 @@ func validate(repoRoot string, red *recordRedactor, p Payload) (verdictDoc, erro
 	}
 	for i, leg := range p.Legs {
 		if leg.Kind != legOrder[i] {
-			return v, fmt.Errorf("leg %d is %q; the legs run in order (%s), and the order is what each leg is looking at",
-				i+1, termsafe.Sanitize(string(leg.Kind)), legList())
+			return v, fmt.Errorf("leg %d is not %s (its kind is %s); the legs run in order (%s), and the order is what each leg is looking at",
+				i+1, legOrder[i], termsafe.DescribeRefused(string(leg.Kind)), legList())
 		}
 	}
 	var err error
@@ -373,8 +378,8 @@ func validateResearch(red *recordRedactor, leg Leg) ([]Claim, int, error) {
 			return nil, 0, fmt.Errorf("claim %d names no primary source; a claim checked against nothing is an assertion", at)
 		}
 		if !claimStatusEnum[c.Status] {
-			return nil, 0, fmt.Errorf("claim %d has status %q; a claim is %s, %s, or %s",
-				at, termsafe.Sanitize(string(c.Status)), ClaimVerified, ClaimFalsified, ClaimUnverifiable)
+			return nil, 0, fmt.Errorf("claim %d has an out-of-enum status (%s); a claim is %s, %s, or %s",
+				at, termsafe.DescribeRefused(string(c.Status)), ClaimVerified, ClaimFalsified, ClaimUnverifiable)
 		}
 		out = append(out, Claim{Claim: text, PrimarySource: src, Status: c.Status})
 	}
@@ -401,12 +406,12 @@ func validateGrill(red *recordRedactor, leg Leg) ([]GrillHit, int, error) {
 			return nil, 0, fmt.Errorf("grill hit %d cites a %d-byte record id (max %d)", at, len(h.Record), maxRecordIDBytes)
 		}
 		if !recordid.CitedIDRe.MatchString(h.Record) {
-			return nil, 0, fmt.Errorf("grill hit %d cites %q, which is not a record id (want adr-N, itd-N, iss-N, or spc-N)",
-				at, termsafe.Sanitize(h.Record))
+			return nil, 0, fmt.Errorf("grill hit %d cites %s, which is not a record id (want adr-N, itd-N, iss-N, or spc-N)",
+				at, termsafe.DescribeRefused(h.Record))
 		}
 		if !relationEnum[h.Relation] {
-			return nil, 0, fmt.Errorf("grill hit %d (%s) has relation %q; a hit is %s, %s, or %s",
-				at, h.Record, termsafe.Sanitize(string(h.Relation)), RelationCovered, RelationContradicted, RelationSuperseded)
+			return nil, 0, fmt.Errorf("grill hit %d (%s) has an out-of-enum relation (%s); a hit is %s, %s, or %s",
+				at, h.Record, termsafe.DescribeRefused(string(h.Relation)), RelationCovered, RelationContradicted, RelationSuperseded)
 		}
 		// The cited id is NOT redacted: CitedIDRe has just proved it is a record
 		// id, and rewriting a value the citation gate resolves against would break
@@ -447,8 +452,8 @@ func validateAdversarial(red *recordRedactor, leg Leg) ([]KillAttempt, int, erro
 			return nil, 0, fmt.Errorf("kill attempt %d has no text", at)
 		}
 		if !killOutcomeEnum[k.Outcome] {
-			return nil, 0, fmt.Errorf("kill attempt %d has outcome %q; an attempt is %s, %s, or %s",
-				at, termsafe.Sanitize(string(k.Outcome)), KillSurvived, KillPartial, KillFatal)
+			return nil, 0, fmt.Errorf("kill attempt %d has an out-of-enum outcome (%s); an attempt is %s, %s, or %s",
+				at, termsafe.DescribeRefused(string(k.Outcome)), KillSurvived, KillPartial, KillFatal)
 		}
 		out = append(out, KillAttempt{Attempt: text, Outcome: k.Outcome})
 	}

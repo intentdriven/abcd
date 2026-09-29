@@ -76,3 +76,17 @@ func newIntentRedactor(repoRoot string) (intentRedactor, error) {
 		return scanner.Redact(text, findings)
 	}, nil
 }
+
+// redactRefused renders payload text for a refusal the consistency ingest
+// RETURNS with nothing written: the decoder's message, which names an
+// undeclared field by the payload's own key. That name is what the reader needs
+// to find the fault, so it is kept and redacted rather than described
+// (iss-2609290144116254).
+//
+// It is scanner.RedactRefusal, the one canonical refusal redactor (canonical
+// patterns, then the literal sweep of the caller's home), followed by oneLine's
+// cap. It FAILS CLOSED the way newIntentRedactor does: a scanner that cannot be
+// built, or runs degraded, leaves the text described and never echoed.
+func redactRefused(repoRoot, s string) string {
+	return oneLine(scanner.RedactRefusal(repoRoot, s))
+}

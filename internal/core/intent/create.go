@@ -628,6 +628,13 @@ func titleLine(text string) string {
 // locked read — not the corpus — is what the verb judges.
 var beforeIntentMintLock func()
 
+// onIntentMintLockBusy is a test seam, nil outside tests: called each time an
+// attempt to take the lock finds it already held. A test that proves a writer
+// takes the lock has to OBSERVE the writer blocked on it; inferring it from how
+// long the write took measures the machine, and a writer that takes no lock but
+// is slow for its own reasons passes a wait bar (iss-2608301301041887).
+var onIntentMintLockBusy func()
+
 // withIntentMintLock runs fn while holding an exclusive advisory lock over the
 // intent store. It serializes the presence check and the write of one mint
 // against concurrent abcd processes in the SAME checkout (two agent sessions, a
@@ -669,6 +676,9 @@ func withIntentMintLockWithin(repoRoot string, timeout time.Duration, fn func() 
 		}
 		if lockErr != syscall.EWOULDBLOCK {
 			return fmt.Errorf("intent: acquiring mint lock: %w", lockErr)
+		}
+		if onIntentMintLockBusy != nil {
+			onIntentMintLockBusy()
 		}
 		if time.Now().After(deadline) {
 			return fmt.Errorf("%w within %s", errIntentLockBusy, timeout)

@@ -44,6 +44,7 @@ case "$sub" in
     if [ -f "$FAKE_DIR/list-fails" ]; then echo "gh: Resource not accessible by integration (HTTP 403)" >&2; exit 1; fi
     jq -r "${expr:-.}" "$FAKE_DIR/runs.json" ;;
   "run view")
+    if [ -f "$FAKE_DIR/view-fails" ]; then echo "gh: HTTP 502: Server Error" >&2; exit 1; fi
     [ -f "$FAKE_DIR/run-$id.json" ] || { echo "fake gh: no run $id" >&2; exit 95; }
     jq -r "${expr:-.}" "$FAKE_DIR/run-$id.json" ;;
   *) echo "fake gh: $sub is not faked" >&2; exit 99 ;;
@@ -55,8 +56,9 @@ type detectCase struct {
 	tagged   bool              // the newest CHANGELOG version is tagged
 	released bool              // its GitHub Release exists
 	runs     []string          // release.yml push-run ids for the tag, newest first
-	verify   map[string]string // run id -> the conclusion of that run's verify job
+	verify   map[string]string // run id -> the conclusion of that run's verify job ("in_progress": still running, no conclusion)
 	listFail bool              // the run listing errors
+	viewFail bool              // reading a run's jobs errors
 }
 
 // runDetect runs one workflow's detect script in a scratch repository shaped
@@ -99,11 +101,19 @@ func runDetect(t *testing.T, workflow string, c detectCase) (string, int, string
 	if c.listFail {
 		write("list-fails", "")
 	}
+	if c.viewFail {
+		write("view-fails", "")
+	}
 	var items []string
 	for _, id := range c.runs {
 		items = append(items, `{"databaseId":`+id+`}`)
-		write("run-"+id+".json", `{"jobs":[{"name":"verify","conclusion":"`+c.verify[id]+
-			`"},{"name":"tag","conclusion":"skipped"},{"name":"release","conclusion":"failure"}]}`)
+		// The API reports a job that has not finished with a null conclusion.
+		verify := `"status":"completed","conclusion":"` + c.verify[id] + `"`
+		if c.verify[id] == "in_progress" {
+			verify = `"status":"in_progress","conclusion":null`
+		}
+		write("run-"+id+".json", `{"jobs":[{"name":"verify",`+verify+
+			`},{"name":"tag","conclusion":"skipped"},{"name":"release","conclusion":"failure"}]}`)
 	}
 	write("runs.json", "["+strings.Join(items, ",")+"]")
 
@@ -203,6 +213,30 @@ func TestAutoReleaseRefusesToRebuildATagItsVerifyRefused(t *testing.T) {
 			out, code, got := runDetect(t, wf, detectCase{tagged: true, listFail: true})
 			if code == 0 || strings.Contains(got, "need_release=true") {
 				t.Errorf("detect guessed past a failed run listing (rc=%d):\n%s\n%s", code, out, got)
+			}
+		})
+		// iss-2609251616310535: the two remaining reads of the step. A run
+		// whose jobs cannot be read is refused like a failed listing, and a
+		// verify still running has not refused the tag, so it heals.
+		t.Run(where+": a failed read of the run's jobs refuses loudly", func(t *testing.T) {
+			out, code, got := runDetect(t, wf, detectCase{
+				tagged: true, runs: []string{"802"},
+				verify: map[string]string{"802": "success"}, viewFail: true,
+			})
+			if code == 0 || strings.Contains(got, "need_release=true") {
+				t.Errorf("detect guessed past a failed read of run 802's jobs (rc=%d):\n%s\n%s", code, out, got)
+			}
+			if !strings.Contains(out, "802") {
+				t.Errorf("the refusal must name the run whose jobs it could not read:\n%s", out)
+			}
+		})
+		t.Run(where+": a verify still in progress heals", func(t *testing.T) {
+			out, code, got := runDetect(t, wf, detectCase{
+				tagged: true, runs: []string{"802"},
+				verify: map[string]string{"802": "in_progress"},
+			})
+			if code != 0 || !strings.Contains(got, "need_release=true") || !strings.Contains(got, "release_ref=") {
+				t.Errorf("detect refused a tag whose verify has not concluded (rc=%d):\n%s\n%s", code, out, got)
 			}
 		})
 		t.Run(where+": a released tag does nothing", func(t *testing.T) {

@@ -1,7 +1,7 @@
 ---
 term: disembark
 bounded_context: core
-definition: The act of packing a lifeboat — `abcd disembark <source-repo> to <dest>` reads a source repository without writing to it and distils its settled artefacts, decisions, and configuration into a portable lifeboat directory at a destination outside that repository, which a fresh context can later unpack via `/abcd:embark`.
+definition: The act of packing a lifeboat — `abcd disembark pack <source-repo> <dest>` reads a source repository without writing to it and distils its settled artefacts, decisions, and configuration into a portable lifeboat directory at a destination outside that repository, which a fresh context can later unpack via `/abcd:embark`.
 aliases: ["lifeboat packing", "disembarkation"]
 forbidden_synonyms: ["export", "backup", "dump", "snapshot"]
 status: stable
@@ -19,7 +19,7 @@ versions: null
 proxy of a project's theory that can be carried across a session, machine, or team boundary.
 
 It takes the source repository as an argument and is **read-only and out-of-tree**:
-`abcd disembark <source-repo> to <dest>` reads the repository — any repository, including a dead
+`abcd disembark pack <source-repo> <dest>` reads the repository — any repository, including a dead
 or archived one abcd has never touched — and writes the lifeboat somewhere else. The source tree
 is never written to, so there is no in-tree lifeboat directory; the record of the run lands in the
 [voyage](voyage.md) log at the operator level instead. The destination is guarded by a safety

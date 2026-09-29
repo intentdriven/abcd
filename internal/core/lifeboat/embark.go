@@ -705,7 +705,7 @@ func walkLifeboatFilesBounded(root *os.Root, limit, perDir, maxDepth int) ([]str
 				}
 				sub, err := openWalkDir(dirRoot, name)
 				if err != nil {
-					return err
+					return walkOpenRefusal(rel, err)
 				}
 				err = walk(sub, rel, depth+1)
 				sub.Close()
@@ -726,6 +726,18 @@ func walkLifeboatFilesBounded(root *os.Root, limit, perDir, maxDepth int) ([]str
 	}
 	sort.Strings(rels)
 	return rels, nil
+}
+
+// walkOpenRefusal names a directory the walk could not descend into by its
+// path in the lifeboat. The raw open error names the path openWalkDir opened —
+// the last component with its "/." suffix — which is not a path the lifeboat
+// holds (iss-2609252004013212), so only the cause is kept from it.
+func walkOpenRefusal(rel string, err error) error {
+	var pe *fs.PathError
+	if errors.As(err, &pe) {
+		err = pe.Err
+	}
+	return fmt.Errorf("lifeboat directory %q cannot be opened: %w", rel, err)
 }
 
 // readLifeboatFile reads one lifeboat file through the containment root behind

@@ -105,6 +105,10 @@ func tierHelp() string {
 // table is read, so a verb's non-delegating modes are untouched by routing.
 func (rf *routeFlag) resolve(cmd *cobra.Command, verb, agent string) (*oracle.Route, error) {
 	stderr := cmd.ErrOrStderr()
+	// Callers name the verb both bare ("disembark review") and already
+	// prefixed ("abcd intent audit"); the stderr lines name it exactly once
+	// (iss-2609251606543515).
+	label := "abcd " + strings.TrimPrefix(verb, "abcd ")
 	if agent == "" {
 		if len(rf.texts) > 0 {
 			return nil, &exitError{Code: 2, Msg: verb + ": --route routes an agent this step dispatches, and this " +
@@ -127,7 +131,7 @@ func (rf *routeFlag) resolve(cmd *cobra.Command, verb, agent string) (*oracle.Ro
 			"; the routing table decides which model this step asks for, so it is refused rather than guessed past — fix or remove the file"}
 	}
 	for _, d := range l.Diagnostics {
-		fmt.Fprintf(stderr, "abcd %s: %s\n", verb, termsafe.Sanitize(d))
+		fmt.Fprintf(stderr, "%s: %s\n", label, termsafe.Sanitize(d))
 	}
 	routes, err := oracle.ParseRoutes(rf.texts, []string{agent}, conns)
 	if err != nil {
@@ -141,7 +145,7 @@ func (rf *routeFlag) resolve(cmd *cobra.Command, verb, agent string) (*oracle.Ro
 		return nil, &exitError{Code: 2, Msg: verb + ": " + termsafe.Sanitize(fsutil.RedactHome(err.Error()))}
 	}
 	if r.Fallback != "" {
-		fmt.Fprintf(stderr, "abcd %s: %s\n", verb, termsafe.Sanitize(r.Fallback))
+		fmt.Fprintf(stderr, "%s: %s\n", label, termsafe.Sanitize(r.Fallback))
 	}
 	return &r, nil
 }

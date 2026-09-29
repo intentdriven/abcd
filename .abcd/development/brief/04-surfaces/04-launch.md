@@ -95,7 +95,10 @@ since the last tag: headline intents told as prose, the rest listed by title,
 persona quotes carried word for word. The binary holds it to the changelog's
 rule (every intent in that set cited once, nothing else, nothing planned),
 checks each quote against its source, and runs the outbound policy and the
-persona registry over it. The outgoing page moves to
+persona registry over it. Both rendered documents are also held to the bar the
+launch scan holds the same files to: a hard_fail finding of the canonical
+scanner (a token, a key, the caller's own home or identity) refuses the cut,
+named by kind and line, never quoted (iss-2609290405381338). The outgoing page moves to
 `.abcd/development/releases/<version>.md`, then the page is written, then the
 changelog heading; a failure rolls the earlier writes back. A fixes-only cut
 writes no page. A refused payload returns every reason as data, and the host
@@ -372,7 +375,9 @@ same way, with the opposite meaning: the dated release is the one just cut and
 the newest tag is the right baseline. The preview refuses there too, calling the
 release not tagged yet rather than the previous one and naming the explicit
 baseline that measures against the release before it; the cut is not blocked,
-because it diffs before it writes its heading. A baseline that cannot be read is
+because it diffs before it writes its heading. A second cut in that window is a
+release in flight, and it refuses as one before any pre-flight runs, so it never
+names that explicit baseline, which the cut does not take. A baseline that cannot be read is
 a named refusal, never an empty diff.
 
 Every preview, and every cut that renders a payload, writes its pre-flight

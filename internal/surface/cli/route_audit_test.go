@@ -193,3 +193,19 @@ func TestIntentAuditListingRefusesRoute(t *testing.T) {
 		t.Fatalf("err %v", err)
 	}
 }
+
+// TestRouteStderrNamesTheVerbOnce: a caller that hands resolve an
+// already-prefixed verb ("abcd intent audit") gets its fallback line named
+// once, not "abcd abcd intent audit" (iss-2609251606543515).
+func TestRouteStderrNamesTheVerbOnce(t *testing.T) {
+	root := intentTestRepo(t)
+	writeRepoFile(t, root, ".abcd/development/intents/shipped/itd-10-alpha.md", conditionedIntent)
+	acceptRepoRow(t, root, "intent-auditor", "frontier")
+	_, stderr, err := runCLISplit(t, "intent", "audit", "itd-10", "--json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(stderr, "abcd abcd") || !strings.HasPrefix(stderr, "abcd intent audit: ") {
+		t.Fatalf("stderr %q", stderr)
+	}
+}

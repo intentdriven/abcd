@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/intentdriven/abcd/internal/gittest"
 )
@@ -234,6 +235,61 @@ func TestCaptureListOpenRendersIssueFields(t *testing.T) {
 		}
 		if got.sev != c.sev {
 			t.Errorf("summary %q: severity = %q, want %q", c.text, got.sev, c.sev)
+		}
+	}
+}
+
+// TestCaptureListOpenHumanRenderCarriesSummary is AC5's other surface
+// (iss-2609240307549105): the human render of `capture list --open` carries
+// each issue's one-line summary, not only the --json body.
+func TestCaptureListOpenHumanRenderCarriesSummary(t *testing.T) {
+	_ = captureLedgerRepo(t)
+	runCLI(t, "capture", "the parser flakes on a trailing tab\n\nA second paragraph the row leaves out.",
+		"--severity", "minor", "--slug", "parser-tab")
+	long := "a summary long enough to be clipped " + strings.Repeat("word ", 40)
+	runCLI(t, "capture", long, "--severity", "minor", "--slug", "long-one")
+
+	list := string(runCLI(t, "capture", "list", "--open"))
+	var row, longRow string
+	for _, l := range strings.Split(list, "\n") {
+		switch {
+		case strings.Contains(l, "parser-tab"):
+			row = l
+		case strings.Contains(l, "long-one"):
+			longRow = l
+		}
+	}
+	if !strings.Contains(row, "the parser flakes on a trailing tab") {
+		t.Fatalf("the human row carries no one-line summary:\n%s", list)
+	}
+	if strings.Contains(list, "A second paragraph") {
+		t.Fatalf("the human row carries more than the first line of the body:\n%s", list)
+	}
+	if !strings.Contains(longRow, "a summary long enough to be clipped") || !strings.HasSuffix(longRow, "…") ||
+		utf8.RuneCountInString(longRow) > 200 {
+		t.Fatalf("a long summary is not clipped to one short line:\n%q", longRow)
+	}
+}
+
+// TestSummaryNoteStripsLeadingMarkdownMarker pins that a `capture list` row's
+// summary drops a leading heading or blockquote marker, so a body opening
+// "# Title" reads "— Title" rather than "— # Title" (iss-2609240307549105).
+// Only a CommonMark marker is stripped: a hash run followed by a space, of one
+// to six hashes, or a ">" with its optional space.
+func TestSummaryNoteStripsLeadingMarkdownMarker(t *testing.T) {
+	for _, tc := range []struct{ body, want string }{
+		{"# Title\n\nmore", " — Title"},
+		{"\n\n## Second level", " — Second level"},
+		{"###### Six deep", " — Six deep"},
+		{"> quoted line", " — quoted line"},
+		{">quoted tight", " — quoted tight"},
+		{"####### seven is not a heading", " — ####### seven is not a heading"},
+		{"#hashtag is not a heading", " — #hashtag is not a heading"},
+		{"plain first line", " — plain first line"},
+		{"# ", ""},
+	} {
+		if got := summaryNote(tc.body); got != tc.want {
+			t.Errorf("summaryNote(%q) = %q, want %q", tc.body, got, tc.want)
 		}
 	}
 }
@@ -1519,7 +1575,9 @@ func TestCaptureWontfixRefusesALockedBody(t *testing.T) {
 	if err == nil {
 		t.Fatal("wontfix over a locked body acted, want a refusal")
 	}
-	for _, frag := range []string{"HTML comment", "body line 2", "text editor", "re-run", "nothing written"} {
+	// The captured prose is the first line of the body the ledger reader
+	// renders; line 2 was the off-by-one count of iss-2608301908288212.
+	for _, frag := range []string{"HTML comment", "body line 1,", "text editor", "re-run", "nothing written"} {
 		if !strings.Contains(err.Error(), frag) {
 			t.Fatalf("the refusal does not name %q: %v", frag, err)
 		}

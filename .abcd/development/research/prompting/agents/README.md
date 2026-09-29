@@ -2,11 +2,11 @@
 
 > Per the brief (§ "Research-driven prompts"): per-agent SOTA research is **task #1 of each agent's epic**. The output lives here as `<agent-name>.md` and references the baseline at [`../01-general-best-practices.md`](../01-general-best-practices.md).
 >
-> **Role.** Same as the baseline: research is the **gate** (audit reference for `lifeboat-oracle` and the prompt linter), not the **source** (prompt template). The author writes the agent's prompt informed by the research; the oracle audits alignment.
+> **Role.** Same as the baseline: research is the **gate** (audit reference for `lifeboat-reviewer` and the prompt linter), not the **source** (prompt template). The author writes the agent's prompt informed by the research; the oracle audits alignment.
 
 ## Purpose of these files
 
-For each of the 14 abcd agents, `<agent-name>.md` answers four questions specific to that agent's job:
+For each agent it covers, `<agent-name>.md` answers four questions specific to that agent's job:
 
 1. **What is the closest prior art?** Existing prompts in public repos (Piebald, VoltAgent, EliFuzz, Cursor / Devin extracts), academic papers on the agent's task type, and any internal predecessors (e.g. the manual lifeboat for `flow-essence`).
 2. **What are the agent-specific failure modes?** General failures from `01-general-best-practices.md` plus things that bite *this* agent specifically (e.g. context rot for `chat-distiller`, verbosity bias for `press-release-composer`, injection for `embark-scaffolder`).
@@ -29,23 +29,19 @@ Use `_template.md` as the starting point. Every per-agent research file MUST inc
 
 Per-agent files are **immutable once their epic ships**. Subsequent additions go in a new section dated at the bottom of the file or, if structural, supersede with a new file (`<agent-name>-02.md`). Mirrors how the brief itself archives.
 
-## Inventory (target: 14 files)
+## Inventory
 
-| Agent | Pass | Highest agent-specific risk | File |
-|---|---|---|---|
-| `flow-essence` | A | Spec staleness in newest-first ordering | TBD |
-| `decision-archaeologist` | A | ADR / git-log / CLAUDE.md cross-source synthesis | TBD |
-| `review-collator` | A | Format drift across model-emitted reviews | TBD |
-| `chat-distiller` | B | **Context rot** (highest in the suite) | [present](chat-distiller.md) |
-| `principle-distiller` | C | Domain-grouping bias; missed-rationale gaps | TBD |
-| `artefact-curator` | C | Keep/adapt/drop classification accuracy | TBD |
-| `brief-composer` | C | Coherent-narrative-from-fragments | TBD |
-| `press-release-composer` | C | **Verbosity bias** (highest in the suite) | TBD |
-| `lifeboat-oracle` | C | LLM-judge biases; verdict-tag drift | TBD |
-| `code-rescuer` | opt-in | Principle-extraction without code-level recommendation | TBD |
-| `issue-scout` | opt-in | GitHub-search precision/recall | TBD |
-| `embark-scaffolder` | embark | **Prompt injection** (highest in the suite); idempotent placement | [present](embark-scaffolder.md) |
-| `launch-gatekeeper` | launch | PII regex completeness; false-negatives | TBD |
-| `intent-fidelity-reviewer` | post-ship | LLM-judge bias against own intent author | TBD |
+The files here are measured against two rosters: the agent prompts that ship
+under `agents/`, and the design roster the brief records as still to be built
+([`05-internals/01-agents.md`](../../../brief/05-internals/01-agents.md), "The
+design roster still to be built"). A research file for a design target is
+research done ahead of its agent, not a baseline for a prompt that ships.
 
-Replace "TBD" with `present` as each agent's epic kicks off.
+| Research file | Agent | Standing against `agents/` |
+|---|---|---|
+| [`chat-distiller.md`](chat-distiller.md) | `chat-distiller` (Pass B) | Design target: no `agents/chat-distiller.md` ships, and the brief lists it on the roster still to be built. |
+| [`embark-scaffolder.md`](embark-scaffolder.md) | `embark-scaffolder` (embark) | Design target: no `agents/embark-scaffolder.md` ships, and the brief lists it on the roster still to be built. |
+| [`intent-fidelity-reviewer.md`](intent-fidelity-reviewer.md) | `intent-auditor` | Ships as [`agents/intent-auditor.md`](../../../../../agents/intent-auditor.md), renamed from `intent-fidelity-reviewer` by itd-123 (spc-28); the research file keeps the name it was written under. |
+
+Every other shipped agent under `agents/` has no per-agent research file here,
+and neither does any other design target.

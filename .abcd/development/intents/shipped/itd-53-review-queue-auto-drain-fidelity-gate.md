@@ -132,8 +132,8 @@ Gap audit:
 - Source: design discussion on the audit-loop enforcement design
   (a dated working-log entry, 2026-06-02, "should spec-close auto-run review" — resolved
   NO; add a drainer instead).
-- Touches: the pure on-close lifecycle hook (spc-28) and the review-queue
-  drain/claim machinery; the fidelity reviewer (spc-12) is the run target.
+- Touches: the pure on-close lifecycle hook (spc-28, predecessor store) and the review-queue
+  drain/claim machinery; the fidelity reviewer (spc-12, predecessor store) is the run target.
 
 ## Grounds
 

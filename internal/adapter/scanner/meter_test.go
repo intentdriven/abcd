@@ -37,6 +37,22 @@ var (
 	meterWindowsID = Identity{HomePath: `C:\Users\dev`, HomeUser: "dev"} // abcd-audit:allow
 )
 
+// overLongSeparatorRun is a backslash run past maxSeparatorRun, written as a
+// number rather than derived from the bound, so probing the bound by inflating
+// the constant cannot inflate the fixtures with it into gigabyte lines
+// (iss-2609251728586400); TestOverLongSeparatorRunOutlastsTheBound keeps it
+// past the bound. Probe the unbounded case by removing the bound from
+// endsWithPathFold's loop instead.
+const overLongSeparatorRun = 128
+
+// TestOverLongSeparatorRunOutlastsTheBound keeps the fixtures that exercise the
+// separator-run bound past it when the bound moves.
+func TestOverLongSeparatorRunOutlastsTheBound(t *testing.T) {
+	if overLongSeparatorRun <= maxSeparatorRun {
+		t.Fatalf("overLongSeparatorRun (%d) no longer outlasts maxSeparatorRun (%d): raise it past the bound", overLongSeparatorRun, maxSeparatorRun)
+	}
+}
+
 // meterFixtures are the shapes every stage of a line's scan is held linear on.
 // Addresses are assembled (network_test.go's v4, v6, mac and host) so the committed
 // file carries no literal one.
@@ -70,7 +86,7 @@ var meterFixtures = []meterFixture{
 	{"generic_login_commands", meterGenericID, rep("su - dev ")},
 	{"generic_login_padded_key_values", meterGenericID, rep("USER=" + strings.Repeat(" ", maxKeyGap) + "dev ")},
 	{"generic_login_escaped_windows_roots", meterWindowsID, rep(`C:\\\\Users\\\\dev\\\\x `)}, // abcd-audit:allow
-	{"generic_login_after_separator_runs", meterWindowsID, rep(strings.Repeat(`\`, 2*maxSeparatorRun) + "dev ")},
+	{"generic_login_after_separator_runs", meterWindowsID, rep(strings.Repeat(`\`, overLongSeparatorRun) + "dev ")},
 	{"nested_other_homes", Identity{}, rep("/home/a")}, // abcd-audit:allow
 	{"named_login_words", meterNamedID, rep("zq8home ")},
 	{"named_login_dotted_run", meterNamedID, rep("zq8home.")},
@@ -196,10 +212,23 @@ func TestBoundedContextHelpersKeepTheFinding(t *testing.T) {
 	}
 	// A generic login behind a backslash run longer than the escaping window
 	// reads is reported without the home root the window would have found.
+	// The second line's run follows no home root at all, so its report is the
+	// bound's over-report and nothing else: read to its end, the run would
+	// reach "x", no root, and the login would be spared, as it is behind a run
+	// inside the window. The first line is a true account position, reported
+	// with or without the bound (iss-2609251728586400).
 	for _, id := range []Identity{{HomeUser: "dev"}, meterWindowsID} {
-		long := `C:\Users` + strings.Repeat(`\`, maxSeparatorRun+1) + "dev"
+		rooted := `C:\Users` + strings.Repeat(`\`, overLongSeparatorRun) + "dev"
+		if f := ScanText(rooted, id, DefaultPatterns(), DefaultIdentitySeverities(), "f"); !hasKind(f, kindLocalUser) {
+			t.Errorf("a generic login behind an over-long separator run after a home root was spared (home %q): %+v", id.HomePath, f)
+		}
+		long := "x" + strings.Repeat(`\`, overLongSeparatorRun) + "dev"
 		if f := ScanText(long, id, DefaultPatterns(), DefaultIdentitySeverities(), "f"); !hasKind(f, kindLocalUser) {
-			t.Errorf("a generic login behind an over-long separator run was spared (home %q): %+v", id.HomePath, f)
+			t.Errorf("a generic login behind an over-long rootless separator run was spared (home %q): %+v", id.HomePath, f)
+		}
+		inside := "x" + strings.Repeat(`\`, 4) + "dev"
+		if f := ScanText(inside, id, DefaultPatterns(), DefaultIdentitySeverities(), "f"); hasKind(f, kindLocalUser) {
+			t.Errorf("a generic login behind a rootless separator run inside the window was reported (home %q): %+v", id.HomePath, f)
 		}
 	}
 	// Within the bound the exemption still holds.

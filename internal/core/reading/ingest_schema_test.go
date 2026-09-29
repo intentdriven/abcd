@@ -64,7 +64,9 @@ func TestMalformedPayloadWritesNothing(t *testing.T) {
 			d := f.payload(1)
 			d["position"] = "speculative"
 			return d
-		}, "speculative"},
+			// The refusal names the FIELD, never the refused value
+			// (iss-2609290043245353).
+		}, "position"},
 		// An EMPTY item list is not malformed. It was in this table, and the
 		// refusal read the framework's clean-run contingency backwards: a run
 		// that returned nothing is committed as a run with an empty item set, at

@@ -238,9 +238,15 @@ func newReadingCommand(asJSON *bool) *cobra.Command {
 			// bytes go to the ingest that validates them and to the receipt's
 			// model: what was routed and reported is what was ingested. A read
 			// that fails hands the ingest nothing, and its own read refuses the
-			// output with its own reason.
+			// output with its own reason. Under a --route the read's reason is
+			// the refusal: an unread output names no position, and saying so
+			// would blame the route for a size cap or a symlink
+			// (iss-2609251606553359).
 			payload, rerr := reading.ReadOutput(resolved)
 			if rerr != nil {
+				if len(readingRoute.texts) > 0 {
+					return readingRefusal("reading ingest", rerr)
+				}
 				payload = nil
 			}
 			route, err := readingIngestRoute(cmd, readingRoute, payload)
