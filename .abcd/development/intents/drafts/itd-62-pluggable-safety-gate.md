@@ -72,6 +72,7 @@ _Empty. Populated by intent-fidelity-reviewer when intent moves to shipped/._
 
 ## References
 
+- [[itd-63-setup-wizard-explains-installs]] names this gate's missing-scanner refusal as its consumer (criterion 4): the refusal calls `tools.Missing` for the explanation and `tools.Install` on an explicit yes, never a bare install command.
 - Originating assessment: an internal comparative assessment (2026-06-26,
   recorded in the sources ledger) — names the safety pillar as abcd's largest
   gap against the amateur-coder thesis, and identifies the transplantable

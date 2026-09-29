@@ -45,7 +45,7 @@ func TestReadTrackedFileCapBoundary(t *testing.T) {
 	if int64(len(data)) != maxScanBytes {
 		t.Errorf("at-cap read length = %d, want %d (cap+1 must not truncate an at-cap file)", len(data), maxScanBytes)
 	}
-	if !strings.Contains(string(data), "/home/somebody/secret") {
+	if !strings.Contains(string(data), "/home/somebody/secret") { // abcd-lint:allow
 		t.Error("the trailing content of an at-cap file was not read")
 	}
 

@@ -222,7 +222,7 @@ func TestDisembarkIngestsCarryTheReceipt(t *testing.T) {
 			}
 			var rc oracle.ReceiptRoute
 			member(t, []byte(stdout), "route", &rc)
-			want := oracle.ReceiptRoute{Agent: v.agent, TierAsked: oracle.Local, ConnectionUsed: oracle.Harness,
+			want := oracle.ReceiptRoute{Agent: v.agent, TierAsked: oracle.Local, ConnectionUsed: oracle.Harness, // abcd-lint:allow
 				FallbackReason: rc.FallbackReason, SettingsSent: oracle.Settings{}}
 			if rc.FallbackReason == "" || !receiptEqual(rc, want) {
 				t.Fatalf("route = %+v", rc)

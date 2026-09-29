@@ -6,7 +6,7 @@ import (
 )
 
 // persona_host_suggestion_test.go — iss-2609190338409222: net_lan_hostname
-// flagged a possessive persona host ("alices-mac.local") while its suggestion
+// flagged a possessive persona host ("alices-mac.local") while its suggestion abcd-lint:allow
 // offered "a persona-derived fixture host", so the author saw a persona host
 // refused and could not tell why. The skip stays as it is — the possessive,
 // capitalised, is how macOS names a real person's machine — and the suggestion
@@ -17,7 +17,7 @@ func TestHostnameSuggestionNamesTheAcceptedShape(t *testing.T) {
 	if f := ScanText("ping alice-mac.local", id, pats, sev, "f"); hasKind(f, kindNetLANHost) {
 		t.Fatalf("the accepted persona shape was flagged: %+v", f)
 	}
-	for _, line := range []string{"ping alices-mac.local", "ssh alices-macbook"} {
+	for _, line := range []string{"ping alices-mac.local", "ssh alices-macbook"} { // abcd-lint:allow
 		f := ScanText(line, id, pats, sev, "f")
 		if len(f) == 0 {
 			t.Fatalf("the possessive host in %q was not flagged", line)

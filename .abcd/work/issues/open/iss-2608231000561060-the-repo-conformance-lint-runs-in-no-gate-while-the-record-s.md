@@ -16,3 +16,5 @@ The repo-conformance lint runs in no gate while the record says it gates CI, and
 ## Deferral 2026-09-29
 
 Deferred past v0.11.1: The false claim is corrected: the surface index no longer says the repo-conformance lint gates CI, and itd-85's line was fixed in 7bed788f2. The product thinker's ruling M10 of 2026-09-23: abcd lint becomes merge-blocking on a narrow, high-precision subset and stays advisory for the rest; the technical facilitator proposes the subset and the product thinker confirms it. Owed: that proposal, starting from real home-folder paths in privacy-hygiene, and its confirmation.
+
+Evidence 2026-09-29 (autonomous run A, lane privacyLint), reproduced at baf6f8443: bare `abcd lint` exits non-zero with 88 privacy-hygiene errors and 14 warnings, while `make preflight` runs only the scoped `lint docs` and `lint site` verbs, `record-lint` and `intent audit --issue-drift`, and the CI workflow runs the same scoped verbs, so no gate reads the repo-conformance rules. iss-2609290845269642 classifies the 102 findings and clears the errors; the blocking subset remains the product thinker's ruling.

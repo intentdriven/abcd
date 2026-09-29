@@ -75,7 +75,7 @@ func TestCheckOutboundPassesCleanText(t *testing.T) {
 // class by `abcd lint`'s privacy rule and the record/docs lint; this gate judges
 // the two shapes a harness stamps onto public text.
 func TestCheckOutboundJudgesOnlyTheOutboundPolicyClass(t *testing.T) {
-	msg := "fix: point the collector at the lab box\n\nThe host is 192.168.1.14 now.\n"
+	msg := "fix: point the collector at the lab box\n\nThe host is 192.168.1.14 now.\n" // abcd-lint:allow
 
 	// Guard the fixture: if this stopped being a finding at all the test would
 	// pass for the wrong reason.

@@ -26,9 +26,9 @@ func displayPath(p string) string {
 // displayText renders arbitrary text — an OS error string, which embeds whatever
 // absolute path the syscall was given — for the same surfaces displayPath serves.
 // The home prefix is replaced wherever it appears at a path boundary, because an
-// error reads "symlink /a/b /home/u/.local/bin/abcd: permission denied" and the
+// error reads "symlink /a/b /home/alice/.local/bin/abcd: permission denied" and the
 // username sits in the middle. A path that merely starts with the home string but
-// continues into another name (/home/user2 against /home/user) is left alone.
+// continues into another name (/home/user2 against /home/user) is left alone. abcd-lint:allow
 //
 // It is the same canonical redactor displayPath uses (fsutil.RedactHome), so the
 // two never disagree about what home looks like and both fold case on a

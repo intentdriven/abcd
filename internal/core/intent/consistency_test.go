@@ -547,7 +547,7 @@ func TestConsistencyReportRedactsTheReviewersProse(t *testing.T) {
 		t.Fatal(err)
 	}
 	leak := contradiction()
-	leak.explanation = "Checked against /Users/zzotherperson/checkouts/abcd/x.md on buildbox.local with Jonathan Kensington-Pryce."
+	leak.explanation = "Checked against /Users/zzotherperson/checkouts/abcd/x.md on buildbox.local with Jonathan Kensington-Pryce." // abcd-lint:allow
 	res, err := ingest(t, root, findingsPayload(t, root, em, leak), &fakeFiler{})
 	if err != nil {
 		t.Fatal(err)

@@ -69,7 +69,7 @@ func TestPlanRefusesBrewCellarPath(t *testing.T) {
 }
 
 func TestPlanAcceptsPlainFile(t *testing.T) {
-	if r := Plan(ahoy.UpdateTarget{Path: "/home/x/.local/bin/abcd", ResolvedPath: "/home/x/.local/bin/abcd", Kind: ahoy.UpdateTargetFile}); r != nil {
+	if r := Plan(ahoy.UpdateTarget{Path: "/home/alice/.local/bin/abcd", ResolvedPath: "/home/alice/.local/bin/abcd", Kind: ahoy.UpdateTargetFile}); r != nil {
 		t.Fatalf("a plain regular file is the verb's home case, not a refusal: %+v", r)
 	}
 }

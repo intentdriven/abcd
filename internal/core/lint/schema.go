@@ -397,22 +397,31 @@ var recordStores = []recordStore{
 	// buckets are minted: a reading item and a run record live under the run that
 	// produced them, and a disposition lives under the item it answers.
 	//
-	// Their required-field sets are absent, and that is a STATED GAP rather than a
-	// delegation. What this rule gives them is structural — the bucket grammar,
-	// the filename ↔ id agreement, no undeclared lifecycle directory — and their
-	// CONTENT is judged by the writer that refuses a malformed record at the
-	// boundary, and by review. So the guarantee the issue store has, that a record
-	// the reader would refuse is not lint-green, does not yet hold here: a record
-	// hand-written into these trees can carry a body no reader reads and pass this
-	// gate. Declaring their required fields is what closes it, and until that
-	// lands the gap belongs in writing rather than in the difference between two
-	// store entries.
+	// The reading item's and the run record's required-field sets are absent, and
+	// that is a STATED GAP rather than a delegation. What this rule gives them is
+	// structural — the bucket grammar, the filename ↔ id agreement, no undeclared
+	// lifecycle directory — and their CONTENT is judged by the writer that refuses
+	// a malformed record at the boundary, and by review. So the guarantee the
+	// issue store has, that a record the reader would refuse is not lint-green,
+	// does not yet hold for them: a record hand-written into those trees can carry
+	// a body no reader reads and pass this gate. Declaring their required fields
+	// is what closes it, and until that lands the gap belongs in writing rather
+	// than in the difference between two store entries.
+	//
+	// The disposition declares its set, from core/issueschema's ONE declaration —
+	// the set its writer refuses a record without — and with it the bucket it
+	// states twice: a disposition is filed under the item it answers AND carries
+	// that item as a field, the admission's `run` double claim in its sibling store
+	// (iss-2608301203525338). Its per-state rules (grounds on every state but held,
+	// an exit condition on held) stay the writer's: they are not schema-wide.
 	{prefix: "rdi", noun: "reading item", nodeType: "reading", bucketRe: readingRunBucketRe,
 		fileNumRe: readingItemFileNumRe, fileFamily: "rdi", filename: "rdi-<N>.md"},
 	{prefix: "rdg", noun: "reading run", nodeType: "reading-run", bucketRe: readingRunBucketRe,
 		fileNumRe: readingRunFileNumRe, fileFamily: "rdg", filename: "rdg-<N>.md"},
 	{prefix: "dsp", noun: "disposition", nodeType: "disposition", bucketRe: dispositionBucketRe,
-		fileNumRe: dispositionFileNumRe, fileFamily: "dsp", filename: "dsp-<N>.md"},
+		fileNumRe: dispositionFileNumRe, fileFamily: "dsp", filename: "dsp-<N>.md",
+		requiredFields: issueschema.DispositionRequired, knownFields: issueschema.DispositionKnown,
+		bucketField: "item"},
 	// The two step-2 families (spc-67). Unlike the three above they DO declare
 	// their schemas, and that is the whole of this cycle's enforcement: no verb
 	// writes an admission or a surprise yet, so wiring the shapes to the gate that
@@ -1316,15 +1325,10 @@ func joinFamilyNoun(family string) string {
 // the shape this whole rule exists to make loud.
 //
 // It is scoped to the stores that DECLARE a bucketField, and that scope is the
-// whole of it: bucketField is declared by the bucketed admission store alone, so
-// a record reaching this check always has a bucket. A second test for an empty
-// one would be a branch no fixture can enter, which is how a guard comes to look
-// tested (iss-2608301519254240).
-//
-// The disposition store
-// makes the same double claim (`item` beside its item-keyed directory) and is not
-// declared here, because that store declares no frontmatter schema at all this
-// cycle; adding one field of it would be a schema half-stated in a second place.
+// whole of it: bucketField is declared by bucketed stores alone (the admission's
+// `run`, the disposition's `item`), so a record reaching this check always has a
+// bucket. A second test for an empty one would be a branch no fixture can enter,
+// which is how a guard comes to look tested (iss-2608301519254240).
 func checkRecordBucketField(r schemaRecord, severity string) []Finding {
 	if r.store.bucketField == "" {
 		return nil

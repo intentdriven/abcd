@@ -7,8 +7,8 @@ category: documentation
 found_at: ACKNOWLEDGEMENTS.md
 found_during: user-observation
 source: user-observation
-deferred_after: "v0.10.0"
-deferral_reason: "ruling owed to the product thinker (away; run A 2026-09-25): For a reviewed edit past the private name guard: keyed entry anchoring, diff-scoped scanning, or a recorded per-commit acknowledgement?"
+deferred_after: "v0.11.1"
+deferral_reason: "ruling owed to the product thinker (renewed by run A 2026-09-29 after the v0.10.0 grant lapsed at the v0.11.0 anchor): For a reviewed edit past the private name guard: keyed entry anchoring, diff-scoped scanning, or a recorded per-commit acknowledgement?"
 ---
 
 # There is no way to change text in a file the private name-guard blocks

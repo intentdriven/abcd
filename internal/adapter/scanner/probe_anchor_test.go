@@ -17,8 +17,8 @@ func TestAdjacencyProbeMatchesOnlyAtOffsetZero(t *testing.T) {
 	tokens := map[string]string{
 		"github_pat":          "ghp_" + strings.Repeat("a1", 20),
 		"aws_access_key":      "AKIA" + strings.Repeat("Q7", 8),
-		"net_ipv4":            "10.1.2.3",
-		"net_device_hostname": "bobs-macbook",
+		"net_ipv4":            "10.1.2.3",     // abcd-lint:allow
+		"net_device_hostname": "bobs-macbook", // abcd-lint:allow
 	}
 	for _, p := range DefaultPatterns() {
 		tok, ok := tokens[p.Name]

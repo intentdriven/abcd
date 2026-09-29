@@ -23,7 +23,7 @@ import (
 // Both spans are FAKE (a ghp_ token shape of literal 'A's; a home path under a
 // set-for-the-test $HOME). Nothing here is a live credential.
 
-const x46mHome = "/Users/testperson"
+const x46mHome = "/Users/testperson" // abcd-lint:allow
 
 func x46mSpans(t *testing.T) (token, homePath string) {
 	t.Helper()

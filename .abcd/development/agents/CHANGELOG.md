@@ -12,6 +12,19 @@ over the brief's earlier `1.0.0`-at-close expectation). The four M6 synthesis
 agents below entered at `0.1.0`, wired to their `abcd disembark` verbs and
 unmeasured; `lifeboat-oracle` has since become `lifeboat-reviewer` at `0.1.1`.
 
+## 2026-09-29 (iss-2609020716572828 — a security review reports within a budget)
+
+A security review on the ahoy branch ran for over three and a half hours with no
+report, while a fresh copy given a budget of about twenty-five tool calls
+reported in eight minutes and found the same class.
+
+### security-reviewer 0.3.0
+
+MINOR: a `## Budget` section. The reviewer works to the dispatcher's stated
+budget, or about twenty-five tool calls where none is stated, and on reaching
+it reports what it has with a NEEDS-INPUT verdict naming the ground it did not
+reach. The output schema is unchanged. Unmeasured, as before.
+
 ## 2026-09-28 (itd-2609212137129937 — quotes are attributed by role)
 
 abcd's own text names the product thinker or the technical facilitator, and the

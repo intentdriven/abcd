@@ -7,7 +7,7 @@ category: "bug"
 source: "impl-review"
 found_during: "ultra-v0.6.8-followup"
 found_at: "internal/core/memory/redact.go"
-resolution: "scanner.SweepCallerHome replaces the home only where it stands as a path — the name may continue only with an alphanumeric byte, so /rootfs and /Users/alexandra are another name and left intact, while a punctuation suffix such as /root-cause or /root.old is swept to the safe side — the home_path_self detector and Redact's placeholder rewrite apply the same anchor, and the memory store's dead Contains check is now scanner.SurvivingCallerHome — the boundary-aware survivor gate history already holds"
+resolution: "scanner.SweepCallerHome replaces the home only where it stands as a path — the name may continue only with an alphanumeric byte, so /rootfs and /Users/alexandra are another name and left intact, while a punctuation suffix such as /root-cause or /root.old is swept to the safe side — the home_path_self detector and Redact's placeholder rewrite apply the same anchor, and the memory store's dead Contains check is now scanner.SurvivingCallerHome — the boundary-aware survivor gate history already holds" # abcd-lint:allow
 impact: fix
 ---
 

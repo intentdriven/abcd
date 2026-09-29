@@ -14,7 +14,7 @@ import (
 // the whole path token the match sits in, and a token that is absolute is a
 // home path wherever its /Users or /home segment falls.
 func TestHomePathOtherUnderANestedAbsoluteRoot(t *testing.T) {
-	id := Identity{HomePath: "/Users/zq8home", HomeUser: "zq8home"}
+	id := Identity{HomePath: "/Users/zq8home", HomeUser: "zq8home"} // abcd-lint:allow
 	caught := map[string]string{
 		"open file:///home/alice/notes.md":       "/home/alice",  // abcd-audit:allow
 		"see file:///Users/bob/secret.txt":       "/Users/bob",   // abcd-audit:allow

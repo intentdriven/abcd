@@ -168,6 +168,21 @@ func IsNonUserHomeSegment(seg string) bool {
 	return nonUserHomeSegments[strings.ToLower(seg)]
 }
 
+// nonUserPosixHomeAccounts are the system accounts that own a directory under
+// the POSIX /home root without naming a person. Homebrew on Linux installs to
+// /home/linuxbrew/.linuxbrew under its own account, and product code that
+// detects a Homebrew install has to name that prefix (iss-2609290845269642),
+// the same tax iss-153 lifted for the macOS shared root. The comparison is
+// case-sensitive, as the Linux filesystems that carry the prefix are: a
+// case-folded spelling is some other account.
+var nonUserPosixHomeAccounts = map[string]bool{"linuxbrew": true}
+
+// IsNonUserPosixHomeSegment reports whether seg, the segment immediately after
+// a /home root, names a system account rather than a person.
+func IsNonUserPosixHomeSegment(seg string) bool {
+	return nonUserPosixHomeAccounts[seg]
+}
+
 // isNetworkKind reports whether a finding kind is one of the network
 // identifiers, so a consumer can take that half of a merged pattern set.
 func isNetworkKind(kind string) bool {

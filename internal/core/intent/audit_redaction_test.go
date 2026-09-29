@@ -40,8 +40,8 @@ func identityRepo(t *testing.T) string {
 func leakyVerdict(t *testing.T, rcp, conditionID string) string {
 	t.Helper()
 	const (
-		path = "/Users/zzotherperson/checkouts/abcd/internal/core/intent/audit.go"
-		host = "buildbox.local"
+		path = "/Users/zzotherperson/checkouts/abcd/internal/core/intent/audit.go" // abcd-lint:allow
+		host = "buildbox.local"                                                    // abcd-lint:allow
 		who  = "Jonathan Kensington-Pryce"
 	)
 	v := map[string]any{
@@ -99,7 +99,7 @@ func leakyVerdict(t *testing.T, rcp, conditionID string) string {
 // field having been dropped.
 func assertNoLeak(t *testing.T, body string) {
 	t.Helper()
-	for _, leak := range []string{"zzotherperson", "buildbox.local", "Kensington-Pryce"} {
+	for _, leak := range []string{"zzotherperson", "buildbox.local", "Kensington-Pryce"} { // abcd-lint:allow
 		if strings.Contains(body, leak) {
 			t.Errorf("agent prose carrying %q reached the committed record:\n%s", leak, body)
 		}
@@ -168,7 +168,7 @@ func TestDeadLetterRedactsAgentProse(t *testing.T) {
 		t.Fatal(err)
 	}
 	crit := m["criteria"].([]any)[0].(map[string]any)
-	crit["verdict"] = "MET on buildbox.local per Jonathan Kensington-Pryce at /Users/zzotherperson/x"
+	crit["verdict"] = "MET on buildbox.local per Jonathan Kensington-Pryce at /Users/zzotherperson/x" // abcd-lint:allow
 	raw, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
 		t.Fatal(err)
@@ -214,10 +214,10 @@ func TestIngestVerdictRedactsTheProvenanceLine(t *testing.T) {
 	}
 	// The two shapes the review named: a hostname in the verifier identity, and
 	// a third party's absolute home path in an attestation ref.
-	m["verifier"] = map[string]any{"id": "auditor@buildbox.local", "version": "claude-opus-4-8"}
+	m["verifier"] = map[string]any{"id": "auditor@buildbox.local", "version": "claude-opus-4-8"} // abcd-lint:allow
 	m["input_attestations"] = []any{map[string]any{
 		"kind":   "diff",
-		"ref":    "main..auto/x (run by Jonathan Kensington-Pryce from /Users/zzotherperson/checkouts/abcd)",
+		"ref":    "main..auto/x (run by Jonathan Kensington-Pryce from /Users/zzotherperson/checkouts/abcd)", // abcd-lint:allow
 		"digest": "sha256:" + strings.Repeat("ab", 32),
 	}}
 	// The intent records no scope condition here, so the verdict must dispose none.
@@ -262,7 +262,7 @@ func TestVerdictHashesAreValidatedShapes(t *testing.T) {
 		"a prompt hash that is prose": func(m map[string]any) {
 			m["policy"] = map[string]any{
 				"rubric_hash": "sha256:" + strings.Repeat("aa", 32),
-				"prompt_hash": "computed on buildbox.local",
+				"prompt_hash": "computed on buildbox.local", // abcd-lint:allow
 			}
 		},
 		"an attestation digest that is not sha256": func(m map[string]any) {

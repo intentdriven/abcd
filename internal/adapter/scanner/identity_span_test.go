@@ -29,7 +29,7 @@ func TestIdentityMaskingIsSpanBased(t *testing.T) {
 			// masked, the bundle identifier the detector cleared
 			// (isDottedNamespaceComponent, iss-2609100505142469) survives whole.
 			name: "reverse_dns_bundle_component_survives",
-			id:   Identity{HomeUser: "com", HomePath: "/Users/com"},
+			id:   Identity{HomeUser: "com", HomePath: "/Users/com"}, // abcd-lint:allow
 			line: "com filed it: the crash is in the bundle com.acme.app",
 			want: "[redacted-user] filed it: the crash is in the bundle com.acme.app",
 		},
@@ -38,7 +38,7 @@ func TestIdentityMaskingIsSpanBased(t *testing.T) {
 			// the whole-string rewrite overrode it whenever a real mention
 			// shared the line.
 			name: "midword_collision_survives",
-			id:   Identity{HomeUser: "com", HomePath: "/Users/com"},
+			id:   Identity{HomeUser: "com", HomePath: "/Users/com"}, // abcd-lint:allow
 			line: "the commit was authored by com",
 			want: "the commit was authored by [redacted-user]",
 		},
@@ -47,7 +47,7 @@ func TestIdentityMaskingIsSpanBased(t *testing.T) {
 			// the whole-string rewrite caught by accident, now caught on
 			// purpose, with a cleared lookalike standing between them.
 			name: "both_genuine_mentions_masked_lookalike_between",
-			id:   Identity{HomeUser: "com", HomePath: "/Users/com"},
+			id:   Identity{HomeUser: "com", HomePath: "/Users/com"}, // abcd-lint:allow
 			line: "com filed it: com.acme.app crashed, and com confirmed",
 			want: "[redacted-user] filed it: com.acme.app crashed, and [redacted-user] confirmed",
 		},
@@ -72,7 +72,7 @@ func TestIdentityMaskingIsSpanBased(t *testing.T) {
 			// the offsets of the later spans must not drift as earlier ones are
 			// replaced by longer text.
 			name: "mixed_kinds_length_changing_placeholders",
-			id:   Identity{HomeUser: "com", HomePath: "/Users/com", GitUserEmail: "alice@example.com"},
+			id:   Identity{HomeUser: "com", HomePath: "/Users/com", GitUserEmail: "alice@example.com"}, // abcd-lint:allow
 			line: "com pinged alice@example.com then com replied",
 			want: "[redacted-user] pinged [redacted-email] then [redacted-user] replied",
 		},
@@ -100,7 +100,7 @@ func TestIdentityMaskingIsSpanBased(t *testing.T) {
 // seeing it. Now everything does.
 func TestDetectorFlagsEveryGenuineMentionOnALine(t *testing.T) {
 	line := "com filed it: com.acme.app crashed, and com confirmed\n"
-	id := Identity{HomeUser: "com", HomePath: "/Users/com"}
+	id := Identity{HomeUser: "com", HomePath: "/Users/com"} // abcd-lint:allow
 	var cols []int
 	for _, f := range ScanText(line, id, DefaultPatterns(), DefaultIdentitySeverities(), "t") {
 		if f.Kind == kindLocalUser {
@@ -123,7 +123,7 @@ func TestDetectorFlagsEveryGenuineMentionOnALine(t *testing.T) {
 // interleaved. Every survivor must come out byte-for-byte, which can only hold
 // if no span is applied against shifted offsets.
 func TestIdentitySpansKeepOffsetsAcrossManyMasks(t *testing.T) {
-	id := Identity{HomeUser: "com", HomePath: "/Users/com"}
+	id := Identity{HomeUser: "com", HomePath: "/Users/com"} // abcd-lint:allow
 	line := "com then com.acme.app then com then commit then com then io.com.x then com"
 	want := "[redacted-user] then com.acme.app then [redacted-user] then commit then " +
 		"[redacted-user] then io.com.x then [redacted-user]"
@@ -172,7 +172,7 @@ func TestSealLineIsByteLengthPreserving(t *testing.T) {
 // recorded before the seal ran, so a seal that shifted bytes would mask the
 // wrong span — and the lookalike must survive regardless.
 func TestIdentitySpanOffsetsSurviveTheSecretSeal(t *testing.T) {
-	id := Identity{HomeUser: "com", HomePath: "/Users/com"}
+	id := Identity{HomeUser: "com", HomePath: "/Users/com"} // abcd-lint:allow
 	line := "token ghp_abcdefghijklmnopqrstuvwxyz0123456789 used by com on com.acme.app"
 	got, _ := Redact(line+"\n", ScanText(line+"\n", id, DefaultPatterns(), DefaultIdentitySeverities(), "t"))
 	if strings.Contains(got, "ghp_abcdefghijklmnopqrstuvwxyz0123456789") {
@@ -198,7 +198,7 @@ func TestIdentitySpanColumnsAreByteOffsets(t *testing.T) {
 	}{
 		{
 			name: "local_username_after_multibyte_runes",
-			id:   Identity{HomeUser: "com", HomePath: "/Users/com"},
+			id:   Identity{HomeUser: "com", HomePath: "/Users/com"}, // abcd-lint:allow
 			line: "naïve — üñï com said com.acme.app",
 			want: "naïve — üñï [redacted-user] said com.acme.app",
 		},
@@ -210,8 +210,8 @@ func TestIdentitySpanColumnsAreByteOffsets(t *testing.T) {
 		},
 		{
 			name: "home_path_self_after_multibyte_runes",
-			id:   Identity{HomeUser: "com", HomePath: "/Users/com"},
-			line: "naïve — üñï /Users/com/x",
+			id:   Identity{HomeUser: "com", HomePath: "/Users/com"}, // abcd-lint:allow
+			line: "naïve — üñï /Users/com/x",                        // abcd-lint:allow
 			want: "naïve — üñï ~/x",
 		},
 	}
@@ -255,7 +255,7 @@ func TestSpanMaskingFailsOpenOnClearedLookalikes(t *testing.T) {
 			// local_username inside a URL span: the one residue with real
 			// exposure, since a forge URL carries the login in the clear.
 			name:     "local_username_inside_a_url",
-			id:       Identity{HomeUser: "com", HomePath: "/Users/com"},
+			id:       Identity{HomeUser: "com", HomePath: "/Users/com"}, // abcd-lint:allow
 			line:     "com filed it, see https://example.com/com/repo",
 			survives: "https://example.com/com/repo",
 			want:     "[redacted-user] filed it, see https://example.com/com/repo",
@@ -272,7 +272,7 @@ func TestSpanMaskingFailsOpenOnClearedLookalikes(t *testing.T) {
 			// The reverse-DNS namespace component (isDottedNamespaceComponent):
 			// the case the fix exists for, and a survival that is CORRECT.
 			name:     "reverse_dns_component",
-			id:       Identity{HomeUser: "com", HomePath: "/Users/com"},
+			id:       Identity{HomeUser: "com", HomePath: "/Users/com"}, // abcd-lint:allow
 			line:     "com filed it about com.acme.app",
 			survives: "com.acme.app",
 			want:     "[redacted-user] filed it about com.acme.app",
@@ -280,7 +280,7 @@ func TestSpanMaskingFailsOpenOnClearedLookalikes(t *testing.T) {
 		{
 			// A mid-word collision (wordBounded) — also a correct survival.
 			name:     "midword_collision",
-			id:       Identity{HomeUser: "com", HomePath: "/Users/com"},
+			id:       Identity{HomeUser: "com", HomePath: "/Users/com"}, // abcd-lint:allow
 			line:     "com says the commit landed",
 			survives: "commit",
 			want:     "[redacted-user] says the commit landed",
