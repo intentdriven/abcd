@@ -148,9 +148,6 @@ func check(repoRoot, key, session string, snap *peerSnapshot) (CheckResult, erro
 		}
 	}
 	peersRow := peersCheck(ready, session, snap)
-	if err != nil {
-		return res, err
-	}
 	res.Checks = append(res.Checks, peersRow)
 
 	res.OK = true

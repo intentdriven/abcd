@@ -29,6 +29,11 @@ spec; until each lands, the loop refuses at it by name.
 |---|---|---|
 | `next` | — | shipped |
 
+The status cell records that the sub-verb is in the command tree, not that its
+intent is delivered: the pick is made once per invocation, and continuing under
+the pace rule (criterion 5) and naming a falsified pick in the run record
+(criterion 6) are not built ([The pick](#the-pick)).
+
 ## The checks
 
 No run is created until every check passes, and each is a read (criteria 1 and 2):
