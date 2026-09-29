@@ -22,8 +22,8 @@ Once the marketplace is added:
 /plugin install abcd@abcd-marketplace
 ```
 
-`abcd-marketplace` is the marketplace name declared in
-[`.claude-plugin/`](https://github.com/intentdriven/abcd/tree/main/.claude-plugin/); `abcd` is the single plugin it lists,
+`abcd-marketplace` is the marketplace name declared in the
+[repository](https://github.com/intentdriven/abcd)'s plugin marketplace manifest; `abcd` is the single plugin it lists,
 sourced from the latest release's plugin archive. Take a newer release with:
 
 ```text
@@ -40,7 +40,7 @@ The plugin needs Claude Code v2.1.224 or later, the first version that installs 
 
 The plugin provisions its own binary; this repository commits none. The
 verified artefact is kept once in the plugin's persistent per-plugin download
-cache (`$CLAUDE_PLUGIN_DATA`), and a plugin update — which lands in a fresh,
+cache, which the harness keeps for the plugin across updates, and a plugin update — which lands in a fresh,
 empty plugin root — is provisioned by a re-verified copy out of that cache
 rather than a fresh download. [`hooks/bootstrap.sh`](https://github.com/intentdriven/abcd/blob/main/hooks/bootstrap.sh) runs
 first at session start: when the cache already holds the artefact for the
