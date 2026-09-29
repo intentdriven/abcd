@@ -469,11 +469,13 @@ func reconcileBundle(repoRoot string, store spec.Store, sp spec.Spec, impact str
 			// Recorded before the first write, so a failure at either write or at
 			// the move is undone from the bytes read under this lock.
 			done = append(done, undo{abs: st.abs, rel: m.Intent.Path, orig: st.content})
-			if st.stamp != "" {
-				updated, err := setFrontmatterFields(st.content, map[string]string{"impact": st.stamp})
-				if err != nil {
-					return err
-				}
+			// The impact stamp and the dropped target, as the single close's
+			// ship face writes them (itd-2609212103572513).
+			updated, err := shipFace(st.content, st.stamp)
+			if err != nil {
+				return err
+			}
+			if updated != st.content {
 				if err := writeIntentFile(st.abs, m.Intent.Path, updated); err != nil {
 					return err
 				}

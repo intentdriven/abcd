@@ -1828,7 +1828,7 @@ abcd intent link itd-2609010000000001 spc-2609010000000002
 
 Plan a draft, or several as a named bundle, or stamp a planned one's conditions: Writes the intents and their spec; refuses a held intent or a bundle's blocker.
 
-**Usage:** `abcd intent plan <itd-N> [<itd-N>…] [--bundle <name>] [flags]`
+**Usage:** `abcd intent plan <itd-N> [<itd-N>…] [--bundle <name>] [--target <vX.Y.Z|next>] [flags]`
 
 **Flags:**
 
@@ -1836,6 +1836,7 @@ Plan a draft, or several as a named bundle, or stamp a planned one's conditions:
       --bundle string            the name of the bundle several intents are planned as: kebab-case, required with two or more intents and refused with one
       --impact string            stamp the intent's product impact: additive|breaking|fix (optional; refused when it disagrees with one already recorded)
       --production-mode string   how this record's text was produced: hand-written|dictated-and-formatted|scribe-transcribed (default: the repo's declared mode, else hand-written)
+      --target string            the release the planned intent must land by: vX.Y.Z or next, written as target_release (optional; one intent only)
 ```
 
 **Example:**
@@ -1881,6 +1882,18 @@ Change an intent's kind, or retire it as superseded by a named successor: Writes
 
 ```
 abcd intent reclassify itd-2609010000000001 --kind superseded --by itd-2609010000000002 --reason "absorbed by the later intent"
+```
+
+#### `abcd intent target`
+
+Name the release a planned intent must land by: Writes its target_release line; refuses a draft, a shipped intent, or a value not vX.Y.Z or next.
+
+**Usage:** `abcd intent target <itd-N> <vX.Y.Z|next>`
+
+**Example:**
+
+```
+abcd intent target itd-2609010000000001 v0.11.0
 ```
 
 #### `abcd intent unhold`

@@ -332,6 +332,13 @@ Then summarise the JSON for the user:
 - `report_path` — where this preview's pre-flight report landed
   (`preflight.json` and `preflight.md`), or `report_error` saying why it could
   not be written.
+- `targets` — every planned intent that names a release it must land by
+  (`target_release`, written by `abcd intent target`): its `id`, `path`, the
+  `target_release` it names, and `invalid` when the value is not a legal
+  target. The plain preview prints each on a `targeted:` line and the
+  pre-flight report lists them under *Targeted, not shipped*. A target is a
+  report and never a refusal: it adds nothing to `would_refuse_on`. Relay the
+  list, so the user sees what was meant to land and has not.
 
 This is preview-only: publishing is not driven from this command.
 
@@ -374,6 +381,12 @@ that entered `shipped/` since the base tag; never an issue, an `impact: internal
 intent, a removed intent or anything still planned). The human render lists them
 under `release page:`, or says `release page: none` for a cut that ships fixes
 alone. Read-only preview of the same thing: `abcd changelog --json`.
+
+The cut also lists every planned intent that names a release it must land by
+(`targets`, one `targeted:` line each in the render, and `targets_error` when
+the intent store could not be read): targeted and not shipped. The list never
+refuses the cut and never changes the exit code; relay it with the report, and
+the ingest in step 3 reports the same list beside what it wrote.
 
 The emit render ends with the **receipts protocol**, a numbered checklist the
 binary composes from the committed `release.yml`: commit the roll, run each

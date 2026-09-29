@@ -1,7 +1,7 @@
 ---
 name: intent
 description: "File a draft intent from quoted text, or render the intent store's status bare: Writes the draft into drafts/; refuses a lone word."
-argument-hint: "[text] [--title \"<title>\"] | ready <itd-N> [--grounds \"<pursued|deferred|declined>: <conjecture>\"] | plan <itd-N> [<itd-N>…] [--bundle <name>] [--impact <additive|breaking|fix>] | reclassify <itd-N> --kind <standalone|bundle-member --bundle <name>|superseded --by <itd-M|adr-N> --reason \"<why>\"> | hold <itd-N> --reason \"<text>\" | unhold <itd-N> | link <itd-N> <spc-N> | audit [<itd-N>] | audit --owed [--max <n>] | audit --issue-drift [--strict] | consistency [<itd-N>] | consistency ingest --findings-json <file> | condition <itd-N> [<cond-id> --disposition <survived|narrowed|falsified|untested> --occasioned-by <rdi-N|itd-N> --grounds \"<why>\" [--narrowing \"<what now holds>\"]]"
+argument-hint: "[text] [--title \"<title>\"] | ready <itd-N> [--grounds \"<pursued|deferred|declined>: <conjecture>\"] | plan <itd-N> [<itd-N>…] [--bundle <name>] [--impact <additive|breaking|fix>] [--target <vX.Y.Z|next>] | reclassify <itd-N> --kind <standalone|bundle-member --bundle <name>|superseded --by <itd-M|adr-N> --reason \"<why>\"> | hold <itd-N> --reason \"<text>\" | unhold <itd-N> | target <itd-N> <vX.Y.Z|next> | link <itd-N> <spc-N> | audit [<itd-N>] | audit --owed [--max <n>] | audit --issue-drift [--strict] | consistency [<itd-N>] | consistency ingest --findings-json <file> | condition <itd-N> [<cond-id> --disposition <survived|narrowed|falsified|untested> --occasioned-by <rdi-N|itd-N> --grounds \"<why>\" [--narrowing \"<what now holds>\"]]"
 block: people
 ---
 
@@ -378,7 +378,7 @@ gate that will refuse the move mechanically is a recorded seed until built.
 10. Only after the human explicitly confirms the criteria are theirs, run:
 
    ```bash
-   "${CLAUDE_PLUGIN_ROOT}/abcd" intent plan <itd-N> [--impact <additive|breaking|fix>] [--production-mode <mode>] --json
+   "${CLAUDE_PLUGIN_ROOT}/abcd" intent plan <itd-N> [--impact <additive|breaking|fix>] [--target <vX.Y.Z|next>] [--production-mode <mode>] --json
    ```
 
    This invocation IS the product thinker's sign-off act — never run it unattended
@@ -622,6 +622,31 @@ you to the line to repair it by hand. A key spelled by hand in a way the reader
 accepts but the verb never writes (`held : "…"`, a space before the colon) is
 honoured as a hold and refused by `unhold` as a hand repair, never reported as
 a lift that did not happen.
+
+## Target
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" intent target <itd-N> <vX.Y.Z|next> --json
+```
+
+A planned intent may name the release it must land by: `target` writes
+`target_release: <value>` onto a record in `planned/`, where the value is a
+release tag `vX.Y.Z` or `next` (the next release, whatever version it
+derives). The target is the product thinker's to name: set `abcd mode
+product-thinker` before asking for it, and never infer one. A second
+target replaces the first and the JSON names it under `previous`; the same
+target again writes nothing and reports `written: false`. A draft takes its
+target as it is planned, with `intent plan <itd-N> --target <value>` (one
+intent only: a bundle is planned without one and each member targeted after);
+`plan --target` on a record already planned is refused and names this verb.
+
+Refused with nothing written: a draft, a shipped, superseded or discipline
+record, and a value that is neither shape. A target is a report, never a gate:
+`launch --dry-run` and the release cut (`launch ship`, `abcd changelog`) list
+every targeted intent still planned, and neither refuses on one. Closing the
+spec that ships the intent drops the line, as superseding it does, and
+record-lint's `record_schema` rule refuses a `target_release` left on a shipped
+or superseded intent.
 
 ## Reclassify
 

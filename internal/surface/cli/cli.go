@@ -412,6 +412,9 @@ func NewRootCommand() *cobra.Command {
 				// The documentation audit is the docs-lint engine, which also
 				// imports launch: measured here, handed in as data.
 				DocAudit: docAuditPreflight(cwd),
+				// The targeted intents live in the intent store, which also
+				// sits above launch: read here, handed in as data.
+				Targets: launchTargets(cwd, cmd.ErrOrStderr()),
 			})
 			if err != nil {
 				return errors.New("abcd launch --dry-run: " + launchPayloadRefusal(err))
@@ -444,6 +447,9 @@ func NewRootCommand() *cobra.Command {
 				}
 				renderDeepSmoke(w, rep.DeepSmoke)
 				renderParity(w, rep.Parity)
+				for _, tg := range rep.Targets {
+					fmt.Fprintf(w, "  targeted:       %s\n", targetLine(tg))
+				}
 				fmt.Fprintf(w, "  would publish:  %v\n", rep.WouldPublish)
 				for _, reason := range rep.WouldRefuseOn {
 					// Each reason embeds a raw repo filename (a control-char-rejected
@@ -2250,9 +2256,9 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 	// plan <itd-N> — mint the spec, write both link sides, move drafts -> planned.
 	// plan <itd-A> <itd-B> … --bundle <name> — the bundle command (itd-34): one
 	// shared spec for every member, all moved together.
-	var planProductionMode, planImpact, planBundle string
+	var planProductionMode, planImpact, planBundle, planTarget string
 	planCmd := &cobra.Command{
-		Use:  "plan <itd-N> [<itd-N>…] [--bundle <name>]",
+		Use:  "plan <itd-N> [<itd-N>…] [--bundle <name>] [--target <vX.Y.Z|next>]",
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// The bundle's name is the planner's to give: the plugin page asks for
@@ -2262,6 +2268,11 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 			}
 			if len(args) == 1 && planBundle != "" {
 				return &exitError{Code: 2, Msg: "abcd intent plan: --bundle names a bundle of two or more intents; plan one intent without it (nothing moved)"}
+			}
+			// A target is one intent's promise, not a bundle's: each member is
+			// targeted on its own once planned (itd-2609212103572513).
+			if len(args) > 1 && planTarget != "" {
+				return &exitError{Code: 2, Msg: "abcd intent plan: --target names the release one intent must land by; plan the bundle without it, then target each member with `abcd intent target <itd-N> <version>` (nothing moved)"}
 			}
 			repoRoot, err := intentStoreRoot(cmd)
 			if err != nil {
@@ -2281,7 +2292,7 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 			// without one gets it (iss-2609170726457256). The core validates it at
 			// the create path's bar and refuses a value that disagrees with what the
 			// record already carries, before anything moves.
-			res, err := intent.Plan(repoRoot, args[0], intent.PlanOptions{ProductionMode: mode, Impact: planImpact})
+			res, err := intent.Plan(repoRoot, args[0], intent.PlanOptions{ProductionMode: mode, Impact: planImpact, Target: planTarget})
 			if err != nil {
 				return &exitError{Code: 2, Msg: "abcd intent plan: " + err.Error()}
 			}
@@ -2308,6 +2319,9 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 				if res.ImpactStamped != "" {
 					fmt.Fprintf(w, "  impact stamped: %s\n", res.ImpactStamped)
 				}
+				if res.TargetStamped != "" {
+					fmt.Fprintf(w, "  target stamped: %s\n", res.TargetStamped)
+				}
 				emitRelinked(w, res.Relinked)
 			})
 		},
@@ -2317,6 +2331,7 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 	// carry, taken at the moment the judgement is actually made.
 	planCmd.Flags().StringVar(&planImpact, "impact", "", "stamp the intent's product impact: additive|breaking|fix (optional; refused when it disagrees with one already recorded)")
 	planCmd.Flags().StringVar(&planBundle, "bundle", "", "the name of the bundle several intents are planned as: kebab-case, required with two or more intents and refused with one")
+	planCmd.Flags().StringVar(&planTarget, "target", "", "the release the planned intent must land by: vX.Y.Z or next, written as target_release (optional; one intent only)")
 	intentCmd.AddCommand(planCmd)
 	intentCmd.AddCommand(newIntentReclassifyCommand(asJSON))
 
@@ -2484,6 +2499,35 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 			}
 			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
 				fmt.Fprintf(w, "abcd intent unhold — %s lifted (%s); the hold was: %s\n", res.IntentID, termsafe.Sanitize(res.Bucket), termsafe.Sanitize(res.Reason))
+				fmt.Fprintf(w, "  intent: %s\n", termsafe.Sanitize(res.Path))
+			})
+		},
+	})
+
+	// target <itd-N> <version> — the release a planned intent must land by
+	// (itd-2609212103572513): reported by the preview and the cut, never
+	// refused on.
+	intentCmd.AddCommand(&cobra.Command{
+		Use:  "target <itd-N> <vX.Y.Z|next>",
+		Args: cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			repoRoot, err := intentStoreRoot(cmd)
+			if err != nil {
+				return err
+			}
+			res, err := intent.Target(repoRoot, args[0], args[1])
+			if err != nil {
+				return &exitError{Code: 2, Msg: "abcd intent target: " + err.Error()}
+			}
+			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
+				switch {
+				case !res.Written:
+					fmt.Fprintf(w, "abcd intent target — %s already targets %s; nothing written\n", res.IntentID, termsafe.Sanitize(res.Target))
+				case res.Previous != "":
+					fmt.Fprintf(w, "abcd intent target — %s targets %s (was %s)\n", res.IntentID, termsafe.Sanitize(res.Target), termsafe.Sanitize(res.Previous))
+				default:
+					fmt.Fprintf(w, "abcd intent target — %s targets %s\n", res.IntentID, termsafe.Sanitize(res.Target))
+				}
 				fmt.Fprintf(w, "  intent: %s\n", termsafe.Sanitize(res.Path))
 			})
 		},

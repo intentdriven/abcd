@@ -355,6 +355,11 @@ func supersede(repoRoot string, corpus Corpus, it Intent, by, reason string, red
 		if err != nil {
 			return err
 		}
+		// A superseded record has nothing left to land, so its target goes with
+		// the move (itd-2609212103572513).
+		if rec, err = dropTarget(rec); err != nil {
+			return err
+		}
 		if rec, err = appendFrontmatterBlockItem(rec, ReclassificationHistoryKey, historyEntry(date, kindAt, KindSuperseded, reason)); err != nil {
 			return err
 		}

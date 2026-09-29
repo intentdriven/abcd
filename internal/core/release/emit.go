@@ -21,6 +21,8 @@ import (
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/changelog"
+	"github.com/intentdriven/abcd/internal/core/intent"
+	"github.com/intentdriven/abcd/internal/core/launch"
 	"github.com/intentdriven/abcd/internal/core/lint"
 	"github.com/intentdriven/abcd/internal/core/spec"
 	"github.com/intentdriven/abcd/internal/core/surface"
@@ -158,6 +160,15 @@ type Cut struct {
 	// waived finding is only consciously deferred if the release report says
 	// what was deferred and why.
 	Findings changelog.FindingGuard `json:"findings"`
+	// Targets lists every planned intent that names a release it must land by
+	// (itd-2609212103572513): targeted and unshipped. It is a report, never a
+	// refusal (adr-2609212115255771, decision 3), so it travels on a ready cut
+	// and a refused one alike.
+	Targets []launch.TargetedIntent `json:"targets,omitempty"`
+	// TargetsError is why the intent store could not be read for the list,
+	// empty when it was. It is reported rather than raised: a report that
+	// failed the cut would make the one field ruled never to refuse a refusal.
+	TargetsError string `json:"targets_error,omitempty"`
 	// Refusals is every reason the cut cannot proceed, in the order they are
 	// checked. All of them are reported, not just the first: an operator fixing
 	// a release should see the whole list in one pass.
@@ -193,6 +204,13 @@ func Emit(root string, current surface.Snapshot) (Cut, error) {
 		DecidedBy: decidedBy(derivation),
 		Added:     entriesOf(derivation.Records.Added, derivation.Records.PressReleaseRequired()),
 		Removed:   entriesOf(derivation.Records.Removed, nil),
+	}
+	// Read before any refusal returns, so a refused cut still says what was
+	// due: the operator fixing it is the one who needs to know.
+	if targets, err := intent.Targets(root); err != nil {
+		cut.TargetsError = err.Error()
+	} else {
+		cut.Targets = targets
 	}
 	if derivation.Refused {
 		cut.Refusals = []Refusal{derivationRefusal(derivation)}

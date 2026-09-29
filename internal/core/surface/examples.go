@@ -73,6 +73,7 @@ var examples = map[string]string{
 	"abcd intent plan":               "abcd intent plan itd-2609010000000001",
 	"abcd intent ready":              "abcd intent ready itd-2609010000000001",
 	"abcd intent reclassify":         `abcd intent reclassify itd-2609010000000001 --kind superseded --by itd-2609010000000002 --reason "absorbed by the later intent"`,
+	"abcd intent target":             "abcd intent target itd-2609010000000001 v0.11.0",
 	"abcd intent unhold":             "abcd intent unhold itd-2609010000000001",
 
 	"abcd lab harvest":   "abcd lab harvest lab-260901000000-0123abc",

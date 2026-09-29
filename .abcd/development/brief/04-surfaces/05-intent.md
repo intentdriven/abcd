@@ -53,6 +53,7 @@ judgement no verb makes.
 | `link` | — | shipped |
 | `plan` | — | shipped |
 | `reclassify` | — | shipped |
+| `target` | — | shipped |
 | `unhold` | — | shipped |
 | `ready` | gate | shipped |
 | `audit` | audit | shipped |
@@ -68,7 +69,7 @@ judgement no verb makes.
 
 - **ID format:** `itd-N` (unpadded — e.g., `itd-1`, `itd-15`). Mirrors the spec store's `spc-N` format. Filenames: `itd-N-<slug>.md`. Lexical-vs-numeric sort handled at the tool layer (`internal/core/lint`, registries) rather than via filename padding.
 - **The low IDs (itd-1..itd-7) reflect an early one-time rebase to ordering signal.** Intents created since are capture-stable, picking up at itd-27+. ID number is *not* an execution-order guarantee — the canonical build order is the phase plan at [`roadmap/phases/`](../../roadmap/phases/README.md).
-- **An intent carries no release or sequencing field.** Per [adr-9](../../decisions/adrs/0009-phase-as-product-layer.md), an intent's sequencing is its *phase membership*, recorded editorially in the owning phase doc's `## Scope` — not in intent frontmatter. An intent not yet listed in any phase doc is implicitly unscheduled (a `drafts/` bench item). "Which release" is an output of completing phases, never an input stamped on a draft; the former `target_release` field was removed for this reason.
+- **An intent carries one release field, and only while planned: `target_release`.** A planned intent may name the release it must land by, `vX.Y.Z` or `next`, written by the target sub-verb or by planning with a target ([adr-2609212115255771](../../decisions/adrs/2609212115255771-phases-and-milestones-are-retired-sequencing-is-dependencies.md) decision 3, itd-2609212103572513). The launch preview and the cut list every targeted intent still in `planned/`, in their human and machine-readable output and in the pre-flight report, and neither refuses on one. Every move out of `planned/` drops the line — the spec close, the bundle close and the supersession — and record-lint's `record_schema` rule refuses it on a shipped or superseded intent, and refuses a value that is neither shape.
 
 ### Intent kinds (per [`01-product/03-mental-model.md`](../01-product/03-mental-model.md))
 
@@ -173,7 +174,7 @@ its own condition rather than one still waiting on it.
 ### Lifecycle
 
 - **The low IDs (itd-1..itd-7) reflect an early one-time rebase to ordering signal.** Intents created since are capture-stable, picking up at itd-27+. ID number is *not* an execution-order guarantee — the canonical build order is the phase plan at [`roadmap/phases/`](../../roadmap/phases/README.md).
-- **An intent carries no release or sequencing field.** Per [adr-9](../../decisions/adrs/0009-phase-as-product-layer.md), an intent's sequencing is its *phase membership*, recorded editorially in the owning phase doc's `## Scope` — not in intent frontmatter. An intent not yet listed in any phase doc is implicitly unscheduled (a `drafts/` bench item). "Which release" is an output of completing phases, never an input stamped on a draft; the former `target_release` field was removed for this reason.
+- **An intent carries one release field, and only while planned: `target_release`.** A planned intent may name the release it must land by, `vX.Y.Z` or `next`, written by the target sub-verb or by planning with a target ([adr-2609212115255771](../../decisions/adrs/2609212115255771-phases-and-milestones-are-retired-sequencing-is-dependencies.md) decision 3, itd-2609212103572513). The launch preview and the cut list every targeted intent still in `planned/`, in their human and machine-readable output and in the pre-flight report, and neither refuses on one. Every move out of `planned/` drops the line — the spec close, the bundle close and the supersession — and record-lint's `record_schema` rule refuses it on a shipped or superseded intent, and refuses a value that is neither shape.
 - **Lifecycle (automated, not user-managed):**
 
 ```
@@ -196,7 +197,7 @@ its own condition rather than one still waiting on it.
    │  when it disagrees with a judgement the record already holds, a no-op when it agrees — before any write
    ├─ Mints (or reuses) the intent's native spec — a stub whose sections come from one list: a `## Summary`
    │  placeholder and an empty `## Steps` section (a spec listing no step is built as one step); kind defaults to standalone
-   ├─ Stamps kind (and the impact, when supplied) onto the draft, then injects the bidirectional link (spec.intent: itd-N; intent.spec_id: spc-N)
+   ├─ Stamps kind (and the impact and the target release, when supplied) onto the draft, then injects the bidirectional link (spec.intent: itd-N; intent.spec_id: spc-N)
    └─ Moves intents/drafts/itd-N-*.md → intents/planned/itd-N-*.md
 
    A hold is the one state a draft or planned record carries beside its bucket:
@@ -318,6 +319,7 @@ Later phase — intent-auditor (shape-classification role) scans the corpus
 | `/abcd:intent shape [<itd-N>]` | **Role 3 — kind classification.** Examines whether an intent's declared `kind` (the noun) still fits the corpus. Surfaces *suggested* reclassifications across three live types: `kind_change`, `bundle`, `supersession`. **Bare** scans the corpus; **with `<itd-N>`** checks one intent. Pairs with the reclassify step (action verb that commits a `shape` finding). On-demand only per spc-29 (predecessor store; a later phase); findings land in `.abcd/.work.local/logs/audit/shape-<ts>/report.{json,md}`. Concurrency via `flock(2)` on `.abcd/coordination/shape.lock` (see § 7). Scheduled / continuous invocation is a deferred follow-up. | (stays) |
 | Reclassify (one intent id, its new kind) | **Late reclassification** (itd-34). A kind change — standalone ↔ bundle-member, joining a bundle another record already names — on a draft or planned record rewrites the kind (and the bundle, set or cleared) in place. A supersession, naming the successor (an intent `itd-M`, or an ADR `adr-M` when a decision redecided the question) and a reason, moves the file to `superseded/` with `superseded_by`, `kind_at_supersession` and the supersession note, and appends the record to the successor's `supersedes` in the same write; superseding one member of a bundle of two leaves the other a bundle-member whose history says the bundle now has one member. Every change appends a `reclassification_history` entry; the reason is one line, redacted. Refused with nothing written: a shipped intent's kind change (the remedy for a rule found after the fact is a discipline that supersedes it), any move into disciplines/, a planned member leaving its bundle's shared spec, a missing or superseded successor, and a held record. The result names every path moved and written. | `→ superseded/` for a supersession; otherwise no move |
 | Hold (one intent id and a reason) | Holds a draft or planned intent: writes `held: "<reason>"` — the reason is required, single-line and redacted through the store's scanner before the write, and the JSON reports `redacted` like the other write verbs. Planning and closing a spec refuse a held record before anything moves, naming the reason and the unhold that lifts it; `abcd <itd-N>` reports the hold as the next move. Refused on a record already held (naming the standing reason — an updated reason is an unhold then a hold) and on a shipped, superseded or discipline record. The `record_provenance` lint rule reports a `held` value in a shape the verb never writes; a legal hand-typed line is byte-identical to the write and is not reported. | (no move; writes `held`) |
+| Target (one planned intent id and a release) | Names the release a planned intent must land by: writes `target_release: <vX.Y.Z\|next>` (itd-2609212103572513). A second target replaces the first and the result names the one it replaced; the same target again writes nothing and says so. Refused with nothing written: a draft (its target is given as it is planned, by planning it with a target), a shipped, superseded or discipline record, a value that is neither a release tag `vX.Y.Z` nor `next`, and a `target_release` value in a shape no verb writes. Planning a single draft with a target writes it in the planning write; a bundle takes none, and a record already planned is sent to this sub-verb. The launch preview and the cut report the target and never refuse on it. | (no move; writes `target_release`) |
 | Unhold (one intent id) | Lifts a hold: removes the `held:` line the hold wrote and reports the reason that stood. Refused on a record not held, on a terminal record, and on a `held` value in a shape the verb never writes (a hand repair record-lint names). | (no move; removes `held`) |
 | Link (one intent id and one spec id) | Manual completion of a half-made link: used if the auto-link missed (rare) or for retroactive linking of pre-existing specs. It writes ONE side, the intent's `spec_id`, and refuses unless the spec already declares this intent, so it completes a link from the spec side rather than forging one. A spec that realises a different intent is a mismatch and fails closed. The intent must be in `planned/` | (no move; writes the intent's `spec_id`) |
 
@@ -680,7 +682,7 @@ _Generated from the command tree; a drift test fails `go test` when this appendi
 
 ### `abcd intent`
 
-Sub-verbs: `abcd intent audit`, `abcd intent condition`, `abcd intent consistency`, `abcd intent hold`, `abcd intent link`, `abcd intent plan`, `abcd intent ready`, `abcd intent reclassify`, `abcd intent unhold`.
+Sub-verbs: `abcd intent audit`, `abcd intent condition`, `abcd intent consistency`, `abcd intent hold`, `abcd intent link`, `abcd intent plan`, `abcd intent ready`, `abcd intent reclassify`, `abcd intent target`, `abcd intent unhold`.
 
 | Flag | Type |
 |---|---|
@@ -760,6 +762,7 @@ Sub-verbs: none.
 | `--bundle` | string |
 | `--impact` | string |
 | `--production-mode` | string |
+| `--target` | string |
 
 ### `abcd intent ready`
 
@@ -779,6 +782,12 @@ Sub-verbs: none.
 | `--by` | string |
 | `--kind` | string |
 | `--reason` | string |
+
+### `abcd intent target`
+
+Sub-verbs: none.
+
+Flags: none.
 
 ### `abcd intent unhold`
 
