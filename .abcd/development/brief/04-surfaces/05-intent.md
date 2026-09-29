@@ -195,7 +195,8 @@ its own condition rather than one still waiting on it.
    ├─ Settles the `impact` judgement when the caller gives one — validated at the create path's bar, refused
    │  when it disagrees with a judgement the record already holds, a no-op when it agrees — before any write
    ├─ Mints (or reuses) the intent's native spec — a stub whose sections come from one list: a `## Summary`
-   │  placeholder and an empty `## Steps` section (a spec listing no step is built as one step); kind defaults to standalone
+   │  placeholder, an empty `## Footprint` section (packages, tests; the pick's score reads it, itd-2609211116005482)
+   │  and an empty `## Steps` section (a spec listing no step is built as one step); kind defaults to standalone
    ├─ Stamps kind (and the impact, when supplied) onto the draft, then injects the bidirectional link (spec.intent: itd-N; intent.spec_id: spc-N)
    └─ Moves intents/drafts/itd-N-*.md → intents/planned/itd-N-*.md
 

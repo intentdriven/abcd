@@ -1,7 +1,7 @@
 ---
 name: build
 description: "Start the loop that takes one READY intent to delivered: Writes the run's state file in the local tier; refuses an open question, a hold or a peer holding it."
-argument-hint: "<itd-N>"
+argument-hint: "<itd-N> | next"
 block: people
 ---
 
@@ -43,6 +43,8 @@ pass:
 - `claim_sections` — the `## Mechanism` prompt is answered (or the section
   absent) and the scope conditions are recorded.
 - `hold` — the intent carries no `held:`.
+- `blocked` — nothing the intent names in `blocked_by` is unshipped (an intent
+  not in `shipped/`, or one this checkout does not hold, blocks it).
 - `steps` — the spec's `## Steps` reads, and at least one step is not landed.
 - `peers` — no peer holds the intent: no sibling worktree or local branch holds
   it in another bucket, and no session other than `--session` holds a live
@@ -67,6 +69,64 @@ refuses. Starting again while the run is in progress creates nothing, runs no
 check, and reports `resumed: true` with the same run and an empty `checks`: the
 run's own lanes move and claim the intent, so judging it again would refuse the
 run as its own peer.
+
+## Pick the next intent
+
+When the argument is `next`, let the run choose the intent:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" build next [--session <id>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] --json
+```
+
+The candidates are the planned intents that pass every check above, judged by
+the same function, less one this checkout already has a run in progress for.
+Each is scored from its record, three parts at equal weight, each 0 to 100:
+
+- criteria clarity: the share of its acceptance criteria written in
+  Given-When-Then form, all three clauses present;
+- test path: 100 when its spec's `## Footprint` section names the tests;
+- footprint: 100 divided by the number of packages that section names, so
+  fewer is readier.
+
+A spec with no `## Footprint` section scores zero on the last two, and the
+reason says the spec carries no footprint. The readiest is taken, the oldest
+among equals; the reason then says the tie was broken by age.
+
+The pick starts the run `build <itd-N>` would start for that intent, with the
+same brief, worktree and receipt, and records the pick in the run's state. Its
+reason is one grounds entry, `pursued: picked by run <run-id> on <date>; …`,
+naming every candidate with its score, the rule, the runner-up and why it lost,
+and the falsifier (fix rounds past the pace rule's count, or an unachievable
+hand-back). The lane's `worktree` step appends it to the intent in the lane's
+own worktree and commits it there as the lane branch's first commit, a
+record-only commit made before the brief. The receipt verifier does not count
+it: a receipt naming it is refused, so the implementer names only its own
+commits. No existing entry changes, the checkout you run in is not written but
+for the run state, and `intent ready` keeps reporting the person's entry as the
+most recent conjecture.
+
+The payload carries `candidates` (each with its `score` parts and `total`),
+`excluded` (each planned intent a check excluded, with the `check` and the
+`reason`), `pick` (`chosen`, `runner_up`, `tie_broken_by_age`, `rule`,
+`falsifier`), `entry` (the reason's text) and `start`, the run as
+`build <itd-N>` reports it. Tell the user which intent was picked and why, then
+drive the run as below.
+
+Refusals, each writing nothing:
+
+- no candidate: refused at the `pick` step, exit 2; `refusal.excluded` names
+  every planned intent and the check that excluded it. Tell the user each one
+  and do not work around it.
+- `--max` above 1 or `--until-empty`: refused at the `pick` step, exit 2.
+  Picking again under the pace rule is not built in this abcd: run
+  `build next` once per pick.
+- the picked intent already has a run in progress: refused at the `pick` step,
+  exit 3; resume that run with `implement step`.
+- a refusal of `build <itd-N>` itself (the pace, the claim step) comes as that
+  verb's refusal.
+
+The pick commit is made with the git identity the repository's commits are
+made with; with none configured the `worktree` step is refused naming it.
 
 ## The pace
 
@@ -134,7 +194,8 @@ A lane's steps run in order:
 1. `worktree` — the loop makes the lane's worktree in the machine-scoped store,
    `~/.abcd/worktrees/<root-sha>/<run-id>-<lane-id>`, on a branch
    `build/<run-id>-<lane-id>` cut from the default branch. Nothing is made
-   beside the checkout.
+   beside the checkout. In a run `build next` started, the first lane's
+   worktree step also commits the pick's reason as the branch's first commit.
 2. `brief` — the loop renders the lane's brief from that base: the intent, the
    spec, the conventions of `AGENTS.md` and the decisions the intent cites; the
    spec step the lane builds and each step before it, with what landed it (the

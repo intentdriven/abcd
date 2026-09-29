@@ -54,6 +54,8 @@ var sentences = map[string]string{
 
 	"abcd build": "Start the loop that takes one READY intent to delivered: " +
 		"Writes the run's state file in the local tier; refuses an open question, a hold or a peer holding it.",
+	"abcd build next": "Pick the readiest planned intent and start its run: " +
+		"Writes the run's state and the reason as the lane's first commit; refuses when nothing passes the checks.",
 
 	"abcd capture": "File an issue from quoted text, or render the ledger's status bare: " +
 		"Writes one record under open/; refuses a lone word and any folder outside a checkout.",

@@ -219,11 +219,22 @@ func commitGaps(repoRoot string, lane *Lane, commits []string) []string {
 			off = append(off, shortSHA(sha)+" (git could not place it)")
 			continue
 		}
+		// The pick's record-only commit (itd-2609211116005482) sits on the
+		// branch past its base, and is not the implementer's work.
+		var inPick bool
+		if !inBase && gitutil.IsFullSHA(lane.PickSHA) {
+			if inPick, err = gitutil.IsAncestor(repoRoot, sha, lane.PickSHA); err != nil {
+				off = append(off, shortSHA(sha)+" (git could not place it)")
+				continue
+			}
+		}
 		switch {
 		case !onBranch:
 			off = append(off, shortSHA(sha)+" (not on "+lane.Branch+")")
 		case inBase:
 			off = append(off, shortSHA(sha)+" (already on the default branch at the lane's base)")
+		case inPick:
+			off = append(off, shortSHA(sha)+" (the pick's record-only commit, not the implementer's work)")
 		}
 	}
 	if len(off) == 0 {

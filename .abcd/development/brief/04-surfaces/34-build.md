@@ -27,6 +27,7 @@ spec; until each lands, the loop refuses at it by name.
 
 | Verb | Bucket | Status |
 |---|---|---|
+| `next` | — | shipped |
 
 ## The checks
 
@@ -56,6 +57,9 @@ No run is created until every check passes, and each is a read (criteria 1 and 2
   ask what the record meant.
 - **hold** — the record carries no `held:`, well formed or not
   (iss-2609200830076665).
+- **blocked** — nothing the record names in `blocked_by` is unshipped: an
+  intent outside `shipped/`, or one this checkout's store does not hold, blocks
+  it (itd-2609211116005482).
 - **steps** — the open spec's `## Steps`, read through the spec store's own
   reader, parses and leaves at least one step unlanded. A spec listing no steps
   is one step, the whole spec.
@@ -87,6 +91,41 @@ shows, another checkout cannot see it.
 A refusal names the check, the reason and the remedy, carries every check's row,
 and writes nothing. A peer's holding is contention rather than a fault in the
 record.
+
+## The pick
+
+The pick sub-verb chooses the intent instead of taking one named
+(itd-2609211116005482, spc-2609212015048113). Its candidates are the planned
+intents that pass every check above, judged by the same function, less one
+this checkout already has a run in progress for; a planned intent a check
+excludes is named with the first check that excluded it. Each candidate is
+scored from its record, three parts of 0 to 100 at equal weight (decision 7,
+the bundled default): criteria clarity (the share of its acceptance criteria
+with all three Given-When-Then clauses), a test path (its spec's `## Footprint`
+section names tests) and the expected footprint (100 divided by the packages
+that section names). A spec with no footprint scores zero on both and the
+reason says so; the planning verb mints every spec with the section empty. The
+readiest is taken and the oldest among equals (decision 2); `intent.PickLess`
+is the order's one statement.
+
+The pick starts the run `abcd build <itd-N>` starts for that intent, with the
+pick in the state file (schema version 3). The reason is computed, never
+composed (decision 5): one `pursued:` grounds entry whose text opens `picked by
+run <run-id> on <date>`, then every candidate with its score, the rule, the
+runner-up and why it lost, and the falsifier. The first lane's worktree step
+appends it to the intent in the lane's own worktree, through the intent store's
+grounds writer and lock, and commits that one file as the lane branch's first
+commit (decision 6), under the configured git identity, with hooks off and the
+isolated environment less the global-config neutralisers. The lane records the
+commit as `pick_sha`, and the receipt verifier refuses a receipt naming it: it
+is not the implementer's work. The readiness gate's grounds row skips a
+run-marked entry when it names the most recent conjecture, so the person's
+entry stays the one it reports.
+
+One pick per invocation. A run count above one, and a run until no candidate
+is left, which continue under the pace rule (criterion 5), are refused by name; so is a pick whose
+intent already has a run in progress. Naming a falsified pick in the run record
+(criterion 6) waits on the unachievable verdict of itd-50.
 
 ## The pace
 
@@ -302,6 +341,7 @@ the remedy as fields.
   draft), and the rule it enacts, adr-2609091248200336.
 - The shared run state and the claim the peers check reads:
   [`27-implement.md`](27-implement.md).
+- The pick: itd-2609211116005482 and its design record, spc-2609212015048113.
 - The plugin surface: `commands/build.md`.
 
 <!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
@@ -312,12 +352,24 @@ _Generated from the command tree; a drift test fails `go test` when this appendi
 
 ### `abcd build`
 
-Sub-verbs: none.
+Sub-verbs: `abcd build next`.
 
 | Flag | Type |
 |---|---|
 | `--pace` | string |
 | `--session` | string |
 | `--sub-agents` | string |
+
+### `abcd build next`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--max` | int |
+| `--pace` | string |
+| `--session` | string |
+| `--sub-agents` | string |
+| `--until-empty` | bool |
 
 <!-- surface-appendix:end -->

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -353,7 +354,7 @@ func TestAVersionOneStateIsReadAsAnUnpacedRun(t *testing.T) {
 	if err != nil || res.Performed != StepWorktree {
 		t.Fatalf("a version-1 run steps on, days after it started: %+v %v", res, err)
 	}
-	if !bytes.Contains(stateBytes(t, repo.Root(), start.RunID), []byte(`"schema_version": 2`)) {
+	if !bytes.Contains(stateBytes(t, repo.Root(), start.RunID), []byte(`"schema_version": `+strconv.Itoa(SchemaVersion))) {
 		t.Fatal("the next write carries the current version")
 	}
 
