@@ -1414,7 +1414,19 @@ func routerRefused(cmd *cobra.Command, asJSON bool, msg string) error {
 	if !asJSON {
 		return nil
 	}
-	return render(cmd.OutOrStdout(), true, routerView{Injected: []string{}, Error: msg}, nil)
+	return routerEmit(cmd, routerView{Injected: []string{}, Error: msg})
+}
+
+// routerEmit writes the envelope and fails open like every other hook verb
+// (emitHookResult): an envelope that cannot be written — a host that closed
+// its end of the pipe — is named on stderr and the process still exits 0, as
+// the plain form does when its own write fails. The hook's exit-0 contract
+// outranks its report.
+func routerEmit(cmd *cobra.Command, v routerView) error {
+	if err := render(cmd.OutOrStdout(), true, v, nil); err != nil {
+		fmt.Fprintf(cmd.ErrOrStderr(), "abcd rules: envelope not written (%s)\n", termsafe.Sanitize(err.Error()))
+	}
+	return nil
 }
 
 // newHookCommand builds the operator-internal `hook` sub-tree: the Claude Code
@@ -1437,7 +1449,18 @@ func newHookCommand(asJSON *bool) *cobra.Command {
 	hookCmd.AddCommand(&cobra.Command{
 		Use:   "prompt-router",
 		Short: "UserPromptSubmit: inject the rules matching the prompt",
-		Args:  cobra.NoArgs,
+		Long: `Plain, stdout is the rendered rule block the host injects, and nothing on a
+turn with nothing new. With --json, stdout is one envelope in place of the
+generic machine-reader shape:
+
+  {"text": ..., "injected": [...], "active": [...], "error": ...}
+
+text is byte for byte what the plain form writes; injected names the domains
+text carries; active is the full set of domains in force this turn, so a name
+missing from it has stopped. error is present only when the prompt could not
+be evaluated, and then active is absent: the set is unknown. Every outcome,
+an error included, exits 0, so the hook can never wedge a session.`,
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			in, err := readHookInput(cmd)
 			if err != nil {
@@ -1507,7 +1530,7 @@ func newHookCommand(asJSON *bool) *cobra.Command {
 				if injected == nil {
 					injected = []string{}
 				}
-				return render(cmd.OutOrStdout(), true, routerView{Text: res.Text, Injected: injected, Active: &res.Active}, nil)
+				return routerEmit(cmd, routerView{Text: res.Text, Injected: injected, Active: &res.Active})
 			}
 			if res.Text != "" {
 				fmt.Fprint(cmd.OutOrStdout(), res.Text)
