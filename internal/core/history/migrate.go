@@ -268,9 +268,10 @@ func migrateOne(sc *scanner.Scanner, opts MigrateOptions, r Record, prefix, agen
 	rec.SpawnToolUseID = meta.SpawnToolUseID
 	rec.LineageSource = meta.LineageSource
 	rec.SpawnAttribution = meta.SpawnAttribution
-	// Preserve-mode, in place, at the path the record already has: the filename
-	// is left alone on purpose.
-	if err := fsutil.WriteFileAtomicPreserveMode(r.Path, marshalRecord(rec, body)); err != nil {
+	// In place, at the path the record already has: the filename is left alone
+	// on purpose. The mode is not: the record is rewritten owner-only
+	// (recordPerm), which narrows one an earlier binary wrote 0o644.
+	if err := fsutil.WriteFileAtomic(r.Path, marshalRecord(rec, body), recordPerm); err != nil {
 		return fmt.Errorf("write: %w", err)
 	}
 	entry.Wrote = true

@@ -822,6 +822,13 @@
       "sentence": "Move an open issue to wontfix/ with the reason it is not acted on: Writes the moved record; refuses an id this ledger does not hold.",
       "flags": [
         {
+          "name": "duplicates",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "grounds",
           "shorthand": "",
           "type": "string",

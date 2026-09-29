@@ -9,7 +9,7 @@ found_during: "product thinker interview closing itd-36 as delivered, 2026-09-21
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/lifeboat (disembark gates); .abcd/memory/sources/"
-deferred_after: "v0.10.0"
+deferred_after: "v0.11.1"
 deferral_reason: "needs a product-thinker ruling on whether a lifeboat carries the project's memory at all: disembark's plan and pack never pack .abcd/memory today (internal/core/lifeboat/plan.go and pack.go name no memory path), so a licence gate on memory pages and kept originals would guard a payload that is never packed; ruling P in autonomous run A's rulings-owed list, 2026-09-25"
 ---
 

@@ -9,8 +9,8 @@ found_during: "orchestrator-observation"
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development"
-deferred_after: "v0.10.0"
-deferral_reason: "ruling owed to the product thinker (away; run A 2026-09-25): Is the interactive cp alias a this-machine memory, or a committed rules line now that it has cost three sessions?"
+deferred_after: "v0.11.1"
+deferral_reason: "ruling owed to the product thinker (away; run A 2026-09-25; rulings-owed E): Is the interactive cp alias a this-machine memory, or a committed rules line now that it has cost three sessions?"
 ---
 
 an interactive cp prompt stalls an agent silently and has now cost three sessions time in one day

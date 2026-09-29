@@ -9,8 +9,8 @@ found_during: "autonomous-run-2026-09-01"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/memory/ingest.go"
-deferred_after: "v0.10.0"
-deferral_reason: "ruling owed to the product thinker (away; run A 2026-09-25): Add --allow-http to memory ingest, and does it relax the per-hop scheme pin or only admission?"
+deferred_after: "v0.11.1"
+deferral_reason: "ruling owed to the product thinker (lane drainFresh of autonomous run A, 2026-09-29): Add an explicit --allow-http to memory ingest, and if so may a hop be plaintext only when the source itself is? An implementation of exactly that shape was written on 2026-09-02 (commit 300968594, branch feat/ruled-security-forks) and never merged; main still admits https only."
 ---
 
 GHSA-35fj-9w6f-7h62, the admission alternative not taken: memory ingest now admits https sources only, with no escape — the posture of abcd update and of invariant 12 in the brief. The advisory proposed an additive --allow-http flag instead (https by default, explicit opt-in for a consumer that needs a plaintext source such as an internal mirror or a local test server), wired on the CLI, commands/memory.md and the reference page. Left open as the fork: a consumer that needs plaintext has no route today; adding one is additive, and needs a decision on whether the flag also relaxes the per-hop scheme pin or only the admission.

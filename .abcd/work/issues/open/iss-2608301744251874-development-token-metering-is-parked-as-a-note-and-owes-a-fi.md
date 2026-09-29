@@ -9,8 +9,8 @@ found_during: "phase-boundary-parking"
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/research/notes"
-deferred_after: "v0.10.0"
-deferral_reason: "ruling owed to the product thinker (away; run A 2026-09-25): File or reject development token metering (research note 2026-08-30)?"
+deferred_after: "v0.11.1"
+deferral_reason: "ruling owed to the product thinker (away; run A 2026-09-25; rulings-owed J): File or reject development token metering (research note 2026-08-30)?"
 ---
 
 development token metering is parked as a note and owes a file or reject decision at the next phase planning

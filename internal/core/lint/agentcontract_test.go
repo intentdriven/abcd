@@ -67,7 +67,7 @@ func TestAgentContractCompleteAgentPasses(t *testing.T) {
 	root := t.TempDir()
 	writeAgent(t, root, "ruthless-reviewer", conformingAgent)
 	writeCanary(t, root, "ruthless-reviewer")
-	writeFile(t, root, filepath.Join("agents", "CHANGELOG.md"),
+	writeFile(t, root, filepath.FromSlash(defaultAgentChangelog),
 		"# Agent prompt changelog\n\n### ruthless-reviewer 0.2.0\n\nFirst entry.\n")
 	// README and CHANGELOG are prose, never agent prompts.
 	writeFile(t, root, filepath.Join("agents", "README.md"), "# Agents\n")
@@ -193,7 +193,7 @@ func TestAgentContractChangelogEntryRequiredOverDiff(t *testing.T) {
 	}
 
 	// The same diff with the entry present is clean.
-	writeFile(t, root, filepath.Join("agents", "CHANGELOG.md"),
+	writeFile(t, root, filepath.FromSlash(defaultAgentChangelog),
 		"# Agent prompt changelog\n\n### ruthless-reviewer 0.3.0\n\nBumped.\n\n### ruthless-reviewer 0.2.0\n\nFirst entry.\n")
 	fs, err = Lint(ArmAgentDiff(agentCfg(), "HEAD"), root)
 	if err != nil {
@@ -265,7 +265,7 @@ func TestAgentContractRefusesHostileDiffRange(t *testing.T) {
 // writeChangelog writes a per-agent changelog carrying one "<agent> <version>" entry.
 func writeChangelog(t *testing.T, root, entry string) {
 	t.Helper()
-	writeFile(t, root, filepath.Join("agents", "CHANGELOG.md"),
+	writeFile(t, root, filepath.FromSlash(defaultAgentChangelog),
 		"# Agent prompt changelog\n\n### "+entry+"\n\nEntry.\n")
 }
 
@@ -278,7 +278,7 @@ func newAgentRepo(t *testing.T) string {
 	root := repo.Root()
 	writeAgent(t, root, "ruthless-reviewer", conformingAgent)
 	writeCanary(t, root, "ruthless-reviewer")
-	writeFile(t, root, filepath.Join("agents", "CHANGELOG.md"),
+	writeFile(t, root, filepath.FromSlash(defaultAgentChangelog),
 		"# Agent prompt changelog\n\n### ruthless-reviewer 0.2.0\n\nFirst entry.\n")
 	repo.Commit("seed")
 	return root
@@ -334,7 +334,7 @@ func TestAgentContractRefusesAnEmptyCanary(t *testing.T) {
 // job is what reads them.
 
 // A changelog that is a symlink to a character device must be refused, not read.
-// An uncapped os.ReadFile through agents/CHANGELOG.md -> /dev/zero never returns:
+// An uncapped os.ReadFile through the changelog -> /dev/zero never returns:
 // it allocates until the CI runner is out of memory. The read is guarded the way
 // the prompt read beside it is, so the refusal is prompt and the finding is an
 // error rather than a hang.
@@ -345,7 +345,11 @@ func TestAgentContractRefusesADeviceChangelog(t *testing.T) {
 	root := t.TempDir()
 	writeAgent(t, root, "security-reviewer", conformingAgent)
 	writeCanary(t, root, "security-reviewer")
-	if err := os.Symlink("/dev/zero", filepath.Join(root, "agents", "CHANGELOG.md")); err != nil {
+	changelog := filepath.Join(root, filepath.FromSlash(defaultAgentChangelog))
+	if err := os.MkdirAll(filepath.Dir(changelog), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("/dev/zero", changelog); err != nil {
 		t.Skipf("symlinks unavailable: %v", err)
 	}
 
@@ -404,8 +408,11 @@ func TestAgentContractFollowsAnInRepoSymlinkedChangelog(t *testing.T) {
 	// Kept outside agents/ so it is not itself walked as a prompt.
 	writeFile(t, root, filepath.Join("docs", "agent-changelog.md"),
 		"# Agent prompt changelog\n\n### security-reviewer 0.2.0\n\nEntry.\n")
-	if err := os.Symlink(filepath.Join(root, "docs", "agent-changelog.md"),
-		filepath.Join(root, "agents", "CHANGELOG.md")); err != nil {
+	changelog := filepath.Join(root, filepath.FromSlash(defaultAgentChangelog))
+	if err := os.MkdirAll(filepath.Dir(changelog), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(root, "docs", "agent-changelog.md"), changelog); err != nil {
 		t.Skipf("symlinks unavailable: %v", err)
 	}
 
@@ -469,5 +476,39 @@ func TestAgentContractRefusesANestedPrompt(t *testing.T) {
 	}
 	if n != 2 {
 		t.Errorf("want exactly the two misfiled-prompt findings (the fixture is not one), got %d: %+v", n, fs)
+	}
+}
+
+// TestAgentContractDefaultChangelogLivesOutsideTheAgentsTree: a repository that
+// configures no changelog path reads the per-agent log from
+// .abcd/development/agents/CHANGELOG.md, never from inside the agents tree,
+// because a harness loads that tree whole and a CHANGELOG.md there becomes a
+// spurious agent (iss-110, iss-2609290630234596). An agents/CHANGELOG.md is not
+// the log, so its entry does not satisfy the contract, and the finding names
+// the default it wants.
+func TestAgentContractDefaultChangelogLivesOutsideTheAgentsTree(t *testing.T) {
+	const want = ".abcd/development/agents/CHANGELOG.md"
+	root := t.TempDir()
+	writeAgent(t, root, "ruthless-reviewer", conformingAgent)
+	writeCanary(t, root, "ruthless-reviewer")
+	writeFile(t, root, filepath.Join("agents", "CHANGELOG.md"),
+		"# Agent prompt changelog\n\n### ruthless-reviewer 0.2.0\n\nFirst entry.\n")
+
+	fs, err := Lint(agentCfg(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hasFinding(fs, want, ruleAgentContract, 0) {
+		t.Fatalf("an entry inside the agents tree satisfied the default; want a finding against %s, got %+v", want, fs)
+	}
+
+	writeFile(t, root, filepath.FromSlash(want),
+		"# Agent prompt changelog\n\n### ruthless-reviewer 0.2.0\n\nFirst entry.\n")
+	fs, err = Lint(agentCfg(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := countRule(fs, ruleAgentContract); n != 0 {
+		t.Fatalf("the entry at the default %s was not read; got %d: %+v", want, n, fs)
 	}
 }
