@@ -10,6 +10,10 @@ files it away.
 The store is **user-level** and lives outside every repo at
 `~/.abcd/transcripts/<root-sha>/records/`, keyed on the repo's root-commit SHA.
 ahoy's registry stays under `~/.abcd/history/` and holds no transcripts.
+The store is private to the account: each level it creates is `0o700`, and each
+record is written `0o600`, including a record `migrate` rewrites. A level that
+already exists keeps its mode, so a chain an earlier layout created wider is not
+narrowed (iss-2609291610432030).
 
 ## Sub-verbs
 

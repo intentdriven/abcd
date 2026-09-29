@@ -171,6 +171,14 @@ func Resolve(repoRoot, rootSHA string) (Resolution, error) {
 // narrows a directory the caller made themselves.
 const storeDirPerm = 0o700
 
+// recordPerm is the mode every record is written with, for the same reason as
+// storeDirPerm: owner-only, so a record stays private even in a chain level an
+// earlier binary created wider (iss-2609012029343438). Capture writes a new
+// record at it and Migrate rewrites an existing one at it, so a rewrite narrows
+// a record an earlier binary left group- or world-readable rather than carrying
+// that mode forward.
+const recordPerm = 0o600
+
 // storeDirFault maps a fault from the canonical directory primitive onto the
 // store's own typed refusal, so a caller still gets a *StorePathError and the
 // message this store's contract promises. It shapes an error and nothing else:
