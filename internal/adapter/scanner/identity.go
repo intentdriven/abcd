@@ -32,13 +32,12 @@ type Identity struct {
 	// GHSA-gxhr-pmwv-r99p, GHSA-rvhr-3455-c5jw).
 	OtherGitUserNames  []string
 	OtherGitUserEmails []string
-	GitRemoteUsername  string
-	// GitRemoteRepo is the repository name of the same remote. With the owner
-	// it spells the repository's own owner/repo slug, which is public by
-	// construction and is not a github_username finding.
-	GitRemoteRepo string
-	HomePath      string
-	HomeUser      string
+	// GitRemoteUsername is the owner of the GitHub remote. It arms the
+	// github_username rule, which spares it where it stands as the owner half of
+	// an owner/repo slug on the forge (isOwnerSlug).
+	GitRemoteUsername string
+	HomePath          string
+	HomeUser          string
 }
 
 // Built-in identity kinds.
@@ -153,7 +152,7 @@ func ProbeIdentity(repoRoot string) Identity {
 		}
 	}
 	if remote = strings.TrimSpace(remote); remote != "" {
-		id.GitRemoteUsername, id.GitRemoteRepo = parseGitHubRemote(remote)
+		id.GitRemoteUsername = parseGitHubRemote(remote)
 	}
 	if home := CallerHome(); home != "" {
 		id.HomePath = home
@@ -376,34 +375,107 @@ var (
 	noreplyLoginRe = regexp.MustCompile(`(?i)^(?:[0-9]+\+)?([A-Za-z0-9-]+)@users\.noreply\.github\.com$`)
 )
 
-// parseGitHubRemote returns the owner and repository name of a GitHub remote
-// URL (https, ssh or scp form), or two empty strings for any other remote. The
-// owner is returned even where the repository name cannot be read.
-func parseGitHubRemote(remote string) (owner, repo string) {
+// parseGitHubRemote returns the owner of a GitHub remote URL (https, ssh or
+// scp form), or "" for any other remote. The owner is returned even where the
+// repository name cannot be read.
+func parseGitHubRemote(remote string) string {
 	m := githubRemoteRe.FindStringSubmatch(strings.TrimSpace(remote))
 	if m == nil {
-		return "", ""
+		return ""
 	}
-	return m[1], strings.TrimSuffix(m[2], ".git")
+	return m[1]
 }
 
-// isOwnRepoSlug reports whether the owner matched at line[start:end] is the
-// owner half of the repository's own owner/repo slug: followed by '/', the
-// repository name (case-insensitively, as the forge compares both), and a byte
-// that cannot continue the name.
-func isOwnRepoSlug(line string, end int, repo string) bool {
-	if repo == "" || end >= len(line) || line[end] != '/' {
-		return false
+// maxRepoNameLen is the longest repository name GitHub accepts.
+const maxRepoNameLen = 100
+
+// isOwnerSlug reports whether the remote's owner, matched at line[start:end],
+// stands as the owner half of an owner/repo slug on the forge the remote names,
+// and if so returns the offset where the repository name ends. It is the one
+// statement of the github_username exemption. The remote proves the owner is a
+// public account on that forge, and it is public there for every repository it
+// holds, not only the one this remote names: the repository's own slug
+// (iss-2608270645473170) and a sibling repository's slug of the same owner
+// (iss-2609291409053602) are one rule, so the name after the '/' is any name
+// GitHub could hold. Both ends are anchored:
+//
+//   - The owner is a whole owner segment: the rune before it continues neither
+//     an owner nor a dotted name (a letter, a digit, '_', '-' or '.'), so the
+//     owner as the tail of another owner ("not-<owner>/x") or of a hostname
+//     stays a finding.
+//   - Where a '/' or ':' puts it after another segment, that segment is either
+//     a path segment ("repos/<owner>/x", no '.') or the forge's host: github.com
+//     or a subdomain of it, with or without a port, compared case-insensitively.
+//     A host-shaped segment naming any other host ("gitlab.example.com/<owner>/x")
+//     names an account on THAT host, and sparing the handle there would tie the
+//     two accounts together, so it stays a finding.
+//   - '/' follows the owner, then a run of the repository-name class
+//     [A-Za-z0-9._-] of 1 to maxRepoNameLen bytes that is not all dots, ended by
+//     a rune that cannot continue a name.
+//
+// The owner alone, the owner followed by '/' and no name, and every other owner
+// stay findings. The matcher is case-insensitive, as GitHub is on owner and
+// repository names, and so is the host comparison; the name class carries both
+// cases already.
+func isOwnerSlug(line string, start, end int) (nameEnd int, ok bool) {
+	if end >= len(line) || line[end] != '/' {
+		return 0, false
 	}
-	rest := line[end+1:]
-	if len(rest) < len(repo) || !strings.EqualFold(rest[:len(repo)], repo) {
-		return false
+	name := end + 1
+	j := name
+	for j < len(line) && isRepoNameByte(line[j]) {
+		j++
 	}
-	if len(rest) == len(repo) {
-		return true
+	if j == name || j-name > maxRepoNameLen || strings.Trim(line[name:j], ".") == "" {
+		return 0, false
 	}
-	b := rest[len(repo)]
-	return !(isAlnumByte(b) || b == '-' || b == '_')
+	if j < len(line) {
+		if r, _ := utf8.DecodeRuneInString(line[j:]); isWordRune(r) {
+			return 0, false // a non-ASCII letter or digit continues the name
+		}
+	}
+	if start == 0 {
+		return j, true
+	}
+	r, _ := utf8.DecodeLastRuneInString(line[:start])
+	if isWordRune(r) || r == '-' || r == '.' {
+		return 0, false
+	}
+	if r != '/' && r != ':' {
+		return j, true
+	}
+	seg := start - 1
+	for seg > 0 && isHostSegmentByte(line[seg-1]) {
+		seg--
+	}
+	prev := line[seg : start-1]
+	if !strings.Contains(prev, ".") {
+		return j, true
+	}
+	if !isForgeHost(prev) {
+		return 0, false
+	}
+	return j, true
+}
+
+// isRepoNameByte is the class GitHub admits in a repository name.
+func isRepoNameByte(b byte) bool {
+	return isAlnumByte(b) || b == '.' || b == '-' || b == '_'
+}
+
+// isHostSegmentByte is the class of a hostname with an optional port, read
+// backwards from the separator before an owner.
+func isHostSegmentByte(b byte) bool {
+	return isAlnumByte(b) || b == '.' || b == '-' || b == ':'
+}
+
+// isForgeHost reports whether a host-shaped segment (with an optional port) is
+// GitHub's: github.com or any subdomain of it (www., gist., api.), compared
+// case-insensitively.
+func isForgeHost(seg string) bool {
+	host, _, _ := strings.Cut(seg, ":")
+	host = strings.ToLower(host)
+	return host == "github.com" || strings.HasSuffix(host, ".github.com")
 }
 
 // homeBoundary is the trailing-boundary set for a home-path match (ported from
@@ -790,17 +862,24 @@ func (m identityMatchers) findings(line string, lineno int, id2sev map[string]Se
 			add(kindRealName, loc[0]+1, line[loc[0]:loc[1]], "(remove or replace with persona)")
 		}
 	}
-	// github_username — suppress inside URL spans.
+	// github_username — suppress inside URL spans and owner/repo slugs.
 	if m.github != nil {
 		scanMeter.charge(stageIdentity, len(line))
+		// sparedTo is the end of the last spared slug's repository name: a match
+		// inside that name ("<owner>/<owner>.github.io") is part of a spared slug.
+		sparedTo := 0
 		for _, loc := range m.github.FindAllStringIndex(line, -1) {
+			if loc[0] < sparedTo {
+				continue
+			}
 			if !wordBounded(line, loc[0], loc[1]) {
 				continue
 			}
 			if urls.contains(loc[0]) {
 				continue
 			}
-			if isOwnRepoSlug(line, loc[1], m.id.GitRemoteRepo) {
+			if nameEnd, ok := isOwnerSlug(line, loc[0], loc[1]); ok {
+				sparedTo = nameEnd
 				continue
 			}
 			add(kindGithubUser, loc[0]+1, line[loc[0]:loc[1]], "(review — may be intentional in repo URL contexts)")
