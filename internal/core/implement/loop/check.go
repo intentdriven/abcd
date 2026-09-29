@@ -27,6 +27,7 @@ const (
 	CheckOpenQuestions = "open_questions"
 	CheckClaimSections = "claim_sections"
 	CheckHold          = "hold"
+	CheckBlocked       = "blocked"
 	CheckSteps         = "steps"
 	CheckPeers         = "peers"
 )
@@ -87,14 +88,19 @@ const maxIntentBytes = 256 * 1024
 //   - claim_sections: no unanswered claim section — the mechanism prompt
 //     answered or the section absent, the scope conditions recorded.
 //   - hold: no `held:` on the record (iss-2609200830076665).
+//   - blocked: nothing the record names in `blocked_by` is unshipped
+//     (itd-2609211116005482: an intent with an unshipped blocker is not one
+//     a run may take).
 //   - steps: the spec's `## Steps` reads, and leaves a step to build.
 //   - peers: no peer holds the record — no sibling worktree or local branch
 //     holds it in another bucket, and no session holds a live claim on it.
-func Check(repoRoot, key string) (CheckResult, error) { return check(repoRoot, key, "") }
+func Check(repoRoot, key string) (CheckResult, error) { return check(repoRoot, key, "", nil) }
 
 // check is Check on behalf of session: a live claim session itself holds on the
-// record is its own, not a peer's. An empty session owns no claim.
-func check(repoRoot, key, session string) (CheckResult, error) {
+// record is its own, not a peer's. An empty session owns no claim. snap is the
+// peers and claims read once for many keys (the pick's candidate set); nil
+// reads them for this key alone.
+func check(repoRoot, key, session string, snap *peerSnapshot) (CheckResult, error) {
 	res := CheckResult{Key: key}
 	if row, ok := keyCheck(key); !ok {
 		res.Checks = append(res.Checks, row)
@@ -127,6 +133,7 @@ func check(repoRoot, key, session string) (CheckResult, error) {
 	}
 	it, _ := corpus.Lookup(ready.IntentID)
 	res.Checks = append(res.Checks, holdRow(it))
+	res.Checks = append(res.Checks, blockedRow(corpus, ready.IntentID, string(content)))
 
 	stepsRow, steps, err := stepsCheck(repoRoot, ready)
 	if err != nil {
@@ -135,7 +142,12 @@ func check(repoRoot, key, session string) (CheckResult, error) {
 	res.steps = steps
 	res.Checks = append(res.Checks, stepsRow)
 
-	peersRow, err := peersCheck(repoRoot, ready, session)
+	if snap == nil {
+		if snap, err = readPeers(repoRoot); err != nil {
+			return res, err
+		}
+	}
+	peersRow := peersCheck(ready, session, snap)
 	if err != nil {
 		return res, err
 	}
@@ -249,6 +261,31 @@ func holdRow(it intent.Intent) CheckRow {
 	return row
 }
 
+// blockedRow refuses a record that names, in `blocked_by`, an intent that has
+// not shipped. A blocker the corpus does not hold is unshipped as far as this
+// checkout can tell, and refuses too: the edge says something must ship first.
+func blockedRow(corpus intent.Corpus, id, content string) CheckRow {
+	row := CheckRow{Name: CheckBlocked}
+	var open []string
+	for _, b := range intent.BlockedBy(content) {
+		it, ok := corpus.Lookup(b)
+		switch {
+		case !ok:
+			open = append(open, b+" (not in this checkout's intent store)")
+		case it.Bucket != intent.BucketShipped:
+			open = append(open, b+" ("+it.Bucket+")")
+		}
+	}
+	if len(open) == 0 {
+		row.OK = true
+		row.Detail = id + " names no unshipped blocker"
+		return row
+	}
+	row.Detail = id + " is blocked by " + strings.Join(open, ", ")
+	row.Remedy = "ship the blocker first, or drop the edge from `blocked_by` if it no longer holds"
+	return row
+}
+
 // stepsCheck reads the open spec's steps through the spec store's reader: the
 // unlanded steps are the lanes, one at a time; a spec listing none is one
 // implicit step. A section the reader refuses is refused here, because the
@@ -290,6 +327,33 @@ func stepsCheck(repoRoot string, r intent.ReadyResult) (CheckRow, []PendingStep,
 	return row, steps, nil
 }
 
+// peerSnapshot is what the peers check reads: the peer listing and the run's
+// claims, read once and judged for any number of records.
+type peerSnapshot struct {
+	rep    peers.Report
+	claims []implement.ClaimState
+}
+
+// readPeers reads the peer listing and, when the checkout has a root commit,
+// the shared run's claims.
+func readPeers(repoRoot string) (*peerSnapshot, error) {
+	rep, err := peers.Scan(repoRoot)
+	if err != nil {
+		return nil, err
+	}
+	snap := &peerSnapshot{rep: rep}
+	if sha := gitutil.RootCommit(repoRoot); gitutil.IsFullSHA(sha) {
+		run, err := implement.Peek(sha)
+		if err != nil {
+			return nil, err
+		}
+		if snap.claims, err = run.Claims(); err != nil {
+			return nil, err
+		}
+	}
+	return snap, nil
+}
+
 // peersCheck refuses a record a peer holds, from the two places a holding is
 // visible from this checkout: the peer listing (a sibling worktree or a local
 // branch holding the intent in another bucket than this checkout's — a lane
@@ -297,14 +361,10 @@ func stepsCheck(repoRoot string, r intent.ReadyResult) (CheckRow, []PendingStep,
 // a live claim on it). A peer holding the record in the same bucket holds a
 // copy, not the record: every branch cut from the default branch does. A live
 // claim held by session — the one the build is started for — is its own.
-func peersCheck(repoRoot string, r intent.ReadyResult, session string) (CheckRow, error) {
+func peersCheck(r intent.ReadyResult, session string, snap *peerSnapshot) CheckRow {
 	row := CheckRow{Name: CheckPeers}
-	rep, err := peers.Scan(repoRoot)
-	if err != nil {
-		return row, err
-	}
 	var holders []string
-	for _, l := range rep.Locate(r.IntentID) {
+	for _, l := range snap.rep.Locate(r.IntentID) {
 		if l.Folder == r.Bucket {
 			continue
 		}
@@ -312,40 +372,30 @@ func peersCheck(repoRoot string, r intent.ReadyResult, session string) (CheckRow
 	}
 	// A peer the listing names and cannot read may hold the record; the check
 	// fails closed on it, as it does on an unreadable claim below.
-	for _, p := range rep.Unjudged() {
+	for _, p := range snap.rep.Unjudged() {
 		holders = append(holders, peerName(p.Source, p.Branch, p.Path)+" could not be read, so what it holds is unknown ("+fsutil.DisplayPathsIn(p.NotRead, p.Path)+")")
 	}
-	if sha := gitutil.RootCommit(repoRoot); gitutil.IsFullSHA(sha) {
-		run, err := implement.Peek(sha)
-		if err != nil {
-			return row, err
-		}
-		claims, err := run.Claims()
-		if err != nil {
-			return row, err
-		}
-		for _, c := range claims {
-			if (c.Live || c.Unreadable) && recordid.SameID(c.Record, r.IntentID) {
-				if session != "" && !c.Unreadable && c.Session == session {
-					continue
-				}
-				if c.Unreadable {
-					holders = append(holders, "an unreadable claim file holds it")
-					continue
-				}
-				holders = append(holders, fmt.Sprintf("session %s claims it for lane %s", c.Session, c.Lane))
+	for _, c := range snap.claims {
+		if (c.Live || c.Unreadable) && recordid.SameID(c.Record, r.IntentID) {
+			if session != "" && !c.Unreadable && c.Session == session {
+				continue
 			}
+			if c.Unreadable {
+				holders = append(holders, "an unreadable claim file holds it")
+				continue
+			}
+			holders = append(holders, fmt.Sprintf("session %s claims it for lane %s", c.Session, c.Lane))
 		}
 	}
 	if len(holders) == 0 {
 		row.OK = true
 		row.Detail = "no peer holds " + r.IntentID
-		return row, nil
+		return row
 	}
 	row.contention = true
 	row.Detail = r.IntentID + " is held by a peer: " + strings.Join(holders, "; ")
 	row.Remedy = "take other work, or coordinate with the peer; `abcd peers` and `abcd implement` show what each holds, and name why a peer is not read"
-	return row, nil
+	return row
 }
 
 // peerName names a peer for a refusal, a worktree by fsutil.DisplayPath so one

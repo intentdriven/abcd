@@ -240,7 +240,7 @@ func Start(repoRoot, key string, o Options) (StartResult, error) {
 		}
 		shared = run
 	}
-	chk, err := check(repoRoot, key, o.Session)
+	chk, err := check(repoRoot, key, o.Session, nil)
 	if err != nil {
 		return StartResult{}, err
 	}
