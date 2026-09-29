@@ -441,13 +441,16 @@ func looseEqual(a, b any) bool {
 	return toNumber(a) == toNumber(b)
 }
 
-// jsonNumber is the JSON number grammar (RFC 8259, section 6).
-var jsonNumber = regexp.MustCompile(`^-?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?$`)
+// runnerDecimal is the string .NET's Double.TryParse accepts under the styles
+// the Actions runner passes it (AllowLeadingSign | AllowDecimalPoint |
+// AllowExponent, invariant culture): an optional sign, ASCII digits with at
+// most one decimal point and at least one digit, and an optional exponent that
+// carries at least one digit.
+var runnerDecimal = regexp.MustCompile(`^[+-]?([0-9]+\.?[0-9]*|\.[0-9]+)([eE][+-]?[0-9]+)?$`)
 
 // toNumber is GitHub's coercion of a value to a number for a comparison of
-// mismatched types: null is 0, true 1 and false 0, a string is parsed from any
-// legal JSON number format with the empty string as 0 and anything else NaN,
-// and an array or object is NaN.
+// mismatched types: null is 0, true 1 and false 0, a string is parsed as the
+// runner parses it (see parseRunnerNumber), and an array or object is NaN.
 func toNumber(v any) float64 {
 	switch x := v.(type) {
 	case nil:
@@ -460,17 +463,64 @@ func toNumber(v any) float64 {
 	case float64:
 		return x
 	case string:
-		if x == "" {
-			return 0
-		}
-		if jsonNumber.MatchString(x) {
-			// A grammatical number out of float64's range parses to ±Inf or 0
-			// with a range error; that value is still the number it names.
-			n, _ := strconv.ParseFloat(x, 64)
-			return n
-		}
+		return parseRunnerNumber(x)
 	}
 	return math.NaN()
+}
+
+// parseRunnerNumber follows the Actions runner's ExpressionUtility.ParseNumber
+// (actions/runner, src/Sdk/DTExpressions2/Expressions2/Sdk/ExpressionUtility.cs)
+// on .NET 8, the runtime the runner targets, rule for rule and in its order:
+//
+//  1. Trim Unicode white space; a string left empty is 0.
+//  2. Double.TryParse: runnerDecimal, where .NET also tolerates trailing NULs
+//     after the number, reads an out-of-range magnitude as ±Infinity, and
+//     falls back to "Infinity", "+Infinity" and "-Infinity" ignoring case
+//     ("NaN" in any spelling is NaN, as is everything unparsed).
+//  3. "0x" and one or more hex digits: Int32 with AllowHexSpecifier, so at
+//     most eight significant digits read as a 32-bit two's-complement integer.
+//  4. "0o" and one or more octal digits: Convert.ToInt32(s, 8), the same
+//     32-bit two's-complement reading of a value that fits in 32 bits.
+//  5. Anything else, a wider hex or octal value included, is NaN.
+//
+// The prefixes are lower case only and take no sign, as the runner writes
+// them. The runner's own ordinal "Infinity" checks follow TryParse, which on
+// .NET 8 has already answered those spellings, so they add nothing here.
+func parseRunnerNumber(s string) float64 {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0
+	}
+	if d := strings.TrimRight(s, "\x00"); runnerDecimal.MatchString(d) {
+		// An out-of-range value parses to ±Inf or 0 with a range error;
+		// .NET returns the same value and reports success.
+		n, _ := strconv.ParseFloat(d, 64)
+		return n
+	}
+	switch {
+	case strings.EqualFold(s, "Infinity"), strings.EqualFold(s, "+Infinity"):
+		return math.Inf(1)
+	case strings.EqualFold(s, "-Infinity"):
+		return math.Inf(-1)
+	case len(s) > 2 && s[0] == '0' && s[1] == 'x':
+		return runnerInt32(s[2:], 16)
+	case len(s) > 2 && s[0] == '0' && s[1] == 'o':
+		return runnerInt32(s[2:], 8)
+	}
+	return math.NaN()
+}
+
+// runnerInt32 reads digits, all of the given base, as the runner's .NET
+// integer parse does: a value that fits in 32 bits, reinterpreted as a signed
+// 32-bit integer, and NaN for anything wider or any character outside the
+// base. ParseUint with an explicit base takes no sign and no underscore, and
+// its base-16 digits are the .NET hex set.
+func runnerInt32(digits string, base int) float64 {
+	u, err := strconv.ParseUint(digits, base, 32)
+	if err != nil {
+		return math.NaN()
+	}
+	return float64(int32(uint32(u)))
 }
 
 // EvalIf evaluates a job's or a step's `if:` condition the way GitHub decides
