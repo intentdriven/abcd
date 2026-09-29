@@ -122,6 +122,17 @@ than folded into either extreme. The three states — clean, repo layer dropped,
 no registry at all — are decided once, in the core, and every caller formats
 the same answer.
 
+One limit is not among those states, because it is never false: the guard's
+reach. The manifest's pre-tool-use matcher hands the hook the shell tool and
+the question tool and nothing else, so a call through any other tool never
+reaches the guard — a file the host's own tools write or edit, a command a tool
+from another extension runs — and nothing warns about it, since nothing
+failed. It is the guard's standing scope, not a degradation, and the `guard:`
+line does not report it. Whether the guard should adjudicate more than the
+shell is a separate question with a real cost: every further tool class needs
+its own hazard vocabulary, and a guard that refuses a tool it cannot reason
+about is worse than one that says plainly what it covers.
+
 The two callers part company on exactly that file, deliberately. **On the hook,
 the session keeps its protection:** the repo's overrides are dropped with a
 notice on stderr, the bundled hazards still decide, and a hazardous command is

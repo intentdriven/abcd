@@ -92,6 +92,13 @@ decided too. A here-document body is read as data, even when the line that
 opened it ends in `&&`, and the command substitutions an unquoted delimiter lets
 the shell run in it are read as commands.
 
+The hook judges only what the host hands it, and the plugin's hook manifest
+hands it the shell tool and the question tool and nothing else. A call through
+any other tool never reaches the guard: a file the host's own tools write or
+edit, or a command a tool from another extension runs, is neither checked nor
+warned about. That is the guard's standing scope, not a degradation, and the
+`guard:` line of `abcd ahoy` does not report it.
+
 A host whose shell tool takes a per-call working directory passes it beside the
 command as `tool_input.workdir`. The adapter resolves it against the session
 directory. When it names an existing directory in another repository, the

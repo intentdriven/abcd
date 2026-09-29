@@ -11,6 +11,10 @@ production_mode: hand-written
 found_at: "hooks/hooks.json"
 deferred_after: "v0.7.1"
 deferral_reason: "A documentation gap about a real scope limit, not a defect in the guard, which behaves as designed. It is recorded rather than fixed mid-tag because the right remedy is a judgement rather than an edit: whether to state the limit and leave it, or widen the matcher so the guard adjudicates more than Bash. Naming the limit in prose is cheap; deciding the scope is not, and the second belongs to the maintainer. The waiver lapses at v0.8.0."
+resolution: "The guard's tool reach is stated as a standing limit on every surface: the Fail-open-loud section of the guard brief chapter, commands/guard.md, and the guard hook help and so docs/reference/cli/commands.md. Each says the manifest hands the hook the shell tool and the question tool and nothing else, so a call through any other tool never reaches the guard and is neither checked nor warned about. TestEveryGuardSurfaceStatesItsToolReach pins the clause on all four. Both acceptance criteria are met. The matcher is not widened: whether the guard should adjudicate more than the shell remains the product thinker's separate question, named as such in the brief."
+impact: fix
+resolved_by:
+  commit: "930fde191"
 ---
 
 The `PreToolUse` entry in `hooks/hooks.json` carries `"matcher": "Bash"`, so
@@ -57,3 +61,7 @@ is recorded rather than patched.
   standing limit rather than a degradation.
 - **Given** a user reading the guard's user-facing documentation, **when** they
   ask what the guard protects, **then** the answer names Bash tool calls.
+
+## Grounds
+
+- pursued: every surface a reader meets the guard through states that calls through tools other than the shell and question tools never reach it, and the brief places that beside the fail-open-loud states as a standing scope. What would show it wrong: a guard surface (help, plugin page, brief, generated reference) that describes what the guard protects without the clause, or a matcher change that widens or narrows the reach while the clause stays.
