@@ -160,7 +160,7 @@ home: no registry package exists and no code refers to one.
 
 **Owed-review draining (staged)** is receipt gating in the `run` seam
 ([adr-27](../../decisions/adrs/0027-autonomous-run-pluggable-seam.md)). No `run`
-seam ships, so nothing drains today. When it does, owed fidelity reviews drain at
+seam ships, so nothing drains today. When it does, owed intent audits drain at
 the seam's iteration boundary: each iteration gates on a receipt and applies the
 safety guard, report-not-block, whichever adapter provides the loop. There is
 deliberately no autodrain config knob — receipt gating is part of the seam
