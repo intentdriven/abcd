@@ -60,10 +60,10 @@
         "test"
       ],
       "window": {
-        "tokens_est": 1360000,
-        "measured_tokens_est": 1344909,
-        "measured_bytes": 5177902,
-        "measured_at": "db30f1a10992df69d1253260a88065884a21937d"
+        "tokens_est": 1370000,
+        "measured_tokens_est": 1346832,
+        "measured_bytes": 5185304,
+        "measured_at": "a887092f79d847680e09a6f0a7a447bfb6f01749"
       }
     },
     "entailment": {
