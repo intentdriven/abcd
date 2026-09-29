@@ -11,9 +11,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/implement"
+	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -32,11 +34,27 @@ type Options struct {
 	// or claimed anything (iss-2609252050506863). Empty, the run holds no
 	// claim and is invisible to another checkout until its lane shows.
 	Session string
+	// Pace and SubAgents are the --pace and --sub-agents flags as typed; nil
+	// when the flag was not given. They set a new run's pace over every
+	// configured layer.
+	Pace, SubAgents *string
+	// Roots are where the pace's configuration layers are read; nil reads
+	// them at layered.RootsFor(repoRoot).
+	Roots *layered.Roots
 }
 
 // StepClaim is the refusal step of a start whose shared-run claim is refused
 // for a reason of the caller's own (a session that has not joined, a bound).
 const StepClaim = "claim"
+
+// roots are where the pace's configuration layers are read.
+func (o Options) roots(repoRoot string) layered.Roots {
+	if o.Roots != nil {
+		return *o.Roots
+	}
+	r, _ := layered.RootsFor(repoRoot)
+	return r
+}
 
 func (o Options) now() time.Time {
 	if o.Now != nil {
@@ -144,7 +162,10 @@ type StartResult struct {
 	// no session was named or the start resumed a run, and then null in the
 	// JSON, never absent, so the payload says the run holds no claim.
 	Claim *implement.ClaimResult `json:"claim"`
-	Next  string                 `json:"next"`
+	// Pace is the run's pace, each number with the layer that supplied it.
+	// Null for a run started before the loop paced a run.
+	Pace *Pace  `json:"pace"`
+	Next string `json:"next"`
 }
 
 // StepResult is what Advance and Receipt return.
@@ -159,7 +180,10 @@ type StepResult struct {
 	// Awaiting is what the lane waits on, when it waits on an agent.
 	Awaiting *Await `json:"awaiting,omitempty"`
 	Complete bool   `json:"complete"`
-	Next     string `json:"next"`
+	// NextEligibleAt is set when this call closed the run's window: nothing
+	// was performed, and no step is taken before this time.
+	NextEligibleAt *time.Time `json:"next_eligible_at,omitempty"`
+	Next           string     `json:"next"`
 }
 
 // Start resumes the live run for key, or runs the checks and, when every one
@@ -191,8 +215,22 @@ func Start(repoRoot, key string, o Options) (StartResult, error) {
 	if row, ok := keyCheck(key); !ok {
 		return StartResult{}, CheckResult{Key: key, Checks: []CheckRow{row}}.refusal()
 	}
+	flags, err := parsePaceFlags(o.Pace, o.SubAgents)
+	if err != nil {
+		return StartResult{}, err
+	}
 	if res, ok, err := resumeLive(repoRoot, key); err != nil || ok {
-		return res, err
+		if err == nil && flags.set {
+			err = resumeWithFlags(res, flags)
+		}
+		if err != nil {
+			return StartResult{}, err
+		}
+		return res, nil
+	}
+	pace, err := resolvePace(o.roots(repoRoot), flags)
+	if err != nil {
+		return StartResult{}, err
 	}
 	var shared *implement.Run
 	if o.Session != "" {
@@ -222,6 +260,9 @@ func Start(repoRoot, key string, o Options) (StartResult, error) {
 		// while the checks ran: it is resumed, not duplicated.
 		if st, ok := liveRun(runs, chk.Key); ok {
 			res = startResult(st, nil, true)
+			if flags.set {
+				return resumeWithFlags(res, flags)
+			}
 			return nil
 		}
 		id, err := freeRunID(root, o.Minter)
@@ -253,10 +294,15 @@ func Start(repoRoot, key string, o Options) (StartResult, error) {
 			Lanes:         []Lane{},
 			Pending:       append([]PendingStep(nil), chk.steps...),
 			Record:        []Entry{},
+			// The run's first window opens at its start.
+			WindowStartedAt: &now,
+			Pace:            &pace,
 		}
 		openNextLane(&st)
 		st.Record = append(st.Record, Entry{At: now, Lane: st.Lanes[0].ID, Step: "start",
 			Note: fmt.Sprintf("checks passed; %s opened for step %d of %s (%s)", st.Lanes[0].ID, st.Lanes[0].SpecStep, st.Spec, st.Lanes[0].StepTitle)})
+		st.Record = append(st.Record, Entry{At: now, Step: StepPace,
+			Note: "pace " + pace.String() + "; the first window opens now"})
 		if err := writeState(root, st); err != nil {
 			if claim != nil && !claim.Renewed {
 				_, _ = shared.Release(o.Session, chk.Intent)
@@ -327,6 +373,35 @@ func resumeLive(repoRoot, key string) (StartResult, bool, error) {
 	return res, found, err
 }
 
+// resumeWithFlags holds a resumed start's --pace and --sub-agents to the pace
+// the run started on: the pace is set when a run starts, so a flag naming
+// other numbers is refused rather than silently ignored, and one naming the
+// same numbers resumes.
+func resumeWithFlags(res StartResult, f paceFlags) error {
+	var want Pace
+	if res.Pace != nil {
+		want = *res.Pace
+	}
+	got := want
+	if f.work != nil {
+		got.WorkMinutes.Value, got.PauseMinutes.Value = *f.work, *f.pause
+	}
+	if f.subs != nil {
+		got.SubAgents.Value = *f.subs
+	}
+	if res.Pace != nil && got.same(want) {
+		return nil
+	}
+	running := "no pace (it started before the loop paced a run)"
+	if res.Pace != nil {
+		running = "pace " + res.Pace.String()
+	}
+	typed := strings.TrimSpace(f.paceOrigin + " " + f.subsOrigin)
+	return refuse(StepPace, "", "", fmt.Sprintf("%s is in progress on %s; %s names another, and a pace is set when a run starts",
+		res.RunID, running, typed),
+		"resume without --pace and --sub-agents; the run keeps the pace it started on")
+}
+
 // liveRun returns the run for key that is not complete.
 func liveRun(runs []State, key string) (State, bool) {
 	for _, st := range runs {
@@ -344,7 +419,7 @@ func startResult(st State, checks []CheckRow, resumed bool) StartResult {
 		checks = []CheckRow{}
 	}
 	res := StartResult{RunID: st.RunID, State: StateRelPath(st.RunID), Resumed: resumed,
-		Pending: st.Pending, Checks: checks}
+		Pending: st.Pending, Checks: checks, Pace: st.Pace}
 	if i := st.current(); i >= 0 {
 		res.Lane = st.Lanes[i]
 		res.Next = nextMove(st, st.Lanes[i])
@@ -407,9 +482,24 @@ func Advance(repoRoot, runID string, steps Steps, o Options) (StepResult, error)
 			return false, nil
 		}
 		lane := st.Lanes[i]
+		// The window clock (itd-2609201925079472): a pause that has ended
+		// opens the next window; a window that has elapsed closes here, and
+		// the call starts nothing.
+		opened := false
+		if st.NextEligibleAt != nil {
+			openWindow(st, now)
+			opened = true
+		}
+		if until, ok := windowElapsed(*st, now); ok {
+			closeWindow(st, now, until)
+			res = laneResult(*st, lane, "")
+			res.NextEligibleAt = &until
+			res.Next = pausedMove(lane, until)
+			return true, nil
+		}
 		if lane.Awaiting != nil {
 			res = laneResult(*st, lane, "")
-			return false, nil
+			return opened, nil
 		}
 		def, ok := steps.lookup(lane.Step)
 		if !ok || def.Run == nil {
@@ -451,6 +541,53 @@ func Advance(repoRoot, runID string, steps Steps, o Options) (StepResult, error)
 		return true, nil
 	})
 	return res, err
+}
+
+// windowElapsed reports whether a paced run's window has run its working
+// minutes by now, and the next_eligible_at a pause starting now ends at. The
+// pause runs from the moment the loop closes the window, not from the window's
+// nominal end, so an invocation that comes late never shortens it.
+func windowElapsed(st State, now time.Time) (time.Time, bool) {
+	if st.Pace == nil || st.WindowStartedAt == nil {
+		return time.Time{}, false
+	}
+	end := st.WindowStartedAt.Add(time.Duration(st.Pace.WorkMinutes.Value) * time.Minute)
+	if now.Before(end) {
+		return time.Time{}, false
+	}
+	return now.Add(time.Duration(st.Pace.PauseMinutes.Value) * time.Minute), true
+}
+
+// closeWindow ends the run's window: next_eligible_at is written and the
+// record names the pause.
+func closeWindow(st *State, now, until time.Time) {
+	st.NextEligibleAt = &until
+	st.UpdatedAt = now
+	st.Record = append(st.Record, Entry{At: now, Step: "pause",
+		Note: fmt.Sprintf("the %d-minute window opened at %s has elapsed; no step is taken before %s (a %d-minute pause)",
+			st.Pace.WorkMinutes.Value, st.WindowStartedAt.UTC().Format(time.RFC3339), until.UTC().Format(time.RFC3339), st.Pace.PauseMinutes.Value)})
+}
+
+// openWindow opens the run's next window once its pause has ended.
+func openWindow(st *State, now time.Time) {
+	st.NextEligibleAt = nil
+	st.WindowStartedAt = &now
+	st.UpdatedAt = now
+	note := "the pause has ended; a window opens"
+	if st.Pace != nil {
+		note = fmt.Sprintf("the pause has ended; a %d-minute window opens", st.Pace.WorkMinutes.Value)
+	}
+	st.Record = append(st.Record, Entry{At: now, Step: "window", Note: note})
+}
+
+// pausedMove is the next move of a run whose window this call closed.
+func pausedMove(lane Lane, until time.Time) string {
+	at := until.UTC().Format(time.RFC3339)
+	if lane.Awaiting != nil {
+		return fmt.Sprintf("nothing new before %s: the run's window has elapsed. The %s already started may still hand back its receipt with `abcd implement receipt %s`; run `abcd implement step` at or after %s",
+			at, lane.Awaiting.Role, lane.Awaiting.Receipt, at)
+	}
+	return fmt.Sprintf("nothing before %s: the run's window has elapsed; run `abcd implement step` at or after %s", at, at)
 }
 
 // Receipt hands back the receipt an agent step waited on. It is refused when no
