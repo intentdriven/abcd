@@ -714,7 +714,8 @@ because siblings would run in parallel and share one stdin.
 that reach `bootstrap.sh` at all. The last three self-provision only when the
 plugin-root binary is missing, throttled by a `.bootstrap.attempt` marker within a
 ten-minute window, and then fall back to a PATH-resolved abcd that must be
-absolute, outside the working directory, not world-writable, and recorded as this
+absolute, outside the working directory, in a directory and a file that are not
+world-writable, and recorded as this
 machine's own, before failing loudly. `SessionEnd` and `SubagentStop` are the two
 exceptions and download nothing at all: each fires where the harness cancels a slow
 hook rather than wait — one as the session exits, the other inside a live session as

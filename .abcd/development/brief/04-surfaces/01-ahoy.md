@@ -348,8 +348,10 @@ host's BLOCKING status on that event and would stop the sub-agent finishing.
 
 **The `PATH` rung is owned-only** (GHSA-gx3m-3224-qqcv, CWE-426). It accepts only
 an absolute resolution out of a directory that is neither under the shim's
-working directory nor world-writable — the shapes the documented install never
-produces (iss-2609012039117381) — and only when the home-scoped `path-entry`
+working directory nor world-writable, naming a binary that is not itself
+world-writable once a symlink is followed to the file it names — the shapes the
+documented install never produces (iss-2609012039117381, iss-2609020352438590)
+— and only when the home-scoped `path-entry`
 record names that exact path as this machine's installed binary. The record is a
 string comparison and no hashing, because adr-46 keeps the fast path at one file
 test. Both install routes write it, and the ahoy installer writes it for **every**
