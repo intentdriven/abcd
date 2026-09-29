@@ -21,7 +21,7 @@ impact: additive
 
 > **abcd has exactly one integration with RepoPrompt: the MCP API.** abcd never picks an `oracle`, never reads RP's preset selection, never spawns its own subprocess for code review. It calls RP via MCP and RP uses whatever `oracle` the persona has configured for whatever task — Claude via the persona's subscription, Codex via the persona's subscription, Gemini, any preset RP knows. The persona configures `oracle` backends inside RP once; abcd uses them forever. Zero abcd-side `oracle` logic, zero "which preset?" prompts, zero hard-coded routing.
 >
-> **Status (post-spc-5): the RP MCP bridge/foundation is implemented.** spc-5 declares the typed `RPUnavailable` error (in `internal/core/...`) and delivers a concrete `MCPBridge` — the ADR-02 spawn implementation shipped, plus the ADR-03 host-reuse hook for host-connected Claude Code. What this intent describes as the *three-step cascade* (RP MCP → Codex CLI → in-session subagent), the one-time ahoy RP setup discovery, and the non-Mac flow are **follow-up work, deferred** beyond spc-5 — see the Implementation status section. This is "the bridge is built and typed", not "the RP MCP path is fully wired end-to-end".
+> **Status: no part of the RP MCP route is built.** The `RPUnavailable` error, the `MCPBridge` and the `oracle.py` audit-fix loop this record names belong to an earlier Python lineage: its spec `spc-5-rp-mcp-integration-declare` (not the `spc-5` in this repository's spec store) and its ADR-02 and ADR-03 (not this repository's adr-2 and adr-3). None of them is in this binary, and `go.mod` carries no MCP dependency. The re-filed scope, [spc-2609211950427074](../../specs/open/spc-2609211950427074-rp-mcp-only-integration.md), builds the route from nothing. See the Implementation status section.
 >
 > "I had wired up Claude, Codex, and Gemini in RP with task-specific presets," said Bob, staff engineer. "I'd worried abcd would keep asking me which to use. The RP MCP bridge just calls RP; when RP is not reachable it raises a typed `RPUnavailable` so the tooling can react cleanly instead of guessing. RP picks the `oracle`. I don't think about it."
 
@@ -84,10 +84,10 @@ _None open._
 
 ## Resolved (post-spc-5)
 
-These questions were settled by the spc-5 spec and the Phase 0 harness-interface research note ([`01-harness-interface.md`](../../research/notes/01-harness-interface.md)), together with the spc-5 `.6` host-reuse / failure-mapping work.
+These questions were settled against the earlier Python lineage's design — its spc-5 spec and its ADR-02 and ADR-03, not this repository's spc-5, adr-2 and adr-3 — and the Phase 0 harness-interface research note ([`01-harness-interface.md`](../../research/notes/01-harness-interface.md)). The answers stand as design input for the re-filed adapter; the `MCPBridge`, `McpResult`, `RPUnavailable` and `oracle.py` they name are that lineage's, and none of them is in this binary.
 
 - **Does RP MCP support the long-running, async-result pattern abcd needs (e.g., a 5-minute Carmack review)? Or is it strictly synchronous within an MCP call lifetime?**
-  Resolved by ADR-02 § 4: the `MCPBridge` contract is synchronous within an MCP call lifetime — `mcp_call` blocks for the call's duration. There is no async-result handle. The long-running case is handled by a generous per-tool `call_timeout_s` budget (`oracle_send` / `context_builder` get 600 s) inside one held-warm stdio session, not by an async poll. spc-5's concrete `MCPBridge` implements exactly this.
+  Resolved by ADR-02 § 4: the `MCPBridge` contract is synchronous within an MCP call lifetime — `mcp_call` blocks for the call's duration. There is no async-result handle. The long-running case is handled by a generous per-tool `call_timeout_s` budget (`oracle_send` / `context_builder` get 600 s) inside one held-warm stdio session, not by an async poll.
 - **If RP MCP returns a chat ID for long-running work, how does abcd poll/listen for completion?**
   Resolved by ADR-02 §§ 3–4: there is no polling. The call is synchronous; `mcp_call` returns when the tool call returns. The `chat_id` on `McpResult` is for *same-session re-review threading*, not completion polling. The async-vs-sync decision referenced for "Task 5's harness.py" is settled — the harness method stays synchronous (ADR-01 § 3 lock), and the concrete sync↔async bridge is internal to spc-5's `MCPBridge`.
 - **Chat identity and continuation — what does a `chat_id` mean, and can a chat be resumed across `abcd-cli` invocations?**
@@ -102,38 +102,22 @@ These questions were settled by the spc-5 spec and the Phase 0 harness-interface
   mid-call transport failure), `oracle.py` routes to `dispatch_agent(agent_name="codex", ...)`.
   No silent retry within the RP transport; fall-through IS the retry (to the next cascade level).
   Timeout defaults: `startup_timeout_s = 10.0 s` (combined spawn + initialize); `call_timeout_s`
-  default 30 s with per-tool overrides. See ADR-02 §§ 4–6.
+  default 30 s with per-tool overrides. See ADR-02 §§ 4–6. The re-filed Decisions (3) replace the
+  Codex step: an unreachable RepoPrompt falls back to the host's own agent, with the receipt
+  saying so, and this repository has no `oracle.py`.
 
 ## Implementation status
 
-_Added post-spc-5. The spc-5 spec (`spc-5-rp-mcp-integration-declare`) implemented the RP
-MCP bridge/foundation — the typed `RPUnavailable` error (`internal/core/...`,
-spc-5 `.1`), the concrete `MCPBridge` ADR-02 spawn implementation (spc-5 `.2`/`.5`), and the
-ADR-03 host-reuse code path (spc-5 `.6`/`.7`). Operational availability under host-connected
-Claude Code is still subject to RP's GUI approval gate — an approval denial surfaces as the
-typed `RPUnavailable` rather than a hang. spc-5 does **not** complete this intent end-to-end:
-the following acceptance criteria are explicitly deferred to follow-up work._
-
-- **AC#3 — Verdict-direction (both-directions accepted across audit-fix iterations): DEFERRED.**
-  Requires the `oracle.py` audit-fix loop. spc-5 ships only the `MCPBridge` transport, not the
-  `re_audit` caller. Follow-up target: the `oracle.py` cascade spec (downstream of spc-5).
-- **AC#4 — Three-step cascade (RP MCP → Codex CLI → in-session subagent): DEFERRED.**
-  spc-5 delivers the RP transport and the typed `RPUnavailable` signal that the cascade catches,
-  but the cascade itself (Codex CLI fallthrough, in-session subagent fallback, run-log
-  surfacing of the serving backend) is not in spc-5. Follow-up target: the `oracle.py` /
-  itd-2 cascade spec.
-- **AC#5 — Ahoy setup discovery (RP MCP config-path detection + `oracle.backend` lock): DEFERRED.**
-  spc-5 does not touch `/abcd:ahoy`. The MCP config-resolution order is specified in ADR-02 § 1,
-  but the ahoy-side discovery, `.abcd/config.json` write, and one-time hint are follow-up work.
-  Follow-up target: the ahoy / setup-discovery spec.
-- **AC#6 — Non-Mac flow (Codex-only users never prompted about RP): DEFERRED.**
-  Depends on AC#4's cascade and AC#5's setup discovery being in place. Follow-up target:
-  the same cascade + setup-discovery follow-up epics.
-
-AC#1 (MCP-only call path, no `claude -p` spawn) and AC#2 (`chat_id` threading within one
-invocation) are *foundationally* satisfied by spc-5's `MCPBridge` + ADR-02 § 3, but their
-end-to-end gate runs only when the `oracle.py` callers above land — they are not claimed
-shipped here.
+_Nothing of this intent is built._ A grep for `MCPBridge`, `RPUnavailable` and `RepoPrompt`
+over `internal/` and `cmd/` finds only the scanner's RepoPrompt session-key pattern
+(`internal/adapter/scanner/patterns.go`), a guard corpus line, and the doc comment of the
+configuration layer (`internal/core/layered`) naming `oracle.review` as a consumer it serves;
+`go.mod` carries no MCP dependency. The bridge, the typed error
+and the host-reuse path an earlier Python lineage's `spc-5-rp-mcp-integration-declare` describes
+belong to that lineage, not to this binary, so no part of the route is a foundation to build on.
+The four acceptance criteria above are the re-filed set, and
+[spc-2609211950427074](../../specs/open/spc-2609211950427074-rp-mcp-only-integration.md)
+carries all of them.
 
 ## Audit Notes
 
