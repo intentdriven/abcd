@@ -5,8 +5,8 @@ after independent adversarial review — two reviewers with different lenses
 for the major crossings: an intent leaving `drafts/` for `planned/`, an ADR
 moving to `accepted`, a plan before execution begins. Artefacts below that
 line — ledger captures, comments, routine pull requests — are never blocked
-on adversarial review: they are covered by the gates they already have, and
-capture in particular must stay frictionless.
+on adversarial review: the friction would cost more than the errors it
+catches, and capture in particular must stay frictionless.
 
 **Why.** Both halves are load-bearing, and both are empirical. The 2026-08-19
 itd-92 extension went to two independent adversarial reviewers before its
@@ -61,6 +61,12 @@ justify it on findings, and look to the NUMBER of rounds for cost.
 
 **Bounds.**
 
+- The floor rests on cost, not on coverage. The gates below the line check a
+  record's form; they cannot see its routing — which record a finding belongs
+  to, which record already owns the ground — and four such errors in
+  below-the-line artefacts on 2026-08-22/23 passed every gate
+  (iss-2608230847432287). An author below the line compensates for that blind
+  spot rather than trusting the gates to cover it.
 - "Independent" is [evaluator-outside-the-loop](evaluator-outside-the-loop.md):
   the reviewers did not produce the artefact, and for the two-reviewer
   crossings their lenses differ (design/feasibility vs record-discipline is
