@@ -437,6 +437,10 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		// here-string's do.
 		docOwners []int
 		curDocs   []int
+		// docFloor is where, in pending, the documents the innermost open
+		// substitution opened begin: the ones before it wait for the line
+		// after that substitution closes (openSubstitution).
+		docFloor int
 		// feeds rides with the segment and records, per token index, the
 		// commands whose output the word holds (segment.feeds); curFeeds holds
 		// them for the word being built. pipeFrom is where, in segs, the
@@ -894,7 +898,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			curBrace: curBrace, braceGroup: braceGroup, chain: chain, procSub: procSub,
 			curStdin: curStdin, pipeNext: pipeNext, curDocs: curDocs, pieces: curPieces,
 			feeds: feeds, curFeeds: curFeeds, pipeFrom: pipeFrom, segStart: len(segs), braceFrom: braceFrom,
-			groupIn: groupIn, pending: pending, docOwners: docOwners,
+			groupIn: groupIn, docFloor: docFloor,
 		}
 		toks, globs, lits, cur, curMask, hasCur, curGlob, curBrace, braceGroup = nil, nil, nil, nil, nil, false, false, false, false
 		curPieces, vars, curVar, curSub = nil, nil, false, false
@@ -912,8 +916,8 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		// reads no body at a newline inside the substitution, whose lines run
 		// as its commands, and the bodies begin on the line after it closes
 		// (iss-2609290521415701). A newline inside reads only the documents
-		// the substitution opened itself.
-		pending, docOwners = nil, nil
+		// the substitution opened itself: those from docFloor on.
+		docFloor = len(pending)
 		parens = append(parens, parenFrame{kind: kind, pos: pos, saved: saved})
 	}
 	// prePassedBacktick reads a backtick opening at line[i] whose text bash's
@@ -951,15 +955,13 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 	// line, so the document stays pending after the enclosing ones, as bash 5
 	// reads it, and the line takes the fail-closed verdict of a document
 	// whose delimiter never came: the lines it covers are commands the guard
-	// has not read.
+	// has not read. It stays where it stands in pending, so carrying it
+	// copies nothing.
 	resumeDocs := func(e *enclosing) {
-		if len(pending) > 0 {
+		if len(pending) > docFloor {
 			markHeredocUnterminated(&segs, chain)
-			pending = append(append([]heredoc(nil), e.pending...), pending...)
-			docOwners = append(append([]int(nil), e.docOwners...), docOwners...)
-			return
 		}
-		pending, docOwners = e.pending, e.docOwners
+		docFloor = e.docFloor
 	}
 	// closeArithmetic resumes the command an arithmetic expansion suspended,
 	// with the number it prints in the word it sat in. What the loop gathered
@@ -1243,8 +1245,8 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			// apostrophe in a document became ErrUnparsableCommand, which the
 			// hook maps to fail-OPEN, and a delimiter line reached early
 			// swallowed the real commands that followed it as body.
-			if len(pending) > 0 {
-				next, bodies, ok := skipHeredocBodies(line, i, pending, true)
+			if len(pending) > docFloor {
+				next, bodies, ok := skipHeredocBodies(line, i, pending[docFloor:], true)
 				// A body whose delimiter is unquoted is expanded before the
 				// command reads it, and every command substitution in it runs
 				// (review4-guard finding 1). Its text stays data; what runs is
@@ -1259,7 +1261,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 				for k, body := range bodies {
 					start := len(segs)
 					expandedBody(body)
-					if o := docOwners[k]; o >= 0 && len(segs) > start {
+					if o := docOwners[docFloor+k]; o >= 0 && len(segs) > start {
 						run := feed{list: list, lo: start, hi: len(segs)}
 						segs[o].stdinIn = append(append([]feed(nil), segs[o].stdinIn...), run)
 						docs = append(docs, docRun{owner: o, run: run})
@@ -1280,7 +1282,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 					markHeredocUnterminated(&segs, chain)
 				}
 				i = next
-				pending, docOwners = nil, nil
+				pending, docOwners = pending[:docFloor], docOwners[:docFloor]
 			}
 			// lastList is NOT cleared here: a blank or comment-only line after a
 			// list operator does not end the list, and every token-producing
@@ -2197,10 +2199,10 @@ type enclosing struct {
 	// groupIn what was piped into the groups open around it.
 	braceFrom []groupOpen
 	groupIn   []feed
-	// pending and docOwners are the here-documents pending where the
-	// substitution opened, whose bodies wait for the line after it closes.
-	pending   []heredoc
-	docOwners []int
+	// docFloor is the enclosing command string's own docFloor: the
+	// documents pending where the substitution opened stand before the one
+	// the substitution sets, and wait for the line after it closes.
+	docFloor int
 }
 
 // procSubOperand is the word a process substitution leaves in the enclosing

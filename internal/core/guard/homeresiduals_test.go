@@ -208,6 +208,15 @@ func TestHomeSpellingsStayLinear(t *testing.T) {
 		{"alternative words", func(n int) string {
 			return "rm -rf " + strings.Repeat(`${X:+"$HOME"/${Y:+~/${Z:+\x$A}}} `, n/32)
 		}},
+		{"split alternative words", func(n int) string {
+			return "rm -rf " + strings.Repeat("${X:+$(x) $HOME `y`\t/ } ", n/28)
+		}},
+		{"subscript strays", func(n int) string {
+			return "rm -rf " + strings.Repeat("${X[0]]"+strings.Repeat("]", 8)+":+$HOME} ", n/24)
+		}},
+		{"redundant separators", func(n int) string {
+			return "rm -rf " + strings.Repeat("/", n/2) + "./" + strings.Repeat("/./", n/6) + "*"
+		}},
 		{"sequence terms", func(n int) string {
 			return "rm -rf " + strings.Repeat("$HO{M..M}E/ ", n/12)
 		}},
