@@ -319,7 +319,8 @@ func hasAbsHomePath(line string) bool {
 		if i := strings.LastIndexAny(m, `/\`); i >= 0 {
 			seg = m[i+1:]
 		}
-		if isUsersRoot(m) && scanner.IsNonUserHomeSegment(seg) {
+		if (isUsersRoot(m) && scanner.IsNonUserHomeSegment(seg)) ||
+			(strings.HasPrefix(m, "/home/") && scanner.IsNonUserPosixHomeSegment(seg)) {
 			// A system root (/Users/Shared, /Users/Guest, C:\Users\Public) is not
 			// a home root: the username position is the segment immediately after
 			// /Users or /home, and that position is held here by a directory that
@@ -332,6 +333,9 @@ func hasAbsHomePath(line string) bool {
 			// and "/Users/Shared//bob" leave the shared root again, so the name
 			// after them is back in the username position — this is the half of
 			// the old narrowing that was actually load-bearing, and it stays.
+			//
+			// The same holds for a system account under the POSIX /home root
+			// (/home/linuxbrew, Homebrew's Linux prefix): it names no person.
 			//
 			// Deliberately no longer caught: a personal name used as an ordinary
 			// directory name inside a shared folder (/Users/Shared/<name>/x). That

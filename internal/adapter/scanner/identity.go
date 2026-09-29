@@ -1149,15 +1149,22 @@ func isLocalPartByte(b byte) bool {
 }
 
 // isNonUserHomeMatch reports whether a generic-home match's final segment is a
-// well-known non-user directory under a /Users root, POSIX or Windows.
+// well-known non-user directory under a /Users root, POSIX or Windows, or a
+// system account under the POSIX /home root (IsNonUserPosixHomeSegment).
 func isNonUserHomeMatch(matched string) bool {
 	scanMeter.charge(stageIdentity, len(matched))
+	i := strings.LastIndexAny(matched, `/\`)
+	if i < 0 {
+		return false
+	}
+	if strings.HasPrefix(matched, "/home/") {
+		return IsNonUserPosixHomeSegment(matched[i+1:])
+	}
 	lower := strings.ToLower(matched)
 	if !strings.HasPrefix(lower, "/users/") && !(len(lower) > 2 && lower[1] == ':' && lower[2] == '\\') {
 		return false
 	}
-	i := strings.LastIndexAny(matched, `/\`)
-	return i >= 0 && IsNonUserHomeSegment(matched[i+1:])
+	return IsNonUserHomeSegment(matched[i+1:])
 }
 
 // nextPathSegmentEnd returns the end offset of a NAME-BEARING path segment that
