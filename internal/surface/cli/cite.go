@@ -159,7 +159,7 @@ func newCiteConfirmCommand(asJSON *bool) *cobra.Command {
 	}
 	addCiteFlags(cmd, &configPath, &rootDir)
 	cmd.Flags().StringVar(&receiptPath, "receipt", "",
-		"path to a receipt file listing the confirmed citations (the format the generated checklist page emits)")
+		"path to a JSON receipt listing the confirmed citations: schema_version 1 and a confirmed list, each entry a url with an optional final_url and verified_on (YYYY-MM-DD)")
 	return cmd
 }
 

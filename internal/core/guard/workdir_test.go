@@ -117,10 +117,15 @@ func TestResolveWorkdirRefusesMalformedValues(t *testing.T) {
 // exist fails the whole call instead (probe: NotFound, nothing ran), so the
 // failed-cd hazard is absent and folding the workdir into the string as
 // `cd <workdir> && ` would block every workdir'd recursive delete for a hazard
-// the host does not have. The command string alone decides the cd-chain entry.
+// the host does not have. The command string alone decides the cd-chain entry:
+// a bare `rm -rf *` meets only the working-directory warn, which it meets in
+// any directory, and never the cd-chain blocker.
 func TestAHostWorkdirIsNeverReadAsACd(t *testing.T) {
-	if d := checkOK(t, "rm -rf *"); d.Verdict != VerdictAllow {
-		t.Errorf("a bare recursive delete (run in a host workdir) must stay allowed: %+v", d)
+	if d := checkOK(t, "rm -rf ./build"); d.Verdict != VerdictAllow {
+		t.Errorf("a bare recursive delete of a named directory (run in a host workdir) must stay allowed: %+v", d)
+	}
+	if d := checkOK(t, "rm -rf *"); d.Verdict == VerdictBlock || contains(d.Matches, "rm-rf-after-cd-chain") {
+		t.Errorf("a bare recursive delete (run in a host workdir) must not read as a cd chain: %+v", d)
 	}
 	if d := checkOK(t, "cd scratch && rm -rf *"); d.Verdict != VerdictBlock || d.EntryID != "rm-rf-after-cd-chain" {
 		t.Errorf("a cd chain inside the command string must still block: %+v", d)

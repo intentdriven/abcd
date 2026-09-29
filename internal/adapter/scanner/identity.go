@@ -71,38 +71,47 @@ func DefaultIdentitySeverities() map[string]Severity {
 // ADDITION to the caller's other identities, not instead of them: the name and
 // email fields hold the value git resolves in this repository, and the Other*
 // fields hold every value another scope configured that it displaced.
+//
+// Every key is read in ONE git process (iss-2609281546130900): a scanner is
+// built by every verb and hook that scans, and four processes per build were
+// four reads of the same configuration. A second process runs only when the
+// parent carries `git -c` configuration, for the reason given below.
 func ProbeIdentity(repoRoot string) Identity {
 	var id Identity
-	gitIn := func(env []string, args ...string) string {
-		full := append([]string{"-C", repoRoot}, args...)
-		cmd := exec.Command("git", full...)
-		cmd.Env = env
-		out, err := cmd.Output()
-		if err != nil {
-			return ""
-		}
-		return strings.TrimSpace(string(out))
-	}
-	git := func(args ...string) string {
-		// Scrub repo-selection and config-injection env vars, but keep global
-		// config: this probe reads the caller's OWN user.name/user.email to redact
-		// their identity, and those live in global config, so full IsolatedEnv
-		// (which neutralises ~/.gitconfig) would blind the identity gate. Scrubbing
-		// still stops an inherited GIT_DIR pointing the probe at another repo and an
-		// injected GIT_CONFIG_* forging a fake identity that displaces the real one.
-		return gitIn(gitutil.ScrubbedEnv(), args...)
-	}
-	// --get-all lists every value git resolves for the key, in scope order
-	// with the effective one last — system, global with its includeIf
-	// includes evaluated where they sit, repo-local, worktree. --get returned
-	// only that last value, so a repo-local or includeIf persona displaced the
-	// caller's global identity from the matcher set and the displaced identity
+	// Scrub repo-selection and config-injection env vars, but keep global
+	// config: this probe reads the caller's OWN user.name/user.email to redact
+	// their identity, and those live in global config, so full IsolatedEnv
+	// (which neutralises ~/.gitconfig) would blind the identity gate. Scrubbing
+	// still stops an inherited GIT_DIR pointing the probe at another repo and an
+	// injected GIT_CONFIG_* forging a fake identity that displaces the real one.
+	//
+	// The listing is unscoped and lists every value git resolves for each key,
+	// in scope order with the effective one last — system, global with its
+	// includeIf includes evaluated where they sit, repo-local, worktree. Reading
+	// only the last value let a repo-local or includeIf persona displace the
+	// caller's global identity from the matcher set, and the displaced identity
 	// was stored in clear text. Neither --local nor --global sees an includeIf
 	// persona for what it is (the former misses it, the latter hides it behind
-	// the unconditional value), which is why the union comes from ONE
-	// unscoped listing rather than a scope-by-scope reassembly.
-	id.GitUserName, id.OtherGitUserNames = splitIdentityValues(git("config", "--get-all", "user.name"))
-	id.GitUserEmail, id.OtherGitUserEmails = splitIdentityValues(git("config", "--get-all", "user.email"))
+	// the unconditional value), which is why the union comes from ONE unscoped
+	// listing rather than a scope-by-scope reassembly.
+	entries := configListing(repoRoot, gitutil.ScrubbedEnv(), identityKeys)
+	var names, emails []string
+	var remote string
+	for _, e := range entries {
+		switch e.key {
+		case "user.name":
+			names = append(names, e.value)
+		case "user.email":
+			emails = append(emails, e.value)
+		case "remote.origin.url":
+			remote = e.value // the last one listed is the one git resolves
+		}
+	}
+	// Joined on newlines, as a `git config --get-all` listing prints them, and
+	// split the same way: a value holding an escaped newline contributes each
+	// line as a user.* value, and stays whole among the persona values below.
+	id.GitUserName, id.OtherGitUserNames = splitIdentityValues(strings.Join(names, "\n"))
+	id.GitUserEmail, id.OtherGitUserEmails = splitIdentityValues(strings.Join(emails, "\n"))
 	// GIT_AUTHOR_* and GIT_COMMITTER_* are an identity scope `git config` never
 	// reports and that outranks every config file when a commit is written: a CI
 	// runner, a direnv profile and a rebase wrapper all set them. The persona
@@ -119,22 +128,31 @@ func ProbeIdentity(repoRoot string) Identity {
 	// git also stamps a commit from author.*/committer.*, which it ranks above
 	// user.*, and from a `git -c` persona (GIT_CONFIG_PARAMETERS or the
 	// GIT_CONFIG_COUNT form), which outranks every file and reaches a hook
-	// running this probe. They are read in ONE extra listing, under the
-	// scrubbed env plus only those command-line entries, and folded in as
-	// OTHERS like the environment persona above: the effective identity still
-	// comes from the scrubbed read, so an injected value can only add something
-	// to redact (iss-2609261614450166).
-	cmdline := append(gitutil.ScrubbedEnv(), gitutil.CommandLineConfig()...)
-	// -z: a value git holds with an embedded newline stays one value.
-	for _, entry := range strings.Split(gitIn(cmdline, "config", "-z", "--get-regexp", `^(user|author|committer)\.(name|email)$`), "\x00") {
-		key, value, _ := strings.Cut(entry, "\n")
-		if strings.HasSuffix(key, ".email") {
-			id.OtherGitUserEmails = addIdentityValues(id.GitUserEmail, id.OtherGitUserEmails, value)
-		} else {
-			id.OtherGitUserNames = addIdentityValues(id.GitUserName, id.OtherGitUserNames, value)
+	// running this probe. They are folded in as OTHERS like the environment
+	// persona above: the effective identity still comes from the scrubbed read,
+	// so an injected value can only add something to redact
+	// (iss-2609261614450166).
+	//
+	// With no -c configuration in the parent, the persona environment IS the
+	// scrubbed one, so the listing above already holds every persona value. With
+	// some, the persona listing runs apart, under the scrubbed env plus only
+	// those command-line entries: a -c entry can change what git reads, not
+	// only add values (safe.bareRepository or safe.directory move discovery, and
+	// a malformed entry fails the whole command), so folding it into the one
+	// listing would let it move or blind the effective identity and the remote.
+	persona := entries
+	if cmdline := gitutil.CommandLineConfig(); len(cmdline) > 0 {
+		persona = configListing(repoRoot, append(gitutil.ScrubbedEnv(), cmdline...), personaKeys)
+	}
+	for _, e := range persona {
+		switch e.key {
+		case "user.email", "author.email", "committer.email":
+			id.OtherGitUserEmails = addIdentityValues(id.GitUserEmail, id.OtherGitUserEmails, e.value)
+		case "user.name", "author.name", "committer.name":
+			id.OtherGitUserNames = addIdentityValues(id.GitUserName, id.OtherGitUserNames, e.value)
 		}
 	}
-	if remote := git("config", "--get", "remote.origin.url"); remote != "" {
+	if remote = strings.TrimSpace(remote); remote != "" {
 		id.GitRemoteUsername, id.GitRemoteRepo = parseGitHubRemote(remote)
 	}
 	if home := CallerHome(); home != "" {
@@ -144,6 +162,55 @@ func ProbeIdentity(repoRoot string) Identity {
 		}
 	}
 	return id
+}
+
+// identityKeys selects every key the probe reads, in one listing: user.* is
+// the identity git resolves, author.*/committer.* the persona it commits
+// with, and remote.origin.url the remote the public handle is read from.
+// personaKeys is the persona subset, for the listing a -c entry runs under.
+// git lists canonical keys (section and variable lower-cased, a subsection
+// verbatim), so `[User] Name` matches and `[remote "Origin"]` does not, exactly
+// as `git config --get-all user.name` and `--get remote.origin.url` resolve.
+const (
+	identityKeys = `^((user|author|committer)\.(name|email)|remote\.origin\.url)$`
+	personaKeys  = `^(user|author|committer)\.(name|email)$`
+)
+
+// configEntry is one key/value pair of a git config listing.
+type configEntry struct{ key, value string }
+
+// configListing lists every value of every key matching pattern that git
+// resolves for repoRoot under env, in the order git lists them. Any failure —
+// git absent, a malformed or unreadable repository config, a malformed -c
+// entry, no key matching — is no entries: the probe is best-effort, and a
+// failed read leaves its fields empty. Output from a command that exits
+// non-zero is discarded whole, never half-read.
+func configListing(repoRoot string, env []string, pattern string) []configEntry {
+	cmd := exec.Command("git", "-C", repoRoot, "config", "-z", "--get-regexp", pattern)
+	cmd.Env = env
+	out, err := cmd.Output()
+	if err != nil {
+		return nil
+	}
+	return parseConfigListing(string(out))
+}
+
+// parseConfigListing reads a `git config -z` listing. Every entry ends in a
+// NUL, which no key or value can hold. The key runs to the entry's FIRST
+// newline and the value is every byte after it, verbatim: a key never holds a
+// newline, a value may (an escaped \n in the file), and '=' is never a
+// delimiter in this form. A key listed with no value at all (`[user] name`
+// with no '=') has no newline and reads as the empty value.
+func parseConfigListing(out string) []configEntry {
+	var entries []configEntry
+	for _, raw := range strings.Split(out, "\x00") {
+		if raw == "" {
+			continue
+		}
+		key, value, _ := strings.Cut(raw, "\n")
+		entries = append(entries, configEntry{key: key, value: value})
+	}
+	return entries
 }
 
 // splitIdentityValues turns a `git config --get-all` listing into the

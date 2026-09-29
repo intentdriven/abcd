@@ -85,6 +85,13 @@ type AssembleResult struct {
 	OutDir       string   `json:"out_dir,omitempty"`
 	Artefacts    []string `json:"artefacts"`
 	Written      bool     `json:"written"`
+	// Ingestable says whether `reading ingest` can find this run. The ingest
+	// resolves a run's manifest only under DefaultRunDir by its run id, so an
+	// assembly written anywhere else (an operator-named --out) is an inspection
+	// copy that no ingest will ever prove, and a dry run wrote nothing to find.
+	// It is reported at assembly time because the cost otherwise lands after
+	// the reading has been commissioned and returned (iss-2609091648476051).
+	Ingestable bool `json:"ingestable"`
 
 	Bundle   Bundle   `json:"-"`
 	Manifest Manifest `json:"-"`
@@ -279,7 +286,7 @@ func estimateTokens(b int) int {
 // stays with the auditor.
 const (
 	BundleFileName   = "bundle.json"
-	ManifestFileName = "manifest.json"
+	ManifestFileName = issueschema.RunManifestFileName
 )
 
 // DefaultRunDir is the local-tier parent an unnamed run is parked under.
@@ -288,7 +295,7 @@ const DefaultRunDir = ".abcd/.work.local/scratch/reading-runs"
 // MaxFileBytes bounds one admitted file. A file past the cap is a refusal, not
 // a truncation: a silently shortened item would be an assembled input no re-run
 // could reproduce from the manifest's hash.
-const MaxFileBytes = 4 << 20
+const MaxFileBytes = issueschema.RunArtefactReadLimit
 
 // LintConfigPath is the record-lint configuration the record scan reads its
 // stores from. Enumeration comes from that scan and nowhere else: there is one
@@ -649,7 +656,19 @@ func Assemble(req AssembleRequest) (AssembleResult, error) {
 	}
 	res.Written = true
 	res.Artefacts = []string{BundleFileName, ManifestFileName}
+	res.Ingestable = isParkedRunDir(req.RepoRoot, outDir, runID)
 	return res, notExercisedError(notExercised, candidateRun)
+}
+
+// isParkedRunDir reports whether outDir is the directory `reading ingest`
+// resolves runID's manifest from: DefaultRunDir/<run-id> under the repository
+// root. A relative outDir is taken against the root, as writeArtefacts takes it.
+func isParkedRunDir(repoRoot, outDir, runID string) bool {
+	dir := filepath.FromSlash(outDir)
+	if !filepath.IsAbs(dir) {
+		dir = filepath.Join(repoRoot, dir)
+	}
+	return filepath.Clean(dir) == filepath.Join(repoRoot, filepath.FromSlash(DefaultRunDir), runID)
 }
 
 // bundleStamp is the reading kind's per-run context stamp: the run and the

@@ -413,11 +413,16 @@ func (r *Run) Log(session, event string, fields map[string]string) (Event, error
 		}
 		typed[k] = typedValue(v)
 	}
+	if event == EventBackoff {
+		if err := backoffFields(fields); err != nil {
+			return Event{}, err
+		}
+	}
 	if err := checkFields(event, fields); err != nil {
 		return Event{}, err
 	}
 	var out Event
-	err := r.withLock(func() error {
+	err := r.withLock(session, func() error {
 		s, err := r.requireSession(session)
 		if err != nil {
 			return err
@@ -432,6 +437,22 @@ func (r *Run) Log(session, event string, fields map[string]string) (Event, error
 		return err
 	})
 	return out, err
+}
+
+// backoffFields holds a hand-logged backoff to what criterion 6 of
+// itd-2609221656373558 says the log names: the reason the session backed off and
+// the minutes it spent, a number no smaller than zero. A backoff missing either
+// counts in the comparison as a backoff that cost nothing for no reason, so it
+// is refused rather than written.
+func backoffFields(fields map[string]string) error {
+	if strings.TrimSpace(fields["reason"]) == "" {
+		return refusal("a backoff names its reason (--field reason=<why>)")
+	}
+	m, err := strconv.ParseFloat(fields["minutes"], 64)
+	if err != nil || math.IsNaN(m) || math.IsInf(m, 0) || m < 0 {
+		return refusal("a backoff names the minutes it spent as a number no smaller than zero (--field minutes=<n>), not %q", fields["minutes"])
+	}
+	return nil
 }
 
 // typedValue reads a hand-given value as the JSON type it spells, and only when

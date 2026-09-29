@@ -907,14 +907,20 @@ func Reconcile(repoRoot, specID, impact string, remainder RemainderRequest) (Rec
 	// accepting it here would report a write that never happened — and stamping it
 	// early would pre-decide the derived version of a release this close does not
 	// reach. The judgement belongs at the close that ships (adr-2609151513118583).
+	//
+	// Both refusals name the way to keep a judgement already made: `intent plan
+	// --impact` stamps it on the planned record now, and the close that ships
+	// then needs no flag. Without that a lane that knew the impact dropped it,
+	// leaving it to be remembered at the last close (iss-2609240646522330).
 	if strings.TrimSpace(impact) != "" {
+		keep := keepImpactNow(intentID, impact)
 		if len(held) > 0 {
-			return ReconcileResult{}, fmt.Errorf("intent: --impact is the judgement %s carries into shipped/, and this close ships nothing — %s is still open on %s; re-run without --impact, and supply it at the close that ships",
-				intentID, strings.Join(specIDs(held), ", "), intentID)
+			return ReconcileResult{}, fmt.Errorf("intent: --impact is the judgement %s carries into shipped/, and this close ships nothing — %s is still open on %s; re-run without --impact, and %s",
+				intentID, strings.Join(specIDs(held), ", "), intentID, keep)
 		}
 		if remainder.Slug != "" {
-			return ReconcileResult{}, fmt.Errorf("intent: --impact is the judgement %s carries into shipped/, and a remainder spec leaves it planned; re-run without --impact, and supply it at the close that ships",
-				intentID)
+			return ReconcileResult{}, fmt.Errorf("intent: --impact is the judgement %s carries into shipped/, and a remainder spec leaves it planned; re-run without --impact, and %s",
+				intentID, keep)
 		}
 	}
 
@@ -1305,6 +1311,18 @@ func recordedImpact(content string) string {
 		return ""
 	}
 	return recorded
+}
+
+// keepImpactNow is the remedy clause an early close's impact refusal ends on:
+// the judgement is recorded now with `abcd intent plan`, or supplied at the
+// close that ships. The value is echoed only when it is one shipped/ accepts,
+// so a refusal never hands back a command that would itself be refused.
+func keepImpactNow(intentID, impact string) string {
+	value := "<" + shipImpactValues + ">"
+	if validShipImpact(impact) == nil {
+		value = impact
+	}
+	return fmt.Sprintf("either record it now with `abcd intent plan %s --impact %s`, after which the close that ships needs no flag, or supply it at the close that ships", intentID, value)
 }
 
 // validShipImpact applies the shipped/ bar to one impact value: a legal member

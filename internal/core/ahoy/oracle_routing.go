@@ -134,12 +134,25 @@ func (a *applyCtx) writeMachineRouting(body []byte) {
 		a.refuse("the model-tier routing was not written: ~/.abcd/oracle-routing.json appeared while the question was open, and it is left as it is.")
 		return
 	}
-	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+	// ~/.abcd is created, judged and opened relative to home's descriptor and
+	// the table is written through it, so a link swapped in after the check
+	// above is refused rather than written through (iss-2609281310017733).
+	dir, err := fsutil.EnsureHomeScope(userHome(), ".abcd", 0o700)
+	if errors.Is(err, fsutil.ErrHomeScopeSymlinked) {
+		a.refuse("the model-tier routing was not written: " + err.Error() + ".")
+		return
+	}
+	if err != nil {
 		a.refuse("could not create ~/.abcd for the model-tier routing (" + errText(err) + "); nothing was written.")
 		return
 	}
+	defer dir.Close()
+	if _, err := dir.Lstat(layered.OracleRouting.MachineRel); !errors.Is(err, os.ErrNotExist) {
+		a.refuse("the model-tier routing was not written: ~/.abcd/oracle-routing.json appeared while the question was open, and it is left as it is.")
+		return
+	}
 	// 0600, never wider: the resolver refuses a machine file others can write.
-	if err := fsutil.WriteFileAtomic(p, body, 0o600); err != nil {
+	if err := fsutil.WriteFileAtomicInRoot(dir, layered.OracleRouting.MachineRel, body, 0o600); err != nil {
 		a.refuse("could not write ~/.abcd/oracle-routing.json (" + errText(err) + "); the routing was not accepted.")
 		return
 	}

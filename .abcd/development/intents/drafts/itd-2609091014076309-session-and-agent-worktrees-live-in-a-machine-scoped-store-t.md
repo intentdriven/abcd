@@ -94,6 +94,7 @@ We expect a machine-scoped, root-SHA-keyed store with a list verb and a reclaim 
 - Whether the plugin surface should carry `add` as a host-run step, so a harness's own checkout-isolation feature lands in the store rather than wherever the harness defaults to. The prose stays host-agnostic either way.
 - Whether the lane is `0o700` like the transcript store. A worktree holds the same bytes as the checkout, so the checkout's own mode is the nearer precedent.
 - Whether prune treats a squash-merged branch as merged (see Scope Conditions); the conservative default is stated there and the spec may widen it.
+- Whether the listing names a hand-laid lane keyed on an abbreviated root commit beside the full-SHA lane of the same repository. Lanes laid by hand before the verb exists sit under the eight-digit short form, and an autonomous run once split one store's log across the two spellings (iss-2609240646458365); a listing that reads only the full key leaves the short one unseen.
 
 ## Audit Notes
 

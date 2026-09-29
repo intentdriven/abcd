@@ -380,7 +380,7 @@ func logLoadWarning(req LoadRequest, res LoadResult) LoadRunLog {
 		}
 	}
 	fields := loadEventFields(res)
-	err = run.withLock(func() error {
+	err = run.withLock(session, func() error {
 		_, err := run.append(session, EventLoad, fields)
 		return err
 	})

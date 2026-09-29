@@ -37,7 +37,8 @@ Present the `notice`, the `tally` and each report newest first: its `id`, `recei
 sender repository (`sender_name`), `kind`, `severity` and `title`. A report in
 state `unreadable` was written to a template version this abcd does not know,
 or is not a report at all; relay its `unreadable` reason, which names the
-version. It is kept, never dropped.
+version, and its `sender_name` when the envelope still names the sender. It is
+kept, never dropped.
 
 ## Read one
 

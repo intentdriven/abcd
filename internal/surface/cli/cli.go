@@ -218,9 +218,11 @@ func NewRootCommand() *cobra.Command {
 		Long: "Agent-based configuration for development.\n\n" +
 			"Bare `abcd` renders the read-only status board — what can I do. A single\n" +
 			"positional matching a record id (`iss-N`, `itd-N`, `spc-N`, `adr-N`, `adm-N`,\n" +
-			"`srp-N`, `rfm-N`) instead reports what that record is, where it lives, and\n" +
-			"the next move for its lifecycle state — what is this. Both forms are strictly\n" +
-			"read-only; any other positional is refused as an unknown command.",
+			"`srp-N` or `rfm-N`) instead reports what that record is, where it lives, and\n" +
+			"the next move for its lifecycle state — what is this. N is either a short\n" +
+			"ordinal from before ids were minted or the sixteen-digit stamp minted since;\n" +
+			"both resolve. The bare and the id form are strictly read-only; any other\n" +
+			"positional is refused as an unknown command.",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		// Bare answers "what can I do"; `abcd <id>` answers "what is this, and
@@ -301,9 +303,21 @@ func NewRootCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			// The board is the output most often pasted, so it names the
+			// checkout by the display rule — home-relative under HOME, the
+			// directory's base name outside it — in the text form and in
+			// --json alike (iss-2609281613094952). No consumer acts on dir: the
+			// plugin page relays it, and a reader that needs the path already
+			// has its own working directory.
+			st.Dir = fsutil.DisplayPath(st.Dir)
 			board := boardOutput{StatusInfo: st, Statusline: boardPresence(cwd, cmd.ErrOrStderr()), Peers: boardPeers(cwd, cmd.ErrOrStderr()), Inbox: boardInbox(cmd.ErrOrStderr()), Oracle: boardOracle(cwd, cmd.ErrOrStderr()), Reviews: boardReviews(cwd, cmd.ErrOrStderr())}
 			return render(cmd.OutOrStdout(), asJSON, board, func(w io.Writer) {
-				fmt.Fprintf(w, "abcd — %s\n", st.Dir)
+				// Sanitised like every other board line: the directory name is the
+				// checkout's own, and a name carrying an ESC sequence or a bidi
+				// control must not reach the terminal raw (iss-2609281736483740).
+				// --json keeps the true name; the encoder escapes a C0 byte; C1 and
+				// bidi runes travel raw, as in every board field.
+				fmt.Fprintf(w, "abcd — %s\n", termsafe.Sanitize(st.Dir))
 				fmt.Fprintf(w, "  git repo:   %v\n", st.IsGitRepo)
 				fmt.Fprintf(w, "  record:     %v\n", st.HasRecord)
 				fmt.Fprintf(w, "  work tiers: %v\n", st.WorkTiers)
@@ -474,6 +488,10 @@ func NewRootCommand() *cobra.Command {
 	// `receipts` runs the release job's semantic-receipt gate locally, before
 	// the merge, through the same reader the job runs (itd-93 AC7).
 	launchCmd.AddCommand(newLaunchReceiptsCommand(&asJSON))
+	// `manifests` is the manifest lockstep checker's own front door (itd-69):
+	// the check the preview, the cut and the render run, over a named tree at
+	// the polarity the caller chooses.
+	launchCmd.AddCommand(newLaunchManifestsCommand(&asJSON))
 	// `smoke-pages` is the deep installability tier's child process (itd-66):
 	// hidden and operator-internal, re-executed by the preview and the cut.
 	launchCmd.AddCommand(newLaunchSmokePagesCommand())
@@ -3330,6 +3348,11 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 				return err
 			}
 			p := newPrompter(cmd)
+			if sp, ok := p.(*stdinPrompter); ok {
+				// --yes answers the category questions and no value question, so
+				// the first value question still asked says so (iss-2609120447486547).
+				sp.yesApproved = yes
+			}
 			opts.ConfirmTool = toolConfirm(p, named, yes, cmd.ErrOrStderr())
 			opts.ApproveDependency = len(named) > 0
 			res, err := ahoy.Install(cwd, opts, p)
@@ -3464,6 +3487,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 	ahoyCmd.AddCommand(movedStub("identity-check", "abcd ahoy --identity"))
 	ahoyCmd.AddCommand(newAhoyRemoteCommand(asJSON))
 	ahoyCmd.AddCommand(newAhoyConnectCommand(asJSON))
+	ahoyCmd.AddCommand(newAhoyCredentialCommand(asJSON))
 
 	return ahoyCmd
 }
@@ -3794,6 +3818,10 @@ type stdinPrompter struct {
 	// leaves a transcript of what was asked and what it was answered, instead
 	// of a column of unanswered-looking questions.
 	tty bool
+	// yesApproved records an install run under --yes, which approves each kind
+	// of change and chooses no value; yesTold that the run has said so, once,
+	// above the first value question it still asks.
+	yesApproved, yesTold bool
 }
 
 // echo reports the answer read off a non-terminal stdin. The bytes come from
@@ -3829,9 +3857,16 @@ func (p *stdinPrompter) Confirm(question string) bool {
 // has no help for is asked bare: the door never writes help of its own.
 func (p *stdinPrompter) Prompt(key string, choices []string, def string) string {
 	if h, ok := ahoy.HelpFor(key); ok {
+		if h.Flag != "" && p.yesApproved && !p.yesTold {
+			p.yesTold = true
+			fmt.Fprintf(p.w, "\n%s\n", ahoy.YesStillAsksValues)
+		}
 		fmt.Fprintf(p.w, "\n%s\n", h.About)
 		for _, c := range h.Choices {
 			fmt.Fprintf(p.w, "  %s — %s\n", c.Value, c.Meaning)
+		}
+		if hint := h.FlagHint(); hint != "" {
+			fmt.Fprintf(p.w, "  (%s)\n", hint)
 		}
 	}
 	fmt.Fprintf(p.w, "%s (%s) [%s]: ", key, strings.Join(choices, "/"), def)
@@ -3892,7 +3927,8 @@ func captureLedgerRoot(cmd *cobra.Command) (string, error) {
 
 // ledgerIdentity names the checkout whose ledger a verb addressed and the
 // branch checked out there (iss-2609202053570475). The checkout is home-
-// relative where it can be, so the line carries no developer-identity path.
+// relative where it can be, and its directory name where it cannot, so the line
+// never carries an absolute path (iss-2609251823560369).
 type ledgerIdentity struct {
 	Checkout string `json:"checkout"`
 	Branch   string `json:"branch"`
@@ -3900,6 +3936,12 @@ type ledgerIdentity struct {
 
 // ledgerIdentityOf reads root's identity: its home-redacted path, and the
 // branch git reports ("HEAD" when detached, "" when git cannot answer).
+//
+// A checkout outside HOME survives RedactHome whole, and printed whole it is an
+// absolute local path in output a person pastes elsewhere. fsutil.DisplayPath
+// reduces it to its directory name instead, the rule scrubPaths applies to an
+// absolute path outside both identity roots, so the two surfaces agree on what
+// is safe to print.
 func ledgerIdentityOf(root string) ledgerIdentity {
 	// symbolic-ref answers on an unborn branch too, where rev-parse cannot; it
 	// fails only when HEAD is detached, which rev-parse then names.
@@ -3911,7 +3953,7 @@ func ledgerIdentityOf(root string) ledgerIdentity {
 			branch = ""
 		}
 	}
-	return ledgerIdentity{Checkout: fsutil.RedactHome(root), Branch: branch}
+	return ledgerIdentity{Checkout: fsutil.DisplayPath(root), Branch: branch}
 }
 
 // branchPhrase renders the branch half of the identity line.
@@ -3942,13 +3984,20 @@ func renderLedger(w io.Writer, asJSON bool, root string, v any, text func(io.Wri
 	if err != nil {
 		return err
 	}
-	if n := len(body); n >= 2 && body[0] == '{' && body[n-1] == '}' {
-		sep := ","
-		if n == 2 {
-			sep = ""
-		}
-		body = append(append(append(body[:n-1:n-1], []byte(sep+`"ledger":`)...), ident...), '}')
+	// json.Marshal emits compact JSON, so an object result is exactly the bytes
+	// between its own braces and the member is appended before the closing one,
+	// keeping the result's member order. A result that is not an object has no
+	// member to carry the identity, and dropping it silently would ship the
+	// envelope without the one thing it exists to say — so it is an error.
+	n := len(body)
+	if n < 2 || body[0] != '{' || body[n-1] != '}' {
+		return fmt.Errorf("internal: a capture verb's --json result must be an object to carry its ledger member, got %T", v)
 	}
+	sep := ","
+	if n == 2 {
+		sep = ""
+	}
+	body = append(append(append(body[:n-1:n-1], []byte(sep+`"ledger":`)...), ident...), '}')
 	var buf bytes.Buffer
 	if err := json.Indent(&buf, body, "", "  "); err != nil {
 		return err
@@ -5791,6 +5840,10 @@ func newErrorEnvelope(msg string, code int) errorEnvelope {
 //   - any remaining absolute path embedded by os.PathError/os.LinkError (e.g. a
 //     path argument outside both roots) is reduced to its base name.
 //
+// The home redaction and the base-name rule are fsutil.DisplayPathsIn, the one
+// statement of how a surface prints a path it names (iss-2609281329007423); the
+// working directory is redacted first so a path under it reads "./…", not "~/…".
+//
 // This is NOT a universal absolute-path scrub: a verb that echoes a user-supplied
 // absolute path lying outside both roots (e.g. `memory ingest /tmp/x`) still
 // surfaces it — that path carries no developer identity, and sanitising such
@@ -5807,15 +5860,7 @@ func scrubPaths(err error) string {
 	if cwd, e := os.Getwd(); e == nil {
 		msg = fsutil.RedactRoot(msg, cwd, ".")
 	}
-	if home, e := os.UserHomeDir(); e == nil {
-		msg = fsutil.RedactRoot(msg, home, "~")
-	}
-	for _, p := range embeddedPaths(err) {
-		if filepath.IsAbs(p) {
-			msg = strings.ReplaceAll(msg, p, filepath.Base(p))
-		}
-	}
-	return msg
+	return fsutil.DisplayPathsIn(msg, embeddedPaths(err)...)
 }
 
 // embeddedPaths collects the filesystem paths carried by os.PathError/os.LinkError

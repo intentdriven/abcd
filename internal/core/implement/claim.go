@@ -144,8 +144,9 @@ func (r *Run) Claim(req ClaimRequest) (ClaimResult, error) {
 			return ClaimResult{}, refusal("path %q is not a repository-relative path", p)
 		}
 	}
+	start := time.Now()
 	var out ClaimResult
-	err := r.withLock(func() error {
+	err := r.withLock(req.Session, func() error {
 		s, err := r.requireSession(req.Session)
 		if err != nil {
 			return err
@@ -180,6 +181,10 @@ func (r *Run) Claim(req ClaimRequest) (ClaimResult, error) {
 				// Nobody can say who holds it. Within the grace it is contention;
 				// after it the file has lapsed, and the lapse is logged as one.
 				if now.Before(bad.LapsesAt) {
+					if err := r.logBackoff(req.Session, "", "claim", "unreadable claim file within its grace",
+						time.Since(start), map[string]any{"record": req.Record}); err != nil {
+						return err
+					}
 					return fmt.Errorf("%w: %v; it lapses at %s, so back off and retry after then",
 						ErrContention, bad, bad.LapsesAt.Format(time.RFC3339))
 				}
@@ -226,13 +231,9 @@ func (r *Run) Claim(req ClaimRequest) (ClaimResult, error) {
 				}); err != nil {
 					return err
 				}
-				if s.Role == RoleSecond {
-					if _, err := r.append(req.Session, EventBackoff, map[string]any{
-						"on": "claim", "record": req.Record,
-						"reason": "record claimed by session " + held.Session, "minutes": 0,
-					}); err != nil {
-						return err
-					}
+				if err := r.logBackoff(req.Session, "", "claim", "record claimed by session "+held.Session,
+					time.Since(start), map[string]any{"record": req.Record}); err != nil {
+					return err
 				}
 				return &HeldError{Holder: held}
 			}
@@ -280,7 +281,7 @@ func (r *Run) Release(session, record string) (Claim, error) {
 		return Claim{}, err
 	}
 	var out Claim
-	err := r.withLock(func() error {
+	err := r.withLock(session, func() error {
 		if _, err := r.requireSession(session); err != nil {
 			return err
 		}

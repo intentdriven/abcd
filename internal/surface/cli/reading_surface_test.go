@@ -743,6 +743,33 @@ func TestSizeReportRendersBeforeTheWrittenLine(t *testing.T) {
 	}
 }
 
+// TestAssembleRenderSaysANamedRunCannotBeIngested holds the text half of the
+// assembly-time report: a run written outside the default run directory is
+// named as one `reading ingest` cannot find, and a parked run carries no such
+// line (iss-2609091648476051).
+func TestAssembleRenderSaysANamedRunCannotBeIngested(t *testing.T) {
+	base := reading.AssembleResult{
+		RunID: "rdg-2608310000000002", Position: "detection", TargetCommit: "abcdef1234567890",
+		ItemCount: 1, ManifestHash: "cafe", Written: true,
+	}
+	named := base
+	named.OutDir = "out"
+	var buf bytes.Buffer
+	renderAssembleResult(&buf, named)
+	if out := buf.String(); !strings.Contains(out, "cannot be ingested") {
+		t.Errorf("a run written to a named directory renders no ingest warning:\n%s", out)
+	}
+
+	parked := base
+	parked.OutDir = reading.DefaultRunDir + "/" + base.RunID
+	parked.Ingestable = true
+	buf.Reset()
+	renderAssembleResult(&buf, parked)
+	if out := buf.String(); strings.Contains(out, "cannot be ingested") {
+		t.Errorf("a parked run renders the ingest warning:\n%s", out)
+	}
+}
+
 // TestHumanBytesAndThousands holds the two formatters the report leans on.
 func TestHumanBytesAndThousands(t *testing.T) {
 	for in, want := range map[int]string{

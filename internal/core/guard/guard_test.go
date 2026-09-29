@@ -280,7 +280,7 @@ func TestBlockerWinsOverWarn(t *testing.T) {
 	if d.Verdict != VerdictBlock || d.EntryID != "rm-rf-after-cd-chain" {
 		t.Fatalf("blocker must win over warn, got %+v", d)
 	}
-	if len(d.Matches) != 2 {
+	if !contains(d.Matches, "rm-rf-after-cd-chain") || !contains(d.Matches, "git-reset-hard") {
 		t.Fatalf("Matches = %v, want both the blocker and the warn entry", d.Matches)
 	}
 }

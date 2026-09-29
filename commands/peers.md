@@ -26,8 +26,9 @@ Run:
 The payload carries `live` (the live-peer count), `ids` (the distinct records
 across every row), `default_ref` (the branch a peer is judged merged into),
 `sources` (the sources read: `worktree` and `branch`), `peers` and `skipped`.
-Each peer names its `source`, `branch`, `path` (home-redacted to `~`) and its
-`rows`; each row is an `id`, a `kind`, the `folder` that holds it in the peer
+Each peer names its `source`, `branch`, `path` (home-relative, `~/…`, or the
+worktree's directory name when it sits outside HOME, never an absolute path)
+and its `rows`; each row is an `id`, a `kind`, the `folder` that holds it in the peer
 and, when the file could be read, a `title`:
 
 - `open-there` — an issue open in the peer and absent from every status folder

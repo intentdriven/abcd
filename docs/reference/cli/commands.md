@@ -21,9 +21,11 @@ Agent-based configuration for development.
 
 Bare `abcd` renders the read-only status board — what can I do. A single
 positional matching a record id (`iss-N`, `itd-N`, `spc-N`, `adr-N`, `adm-N`,
-`srp-N`, `rfm-N`) instead reports what that record is, where it lives, and
-the next move for its lifecycle state — what is this. Both forms are strictly
-read-only; any other positional is refused as an unknown command.
+`srp-N` or `rfm-N`) instead reports what that record is, where it lives, and
+the next move for its lifecycle state — what is this. N is either a short
+ordinal from before ids were minted or the sixteen-digit stamp minted since;
+both resolve. The bare and the id form are strictly read-only; any other
+positional is refused as an unknown command.
 
 **Flags:**
 
@@ -51,7 +53,7 @@ Detect abcd's install state and list its gaps, or report one mode a flag names: 
 
 #### `abcd ahoy connect`
 
-Verify a model provider with one call, then configure it: Writes its block and its key under ~/.abcd/; refuses a key typed at a terminal.
+Verify a model provider with one call, then configure it: Writes its block under ~/.abcd/ and its key to the home chosen; refuses a key typed at a terminal.
 
 **Usage:** `abcd ahoy connect <provider> [flags]`
 
@@ -59,7 +61,10 @@ Verify a model provider with one call, then configure it: Writes its block and i
 
 ```
       --base-url string     the provider's OpenAI-compatible base URL: https, or http to a server on this machine
-      --home string         where the key lives: abcd (read from stdin into the owner-only ~/.abcd/credentials.json) | none (a server that takes no key); external and keychain arrive with the credential store
+      --env string          for --home external: the environment variable that holds the value
+      --field string        for --home external: the dotted field of --file that holds the value (auth.token)
+      --file string         for --home external: a tool's JSON configuration file under the home directory, written from ~/
+      --home string         where the key lives: external (--env, or --file and --field) | abcd (read from stdin into the owner-only ~/.abcd/credentials.json) | keychain (read from stdin into the platform keychain) | none (a server that takes no key)
       --key string          the credential's name (default: the provider's name)
       --model stringArray   a model the provider may serve, repeated for each (the first allowlist; the verification call asks for the first)
 ```
@@ -68,6 +73,21 @@ Verify a model provider with one call, then configure it: Writes its block and i
 
 ```
 abcd ahoy connect local --base-url http://127.0.0.1:8080/v1 --model example-model --home none
+```
+
+#### `abcd ahoy credential`
+
+List the credentials abcd reads, explain one, or verify and store it: Writes the chosen home only with --home; refuses a value the adapter's call fails.
+
+**Usage:** `abcd ahoy credential [<name>] [flags]`
+
+**Flags:**
+
+```
+      --env string     for --home external: the environment variable that holds the value
+      --field string   for --home external: the dotted field of --file that holds the value (auth.token)
+      --file string    for --home external: a tool's JSON configuration file under the home directory, written from ~/
+      --home string    where the credential lives: external (--env, or --file and --field) | abcd (read from stdin into the owner-only ~/.abcd/credentials.json) | keychain (read from stdin into the platform keychain)
 ```
 
 #### `abcd ahoy doctor`
@@ -802,7 +822,7 @@ Name the URLs directly, or pass --receipt with a receipt file. Both write the sa
 
 ```
       --config string    path to docs-lint.json (default: <root>/.abcd/docs-lint.json)
-      --receipt string   path to a receipt file listing the confirmed citations (the format the generated checklist page emits)
+      --receipt string   path to a JSON receipt listing the confirmed citations: schema_version 1 and a confirmed list, each entry a url with an optional final_url and verified_on (YYYY-MM-DD)
       --root string      repo root (default: current working directory)
 ```
 
@@ -937,7 +957,9 @@ An unquoted brace group IS
 expanded as bash expands it, and one past 4096 words is blocked. What an
 allow still does not see is a hazard that never reaches command position at
 all: a word that is wholly a `$(…)` standing where a flag would be (read as
-an operand, the way a commit message or a branch is spelled), one launched
+an operand, the way a commit message or a branch is spelled), a delete
+target printed whole by one (`rm -rf $(echo /)`, read by its known text
+the way `rm -rf $(find …)` names its targets every day), one launched
 through a known
 wrapper carrying a value-taking flag the guard does not name (`sudo -u bob
 <hazard>` is seen; the bundled short form `sudo -Hu bob <hazard>` reaches
@@ -1290,7 +1312,9 @@ claim is a lease (--lease, default 2h, 1m to 24h). Claiming a record this sessio
 already holds renews the lease. A claim whose lease has passed is claimable again,
 and the lapse is logged as claim_lapsed. A record another session holds is refused
 at exit 3 and logged as claim_denied naming the holder; the second session also
-logs a backoff.
+logs a backoff with its reason and the minutes the attempt spent. A run state
+locked by another session's change is exit 3 too, and the second session's
+backoff from it is logged the same way.
 
 The second session is refused (exit 2, logged as a refusal) when it already holds
 a live claim, when the window is split-roles, or when a --path it declares is in the
@@ -1432,7 +1456,8 @@ The claim, window and session events are written by their own sub-verbs and are
 refused here, so the log cannot record a claim the run state does not hold.
 
 An event missing a field the report reads is refused, naming it: lane_close (lane, outcome); agent_start (agent); agent_end (agent, role, model, minutes|wall_minutes|wall_min); stop (cause); ceiling_overrun (alive, ceiling, lane, minutes); intervention (kind, by, what, why, autonomy_gap); decision (what, alternative, why).
-An intervention's kind is one of session_open, account, ruling, restart, close_session, file_restore, permission, other; an at or
+A backoff names its reason and the minutes it spent (reason=<why>, minutes=<n>),
+or it is refused. An intervention's kind is one of session_open, account, ruling, restart, close_session, file_restore, permission, other; an at or
 last_productive is an RFC 3339 time, and a *_min or minutes field a number. An agent_start
 that would take a session past the ceiling it joined with is refused, and the refusal logged.
 
@@ -2060,6 +2085,31 @@ is written to --out.
 abcd launch archive --out dist
 ```
 
+#### `abcd launch manifests`
+
+Check the release manifests agree on the version, or carry none on a dev tree: Writes nothing; refuses with exit 1 on drift and exit 2 on an unreadable input.
+
+**Usage:** `abcd launch manifests --tree public|dev [--root <dir>] [flags]`
+
+Run the manifest lockstep check over a tree. --tree public requires the
+version-location primary present as strict SemVer and every pinned secondary
+to agree with it; --tree dev requires every version key absent (adr-19). The
+tree is the working directory, or --root. Exit 0 consistent, 1 drift (one
+line per field), 2 unreadable. Nothing is written.
+
+**Flags:**
+
+```
+      --root string   the tree to check (default: the working directory)
+      --tree string   the polarity to check: public (versions present and agreeing) or dev (versions absent)
+```
+
+**Example:**
+
+```
+abcd launch manifests --tree public
+```
+
 #### `abcd launch receipts`
 
 Run the release job's semantic-receipt gate locally, before the merge: Writes nothing; refuses with exit 1 when the release job would refuse the receipts.
@@ -2096,7 +2146,7 @@ Cut a release, deriving its version and records from what shipped: Writes the CH
 
 ### `abcd lint`
 
-Check this repository against the conventions, every target included: Writes nothing; refuses with exit 2 on an error finding and exit 1 on warnings alone.
+Check this repository against the conventions, every target but outbound: Writes nothing; refuses with exit 2 on an error finding and exit 1 on warnings alone.
 
 **Usage:** `abcd lint [flags]`
 
@@ -2268,8 +2318,9 @@ two status folders is named with the reason and not read; a gone or refused
 worktree's branch is then read from the object store instead.
 
 Strictly read-only: it writes nothing, takes no lock, and fetches nothing.
-Home paths are redacted to ~ on every stream. Exit 0 whatever the peers
-hold; exit 2 outside a git checkout.
+A worktree is named home-relative (~/...), or by its directory name when it
+sits outside HOME, on every stream. Exit 0 whatever the peers hold; exit 2
+outside a git checkout.
 
 ### `abcd reading`
 
@@ -2310,8 +2361,9 @@ and its hash, so a run is reproducible from the commit it names.
 
 ```
       --dry-run           write nothing; with --out the two artefacts still land in that directory
-      --out string        an empty or absent directory the assembled input and the manifest are written to
-                          (default: the local-tier run directory)
+      --out string        an empty or absent directory the assembled input and the manifest are written to,
+                          for inspection: reading ingest finds a run only in the local-tier run directory,
+                          so a run written here cannot be ingested (default: the local-tier run directory)
       --position string   the reading position: widening, entailment, comparative, detection
                           (comparative derives its candidate set from the record: the one committed
                           widening run at the target whose items carry no disposition and no

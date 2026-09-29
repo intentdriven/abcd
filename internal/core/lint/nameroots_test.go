@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/core/launch"
 )
 
 func nameToken() BannedToken {
@@ -59,9 +61,17 @@ func TestNameRootsCarryTheNamesFamilyOnly(t *testing.T) {
 }
 
 // TestRepoNameRootsCoverThePublicSurface pins this repository's own coverage:
-// the name gate reaches .abcd/**, the root prose files and scripts/ (iss-279).
+// the name gate reaches .abcd/**, the root prose files and scripts/ (iss-279),
+// and every surface the shipped artefact carries, which itd-74's first
+// criterion names as gated (iss-2609261457358637). The shipped surfaces are
+// read from the payload's own include list, through the reader the launch
+// bundler uses, rather than restated here: a hand list covered commands/,
+// agents/ and hooks/ while the payload also ships .claude-plugin/, LICENSE and
+// .gitignore, so a surface added to the payload would have escaped the gate
+// with this test still green.
 func TestRepoNameRootsCoverThePublicSurface(t *testing.T) {
-	data, err := os.ReadFile(filepath.Join("..", "..", "..", ".abcd", "docs-lint.json"))
+	repo := filepath.Join("..", "..", "..")
+	data, err := os.ReadFile(filepath.Join(repo, ".abcd", "docs-lint.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -69,13 +79,38 @@ func TestRepoNameRootsCoverThePublicSurface(t *testing.T) {
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		t.Fatal(err)
 	}
-	have := map[string]bool{}
-	for _, r := range append(append([]string{}, cfg.Roots...), cfg.NameRoots...) {
-		have[r] = true
+	roots := append(append([]string{}, cfg.Roots...), cfg.NameRoots...)
+	covered := func(path string) bool {
+		for _, r := range roots {
+			if path == r || strings.HasPrefix(path, r+"/") {
+				return true
+			}
+		}
+		return false
 	}
 	for _, want := range []string{".abcd", "AGENTS.md", ".github/CONTRIBUTING.md", "scripts", "README.md", "docs"} {
-		if !have[want] {
+		if !covered(want) {
 			t.Errorf("the name gate does not reach %s (roots %q, name_roots %q)", want, cfg.Roots, cfg.NameRoots)
+		}
+	}
+	includes, err := launch.LoadIncludes(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, include := range includes {
+		// A glob include is covered when a root reaches the literal directory
+		// it expands under; one with no literal directory cannot be judged by a
+		// prefix, so it fails here until this test learns to expand it.
+		path := include
+		if i := strings.IndexAny(path, "*?["); i >= 0 {
+			path = strings.TrimRight(path[:strings.LastIndex(path[:i], "/")+1], "/")
+			if path == "" {
+				t.Errorf("the payload include %q has no literal directory to hold a name root to; expand it here", include)
+				continue
+			}
+		}
+		if !covered(path) {
+			t.Errorf("the payload ships %s but the name gate does not reach it (roots %q, name_roots %q)", include, cfg.Roots, cfg.NameRoots)
 		}
 	}
 }

@@ -313,7 +313,7 @@ func peersCheck(repoRoot string, r intent.ReadyResult, session string) (CheckRow
 	// A peer the listing names and cannot read may hold the record; the check
 	// fails closed on it, as it does on an unreadable claim below.
 	for _, p := range rep.Unjudged() {
-		holders = append(holders, peerName(p.Source, p.Branch, p.Path)+" could not be read, so what it holds is unknown ("+fsutil.RedactHome(p.NotRead)+")")
+		holders = append(holders, peerName(p.Source, p.Branch, p.Path)+" could not be read, so what it holds is unknown ("+fsutil.DisplayPathsIn(p.NotRead, p.Path)+")")
 	}
 	if sha := gitutil.RootCommit(repoRoot); gitutil.IsFullSHA(sha) {
 		run, err := implement.Peek(sha)
@@ -348,12 +348,14 @@ func peersCheck(repoRoot string, r intent.ReadyResult, session string) (CheckRow
 	return row, nil
 }
 
-// peerName names a peer for a refusal.
+// peerName names a peer for a refusal, a worktree by fsutil.DisplayPath so one
+// outside HOME is its directory name, not an absolute local path
+// (iss-2609281329007423).
 func peerName(src peers.Source, branch, path string) string {
 	if src != peers.SourceWorktree {
 		return "branch " + branch
 	}
-	who := "the worktree at " + fsutil.RedactHome(path)
+	who := "the worktree at " + fsutil.DisplayPath(path)
 	if branch != "" {
 		who += " (branch " + branch + ")"
 	}

@@ -4,7 +4,9 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
+	"time"
 )
 
 func TestWriteFileAtomicCreatesWithPerm(t *testing.T) {
@@ -400,5 +402,49 @@ func TestProbeRealDirAllRefusesWhatEnsureRealDirAllRefuses(t *testing.T) {
 	}
 	if entries, _ := os.ReadDir(filepath.Join(elsewhere, "c")); len(entries) != 0 {
 		t.Errorf("a walk created %d entr(ies) through the link", len(entries))
+	}
+}
+
+// TestOpenRegularRefusesWhatIsNotARegularFile: the open half of the guarded
+// read, for a caller that reads through the descriptor itself (a ReaderAt
+// consumer such as debug/buildinfo). A regular file opens; a symlinked leaf, a
+// directory and a FIFO with no writer are refused, the FIFO without blocking.
+func TestOpenRegularRefusesWhatIsNotARegularFile(t *testing.T) {
+	dir := t.TempDir()
+	real := filepath.Join(dir, "real")
+	if err := os.WriteFile(real, []byte("hello"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f, fi, err := OpenRegular(real)
+	if err != nil {
+		t.Fatalf("OpenRegular(regular) = %v", err)
+	}
+	if fi.Size() != 5 {
+		t.Errorf("the descriptor's own stat reads %d bytes, want 5", fi.Size())
+	}
+	f.Close()
+	link := filepath.Join(dir, "link")
+	if err := os.Symlink(real, link); err != nil {
+		t.Skipf("cannot symlink: %v", err)
+	}
+	if _, _, err := OpenRegular(link); err == nil {
+		t.Error("OpenRegular followed a symlinked leaf")
+	}
+	if _, _, err := OpenRegular(dir); !errors.Is(err, ErrNotRegular) {
+		t.Errorf("OpenRegular(directory) = %v, want ErrNotRegular", err)
+	}
+	fifo := filepath.Join(dir, "fifo")
+	if err := syscall.Mkfifo(fifo, 0o644); err != nil {
+		t.Skipf("mkfifo unsupported: %v", err)
+	}
+	done := make(chan error, 1)
+	go func() { _, _, err := OpenRegular(fifo); done <- err }()
+	select {
+	case err := <-done:
+		if !errors.Is(err, ErrNotRegular) {
+			t.Errorf("OpenRegular(fifo) = %v, want ErrNotRegular", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("OpenRegular blocked on a FIFO")
 	}
 }

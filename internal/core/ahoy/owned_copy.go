@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"os"
+	"path"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -209,22 +210,38 @@ func writePathEntry(target, shaHex, pluginRoot string) error {
 	if err != nil {
 		return err
 	}
-	path := filepath.Join(home, filepath.FromSlash(pathEntryRel))
 	body := "path=" + target + "\nbinary_sha256=" + shaHex + "\n"
 	if pluginRoot != "" {
 		body += "plugin_root=" + pluginRoot + "\n"
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	// ~/.abcd is created, judged and opened relative to home's descriptor and
+	// the record is written through it, so a link swapped in after
+	// homeScopeErr's check is refused rather than written through
+	// (iss-2609281310017733).
+	dir, err := fsutil.EnsureHomeScope(home, path.Dir(pathEntryRel), 0o755)
+	if err != nil {
 		return err
 	}
-	return fsutil.WriteFileAtomic(path, []byte(body), 0o644)
+	defer dir.Close()
+	return fsutil.WriteFileAtomicInRoot(dir, path.Base(pathEntryRel), []byte(body), 0o644)
 }
 
-// removePathEntry drops the provenance record; absent is fine.
+// removePathEntry drops the provenance record; absent is fine. ~/.abcd is
+// judged and opened relative to home's descriptor and the record is removed
+// through it, so a link swapped in after homeScopeErr's check removes nothing
+// behind the link (iss-2609281310017733). A ~/.abcd that is a symlink, or is
+// not there, leaves nothing to remove.
 func removePathEntry() {
-	if path := userPathEntryPath(); path != "" {
-		_ = os.Remove(path)
+	home, err := homeScopeErr()
+	if err != nil {
+		return
 	}
+	dir, err := fsutil.OpenHomeScope(home, path.Dir(pathEntryRel))
+	if err != nil {
+		return
+	}
+	defer dir.Close()
+	_ = dir.Remove(path.Base(pathEntryRel))
 }
 
 // pathEntryNames reports whether the provenance record names target. It is the

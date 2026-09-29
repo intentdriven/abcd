@@ -7,13 +7,10 @@ package oracle
 // written into the repository or into the harness's settings, and a
 // verification that fails writes nothing at all.
 //
-// Of the three homes a key may live in, this lane builds the one the interim
-// credential source already reads: abcd-only, ~/.abcd/credentials.json at mode
-// 0600. The environment-variable-or-external-tool home and the platform
-// keychain are the credential store's (itd-2609221017023290, planned), which
-// replaces the source's backing and not its interface; asked for either, the
-// setup refuses naming it, before any call and any write. A fourth answer,
-// none, is a local server that takes no key.
+// The key is kept through the credential store's walkthrough
+// (itd-2609221017023290): in one of its three homes, the external setup, the
+// abcd-only file or the platform keychain, verified first with this adapter's
+// own call. A fourth answer, none, is a local server that takes no key.
 
 import (
 	"context"
@@ -21,7 +18,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
+	"path"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/adapter/openaiapi"
@@ -31,25 +28,22 @@ import (
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
-// The homes a provider's key may live in (the intent's Decision 4).
+// The homes a provider's key may live in (the intent's Decision 4): the
+// credential store's three, and none.
 const (
 	// KeyHomeExternal is a setup outside abcd (an environment variable or an
-	// existing tool's configuration); abcd would store only its name.
-	KeyHomeExternal = "external"
+	// existing tool's configuration); abcd stores only where it is.
+	KeyHomeExternal = credential.HomeExternal
 	// KeyHomeABCD is abcd-only: the owner-only ~/.abcd/credentials.json.
-	KeyHomeABCD = "abcd"
+	KeyHomeABCD = credential.HomeABCD
 	// KeyHomeKeychain is the platform keychain.
-	KeyHomeKeychain = "keychain"
+	KeyHomeKeychain = credential.HomeKeychain
 	// KeyHomeNone is a server that takes no key (a local one).
 	KeyHomeNone = "none"
 )
 
 // KeyHomes returns the homes in the order the setup offers them.
-func KeyHomes() []string { return []string{KeyHomeExternal, KeyHomeABCD, KeyHomeKeychain, KeyHomeNone} }
-
-// CredentialStoreIntent is the intent that builds the external and keychain
-// homes, named by every deferral.
-const CredentialStoreIntent = "itd-2609221017023290"
+func KeyHomes() []string { return append(credential.Homes(), KeyHomeNone) }
 
 // ConnectRequest is one provider's setup.
 type ConnectRequest struct {
@@ -65,8 +59,10 @@ type ConnectRequest struct {
 	Home string
 	// KeyName is the credential's name; "" names it after the provider.
 	KeyName string
-	// Key is the value, for the abcd home. It is never echoed.
+	// Key is the value, for the abcd and keychain homes. It is never echoed.
 	Key string
+	// Pointer is where the key is, for the external home.
+	Pointer credential.Pointer
 	// Timeout bounds the verification call; 0 keeps the adapter's default.
 	Timeout time.Duration
 }
@@ -111,48 +107,34 @@ func Connect(ctx context.Context, req ConnectRequest) (ConnectResult, error) {
 			return ConnectResult{}, fmt.Errorf("oracle adapter: provider %s %s", req.Provider, deniedError(m, e))
 		}
 	}
-	if req.Home == KeyHomeABCD {
-		// Refused before the call, so a setup that cannot store its key is
-		// never billed for.
-		stored, err := credential.Machine(req.Roots.Home).Resolve(req.KeyName)
-		switch {
-		case errors.Is(err, credential.ErrNotSet):
-		case err != nil:
-			return ConnectResult{}, err
-		case stored != req.Key:
-			return ConnectResult{}, fmt.Errorf("oracle adapter: %s already holds a different value for %s, and abcd never replaces a stored secret; "+
-				"name another credential with --key, or remove that entry by hand", credential.StorePath, req.KeyName)
-		}
-	}
-
 	var opts []openaiapi.Option
 	if req.Timeout > 0 {
 		opts = append(opts, openaiapi.WithTimeout(req.Timeout))
 	}
-	_, rec, err := complete(ctx, req.Provider, req.BaseURL, req.Key, req.Models[0], verifyBrief,
-		Settings{"max_tokens": json.RawMessage(`16`)}, nil, cfg.denylist, opts...)
-	if err != nil {
-		return ConnectResult{}, fmt.Errorf("%w; the verification call failed, so nothing was written", err)
-	}
-
 	res := ConnectResult{Provider: req.Provider, BaseURL: req.BaseURL, Models: append([]string(nil), req.Models...),
-		KeyHome: req.Home, Verified: rec}
+		KeyHome: req.Home}
+	svc := providerService(Provider{Name: req.Provider, BaseURL: req.BaseURL, Key: req.KeyName, Models: req.Models},
+		cfg.denylist, &res.Verified, opts...)
 	block := map[string]any{"base_url": req.BaseURL, "models": req.Models}
-	if req.Home == KeyHomeABCD {
+	if req.Home == KeyHomeNone {
+		if err := svc.Verify(ctx, ""); err != nil {
+			return ConnectResult{}, fmt.Errorf("%w; the verification call failed, so nothing was written", err)
+		}
+	} else {
+		// The store's walkthrough refuses a key it cannot keep before the
+		// call, so a setup that cannot store its key is never billed for.
+		walked, err := credential.Walk(ctx, req.Roots.Home, svc, credential.Choice{Home: req.Home, Value: req.Key, Pointer: req.Pointer})
+		if err != nil {
+			return ConnectResult{}, fmt.Errorf("oracle adapter: %w", err)
+		}
 		res.KeyName = req.KeyName
 		block["key"] = req.KeyName
-		changed, err := credential.SetMachine(req.Roots.Home, req.KeyName, req.Key)
-		if err != nil {
-			return ConnectResult{}, fmt.Errorf("%w; the connection verified, and nothing was written", err)
-		}
-		if changed {
-			res.Wrote = append(res.Wrote, credential.StorePath)
-		}
+		res.Wrote = append(res.Wrote, walked.Wrote...)
 	}
 	if err := writeProviderBlock(req.Roots.Home, req.Provider, block); err != nil {
 		if len(res.Wrote) > 0 {
-			return ConnectResult{}, fmt.Errorf("%w; the key was stored in %s under %s, and the provider block was not written",
-				err, credential.StorePath, req.KeyName)
+			return ConnectResult{}, fmt.Errorf("%w; the key was stored in the %s home under %s, and the provider block was not written",
+				err, req.Home, req.KeyName)
 		}
 		return ConnectResult{}, err
 	}
@@ -188,16 +170,23 @@ func checkConnect(req *ConnectRequest) error {
 		seen[m] = true
 	}
 	switch req.Home {
-	case KeyHomeExternal, KeyHomeKeychain:
-		return fmt.Errorf("oracle adapter: the %s home is built by the credential store (%s), which is planned and not built; "+
-			"until it lands a key lives in the abcd-only home (%s, owner-only), and nothing was written", req.Home, CredentialStoreIntent, credential.StorePath)
 	case KeyHomeNone:
-		if req.Key != "" {
-			return errors.New("oracle adapter: a key was given for a provider set up with no key; choose the abcd home to store it")
+		if req.Key != "" || req.Pointer != (credential.Pointer{}) {
+			return errors.New("oracle adapter: a key was given for a provider set up with no key; choose a home to keep it")
 		}
 		req.KeyName = ""
 		return nil
-	case KeyHomeABCD:
+	case KeyHomeExternal:
+		if req.Key != "" {
+			return errors.New("oracle adapter: the external home keeps where the key is, never the key, and a key was given")
+		}
+		if req.Pointer == (credential.Pointer{}) {
+			return errors.New("oracle adapter: the external home needs where the key is: an environment variable, or a file and its field")
+		}
+	case KeyHomeABCD, KeyHomeKeychain:
+		if req.Pointer != (credential.Pointer{}) {
+			return fmt.Errorf("oracle adapter: the %s home keeps the key itself, and a pointer was given", req.Home)
+		}
 	default:
 		return fmt.Errorf("oracle adapter: key home %q is not one of external, abcd, keychain, none", layered.BoundKey(req.Home))
 	}
@@ -207,8 +196,11 @@ func checkConnect(req *ConnectRequest) error {
 	if !credential.ValidName(req.KeyName) {
 		return fmt.Errorf("oracle adapter: key name %q is not a plain credential name", layered.BoundKey(req.KeyName))
 	}
+	if req.Home == KeyHomeExternal {
+		return nil
+	}
 	if req.Key == "" {
-		return errors.New("oracle adapter: the abcd home stores a key, and none was given")
+		return fmt.Errorf("oracle adapter: the %s home stores a key, and none was given", req.Home)
 	}
 	// The store's own value check, before the call rather than after it.
 	return credential.CheckValue(req.Key)
@@ -223,7 +215,7 @@ var configLockTimeout = 5 * time.Second
 
 // writeProviderBlock sets oracle.api.<name> in ~/.abcd/config.json, keeping
 // every other key, written atomically at mode 0600. The file is read, changed
-// and renamed into place under its lock (fsutil.WithFileLock), so concurrent
+// and renamed into place under its lock (fsutil.WithFileLockIn), so concurrent
 // setups never lose each other's blocks, and a block another setup wrote
 // after this one's check is refused rather than replaced.
 func writeProviderBlock(home, name string, block map[string]any) error {
@@ -232,15 +224,20 @@ func writeProviderBlock(home, name string, block map[string]any) error {
 	// The machine layer refuses a file behind a symlinked ~/.abcd, so a block
 	// written through the link would land wherever it points (a dotfiles
 	// checkout) and never be read back.
-	if err := fsutil.HomeScopeLink(home, rel); err != nil {
+	// ~/.abcd is created, judged and opened in one walk relative to home's
+	// descriptor, and the lock and the file are reached through it, so a link
+	// swapped in after the judgement is refused rather than written through
+	// (iss-2609281310017733).
+	dir, err := fsutil.EnsureHomeScope(home, path.Dir(rel), 0o700)
+	if errors.Is(err, fsutil.ErrHomeScopeSymlinked) {
 		return fmt.Errorf("oracle adapter: the provider block was not written to %s: %v", origin, err)
 	}
-	p := filepath.Join(home, filepath.FromSlash(rel))
-	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+	if err != nil {
 		return fmt.Errorf("oracle adapter: ~/.abcd could not be created, so the provider block was not written")
 	}
-	err := fsutil.WithFileLock(filepath.Join(filepath.Dir(p), configLockFileName), configLockTimeout, func() error {
-		return writeProviderBlockLocked(home, name, block)
+	defer dir.Close()
+	err = fsutil.WithFileLockIn(dir, configLockFileName, configLockTimeout, func() error {
+		return writeProviderBlockLocked(home, dir, name, block)
 	})
 	switch {
 	case errors.Is(err, fsutil.ErrLockContention):
@@ -255,10 +252,9 @@ func writeProviderBlock(home, name string, block map[string]any) error {
 
 // writeProviderBlockLocked is writeProviderBlock's read, change and write,
 // run under the file's lock.
-func writeProviderBlockLocked(home, name string, block map[string]any) error {
+func writeProviderBlockLocked(home string, dir *os.Root, name string, block map[string]any) error {
 	origin := layered.Config.MachineOrigin()
 	rel := ".abcd/" + layered.Config.MachineRel
-	p := filepath.Join(home, filepath.FromSlash(rel))
 	root := map[string]json.RawMessage{}
 	raw, refusal, err := fsutil.ReadHomeDeclaration(home, rel, layered.MaxFileBytes)
 	switch {
@@ -308,7 +304,7 @@ func writeProviderBlockLocked(home, name string, block map[string]any) error {
 	if err != nil {
 		return err
 	}
-	if err := fsutil.WriteFileAtomic(p, append(body, '\n'), 0o600); err != nil {
+	if err := fsutil.WriteFileAtomicInRoot(dir, path.Base(rel), append(body, '\n'), 0o600); err != nil {
 		return fmt.Errorf("oracle adapter: %s could not be written, so the provider block was not written", origin)
 	}
 	return nil
@@ -324,10 +320,44 @@ const AdapterExplanation = "An aggregator (OpenRouter, for one) serves many vend
 	"every delegated step runs on the host."
 
 // KeyHomesProse is the prose above the choice of the key's home (criterion 8):
-// the keychain is recommended here, in the prose, and never as a marked option.
-const KeyHomesProse = "Where the key lives is your choice of three. The platform keychain is the safest home, " +
-	"because the secret stays in the operating system's own store rather than in a file. A setup outside abcd " +
-	"keeps it with a tool you already use, and abcd stores only its name. The abcd-only home keeps it in " +
-	"~/.abcd/credentials.json, readable by you alone. This version stores a key in the abcd-only home; the other " +
-	"two arrive with the credential store (" + CredentialStoreIntent + "). The key never enters the harness's " +
-	"settings or the repository."
+// the credential store's, which recommends the keychain in the prose and never
+// as a marked option.
+const KeyHomesProse = credential.HomesProse
+
+// providerService is the credential walkthrough's service for a provider's
+// key: what it unlocks, what works without it, and the adapter's own
+// verification call, one short exchange with the first model listed. The
+// call's record is written to rec when rec is non-nil.
+func providerService(p Provider, denylist []DenyEntry, rec *CallRecord, opts ...openaiapi.Option) credential.Service {
+	return credential.Service{
+		Name:      p.Key,
+		Unlocks:   "calls to the model provider " + p.Name + " at " + p.BaseURL + ", for the models its allowlist names",
+		WithoutIt: "everything: every delegated step runs on the host",
+		Verify: func(ctx context.Context, key string) error {
+			_, r, err := complete(ctx, p.Name, p.BaseURL, key, p.Models[0], verifyBrief,
+				Settings{"max_tokens": json.RawMessage(`16`)}, nil, denylist, opts...)
+			r.Credential = p.Key
+			if rec != nil {
+				*rec = r
+			}
+			return err
+		},
+	}
+}
+
+// CredentialService is the walkthrough's service for the credential name, when
+// a configured provider names it as its key: the walkthrough then verifies a
+// key with that provider's own call. A name no provider names is not the
+// adapter's.
+func CredentialService(roots layered.Roots, name string) (credential.Service, bool, error) {
+	cfg, err := LoadAPI(roots)
+	if err != nil {
+		return credential.Service{}, false, err
+	}
+	for _, p := range cfg.Providers() {
+		if p.Key == name && len(p.Models) > 0 {
+			return providerService(p, cfg.denylist, nil), true, nil
+		}
+	}
+	return credential.Service{}, false, nil
+}

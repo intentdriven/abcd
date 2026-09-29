@@ -15,6 +15,9 @@
 // the transcript store all call them rather than each carrying the sequence
 // (iss-2609091128479544).
 //
+// Every flush to stable storage goes through Flush, the one place a test binary
+// that opted in with SkipFlushEnv skips it; a shipped binary always flushes.
+//
 // An append-only log has its own primitive, AppendLineIn: one line, one
 // O_APPEND write, so concurrent writers land whole lines (the lifeboat voyage
 // ledger and the implement run log both write through it).
@@ -30,6 +33,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path"
@@ -59,22 +63,40 @@ func ReadGuarded(path string, limit int64) ([]byte, error) {
 	return readGuarded(path, limit, nil)
 }
 
+// OpenRegular is the open half of ReadGuarded, for a caller that reads through
+// the descriptor itself rather than taking the whole file into memory (a
+// ReaderAt consumer such as debug/buildinfo over a binary). It opens path once,
+// read-only, with O_NOFOLLOW and O_NONBLOCK, and judges the SAME descriptor with
+// fstat: a symlinked leaf fails the open (ELOOP, returned raw), and anything but
+// a regular file — a FIFO swapped in after the caller's lstat included — is
+// closed and refused with ErrNotRegular instead of blocking. The FileInfo
+// returned is the descriptor's own; the caller closes the file.
+func OpenRegular(path string) (*os.File, os.FileInfo, error) {
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return nil, nil, err
+	}
+	fi, err := f.Stat()
+	if err != nil {
+		f.Close()
+		return nil, nil, err
+	}
+	if !fi.Mode().IsRegular() {
+		f.Close()
+		return nil, nil, ErrNotRegular
+	}
+	return f, fi, nil
+}
+
 // readGuarded is ReadGuarded, and when vetted is non-nil it also confirms on
 // the opened descriptor that the file is the one vetted describes (os.SameFile),
 // refusing a replacement with ErrDeclarationSwapped.
 func readGuarded(path string, limit int64, vetted os.FileInfo) ([]byte, error) {
-	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+	f, fi, err := OpenRegular(path)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
-	fi, err := f.Stat()
-	if err != nil {
-		return nil, err
-	}
-	if !fi.Mode().IsRegular() {
-		return nil, ErrNotRegular
-	}
 	if vetted != nil && !os.SameFile(vetted, fi) {
 		return nil, ErrDeclarationSwapped
 	}
@@ -119,6 +141,10 @@ const (
 	// DeclarationBehindSymlink: the file is there, but a directory between the
 	// home and it (~/.abcd first) is a symlink (ReadHomeDeclaration only).
 	DeclarationBehindSymlink
+	// DeclarationExposed: the opened file's mode carries a permission bit its
+	// reader denies — a secret group or other can read
+	// (ReadHomeDeclarationDenying only). The error is a *DeclarationModeError.
+	DeclarationExposed
 )
 
 // ErrDeclarationWritable and ErrDeclarationForeignOwner are the two guards that
@@ -132,6 +158,18 @@ var (
 	// (replaced between the vetting lstat and the open).
 	ErrDeclarationSwapped = errors.New("fsutil: declaration was replaced between its vetting and its read")
 )
+
+// DeclarationModeError is the error of a DeclarationExposed refusal: Perm is
+// the permission bits of the file that was opened, judged on its own
+// descriptor, so a caller can name the mode it refused and the chmod that
+// repairs it.
+type DeclarationModeError struct {
+	Perm os.FileMode
+}
+
+func (e *DeclarationModeError) Error() string {
+	return fmt.Sprintf("fsutil: declaration's mode %04o carries a permission bit its reader refuses", uint32(e.Perm))
+}
 
 // ownerUID is the package's own view of OwnerUID, held as a var for the same
 // reason caseFoldingFS is: the foreign-owner branch cannot be provoked on a host
@@ -154,8 +192,27 @@ func SwapOwnerUIDForTest(fn func(string) (uint32, error)) (restore func()) {
 // declarationVetted runs between ReadDeclaration's vetting lstat and its open.
 // It does nothing in production; it is a var so a detector can rename a
 // different file into place inside that window, which a real race cannot be
-// relied on to hit, and so prove the read refuses what it did not vet.
+// relied on to hit, and so prove the read refuses what it did not vet and
+// re-vets what replaced it.
 var declarationVetted = func(string) {}
+
+// inRootVetted is declarationVetted for ReadGuardedInRoot: it runs between the
+// vetting lstat and the open, does nothing in production, and exists for the
+// same detectors.
+var inRootVetted = func(*os.Root, string) {}
+
+// declarationAttempts bounds how many times ReadDeclaration and
+// ReadGuardedInRoot vet a path whose file was replaced between the vetting and
+// the open before they refuse it. A replacement is not refused on sight
+// because the ordinary one is benign: another abcd process of the same user
+// rewriting the file through WriteFileAtomic, a temp file renamed over it,
+// which lands inside that window often enough on a loaded machine to make one
+// of two concurrent abcd processes refuse its own configuration
+// (iss-2609290518278152). Each attempt judges the file then at the path from
+// scratch, so a replacement that fails a guard is refused by that guard; the
+// bound only stops a replacement that never settles from holding the read
+// forever, and one that outlasts it is still refused, as the swap it is.
+const declarationAttempts = 8
 
 // ReadDeclaration is the guarded read for a HOME-SCOPED DECLARATION FILE — a
 // record in the caller's own home that re-admits something abcd would otherwise
@@ -181,34 +238,50 @@ var declarationVetted = func(string) {}
 // is judged as itself rather than through its target; the read then re-opens
 // with O_NOFOLLOW, re-validates on its own descriptor, and confirms with
 // os.SameFile that the descriptor is the file the lstat vetted, so the
-// lstat→open window can promote neither a swapped-in symlink nor a swapped-in
-// regular file into a read (a replacement is DeclarationUnreadable with
-// ErrDeclarationSwapped).
+// lstat→open window can promote no file into a read that the guards did not
+// judge. The bytes returned are always those of a descriptor that is the very
+// file an Lstat passed through every guard.
+//
+// A file renamed into place inside that window is not read and not refused on
+// sight: the whole judgement runs again on whatever the path names now, up to
+// declarationAttempts times. A same-owner, owner-only-writable regular file —
+// the rewrite a concurrent abcd makes through WriteFileAtomic — passes and is
+// read; a symlink, FIFO, device or directory, a file writable by group or
+// other, and a file another uid owns are each refused by the guard that judges
+// them, exactly as they would be had they been there before the first Lstat. A
+// replacement still unsettled after the last attempt is DeclarationUnreadable
+// with ErrDeclarationSwapped.
 //
 // The returned error is ALWAYS non-nil when the refusal is not DeclarationOK, so
 // a caller that inspects only the error still fails closed. Callers that need to
 // say WHICH guard refused — and to keep "absent" silent while reporting
 // "unreadable" — switch on the refusal instead.
 func ReadDeclaration(path string, limit int64) ([]byte, DeclarationRefusal, error) {
-	fi, err := os.Lstat(path)
-	if err != nil {
-		return nil, DeclarationAbsent, err
-	}
-	if !fi.Mode().IsRegular() {
-		return nil, DeclarationNotRegular, ErrNotRegular
-	}
-	if err := CallersAlone(path, fi); err != nil {
-		if errors.Is(err, ErrDeclarationWritable) {
-			return nil, DeclarationWritableByOthers, err
+	for attempt := 1; ; attempt++ {
+		fi, err := os.Lstat(path)
+		if err != nil {
+			return nil, DeclarationAbsent, err
 		}
-		return nil, DeclarationForeignOwner, err
+		if !fi.Mode().IsRegular() {
+			return nil, DeclarationNotRegular, ErrNotRegular
+		}
+		if err := CallersAlone(path, fi); err != nil {
+			if errors.Is(err, ErrDeclarationWritable) {
+				return nil, DeclarationWritableByOthers, err
+			}
+			return nil, DeclarationForeignOwner, err
+		}
+		declarationVetted(path)
+		raw, err := readGuarded(path, limit, fi)
+		if errors.Is(err, ErrDeclarationSwapped) && attempt < declarationAttempts {
+			// Replaced after the vetting: judge the replacement from scratch.
+			continue
+		}
+		if err != nil {
+			return nil, DeclarationUnreadable, err
+		}
+		return raw, DeclarationOK, nil
 	}
-	declarationVetted(path)
-	raw, err := readGuarded(path, limit, fi)
-	if err != nil {
-		return nil, DeclarationUnreadable, err
-	}
-	return raw, DeclarationOK, nil
 }
 
 // CallersAlone is the half of ReadDeclaration's judgement that makes a path the
@@ -246,7 +319,10 @@ func CallersAlone(path string, fi os.FileInfo) error {
 //
 // It keeps every guarantee ReadGuarded gives at the leaf: a symlinked leaf is
 // refused (lstat, never followed), the descriptor is confirmed to be the very
-// file that was vetted (os.SameFile closes the lstat→open swap), a non-regular
+// file that was vetted (os.SameFile closes the lstat→open swap; a replacement
+// is vetted again from scratch, up to declarationAttempts times, so the benign
+// rewrite a concurrent WriteFileAtomicInRoot makes is read and anything that
+// is not a regular file is still refused), a non-regular
 // leaf returns ErrNotRegular, O_NONBLOCK stops a FIFO or device blocking the
 // open, and the caller's byte cap is enforced against both the fstat size and
 // the bytes actually read.
@@ -256,6 +332,27 @@ func CallersAlone(path string, fi os.FileInfo) error {
 // a caller skipping absent files fails closed on the escape rather than treating
 // it as "the file is not there".
 func ReadGuardedInRoot(root *os.Root, rel string, limit int64) ([]byte, error) {
+	for attempt := 1; ; attempt++ {
+		data, err := readGuardedInRootOnce(root, rel, limit)
+		if errors.Is(err, errReplacedInRoot) {
+			if attempt < declarationAttempts {
+				// Replaced after the vetting: judge the replacement from scratch.
+				continue
+			}
+			return nil, ErrNotRegular
+		}
+		return data, err
+	}
+}
+
+// errReplacedInRoot is readGuardedInRootOnce's word for a descriptor that is
+// not the file its lstat vetted. It never leaves the package: ReadGuardedInRoot
+// re-vets on it and, once declarationAttempts is spent, refuses with
+// ErrNotRegular, the sentinel its callers already refuse on.
+var errReplacedInRoot = errors.New("fsutil: file was replaced between its vetting and its read")
+
+// readGuardedInRootOnce is one vetting and one read of ReadGuardedInRoot.
+func readGuardedInRootOnce(root *os.Root, rel string, limit int64) ([]byte, error) {
 	fi, err := root.Lstat(rel)
 	if err != nil {
 		return nil, err
@@ -266,6 +363,7 @@ func ReadGuardedInRoot(root *os.Root, rel string, limit int64) ([]byte, error) {
 	if !fi.Mode().IsRegular() {
 		return nil, ErrNotRegular
 	}
+	inRootVetted(root, rel)
 	f, err := root.OpenFile(rel, os.O_RDONLY|syscall.O_NONBLOCK, 0)
 	if err != nil {
 		return nil, err
@@ -281,8 +379,8 @@ func ReadGuardedInRoot(root *os.Root, rel string, limit int64) ([]byte, error) {
 	if !os.SameFile(fi, st) {
 		// Swapped between the lstat and the open. os.Root already stops the
 		// swap escaping the root, but the descriptor is no longer the file that
-		// was vetted, so it is refused rather than read.
-		return nil, ErrNotRegular
+		// was vetted, so it is not read; the caller vets what replaced it.
+		return nil, errReplacedInRoot
 	}
 	if st.Size() > limit {
 		return nil, ErrTooBig
@@ -331,7 +429,7 @@ func WriteFileAtomic(path string, data []byte, perm os.FileMode) error {
 		os.Remove(tmpName)
 		return err
 	}
-	if err := tmp.Sync(); err != nil {
+	if err := Flush(tmp); err != nil {
 		tmp.Close()
 		os.Remove(tmpName)
 		return err
@@ -401,7 +499,7 @@ func WriteFileAtomicInRoot(root *os.Root, rel string, data []byte, perm os.FileM
 	if err := tmp.Chmod(perm); err != nil {
 		return abandon(err)
 	}
-	if err := tmp.Sync(); err != nil {
+	if err := Flush(tmp); err != nil {
 		return abandon(err)
 	}
 	if err := tmp.Close(); err != nil {
@@ -469,7 +567,7 @@ func syncDirInRoot(root *os.Root, dir string) {
 	if err != nil {
 		return
 	}
-	_ = d.Sync()
+	_ = Flush(d)
 	_ = d.Close()
 }
 
@@ -480,7 +578,7 @@ func syncParent(dir string) {
 	if err != nil {
 		return
 	}
-	_ = d.Sync()
+	_ = Flush(d)
 	_ = d.Close()
 }
 
@@ -627,7 +725,7 @@ func CreateExclusiveIn(root *os.Root, rel string, data []byte, perm os.FileMode)
 		_ = root.Remove(rel)
 		return err
 	}
-	if err := f.Sync(); err != nil {
+	if err := Flush(f); err != nil {
 		f.Close()
 		_ = root.Remove(rel)
 		return err
@@ -643,7 +741,7 @@ func CreateExclusiveIn(root *os.Root, rel string, data []byte, perm os.FileMode)
 	// the exact state such a caller's rollback exists to prevent. Best-effort:
 	// some filesystems refuse a directory fsync.
 	if d, err := root.Open(path.Dir(rel)); err == nil {
-		_ = d.Sync()
+		_ = Flush(d)
 		_ = d.Close()
 	}
 	return nil

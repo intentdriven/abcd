@@ -81,7 +81,8 @@ var examples = map[string]string{
 	"abcd lab record":    "abcd lab record lab-260901000000-0123abc bare-status",
 	"abcd lab sweep":     "abcd lab sweep lab-260901000000-0123abc",
 
-	"abcd launch archive": "abcd launch archive --out dist",
+	"abcd launch archive":   "abcd launch archive --out dist",
+	"abcd launch manifests": "abcd launch manifests --tree public",
 
 	"abcd memory ask":    `abcd memory ask "why do record ids carry a timestamp?"`,
 	"abcd memory ingest": "abcd memory ingest https://example.com/paper.pdf",

@@ -32,6 +32,10 @@ func TestRecordSchemaAgreesWithTheLedgerReader(t *testing.T) {
 		{"quoted schema_version", "schema_version: 1\n", "schema_version: \"1\"\n", true},
 		{"schema_version with a trailing comment", "schema_version: 1\n", "schema_version: 1 # v1\n", false},
 		{"found_during as a list", "found_during: t\n", "found_during: [a]\n", true},
+		// A block closed only by a mid-file ZWNBSP rule is never closed to the
+		// reader, and the gate reads the block on the same delimiter rule
+		// (iss-2608270908348042).
+		{"closed only by a mid-file ZWNBSP rule", "found_during: t\n---\n", "found_during: t\n\ufeff---\n", true},
 		{"the valid record itself", good, good, false},
 	}
 	for _, c := range cases {
@@ -62,6 +66,36 @@ func TestRecordSchemaAgreesWithTheLedgerReader(t *testing.T) {
 			got := findingWith(fs, rel, ruleRecordSchema, "")
 			if got != c.refused {
 				t.Fatalf("reader refuses=%v, gate reports=%v: %+v", c.refused, got, fs)
+			}
+		})
+	}
+}
+
+// TestRecordSchemaRefusesAnIssueBlockSequenceAsTheReaderDoes is the
+// block-sequence remainder of #357 (iss-2608270655499478). A list written as an
+// indented block sequence is legitimate in the intent and ADR stores, whose
+// readers take it, and refused by the issue ledger's reader, so the refusal is
+// store-scoped: the gate asks capture's reader itself about an issue record and
+// names the refusal, rather than rejecting the spelling everywhere. The
+// referenced record exists, so no other leg speaks for the reader here.
+func TestRecordSchemaRefusesAnIssueBlockSequenceAsTheReaderDoes(t *testing.T) {
+	for _, add := range []string{"related_issues:\n  - iss-6\n", "blocked_by:\n  - iss-6\n"} {
+		t.Run(strings.SplitN(add, ":", 2)[0], func(t *testing.T) {
+			root := t.TempDir()
+			seedRecRoot(t, root)
+			writeFile(t, root, filepath.Join("work", "issues", "open", "iss-6-b-slug.md"), validIssue("iss-6", "b-slug"))
+			rel := filepath.Join("work", "issues", "open", "iss-5-a-slug.md")
+			content := strings.Replace(validIssue("iss-5", "a-slug"), "severity: minor\n", "severity: minor\n"+add, 1)
+			if issueReadRefusal == nil || issueReadRefusal(content, "open", rel) == nil {
+				t.Fatal("fixture expectation is wrong: the ledger reader must refuse a block sequence")
+			}
+			writeFile(t, root, rel, content)
+			fs, err := Lint(schemaConfig(), root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !findingWith(fs, rel, ruleRecordSchema, "ledger reader refuses") {
+				t.Fatalf("the gate does not name the reader's refusal of a block sequence: %+v", fs)
 			}
 		})
 	}

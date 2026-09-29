@@ -392,4 +392,10 @@ func TestWithDescriptionRewritesOnlyTheDescription(t *testing.T) {
 	if _, err := withDescription("# x\n", "S: Writes nothing; refuses y."); err == nil {
 		t.Fatal("a page with no frontmatter was rewritten instead of refused")
 	}
+	// The block is read on frontmatter.Close's terms, the reader's: a leading
+	// `---` that nothing closes is no frontmatter, so the description line under
+	// it is body prose and is not rewritten.
+	if _, err := withDescription("---\ndescription: Old words.\n\n# x\n", "S: Writes nothing; refuses y."); err == nil {
+		t.Fatal("a page whose frontmatter is never closed was rewritten instead of refused")
+	}
 }

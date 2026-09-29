@@ -49,7 +49,7 @@ func TestConnectVerifiesThenWritesTheBlockAndTheKey(t *testing.T) {
 	if p.auth.Load() != "Bearer "+callKey {
 		t.Fatal("the verification call did not carry the key")
 	}
-	want := CallRecord{Provider: "openrouter", ModelAsked: "typesafe/jev-1.13", ModelReported: "typesafe/jev-1.13-20260915"}
+	want := CallRecord{Provider: "openrouter", ModelAsked: "typesafe/jev-1.13", ModelReported: "typesafe/jev-1.13-20260915", Credential: "openrouter"}
 	if res.Verified != want || res.KeyName != "openrouter" || res.KeyHome != KeyHomeABCD {
 		t.Fatalf("result = %+v", res)
 	}
@@ -120,25 +120,61 @@ func TestConnectWritesNothingWhenVerificationFails(t *testing.T) {
 	}
 }
 
-// TestConnectDefersTheOtherHomes: the environment-variable and keychain homes
-// are the credential store's (itd-2609221017023290); asked for, they are
-// refused naming it, before any call and any write.
-func TestConnectDefersTheOtherHomes(t *testing.T) {
-	for _, home := range []string{KeyHomeExternal, KeyHomeKeychain} {
-		p := newProvFake(t, 200, chat("m", "ok"))
-		f := newFx(t)
-		req := connectReq(f, p.base())
-		req.Home = home
-		_, err := Connect(context.Background(), req)
-		if err == nil || !strings.Contains(err.Error(), "itd-2609221017023290") {
-			t.Fatalf("%s: err = %v, want the deferral named", home, err)
+// TestConnectKeepsAKeyInTheExternalHome: the external home stores where the
+// key is, never the key, verifies with the key it points at, and the provider
+// then resolves it through the store by name (itd-2609221017023290).
+func TestConnectKeepsAKeyInTheExternalHome(t *testing.T) {
+	p := newProvFake(t, 200, chat("typesafe/jev-1.13-20260915", "ok"))
+	f := newFx(t)
+	t.Setenv("ABCD_TEST_PROVIDER_KEY", callKey)
+	req := connectReq(f, p.base())
+	req.Home, req.Key = KeyHomeExternal, ""
+	req.Pointer = credential.Pointer{Env: "ABCD_TEST_PROVIDER_KEY"}
+	res, err := Connect(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+	if p.auth.Load() != "Bearer "+callKey {
+		t.Fatal("the verification call did not carry the key the pointer names")
+	}
+	if res.KeyHome != KeyHomeExternal || res.KeyName != "openrouter" || res.Verified.Credential != "openrouter" {
+		t.Fatalf("result = %+v", res)
+	}
+	if !reflect.DeepEqual(res.Wrote, []string{credential.IndexPath, "~/.abcd/config.json"}) {
+		t.Fatalf("wrote = %v", res.Wrote)
+	}
+	if _, err := os.Lstat(machineFile(f, credential.StoreFileName)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("the external home wrote the abcd-only store")
+	}
+	for _, name := range []string{"config.json", credential.IndexFileName} {
+		raw, _ := os.ReadFile(machineFile(f, name))
+		if strings.Contains(string(raw), callKey) {
+			t.Fatalf("%s carries the key", name)
 		}
-		if p.calls.Load() != 0 {
-			t.Fatalf("%s: a call was made", home)
-		}
-		if _, statErr := os.Lstat(filepath.Join(f.roots.Home, ".abcd")); !errors.Is(statErr, os.ErrNotExist) {
-			t.Fatalf("%s: something was written", home)
-		}
+	}
+	if v, err := credential.Store(f.roots.Home).Resolve("openrouter"); err != nil || v != callKey {
+		t.Fatal("the key does not resolve through the store after the setup")
+	}
+}
+
+// TestConnectRefusesAPointerAtNothing: an external pointer that resolves to
+// nothing is refused before any call and names the walkthrough.
+func TestConnectRefusesAPointerAtNothing(t *testing.T) {
+	p := newProvFake(t, 200, chat("m", "ok"))
+	f := newFx(t)
+	t.Setenv("ABCD_TEST_PROVIDER_KEY", "")
+	req := connectReq(f, p.base())
+	req.Home, req.Key = KeyHomeExternal, ""
+	req.Pointer = credential.Pointer{Env: "ABCD_TEST_PROVIDER_KEY"}
+	_, err := Connect(context.Background(), req)
+	if err == nil || !errors.Is(err, credential.ErrNotSet) {
+		t.Fatalf("err = %v, want not set", err)
+	}
+	if p.calls.Load() != 0 {
+		t.Fatal("a call was made")
+	}
+	if _, statErr := os.Lstat(filepath.Join(f.roots.Home, ".abcd")); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatal("something was written")
 	}
 }
 
@@ -154,6 +190,9 @@ func TestConnectRefusesBeforeAnyCall(t *testing.T) {
 		"bad provider name":   func(r *ConnectRequest) { r.Provider = "Open Router" },
 		"plain http":          func(r *ConnectRequest) { r.BaseURL = "http://api.example.com/v1" },
 		"abcd home no key":    func(r *ConnectRequest) { r.Key = "" },
+		"keychain no key":     func(r *ConnectRequest) { r.Home, r.Key = KeyHomeKeychain, "" },
+		"external with a key": func(r *ConnectRequest) { r.Home = KeyHomeExternal },
+		"external no pointer": func(r *ConnectRequest) { r.Home, r.Key = KeyHomeExternal, "" },
 		"none home with key":  func(r *ConnectRequest) { r.Home = KeyHomeNone },
 		"unknown home":        func(r *ConnectRequest) { r.Home = "vault" },
 		"bad key name":        func(r *ConnectRequest) { r.KeyName = "../x" },

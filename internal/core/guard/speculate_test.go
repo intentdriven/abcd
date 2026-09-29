@@ -260,11 +260,12 @@ func TestSpeculationTruncationWarnsRatherThanSkipping(t *testing.T) {
 }
 
 // TestSpeculationRespectsAfterCD keeps the fail-safe from inventing a hazard that
-// the registry only names in context. `rm -rf *` is a blocker only after a `cd`,
-// because that is the shape that eats a working tree when the cd fails; without
-// the guard clause a speculative match would fire on every `rm -rf *`.
+// the registry only names in context. A recursive delete of a named directory
+// is a blocker only after a `cd`, because that is the shape that eats a working
+// tree when the cd fails; without the guard clause a speculative match would
+// fire on every `rm -rf build`.
 func TestSpeculationRespectsAfterCD(t *testing.T) {
-	if d := verdictOf(t, "myrunner rm -rf *"); d.Verdict != VerdictAllow {
+	if d := verdictOf(t, "myrunner rm -rf build"); d.Verdict != VerdictAllow {
 		t.Errorf("verdict = %q, want %q: the after_cd condition was dropped, so an ordinary rm now warns",
 			d.Verdict, VerdictAllow)
 	}

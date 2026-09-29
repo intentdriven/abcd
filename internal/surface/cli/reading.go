@@ -80,8 +80,7 @@ func newReadingCommand(asJSON *bool) *cobra.Command {
 			"that file, reviewed and inside the dirty gate; the manifest records the entry applied\n" +
 			"and its hash, so a run is reproducible from the commit it names.",
 		Example: "  abcd reading assemble --position widening --target HEAD --dry-run\n" +
-			"  abcd reading assemble --position entailment --target HEAD \\\n" +
-			"    --out .abcd/.work.local/scratch/reading-runs/manual --json",
+			"  abcd reading assemble --position entailment --target HEAD --json",
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) > 0 {
 				return &exitError{Code: 2, Msg: "reading assemble: this verb takes no positional argument; " +
@@ -180,8 +179,9 @@ func newReadingCommand(asJSON *bool) *cobra.Command {
 	assembleCmd.Flags().StringVar(&target, "target", "",
 		"the commit the assembly describes: HEAD, or a hexadecimal sha of 7 to 40 digits")
 	assembleCmd.Flags().StringVar(&outDir, "out", "",
-		"an empty or absent directory the assembled input and the manifest are written to\n"+
-			"(default: the local-tier run directory)")
+		"an empty or absent directory the assembled input and the manifest are written to,\n"+
+			"for inspection: reading ingest finds a run only in the local-tier run directory,\n"+
+			"so a run written here cannot be ingested (default: the local-tier run directory)")
 	assembleCmd.Flags().BoolVar(&dryRun, "dry-run", false,
 		"write nothing; with --out the two artefacts still land in that directory")
 
@@ -434,6 +434,11 @@ func renderAssembleResult(w io.Writer, res reading.AssembleResult) {
 	}
 	fmt.Fprintf(w, "  written:       %s and %s in %s\n",
 		reading.BundleFileName, reading.ManifestFileName, res.OutDir)
+	if !res.Ingestable {
+		fmt.Fprintf(w, "  ingest:        this run cannot be ingested; reading ingest finds a run only "+
+			"under %s/<run-id>, so this copy is for inspection. Assemble without --out to park "+
+			"a run the ingest can prove\n", reading.DefaultRunDir)
+	}
 }
 
 // renderPreset writes the committed entry this run applied.

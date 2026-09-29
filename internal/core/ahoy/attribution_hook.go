@@ -171,22 +171,34 @@ func (a *applyCtx) stepAttributionHook() {
 // as every written path does: the error names the config's absolute path, and
 // a receipt a user pastes into an issue must name neither the repo nor the
 // home directory.
+//
+// The read, the change and the write hold the file's lock (withConfigLock), so
+// a key another abcd wrote between them is not erased (iss-127).
 func (a *applyCtx) recordAttributionOptIn() {
-	cfgMap, err := readConfig(a.cwd)
+	wrote := false
+	err := withConfigLock(a.cwd, func() error {
+		cfgMap, err := readConfig(a.cwd)
+		if err != nil {
+			return err
+		}
+		if cfgMap == nil {
+			cfgMap = map[string]any{}
+		}
+		if v, ok := boolVal(subMap(cfgMap, "attribution"), "hook"); ok && v {
+			return nil // already recorded: writing it again would be a diff with no change in it
+		}
+		setSub(cfgMap, "attribution", "hook", true)
+		if err := writeConfig(a.cwd, cfgMap); err != nil {
+			return err
+		}
+		wrote = true
+		return nil
+	})
 	if err != nil {
 		a.changes = append(a.changes, receiptPath(a.cwd, "attribution opt-in not persisted ("+err.Error()+")"))
 		return
 	}
-	if cfgMap == nil {
-		cfgMap = map[string]any{}
+	if wrote {
+		a.note(writeSettings, configPath(a.cwd))
 	}
-	if v, ok := boolVal(subMap(cfgMap, "attribution"), "hook"); ok && v {
-		return // already recorded: writing it again would be a diff with no change in it
-	}
-	setSub(cfgMap, "attribution", "hook", true)
-	if err := writeConfig(a.cwd, cfgMap); err != nil {
-		a.changes = append(a.changes, receiptPath(a.cwd, "attribution opt-in not persisted ("+err.Error()+")"))
-		return
-	}
-	a.note(writeSettings, configPath(a.cwd))
 }

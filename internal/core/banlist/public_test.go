@@ -13,6 +13,31 @@ import (
 	"github.com/intentdriven/abcd/internal/core/lint"
 )
 
+// nameRootFixtures names one file per name_roots entry of cfg, and per
+// extra_roots entry of any banned token (the role ban's, itd-2609212137129937),
+// the entry itself when this repository holds it as a file and a README under it
+// when it holds a directory, so a fixture tree resolves every root the real
+// config declares without a second list to keep in step with it.
+func nameRootFixtures(t *testing.T, cfg lint.Config) []string {
+	t.Helper()
+	var out []string
+	roots := append([]string(nil), cfg.NameRoots...)
+	for _, bt := range cfg.BannedTokens {
+		roots = append(roots, bt.ExtraRoots...)
+	}
+	for _, r := range roots {
+		st, err := os.Stat(filepath.Join("..", "..", "..", filepath.FromSlash(r)))
+		if err != nil {
+			t.Fatalf("configured root %q does not resolve in this repository: %v", r, err)
+		}
+		if st.IsDir() {
+			r += "/README.md"
+		}
+		out = append(out, r)
+	}
+	return out
+}
+
 // realConfig copies this repo's own committed docs-lint config into a temp repo.
 // Editing the REAL file's bytes is the point of these tests: a surgical editor
 // proven only against a synthetic two-entry fixture is not proven at all.
@@ -135,8 +160,7 @@ func TestAddPublicEntryGatesUserFacingContent(t *testing.T) {
 	write("README.md", "# readme\n")
 	// Its name_roots must resolve too (iss-279), and the role ban's extra_roots
 	// (itd-2609212137129937).
-	for _, r := range []string{".abcd/README.md", "AGENTS.md", ".github/CONTRIBUTING.md", "scripts/README.md",
-		"commands/README.md", ".abcd/rules.json", "internal/core/rules/defaults/rules.json"} {
+	for _, r := range nameRootFixtures(t, cfg) {
 		write(r, "# t\n")
 	}
 	provisionDocsLintTrees(t, cfg, docs)
@@ -442,8 +466,7 @@ func TestAddPublicIsCaseInsensitiveLikeTheCuratedEntries(t *testing.T) {
 	}
 	// Its name_roots must resolve too (iss-279), and the role ban's extra_roots
 	// (itd-2609212137129937).
-	for _, r := range []string{".abcd/README.md", "AGENTS.md", ".github/CONTRIBUTING.md", "scripts/README.md",
-		"commands/README.md", ".abcd/rules.json", "internal/core/rules/defaults/rules.json"} {
+	for _, r := range nameRootFixtures(t, cfg) {
 		p := filepath.Join(docs, filepath.FromSlash(r))
 		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 			t.Fatal(err)

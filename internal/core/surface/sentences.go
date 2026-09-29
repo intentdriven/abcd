@@ -27,7 +27,9 @@ var sentences = map[string]string{
 	"abcd ahoy": "Detect abcd's install state and list its gaps, or report one mode a flag names: " +
 		"Writes nothing; refuses any argument or two modes at once.",
 	"abcd ahoy connect": "Verify a model provider with one call, then configure it: " +
-		"Writes its block and its key under ~/.abcd/; refuses a key typed at a terminal.",
+		"Writes its block under ~/.abcd/ and its key to the home chosen; refuses a key typed at a terminal.",
+	"abcd ahoy credential": "List the credentials abcd reads, explain one, or verify and store it: " +
+		"Writes the chosen home only with --home; refuses a value the adapter's call fails.",
 	"abcd ahoy doctor": "Report every install gap, user-scope state included: " +
 		"Writes nothing; refuses any argument.",
 	"abcd ahoy install": "Apply the install gaps the detection finds: " +
@@ -239,6 +241,8 @@ var sentences = map[string]string{
 		"Writes only its pre-flight report, to the local tier; refuses without --dry-run.",
 	"abcd launch archive": "Render the release's plugin archive: " +
 		"Writes the archive into --out; refuses a dirty tree without --verify, and exits 1 when --verify finds it unpinned.",
+	"abcd launch manifests": "Check the release manifests agree on the version, or carry none on a dev tree: " +
+		"Writes nothing; refuses with exit 1 on drift and exit 2 on an unreadable input.",
 	"abcd launch receipts": "Run the release job's semantic-receipt gate locally, before the merge: " +
 		"Writes nothing; refuses with exit 1 when the release job would refuse the receipts.",
 	"abcd launch scaffold": "Scaffold the release gate for the declared artefact kind: " +
@@ -246,7 +250,7 @@ var sentences = map[string]string{
 	"abcd launch ship": "Cut a release, deriving its version and records from what shipped: " +
 		"Writes the CHANGELOG heading, RELEASE.md, and the archive pin; refuses a cut its gates stop.",
 
-	"abcd lint": "Check this repository against the conventions, every target included: " +
+	"abcd lint": "Check this repository against the conventions, every target but outbound: " +
 		"Writes nothing; refuses with exit 2 on an error finding and exit 1 on warnings alone.",
 	"abcd lint docs": "Lint the docs for change-narration, broken links, citations, and stray root markdown: " +
 		"Writes nothing; refuses a tree with a blocker finding.",

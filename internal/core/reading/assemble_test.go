@@ -456,6 +456,43 @@ func TestAssembleDefaultsToTheLocalTier(t *testing.T) {
 	}
 }
 
+// TestAssembleSaysWhetherTheRunCanBeIngested holds the assembly-time report
+// of the one dead end the verb can walk into: the ingest resolves a manifest
+// only under the default run directory by its run id, so a run written to an
+// operator-named directory, or not written at all, can never be ingested, and
+// the result says so before the reading is commissioned (iss-2609091648476051).
+func TestAssembleSaysWhetherTheRunCanBeIngested(t *testing.T) {
+	root := fixtureRepo(t)
+
+	def, err := Assemble(AssembleRequest{RepoRoot: root, Position: PositionWidening, Target: "HEAD"})
+	if err != nil {
+		t.Fatalf("assemble into the default run directory: %v", err)
+	}
+	if !def.Ingestable {
+		t.Errorf("a run parked in the default run directory reads as not ingestable")
+	}
+
+	named, err := Assemble(AssembleRequest{
+		RepoRoot: root, Position: PositionWidening, Target: "HEAD",
+		OutDir: filepath.Join(t.TempDir(), "run"),
+	})
+	if err != nil {
+		t.Fatalf("assemble into a named directory: %v", err)
+	}
+	if !named.Written || named.Ingestable {
+		t.Errorf("a run written to a named directory: written=%v ingestable=%v, want written and not ingestable",
+			named.Written, named.Ingestable)
+	}
+
+	dry, err := Assemble(AssembleRequest{RepoRoot: root, Position: PositionWidening, Target: "HEAD", DryRun: true})
+	if err != nil {
+		t.Fatalf("dry-run assemble: %v", err)
+	}
+	if dry.Ingestable {
+		t.Errorf("a dry run that wrote nothing reads as ingestable")
+	}
+}
+
 // treeSnapshot lists every tracked and untracked path with its size, so a test
 // can assert an assembly wrote nothing.
 func treeSnapshot(t *testing.T, root string) string {

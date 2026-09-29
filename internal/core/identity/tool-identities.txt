@@ -14,13 +14,15 @@
 # their intersection: bracket expressions, `[[:space:]]`, alternation, groups,
 # `?`, `*`, anchors. No `\s`, no `\d`, no lookaround, no back-references.
 #
-# The five keys, and which role each is refused in:
+# The seven keys, and which role each is refused in:
 #
-#   ai_name           both roles  an AI vendor's name standing alone as the name
-#   ai_mail           both roles  an AI vendor's mail domain
-#   machine_name      both roles  the forge's own `[bot]` account-name suffix
-#   machine_mail      both roles  a bot mailbox
-#   author_only_mail  AUTHOR only a mailbox named for not being read
+#   ai_name             both roles  an AI vendor's name standing alone as the name
+#   ai_mail             both roles  an AI vendor's mail domain
+#   machine_name        both roles  the forge's own `[bot]` account-name suffix
+#   machine_mail        both roles  a bot mailbox
+#   machine_name_word   both roles  a configured automation name's trailing word
+#   machine_local_word  both roles  the same word ending the mailbox's local part
+#   author_only_mail    AUTHOR only a mailbox named for not being read
 
 # The git IDENTITY itself, not only the message. A commit authored AND committed
 # as `Claude <noreply@anthropic.com>` carried a fully compliant message and
@@ -48,7 +50,8 @@ ai_mail=@anthropic\.com$|@openai\.com$
 # So these two are STRUCTURAL rather than nominal: the `[bot]` suffix the forge
 # itself stamps on an app's account name, and the mailbox shape it stamps on the
 # address — `49699333+dependabot[bot]@users.noreply.github.com`, or the older
-# `name[bot]@…`. A second automation lands in the right place with no edit here.
+# `name[bot]@…`. A second automation THE FORGE STAMPS lands in the right place
+# with no edit here; one it does not stamp is the next rule's.
 #
 # THE MAILBOX IS THE DISCRIMINATOR, NEVER THE HOST, and this is the line to read
 # twice before touching it. `1234+name@users.noreply.github.com` is a PERSON'S
@@ -59,6 +62,38 @@ ai_mail=@anthropic\.com$|@openai\.com$
 # the mailbox is what makes dependabot's address a machine's.
 machine_name=\[bot\][[:space:]]*$
 machine_mail=\[bot\]@|@dependabot\.com$
+
+# The forge's suffix is only the machines THE FORGE stamps. An automation that
+# commits under a name it was configured with — semantic-release-bot at a forge
+# no-reply address, a self-hosted CI account, a forge whose app suffix is not
+# `[bot]` — matched none of the lists above and was judged a human
+# (iss-2609090951276167). So a second signal reads the SHAPE such configured
+# names take: a trailing `bot`, `robot` or `automation` word, ending the display
+# name or the mailbox's local part. It is a name shape, not a forge stamp, so
+# unlike the two above it is nominal, and it is drawn narrowly for that reason.
+#
+# The word must stand alone: at the start of the field, or after a `-` or `_`
+# joining it to the rest — the separators a configured account name uses and a
+# person's name does not. Talbot and Abbott pass; semantic-release-bot, ci_bot
+# and `12345+semantic-release-bot@users.noreply.github.com` do not. In the local
+# part the forge's `+` separates too, and deliberately not `.`: `jean.bot@` is
+# the ordinary shape of a person's address. In the display name WHITESPACE DOES
+# NOT SEPARATE: `Jan Bot` is a person whose surname is Bot, and refusing a
+# person's name is the thing refuse-machines-not-an-allowlist rules out.
+# `Renovate Bot` is still refused, at its default address `bot@renovateapp.com`,
+# by the local-part half.
+#
+# OUT OF REACH, said plainly: a machine whose configured name and mailbox look
+# like a person's (`Release Manager <release@example.com>`, or `Renovate Bot`
+# reconfigured to `renovate@example.com`), a trailing word other than these
+# three (`-ci`, `-agent`), and `name.bot@` addresses. Nothing in the identity
+# separates those from a human; the reviewer reading the identity is the check
+# on them. The contributors page (internal/core/site/contributors.go) does not
+# read these two keys: it reads the published history through IsMachineName and
+# IsMachineAddress, the structural signals alone, and refusing a name shape is
+# the gates' job, not the page's.
+machine_name_word=(^|[-_])(bot|robot|automation)[[:space:]]*$
+machine_local_word=(^|[-_+])(bot|robot|automation)@
 
 # A mailbox literally named for not being read. Refused in the AUTHOR role only,
 # and the asymmetry is load-bearing rather than a hedge: `GitHub

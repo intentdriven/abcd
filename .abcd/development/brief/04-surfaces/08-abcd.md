@@ -37,8 +37,14 @@ Two read-only forms, and no third.
 
 **Bare `abcd`** renders a four-field snapshot of the current directory: the
 directory itself, whether it is a git repo, whether an abcd record is present,
-and which of the `.abcd/` work tiers exist. The plugin command invokes its JSON
-form.
+and which of the `.abcd/` work tiers exist. The directory is named home-relative
+(`~/…`), or by its directory name outside HOME, in the text form's first line
+and in the JSON form's `dir` alike, never by an absolute path
+(iss-2609281613094952): the board is the output most often pasted, and no
+consumer acts on `dir`. The text line masks a control character or bidi control
+in that name, as every other board line does (iss-2609281736483740); `dir`
+carries the name as it is, escaped by the JSON encoder where it is a control
+byte. The plugin command invokes its JSON form.
 
 **`abcd <record-id>`** takes a single positional matching `iss-N`, `itd-N`,
 `spc-N`, `adr-N`, `adm-N`, `srp-N` or `rfm-N` and reports, read-only, what that
@@ -142,8 +148,9 @@ and one with no records at the committed layout is named with the reason and
 not read; when the worktree is gone or git refuses it, its branch is read from
 the object store instead, so a dead worktree never hides an unmerged commit. The board carries one `peers:` line (JSON `peers`: `live`, `ids`)
 only when some peer holds a record that differs here; `abcd peers` prints the
-whole picture, as text or in its JSON form, with every home path redacted to
-`~`. The same reader answers the not-found paths of `abcd <record-id>`, of
+whole picture, as text or in its JSON form, with every worktree named
+home-relative, or by its directory name outside HOME, never by an absolute
+path (iss-2609281329007423). The same reader answers the not-found paths of `abcd <record-id>`, of
 resolving a capture and of the intent audit, consulted only after the local
 lookup fails. It writes nothing,
 takes no lock and fetches nothing.

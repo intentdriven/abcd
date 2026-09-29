@@ -1,6 +1,6 @@
 ---
 name: lint
-description: "Check this repository against the conventions, every target included: Writes nothing; refuses with exit 2 on an error finding and exit 1 on warnings alone."
+description: "Check this repository against the conventions, every target but outbound: Writes nothing; refuses with exit 2 on an error finding and exit 1 on warnings alone."
 argument-hint: "[docs | outbound | site | identity]"
 block: people
 ---

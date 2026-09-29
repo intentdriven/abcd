@@ -15,10 +15,10 @@ Run:
 "${CLAUDE_PLUGIN_ROOT}/abcd" --json
 ```
 
-Then summarise the JSON for the user: the directory (`dir`, with the home
-directory written as `~`), whether it is a git repo,
-whether the abcd development record is present, and which `.abcd/` work tiers
-exist.
+Then summarise the JSON for the user: the directory (`dir`, named
+home-relative as `~/…`, or by its directory name outside HOME, never by an
+absolute path), whether it is a git repo, whether the abcd development record is
+present, and which `.abcd/` work tiers exist.
 
 In a repository abcd manages the board also carries one line of presence — the
 `statusline` object in the JSON (`state`, `plain`, `elements`), rendered as a
@@ -84,6 +84,13 @@ record in its store — any status folder or bucket — and renders it read-only
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/abcd" <record-id> --json
 ```
+
+The digits take one of two shapes, and both resolve: A short ordinal from
+before ids were minted (`iss-188`), or the sixteen-digit timestamp the
+minting verbs allocate (`iss-2609120452369809`). A ledger part-way through
+adoption holds both, and neither is migrated away: Nothing renumbers an
+existing record, because an id is a citation. An `N` in a placeholder such as
+`<iss-N>` stands for either shape.
 
 Summarise the `id`, `family`, `status`, `title`, `path`, the `links` edges
 (`spec_id`, `intent`, `intents`, `related_intents`, `related_issues`, `resolved_by.*`,

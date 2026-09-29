@@ -57,7 +57,7 @@ func TestAhoyProvidersExplainsWithNothingConfigured(t *testing.T) {
 	for _, want := range []string{
 		"aggregator", "decision models", "every delegated step runs on the host",
 		"none configured", "anthropic/* (bundled)",
-		"The platform keychain is the safest home", "abcd ahoy connect",
+		"The platform keychain is the home abcd recommends", "abcd ahoy connect",
 		"--home abcd",
 	} {
 		if !strings.Contains(string(out), want) {
@@ -121,15 +121,15 @@ func TestAhoyConnectVerifiesThenWrites(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ahoy --providers: %v\n%s", err, board)
 	}
-	if !strings.Contains(string(board), "openrouter") || !strings.Contains(string(board), "key openrouter (set)") ||
+	if !strings.Contains(string(board), "openrouter") || !strings.Contains(string(board), "key openrouter (set, abcd home)") ||
 		strings.Contains(string(board), connectKey) {
 		t.Fatalf("board after connect:\n%s", board)
 	}
 }
 
-// TestAhoyConnectRefusals: a deferred home names the credential store, an
-// absent key and a refused verification each exit non-zero, write nothing
-// and never print the key.
+// TestAhoyConnectRefusals: a home without what it keeps, an absent key and a
+// refused verification each exit non-zero, write nothing and never print the
+// key.
 func TestAhoyConnectRefusals(t *testing.T) {
 	cases := []struct {
 		name, stdin, home string
@@ -138,8 +138,8 @@ func TestAhoyConnectRefusals(t *testing.T) {
 		wantCalls         int32
 		want              string
 	}{
-		{"keychain deferred", connectKey, "keychain", 200, completionReply("m"), 0, "itd-2609221017023290"},
-		{"external deferred", connectKey, "external", 200, completionReply("m"), 0, "itd-2609221017023290"},
+		{"keychain with no key on stdin", "", "keychain", 200, completionReply("m"), 0, "stdin"},
+		{"external with no pointer", "", "external", 200, completionReply("m"), 0, "environment variable"},
 		{"no key on stdin", "", "abcd", 200, completionReply("m"), 0, "stdin"},
 		{"provider refuses the key", connectKey, "abcd", 401, `{"error":{"message":"bad key ` + connectKey + `"}}`, 1, "nothing was written"},
 		{"provider does not list the model", connectKey, "abcd", 404, `{"error":{"message":"No endpoints found"}}`, 1, "HTTP 404"},

@@ -35,9 +35,13 @@ func writeWideningFixture(t *testing.T, repo string, characterised bool) {
 	if err := os.MkdirAll(comp, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(comp, "run.json"),
-		[]byte(`{"run_id":"rdg-2608300000000009","position":"comparative","candidate_run":"`+admitRun+`"}`), 0o644); err != nil {
-		t.Fatal(err)
+	// The channel's pair: the manifest it promotes and the run record after it,
+	// agreeing on the run and the candidate join (iss-2609251842111593).
+	head := []byte(`{"run_id":"rdg-2608300000000009","position":"comparative","candidate_run":"` + admitRun + `"}`)
+	for _, name := range []string{"manifest.json", "run.json"} {
+		if err := os.WriteFile(filepath.Join(comp, name), head, 0o644); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 

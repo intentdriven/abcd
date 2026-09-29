@@ -196,5 +196,63 @@ None stated.
 
 ## Audit Notes
 
-<!-- abcd-review: OWED receipt=rcp-8a6673e9bc8a -->
-Fidelity review OWED (receipt rcp-8a6673e9bc8a).
+<!-- abcd-review: INGESTED receipt=rcp-8a6673e9bc8a -->
+Fidelity review — receipt rcp-8a6673e9bc8a (verifier intent-auditor claude-fable-5-1).
+
+Provenance: intent-auditor@claude-fable-5-1 · rubric_hash sha256:effa65b3e9e88ff29433b443ec2be159522a8b0b71cf1434526514aa61edb13e · prompt_hash sha256:8c00566b452e24b3cfccc53a3665ee1d434077813fff058646e8b147a7313dc8
+Input attestations: tree:ceb4b6dbb97622bddf2401c91f9f808ed05060a0 (origin/main; internal/core/identity/{identity,establish,toolidentity}.go, internal/core/ahoy/{detect,identity_establish}.go, internal/surface/cli/cli.go)@-;
+
+Acceptance rollup: MET 4 · MET_WITH_CONCERNS 1 · NOT_MET 0 · INCONCLUSIVE 0
+
+Per-criterion verdicts:
+- ac-1 — MET: an author mismatch against the pin is the required git_identity.mismatch gap; the apply step proposes the pin (else the global identity, disk only), asks Confirm at a terminal and writes repo-local user.name/user.email only on a yes; TestStepGitIdentity_ProposesPinAndWritesOnlyOnConfirm and TestStepGitIdentity_DeclineWritesNothing pass at BASE
+  evidence: internal/core/ahoy/detect.go:336 — "ID: MismatchGapID, Category: ConfigChange, Scope: "repo","
+  evidence: internal/core/ahoy/identity_establish.go:76 — "if !a.prompter.Confirm("Commit to this repository as " + who + ", " + prop.From + "? (sets user.name and user.email in this repository's .git/config only)") {"
+  evidence: internal/core/identity/establish.go:25 — "func Propose(root string) (Proposal, bool, error)"
+  evidence: internal/core/ahoy/identity_establish_test.go:142 — "func TestStepGitIdentity_ProposesPinAndWritesOnlyOnConfirm"
+- ac-2 — MET: Check resolves the committer through EffectiveCommitter (GIT_COMMITTER_* first, then committer.*/user.*), compares it with the author and the pin, and ahoy raises git_identity.committer; TestCheck_CommitterEnvOverrideDiverges, TestCheck_CommitterConfigDiverges and TestDetectGitIdentity_CommitterDiverges pass at BASE
+  evidence: internal/core/identity/identity.go:371 — "committer, err := EffectiveCommitter(root)"
+  evidence: internal/core/identity/identity.go:403 — "func committerDivergence(pin Pin, pinned bool, author, committer Effective) (bool, string)"
+  evidence: internal/core/ahoy/detect.go:364 — "ID: CommitterGapID, Category: ConfigChange, Scope: "repo","
+  evidence: internal/core/identity/committer_test.go:60 — "func TestCheck_CommitterEnvOverrideDiverges"
+- ac-3 — MET: with no TerminalPrompter reporting a tty the step refuses before asking, writes nothing and records the reason, and --yes is refused the same way; the CLI's stdinPrompter reports its tty; TestStepGitIdentity_NoTerminalFailsClosed asserts no question, no config change and the refusal text, and TestAhoyInstallPipedAnswersNeverRewriteTheIdentity covers the front door
+  evidence: internal/core/ahoy/identity_establish.go:53 — "if !atTerminal(a.prompter) {"
+  evidence: internal/core/ahoy/identity_establish.go:49 — "if a.autoYes {"
+  evidence: internal/surface/cli/cli.go:3782 — "func (p *stdinPrompter) AtTerminal() bool { return p.tty }"
+  evidence: internal/core/ahoy/identity_establish_test.go:189 — "func TestStepGitIdentity_NoTerminalFailsClosed"
+  evidence: internal/surface/cli/ahoy_identity_gate_test.go:54 — "func TestAhoyInstallPipedAnswersNeverRewriteTheIdentity"
+- ac-4 — MET_WITH_CONCERNS: detection is delivered: IsToolIdentity reads the gate's own tool-identities list plus the structural bot and noreply signals, Check sets AuthorIsTool/CommitterIsTool, and ahoy raises the required git_identity.tool gap whose hint names the runner record; concern: the criterion defers establishment to iss-2608210932052003, which is still in issues/open/, so a routine's identity is established by nothing abcd ships today and the deferral has no delivered counterpart to verify against
+  evidence: internal/core/identity/toolidentity.go:42 — "func IsToolIdentity(role Role, name, email string) bool {"
+  evidence: internal/core/identity/identity.go:378 — "res.AuthorIsTool = eff != (Effective{}) && IsToolIdentity(RoleAuthor, eff.Name, eff.Email)"
+  evidence: internal/core/ahoy/detect.go:374 — "ID: ToolIdentityGapID, Category: ConfigChange, Scope: "repo","
+  evidence: internal/core/ahoy/identity_establish_test.go:106 — "func TestDetectGitIdentity_ToolIdentity"
+  evidence: .abcd/work/issues/open/iss-2608210932052003-abcd-launches-autonomous-routines.md:1 — "open/"
+- ac-5 — MET: the only write is git config --local on the repository's own .git/config under a scrubbed environment, reached solely after Confirm; an outranking GIT_*_ override or author.*/committer.* key makes the step name what to unset instead of writing; TestStepGitIdentity_EnvOverrideIsNotRewritten and TestStepGitIdentity_DeclineWritesNothing pass at BASE
+  evidence: internal/core/identity/establish.go:83 — "cmd := exec.Command("git", "-C", root, "config", "--local", kv[0], kv[1])"
+  evidence: internal/core/ahoy/identity_establish.go:71 — "if len(over) > 0 {"
+  evidence: internal/core/ahoy/identity_establish_test.go:248 — "func TestStepGitIdentity_EnvOverrideIsNotRewritten"
+  evidence: internal/core/ahoy/identity_establish_test.go:169 — "func TestStepGitIdentity_DeclineWritesNothing"
+
+Gap audit:
+- honoured:
+  - detect here, establish at launch: the gate detects and proposes, and names the runner record for a routine (decision 1)
+    evidence: internal/core/ahoy/identity_establish.go:54 — "An autonomous routine's runner sets the human identity before its first commit (" + routineRunnerRecord + ")"
+  - the proposal chain is disk-only, pinned then global, no gh fallback (decision 2, adr-38)
+    evidence: internal/core/identity/establish.go:20 — "Propose returns the identity to offer: the committed pin, else the global git // identity"
+  - the committer is resolved env-first then config, not through git var, so StatusUnset survives (open question 1)
+    evidence: internal/core/identity/identity.go:278 — "func EffectiveCommitter(root string) (Effective, error)"
+    evidence: internal/core/identity/committer_test.go:143 — "func TestCheck_UnsetSurvivesTheCommitterPath"
+  - doctor shares the detector: detectGitIdentity runs inside Detect, which every read-only mode renders
+    evidence: internal/core/ahoy/detect.go:96 — "gaps = append(gaps, detectGitIdentity(abs)...)"
+  - a forge committer (GitHub < noreply@github.com>) is not read as a tool, matching the attribution gate's role asymmetry
+    evidence: internal/core/ahoy/identity_establish_test.go:126 — "func TestDetectGitIdentity_ForgeCommitterIsNotATool"
+  - the plugin page relays the four identity gaps and the person-only answer
+    evidence: commands/ahoy.md:169 — "(`git_identity.mismatch`, `git_identity.unset`, `git_identity.committer`, `git_identity.tool`)"
+  - the un-pinned repo's pin adoption stays a prompt-only step and refuses a machine identity
+    evidence: internal/core/ahoy/apply.go:433 — "if identity.IsToolIdentity(identity.RoleAuthor, eff.Name, eff.Email) {"
+- diverged: (none)
+- missing:
+  - establishing a routine's human identity before its first commit is verified against the runner: the runner record iss-2608210932052003 is still open, so the establish half the press release promises for autonomous routines has no shipped counterpart
+    evidence: .abcd/work/issues/open/iss-2608210932052003-abcd-launches-autonomous-routines.md:1 — "open/"
+    evidence: internal/core/ahoy/detect.go:377 — "An autonomous routine has no one to ask: whatever launches it sets the human identity before the first commit"
+<!-- abcd-review-end receipt=rcp-8a6673e9bc8a -->

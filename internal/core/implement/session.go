@@ -133,7 +133,7 @@ func (r *Run) Join(id string, role Role, model, reason string, ceiling int) (Joi
 		return JoinResult{}, refusal("ceiling %d is outside 0 (none stated) to %d", ceiling, MaxCeiling)
 	}
 	var out JoinResult
-	err := r.withLock(func() error {
+	err := r.withLockAs(id, role, func() error {
 		root, err := r.root()
 		if err != nil {
 			return err
@@ -201,7 +201,7 @@ func (r *Run) Leave(id, reason string) (LeaveResult, error) {
 		return LeaveResult{}, err
 	}
 	out := LeaveResult{Released: []Claim{}}
-	err := r.withLock(func() error {
+	err := r.withLock(id, func() error {
 		s, err := r.requireSession(id)
 		if err != nil {
 			return err
@@ -332,7 +332,7 @@ func (r *Run) SetMode(session string, m Mode, window int) (WindowState, error) {
 		return WindowState{}, refusal("window %d is negative", window)
 	}
 	var out WindowState
-	err := r.withLock(func() error {
+	err := r.withLock(session, func() error {
 		s, err := r.requireSession(session)
 		if err != nil {
 			return err

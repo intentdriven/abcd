@@ -72,7 +72,8 @@ capture routes the pieces, it never files a monolith:
    the same session (or are captured so they are not lost).
 4. **Grade.** Append the confirmed table — and whether the initial routing
    survived the human's confirmation — to the dated decomposition-calibration
-   note under the development record's `research/notes/`. That corpus (about
+   note under the development record's `research/notes/`, a folder no install
+   scaffolds, so create it where the record has none. abcd's own corpus (about
    50 graded captures) is what gates the automated rung.
 
 **Partly automated.** The lexical candidate pass of step 2 runs at filing:
@@ -206,14 +207,16 @@ borrowing the gate's exit 1.
 
 ```json
 { "grounds": { "intent_id": "…", "path": "…", "token": "pursued",
-               "text": "…", "entries": 1, "redacted": 0 },
+               "text": "…", "entries": 1, "redacted": 2 },
   "ready":   { "…the usual ReadyResult…" } }
 ```
 
 Read the verdict from `ready`, and report `grounds.path` and `grounds.entries`
 so the user knows a record was written. **Report `grounds.redacted` whenever it
-is non-zero** — the text is scanned before it is committed, and the user needs to
-know their wording was changed. There is no `degraded` member here: a scanner
+is present** — the text is scanned before it is committed, and the user needs to
+know their wording was changed. The key is omitted when the count is zero, as
+every write verb's `redacted` count is, so an absent key means nothing was
+rewritten. There is no `degraded` member here: a scanner
 that cannot be built, or whose pattern set a per-repo override weakened, refuses
 the write at exit 2 rather than writing under a weakened detector. Without the
 flag the payload is the readiness result unchanged.

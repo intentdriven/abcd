@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -177,14 +178,28 @@ func (a *applyCtx) wireStatusLine(hs harnessSettings, entry string, switches map
 		a.refuse("refused to wire the status line: " + displayPath(hs.path) + " could not be re-encoded (" + errText(err) + "); nothing was written.")
 		return
 	}
+	// ~/.abcd is created, judged and opened relative to home's descriptor and
+	// the setting is written (and, on a failed harness write, removed) through
+	// it, so a link swapped in after the check above is refused rather than
+	// written through (iss-2609281310017733).
+	settingLeaf := path.Base(statusline.SettingsRelPath)
+	var settingDir *os.Root
 	if settingBytes != nil {
 		var werr error
-		if created {
-			// 0600, and never wider: the setting's reader refuses a file others
-			// can write, so a default 0644 would be a setting that is never read.
-			werr = fsutil.WriteFileAtomic(settingPath, settingBytes, 0o600)
-		} else {
-			werr = fsutil.WriteFileAtomicPreserveMode(settingPath, settingBytes)
+		settingDir, werr = fsutil.EnsureHomeScope(userHome(), path.Dir(statusline.SettingsRelPath), 0o755)
+		if errors.Is(werr, fsutil.ErrHomeScopeSymlinked) {
+			a.refuse("refused to wire the status line: " + werr.Error() + "; nothing was written.")
+			return
+		}
+		if werr == nil {
+			defer settingDir.Close()
+			if created {
+				// 0600, and never wider: the setting's reader refuses a file others
+				// can write, so a default 0644 would be a setting that is never read.
+				werr = fsutil.WriteFileAtomicInRoot(settingDir, settingLeaf, settingBytes, 0o600)
+			} else {
+				werr = fsutil.WriteFileAtomicPreserveModeInRoot(settingDir, settingLeaf, settingBytes)
+			}
 		}
 		if werr != nil {
 			a.refuse("could not write " + statusline.SettingsDisplay + " (" + errText(werr) + "); the status line was not wired.")
@@ -192,8 +207,8 @@ func (a *applyCtx) wireStatusLine(hs harnessSettings, entry string, switches map
 		}
 	}
 	if err := fsutil.WriteFileAtomicPreserveMode(hs.path, harnessBytes); err != nil {
-		if created {
-			_ = os.Remove(settingPath)
+		if created && settingDir != nil {
+			_ = settingDir.Remove(settingLeaf)
 		}
 		a.refuse("could not write " + displayPath(hs.path) + " (" + errText(err) + "); the status line was not wired and " +
 			statusline.SettingsDisplay + " was not left behind.")
