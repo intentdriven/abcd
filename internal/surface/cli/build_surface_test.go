@@ -317,3 +317,101 @@ func TestImplementStepWithoutARunIsRefused(t *testing.T) {
 	}
 	runDirAbsent(t, repo.Root())
 }
+
+// TestImplementStatusNamesALaneWorktreeOutsideHomeByItsDirectoryName: status
+// --json named a lane's worktree through the home redaction alone, so one
+// outside HOME was printed as an absolute local path (iss-2609281329007423).
+// It is named by its directory name.
+func TestImplementStatusNamesALaneWorktreeOutsideHomeByItsDirectoryName(t *testing.T) {
+	repo := buildRepo(t)
+	var res struct {
+		State string `json:"state"`
+	}
+	if err := json.Unmarshal([]byte(mustImplement(t, "build", "itd-10", "--json")), &res); err != nil {
+		t.Fatal(err)
+	}
+	statePath := filepath.Join(repo.Root(), filepath.FromSlash(res.State))
+	raw, err := os.ReadFile(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var state map[string]any
+	if err := json.Unmarshal(raw, &state); err != nil {
+		t.Fatal(err)
+	}
+	outside := filepath.Join(t.TempDir(), "lane-wt")
+	state["lanes"].([]any)[0].(map[string]any)["worktree"] = outside
+	raw, err = json.Marshal(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(statePath, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	out := mustImplement(t, "implement", "status", "--json")
+	var st struct {
+		Runs []struct {
+			Lanes []struct {
+				Worktree string `json:"worktree"`
+			} `json:"lanes"`
+		} `json:"runs"`
+	}
+	if err := json.Unmarshal([]byte(out), &st); err != nil || len(st.Runs) != 1 || len(st.Runs[0].Lanes) != 1 {
+		t.Fatalf("status --json = %v: %s", err, out)
+	}
+	if got := st.Runs[0].Lanes[0].Worktree; got != "lane-wt" {
+		t.Errorf("the lane worktree is shown as %q, want its directory name lane-wt", got)
+	}
+	if strings.Contains(out, filepath.Dir(outside)) {
+		t.Errorf("status --json prints the absolute worktree path:\n%s", out)
+	}
+}
+
+// TestBuildForASessionClaimsTheIntent: `build --session` claims the intent in
+// the shared run state for a joined session and says so; an unjoined session
+// is refused at exit 2 with nothing written; a build without it says the run
+// holds no claim (iss-2609252050506863).
+func TestBuildForASessionClaimsTheIntent(t *testing.T) {
+	repo := buildRepo(t)
+	ref := refusalDocs(t, 2, "build", "itd-10", "--session", "ghost", "--json")
+	if ref["step"] != "claim" {
+		t.Fatalf("an unjoined session's build = %v; want the claim step refused", ref)
+	}
+	runDirAbsent(t, repo.Root())
+	mustImplement(t, "implement", "join", "--session", "host-a", "--role", "first", "--json")
+	out := mustImplement(t, "build", "itd-10", "--session", "host-a")
+	if !strings.Contains(out, "claim:   itd-10 for session host-a") {
+		t.Fatalf("build --session does not report its claim:\n%s", out)
+	}
+	if out := mustImplement(t, "implement", "--json"); !strings.Contains(out, `"record": "itd-10"`) {
+		t.Fatalf("the shared run holds no claim on itd-10:\n%s", out)
+	}
+}
+
+// TestBuildWithoutASessionSaysItHoldsNoClaim: the invisibility of a run started
+// without --session is named, not silent.
+func TestBuildWithoutASessionSaysItHoldsNoClaim(t *testing.T) {
+	buildRepo(t)
+	if out := mustImplement(t, "build", "itd-10"); !strings.Contains(out, "claim:   none (no --session)") {
+		t.Fatalf("build without --session is silent about its claim:\n%s", out)
+	}
+}
+
+// TestBuildWithoutASessionSaysItHoldsNoClaimInJSON: the JSON says what the text
+// says — the claim key is present and null, never absent (iss-2609252050506863).
+func TestBuildWithoutASessionSaysItHoldsNoClaimInJSON(t *testing.T) {
+	buildRepo(t)
+	var doc map[string]json.RawMessage
+	out := mustImplement(t, "build", "itd-10", "--json")
+	if err := json.Unmarshal([]byte(out), &doc); err != nil {
+		t.Fatalf("build --json is not an object: %v\n%s", err, out)
+	}
+	claim, ok := doc["claim"]
+	if !ok {
+		t.Fatalf("build --json without --session omits the claim key:\n%s", out)
+	}
+	if string(claim) != "null" {
+		t.Fatalf("build --json without --session: claim = %s; want null", claim)
+	}
+}

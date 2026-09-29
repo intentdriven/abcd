@@ -187,9 +187,7 @@ func Load() (Settings, []string, error) {
 // indistinguishable from a setting that was taken.
 func LoadFrom(home string) (Settings, []string, error) {
 	out := Defaults()
-	path := filepath.Join(home, filepath.FromSlash(SettingsRelPath))
-
-	raw, why, err := ReadSettingsFile(path)
+	raw, why, err := ReadSettingsFile(home)
 	if err != nil {
 		return Settings{}, nil, err
 	}
@@ -311,11 +309,18 @@ func refusedPresence(why string, fallback Pair) string {
 // The guard is the one the two sibling home-scoped declarations use
 // (rules.trustedRootDeclared, history.localDeclared): lstat first, the three
 // refusals above, then fsutil.ReadGuarded under the byte cap — one open,
-// O_NOFOLLOW, size-checked against both the fstat and the bytes read.
-func ReadSettingsFile(path string) (raw []byte, why string, err error) {
+// O_NOFOLLOW, size-checked against both the fstat and the bytes read. A file
+// reached through a symlinked ~/.abcd is not the caller's word either
+// (fsutil.HomeScopeLink, the rule the rules loader applies to rules.json), so
+// the file is named by the home it lives in rather than by a path.
+func ReadSettingsFile(home string) (raw []byte, why string, err error) {
+	path := filepath.Join(home, filepath.FromSlash(SettingsRelPath))
 	fi, err := os.Lstat(path)
 	if err != nil {
 		return nil, "", nil
+	}
+	if lerr := fsutil.HomeScopeLink(home, SettingsRelPath); lerr != nil {
+		return nil, lerr.Error(), nil
 	}
 	if !fi.Mode().IsRegular() {
 		return nil, "it is not a regular file", nil

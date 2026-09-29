@@ -208,11 +208,13 @@ func TestInstallRefusesCorruptCacheArtefact(t *testing.T) {
 	}
 }
 
-// TestInstallWithoutCacheDegradesLoudlyToSymlink: no persistent data dir means
-// no artefact whose provenance can be recorded, so install falls back to the
-// spc-21 pinned symlink — and says so, never silently.
-func TestInstallWithoutCacheDegradesLoudlyToSymlink(t *testing.T) {
-	home, pluginRoot := setupUserScope(t)
+// TestInstallWithoutCacheRefusesLoudly: no persistent data dir means no
+// artefact whose provenance can be recorded, so install writes no PATH entry
+// — never a symlink into the plugin root, which the next plugin update strands
+// (iss-2609100506263330) — and says so, naming the command to run first.
+func TestInstallWithoutCacheRefusesLoudly(t *testing.T) {
+	home, _ := setupUserScope(t)
+	coldCache(t)
 	binDir := filepath.Join(home, ".local", "bin")
 	t.Setenv("PATH", binDir)
 	repo := t.TempDir()
@@ -225,17 +227,12 @@ func TestInstallWithoutCacheDegradesLoudlyToSymlink(t *testing.T) {
 		t.Fatal(err)
 	}
 	target := filepath.Join(binDir, "abcd")
-	fi, err := os.Lstat(target)
-	if err != nil || fi.Mode()&os.ModeSymlink == 0 {
-		t.Fatalf("without a cache the entry must be the spc-21 symlink: %v (%v)", fi, err)
-	}
-	dest, _ := os.Readlink(target)
-	if resolveSymlinkDest(target, dest) != resolvePath(pluginBinaryPath(pluginRoot)) {
-		t.Errorf("symlink dest = %q, want %q", dest, pluginBinaryPath(pluginRoot))
+	if fi, err := os.Lstat(target); !os.IsNotExist(err) {
+		t.Fatalf("without a cache no PATH entry may be written: %v (%v)", fi, err)
 	}
 	joined := notesJoined(res.Notes)
-	if !strings.Contains(joined, "symlink") {
-		t.Errorf("the degradation must be named on the result, never silent; notes = %v", res.Notes)
+	if !strings.Contains(joined, installRemedyAnchor) {
+		t.Errorf("the refusal must be named on the result with the command to run first, never silent; notes = %v", res.Notes)
 	}
 	// The note says which sources were tried — the environment and the root's
 	// stamp — so a reader following the documented terminal instruction learns
@@ -542,10 +539,10 @@ func TestInstallFromTerminalReachesCacheThroughRootStamp(t *testing.T) {
 // TestInstallDegradesLoudlyWhenRootStampIsInvalid: the stamp is a route to
 // the cache, never a trust claim, so a recorded path that is not an existing
 // absolute directory — or one that holds no verified artefact — is not
-// followed. The install still degrades to the symlink, loudly, and the note
-// names both sources it tried, so the reader learns why a documented
-// instruction did not land the owned copy.
-func TestInstallDegradesLoudlyWhenRootStampIsInvalid(t *testing.T) {
+// followed. The install writes no entry, loudly, and the note names both
+// sources it tried, so the reader learns why a documented instruction did not
+// land the owned copy.
+func TestInstallRefusesLoudlyWhenRootStampIsInvalid(t *testing.T) {
 	cases := map[string]func(t *testing.T) string{
 		"relative": func(t *testing.T) string { return "relative/data" },
 		"absent":   func(t *testing.T) string { return filepath.Join(t.TempDir(), "gone") },
@@ -554,6 +551,7 @@ func TestInstallDegradesLoudlyWhenRootStampIsInvalid(t *testing.T) {
 	for name, recorded := range cases {
 		t.Run(name, func(t *testing.T) {
 			home, pluginRoot := setupUserScope(t)
+			coldCache(t)
 			binDir := filepath.Join(home, ".local", "bin")
 			t.Setenv("PATH", binDir)
 			if err := os.WriteFile(filepath.Join(pluginRoot, ".data-dir"), []byte("data_dir="+recorded(t)+"\n"), 0o644); err != nil {
@@ -569,9 +567,8 @@ func TestInstallDegradesLoudlyWhenRootStampIsInvalid(t *testing.T) {
 				t.Fatal(err)
 			}
 			target := filepath.Join(binDir, "abcd")
-			fi, err := os.Lstat(target)
-			if err != nil || fi.Mode()&os.ModeSymlink == 0 {
-				t.Fatalf("an unusable stamp must degrade to the spc-21 symlink: %v (%v)", fi, err)
+			if fi, err := os.Lstat(target); !os.IsNotExist(err) {
+				t.Fatalf("an unusable stamp must leave no PATH entry: %v (%v)", fi, err)
 			}
 			joined := notesJoined(res.Notes)
 			for _, want := range []string{"CLAUDE_PLUGIN_DATA", ".data-dir"} {

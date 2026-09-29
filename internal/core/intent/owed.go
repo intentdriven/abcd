@@ -2,6 +2,7 @@ package intent
 
 import (
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -116,9 +117,23 @@ func ReviewOf(repoRoot string, it Intent) (ReviewEntry, error) {
 	case ReviewOwed, ReviewNone:
 		e.ReEmit = ReEmitCommand(it.ID)
 	case ReviewDeadLetter:
-		e.Reason = deadLetterReason(content, e.ReceiptID)
+		e.Reason = withholdLocalTier(deadLetterReason(content, e.ReceiptID))
 	}
 	return e, nil
+}
+
+// localTierTokenRe is one whitespace-delimited token that names the local tier.
+var localTierTokenRe = regexp.MustCompile(`\S*\.work\.local\S*`)
+
+// withholdLocalTier replaces every token of a dead-letter reason that names the
+// local tier. The reader cuts OUR retention clause off the reason, but the
+// reason itself is free text a host's payload supplied (an out-of-enum token
+// quoted back), so it can carry a clause of the same shape, and the listing
+// promises never to hand out a path into the gitignored tier whoever wrote it
+// (iss-2609252038344132). Only the path is withheld; the rest of the reason is
+// what the reader is for.
+func withholdLocalTier(reason string) string {
+	return localTierTokenRe.ReplaceAllString(reason, "[local-tier path withheld]")
 }
 
 // deadLetterReason recovers the reason deadLetterBlock wrote on the line after

@@ -301,9 +301,21 @@ func NewRootCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			// The board is the output most often pasted, so it names the
+			// checkout by the display rule — home-relative under HOME, the
+			// directory's base name outside it — in the text form and in
+			// --json alike (iss-2609281613094952). No consumer acts on dir: the
+			// plugin page relays it, and a reader that needs the path already
+			// has its own working directory.
+			st.Dir = fsutil.DisplayPath(st.Dir)
 			board := boardOutput{StatusInfo: st, Statusline: boardPresence(cwd, cmd.ErrOrStderr()), Peers: boardPeers(cwd, cmd.ErrOrStderr()), Inbox: boardInbox(cmd.ErrOrStderr()), Oracle: boardOracle(cwd, cmd.ErrOrStderr()), Reviews: boardReviews(cwd, cmd.ErrOrStderr())}
 			return render(cmd.OutOrStdout(), asJSON, board, func(w io.Writer) {
-				fmt.Fprintf(w, "abcd — %s\n", st.Dir)
+				// Sanitised like every other board line: the directory name is the
+				// checkout's own, and a name carrying an ESC sequence or a bidi
+				// control must not reach the terminal raw (iss-2609281736483740).
+				// --json keeps the true name; the encoder escapes a C0 byte; C1 and
+				// bidi runes travel raw, as in every board field.
+				fmt.Fprintf(w, "abcd — %s\n", termsafe.Sanitize(st.Dir))
 				fmt.Fprintf(w, "  git repo:   %v\n", st.IsGitRepo)
 				fmt.Fprintf(w, "  record:     %v\n", st.HasRecord)
 				fmt.Fprintf(w, "  work tiers: %v\n", st.WorkTiers)
@@ -3881,7 +3893,8 @@ func captureLedgerRoot(cmd *cobra.Command) (string, error) {
 
 // ledgerIdentity names the checkout whose ledger a verb addressed and the
 // branch checked out there (iss-2609202053570475). The checkout is home-
-// relative where it can be, so the line carries no developer-identity path.
+// relative where it can be, and its directory name where it cannot, so the line
+// never carries an absolute path (iss-2609251823560369).
 type ledgerIdentity struct {
 	Checkout string `json:"checkout"`
 	Branch   string `json:"branch"`
@@ -3889,6 +3902,12 @@ type ledgerIdentity struct {
 
 // ledgerIdentityOf reads root's identity: its home-redacted path, and the
 // branch git reports ("HEAD" when detached, "" when git cannot answer).
+//
+// A checkout outside HOME survives RedactHome whole, and printed whole it is an
+// absolute local path in output a person pastes elsewhere. fsutil.DisplayPath
+// reduces it to its directory name instead, the rule scrubPaths applies to an
+// absolute path outside both identity roots, so the two surfaces agree on what
+// is safe to print.
 func ledgerIdentityOf(root string) ledgerIdentity {
 	// symbolic-ref answers on an unborn branch too, where rev-parse cannot; it
 	// fails only when HEAD is detached, which rev-parse then names.
@@ -3900,7 +3919,7 @@ func ledgerIdentityOf(root string) ledgerIdentity {
 			branch = ""
 		}
 	}
-	return ledgerIdentity{Checkout: fsutil.RedactHome(root), Branch: branch}
+	return ledgerIdentity{Checkout: fsutil.DisplayPath(root), Branch: branch}
 }
 
 // branchPhrase renders the branch half of the identity line.
@@ -3931,13 +3950,20 @@ func renderLedger(w io.Writer, asJSON bool, root string, v any, text func(io.Wri
 	if err != nil {
 		return err
 	}
-	if n := len(body); n >= 2 && body[0] == '{' && body[n-1] == '}' {
-		sep := ","
-		if n == 2 {
-			sep = ""
-		}
-		body = append(append(append(body[:n-1:n-1], []byte(sep+`"ledger":`)...), ident...), '}')
+	// json.Marshal emits compact JSON, so an object result is exactly the bytes
+	// between its own braces and the member is appended before the closing one,
+	// keeping the result's member order. A result that is not an object has no
+	// member to carry the identity, and dropping it silently would ship the
+	// envelope without the one thing it exists to say — so it is an error.
+	n := len(body)
+	if n < 2 || body[0] != '{' || body[n-1] != '}' {
+		return fmt.Errorf("internal: a capture verb's --json result must be an object to carry its ledger member, got %T", v)
 	}
+	sep := ","
+	if n == 2 {
+		sep = ""
+	}
+	body = append(append(append(body[:n-1:n-1], []byte(sep+`"ledger":`)...), ident...), '}')
 	var buf bytes.Buffer
 	if err := json.Indent(&buf, body, "", "  "); err != nil {
 		return err
@@ -5780,6 +5806,10 @@ func newErrorEnvelope(msg string, code int) errorEnvelope {
 //   - any remaining absolute path embedded by os.PathError/os.LinkError (e.g. a
 //     path argument outside both roots) is reduced to its base name.
 //
+// The home redaction and the base-name rule are fsutil.DisplayPathsIn, the one
+// statement of how a surface prints a path it names (iss-2609281329007423); the
+// working directory is redacted first so a path under it reads "./…", not "~/…".
+//
 // This is NOT a universal absolute-path scrub: a verb that echoes a user-supplied
 // absolute path lying outside both roots (e.g. `memory ingest /tmp/x`) still
 // surfaces it — that path carries no developer identity, and sanitising such
@@ -5796,15 +5826,7 @@ func scrubPaths(err error) string {
 	if cwd, e := os.Getwd(); e == nil {
 		msg = fsutil.RedactRoot(msg, cwd, ".")
 	}
-	if home, e := os.UserHomeDir(); e == nil {
-		msg = fsutil.RedactRoot(msg, home, "~")
-	}
-	for _, p := range embeddedPaths(err) {
-		if filepath.IsAbs(p) {
-			msg = strings.ReplaceAll(msg, p, filepath.Base(p))
-		}
-	}
-	return msg
+	return fsutil.DisplayPathsIn(msg, embeddedPaths(err)...)
 }
 
 // embeddedPaths collects the filesystem paths carried by os.PathError/os.LinkError

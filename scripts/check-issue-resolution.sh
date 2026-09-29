@@ -229,14 +229,65 @@ DELIVERS_ID_SHAPED_RE='[A-Za-z]+-[0-9]+'
 
 violations=0
 
+# fail reports one violation. Every refusal passes through here, and several
+# carry text the branch under judgement controls — a base-side commit subject in
+# the stale-branch diagnosis, an unreadable delivery line quoted back — so control
+# bytes are deleted before the message reaches a terminal or a CI log: an escape
+# sequence in a commit subject is not the gate's to replay (iss-2609012047566360).
+# Deleted rather than escaped, because the byte carries no meaning a reader needs;
+# the refusal's own text is printable ASCII and loses nothing.
 fail() {
-	printf 'check-issue-resolution: %s\n' "$1" >&2
+	printf 'check-issue-resolution: %s\n' "$(printf '%s' "$1" | tr -d '[:cntrl:]')" >&2
 	violations=$((violations + 1))
 }
 
 usage() {
 	echo "usage: check-issue-resolution.sh commits <base-ref> <head-ref> | ledger [<ref>] | pr <title-file> <body-file>" >&2
 	exit 2
+}
+
+# record_files is the one reading of which paths are records. It reads
+# repository paths on stdin and prints "<id> <folder>" for each that is a record
+# file of kind $1 (iss, itd or spc): a file sitting DIRECTLY in a folder of its
+# store ($ISSUES_DIR, $INTENTS_DIR or $SPECS_DIR) and named <id>.md or
+# <id>-<slug>.md. With a second argument `path` it prints "<id> <path>" instead,
+# the form record_path, intent_path and open_specs_for look an id up by, so a
+# lookup and a derivation cannot disagree on what a record is. The caller scopes
+# the folders; the id is printed as the filename spells it, and an itd id is
+# canonicalised by the caller through canon_itd. Anything else in a status
+# folder names no record — a nested file (resolved/x/iss-1.md), a non-.md file
+# (resolved/iss-4242.txt), a README — so it neither enters a folder nor,
+# reverted, leaves one. Read from the basename alone, such a file satisfied a
+# trailer by being added, and withdrew it by being reverted (iss-2609240646533487).
+record_files() {
+	local kind="$1" form="${2:-}" root
+	case "$kind" in
+	iss) root="$ISSUES_DIR" ;;
+	itd) root="$INTENTS_DIR" ;;
+	spc) root="$SPECS_DIR" ;;
+	*)
+		echo "check-issue-resolution: record_files: unknown record kind '$kind'" >&2
+		exit 2
+		;;
+	esac
+	awk -v root="$root/" -v kind="$kind" -v form="$form" '
+		BEGIN { shape = "^[^/]+/" kind "-[0-9]+(-[^/]*)?\\.md$" }
+		index($0, root) == 1 {
+			rest = substr($0, length(root) + 1)
+			if (rest !~ shape) next
+			slash = index(rest, "/")
+			name = substr(rest, slash + 1)
+			match(name, "^" kind "-[0-9]+")
+			id = substr(name, RSTART, RLENGTH)
+			if (form == "path") print id " " $0
+			else print id " " substr(rest, 1, slash - 1)
+		}'
+}
+
+# record_id prints the id of the record file at path $2 of kind $1, or nothing
+# when the path is not a record file (record_files).
+record_id() {
+	printf '%s\n' "$2" | record_files "$1" | cut -d' ' -f1
 }
 
 # ids_entering_closed prints every iss-N whose record ENTERS resolved/ or wontfix/
@@ -246,32 +297,95 @@ usage() {
 # plain add into the terminal folder. Both are honest resolutions and both are
 # caught here. A record that only LEAVES open/ (a bare delete) enters nothing and
 # is deliberately absent, so RS001 refuses a trailer that merely deletes.
+#
+# ENTERING means from outside: a record the MERGE BASE already holds in the very
+# terminal folder it lands in enters nothing, whatever the diff shows
+# (iss-2609012047551175). Keyed on the destination alone, a move BETWEEN terminal
+# folders counted — so a stale branch whose base had since moved the record
+# resolved/ -> wontfix/, or reslugged it inside resolved/, read the two-dot
+# diff's rename back into place as this branch's resolution, and a trailer
+# satisfied by a move it did not make passed silently. In both shapes the record
+# lands where it already sat at the fork, so neither enters.
+#
+# The fork, never the base's tip, is the reference: an honest re-disposition on
+# the branch — wontfix/ -> resolved/ of a record the base still holds in
+# wontfix/ — lands in a folder the record did not sit in at the fork, and is
+# this branch's own move. Asked of the base's tip, the record was "already
+# terminal" and the true trailer was refused with a diagnosis naming a
+# resolution before this commit. The merge base's listing is the test rather
+# than the rename's source, because a move rewritten past rename detection
+# arrives as a plain add and has no source to read. A trailer that enters
+# nothing falls through to RS001's diagnosis. With no merge base (unrelated
+# histories) nothing sat anywhere at the fork, and every landing enters.
 ids_entering_closed() {
-	local base="$1" head="$2"
+	local base="$1" head="$2" mb="$3" terminal_at_mb=""
+	# `|| exit 2`: this runs inside the caller's command substitution, where
+	# errexit is cleared, so a failed listing must end the subshell itself for
+	# pipefail to carry it out.
+	if [ -n "$mb" ]; then
+		terminal_at_mb="$(terminal_folders "$mb")" || exit 2
+	fi
 	git diff --name-status --find-renames "$base".."$head" -- "${STATUS_PATHSPECS[@]}" |
 		while IFS=$'\t' read -r status path dest; do
+			local landed="" id
 			case "$status" in
-			R*)
-				case "$dest" in
-				"$ISSUES_DIR/resolved/"* | "$ISSUES_DIR/wontfix/"*) basename "$dest" | grep -oE '^iss-[0-9]+' || true ;;
-				esac
-				;;
-			A)
-				case "$path" in
-				"$ISSUES_DIR/resolved/"* | "$ISSUES_DIR/wontfix/"*) basename "$path" | grep -oE '^iss-[0-9]+' || true ;;
-				esac
+			R*) landed="$dest" ;;
+			A) landed="$path" ;;
+			esac
+			case "$landed" in
+			"$ISSUES_DIR/resolved/"* | "$ISSUES_DIR/wontfix/"*)
+				id="$(record_id iss "$landed")"
+				[ -n "$id" ] || continue
+				grep -qx "$id $(status_of "$landed")" <<<"$terminal_at_mb" && continue
+				printf '%s\n' "$id"
 				;;
 			esac
 		done
 }
 
+# terminal_folders prints "iss-N <folder>" for every record ref holds in
+# resolved/ or wontfix/ — the folder is what ids_entering_closed compares a
+# landing against. rc-checked as terminal_ids is, for the same reason.
+terminal_folders() {
+	local ref="$1" listing rc=0
+	listing="$(git ls-tree -r --name-only "$ref" -- "$ISSUES_DIR/resolved" "$ISSUES_DIR/wontfix" 2>&1)" || rc=$?
+	if [ "$rc" -ne 0 ]; then
+		echo "check-issue-resolution: git ls-tree failed at $ref (exit $rc) — refusing rather than reporting a vacuous pass:" >&2
+		echo "$listing" >&2
+		exit 2
+	fi
+	printf '%s\n' "$listing" | record_files iss | sort -u
+}
+
+# terminal_ids prints, one per line, the id of every record of kind $4
+# (record_files) ref holds under the terminal folders $2 and $3 ($3 may be
+# empty). The listing is rc-checked: a git failure must not
+# read as "nothing was terminal", which would re-open the hole this closes.
+terminal_ids() {
+	local ref="$1" d1="$2" d2="$3" kind="$4" listing rc=0
+	if [ -n "$d2" ]; then
+		listing="$(git ls-tree -r --name-only "$ref" -- "$d1" "$d2" 2>&1)" || rc=$?
+	else
+		listing="$(git ls-tree -r --name-only "$ref" -- "$d1" 2>&1)" || rc=$?
+	fi
+	if [ "$rc" -ne 0 ]; then
+		echo "check-issue-resolution: git ls-tree failed at $ref (exit $rc) — refusing rather than reporting a vacuous pass:" >&2
+		echo "$listing" >&2
+		exit 2
+	fi
+	printf '%s\n' "$listing" | record_files "$kind" | cut -d' ' -f1 | sort -u
+}
+
 # record_path prints the ledger path of iss-N's record at ref — its status
 # folder is the diagnosis RS001 needs — or nothing when the ref holds none. The
-# id is matched as a whole basename prefix, so iss-99 never answers for iss-999.
+# id is compared whole, so iss-99 never answers for iss-999, and only a record
+# file (record_files) answers: a nested resolved/x/iss-N.md is not the record,
+# so it never diagnoses one as terminal. The first match wins, as before, and
+# the listing is read to the end so no early exit hands git a SIGPIPE.
 record_path() {
 	local ref="$1" id="$2"
 	git ls-tree -r --name-only "$ref" -- "${STATUS_PATHSPECS[@]}" 2>/dev/null |
-		grep -E "/${id}(-[^/]*)?\.md\$" | head -1 || true
+		record_files iss path | awk -v id="$id" '!found && $1 == id { sub(/^[^ ]+ /, ""); print; found = 1 }' || true
 }
 
 # status_of prints the status folder (open, resolved, wontfix) a ledger path sits in.
@@ -342,7 +456,7 @@ mentioned_ids() {
 check_mentions() {
 	local label="$1" text="$2" declared="$3" id
 	for id in $(mentioned_ids "$text"); do
-		printf '%s\n' "$declared" | grep -qx "$id" && continue
+		grep -qx "$id" <<<"$declared" && continue
 		fail "RS004 $label names $id without declaring its relation to it. Add exactly one declaration line: 'Resolves: $id' if this change fixes it (RS001 then requires the record to enter $ISSUES_DIR/resolved/ or $ISSUES_DIR/wontfix/ in the same change), or 'Refs: $id' if it is touched but not fixed (informational; no ledger move required). Those two spellings are the whole vocabulary — 'Ref:', 'See:' and 'Related:' are not declarations."
 	done
 }
@@ -371,31 +485,42 @@ canon_itd() {
 # shipped/ across the range: a move out of planned/ (a rename, or an add without
 # rename detection) or a record filed straight into shipped/. The mirror of
 # ids_entering_closed, and as there a record that only leaves planned/ enters
-# nothing.
+# nothing — nor does one the base already holds in shipped/: a reslug inside
+# shipped/ on the base's side reads, in the two-dot diff, as a rename back into
+# shipped/, and must not satisfy a stale `Delivers:` (iss-2609012047551175's
+# twin). The comparison is on the canonical id, so a zero-padded filename on
+# either side is the same record.
 ids_entering_shipped() {
-	local base="$1" head="$2"
+	local base="$1" head="$2" shipped_at_base
+	# `|| exit 2` for the reason ids_entering_closed gives.
+	shipped_at_base="$(terminal_ids "$base" "$INTENTS_DIR/shipped" "" itd)" || exit 2
+	shipped_at_base="$(printf '%s\n' "$shipped_at_base" | while IFS= read -r raw; do canon_itd "$raw"; done)"
 	git diff --name-status --find-renames "$base".."$head" -- "${INTENT_PATHSPECS[@]}" |
 		while IFS=$'\t' read -r status path dest; do
-			local landed=""
+			local landed="" id
 			case "$status" in
 			R*) landed="$dest" ;;
 			A) landed="$path" ;;
 			esac
 			case "$landed" in
 			"$INTENTS_DIR/shipped/"*)
-				canon_itd "$(basename "$landed" | grep -oE '^itd-[0-9]+' || true)"
+				id="$(canon_itd "$(record_id itd "$landed")")"
+				[ -n "$id" ] || continue
+				grep -qx "$id" <<<"$shipped_at_base" && continue
+				printf '%s\n' "$id"
 				;;
 			esac
 		done
 }
 
 # intent_path prints the store path of a canonical itd-N at ref, or nothing. The
-# id is matched as a whole basename prefix, zero padding admitted, so itd-7 never
-# answers for itd-70.
+# id is compared whole, zero padding admitted, so itd-7 never answers for itd-70,
+# and only a record file (record_files) answers, as in record_path.
 intent_path() {
 	local ref="$1" id="$2"
 	git ls-tree -r --name-only "$ref" -- "${INTENT_PATHSPECS[@]}" 2>/dev/null |
-		grep -E "/itd-0*${id#itd-}(-[^/]*)?\.md\$" | head -1 || true
+		record_files itd path | awk -v n="${id#itd-}" '
+			!found { k = $1; sub(/^itd-0*/, "", k); if (k == n) { sub(/^[^ ]+ /, ""); print; found = 1 } }' || true
 }
 
 # bucket_of prints the lifecycle bucket an intent path sits in.
@@ -418,26 +543,26 @@ frontmatter_field() {
 # `intent:` back-link names the canonical itd-N. The back-link, not the intent's
 # scalar spec_id, is the source of truth for which specs realise an intent
 # (adr-2609151513118583): a remainder spec is named by nothing on the intent.
-# An open/ holding no spec at all is an answer (none), not an error: grep's
-# no-match exit (1) is accepted, or pipefail would carry it out through the
-# caller's assignment and errexit would end the run with no message. Only that
-# status: a git failure, or grep's own (2), still fails the pipeline, because a
+# Only a spec file (record_files) counts: a nested open/x/spc-N.md is not an
+# open spec, so it never tells a delivery to close one. An open/ holding no
+# spec at all is an answer (none), not an error — record_files prints nothing
+# and exits 0 — while a git failure still fails the pipeline, because a
 # swallowed git error reads exactly like an empty store.
 open_specs_for() {
-	local ref="$1" id="$2" f back
-	git ls-tree -r --name-only "$ref" -- "$SPECS_DIR/open" 2>/dev/null | { grep -E '\.md$' || [ "$?" -eq 1 ]; } |
-		while IFS= read -r f; do
+	local ref="$1" id="$2" spc f back
+	git ls-tree -r --name-only "$ref" -- "$SPECS_DIR/open" 2>/dev/null | record_files spc path |
+		while IFS=' ' read -r spc f; do
 			back="$(frontmatter_field "$ref" "$f" intent)"
 			[ "$(canon_itd "$back")" = "$id" ] || continue
-			basename "$f" | grep -oE '^spc-[0-9]+' || true
+			printf '%s\n' "$spc"
 		done
 }
 
 # check_delivery applies RS005 to one declared, canonical itd-N from commit sha.
 # $shipped is the set of ids entering shipped/ in the range.
 check_delivery() {
-	local sha="$1" id="$2" base="$3" head="$4" shipped="$5" behind="$6"
-	printf '%s\n' "$shipped" | grep -qx "$id" && return 0
+	local sha="$1" id="$2" base="$3" head="$4" shipped="$5" behind="$6" mb="$7"
+	grep -qx "$id" <<<"$shipped" && return 0
 	local says="RS005 commit ${sha:0:12} declares 'Delivers: $id', but"
 	local head_path base_path base_bucket=""
 	head_path="$(intent_path "$head" "$id")"
@@ -453,13 +578,24 @@ check_delivery() {
 	if [ "$base_bucket" = shipped ]; then
 		# The stale-branch split RS001 draws, for the same reason: whether a rebase
 		# is the remedy turns on WHEN the record reached shipped/.
-		local placer landed
+		# Asked of the merge base's tree, and the placer is the commit that added
+		# or renamed the path into place — iss-2609012047566360, as RS001. A
+		# merge-queue entry (base an ancestor of head) is asked first: there the
+		# merge base IS base, so only the walk from sha's own fork point can see a
+		# competitor that shipped the intent while the entry waited.
+		local landed mb_path mb_bucket=""
 		landed="$(landed_while_waiting "$sha" "$base" "$head" "$base_path")"
-		placer="$(git log -n1 --format='%h %s' "$head".."$base" -- "$base_path" || true)"
+		if [ -n "$mb" ]; then
+			mb_path="$(intent_path "$mb" "$id")"
+			[ -n "$mb_path" ] && mb_bucket="$(bucket_of "$mb_path")"
+		fi
 		if [ -n "$landed" ]; then
 			fail "$says $id already sits in $INTENTS_DIR/shipped/ at $base, placed there by $landed after this branch diverged from $base: another change delivered it while this change waited (a merge-queue collision), so it enters nothing in $base..$head. Rebase onto $base, reconcile this change with that one, and drop the trailer — the intent ships once, and $base already holds it shipped."
-		elif [ -n "$placer" ]; then
-			fail "$says $id already sits in $INTENTS_DIR/shipped/ at $base (placed there on $base's side by $placer), and $head is $behind commit(s) behind $base: the delivery reached $base outside $base..$head, so this trailer describes work $base already holds. Rebase onto $base; if this commit survives the rebase, drop the trailer."
+		elif [ "$mb_bucket" != shipped ]; then
+			local placer placed_by="after this branch diverged"
+			placer="$(git log -n1 --diff-filter=AR --format='%h %s' "$head".."$base" -- "$base_path" || true)"
+			[ -n "$placer" ] && placed_by="by $placer"
+			fail "$says $id already sits in $INTENTS_DIR/shipped/ at $base (placed there on $base's side $placed_by), and $head is $behind commit(s) behind $base: the delivery reached $base outside $base..$head, so this trailer describes work $base already holds. Rebase onto $base; if this commit survives the rebase, drop the trailer."
 		else
 			fail "$says $id already sat in $INTENTS_DIR/shipped/ before this branch diverged from $base: the trailer names an intent delivered before this commit. Drop the trailer."
 		fi
@@ -503,6 +639,148 @@ check_delivery() {
 		fail "$says $not_entering. Close its spec in this change (abcd spec close <spc-N>) or drop the trailer."
 		;;
 	esac
+}
+
+# revert_pairs prints "<reverting-sha> <reverted-sha>" for every non-merge commit
+# in base..head whose message says, in git revert's own words, that it reverts
+# ANOTHER commit of the same range (iss-2609240646533487). A pushed branch has no
+# other way to take a declaration back: the trailer stays in the range after the
+# revert takes the record back out of the terminal folder, and without this the
+# only exit was a new branch and a new pull request.
+#
+# The reverted commit must be a strict ancestor of the one reverting it, which is
+# true of every revert git writes (it names a commit that existed) and makes a
+# cycle of hand-written "reverts" lines impossible, so the recursion below always
+# ends. An abbreviated sha is resolved; one naming nothing, or a commit outside
+# the range, withdraws nothing.
+revert_pairs() {
+	local base="$1" head="$2" range="$3" r x full
+	git log --no-merges --format=%H -E --grep='This reverts commit [0-9a-f]{7,64}' "$base".."$head" |
+		while IFS= read -r r; do
+			[ -n "$r" ] || continue
+			for x in $(git show -s --format='%B' "$r" | grep -E '^This reverts commit [0-9a-f]{7,64}' | grep -oE '[0-9a-f]{7,64}' || true); do
+				full="$(git rev-parse -q --verify "${x}^{commit}" 2>/dev/null || true)"
+				[ -n "$full" ] && [ "$full" != "$r" ] || continue
+				grep -qx "$full" <<<"$range" || continue
+				git merge-base --is-ancestor "$full" "$r" 2>/dev/null || continue
+				printf '%s %s\n' "$r" "$full"
+			done
+		done
+}
+
+# withdrawn_by prints every commit that reverts sha in the range and is not
+# itself reverted there (a revert of a revert reinstates), and returns 0, or
+# returns 1 when nothing does. Naming a commit is only the claim; which of its
+# declarations the revert withdraws is decided by what the revert DID
+# (ids_withdrawn).
+withdrawn_by() {
+	local sha="$1" pairs="$2" r found=1
+	for r in $(printf '%s\n' "$pairs" | awk -v s="$sha" '$2 == s { print $1 }'); do
+		if ! withdrawn_by "$r" "$pairs" >/dev/null; then
+			printf '%s\n' "$r"
+			found=0
+		fi
+	done
+	return "$found"
+}
+
+# terminal_moves prints "<D|A> <folder> <id>" for every record commit c's OWN diff
+# deletes from, or adds to, a terminal folder: an iss-N under resolved/ or
+# wontfix/, or a canonical itd-N under shipped/. Renames are off, so a move reads
+# as a delete plus an add, paired by id below. The one-commit form diffs c
+# against its single parent (a root commit against the empty tree); a merge
+# commit yields no lines, and none reaches here, since the range is read with
+# --no-merges.
+terminal_moves() {
+	local c="$1" out rc=0
+	out="$(git diff-tree --root --no-commit-id --name-status -r --no-renames "$c" -- \
+		"$ISSUES_DIR/resolved" "$ISSUES_DIR/wontfix" "$INTENTS_DIR/shipped" 2>&1)" || rc=$?
+	if [ "$rc" -ne 0 ]; then
+		echo "check-issue-resolution: git diff-tree failed for ${c:0:12} (exit $rc) — refusing rather than reporting a vacuous pass:" >&2
+		echo "$out" >&2
+		exit 2
+	fi
+	printf '%s\n' "$out" | while IFS=$'\t' read -r status path; do
+		local id="" folder=""
+		case "$status" in
+		D | A) ;;
+		*) continue ;;
+		esac
+		case "$path" in
+		"$ISSUES_DIR/resolved/"*) folder=resolved ;;
+		"$ISSUES_DIR/wontfix/"*) folder=wontfix ;;
+		"$INTENTS_DIR/shipped/"*) folder=shipped ;;
+		esac
+		case "$folder" in
+		resolved | wontfix) id="$(record_id iss "$path")" ;;
+		shipped) id="$(canon_itd "$(record_id itd "$path")")" ;;
+		esac
+		# An if, not `[ ] && printf`: a false test as the last command the
+		# loop runs would become the loop's status, and a non-record file in a
+		# terminal folder (a .gitkeep) listed last would end the gate at exit 2.
+		if [ -n "$id" ]; then
+			printf '%s %s %s\n' "$status" "$folder" "$id"
+		fi
+	done
+}
+
+# ids_taken_out prints "<folder> <id>" for each record commit r's OWN diff takes
+# back out of its terminal folder: it leaves resolved/, wontfix/ or shipped/ and
+# enters no terminal folder. This is the deed a withdrawal is judged on. The
+# "This reverts commit" line is text anyone can type, and honoured on the text
+# alone a commit that reverts nothing — one README line under a hand-written
+# revert line — withdrew a `Resolves:` whose record never moved, so a fix
+# without its resolution passed RS001. A `git revert` of a real resolution or
+# delivery moves the record back out; a hand-written line over a commit that
+# moves nothing takes nothing out, and the declaration stands to be judged. A
+# move between terminal folders, or a reslug inside one, leaves the record
+# terminal and takes nothing out.
+ids_taken_out() {
+	local moves
+	moves="$(terminal_moves "$1")" || exit 2
+	printf '%s\n' "$moves" |
+		awk 'NF == 3 && $1 == "D" { d[$2 " " $3] = 1 } NF == 3 && $1 == "A" { a[$3] = 1 }
+			END { for (k in d) { split(k, p, " "); if (!(p[2] in a)) print k } }' | sort -u
+}
+
+# ids_put_in prints "<folder> <id>" for each record commit c's OWN diff moves
+# INTO a terminal folder it did not already sit in within that commit (a reslug
+# inside the folder is not an entry).
+ids_put_in() {
+	local moves
+	moves="$(terminal_moves "$1")" || exit 2
+	printf '%s\n' "$moves" |
+		awk 'NF == 3 && $1 == "A" { a[$2 " " $3] = 1 } NF == 3 && $1 == "D" { d[$2 " " $3] = 1 }
+			END { for (k in a) if (!(k in d)) print k }' | sort -u
+}
+
+# ids_withdrawn prints the ids a live revert r withdraws from the commit sha it
+# names: those r takes back out of a terminal folder that sha's OWN diff moved
+# them into, folder by folder. Taking a record out is not enough on its own: a
+# fix that declared `Resolves:` and moved nothing, a separate commit that moved
+# the record into resolved/, and a revert of THAT move under a line naming the
+# fix withdrew the fix's trailer, and the fix landed with its record open. Only
+# a revert of the move the named commit itself made undoes that commit's
+# declaration — which is what `git revert <sha>` of a real resolution does.
+ids_withdrawn() {
+	local r="$1" sha="$2" out put
+	out="$(ids_taken_out "$r")" || exit 2
+	[ -n "$out" ] || return 0
+	put="$(ids_put_in "$sha")" || exit 2
+	[ -n "$put" ] || return 0
+	comm -12 <(printf '%s\n' "$out") <(printf '%s\n' "$put") | awk '{ print $2 }' | sort -u
+}
+
+# withdrawn_note reports, and returns 0 for, a declared id that a live revert of
+# its commit takes back out of the terminal folder that commit moved it into; it
+# returns 1 for any other.
+withdrawn_note() {
+	local rule="$1" sha="$2" decl="$3" id="$4" withdrawn="$5" w
+	[ -n "$withdrawn" ] || return 1
+	w="$(awk -v id="$id" '$1 == id && !seen { print $2; seen = 1 }' <<<"$withdrawn")"
+	[ -n "$w" ] || return 1
+	echo "check-issue-resolution: $rule commit ${sha:0:12}'s '$decl' is withdrawn: ${w:0:12} reverts it and takes $id back out of the terminal folder that commit moved it into"
+	return 0
 }
 
 check_pr() {
@@ -558,8 +836,15 @@ check_commits() {
 	# otherwise vanish from the ledger, its changelog line lost, with no other gate
 	# to catch it. (A record that enters resolved/ while a copy stays in open/ is a
 	# duplicate id, which record-lint's issue_id_unique refuses.)
+	#
+	# The fork point both the entering test and the stale-branch diagnoses ask
+	# about. None (unrelated histories) leaves it empty, and every record then
+	# reads as placed after the fork, which is where head..base puts all of
+	# base's history anyway.
+	local mb
+	mb="$(git merge-base "$base" "$head" 2>/dev/null || true)"
 	local closed
-	closed="$(ids_entering_closed "$base" "$head" | sort -u)"
+	closed="$(ids_entering_closed "$base" "$head" "$mb" | sort -u)"
 
 	# RS001 — a declared resolution must move the record. Every shape below is a
 	# refusal; they differ in the diagnosis, and the diagnosis is what a reader
@@ -573,6 +858,15 @@ check_commits() {
 	# that the message now says what the script can prove.
 	local shipped
 	shipped="$(ids_entering_shipped "$base" "$head" | sort -u)"
+
+	# A declaration a later commit of the range reverts is withdrawn: its
+	# `Resolves:` and `Delivers:` ids are not held to a move the revert undid —
+	# but only the ids whose record the revert's own diff takes back out of a
+	# terminal folder the reverted commit's own diff moved it into
+	# (ids_withdrawn). RS004 still reads the message — a withdrawn commit named
+	# what it named.
+	local reverts
+	reverts="$(revert_pairs "$base" "$head" "$range")"
 
 	local declared="" delivered=""
 	local behind
@@ -591,6 +885,19 @@ check_commits() {
 		msg="$(git show -s --format='%B' "$sha")"
 		check_mentions "commit ${sha:0:12}" "$msg" "$(declared_ids "$msg")"
 		scanned=$((scanned + 1))
+		# withdrawn holds "<id> <withdrawer>" for each record a live revert of
+		# this commit takes back out of a terminal folder this commit put it in;
+		# an id absent from it is judged as usual.
+		local withdrawn="" withdrawers w
+		if [ -n "$reverts" ] && withdrawers="$(withdrawn_by "$sha" "$reverts")"; then
+			for w in $withdrawers; do
+				local taken
+				taken="$(ids_withdrawn "$w" "$sha")" || exit 2
+				[ -n "$taken" ] || continue
+				withdrawn="$withdrawn$(printf '%s\n' "$taken" | sed "s/\$/ $w/")
+"
+			done
+		fi
 		while IFS= read -r line; do
 			# RS005 — a declared delivery must ship the intent. Judged on the same
 			# lines RS001 reads; a line is one trailer or the other, never both.
@@ -610,8 +917,9 @@ check_commits() {
 				for raw in $(printf '%s\n' "$line" | grep -oE 'itd-[0-9]+'); do
 					local cid
 					cid="$(canon_itd "$raw")"
+					withdrawn_note RS005 "$sha" "Delivers: $cid" "$cid" "$withdrawn" && continue
 					delivered="$delivered $cid"
-					check_delivery "$sha" "$cid" "$base" "$head" "$shipped" "$behind"
+					check_delivery "$sha" "$cid" "$base" "$head" "$shipped" "$behind" "$mb"
 				done
 				continue
 			fi
@@ -622,8 +930,9 @@ check_commits() {
 			# drift this rule exists to stop, reopened by a comma.
 			local id
 			for id in $(printf '%s\n' "$line" | grep -oE 'iss-[0-9]+'); do
+				withdrawn_note RS001 "$sha" "Resolves: $id" "$id" "$withdrawn" && continue
 				declared="$declared $id"
-				printf '%s\n' "$closed" | grep -qx "$id" && continue
+				grep -qx "$id" <<<"$closed" && continue
 				local head_path base_path base_status
 				head_path="$(record_path "$head" "$id")"
 				base_path="$(record_path "$base" "$id")"
@@ -647,14 +956,31 @@ check_commits() {
 					# terminal already at the merge base, in which case the trailer
 					# names an issue resolved before this commit and nothing but
 					# dropping it helps. The behind-count alone cannot tell them apart;
-					# the record's base-side history can.
-					local placer landed
+					# the merge base's tree can.
+					#
+					# It is asked of that TREE, not of which commits touched the path
+					# since (iss-2609012047566360): when any touch qualified, a body
+					# edit of a record already terminal at the merge base — or a
+					# base-side move between terminal folders — was reported as the
+					# placement, with a rebase that cures nothing. The placer named is
+					# the base-side commit that ADDED or renamed the path into place,
+					# never a later edit of it. A merge-queue entry (base an ancestor
+					# of head) is asked first: there the merge base IS base, so only
+					# the walk from sha's own fork point can see a competitor that
+					# resolved the record while the entry waited.
+					local landed mb_status="" mb_path
 					landed="$(landed_while_waiting "$sha" "$base" "$head" "$base_path")"
-					placer="$(git log -n1 --format='%h %s' "$head".."$base" -- "$base_path" || true)"
+					if [ -n "$mb" ]; then
+						mb_path="$(record_path "$mb" "$id")"
+						[ -n "$mb_path" ] && mb_status="$(status_of "$mb_path")"
+					fi
 					if [ -n "$landed" ]; then
 						fail "RS001 commit ${sha:0:12} declares 'Resolves: $id', but $id already sits in $ISSUES_DIR/$base_status/ at $base, placed there by $landed after this branch diverged from $base: another change resolved it while this change waited (a merge-queue collision), so it enters nothing in $base..$head. Rebase onto $base, reconcile this change with that one, and drop the trailer — the record is terminal once, and $base already holds it so."
-					elif [ -n "$placer" ]; then
-						fail "RS001 commit ${sha:0:12} declares 'Resolves: $id', but $id already sits in $ISSUES_DIR/$base_status/ at $base (placed there on $base's side by $placer), and $head is $behind commit(s) behind $base: the resolution reached $base outside $base..$head, so this trailer describes work $base already holds. Rebase onto $base; if this commit survives the rebase, drop the trailer."
+					elif [ "$mb_status" != resolved ] && [ "$mb_status" != wontfix ]; then
+						local placer placed_by="after this branch diverged"
+						placer="$(git log -n1 --diff-filter=AR --format='%h %s' "$head".."$base" -- "$base_path" || true)"
+						[ -n "$placer" ] && placed_by="by $placer"
+						fail "RS001 commit ${sha:0:12} declares 'Resolves: $id', but $id already sits in $ISSUES_DIR/$base_status/ at $base (placed there on $base's side $placed_by), and $head is $behind commit(s) behind $base: the resolution reached $base outside $base..$head, so this trailer describes work $base already holds. Rebase onto $base; if this commit survives the rebase, drop the trailer."
 					else
 						fail "RS001 commit ${sha:0:12} declares 'Resolves: $id', but $id already sat in $ISSUES_DIR/$base_status/ before this branch diverged from $base: the trailer names an issue that was resolved before this commit. Drop the trailer."
 					fi
@@ -711,7 +1037,11 @@ check_commits() {
 		local rpath note name
 		rpath="$(record_path "$head" "$id")"
 		[ -n "$rpath" ] || continue
-		note="$(git show "$head:$rpath" 2>/dev/null | awk 'NR>1 && /^---$/{exit} /^resolution:/{print}')"
+		# Read to the end, never `exit` at the closing delimiter: under pipefail
+		# an early exit hands git show a SIGPIPE on any record past one pipe
+		# buffer (64 KiB), and this unguarded assignment then ends the gate at
+		# exit 141 with no FAILED line.
+		note="$(git show "$head:$rpath" 2>/dev/null | awk 'NR>1 && /^---$/{done=1} !done && /^resolution:/{print}')"
 		while IFS= read -r name; do
 			[ -n "$name" ] || continue
 			rs006=$((rs006 + 1))

@@ -47,7 +47,7 @@
       "rules": [
         "Intents are press-release-first; acceptance criteria are BDD (Given/When/Then).",
         "Personas come from .abcd/development/personas.json: pick by role, never by name, and refer to every persona as they/them. The persona_registry record-lint rule enforces the registry (itd-79). (The bundled default names Alice/Bob/Carol for a registry-less adopter; this repo ships the registry, so the roster is the full fourteen.)",
-        "Lifecycle is drafts/ -> planned/ -> shipped/; a planned intent's adoption is a maintainer decision.",
+        "Lifecycle is drafts/ -> planned/ -> shipped/; a planned intent's adoption is the product thinker's decision.",
         "The change that lands a planned intent's work closes its spec in the same change (go run ./cmd/abcd spec close <spc-N>), which ships the intent; nothing runs it for you, and a planned intent whose code is on main is invisible to the release cut."
       ]
     },

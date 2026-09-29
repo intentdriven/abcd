@@ -39,18 +39,11 @@ func yamlErrf(format string, a ...any) *yamlError {
 
 var keyRe = regexp.MustCompile(`^([A-Za-z_][A-Za-z0-9_-]*)\s*:\s*(.*)`)
 
-// isFrontmatterClose reports whether line closes a frontmatter block. The two
-// ends of the same block are held to one rule: the open is matched after a
-// whitespace trim, so the close trims too. A trailing space or tab on the close
-// ("--- ") is a common editor artefact, and comparing it byte-exact made the
-// parsers report "frontmatter not terminated" and every reader fall back to its
-// empty default — silently dropping the page's source: provenance and the lint
-// gates that read it. This is the rule the canonical primitive already applies
-// (internal/core/frontmatter.Fields). Callers normalise \r\n -> \n first, so
-// only spaces and tabs remain to trim.
-func isFrontmatterClose(line string) bool {
-	return strings.TrimRight(line, " \t") == "---"
-}
+// A frontmatter block closes on frontmatter.IsDelimiter, the one delimiter
+// rule, not on a private predicate (iss-2608270908348042). It tolerates the
+// trailing space or tab an editor leaves on the close ("--- "), which a
+// byte-exact compare took for "frontmatter not terminated", and callers
+// normalise \r\n -> \n first, so a CRLF close is a close too (iss-30).
 
 // normaliseNewlines folds \r\n and \r to \n, the first step of every parser here
 // (so a CRLF delimiter is seen as a delimiter — iss-30).
@@ -78,6 +71,10 @@ func frontmatterOpenIndex(lines []string) (int, bool) {
 			line = frontmatter.TrimBOM(line)
 		}
 		s := strings.TrimSpace(line)
+		// Deliberately more tolerant than frontmatter.IsDelimiter: the memory
+		// store's pages have always opened on an indented delimiter as well as a
+		// column-0 one, and textOpensFrontmatter documents that tolerance as the
+		// parsers' rule. The close is the canonical one.
 		if s == "---" {
 			return start, true
 		}
@@ -120,7 +117,7 @@ func parseFrontmatter(text string) (map[string]any, error) {
 	i := start + 1
 	found := false
 	for i < len(lines) {
-		if isFrontmatterClose(lines[i]) {
+		if frontmatter.IsDelimiter(lines[i]) {
 			found = true
 			break
 		}
@@ -688,7 +685,7 @@ func splitFileFrontmatter(text string) (string, string, error) {
 	var fm []string
 	i := start + 1
 	for i < len(lines) {
-		if isFrontmatterClose(lines[i]) {
+		if frontmatter.IsDelimiter(lines[i]) {
 			var region strings.Builder
 			for _, l := range fm {
 				region.WriteString(l)
@@ -722,7 +719,7 @@ func frontmatterKeyLine(text, key string) int {
 	out := 0
 	for i := start + 1; i < len(lines); i++ {
 		raw := lines[i]
-		if isFrontmatterClose(raw) {
+		if frontmatter.IsDelimiter(raw) {
 			break
 		}
 		if raw != "" && raw[0] != ' ' && raw[0] != '\t' {

@@ -472,7 +472,7 @@ func runMemoryCoverageLint(repoRoot string, store *storeHandle) ([]Finding, map[
 	indexPath := CoverageIndexPath(repoRoot)
 	report := map[string]any{
 		// Display only, like every path Lint reports (iss-81).
-		"path":            fsutil.DisplayPath(repoRoot, indexPath),
+		"path":            fsutil.RepoRelativePath(repoRoot, indexPath),
 		"stale":           false,
 		"old_fingerprint": nil,
 		"new_fingerprint": nil,
@@ -618,9 +618,9 @@ func Lint(req LintRequest) (LintResult, error) {
 	// directory are named relative to the repository. The absolute values stay
 	// the working ones below.
 	for i := range findings {
-		findings[i].File = fsutil.DisplayPath(root, findings[i].File)
+		findings[i].File = fsutil.RepoRelativePath(root, findings[i].File)
 	}
-	storeDisplay := fsutil.DisplayPath(root, mem)
+	storeDisplay := fsutil.RepoRelativePath(root, mem)
 
 	summary := LintSummary{}
 	for _, f := range findings {
@@ -662,7 +662,7 @@ func Lint(req LintRequest) (LintResult, error) {
 		Findings:      findings,
 		Summary:       summary,
 		CoverageIndex: coverageIndex,
-		ReportDir:     fsutil.DisplayPath(root, reportDir),
+		ReportDir:     fsutil.RepoRelativePath(root, reportDir),
 		GeneratedAt:   generatedAt,
 		StorePath:     storeDisplay,
 		ExitCode:      exitCode,

@@ -227,9 +227,18 @@ the package to it. Text beside one in the same word is also read as bash leaves
 it when the output is empty. One nested past the depth the guard reads, one
 holding a case command, or more of them where the program name could be than
 the guard follows, is refused rather than left unread. A parameter expansion
-holding a substitution prints its output, so its word is unknown from the `${`
-on, and inside double quotes one ends at its own `}`, where a nested `"` opens a
-string of its own. A here-document body is data, but the substitutions the shell
+(`$VAR`, `$1`, `$@`, `${VAR:-git}`) prints a value the line does not hold, so it
+is an unknown word by the same rule: `--$VAR` is every flag it could become, and
+`$GIT` as the program is any program its known text allows. A `${…}` ends at its
+own `}`, where a nested `"` opens a string of its own, and a substitution in its
+text runs and is read. A variable that is the whole word is read as an operand,
+as a wholly-substituted word is (`git push origin "$branch"`), and a string
+handed to a shell carries its variables for that shell to expand, where they
+are read by the same rule, the string's own quotes applying to the value. What a variable carries in from an earlier command
+is not read: as a script it is not a stream, and as the program's name it is not
+a `pkill` or `killall`, whose entries name only the program and an operand, nor a
+bare interpreter inside a string, because a variable is how ordinary commands
+carry a program or a path between commands. A here-document body is data, but the substitutions the shell
 runs in a body whose delimiter is unquoted are read as commands, and such a body
 is read by the lines bash compares with its delimiter, joined across a trailing
 odd run of backslashes. A backtick's text is read after bash's own pass over
@@ -265,7 +274,10 @@ piped into `xargs kill`, is read as the kill by name it is — through a group
 and into one, whose every command is read as handed what is piped into it,
 through a shell string that runs the search, and into a shell string `xargs`
 runs or a pipe or redirect feeds, whose every command is read as handed its
-input — and a `pkill` or
+input, or whose positional parameters or own text hold the search's output; out
+of an unquoted here-document's substitutions into the command that reads the
+document and every command its output is piped on to; and into a substitution in a command that reads a pipe, which runs
+with that pipe as its input — and a `pkill` or
 `killall` selecting by user, group or terminal, its value written apart or
 attached, as selecting every session under the account; `pkill`'s signal name
 is read as a signal first, in any case. In a repository with more
@@ -286,9 +298,9 @@ before the shell expands it, so `$HOME` and `$PWD` are seen as those words
 although no other parameter expansion is.
 
 What an allow still does not see is a hazard that never reaches command position
-at all: a word that is wholly a command substitution standing where a flag
-would be, which is read as an operand because that is how a commit message or a
-branch name is spelled every day; a delete target printed whole by a
+at all: a word that is wholly a command substitution or a variable standing
+where a flag would be, which is read as an operand because that is how a commit
+message or a branch name is spelled every day; a delete target printed whole by a
 substitution (`rm -rf $(echo /)`), which is read by its known text because that
 is how an everyday delete names what it removes (`rm -rf $(find . -name
 '*.pyc')`); a target spelled any other way than the words above (`rm -rf
@@ -301,12 +313,12 @@ since every line is read from the default IFS; a pid list a kill reads through a
 grep` chain;
 a payload inside a non-shell interpreter such as `python -c`, which is
 one opaque token and today a silent allow; and any dangerous form no entry
-describes. Nor does an allow see through a parameter expansion that carries no
-substitution (`$VAR`, `${VAR:-git}`), wherever it stands — as the command's
-program name, as a flag, or inside a payload the guard does read — because the
-guard sees the variable and not what the shell will expand it to, and warning on
-every variable would bury the warnings that matter; so the obvious evasions above
-do not include a hazard spelled through a variable. Nor does an allow see what a
+describes. Nor does an allow see what a variable carries in from an earlier
+command: a pid list (`p=$(pgrep make); kill $p`), a stream path handed to a
+shell, shell text run through `eval "$X"` or placed in a string a shell runs,
+or `pkill` or `killall` as a variable's value standing as the program with an
+operand (`$P make`), because reading each would refuse the ordinary commands a
+variable carries a value for; whether to is an open ruling. Nor does an allow see what a
 lone substitution prints when it stands as the whole command (`$(cat msg.txt)`,
 `$(date)`): such a name can be any program, but with no operand after it no
 entry matches, so it allows by the posture above, where an allow means no entry

@@ -3,6 +3,7 @@ package intent
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -723,11 +724,15 @@ func TestAddRelatedIssueWritesOnlyTheBackEdge(t *testing.T) {
 
 	// An unknown intent and a source outside the two graduating families are
 	// refused, and nothing is written.
-	if _, err := AddRelatedIssue(root, "itd-99", "rdi-17"); err == nil {
+	if got, err := AddRelatedIssue(root, "itd-99", "rdi-17"); err == nil {
 		t.Error("AddRelatedIssue on an intent in no bucket must be refused")
+	} else if !reflect.DeepEqual(got, Intent{}) {
+		t.Errorf("a refused AddRelatedIssue must return the zero Intent, got %+v", got)
 	}
-	if _, err := AddRelatedIssue(root, "itd-10", "adr-4"); err == nil {
+	if got, err := AddRelatedIssue(root, "itd-10", "adr-4"); err == nil {
 		t.Error("AddRelatedIssue with a source outside ^(iss|rdi)-[0-9]+$ must be refused")
+	} else if !reflect.DeepEqual(got, Intent{}) {
+		t.Errorf("a refused AddRelatedIssue must return the zero Intent, got %+v", got)
 	}
 }
 
@@ -757,9 +762,15 @@ func TestAddRelatedIssueKeepsAnExistingEdgeAndIsIdempotentOnTheSame(t *testing.T
 		t.Fatalf("the record must carry both edges, the first kept first:\n%s", after)
 	}
 
-	// The SAME source is a no-op that leaves the record byte-identical.
-	if _, err := AddRelatedIssue(root, "itd-11", "rdi-17"); err != nil {
+	// The SAME source is a no-op that leaves the record byte-identical, and it
+	// still returns the record's list: the promote route reads the kept edge
+	// off this return on a re-run too (iss-2609021815563506).
+	same, err := AddRelatedIssue(root, "itd-11", "rdi-17")
+	if err != nil {
 		t.Fatalf("AddRelatedIssue with the source already there must be a no-op: %v", err)
+	}
+	if got := strings.Join(same.RelatedIssues, ","); same.ID != "itd-11" || got != "rdi-17,rdi-18" {
+		t.Fatalf("the no-op must return the record as it stands: id %q, RelatedIssues %q, want itd-11 and rdi-17,rdi-18", same.ID, got)
 	}
 	again, err := os.ReadFile(filepath.Join(root, draftsDir, "itd-11-beta.md"))
 	if err != nil {
@@ -778,9 +789,14 @@ func TestAddRelatedIssueRefusesARecordCarryingTheRetiredField(t *testing.T) {
 	root := t.TempDir()
 	body := "---\nid: itd-12\nslug: gamma\nspec_id: null\nkind: null\npromoted_from: iss-3\n---\n# gamma\n"
 	writeFile(t, root, draftsDir+"/itd-12-gamma.md", body)
-	_, err := AddRelatedIssue(root, "itd-12", "iss-4")
+	got, err := AddRelatedIssue(root, "itd-12", "iss-4")
 	if err == nil {
 		t.Fatal("AddRelatedIssue on a record carrying promoted_from must be refused")
+	}
+	// A refusal returns no record beside its error: a caller reading the
+	// return on an error path reads nothing (iss-2609021815563506).
+	if !reflect.DeepEqual(got, Intent{}) {
+		t.Errorf("a refused AddRelatedIssue must return the zero Intent, got %+v", got)
 	}
 	if !strings.Contains(err.Error(), "capture migrate") {
 		t.Errorf("the refusal must name the migration; got %v", err)

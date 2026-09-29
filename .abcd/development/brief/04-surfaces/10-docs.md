@@ -7,7 +7,7 @@ checked in six months. The currency lint answers that in one read-only pass, so
 it can run on every commit at no cost and gate a release without a network.
 
 The citation sub-tree is the writing half, and it is the only place abcd reaches
-the network on behalf of documentation. It runs when a maintainer asks, never
+the network on behalf of documentation. It runs when the technical facilitator asks, never
 in a gate, which is what keeps the lint itself deterministic and offline.
 
 ## Sub-verbs
@@ -53,7 +53,7 @@ in a gate, which is what keeps the lint itself deterministic and offline.
   rather than recorded as broken.
 - **The citation confirmation** records that a human verified a citation the fetcher
   could not read, either from named URLs or from a receipt file. Today the
-  maintainer clears the printed checklist and names the URLs on the command line;
+  technical facilitator clears the printed checklist and names the URLs on the command line;
   the receipt form ships against a producer that does not exist yet, a generated
   checklist page that would hand the file back (a later rung of the same intent).
   Both forms write the same dated entry, so when the page arrives it is a second
@@ -116,6 +116,20 @@ promotion is reachable only by a human typing the flag.
   banned tokens, each a blocker, so the published surface stays host-agnostic;
   the `<!-- docs-lint: allow -->` escape covers the sanctioned exception,
   attribution.
+- **The two roles, named.** abcd's own text says which person it means: the
+  product thinker, who decides what to build, or the technical facilitator,
+  who decides how. The `roles/retired-role-word` banned token refuses the one
+  word that blurred them, as a blocker, and it reaches past the documentation:
+  its `extra_roots` add the plugin command pages, this repository's rules
+  overrides and the bundled rules source (itd-2609212137129937). An entry's
+  `extra_roots` widen that entry alone, reading every text file there and not
+  only markdown (a rules file is JSON), with `exempt_paths`, the escape and the
+  fence default applying as they do under `roots`; the rest of the family is
+  not armed there, and a missing extra root is a configuration error, as a
+  missing root is. `roots` itself holds markdown: a non-markdown file named
+  there would be read by nothing, so it is refused and pointed at
+  `extra_roots` (iss-2609281045487620). The escape covers an acknowledgement and a persona's outside
+  job title, nothing else.
 - **Harness leak**, a separate rule from those tokens and armed here as a
   blocker, refusing the two shapes a harness stamps onto text the repository did
   not ask it to stamp: a live agent-session URL, and a tool's own "generated

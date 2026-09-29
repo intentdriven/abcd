@@ -354,7 +354,11 @@ irreversible; guessing downward costs nothing.**
   record satisfies nothing. Resolution is deliberately not a post-merge step: a step that happens
   after the merge is the one that gets forgotten, and a fixed-but-open issue
   leaves no marker to find it by. Resolving without a trailer stays legal — a
-  stale issue closed on its own merits has no fixing commit to name.
+  stale issue closed on its own merits has no fixing commit to name. A `git
+  revert` later in the same range withdraws a `Resolves:` only for a record its
+  own diff takes back out of `resolved/` or `wontfix/`, a record the reverted
+  commit itself moved in; a "This reverts commit" line over a commit that moves
+  no record, or naming a commit that never moved that record, withdraws nothing.
 - **A change that delivers a planned intent closes its spec in the same
   change**: `go run ./cmd/abcd spec close <spc-N>` moves the spec to `closed/`
   and, as its close-hook, the intent from `planned/` to `shipped/`. Nothing
@@ -373,7 +377,9 @@ irreversible; guessing downward costs nothing.**
   and there is no default: a record that does not already declare it takes
   `--impact additive|breaking|fix` on the close, and a close with neither is
   refused before anything moves. Same shape as the issue rule above: the step
-  that happens after the merge is the one that gets forgotten.
+  that happens after the merge is the one that gets forgotten. A revert
+  withdraws a `Delivers:` on the same terms, only for an intent its own diff
+  takes back out of `shipped/`, an intent the reverted commit itself moved in.
 - **A `resolved_by.commit` stamp names a commit that is actually reachable.**
   `abcd capture resolve --commit` is shape-checked only, so a wrong sha reads
   exactly like a right one; RS002/RS003 check reachability instead. Note the
@@ -405,15 +411,22 @@ irreversible; guessing downward costs nothing.**
   there asserts an authorship it does not hold — and a squash merge re-appends a
   mis-identified branch author as a co-author, inflating the graph again on every
   squash. `scripts/check-attribution.sh commits` reads the identity of every
-  commit in a range, merge commits included, and refuses one on any of five
-  signals. Four are checked in both roles: an assistant vendor's name standing
+  commit in a range, merge commits included, and refuses one on any of six
+  signals. Five are checked in both roles: an assistant vendor's name standing
   alone as the identity name (`Claude`, `Copilot`, `Gemini` and their kin,
   matched whole so a human named Claudette passes); an assistant vendor's mail
   domain (`@anthropic.com`, `@openai.com`); the forge's own `[bot]` name suffix;
-  and a bot mailbox (`NNNN+name[bot]@users.noreply.github.com`, or
-  `@dependabot.com`). The last two are structural rather than nominal, which is
-  why a second automation lands in the right place with no edit to the list. The
-  fifth signal is checked in the AUTHOR role only: **any** address whose mailbox
+  a bot mailbox (`NNNN+name[bot]@users.noreply.github.com`, or
+  `@dependabot.com`); and a trailing `bot`, `robot` or `automation` word ending
+  the name or the mailbox's local part, standing alone or joined by `-` or `_`
+  (`semantic-release-bot`, `ci_bot@`, and `Renovate Bot` at its default
+  `bot@renovateapp.com`), so Talbot, `jean.bot@` and a person named `Jan Bot`
+  pass. The `[bot]` suffix and the bot mailbox are structural rather than
+  nominal, which is why a second automation the forge stamps lands in the right
+  place with no edit to the list; the trailing word is a name shape, drawn
+  narrowly, and a machine configured with a person-shaped name and mailbox stays
+  out of reach, and the reviewer is the check on it. The
+  sixth signal is checked in the AUTHOR role only: **any** address whose mailbox
   begins `noreply@` or `donotreply@` (with or without hyphens), whatever the host — it
   is not scoped to a vendor, because an address named for not being read names
   no person in the role that claims authorship. It is refuse-machines, not an

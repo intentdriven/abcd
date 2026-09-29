@@ -81,7 +81,7 @@ target's, is ahoy's shape, so it lives in the generated appendix of
 [`01-ahoy.md`](01-ahoy.md#appendix-the-shipped-surface) and is not repeated here.
 
 The identity verb's render is the follow-on surface and writes nothing: it proposes
-a correction as a diff, and adopting it is always the maintainer's move.
+a correction as a diff, and adopting it is always the product thinker's move.
 
 ## Flow
 

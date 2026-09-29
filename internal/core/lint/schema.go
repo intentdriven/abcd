@@ -1852,6 +1852,21 @@ func scanRecordStores(repoRoot string, cfg RuleConfig) ([]schemaRecord, []Findin
 				}
 				continue
 			}
+			// A markdown-named link that is no record filename is named as well
+			// (iss-2609261208193041): whether `notes.md` points at a directory or
+			// a file could be told only by following it, which the walk never
+			// does, so every such link is reported whatever it points at. The
+			// store's README.md is the one link the root may carry, and a link
+			// with a record filename falls to the store-root record leg below.
+			if e.Type()&fs.ModeSymlink != 0 && !strings.EqualFold(e.Name(), "README.md") &&
+				!store.fileNumRe.MatchString(e.Name()) {
+				if !strings.HasPrefix(e.Name(), ".") {
+					add(rel, "'"+e.Name()+"' is a link at the "+store.noun+" store root; the gate never follows a link, "+
+						"so whether it points at a record or at a bucket nobody declared ("+store.bucketDesc()+
+						"), nothing behind it is checked")
+				}
+				continue
+			}
 			if e.IsDir() {
 				// A dot-directory is tooling state (an editor's, a scanner's), never
 				// a lifecycle the record authored — the record's own buckets are all
@@ -2199,15 +2214,19 @@ func recordBodyStart(lines []string) int {
 	// The leading comments are mdrecord's to locate: a private walk on a
 	// `<!--` prefix took a multi-line comment's second line for the body
 	// (iss-2609251517210637).
+	// Whether that line opens frontmatter is frontmatterOpen's question, which
+	// trims a BOM ahead of the delimiter; a private compare here did not, and
+	// took a BOM-led issue's `---` for its title (iss-2608221126066379).
+	// The close is frontmatter.CloseAfter's, the one closing walk; a private
+	// TrimSpace compare closed on an indented rule no other reader closes on
+	// (iss-2608270908348042). An unclosed block still reads as swallowing the
+	// document, so no frontmatter line is taken for a title.
 	i, _ := mdrecord.FirstContent(lines)
-	if i < len(lines) && strings.TrimSpace(lines[i]) == "---" {
-		i++
-		for i < len(lines) && strings.TrimSpace(lines[i]) != "---" {
-			i++
+	if i < len(lines) && frontmatterOpen(lines) == i {
+		if end := frontmatter.CloseAfter(lines, i); end >= 0 {
+			return end + 1
 		}
-		if i < len(lines) {
-			i++
-		}
+		return len(lines)
 	}
 	return i
 }

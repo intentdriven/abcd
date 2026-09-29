@@ -84,14 +84,15 @@ func TestInstallDevShimNotesEveryFailure(t *testing.T) {
 	}
 }
 
-// TestInstallPinnedSymlinkNotesAFailedShimRemoval is the twin of the dev-shim
+// TestInstallOwnedEntryNotesAFailedShimRemoval is the twin of the dev-shim
 // case in the opposite direction: switching a dev shim back to the pinned
-// entry removes the shim first, and that removal returned bare on failure.
-func TestInstallPinnedSymlinkNotesAFailedShimRemoval(t *testing.T) {
+// owned copy removes the shim first, and that removal returned bare on failure.
+func TestInstallOwnedEntryNotesAFailedShimRemoval(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Skip("root ignores directory permissions, so the forced failure cannot occur")
 	}
 	_, pluginRoot := setupHermetic(t)
+	seedDataCache(t, cacheArtefact)
 	d := t.TempDir()
 	t.Cleanup(func() { _ = os.Chmod(d, 0o755) })
 	target := filepath.Join(d, "abcd")
@@ -102,11 +103,11 @@ func TestInstallPinnedSymlinkNotesAFailedShimRemoval(t *testing.T) {
 		t.Fatal(err)
 	}
 	a := &applyCtx{cwd: t.TempDir(), det: DetectionResult{pluginRoot: pluginRoot}}
-	a.installPinnedSymlink(target, binTargetDevShim)
+	a.installOwnedEntry(target, binTargetDevShim)
 	if len(a.writes) != 0 {
 		t.Errorf("a failed switch reported writes %v", a.writes)
 	}
-	if !strings.Contains(strings.Join(a.notes, "\n"), "could not replace the dev PATH entry") {
+	if !strings.Contains(strings.Join(a.notes, "\n"), "could not replace the existing PATH entry") {
 		t.Errorf("no note for the failed shim removal; notes = %q", a.notes)
 	}
 }

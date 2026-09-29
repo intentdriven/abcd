@@ -185,7 +185,9 @@ func TestHooksRunEveryShapeAhoyInstalls(t *testing.T) {
 		name string
 		dev  bool
 		// data is the persistent plugin data dir; empty means no verified
-		// cache, which is the documented degradation to the pinned symlink.
+		// cache, which only the dev shim installs without. With no verified
+		// cache a plain install writes no entry at all (iss-2609100506263330),
+		// so there is no pinned-symlink shape for it to leave.
 		data func(t *testing.T) string
 		// ran reports whether the entry, once accepted, actually executes abcd.
 		// The dev shim rebuilds from source on every call and there is no `go`
@@ -193,7 +195,6 @@ func TestHooksRunEveryShapeAhoyInstalls(t *testing.T) {
 		// different question from whether the hook was willing to run it.
 		ran bool
 	}{
-		{name: "pinned symlink", data: func(*testing.T) string { return "" }, ran: true},
 		{name: "owned copy", data: func(t *testing.T) string { return seedInstallShapeCache(t, artefact) }, ran: true},
 		{name: "dev shim", dev: true, data: func(*testing.T) string { return "" }},
 	} {
@@ -227,7 +228,7 @@ func TestHooksRunEveryShapeAhoyInstalls(t *testing.T) {
 // would hand the ownership claim to a foreign binary and every hook would run
 // it — the hijack the ownership rung exists to refuse.
 func TestUninstallStopsTheHooksRunningTheEntry(t *testing.T) {
-	home, binDir := runAhoyInstall(t, false, "")
+	home, binDir := runAhoyInstall(t, false, seedInstallShapeCache(t, []byte("#!/bin/sh\nexit 0\n")))
 	repo := t.TempDir()
 	if err := os.Mkdir(filepath.Join(repo, ".git"), 0o755); err != nil {
 		t.Fatal(err)

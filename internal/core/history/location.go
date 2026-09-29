@@ -216,14 +216,15 @@ func localDeclared(repoRoot string) (bool, string) {
 	if err != nil || home == "" {
 		return false, ""
 	}
-	path := filepath.Join(home, filepath.FromSlash(LocalRootsRelPath))
-	// The three-part guard is fsutil.ReadDeclaration's, not this function's — see
-	// the note at rules.trustedRootDeclared. Only the WORDING stays here.
-	raw, refusal, err := fsutil.ReadDeclaration(path, maxLocalRootsBytes)
+	// The guard is fsutil.ReadHomeDeclaration's, not this function's — see the
+	// note at rules.trustedRootDeclared. Only the WORDING stays here.
+	raw, refusal, err := fsutil.ReadHomeDeclaration(home, LocalRootsRelPath, maxLocalRootsBytes)
 	switch refusal {
 	case fsutil.DeclarationOK:
 	case fsutil.DeclarationAbsent:
 		return false, "" // no declaration is the ordinary case, not a diagnostic.
+	case fsutil.DeclarationBehindSymlink:
+		return false, ignoredDeclaration(termsafe.Sanitize(err.Error()))
 	case fsutil.DeclarationNotRegular:
 		return false, ignoredDeclaration("it is not a regular file")
 	case fsutil.DeclarationWritableByOthers:
@@ -329,6 +330,8 @@ func migrateLegacy(home, rootSHA string, dst Resolution) string {
 	if movedRecords == 0 && movedStaged == 0 && complete {
 		return "" // the legacy dirs existed but were empty: nothing worth saying.
 	}
+	// Store paths, not checkouts: the note is the one notice of where the corpus
+	// went, so both keep RedactHome rather than fsutil.DisplayPath's base name.
 	note := fmt.Sprintf("history: moved %d transcript(s) and %d staged file(s) out of %s into %s",
 		movedRecords, movedStaged, fsutil.RedactHome(legacyRepo), fsutil.RedactHome(dst.Base))
 	if !complete {

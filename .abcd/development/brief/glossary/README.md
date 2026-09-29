@@ -86,6 +86,7 @@ glossary/
 │   ├── persona.md
 │   ├── phase.md
 │   ├── plan.md
+│   ├── product-thinker.md
 │   ├── reading-position.md
 │   ├── record-families.md
 │   ├── record.md
@@ -93,6 +94,7 @@ glossary/
 │   ├── spec.md
 │   ├── step.md
 │   ├── surface.md
+│   ├── technical-facilitator.md
 │   ├── transport.md
 │   └── voyage.md
 ├── distribution/
@@ -218,7 +220,8 @@ The complete write-back protocol is a **design target** of `/abcd:intent grill`'
 | [oracle](core/oracle.md) | stable | An AI model invoked to review, reason over, or validate a project's artefacts — host-delegated by default, or reached through an opt-in oracle adapter. |
 | [persona](core/persona.md) | stable | A placeholder stakeholder character drawn from the abcd personas registry, used in press releases, intents, and design documents to represent a real user archetype without using real names. |
 | [phase](core/phase.md) | superseded | An ordered stretch of development work that bundles a set of intents and brief plumbing-phases and ends in a milestone; abcd's sequencing layer, recorded as a document in roadmap/phases/. Unqualified it always carries that sense, the brief's own numbered build milestones being plumbing-phases. |
-| [plan](core/plan.md) | stable | The maintainer's sign-off act `abcd intent plan <itd-N>`, which mints a spec, links both sides and moves a draft intent to planned/. Three further senses share the word — the ordered build plan the phase docs hold, a dated design plan under development/plans/, and a session's planning brief — and each is qualified where it appears. |
+| [plan](core/plan.md) | stable | The product thinker's sign-off act `abcd intent plan <itd-N>`, which mints a spec, links both sides and moves a draft intent to planned/. Three further senses share the word — the ordered build plan the phase docs hold, a dated design plan under development/plans/, and a session's planning brief — and each is qualified where it appears. |
+| [product-thinker](core/product-thinker.md) | stable | The person who decides what is built and why — who rules on intents, signs off acceptance criteria, adopts or declines a proposal, and owns the decisions no mode automates (adjudication, dependency sign-off, irreversible acts). One of the two people abcd addresses, beside the technical facilitator. |
 | [reading-position](core/reading-position.md) | stable | One of the four questions a cold reading can be commissioned to answer — widening, entailment, comparative or detection. The position fixes the reading's object, its question and the supply regime its output is validated against; `abcd reading assemble --position` names it. |
 | [record-families](core/record-families.md) | stable | The one page that maps abcd's record families (intent, spec, step, bundle, issue, release, status) and how they relate: what each groups, what groups it, its lifecycle and the verb that moves it. |
 | [record](core/record.md) | stable | One identified, filed document that a command mints and a lint gate reads — an itd-N, spc-N, adr-N, iss-N or rdg-id. "The development record" is the whole durable corpus those records make up, and "a record family" is one lifecycle-bucketed set of them; each of the three is qualified where the other two could be read. |
@@ -226,6 +229,7 @@ The complete write-back protocol is a **design target** of `/abcd:intent grill`'
 | [spec](core/spec.md) | stable | A specced block of work in abcd's native spec store that implements one or more intents, broken into ordered tasks with acceptance criteria. |
 | [step](core/step.md) | stable | One of the ordered, independently landable pieces a spec lists under its Steps section; each step is one lane and one pull request, and a spec with no steps is one step. |
 | [surface](core/surface.md) | stable | A verb's front door — the markdown command file under commands/ plus the transport package under internal/surface/ that reaches the core. "A surface chapter" is the brief's design record for one such front door, and "a rendered surface" is a public text held to the repository's identity block; both are qualified. |
+| [technical-facilitator](core/technical-facilitator.md) | stable | The person who decides how the work is carried out — who runs the agents and operates the machinery between the product thinker's decisions: the gates, merges, CI, hooks, installs and the mechanics of the record. One of the two people abcd addresses; itd-97 holds that the role is a mode, not a person. |
 | [transport](core/transport.md) | stable | The mechanism by which curated context and artefacts are packaged and delivered to an oracle for review or reasoning. |
 | [voyage](core/voyage.md) | stable | The operations namespace at `~/.abcd/voyage/<source-root-sha>/` — an append-only record of what abcd *did* to produce a lifeboat (every disembark and embark run), as against the lifeboat itself, which is what gets carried. |
 

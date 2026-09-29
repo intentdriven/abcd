@@ -673,7 +673,7 @@ func publicFamilyGaps(h BanlistHealth) []Gap {
 			Title:  "public banned-names family is not enforceable",
 			Detail: "git ignores " + banlist.PublicConfigRelPath + ", so the family it carries never reaches CI — and the public layer's whole claim is that it is committed and enforced for everyone.",
 			FixHint: "commit " + banlist.PublicConfigRelPath + " (`git add -f`), or ban the name on the private layer instead; " +
-				"under `visibility: public` the abcd fence ignores the whole .abcd/ namespace, which is a placement question a maintainer must settle.",
+				"under `visibility: public` the abcd fence ignores the whole .abcd/ namespace, which is a placement question the technical facilitator must settle.",
 			Required:   false,
 			Resolvable: false,
 		}}

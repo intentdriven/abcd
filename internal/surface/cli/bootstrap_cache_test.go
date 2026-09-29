@@ -1372,3 +1372,29 @@ func assertHomeRefusalNamed(t *testing.T, out string) {
 		t.Errorf("the notice must say the cache attestation was not written; output %q", out)
 	}
 }
+
+// TestBootstrapRefusesASymlinkedAbcdHome is iss-2609281017573862 at the
+// writer. The Go readers refuse a record behind a symlinked ~/.abcd, as the
+// rules loader refuses rules.json there, so an attestation written through the
+// link lands in whatever the link points at (a dotfiles checkout) and is then a
+// record nobody honours — and `ahoy install` would send the reader back to the
+// hooks for a record they would write the same way. The hook refuses the home
+// instead, and the notice says why.
+func TestBootstrapRefusesASymlinkedAbcdHome(t *testing.T) {
+	root, data, fx := attestableRun(t)
+	home := t.TempDir()
+	dotfiles := t.TempDir()
+	if err := os.Symlink(dotfiles, filepath.Join(home, ".abcd")); err != nil {
+		t.Fatal(err)
+	}
+	out, code := runBootstrapInHome(t, t.TempDir(), root, data, home, fx)
+	if code != 0 {
+		t.Fatalf("a refused ~/.abcd is a note on a successful install, not a fault: got %d (output %q)", code, out)
+	}
+	if entries, _ := os.ReadDir(dotfiles); len(entries) != 0 {
+		t.Fatalf("the bootstrap wrote %d file(s) behind the symlinked ~/.abcd, first %q", len(entries), entries[0].Name())
+	}
+	if !strings.Contains(out, "~/.abcd is a symlink") || !strings.Contains(out, "cache attestation") {
+		t.Errorf("the notice must say the cache attestation was not written because ~/.abcd is a symlink; output %q", out)
+	}
+}

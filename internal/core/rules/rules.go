@@ -410,7 +410,9 @@ func readRepoLayer(repoRoot string) (over RuleSet, ok bool, err error) {
 // And the ~/.abcd directory itself must not be a symlink when a rules.json sits
 // behind it, the pre-check the repo's .abcd gets — checked only once a file is
 // there, because a machine whose ~/.abcd is a dotfiles symlink holding no
-// rules.json reads nothing and must keep behaving exactly as it did.
+// rules.json reads nothing and must keep behaving exactly as it did. That check
+// is fsutil.ReadHomeDeclaration's (fsutil.HomeScopeLink), the one every other
+// home-scoped reader and writer applies, so the rule cannot drift per file.
 //
 // Every refusal is an error naming the file in tilde form, never a silent
 // fallback to the defaults: an unreadable user layer that degraded to a partial
@@ -422,9 +424,7 @@ func readUserLayer(home string) (over RuleSet, ok bool, err error) {
 	if home == "" || !filepath.IsAbs(home) {
 		return RuleSet{}, false, nil
 	}
-	dir := filepath.Join(home, ".abcd")
-	path := filepath.Join(home, filepath.FromSlash(UserRelPath))
-	data, refusal, err := fsutil.ReadDeclaration(path, maxRulesFileBytes)
+	data, refusal, err := fsutil.ReadHomeDeclaration(home, UserRelPath, maxRulesFileBytes)
 	// Absent is the lstat's answer, so a permission error here is a HOME or
 	// ~/.abcd this uid cannot search, never the file's own mode: that reads as
 	// no user layer, as it does for the sibling home-scoped declarations
@@ -434,11 +434,10 @@ func readUserLayer(home string) (over RuleSet, ok bool, err error) {
 	if refusal == fsutil.DeclarationAbsent && (os.IsNotExist(err) || errors.Is(err, syscall.ENOTDIR) || errors.Is(err, fs.ErrPermission)) {
 		return RuleSet{}, false, nil
 	}
-	if di, lerr := os.Lstat(dir); lerr == nil && di.Mode()&os.ModeSymlink != 0 {
-		return RuleSet{}, false, fmt.Errorf("rules: ~/.abcd is a symlink (refusing to follow it to %s)", UserDisplayPath)
-	}
 	switch refusal {
 	case fsutil.DeclarationOK:
+	case fsutil.DeclarationBehindSymlink:
+		return RuleSet{}, false, fmt.Errorf("rules: ~/.abcd is a symlink (refusing to follow it to %s)", UserDisplayPath)
 	case fsutil.DeclarationNotRegular:
 		return RuleSet{}, false, fmt.Errorf("rules: %s is not a regular file (a symlink, FIFO or device is refused)", UserDisplayPath)
 	case fsutil.DeclarationWritableByOthers:

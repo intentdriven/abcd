@@ -9,8 +9,8 @@ own space, it can list and reclaim.
 
 **Why.** A directory is the user's map of their own work: what is there is
 what they made, and a folder that fills on its own stops being a map. The
-2026-09-06 session that created twenty-two worktrees beside the maintainer's
-other projects did nothing wrong by isolating — parallel sessions need
+2026-09-06 session that created twenty-two worktrees beside the other projects
+of the person who ran it did nothing wrong by isolating — parallel sessions need
 separate checkouts — and everything wrong by location; the objection was not
 "why so many" but "I don't want a user to be surprised that a folder is all of
 a sudden full of stuff". Twenty-one spent worktrees had already been cleared by

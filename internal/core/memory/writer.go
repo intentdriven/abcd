@@ -512,7 +512,8 @@ func backfillLegacy(mem string) ([]string, error) {
 			}
 			// Rebuilding the file from (region, body) cannot carry a tolerated
 			// preamble across, so a page that has one is left alone rather than
-			// backfilled lossily.
+			// backfilled lossily. A byte-0 test is the question here — whether
+			// anything precedes the block — not a delimiter compare.
 			if !strings.HasPrefix(text, "---") {
 				continue
 			}

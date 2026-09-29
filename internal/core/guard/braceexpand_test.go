@@ -40,7 +40,9 @@ func TestBraceExpansionMatchesBash(t *testing.T) {
 		{`{5..1}`, []string{"5", "4", "3", "2", "1"}},
 		{`{1..5..-2}`, []string{"1", "3", "5"}},
 		{`{a..e..2}`, []string{"a", "c", "e"}},
-		{`${x:-a,b}`, []string{"${x:-a,b}"}},
+		// One word, never split at the comma inside `${…}`; its value is
+		// unknown (iss-2609251824244354), so its known text is empty.
+		{`${x:-a,b}`, []string{""}},
 		{`"$"{a,b}`, []string{"$a", "$b"}},
 		{`{a,b}\}`, []string{"a}", "b}"}},
 		{`{a,\,b}`, []string{"a", ",b"}},

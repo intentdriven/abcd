@@ -71,6 +71,16 @@ type BannedToken struct {
 	// whole public surface, where a fence is published as readily as prose
 	// (iss-2609252251320133). Set it to override either default.
 	SkipCodeFences *bool `json:"skip_code_fences"`
+	// ExtraRoots are repo-relative directories or files THIS token alone reads in
+	// addition to the configuration's Roots. Every text file there is read, not
+	// only markdown, because a rules file written in JSON is abcd's own text as
+	// much as a page is; exempt_paths, exempt_if_status, the allow_context escape
+	// and the fence default apply as they do under Roots. It widens one ban
+	// without arming the rest of the family — a spelling or present-tense token —
+	// over trees that are not documentation (itd-2609212137129937: the role word
+	// is refused in the command pages and the rules files). A file the Roots walk
+	// already read is not read twice.
+	ExtraRoots []string `json:"extra_roots,omitempty"`
 }
 
 // skipFences resolves the SkipCodeFences pointer to its effective value.
@@ -98,7 +108,9 @@ type RuleConfig struct {
 	// ExtraRoots are repo-relative trees links_resolve walks for links ALONE,
 	// beyond Roots: the working tier (.abcd/work) holds relative links in the issue
 	// ledger, DECISIONS.md and CONTEXT.md, and adding it to Roots would arm every
-	// content rule there too (iss-2608230752354927).
+	// content rule there too (iss-2608230752354927). harness_leak reads its own
+	// ExtraRoots the same way, for the leak class alone: the ledger is committed
+	// free text outside the record's Roots (iss-2608301306580014).
 	ExtraRoots []string `json:"extra_roots"`
 	// IntentsDir is the intents subdirectory (relative to a root) read by the
 	// intent-tree rules, intent_lifecycle and intent_impact_valid. Rules that name

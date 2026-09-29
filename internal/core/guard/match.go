@@ -308,6 +308,17 @@ func matchSegmentNamed(p Pattern, s segment) (hit, named bool) {
 	// git/gh/rm parse THOSE case-sensitively, so a case-varied subcommand does
 	// not run the hazard and must not be blocked.
 	sites := sitesNamed(s, p.Command)
+	if namesOnlyItsProgram(p) {
+		// A variable's value as the program name fires no such entry
+		// (variableCarried).
+		kept := sites[:0:0]
+		for _, a := range sites {
+			if !(anyProgram(s.tokens[a.idx]) && variableCarried(s, a.idx)) {
+				kept = append(kept, a)
+			}
+		}
+		sites = kept
+	}
 	need := operandNeed(p)
 	for _, noglob := range []bool{false, true} {
 		var group []arrival

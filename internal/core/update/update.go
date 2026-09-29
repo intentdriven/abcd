@@ -193,7 +193,7 @@ func Plan(t ahoy.UpdateTarget) *Refusal {
 		return &Refusal{
 			Shape:  string(t.Kind),
 			Detail: "the entry at " + targetPath + " is an abcd-owned link whose binary is gone (a plugin update strands it)",
-			Remedy: "run `abcd ahoy install` — it repoints the entry at the current plugin binary",
+			Remedy: "run `abcd ahoy install` — it replaces the entry with a verified copy of the current release, and names the command to run first when no verified copy is available",
 		}
 	case ahoy.UpdateTargetSuperseded:
 		return &Refusal{

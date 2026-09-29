@@ -15,8 +15,9 @@ inbound = outbound statement is the whole of it.
 ## How changes land
 
 - **Issue first.** External contributions start from an accepted issue: open one
-  (or pick an open one) and get a maintainer's nod before writing code. A pull
-  request with no accepted issue behind it may be declined on scope alone —
+  (or pick an open one) and get the product thinker's nod (the person who decides
+  what abcd builds) before writing code. A pull request with no accepted issue
+  behind it may be declined on scope alone —
   that is policy, not a judgement of the work.
 - **Branch + PR** for substantive changes; CI gates the merge. Its `check` job
   builds, vets and tests (plain and race-enabled) on macOS + Linux, and on the
@@ -83,8 +84,8 @@ inbound = outbound statement is the whole of it.
 - **Docs** are Diátaxis (one type per page, present tense); the design record lives
   under `.abcd/`, never in `docs/`. Prose follows the canonical
   [writing style guide](../docs/reference/writing-style.md).
-- **New dependencies need explicit maintainer sign-off** before they land in
-  `go.mod`.
+- **New dependencies need the product thinker's explicit sign-off** before
+  they land in `go.mod`.
 - **Run the plugin from your checkout.** The marketplace lists one plugin, and
   its source is the latest release's pinned archive, so installing from the
   marketplace gives you the last cut release, never your working tree. There is
@@ -109,18 +110,23 @@ disclosure, and never an authorship assertion for a tool. The rules:
   responsibility.
 - **Commit as yourself.** The gate reads the git author AND committer of every
   commit in a pull request, merge commits included, and refuses a machine
-  identity on any of five signals. Four apply to both roles: an assistant
+  identity on any of six signals. Five apply to both roles: an assistant
   vendor's name standing alone (`Claude`, `Copilot`, `Gemini` and their kin,
   matched whole, so a human named Claudette passes); an assistant vendor's mail
   domain (`@anthropic.com`, `@openai.com`); the forge's own `[bot]` name suffix;
-  and a bot mailbox (`NNNN+name[bot]@users.noreply.github.com`, or
-  `@dependabot.com`). The fifth applies to the AUTHOR role only: **any** address
+  a bot mailbox (`NNNN+name[bot]@users.noreply.github.com`, or
+  `@dependabot.com`); and a trailing `bot`, `robot` or `automation` word ending
+  the name or the mailbox's local part, standing alone or joined by `-` or `_`
+  (`semantic-release-bot`, `ci_bot@`, and `Renovate Bot` at its default
+  `bot@renovateapp.com`), so Talbot, `jean.bot@` and a person named `Jan Bot`
+  pass.
+  The sixth applies to the AUTHOR role only: **any** address
   whose mailbox begins `noreply@` or `donotreply@`, with or without hyphens and
   whatever the host, not just a vendor's. Your forge privacy address
   (`1234+you@users.noreply.github.com`) is yours and passes — the `[bot]` marker
   in the mailbox is what marks a machine, not the `users.noreply.github.com`
   host — and the forge's own `GitHub <noreply@github.com>` committer stamp on a
-  web-UI merge passes too, which is why the fifth signal is author-only. Set
+  web-UI merge passes too, which is why the sixth signal is author-only. Set
   `user.name` and `user.email` to a human before you commit; the assistant
   belongs in the trailer, never in the identity fields the contributor graph
   reads. An automated dependency bump is therefore landed by a human rather than
