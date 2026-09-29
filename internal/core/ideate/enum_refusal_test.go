@@ -7,7 +7,7 @@ import (
 
 // enumLeak is what a composer pasted into a closed-set field: a home path and a
 // distinctive marker, the shape the recorder redacts field by field in prose.
-const enumLeak = "zzleak-7f3a /Users/zzotherperson/notes"
+const enumLeak = "zzleak-7f3a /Users/zzotherperson/notes" // abcd-lint:allow — a planted home path the refusal must not echo
 
 // shortLeak is the same under the record-id length cap, so the id refusal that
 // quotes rather than the one that counts bytes is the one reached.
