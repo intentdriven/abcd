@@ -57,15 +57,43 @@ const briefFindings = input.briefDocs.map(doc => () => agent(
 const surfFindings = input.surfaces.map(s => () => agent(
   `${CTX}\n\n${fill(input.prompt.directionB, { 's.name': s.name, 's.kind': s.kind, 's.probe': s.probe })}`,
   { label: `surface:${s.name}`, phase: 'CheckSurface', schema: FINDINGS }))
-const all = (await parallel([...briefFindings, ...surfFindings]))
-  .filter(Boolean)
-log(`${all.length} checkers returned`)
-const merged = []
-const seen = new Set()
-for (const r of all) for (const d of r.discrepancies) {
-  const k = `${d.where}|${d.claim.slice(0,60)}`
-  if (seen.has(k)) continue
-  seen.add(k); merged.push({ item: r.item, ...d })
+// Two invocation-only keys ride beside the manifest in args, so the manifest
+// file (and the manifestHash a receipt echoes) is unchanged by them:
+//   concurrency — a positive integer bounding how many checkers run at once. A
+//     run under an agent ceiling passes its own bound; absent, every checker is
+//     started together and the harness's pool decides (iss-2609240646556459).
+//   results — an array of checker returns ({ item, discrepancies }) gathered by
+//     hand. When given, no checker is spawned and the merge below runs over
+//     them, so a hand-run calls the merge rather than re-typing it.
+// The bound changes when checkers run, never which ones or with what prompt.
+const bound = Number.isInteger(input.concurrency) && input.concurrency > 0 ? input.concurrency : 0
+const runBounded = async (thunks, n) => {
+  if (!n || n >= thunks.length) return parallel(thunks)
+  const out = []
+  for (let i = 0; i < thunks.length; i += n) out.push(...(await parallel(thunks.slice(i, i + n))))
+  return out
 }
-log(`${merged.length} unique discrepancies`)
-return { count: merged.length, byClass: merged.reduce((m,d)=>(m[d.class]=(m[d.class]||0)+1,m),{}), discrepancies: merged }
+// mergeFindings is the one merge: dedup on `where` plus the first sixty
+// characters of `claim`, first occurrence kept, tallied by class.
+const mergeFindings = results => {
+  const merged = []
+  const seen = new Set()
+  for (const r of results) for (const d of r.discrepancies) {
+    const k = `${d.where}|${d.claim.slice(0,60)}`
+    if (seen.has(k)) continue
+    seen.add(k); merged.push({ item: r.item, ...d })
+  }
+  return { count: merged.length, byClass: merged.reduce((m,d)=>(m[d.class]=(m[d.class]||0)+1,m),{}), discrepancies: merged }
+}
+let all
+if (Array.isArray(input.results)) {
+  all = input.results.filter(Boolean)
+  log(`${all.length} hand-gathered checker results supplied; no checker spawned`)
+} else {
+  if (bound) log(`running ${briefFindings.length + surfFindings.length} checkers at most ${bound} at a time`)
+  all = (await runBounded([...briefFindings, ...surfFindings], bound)).filter(Boolean)
+  log(`${all.length} checkers returned`)
+}
+const result = mergeFindings(all)
+log(`${result.count} unique discrepancies`)
+return result
