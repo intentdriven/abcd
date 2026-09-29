@@ -60,22 +60,40 @@ func ReadGuarded(path string, limit int64) ([]byte, error) {
 	return readGuarded(path, limit, nil)
 }
 
+// OpenRegular is the open half of ReadGuarded, for a caller that reads through
+// the descriptor itself rather than taking the whole file into memory (a
+// ReaderAt consumer such as debug/buildinfo over a binary). It opens path once,
+// read-only, with O_NOFOLLOW and O_NONBLOCK, and judges the SAME descriptor with
+// fstat: a symlinked leaf fails the open (ELOOP, returned raw), and anything but
+// a regular file — a FIFO swapped in after the caller's lstat included — is
+// closed and refused with ErrNotRegular instead of blocking. The FileInfo
+// returned is the descriptor's own; the caller closes the file.
+func OpenRegular(path string) (*os.File, os.FileInfo, error) {
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return nil, nil, err
+	}
+	fi, err := f.Stat()
+	if err != nil {
+		f.Close()
+		return nil, nil, err
+	}
+	if !fi.Mode().IsRegular() {
+		f.Close()
+		return nil, nil, ErrNotRegular
+	}
+	return f, fi, nil
+}
+
 // readGuarded is ReadGuarded, and when vetted is non-nil it also confirms on
 // the opened descriptor that the file is the one vetted describes (os.SameFile),
 // refusing a replacement with ErrDeclarationSwapped.
 func readGuarded(path string, limit int64, vetted os.FileInfo) ([]byte, error) {
-	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
+	f, fi, err := OpenRegular(path)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
-	fi, err := f.Stat()
-	if err != nil {
-		return nil, err
-	}
-	if !fi.Mode().IsRegular() {
-		return nil, ErrNotRegular
-	}
 	if vetted != nil && !os.SameFile(vetted, fi) {
 		return nil, ErrDeclarationSwapped
 	}

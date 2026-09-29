@@ -381,11 +381,17 @@ func describeEntry(e pathEntry) string {
 	case e.dangling:
 		return "a symlink whose target is gone"
 	}
-	if fi, err := os.Lstat(e.path); err == nil && fi.Mode()&os.ModeSymlink != 0 {
+	fi, err := os.Lstat(e.path)
+	if err == nil && fi.Mode()&os.ModeSymlink != 0 {
 		if dest, rerr := os.Readlink(e.path); rerr == nil {
 			return "a symlink to " + displayPath(dest) + ", which abcd does not own"
 		}
 		return "a symlink abcd does not own"
+	}
+	if err == nil {
+		// Say what the file is, so the reader can decide without inspecting it
+		// by hand (iss-2609120447482255).
+		return foreignOccupant(fi, "a file") + " abcd does not own (" + describeForeignFile(e.path, fi) + ")"
 	}
 	return "a file abcd does not own"
 }

@@ -229,9 +229,19 @@ var statusHeadline = map[string]string{
 
 // explain composes Headline and Summary from the exact record the rest of the
 // result carries. It adds nothing the record does not say; it says it plainly.
+//
+// It is also where the result is sealed for rendering: every outcome, the early
+// returns included, passes through here once, so the record's list fields are
+// seeded non-nil here and an empty one renders [] rather than null
+// (iss-2609120447487070).
 func (r *InstallResult) explain() {
 	r.Headline = statusHeadline[r.Status]
 	r.Summary = []SummaryItem{}
+	for _, list := range []*[]string{&r.Writes, &r.Remaining, &r.DeclinedCategories} {
+		if *list == nil {
+			*list = []string{}
+		}
+	}
 
 	refs := map[writeKind][]string{}
 	var unexplained []string
