@@ -23,9 +23,10 @@ package statusline
 // declarations abcd reads are guarded (rules.trustedRootDeclared,
 // history.localDeclared): lstat first and refuse anything that is not a
 // regular file, refuse a file group- or other-writable, refuse a file this
-// session's uid does not own, and then read it through fsutil.ReadGuarded
-// under a byte cap — one open, O_NOFOLLOW, size-checked against both the
-// fstat and the bytes actually read. Those three refusals are NOTES rather
+// session's uid does not own, and then read it through
+// fsutil.ReadHomeDeclaration under a byte cap — one open, O_NOFOLLOW, tied by
+// os.SameFile to the file judged, size-checked against both the fstat and the
+// bytes actually read. Those three refusals are NOTES rather
 // than errors, because a file that is not the caller's word declares nothing
 // and the shipped defaults are the right answer; a file that IS the caller's
 // word and is malformed is an error, because silently rendering defaults over
@@ -40,8 +41,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	pathpkg "path"
-	"path/filepath"
 	"sort"
 
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -286,13 +285,6 @@ func refusedPresence(why string, fallback Pair) string {
 		"; the default " + fallback.Foreground + " on " + fallback.Background + " renders instead"
 }
 
-// settingsDirRel and settingsLeaf are SettingsRelPath's directory and file,
-// in the slash form fsutil.OpenHomeScope and an *os.Root take.
-var (
-	settingsDirRel = pathpkg.Dir(SettingsRelPath)
-	settingsLeaf   = pathpkg.Base(SettingsRelPath)
-)
-
 // ReadSettingsFile performs the trust-boundary read of the user-level setting
 // at path. It is the ONE reader of that file: Load reads through it to render
 // the row, and ahoy's install and uninstall steps read through it to record
@@ -314,57 +306,37 @@ var (
 //   - (nil, "", err): a file that IS the caller's word cannot be read (over
 //     the cap, an I/O error). The error names the file in tilde form.
 //
-// The guard is the one the two sibling home-scoped declarations use
-// (rules.trustedRootDeclared, history.localDeclared): lstat first, the three
-// refusals above, then fsutil.ReadGuardedInRoot under the byte cap, relative
-// to the descriptor of the ~/.abcd fsutil.OpenHomeScope judged — a symlinked
-// leaf refused, the descriptor confirmed to be the file lstat'd, and the size
-// checked against both the fstat and the bytes read. A file
-// reached through a symlinked ~/.abcd is not the caller's word either
-// (fsutil.HomeScopeLink, the rule the rules loader applies to rules.json), so
-// the file is named by the home it lives in rather than by a path.
+// The guard is the one every home-scoped declaration uses, because it IS
+// that read: fsutil.ReadHomeDeclaration, which opens ~/.abcd through
+// fsutil.OpenHomeScope (a symlinked ~/.abcd refused, fsutil.HomeScopeLink's
+// rule) and then judges the file on that descriptor — lstat, the three
+// refusals above, the open, and os.SameFile tying the bytes to the lstat that
+// was judged — under the byte cap. A file renamed into place after any look
+// by path is judged as itself or not read at all, never read on the strength
+// of a judgement made about the file it replaced (iss-2609290656491358).
 func ReadSettingsFile(home string) (raw []byte, why string, err error) {
-	path := filepath.Join(home, filepath.FromSlash(SettingsRelPath))
-	fi, err := os.Lstat(path)
-	if err != nil {
+	raw, refusal, err := fsutil.ReadHomeDeclaration(home, SettingsRelPath, maxSettingsBytes)
+	switch refusal {
+	case fsutil.DeclarationOK:
+		return raw, "", nil
+	case fsutil.DeclarationAbsent:
 		return nil, "", nil
-	}
-	if lerr := fsutil.HomeScopeLink(home, SettingsRelPath); lerr != nil {
-		return nil, lerr.Error(), nil
-	}
-	if !fi.Mode().IsRegular() {
+	case fsutil.DeclarationBehindSymlink:
+		return nil, err.Error(), nil
+	case fsutil.DeclarationNotRegular:
 		return nil, "it is not a regular file", nil
-	}
-	// The one caller-alone test every home-scoped declaration applies
-	// (fsutil.CallersAlone), so the guard cannot drift from its siblings'.
-	switch err := fsutil.CallersAlone(path, fi); {
-	case errors.Is(err, fsutil.ErrDeclarationWritable):
+	case fsutil.DeclarationWritableByOthers:
 		return nil, "it is writable by others, so its contents are not necessarily yours", nil
-	case err != nil:
+	case fsutil.DeclarationForeignOwner:
 		return nil, "it is not owned by this session's uid", nil
 	}
-	// The bytes are read through the descriptor of the ~/.abcd that was
-	// judged (fsutil.OpenHomeScope), never by the path again, so a link
-	// swapped in after the check above is refused rather than read through
-	// (iss-2609281310017733).
-	dir, err := fsutil.OpenHomeScope(home, settingsDirRel)
 	switch {
-	case errors.Is(err, fsutil.ErrHomeScopeSymlinked):
-		return nil, err.Error(), nil
-	case os.IsNotExist(err):
-		return nil, "", nil
-	case err != nil:
-		return nil, "", fmt.Errorf("statusline: reading %s: %s", SettingsDisplay, termsafe.Sanitize(err.Error()))
-	}
-	defer dir.Close()
-	raw, err = fsutil.ReadGuardedInRoot(dir, settingsLeaf, maxSettingsBytes)
-	switch {
-	case err == nil:
-		return raw, "", nil
 	case errors.Is(err, fsutil.ErrTooBig):
 		return nil, "", fmt.Errorf("statusline: %s exceeds the %d-byte cap", SettingsDisplay, maxSettingsBytes)
 	case errors.Is(err, fsutil.ErrNotRegular):
 		return nil, "it is not a regular file", nil
+	case errors.Is(err, fsutil.ErrDeclarationSwapped):
+		return nil, "it was replaced while it was being read", nil
 	default:
 		return nil, "", fmt.Errorf("statusline: reading %s: %s", SettingsDisplay, termsafe.Sanitize(err.Error()))
 	}
