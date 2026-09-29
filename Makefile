@@ -134,13 +134,21 @@ lint-reviews:
 	@bash scripts/check-reviews-cases.sh
 	@bash scripts/check-reviews.sh
 
-# AI-attribution gate (AGENTS.md § Attribution). Checks the commit trailers on
-# this branch against the default branch; the pull-request BODY half runs only in
-# CI, where the body exists. Not a preflight prerequisite — preflight guards a
-# push, and the body it must agree with is not written until the PR is opened.
+# AI-attribution gate (AGENTS.md § Attribution), the commit half: the author and
+# committer identity and the trailers of every commit on this branch that
+# origin/main does not hold, judged as CI's attribution workflow judges them. A
+# preflight prerequisite (iss-2608210738363966): a commit CI refuses here was
+# otherwise found only after the push, and a pushed commit is repaired only on a
+# new branch, because a force push is refused. The pull-request BODY half runs
+# only in CI, where the body exists. The cases run first, as in lint-issues. The
+# outbound checker is built once from this checkout and handed to the script
+# (ABCD_OUTBOUND_BIN), so a branch of many commits pays one build, not one
+# `go run` per commit.
 check-attribution:
-	@bash scripts/check-attribution.sh commits origin/main HEAD
 	@bash scripts/check-attribution-cases.sh
+	@tmp=$$(mktemp -d) && trap 'rm -rf "$$tmp"' EXIT && \
+		go build -o "$$tmp/abcd" ./cmd/abcd && \
+		ABCD_OUTBOUND_BIN="$$tmp/abcd" bash scripts/check-attribution.sh commits origin/main HEAD
 
 # Deterministic drift gate for the .abcd/development design record (first slice
 # of internal/core/lint). Blocking: any record drift (stale tool names, dropped
@@ -279,9 +287,9 @@ scaffold-sync-check:
 # Pre-push gate (run before a push, never by it: .githooks/pre-push checks the
 # receipt the last step mints, below): the load check first (a
 # warning, never a failure: load-check), then the format gate (fmt-check), the
-# six lint gates
+# seven lint gates
 # (lint-reviews, lint-issues, lint-decisions, record-lint, issue-drift,
-# docs-lint), the
+# docs-lint, and check-attribution over the branch's commits), the
 # site-render gate and both tagged eval lanes (smoke, evals-cold-reading) as
 # prerequisites, then build, vet, test,
 # and race-enabled internal tests natively — every Go step on the toolchain
@@ -303,7 +311,7 @@ scaffold-sync-check:
 # file reaching for a smoke-only helper compiles under one and not the other,
 # which is the split CI's two jobs cover. About five seconds each on a warm
 # cache, against roughly a minute for the gates already here.
-preflight: load-check fmt-check lint-reviews lint-issues lint-decisions record-lint issue-drift docs-lint site-render smoke evals-cold-reading
+preflight: load-check fmt-check lint-reviews lint-issues lint-decisions record-lint issue-drift docs-lint check-attribution site-render smoke evals-cold-reading
 	go build ./...
 	go vet ./...
 	go test ./...

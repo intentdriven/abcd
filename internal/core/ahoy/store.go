@@ -736,7 +736,19 @@ const historyIndexDescription = "abcd history/lifeboat registry. Keyed on each r
 // — and no renderer can print one it merely read. The at-rest file is inspected
 // by readHistoryIndexFile, which is the detector's job, not a writer's.
 func loadHistoryIndex() (*historyIndex, error) {
-	idx, err := readHistoryIndexFile()
+	return scrubHistoryIndex(readHistoryIndexFile())
+}
+
+// loadHistoryIndexIn is loadHistoryIndex through dir, ~/.abcd/history as the
+// caller's walk opened it: the read under the history lock goes through the
+// directory whose lock is held, never through a second walk that a same-uid
+// swap of the directory could send elsewhere (iss-2609290300313698's pattern).
+func loadHistoryIndexIn(dir *os.Root) (*historyIndex, error) {
+	return scrubHistoryIndex(readHistoryIndexIn(dir))
+}
+
+// scrubHistoryIndex is the load's scrub, applied to one read of the index.
+func scrubHistoryIndex(idx *historyIndex, err error) (*historyIndex, error) {
 	if err != nil || idx == nil {
 		return nil, err
 	}
@@ -758,6 +770,12 @@ func readHistoryIndexFile() (*historyIndex, error) {
 		return nil, err
 	}
 	defer dir.Close()
+	return readHistoryIndexIn(dir)
+}
+
+// readHistoryIndexIn reads index.json inside dir exactly as it is on disk; an
+// absent index is nil and no error.
+func readHistoryIndexIn(dir *os.Root) (*historyIndex, error) {
 	data, err := fsutil.ReadGuardedInRoot(dir, "index.json", maxAhoyFileBytes)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -887,7 +905,7 @@ var beforeHistoryIndexCreateHook func()
 // index.json. The lock is NEVER held across an interactive prompt — callers do
 // any prompting before acquiring it and re-check the answer-relevant state inside
 // fn after re-loading.
-func withHistoryLock(fn func() error) error {
+func withHistoryLock(fn func(dir *os.Root) error) error {
 	dir, err := historyDir(true)
 	if err != nil {
 		return err
@@ -897,7 +915,7 @@ func withHistoryLock(fn func() error) error {
 		if afterHistoryReloadHook != nil {
 			afterHistoryReloadHook()
 		}
-		return fn()
+		return fn(dir)
 	})
 }
 
@@ -983,14 +1001,12 @@ func createHistoryTemp(dir *os.Root) (*os.File, string, error) {
 	return nil, "", errors.New("could not create a temp file in the history registry")
 }
 
-// writeHistoryIndex persists idx. It must be called from inside withHistoryLock
-// (registerRepo) so a re-loaded index is not clobbered by a concurrent writer.
-func writeHistoryIndex(idx *historyIndex) error {
-	dir, err := historyDir(false)
-	if err != nil {
-		return err
-	}
-	defer dir.Close()
+// writeHistoryIndexIn persists idx through dir, the ~/.abcd/history whose lock
+// the caller holds. It must be called from inside withHistoryLock
+// (registerRepo), with the directory withHistoryLock hands it, so a re-loaded
+// index is not clobbered by a concurrent writer and is written where its lock
+// is (iss-2609290300313698's pattern).
+func writeHistoryIndexIn(dir *os.Root, idx *historyIndex) error {
 	data, err := marshalJSON(*idx)
 	if err != nil {
 		return err

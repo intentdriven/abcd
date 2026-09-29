@@ -52,7 +52,8 @@ inbound = outbound statement is the whole of it.
   warning, never a failure), then the same build, vet, test and race
   steps locally, together with the fmt-check format gate, the lint-reviews,
   lint-issues, lint-decisions, record-lint, issue-drift,
-  docs-lint and site-render gates and both tagged eval lanes (smoke,
+  docs-lint, check-attribution (the identity and trailers of the branch's
+  commits) and site-render gates and both tagged eval lanes (smoke,
   evals-cold-reading, about five seconds each — the untagged test step compiles
   neither). Every Go step it makes runs on the toolchain `go.mod` declares,
   which is the one CI runs, and the format gate runs that toolchain's gofmt
