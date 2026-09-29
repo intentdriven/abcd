@@ -283,7 +283,7 @@ func Ingest(req IngestRequest) (IngestResult, error) {
 			merged["source"] = sourceBlock
 			raw = merged
 		}
-		page, err := ValidateDistilledPage(raw)
+		page, err := ValidateDistilledPage(root, raw)
 		if err != nil {
 			return IngestResult{}, err
 		}
@@ -292,9 +292,12 @@ func Ingest(req IngestRequest) (IngestResult, error) {
 	if len(distilled) == 0 {
 		return IngestResult{}, newIngestError("distillation produced 0 pages for %s; nothing written", material.origin)
 	}
-	for _, page := range distilled {
+	for i, page := range distilled {
 		if !contains(SourceHashes(page.Source), contentHash) {
-			return IngestResult{}, newIngestError("distilled page %s does not cite the ingested source hash %s; refusing to write an unattributable page", page.Filename(), contentHash)
+			// The page is named by its position, not its filename: the slug is
+			// host-chosen and slugRe admits a token's characters
+			// (iss-2609290300464268).
+			return IngestResult{}, newIngestError("distilled page %d of %d does not cite the ingested source hash %s; refusing to write an unattributable page", i+1, len(distilled), contentHash)
 		}
 	}
 

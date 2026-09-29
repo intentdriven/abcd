@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/adapter/scanner"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
@@ -148,10 +149,35 @@ func deriveClasses(sources []any) []string {
 	return seen
 }
 
+// describeValue renders a refused payload value for a schema error: described by
+// its length, never quoted, since the payload is host-produced and a token or a
+// home path in it would reach the terminal and the transcript
+// (iss-2609290300464268).
+func describeValue(value any) string {
+	if s, ok := value.(string); ok {
+		return termsafe.DescribeRefused(s)
+	}
+	return "a non-string value"
+}
+
+// describeClasses renders a declared source.classes list for a schema error: an
+// entry in the closed enum is quoted, any other is described.
+func describeClasses(declared []string) string {
+	out := make([]string, 0, len(declared))
+	for _, c := range declared {
+		if memorySourceClasses[c] {
+			out = append(out, c)
+		} else {
+			out = append(out, termsafe.DescribeRefused(c))
+		}
+	}
+	return "[" + strings.Join(out, ", ") + "]"
+}
+
 func requireClass(value any, where string) (string, error) {
 	s, ok := value.(string)
 	if !ok || !memorySourceClasses[s] {
-		return "", newSchemaError("%s: source class must be one of the closed enum, got %v", where, value)
+		return "", newSchemaError("%s: source class must be one of the closed enum, got %s", where, describeValue(value))
 	}
 	return s, nil
 }
@@ -167,7 +193,7 @@ func requireCitation(value any, where string) error {
 func requireDate(value any, where string) error {
 	s, ok := value.(string)
 	if !ok || !dateRe.MatchString(s) {
-		return newSchemaError("%s: ingested_at must be YYYY-MM-DD, got %v", where, value)
+		return newSchemaError("%s: ingested_at must be YYYY-MM-DD, got %s", where, describeValue(value))
 	}
 	return nil
 }
@@ -296,7 +322,9 @@ func validateSourceBlock(source any) error {
 		}
 	}
 	if !ok || !equalStringSets(declaredStr, derived) {
-		return newSchemaError("source.classes must equal the set derived from each sources[].class (expected %v, got %v)", derived, declaredStr)
+		// derived passed requireClass entry by entry, so it is the closed enum;
+		// the declared list is payload and is quoted only where it is too.
+		return newSchemaError("source.classes must equal the set derived from each sources[].class (expected %v, got %s)", derived, describeClasses(declaredStr))
 	}
 	if len(derived) >= 2 {
 		note, ok := sm["weighting_note"].(string)
@@ -410,7 +438,10 @@ func requireStrList(value any, key string) ([]string, error) {
 // ValidateDistilledPage validates one raw page dict against the DistilledPage
 // schema, computing topic_hash (a supplied one is rejected). The ingest path
 // runs this before any write.
-func ValidateDistilledPage(data map[string]any) (DistilledPage, error) {
+//
+// repoRoot selects the canonical scanner configuration an undeclared key is
+// redacted with when the page is refused.
+func ValidateDistilledPage(repoRoot string, data map[string]any) (DistilledPage, error) {
 	if data == nil {
 		return DistilledPage{}, newSchemaError("DistilledPage must be a mapping")
 	}
@@ -422,7 +453,11 @@ func ValidateDistilledPage(data map[string]any) (DistilledPage, error) {
 	}
 	if len(unknown) > 0 {
 		sort.Strings(unknown)
-		return DistilledPage{}, newSchemaError("DistilledPage carries unknown key(s) %v — the boundary fails closed on keys outside the schema", unknown)
+		// The keys are the payload's own spelling and the one thing the reader
+		// needs to find the fault, so they are named redacted, never raw
+		// (iss-2609290300464268).
+		return DistilledPage{}, newSchemaError("DistilledPage carries unknown key(s) [%s] — the boundary fails closed on keys outside the schema",
+			scanner.RedactRefusal(repoRoot, strings.Join(unknown, " ")))
 	}
 	for _, k := range distilledPageRequired {
 		if _, ok := data[k]; !ok {
@@ -433,13 +468,13 @@ func ValidateDistilledPage(data map[string]any) (DistilledPage, error) {
 	domain, _ := data["domain"].(string)
 	slug, _ := data["slug"].(string)
 	if !typeDomainRe.MatchString(typ) {
-		return DistilledPage{}, newSchemaError("DistilledPage.type must be a filename-safe token, got %v", data["type"])
+		return DistilledPage{}, newSchemaError("DistilledPage.type must be a filename-safe token, got %s", describeValue(data["type"]))
 	}
 	if !typeDomainRe.MatchString(domain) {
-		return DistilledPage{}, newSchemaError("DistilledPage.domain must be a filename-safe token, got %v", data["domain"])
+		return DistilledPage{}, newSchemaError("DistilledPage.domain must be a filename-safe token, got %s", describeValue(data["domain"]))
 	}
 	if !slugRe.MatchString(slug) {
-		return DistilledPage{}, newSchemaError("DistilledPage.slug must be a filename-safe token, got %v", data["slug"])
+		return DistilledPage{}, newSchemaError("DistilledPage.slug must be a filename-safe token, got %s", describeValue(data["slug"]))
 	}
 	body, ok := data["body"].(string)
 	if !ok || strings.TrimSpace(body) == "" {
@@ -488,7 +523,7 @@ func ValidateDistilledPage(data map[string]any) (DistilledPage, error) {
 		Recall:      recall,
 	}
 	if _, _, _, ok := ParsePageFilename(page.Filename()); !ok || !IsMemoryPageName(page.Filename()) {
-		return DistilledPage{}, newSchemaError("DistilledPage assembles an unwritable filename: %q", page.Filename())
+		return DistilledPage{}, newSchemaError("DistilledPage assembles an unwritable filename, %s", termsafe.DescribeRefused(page.Filename()))
 	}
 	return page, nil
 }
@@ -528,7 +563,7 @@ func uniqueFilename(page DistilledPage, taken map[string]bool) (string, error) {
 			return candidate, nil
 		}
 	}
-	return "", newSchemaError("cannot derive a free fork filename for %q", page.Filename())
+	return "", newSchemaError("cannot derive a free fork filename for a page named by %s", termsafe.DescribeRefused(page.Filename()))
 }
 
 // ResolveDistilledPages is the pure cross-ref dedup owner (link / fork+contradiction
