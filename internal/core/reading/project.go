@@ -149,6 +149,12 @@ func redactExcluded(rel, doc string, exclusions []Exclusion) (string, error) {
 	return out, nil
 }
 
+// htmlTagOpen is what opens an HTML tag, the one definition htmlTagRe and
+// htmlTagOpenRe are both built from: a `<`, an optional slash, and a name. The
+// name is bounded so an AUTOLINK is left alone: `<https://x>` looks like a tag
+// until the colon.
+const htmlTagOpen = `</?[A-Za-z][A-Za-z0-9-]*`
+
 var (
 	// excludedKeyLineRe matches an excluded key inside a frontmatter block.
 	//
@@ -197,10 +203,15 @@ var (
 	// htmlCommentRe and htmlTagRe strip the markup a title can carry without
 	// changing how it reads on the page.
 	htmlCommentRe = regexp.MustCompile(`(?s)<!--.*?-->`)
-	// The tag name is bounded so an AUTOLINK is left alone: `<https://x>` looks
-	// like a tag until the colon, and stripping it turns a heading carrying a URL
-	// into a different heading.
-	htmlTagRe = regexp.MustCompile(`</?[A-Za-z][A-Za-z0-9-]*(?:\s[^>]*)?/?>`)
+	// Its name is bounded (htmlTagOpen) so an AUTOLINK is left alone: stripping
+	// `<https://x>` turns a heading carrying a URL into a different heading.
+	htmlTagRe = regexp.MustCompile(htmlTagOpen + `(?:\s[^>]*)?/?>`)
+	// htmlTagOpenRe is htmlTagRe's opening half, anchored: the `<` or `</`, the
+	// name, and the byte that ends the name. opensTag asks it where the attribute
+	// walk may start, so the walk and the stripper share one rule
+	// (iss-2608301251394412). It stops at the end of the name, so asking it at
+	// every `<` stays linear where the whole pattern would scan to the next `>`.
+	htmlTagOpenRe = regexp.MustCompile(`^` + htmlTagOpen + `[\s/>]`)
 	// mdLinkRe unwraps `[text](target)` to the text a reader sees.
 	mdLinkRe = regexp.MustCompile(`\[([^\]]*)\]\([^)]*\)`)
 	// explicitYAMLKeyRe matches YAML's explicit-key form, `? origin`.
@@ -1107,18 +1118,12 @@ func skipSpaceAndNewlines(s string, i int) int {
 	return i
 }
 
-// opensTag reports whether s[i] begins an HTML tag, on htmlTagRe's own rule: a
-// `<` followed by a name, or by a slash and a name. An autolink and a bare `<`
-// in prose open nothing, so neither drags the attribute walk over them.
+// opensTag reports whether s[i] begins an HTML tag, on htmlTagRe's own rule,
+// read through htmlTagOpenRe: a `<` followed by a name, or by a slash and a
+// name, and the name ended by a space, a slash or a `>`. An autolink and a bare
+// `<` in prose open nothing, so neither drags the attribute walk over them.
 func opensTag(s string, i int) bool {
-	if s[i] != '<' {
-		return false
-	}
-	j := i + 1
-	if j < len(s) && s[j] == '/' {
-		j++
-	}
-	return j < len(s) && (s[j] >= 'A' && s[j] <= 'Z' || s[j] >= 'a' && s[j] <= 'z')
+	return s[i] == '<' && htmlTagOpenRe.MatchString(s[i:])
 }
 
 // maskAngles blanks the angle brackets in s[from:to], leaving every other byte —
