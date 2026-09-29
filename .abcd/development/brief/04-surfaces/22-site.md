@@ -99,6 +99,15 @@ it with it, and switching the explorer off takes every explorer page. The landin
 page and the record pages carry the site, so a declaration switching either off
 beneath the explorer is refused.
 
+The status page is the record health page, `/record/health/`. It opens with the
+Now / Next / Later block the bare `abcd` board carries
+([`08-abcd.md`](08-abcd.md)), rendered from the same read
+(`internal/core/statusblock`): three panels, each row an intent's id linked to
+its record page, its title, and what places it there. The site build reads the
+implement loop's state file for Now's lane rows through the reader its front
+door hands it, the loop's own, and a build with no state file, as a release
+build has, shows Now as the head alone.
+
 The documentation tree under `/docs/` is not among these pages: the docs build
 writes it beside them. The composition declaration's `docs` block says it is
 there, so the header's Docs entry and every link that reaches a documentation

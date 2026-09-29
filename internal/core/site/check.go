@@ -138,6 +138,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/lint"
 	"github.com/intentdriven/abcd/internal/core/mdrecord"
 	"github.com/intentdriven/abcd/internal/core/positioning"
+	"github.com/intentdriven/abcd/internal/core/statusblock"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
@@ -186,6 +187,9 @@ type CheckRequest struct {
 	RepoRoot string
 	// OutDir is the built output directory, absolute or relative to the caller.
 	OutDir string
+	// Lanes is the state-file reader a build the check makes hands the Status
+	// page, as Request.Lanes; nil reads as an absent state file.
+	Lanes statusblock.LaneReader
 }
 
 // CheckFinding is one failure. Every finding names the check that raised it and
@@ -280,7 +284,7 @@ func Check(req CheckRequest) (CheckResult, error) {
 		Findings: []CheckFinding{}, Notes: []CheckFinding{},
 	}
 	if ok, _ := fsutil.Exists(filepath.Join(outDir, "index.html")); !ok {
-		if _, err := Build(Request{RepoRoot: repoRoot, OutDir: outDir}); err != nil {
+		if _, err := Build(Request{RepoRoot: repoRoot, OutDir: outDir, Lanes: req.Lanes}); err != nil {
 			return CheckResult{}, err
 		}
 		res.Built = true

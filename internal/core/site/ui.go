@@ -68,7 +68,9 @@ type UI struct {
 	// Contributors labels the attribution page's two rows and two figures.
 	Contributors ContributorsUI `json:"contributors"`
 	// Health labels each family of finding the record is checked for.
-	Health        HealthUI `json:"health"`
+	Health HealthUI `json:"health"`
+	// Status labels the Now / Next / Later block the Status page opens with.
+	Status        StatusUI `json:"status"`
 	More          string   `json:"more"`
 	Standby       string   `json:"standby"`
 	CLIGroup      string   `json:"cli_group"`
@@ -158,6 +160,21 @@ type Relations struct {
 // HealthUI labels the health page's finding families. Every one of them is a
 // check the record can be run against ITSELF — nothing here is a judgement, an
 // opinion, or a number a human has to interpret before acting on it.
+// StatusUI labels the Now / Next / Later block (itd-2609212103568351).
+type StatusUI struct {
+	Now   string `json:"now"`
+	Next  string `json:"next"`
+	Later string `json:"later"`
+	// NextUp marks the pick order's head on Now.
+	NextUp string `json:"next_up"`
+	// Fails leads the gating readiness checks a Later intent fails.
+	Fails string `json:"fails"`
+	// Draft marks a Later row that is a draft.
+	Draft string `json:"draft"`
+	// None stands in an empty list.
+	None string `json:"none"`
+}
+
 type HealthUI struct {
 	// Unresolved is a typed reference whose target no file answers to.
 	Unresolved string `json:"unresolved"`
