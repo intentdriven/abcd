@@ -152,3 +152,98 @@ func TestTrailingSlashGlobsOfTheRootOrTheHome(t *testing.T) {
 		}
 	}
 }
+
+// TestDotGlobBracketExpressionsReadAsParent — iss-2609291233390280. bash 3.2
+// and /bin/sh expand each segment below to `..` among the rest: a POSIX,
+// equivalence or collating class that holds `.`, a set whose first member is
+// `]` or `-`, and a set whose `!` was escaped. path.Match reads none of them
+// as bash does, and the tokenizer removes the backslash before the compare,
+// so `.[\!.]` arrives as the negation `.[!.]`. A dot-led segment holding a
+// bracket expression the compare cannot decide is read as able to match
+// `..`; `.[a-z]` blocks on that ground although no shell matches `..` with
+// it (an escaped `-` would make it a set, not a range), and bash 5.3, which
+// leaves every one of these literal, meets the same block.
+func TestDotGlobBracketExpressionsReadAsParent(t *testing.T) {
+	const home = "rm-rf-root-or-home"
+	blocks := []string{
+		`rm -rf ~/.[[:punct:]]/*`, `rm -rf ~/.[[:print:]]/*`, `rm -rf ~/.[![:alnum:]]/*`,
+		`rm -rf ~/.[[=.=]]/*`, `rm -rf ~/.[].]/*`, `rm -rf ~/.[!]]/*`, `rm -rf ~/.[--.]/*`,
+		`rm -rf ~/.[\!.]/*`, `rm -rf $HOME/../.[[:punct:]]/*`, `rm -rf /.[[:punct:]]/*`,
+		`rm -rf ~/.[[:punct:]]/**`, `rm -rf ~/.[[.period.]]/*`, `rm -rf ${HOME}/.[[:punct:]]/*/`,
+		`rm -rf ~/.[\^.]/*`, `rm -rf ~/.[a-z]/*`, `rm -r ~/.[[:punct:]]/*`,
+	}
+	for _, c := range blocks {
+		for _, cmd := range globSegmentSpellings(c) {
+			if d := verdictOf(t, cmd); d.Verdict != VerdictBlock || d.EntryID != home {
+				t.Errorf("Check(%q) = %q via %q, want block via %q", cmd, d.Verdict, d.EntryID, home)
+			}
+		}
+	}
+	// A plain set is decided exactly, an unterminated `[` is a literal in
+	// every shell, a bracket expression never matches a leading `.`, and a
+	// final segment is not read as `..`.
+	allows := []string{
+		`rm -rf ~/.[x]/*`, `rm -rf ~/.[xy]/*`, `rm -rf ~/.[/*`, `rm -rf ~/[[:punct:]]./*`,
+		`rm -rf ~/.[[:punct:]]`, `rm -rf ~/.[[:punct:]]/x`, `rm -f ~/.[[:punct:]]/*`,
+	}
+	for _, c := range allows {
+		for _, cmd := range globSegmentSpellings(c) {
+			if d := verdictOf(t, cmd); d.Verdict != VerdictAllow {
+				t.Errorf("Check(%q) = %q via %q, want allow", cmd, d.Verdict, d.EntryID)
+			}
+		}
+	}
+}
+
+// TestGlobbedWordsWithBracketExpressions — iss-2609291233468970. A globbed
+// command name, subcommand or flag is compared with the word bash can expand
+// it to (GHSA-3w99-pgv4-8g55), and every shell expands `r[[:lower:]]` to `rm`,
+// `ba[].s]h` to `bash` and `r[m\]]` to `rm` when such a file is in the
+// working directory. A bracket expression the compare cannot decide (a
+// class, a set opening with `]`, `!`, `^` or holding `-`, `[` or `\`, or a
+// `]` after its close, where an escape the tokenizer removed could have kept
+// the set open) is read as any run of characters.
+func TestGlobbedWordsWithBracketExpressions(t *testing.T) {
+	cases := []struct {
+		line    string
+		verdict Verdict
+		entry   string
+	}{
+		{`r[[:lower:]] -rf /`, VerdictBlock, "rm-rf-root-or-home"},
+		{`/bin/r[[:lower:]] -rf /`, VerdictBlock, "rm-rf-root-or-home"},
+		{`r[m\]] -rf /`, VerdictBlock, "rm-rf-root-or-home"},
+		{`r[[=m=]] -rf ~`, VerdictBlock, "rm-rf-root-or-home"},
+		{`ba[[:lower:]]h -c 'rm -rf /'`, VerdictBlock, "rm-rf-root-or-home"},
+		{`ba[].s]h -c 'rm -rf /'`, VerdictBlock, "rm-rf-root-or-home"},
+		{`git clea[[:lower:]] -fd`, VerdictWarn, "git-clean"},
+		{`git clea[].n] -fd`, VerdictWarn, "git-clean"},
+		{`git clea[\!n] -fd`, VerdictWarn, "git-clean"},
+		{`git clea[l-o] -fd`, VerdictWarn, "git-clean"},
+		{`git reset --har[[:lower:]]`, VerdictWarn, "git-reset-hard"},
+		{`git push --forc[[:lower:]] origin main`, VerdictBlock, "git-push-force"},
+		{`r[x] -rf /`, VerdictAllow, ""},
+		{`git clea[x] -fd`, VerdictAllow, ""},
+		{`git clea[ -fd`, VerdictAllow, ""},
+	}
+	for _, tc := range cases {
+		d := verdictOf(t, tc.line)
+		if d.Verdict != tc.verdict || d.EntryID != tc.entry {
+			t.Errorf("Check(%q) = %q via %q, want %q via %q", tc.line, d.Verdict, d.EntryID, tc.verdict, tc.entry)
+		}
+	}
+}
+
+// TestEscapedGlobsReadAsGlobs pins a stated over-block: the tokenizer removes
+// a backslash before an operand is read, so an escaped `*`, `?` or `[` is read
+// as the glob it would be unescaped. `~/*\*` names the home's entries whose
+// name ends in `*`, and it blocks as `~/*` does.
+func TestEscapedGlobsReadAsGlobs(t *testing.T) {
+	const home = "rm-rf-root-or-home"
+	for _, c := range []string{`rm -rf ~/*\*`, `rm -rf ~/\**`, `rm -rf ~/.\?/*`, `rm -rf ~/.\[.]/*`} {
+		for _, cmd := range globSegmentSpellings(c) {
+			if d := verdictOf(t, cmd); d.Verdict != VerdictBlock || d.EntryID != home {
+				t.Errorf("Check(%q) = %q via %q, want block via %q", cmd, d.Verdict, d.EntryID, home)
+			}
+		}
+	}
+}

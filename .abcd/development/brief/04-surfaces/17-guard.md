@@ -208,7 +208,14 @@ hazard behind a launcher it does not recognise is a **warn** naming the entry it
 matched rather than an allow, because the guard cannot tell whether that program
 runs the rest of the line. An unquoted glob is treated as producing whatever
 literal it could produce, at every position an entry constrains, so a force push
-spelled `git pus? --force` blocks. A git long flag written short of its full
+spelled `git pus? --force` blocks. A bracket expression is read exactly only
+where it is one plain set (`--for[c]e`); a class (`[[:lower:]]`), a set that
+opens with `!`, `^` or `]` or holds `-`, `[` or a backslash, and a pattern
+with a `]` after the set closes (a second set among them) are read as any
+run of characters, since the guard sees the
+line with its backslashes already taken out and `r[m\]]` is the set of `m`
+and `]`. So `r[[:lower:]] -rf /` and `git clea[!n] -fd` are read as `rm` and
+`git clean`, an over-block where no escape was written. A git long flag written short of its full
 name is read as git reads it, as the one option that prefix can mean. A command
 or process substitution, unquoted
 or inside double quotes, is followed into command position, and the words
@@ -339,9 +346,15 @@ refuses it. Each target is also read the way its glob can expand: a run of
 glob can match the name `..` (`.?`, `.*`, `.[.]`, `.[!x]`, `..*`) reads as
 `..` where a further segment follows it, since the bash 3.2 and `/bin/sh` of
 macOS have no globskipdots and expand `~/.?/*` and `~/.*/*` to include
-`~/../*`, and `/.?/*` to the root's entries. That reading is an over-block on
-bash 5.3, which leaves such a segment unexpanded, and on a directory of that
-name. A glob whose leading `.` is not written (`??`, `?.`, `[.]?`) never
+`~/../*`, and `/.?/*` to the root's entries. A bracket expression in such a
+segment is read as the glob compare above reads it, so one it cannot decide
+reads as able to match `..`: `~/.[[:punct:]]/*`, `~/.[].]/*`, `~/.[--.]/*` and
+`~/.[\!.]/*`, which the bash 3.2 and `/bin/sh` of macOS expand to the
+directory holding the home, block, and so does `~/.[a-z]/*`, which no shell
+expands that far. That reading is an over-block on bash 5.3, which leaves
+such a segment unexpanded, and on a directory of that name. The guard sees an
+escaped `*`, `?` or `[` as the glob it would be unescaped, so `~/*\*` and
+`~/.\?/*` block as `~/*` and `~/.?/*` do. A glob whose leading `.` is not written (`??`, `?.`, `[.]?`) never
 matches a dot name and is compared as written, and a dot-glob as the final
 segment (`~/.?`) is not read as `..`, since rm refuses an operand whose last
 segment is one; `~/.*` blocks as the home's dotfiles. A glob or a `..` inside

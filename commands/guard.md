@@ -153,7 +153,13 @@ command may run, and the user decides.
 An unquoted glob (`*`, `?`, `[…]`) at a position an entry constrains is read as
 the pattern it is: bash expands it against the working directory before the
 command runs, so a spelling the pattern *can* produce (`git pus? --force`,
-`git push --forc?`) is treated as produced and blocks. A glob anywhere else
+`git push --forc?`) is treated as produced and blocks. A bracket expression is
+read exactly only where it is one plain set (`--for[c]e`); a class
+(`[[:lower:]]`), a set that opens with `!`, `^` or `]` or holds `-`, `[` or a
+backslash, and a pattern with a `]` after the set closes (a second set among
+them) can produce any run of characters,
+since the guard sees the line with its backslashes taken out, so
+`r[[:lower:]] -rf /` blocks and `git clea[!n] -fd` warns. A glob anywhere else
 (`ls *`, `git add *.md`) changes nothing, and a quoted one is literal.
 
 A long flag of `git push` or `git commit` written short of its full name is read
@@ -343,8 +349,12 @@ also read the way its glob can expand: a run of `*` as one `*`, as every shell
 without globstar expands `**`, so `/**` and `~/../**` are a **block**; and a
 segment written with a leading `.` that can match `..` (`.?`, `.*`, `.[.]`) as
 `..` where a further segment follows it, as the bash 3.2 and `/bin/sh` of
-macOS expand `~/.?/*` to include `~/../*`. That is an over-block on bash 5.3,
-which leaves the segment unexpanded; a final dot-glob (`~/.?`) is not read so,
+macOS expand `~/.?/*` to include `~/../*`. A bracket expression there that the
+guard cannot decide reads as able to match `..`, so `~/.[[:punct:]]/*`,
+`~/.[].]/*` and `~/.[--.]/*` are a **block**, and so is `~/.[a-z]/*`, which no
+shell expands that far. That is an over-block on bash 5.3, which leaves the
+segment unexpanded, and an escaped glob is read as unescaped (`~/*\*` blocks
+as `~/*` does); a final dot-glob (`~/.?`) is not read so,
 since rm refuses a last segment `..`. Quoted, `'/**'` and `"~/.?"/*` block as
 `"/*"` does.
 

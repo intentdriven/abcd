@@ -621,58 +621,67 @@ func (m entryMatcher) matchesAfter(site int) bool {
 	return true
 }
 
-// globMatches reports whether the shell pattern can produce the literal. A
-// pattern path.Match cannot parse (an unmatched `[`) is one bash leaves
-// unexpanded too, so it produces nothing but itself and the literal compare
-// has already had its say.
+// globMatches reports whether the shell pattern can produce the literal.
+// path.Match decides a pattern whose one bracket expression is a plain set
+// (plainBrackets), which it reads as bash does. Any other bracket expression
+// is one this compare cannot decide (iss-2609291233468970): path.Match has no
+// POSIX, equivalence or collating class, refuses a set whose first member is
+// `]` or `-`, and reads bash's negation `[!…]` as a set holding `!`, while
+// bash expands `r[[:lower:]]` to `rm` and `ba[].s]h` to `bash`; and the
+// tokenizer removes a backslash before the compare, so `clea[\!n]` and
+// `r[m\]]`, which every shell expands to `clean` and `rm`, arrive as the
+// negation `clea[!n]` and the set `r[m]` followed by `]`. Such a pattern is
+// compared with its bracket expressions read as any run of characters
+// (bracketsAsStar), which matches whatever any reading of them can produce.
+// An unterminated `[` is a literal in bash and a syntax error to path.Match;
+// no literal compared here holds a `[`, so neither produces one.
 func globMatches(pattern, literal string) bool {
-	ok, err := path.Match(bashGlobPattern(pattern), literal)
+	if !plainBrackets(pattern) {
+		pattern = bracketsAsStar(pattern)
+	}
+	ok, err := path.Match(pattern, literal)
 	return err == nil && ok
 }
 
-// bashGlobPattern rewrites a bash pattern into the dialect path.Match reads.
-// One difference changes an answer: bash spells a negated character class
-// `[!…]`, path.Match spells it `[^…]`, and path.Match reads bash's `!` as an
-// ordinary member of the set. So `git clea[!x] -fd` — which bash expands to
-// `git clean -fd` whenever a file called `clean` is there — compared as "clea
-// followed by `!` or `x`", matched nothing, and allowed.
-//
-// A `]` first in the set is a literal member in both dialects (`[!]a]`), and a
-// `[` inside an open set is literal in both, so the scan walks each class to
-// its close rather than translating every `[!` it sees. An unterminated class
-// is left as it stands: bash leaves such a word unexpanded too, and the literal
-// compare beside this one has already had its say.
-func bashGlobPattern(pattern string) string {
-	if !strings.Contains(pattern, "[!") {
+// plainBrackets reports whether a pattern's bracket expression is a set whose
+// meaning no removed backslash can change and path.Match reads as bash does:
+// it is not empty, its members are bytes other than `!`, `^`, `-`, `[` and
+// `\`, and no `]` follows its close, where an escaped `]` would have kept it
+// open or a second set would close. A pattern with no `[` that a later `]`
+// closes holds no bracket expression: every shell reads an unterminated `[`
+// as a literal.
+func plainBrackets(pattern string) bool {
+	first := strings.IndexByte(pattern, '[')
+	if first < 0 {
+		return true
+	}
+	end := strings.IndexByte(pattern[first+1:], ']')
+	if end < 0 {
+		return true
+	}
+	tally(len(pattern))
+	end += first + 1
+	return end > first+1 && !strings.ContainsAny(pattern[first+1:end], `!^-[\`) &&
+		strings.IndexByte(pattern[end+1:], ']') < 0
+}
+
+// bracketsAsStar is a pattern with the span from its first `[` to its last
+// `]` written as one `*`, a backslash directly before that `[` taken in with
+// it. The span holds every bracket expression the pattern has, however a
+// removed backslash would have opened or closed them, and each matches one
+// character that is never a slash, so `*` matches whatever the span can
+// produce. A `[` after the span has no `]` to close it and is kept as the
+// literal it is. Its one pass is counted with plainBrackets', which every
+// call follows.
+func bracketsAsStar(pattern string) string {
+	first, last := strings.IndexByte(pattern, '['), strings.LastIndexByte(pattern, ']')
+	if first < 0 || last < first {
 		return pattern
 	}
-	b := []byte(pattern)
-	for i := 0; i < len(b); i++ {
-		switch b[i] {
-		case '\\':
-			i++ // an escaped byte never opens a class
-		case '[':
-			j := i + 1
-			if j < len(b) && (b[j] == '!' || b[j] == '^') {
-				b[j] = '^'
-				j++
-			}
-			if j < len(b) && b[j] == ']' {
-				j++ // a `]` first in the set is a member, not the close
-			}
-			for j < len(b) && b[j] != ']' {
-				if b[j] == '\\' {
-					j++
-				}
-				j++
-			}
-			if j >= len(b) {
-				return string(b)
-			}
-			i = j
-		}
+	if first > 0 && pattern[first-1] == '\\' {
+		first--
 	}
-	return string(b)
+	return pattern[:first] + "*" + strings.ReplaceAll(pattern[last+1:], "[", `\[`)
 }
 
 // argPrefixMatches reports whether some operand carries the prefix. Only
@@ -735,8 +744,10 @@ func globReading(p string) string {
 // collapseStars is a glob with each run of `*` written as one `*`
 // (iss-2609290925320493). A run matches what one `*` matches, so every shell
 // without globstar expands `/**` as `/*`; with globstar set, `**` matches
-// every path beneath as well, never fewer. A byte after a backslash is
-// literal and is kept as it is.
+// every path beneath as well, never fewer. The tokenizer removes a backslash
+// before the operand reaches here, so an escaped `*` or `?` is read as the
+// glob it would otherwise be: `~/*\*` reads as `~/*` and `~/.\?/*` as
+// `~/.?/*`, and both block though the shell expands neither that far.
 func collapseStars(p string) string {
 	if !strings.Contains(p, "**") {
 		return p
@@ -744,16 +755,10 @@ func collapseStars(p string) string {
 	tally(len(p))
 	b := make([]byte, 0, len(p))
 	for i := 0; i < len(p); i++ {
-		c := p[i]
-		if c == '\\' && i+1 < len(p) {
-			b = append(b, c, p[i+1])
-			i++
+		if p[i] == '*' && len(b) > 0 && b[len(b)-1] == '*' {
 			continue
 		}
-		if c == '*' && len(b) > 0 && b[len(b)-1] == '*' && (len(b) < 2 || b[len(b)-2] != '\\') {
-			continue
-		}
-		b = append(b, c)
+		b = append(b, p[i])
 	}
 	return string(b)
 }
@@ -792,7 +797,11 @@ func dotParents(p string) string {
 }
 
 // dotGlob reports whether a path segment is a glob with a written leading
-// `.` that can match the name `..` (`.?`, `.*`, `.[.]`, `.[!x]`, `..*`).
+// `.` that can match the name `..` (`.?`, `.*`, `.[.]`, `.[!x]`, `..*`), as
+// globMatches decides it: a bracket expression it cannot decide
+// (`.[[:punct:]]`, `.[].]`, `.[--.]`, and `.[!.]`, which is also what
+// `.[\!.]` arrives as) reads as able to match `..`, and so does `.[a-z]`,
+// which no shell matches with `..` (iss-2609291233390280).
 func dotGlob(seg string) bool {
 	return len(seg) >= 2 && seg[0] == '.' && strings.ContainsAny(seg[1:], "*?[") &&
 		literalSegment(seg) && globMatches(seg, "..")
