@@ -51,12 +51,12 @@ func TestPreflightGateListIsNotRestatedWrongly(t *testing.T) {
 	// Every surface that enumerates the gates. A file joins this list when it
 	// starts restating them — which is the moment it becomes able to drift.
 	for _, rel := range []string{
-		"Makefile",               // the recipe's own comment, above the recipe
-		"docs/how-to/install.md", // the build section a contributor copies
-		"CONTRIBUTING.md",        // the local-gates paragraph
-		"AGENTS.md",              // the definition-of-done list
-		"CLAUDE.md",              // AGENTS.md's committed mirror
-		".githooks/pre-push",     // the hook that invokes the recipe
+		"Makefile",                // the recipe's own comment, above the recipe
+		"docs/how-to/install.md",  // the build section a contributor copies
+		".github/CONTRIBUTING.md", // the local-gates paragraph
+		"AGENTS.md",               // the definition-of-done list
+		"CLAUDE.md",               // AGENTS.md's committed mirror
+		".githooks/pre-push",      // the hook that invokes the recipe
 	} {
 		t.Run(rel, func(t *testing.T) {
 			prose := readRepoFile(t, root, rel)
@@ -454,7 +454,14 @@ func TestFormatGateResolvesThroughTheDeclaredToolchain(t *testing.T) {
 			"a workflow calling a target that does not exist fails the job with a make error "+
 			"rather than a format report", target, target)
 	}
-	if !strings.Contains(recipe, "GOTOOLCHAIN=go") {
+	// The resolution lives in scripts/pinned-toolchain.sh, the one resolver the
+	// format gate and preflight's Go steps share (iss-2609261850045839), so the
+	// pin is read from the script the recipe invokes as well as the recipe.
+	resolution := recipe
+	if strings.Contains(recipe, "scripts/pinned-toolchain.sh") {
+		resolution += "\n" + readRepoFile(t, root, "scripts/pinned-toolchain.sh")
+	}
+	if !strings.Contains(resolution, `GOTOOLCHAIN="go`) && !strings.Contains(resolution, "GOTOOLCHAIN=go") {
 		t.Errorf("the `%s:` recipe does not resolve a pinned toolchain (no GOTOOLCHAIN=go...):\n\n%s\n\n"+
 			"gofmt must come from the toolchain go.mod declares, or the gate judges the tree "+
 			"by whatever version the caller happens to have", target, recipe)
@@ -485,7 +492,7 @@ func TestFormatGateResolvesThroughTheDeclaredToolchain(t *testing.T) {
 	for _, rel := range []string{
 		"AGENTS.md",                        // the command table and the definition-of-done list
 		"CLAUDE.md",                        // AGENTS.md's committed mirror
-		"CONTRIBUTING.md",                  // the local-gates paragraph
+		".github/CONTRIBUTING.md",          // the local-gates paragraph
 		".github/PULL_REQUEST_TEMPLATE.md", // the verification prompt
 		".githooks/pre-push",               // the hook's header, which tells the developer what CI adds
 	} {

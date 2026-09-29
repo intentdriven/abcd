@@ -38,7 +38,7 @@ func TestDashWordBeforeCommandPositionReadsBothWays(t *testing.T) {
 		{`git -$(echo c) core.hooksPath=/dev/null commit -m x`, VerdictBlock, "git-commit-no-verify"},
 		{`git -$(echo c) alias.p='push --force' p origin main`, VerdictBlock, "git-push-force"},
 		{`gh -$(echo R) o/r api -X DELETE repos/o/r`, VerdictBlock, "gh-api-repo-delete"},
-		{`pkill -$(echo g) 4242`, VerdictBlock, "pkill-by-pattern"},
+		{`pkill -$(echo g) 4242`, VerdictBlock, "pkill-by-owner"},
 
 		{`sudo -$(echo u) root ` + push, VerdictBlock, "git-push-force"},
 		{`env -$(echo u) X ` + push, VerdictBlock, "git-push-force"},

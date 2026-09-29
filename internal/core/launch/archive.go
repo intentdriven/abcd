@@ -84,8 +84,14 @@ var githubRepositoryRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-
 type PluginArchive struct {
 	// Name is the release asset's file name, <plugin>-plugin-v<version>.zip.
 	Name string `json:"name"`
-	// Path is where the archive was written.
-	Path string `json:"path"`
+	// Path is where the archive was written: the absolute working value a
+	// caller removes or reads the archive through. It never reaches machine
+	// output (iss-81); DisplayPath is what a report names.
+	Path string `json:"-"`
+	// DisplayPath is Path as a report names it (fsutil.RepoRelativePath): relative
+	// to the repository when --out is inside it, the home redacted to "~"
+	// otherwise (iss-2609261950077063).
+	DisplayPath string `json:"path"`
 	// SHA256 is the lower-case hex digest of the archive's bytes.
 	SHA256 string `json:"sha256"`
 	// Version is the release version stamped into the archived plugin manifest.
@@ -134,6 +140,7 @@ func RenderPluginArchive(req PayloadRenderRequest, outDir string) (PluginArchive
 	a.Name = PluginArchiveName(name, req.Version)
 	a.Version = req.Version
 	a.Path = filepath.Join(outDir, a.Name)
+	a.DisplayPath = fsutil.RepoRelativePath(req.RepoRoot, a.Path)
 	if _, err := os.Lstat(a.Path); err == nil {
 		return a, res, fmt.Errorf("%s already exists in the output directory — refusing to replace a release archive", a.Name)
 	}

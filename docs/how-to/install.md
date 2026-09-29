@@ -81,13 +81,23 @@ outside the one the session is working in, that is not world-writable, **and**
 `~/.abcd/path-entry` records that exact path as the `abcd` installed on this
 machine. The [install](#cli) one-liner writes that record, and so does abcd's
 own install verb — whichever entry it leaves on `PATH`: the copy of the
-verified release binary it prefers, the symlink it degrades to when there is no
-verified copy to make, and the track-latest shim `--dev` writes. The copy is
-made only from a cache that `~/.abcd/cache-attestation` vouches for — the
-directory it names, holding the hash it names — so a data directory pointed at
-by an environment variable alone is never promoted onto `PATH`; the install
-says which record is missing or disagrees and degrades to the symlink until a
-session with network access re-authenticates the cache. The record is read
+verified release binary, the track-latest shim `--dev` writes, and a symlink
+into the plugin root that an earlier release wrote and that still works. The
+copy is made only from a cache that `~/.abcd/cache-attestation` vouches for —
+the directory it names, holding the hash it names — so a data directory pointed
+at by an environment variable alone is never promoted onto `PATH`. Neither
+record counts when `~/.abcd` is a symlink — a dotfiles checkout, say — and
+nothing abcd writes goes through one: the hooks, the install verb and the
+one-liner each refuse it and say so, as the rules loader refuses a
+`rules.json` there, so replace the link with a real directory before
+installing. With no verified copy to make, the install writes no entry rather than a symlink into
+the plugin root, which the next plugin update would break: it says which record
+is missing or disagrees, and names the command to run first, the
+[install](#cli) one-liner, after which re-running the install adopts the copy
+the one-liner wrote. A symlink into the plugin root that an earlier release
+wrote is named by `abcd ahoy` as a gap while it still works, and an entry the
+record names that has since stopped resolving is reported as abcd's own and
+replaced by the install. The record is read
 only from a home directory the session can trust: one that is absolute and
 not inside the repository being installed, since a home the environment can
 point anywhere could name the attestation too. A refused home is named as the
@@ -139,10 +149,12 @@ others — a file inside the checkout can never vouch for the checkout. Nothing
 infers the exception for you.
 
 That covers the hooks. For the `abcd` command in your own terminal, keep the
-[install](#cli) below, or put the plugin-root binary on your `PATH` by
-running it once by its absolute path — `'<plugin-root>/abcd' ahoy install`.
-The path is absolute because `abcd` is not on your `PATH` yet, which is what
-that one run fixes. `<plugin-root>` is the directory the agent harness unpacked
+[install](#cli) below, or put abcd on your `PATH` by running the plugin-root
+binary once by its absolute path — `'<plugin-root>/abcd' ahoy install`. That
+run copies the release binary the session's hooks verified and cached; where no
+verified copy is cached it writes nothing and names the [install](#cli)
+one-liner instead. The path is absolute because `abcd` is not on your `PATH`
+yet, which is what that one run fixes. `<plugin-root>` is the directory the agent harness unpacked
 the abcd plugin into, with the binary sitting directly inside it as `abcd`; the
 bootstrap's success notice prints that full binary path, so the shortest route
 is to copy the command straight out of the notice. That notice appears once per
@@ -216,13 +228,13 @@ single-user location.
 ### macOS
 
 ```sh
-sh -c 'set -eu; unset HTTPS_PROXY https_proxy HTTP_PROXY http_proxy ALL_PROXY all_proxy CURL_HOME CURL_CA_BUNDLE SSL_CERT_FILE SSL_CERT_DIR; cd "$(mktemp -d)"; arch=$(uname -m); case "$arch" in x86_64) arch=amd64;; esac; b="abcd-darwin-$arch"; curl -q --proto =https --proto-redir =https -fsSLO "https://github.com/intentdriven/abcd/releases/latest/download/$b"; curl -q --proto =https --proto-redir =https -fsSLO "https://github.com/intentdriven/abcd/releases/latest/download/checksums.txt"; l=$(grep " $b$" checksums.txt); printf "%s\n" "$l" | shasum -a 256 -c -; mkdir -p "$HOME/.local/bin"; install -m 0755 "$b" "$HOME/.local/bin/abcd"; mkdir -p "$HOME/.abcd"; printf "path=%s\nbinary_sha256=%s\n" "$HOME/.local/bin/abcd" "${l%% *}" > "$HOME/.abcd/path-entry"; "$HOME/.local/bin/abcd" --version'
+sh -c 'set -eu; unset HTTPS_PROXY https_proxy HTTP_PROXY http_proxy ALL_PROXY all_proxy CURL_HOME CURL_CA_BUNDLE SSL_CERT_FILE SSL_CERT_DIR; [ ! -L "$HOME/.abcd" ] || { echo "abcd install: ~/.abcd is a symlink, which abcd refuses rather than follows; replace it with a real directory and re-run" >&2; exit 1; }; cd "$(mktemp -d)"; arch=$(uname -m); case "$arch" in x86_64) arch=amd64;; esac; b="abcd-darwin-$arch"; curl -q --proto =https --proto-redir =https -fsSLO "https://github.com/intentdriven/abcd/releases/latest/download/$b"; curl -q --proto =https --proto-redir =https -fsSLO "https://github.com/intentdriven/abcd/releases/latest/download/checksums.txt"; l=$(grep " $b$" checksums.txt); printf "%s\n" "$l" | shasum -a 256 -c -; mkdir -p "$HOME/.local/bin"; install -m 0755 "$b" "$HOME/.local/bin/abcd"; mkdir -p "$HOME/.abcd"; printf "path=%s\nbinary_sha256=%s\n" "$HOME/.local/bin/abcd" "${l%% *}" > "$HOME/.abcd/path-entry"; "$HOME/.local/bin/abcd" --version'
 ```
 
 ### Linux
 
 ```sh
-sh -c 'set -eu; unset HTTPS_PROXY https_proxy HTTP_PROXY http_proxy ALL_PROXY all_proxy CURL_HOME CURL_CA_BUNDLE SSL_CERT_FILE SSL_CERT_DIR; cd "$(mktemp -d)"; arch=$(uname -m); case "$arch" in x86_64) arch=amd64;; aarch64) arch=arm64;; esac; b="abcd-linux-$arch"; curl -q --proto =https --proto-redir =https -fsSLO "https://github.com/intentdriven/abcd/releases/latest/download/$b"; curl -q --proto =https --proto-redir =https -fsSLO "https://github.com/intentdriven/abcd/releases/latest/download/checksums.txt"; l=$(grep " $b$" checksums.txt); printf "%s\n" "$l" | sha256sum -c -; mkdir -p "$HOME/.local/bin"; install -m 0755 "$b" "$HOME/.local/bin/abcd"; mkdir -p "$HOME/.abcd"; printf "path=%s\nbinary_sha256=%s\n" "$HOME/.local/bin/abcd" "${l%% *}" > "$HOME/.abcd/path-entry"; "$HOME/.local/bin/abcd" --version'
+sh -c 'set -eu; unset HTTPS_PROXY https_proxy HTTP_PROXY http_proxy ALL_PROXY all_proxy CURL_HOME CURL_CA_BUNDLE SSL_CERT_FILE SSL_CERT_DIR; [ ! -L "$HOME/.abcd" ] || { echo "abcd install: ~/.abcd is a symlink, which abcd refuses rather than follows; replace it with a real directory and re-run" >&2; exit 1; }; cd "$(mktemp -d)"; arch=$(uname -m); case "$arch" in x86_64) arch=amd64;; aarch64) arch=arm64;; esac; b="abcd-linux-$arch"; curl -q --proto =https --proto-redir =https -fsSLO "https://github.com/intentdriven/abcd/releases/latest/download/$b"; curl -q --proto =https --proto-redir =https -fsSLO "https://github.com/intentdriven/abcd/releases/latest/download/checksums.txt"; l=$(grep " $b$" checksums.txt); printf "%s\n" "$l" | sha256sum -c -; mkdir -p "$HOME/.local/bin"; install -m 0755 "$b" "$HOME/.local/bin/abcd"; mkdir -p "$HOME/.abcd"; printf "path=%s\nbinary_sha256=%s\n" "$HOME/.local/bin/abcd" "${l%% *}" > "$HOME/.abcd/path-entry"; "$HOME/.local/bin/abcd" --version'
 ```
 
 ### Windows
@@ -298,10 +310,10 @@ someone else's hook, a fence without its markers reads as drifted, and
 
 ```bash
 make preflight   # the pre-push gate: the load check first (load-check, a
-                 # warning, never a failure), then lint-reviews, lint-issues,
-                 # lint-decisions, record-lint, issue-drift, docs-lint,
-                 # site-render, smoke and evals-cold-reading, then build, vet,
-                 # test and race
+                 # warning, never a failure), then fmt-check, lint-reviews,
+                 # lint-issues, lint-decisions, record-lint, issue-drift,
+                 # docs-lint, site-render, smoke and evals-cold-reading, then
+                 # build, vet, test and race, all on the toolchain go.mod declares
 go run ./cmd/abcd            # bare status board for the current directory
 go run ./cmd/abcd --version  # print the version
 make build                   # cross-compile bin/abcd-<goos>-<arch>

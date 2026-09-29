@@ -1,7 +1,7 @@
 ---
 term: plan
 bounded_context: core
-definition: The maintainer's sign-off act `abcd intent plan <itd-N>`, which mints a spec, links both sides and moves a draft intent to planned/. Three further senses share the word — the ordered build plan the phase docs hold, a dated design plan under development/plans/, and a session's planning brief — and each is qualified where it appears.
+definition: The product thinker's sign-off act `abcd intent plan <itd-N>`, which mints a spec, links both sides and moves a draft intent to planned/. Three further senses share the word — the ordered build plan the phase docs hold, a dated design plan under development/plans/, and a session's planning brief — and each is qualified where it appears.
 aliases: ["intent plan", "planning sign-off"]
 forbidden_synonyms: ["approve", "estimate", "schedule", "backlog"]
 status: stable
@@ -16,7 +16,7 @@ versions: null
 # plan
 
 Unqualified, **plan** is the verb: `abcd intent plan <itd-N>`. The invocation *is* the
-maintainer's sign-off on an intent's acceptance criteria — never run unattended, never inferred
+product thinker's sign-off on an intent's acceptance criteria — never run unattended, never inferred
 from consent. It mints the spec stub, links intent and spec, stamps an identity onto every
 unmarked scope condition, and moves the record `drafts/ → planned/`. The surface page is
 [`commands/intent.md`](../../../../../commands/intent.md); the rule it serves is that no

@@ -116,7 +116,7 @@ ancestor is not a run at this target and is not listed; a run across which
 anything else changed is listed and refused, naming the first path that moved.
 The manifest records both commits — `candidate_run_target` beside
 `target_commit` — so a reader can diff them. *This reading of "at the target" is
-an interpretation, and the maintainer's ruling is owed* (iss-2609021857343626).
+an interpretation, and the product thinker's ruling is owed* (iss-2609021857343626).
 That run's items travel projected to two body fields —
 the configuration and what admits it — keyed by the item identifier the
 comparative body cites, and nothing else from the readings store travels with
@@ -237,6 +237,10 @@ manifest describes half of what is in it. Both files are written through a
 temporary name and renamed into place, so a reader never opens a half-written
 bundle.
 
+An output directory reached through a symlink at any level inside a checkout is
+refused, however `--out` spells it: a committed link would carry both files
+elsewhere. Outside every checkout the path is the operator's own.
+
 ### The host obligation this binary cannot discharge
 
 The assembled input carries no repository path: each item is an ordinal key, a
@@ -338,6 +342,16 @@ rule alone, and there is never an item 0. A refusal reached BEFORE that point �
 a wrong `_type`, a run id that resolves to nothing, a manifest hash that
 disagrees — writes nothing durable anywhere, because there is no proven run to
 record against.
+
+**An item citing a record id that names no record refuses the whole run, and
+writes nothing.** Wherever the repository's record-lint gates prose citations in
+the reading-record store, an item whose pattern or body field cites an `adr`,
+`itd`, `iss` or `spc` id that names no record refuses the ingest, naming the
+item, the field and the id — before the orphan sweep and before anything is
+staged. No refusal record is written, because one would give the run an outcome
+and turn away the same run re-worded: the run stays parked, so re-word the prose
+to describe the record rather than cite an id that does not exist, and ingest it
+again.
 
 **A rerun is a new run with a new run id, never an amendment.** Once a run id
 has an outcome — a commit marker or a refusal record — ingesting it again is

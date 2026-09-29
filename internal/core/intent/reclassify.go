@@ -175,12 +175,13 @@ func Reclassify(repoRoot, intentID string, req ReclassifyRequest) (ReclassifyRes
 	if res.ToKind != KindSuperseded {
 		return res, nil
 	}
-	// After the lock, as every close's repoint is: the record has moved and the
-	// supersession stands, so what follows is reported, never raised.
+	// After the hold, as every close's repoint is: the record has moved and the
+	// supersession stands, so what follows is reported, never raised. The
+	// repoint takes the lock again for its own read-modify-write.
 	if store, err := spec.Load(repoRoot); err == nil {
 		res.OpenSpecs = specIDs(store.OpenSpecsForIntent(res.IntentID))
 	}
-	relinked, err := relink.Repoint(repoRoot, []relink.Move{{From: res.Moved[0].From, To: res.Moved[0].To, MovedNow: true}})
+	relinked, err := repointUnderLock(repoRoot, []relink.Move{{From: res.Moved[0].From, To: res.Moved[0].To, MovedNow: true}})
 	res.Relinked = relinked
 	if err != nil {
 		res.RelinkError = err.Error()

@@ -32,7 +32,8 @@ emits `{ "manifest": …, "ui_strings": …, "baseline": …, "out_dir": … }`:
 - `baseline` and `baseline_entries` — the committed unresolved-reference
   ratchet and its size.
 - `version`, `commit` — what a render would stamp the footer with.
-- `out_dir`, `out_exists`, `out_files` — where a render writes, and what is
+- `out_dir`, `out_exists`, `out_files` — where a render writes (relative to the
+  repository inside it, with the home directory as `~` outside it), and what is
   there now.
 
 Report the declared inputs first, then the output directory's state. It writes
@@ -49,11 +50,12 @@ reads exactly this set — `.abcd/site.json`, `site-src/ui.json`,
 `.abcd/development/` and the opted-in issue ledger, git history,
 `CHANGELOG.md`, the composed pages and assets under `docs/`, the static inputs
 `site-src/{site.css,site.js,record.js,redirects,headers}` and the served
-`site-src/install.sh.tmpl`, the credit sources `CONTRIBUTING.md` and
-`ACKNOWLEDGEMENTS.md` (and the existence of `SECURITY.md` and `CITATION.cff`
-for the footer), `.abcd/site-baseline.json` (the ratchet the health block
-counts against), and `.claude-plugin/plugin.json` (the forge URL, licence and
-author the links and footer use) — and writes the landing page, the record
+`site-src/install.sh.tmpl`, the credit sources `.github/CONTRIBUTING.md` and
+`ACKNOWLEDGEMENTS.md` (and the existence of `SECURITY.md` — in `.github/`, at
+the root or in `docs/` — and `CITATION.cff` for the footer),
+`.abcd/site-baseline.json` (the ratchet the health block counts against), and
+`.claude-plugin/plugin.json` (the forge URL, licence and author the links and
+footer use) — and writes the landing page, the record
 export, the redirect and header maps, the stylesheet, the two scripts, the
 `install.sh`, and every referenced raster into the output directory, and
 nowhere else. It reaches no network. The default output directory is `site`,
@@ -78,8 +80,8 @@ page count rendered from the record, the
 record's size (records, links, mentions), the unresolved references against the
 committed baseline, the chart packing's overlap count (which is zero or the
 picture is wrong), and the version and commit stamped into the footer. An
-unresolved-reference count above the baseline is worth naming to the maintainer
-even though this verb does not gate on it.
+unresolved-reference count above the baseline is worth naming to the technical
+facilitator even though this verb does not gate on it.
 
 A failure names its cause and its place: a markdown construct outside the
 rendered subset is reported as `file:line`, and so is an image the page names
@@ -121,7 +123,8 @@ sets up the site of a repository abcd manages, in three stages, and emits
 
 Both remote stages ask before they write, naming each change. An unanswered
 run declines them and exits `1`; `--yes` confirms in advance — pass it only
-when the user has asked for the forge and host changes. A second run over an
+when the technical facilitator has asked for the forge and host changes, and set
+`abcd mode facilitator` before asking them. A second run over an
 unchanged repository reports `no_change` and writes nothing.
 
 The first run names the host after the repository; `--name` and `--domain`

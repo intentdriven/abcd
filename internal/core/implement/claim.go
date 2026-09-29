@@ -384,9 +384,9 @@ func (e *UnreadableClaimError) Error() string {
 	return fmt.Sprintf("the claim file %s is unreadable; nothing can say who holds %s", e.Path, e.Record)
 }
 
-// readClaim reads one claim file. An unparseable one is an
-// *UnreadableClaimError lapsing UnreadableClaimGrace after the file was last
-// written.
+// readClaim reads one claim file. An unparseable one — or one whose session or
+// lane is not a name — is an *UnreadableClaimError lapsing UnreadableClaimGrace
+// after the file was last written.
 func (r *Run) readClaim(root *os.Root, record string) (Claim, error) {
 	rel := claimRel(record)
 	data, err := fsutil.ReadGuardedInRoot(root, rel, maxRecordBytes)
@@ -394,7 +394,11 @@ func (r *Run) readClaim(root *os.Root, record string) (Claim, error) {
 		return Claim{}, err
 	}
 	var c Claim
-	if err := json.Unmarshal(data, &c); err != nil || c.Record != record || c.Session == "" || c.ExpiresAt.IsZero() {
+	// The session and the lane reach a refusal printed to the operator, so each
+	// must be a name, as the claim verb wrote it: a hand-edited file carrying a
+	// terminal escape or a path reads as unreadable, never as a holder.
+	if err := json.Unmarshal(data, &c); err != nil || c.Record != record || c.ExpiresAt.IsZero() ||
+		validName("session", c.Session) != nil || validName("lane", c.Lane) != nil {
 		bad := &UnreadableClaimError{Record: record, Path: filepath.Join(r.Dir, filepath.FromSlash(rel))}
 		fi, serr := root.Stat(rel)
 		if serr != nil {

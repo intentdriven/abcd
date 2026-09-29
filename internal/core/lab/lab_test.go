@@ -785,3 +785,25 @@ func TestListWritesNothing(t *testing.T) {
 		t.Errorf("List created the store: %v", err)
 	}
 }
+
+// A literal quoted in backticks is a CommonMark code span, paired by
+// termsafe's pairer: a literal holding a backtick is quoted in a longer run,
+// and the one space the writer padded it with comes off again. The reader
+// closed the literal on the next single backtick, so such a literal was read as
+// empty and refused as noise.
+func TestParseCorrectionsReadsALiteralAsItsCodeSpan(t *testing.T) {
+	for line, want := range map[string]string{
+		"- retract: `the guard returned 500` a reason": "the guard returned 500",
+		"- retract: ``run `abcd lint` first`` why":     "run `abcd lint` first",
+		"- retract: `` `quoted` claim ``":              "`quoted` claim",
+		"- retract: ``a```b literal`` why":             "a```b literal",
+	} {
+		cs := parseCorrections(line + "\n")
+		if len(cs) != 1 || cs[0].Pattern != want || cs[0].Invalid != "" {
+			t.Errorf("parseCorrections(%q) = %+v, want the literal %q", line, cs, want)
+		}
+	}
+	if cs := parseCorrections("- retract: `unclosed literal\n"); len(cs) != 1 || cs[0].Invalid == "" {
+		t.Errorf("an unclosed literal was not refused: %+v", cs)
+	}
+}

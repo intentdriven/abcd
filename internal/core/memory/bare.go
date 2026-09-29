@@ -100,11 +100,15 @@ func Bare(repoRoot string) (BareStatus, error) {
 				stale[name] = true
 			}
 		}
+		// One wording for both surfaces: the text board prints these lines
+		// verbatim, so a person and a parser read the same sentence, and the
+		// sentence names the verb that heals it (every ingest reconciles the
+		// index and the register before it writes).
 		if stale["index.md"] {
-			status.Drift = append(status.Drift, "index stale; run an ingest")
+			status.Drift = append(status.Drift, "the index is stale — run `abcd memory ingest` to rebuild it")
 		}
 		if stale["contradictions.md"] {
-			status.Drift = append(status.Drift, "contradictions register stale; run an ingest")
+			status.Drift = append(status.Drift, "the contradictions register is stale — run `abcd memory ingest` to rebuild it")
 		}
 	}
 

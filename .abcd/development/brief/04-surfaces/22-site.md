@@ -7,7 +7,7 @@ every sentence the site publishes is a span of a repository file, selected by pa
 and heading, and a gate refuses to publish text that is not
 ([adr-47](../../decisions/adrs/0047-abcdev-app-rendered-from-this-repository-alone.md)).
 
-What that costs a maintainer: a sentence that would improve the site has to be
+What that costs the product thinker: a sentence that would improve the site has to be
 written into `docs/` or the record, where it must also read true on the forge.
 What it buys: the site cannot say anything the repository does not, and nobody has
 to remember to update it.
@@ -151,9 +151,10 @@ The build reads the repository and nothing else — no network at any point. Its
 inputs are the composition declaration and the interface-string allowlist; the
 record itself, read through the record-lint engine's own frontmatter scan so there
 is one parser rather than two; the bibliography and the glossary through their own
-parsers; one pass of git history; `CHANGELOG.md`; the two root prose files whose
-text the site publishes, which are the acknowledgements behind the references page
-and the authorship section of the contribution guide behind the contributors page;
+parsers; one pass of git history; `CHANGELOG.md`; the two prose files whose
+text the site publishes, which are the acknowledgements at the root behind the
+references page and the authorship section of the contribution guide in `.github/`
+behind the contributors page;
 and `docs/` with its committed assets. It writes the landing page, the record explorer, the machine-readable
 record export, the install script from its committed template, the redirect and
 header maps, the stylesheets and scripts, every referenced raster, and its own

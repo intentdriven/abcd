@@ -15,6 +15,6 @@
        Assisted-by: None                      (no AI touched this change)
 
      The gate refuses a missing or mid-sentence trailer, and refuses tool
-     footers ("generated with ..."). See CONTRIBUTING.md § AI assistance. -->
+     footers ("generated with ..."). See .github/CONTRIBUTING.md § AI assistance. -->
 
 Assisted-by: 

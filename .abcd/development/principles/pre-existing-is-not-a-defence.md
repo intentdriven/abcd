@@ -13,7 +13,8 @@ consequence is fixed in that release rather than carried past it, because a
 release that steps over a known defect of exactly the class it is named for
 spends the credibility it exists to build. The users who read a security release
 note and act on it are trusting a claim about the state of the system; a defect
-the maintainers had already confirmed and stepped over makes that claim false in
+the product thinker and the technical facilitator had already confirmed and
+stepped over makes that claim false in
 the specific way that is hardest to recover from.
 
 **Why.** The failure has a shape, and the shape is persuasive rather than

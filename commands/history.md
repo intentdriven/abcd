@@ -322,7 +322,9 @@ artefact would not fit the context it is being read into.
 `--max-block-bytes` caps one rendered tool input or result; what it removes is
 marked where it happens and counted in the telemetry.
 
-`--out` defaults to the working directory. In a repo that follows abcd's
+`--out` defaults to the working directory. It must already exist, and it is
+refused when it is reached through a symlink at any level inside a checkout
+(a committed link would carry both files elsewhere). In a repo that follows abcd's
 three-tier layout, write into `.abcd/.work.local/scratch/` rather than the repo
 root — a reconstruction is a derived artefact, and the root is not where derived
 artefacts belong.

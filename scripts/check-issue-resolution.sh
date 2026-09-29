@@ -27,7 +27,10 @@
 #          The refusal names the shape it can prove (iss-2609012023256534): a
 #          record already terminal at the base — the stale-branch shape, where a
 #          rebase is the remedy and "resolve it" is not — is told apart from a
-#          record left open, one the head tree lacks, and an id with no record.
+#          record left open, one the head tree lacks, and an id with no record;
+#          and a record a competitor made terminal while a merge-queue entry
+#          waited is told apart from one terminal before the branch was cut
+#          (iss-2609091433422134).
 #
 #   RS002  A resolved_by.commit sha ADDED in the range must name a commit that
 #          exists and is reachable from the head being pushed. The --commit flag
@@ -402,6 +405,23 @@ frontmatter_commit() {
 		grep -oE '[0-9a-f]{7,64}' | head -1 || true
 }
 
+# landed_while_waiting prints the base-side commit ("<sha> <subject>") that put
+# path where base holds it AFTER the branch carrying sha diverged from base, in
+# the one shape the stale-branch probe cannot see: base an ANCESTOR of head. A
+# merge-queue entry is that shape — its head is the would-be merge of the
+# entry's base with the branch — so head..base is empty by construction, and a
+# competitor that resolved (or shipped) the same record while the entry waited
+# read as history from before the branch was cut (iss-2609091433422134). The
+# walk that sees the landing starts at sha's own fork point. Prints nothing when
+# base is not an ancestor of head, where the head..base probe already answers,
+# or when the record already sat there at the fork point.
+landed_while_waiting() {
+	local sha="$1" base="$2" head="$3" path="$4" fork
+	git merge-base --is-ancestor "$base" "$head" 2>/dev/null || return 0
+	fork="$(git merge-base "$sha" "$base" 2>/dev/null)" || return 0
+	git log -n1 --format='%h %s' "$fork".."$base" -- "$path" 2>/dev/null || true
+}
+
 # reachable reports whether sha names a real commit that ref can see. A sha that
 # does not resolve at all and one that resolves but is unreachable are distinct
 # faults, so they are reported separately rather than folded into "bad sha".
@@ -559,13 +579,19 @@ check_delivery() {
 		# The stale-branch split RS001 draws, for the same reason: whether a rebase
 		# is the remedy turns on WHEN the record reached shipped/.
 		# Asked of the merge base's tree, and the placer is the commit that added
-		# or renamed the path into place — iss-2609012047566360, as RS001.
-		local mb_path mb_bucket=""
+		# or renamed the path into place — iss-2609012047566360, as RS001. A
+		# merge-queue entry (base an ancestor of head) is asked first: there the
+		# merge base IS base, so only the walk from sha's own fork point can see a
+		# competitor that shipped the intent while the entry waited.
+		local landed mb_path mb_bucket=""
+		landed="$(landed_while_waiting "$sha" "$base" "$head" "$base_path")"
 		if [ -n "$mb" ]; then
 			mb_path="$(intent_path "$mb" "$id")"
 			[ -n "$mb_path" ] && mb_bucket="$(bucket_of "$mb_path")"
 		fi
-		if [ "$mb_bucket" != shipped ]; then
+		if [ -n "$landed" ]; then
+			fail "$says $id already sits in $INTENTS_DIR/shipped/ at $base, placed there by $landed after this branch diverged from $base: another change delivered it while this change waited (a merge-queue collision), so it enters nothing in $base..$head. Rebase onto $base, reconcile this change with that one, and drop the trailer — the intent ships once, and $base already holds it shipped."
+		elif [ "$mb_bucket" != shipped ]; then
 			local placer placed_by="after this branch diverged"
 			placer="$(git log -n1 --diff-filter=AR --format='%h %s' "$head".."$base" -- "$base_path" || true)"
 			[ -n "$placer" ] && placed_by="by $placer"
@@ -938,13 +964,19 @@ check_commits() {
 					# base-side move between terminal folders — was reported as the
 					# placement, with a rebase that cures nothing. The placer named is
 					# the base-side commit that ADDED or renamed the path into place,
-					# never a later edit of it.
-					local mb_status="" mb_path
+					# never a later edit of it. A merge-queue entry (base an ancestor
+					# of head) is asked first: there the merge base IS base, so only
+					# the walk from sha's own fork point can see a competitor that
+					# resolved the record while the entry waited.
+					local landed mb_status="" mb_path
+					landed="$(landed_while_waiting "$sha" "$base" "$head" "$base_path")"
 					if [ -n "$mb" ]; then
 						mb_path="$(record_path "$mb" "$id")"
 						[ -n "$mb_path" ] && mb_status="$(status_of "$mb_path")"
 					fi
-					if [ "$mb_status" != resolved ] && [ "$mb_status" != wontfix ]; then
+					if [ -n "$landed" ]; then
+						fail "RS001 commit ${sha:0:12} declares 'Resolves: $id', but $id already sits in $ISSUES_DIR/$base_status/ at $base, placed there by $landed after this branch diverged from $base: another change resolved it while this change waited (a merge-queue collision), so it enters nothing in $base..$head. Rebase onto $base, reconcile this change with that one, and drop the trailer — the record is terminal once, and $base already holds it so."
+					elif [ "$mb_status" != resolved ] && [ "$mb_status" != wontfix ]; then
 						local placer placed_by="after this branch diverged"
 						placer="$(git log -n1 --diff-filter=AR --format='%h %s' "$head".."$base" -- "$base_path" || true)"
 						[ -n "$placer" ] && placed_by="by $placer"

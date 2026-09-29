@@ -24,6 +24,7 @@ import (
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/mdrecord"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // BriefSurfacesDir is the brief's surface-chapter directory, repo-relative and
@@ -449,44 +450,27 @@ func ProseShapeClaims(prose string, own []string, tree []Command) []ShapeClaim {
 
 // codeRegions marks every byte of s that sits inside a code span or a fenced
 // block. A run of n backticks opens a region that the next run of exactly n
-// closes, which is CommonMark's code-span rule and, because a fence is a run of
-// three, also covers a backtick fence. An unclosed run is literal text.
+// closes — termsafe.PairCodeSpan, CommonMark's code-span rule — and, because a
+// fence is a run of three, that also covers a backtick fence. An unclosed run
+// is literal text.
 func codeRegions(s string) []bool {
 	in := make([]bool, len(s)+1)
-	run := func(i int) int {
-		n := 0
-		for i+n < len(s) && s[i+n] == '`' {
-			n++
-		}
-		return n
-	}
 	for i := 0; i < len(s); {
 		if s[i] != '`' {
 			i++
 			continue
 		}
-		n := run(i)
-		closeAt := -1
-		for j := i + n; j < len(s); {
-			if s[j] != '`' {
-				j++
-				continue
+		sp, ok := termsafe.PairCodeSpan(s, i)
+		if !ok {
+			for i < len(s) && s[i] == '`' {
+				i++
 			}
-			if m := run(j); m == n {
-				closeAt = j
-				break
-			} else {
-				j += m
-			}
-		}
-		if closeAt < 0 {
-			i += n
 			continue
 		}
-		for k := i + n; k < closeAt; k++ {
+		for k := sp.ContentStart; k < sp.ContentEnd; k++ {
 			in[k] = true
 		}
-		i = closeAt + n
+		i = sp.End
 	}
 	return in
 }

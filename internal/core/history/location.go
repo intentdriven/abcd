@@ -216,14 +216,15 @@ func localDeclared(repoRoot string) (bool, string) {
 	if err != nil || home == "" {
 		return false, ""
 	}
-	path := filepath.Join(home, filepath.FromSlash(LocalRootsRelPath))
-	// The three-part guard is fsutil.ReadDeclaration's, not this function's — see
-	// the note at rules.trustedRootDeclared. Only the WORDING stays here.
-	raw, refusal, err := fsutil.ReadDeclaration(path, maxLocalRootsBytes)
+	// The guard is fsutil.ReadHomeDeclaration's, not this function's — see the
+	// note at rules.trustedRootDeclared. Only the WORDING stays here.
+	raw, refusal, err := fsutil.ReadHomeDeclaration(home, LocalRootsRelPath, maxLocalRootsBytes)
 	switch refusal {
 	case fsutil.DeclarationOK:
 	case fsutil.DeclarationAbsent:
 		return false, "" // no declaration is the ordinary case, not a diagnostic.
+	case fsutil.DeclarationBehindSymlink:
+		return false, ignoredDeclaration(termsafe.Sanitize(err.Error()))
 	case fsutil.DeclarationNotRegular:
 		return false, ignoredDeclaration("it is not a regular file")
 	case fsutil.DeclarationWritableByOthers:

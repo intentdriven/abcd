@@ -13,8 +13,10 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core/implement"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // Options are the seams tests set; the zero value is production.
@@ -23,7 +25,18 @@ type Options struct {
 	Now func() time.Time
 	// Minter mints the run id; the zero value is production.
 	Minter recordid.Minter
+	// Session is the joined session of the shared run state
+	// (~/.abcd/runs/<root-sha>/) a new run is started for. When set, Start
+	// claims the intent for it there, so a build of the same intent from any
+	// other checkout of the repository sees the run before its lane has moved
+	// or claimed anything (iss-2609252050506863). Empty, the run holds no
+	// claim and is invisible to another checkout until its lane shows.
+	Session string
 }
+
+// StepClaim is the refusal step of a start whose shared-run claim is refused
+// for a reason of the caller's own (a session that has not joined, a bound).
+const StepClaim = "claim"
 
 func (o Options) now() time.Time {
 	if o.Now != nil {
@@ -127,7 +140,11 @@ type StartResult struct {
 	// Checks are the pre-start checks' rows when the call created the run; a
 	// resumed start runs none, and carries none.
 	Checks []CheckRow `json:"checks"`
-	Next   string     `json:"next"`
+	// Claim is the shared-run claim a new run took for Options.Session; nil when
+	// no session was named or the start resumed a run, and then null in the
+	// JSON, never absent, so the payload says the run holds no claim.
+	Claim *implement.ClaimResult `json:"claim"`
+	Next  string                 `json:"next"`
 }
 
 // StepResult is what Advance and Receipt return.
@@ -158,6 +175,15 @@ type StepResult struct {
 // starting again after a kill loses nothing and repeats nothing, and the checks
 // run only when a run is created. Only the key's shape is checked before the
 // lookup, so a path is never built from a key that is not an intent id.
+//
+// With o.Session named, a new run also claims its intent in the shared run
+// state for that session, with the run id as the lane and the longest lease a
+// claim takes: the peers check then counts that session's own live claim on the
+// intent as its own, and a build from another checkout counts it as a peer's. A
+// session that has not joined is refused before anything is created; a claim
+// refused under the lock (a racing holder, a second session's bound) leaves no
+// run behind; and a run whose state cannot be written releases the claim it
+// took.
 func Start(repoRoot, key string, o Options) (StartResult, error) {
 	if err := tierPresent(repoRoot); err != nil {
 		return StartResult{}, err
@@ -168,7 +194,15 @@ func Start(repoRoot, key string, o Options) (StartResult, error) {
 	if res, ok, err := resumeLive(repoRoot, key); err != nil || ok {
 		return res, err
 	}
-	chk, err := Check(repoRoot, key)
+	var shared *implement.Run
+	if o.Session != "" {
+		run, err := sharedRunFor(repoRoot, o.Session)
+		if err != nil {
+			return StartResult{}, err
+		}
+		shared = run
+	}
+	chk, err := check(repoRoot, key, o.Session)
 	if err != nil {
 		return StartResult{}, err
 	}
@@ -197,6 +231,15 @@ func Start(repoRoot, key string, o Options) (StartResult, error) {
 		if err := fsutil.EnsureRealDirAll(repoRoot, runRel(id), dirPerm); err != nil {
 			return fmt.Errorf("creating %s: %w", runRel(id), err)
 		}
+		var claim *implement.ClaimResult
+		if shared != nil {
+			c, err := shared.Claim(implement.ClaimRequest{Session: o.Session, Record: chk.Intent, Lane: id, Lease: implement.MaxLease})
+			if err != nil {
+				_ = root.Remove(runRel(id))
+				return claimRefusal(o.Session, chk.Intent, err)
+			}
+			claim = &c
+		}
 		now := o.now()
 		st := State{
 			SchemaVersion: SchemaVersion,
@@ -215,12 +258,50 @@ func Start(repoRoot, key string, o Options) (StartResult, error) {
 		st.Record = append(st.Record, Entry{At: now, Lane: st.Lanes[0].ID, Step: "start",
 			Note: fmt.Sprintf("checks passed; %s opened for step %d of %s (%s)", st.Lanes[0].ID, st.Lanes[0].SpecStep, st.Spec, st.Lanes[0].StepTitle)})
 		if err := writeState(root, st); err != nil {
+			if claim != nil && !claim.Renewed {
+				_, _ = shared.Release(o.Session, chk.Intent)
+			}
 			return err
 		}
 		res = startResult(st, chk.Checks, false)
+		res.Claim = claim
 		return nil
 	})
 	return res, err
+}
+
+// sharedRunFor opens the shared run state for session, refusing at the claim
+// step a checkout with no root commit, a session that is not a name, and a run
+// the session has not joined, before anything is created.
+func sharedRunFor(repoRoot, session string) (*implement.Run, error) {
+	sha := gitutil.RootCommit(repoRoot)
+	run, err := implement.OpenJoined(sha, session)
+	if err == nil {
+		_, err = run.Joined(session)
+	}
+	if err != nil {
+		if errors.Is(err, implement.ErrRefused) {
+			return nil, refuse(StepClaim, "", "", err.Error(),
+				"join the shared run first: `abcd implement join --session <id> --role first|second`")
+		}
+		return nil, err
+	}
+	return run, nil
+}
+
+// claimRefusal maps a refused shared-run claim onto the loop's refusal: a
+// record another session holds is the peers check's contention, anything else
+// the claim step's refusal.
+func claimRefusal(session, record string, err error) error {
+	switch {
+	case errors.Is(err, implement.ErrContention):
+		return contend("check", CheckPeers, "", err.Error(),
+			"take other work, or coordinate with the peer; `abcd implement` shows what each session holds")
+	case errors.Is(err, implement.ErrRefused):
+		return refuse(StepClaim, "", "", fmt.Sprintf("session %s cannot claim %s: %v", session, record, err),
+			"start the build without --session, or from a session whose bounds allow the lane")
+	}
+	return err
 }
 
 // resumeLive returns the live run for key, under the lock, when this checkout

@@ -111,7 +111,11 @@ func expandPayloads(segs []segment) ([]segment, []payloadSignal) {
 				out = append(out, fs)
 				queue = append(queue, work{segs: []segment{fs}, depth: item.depth})
 			}
-			for _, ref := range payloadRefsOf(s) {
+			// What reaches the commands of a string s runs is read once per
+			// segment, however many strings it carries (payloadInput).
+			var stdin, args []feed
+			inputRead := false
+			for _, ref := range payloadRefsOf(payloadView(s)) {
 				kind, fam, payload, trailing := ref.kind, ref.family, ref.payload, ref.trailing
 				// Past the depth budget the guard cannot follow the nesting, so a
 				// family member here is fail-closed regardless of family.
@@ -159,12 +163,31 @@ func expandPayloads(segs []segment) ([]segment, []payloadSignal) {
 				}
 
 				// Offset the payload's chains into a fresh disjoint range and append.
+				// Each command of the string is handed what reaches it from the
+				// command that runs it (segment.stdinIn, segment.argsIn), and the
+				// string is filed under that command, so a run holding it holds
+				// the string's commands too (segList.payloads).
+				if !inputRead {
+					stdin, args = payloadInput(s)
+					inputRead = true
+				}
 				offset := chainMax + 1
 				for i := range psegs {
 					psegs[i].chain += offset
 					if psegs[i].chain > chainMax {
 						chainMax = psegs[i].chain
 					}
+					// A command in a group of the string also reads what was
+					// piped into that group (tokenizeAt's groupIn).
+					if len(psegs[i].stdinIn) == 0 {
+						psegs[i].stdinIn = stdin
+					} else {
+						psegs[i].stdinIn = append(append([]feed(nil), psegs[i].stdinIn...), stdin...)
+					}
+					psegs[i].argsIn = args
+				}
+				if s.home != nil {
+					s.home.addPayload(s.at, psegs)
 				}
 				out = append(out, psegs...)
 				queue = append(queue, work{segs: psegs, depth: item.depth + 1})
@@ -175,6 +198,117 @@ func expandPayloads(segs []segment) ([]segment, []payloadSignal) {
 		signals = append(signals, ifsSplitSignal())
 	}
 	return out, signals
+}
+
+// payloadView is s with each word that holds only variables, and stands
+// where no command can sit, spelled with varMark where each value goes
+// (segment.variable): the shell that runs a string handed to it gets the
+// value the enclosing shell put in, and the payload reading takes the mark
+// for that value, where `--\x01` is a flag of unknown name and the mark alone
+// a program name or an operand, as at the top level. The mark is not text, so
+// the string's own quoting applies to the value, as bash applies it: `'--$X'`
+// and `\$X` in a string are the flag the value spells, not the literal `$X`
+// (review-drainG3 finding 1). A value that holds shell syntax is not read:
+// that is the gap shellRawUninspectable keeps open for a bare `$VAR` rather
+// than warn on every string that holds one, and `eval "$X"` reads as a
+// program named by a variable (iss-2609251824244354). A word where a command
+// can sit keeps its unknownMark, so the name it can be is read by every
+// family.
+func payloadView(s segment) segment {
+	if len(s.variable) == 0 {
+		return s
+	}
+	at := map[int]bool{}
+	for _, a := range arrivalsOf(s) {
+		at[a.idx] = true
+	}
+	var toks []string
+	for i, text := range s.variable {
+		if text == "" || at[i] {
+			continue
+		}
+		if toks == nil {
+			toks = append([]string(nil), s.tokens...)
+		}
+		toks[i] = text
+	}
+	if toks == nil {
+		return s
+	}
+	v := s
+	v.tokens = toks
+	return v
+}
+
+// payloadInput returns what reaches the commands of a command string s runs:
+// the standard input the running shell passes on — its pipe, what its
+// here-strings, here-documents and redirected process substitutions print, and
+// whatever reached s itself — and, as their arguments, the input of an xargs
+// that runs the shell, which xargs replaces into the string (`-I{}`) or
+// appends as its positional parameters, and what the substitutions in s's own
+// words print: the string's positional parameters (`sh -c 'kill "$1"' _
+// "$(pgrep make)"`), or the string itself (`sh -c "kill $(pgrep make)"`,
+// iss-2609270036253187). Which of the string's commands reads it is not
+// modelled: every one of them is read as handed it.
+func payloadInput(s segment) (stdin, args []feed) {
+	if s.piped.list != nil {
+		stdin = append(stdin, s.piped)
+	}
+	stdin = append(stdin, s.stdinIn...)
+	stdin = append(stdin, redirectedInput(s)...)
+	args = newArgsReader(s).before(len(s.tokens))
+	return stdin, append(args, wordFeeds(s, func(int) bool { return true })...)
+}
+
+// redirectedInput returns the commands whose output s reads on its standard
+// input through a redirect, as one run of its list: a here-string's word (the
+// tokenizer keeps the operator as a word, and its text glued to it or as the
+// word after it) and a process substitution. The `<` that redirects a process
+// substitution is not kept, so one handed to s as an operand reads the same;
+// it hands the same output to whatever opens its path, and is read as input
+// all the same. nil when no redirect carries a command's output. The runs are
+// held as one (wordFeeds), as argsReader holds a segment's words.
+func redirectedInput(s segment) []feed {
+	return wordFeeds(s, func(i int) bool {
+		tok := s.tokens[i]
+		return strings.HasPrefix(tok, "<<<") || strings.Contains(tok, procSubOperand) || (i > 0 && s.tokens[i-1] == "<<<")
+	})
+}
+
+// wordFeeds returns the commands whose output the words of s that keep holds,
+// as one run of its list: every command the tokenizer emitted while it read
+// s's words is a substitution in one of them, in word order, so the covering
+// run stays one feed however many words carry one. nil when none does.
+func wordFeeds(s segment, keep func(int) bool) []feed {
+	if len(s.feeds) == 0 {
+		return nil
+	}
+	var run feed
+	var rest []feed
+	add := func(i int) {
+		for _, f := range s.feeds[i] {
+			switch {
+			case run.list == nil:
+				run = f
+			case f.list == run.list:
+				run.lo, run.hi = min(run.lo, f.lo), max(run.hi, f.hi)
+			default:
+				// Not reached: a word's feeds name its own tokenize call. Kept
+				// whole rather than dropped, should that ever change.
+				rest = append(rest, f)
+			}
+		}
+	}
+	for i := range s.tokens {
+		tally(1)
+		if keep(i) {
+			add(i)
+		}
+	}
+	if run.list == nil {
+		return rest
+	}
+	return append(rest, run)
 }
 
 // splitAfterIFS reports whether a segment carrying an unquoted fixed output
@@ -883,7 +1017,7 @@ func isPlainCommand(s string) bool {
 	}
 	for i := 0; i < len(s); i++ {
 		switch s[i] {
-		case '\\', '$', '\'', '"', '#', unknownMark:
+		case '\\', '$', '\'', '"', '#', unknownMark, varMark:
 			return false
 		}
 	}
@@ -1106,6 +1240,12 @@ func pipesIntoInterpreter(psegs []segment) bool {
 			if !nameCouldBeAny(s.tokens[a.idx], shellFamily) {
 				continue
 			}
+			// A variable's value as the program name is not read as a bare
+			// interpreter, as it is not read as a pkill (variableCarried):
+			// `sh -c "$GO build"` would warn for every string that runs one.
+			if anyProgram(s.tokens[a.idx]) && variableCarried(s, a.idx) {
+				continue
+			}
 			if values, unresolved := shellCPayloads(s.tokens, []int{a.idx}); len(values) == 0 && !unresolved {
 				return true
 			}
@@ -1122,15 +1262,18 @@ func pipesIntoInterpreter(psegs []segment) bool {
 // a here-string; or a shell or `source` handed a process substitution as its
 // script, which is the same stream behind a file name (`bash <(curl …)`,
 // `bash < <(curl …)`, which the tokenizer reads alike). A name a substitution
-// prints can be any shell.
+// prints can be any shell. A script operand that is a variable's value is
+// not read as a stream: a stream path in a variable is data an earlier
+// command carried (variableCarried).
 func readsScriptStream(s segment) bool {
 	for _, a := range commandSites(s) {
 		tok := s.tokens[a.idx]
 		args := s.tokens[a.idx+1:]
-		if nameCouldBeAny(tok, shellFamily) && shellReadsStream(args, s.stdinStream) {
+		carried := func(i int) bool { return variableCarried(s, a.idx+1+i) }
+		if nameCouldBeAny(tok, shellFamily) && shellReadsStream(args, s.stdinStream, carried) {
 			return true
 		}
-		if nameCouldBeAny(tok, sourceBuiltins) && sourceReadsStream(args, s.stdinStream) {
+		if nameCouldBeAny(tok, sourceBuiltins) && sourceReadsStream(args, s.stdinStream, carried) {
 			return true
 		}
 	}
@@ -1166,7 +1309,7 @@ func scriptIsStream(op string, stdin bool) bool {
 // `--version` or `--help` prints and exits without reading anything. Each
 // unknown word is read every way readWord reads it, and a stream any reading
 // runs is enough.
-func shellReadsStream(args []string, stdin bool) bool {
+func shellReadsStream(args []string, stdin bool, carried func(int) bool) bool {
 	seen := map[int]bool{}
 	stack := []int{0}
 	for len(stack) > 0 {
@@ -1190,7 +1333,7 @@ func shellReadsStream(args []string, stdin bool) bool {
 				if stdin {
 					return true
 				}
-			} else if scriptIsStream(args[i+1], stdin) {
+			} else if !carried(i+1) && scriptIsStream(args[i+1], stdin) {
 				return true
 			}
 		case a == "-":
@@ -1217,7 +1360,7 @@ func shellReadsStream(args []string, stdin bool) bool {
 			if (r.flag || r.takes) && clusterCouldCarry(a, 's') && stdin {
 				return true
 			}
-			if r.operand && scriptIsStream(a, stdin) {
+			if r.operand && !carried(i) && scriptIsStream(a, stdin) {
 				return true
 			}
 		case a == "--rcfile" || a == "--init-file":
@@ -1253,12 +1396,12 @@ var shellStreamValueOptions = []string{"-o", "-O", "+o", "+O", "--rcfile", "--in
 
 // sourceReadsStream reports whether `source`/`.` is handed a stream as the
 // file it reads: its first operand, after an optional `--`.
-func sourceReadsStream(args []string, stdin bool) bool {
+func sourceReadsStream(args []string, stdin bool, carried func(int) bool) bool {
 	for i, a := range args {
 		if a == "--" && i == 0 {
 			continue
 		}
-		return scriptIsStream(a, stdin)
+		return !carried(i) && scriptIsStream(a, stdin)
 	}
 	return false
 }

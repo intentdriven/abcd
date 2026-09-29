@@ -177,7 +177,8 @@ func (f *fakeFiler) file(fd ConsistencyFinding, reportRel string) (ConsistencyFi
 
 func ingest(t *testing.T, root string, payload []byte, f *fakeFiler) (ConsistencyIngestResult, error) {
 	t.Helper()
-	return IngestConsistency(ConsistencyIngestRequest{RepoRoot: root, Payload: payload, Date: cxDate, File: f.file})
+	return IngestConsistency(ConsistencyIngestRequest{RepoRoot: root, Payload: payload, Date: cxDate, File: f.file,
+		Check: func(ConsistencyFinding, string) error { return nil }})
 }
 
 // TestConsistencyEmitAssemblesTheCorpusAndWritesOnlyTheLocalTier: the bare emit
@@ -830,5 +831,41 @@ func TestConsistencyIngestRecomputesTheDirtyMark(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestConsistencyIngestChecksEveryFindingBeforeFilingAny: the ledger's
+// prose-citation check is asked of every finding before the first is filed, so
+// a refusal of the SECOND finding files nothing and writes no report; an ingest
+// with no check to ask is refused outright (iss-2609261835118276).
+func TestConsistencyIngestChecksEveryFindingBeforeFilingAny(t *testing.T) {
+	r := consistencyRepo(t)
+	root := r.Root()
+	em, err := EmitConsistency(root, "", ConsistencyEmitOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload := findingsPayload(t, root, em, contradiction(), briefDrift())
+	f := &fakeFiler{}
+	_, err = IngestConsistency(ConsistencyIngestRequest{RepoRoot: root, Payload: payload, Date: cxDate, File: f.file,
+		Check: func(fd ConsistencyFinding, _ string) error {
+			if fd.Number == 2 {
+				return fmt.Errorf("finding cites a record that names nothing")
+			}
+			return nil
+		}})
+	if err == nil || !strings.Contains(err.Error(), "finding 2 of 2") {
+		t.Fatalf("err = %v, want finding 2's refusal", err)
+	}
+	if len(f.calls) != 0 {
+		t.Fatalf("the filer was asked %d time(s) before every finding was checked", len(f.calls))
+	}
+	if _, err := os.Stat(filepath.Join(root, ReviewsShelfRelDir)); !os.IsNotExist(err) {
+		t.Fatalf("a refused ingest wrote the report shelf (%v)", err)
+	}
+
+	_, err = IngestConsistency(ConsistencyIngestRequest{RepoRoot: root, Payload: payload, Date: cxDate, File: f.file})
+	if err == nil || !strings.Contains(err.Error(), "no prose-citation check") || len(f.calls) != 0 {
+		t.Fatalf("err = %v with %d filing(s), want an ingest with no check refused before filing", err, len(f.calls))
 	}
 }

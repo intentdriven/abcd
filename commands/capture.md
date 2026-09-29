@@ -124,9 +124,10 @@ Nothing is refused or dropped. The JSON's `match` object carries `matches`
 `near_misses` (the best five below the threshold, with their scores),
 `threshold`, and `skipped` when nothing was compared: a text with fewer than
 eight distinct terms, a record set that could not be read, or a match
-configuration the reader refuses. Relay each match with its id and relation
-and ask the user to confirm it. A confirmed link is left as it is; a wrong one
-is removed by deleting its line, which leaves an ordinary record. The match
+configuration the reader refuses. Set `abcd mode facilitator`, relay each
+match with its id and relation, and ask the technical facilitator to confirm
+it. A confirmed link is left as it is; a wrong one is removed by deleting its
+line, which leaves an ordinary record. The match
 never proposes `reverses` or `supersedes`: a reversal is a person's judgement.
 
 The threshold and the compared fields are configuration: `match.threshold`
@@ -329,12 +330,13 @@ The refusal names the construct and its body line. The repair is a hand edit:
 close or remove the opener in a text editor, then re-run. Promote and resolve
 given no `--grounds` append nothing and act.
 
-**Ask for the expectation and its falsifier.** "Promoted it because it is next"
+**Ask the product thinker for the expectation and its falsifier** (set `abcd
+mode product-thinker` first). "Promoted it because it is next"
 restates the decision and records nothing; "promoted it because we expect a
 stamped identity to survive rewording, which nothing else does" is a conjecture
 somebody can later find wrong. abcd refuses only the degenerate texts — empty,
 too short, or the vocabulary word repeated back — and cannot tell a conjecture
-from a restatement. That part is yours: put the question to the user and write
+from a restatement. That part is yours: put the question to the product thinker and write
 down their answer.
 
 The value is APPENDED as a `- <token>: <text>` bullet under the record's

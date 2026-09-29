@@ -130,8 +130,9 @@ const hookPlaneSkewNote = "\nabcd: refusing at exit 1, not the host's blocking s
 // applyHookPlaneFailOpen installs the fail-open usage handling on every command a
 // host hook can reach — the paths named in hooks/hooks.json, plus the parents on
 // the way to them. It runs AFTER markUsageErrorsExitTwo, which sets a
-// FlagErrorFunc on every command and would otherwise replace this one; the same
-// ordering applyBanlistFlagErrors needs, and for the same reason.
+// FlagErrorFunc, an Args wrapper and a flag-group PreRunE on every command and
+// would otherwise replace these; the same ordering applyBanlistFlagErrors needs,
+// and for the same reason.
 //
 // The set is spelled out rather than "everything under guard and hook" because
 // `guard check` sits under the same parent and its contract is the OPPOSITE: it
@@ -149,7 +150,27 @@ func applyHookPlaneFailOpen(root *cobra.Command) {
 		if cmd := findByPath(root, path); cmd != nil {
 			cmd.SetFlagErrorFunc(failOpenFlagError)
 			cmd.Args = failOpenNoArgs
+			cmd.PreRunE = failOpenFlagGroups(cmd.PreRunE)
 		}
+	}
+}
+
+// failOpenFlagGroups wraps the PreRunE markUsageErrorsExitTwo installs, which
+// refuses a flag-group violation (two flags of a mutually exclusive group set
+// at once) at exit 2. The group check runs here first and refuses at 1, as the
+// other two hook-plane usage errors do, so the wrapped PreRunE's own check then
+// passes and it goes on to the command's own. No hook command declares a group
+// today; the first one declared would otherwise have been the host's BLOCK
+// (iss-2609251755278758, iss-269).
+func failOpenFlagGroups(next func(*cobra.Command, []string) error) func(*cobra.Command, []string) error {
+	return func(cmd *cobra.Command, args []string) error {
+		if err := cmd.ValidateFlagGroups(); err != nil {
+			return &exitError{Code: 1, Msg: err.Error() + hookPlaneSkewNote}
+		}
+		if next != nil {
+			return next(cmd, args)
+		}
+		return nil
 	}
 }
 
@@ -196,10 +217,10 @@ func NewRootCommand() *cobra.Command {
 		Use: "abcd [<record-id>]",
 		Long: "Agent-based configuration for development.\n\n" +
 			"Bare `abcd` renders the read-only status board — what can I do. A single\n" +
-			"positional matching a record id (`iss-N`, `itd-N`, `spc-N`, `adr-N`) instead\n" +
-			"reports what that record is, where it lives, and the next move for its\n" +
-			"lifecycle state — what is this. Both forms are strictly read-only; any other\n" +
-			"positional is refused as an unknown command.",
+			"positional matching a record id (`iss-N`, `itd-N`, `spc-N`, `adr-N`, `adm-N`,\n" +
+			"`srp-N`, `rfm-N`) instead reports what that record is, where it lives, and\n" +
+			"the next move for its lifecycle state — what is this. Both forms are strictly\n" +
+			"read-only; any other positional is refused as an unknown command.",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		// Bare answers "what can I do"; `abcd <id>` answers "what is this, and
@@ -292,7 +313,8 @@ func NewRootCommand() *cobra.Command {
 				// Sanitised like every other board line: the directory name is the
 				// checkout's own, and a name carrying an ESC sequence or a bidi
 				// control must not reach the terminal raw (iss-2609281736483740).
-				// --json keeps the true name; the encoder escapes a control byte.
+				// --json keeps the true name; the encoder escapes a C0 byte; C1 and
+				// bidi runes travel raw, as in every board field.
 				fmt.Fprintf(w, "abcd — %s\n", termsafe.Sanitize(st.Dir))
 				fmt.Fprintf(w, "  git repo:   %v\n", st.IsGitRepo)
 				fmt.Fprintf(w, "  record:     %v\n", st.HasRecord)
@@ -2775,8 +2797,19 @@ func newIntentAuditCommand(asJSON *bool) *cobra.Command {
 				route = nil
 			}
 			return render(cmd.OutOrStdout(), *asJSON, withRequest(res, route), func(w io.Writer) {
-				fmt.Fprintf(w, "abcd intent audit — %s %s (receipt %s)\n  request: %s\n",
-					res.IntentID, res.Status, res.ReceiptID, res.RequestPath)
+				fmt.Fprintf(w, "abcd intent audit — %s %s (receipt %s)\n", res.IntentID, res.Status, res.ReceiptID)
+				// The status is the receipt's state and the request line is the
+				// act: an owed receipt's request is rewritten on every re-emit,
+				// and a terminal one's is not written at all (iss-2609190337598356).
+				switch {
+				case !res.RequestWritten:
+					fmt.Fprintf(w, "  no request written: the review is %s\n",
+						strings.ReplaceAll(strings.TrimPrefix(res.Status, "already_"), "_", "-"))
+				case res.Status == "already_owed":
+					fmt.Fprintf(w, "  request rewritten: %s\n", res.RequestPath)
+				default:
+					fmt.Fprintf(w, "  request: %s\n", res.RequestPath)
+				}
 				renderRequestLine(w, route)
 			})
 		},
@@ -2844,7 +2877,7 @@ func newIntentAuditCommand(asJSON *bool) *cobra.Command {
 			})
 		},
 	}
-	ingestCmd.Flags().StringVar(&verdictJSON, "verdict-json", "", "path to the intent-audit verdict JSON")
+	ingestCmd.Flags().StringVar(&verdictJSON, "verdict-json", "", "path to the intent-audit verdict JSON, in the shape the Verdict shape section of its review request states")
 	ingestRoute = addRouteFlag(ingestCmd, auditAgent)
 	auditCmd.AddCommand(ingestCmd)
 	auditCmd.Flags().BoolVar(&issueDrift, "issue-drift", false,
@@ -5338,6 +5371,11 @@ func newMemoryCommand(asJSON *bool) *cobra.Command {
 				}
 				if st.LastIngest != "" {
 					fmt.Fprintf(w, "  last ingest: %s\n", termsafe.Sanitize(st.LastIngest))
+				}
+				// Drift is the board's one call to action, and it is printed in the
+				// words the JSON carries (iss-2609091647582259).
+				for _, line := range st.Drift {
+					fmt.Fprintf(w, "  %s\n", line)
 				}
 				for _, line := range st.Contradictions {
 					fmt.Fprintf(w, "  contradiction: %s\n", termsafe.Sanitize(line))

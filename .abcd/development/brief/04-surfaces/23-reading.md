@@ -72,7 +72,7 @@ ingest and the next reading — moves the commit the next assembly names. A run
 whose target is not an ancestor is not a run at this target and is not listed; a
 run across which anything else moved is listed and refused, naming the first such
 path, because the material it read is not the material this assembly names. That
-is a reading of the rule rather than the rule itself, and a maintainer's ruling on
+is a reading of the rule rather than the rule itself, and the product thinker's ruling on
 it is owed. Everything else in the readings store stays excluded there as at every
 other position, and the manifest asserts it family by family.
 None or more than one qualifying run refuses and lists what it looked at, so the
@@ -141,6 +141,11 @@ because writing a run where the table reaches it commits the next run's
 contamination. And both artefacts are refused as input wherever an admitted path
 holds one, recognised by the type tag they carry, so a run committed before that
 refusal existed cannot ride in either.
+
+An output directory reached through a symlink at any level inside a checkout is
+refused however it is spelled (relative, absolute, or climbing out of the
+repository and back in), because a committed link would carry both files
+elsewhere; outside every checkout the path is the operator's own.
 
 Run identifiers are minted per adr-45, from a mint that reads no maximum, so two
 checkouts assembling in the same window cannot converge on one id.
@@ -238,6 +243,18 @@ disagreement, and a manifest naming another run or another position each refuse
 before that point and leave no refusal record at all. That is deliberate: a refusal
 record is a record about a run, and a payload that has not yet shown which run it
 belongs to has nothing to be recorded against.
+
+One refusal after that point is deliberately unrecorded. An item whose pattern or
+body field cites a record id that names no record — wherever the repository's
+record-lint gates prose citations in the reading-record store, which reads every
+record the ingest would write — refuses the whole run, naming the item, the field
+and the id, before the orphan sweep and before anything is staged. It is the gate
+the verdict ingest asks, reached through the same registration. Recording it would
+give the run an outcome, and the same run re-worded would then be refused as a
+rerun; left parked, it is ingested again once its prose describes the record
+rather than citing an id that does not exist. Like every recorded refusal, it
+rolls back what an earlier, interrupted attempt at the same run left in the
+ledger, so a refused run leaves no reading records.
 
 Writes are staged. Nothing durable is written or deleted until the whole payload
 validates; the reading records land as one batch; and the run metadata is written

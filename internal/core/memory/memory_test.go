@@ -243,7 +243,7 @@ func TestIngestAskLintFlow(t *testing.T) {
 	if lr.Summary.Blockers != 0 || lr.ExitCode != 0 {
 		t.Fatalf("clean lint: blockers=%d exit=%d findings=%+v", lr.Summary.Blockers, lr.ExitCode, lr.Findings)
 	}
-	if _, err := os.Stat(filepath.Join(lr.ReportDir, "report.json")); err != nil {
+	if _, err := os.Stat(filepath.Join(repo, lr.ReportDir, "report.json")); err != nil {
 		t.Fatalf("lint report.json not written: %v", err)
 	}
 }
@@ -396,7 +396,7 @@ func TestLintQuotationBudgetMQ001(t *testing.T) {
 				if f.Severity != "warn" {
 					t.Errorf("MQ001 severity = %q, want warn (curator-advisory)", f.Severity)
 				}
-				if f.File != pagePath {
+				if f.File != inRepo(t, repo, pagePath) {
 					t.Errorf("MQ001 file = %q, want the offending page %q", f.File, pagePath)
 				}
 				if f.Line <= 0 {

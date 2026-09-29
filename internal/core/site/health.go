@@ -70,6 +70,7 @@ func (e *explorer) healthPage() (string, error) {
 	for _, t := range tiles {
 		b.WriteString(tile(strconv.Itoa(t.n), t.label, nil))
 	}
+	b.WriteString(e.healthDisclosureRate())
 	b.WriteString(`</div>`)
 
 	b.WriteString(`<div class="dash reading">`)
@@ -81,6 +82,35 @@ func (e *explorer) healthPage() (string, error) {
 	b.WriteString(e.healthSupersedes())
 	b.WriteString(`</div>`)
 	return e.shell(routeHealth, e.c.ui.RecordNav.Health, "", b.String()), nil
+}
+
+// healthDisclosureRate is the share of authored commits that disclose AI
+// assistance, the last tile in the row of counts. The contributors page carries
+// the authors and the trailers alone; the rate sits here, with the findings the
+// trailer tally is checked against (iss-2608231008315498).
+//
+// The rate is COMMITS that disclose over commits a person WROTE. Merges are in
+// neither: the forge writes them, no convention asks them to declare anything,
+// and leaving them in the denominator understated this rate by more than twenty
+// points. The excluded count is shown, not assumed. A history with no authored
+// commit has no rate, and renders no tile.
+func (e *explorer) healthDisclosureRate() string {
+	ui := e.c.ui
+	a := e.export.Authorship
+	if a.Authored == 0 {
+		return ""
+	}
+	share := strconv.Itoa(a.AssistedCommits*100/a.Authored) + "%"
+	// The count is its own element rather than part of the sentence: the
+	// provenance walk splits composed text on decorations only, and a number
+	// glued to a phrase is neither a number nor an interface string.
+	var excl string
+	if a.Merges > 0 {
+		excl = `<span class="s"><b class="tnum">` + strconv.Itoa(a.Merges) + `</b> ` +
+			escapeText(ui.Contributors.MergesExcluded) + `</span>`
+	}
+	return tileExtra(share, ui.Contributors.Assisted,
+		[]string{strconv.Itoa(a.AssistedCommits) + " / " + strconv.Itoa(a.Authored)}, excl)
 }
 
 // healthSupersedes reads the supersession edges as text: which record replaced

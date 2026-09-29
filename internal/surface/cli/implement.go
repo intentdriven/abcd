@@ -247,9 +247,11 @@ func newImplementJoinCommand(asJSON *bool) *cobra.Command {
 			"run state. Joining again with the same role is a resume and is logged as one; asking\n" +
 			"for the other role is refused. The role is the session's own statement, recorded\n" +
 			"here and read by every bound — never taken from the environment.\n\n" +
-			"--ceiling states the session's own agent ceiling: for the second session, the most\n" +
-			"agents it runs at once, on top of the first session's. abcd counts no agents, so the\n" +
-			"ceiling is recorded and reported by every `check`, not enforced; a resume keeps it.",
+			"--ceiling states the session's own agent ceiling: the most agents it runs at once (for\n" +
+			"the second session, on top of the first session's). abcd runs no agent: it counts the\n" +
+			"agents the session's own agent_start and agent_end lines declare alive, refuses an\n" +
+			"agent_start past the ceiling, and reports the count with every `check`. An agent the\n" +
+			"session never logs is invisible to it. A resume keeps the ceiling.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			r, err := implement.ParseRole(role)
@@ -275,7 +277,7 @@ func newImplementJoinCommand(asJSON *bool) *cobra.Command {
 	cmd.Flags().StringVar(&role, "role", "", "first | second")
 	cmd.Flags().StringVar(&model, "model", "", "the model this session runs, recorded on the session_open line")
 	cmd.Flags().StringVar(&reason, "reason", "", "why the session opens (run start, window, resume), recorded on the line")
-	cmd.Flags().IntVar(&ceiling, "ceiling", 0, "this session's own agent ceiling (1 to 64; 0 states none), recorded and reported by check")
+	cmd.Flags().IntVar(&ceiling, "ceiling", 0, "this session's own agent ceiling (1 to 64; 0 states none), held against its logged agent_start lines")
 	return cmd
 }
 
@@ -423,7 +425,8 @@ func newImplementCheckCommand(asJSON *bool) *cobra.Command {
 			"take every step. The second is refused the release step always, a lane in a\n" +
 			"split-roles window, and a lane whose --path reaches the reading corpus; review,\n" +
 			"audit and land are open to it. A refusal exits 2 and is logged; an allowed step\n" +
-			"writes nothing. The verdict reports the agent ceiling the session joined with.",
+			"writes nothing. The verdict reports the agent ceiling the session joined with and the\n" +
+			"agents its log lines declare alive (agents_alive).",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			st, err := implement.ParseStep(args[0])
@@ -440,6 +443,7 @@ func newImplementCheckCommand(asJSON *bool) *cobra.Command {
 					switch {
 					case v.Ceiling > 0:
 						fmt.Fprintf(w, "  its own agent ceiling is %d, kept on top of the first session's\n", v.Ceiling)
+						fmt.Fprintf(w, "  %d agent(s) alive of its ceiling %d, by its agent_start and agent_end lines\n", v.AgentsAlive, v.Ceiling)
 					case v.Role == implement.RoleSecond:
 						fmt.Fprintln(w, "  no agent ceiling recorded: it keeps its own on top of the first session's (join with --ceiling to state it)")
 					}
@@ -461,6 +465,17 @@ func stepWords() []string {
 	return out
 }
 
+// requiredFieldsHelp lists each loggable event's required fields for help text.
+func requiredFieldsHelp() string {
+	var parts []string
+	for _, e := range implement.LoggableEvents() {
+		if req := implement.RequiredFields(e); len(req) > 0 {
+			parts = append(parts, e+" ("+strings.Join(req, ", ")+")")
+		}
+	}
+	return strings.Join(parts, "; ")
+}
+
 // fieldArgRe is one --field operand: key=value.
 var fieldArgRe = regexp.MustCompile(`^([^=]+)=(.*)$`)
 
@@ -476,7 +491,11 @@ func newImplementLogCommand(asJSON *bool) *cobra.Command {
 			"a boolean is written as one when it reads back as the same text, so `sha=0123456`\n" +
 			"stays a string. The events: " + strings.Join(implement.LoggableEvents(), ", ") + ".\n" +
 			"The claim, window and session events are written by their own sub-verbs and are\n" +
-			"refused here, so the log cannot record a claim the run state does not hold.",
+			"refused here, so the log cannot record a claim the run state does not hold.\n\n" +
+			"An event missing a field the report reads is refused, naming it: " + requiredFieldsHelp() + ".\n" +
+			"An intervention's kind is one of " + strings.Join(implement.InterventionKinds, ", ") + "; an at or\n" +
+			"last_productive is an RFC 3339 time, and a *_min or minutes field a number. An agent_start\n" +
+			"that would take a session past the ceiling it joined with is refused, and the refusal logged.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			kv := map[string]string{}
@@ -514,11 +533,15 @@ func newImplementReportCommand(asJSON *bool) *cobra.Command {
 			"clock, lanes opened and landed (a lane_close whose outcome is merged or landed),\n" +
 			"the second session's lanes landed, collisions (claim_denied), lapsed claims,\n" +
 			"backoffs and the minutes backed off, agent minutes (agent_end's minutes, wall_minutes\n" +
-			"or wall_min), ceiling wait and refusals, per session within each mode. Each event\n" +
-			"belongs to the window open when it happened; each session's context lines are totalled\n" +
+			"or wall_min), ceiling wait, ceiling overruns and refusals, per session within each mode.\n" +
+			"Each event belongs to the window open when it happened, and a join logged at most a\n" +
+			"minute before a window_mode to that window; each session's context lines are totalled\n" +
 			"across the run, with the last used_pct seen. `leader` is the mode with the most lanes landed per wall-clock hour —\n" +
-			"a figure, not a verdict. Lines the reader cannot use are listed, never dropped\n" +
-			"silently.\n\n" +
+			"a figure, not a verdict. Over the whole run it counts the evidence (interventions by\n" +
+			"kind, stops, decisions), names the lines lacking a field `log` requires of their event\n" +
+			"(missing_fields), and names each of lane_open, lane_close, agent_start, agent_end and\n" +
+			"gate_run whose lines stop more than six hours before the run's last line (coverage).\n" +
+			"Lines the reader cannot use are listed, never dropped silently.\n\n" +
 			"By default the run's whole log is read, every day of it; --date reads one day, and\n" +
 			"--log reads one log file named directly. Reads only; creates nothing.",
 		Args: cobra.NoArgs,
@@ -533,12 +556,23 @@ func newImplementReportCommand(asJSON *bool) *cobra.Command {
 					fmt.Fprintf(w, ", %d line(s) unreadable", len(rep.Unparsed))
 				}
 				fmt.Fprintln(w)
-				fmt.Fprintf(w, "%-12s %7s %8s %6s %6s %6s %10s %9s %8s %8s\n",
-					"mode", "windows", "wall min", "opened", "landed", "B land", "collisions", "backoff m", "agent m", "ceiling")
+				fmt.Fprintf(w, "%-12s %7s %8s %6s %6s %6s %10s %9s %8s %8s %7s\n",
+					"mode", "windows", "wall min", "opened", "landed", "B land", "collisions", "backoff m", "agent m", "ceiling", "overrun")
 				for _, m := range rep.Modes {
-					fmt.Fprintf(w, "%-12s %7d %8.1f %6d %6d %6d %10d %9.1f %8.1f %8.1f\n",
+					fmt.Fprintf(w, "%-12s %7d %8.1f %6d %6d %6d %10d %9.1f %8.1f %8.1f %7d\n",
 						termsafe.Sanitize(m.Mode), m.Windows, m.WallMinutes, m.LanesOpened, m.LanesLanded,
-						m.SecondLanesLanded, m.Collisions, m.BackoffMinutes, m.AgentMinutes, m.CeilingWaitMinutes)
+						m.SecondLanesLanded, m.Collisions, m.BackoffMinutes, m.AgentMinutes, m.CeilingWaitMinutes,
+						m.CeilingOverruns)
+				}
+				ev := rep.Evidence
+				fmt.Fprintf(w, "evidence: %d intervention(s), %.0f min undetected; %d stop(s), %.0f min unnoticed; %d decision(s)\n",
+					ev.Interventions, ev.DetectedAfterMinutes, ev.Stops, ev.StopNoticedAfterMinutes, ev.Decisions)
+				for _, g := range rep.MissingFields {
+					fmt.Fprintf(w, "missing field: %d of %d %s line(s) carry no %s\n", g.Lines, g.Of, g.Event, g.Field)
+				}
+				for _, g := range rep.Coverage {
+					fmt.Fprintf(w, "coverage stops: %s's last line (of %d) is at %s, %.1f h before the run's last\n",
+						g.Event, g.Lines, g.Last.Format(time.RFC3339), g.HoursBefore)
 				}
 				for _, c := range rep.Context {
 					fmt.Fprintf(w, "context: %s  %d measurement(s), last %.0f%% used at %s\n", termsafe.Sanitize(c.Session),

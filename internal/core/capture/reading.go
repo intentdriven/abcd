@@ -166,6 +166,13 @@ func IngestReading(req IngestReadingRequest) (IngestReadingResult, error) {
 	// mint is never called, and the result carries the run with an empty record
 	// list. The run's ledger directory is still provisioned, so a reader finds an
 	// empty bucket rather than an absence it has to interpret.
+	//
+	// The items are the host's words, bound for records record-lint reads, so
+	// they are held to its prose-citation gate before anything is touched
+	// (iss-2609261835118276).
+	if err := CheckReadingCitations(IngestReadingRequest{RepoRoot: repoRoot, IssuesRoot: issuesRoot, Run: req.Run, Items: req.Items}); err != nil {
+		return IngestReadingResult{}, err
+	}
 	if err := mutationPreamble(repoRoot, issuesRoot); err != nil {
 		return IngestReadingResult{}, err
 	}

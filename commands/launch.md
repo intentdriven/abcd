@@ -77,8 +77,9 @@ The rest of this page describes the verbs. This section describes the **day** �
 what you click, what runs on its own, and where it stops and waits for you. Read
 it if you are cutting a release and are not the person who built the machinery.
 
-Nothing here publishes by accident. The release stops and asks for a human twice:
-once when you merge, and once at a deployment gate that no merge can bypass.
+Nothing here publishes by accident. The release stops for a human twice:
+for the technical facilitator at the merge, and for the product thinker at a
+deployment gate that no merge can bypass, because publishing cannot be undone.
 
 ### The shape of it
 
@@ -237,6 +238,7 @@ Then summarise the JSON for the user:
   that tree are excluded (`symlink`): an archive carries a link as the path it
   names, not as content.
 - `bundle.files` — the files the bundle would include (an array; report its length as the count).
+  Each entry names its file relative to the repository, `resolved_path` included.
 - `scan.hard_fails` — secret/PII findings that would block the release.
   `scan.findings` keeps at most 10,000 of them; `scan.findings_omitted`, when
   present, counts the rest, and `scan.hard_fails` counts every one.
@@ -556,7 +558,8 @@ stamped into the payload's copies of `plugin.json` and `marketplace.json`. The
 repository's own manifests are never touched: they carry no version, and the
 version belongs to the artefact. The staged payload is proved consistent before
 the command returns, so a stamp that missed a pinned location is a refusal rather
-than a published half-state. Every refusal the staging step can make is checked
+than a published half-state. The report's `payload.dest` names that directory
+with the home directory written as `~`. Every refusal the staging step can make is checked
 BEFORE the dated heading is written, and a refusal that slips past that check
 rolls the heading back — so a ship that exits non-zero leaves no release record
 behind for the next attempt to trip over. Without the flag nothing is staged;
@@ -792,7 +795,9 @@ heading names, from the checked-out tree, and writes
 `<plugin>-plugin-vX.Y.Z.zip` into an existing directory. The archive is
 reproducible — sorted entries, stored uncompressed, one fixed timestamp, modes
 normalised — so the same commit renders the same bytes on any machine. The
-catalog is left out of it, because the catalog is what names its digest.
+catalog is left out of it, because the catalog is what names its digest. The
+report's `archive.path` names the written archive relative to the repository
+when `--out` is inside it, and with the home directory as `~` otherwise.
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/abcd" launch archive --out <dir> [--tag vX.Y.Z] [--verify] [--repository <owner/name>] --json

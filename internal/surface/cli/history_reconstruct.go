@@ -9,6 +9,7 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"path/filepath"
@@ -19,6 +20,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/history"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
@@ -94,23 +96,43 @@ func newHistoryReconstructCommand(asJSON *bool) *cobra.Command {
 // The directory must already exist and be a real directory. Creating one would
 // mean guessing that a mistyped path was meant, and this verb writes a document
 // whose whole value is being findable afterwards.
+//
+// It must also be reached through no symlink inside a checkout: a committed link
+// above the leaf would carry both files to the link's target, so every level
+// from the checkout down is proved (gitutil.ProveOperandDir), and the files are
+// written through a handle on the proved directory (iss-2609262156124513).
 func writeReconstruction(dir string, res history.Reconstruction) ([]string, error) {
-	if !fsutil.IsRealDir(dir) {
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return nil, err
+	}
+	if err := gitutil.ProveOperandDir(abs); err != nil {
+		var oe *gitutil.OperandError
+		if errors.As(err, &oe) {
+			return nil, fmt.Errorf("history reconstruct: --out %s reaches its directory through %s inside the checkout %s, which is a symlink or a file rather than a real directory; refusing to follow it",
+				dir, oe.Level, filepath.Base(oe.Checkout))
+		}
+		return nil, fmt.Errorf("history reconstruct: --out %s: %w", dir, err)
+	}
+	if !fsutil.IsRealDir(abs) {
 		return nil, fmt.Errorf("history reconstruct: --out %s is not an existing directory", dir)
 	}
 	tel, err := marshalTelemetry(res)
 	if err != nil {
 		return nil, err
 	}
-	artefactPath := filepath.Join(dir, res.ArtefactName)
-	telemetryPath := filepath.Join(dir, res.TelemetryName)
-	if err := fsutil.WriteFileAtomic(artefactPath, res.Artefact, 0o644); err != nil {
+	root, err := fsutil.OpenRealDir(abs)
+	if err != nil {
+		return nil, fmt.Errorf("history reconstruct: --out %s is not an existing directory", dir)
+	}
+	defer root.Close()
+	if err := fsutil.WriteFileAtomicInRoot(root, res.ArtefactName, res.Artefact, 0o644); err != nil {
 		return nil, fmt.Errorf("history reconstruct: write artefact: %w", err)
 	}
-	if err := fsutil.WriteFileAtomic(telemetryPath, tel, 0o644); err != nil {
+	if err := fsutil.WriteFileAtomicInRoot(root, res.TelemetryName, tel, 0o644); err != nil {
 		return nil, fmt.Errorf("history reconstruct: write telemetry: %w", err)
 	}
-	return []string{artefactPath, telemetryPath}, nil
+	return []string{filepath.Join(dir, res.ArtefactName), filepath.Join(dir, res.TelemetryName)}, nil
 }
 
 // writeReconstructionToStdout emits both halves on one stream. In --json that

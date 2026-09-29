@@ -353,6 +353,46 @@ func DisplayPathsIn(s string, paths ...string) string {
 	return s
 }
 
+// RepoRelativePath is a path as a report names it when the report is about the
+// inside of a root the caller passes. A report travels into --json, and machine
+// output never carries an absolute developer-identity path (iss-81): a path
+// inside repoRoot is named relative to it, slash-separated; one outside it has
+// the home directory redacted to "~" (RedactHome); a relative path is reported
+// as it was given. It is for display only — a caller that acts on the path keeps
+// the working value beside it.
+//
+// Three primitives, three rules: RedactHome names the home directory "~" in any
+// text; DisplayPath names a directory a surface points at (a checkout, a
+// worktree); RepoRelativePath names a path reported inside a root.
+//
+// Inside is judged lexically first and then over the real locations, so a path
+// the kernel resolved (macOS's /private/var for /var) still reads as inside a
+// repoRoot spelled the other way.
+func RepoRelativePath(repoRoot, p string) string {
+	if !filepath.IsAbs(p) {
+		return p
+	}
+	if rel, ok := relInside(repoRoot, p); ok {
+		return filepath.ToSlash(rel)
+	}
+	if rel, ok := relInside(RealExistingPath(repoRoot), RealExistingPath(p)); ok {
+		return filepath.ToSlash(rel)
+	}
+	return RedactHome(p)
+}
+
+// relInside is p relative to root when p is root or lies under it.
+func relInside(root, p string) (string, bool) {
+	if root == "" || p == "" {
+		return "", false
+	}
+	rel, err := filepath.Rel(root, p)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", false
+	}
+	return rel, true
+}
+
 // isPathBoundary reports whether c cannot be part of a path segment, so a root
 // immediately followed by c is a whole path rather than a prefix of a longer one.
 func isPathBoundary(c byte) bool {

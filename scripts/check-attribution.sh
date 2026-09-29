@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Deterministic gate for abcd's AI-attribution convention (AGENTS.md § Attribution,
-# CONTRIBUTING.md): an AI-assisted commit message and an AI-assisted pull-request
+# .github/CONTRIBUTING.md): an AI-assisted commit message and an AI-assisted pull-request
 # body each carry the kernel-format trailer
 #
 #   Assisted-by: Claude:<model-version>
@@ -13,7 +13,7 @@
 # scanner.CheckOutbound. See outbound_checker() below for why it cannot be a regex
 # here, and why delegating is not the usual shell-calls-Go mistake.
 #
-# Stopgap: the convention has lived as prose in AGENTS.md and CONTRIBUTING.md
+# Stopgap: the convention has lived as prose in AGENTS.md and .github/CONTRIBUTING.md
 # since the beginning and drifted anyway — itd-91 records a reconciliation sweep
 # across 78 pull requests after PR bodies picked up a tool's default footer. Prose
 # is not the missing piece; a check that fails closed is. itd-91 owns the general

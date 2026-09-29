@@ -12,6 +12,37 @@ over the brief's earlier `1.0.0`-at-close expectation). The four M6 synthesis
 agents below entered at `0.1.0`, wired to their `abcd disembark` verbs and
 unmeasured; `lifeboat-oracle` has since become `lifeboat-reviewer` at `0.1.1`.
 
+## 2026-09-28 (itd-2609212137129937 — quotes are attributed by role)
+
+abcd's own text names the product thinker or the technical facilitator, and the
+composer's example attribution was the one word that named neither.
+
+### press-release-composer 0.1.1
+
+PATCH: the example quote and the attribution rule attribute by role ("a product
+thinker", "a technical facilitator"). The output schema is unchanged, so a
+document that was valid before stays valid. Unmeasured, as before.
+## 2026-09-26 (iss-2609181121301638, iss-2609181121305984, iss-2609262011046013 — the requests state the conditions and the shapes)
+
+The fidelity review request lists every scope condition under its `cond-…`
+identity and carries a `## Verdict shape` section rendered from the structure
+the ingest decodes, and the consistency request carries a `## Findings shape`
+section the same way, so the auditor no longer scrapes identities out of the
+record or learns either shape from refusals.
+
+### intent-auditor 0.5.0
+
+MINOR: the `scope_conditions` input names the request's `## Scope Conditions`
+block as where the identities are listed, and the Role 1 output format names the
+request's `## Verdict shape` section as the same shape, winning where the two
+differ; the Role 2 output format names the request's `## Findings shape` section
+the same way. The precedence clause is a new instruction — where the prompt's
+example and the request's rendered shape part, the agent follows the request —
+so this is a behaviour change, not a non-behavioural edit, even though the two
+shapes agree today. Both rubrics, both shapes and every ingest rule are
+untouched, so a verdict or a findings payload that was valid before stays valid.
+Unmeasured, as before.
+
 ## 2026-09-26 (itd-48 — the intent auditor gains its cross-document role)
 
 `abcd intent consistency` assembles the brief and every live intent into one

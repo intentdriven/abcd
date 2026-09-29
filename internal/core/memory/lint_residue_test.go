@@ -64,10 +64,10 @@ func residueFindingsFor(res LintResult, file string) []Finding {
 	return out
 }
 
-func reportsMustBeClean(t *testing.T, res LintResult, spans ...string) {
+func reportsMustBeClean(t *testing.T, repo string, res LintResult, spans ...string) {
 	t.Helper()
 	for _, name := range []string{"report.json", "report.md"} {
-		raw, err := os.ReadFile(filepath.Join(res.ReportDir, name))
+		raw, err := os.ReadFile(filepath.Join(repo, res.ReportDir, name))
 		if err != nil {
 			t.Fatalf("lint must always write %s: %v", name, err)
 		}
@@ -94,7 +94,7 @@ func TestLintReportsSecretResidueInStoredPages(t *testing.T) {
 		if err != nil {
 			t.Fatalf("lint: %v", err)
 		}
-		found := residueFindingsFor(res, page)
+		found := residueFindingsFor(res, inRepo(t, repo, page))
 		if len(found) < 2 {
 			t.Fatalf("GHSA-xj89: lint reported %d MR001 finding(s) for a page carrying a PAT in citation.title and the body plus a home path; want the frontmatter line and the body line:\n%+v", len(found), res.Findings)
 		}
@@ -122,7 +122,7 @@ func TestLintReportsSecretResidueInStoredPages(t *testing.T) {
 		if res.ExitCode != 1 || res.Summary.Blockers < 2 {
 			t.Errorf("exit=%d blockers=%d, want a nonzero exit with the residue counted", res.ExitCode, res.Summary.Blockers)
 		}
-		reportsMustBeClean(t, res, token, homePath)
+		reportsMustBeClean(t, repo, res, token, homePath)
 	})
 
 	t.Run("sources index", func(t *testing.T) {
@@ -137,7 +137,7 @@ func TestLintReportsSecretResidueInStoredPages(t *testing.T) {
 		// The marker sits on two registry lines (the entry's origin and the
 		// consumer citation's origin), so every located finding must name the
 		// kind and there must be at least one.
-		found := residueFindingsFor(res, SourcesIndexPath(repo))
+		found := residueFindingsFor(res, inRepo(t, repo, SourcesIndexPath(repo)))
 		if len(found) == 0 {
 			t.Fatalf("GHSA-xj89: want MR001 on the sources index, got none: %+v", res.Findings)
 		}
@@ -149,7 +149,7 @@ func TestLintReportsSecretResidueInStoredPages(t *testing.T) {
 		if res.ExitCode != 1 {
 			t.Errorf("exit = %d, want 1", res.ExitCode)
 		}
-		reportsMustBeClean(t, res, token)
+		reportsMustBeClean(t, repo, res, token)
 	})
 
 	t.Run("kept original", func(t *testing.T) {
@@ -165,11 +165,11 @@ func TestLintReportsSecretResidueInStoredPages(t *testing.T) {
 		if err != nil {
 			t.Fatalf("lint: %v", err)
 		}
-		found := residueFindingsFor(res, kept)
+		found := residueFindingsFor(res, inRepo(t, repo, kept))
 		if len(found) != 1 || !strings.Contains(found[0].Message, "github_pat") {
 			t.Fatalf("GHSA-xj89: want one MR001 on the kept original naming github_pat, got %+v", found)
 		}
-		reportsMustBeClean(t, res, token)
+		reportsMustBeClean(t, repo, res, token)
 	})
 
 	t.Run("clean store has no residue finding", func(t *testing.T) {
@@ -209,7 +209,7 @@ func TestLintReportsSecretResidueInStoredPages(t *testing.T) {
 		if res.ExitCode != 1 {
 			t.Errorf("exit = %d, want 1", res.ExitCode)
 		}
-		if _, err := os.Stat(filepath.Join(res.ReportDir, "report.json")); err != nil {
+		if _, err := os.Stat(filepath.Join(repo, res.ReportDir, "report.json")); err != nil {
 			t.Errorf("the report was not written: %v", err)
 		}
 	})

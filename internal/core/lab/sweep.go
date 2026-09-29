@@ -12,6 +12,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // Correction is one retracted claim: the literal text the lab's documents must
@@ -53,8 +54,10 @@ var retractRe = regexp.MustCompile("^[-*] retract:\\s*(.*)$")
 const minPatternRunes = 3
 
 // parseCorrections reads the corrections log: every `- retract: <literal>` line.
-// A literal in backticks ends at the closing backtick and the rest of the line
-// is its reason; otherwise the whole remainder is the literal.
+// A literal in backticks is the code span they open, paired by
+// termsafe.PairCodeSpan and read by CommonMark's content rules, so a literal
+// holding a backtick is quoted in a longer run (iss-2609262350446885); the rest
+// of the line is its reason. Otherwise the whole remainder is the literal.
 func parseCorrections(doc string) []Correction {
 	var out []Correction
 	for i, line := range strings.Split(doc, "\n") {
@@ -65,8 +68,8 @@ func parseCorrections(doc string) []Correction {
 		c := Correction{N: len(out) + 1, Line: i + 1, Instances: []Instance{}}
 		rest := strings.TrimSpace(m[1])
 		if strings.HasPrefix(rest, "`") {
-			if end := strings.Index(rest[1:], "`"); end >= 0 {
-				rest = rest[1 : end+1]
+			if sp, ok := termsafe.PairCodeSpan(rest, 0); ok {
+				rest = termsafe.CodeSpanText(sp.Raw(rest))
 			} else {
 				c.Invalid = "an unclosed backtick"
 			}
