@@ -65,8 +65,9 @@ Only URLs the documentation actually cites can be confirmed. The receipt records
 user for their method, and never record one: the schema has no field for it and
 loading rejects unknown keys.
 
-Confirm on the user's word that they checked. An agent must never run `confirm`
-on its own initiative to clear a red gate.
+Set `abcd mode facilitator` first, then confirm on the technical facilitator's
+word that they checked. An agent must never run `confirm` on its own initiative
+to clear a red gate.
 
 **Binary resolution.** Run `"${CLAUDE_PLUGIN_ROOT}/abcd"` — a plugin install
 provisions the binary into the plugin root, so this is the rung that fires for a

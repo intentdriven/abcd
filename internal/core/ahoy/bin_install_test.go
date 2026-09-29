@@ -42,6 +42,26 @@ func linkOwned(t *testing.T, path, pluginRoot string) {
 	}
 }
 
+// assertOwnedCopyAt fails unless target is the owned copy install writes: a
+// regular file holding the verified cache artefact that the provenance record
+// vouches for.
+func assertOwnedCopyAt(t *testing.T, target string) {
+	t.Helper()
+	fi, err := os.Lstat(target)
+	if err != nil {
+		t.Fatalf("install did not create %s: %v", target, err)
+	}
+	if !fi.Mode().IsRegular() {
+		t.Fatalf("the PATH entry %s is not a regular file (mode %v); a symlink into the plugin root dangles at the next update", target, fi.Mode())
+	}
+	if got, _ := os.ReadFile(target); string(got) != string(cacheArtefact) {
+		t.Errorf("the PATH entry %s does not hold the verified artefact: %q", target, got)
+	}
+	if !isOwnedCopyFile(target) {
+		t.Errorf("the PATH entry %s is not recorded as abcd's owned copy", target)
+	}
+}
+
 func gapByID(gaps []Gap, id string) *Gap {
 	for i := range gaps {
 		if gaps[i].ID == id {
@@ -221,12 +241,13 @@ func TestInstallRelativePluginRootWritesResolvableEntry(t *testing.T) {
 	}
 }
 
-// TestInstallRepointsEntryStrandedByPluginUpdate is iss-345's repair half: with
-// the fresh plugin root holding a binary, install repoints the stranded entry
-// in place — no refusal, and no second entry planted at the default location.
+// TestInstallRepairsEntryStrandedByPluginUpdate is iss-345's repair half: with
+// a verified release artefact available, install replaces the stranded entry
+// in place with the owned copy — no refusal, no second entry planted at the
+// default location, and no new link for the next update to strand.
 // The entry deliberately lives OFF ~/.local/bin so adopt-in-place and
 // write-the-default cannot land on the same path and mask each other.
-func TestInstallRepointsEntryStrandedByPluginUpdate(t *testing.T) {
+func TestInstallRepairsEntryStrandedByPluginUpdate(t *testing.T) {
 	home, pluginRoot := setupUserScope(t)
 	other := filepath.Join(t.TempDir(), "opt", "bin")
 	t.Setenv("PATH", other)
@@ -237,19 +258,12 @@ func TestInstallRepointsEntryStrandedByPluginUpdate(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	res, err := Install(repo, installOpts(), RefusingPrompter{})
-	if err != nil {
+	if _, err := Install(repo, installOpts(), RefusingPrompter{}); err != nil {
 		t.Fatal(err)
 	}
-	dest, rerr := os.Readlink(link)
-	if rerr != nil {
-		t.Fatalf("the stranded entry is no longer a symlink: %v", rerr)
-	}
-	if resolveSymlinkDest(link, dest) != resolvePath(pluginBinaryPath(pluginRoot)) {
-		t.Errorf("entry was not repointed at the fresh plugin binary: %s -> %s (notes: %v)", link, dest, res.Notes)
-	}
+	assertOwnedCopyAt(t, link)
 	if _, err := os.Lstat(filepath.Join(home, ".local", "bin", "abcd")); !os.IsNotExist(err) {
-		t.Errorf("install planted a second entry at ~/.local/bin beside the repointed one: %v", err)
+		t.Errorf("install planted a second entry at ~/.local/bin beside the repaired one: %v", err)
 	}
 }
 
@@ -407,9 +421,10 @@ func TestGapTextCarriesNoAbsoluteHomePath(t *testing.T) {
 
 // TestInstallDefaultsToUserLocalBin is decision 5 of the install-experience
 // plan: install writes ~/.local/bin/abcd, creating the directory, with no
-// privilege escalation anywhere.
+// privilege escalation anywhere. The entry is the owned copy of the verified
+// release artefact (spc-35).
 func TestInstallDefaultsToUserLocalBin(t *testing.T) {
-	home, pluginRoot := setupUserScope(t)
+	home, _ := setupUserScope(t)
 	binDir := filepath.Join(home, ".local", "bin")
 	t.Setenv("PATH", binDir)
 	repo := t.TempDir()
@@ -422,17 +437,7 @@ func TestInstallDefaultsToUserLocalBin(t *testing.T) {
 		t.Fatal(err)
 	}
 	target := filepath.Join(binDir, "abcd")
-	fi, err := os.Lstat(target)
-	if err != nil {
-		t.Fatalf("install did not create %s: %v", target, err)
-	}
-	if fi.Mode()&os.ModeSymlink == 0 {
-		t.Fatalf("install wrote a regular file, want a symlink")
-	}
-	dest, _ := os.Readlink(target)
-	if resolveSymlinkDest(target, dest) != resolvePath(pluginBinaryPath(pluginRoot)) {
-		t.Errorf("symlink dest = %q, want %q", dest, pluginBinaryPath(pluginRoot))
-	}
+	assertOwnedCopyAt(t, target)
 	// The write is recorded on the receipt through the same note seam as every
 	// other apply step, and the receipt scrub owned by iss-177 renders a
 	// user-scope write home-relative — so the entry appears in tilde form.
@@ -490,11 +495,13 @@ func TestInstallAdoptsOwnedInstallInPlace(t *testing.T) {
 
 // TestInstallRefusesToCreateDanglingSymlink is the shadowing refusal: with no
 // binary at <plugin-root>/abcd, install must NOT write a symlink at all — a
-// dangling link on PATH shadows whatever else would have answered.
+// dangling link on PATH shadows whatever else would have answered. On a cold
+// cache nothing is written, and the refusal names the command to run first.
 func TestInstallRefusesToCreateDanglingSymlink(t *testing.T) {
 	home, pluginRoot := setupUserScope(t)
 	binDir := filepath.Join(home, ".local", "bin")
 	t.Setenv("PATH", binDir)
+	coldCache(t)
 	if err := os.Remove(pluginBinaryPath(pluginRoot)); err != nil {
 		t.Fatal(err)
 	}
@@ -511,8 +518,8 @@ func TestInstallRefusesToCreateDanglingSymlink(t *testing.T) {
 		t.Fatalf("install created a symlink to a non-existent target: %v", err)
 	}
 	joined := strings.Join(res.Notes, "\n")
-	if !strings.Contains(joined, "does not exist") {
-		t.Errorf("the refusal was silent; notes = %v", res.Notes)
+	if !strings.Contains(joined, "no PATH entry was written") || !strings.Contains(joined, installRemedyAnchor) {
+		t.Errorf("the refusal was silent or named no command to run first; notes = %v", res.Notes)
 	}
 }
 
@@ -553,7 +560,7 @@ func TestInstallBinDirUnwritableFailsLoudly(t *testing.T) {
 // TestInstallBinDirWritableInstallsThere pins the opt-in: an explicit, writable
 // --bin-dir is where the entry lands.
 func TestInstallBinDirWritableInstallsThere(t *testing.T) {
-	_, pluginRoot := setupUserScope(t)
+	setupUserScope(t)
 	dir := filepath.Join(t.TempDir(), "opt", "bin")
 	t.Setenv("PATH", dir)
 	repo := t.TempDir()
@@ -566,14 +573,7 @@ func TestInstallBinDirWritableInstallsThere(t *testing.T) {
 	if _, err := Install(repo, opts, RefusingPrompter{}); err != nil {
 		t.Fatal(err)
 	}
-	target := filepath.Join(dir, "abcd")
-	dest, err := os.Readlink(target)
-	if err != nil {
-		t.Fatalf("--bin-dir install did not create %s: %v", target, err)
-	}
-	if resolveSymlinkDest(target, dest) != resolvePath(pluginBinaryPath(pluginRoot)) {
-		t.Errorf("symlink dest = %q, want %q", dest, pluginBinaryPath(pluginRoot))
-	}
+	assertOwnedCopyAt(t, filepath.Join(dir, "abcd"))
 }
 
 // TestUninstallReceiptCarriesNoAbsoluteHomePath is the second half of the
@@ -759,8 +759,11 @@ func TestInstallFreshPathGapIsCarriedOnNotes(t *testing.T) {
 // TestInstallDanglingEntryWithMissingBinaryRefusesLoudly: the owned-symlink
 // early return preceded the source check, so a dangling entry plus a missing
 // plugin binary produced status=partial with no note and no reason anywhere.
+// On a cold cache there is nothing to replace it with, and the note says so and
+// names the command to run first.
 func TestInstallDanglingEntryWithMissingBinaryRefusesLoudly(t *testing.T) {
 	home, pluginRoot := setupUserScope(t)
+	coldCache(t)
 	binDir := filepath.Join(home, ".local", "bin")
 	t.Setenv("PATH", binDir)
 	linkOwned(t, filepath.Join(binDir, "abcd"), pluginRoot)
@@ -776,8 +779,8 @@ func TestInstallDanglingEntryWithMissingBinaryRefusesLoudly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(notesJoined(res.Notes), "does not exist") {
-		t.Errorf("a dangling entry with no binary to repoint at was silent; notes = %v", res.Notes)
+	if joined := notesJoined(res.Notes); !strings.Contains(joined, "points at a binary that is gone") || !strings.Contains(joined, installRemedyAnchor) {
+		t.Errorf("a dangling entry with nothing to replace it with was silent; notes = %v", res.Notes)
 	}
 }
 
@@ -979,10 +982,10 @@ func TestDetectSupersededVintagePinIsItsOwnGap(t *testing.T) {
 	}
 }
 
-// TestInstallRepointsSupersededVintagePin: `ahoy install` is the remedy the
-// superseded gap names, so it must adopt the pin in place and point it at the
-// current plugin binary — no refusal, no second entry.
-func TestInstallRepointsSupersededVintagePin(t *testing.T) {
+// TestInstallReplacesSupersededVintagePin: `ahoy install` is the remedy the
+// superseded gap names, so it must adopt the pin in place and replace it with
+// the owned copy of the current release — no refusal, no second entry.
+func TestInstallReplacesSupersededVintagePin(t *testing.T) {
 	home, pluginRoot := setupUserScope(t)
 	other := filepath.Join(t.TempDir(), "opt", "bin")
 	t.Setenv("PATH", other)
@@ -993,18 +996,11 @@ func TestInstallRepointsSupersededVintagePin(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	res, err := Install(repo, installOpts(), RefusingPrompter{})
-	if err != nil {
+	if _, err := Install(repo, installOpts(), RefusingPrompter{}); err != nil {
 		t.Fatal(err)
 	}
-	dest, rerr := os.Readlink(link)
-	if rerr != nil {
-		t.Fatalf("the superseded pin is no longer a symlink: %v", rerr)
-	}
-	if resolveSymlinkDest(link, dest) != resolvePath(pluginBinaryPath(pluginRoot)) {
-		t.Errorf("pin was not repointed at the current plugin binary: %s -> %s (notes: %v)", link, dest, res.Notes)
-	}
+	assertOwnedCopyAt(t, link)
 	if _, err := os.Lstat(filepath.Join(home, ".local", "bin", "abcd")); !os.IsNotExist(err) {
-		t.Errorf("install planted a second entry at ~/.local/bin beside the repointed one: %v", err)
+		t.Errorf("install planted a second entry at ~/.local/bin beside the repaired one: %v", err)
 	}
 }

@@ -124,6 +124,12 @@ func (a *applyCtx) writeMachineRouting(body []byte) {
 		a.refuse("the model-tier routing was not written: the home directory could not be resolved, so ~/.abcd/oracle-routing.json has nowhere to go.")
 		return
 	}
+	// The resolver refuses a machine table behind a symlinked ~/.abcd, so a
+	// write through the link would land wherever it points and never be read.
+	if err := fsutil.HomeScopeLink(userHome(), ".abcd/"+layered.OracleRouting.MachineRel); err != nil {
+		a.refuse("the model-tier routing was not written: " + err.Error() + ".")
+		return
+	}
 	if !absent(p) {
 		a.refuse("the model-tier routing was not written: ~/.abcd/oracle-routing.json appeared while the question was open, and it is left as it is.")
 		return
