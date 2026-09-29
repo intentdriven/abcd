@@ -80,9 +80,9 @@ func lanesOf(started ...Started) LaneReader {
 
 // TestBlockPlacesEveryIntent is criterion 1: Now holds the intents the state
 // file shows in a lane with their lane state, then the head marked next up;
-// Next every READY planned intent in pick order; Later the planned intents the
-// gate refuses, each naming its failing checks, then the drafts; every row
-// carries its id and title.
+// Next every READY planned intent in pick order that is in no lane; Later the
+// planned intents the gate refuses, each naming its failing checks, then the
+// drafts; every row carries its id and title.
 func TestBlockPlacesEveryIntent(t *testing.T) {
 	root := store(t)
 	lane := Lane{Run: "run-2609290000000001", Lane: "lane-1", Step: "implement", Awaiting: "implementer"}
@@ -104,8 +104,8 @@ func TestBlockPlacesEveryIntent(t *testing.T) {
 		t.Errorf("Now[1] = %+v, want itd-7 marked next up: the first READY intent in pick order neither in a lane nor held", b.Now[1])
 	}
 
-	if got, want := ids(b.Next), []string{"itd-2609010000000001", "itd-5", "itd-7"}; !reflect.DeepEqual(got, want) {
-		t.Errorf("Next = %v, want %v: every READY planned intent in pick order, the readiest first, the oldest among equals", got, want)
+	if got, want := ids(b.Next), []string{"itd-5", "itd-7"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("Next = %v, want %v: every READY planned intent in no lane, in pick order, the readiest first, the oldest among equals", got, want)
 	}
 	if got, want := ids(b.Later), []string{"itd-8", "itd-3", "itd-2609020000000002"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("Later = %v, want %v: the planned intents not READY, then the drafts", got, want)
@@ -126,8 +126,10 @@ func TestBlockPlacesEveryIntent(t *testing.T) {
 	}
 }
 
-// TestBlockWithoutAStateFileKeepsOnlyTheHead is criterion 3: with no lanes, Now
-// holds only the head, and Next and Later are exactly what they were.
+// TestBlockWithoutAStateFileKeepsOnlyTheHead is criterion 3 as ruling BV2 of
+// 2026-09-29 amends it: with no lanes, Now holds only the head, the intent the
+// state file showed in a lane returns to the list the gate places it in, and
+// Next and Later are otherwise exactly what they were.
 func TestBlockWithoutAStateFileKeepsOnlyTheHead(t *testing.T) {
 	root := store(t)
 	with, err := Read(root, lanesOf(Started{Intent: "itd-7", Lane: Lane{Run: "run-1", Lane: "lane-1", Step: "brief"}}))
@@ -142,9 +144,46 @@ func TestBlockWithoutAStateFileKeepsOnlyTheHead(t *testing.T) {
 		if got := ids(without.Now); !reflect.DeepEqual(got, []string{"itd-2609010000000001"}) || !without.Now[0].NextUp {
 			t.Errorf("%s: Now = %v, want only the head itd-2609010000000001 marked next up", name, without.Now)
 		}
-		if !reflect.DeepEqual(with.Next, without.Next) || !reflect.DeepEqual(with.Later, without.Later) {
-			t.Errorf("%s: Next or Later changed with the state file:\nwith    %+v %+v\nwithout %+v %+v", name, with.Next, with.Later, without.Next, without.Later)
+		if got, want := ids(without.Next), []string{"itd-2609010000000001", "itd-5", "itd-7"}; !reflect.DeepEqual(got, want) {
+			t.Errorf("%s: Next = %v, want %v: itd-7 back in its pick-order place", name, got, want)
 		}
+		var kept []Row
+		for _, r := range without.Next {
+			if r.ID != "itd-7" {
+				kept = append(kept, r)
+			}
+		}
+		if !reflect.DeepEqual(with.Next, kept) || !reflect.DeepEqual(with.Later, without.Later) {
+			t.Errorf("%s: Next or Later changed beyond the lane's intent:\nwith    %+v %+v\nwithout %+v %+v", name, with.Next, with.Later, without.Next, without.Later)
+		}
+	}
+}
+
+// TestAnIntentInALaneIsOnlyUnderNow is ruling BV2 of 2026-09-29: an intent the
+// state file shows in a lane is listed under Now alone, never also under Next
+// (a READY planned intent) or Later (a planned intent the gate refuses, or a
+// draft). The head is still the first READY intent in pick order that is in no
+// lane, so it stays in Next beside its mark on Now.
+func TestAnIntentInALaneIsOnlyUnderNow(t *testing.T) {
+	root := store(t)
+	lane := Lane{Run: "run-1", Lane: "lane-1", Step: "implement"}
+	inLane := []string{"itd-7", "itd-8", "itd-3"}
+	var started []Started
+	for _, id := range inLane {
+		started = append(started, Started{Intent: id, Lane: lane})
+	}
+	b, err := Read(root, lanesOf(started...))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := ids(b.Now), []string{"itd-7", "itd-8", "itd-3", "itd-2609010000000001"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("Now = %v, want %v (the three lanes, then the head)", got, want)
+	}
+	if got, want := ids(b.Next), []string{"itd-2609010000000001", "itd-5"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("Next = %v, want %v: the READY intents in no lane, the head among them", got, want)
+	}
+	if got, want := ids(b.Later), []string{"itd-2609020000000002"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("Later = %v, want %v: the refused intent and the draft in a lane are under Now only", got, want)
 	}
 }
 

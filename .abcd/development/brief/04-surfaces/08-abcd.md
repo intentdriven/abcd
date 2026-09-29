@@ -214,15 +214,18 @@ counted.
 
 **The status block** (itd-2609212103568351, spc-2609212138241908) says what
 is being built, what is ready, and what waits, computed from the record each
-time and stored nowhere (adr-2609212115255771 decision 2). Now lists every
+time and stored nowhere (adr-2609292012006845 decision 2). Now lists every
 intent the build's state file shows in a lane — a run in progress, with the
 lane the loop works on, its next step and the role it waits on, or the step
 `pending` between lanes — then the head of the pick order marked `next up`, so
 Now is empty only when no READY intent may start. Next lists every planned intent
 the readiness gate reports READY; Later lists every planned intent it refuses,
-naming the gating checks each fails, then every draft. Next and Later are
-read from the shelves and the gate alone, so removing the state file empties
-Now's lane rows and leaves Next and Later as they were. Next and the head are
+naming the gating checks each fails, then every draft. An intent the state file
+shows in a lane is listed under Now only, never also under Next or Later (the
+product thinker's ruling BV2 of 2026-09-29). Next and Later are otherwise read
+from the shelves and the gate alone, so removing the state file empties Now's
+lane rows, returns each intent they named to the list the gate places it in,
+and leaves Next and Later otherwise as they were. Next and the head are
 read in build next's pick order (itd-2609211116005482): each READY intent is
 scored by the read the pick scores through (`intent.ReadinessIn`) and ordered
 by the pick's one rule (`intent.PickLess`), the readiest first and the oldest
@@ -234,10 +237,12 @@ build), and not one the state file shows in a lane, as the pick passes over an
 intent with a run in progress. The build's peers check is not run: the block
 reads no other checkout, so an intent a peer holds can still be the head. The
 block's `order` field names that order (`pick`).
-The text render is a `status:` heading with the three counts, then `Now:`,
-`Next:` and `Later:`, one line per intent: its id, its title, and in brackets
-its lane state, `next up`, `fails:` with the checks, or `draft`. The JSON carries a `status` object
-with `now`, `next` and `later`, each row `id`, `title`, `bucket`, and
+The text render is a `status:` heading with the three counts, then `Now:` and
+`Next:`, one line per intent: its id, its title, and in brackets its lane state
+or `next up`; then `Later: N intents`, Later as a count alone (ruling BV1 of
+2026-09-29), its rows left to the JSON and the site's Status page. The JSON
+carries a `status` object with `now`, `next` and `later` in full, each row
+`id`, `title`, `bucket`, and
 `next_up`, `lane` (`run`, `lane`, `step`, `awaiting`) or `failing_checks` when
 they apply, and `order`. The block is present in a repository abcd manages and
 absent elsewhere, and a record that cannot be read omits it with the reason on

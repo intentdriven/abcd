@@ -1,7 +1,7 @@
 // Package statusblock computes the Now / Next / Later block the bare `abcd`
 // board and the site's Status page render (itd-2609212103568351,
 // spc-2609212138241908). The block is rendered status, never stored
-// (adr-2609212115255771 decision 2): it is read from the lifecycle shelves, the
+// (adr-2609292012006845 decision 2): it is read from the lifecycle shelves, the
 // readiness gate and the build's state file each time, so nothing on it can be
 // edited into a lie.
 //
@@ -10,17 +10,22 @@
 //     order that the build's record-only pre-start checks
 //     (intent.StartChecksIn) let start and that is in no lane. Now is empty
 //     only when no READY intent passes them.
-//   - Next is every planned intent the readiness gate reports READY, in pick
-//     order: `abcd build next`'s one order (intent.PickLess), each intent
-//     scored by the read the pick scores through (intent.ReadinessIn), the
-//     readiest first and the oldest among equals.
+//   - Next is every planned intent the readiness gate reports READY and the
+//     state file shows in no lane, in pick order: `abcd build next`'s one
+//     order (intent.PickLess), each intent scored by the read the pick scores
+//     through (intent.ReadinessIn), the readiest first and the oldest among
+//     equals.
 //   - Later is every planned intent the gate reports not READY, each with the
-//     gating checks it fails, then every draft.
+//     gating checks it fails, then every draft, again leaving out an intent
+//     in a lane.
 //
-// Next and Later are read from the record alone. The state file adds the lane
-// rows to Now, and the head passes over an intent it shows in a lane, as the
-// pick does over an intent with a run in progress; removing it empties Now's
-// lane rows and leaves a head (criterion 3).
+// An intent the state file shows in a lane is listed under Now alone, never
+// also under Next or Later (ruling BV2 of 2026-09-29). Next and Later are
+// otherwise read from the record alone. The state file adds the lane rows to
+// Now, and the head passes over an intent it shows in a lane, as the pick does
+// over an intent with a run in progress; removing it empties Now's lane rows,
+// returns each such intent to the list the gate places it in, and leaves a
+// head (criterion 3).
 //
 // The package reads the state file through a LaneReader its caller supplies
 // rather than importing the implement loop: the loop's own imports reach the
@@ -119,20 +124,9 @@ func Read(repoRoot string, lanes LaneReader) (Block, error) {
 		return Row{ID: it.ID, Title: l.Title, Bucket: it.Bucket}, nil
 	}
 
-	var planned, drafts []intent.Intent
-	for _, it := range corpus.Intents {
-		switch it.Bucket {
-		case intent.BucketPlanned:
-			planned = append(planned, it)
-		case intent.BucketDrafts:
-			drafts = append(drafts, it)
-		}
-	}
-	sortByID(planned)
-	sortByID(drafts)
-
-	// The state file is read first: the head passes over an intent it shows in
-	// a lane, as the pick passes over an intent with a run in progress.
+	// The state file is read first: an intent it shows in a lane is listed
+	// under Now alone, so Next and Later leave it out and the head passes over
+	// it, as the pick passes over an intent with a run in progress.
 	var started []Started
 	if lanes != nil {
 		if started, err = lanes(repoRoot); err != nil {
@@ -143,6 +137,21 @@ func Read(repoRoot string, lanes LaneReader) (Block, error) {
 	for _, s := range started {
 		inLane[s.Intent] = true
 	}
+
+	var planned, drafts []intent.Intent
+	for _, it := range corpus.Intents {
+		if inLane[it.ID] {
+			continue
+		}
+		switch it.Bucket {
+		case intent.BucketPlanned:
+			planned = append(planned, it)
+		case intent.BucketDrafts:
+			drafts = append(drafts, it)
+		}
+	}
+	sortByID(planned)
+	sortByID(drafts)
 
 	// ready pairs a READY intent with its row, the pick's view of it, and
 	// whether the build's record-only pre-start checks let it start.
@@ -190,9 +199,10 @@ func Read(repoRoot string, lanes LaneReader) (Block, error) {
 		// The head is the first READY intent in pick order the build would
 		// start: not one its record-only pre-start checks refuse (an open
 		// question, an unanswered claim section, a hold, an unshipped blocker,
-		// no step left to build), and not one already in a lane. The build's
-		// peers check is not run: the block does not consult other checkouts.
-		if head == nil && rd.startable && !inLane[rd.it.ID] {
+		// no step left to build); one already in a lane is not in readies at
+		// all. The build's peers check is not run: the block does not consult
+		// other checkouts.
+		if head == nil && rd.startable {
 			h := rd.row
 			h.NextUp = true
 			head = &h

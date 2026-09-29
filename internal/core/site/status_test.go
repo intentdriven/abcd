@@ -11,9 +11,14 @@ import (
 // TestStatusPageRendersTheBlockFromTheSameRead is criterion 2: the built
 // Status page carries Now, Next and Later, and every row statusblock.Read
 // returns for the same repository and the same lane reader is on it, with its
-// id and title; the lane row carries its lane state.
+// id and title; the lane row carries its lane state, and the intent in a lane
+// is on the block once, under Now (ruling BV2 of 2026-09-29).
 func TestStatusPageRendersTheBlockFromTheSameRead(t *testing.T) {
 	f := newFixture(t)
+	// A second draft, so Later keeps a row while the fixture's first draft is
+	// in a lane.
+	f.write(".abcd/development/intents/drafts/itd-9-a-second-draft.md", "---\nid: itd-9\nslug: a-second-draft\nspec_id: null\nkind: standalone\n---\n\n# A Second Draft\n\n## Acceptance Criteria\n\n- Given nothing, when nothing, then nothing.\n")
+	f.commitAt("2026-03-07T09:00:00+00:00", "feat: a second draft", "None")
 	out := t.TempDir()
 	lanes := func(string) ([]statusblock.Started, error) {
 		return []statusblock.Started{{Intent: "itd-1", Lane: statusblock.Lane{Run: "run-2609290000000001", Lane: "lane-1", Step: "implement"}}}, nil
@@ -44,6 +49,10 @@ func TestStatusPageRendersTheBlockFromTheSameRead(t *testing.T) {
 	}
 	if !strings.Contains(page, "lane-1 · implement") {
 		t.Error("the lane row does not carry its lane state")
+	}
+	block := page[strings.Index(page, ">Now<span>"):strings.Index(page, "References a record the tree does not hold")]
+	if n := strings.Count(block, ">itd-1<"); n != 1 {
+		t.Errorf("the intent in a lane is on the block %d times, want once, under Now", n)
 	}
 	if !strings.Contains(page, `<span class="s">draft</span>`) {
 		t.Error("the draft row is not marked a draft")
