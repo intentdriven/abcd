@@ -820,3 +820,62 @@ func TestAReceiptNamedThroughASymlinkedPathIsTheReceiptAwaited(t *testing.T) {
 		t.Fatalf("the receipt completes the step: %+v", got)
 	}
 }
+
+// TestTheRecordNamesEachLaneAsItOpens is itd-2609212103565953's fourth
+// criterion, the record half: the run record lists the spec's steps as it
+// lists the lanes, one line for each lane opened, naming the spec step it
+// builds, the first at the start and each later one when the lane before it is
+// done.
+func TestTheRecordNamesEachLaneAsItOpens(t *testing.T) {
+	repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps("1. The parser\n2. The loop\n3. The page\n"))
+	start, err := Start(repo.Root(), "itd-10", Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	f := &fakeSteps{calls: map[StepName]int{}}
+	steps := f.steps()
+	id := start.RunID
+	for range 64 {
+		st, err := ReadState(repo.Root(), id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		i := st.current()
+		if i < 0 {
+			break
+		}
+		if a := st.Lanes[i].Awaiting; a != nil {
+			if err := os.WriteFile(a.Receipt, []byte("{}\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := Receipt(repo.Root(), id, a.Receipt, steps, Options{}); err != nil {
+				t.Fatal(err)
+			}
+			continue
+		}
+		if _, err := Advance(repo.Root(), id, steps, Options{}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	st, err := ReadState(repo.Root(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !st.Complete() {
+		t.Fatalf("the run did not complete: %+v", st)
+	}
+	var opened []string
+	for _, e := range st.Record {
+		if e.Step == "start" || e.Step == "open" {
+			opened = append(opened, e.Lane+": "+e.Note)
+		}
+	}
+	want := []string{
+		"lane-1: checks passed; lane-1 opened for step 1 of spc-1 (The parser)",
+		"lane-2: lane-2 opened for step 2 of spc-1 (The loop)",
+		"lane-3: lane-3 opened for step 3 of spc-1 (The page)",
+	}
+	if strings.Join(opened, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("the record names each lane's step as it opens:\n got %q\nwant %q", opened, want)
+	}
+}
