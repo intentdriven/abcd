@@ -375,11 +375,18 @@ func TestReauthorReplaysAnInBoundBumpAsTheOwnerAndTheGatePassesIt(t *testing.T) 
 	out, code := f.runScript(t, "run", map[string]string{
 		"DEPENDENCY_REAUTHOR_APP_ID": reauthorAppID, "DEPENDENCY_REAUTHOR_APP_KEY": pemKey,
 		"GITHUB_API_URL": srv.URL, "REAUTHOR_REMOTE": remote, "GITHUB_STEP_SUMMARY": summary,
+		"GITHUB_ACTIONS": "true",
 	})
 	if code != 0 {
 		t.Fatalf("an in-bound run failed (exit %d):\n%s", code, out)
 	}
-	if strings.Contains(out, pemKey) || strings.Contains(out, reauthorAppToken) {
+	// The installation token appears once, on the runner's mask command, which
+	// the runner consumes rather than prints; the key never appears at all.
+	mask := "::add-mask::" + reauthorAppToken + "\n"
+	if !strings.Contains(out, mask) {
+		t.Errorf("the run did not mask the installation token:\n%s", out)
+	}
+	if rest := strings.Replace(out, mask, "", 1); strings.Contains(rest, pemKey) || strings.Contains(rest, reauthorAppToken) {
 		t.Fatalf("the run printed a credential:\n%s", out)
 	}
 	moved := remoteHead(t, remote)
