@@ -12,6 +12,10 @@ suggested_fix: "Add a functional check against a built binary to the definition 
 related_issues: ["iss-2608231025198888", "iss-2608230847432286", "iss-2608230957104179"]
 deferred_after: "v0.9.0"
 deferral_reason: "Ruled by the product thinker at the 2026-09-23 run A interview (M11: automate it: extend the smoke lane to exercise write-path verbs against a scratch repository and assert what lands on disk, with no hand step added to the definition of done; a build lane owed, not holding the tag)."
+resolution: "Automated per the product thinker's ruling M11 (2026-09-23): the smoke lane runs the record-writing verbs capture, capture resolve and decide through the built binary against a scratch git repository and asserts what lands on disk (evals/smoke_write_test.go). No hand step is added to the definition of done. Each test was watched fail against one mutation of its verb on a scratch copy."
+impact: internal
+resolved_by:
+  commit: "a306308d7"
 ---
 
 a lint-and-test-green write path can still be broken; nothing requires running the built binary
@@ -70,3 +74,7 @@ costs seconds.
 n=1, and the author of the record is the author of the defect. A single
 instance argues for a documented step, not for tooling. Per
 recurrence-is-signal, a second occurrence is what would justify more.
+
+## Grounds
+
+- pursued: a write-path change that breaks the built verb now reds make smoke inside make preflight; a write-path defect in a verb the lane does not run (wontfix, promote, defer, intent, spec) would show the coverage too narrow
