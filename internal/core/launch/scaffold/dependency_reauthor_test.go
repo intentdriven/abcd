@@ -260,6 +260,17 @@ func TestReauthorBoundMatchesTheDeclaredDirectory(t *testing.T) {
 			}
 		})
 	}
+	// Each declared path is compared whole: a file whose name is two declared
+	// names joined by a space is none of them, even though the space-joined
+	// list holds it as a substring.
+	t.Run("a file named for two declared files", func(t *testing.T) {
+		joined := map[string]string{"go.mod go.sum": "one\n"}
+		f := newReauthorFixtureConf(t, ownerDeclared+rows, joined, map[string]string{"go.mod go.sum": "two\n"})
+		out, code := f.runScript(t, "check", nil)
+		if want := "left alone (diff): go.mod go.sum is not one of the declared files"; code != 0 || !strings.Contains(out, want) {
+			t.Fatalf("want exit 0 with %q, got exit %d:\n%s", want, code, out)
+		}
+	})
 	t.Run("a row without a directory", func(t *testing.T) {
 		f := newReauthorFixtureConf(t, ownerDeclared+"ecosystem=dependabot[bot] dependabot/go_modules/ go.mod go.sum\n", nil, nil)
 		out, code := f.runScript(t, "check", nil)

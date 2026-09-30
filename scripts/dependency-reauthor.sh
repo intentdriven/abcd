@@ -208,10 +208,17 @@ while IFS= read -r raw; do
 	100644 | 100755) ;;
 	*) leave_alone diff "$path has mode $newmode; a bump changes regular files" ;;
 	esac
-	case "$files" in
-	*" $path "*) ;;
-	*) leave_alone diff "$path is not one of the declared files for $prefix:$files" ;;
-	esac
+	# Each declared path is compared whole, never as a substring of the
+	# space-joined list: a file named "go.mod go.sum" is neither of them.
+	declared=0
+	for want in $files; do
+		if [ "$path" = "$want" ]; then
+			declared=1
+			break
+		fi
+	done
+	[ "$declared" -eq 1 ] ||
+		leave_alone diff "$path is not one of the declared files for $prefix:$files"
 	changed=$((changed + 1))
 done <<EOF
 $diff
