@@ -220,8 +220,9 @@ type StepResult struct {
 	// Alive is every lane of the run with anything left, with its stage and
 	// each agent it awaits, the held lanes included.
 	Alive []AliveLane `json:"alive,omitempty"`
-	// Blocked are the refusals of lanes whose own stage could not move this
-	// call while another lane's did: each holds only its own lane.
+	// Blocked are the landings that waited on the forge's merge this call
+	// while another lane moved: each holds only its own lane. Any other refused
+	// stage is the call's answer, and no lane moves.
 	Blocked []Refusal `json:"blocked,omitempty"`
 	Next    string    `json:"next"`
 }

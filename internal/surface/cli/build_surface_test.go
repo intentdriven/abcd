@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/core/implement/loop"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
@@ -489,5 +490,18 @@ func TestImplementStepReleaseAndDiscardAreWired(t *testing.T) {
 	}
 	if out := mustImplement(t, "implement", "status"); !strings.Contains(out, "slots:   0 of 2 in use") {
 		t.Fatalf("status names the slots in use out of the ceiling:\n%s", out)
+	}
+}
+
+// TestImplementStepNamesALandingThatWaitsInText: a step that moved one lane
+// while another's landing waits on the forge names that wait in its text form,
+// as its JSON form carries it under `blocked` (ruling DR6c).
+func TestImplementStepNamesALandingThatWaitsInText(t *testing.T) {
+	res := loop.StepResult{RunID: "run-1", Lane: "lane-1", PerformedStage: loop.StageWorktree, Next: "run `abcd implement step`",
+		Blocked: []loop.Refusal{{Stage: "land", Lane: "lane-2", Reason: "pull request #7 is not merged yet", Remedy: "run `abcd implement step` again once it has merged", Contention: true}}}
+	var b bytes.Buffer
+	renderStepResult(&b, "step", res)
+	if out := b.String(); !strings.Contains(out, "blocked: lane-2 (land): pull request #7 is not merged yet") {
+		t.Fatalf("the text form names the lane whose landing waits:\n%s", out)
 	}
 }

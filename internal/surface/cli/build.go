@@ -515,6 +515,9 @@ func renderStepResult(w io.Writer, verb string, res loop.StepResult) {
 	case res.Complete:
 		fmt.Fprintf(w, "%s: %s is complete\n", verb, res.RunID)
 	}
+	for _, r := range res.Blocked {
+		fmt.Fprintf(w, "blocked: %s (%s): %s\n", r.Lane, termsafe.Sanitize(r.Stage), termsafe.Sanitize(fsutil.RedactHome(r.Reason)))
+	}
 	fmt.Fprintf(w, "next: %s\n", termsafe.Sanitize(fsutil.RedactHome(res.Next)))
 }
 
