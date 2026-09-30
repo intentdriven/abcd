@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/core/launch"
 	"github.com/intentdriven/abcd/internal/core/lint"
 )
 
@@ -328,5 +329,62 @@ func TestAMalformedTargetIsRefusedNotOverwritten(t *testing.T) {
 	}
 	if len(got) != 1 || got[0].Target != "[next]" || got[0].Invalid == "" {
 		t.Fatalf("the listing must carry the malformed value raw and flagged: %+v", got)
+	}
+}
+
+// Criterion 3's record half (ruling BS1 of 2026-09-29): the rewrite a cut
+// makes for each target it passes. A version target becomes `next` on one
+// line with nothing else in the file touched; a `next` target is already
+// right and yields no rewrite; and a record whose target moved since the cut
+// read it, or that left planned/, is refused rather than rewritten from a
+// stale read.
+func TestPlanTargetMovesRewritesAMissedTargetToNext(t *testing.T) {
+	root := t.TempDir()
+	relA := plannedDir + "/itd-10-alpha.md"
+	relB := plannedDir + "/itd-11-beta.md"
+	writeFile(t, root, relA, withTarget(plannedLinked("itd-10", "alpha", "spc-1"), "v0.11.0"))
+	writeFile(t, root, relB, withTarget(plannedLinked("itd-11", "beta", "spc-2"), "next"))
+	before := readRec(t, root, relA)
+
+	got, err := PlanTargetMoves(root, []launch.TargetMove{
+		{ID: "itd-10", Path: relA, From: "v0.11.0"},
+		{ID: "itd-11", Path: relB, From: "next"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Path != relA || string(got[0].Before) != before {
+		t.Fatalf("PlanTargetMoves = %+v, want one rewrite of %s", got, relA)
+	}
+	if want := withTarget(plannedLinked("itd-10", "alpha", "spc-1"), "next"); string(got[0].After) != want {
+		t.Fatalf("the rewrite must change the one line:\n%s\nwant\n%s", got[0].After, want)
+	}
+	if readRec(t, root, relA) != before {
+		t.Fatal("planning a move wrote the record")
+	}
+
+	for _, tc := range []struct {
+		name string
+		move launch.TargetMove
+		want string
+	}{
+		{"moved since the read", launch.TargetMove{ID: "itd-10", Path: relA, From: "v0.10.0"}, "v0.11.0"},
+		{"not a planned record", launch.TargetMove{ID: "itd-10", Path: shippedDir + "/itd-10-alpha.md", From: "v0.11.0"}, "planned"},
+		{"another record's file", launch.TargetMove{ID: "itd-12", Path: relA, From: "v0.11.0"}, "itd-12"},
+	} {
+		if _, err := PlanTargetMoves(root, []launch.TargetMove{tc.move}); err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("%s: PlanTargetMoves = %v, want a refusal naming %q", tc.name, err, tc.want)
+		}
+	}
+}
+
+// Criterion 1 with the ruled value: `next` on a planned intent is a legal
+// target to the record lint as it is to the verb.
+func TestTheRecordLintAdmitsNextOnAPlannedIntent(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, plannedDir+"/itd-13-next.md", withTarget(plannedLinked("itd-13", "next", "spc-7"), "next"))
+	writeFile(t, root, specsOpen+"/spc-7-next.md", specNaming("spc-7", "next", "itd-13"))
+	if fs := targetFindings(t, root); len(fs) != 0 {
+		t.Fatalf("`next` on a planned intent is legal: %+v", fs)
 	}
 }

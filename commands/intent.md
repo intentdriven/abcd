@@ -674,7 +674,10 @@ intent only: a bundle is planned without one and each member targeted after);
 Refused with nothing written: a draft, a shipped, superseded or discipline
 record, and a value that is neither shape. A target is a report, never a gate:
 `launch --dry-run` and the release cut (`launch ship`, `abcd changelog`) list
-every targeted intent still planned, and neither refuses on one. Closing the
+every targeted intent still planned, and neither refuses on one. The cut moves
+every target it passes — `next`, or a tag at or below the release it cuts — to
+`next`, whatever the following release is numbered, in the same write as the
+changelog, and the dated section names the move. Closing the
 spec that ships the intent drops the line, as superseding it does, and
 record-lint's `record_schema` rule refuses a `target_release` left on a shipped
 or superseded intent.

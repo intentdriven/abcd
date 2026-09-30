@@ -648,7 +648,13 @@ the parity diff and the deep smoke tier where the run made them, and every
 planned intent that names a release it must land by, under *Targeted, not
 shipped* (itd-2609212103572513): the preview, the cut's emit and its ingest list
 the same intents in their human and machine-readable output too, and none of
-them refuses on one.
+them refuses on one. The ingest moves every target the cut passes (`next`, or a
+tag at or below the derived version) to `next`, whatever the following release
+is numbered (the product thinker's ruling BS1 of 2026-09-29), rewriting the
+record in the write that rolls the changelog and naming the move in one line
+under the dated section's notice (`changelog.TargetMoveNote`), which the site's
+release stamp passes over because the line names intents the release did not
+ship.
 A refused cut writes its report too, and the refusal names where it landed. The
 preview's JSON carries `report_path`, the cut's `preflight_report`. A detector
 fails the build if any non-test Go source under `internal/` so much as names the

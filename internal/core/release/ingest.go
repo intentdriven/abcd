@@ -42,6 +42,8 @@ import (
 
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
 	"github.com/intentdriven/abcd/internal/core/changelog"
+	"github.com/intentdriven/abcd/internal/core/intent"
+	"github.com/intentdriven/abcd/internal/core/launch"
 	"github.com/intentdriven/abcd/internal/core/lint"
 	"github.com/intentdriven/abcd/internal/core/surface"
 	"github.com/intentdriven/abcd/internal/core/update"
@@ -291,6 +293,11 @@ type IngestResult struct {
 	// Page reports the release page: written (and what moved to the archive), or
 	// why no page was written.
 	Page PageResult `json:"page"`
+	// Moved lists every targeted intent the cut passed without shipping it,
+	// each rewritten to `next` in the same change unless it already named
+	// `next` (itd-2609212103572513 criterion 3, ruling BS1 of 2026-09-29), and
+	// named in the section's move note.
+	Moved []launch.TargetMove `json:"moved_targets,omitempty"`
 	// Undo reverses the cut's writes. The ship verb applies it when a step after
 	// the ingest refuses, so a refused ship leaves nothing behind.
 	Undo UndoPlan `json:"-"`
@@ -376,7 +383,10 @@ func ingest(root string, current surface.Snapshot, raw []byte, at time.Time, ops
 	// verdict is returned: a fault here is a stop, and recomposing against it
 	// would loop for nothing.
 	heading := datedHeading(cut.NextTag, at)
-	section := renderSection(heading, entries)
+	// Each target this cut passes becomes `next` in the same change, and the
+	// section names the move (itd-2609212103572513 criterion 3, ruling BS1).
+	moves := launch.MissedTargets(cut.Targets, cut.NextTag)
+	section := renderSection(heading, entries, changelog.TargetMoveNote(moves))
 	content, before, err := insertSection(root, section)
 	if err != nil {
 		return res, err
@@ -421,7 +431,23 @@ func ingest(root string, current surface.Snapshot, raw []byte, at time.Time, ops
 	if hasPage {
 		plan.page = []byte(pageText)
 	}
-	undo, err := execute(ops, root, plan)
+	var undo UndoPlan
+	if len(moves) == 0 {
+		undo, err = execute(ops, root, plan)
+	} else {
+		// The records are read and rewritten under the intent store's lock, as
+		// every intent write is, so a target edited since the cut read it is
+		// refused rather than overwritten.
+		err = intent.WithMintLock(root, func() error {
+			rewrites, err := intent.PlanTargetMoves(root, moves)
+			if err != nil {
+				return err
+			}
+			plan.records = rewrites
+			undo, err = execute(ops, root, plan)
+			return err
+		})
+	}
 	if err != nil {
 		return res, err
 	}
@@ -431,6 +457,7 @@ func ingest(root string, current surface.Snapshot, raw []byte, at time.Time, ops
 	res.Heading = heading
 	res.Lines = len(entries)
 	res.Cited = required
+	res.Moved = moves
 	res.Undo = undo
 	if hasPage {
 		res.Page = PageResult{
@@ -712,8 +739,14 @@ func datedHeading(nextTag string, at time.Time) string {
 // The notice sits directly under the heading, before any section, once: the
 // function renders exactly one cut, and each cut is its own dated section, so
 // idempotence across cuts holds by construction rather than by a scan.
-func renderSection(heading string, entries []ChangelogEntry) []string {
+func renderSection(heading string, entries []ChangelogEntry, moveNote string) []string {
 	lines := []string{heading, "", sectionNotice, ""}
+	// The move note sits under the notice, ahead of every change-type heading:
+	// it names intents this release did not ship, so it is no entry of any
+	// section (changelog.TargetMoveNote).
+	if moveNote != "" {
+		lines = append(lines, moveNote, "")
+	}
 	for _, section := range sectionOrder {
 		var body []string
 		for _, e := range entries {
