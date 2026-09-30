@@ -121,7 +121,16 @@ rather than skipped:
   model its provider does not list is refused naming the list, and one pointed at
   a provider this machine has not configured is a diagnostic: the step stays on
   the host, as it would with nothing configured (adr-25). A role outside the
-  roster is named and skipped, like an orphan routing row.
+  roster is named and skipped, like an orphan routing row. A route's name is a
+  plain lower-case name. A repository route that is not `<provider>/<model>`,
+  or whose name only the repository spells otherwise (a lookalike letter from
+  another script, a space, a control character), is skipped with one
+  diagnostic naming the repository's file and the offending text, sanitised
+  and with any non-ASCII letter spelled as an escape; the rest of the
+  configuration loads, and the machine's own route to that name, if it has
+  one, applies in its place (ruling CD2 of 2026-09-29). The same fault in
+  `~/.abcd/config.json` is refused, because that file is the person's own and a
+  route they set is never dropped silently.
 - **A route to a provider that holds a key sits on the machine alone.** Only a
   route the person set up on their own machine may spend their paid key (the
   product thinker's ruling AA(b) of 2026-09-29), so a repository's

@@ -232,6 +232,123 @@ func TestADenylistedKeyedRepositoryRouteIsStillRefused(t *testing.T) {
 	}
 }
 
+// TestARepositoryRouteWithAMalformedNameIsSkipped is ruling CD2's "other
+// commands keep working" for a route's NAME: a repository route whose name is
+// not a plain lower-case name (the review probe's Cyrillic U+0456 in "scribe",
+// a judgement type with a space, a name carrying a bidi override and an escape)
+// is skipped with one diagnostic naming the file and the rejected name, and
+// the rest of the configuration loads. The name is repository-authored bytes,
+// so the diagnostic carries no terminal-attack rune and spells a lookalike
+// letter as an escape the reader can see.
+func TestARepositoryRouteWithAMalformedNameIsSkipped(t *testing.T) {
+	for label, tc := range map[string]struct {
+		route, setting, shown string
+	}{
+		"cyrillic lookalike": {route: `"roles":{"scr\u0456be":"local/qwen/qwen3-8b"}`,
+			setting: "oracle.roles", shown: `"scr\u0456be"`},
+		"judgement with a space": {route: `"judgements":{"Bad Type":"local/qwen/qwen3-8b"}`,
+			setting: "oracle.judgements", shown: `"Bad Type"`},
+		"bidi and escape": {route: `"roles":{"scribe\u202e\u001b[2J":"local/qwen/qwen3-8b"}`,
+			setting: "oracle.roles", shown: `"scribe??[2J"`},
+	} {
+		t.Run(label, func(t *testing.T) {
+			f := newFx(t)
+			f.machineConfig(`{"oracle":{"api":{` + openrouterBlock + `,` + localBlock + `}}}`)
+			f.repoConfig(`{"oracle":{` + tc.route + `,"denylist":["openai/*"]}}`)
+			c, err := LoadAPI(f.roots)
+			if err != nil {
+				t.Fatalf("LoadAPI refused the whole configuration over one repository route's name: %v", err)
+			}
+			if len(c.Diagnostics) != 1 {
+				t.Fatalf("diagnostics %q, want exactly one naming the skipped route", c.Diagnostics)
+			}
+			d := c.Diagnostics[0]
+			for _, want := range []string{".abcd/config.json (repo layer)", tc.setting, tc.shown, "skipped"} {
+				if !strings.Contains(d, want) {
+					t.Errorf("diagnostic %q does not name %q", d, want)
+				}
+			}
+			for _, r := range d {
+				if r < 0x20 || r == 0x7f || r > 0x7e {
+					t.Errorf("diagnostic %q carries the rune %U; a repository name reaches the terminal sanitised", d, r)
+				}
+			}
+			if len(c.Denylist()) != 2 {
+				t.Errorf("denylist = %+v; the rest of the repository's configuration must still load", c.Denylist())
+			}
+			if len(c.Providers()) != 2 {
+				t.Errorf("providers = %+v; the machine's blocks must still load", c.Providers())
+			}
+		})
+	}
+}
+
+// TestARepositoryRouteWithAMalformedValueIsSkipped: a repository route that is
+// not <provider>/<model> names no provider, so no trust question arises, and
+// under ruling CD2 it is skipped with one diagnostic rather than taking every
+// command that reads the configuration down; the machine's own route to the
+// name applies in its place. The machine's malformed route is still refused
+// (TestAMalformedRouteIsRefused).
+func TestARepositoryRouteWithAMalformedValueIsSkipped(t *testing.T) {
+	for route, shown := range map[string]string{
+		`"jev"`:           `"jev"`,
+		`"/typesafe/jev"`: `"/typesafe/jev"`,
+		`"openrouter/"`:   `"openrouter/"`,
+		`"lo\u202ecal"`:   `"lo?cal"`,
+		`7`:               "not a string",
+	} {
+		t.Run(route, func(t *testing.T) {
+			f := newFx(t)
+			f.machineConfig(`{"oracle":{"api":{` + localBlock + `},"roles":{"scribe":"local/qwen/qwen3-8b"}}}`)
+			f.repoConfig(`{"oracle":{"roles":{"scribe":` + route + `},"denylist":["openai/*"]}}`)
+			c, err := LoadAPI(f.roots)
+			if err != nil {
+				t.Fatalf("LoadAPI refused the whole configuration over one repository route's value: %v", err)
+			}
+			if len(c.Diagnostics) != 1 {
+				t.Fatalf("diagnostics %q, want exactly one naming the skipped route", c.Diagnostics)
+			}
+			d := c.Diagnostics[0]
+			for _, want := range []string{".abcd/config.json (repo layer)", "oracle.roles.scribe", shown, "skipped"} {
+				if !strings.Contains(d, want) {
+					t.Errorf("diagnostic %q does not name %q", d, want)
+				}
+			}
+			for _, r := range d {
+				if r < 0x20 || r == 0x7f || r > 0x7e {
+					t.Errorf("diagnostic %q carries the rune %U; a repository value reaches the terminal sanitised", d, r)
+				}
+			}
+			if tgt, ok := c.Role("scribe"); !ok || tgt.Origin != "~/.abcd/config.json" {
+				t.Errorf("scribe = %+v, %v; want the machine's own route in its place", tgt, ok)
+			}
+		})
+	}
+}
+
+// TestAMachineRouteWithAMalformedNameIsRefused: the machine's file is the
+// person's own, so a malformed route name there refuses the configuration
+// naming that file, as every machine fault does; the skip is for a repository.
+// A name both layers spell alike is the machine's too.
+func TestAMachineRouteWithAMalformedNameIsRefused(t *testing.T) {
+	for label, repo := range map[string]string{
+		"machine only": `{"oracle":{"denylist":["openai/*"]}}`,
+		"both layers":  `{"oracle":{"roles":{"scr\u0456be":"local/qwen/qwen3-8b"}}}`,
+	} {
+		t.Run(label, func(t *testing.T) {
+			f := newFx(t)
+			f.machineConfig(`{"oracle":{"api":{` + localBlock + `},"roles":{"scr\u0456be":"local/qwen/qwen3-8b"}}}`)
+			f.repoConfig(repo)
+			err := f.loadAPIErr()
+			for _, want := range []string{"~/.abcd/config.json (machine layer)", "oracle.roles", "not a plain lower-case name"} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("refusal %q does not name %q", err, want)
+				}
+			}
+		})
+	}
+}
+
 // TestAMachineRouteToAKeyedProviderIsAdmitted: the machine's own route to a
 // provider that holds a key is the person's, and loads as it always did.
 func TestAMachineRouteToAKeyedProviderIsAdmitted(t *testing.T) {

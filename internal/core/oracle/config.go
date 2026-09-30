@@ -19,18 +19,20 @@ package oracle
 //     in the roster) or a judgement type at <provider>/<model>. The machine
 //     may point at any provider it configures. The repository may point only
 //     at a provider that holds no key, and there its route wins per name; a
-//     repository route to a provider that holds a key is refused, because only
+//     repository route to a provider that holds a key is skipped, because only
 //     a route the person sets on their own machine may spend their paid key
 //     (the product thinker's ruling AA(b) of 2026-09-29, which reverses the
 //     route half of itd-2609081951381895 Decision 8).
 //
 // Every route is checked here, before any call: a repository route to a
-// provider that holds a key is refused naming the machine's file as where to
-// set it, a model its provider does not list is refused naming the list, and a
-// listed model the denylist matches is refused naming the entry, whatever the
-// allowlist says. A route naming a provider this machine has not configured is
-// a diagnostic, not a refusal: the step stays on the host, exactly as it would
-// with nothing configured (adr-25).
+// provider that holds a key is skipped with a diagnostic naming the machine's
+// file as where to set it, as is a repository route that is not
+// <provider>/<model> or whose name is not a plain name (ruling CD2 of
+// 2026-09-29); a model its provider does not list is refused naming the list,
+// and a listed model the denylist matches is refused naming the entry,
+// whatever the allowlist says. A route naming a provider this machine has not
+// configured is a diagnostic, not a refusal: the step stays on the host,
+// exactly as it would with nothing configured (adr-25).
 //
 // Like the rest of the package, the resolver never writes, never reaches a
 // network and never prints.
@@ -40,11 +42,13 @@ import (
 	"fmt"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/adapter/openaiapi"
 	"github.com/intentdriven/abcd/internal/core/credential"
 	"github.com/intentdriven/abcd/internal/core/layered"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // The configuration keys, as every refusal names them.
@@ -123,7 +127,9 @@ type APIConfig struct {
 	judgements map[string]Target
 	// Diagnostics are the non-fatal reports the read produced, one line each,
 	// for a front door to print on stderr: a route naming a provider this
-	// machine has not configured, and a role outside the roster.
+	// machine has not configured, a role outside the roster, and a skipped
+	// repository route (one to a provider that holds a key, or one whose name
+	// is not a plain name).
 	Diagnostics []string
 }
 
@@ -299,9 +305,12 @@ func denial(e DenyEntry) string {
 // but the machine's that names a provider holding a key is skipped with a
 // diagnostic (skipKeyedRoute), and the machine's own route to the name, if it
 // has one, wins in its place: only the person's own machine may point a route
-// at their key.
+// at their key. A repository route that is not <provider>/<model>, and a route
+// name only the repository spells that is not a plain name, are skipped with a
+// diagnostic too; the machine's own are refused.
 func (c *APIConfig) readRoutes(s *layered.Stack, key string, into map[string]Target) error {
 	names := map[string]bool{}
+	onMachine := map[string]bool{}
 	for _, l := range []layered.Layer{layered.Repo, layered.Machine} {
 		ns, err := s.Members(l, key)
 		if err != nil {
@@ -309,6 +318,9 @@ func (c *APIConfig) readRoutes(s *layered.Stack, key string, into map[string]Tar
 		}
 		for _, n := range ns {
 			names[n] = true
+			if l == layered.Machine {
+				onMachine[n] = true
+			}
 		}
 	}
 	sorted := make([]string, 0, len(names))
@@ -322,16 +334,31 @@ func (c *APIConfig) readRoutes(s *layered.Stack, key string, into map[string]Tar
 			re = judgementsRe
 		}
 		if !re.MatchString(name) {
-			return fmt.Errorf("oracle adapter: %s.%s: the name is not a plain lower-case name", key, layered.BoundKey(name))
+			// A malformed name in the machine's file is the person's own
+			// mistake in their own file, and refuses like every other machine
+			// fault, so it is fixed rather than silently dropping a route they
+			// set. One only a repository spells is skipped with a diagnostic
+			// (ruling CD2 of 2026-09-29: a checkout's configuration never takes
+			// the commands that read it down), and the name is never looked up,
+			// since it may not even split into a key.
+			if onMachine[name] {
+				return fmt.Errorf("oracle adapter: %s (machine layer): %s name %s is not a plain lower-case name",
+					layered.Config.MachineOrigin(), key, quoteUntrusted(name))
+			}
+			c.Diagnostics = append(c.Diagnostics, fmt.Sprintf("oracle adapter: %s (repo layer): %s name %s is not a plain lower-case name "+
+				"(lower case letters, digits and -); the route is skipped and the rest of the configuration applies",
+				layered.Config.RepoOrigin(), key, quoteUntrusted(name)))
+			continue
 		}
 		found, err := s.Lookup(key + "." + name)
 		if err != nil {
 			return fmt.Errorf("oracle adapter: %w", err)
 		}
-		// A repository's route to a provider that holds a key is skipped, and
-		// the next layer's route to the name, the machine's own, applies in its
-		// place (ruling CD2 of 2026-09-29).
-		for len(found) > 0 && c.skipKeyedRoute(key, name, found[0]) {
+		// A repository's route that is not <provider>/<model>, or that points
+		// at a provider holding a key, is skipped, and the next layer's route
+		// to the name, the machine's own, applies in its place (ruling CD2 of
+		// 2026-09-29).
+		for len(found) > 0 && (c.skipMalformedRoute(key, name, found[0]) || c.skipKeyedRoute(key, name, found[0])) {
 			found = found[1:]
 		}
 		if len(found) == 0 {
@@ -363,6 +390,41 @@ func (c *APIConfig) readRoutes(s *layered.Stack, key string, into map[string]Tar
 		into[name] = Target{Provider: provider, Model: model, Origin: win.Origin}
 	}
 	return nil
+}
+
+// quoteUntrusted renders a route name that failed its pattern, or a route
+// value that failed its shape, for a diagnostic or a refusal. It is
+// file-authored bytes, a repository's among them, so termsafe masks every
+// terminal-attack rune first, and the quoting then spells any other non-ASCII
+// rune as an escape: a lookalike letter (the Cyrillic U+0456 in "scribe") is
+// why such a name fails, and printed as itself it would read as the plain name
+// it imitates.
+func quoteUntrusted(v string) string {
+	return strconv.QuoteToASCII(termsafe.Sanitize(layered.BoundKey(v)))
+}
+
+// skipMalformedRoute reports whether one layer's route to name is a route from
+// any layer but the machine's that is not <provider>/<model>, and says so in a
+// diagnostic when it is. Such a route names no provider, so no key and no
+// denylist entry is in question, and skipping it keeps every command that
+// reads the configuration working (ruling CD2 of 2026-09-29). The machine's
+// own malformed route is left to the refusal below: that file is the person's,
+// and a route they set is never dropped silently.
+func (c *APIConfig) skipMalformedRoute(key, name string, fd layered.Found) bool {
+	if fd.Layer == layered.Machine {
+		return false
+	}
+	what := "is not a string"
+	if text, err := layered.Decode[string](fd.Raw); err == nil {
+		provider, model, ok := strings.Cut(text, "/")
+		if ok && provider != "" && model != "" {
+			return false
+		}
+		what = "is " + quoteUntrusted(text)
+	}
+	c.Diagnostics = append(c.Diagnostics, fmt.Sprintf("oracle adapter: %s (%s layer): %s.%s %s; a route is <provider>/<model>, "+
+		"so this route is skipped and the rest of the configuration applies", fd.Origin, fd.Layer, key, name, what))
+	return true
 }
 
 // skipKeyedRoute reports whether one layer's route to name is a route from any

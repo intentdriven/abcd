@@ -431,8 +431,9 @@ The bare board names the same adapter as an optional gap
 (`oracle_api.none_configured`) while none is configured, and a configuration the
 adapter refuses as `oracle_api.config_refused`, naming the file and the key.
 A route the configuration read skips (a repository's route to a provider that
-holds a key, a route to a provider this machine has not configured, or a role
-outside the roster) is the optional gap `oracle_api.route_skipped`, its
+holds a key, a repository's route that is not `<provider>/<model>` or whose
+name is not a plain lower-case name, a route to a provider this machine has
+not configured, or a role outside the roster) is the optional gap `oracle_api.route_skipped`, its
 `detail` one line per skipped route; relay each line.
 Declining is not running `connect`, and it changes nothing.
 
@@ -477,7 +478,8 @@ chooses once per credential. Bare, the sub-verb lists each credential an
 adapter reads (`hosting.cloudflare` for the site setup, each configured
 provider's key) with its `state` (`set`, `not set`, or a refusal) and `home`;
 never a value. A route the configuration read skips (a repository's route to
-a provider that holds a key) is named on stderr and the listing goes on: relay
+a provider that holds a key, or one that is not `<provider>/<model>` or whose
+name is not a plain lower-case name) is named on stderr and the listing goes on: relay
 that line too, as with a name that is a provider's credential, whose read of
 the configuration names it the same way. With a name it explains that credential and writes nothing:
 relay `unlocks`, `without_it`, then `homes_prose` verbatim (it recommends the
