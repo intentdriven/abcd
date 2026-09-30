@@ -24,7 +24,7 @@ func TestPageSchemaKeyRefusalSealsAGluedToken(t *testing.T) {
 				"source": map[string]any{"class": "session_memory"},
 				tc.key:   1,
 			}
-			_, err := ValidateDistilledPage(t.TempDir(), data)
+			_, err := validateDistilledPage(t.TempDir(), data)
 			if err == nil {
 				t.Fatal("a page carrying an undeclared key was accepted")
 			}

@@ -57,7 +57,7 @@ func TestPageSchemaRefusalsDoNotEchoThePayload(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			_, err := ValidateDistilledPage(t.TempDir(), tc.data)
+			_, err := validateDistilledPage(t.TempDir(), tc.data)
 			if err == nil {
 				t.Fatal("a page carrying the leak was accepted")
 			}
