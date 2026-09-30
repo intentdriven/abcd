@@ -313,7 +313,7 @@ verified by the stage's own verifier, so a verified one completes the stage in
 the same call. The verified receipt, or the validator's recorded return, names
 the route that ran it (asked, ran, the model the runner reported), which is the
 only field a runner-run review's record differs in from a host-run one's; the
-record gains a `runner` line. A runner that is absent, refuses, fails, runs past
+record's receipt or verdict line names the runner that ran it. A runner that is absent, refuses, fails, runs past
 its time, answers unparsably or writes a receipt the verifier refuses leaves the
 lane awaiting: the call records one fallback receipt (the role, the runner asked
 for, the reason and the route that runs it) in the state and the record, and
