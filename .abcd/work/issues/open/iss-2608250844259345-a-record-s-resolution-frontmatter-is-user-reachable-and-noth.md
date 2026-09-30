@@ -7,6 +7,7 @@ category: "process"
 source: "agent-finding"
 found_during: "v0.6.6 docs-currency release gate 2026-08-25"
 found_at: ".abcd/work/issues"
+remedy: "Waits on the M13/M14 intent's interview (refuse or advise): add a co-edit rule to scripts/check-issue-resolution.sh that flags a commit changing the body of a record under resolved/ or wontfix/ without changing its resolution field; if refuse, it fails the range; if advise, it prints a warning through the shared warn baseline. Prove it with a fixture commit editing a resolved record's body alone (flagged) and one editing both (clean); the contradiction detector follows as the second layer M14 names."
 deferred_after: v0.11.1
 deferral_reason: "Ruled M14 on 2026-09-23: the co-edit rule first (a body change on a resolved record requires a resolution change in the same commit), the contradiction detector second, both inside the one sibling intent ruling M13 names with iss-2608241612007530 and iss-2608261635558358. That intent is not filed, filing it needs the product thinker's adoption, and its interview owes one question: does the co-edit rule refuse or advise?"
 ---
@@ -16,3 +17,9 @@ a record's resolution frontmatter is user-reachable and nothing checks it agains
 ## Deferral 2026-09-29
 
 Deferred past v0.11.1: Ruled M14 on 2026-09-23: the co-edit rule first (a body change on a resolved record requires a resolution change in the same commit), the contradiction detector second, both inside the one sibling intent ruling M13 names with iss-2608241612007530 and iss-2608261635558358. That intent is not filed, filing it needs the product thinker's adoption, and its interview owes one question: does the co-edit rule refuse or advise?
+
+## Remedy grounds (2026-09-29)
+
+- The ruling of 2026-09-23 in .abcd/work/DECISIONS.md orders the co-edit rule first, and it is mechanical where a contradiction detector needs judgement.
+- The issue-resolution script already walks the range's record moves, so the rule sits beside RS006 rather than in a new gate.
+- Rejected: a semantic contradiction check first, which the ruling sequences second.

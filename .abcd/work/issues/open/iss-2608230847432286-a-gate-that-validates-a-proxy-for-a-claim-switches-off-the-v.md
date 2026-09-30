@@ -7,6 +7,7 @@ category: "process"
 source: "user-observation"
 found_during: "record-review"
 found_at: ".abcd/development/principles/enforcement-claims-are-facts.md"
+remedy: "Waits on the M9 detectors' planning interview (which gates first; warn or refuse): audit the exemption lists first (test and lint exclusion lists), requiring each exempt name to carry a guard that fails once the exemption stops being needed, then the proxy measures; if warn, report findings through the one shared shrink-only warn baseline (ruling BT3); if refuse, add a record-lint rule refusing an exclusion list with no named guard. Prove each guard by watching it fail on a scratch copy where the exempt subject is made compliant."
 details: "enforcement-claims-are-facts covers the phantom gate: a check described but not running, whose harm is that readers stop compensating. Three instances from 2026-08-22/23 show the family the principle does not yet name, in which the reassuring signal is real: a gate measuring a proxy for the claim, and a gate measuring the right property over a subject set narrowed by a named exclusion that was defended by a test incapable of failing. A fourth case is recorded as adjacent rather than folded in, because it involves no gate and no enforcement claim. In none of them did anything error, and no instrument surfaced any. Proposed as a paragraph extending that principle, not as a new principle, per one-canonical-primitive."
 suggested_fix: "Extend .abcd/development/principles/enforcement-claims-are-facts.md with a paragraph naming the real-signal family and its three worked examples. Do not add a new principle beside it: one-canonical-primitive forbids the third copy, and the Why paragraph of the existing principle already states the mechanism this shares. Decide separately whether the adjacent case below is admitted, because it widens the class from gates that do not gate to assurances nobody issued but everyone read in, and a class without that boundary is harder to apply rather than easier. A maintainer decides adoption; agents agreeing is not the gate."
 related_issues: ["iss-2608221457227162", "iss-2608230752354926", "iss-2608221328552172", "iss-2608230817034768", "iss-2608230847432285"]
@@ -140,3 +141,10 @@ change is not the gate that changes it.
 ## Deferral 2026-09-29
 
 Deferred past v0.11.1: The principle half is done: enforcement-claims-are-facts carries the proxy-gate paragraph (7bed788f2, the product thinker's ruling M9 of 2026-09-23; the adjacent sampling case is left out). The detectors M9 commissioned are owed a planning interview, which opens on one question: which gates do the proxy-gate detectors audit first, and does a finding warn or refuse?
+
+## Remedy grounds (2026-09-29)
+
+- Exemption lists come first because they are written artefacts a detector can enumerate, while a proxy measure needs a human to name the property it stands in for; the record's shape 3 was the costliest of the three.
+- The warn path reuses the baseline ruled on 2026-09-29 (BT3) rather than a second warning channel.
+- Rejected: a detector for the adjacent sampling case, which ruling M9 left out of the class.
+- This remedy supersedes the suggested_fix: its principle paragraph landed in enforcement-claims-are-facts (7bed788f2), so what remains is the detectors.

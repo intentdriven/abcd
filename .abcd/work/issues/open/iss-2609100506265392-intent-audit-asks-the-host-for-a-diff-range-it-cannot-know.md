@@ -11,6 +11,7 @@ production_mode: hand-written
 found_at: "internal (intent audit request, spec close receipt)"
 deferred_after: "v0.11.1"
 deferral_reason: "ruling owed to the product thinker (lane drainFresh of autonomous run A, 2026-09-29): Should spec close record the closing commit on its audit receipt, or should the audit request sanction auditing the shipped tree at a named commit and record which form was used? Planning is owed before code (itd-2609201916151817 carries a range only for build lanes)."
+remedy: "Waits on ruling CA4 (record the closing commit, sanction a tree audit, or both): if the closing commit is recorded, have spec close write its HEAD sha onto the owed audit receipt and the audit request print it in the delivered line in place of host supplies the range; if tree audits are sanctioned, have the request name the tree at a commit as an accepted form and ingest require a form field (diff or tree) on the verdict; if both, do both; each proven by a request-rendering test in internal/core/intent."
 ---
 
 The fidelity-review request names its delivered side as "the diff/commit range that realised spc-N (host supplies the range)", and there is no mechanism by which the host can supply it.
@@ -24,3 +25,7 @@ A second session in a different managed repository hit the same wall from the ot
 Needed, cheapest first: say in the request that auditing the tree at a named commit is an accepted form, and have the verdict record WHICH form was used, so a reader can tell a diff audit from a tree audit. Better: record the closing commit on the receipt at `spec close`, or let a spec record the commits that realised it — the resolve path already accepts a `--commit` pointer for issues — so the range is a fact the record carries rather than one the host reconstructs from prose that a history rewrite can erase.
 
 Distinct from the sibling finding that the same request carries no provenance hashes while `ingest` requires them: that one is about the hashes, this one is about the range.
+
+## Remedy grounds (2026-09-29)
+
+Why: spec close is the one moment the tool holds the closing commit, and a verdict that names its form lets two audits of one intent be compared honestly. Rejected: deriving the range from spc- ids in commit messages, which the record shows a history rewrite erased for seven of thirteen intents.
