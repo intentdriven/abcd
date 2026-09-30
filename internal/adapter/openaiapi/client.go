@@ -138,6 +138,20 @@ func WithTimeout(d time.Duration) Option {
 	}
 }
 
+// ErrUnreachable is what a call's error wraps when the provider could not be
+// reached at all: no connection to it (or to the proxy in front of it) was
+// ever made, so nothing of the request, the key or the brief left this
+// machine. A caller may leave such a step to another leg. A provider that
+// answered, or that took the request and never answered, is not unreachable:
+// the brief may already have been sent.
+var ErrUnreachable = errors.New("openaiapi: the provider could not be reached")
+
+// unreachableError is a scrubbed refusal that is ErrUnreachable.
+type unreachableError struct{ msg string }
+
+func (e *unreachableError) Error() string { return e.msg }
+func (e *unreachableError) Unwrap() error { return ErrUnreachable }
+
 // errRedirect is what the client answers a redirect with.
 var errRedirect = errors.New("redirect refused")
 
@@ -514,18 +528,37 @@ func (c *Client) transportError(err error) error {
 	switch {
 	case errors.Is(err, errRedirect):
 		return c.fail(c.host + " answered with a redirect, and abcd never follows one: the base URL is pinned, so the key and the brief go nowhere else")
-	case errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &ne) && ne.Timeout()):
-		return c.fail(fmt.Sprintf("no answer within %s from %s, so the call is abandoned", c.timeout, c.host))
 	case errors.Is(err, context.Canceled):
 		return c.fail("the call to " + c.host + " was cancelled")
+	case neverConnected(err):
+		return &unreachableError{msg: c.reachFailure(err).Error()}
+	case errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &ne) && ne.Timeout()):
+		return c.fail(fmt.Sprintf("no answer within %s from %s, so the call is abandoned", c.timeout, c.host))
 	}
-	// The *url.Error text names the endpoint (no secret) and the transport's
-	// own fault; it is scrubbed and bounded all the same.
+	return c.reachFailure(err)
+}
+
+// reachFailure is a transport fault in the transport's own words. The
+// *url.Error text names the endpoint (no secret) and the fault; it is
+// scrubbed and bounded all the same.
+func (c *Client) reachFailure(err error) error {
 	var ue *url.Error
 	if errors.As(err, &ue) {
 		err = ue.Err
 	}
 	return c.fail("could not reach " + c.host + ": " + termsafe.Sanitize(bound(c.scrub(err.Error()))))
+}
+
+// neverConnected reports whether err is a failure to connect at all: a name
+// that did not resolve, or a dial (to the provider, or to the proxy in front
+// of it) that did not complete, so no byte of the request was sent.
+func neverConnected(err error) bool {
+	var dns *net.DNSError
+	if errors.As(err, &dns) {
+		return true
+	}
+	var op *net.OpError
+	return errors.As(err, &op) && (op.Op == "dial" || op.Op == "proxyconnect")
 }
 
 // fail is every error the client returns: prefixed, and scrubbed of the key a

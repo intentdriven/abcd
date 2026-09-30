@@ -260,6 +260,41 @@ func TestATimeoutIsRefused(t *testing.T) {
 	}
 }
 
+// TestOnlyAConnectionNeverMadeIsUnreachable: a provider that could not be
+// reached before anything was sent is ErrUnreachable, so a caller may leave
+// the step to another leg; one that answered, or took the brief and never
+// answered, is not, because the brief may already have been sent.
+func TestOnlyAConnectionNeverMadeIsUnreachable(t *testing.T) {
+	closed := newFake(t, ok("m", `{"verdict":"yes"}`))
+	base := closed.base()
+	closed.srv.Close()
+	_, err := mustClient(t, base, testKey).Complete(context.Background(), request(), jsonObject)
+	if !errors.Is(err, ErrUnreachable) {
+		t.Fatalf("a closed server: err = %v, want ErrUnreachable", err)
+	}
+	assertNoKey(t, err)
+	if !strings.Contains(err.Error(), "could not reach") {
+		t.Fatalf("error = %v, want the reason kept", err)
+	}
+
+	answered := newFake(t, status(500, `{"error":{"message":"down"}}`))
+	if _, err := mustClient(t, answered.base(), testKey).Complete(context.Background(), request(), jsonObject); err == nil || errors.Is(err, ErrUnreachable) {
+		t.Fatalf("a server that answered 500: err = %v, want a failure that is not ErrUnreachable", err)
+	}
+
+	release := make(chan struct{})
+	stalled := newFake(t, func(w http.ResponseWriter, r *http.Request, _ map[string]json.RawMessage) {
+		select {
+		case <-release:
+		case <-r.Context().Done():
+		}
+	})
+	defer close(release)
+	if _, err := mustClient(t, stalled.base(), testKey, WithTimeout(200*time.Millisecond)).Complete(context.Background(), request(), jsonObject); err == nil || errors.Is(err, ErrUnreachable) {
+		t.Fatalf("a server that took the brief and stalled: err = %v, want a failure that is not ErrUnreachable", err)
+	}
+}
+
 // TestARedirectIsNeverFollowed: the base URL is pinned; a provider answering
 // with a redirect elsewhere is refused and the other host never sees the key
 // or the brief.
