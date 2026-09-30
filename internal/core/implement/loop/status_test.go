@@ -29,7 +29,7 @@ func TestStatusLanesReadsTheLaneEachRunWorksOn(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []statusblock.Started{{Intent: "itd-10", Lane: statusblock.Lane{Run: res.RunID, Lane: "lane-1", Stage: string(StageWorktree)}}}
+	want := []statusblock.Started{{Intent: "itd-10", Lanes: []statusblock.Lane{{Run: res.RunID, Lane: "lane-1", Stage: string(StageWorktree)}}}}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("StatusLanes = %+v, want %+v", got, want)
 	}
@@ -53,16 +53,16 @@ func TestStatusLanesReadsTheLaneEachRunWorksOn(t *testing.T) {
 
 	rewrite(func(st *State) {
 		st.Lanes[0].Stage = StageImplement
-		st.Lanes[0].Awaiting = &Await{Role: "implementer", Brief: "b", Receipt: "r", Since: time.Unix(0, 0).UTC()}
+		st.Lanes[0].Awaits = []Await{{Role: "implementer", Brief: "b", Receipt: "r", Since: time.Unix(0, 0).UTC()}}
 	})
-	if got, _ := StatusLanes(repo.Root()); len(got) != 1 || got[0].Lane.Stage != "implement" || got[0].Lane.Awaiting != "implementer" {
+	if got, _ := StatusLanes(repo.Root()); len(got) != 1 || got[0].Lanes[0].Stage != "implement" || got[0].Lanes[0].Awaiting != "implementer" {
 		t.Errorf("a lane awaiting its implementer reads %+v", got)
 	}
 
 	rewrite(func(st *State) {
-		st.Lanes[0].Stage, st.Lanes[0].Awaiting = StageDone, nil
+		st.Lanes[0].Stage, st.Lanes[0].Awaits = StageDone, nil
 	})
-	if got, _ := StatusLanes(repo.Root()); len(got) != 1 || got[0].Lane != (statusblock.Lane{Run: res.RunID, Stage: "pending"}) {
+	if got, _ := StatusLanes(repo.Root()); len(got) != 1 || len(got[0].Lanes) != 1 || got[0].Lanes[0] != (statusblock.Lane{Run: res.RunID, Stage: "pending"}) {
 		t.Errorf("a run between lanes reads %+v, want its step pending and no lane", got)
 	}
 

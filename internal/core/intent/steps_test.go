@@ -164,3 +164,28 @@ func TestReconcileRemainderRefusesAnUnclosedSpan(t *testing.T) {
 		t.Fatalf("the intent must stay in planned/: %v", serr)
 	}
 }
+
+// C6 (spc-2609202134341288): the remainder rewrites each carried step's
+// `- needs:` line against its own numbering, and the close names each line it
+// rewrote, before and after.
+func TestReconcileRemainderRewritesNeeds(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, plannedDir+"/itd-10-alpha.md", plannedLinked("itd-10", "alpha", "spc-1"))
+	writeFile(t, root, specsOpen+"/spc-1-alpha.md", specNaming("spc-1", "alpha", "itd-10")+"\n## Summary\n\nWritten.\n\n## Steps\n\n"+
+		"1. One\n   - landed: #1\n2. Two\n   - needs: 1\n3. Three\n   - landed: #3\n4. Four\n   - needs: 1, 2\n")
+	res, err := Reconcile(root, "spc-1", "", RemainderRequest{Slug: "the-rest"})
+	if err != nil {
+		t.Fatalf("the remainder close must succeed: %v", err)
+	}
+	if len(res.NeedsRewritten) != 2 || res.NeedsRewritten[0].After != "- needs: none" || res.NeedsRewritten[1].Before != "- needs: 1, 2" || res.NeedsRewritten[1].After != "- needs: 1" {
+		t.Fatalf("the close names both rewritten lines: %+v", res.NeedsRewritten)
+	}
+	data, err := os.ReadFile(filepath.Join(root, res.Remainder.Path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	steps, err := spec.ParseSteps(string(data))
+	if err != nil || len(steps) != 2 || !steps[0].NeedsDeclared || len(steps[0].Needs) != 0 || fmt.Sprint(steps[1].Needs) != "[1]" {
+		t.Fatalf("the remainder parses with the rewritten needs: %+v, %v\n%s", steps, err, data)
+	}
+}

@@ -313,6 +313,9 @@ type ReconcileResult struct {
 	// spec lists no steps, when every step it lists has landed, and when the
 	// remainder was reused rather than minted: a reused spec is left as found.
 	RemainderSteps []spec.Step `json:"remainder_steps,omitempty"`
+	// NeedsRewritten names each carried step's `- needs:` line the remainder
+	// rewrote against its own numbering, before and after.
+	NeedsRewritten []spec.NeedsRewrite `json:"needs_rewritten,omitempty"`
 	// ReceiptID is the deterministic fidelity-review receipt parked in the
 	// shipped intent's Audit Notes (empty if the emit failed).
 	ReceiptID string `json:"receipt_id,omitempty"`

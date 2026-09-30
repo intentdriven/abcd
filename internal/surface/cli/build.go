@@ -349,9 +349,24 @@ func renderLaneLine(w io.Writer, l loop.Lane) {
 		fmt.Fprintf(w, "    validation round %d at %s: %s\n", r.Round, shortSHA(r.HeadSHA), termsafe.Sanitize(strings.Join(parts, ", ")))
 	}
 	renderLanding(w, l.PR, l.Landing)
-	if l.Awaiting != nil {
-		fmt.Fprintf(w, "    awaiting the %s's receipt at %s (brief %s)\n", termsafe.Sanitize(l.Awaiting.Role),
-			termsafe.Sanitize(fsutil.RedactHome(l.Awaiting.Receipt)), termsafe.Sanitize(fsutil.RedactHome(l.Awaiting.Brief)))
+	for _, a := range l.Awaits {
+		fmt.Fprintf(w, "    awaiting the %s's receipt at %s (brief %s)\n", termsafe.Sanitize(a.Role),
+			termsafe.Sanitize(fsutil.RedactHome(a.Receipt)), termsafe.Sanitize(fsutil.RedactHome(a.Brief)))
+	}
+	for _, s := range l.Syncs {
+		state := "clean"
+		if s.Conflicted {
+			state = "conflicted in " + strings.Join(s.Paths, ", ")
+		}
+		fmt.Fprintf(w, "    synced with %s after %s landed: %s", shortSHA(s.Merged), termsafe.Sanitize(strings.Join(s.Siblings, ", ")), termsafe.Sanitize(state))
+		if s.Head != "" {
+			fmt.Fprintf(w, ", head %s", shortSHA(s.Head))
+		}
+		fmt.Fprintln(w)
+	}
+	if h := l.Hold; h != nil && l.Stage == loop.StageHeld {
+		fmt.Fprintf(w, "    held after %s's hand-back at %s, before its %s: land it as it is with `abcd implement step --release %s`, or discard it with `abcd implement step --discard %s`\n",
+			termsafe.Sanitize(h.Cause), shortSHA(h.Head), termsafe.Sanitize(h.Before), l.ID, l.ID)
 	}
 }
 
@@ -365,6 +380,34 @@ func renderPending(w io.Writer, pending []loop.PendingStep) {
 		parts = append(parts, fmt.Sprintf("%d %q", p.Number, termsafe.Sanitize(p.Title)))
 	}
 	fmt.Fprintf(w, "  pending: spec step %s\n", strings.Join(parts, ", "))
+}
+
+// redactAwaits home-redacts the paths every await carries.
+func redactAwaits(as []loop.Await) []loop.Await {
+	out := make([]loop.Await, 0, len(as))
+	for i := range as {
+		out = append(out, *redactAwait(&as[i]))
+	}
+	return out
+}
+
+// redactStep home-redacts the paths a step result carries.
+func redactStep(res loop.StepResult) loop.StepResult {
+	res.Awaiting = redactAwait(res.Awaiting)
+	if res.Fallback != nil {
+		fb := *res.Fallback
+		fb.Detail = fsutil.RedactHome(fb.Detail)
+		res.Fallback = &fb
+	}
+	alive := make([]loop.AliveLane, 0, len(res.Alive))
+	for _, a := range res.Alive {
+		a.Awaits = redactAwaits(a.Awaits)
+		alive = append(alive, a)
+	}
+	if res.Alive != nil {
+		res.Alive = alive
+	}
+	return res
 }
 
 // redactAwait home-redacts the paths an await carries, for a stream. They keep
@@ -414,7 +457,9 @@ func newImplementStatusCommand(asJSON *bool) *cobra.Command {
 			}
 			for i := range runs {
 				for j := range runs[i].Lanes {
-					runs[i].Lanes[j].Awaiting = redactAwait(runs[i].Lanes[j].Awaiting)
+					if runs[i].Lanes[j].Awaits != nil {
+						runs[i].Lanes[j].Awaits = redactAwaits(runs[i].Lanes[j].Awaits)
+					}
 					runs[i].Lanes[j].Worktree = fsutil.DisplayPath(runs[i].Lanes[j].Worktree)
 				}
 			}
@@ -436,6 +481,7 @@ func newImplementStatusCommand(asJSON *bool) *cobra.Command {
 					fmt.Fprintf(w, "run %s  %s (%s)  %s, driven by the %s\n", st.RunID, st.Key, st.Spec, state, st.Driver)
 					fmt.Fprintf(w, "  state:   %s\n", loop.StateRelPath(st.RunID))
 					renderPace(w, st.Pace)
+					renderSlots(w, st)
 					if st.NextEligibleAt != nil {
 						fmt.Fprintf(w, "  paused until %s\n", st.NextEligibleAt.UTC().Format("2006-01-02T15:04:05Z07:00"))
 					}
@@ -457,6 +503,18 @@ func newImplementStatusCommand(asJSON *bool) *cobra.Command {
 	return cmd
 }
 
+// renderSlots renders the slots a run has in use out of its ceiling, and the
+// work the ceiling holds back (ruling DR6). A held lane holds no slot.
+func renderSlots(w io.Writer, st loop.State) {
+	if st.Complete() {
+		return
+	}
+	fmt.Fprintf(w, "  slots:   %d of %d in use\n", st.SlotsInUse(), st.Ceiling())
+	for _, q := range st.Waiting {
+		fmt.Fprintf(w, "  waiting: %s's %s, held by the ceiling since %s\n", termsafe.Sanitize(q.Lane), termsafe.Sanitize(q.Role), q.Since.UTC().Format(time.RFC3339))
+	}
+}
+
 // renderStepResult is the text form of an `implement step` or `implement receipt` result.
 func renderStepResult(w io.Writer, verb string, res loop.StepResult) {
 	switch {
@@ -465,6 +523,13 @@ func renderStepResult(w io.Writer, verb string, res loop.StepResult) {
 			verb, res.RunID, res.Lane, res.HandBack.Verdict, res.HandBack.FixRounds)
 	case res.NextEligibleAt != nil:
 		fmt.Fprintf(w, "%s: %s's window has elapsed; paused until %s\n", verb, res.RunID, res.NextEligibleAt.UTC().Format(time.RFC3339))
+	case res.CeilingReached:
+		fmt.Fprintf(w, "%s: %s's ceiling is reached, %d of %d agents out; nothing new was handed out\n", verb, res.RunID, res.Slots, res.Ceiling)
+		for _, a := range res.Alive {
+			for _, aw := range a.Awaits {
+				fmt.Fprintf(w, "  %s awaits the %s at %s\n", a.Lane, termsafe.Sanitize(aw.Role), termsafe.Sanitize(aw.Receipt))
+			}
+		}
 	case res.PerformedStage != "":
 		fmt.Fprintf(w, "%s: %s completed %s's %s stage\n", verb, res.RunID, res.Lane, res.PerformedStage)
 	case res.Awaiting != nil:
@@ -480,30 +545,47 @@ func renderStepResult(w io.Writer, verb string, res loop.StepResult) {
 		fmt.Fprintf(w, "  fallback: %s was routed to %s, which was %s (%s); %s runs it\n", termsafe.Sanitize(fb.Role), termsafe.Sanitize(fb.Asked),
 			fb.Reason, termsafe.Sanitize(fsutil.RedactHome(fb.Detail)), termsafe.Sanitize(fb.Ran))
 	}
+	for _, r := range res.Blocked {
+		fmt.Fprintf(w, "blocked: %s (%s): %s\n", r.Lane, termsafe.Sanitize(r.Stage), termsafe.Sanitize(fsutil.RedactHome(r.Reason)))
+	}
 	fmt.Fprintf(w, "next: %s\n", termsafe.Sanitize(fsutil.RedactHome(res.Next)))
 }
 
 func newImplementStepCommand(asJSON *bool) *cobra.Command {
-	var runID string
+	var runID, release, discard string
 	cmd := &cobra.Command{
-		Use: "step [--run <run-id>]",
-		Long: "Perform the next stage of the run's current lane, write the state, and exit. At a stage\n" +
-			"that hands work to an agent, the result names the agent to start, the brief it is handed\n" +
-			"and the path its receipt goes to; the lane then advances only on\n" +
-			"`abcd implement receipt`, and running `implement step` again re-tells the same thing and\n" +
-			"moves nothing. A lane lands one step of the spec; its stages are how it gets there, and\n" +
-			"when a lane is done the spec's next pending step opens the next lane, and the run\n" +
-			"record names it. A complete run says so.\n\n" +
+		Use: "step [--run <run-id>] [--release <lane-id> | --discard <lane-id>]",
+		Long: "Perform the run's next move, write the state, and exit. At a stage that hands work to\n" +
+			"an agent, the result names the agent to start, the brief it is handed and the path its\n" +
+			"receipt goes to; that work advances only on `abcd implement receipt`. A lane lands one\n" +
+			"step of the spec; its stages are how it gets there. A complete run says so.\n\n" +
+			"A run works in parallel up to its ceiling (--sub-agents, pace.sub_agents): each agent\n" +
+			"handed work and not yet verified is a slot, implementers and validators alike. Each call\n" +
+			"first performs a stage the binary owns on any lane (the worktree, the brief, a round's\n" +
+			"close, the landing's steps), which takes no slot and is never held by the ceiling; then,\n" +
+			"while a slot is free, it hands out the first waiting work: a lane already open before a\n" +
+			"new one, the lower spec step first, a round's validators in order, then a new lane's\n" +
+			"implementer. A call that finds the ceiling reached hands out nothing, exits 0 naming\n" +
+			"every lane alive with the role and receipt it awaits, and records the held work with the\n" +
+			"time it was first held. A lane opens for a spec step once every step it needs has\n" +
+			"landed (its `- needs:` line, or by default every earlier step), whatever the ceiling: its\n" +
+			"worktree and brief are made, and its implementer waits for a slot. A landing waiting on\n" +
+			"the forge's merge holds only its own lane: the call moves another and names the wait\n" +
+			"under blocked:; any other refused stage is the call's answer. Landing is one lane at a\n" +
+			"time; a lane whose sibling landed\n" +
+			"since its base is synced first (the default branch merged in with a merge commit, never a\n" +
+			"rebase) and judged by a fresh round, and a conflicting sync goes to a fresh implementer;\n" +
+			"a sync counts no fix round.\n\n" +
 			"The lane's stages, in order: worktree makes the lane's worktree in the machine-scoped\n" +
 			"store, ~/.abcd/worktrees/<root-sha>/<run-id>-<lane-id>, on a branch build/<run-id>-<lane-id>\n" +
 			"cut from the default branch; brief renders the lane's brief from that base (the intent,\n" +
 			"the spec, the conventions of AGENTS.md, the decisions the intent cites, and the spec\n" +
 			"steps before the lane's with what landed each) into the lane's directory of the run;\n" +
 			"implement hands the lane to a fresh implementer and awaits\n" +
-			"its receipt; validate hands the lane's head to validators that did not implement it, one\n" +
-			"fresh agent at a time — a ruthless-reviewer, a security-reviewer and, on the lane whose\n" +
-			"landing closes the spec and ships the intent, an intent-auditor over the whole delivery,\n" +
-			"from the base of the run's first lane to that lane's head (a lane that does not close the\n" +
+			"its receipt; validate hands the lane's head to validators that did not implement it, each\n" +
+			"a fresh agent, side by side up to the ceiling — a ruthless-reviewer, a security-reviewer\n" +
+			"and, on the lane whose landing closes the spec and ships the intent, an intent-auditor over\n" +
+			"the whole delivery, each of the run's lanes' own diff (a lane that does not close the\n" +
 			"spec takes no audit) — and records each verdict itself, parsed from the validator's own\n" +
 			"return. A round one of them did not pass goes to a fresh implementer, who applies each\n" +
 			"finding or rejects it in writing in its report, and the next round judges the new head\n" +
@@ -512,8 +594,16 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			"criterion it could not decide (INCONCLUSIVE) fails the round as a not-met one does, and\n" +
 			"goes to the fresh implementer with the finding. A round that does not pass once the lane\n" +
 			"has taken the run's fix rounds (--fix-rounds, bundled 3) hands the lane back instead: it\n" +
-			"stops as unachievable, the result and the run record name the last round's findings, the\n" +
-			"run starts nothing further for it, and every later step is refused naming the hand-back.\n" +
+			"stops as unachievable, the result and the run record name the last round's findings, and\n" +
+			"the run starts nothing further for it. Its sibling lanes finish: no new lane opens, no\n" +
+			"lane closes the spec, and a sibling whose round passes is held before its push, or before\n" +
+			"arming once its pull request is open (an armed one is disarmed, and where the forge\n" +
+			"refuses the withdrawal the step is refused naming the pull request; one the forge reports\n" +
+			"merged is recorded as landed); once nothing is left to move, a step is refused naming\n" +
+			"the hand-back and each held lane. --release <lane-id> lands a held lane as it is;\n" +
+			"--discard <lane-id> removes its worktree and branch, then closes its pull request, and\n" +
+			"leaves its step unlanded. Either is refused, changing nothing,\n" +
+			"for a lane that is not held or while any lane still has work.\n" +
 			"land follows a passing round, one step per call: it checks the lane's worktree is clean\n" +
 			"at the judged head; on the lane that closes the spec it runs `spec close` in the lane's\n" +
 			"worktree and ingests the audit that lane took, and for every capture the lane's receipts\n" +
@@ -564,34 +654,42 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
 			}
-			roots, notes := layered.RootsFor(root)
-			for _, n := range notes {
-				fmt.Fprintln(cmd.ErrOrStderr(), termsafe.Sanitize(n))
+			var res loop.StepResult
+			switch {
+			case release != "" && discard != "":
+				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, &loop.Refusal{Stage: string(loop.StageHeld),
+					Reason: "--release and --discard name one decision each; give one", Remedy: "run `abcd implement step --release <lane-id>` or `--discard <lane-id>`, one lane per invocation"})
+			case release != "":
+				res, err = loop.Release(root, id, release, loop.Options{})
+			case discard != "":
+				res, err = loop.Discard(root, id, discard, loop.Options{})
+			default:
+				roots, notes := layered.RootsFor(root)
+				for _, n := range notes {
+					fmt.Fprintln(cmd.ErrOrStderr(), termsafe.Sanitize(n))
+				}
+				cfg, lerr := loadRunners(cmd, roots)
+				if lerr != nil {
+					return loopFail(cmd.OutOrStdout(), *asJSON, prefix, lerr)
+				}
+				// An interrupt or a termination ends the context, and the runner
+				// kills the process group it started through its own handle: a
+				// harness never outlives the step that started it.
+				ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+				defer stop()
+				res, err = loop.Drive(ctx, root, id, loop.DefaultStages(), loop.Options{},
+					loop.Runners{Config: cfg, Transcripts: &lazyHistoryStore{cmd: cmd}})
 			}
-			cfg, err := loadRunners(cmd, roots)
 			if err != nil {
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
 			}
-			// An interrupt or a termination ends the context, and the runner
-			// kills the process group it started through its own handle: a
-			// harness never outlives the step that started it.
-			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-			defer stop()
-			res, err := loop.Drive(ctx, root, id, loop.DefaultStages(), loop.Options{},
-				loop.Runners{Config: cfg, Transcripts: &lazyHistoryStore{cmd: cmd}})
-			if err != nil {
-				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
-			}
-			res.Awaiting = redactAwait(res.Awaiting)
-			if res.Fallback != nil {
-				fb := *res.Fallback
-				fb.Detail = fsutil.RedactHome(fb.Detail)
-				res.Fallback = &fb
-			}
+			res = redactStep(res)
 			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) { renderStepResult(w, "step", res) })
 		},
 	}
 	cmd.Flags().StringVar(&runID, "run", "", "the run to step (run-<16 digits>); the one run in progress when omitted")
+	cmd.Flags().StringVar(&release, "release", "", "land a held lane as it is (lane-<n>), once no lane has work left")
+	cmd.Flags().StringVar(&discard, "discard", "", "discard a held lane (lane-<n>): close its pull request, remove its worktree and branch")
 	return cmd
 }
 
@@ -599,8 +697,10 @@ func newImplementReceiptCommand(asJSON *bool) *cobra.Command {
 	var runID string
 	cmd := &cobra.Command{
 		Use: "receipt <path> [--run <run-id>]",
-		Long: "Hand back the receipt the run's awaiting lane named when its stage handed work to an\n" +
-			"agent. The path must be the one the stage named. The stage's verifier checks it; a\n" +
+		Long: "Hand back the receipt a lane of the run named when its stage handed work to an agent.\n" +
+			"The path is looked up among every outstanding await of the run, and the lane it belongs\n" +
+			"to advances; a path no await names is refused, naming the awaits there are, and frees\n" +
+			"nothing. The stage's verifier checks it; a verified receipt frees its slot, and a\n" +
 			"receipt that verifies completes the stage and the lane moves to its next stage, and one\n" +
 			"that does not is refused naming what is missing, with the lane left where it was. A\n" +
 			"stage whose verifier this abcd does not carry is refused naming the spec piece that\n" +
@@ -639,7 +739,7 @@ func newImplementReceiptCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
 			}
-			res.Awaiting = redactAwait(res.Awaiting)
+			res = redactStep(res)
 			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) { renderStepResult(w, "receipt", res) })
 		},
 	}

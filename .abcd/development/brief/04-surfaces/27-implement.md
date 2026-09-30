@@ -259,12 +259,30 @@ signals anything.
 Three sub-verbs drive the loop a build starts, each over the run's state file in
 the checkout's local tier ([`34-build.md`](34-build.md) states the file, the
 checks and the step interface). The status render reads every run, or the one
-named, and writes nothing. The step verb performs the current lane's next stage and
-exits (a lane's stages are worktree, brief, implement, validate and land; the
-lane as a whole lands one of the spec's steps); at a stage that hands work to an
-agent it names the agent, the brief and the receipt path, and asking again moves
-nothing. The receipt hands that file back, and the stage completes only when the
-path is the one named and its verifier accepts it. Without a named run, the step
+named, and writes nothing: it names the slots in use out of the run's ceiling,
+every lane alive with its stage and each agent it awaits, and each held lane with
+its cause, the head judged, the landing step it stopped before and the two flags
+that decide it. The step verb performs the run's next move and exits (a lane's
+stages are worktree, brief, implement, validate and land; the lane as a whole
+lands one of the spec's steps). A run works in parallel up to its ceiling (ruling
+DR6): a stage the binary owns moves on any lane first, then, while a slot is
+free, the first waiting work takes it, an open lane's before a new lane's and
+the lower spec step first; a lane opens for a ready spec step whatever the
+ceiling, and only its implementer waits for a slot; at a stage that hands work
+to an agent it names the agent, the brief and the receipt path, and a step that
+finds the ceiling reached hands out nothing and names every agent out. A landing
+waiting on the forge's merge holds only its own lane; any other refused stage
+the binary performs is the step's answer. The receipt verb looks the path up
+among every outstanding await of the run, and the stage completes only when a
+lane awaits that path and its verifier accepts it; a verified receipt frees its
+slot. After a hand-back the siblings finish and a lane whose round passes is
+held before it pushes or arms (ruling DR6c), an armed one disarmed, or, where
+the forge refuses the withdrawal, the step refused naming the pull request; the
+person's word on a held lane is given through the step verb, one lane per
+invocation: release lands it as it is, and discard removes its worktree and
+branch, then closes its pull request, and leaves its step unlanded, each refused, changing nothing, unless the lane is
+held and no lane has work left.
+Without a named run, the step
 and receipt verbs act on the one run in progress in the checkout and refuse naming
 the runs when there are several. Their refusals name the stage, the reason and
 the remedy, and a pause
@@ -421,6 +439,8 @@ Sub-verbs: none.
 
 | Flag | Type |
 |---|---|
+| `--discard` | string |
+| `--release` | string |
 | `--run` | string |
 
 <!-- surface-appendix:end -->

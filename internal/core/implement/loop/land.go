@@ -128,6 +128,11 @@ func landStage(c Context, lane *Lane) (Outcome, error) {
 			"the earlier stages record them; restore the run's state file")
 	}
 	if lane.Landing == nil {
+		// A sibling lane of the run that landed since this lane's base is
+		// merged in first, and a fresh round judges the merge head.
+		if out, synced, err := syncLane(c, lane); err != nil || synced {
+			return out, err
+		}
 		return landPrepare(c, lane)
 	}
 	ld := *lane.Landing

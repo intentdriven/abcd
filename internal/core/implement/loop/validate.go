@@ -1,12 +1,14 @@
 package loop
 
 // validate.go is the validate stage (spec piece 8; criteria 5 and 12). The
-// stage hands the lane's head to validators that did not implement it, one
-// fresh agent at a time: the ruthless reviewer, the security reviewer and, on
-// the lane whose landing closes the spec, the intent-auditor over the whole
-// delivery (ruling AI, 2026-09-29: "audit ONCE, on the lane that closes the
-// spec, over the whole delivery"). A lane that does not close the spec takes no
-// audit step.
+// stage hands the lane's head to validators that did not implement it, each a
+// fresh agent, side by side up to the run's ceiling (ruling DR6): the ruthless
+// reviewer, the security reviewer and, on the lane whose landing closes the
+// spec, the intent-auditor over the whole delivery (ruling AI, 2026-09-29:
+// "audit ONCE, on the lane that closes the spec, over the whole delivery"). A
+// lane that does not close the spec takes no audit step. The validators read
+// the lane's head and treat it as read-only; a fix brief is written only once
+// every validator of the round has returned.
 //
 // Only the loop writes a verdict (decision 9, itd-58 folded in). Each validator
 // writes its return; the loop parses the verdict out of that return and records
@@ -56,6 +58,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
@@ -127,14 +130,23 @@ func validateStage(c Context, lane *Lane) (Outcome, error) {
 		return Outcome{}, refuse(string(StageValidate), "", lane.ID, "the lane records no branch, worktree, base and head for its validators to read",
 			"the implement stage's verified receipt records them; restore the run's state file")
 	}
+	if s := lane.pendingSync(); s != nil {
+		return Outcome{Await: &Await{Role: RoleImplementer, Brief: s.Brief, Receipt: s.Receipt},
+			Note: fmt.Sprintf("the sync of %s with the default branch conflicted; a fresh implementer resolves it from the brief %s", lane.ID, s.Brief)}, nil
+	}
 	n := len(lane.Validation)
-	if n == 0 || lane.Validation[n-1].Fix != "" {
+	if n == 0 || lane.Validation[n-1].Fix != "" || lane.syncRoundDue() {
 		round, err := openRound(c, *lane, n+1)
 		if err != nil {
 			return Outcome{}, err
 		}
-		lane.Validation = append(lane.Validation, round)
+		lane.Validation = append(slices.Clone(lane.Validation), round)
 		n++
+		if lane.syncRoundDue() {
+			syncs := slices.Clone(lane.Syncs)
+			syncs[len(syncs)-1].Round = round.Round
+			lane.Syncs = syncs
+		}
 	}
 	cur := &lane.Validation[n-1]
 	if cur.HeadSHA != lane.HeadSHA {
@@ -144,7 +156,7 @@ func validateStage(c Context, lane *Lane) (Outcome, error) {
 	}
 	for i := range cur.Validators {
 		v := &cur.Validators[i]
-		if v.Verdict != "" {
+		if v.Verdict != "" || lane.awaited(v.Return) {
 			continue
 		}
 		if err := writeValidatorBrief(c, *lane, *cur, v); err != nil {
@@ -153,6 +165,12 @@ func validateStage(c Context, lane *Lane) (Outcome, error) {
 		return Outcome{Await: &Await{Role: v.Role, Brief: v.Brief, Receipt: v.Return},
 			Note: fmt.Sprintf("round %d: %s's head %s handed to a fresh %s; awaiting its return at %s", cur.Round, lane.ID, shortSHA(cur.HeadSHA), v.Role, v.Return)}, nil
 	}
+	for _, v := range cur.Validators {
+		if v.Verdict == "" {
+			return Outcome{}, contend(string(StageValidate), "", lane.ID, fmt.Sprintf("round %d's validators are all out", cur.Round),
+				"hand back their returns with `abcd implement receipt <path>`")
+		}
+	}
 	var failing []ValidatorRun
 	for _, v := range cur.Validators {
 		if !v.Pass {
@@ -160,7 +178,7 @@ func validateStage(c Context, lane *Lane) (Outcome, error) {
 		}
 	}
 	if len(failing) > 0 {
-		if taken, limit := cur.Round-1, c.State.FixRoundCap(); taken >= limit {
+		if taken, limit := lane.fixRoundsTaken(), c.State.FixRoundCap(); taken >= limit {
 			hb := HandBack{Verdict: VerdictUnachievable, Round: cur.Round, FixRounds: limit, Verdicts: verdictsLine(*cur)}
 			for _, v := range failing {
 				hb.Findings = append(hb.Findings, v.Return)
@@ -211,15 +229,23 @@ func openRound(c Context, lane Lane, n int) (ValidationRound, error) {
 }
 
 // auditsHere reports whether the lane takes the fidelity audit: it is the lane
-// whose landing closes the spec — the run's last lane, with no spec step left
-// pending — for an intent (an issue has no criteria), and closing the spec ships
-// the intent, since no other open spec names it. A lane whose close leaves the
-// intent planned leaves the audit to the lane that closes its last spec: the
-// criteria are the intent's, and an intent is audited once, whole.
+// whose landing closes the spec — the closing lane, which reaches its landing
+// with no spec step pending, no other lane of the run open, and no lane handed
+// back (spc-2609202134341288; with `- needs: none` a later lane can finish
+// first, so it is not simply the last lane opened) — for an intent (an issue
+// has no criteria), and closing the spec ships the intent, since no other open
+// spec names it. A lane whose close leaves the intent planned leaves the audit
+// to the lane that closes its last spec: the criteria are the intent's, and an
+// intent is audited once, whole. After a hand-back no lane closes the spec.
 func auditsHere(c Context, lane Lane) (bool, error) {
 	st := c.State
-	if !recordid.ValidIntentID(lane.Key) || len(st.Pending) > 0 || len(st.Lanes) == 0 || st.Lanes[len(st.Lanes)-1].ID != lane.ID {
+	if !recordid.ValidIntentID(lane.Key) || len(st.Pending) > 0 || st.handedBack() {
 		return false, nil
+	}
+	for _, l := range st.Lanes {
+		if l.ID != lane.ID && l.Stage != StageDone {
+			return false, nil
+		}
 	}
 	store, err := spec.Load(c.RepoRoot)
 	if err != nil {
@@ -298,7 +324,7 @@ func writeValidatorBrief(c Context, lane Lane, r ValidationRound, v *ValidatorRu
 		if err := writeRoundFile(c.RepoRoot, req, []byte(a.Request(delivered))); err != nil {
 			return err
 		}
-		v.Audit = &AuditRun{ReceiptID: a.ReceiptID, Request: req, BaseSHA: st.Lanes[0].BaseSHA, HeadSHA: r.HeadSHA}
+		v.Audit = &AuditRun{ReceiptID: a.ReceiptID, Request: req, BaseSHA: diffBase(lane), HeadSHA: r.HeadSHA}
 		p("## The audit\n\n")
 		p("This lane's landing closes the spec, so the fidelity audit runs here, once, over the whole delivery\n")
 		p("(receipt %s). The request states the criteria, the scope conditions, the rubric, the verdict's\n", a.ReceiptID)
@@ -357,9 +383,12 @@ func composeAudit(c Context, lane Lane) (intent.DeliveryAudit, string, error) {
 			"correct the intent on the lane's branch so the close can ship it")
 	}
 
+	// The whole delivery is the run's own lanes' changes, lane by lane: each
+	// lane's head against the default-branch sha it last merged in, or its
+	// base when it never synced, so no sibling's or outside change reads as
+	// this run's (spc-2609202134341288, ruling AI).
 	var d strings.Builder
-	first := st.Lanes[0]
-	fmt.Fprintf(&d, "- the whole delivery: `%s..%s`, from the base of %s, the run's first lane, to the head of %s\n", first.BaseSHA, lane.HeadSHA, first.ID, lane.ID)
+	fmt.Fprintf(&d, "- the whole delivery: the diff of each of the run's lanes, below\n")
 	for _, l := range st.Lanes {
 		if l.ID == lane.ID {
 			l = lane
@@ -368,7 +397,7 @@ func composeAudit(c Context, lane Lane) (intent.DeliveryAudit, string, error) {
 		if l.PR > 0 {
 			pr = fmt.Sprintf(", pull request #%d", l.PR)
 		}
-		fmt.Fprintf(&d, "- %s (spec step %d, %q): `%s..%s` on `%s`%s\n", l.ID, l.SpecStep, l.StepTitle, l.BaseSHA, l.HeadSHA, l.Branch, pr)
+		fmt.Fprintf(&d, "- %s (spec step %d, %q): `%s..%s` on `%s`%s\n", l.ID, l.SpecStep, l.StepTitle, diffBase(l), l.HeadSHA, l.Branch, pr)
 	}
 	if e, ok := at.recordEntry(spec.SpecsRelDir, "spc", st.Spec); ok {
 		if text, err := at.blob(e, maxRecordBytes); err == nil {
@@ -382,6 +411,18 @@ func composeAudit(c Context, lane Lane) (intent.DeliveryAudit, string, error) {
 		}
 	}
 	return a, d.String(), nil
+}
+
+// diffBase is where a lane's own changes start: the default-branch sha its
+// last sync merged in, or its base when it never synced. Each is an ancestor of
+// the lane's head.
+func diffBase(l Lane) string {
+	for k := len(l.Syncs) - 1; k >= 0; k-- {
+		if l.Syncs[k].Head != "" {
+			return l.Syncs[k].Merged
+		}
+	}
+	return l.BaseSHA
 }
 
 // recordEntry is the one copy of a record the tree carries, if it carries
@@ -478,12 +519,18 @@ func reportPathOf(c Context, lane Lane, receiptRel string) string {
 // a fresh implementer's receipt is verified as a lane receipt is, and closes the
 // round, so the next step opens the next.
 func verifyValidation(c Context, lane *Lane, receiptRel string) error {
+	if c.Await == nil {
+		return refuse("receipt", "", lane.ID, "the lane's validate stage has handed nothing out", "run `abcd implement step`")
+	}
+	if s := lane.pendingSync(); s != nil && c.Await.Role == RoleImplementer && receiptRel == s.Receipt {
+		return verifySync(c, lane, receiptRel)
+	}
 	n := len(lane.Validation)
-	if n == 0 || lane.Awaiting == nil {
+	if n == 0 {
 		return refuse("receipt", "", lane.ID, "the lane's validate stage has handed nothing out", "run `abcd implement step`")
 	}
 	cur := &lane.Validation[n-1]
-	if lane.Awaiting.Role == RoleImplementer {
+	if c.Await.Role == RoleImplementer {
 		want, err := roundDir(c.State.RunID, lane.ID, cur.Round, FixDirName)
 		if err != nil {
 			return err

@@ -88,7 +88,7 @@ func lanesOf(started ...Started) LaneReader {
 func TestBlockPlacesEveryIntent(t *testing.T) {
 	root := store(t)
 	lane := Lane{Run: "run-2609290000000001", Lane: "lane-1", Stage: "implement", Awaiting: "implementer"}
-	b, err := Read(root, lanesOf(Started{Intent: "itd-2609010000000001", Lane: lane}), nil)
+	b, err := Read(root, lanesOf(Started{Intent: "itd-2609010000000001", Lanes: []Lane{lane}}), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,7 +134,7 @@ func TestBlockPlacesEveryIntent(t *testing.T) {
 // Next and Later are otherwise exactly what they were.
 func TestBlockWithoutAStateFileKeepsOnlyTheHead(t *testing.T) {
 	root := store(t)
-	with, err := Read(root, lanesOf(Started{Intent: "itd-7", Lane: Lane{Run: "run-1", Lane: "lane-1", Stage: "brief"}}), nil)
+	with, err := Read(root, lanesOf(Started{Intent: "itd-7", Lanes: []Lane{{Run: "run-1", Lane: "lane-1", Stage: "brief"}}}), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -172,7 +172,7 @@ func TestAnIntentInALaneIsOnlyUnderNow(t *testing.T) {
 	inLane := []string{"itd-7", "itd-8", "itd-3"}
 	var started []Started
 	for _, id := range inLane {
-		started = append(started, Started{Intent: id, Lane: lane})
+		started = append(started, Started{Intent: id, Lanes: []Lane{lane}})
 	}
 	b, err := Read(root, lanesOf(started...), nil)
 	if err != nil {
@@ -193,7 +193,7 @@ func TestAnIntentInALaneIsOnlyUnderNow(t *testing.T) {
 // name, each row with its id and title, the lane state and the failing checks.
 func TestBlockJSONCarriesTheThreeLists(t *testing.T) {
 	root := store(t)
-	b, err := Read(root, lanesOf(Started{Intent: "itd-2609010000000001", Lane: Lane{Run: "run-1", Lane: "lane-2", Stage: "validate", Awaiting: "validator"}}), nil)
+	b, err := Read(root, lanesOf(Started{Intent: "itd-2609010000000001", Lanes: []Lane{{Run: "run-1", Lane: "lane-2", Stage: "validate", Awaiting: "validator"}}}), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -345,7 +345,7 @@ func TestTheHeadIsThePicksChoice(t *testing.T) {
 
 	// itd-4 in a lane: the pick would not start it again, so the head is the
 	// runner-up.
-	b, err = Read(root, lanesOf(Started{Intent: "itd-4", Lane: Lane{Run: "run-1", Lane: "lane-1", Stage: "implement"}}), nil)
+	b, err = Read(root, lanesOf(Started{Intent: "itd-4", Lanes: []Lane{{Run: "run-1", Lane: "lane-1", Stage: "implement"}}}), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -577,7 +577,7 @@ func TestARowShowsItsTarget(t *testing.T) {
 	w(in+"planned/itd-8-unlinked.md", readyIntent("itd-8", "The unlinked one", "null", "target_release: next\n"))
 	w(in+"drafts/itd-3-old.md", strings.Replace(draft("itd-3", "An old idea"), "kind: standalone\n", "kind: standalone\ntarget_release: next\n", 1))
 
-	b, err := Read(root, lanesOf(Started{Intent: "itd-2609010000000001", Lane: Lane{Run: "run-1", Stage: "implement"}}), nil)
+	b, err := Read(root, lanesOf(Started{Intent: "itd-2609010000000001", Lanes: []Lane{{Run: "run-1", Stage: "implement"}}}), nil)
 	if err != nil {
 		t.Fatal(err)
 	}

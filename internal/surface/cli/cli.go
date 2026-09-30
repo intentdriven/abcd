@@ -3456,6 +3456,9 @@ func newSpecCommand(asJSON *bool) *cobra.Command {
 						for _, st := range res.RemainderSteps {
 							fmt.Fprintf(w, "    %d. %s\n", st.Number, termsafe.Sanitize(st.Title))
 						}
+						for _, rw := range res.NeedsRewritten {
+							fmt.Fprintf(w, "  rewrote step %d's needs line: %s -> %s\n", rw.Step, termsafe.Sanitize(rw.Before), termsafe.Sanitize(rw.After))
+						}
 					}
 				}
 				if len(res.Members) > 0 {

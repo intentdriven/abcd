@@ -36,7 +36,8 @@ const noQueueRuleset = `{"bypass_actors":[],"conditions":{"ref_name":{"exclude":
 // stubGH is a forge client that records every call in gh.log beside it and
 // answers from files there: pr.json (the open pull requests), body.md (the
 // body the forge holds), state (the pull request's state), footer (a line the
-// "harness" appends to a body at creation). It never reaches a network.
+// "harness" appends to a body at creation), refuse-disarm (present, the forge
+// refuses to withdraw an armed merge). It never reaches a network.
 const stubGH = `#!/bin/sh
 d="$(cd "$(dirname "$0")" && pwd)"
 printf '%s\n' "$*" >> "$d/gh.log"
@@ -62,7 +63,11 @@ case "$1 $2" in
       *) cat "$d/body.md" ;;
     esac ;;
   "pr edit") body_from "$@" ;;
-  "pr merge") : ;;
+  "pr merge")
+    case "$*" in
+      *--disable-auto*) if [ -f "$d/refuse-disarm" ]; then echo "stub gh: the forge refused" >&2; exit 1; fi ;;
+    esac ;;
+  "pr close") : ;;
   *) echo "stub gh: unexpected call: $*" >&2; exit 1 ;;
 esac
 `
