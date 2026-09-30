@@ -1,17 +1,18 @@
 ---
 name: intent
 description: "File a draft intent from quoted text, or render the intent store's status bare: Writes the draft into drafts/; refuses a lone word."
-argument-hint: "[text] [--title \"<title>\"] | ready <itd-N> [--grounds \"<pursued|deferred|declined>: <conjecture>\"] | plan <itd-N> [<itd-N>…] [--bundle <name>] [--impact <additive|breaking|fix>] [--target <vX.Y.Z|next>] | reclassify <itd-N> --kind <standalone|bundle-member --bundle <name>|superseded --by <itd-M|adr-N> --reason \"<why>\"> | hold <itd-N> --reason \"<text>\" | unhold <itd-N> | target <itd-N> <vX.Y.Z|next> | link <itd-N> <spc-N> | audit [<itd-N>] | audit --owed [--max <n>] | audit --issue-drift [--strict] | consistency [<itd-N>] | consistency ingest --findings-json <file> | condition <itd-N> [<cond-id> --disposition <survived|narrowed|falsified|untested> --occasioned-by <rdi-N|itd-N> --grounds \"<why>\" [--narrowing \"<what now holds>\"]]"
+argument-hint: "[text] [--title \"<title>\"] | ready <itd-N> [--grounds \"<pursued|deferred|declined>: <conjecture>\"] | plan <itd-N> [<itd-N>…] [--bundle <name>] [--impact <additive|breaking|fix>] [--target <vX.Y.Z|next>] | reclassify <itd-N> --kind <standalone|bundle-member --bundle <name>|superseded --by <itd-M|adr-N> --reason \"<why>\"> | hold <itd-N> --reason \"<text>\" | unhold <itd-N> | target <itd-N> <vX.Y.Z|next> | link <itd-N> <spc-N> | prepass <itd-N> [--findings-json <file>] | audit [<itd-N>] | audit --owed [--max <n>] | audit --issue-drift [--strict] | consistency [<itd-N>] | consistency ingest --findings-json <file> | condition <itd-N> [<cond-id> --disposition <survived|narrowed|falsified|untested> --occasioned-by <rdi-N|itd-N> --grounds \"<why>\" [--narrowing \"<what now holds>\"]]"
 block: people
 ---
 
 # `/abcd:intent` — intent lifecycle
 
 `abcd --help` lists `intent` in the person's records group. `intent audit
-ingest`, which applies a host-produced audit verdict, and `intent consistency
-ingest`, which files host-produced consistency findings, are in the
-agents-and-hosts block of `abcd --help --agent`, and their lines there name
-this page.
+ingest`, which applies a host-produced audit verdict, `intent consistency
+ingest`, which files host-produced consistency findings, and `intent prepass`,
+which the planning interview runs either side of the host's own judgement, are
+in the agents-and-hosts block of `abcd --help --agent`, and their lines there
+name this page.
 
 The write side of the intent record store under `.abcd/development/intents/`.
 Every intent gets a stable `itd-N` id and directory-as-truth lifecycle state
@@ -368,6 +369,47 @@ surviving findings are applied or explicitly rejected — per
 principles. An unreviewed draft does not reach the interview; the readiness
 gate that will refuse the move mechanically is a recorded seed until built.
 
+**Opening: the pre-pass (itd-42).** Before the first question, the interview
+is prepared from the record rather than from memory. The binary assembles and
+checks; the judgement is yours, as the host.
+
+- Run `"${CLAUDE_PLUGIN_ROOT}/abcd" intent prepass <itd-N> --json`. It prints
+  the pass's input and writes nothing: the draft, the brief's numbered
+  invariants, each principle's rule, a one-line index of every other intent
+  with its shelf, the four answers an overlap is asked with, the `rules` the
+  findings are held to, and an `input_digest`. It refuses, on exit 2, a record
+  that is not a draft.
+- Judge the input under its `rules`. A conflict names one invariant by its
+  number or one principle by its path, and quotes the anchor's line and the
+  draft's line verbatim. An overlap names a sibling from the index; a
+  recommendation, when there is one, names one answer and its reason. A
+  concern with nothing to anchor it is an `unanchored` question. Never assert
+  a conflict you cannot quote.
+- Write the findings (`_type` `abcd/intent-prepass-findings/v1`, the `intent`,
+  and the `input_digest` copied from the input) to the local tier, at
+  `.abcd/.work.local/scratch/prepass/<itd-N>.findings.json`, then run
+  `"${CLAUDE_PLUGIN_ROOT}/abcd" intent prepass <itd-N> --findings-json
+  .abcd/.work.local/scratch/prepass/<itd-N>.findings.json --json`. It validates
+  them against the input as it stands, and refuses them on exit 2 with nothing
+  written when their shape is wrong or an input moved since the pass (run the
+  first step again). It writes
+  `.abcd/.work.local/scratch/planning-briefs/<itd-N>.md`, the only file the
+  pre-pass writes: a conflict or an overlap it cannot anchor becomes a question
+  marked unanchored, with the reason, and a brief written by hand at that path
+  is never replaced.
+- Open the interview from `planning-briefs/<itd-N>.md`: its summary back and
+  its decomposition feed steps 1 and 2 below, and its `### Qn` questions are
+  asked first, in order, one at a time under the rule above, each quoting the
+  lines the brief quotes. An overlap is asked with its four answers (keep both,
+  bundle, supersede, refine) and the null answer; the brief's lean, when it
+  has one, is said in prose apart from the question, never as a marked option.
+  Record each answer where its `Lands as:` line says before the next question:
+  a decision line in the draft's `## Decisions`, a change to the draft's text,
+  or a typed link through `abcd intent reclassify`. A bundle answer is carried
+  to step 10's bundle form, which is the sign-off act. A question the product
+  thinker defers is recorded as deferred in the draft; skipping it is not a
+  deferral.
+
 1. Read the draft record; summarise it back: the press release, why it
    matters, the current Acceptance Criteria (say explicitly when they are
    facilitator- or agent-seeded and unconfirmed), and any open questions.
@@ -605,17 +647,25 @@ findings and move to the next item. The planning interview, acceptance-criteria
 authoring, and `abcd intent plan` are human-session-only acts.
 
 An unattended run MAY prepare an interview without performing it: for a
-plannable draft, write a planning brief to the local work tier
-(`.abcd/.work.local/scratch/planning-briefs/`) — the summary-back with per-AC
-provenance (seeded vs human-confirmed), the itd-84 hand-run as an ungraded
-proposal, proposed acceptance criteria and open-question resolutions, and any
-blocks-planning flags. The SOTA fit-challenge runs as a separate, independent
-pass (evaluator outside the loop), filed alongside the brief. The pre-pass
-reads the records the draft touches — a contradiction with a recorded
-invariant is exactly what it exists to catch. It never edits the draft, never
-files the routing, and never runs `plan`; the interview then starts from the
-brief instead of a cold read, and grading into the calibration note still
-happens only when the human confirms the routing.
+plannable draft, it runs the pre-pass the interview opens with — `abcd intent
+prepass <itd-N> --json`, the host's judgement under the input's rules, then
+`abcd intent prepass <itd-N> --findings-json <path>` — which writes the
+planning brief to the local work tier
+(`.abcd/.work.local/scratch/planning-briefs/<itd-N>.md`). The brief holds the
+summary-back, which says which acceptance criteria are seeded and which are
+human-confirmed and carries any proposed criteria and open-question
+resolutions; the itd-84 decomposition as an ungraded proposal; the numbered
+questions, each saying where its answer lands (every conflict with an
+invariant or a principle quoted from both sides, every overlap with a sibling
+asked with the four answers, every concern with no anchor marked unanchored);
+and any blocks-planning flags. The SOTA fit-challenge runs as a separate,
+independent pass (evaluator outside the loop), filed alongside the brief. The
+pre-pass reads the draft, the invariants, the principles and the sibling index
+— a contradiction with a recorded invariant is exactly what it exists to
+catch — and writes only the brief. It never edits the draft, never files the
+routing, and never runs `plan`; the interview then starts from the brief
+instead of a cold read, and grading into the calibration note still happens
+only when the human confirms the routing.
 
 ## Hold
 

@@ -1966,6 +1966,24 @@ Plan a draft, or several as a named bundle, or stamp a planned one's conditions:
 abcd intent plan itd-2609010000000001
 ```
 
+#### `abcd intent prepass`
+
+Print a draft's pre-pass input, or write its planning brief from the host's findings: Writes only the brief; refuses a record not on drafts/.
+
+**Usage:** `abcd intent prepass <itd-N> [--findings-json <path>] [flags]`
+
+**Flags:**
+
+```
+      --findings-json string   path to the host's findings over the input; validates them and writes the planning brief
+```
+
+**Example:**
+
+```
+abcd intent prepass itd-2609010000000001 --json
+```
+
 #### `abcd intent ready`
 
 Report whether an intent is ready to implement, exiting 1 when not: Writes its grounds only with --grounds; refuses malformed grounds.

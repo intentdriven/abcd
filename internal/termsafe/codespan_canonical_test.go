@@ -34,7 +34,6 @@ var backtickScanners = map[string]backtickScanner{
 	"internal/core/guard/tokenize.go":             {23, "the shell tokenizer: a backtick there is command substitution, a shell grammar, not markdown"},
 	"internal/core/guard/unknown.go":              {1, "spellAlternative spells an alternative's shell word: a backtick there opens a command substitution, which leaves the word unspelled; nothing is paired"},
 	"internal/core/history/reconstruct_render.go": {1, "a WRITER: longestBacktickRun sizes a fence longer than any run in the body; nothing is paired"},
-	"internal/core/ideate/render.go":              {1, "blockText asks whether a value opens with a backtick, then asks OpensBalancedCodeSpan, which pairs through PairCodeSpan"},
 	"internal/core/lifeboat/mdrender.go":          {1, "escapeLeadingMarker asks whether a value opens with a backtick, then asks OpensBalancedCodeSpan, which pairs through PairCodeSpan"},
 	"internal/core/lint/lint.go":                  {2, "stripInlineCode walks to each run and pairs it through PairCodeSpan, stepping over an unpaired run whole"},
 	"internal/core/mdrecord/mdrecord.go":          {4, "OpensComment and CodeSpanRanges walk to each run and pair it through PairCodeSpan, runEnd steps over an unpaired run, and the fence opener refuses an info string holding a backtick"},

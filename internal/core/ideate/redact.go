@@ -26,7 +26,7 @@ package ideate
 //   - STAGE ONE redacts the free-text FIELDS, before the renderer sees them.
 //     Capture's redact.go argues the same ordering from its own near-miss:
 //     redaction must run on the inputs, not on the rendered document. Here the
-//     reason is the renderer's escaping. render.go's cell() and blockText() are
+//     reason is the renderer's escaping. termsafe.TableCell and termsafe.BlockText are
 //     what stop untrusted prose forging a table column or a link reference
 //     definition that swallows the record, and they are correct only if nothing
 //     rewrites their output afterwards — a placeholder dropped into a rendered
