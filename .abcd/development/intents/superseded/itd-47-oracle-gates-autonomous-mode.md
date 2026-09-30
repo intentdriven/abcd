@@ -19,19 +19,19 @@ severity: nitpick
 
 > **abcd's `intent-fidelity-reviewer` agent runs its three oracle-backed quality gates (itd-5 self-improvement pre-flight, research-file review, live injection-canary execution) in an autonomous Ralph session without a human in the loop.** Today those gates are structurally un-completable in headless mode: `_build_cli_oracle()` returns `Oracle(MCPBridge())` — the RP MCP leg only, which requires a running RepoPrompt GUI. Ralph running overnight on a server has no GUI. So the three gates either stay `deferred` (honest but blocking spec completion) or get rubber-stamped with fabricated outcomes. Once this intent lands, `_build_cli_oracle()` returns an `Oracle` with both an RP leg and a Codex leg; the Codex leg is reachable headlessly (the `codex` CLI is on PATH), and the gates complete with real outcomes against real oracle round-trips.
 >
-> "The spc-12 spec completion review used to stall every time it hit R6," said Ethan, autonomous-loop operator. "I'd come back to a Ralph run that had spent its budget thrashing on a gate it couldn't reach. With the Codex leg wired into the CLI oracle, the same gate runs in the next loop pass and either passes or fails honestly. The run completes — or doesn't — for real reasons."
+> "The spc-12 (predecessor store) spec completion review used to stall every time it hit R6," said Ethan, autonomous-loop operator. "I'd come back to a Ralph run that had spent its budget thrashing on a gate it couldn't reach. With the Codex leg wired into the CLI oracle, the same gate runs in the next loop pass and either passes or fails honestly. The run completes — or doesn't — for real reasons."
 
 ## Why This Matters
 
-`.work/issues.md` 2026-05-19 line 360 records the blocker: spc-12 (`intent-fidelity-reviewer` agent) ships Role 1 — per-criterion `MET`/`NOT_MET` verdicts on shipped intents — but three of its acceptance gates require a genuine `Oracle.ask()` round-trip that the autonomous run environment cannot satisfy. The three gates are:
+`.work/issues.md` 2026-05-19 line 360 records the blocker: spc-12 (predecessor store; `intent-fidelity-reviewer` agent) ships Role 1 — per-criterion `MET`/`NOT_MET` verdicts on shipped intents — but three of its acceptance gates require a genuine `Oracle.ask()` round-trip that the autonomous run environment cannot satisfy. The three gates are:
 
 - **R6 — itd-5 self-improvement pre-flight.** The candidate prompt is submitted to `lifeboat-oracle` for a clarity rewrite; the rewritten variant must pass the same goldens and be shorter by >10% to be accepted. Decision logged in the CHANGELOG.
 - **T1 — research-file oracle review.** The reviewer agent's research artefact (`.abcd/development/research/prompting/agents/intent-fidelity-reviewer.md §7`) is reviewed against oracle judgement.
 - **R7 — live injection-canary execution.** The reviewer agent's injection-canary fixture is executed end-to-end through the oracle to demonstrate the injection is ignored.
 
-All three need `_build_cli_oracle()` to reach a real oracle backend. The current implementation returns `Oracle(MCPBridge())`, which is RP-MCP-only and requires an active RepoPrompt GUI — not available in headless mode. spc-13 wired the Codex CLI as a *backend* (`oracle_codex.py`), but `_build_cli_oracle()` does not consume it. So the gates are reachable only when a human is sitting in front of an RP GUI; the autonomous loop reaches them via the run, can't complete them, and either defers (per spc-12's `deferred` permission, extended in `.work/issues.md` 2026-05-19 line 393) or stalls.
+All three need `_build_cli_oracle()` to reach a real oracle backend. The current implementation returns `Oracle(MCPBridge())`, which is RP-MCP-only and requires an active RepoPrompt GUI — not available in headless mode. spc-13 (predecessor store) wired the Codex CLI as a *backend* (`oracle_codex.py`), but `_build_cli_oracle()` does not consume it. So the gates are reachable only when a human is sitting in front of an RP GUI; the autonomous loop reaches them via the run, can't complete them, and either defers (per the `deferred` permission of spc-12 (predecessor store), extended in `.work/issues.md` 2026-05-19 line 393) or stalls.
 
-The deferral is *honest* — substituting a different reviewer changes the judgement substrate and fails itd-5 honestly — but it leaves spc-12 in a state where every Ralph completion-review run on the spec produces the same deferral, no progress is made on the gates, and the spec is structurally un-shippable in the loop. The fix is mechanical: extend `_build_cli_oracle()` to wire the Codex leg through a `CodexAgentDispatch` (which spc-11 / itd-6 work already provides primitives for).
+The deferral is *honest* — substituting a different reviewer changes the judgement substrate and fails itd-5 honestly — but it leaves spc-12 (predecessor store) in a state where every Ralph completion-review run on the spec produces the same deferral, no progress is made on the gates, and the spec is structurally un-shippable in the loop. The fix is mechanical: extend `_build_cli_oracle()` to wire the Codex leg through a `CodexAgentDispatch` (which spc-11 (predecessor store) / itd-6 work already provides primitives for).
 
 This intent is **a precondition for several downstream specs**: any agent spec that depends on `intent-fidelity-reviewer`'s discipline-checking roles (Roles 2 and 3 — itd-31, itd-34) and any future `lifeboat-oracle` work (itd-5's named reviewer) hits the same gate. Fixing it here unblocks the chain.
 
@@ -42,9 +42,9 @@ This intent is **a precondition for several downstream specs**: any agent spec t
   `CodexAgentDispatch` (Codex leg). The selection logic follows the itd-6
   cascade contract: prefer RP if reachable, fall back to Codex, fall back to
   in-session subagent.
-- **Confirm spc-13's `oracle_codex.py` integration** is reachable from this
-  call site (the Codex CLI is on PATH per spc-13's wiring).
-- **Re-run spc-12's three oracle-backed gates** (R6, R7, T1) under the
+- **Confirm the `oracle_codex.py` integration of spc-13 (predecessor store)** is reachable from this
+  call site (the Codex CLI is on PATH per the wiring of spc-13, predecessor store).
+- **Re-run the three oracle-backed gates of spc-12 (predecessor store)** (R6, R7, T1) under the
   extended `_build_cli_oracle()` and rewrite the CHANGELOG / research §7 with
   real outcomes — replacing the current `deferred` markers.
 
@@ -63,7 +63,7 @@ This intent is **a precondition for several downstream specs**: any agent spec t
   (depends on itd-2).
 - **`_build_cli_oracle()` callers other than `intent_fidelity_reviewer.py`.**
   If other call sites construct the CLI oracle, they likely have the same
-  problem, but the fix surface here is spc-12's specific call site. Wider
+  problem, but the fix surface here is the specific call site of spc-12 (predecessor store). Wider
   audit deferred to itd-6 cascade epic.
 
 ## Acceptance Criteria
@@ -96,7 +96,7 @@ This section is the canonical multi-spec implementation index:
   (RP → Codex → in-session). This intent ships the first two. The
   in-session leg depends on itd-2 (which has no spec yet). Document the
   partial as an explicit deferral, plumb the third leg later.
-- **Test surface for the Codex leg.** spc-13 tested `oracle_codex.py` in
+- **Test surface for the Codex leg.** spc-13 (predecessor store) tested `oracle_codex.py` in
   isolation; this intent needs at least one integration test that exercises
   the extended `_build_cli_oracle()` end-to-end against a real Codex CLI
   invocation in a Ralph-like environment. Where does that test live —
@@ -105,9 +105,9 @@ This section is the canonical multi-spec implementation index:
 
 ## Related
 
-- **spc-12** (`intent-fidelity-reviewer` agent) — the spec whose oracle gates
+- **spc-12** (predecessor store; `intent-fidelity-reviewer` agent) — the spec whose oracle gates
   this intent unblocks.
-- **spc-13** (headless Codex CLI oracle wiring) — provides `oracle_codex.py`,
+- **spc-13** (predecessor store; headless Codex CLI oracle wiring) — provides `oracle_codex.py`,
   the Codex leg this intent's `_build_cli_oracle()` consumes.
 - **itd-6** (RP-MCP-only integration / oracle cascade) — the broader
   cascade work; this intent ships the first two legs.

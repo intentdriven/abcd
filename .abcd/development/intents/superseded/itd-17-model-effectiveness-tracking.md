@@ -69,9 +69,9 @@ The fix: track per-target statistics (ship_count, revise_count, false_revise_cou
 
 > Empirical observations to feed the reframed plan-review (per the reframe blockquote at the top of this file). Not yet structured into the `{task_class, agent, backend, model_id, outcome, failure_mode_tag}` schema — recorded here as raw input the reframe should consume.
 
-### 2026-05-16 — review-backend frontier, observed over the `spc-5` dual-backend plan-review loop (12 rounds, 24 reviews)
+### 2026-05-16 — review-backend frontier, observed over the `spc-5` (predecessor store) dual-backend plan-review loop (12 rounds, 24 reviews)
 
-A new **`task_class: review_backend`** worth tracking once itd-17 reframes. The `spc-5` spec plan review ran RepoPrompt and Codex CLI in parallel for rounds 16–27; their behaviour was asymmetric and consistent:
+A new **`task_class: review_backend`** worth tracking once itd-17 reframes. The `spc-5` (predecessor store) spec plan review ran RepoPrompt and Codex CLI in parallel for rounds 16–27; their behaviour was asymmetric and consistent:
 
 | Backend | Strength (high accuracy) | Weakness (failure mode) |
 |---|---|---|

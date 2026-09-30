@@ -48,7 +48,7 @@ Three forces in this intent work together to make the glossary *emerge* from the
 2. **Cite-or-fail enforcement at lint time.** `internal/core/lint` blocks promotion on (a) non-canonical synonym in body (`GL002`, blocker) and (b) draft term in promoted intent (`GL004`, blocker); warns on (c) undefined term (`GL001`, warn) and cross-context collision without `contexts:` declared (`GL003`, warn).
 3. **Seed sparingly, tag bounded contexts from day one.** Ship 8–12 abcd-canonical seed terms with explicit `bounded_context:` so the pattern is in place before the second context arrives.
 
-This intent is the **`press-release`-shaped commitment** behind spec `spc-3-strengthen-intent-stage-abcdgrill-skill` (already specced), which decomposes into **6 implementation tasks** (tasks .1–.5 for core implementation + glossary lint + freeze; task .6 for ADR, fixtures, reviewer spec uplift, README updates, and end-to-end smoke).
+This intent is the **`press-release`-shaped commitment** behind spec `spc-3-strengthen-intent-stage-abcdgrill-skill` (predecessor store; already specced), which decomposes into **6 implementation tasks** (tasks .1–.5 for core implementation + glossary lint + freeze; task .6 for ADR, fixtures, reviewer spec uplift, README updates, and end-to-end smoke).
 
 ## What's In Scope
 
@@ -109,9 +109,9 @@ None stated.
 
 - ~~**Glossary location**~~ — **DECIDED post-audit (2026-05-07)**: source at `.abcd/development/foundation/terminology/<context>/<term>.md` (one-file-per-term, RAG-friendly, consistent with brief's `.abcd/development/` source-side convention). Lifeboat OUTPUT is `docs/terminology.md`, rendered from source at disembark time.
 - ~~**Verb canonical form**~~ — **DECIDED post-round-2-review (2026-05-07)**: `/abcd:intent grill` (sub-verb of `/abcd:intent`, sibling of `refine`). Top-level `/abcd:grill` and `/abcd:grill-me` aliases dropped.
-- ~~**Glossary-aware mode trigger**~~ — **DECIDED (spc-3, 2026-05-11)**: presence of `.abcd/development/foundation/terminology/` directory triggers glossary-aware mode. No explicit config flag needed.
+- ~~**Glossary-aware mode trigger**~~ — **DECIDED (spc-3, predecessor store, 2026-05-11)**: presence of `.abcd/development/foundation/terminology/` directory triggers glossary-aware mode. No explicit config flag needed.
 - **Cross-context term canonicalisation**: require explicit `contexts: [list]` in intent frontmatter when ANY cited term has cross-context collision (recommended) vs always require.
-- ~~**PRD location**~~ — **DECIDED (spc-3, 2026-05-11)**: `.abcd/intents/<itd-N>/prd.md` (per-intent, `prd-archive` subdirectory `.abcd/intents/<itd-N>/prd-archive/<session-id>.md` for regrills). Colocating with the intent file was rejected because it breaks the "intent file is one file" invariant and mixes lifecycle artefacts.
+- ~~**PRD location**~~ — **DECIDED (spc-3, predecessor store, 2026-05-11)**: `.abcd/intents/<itd-N>/prd.md` (per-intent, `prd-archive` subdirectory `.abcd/intents/<itd-N>/prd-archive/<session-id>.md` for regrills). Colocating with the intent file was rejected because it breaks the "intent file is one file" invariant and mixes lifecycle artefacts.
 - **Resynthesise path**: when an intent's glossary citations drift post-promotion (e.g. a glossary term gets renamed), is `/abcd:intent grill --resynthesise itd-N` (skip Phase 1, rerun Phase 2 only) the right surface, or is regrill always Phase-1-then-2? Current draft keeps Phase 2 inseparable from Phase 1; resynthesise-only is a candidate follow-up if drift becomes common.
 - **PRD `Further Notes` semantics**: Pocock's template uses this as a catch-all. Should abcd's adaptation pin specific things into it (e.g. links to the grill report, related intents, ADR cross-references) or keep it free-form? Pocock keeps it free-form; abcd defaulting to the same unless friction emerges.
 
@@ -121,7 +121,7 @@ _Empty. Populated by intent-fidelity-reviewer when intent moves to shipped/._
 
 ## References
 
-- Linked spec: `spc-3-strengthen-intent-stage-abcdgrill-skill` (in this repo). The spec slug retains the `abcdgrill-skill` form for now; rename to `intent-grill-skill` is queued as a follow-up wave (tracked in a local working note, unmigrated).
+- Linked spec: `spc-3-strengthen-intent-stage-abcdgrill-skill` (predecessor store). The spec slug retains the `abcdgrill-skill` form for now; rename to `intent-grill-skill` is queued as a follow-up wave (tracked in a local working note, unmigrated).
 - Depends on: `itd-1` (acceptance gates) — this intent eats its own dog food.
 - Coordinates with: `itd-24` (reflect command) — different register (post-completion learning vs pre-promotion adversarial).
 - Extended by: `itd-42` (coherence-aware grill) — adds a brief- and sibling-coherence tier to the grill this intent built; glossary-aware mode is kept verbatim.
