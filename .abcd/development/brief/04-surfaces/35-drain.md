@@ -86,7 +86,16 @@ read only when an open record carries a deferral, and not knowing whether a
 deferral is live never lets its record through: a failure to read the tags
 refuses the dry run, and a checkout holding no release tag (a shallow clone
 fetches none) marks the anchor unknown and hands back every record carrying a
-deferral, the dry run naming the missing tags and `git fetch --tags`.
+deferral, the dry run naming the missing tags and `git fetch --tags`. A checkout
+holding only an older release tag (one not fetched since the last cut) is
+caught the same way without asking a remote: a `deferred_after` newer than the
+checkout's own tag, compared by core version, names a tag the checkout lacks, so
+the anchor is stale. Every record deferred past a tag the checkout lacks is
+handed back as `anchor stale`, naming that tag and `git fetch --tags`, and the
+dry run names the stale anchor above them; a deferral past the local tag has
+then lapsed, since a newer release is named. A `deferred_after` that is not a
+release tag (`vMAJOR.MINOR.PATCH`) cannot be compared, and its record is handed
+back too.
 
 The fields are the rule because a model's judgement of its own ambiguity is
 unreliable, and the failure runs one way: a machine that decides a thing needs
@@ -142,7 +151,9 @@ so that a later drain takes issues a person would have decided. What guards it:
   committed at its own path, and one reached through a link, even a link inside
   the checkout, is not it.
 - The two person-owed hand-backs, a remedy waiting on a ruling and a live
-  deferral, hold whatever the record says.
+  deferral, hold whatever the record says, and so does a deferral whose
+  liveness the checkout cannot read: no release tag, a tag newer than the
+  checkout's own, or a value that is not a release tag.
 
 ## What it refuses
 

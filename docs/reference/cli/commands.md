@@ -886,8 +886,9 @@ tech-debt, documentation, inconsistency, drift, bug and ux at nitpick or minor, 
 hands every security issue to a person. A repository's record may loosen those
 floors (major, critical, security), and every floor it loosens is named. An issue
 whose remedy opens "Waits on", or whose deferral past the current release tag is
-live, is always handed back. Every other open issue is handed back, listed as
-ineligible, or skipped naming its blocker, by the rule that excluded it.
+live, or names a release tag this checkout lacks, is always handed back. Every
+other open issue is handed back, listed as ineligible, or skipped naming its
+blocker, by the rule that excluded it.
 
 --dry-run shows every open issue's disposition, the eligible ones first in the
 order a drain takes them (by category, then severity, then oldest first), and

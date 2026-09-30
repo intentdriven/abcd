@@ -340,3 +340,84 @@ func TestDrainDryRunSaysWhenTheAnchorIsUnknown(t *testing.T) {
 		}
 	}
 }
+
+// TestDrainDryRunSaysWhenTheAnchorIsStale: a checkout lacking the tag a
+// deferral names says its anchor is stale above the records it hands back,
+// naming the tag and how to fetch it.
+func TestDrainDryRunSaysWhenTheAnchorIsStale(t *testing.T) {
+	var buf bytes.Buffer
+	renderDrainPlan(&buf, capture.DrainPlan{Record: "adr-1", Loosened: []string{}, Anchor: "v0.1.0", AnchorStale: "v0.2.0"})
+	for _, want := range []string{"anchor: v0.1.0 is stale", "v0.2.0", "git fetch --tags"} {
+		if !strings.Contains(buf.String(), want) {
+			t.Errorf("the dry run does not say %q:\n%s", want, buf.String())
+		}
+	}
+	if strings.Contains(buf.String(), "a deferral past it is live") {
+		t.Errorf("a stale anchor is called the live one:\n%s", buf.String())
+	}
+}
+
+// TestDrainHandsBackADeferralPastATagTheCheckoutLacks is the stale anchor at
+// the front door: a checkout tagged v0.1.0 alone, holding a record deferred
+// past v0.2.0, hands that record back in the dry run and in --json, and the
+// bare verb still refuses to start with nothing written.
+func TestDrainHandsBackADeferralPastATagTheCheckoutLacks(t *testing.T) {
+	repo := drainRuleRepo(t, drainrule.ProposalFrontmatter())
+	gitCommitAt(t, repo, "root")
+	gitCmd(t, repo, "tag", "v0.1.0")
+	id := captureWithRemedy(t, "a nil map is written before it is made", "--category", "bug", "--remedy", "make the map first")
+	matches, _ := filepath.Glob(filepath.Join(repo, ".abcd", "work", "issues", "open", id+"-*.md"))
+	if len(matches) != 1 {
+		t.Fatalf("no record for %s", id)
+	}
+	raw, err := os.ReadFile(matches[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	deferred := strings.Replace(string(raw), "\nslug: ", "\ndeferred_after: \"v0.2.0\"\ndeferral_reason: a person's reason\nslug: ", 1)
+	if err := os.WriteFile(matches[0], []byte(deferred), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	before := ledgerIssueCount(t, repo)
+
+	var stdout, stderr bytes.Buffer
+	if code := Run([]string{"drain", "--dry-run"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("dry run exited %d:\n%s%s", code, stdout.String(), stderr.String())
+	}
+	for _, want := range []string{"anchor: v0.1.0 is stale", "handback", id, "anchor stale", "git fetch --tags"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Errorf("the dry run does not say %q:\n%s", want, stdout.String())
+		}
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if code := Run([]string{"drain", "--dry-run", "--json"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("--json exited %d:\n%s%s", code, stdout.String(), stderr.String())
+	}
+	var out struct {
+		Anchor       string `json:"anchor"`
+		AnchorStale  string `json:"anchor_stale"`
+		Dispositions []struct {
+			ID, Outcome, Reason string
+		} `json:"dispositions"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &out); err != nil {
+		t.Fatalf("--json is not JSON: %v\n%s", err, stdout.String())
+	}
+	if out.Anchor != "v0.1.0" || out.AnchorStale != "v0.2.0" {
+		t.Errorf("--json anchor %q, anchor_stale %q; want v0.1.0 and v0.2.0", out.Anchor, out.AnchorStale)
+	}
+	if len(out.Dispositions) != 1 || out.Dispositions[0].Outcome != "handback" || !strings.Contains(out.Dispositions[0].Reason, "git fetch --tags") {
+		t.Errorf("--json dispositions: %+v", out.Dispositions)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if code := Run([]string{"drain"}, &stdout, &stderr); code != 2 || !strings.Contains(stdout.String()+stderr.String(), "nothing written") {
+		t.Errorf("the bare verb exited %d:\n%s%s", code, stdout.String(), stderr.String())
+	}
+	if after := ledgerIssueCount(t, repo); after != before {
+		t.Errorf("the ledger holds %d records after the drain, %d before", after, before)
+	}
+}

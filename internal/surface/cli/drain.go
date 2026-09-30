@@ -37,8 +37,9 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"hands every security issue to a person. A repository's record may loosen those\n" +
 			"floors (major, critical, security), and every floor it loosens is named. An issue\n" +
 			"whose remedy opens \"Waits on\", or whose deferral past the current release tag is\n" +
-			"live, is always handed back. Every other open issue is handed back, listed as\n" +
-			"ineligible, or skipped naming its blocker, by the rule that excluded it.\n\n" +
+			"live, or names a release tag this checkout lacks, is always handed back. Every\n" +
+			"other open issue is handed back, listed as ineligible, or skipped naming its\n" +
+			"blocker, by the rule that excluded it.\n\n" +
 			"--dry-run shows every open issue's disposition, the eligible ones first in the\n" +
 			"order a drain takes them (by category, then severity, then oldest first), and\n" +
 			"writes nothing. The host judgement over each eligible remedy does not run in a dry\n" +
@@ -111,7 +112,11 @@ func renderDrainPlan(w io.Writer, plan capture.DrainPlan) {
 			fmt.Fprintf(w, "    - %s\n", termsafe.Sanitize(f))
 		}
 	}
-	if plan.Anchor != "" {
+	switch {
+	case plan.Anchor != "" && plan.AnchorStale != "":
+		fmt.Fprintf(w, "  anchor: %s is stale: an open record is deferred past %s, a release tag this checkout lacks, so every record deferred past a tag it lacks is handed back; `git fetch --tags` and drain again\n",
+			termsafe.Sanitize(plan.Anchor), termsafe.Sanitize(plan.AnchorStale))
+	case plan.Anchor != "":
 		fmt.Fprintf(w, "  anchor: %s (a deferral past it is live)\n", termsafe.Sanitize(plan.Anchor))
 	}
 	if plan.AnchorUnknown {

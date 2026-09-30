@@ -47,8 +47,10 @@ alone:
   record carrying only the older `suggested_fix:` reads that as its remedy),
   the remedy is not `none (filed automatically)`, the value abcd's automatic
   filers write when they have no fix, and it does not open "Waits on";
-- it carries no deferral that is live at the checkout's newest release tag, and
-  none at all when the checkout holds no release tag.
+- it carries no deferral that is live at the checkout's newest release tag,
+  none past a release tag newer than that one (a tag the checkout lacks), none
+  that is not a release tag, and none at all when the checkout holds no release
+  tag.
 
 The rules are asked in a fixed order, and the first that excludes an issue
 decides its one disposition:
@@ -60,7 +62,7 @@ decides its one disposition:
 | `handback` | `category` | a category the rule does not take |
 | `handback` | `severity` | a severity the rule does not take (`major` and `critical` under the baseline) |
 | `handback` | `waits-on-ruling` | its remedy opens "Waits on": the fix waits on a ruling a person has not given |
-| `handback` | `deferred` | its `deferred_after` names the current anchor tag: a person carried it past this release; or the checkout holds no release tag (a shallow clone fetches none), so whether any deferral is live is unknown and the reason names `git fetch --tags` |
+| `handback` | `deferred` | its `deferred_after` names the current anchor tag: a person carried it past this release; or the checkout holds no release tag (a shallow clone fetches none), so whether any deferral is live is unknown and the reason names `git fetch --tags`; or it names a release tag newer than the checkout's own, which the checkout lacks, so the reason says `anchor stale` and names that tag and `git fetch --tags`; or it is not a release tag at all |
 | `ineligible` | `remedy` | no remedy (a record filed before the remedy was required), or `none (filed automatically)` from an automatic filer; ineligible until a person writes one with `abcd capture remedy`, which the reason names |
 | `unreadable` | `unreadable` | the ledger reader refuses the record; the reason names why |
 | `eligible` | `fields` | every field rule passes |
@@ -92,9 +94,13 @@ a person should have reviewed.
 `dry_run` is `true`; `record` is the repository's decision record the rule is
 read from; `rule` is that record's rule (`record`, `path`, `categories`,
 `severities`, `security`, `remedy`, `loosened`); `loosened` lists every floor
-it loosens (empty when none); `anchor` is the release tag a live deferral names,
-present when an open record carries a deferral; `anchor_unknown` is `true` when
-an open record carries a deferral and the checkout holds no release tag; `order` is the ordering rule;
+it loosens (empty when none); `anchor` is the checkout's newest release tag, the
+one a live deferral names, present when an open record carries a deferral; `anchor_unknown` is `true` when
+an open record carries a deferral and the checkout holds no release tag;
+`anchor_stale` names the newest release tag an open record is deferred past
+that is newer than `anchor`, present when the checkout lacks it (every record
+deferred past such a tag is then handed back, and a deferral past `anchor` has
+lapsed); `order` is the ordering rule;
 `dispositions` holds one entry per open issue (`id`, `path`, `severity`,
 `category`, `outcome`, `rule`, `reason`, and `blockers` when skipped); `counts`
 totals them by outcome; `ledger` names the checkout and branch read.
