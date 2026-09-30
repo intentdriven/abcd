@@ -95,6 +95,10 @@ _None open._
 
 Changed on 2026-09-30 by the technical facilitator's ruling H9 of 2026-09-29, recorded as iss-2609300110451242: criterion 3 read "**Given** a listed model whose prefix matches the vendor denylist, **when** the configuration is read, **then** it is refused the same way, and an allowlist entry does not override it." H9 retires the bundled `anthropic/*` denylist, so the criterion's reading changes from a vendor refusal to the allowlist alone, and the text above is the criterion as it now stands. adr-2609300107513982 supersedes adr-2609221009491186, whose decision 2 it revises.
 
+<!-- abcd-review: OWED receipt=rcp-ac4127f9199c -->
+Fidelity review OWED (receipt rcp-ac4127f9199c).
+<!-- abcd-review-end receipt=rcp-ac4127f9199c -->
+
 ## Grounds
 
 - pursued: Jev is reachable only this way and the person's subscription must stay where Opus runs; we expect the listed route to serve only what was meant; shown wrong if a frontier model is ever billed through the adapter
