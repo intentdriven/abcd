@@ -58,7 +58,10 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 				return &exitError{Code: 2, Msg: "abcd drain: refused to start: " + termsafe.Sanitize(err.Error()) + " (nothing written)"}
 			}
 			plan, err := capture.PlanDrain(capture.DrainPlanRequest{RepoRoot: repoRoot})
-			if errors.Is(err, drainrule.ErrUnrecorded) || errors.Is(err, drainrule.ErrMalformed) || errors.Is(err, drainrule.ErrAmbiguous) {
+			// Every refusal of the rule exits 2, as the bare verb's does: a rule
+			// unrecorded, ambiguous, malformed, or unreadable (a link, a record
+			// past the size cap).
+			if isDrainRuleRefusal(err) {
 				return &exitError{Code: 2, Msg: "abcd drain: " + termsafe.Sanitize(err.Error()) + " (nothing written)"}
 			}
 			if err != nil {
@@ -76,6 +79,17 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 	}
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "show every open issue's disposition and the order a drain takes them; writes nothing")
 	return cmd
+}
+
+// isDrainRuleRefusal reports whether err is the rule load refusing: every one
+// of drainrule's sentinels.
+func isDrainRuleRefusal(err error) bool {
+	for _, s := range []error{drainrule.ErrUnrecorded, drainrule.ErrMalformed, drainrule.ErrAmbiguous, drainrule.ErrUnreadable} {
+		if errors.Is(err, s) {
+			return true
+		}
+	}
+	return false
 }
 
 // drainOutcomes is the order the counts line names the dispositions in.
@@ -99,6 +113,9 @@ func renderDrainPlan(w io.Writer, plan capture.DrainPlan) {
 	}
 	if plan.Anchor != "" {
 		fmt.Fprintf(w, "  anchor: %s (a deferral past it is live)\n", termsafe.Sanitize(plan.Anchor))
+	}
+	if plan.AnchorUnknown {
+		fmt.Fprintln(w, "  anchor: unknown: this checkout holds no release tag (a shallow clone fetches none), so every record carrying a deferral is handed back; `git fetch --tags` and drain again")
 	}
 	fmt.Fprintf(w, "  order: %s\n", termsafe.Sanitize(plan.Order))
 	for _, v := range plan.Dispositions {

@@ -83,8 +83,7 @@ type DrainVerdict struct {
 }
 
 // eligibility judges one issue by its fields alone, under the repository's
-// rule r, with anchor the checkout's current release tag ("" when it has
-// none). iss.BlockedByOpen must be the derived projection List fills (the
+// rule r, with anchor the checkout's current release tag as far as it is known. iss.BlockedByOpen must be the derived projection List fills (the
 // blockers still in open/). The rules are asked in a fixed order, and the
 // first that excludes the issue decides: not open, blocked, security, a
 // category outside the rule's set, a severity outside it, a remedy that waits
@@ -99,7 +98,7 @@ type DrainVerdict struct {
 // because it says which decision is owed; a record carrying both waits on
 // both. `capture defer` writes a deferral only onto a major or
 // critical record, but a hand-written one on a lighter record is read alike.
-func eligibility(iss Issue, r drainrule.Rule, anchor string) DrainVerdict {
+func eligibility(iss Issue, r drainrule.Rule, anchor deferralAnchor) DrainVerdict {
 	v := DrainVerdict{ID: iss.ID, Path: iss.Path, Severity: iss.Severity, Category: iss.Category}
 	decide := func(o DrainOutcome, rule DrainRule, reason string) DrainVerdict {
 		v.Outcome, v.Rule, v.Reason = o, rule, reason
@@ -122,9 +121,13 @@ func eligibility(iss Issue, r drainrule.Rule, anchor string) DrainVerdict {
 	case waitsOnRuling(iss.Remedy):
 		return decide(DrainHandBack, RuleWaitsOnRuling,
 			"the remedy opens \"Waits on\": the fix waits on a person's ruling, so it is a person's until the ruling is given and the remedy rewritten")
-	case anchor != "" && iss.deferredAfter == anchor:
+	case anchor.unknown && iss.deferredAfter != "":
 		return decide(DrainHandBack, RuleDeferred, fmt.Sprintf(
-			"deferred past %s, the current anchor: a person carried it past this release, so it is a person's until the deferral lapses", anchor))
+			"deferred past %s, anchor unknown: this checkout holds no release tag (a shallow clone fetches none), so whether the deferral is live cannot be read and it is a person's; `git fetch --tags` and drain again",
+			iss.deferredAfter))
+	case anchor.tag != "" && iss.deferredAfter == anchor.tag:
+		return decide(DrainHandBack, RuleDeferred, fmt.Sprintf(
+			"deferred past %s, the current anchor: a person carried it past this release, so it is a person's until the deferral lapses", anchor.tag))
 	case strings.TrimSpace(iss.Remedy) == "":
 		return decide(DrainIneligible, RuleRemedy, fmt.Sprintf(
 			"no remedy: field; ineligible until someone adds one with `abcd capture remedy %s \"<fix>\"`", iss.ID))
@@ -141,12 +144,18 @@ func eligibility(iss Issue, r drainrule.Rule, anchor string) DrainVerdict {
 
 // waitsOnPrefix opens a remedy whose fix waits on an unanswered ruling, the
 // shape the ledger's remedies are written in ("Waits on <ruling>: ...").
-const waitsOnPrefix = "waits on "
+const waitsOnPrefix = "waits on"
 
-// waitsOnRuling reports whether a remedy opens "Waits on", compared
-// case-folded after leading blanks, so a lower-case spelling is held back too.
+// waitsOnRuling reports whether a remedy opens "Waits on" as words: followed
+// by a blank, a colon, or nothing, compared case-folded after leading blanks,
+// so "Waits on: ruling H4." and a lower-case spelling are held back too, and
+// "Waits onward" is not.
 func waitsOnRuling(remedy string) bool {
-	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(remedy)), waitsOnPrefix)
+	rest, ok := strings.CutPrefix(strings.ToLower(strings.TrimSpace(remedy)), waitsOnPrefix)
+	if !ok {
+		return false
+	}
+	return rest == "" || rest[0] == ':' || rest[0] == ' ' || rest[0] == '\t' || rest[0] == '\n' || rest[0] == '\r'
 }
 
 // drainOrder states the ordering rule r takes eligible issues in.
@@ -191,10 +200,14 @@ type DrainPlan struct {
 	Loosened []string `json:"loosened"`
 	// Anchor is the release tag a live deferral names, when any open record
 	// carries a deferral; empty otherwise.
-	Anchor       string               `json:"anchor,omitempty"`
-	Order        string               `json:"order"`
-	Dispositions []DrainVerdict       `json:"dispositions"`
-	Counts       map[DrainOutcome]int `json:"counts"`
+	Anchor string `json:"anchor,omitempty"`
+	// AnchorUnknown reports that an open record carries a deferral and the
+	// checkout holds no release tag (a shallow clone fetches none), so every
+	// record carrying a deferral is handed back rather than judged.
+	AnchorUnknown bool                 `json:"anchor_unknown,omitempty"`
+	Order         string               `json:"order"`
+	Dispositions  []DrainVerdict       `json:"dispositions"`
+	Counts        map[DrainOutcome]int `json:"counts"`
 }
 
 // PlanDrain classifies every open issue by field, under the repository's own
@@ -241,13 +254,14 @@ func PlanDrain(req DrainPlanRequest) (DrainPlan, error) {
 	orderEligible(eligible, rule)
 	sort.SliceStable(rest, func(i, j int) bool { return issNumber(rest[i].ID) < issNumber(rest[j].ID) })
 	plan := DrainPlan{
-		Record:       rule.Record,
-		Rule:         rule,
-		Loosened:     rule.Loosened,
-		Anchor:       anchor,
-		Order:        drainOrder(rule),
-		Dispositions: append(append([]DrainVerdict{}, eligible...), rest...),
-		Counts:       map[DrainOutcome]int{},
+		Record:        rule.Record,
+		Rule:          rule,
+		Loosened:      rule.Loosened,
+		Anchor:        anchor.tag,
+		AnchorUnknown: anchor.unknown,
+		Order:         drainOrder(rule),
+		Dispositions:  append(append([]DrainVerdict{}, eligible...), rest...),
+		Counts:        map[DrainOutcome]int{},
 	}
 	for _, v := range plan.Dispositions {
 		plan.Counts[v.Outcome]++
@@ -255,23 +269,33 @@ func PlanDrain(req DrainPlanRequest) (DrainPlan, error) {
 	return plan, nil
 }
 
+// deferralAnchor is the release tag a deferral is judged against: the tag, or
+// unknown when an open record carries a deferral and the checkout holds no
+// release tag. The zero value is "no deferral to judge".
+type deferralAnchor struct {
+	tag     string
+	unknown bool
+}
+
 // liveDeferralAnchor returns the checkout's current release tag when any open
-// record carries a deferral, and "" when none does or the checkout has no
-// release tag. The tags are read only when a deferral needs judging, and a
-// failure to read them refuses the plan: a live deferral is a person's
-// decision, and not knowing whether it is live must not let the record through.
-func liveDeferralAnchor(repoRoot string, issues []Issue) (string, error) {
+// record carries a deferral, and the zero anchor when none does. The tags are
+// read only when a deferral needs judging, and not knowing whether a deferral
+// is live never lets its record through: a failure to read the tags refuses
+// the plan, and a checkout holding no release tag (a shallow clone fetches
+// none) marks the anchor unknown, which hands back every record carrying a
+// deferral. A live deferral is a person's decision.
+func liveDeferralAnchor(repoRoot string, issues []Issue) (deferralAnchor, error) {
 	if !slices.ContainsFunc(issues, func(iss Issue) bool { return iss.deferredAfter != "" }) {
-		return "", nil
+		return deferralAnchor{}, nil
 	}
 	tag, found, err := changelog.LatestReleaseTag(repoRoot)
 	if err != nil {
-		return "", fmt.Errorf("drain: an open record carries a deferral, and the release tags that say whether it is live could not be read: %w", err)
+		return deferralAnchor{}, fmt.Errorf("drain: an open record carries a deferral, and the release tags that say whether it is live could not be read: %w", err)
 	}
 	if !found {
-		return "", nil
+		return deferralAnchor{unknown: true}, nil
 	}
-	return tag.Tag(), nil
+	return deferralAnchor{tag: tag.Tag()}, nil
 }
 
 // ErrDrainRuleUnrecorded is the refusal when the drained repository holds no

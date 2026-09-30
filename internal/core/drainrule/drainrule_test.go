@@ -204,8 +204,8 @@ func TestLoadNeverReadsThroughALinkOutOfTheCheckout(t *testing.T) {
 	if err := os.Symlink(filepath.Join(outside, filepath.FromSlash(ADRsRelDir)), filepath.Join(repo, filepath.FromSlash(ADRsRelDir))); err != nil {
 		t.Fatal(err)
 	}
-	if r, err := Load(repo); err == nil {
-		t.Fatalf("a rule was read through a link out of the checkout: %+v", r)
+	if r, err := Load(repo); !errors.Is(err, ErrUnreadable) {
+		t.Fatalf("a rule was read through a link out of the checkout: %+v, %v; want ErrUnreadable", r, err)
 	}
 }
 
@@ -232,5 +232,106 @@ func TestTheProposalIsTheBaseline(t *testing.T) {
 func TestTheStoreIsTheDecisionStore(t *testing.T) {
 	if ADRsRelDir != decide.ADRsRelDir {
 		t.Fatalf("drainrule reads %s, decide mints into %s", ADRsRelDir, decide.ADRsRelDir)
+	}
+}
+
+// TestAnyDuplicateKeyInARuleRecordRefuses: the line scanner keeps a key's first
+// value and a YAML reader its last, so a record stating any top-level key twice
+// says two things, and which one an unattended drain obeys is never the
+// reader's choice. `status: accepted` then `status: superseded` is the sharp
+// case: first-wins admits a record every YAML reader calls superseded.
+func TestAnyDuplicateKeyInARuleRecordRefuses(t *testing.T) {
+	cases := map[string]struct{ status, extra, want string }{
+		"status accepted then superseded": {"accepted", "status: superseded\n" + strictFields, "status"},
+		"status superseded then accepted": {"superseded", "status: accepted\n" + strictFields, "status"},
+		"id twice":                        {"accepted", "id: adr-99\n" + strictFields, "id"},
+		"date twice":                      {"accepted", "date: 2026-10-01\n" + strictFields, "date"},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			repo := t.TempDir()
+			writeADR(t, repo, "0014-rule.md", "adr-14", c.status, c.extra)
+			r, err := Load(repo)
+			if !errors.Is(err, ErrMalformed) {
+				t.Fatalf("got rule %+v, err %v; want ErrMalformed", r, err)
+			}
+			if !strings.Contains(err.Error(), c.want) || !strings.Contains(err.Error(), "more than once") {
+				t.Errorf("the refusal does not name the duplicated key %q: %v", c.want, err)
+			}
+		})
+	}
+}
+
+// TestARuleRecordWhoseIdDisagreesWithItsFileNameRefuses: every surface names
+// the rule by its record's id, so a record whose frontmatter claims another
+// record's id (abcd's own strict one, say) while loosening floors would put
+// that record's name on its own rule.
+func TestARuleRecordWhoseIdDisagreesWithItsFileNameRefuses(t *testing.T) {
+	repo := t.TempDir()
+	writeADR(t, repo, "2609300000000001-x.md", "adr-2609291342092738", "accepted",
+		strings.Replace(strictFields, "handback", "take", 1))
+	r, err := Load(repo)
+	if !errors.Is(err, ErrMalformed) {
+		t.Fatalf("got rule %+v, err %v; want ErrMalformed", r, err)
+	}
+	for _, want := range []string{"adr-2609291342092738", "adr-2609300000000001"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the refusal does not name %s: %v", want, err)
+		}
+	}
+	// The same number written with its ordinal zeros is the same id.
+	repo = t.TempDir()
+	writeADR(t, repo, "0015-rule.md", "adr-0015", "accepted", strictFields)
+	if r, err := Load(repo); err != nil || r.Record != "adr-0015" && r.Record != "adr-15" {
+		t.Errorf("a zero-padded id refused or renamed: %+v %v", r, err)
+	}
+}
+
+// TestAnOversizedRecordIsNeverRead: the store is repository-authored, so every
+// record in it is read through the capped reader, and one past the cap refuses
+// the load rather than being read whole.
+func TestAnOversizedRecordIsNeverRead(t *testing.T) {
+	repo := t.TempDir()
+	p := writeADR(t, repo, "0016-rule.md", "adr-16", "accepted", strictFields)
+	f, err := os.OpenFile(p, os.O_APPEND|os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.WriteString(strings.Repeat("padding line\n", (2<<20)/13)); err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+	r, err := Load(repo)
+	if !errors.Is(err, ErrUnreadable) {
+		t.Fatalf("got rule %+v, err %v; want ErrUnreadable", r, err)
+	}
+	if !strings.Contains(err.Error(), "0016-rule.md") || !strings.Contains(err.Error(), "size cap") {
+		t.Errorf("the refusal does not name the record and the cap: %v", err)
+	}
+}
+
+// TestASymlinkedRecordInsideTheStoreIsNeverFollowed: a record in the store
+// that is a link, even one resolving inside the checkout, is refused rather
+// than read as a live record.
+func TestASymlinkedRecordInsideTheStoreIsNeverFollowed(t *testing.T) {
+	repo := t.TempDir()
+	loose := filepath.Join(repo, "docs", "loose.md")
+	if err := os.MkdirAll(filepath.Dir(loose), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	body := "---\nid: adr-17\nstatus: accepted\n" + strings.Replace(strictFields, "handback", "take", 1) + "---\n"
+	if err := os.WriteFile(loose, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(repo, filepath.FromSlash(ADRsRelDir))
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Relative, so the link resolves inside the checkout.
+	if err := os.Symlink(filepath.FromSlash("../../../../docs/loose.md"), filepath.Join(dir, "0017-rule.md")); err != nil {
+		t.Fatal(err)
+	}
+	if r, err := Load(repo); !errors.Is(err, ErrUnreadable) {
+		t.Fatalf("got rule %+v, err %v; want ErrUnreadable", r, err)
 	}
 }

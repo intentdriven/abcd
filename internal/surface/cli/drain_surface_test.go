@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/drainrule"
 )
 
@@ -263,5 +264,65 @@ func TestDrainOnTheStrictRuleNamesNoLoosening(t *testing.T) {
 	}
 	if strings.Contains(stderr.String(), "loosens") {
 		t.Errorf("the strict rule warns on stderr:\n%s", stderr.String())
+	}
+}
+
+// TestEveryRefusalOfTheRuleExitsTwo: a rule the drain cannot read safely (a
+// store or a record that is a symlink out of the checkout) refuses with exit 2
+// on the dry run and the bare verb alike, as every other refusal of the rule
+// does, and writes nothing.
+func TestEveryRefusalOfTheRuleExitsTwo(t *testing.T) {
+	outside := t.TempDir()
+	loose := filepath.Join(outside, "2609300000000003-rule.md")
+	body := "---\nid: adr-2609300000000003\nstatus: accepted\ndrain_categories: [bug]\ndrain_severities: [minor]\ndrain_security: take\ndrain_remedy: required\n---\n"
+	if err := os.WriteFile(loose, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for name, link := range map[string]func(repo string) error{
+		"symlinked store": func(repo string) error {
+			parent := filepath.Join(repo, ".abcd", "development", "decisions")
+			if err := os.MkdirAll(parent, 0o755); err != nil {
+				return err
+			}
+			return os.Symlink(outside, filepath.Join(parent, "adrs"))
+		},
+		"symlinked record": func(repo string) error {
+			dir := filepath.Join(repo, filepath.FromSlash(drainrule.ADRsRelDir))
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				return err
+			}
+			return os.Symlink(loose, filepath.Join(dir, "2609300000000003-rule.md"))
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			repo := captureLedgerRepo(t)
+			if err := link(repo); err != nil {
+				t.Fatal(err)
+			}
+			for _, args := range [][]string{{"drain", "--dry-run"}, {"drain", "--dry-run", "--json"}, {"drain"}} {
+				var stdout, stderr bytes.Buffer
+				code := Run(args, &stdout, &stderr)
+				msg := stdout.String() + stderr.String()
+				if code != 2 {
+					t.Errorf("%v exited %d, want 2:\n%s", args, code, msg)
+				}
+				if !strings.Contains(msg, "nothing written") {
+					t.Errorf("%v: the refusal does not say nothing was written:\n%s", args, msg)
+				}
+			}
+		})
+	}
+}
+
+// TestDrainDryRunSaysWhenTheAnchorIsUnknown: a checkout with no release tag
+// cannot say whether a deferral is live, and the dry run says so above the
+// records it hands back, naming how to fetch the tags.
+func TestDrainDryRunSaysWhenTheAnchorIsUnknown(t *testing.T) {
+	var buf bytes.Buffer
+	renderDrainPlan(&buf, capture.DrainPlan{Record: "adr-1", Loosened: []string{}, AnchorUnknown: true})
+	for _, want := range []string{"anchor: unknown", "no release tag", "git fetch --tags"} {
+		if !strings.Contains(buf.String(), want) {
+			t.Errorf("the dry run does not say %q:\n%s", want, buf.String())
+		}
 	}
 }

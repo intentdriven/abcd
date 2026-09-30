@@ -47,7 +47,8 @@ alone:
   record carrying only the older `suggested_fix:` reads that as its remedy),
   the remedy is not `none (filed automatically)`, the value abcd's automatic
   filers write when they have no fix, and it does not open "Waits on";
-- it carries no deferral that is live at the checkout's newest release tag.
+- it carries no deferral that is live at the checkout's newest release tag, and
+  none at all when the checkout holds no release tag.
 
 The rules are asked in a fixed order, and the first that excludes an issue
 decides its one disposition:
@@ -59,7 +60,7 @@ decides its one disposition:
 | `handback` | `category` | a category the rule does not take |
 | `handback` | `severity` | a severity the rule does not take (`major` and `critical` under the baseline) |
 | `handback` | `waits-on-ruling` | its remedy opens "Waits on": the fix waits on a ruling a person has not given |
-| `handback` | `deferred` | its `deferred_after` names the current anchor tag: a person carried it past this release |
+| `handback` | `deferred` | its `deferred_after` names the current anchor tag: a person carried it past this release; or the checkout holds no release tag (a shallow clone fetches none), so whether any deferral is live is unknown and the reason names `git fetch --tags` |
 | `ineligible` | `remedy` | no remedy (a record filed before the remedy was required), or `none (filed automatically)` from an automatic filer; ineligible until a person writes one with `abcd capture remedy`, which the reason names |
 | `unreadable` | `unreadable` | the ledger reader refuses the record; the reason names why |
 | `eligible` | `fields` | every field rule passes |
@@ -92,7 +93,8 @@ a person should have reviewed.
 read from; `rule` is that record's rule (`record`, `path`, `categories`,
 `severities`, `security`, `remedy`, `loosened`); `loosened` lists every floor
 it loosens (empty when none); `anchor` is the release tag a live deferral names,
-present when an open record carries a deferral; `order` is the ordering rule;
+present when an open record carries a deferral; `anchor_unknown` is `true` when
+an open record carries a deferral and the checkout holds no release tag; `order` is the ordering rule;
 `dispositions` holds one entry per open issue (`id`, `path`, `severity`,
 `category`, `outcome`, `rule`, `reason`, and `blockers` when skipped); `counts`
 totals them by outcome; `ledger` names the checkout and branch read.
@@ -113,9 +115,12 @@ on. Do not act on the list: a hand-back is a person's decision.
   decision record the four `drain_` fields. A record carrying the fields but
   proposed or superseded is named. Relay this; do not write the record for the
   user.
-- A malformed record (a field missing, misspelt, stated twice, or holding a
-  value the field does not take) refuses, naming the record and the field; two
-  accepted records carrying the fields refuse, naming both.
+- A malformed record (a field missing or misspelt, any frontmatter key stated
+  twice, an `id` its file name does not give it, or a value the field does not
+  take) refuses, naming the record and the field; two accepted records carrying
+  the fields refuse, naming both. A decision store or record that cannot be read
+  safely (a symlink, or a record past the size cap) refuses. Every one of these
+  exits 2 with nothing written, on the dry run and the bare verb alike.
 - Without `--dry-run` the verb refuses to start (exit 2, nothing written): the
   issue-keyed lane a drain hands each issue to is not built. The refusal names
   the rule's record, every floor it loosens, and the dry run.

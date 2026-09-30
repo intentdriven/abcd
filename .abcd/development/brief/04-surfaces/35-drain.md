@@ -71,8 +71,9 @@ a person writes one; and unreadable when the ledger reader refuses the record. A
 record written before the field existed reads its `suggested_fix:` as its remedy.
 
 Two hand-backs hold whatever the repository's record says, because each marks a
-decision a person still owes. A remedy that opens "Waits on" (the shape a remedy
-takes when its fix waits on an unanswered ruling, compared case-folded) is
+decision a person still owes. A remedy that opens "Waits on" as words, followed
+by a blank, a colon or nothing (the shape a remedy takes when its fix waits on an
+unanswered ruling, compared case-folded), is
 handed back under `waits-on-ruling`: taking it would make the ruling. A record
 whose `deferred_after` names the checkout's current anchor tag, the newest
 release tag, is handed back under `deferred`: a person carried it past this
@@ -81,8 +82,11 @@ record carrying both is named for the ruling, which says which decision is
 owed.
 The deferral verb writes a deferral only onto a `major` or `critical` record, but
 a hand-written one on a lighter record is read the same way. The release tags are
-read only when an open record carries a deferral, and a failure to read them
-refuses the dry run rather than letting a live deferral through.
+read only when an open record carries a deferral, and not knowing whether a
+deferral is live never lets its record through: a failure to read the tags
+refuses the dry run, and a checkout holding no release tag (a shallow clone
+fetches none) marks the anchor unknown and hands back every record carrying a
+deferral, the dry run naming the missing tags and `git fetch --tags`.
 
 The fields are the rule because a model's judgement of its own ambiguity is
 unreliable, and the failure runs one way: a machine that decides a thing needs
@@ -125,8 +129,15 @@ so that a later drain takes issues a person would have decided. What guards it:
 - abcd's own repository keeps the strict baseline, and a test fails when its
   record loosens anything or stops being the record the invariant cites.
 - The reader never falls back: a missing, partial, ambiguous or malformed record
-  refuses, and the store is read inside the checkout, so a store or record that
-  is a symlink leaving it is refused rather than followed.
+  refuses. A record stating any frontmatter key twice is malformed, because the
+  line scanner keeps the first value and a YAML reader the last, so
+  `status: accepted` then `status: superseded` would read as two decisions; so
+  is a record whose frontmatter `id` disagrees with the id its file name gives
+  it, which would put another record's name on its rule.
+- The store is read inside the checkout and each record through the capped
+  trust-boundary reader, so a store that is a symlink leaving the checkout, a
+  record that is a symlink at all, and a record past the ledger's size cap are
+  refused rather than followed or read whole.
 - The two person-owed hand-backs, a remedy waiting on a ruling and a live
   deferral, hold whatever the record says.
 
@@ -136,8 +147,8 @@ The dry run and the bare verb both refuse, exit 2 with nothing written, when
 the repository holds no accepted record of the rule, naming how to add one
 (the setup verb's offer, or the four fields on an accepted record); when a record
 names the fields but is proposed or superseded, the refusal names it. They
-refuse a malformed record, naming the record and the field, and two accepted
-records, naming both. With the rule, the bare verb still refuses to start: the
+refuse a malformed record, naming the record and the field, two accepted
+records, naming both, and a store or record that cannot be read safely. With the rule, the bare verb still refuses to start: the
 lane it would hand each issue to does not exist, and the refusal names the
 rule's record and every floor it loosens. A checkout that cannot be resolved,
 or a ledger holding one id in two status folders, is refused as every capture

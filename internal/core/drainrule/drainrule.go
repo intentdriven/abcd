@@ -44,6 +44,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/recordid"
+	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
 // ADRsRelDir is the decision store the rule is read from, repo-relative and
@@ -136,6 +137,9 @@ var (
 	ErrMalformed = errors.New("the drain eligibility record is malformed")
 	// ErrAmbiguous: more than one accepted record states the rule.
 	ErrAmbiguous = errors.New("more than one accepted record states the drain eligibility rule")
+	// ErrUnreadable: the decision store, or a record in it, could not be read
+	// safely: a link, a file past the size cap, or a read that failed.
+	ErrUnreadable = errors.New("the decision store the drain eligibility rule is read from could not be read safely")
 )
 
 // HowToAdd is the remedy every ErrUnrecorded refusal names.
@@ -147,16 +151,19 @@ const HowToAdd = "add it: run `abcd ahoy install` at a terminal and accept the d
 // Load reads the repository's drain eligibility rule from its decision store.
 // It refuses, with ErrUnrecorded, a repository whose store holds no accepted
 // record carrying the drain fields; with ErrAmbiguous, one holding two; and
-// with ErrMalformed, a record that is partial or states a value the rule does
-// not take.
+// with ErrMalformed, a record that is partial, states a value the rule does
+// not take, states any key twice, or claims an id its file name does not give
+// it; and with ErrUnreadable, a store or record that cannot be read safely.
 //
-// The store is read inside an os.Root at the checkout, so a store or record
-// that is a symlink leaving the checkout is refused, never followed: the rule
-// is the drained tree's committed history, and a rule from elsewhere is not it.
+// The store is read inside an os.Root at the checkout, and each record through
+// the capped trust-boundary reader, so a store that is a symlink leaving the
+// checkout, a record that is a symlink at all, and a record past the size cap
+// are refused, never followed or read whole: the rule is the drained tree's
+// committed history, and a rule from elsewhere is not it.
 func Load(repoRoot string) (Rule, error) {
 	root, err := os.OpenRoot(repoRoot)
 	if err != nil {
-		return Rule{}, fmt.Errorf("drain rule: opening the checkout: %w", err)
+		return Rule{}, fmt.Errorf("%w: opening the checkout: %w", ErrUnreadable, err)
 	}
 	defer root.Close()
 	entries, err := fs.ReadDir(root.FS(), ADRsRelDir)
@@ -164,39 +171,55 @@ func Load(repoRoot string) (Rule, error) {
 		return Rule{}, fmt.Errorf("%w: it has no decision store at %s; %s", ErrUnrecorded, ADRsRelDir, HowToAdd)
 	}
 	if err != nil {
-		return Rule{}, fmt.Errorf("drain rule: reading %s: %w", ADRsRelDir, err)
+		return Rule{}, fmt.Errorf("%w: reading %s: %w", ErrUnreadable, ADRsRelDir, err)
 	}
 	type candidate struct {
 		id, rel, status string
 		fields          map[string]frontmatter.Field
-		dups            []string
 	}
 	var accepted, other []candidate
 	for _, e := range entries {
-		if e.IsDir() || recordid.ADRFileID(e.Name()) == "" {
+		fileID := recordid.ADRFileID(e.Name())
+		if e.IsDir() || fileID == "" {
 			continue
 		}
 		rel := path.Join(ADRsRelDir, e.Name())
-		raw, err := root.ReadFile(rel)
+		raw, err := readRecord(root, rel)
 		if err != nil {
-			return Rule{}, fmt.Errorf("drain rule: reading %s: %w", rel, err)
+			return Rule{}, err
 		}
 		lines := strings.Split(string(raw), "\n")
 		fields := frontmatter.Fields(lines)
 		if !carriesDrainFields(fields) {
 			continue
 		}
-		c := candidate{rel: rel, fields: fields}
-		c.id, _ = frontmatter.ScalarString(fields["id"].Value)
-		if c.id == "" {
-			c.id = recordid.ADRFileID(e.Name())
+		c := candidate{id: fileID, rel: rel, fields: fields}
+		// A record that states any top-level key twice says two things: the
+		// line scanner keeps the first value and a YAML reader the last, so
+		// `status: accepted` then `status: superseded` would be admitted here
+		// and called superseded everywhere else. Refused whatever its status
+		// reads as, so neither reading decides what an unattended drain takes.
+		if dups := frontmatter.Duplicates(lines); len(dups) > 0 {
+			keys := make([]string, 0, len(dups))
+			for _, d := range dups {
+				if !slices.Contains(keys, d.Key) {
+					keys = append(keys, d.Key)
+				}
+			}
+			return Rule{}, fmt.Errorf("%w: %s (%s) states %s more than once; state each key once",
+				ErrMalformed, fileID, rel, strings.Join(keys, ", "))
+		}
+		// Every surface names the rule by its record's id, so a record whose
+		// frontmatter claims another record's id would put that record's name
+		// on its own rule. The file name is the id the store allocated.
+		if fmID, _ := frontmatter.ScalarString(fields["id"].Value); fmID != "" {
+			if recordid.CanonADRID(fmID) != fileID {
+				return Rule{}, fmt.Errorf("%w: %s says its id is %s, but its file name makes it %s; a record states its own id",
+					ErrMalformed, rel, fmID, fileID)
+			}
+			c.id = fmID
 		}
 		c.status, _ = frontmatter.ScalarString(fields["status"].Value)
-		for _, d := range frontmatter.Duplicates(lines) {
-			if strings.HasPrefix(d.Key, fieldPrefix) {
-				c.dups = append(c.dups, d.Key)
-			}
-		}
 		if c.status == "accepted" {
 			accepted = append(accepted, c)
 		} else {
@@ -225,16 +248,29 @@ func Load(repoRoot string) (Rule, error) {
 			ErrAmbiguous, strings.Join(ids, " and "))
 	}
 	c := accepted[0]
-	if len(c.dups) > 0 {
-		return Rule{}, fmt.Errorf("%w: %s (%s) states %s more than once; state each field once",
-			ErrMalformed, c.id, c.rel, strings.Join(c.dups, ", "))
-	}
 	r, err := parse(c.fields)
 	if err != nil {
 		return Rule{}, fmt.Errorf("%w: %s (%s): %s", ErrMalformed, c.id, c.rel, err.Error())
 	}
 	r.Record, r.Path = c.id, c.rel
 	return r, nil
+}
+
+// readRecord reads one record of the store through the capped trust-boundary
+// reader: a link (even one resolving inside the checkout), a FIFO or device, or
+// a file past the ledger's record cap is refused rather than read, since the
+// store is repository-authored and decides what an unattended drain takes.
+func readRecord(root *os.Root, rel string) ([]byte, error) {
+	raw, err := fsutil.ReadGuardedInRoot(root, rel, issueschema.RecordReadLimit)
+	switch {
+	case err == nil:
+		return raw, nil
+	case errors.Is(err, fsutil.ErrTooBig):
+		return nil, fmt.Errorf("%w: %s is larger than the %d-byte size cap and was left unread", ErrUnreadable, rel, issueschema.RecordReadLimit)
+	case errors.Is(err, fsutil.ErrNotRegular):
+		return nil, fmt.Errorf("%w: %s is not a regular file (a link, a FIFO or a device), and a record is never read through one", ErrUnreadable, rel)
+	}
+	return nil, fmt.Errorf("%w: reading %s: %w", ErrUnreadable, rel, err)
 }
 
 func orNone(s string) string {

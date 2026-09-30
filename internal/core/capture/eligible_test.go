@@ -187,30 +187,30 @@ func TestDrainRoutesAMixedLedgerByField(t *testing.T) {
 func TestEligibilityIsTheFieldRuleAndNothingElse(t *testing.T) {
 	for _, cat := range []Category{"tech-debt", "documentation", "inconsistency", "drift", "bug", "ux"} {
 		for _, sev := range []Severity{SeverityNitpick, SeverityMinor} {
-			v := eligibility(Issue{ID: "iss-1", Category: cat, Severity: sev, Remedy: "r", Status: StateOpen}, drainrule.Baseline(), "")
+			v := eligibility(Issue{ID: "iss-1", Category: cat, Severity: sev, Remedy: "r", Status: StateOpen}, drainrule.Baseline(), deferralAnchor{})
 			if v.Outcome != DrainEligible {
 				t.Errorf("%s/%s with a remedy: %s (%s), want eligible", cat, sev, v.Outcome, v.Reason)
 			}
 		}
 	}
 	for _, cat := range []Category{"process", "observation", "architectural-insight", "future-work-seed", "lapse"} {
-		v := eligibility(Issue{ID: "iss-1", Category: cat, Severity: SeverityMinor, Remedy: "r", Status: StateOpen}, drainrule.Baseline(), "")
+		v := eligibility(Issue{ID: "iss-1", Category: cat, Severity: SeverityMinor, Remedy: "r", Status: StateOpen}, drainrule.Baseline(), deferralAnchor{})
 		if v.Outcome != DrainHandBack || v.Rule != RuleCategory {
 			t.Errorf("%s: %s/%s, want handback/category", cat, v.Outcome, v.Rule)
 		}
 	}
 	for _, sev := range []Severity{SeverityMajor, SeverityCritical} {
-		v := eligibility(Issue{ID: "iss-1", Category: "bug", Severity: sev, Remedy: "r", Status: StateOpen}, drainrule.Baseline(), "")
+		v := eligibility(Issue{ID: "iss-1", Category: "bug", Severity: sev, Remedy: "r", Status: StateOpen}, drainrule.Baseline(), deferralAnchor{})
 		if v.Outcome != DrainHandBack || v.Rule != RuleSeverity {
 			t.Errorf("%s: %s/%s, want handback/severity", sev, v.Outcome, v.Rule)
 		}
 	}
 	// A remedy of blanks is no remedy.
-	if v := eligibility(Issue{ID: "iss-1", Category: "bug", Severity: SeverityMinor, Remedy: "  \t", Status: StateOpen}, drainrule.Baseline(), ""); v.Outcome != DrainIneligible {
+	if v := eligibility(Issue{ID: "iss-1", Category: "bug", Severity: SeverityMinor, Remedy: "  \t", Status: StateOpen}, drainrule.Baseline(), deferralAnchor{}); v.Outcome != DrainIneligible {
 		t.Errorf("a blank remedy: %s, want ineligible", v.Outcome)
 	}
 	// A record that is not open is never a drain's to take.
-	if v := eligibility(Issue{ID: "iss-1", Category: "bug", Severity: SeverityMinor, Remedy: "r", Status: StateResolved}, drainrule.Baseline(), ""); v.Outcome == DrainEligible {
+	if v := eligibility(Issue{ID: "iss-1", Category: "bug", Severity: SeverityMinor, Remedy: "r", Status: StateResolved}, drainrule.Baseline(), deferralAnchor{}); v.Outcome == DrainEligible {
 		t.Errorf("a resolved record was eligible")
 	}
 }
@@ -529,5 +529,75 @@ func TestAbcdsOwnDrainRuleIsTheStrictBaseline(t *testing.T) {
 	}
 	if !strings.Contains(string(inv), "["+abcdsOwnRuleRecord+"]") {
 		t.Errorf("the brief's invariants do not cite %s", abcdsOwnRuleRecord)
+	}
+}
+
+// TestADeferralIsHandedBackWhenTheCheckoutHoldsNoReleaseTag: a shallow clone
+// (fetch-depth 1, the unattended drain's likely checkout) fetches no tags, so
+// whether a deferral is live cannot be known. Not knowing must not let the
+// record through: every record carrying a deferral is handed back, naming the
+// missing tags and how to fetch them, and a record without one is untouched.
+func TestADeferralIsHandedBackWhenTheCheckoutHoldsNoReleaseTag(t *testing.T) {
+	src := gittest.NewRepo(t)
+	src.Commit("root")
+	src.Git("tag", "v0.1.0")
+	repo := src.Root()
+	ir := filepath.Join(repo, LedgerRelPath)
+	writeRuleRecord(t, repo, loosenedFields)
+	f := drainFixture{t: t, repo: repo, ir: ir}
+	f.file("iss-2", SeverityMajor, "bug", "rewrite the parser")
+	f.file("iss-3", SeverityMajor, "bug", "rewrite the lexer")
+	f.file("iss-5", SeverityMinor, "bug", "guard the nil map")
+	setDeferral(t, ir, "iss-2", "v0.1.0")
+	setDeferral(t, ir, "iss-3", "v0.0.9")
+	src.Commit("ledger")
+	src.Git("tag", "v0.2.0")
+
+	clone := filepath.Join(t.TempDir(), "clone")
+	src.Git("clone", "--quiet", "--depth", "1", "--no-tags", "file://"+repo, clone)
+	shallow := drainFixture{t: t, repo: clone, ir: filepath.Join(clone, LedgerRelPath)}
+	p := shallow.plan()
+	if p.Anchor != "" {
+		t.Errorf("a tagless clone reports anchor %q", p.Anchor)
+	}
+	cases := map[string]string{
+		"iss-2": "handback/deferred",
+		"iss-3": "handback/deferred",
+		"iss-5": "eligible/fields",
+	}
+	for id, want := range cases {
+		v := verdictOf(t, p, id)
+		if got := string(v.Outcome) + "/" + string(v.Rule); got != want {
+			t.Errorf("%s: %s (%s), want %s", id, got, v.Reason, want)
+		}
+		if want == "handback/deferred" {
+			for _, w := range []string{"anchor unknown", "no release tag", "git fetch --tags"} {
+				if !strings.Contains(v.Reason, w) {
+					t.Errorf("%s: the reason %q does not name %q", id, v.Reason, w)
+				}
+			}
+		}
+	}
+	if !p.AnchorUnknown {
+		t.Error("the plan does not say its anchor is unknown")
+	}
+}
+
+// TestWaitsOnIsReadAsAWordNotAPrefix: "Waits on" followed by a colon, or
+// ending the remedy, opens a remedy that waits on a ruling as surely as one
+// followed by a space; a word that merely starts with it does not.
+func TestWaitsOnIsReadAsAWordNotAPrefix(t *testing.T) {
+	for remedy, want := range map[string]bool{
+		"Waits on: ruling H4.":            true,
+		"WAITS ON:H4":                     true,
+		"waits on":                        true,
+		"  Waits on\tH4: then do it":      true,
+		"Waits on ruling G: drop it":      true,
+		"Waits onward: nothing":           false,
+		"guard the map; it waits on none": false,
+	} {
+		if got := waitsOnRuling(remedy); got != want {
+			t.Errorf("waitsOnRuling(%q) = %v, want %v", remedy, got, want)
+		}
 	}
 }
