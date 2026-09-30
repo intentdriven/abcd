@@ -6,9 +6,9 @@ package runner
 //   - the argv is a vector handed to exec, never a shell line, and the prompt
 //     travels as one argument behind the end-of-options marker;
 //   - the binary is resolved on PATH by its fixed name and refused when it is
-//     not absolute or resolves inside the repository the role runs in, lexically
-//     or through a symlink (a PATH entry into the checkout is repository
-//     content, never run);
+//     not absolute or resolves inside the repository the role runs in, or the
+//     checkout a lane's worktree belongs to, lexically or through a symlink (a
+//     PATH entry into either is repository content, never run);
 //   - the environment is the parent's with every git repository-selection and
 //     config-injection variable scrubbed (gitutil.ScrubbedEnv), so an inherited
 //     GIT_DIR cannot aim the role's git at another repository, while the
@@ -67,8 +67,9 @@ type procResult struct {
 }
 
 // admit resolves name on PATH and refuses a result that is not absolute or
-// that lies inside repo, lexically or after symlink resolution.
-func (l launcher) admit(runner, name, repo string) (string, error) {
+// that lies inside any of repos (the directory the role runs in, and the
+// checkout it belongs to), lexically or after symlink resolution.
+func (l launcher) admit(runner, name string, repos ...string) (string, error) {
 	p, err := l.lookPath(name)
 	if err != nil {
 		return "", fail(runner, ReasonAbsent, "%s is not on PATH", name)
@@ -80,15 +81,21 @@ func (l launcher) admit(runner, name, repo string) (string, error) {
 	if err != nil {
 		return "", fail(runner, ReasonAbsent, "%s does not resolve to a file", name)
 	}
-	guards := []string{filepath.Clean(repo)}
-	if g, err := filepath.EvalSymlinks(repo); err == nil {
-		guards = append(guards, g)
+	var guards []string
+	for _, repo := range repos {
+		if repo == "" {
+			continue
+		}
+		guards = append(guards, filepath.Clean(repo))
+		if g, err := filepath.EvalSymlinks(repo); err == nil {
+			guards = append(guards, g)
+		}
 	}
 	fold := fsutil.CaseFoldingFS()
 	for _, g := range guards {
 		for _, c := range []string{filepath.Clean(p), resolved} {
 			if fsutil.PathWithin(c, g, fold) {
-				return "", fail(runner, ReasonAbsent, "%s resolves inside the repository the role runs in; "+
+				return "", fail(runner, ReasonAbsent, "%s resolves inside the repository the role runs in or the checkout it belongs to; "+
 					"a program there is repository content and is never run", name)
 			}
 		}

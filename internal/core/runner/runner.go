@@ -63,6 +63,11 @@ type Request struct {
 	Receipt string
 	// Dir is the absolute path of the working tree the role runs in.
 	Dir string
+	// Checkout is the absolute path of the checkout the run belongs to when
+	// Dir is a worktree of it (a lane's worktree lives outside it); a program
+	// inside it is repository content and is never run, as one inside Dir is
+	// not. Empty when Dir is the checkout itself.
+	Checkout string
 	// Tools are the tools the role's contract grants, granted without a
 	// prompt; none granted when empty.
 	Tools []string
@@ -143,6 +148,9 @@ var (
 func (r Request) check() error {
 	if !roleRe.MatchString(r.Role) {
 		return fmt.Errorf("runner: role %q is not a plain lower-case name", termsafe.Sanitize(r.Role))
+	}
+	if r.Checkout != "" && (!filepath.IsAbs(r.Checkout) || filepath.Clean(r.Checkout) != r.Checkout) {
+		return fmt.Errorf("runner: the checkout %q is not a clean absolute path", termsafe.Sanitize(r.Checkout))
 	}
 	for _, p := range []struct{ name, path string }{{"brief", r.Brief}, {"receipt", r.Receipt}, {"directory", r.Dir}} {
 		if !filepath.IsAbs(p.path) || filepath.Clean(p.path) != p.path {

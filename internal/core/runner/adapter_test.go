@@ -289,3 +289,31 @@ func TestRequestIsCheckedBeforeLaunch(t *testing.T) {
 		t.Error("a refused request launched the harness")
 	}
 }
+
+// TestBinaryInsideTheCheckoutIsRefused: a lane's worktree lives outside the
+// checkout the run belongs to, so a program planted in that checkout and put
+// on PATH is refused too, though it is not inside the directory the role
+// runs in.
+func TestBinaryInsideTheCheckoutIsRefused(t *testing.T) {
+	f := newFake(t, "ok")
+	self, _ := os.Executable()
+	checkout := t.TempDir()
+	planted := filepath.Join(checkout, "tools")
+	if err := os.Mkdir(planted, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(self, filepath.Join(planted, OpenCode)); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", planted)
+	req := f.request("scribe")
+	req.Checkout = checkout
+	_, _, err := newOpenCode("").Run(context.Background(), req)
+	var fl *Failure
+	if !errors.As(err, &fl) || fl.Reason != ReasonAbsent {
+		t.Fatalf("err = %v, want the binary planted in the checkout refused as absent", err)
+	}
+	if f.launched(OpenCode) {
+		t.Fatal("the binary inside the checkout was launched")
+	}
+}

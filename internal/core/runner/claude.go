@@ -67,7 +67,7 @@ func (c *ClaudeCLI) Run(ctx context.Context, req Request) (Answer, []byte, error
 	if err := req.check(); err != nil {
 		return Answer{}, nil, err
 	}
-	bin, err := c.launch.admit(Claude, "claude", req.Dir)
+	bin, err := c.launch.admit(Claude, "claude", req.Dir, req.Checkout)
 	if err != nil {
 		return Answer{}, nil, err
 	}

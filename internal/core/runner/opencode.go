@@ -46,7 +46,7 @@ func (o *OpenCodeCLI) Run(ctx context.Context, req Request) (Answer, []byte, err
 	if err := req.check(); err != nil {
 		return Answer{}, nil, err
 	}
-	bin, err := o.launch.admit(OpenCode, "opencode", req.Dir)
+	bin, err := o.launch.admit(OpenCode, "opencode", req.Dir, req.Checkout)
 	if err != nil {
 		return Answer{}, nil, err
 	}
