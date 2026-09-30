@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -566,8 +567,58 @@ func NewRootCommand() *cobra.Command {
 	// host's instruction to BLOCK, so every usage error a hook can provoke refuses
 	// at exit 1 instead (iss-269).
 	applyHookPlaneFailOpen(root)
+	// Truly last: every flag-error function above is wrapped so Run can tell a
+	// flag-parse refusal from any other, and answer it in JSON when the caller
+	// typed --json (iss-2609292352131344).
+	markFlagParseErrors(root)
 
 	return root
+}
+
+// flagParseError marks a refusal raised while cobra parsed the flags. The parse
+// stops at the first bad flag, so a --json after it is never read and the
+// persistent flag still reads false when Run renders the refusal. It unwraps to
+// the refusal each flag-error function chose, whose exit code and wording stand.
+type flagParseError struct{ err error }
+
+func (e *flagParseError) Error() string { return e.err.Error() }
+func (e *flagParseError) Unwrap() error { return e.err }
+
+// markFlagParseErrors wraps the flag-error function of every command in the
+// tree, whichever function the passes above left there, so the one decision
+// below it (the --json fallback in Run) sees every flag-parse refusal.
+func markFlagParseErrors(c *cobra.Command) {
+	inner := c.FlagErrorFunc()
+	c.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
+		if out := inner(cmd, err); out != nil {
+			return &flagParseError{err: out}
+		}
+		return nil
+	})
+	for _, sub := range c.Commands() {
+		markFlagParseErrors(sub)
+	}
+}
+
+// jsonRequestedIn reports whether the raw arguments carry a --json the caller
+// typed as a flag: a bare --json or --json=<true> before any -- terminator.
+// It is read only for a flag-parse refusal, where the parse never reached the
+// flag (iss-2609292352131344).
+func jsonRequestedIn(args []string) bool {
+	for _, a := range args {
+		if a == "--" {
+			return false
+		}
+		if a == "--json" {
+			return true
+		}
+		if v, ok := strings.CutPrefix(a, "--json="); ok {
+			if b, err := strconv.ParseBool(v); err == nil && b {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // markUsageErrorsExitTwo walks the command tree and tags every cobra usage error
@@ -5973,7 +6024,14 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		// machine output must get a JSON envelope, never raw Go text (iss-29) —
 		// and it goes to STDOUT, where a machine-readable consumer reads
 		// (iss-2609100519128005).
-		if asJSON, _ := root.PersistentFlags().GetBool("json"); asJSON {
+		// A flag-parse refusal stops before a later --json is read, so the
+		// caller's own arguments decide there (iss-2609292352131344).
+		asJSON, _ := root.PersistentFlags().GetBool("json")
+		var parseErr *flagParseError
+		if !asJSON && errors.As(err, &parseErr) {
+			asJSON = jsonRequestedIn(args)
+		}
+		if asJSON {
 			enc := json.NewEncoder(stdout)
 			enc.SetIndent("", "  ")
 			_ = enc.Encode(newErrorEnvelope(msg, code))
