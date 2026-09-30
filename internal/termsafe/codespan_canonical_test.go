@@ -32,6 +32,7 @@ var backtickScanners = map[string]backtickScanner{
 	"internal/adapter/scanner/identity.go":        {1, "a delimiter set: a backtick is one of the characters that may end an identity token; nothing is paired"},
 	"internal/core/capture/promote.go":            {1, "a WRITER: codeSpan measures the longest backtick run to choose a fence the value cannot close; nothing is paired"},
 	"internal/core/guard/tokenize.go":             {23, "the shell tokenizer: a backtick there is command substitution, a shell grammar, not markdown"},
+	"internal/core/guard/payload.go":              {4, "buildsName reads a shell line's raw text for a name an expansion builds: a backtick there opens or closes a command substitution, a shell grammar, not markdown; nothing is paired"},
 	"internal/core/guard/unknown.go":              {2, "spellWord spells a default's or an alternative's shell word, and readPattern reads a trim's or a replacement's pattern: a backtick in either opens a command substitution, whose output the spelling drops or the pattern reads as unknown text; nothing is paired"},
 	"internal/core/history/reconstruct_render.go": {1, "a WRITER: longestBacktickRun sizes a fence longer than any run in the body; nothing is paired"},
 	"internal/core/ideate/render.go":              {1, "blockText asks whether a value opens with a backtick, then asks OpensBalancedCodeSpan, which pairs through PairCodeSpan"},
