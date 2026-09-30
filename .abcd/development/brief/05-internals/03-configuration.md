@@ -537,8 +537,11 @@ repository restates in its own words, so a replacement there is not reported.
 
 **One bundled domain is generated.** `SHELL` is the teaching plane of the
 shell-hazard guard (itd-103, spc-16 "Two planes, one registry"): its rules and
-recall keywords are built at start-up from the same bundled hazard registry
-`abcd guard` enforces, never written in the bundled `rules.json`. Each registry
+recall keywords are built from the same hazard registry `abcd guard` enforces,
+never written in the bundled `rules.json`. The bundled set carries it built from
+the bundled registry; every load rebuilds it, by the same generator, from the
+registry the guard enforces in the repository, which is the bundled entries
+merged with the repository's own `.abcd/guard.json` (ruling CK1). Each registry
 entry becomes one rule — whether the guard refuses or warns, the entry id, the
 command it matches, the plain-language why, and the safe successor — in entry-id
 order. The recall keywords are the command heads the registry matches (`rm`,
@@ -550,12 +553,23 @@ domain with no second edit, and a test fails the build if the domain and the
 registry ever part. To every other contract it is an ordinary bundled domain:
 a user or repo layer overrides it per field, `dormant` silences it, `*SHELL`
 activates it, the kill switch suppresses it, and dedup and provenance treat it
-like any other. Its injected block costs about 2k tokens, one rule per registry
-entry, paid once per session per signature: dedup never injects it again while
-its rules are unchanged. It is built from the bundled registry only: a repo's
-`.abcd/guard.json` changes what the guard refuses there, and the two features
-keep independent switches, so a repo that wants its own entries taught states
-them in its `rules.json`.
+like any other. Its injected block costs about 2k tokens for the bundled
+registry, one rule per registry entry, and each entry a repository adds or
+rewords in its `.abcd/guard.json` adds its own rule, about a hundred tokens at
+the length of a bundled lesson; the block is paid once per session per
+signature, so dedup never injects it again while its rules are unchanged, and
+an edit to the guard file re-injects it once. A rule whose words are the
+repository's — an entry the file adds, or a bundled entry whose tier, pattern,
+why or successor it changes — carries `(repo)` after its entry id, so whose
+words an agent is taught is never invisible; a fixture-only change teaches
+the bundled words and is not marked. A `.abcd/guard.json` the guard refuses
+(unreadable, invalid, or an uncommitted edit that weakens it) is refused here
+too and never skipped in silence: `SHELL` teaches the registry the guard falls
+back to, none of the refused entries, and the load names the file and the
+reason on stderr, from `abcd rules` and from the hook on every prompt, while
+every other domain loads as usual. The switches stay independent: the guard
+file decides what is refused, and `rules.json` overrides, silences or kills the
+teaching of it.
 
 ## The prompt router's output
 

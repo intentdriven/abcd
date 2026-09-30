@@ -2623,10 +2623,14 @@ is named on stderr, with the file that set the list, here and on every hook
 prompt. To keep an entry, restate it in the list, or leave the field out to
 inherit the bundled list.
 
-SHELL is generated from the bundled shell-hazard registry that "abcd guard"
-enforces: one rule per registry entry, naming the command, why it is dangerous
-and what to run instead, recalled by the commands the registry names. It
-teaches before shell work what the guard refuses at the moment a command runs.
+SHELL is generated from the shell-hazard registry that "abcd guard" enforces
+in this repository, the bundled entries and the repository's own
+.abcd/guard.json entries alike: one rule per registry entry, naming the
+command, why it is dangerous and what to run instead, recalled by the commands
+the registry names. A rule in the repository's words is marked "(repo)" after
+its entry id. A guard.json the guard refuses is named on stderr and not taught;
+SHELL then teaches the registry the guard enforces in its place. It teaches
+before shell work what the guard refuses at the moment a command runs.
 Read-only.
 
 ### `abcd scribe`

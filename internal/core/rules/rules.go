@@ -237,10 +237,13 @@ func Load(repoRoot string) (RuleSet, error) {
 	if err != nil {
 		return RuleSet{}, err
 	}
+	// SHELL is regenerated from the guard registry in force for this
+	// repository before any rules.json layer lands on it (ruling CK1).
+	base := withRepoShellDomain(Defaults(), repoRoot)
 	if !haveUser && !haveRepo {
-		return Defaults(), nil
+		return base, nil
 	}
-	merged := Defaults()
+	merged := base
 	if haveUser {
 		merged = mergeFrom(merged, user, SourceUser)
 		// The user layer is validated on its own before the repo layer lands,

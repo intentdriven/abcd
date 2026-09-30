@@ -133,11 +133,12 @@ UNGUARDED warning naming the file, so the state cannot pass unnoticed.
 **Never write `.abcd/guard.json` on your own initiative.** Disabling or
 retiering a hazard is the user's decision to make and to review.
 
-The bundled hazards are also taught before any command runs: the rules loader's
-`SHELL` domain is generated from them, one rule per entry, and is injected when a
-prompt is about shell work (`abcd rules shell` renders it). It is built from the
-bundled registry only, so an entry a repo adds in `.abcd/guard.json` is enforced
-here without being taught there.
+The hazards are also taught before any command runs: the rules loader's `SHELL`
+domain is generated from the registry this guard enforces, one rule per entry,
+and is injected when a prompt is about shell work (`abcd rules shell` renders
+it). An entry a repo adds in `.abcd/guard.json` is taught there as well, its
+rule marked `(repo)`; a guard file this guard refuses is named on stderr and
+not taught.
 
 ### What this guard is
 
