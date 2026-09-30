@@ -229,21 +229,11 @@ func adrPresent(repoRoot, id string) bool {
 // an answer nobody has given yet.
 func renderSkeleton(d Decision) string {
 	var b strings.Builder
-	b.WriteString("---\n")
-	b.WriteString("id: " + d.ID + "\n")
-	b.WriteString("slug: " + d.Slug + "\n")
 	// proposed, not accepted: the binary knows an id and a date, and cannot know
 	// that a decision is in force. The author sets `accepted` in the change that
 	// states the decision.
-	b.WriteString("status: proposed\n")
-	b.WriteString("date: " + d.Date + "\n")
-	b.WriteString("supersedes: null\n")
-	b.WriteString("superseded_by: null\n")
-	b.WriteString("related_intents: []\n")
-	b.WriteString("related_rfcs: []\n")
-	b.WriteString("related_adrs: []\n")
-	b.WriteString("---\n\n")
-	b.WriteString("# ADR-" + strings.TrimPrefix(d.ID, adrFamily+"-") + ": " + d.Title + "\n\n")
+	b.WriteString(renderKeys(d, "proposed"))
+	b.WriteString(renderCloseAndTitle(d))
 	b.WriteString("## Context\n\n")
 	b.WriteString("_What forced the decision? What constraints were already locked?_\n\n")
 	b.WriteString("## Decision\n\n")
@@ -255,13 +245,35 @@ func renderSkeleton(d Decision) string {
 	return b.String()
 }
 
+// renderKeys writes the opening delimiter and the store's nine frontmatter
+// keys with the status given, leaving the block open for a caller's extra keys.
+func renderKeys(d Decision, status string) string {
+	var b strings.Builder
+	b.WriteString("---\n")
+	b.WriteString("id: " + d.ID + "\n")
+	b.WriteString("slug: " + d.Slug + "\n")
+	b.WriteString("status: " + status + "\n")
+	b.WriteString("date: " + d.Date + "\n")
+	b.WriteString("supersedes: null\n")
+	b.WriteString("superseded_by: null\n")
+	b.WriteString("related_intents: []\n")
+	b.WriteString("related_rfcs: []\n")
+	b.WriteString("related_adrs: []\n")
+	return b.String()
+}
+
+// renderCloseAndTitle writes the closing delimiter and the `ADR-<id>: <Title>`
+// H1 below it.
+func renderCloseAndTitle(d Decision) string {
+	return "---\n\n# ADR-" + strings.TrimPrefix(d.ID, adrFamily+"-") + ": " + d.Title + "\n\n"
+}
+
 // renderStated lays out a stated record: the store's frontmatter keys with
 // `status: accepted`, the caller's extra keys, the H1, and the caller's body.
+// It is built from the same two pieces as the skeleton, so it never searches
+// the skeleton for a delimiter.
 func renderStated(d Decision, s Stated) string {
-	head := renderSkeleton(d)
-	head = head[:strings.Index(head, "---\n\n")]
-	head = strings.Replace(head, "status: proposed\n", "status: accepted\n", 1)
-	return head + s.Frontmatter + "---\n\n# ADR-" + strings.TrimPrefix(d.ID, adrFamily+"-") + ": " + d.Title + "\n\n" + s.Body
+	return renderKeys(d, "accepted") + s.Frontmatter + renderCloseAndTitle(d) + s.Body
 }
 
 // redactDecisionText sanitises the caller's title through the ONE canonical
