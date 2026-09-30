@@ -23,6 +23,7 @@ func captureWithValue(t *testing.T, slug string) (CaptureResult, string) {
 		Source:      "user-observation",
 		Slug:        slug,
 		FoundDuring: "unit-test",
+		Remedy:      "keep the value out of the ledger",
 	})
 	if err != nil {
 		t.Fatalf("Capture: %v", err)
