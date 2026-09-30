@@ -53,6 +53,16 @@ func Capture(req CaptureRequest) (CaptureResult, error) {
 	if err := validateRequestEnums(req); err != nil {
 		return CaptureResult{}, err
 	}
+	// Every new issue carries a remedy (ruling BX3 of 2026-09-29, itd-82
+	// decision 6): the fix it proposes, or, from an automatic filer with none,
+	// the one machine value (ruling H12). Refused before anything is written.
+	// A record filed before the rule carries none and stays readable; this
+	// judges only a new filing.
+	if strings.TrimSpace(req.Remedy) == "" {
+		return CaptureResult{}, refused(fmt.Errorf(
+			"%w: every new issue carries a remedy — name the fix it proposes, one line; an automatic filer with no fix yet writes %q (nothing captured)",
+			ErrRemedyRequired, issueschema.MachineRemedy))
+	}
 	// A found_at that names a path must name one in THIS checkout
 	// (iss-2609120511058115). Checked before the preamble, so a refused capture
 	// writes nothing at all — not even the ledger directories.
@@ -91,7 +101,7 @@ func Capture(req CaptureRequest) (CaptureResult, error) {
 		redactCaptureInputs(repoRoot, req.Text, req.Slug, req.FoundAt, req.FoundDuring)
 	// The remedy is free text too, and the drain hands it to a lane as the brief
 	// (itd-82), so it is redacted by the same redactor and counted with the rest.
-	if req.Remedy != "" {
+	{
 		r, n, deg := redactLedgerText(repoRoot, req.Remedy)
 		req.Remedy, redacted = r, redacted+n
 		if deg != "" {
@@ -222,8 +232,8 @@ func commitCapture(repoRoot, issuesRoot string, req CaptureRequest, issID, slug,
 		fields = append(fields, kv{"lapsed_at", lapsedAt})
 		fm["lapsed_at"] = lapsedAt
 	}
-	// The remedy is trimmed for the same reason lapsed_at is: an all-blank value
-	// is no remedy, and writing it would commit a key that says nothing.
+	// The remedy is trimmed for the same reason lapsed_at is. Capture has already
+	// refused a blank one, so the key is always written on a new record.
 	if remedy := strings.TrimSpace(req.Remedy); remedy != "" {
 		fields = append(fields, kv{"remedy", remedy})
 		fm["remedy"] = remedy
@@ -280,7 +290,11 @@ func commitCapture(repoRoot, issuesRoot string, req CaptureRequest, issID, slug,
 		// adds links to the content and never fails the write.
 		var matched *match.Outcome
 		if req.Match != nil {
-			content, matched = matchAndLink(repoRoot, issuesRoot, *req.Match, req.Text, content, fm)
+			text := req.Text
+			if req.MatchText != "" {
+				text = req.MatchText
+			}
+			content, matched = matchAndLink(repoRoot, issuesRoot, *req.Match, text, req.MatchExcept, content, fm)
 		}
 		if werr := writeLedgerFile(repoRoot, issuesRoot, placeholder, []byte(content)); werr != nil {
 			return werr

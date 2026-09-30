@@ -99,7 +99,6 @@ func TestConnectWritesNothingWhenVerificationFails(t *testing.T) {
 	}{
 		{401, `{"error":{"message":"No auth credentials found ` + callKey + `"}}`},
 		{404, `{"error":{"message":"No endpoints found for typesafe/jev-1.13."}}`},
-		{200, chat("anthropic/claude-opus-4", "ok")},
 	} {
 		p := newProvFake(t, tc.code, tc.reply)
 		f := newFx(t)
@@ -183,7 +182,6 @@ func TestConnectRefusesAPointerAtNothing(t *testing.T) {
 // refused here first, with no call made.
 func TestConnectRefusesBeforeAnyCall(t *testing.T) {
 	cases := map[string]func(*ConnectRequest){
-		"denied model":        func(r *ConnectRequest) { r.Models = []string{"anthropic/claude-opus-4"} },
 		"no models":           func(r *ConnectRequest) { r.Models = nil },
 		"bad model":           func(r *ConnectRequest) { r.Models = []string{"a b"} },
 		"duplicate model":     func(r *ConnectRequest) { r.Models = []string{"m/x", "m/x"} },
@@ -214,6 +212,46 @@ func TestConnectRefusesBeforeAnyCall(t *testing.T) {
 		}
 		if p.calls.Load() != 0 {
 			t.Errorf("%s: a call was made", name)
+		}
+	}
+}
+
+// TestConnectHoldsTheSetupToTheMachinesDenylist: abcd bundles no vendor
+// denylist (adr-2609300107513982), so a listed model of any vendor is set up
+// like any other; a denylist the machine writes itself still refuses a model
+// it names before any call, and a verification answered by a model it names
+// writes nothing.
+func TestConnectHoldsTheSetupToTheMachinesDenylist(t *testing.T) {
+	p := newProvFake(t, 200, chat("anthropic/claude-opus-4", "ok"))
+	f := newFx(t)
+	req := connectReq(f, p.base())
+	req.Models = []string{"anthropic/claude-opus-4"}
+	if _, err := Connect(context.Background(), req); err != nil {
+		t.Fatalf("Connect of a listed model with no denylist: %v", err)
+	}
+
+	const denying = `{"oracle":{"denylist":["anthropic/*"]}}`
+	for name, models := range map[string][]string{
+		"listed model denied":   {"anthropic/claude-opus-4"},
+		"reported model denied": {"typesafe/jev-1.13"},
+	} {
+		p := newProvFake(t, 200, chat("anthropic/claude-opus-4", "ok"))
+		f := newFx(t)
+		f.machineConfig(denying)
+		req := connectReq(f, p.base())
+		req.Models = models
+		_, err := Connect(context.Background(), req)
+		if err == nil || !strings.Contains(err.Error(), "(anthropic/*, from ~/.abcd/config.json)") {
+			t.Fatalf("%s: err = %v, want the machine's entry named", name, err)
+		}
+		if name == "listed model denied" && p.calls.Load() != 0 {
+			t.Fatalf("%s: a call was made", name)
+		}
+		if raw, _ := os.ReadFile(machineFile(f, "config.json")); string(raw) != denying {
+			t.Fatalf("%s: config.json changed: %s", name, raw)
+		}
+		if _, statErr := os.Lstat(machineFile(f, credential.StoreFileName)); !errors.Is(statErr, os.ErrNotExist) {
+			t.Fatalf("%s: the key was written", name)
 		}
 	}
 }
@@ -269,6 +307,32 @@ func TestConnectToALocalServerNeedsNoKey(t *testing.T) {
 	}
 	if got, _ := f.loadAPI().Provider("desk"); got.Key != "" {
 		t.Fatalf("a key name was recorded for a keyless provider: %+v", got)
+	}
+}
+
+// TestConnectCarriesTheConfigurationReadsDiagnostics: the setup reads the
+// configuration in force before it writes, and a route that read skipped (a
+// repository's route to a provider that holds a key, ruling CD2 of 2026-09-29)
+// comes back on the result for the front door to say, never dropped. The JSON
+// form omits it, so a front door says it once, on stderr.
+func TestConnectCarriesTheConfigurationReadsDiagnostics(t *testing.T) {
+	p := newProvFake(t, 200, chat("local-model", "ok"))
+	f := newFx(t)
+	f.machineConfig(`{"oracle":{"api":{` + openrouterBlock + `}}}`)
+	f.repoConfig(`{"oracle":{"roles":{"scribe":"openrouter/typesafe/jev-1.13"}}}`)
+	req := connectReq(f, p.base())
+	req.Provider, req.Home, req.Key = "desk", KeyHomeNone, ""
+	res, err := Connect(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+	if len(res.Diagnostics) != 1 || !strings.Contains(res.Diagnostics[0], "oracle.roles.scribe") ||
+		!strings.Contains(res.Diagnostics[0], "holds a key") {
+		t.Fatalf("diagnostics = %q; want the skipped repository route named", res.Diagnostics)
+	}
+	enc, _ := json.Marshal(res)
+	if strings.Contains(string(enc), "holds a key") {
+		t.Fatalf("the JSON result carries the diagnostic, which the front door prints on stderr:\n%s", enc)
 	}
 }
 

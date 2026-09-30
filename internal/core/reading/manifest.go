@@ -241,7 +241,7 @@ type Manifest struct {
 	// derivation admits a run whose records were committed since it read: a
 	// reader with both commits can diff them and see for themselves that nothing
 	// but the readings store and the issue ledger moved between the two
-	// (adr-2609021016272867, as read in DeriveCandidateRun; divergence register
+	// (adr-2609021016272867, as read in deriveCandidateRun; divergence register
 	// 27; iss-2609021857343626).
 	CandidateRunTarget string `json:"candidate_run_target,omitempty"`
 	// Candidates is the count of items THE DERIVED RUN HOLDS — the count of
@@ -282,11 +282,11 @@ func encode(v any) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// EncodeBundle renders the assembled input as canonical JSON.
-func EncodeBundle(b Bundle) ([]byte, error) { return encode(b) }
+// encodeBundle renders the assembled input as canonical JSON.
+func encodeBundle(b Bundle) ([]byte, error) { return encode(b) }
 
-// EncodeManifest renders the manifest as canonical JSON.
-func EncodeManifest(m Manifest) ([]byte, error) { return encode(m) }
+// encodeManifest renders the manifest as canonical JSON.
+func encodeManifest(m Manifest) ([]byte, error) { return encode(m) }
 
 // DecodeManifest reads a manifest strictly: unknown fields, trailing content
 // and a schema-version mismatch are all refused. All three are fail-closed on
@@ -321,8 +321,8 @@ func DecodeManifest(data []byte) (Manifest, error) {
 	// true of what the binary writes and false of what it reads — an
 	// attestation asserting more than its examination establishes, which brief
 	// invariant 16 forbids.
-	known := make(map[Kind]bool, len(Kinds()))
-	for _, k := range Kinds() {
+	known := make(map[Kind]bool, len(allKinds()))
+	for _, k := range allKinds() {
 		known[k] = true
 	}
 	// The scan mark is refused on exactly the same ground, and it is the
@@ -330,8 +330,8 @@ func DecodeManifest(data []byte) (Manifest, error) {
 	// whether its key and heading exclusions were established for that item, so
 	// decoding it clean would hand a reader an exclusion assertion with nothing
 	// behind it (itd-194 ac-4).
-	knownScans := make(map[Scan]bool, len(Scans()))
-	for _, s := range Scans() {
+	knownScans := make(map[Scan]bool, len(allScans()))
+	for _, s := range allScans() {
 		knownScans[s] = true
 	}
 	for i, it := range m.Items {
@@ -356,10 +356,10 @@ func DecodeManifest(data []byte) (Manifest, error) {
 	return m, nil
 }
 
-// ManifestHash is the manifest's own content hash over its canonical bytes. It
+// manifestHash is the manifest's own content hash over its canonical bytes. It
 // is the reference an ingest cites back.
-func ManifestHash(m Manifest) (string, error) {
-	data, err := EncodeManifest(m)
+func manifestHash(m Manifest) (string, error) {
+	data, err := encodeManifest(m)
 	if err != nil {
 		return "", err
 	}

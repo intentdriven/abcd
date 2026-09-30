@@ -7,8 +7,8 @@ session inside its bounds, and derives the comparison of the three ways of
 dividing work from the run log (itd-2609221656373558, spc-2609221657588816).
 
 It is also the family the implement loop is driven through (itd-2609201916151817,
-decision 8): `build` is what a person types, and the loop's status, step and
-receipt are sub-verbs of this verb, which a driving session calls. The loop's
+decision 8): `build` is what a person types, and the loop's status, step,
+receipt and record are sub-verbs of this verb, which a driving session calls. The loop's
 own state lives in the checkout's local tier, not in the shared run state below;
 [`34-build.md`](34-build.md) is its chapter. The pacing intent
 (itd-2609201925079472) reads the loop's window clock.
@@ -36,6 +36,7 @@ own state lives in the checkout's local tier, not in the shared run state below;
 | `status` | — | shipped |
 | `step` | — | shipped |
 | `receipt` | — | shipped |
+| `record` | — | shipped |
 
 ## Where the run lives
 
@@ -106,9 +107,11 @@ A session joined as `second` is refused at exit 2, with a `refusal` line naming
 the condition, when it claims while holding another live claim
 (`second_session_lane_cap`), claims or checks a lane in a `split-roles` window
 (`split_roles_second_builds_nothing`), declares a path in the reading corpus
-(`reading_corpus_lane`), or reaches the release step (`second_session_release`).
-Checking a step that is not a claim — a lane, the release, a review, an audit or
-a landing — asks before it; an allowed step writes nothing.
+(`reading_corpus_lane`), or reaches the release stage (`second_session_release`).
+Checking a stage that is not a claim — a lane, the release, a review, an audit
+or a landing — asks before it; an allowed stage writes nothing. What the check
+is asked about is a stage (ruling CM1, beside BU1's lane stages), in its verdict
+and in its refusal line alike.
 
 A session's own agent ceiling (criterion 5; for the second session, on top of
 the first's) is held against the agents the session declares. The session
@@ -148,7 +151,7 @@ session recalibrates (iss-2609211105023379). When the corpus cannot be derived �
 no preset file, one that is untracked, symlinked or does not parse, or no
 checkout to read it from — a second session's lane that declares paths is
 refused (`reading_corpus_unknown`): the bound fails closed. A lane that declares
-no paths asks no corpus question. The release step is refused at
+no paths asks no corpus question. The release stage is refused at
 this verb, not inside the launch cut: the cut knows no session, and a gate
 keyed on a flag the second session could omit would guard nothing.
 
@@ -256,15 +259,31 @@ signals anything.
 Three sub-verbs drive the loop a build starts, each over the run's state file in
 the checkout's local tier ([`34-build.md`](34-build.md) states the file, the
 checks and the step interface). The status render reads every run, or the one
-named, and writes nothing. The step performs the current lane's next step and
-exits; at a step that hands work to an agent it names the agent, the brief and
-the receipt path, and asking again moves nothing. The receipt hands that file
-back, and the step completes only when the path is the one named and its
-verifier accepts it. Without a named run, the step and the receipt act on the
-one run in progress in the checkout and refuse naming the runs when there are
-several. Their refusals name the step, the reason and the remedy, and a pause
-before the run's next eligible time, or a lock held by another invocation, is
-contention at exit 3.
+named, and writes nothing. The step verb performs the current lane's next stage and
+exits (a lane's stages are worktree, brief, implement, validate and land; the
+lane as a whole lands one of the spec's steps); at a stage that hands work to an
+agent it names the agent, the brief and the receipt path, and asking again moves
+nothing. The receipt hands that file back, and the stage completes only when the
+path is the one named and its verifier accepts it. Without a named run, the step
+and receipt verbs act on the one run in progress in the checkout and refuse naming
+the runs when there are several. Their refusals name the stage, the reason and
+the remedy, and a pause
+before the run's next eligible time, a lock held by another invocation, or a
+landing waiting for its pull request to merge, is contention at exit 3. The
+record verb reads a run's record back at the end, and on a complete run captures
+the run's transcripts into the history store, one capture per path; a
+transcript stored without the scanner coverage the repository armed carries its
+scan gap on the record, as the history verb reports it for a capture.
+
+A run keyed by an issue (decision 10 on itd-2609201916151817, the lane the
+drain opens for each eligible issue) has one lane. Its brief is the issue's
+record with its remedy as the work; its receipt must declare the issue fixed,
+and the landing resolves it with the commit the receipt names. Its receipt may
+instead hand the issue back, naming the kind of decision the lane found, the
+reason and, for a design finding or a second package, the home: the receipt
+verb then discards the lane's worktree and branch, records the discarded head,
+and ends the lane before its validators, and the drain routes the hand-back by
+kind ([`35-drain.md`](35-drain.md)).
 
 ## Exit codes
 
@@ -283,7 +302,7 @@ _Generated from the command tree; a drift test fails `go test` when this appendi
 
 ### `abcd implement`
 
-Sub-verbs: `abcd implement check`, `abcd implement claim`, `abcd implement join`, `abcd implement leave`, `abcd implement load`, `abcd implement log`, `abcd implement mode`, `abcd implement receipt`, `abcd implement release`, `abcd implement report`, `abcd implement status`, `abcd implement step`.
+Sub-verbs: `abcd implement check`, `abcd implement claim`, `abcd implement join`, `abcd implement leave`, `abcd implement load`, `abcd implement log`, `abcd implement mode`, `abcd implement receipt`, `abcd implement record`, `abcd implement release`, `abcd implement report`, `abcd implement status`, `abcd implement step`.
 
 Flags: none.
 
@@ -361,6 +380,15 @@ Sub-verbs: none.
 | Flag | Type |
 |---|---|
 | `--run` | string |
+
+### `abcd implement record`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--run` | string |
+| `--transcript` | stringArray |
 
 ### `abcd implement release`
 

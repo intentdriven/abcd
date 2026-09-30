@@ -27,7 +27,7 @@ func boardStatus(cwd string, stderr io.Writer) *statusblock.Block {
 	if err != nil || !ahoy.Managed(root) {
 		return nil
 	}
-	b, err := statusblock.Read(root, loop.StatusLanes)
+	b, err := statusblock.Read(root, loop.StatusLanes, loop.StatusPeers)
 	if err != nil {
 		fmt.Fprintf(stderr, "abcd: the Now / Next / Later block is omitted — %s\n", termsafe.Sanitize(fsutil.RedactHome(err.Error())))
 		return nil
@@ -37,7 +37,8 @@ func boardStatus(cwd string, stderr io.Writer) *statusblock.Block {
 
 // renderBoardStatus writes the block: a heading with the three counts, then
 // Now and Next, one row per intent (Next in the pick order) — its id, its
-// title, and in brackets what places it there (its lane state or "next up") —
+// title, and in brackets what places it there (its lane state or "next up")
+// and the release it targets —
 // then Later as a count of intents alone (ruling BV1 of 2026-09-29): its rows,
 // with the gating checks each fails, are in --json and on the site's Status
 // page.
@@ -70,13 +71,29 @@ func renderBoardStatus(w io.Writer, b *statusblock.Block) {
 	fmt.Fprintf(w, "    Later: %d %s\n", len(b.Later), noun)
 }
 
-// statusRowTag is what places a Now or Next row where it is, in words: its
-// lane state or "next up"; a READY intent in no lane carries none.
+// statusRowTag is what places a Now or Next row where it is, in words — its
+// lane state or "next up"; a READY intent in no lane carries none — then the
+// release the intent targets, when it names one (itd-2609212103572513
+// criterion 4).
 func statusRowTag(r statusblock.Row) string {
+	place := statusRowPlace(r)
+	if r.Target == "" {
+		return place
+	}
+	target := "target " + termsafe.Sanitize(r.Target)
+	if place == "" {
+		return target
+	}
+	return place + "; " + target
+}
+
+// statusRowPlace is what places a Now or Next row where it is: its lane state
+// or "next up", or nothing.
+func statusRowPlace(r statusblock.Row) string {
 	switch {
 	case r.Lane != nil:
 		l := r.Lane
-		tag := termsafe.Sanitize(l.Step)
+		tag := termsafe.Sanitize(l.Stage)
 		if l.Lane != "" {
 			tag = termsafe.Sanitize(l.Lane) + ": " + tag
 		}

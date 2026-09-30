@@ -84,9 +84,18 @@ func newIntentConsistencyCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return &exitError{Code: 2, Msg: "abcd intent consistency ingest: " + fsutil.RedactHome(err.Error())}
 			}
-			res, err := capture.IngestConsistency(repoRoot, payload, "")
+			// The filing-time match (itd-2609212137116617) on every record the
+			// pass files, configured as the capture verb's is and never a
+			// refusal: a refused configuration files unmatched and says why.
+			mc, matchRefused := resolveMatch(cmd.ErrOrStderr(), "intent consistency ingest", repoRoot)
+			res, err := capture.IngestConsistency(repoRoot, payload, "", mc)
 			if err != nil {
 				return &exitError{Code: 2, Msg: "abcd intent consistency ingest: " + fsutil.RedactHome(err.Error())}
+			}
+			for i := range res.Rows {
+				if res.Rows[i].Match == nil && !res.Rows[i].Linked {
+					res.Rows[i].Match = matchRefused
+				}
 			}
 			return render(cmd.OutOrStdout(), *asJSON, withReceipt(res, route, payload), func(w io.Writer) {
 				fmt.Fprintf(w, "abcd intent consistency ingest — %s (receipt %s, scope %s)\n", res.Status, res.ReceiptID, res.Scope)
@@ -104,6 +113,7 @@ func newIntentConsistencyCommand(asJSON *bool) *cobra.Command {
 						}
 						fmt.Fprintf(w, "  %d. %s (%s) — %s %s: %s\n", r.Number, r.ClassLabel(), r.Severity, r.IssueID, how,
 							termsafe.Sanitize(r.Summary))
+						renderMatch(w, r.Match)
 					}
 				}
 				renderReceiptLine(w, route, payload)

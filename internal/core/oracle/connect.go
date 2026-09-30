@@ -47,8 +47,8 @@ func KeyHomes() []string { return append(credential.Homes(), KeyHomeNone) }
 
 // ConnectRequest is one provider's setup.
 type ConnectRequest struct {
-	// Roots are where the configuration in force is read: the denylist a
-	// model is held to, and the provider blocks a name must not repeat. The
+	// Roots are where the configuration in force is read: the oracle.denylist
+	// a model is held to, and the provider blocks a name must not repeat. The
 	// writes land under Roots.Home alone.
 	Roots    layered.Roots
 	Provider string
@@ -78,6 +78,10 @@ type ConnectResult struct {
 	Verified CallRecord `json:"verified"`
 	// Wrote names each file written, in the tilde form.
 	Wrote []string `json:"wrote"`
+	// Diagnostics are the configuration read's non-fatal reports (APIConfig's),
+	// for the front door to print on stderr; the JSON form omits them, so they
+	// are said once and never mixed into what a machine reader parses.
+	Diagnostics []string `json:"-"`
 }
 
 // verifyBrief is the verification call's brief: one short exchange, judged
@@ -112,7 +116,7 @@ func Connect(ctx context.Context, req ConnectRequest) (ConnectResult, error) {
 		opts = append(opts, openaiapi.WithTimeout(req.Timeout))
 	}
 	res := ConnectResult{Provider: req.Provider, BaseURL: req.BaseURL, Models: append([]string(nil), req.Models...),
-		KeyHome: req.Home}
+		KeyHome: req.Home, Diagnostics: append([]string(nil), cfg.Diagnostics...)}
 	svc := providerService(Provider{Name: req.Provider, BaseURL: req.BaseURL, Key: req.KeyName, Models: req.Models},
 		cfg.denylist, &res.Verified, opts...)
 	block := map[string]any{"base_url": req.BaseURL, "models": req.Models}
@@ -319,8 +323,10 @@ func writeProviderBlockLocked(home string, dir *os.Root, name string, block map[
 // ahoy gap, `abcd ahoy --providers` and the plugin page.
 const AdapterExplanation = "An aggregator (OpenRouter, for one) serves many vendors' models behind one " +
 	"OpenAI-compatible address and one key, and a local OpenAI-compatible server is reached the same way. " +
-	"abcd would use one for decision models and cheap judgements pointed at it by name, and never for a frontier " +
-	"model, which the vendor denylist keeps on the host. Everything works without one: with no provider configured, " +
+	"abcd would use one for decision models and cheap judgements pointed at it by name, and only for the models its " +
+	"list names: a model the person does not list, a frontier model included, is never asked for, " +
+	"and the record shows what answered. " +
+	"Everything works without one: with no provider configured, " +
 	"every delegated step runs on the host."
 
 // KeyHomesProse is the prose above the choice of the key's home (criterion 8):
@@ -352,16 +358,17 @@ func providerService(p Provider, denylist []DenyEntry, rec *CallRecord, opts ...
 // CredentialService is the walkthrough's service for the credential name, when
 // a configured provider names it as its key: the walkthrough then verifies a
 // key with that provider's own call. A name no provider names is not the
-// adapter's.
-func CredentialService(roots layered.Roots, name string) (credential.Service, bool, error) {
+// adapter's. The configuration read's diagnostics come back beside it, for the
+// front door to print on stderr, whether or not a provider names the name.
+func CredentialService(roots layered.Roots, name string) (credential.Service, bool, []string, error) {
 	cfg, err := LoadAPI(roots)
 	if err != nil {
-		return credential.Service{}, false, err
+		return credential.Service{}, false, nil, err
 	}
 	for _, p := range cfg.Providers() {
 		if p.Key == name && len(p.Models) > 0 {
-			return providerService(p, cfg.denylist, nil), true, nil
+			return providerService(p, cfg.denylist, nil), true, cfg.Diagnostics, nil
 		}
 	}
-	return credential.Service{}, false, nil
+	return credential.Service{}, false, cfg.Diagnostics, nil
 }

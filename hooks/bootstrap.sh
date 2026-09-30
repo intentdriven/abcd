@@ -15,6 +15,14 @@
 
 set -u
 
+# --unseen is passed by the salvage runs in the per-prompt, per-command and
+# pre-compaction hooks (hooks/hooks.json), which discard everything this script
+# prints. A release swap made there reports "abcd updated from X to Y" to no one,
+# so it says so in the record instead (transition_unseen=yes), and the next
+# session start shows the line once (the ruling CJ1b's single exception).
+output_unseen=''
+[ "${1:-}" = '--unseen' ] && output_unseen=yes
+
 plugin_root="${CLAUDE_PLUGIN_ROOT:-}"
 [ -n "$plugin_root" ] || exit 0
 
@@ -577,6 +585,19 @@ if [ -n "$cache_mode" ] && [ -f "$cache_binary" ]; then
 	[ -n "$cached_sha" ] || cached_tag=''
 fi
 
+# prev_tag is the release this run replaces, read before anything is written:
+# the cache's record in cache mode, the root's own record in the per-root mode
+# (it outlives a binary removed from beside it). A fresh root with no record
+# replaces nothing, and a first install is not an update. The swap records it
+# as previous_tag (the ruling CJ1) and, when it differs from the release
+# installed, leads the success notice with the update line (CJ1b).
+prev_tag=''
+if [ -n "$cache_mode" ]; then
+	[ -f "$cache_binary" ] && prev_tag=$(meta_field "$cache_meta" release_tag)
+else
+	prev_tag=$(meta_field "$plugin_root/.binary-meta" release_tag)
+fi
+
 resolved_tag=''
 if command -v curl >/dev/null 2>&1; then
 	redirect=$(curl -q -fsS --proto '=https' --proto-redir '=https' --max-time 15 -o /dev/null -w '%{redirect_url}' "$releases_url/latest" 2>/dev/null) || redirect=''
@@ -656,6 +677,8 @@ path_note=''
 from_note=''
 stamp_note=''
 attest_note=''
+update_lead=''
+update_record=''
 
 if [ -n "$use_cache" ]; then
 	release_tag="$cached_tag"
@@ -675,6 +698,20 @@ else
 	[ -n "$resolved_tag" ] ||
 		refuse "the latest release tag could not be resolved, so the download cannot be pinned to a single release — there may be no network; $ignored_env"
 	release_tag="$resolved_tag"
+
+	# The swap below replaces prev_tag's release, so its record names it
+	# (CJ1), and the success notice leads with the one line the swap owes its
+	# reader (CJ1b) in the wording update.UpdatedFormat holds: first, because
+	# only the first line of a hook's stderr reaches the transcript (iss-208).
+	# A re-download of the same release is no update and says nothing of one.
+	# A run whose output nobody reads records that too, for the session check.
+	if [ -n "$prev_tag" ]; then
+		update_record=$(printf 'previous_tag=%s\n' "$prev_tag")
+		if [ "$prev_tag" != "$release_tag" ]; then
+			update_lead="$(printf 'abcd updated from %s to %s' "$prev_tag" "$release_tag"). "
+			[ -z "$output_unseen" ] || update_record=$(printf '%s\ntransition_unseen=yes' "$update_record")
+		fi
+	fi
 
 	# 6. Download into the mode's temp dir — the data dir in cache mode (same
 	#    filesystem as the cache, so publishing into it is a rename), the plugin
@@ -744,6 +781,7 @@ else
 			printf 'release_sha=%s\n' "$release_sha"
 			printf 'binary_sha256=%s\n' "$binary_sha256"
 			printf 'fetched_at=%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+			[ -z "$update_record" ] || printf '%s\n' "$update_record"
 		} > "$tmp/binary-meta" 2>/dev/null
 		chmod 0755 "$tmp/$asset" 2>/dev/null ||
 			refuse "the downloaded $asset cannot be made executable"
@@ -987,6 +1025,7 @@ else
 			printf 'release_sha=%s\n' "$release_sha"
 			printf 'binary_sha256=%s\n' "$binary_sha256"
 			printf 'fetched_at=%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+			[ -z "$update_record" ] || printf '%s\n' "$update_record"
 		} > "$tmp/binary-meta" 2>/dev/null &&
 			mv -f "$tmp/binary-meta" "$meta_path" 2>/dev/null ||
 			meta_note=' (the .binary-meta provenance record could not be written, so version-skew reporting stays silent for this plugin root)'
@@ -1037,5 +1076,5 @@ fi
 #
 # The path is wrapped in SINGLE quotes (binary_quoted, defined at the top) for
 # the reason given there: this string is printed to be pasted into a shell.
-notice "$(printf 'abcd bootstrap: installed the checksum-verified abcd binary (release %s) into the plugin root, so the abcd hooks are live for this session.%s%s%s%s%s%s%s%s For the abcd command in your own terminal, run this once — the path is absolute because abcd is not on your PATH yet, which is exactly what the command fixes: %s ahoy install' \
-	"$release_tag" "$from_note" "$stale_note" "$path_note" "$meta_note" "$cache_note" "$stamp_note" "$attest_note" "$degrade_note" "$binary_quoted")"
+notice "$(printf '%sabcd bootstrap: installed the checksum-verified abcd binary (release %s) into the plugin root, so the abcd hooks are live for this session.%s%s%s%s%s%s%s%s For the abcd command in your own terminal, run this once — the path is absolute because abcd is not on your PATH yet, which is exactly what the command fixes: %s ahoy install' \
+	"$update_lead" "$release_tag" "$from_note" "$stale_note" "$path_note" "$meta_note" "$cache_note" "$stamp_note" "$attest_note" "$degrade_note" "$binary_quoted")"

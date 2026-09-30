@@ -43,11 +43,11 @@ const ContrastBar = 4.5
 // RGB is one 8-bit-per-channel colour.
 type RGB struct{ R, G, B uint8 }
 
-// ParseColor reads a hex colour in the two spellings a settings file may use:
+// parseColor reads a hex colour in the two spellings a settings file may use:
 // "#rrggbb" and the "#rgb" shorthand, either case. Everything else is refused
 // rather than coerced — a value the reader cannot understand is a setting the
 // user wrote and did not get, and substituting black for it would hide that.
-func ParseColor(s string) (RGB, error) {
+func parseColor(s string) (RGB, error) {
 	raw := strings.TrimSpace(s)
 	if !strings.HasPrefix(raw, "#") {
 		return RGB{}, fmt.Errorf("colour %q must be a hex value beginning with '#'", s)
@@ -92,11 +92,11 @@ func linearize(c float64) float64 {
 	return math.Pow((c+0.055)/1.055, 2.4)
 }
 
-// ContrastRGB is the WCAG contrast ratio of two colours: 1 for a colour
+// contrastRGB is the WCAG contrast ratio of two colours: 1 for a colour
 // against itself, 21 for black against white. It is symmetric — the lighter of
 // the two is always the numerator — so a caller cannot get a different answer
 // by naming the pair the other way round.
-func ContrastRGB(a, b RGB) float64 {
+func contrastRGB(a, b RGB) float64 {
 	l1, l2 := a.Luminance(), b.Luminance()
 	if l1 < l2 {
 		l1, l2 = l2, l1
@@ -104,23 +104,23 @@ func ContrastRGB(a, b RGB) float64 {
 	return (l1 + 0.05) / (l2 + 0.05)
 }
 
-// Contrast is ContrastRGB over two hex spellings, refusing either if it does
+// contrast is contrastRGB over two hex spellings, refusing either if it does
 // not parse.
-func Contrast(fg, bg string) (float64, error) {
-	f, err := ParseColor(fg)
+func contrast(fg, bg string) (float64, error) {
+	f, err := parseColor(fg)
 	if err != nil {
 		return 0, err
 	}
-	b, err := ParseColor(bg)
+	b, err := parseColor(bg)
 	if err != nil {
 		return 0, err
 	}
-	return ContrastRGB(f, b), nil
+	return contrastRGB(f, b), nil
 }
 
-// FormatRatio renders a measured ratio the way a refusal reports it, to the
+// formatRatio renders a measured ratio the way a refusal reports it, to the
 // two decimal places the record states its own measurements in ("6.94 to 1").
-func FormatRatio(r float64) string { return strconv.FormatFloat(r, 'f', 2, 64) + ":1" }
+func formatRatio(r float64) string { return strconv.FormatFloat(r, 'f', 2, 64) + ":1" }
 
 // sgr renders this colour as the parameters of a true-colour SGR sequence,
 // with base 38 for a foreground and 48 for a background.

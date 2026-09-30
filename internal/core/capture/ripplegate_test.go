@@ -27,7 +27,7 @@ func mustCapture(t *testing.T, root, ledger, slug, forceID string) capture.Captu
 	res, err := capture.Capture(capture.CaptureRequest{
 		RepoRoot: root, IssuesRoot: ledger, Text: "ripple gate fixture: " + slug,
 		Severity: capture.SeverityMinor, Category: "bug", Source: "manual-test",
-		FoundDuring: "ripple-gate", Slug: slug, ForceID: forceID,
+		FoundDuring: "ripple-gate", Slug: slug, ForceID: forceID, Remedy: "a remedy this test does not read",
 	})
 	if err != nil {
 		t.Fatalf("capture %s: %v", slug, err)
@@ -117,7 +117,7 @@ func TestRippleGateConsumersHoldOnMintedIDs(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, id := range []string{legacyOpen.ID, nativeOpen.ID, nativeFixed.ID} {
-		if _, ok := resolver.Lookup(id); !ok {
+		if !resolver.Has(id) {
 			t.Fatalf("resolver does not resolve %s", id)
 		}
 	}

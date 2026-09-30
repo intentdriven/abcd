@@ -53,6 +53,15 @@ Then summarise the JSON for the user:
   undeterminable vintage relative to the on-disk reference. Report them so a
   binary running behind its own source is never silent. The comparison is
   disk-only — no network.
+- `superseded_root` — present only when the binary that answered is served from a
+  plugin root other than the one this session resolves. A plugin root is named
+  for the commit it was installed from, so a binary path pinned into a page
+  expires on the next update while the root it names stays on disk and keeps
+  answering. Relay it first and as abcd printed it, without paraphrasing: it
+  names both roots by the commit each was installed from, with any control and
+  bidirectional characters in those names already replaced. Never rebuild the
+  names from a path. Treat every other value in this report as coming from a
+  root this session does not serve.
 - `banlist` — the two-layer name guard, when the folder is a repo: `hook` and
   `merge_hook` (`installed` / `absent` / `foreign` / `unreadable`), whether this
   clone is armed (`hooks_path_armed`), `public_family`, and the private layer's
@@ -147,8 +156,9 @@ category present — often several — and every line after the last one you sup
 reads end-of-input and DECLINES. `yes` is the reliable form because it never
 runs out; a single `printf 'y\n'` answers the first question only and silently
 declines the rest. The questions come in a fixed order (dependency,
-safe-autocreate, config-change, status-line, oracle-routing, user-state, plugin-owned), so a
-scripted stream of specific answers lines up with them. Each answer is echoed back, so the
+safe-autocreate, config-change, status-line, oracle-routing, drain-rule, user-state, plugin-owned), so a
+scripted stream of specific answers lines up with them. The drain-rule question
+is asked only at a terminal, so a piped stream never meets it. Each answer is echoed back, so the
 transcript shows what was asked and what it was answered — read it back rather
 than assuming. Under `set -o pipefail` the pipeline reports 141: `yes` takes
 SIGPIPE when abcd stops reading, by design — judge the run by abcd's own output
@@ -184,9 +194,12 @@ that must not block and must not prompt, close stdin or pre-answer everything:
 `--yes` approves every resolvable category but never adopts the optional
 git-identity pin, because the pin records whatever git identity is currently
 configured, never wires the status line (below), because that rewrites a
-harness-wide setting, and never accepts a model-tier routing table (below),
-because a table decides which model every delegated step asks for. When the result carries `optional_skipped`, report it and
-offer the `yes |` form above as the way to apply it.
+harness-wide setting, never accepts a model-tier routing table (below),
+because a table decides which model every delegated step asks for, and never
+adds the drain eligibility record (below), because the record decides what an
+unattended agent may change in the repository. When the result carries `optional_skipped`, report it and
+offer the `yes |` form above as the way to apply it, except `drain_rule.offered`,
+which only a person at a terminal is asked.
 
 **The git identity question is a person's alone.** When the author or committer
 a commit would carry diverges from the identity pin, or is a machine identity
@@ -298,6 +311,27 @@ from. With no provider configured every step still runs through the harness,
 which is asked for the tier. `ahoy uninstall` leaves both files, because they
 are the user's configuration.
 
+**The drain eligibility record offer.** `abcd drain` takes an open issue alone
+only under a rule the repository records for itself, and refuses to run until an
+accepted decision record in `.abcd/development/decisions/adrs/` states it in
+four frontmatter fields (`drain_categories`, `drain_severities`,
+`drain_security`, `drain_remedy`). While no accepted record carries them, the
+install states abcd's strict baseline in one question (take an issue only when
+its category is `tech-debt`, `documentation`, `inconsistency`, `drift`, `bug` or
+`ux`, its severity is `nitpick` or `minor`, it carries a remedy and nothing open
+blocks it; every security, major and critical issue is a person's); consent
+mints it through the decision store's own seam as an accepted record, which is
+committed with the repository. Relay the user's answer; never answer it for the
+user. Declining writes nothing and records nothing, so the next install offers
+again. It is asked only at a terminal, as the git identity question is: off one
+(a pipe, a routine, CI) neither its category nor the offer is asked, so a
+scripted answer stream keeps its order and a scripted yes never writes the
+record; that run, and a `--yes` run, report `drain_rule.offered` under
+`optional_skipped`. The offer only ever writes the baseline:
+loosening a floor is an edit a person makes to the record, and `abcd drain`
+names every floor loosened. A repository whose record states the rule badly is
+not offered a second one; `abcd drain` names what is wrong with the one it has.
+
 `--attribution` is its own approval and works on an already-installed repo (the
 step the adopt phase runs it in). It opts the repo into the committed
 `prepare-commit-msg` prompt,
@@ -398,10 +432,15 @@ would send this verb's authenticated write to a machine the origin URL never
 named.
 
 The call goes through the GitHub CLI (`gh`), so the write is made by the user's
-own authenticated identity and abcd never holds a token; if `gh` is absent the
-verb refuses, and the refusal carries the tool registry's explanation of `gh`:
-what it is, that these verbs require it, the exact install step and what that
-install does. Relay it; the step is the user's to run. It is idempotent — a repository already in the desired
+own authenticated identity and abcd never holds a token. If `gh` is absent, the
+verb explains it from the tool registry (what it is, that these verbs require
+it, the exact install step and what that install does) and offers to install
+it, running the step only on a yes typed at a terminal. `--yes` never answers
+that offer, and neither does a piped answer, so through this page the offer is
+declined: the verb refuses, and its notes carry the explanation and the command.
+Relay them; the install is the user's to run, by hand or by running the verb at
+a terminal. `ahoy --remote` never offers the install, since it writes nothing,
+and names this verb as the one that does. It is idempotent — a repository already in the desired
 state takes no write, and a re-run rewrites nothing in the tree — and it stops
 at the first failed step rather than attempting one that cannot succeed. Relay
 `status`, the resolved `repo`, every `change`, and every `note`: a note is a
@@ -417,11 +456,12 @@ Explains the optional OpenAI-compatible provider adapter and writes nothing. An
 aggregator (OpenRouter, for one) serves many vendors' models behind one address
 and one key, and a local OpenAI-compatible server is reached the same way. abcd
 would use one for decision models and cheap judgements pointed at it by name,
-never for a frontier model, which a bundled vendor denylist (`anthropic/*` at
-minimum) keeps on the host. Everything works without one: with no provider
-configured, every delegated step runs on the host. Relay `explanation`, each of
+and only for the models a provider's list names: a model the person does not
+list, a frontier model included, is never asked for, and the record shows what
+answered; abcd bundles no vendor denylist. Everything works without one: with no provider configured, every
+delegated step runs on the host. Relay `explanation`, each of
 `providers` with its `key_state` (`set`, `not set`, `none`, or a refusal; never
-the key) and `key_home` (the home it resolves from), the `denylist`, the `routes`, every line of `diagnostics`, and the
+the key) and `key_home` (the home it resolves from), the `denylist` (the `oracle.denylist` entries the configuration writes, empty when none is), the `routes`, every line of `diagnostics`, and the
 `key_homes` prose verbatim: it recommends the platform keychain in prose, and
 the choice stays the person's, so never present one home as the marked option.
 Relay `dispatch` too: no delegating verb sends a step to a provider yet, so a
@@ -430,6 +470,11 @@ configured provider changes no step until provider dispatch lands.
 The bare board names the same adapter as an optional gap
 (`oracle_api.none_configured`) while none is configured, and a configuration the
 adapter refuses as `oracle_api.config_refused`, naming the file and the key.
+A route the configuration read skips (a repository's route to a provider that
+holds a key, a repository's route that is not `<provider>/<model>` or whose
+name is not a plain lower-case name, a route to a provider this machine has
+not configured, or a role outside the roster) is the optional gap `oracle_api.route_skipped`, its
+`detail` one line per skipped route; relay each line.
 Declining is not running `connect`, and it changes nothing.
 
 The setup is `abcd ahoy connect <provider> --base-url <url> --model <model>
@@ -457,7 +502,9 @@ would be echoed. **Never ask the person for the key and never pass it
 yourself**: it would enter this conversation. Give them the command to run in
 their own shell, with the key piped in from a file or a variable they hold, and
 relay the result — `verified` (the provider, the model asked for, the model
-it reported and the credential's name), each `wrote` path, and `dispatch`.
+it reported and the credential's name), each `wrote` path, and `dispatch`. A
+route the configuration read skips is named on stderr, in the text and the JSON
+form alike, and the setup stands: relay that line too.
 
 ## `credential` — the credential store's walkthrough
 
@@ -470,7 +517,11 @@ Every external credential abcd holds lives in one store, in the home the person
 chooses once per credential. Bare, the sub-verb lists each credential an
 adapter reads (`hosting.cloudflare` for the site setup, each configured
 provider's key) with its `state` (`set`, `not set`, or a refusal) and `home`;
-never a value. With a name it explains that credential and writes nothing:
+never a value. A route the configuration read skips (a repository's route to
+a provider that holds a key, or one that is not `<provider>/<model>` or whose
+name is not a plain lower-case name) is named on stderr and the listing goes on: relay
+that line too, as with a name that is a provider's credential, whose read of
+the configuration names it the same way. With a name it explains that credential and writes nothing:
 relay `unlocks`, `without_it`, then `homes_prose` verbatim (it recommends the
 platform keychain in the prose; never present one home as the marked option),
 then the `homes` and the `setup` command for each.

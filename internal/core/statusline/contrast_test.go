@@ -29,7 +29,7 @@ func TestParseColor(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := ParseColor(tc.in)
+			got, err := parseColor(tc.in)
 			if tc.wantErr {
 				if err == nil {
 					t.Fatalf("ParseColor(%q) = %v, want an error", tc.in, got)
@@ -68,7 +68,7 @@ func TestContrastMatchesTheRecordedMeasurements(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := Contrast(tc.fg, tc.bg)
+			got, err := contrast(tc.fg, tc.bg)
 			if err != nil {
 				t.Fatalf("Contrast(%q,%q): %v", tc.fg, tc.bg, err)
 			}
@@ -82,21 +82,21 @@ func TestContrastMatchesTheRecordedMeasurements(t *testing.T) {
 // TestContrastIsSymmetricAndBounded pins the two properties of the WCAG ratio
 // that callers rely on: order does not matter, and the extremes are 1 and 21.
 func TestContrastIsSymmetricAndBounded(t *testing.T) {
-	same, err := Contrast("#808080", "#808080")
+	same, err := contrast("#808080", "#808080")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if math.Abs(same-1) > 0.0001 {
 		t.Fatalf("a colour against itself = %.4f, want 1", same)
 	}
-	black, err := Contrast("#000000", "#ffffff")
+	black, err := contrast("#000000", "#ffffff")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if math.Abs(black-21) > 0.0001 {
 		t.Fatalf("black on white = %.4f, want 21", black)
 	}
-	white, err := Contrast("#ffffff", "#000000")
+	white, err := contrast("#ffffff", "#000000")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -116,7 +116,7 @@ func TestContrastBarAdmitsTheDefault(t *testing.T) {
 		t.Fatalf("ContrastBar = %v, want 4.5 (WCAG 2.2 AA, normal text)", ContrastBar)
 	}
 	d := Defaults()
-	got, err := Contrast(d.Presence.Foreground, d.Presence.Background)
+	got, err := contrast(d.Presence.Foreground, d.Presence.Background)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,7 +134,7 @@ func TestRoleBadgePairsClearTheBar(t *testing.T) {
 		if st == StateManaged {
 			pair = Defaults().Presence
 		}
-		got, err := Contrast(pair.Foreground, pair.Background)
+		got, err := contrast(pair.Foreground, pair.Background)
 		if err != nil {
 			t.Fatalf("%s: %v", st, err)
 		}
@@ -146,10 +146,10 @@ func TestRoleBadgePairsClearTheBar(t *testing.T) {
 
 // TestFormatRatio pins the wording a refusal reports the measurement in.
 func TestFormatRatio(t *testing.T) {
-	if got := FormatRatio(6.9441); got != "6.94:1" {
+	if got := formatRatio(6.9441); got != "6.94:1" {
 		t.Fatalf("FormatRatio(6.9441) = %q, want %q", got, "6.94:1")
 	}
-	if got := FormatRatio(1); got != "1.00:1" {
+	if got := formatRatio(1); got != "1.00:1" {
 		t.Fatalf("FormatRatio(1) = %q, want %q", got, "1.00:1")
 	}
 }

@@ -205,7 +205,7 @@ func shortTarget(sha string) string {
 	return sha
 }
 
-// WideningRuns lists every widening run at the target, committed or not, with
+// wideningRuns lists every widening run at the target, committed or not, with
 // its item count and the fate of its items.
 //
 // It reads the DURABLE run family for what a run is — its position, its target,
@@ -217,7 +217,7 @@ func shortTarget(sha string) string {
 // A directory carrying neither a run record nor a manifest is not a run and is
 // skipped: it says nothing about a position or a target, so listing it would
 // name a run this function cannot describe.
-func WideningRuns(repoRoot, target string) ([]WideningRun, error) {
+func wideningRuns(repoRoot, target string) ([]WideningRun, error) {
 	runsRoot := filepath.Join(repoRoot, filepath.FromSlash(issueschema.ReadingsRecordDir))
 	if err := refuseSymlinkedRunDir(runsRoot); err != nil {
 		return nil, err
@@ -380,15 +380,15 @@ func instrumentRecordPath(rel string) bool {
 	return false
 }
 
-// DeriveCandidateRun applies the ADR's rule over the runs at the target: exactly
+// deriveCandidateRun applies the ADR's rule over the runs at the target: exactly
 // one must qualify.
 //
 // The two refusals carry the whole listing rather than only what went wrong,
 // because the operator resolves either of them by looking at the runs: with none
 // they need to see whether a run is uncommitted, empty or already dispositioned,
 // and with more than one they need to see which to disposition.
-func DeriveCandidateRun(repoRoot, target string) (WideningRun, error) {
-	runs, err := WideningRuns(repoRoot, target)
+func deriveCandidateRun(repoRoot, target string) (WideningRun, error) {
+	runs, err := wideningRuns(repoRoot, target)
 	if err != nil {
 		return WideningRun{}, err
 	}

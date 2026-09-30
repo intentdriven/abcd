@@ -90,9 +90,9 @@ What ships today is narrower. Most verbs write no report at all: `lint` and its 
 │                                 #   audit/spec-mg-<ts>/     (Role 1 MG004 pass / itd-37 boilerplate receipt, itd-37)
 │                                 #   (Role 2, /abcd:intent consistency, itd-48, files its report on the
 │                                 #   reviews shelf, .abcd/work/reviews/<date>-consistency[-<itd-N>]/, not here)
-│                                 #   audit/shape-<ts>/       (Role 3 / /abcd:intent shape,         itd-34, later phase)
-│                                 #   audit/chain-<ts>/       (default app of /abcd:audit chain,    itd-16, later phase)
-│                                 #   audit/lifeboat-<ts>/    (sibling app of /abcd:audit lifeboat, itd-35, later phase)
+│                                 #   audit/shape-<ts>/       (Role 3 / /abcd:intent shape,         itd-34, design target)
+│                                 #   audit/chain-<ts>/       (default app of /abcd:audit chain,    itd-16, a draft)
+│                                 #   audit/lifeboat-<ts>/    (sibling app of /abcd:audit lifeboat, itd-35, a draft)
 │                                 # Directory name (audit/) reflects "this is the on-disk audit trail"
 │                                 # regardless of which verb produced it; sub-tier prefix names the verb.
 │                                 # `audit` and `consistency` (each with its `ingest` child) are the
@@ -101,13 +101,13 @@ What ships today is narrower. Most verbs write no report at all: `lint` and its 
 │                                 # umbrella, none of the three registered on the shipped surface.
 │                                 # Bare /abcd:audit and bare /abcd:intent are status+help only.
 ├── sota-audits/<date>.{json,md}  # periodic prompt SOTA audit findings (option D)
-└── phase/<phase-id>/             # validation cadence outputs per phase (Phase 0 study, Phase 1 acceptance, etc.)
+└── phase/<phase-id>/             # history: validation outputs per retired phase (Phase 0 study, Phase 1 acceptance); no verb writes it
     └── <test-name>.{json,md}
 ```
 
 **Note: `.abcd/.work.local/logs/` is for reports only.** Coordination state (file locks like `shape.lock`, multi-agent claims per itd-33) lives at `.abcd/coordination/` — its own directory under `.abcd/`, not a subdirectory of the log tier. See `04-surfaces/05-intent.md § 7` for the canonical lock-path contract (`.abcd/coordination/shape.lock`).
 
-**Later-phase additions to `.abcd/.work.local/logs/`** (appear when their parent intent ships):
+**Later additions to `.abcd/.work.local/logs/`** (appear when their parent intent ships):
 - `dredge/<timestamp>/` — cross-corpus synthesis output (itd-25)
 - `frontier/<timestamp>/` — per-run frontier-mapping events (Frontier Awareness; idea-4)
 - `doc-fidelity/<input_fingerprint>/` — the doc-fidelity anti-drift pass planned under **draft intent itd-60** (`intents/planned/itd-60-doc-fidelity-anti-drift.md`; not yet built). **A planned EXCEPTION to the `<command>/<timestamp>/` convention above:** this tier is designed to be **content-addressed**, keyed by the run's `input_fingerprint` (a sha256 over the deterministic trust+reality inputs — receipts, target manifest, bundle manifest, prompts) rather than a timestamp, so an identical re-run reuses the same `report.json` + bound `decision.json` instead of accreting a fresh ts dir. A `decision.json` (approve/defer) binds to a fingerprint dir; `deferred.jsonl` sits directly under `doc-fidelity/` (not inside a fingerprint dir) so an open obligation stays discoverable after the gate clears. The **pre-fingerprint-failures/`<timestamp>/`** sibling is the one ts-keyed slice (a failure that occurs *before* a well-formed fingerprint can be computed — invalid config/manifest, intent-resolution conflict — has no reusable content-addressed report, so its diagnostics are ts-keyed and never reused). This layout contract is the design target for the tier's on-disk shape once itd-60 ships.
@@ -122,7 +122,7 @@ What ships today is narrower. Most verbs write no report at all: `lint` and its 
 
 The pairing is load-bearing: a single self-closing comment cannot delimit a multi-line block, so itd-61/spc-75's derivation dedup needs a **matched** begin/end pair to exclude exactly the freshly-stamped lines and nothing else. `consumed_receipts_sha` is the sha256 over the sorted per-receipt **stable trust-and-reality digests** — the same `{spec_id, parse_error, rollup_agreement, criteria:[{criterion, verdict, detail_key}]}` digest the report's `input_fingerprint` uses (deterministic trust+reality fields only; no LLM-authored `detail` *value*, no timestamp). So the marker is reproducible across reviewer re-runs, does not churn on a forensic-prose rewording, but **does** change when a trust field changes. The grammar pins `origin=itd-60` and requires full lowercase sha256 widths (a short or foreign-origin marker is not valid coverage). **spc-75 will fail closed on any unmatched or legacy single-line marker.** The grammar will be owned by the planned doc-fidelity capability (`internal/core/docfidelity`), first created with the stamping under spc-74.3; the CI gate, the pre-commit advisory wrapper, and the spec-close preflight will all reference it rather than re-implement it.
 
-**Later-phase sibling additions under `.abcd/`** (NOT under the log tier: operational state, not run reports):
+**Later sibling additions under `.abcd/`** (NOT under the log tier: operational state, not run reports):
 - `.abcd/coordination/audit/<YYYY-MM-DD>.jsonl` — multi-agent coordination append-log (itd-33; JSONL, daily UTC rotation, committed). Sibling local-only state (gitignored): `.abcd/coordination/active-work.json` and `.abcd/coordination/*.lock`.
 
 Tracked alongside the rest of `.abcd/` per the visibility rule ([`03-configuration.md § 1`](03-configuration.md#1-visibility-driven-gitignore-policy)) — committed in private repos, gitignored in public. No special exception. Sensitivity is handled at launch time: the launch payload manifest ([`../04-surfaces/04-launch.md § 2`](../04-surfaces/04-launch.md#2-curated-release-artefact-default-deny)) excludes the entire `.abcd/` namespace from what ships publicly.
@@ -141,7 +141,7 @@ This is the core internals story. **Every capability abcd could take from an ext
 | **run** | thin native Go loop (adr-27) | Claude Workflows, the companion harness's agent loop |
 | **scanner** | native secret/PII scan | gitleaks, Presidio, TruffleHog, … |
 
-Each seam is a Go interface in `internal/adapter/<seam>` with a native implementation that ships in the binary; concrete external backends live behind the same interface, selected by config. Consumers in `internal/core` depend on the **interface**, never on a vendor — they consume "an oracle", "a transcript store", "a spec store", not "RepoPrompt" or "specstory". Adding a backend = implement the interface and register it in a registry (the design target `internal/registry`, which does not exist yet); no edits to consumers. Of the five, only `scanner` is a directory under `internal/adapter/` in the tree; `oracle`, `history`, `spec` and `run` are design targets, each introduced by the phase that first consumes it, and today their native paths live in `internal/core` (`oracle`, `history`, `spec`, `implement`). `internal/adapter/` also holds adapters that are not capability seams: `gitleaks`, `hosting` and `openaiapi`. [`internal/README.md`](../../../../internal/README.md) § Planned seams is the gated list.
+Each seam is a Go interface in `internal/adapter/<seam>` with a native implementation that ships in the binary; concrete external backends live behind the same interface, selected by config. Consumers in `internal/core` depend on the **interface**, never on a vendor — they consume "an oracle", "a transcript store", "a spec store", not "RepoPrompt" or "specstory". Adding a backend = implement the interface and register it in a registry (the design target `internal/registry`, which does not exist yet); no edits to consumers. Of the five, only `scanner` is a directory under `internal/adapter/` in the tree; `oracle`, `history`, `spec` and `run` are design targets, each introduced by the intent that first consumes it, and today their native paths live in `internal/core` (`oracle`, `history`, `spec`, `implement`). `internal/adapter/` also holds adapters that are not capability seams: `gitleaks`, `hosting` and `openaiapi`. [`internal/README.md`](../../../../internal/README.md) § Planned seams is the gated list.
 
 **Backend resolution: the native default, config to override.**
 
@@ -172,7 +172,7 @@ abcd produces three classes of durable artefact, each with distinct curation rul
 2. **Schema fragility.** Schema bumps require re-interpreting every past delta; full crawl re-parses with the current schema each run, no museum of past schemas.
 3. **False O(1).** Deltas that reference cross-cutting state ("this spec newly depends on spec-N's output") read back into the corpus, collapsing the O(1) claim where it matters most.
 
-Cadence for regenerable artefacts: **on-demand + at phase-milestone boundaries**, NOT every state-change event. At current corpus sizes (10-30 specs × ~4 sub-bullets each), full crawl runs in seconds. Re-evaluate cadence if the corpus grows past ~50 entries; not before.
+Cadence for regenerable artefacts: **on-demand + at release boundaries**, NOT every state-change event. At current corpus sizes (10-30 specs × ~4 sub-bullets each), full crawl runs in seconds. Re-evaluate cadence if the corpus grows past ~50 entries; not before.
 
 **Why compounding-curated is NOT regenerable.** A compounding artefact's value is the curated synthesis across upstream sources — it cannot be reconstructed from sources alone without the curator agent's accumulated decisions (which contradictions to surface, which sources to weight, which entries to deprecate). Regenerable artefacts are stateless functions of inputs; compounding-curated artefacts carry curator state.
 

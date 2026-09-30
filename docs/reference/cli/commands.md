@@ -8,8 +8,7 @@ tree disagree, so the reference can never silently go stale. Regenerate it with
 
 Every user-facing command is listed with its sentence (what it does, what it
 writes, and when it refuses), its usage line, and its flags; the
-operator-internal hook entrypoints, and the old spellings of moved commands,
-are omitted.
+operator-internal hook entrypoints are omitted.
 
 ## `abcd`
 
@@ -26,6 +25,12 @@ the next move for its lifecycle state — what is this. N is either a short
 ordinal from before ids were minted or the sixteen-digit stamp minted since;
 both resolve. The bare and the id form are strictly read-only; any other
 positional is refused as an unknown command.
+
+`--version` reports the running binary's version, install mode and vintage.
+When that binary sits in a plugin root other than the one this session
+resolves, the report — like bare `abcd ahoy` — adds a `superseded_root` note
+naming both roots by the commit each was installed from; the version, vintage
+and staleness it reports are unchanged.
 
 **Flags:**
 
@@ -121,9 +126,9 @@ Apply the install gaps the detection finds: Writes .abcd/, the name-guard hooks 
 
 #### `abcd ahoy remote`
 
-Enable GitHub secret scanning and push protection: Writes nothing bare, only the settings and their mirror; refuses bare, naming `abcd ahoy --remote`.
+Enable GitHub secret scanning and push protection: Writes nothing bare, only the settings and their mirror through apply; refuses an unknown sub-verb.
 
-**Usage:** `abcd ahoy remote [command]` (the bare form's work is `abcd ahoy --remote`)
+**Usage:** `abcd ahoy remote`
 
 ##### `abcd ahoy remote apply`
 
@@ -134,7 +139,7 @@ Enable GitHub secret scanning and push protection on this repository: Writes bot
 **Flags:**
 
 ```
-      --yes   confirm the remote change without being asked; without it an unanswered run declines and changes nothing
+      --yes   confirm the remote change without being asked (never the install of a missing gh); without it an unanswered run declines and changes nothing
 ```
 
 #### `abcd ahoy uninstall`
@@ -225,12 +230,13 @@ abcd banlist remove --private acme-internal
 
 Start the loop that takes one READY intent to delivered: Writes the run's state file in the local tier; refuses an open question, a hold or a peer holding it.
 
-**Usage:** `abcd build <itd-N> [--session <id>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [flags]`
+**Usage:** `abcd build <itd-N|iss-N> [--session <id>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [flags]`
 
 Start the implement loop for one intent, or resume the run already in progress for it.
+An issue id starts the loop's issue-keyed lane instead (below).
 A new run's checks run first, and every one must pass:
 the intent is READY (planned, criteria written, its spec linked and written), asks no
-open question, has no unanswered claim section, is not held, names no unshipped intent
+open question, has no unanswered claim section, is not held, names no unsettled blocker
 in `blocked_by`, its spec leaves a step to build, and no peer holds it (no sibling
 worktree or local branch holds it in another bucket, and no session holds a live claim
 on it; a peer or claim that cannot be read counts as holding it). A refusal names the
@@ -251,18 +257,32 @@ before this run's lane has moved or claimed anything, and the session's own clai
 intent is not counted as a peer's. A session that has not joined is refused. Without it
 the run holds no claim, and the result says so.
 
-A new run is paced: a working window, a pause after it, and a ceiling on the run's lanes
-and validators alive at once. The three numbers are read once, when the run starts:
---pace <work-minutes>/<pause-minutes> and --sub-agents <n> for this run, else pace.work_minutes,
-pace.pause_minutes and pace.sub_agents in the repository's .abcd/config.json, else in
-~/.abcd/config.json, else the bundled 120/300 with 2 sub-agents. The result and the run
+A new run is paced: a working window, a pause after it, a ceiling on the run's lanes and
+validators alive at once, and the fix rounds a lane may take before it is handed back. The
+four numbers are read once, when the run starts: --pace <work-minutes>/<pause-minutes>,
+--sub-agents <n> and --fix-rounds <n> for this run, else pace.work_minutes, pace.pause_minutes,
+pace.sub_agents and pace.fix_rounds in the repository's .abcd/config.json, else in
+~/.abcd/config.json, else the bundled 120/300 with 2 sub-agents and 3 fix rounds. The result and the run
 record name each number's layer. A malformed pace or ceiling, typed or configured, is
 refused naming the value and the accepted form, and writes nothing. Starting again keeps
 the run's pace; a flag naming another is refused. The window and the pause bind through
 `abcd implement step`; the ceiling is recorded with the run, and this build does not
-count lanes against it.
+count lanes against it. A lane whose validators still do not pass after its fix rounds is
+handed back: it stops as unachievable with the last round's findings, the run starts nothing
+further for it, and `abcd implement step` refuses naming the hand-back.
 
 The run then moves one step per `abcd implement step`, driven by the host session.
+
+An issue id (iss-N, validated by shape) is built as one lane. Its checks are the
+repository's own drain rule, read as `abcd drain` reads it (the issue is open, nothing
+open blocks it, its category and severity are ones the rule takes, it carries a remedy a
+person wrote), and no peer holding it. The brief is the issue's record with its remedy
+as the work and the repository's definition of done (a detector watched to fail before
+the fix and pass after); the validators run without the fidelity audit (an issue has no
+criteria); the implementer's receipt must name the issue in `resolves`, and the landing
+resolves it with the commit named there. A receipt carrying `handback` in its place
+ends the lane: its worktree and branch are discarded and the issue is handed back by
+kind. `abcd drain` starts these runs one at a time.
 
 Exit 2 on a refusal, exit 3 when a peer holds the intent or the run state is locked
 (back off and take other work).
@@ -270,6 +290,7 @@ Exit 2 on a refusal, exit 3 when a peer holds the intent or the run state is loc
 **Flags:**
 
 ```
+      --fix-rounds string   the fix rounds a lane of this run may take before it is handed back, a whole number from 0 (bundled: 3); wins over every configured layer
       --pace string         this run's working window and pause, <work-minutes>/<pause-minutes> (e.g. 90/240); wins over every configured layer
       --session string      the host session's id in the shared run state; a new run claims the intent for it
       --sub-agents string   this run's ceiling on lanes and validators alive at once, a whole number; wins over every configured layer
@@ -285,12 +306,12 @@ abcd build itd-2609010000000001
 
 Pick the readiest planned intent and start its run: Writes the run's state and the reason as the lane's first commit; refuses when nothing passes the checks.
 
-**Usage:** `abcd build next [--session <id>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--max <n>] [--until-empty] [flags]`
+**Usage:** `abcd build next [--session <id>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--max <n>] [--until-empty] [flags]`
 
 Pick the readiest planned intent, write down why, and start its run.
 
 The candidates are the planned intents that pass every check `abcd build <itd-N>` runs
-(READY, no open question, no unanswered claim section, not held, no unshipped intent in
+(READY, no open question, no unanswered claim section, not held, no unsettled blocker in
 `blocked_by`, a step left to build, no peer holding it), less one this checkout already has
 a run in progress for. Each is scored from its record, three parts at equal weight, each 0
 to 100: criteria clarity (the share of its acceptance criteria in Given-When-Then form), a
@@ -302,15 +323,16 @@ and the reason then says the tie was broken by age.
 The pick starts the run `abcd build <itd-N>` would start for that intent, with the pick in
 the run's state. The reason is one `pursued:` grounds entry opening `picked by run <run-id>
 on <date>`: every candidate with its score, the rule, the runner-up and why it lost, and the
-falsifier. The lane's worktree step appends it to the intent in the lane's own worktree and
+falsifier. The lane's worktree stage appends it to the intent in the lane's own worktree and
 commits it there as the lane branch's first commit, record-only, before the brief; the
 receipt verifier does not count that commit as the implementer's. The checkout you run this
 in is never written but for the run state. `abcd intent ready` keeps reporting the person's
 entry as the most recent conjecture.
 
 One pick per invocation. --max <n> above 1 and --until-empty, which continue under the pace
-rule, are refused: that half of the verb is not built in this abcd. --session, --pace and
---sub-agents are `abcd build`'s own.
+rule, are refused: that half of the verb is not built in this abcd. --session, --pace,
+--sub-agents and --fix-rounds are `abcd build`'s own. A lane handed back after its fix
+rounds falsifies the pick: the run record says so, and the intent's entry is not edited.
 
 No candidate is refused, naming each excluded intent and the check that excluded it, and
 nothing is written. Exit 2 on a refusal, exit 3 when the chosen intent's run is already in
@@ -319,6 +341,7 @@ progress or the run state is locked.
 **Flags:**
 
 ```
+      --fix-rounds string   the fix rounds a lane of the new run may take before it is handed back; wins over every configured layer
       --max int             how many picks to make; only 1 is built, and more is refused
       --pace string         the new run's working window and pause, <work-minutes>/<pause-minutes>; wins over every configured layer
       --session string      the host session's id in the shared run state; the new run claims the picked intent for it
@@ -328,23 +351,23 @@ progress or the run state is locked.
 
 ### `abcd capture`
 
-File an issue from quoted text, or render the ledger's status bare: Writes one record under open/; refuses a lone word and any folder outside a checkout.
+File an issue from quoted text, or render the ledger's status bare: Writes one record under open/; refuses a missing --remedy, a lone word or no checkout.
 
 **Usage:** `abcd capture [text] [flags]`
 
 **Flags:**
 
 ```
-      --blocked-by string        comma-separated iss-N ids this issue is blocked by; each must exist in the ledger — blocked_by is documented in .abcd/work/issues/README.md under "Derived priority" and in commands/capture.md under "Link"
-      --category string          issue category: bug | documentation | drift | inconsistency | tech-debt | security | ux | process | architectural-insight | future-work-seed | observation | lapse (default observation)
-      --found-at string          optional repo-relative path, which must exist in this checkout, or a conceptual location in words
-      --found-during string      session/command context (default manual-capture)
-      --lapsed-at string         RFC 3339 instant a discipline gave way (the lapse, not the write-up)
-      --production-mode string   how this record's text was produced: hand-written|dictated-and-formatted|scribe-transcribed (default: the repo's declared mode, else hand-written)
-      --remedy abcd drain        the proposed fix, one line; abcd drain takes no issue without one
-      --severity string          severity: nitpick | minor | major | critical (default minor)
-      --slug string              override the slug derived from the text
-      --source string            surfacing channel: plan-review | impl-review | manual-test | review-followup | agent-finding | agent-observation | user-observation | drift-detection | memory-curation | managed-repo (default user-observation)
+      --blocked-by string            comma-separated iss-N ids this issue is blocked by; each must exist in the ledger — blocked_by is documented in .abcd/work/issues/README.md under "Derived priority" and in commands/capture.md under "Link"
+      --category string              issue category: bug | documentation | drift | inconsistency | tech-debt | security | ux | process | architectural-insight | future-work-seed | observation | lapse (default observation)
+      --found-at string              optional repo-relative path, which must exist in this checkout, or a conceptual location in words
+      --found-during string          session/command context (default manual-capture)
+      --lapsed-at string             RFC 3339 instant a discipline gave way (the lapse, not the write-up)
+      --production-mode string       how this record's text was produced: hand-written|dictated-and-formatted|scribe-transcribed (default: the repo's declared mode, else hand-written)
+      --remedy abcd capture remedy   the proposed fix, one line (required); abcd capture remedy rewrites it later
+      --severity string              severity: nitpick | minor | major | critical (default minor)
+      --slug string                  override the slug derived from the text
+      --source string                surfacing channel: plan-review | impl-review | manual-test | review-followup | agent-finding | agent-observation | user-observation | drift-detection | memory-curation | managed-repo (default user-observation)
 ```
 
 #### `abcd capture admit`
@@ -397,7 +420,7 @@ Answer one reading item with a disposition record: Writes the record keyed to th
       --grounds string               disposition_grounds: why this answer (free text; required on every state except held)
       --hold-frame-location string   RESERVED (dormant): the frame element a hold sits at; a populated value is refused until activation is ruled
       --hold-moscow string           RESERVED (dormant): must | should | could | wont; a populated value is refused until activation is ruled
-      --recurs string                comma-separated prior rdi-ids this item recurs from — the recorded form of a warm recognition, never a mechanical join
+      --recurs string                comma-separated prior rdi-ids this item recurs from — the researcher's confirmed recognition; the ingest's duplicates/refines link is only a proposal
       --state string                 the answer: accepted | rejected | declined | held (availability varies by the item's position)
       --supersedes string            the standing dsp-N this answer replaces; required once an item already carries one
 ```
@@ -505,6 +528,18 @@ Record a reframe a reading occasioned: Writes one rfm-N fingerprinting the frame
 
 ```
 abcd capture reframe --occasioned-by rdi-2609010000000001 --grounds "the reading showed the construal assumed a single operator" --open
+```
+
+#### `abcd capture remedy`
+
+Write or replace the fix an open issue proposes: Writes the issue's remedy; refuses an empty text, the automatic filers' value or an issue that is not open.
+
+**Usage:** `abcd capture remedy <iss-N> <text>`
+
+**Example:**
+
+```
+abcd capture remedy iss-2609010000000001 "make the map before the first write"
 ```
 
 #### `abcd capture resolve`
@@ -906,31 +941,64 @@ This is the only abcd verb that reaches the network on behalf of documentation. 
 
 ### `abcd drain`
 
-Sort the open issues by the drain's field rule, eligible first in drain order: Writes nothing; refuses to start without --dry-run, as the run is not built.
+Fix the issues needing no decision, one lane at a time, and hand the rest back: Writes its state and user-visible drafts; refuses without the rule's record.
 
-**Usage:** `abcd drain [flags]`
+**Usage:** `abcd drain [--dry-run] [--max <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [flags]`
 
 Work the open issue ledger unattended: fix the issues that need no decision, and
-hand the rest back by kind. The rule for which issues need no decision is a
-recorded decision, and it reads the record's fields alone: nothing open in
-blocked_by; a category in the fixable set (tech-debt, documentation,
-inconsistency, drift, bug, ux); severity nitpick or minor; and a remedy: field.
-A security issue is always a person's. Every other open issue is handed back,
-listed as ineligible, or skipped naming its blocker, by the rule that excluded it.
+hand the rest back by kind. Which issues need no decision is this repository's own
+recorded decision: an accepted decision record whose frontmatter carries the four
+fields drain_categories, drain_severities, drain_security and drain_remedy. The
+rule reads the record's fields alone: nothing open in blocked_by; a category the
+rule takes; a severity it takes; and a remedy: field. abcd's strict baseline takes
+tech-debt, documentation, inconsistency, drift, bug and ux at nitpick or minor, and
+hands every security issue to a person. A repository's record may loosen those
+floors (major, critical, security), and every floor it loosens is named. An issue
+whose remedy opens "Waits on", or whose deferral past the current release tag is
+live, or names a release tag this checkout lacks, is always handed back. Every
+other open issue is handed back, listed as ineligible, or skipped naming its
+blocker, by the rule that excluded it.
 
 --dry-run shows every open issue's disposition, the eligible ones first in the
-order a drain takes them (category tech-debt, documentation, inconsistency,
-drift, bug, ux; then nitpick before minor; then oldest first), and writes
-nothing. The host judgement over each eligible remedy does not run in a dry
-run; it can only ever hand an issue back.
+order a drain takes them (by category, then severity, then oldest first), and
+writes nothing. The host judgement over each eligible remedy does not run; it can
+only ever hand an issue back.
 
-The run itself is not built: without --dry-run the verb refuses to start, and
-exits 2 with nothing read or written.
+Without --dry-run, each invocation performs one move of the drain and exits. It
+hands the next eligible issue, in that order, to the implement loop's issue-keyed
+lane (the run `abcd build <iss-N>` starts), one lane at a time, and names the run to
+drive with `abcd implement step`. Run it again once that lane is handed back or its
+pull request is open, and it routes the lane's outcome and opens the next. A lane
+that finds a decision in its issue hands it back by kind, its work discarded: a
+user-visible change is promoted to an intent draft (`capture promote`, which
+stamps the issue's related_intents and nothing else); a trust or safety rule is
+flagged as needing a decision record, with the question; a design finding or a
+second package is flagged with the home the lane names. Every issue the rule
+hands back is flagged naming the rule. Nothing but the promotion is written to
+the ledger, and every hand-back is in the summary.
+
+The drain is paced as a run is: its window and pause are --pace, --sub-agents and
+--fix-rounds as `abcd build` reads them, set when the drain begins. At the window's
+end the drain's state (.abcd/.work.local/run/drain.json) takes next_eligible_at and
+the call opens nothing; before that time a drain opens nothing, and after it the
+next invocation continues. --max <n> caps the lanes the drain opens (the default
+is all); at the cap, or when nothing eligible is left, the drain reports and ends,
+and the next `abcd drain` begins a new one. A cap or pace named while a drain is in
+progress that differs from the one it began with is refused.
+
+Without the repository's record, the dry run and the run both refuse (exit 2),
+naming how to add it; `abcd ahoy install` offers it. A run that opens nothing or
+merges nothing exits 0 and says why. Exit 2 on a refusal, exit 3 when another
+drain or run holds the state lock.
 
 **Flags:**
 
 ```
-      --dry-run   show every open issue's disposition and the order a drain takes them; writes nothing
+      --dry-run             show every open issue's disposition and the order a drain takes them; writes nothing
+      --fix-rounds string   the fix rounds a lane may take before it is handed back; wins over every configured layer
+      --max int             cap the lanes this drain opens; the default is all
+      --pace string         the drain's working window and pause, <work-minutes>/<pause-minutes>; wins over every configured layer
+      --sub-agents string   the ceiling on lanes and validators alive at once; wins over every configured layer
 ```
 
 **Example:**
@@ -938,6 +1006,8 @@ exits 2 with nothing read or written.
 ```
 abcd drain --dry-run
   abcd drain --dry-run --json
+  abcd drain --max 3
+  abcd drain --json
 ```
 
 ### `abcd embark`
@@ -1321,9 +1391,9 @@ abcd ideate record widen-the-public-api --verdict-json verdict.json
 
 ### `abcd identity`
 
-Record the identity block and propose drift corrections: Writes nothing bare, only the block and its pointer; refuses bare, naming `abcd lint identity`.
+Record the identity block and propose drift corrections: Writes nothing bare, only the block and its pointer; refuses an unknown sub-verb.
 
-**Usage:** `abcd identity [command]` (the bare form's work is `abcd lint identity`)
+**Usage:** `abcd identity`
 
 #### `abcd identity init`
 
@@ -1367,13 +1437,13 @@ record, taken by an exclusive create, so of two sessions reaching for one record
 exactly one holds it; the claim is a lease, and a lapsed lease is claimable again.
 The second session is bounded: one lane at a time, never the release, never a lane
 that touches the reading corpus, no lane in a split-roles window (`check` asks before
-a step that is not a claim). `log` appends the run's other events, and `report`
+a stage that is not a claim). `log` appends the run's other events, and `report`
 derives the comparison of the modes from the log.
 
 `status`, `step` and `receipt` drive the implement loop `abcd build` starts, whose state
-lives in this checkout's local tier: `step` performs one step and exits, naming the
-agent, brief and receipt path when a step hands work to an agent, and `receipt`
-completes that step once the receipt verifies.
+lives in this checkout's local tier: `step` performs the next stage of the current lane
+and exits, naming the agent, brief and receipt path when a stage hands work to an agent,
+and `receipt` completes that stage once the receipt verifies.
 
 Exit 2 on a refusal (an unrecognised input, a session that has not joined, a bound
 the session's role does not permit), exit 3 on contention (the record is claimed by
@@ -1381,21 +1451,21 @@ another session, or the run state is locked): back off and take other work.
 
 #### `abcd implement check`
 
-Ask whether this session may take a step before taking it: Writes a run-log line only on a refusal; refuses a step the second session's bounds forbid.
+Ask whether this session may take a stage before taking it: Writes a run-log line only on a refusal; refuses a stage the second session's bounds forbid.
 
 **Usage:** `abcd implement check <lane|release|review|audit|land> --session <id> [flags]`
 
-Say whether this session may take a step, before it takes it. The first session may
-take every step. The second is refused the release step always, a lane in a
+Say whether this session may take a stage, before it takes it. The first session may
+take every stage. The second is refused the release stage always, a lane in a
 split-roles window, and a lane whose --path reaches the reading corpus; review,
-audit and land are open to it. A refusal exits 2 and is logged; an allowed step
+audit and land are open to it. A refusal exits 2 and is logged; an allowed stage
 writes nothing. The verdict reports the agent ceiling the session joined with and the
 agents its log lines declare alive (agents_alive).
 
 **Flags:**
 
 ```
-      --path stringArray   a repository-relative file the step touches (repeatable)
+      --path stringArray   a repository-relative file the stage touches (repeatable)
       --session string     this session's id
 ```
 
@@ -1606,22 +1676,31 @@ abcd implement mode single --session s-example
 
 #### `abcd implement receipt`
 
-Hand back the receipt an agent step of a loop run awaits: Writes the run's state when the receipt verifies; refuses a receipt that does not verify.
+Hand back the receipt an agent stage of a loop run awaits: Writes the run's state when the receipt verifies; refuses a receipt that does not verify.
 
 **Usage:** `abcd implement receipt <path> [--run <run-id>] [flags]`
 
-Hand back the receipt the run's awaiting lane named when its step handed work to an
-agent. The path must be the one the step named. The step's verifier checks it; a
-receipt that verifies completes the step and the lane moves to its next step, and one
+Hand back the receipt the run's awaiting lane named when its stage handed work to an
+agent. The path must be the one the stage named. The stage's verifier checks it; a
+receipt that verifies completes the stage and the lane moves to its next stage, and one
 that does not is refused naming what is missing, with the lane left where it was. A
-step whose verifier this abcd does not carry is refused naming the spec piece that
+stage whose verifier this abcd does not carry is refused naming the spec piece that
 delivers it.
 
 An implementer's receipt is read strictly (one JSON object, no field the brief does not
 name, within its size cap, never through a symlink) and verifies only when every commit
 it names is on the lane's branch past its base, the definition of done's output exists
 in the lane's directory with a zero exit code, and the report exists there. A receipt
-that verifies moves the lane's head to its branch's tip.
+that verifies moves the lane's head to its branch's tip. Its optional resolves list names
+each capture the lane fixed, with the commit that fixed it (one the receipt names), the
+note, the impact and the grounds; the landing resolves each.
+
+At the validate stage the receipt is the validator's return: a reviewer's is refused
+unless it has one Verdict section stating one verdict of its role (SHIP or FIX FIRST;
+APPROVE, BLOCK or NEEDS-INPUT), and the intent-auditor's unless it is the fidelity verdict
+the request asked for, echoing its receipt and both provenance hashes. The loop records
+the verdict and the lane stays at validate for the next validator. A fresh implementer's
+receipt after a round is verified as an implementer's is.
 
 --run names the run; without it, the one run in progress in this checkout. Exit 2 on a
 refusal, exit 3 on a locked run state.
@@ -1636,6 +1715,34 @@ refusal, exit 3 on a locked run state.
 
 ```
 abcd implement receipt review-receipt.json --run run-2609010000000001
+```
+
+#### `abcd implement record`
+
+Render a loop run's record and capture its transcripts: Writes only with --transcript; refuses it on a run in progress.
+
+**Usage:** `abcd implement record [--run <run-id>] [--transcript <path>]... [flags]`
+
+Render a run's record: every lane with its spec step, branch and head, the implementers'
+receipts the loop verified with the model each runner reported, every verdict the loop
+recorded from a validator's return, the captures each lane fixed, its pull request and
+what its landing did, the transcripts captured into the history store, and the record's
+lines. Read-only unless --transcript is given.
+
+--transcript <path>, repeatable, captures each transcript into the history store as
+`abcd history capture <path>` does, one capture per path, and records it in the run's
+state; it is refused on a run that is not complete, since the record's transcripts are
+the run's, captured at its end. A capture that fails stops the call: the transcripts
+before it are recorded, and the refusal names the failure.
+
+--run names the run; without it, the one run in progress, or else the most recently
+started run. Exit 2 on a refusal, exit 3 on a locked run state.
+
+**Flags:**
+
+```
+      --run string               the run to render (run-<16 digits>); the one in progress, else the latest, when omitted
+      --transcript stringArray   a transcript to capture into the history store for a complete run (repeatable; one capture per path)
 ```
 
 #### `abcd implement release`
@@ -1696,7 +1803,7 @@ Render the implement loop's runs in this checkout, lane by lane: Writes nothing;
 **Usage:** `abcd implement status [--run <run-id>] [flags]`
 
 Render the runs `abcd build` started in this checkout, or the one --run names: the
-intent and spec, each lane with its spec step and next step, what an awaiting lane
+intent and spec, each lane with its spec step and next stage, what an awaiting lane
 waits on, the pending spec steps, and the run record. Read-only: it writes nothing
 and creates nothing. Exit 2 when --run names no run.
 
@@ -1708,32 +1815,61 @@ and creates nothing. Exit 2 when --run names no run.
 
 #### `abcd implement step`
 
-Perform the next step of an implement loop run and exit: Writes the run's state, the lane's worktree or brief; refuses a step this abcd does not carry.
+Perform the next stage of an implement loop run's lane and exit: Writes the run's state and the lane's stages; refuses a push with no preflight receipt.
 
 **Usage:** `abcd implement step [--run <run-id>] [flags]`
 
-Perform one step of the run's current lane, write the state, and exit. At a step that
-hands work to an agent, the result names the agent to start, the brief it is handed
+Perform the next stage of the run's current lane, write the state, and exit. At a stage
+that hands work to an agent, the result names the agent to start, the brief it is handed
 and the path its receipt goes to; the lane then advances only on
-`abcd implement receipt`, and asking for a step again re-tells the same thing and
-moves nothing. When a lane is done the spec's next pending step opens the next lane,
-and the run record names it. A complete run says so.
+`abcd implement receipt`, and running `implement step` again re-tells the same thing and
+moves nothing. A lane lands one step of the spec; its stages are how it gets there, and
+when a lane is done the spec's next pending step opens the next lane, and the run
+record names it. A complete run says so.
 
-The lane's steps, in order: worktree makes the lane's worktree in the machine-scoped
+The lane's stages, in order: worktree makes the lane's worktree in the machine-scoped
 store, ~/.abcd/worktrees/<root-sha>/<run-id>-<lane-id>, on a branch build/<run-id>-<lane-id>
 cut from the default branch; brief renders the lane's brief from that base (the intent,
 the spec, the conventions of AGENTS.md, the decisions the intent cites, and the spec
 steps before the lane's with what landed each) into the lane's directory of the run;
 implement hands the lane to a fresh implementer and awaits
-its receipt; validate and land follow.
+its receipt; validate hands the lane's head to validators that did not implement it, one
+fresh agent at a time — a ruthless-reviewer, a security-reviewer and, on the lane whose
+landing closes the spec and ships the intent, an intent-auditor over the whole delivery,
+from the base of the run's first lane to that lane's head (a lane that does not close the
+spec takes no audit) — and records each verdict itself, parsed from the validator's own
+return. A round one of them did not pass goes to a fresh implementer, who applies each
+finding or rejects it in writing in its report, and the next round judges the new head
+afresh; a round that passes completes the stage, unless a lane report states a verdict,
+which is refused naming the report. The audit passes only when every criterion is met: a
+criterion it could not decide (INCONCLUSIVE) fails the round as a not-met one does, and
+goes to the fresh implementer with the finding. A round that does not pass once the lane
+has taken the run's fix rounds (--fix-rounds, bundled 3) hands the lane back instead: it
+stops as unachievable, the result and the run record name the last round's findings, the
+run starts nothing further for it, and every later step is refused naming the hand-back.
+land follows a passing round, one step per call: it checks the lane's worktree is clean
+at the judged head; on the lane that closes the spec it runs `spec close` in the lane's
+worktree and ingests the audit that lane took, and for every capture the lane's receipts
+declared fixed it runs `capture resolve` with the lane's commit, committing them on the
+lane's branch with Delivers: and Resolves: trailers and an Assisted-by: naming the model
+the lane's receipts reported (refused when one reported none), the repository's hooks
+running; it pushes the branch only once the
+repository's preflight receipt names its head (the pre-push hook runs; nothing is
+skipped or forced); it opens the pull request through gh, with a body built from the
+records and passed through the outbound scrub, then re-reads the body the forge holds and
+strips a session URL or tool footer; it arms auto-merge with the merge-queue method the
+ruleset mirror (.abcd/work/rulesets/) names at the lane's base, or leaves the pull request
+open where no merge queue gates the default branch, and pushes nothing after that; and
+once the pushed head is an ancestor of the default branch on origin it removes the lane's
+worktree and branch and the lane is done. Until then the call exits 3 and waits.
 
-A step whose body this abcd does not carry is refused naming the spec piece that
-delivers it, and the run is unchanged. A step that fails leaves the state as it was,
-so the next invocation performs it again; a completed step is never repeated.
+A stage whose body this abcd does not carry is refused naming the spec piece that
+delivers it, and the run is unchanged. A stage that fails leaves the state as it was,
+so the next invocation performs it again; a completed stage is never repeated.
 
-The run's window clock: once the run's working window has elapsed, the step starts
+The run's window clock: once the run's working window has elapsed, the call starts
 nothing, writes next_eligible_at (now plus the run's pause) and exits 0 naming it; an
-agent already started may still hand back its receipt. Before next_eligible_at the step
+agent already started may still hand back its receipt. Before next_eligible_at the call
 is refused as a pause and nothing changes; at or after it, a new window opens.
 
 --run names the run; without it, the one run in progress in this checkout. Exit 2 on a
@@ -1952,6 +2088,24 @@ Plan a draft, or several as a named bundle, or stamp a planned one's conditions:
 
 ```
 abcd intent plan itd-2609010000000001
+```
+
+#### `abcd intent prepass`
+
+Print a draft's pre-pass input, or write its planning brief from the host's findings: Writes only the brief; refuses a record not on drafts/.
+
+**Usage:** `abcd intent prepass <itd-N> [--findings-json <path>] [flags]`
+
+**Flags:**
+
+```
+      --findings-json string   path to the host's findings over the input; validates them and writes the planning brief
+```
+
+**Example:**
+
+```
+abcd intent prepass itd-2609010000000001 --json
 ```
 
 #### `abcd intent ready`
@@ -2536,6 +2690,11 @@ run never happened; where the marker is there the run stands and only the stage 
 refused run reports the orphans it left in place, and the ids a sweep removed are reported as
 rolled_back_records on every exit, including a failing one.
 
+Every stored finding is matched against the record as a capture is: its pattern and body are
+compared with the open and resolved issues, the intents and every earlier reading item, never
+with another item of the same run, and a likely repeat is written onto the reading record as a
+duplicates: or refines: link and shown, printed and as matches in --json.
+
 **Flags:**
 
 ```
@@ -2604,12 +2763,23 @@ block and in the hook's diagnostic, and carries "source": "user" or "repo" in
 --json; the last layer to name a domain labels it. An untouched bundled domain
 renders bare and carries "source": "bundled".
 
-A list an override sets replaces the bundled one, so an override can hold back
-an entry abcd ships. For the guardrail domains (COMMITTING, LOAD, PII), every
-bundled recall keyword, alias or rule that an override's list leaves out is
-named on stderr, with the file that set the list, here and on every hook
+A list an override sets replaces the one it would inherit, so an override can
+hold back an entry abcd ships or, in SHELL, one the repository's
+.abcd/guard.json teaches. For the guardrail domains (COMMITTING, LOAD, PII,
+SHELL), every such recall keyword, alias or rule that an override's list leaves
+out is named on stderr, with the file that set the list, here and on every hook
 prompt. To keep an entry, restate it in the list, or leave the field out to
-inherit the bundled list. Read-only.
+inherit the list.
+
+SHELL is generated from the shell-hazard registry that "abcd guard" enforces
+in this repository, the bundled entries and the repository's own
+.abcd/guard.json entries alike: one rule per registry entry, naming the
+command, why it is dangerous and what to run instead, recalled by the commands
+the registry names. A rule in the repository's words is marked "(repo)" after
+its entry id. A guard.json the guard refuses is named on stderr and not taught;
+SHELL then teaches the registry the guard enforces in its place. It teaches
+before shell work what the guard refuses at the moment a command runs.
+Read-only.
 
 ### `abcd scribe`
 
@@ -2740,7 +2910,7 @@ Take the website from this checkout to a live address: Writes its files, and the
       --confirm         replace a workflow or host configuration that differs from what setup writes
       --domain string   custom domain to route to the host when the composition names none
       --name string     host name when the composition names none (default: the repository's name)
-      --yes             confirm the forge and host changes without being asked; without it an unanswered run declines them
+      --yes             confirm the forge and host changes without being asked (never the install of a missing gh); without it an unanswered run declines them
 ```
 
 ### `abcd source`

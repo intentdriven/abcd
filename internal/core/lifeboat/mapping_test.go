@@ -8,7 +8,7 @@ import (
 )
 
 // briefMetaRelPath is the brief file that calls the mapping table "the
-// contract". The table rendered there must equal Render().
+// contract". The table rendered there must equal renderMapping().
 const briefMetaRelPath = ".abcd/development/brief/00-meta.md"
 
 // repoRoot walks up from the test's working directory to the directory holding
@@ -54,9 +54,9 @@ func TestBriefCarriesTheRenderedMappingTable(t *testing.T) {
 	}
 
 	got := strings.TrimSpace(doc[begin+len(MarkerBegin) : end])
-	want := strings.TrimSpace(Render())
+	want := strings.TrimSpace(renderMapping())
 	if got != want {
-		t.Errorf("%s has drifted from lifeboat.Table.\n\n--- brief has ---\n%s\n\n--- Render() wants ---\n%s",
+		t.Errorf("%s has drifted from lifeboat.Table.\n\n--- brief has ---\n%s\n\n--- renderMapping() wants ---\n%s",
 			briefMetaRelPath, got, want)
 	}
 }
@@ -67,7 +67,7 @@ func TestBriefCarriesTheRenderedMappingTable(t *testing.T) {
 func TestTiersDegradeMonotonically(t *testing.T) {
 	for _, m := range Table {
 		prev := Status("")
-		for _, tier := range Tiers() {
+		for _, tier := range allTiers() {
 			s := m.StatusAt(tier)
 			if !s.Valid() {
 				t.Errorf("%s at tier %s: %q is not a member of the status enum", m.Section, tier, s)

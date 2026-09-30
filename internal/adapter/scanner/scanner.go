@@ -175,6 +175,12 @@ type Scanner struct {
 	skipFragments  []string
 	unavailable    bool
 	unavailReason  string
+
+	// aug is the opt-in external detector (augment.go), nil when none is
+	// wired or the configured one is not installed (augState.gap says so).
+	aug         Augmenter
+	augExplicit bool
+	augState    augState
 }
 
 // defaultSkipExtensions / defaultSkipFilenames mirror the bundled pii.json
@@ -212,7 +218,23 @@ const maxScannerConfigBytes = 256 * 1024
 // config exists but cannot be read or parsed, the scanner is marked unavailable
 // (fail-closed): New still returns a usable value with no error, and ScanBundle
 // surfaces Unavailable=true.
-func New(repoRoot string) (*Scanner, error) {
+//
+// An augmenter (augment.go) is wired last: the one a WithAugmenter option
+// names, or else the default the composition root registered, which reads the
+// repository's own opt-in. Its findings are appended to ScanText's and
+// ScanBundle's.
+func New(repoRoot string, opts ...Option) (*Scanner, error) {
+	s := newBase(repoRoot)
+	for _, o := range opts {
+		o(s)
+	}
+	s.armAugmenter(repoRoot)
+	return s, nil
+}
+
+// newBase is New without the augmenter: the built-in set, the per-repo
+// override, and the identity probe.
+func newBase(repoRoot string) *Scanner {
 	s := &Scanner{
 		patterns:       DefaultPatterns(),
 		identity:       ProbeIdentity(repoRoot),
@@ -242,13 +264,13 @@ func New(repoRoot string) (*Scanner, error) {
 	if err != nil {
 		s.unavailable = true
 		s.unavailReason = "per-repo scanner config unreadable: the repo root cannot be opened for contained reads"
-		return s, nil
+		return s
 	}
 	defer root.Close()
 	data, err := fsutil.ReadGuardedInRoot(root, repoConfigRelPath, maxScannerConfigBytes)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return s, nil // no override — built-in defaults stand
+			return s // no override — built-in defaults stand
 		}
 		// Every remaining failure is fail-closed, but the reason is specific:
 		// a degraded scanner that cannot say WHY is the defect iss-203 tracks.
@@ -263,18 +285,18 @@ func New(repoRoot string) (*Scanner, error) {
 			s.unavailReason = "per-repo scanner config unreadable: " + repoConfigRelPath
 		}
 		s.unavailable = true
-		return s, nil
+		return s
 	}
 	var cfg Config
 	if err := json.Unmarshal(data, &cfg); err != nil {
 		s.unavailable = true
 		s.unavailReason = "per-repo scanner config is not valid JSON: " + repoConfigRelPath
-		return s, nil
+		return s
 	}
 	if err := s.mergeConfig(cfg); err != nil {
 		s.unavailable = true
 		s.unavailReason = err.Error()
-		return s, nil
+		return s
 	}
 	// A configured secret pattern the glued sweep cannot build (its leading \b
 	// carries a quantifier) leaves every ScanText narrower than the bundled
@@ -285,9 +307,9 @@ func New(repoRoot string) (*Scanner, error) {
 		s.unavailable = true
 		s.unavailReason = "per-repo scanner config: the glued-token sweep cannot build a boundary-free form of pattern(s) " +
 			strings.Join(unbuilt, ", ") + " (a leading \\b with a quantifier); write the pattern with a plain leading \\b"
-		return s, nil
+		return s
 	}
-	return s, nil
+	return s
 }
 
 // Unavailable reports whether the scanner is in the fail-closed degraded state
@@ -297,8 +319,18 @@ func New(repoRoot string) (*Scanner, error) {
 // this before trusting ScanText/Redact: unlike ScanBundle, those entry points
 // cannot signal degradation in-band, so a caller that skips this check would
 // sanitise with a silently weakened pattern set. Mirrors ScanBundle's guard.
+//
+// An augmenter that fails a run, or hands back a report the scanner cannot
+// place, degrades the scanner from that call on, so a caller that wired one
+// consults this after ScanText as well as before.
 func (s *Scanner) Unavailable() (bool, string) {
-	return s.unavailable, s.unavailReason
+	if s.unavailable {
+		return true, s.unavailReason
+	}
+	if why := s.augDegraded(); why != "" {
+		return true, why
+	}
+	return false, ""
 }
 
 // mergeConfig layers a per-repo override onto the built-in defaults, enforcing
@@ -1123,8 +1155,8 @@ func fingerprintSpan(out, src []byte, start, end int, whole bool) {
 // scanner is unavailable (config unreadable), it returns Unavailable=true and
 // scans nothing (fail-closed).
 func (s *Scanner) ScanBundle(files []BundleFile) (ScanResult, error) {
-	if s.unavailable {
-		return ScanResult{Unavailable: true, UnavailableReason: s.unavailReason}, nil
+	if bad, why := s.Unavailable(); bad {
+		return ScanResult{Unavailable: true, UnavailableReason: why}, nil
 	}
 	var res ScanResult
 	unscanned := func(logical, why string) {
@@ -1191,12 +1223,25 @@ func (s *Scanner) ScanBundle(files []BundleFile) (ScanResult, error) {
 			continue
 		}
 		res.FilesScanned++
-		res.Findings = append(res.Findings, ScanText(string(data), s.identity, s.patterns, s.identSev, f.LogicalPath)...)
+		native := ScanText(string(data), s.identity, s.patterns, s.identSev, f.LogicalPath)
+		res.Findings = append(res.Findings, mergeAugmented(native, s.augment(string(data), f.LogicalPath))...)
 	}
 	for _, fnd := range res.Findings {
 		if fnd.Severity == SeverityHardFail {
 			res.HardFails++
 		}
+	}
+	// The augmenter the repository configured did not run over any file, so
+	// the payload is short of the coverage the repository asked for: a
+	// coverage gap with its reason, and a hard fail, so launch refuses.
+	if gap := s.AugmenterGap(); gap != "" {
+		unscanned(AugmenterGapPath, gap)
+		res.HardFails++
+	}
+	// A failed augmenter run is a degraded scanner, reported in-band.
+	if why := s.augDegraded(); why != "" {
+		res.Unavailable = true
+		res.UnavailableReason = why
 	}
 	sortFindings(res.Findings)
 	if n := len(res.Findings); n > maxBundleFindings {

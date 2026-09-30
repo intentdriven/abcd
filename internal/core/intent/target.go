@@ -167,3 +167,65 @@ func intentNum(id string) int {
 	}
 	return n
 }
+
+// TargetRewrite is one intent record a cut rewrites as it moves a missed
+// target to `next`: the record's repo-relative path and its bytes before and
+// after, so the cut writes it with its other writes and restores it on their
+// undo.
+type TargetRewrite struct {
+	Path   string
+	Before []byte
+	After  []byte
+}
+
+// PlanTargetMoves reads each record a cut passes (launch.MissedTargets) and
+// returns the rewrite that moves its target to `next` (criterion 3, the
+// product thinker's ruling BS1 of 2026-09-29). It writes nothing. A move whose
+// target is already `next` needs no rewrite and yields none: it still names
+// the following release after the cut.
+//
+// Every move is checked against the record as it is on disk, and one that no
+// longer matches — a record not in planned/ under that path, or a target that
+// moved since the cut read it — refuses the whole plan: the cut is not
+// written from a stale read. The caller holds the store's lock (WithMintLock)
+// across this read and its writes, as every other intent writer does.
+func PlanTargetMoves(repoRoot string, moves []launch.TargetMove) ([]TargetRewrite, error) {
+	if len(moves) == 0 {
+		return nil, nil
+	}
+	corpus, err := Load(repoRoot)
+	if err != nil {
+		return nil, err
+	}
+	var out []TargetRewrite
+	for _, m := range moves {
+		it, ok := corpus.Lookup(m.ID)
+		if !ok || it.Bucket != BucketPlanned || filepath.ToSlash(it.Path) != m.Path {
+			return nil, fmt.Errorf("intent: %s is not the planned record at %s the cut read, so its target is not moved (nothing written)", m.ID, m.Path)
+		}
+		abs := filepath.Join(repoRoot, filepath.FromSlash(m.Path))
+		data, err := readRepoFile(abs, m.Path)
+		if err != nil {
+			return nil, err
+		}
+		content := string(data)
+		current, malformed := targetField(frontmatter.Fields(strings.Split(content, "\n")))
+		if malformed || current != m.From {
+			return nil, fmt.Errorf("intent: %s carries `%s: %s`, not the %s the cut read, so its target is not moved (nothing written)",
+				m.ID, launch.TargetReleaseKey, current, m.From)
+		}
+		if current == launch.TargetNext {
+			continue
+		}
+		updated, err := setFrontmatterFields(content, map[string]string{launch.TargetReleaseKey: launch.TargetNext})
+		if err != nil {
+			return nil, err
+		}
+		if len(updated) > maxIntentFileBytes {
+			return nil, fmt.Errorf("intent: moving the target of %s would produce %d bytes, past the %d-byte cap its own reader enforces (nothing written)",
+				m.ID, len(updated), maxIntentFileBytes)
+		}
+		out = append(out, TargetRewrite{Path: m.Path, Before: data, After: []byte(updated)})
+	}
+	return out, nil
+}

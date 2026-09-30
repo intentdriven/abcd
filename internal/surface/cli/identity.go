@@ -14,8 +14,9 @@ import (
 // newIdentityCommand wires the `abcd identity` family: the repo's canonical
 // self-description and the surfaces held to it.
 //
-//   - bare — moved to `abcd lint identity` (newLintIdentityCommand), the
-//     read-only status: the block, and every registered surface's verdict.
+//   - bare — prints the sub-verbs; the read-only status (the block, and every
+//     registered surface's verdict) is `abcd lint identity`
+//     (newLintIdentityCommand, itd-2609212130136102).
 //   - render — the proposed correction for each drifted surface, as a unified
 //     diff on stdout. It writes nothing, and no flag makes it: a deliberate
 //     identity change is an edit to the block, after which the same proposal
@@ -29,10 +30,8 @@ func newIdentityCommand(asJSON *bool) *cobra.Command {
 	identityCmd := &cobra.Command{
 		Use:  "identity",
 		Args: cobra.NoArgs,
+		RunE: helpRunE,
 	}
-	// The bare report is `abcd lint identity` (itd-2609212130136102); the bare
-	// verb answers with it for one release, and its sub-verbs stay.
-	markMoved(identityCmd, "abcd lint identity")
 
 	identityCmd.AddCommand(&cobra.Command{
 		Use:  "render",

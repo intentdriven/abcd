@@ -6,7 +6,7 @@ import (
 )
 
 // TestRenderCitedMatchesSanitizesCitationFields is the gh-250 detector: the
-// per-citation fields printed by RenderCitedMatches are page-derived content
+// per-citation fields printed by renderCitedMatches are page-derived content
 // from the same untrusted ingest boundary as Summary/Filename (which ARE
 // sanitised), so a citation carrying an ESC/C1/bidi/zero-width rune must reach
 // the terminal defanged, not raw. encoding/json escapes only C0 and a couple of
@@ -40,7 +40,7 @@ func TestRenderCitedMatchesSanitizesCitationFields(t *testing.T) {
 		}},
 	}}
 
-	out := RenderCitedMatches("what tokens", matches)
+	out := renderCitedMatches("what tokens", matches)
 
 	for name, r := range attacks {
 		if strings.ContainsRune(out, r) {
@@ -62,7 +62,7 @@ func TestRenderCitedMatchesSanitizesCitationFields(t *testing.T) {
 func TestRenderCitedMatchesMarksATruncatedCitation(t *testing.T) {
 	render := func(title string) string {
 		t.Helper()
-		out := RenderCitedMatches("what tokens", []MatchedPage{{
+		out := renderCitedMatches("what tokens", []MatchedPage{{
 			Filename: "topic_auth_tokens.md",
 			Score:    1,
 			Summary:  "summary",

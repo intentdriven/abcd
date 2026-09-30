@@ -19,7 +19,7 @@ import (
 // link.
 func TestIssueRepointHoldsTheSpecLockAgainstASpecClose(t *testing.T) {
 	repo, ir := ledger(t)
-	res, err := Capture(CaptureRequest{RepoRoot: repo, IssuesRoot: ir, Text: "b", Severity: SeverityMinor,
+	res, err := testCapture(CaptureRequest{RepoRoot: repo, IssuesRoot: ir, Text: "b", Severity: SeverityMinor,
 		Category: "bug", Source: "user-observation", FoundDuring: "t", Slug: "alpha"})
 	if err != nil {
 		t.Fatal(err)

@@ -99,7 +99,7 @@ func TestEveryOtherRowWithdrawsFromComparative(t *testing.T) {
 // are derived from issueschema.LedgerDirs rather than listed.
 func TestComparativeExclusionRowsAreDerivedFromLedgerDirs(t *testing.T) {
 	got := map[string]Exclusion{}
-	for _, e := range ExclusionsFor(PositionComparative) {
+	for _, e := range exclusionsFor(PositionComparative) {
 		got[e.Detail] = e
 	}
 	for _, dir := range issueschema.LedgerDirs() {
@@ -121,7 +121,7 @@ func TestComparativeExclusionRowsAreDerivedFromLedgerDirs(t *testing.T) {
 
 	// The readings row is present, is a signal row, and states the limit.
 	var signal *Exclusion
-	for _, e := range ExclusionsFor(PositionComparative) {
+	for _, e := range exclusionsFor(PositionComparative) {
 		if e.Signal == "readings store" {
 			ex := e
 			signal = &ex
@@ -148,7 +148,7 @@ func TestComparativeExclusionRowsAreDerivedFromLedgerDirs(t *testing.T) {
 	}
 	for _, p := range []Position{PositionWidening, PositionEntailment, PositionDetection} {
 		found := false
-		for _, e := range ExclusionsFor(p) {
+		for _, e := range exclusionsFor(p) {
 			if e.Detail == capture.LedgerRelPath {
 				found = true
 			}
@@ -165,7 +165,7 @@ func TestComparativeExclusionRowsAreDerivedFromLedgerDirs(t *testing.T) {
 // rendered table did not carry would be one no reader of the charter could check
 // and no version could move for.
 func TestRenderCarriesTheCandidateRow(t *testing.T) {
-	rendered := Render()
+	rendered := renderCharter()
 	for _, want := range []string{
 		"`" + string(KindCandidate) + "`",
 		"`" + CandidateSource + "`",

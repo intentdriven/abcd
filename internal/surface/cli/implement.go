@@ -43,12 +43,12 @@ func newImplementCommand(asJSON *bool) *cobra.Command {
 			"exactly one holds it; the claim is a lease, and a lapsed lease is claimable again.\n" +
 			"The second session is bounded: one lane at a time, never the release, never a lane\n" +
 			"that touches the reading corpus, no lane in a split-roles window (`check` asks before\n" +
-			"a step that is not a claim). `log` appends the run's other events, and `report`\n" +
+			"a stage that is not a claim). `log` appends the run's other events, and `report`\n" +
 			"derives the comparison of the modes from the log.\n\n" +
 			"`status`, `step` and `receipt` drive the implement loop `abcd build` starts, whose state\n" +
-			"lives in this checkout's local tier: `step` performs one step and exits, naming the\n" +
-			"agent, brief and receipt path when a step hands work to an agent, and `receipt`\n" +
-			"completes that step once the receipt verifies.\n\n" +
+			"lives in this checkout's local tier: `step` performs the next stage of the current lane\n" +
+			"and exits, naming the agent, brief and receipt path when a stage hands work to an agent,\n" +
+			"and `receipt` completes that stage once the receipt verifies.\n\n" +
 			"Exit 2 on a refusal (an unrecognised input, a session that has not joined, a bound\n" +
 			"the session's role does not permit), exit 3 on contention (the record is claimed by\n" +
 			"another session, or the run state is locked): back off and take other work.",
@@ -108,6 +108,7 @@ func newImplementCommand(asJSON *bool) *cobra.Command {
 		newImplementStatusCommand(asJSON),
 		newImplementStepCommand(asJSON),
 		newImplementReceiptCommand(asJSON),
+		newImplementRecordCommand(asJSON),
 	)
 	return cmd
 }
@@ -422,16 +423,16 @@ func newImplementCheckCommand(asJSON *bool) *cobra.Command {
 	var paths []string
 	cmd := &cobra.Command{
 		Use:       "check <lane|release|review|audit|land> --session <id>",
-		ValidArgs: stepWords(),
-		Long: "Say whether this session may take a step, before it takes it. The first session may\n" +
-			"take every step. The second is refused the release step always, a lane in a\n" +
+		ValidArgs: stageWords(),
+		Long: "Say whether this session may take a stage, before it takes it. The first session may\n" +
+			"take every stage. The second is refused the release stage always, a lane in a\n" +
 			"split-roles window, and a lane whose --path reaches the reading corpus; review,\n" +
-			"audit and land are open to it. A refusal exits 2 and is logged; an allowed step\n" +
+			"audit and land are open to it. A refusal exits 2 and is logged; an allowed stage\n" +
 			"writes nothing. The verdict reports the agent ceiling the session joined with and the\n" +
 			"agents its log lines declare alive (agents_alive).",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			st, err := implement.ParseStep(args[0])
+			st, err := implement.ParseStage(args[0])
 			if err != nil {
 				return implementRefusal("check", err)
 			}
@@ -441,7 +442,7 @@ func newImplementCheckCommand(asJSON *bool) *cobra.Command {
 					return err
 				}
 				return render(cmd.OutOrStdout(), *asJSON, v, func(w io.Writer) {
-					fmt.Fprintf(w, "%s may take the %s step\n", v.Session, v.Step)
+					fmt.Fprintf(w, "%s may take the %s stage\n", v.Session, v.Stage)
 					switch {
 					case v.Ceiling > 0:
 						fmt.Fprintf(w, "  its own agent ceiling is %d, kept on top of the first session's\n", v.Ceiling)
@@ -454,14 +455,14 @@ func newImplementCheckCommand(asJSON *bool) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&session, "session", "", "this session's id")
-	cmd.Flags().StringArrayVar(&paths, "path", nil, "a repository-relative file the step touches (repeatable)")
+	cmd.Flags().StringArrayVar(&paths, "path", nil, "a repository-relative file the stage touches (repeatable)")
 	return cmd
 }
 
-// stepWords is the closed step vocabulary as strings, for shell completion.
-func stepWords() []string {
+// stageWords is the closed stage vocabulary as strings, for shell completion.
+func stageWords() []string {
 	var out []string
-	for _, s := range implement.Steps() {
+	for _, s := range implement.Stages() {
 		out = append(out, string(s))
 	}
 	return out

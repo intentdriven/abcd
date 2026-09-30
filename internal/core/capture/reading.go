@@ -23,13 +23,16 @@ package capture
 import (
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/readingitem"
+	"github.com/intentdriven/abcd/internal/core/record/match"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -45,6 +48,10 @@ import (
 // refusing a traversal id, and bounding a delete, on both sides is the point of
 // that package.
 var reDispositionID = regexp.MustCompile(`^` + issueschema.DispositionFamily + `-[0-9]+$`)
+
+// readingLinkIDRe is what a reading item's `duplicates:` or `refines:` link may
+// name: the records the filing-time match compares a finding with.
+var readingLinkIDRe = regexp.MustCompile(`^(iss|itd|` + issueschema.ReadingItemFamily + `)-[0-9]+$`)
 
 // ReadingItem is one thing the instrument returned: the pattern it named (an
 // envelope field, because a universal core condition must not live in a variant
@@ -73,6 +80,14 @@ type IngestReadingRequest struct {
 	Position string
 	Regime   string
 	Items    []ReadingItem
+	// Match, when non-nil, runs the filing-time match on every item as it is
+	// stored (ruling DQ2b, adr-2609300821558671): each finding is compared, by
+	// its own words, with the open and resolved issues, the intents and every
+	// earlier reading item, and a likely repeat is written onto the item as a
+	// `duplicates:` or `refines:` link and reported. The items this ingest
+	// files are never candidates for each other. nil stores the items
+	// unmatched.
+	Match *match.Config
 }
 
 // ReadingRecordRef is one written reading record: its minted id and its
@@ -91,6 +106,17 @@ type IngestReadingResult struct {
 	// Both exist so a surface can SAY the text was altered.
 	Redacted int    `json:"redacted,omitempty"`
 	Degraded string `json:"redaction_degraded,omitempty"`
+	// Matches is the filing-time match's outcome per record written, in the
+	// order the records were, when the request asked for a match. It is kept
+	// off ReadingRecordRef because that type is also the run record's
+	// committed list, which the match does not belong in.
+	Matches []ReadingMatch `json:"matches,omitempty"`
+}
+
+// ReadingMatch is one stored reading item's filing-time match.
+type ReadingMatch struct {
+	ID    string         `json:"id"`
+	Match *match.Outcome `json:"match"`
 }
 
 // DispositionRequest writes one disposition, keyed to one reading item.
@@ -110,8 +136,10 @@ type DispositionRequest struct {
 	// Supersedes names the standing disposition this one replaces (dsp-N) — the
 	// only exit from a hold.
 	Supersedes string
-	// Recurs cites prior item ids: the recorded form of the researcher's warm
-	// recognition of a persistence. Never a mechanical join, and never a state.
+	// Recurs cites prior item ids: the recorded form of the researcher's
+	// confirmed recognition of a persistence, never a state. The machine's
+	// proposal of the same thing is the item's own duplicates:/refines: link,
+	// written by the filing-time match when the item was stored (ruling DQ2b).
 	Recurs []string
 	// HoldFrameLocation / HoldMoscow are the RESERVED two-axis hold field. Both
 	// are refused while populated; the grammars are stated and dormant.
@@ -196,7 +224,6 @@ func IngestReading(req IngestReadingRequest) (IngestReadingResult, error) {
 	// other ledger verb waits on — a large batch failed concurrent work with
 	// allocator contention. Nothing below the lock needs a scanner.
 	redactor := newLedgerRedactor(repoRoot)
-	result.Degraded = redactor.Degraded()
 	manifest, n := redactor.redact(req.Manifest)
 	result.Redacted += n
 	items := make([]ReadingItem, 0, len(req.Items))
@@ -205,6 +232,9 @@ func IngestReading(req IngestReadingRequest) (IngestReadingResult, error) {
 		result.Redacted += n
 		items = append(items, clean)
 	}
+	// Read after the redactions: an augmenter run that failed during them
+	// degrades the scanner, and the note has to say so.
+	result.Degraded = redactor.Degraded()
 
 	runDir := filepath.Join(issuesRoot, issueschema.ReadingsDir, req.Run)
 	err = withLedgerLock(repoRoot, issuesRoot, func() error {
@@ -212,9 +242,21 @@ func IngestReading(req IngestReadingRequest) (IngestReadingResult, error) {
 			return err
 		}
 
+		// The filing-time match (ruling DQ2b, adr-2609300821558671) reads its
+		// candidate set once, here under the lock, so the ledger it compares
+		// with is the one the items join. The items this ingest mints are not
+		// on disk yet, and are named as exceptions besides, so two findings of
+		// one reading are never linked to each other.
+		var cands []match.Candidate
+		var candErr error
+		if req.Match != nil {
+			cands, candErr = readingFilingCandidates(repoRoot, issuesRoot, *req.Match)
+		}
+
 		// Assemble and validate EVERY item before anything is written: a run that
 		// is half-written is a visible world nobody can reconstruct.
 		var pending []staged
+		var matches []ReadingMatch
 		minted := map[string]bool{}
 		for i, item := range items {
 			id, err := mintUnusedItemID(issuesRoot, minted)
@@ -229,6 +271,11 @@ func IngestReading(req IngestReadingRequest) (IngestReadingResult, error) {
 			content, err := buildIssueText(fields, "")
 			if err != nil {
 				return fmt.Errorf("item %d: %w", i+1, err)
+			}
+			if req.Match != nil {
+				var o *match.Outcome
+				content, o = matchReadingItem(*req.Match, cands, candErr, slices.Collect(maps.Keys(minted)), content, fm)
+				matches = append(matches, ReadingMatch{ID: id, Match: o})
 			}
 			// The record's size is DECIDED here, on the assembled bytes, because
 			// this is the only place the exact count exists: the values are
@@ -271,6 +318,7 @@ func IngestReading(req IngestReadingRequest) (IngestReadingResult, error) {
 				ID: p.id, Path: fsutil.RepoRel(repoRoot, path),
 			})
 		}
+		result.Matches = matches
 		return nil
 	})
 	if err != nil {
@@ -279,6 +327,23 @@ func IngestReading(req IngestReadingRequest) (IngestReadingResult, error) {
 		return result, err
 	}
 	return result, nil
+}
+
+// matchReadingItem runs the filing-time match for one reading item being
+// stored and writes its links into the item's content. It never refuses the
+// ingest: a short finding, an unread candidate set, or a link the reading
+// schema refuses comes back as the outcome's reason, with the item unlinked.
+func matchReadingItem(cfg match.Config, cands []match.Candidate, candErr error, except []string, content string, fm map[string]any) (string, *match.Outcome) {
+	text := readingMatchText(fm)
+	if match.Short(text) {
+		o := match.Rank(text, nil, cfg.Threshold)
+		return content, &o
+	}
+	if candErr != nil {
+		o := match.Unread(cfg.Threshold, candErr)
+		return content, &o
+	}
+	return linkMatches(rankExcept(text, cands, except, cfg.Threshold), content, fm, validateReadingStrict)
 }
 
 // Disposition writes the researcher's answer to one reading item, into a
@@ -722,6 +787,24 @@ func validateReadingStrict(fm map[string]any) error {
 		}
 	}
 
+	// The filing-time match's typed links (ruling DQ2b): a likely repeat of an
+	// issue, an intent, or an earlier reading item.
+	for _, key := range []string{string(match.Duplicates), string(match.Refines)} {
+		v, present := fm[key]
+		if !present {
+			continue
+		}
+		items, isList := v.([]string)
+		if !isList {
+			return fmt.Errorf("%w: %q must be a list", ErrMalformedFrontmatter, key)
+		}
+		for _, it := range items {
+			if !readingLinkIDRe.MatchString(it) {
+				return fmt.Errorf("%w: %s item %q does not match ^(iss|itd|%s)-[0-9]+$",
+					ErrMalformedFrontmatter, key, it, issueschema.ReadingItemFamily)
+			}
+		}
+	}
 	if v, present := fm["related_intents"]; present {
 		items, isList := v.([]string)
 		if !isList {
@@ -1086,7 +1169,7 @@ func isReadingEnvelopeField(key string) bool {
 	if containsString(issueschema.ReadingRequired, key) {
 		return true
 	}
-	return key == "related_intents"
+	return key == "related_intents" || key == string(match.Duplicates) || key == string(match.Refines)
 }
 
 // isReadingBodyField reports whether key belongs to SOME position's body.

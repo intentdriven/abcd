@@ -133,6 +133,15 @@ UNGUARDED warning naming the file, so the state cannot pass unnoticed.
 **Never write `.abcd/guard.json` on your own initiative.** Disabling or
 retiering a hazard is the user's decision to make and to review.
 
+The hazards are also taught before any command runs: the rules loader's `SHELL`
+domain is generated from the registry this guard enforces, one rule per entry,
+and is injected when a prompt is about shell work (`abcd rules shell` renders
+it). An entry a repo adds in `.abcd/guard.json` is taught there as well, its
+rule marked `(repo)`; a guard file this guard refuses is named on stderr and
+not taught. An entry's `why` and `successor` are each at most 1,024 bytes, and
+a longer one refuses the file. With the guard switched off, each rule opens
+`Hazard (guard off)` instead of `Refused by the guard`.
+
 ### What this guard is
 
 The guard is a **mistake filter, not a security boundary**. It catches a hazard
@@ -248,7 +257,10 @@ builds them: as the command in command position, as operands after it, and at
 every payload layer the guard follows, so a document whose own text is
 `$(cat <<'F' … F)` is read too. Text written in the word is not split, as bash
 does not split it, and an assignment's value is not split either. On a command
-line where any other command names IFS (`IFS=x;`, `export IFS=x`), an unquoted
+line where any other command names IFS (`IFS=x;`, `export IFS=x`, or an
+assignment target that holds an expansion anywhere in the line's text, such as
+`export ${I}FS=x`, `(( ${a}${b} = 1 ))` or `printf -v "$x" 1`, since bash sets the
+variable the target's value names), an unquoted
 fixed output is a **block** (`ifs-split-unread`): the guard splits on the default
 IFS only, and refuses rather than work out which assignment reaches which
 expansion. A prefix assignment (`IFS=x $(…)`) does not reach its own command's
@@ -390,7 +402,9 @@ runs, or `pkill` or `killall` as the program a variable names (`$P make`) —
 because reading each would refuse the ordinary commands a variable carries a
 value for, an IFS the shell already holds when
 the line starts or gains during the line through a name the guard does not read
-(`declare $(echo I)FS=x`, a sourced file; every line is read from the default IFS), a hazard inside a non-shell interpreter's payload (`python -c`,
+(a sourced file, a nameref set before the line, or an operator the line does
+not write, such as a command's output an arithmetic context evaluates; every
+line is read from the default IFS), a hazard inside a non-shell interpreter's payload (`python -c`,
 `perl -e`) — one opaque token the tokenizer cannot read, today a silent allow, not
 a warn (a warn for it is a recorded design target, not yet implemented), or a
 dangerous form no entry describes. Nor does an allow see what a lone substitution

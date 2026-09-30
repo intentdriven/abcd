@@ -38,7 +38,7 @@ func identicalButForRun(t *testing.T, a, b Bundle) bool {
 // run the session held.
 func TestBundleCarriesTheReadingStampOfItsRun(t *testing.T) {
 	root := fixtureRepo(t)
-	for _, p := range AssemblingPositions() {
+	for _, p := range assemblingPositions() {
 		res := assembleFixture(t, root, p)
 		got, ok := sessionkind.Parse(res.Bundle.ContextStamp)
 		if !ok {
@@ -57,7 +57,7 @@ func TestBundleCarriesTheReadingStampOfItsRun(t *testing.T) {
 		if want := sha256Hex(items)[:sessionkind.DigestLen]; got.Digest != want {
 			t.Errorf("position %s: the stamp's digest is %s, and the bundle's items hash to %s", p, got.Digest, want)
 		}
-		raw, err := EncodeBundle(res.Bundle)
+		raw, err := encodeBundle(res.Bundle)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -72,7 +72,7 @@ func TestBundleCarriesTheReadingStampOfItsRun(t *testing.T) {
 // occurred, and a hash.
 func TestManifestCoversEveryBundleItem(t *testing.T) {
 	root := fixtureRepo(t)
-	for _, p := range AssemblingPositions() {
+	for _, p := range assemblingPositions() {
 		res := assembleFixture(t, root, p)
 		if len(res.Bundle.Items) == 0 {
 			t.Fatalf("position %s assembled nothing", p)
@@ -179,7 +179,7 @@ var timestampRe = regexp.MustCompile(`\d{4}-\d{2}-\d{2}|\d{2}:\d{2}:\d{2}|\bT\d{
 func TestManifestCarriesNoTimestamp(t *testing.T) {
 	root := fixtureRepo(t)
 	res := assembleFixture(t, root, PositionWidening)
-	raw, err := EncodeManifest(res.Manifest)
+	raw, err := encodeManifest(res.Manifest)
 	if err != nil {
 		t.Fatalf("encode: %v", err)
 	}
@@ -220,8 +220,8 @@ func TestManifestHashIsStableAcrossRuns(t *testing.T) {
 	a := first.Manifest
 	b := third.Manifest
 	a.RunID, b.RunID = "", ""
-	rawA, _ := EncodeManifest(a)
-	rawB, _ := EncodeManifest(b)
+	rawA, _ := encodeManifest(a)
+	rawB, _ := encodeManifest(b)
 	if string(rawA) != string(rawB) {
 		t.Error("two runs over one state differ in more than the run identifier")
 	}
@@ -232,7 +232,7 @@ func TestManifestHashIsStableAcrossRuns(t *testing.T) {
 func TestDecodeManifestIsStrict(t *testing.T) {
 	root := fixtureRepo(t)
 	res := assembleFixture(t, root, PositionWidening)
-	raw, err := EncodeManifest(res.Manifest)
+	raw, err := encodeManifest(res.Manifest)
 	if err != nil {
 		t.Fatalf("encode: %v", err)
 	}

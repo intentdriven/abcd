@@ -21,7 +21,15 @@ import (
 // package var like newReleaseFetcher, so a test can prove the dispatch
 // refuses BEFORE anything network-capable exists and that no other verb ever
 // constructs it (the adr-38 seam extended to the update verb, spc-32 AC8).
-var newUpdater = update.NewGitHubUpdater
+var newUpdater = func() updater { return update.NewGitHubUpdater() }
+
+// updater is what the verb asks of the release client: resolve a tag, then
+// apply it. An interface so a test drives the swap path with no network, the
+// way version.go's newReleaseFetcher hands back a vintage.ReleaseFetcher.
+type updater interface {
+	ResolveTag(requested string) (string, error)
+	Apply(target, tag string, progress io.Writer) (update.Report, error)
+}
 
 func newUpdateCommand(asJSON *bool) *cobra.Command {
 	var yes, check bool
@@ -78,11 +86,7 @@ func newUpdateCommand(asJSON *bool) *cobra.Command {
 					return nil
 				}
 			}
-			var progress io.Writer
-			if isTTY(os.Stderr) {
-				progress = cmd.ErrOrStderr()
-			}
-			rep, err := u.Apply(tgt.Path, tag, progress)
+			rep, err := u.Apply(tgt.Path, tag, progressWriter(cmd.ErrOrStderr()))
 			if err != nil {
 				return err
 			}
@@ -107,11 +111,24 @@ func newUpdateCommand(asJSON *bool) *cobra.Command {
 	return cmd
 }
 
-// isTTY reports whether f is a character device — the progress/confirmation
-// gate. Piped and hooked invocations are silent except for the receipt.
-// Delegates to the canonical check in internal/term.
-func isTTY(f *os.File) bool {
-	return term.IsTerminal(f)
+// isTTY reports whether f is a terminal — the progress/confirmation gate.
+// Piped and hooked invocations are silent except for the receipt. It delegates
+// to the canonical check in internal/term, and is a package var so a test can
+// stand a file in for a terminal (the repo's package-var seam pattern).
+var isTTY = term.IsTerminal
+
+// progressWriter is the download-progress gate: progress goes to stderr, and
+// only when stderr is a terminal. The gate reads the stream the progress is
+// written to, so a piped or hooked run, or a stderr redirected to a log, gets
+// none, and stdout — the receipt's stream — never carries a progress byte
+// whatever it is attached to. This is criterion 9's silence as the record
+// reads it (iss-2609300015353414): the progress convention git and curl
+// follow, keyed on the stream that would carry it.
+func progressWriter(stderr io.Writer) io.Writer {
+	if f, ok := stderr.(*os.File); ok && isTTY(f) {
+		return f
+	}
+	return nil
 }
 
 // refusalReport shapes the receipt for a dispatch refusal. The target path is
@@ -166,7 +183,11 @@ func renderUpdateReport(w io.Writer, asJSON bool, rep update.Report) {
 			if rep.OldVersion == "" {
 				old = "an unpublished build"
 			}
-			fmt.Fprintf(w, "updated %s: %s -> %s\n", termsafe.Sanitize(rep.TargetPath), old, termsafe.Sanitize(rep.NewVersion))
+			// The first line is the one wording every swap prints when it
+			// completes (update.UpdatedFormat, the ruling CJ1b); the bootstrap's
+			// success notice leads with the same line.
+			fmt.Fprintln(w, update.UpdatedLine(old, termsafe.Sanitize(rep.NewVersion)))
+			fmt.Fprintf(w, "  path:     %s\n", termsafe.Sanitize(rep.TargetPath))
 			fmt.Fprintf(w, "  origin:   %s\n", rep.Origin)
 			if rep.OldDigest != "" {
 				fmt.Fprintf(w, "  replaced: sha256 %s — in no published release; %s\n", termsafe.Sanitize(rep.OldDigest), rep.Ownership.Prose())

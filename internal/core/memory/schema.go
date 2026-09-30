@@ -377,7 +377,7 @@ var distilledPageKeys = map[string]bool{
 var distilledPageRequired = []string{"type", "domain", "slug", "body", "source"}
 
 // DistilledPage is one validated distiller output page. TopicHash is computed by
-// ValidateDistilledPage (a supplied one is rejected) and persisted into the
+// validateDistilledPage (a supplied one is rejected) and persisted into the
 // written page's frontmatter.
 type DistilledPage struct {
 	Type        string
@@ -435,13 +435,13 @@ func requireStrList(value any, key string) ([]string, error) {
 	return out, nil
 }
 
-// ValidateDistilledPage validates one raw page dict against the DistilledPage
+// validateDistilledPage validates one raw page dict against the DistilledPage
 // schema, computing topic_hash (a supplied one is rejected). The ingest path
 // runs this before any write.
 //
 // repoRoot selects the canonical scanner configuration an undeclared key is
 // redacted with when the page is refused.
-func ValidateDistilledPage(repoRoot string, data map[string]any) (DistilledPage, error) {
+func validateDistilledPage(repoRoot string, data map[string]any) (DistilledPage, error) {
 	if data == nil {
 		return DistilledPage{}, newSchemaError("DistilledPage must be a mapping")
 	}
@@ -540,7 +540,7 @@ type PlannedWrite struct {
 	Body        string
 }
 
-// WritePlan is the output of ResolveDistilledPages.
+// WritePlan is the output of resolveDistilledPages.
 type WritePlan struct {
 	Writes         []PlannedWrite
 	RegistryPages  map[string][]string
@@ -566,10 +566,10 @@ func uniqueFilename(page DistilledPage, taken map[string]bool) (string, error) {
 	return "", newSchemaError("cannot derive a free fork filename for a page named by %s", termsafe.DescribeRefused(page.Filename()))
 }
 
-// ResolveDistilledPages is the pure cross-ref dedup owner (link / fork+contradiction
+// resolveDistilledPages is the pure cross-ref dedup owner (link / fork+contradiction
 // / new rule). existing maps each on-disk page filename to its parsed
 // frontmatter (unparseable pages present-but-{} so names stay taken).
-func ResolveDistilledPages(existing map[string]map[string]any, pages []DistilledPage) (WritePlan, error) {
+func resolveDistilledPages(existing map[string]map[string]any, pages []DistilledPage) (WritePlan, error) {
 	known := map[string]knownPage{}
 	for fname, fm := range existing {
 		var topic string

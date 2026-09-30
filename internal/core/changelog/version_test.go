@@ -98,7 +98,7 @@ func TestDeriveNextDropsPrereleaseMetadata(t *testing.T) {
 // the caller would write as a duplicate heading).
 func TestDeriveNextEmptySetDoesNotBump(t *testing.T) {
 	prev := mustSemver(t, "0.3.0")
-	if _, bumped := DeriveNext(prev, MaxImpact(nil)); bumped {
+	if _, bumped := DeriveNext(prev, maxImpact(nil)); bumped {
 		t.Error("an empty record set must not bump")
 	}
 }

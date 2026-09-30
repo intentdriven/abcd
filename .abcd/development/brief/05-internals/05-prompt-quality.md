@@ -73,7 +73,7 @@ output is good enough, run in CI by a generic harness.
 Neither half exists. There is no `internal/core/prompttest` package, and every
 shipped agent's `fixtures/` directory holds exactly one file, the injection canary,
 which is layer C's presence check rather than a golden test. The harness lands with
-the first Pass-A agent spec ([Phase 6](../../roadmap/phases/phase-6-lifeboat.md)),
+the first Pass-A agent's spec (the lifeboat pipeline, whose original plan the retired [Phase 6](../../roadmap/phases/phase-6-lifeboat.md) document holds),
 the point at which a second agent exists to generalise the runner over.
 
 This is the layer that would catch a regression when a model changes, and it is
@@ -161,6 +161,6 @@ rest are staged, and no shipped prompt satisfies any of them.
 | At least two golden-test fixtures pass | staged with the layer-B harness |
 | Prompt carries a last-audited footer line | staged: no shipped prompt carries one |
 
-**In a later phase, recorded as intents:** itd-14, a prompt registry with a
+**Later, recorded as draft intents:** itd-14, a prompt registry with a
 full diff-on-update workflow treated like code; and itd-15, running the prompt
 audit as part of abcd's own disembark of a reference implementation.

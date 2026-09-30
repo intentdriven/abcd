@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core/changelog"
+	"github.com/intentdriven/abcd/internal/core/launch"
 )
 
 // The header and footer forge links are labelled with the forge's declared
@@ -155,6 +156,42 @@ func TestReleaseOfMatchesTheHandleAtAWordBoundary(t *testing.T) {
 		"spc-199": "",
 	}
 	for id, want := range cases {
+		if got := c.releaseOf(id); got != want {
+			t.Errorf("releaseOf(%q) = %q, want %q", id, got, want)
+		}
+	}
+}
+
+// A cut that passes a targeted intent names it in the section's move note
+// (itd-2609212103572513 criterion 3, ruling BS1 of 2026-09-29), and that line
+// names a release the intent did NOT ship in: releaseOf passes over it, so the
+// planned intent is stamped with nothing and a shipped one keeps the release
+// that credits it.
+func TestReleaseOfPassesOverTheTargetMoveNote(t *testing.T) {
+	dir := t.TempDir()
+	writeSourceFile(t, dir, "CHANGELOG.md", strings.Join([]string{
+		"# Changelog",
+		"",
+		"## [Unreleased]",
+		"",
+		"## [0.9.0] - 2026-09-01",
+		"",
+		changelog.TargetMoveNote([]launch.TargetMove{{ID: "itd-500", From: "v0.9.0"}, {ID: "itd-199", From: "next"}}),
+		"",
+		"### Added",
+		"",
+		"- A later promise, delivered. (itd-1990)",
+		"",
+		"## [0.3.0] - 2026-05-01",
+		"",
+		"### Added",
+		"",
+		"- The promise this release delivered. (itd-199)",
+		"",
+	}, "\n"))
+
+	c := &composer{root: mustOpenRoot(t, dir)}
+	for id, want := range map[string]string{"itd-500": "", "itd-199": "0.3.0", "itd-1990": "0.9.0"} {
 		if got := c.releaseOf(id); got != want {
 			t.Errorf("releaseOf(%q) = %q, want %q", id, got, want)
 		}

@@ -10,6 +10,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/provenance"
+	"github.com/intentdriven/abcd/internal/core/record/match"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
@@ -37,6 +38,12 @@ type PromoteRequest struct {
 	// derives extracted-from-record from what it did rather than from what it was
 	// told.
 	ProductionMode string
+	// Match, when non-nil, runs the filing-time match on the draft a reading
+	// item's promotion mints (ruling DQ2b): the item's finding, in its own
+	// words, is compared with the open and resolved issues and the intents,
+	// and each likely double is written onto the draft as capture writes it.
+	// nil, stamp-only mode, and the issue route mint unmatched.
+	Match *match.Config
 }
 
 // PromoteResult is the outcome of a successful Promote. Paths are
@@ -65,6 +72,8 @@ type PromoteResult struct {
 	// than not recording it.
 	Redacted int    `json:"redacted,omitempty"`
 	Degraded string `json:"redaction_degraded,omitempty"`
+	// Match is the minted draft's filing-time match, when one was asked for.
+	Match *match.Outcome `json:"match,omitempty"`
 }
 
 // stampWriteHook, when non-nil, replaces the atomic in-place write inside
@@ -539,6 +548,7 @@ func promoteReadingItem(repoRoot, issuesRoot string, req PromoteRequest) (Promot
 	state := issueschema.DispositionAccepted
 
 	var itdID, intentPath, backEdgeKept string
+	var matched *match.Outcome
 	linked := req.LinkIntent != ""
 	if linked {
 		if !reItdID.MatchString(req.LinkIntent) {
@@ -581,7 +591,17 @@ func promoteReadingItem(repoRoot, issuesRoot string, req PromoteRequest) (Promot
 		}
 		seed := "Graduated from `" + req.ID + "` (" + state + "): " + title +
 			". Read that reading record for the instrument's own text."
-		it, err := intent.CreateDraft(repoRoot, intent.DraftOptions{
+		// The promote step matches again (ruling DQ2b, adr-2609300821558671):
+		// the draft is compared, by the item's finding rather than its one-line
+		// pattern, with the record a capture is compared with, and linked as a
+		// capture is linked.
+		var m *intent.Matcher
+		if req.Match != nil {
+			cfg := *req.Match
+			m = &intent.Matcher{Threshold: cfg.Threshold, Text: readingMatchText(fm),
+				Candidates: func() ([]match.Candidate, error) { return matchCandidates(repoRoot, issuesRoot, cfg) }}
+		}
+		it, outcome, err := intent.CreateDraftMatched(repoRoot, intent.DraftOptions{
 			Slug:         slug,
 			Title:        title,
 			SeedBody:     seed,
@@ -594,11 +614,12 @@ func promoteReadingItem(repoRoot, issuesRoot string, req PromoteRequest) (Promot
 				Kind: provenance.KindContributedByReading, Run: run, Item: req.ID,
 			},
 			ProductionMode: req.ProductionMode,
+			Match:          m,
 		})
 		if err != nil {
 			return PromoteResult{}, err
 		}
-		itdID, intentPath = it.ID, it.Path
+		itdID, intentPath, matched = it.ID, it.Path, outcome
 	}
 
 	if beforeStampHook != nil {
@@ -662,6 +683,7 @@ func promoteReadingItem(repoRoot, issuesRoot string, req PromoteRequest) (Promot
 		IntentPath:   intentPath,
 		Linked:       linked,
 		BackEdgeKept: backEdgeKept,
+		Match:        matched,
 	}, nil
 }
 

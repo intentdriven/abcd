@@ -2,7 +2,7 @@ package loop
 
 // brief.go is the brief renderer (spec piece 5; criterion 3): the one file a
 // lane's implementer is handed. It is rendered from the lane's base — the
-// worktree the worktree step made, on the default branch — so the implementer
+// worktree the worktree stage made, on the default branch — so the implementer
 // reads exactly the record its branch builds on: the intent, the spec, the
 // conventions section of AGENTS.md, and the decisions the intent cites. It
 // names each source and where it was read, and tells the implementer where its
@@ -62,17 +62,17 @@ var adrCiteRe = regexp.MustCompile(`\badr-[0-9]+\b`)
 
 // laneRel is a lane's directory inside its run, relative to the checkout root.
 // The lane id is held to the loop's shape before a path is built from it.
-func laneRel(runID, laneID string, step StepName) (string, error) {
+func laneRel(runID, laneID string, stage Stage) (string, error) {
 	if !ValidRunID(runID) || !ValidLaneID(laneID) {
-		return "", refuse(string(step), "", "", fmt.Sprintf("%q of %q is not a lane the loop opened, so no lane path is built from it", laneID, runID),
+		return "", refuse(string(stage), "", "", fmt.Sprintf("%q of %q is not a lane the loop opened, so no lane path is built from it", laneID, runID),
 			"the loop names its runs and lanes; restore the run's state file")
 	}
 	return runRel(runID) + "/" + laneID, nil
 }
 
 // laneFile is a file of a lane's directory, relative to the checkout root.
-func laneFile(runID, laneID string, step StepName, name string) (string, error) {
-	dir, err := laneRel(runID, laneID, step)
+func laneFile(runID, laneID string, stage Stage, name string) (string, error) {
+	dir, err := laneRel(runID, laneID, stage)
 	if err != nil {
 		return "", err
 	}
@@ -99,28 +99,41 @@ type citedADR struct {
 	Found           bool
 }
 
-// briefStep is the brief step's body: it renders the brief from the lane's
+// briefStage is the brief stage's body: it renders the brief from the lane's
 // base into the lane's directory, replacing what an interrupted call wrote.
-func briefStep(c Context, lane *Lane) (Outcome, error) {
+func briefStage(c Context, lane *Lane) (Outcome, error) {
 	lw, err := laneWorktree(c.RepoRoot, c.State.RunID, lane.ID)
 	if err != nil {
-		return Outcome{}, relabel(err, StepBrief)
+		return Outcome{}, relabel(err, StageBrief)
 	}
 	if lane.Worktree == "" || lane.Worktree != lw.Path {
-		return Outcome{}, refuse(string(StepBrief), "", lane.ID,
+		return Outcome{}, refuse(string(StageBrief), "", lane.ID,
 			"the lane has no worktree the loop made (its state names "+quoteOrNone(fsutil.RedactHome(lane.Worktree))+")",
-			"the worktree step makes it; restore the run's state file")
+			"the worktree stage makes it; restore the run's state file")
 	}
-	src, err := readBriefSources(c.RepoRoot, c.State, lane)
-	if err != nil {
-		return Outcome{}, err
-	}
-	dirRel, err := laneRel(c.State.RunID, lane.ID, StepBrief)
+	dirRel, err := laneRel(c.State.RunID, lane.ID, StageBrief)
 	if err != nil {
 		return Outcome{}, err
 	}
 	rel := dirRel + "/" + BriefFileName
-	body := renderBrief(c.State, *lane, filepath.Join(c.RepoRoot, filepath.FromSlash(dirRel)), src)
+	laneDir := filepath.Join(c.RepoRoot, filepath.FromSlash(dirRel))
+	var body []byte
+	var from string
+	if c.State.Issue() != "" {
+		src, err := readIssueBriefSources(c.RepoRoot, c.State, lane)
+		if err != nil {
+			return Outcome{}, err
+		}
+		body = renderIssueBrief(c.State, *lane, laneDir, src)
+		from = fmt.Sprintf("%s and %s (%s)", c.State.Issue(), ConventionsFile, src.conventionsFrom)
+	} else {
+		src, err := readBriefSources(c.RepoRoot, c.State, lane)
+		if err != nil {
+			return Outcome{}, err
+		}
+		body = renderBrief(c.State, *lane, laneDir, src)
+		from = fmt.Sprintf("%s, %s, %s (%s) and %d cited decision(s)", c.State.Intent, c.State.Spec, ConventionsFile, src.conventionsFrom, len(src.adrs)+len(src.decisions))
+	}
 	if err := fsutil.EnsureRealDirAll(c.RepoRoot, dirRel, dirPerm); err != nil {
 		return Outcome{}, fmt.Errorf("creating the lane's directory: %w", err)
 	}
@@ -133,8 +146,7 @@ func briefStep(c Context, lane *Lane) (Outcome, error) {
 		return Outcome{}, fmt.Errorf("writing %s: %w", rel, err)
 	}
 	lane.Brief = rel
-	return Outcome{Note: fmt.Sprintf("rendered %s from %s, %s, %s (%s) and %d cited decision(s) at %s",
-		rel, c.State.Intent, c.State.Spec, ConventionsFile, src.conventionsFrom, len(src.adrs)+len(src.decisions), shortSHA(lane.BaseSHA))}, nil
+	return Outcome{Note: fmt.Sprintf("rendered %s from %s at %s", rel, from, shortSHA(lane.BaseSHA))}, nil
 }
 
 // readBriefSources reads what a brief is rendered from out of the lane's base
@@ -147,8 +159,8 @@ func briefStep(c Context, lane *Lane) (Outcome, error) {
 func readBriefSources(repoRoot string, st State, lane *Lane) (briefSources, error) {
 	var src briefSources
 	if !gitutil.IsFullSHA(lane.BaseSHA) {
-		return src, refuse(string(StepBrief), "", lane.ID, fmt.Sprintf("the lane records no base commit to read the record at (%s)", quoteOrNone(lane.BaseSHA)),
-			"the worktree step records it; restore the run's state file")
+		return src, refuse(string(StageBrief), "", lane.ID, fmt.Sprintf("the lane records no base commit to read the record at (%s)", quoteOrNone(lane.BaseSHA)),
+			"the worktree stage records it; restore the run's state file")
 	}
 	base := "the lane's base (" + lane.Branch + " at " + shortSHA(lane.BaseSHA) + ")"
 	at := baseTree{root: repoRoot, sha: lane.BaseSHA}
@@ -162,7 +174,7 @@ func readBriefSources(repoRoot string, st State, lane *Lane) (briefSources, erro
 		if len(it) > 0 {
 			where = "holds it in " + folders(it)
 		}
-		return src, refuse(string(StepBrief), "", lane.ID,
+		return src, refuse(string(StageBrief), "", lane.ID,
 			fmt.Sprintf("%s is not planned at %s: the default branch %s", st.Intent, base, where),
 			"land the intent's planning on the default branch first; a lane is built off the default branch")
 	}
@@ -171,7 +183,7 @@ func readBriefSources(repoRoot string, st State, lane *Lane) (briefSources, erro
 		return src, fmt.Errorf("reading the specs at %s: %w", base, err)
 	}
 	if len(sp) != 1 || sp[0].folder != spec.StatusOpen {
-		return src, refuse(string(StepBrief), "", lane.ID,
+		return src, refuse(string(StageBrief), "", lane.ID,
 			fmt.Sprintf("%s is not open at %s", st.Spec, base),
 			"land the spec on the default branch first; a lane is built off the default branch")
 	}
@@ -179,7 +191,7 @@ func readBriefSources(repoRoot string, st State, lane *Lane) (briefSources, erro
 	read := func(e baseEntry, limit int64) ([]byte, error) {
 		b, err := at.blob(e, limit)
 		if err != nil {
-			return nil, refuse(string(StepBrief), "", lane.ID, fmt.Sprintf("%s cannot be read at %s: %v", e.path, base, err),
+			return nil, refuse(string(StageBrief), "", lane.ID, fmt.Sprintf("%s cannot be read at %s: %v", e.path, base, err),
 				"the brief reads regular files within their caps; restore "+e.path+" on the default branch")
 		}
 		return b, nil
@@ -197,7 +209,7 @@ func readBriefSources(repoRoot string, st State, lane *Lane) (briefSources, erro
 		return src, fmt.Errorf("reading %s at %s: %w", ConventionsFile, base, err)
 	}
 	if !found {
-		return src, refuse(string(StepBrief), "", lane.ID, fmt.Sprintf("%s holds no %s, so the lane has no conventions to be briefed with", base, ConventionsFile),
+		return src, refuse(string(StageBrief), "", lane.ID, fmt.Sprintf("%s holds no %s, so the lane has no conventions to be briefed with", base, ConventionsFile),
 			"write the repository's conventions into "+ConventionsFile+" on the default branch (`abcd prepare-this-repo` sets one up)")
 	}
 	agents, err := read(agentsEntry, maxRecordBytes)
@@ -245,15 +257,15 @@ func readBriefSources(repoRoot string, st State, lane *Lane) (briefSources, erro
 func laneSteps(st State, lane *Lane, base, specText string) ([]spec.Step, error) {
 	steps, err := spec.Steps(specText)
 	if err != nil {
-		return nil, refuse(string(StepBrief), "", lane.ID, fmt.Sprintf("%s's steps cannot be read at %s: %v", st.Spec, base, err),
+		return nil, refuse(string(StageBrief), "", lane.ID, fmt.Sprintf("%s's steps cannot be read at %s: %v", st.Spec, base, err),
 			"rewrite "+spec.StepsHeading+" on the default branch as `abcd intent ready "+st.Intent+"` describes")
 	}
 	remedy := "restore " + st.Spec + "'s steps on the default branch as the run started from them: a run does not follow steps reordered mid-run"
 	if n := lane.SpecStep; n < 1 || n > len(steps) {
-		return nil, refuse(string(StepBrief), "", lane.ID, fmt.Sprintf("%s at %s lists %d step(s), none numbered %d, the step this lane was opened for", st.Spec, base, len(steps), n), remedy)
+		return nil, refuse(string(StageBrief), "", lane.ID, fmt.Sprintf("%s at %s lists %d step(s), none numbered %d, the step this lane was opened for", st.Spec, base, len(steps), n), remedy)
 	}
 	if got := steps[lane.SpecStep-1]; got.Title != lane.StepTitle {
-		return nil, refuse(string(StepBrief), "", lane.ID, fmt.Sprintf("%s at %s lists step %d as %q, not the %q this lane was opened for", st.Spec, base, got.Number, got.Title, lane.StepTitle), remedy)
+		return nil, refuse(string(StageBrief), "", lane.ID, fmt.Sprintf("%s at %s lists step %d as %q, not the %q this lane was opened for", st.Spec, base, got.Number, got.Title, lane.StepTitle), remedy)
 	}
 	return steps, nil
 }
@@ -500,9 +512,13 @@ func renderBrief(st State, lane Lane, laneDir string, src briefSources) []byte {
 	p("  \"commits\": [\"<the full object name of every commit you made on the branch>\"],\n")
 	p("  \"definition_of_done\": {\"command\": \"<what you ran>\", \"exit_code\": 0, \"output\": %q},\n", DoDFileName)
 	p("  \"report\": %q,\n", ReportFileName)
-	p("  \"model\": \"<the model id your harness reports, or leave the field out>\"\n")
+	p("  \"model\": \"<the model id your harness reports, or leave the field out>\",\n")
+	p("  \"resolves\": [{\"issue\": \"iss-<N>\", \"commit\": \"<the commit of yours that fixed it>\", \"note\": \"<the resolution>\",\n")
+	p("                \"impact\": \"additive|breaking|fix|internal\", \"grounds\": \"pursued: <what is expected, and what would show it wrong>\"}]\n")
 	p("}\n")
 	p("```\n\n")
+	p("`resolves` names each capture your lane fixed, or is left out when it fixed none. Do not resolve\n")
+	p("a capture yourself: the landing runs `capture resolve` for each one named here, with its commit.\n\n")
 	p("`output` and `report` are paths inside `%s`. The loop verifies the receipt before anything else\n", laneDir)
 	p("runs: every commit exists on the branch past its base, the definition of done's output exists and\n")
 	p("its exit code is 0, and the report exists. A receipt short of any of these is refused, naming what\n")
@@ -520,9 +536,10 @@ func renderBrief(st State, lane Lane, laneDir string, src briefSources) []byte {
 	p("they exist. This holds whatever the conventions below say:\n\n")
 	p("> %s\n\n", scanner.OutboundPolicy)
 
-	p("---\n\n## The intent: %s\n\n<!-- begin %s -->\n\n%s\n\n<!-- end %s -->\n\n", st.Intent, src.intentPath, strings.TrimSpace(src.intentText), src.intentPath)
-	p("## The spec: %s\n\n<!-- begin %s -->\n\n%s\n\n<!-- end %s -->\n\n", st.Spec, src.specPath, strings.TrimSpace(src.specText), src.specPath)
-	p("## The conventions: %s\n\n<!-- begin %s -->\n\n%s\n\n<!-- end %s -->\n\n", ConventionsFile, ConventionsFile, src.conventions, ConventionsFile)
+	p("%s", fenceQuoteNote)
+	p("---\n\n## The intent: %s\n\n<!-- begin %s -->\n\n%s\n\n<!-- end %s -->\n\n", st.Intent, src.intentPath, fenceQuote(strings.TrimSpace(src.intentText)), src.intentPath)
+	p("## The spec: %s\n\n<!-- begin %s -->\n\n%s\n\n<!-- end %s -->\n\n", st.Spec, src.specPath, fenceQuote(strings.TrimSpace(src.specText)), src.specPath)
+	p("## The conventions: %s\n\n<!-- begin %s -->\n\n%s\n\n<!-- end %s -->\n\n", ConventionsFile, ConventionsFile, fenceQuote(src.conventions), ConventionsFile)
 
 	p("## The decisions the intent cites\n\n")
 	if len(src.adrs) == 0 {
@@ -585,12 +602,12 @@ func renderEarlierSteps(b *bytes.Buffer, st State, lane Lane, steps []spec.Step)
 	b.WriteString("\n")
 }
 
-// relabel re-labels a refusal made for another step as this step's, so the
-// caller is told the step it asked for.
-func relabel(err error, step StepName) error {
+// relabel re-labels a refusal made for another stage as this stage's, so the
+// caller is told the stage it asked for.
+func relabel(err error, stage Stage) error {
 	if r, ok := AsRefusal(err); ok {
 		c := *r
-		c.Step = string(step)
+		c.Stage = string(stage)
 		return &c
 	}
 	return err
@@ -616,3 +633,20 @@ func plural(n int, one, many string) string {
 	}
 	return many
 }
+
+// fenceMarkerEscaper writes an HTML comment opener or closer inside quoted text
+// with its second hyphen as the entity `&#45;` (`<!-&#45;`, `-&#45;>`): a
+// markdown view still shows the text as written, and the raw text holds no
+// marker, so no quote can close its `<!-- end -->` fence or open another.
+var fenceMarkerEscaper = strings.NewReplacer("<!--", "<!-&#45;", "-->", "-&#45;>")
+
+// fenceQuote is text quoted between a brief's `<!-- begin/end -->` markers,
+// with every comment marker in it escaped (fenceMarkerEscaper). Every quote a
+// brief fences goes through it: the intent, the spec, the issue, its remedy
+// and the conventions.
+func fenceQuote(s string) string { return fenceMarkerEscaper.Replace(s) }
+
+// fenceQuoteNote tells a brief's reader the one substitution fenceQuote makes.
+const fenceQuoteNote = "The records below are quoted as the lane's base holds them, save one substitution: an HTML\n" +
+	"comment opener or closer inside a quote has its second hyphen written `&#45;`, so no quote can end\n" +
+	"its fence early.\n\n"

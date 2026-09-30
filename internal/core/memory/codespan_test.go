@@ -174,7 +174,7 @@ func TestCodeSpanRoundTripsEveryShape(t *testing.T) {
 // link syntax live), and the filename's code span is CodeSpan's.
 func TestRenderCitedMatchesCleansEveryFieldAndOwnsNoDelimiter(t *testing.T) {
 	const payload = "<script>"
-	out := RenderCitedMatches("what [x](http://example.com)?", []MatchedPage{{
+	out := renderCitedMatches("what [x](http://example.com)?", []MatchedPage{{
 		Filename: "topic_a`" + payload + "`b.md",
 		Score:    1,
 		Summary:  "see [here](http://example.com) " + payload,

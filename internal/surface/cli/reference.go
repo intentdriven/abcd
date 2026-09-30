@@ -32,8 +32,7 @@ const referenceIntro = "# CLI command reference\n\n" +
 	"`go generate ./internal/surface/cli`.\n\n" +
 	"Every user-facing command is listed with its sentence (what it does, what it\n" +
 	"writes, and when it refuses), its usage line, and its flags; the\n" +
-	"operator-internal hook entrypoints, and the old spellings of moved commands,\n" +
-	"are omitted.\n"
+	"operator-internal hook entrypoints are omitted.\n"
 
 // GenerateReference walks the abcd command tree and renders it as a single,
 // deterministic Markdown reference page — the source of truth for
@@ -62,9 +61,8 @@ func GenerateReference() string {
 // children in alphabetical order. Heading depth tracks the command's depth in the
 // tree (capped at Markdown's h6), so the page mirrors the command hierarchy.
 func writeCommandRef(b *strings.Builder, cmd *cobra.Command) {
-	// A stub that moved whole is omitted as a hidden command is: the reference
-	// names the new forms only, and the stub's successor has its own section
-	// (itd-2609212130136102).
+	// A hidden or deprecated command is omitted: the reference names the
+	// current forms only.
 	if cmd.Hidden || cmd.Deprecated != "" {
 		return
 	}
@@ -78,14 +76,7 @@ func writeCommandRef(b *strings.Builder, cmd *cobra.Command) {
 	if short := strings.TrimSpace(cmd.Short); short != "" {
 		fmt.Fprintf(b, "%s\n\n", short)
 	}
-	if successor := movedTo(cmd); successor != "" {
-		// A command whose bare form moved while its sub-verbs stayed: the bare
-		// spelling only refuses, so the usage offers the sub-verb form and the
-		// invocation that does the bare form's work (iss-2609251734069878).
-		fmt.Fprintf(b, "**Usage:** `%s [command]` (the bare form's work is `%s`)\n\n", cmd.CommandPath(), successor)
-	} else {
-		fmt.Fprintf(b, "**Usage:** `%s`\n\n", cmd.UseLine())
-	}
+	fmt.Fprintf(b, "**Usage:** `%s`\n\n", cmd.UseLine())
 
 	if long := strings.TrimSpace(cmd.Long); long != "" && long != strings.TrimSpace(cmd.Short) {
 		fmt.Fprintf(b, "%s\n\n", long)

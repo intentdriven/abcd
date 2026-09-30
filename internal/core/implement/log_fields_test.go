@@ -149,7 +149,7 @@ func TestAgentStartIsRefusedAtTheCeiling(t *testing.T) {
 	if err := start("a2"); err != nil {
 		t.Fatal(err)
 	}
-	v, err := r.Check("alpha", StepReview, nil)
+	v, err := r.Check("alpha", StageReview, nil)
 	if err != nil || v.AgentsAlive != 2 || v.Ceiling != 2 {
 		t.Fatalf("check at the ceiling = %+v, %v; want 2 alive of 2", v, err)
 	}

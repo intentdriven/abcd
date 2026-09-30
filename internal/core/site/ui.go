@@ -168,6 +168,8 @@ type StatusUI struct {
 	Fails string `json:"fails"`
 	// Draft marks a Later row that is a draft.
 	Draft string `json:"draft"`
+	// Target leads the release a row's intent targets (itd-2609212103572513).
+	Target string `json:"target"`
 	// None stands in an empty list.
 	None string `json:"none"`
 	// OrderRecordID is the note a block read oldest id first carried. The

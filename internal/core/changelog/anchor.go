@@ -134,14 +134,14 @@ func LatestChangelogVersion(root string) (launch.Semver, bool, error) {
 		}
 		return launch.Semver{}, false, err
 	}
-	return LatestVersionIn(data)
+	return latestVersionIn(data)
 }
 
-// LatestVersionIn is LatestChangelogVersion over CHANGELOG bytes the caller
+// latestVersionIn is LatestChangelogVersion over CHANGELOG bytes the caller
 // already holds — a blob read out of a commit rather than the working tree,
 // which is how the release gate compares the version a receipt's commit carries
 // with the version being released.
-func LatestVersionIn(data []byte) (launch.Semver, bool, error) {
+func latestVersionIn(data []byte) (launch.Semver, bool, error) {
 	for _, line := range strings.Split(string(data), "\n") {
 		m := datedHeadingRe.FindStringSubmatch(strings.TrimRight(line, "\r"))
 		if m == nil {
@@ -173,13 +173,13 @@ var ErrUnreadableReleaseHeading = errors.New("the newest CHANGELOG release headi
 
 // ReleasedVersionIn is the strict reading of the version a released tree names,
 // for a caller that BINDS something to that version rather than merely reports
-// it. LatestVersionIn skips every heading datedHeadingRe does not match, which is
+// it. latestVersionIn skips every heading datedHeadingRe does not match, which is
 // right for a preview but wrong for a binding: a pre-release head ("## [1.0.0-rc.1]
 // - …"), a build-metadata head or an undated version head would be skipped, and
 // the reader would answer with the PREVIOUS release's version.
 //
 // So this reader takes the newest "## [" heading other than "## [Unreleased]"
-// and requires it to be a dated heading LatestVersionIn parses; anything else is
+// and requires it to be a dated heading latestVersionIn parses; anything else is
 // ErrUnreadableReleaseHeading, naming the line. found=false means the file names
 // no release heading at all, which the caller decides about.
 func ReleasedVersionIn(data []byte) (launch.Semver, bool, error) {
@@ -191,7 +191,7 @@ func ReleasedVersionIn(data []byte) (launch.Semver, bool, error) {
 		if !datedHeadingRe.MatchString(line) {
 			return launch.Semver{}, false, fmt.Errorf("%w: %q", ErrUnreadableReleaseHeading, line)
 		}
-		return LatestVersionIn([]byte(line))
+		return latestVersionIn([]byte(line))
 	}
 	return launch.Semver{}, false, nil
 }

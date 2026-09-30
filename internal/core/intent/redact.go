@@ -37,14 +37,38 @@ func redactIntentText(repoRoot, text string) (redacted string, count int, err er
 	if err != nil {
 		return "", 0, err
 	}
-	out, n := redact(text)
+	out, n := redact.redact(text)
+	if err := redact.degraded(); err != nil {
+		return "", 0, err
+	}
 	return out, n, nil
 }
 
 // intentRedactor sanitises one piece of free text. It holds the scanner it was
 // built with, so a caller with MANY fields to redact before a single write pays
 // for the detector once.
-type intentRedactor func(text string) (redacted string, count int)
+type intentRedactor struct{ sc *scanner.Scanner }
+
+// redact sanitises one piece of free text and reports how many spans it
+// rewrote.
+func (r intentRedactor) redact(text string) (string, int) {
+	findings := r.sc.ScanText(text, "intent")
+	if len(findings) == 0 {
+		return text, 0
+	}
+	return scanner.Redact(text, findings)
+}
+
+// degraded is the refusal a scanner degraded since the redactor was built
+// calls for, or nil. A repository's opt-in scanner augmenter (gitleaks) runs
+// inside every redact, and a run that failed degrades the scanner during it, so
+// a writer asks after its redactions as well as before them.
+func (r intentRedactor) degraded() error {
+	if unavail, reason := r.sc.Unavailable(); unavail {
+		return fmt.Errorf("intent: refusing to persist text with a degraded scanner: %s", reason)
+	}
+	return nil
+}
 
 // newIntentRedactor performs the fail-closed availability check ONCE and returns
 // the redactor for everything that write is about to persist, or an error and no
@@ -63,18 +87,13 @@ type intentRedactor func(text string) (redacted string, count int)
 func newIntentRedactor(repoRoot string) (intentRedactor, error) {
 	sc, err := scanner.New(repoRoot)
 	if err != nil {
-		return nil, fmt.Errorf("intent: refusing to persist text with an unavailable scanner: %w", err)
+		return intentRedactor{}, fmt.Errorf("intent: refusing to persist text with an unavailable scanner: %w", err)
 	}
-	if unavail, reason := sc.Unavailable(); unavail {
-		return nil, fmt.Errorf("intent: refusing to persist text with a degraded scanner: %s", reason)
+	r := intentRedactor{sc: sc}
+	if err := r.degraded(); err != nil {
+		return intentRedactor{}, err
 	}
-	return func(text string) (string, int) {
-		findings := sc.ScanText(text, "intent")
-		if len(findings) == 0 {
-			return text, 0
-		}
-		return scanner.Redact(text, findings)
-	}, nil
+	return r, nil
 }
 
 // redactRefused renders payload text for a refusal the consistency ingest

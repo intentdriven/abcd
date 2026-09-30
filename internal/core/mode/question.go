@@ -73,8 +73,10 @@ func MarkQuestionOpen(repoRoot string, s State) error {
 	return nil
 }
 
-// QuestionOpen reports whether a question is marked open in repoRoot.
-func QuestionOpen(repoRoot string) (bool, error) {
+// QuestionOpenForTest reports whether a question is marked open in repoRoot.
+// It is a declared test seam: the mode tests read the marker through it, and
+// no production path calls it.
+func QuestionOpenForTest(repoRoot string) (bool, error) {
 	root, err := os.OpenRoot(repoRoot)
 	if err != nil {
 		return false, fmt.Errorf("opening the checkout to read the question marker: %w", err)

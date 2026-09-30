@@ -1,7 +1,7 @@
 ---
 name: build
 description: "Start the loop that takes one READY intent to delivered: Writes the run's state file in the local tier; refuses an open question, a hold or a peer holding it."
-argument-hint: "<itd-N> | next"
+argument-hint: "<itd-N> | <iss-N> | next"
 block: people
 ---
 
@@ -9,14 +9,20 @@ block: people
 
 Take one intent from READY towards delivered with the loop holding the run, not
 this conversation. The run lives in a state file; every invocation reads it,
-does at most one step, writes it and exits, so a session that stops, is
+does at most one stage, writes it and exits, so a session that stops, is
 compacted or is killed loses nothing, and the next invocation resumes where the
 last one stopped.
+
+Two words, two things. A **step** is a piece of the spec: the spec lists its
+steps under `## Steps`, and each lands as one lane and one pull request. A
+**stage** is what the loop does to a lane on the way: `worktree`, `brief`,
+`implement`, `validate`, `land`. `implement step` performs one stage; the
+payloads name the stage under `stage` and the spec's step under `spec_step`.
 
 ## Start the run
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/abcd" build <itd-N> [--session <id>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] --json
+"${CLAUDE_PLUGIN_ROOT}/abcd" build <itd-N> [--session <id>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] --json
 ```
 
 Pass `--session` with the host session's id when it has joined the shared run
@@ -25,9 +31,17 @@ with the run id as the lane, so a build of the same intent from any other
 checkout of the repository is refused as held from the start, before this run's
 lane has moved or claimed anything. The session's own live claim on the intent
 is not counted as a peer's. A session that has not joined is refused at the
-`claim` step with nothing written. Without `--session` the run holds no claim,
+`claim` stage with nothing written. Without `--session` the run holds no claim,
 and the result says so (`claim` is null): another checkout cannot see the run
 until its lane shows.
+
+An issue id builds the loop's issue-keyed lane instead: `build <iss-N>` (an
+issue id by shape) checks that the repository's own drain rule takes the issue,
+read as `/abcd:drain --dry-run` reads it, and that no peer holds it, then opens
+one lane whose brief is the issue with its remedy as the work. The receipt must
+name the issue in `resolves`, and the landing resolves it. `/abcd:drain` starts
+these runs one at a time; see `/abcd:implement` for the lane's receipt and its
+hand-back.
 
 For an intent with no run in progress, the checks run first, and every one must
 pass:
@@ -43,13 +57,16 @@ pass:
 - `claim_sections` — the `## Mechanism` prompt is answered (or the section
   absent) and the scope conditions are recorded.
 - `hold` — the intent carries no `held:`.
-- `blocked` — nothing the intent names in `blocked_by` is unshipped (an intent
-  not in `shipped/`, or one this checkout does not hold, blocks it). A
-  superseded blocker is followed along `superseded_by` to the intent that
-  replaced it, transitively, and blocks only while that replacement is
-  unshipped; a chain that loops, ends at a record this checkout does not hold
-  or at a decision (`adr-N`), or stops at a superseded record naming no
-  successor blocks, naming the chain.
+- `blocked` — nothing the intent names in `blocked_by` is unsettled. An intent
+  in `shipped/` or `disciplines/` is settled; one anywhere else, or one this
+  checkout does not hold, blocks it. A superseded blocker is followed along
+  `superseded_by` to the record that replaced it, transitively, and blocks only
+  while that replacement is unsettled: an intent settles as above, and a
+  decision (`adr-N`) settles when its status is `accepted`. A decision in any
+  other status or missing from this checkout blocks, as does a chain that
+  loops, ends at an intent this checkout does not hold, or stops at a
+  superseded record naming no successor; the reason names the chain, and a
+  settled chain is named in the passing row.
 - `steps` — the spec's `## Steps` reads, and at least one step is not landed.
 - `peers` — no peer holds the intent: no sibling worktree or local branch holds
   it in another bucket, and no session other than `--session` holds a live
@@ -59,7 +76,7 @@ pass:
 
 A refusal writes nothing. It exits 2, or 3 when a peer holds the intent (back
 off and take other work). Under `--json` the refusal comes as its own document
-before the error envelope: `refusal.step`, `refusal.check`, `refusal.reason`,
+before the error envelope: `refusal.stage`, `refusal.check`, `refusal.reason`,
 `refusal.remedy` and every check's row in `refusal.checks`. Tell the user the
 check, the reason and the remedy, and do not work around it: an open question
 goes back to the planning interview, a hold to the person who placed it.
@@ -80,7 +97,7 @@ run as its own peer.
 When the argument is `next`, let the run choose the intent:
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/abcd" build next [--session <id>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] --json
+"${CLAUDE_PLUGIN_ROOT}/abcd" build next [--session <id>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] --json
 ```
 
 The candidates are the planned intents that pass every check above, judged by
@@ -102,7 +119,8 @@ same brief, worktree and receipt, and records the pick in the run's state. Its
 reason is one grounds entry, `pursued: picked by run <run-id> on <date>; …`,
 naming every candidate with its score, the rule, the runner-up and why it lost,
 and the falsifier (fix rounds past the pace rule's count, or an unachievable
-hand-back). The lane's `worktree` step appends it to the intent in the lane's
+hand-back). A lane handed back after its fix rounds records the pick as
+falsified in the run record, and the entry is left as written. The lane's `worktree` stage appends it to the intent in the lane's
 own worktree and commits it there as the lane branch's first commit, a
 record-only commit made before the brief. The receipt verifier does not count
 it: a receipt naming it is refused, so the implementer names only its own
@@ -120,39 +138,40 @@ drive the run as below.
 
 Refusals, each writing nothing:
 
-- no candidate: refused at the `pick` step, exit 2; `refusal.excluded` names
+- no candidate: refused at the `pick` stage, exit 2; `refusal.excluded` names
   every planned intent and the check that excluded it. Tell the user each one
   and do not work around it.
-- `--max` above 1 or `--until-empty`: refused at the `pick` step, exit 2.
+- `--max` above 1 or `--until-empty`: refused at the `pick` stage, exit 2.
   Picking again under the pace rule is not built in this abcd: run
   `build next` once per pick.
-- the picked intent already has a run in progress: refused at the `pick` step,
+- the picked intent already has a run in progress: refused at the `pick` stage,
   exit 3; resume that run with `implement step`.
-- a refusal of `build <itd-N>` itself (the pace, the claim step) comes as that
+- a refusal of `build <itd-N>` itself (the pace, the claim stage) comes as that
   verb's refusal.
 
 The pick commit is made with the git identity the repository's commits are
-made with; with none configured the `worktree` step is refused naming it.
+made with; with none configured the `worktree` stage is refused naming it.
 
 ## The pace
 
-A new run is paced without being told: a working window, a pause after it, and
-a ceiling on the run's lanes and validators alive at once. The three numbers are
-read once, when the run starts, each from the highest layer that sets it:
+A new run is paced without being told: a working window, a pause after it, a
+ceiling on the run's lanes and validators alive at once, and the fix rounds a
+lane may take before it is handed back. The four numbers are read once, when the
+run starts, each from the highest layer that sets it:
 
-1. `--pace <work-minutes>/<pause-minutes>` (for example `--pace 90/240`) and
-   `--sub-agents <n>`, for this run only;
-2. `pace.work_minutes`, `pace.pause_minutes` and `pace.sub_agents` in the
-   repository's `.abcd/config.json`;
+1. `--pace <work-minutes>/<pause-minutes>` (for example `--pace 90/240`),
+   `--sub-agents <n>` and `--fix-rounds <n>` (0 to 64), for this run only;
+2. `pace.work_minutes`, `pace.pause_minutes`, `pace.sub_agents` and
+   `pace.fix_rounds` in the repository's `.abcd/config.json`;
 3. the same keys in `~/.abcd/config.json`, for every checkout on the machine;
-4. the bundled 120/300 with 2 sub-agents.
+4. the bundled 120/300 with 2 sub-agents and 3 fix rounds.
 
 The payload's `pace` carries each number as `value`, `layer` (`flag`, `repo`,
 `machine` or `bundled`) and `origin` (the flag as typed, or the file), and the
 run record's `pace` line names the same. Tell the user which layer set the pace.
 A malformed pace or ceiling, typed or configured (`--pace 90`, a work window of
-0, `--sub-agents two`, a misspelt key under `pace`), is refused at the `pace`
-step with exit 2, naming the value and the accepted form, and nothing is
+0, `--sub-agents two`, `--fix-rounds three`, a misspelt key under `pace`), is refused at the `pace`
+stage with exit 2, naming the value and the accepted form, and nothing is
 written. Starting again keeps the run's pace: a flag naming another pace is
 refused, and one naming the same pace resumes.
 
@@ -161,14 +180,14 @@ recorded with the run; this build does not count lanes against it.
 
 ## Drive it
 
-The host session drives the loop. Take one step at a time:
+The host session drives the loop. Take one stage at a time:
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/abcd" implement step --json
 ```
 
-`performed` names the step the call completed. When a step hands work to an
-agent, `awaiting` names the `role` to start as a fresh agent, the `brief` to
+`performed_stage` names the stage the call completed and `stage` the lane's
+next one. When a stage hands work to an agent, `awaiting` names the `role` to start as a fresh agent, the `brief` to
 hand it and the `receipt` path it writes to. Start that agent, and when it
 returns hand the receipt back:
 
@@ -176,7 +195,7 @@ returns hand the receipt back:
 "${CLAUDE_PLUGIN_ROOT}/abcd" implement receipt <path> --json
 ```
 
-The lane advances only on a receipt that verifies. Asking for a step while the
+The lane advances only on a receipt that verifies. Running `implement step` while the
 lane awaits a receipt re-tells what it awaits and moves nothing. When a lane is
 done, the spec's next pending step opens the next lane, and the run record gets
 a line naming it, as the start line names the first.
@@ -186,7 +205,7 @@ elapsed, `implement step` starts nothing: it writes `next_eligible_at` (now plus
 the run's pause) into the state, records the pause, and exits 0 with
 `next_eligible_at` in the payload and `next` naming the time. An agent already
 started may still finish: hand its receipt back as usual. Before
-`next_eligible_at`, `implement step` is refused at the `pause` step with exit 3,
+`next_eligible_at`, `implement step` is refused at the `pause` stage with exit 3,
 naming the time, and nothing changes; stop driving the run and invoke it again
 at or after that time, when a new window opens. The pause lives in the state
 file, so no process waits through it.
@@ -195,13 +214,13 @@ lanes and its record, and writes nothing. A lane's `worktree` is home-relative,
 or its directory name when it sits outside HOME; its `brief` and `receipt` keep
 their full home-relative paths, because the agent acts on them.
 
-A lane's steps run in order:
+A lane's stages run in order:
 
 1. `worktree` — the loop makes the lane's worktree in the machine-scoped store,
    `~/.abcd/worktrees/<root-sha>/<run-id>-<lane-id>`, on a branch
    `build/<run-id>-<lane-id>` cut from the default branch. Nothing is made
    beside the checkout. In a run `build next` started, the first lane's
-   worktree step also commits the pick's reason as the branch's first commit.
+   worktree stage also commits the pick's reason as the branch's first commit.
 2. `brief` — the loop renders the lane's brief from that base: the intent, the
    spec, the conventions of `AGENTS.md` and the decisions the intent cites; the
    spec step the lane builds and each step before it, with what landed it (the
@@ -220,10 +239,59 @@ A lane's steps run in order:
    definition of done's output or no report is refused naming what is missing;
    relay the refusal to a fresh implementer rather than completing the receipt
    yourself.
-4. `validate` and `land` — not carried in this build: `step` refuses at
-   `validate` naming the spec piece that delivers it, and the run stays ready
-   to resume in an abcd that carries it. Report that refusal as it is; do not
-   review, open the pull request or close the spec by hand on the run's behalf.
+4. `validate` — `awaiting` names each validator in turn: a `ruthless-reviewer`,
+   a `security-reviewer` and, on the lane whose landing ships the intent, an
+   `intent-auditor`. Start each as a fresh agent with its brief and hand its
+   return back unedited; the loop records the verdict itself. A round one of
+   them did not pass goes to a fresh `implementer` with the findings. The audit
+   passes only when every criterion is met: an undecided (`INCONCLUSIVE`)
+   criterion fails the round as a not-met one does. Once the lane has taken the
+   run's fix rounds, a round that still does not pass hands the lane back: the
+   result carries `hand_back` (`verdict` `unachievable`, the last `round`, the
+   `fix_rounds` cap, the `findings` returns and the criteria `not_met` or
+   `undecided`), the run starts nothing further for it, and every later step is
+   refused at the `handed-back` stage. Tell the user the intent is handed back
+   to them with those findings; do not start another fix round. The run stays
+   in progress until its directory, `.abcd/.work.local/run/<run-id>`, is
+   removed, which the refusal names as the way to build the intent afresh once
+   it is replanned.
+5. `land` — one `implement step` per move, the lane staying at `land` until
+   the last. The loop checks the lane's worktree is clean at the judged head;
+   on the lane that closes the spec it runs `spec close` in the lane's worktree
+   and ingests the audit that lane took, and it runs `capture resolve` for each
+   capture the receipts named in `resolves`, with that commit, committing them
+   on the lane's branch with `Delivers:` and `Resolves:` trailers and an
+   `Assisted-by:` naming the model the lane's receipts reported, the
+   repository's hooks running: a lane whose receipt reports no model is
+   refused, and a hook that refuses the commit stops the landing until what it
+   names is settled. It pushes the
+   branch only once the repository's preflight receipt names the lane's head:
+   when `step` refuses for want of one, run `make preflight` in the lane's
+   worktree, then `step` again; never push, skip a hook or mint a receipt by
+   hand. It opens the pull request through `gh`, with a body built from the
+   run's records and passed through the outbound scrub, re-reads the body the
+   forge holds and strips a session URL or tool footer. It arms auto-merge with
+   the merge-queue method the ruleset mirror (`.abcd/work/rulesets/`) names, or
+   leaves the pull request open where no merge queue gates the default branch,
+   and pushes nothing to the lane afterwards. Then `step` exits 3 until the
+   pushed head is an ancestor of the default branch on `origin`; stop driving
+   the run and come back later. Once it is, the loop removes the lane's
+   worktree and branch, the lane is done, and the next pending step opens the
+   next lane. A pull request closed without merging, or merged in a way that
+   rewrote its head, is refused and nothing is cleaned up: report it as it is.
+
+When the run is complete, read its record and capture its transcripts:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" implement record --transcript <path> [--transcript <path>]... --json
+```
+
+The record names every lane, the receipts with the model each runner
+reported, every verdict the loop recorded, the captures fixed, the pull
+requests and what each landing did, and the transcripts captured into the
+history store. Name the transcript of this session and of every agent it
+started; each is captured as `history capture <path>` captures it, one capture
+per path.
 
 **Binary resolution.** Run `"${CLAUDE_PLUGIN_ROOT}/abcd"` — a plugin install
 provisions the binary into the plugin root, so this is the rung that fires for a

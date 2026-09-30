@@ -154,9 +154,9 @@ type Manifest struct {
 const allowListSignal = "not walked: no allow-list directory lies in it, and assertAllowList refuses " +
 	"any item outside the allow list by path prefix"
 
-// Exclusions is the manifest's exclusion assertion. Each row names a class of
+// exclusions is the manifest's exclusion assertion. Each row names a class of
 // material by its location, never a home path.
-func Exclusions() []Exclusion {
+func exclusions() []Exclusion {
 	return []Exclusion{
 		{Source: "the shipped tree (every path outside .abcd/)", Signal: allowListSignal},
 		{Source: ".abcd/development (the durable record: brief, intents, specs, decisions, readings)",
@@ -212,9 +212,9 @@ func decodeStrict(data []byte, into any, what, repoRoot string) error {
 	return nil
 }
 
-// DecodeManifest reads a scribe manifest strictly. repoRoot is the repository
+// decodeManifest reads a scribe manifest strictly. repoRoot is the repository
 // whose scanner redacts a refusal's key names.
-func DecodeManifest(data []byte, repoRoot string) (Manifest, error) {
+func decodeManifest(data []byte, repoRoot string) (Manifest, error) {
 	var m Manifest
 	if err := decodeStrict(data, &m, "the scribe manifest", repoRoot); err != nil {
 		return Manifest{}, err

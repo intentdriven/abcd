@@ -42,7 +42,7 @@ func TestLedgerDetectionMatchesResolverGrammar(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := res.Lookup("iss-7"); !ok {
+	if !res.Has("iss-7") {
 		t.Fatalf("resolver did not resolve iss-7 from %q; the grammar assumption changed", name)
 	}
 

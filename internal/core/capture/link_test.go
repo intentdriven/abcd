@@ -11,14 +11,14 @@ func linkFixture(t *testing.T) (string, string, string, string) {
 	t.Helper()
 	repo, ir := ledger(t)
 	setSeqMinter(t)
-	a, err := Capture(CaptureRequest{
+	a, err := testCapture(CaptureRequest{
 		RepoRoot: repo, IssuesRoot: ir, Text: "the blocker", Severity: SeverityMinor,
 		Category: "bug", Source: "manual-test", Slug: "blocker", FoundDuring: "t",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := Capture(CaptureRequest{
+	b, err := testCapture(CaptureRequest{
 		RepoRoot: repo, IssuesRoot: ir, Text: "the dependent", Severity: SeverityMajor,
 		Category: "bug", Source: "manual-test", Slug: "dependent", FoundDuring: "t",
 	})
@@ -107,7 +107,7 @@ func TestLinkAppendsAndRemovesBlockedBy(t *testing.T) {
 // arrive in one call: the removals go first, then the additions.
 func TestLinkAppliesUnblockThenBlock(t *testing.T) {
 	repo, ir, a, b := linkFixture(t)
-	c, err := Capture(CaptureRequest{
+	c, err := testCapture(CaptureRequest{
 		RepoRoot: repo, IssuesRoot: ir, Text: "a third", Severity: SeverityMinor,
 		Category: "bug", Source: "manual-test", Slug: "third", FoundDuring: "t",
 	})
@@ -193,7 +193,7 @@ func TestLinkRefusalsWriteNothing(t *testing.T) {
 // documented, and a self-block through the migrator's ForceID is refused too.
 func TestCaptureBlockedByRefusalNamesTheDocs(t *testing.T) {
 	repo, ir := ledger(t)
-	_, err := Capture(CaptureRequest{
+	_, err := testCapture(CaptureRequest{
 		RepoRoot: repo, IssuesRoot: ir, Text: "dependent", Severity: SeverityMinor,
 		Category: "bug", Source: "manual-test", Slug: "dep", FoundDuring: "t",
 		BlockedBy: []string{"iss-999999"},
@@ -206,7 +206,7 @@ func TestCaptureBlockedByRefusalNamesTheDocs(t *testing.T) {
 			t.Errorf("refusal %q does not carry %q", err, w)
 		}
 	}
-	_, err = Capture(CaptureRequest{
+	_, err = testCapture(CaptureRequest{
 		RepoRoot: repo, IssuesRoot: ir, Text: "dependent", Severity: SeverityMinor,
 		Category: "bug", Source: "manual-test", Slug: "dep", FoundDuring: "t",
 		ForceID: "iss-5", BlockedBy: []string{"iss-5"},

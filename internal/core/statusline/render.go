@@ -5,7 +5,7 @@ package statusline
 // It is one render, in core, consumed by two front doors — the status verb the
 // harness invokes and the bare `/abcd` board — so that no front door invents
 // its own words (spc-70). Like the rest of internal/core it writes to no
-// stream, reads no argv and knows no transport: Render takes values and
+// stream, reads no argv and knows no transport: renderRow takes values and
 // returns a value.
 //
 // The render is PURE. Payload, repository, counts and badge state in, a row
@@ -141,7 +141,7 @@ type Counts struct {
 	Issues  int `json:"issues"`
 }
 
-// Input is everything Render reads.
+// Input is everything renderRow reads.
 type Input struct {
 	State   State   `json:"state"`
 	Repo    Repo    `json:"repo"`
@@ -149,7 +149,7 @@ type Input struct {
 	Counts  Counts  `json:"counts"`
 }
 
-// Render composes the row.
+// renderRow composes the row.
 //
 // An element renders when it is switched on AND has something to say. The
 // second half is itd-200's absent-field rule: a payload field the harness did
@@ -157,7 +157,7 @@ type Input struct {
 // separator left where the element was, because the separator is placed
 // between the elements that survived rather than between the slots that might
 // have existed.
-func Render(in Input, set Settings) Row {
+func renderRow(in Input, set Settings) Row {
 	if set.Disabled {
 		return Row{}
 	}

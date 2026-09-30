@@ -29,7 +29,7 @@ func deferralLedgerRepo(t *testing.T) (r *gittest.Repo, repo, ir, major, minor s
 	repo = r.Root()
 	ir = filepath.Join(repo, LedgerRelPath)
 	mk := func(sev Severity, slug string) string {
-		res, err := Capture(CaptureRequest{RepoRoot: repo, IssuesRoot: ir, Text: "a finding " + slug,
+		res, err := testCapture(CaptureRequest{RepoRoot: repo, IssuesRoot: ir, Text: "a finding " + slug,
 			Severity: sev, Category: "bug", Source: "manual-test", Slug: slug, FoundDuring: "t"})
 		if err != nil {
 			t.Fatal(err)
@@ -75,7 +75,7 @@ func TestDeferWritesTheWaiverPairAndABodySection(t *testing.T) {
 // would apply at the cut, applied at the write instead, with nothing written.
 func TestDeferRefusesWhatTheCutWouldNotHonour(t *testing.T) {
 	repo, ir, major, minor := deferralLedger(t)
-	resolved, err := Capture(CaptureRequest{RepoRoot: repo, IssuesRoot: ir, Text: "fixed",
+	resolved, err := testCapture(CaptureRequest{RepoRoot: repo, IssuesRoot: ir, Text: "fixed",
 		Severity: SeverityCritical, Category: "bug", Source: "manual-test", Slug: "done", FoundDuring: "t"})
 	if err != nil {
 		t.Fatal(err)
@@ -117,7 +117,7 @@ func TestADeferralTheVerbWritesIsOneTheCutHonours(t *testing.T) {
 	r.Git("tag", "v0.1.0")
 	repo := r.Root()
 	ir := filepath.Join(repo, LedgerRelPath)
-	res, err := Capture(CaptureRequest{RepoRoot: repo, IssuesRoot: ir, Text: "a finding the cut would block",
+	res, err := testCapture(CaptureRequest{RepoRoot: repo, IssuesRoot: ir, Text: "a finding the cut would block",
 		Severity: SeverityMajor, Category: "bug", Source: "manual-test", Slug: "blocker", FoundDuring: "t"})
 	if err != nil {
 		t.Fatal(err)

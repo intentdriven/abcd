@@ -13,7 +13,7 @@ grilled_intent_hash: 8412a59b575df882fc4a370ab01404796cad4dd9e120d0519e9918d3ea8
 prd_path: null
 prd_grandfathered: true
 severity: minor
-builds_on: [itd-27]
+builds_on: []
 impact: additive
 ---
 
@@ -135,6 +135,15 @@ reads them as deliberate v1 scope, not gaps:
 The interview is a single seeded pass (per-bullet verdicts → five questions);
 multi-turn depth is a recorded future extension. Full surface record:
 [`../../brief/04-surfaces/09-reflect.md`](../../brief/04-surfaces/09-reflect.md).
+
+### Linkage note (2026-09-30)
+
+`builds_on` named itd-27 (the grill sub-verb), which is superseded by itd-94.
+The edge is dropped rather than relinked: itd-94 carries the grill forward only
+as the planning interview behind the implement-readiness gate, and a
+retrospective seeded from a release's shipped intents needs neither that
+interview nor that gate. The retrospective interview is its own, so nothing
+itd-94 delivers is an input to this record.
 
 ### Linkage note (spc-83.5)
 

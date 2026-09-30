@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // execRunner is the production Runner: it writes the text to a private temp
@@ -20,7 +21,8 @@ type execRunner struct{}
 // Run scans text and returns gitleaks' raw JSON report bytes. gitleaks exits
 // non-zero when it finds a leak, so --exit-code 0 makes a found leak a success
 // and reserves a non-zero exit for a genuine tool failure. The report is read
-// from a file rather than stdout so banner/log noise cannot corrupt the JSON.
+// from a file rather than stdout so banner/log noise cannot corrupt the JSON,
+// and it is read through the guarded, capped primitive (maxReportBytes).
 func (execRunner) Run(ctx context.Context, binPath, text string) ([]byte, error) {
 	dir, err := os.MkdirTemp("", "abcd-gitleaks-")
 	if err != nil {
@@ -56,8 +58,17 @@ func (execRunner) Run(ctx context.Context, binPath, text string) ([]byte, error)
 	// that consults its cwd (a config it looks for at ./, a tool shim) would be
 	// reading repository content again by the back door the path rule closed.
 	cmd.Dir = dir
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return nil, fmt.Errorf("gitleaks run: %w (%s)", err, string(out))
+	// The canonical isolated environment every other subprocess abcd runs
+	// takes (gitutil.IsolatedEnv): the parent's with the repository-selection
+	// and config-injection variables scrubbed, never the raw os.Environ.
+	cmd.Env = gitutil.IsolatedEnv()
+	// The binary's own output is discarded, never captured: it is untrusted,
+	// unbounded, and may quote what it found, so a failed run's error names
+	// the exit and nothing the binary printed. The report file is the one
+	// channel read back, and it is read capped.
+	cmd.Stdout, cmd.Stderr = nil, nil
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("gitleaks run: %w", err)
 	}
 
 	data, err := fsutil.ReadGuarded(report, maxReportBytes)

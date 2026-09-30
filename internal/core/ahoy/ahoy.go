@@ -56,6 +56,10 @@ const (
 	// --yes: a routing table decides which model every delegated step asks
 	// for, so only an answered prompt accepts one.
 	OracleRouting GapCategory = "oracle-routing"
+	// DrainRule (drain_rule.go) covers adding the repository's drain
+	// eligibility record. Its gap is advisory and never written under --yes:
+	// the record decides what an unattended agent may do in the repository, so
+	// only an answered prompt adds one.
 )
 
 // Gap is one detected discrepancy between desired and actual state.

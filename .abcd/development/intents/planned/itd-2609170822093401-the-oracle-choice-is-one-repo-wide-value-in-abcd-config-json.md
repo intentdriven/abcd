@@ -5,7 +5,7 @@ spec_id: spc-2609180535002478
 kind: standalone
 suggested_kind: null
 reclassification_history: []
-builds_on: [itd-2609180517121254, itd-2, itd-2609081951381895]
+builds_on: [itd-2609180517121254, itd-2609081951381895]
 severity: minor
 impact: additive
 related_adrs: [adr-25]
@@ -223,6 +223,15 @@ Ruled by the product thinker on 2026-09-22, after the research pass on model rou
 ## Audit Notes
 
 _Empty. Populated by intent-auditor when intent moves to shipped/._
+
+### Linkage note (2026-09-30)
+
+`builds_on` named itd-2 (in-session subagent dispatch), which is superseded by
+itd-2609201916056194. The edge is dropped rather than relinked: itd-2's
+supersession hands the repo-wide oracle backend it keyed on to this record, and
+itd-2609201916056194 declares `builds_on` this record, so the relinked edge
+would run against the dependency the successor already states and close a
+cycle.
 
 ## Grounds
 

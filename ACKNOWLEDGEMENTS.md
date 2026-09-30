@@ -179,7 +179,9 @@ Ideas and methodologies that shaped the design — not code abcd depends on.
   family the launch scanner's AWS rule deliberately narrows (self-declared
   at `internal/adapter/scanner/patterns.go`), and the full-history secret
   scan CI runs as the authoritative backstop behind abcd's own fast
-  pre-push pass. <https://github.com/gitleaks/gitleaks>
+  pre-push pass; and the scanner a repository opts into with
+  `.abcd/config/gitleaks.json`, which abcd runs beside its native scanner in
+  every scan it makes (iss-2608291814575788). <https://github.com/gitleaks/gitleaks>
 - **Homebrew's auto-update-on-use and the `update-notifier` pattern (npm)** — the
   UX grammar itd-111 keeps (cached comparison, a gentle nudge, a one-command
   fix) while rejecting their implicit background network check: abcd implements
@@ -252,7 +254,8 @@ Ideas and methodologies that shaped the design — not code abcd depends on.
 - **OpenRouter** — the first aggregator the API adapter reaches, one
   OpenAI-compatible address and one key serving many vendors' models, whose
   reach is the reason adr-2609221009491186 makes every provider default-deny by
-  model under a vendor denylist (itd-2609081951381895).
+  model, its allowlist alone deciding under adr-2609300107513982
+  (itd-2609081951381895).
   <https://openrouter.ai/docs>
 - **PAUL (Plan-Apply-Unify Loop, Christopher Kahler, MIT)** — the
   mandatory-closure loop discipline whose four escalation states itd-1
@@ -303,6 +306,14 @@ Ideas and methodologies that shaped the design — not code abcd depends on.
   the whole record do not make two unrelated findings look alike. Linear's
   similar-issue detection, advisory and at issue creation (cited in itd-84),
   is the precedent for running the match at filing and never refusing on it.
+- **AGENTS.md (Agentic AI Foundation, under the Linux Foundation,
+  <https://agents.md>)** — the open, host-agnostic format for a repository's
+  instructions to coding agents: one Markdown file at the root that any agent
+  reads. abcd adopts it as its conventions router: the `conventions-router`
+  lint rule (`internal/core/repolint/rule_router.go`) requires one at a
+  repository's root, `abcd ahoy` can write abcd's conventions section into it
+  (`internal/core/ahoy/marker.go`), and a host-named instructions file is kept
+  only as a bridge to it.
 
 ## References & sources
 

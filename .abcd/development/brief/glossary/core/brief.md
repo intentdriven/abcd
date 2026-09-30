@@ -35,7 +35,7 @@ implementation-scoped). The brief is project-wide; intents and specs are narrowe
 ## Examples
 
 - "The brief says the target persona is Carol, not Alice."
-- "This intent is out of scope for the brief's Phase 1 boundary."
+- "This intent is out of scope: the brief's constraints rule its user moment out."
 
 ## Related terms
 

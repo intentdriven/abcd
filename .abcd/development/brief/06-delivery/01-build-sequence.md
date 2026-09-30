@@ -2,10 +2,13 @@
 
 The order things get built, and what a user can do after each step. It is a
 dependency DAG rather than a linear list: work is picked up in dependency order,
-with parallelism where dependencies allow. The canonical intent set and its
-bundling into product phases live in the phase docs and the intent index — see
-[`roadmap/phases/README.md`](../../roadmap/phases/README.md) and
-[`intents/README.md`](../../intents/README.md). This file is the
+with parallelism where dependencies allow. The canonical intent set lives on the
+lifecycle shelves and in the intent index
+([`intents/README.md`](../../intents/README.md)); the product phases that once
+bundled it are retired
+([adr-2609212115255771](../../decisions/adrs/2609212115255771-phases-and-milestones-are-retired-sequencing-is-dependencies.md)),
+and their documents under
+[`roadmap/phases/`](../../roadmap/phases/README.md) are history. This file is the
 **build-milestone** detail: what each milestone stands up in the Go core, the
 adapters, and the front doors.
 

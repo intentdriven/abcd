@@ -81,17 +81,20 @@ a `status:` heading with the three counts, one line per intent under `Now:` and
 `Next:`, and a closing `Later: N intents` line that gives Later as a count
 alone: its rows are in the JSON and on the site's Status page. Now is every
 intent a build run has in a lane (each row's `lane` names the run, the lane,
-its next step and the role it waits on), then the intent marked `next_up`; Next
+its next stage and the role it waits on), then the intent marked `next_up`; Next
 is every planned intent the readiness gate reports READY; Later is every
 planned intent the gate refuses, its `failing_checks` named, then the drafts.
-An intent in a lane is listed under Now only, never also under Next or Later.
+A planned intent that names the release it must land by carries it as
+`target_release` on its row, in any list, and its text line shows `target
+<value>` in the brackets. An intent in a lane is listed under Now only, never also under Next or Later.
 Next and the `next_up` intent are read
 in `abcd build next`'s pick order (`order` is `pick`): the readiest first by the
 pick's score, the oldest among equals, and the head passes over an intent that
 `abcd build next` refuses from the record alone (an open question, an
-unanswered claim section, a hold, an unshipped blocker, no step left to build)
-or that is already in a lane. The head does not consult other checkouts, so an
-intent a peer holds can still be marked `next_up`. Relay Now first: it is what is being built and
+unanswered claim section, a hold, an unsettled blocker, no step left to build)
+or that is already in a lane, or that another checkout holds (build next's
+peers check), so `next_up` is always the intent `abcd build next` would pick.
+Relay Now first: it is what is being built and
 what comes next. The block is computed each time and nothing stores it.
 
 ## Record-id dispatch

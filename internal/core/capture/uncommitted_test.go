@@ -19,7 +19,7 @@ func TestCaptureAndStatusSayARecordIsUncommitted(t *testing.T) {
 	repo := r.Root()
 	ir := filepath.Join(repo, LedgerRelPath)
 
-	res, err := Capture(CaptureRequest{RepoRoot: repo, IssuesRoot: ir, Text: "a finding",
+	res, err := testCapture(CaptureRequest{RepoRoot: repo, IssuesRoot: ir, Text: "a finding",
 		Severity: SeverityMinor, Category: "bug", Source: "manual-test", Slug: "untracked", FoundDuring: "t"})
 	if err != nil {
 		t.Fatal(err)

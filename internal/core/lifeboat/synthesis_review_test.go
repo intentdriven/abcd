@@ -11,14 +11,14 @@ import (
 
 // ---------------------------------------------------------------------------
 // Fixtures — a REAL-manifest packed lifeboat: _provenance.json's manifest_sha256
-// actually hashes the packed tree, so VerifyManifest passes and a tampered byte
+// actually hashes the packed tree, so verifyManifest passes and a tampered byte
 // makes it fail (unlike the layer-3 hand fixture, which pins a placeholder hash).
 // marshalIndent, writeFile, stdArch, stdAband live in graveyard_lessons_test.go
 // (same package).
 // ---------------------------------------------------------------------------
 
 // sealLifeboat writes _provenance.json with a manifest_sha256 reproduced exactly
-// the way VerifyManifest reproduces it (walk, exclude the header + layer-3, hash),
+// the way verifyManifest reproduces it (walk, exclude the header + layer-3, hash),
 // so the sealed tree verifies. It writes the header LAST so it is never in its own
 // hash. sourceName lets a test drive the identity-drift finding.
 func sealLifeboat(t *testing.T, dir, sourceName string) string {
@@ -168,7 +168,7 @@ func TestReviewLifeboatDeterministicNoCoverage(t *testing.T) {
 }
 
 // TestReviewLifeboatDeterministicMajorRethink: a flipped sealed byte fails
-// VerifyManifest -> MAJOR_RETHINK + fnd-manifest, and it is a VERDICT INPUT, not a
+// verifyManifest -> MAJOR_RETHINK + fnd-manifest, and it is a VERDICT INPUT, not a
 // fatal error (err is nil, the audit is written).
 func TestReviewLifeboatDeterministicMajorRethink(t *testing.T) {
 	dir := reviewFixture(t, "abc", &Summary{Grounded: 7, Blank: 3})
@@ -623,7 +623,7 @@ func TestReviewReplacesPreRenameArtefact(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "review", "review-"+m12+".json")); err != nil {
 		t.Fatalf("expected the review artefact: %v", err)
 	}
-	// The legacy pair is on disk when VerifyManifest runs, so a SHIP verdict
+	// The legacy pair is on disk when verifyManifest runs, so a SHIP verdict
 	// pins audit/ staying in manifestExcludedPrefixes. Without that entry this
 	// migration run would falsely accuse an untampered lifeboat
 	// (MAJOR_RETHINK), which is the one run this feature exists to serve.

@@ -46,8 +46,8 @@ func SourcesIndexPath(repoRoot string) string {
 	return filepath.Join(Dir(repoRoot), ".sources_index.json")
 }
 
-// CoverageIndexPath returns .abcd/memory/.coverage_index.json.
-func CoverageIndexPath(repoRoot string) string {
+// coverageIndexPath returns .abcd/memory/.coverage_index.json.
+func coverageIndexPath(repoRoot string) string {
 	return filepath.Join(Dir(repoRoot), coverageIndexName)
 }
 
@@ -55,10 +55,10 @@ func CoverageIndexPath(repoRoot string) string {
 // Content hashing
 // ---------------------------------------------------------------------------
 
-// NormaliseSourceText normalises line endings (CRLF/CR to LF) and strips
+// normaliseSourceText normalises line endings (CRLF/CR to LF) and strips
 // per-line trailing whitespace — applied before hashing so cosmetic transfer
 // differences do not defeat dedup-by-hash.
-func NormaliseSourceText(text string) string {
+func normaliseSourceText(text string) string {
 	unified := strings.ReplaceAll(strings.ReplaceAll(text, "\r\n", "\n"), "\r", "\n")
 	parts := strings.Split(unified, "\n")
 	for i, line := range parts {
@@ -67,16 +67,16 @@ func NormaliseSourceText(text string) string {
 	return strings.Join(parts, "\n")
 }
 
-// SourceContentHash is the sha256 hex digest of the normalised source text —
+// sourceContentHash is the sha256 hex digest of the normalised source text —
 // the registry key.
-func SourceContentHash(text string) string {
-	sum := sha256.Sum256([]byte(NormaliseSourceText(text)))
+func sourceContentHash(text string) string {
+	sum := sha256.Sum256([]byte(normaliseSourceText(text)))
 	return hex.EncodeToString(sum[:])
 }
 
-// CountSourceTokens is the token_count_version 1 tokenizer: regex \w+ word
+// countSourceTokens is the token_count_version 1 tokenizer: regex \w+ word
 // tokens over the normalised text.
-func CountSourceTokens(normalised string) int {
+func countSourceTokens(normalised string) int {
 	return len(wordRe.FindAllString(normalised, -1))
 }
 
@@ -257,9 +257,9 @@ func MergeIngest(registry map[string]any, ev IngestEvent) (map[string]any, error
 // Citation
 // ---------------------------------------------------------------------------
 
-// BuildCitation builds a knowledge citation mapping in the locked shape from
+// buildCitation builds a knowledge citation mapping in the locked shape from
 // 09-provenance-substrate.md §2.
-func BuildCitation(typ, origin, author, title string, year int, ingestedAt, ingestedBy string) map[string]any {
+func buildCitation(typ, origin, author, title string, year int, ingestedAt, ingestedBy string) map[string]any {
 	return map[string]any{
 		"type":        typ,
 		"origin":      origin,
@@ -275,7 +275,7 @@ func BuildCitation(typ, origin, author, title string, year int, ingestedAt, inge
 // SPDX licence detection
 // ---------------------------------------------------------------------------
 
-// LicenceDetection is the result of DetectLicence.
+// LicenceDetection is the result of detectLicence.
 type LicenceDetection struct {
 	Licence     string // SPDX id, verbatim compound expression, or "unknown"
 	Restrictive bool
@@ -299,13 +299,13 @@ var spdxTagRe = regexp.MustCompile(`(?i)SPDX-License-Identifier:\s*([^\r\n]+)`)
 
 var tagValueTrailers = []string{"*/", "-->", "#>", "}}"}
 
-// DetectLicence detects the licence of a source. Priority: in-file SPDX header,
+// detectLicence detects the licence of a source. Priority: in-file SPDX header,
 // then (only when sourceRoot != "") package.json / LICENSE-file SPDX, then the
 // HTTP License: header, else explicit "unknown". Memory ingest passes
 // sourceRoot="" so only steps 1 + 4 apply. (TOML manifests are not parsed in
 // the Go port — no stdlib TOML — but memory never supplies a sourceRoot, so the
 // manifest step is inert for this surface.)
-func DetectLicence(text, sourceRoot string, httpHeaders map[string]string) LicenceDetection {
+func detectLicence(text, sourceRoot string, httpHeaders map[string]string) LicenceDetection {
 	raw := ""
 	method := "none"
 

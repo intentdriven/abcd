@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -158,5 +159,108 @@ func TestAhoyCredentialRefusesAFailedVerification(t *testing.T) {
 	}
 	if _, statErr := os.Lstat(filepath.Join(os.Getenv("HOME"), ".abcd", "credentials.json")); statErr == nil {
 		t.Fatal("a refused key was stored")
+	}
+}
+
+// TestARepositoryRouteToAKeyedProviderIsSkippedWithAWarning is ruling CD2 of
+// 2026-09-29 at the front doors that read the provider configuration: a
+// repository's route to a provider that holds a key no longer refuses the
+// command. The route is skipped with one warning on stderr naming the route
+// and why, and the command does its work.
+func TestARepositoryRouteToAKeyedProviderIsSkippedWithAWarning(t *testing.T) {
+	hermeticEnv(t)
+	providerNamingKey(t, "https://openrouter.ai/api/v1")
+	repo := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(repo, ".abcd"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, ".abcd", "config.json"),
+		[]byte(`{"oracle":{"roles":{"scribe":"openrouter/typesafe/jev-1.13"}}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(repo)
+
+	root := NewRootCommand()
+	root.SetArgs([]string{"ahoy", "credential"})
+	var so, se bytes.Buffer
+	root.SetOut(&so)
+	root.SetErr(&se)
+	if err := root.Execute(); err != nil {
+		t.Fatalf("ahoy credential refused over one repository route: %v\n%s%s", err, so.String(), se.String())
+	}
+	if !strings.Contains(so.String(), "openrouter") {
+		t.Errorf("ahoy credential did not list the provider's credential:\n%s", so.String())
+	}
+	warn := se.String()
+	if n := strings.Count(warn, "holds a key"); n != 1 {
+		t.Fatalf("stderr carries %d keyed-route warning(s), want one:\n%s", n, warn)
+	}
+	for _, want := range []string{"oracle.roles.scribe", "openrouter/typesafe/jev-1.13", "skipped", "~/.abcd/config.json"} {
+		if !strings.Contains(warn, want) {
+			t.Errorf("the warning does not name %q:\n%s", want, warn)
+		}
+	}
+}
+
+// TestARepositoryRouteWithAMalformedNameIsSkippedWithAWarning is ruling CD2's
+// "other commands keep working" for a route's name: the review probe's
+// Cyrillic U+0456 in a repository's "scribe" no longer takes `ahoy credential`
+// down. The route is skipped with one warning on stderr naming the file and
+// the name, the lookalike letter spelled as an escape, and the command does
+// its work.
+func TestARepositoryRouteWithAMalformedNameIsSkippedWithAWarning(t *testing.T) {
+	hermeticEnv(t)
+	providerNamingKey(t, "https://openrouter.ai/api/v1")
+	repo := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(repo, ".abcd"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, ".abcd", "config.json"),
+		[]byte(`{"oracle":{"roles":{"scr\u0456be":"openrouter/typesafe/jev-1.13"}}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(repo)
+
+	root := NewRootCommand()
+	root.SetArgs([]string{"ahoy", "credential"})
+	var so, se bytes.Buffer
+	root.SetOut(&so)
+	root.SetErr(&se)
+	if err := root.Execute(); err != nil {
+		t.Fatalf("ahoy credential refused over one repository route's name: %v\n%s%s", err, so.String(), se.String())
+	}
+	if !strings.Contains(so.String(), "openrouter") {
+		t.Errorf("ahoy credential did not list the provider's credential:\n%s", so.String())
+	}
+	warn := se.String()
+	if n := strings.Count(warn, "not a plain lower-case name"); n != 1 {
+		t.Fatalf("stderr carries %d malformed-name warning(s), want one:\n%s", n, warn)
+	}
+	for _, want := range []string{".abcd/config.json (repo layer)", "oracle.roles", `"scr\u0456be"`, "skipped"} {
+		if !strings.Contains(warn, want) {
+			t.Errorf("the warning does not name %q:\n%s", want, warn)
+		}
+	}
+}
+
+// TestAhoyCredentialByNameSaysASkippedRoute: naming a provider's credential
+// reads the provider configuration to find the provider that verifies it, and
+// a route that read skipped (ruling CD2) is said on stderr there too.
+func TestAhoyCredentialByNameSaysASkippedRoute(t *testing.T) {
+	hermeticEnv(t)
+	repoRouteToKeyedProvider(t)
+	root := NewRootCommand()
+	root.SetArgs([]string{"ahoy", "credential", "openrouter"})
+	var so, se bytes.Buffer
+	root.SetOut(&so)
+	root.SetErr(&se)
+	if err := root.Execute(); err != nil {
+		t.Fatalf("ahoy credential openrouter: %v\n%s%s", err, so.String(), se.String())
+	}
+	if n := strings.Count(se.String(), "holds a key"); n != 1 {
+		t.Fatalf("stderr carries %d keyed-route warning(s), want one:\n%s", n, se.String())
+	}
+	if !strings.Contains(se.String(), "oracle.roles.scribe") || strings.Contains(so.String(), "holds a key") {
+		t.Fatalf("stdout:\n%s\nstderr:\n%s", so.String(), se.String())
 	}
 }

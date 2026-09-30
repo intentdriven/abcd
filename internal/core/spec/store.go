@@ -263,9 +263,9 @@ func mintSpecID(store Store) (string, error) {
 var ErrStoreLockBusy = errors.New("spec: could not acquire the spec store's lock")
 
 // withStoreLock runs fn while holding the spec store's one lock, an exclusive
-// advisory flock on the specs/ directory itself, so no lock artifact is left in
-// the committed record tree; O_NOFOLLOW refuses a symlinked specs/. It creates
-// the store when absent, which only the mint may do.
+// advisory flock on the specs/ directory itself (fsutil.WithDirLock), so no
+// lock artifact is left in the committed record tree and a symlinked specs/ is
+// refused. It creates the store when absent, which only the mint may do.
 //
 // Every writer of a spec record takes it (iss-2609262218309668): the mint
 // (Create and its siblings), Close, Discard, and — through WithStoreLock, from
@@ -312,32 +312,20 @@ func withStoreLock(repoRoot string, timeout time.Duration, mode storeLockMode, f
 		// reports it as errStoreAbsent.
 		return fmt.Errorf("spec: %s: %w", SpecsRelDir, err)
 	}
-	fd, err := syscall.Open(specsDir, syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_NOFOLLOW, 0)
-	if mode == storeMustExist && errors.Is(err, syscall.ENOENT) {
+	ran := false
+	err := fsutil.WithDirLock(specsDir, timeout, func() error {
+		ran = true
+		return fn()
+	})
+	switch {
+	case ran || err == nil:
+		return err
+	case mode == storeMustExist && errors.Is(err, syscall.ENOENT):
 		return errStoreAbsent
+	case errors.Is(err, fsutil.ErrLockContention):
+		return fmt.Errorf("%w within %s", ErrStoreLockBusy, timeout)
 	}
-	if err != nil {
-		return fmt.Errorf("spec: opening the store lock on %s: %w", SpecsRelDir, err)
-	}
-	defer syscall.Close(fd)
-
-	deadline := time.Now().Add(timeout)
-	for {
-		lockErr := syscall.Flock(fd, syscall.LOCK_EX|syscall.LOCK_NB)
-		if lockErr == nil {
-			break
-		}
-		if lockErr != syscall.EWOULDBLOCK {
-			return fmt.Errorf("spec: acquiring the store lock: %w", lockErr)
-		}
-		if time.Now().After(deadline) {
-			return fmt.Errorf("%w within %s", ErrStoreLockBusy, timeout)
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	defer syscall.Flock(fd, syscall.LOCK_UN)
-
-	return fn()
+	return fmt.Errorf("spec: opening the store lock on %s: %w", SpecsRelDir, err)
 }
 
 // storeLockMode says what withStoreLock does with an absent store.

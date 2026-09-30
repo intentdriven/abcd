@@ -261,6 +261,11 @@ type DrainResult struct {
 	// notice must be able to say out loud: an overdue entry is unredacted text
 	// that has outlived the guarantee staging makes about it.
 	Overdue int `json:"overdue"`
+	// ScanGap is the first capture's CaptureResult.ScanGap this pass saw: the
+	// repository armed gitleaks and the binary is not installed, so what the
+	// pass stored was masked by the native scanner alone. Carried here so an
+	// automatic drain says so rather than dropping it (iss-2608291814575788).
+	ScanGap string `json:"scan_gap,omitempty"`
 }
 
 // stagingDirReal resolves the store (creating it when absent, and refusing any
@@ -781,6 +786,9 @@ func Drain(repoRoot, rootSHA string, budget DrainBudget) (DrainResult, error) {
 		}
 		if cr.Wrote {
 			res.Captured = append(res.Captured, cr.Record)
+		}
+		if res.ScanGap == "" {
+			res.ScanGap = cr.ScanGap
 		}
 	}
 	return res, nil

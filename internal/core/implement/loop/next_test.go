@@ -116,7 +116,7 @@ func TestNextCandidatesAreWhatTheBuildWouldStart(t *testing.T) {
 	repo.Commit("hold ten")
 	_, err = Next(repo.Root(), Options{}, NextOptions{})
 	r := mustRefusal(t, err)
-	if r.Step != StepPick || len(r.Excluded) != 7 {
+	if r.Stage != StagePick || len(r.Excluded) != 7 {
 		t.Fatalf("the empty set is refused at the pick naming every excluded intent: %+v", r)
 	}
 	for _, id := range []string{"itd-10 (hold", "itd-11 (open_questions", "itd-13 (blocked", "itd-16 (peers"} {
@@ -128,7 +128,7 @@ func TestNextCandidatesAreWhatTheBuildWouldStart(t *testing.T) {
 }
 
 // TestNextWritesTheReasonAsTheLaneFirstCommit is criteria 2 and 4: the pick
-// starts the lane `abcd build <itd-N>` would start, the lane's worktree step
+// starts the lane `abcd build <itd-N>` would start, the lane's worktree stage
 // commits exactly one run-marked `pursued:` entry onto the chosen intent as
 // the branch's first commit, record-only, with no existing entry changed; the
 // gate still reports the person's entry; and the receipt verifier does not
@@ -167,11 +167,11 @@ func TestNextWritesTheReasonAsTheLaneFirstCommit(t *testing.T) {
 		t.Fatal(err)
 	}
 	if st.Key != "itd-10" || st.Intent != "itd-10" || st.Spec != "spc-10" || len(st.Lanes) != 1 ||
-		st.Lanes[0].ID != "lane-1" || st.Lanes[0].Step != StepWorktree || st.Pick == nil || st.Pick.Lane != "lane-1" {
+		st.Lanes[0].ID != "lane-1" || st.Lanes[0].Stage != StageWorktree || st.Pick == nil || st.Pick.Lane != "lane-1" {
 		t.Fatalf("the pick starts the build's own run: %+v", st)
 	}
 
-	if _, err := Advance(repo.Root(), res.Start.RunID, DefaultSteps(), Options{}); err != nil {
+	if _, err := Advance(repo.Root(), res.Start.RunID, DefaultStages(), Options{}); err != nil {
 		t.Fatal(err)
 	}
 	st, err = ReadState(repo.Root(), res.Start.RunID)
@@ -180,7 +180,7 @@ func TestNextWritesTheReasonAsTheLaneFirstCommit(t *testing.T) {
 	}
 	l := st.Lanes[0]
 	if !isFullHex(l.PickSHA) || l.HeadSHA != l.PickSHA {
-		t.Fatalf("the worktree step records the pick commit as the lane's head: %+v", l)
+		t.Fatalf("the worktree stage records the pick commit as the lane's head: %+v", l)
 	}
 	past := strings.Fields(repo.Git("rev-list", l.BaseSHA+".."+l.Branch))
 	if len(past) != 1 || past[0] != l.PickSHA {
@@ -212,8 +212,8 @@ func TestNextWritesTheReasonAsTheLaneFirstCommit(t *testing.T) {
 
 	// The same lane from here: the brief, then the implementer's receipt, which
 	// may not count the pick's commit.
-	advanceTo(t, repo, st.RunID, StepImplement)
-	if _, err := Advance(repo.Root(), st.RunID, DefaultSteps(), Options{}); err != nil {
+	advanceTo(t, repo, st.RunID, StageImplement)
+	if _, err := Advance(repo.Root(), st.RunID, DefaultStages(), Options{}); err != nil {
 		t.Fatal(err)
 	}
 	st, _ = ReadState(repo.Root(), st.RunID)
@@ -221,12 +221,12 @@ func TestNextWritesTheReasonAsTheLaneFirstCommit(t *testing.T) {
 	dir := filepath.Join(repo.Root(), filepath.FromSlash(RunRelDir), st.RunID, "lane-1")
 	work := laneCommit(t, repo, l, "work.txt")
 	rel := writeReceipt(t, dir, goodReceipt(t, st.RunID, l, dir, l.PickSHA, work))
-	_, err = Receipt(repo.Root(), st.RunID, rel, DefaultSteps(), Options{})
+	_, err = Receipt(repo.Root(), st.RunID, rel, DefaultStages(), Options{})
 	if r := mustRefusal(t, err); !strings.Contains(r.Reason, "the pick's record-only commit, not the implementer's work") {
 		t.Fatalf("the pick's commit is not the implementer's: %+v", r)
 	}
 	rel = writeReceipt(t, dir, goodReceipt(t, st.RunID, l, dir, work))
-	if _, err := Receipt(repo.Root(), st.RunID, rel, DefaultSteps(), Options{}); err != nil {
+	if _, err := Receipt(repo.Root(), st.RunID, rel, DefaultStages(), Options{}); err != nil {
 		t.Fatalf("the implementer's own commit verifies: %v", err)
 	}
 }
@@ -246,11 +246,11 @@ func TestThePickCommitIsFoundNotRemade(t *testing.T) {
 	}
 	c := Context{RepoRoot: repo.Root(), RunDir: runRel(st.RunID), State: st}
 	first := st.Lanes[0]
-	if _, err := worktreeStep(c, &first); err != nil {
+	if _, err := worktreeStage(c, &first); err != nil {
 		t.Fatal(err)
 	}
 	again := st.Lanes[0]
-	if _, err := worktreeStep(c, &again); err != nil || again.PickSHA != first.PickSHA {
+	if _, err := worktreeStage(c, &again); err != nil || again.PickSHA != first.PickSHA {
 		t.Fatalf("the pick commit is found, not remade: %v, %s vs %s", err, again.PickSHA, first.PickSHA)
 	}
 
@@ -258,7 +258,7 @@ func TestThePickCommitIsFoundNotRemade(t *testing.T) {
 	repo.Git("-C", first.Worktree, "reset", "-q", "--soft", first.BaseSHA)
 	repo.Git("-C", first.Worktree, "restore", "--staged", ".")
 	third := st.Lanes[0]
-	if _, err := worktreeStep(c, &third); err != nil {
+	if _, err := worktreeStage(c, &third); err != nil {
 		t.Fatalf("an entry written and not committed is committed: %v", err)
 	}
 	if n := len(strings.Fields(repo.Git("rev-list", third.BaseSHA+".."+third.Branch))); n != 1 {
@@ -293,7 +293,7 @@ func TestAPickCommitIsAdoptedByContentNotShape(t *testing.T) {
 	}
 	c := Context{RepoRoot: repo.Root(), RunDir: runRel(st.RunID), State: st}
 	first := st.Lanes[0]
-	if _, err := worktreeStep(c, &first); err != nil {
+	if _, err := worktreeStage(c, &first); err != nil {
 		t.Fatal(err)
 	}
 	ir10, _ := pickRel("10")
@@ -326,7 +326,7 @@ func TestAPickCommitIsAdoptedByContentNotShape(t *testing.T) {
 			repo.Git("-C", wt, "commit", "-q", "-am", pickSubject(st))
 			crafted := strings.TrimSpace(repo.Git("-C", wt, "rev-parse", "HEAD"))
 			lane := st.Lanes[0]
-			_, err := worktreeStep(c, &lane)
+			_, err := worktreeStage(c, &lane)
 			r := mustRefusal(t, err)
 			if !strings.Contains(r.Reason, "is not the pick's record commit") || lane.PickSHA == crafted {
 				t.Fatalf("a crafted commit is refused, never adopted: %+v (pick %s)", r, lane.PickSHA)
@@ -344,7 +344,7 @@ func TestAPickCommitIsAdoptedByContentNotShape(t *testing.T) {
 		t.Fatal(err)
 	}
 	lane := st.Lanes[0]
-	_, err = worktreeStep(c, &lane)
+	_, err = worktreeStage(c, &lane)
 	if r := mustRefusal(t, err); !strings.Contains(r.Reason, "not the base's record with this run's pick appended") {
 		t.Fatalf("an uncommitted crafted record is refused: %+v", r)
 	}
@@ -364,8 +364,8 @@ func TestAReceiptRefusesABranchThatDroppedThePick(t *testing.T) {
 		t.Fatal(err)
 	}
 	runID := res.Start.RunID
-	advanceTo(t, repo, runID, StepImplement)
-	if _, err := Advance(repo.Root(), runID, DefaultSteps(), Options{}); err != nil {
+	advanceTo(t, repo, runID, StageImplement)
+	if _, err := Advance(repo.Root(), runID, DefaultStages(), Options{}); err != nil {
 		t.Fatal(err)
 	}
 	st, err := ReadState(repo.Root(), runID)
@@ -380,7 +380,7 @@ func TestAReceiptRefusesABranchThatDroppedThePick(t *testing.T) {
 	work := laneCommit(t, repo, l, "work.txt")
 	dir := filepath.Join(repo.Root(), filepath.FromSlash(RunRelDir), runID, "lane-1")
 	rel := writeReceipt(t, dir, goodReceipt(t, runID, l, dir, work))
-	_, err = Receipt(repo.Root(), runID, rel, DefaultSteps(), Options{})
+	_, err = Receipt(repo.Root(), runID, rel, DefaultStages(), Options{})
 	r := mustRefusal(t, err)
 	if !strings.Contains(r.Reason, "no longer carries the pick's record-only commit "+shortSHA(l.PickSHA)) ||
 		!strings.Contains(r.Remedy, l.PickSHA[:12]) {
@@ -394,7 +394,7 @@ func TestNextRefusesMoreThanOnePick(t *testing.T) {
 	repo := pickRepo(t, map[string][2]string{"10": {pickIntent("10", "", settledQuestions, gwt), pickSpec("10", "")}})
 	for _, n := range []NextOptions{{Max: 2}, {UntilEmpty: true}} {
 		_, err := Next(repo.Root(), Options{}, n)
-		if r := mustRefusal(t, err); r.Step != StepPick || !strings.Contains(r.Reason, "criterion 5") {
+		if r := mustRefusal(t, err); r.Stage != StagePick || !strings.Contains(r.Reason, "criterion 5") {
 			t.Fatalf("%+v is refused naming criterion 5: %+v", n, r)
 		}
 	}
@@ -419,6 +419,14 @@ func TestAPickedStateRoundTrips(t *testing.T) {
 		t.Fatal(err)
 	}
 	raw["schema_version"] = 2
+	// Version 2 named the lane's stage `step` (the rename is version 4's).
+	for _, list := range []string{"lanes", "record"} {
+		for _, item := range raw[list].([]any) {
+			m := item.(map[string]any)
+			m["step"] = m["stage"]
+			delete(m, "stage")
+		}
+	}
 	old, _ := json.Marshal(raw)
 	if err := os.WriteFile(path, old, 0o600); err != nil {
 		t.Fatal(err)

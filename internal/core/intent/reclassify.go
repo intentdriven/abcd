@@ -452,17 +452,19 @@ func resolveSuccessor(repoRoot string, corpus Corpus, it Intent, by string) (str
 		}
 		return succ.Path, succ.ID, nil
 	case recordid.CanonADRID(by) != "":
+		// The decision store is read through the record-id seam, as every
+		// other reader of an ADR id resolves it: an id two files claim is
+		// refused naming both (recordid.AmbiguousIDError), never written into
+		// whichever file the directory listing returns first.
 		canonical := recordid.CanonADRID(by)
-		entries, err := os.ReadDir(filepath.Join(repoRoot, filepath.FromSlash(decide.ADRsRelDir)))
-		if err != nil && !os.IsNotExist(err) {
-			return "", "", fmt.Errorf("intent: reading %s: %w", decide.ADRsRelDir, err)
+		rel, ok, err := recordid.LookupOne(repoRoot, canonical)
+		if err != nil {
+			return "", "", fmt.Errorf("intent: resolving successor %s: %w (nothing written)", canonical, err)
 		}
-		for _, e := range entries {
-			if e.Type().IsRegular() && recordid.ADRFileID(e.Name()) == canonical {
-				return filepath.Join(filepath.FromSlash(decide.ADRsRelDir), e.Name()), canonical, nil
-			}
+		if !ok {
+			return "", "", fmt.Errorf("intent: successor %s not found in %s; a successor must be present (nothing written)", canonical, decide.ADRsRelDir)
 		}
-		return "", "", fmt.Errorf("intent: successor %s not found in %s; a successor must be present (nothing written)", canonical, decide.ADRsRelDir)
+		return filepath.FromSlash(rel), canonical, nil
 	}
 	return "", "", fmt.Errorf("intent: --by %q names neither an intent (itd-N) nor an ADR (adr-N) (nothing written)", by)
 }

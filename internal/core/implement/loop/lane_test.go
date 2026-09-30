@@ -50,12 +50,12 @@ func TestTheWorktreeStepMakesTheLaneInTheStore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	res, err := Advance(repo.Root(), start.RunID, DefaultSteps(), Options{})
+	res, err := Advance(repo.Root(), start.RunID, DefaultStages(), Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Performed != StepWorktree || res.Step != StepBrief {
-		t.Fatalf("want the worktree step performed: %+v", res)
+	if res.PerformedStage != StageWorktree || res.Stage != StageBrief {
+		t.Fatalf("want the worktree stage performed: %+v", res)
 	}
 	st, err := ReadState(repo.Root(), start.RunID)
 	if err != nil {
@@ -99,11 +99,11 @@ func TestTheWorktreeStepFindsWhatItMadeLastTime(t *testing.T) {
 	}
 	c := Context{RepoRoot: repo.Root(), RunDir: runRel(st.RunID), State: st}
 	first := st.Lanes[0]
-	if _, err := worktreeStep(c, &first); err != nil {
+	if _, err := worktreeStage(c, &first); err != nil {
 		t.Fatal(err)
 	}
 	again := st.Lanes[0]
-	out, err := worktreeStep(c, &again)
+	out, err := worktreeStage(c, &again)
 	if err != nil {
 		t.Fatalf("the body finds what it made last time: %v", err)
 	}
@@ -143,10 +143,10 @@ func TestTheWorktreeStepRefusesAPathThatCouldEscapeTheStore(t *testing.T) {
 			if err := writeState(root, st); err != nil {
 				t.Fatal(err)
 			}
-			_, err = Advance(repo.Root(), start.RunID, DefaultSteps(), Options{})
+			_, err = Advance(repo.Root(), start.RunID, DefaultStages(), Options{})
 			r := mustRefusal(t, err)
-			if r.Step != string(StepWorktree) {
-				t.Fatalf("want the worktree step to refuse: %+v", r)
+			if r.Stage != string(StageWorktree) {
+				t.Fatalf("want the worktree stage to refuse: %+v", r)
 			}
 			if _, err := os.Lstat(filepath.Join(os.Getenv("HOME"), ".abcd")); !errors.Is(err, os.ErrNotExist) {
 				t.Fatalf("nothing is created under the home for a refused lane: %v", err)
@@ -175,8 +175,8 @@ func TestTheWorktreeStepRefusesASymlinkedStore(t *testing.T) {
 	if err := os.Symlink(elsewhere, filepath.Join(os.Getenv("HOME"), ".abcd", "worktrees")); err != nil {
 		t.Fatal(err)
 	}
-	_, err = Advance(repo.Root(), start.RunID, DefaultSteps(), Options{})
-	if r := mustRefusal(t, err); r.Step != string(StepWorktree) || !strings.Contains(r.Reason, "real directories") {
+	_, err = Advance(repo.Root(), start.RunID, DefaultStages(), Options{})
+	if r := mustRefusal(t, err); r.Stage != string(StageWorktree) || !strings.Contains(r.Reason, "real directories") {
 		t.Fatalf("want the symlinked store refused: %+v", r)
 	}
 	if names := dirNames(t, elsewhere); len(names) != 0 {
@@ -200,8 +200,8 @@ func TestTheWorktreeStepNeverAdoptsWhatItDidNotMake(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(squat, "mine.txt"), []byte("the user's\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	_, err = Advance(repo.Root(), start.RunID, DefaultSteps(), Options{})
-	if r := mustRefusal(t, err); r.Step != string(StepWorktree) || !strings.Contains(r.Reason, "occupied") {
+	_, err = Advance(repo.Root(), start.RunID, DefaultStages(), Options{})
+	if r := mustRefusal(t, err); r.Stage != string(StageWorktree) || !strings.Contains(r.Reason, "occupied") {
 		t.Fatalf("want the occupied path refused: %+v", r)
 	}
 	if names := dirNames(t, squat); !slices.Equal(names, []string{"mine.txt"}) {
@@ -241,9 +241,9 @@ func TestTheWorktreeStepRefusesAStoreLevelAnyoneElseCanWrite(t *testing.T) {
 			if err := os.Chmod(level, tc.mode); err != nil {
 				t.Fatal(err)
 			}
-			_, err = Advance(repo.Root(), start.RunID, DefaultSteps(), Options{})
+			_, err = Advance(repo.Root(), start.RunID, DefaultStages(), Options{})
 			r := mustRefusal(t, err)
-			if r.Step != string(StepWorktree) || !strings.Contains(r.Reason, "writable by its group or by every user") {
+			if r.Stage != string(StageWorktree) || !strings.Contains(r.Reason, "writable by its group or by every user") {
 				t.Fatalf("want the writable store level refused: %+v", r)
 			}
 			if names := dirNames(t, store); len(names) != 0 {
@@ -252,7 +252,7 @@ func TestTheWorktreeStepRefusesAStoreLevelAnyoneElseCanWrite(t *testing.T) {
 			if fi, err := os.Lstat(level); err != nil || fi.Mode().Perm() != tc.mode {
 				t.Fatalf("the level is left as it was: %v %v", fi, err)
 			}
-			if st, _ := ReadState(repo.Root(), start.RunID); st.Lanes[0].Step != StepWorktree || st.Lanes[0].Worktree != "" {
+			if st, _ := ReadState(repo.Root(), start.RunID); st.Lanes[0].Stage != StageWorktree || st.Lanes[0].Worktree != "" {
 				t.Fatalf("the lane stays at its worktree step: %+v", st.Lanes[0])
 			}
 		})
@@ -267,7 +267,7 @@ func TestTheWorktreeStepMakesTheStoreTheCallersAlone(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Advance(repo.Root(), start.RunID, DefaultSteps(), Options{}); err != nil {
+	if _, err := Advance(repo.Root(), start.RunID, DefaultStages(), Options{}); err != nil {
 		t.Fatal(err)
 	}
 	home := os.Getenv("HOME")

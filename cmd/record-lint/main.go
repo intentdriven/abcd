@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/capture"
+	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/lint"
 	"github.com/intentdriven/abcd/internal/core/site"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -20,10 +21,13 @@ import (
 
 // init registers the issue ledger's reader and the site renderer's body check
 // with the lint, so record_schema refuses exactly the issue records capture
-// refuses and skips, and the bodies the site render refuses.
+// refuses and skips, and the bodies the site render refuses; and the intent
+// package's supersession chain reader, so stale_edge follows a chain the way
+// the build's blocked check does.
 func init() {
 	lint.SetIssueReader(capture.ReadRefusal)
 	lint.SetRecordBodyCheck(site.CheckRecordBody)
+	lint.SetSupersessionChain(intent.SupersessionChainOf)
 }
 
 func main() {

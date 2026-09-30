@@ -15,7 +15,7 @@ before writing any of them, refusing the whole pack rather than redacting.
 
 > **Model of record: [adr-35](../../decisions/adrs/0035-lifeboat-as-coverage-experiment.md).** The packer is read-only and out-of-tree, the voyage log lives at the operator level (`~/.abcd/voyage/<source-root-sha>/`, never committed), and the review returns the registered `{SHIP, NEEDS_WORK, MAJOR_RETHINK}` verdicts. The coverage experiment (itd-88) leads: the pack carries only what abcd could ground, and `coverage.{json,md}` carry what is missing, what was searched, and the question a human must answer.
 
-> **Phase ownership** ([adr-33](../../decisions/adrs/0033-launch-phase-ownership-tiered.md)): the packer and the round-trip ship in [Phase 6](../../roadmap/phases/phase-6-lifeboat.md). The coverage experiment is pulled out of Phase 6 and sequenced ahead of it, per adr-35.
+> **Ownership** ([adr-33](../../decisions/adrs/0033-launch-phase-ownership-tiered.md)): the packer and the round-trip belong to the lifeboat pipeline, whose original plan the retired [Phase 6](../../roadmap/phases/phase-6-lifeboat.md) document holds. The coverage experiment comes ahead of the rest of that pipeline, per adr-35; sequence is dependencies plus the lifecycle shelves ([adr-2609212115255771](../../decisions/adrs/2609212115255771-phases-and-milestones-are-retired-sequencing-is-dependencies.md)).
 
 > **Recovery humility.** The lifeboat is the highest-fidelity proxy of a project's theory we can leave behind. It is not the theory. The theory of any non-trivial project lives in the people who built it, the conversations where decisions were made, and the alternatives they rejected before this one — what Naur (1985) called the lived activity of building. The lifeboat is the floor we can carry across a session, machine, or team boundary. See [`01-product/03-mental-model.md § The Naurian gap`](../01-product/03-mental-model.md#the-naurian-gap--modification-axis).
 
@@ -91,6 +91,7 @@ DESTINATION SAFETY GATE
                            ▼
 SECRET SCAN (before any write)
   scan the planned bytes; a hard-fail secret refuses the whole pack — never redact
+  (an armed gitleaks scans them too; armed and not installed, it refuses the pack)
                            │
                            ▼
 WRITE
@@ -170,11 +171,11 @@ JSON. None of these exist at pack time.
 The lifeboat is written out-of-tree, so the source repo has nothing to
 gitignore.
 
-## 6. Per-phase acceptance
+## 6. Acceptance
 
-Each phase passes when **both gates** succeed.
+A lifeboat run passes when **both gates** succeed.
 
-1. **Review gate**: the `lifeboat-reviewer` review on phase outputs returns a
+1. **Review gate**: the `lifeboat-reviewer` review on the run's outputs returns a
    registered verdict with specific findings rather than vague approval, and the
    gate passes on `SHIP`. The review reaches a model through the oracle seam,
    host-delegated by default (per

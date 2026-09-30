@@ -33,7 +33,7 @@ const wantFullRow = "abcd-managed · abcd · main · Opus · ctx 8% · 5h 24% ·
 // miscount of its own list), in the order the intent's commitments fix, with
 // one separator between each pair.
 func TestRenderFullRow(t *testing.T) {
-	row := Render(fullInput(t), Defaults())
+	row := renderRow(fullInput(t), Defaults())
 
 	if got := row.Plain(); got != wantFullRow {
 		t.Fatalf("row.Plain() =\n  %q\nwant\n  %q", got, wantFullRow)
@@ -97,12 +97,12 @@ func TestRenderDropsAnAbsentPayloadField(t *testing.T) {
 		{name: "branch", remove: func(in *Input) { in.Repo.Branch = "" }, dropped: KeyBranch},
 		{name: "repository name", remove: func(in *Input) { in.Repo.Name = "" }, dropped: KeyRepo},
 	}
-	full := Render(fullInput(t), Defaults())
+	full := renderRow(fullInput(t), Defaults())
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			in := fullInput(t)
 			tc.remove(&in)
-			row := Render(in, Defaults())
+			row := renderRow(in, Defaults())
 
 			if _, ok := row.Element(tc.dropped); ok {
 				t.Fatalf("%q survived its field's absence", tc.dropped)
@@ -120,7 +120,7 @@ func TestRenderDropsAnAbsentPayloadField(t *testing.T) {
 // TestRenderSwitchesEachElementOff walks the per-element switches one at a
 // time. The badge is the exception and has its own test below.
 func TestRenderSwitchesEachElementOff(t *testing.T) {
-	full := Render(fullInput(t), Defaults())
+	full := renderRow(fullInput(t), Defaults())
 	for _, k := range Order() {
 		if k == KeyPresence {
 			continue
@@ -128,7 +128,7 @@ func TestRenderSwitchesEachElementOff(t *testing.T) {
 		t.Run(string(k), func(t *testing.T) {
 			set := Defaults()
 			set.Elements[k] = false
-			row := Render(fullInput(t), set)
+			row := renderRow(fullInput(t), set)
 
 			if _, ok := row.Element(k); ok {
 				t.Fatalf("%q rendered although it is switched off", k)
@@ -148,7 +148,7 @@ func TestRenderSwitchesEachElementOff(t *testing.T) {
 func TestRenderNeverSwitchesTheBadgeOff(t *testing.T) {
 	set := Defaults()
 	set.Elements[KeyPresence] = false
-	row := Render(fullInput(t), set)
+	row := renderRow(fullInput(t), set)
 	if len(row.Elements) == 0 || row.Elements[0].Key != KeyPresence {
 		t.Fatalf("the badge was switched off: %+v", row.Elements)
 	}
@@ -164,7 +164,7 @@ func TestRenderEverySwitchOffStillLeadsWithTheBadge(t *testing.T) {
 	for _, k := range Order() {
 		set.Elements[k] = false
 	}
-	row := Render(fullInput(t), set)
+	row := renderRow(fullInput(t), set)
 	if len(row.Elements) != 1 || row.Elements[0].Key != KeyPresence {
 		t.Fatalf("row = %+v, want the badge alone", row.Elements)
 	}
@@ -178,7 +178,7 @@ func TestRenderEverySwitchOffStillLeadsWithTheBadge(t *testing.T) {
 func TestRenderDisabledContributesNothing(t *testing.T) {
 	set := Defaults()
 	set.Disabled = true
-	row := Render(fullInput(t), set)
+	row := renderRow(fullInput(t), set)
 	if len(row.Elements) != 0 {
 		t.Fatalf("a disabled render produced %+v", row.Elements)
 	}
@@ -206,7 +206,7 @@ func TestRenderBadgeStates(t *testing.T) {
 		t.Run(string(tc.state), func(t *testing.T) {
 			in := fullInput(t)
 			in.State = tc.state
-			row := Render(in, Defaults())
+			row := renderRow(in, Defaults())
 
 			badge, ok := row.Element(KeyPresence)
 			if !ok {
@@ -235,7 +235,7 @@ func TestRenderBadgeStates(t *testing.T) {
 func TestRenderUnknownStateFallsBackToManaged(t *testing.T) {
 	in := fullInput(t)
 	in.State = State("nonsense")
-	row := Render(in, Defaults())
+	row := renderRow(in, Defaults())
 	badge, ok := row.Element(KeyPresence)
 	if !ok {
 		t.Fatal("no badge element")
@@ -259,7 +259,7 @@ func TestBadgeNeverReadsABareTag(t *testing.T) {
 	for _, st := range []State{StateManaged, StateFacilitator, StateProductThinker, State(""), State("nonsense")} {
 		in := fullInput(t)
 		in.State = st
-		badge, ok := Render(in, Defaults()).Element(KeyPresence)
+		badge, ok := renderRow(in, Defaults()).Element(KeyPresence)
 		if !ok {
 			t.Fatalf("%q: no badge element", st)
 		}
@@ -284,7 +284,7 @@ func TestBadgeColourEndsAtTheBadge(t *testing.T) {
 	for _, st := range []State{StateManaged, StateFacilitator, StateProductThinker} {
 		in := fullInput(t)
 		in.State = st
-		row := Render(in, Defaults())
+		row := renderRow(in, Defaults())
 		badge, _ := row.Element(KeyPresence)
 		if !strings.HasSuffix(badge.Rendered, "\x1b[39;49m") {
 			t.Errorf("%s: the badge does not close its own colour: %q", st, badge.Rendered)
@@ -312,7 +312,7 @@ func TestBadgeMeaningSurvivesColourRemoval(t *testing.T) {
 	for _, st := range mode.States() {
 		in := fullInput(t)
 		in.State = st
-		row := Render(in, Defaults())
+		row := renderRow(in, Defaults())
 
 		stripped := stripANSI(row.String())
 		if stripped == "" {
@@ -336,13 +336,13 @@ func TestBadgeMeaningSurvivesColourRemoval(t *testing.T) {
 // actually be emitted, and it must be the pair the settings hold.
 func TestRenderedBadgeCarriesItsColourPair(t *testing.T) {
 	set := Defaults()
-	row := Render(fullInput(t), set)
+	row := renderRow(fullInput(t), set)
 	badge, _ := row.Element(KeyPresence)
-	fg, err := ParseColor(set.Presence.Foreground)
+	fg, err := parseColor(set.Presence.Foreground)
 	if err != nil {
 		t.Fatal(err)
 	}
-	bg, err := ParseColor(set.Presence.Background)
+	bg, err := parseColor(set.Presence.Background)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -360,7 +360,7 @@ func TestRenderedBadgeCarriesItsColourPair(t *testing.T) {
 	}
 	// A configured pair reaches the render.
 	set.Presence = Pair{Foreground: "#ffffff", Background: "#000000"}
-	row = Render(fullInput(t), set)
+	row = renderRow(fullInput(t), set)
 	badge, _ = row.Element(KeyPresence)
 	if !strings.Contains(badge.Rendered, "38;2;255;255;255") || !strings.Contains(badge.Rendered, "48;2;0;0;0") {
 		t.Fatalf("the configured pair did not reach the render: %q", badge.Rendered)
@@ -376,13 +376,13 @@ func TestRoleBadgesIgnoreTheConfiguredPair(t *testing.T) {
 	for _, st := range []State{StateFacilitator, StateProductThinker} {
 		in := fullInput(t)
 		in.State = st
-		row := Render(in, set)
+		row := renderRow(in, set)
 		badge, _ := row.Element(KeyPresence)
 		if strings.Contains(badge.Rendered, "48;2;0;0;0") {
 			t.Fatalf("%s took the configured presence background: %q", st, badge.Rendered)
 		}
 		pair := fixedPair(st)
-		bg, err := ParseColor(pair.Background)
+		bg, err := parseColor(pair.Background)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -411,7 +411,7 @@ func TestEveryPrefixOfTheRowBeginsWithTheBadge(t *testing.T) {
 			t.Run(string(st)+"/"+sc.name, func(t *testing.T) {
 				in := fullInput(t)
 				in.State = st
-				row := Render(in, sc.set)
+				row := renderRow(in, sc.set)
 
 				badge, ok := row.Element(KeyPresence)
 				if !ok {
@@ -447,7 +447,7 @@ func TestEveryPrefixOfTheRowBeginsWithTheBadge(t *testing.T) {
 func TestRenderCountsAreAlwaysRendered(t *testing.T) {
 	in := fullInput(t)
 	in.Counts = Counts{}
-	row := Render(in, Defaults())
+	row := renderRow(in, Defaults())
 	for k, want := range map[ElementKey]string{KeyIntents: "itd 0", KeyIssues: "iss 0"} {
 		el, ok := row.Element(k)
 		if !ok {
@@ -479,7 +479,7 @@ func TestRenderPercentageRounding(t *testing.T) {
 			in := fullInput(t)
 			v := tc.in
 			in.Payload.ContextPct = &v
-			row := Render(in, Defaults())
+			row := renderRow(in, Defaults())
 			el, ok := row.Element(KeyContext)
 			if !ok {
 				t.Fatal("the context element dropped")
@@ -501,7 +501,7 @@ func TestRenderDropsAnImplausiblePercentage(t *testing.T) {
 		in := fullInput(t)
 		x := v
 		in.Payload.ContextPct = &x
-		row := Render(in, Defaults())
+		row := renderRow(in, Defaults())
 		if el, ok := row.Element(KeyContext); ok {
 			t.Fatalf("a context percentage of %v rendered as %q", v, el.Plain)
 		}
@@ -511,7 +511,7 @@ func TestRenderDropsAnImplausiblePercentage(t *testing.T) {
 	in := fullInput(t)
 	x := float64(maxPercent)
 	in.Payload.ContextPct = &x
-	if _, ok := Render(in, Defaults()).Element(KeyContext); !ok {
+	if _, ok := renderRow(in, Defaults()).Element(KeyContext); !ok {
 		t.Fatalf("a context percentage of %v was dropped at the boundary", maxPercent)
 	}
 }
@@ -521,8 +521,8 @@ func TestRenderDropsAnImplausiblePercentage(t *testing.T) {
 func TestRenderIsPure(t *testing.T) {
 	in := fullInput(t)
 	set := Defaults()
-	first := Render(in, set)
-	second := Render(in, set)
+	first := renderRow(in, set)
+	second := renderRow(in, set)
 	if first.Plain() != second.Plain() || first.String() != second.String() {
 		t.Fatal("two renders of one input disagree")
 	}
@@ -540,7 +540,7 @@ func TestRenderIsPure(t *testing.T) {
 func TestRenderSanitizesRepositoryText(t *testing.T) {
 	in := fullInput(t)
 	in.Repo = Repo{Name: "re\x1b[31mpo", Branch: "ma\x1b[0min"}
-	row := Render(in, Defaults())
+	row := renderRow(in, Defaults())
 	for _, k := range []ElementKey{KeyRepo, KeyBranch} {
 		el, ok := row.Element(k)
 		if !ok {

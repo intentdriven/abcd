@@ -79,7 +79,7 @@ func refusalDocs(t *testing.T, want int, args ...string) map[string]any {
 	if !ok {
 		t.Fatalf("the first document carries no refusal: %s", out)
 	}
-	for _, k := range []string{"step", "reason", "remedy"} {
+	for _, k := range []string{"stage", "reason", "remedy"} {
 		if s, _ := ref[k].(string); s == "" {
 			t.Fatalf("the refusal names its %s as a field: %s", k, out)
 		}
@@ -107,7 +107,7 @@ func TestBuildStartsARunThatStatusRendersAndABuildAgainResumes(t *testing.T) {
 		Lane    struct {
 			ID       string `json:"id"`
 			SpecStep int    `json:"spec_step"`
-			Step     string `json:"step"`
+			Stage    string `json:"stage"`
 		} `json:"lane"`
 		Pending []struct {
 			Number int `json:"number"`
@@ -117,7 +117,7 @@ func TestBuildStartsARunThatStatusRendersAndABuildAgainResumes(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &res); err != nil {
 		t.Fatalf("%v: %s", err, out)
 	}
-	if res.Resumed || res.Lane.ID != "lane-1" || res.Lane.SpecStep != 1 || res.Lane.Step != "worktree" || len(res.Pending) != 1 {
+	if res.Resumed || res.Lane.ID != "lane-1" || res.Lane.SpecStep != 1 || res.Lane.Stage != "worktree" || len(res.Pending) != 1 {
 		t.Fatalf("build result = %+v", res)
 	}
 	if !strings.Contains(res.Next, "abcd implement step") {
@@ -157,7 +157,7 @@ func TestBuildRefusalNamesStepReasonAndRemedy(t *testing.T) {
 	repo.Commit("hold")
 
 	ref := refusalDocs(t, 2, "build", "itd-10", "--json")
-	if ref["step"] != "check" || ref["check"] != "hold" || !strings.Contains(ref["reason"].(string), "awaiting the pacing ruling") {
+	if ref["stage"] != "check" || ref["check"] != "hold" || !strings.Contains(ref["reason"].(string), "awaiting the pacing ruling") {
 		t.Fatalf("refusal = %v", ref)
 	}
 	if checks, _ := ref["checks"].([]any); len(checks) != 8 {
@@ -189,9 +189,9 @@ func TestBuildRefusesAPeerHoldingTheIntentAtExit3(t *testing.T) {
 
 // stepJSON is `implement step` / `implement receipt` under --json.
 type stepJSON struct {
-	Performed string `json:"performed"`
-	Step      string `json:"step"`
-	Awaiting  *struct {
+	PerformedStage string `json:"performed_stage"`
+	Stage          string `json:"stage"`
+	Awaiting       *struct {
 		Role    string `json:"role"`
 		Brief   string `json:"brief"`
 		Receipt string `json:"receipt"`
@@ -222,10 +222,10 @@ func TestTheHostDrivesALaneThroughTheCLI(t *testing.T) {
 	if err := json.Unmarshal([]byte(mustImplement(t, "build", "itd-10", "--json")), &start); err != nil {
 		t.Fatal(err)
 	}
-	if res := mustStep(t, "implement", "step", "--json"); res.Performed != "worktree" {
+	if res := mustStep(t, "implement", "step", "--json"); res.PerformedStage != "worktree" {
 		t.Fatalf("first step = %+v", res)
 	}
-	if res := mustStep(t, "implement", "step", "--json"); res.Performed != "brief" {
+	if res := mustStep(t, "implement", "step", "--json"); res.PerformedStage != "brief" {
 		t.Fatalf("second step = %+v", res)
 	}
 	await := mustStep(t, "implement", "step", "--json")
@@ -267,7 +267,7 @@ func TestTheHostDrivesALaneThroughTheCLI(t *testing.T) {
 		t.Fatal(err)
 	}
 	ref := refusalDocs(t, 2, "implement", "receipt", await.Awaiting.Receipt, "--json")
-	if ref["step"] != "receipt" || !strings.Contains(ref["reason"].(string), "dod.log does not exist") ||
+	if ref["stage"] != "receipt" || !strings.Contains(ref["reason"].(string), "dod.log does not exist") ||
 		!strings.Contains(ref["reason"].(string), "report.md does not exist") {
 		t.Fatalf("a short receipt is refused naming what is missing: %v", ref)
 	}
@@ -276,8 +276,45 @@ func TestTheHostDrivesALaneThroughTheCLI(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if res := mustStep(t, "implement", "receipt", await.Awaiting.Receipt, "--json"); res.Performed != "implement" || res.Step != "validate" {
+	if res := mustStep(t, "implement", "receipt", await.Awaiting.Receipt, "--json"); res.PerformedStage != "implement" || res.Stage != "validate" {
 		t.Fatalf("a verified receipt advances the lane to its validators: %+v", res)
+	}
+
+	// The validate stage (piece 8): a fresh ruthless reviewer is handed the lane,
+	// and its return's verdict is the one the loop records.
+	review := mustStep(t, "implement", "step", "--json")
+	if review.Awaiting == nil || review.Awaiting.Role != "ruthless-reviewer" || review.PerformedStage != "" {
+		t.Fatalf("the validate stage hands the lane to a fresh ruthless reviewer: %+v", review)
+	}
+	ret := filepath.Join(repo.Root(), filepath.FromSlash(review.Awaiting.Receipt))
+	if err := os.WriteFile(ret, []byte("### Verdict\n\n- **SHIP** — nothing survived.\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if res := mustStep(t, "implement", "receipt", review.Awaiting.Receipt, "--json"); res.PerformedStage != "" || res.Stage != "validate" {
+		t.Fatalf("a validator's return leaves the lane at validate: %+v", res)
+	}
+	if status := mustImplement(t, "implement", "status"); !strings.Contains(status, "ruthless-reviewer SHIP") {
+		t.Fatalf("the status names the verdict the loop recorded:\n%s", status)
+	}
+}
+
+// TestImplementStepSaysStageForTheLanesAndStepForTheSpecs: the text form of
+// `implement step` and `implement status` names the lane's stage as a stage and
+// keeps "step" for the spec's (BU1, iss-2609291313276243).
+func TestImplementStepSaysStageForTheLanesAndStepForTheSpecs(t *testing.T) {
+	buildRepo(t)
+	mustImplement(t, "build", "itd-10", "--json")
+	out := mustImplement(t, "implement", "step")
+	if !strings.Contains(out, "completed lane-1's worktree stage") || strings.Contains(out, "worktree step") {
+		t.Fatalf("the step names the stage it completed:\n%s", out)
+	}
+	status := mustImplement(t, "implement", "status")
+	if !strings.Contains(status, "spec step 1") || !strings.Contains(status, "next stage: brief") {
+		t.Fatalf("the status names the spec's step and the lane's next stage:\n%s", status)
+	}
+	help := mustImplement(t, "implement", "status", "--help")
+	if !strings.Contains(help, "spec step and next stage") {
+		t.Fatalf("the status help names the lane's next stage as a stage:\n%s", help)
 	}
 }
 
@@ -297,8 +334,12 @@ func TestImplementReceiptNothingAwaitsIsRefused(t *testing.T) {
 		t.Fatal(err)
 	}
 	ref := refusalDocs(t, 2, "implement", "receipt", "receipt.json", "--json")
-	if ref["step"] != "receipt" || !strings.Contains(ref["reason"].(string), "awaits a receipt") {
+	if ref["stage"] != "receipt" || !strings.Contains(ref["reason"].(string), "awaits a receipt") {
 		t.Fatalf("a receipt nothing awaits is refused: %v", ref)
+	}
+	// The remedy names the lane's stage as a stage (BU1, iss-2609291313276243).
+	if remedy := ref["remedy"].(string); !strings.Contains(remedy, "when a stage hands work to an agent") {
+		t.Fatalf("the remedy says a stage hands work to an agent: %q", remedy)
 	}
 	if after, _ := os.ReadFile(statePath); !bytes.Equal(before, after) {
 		t.Fatal("a refused receipt must leave the state unchanged")
@@ -309,7 +350,7 @@ func TestImplementReceiptNothingAwaitsIsRefused(t *testing.T) {
 func TestImplementStepWithoutARunIsRefused(t *testing.T) {
 	repo := buildRepo(t)
 	ref := refusalDocs(t, 2, "implement", "step", "--json")
-	if ref["step"] != "state" || !strings.Contains(ref["remedy"].(string), "abcd build") {
+	if ref["stage"] != "state" || !strings.Contains(ref["remedy"].(string), "abcd build") {
 		t.Fatalf("refusal = %v", ref)
 	}
 	if out := mustImplement(t, "implement", "status"); !strings.Contains(out, "no run in this checkout") {
@@ -375,7 +416,7 @@ func TestImplementStatusNamesALaneWorktreeOutsideHomeByItsDirectoryName(t *testi
 func TestBuildForASessionClaimsTheIntent(t *testing.T) {
 	repo := buildRepo(t)
 	ref := refusalDocs(t, 2, "build", "itd-10", "--session", "ghost", "--json")
-	if ref["step"] != "claim" {
+	if ref["stage"] != "claim" {
 		t.Fatalf("an unjoined session's build = %v; want the claim step refused", ref)
 	}
 	runDirAbsent(t, repo.Root())

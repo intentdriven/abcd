@@ -63,34 +63,9 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 			if len(args) == 1 {
 				src = args[0]
 			}
-			// The transcript cap, not the JSON-operand cap: this verb recovers
-			// what the hooks store, so it must accept what they accept.
-			raw, err := readSourceCapped(cmd, src, maxTranscriptBytes)
-			if err != nil {
-				return fmt.Errorf("history capture: cannot read transcript: %w", err)
-			}
-			sess := session
-			if sess == "" && src != "-" {
-				// Derive a session id from the file basename (sans extension).
-				base := filepath.Base(src)
-				sess = strings.TrimSuffix(base, filepath.Ext(base))
-			}
-			if sess == "" {
-				return fmt.Errorf("history capture: --session <id> is required when reading from stdin")
-			}
-			res, err := history.Capture(repoRoot, rootSHA, raw,
-				history.CaptureMeta{SessionID: sess, Kind: orDefault(kind, history.RouteNative), Tool: tool})
+			res, err := captureTranscriptSource(cmd, repoRoot, rootSHA, src, session, kind, tool)
 			if err != nil {
 				return err
-			}
-			// The stored path is absolute and home-rooted; this is a success
-			// envelope the CLI error scrub never sees, so redact the home root to
-			// ~ before it is rendered or marshalled. Callers re-derive the file
-			// handle from disk, never from this rendered value. A superseded
-			// record's path is the same absolute path from the same store.
-			res.Record.Path = fsutil.RedactHome(res.Record.Path)
-			if res.Superseded != nil {
-				res.Superseded.Path = fsutil.RedactHome(res.Superseded.Path)
 			}
 			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
 				if !res.Wrote {
@@ -101,6 +76,9 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 				fmt.Fprintf(w, "abcd history capture — stored %s (%s)\n", res.Record.SessionID, recordSource(res.Record))
 				fmt.Fprintf(w, "  path:     %s\n", termsafe.Sanitize(res.Record.Path))
 				fmt.Fprintf(w, "  redacted: secrets=%d home=%d\n", res.Record.Secrets, res.Record.HomePaths)
+				for _, l := range scanGapLines(res.ScanGap) {
+					fmt.Fprintf(w, "  %s\n", l)
+				}
 			})
 		},
 	}
@@ -384,6 +362,9 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 				for _, f := range res.Failed {
 					fmt.Fprintf(w, "FAILED  %s  %s\n  raw transcript kept (unredacted): %s\n",
 						termsafe.Sanitize(f.SessionID), termsafe.Sanitize(f.Err), termsafe.Sanitize(f.Path))
+				}
+				for _, l := range scanGapLines(res.ScanGap) {
+					fmt.Fprintln(w, l)
 				}
 			})
 			if renderErr != nil {
@@ -669,4 +650,63 @@ func renderBacklogSurvey(cmd *cobra.Command, asJSON bool) error {
 			fmt.Fprintf(w, "%d transcript(s) can never be redacted and will never leave on their own; `abcd history discard` is the only thing that removes them.\n", quarantined)
 		}
 	})
+}
+
+// scanGapLines renders a capture's or a drain's ScanGap: the repository armed
+// gitleaks and the binary is not installed, so the transcripts were stored
+// masked by the native scanner alone. The gap is the tool registry's
+// explanation (what gitleaks is, the install step, the way back), one
+// sanitised line each, under a heading that says what it means. Nothing when
+// there is no gap (iss-2608291814575788).
+func scanGapLines(gap string) []string {
+	gap = strings.TrimSpace(gap)
+	if gap == "" {
+		return nil
+	}
+	out := []string{"scan gap: stored with the native scanner only, without the coverage this repository armed:"}
+	for _, l := range strings.Split(gap, "\n") {
+		if l = strings.TrimSpace(l); l != "" {
+			out = append(out, "  "+termsafe.Sanitize(fsutil.RedactHome(l)))
+		}
+	}
+	return out
+}
+
+// captureTranscriptSource is `history capture <path>`'s write, one transcript
+// from one source: read within the transcript cap, a session id derived from
+// the file's base name when none is given, redacted and stored through
+// history.Capture. `implement record --transcript` captures each path through
+// it, so the run's transcripts are stored exactly as this verb stores them.
+// The stored paths come back home-redacted.
+func captureTranscriptSource(cmd *cobra.Command, repoRoot, rootSHA, src, session, kind, tool string) (history.CaptureResult, error) {
+	// The transcript cap, not the JSON-operand cap: this verb recovers
+	// what the hooks store, so it must accept what they accept.
+	raw, err := readSourceCapped(cmd, src, maxTranscriptBytes)
+	if err != nil {
+		return history.CaptureResult{}, fmt.Errorf("history capture: cannot read transcript: %w", err)
+	}
+	sess := session
+	if sess == "" && src != "-" {
+		// Derive a session id from the file basename (sans extension).
+		base := filepath.Base(src)
+		sess = strings.TrimSuffix(base, filepath.Ext(base))
+	}
+	if sess == "" {
+		return history.CaptureResult{}, fmt.Errorf("history capture: --session <id> is required when reading from stdin")
+	}
+	res, err := history.Capture(repoRoot, rootSHA, raw,
+		history.CaptureMeta{SessionID: sess, Kind: orDefault(kind, history.RouteNative), Tool: tool})
+	if err != nil {
+		return history.CaptureResult{}, err
+	}
+	// The stored path is absolute and home-rooted; this is a success
+	// envelope the CLI error scrub never sees, so redact the home root to
+	// ~ before it is rendered or marshalled. Callers re-derive the file
+	// handle from disk, never from this rendered value. A superseded
+	// record's path is the same absolute path from the same store.
+	res.Record.Path = fsutil.RedactHome(res.Record.Path)
+	if res.Superseded != nil {
+		res.Superseded.Path = fsutil.RedactHome(res.Superseded.Path)
+	}
+	return res, nil
 }

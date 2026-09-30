@@ -55,7 +55,7 @@ const (
 )
 
 // Vocabulary is the closed set, in the order a surface should offer it. The two
-// refusals that reject a TOKEN -- Parse's grammar refusal and ParseToken's --
+// refusals that reject a TOKEN -- Parse's grammar refusal and parseToken's --
 // render it (vocabularyList), so a caller told their token is wrong is told
 // which tokens are right. The package's other refusals render nothing of
 // the kind -- and that is all this comment claims about them. Two earlier
@@ -214,7 +214,7 @@ func Parse(s string) (Grounds, error) {
 		return Grounds{}, fmt.Errorf(
 			"grounds %q is not `<token>: <text>` (want one of %s followed by the conjecture)", s, vocabularyList())
 	}
-	t, err := ParseToken(tok)
+	t, err := parseToken(tok)
 	if err != nil {
 		return Grounds{}, err
 	}
@@ -225,10 +225,10 @@ func Parse(s string) (Grounds, error) {
 	return Grounds{Token: t, Text: folded}, nil
 }
 
-// ParseToken validates one vocabulary value. Surrounding whitespace and case are
+// parseToken validates one vocabulary value. Surrounding whitespace and case are
 // forgiven — the value is stored canonically either way, and refusing `Pursued:`
 // would spend a refusal on nothing.
-func ParseToken(s string) (Token, error) {
+func parseToken(s string) (Token, error) {
 	t := Token(strings.ToLower(strings.TrimSpace(s)))
 	for _, v := range Vocabulary {
 		if t == v {
@@ -244,7 +244,7 @@ func ParseToken(s string) (Token, error) {
 // folded to one line first — both carriers hold a single line — so a text that
 // is only line breaks is refused as the empty text it is.
 func New(tok Token, text string) (Grounds, error) {
-	t, err := ParseToken(string(tok))
+	t, err := parseToken(string(tok))
 	if err != nil {
 		return Grounds{}, err
 	}
@@ -264,7 +264,7 @@ func New(tok Token, text string) (Grounds, error) {
 // supplies, because the value it is derived from has its own contract and a
 // terse reason is a legal one (iss-2608301244450106).
 func NewDerived(tok Token, text string) (Grounds, error) {
-	t, err := ParseToken(string(tok))
+	t, err := parseToken(string(tok))
 	if err != nil {
 		return Grounds{}, err
 	}

@@ -8,13 +8,13 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/changelog"
 	"github.com/intentdriven/abcd/internal/core/provenance"
 	"github.com/intentdriven/abcd/internal/core/record/match"
 	"github.com/intentdriven/abcd/internal/core/recordid"
+	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
@@ -205,10 +205,11 @@ type DraftOptions struct {
 	// provenance.DefaultMode, so a draft written through a command carries the key
 	// whatever the caller says.
 	ProductionMode string
-	// Match, when non-nil, matches the draft's title and press release against
-	// the record under the mint lock and writes each likely double as a typed
-	// link (match.go). The promote route passes none: its draft is joined to
-	// the record it graduated from already.
+	// Match, when non-nil, matches the draft's title and press release (or the
+	// matcher's own Text) against the record under the mint lock and writes
+	// each likely double as a typed link (match.go). The issue promote route
+	// passes none; the reading-item route passes one on request (ruling DQ2b),
+	// comparing the item's finding.
 	Match *Matcher
 }
 
@@ -230,6 +231,12 @@ var relatedIssueRe = regexp.MustCompile(`^(iss|rdi)-[0-9]+$`)
 func CreateDraft(repoRoot string, opts DraftOptions) (Intent, error) {
 	it, _, err := createDraftMatched(repoRoot, opts)
 	return it, err
+}
+
+// CreateDraftMatched is CreateDraft returning the filing-time match's outcome
+// too, nil when opts asked for none.
+func CreateDraftMatched(repoRoot string, opts DraftOptions) (Intent, *match.Outcome, error) {
+	return createDraftMatched(repoRoot, opts)
 }
 
 // createDraftMatched is CreateDraft returning the filing-time match's outcome too,
@@ -321,7 +328,11 @@ func createDraftMatched(repoRoot string, opts DraftOptions) (Intent, *match.Outc
 		// it reads is the record the draft is written into.
 		var links map[match.Relation][]string
 		if opts.Match != nil {
-			outcome = runMatch(opts.Match, opts.Title+"\n"+opts.PressRelease)
+			text := opts.Title + "\n" + opts.PressRelease
+			if opts.Match.Text != "" {
+				text = opts.Match.Text
+			}
+			outcome = runMatch(opts.Match, text)
 			links = outcome.Links()
 		}
 		content := seedDraft(id, opts, stamp, links)
@@ -628,8 +639,8 @@ func titleLine(text string) string {
 // locked read — not the corpus — is what the verb judges.
 var beforeIntentMintLock func()
 
-// onIntentMintLockBusy is a test seam, nil outside tests: called each time an
-// attempt to take the lock finds it already held. A test that proves a writer
+// onIntentMintLockBusy is a test seam, nil outside tests: called once when the
+// first attempt to take the lock finds it already held, before the wait. A test that proves a writer
 // takes the lock has to OBSERVE the writer blocked on it; inferring it from how
 // long the write took measures the machine, and a writer that takes no lock but
 // is slow for its own reasons passes a wait bar (iss-2608301301041887).
@@ -642,9 +653,9 @@ var onIntentMintLockBusy func()
 // same suffix, one directory — that time and entropy leave to the store to
 // arbitrate (spc-33 ruling 2). It cannot see a sibling checkout and does not
 // need to: the mint reads no maximum, so two checkouts never share the state a
-// lock would have to protect. It flocks the intents/ directory file descriptor
-// itself, so no lock artifact is left in the committed record tree (mirroring
-// the spec store's lock). O_NOFOLLOW refuses a symlinked intents/.
+// lock would have to protect. It flocks the intents/ directory itself through
+// fsutil.WithDirLock, so no lock artifact is left in the committed record tree
+// (mirroring the spec store's lock), and a symlinked intents/ is refused.
 func withIntentMintLock(repoRoot string, fn func() error) error {
 	return withIntentMintLockWithin(repoRoot, mintLockTimeout, fn)
 }
@@ -662,32 +673,28 @@ func withIntentMintLockWithin(repoRoot string, timeout time.Duration, fn func() 
 	if err := ensureRecordDir(repoRoot, IntentsRelDir); err != nil {
 		return err
 	}
-	fd, err := syscall.Open(intentsDir, syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_NOFOLLOW, 0)
-	if err != nil {
-		return fmt.Errorf("intent: opening mint lock on %s: %w", IntentsRelDir, err)
+	ran := false
+	locked := func() error {
+		ran = true
+		return fn()
 	}
-	defer syscall.Close(fd)
-
-	deadline := time.Now().Add(timeout)
-	for {
-		lockErr := syscall.Flock(fd, syscall.LOCK_EX|syscall.LOCK_NB)
-		if lockErr == nil {
-			break
-		}
-		if lockErr != syscall.EWOULDBLOCK {
-			return fmt.Errorf("intent: acquiring mint lock: %w", lockErr)
-		}
+	// One attempt that does not wait, then the whole budget: the first refusal
+	// is what the busy seam observes, and the wait that follows is the one the
+	// caller asked for.
+	err := fsutil.WithDirLock(intentsDir, 0, locked)
+	if !ran && errors.Is(err, fsutil.ErrLockContention) {
 		if onIntentMintLockBusy != nil {
 			onIntentMintLockBusy()
 		}
-		if time.Now().After(deadline) {
-			return fmt.Errorf("%w within %s", errIntentLockBusy, timeout)
-		}
-		time.Sleep(10 * time.Millisecond)
+		err = fsutil.WithDirLock(intentsDir, timeout, locked)
 	}
-	defer syscall.Flock(fd, syscall.LOCK_UN)
-
-	return fn()
+	switch {
+	case ran || err == nil:
+		return err
+	case errors.Is(err, fsutil.ErrLockContention):
+		return fmt.Errorf("%w within %s", errIntentLockBusy, timeout)
+	}
+	return fmt.Errorf("intent: opening mint lock on %s: %w", IntentsRelDir, err)
 }
 
 // WithMintLock runs fn while holding the intent store's lock — the one

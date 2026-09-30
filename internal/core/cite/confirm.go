@@ -78,9 +78,9 @@ type ConfirmError struct{ msg string }
 
 func (e *ConfirmError) Error() string { return e.msg }
 
-// ParseReceipt decodes a receipt file, refusing anything it does not fully
+// parseReceipt decodes a receipt file, refusing anything it does not fully
 // understand.
-func ParseReceipt(data []byte) (Receipt, error) {
+func parseReceipt(data []byte) (Receipt, error) {
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields()
 	var r Receipt
@@ -101,7 +101,7 @@ func LoadReceipt(path string) (Receipt, error) {
 	if err != nil {
 		return Receipt{}, err
 	}
-	return ParseReceipt(data)
+	return parseReceipt(data)
 }
 
 // Confirm records a human's confirmations in the baseline.

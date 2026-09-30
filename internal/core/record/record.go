@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -42,7 +43,7 @@ var IDRe = regexp.MustCompile(`^(iss|itd|spc|adr|adm|srp|rfm)-[0-9]+$`)
 // for the filename, recordid.CanonADRID for the asked id and the frontmatter
 // confirm — so this reader can never be the one that reports a present decision
 // as absent.
-const adrsRelDir = ".abcd/development/decisions/adrs"
+const adrsRelDir = recordid.ADRsRelDir
 
 // ErrSkippedRecord marks a record whose file IS in its store but that the
 // store's reader skipped on read — an unknown or retired property, a malformed
@@ -533,8 +534,14 @@ func describeBundleSpec(repoRoot string, store spec.Store, sp spec.Spec, members
 	return d
 }
 
-// describeADR probes decisions/adrs/ for the numbered file carrying the id and
-// renders it read-only. Decisions are read, never acted on.
+// describeADR resolves the id through the one record-id resolver and renders
+// the decision read-only. Decisions are read, never acted on.
+//
+// The resolver routes by the filename's number, both id vintages and any
+// padding alike, never follows a link, and REFUSES an id two files claim: a
+// second `0037-a.md` beside `0037-x.md` must not render in its place, so the
+// dispatch surfaces the ambiguity naming both files instead of the first in
+// name order.
 func describeADR(repoRoot, id string) (Description, error) {
 	// The number the caller asked for is the identity; render the canonical
 	// spelling of it regardless of how the caller or the file spelled it.
@@ -542,53 +549,45 @@ func describeADR(repoRoot, id string) (Description, error) {
 	if canonical == "" {
 		return Description{}, fmt.Errorf("record: malformed adr id %q", id)
 	}
-	dir := filepath.Join(repoRoot, adrsRelDir)
-	entries, err := os.ReadDir(dir)
+	rel, ok, err := recordid.LookupOne(repoRoot, canonical)
 	if err != nil {
-		return Description{}, fmt.Errorf("record: %s not found — no decision record store at %s", canonical, adrsRelDir)
+		return Description{}, fmt.Errorf("record: %s: %w", canonical, err)
 	}
-	for _, e := range entries {
-		// Regular files only: a symlinked directory entry in a hostile clone
-		// must never reach the read (readRecordHead refuses it again with
-		// O_NOFOLLOW — two independent layers).
-		if !e.Type().IsRegular() || filepath.Ext(e.Name()) != ".md" {
-			continue
-		}
-		// Route by the id the filename claims, padding- and width-agnostic.
-		if recordid.ADRFileID(e.Name()) != canonical {
-			continue
-		}
-		rel := filepath.Join(adrsRelDir, e.Name())
-		fields, title := readRecordHead(filepath.Join(dir, e.Name()), strings.TrimSuffix(e.Name(), ".md"))
-		// The filename routes; the frontmatter id confirms. Both go through the
-		// canonicaliser rather than a byte compare: a quoted, zero-padded or
-		// case-shifted id is the same handle its record-lint and citation-resolver
-		// siblings accept, so the dispatch must not be the one reader that reports
-		// a present record as absent. A refused/empty head yields an empty value
-		// that canonicalises to "" and matches no handle, preserving the
-		// hostile-leaf guard.
-		got := strings.Trim(strings.TrimSpace(fields["id"].Value), `"'`)
-		if recordid.CanonADRID(got) != canonical {
-			continue
-		}
-		d := Description{
-			ID:     canonical,
-			Family: "adr",
-			Title:  title,
-			Status: fields["status"].Value,
-			Path:   rel,
-			Links:  map[string]string{},
-		}
-		// One emptiness question with the supersession gate: an empty collection
-		// or an empty node is no successor, never a link to a bracket pair
-		// (iss-2608301744300631).
-		if sup := fields["superseded_by"].Value; !frontmatter.IsEmptyValue(sup) {
-			d.Links["superseded_by"] = sup
-		}
-		d.NextMoves = []string{"none — decisions are read"}
-		return d, nil
+	if !ok {
+		return Description{}, fmt.Errorf("record: %s not found in %s", canonical, adrsRelDir)
 	}
-	return Description{}, fmt.Errorf("record: %s not found in %s", canonical, adrsRelDir)
+	name := path.Base(rel)
+	// readRecordHead refuses anything but a regular file under the size cap,
+	// opened with O_NOFOLLOW — the resolver skipped links already, so a hostile
+	// leaf meets two independent layers.
+	fields, title := readRecordHead(filepath.Join(repoRoot, filepath.FromSlash(rel)), strings.TrimSuffix(name, ".md"))
+	// The filename routes; the frontmatter id confirms. Both go through the
+	// canonicaliser rather than a byte compare: a quoted, zero-padded or
+	// case-shifted id is the same handle its record-lint and citation-resolver
+	// siblings accept, so the dispatch must not be the one reader that reports
+	// a present record as absent. A refused/empty head yields an empty value
+	// that canonicalises to "" and matches no handle, preserving the
+	// hostile-leaf guard.
+	got := strings.Trim(strings.TrimSpace(fields["id"].Value), `"'`)
+	if recordid.CanonADRID(got) != canonical {
+		return Description{}, fmt.Errorf("record: %s not found in %s", canonical, adrsRelDir)
+	}
+	d := Description{
+		ID:     canonical,
+		Family: "adr",
+		Title:  title,
+		Status: fields["status"].Value,
+		Path:   filepath.FromSlash(rel),
+		Links:  map[string]string{},
+	}
+	// One emptiness question with the supersession gate: an empty collection
+	// or an empty node is no successor, never a link to a bracket pair
+	// (iss-2608301744300631).
+	if sup := fields["superseded_by"].Value; !frontmatter.IsEmptyValue(sup) {
+		d.Links["superseded_by"] = sup
+	}
+	d.NextMoves = []string{"none — decisions are read"}
+	return d, nil
 }
 
 // describeAdmission renders one admission read-only: the grounds as its title,

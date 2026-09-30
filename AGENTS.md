@@ -71,19 +71,29 @@ A prompt that matches no domain injects nothing (zero added tokens).
 ### Default domains
 
 `COMMITTING`, `DOCUMENTATION`, `ROADMAP`, `ISSUES`, `INTENTS`, `LIFEBOAT`, `PII`,
-`OPINIONS`, `LOAD`. Each carries recall keywords and its rules, bundled in the
-abcd binary; a repo overrides them per-field via `.abcd/rules.json`. `OPINIONS`
-points at the canonical conventions under `.abcd/development/principles/` rather
-than copying them. `LOAD` carries the trust rule for load experiments: one owned
-process group killed together through a re-checked handle and never by pattern,
-clean proven by what is running, and explicit consent with a cap below the core
-count on a live development machine.
+`OPINIONS`, `LOAD`, `SHELL`. Each carries recall keywords and its rules, bundled
+in the abcd binary; a repo overrides them per-field via `.abcd/rules.json`.
+`OPINIONS` points at the canonical conventions under
+`.abcd/development/principles/` rather than copying them. `LOAD` carries the
+trust rule for load experiments: one owned process group killed together through
+a re-checked handle and never by pattern, clean proven by what is running, and
+explicit consent with a cap below the core count on a live development machine.
+`SHELL` is the teaching half of the shell-hazard guard: it is generated from the
+same hazard registry `abcd guard` enforces in the repository, one rule per entry
+(the command, why it is dangerous, and what to run instead; a rule from the
+repository's own `.abcd/guard.json` is marked `(repo)`), and recalls on the
+commands the registry names (`rm`, `git push`, `pkill`, …) and on shell work in
+general, so an agent is taught the safe form before a host with hooks would
+refuse the command and a host without hooks still teaches it.
 
 ### Reset triggers
 
 `SessionStart` and `PreCompact` clear the per-session dedup ledger, so a matched
 domain re-injects on the next prompt (the event-driven refresh that recovers
-after compaction). Within a session the hook does not re-inject unchanged rules.
+after compaction). Within a session a domain that stays in force is never
+re-injected unchanged; one that leaves the active set (deleted, renamed, made
+dormant, or a `*<DOMAIN>` activation the next prompt does not repeat) is
+injected again when it returns.
 
 For internals see `.abcd/development/brief/05-internals/03-configuration.md`.
 
@@ -470,6 +480,16 @@ irreversible; guessing downward costs nothing.**
   declaration is the positive form, and it is the only accepted non-vendor value:
   a free-text escape would reopen the omission it closes. Claiming it for assisted
   work is a false disclosure, which is the thing this convention exists to prevent.
+- **A revert or cherry-pick takes its trailer from one command:**
+  `git -c abcd.assistedBy=<Vendor>:<model-version> revert|cherry-pick <sha>`.
+  `git revert`, `git cherry-pick` and a squash compose their own message and
+  write no `Assisted-by:`, so the gate refuses them; the committed
+  `.githooks/prepare-commit-msg` hook writes the trailer from the
+  `abcd.assistedBy` key and from nowhere else. Unset, it writes nothing, and it
+  never writes `None`. Set the key for the one command, never as a standing
+  `git config abcd.assistedBy`: a standing key also stamps every `-m`/`-F`
+  commit, every `--amend` and every cherry-pick, which is a false disclosure
+  for work no model touched.
 - **Naming a tool is confined to credit.** User-facing prose (`README.md`,
   `docs/`) stays host-agnostic — the `harness/*` docs-lint rules enforce it. The
   one sanctioned place to name a tool is attribution: the README badge and

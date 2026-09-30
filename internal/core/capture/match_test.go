@@ -33,7 +33,7 @@ const (
 
 func captureText(t *testing.T, repo, ir, text string, m *match.Config) CaptureResult {
 	t.Helper()
-	res, err := Capture(CaptureRequest{
+	res, err := testCapture(CaptureRequest{
 		RepoRoot: repo, IssuesRoot: ir, Text: text, Severity: SeverityMinor,
 		Category: "bug", Source: "user-observation", FoundDuring: "t", Match: m,
 	})

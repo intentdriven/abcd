@@ -70,7 +70,7 @@ func mustRefusal(t *testing.T, err error) *Refusal {
 	if !ok {
 		t.Fatalf("want a refusal, got %v", err)
 	}
-	if r.Step == "" || r.Reason == "" || r.Remedy == "" {
+	if r.Stage == "" || r.Reason == "" || r.Remedy == "" {
 		t.Fatalf("a refusal names the step, the reason and the remedy: %+v", r)
 	}
 	return r
@@ -89,7 +89,8 @@ func TestStartRefusesEachFailedCheckAndWritesNoState(t *testing.T) {
 		check     string
 		reason    string
 	}{
-		{"an issue key", "iss-2609010000001234", plannedRel, readyIntent("", settledQuestions), specWithSteps(""), CheckKey, "issue"},
+		{"an issue key without the drain rule", "iss-2609010000001234", plannedRel, readyIntent("", settledQuestions), specWithSteps(""), CheckEligible, "drain eligibility record"},
+		{"a key shaped like no issue", "iss-12/x", plannedRel, readyIntent("", settledQuestions), specWithSteps(""), CheckKey, "iss-12/x"},
 		{"not an id", "itd-x", plannedRel, readyIntent("", settledQuestions), specWithSteps(""), CheckKey, "itd-x"},
 		{"unknown intent", "itd-99", plannedRel, readyIntent("", settledQuestions), specWithSteps(""), CheckReady, "itd-99"},
 		{"a draft", "itd-10", ".abcd/development/intents/drafts/itd-10-alpha.md", readyIntent("", settledQuestions), specWithSteps(""), CheckReady, "draft"},
@@ -123,8 +124,8 @@ func TestStartRefusesEachFailedCheckAndWritesNoState(t *testing.T) {
 
 			_, err := Start(repo.Root(), tc.key, Options{})
 			r := mustRefusal(t, err)
-			if r.Step != "check" || r.Check != tc.check {
-				t.Fatalf("want the %s check named, got step %q check %q: %v", tc.check, r.Step, r.Check, r)
+			if r.Stage != "check" || r.Check != tc.check {
+				t.Fatalf("want the %s check named, got step %q check %q: %v", tc.check, r.Stage, r.Check, r)
 			}
 			if !strings.Contains(r.Reason, tc.reason) {
 				t.Fatalf("the reason must say why (%q): %q", tc.reason, r.Reason)
@@ -354,7 +355,7 @@ func TestStartRefusesWithoutTheLocalTier(t *testing.T) {
 	}
 	_, err := Start(repo.Root(), "itd-10", Options{})
 	r := mustRefusal(t, err)
-	if r.Step != "state" || !strings.Contains(r.Reason, TierRelDir) {
+	if r.Stage != "state" || !strings.Contains(r.Reason, TierRelDir) {
 		t.Fatalf("want the missing tier named: %+v", r)
 	}
 	if _, err := os.Lstat(filepath.Join(repo.Root(), ".abcd", ".work.local")); !errors.Is(err, os.ErrNotExist) {
@@ -387,13 +388,13 @@ func TestStartCreatesOneLaneAndAStartAgainResumesIt(t *testing.T) {
 		t.Fatalf("a run starts with one lane, got %d", len(st.Lanes))
 	}
 	l := st.Lanes[0]
-	if l.ID != "lane-1" || l.Key != "itd-10" || l.SpecStep != 2 || l.StepTitle != "The loop" || l.Step != StepWorktree {
+	if l.ID != "lane-1" || l.Key != "itd-10" || l.SpecStep != 2 || l.StepTitle != "The loop" || l.Stage != StageWorktree {
 		t.Fatalf("lane = %+v", l)
 	}
 	if len(st.Pending) != 1 || st.Pending[0].Number != 3 {
 		t.Fatalf("the unlanded steps after the first wait as pending: %+v", st.Pending)
 	}
-	if len(st.Record) != 2 || st.Record[0].Step != "start" || st.Record[1].Step != StepPace {
+	if len(st.Record) != 2 || st.Record[0].Stage != "start" || st.Record[1].Stage != StagePace {
 		t.Fatalf("the record opens with the start, then names the pace: %+v", st.Record)
 	}
 	fi, err := os.Stat(filepath.Join(repo.Root(), filepath.FromSlash(res.State)))
@@ -450,14 +451,14 @@ func TestAnUnsteppedSpecIsOneLane(t *testing.T) {
 }
 
 // fakeSteps is a lane sequence whose bodies a test controls: each counts its
-// calls; the implement step hands work to an agent and verifies the receipt.
+// calls; the implement stage hands work to an agent and verifies the receipt.
 type fakeSteps struct {
-	calls   map[StepName]int
-	failing StepName
+	calls   map[Stage]int
+	failing Stage
 }
 
-func (f *fakeSteps) steps() Steps {
-	body := func(name StepName, fill func(*Lane)) Handler {
+func (f *fakeSteps) steps() Stages {
+	body := func(name Stage, fill func(*Lane)) Handler {
 		return func(c Context, lane *Lane) (Outcome, error) {
 			f.calls[name]++
 			if name == f.failing {
@@ -469,12 +470,12 @@ func (f *fakeSteps) steps() Steps {
 			return Outcome{Note: string(name) + " done"}, nil
 		}
 	}
-	return Steps{
-		{Name: StepWorktree, Piece: 6, Run: body(StepWorktree, func(l *Lane) { l.Branch = "build/" + l.ID })},
-		{Name: StepBrief, Piece: 5, Run: body(StepBrief, func(l *Lane) { l.Brief = RunRelDir + "/brief.md" })},
-		{Name: StepImplement, Piece: 7,
+	return Stages{
+		{Name: StageWorktree, Piece: 6, Run: body(StageWorktree, func(l *Lane) { l.Branch = "build/" + l.ID })},
+		{Name: StageBrief, Piece: 5, Run: body(StageBrief, func(l *Lane) { l.Brief = RunRelDir + "/brief.md" })},
+		{Name: StageImplement, Piece: 7,
 			Run: func(c Context, lane *Lane) (Outcome, error) {
-				f.calls[StepImplement]++
+				f.calls[StageImplement]++
 				return Outcome{Await: &Await{Role: "implementer", Brief: lane.Brief,
 					Receipt: filepath.Join(c.RepoRoot, "receipt-"+lane.ID+".json")}}, nil
 			},
@@ -484,8 +485,8 @@ func (f *fakeSteps) steps() Steps {
 				}
 				return nil
 			}},
-		{Name: StepValidate, Piece: 8, Run: body(StepValidate, nil)},
-		{Name: StepLand, Piece: 9, Run: body(StepLand, nil)},
+		{Name: StageValidate, Piece: 8, Run: body(StageValidate, nil)},
+		{Name: StageLand, Piece: 9, Run: body(StageLand, nil)},
 	}
 }
 
@@ -508,18 +509,18 @@ func TestTheHostDrivesTheLoopEndToEnd(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f := &fakeSteps{calls: map[StepName]int{}}
+	f := &fakeSteps{calls: map[Stage]int{}}
 	steps := f.steps()
 	id := start.RunID
 
 	for lane := 1; lane <= 2; lane++ {
-		for _, want := range []StepName{StepWorktree, StepBrief} {
+		for _, want := range []Stage{StageWorktree, StageBrief} {
 			res, err := Advance(repo.Root(), id, steps, Options{})
 			if err != nil {
 				t.Fatal(err)
 			}
-			if res.Performed != want {
-				t.Fatalf("lane %d: performed %q, want %q (%+v)", lane, res.Performed, want, res)
+			if res.PerformedStage != want {
+				t.Fatalf("lane %d: performed %q, want %q (%+v)", lane, res.PerformedStage, want, res)
 			}
 		}
 		res, err := Advance(repo.Root(), id, steps, Options{})
@@ -537,7 +538,7 @@ func TestTheHostDrivesTheLoopEndToEnd(t *testing.T) {
 		// Asking again tells the same thing and moves nothing.
 		before := stateBytes(t, repo.Root(), id)
 		again, err := Advance(repo.Root(), id, steps, Options{})
-		if err != nil || again.Awaiting == nil || again.Awaiting.Receipt != receipt || again.Performed != "" {
+		if err != nil || again.Awaiting == nil || again.Awaiting.Receipt != receipt || again.PerformedStage != "" {
 			t.Fatalf("a step while awaiting re-tells the await: %+v %v", again, err)
 		}
 		if !bytes.Equal(before, stateBytes(t, repo.Root(), id)) {
@@ -549,7 +550,7 @@ func TestTheHostDrivesTheLoopEndToEnd(t *testing.T) {
 			t.Fatal("a receipt at another path must be refused")
 		}
 		_, err = Receipt(repo.Root(), id, receipt, steps, Options{})
-		if r := mustRefusal(t, err); r.Step != "receipt" {
+		if r := mustRefusal(t, err); r.Stage != "receipt" {
 			t.Fatalf("an unverified receipt is refused at the receipt: %+v", r)
 		}
 		if !bytes.Equal(before, stateBytes(t, repo.Root(), id)) {
@@ -562,13 +563,13 @@ func TestTheHostDrivesTheLoopEndToEnd(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got.Performed != StepImplement || got.Step != StepValidate {
+		if got.PerformedStage != StageImplement || got.Stage != StageValidate {
 			t.Fatalf("a verified receipt completes the agent step: %+v", got)
 		}
-		for _, want := range []StepName{StepValidate, StepLand} {
+		for _, want := range []Stage{StageValidate, StageLand} {
 			res, err := Advance(repo.Root(), id, steps, Options{})
-			if err != nil || res.Performed != want {
-				t.Fatalf("lane %d: performed %q, want %q (%v)", lane, res.Performed, want, err)
+			if err != nil || res.PerformedStage != want {
+				t.Fatalf("lane %d: performed %q, want %q (%v)", lane, res.PerformedStage, want, err)
 			}
 		}
 	}
@@ -599,7 +600,7 @@ func TestAKilledStepRepeatsAndACompletedStepDoesNot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f := &fakeSteps{calls: map[StepName]int{}, failing: StepBrief}
+	f := &fakeSteps{calls: map[Stage]int{}, failing: StageBrief}
 	if _, err := Advance(repo.Root(), start.RunID, f.steps(), Options{}); err != nil {
 		t.Fatal(err)
 	}
@@ -612,10 +613,10 @@ func TestAKilledStepRepeatsAndACompletedStepDoesNot(t *testing.T) {
 	}
 	f.failing = ""
 	res, err := Advance(repo.Root(), start.RunID, f.steps(), Options{})
-	if err != nil || res.Performed != StepBrief {
+	if err != nil || res.PerformedStage != StageBrief {
 		t.Fatalf("the next invocation performs the step that did not complete: %+v %v", res, err)
 	}
-	if f.calls[StepWorktree] != 1 || f.calls[StepBrief] != 2 {
+	if f.calls[StageWorktree] != 1 || f.calls[StageBrief] != 2 {
 		t.Fatalf("completed steps are not repeated: %v", f.calls)
 	}
 }
@@ -630,19 +631,19 @@ func TestAStepThisBuildDoesNotCarryIsRefusedByName(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := stateBytes(t, repo.Root(), start.RunID)
-	bare := DefaultSteps()
+	bare := DefaultStages()
 	for i := range bare {
 		bare[i].Run, bare[i].Verify = nil, nil
 	}
 	_, err = Advance(repo.Root(), start.RunID, bare, Options{})
 	r := mustRefusal(t, err)
-	if r.Step != string(StepWorktree) || r.Lane != "lane-1" || !strings.Contains(r.Reason, "piece 6") {
+	if r.Stage != string(StageWorktree) || r.Lane != "lane-1" || !strings.Contains(r.Reason, "piece 6") {
 		t.Fatalf("want the unbuilt step and its piece named: %+v", r)
 	}
 	if !bytes.Equal(before, stateBytes(t, repo.Root(), start.RunID)) {
 		t.Fatal("a refused step must leave the run unchanged")
 	}
-	if names := DefaultSteps(); len(names) != len(Sequence) {
+	if names := DefaultStages(); len(names) != len(Sequence) {
 		t.Fatalf("the production sequence names every step: %d of %d", len(names), len(Sequence))
 	}
 }
@@ -665,17 +666,17 @@ func TestAPauseRefusesUntilNextEligibleAt(t *testing.T) {
 	if err := writeState(root, st); err != nil {
 		t.Fatal(err)
 	}
-	f := &fakeSteps{calls: map[StepName]int{}}
+	f := &fakeSteps{calls: map[Stage]int{}}
 	_, err = Advance(repo.Root(), start.RunID, f.steps(), Options{Now: func() time.Time { return now }})
 	r := mustRefusal(t, err)
-	if r.Step != "pause" || !r.Contention || !strings.Contains(r.Reason, "2026-09-25T13:00:00Z") {
+	if r.Stage != "pause" || !r.Contention || !strings.Contains(r.Reason, "2026-09-25T13:00:00Z") {
 		t.Fatalf("want the pause named: %+v", r)
 	}
-	if f.calls[StepWorktree] != 0 {
+	if f.calls[StageWorktree] != 0 {
 		t.Fatal("a paused run performs nothing")
 	}
 	res, err := Advance(repo.Root(), start.RunID, f.steps(), Options{Now: func() time.Time { return later }})
-	if err != nil || res.Performed != StepWorktree {
+	if err != nil || res.PerformedStage != StageWorktree {
 		t.Fatalf("at next_eligible_at the loop moves again: %+v %v", res, err)
 	}
 }
@@ -729,7 +730,7 @@ func TestReadStateFailsClosed(t *testing.T) {
 		if err == nil {
 			t.Fatalf("%s: the reader must refuse", name)
 		}
-		if r := mustRefusal(t, err); r.Step != "state" || !strings.Contains(r.Reason, tc.want) {
+		if r := mustRefusal(t, err); r.Stage != "state" || !strings.Contains(r.Reason, tc.want) {
 			t.Fatalf("%s: want a state refusal naming %q, got %+v", name, tc.want, r)
 		}
 	}
@@ -758,7 +759,7 @@ func TestASymlinkedRunStateIsRefusedInTheRefusalShape(t *testing.T) {
 			t.Fatal(err)
 		}
 		_, err = ReadState(repo.Root(), start.RunID)
-		if r := mustRefusal(t, err); r.Step != "state" || !strings.Contains(r.Reason, StateRelPath(start.RunID)) {
+		if r := mustRefusal(t, err); r.Stage != "state" || !strings.Contains(r.Reason, StateRelPath(start.RunID)) {
 			t.Fatalf("want the state file named at the state step: %+v", r)
 		}
 		_, err = Runs(repo.Root())
@@ -779,7 +780,7 @@ func TestASymlinkedRunStateIsRefusedInTheRefusalShape(t *testing.T) {
 			t.Fatal(err)
 		}
 		_, err = Runs(repo.Root())
-		if r := mustRefusal(t, err); r.Step != "state" {
+		if r := mustRefusal(t, err); r.Stage != "state" {
 			t.Fatalf("want the state step: %+v", r)
 		}
 		_, err = Start(repo.Root(), "itd-10", Options{})
@@ -806,7 +807,7 @@ func TestResolveNamesTheOnlyLiveRun(t *testing.T) {
 
 // TestRefusalRendersStepReasonAndRemedy is criterion 13's text half.
 func TestRefusalRendersStepReasonAndRemedy(t *testing.T) {
-	r := &Refusal{Step: "check", Check: CheckHold, Reason: "itd-10 is held", Remedy: "run `abcd intent unhold itd-10`"}
+	r := &Refusal{Stage: "check", Check: CheckHold, Reason: "itd-10 is held", Remedy: "run `abcd intent unhold itd-10`"}
 	if got := r.Error(); got != "refused at check (hold): itd-10 is held; remedy: run `abcd intent unhold itd-10`" {
 		t.Fatalf("Error() = %q", got)
 	}
@@ -823,7 +824,7 @@ func TestAReceiptNamedThroughASymlinkedPathIsTheReceiptAwaited(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f := &fakeSteps{calls: map[StepName]int{}}
+	f := &fakeSteps{calls: map[Stage]int{}}
 	var res StepResult
 	for range 3 {
 		if res, err = Advance(repo.Root(), start.RunID, f.steps(), Options{}); err != nil {
@@ -845,7 +846,7 @@ func TestAReceiptNamedThroughASymlinkedPathIsTheReceiptAwaited(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the awaited receipt named through a symlinked path is the same receipt: %v", err)
 	}
-	if got.Performed != StepImplement {
+	if got.PerformedStage != StageImplement {
 		t.Fatalf("the receipt completes the step: %+v", got)
 	}
 }
@@ -861,7 +862,7 @@ func TestTheRecordNamesEachLaneAsItOpens(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	f := &fakeSteps{calls: map[StepName]int{}}
+	f := &fakeSteps{calls: map[Stage]int{}}
 	steps := f.steps()
 	id := start.RunID
 	for range 64 {
@@ -895,7 +896,7 @@ func TestTheRecordNamesEachLaneAsItOpens(t *testing.T) {
 	}
 	var opened []string
 	for _, e := range st.Record {
-		if e.Step == "start" || e.Step == "open" {
+		if e.Stage == "start" || e.Stage == "open" {
 			opened = append(opened, e.Lane+": "+e.Note)
 		}
 	}

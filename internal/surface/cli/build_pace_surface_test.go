@@ -99,7 +99,7 @@ func TestBuildRefusesAMalformedPace(t *testing.T) {
 	repo := buildRepo(t)
 	for _, args := range [][]string{{"--pace", "90"}, {"--sub-agents", "two"}, {"--pace", "0/300"}} {
 		ref := refusalDocs(t, 2, append([]string{"build", "itd-10", "--json"}, args...)...)
-		if ref["step"] != "pace" || !strings.Contains(ref["reason"].(string), args[1]) ||
+		if ref["stage"] != "pace" || !strings.Contains(ref["reason"].(string), args[1]) ||
 			!strings.Contains(ref["remedy"].(string), "<work-minutes>/<pause-minutes>") {
 			t.Fatalf("%v: refusal = %v", args, ref)
 		}
@@ -135,7 +135,7 @@ func TestAnElapsedWindowPausesTheRunAtTheSurface(t *testing.T) {
 	}
 
 	var res struct {
-		Performed      string `json:"performed"`
+		PerformedStage string `json:"performed_stage"`
 		NextEligibleAt string `json:"next_eligible_at"`
 		Next           string `json:"next"`
 	}
@@ -143,7 +143,7 @@ func TestAnElapsedWindowPausesTheRunAtTheSurface(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &res); err != nil {
 		t.Fatal(err)
 	}
-	if res.Performed != "" || res.NextEligibleAt == "" || !strings.Contains(res.Next, res.NextEligibleAt) {
+	if res.PerformedStage != "" || res.NextEligibleAt == "" || !strings.Contains(res.Next, res.NextEligibleAt) {
 		t.Fatalf("an elapsed window performs nothing and names next_eligible_at: %s", out)
 	}
 	status := mustImplement(t, "implement", "status")
@@ -151,7 +151,7 @@ func TestAnElapsedWindowPausesTheRunAtTheSurface(t *testing.T) {
 		t.Fatalf("the status names the pause:\n%s", status)
 	}
 	ref := refusalDocs(t, 3, "implement", "step", "--json")
-	if ref["step"] != "pause" || !strings.Contains(ref["reason"].(string), res.NextEligibleAt) {
+	if ref["stage"] != "pause" || !strings.Contains(ref["reason"].(string), res.NextEligibleAt) {
 		t.Fatalf("a step inside the pause is refused naming the time: %v", ref)
 	}
 	code, _, errOut := implementCLI(t, "implement", "step")

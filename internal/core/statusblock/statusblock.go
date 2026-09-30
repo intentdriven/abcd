@@ -8,8 +8,10 @@
 //   - Now is every intent the build's state file shows in a lane, with its lane
 //     state, then the head marked "next up": the first READY intent in pick
 //     order that the build's record-only pre-start checks
-//     (intent.StartChecksIn) let start and that is in no lane. Now is empty
-//     only when no READY intent passes them.
+//     (intent.StartChecksIn) let start, that is in no lane, and that no peer
+//     holds when the caller hands in the build's peers check (ruling CC1 of
+//     2026-09-29: the bare board pays that read, so its "next up" is the
+//     pick). Now is empty only when no READY intent passes them.
 //   - Next is every planned intent the readiness gate reports READY and the
 //     state file shows in no lane, in pick order: `abcd build next`'s one
 //     order (intent.PickLess), each intent scored by the read the pick scores
@@ -27,10 +29,14 @@
 // returns each such intent to the list the gate places it in, and leaves a
 // head (criterion 3).
 //
-// The package reads the state file through a LaneReader its caller supplies
-// rather than importing the implement loop: the loop's own imports reach the
-// site renderer, which renders this block, so the reader is handed in by the
-// front door (the loop's StatusLanes) and both surfaces call the one Read.
+// The package reads the state file through a LaneReader, and the peers through
+// a PeerReader, its caller supplies rather than importing the implement loop:
+// the loop's own imports reach the site renderer, which renders this block, so
+// each reader is handed in by the front door (the loop's StatusLanes and
+// StatusPeers) and both surfaces call the one Read. The bare board hands in
+// both; the site's Status page hands in no PeerReader, because another
+// checkout's holdings are this machine's local state and never a published
+// page's.
 //
 // Core never writes to stdout; the front doors format the Block.
 package statusblock
@@ -58,13 +64,18 @@ type Block struct {
 	Order string `json:"order"`
 }
 
-// Row is one intent on the block: its id and title, the shelf it sits on, and
-// what places it where it is. A field another placement needs (a target
-// release, a score) joins here, omitted when empty.
+// Row is one intent on the block: its id and title, the shelf it sits on, the
+// release it targets, and what places it where it is. A field another
+// placement needs (a score) joins here, omitted when empty.
 type Row struct {
 	ID     string `json:"id"`
 	Title  string `json:"title"`
 	Bucket string `json:"bucket"`
+	// Target is the release a planned intent names as the one it must land by
+	// (`target_release`: `next` or vX.Y.Z, itd-2609212103572513 criterion 4),
+	// empty when it names none. A draft shows none: a target is a promise about
+	// planned work, and the cut reads it off planned intents alone.
+	Target string `json:"target_release,omitempty"`
 	// NextUp marks the pick order's head on Now.
 	NextUp bool `json:"next_up,omitempty"`
 	// Lane is the lane state of a Now row the state file shows.
@@ -81,9 +92,9 @@ type Lane struct {
 	// Lane is the lane's id inside the run (lane-1, …); empty while the run
 	// waits to open its next lane.
 	Lane string `json:"lane,omitempty"`
-	// Step is the lane's next step (worktree, brief, implement, validate,
+	// Stage is the lane's next stage (worktree, brief, implement, validate,
 	// land), or "pending" while the run waits to open its next lane.
-	Step string `json:"step"`
+	Stage string `json:"stage"`
 	// Awaiting is the agent role the lane waits on, when it waits on one.
 	Awaiting string `json:"awaiting,omitempty"`
 }
@@ -98,9 +109,20 @@ type Started struct {
 // absent state file reads as no lanes, never as an error.
 type LaneReader func(repoRoot string) ([]Started, error)
 
+// HeldBy reports whether a peer holds the intent a readiness result judges,
+// and why: the build's peers check, read once for the whole block. A non-empty
+// reason is a holding.
+type HeldBy func(r intent.ReadyResult) string
+
+// PeerReader reads the peers of the checkout at repoRoot once and returns the
+// check the head is judged by. It is the build's own peers check (the loop's
+// StatusPeers), so the head passes over exactly the intents the pick does.
+type PeerReader func(repoRoot string) (HeldBy, error)
+
 // Read computes the block for the checkout at repoRoot. lanes may be nil, which
-// reads as an absent state file. It writes nothing.
-func Read(repoRoot string, lanes LaneReader) (Block, error) {
+// reads as an absent state file; peers may be nil, which leaves the head
+// unjudged against other checkouts. It writes nothing.
+func Read(repoRoot string, lanes LaneReader, peers PeerReader) (Block, error) {
 	b := Block{Now: []Row{}, Next: []Row{}, Later: []Row{}, Order: OrderPick}
 
 	corpus, err := intent.Load(repoRoot)
@@ -121,7 +143,11 @@ func Read(repoRoot string, lanes LaneReader) (Block, error) {
 		if err != nil {
 			return Row{}, err
 		}
-		return Row{ID: it.ID, Title: l.Title, Bucket: it.Bucket}, nil
+		r := Row{ID: it.ID, Title: l.Title, Bucket: it.Bucket}
+		if it.Bucket == intent.BucketPlanned {
+			r.Target = it.TargetRelease
+		}
+		return r, nil
 	}
 
 	// The state file is read first: an intent it shows in a lane is listed
@@ -158,6 +184,7 @@ func Read(repoRoot string, lanes LaneReader) (Block, error) {
 	type ready struct {
 		it        intent.Intent
 		row       Row
+		res       intent.ReadyResult
 		cand      intent.PickCandidate
 		startable bool
 	}
@@ -181,7 +208,7 @@ func Read(repoRoot string, lanes LaneReader) (Block, error) {
 			if err != nil {
 				return Block{}, fmt.Errorf("reading the pre-start checks of %s: %w", it.ID, err)
 			}
-			readies = append(readies, ready{it: it, row: r, cand: intent.PickCandidate{ID: it.ID, Score: score}, startable: chk.OK()})
+			readies = append(readies, ready{it: it, row: r, res: res, cand: intent.PickCandidate{ID: it.ID, Score: score}, startable: chk.OK()})
 			continue
 		}
 		for _, c := range res.Checks {
@@ -194,15 +221,28 @@ func Read(repoRoot string, lanes LaneReader) (Block, error) {
 	sort.SliceStable(readies, func(i, j int) bool { return intent.PickLess(readies[i].cand, readies[j].cand) })
 
 	var head *Row
+	var heldBy HeldBy
+	peersRead := false
 	for _, rd := range readies {
 		b.Next = append(b.Next, rd.row)
 		// The head is the first READY intent in pick order the build would
 		// start: not one its record-only pre-start checks refuse (an open
 		// question, an unanswered claim section, a hold, an unshipped blocker,
-		// no step left to build); one already in a lane is not in readies at
-		// all. The build's peers check is not run: the block does not consult
-		// other checkouts.
+		// no step left to build), nor one the build's peers check finds another
+		// checkout holding when the caller handed that check in; one already
+		// in a lane is not in readies at all.
 		if head == nil && rd.startable {
+			// The peers are read once, and only when a head is in reach: a
+			// board with nothing to start pays no read of other checkouts.
+			if peers != nil && !peersRead {
+				peersRead = true
+				if heldBy, err = peers(repoRoot); err != nil {
+					return Block{}, fmt.Errorf("reading the peers for the next-up head: %w", err)
+				}
+			}
+			if heldBy != nil && heldBy(rd.res) != "" {
+				continue
+			}
 			h := rd.row
 			h.NextUp = true
 			head = &h

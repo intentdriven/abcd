@@ -90,3 +90,39 @@ func TestPreflightReportWithNoTargetsSaysNothingAboutThem(t *testing.T) {
 		t.Fatalf("no target, no section:\n%s", rep.Markdown())
 	}
 }
+
+// TestMissedTargetsAreTheOnesTheCutReaches is criterion 3's selection, as the
+// product thinker ruled it on 2026-09-29 (BS1): a cut passes every target that
+// names it or an earlier release — `next`, which names the release being cut,
+// and a tag at or below the derived one — and each of those becomes `next`. A
+// tag above the cut is still ahead and stays, and a value that is not a target
+// is left for the record lint to name.
+func TestMissedTargetsAreTheOnesTheCutReaches(t *testing.T) {
+	targets := []TargetedIntent{
+		{ID: "itd-1", Path: "p/itd-1.md", Target: "next"},
+		{ID: "itd-2", Path: "p/itd-2.md", Target: "v0.11.0"},
+		{ID: "itd-3", Path: "p/itd-3.md", Target: "v0.10.2"},
+		{ID: "itd-4", Path: "p/itd-4.md", Target: "v0.11.1"},
+		{ID: "itd-5", Path: "p/itd-5.md", Target: "v1.0.0"},
+		{ID: "itd-6", Path: "p/itd-6.md", Target: "0.11", Invalid: "not a target"},
+	}
+	var got []string
+	for _, m := range MissedTargets(targets, "v0.11.0") {
+		got = append(got, m.ID+"="+m.From+"@"+m.Path)
+	}
+	if want := "itd-1=next@p/itd-1.md,itd-2=v0.11.0@p/itd-2.md,itd-3=v0.10.2@p/itd-3.md"; strings.Join(got, ",") != want {
+		t.Errorf("MissedTargets = %v, want %s", got, want)
+	}
+	// A breaking cut that skips a minor passes the minor it skipped.
+	got = nil
+	for _, m := range MissedTargets(targets, "v1.0.0") {
+		got = append(got, m.ID)
+	}
+	if want := "itd-1,itd-2,itd-3,itd-4,itd-5"; strings.Join(got, ",") != want {
+		t.Errorf("MissedTargets at v1.0.0 = %v, want %s", got, want)
+	}
+	// No derived version, no move: a refused cut carries none.
+	if m := MissedTargets(targets, ""); len(m) != 0 {
+		t.Errorf("a cut with no version moves nothing: %v", m)
+	}
+}

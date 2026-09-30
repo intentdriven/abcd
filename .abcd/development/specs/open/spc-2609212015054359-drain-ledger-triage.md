@@ -108,7 +108,34 @@ until the run itself closes it.
   because the issue-keyed lane is not built. The command page is
   `commands/drain.md`, listed in the agents block until the product thinker
   rules on the person's fourteen-verb ceiling.
-- **Remaining:** scope 3 (the host judgement), 4 (the issue-keyed lane, which
-  needs `implement` to take an `iss-` key), 5 (the hand-back writes), 7 (the
-  pace window and `--max`), the run's summary of scope 8, and the id-shape
-  criterion of scope 10 for the run's own inputs.
+- **Landed (the remedy required, rulings BX3 and H12 of 2026-09-29):**
+  `capture` refuses a new issue without a remedy; the automatic filers (the
+  consistency pass, every promoted inbox report) write the one machine
+  value `none (filed automatically)`, which the capture surface refuses from a
+  person; the dry run lists a record carrying it as ineligible until a person
+  writes a real remedy with `capture remedy`, the verb that writes or replaces
+  the field on an open issue. A record filed before the rule stays readable and
+  is listed as ineligible.
+- **Landed (the run): scope 4, 5 and 7, and the run's half of scope 8 and
+  10.** `abcd build <iss-N>` and the drain start the implement loop keyed by
+  the issue: the key is an issue id by shape, the checks are this rule read as
+  the dry run reads it and the peers, the brief is the record with its remedy as
+  the work and the reproduce-then-fix definition of done, the validators run
+  without the fidelity audit, the receipt must declare the issue fixed, and the
+  landing resolves it and opens one pull request (`loop/check.go`,
+  `loop/issuebrief.go`, `loop/receipt.go`). A receipt's `handback` (kind,
+  reason, home) ends the lane before its validators, its worktree and branch
+  discarded and the discarded head recorded. The bare `abcd drain` performs one
+  move per invocation (`loop/drain.go`): one lane at a time in the drain order;
+  a lane's hand-back routed by kind (a user-visible change promoted with
+  `capture promote`, the issue gaining the draft in `related_intents` and
+  nothing else; a trust rule flagged with its question, nothing minted; a
+  design finding or a second package flagged with its home); every field
+  hand-back flagged naming its rule; the drain's window closing into
+  `next_eligible_at` in `.abcd/.work.local/run/drain.json`; `--max <n>` ending
+  the drain at the cap. The summary is text and `--json`, and a move that opens
+  or merges nothing exits 0 saying why.
+- **Remaining:** scope 3 (the host judgement over each eligible remedy; the run
+  opens a lane for every eligible issue until it lands, and only the lane can
+  hand its issue back), and the counts of scope 8 not yet in the summary (the
+  spend).

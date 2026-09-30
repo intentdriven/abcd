@@ -101,7 +101,7 @@ func TestPresetV1LoadsAndReportsNoWindow(t *testing.T) {
 	if pf.SchemaVersion != 1 {
 		t.Errorf("the loaded file reports schema version %d, want 1", pf.SchemaVersion)
 	}
-	entry, err := PresetFor(pf, PositionWidening)
+	entry, err := presetFor(pf, PositionWidening)
 	if err != nil {
 		t.Fatalf("the version 1 entry did not resolve: %v", err)
 	}
@@ -111,7 +111,7 @@ func TestPresetV1LoadsAndReportsNoWindow(t *testing.T) {
 	if entry.Window != nil {
 		t.Errorf("a version 1 entry declared a window: %+v", entry.Window)
 	}
-	if w := PresetWindow(pf, PositionWidening); w != nil {
+	if w := presetWindow(pf, PositionWidening); w != nil {
 		t.Errorf("PresetWindow returned %+v for a version 1 file; there is no declaration to "+
 			"return, and a zero would read as a bound", w)
 	}
@@ -442,8 +442,8 @@ func TestShippedObjectRecordsAllResolve(t *testing.T) {
 		t.Fatalf("the committed preset file does not load: %v", err)
 	}
 	seen := map[string]bool{}
-	for _, pos := range AssemblingPositions() {
-		entry, err := PresetFor(pf, pos)
+	for _, pos := range assemblingPositions() {
+		entry, err := presetFor(pf, pos)
 		if err != nil {
 			t.Fatalf("the committed file names no entry for %s: %v", pos, err)
 		}
@@ -505,8 +505,8 @@ func TestShippedEntriesDeclareMeasuredFigures(t *testing.T) {
 		t.Errorf("the committed file is at schema version %d, want %d",
 			pf.SchemaVersion, PresetSchemaVersion)
 	}
-	for _, pos := range AssemblingPositions() {
-		w := PresetWindow(pf, pos)
+	for _, pos := range assemblingPositions() {
+		w := presetWindow(pf, pos)
 		if w == nil {
 			t.Errorf("the committed entry for %s declares no window", pos)
 			continue
@@ -588,7 +588,7 @@ func TestEntailmentSizeReportStatesTheMechanismProportion(t *testing.T) {
 // statement.
 func TestMechanismProportionIsAbsentAtOtherPositions(t *testing.T) {
 	root := fixtureRepo(t)
-	for _, p := range AssemblingPositions() {
+	for _, p := range assemblingPositions() {
 		res := assembleFixture(t, root, p)
 		if p == PositionEntailment {
 			if res.Size.Mechanism == nil {
@@ -646,7 +646,7 @@ func TestDefaultItemSetsMatchTheRecordedDigests(t *testing.T) {
 		PositionDetection:   "7b37ef14556a385fc65fac148059c815799bfe2aa17a732cd9799ee30aecdb85",
 	}
 	seen := map[string]Position{}
-	for _, p := range AssemblingPositions() {
+	for _, p := range assemblingPositions() {
 		res, err := Assemble(AssembleRequest{
 			RepoRoot: root, Position: p, Target: "HEAD", DryRun: true,
 		})
@@ -704,7 +704,7 @@ func TestAnEntrysItemSetHoldsTheExclusionFloor(t *testing.T) {
 		sentinelWhyItMatter, sentinelOrigin, sentinelSuperseded, sentinelPlan,
 		sentinelPriorRun, sentinelDefinition, sentinelLapse,
 	}
-	for _, p := range AssemblingPositions() {
+	for _, p := range assemblingPositions() {
 		res, err := Assemble(AssembleRequest{
 			RepoRoot: root, Position: p, Target: "HEAD", DryRun: true,
 		})
@@ -734,7 +734,7 @@ func TestTwoAssembliesOfOneEntryAreByteIdentical(t *testing.T) {
 	writeFile(t, root, PresetConfigPath, string(raw))
 	gitCommitAll(t, root)
 
-	for _, p := range AssemblingPositions() {
+	for _, p := range assemblingPositions() {
 		first := assembleFixture(t, root, p)
 		second := assembleFixture(t, root, p)
 		if !identicalButForRun(t, first.Bundle, second.Bundle) {

@@ -1,7 +1,7 @@
 ---
 name: capture
-description: "File an issue from quoted text, or render the ledger's status bare: Writes one record under open/; refuses a lone word and any folder outside a checkout."
-argument-hint: "[text] | list --open|--resolved|--wontfix|--all | link <iss-N> [--blocked-by <iss-M,...>] [--unblock <iss-M,...>] | promote <iss-N> --grounds \"<token>: <text>\" [--intent <itd-N>] | promote <rdi-N> [--intent <itd-N>] | resolve <iss-N> <note> --impact <additive|breaking|fix|internal> --grounds \"<token>: <text>\" [--intent <itd-N>] [--spec <spc-N>] [--commit <sha>] | wontfix <iss-N> <reason> [--duplicates <iss-N|itd-N,...>] | defer <iss-N> --after <vX.Y.Z> --reason <text> | disposition <rdi-N> --state <accepted|rejected|declined|held> | admit <rdi-N> --grounds \"<why>\" | surprise --occasioned-by <rdi-N|adm-N|dsp-N> \"<what>\" | reframe --occasioned-by <rdi-N|dsp-N|srp-N> --grounds \"<why>\" [--open] | reframe --complete <rfm-N> | migrate [--apply]"
+description: "File an issue from quoted text, or render the ledger's status bare: Writes one record under open/; refuses a missing --remedy, a lone word or no checkout."
+argument-hint: "[<text> --remedy <fix>] | list --open|--resolved|--wontfix|--all | link <iss-N> [--blocked-by <iss-M,...>] [--unblock <iss-M,...>] | promote <iss-N> --grounds \"<token>: <text>\" [--intent <itd-N>] | promote <rdi-N> [--intent <itd-N>] | resolve <iss-N> <note> --impact <additive|breaking|fix|internal> --grounds \"<token>: <text>\" [--intent <itd-N>] [--spec <spc-N>] [--commit <sha>] | wontfix <iss-N> <reason> [--duplicates <iss-N|itd-N,...>] | defer <iss-N> --after <vX.Y.Z> --reason <text> | remedy <iss-N> <text> | disposition <rdi-N> --state <accepted|rejected|declined|held> | admit <rdi-N> --grounds \"<why>\" | surprise --occasioned-by <rdi-N|adm-N|dsp-N> \"<what>\" | reframe --occasioned-by <rdi-N|dsp-N|srp-N> --grounds \"<why>\" [--open] | reframe --complete <rfm-N> | migrate [--apply]"
 block: people
 ---
 
@@ -61,15 +61,35 @@ exit 1 naming the directory.
 `/abcd:capture "…"`; a user-facing change you want to ship goes to
 `/abcd:intent "…"`. For a big, unproven idea there is an optional third route:
 `/abcd:ideate` runs the admission gauntlet and records the verdict either way.
-It is a pointer, never a precondition — capture friction stays at one line.
+It is a pointer, never a precondition. A capture is one line of text plus one
+line of remedy: every new issue names the fix it proposes, so the filing
+carries the first step towards closing it.
 
 ## Capture an issue
 
 Append a structured issue from free-form text:
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/abcd" capture "<text>" --json
+"${CLAUDE_PLUGIN_ROOT}/abcd" capture "<text>" --remedy "<the fix it proposes>" --json
 ```
+
+`--remedy` is required: every new issue carries the fix it proposes, one line,
+written as the record's `remedy:` field, and `abcd drain` reads it to decide
+whether the issue needs no decision. A capture without it, or with a blank one,
+is refused (exit 2, nothing written) with a message naming the flag. When no
+fix was given, ask the product thinker for it (set `abcd mode product-thinker`
+first); when they have none yet, let them choose the words rather than
+inventing a fix for them. A remedy chosen in an autonomous run cites its
+grounds in the record's text: where the fix depends on outside practice, a
+prior-art or state-of-the-art check (principle `prefer-sota`) names what it
+rests on, so the choice is not a guess repeated from memory. `none (filed automatically)` is the one value abcd's own
+automatic filers write when they have no fix of a person's (the consistency
+pass, and every promoted inbox report, whose sender's proposal stays in its
+text); a drain skips a record carrying it until a
+person writes a real remedy with `capture remedy`, below, and `--remedy` refuses
+it from a person, whatever its case, so the value always means a machine filed
+the record. A record filed before the remedy was required carries none; it
+stays readable and valid, and a drain lists it as ineligible.
 
 Provide provenance and taxonomy through flags when known (each falls back to a
 default): `--severity` (`nitpick|minor|major|critical`, default `minor`),
@@ -79,9 +99,7 @@ default): `--severity` (`nitpick|minor|major|critical`, default `minor`),
 or a conceptual location in words; a path that leaves the checkout or does not
 resolve in it is refused, exit 2, and nothing is written), `--lapsed-at` (RFC 3339 instant in
 UTC at which a recorded discipline gave way — the lapse itself, never the
-write-up), `--remedy` (the proposed fix, one line, written as the record's
-`remedy:` field; optional, and `abcd drain` takes no issue without one, so ask
-for it whenever the fix is known), `--slug` (overrides the slug derived from the text), `--blocked-by`
+write-up), `--slug` (overrides the slug derived from the text), `--blocked-by`
 (comma-separated `iss-N` ids this issue depends on; each must already exist in
 the ledger, and an edge to a record captured later is written afterwards with
 `link`, below), `--production-mode`
@@ -91,7 +109,11 @@ are closed sets, and their help names every member; a value outside one is
 refused (exit 2, nothing written) with a message naming the flag and the values
 it accepts, so relay the set and pick from it rather than guessing again. Report the new `id`, `status`, and `path` from the JSON. Report `redacted`
 too whenever it is non-zero: it counts the spans rewritten before the text was
-written, and the user needs to know their wording was changed. When
+written, and the user needs to know their wording was changed. Report
+`redaction_degraded` whenever it is present: it says the text was redacted with
+less than the full scan, including a repository's armed gitleaks
+(`.abcd/config/gitleaks.json`) whose binary is not installed or whose run
+failed. The record is written either way. When
 `uncommitted` is true, say that the record is not in git yet: until it is
 committed no other branch, worktree or gate can see it. When `no_location` is
 true, no `--found-at` was given: the record is written all the same, and the
@@ -470,6 +492,26 @@ whose severity is neither `major` nor `critical`, since the guard never blocks o
 one. Offer the user the other routes too — fix and resolve it, or `wontfix` it —
 rather than defaulting to a deferral.
 
+## Write the remedy onto an open issue
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" capture remedy <iss-N> "<the fix it proposes>" --json
+```
+
+`remedy` writes or replaces the `remedy:` field of an open issue. It is how a
+person answers a record an automatic filer wrote with `none (filed
+automatically)`, which a drain skips until then, and how a record filed before
+the remedy was required gains one. The text is one line: runs of whitespace,
+line breaks included, are folded to single spaces. Report the `id`, the `remedy`
+written and, when the JSON carries it, the `previous` value it replaced, since a
+replacement is never silent. Report `redacted` whenever it is non-zero. The
+record stays in `open/`. Refused with exit 2 and nothing written: an empty text,
+`none (filed automatically)` in any case (it would leave the record as the drain
+already skips it), a malformed or unknown id, and a record that is not open.
+When a person comes to write the real fix for a record filed with `none (filed
+automatically)`, offer to run a state-of-the-art research pass first (principle
+`prefer-sota`) before they write it, and let them decline.
+
 ## Answer a reading item
 
 A reading record is what an instrument returned; the researcher's answer to one
@@ -509,13 +551,16 @@ hand, until exactly one does.
 The standing disposition of an item is the one no sibling supersedes, and the
 superseded record stays in place, because a hold that vanished when it was
 answered would take its own exit condition with it. `--recurs` cites prior item ids — the
-recorded form of a warm recognition that something has come back, never a
-mechanical join and never a state of its own.
+researcher's confirmed recognition that something has come back, never a state
+of its own. The machine's proposal of a repeat is the `duplicates:` or
+`refines:` link `reading ingest` writes onto the item; a recurrence the
+researcher confirms is cited here.
 
 `--hold-frame-location` and `--hold-moscow` are **reserved and dormant**: the
 grammars are stated and a populated value is refused until activation is ruled.
-Nothing means "already covered" — an item nobody has answered is reported as
-outstanding by `abcd lint`, never named as a state.
+No state means "already covered": an item nobody has answered is reported as
+outstanding by `abcd lint`, never named as a state, and a stored link to a
+likely repeat is a proposal on the item, not an answer to it.
 
 **At the widening position, characterise first and admit second.** No
 disposition in any state (`accepted`, `declined` or `held`) and no admission is
@@ -703,6 +748,14 @@ record shows what a reading caused as well as whether a reading occasioned an
 intent. Its Press Release seed names no item ("Seeded by promotion from a reading
 item"): that section is projected to a later reading, and no reading sees
 another's output. The item's own text stays in the reading record.
+
+Promoting a reading item matches the draft it mints against the record, as a
+capture is matched: the item's pattern and body are compared with the open and
+resolved issues and the intents, and each likely double is written onto the
+draft as `duplicates:` or `refines:`. The JSON carries it as `match`, and the
+plain rendering prints each link written, or why nothing was compared. Relay the
+match; a person keeps a link or deletes its line. Link mode mints nothing and
+matches nothing.
 
 For a reading item the JSON's `issue_status` carries the **standing
 disposition's state** (`accepted`), not a status folder: that family's status

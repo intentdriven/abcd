@@ -83,10 +83,6 @@ func newSiteCommand(asJSON *bool) *cobra.Command {
 
 	siteCmd.AddCommand(newSiteSetupCommand(asJSON))
 
-	// The gate over the built site is `abcd lint site` (itd-2609212130136102);
-	// `site check` answers with it for one release.
-	siteCmd.AddCommand(movedStub("check", "abcd lint site"))
-
 	return siteCmd
 }
 
@@ -284,13 +280,18 @@ func newSiteSetupCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			var asker site.Asker = newPrompter(cmd)
+			// A missing gh is offered for install only to a person at a
+			// terminal, never on --yes (the DQ3 ruling), so its confirmation is
+			// built from the prompter before --yes replaces it.
+			p := newPrompter(cmd)
+			confirmTool := terminalToolConfirm(p, yes, cmd.ErrOrStderr())
+			var asker site.Asker = p
 			if yes {
 				asker = alwaysConfirm{}
 			}
 			res, err := site.Setup(site.SetupRequest{
 				RepoRoot: cwd, Name: name, Domain: domain, Confirm: confirm, Asker: asker,
-				Context: cmd.Context(),
+				ConfirmTool: confirmTool, Context: cmd.Context(),
 			})
 			if err != nil {
 				return &exitError{Code: 2, Msg: "abcd site setup: " + scrubPaths(err)}
@@ -312,7 +313,7 @@ func newSiteSetupCommand(asJSON *bool) *cobra.Command {
 	cmd.Flags().StringVar(&name, "name", "", "host name when the composition names none (default: the repository's name)")
 	cmd.Flags().StringVar(&domain, "domain", "", "custom domain to route to the host when the composition names none")
 	cmd.Flags().BoolVar(&confirm, "confirm", false, "replace a workflow or host configuration that differs from what setup writes")
-	cmd.Flags().BoolVar(&yes, "yes", false, "confirm the forge and host changes without being asked; without it an unanswered run declines them")
+	cmd.Flags().BoolVar(&yes, "yes", false, "confirm the forge and host changes without being asked (never the install of a missing gh); without it an unanswered run declines them")
 	return cmd
 }
 

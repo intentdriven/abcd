@@ -59,3 +59,46 @@ type TargetedIntent struct {
 	// what refuses the value.
 	Invalid string `json:"invalid,omitempty"`
 }
+
+// TargetMove is one targeted intent a cut passes without shipping it: the row
+// the cut rewrites to `next` in the change that rolls the changelog, and the
+// changelog's move note names (criterion 3, ruling BS1 of 2026-09-29).
+type TargetMove struct {
+	// ID is the intent's id (itd-N).
+	ID string `json:"id"`
+	// Path is the record's repo-relative path.
+	Path string `json:"path"`
+	// From is the target the record carried before the cut: `next`, which
+	// named the release being cut, or a tag at or below it.
+	From string `json:"from"`
+}
+
+// MissedTargets returns every target the cut to nextTag passes, in the order
+// given: `next`, which names the release being cut, and a tag at or below
+// nextTag, which names this release or one that will now never be cut. Each
+// becomes `next` — the following release, whatever version it derives — so a
+// missed target never goes stale and is never renumbered by guess (the product
+// thinker's ruling BS1 of 2026-09-29). A tag above nextTag is still ahead and
+// is not listed; neither is a value that is not a target (the record lint
+// names it), nor anything when nextTag is empty, because a refused cut
+// derives no version and writes nothing.
+func MissedTargets(targets []TargetedIntent, nextTag string) []TargetMove {
+	cut, err := ParseSemver(strings.TrimPrefix(nextTag, "v"))
+	if err != nil || nextTag == "" {
+		return nil
+	}
+	var out []TargetMove
+	for _, tg := range targets {
+		if tg.Invalid != "" || ValidTargetRelease(tg.Target) != nil {
+			continue
+		}
+		if tg.Target != TargetNext {
+			v, err := ParseSemver(strings.TrimPrefix(tg.Target, "v"))
+			if err != nil || CoreGreater(v, cut) {
+				continue
+			}
+		}
+		out = append(out, TargetMove{ID: tg.ID, Path: tg.Path, From: tg.Target})
+	}
+	return out
+}

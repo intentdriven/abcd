@@ -11,6 +11,7 @@
 package update
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
@@ -19,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net"
 	"net/http"
 	"net/url"
@@ -27,6 +29,7 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/minio/selfupdate"
@@ -45,6 +48,21 @@ const (
 	ActionCurrent Action = "already-current"
 	ActionRefused Action = "refused"
 )
+
+// UpdatedFormat is the one wording of the line every binary swap prints when it
+// completes: `abcd update`'s receipt and hooks/bootstrap.sh's success notice
+// both lead with it, and the session check uses it for the one swap whose
+// output nobody sees (the ruling CJ1b in .abcd/work/DECISIONS.md). The
+// bootstrap is POSIX sh and cannot import it, so
+// TestBootstrapUpdateLineIsTheSharedWording holds the script's printf literal
+// to this constant.
+const UpdatedFormat = "abcd updated from %s to %s"
+
+// UpdatedLine renders UpdatedFormat. The caller sanitises both tags: they are
+// read off an HTTP response or a record on disk.
+func UpdatedLine(from, to string) string {
+	return fmt.Sprintf(UpdatedFormat, from, to)
+}
 
 // Refusal is a named no: the shape that refused, why, and the remedy. Every
 // refusal is loud and names its way out (the itd-130 dispatch contract).
@@ -214,7 +232,7 @@ func Plan(t ahoy.UpdateTarget) *Refusal {
 			detail += ", which resolves to " + resolvedPath + ","
 		}
 		detail += " is not something abcd owns: it is not abcd's dev shim, not a link into a plugin install, not itself a regular file abcd can verify, and no provenance record abcd wrote names it; abcd never clobbers a binary it does not own." +
-			" A version of \"dev\" from `abcd version` is a build label (any locally built binary carries it), not the dev-shim install shape"
+			" A version of \"dev\" from `abcd --version` is a build label (any locally built binary carries it), not the dev-shim install shape"
 		if t.LaterOwned != "" {
 			detail += "; a working abcd install sits shadowed behind it at " + fsutil.RedactHome(t.LaterOwned)
 		}
@@ -284,8 +302,9 @@ var scrubbedEnv = []string{
 }
 
 // tagShape is the accepted release-tag alphabet; a tag travels into a URL
-// path, so anything path-shaped refuses before any request is built.
-var tagShape = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$`)
+// path, so anything path-shaped refuses before any request is built. It is
+// ahoy's, which holds the session check's unseen-update tags to the same shape.
+var tagShape = ahoy.ReleaseTagShape
 
 const (
 	maxChecksumsBytes = 1 << 20 // 1 MiB: checksums.txt is a few hundred bytes
@@ -520,14 +539,33 @@ func (u *Updater) Apply(target, tag string, progress io.Writer) (Report, error) 
 	if progress != nil {
 		reader = &progressReader{r: body, total: size, out: progress, label: u.assetName + " " + tag}
 	}
-	// selfupdate verifies the stream against the checksum BEFORE the rename
-	// and restores the target on failure — the atomic swap plus the Windows
-	// rename dance, in the one implementation the interview signed off.
-	if err := selfupdate.Apply(reader, selfupdate.Options{TargetPath: target, Checksum: sum}); err != nil {
+	// The whole body is read and verified before any file is created, so a
+	// truncated or tampered download stages nothing.
+	newBytes, err := io.ReadAll(reader)
+	if err != nil {
+		return rep, fmt.Errorf("downloading %s %s: %w", tag, u.assetName, err)
+	}
+	if got := sha256.Sum256(newBytes); !bytes.Equal(got[:], sum) {
+		return rep, fmt.Errorf("verifying %s against the release manifest: the download's sha256 is %x, the manifest names %x", u.assetName, got, sum)
+	}
+	staged, err := stageVerified(target, newBytes)
+	if err != nil {
+		return rep, fmt.Errorf("staging %s beside %s: %w", u.assetName, target, err)
+	}
+	// selfupdate's commit moves the target aside, renames the staged file into
+	// place and restores the target on failure — the atomic swap plus the
+	// Windows rename dance, in the one implementation the interview signed off.
+	if err := selfupdate.CommitBinary(selfupdate.Options{TargetPath: target}); err != nil {
 		if rerr := selfupdate.RollbackError(err); rerr != nil {
-			return rep, fmt.Errorf("swap failed AND rollback failed — the binary at %s may be broken: %v (rollback: %v)", target, err, rerr)
+			// The one failure that keeps the staged file: the target is
+			// gone from its name and the staged file is the verified
+			// release, so it is named for recovery rather than deleted.
+			return rep, fmt.Errorf("swap failed AND rollback failed — the binary at %s may be broken; the verified release is staged at %s: %v (rollback: %v)", target, staged, err, rerr)
 		}
-		return rep, fmt.Errorf("verifying %s against the release manifest: %w", u.assetName, err)
+		// The target is back in place (or never moved), so the staged
+		// file is the only thing this failure leaves: unlink it.
+		_ = os.Remove(staged)
+		return rep, fmt.Errorf("swapping %s into place: %w", u.assetName, err)
 	}
 	if progress != nil {
 		fmt.Fprintln(progress)
@@ -536,6 +574,47 @@ func (u *Updater) Apply(target, tag string, progress io.Writer) (Report, error) 
 	rep.NewVersion = tag
 	rep.Digest = wantHex
 	return rep, nil
+}
+
+// stagingWriter wraps the staging file's writer: the identity as it ships, a
+// test seam through which a write can be made to fail partway.
+var stagingWriter = func(w io.Writer) io.Writer { return w }
+
+// stageVerified writes the verified bytes to the staging file beside target,
+// at the name selfupdate's commit renames into place, and flushes them to disk
+// before the swap. It returns the staging path. On failure the file is gone.
+//
+// Whatever stands at the staging name is unlinked first (a leftover from a
+// crashed run, or a symlink planted there), and the file is then created
+// fresh: O_EXCL is what makes the open safe on every platform, because it
+// refuses any entry at the name, a symlink included, so the bytes can never be
+// written through a link into a file elsewhere and the entry the swap renames
+// into place is the regular file this open created. O_NOFOLLOW adds nothing
+// past O_EXCL and is kept as a second statement of the same intent.
+func stageVerified(target string, b []byte) (string, error) {
+	staged := filepath.Join(filepath.Dir(target), "."+filepath.Base(target)+".new")
+	if err := os.Remove(staged); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return "", fmt.Errorf("clearing the staging name %s: %w", staged, err)
+	}
+	fp, err := os.OpenFile(staged, os.O_CREATE|os.O_EXCL|os.O_WRONLY|syscall.O_NOFOLLOW, 0o755)
+	if err != nil {
+		return "", err
+	}
+	_, err = io.Copy(stagingWriter(fp), bytes.NewReader(b))
+	if err == nil {
+		err = fsutil.Flush(fp)
+	}
+	if cerr := fp.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		// The file exists from the open on, so every failure after it
+		// unlinks it: a half-written staging file is never left beside the
+		// target (spc-32 criterion 7).
+		_ = os.Remove(staged)
+		return "", err
+	}
+	return staged, nil
 }
 
 // runsFromTarget reports whether target is the very file this process was

@@ -26,7 +26,7 @@ package ideate
 //   - STAGE ONE redacts the free-text FIELDS, before the renderer sees them.
 //     Capture's redact.go argues the same ordering from its own near-miss:
 //     redaction must run on the inputs, not on the rendered document. Here the
-//     reason is the renderer's escaping. render.go's cell() and blockText() are
+//     reason is the renderer's escaping. termsafe.TableCell and termsafe.BlockText are
 //     what stop untrusted prose forging a table column or a link reference
 //     definition that swallows the record, and they are correct only if nothing
 //     rewrites their output afterwards — a placeholder dropped into a rendered
@@ -163,6 +163,13 @@ func (r *recordRedactor) verify(artefacts ...string) error {
 	}
 	if len(residual) > 0 {
 		return &RedactionResidualError{Residual: residual}
+	}
+	// A repository's opt-in scanner augmenter (gitleaks) runs inside every
+	// ScanText above, and a run that failed degraded the scanner during it:
+	// the fields were then redacted without it, so the write refuses as it
+	// does on a scanner degraded from the start.
+	if unavail, reason := r.sc.Unavailable(); unavail {
+		return fmt.Errorf("ideate: refusing to write a verdict record with a degraded scanner: %s — nothing was written", reason)
 	}
 	return nil
 }

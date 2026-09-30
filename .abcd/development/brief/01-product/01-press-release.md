@@ -30,7 +30,7 @@ See [`04-scope.md`](04-scope.md) for the full scope boundary and [`04-surfaces/`
 
 ## What's Out of Scope
 
-Code-bundling lifeboats, cross-corpus synthesis, public-source vendoring with provenance, scheduled `dev-sync`, opencode harness portability, hash-chain conversation audit, and 13 more later-phase items — all live as press-release intents in `.abcd/development/intents/drafts/`. See [`06-delivery/03-out-of-scope.md`](../06-delivery/03-out-of-scope.md) for the canonical later-phase list.
+Code-bundling lifeboats, cross-corpus synthesis, public-source vendoring with provenance, scheduled `dev-sync`, opencode harness portability, hash-chain conversation audit, and 13 more items not yet under way — all live as press-release intents in `.abcd/development/intents/drafts/`. See [`06-delivery/03-out-of-scope.md`](../06-delivery/03-out-of-scope.md) for the canonical later-phase list.
 
 ## Acceptance Criteria
 
@@ -38,7 +38,7 @@ Code-bundling lifeboats, cross-corpus synthesis, public-source vendoring with pr
 - **Given** a destination directory that is non-empty and carries no parseable `_provenance.json`, **when** `/abcd:disembark pack <source-repo> <dest>` runs, **then** the command refuses with the offending path cited and writes nothing — abcd never overwrites a directory it did not produce (adr-35).
 - **Given** a lifeboat produced by `/abcd:disembark pack <source-repo> <dest>` and an empty target repo, **when** `/abcd:embark from <dest>` runs, **then** the user is presented with the press-release interview as the first interaction, the amended press release becomes the new repo's `.abcd/development/brief/README.md`, and all canonical-location files (specs, ADRs, memory, docs, terminology, principles) land at the locations specified in [`04-surfaces/03-embark.md § 3`](../04-surfaces/03-embark.md#3-scaffold-steps).
 - **Given** a fresh repo with no `.abcd/` directory, **when** `/abcd:ahoy install` runs to completion, **then** the repo is bootstrapped per [`04-surfaces/01-ahoy.md § Acceptance`](../04-surfaces/01-ahoy.md#acceptance), and re-running `install` at the same `setup_version` is idempotent (no marker duplication, transparent re-confirm of visibility).
-- **Given** a clean tree with a deliberate PII fixture (e.g., a real email in a comment), **when** `/abcd:launch ship` runs, **then** preflight hard-fails with the offending file/line cited and no payload is written; a `/abcd:launch dry-run` on the same tree prints the would-refuse finding and exits 0 (report-only preview per [`04-surfaces/04-launch.md`](../04-surfaces/04-launch.md)).
+- **Given** a clean tree with a deliberate PII fixture (e.g., a real email in a comment), **when** `/abcd:launch ship` runs, **then** preflight hard-fails with the offending file/line cited and no payload is written; `/abcd:launch --dry-run` on the same tree prints the would-refuse finding and exits 0 (report-only preview per [`04-surfaces/04-launch.md`](../04-surfaces/04-launch.md)).
 - **Given** the user runs `/abcd:intent "<text>"` (canonical bare quoted create), **when** the interview completes, **then** an `intents/drafts/itd-N-<slug>.md` file exists with press-release content, customer quote from the persona registry, and a `## Acceptance Criteria` section in Given-When-Then format (per itd-1).
 - **Given** the user runs `/abcd:capture "<text>"`, **when** the command completes, **then** a structured issue at `.abcd/work/issues/open/iss-N-<slug>.md` exists with frontmatter populated and source provenance recorded.
 - **Given** work that reaches the oracle seam is required (lifeboat-reviewer, press-release-composer product audit, or intent-auditor), **when** no oracle adapter is wired or reachable, **then** the host-delegated default runs it and the command never blocks.
@@ -46,7 +46,7 @@ Code-bundling lifeboats, cross-corpus synthesis, public-source vendoring with pr
 
 ## Open Questions
 
-- **Pass B signal density.** chat-distiller's effectiveness depends on the native transcript store's signal-to-noise. Phase 0 sampling on idelphiDev measures actual density before Pass B's design locks. If signal is too thin, transcript-noise mitigation moves up from itd-11 (a later-phase item) into an earlier phase.
+- **Pass B signal density.** chat-distiller's effectiveness depends on the native transcript store's signal-to-noise. Sampling on idelphiDev measures actual density before Pass B's design locks. If signal is too thin, transcript-noise mitigation moves up from itd-11 (a draft intent) into an earlier phase.
 - **Brief-skeleton enforcement.** The numbered-folder layout for `.abcd/development/brief/` is a current convention but not enforced by `intent-auditor` or `documentation-auditor`. See [`05-internals/README.md § enforcement policy`](../05-internals/README.md#policy-no-skeleton-enforcement-deferred) for the candidates list and the deferred-rigidity rationale (this "defer" means deferring the rigidity decision itself, not a release horizon).
 - **Round-trip fidelity floor.** What's the minimum percentage of source-repo principles, decisions, and pitfalls that must survive `disembark → embark` for the round-trip to be considered "successful"? abcd ships without an explicit floor; the lifeboat review verdict is the proxy. A future intent (likely paired with itd-15 self-dogfooded SOTA audit) may quantify it.
 

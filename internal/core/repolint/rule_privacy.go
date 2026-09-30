@@ -160,6 +160,23 @@ func (privacyHygiene) Eval(ctx Context) ([]Finding, error) {
 	}
 	patterns = append(patterns, leakPatterns...)
 
+	// The scanner augmenter this repository opted into (gitleaks, in
+	// .abcd/config/gitleaks.json) scans every tracked text file beside the
+	// network set. Configured with its binary not installed, it is a gap, and
+	// the gap is an error: "conforms" over a scan the repository asked to be
+	// deeper is the didn't-scan-reported-clean shape, and launch refuses on the
+	// same gap (the 2026-09-25 ruling on iss-2608291814575788).
+	if gap := sc.AugmenterGap(); gap != "" {
+		out = append(out, Finding{
+			RuleID:   "privacy-hygiene",
+			Severity: SeverityError,
+			File:     augmenterConfigRel,
+			Message:  "the scanner augmenter this repository configured did not run, so no tracked file was scanned with it: " + gap,
+			Fix:      "install it, or set enabled to false in " + augmenterConfigRel,
+		})
+	}
+	degradedBefore, _ := sc.Unavailable()
+
 	for _, rel := range tracked {
 		data, ok, oversizeText, openErr := readTrackedFile(root, filepath.FromSlash(rel))
 		if !ok {
@@ -195,6 +212,21 @@ func (privacyHygiene) Eval(ctx Context) ([]Finding, error) {
 			continue
 		}
 		lines := strings.Split(string(data), "\n")
+		for _, af := range sc.ScanAugmented(string(data), rel) {
+			// A waiver on the line covers what the augmenter found there too.
+			// The finding names the kind, never the value it matched.
+			if l := lines[af.Line-1]; strings.Contains(l, lintWaiver) || strings.Contains(l, auditWaiver) {
+				continue
+			}
+			out = append(out, Finding{
+				RuleID:   "privacy-hygiene",
+				Severity: SeverityError,
+				File:     rel,
+				Line:     af.Line,
+				Message:  "the scanner augmenter this repository configured flagged a secret on this line (" + af.Kind + ")",
+				Fix:      "remove the secret from the file and rotate it",
+			})
+		}
 		for i, line := range lines {
 			if strings.Contains(line, lintWaiver) || strings.Contains(line, auditWaiver) {
 				continue
@@ -213,8 +245,24 @@ func (privacyHygiene) Eval(ctx Context) ([]Finding, error) {
 			})
 		}
 	}
+	// A run of the augmenter that failed during the walk degraded the scanner:
+	// the files after it were not scanned with it, so it is reported rather than
+	// read as a clean pass.
+	if bad, why := sc.Unavailable(); bad && !degradedBefore {
+		out = append(out, Finding{
+			RuleID:   "privacy-hygiene",
+			Severity: SeverityError,
+			File:     augmenterConfigRel,
+			Message:  "the scanner augmenter this repository configured failed, so the tracked files were not all scanned with it: " + why,
+			Fix:      "repair the augmenter's installation or configuration, or set enabled to false in " + augmenterConfigRel,
+		})
+	}
 	return out, nil
 }
+
+// augmenterConfigRel is the opt-in config of the one scanner augmenter abcd
+// wires, gitleaks; a gap or a failed run cites it.
+const augmenterConfigRel = ".abcd/config/gitleaks.json"
 
 // privacyLeak reports whether one line carries content that must never be
 // committed, the message naming the class, the fix that class calls for, and the

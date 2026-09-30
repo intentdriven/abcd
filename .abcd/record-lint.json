@@ -265,6 +265,10 @@
       "severity": "blocker",
       "issues_dir": ".abcd/work/issues"
     },
+    "adr_id_unique": {
+      "enabled": true,
+      "severity": "blocker"
+    },
     "issue_impact_valid": {
       "enabled": true,
       "severity": "blocker",
@@ -303,6 +307,14 @@
         "rfm": ".abcd/work/issues/reframes",
         "prn": ".abcd/development/principles"
       }
+    },
+    "stale_edge": {
+      "enabled": true,
+      "severity": "warn"
+    },
+    "edge_cycle": {
+      "enabled": true,
+      "severity": "warn"
     },
     "prose_citation_resolves": {
       "enabled": true,

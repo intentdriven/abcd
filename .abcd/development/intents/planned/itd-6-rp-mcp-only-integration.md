@@ -5,7 +5,7 @@ spec_id: spc-2609211950427074
 kind: standalone
 suggested_kind: null
 reclassification_history: []
-builds_on: [itd-2, itd-2609201916151817, itd-2609170822093401, itd-2609201925079472, itd-2609201916056194]
+builds_on: [itd-2609201916151817, itd-2609170822093401, itd-2609201925079472, itd-2609201916056194]
 severity: minor
 impact: additive
 ---
@@ -21,7 +21,7 @@ impact: additive
 
 > **abcd has exactly one integration with RepoPrompt: the MCP API.** abcd never picks an `oracle`, never reads RP's preset selection, never spawns its own subprocess for code review. It calls RP via MCP and RP uses whatever `oracle` the persona has configured for whatever task — Claude via the persona's subscription, Codex via the persona's subscription, Gemini, any preset RP knows. The persona configures `oracle` backends inside RP once; abcd uses them forever. Zero abcd-side `oracle` logic, zero "which preset?" prompts, zero hard-coded routing.
 >
-> **Status: no part of the RP MCP route is built.** The `RPUnavailable` error, the `MCPBridge` and the `oracle.py` audit-fix loop this record names belong to an earlier Python lineage: its spec `spc-5-rp-mcp-integration-declare` (not the `spc-5` in this repository's spec store) and its ADR-02 and ADR-03 (not this repository's adr-2 and adr-3). None of them is in this binary, and `go.mod` carries no MCP dependency. The re-filed scope, [spc-2609211950427074](../../specs/open/spc-2609211950427074-rp-mcp-only-integration.md), builds the route from nothing. See the Implementation status section.
+> **Status: no part of the RP MCP route is built.** The `RPUnavailable` error, the `MCPBridge` and the `oracle.py` audit-fix loop this record names belong to an earlier Python lineage: its spec `spc-5-rp-mcp-integration-declare` (predecessor store; not the `spc-5` in this repository's spec store) and its ADR-02 and ADR-03 (not this repository's adr-2 and adr-3). None of them is in this binary, and `go.mod` carries no MCP dependency. The re-filed scope, [spc-2609211950427074](../../specs/open/spc-2609211950427074-rp-mcp-only-integration.md), builds the route from nothing. See the Implementation status section.
 >
 > "I had wired up Claude, Codex, and Gemini in RP with task-specific presets," said Bob, staff engineer. "I'd worried abcd would keep asking me which to use. The RP MCP bridge just calls RP; when RP is not reachable it raises a typed `RPUnavailable` so the tooling can react cleanly instead of guessing. RP picks the `oracle`. I don't think about it."
 
@@ -42,7 +42,7 @@ This intent re-frames the brief's RP integration: drop "select RP backend with p
 - **Failure mode**: if RP MCP is unreachable, abcd falls through to Codex if configured, then in-session subagent. Three-step cascade.
 - **One-time RP setup discovery**: ahoy detects the RP MCP server config (in `~/Library/Application Support/RepoPrompt/MCP/` or `.mcp.json`), notes it in `.abcd/config.json` → `oracle.rp.mcp_config_path`, and tests reachability. If reachable: lock `oracle.backend = "rp"`. If not: lock `oracle.backend = "codex"` (if Codex CLI present) or `"in-session"` (final fallback) and surface a one-time hint about how to enable RP later.
 
-- **Same-chat re-review semantics** (codified abcd rule, narrowed by ADR-02 § 3): when abcd re-runs an oracle/review/audit after applying fixes (plan-review → fix → re-review; impl-review → fix → re-review; lifeboat-oracle → fix → re-audit), the re-call MUST stay in the **same RP chat** — never `--new-chat`, never fresh `rp builder`. RP chats accumulate context (original artefact + first review + fix summary); same-chat re-runs let the model do incremental "are these fixes correct?" checks instead of starting from scratch. The harness `mcp_call` for an RP audit MUST return `chat_id` in `McpResult`; the audit-fix loop in abcd's `oracle.py` MUST thread that ID back as the `chat_id` arg on the next call. **Narrowed (ADR-02 Criterion 3b):** "same chat" means within one `abcd-cli` command invocation's stdio session. Cross-invocation chat continuation requires fresh GUI approval and is out of scope for autonomous operation. Same rule applies whether the backend is RP, Codex, or in-session subagent (in-session uses `Task` with continuation prompts). **Verdict direction across iterations**: the verdict can change in EITHER direction across audit-fix iterations — a fix can resolve issues (NEEDS_WORK→SHIP) AND a fix can introduce regressions (SHIP→NEEDS_WORK). Both are valid signal; abcd's `re_audit` MUST NOT reject downgrades (mirroring spc-2 spec's anti-pattern list). **Lifecycle narrowing (added post-spc-5, per ADR-02 § 3):** "same chat" now narrows further — it means **same-MCP-session / same-`MCPBridge`-instance only**. In spawn mode the session is per `abcd-cli` invocation; in host-reuse mode (ADR-03) the session lives for the lifetime of the injected host harness. A `chat_id` is only meaningful within the `MCPBridge` instance that produced it — cross-bridge `chat_id` reuse is undefined behaviour, not a supported continuation path.
+- **Same-chat re-review semantics** (codified abcd rule, narrowed by ADR-02 § 3): when abcd re-runs an oracle/review/audit after applying fixes (plan-review → fix → re-review; impl-review → fix → re-review; lifeboat-oracle → fix → re-audit), the re-call MUST stay in the **same RP chat** — never `--new-chat`, never fresh `rp builder`. RP chats accumulate context (original artefact + first review + fix summary); same-chat re-runs let the model do incremental "are these fixes correct?" checks instead of starting from scratch. The harness `mcp_call` for an RP audit MUST return `chat_id` in `McpResult`; the audit-fix loop in abcd's `oracle.py` MUST thread that ID back as the `chat_id` arg on the next call. **Narrowed (ADR-02 Criterion 3b):** "same chat" means within one `abcd-cli` command invocation's stdio session. Cross-invocation chat continuation requires fresh GUI approval and is out of scope for autonomous operation. Same rule applies whether the backend is RP, Codex, or in-session subagent (in-session uses `Task` with continuation prompts). **Verdict direction across iterations**: the verdict can change in EITHER direction across audit-fix iterations — a fix can resolve issues (NEEDS_WORK→SHIP) AND a fix can introduce regressions (SHIP→NEEDS_WORK). Both are valid signal; abcd's `re_audit` MUST NOT reject downgrades (mirroring the anti-pattern list of spc-2, predecessor store). **Lifecycle narrowing (added after spc-5 (predecessor store), per ADR-02 § 3):** "same chat" now narrows further — it means **same-MCP-session / same-`MCPBridge`-instance only**. In spawn mode the session is per `abcd-cli` invocation; in host-reuse mode (ADR-03) the session lives for the lifetime of the injected host harness. A `chat_id` is only meaningful within the `MCPBridge` instance that produced it — cross-bridge `chat_id` reuse is undefined behaviour, not a supported continuation path.
 
 ## What's Out of Scope
 
@@ -84,19 +84,19 @@ _None open._
 
 ## Resolved (post-spc-5)
 
-These questions were settled against the earlier Python lineage's design — its spc-5 spec and its ADR-02 and ADR-03, not this repository's spc-5, adr-2 and adr-3 — and the Phase 0 harness-interface research note ([`01-harness-interface.md`](../../research/notes/01-harness-interface.md)). The answers stand as design input for the re-filed adapter; the `MCPBridge`, `McpResult`, `RPUnavailable` and `oracle.py` they name are that lineage's, and none of them is in this binary.
+These questions were settled against the earlier Python lineage's design — its spc-5 spec (predecessor store) and its ADR-02 and ADR-03, not this repository's spc-5, adr-2 and adr-3 — and the Phase 0 harness-interface research note ([`01-harness-interface.md`](../../research/notes/01-harness-interface.md)). The answers stand as design input for the re-filed adapter; the `MCPBridge`, `McpResult`, `RPUnavailable` and `oracle.py` they name are that lineage's, and none of them is in this binary.
 
 - **Does RP MCP support the long-running, async-result pattern abcd needs (e.g., a 5-minute Carmack review)? Or is it strictly synchronous within an MCP call lifetime?**
   Resolved by ADR-02 § 4: the `MCPBridge` contract is synchronous within an MCP call lifetime — `mcp_call` blocks for the call's duration. There is no async-result handle. The long-running case is handled by a generous per-tool `call_timeout_s` budget (`oracle_send` / `context_builder` get 600 s) inside one held-warm stdio session, not by an async poll.
 - **If RP MCP returns a chat ID for long-running work, how does abcd poll/listen for completion?**
-  Resolved by ADR-02 §§ 3–4: there is no polling. The call is synchronous; `mcp_call` returns when the tool call returns. The `chat_id` on `McpResult` is for *same-session re-review threading*, not completion polling. The async-vs-sync decision referenced for "Task 5's harness.py" is settled — the harness method stays synchronous (ADR-01 § 3 lock), and the concrete sync↔async bridge is internal to spc-5's `MCPBridge`.
+  Resolved by ADR-02 §§ 3–4: there is no polling. The call is synchronous; `mcp_call` returns when the tool call returns. The `chat_id` on `McpResult` is for *same-session re-review threading*, not completion polling. The async-vs-sync decision referenced for "Task 5's harness.py" is settled — the harness method stays synchronous (ADR-01 § 3 lock), and the concrete sync↔async bridge is internal to the `MCPBridge` of spc-5 (predecessor store).
 - **Chat identity and continuation — what does a `chat_id` mean, and can a chat be resumed across `abcd-cli` invocations?**
-  Resolved by ADR-02 § 3 and the spc-5 `.6` exception mapping: a `chat_id` is meaningful only within the `MCPBridge` instance / MCP session that produced it. Cross-invocation (and cross-bridge) chat continuation is **not supported** — RP's GUI approval gate forecloses it, and any RP-infrastructure failure surfaces as the typed `RPUnavailable` (`OSError` subclass) declared by spc-5. "Same chat" therefore means same-MCP-session only; the spc-5 `.6` failure-path mapping routes every unreachable-RP path through `RPUnavailable` so callers cascade cleanly rather than relying on a stale `chat_id`.
+  Resolved by ADR-02 § 3 and the spc-5 (predecessor store) `.6` exception mapping: a `chat_id` is meaningful only within the `MCPBridge` instance / MCP session that produced it. Cross-invocation (and cross-bridge) chat continuation is **not supported** — RP's GUI approval gate forecloses it, and any RP-infrastructure failure surfaces as the typed `RPUnavailable` (`OSError` subclass) declared by spc-5 (predecessor store). "Same chat" therefore means same-MCP-session only; the spc-5 (predecessor store) `.6` failure-path mapping routes every unreachable-RP path through `RPUnavailable` so callers cascade cleanly rather than relying on a stale `chat_id`.
 
 ## Resolved Questions
 
 - **Failure semantics: if an MCP call to RP times out, does abcd retry, fall through to in-session, or both?**
-  Resolved by ADR-02 (spc-4-phase-0-p1-patch-viability-framing-mcp.4):
+  Resolved by ADR-02 (spc-4-phase-0-p1-patch-viability-framing-mcp.4, predecessor store):
   On any RP-infrastructure failure (`RPUnavailable` — subprocess spawn fail, `startup_timeout_s`
   expiry, RP approval denial via `McpError: Connection closed`, `call_timeout_s` expiry, or
   mid-call transport failure), `oracle.py` routes to `dispatch_agent(agent_name="codex", ...)`.
@@ -134,7 +134,7 @@ over `internal/` and `cmd/` finds only the scanner's RepoPrompt session-key patt
 (`internal/adapter/scanner/patterns.go`), a guard corpus line, and the doc comment of the
 configuration layer (`internal/core/layered`) naming `oracle.review` as a consumer it serves;
 `go.mod` carries no MCP dependency. The bridge, the typed error
-and the host-reuse path an earlier Python lineage's `spc-5-rp-mcp-integration-declare` describes
+and the host-reuse path an earlier Python lineage's `spc-5-rp-mcp-integration-declare` (predecessor store) describes
 belong to that lineage, not to this binary, so no part of the route is a foundation to build on.
 The four acceptance criteria above are the re-filed set, and
 [spc-2609211950427074](../../specs/open/spc-2609211950427074-rp-mcp-only-integration.md)
@@ -143,6 +143,12 @@ carries all of them.
 ## Audit Notes
 
 _Empty. Populated by intent-fidelity-reviewer when intent moves to shipped/._
+
+### Linkage note (2026-09-30)
+
+`builds_on` named itd-2 (in-session subagent dispatch), which is superseded by
+itd-2609201916056194. The edge is dropped: its live successor is already in this
+record's `builds_on`, so the relink would list it twice.
 
 ## Grounds
 

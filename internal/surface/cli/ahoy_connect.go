@@ -26,6 +26,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/oracle"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/term"
 	"github.com/intentdriven/abcd/internal/termsafe"
 	"github.com/spf13/cobra"
 )
@@ -85,6 +86,9 @@ func runAhoyProviders(cmd *cobra.Command, cwd string, asJSON bool) error {
 	if b.Routes == nil {
 		b.Routes = []oracle.PointedRoute{}
 	}
+	if b.Denylist == nil {
+		b.Denylist = []oracle.DenyEntry{}
+	}
 	for _, p := range cfg.Providers() {
 		state, home := keyState(roots.Home, p.Key)
 		b.Providers = append(b.Providers, providerView{Provider: p, KeyState: state, KeyHome: home})
@@ -110,7 +114,11 @@ func runAhoyProviders(cmd *cobra.Command, cwd string, asJSON bool) error {
 		for i, e := range b.Denylist {
 			deny[i] = e.Pattern + " (" + e.Origin + ")"
 		}
-		line("vendor denylist, which no allowlist entry overrides: " + strings.Join(deny, ", "))
+		if len(deny) == 0 {
+			line("denylist (oracle.denylist): none written; a provider serves only the models it lists")
+		} else {
+			line("denylist (oracle.denylist), which refuses a model even when a provider lists it: " + strings.Join(deny, ", "))
+		}
 		for _, r := range b.Routes {
 			line(fmt.Sprintf("%s %s -> %s (%s)", r.Kind, r.Name, r.Target, r.Target.Origin))
 		}
@@ -121,6 +129,17 @@ func runAhoyProviders(cmd *cobra.Command, cwd string, asJSON bool) error {
 		line("set one up, the key piped in on stdin and never typed at a prompt: " + b.Setup)
 		line(b.Dispatch + ".")
 	})
+}
+
+// printConfigDiagnostics says the provider configuration read's non-fatal
+// reports (oracle.APIConfig.Diagnostics: a route skipped, and why) on w, one
+// line each. It is the one printer every front door that reads the
+// configuration and is not the board uses, so a skipped route is said the
+// same way wherever it is met.
+func printConfigDiagnostics(w io.Writer, diagnostics []string) {
+	for _, d := range diagnostics {
+		fmt.Fprintf(w, "abcd %s\n", termsafe.Sanitize(fsutil.RedactHome(d)))
+	}
 }
 
 // keyState says whether a named credential resolves through the store, and
@@ -176,6 +195,9 @@ func newAhoyConnectCommand(asJSON *bool) *cobra.Command {
 				msg := openaiapi.Scrub(err.Error(), req.Key)
 				return &exitError{Code: 2, Msg: "abcd ahoy connect: " + termsafe.Sanitize(fsutil.RedactHome(msg))}
 			}
+			// A route the configuration read skipped (ruling CD2) is said on
+			// stderr, in the text and the JSON form alike, and the setup stands.
+			printConfigDiagnostics(cmd.ErrOrStderr(), res.Diagnostics)
 			return render(cmd.OutOrStdout(), *asJSON, withMember{v: res, key: "dispatch", val: dispatchPending}, func(w io.Writer) {
 				line := func(s string) { fmt.Fprintf(w, "  %s\n", termsafe.Sanitize(s)) }
 				fmt.Fprintf(w, "abcd ahoy connect — %s verified and configured\n", termsafe.Sanitize(res.Provider))
@@ -207,11 +229,9 @@ func newAhoyConnectCommand(asJSON *bool) *cobra.Command {
 // readKey reads the key from stdin: refused from a terminal, where it would
 // be echoed as it is typed; one trailing line ending is dropped.
 func readKey(in io.Reader) (string, error) {
-	if f, ok := in.(*os.File); ok {
-		if fi, err := f.Stat(); err == nil && fi.Mode()&os.ModeCharDevice != 0 {
-			return "", errors.New("the key is read from stdin, and stdin is a terminal, where it would be echoed as it is typed; " +
-				"pipe it in from a file or a variable instead (" + setupExample + ")")
-		}
+	if f, ok := in.(*os.File); ok && term.IsTerminal(f) {
+		return "", errors.New("the key is read from stdin, and stdin is a terminal, where it would be echoed as it is typed; " +
+			"pipe it in from a file or a variable instead (" + setupExample + ")")
 	}
 	raw, err := io.ReadAll(io.LimitReader(in, credential.MaxValueBytes+3))
 	if err != nil {

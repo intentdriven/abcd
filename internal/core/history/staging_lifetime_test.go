@@ -155,24 +155,27 @@ func TestDrainTakesOverdueEntriesFirst(t *testing.T) {
 }
 
 // forceResidualRefusal makes Capture refuse every transcript with a
-// *RedactionResidualError, the deterministic failure. The stub is the same one
-// TestCaptureRefusesWhenAugmentedSpanIsNotMasked uses: a gitleaks finding whose
-// span Redact cannot apply, so the stage-two re-scan finds it unmasked.
+// *RedactionResidualError, the deterministic failure. The stub reports ONE
+// occurrence of a byte its text holds at least twice, located exactly, so the
+// scanner accepts it and Redact seals that one; the store verifies an
+// augmented finding by its bytes anywhere in the redacted text, finds the
+// other occurrence, and refuses. The refusal is the verification's, not
+// incidental.
 func forceResidualRefusal(t *testing.T) {
 	t.Helper()
-	restore := scanGitleaks
-	t.Cleanup(func() { scanGitleaks = restore })
-	scanGitleaks = func(_, _, logical string) ([]scanner.Finding, error) {
-		return []scanner.Finding{{
-			File: logical, Line: 999, Column: 1,
-			Kind:     "gitleaks:generic-api-key",
-			Severity: scanner.SeverityHardFail,
-			// A value the NATIVE scanner does not recognise, so it survives
-			// stage one unmasked and the stage-two re-scan finds it — which is
-			// what makes the refusal deterministic rather than incidental.
-			Matched: gitleaksResidueSecret,
-		}}, nil
-	}
+	setAugmenter(t, func(text, logical string) ([]scanner.Finding, error) {
+		lines := strings.Split(text, "\n")
+		for i, ln := range lines {
+			for c := 0; c < len(ln); c++ {
+				if b := ln[c : c+1]; b != " " && strings.Count(text, b) >= 2 {
+					return []scanner.Finding{{File: logical, Line: i + 1, Column: c + 1,
+						Kind: "gitleaks:generic-api-key", Severity: scanner.SeverityHardFail, Matched: b}}, nil
+				}
+			}
+		}
+		t.Fatal("forceResidualRefusal: no repeated byte in the text")
+		return nil, nil
+	})
 }
 
 // TestDeterministicRefusalIsQuarantinedNotRetriedForever is the fourth limb of

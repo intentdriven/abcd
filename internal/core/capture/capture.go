@@ -138,6 +138,10 @@ type Issue struct {
 	Status        State       `json:"status"` // derived from folder
 	Path          string      `json:"path"`   // repo-relative locator (iss-81)
 	Body          string      `json:"body"`
+	// deferredAfter is the release-cut waiver's anchor tag (deferred_after),
+	// read for the drain's live-deferral hand-back and not surfaced: the cut
+	// reads the pair from the committed record itself.
+	deferredAfter string
 	// BlockedByOpen is the derived subset of BlockedBy whose targets are still in
 	// open/ (the priority projection populated by List/Status). Not a stored
 	// field: an empty slice means the issue is unblocked.
@@ -166,9 +170,10 @@ type CaptureRequest struct {
 	// value the lapse log exists to distinguish itself from (spc-60).
 	LapsedAt string
 	// Remedy is the proposed fix, written as `remedy:` (itd-82 decision 6).
-	// Optional here, and "" omits the key; a drain lists a record without one
-	// as ineligible rather than refusing its capture. One line: the
-	// serialiser refuses a scalar carrying a line break.
+	// Required: a blank one is refused with ErrRemedyRequired (ruling BX3 of
+	// 2026-09-29), and an automatic filer with no fix yet passes
+	// issueschema.MachineRemedy (ruling H12), which a drain skips. One line:
+	// the serialiser refuses a scalar carrying a line break.
 	Remedy         string
 	RelatedIntents []string
 	RelatedSpecs   []string
@@ -185,9 +190,20 @@ type CaptureRequest struct {
 	// lock, and writes a `duplicates:` or `refines:` link naming each likely
 	// double (itd-2609212137116617). It never refuses the capture: a match that
 	// cannot run says why on the result and the record is filed without it.
-	// nil files the record unmatched, as a caller with its own matching (the
-	// inbox drain, the consistency pass) does.
+	// nil files the record unmatched.
 	Match *match.Config
+	// MatchText, when non-empty, is the text the match compares in place of
+	// Text: the finding's own words, for a filer whose record also carries
+	// lines every record it files shares (the inbox's provenance, the
+	// consistency pass's evidence line). Matched on those, two unrelated
+	// records would link each other on the boilerplate alone. Empty compares
+	// Text.
+	MatchText string
+	// MatchExcept names records the match does not compare with: a filer
+	// that files several records in one pass passes the ones it has already
+	// filed, so two findings of one pass are never linked as doubles of each
+	// other.
+	MatchExcept []string
 }
 
 // CaptureResult is the outcome of a successful Capture. The timestamp-numeric
@@ -423,6 +439,11 @@ var (
 	// written, and the surface gives both the one exit code a refusal takes
 	// (iss-2609260552251398).
 	ErrRequestRefused = errors.New("request refused")
+	// ErrRemedyRequired means a new issue was filed without a remedy: every new
+	// issue carries the fix it proposes (ruling BX3 of 2026-09-29, itd-82
+	// decision 6), and an automatic filer with none writes
+	// issueschema.MachineRemedy. It is a request refusal, with nothing written.
+	ErrRemedyRequired = errors.New("remedy required")
 	// The record reader's own sentinels (core/issuerecord), re-exported: one
 	// value under either name, so errors.Is holds across the two packages.
 	//

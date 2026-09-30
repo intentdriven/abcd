@@ -138,4 +138,16 @@ func TestLaunchPreviewAndCutListTheTargetedIntent(t *testing.T) {
 	if !strings.Contains(string(shipped), "targeted:   itd-91 targets v0.4.1, not shipped") || !strings.Contains(string(shipped), "wrote:") {
 		t.Errorf("the written cut must list the targeted intent:\n%s", shipped)
 	}
+	// Criterion 3 (ruling BS1 of 2026-09-29): the cut passed the target, so
+	// the same write moves it to `next` and the report says so.
+	if !strings.Contains(string(shipped), "moved:      itd-91 targets next (targeted v0.4.1)") {
+		t.Errorf("the written cut must report the moved target:\n%s", shipped)
+	}
+	rec, err := os.ReadFile(filepath.Join(r.Root(), ".abcd/development/intents/planned/itd-91-targeted.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(rec), "target_release: next\n") {
+		t.Errorf("the cut must rewrite the missed target to next:\n%s", rec)
+	}
 }

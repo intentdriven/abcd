@@ -5,7 +5,10 @@ Every transcript that reaches the store has been redacted on write, so what
 accrues is a durable, searchable account of how a repo was built that is safe
 to keep, safe to read back, and safe to feed a later distiller. Capture is
 automatic: the session's end stages the transcript, the next session's start
-files it away.
+files it away. A repository that armed gitleaks (`.abcd/config/gitleaks.json`)
+has gitleaks' findings masked too; armed with no binary installed, the
+transcript is stored on the native scanner and the capture's `scan_gap` names
+what is missing ([dependencies](../02-constraints/02-dependencies.md)).
 
 The store is **user-level** and lives outside every repo at
 `~/.abcd/transcripts/<root-sha>/records/`, keyed on the repo's root-commit SHA.

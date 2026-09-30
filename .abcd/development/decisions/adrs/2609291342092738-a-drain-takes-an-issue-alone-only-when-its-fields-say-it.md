@@ -8,6 +8,10 @@ superseded_by: null
 related_intents: [itd-82, itd-2609201916151817]
 related_rfcs: []
 related_adrs: [adr-25, adr-27]
+drain_categories: [tech-debt, documentation, inconsistency, drift, bug, ux]
+drain_severities: [nitpick, minor]
+drain_security: handback
+drain_remedy: required
 ---
 
 # ADR-2609291342092738: A drain takes an issue alone only when its fields say it needs no decision
@@ -61,10 +65,31 @@ no decision, and route every other open issue by the rule that excluded it.
 5. **The classification is re-derived every run** and recorded with each
    disposition in the run's summary; nothing is written onto the issue for it
    (itd-82 decision 8).
-6. **The drain refuses to start without this record.** The binary names this
-   record as the rule it applies (`capture.EligibilityRecord`), and a test
-   holds that name to an accepted record here, cited by the brief's
-   invariants.
+6. **The drain refuses to start without this record.** The rule is read from
+   the drained repository's own decision store, never from the binary: the
+   four `drain_` fields in this record's frontmatter state it
+   (`drain_categories`, `drain_severities`, `drain_security`,
+   `drain_remedy`), and a repository whose store holds no accepted record
+   carrying them is refused by the dry run and the start alike, naming how to
+   add one (the product thinker's ruling BX2 of 2026-09-29, verbatim: "the
+   PROJECT MUST HOLD the eligibility decision in its own record (e.g. added
+   at setup); drain refuses there until it does"). This repository states
+   abcd's strict baseline, which the binary bundles as the measure a
+   loosening is named against, and a test holds this record to it.
+7. **Another project may loosen the floors, loudly.** A project's own record
+   may list `major` or `critical` among its severities, or set
+   `drain_security: take`, and every floor it loosens is named by the dry run
+   and at the start (ruling H11 of 2026-09-29, verbatim: "MAY LOOSEN abcd's
+   floors (a project may let drain take major/critical and security issues).
+   NOTE for the lane: make a loosened floor loud (drain --dry-run and the
+   drain start name every floor the project loosened), and keep abcd's own
+   repository at the stricter default."). It may narrow the fixable set but
+   never widen it, and it cannot drop the remedy. A partial or malformed
+   record refuses rather than falling back to either rule.
+8. **A record waiting on a person is a person's.** Whatever the record says,
+   an issue whose remedy opens "Waits on" (a fix that waits on an unanswered
+   ruling) and an issue whose deferral past the current anchor tag is live are
+   handed back, each naming its rule.
 
 ## Alternatives Considered
 
@@ -90,6 +115,8 @@ no decision, and route every other open issue by the rule that excluded it.
 - The issue-keyed lane of `itd-2609201916151817` (decision 10) reads the same
   rule as the check before it starts, so the two cannot disagree about which
   issue is eligible.
-- Owed and out of this record: whether `major` may ever be let through (an
-  opt-in flag is an open question on itd-82), and where a hand-back flag
-  lives.
+- The eligibility record is a file the drained repository authors, deciding
+  what an unattended agent may do there. A contributor's pull request that
+  loosens it is a trust change: it is committed history, reviewed like code,
+  and a loosened floor is named on every dry run and start.
+- Owed and out of this record: where a hand-back flag lives.

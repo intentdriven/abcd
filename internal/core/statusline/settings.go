@@ -118,7 +118,7 @@ func mustParseDefaults() Settings {
 	if err := json.Unmarshal(defaultsJSON, &s); err != nil {
 		panic("statusline: the bundled defaults are malformed: " + err.Error())
 	}
-	if err := Validate(s); err != nil {
+	if err := validateSettings(s); err != nil {
 		panic("statusline: the bundled defaults fail validation: " + err.Error())
 	}
 	return s
@@ -137,12 +137,12 @@ func clone(s Settings) Settings {
 	return out
 }
 
-// Validate checks the structural invariants the render relies on:
+// validateSettings checks the structural invariants the render relies on:
 // schema_version is 1, every switchable element is named, and the presence
 // pair parses and clears the bar. It guards the BUNDLED defaults, where any of
 // those is a build error; Load reaches it with a user's file already merged
 // over them and its unusable parts already replaced.
-func Validate(s Settings) error {
+func validateSettings(s Settings) error {
 	if s.SchemaVersion != 1 {
 		return fmt.Errorf("schema_version must be 1, got %d", s.SchemaVersion)
 	}
@@ -157,12 +157,12 @@ func Validate(s Settings) error {
 			return fmt.Errorf("elements names no switch for %q", k)
 		}
 	}
-	ratio, err := Contrast(s.Presence.Foreground, s.Presence.Background)
+	ratio, err := contrast(s.Presence.Foreground, s.Presence.Background)
 	if err != nil {
 		return fmt.Errorf("presence: %w", err)
 	}
 	if ratio < ContrastBar {
-		return fmt.Errorf("presence measures %s, below the %s bar", FormatRatio(ratio), FormatRatio(ContrastBar))
+		return fmt.Errorf("presence measures %s, below the %s bar", formatRatio(ratio), formatRatio(ContrastBar))
 	}
 	return nil
 }
@@ -265,13 +265,13 @@ func mergePresence(out *Settings, over Pair) []string {
 	if over == (Pair{}) {
 		return nil // the file said nothing; the default stands.
 	}
-	ratio, err := Contrast(over.Foreground, over.Background)
+	ratio, err := contrast(over.Foreground, over.Background)
 	if err != nil {
 		return []string{refusedPresence(termsafe.Sanitize(err.Error()), out.Presence)}
 	}
 	if ratio < ContrastBar {
 		return []string{refusedPresence(
-			"it measures "+FormatRatio(ratio)+", below the "+FormatRatio(ContrastBar)+" bar",
+			"it measures "+formatRatio(ratio)+", below the "+formatRatio(ContrastBar)+" bar",
 			out.Presence)}
 	}
 	out.Presence = over

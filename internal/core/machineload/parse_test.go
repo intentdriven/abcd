@@ -21,7 +21,7 @@ func TestParseLoadavgSysctlBytes(t *testing.T) {
 	stripped := full[:23]                          // syscall.Sysctl drops the trailing NUL
 
 	for name, raw := range map[string][]byte{"stripped": stripped, "full": full} {
-		l1, l5, l15, err := ParseLoadavgSysctl(raw)
+		l1, l5, l15, err := parseLoadavgSysctl(raw)
 		if err != nil {
 			t.Fatalf("%s: %v", name, err)
 		}
@@ -30,11 +30,11 @@ func TestParseLoadavgSysctlBytes(t *testing.T) {
 			t.Fatalf("%s: loads = %v %v %v, want 13.79 18.40 18.80", name, l1, l5, l15)
 		}
 	}
-	if _, _, _, err := ParseLoadavgSysctl(full[:12]); err == nil {
+	if _, _, _, err := parseLoadavgSysctl(full[:12]); err == nil {
 		t.Fatal("a 12-byte value parsed as a loadavg struct")
 	}
 	zeroScale := make([]byte, 24)
-	if _, _, _, err := ParseLoadavgSysctl(zeroScale); err == nil {
+	if _, _, _, err := parseLoadavgSysctl(zeroScale); err == nil {
 		t.Fatal("a zero scale parsed")
 	}
 }

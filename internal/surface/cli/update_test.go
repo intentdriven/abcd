@@ -26,7 +26,7 @@ func runUpdateHermetic(t *testing.T, args ...string) (string, error, int) {
 
 	calls := 0
 	orig := newUpdater
-	newUpdater = func() *update.Updater { calls++; return orig() }
+	newUpdater = func() updater { calls++; return orig() }
 	t.Cleanup(func() { newUpdater = orig })
 
 	var out bytes.Buffer
@@ -81,7 +81,7 @@ func TestUpdateRefusesPluginRootEntry(t *testing.T) {
 
 	calls := 0
 	orig := newUpdater
-	newUpdater = func() *update.Updater { calls++; return orig() }
+	newUpdater = func() updater { calls++; return orig() }
 	t.Cleanup(func() { newUpdater = orig })
 
 	var out bytes.Buffer
@@ -109,7 +109,7 @@ func TestUpdateRefusesPluginRootEntry(t *testing.T) {
 func TestUpdateSeamUntouchedByOtherVerbs(t *testing.T) {
 	calls := 0
 	orig := newUpdater
-	newUpdater = func() *update.Updater { calls++; return orig() }
+	newUpdater = func() updater { calls++; return orig() }
 	t.Cleanup(func() { newUpdater = orig })
 
 	for _, args := range [][]string{{"--version"}, {"rules"}} {
@@ -196,8 +196,13 @@ func TestUpdateReceiptKeepsTheOrdinaryVersionLine(t *testing.T) {
 		Digest:     strings.Repeat("cd", 32),
 	})
 	got := out.String()
-	if !strings.Contains(got, "v0.6.9 -> v0.7.0") {
-		t.Errorf("the ordinary receipt line changed:\n%s", got)
+	// The swap's first line is the one wording every swap shares (CJ1b):
+	// the bootstrap's success notice leads with the same line.
+	if first, _, _ := strings.Cut(got, "\n"); first != update.UpdatedLine("v0.6.9", "v0.7.0") {
+		t.Errorf("the receipt must open with %q; got %q", update.UpdatedLine("v0.6.9", "v0.7.0"), first)
+	}
+	if !strings.Contains(got, "~/.local/bin/abcd") {
+		t.Errorf("the receipt must still name the path it swapped:\n%s", got)
 	}
 	if strings.Contains(got, "unpublished") {
 		t.Errorf("a provable old build must not be reported as unpublished:\n%s", got)
@@ -251,5 +256,124 @@ func TestUpdateJSONRefusalIsOneDocument(t *testing.T) {
 	}
 	if stderr.Len() != 0 {
 		t.Errorf("--json wrote to stderr: %q", stderr.String())
+	}
+}
+
+// progressRecordingUpdater stands in for the release client on the swap path:
+// it resolves nothing over the network, records the progress writer the verb
+// handed it, and writes a progress line to that writer when it has one, as
+// the real client does.
+type progressRecordingUpdater struct {
+	progress io.Writer
+	applied  bool
+}
+
+func (f *progressRecordingUpdater) ResolveTag(requested string) (string, error) {
+	return requested, nil
+}
+
+func (f *progressRecordingUpdater) Apply(target, tag string, progress io.Writer) (update.Report, error) {
+	f.applied = true
+	f.progress = progress
+	if progress != nil {
+		_, _ = io.WriteString(progress, "\r  downloading abcd-test-arch "+tag+": 100%\n")
+	}
+	return swappedReceipt(tag), nil
+}
+
+func swappedReceipt(tag string) update.Report {
+	return update.Report{
+		Action:     update.ActionSwapped,
+		Origin:     "https://example.invalid/abcd",
+		Tag:        tag,
+		TargetPath: "~/.local/bin/abcd",
+		OldVersion: "v0.6.1",
+		NewVersion: tag,
+		Digest:     strings.Repeat("cd", 32),
+		Ownership:  update.OwnedByManifest,
+	}
+}
+
+// runUpdateSwap drives `abcd update <tag>` down the swap path — a regular file
+// on a hermetic PATH, which the dispatch lets through — with the release client
+// replaced by the recording fake, and stderr the writer given.
+func runUpdateSwap(t *testing.T, stderr io.Writer) (*progressRecordingUpdater, string, int) {
+	t.Helper()
+	home := t.TempDir()
+	binDir := filepath.Join(home, ".local", "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(binDir, "abcd"), []byte("\x7fELFfake"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+	t.Setenv("ABCD_PLUGIN_ROOT", "")
+	t.Setenv("CLAUDE_PLUGIN_ROOT", "")
+	t.Setenv("ABCD_BIN_TARGET", "")
+	t.Setenv("PATH", binDir)
+
+	fake := &progressRecordingUpdater{}
+	orig := newUpdater
+	newUpdater = func() updater { return fake }
+	t.Cleanup(func() { newUpdater = orig })
+
+	var stdout bytes.Buffer
+	code := Run([]string{"update", "v0.6.2"}, &stdout, stderr)
+	return fake, stdout.String(), code
+}
+
+// TestUpdatePipedPrintsNoProgress is the non-TTY silence test spc-32 promised
+// (criterion 9, iss-2609300015353414): with the output piped — stdout and
+// stderr both a pipe or a buffer, never a terminal — the swap is handed no
+// progress writer, stdout carries the receipt and nothing else, and stderr
+// stays empty. The gate reads the stream progress is written to, so this holds
+// whatever the test process's own stderr happens to be attached to.
+func TestUpdatePipedPrintsNoProgress(t *testing.T) {
+	var stderr bytes.Buffer
+	fake, stdout, code := runUpdateSwap(t, &stderr)
+	if code != 0 {
+		t.Fatalf("exit = %d, want 0 for a swap; stdout %q stderr %q", code, stdout, stderr.String())
+	}
+	if !fake.applied {
+		t.Fatal("the swap path was not reached; the test proves nothing about progress")
+	}
+	if fake.progress != nil {
+		t.Errorf("a non-terminal stderr was handed a progress writer: %T", fake.progress)
+	}
+	var want bytes.Buffer
+	renderUpdateReport(&want, false, swappedReceipt("v0.6.2"))
+	if stdout != want.String() {
+		t.Errorf("stdout carries more than the receipt:\n got %q\nwant %q", stdout, want.String())
+	}
+	if stderr.Len() != 0 {
+		t.Errorf("piped stderr carries output: %q", stderr.String())
+	}
+}
+
+// TestUpdateTerminalStderrGetsProgress is the other half, so the silence above
+// cannot be met by a gate that never opens: a stderr the terminal check
+// accepts is handed the progress writer. The check is a termios get that only
+// a real terminal answers, so the isTTY seam stands /dev/null in for one.
+func TestUpdateTerminalStderrGetsProgress(t *testing.T) {
+	devNull, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
+	if err != nil {
+		t.Skipf("no %s to stand in for a terminal: %v", os.DevNull, err)
+	}
+	defer devNull.Close()
+	prev := isTTY
+	isTTY = func(f *os.File) bool { return f == devNull }
+	t.Cleanup(func() { isTTY = prev })
+	fake, stdout, code := runUpdateSwap(t, devNull)
+	if code != 0 {
+		t.Fatalf("exit = %d, want 0 for a swap; stdout %q", code, stdout)
+	}
+	if fake.progress == nil {
+		t.Error("a terminal stderr was handed no progress writer")
+	}
+	var want bytes.Buffer
+	renderUpdateReport(&want, false, swappedReceipt("v0.6.2"))
+	if stdout != want.String() {
+		t.Errorf("progress reached stdout:\n got %q\nwant %q", stdout, want.String())
 	}
 }

@@ -44,7 +44,10 @@ that bind a run to a plugin follow the kind. For a kind other than `plugin` the
 preview scans the tree the release tag would archive (`git archive`'s view of
 `HEAD`, `export-ignore` honoured, links excluded) minus the record namespace,
 denied by the same rule a plugin payload is held to, unless it declares an
-include set; the report names which tree it scanned. Its lockstep check reads
+include set; the report names which tree it scanned. In a repository that armed
+gitleaks, its findings join the scan's, and an armed gitleaks with no binary
+installed is an unscanned entry and a hard fail, so the preview and the cut
+refuse on it ([dependencies](../02-constraints/02-dependencies.md)). Its lockstep check reads
 the primary and every declared file, reads no plugin manifest, and refuses a
 declared file it cannot read. The rows that judge a plugin payload — the
 installability smoke and its deep tier, hook compliance, the parity diff — report
@@ -189,7 +192,7 @@ with no semantic detector degrades cleanly to the deterministic gates and the
 empty build job.
 
 **Dependency-bump re-authoring is opt-in per repository**
-([itd-2609221842494980](../../intents/planned/itd-2609221842494980-a-dependency-bump-lands-without-a-person-re-authoring-it-a.md)).
+([itd-2609221842494980](../../intents/shipped/itd-2609221842494980-a-dependency-bump-lands-without-a-person-re-authoring-it-a.md)).
 Opting in seeds the declaration, `.abcd/config/dependency-reauthor.conf`, and
 the declaration's presence keeps the repository opted in on every later run;
 without it nothing of this is written. Beside the release workflows the scaffold
@@ -675,7 +678,13 @@ the parity diff and the deep smoke tier where the run made them, and every
 planned intent that names a release it must land by, under *Targeted, not
 shipped* (itd-2609212103572513): the preview, the cut's emit and its ingest list
 the same intents in their human and machine-readable output too, and none of
-them refuses on one.
+them refuses on one. The ingest moves every target the cut passes (`next`, or a
+tag at or below the derived version) to `next`, whatever the following release
+is numbered (the product thinker's ruling BS1 of 2026-09-29), rewriting the
+record in the write that rolls the changelog and naming the move in one line
+under the dated section's notice (`changelog.TargetMoveNote`), which the site's
+release stamp passes over because the line names intents the release did not
+ship.
 A refused cut writes its report too, and the refusal names where it landed. The
 preview's JSON carries `report_path`, the cut's `preflight_report`. A detector
 fails the build if any non-test Go source under `internal/` so much as names the

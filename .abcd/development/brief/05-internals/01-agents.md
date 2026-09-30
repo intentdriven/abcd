@@ -48,8 +48,8 @@ the real prompt files; iss-110 tracks the mis-registration.
 ## The design roster still to be built
 
 The lifeboat pipeline is drawn around a larger roster than the one that ships.
-The rest are **design targets**, sequenced with
-[Phase 6](../../roadmap/phases/phase-6-lifeboat.md), and none of them exists in
+The rest are **design targets** of the lifeboat pipeline (the retired
+[Phase 6](../../roadmap/phases/phase-6-lifeboat.md) document holds their original plan), and none of them exists in
 `agents/`:
 
 | Agent | Pass | What it would produce |
@@ -271,14 +271,14 @@ source of truth today, PR-to-extend (iss-265).
 
 **Deliberately omitted** from agent frontmatter, as a boundary against scope
 creep: runtime-appended failure modes, per-task-class model history, and
-plan-time capability gating output. Those belong to the later-phase Frontier
+plan-time capability gating output. Those belong to the later Frontier
 Awareness intent.
 
 **Why `capability_scope` rides in itd-5 rather than earning its own discipline:**
 it is the same artefact class as `prompt_version` — agent frontmatter, versioned
 with the prompt, mechanical to write — and its validation stays mechanical. The
 linter never reads `designed_for` prose to judge scope, in either direction.
-Anything fuzzier is the later-phase Frontier Awareness sub-check.
+Anything fuzzier is the later Frontier Awareness sub-check.
 
 **The oracle seam contract is unchanged by it.** Capability-aware routing, when it
 ships, is a pre-dispatch selector layer *above* the seam rather than a

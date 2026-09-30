@@ -220,6 +220,12 @@ honoured too). No other rule honours that marker: a `docs-currency` finding take
 the docs-lint engine's own `<!-- docs-lint: allow -->` escape, and the remaining
 rules have no line waiver — resolve what they report.
 
+In a repository that armed gitleaks in `.abcd/config/gitleaks.json`,
+`privacy-hygiene` also reports each line of a tracked text file that gitleaks
+flags, naming the gitleaks rule and never the value. Armed with no gitleaks
+binary installed, or with a gitleaks run that fails, it is an error finding
+citing that config: install gitleaks, or set `enabled` to `false`.
+
 **Binary resolution.** Run `"${CLAUDE_PLUGIN_ROOT}/abcd"` — a plugin install
 provisions the binary into the plugin root, so this is the rung that fires for a
 plugin user. If that path does not exist, try `abcd` on `PATH`; if that fails
