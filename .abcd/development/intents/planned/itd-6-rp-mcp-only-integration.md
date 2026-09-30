@@ -5,7 +5,7 @@ spec_id: spc-2609211950427074
 kind: standalone
 suggested_kind: null
 reclassification_history: []
-builds_on: [itd-2, itd-2609201916151817, itd-2609170822093401, itd-2609201925079472, itd-2609201916056194]
+builds_on: [itd-2609201916151817, itd-2609170822093401, itd-2609201925079472, itd-2609201916056194]
 severity: minor
 impact: additive
 ---
@@ -143,6 +143,12 @@ carries all of them.
 ## Audit Notes
 
 _Empty. Populated by intent-fidelity-reviewer when intent moves to shipped/._
+
+### Linkage note (2026-09-30)
+
+`builds_on` named itd-2 (in-session subagent dispatch), which is superseded by
+itd-2609201916056194. The edge is dropped: its live successor is already in this
+record's `builds_on`, so the relink would list it twice.
 
 ## Grounds
 
