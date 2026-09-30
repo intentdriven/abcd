@@ -81,11 +81,11 @@ spec's and nothing else needs them.
 
 - **Piece 9 of `spc-2609202134338445`, the landing** (the pull request armed
   through the forge client, the repository's merge rule, the ancestor check,
-  the cleanup), is a prerequisite. At the base of this amendment
-  (`c5b4305f6`) it is not built: `internal/core/implement/loop` holds no body
-  for the land stage. Every rule of "Two lanes that touch the same files"
-  below, and criteria C8, C9, C10 and C13, presuppose an armed pull request, so
-  they are built after piece 9 lands. C1 to C7, C11 and C12 do not wait on it.
+  the cleanup), is what the landing rules stand on, and it is built: the land
+  stage (`internal/core/implement/loop/land.go`) performs the six steps of the
+  landing (prepare, records, push, pull request, arm, merged). Every rule of
+  "Two lanes that touch the same files" below, and criteria C8, C9, C10 and
+  C13, extend that stage; none of them waits on another piece.
 
 ### The count
 
@@ -222,16 +222,16 @@ hand out the same work.
 
 ### The state file
 
-The state goes to schema version 7:
+The state goes to schema version 8 (version 7 is the landing's, piece 9):
 
 - `lanes[].awaits` is a list of awaits, each with its role, brief, receipt
   path and `since`. A lane has one entry while its implementer works and one
-  per validator while its round is out. It is a new key, not the version-6
+  per validator while its round is out. It is a new key, not the version-7
   `awaiting` with its type changed: the state is decoded strictly (a field
   the version does not name is refused), and the version is peeked first to
   pick the shape the decode holds the file to, so a key that read an object
   in one version and a list in the next would be a second, silent branch
-  inside one key. Version 7 does not write `awaiting`.
+  inside one key. Version 8 does not write `awaiting`.
 - `waiting` is a list of the work the ceiling holds back, each with its lane,
   its role and `since`, the time the ceiling first held it. It is written when
   a step finds the ceiling reached, and an item leaves it when it takes a
@@ -242,21 +242,22 @@ The state goes to schema version 7:
   the head it produced.
 - `lanes[].hold` records a held lane (ruling DR6c): `since`, `cause`, `head`
   and `before`; the lane stages gain `held` and `discarded`.
-- A version-6 state file reads as a run whose lanes each have zero or one
-  await (its `awaiting` object becomes a one-entry `awaits`), and runs on
-  unchanged; the writer writes version 7. A version-7 file is refused by an
-  abcd that knows only version 6, naming the version, as every schema step
-  already is.
+- A state file of version 7 or lower reads as a run whose lanes each have
+  zero or one await (its `awaiting` object becomes a one-entry `awaits`), and
+  runs on unchanged; the writer writes version 8. A version-8 file is refused
+  by an abcd that knows only version 7, naming the version, as every schema
+  step already is.
 - A file that claims a version older than what it carries is refused, in the
-  shape of every earlier step's refusal (`internal/core/implement/loop/state.go:476-483`
-  at `c5b4305f6`: a pace in a version-1 file, a pick in a version-1 or
-  version-2 file, and below them a validation and a fix-round cap): a file
-  of version 6 or lower that carries `awaits`, `waiting`, `syncs` or `hold`,
+  shape of every earlier step's refusal (`capped()` and `landed()` in
+  `internal/core/implement/loop/state.go`: a pace in a version-1 file, a pick
+  in a version-1 or version-2 file, and below them a validation, a fix-round
+  cap and a landing): a file
+  of version 7 or lower that carries `awaits`, `waiting`, `syncs` or `hold`,
   or a lane stage `held` or `discarded`, is
   refused naming its version and what it carries that the version never
   wrote, with the remedy those refusals give (the loop is the file's only
-  writer; restore it or remove the run directory). A version-7 file that
-  carries `awaiting` is refused the same way, since version 7 never writes
+  writer; restore it or remove the run directory). A version-8 file that
+  carries `awaiting` is refused the same way, since version 8 never writes
   it.
 - `implement status` names the slots in use out of the ceiling, and every
   lane alive with its stage and each role it awaits. The status block reports
@@ -359,7 +360,8 @@ are." The rules it implies:
   nothing on the forge; a lane that pushed and opened its pull request is
   held before arming, its pull request left open and unarmed. A lane already
   armed when the sibling is handed back (one landing at a time, so at most
-  one) is disarmed through the forge client and held; where the forge
+  one) is disarmed through the forge client (`gh pr merge <n>
+  --disable-auto`, beside the arming's `gh pr merge <n> --auto`) and held; where the forge
   refuses the withdrawal, the step refuses naming the pull request and the
   person decides, and a lane whose pushed head the default branch already
   holds had landed before the hand-back and is recorded as landed.
@@ -471,11 +473,11 @@ end-to-end test of the implement verb is the pattern. C2 and C3 are criterion
   failing its second round, **then** lane 1 is handed back, lane 2 runs on to
   its passing round and is held, never armed (ruling DR6c), no new lane
   opens, and no lane closes the spec.
-- **C12, the schema.** **Given** a version-6 state file with one lane
+- **C12, the schema.** **Given** a version-7 state file with one lane
   awaiting its implementer, **when** it is read, **then** the lane has one
-  await and the run advances on it; the next write is version 7 and carries
-  `awaits`, never `awaiting`. **Given** a version-6 file carrying `awaits`,
-  `waiting` or `syncs`, or a version-7 file carrying `awaiting`, **when** it
+  await and the run advances on it; the next write is version 8 and carries
+  `awaits`, never `awaiting`. **Given** a version-7 file carrying `awaits`,
+  `waiting` or `syncs`, or a version-8 file carrying `awaiting`, **when** it
   is read, **then** it is refused naming the version and the key.
 - **C13, the hold and the person's decision (ruling DR6c).** **Given**
   `--sub-agents 3`, `--fix-rounds 1`, steps 2 and 3 both marked
@@ -530,6 +532,11 @@ lane or the single agent in place, and the build replaces or reads past it:
 - `internal/core/implement/loop/validate.go:3-5` and `:145-154`: the round
   hands out "one fresh agent at a time", returning at the first validator
   without a verdict.
+- `internal/core/implement/loop/validate.go:219-222` at `7f6eb5579`:
+  `auditsHere` decides the closing lane as the last lane opened with nothing
+  pending. With `- needs: none` a later lane can finish first, so the closing
+  lane is re-derived from the rule above: it reaches its landing with no step
+  pending, no other lane open, and no lane of the run handed back.
 - `spc-2609202134338445`, `## Progress`, the entry for lane fidelityOnce
   (piece 8): the validators run "one at a time".
 - `itd-2609212103565953`, `## What's In Scope` ("The loop") and criterion 2
@@ -544,13 +551,17 @@ lane or the single agent in place, and the build replaces or reads past it:
 - packages: internal/core/implement/loop, internal/core/spec,
   internal/core/intent (the remainder's `needs` rewrite),
   internal/surface/cli, internal/core/statusblock, internal/core/site
+- commands/: `commands/implement.md` (and `commands/build.md` where it names
+  the loop's moves) documents `implement step --release <lane-id>` and
+  `implement step --discard <lane-id>`, so the two flags are wired on the
+  plugin surface as on the CLI
 - a shape change, not only new content: `statusblock.Started` carries one
   `Lane` per run (`loop.go:948-957` at `c5b4305f6` fills it from `current()`
   alone), and the block reports one row per lane alive, so `Started` carries
   every lane alive and each reader of it changes with it, the site's status
   page (`internal/core/site/status.go`) included
-- prerequisite: piece 9 of `spc-2609202134338445`, the landing, before C8 to
-  C10, C13 and the landing rules ("What this piece is built on")
+- built on: piece 9 of `spc-2609202134338445`, the landing (`land.go`), which
+  C8 to C10, C13 and the landing rules extend ("What this piece is built on")
 - tests: C1 to C13 through the step interface with fake agents and a fake
   forge; the `needs` parser over a stepped spec; the remainder's `needs`
-  rewrite; a version-6 state file read and advanced, and the version refusals
+  rewrite; a version-7 state file read and advanced, and the version refusals
