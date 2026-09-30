@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core/drainrule"
@@ -174,5 +175,115 @@ func TestAFailedAuditCapturesAMajorBugWithAFixRemedy(t *testing.T) {
 	// is handed back on severity under the baseline, never on the remedy.
 	if v := eligibility(iss, drainrule.Baseline(), deferralAnchor{}); v.Rule == RuleRemedy {
 		t.Fatalf("a failed audit's issue must not be ineligible on its remedy: %+v", v)
+	}
+}
+
+// TestConcurrentFailedIngestsOfOneReceiptFileOneIssue is the reviewer's probe
+// of the "link, never double" rule: the open-issue scan and the filing are one
+// step under the ledger lock, so four ingests of one NOT_MET verdict racing
+// each other file ONE issue and every other one links to it.
+func TestConcurrentFailedIngestsOfOneReceiptFileOneIssue(t *testing.T) {
+	root, rcp := auditOwedRepo(t)
+	verdict := auditVerdict(t, root, rcp, "NOT_MET")
+	const n = 4
+	results := make([]intent.IngestVerdictResult, n)
+	errs := make([]error, n)
+	var wg sync.WaitGroup
+	start := make(chan struct{})
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			<-start
+			results[i], errs[i] = intent.IngestVerdictBytes(root, verdict)
+		}(i)
+	}
+	close(start)
+	wg.Wait()
+	for i, err := range errs {
+		if err != nil {
+			t.Fatalf("ingest %d: %v", i, err)
+		}
+	}
+	open := openIssues(t, root)
+	if len(open) != 1 {
+		t.Fatalf("four concurrent ingests of one failed audit must file ONE issue, found %d", len(open))
+	}
+	filed := 0
+	for i, r := range results {
+		if r.OwedIssue != open[0].ID {
+			t.Fatalf("ingest %d names %q, want the one open issue %s", i, r.OwedIssue, open[0].ID)
+		}
+		if !r.OwedIssueLinked {
+			filed++
+		}
+	}
+	if filed != 1 {
+		t.Fatalf("exactly one ingest files and every other links, got %d filings: %+v", filed, results)
+	}
+}
+
+// orphanCarriers captures extra open carriers of rcp's owed check beside the
+// one the first failed ingest filed, as a lost race or a failed intent write
+// left them. Their ids sort after the filed one, so it stays the oldest.
+func orphanCarriers(t *testing.T, root, rcp string, ids ...string) {
+	t.Helper()
+	for _, id := range ids {
+		if _, err := Capture(CaptureRequest{
+			RepoRoot: root, ForceID: id,
+			Text:     "The after-merge fidelity audit of itd-10 judged a criterion unmet\n\nThe audit of itd-10 (receipt " + rcp + ") judged ac-1 NOT_MET.\n",
+			Severity: "major", Category: "bug", Source: "agent-finding",
+			FoundDuring: "abcd intent audit ingest", RelatedIntents: []string{"itd-10"},
+			Remedy: "fix, then re-run the audit",
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestAFailedIngestLinksTheOldestCarrierAndDeclinesTheOthersAsDuplicates(t *testing.T) {
+	root, rcp := auditOwedRepo(t)
+	first, err := intent.IngestVerdictBytes(root, auditVerdict(t, root, rcp, "NOT_MET"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	orphanCarriers(t, root, rcp, "iss-9912312359590001", "iss-9912312359590002")
+	res, err := intent.IngestVerdictBytes(root, auditVerdict(t, root, rcp, "NOT_MET"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	open := openIssues(t, root)
+	if len(open) != 1 || open[0].ID != first.OwedIssue || !res.OwedIssueLinked || res.OwedIssue != first.OwedIssue {
+		t.Fatalf("the ingest must link the oldest carrier %s and leave it the only open one: %+v, open %+v", first.OwedIssue, res, open)
+	}
+	wf, err := List(ListRequest{RepoRoot: root, State: StateWontfix})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(wf.Issues) != 2 {
+		t.Fatalf("the two extra carriers must be declined as duplicates, found %d in wontfix/", len(wf.Issues))
+	}
+	for _, iss := range wf.Issues {
+		if !contains(iss.Duplicates, first.OwedIssue) {
+			t.Fatalf("%s must carry duplicates: %s, got %+v", iss.ID, first.OwedIssue, iss.Duplicates)
+		}
+	}
+}
+
+func TestAPassingReAuditResolvesEveryOpenCarrier(t *testing.T) {
+	root, rcp := auditOwedRepo(t)
+	if _, err := intent.IngestVerdictBytes(root, auditVerdict(t, root, rcp, "NOT_MET")); err != nil {
+		t.Fatal(err)
+	}
+	orphanCarriers(t, root, rcp, "iss-9912312359590001", "iss-9912312359590002")
+	if n := len(openIssues(t, root)); n != 3 {
+		t.Fatalf("fixture: want 3 open carriers, found %d", n)
+	}
+	res, err := intent.IngestVerdictBytes(root, auditVerdict(t, root, rcp, "MET"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if open := openIssues(t, root); len(open) != 0 || res.FlagCleared == "" {
+		t.Fatalf("a passing re-audit must resolve every open carrier: %+v, open %+v", res, open)
 	}
 }
