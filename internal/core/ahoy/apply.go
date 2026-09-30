@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -106,7 +107,7 @@ func install(cwd string, opts InstallOptions, p Prompter) (InstallResult, error)
 	modeForced := modeWouldChange(opts, det, binTargetPath)
 
 	if len(actionable(det.Gaps)) == 0 &&
-		!(!opts.Yes && len(optionalPending(det.Gaps)) > 0) &&
+		!(!opts.Yes && len(optionalAskable(det.Gaps, p)) > 0) &&
 		!overridesWouldChange(abs, opts.ValueOverrides) &&
 		!attributionWouldChange(abs, opts) &&
 		!modeForced {
@@ -123,12 +124,12 @@ func install(cwd string, opts InstallOptions, p Prompter) (InstallResult, error)
 			return InstallResult{
 				Status:          "partial",
 				Notes:           malformedConfigNotes(cfgErr, opts.ValueOverrides),
-				OptionalSkipped: optionalSkipped(opts, det.Gaps),
+				OptionalSkipped: optionalSkipped(opts, det.Gaps, p),
 			}, nil
 		}
 		return InstallResult{
 			Status:          "already_up_to_date",
-			OptionalSkipped: optionalSkipped(opts, det.Gaps),
+			OptionalSkipped: optionalSkipped(opts, det.Gaps, p),
 		}, nil
 	}
 
@@ -222,7 +223,7 @@ func install(cwd string, opts InstallOptions, p Prompter) (InstallResult, error)
 		Remaining:          remaining,
 		DeclinedCategories: declined,
 		Notes:              ac.notes,
-		OptionalSkipped:    optionalSkipped(opts, final.Gaps),
+		OptionalSkipped:    optionalSkipped(opts, final.Gaps, p),
 		writeKinds:         ac.writeKinds,
 	}, nil
 }
@@ -1784,16 +1785,30 @@ const credentialAtRestGapID = "history.credential_at_rest"
 // stepDrainRule). In the order they are reported.
 var optionalGapIDs = []string{OptionalPinGapID, StatusLineOfferGapID, OracleRoutingMachineGapID, OracleRoutingRepoGapID, DrainRuleOfferGapID}
 
-// optionalSkipped lists the optional gaps a --yes run left un-applied. --yes
-// approves every resolvable category but never adopts the identity pin or
-// wires the status line, so the skip is deliberate — and therefore has to be
-// reported rather than left ambient (iss-166). Outside --yes each is offered
-// as a confirmation, so nothing is skipped silently and the list stays empty.
-func optionalSkipped(opts InstallOptions, gaps []Gap) []string {
-	if !opts.Yes {
+// optionalSkipped lists the optional gaps a run left un-applied without asking.
+// --yes approves every resolvable category but never adopts the identity pin
+// or wires the status line, so the skip is deliberate — and therefore has to
+// be reported rather than left ambient (iss-166). Outside --yes each is offered
+// as a confirmation, except the drain eligibility record off a terminal (see
+// stepDrainRule), so that one is listed and nothing is skipped silently.
+func optionalSkipped(opts InstallOptions, gaps []Gap, p Prompter) []string {
+	if opts.Yes {
+		return optionalPending(gaps)
+	}
+	if atTerminal(p) || !gapIDSet(gaps)[DrainRuleOfferGapID] {
 		return nil
 	}
-	return optionalPending(gaps)
+	return []string{DrainRuleOfferGapID}
+}
+
+// optionalAskable is optionalPending less the offers that will not be asked of
+// p: the drain eligibility record is offered only to a person at a terminal.
+func optionalAskable(gaps []Gap, p Prompter) []string {
+	pending := optionalPending(gaps)
+	if atTerminal(p) {
+		return pending
+	}
+	return slices.DeleteFunc(pending, func(id string) bool { return id == DrainRuleOfferGapID })
 }
 
 // optionalPending reports which of the optional gaps are the remaining work.
@@ -1911,6 +1926,13 @@ func resolveApproval(gaps []Gap, opts InstallOptions, p Prompter) (map[GapCatego
 			approved[c] = true
 		}
 	default:
+		// The drain eligibility record is offered only to a person at a
+		// terminal (see stepDrainRule): off one its category is neither asked
+		// nor counted as declined, so a piped answer stream keeps the order it
+		// had before the offer existed.
+		if !atTerminal(p) {
+			delete(present, DrainRule)
+		}
 		for _, c := range presentInPromptOrder(present) {
 			if c == Dependency && opts.ApproveDependency {
 				continue // answered by the named tool; approved below

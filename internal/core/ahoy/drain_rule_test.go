@@ -15,10 +15,16 @@ import (
 // drain refuses there until it does"). The offer writes abcd's strict baseline
 // as an accepted decision record, and only on the person's own yes.
 
+// terminalScripted is a scriptedPrompter a person answers at a terminal, the
+// only prompter the drain rule offer is put to.
+type terminalScripted struct{ *scriptedPrompter }
+
+func (terminalScripted) AtTerminal() bool { return true }
+
 // drainRulePrompter approves every category question and answers the drain
-// rule offer as told; every other offer is declined.
-func drainRulePrompter(yes bool) *scriptedPrompter {
-	return &scriptedPrompter{confirm: func(q string) bool {
+// rule offer as told, at a terminal; every other offer is declined.
+func drainRulePrompter(yes bool) terminalScripted {
+	return terminalScripted{&scriptedPrompter{confirm: func(q string) bool {
 		switch {
 		case strings.HasPrefix(q, "Apply "):
 			return true
@@ -26,7 +32,7 @@ func drainRulePrompter(yes bool) *scriptedPrompter {
 			return yes
 		}
 		return false
-	}}
+	}}}
 }
 
 // TestDrainRuleOfferWritesTheBaselineOnYes: a managed repository without the
@@ -144,5 +150,82 @@ func TestDrainRuleOfferLeavesAMalformedRecordAlone(t *testing.T) {
 	}
 	if hasGap(det.Gaps, DrainRuleOfferGapID) {
 		t.Error("a repository stating a malformed rule is offered a second record")
+	}
+}
+
+// pipedPrompter is a scripted answer stream off a pipe: each confirm takes the
+// next answer, and past the end reads EOF, a no, as the CLI's stdin prompter
+// does. It is not a TerminalPrompter, so no person is at a terminal.
+type pipedPrompter struct {
+	answers []bool
+	asked   []string
+}
+
+func (p *pipedPrompter) Confirm(q string) bool {
+	p.asked = append(p.asked, q)
+	if len(p.asked) > len(p.answers) {
+		return false
+	}
+	return p.answers[len(p.asked)-1]
+}
+
+func (p *pipedPrompter) Prompt(_ string, _ []string, def string) string { return def }
+
+// TestAPipedInstallStreamIsNotShiftedByTheDrainRuleOffer: a scripted `ahoy
+// install` answers its questions positionally, so a question added to the
+// sequence hands every later answer to the wrong question, and a yes meant for
+// another question would write the drain rule, which decides what an unattended
+// agent may change. Off a terminal the offer is never asked (the itd-131
+// precedent): a stream of the answer count a repository holding the record is
+// asked gets the same questions in the same order, the last of them still gets
+// its answer, no record is written, and optional_skipped names the offer.
+func TestAPipedInstallStreamIsNotShiftedByTheDrainRuleOffer(t *testing.T) {
+	var control []string
+	t.Run("control: the repository holds the record", func(t *testing.T) {
+		setupHermetic(t)
+		repo := installedRepo(t)
+		dir := filepath.Join(repo, filepath.FromSlash(drainrule.ADRsRelDir))
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		body := "---\nid: adr-2609300000000009\nstatus: accepted\n" + drainrule.ProposalFrontmatter() + "---\n"
+		if err := os.WriteFile(filepath.Join(dir, "2609300000000009-drain-rule.md"), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		p := &pipedPrompter{answers: make([]bool, 64)}
+		for i := range p.answers {
+			p.answers[i] = true
+		}
+		if _, err := Install(repo, InstallOptions{}, p); err != nil {
+			t.Fatal(err)
+		}
+		control = append(control, p.asked...)
+	})
+	if len(control) == 0 {
+		t.Fatal("the control install asked nothing; the stream has nothing to shift")
+	}
+	setupHermetic(t)
+	repo := installedRepo(t)
+	p := &pipedPrompter{answers: make([]bool, len(control))}
+	for i := range p.answers {
+		p.answers[i] = true
+	}
+	res, err := Install(repo, InstallOptions{}, p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(p.asked, "\n") != strings.Join(control, "\n") {
+		t.Errorf("the piped stream was shifted:\n got %q\nwant %q", p.asked, control)
+	}
+	for _, q := range p.asked {
+		if strings.Contains(q, string(DrainRule)) || strings.Contains(q, drainRuleQuestionTail) {
+			t.Errorf("a pipe was asked the drain rule: %q", q)
+		}
+	}
+	if _, err := drainrule.Load(repo); !errors.Is(err, drainrule.ErrUnrecorded) {
+		t.Errorf("a piped stream wrote a drain rule: %v", err)
+	}
+	if !containsString(res.OptionalSkipped, DrainRuleOfferGapID) {
+		t.Errorf("optional_skipped = %v, want it to name %s", res.OptionalSkipped, DrainRuleOfferGapID)
 	}
 }

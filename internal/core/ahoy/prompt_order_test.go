@@ -12,7 +12,11 @@ import (
 type recordingPrompter struct {
 	asked   []string
 	confirm bool
+	// terminal makes it a TerminalPrompter a person answers at a terminal.
+	terminal bool
 }
+
+func (p *recordingPrompter) AtTerminal() bool { return p.terminal }
 
 func (p *recordingPrompter) Confirm(q string) bool {
 	p.asked = append(p.asked, q)
@@ -56,10 +60,29 @@ func TestResolveApprovalPromptsInCanonicalOrder(t *testing.T) {
 		"Apply plugin-owned changes?",
 	}
 	for i := 0; i < 64; i++ {
-		p := &recordingPrompter{confirm: true}
+		p := &recordingPrompter{confirm: true, terminal: true}
 		resolveApproval(allCategoryGaps(), InstallOptions{}, p)
 		if strings.Join(p.asked, "|") != strings.Join(want, "|") {
 			t.Fatalf("run %d asked in a different order:\n got %v\nwant %v", i, p.asked, want)
+		}
+	}
+	// Off a terminal the drain-rule question is not asked (stepDrainRule), and
+	// not counted as declined: the rest keep their order, so a piped stream
+	// written before the offer existed still lines up.
+	offTerminal := make([]string, 0, len(want))
+	for _, q := range want {
+		if q != "Apply drain-rule changes?" {
+			offTerminal = append(offTerminal, q)
+		}
+	}
+	p := &recordingPrompter{confirm: false}
+	_, declined := resolveApproval(allCategoryGaps(), InstallOptions{}, p)
+	if strings.Join(p.asked, "|") != strings.Join(offTerminal, "|") {
+		t.Fatalf("off a terminal:\n got %v\nwant %v", p.asked, offTerminal)
+	}
+	for _, c := range declined {
+		if c == string(DrainRule) {
+			t.Fatalf("off a terminal the unasked drain-rule category is reported declined: %v", declined)
 		}
 	}
 }
@@ -95,7 +118,7 @@ func TestResolveApprovalAsksUnknownCategoriesLast(t *testing.T) {
 		Gap{ID: "alpha.a", Category: GapCategory("alpha"), Resolvable: true},
 	)
 	for i := 0; i < 32; i++ {
-		p := &recordingPrompter{confirm: true}
+		p := &recordingPrompter{confirm: true, terminal: true}
 		resolveApproval(gaps, InstallOptions{}, p)
 		if len(p.asked) != 10 {
 			t.Fatalf("asked %d questions, want 10: %v", len(p.asked), p.asked)

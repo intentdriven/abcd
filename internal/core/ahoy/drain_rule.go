@@ -15,12 +15,16 @@ package ahoy
 //     it through the decision store's own seam as an accepted record, which is
 //     committed with the repository and decides for everyone who drains it.
 //
-// Like the routing offers, it is asked only at an answered prompt: --yes
-// approves the category but never writes the record, because the record
-// decides what an unattended agent may do in this repository, and it is
-// reported under optional_skipped. A decline writes nothing and records
-// nothing, so the next install offers again. The offer only ever writes the
-// baseline; loosening a floor is an edit a person makes to the record.
+// It is asked only of a person at a terminal (the itd-131 precedent the git
+// identity step set): --yes approves the category but never writes the record,
+// and off a terminal (a pipe, a routine, CI) neither the category nor the offer
+// is asked, because the record decides what an unattended agent may do in this
+// repository and a scripted yes is not a person's. Adding the question to a
+// piped answer stream would also shift every later answer onto the wrong
+// question. Either way it is reported under optional_skipped. A decline writes
+// nothing and records nothing, so the next install offers again. The offer
+// only ever writes the baseline; loosening a floor is an edit a person makes
+// to the record.
 
 import (
 	"errors"
@@ -58,9 +62,10 @@ func detectDrainRule(cwd string) []Gap {
 	}}
 }
 
-// stepDrainRule makes the offer. It never runs under --yes.
+// stepDrainRule makes the offer. It never runs under --yes, and never off a
+// terminal.
 func (a *applyCtx) stepDrainRule() {
-	if a.autoYes || !a.approved[DrainRule] || !a.has(DrainRuleOfferGapID) {
+	if a.autoYes || !atTerminal(a.prompter) || !a.approved[DrainRule] || !a.has(DrainRuleOfferGapID) {
 		return
 	}
 	if !a.prompter.Confirm(drainRuleQuestion()) {

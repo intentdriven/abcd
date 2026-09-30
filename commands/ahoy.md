@@ -148,7 +148,8 @@ reads end-of-input and DECLINES. `yes` is the reliable form because it never
 runs out; a single `printf 'y\n'` answers the first question only and silently
 declines the rest. The questions come in a fixed order (dependency,
 safe-autocreate, config-change, status-line, oracle-routing, drain-rule, user-state, plugin-owned), so a
-scripted stream of specific answers lines up with them. Each answer is echoed back, so the
+scripted stream of specific answers lines up with them. The drain-rule question
+is asked only at a terminal, so a piped stream never meets it. Each answer is echoed back, so the
 transcript shows what was asked and what it was answered — read it back rather
 than assuming. Under `set -o pipefail` the pipeline reports 141: `yes` takes
 SIGPIPE when abcd stops reading, by design — judge the run by abcd's own output
@@ -188,7 +189,8 @@ harness-wide setting, never accepts a model-tier routing table (below),
 because a table decides which model every delegated step asks for, and never
 adds the drain eligibility record (below), because the record decides what an
 unattended agent may change in the repository. When the result carries `optional_skipped`, report it and
-offer the `yes |` form above as the way to apply it.
+offer the `yes |` form above as the way to apply it, except `drain_rule.offered`,
+which only a person at a terminal is asked.
 
 **The git identity question is a person's alone.** When the author or committer
 a commit would carry diverges from the identity pin, or is a machine identity
@@ -312,8 +314,11 @@ blocks it; every security, major and critical issue is a person's); consent
 mints it through the decision store's own seam as an accepted record, which is
 committed with the repository. Relay the user's answer; never answer it for the
 user. Declining writes nothing and records nothing, so the next install offers
-again; `--yes` skips the offer and reports `drain_rule.offered` under
-`optional_skipped`; `yes |` accepts it. The offer only ever writes the baseline:
+again. It is asked only at a terminal, as the git identity question is: off one
+(a pipe, a routine, CI) neither its category nor the offer is asked, so a
+scripted answer stream keeps its order and a scripted yes never writes the
+record; that run, and a `--yes` run, report `drain_rule.offered` under
+`optional_skipped`. The offer only ever writes the baseline:
 loosening a floor is an edit a person makes to the record, and `abcd drain`
 names every floor loosened. A repository whose record states the rule badly is
 not offered a second one; `abcd drain` names what is wrong with the one it has.

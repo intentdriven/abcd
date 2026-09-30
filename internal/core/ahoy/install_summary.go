@@ -223,7 +223,7 @@ var optionalSkippedHelp = map[string]SummaryItem{
 	DrainRuleOfferGapID: {
 		What:   "The rule for which open issues abcd drain may fix without asking you was not recorded.",
 		Why:    "The rule decides what an unattended agent may change in this repository, so it needs your own yes; until it is recorded, abcd drain refuses to run here.",
-		Action: "Run abcd ahoy install without --yes and answer the question about the drain rule.",
+		Action: "Run abcd ahoy install at a terminal, without --yes, and answer the question about the drain rule.",
 	},
 }
 
