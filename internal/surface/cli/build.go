@@ -86,9 +86,9 @@ func errorsIsNoCheckout(err error) bool { return errors.Is(err, gitutil.ErrNoChe
 
 // newBuildCommand builds `abcd build <itd-N>`.
 func newBuildCommand(asJSON *bool) *cobra.Command {
-	var session, pace, subAgents string
+	var session, pace, subAgents, fixRounds string
 	cmd := &cobra.Command{
-		Use: "build <itd-N> [--session <id>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>]",
+		Use: "build <itd-N> [--session <id>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>]",
 		Long: "Start the implement loop for one intent, or resume the run already in progress for it.\n" +
 			"A new run's checks run first, and every one must pass:\n" +
 			"the intent is READY (planned, criteria written, its spec linked and written), asks no\n" +
@@ -110,16 +110,19 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 			"before this run's lane has moved or claimed anything, and the session's own claim on the\n" +
 			"intent is not counted as a peer's. A session that has not joined is refused. Without it\n" +
 			"the run holds no claim, and the result says so.\n\n" +
-			"A new run is paced: a working window, a pause after it, and a ceiling on the run's lanes\n" +
-			"and validators alive at once. The three numbers are read once, when the run starts:\n" +
-			"--pace <work-minutes>/<pause-minutes> and --sub-agents <n> for this run, else pace.work_minutes,\n" +
-			"pace.pause_minutes and pace.sub_agents in the repository's .abcd/config.json, else in\n" +
-			"~/.abcd/config.json, else the bundled 120/300 with 2 sub-agents. The result and the run\n" +
+			"A new run is paced: a working window, a pause after it, a ceiling on the run's lanes and\n" +
+			"validators alive at once, and the fix rounds a lane may take before it is handed back. The\n" +
+			"four numbers are read once, when the run starts: --pace <work-minutes>/<pause-minutes>,\n" +
+			"--sub-agents <n> and --fix-rounds <n> for this run, else pace.work_minutes, pace.pause_minutes,\n" +
+			"pace.sub_agents and pace.fix_rounds in the repository's .abcd/config.json, else in\n" +
+			"~/.abcd/config.json, else the bundled 120/300 with 2 sub-agents and 3 fix rounds. The result and the run\n" +
 			"record name each number's layer. A malformed pace or ceiling, typed or configured, is\n" +
 			"refused naming the value and the accepted form, and writes nothing. Starting again keeps\n" +
 			"the run's pace; a flag naming another is refused. The window and the pause bind through\n" +
 			"`abcd implement step`; the ceiling is recorded with the run, and this build does not\n" +
-			"count lanes against it.\n\n" +
+			"count lanes against it. A lane whose validators still do not pass after its fix rounds is\n" +
+			"handed back: it stops as unachievable with the last round's findings, the run starts nothing\n" +
+			"further for it, and `abcd implement step` refuses naming the hand-back.\n\n" +
 			"The run then moves one step per `abcd implement step`, driven by the host session.\n\n" +
 			"Exit 2 on a refusal, exit 3 when a peer holds the intent or the run state is locked\n" +
 			"(back off and take other work).",
@@ -140,6 +143,9 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 			}
 			if cmd.Flags().Changed("sub-agents") {
 				o.SubAgents = &subAgents
+			}
+			if cmd.Flags().Changed("fix-rounds") {
+				o.FixRounds = &fixRounds
 			}
 			res, err := loop.Start(root, args[0], o)
 			if err != nil {
@@ -169,17 +175,18 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 	cmd.Flags().StringVar(&session, "session", "", "the host session's id in the shared run state; a new run claims the intent for it")
 	cmd.Flags().StringVar(&pace, "pace", "", "this run's working window and pause, <work-minutes>/<pause-minutes> (e.g. 90/240); wins over every configured layer")
 	cmd.Flags().StringVar(&subAgents, "sub-agents", "", "this run's ceiling on lanes and validators alive at once, a whole number; wins over every configured layer")
+	cmd.Flags().StringVar(&fixRounds, "fix-rounds", "", "the fix rounds a lane of this run may take before it is handed back, a whole number from 0 (bundled: 3); wins over every configured layer")
 	cmd.AddCommand(newBuildNextCommand(asJSON))
 	return cmd
 }
 
 // newBuildNextCommand builds `abcd build next` (itd-2609211116005482).
 func newBuildNextCommand(asJSON *bool) *cobra.Command {
-	var session, pace, subAgents string
+	var session, pace, subAgents, fixRounds string
 	var maxPicks int
 	var untilEmpty bool
 	cmd := &cobra.Command{
-		Use: "next [--session <id>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--max <n>] [--until-empty]",
+		Use: "next [--session <id>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--max <n>] [--until-empty]",
 		Long: "Pick the readiest planned intent, write down why, and start its run.\n\n" +
 			"The candidates are the planned intents that pass every check `abcd build <itd-N>` runs\n" +
 			"(READY, no open question, no unanswered claim section, not held, no unshipped intent in\n" +
@@ -199,8 +206,9 @@ func newBuildNextCommand(asJSON *bool) *cobra.Command {
 			"in is never written but for the run state. `abcd intent ready` keeps reporting the person's\n" +
 			"entry as the most recent conjecture.\n\n" +
 			"One pick per invocation. --max <n> above 1 and --until-empty, which continue under the pace\n" +
-			"rule, are refused: that half of the verb is not built in this abcd. --session, --pace and\n" +
-			"--sub-agents are `abcd build`'s own.\n\n" +
+			"rule, are refused: that half of the verb is not built in this abcd. --session, --pace,\n" +
+			"--sub-agents and --fix-rounds are `abcd build`'s own. A lane handed back after its fix\n" +
+			"rounds falsifies the pick: the run record says so, and the intent's entry is not edited.\n\n" +
 			"No candidate is refused, naming each excluded intent and the check that excluded it, and\n" +
 			"nothing is written. Exit 2 on a refusal, exit 3 when the chosen intent's run is already in\n" +
 			"progress or the run state is locked.",
@@ -222,6 +230,9 @@ func newBuildNextCommand(asJSON *bool) *cobra.Command {
 			if cmd.Flags().Changed("sub-agents") {
 				o.SubAgents = &subAgents
 			}
+			if cmd.Flags().Changed("fix-rounds") {
+				o.FixRounds = &fixRounds
+			}
 			res, err := loop.Next(root, o, loop.NextOptions{Max: maxPicks, UntilEmpty: untilEmpty})
 			if err != nil {
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
@@ -235,6 +246,7 @@ func newBuildNextCommand(asJSON *bool) *cobra.Command {
 	cmd.Flags().StringVar(&session, "session", "", "the host session's id in the shared run state; the new run claims the picked intent for it")
 	cmd.Flags().StringVar(&pace, "pace", "", "the new run's working window and pause, <work-minutes>/<pause-minutes>; wins over every configured layer")
 	cmd.Flags().StringVar(&subAgents, "sub-agents", "", "the new run's ceiling on lanes and validators alive at once; wins over every configured layer")
+	cmd.Flags().StringVar(&fixRounds, "fix-rounds", "", "the fix rounds a lane of the new run may take before it is handed back; wins over every configured layer")
 	cmd.Flags().IntVar(&maxPicks, "max", 0, "how many picks to make; only 1 is built, and more is refused")
 	cmd.Flags().BoolVar(&untilEmpty, "until-empty", false, "pick until no candidate is left; not built, and refused")
 	return cmd
@@ -387,6 +399,11 @@ func newImplementStatusCommand(asJSON *bool) *cobra.Command {
 					if st.Complete() {
 						state = "complete"
 					}
+					for _, l := range st.Lanes {
+						if l.HandBack != nil {
+							state = "handed back (" + l.ID + ", " + l.HandBack.Verdict + ")"
+						}
+					}
 					fmt.Fprintf(w, "run %s  %s (%s)  %s, driven by the %s\n", st.RunID, st.Key, st.Spec, state, st.Driver)
 					fmt.Fprintf(w, "  state:   %s\n", loop.StateRelPath(st.RunID))
 					renderPace(w, st.Pace)
@@ -413,6 +430,9 @@ func newImplementStatusCommand(asJSON *bool) *cobra.Command {
 // renderStepResult is the text form of an `implement step` or `implement receipt` result.
 func renderStepResult(w io.Writer, verb string, res loop.StepResult) {
 	switch {
+	case res.HandBack != nil:
+		fmt.Fprintf(w, "%s: HANDED BACK: %s's %s stopped as %s after %d fix round(s); the run starts nothing further for it\n",
+			verb, res.RunID, res.Lane, res.HandBack.Verdict, res.HandBack.FixRounds)
 	case res.NextEligibleAt != nil:
 		fmt.Fprintf(w, "%s: %s's window has elapsed; paused until %s\n", verb, res.RunID, res.NextEligibleAt.UTC().Format(time.RFC3339))
 	case res.PerformedStage != "":
@@ -451,7 +471,13 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			"return. A round one of them did not pass goes to a fresh implementer, who applies each\n" +
 			"finding or rejects it in writing in its report, and the next round judges the new head\n" +
 			"afresh; a round that passes completes the stage, unless a lane report states a verdict,\n" +
-			"which is refused naming the report. land follows.\n\n" +
+			"which is refused naming the report. The audit passes only when every criterion is met: a\n" +
+			"criterion it could not decide (INCONCLUSIVE) fails the round as a not-met one does, and\n" +
+			"goes to the fresh implementer with the finding. A round that does not pass once the lane\n" +
+			"has taken the run's fix rounds (--fix-rounds, bundled 3) hands the lane back instead: it\n" +
+			"stops as unachievable, the result and the run record name the last round's findings, the\n" +
+			"run starts nothing further for it, and every later step is refused naming the hand-back.\n" +
+			"land follows a passing round.\n\n" +
 			"A stage whose body this abcd does not carry is refused naming the spec piece that\n" +
 			"delivers it, and the run is unchanged. A stage that fails leaves the state as it was,\n" +
 			"so the next invocation performs it again; a completed stage is never repeated.\n\n" +

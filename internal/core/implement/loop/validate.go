@@ -20,8 +20,19 @@ package loop
 // each finding with a commit on the lane's branch or rejects it in writing in
 // its report; the next round then hands the lane's head to every validator
 // again, fresh, so no verdict stands over a head it did not read and a rejection
-// is judged by the validator it answers. How many rounds a lane may take is the
-// fix-round bound of itd-50; this stage counts them.
+// is judged by the validator it answers. How many fix rounds a lane may take is
+// the run's cap, set beside its pace (ruling DR1, 2026-09-29; itd-50's
+// criterion 2): a round that does not pass once the lane has taken that many
+// hands the lane back to the person instead (handback.go).
+//
+// The fidelity audit passes only when it judges every criterion met: a
+// criterion it could not decide (INCONCLUSIVE) fails the round exactly as a
+// not-met one does, so the work goes back to a fresh implementer with the
+// finding and the lane never lands on an undecided audit (ruling DQ1a,
+// 2026-09-29: "an undecided audit reopens the work, never closes like a
+// pass"). A return the loop cannot read as a verdict records nothing and is
+// refused, so it starts no fix round and counts against nothing (itd-50's
+// criterion 5).
 //
 // The files of a round live in the lane's directory:
 //
@@ -102,7 +113,7 @@ var reportVerdictRe = regexp.MustCompile(`(?m)^[ \t>]*(?:[-*+][ \t]+)?[*_"]*(?i:
 // allVerdicts is every verdict word a validator states, for reading a report.
 var allVerdicts = []verdictWord{
 	{"SHIP", true}, {"FIX FIRST", false}, {"APPROVE", true}, {"BLOCK", false}, {"NEEDS-INPUT", false},
-	{"NOT_MET", false}, {"MET_WITH_CONCERNS", true}, {"MET", true}, {"INCONCLUSIVE", true},
+	{"NOT_MET", false}, {"MET_WITH_CONCERNS", true}, {"MET", true}, {"INCONCLUSIVE", false},
 }
 
 // validateStage is the validate stage's body. Each call opens the lane's next
@@ -149,6 +160,17 @@ func validateStage(c Context, lane *Lane) (Outcome, error) {
 		}
 	}
 	if len(failing) > 0 {
+		if taken, limit := cur.Round-1, c.State.FixRoundCap(); taken >= limit {
+			hb := HandBack{Verdict: VerdictUnachievable, Round: cur.Round, FixRounds: limit, Verdicts: verdictsLine(*cur)}
+			for _, v := range failing {
+				hb.Findings = append(hb.Findings, v.Return)
+				if v.Audit != nil {
+					hb.NotMet = append(hb.NotMet, v.Audit.NotMet...)
+					hb.Undecided = append(hb.Undecided, v.Audit.Inconclusive...)
+				}
+			}
+			return Outcome{HandBack: &hb}, nil
+		}
 		brief, receipt, err := writeFixBrief(c, *lane, *cur, failing)
 		if err != nil {
 			return Outcome{}, err
@@ -397,6 +419,16 @@ func writeFixBrief(c Context, lane Lane, r ValidationRound, failing []ValidatorR
 	p("validators judged the lane's head %s, and these did not pass:\n\n", r.HeadSHA)
 	for _, v := range failing {
 		p("- %s: %s — its return: `%s`\n", v.Role, v.Verdict, abs(c.RepoRoot, v.Return))
+		if v.Audit != nil {
+			if len(v.Audit.NotMet) > 0 {
+				p("  - criteria not met: %s\n", strings.Join(v.Audit.NotMet, ", "))
+			}
+			if len(v.Audit.Inconclusive) > 0 {
+				p("  - criteria the audit could not decide (undecided, INCONCLUSIVE): %s. An undecided criterion\n", strings.Join(v.Audit.Inconclusive, ", "))
+				p("    reopens the work as a not-met one does: make the delivery show it is met, with evidence the\n")
+				p("    auditor can cite, or reject it in writing naming why the evidence already stands\n")
+			}
+		}
 	}
 	p("\nThe round's verdicts, as the loop recorded them: %s.\n\n", verdictsLine(r))
 	p("For every finding in those returns, either apply it with a commit on `%s` in the worktree\n", lane.Branch)
@@ -500,7 +532,8 @@ func recordAudit(c Context, lane *Lane, v *ValidatorRun, raw []byte) error {
 		return refuse("receipt", "", lane.ID, fmt.Sprintf("%s is not a fidelity verdict this request issued: %s", v.Return, scanner.RedactRefusal(c.RepoRoot, err.Error())),
 			"start a fresh intent-auditor with the brief "+v.Brief+"; its verdict echoes the request's receipt and Provenance block, then hand it back")
 	}
-	v.Verdict, v.Pass = got.Worst, len(got.NotMet) == 0
+	// An undecided criterion fails the round as a not-met one does (DQ1a).
+	v.Verdict, v.Pass = got.Worst, len(got.NotMet) == 0 && len(got.Inconclusive) == 0
 	v.Audit.Worst, v.Audit.NotMet, v.Audit.Inconclusive = got.Worst, got.NotMet, got.Inconclusive
 	return nil
 }

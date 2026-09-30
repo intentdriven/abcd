@@ -98,7 +98,18 @@ const lockFileName = ".lock"
 // is its strict subset, read as a run no validator has judged yet and written
 // back at version 5; a version-4 file carrying a validation is not one version
 // 4 wrote, and is refused.
-const SchemaVersion = 5
+//
+// Version 6 added the fix-round cap (ruling DR1, 2026-09-29): the pace's
+// `fix_rounds`, and a lane's `hand_back` when it takes its cap of fix rounds
+// without passing. Version 5 is its strict subset, read as a run started before
+// the pace carried the cap, which runs on the bundled one, and written back at
+// version 6; a version-5 file carrying either is not one version 5 wrote, and
+// is refused.
+const SchemaVersion = 6
+
+// schemaVersionUncapped is the version before the fix-round cap: read, never
+// written.
+const schemaVersionUncapped = 5
 
 // schemaVersionUnvalidated is the version before the validate stage's record:
 // read, never written.
@@ -145,7 +156,8 @@ func ValidRunID(id string) bool { return runIDRe.MatchString(id) }
 type Stage string
 
 // The lane's stages, in the order Sequence performs them. StageDone is the state
-// of a lane with nothing left to do, never a stage with a body.
+// of a lane with nothing left to do, and StageHandedBack of a lane stopped and
+// handed back to the person; neither is a stage with a body.
 const (
 	StageWorktree  Stage = "worktree"
 	StageBrief     Stage = "brief"
@@ -153,7 +165,15 @@ const (
 	StageValidate  Stage = "validate"
 	StageLand      Stage = "land"
 	StageDone      Stage = "done"
+	// StageHandedBack is a lane that took its run's cap of fix rounds and still
+	// did not pass (itd-50, criterion 2): the loop starts nothing further for
+	// it, and its intent is the person's to replan.
+	StageHandedBack Stage = "handed-back"
 )
+
+// VerdictUnachievable is the verdict a lane is handed back with: the run's fix
+// rounds could not bring it to a passing round (itd-50's UNACHIEVABLE).
+const VerdictUnachievable = "unachievable"
 
 // Driver names what drives the loop. The host session is decision 5's default;
 // the process driver is piece 3's, opt-in by configuration.
@@ -238,6 +258,30 @@ type Lane struct {
 	// the validators judged, the last the current one. Only the loop writes a
 	// verdict into it, parsed from the validator's own return (itd-58).
 	Validation []ValidationRound `json:"validation,omitempty"`
+	// HandBack is set when the lane was stopped and handed back to the person:
+	// its Stage is then StageHandedBack.
+	HandBack *HandBack `json:"hand_back,omitempty"`
+}
+
+// HandBack is a lane stopped and handed back to the person, with what the last
+// round found (ruling DR1 on itd-50's criterion 2).
+type HandBack struct {
+	At time.Time `json:"at"`
+	// Verdict is VerdictUnachievable.
+	Verdict string `json:"verdict"`
+	// Round is the round that did not pass once the cap was reached, and
+	// FixRounds the cap the run held the lane to.
+	Round     int `json:"round"`
+	FixRounds int `json:"fix_rounds"`
+	// Verdicts is the last round's verdicts as the loop recorded them, and
+	// Findings the returns of the validators that did not pass, relative to
+	// the checkout root.
+	Verdicts string   `json:"verdicts"`
+	Findings []string `json:"findings"`
+	// NotMet and Undecided name the criteria the last audit judged not met and
+	// could not decide, when the lane took the audit.
+	NotMet    []string `json:"not_met,omitempty"`
+	Undecided []string `json:"undecided,omitempty"`
 }
 
 // ValidationRound is one round of the validate stage: the validators it hands
@@ -338,6 +382,20 @@ func (s State) picked() bool {
 	return false
 }
 
+// capped reports whether the state carries anything only a version-6 run
+// writes: the pace's fix-round cap, or a lane handed back.
+func (s State) capped() bool {
+	if s.Pace != nil && s.Pace.FixRounds.Layer != "" {
+		return true
+	}
+	for _, l := range s.Lanes {
+		if l.HandBack != nil || l.Stage == StageHandedBack {
+			return true
+		}
+	}
+	return false
+}
+
 // validated reports whether the state carries anything only the validate
 // stage writes.
 func (s State) validated() bool {
@@ -424,7 +482,10 @@ func readStateIn(root *os.Root, runID string) (State, error) {
 	case st.SchemaVersion <= schemaVersionUnvalidated && st.validated():
 		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries a validation, which version %d never wrote", rel, st.SchemaVersion, st.SchemaVersion),
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
-	case st.SchemaVersion >= schemaVersionUnpaced && st.SchemaVersion <= schemaVersionUnvalidated:
+	case st.SchemaVersion <= schemaVersionUncapped && st.capped():
+		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries a fix-round cap or a hand-back, which version %d never wrote", rel, st.SchemaVersion, st.SchemaVersion),
+			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
+	case st.SchemaVersion >= schemaVersionUnpaced && st.SchemaVersion <= schemaVersionUncapped:
 		// Read as the current version, its stages already carried over by
 		// decodeState when it named them `step`; the next write carries it, and
 		// this read writes nothing.

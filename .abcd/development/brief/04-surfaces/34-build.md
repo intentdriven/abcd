@@ -144,15 +144,18 @@ intent already has a run in progress. Naming a falsified pick in the run record
 
 ## The pace
 
-A run is paced without being told: a working window, a pause after it, and a
-ceiling on the run's lanes and validators alive at once. The three numbers are
+A run is paced without being told: a working window, a pause after it, a
+ceiling on the run's lanes and validators alive at once, and the fix rounds a
+lane may take before it is handed back (ruling DR1, 2026-09-29: a per-run value
+set beside the pace, default 3). The four numbers are
 resolved once, when a new run is created, through the one layered configuration
 reader (`internal/core/layered`), each key on its own, highest layer first:
-the build's own pace and sub-agent flags, the pace written as
-`<work-minutes>/<pause-minutes>`; `pace.work_minutes`, `pace.pause_minutes` and `pace.sub_agents` in the
+the build's own pace, sub-agent and fix-round flags, the pace written as
+`<work-minutes>/<pause-minutes>`; `pace.work_minutes`, `pace.pause_minutes`, `pace.sub_agents` and
+`pace.fix_rounds` in the
 repository's `.abcd/config.json`; the same keys in `~/.abcd/config.json`; and
-the bundled default, 120 minutes of work, 300 of pause and 2 sub-agents
-(decision 5), held in one set of constants. The files are read through the
+the bundled default, 120 minutes of work, 300 of pause, 2 sub-agents and 3 fix
+rounds (decision 5 and ruling DR1), held in one set of constants. The files are read through the
 reader's guards (a regular file inside the checkout; on the machine, one the
 caller owns and nobody else can write), and the reader claims the `pace`
 namespace, so a key under it the loop does not read is refused rather than
@@ -168,7 +171,9 @@ naming the same pace resumes.
 A malformed pace or ceiling is refused at the `pace` stage naming the value and
 the accepted form, and nothing is written (criterion 9): the pace flag is two
 runs of digits around one slash, the work window 1 to 10080 minutes and the pause 0
-to 10080, and the ceiling a whole number from 1 to 64; a configured value is
+to 10080, the ceiling a whole number from 1 to 64, and the fix rounds a whole
+number from 0 to 64 (0 hands a lane back on its first round that does not
+pass); a configured value is
 held to the same ranges, and one that does not decode as a whole number (a
 string, a fraction, a null) is refused naming its file. A week bounds the
 minutes so the window arithmetic stays far inside the clock's range and a typed
@@ -194,7 +199,13 @@ repository abcd manages has one, so a run is managed-only by construction. Each
 run directory is created one level at a time and proved real, the state file is
 replaced atomically inside an `os.Root`, and the reader decodes strictly,
 refusing an unknown field, a schema version it does not know, or a file stored
-under a run id it does not name. The state is schema version 4. Version 4
+under a run id it does not name. The state is schema version 6. Version 6
+added the fix-round cap (ruling DR1): the pace's `fix_rounds` and a lane's
+`hand_back`. Version 5 added the validate stage's record (a lane's
+`validation`). Each earlier version is the next one's strict subset, read as a
+run that predates the addition (a version-5 run runs on the bundled cap) and
+written back at version 6 by its next mutation; an earlier version carrying what
+only a later one writes is refused. Version 4
 renamed the lane's stage (BU1, iss-2609291313276243): a lane's and a record
 line's `step` became `stage`, so "step" names only the spec's steps (`spec_step`,
 `step_title`, `pending`). Versions 1 to 3 wrote `step`, and are migrated on
@@ -380,8 +391,29 @@ it in writing in its report, and hands back a receipt verified as the
 implementer's is; the next round then hands the lane's head to every validator
 again, so no verdict stands over a head it did not read and a rejection is
 judged by the validator it answers. The state records every round with the head
-it judged, each verdict, and the audit's receipt and range; the bound on rounds
-is itd-50's.
+it judged, each verdict, and the audit's receipt and range.
+
+The audit passes a round only when it judges every criterion met: a criterion
+it could not decide (`INCONCLUSIVE`) fails the round exactly as a `NOT_MET` one
+does, and the fix brief names it as undecided, so the lane never lands on an
+audit that decided nothing (ruling DQ1a, 2026-09-29: an undecided audit reopens
+the work, never closes like a pass). A return the loop cannot read as a verdict
+records nothing and is refused, so it starts no fix round and counts against
+nothing.
+
+**The fix-round bound** (ruling DR1; itd-50, criterion 2). A round that does not
+pass once the lane has taken the run's cap of fix rounds starts no further fix
+round: the lane stops at the `handed-back` stage with a `hand_back` record (the
+verdict `unachievable`, the round, the cap, the last round's verdicts, the
+returns of the validators that did not pass, and the criteria the audit judged
+not met or could not decide). The step's result carries it and says so first;
+the run record gains a `handed-back` line, and, for a run the pick
+started, a `pick` line naming the pick falsified (itd-2609211116005482), the
+intent's grounds entry left as written. The run starts nothing further for the
+lane: every later step is refused at the `handed-back` stage naming the
+hand-back, and building the intent again resumes the run and says the same.
+Moving the intent to `drafts/` with its replan reason (itd-50, criterion 3) is
+not made by this build.
 
 ## Exit codes
 
@@ -418,6 +450,7 @@ Sub-verbs: `abcd build next`.
 
 | Flag | Type |
 |---|---|
+| `--fix-rounds` | string |
 | `--pace` | string |
 | `--session` | string |
 | `--sub-agents` | string |
@@ -428,6 +461,7 @@ Sub-verbs: none.
 
 | Flag | Type |
 |---|---|
+| `--fix-rounds` | string |
 | `--max` | int |
 | `--pace` | string |
 | `--session` | string |

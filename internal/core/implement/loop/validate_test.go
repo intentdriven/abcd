@@ -2,6 +2,7 @@ package loop
 
 import (
 	"encoding/json"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -475,8 +476,8 @@ func TestAReturnTheLoopCannotReadAVerdictFromIsRefused(t *testing.T) {
 
 // TestAVersion4StateReadsAsOneNoValidatorHasJudged: version 5 added the
 // validate stage's record, so a version-4 file is read as a run no validator has
-// judged yet and written back at version 5, and a version-4 file carrying a
-// validation is not one version 4 wrote, and is refused.
+// judged yet and written back at the current version, and a version-4 file
+// carrying a validation is not one version 4 wrote, and is refused.
 func TestAVersion4StateReadsAsOneNoValidatorHasJudged(t *testing.T) {
 	repo := briefRepo(t, agentsMarked)
 	start, err := Start(repo.Root(), "itd-10", Options{})
@@ -486,9 +487,8 @@ func TestAVersion4StateReadsAsOneNoValidatorHasJudged(t *testing.T) {
 	id, stages := start.RunID, DefaultStages()
 	implemented(t, repo, id, stages, "one.txt")
 	path := filepath.Join(repo.Root(), filepath.FromSlash(StateRelPath(id)))
-	cur := `"schema_version": 5,`
-	v4 := strings.Replace(string(stateBytes(t, repo.Root(), id)), cur, `"schema_version": 4,`, 1)
-	if err := os.WriteFile(path, []byte(v4), 0o600); err != nil {
+	cur := fmt.Sprintf(`"schema_version": %d,`, SchemaVersion)
+	if err := os.WriteFile(path, downgraded(t, stateBytes(t, repo.Root(), id), 4), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	st, err := ReadState(repo.Root(), id)
@@ -497,14 +497,32 @@ func TestAVersion4StateReadsAsOneNoValidatorHasJudged(t *testing.T) {
 	}
 	handBack(t, repo, id, stages, RoleRuthless, reviewerReturn("SHIP"))
 	if !strings.Contains(string(stateBytes(t, repo.Root(), id)), cur) {
-		t.Fatal("the next mutation writes the file back at version 5")
+		t.Fatalf("the next mutation writes the file back at version %d", SchemaVersion)
 	}
-	judged := strings.Replace(string(stateBytes(t, repo.Root(), id)), cur, `"schema_version": 4,`, 1)
-	if err := os.WriteFile(path, []byte(judged), 0o600); err != nil {
+	if err := os.WriteFile(path, downgraded(t, stateBytes(t, repo.Root(), id), 4), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	_, err = ReadState(repo.Root(), id)
 	if r := mustRefusal(t, err); r.Stage != "state" || !strings.Contains(r.Reason, "validation") {
 		t.Fatalf("a version-4 file carrying a validation is refused: %+v", r)
 	}
+}
+
+// downgraded is a state file as an earlier version would carry it: at version
+// v, without the pace's fix-round cap, which version 6 added.
+func downgraded(t *testing.T, data []byte, v int) []byte {
+	t.Helper()
+	var m map[string]any
+	if err := json.Unmarshal(data, &m); err != nil {
+		t.Fatal(err)
+	}
+	m["schema_version"] = v
+	if p, ok := m["pace"].(map[string]any); ok {
+		delete(p, "fix_rounds")
+	}
+	out, err := json.MarshalIndent(m, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return out
 }
