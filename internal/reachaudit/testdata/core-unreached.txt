@@ -106,8 +106,6 @@ internal/core/positioning.DefaultSurfaces
 internal/core/reading.AssemblerVersion
 internal/core/reading.DecodeManifest
 internal/core/reading.LoadDefinition
-internal/core/readingitem.LocateDisposition
-internal/core/readingitem.LocateSurprise
 internal/core/record.RecommendedVerbPaths
 internal/core/record/match.Bundled
 internal/core/record/match.NewWeights
@@ -120,8 +118,6 @@ internal/core/rules.Merge
 internal/core/rules.Signature
 internal/core/rules.Validate
 internal/core/scribe.AllowList
-internal/core/scribe.DecodeManifest
-internal/core/scribe.Exclusions
 internal/core/site.Blocks
 internal/core/site.BuildRecordExport
 internal/core/site.ComputeArrangements
@@ -139,9 +135,6 @@ internal/core/site.LoadUI
 internal/core/site.PrinciplesDir
 internal/core/site.Providers
 internal/core/site.RecordRoute
-internal/core/source.Load
-internal/core/spec.RenderSteps
-internal/core/spec.SortByNumber
 internal/core/spec.Validate
 internal/core/spec.WithStoreLock
 internal/core/statusline.LoadFrom

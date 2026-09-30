@@ -182,7 +182,7 @@ func TestRenderStepsCarriesTheUnlandedStepsVerbatim(t *testing.T) {
 	if len(unlanded) != 2 || unlanded[0].Title != "The parser" || unlanded[1].Title != "The remainder copy" {
 		t.Fatalf("Unlanded = %+v, want steps 1 and 3", unlanded)
 	}
-	out := RenderSteps(unlanded)
+	out := renderSteps(unlanded)
 	for _, want := range []string{
 		"1. **The parser**\n   - packages: internal/core/spec\n",
 		"2. The remainder copy\n",

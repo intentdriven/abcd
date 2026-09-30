@@ -121,7 +121,7 @@ func Assemble(req AssembleRequest) (AssembleResult, error) {
 		DefinitionSHA256: defHash, ContextSHA256: sha256Hex(contextRaw),
 		Supplied:  SuppliedHashes{DispositionsSHA256: sha256Hex([]byte(supplied))},
 		Items:     make([]ManifestItem, 0, len(entries)),
-		AllowList: AllowList(), Exclusions: Exclusions(),
+		AllowList: AllowList(), Exclusions: exclusions(),
 	}
 	for _, e := range entries {
 		m.Items = append(m.Items, ManifestItem{Path: e.Path, Bytes: len(e.Text), SHA256: sha256Hex([]byte(e.Text))})
