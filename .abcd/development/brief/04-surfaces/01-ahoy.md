@@ -29,6 +29,7 @@ repo whose stamp says it is current.
 | `credential` | — | shipped |
 | `doctor` | — | shipped |
 | `install` | — | shipped |
+| `remote` | — | shipped |
 | `remote apply` | gate | shipped |
 | `uninstall` | — | shipped |
 
