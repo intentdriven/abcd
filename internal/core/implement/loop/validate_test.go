@@ -41,7 +41,7 @@ func stepTo(t *testing.T, repo *gittest.Repo, runID string, stages Stages, want 
 		if i := st.current(); i >= 0 && st.Lanes[i].Stage == want && st.Lanes[i].Awaiting == nil {
 			return st.Lanes[i]
 		}
-		if _, err := Advance(repo.Root(), runID, stages, Options{}); err != nil {
+		if _, err := advance(repo.Root(), runID, stages, Options{}); err != nil {
 			t.Fatalf("advancing to %s: %v", want, err)
 		}
 	}
@@ -68,7 +68,7 @@ func currentLane(t *testing.T, repo *gittest.Repo, runID string) Lane {
 func implemented(t *testing.T, repo *gittest.Repo, runID string, stages Stages, file string) Lane {
 	t.Helper()
 	stepTo(t, repo, runID, stages, StageImplement)
-	res, err := Advance(repo.Root(), runID, stages, Options{})
+	res, err := advance(repo.Root(), runID, stages, Options{})
 	if err != nil || res.Awaiting == nil || res.Awaiting.Role != RoleImplementer {
 		t.Fatalf("the implement stage awaits an implementer: %+v %v", res, err)
 	}
@@ -134,7 +134,7 @@ func auditorVerdict(t *testing.T, request, verdict string) string {
 // hands back body as that agent's return. It returns the receipt's result.
 func handBack(t *testing.T, repo *gittest.Repo, runID string, stages Stages, role, body string) StepResult {
 	t.Helper()
-	res, err := Advance(repo.Root(), runID, stages, Options{})
+	res, err := advance(repo.Root(), runID, stages, Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,7 +193,7 @@ func TestTheValidatorsAreFreshAgentsAndOnlyTheLoopRecordsAVerdict(t *testing.T) 
 	id, stages := start.RunID, DefaultStages()
 	l := implemented(t, repo, id, stages, "one.txt")
 
-	res, err := Advance(repo.Root(), id, stages, Options{})
+	res, err := advance(repo.Root(), id, stages, Options{})
 	if err != nil || res.Awaiting == nil || res.Awaiting.Role != RoleRuthless {
 		t.Fatalf("the first validator is a fresh ruthless reviewer: %+v %v", res, err)
 	}
@@ -218,7 +218,7 @@ func TestTheValidatorsAreFreshAgentsAndOnlyTheLoopRecordsAVerdict(t *testing.T) 
 	handBack(t, repo, id, stages, RoleSecurity, reviewerReturn("APPROVE"))
 	handBack(t, repo, id, stages, RoleAuditor, "MET")
 
-	done, err := Advance(repo.Root(), id, stages, Options{})
+	done, err := advance(repo.Root(), id, stages, Options{})
 	if err != nil || done.PerformedStage != StageValidate || done.Stage != StageLand {
 		t.Fatalf("a passing round completes the validate stage: %+v %v", done, err)
 	}
@@ -237,7 +237,7 @@ func TestTheValidatorsAreFreshAgentsAndOnlyTheLoopRecordsAVerdict(t *testing.T) 
 		t.Fatalf("the audit's receipt and range are the run's, for the close to consume: %+v", a)
 	}
 	// The landing (piece 9) takes the lane from here, one step at a time.
-	res, err = Advance(repo.Root(), id, stages, Options{})
+	res, err = advance(repo.Root(), id, stages, Options{})
 	if err != nil || res.Stage != StageLand || res.PerformedStage != "" {
 		t.Fatalf("the landing's first step leaves the lane at land: %+v %v", res, err)
 	}
@@ -257,7 +257,7 @@ func TestTheAuditRunsOnceOnTheClosingLaneOverTheWholeDelivery(t *testing.T) {
 
 	first := implemented(t, repo, id, stages, "one.txt")
 	passRound(t, repo, id, stages, RoleRuthless, RoleSecurity)
-	res, err := Advance(repo.Root(), id, stages, Options{})
+	res, err := advance(repo.Root(), id, stages, Options{})
 	if err != nil || res.PerformedStage != StageValidate {
 		t.Fatalf("a lane that does not close the spec completes its validation without an audit: %+v %v", res, err)
 	}
@@ -268,7 +268,7 @@ func TestTheAuditRunsOnceOnTheClosingLaneOverTheWholeDelivery(t *testing.T) {
 	if v := st.Lanes[0].Validation[0].Validators; len(v) != 2 {
 		t.Fatalf("the non-closing lane's validators are the two reviewers: %+v", v)
 	}
-	if _, err := Advance(repo.Root(), id, stages, Options{}); err != nil {
+	if _, err := advance(repo.Root(), id, stages, Options{}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -294,7 +294,7 @@ func TestTheAuditRunsOnceOnTheClosingLaneOverTheWholeDelivery(t *testing.T) {
 	if a == nil || a.BaseSHA != st.Lanes[0].BaseSHA || a.HeadSHA != closing.HeadSHA {
 		t.Fatalf("the audit's range is the whole delivery: %+v", a)
 	}
-	if res, err := Advance(repo.Root(), id, stages, Options{}); err != nil || res.PerformedStage != StageValidate {
+	if res, err := advance(repo.Root(), id, stages, Options{}); err != nil || res.PerformedStage != StageValidate {
 		t.Fatalf("the closing lane's passing round completes its validation: %+v %v", res, err)
 	}
 }
@@ -303,7 +303,7 @@ func TestTheAuditRunsOnceOnTheClosingLaneOverTheWholeDelivery(t *testing.T) {
 // hands back its receipt, naming commits (the lane's own when it made none).
 func fixed(t *testing.T, repo *gittest.Repo, runID string, stages Stages, report string, commits ...string) {
 	t.Helper()
-	res, err := Advance(repo.Root(), runID, stages, Options{})
+	res, err := advance(repo.Root(), runID, stages, Options{})
 	if err != nil || res.Awaiting == nil || res.Awaiting.Role != RoleImplementer {
 		t.Fatalf("a round that did not pass hands its findings to a fresh implementer: %+v %v", res, err)
 	}
@@ -372,7 +372,7 @@ func TestAFindingIsAppliedByAFreshImplementerOrRejectedInWriting(t *testing.T) {
 
 	// Round 3 judges the same head again, and passes.
 	passRound(t, repo, id, stages, RoleRuthless, RoleSecurity, RoleAuditor)
-	if res, err := Advance(repo.Root(), id, stages, Options{}); err != nil || res.PerformedStage != StageValidate {
+	if res, err := advance(repo.Root(), id, stages, Options{}); err != nil || res.PerformedStage != StageValidate {
 		t.Fatalf("a passing round completes the stage: %+v %v", res, err)
 	}
 	st, _ := ReadState(repo.Root(), id)
@@ -402,7 +402,7 @@ func TestAReportCarryingAVerdictIsRefusedAtTheAdvance(t *testing.T) {
 			}
 			passRound(t, repo, id, stages, RoleRuthless, RoleSecurity, RoleAuditor)
 			before := stateBytes(t, repo.Root(), id)
-			_, err = Advance(repo.Root(), id, stages, Options{})
+			_, err = advance(repo.Root(), id, stages, Options{})
 			r := mustRefusal(t, err)
 			if r.Stage != string(StageValidate) || !strings.Contains(r.Reason, RunRelDir+"/"+id+"/lane-1/"+ReportFileName) || !strings.Contains(r.Reason, "verdict") {
 				t.Fatalf("the refusal names the report carrying a verdict: %+v", r)
@@ -413,7 +413,7 @@ func TestAReportCarryingAVerdictIsRefusedAtTheAdvance(t *testing.T) {
 			if err := os.WriteFile(report, []byte("built it; the reviewers judge it\n"), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			if res, err := Advance(repo.Root(), id, stages, Options{}); err != nil || res.PerformedStage != StageValidate {
+			if res, err := advance(repo.Root(), id, stages, Options{}); err != nil || res.PerformedStage != StageValidate {
 				t.Fatalf("the loop's own recorded SHIP lets the advance proceed: %+v %v", res, err)
 			}
 		})
@@ -448,7 +448,7 @@ func TestAReturnTheLoopCannotReadAVerdictFromIsRefused(t *testing.T) {
 			if tc.role == RoleAuditor {
 				passRound(t, repo, id, stages, RoleSecurity)
 			}
-			res, err := Advance(repo.Root(), id, stages, Options{})
+			res, err := advance(repo.Root(), id, stages, Options{})
 			if err != nil || res.Awaiting == nil || res.Awaiting.Role != tc.role {
 				t.Fatalf("want the %s handed out: %+v %v", tc.role, res, err)
 			}

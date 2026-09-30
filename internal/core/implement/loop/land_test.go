@@ -118,7 +118,7 @@ func (f *landFixture) validated(t *testing.T) Lane {
 	t.Helper()
 	repo, id := f.repo, f.runID
 	stepTo(t, repo, id, f.stages, StageImplement)
-	res, err := Advance(repo.Root(), id, f.stages, Options{})
+	res, err := advance(repo.Root(), id, f.stages, Options{})
 	if err != nil || res.Awaiting == nil {
 		t.Fatalf("the implement stage awaits an implementer: %+v %v", res, err)
 	}
@@ -142,7 +142,7 @@ func (f *landFixture) validated(t *testing.T) Lane {
 // step advances the run once and fails the test on an error.
 func (f *landFixture) step(t *testing.T) StepResult {
 	t.Helper()
-	res, err := Advance(f.repo.Root(), f.runID, f.stages, Options{})
+	res, err := advance(f.repo.Root(), f.runID, f.stages, Options{})
 	if err != nil {
 		t.Fatalf("landing step: %v", err)
 	}
@@ -246,7 +246,7 @@ func TestTheLandingClosesTheSpecResolvesTheCapturesAndArmsTheMerge(t *testing.T)
 	}
 
 	// No preflight receipt: refused, nothing pushed.
-	_, err := Advance(f.repo.Root(), f.runID, f.stages, Options{})
+	_, err := advance(f.repo.Root(), f.runID, f.stages, Options{})
 	r := mustRefusal(t, err)
 	if r.Stage != string(StageLand) || !strings.Contains(r.Reason, "preflight receipt") || !strings.Contains(r.Remedy, "preflight") {
 		t.Fatalf("a landing without the preflight receipt is refused naming it: %+v", r)
@@ -287,7 +287,7 @@ func TestTheLandingClosesTheSpecResolvesTheCapturesAndArmsTheMerge(t *testing.T)
 	}
 
 	// Not merged yet: the loop waits, and cleans nothing up.
-	_, err = Advance(f.repo.Root(), f.runID, f.stages, Options{})
+	_, err = advance(f.repo.Root(), f.runID, f.stages, Options{})
 	if r := mustRefusal(t, err); !r.Contention || !strings.Contains(r.Reason, "not on") {
 		t.Fatalf("an unmerged lane waits for its merge: %+v", r)
 	}
@@ -348,7 +348,7 @@ func TestNothingIsPushedAfterArming(t *testing.T) {
 	late := laneCommit(t, f.repo, l, "late.txt")
 	preflighted(t, l, late)
 	for range 3 {
-		_, _ = Advance(f.repo.Root(), f.runID, f.stages, Options{})
+		_, _ = advance(f.repo.Root(), f.runID, f.stages, Options{})
 	}
 	if got := f.remoteBranch(t, l.Branch); got != pushed {
 		t.Fatalf("nothing is pushed after arming: the remote moved from %s to %s", pushed, got)
@@ -410,7 +410,7 @@ func TestAClosedPullRequestIsRefusedAndNothingIsCleanedUp(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(f.gh, "state"), []byte("CLOSED\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	_, err := Advance(f.repo.Root(), f.runID, f.stages, Options{})
+	_, err := advance(f.repo.Root(), f.runID, f.stages, Options{})
 	if r := mustRefusal(t, err); r.Contention || !strings.Contains(r.Reason, "closed") {
 		t.Fatalf("a pull request closed without merging is refused, not waited on: %+v", r)
 	}
@@ -447,7 +447,7 @@ func TestAKilledLandingResumesAtTheStepThatDidNotComplete(t *testing.T) {
 	f.validated(t)
 	f.stages = stages
 	f.step(t)
-	if _, err := Advance(f.repo.Root(), f.runID, stages, Options{}); err == nil {
+	if _, err := advance(f.repo.Root(), f.runID, stages, Options{}); err == nil {
 		t.Fatal("the kill surfaces")
 	}
 	f.step(t)
@@ -458,7 +458,7 @@ func TestAKilledLandingResumesAtTheStepThatDidNotComplete(t *testing.T) {
 	}
 	preflighted(t, l, l.HeadSHA)
 	f.step(t)
-	if _, err := Advance(f.repo.Root(), f.runID, stages, Options{}); err == nil {
+	if _, err := advance(f.repo.Root(), f.runID, stages, Options{}); err == nil {
 		t.Fatal("the kill surfaces")
 	}
 	f.step(t)

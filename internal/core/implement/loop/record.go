@@ -15,6 +15,8 @@ import (
 	"os"
 	"slices"
 	"time"
+
+	"github.com/intentdriven/abcd/internal/core/runner"
 )
 
 // StageTranscript is the run record's stage for a captured transcript, and
@@ -40,7 +42,12 @@ type RunRecord struct {
 	Lanes       []RecordLane  `json:"lanes"`
 	Pending     []PendingStep `json:"pending"`
 	Transcripts []Transcript  `json:"transcripts"`
-	Record      []Entry       `json:"record"`
+	// Fallbacks are the run's fallback receipts, and FallbackCounts their
+	// count per runner asked for and per role (itd-2609201916056194
+	// criterion 4).
+	Fallbacks      []runner.FallbackReceipt `json:"fallbacks"`
+	FallbackCounts runner.Counts            `json:"fallback_counts"`
+	Record         []Entry                  `json:"record"`
 }
 
 // RecordLane is one lane of the run record.
@@ -75,13 +82,20 @@ type RecordVerdict struct {
 	Pass    bool   `json:"pass"`
 	// Return is the validator's return the verdict was parsed from.
 	Return string `json:"return"`
+	// Route is the runner route that ran the validator; absent when the host
+	// ran it.
+	Route *runner.RouteRecord `json:"route,omitempty"`
 }
 
 // recordOf renders a run's state as its record.
 func recordOf(st State) RunRecord {
 	rec := RunRecord{RunID: st.RunID, Key: st.Key, Intent: st.Intent, Spec: st.Spec, Driver: st.Driver,
 		Complete: st.Complete(), CreatedAt: st.CreatedAt, UpdatedAt: st.UpdatedAt, Pace: st.Pace,
-		Lanes: []RecordLane{}, Pending: st.Pending, Transcripts: st.Transcripts, Record: st.Record}
+		Lanes: []RecordLane{}, Pending: st.Pending, Transcripts: st.Transcripts, Record: st.Record,
+		Fallbacks: st.Fallbacks, FallbackCounts: runner.Tally(st.Fallbacks)}
+	if rec.Fallbacks == nil {
+		rec.Fallbacks = []runner.FallbackReceipt{}
+	}
 	if rec.Pending == nil {
 		rec.Pending = []PendingStep{}
 	}
@@ -104,7 +118,7 @@ func recordOf(st State) RunRecord {
 					continue
 				}
 				rl.Verdicts = append(rl.Verdicts, RecordVerdict{Round: r.Round, HeadSHA: r.HeadSHA, Role: v.Role,
-					Verdict: v.Verdict, Pass: v.Pass, Return: v.Return})
+					Verdict: v.Verdict, Pass: v.Pass, Return: v.Return, Route: v.Route})
 			}
 		}
 		for _, r := range l.Resolves {

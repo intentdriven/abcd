@@ -48,7 +48,7 @@ func advanceTo(t *testing.T, repo *gittest.Repo, runID string, want Stage) StepR
 		if i := st.current(); i >= 0 && st.Lanes[i].Stage == want {
 			return res
 		}
-		if res, err = Advance(repo.Root(), runID, DefaultStages(), Options{}); err != nil {
+		if res, err = advance(repo.Root(), runID, DefaultStages(), Options{}); err != nil {
 			t.Fatalf("advancing to %s: %v", want, err)
 		}
 	}
@@ -68,7 +68,7 @@ func TestTheBriefNamesWhatItWasRenderedFrom(t *testing.T) {
 		t.Fatal(err)
 	}
 	advanceTo(t, repo, start.RunID, StageBrief)
-	res, err := Advance(repo.Root(), start.RunID, DefaultStages(), Options{})
+	res, err := advance(repo.Root(), start.RunID, DefaultStages(), Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -199,7 +199,7 @@ func TestTheBriefIsRenderedFromTheLaneBase(t *testing.T) {
 			t.Fatal(err)
 		}
 		advanceTo(t, repo, start.RunID, StageBrief)
-		_, err = Advance(repo.Root(), start.RunID, DefaultStages(), Options{})
+		_, err = advance(repo.Root(), start.RunID, DefaultStages(), Options{})
 		if r := mustRefusal(t, err); r.Stage != string(StageBrief) || !strings.Contains(r.Reason, "AGENTS.md") {
 			t.Fatalf("want the missing conventions named: %+v", r)
 		}
@@ -220,7 +220,7 @@ func TestTheBriefIsRenderedFromTheLaneBase(t *testing.T) {
 			t.Fatal(err)
 		}
 		advanceTo(t, repo, start.RunID, StageBrief)
-		_, err = Advance(repo.Root(), start.RunID, DefaultStages(), Options{})
+		_, err = advance(repo.Root(), start.RunID, DefaultStages(), Options{})
 		if r := mustRefusal(t, err); r.Stage != string(StageBrief) || !strings.Contains(r.Reason, "not planned") || !strings.Contains(r.Reason, "drafts/") {
 			t.Fatalf("want the base's bucket named: %+v", r)
 		}
@@ -315,7 +315,7 @@ func TestABriefSourceTheBaseHoldsAsASymlinkIsRefused(t *testing.T) {
 		t.Fatal(err)
 	}
 	advanceTo(t, repo, start.RunID, StageBrief)
-	_, err = Advance(repo.Root(), start.RunID, DefaultStages(), Options{})
+	_, err = advance(repo.Root(), start.RunID, DefaultStages(), Options{})
 	if r := mustRefusal(t, err); r.Stage != string(StageBrief) || !strings.Contains(r.Reason, "AGENTS.md") {
 		t.Fatalf("want the linked AGENTS.md refused: %+v", r)
 	}

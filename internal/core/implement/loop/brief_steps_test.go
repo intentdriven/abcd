@@ -153,7 +153,7 @@ func TestTheBriefNamesWhatAnEarlierLaneOfTheRunBuilt(t *testing.T) {
 			}
 			continue
 		}
-		if _, err := Advance(repo.Root(), id, steps, Options{}); err != nil {
+		if _, err := advance(repo.Root(), id, steps, Options{}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -190,7 +190,7 @@ func TestABriefWhoseStepTheBaseListsOtherwiseIsRefused(t *testing.T) {
 			repo.Write(specRel, specWithSteps(tc.steps))
 			repo.Commit("the steps change on the default branch")
 			advanceTo(t, repo, start.RunID, StageBrief)
-			_, err = Advance(repo.Root(), start.RunID, DefaultStages(), Options{})
+			_, err = advance(repo.Root(), start.RunID, DefaultStages(), Options{})
 			if r := mustRefusal(t, err); r.Stage != string(StageBrief) || !strings.Contains(r.Reason, tc.want) {
 				t.Fatalf("want the brief refused naming %q: %+v", tc.want, r)
 			}

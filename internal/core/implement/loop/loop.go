@@ -1,7 +1,7 @@
 package loop
 
 // loop.go is the step interface (spec piece 2; decision 5's default driver):
-// Start creates a run after the checks, Advance performs the lane's next stage
+// Start creates a run after the checks, advance performs the lane's next stage
 // and exits, Receipt verifies what an agent stage waited on and advances, and
 // Status reads. Each takes the run tier's lock, reads the state first and
 // writes it last; a stage that fails leaves the state exactly as it was.
@@ -18,6 +18,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/recordid"
+	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/core/statusblock"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -187,7 +188,7 @@ type StartResult struct {
 	Next     string    `json:"next"`
 }
 
-// StepResult is what Advance and Receipt return.
+// StepResult is what advance and Receipt return.
 type StepResult struct {
 	RunID string `json:"run_id"`
 	Lane  string `json:"lane,omitempty"`
@@ -205,7 +206,17 @@ type StepResult struct {
 	// HandBack is set when the lane was handed back to the person: this call
 	// stopped it, or it stood stopped when the run was started again.
 	HandBack *HandBack `json:"hand_back,omitempty"`
-	Next     string    `json:"next"`
+	// Route is the route that ran the agent when the process driver started
+	// it through a runner (Drive); absent when the host is to run it.
+	Route *runner.RouteRecord `json:"route,omitempty"`
+	// Fallback is the fallback receipt this call recorded when the runner a
+	// role is routed to did not run it and the host is handed the role.
+	Fallback *runner.FallbackReceipt `json:"fallback,omitempty"`
+	Next     string                  `json:"next"`
+	// handed is true when this call handed the lane to an agent, false when
+	// it re-told an await an earlier call began: only the call that hands the
+	// work out may start a runner for it.
+	handed bool
 }
 
 // Start resumes the live run for key, or runs the checks and, when every one
@@ -546,13 +557,13 @@ func openNextLaneRecorded(st *State, now time.Time) {
 		Note: fmt.Sprintf("%s opened for step %d of %s (%s)", l.ID, l.SpecStep, st.Spec, l.StepTitle)})
 }
 
-// Advance performs the next stage of the run's current lane and returns. A lane
+// advance performs the next stage of the run's current lane and returns. A lane
 // that awaits a receipt performs nothing and re-tells what it awaits; a run
 // that is complete says so; a run paused by its window clock is refused until
 // next_eligible_at. A stage whose body this build does not carry is refused
 // naming the piece that delivers it. The state is written only after a body
 // succeeds, and then once.
-func Advance(repoRoot, runID string, steps Stages, o Options) (StepResult, error) {
+func advance(repoRoot, runID string, steps Stages, o Options) (StepResult, error) {
 	var res StepResult
 	err := mutate(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
 		now := o.now()
@@ -640,6 +651,7 @@ func Advance(repoRoot, runID string, steps Stages, o Options) (StepResult, error
 		}
 		st.UpdatedAt = now
 		res = laneResult(*st, lane, performed)
+		res.handed = out.Await != nil
 		return true, nil
 	})
 	return res, err
@@ -696,7 +708,14 @@ func pausedMove(lane Lane, until time.Time) string {
 // lane awaits one, when the path is not the one the stage named, when this build
 // carries no verifier for the stage, and when the verifier refuses it; in every
 // refusal the lane stays where it was. A verified receipt completes the stage.
-func Receipt(repoRoot, runID, receipt string, steps Stages, o Options) (StepResult, error) {
+func Receipt(repoRoot, runID, receiptPath string, steps Stages, o Options) (StepResult, error) {
+	return receipt(repoRoot, runID, receiptPath, steps, o, nil)
+}
+
+// receipt is Receipt. A route that is not nil is the runner that ran the
+// agent (Drive): it is stamped on what the verifier recorded from the receipt,
+// and the record names it. The host's receipt carries none.
+func receipt(repoRoot, runID, receipt string, steps Stages, o Options, route *runner.RouteRecord) (StepResult, error) {
 	var res StepResult
 	err := mutate(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
 		now := o.now()
@@ -721,6 +740,10 @@ func Receipt(repoRoot, runID, receipt string, steps Stages, o Options) (StepResu
 				return false, err
 			}
 			return false, refuse("receipt", "", lane.ID, err.Error(), "correct what the reason names, then hand the receipt back")
+		}
+		if route != nil {
+			stampRoute(&lane, lane.Awaiting.Receipt, route)
+			st.Record = append(st.Record, Entry{At: now, Lane: lane.ID, Stage: StageRunner, Note: routeNote(lane.Awaiting.Role, *route)})
 		}
 		if lane.HandBack != nil {
 			// The lane's own receipt handed the work back: the verifier has

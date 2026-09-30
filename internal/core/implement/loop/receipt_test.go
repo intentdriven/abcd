@@ -21,7 +21,7 @@ func awaitingLane(t *testing.T) (*gittest.Repo, string, Lane, string) {
 		t.Fatal(err)
 	}
 	advanceTo(t, repo, start.RunID, StageImplement)
-	res, err := Advance(repo.Root(), start.RunID, DefaultStages(), Options{})
+	res, err := advance(repo.Root(), start.RunID, DefaultStages(), Options{})
 	if err != nil {
 		t.Fatal(err)
 	}

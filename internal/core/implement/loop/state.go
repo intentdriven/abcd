@@ -33,10 +33,10 @@
 //
 // and its worktree in the machine-scoped store,
 // ~/.abcd/worktrees/<root-sha>/<run-id>-<lane-id>. The
-// process driver (piece 3, waiting on the runner intent itd-2609201916056194)
-// is the same loop called by a process instead of a host: it starts the agent an
-// Await names through the runner and then calls Receipt, so it needs no seam
-// beyond the two this package exports.
+// process driver (piece 3, drive.go) is the same loop: Drive performs the next
+// stage and, when it hands the lane to a role routed to a command-line runner
+// (itd-2609201916056194), starts that agent through the runner and hands its
+// receipt back through Receipt.
 //
 // Core never writes to stdout; the CLI front door formats what these functions
 // return.
@@ -53,6 +53,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/jsonstrict"
+	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
@@ -113,7 +114,18 @@ const lockFileName = ".lock"
 // `transcripts`. Version 6 is its strict subset, read as a run nothing has
 // landed yet and written back at version 7; a version-6 file carrying any of
 // them is not one version 6 wrote, and is refused.
-const SchemaVersion = 7
+//
+// Version 8 added the runner's record (itd-2609201916056194, spc-2609202134338445
+// piece 3): the run's `fallbacks`, one receipt per role a runner did not run,
+// and the `route` a verified receipt or a validator's return names when a
+// runner, not the host, ran its agent. Version 7 is its strict subset, read as
+// a run the host ran every agent of and written back at version 8; a version-7
+// file carrying either is not one version 7 wrote, and is refused.
+const SchemaVersion = 8
+
+// schemaVersionUnrouted is the version before the runner's record: read, never
+// written.
+const schemaVersionUnrouted = 7
 
 // schemaVersionUnlanded is the version before the landing: read, never
 // written.
@@ -233,6 +245,11 @@ type State struct {
 	// Transcripts are the transcripts the run's record captured into the
 	// history store once the run was complete, one capture per path (piece 10).
 	Transcripts []Transcript `json:"transcripts,omitempty"`
+	// Fallbacks are the run's fallback receipts, one per role a runner it was
+	// routed to did not run (itd-2609201916056194 criterion 3): the role, the
+	// runner asked for, the reason and the route that ran instead. The run's
+	// summary counts them per runner and per role (runner.Tally).
+	Fallbacks []runner.FallbackReceipt `json:"fallbacks,omitempty"`
 }
 
 // Transcript is one transcript the run record captured into the history store.
@@ -313,6 +330,10 @@ type ReceiptRecord struct {
 	// Model is the model the runner reported, as reported; empty when it
 	// reported none. The binary cannot verify it.
 	Model string `json:"model,omitempty"`
+	// Route is the route that ran the agent when a runner ran it: the runner
+	// asked for, the one that ran and the model it reported. Absent when the
+	// host ran it, so a host-run receipt reads as it always has.
+	Route *runner.RouteRecord `json:"route,omitempty"`
 }
 
 // HandBack is a lane stopped and handed back to the person, with what the last
@@ -371,6 +392,10 @@ type ValidatorRun struct {
 	// Audit is the fidelity audit's request and reading, on the
 	// intent-auditor's run.
 	Audit *AuditRun `json:"audit,omitempty"`
+	// Route is the route that ran the validator when a runner ran it; absent
+	// when the host ran it. It is the one field a runner-run review's record
+	// differs in from a host-run one's (itd-2609201916056194 criterion 7).
+	Route *runner.RouteRecord `json:"route,omitempty"`
 }
 
 // AuditRun is the fidelity audit the lane that closes the spec takes, once, over
@@ -466,6 +491,29 @@ func (s State) landed() bool {
 	for _, l := range s.Lanes {
 		if l.Landing != nil || len(l.Receipts) > 0 || len(l.Resolves) > 0 {
 			return true
+		}
+	}
+	return false
+}
+
+// routed reports whether the state carries anything only a version-8 run
+// writes: a fallback receipt, or a runner's route on a receipt or a return.
+func (s State) routed() bool {
+	if len(s.Fallbacks) > 0 {
+		return true
+	}
+	for _, l := range s.Lanes {
+		for _, r := range l.Receipts {
+			if r.Route != nil {
+				return true
+			}
+		}
+		for _, v := range l.Validation {
+			for _, vr := range v.Validators {
+				if vr.Route != nil {
+					return true
+				}
+			}
 		}
 	}
 	return false
@@ -572,7 +620,10 @@ func readStateIn(root *os.Root, runID string) (State, error) {
 	case st.SchemaVersion <= schemaVersionUnlanded && st.landed():
 		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries a landing, a verified receipt or a captured transcript, which version %d never wrote", rel, st.SchemaVersion, st.SchemaVersion),
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
-	case st.SchemaVersion >= schemaVersionUnpaced && st.SchemaVersion <= schemaVersionUnlanded:
+	case st.SchemaVersion <= schemaVersionUnrouted && st.routed():
+		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries a fallback or a runner's route, which version %d never wrote", rel, st.SchemaVersion, st.SchemaVersion),
+			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
+	case st.SchemaVersion >= schemaVersionUnpaced && st.SchemaVersion <= schemaVersionUnrouted:
 		// Read as the current version, its stages already carried over by
 		// decodeState when it named them `step`; the next write carries it, and
 		// this read writes nothing.

@@ -38,7 +38,7 @@ func TestALandingWhoseReceiptReportsNoModelIsRefused(t *testing.T) {
 	l := f.validated(t)
 	head := l.HeadSHA
 	f.step(t) // prepare
-	_, err := Advance(f.repo.Root(), f.runID, f.stages, Options{})
+	_, err := advance(f.repo.Root(), f.runID, f.stages, Options{})
 	r := mustRefusal(t, err)
 	if r.Stage != string(StageLand) || !strings.Contains(r.Reason, "model") || !strings.Contains(r.Remedy, "model") {
 		t.Fatalf("a landing with no reported model is refused naming the model: %+v", r)
@@ -110,7 +110,7 @@ func TestARefusingCommitMsgHookStopsTheLanding(t *testing.T) {
 	seen := filepath.Join(t.TempDir(), "seen")
 	hook := installHook(t, f, "commit-msg", "#!/bin/sh\ncat \"$1\" > '"+seen+"'\necho 'commit-msg: refused by the test' >&2\nexit 1\n")
 	f.step(t) // prepare
-	_, err := Advance(f.repo.Root(), f.runID, f.stages, Options{})
+	_, err := advance(f.repo.Root(), f.runID, f.stages, Options{})
 	r := mustRefusal(t, err)
 	if r.Stage != string(StageLand) || !strings.Contains(r.Reason, "refused by the test") {
 		t.Fatalf("a refusing commit-msg hook stops the landing, naming what it said: %+v", r)
