@@ -62,7 +62,11 @@ no remote change attempted, unless the run is told to replace it.
 
 **The forge.** Two deployment environments, one for the render and one for the
 deploy, each admitting only the default branch and release tags, created
-through the forge's API as the person running the verb. The default branch is
+through the forge's API as the person running the verb. A missing `gh` is
+offered for install on the same terms as the remote apply's: explained, and
+installed only on a yes typed at a terminal, never on the pre-given yes; a
+declined offer leaves the environments uncreated, with the command in the
+notes. The default branch is
 the one the forge names for the repository, and it is also the branch the
 workflow gates on; only when the forge cannot answer does the checkout's own
 stand in, and the report's notes say so. An environment that

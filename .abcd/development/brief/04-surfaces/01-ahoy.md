@@ -119,6 +119,17 @@ the API host explicitly, so an ambient host variable cannot send the write to an
 endpoint the origin never named, and the call goes through the caller's own
 authenticated identity: abcd never holds a token.
 
+That identity is the GitHub CLI's, so a missing `gh` is met with the
+explain-then-install mode (itd-63): after the first three gates and before the
+read, the verb explains `gh` from the tool registry and offers to install it,
+running the registry's step only on a yes typed at a terminal. The pre-given
+yes answers the settings change and never the install of a program, and a
+piped answer is not a person's answer, so both decline the offer; the verb then
+refuses, its notes carrying the explanation and the command. A failed or
+unverified install refuses the same way, before any request leaves the
+machine. The read never offers the install, because looking is never acting;
+it names the apply as the verb that does.
+
 ### The provider setup
 
 The setup takes the provider's name, its base URL, its first allowlist (every
