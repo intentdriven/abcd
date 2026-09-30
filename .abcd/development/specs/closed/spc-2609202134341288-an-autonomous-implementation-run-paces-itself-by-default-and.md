@@ -565,3 +565,37 @@ lane or the single agent in place, and the build replaces or reads past it:
 - tests: C1 to C13 through the step interface with fake agents and a fake
   forge; the `needs` parser over a stepped spec; the remainder's `needs`
   rewrite; a version-7 state file read and advanced, and the version refusals
+
+## Progress
+
+- **Landed before this piece: pieces 1 and 2** (the pace's layering and the
+  window clock, criteria 1 to 5 and 9), and the ceiling recorded with the run.
+- **Landed (lane dr6Build): pieces 3 and 6, criterion 6.** A run works in
+  parallel up to its ceiling (ruling DR6): a slot is an outstanding await, the
+  state file's `awaits` on any lane, counted against `pace.sub_agents`, and
+  implementers and validators take the same slots
+  (`internal/core/implement/loop/schedule.go`). Each `implement step` performs
+  a stage the binary owns on any lane first, then gives a free slot to the
+  first waiting work in the order this spec gives; at the ceiling it hands out
+  nothing, names every lane alive and records `waiting` with the time first
+  held, and the move that serves an item records the minutes it waited.
+  `implement receipt` looks its path up across every lane. A step's `- needs:`
+  line is parsed with the default of every earlier step (ruling DR6b,
+  `internal/core/spec/steps.go`), and `spec close --remainder` rewrites it
+  against the remainder's numbering (`spec.CarryUnlanded`). Landing is one lane
+  at a time; a lane whose sibling landed since its base is synced with a merge
+  commit and judged by a fresh round, a conflicting sync goes to a fresh
+  implementer, and a sync counts no fix round (`sync.go`). After a hand-back the
+  siblings finish and are held before their push or arming, an armed one
+  disarmed, until `implement step --release` or `--discard` (ruling DR6c,
+  `hold.go`); no lane closes the spec, and the closing lane's audit reads each
+  lane's own diff. The state is schema version 8. `implement status` names the
+  slots in use and the held lanes, and the status block reports one row per lane
+  alive. C1 to C13 are tests through the step interface
+  (`internal/core/implement/loop/parallel_test.go`, and C6's parser and
+  remainder in `internal/core/spec/needs_test.go` and
+  `internal/core/intent/steps_test.go`).
+- **Remaining: pieces 4 and 5, criteria 7 and 8.** The budget check and the
+  rate-limit checkpoint wait on a runner that reports its quota and its
+  rate-limit responses (itd-2609201916056194); they travel in the remainder
+  spec this close mints.
