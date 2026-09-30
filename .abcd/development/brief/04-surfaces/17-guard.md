@@ -82,9 +82,12 @@ the safe successor, recalled by the commands the registry names (`rm`,
 work injects those rules before the agent acts, so a host without hook support is
 still taught the safe form and a host with hooks is taught it before the guard
 would have to refuse. An entry added to the registry is taught and enforced from
-the same release, with no second edit. The domain is built from the bundled
-registry, not from a repo's `.abcd/guard.json`; how the domain is recalled,
-overridden and silenced is the rules loader's
+the same release, with no second edit. The registry taught is the one the guard
+enforces in the repository: an entry the repository adds in its
+`.abcd/guard.json` is taught by the same generator as the bundled ones, its
+rule marked `(repo)` after its entry id, and a guard file the guard refuses is
+named on stderr and never taught. How the domain is recalled, overridden and
+silenced is the rules loader's
 ([`05-internals/03-configuration.md`](../05-internals/03-configuration.md)).
 
 ## The question gate
