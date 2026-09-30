@@ -90,10 +90,19 @@ The seven rules and where each is already gated:
 **Block (tier 1), at preflight and in CI's check job:**
 
 1. `privacy-hygiene`, **absolute home-folder path** (the M10 starting
-   point). Error Prone-grade: easy to understand, easy to fix (a persona
-   home or `~`), a waiver exists (`abcd-lint:allow` on the line), zero
-   findings at the base, and it is the case that bit on 2026-08-23 (two
-   sessions wrote a real home path into ledger bodies).
+   point). Easy to understand, easy to fix (a persona home or `~`), a
+   waiver exists (`abcd-lint:allow` on the line), zero findings at the
+   base, and it is the case that bit on 2026-08-23 (two sessions wrote a
+   real home path into ledger bodies). The base is clean only after the
+   2026-09-29 waiver pass: 71 of the 102 privacy-hygiene findings it
+   cleared were intentional synthetic values that needed a per-line waiver
+   (class B, iss-2609290845269642), and this note does not split class B by
+   kind, so the home-path pattern's share is not measured here. The check
+   meets this note's own admission test (zero on `main`, a waiver exists)
+   but is not shown to meet the Error Prone bar cited above ("no false
+   positives"), since a pattern that needed dozens of waivers flagged code
+   that was written that way on purpose; the product thinker confirming M10
+   weighs that.
 2. `privacy-hygiene`, **token shapes and private-key blocks**. Zero
    findings, gitleaks-equivalent precision, earlier catch.
 3. `three-tier-layout`, **local tier not gitignored** and **local-tier
@@ -113,7 +122,9 @@ which keep their own gates.
 
 **Admission and demotion rule for later changes:** a check joins tier 1 only
 with zero findings on `main`, a documented waiver, and a fix a newcomer can
-make from the message alone. Any false positive observed in tier 1 demotes
+make from the message alone. Zero reached by a waiver pass is stated with the
+number of waivers it took, so the precision bar is judged on the findings
+before the pass. Any false positive observed in tier 1 demotes
 the check to tier 2 in the change that captures it — the block is never
 worked around with a waiver added to unblock one merge.
 
