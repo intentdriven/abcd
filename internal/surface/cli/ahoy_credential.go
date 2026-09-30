@@ -158,6 +158,11 @@ func runCredentialList(cmd *cobra.Command, roots layered.Roots, asJSON bool) err
 	if err != nil {
 		return &exitError{Code: 2, Msg: "abcd ahoy credential: " + termsafe.Sanitize(fsutil.RedactHome(err.Error()))}
 	}
+	// A route the read skipped (a repository's route to a provider that holds
+	// a key, ruling CD2) is said on stderr, and the listing goes on.
+	for _, d := range cfg.Diagnostics {
+		fmt.Fprintf(cmd.ErrOrStderr(), "abcd %s\n", termsafe.Sanitize(fsutil.RedactHome(d)))
+	}
 	for _, p := range cfg.Providers() {
 		if p.Key != "" {
 			names[p.Key] = true

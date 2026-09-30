@@ -470,7 +470,9 @@ Every external credential abcd holds lives in one store, in the home the person
 chooses once per credential. Bare, the sub-verb lists each credential an
 adapter reads (`hosting.cloudflare` for the site setup, each configured
 provider's key) with its `state` (`set`, `not set`, or a refusal) and `home`;
-never a value. With a name it explains that credential and writes nothing:
+never a value. A route the configuration read skips (a repository's route to
+a provider that holds a key) is named on stderr and the listing goes on: relay
+that line too. With a name it explains that credential and writes nothing:
 relay `unlocks`, `without_it`, then `homes_prose` verbatim (it recommends the
 platform keychain in the prose; never present one home as the marked option),
 then the `homes` and the `setup` command for each.

@@ -77,8 +77,11 @@ We will make every provider adapter default-deny by model.
   repository from spending it too. Only a route the person set up on their own
   machine may use their paid key, so a role or a judgement type the
   repository's configuration points at a provider whose block names a key is
-  refused when the configuration is read, naming `~/.abcd/config.json` as where
-  to set it. A repository's route to a provider that holds no key (a local
+  skipped when the configuration is read, with a diagnostic naming
+  `~/.abcd/config.json` as where to set it; the rest of the configuration
+  loads, and the machine's own route to that name applies in its place (the
+  technical facilitator's ruling CD2 of 2026-09-29 chose the skip over
+  refusing the whole configuration). A repository's route to a provider that holds no key (a local
   server) and a `--route` the person types are unaffected. This reverses the
   route half of itd-2609081951381895 Decision 8, which said a route "may sit
   in either layer"; that decision is amended in the same change. The

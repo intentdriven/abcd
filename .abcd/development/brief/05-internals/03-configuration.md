@@ -126,9 +126,13 @@ rather than skipped:
   route the person set up on their own machine may spend their paid key (the
   product thinker's ruling AA(b) of 2026-09-29), so a repository's
   `.abcd/config.json` pointing a role or a judgement type at such a provider is
-  refused, naming the route, `~/.abcd/config.json` as where to set it, and the
-  repository's file as where to remove it, since the repository's route wins
-  per name over the machine's. A
+  skipped, with one diagnostic on stderr naming the route, `~/.abcd/config.json`
+  as where to set it, and the repository's file as where to remove it (the
+  technical facilitator's ruling CD2 of 2026-09-29). The rest of the
+  configuration loads, so every other route and every command that reads it
+  keeps working, and the machine's own route to that name, if it has one,
+  applies in its place. A route the denylist matches is refused whichever
+  provider it names. A
   provider holds a key when its block names `key`, judged from the block and
   never by reading the credential store. A repository's route to a provider
   whose block names no key (a local server) is admitted and wins over the
