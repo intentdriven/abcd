@@ -269,6 +269,12 @@ this machine has not configured, or a routing table that cannot be read exits 2
 before anything is written. With no table accepted and no `--route`, the step
 asks for `host-decides` and nothing is printed.
 
+**No lifeboat agent is sent to a provider.** The four agents read the packed
+lifeboat's files, and abcd builds no request carrying them, so a person who
+points one of them at a provider in `~/.abcd/config.json` finds its ingest
+refused at exit 2, naming the setting to remove; `--route <agent>=host-decides`
+keeps one run on the harness. Relay the refusal.
+
 **Binary resolution.** Run `"${CLAUDE_PLUGIN_ROOT}/abcd"` — a plugin install
 provisions the binary into the plugin root, so this is the rung that fires for a
 plugin user. If that path does not exist, try `abcd` on `PATH`; if that fails

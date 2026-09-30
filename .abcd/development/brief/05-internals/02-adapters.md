@@ -110,11 +110,33 @@ route set on this machine. Every refusal comes before the provider is contacted 
 names the setting to change. A provider that could not be reached at all, so that
 nothing was sent, leaves the step to the harness, and the route records the
 connection tried and the reason (`Route.FellBack`); a provider that answered, or
-took the brief and did not answer, is a failure, never a fallback. No delegating
-verb calls the dispatch yet, or hands `Resolve` its connection, so none of these
-refusals reaches a front door until the verbs do, and no test reaches a real
-provider: the client is exercised end to end against a fake on the loopback
-address that fails in every way a provider can.
+took the brief and did not answer, is a failure, never a fallback. A provider
+that holds a key takes only a **self-contained** agent (the product thinker's
+ruling DR5 of 2026-09-29): a provider call carries no tools, so an agent that
+reads files cannot read them there, and only an agent whose request carries all
+its input is admitted, from a list compiled into the binary, default deny. The
+list is the four cold-reading positions, each handed one assembled bundle; every
+other agent pointed at a keyed provider is refused before any call, naming the
+rule and the person's override, `oracle.bundled_context_providers`
+(configuration chapter). A provider whose block names no key (a local server)
+spends nothing of the person's and is outside the rule. The delegating verbs
+read the machine's provider configuration when they resolve a route, and a verb
+whose route is on a provider sends the step there itself: `intent audit`,
+`intent consistency`, `intent audit --owed` (its head), `launch ship` and `spec
+close`'s review re-emit send the request they emitted with the agent's own
+prompt, and `reading ingest --dispatch <rdg-N>` sends a parked run's bundle with
+the position's definition. The verb runs the answer through its own ingest, and
+the receipt names the provider as `connection_used` with its call record
+(`provider_call`: provider, model asked, model reported, credential name), so a
+host reading such a receipt knows the step already ran. DR5 is checked before a
+verb writes anything (`APIConfig.Admitted`), and again by the dispatch. An
+ingest handed a payload the host produced while its agent is routed to a
+provider refuses it, since the receipt would name work the provider never did;
+`--route <agent>=host-decides` keeps one run on the harness. The four disembark
+agents read the packed lifeboat and no verb builds a request carrying it, so none
+is sent to a provider. No test reaches a real provider: the client and every
+dispatching verb are exercised end to end against a fake on the loopback
+address, and the key is built at run time.
 
 ### RepoPrompt oracle adapter — `dev-sync reviews` harvesting
 

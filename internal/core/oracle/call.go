@@ -9,8 +9,8 @@ package oracle
 //
 // Dispatch (dispatch.go) sends a step whose route names a provider through
 // it, instead of handing the step to the host (spc-2609251028149555, AC 3).
-// No delegating verb calls Dispatch yet, so the setup's verification call is
-// its one caller from a front door.
+// The delegating verbs call Dispatch, and the setup's verification call
+// reaches Call directly.
 
 import (
 	"context"

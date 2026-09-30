@@ -154,6 +154,19 @@ rather than skipped:
   keyed leg the person typed with `--route` is theirs, so there the repository
   row's settings merge within the provider's accepted set. A repository row
   without settings, the machine's own row and a keyless leg keep the merge.
+- **Which agents a paid provider takes is the person's to widen, on their
+  machine alone.** By default a provider that holds a key takes only the
+  self-contained agents, the four cold-reading positions (ruling DR5 of
+  2026-09-29, adapters chapter). `oracle.bundled_context_providers` in
+  `~/.abcd/config.json` is the person's override: a list of provider names that
+  may take bundled-context requests for file-reading agents. It is read from the
+  machine layer alone, and a repository's `.abcd/config.json` declaring it is
+  refused, as a repository's provider block is; a name this machine has not
+  configured is a diagnostic that admits nothing. A named provider takes a
+  file-reading agent only once abcd builds that agent's bundle, and none is
+  built, so every file-reading agent stays refused with a reason saying so. The
+  list inherits the machine layer's trust in `$HOME`, pending
+  iss-2609300012273350.
 - **The model a provider reports is held to the denylist too.** An aggregator
   that answers with a model an `oracle.denylist` entry matches has substituted
   a model the configuration refuses; the answer is discarded and the refusal
@@ -165,9 +178,9 @@ rather than skipped:
 Unconfigured, nothing changes: no provider block means no connection, and every
 delegated step runs on the host. A role pointed at a configured provider takes its
 agent's steps there whatever tier the routing tables name, and only a `--route`
-overrides it for one run. The core sends such a step through the adapter
-(spc-2609251028149555); no delegating verb calls it yet, so every delegated step
-still runs on the host.
+overrides it for one run. The delegating verb sends such a step through the
+adapter itself and ingests the answer (spc-2609251028149555), and its receipt
+names the provider as the connection used.
 
 ### Staged config keys
 

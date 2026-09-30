@@ -870,6 +870,25 @@ has not configured, or a routing table that cannot be read exits 2 before
 anything is written. With no table accepted and no `--route`, the step asks for
 `host-decides` and nothing is printed.
 
+**A step routed to a provider has already run.** When the person has pointed
+`oracle.roles.intent-auditor` at a provider in `~/.abcd/config.json`, `intent
+audit <itd-N>`, `intent consistency` and `intent audit --owed` (its head) send
+the request they emitted there themselves, ingest the answer, and print the
+ingest's result with a `route` receipt whose `connection_used` names the
+provider and whose `provider_call` names the provider, the model asked for and
+the model it reported. **When `route.connection_used` is not `harness`, the
+step already ran: do not dispatch the intent-auditor and do not ingest
+anything; relay the result.** A provider that holds a key takes only
+self-contained agents (ruling DR5 of 2026-09-29), and the intent-auditor reads
+files, so pointed at one it is refused at exit 2 before anything is written or
+sent, naming the rule and `oracle.bundled_context_providers`; relay the
+refusal. A provider that could not be reached leaves the request to you with one
+stderr line, and the `routing` block then names the harness. An ingest handed a
+verdict or findings you produced while the agent is routed to a provider is
+refused at exit 2; `--route intent-auditor=host-decides` keeps one run on the
+harness. `spec close` sends the review it emits the same way and says so on
+stderr; the close stands whatever the review does.
+
 **Hand the auditor the whole request file.** `intent audit` writes it to the
 reported `request_path`. It states the criteria count, lists every scope
 condition under the `cond-…` identity the verdict disposes it by, and carries a
@@ -916,7 +935,9 @@ the first entry after it that emits, so one bad record never blocks the drain;
 no `next` while `owed` is above zero means no listed entry could be emitted.
 It writes: the emit parks the OWED stub in a markerless intent, a committed
 record, so even a look leaves a diff; bare `intent audit` is the read-only
-listing. It runs no reviewer. Nothing owed is `owed: 0` and no `next`; report it and stop.
+listing. It runs no reviewer on the host's behalf, except that a head routed to
+a provider is sent there and its verdict ingested, and `next` then carries the
+ingest's result with the `route` receipt. Nothing owed is `owed: 0` and no `next`; report it and stop.
 `--max` without `--owed` is refused, as are `--owed` with an intent id or with
 `--issue-drift`.
 

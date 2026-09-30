@@ -154,8 +154,12 @@ running it, and changes nothing.
 
 The key lives in one of the credential store's three homes (below), and a
 fourth answer, no key, sets up a local server that takes none.
-No delegating verb sends a step to a configured provider until provider dispatch
-lands (spc-2609251028149555), and both the board and the setup say so.
+A delegating verb whose agent's `oracle.roles` entry points at a configured
+provider sends the step there itself (spc-2609251028149555), and a provider
+whose block names a key takes only the self-contained agents under ruling DR5
+of 2026-09-29, with `oracle.bundled_context_providers` as the person's
+machine-only override; both the board and the setup say so in their `dispatch`
+line.
 
 ### The credential store and its walkthrough
 

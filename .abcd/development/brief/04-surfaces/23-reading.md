@@ -291,8 +291,10 @@ refused configuration files the item unlinked and says why.
 
 ## What this surface does not claim
 
-It never runs a reading. It produces the input a reading would be given;
-dispatching that input to a reader is host work.
+It never runs a reading on the host. It produces the input a reading would be
+given; dispatching that input to a reader is host work, except where the person
+has pointed the position at a provider, when the ingest's dispatch form sends the
+parked input there and ingests the answer.
 
 The bundle is pathless by construction, which is the half of the isolation the
 binary enforces. The other half — that the dispatching host grants the reader no
@@ -326,6 +328,23 @@ dispatch, a tier outside `local`, `economy`, `frontier` and `host-decides`, or a
 connection this machine has not configured exits 2 before anything is written.
 With no table accepted and no override, the step asks for `host-decides` on the
 harness and nothing is printed.
+
+**A position routed to a provider runs there.** The ingest's dispatch form,
+which the appendix lists, names a run an assembly parked instead of an output.
+It resolves the route of the run's position's agent, and when the person's
+`oracle.roles.cold-reading-<position>` points at a provider it sends the
+position's definition as the instructions and the parked bundle, with the run's
+identifiers the output cites, as the input. A cold-reading position is
+self-contained under ruling DR5 of 2026-09-29, so a provider that holds a key
+takes it; the reader is handed no tool and no path, which discharges the
+blindness obligation by construction. The answer is judged against the output
+type and the run it was sent, then ingested as a returned output is, and the
+receipt names the provider as `connection_used` with its call record. A route on
+the harness, a provider that could not be reached, a run id outside the run-id
+grammar, a run no assembly parked, and a dispatch that also names an output each
+exit 2 with nothing ingested. An output the host produced while the position is
+routed to a provider is refused at exit 2; an override to `host-decides` keeps
+one run on the harness.
 
 ## References
 

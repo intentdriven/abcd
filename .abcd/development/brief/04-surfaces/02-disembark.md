@@ -275,6 +275,14 @@ invocation does not dispatch, a tier outside `local`, `economy`, `frontier` and
 anything is written. With no table accepted and no override, the step asks for
 `host-decides` on the harness and nothing is printed.
 
+**No lifeboat agent is sent to a provider.** The four lifeboat agents read the
+packed lifeboat's files, and no verb builds a request carrying them, so none is
+dispatched to a provider (the adapters chapter). An ingest handed a payload the
+host produced while its agent's `oracle.roles` entry points at a provider is
+refused at exit 2 before anything is read, naming the setting to remove, since
+its receipt would name work the provider never did; an override to
+`host-decides` keeps one run on the harness.
+
 <!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
 
 ## Appendix: the shipped surface

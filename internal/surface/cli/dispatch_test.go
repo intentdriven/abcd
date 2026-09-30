@@ -510,3 +510,29 @@ func TestTheVerbsReadTheMachinesProviderConfiguration(t *testing.T) {
 		t.Fatalf("err = %v; want the repository's override refused at exit 2", err)
 	}
 }
+
+// TestAhoyProvidersSaysWhatDispatchSends: the providers board's dispatch line
+// states what the verbs do with a pointed role, and which agents a paid
+// provider takes under DR5, never that dispatch is still to come.
+func TestAhoyProvidersSaysWhatDispatchSends(t *testing.T) {
+	hermeticEnv(t)
+	t.Chdir(t.TempDir())
+	out, err := runCLIErr(t, "ahoy", "--providers", "--json")
+	if err != nil {
+		t.Fatalf("ahoy --providers: %v\n%s", err, out)
+	}
+	var board struct {
+		Dispatch string `json:"dispatch"`
+	}
+	if err := json.Unmarshal(out, &board); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	for _, want := range []string{"sends the step there itself", "DR5", "cold-reading", "oracle.bundled_context_providers"} {
+		if !strings.Contains(board.Dispatch, want) {
+			t.Fatalf("dispatch %q does not say %q", board.Dispatch, want)
+		}
+	}
+	if strings.Contains(board.Dispatch, "lands") {
+		t.Fatalf("dispatch %q still says dispatch is to come", board.Dispatch)
+	}
+}
