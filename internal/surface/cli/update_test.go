@@ -352,16 +352,18 @@ func TestUpdatePipedPrintsNoProgress(t *testing.T) {
 }
 
 // TestUpdateTerminalStderrGetsProgress is the other half, so the silence above
-// cannot be met by a gate that never opens: a stderr that is a character device
-// is handed the progress writer. internal/term's terminal check is the
-// character-device bit, and /dev/null is the one character device every
-// machine these tests run on carries.
+// cannot be met by a gate that never opens: a stderr the terminal check
+// accepts is handed the progress writer. The check is a termios get that only
+// a real terminal answers, so the isTTY seam stands /dev/null in for one.
 func TestUpdateTerminalStderrGetsProgress(t *testing.T) {
 	devNull, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
 	if err != nil {
 		t.Skipf("no %s to stand in for a terminal: %v", os.DevNull, err)
 	}
 	defer devNull.Close()
+	prev := isTTY
+	isTTY = func(f *os.File) bool { return f == devNull }
+	t.Cleanup(func() { isTTY = prev })
 	fake, stdout, code := runUpdateSwap(t, devNull)
 	if code != 0 {
 		t.Fatalf("exit = %d, want 0 for a swap; stdout %q", code, stdout)

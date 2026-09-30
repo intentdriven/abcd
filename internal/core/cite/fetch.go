@@ -117,14 +117,14 @@ type HTTPChecker struct {
 // they relax (loopback, for httptest) and inherit the rest unchanged.
 var shippedBlocked = urlguard.BlockedIP
 
-// NewHTTPChecker returns the checker as it ships: the full SSRF policy and the
+// newShippedHTTPChecker returns the checker as it ships: the full SSRF policy and the
 // default timeout.
-func NewHTTPChecker() *HTTPChecker { return newHTTPChecker(shippedBlocked, DefaultTimeout) }
+func newShippedHTTPChecker() *HTTPChecker { return newHTTPChecker(shippedBlocked, DefaultTimeout) }
 
 // newHTTPChecker builds a checker with an explicit address policy and timeout.
 // The policy is a parameter for exactly one reason: it lets the fetch paths be
 // exercised against an httptest server, which binds loopback, without ever
-// relaxing what NewHTTPChecker ships.
+// relaxing what newShippedHTTPChecker ships.
 func newHTTPChecker(blocked func(net.IP) bool, timeout time.Duration) *HTTPChecker {
 	dialer := &net.Dialer{
 		Timeout: connectTimeout,

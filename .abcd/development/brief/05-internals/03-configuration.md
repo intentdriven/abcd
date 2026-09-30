@@ -123,7 +123,16 @@ rather than skipped:
   model its provider does not list is refused naming the list, and one pointed at
   a provider this machine has not configured is a diagnostic: the step stays on
   the host, as it would with nothing configured (adr-25). A role outside the
-  roster is named and skipped, like an orphan routing row.
+  roster is named and skipped, like an orphan routing row. A route's name is a
+  plain lower-case name. A repository route that is not `<provider>/<model>`,
+  or whose name only the repository spells otherwise (a lookalike letter from
+  another script, a space, a control character), is skipped with one
+  diagnostic naming the repository's file and the offending text, sanitised
+  and with any non-ASCII letter spelled as an escape; the rest of the
+  configuration loads, and the machine's own route to that name, if it has
+  one, applies in its place (ruling CD2 of 2026-09-29). The same fault in
+  `~/.abcd/config.json` is refused, because that file is the person's own and a
+  route they set is never dropped silently.
 - **A route to a provider that holds a key sits on the machine alone.** Only a
   route the person set up on their own machine may spend their paid key (the
   product thinker's ruling AA(b) of 2026-09-29), so a repository's
@@ -555,11 +564,13 @@ memory are all recorded in itd-117 as follow-up questions.
 **A withheld guardrail is named.** Because a list replaces the bundled list, an
 override written before a release added an entry keeps withholding that entry.
 For the four guardrail domains — `PII`, `COMMITTING`, `LOAD` and `SHELL` — the
-load compares every recall, alias and rule list an override set against the list the
-running binary bundles. It names each bundled entry left out, and the file whose
-list is in force, on stderr from `abcd rules` and from the hook on every prompt.
-The effective set is unchanged. Restating the entry keeps it; leaving the field
-out inherits the bundled list. The other bundled domains are conventions a
+load compares every recall, alias and rule list an override set against the list
+the load built before any `rules.json` layer: the running binary's bundled list,
+and for `SHELL` the lessons of the repository's own `.abcd/guard.json` entries
+too. It names each entry left out, and the file whose list is in force, on
+stderr from `abcd rules` and from the hook on every prompt. The effective set is
+unchanged. Restating the entry keeps it; leaving the field out inherits the
+list. The other bundled domains are conventions a
 repository restates in its own words, so a replacement there is not reported.
 
 **One bundled domain is generated.** `SHELL` is the teaching plane of the
@@ -582,14 +593,22 @@ a user or repo layer overrides it per field, `dormant` silences it, `*SHELL`
 activates it, the kill switch suppresses it, and dedup and provenance treat it
 like any other. Its injected block costs about 2k tokens for the bundled
 registry, one rule per registry entry, and each entry a repository adds or
-rewords in its `.abcd/guard.json` adds its own rule, about a hundred tokens at
-the length of a bundled lesson; the block is paid once per session per
+rewords in its `.abcd/guard.json` adds its own rule. An entry's why and its
+successor are each capped at 1,024 bytes, over three times the longest bundled
+one, so one rule is a few hundred tokens at most; a guard file carrying a longer
+one is refused like any invalid entry. When the matched rules still overflow
+the 64 KiB injection budget, the truncation notice names the file whose words
+filled it, `.abcd/guard.json` for these lessons and the layer's `rules.json`
+for a list an override set. The block is paid once per session per
 signature, so dedup never injects it again while its rules are unchanged, and
 an edit to the guard file re-injects it once. A rule whose words are the
 repository's — an entry the file adds, or a bundled entry whose tier, pattern,
 why or successor it changes — carries `(repo)` after its entry id, so whose
 words an agent is taught is never invisible; a fixture-only change teaches
-the bundled words and is not marked. A `.abcd/guard.json` the guard refuses
+the bundled words and is not marked. Under a committed `"disabled": true`
+the guard refuses nothing, so every rule opens `Hazard (guard off)` in place of
+`Refused by the guard` or `Warned by the guard`: the hazard is still taught, and
+the sentence stays true. A `.abcd/guard.json` the guard refuses
 (unreadable, invalid, or an uncommitted edit that weakens it) is refused here
 too and never skipped in silence: `SHELL` teaches the registry the guard falls
 back to, none of the refused entries, and the load names the file and the

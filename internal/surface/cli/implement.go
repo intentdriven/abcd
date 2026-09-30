@@ -108,6 +108,7 @@ func newImplementCommand(asJSON *bool) *cobra.Command {
 		newImplementStatusCommand(asJSON),
 		newImplementStepCommand(asJSON),
 		newImplementReceiptCommand(asJSON),
+		newImplementRecordCommand(asJSON),
 	)
 	return cmd
 }

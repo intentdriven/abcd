@@ -92,7 +92,40 @@ const lockFileName = ".lock"
 // next mutation writes the file back at version 4, as it does for the versions
 // before. One of them that already says `stage` is not one its version wrote,
 // and is refused.
-const SchemaVersion = 4
+//
+// Version 5 added the validate stage's record (spc-2609202134338445 piece 8): a
+// lane's `validation`, its rounds and the verdicts the loop recorded. Version 4
+// is its strict subset, read as a run no validator has judged yet and written
+// back at version 5; a version-4 file carrying a validation is not one version
+// 4 wrote, and is refused.
+//
+// Version 6 added the fix-round cap (ruling DR1, 2026-09-29): the pace's
+// `fix_rounds`, and a lane's `hand_back` when it takes its cap of fix rounds
+// without passing. Version 5 is its strict subset, read as a run started before
+// the pace carried the cap, which runs on the bundled one, and written back at
+// version 6; a version-5 file carrying either is not one version 5 wrote, and
+// is refused.
+//
+// Version 7 added the landing and the run record's transcripts
+// (spc-2609202134338445 pieces 9 and 10): a lane's `landing`, the captures its
+// receipts declared fixed (`resolves`) and the receipts it verified
+// (`receipts`, each with the model its runner reported), and the run's
+// `transcripts`. Version 6 is its strict subset, read as a run nothing has
+// landed yet and written back at version 7; a version-6 file carrying any of
+// them is not one version 6 wrote, and is refused.
+const SchemaVersion = 7
+
+// schemaVersionUnlanded is the version before the landing: read, never
+// written.
+const schemaVersionUnlanded = 6
+
+// schemaVersionUncapped is the version before the fix-round cap: read, never
+// written.
+const schemaVersionUncapped = 5
+
+// schemaVersionUnvalidated is the version before the validate stage's record:
+// read, never written.
+const schemaVersionUnvalidated = 4
 
 // schemaVersionUnpaced is the version before the pace: read, never written.
 const schemaVersionUnpaced = 1
@@ -135,7 +168,8 @@ func ValidRunID(id string) bool { return runIDRe.MatchString(id) }
 type Stage string
 
 // The lane's stages, in the order Sequence performs them. StageDone is the state
-// of a lane with nothing left to do, never a stage with a body.
+// of a lane with nothing left to do, and StageHandedBack of a lane stopped and
+// handed back to the person; neither is a stage with a body.
 const (
 	StageWorktree  Stage = "worktree"
 	StageBrief     Stage = "brief"
@@ -143,7 +177,15 @@ const (
 	StageValidate  Stage = "validate"
 	StageLand      Stage = "land"
 	StageDone      Stage = "done"
+	// StageHandedBack is a lane that took its run's cap of fix rounds and still
+	// did not pass (itd-50, criterion 2): the loop starts nothing further for
+	// it, and its intent is the person's to replan.
+	StageHandedBack Stage = "handed-back"
 )
+
+// VerdictUnachievable is the verdict a lane is handed back with: the run's fix
+// rounds could not bring it to a passing round (itd-50's UNACHIEVABLE).
+const VerdictUnachievable = "unachievable"
 
 // Driver names what drives the loop. The host session is decision 5's default;
 // the process driver is piece 3's, opt-in by configuration.
@@ -157,8 +199,8 @@ type State struct {
 	SchemaVersion int `json:"schema_version"`
 	// RunID names the run and its directory.
 	RunID string `json:"run_id"`
-	// Key is the record the run was started for: an intent id (an issue id is
-	// decision 10's, which a later piece admits).
+	// Key is the record the run was started for: an intent id, or an issue id
+	// (decision 10), for which Intent and Spec are empty.
 	Key string `json:"key"`
 	// Intent and Spec are the intent the run delivers and the open spec it
 	// builds against, as the readiness gate judged them.
@@ -188,6 +230,26 @@ type State struct {
 	Pending []PendingStep `json:"pending"`
 	// Record is the run record, accumulated as stages complete.
 	Record []Entry `json:"record"`
+	// Transcripts are the transcripts the run's record captured into the
+	// history store once the run was complete, one capture per path (piece 10).
+	Transcripts []Transcript `json:"transcripts,omitempty"`
+}
+
+// Transcript is one transcript the run record captured into the history store.
+type Transcript struct {
+	At time.Time `json:"at"`
+	// Path is the transcript as it was handed to the capture, home-redacted.
+	Path string `json:"path"`
+	// Session is the session the history store recorded it under, and Stored
+	// where it lives there, home-redacted.
+	Session string `json:"session"`
+	Stored  string `json:"stored"`
+	// Wrote is false when the store already held it (an idempotent capture).
+	Wrote bool `json:"wrote"`
+	// ScanGap is the capture's scan gap, home-redacted: the repository armed a
+	// scanner augmenter (gitleaks) that did not run, so the transcript was
+	// stored masked by the native scanner alone. Empty when there is none.
+	ScanGap string `json:"scan_gap,omitempty"`
 }
 
 // PendingStep is a spec step the run will open a lane for.
@@ -200,7 +262,7 @@ type PendingStep struct {
 type Lane struct {
 	// ID is the lane's name inside the run: lane-1, lane-2, ….
 	ID string `json:"id"`
-	// Key is the record the lane delivers (itd-N; iss-N once decision 10 lands).
+	// Key is the record the lane delivers: itd-N, or iss-N (decision 10).
 	Key string `json:"key"`
 	// SpecStep is the number of the spec step the lane lands, and StepTitle its
 	// title. An unstepped spec is one implicit step, number 1.
@@ -224,6 +286,109 @@ type Lane struct {
 	// pick entry, on the lane a picked run commits it on; the receipt verifier
 	// counts the implementer's commits from after it.
 	PickSHA string `json:"pick_sha,omitempty"`
+	// Validation is the validate stage's record (piece 8): one round per head
+	// the validators judged, the last the current one. Only the loop writes a
+	// verdict into it, parsed from the validator's own return (itd-58).
+	Validation []ValidationRound `json:"validation,omitempty"`
+	// HandBack is set when the lane was stopped and handed back to the person:
+	// its Stage is then StageHandedBack.
+	HandBack *HandBack `json:"hand_back,omitempty"`
+	// Receipts are the implementers' receipts the loop verified for the lane,
+	// the implement stage's and each fix round's, with the model each runner
+	// reported (criterion 10).
+	Receipts []ReceiptRecord `json:"receipts,omitempty"`
+	// Resolves are the captures the lane's receipts declared fixed, each with
+	// the lane's commit that fixed it; the landing resolves each (piece 9).
+	Resolves []Resolution `json:"resolves,omitempty"`
+	// Landing is the landing stage's progress (piece 9): each of its steps is
+	// recorded as it completes, so a killed landing resumes at the step that
+	// did not.
+	Landing *Landing `json:"landing,omitempty"`
+}
+
+// ReceiptRecord is one implementer's receipt the loop verified.
+type ReceiptRecord struct {
+	Role    string `json:"role"`
+	Receipt string `json:"receipt"`
+	// Model is the model the runner reported, as reported; empty when it
+	// reported none. The binary cannot verify it.
+	Model string `json:"model,omitempty"`
+}
+
+// HandBack is a lane stopped and handed back to the person, with what the last
+// round found (ruling DR1 on itd-50's criterion 2).
+type HandBack struct {
+	At time.Time `json:"at"`
+	// Kind, Reason and Home are set when the lane's own receipt handed the work
+	// back (itd-82 scope 5): the kind of decision it found, what it found, and
+	// where the decision belongs. Discarded is the lane's head the loop
+	// discarded with its worktree and branch. The fields below are then empty.
+	Kind      string `json:"kind,omitempty"`
+	Reason    string `json:"reason,omitempty"`
+	Home      string `json:"home,omitempty"`
+	Discarded string `json:"discarded,omitempty"`
+	// Verdict is VerdictUnachievable.
+	Verdict string `json:"verdict,omitempty"`
+	// Round is the round that did not pass once the cap was reached, and
+	// FixRounds the cap the run held the lane to.
+	Round     int `json:"round,omitempty"`
+	FixRounds int `json:"fix_rounds,omitempty"`
+	// Verdicts is the last round's verdicts as the loop recorded them, and
+	// Findings the returns of the validators that did not pass, relative to
+	// the checkout root.
+	Verdicts string   `json:"verdicts,omitempty"`
+	Findings []string `json:"findings,omitempty"`
+	// NotMet and Undecided name the criteria the last audit judged not met and
+	// could not decide, when the lane took the audit.
+	NotMet    []string `json:"not_met,omitempty"`
+	Undecided []string `json:"undecided,omitempty"`
+}
+
+// ValidationRound is one round of the validate stage: the validators it hands
+// the lane's head to, one at a time, and the fresh implementer it hands their
+// findings to when one of them did not pass.
+type ValidationRound struct {
+	Round int `json:"round"`
+	// HeadSHA is the lane's head the round's validators judge.
+	HeadSHA    string         `json:"head_sha"`
+	Validators []ValidatorRun `json:"validators"`
+	// Fix is the verified receipt of the fresh implementer the round's
+	// findings were handed to; once set, the next step opens the next round.
+	Fix string `json:"fix,omitempty"`
+}
+
+// ValidatorRun is one validator of a round: the fresh agent handed the lane,
+// its brief, the return it writes, and the verdict the loop parsed from that
+// return.
+type ValidatorRun struct {
+	Role   string `json:"role"`
+	Brief  string `json:"brief"`
+	Return string `json:"return"`
+	// Verdict is the verdict the loop parsed from the return; empty until the
+	// return is handed back. Pass is whether it lets the lane advance.
+	Verdict string `json:"verdict,omitempty"`
+	Pass    bool   `json:"pass"`
+	// Audit is the fidelity audit's request and reading, on the
+	// intent-auditor's run.
+	Audit *AuditRun `json:"audit,omitempty"`
+}
+
+// AuditRun is the fidelity audit the lane that closes the spec takes, once, over
+// the whole delivery (ruling AI): the receipt the close parks for the same
+// record, the request, the range it reads, and what the loop read from the
+// verdict. The verdict itself is the return the run names; the close consumes
+// it (piece 9).
+type AuditRun struct {
+	ReceiptID string `json:"receipt_id"`
+	Request   string `json:"request"`
+	// BaseSHA..HeadSHA is the whole delivery: from the base of the run's first
+	// lane to this lane's head.
+	BaseSHA string `json:"base_sha"`
+	HeadSHA string `json:"head_sha"`
+	// Worst, NotMet and Inconclusive are read from the verdict.
+	Worst        string   `json:"worst,omitempty"`
+	NotMet       []string `json:"not_met,omitempty"`
+	Inconclusive []string `json:"inconclusive,omitempty"`
 }
 
 // Await is what a lane waits on: the agent a host must start, the brief it is
@@ -277,6 +442,46 @@ func (s State) picked() bool {
 	return false
 }
 
+// capped reports whether the state carries anything only a version-6 run
+// writes: the pace's fix-round cap, or a lane handed back.
+func (s State) capped() bool {
+	if s.Pace != nil && s.Pace.FixRounds.Layer != "" {
+		return true
+	}
+	for _, l := range s.Lanes {
+		if l.HandBack != nil || l.Stage == StageHandedBack {
+			return true
+		}
+	}
+	return false
+}
+
+// landed reports whether the state carries anything only a version-7 run
+// writes: a landing, a lane's verified receipts or declared fixes, or a
+// captured transcript.
+func (s State) landed() bool {
+	if len(s.Transcripts) > 0 {
+		return true
+	}
+	for _, l := range s.Lanes {
+		if l.Landing != nil || len(l.Receipts) > 0 || len(l.Resolves) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// validated reports whether the state carries anything only the validate
+// stage writes.
+func (s State) validated() bool {
+	for _, l := range s.Lanes {
+		if len(l.Validation) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
 // current returns the index of the lane the loop works on — the first lane not
 // done — or -1 when every opened lane is done.
 func (s State) current() int {
@@ -290,6 +495,15 @@ func (s State) current() int {
 
 // runRel is a run's directory, relative to the checkout root.
 func runRel(runID string) string { return RunRelDir + "/" + runID }
+
+// Issue is the issue an issue-keyed run fixes (decision 10), or "" for a run
+// that builds an intent.
+func (s State) Issue() string {
+	if validIssueKey(s.Key) {
+		return s.Key
+	}
+	return ""
+}
 
 // StateRelPath is a run's state file, relative to the checkout root.
 func StateRelPath(runID string) string { return runRel(runID) + "/" + StateFileName }
@@ -349,9 +563,19 @@ func readStateIn(root *os.Root, runID string) (State, error) {
 	case (st.SchemaVersion == schemaVersionUnpaced || st.SchemaVersion == schemaVersionUnpicked) && st.picked():
 		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries a pick, which version %d never wrote", rel, st.SchemaVersion, st.SchemaVersion),
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
-	case st.SchemaVersion >= schemaVersionUnpaced && st.SchemaVersion <= schemaVersionStepNamed:
+	case st.SchemaVersion <= schemaVersionUnvalidated && st.validated():
+		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries a validation, which version %d never wrote", rel, st.SchemaVersion, st.SchemaVersion),
+			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
+	case st.SchemaVersion <= schemaVersionUncapped && st.capped():
+		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries a fix-round cap or a hand-back, which version %d never wrote", rel, st.SchemaVersion, st.SchemaVersion),
+			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
+	case st.SchemaVersion <= schemaVersionUnlanded && st.landed():
+		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries a landing, a verified receipt or a captured transcript, which version %d never wrote", rel, st.SchemaVersion, st.SchemaVersion),
+			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
+	case st.SchemaVersion >= schemaVersionUnpaced && st.SchemaVersion <= schemaVersionUnlanded:
 		// Read as the current version, its stages already carried over by
-		// decodeState; the next write carries it, and this read writes nothing.
+		// decodeState when it named them `step`; the next write carries it, and
+		// this read writes nothing.
 		st.SchemaVersion = SchemaVersion
 	case st.SchemaVersion != SchemaVersion:
 		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d; this abcd reads versions %d to %d", rel, st.SchemaVersion, schemaVersionUnpaced, SchemaVersion),

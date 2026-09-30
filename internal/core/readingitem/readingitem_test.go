@@ -72,7 +72,7 @@ func TestLocateRefusesSymlinkedRun(t *testing.T) {
 func TestLocateDispositionRefusesASymlinkedItemDir(t *testing.T) {
 	_, ir := repo(t)
 	write(t, filepath.Join(ir, "dispositions", "rdi-11", "dsp-5.md"), "a")
-	item, path, err := LocateDisposition(ir, "dsp-5")
+	item, path, err := locateDisposition(ir, "dsp-5")
 	if err != nil || item != "rdi-11" || filepath.Base(path) != "dsp-5.md" {
 		t.Fatalf("LocateDisposition = %q %q %v", item, path, err)
 	}
@@ -81,7 +81,7 @@ func TestLocateDispositionRefusesASymlinkedItemDir(t *testing.T) {
 	if err := os.Symlink(outside, filepath.Join(ir, "dispositions", "rdi-12")); err != nil {
 		t.Skipf("symlinks unavailable: %v", err)
 	}
-	if _, _, err := LocateDisposition(ir, "dsp-6"); !errors.Is(err, ErrPathUnsafe) {
+	if _, _, err := locateDisposition(ir, "dsp-6"); !errors.Is(err, ErrPathUnsafe) {
 		t.Fatalf("a symlinked item directory: err = %v, want ErrPathUnsafe", err)
 	}
 }
@@ -253,7 +253,7 @@ func TestLocateDispositionNamesASymlinkedFileAsNotARegularFile(t *testing.T) {
 	if err := os.Symlink(filepath.Join(outside, "target.md"), filepath.Join(ir, "dispositions", "rdi-11", "dsp-5.md")); err != nil {
 		t.Skipf("symlinks unavailable: %v", err)
 	}
-	_, _, err := LocateDisposition(ir, "dsp-5")
+	_, _, err := locateDisposition(ir, "dsp-5")
 	if !errors.Is(err, ErrPathUnsafe) || !strings.Contains(err.Error(), "not a regular file") {
 		t.Fatalf("a symlinked disposition file: err = %v, want ErrPathUnsafe naming it not a regular file", err)
 	}

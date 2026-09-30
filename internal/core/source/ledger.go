@@ -90,7 +90,7 @@ func readLedger(dir, repo string) ([]Record, error) {
 
 // List returns repo's ledger, numbered from 1. An absent ledger is empty.
 func List(corpus, repo string) ([]AppendResult, error) {
-	if _, err := Load(corpus); err != nil {
+	if _, err := loadCorpus(corpus); err != nil {
 		return nil, err
 	}
 	if !repoRe.MatchString(repo) {
@@ -118,7 +118,7 @@ func stamp(now time.Time) string {
 // Append adds one influence record to repo's ledger and commits it. cited_publicly
 // is always false here: exercising the right to cite is Flip's, and only Flip's.
 func Append(req AppendRequest) (AppendResult, error) {
-	c, err := Load(req.Corpus)
+	c, err := loadCorpus(req.Corpus)
 	if err != nil {
 		return AppendResult{}, err
 	}
@@ -167,7 +167,7 @@ func Append(req AppendRequest) (AppendResult, error) {
 // A person flips a line; an agent never does. The binary cannot tell the two apart,
 // so the command pages carry that rule.
 func Flip(corpus, repo string, line int, now time.Time) (AppendResult, error) {
-	c, err := Load(corpus)
+	c, err := loadCorpus(corpus)
 	if err != nil {
 		return AppendResult{}, err
 	}

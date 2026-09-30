@@ -22,7 +22,7 @@ func TestReframeRecordsNeverReachTheBundle(t *testing.T) {
 		"---\nschema_version: 1\nid: rfm-1\noccasioned_by: rdi-1\ngrounds: \""+sentinelReframe+"\"\n---\n\n"+sentinelReframe+"\n")
 	gitCommitAll(t, root)
 
-	for _, p := range AssemblingPositions() {
+	for _, p := range assemblingPositions() {
 		var res AssembleResult
 		if p == PositionComparative {
 			var err error
@@ -62,7 +62,7 @@ func TestReframeRecordsNeverReachTheBundle(t *testing.T) {
 func TestExclusionFloorNamesTheReframeRecord(t *testing.T) {
 	for _, p := range Positions() {
 		found := false
-		for _, e := range ExclusionsFor(p) {
+		for _, e := range exclusionsFor(p) {
 			if e.Detail == "the reframe record" {
 				found = true
 				if e.Rule != "absent from the positive walk" || e.Signal != "record type in a denied path" {
@@ -74,7 +74,7 @@ func TestExclusionFloorNamesTheReframeRecord(t *testing.T) {
 			t.Errorf("position %s: the exclusion floor does not name the reframe record", p)
 		}
 	}
-	if Admits(PositionComparative, ".abcd/work/issues/reframes/rfm-1.md") {
+	if admits(PositionComparative, ".abcd/work/issues/reframes/rfm-1.md") {
 		t.Error("the comparative position admits a reframe record")
 	}
 }

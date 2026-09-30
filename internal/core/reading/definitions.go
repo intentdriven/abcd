@@ -48,10 +48,10 @@ type Definition struct {
 	SHA256 string `json:"sha256"`
 }
 
-// DefinitionPath returns p's definition file, repo-relative. The filename is
+// definitionPath returns p's definition file, repo-relative. The filename is
 // derived from the position rather than looked up, which is what lets a run's
 // position resolve to its definition by construction.
-func DefinitionPath(p Position) string {
+func definitionPath(p Position) string {
 	return DefinitionsDir + "/" + definitionPrefix + string(p) + ".md"
 }
 
@@ -85,7 +85,7 @@ func LoadDefinition(repoRoot string, p Position) (Definition, error) {
 	}
 	defer root.Close()
 
-	rel := DefinitionPath(pos)
+	rel := definitionPath(pos)
 	raw, err := fsutil.ReadGuardedInRoot(root, rel, MaxFileBytes)
 	if err != nil {
 		return Definition{}, fmt.Errorf("reading: the %s definition at %s: %w", pos, rel, err)
@@ -137,14 +137,14 @@ func LoadDefinition(repoRoot string, p Position) (Definition, error) {
 	return Definition{Position: pos, Regime: regime, Path: rel, SHA256: sha256Hex(raw)}, nil
 }
 
-// LoadDefinitions resolves every position's definition under repoRoot, in the
+// loadDefinitions resolves every position's definition under repoRoot, in the
 // order Positions renders them, skipping the positions whose file is absent.
 //
 // Absence is a state: a repository with no definitions has none, and reporting
 // that is the status render's job. A definition that IS present and does not
 // parse is a fault, and stops the whole resolution — the alternative is a render
 // that quietly lists three instruments where four were meant.
-func LoadDefinitions(repoRoot string) ([]Definition, error) {
+func loadDefinitions(repoRoot string) ([]Definition, error) {
 	out := []Definition{}
 	for _, p := range Positions() {
 		def, err := LoadDefinition(repoRoot, p)

@@ -178,7 +178,7 @@ func rejudgeEmbark(targetAbs string, planned []PlannedEmbark) ([]PlannedEmbark, 
 	return out, conflicts
 }
 
-// VerifyManifest re-hashes every non-excluded file in the lifeboat and compares
+// verifyManifest re-hashes every non-excluded file in the lifeboat and compares
 // the result to _provenance.json's manifest_sha256. It enforces the trust
 // boundary during the walk: it refuses a symlink anywhere in the tree, a path
 // that fails validRelPath, a file over maxEmbarkFileBytes, a tree over
@@ -187,7 +187,7 @@ func rejudgeEmbark(targetAbs string, planned []PlannedEmbark) ([]PlannedEmbark, 
 // nil iff the lifeboat is intact. The excluded set (_provenance.json, the
 // post-pack layer-3 graveyard/lessons.json and graveyard/low-confidence/**) is
 // the same set the packer left out of manifest_sha256.
-func VerifyManifest(dir string) error {
+func verifyManifest(dir string) error {
 	abs, err := filepath.Abs(dir)
 	if err != nil {
 		return err
@@ -288,7 +288,7 @@ func runPlanner(lifeboatDir, targetDir string) (plannerResult, error) {
 		return plannerResult{}, update.TooNew("lifeboat",
 			prov.SchemaVersion, SchemaVersion)
 	}
-	if err := VerifyManifest(lifeboatAbs); err != nil {
+	if err := verifyManifest(lifeboatAbs); err != nil {
 		return plannerResult{}, err
 	}
 	// Gate the target: a real directory (a symlinked or absent target is
@@ -793,7 +793,7 @@ func readProvenance(abs string) (Provenance, error) {
 
 // isManifestExcluded reports whether a lifeboat path was left out of
 // manifest_sha256 (the header and the post-pack layer-3 interpretation), so
-// VerifyManifest reproduces the pinned hash exactly.
+// verifyManifest reproduces the pinned hash exactly.
 func isManifestExcluded(rel string) bool {
 	for _, e := range manifestExcludedExact {
 		if rel == e {

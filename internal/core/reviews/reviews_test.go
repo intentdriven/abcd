@@ -36,7 +36,7 @@ func TestPinReadsTheFrontmatterKeyAndNothingElse(t *testing.T) {
 		{"no frontmatter", "# Summary\n", ""},
 	}
 	for _, c := range cases {
-		if got := Pin([]byte(c.text)); got != c.want {
+		if got := summaryPin([]byte(c.text)); got != c.want {
 			t.Errorf("%s: Pin = %q, want %q", c.name, got, c.want)
 		}
 	}
@@ -66,7 +66,7 @@ func TestReadListsEveryFolderWithItsScopeAndPin(t *testing.T) {
 	write(receipt+"/docs-currency-reviewer.json", "{}")
 	write(receipt+"/iss35-brief-surface-crosscheck.json", "{}")
 
-	got, err := Read(root)
+	got, err := readEntries(root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +94,7 @@ func TestReadListsEveryFolderWithItsScopeAndPin(t *testing.T) {
 // TestReadWithNoReviewsTreeIsEmpty: a repository without the tree has no rows
 // and no error — the board omits the block rather than failing.
 func TestReadWithNoReviewsTreeIsEmpty(t *testing.T) {
-	got, err := Read(t.TempDir())
+	got, err := readEntries(t.TempDir())
 	if err != nil || len(got) != 0 {
 		t.Fatalf("Read = %+v, %v", got, err)
 	}
@@ -258,7 +258,7 @@ func TestReadShowsUnpinnedWhatTheGateRefuses(t *testing.T) {
 	write("2026-09-26-nul-fence/00-summary.md", []byte("---\nreview_of_commit: "+sha+"\n---\x00\n# S\n"))
 	write("2026-09-26-nul-body/00-summary.md", []byte(pinnedSummary(sha)+"\x00\n"))
 
-	got, err := Read(root)
+	got, err := readEntries(root)
 	if err != nil {
 		t.Fatal(err)
 	}

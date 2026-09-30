@@ -335,3 +335,56 @@ func TestASymlinkedRecordInsideTheStoreIsNeverFollowed(t *testing.T) {
 		t.Fatalf("got rule %+v, err %v; want ErrUnreadable", r, err)
 	}
 }
+
+// TestASymlinkedStoreIsRefusedWhereverItPoints: the store is read as the
+// drained tree's own directory, so a store that is a link is refused the way a
+// linked record is, whether it points inside the checkout or out of it, and so
+// is a link at any directory above it: a store reached through a link is not a
+// store the checkout holds at its own path.
+func TestASymlinkedStoreIsRefusedWhereverItPoints(t *testing.T) {
+	taking := strings.Replace(strictFields, "handback", "take", 1)
+	for name, link := range map[string]func(t *testing.T, repo string){
+		"store linked inside the checkout": func(t *testing.T, repo string) {
+			writeADR(t, filepath.Join(repo, "elsewhere"), "0018-rule.md", "adr-18", "accepted", taking)
+			if err := os.MkdirAll(filepath.Join(repo, ".abcd", "development", "decisions"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			// Relative, so the link resolves inside the checkout.
+			target := filepath.FromSlash("../../../elsewhere/" + ADRsRelDir)
+			if err := os.Symlink(target, filepath.Join(repo, filepath.FromSlash(ADRsRelDir))); err != nil {
+				t.Fatal(err)
+			}
+		},
+		"store linked out of the checkout": func(t *testing.T, repo string) {
+			outside := t.TempDir()
+			writeADR(t, outside, "0018-rule.md", "adr-18", "accepted", taking)
+			if err := os.MkdirAll(filepath.Join(repo, ".abcd", "development", "decisions"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(filepath.Join(outside, filepath.FromSlash(ADRsRelDir)), filepath.Join(repo, filepath.FromSlash(ADRsRelDir))); err != nil {
+				t.Fatal(err)
+			}
+		},
+		"a directory above the store linked inside the checkout": func(t *testing.T, repo string) {
+			writeADR(t, filepath.Join(repo, "elsewhere"), "0018-rule.md", "adr-18", "accepted", taking)
+			if err := os.MkdirAll(filepath.Join(repo, ".abcd"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(filepath.FromSlash("../elsewhere/.abcd/development"), filepath.Join(repo, ".abcd", "development")); err != nil {
+				t.Fatal(err)
+			}
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			repo := t.TempDir()
+			link(t, repo)
+			r, err := Load(repo)
+			if !errors.Is(err, ErrUnreadable) {
+				t.Fatalf("a rule was read through a linked store: %+v, %v; want ErrUnreadable", r, err)
+			}
+			if !strings.Contains(err.Error(), "is not a regular directory") {
+				t.Errorf("the refusal does not say the store is not a regular directory: %v", err)
+			}
+		})
+	}
+}

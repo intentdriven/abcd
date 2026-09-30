@@ -78,7 +78,7 @@ var lifeboatOperandGates = map[string]func(dir string) error{
 		_, err := IngestLessons(dir, []byte(`{"schema_version":1,"lessons":[]}`))
 		return err
 	},
-	"manifest verification": VerifyManifest,
+	"manifest verification": verifyManifest,
 	"embark (lifeboat operand)": func(dir string) error {
 		_, err := runPlanner(dir, nestedTarget())
 		return err

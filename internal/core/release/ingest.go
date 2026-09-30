@@ -549,6 +549,12 @@ func checkPrivacy(root, text, label, at string, rs *reasons) error {
 		rs.add(ReasonPrivacy, at, "the rendered %s carries a %s on line %d; remove it (release text is public, "+
 			"and a secret or the composer's own identity has no place in it)", label, f.Kind, f.Line)
 	}
+	// A repository's opt-in scanner augmenter (gitleaks) runs inside ScanText,
+	// and a run that failed degrades the scanner during it: a check that did not
+	// run whole is a stop, as above.
+	if unavail, reason := sc.Unavailable(); unavail {
+		return fmt.Errorf("the %s's privacy check: refusing to judge with a degraded scanner: %s", label, reason)
+	}
 	return nil
 }
 

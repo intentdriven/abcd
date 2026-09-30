@@ -215,7 +215,7 @@ var DependencyTools = []string{"gitleaks"}
 // cannot find, with the tool registry's explanation rather than a bare command
 // (itd-63). gitleaks is the one ahoy checks: optional over the native secret
 // scanner, and REQUIRED in a repository that armed it in
-// .abcd/config/gitleaks.json, whose transcript capture refuses without it. An
+// .abcd/config/gitleaks.json, whose release refuses without it. An
 // armed repository that names an existing binary by path has no gap: the
 // adapter judges that path itself, and a refusal there is not a missing tool.
 //
@@ -230,7 +230,7 @@ func detectDependencies(cwd string) []Gap {
 			return nil
 		}
 	}
-	if onPath("gitleaks") {
+	if onPath(cwd, "gitleaks") {
 		return nil
 	}
 	e := tools.Explain("gitleaks", capability)
@@ -245,9 +245,25 @@ func detectDependencies(cwd string) []Gap {
 	}}
 }
 
-func onPath(tool string) bool {
-	_, err := exec.LookPath(tool)
-	return err == nil
+// onPath reports whether tool is installed where abcd would run it from: PATH
+// resolves it to an absolute program outside the checkout at root. A program
+// PATH resolves inside the checkout, lexically or after symlinks, is
+// repository content that the installer refuses to run, so it does not count
+// as installed either; the judgement is the installer's own (tools.WithinTree).
+func onPath(root, tool string) bool {
+	p, err := exec.LookPath(tool)
+	if err != nil || !filepath.IsAbs(p) {
+		return false
+	}
+	guard, err := filepath.Abs(root)
+	if err != nil {
+		return false
+	}
+	resolved, err := filepath.EvalSymlinks(p)
+	if err != nil {
+		return false
+	}
+	return !tools.WithinTree(p, resolved, guard)
 }
 
 func detectSkeleton(cwd string) []Gap {
@@ -528,7 +544,7 @@ func detectConfigValues(cwd string) []Gap {
 		validVis = visibility
 	}
 	// scan.deep is conditional: private + trufflehog present.
-	if validVis == "private" && onPath("trufflehog") {
+	if validVis == "private" && onPath(cwd, "trufflehog") {
 		if _, ok := boolVal(scan, "deep"); !ok {
 			gaps = append(gaps, configValueGap("config.scan_deep_missing", "scan_deep", "scan.deep not set",
 				"Private repo + trufflehog present — confirm deep secret scanning."))

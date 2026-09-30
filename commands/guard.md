@@ -138,7 +138,9 @@ domain is generated from the registry this guard enforces, one rule per entry,
 and is injected when a prompt is about shell work (`abcd rules shell` renders
 it). An entry a repo adds in `.abcd/guard.json` is taught there as well, its
 rule marked `(repo)`; a guard file this guard refuses is named on stderr and
-not taught.
+not taught. An entry's `why` and `successor` are each at most 1,024 bytes, and
+a longer one refuses the file. With the guard switched off, each rule opens
+`Hazard (guard off)` instead of `Refused by the guard`.
 
 ### What this guard is
 

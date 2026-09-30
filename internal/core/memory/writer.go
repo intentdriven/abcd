@@ -1,11 +1,11 @@
 package memory
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -41,7 +41,11 @@ type renderedWrite struct {
 
 // WithStoreLock holds the exclusive non-blocking advisory lock on
 // .abcd/memory/.lock for fn's extent. The closure form keeps the locked/unlocked
-// split structural — flock does not nest.
+// split structural — flock does not nest. The lock is fsutil.WithFileLock with
+// no wait: a lock another process holds fails closed at once, as
+// *StoreLockHeldError, and a lock path that is a symlink or not a regular file
+// is *UnsafeStorePathError, judged on the path first and again on the opened
+// descriptor. fn's own error passes through unchanged.
 func WithStoreLock(repoRoot string, fn func() error) error {
 	memDir, err := validatedMemoryDir(repoRoot)
 	if err != nil {
@@ -57,37 +61,20 @@ func WithStoreLock(repoRoot string, fn func() error) error {
 		return err
 	}
 
-	fd, err := syscall.Open(path, syscall.O_CREAT|syscall.O_RDWR|syscall.O_NOFOLLOW, 0o600)
-	if err != nil {
-		return &UnsafeStorePathError{Msg: "unsafe memory store lock open for " + path + ": " + err.Error()}
-	}
-	defer syscall.Close(fd)
-
-	var st syscall.Stat_t
-	if err := syscall.Fstat(fd, &st); err != nil {
+	ran := false
+	err = fsutil.WithFileLock(path, 0, func() error {
+		ran = true
+		return fn()
+	})
+	switch {
+	case ran || err == nil:
 		return err
-	}
-	if !lockModeIsRegular(uint32(st.Mode)) {
-		return &UnsafeStorePathError{Msg: "memory store lock fd is not a regular file: " + path}
-	}
-	if st.Nlink < 1 {
-		return &UnsafeStorePathError{Msg: "memory store lock fd has zero links: " + path}
-	}
-
-	if err := syscall.Flock(fd, syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+	case errors.Is(err, fsutil.ErrLockContention):
 		return &StoreLockHeldError{Path: path}
+	case errors.Is(err, fsutil.ErrLockPathUnsafe):
+		return &UnsafeStorePathError{Msg: "memory store lock path is a symlink or non-regular file: " + path}
 	}
-	defer syscall.Flock(fd, syscall.LOCK_UN)
-
-	return fn()
-}
-
-// lockModeIsRegular reports whether a stat mode names a regular file. The
-// file-type field is an enumeration under S_IFMT, not a set of flags: a socket
-// and a symlink both carry the S_IFREG bit, so testing that bit alone admitted
-// them (iss-2608261133210491).
-func lockModeIsRegular(mode uint32) bool {
-	return mode&syscall.S_IFMT == syscall.S_IFREG
+	return &UnsafeStorePathError{Msg: "unsafe memory store lock open for " + path + ": " + err.Error()}
 }
 
 // memoryDir is the ONE walk that resolves <repoRoot>/.abcd/memory for every

@@ -3,11 +3,14 @@
 `/abcd:drain` is the verb a person types to have the open issue ledger worked
 unattended: the issues that need no decision are fixed, and the rest are handed
 back to the place a person decides them (itd-82, spc-2609212015054359). This
-chapter describes the part that ships, the field-only slice: the rule that
-decides which issues a machine may take alone, the order it takes them in, and
-a dry run that shows every open issue's disposition and writes nothing. The run
-itself, which hands each eligible issue to the implement loop keyed by the
-issue, is not built, so the bare verb refuses to start and says so.
+chapter describes what ships: the rule that decides which issues a machine may
+take alone, the order it takes them in, a dry run that shows every open issue's
+disposition and writes nothing, and the run, which hands each eligible issue to
+the implement loop keyed by the issue, one lane at a time, routes every
+hand-back by its kind, and is bounded by the pace rule's window and a cap on
+the lanes it opens. The host judgement over each eligible remedy is not built:
+the run opens a lane for every eligible issue, and only the lane itself can
+hand its issue back.
 
 ## Sub-verbs
 
@@ -86,7 +89,17 @@ read only when an open record carries a deferral, and not knowing whether a
 deferral is live never lets its record through: a failure to read the tags
 refuses the dry run, and a checkout holding no release tag (a shallow clone
 fetches none) marks the anchor unknown and hands back every record carrying a
-deferral, the dry run naming the missing tags and `git fetch --tags`.
+deferral, the dry run naming the missing tags and `git fetch --tags`. A checkout
+holding only an older release tag (one not fetched since the last cut) is
+caught the same way without asking a remote: a `deferred_after` newer than the
+checkout's own tag, compared by core version, names a tag the checkout lacks, so
+the anchor is stale. Every record deferred past a tag the checkout lacks is
+handed back as `anchor stale`, naming that tag and `git fetch --tags`, and the
+dry run names the stale anchor above them. A deferral past the local tag is
+still handed back as live, since a tag named only in the ledger is not one the
+checkout holds; it lapses when the newer tag is fetched. A `deferred_after` that is not a
+release tag (`vMAJOR.MINOR.PATCH`) cannot be compared, and its record is handed
+back too.
 
 The fields are the rule because a model's judgement of its own ambiguity is
 unreliable, and the failure runs one way: a machine that decides a thing needs
@@ -111,8 +124,72 @@ baseline, in this order: `severity major`, `severity critical`, `security`. The
 dry run's text prints a `LOOSENED` block under the rule's record, or one line
 saying the rule loosens none of abcd's floors; the machine-readable payload carries the list as
 `loosened` beside the record's own values under `rule`; both modes also print a
-warning on stderr naming each loosened floor; and the start's refusal names
-them.
+warning on stderr naming each loosened floor; and the run's summary and stderr
+name them at every move.
+
+## The run
+
+The run is driven by the host session, as the implement loop is (decision 5 on
+itd-2609201916151817): each invocation of the bare verb performs one move and
+exits. It reads the ledger afresh (the classification is re-derived every move
+and written nowhere, decision 8), then does the first of these that applies:
+
+1. Before the drain's `next_eligible_at`, it opens nothing and names the time.
+2. When the drain's window has run its working minutes, it writes
+   `next_eligible_at` (now plus the pause) into the drain's state and opens
+   nothing; the next invocation after that time opens the next window and
+   continues.
+3. When the lane it opened last is still in progress, it names the run to drive
+   with the implement loop's step verb and opens nothing: one lane at a time.
+4. It reads what that lane has come to: its pull request opened (armed, or left
+   open where the repository has no merge queue), the run complete, or the lane
+   handed back, which it routes (below).
+5. When the drain has opened as many lanes as its cap, it ends and says so.
+6. It starts the implement loop for the next eligible issue in the drain order
+   that the drain has not taken and this checkout has no run for, and names the
+   run. An issue the loop's own checks refuse (a peer holds it) is passed over,
+   named with the check. When none is left, the drain ends and says so.
+
+The drain's state is one file beside the runs,
+`.abcd/.work.local/run/drain.json`: when it began, the rule's record, its cap
+and its pace, the window clock, every lane it opened with its outcome, and
+every hand-back it routed with the record change it made. It is written under
+its own lock, so two drains never open two lanes. A drain that has ended is
+kept for reading, and the next invocation begins a new one. The cap and the
+pace are set when a drain begins; a different cap or pace named while it runs is
+refused rather than ignored. The pace is the implement loop's, resolved through
+the same layers, and each lane's run is paced as a run is.
+
+### The lane
+
+Each lane is the run `abcd build <iss-N>` starts (decision 10 on
+itd-2609201916151817). Its checks are the rule above, read the same way, and the
+peers check; the key is an issue id by shape before any path is built from it.
+Its brief is the issue's record, read at the lane's base, with its remedy as the
+work and the repository's definition of done: a detector watched to fail before
+the fix and pass after. Its validators run without the fidelity audit, since an
+issue has no criteria. Its implementer's receipt must name the issue in
+`resolves`, and the landing resolves the issue with the commit named there in
+the lane's own change, opens one pull request and pushes nothing after arming.
+
+### The hand-back, by kind
+
+A lane that finds a decision in its issue writes `handback` (a kind, a reason
+and, where the kind needs one, a home) in its receipt instead of resolving it.
+The loop reads it before the validators, discards the lane's worktree and
+branch, records the discarded head, and ends the lane. The drain then routes it:
+
+| Kind | Route | What is written |
+| --- | --- | --- |
+| `user-visible` | the issue is promoted to an intent draft by the capture verb's promotion | the draft, and the issue's `related_intents` naming it; nothing else |
+| `trust-rule` | flagged as needing a decision record, the lane's reason as the question | nothing; no record is minted |
+| `design-finding`, `second-package` | flagged with the home the lane names | nothing |
+| a lane stopped after its fix rounds | flagged, the issue staying open with the last findings | nothing |
+
+Every issue the rule itself hands back (by category, severity, security, a
+ruling or a deferral) is flagged in the summary naming the rule. Every route is
+in the summary, in text and in the machine-readable payload, with the record
+change it made, so nothing is dropped silently.
 
 ## The trust boundary
 
@@ -135,11 +212,21 @@ so that a later drain takes issues a person would have decided. What guards it:
   is a record whose frontmatter `id` disagrees with the id its file name gives
   it, which would put another record's name on its rule.
 - The store is read inside the checkout and each record through the capped
-  trust-boundary reader, so a store that is a symlink leaving the checkout, a
-  record that is a symlink at all, and a record past the ledger's size cap are
-  refused rather than followed or read whole.
+  trust-boundary reader, so a store that is a symlink or sits below one,
+  wherever it points, a record that is a symlink at all, and a record past the
+  ledger's size cap are refused rather than followed or read whole. The store
+  and its records are held to one rule: the decision record is the one
+  committed at its own path, and one reached through a link, even a link inside
+  the checkout, is not it.
+- A lane's hand-back is the implementer's word, read as untrusted input: its
+  kind is one of the four the loop routes, its reason and home are present,
+  capped and sanitised, and a hand-back beside a resolution is refused. The
+  loop discards only the worktree it made at the lane's path on the lane's own
+  branch, and deletes the branch only at the tip it read.
 - The two person-owed hand-backs, a remedy waiting on a ruling and a live
-  deferral, hold whatever the record says.
+  deferral, hold whatever the record says, and so does a deferral whose
+  liveness the checkout cannot read: no release tag, a tag newer than the
+  checkout's own, or a value that is not a release tag.
 
 ## What it refuses
 
@@ -148,19 +235,21 @@ the repository holds no accepted record of the rule, naming how to add one
 (the setup verb's offer, or the four fields on an accepted record); when a record
 names the fields but is proposed or superseded, the refusal names it. They
 refuse a malformed record, naming the record and the field, two accepted
-records, naming both, and a store or record that cannot be read safely. With the rule, the bare verb still refuses to start: the
-lane it would hand each issue to does not exist, and the refusal names the
-rule's record and every floor it loosens. A checkout that cannot be resolved,
+records, naming both, and a store or record that cannot be read safely. The run
+also refuses a checkout without the local tier, a cap that is not a whole
+number, a cap or pace other than the one a drain in progress began with, and a
+drain state it cannot read as its own; another drain moving in the checkout is
+a contention (exit 3). The dry run refuses the run's own flags. A run that
+opens nothing or merges nothing exits 0 and says why. A checkout that cannot be resolved,
 or a ledger holding one id in two status folders, is refused as every capture
 verb refuses it.
 
 ## Where this sits
 
 - The intent and its decisions: itd-82; the design record:
-  spc-2609212015054359, which stays open for the run, the judgement, the
-  hand-back writes, the pace and the caps.
-- The lane it will hand issues to: itd-2609201916151817 decision 10, and
-  [`34-build.md`](34-build.md).
+  spc-2609212015054359, which stays open for the host judgement.
+- The lane it hands issues to: itd-2609201916151817 decision 10,
+  [`34-build.md`](34-build.md) and [`27-implement.md`](27-implement.md).
 - The field it reads is written by capture: [`06-capture.md`](06-capture.md).
 - The plugin surface: `commands/drain.md`.
 
@@ -177,5 +266,9 @@ Sub-verbs: none.
 | Flag | Type |
 |---|---|
 | `--dry-run` | bool |
+| `--fix-rounds` | string |
+| `--max` | int |
+| `--pace` | string |
+| `--sub-agents` | string |
 
 <!-- surface-appendix:end -->

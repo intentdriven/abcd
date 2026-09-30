@@ -88,6 +88,34 @@ func TestReclassifySupersededByAnADRAppendsToItsList(t *testing.T) {
 	}
 }
 
+// An ADR successor two decision files claim is ambiguous: the successor is
+// resolved through the record-id seam (recordid.LookupOne), which refuses the
+// id naming every claimant, rather than written into whichever file the
+// directory listing returns first. Nothing is written on either side.
+func TestReclassifySupersededByAnADRIdTwoFilesClaimRefuses(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, draftsDir+"/itd-10-alpha.md", draftWithAC("itd-10", "alpha"))
+	first := "---\nid: adr-7\nslug: first\nstatus: accepted\nsuperseded_by: null\n---\n# ADR-7: First\n"
+	second := "---\nid: adr-7\nslug: second\nstatus: proposed\nsuperseded_by: null\n---\n# ADR-7: Second\n"
+	writeFile(t, root, adrsDir+"/0007-a-first.md", first)
+	writeFile(t, root, adrsDir+"/0007-b-second.md", second)
+	rec := readRec(t, root, draftsDir+"/itd-10-alpha.md")
+	_, err := Reclassify(root, "itd-10", ReclassifyRequest{Kind: KindSuperseded, By: "adr-7", Reason: "decided instead", Date: "2026-09-30"})
+	if err == nil {
+		t.Fatal("an ADR id two files claim must refuse the reclassify, not write into the first file listed")
+	}
+	for _, want := range []string{"0007-a-first.md", "0007-b-second.md"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the refusal must name every claimant (%s): %v", want, err)
+		}
+	}
+	if readRec(t, root, draftsDir+"/itd-10-alpha.md") != rec ||
+		readRec(t, root, adrsDir+"/0007-a-first.md") != first ||
+		readRec(t, root, adrsDir+"/0007-b-second.md") != second {
+		t.Fatal("a refused reclassify must leave the record and both decision files byte-identical")
+	}
+}
+
 // Criterion 3, the refusal: a shipped intent never becomes a discipline; the
 // refusal names the remedy, and nothing is written.
 func TestReclassifyRefusesAShippedIntentBecomingADiscipline(t *testing.T) {

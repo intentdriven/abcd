@@ -93,7 +93,7 @@ type Result struct {
 	Effective Effective
 	Reason    string
 
-	// Committer is the committer identity git would stamp (EffectiveCommitter).
+	// Committer is the committer identity git would stamp (effectiveCommitter).
 	Committer Effective
 	// CommitterDiverges reports a committer that differs from the author and is
 	// not the pinned identity either: a GIT_COMMITTER_* override, a committer.*
@@ -270,12 +270,12 @@ func EffectiveIdentity(root string) (Effective, error) {
 	return effective(root, RoleAuthor)
 }
 
-// EffectiveCommitter returns the committer identity git would stamp on a commit
+// effectiveCommitter returns the committer identity git would stamp on a commit
 // in root, resolved exactly as EffectiveIdentity resolves the author:
 // GIT_COMMITTER_NAME / GIT_COMMITTER_EMAIL first, then committer.name /
 // committer.email, then user.name / user.email. An unset field is empty, never
 // fabricated.
-func EffectiveCommitter(root string) (Effective, error) {
+func effectiveCommitter(root string) (Effective, error) {
 	return effective(root, RoleCommitter)
 }
 
@@ -368,7 +368,7 @@ func Check(root string) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	committer, err := EffectiveCommitter(root)
+	committer, err := effectiveCommitter(root)
 	if err != nil {
 		return Result{}, err
 	}

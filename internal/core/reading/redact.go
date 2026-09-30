@@ -47,21 +47,29 @@ type payloadField func(string) string
 // One scanner per ingest. Constructing it probes the machine identity, which
 // shells out, so a per-value construction would multiply that by every field of
 // every refused item.
-func newPayloadField(repoRoot string) (payloadField, string) {
+//
+// The note is returned as a function, read once the ingest's redactions are
+// done: a repository's opt-in scanner augmenter (gitleaks) runs inside every
+// ScanText, and a run that failed degrades the scanner during them, which the
+// note has to say (iss-2608291814575788).
+func newPayloadField(repoRoot string) (payloadField, func() string) {
 	sc, err := scanner.New(repoRoot)
 	if err != nil {
 		// A scanner that cannot be constructed leaves the text neutralised but
 		// unredacted and SAYS SO. Silently returning it would be the fail-open
 		// redaction exists to close.
-		return echo, fmt.Sprintf(
+		note := fmt.Sprintf(
 			"the privacy scanner was unavailable (%v); payload-derived text was recorded "+
 				"neutralised but unredacted", err)
+		return echo, func() string { return note }
 	}
-	degraded := ""
-	if unavail, reason := sc.Unavailable(); unavail {
-		degraded = fmt.Sprintf(
-			"the privacy scanner was degraded (%s); payload-derived text was redacted with the "+
-				"default patterns only", reason)
+	degraded := func() string {
+		if unavail, reason := sc.Unavailable(); unavail {
+			return fmt.Sprintf(
+				"the privacy scanner was degraded (%s); payload-derived text was redacted with the "+
+					"default patterns only", reason)
+		}
+		return ""
 	}
 	return func(s string) string {
 		findings := sc.ScanText(s, "issue")

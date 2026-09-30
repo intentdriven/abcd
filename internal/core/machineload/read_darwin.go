@@ -31,7 +31,7 @@ func Read() (Snapshot, error) {
 	if err != nil {
 		return snap, fmt.Errorf("could not read the load average (sysctl vm.loadavg: %w)", err)
 	}
-	if snap.Load1, snap.Load5, snap.Load15, err = ParseLoadavgSysctl([]byte(raw)); err != nil {
+	if snap.Load1, snap.Load5, snap.Load15, err = parseLoadavgSysctl([]byte(raw)); err != nil {
 		return snap, fmt.Errorf("could not read the load average (%w)", err)
 	}
 	snap.HasLoad = true

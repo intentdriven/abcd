@@ -223,7 +223,12 @@ func NewRootCommand() *cobra.Command {
 			"the next move for its lifecycle state — what is this. N is either a short\n" +
 			"ordinal from before ids were minted or the sixteen-digit stamp minted since;\n" +
 			"both resolve. The bare and the id form are strictly read-only; any other\n" +
-			"positional is refused as an unknown command.",
+			"positional is refused as an unknown command.\n\n" +
+			"`--version` reports the running binary's version, install mode and vintage.\n" +
+			"When that binary sits in a plugin root other than the one this session\n" +
+			"resolves, the report — like bare `abcd ahoy` — adds a `superseded_root` note\n" +
+			"naming both roots by the commit each was installed from; the version, vintage\n" +
+			"and staleness it reports are unchanged.",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		// Bare answers "what can I do"; `abcd <id>` answers "what is this, and
@@ -1033,6 +1038,13 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 			if bad, reason := sc.Unavailable(); bad {
 				return &exitError{Code: 2, Msg: fmt.Sprintf("disembark pack: secret scanner unavailable, refusing: %s", reason)}
 			}
+			// A lifeboat is written OUT of the repository, as a release is, so the
+			// scanner augmenter the source configured and nobody installed refuses
+			// the pack as it refuses a launch (the 2026-09-25 ruling on
+			// iss-2608291814575788).
+			if gap := sc.AugmenterGap(); gap != "" {
+				return &exitError{Code: 2, Msg: fmt.Sprintf("disembark pack: the scanner augmenter this repository configured is not installed, refusing: %s", gap)}
+			}
 			scan := func(files []lifeboat.PlannedFile) error {
 				hard, first := 0, ""
 				for _, f := range files {
@@ -1044,6 +1056,12 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 							}
 						}
 					}
+				}
+				// The augmenter runs inside ScanText, and a run that failed
+				// degrades the scanner during the walk: refuse, never read the
+				// shorter list as clean.
+				if bad, reason := sc.Unavailable(); bad {
+					return fmt.Errorf("secret scanner unavailable, refusing: %s", reason)
 				}
 				if hard > 0 {
 					return fmt.Errorf("%d hard-fail secret(s) in planned content (first: %s); fix at source, not in the lifeboat", hard, first)
@@ -1795,6 +1813,9 @@ an error included, exits 0, so the hook can never wedge a session.`,
 						// here and on the live drain both.
 						notices = append(notices, drainFailureNotice(f))
 					}
+					if lines := scanGapLines(dr.ScanGap); len(lines) > 0 {
+						notices = append(notices, "abcd history: "+strings.Join(lines, "\n"))
+					}
 					if dr.Overdue > 0 {
 						// Age is reported, never acted on: an overdue entry is
 						// drained through the same fail-closed path as any
@@ -2015,6 +2036,9 @@ func drainWhileLive(cmd *cobra.Command, cwd string) {
 	if len(dr.Captured) > 0 {
 		fmt.Fprintf(cmd.ErrOrStderr(), "abcd history: redacted and stored %d staged transcript(s) mid-session.\n", len(dr.Captured))
 	}
+	for _, l := range scanGapLines(dr.ScanGap) {
+		fmt.Fprintln(cmd.ErrOrStderr(), "abcd history: "+l)
+	}
 }
 
 // drainFailureNotice renders one DrainFailure as the operator-facing sentence,
@@ -2166,12 +2190,13 @@ block and in the hook's diagnostic, and carries "source": "user" or "repo" in
 --json; the last layer to name a domain labels it. An untouched bundled domain
 renders bare and carries "source": "bundled".
 
-A list an override sets replaces the bundled one, so an override can hold back
-an entry abcd ships. For the guardrail domains (COMMITTING, LOAD, PII, SHELL),
-every bundled recall keyword, alias or rule that an override's list leaves out
-is named on stderr, with the file that set the list, here and on every hook
+A list an override sets replaces the one it would inherit, so an override can
+hold back an entry abcd ships or, in SHELL, one the repository's
+.abcd/guard.json teaches. For the guardrail domains (COMMITTING, LOAD, PII,
+SHELL), every such recall keyword, alias or rule that an override's list leaves
+out is named on stderr, with the file that set the list, here and on every hook
 prompt. To keep an entry, restate it in the list, or leave the field out to
-inherit the bundled list.
+inherit the list.
 
 SHELL is generated from the shell-hazard registry that "abcd guard" enforces
 in this repository, the bundled entries and the repository's own
@@ -3420,7 +3445,12 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 			// source `abcd --version` and the session-start notice read. Computed
 			// once and carried in both the JSON and the text render.
 			vin := ahoy.Vintage(cwd)
-			out := ahoyOutput{DetectionResult: res, Vintage: vin.DisplayVintage(), Staleness: vin.Staleness()}
+			out := ahoyOutput{DetectionResult: res, Vintage: vin.DisplayVintage(), Staleness: vin.Staleness(),
+				// The same note `abcd --version` carries, for the same reason:
+				// this render reports the same comparator's verdict, so a
+				// superseded plugin root answers here just as confidently
+				// (iss-2609020113012227).
+				SupersededRoot: supersededRootNote()}
 			return render(cmd.OutOrStdout(), *asJSON, out, func(w io.Writer) {
 				fmt.Fprintf(w, "abcd ahoy — %s\n", res.FolderKind)
 				fmt.Fprintf(w, "  plugin root: %s\n", res.PluginRootStatus)
@@ -3435,6 +3465,9 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 				}
 				fmt.Fprintf(w, "  vintage:     %s\n", out.Vintage)
 				fmt.Fprintf(w, "  staleness:   %s\n", out.Staleness)
+				if out.SupersededRoot != "" {
+					fmt.Fprintf(w, "  note:        %s\n", out.SupersededRoot)
+				}
 				// The citation baseline's coverage and age, present only in a repo
 				// that has armed the citation gate. The line embeds counts and a
 				// date derived from repo content, so it is sanitised.

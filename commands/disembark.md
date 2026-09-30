@@ -108,7 +108,10 @@ committed link; outside every checkout the path is taken as given), one inside
 a `.git/` directory, or one that overlaps the source tree. The lifeboat operand
 of every later verb is proved the same way. And it **refuses on a
 hard-fail secret** in the planned bytes — a secret is fixed at source, never
-redacted into the artefact. Relay the refusal message so the user knows what to fix.
+redacted into the artefact. In a source repository that armed gitleaks in
+`.abcd/config/gitleaks.json`, gitleaks scans the planned bytes too, and an armed
+gitleaks whose binary is not installed refuses the pack (exit 2), as it refuses
+a launch. Relay the refusal message so the user knows what to fix.
 
 ## Graveyard interpretation (layer 3)
 

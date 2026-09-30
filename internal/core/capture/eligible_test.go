@@ -286,10 +286,9 @@ func TestDrainPlanGivesAnUnreadableOpenRecordItsOwnDisposition(t *testing.T) {
 
 // TestADrainRefusesARepositoryWithoutItsOwnRule is criterion 11 under ruling
 // BX2: the repository must hold the eligibility decision in its own record, and
-// until it does both the dry run and the start refuse, naming how to add it.
-// With the record, the start still refuses, because the issue-keyed lane it
-// would hand each issue to is not built, and it says so rather than pretending
-// to run.
+// until it does the plan every drain move reads refuses, naming how to add it
+// and writing nothing. With the record, the plan names it. The run's own
+// refusal is loop.Drain's, tested there.
 func TestADrainRefusesARepositoryWithoutItsOwnRule(t *testing.T) {
 	repo, ir := ledger(t)
 	f := drainFixture{t: t, repo: repo, ir: ir}
@@ -300,24 +299,14 @@ func TestADrainRefusesARepositoryWithoutItsOwnRule(t *testing.T) {
 	} else if !strings.Contains(err.Error(), "ahoy install") || !strings.Contains(err.Error(), drainrule.FieldCategories) {
 		t.Errorf("the refusal does not name how to add the record: %v", err)
 	}
-	err := DrainStart(repo)
-	if !errors.Is(err, ErrDrainRuleUnrecorded) || !strings.Contains(err.Error(), "ahoy install") {
-		t.Fatalf("a start without the repository's rule: got %v, want ErrDrainRuleUnrecorded naming ahoy install", err)
-	}
 	if after := snapshotTree(t, repo); after != before {
 		t.Fatalf("a refused drain wrote:\nbefore %s\nafter  %s", before, after)
 	}
 
 	writeRuleRecord(t, repo, drainrule.ProposalFrontmatter())
-	err = DrainStart(repo)
-	if !errors.Is(err, ErrDrainRunUnbuilt) {
-		t.Fatalf("with the record: got %v, want ErrDrainRunUnbuilt", err)
-	}
-	if !strings.Contains(err.Error(), "--dry-run") || !strings.Contains(err.Error(), strictRuleRecord) {
-		t.Errorf("the refusal does not name the dry run and the rule's record: %v", err)
-	}
-	if strings.Contains(err.Error(), "loosen") {
-		t.Errorf("the strict rule's start names a loosened floor: %v", err)
+	p, err := PlanDrain(DrainPlanRequest{RepoRoot: repo, IssuesRoot: ir})
+	if err != nil || p.Record != strictRuleRecord || len(p.Loosened) != 0 {
+		t.Fatalf("with the record the plan names it and loosens nothing: %+v %v", p, err)
 	}
 }
 
@@ -374,12 +363,6 @@ func TestALoosenedRuleIsLoud(t *testing.T) {
 	if !strings.Contains(p.Order, "ux, security") || !strings.Contains(p.Order, "nitpick before minor before major") {
 		t.Errorf("the order does not state the loosened rule: %s", p.Order)
 	}
-	err := DrainStart(repo)
-	for _, want := range []string{"loosens", "severity major", "security"} {
-		if err == nil || !strings.Contains(err.Error(), want) {
-			t.Errorf("the start's refusal does not name %q: %v", want, err)
-		}
-	}
 }
 
 // TestAMalformedRuleRefusesTheDrain: a partial record refuses the dry run and
@@ -391,9 +374,6 @@ func TestAMalformedRuleRefusesTheDrain(t *testing.T) {
 	f.file("iss-1", SeverityMinor, "bug", "r")
 	if p, err := PlanDrain(DrainPlanRequest{RepoRoot: repo, IssuesRoot: ir}); !errors.Is(err, drainrule.ErrMalformed) {
 		t.Fatalf("a partial record: plan %+v, err %v; want ErrMalformed", p, err)
-	}
-	if err := DrainStart(repo); !errors.Is(err, drainrule.ErrMalformed) || !strings.Contains(err.Error(), drainrule.FieldRemedy) {
-		t.Fatalf("a partial record's start: %v; want ErrMalformed naming %s", err, drainrule.FieldRemedy)
 	}
 }
 
@@ -599,5 +579,110 @@ func TestWaitsOnIsReadAsAWordNotAPrefix(t *testing.T) {
 		if got := waitsOnRuling(remedy); got != want {
 			t.Errorf("waitsOnRuling(%q) = %v, want %v", remedy, got, want)
 		}
+	}
+}
+
+// TestADeferralPastATagTheCheckoutLacksIsHandedBack: a checkout not fetched
+// since the last cut holds an older release tag, and a record deferred past
+// the newer one names a tag it lacks. Its deferral is a person's decision this
+// cycle, so the record is handed back as the anchor-unknown path does, naming
+// the stale anchor, the tag and how to fetch it; no remote is asked. A
+// deferral past the local tag is handed back as live at the current anchor,
+// since a newer tag named only in the ledger is not one the checkout holds,
+// and a deferral the drain cannot read as a release tag is handed back too.
+func TestADeferralPastATagTheCheckoutLacksIsHandedBack(t *testing.T) {
+	src := gittest.NewRepo(t)
+	src.Commit("root")
+	src.Git("tag", "v0.1.0")
+	repo := src.Root()
+	ir := filepath.Join(repo, LedgerRelPath)
+	writeRuleRecord(t, repo, loosenedFields)
+	f := drainFixture{t: t, repo: repo, ir: ir}
+	f.file("iss-2", SeverityMajor, "bug", "rewrite the parser")
+	f.file("iss-3", SeverityMajor, "bug", "rewrite the lexer")
+	f.file("iss-4", SeverityMajor, "bug", "rewrite the printer")
+	f.file("iss-5", SeverityMinor, "bug", "guard the nil map")
+	setDeferral(t, ir, "iss-2", "v0.2.0")
+	setDeferral(t, ir, "iss-3", "v0.1.0")
+	setDeferral(t, ir, "iss-4", "next")
+
+	p := f.plan()
+	if p.Anchor != "v0.1.0" {
+		t.Errorf("the local anchor reads %q, want v0.1.0", p.Anchor)
+	}
+	if p.AnchorStale != "v0.2.0" {
+		t.Errorf("the plan names stale-anchor tag %q, want v0.2.0", p.AnchorStale)
+	}
+	cases := map[string]struct{ want, reason string }{
+		"iss-2": {"handback/deferred", "anchor stale"},
+		"iss-3": {"handback/deferred", "the current anchor"},
+		"iss-4": {"handback/deferred", "not a release tag"},
+		"iss-5": {"eligible/fields", ""},
+	}
+	for id, c := range cases {
+		v := verdictOf(t, p, id)
+		if got := string(v.Outcome) + "/" + string(v.Rule); got != c.want {
+			t.Errorf("%s: %s (%s), want %s", id, got, v.Reason, c.want)
+		}
+		if id == "iss-2" {
+			for _, w := range []string{"anchor stale", "v0.2.0", "v0.1.0", "git fetch --tags"} {
+				if !strings.Contains(v.Reason, w) {
+					t.Errorf("%s: the reason %q does not name %q", id, v.Reason, w)
+				}
+			}
+		}
+		if c.reason != "" && !strings.Contains(v.Reason, c.reason) {
+			t.Errorf("%s: the reason %q does not name %q", id, v.Reason, c.reason)
+		}
+	}
+
+	// Fetching the tag clears it: the deferral past v0.2.0 is live at the
+	// current anchor, and the one past v0.1.0 lapses.
+	src.Git("tag", "v0.2.0")
+	p = f.plan()
+	if p.Anchor != "v0.2.0" || p.AnchorStale != "" {
+		t.Errorf("with the tag fetched: anchor %q, stale %q", p.Anchor, p.AnchorStale)
+	}
+	if v := verdictOf(t, p, "iss-2"); v.Outcome != DrainHandBack || !strings.Contains(v.Reason, "the current anchor") {
+		t.Errorf("iss-2 at the fetched anchor: %s (%s)", v.Outcome, v.Reason)
+	}
+	if v := verdictOf(t, p, "iss-3"); v.Outcome != DrainEligible {
+		t.Errorf("iss-3 at the fetched anchor: %s (%s)", v.Outcome, v.Reason)
+	}
+}
+
+// TestADeferralAtTheLocalAnchorIsNotLapsedByAnotherRecordsTag: a checkout at
+// its true newest tag v0.1.0 holds a record deferred past v0.1.0, a live
+// deferral. A DIFFERENT record naming a tag no release carries (a typo, or a
+// hand-written "v9.9.9") marks the anchor stale, and that must not make the
+// live deferral read as lapsed: a ledger field is not a git tag, so the record
+// deferred past the local anchor is handed back until the newer tag is
+// actually fetched.
+func TestADeferralAtTheLocalAnchorIsNotLapsedByAnotherRecordsTag(t *testing.T) {
+	src := gittest.NewRepo(t)
+	src.Commit("root")
+	src.Git("tag", "v0.1.0")
+	repo := src.Root()
+	ir := filepath.Join(repo, LedgerRelPath)
+	writeRuleRecord(t, repo, loosenedFields)
+	f := drainFixture{t: t, repo: repo, ir: ir}
+	f.file("iss-2", SeverityMajor, "bug", "rewrite the parser")
+	f.file("iss-3", SeverityMajor, "bug", "rewrite the lexer")
+	setDeferral(t, ir, "iss-3", "v0.1.0")
+
+	if v := verdictOf(t, f.plan(), "iss-3"); v.Outcome != DrainHandBack || !strings.Contains(v.Reason, "the current anchor") {
+		t.Fatalf("iss-3 before the other record's deferral: %s (%s)", v.Outcome, v.Reason)
+	}
+
+	setDeferral(t, ir, "iss-2", "v9.9.9")
+	p := f.plan()
+	if p.AnchorStale != "v9.9.9" {
+		t.Errorf("the plan names stale-anchor tag %q, want v9.9.9", p.AnchorStale)
+	}
+	if v := verdictOf(t, p, "iss-3"); v.Outcome != DrainHandBack || v.Rule != RuleDeferred || !strings.Contains(v.Reason, "the current anchor") {
+		t.Errorf("iss-3 with another record deferred past v9.9.9: %s/%s (%s), want handback/deferred at the current anchor", v.Outcome, v.Rule, v.Reason)
+	}
+	if v := verdictOf(t, p, "iss-2"); v.Outcome != DrainHandBack || !strings.Contains(v.Reason, "anchor stale") {
+		t.Errorf("iss-2 deferred past v9.9.9: %s (%s)", v.Outcome, v.Reason)
 	}
 }

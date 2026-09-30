@@ -246,9 +246,9 @@ func frontmatterOpen(lines []string) int {
 	return -1
 }
 
-// RenderLayout returns the glossary's directory layout as a fenced tree, exactly
+// renderLayout returns the glossary's directory layout as a fenced tree, exactly
 // as it appears between the layout markers in the glossary README.
-func RenderLayout(g Glossary) string {
+func renderLayout(g Glossary) string {
 	var b strings.Builder
 	b.WriteString("```\n")
 	b.WriteString("glossary/\n")
@@ -276,9 +276,9 @@ func RenderLayout(g Glossary) string {
 	return b.String()
 }
 
-// RenderIndex returns the term index — one subsection and table per bounded
+// renderIndex returns the term index — one subsection and table per bounded
 // context — exactly as it appears between the index markers in the README.
-func RenderIndex(g Glossary) string {
+func renderIndex(g Glossary) string {
 	var b strings.Builder
 	for i, ctx := range g.Contexts {
 		if i > 0 {

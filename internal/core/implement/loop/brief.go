@@ -111,16 +111,29 @@ func briefStage(c Context, lane *Lane) (Outcome, error) {
 			"the lane has no worktree the loop made (its state names "+quoteOrNone(fsutil.RedactHome(lane.Worktree))+")",
 			"the worktree stage makes it; restore the run's state file")
 	}
-	src, err := readBriefSources(c.RepoRoot, c.State, lane)
-	if err != nil {
-		return Outcome{}, err
-	}
 	dirRel, err := laneRel(c.State.RunID, lane.ID, StageBrief)
 	if err != nil {
 		return Outcome{}, err
 	}
 	rel := dirRel + "/" + BriefFileName
-	body := renderBrief(c.State, *lane, filepath.Join(c.RepoRoot, filepath.FromSlash(dirRel)), src)
+	laneDir := filepath.Join(c.RepoRoot, filepath.FromSlash(dirRel))
+	var body []byte
+	var from string
+	if c.State.Issue() != "" {
+		src, err := readIssueBriefSources(c.RepoRoot, c.State, lane)
+		if err != nil {
+			return Outcome{}, err
+		}
+		body = renderIssueBrief(c.State, *lane, laneDir, src)
+		from = fmt.Sprintf("%s and %s (%s)", c.State.Issue(), ConventionsFile, src.conventionsFrom)
+	} else {
+		src, err := readBriefSources(c.RepoRoot, c.State, lane)
+		if err != nil {
+			return Outcome{}, err
+		}
+		body = renderBrief(c.State, *lane, laneDir, src)
+		from = fmt.Sprintf("%s, %s, %s (%s) and %d cited decision(s)", c.State.Intent, c.State.Spec, ConventionsFile, src.conventionsFrom, len(src.adrs)+len(src.decisions))
+	}
 	if err := fsutil.EnsureRealDirAll(c.RepoRoot, dirRel, dirPerm); err != nil {
 		return Outcome{}, fmt.Errorf("creating the lane's directory: %w", err)
 	}
@@ -133,8 +146,7 @@ func briefStage(c Context, lane *Lane) (Outcome, error) {
 		return Outcome{}, fmt.Errorf("writing %s: %w", rel, err)
 	}
 	lane.Brief = rel
-	return Outcome{Note: fmt.Sprintf("rendered %s from %s, %s, %s (%s) and %d cited decision(s) at %s",
-		rel, c.State.Intent, c.State.Spec, ConventionsFile, src.conventionsFrom, len(src.adrs)+len(src.decisions), shortSHA(lane.BaseSHA))}, nil
+	return Outcome{Note: fmt.Sprintf("rendered %s from %s at %s", rel, from, shortSHA(lane.BaseSHA))}, nil
 }
 
 // readBriefSources reads what a brief is rendered from out of the lane's base
@@ -500,9 +512,13 @@ func renderBrief(st State, lane Lane, laneDir string, src briefSources) []byte {
 	p("  \"commits\": [\"<the full object name of every commit you made on the branch>\"],\n")
 	p("  \"definition_of_done\": {\"command\": \"<what you ran>\", \"exit_code\": 0, \"output\": %q},\n", DoDFileName)
 	p("  \"report\": %q,\n", ReportFileName)
-	p("  \"model\": \"<the model id your harness reports, or leave the field out>\"\n")
+	p("  \"model\": \"<the model id your harness reports, or leave the field out>\",\n")
+	p("  \"resolves\": [{\"issue\": \"iss-<N>\", \"commit\": \"<the commit of yours that fixed it>\", \"note\": \"<the resolution>\",\n")
+	p("                \"impact\": \"additive|breaking|fix|internal\", \"grounds\": \"pursued: <what is expected, and what would show it wrong>\"}]\n")
 	p("}\n")
 	p("```\n\n")
+	p("`resolves` names each capture your lane fixed, or is left out when it fixed none. Do not resolve\n")
+	p("a capture yourself: the landing runs `capture resolve` for each one named here, with its commit.\n\n")
 	p("`output` and `report` are paths inside `%s`. The loop verifies the receipt before anything else\n", laneDir)
 	p("runs: every commit exists on the branch past its base, the definition of done's output exists and\n")
 	p("its exit code is 0, and the report exists. A receipt short of any of these is refused, naming what\n")
@@ -520,9 +536,10 @@ func renderBrief(st State, lane Lane, laneDir string, src briefSources) []byte {
 	p("they exist. This holds whatever the conventions below say:\n\n")
 	p("> %s\n\n", scanner.OutboundPolicy)
 
-	p("---\n\n## The intent: %s\n\n<!-- begin %s -->\n\n%s\n\n<!-- end %s -->\n\n", st.Intent, src.intentPath, strings.TrimSpace(src.intentText), src.intentPath)
-	p("## The spec: %s\n\n<!-- begin %s -->\n\n%s\n\n<!-- end %s -->\n\n", st.Spec, src.specPath, strings.TrimSpace(src.specText), src.specPath)
-	p("## The conventions: %s\n\n<!-- begin %s -->\n\n%s\n\n<!-- end %s -->\n\n", ConventionsFile, ConventionsFile, src.conventions, ConventionsFile)
+	p("%s", fenceQuoteNote)
+	p("---\n\n## The intent: %s\n\n<!-- begin %s -->\n\n%s\n\n<!-- end %s -->\n\n", st.Intent, src.intentPath, fenceQuote(strings.TrimSpace(src.intentText)), src.intentPath)
+	p("## The spec: %s\n\n<!-- begin %s -->\n\n%s\n\n<!-- end %s -->\n\n", st.Spec, src.specPath, fenceQuote(strings.TrimSpace(src.specText)), src.specPath)
+	p("## The conventions: %s\n\n<!-- begin %s -->\n\n%s\n\n<!-- end %s -->\n\n", ConventionsFile, ConventionsFile, fenceQuote(src.conventions), ConventionsFile)
 
 	p("## The decisions the intent cites\n\n")
 	if len(src.adrs) == 0 {
@@ -616,3 +633,20 @@ func plural(n int, one, many string) string {
 	}
 	return many
 }
+
+// fenceMarkerEscaper writes an HTML comment opener or closer inside quoted text
+// with its second hyphen as the entity `&#45;` (`<!-&#45;`, `-&#45;>`): a
+// markdown view still shows the text as written, and the raw text holds no
+// marker, so no quote can close its `<!-- end -->` fence or open another.
+var fenceMarkerEscaper = strings.NewReplacer("<!--", "<!-&#45;", "-->", "-&#45;>")
+
+// fenceQuote is text quoted between a brief's `<!-- begin/end -->` markers,
+// with every comment marker in it escaped (fenceMarkerEscaper). Every quote a
+// brief fences goes through it: the intent, the spec, the issue, its remedy
+// and the conventions.
+func fenceQuote(s string) string { return fenceMarkerEscaper.Replace(s) }
+
+// fenceQuoteNote tells a brief's reader the one substitution fenceQuote makes.
+const fenceQuoteNote = "The records below are quoted as the lane's base holds them, save one substitution: an HTML\n" +
+	"comment opener or closer inside a quote has its second hyphen written `&#45;`, so no quote can end\n" +
+	"its fence early.\n\n"

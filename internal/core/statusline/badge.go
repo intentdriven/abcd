@@ -29,7 +29,7 @@ import "github.com/intentdriven/abcd/internal/core/mode"
 // three words, their parse and their store — and this package holds only the
 // render's view of it. The alias keeps the render's API and tests in their own
 // words while making the two packages' states the same type by construction,
-// so a state read out of the store reaches Render without a conversion that
+// so a state read out of the store reaches renderRow without a conversion that
 // could drift. Importing a type is not touching a store: the render stays pure,
 // and mode never imports this package.
 type State = mode.State
@@ -135,11 +135,11 @@ func renderBadge(s State, presence Pair) Element {
 // legible badge with no colour — which the accessibility commitment says must
 // be enough on its own anyway.
 func paint(p Pair, text string) string {
-	fg, err := ParseColor(p.Foreground)
+	fg, err := parseColor(p.Foreground)
 	if err != nil {
 		return text
 	}
-	bg, err := ParseColor(p.Background)
+	bg, err := parseColor(p.Background)
 	if err != nil {
 		return text
 	}

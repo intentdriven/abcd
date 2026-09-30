@@ -394,6 +394,13 @@
       "sentence": "Start the loop that takes one READY intent to delivered: Writes the run's state file in the local tier; refuses an open question, a hold or a peer holding it.",
       "flags": [
         {
+          "name": "fix-rounds",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "pace",
           "shorthand": "",
           "type": "string",
@@ -421,6 +428,13 @@
       "hidden": false,
       "sentence": "Pick the readiest planned intent and start its run: Writes the run's state and the reason as the lane's first commit; refuses when nothing passes the checks.",
       "flags": [
+        {
+          "name": "fix-rounds",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
         {
           "name": "max",
           "shorthand": "",
@@ -1103,12 +1117,40 @@
       "hidden": false,
       "group": "agents",
       "block": "agents",
-      "sentence": "Sort open issues by this repository's own drain rule, naming each loosened floor: Writes nothing; refuses without the rule's record, or without --dry-run.",
+      "sentence": "Fix the issues needing no decision, one lane at a time, and hand the rest back: Writes its state and user-visible drafts; refuses without the rule's record.",
       "flags": [
         {
           "name": "dry-run",
           "shorthand": "",
           "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "fix-rounds",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "max",
+          "shorthand": "",
+          "type": "int",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "pace",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "sub-agents",
+          "shorthand": "",
+          "type": "string",
           "required": false,
           "hidden": false
         }
@@ -1643,6 +1685,27 @@
       ]
     },
     {
+      "path": "abcd implement record",
+      "hidden": false,
+      "sentence": "Render a loop run's record and capture its transcripts: Writes only with --transcript; refuses it on a run in progress.",
+      "flags": [
+        {
+          "name": "run",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "transcript",
+          "shorthand": "",
+          "type": "stringArray",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd implement release",
       "hidden": false,
       "sentence": "Release this session's claim on a record: Writes the release and a claim_released line; refuses a claim another session holds.",
@@ -1694,7 +1757,7 @@
     {
       "path": "abcd implement step",
       "hidden": false,
-      "sentence": "Perform the next stage of an implement loop run's lane and exit: Writes the run's state, the lane's worktree or brief; refuses a stage this abcd does not carry.",
+      "sentence": "Perform the next stage of an implement loop run's lane and exit: Writes the run's state and the lane's stages; refuses a push with no preflight receipt.",
       "flags": [
         {
           "name": "run",

@@ -66,7 +66,7 @@ None stated.
 
 - **Given** an abcd-installed repo, **when** the persona runs `/abcd:capture "review nitpick: T7 cache_ttl_days dead-config alternative"`, **then** a new file `.abcd/work/issues/open/iss-N-<slug>.md` exists with frontmatter populated (id, severity, category, source, found_during) and the captured text in the body.
 - **Given** an existing `iss-N` entry at `.abcd/work/issues/open/iss-3-foo.md`, **when** the persona runs `/abcd:capture resolve iss-3 "fixed in spc-7 task 4"`, **then** the file moves to `.abcd/work/issues/resolved/iss-3-foo.md` with the resolution note appended to the body.
-- **Given** an existing `iss-N` entry, **when** the persona runs `/abcd:capture promote iss-N`, **then** `/abcd:intent new` is invoked with the entry's content as the seed; the resulting intent's frontmatter has `related_issues: [iss-N]`; the `iss-N` entry's frontmatter has `related_intents: [itd-M]` (the new intent's ID). Drift detection enforced by spc-23 (intent-fidelity-reviewer `--issue-drift`).
+- **Given** an existing `iss-N` entry, **when** the persona runs `/abcd:capture promote iss-N`, **then** `/abcd:intent new` is invoked with the entry's content as the seed; the resulting intent's frontmatter has `related_issues: [iss-N]`; the `iss-N` entry's frontmatter has `related_intents: [itd-M]` (the new intent's ID). Drift detection enforced by spc-23 (predecessor store; intent-fidelity-reviewer `--issue-drift`).
 - **Given** a fresh `/abcd:ahoy` upgrade with an existing `.abcd/.work.local/issues.md`, **when** `dev-sync` runs, **then** every entry in `.abcd/.work.local/issues.md` is promoted to a corresponding `.abcd/work/issues/open/iss-N-<slug>.md` with provenance noting "migrated from .abcd/.work.local/issues.md".
 - **Given** the persona runs `/abcd:capture list --open`, **when** there are 5 open `iss-N` entries, **then** the output lists all 5 with id, slug, severity, and one-line summary.
 
@@ -80,15 +80,16 @@ None stated.
 ## Implementing specs
 
 itd-4 was implemented across multiple specs of the superseded pre-Go record
-system; those ids are preserved below as history (they do not exist in the
-native spec store). The frontmatter `spec_id` records the **native** spec,
+system; those ids are preserved below as history. The native spec store
+reuses each number for another spec, so each carries the predecessor-store
+qualifier. The frontmatter `spec_id` records the **native** spec,
 **spc-6**, the record catch-up that verifies the shipped engine against the
 Acceptance Criteria and carries the open AC3 (promote) gap. Historical index:
 
-- **spc-20** (primary) — `iss-N`-ledger primitives (`iss-N` allocator, schema, capture/resolve/wontfix/update_field workflow, structure under `.abcd/work/issues/`).
-- **spc-21** — `/abcd:capture` command surface (flow-text ingest into the ledger).
-- **spc-22** — `.abcd/.work.local/issues.md` migration to the structured ledger (`dev-sync work` orchestrator, regex-extracted intent linkage on migrated issues).
-- **spc-23** — `intent-fidelity-reviewer --issue-drift` mode (bidirectional cross-reference walk; reader half of the bidirectional contract).
+- **spc-20** (predecessor store; primary) — `iss-N`-ledger primitives (`iss-N` allocator, schema, capture/resolve/wontfix/update_field workflow, structure under `.abcd/work/issues/`).
+- **spc-21** (predecessor store) — `/abcd:capture` command surface (flow-text ingest into the ledger).
+- **spc-22** (predecessor store) — `.abcd/.work.local/issues.md` migration to the structured ledger (`dev-sync work` orchestrator, regex-extracted intent linkage on migrated issues).
+- **spc-23** (predecessor store) — `intent-fidelity-reviewer --issue-drift` mode (bidirectional cross-reference walk; reader half of the bidirectional contract).
 
 ## Audit Notes
 

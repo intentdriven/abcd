@@ -106,7 +106,7 @@ func candidates(repoRoot, session string) (CandidateSet, error) {
 		}
 		return 0
 	})
-	live := map[string]string{}
+	live := map[string]State{}
 	if fsutil.IsRealDir(filepath.Join(repoRoot, filepath.FromSlash(RunRelDir))) {
 		runs, err := Runs(repoRoot)
 		if err != nil {
@@ -114,7 +114,7 @@ func candidates(repoRoot, session string) (CandidateSet, error) {
 		}
 		for _, st := range runs {
 			if !st.Complete() {
-				live[st.Intent] = st.RunID
+				live[st.Intent] = st
 			}
 		}
 	}
@@ -127,9 +127,13 @@ func candidates(repoRoot, session string) (CandidateSet, error) {
 		return set, err
 	}
 	for _, id := range planned {
-		if runID, ok := live[id]; ok {
-			set.Excluded = append(set.Excluded, Excluded{ID: id, Check: CheckRun,
-				Reason: "run " + runID + " in this checkout builds it; resume it with `abcd implement step`"})
+		if st, ok := live[id]; ok {
+			reason := "run " + st.RunID + " in this checkout builds it; resume it with `abcd implement step`"
+			if st.handedBack() {
+				reason = "run " + st.RunID + " in this checkout handed it back, and the loop starts nothing further for it; " +
+					handedBackWayOut(st)
+			}
+			set.Excluded = append(set.Excluded, Excluded{ID: id, Check: CheckRun, Reason: reason})
 			continue
 		}
 		chk, err := check(repoRoot, id, session, snap)

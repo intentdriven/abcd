@@ -12,7 +12,7 @@ func TestSynthesisDoesNotPerturbManifest(t *testing.T) {
 	src := embarkableSourceFixture(t)
 	lb := packSource(t, src)
 
-	if err := VerifyManifest(lb); err != nil {
+	if err := verifyManifest(lb); err != nil {
 		t.Fatalf("freshly packed lifeboat must verify: %v", err)
 	}
 	before := readProvenanceFile(t, lb).ManifestSHA256
@@ -24,7 +24,7 @@ func TestSynthesisDoesNotPerturbManifest(t *testing.T) {
 		t.Fatalf("ComposePressRelease: %v", err)
 	}
 
-	if err := VerifyManifest(lb); err != nil {
+	if err := verifyManifest(lb); err != nil {
 		t.Fatalf("manifest must still verify after synthesis writes: %v", err)
 	}
 	if after := readProvenanceFile(t, lb).ManifestSHA256; after != before {

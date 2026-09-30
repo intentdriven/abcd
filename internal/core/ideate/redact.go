@@ -164,6 +164,13 @@ func (r *recordRedactor) verify(artefacts ...string) error {
 	if len(residual) > 0 {
 		return &RedactionResidualError{Residual: residual}
 	}
+	// A repository's opt-in scanner augmenter (gitleaks) runs inside every
+	// ScanText above, and a run that failed degraded the scanner during it:
+	// the fields were then redacted without it, so the write refuses as it
+	// does on a scanner degraded from the start.
+	if unavail, reason := r.sc.Unavailable(); unavail {
+		return fmt.Errorf("ideate: refusing to write a verdict record with a degraded scanner: %s — nothing was written", reason)
+	}
 	return nil
 }
 

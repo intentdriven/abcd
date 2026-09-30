@@ -529,6 +529,23 @@ func LintAt(cfg Config, repoRoot string, now time.Time) ([]Finding, error) {
 		findings = append(findings, pc...)
 	}
 
+	// stale_edge and edge_cycle read the intents' dependency edges out of the
+	// same store scan, which straddles cfg.Roots, so they run once here too.
+	if seCfg, ok := cfg.Rules[ruleStaleEdge]; ok && seCfg.Enabled {
+		se, err := checkStaleEdges(repoRoot, cfg, seCfg)
+		if err != nil {
+			return nil, err
+		}
+		findings = append(findings, se...)
+	}
+	if ecCfg, ok := cfg.Rules[ruleEdgeCycle]; ok && ecCfg.Enabled {
+		ec, err := checkEdgeCycles(repoRoot, cfg, ecCfg)
+		if err != nil {
+			return nil, err
+		}
+		findings = append(findings, ec...)
+	}
+
 	// cross_store_id_claim is the other half of the same cross-store question: it
 	// walks the markdown OUTSIDE those stores, which is every tree at once, so it
 	// too runs once here.
@@ -614,6 +631,16 @@ func LintAt(cfg Config, repoRoot string, now time.Time) ([]Finding, error) {
 			return nil, err
 		}
 		findings = append(findings, checkIssueIDUnique(repoRoot, ledger, iiCfg)...)
+	}
+
+	// adr_id_unique reads the decision store, which the per-root rules do not
+	// own either, so it runs once here beside its issue-ledger sibling.
+	if auCfg, ok := cfg.Rules[ruleADRIDUnique]; ok && auCfg.Enabled {
+		au, err := checkADRIDUnique(repoRoot, auCfg)
+		if err != nil {
+			return nil, err
+		}
+		findings = append(findings, au...)
 	}
 
 	// reading_outstanding reads the same ledger root's SIBLING families
@@ -1988,9 +2015,10 @@ func validateIntentIDUnique(repoRoot, rel, name string, fields map[string]fmFiel
 
 // validateIDUnique flags every file in a colliding id set, not just one: the
 // linter cannot know which claimant is authoritative, and flagging a single file
-// would imply the others are fine. It is the one primitive behind both the
-// intent-id (intent_lifecycle) and issue-id (issue_id_unique) uniqueness rules —
-// an id is a record's identity across its register and must be unique within it.
+// would imply the others are fine. It is the one primitive behind every
+// uniqueness rule — intent ids (intent_lifecycle), issue ids (issue_id_unique),
+// spec ids (spec_id_unique) and decision ids (adr_id_unique) — an id is a
+// record's identity across its register and must be unique within it.
 // noun names the record kind in the message; ruleID and severity tag the emitted
 // Finding. idFiles maps each id to the repo-absolute paths that claim it.
 func validateIDUnique(repoRoot, rel, id, noun, ruleID, severity string, fields map[string]fmField, idFiles map[string][]string) []Finding {

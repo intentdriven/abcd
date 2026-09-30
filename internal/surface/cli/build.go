@@ -22,7 +22,7 @@ import (
 // (itd-2609201916151817, spc-2609202134338445): `abcd build <itd-N>`, the verb a
 // person types, and the step interface a driving host calls under `implement`
 // (decision 8: `build` for people, `implement` for the machinery) — `implement
-// status`, `implement step` and `implement receipt`.
+// status`, `implement step`, `implement receipt` and `implement record`.
 
 // loopStore is the noun the checkout resolution names in its refusal.
 const loopStore = "the run state file"
@@ -86,10 +86,11 @@ func errorsIsNoCheckout(err error) bool { return errors.Is(err, gitutil.ErrNoChe
 
 // newBuildCommand builds `abcd build <itd-N>`.
 func newBuildCommand(asJSON *bool) *cobra.Command {
-	var session, pace, subAgents string
+	var session, pace, subAgents, fixRounds string
 	cmd := &cobra.Command{
-		Use: "build <itd-N> [--session <id>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>]",
+		Use: "build <itd-N|iss-N> [--session <id>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>]",
 		Long: "Start the implement loop for one intent, or resume the run already in progress for it.\n" +
+			"An issue id starts the loop's issue-keyed lane instead (below).\n" +
 			"A new run's checks run first, and every one must pass:\n" +
 			"the intent is READY (planned, criteria written, its spec linked and written), asks no\n" +
 			"open question, has no unanswered claim section, is not held, names no unsettled blocker\n" +
@@ -110,17 +111,30 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 			"before this run's lane has moved or claimed anything, and the session's own claim on the\n" +
 			"intent is not counted as a peer's. A session that has not joined is refused. Without it\n" +
 			"the run holds no claim, and the result says so.\n\n" +
-			"A new run is paced: a working window, a pause after it, and a ceiling on the run's lanes\n" +
-			"and validators alive at once. The three numbers are read once, when the run starts:\n" +
-			"--pace <work-minutes>/<pause-minutes> and --sub-agents <n> for this run, else pace.work_minutes,\n" +
-			"pace.pause_minutes and pace.sub_agents in the repository's .abcd/config.json, else in\n" +
-			"~/.abcd/config.json, else the bundled 120/300 with 2 sub-agents. The result and the run\n" +
+			"A new run is paced: a working window, a pause after it, a ceiling on the run's lanes and\n" +
+			"validators alive at once, and the fix rounds a lane may take before it is handed back. The\n" +
+			"four numbers are read once, when the run starts: --pace <work-minutes>/<pause-minutes>,\n" +
+			"--sub-agents <n> and --fix-rounds <n> for this run, else pace.work_minutes, pace.pause_minutes,\n" +
+			"pace.sub_agents and pace.fix_rounds in the repository's .abcd/config.json, else in\n" +
+			"~/.abcd/config.json, else the bundled 120/300 with 2 sub-agents and 3 fix rounds. The result and the run\n" +
 			"record name each number's layer. A malformed pace or ceiling, typed or configured, is\n" +
 			"refused naming the value and the accepted form, and writes nothing. Starting again keeps\n" +
 			"the run's pace; a flag naming another is refused. The window and the pause bind through\n" +
 			"`abcd implement step`; the ceiling is recorded with the run, and this build does not\n" +
-			"count lanes against it.\n\n" +
+			"count lanes against it. A lane whose validators still do not pass after its fix rounds is\n" +
+			"handed back: it stops as unachievable with the last round's findings, the run starts nothing\n" +
+			"further for it, and `abcd implement step` refuses naming the hand-back.\n\n" +
 			"The run then moves one step per `abcd implement step`, driven by the host session.\n\n" +
+			"An issue id (iss-N, validated by shape) is built as one lane. Its checks are the\n" +
+			"repository's own drain rule, read as `abcd drain` reads it (the issue is open, nothing\n" +
+			"open blocks it, its category and severity are ones the rule takes, it carries a remedy a\n" +
+			"person wrote), and no peer holding it. The brief is the issue's record with its remedy\n" +
+			"as the work and the repository's definition of done (a detector watched to fail before\n" +
+			"the fix and pass after); the validators run without the fidelity audit (an issue has no\n" +
+			"criteria); the implementer's receipt must name the issue in `resolves`, and the landing\n" +
+			"resolves it with the commit named there. A receipt carrying `handback` in its place\n" +
+			"ends the lane: its worktree and branch are discarded and the issue is handed back by\n" +
+			"kind. `abcd drain` starts these runs one at a time.\n\n" +
 			"Exit 2 on a refusal, exit 3 when a peer holds the intent or the run state is locked\n" +
 			"(back off and take other work).",
 		Args: cobra.ExactArgs(1),
@@ -140,6 +154,9 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 			}
 			if cmd.Flags().Changed("sub-agents") {
 				o.SubAgents = &subAgents
+			}
+			if cmd.Flags().Changed("fix-rounds") {
+				o.FixRounds = &fixRounds
 			}
 			res, err := loop.Start(root, args[0], o)
 			if err != nil {
@@ -169,17 +186,18 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 	cmd.Flags().StringVar(&session, "session", "", "the host session's id in the shared run state; a new run claims the intent for it")
 	cmd.Flags().StringVar(&pace, "pace", "", "this run's working window and pause, <work-minutes>/<pause-minutes> (e.g. 90/240); wins over every configured layer")
 	cmd.Flags().StringVar(&subAgents, "sub-agents", "", "this run's ceiling on lanes and validators alive at once, a whole number; wins over every configured layer")
+	cmd.Flags().StringVar(&fixRounds, "fix-rounds", "", "the fix rounds a lane of this run may take before it is handed back, a whole number from 0 (bundled: 3); wins over every configured layer")
 	cmd.AddCommand(newBuildNextCommand(asJSON))
 	return cmd
 }
 
 // newBuildNextCommand builds `abcd build next` (itd-2609211116005482).
 func newBuildNextCommand(asJSON *bool) *cobra.Command {
-	var session, pace, subAgents string
+	var session, pace, subAgents, fixRounds string
 	var maxPicks int
 	var untilEmpty bool
 	cmd := &cobra.Command{
-		Use: "next [--session <id>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--max <n>] [--until-empty]",
+		Use: "next [--session <id>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--max <n>] [--until-empty]",
 		Long: "Pick the readiest planned intent, write down why, and start its run.\n\n" +
 			"The candidates are the planned intents that pass every check `abcd build <itd-N>` runs\n" +
 			"(READY, no open question, no unanswered claim section, not held, no unsettled blocker in\n" +
@@ -199,8 +217,9 @@ func newBuildNextCommand(asJSON *bool) *cobra.Command {
 			"in is never written but for the run state. `abcd intent ready` keeps reporting the person's\n" +
 			"entry as the most recent conjecture.\n\n" +
 			"One pick per invocation. --max <n> above 1 and --until-empty, which continue under the pace\n" +
-			"rule, are refused: that half of the verb is not built in this abcd. --session, --pace and\n" +
-			"--sub-agents are `abcd build`'s own.\n\n" +
+			"rule, are refused: that half of the verb is not built in this abcd. --session, --pace,\n" +
+			"--sub-agents and --fix-rounds are `abcd build`'s own. A lane handed back after its fix\n" +
+			"rounds falsifies the pick: the run record says so, and the intent's entry is not edited.\n\n" +
 			"No candidate is refused, naming each excluded intent and the check that excluded it, and\n" +
 			"nothing is written. Exit 2 on a refusal, exit 3 when the chosen intent's run is already in\n" +
 			"progress or the run state is locked.",
@@ -222,6 +241,9 @@ func newBuildNextCommand(asJSON *bool) *cobra.Command {
 			if cmd.Flags().Changed("sub-agents") {
 				o.SubAgents = &subAgents
 			}
+			if cmd.Flags().Changed("fix-rounds") {
+				o.FixRounds = &fixRounds
+			}
 			res, err := loop.Next(root, o, loop.NextOptions{Max: maxPicks, UntilEmpty: untilEmpty})
 			if err != nil {
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
@@ -235,6 +257,7 @@ func newBuildNextCommand(asJSON *bool) *cobra.Command {
 	cmd.Flags().StringVar(&session, "session", "", "the host session's id in the shared run state; the new run claims the picked intent for it")
 	cmd.Flags().StringVar(&pace, "pace", "", "the new run's working window and pause, <work-minutes>/<pause-minutes>; wins over every configured layer")
 	cmd.Flags().StringVar(&subAgents, "sub-agents", "", "the new run's ceiling on lanes and validators alive at once; wins over every configured layer")
+	cmd.Flags().StringVar(&fixRounds, "fix-rounds", "", "the fix rounds a lane of the new run may take before it is handed back; wins over every configured layer")
 	cmd.Flags().IntVar(&maxPicks, "max", 0, "how many picks to make; only 1 is built, and more is refused")
 	cmd.Flags().BoolVar(&untilEmpty, "until-empty", false, "pick until no candidate is left; not built, and refused")
 	return cmd
@@ -297,6 +320,19 @@ func renderLaneLine(w io.Writer, l loop.Lane) {
 		fmt.Fprintf(w, "    branch %s (%s..%s), worktree %s\n", termsafe.Sanitize(l.Branch), shortSHA(l.BaseSHA), shortSHA(l.HeadSHA),
 			termsafe.Sanitize(fsutil.RedactHome(l.Worktree)))
 	}
+	if n := len(l.Validation); n > 0 {
+		r := l.Validation[n-1]
+		parts := make([]string, 0, len(r.Validators))
+		for _, v := range r.Validators {
+			verdict := v.Verdict
+			if verdict == "" {
+				verdict = "pending"
+			}
+			parts = append(parts, v.Role+" "+verdict)
+		}
+		fmt.Fprintf(w, "    validation round %d at %s: %s\n", r.Round, shortSHA(r.HeadSHA), termsafe.Sanitize(strings.Join(parts, ", ")))
+	}
+	renderLanding(w, l.PR, l.Landing)
 	if l.Awaiting != nil {
 		fmt.Fprintf(w, "    awaiting the %s's receipt at %s (brief %s)\n", termsafe.Sanitize(l.Awaiting.Role),
 			termsafe.Sanitize(fsutil.RedactHome(l.Awaiting.Receipt)), termsafe.Sanitize(fsutil.RedactHome(l.Awaiting.Brief)))
@@ -375,6 +411,11 @@ func newImplementStatusCommand(asJSON *bool) *cobra.Command {
 					if st.Complete() {
 						state = "complete"
 					}
+					for _, l := range st.Lanes {
+						if l.HandBack != nil {
+							state = "handed back (" + l.ID + ", " + l.HandBack.Verdict + ")"
+						}
+					}
 					fmt.Fprintf(w, "run %s  %s (%s)  %s, driven by the %s\n", st.RunID, st.Key, st.Spec, state, st.Driver)
 					fmt.Fprintf(w, "  state:   %s\n", loop.StateRelPath(st.RunID))
 					renderPace(w, st.Pace)
@@ -401,6 +442,9 @@ func newImplementStatusCommand(asJSON *bool) *cobra.Command {
 // renderStepResult is the text form of an `implement step` or `implement receipt` result.
 func renderStepResult(w io.Writer, verb string, res loop.StepResult) {
 	switch {
+	case res.HandBack != nil:
+		fmt.Fprintf(w, "%s: HANDED BACK: %s's %s stopped as %s after %d fix round(s); the run starts nothing further for it\n",
+			verb, res.RunID, res.Lane, res.HandBack.Verdict, res.HandBack.FixRounds)
 	case res.NextEligibleAt != nil:
 		fmt.Fprintf(w, "%s: %s's window has elapsed; paused until %s\n", verb, res.RunID, res.NextEligibleAt.UTC().Format(time.RFC3339))
 	case res.PerformedStage != "":
@@ -431,7 +475,35 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			"the spec, the conventions of AGENTS.md, the decisions the intent cites, and the spec\n" +
 			"steps before the lane's with what landed each) into the lane's directory of the run;\n" +
 			"implement hands the lane to a fresh implementer and awaits\n" +
-			"its receipt; validate and land follow.\n\n" +
+			"its receipt; validate hands the lane's head to validators that did not implement it, one\n" +
+			"fresh agent at a time — a ruthless-reviewer, a security-reviewer and, on the lane whose\n" +
+			"landing closes the spec and ships the intent, an intent-auditor over the whole delivery,\n" +
+			"from the base of the run's first lane to that lane's head (a lane that does not close the\n" +
+			"spec takes no audit) — and records each verdict itself, parsed from the validator's own\n" +
+			"return. A round one of them did not pass goes to a fresh implementer, who applies each\n" +
+			"finding or rejects it in writing in its report, and the next round judges the new head\n" +
+			"afresh; a round that passes completes the stage, unless a lane report states a verdict,\n" +
+			"which is refused naming the report. The audit passes only when every criterion is met: a\n" +
+			"criterion it could not decide (INCONCLUSIVE) fails the round as a not-met one does, and\n" +
+			"goes to the fresh implementer with the finding. A round that does not pass once the lane\n" +
+			"has taken the run's fix rounds (--fix-rounds, bundled 3) hands the lane back instead: it\n" +
+			"stops as unachievable, the result and the run record name the last round's findings, the\n" +
+			"run starts nothing further for it, and every later step is refused naming the hand-back.\n" +
+			"land follows a passing round, one step per call: it checks the lane's worktree is clean\n" +
+			"at the judged head; on the lane that closes the spec it runs `spec close` in the lane's\n" +
+			"worktree and ingests the audit that lane took, and for every capture the lane's receipts\n" +
+			"declared fixed it runs `capture resolve` with the lane's commit, committing them on the\n" +
+			"lane's branch with Delivers: and Resolves: trailers and an Assisted-by: naming the model\n" +
+			"the lane's receipts reported (refused when one reported none), the repository's hooks\n" +
+			"running; it pushes the branch only once the\n" +
+			"repository's preflight receipt names its head (the pre-push hook runs; nothing is\n" +
+			"skipped or forced); it opens the pull request through gh, with a body built from the\n" +
+			"records and passed through the outbound scrub, then re-reads the body the forge holds and\n" +
+			"strips a session URL or tool footer; it arms auto-merge with the merge-queue method the\n" +
+			"ruleset mirror (.abcd/work/rulesets/) names at the lane's base, or leaves the pull request\n" +
+			"open where no merge queue gates the default branch, and pushes nothing after that; and\n" +
+			"once the pushed head is an ancestor of the default branch on origin it removes the lane's\n" +
+			"worktree and branch and the lane is done. Until then the call exits 3 and waits.\n\n" +
 			"A stage whose body this abcd does not carry is refused naming the spec piece that\n" +
 			"delivers it, and the run is unchanged. A stage that fails leaves the state as it was,\n" +
 			"so the next invocation performs it again; a completed stage is never repeated.\n\n" +
@@ -478,7 +550,15 @@ func newImplementReceiptCommand(asJSON *bool) *cobra.Command {
 			"name, within its size cap, never through a symlink) and verifies only when every commit\n" +
 			"it names is on the lane's branch past its base, the definition of done's output exists\n" +
 			"in the lane's directory with a zero exit code, and the report exists there. A receipt\n" +
-			"that verifies moves the lane's head to its branch's tip.\n\n" +
+			"that verifies moves the lane's head to its branch's tip. Its optional resolves list names\n" +
+			"each capture the lane fixed, with the commit that fixed it (one the receipt names), the\n" +
+			"note, the impact and the grounds; the landing resolves each.\n\n" +
+			"At the validate stage the receipt is the validator's return: a reviewer's is refused\n" +
+			"unless it has one Verdict section stating one verdict of its role (SHIP or FIX FIRST;\n" +
+			"APPROVE, BLOCK or NEEDS-INPUT), and the intent-auditor's unless it is the fidelity verdict\n" +
+			"the request asked for, echoing its receipt and both provenance hashes. The loop records\n" +
+			"the verdict and the lane stays at validate for the next validator. A fresh implementer's\n" +
+			"receipt after a round is verified as an implementer's is.\n\n" +
 			"--run names the run; without it, the one run in progress in this checkout. Exit 2 on a\n" +
 			"refusal, exit 3 on a locked run state.",
 		Args: cobra.ExactArgs(1),
@@ -506,4 +586,146 @@ func newImplementReceiptCommand(asJSON *bool) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&runID, "run", "", "the run the receipt belongs to (run-<16 digits>); the one run in progress when omitted")
 	return cmd
+}
+
+// newImplementRecordCommand builds `implement record`: the run record read back
+// at the end (spc-2609202134338445 piece 10), and the run's transcripts
+// captured into the history store, one capture per path.
+func newImplementRecordCommand(asJSON *bool) *cobra.Command {
+	var runID string
+	var transcripts []string
+	cmd := &cobra.Command{
+		Use: "record [--run <run-id>] [--transcript <path>]...",
+		Long: "Render a run's record: every lane with its spec step, branch and head, the implementers'\n" +
+			"receipts the loop verified with the model each runner reported, every verdict the loop\n" +
+			"recorded from a validator's return, the captures each lane fixed, its pull request and\n" +
+			"what its landing did, the transcripts captured into the history store, and the record's\n" +
+			"lines. Read-only unless --transcript is given.\n\n" +
+			"--transcript <path>, repeatable, captures each transcript into the history store as\n" +
+			"`abcd history capture <path>` does, one capture per path, and records it in the run's\n" +
+			"state; it is refused on a run that is not complete, since the record's transcripts are\n" +
+			"the run's, captured at its end. A capture that fails stops the call: the transcripts\n" +
+			"before it are recorded, and the refusal names the failure.\n\n" +
+			"--run names the run; without it, the one run in progress, or else the most recently\n" +
+			"started run. Exit 2 on a refusal, exit 3 on a locked run state.",
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			const prefix = "abcd implement record"
+			root, err := loopRoot()
+			if err != nil {
+				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
+			}
+			id := runID
+			if id == "" {
+				if id, err = loop.LatestRun(root); err != nil {
+					return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
+				}
+			}
+			var rec loop.RunRecord
+			if len(transcripts) > 0 {
+				repoRoot, rootSHA, err := historyStore(cmd)
+				if err != nil {
+					return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
+				}
+				capture := func(path string) (loop.Transcript, error) {
+					res, err := captureTranscriptSource(cmd, repoRoot, rootSHA, path, "", "", "")
+					if err != nil {
+						return loop.Transcript{}, errors.New(fsutil.RedactHome(err.Error()))
+					}
+					return loop.Transcript{Path: fsutil.RedactHome(path), Session: res.Record.SessionID, Stored: res.Record.Path, Wrote: res.Wrote,
+						ScanGap: fsutil.RedactHome(res.ScanGap)}, nil
+				}
+				rec, err = loop.CaptureTranscripts(root, id, transcripts, capture, loop.Options{})
+				if err != nil {
+					return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
+				}
+			} else if rec, err = loop.ReadRecord(root, id); err != nil {
+				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
+			}
+			return render(cmd.OutOrStdout(), *asJSON, rec, func(w io.Writer) { renderRunRecord(w, rec) })
+		},
+	}
+	cmd.Flags().StringVar(&runID, "run", "", "the run to render (run-<16 digits>); the one in progress, else the latest, when omitted")
+	cmd.Flags().StringArrayVar(&transcripts, "transcript", nil, "a transcript to capture into the history store for a complete run (repeatable; one capture per path)")
+	return cmd
+}
+
+// renderRunRecord is the text form of a run's record.
+func renderRunRecord(w io.Writer, rec loop.RunRecord) {
+	state := "in progress"
+	if rec.Complete {
+		state = "complete"
+	}
+	fmt.Fprintf(w, "run %s  %s (%s)  %s, driven by the %s\n", rec.RunID, termsafe.Sanitize(rec.Key), termsafe.Sanitize(rec.Spec), state, rec.Driver)
+	renderPace(w, rec.Pace)
+	for _, l := range rec.Lanes {
+		fmt.Fprintf(w, "  %s:  spec step %d, %q — %s\n", l.ID, l.SpecStep, termsafe.Sanitize(l.StepTitle), l.Stage)
+		if l.Branch != "" {
+			fmt.Fprintf(w, "    branch %s (%s..%s)\n", termsafe.Sanitize(l.Branch), shortSHA(l.BaseSHA), shortSHA(l.HeadSHA))
+		}
+		for _, r := range l.Receipts {
+			model := r.Model
+			if model == "" {
+				model = "none reported"
+			}
+			fmt.Fprintf(w, "    receipt %s (%s; model %s)\n", termsafe.Sanitize(r.Receipt), termsafe.Sanitize(r.Role), termsafe.Sanitize(model))
+		}
+		for _, v := range l.Verdicts {
+			fmt.Fprintf(w, "    round %d at %s: %s %s\n", v.Round, shortSHA(v.HeadSHA), termsafe.Sanitize(v.Role), termsafe.Sanitize(v.Verdict))
+		}
+		if len(l.Resolves) > 0 {
+			fmt.Fprintf(w, "    resolves %s\n", termsafe.Sanitize(strings.Join(l.Resolves, ", ")))
+		}
+		renderLanding(w, l.PR, l.Landing)
+		if l.HandBack != nil {
+			fmt.Fprintf(w, "    handed back as %s after %d fix round(s)\n", termsafe.Sanitize(l.HandBack.Verdict), l.HandBack.FixRounds)
+		}
+	}
+	renderPending(w, rec.Pending)
+	fmt.Fprintf(w, "  transcripts: %d captured into the history store\n", len(rec.Transcripts))
+	for _, t := range rec.Transcripts {
+		how := "stored"
+		if !t.Wrote {
+			how = "already stored"
+		}
+		fmt.Fprintf(w, "    %s -> session %s (%s)\n", termsafe.Sanitize(fsutil.RedactHome(t.Path)), termsafe.Sanitize(t.Session), how)
+		for _, l := range scanGapLines(t.ScanGap) {
+			fmt.Fprintf(w, "      %s\n", l)
+		}
+	}
+	fmt.Fprintf(w, "  record:  %d line(s)\n", len(rec.Record))
+	for _, e := range rec.Record {
+		fmt.Fprintf(w, "    %s  %-10s %s  %s\n", e.At.Format("2006-01-02T15:04:05Z"), termsafe.Sanitize(e.Stage),
+			termsafe.Sanitize(e.Lane), termsafe.Sanitize(fsutil.RedactHome(e.Note)))
+	}
+}
+
+// renderLanding renders what a lane's landing has done so far.
+func renderLanding(w io.Writer, pr int, ld *loop.Landing) {
+	if ld == nil {
+		return
+	}
+	var parts []string
+	if ld.Closes {
+		parts = append(parts, "closes the spec")
+	}
+	if ld.Records != "" {
+		parts = append(parts, "records "+shortSHA(ld.Records))
+	}
+	if ld.Pushed != "" {
+		parts = append(parts, "pushed "+shortSHA(ld.Pushed))
+	}
+	if pr > 0 {
+		parts = append(parts, fmt.Sprintf("pull request #%d", pr))
+	}
+	if ld.Merge != "" {
+		parts = append(parts, ld.Merge)
+	}
+	if ld.Merged != "" {
+		parts = append(parts, "landed at "+shortSHA(ld.Merged))
+	}
+	if len(parts) == 0 {
+		parts = append(parts, "prepared")
+	}
+	fmt.Fprintf(w, "    landing: %s\n", termsafe.Sanitize(strings.Join(parts, "; ")))
 }

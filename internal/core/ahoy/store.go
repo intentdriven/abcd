@@ -92,11 +92,7 @@ func resolvePluginRoot() (string, bool) {
 		// <plugin-root>/abcd), so an unresolved path walks the symlink's
 		// ancestors and never reaches the plugin root (iss-170). resolvePath
 		// falls back to an absolutised form, then the original path, on error.
-		dir := filepath.Dir(resolvePath(exe))
-		for i := 0; i < 6 && dir != "/" && dir != "."; i++ {
-			candidates = append(candidates, dir)
-			dir = filepath.Dir(dir)
-		}
+		candidates = append(candidates, ancestorCandidates(exe)...)
 	}
 	// The owned-copy PATH entry (spc-35) is a regular file, so it has no symlink
 	// target inside the plugin root for the ancestor walk to follow home — the
@@ -139,6 +135,44 @@ func resolvePluginRoot() (string, bool) {
 // executable-ancestor -> recorded path-entry root), the same layout check, so
 // a surface never grows a second notion of where the plugin lives.
 func ResolvePluginRoot() (string, bool) { return resolvePluginRoot() }
+
+// ancestorCandidates is the executable-ancestor rung's walk: the canonical
+// directory holding path and its ancestors, at most six of them, stopping at the
+// filesystem root. resolvePluginRoot and PluginRootContaining both walk it, so
+// the depth bound and the canonicalisation are stated once.
+func ancestorCandidates(path string) []string {
+	var dirs []string
+	dir := filepath.Dir(resolvePath(path))
+	for i := 0; i < 6 && dir != "/" && dir != "."; i++ {
+		dirs = append(dirs, dir)
+		dir = filepath.Dir(dir)
+	}
+	return dirs
+}
+
+// PluginRootContaining reports the plugin root a given path sits inside, by
+// walking the path's ancestors for the plugin layout.
+//
+// It is the executable-ancestor rung of resolvePluginRoot's ladder on its own: a
+// front door that needs to know WHICH root served the running binary — as
+// distinct from which root this session resolves — asks through the same walk
+// and the same layout check, so it never grows a second notion of what a plugin
+// root is (iss-2609020113012227). A path inside no plugin root — a PATH copy, a
+// `go run` binary — yields false, which a caller reads as "nothing to say"
+// rather than as a negative finding.
+func PluginRootContaining(path string) (string, bool) {
+	for _, dir := range ancestorCandidates(path) {
+		if !pluginRootValid(dir) {
+			continue
+		}
+		abs, err := filepath.Abs(dir)
+		if err != nil {
+			return "", false
+		}
+		return abs, true
+	}
+	return "", false
+}
 
 // pluginRootValid sanity-checks a candidate by verifying the expected plugin
 // layout (a hooks/ directory).

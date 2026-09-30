@@ -119,7 +119,7 @@ func TestCheckAnsweredSeparatesADeadLinkFromADeadNetwork(t *testing.T) {
 		t.Errorf("%s: Answered = true, but nothing was listening", deadURL)
 	}
 	// An SSRF refusal never reaches a host at all.
-	if got := NewHTTPChecker().Check("http://169.254.169.254/x"); got.Answered {
+	if got := newShippedHTTPChecker().Check("http://169.254.169.254/x"); got.Answered {
 		t.Error("a guard refusal reported that a host answered")
 	}
 }
@@ -212,7 +212,7 @@ func TestCheckRefusesInternalAddressesUnderTheShippedPolicy(t *testing.T) {
 	defer srv.Close()
 
 	for _, target := range []string{srv.URL, "http://169.254.169.254/latest/meta-data/", "http://svc.internal/x"} {
-		got := NewHTTPChecker().Check(target)
+		got := newShippedHTTPChecker().Check(target)
 		if got.Status != StatusBroken {
 			t.Errorf("%s: status = %q, want %q", target, got.Status, StatusBroken)
 		}

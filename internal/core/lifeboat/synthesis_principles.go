@@ -462,7 +462,7 @@ func gateSynthLifeboat(lifeboatDir string) (string, Provenance, error) {
 
 // buildLifeboatPathSet is the packed-path membership set P: every regular file's
 // lifeboat-relative POSIX path, from the same sorted, symlink-refusing, bounded
-// walk VerifyManifest uses. A delegated ref that names a packed path is a valid
+// walk verifyManifest uses. A delegated ref that names a packed path is a valid
 // citation.
 func buildLifeboatPathSet(root *os.Root, ownOutput func(string) bool) (map[string]bool, error) {
 	rels, err := walkLifeboatFiles(root)

@@ -934,7 +934,7 @@ func ingestLocked(repoRoot string, raw []byte, rcp string) (IngestVerdictResult,
 	// composed. Both paths below persist agent-produced prose into a committed
 	// record, so a degraded detector has to stop the write here rather than
 	// halfway through the block it was about to render.
-	free, err := newVerdictProse(repoRoot)
+	free, degraded, err := newVerdictProse(repoRoot)
 	if err != nil {
 		return IngestVerdictResult{}, err
 	}
@@ -943,11 +943,14 @@ func ingestLocked(repoRoot string, raw []byte, rcp string) (IngestVerdictResult,
 	// quarantines the payload rather than corrupting the record.
 	v, verr := validateVerdict(raw, rcp, content)
 	if verr != nil {
-		return deadLetter(repoRoot, it, content, rcp, raw, verr.Error(), free)
+		return deadLetter(repoRoot, it, content, rcp, raw, verr.Error(), free, degraded)
 	}
 
 	rollup := countVerdicts(v)
 	block := ingestedBlock(rcp, v, rollup, free)
+	if err := degraded(); err != nil {
+		return IngestVerdictResult{}, err
+	}
 	if err := checkReviewCitations(repoRoot, it, rcp, block); err != nil {
 		return IngestVerdictResult{}, err
 	}
@@ -978,7 +981,7 @@ func ingestLocked(repoRoot string, raw []byte, rcp string) (IngestVerdictResult,
 // owed a verdict, and a bad re-ingest must never replace a good one. It runs
 // under the store lock ingestLocked holds.
 func reingestVerdict(repoRoot string, raw []byte, it Intent, rcp, content string) (IngestVerdictResult, error) {
-	free, err := newVerdictProse(repoRoot)
+	free, degraded, err := newVerdictProse(repoRoot)
 	if err != nil {
 		return IngestVerdictResult{}, err
 	}
@@ -989,6 +992,9 @@ func reingestVerdict(repoRoot string, raw []byte, it Intent, rcp, content string
 	}
 	rollup := countVerdicts(v)
 	block := ingestedBlock(rcp, v, rollup, free)
+	if err := degraded(); err != nil {
+		return IngestVerdictResult{}, err
+	}
 	if existing, ok := reviewBlockText(content, rcp); ok && sameReviewBlock(existing, block, rcp) {
 		return IngestVerdictResult{Status: "noop", ReceiptID: rcp, IntentID: it.ID}, nil
 	}
@@ -1280,7 +1286,7 @@ func validateConditionDispositions(v verdict, intentContent string) error {
 // DEAD_LETTER block recording all criteria INCONCLUSIVE. Never partial. It runs
 // under the store lock ingestLocked holds, so its two writes — the retained
 // payload and the record — land in one hold.
-func deadLetter(repoRoot string, it Intent, content, rcp string, raw []byte, reason string, free proseField) (IngestVerdictResult, error) {
+func deadLetter(repoRoot string, it Intent, content, rcp string, raw []byte, reason string, free proseField, degraded func() error) (IngestVerdictResult, error) {
 	if !rcpIDRe.MatchString(rcp) {
 		return IngestVerdictResult{}, fmt.Errorf("intent: receipt id %q is malformed; refusing to dead-letter", rcp)
 	}
@@ -1288,6 +1294,9 @@ func deadLetter(repoRoot string, it Intent, content, rcp string, raw []byte, rea
 	dlRel := filepath.Join(reviewsRelDir, rcp+".deadletter.json")
 	untested := untestedDispositions(content)
 	block := deadLetterBlock(rcp, reason, dlRel, untested, free)
+	if err := degraded(); err != nil {
+		return IngestVerdictResult{}, err
+	}
 	// The quarantine's reason quotes the payload, so it is held to the same gate
 	// as a verdict, before anything is retained or written.
 	if err := checkReviewCitations(repoRoot, it, rcp, block); err != nil {
@@ -1963,15 +1972,21 @@ type proseField func(string) string
 
 // newVerdictProse builds the free-text renderer for one ingest, failing closed
 // on a degraded scanner before any block is composed.
-func newVerdictProse(repoRoot string) (proseField, error) {
+//
+// The second return is asked after the block is rendered and before it is
+// written: a repository's opt-in scanner augmenter (gitleaks) runs inside every
+// redaction, and a run that failed degrades the scanner during them, which
+// refuses the write as a scanner degraded from the start does
+// (iss-2608291814575788).
+func newVerdictProse(repoRoot string) (proseField, func() error, error) {
 	redact, err := newIntentRedactor(repoRoot)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	return func(s string) string {
-		redacted, _ := redact(s)
+		redacted, _ := redact.redact(s)
 		return oneLine(redacted)
-	}, nil
+	}, redact.degraded, nil
 }
 
 func orDash(s string) string {

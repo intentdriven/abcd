@@ -12,6 +12,10 @@ found_at: "commands/version.md"
 deferred_after: "v0.11.1"
 deferral_reason: "a lane of its own: the superseded-root note (version and bare ahoy name the plugin root this session resolves when it differs from the root the running binary sits in) was built on the unmerged branch fix/launch-preview-and-skill-path (f3d4cb8dc, fb3344302, 692281138; about 440 lines with tests) and never reached main; relanding it against current ahoy, sanitising included, is a lane rather than a triage fix."
 remedy: "Reland the superseded-root note from the unmerged commits f3d4cb8dc, fb3344302 and 692281138 onto current ahoy: version and bare ahoy carry a superseded_root note, in the plain render and in --json, when the plugin root the session resolves differs from the one holding the running binary, silent in a source checkout and sanitised. Carry supersededroot_test.go across, watch it fail on the base first, and resolve this record in the same branch."
+resolution: "The --version report and bare ahoy carry a superseded_root note, plain and JSON, when the session's plugin root and the running binary's plugin root differ; silent in a source checkout, root names sanitised; ported from f3d4cb8dc, fb3344302 and 692281138."
+impact: fix
+resolved_by:
+  commit: "374a7fd3b"
 ---
 
 Refines iss-2608230943088357, which main resolved for the two LOUD shapes (an unknown flag, an unknown command) by naming the stale binary in the refusal. This record carries the third shape, which is SILENT and which that fix cannot reach: the verb exists, is served by the old plugin root, and answers confidently. Observed 2026-09-01 immediately after the v0.7.0 release; the mechanism is that plugin roots are keyed by the commit they were installed from, so a hash-pinned path baked into a skill page is designed to expire, and the old root stays on disk ready to answer. The section that follows is the observation as recorded on the day.
@@ -112,3 +116,7 @@ repo with 181 shipped records (silent, wrong).
 
 - Why: those three commits (about 440 lines with tests) are the built fix, and nothing at this base names a superseded root (no such symbol under internal/); the record marks it as resolved only on branches cut on 2026-09-02 that never merged.
 - Rejected: merging those branches, which predate a month of ahoy changes and carry unrelated work; and a stable indirection in the command pages, since the host, not abcd, interpolates the plugin-root path into them at load.
+
+## Grounds
+
+- pursued: a binary served from a superseded plugin root now names both roots beside its answer (supersededroot_test.go); it would be shown wrong by a stale-root answer with no note, a note on a source-checkout build, or a control character reaching the render.

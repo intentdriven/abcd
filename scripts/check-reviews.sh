@@ -63,7 +63,7 @@ for d in "$ROOT"/*/; do
   base="$(basename "$d")"
   # A review folder, and the summary in it, is committed content, never a
   # pointer elsewhere: the board does not follow a symlinked entry
-  # (internal/core/reviews.Read), so a symlinked folder is not on it at all and
+  # (internal/core/reviews.readEntries), so a symlinked folder is not on it at all and
   # a symlinked summary reads as unpinned. `[ -d ]` and `[ -f ]` follow a
   # symlink, so the gate asks `[ -L ]` first rather than vouch for either.
   if [ -L "${d%/}" ]; then
@@ -89,7 +89,7 @@ for d in "$ROOT"/*/; do
   # RD004 — the pin (itd-28): the summary's leading frontmatter block names the
   # commit the review read, `review_of_commit: <full sha>`, so the status board
   # can say how far the default branch has moved since. The reading is the
-  # board's own (internal/core/reviews.Pin): a block opened on line 1 and closed
+  # board's own (internal/core/reviews.summaryPin): a block opened on line 1 and closed
   # by the next `---`, the first `review_of_commit` key in it, and a bare full
   # object name in git's lowercase hex, optionally followed by a comment. A
   # folder from before the rule is named as legacy and not refused; the legacy
@@ -131,7 +131,7 @@ for d in "$ROOT"/*/; do
     fi
   done <"${d}00-summary.md"
   # bash `read` drops a NUL byte (3.2 truncates the line at it), so the loop
-  # above can see a clean block where reviews.Pin sees none. The block is lines
+  # above can see a clean block where reviews.summaryPin sees none. The block is lines
   # 1..lineno, the closing fence included; any NUL in those bytes is refused.
   nul=0
   if [ "$opened" -eq 2 ]; then

@@ -9,7 +9,7 @@ package lifeboat
 // Dual-mode single entrypoint (mirroring IngestLessons):
 //
 //   - DETERMINISTIC (raw == nil): the verdict is a mechanical, pure mapping over
-//     VerifyManifest + the packed coverage summary — no model, no wall-clock, and
+//     verifyManifest + the packed coverage summary — no model, no wall-clock, and
 //     the source repo's CONTENT is never read (it is gated as a real dir only, so
 //     the audit stays deterministic and safe even when the source is gone). The
 //     inputs are the lifeboat's own sealed files.
@@ -106,9 +106,9 @@ func ReviewLifeboat(lifeboatDir, sourceRepo string, raw []byte) (ReviewResult, e
 	sourceName := sanitize(filepath.Base(srcAbs))
 
 	// 2. Manifest attestation and packed coverage summary — the trusted inputs the
-	//    core owns in BOTH modes. VerifyManifest is the seal check; a false result
+	//    core owns in BOTH modes. verifyManifest is the seal check; a false result
 	//    is a verdict input, never fatal.
-	manifestVerified := VerifyManifest(abs) == nil
+	manifestVerified := verifyManifest(abs) == nil
 	cov := readPackedCoverage(abs)
 	coveragePresent := cov.Present && !cov.Degraded
 
