@@ -26,6 +26,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/oracle"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/term"
 	"github.com/intentdriven/abcd/internal/termsafe"
 	"github.com/spf13/cobra"
 )
@@ -207,11 +208,9 @@ func newAhoyConnectCommand(asJSON *bool) *cobra.Command {
 // readKey reads the key from stdin: refused from a terminal, where it would
 // be echoed as it is typed; one trailing line ending is dropped.
 func readKey(in io.Reader) (string, error) {
-	if f, ok := in.(*os.File); ok {
-		if fi, err := f.Stat(); err == nil && fi.Mode()&os.ModeCharDevice != 0 {
-			return "", errors.New("the key is read from stdin, and stdin is a terminal, where it would be echoed as it is typed; " +
-				"pipe it in from a file or a variable instead (" + setupExample + ")")
-		}
+	if f, ok := in.(*os.File); ok && term.IsTerminal(f) {
+		return "", errors.New("the key is read from stdin, and stdin is a terminal, where it would be echoed as it is typed; " +
+			"pipe it in from a file or a variable instead (" + setupExample + ")")
 	}
 	raw, err := io.ReadAll(io.LimitReader(in, credential.MaxValueBytes+3))
 	if err != nil {
