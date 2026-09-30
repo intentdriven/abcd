@@ -1796,14 +1796,19 @@ an error included, exits 0, so the hook can never wedge a session.`,
 					notices = append(notices, n)
 				}
 			}
-			// itd-111 (AC6): a version transition performed since this repo was
-			// last set up — the running binary differs from the recorded
-			// setup_version. Report only; the fetch that changed it is
-			// provisioning's job. Both values come from disk (config + build info).
-			if from, to, changed := ahoy.VersionTransition(cwd); changed {
-				notices = append(notices, fmt.Sprintf(
-					"abcd: the running binary is version %s, but this repo was last set up with %s — run `/abcd:ahoy install` (or `abcd ahoy install`) to reconcile the recorded version.",
-					termsafe.Sanitize(to), termsafe.Sanitize(from)))
+			// itd-111 (AC6): an update is announced once, by whatever swapped
+			// the binary, when the swap completes (the ruling CJ1b), so session
+			// start shows nothing about it — except the one swap whose output
+			// no one read: the bootstrap salvage the per-prompt, per-command and
+			// pre-compaction hooks run with their output discarded. That one is
+			// shown here once, and its marker is this hook's single write.
+			pluginRoot := os.Getenv("ABCD_PLUGIN_ROOT")
+			if pluginRoot == "" {
+				pluginRoot = os.Getenv("CLAUDE_PLUGIN_ROOT")
+			}
+			if from, to, ok := ahoy.TakeUnseenUpdate(pluginRoot, cwd); ok {
+				notices = append(notices, update.UpdatedLine(termsafe.Sanitize(from), termsafe.Sanitize(to))+
+					" — the update ran while a hook discarded its output, so it is reported here, once.")
 			}
 			// The inbox greeting (itd-2609221656361680): one line saying how
 			// many reports wait and from how many repositories, and nothing
