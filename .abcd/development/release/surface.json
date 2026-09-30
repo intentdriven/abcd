@@ -1946,6 +1946,21 @@
       ]
     },
     {
+      "path": "abcd intent prepass",
+      "hidden": false,
+      "block": "agents",
+      "sentence": "Print a draft's pre-pass input, or write its planning brief from the host's findings: Writes only the brief; refuses a record not on drafts/.",
+      "flags": [
+        {
+          "name": "findings-json",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd intent ready",
       "hidden": false,
       "sentence": "Report whether an intent is ready to implement, exiting 1 when not: Writes its grounds only with --grounds; refuses malformed grounds.",

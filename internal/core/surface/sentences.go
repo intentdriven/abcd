@@ -224,6 +224,8 @@ var sentences = map[string]string{
 		"Writes the intent's spec_id; refuses an intent that is not planned.",
 	"abcd intent plan": "Plan a draft, or several as a named bundle, or stamp a planned one's conditions: " +
 		"Writes the intents and their spec; refuses a held intent or a bundle's blocker.",
+	"abcd intent prepass": "Print a draft's pre-pass input, or write its planning brief from the host's findings: " +
+		"Writes only the brief; refuses a record not on drafts/.",
 	"abcd intent reclassify": "Change an intent's kind, or retire it as superseded by a named successor: " +
 		"Writes the record and its successor together; refuses a shipped intent's kind change.",
 	"abcd intent ready": "Report whether an intent is ready to implement, exiting 1 when not: " +

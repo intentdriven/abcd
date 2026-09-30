@@ -71,7 +71,7 @@ package termsafe
 //     backtick, so the reader sees what the payload wrote — whereas synthesising a
 //     closer would turn text the author wrote as prose into code. An escaped
 //     backtick is also no longer a delimiter, so it can pair with nothing.
-//   - A caller re-escaping the value it was handed. ideate's blockText escaped a
+//   - A caller re-escaping the value it was handed. BlockText, then ideate's, escaped a
 //     leading backtick unconditionally, killing the span the exemption relied on
 //     and republishing a sheltered `<details>` as live markup. Its rule now
 //     escapes only an UNBALANCED leading run, which is the only one that opens a
@@ -298,6 +298,68 @@ func OpensBalancedCodeSpan(s string) bool {
 	_, ok := PairCodeSpan(s, 0)
 	return ok
 }
+
+// BlockText escapes an already-cleaned value that starts a line of its own — a
+// bare paragraph, or the content of a list item or a block quote, which begins a
+// block of its own too, where its first character could open a heading, a
+// list, a quote, a table row or a code fence. A backslash is markdown's own escape for exactly these, and
+// CommonMark renders a backslash-escaped ASCII punctuation character as the
+// character itself, so the reader sees the value's text unchanged.
+//
+// The cleaner's code-span exemption rests on the field being parsed as the exact
+// string it was cleaned as (the invariant note above). Escaping a leading
+// backtick unconditionally broke that: it kills the span the cleaner relied on
+// and republishes its sheltered content as live markup — a quoted `<details>`
+// became a real disclosure widget, concealing every later section of the record.
+// A leading run that opens a BALANCED span opens no block (a backtick fence's
+// info string may not contain backticks, so a run with a matching closer on the
+// same line is an inline span by construction), so only an unbalanced run is
+// escaped — and the cleaner no longer emits one.
+//
+// '[' is here for a subtler reason than the rest: a paragraph shaped like a link
+// reference definition (`[x]: https://…`) is CONSUMED by CommonMark and renders
+// as nothing at all — so a value in that shape would erase itself while the
+// fields around it read normally.
+//
+// It is for a ONE-LINE value (a cleaned one: CleanProse folds line breaks), and
+// it is the LAST step, like CodeSpan.
+func BlockText(s string) string {
+	if s == "" {
+		return s
+	}
+	if s[0] == '`' {
+		if OpensBalancedCodeSpan(s) {
+			return s
+		}
+		return `\` + s
+	}
+	switch s[0] {
+	case '#', '-', '*', '+', '>', '|', '~', '=', '_', '[':
+		return `\` + s
+	}
+	// An ordered-list opener ("1. ", "12) ") is the one multi-character marker.
+	// The escape goes before the delimiter: a backslash before a digit is a
+	// literal backslash in CommonMark, and would show in the record
+	// (iss-2609262241109876).
+	for i := 0; i < len(s); i++ {
+		if s[i] >= '0' && s[i] <= '9' {
+			continue
+		}
+		if i > 0 && (s[i] == '.' || s[i] == ')') {
+			return s[:i] + `\` + s[i:]
+		}
+		break
+	}
+	return s
+}
+
+// TableCell escapes an already-cleaned value for a markdown table cell. The
+// backslash is escaped with the pipe: GFM reads `\|` as an escaped delimiter, so
+// escaping the pipe alone turns a prose `\|` into `\\|`, a live delimiter that
+// splits the row and pushes the renderer's last column off its end.
+func TableCell(s string) string { return tableCellEscaper.Replace(s) }
+
+var tableCellEscaper = strings.NewReplacer(`\`, `\\`, "|", `\|`)
 
 // CodeSpan wraps one already-cleaned value in a CommonMark code span whose
 // delimiters the value cannot break, WITHOUT altering the value's bytes.

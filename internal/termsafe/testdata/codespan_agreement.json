@@ -1,5 +1,5 @@
 {
-  "_comment": "One table, read by every escaper that leaves a balanced leading code span unescaped and by the site renderer: termsafe (OpensBalancedCodeSpan), lifeboat (escapeLeadingMarker), ideate (blockText). balanced says whether the value's leading backtick run opens a span; code is the text that span renders (iss-2609262322244502).",
+  "_comment": "One table, read by every escaper that leaves a balanced leading code span unescaped and by the site renderer: termsafe (OpensBalancedCodeSpan), lifeboat (escapeLeadingMarker), ideate and intent's prepass (termsafe.BlockText). balanced says whether the value's leading backtick run opens a span; code is the text that span renders (iss-2609262322244502).",
   "cases": [
     {"in": "`a` rest", "balanced": true, "code": "a"},
     {"in": "``a```b`` rest", "balanced": true, "code": "a```b"},
