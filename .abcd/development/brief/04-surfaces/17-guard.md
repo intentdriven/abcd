@@ -326,8 +326,10 @@ variables its text holds, and a name runs on into the letters a list or a
 sequence places after it (`{$HOME,x}`, `$HOME/{.*,}`, `$HO{ME,}`,
 `$HO{M..M}E`); an expansion whose operator can leave the value as it is reads
 as the variable itself — a default, an assignment or an error message
-(`${HOME:-x}`), where the colon forms never print an empty value
-(`${1:-dist}/` is `${1}/` or `dist/`) and an empty word prints the empty text
+(`${HOME:-x}`), where the colon forms of a single parameter never print an
+empty value (`${1:-dist}/` is `${1}/` or `dist/`), while those of `$@` and
+`$*` test the parameter count and can (`${@:-x}/` is `/` after
+`set -- "" ""`), and an empty word prints the empty text
 (`${X:-}/` is also `/`), a trim or a pattern replacement (`${HOME%/}`, `${HOME#x}`,
 `${HOME/x/y}`), any substring of a variable, which also reads as the root
 and as nothing (`${X:1}`, `${PWD:0:1}`), while a slice of the positional
@@ -352,13 +354,23 @@ background, `$@`, `$*` and a positional one with no argument, `$_` after
 `"${1}"/` and `/$!` are `/`), and `$!` in a pattern as text of any length
 (`${PWD%%$!*}` is `${PWD%%*}`); a replacement's pattern is
 read both where bash 3.2 ends it and where bash 5 does, at a quoted `/`
-(`${X/"/"*/$HOME}`); and on a line that names IFS — in any word, in a
-declaration's, a `read`'s or a `printf -v`'s name or an assignment's name
-built by an expansion (`export ${I}FS=x`, `eval "I${F:-F}S=x"`), or in an
-arithmetic expression (`: $((IFS=1))`) — an unquoted default's or
+(`${X/"/"*/$HOME}`); and on a line that names IFS — in any word or
+anywhere in its text (`: $((IFS=1))`), or through a name built from an
+expansion — an unquoted default's or
 alternative's word, and an unquoted home, reads as every target, since the
 fields bash splits it into rest on that IFS (`IFS=x; rm -rf ${U:-x/x}`,
-`IFS=Uv; rm -rf $HOME/x`). A run of `/` written before the home names the
+`IFS=Uv; rm -rf $HOME/x`). A name built from an expansion is read by its
+shape in the raw text of each layer, never by its context, since bash
+assigns one in a declaration's or a `read`'s operand, an eval'd
+assignment and every arithmetic context (`$[ ]`, a subscript, a substring
+offset, `[[ -eq ]]`, an integer variable's value, a value an arithmetic
+reference evaluates): an expansion beside an `I`, `F` or `S` byte
+(`export ${I}FS=x`, `a[${I}FS=1]=x`, `eval "I${F:-F}S=x"`), one an
+assignment operator follows (`${N}=x`, `$x += 1`, `$x++`) or `++` comes
+before, and one standing whole as a name a declaration, a `read` or a
+`printf -v` assigns (`printf -v "$n" x`). That shape over-reads on the
+refusing side: `IFS=x rm -rf ${U:-x/x}`, and `read -p "$prompt" f;` or
+`mkdir ${V}S;` before `rm -rf ${U:-x/x}`. A run of `/` written before the home names the
 home (`/$HOME`). A trim that leaves the path above the home
 (`${HOME%/*}`) blocks as the home does. Each target is also compared as a path
 with its redundant separators taken out, since the kernel reads a run of
@@ -421,7 +433,8 @@ table does not name; a REST
 path an entry names by its root segment when the host serves that API under a
 prefix; an IFS the shell already holds when the line starts, or gains during the line
 through a name the guard does not read (a sourced file, a nameref set before
-the line),
+the line, a name made of expansions alone such as `${a}${b}`, or the whole
+value of a variable a command's output set, as in `x=$(cmd); : $((x))`),
 since every line is read from the default IFS; a pid list a kill reads through a variable or a file, or from a `ps |
 grep` chain;
 a payload inside a non-shell interpreter such as `python -c`, which is

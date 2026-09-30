@@ -289,6 +289,64 @@ func TestIFSNamedThroughAMarkTheWrittenCompareReads(t *testing.T) {
 	})
 }
 
+// TestANameBuiltFromAnExpansionTheWrittenCompareReads — reverify3-guardSet
+// finding 2, closed by one rule rather than one more context: a line that
+// builds a name from an expansion anywhere (an expansion touching a name
+// byte or another expansion, or standing where an assignment operator
+// follows) reads its IFS as unknown. Every form sets IFS in bash 3.2,
+// /bin/sh and bash 5.3, which then hand rm `""` and `/` for `${U:-1/1}`.
+func TestANameBuiltFromAnExpansionTheWrittenCompareReads(t *testing.T) {
+	const home = "rm-rf-root-or-home"
+	checkSpellingCases(t, []spellingCase{
+		// The four forms the round-3 reading never reached.
+		{`I=I; : $[${I}FS=1]; rm -rf ${U:-1/1}`, shellBare | shellSQ, VerdictBlock, home},
+		{`I=I; a[${I}FS=1]=x; rm -rf ${U:-1/1}`, shellBare | shellSQ, VerdictBlock, home},
+		{`I=I; : ${a[${I}FS=1]}; rm -rf ${U:-1/1}`, shellBare | shellSQ, VerdictBlock, home},
+		{`declare -i n; I=I; n=${I}FS=1; rm -rf ${U:-1/1}`, shellBare | shellSQ, VerdictBlock, home},
+		// Their siblings: an integer attribute by typeset, an increment,
+		// two expansions side by side, a substring offset, and a value an
+		// arithmetic reference evaluates.
+		{`typeset -i n; I=I; n=${I}FS=1; rm -rf ${U:-1/1}`, shellBare | shellSQ, VerdictBlock, home},
+		{`I=I; (( ${I}FS++ )); rm -rf ${U:-1/1}`, shellBare | shellSQ, VerdictBlock, home},
+		{`a=I; b=FS; export ${a}${b}=1; rm -rf ${U:-1/1}`, shellBare | shellSQ, VerdictBlock, home},
+		{`X=abc; I=I; : ${X:${I}FS=1}; rm -rf ${U:-1/1}`, shellBare | shellSQ, VerdictBlock, home},
+		{`I=I; x=${I}FS=1; : $((x)); rm -rf ${U:-1/1}`, shellBare | shellSQ, VerdictBlock, home},
+		// A whole expansion that is the target of an assignment.
+		{`x=$(cat f); (( $x=1 )); rm -rf ${U:-1/1}`, shellBare | shellSQ, VerdictBlock, home},
+		{`x=$(cat f); (( ++$x )); rm -rf ${U:-1/1}`, shellBare | shellSQ, VerdictBlock, home},
+		{`x=$(cat f); (( $x += 1 )); rm -rf ${U:-1/1}`, shellBare | shellSQ, VerdictBlock, home},
+		// An element of IFS leaves the split alone in bash, but the name is
+		// read all the same: an over-read on the fail-closed side.
+		{`I=I; eval "${I}FS[0]=x"; rm -rf ${U:-x/x}`, shellBare | shellSQ, VerdictBlock, home},
+		// The contexts the round-3 reading reached keep their verdict.
+		{`I=I; : $((x[${I}FS=1])); rm -rf ${U:-1/1}`, shellBare | shellSQ, VerdictBlock, home},
+		{`I=I; [[ 1 -eq ${I}FS=1 ]]; rm -rf ${U:-1/1}`, shellBare | shellSQ, VerdictBlock, home},
+		{`I=I; for (( ${I}FS=1; 0; )); do :; done; rm -rf ${U:-1/1}`, shellBare | shellSQ, VerdictBlock, home},
+		{`I=I; while (( ${I}FS=1 )); do break; done; rm -rf ${U:-1/1}`, shellBare | shellSQ, VerdictBlock, home},
+		{`I=I; let "${I}FS=1"; rm -rf ${U:-1/1}`, shellBare | shellSQ, VerdictBlock, home},
+		{`I=I; printf -v${I}FS x; rm -rf ${U:-x/x}`, shellBare | shellSQ, VerdictBlock, home},
+		{`I=I; env ${I}FS=x true; rm -rf ${U:-x/x}`, shellBare | shellSQ, VerdictBlock, home},
+		{`f() { local ${I}FS=x; rm -rf ${U:-x/x}; }; f`, shellBare | shellSQ, VerdictBlock, home},
+		{`eval "export I${F:-F}S=x"; rm -rf ${U:-x/x}`, shellBare | shellSQ, VerdictBlock, home},
+		{`I=I; rm -rf $HOME/x; export ${I}FS=U`, shellBare | shellSQ, VerdictBlock, home},
+		// The look-alikes: a name the line writes, a plain subscript, a
+		// value the line spells, and an expansion beside text no name the
+		// shell splits on can be built from.
+		{`IFS= read -r f; rm -rf "$f"`, shellBare | shellSQ, VerdictAllow, ""},
+		{`IFS=, read -ra arr <<< "$x"; rm -rf "${arr[0]}"`, shellBare | shellSQ, VerdictAllow, ""},
+		{`n=$((n+1)); rm -rf ${U:-x/x}`, shellBare | shellSQ, VerdictAllow, ""},
+		{`a[$i]=x; rm -rf ${U:-x/x}`, shellBare | shellSQ, VerdictAllow, ""},
+		{`export PATH=$HOME/bin:$PATH; rm -rf ${U:-x/x}`, shellBare | shellSQ, VerdictAllow, ""},
+		{`mkdir -p build_${V}; rm -rf ${U:-x/x}`, shellBare | shellSQ, VerdictAllow, ""},
+		{`rm -rf $HOME/.cache/app_${V}`, shellBare | shellSQ, VerdictAllow, ""},
+		{`(( $n == 1 )) && rm -rf ${U:-x/x}`, shellBare | shellSQ, VerdictAllow, ""},
+		{`: $(($n <= 1)); rm -rf ${U:-x/x}`, shellBare | shellSQ, VerdictAllow, ""},
+		{`[ $a = b ] && rm -rf ${TMPDIR:-/tmp}/x`, shellBare | shellSQ, VerdictAllow, ""},
+		{`git log --$fmt; rm -rf ${U:-x/x}`, shellBare | shellSQ, VerdictAllow, ""},
+		{`rm -rf ${A:-x}${B:-$HOME}/x`, shellBare | shellSQ, VerdictAllow, ""},
+	})
+}
+
 // TestColonDefaultsOfAnEmptyParameterTheWrittenCompareReads —
 // reverify-guardSet finding 2. With the colon, a default, an assignment and
 // an error message treat an empty parameter as unset, so `${1:-dist}` with

@@ -248,7 +248,9 @@ builds them: as the command in command position, as operands after it, and at
 every payload layer the guard follows, so a document whose own text is
 `$(cat <<'F' … F)` is read too. Text written in the word is not split, as bash
 does not split it, and an assignment's value is not split either. On a command
-line where any other command names IFS (`IFS=x;`, `export IFS=x`), an unquoted
+line where any other command names IFS (`IFS=x;`, `export IFS=x`, or a name built
+from an expansion anywhere in the line's text, such as `export ${I}FS=x` or
+`: $[${I}FS=1]`), an unquoted
 fixed output is a **block** (`ifs-split-unread`): the guard splits on the default
 IFS only, and refuses rather than work out which assignment reaches which
 expansion. A prefix assignment (`IFS=x $(…)`) does not reach its own command's
@@ -390,7 +392,9 @@ runs, or `pkill` or `killall` as the program a variable names (`$P make`) —
 because reading each would refuse the ordinary commands a variable carries a
 value for, an IFS the shell already holds when
 the line starts or gains during the line through a name the guard does not read
-(a sourced file, a nameref set before the line; every line is read from the default IFS), a hazard inside a non-shell interpreter's payload (`python -c`,
+(a sourced file, a nameref set before the line, a name made of expansions
+alone such as `${a}${b}`, the whole value of a variable a command's output set;
+every line is read from the default IFS), a hazard inside a non-shell interpreter's payload (`python -c`,
 `perl -e`) — one opaque token the tokenizer cannot read, today a silent allow, not
 a warn (a warn for it is a recorded design target, not yet implemented), or a
 dangerous form no entry describes. Nor does an allow see what a lone substitution

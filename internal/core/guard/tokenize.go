@@ -92,12 +92,12 @@ type segment struct {
 	// the token, where the variable is the unknown word's mark
 	// (iss-2609290321312087). nil when no word holds a variable.
 	spelled map[int][]string
-	// arithmeticAssigns records that the line holds an arithmetic
-	// expression that can assign IFS (arithmeticNamesIFS): `: $((IFS=1))`
-	// sets it, and the expression leaves no word to read the name in. It
-	// rides on an empty segment of its own, as substitutionUnread does, and
-	// namesIFS reads it.
-	arithmeticAssigns bool
+	// namesIFSInText records that the text a tokenize call read holds the
+	// name IFS or builds a name from an expansion (buildsName), wherever it
+	// stands: an arithmetic body or a subscript leaves no word to read it
+	// in. It rides on an empty segment of its own, as substitutionUnread
+	// does, and namesIFS reads it.
+	namesIFSInText bool
 	// ifsSplit records, per token index, a spelled word whose fields rest on
 	// the default IFS (ifsSplits in unknown.go), which a line that names IFS
 	// reads as past its bound (capIFSSplits). nil when no word is.
@@ -550,9 +550,6 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 	// could not read, on an empty segment of its own. Once per call is enough:
 	// the verdict is the whole command's.
 	unreadRaised := false
-	// arithIFS records an arithmetic body that can assign IFS
-	// (segment.arithmeticAssigns), raised once, when the input ends.
-	arithIFS := false
 	unread := func() {
 		if !unreadRaised {
 			unreadRaised = true
@@ -841,7 +838,6 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 	// substitution inside it runs, so each one is followed.
 	arithmetic := func(body string) {
 		tally(len(body))
-		arithIFS = arithIFS || arithmeticNamesIFS(body)
 		for j := 0; j < len(body); {
 			switch {
 			case body[j] == '\\':
@@ -1519,7 +1515,6 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 				i++
 				break
 			}
-			arithIFS = arithIFS || arithmeticNamesIFS(line[i+3:end-1])
 			openSubstitution(parenArithExp, i, false)
 			parens[len(parens)-1].end = end
 			lastList = false
@@ -1604,7 +1599,6 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 					unread()
 				}
 				if end >= 0 {
-					arithIFS = arithIFS || arithmeticNamesIFS(line[i+2:end-1])
 					openSubstitution(parenArithExp, i, false)
 					parens[len(parens)-1].end = end
 					parens[len(parens)-1].bare = true
@@ -1764,42 +1758,28 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 	if len(pending) > 0 {
 		markHeredocUnterminated(&segs, chain)
 	}
-	if arithIFS {
-		segs = append(segs, segment{chain: chain, arithmeticAssigns: true})
+	if depth == 0 && (unwordedIFS(line, segs) || buildsName(line)) {
+		// The text of every substitution depth is in the line read at
+		// depth 0, so it is read once, there.
+		segs = append(segs, segment{chain: chain, namesIFSInText: true})
 	}
 	return segs, nil
 }
 
-// arithmeticNamesIFS reports whether an arithmetic expression's body can
-// assign IFS: it names IFS, or it assigns (`=`, `+=`, `<<=`, never `==`,
-// `!=`, `<=` or `>=`) and holds an expansion that can build the name
-// (`$((${I}FS=1))`). bash 3.2, /bin/sh, dash and bash 5.3 split
-// `${U:-1/1}` into `""` and `/` after `: $((IFS=1))`.
-func arithmeticNamesIFS(body string) bool {
-	tally(len(body))
-	if strings.Contains(body, "IFS") {
-		return true
-	}
-	if !strings.ContainsAny(body, "$`") {
-		return false
-	}
-	for i := 0; i < len(body); i++ {
-		if body[i] != '=' {
-			continue
-		}
-		if i+1 < len(body) && body[i+1] == '=' {
-			i++
-			continue
-		}
-		if i == 0 || strings.IndexByte("=!<>", body[i-1]) < 0 {
-			return true
-		}
-		if i >= 2 && body[i-2] == body[i-1] && body[i-1] != '=' && body[i-1] != '!' {
-			// `<<=` and `>>=` assign.
-			return true
+// unwordedIFS reports whether line holds the name IFS more times than the
+// words segs read from it do: an arithmetic body (`: $((IFS=1))`), a
+// subscript or an offset inside a parameter expansion leave no word to
+// read it in. A name the words hold is read there (namesIFS), where a
+// prefix assignment does not reach its own command's substitution
+// (splitAfterIFS).
+func unwordedIFS(line string, segs []segment) bool {
+	n := strings.Count(line, "IFS")
+	for _, s := range segs {
+		for _, tok := range s.tokens {
+			n -= strings.Count(tok, "IFS")
 		}
 	}
-	return false
+	return n > 0
 }
 
 // arithmeticOperand is the word an arithmetic expansion leaves in its

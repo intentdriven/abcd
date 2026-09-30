@@ -56,6 +56,7 @@ var wordReaders = map[string]string{
 	"splitStringValue":     "commandArrivals and nameCouldBe",
 	"scanEnvSplits":        "readWord, flagCouldBe and clusterCouldCarry on every unknown word",
 	"launcherPayloads":     "readWord on every word",
+	"nameAt":               "exempt: reads the raw text around an expansion for an assignment operator (`++`, `-=`), never a command word or a flag",
 	"guessedEvalPayload":   "exempt: reads eval's literal `--`; vanishable drops a word that may print nothing",
 	"evalPayload":          "exempt: reads eval's literal `--`, which no substitution spells (the rule's terminator clause)",
 	"shellCPayloads":       "clusterCouldCarry on every word",
