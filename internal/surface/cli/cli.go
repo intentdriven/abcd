@@ -4682,12 +4682,25 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			// A reading item's promotion matches the draft it mints (ruling
+			// DQ2b, adr-2609300821558671), configured as the capture verb's is
+			// and never a refusal. The issue route and link mode mint nothing
+			// the match would compare.
+			var mc *match.Config
+			var matchRefused *match.Outcome
+			readingMint := strings.HasPrefix(args[0], issueschema.ReadingItemFamily+"-") && promoteIntent == ""
+			if readingMint {
+				mc, matchRefused = resolveMatch(cmd.ErrOrStderr(), "capture promote", repoRoot)
+			}
 			res, err := capture.Promote(capture.PromoteRequest{
 				RepoRoot: repoRoot, ID: args[0], LinkIntent: promoteIntent, Grounds: promoteGrounds,
-				ProductionMode: mode,
+				ProductionMode: mode, Match: mc,
 			})
 			if err != nil {
 				return captureRefusal("promote", err)
+			}
+			if readingMint && res.Match == nil {
+				res.Match = matchRefused
 			}
 			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, res, func(w io.Writer) {
 				verb := "minted"
@@ -4705,6 +4718,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 				if res.BackEdgeKept != "" {
 					fmt.Fprintf(w, "back_edge: kept %s\n", termsafe.Sanitize(res.BackEdgeKept))
 				}
+				renderMatch(w, res.Match)
 				emitRedactionNote(w, res.Redacted, res.Degraded)
 			})
 		},
@@ -4809,7 +4823,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 	dispositionCmd.Flags().StringVar(&dispGrounds, "grounds", "", "disposition_grounds: why this answer (free text; required on every state except held)")
 	dispositionCmd.Flags().StringVar(&dispExit, "exit-condition", "", "what would end a held disposition (required on held; a hold exits only through a superseding disposition that cites it)")
 	dispositionCmd.Flags().StringVar(&dispSupersedes, "supersedes", "", "the standing dsp-N this answer replaces; required once an item already carries one")
-	dispositionCmd.Flags().StringVar(&dispRecurs, "recurs", "", "comma-separated prior rdi-ids this item recurs from — the recorded form of a warm recognition, never a mechanical join")
+	dispositionCmd.Flags().StringVar(&dispRecurs, "recurs", "", "comma-separated prior rdi-ids this item recurs from — the researcher's confirmed recognition; the ingest's duplicates/refines link is only a proposal")
 	// The two-axis hold field is RESERVED and dormant. The flags exist so the
 	// reservation is a behaviour a caller meets rather than a comment nobody
 	// reads: a populated value is refused, and the refusal states the grammar.

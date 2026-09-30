@@ -397,7 +397,7 @@ Answer one reading item with a disposition record: Writes the record keyed to th
       --grounds string               disposition_grounds: why this answer (free text; required on every state except held)
       --hold-frame-location string   RESERVED (dormant): the frame element a hold sits at; a populated value is refused until activation is ruled
       --hold-moscow string           RESERVED (dormant): must | should | could | wont; a populated value is refused until activation is ruled
-      --recurs string                comma-separated prior rdi-ids this item recurs from — the recorded form of a warm recognition, never a mechanical join
+      --recurs string                comma-separated prior rdi-ids this item recurs from — the researcher's confirmed recognition; the ingest's duplicates/refines link is only a proposal
       --state string                 the answer: accepted | rejected | declined | held (availability varies by the item's position)
       --supersedes string            the standing dsp-N this answer replaces; required once an item already carries one
 ```
@@ -2547,6 +2547,11 @@ marker the sweep ROLLS THAT RUN'S READING RECORDS OUT OF THE COMMITTED LEDGER, b
 run never happened; where the marker is there the run stands and only the stage goes. A
 refused run reports the orphans it left in place, and the ids a sweep removed are reported as
 rolled_back_records on every exit, including a failing one.
+
+Every stored finding is matched against the record as a capture is: its pattern and body are
+compared with the open and resolved issues, the intents and every earlier reading item, never
+with another item of the same run, and a likely repeat is written onto the reading record as a
+duplicates: or refines: link and shown, printed and as matches in --json.
 
 **Flags:**
 
