@@ -15,7 +15,7 @@ The design record for itd-2609212103572513: the `target_release` field, its verb
 
 1. **The field and verbs**: `intent target` and `plan --target` in `internal/core/intent`, version-validated through the release package's parser; lint row in `record_schema` (criterion 1).
 2. **The report**: `launch.DryRun` and `launch.Ship` read planned intents with a target and list those not in `shipped/` (criterion 2).
-3. **The move**: the ship path rewrites each listed target to the derived next version in the receipts commit and appends a changelog line (criterion 3).
+3. **The move**: the ship path rewrites each listed target the cut passes to `next` (ruling BS1 of 2026-09-29, the intent's decision 4) in the write that rolls the changelog, and the dated section names the move in one line (criterion 3).
 4. **The board**: the status block reads the field (criterion 4).
 
 ## Out of scope
