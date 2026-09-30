@@ -20,8 +20,6 @@ internal/core/capture.ConstrualFingerprint
 internal/core/capture.GlossaryFingerprint
 internal/core/capture.ScopeFingerprint
 internal/core/changelog.DeriveNext
-internal/core/cite.NewHTTPChecker
-internal/core/cite.ParseReceipt
 internal/core/credential.KeychainItem
 internal/core/credential.Machine
 internal/core/credential.Set
@@ -84,7 +82,6 @@ internal/core/lint.CitationAgeSummaryAt
 internal/core/lint.LintAt
 internal/core/lint.PrincipleEvidence
 internal/core/lint.UnresolvedProseCitationsInText
-internal/core/machineload.ParseLoadavgSysctl
 internal/core/mdrecord.IsHeading
 internal/core/memory.BuildCitation
 internal/core/memory.CountSourceTokens
