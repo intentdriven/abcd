@@ -12,6 +12,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -162,7 +163,7 @@ func (d *Dispatcher) runOn(ctx context.Context, name string, req Request) (Answe
 	if verr := d.Validate(req, ans); verr != nil {
 		detail := termsafe.Sanitize(verr.Error())
 		if len(detail) > maxDetail {
-			detail = detail[:maxDetail] + "..."
+			detail = strings.ToValidUTF8(detail[:maxDetail], "") + "..."
 		}
 		return Answer{}, fail(name, ReasonInvalid, "the contract's validator refused its answer: %s", detail)
 	}

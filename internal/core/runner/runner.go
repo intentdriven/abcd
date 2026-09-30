@@ -131,16 +131,6 @@ func fail(runner string, reason Reason, format string, args ...any) *Failure {
 	return &Failure{Runner: runner, Reason: reason, Detail: fmt.Sprintf(format, args...)}
 }
 
-// failureOf is err as a Failure; an error that is not one is a failed run
-// whose detail is sanitised.
-func failureOf(runner string, err error) *Failure {
-	var f *Failure
-	if errors.As(err, &f) {
-		return f
-	}
-	return fail(runner, ReasonFailed, "%s", termsafe.Sanitize(err.Error()))
-}
-
 var (
 	roleRe    = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,63}$`)
 	sessionRe = regexp.MustCompile(`^[A-Za-z0-9._-]{1,128}$`)
