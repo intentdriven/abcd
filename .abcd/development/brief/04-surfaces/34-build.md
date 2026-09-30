@@ -474,10 +474,20 @@ until the last step.
    branch, never opened twice.
 5. It reads the merge rule from the ruleset mirror (`.abcd/work/rulesets/`) at
    the lane's base, so the lane's own commits cannot change it (decision 3):
-   where an active ruleset gates the default branch through a merge queue, it
-   arms auto-merge with the queue's method; where none does, it leaves the pull
-   request open for a person to merge. Nothing is pushed to the lane after this
-   step.
+   where an active ruleset gates the default branch through a merge queue and
+   an active ruleset on it requires a person's approval, it arms auto-merge
+   with the queue's method; otherwise it leaves the pull request open for a
+   person to merge (ruling AM1). A pull_request rule requires approval when its
+   `required_approving_review_count` is one or more, or when
+   `require_code_owner_review` is set and a CODEOWNERS file at the lane's base
+   (`.github/`, the root or `docs/`) names at least one owner: a code-owner
+   review with nobody to own the change asks no person for anything. A missing
+   mirror requires nothing, so the pull request stays open; a mirror file that
+   cannot be read or parsed is refused, which also arms nothing. Where a queue
+   exists but nothing requires approval, the step's note, the run record and
+   `implement status` say "left open for a person to merge: the ruleset
+   requires no approval", and no later step arms it. Nothing is pushed to the
+   lane after this step.
 6. It fetches the default branch and waits, exiting 3, until the pushed head
    is an ancestor of it; only then does it remove the lane's worktree (never
    forced) and delete the lane's branch at a tip the same check proves landed,

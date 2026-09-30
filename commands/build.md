@@ -271,9 +271,14 @@ A lane's stages run in order:
    hand. It opens the pull request through `gh`, with a body built from the
    run's records and passed through the outbound scrub, re-reads the body the
    forge holds and strips a session URL or tool footer. It arms auto-merge with
-   the merge-queue method the ruleset mirror (`.abcd/work/rulesets/`) names, or
-   leaves the pull request open where no merge queue gates the default branch,
-   and pushes nothing to the lane afterwards. Then `step` exits 3 until the
+   the merge-queue method the ruleset mirror (`.abcd/work/rulesets/`) names
+   only where that mirror also requires a person's approval (an approving
+   review count of one or more, or a code-owner review with a CODEOWNERS file
+   naming an owner). Otherwise it leaves the pull request open for a person to
+   merge, says so in the step's note and the run record ("left open for a
+   person to merge: the ruleset requires no approval"), and never arms it on a
+   later step; a missing mirror requires nothing. It pushes nothing to the lane
+   afterwards. Then `step` exits 3 until the
    pushed head is an ancestor of the default branch on `origin`; stop driving
    the run and come back later. Once it is, the loop removes the lane's
    worktree and branch, the lane is done, and the next pending step opens the

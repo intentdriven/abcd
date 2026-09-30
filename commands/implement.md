@@ -299,9 +299,14 @@ remove the run's directory, `.abcd/.work.local/run/<run-id>`.
    records and passed through the outbound scrub, then re-reads the body the
    forge holds and strips a session URL or tool footer the harness appended.
 5. It reads the merge rule from the ruleset mirror (`.abcd/work/rulesets/`) at
-   the lane's base: where a merge queue gates the default branch it arms
-   auto-merge with the queue's method, and elsewhere it leaves the pull request
-   open for a person to merge. Nothing is pushed to the lane after this.
+   the lane's base: where a merge queue gates the default branch AND a ruleset
+   requires a person's approval (an approving review count of one or more, or
+   a code-owner review with a CODEOWNERS file naming an owner) it arms
+   auto-merge with the queue's method. Elsewhere it leaves the pull request
+   open for a person to merge, and `implement status` shows the landing as
+   "left open for a person to merge: the ruleset requires no approval" where a
+   queue exists but nothing requires approval; a later step never arms it, and
+   a missing mirror requires nothing. Nothing is pushed to the lane after this.
 6. It waits (exit 3) until the pushed head is an ancestor of the default branch
    on `origin`, then removes the lane's worktree and branch, and the lane is
    done. A pull request closed without merging, or merged in a way that rewrote
