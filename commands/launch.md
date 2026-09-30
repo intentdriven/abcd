@@ -18,8 +18,9 @@ Two flows over the abcd binary, kept apart on purpose:
   `.abcd/.work.local/logs/launch/`.
 - **ship** — the release cut: derive the version from what shipped, compose the
   changelog prose and the release page, write them. It writes the dated section
-  of `CHANGELOG.md`, the release page `RELEASE.md`, and the outgoing page's copy
-  under `.abcd/development/releases/`; in a repository that publishes a versioned
+  of `CHANGELOG.md`, the release page `RELEASE.md`, the outgoing page's copy
+  under `.abcd/development/releases/`, and the `target_release` line of every
+  planned intent whose target the cut passed, moved to `next`; in a repository that publishes a versioned
   plugin it also pins the release's plugin archive in
   `.claude-plugin/marketplace.json` (refreshing the surface snapshot beside it).
   It **never publishes**.
@@ -241,7 +242,13 @@ Then summarise the JSON for the user:
   Each entry names its file relative to the repository, `resolved_path` included.
 - `scan.hard_fails` — secret/PII findings that would block the release.
   `scan.findings` keeps at most 10,000 of them; `scan.findings_omitted`, when
-  present, counts the rest, and `scan.hard_fails` counts every one.
+  present, counts the rest, and `scan.hard_fails` counts every one. In a
+  repository that armed gitleaks in `.abcd/config/gitleaks.json`, gitleaks runs
+  over every text file of the payload beside the native scanner and its
+  findings count here too. Armed with no gitleaks binary installed, the scan
+  lists the gap in `scan.unscanned` (as `(configured scanner augmenter)`, the
+  reason in `scan.unscanned_why`) and counts it as a hard fail, so the release
+  refuses until gitleaks is installed or the config sets `enabled` to `false`.
 - `smoke.ok` — whether the payload would install (a plugin only; for another
   kind the `installability-smoke` row is `not_armed`, as are `hook-compliance`,
   the deep tier and the parity diff, each naming the declared kind): both plugin manifests parse,
@@ -386,7 +393,8 @@ The cut also lists every planned intent that names a release it must land by
 (`targets`, one `targeted:` line each in the render, and `targets_error` when
 the intent store could not be read): targeted and not shipped. The list never
 refuses the cut and never changes the exit code; relay it with the report, and
-the ingest in step 3 reports the same list beside what it wrote.
+the ingest in step 3 reports the same list beside what it wrote, and moves
+each target the cut passes to `next` (below).
 
 The emit render ends with the **receipts protocol**, a numbered checklist the
 binary composes from the committed `release.yml`: commit the roll, run each
@@ -407,6 +415,21 @@ Exit codes gate the flow:
   findings gate* below). A refusal is a result to relay, not a crash, and not
   something to work around.
 - **2** — a structural fault (the repository could not be read). Relay it and stop.
+
+**The cut needs a docs review for the commit it runs on.** When any intent
+reached `shipped/` since the base tag, the cut runs the doc-fidelity gate over
+all of them and refuses (`doc-fidelity`, "run the docs review first") until a
+review is saved for HEAD:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" docs fidelity record --verdict-json verdict.json
+```
+
+`/abcd:docs` (its `fidelity` section) says how to compose the verdict. The
+review is labelled with the commit it read and kept in the checkout's local
+tier, so a review saved on a feature branch does not carry over: a cut made on
+`main` needs one recorded there for the merge commit, which means running the
+reviewer after the merge.
 
 ### The findings gate
 
@@ -497,6 +520,21 @@ the tier, one stderr line says the step goes through the harness instead. A
 set, a connection this machine has not configured, or a routing table that
 cannot be read exits 2 before anything is written. With no table accepted and no
 `--route`, the step asks for `host-decides` and nothing is printed.
+
+**A step routed to a provider has already run.** When the person has pointed
+`oracle.roles.release-changelog-composer` at a provider in
+`~/.abcd/config.json`, the emit step sends the emitted cut there itself,
+ingests the answer as the ingest step would, and prints the ingest's result
+with a `route` receipt whose `connection_used` names the provider. **When
+`route.connection_used` is not `harness`, the cut is already ingested: skip
+step 2 and relay the result.** A provider that holds a key takes only
+self-contained agents (ruling DR5 of 2026-09-29); the composer reads records
+at their paths, so pointed at such a provider the emit exits 2 before anything
+is sent, naming the rule and `oracle.bundled_context_providers`. A provider
+that could not be reached leaves the step to you with one stderr line. A
+`--changelog-json` you composed while the composer is routed to a provider is
+refused at exit 2; `--route release-changelog-composer=host-decides` keeps one
+run on the harness. A dispatched cut stages no `--payload-dir`.
 
 ### 2. Compose the prose (host-delegated)
 
@@ -627,6 +665,16 @@ footer), and the page against the repository's persona registry
 
 On success it writes, in this order, only after every check has passed:
 
+0. **the moved targets** — every planned intent whose `target_release` the cut
+   passes (`next`, which named this release, or a tag at or below the derived
+   one) targets `next` — the following release, whatever version it derives —
+   and its record is rewritten in the same write when it named a tag. A target
+   past the cut stays. The dated section names every move in one line under
+   its notice, ahead of the first change-type heading: `Targeted and not
+   shipped in this release, so each targets the next release (next): itd-N
+   (targeted vX.Y.Z), …`. A record whose target changed since the cut read it
+   stops the cut. The report prints one `moved:` line per intent and the JSON
+   carries `moved_targets` (`id`, `path`, `from`).
 1. **the archive** — the outgoing `RELEASE.md` moves to
    `.abcd/development/releases/<its version>.md`, the version read from its own
    heading. It never overwrites: an archive page already standing there stops

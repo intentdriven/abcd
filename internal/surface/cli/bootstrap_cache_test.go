@@ -11,6 +11,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/intentdriven/abcd/internal/core/update"
 )
 
 // spc-35: the harness's persistent per-plugin data directory
@@ -348,8 +350,11 @@ func TestBootstrapNewReleaseLeavesForeignPathFileAlone(t *testing.T) {
 // shell is known to resolve (iss-207).
 func assertPathRefreshRefusedLoudly(t *testing.T, out, home, pathCopy, reason string) {
 	t.Helper()
-	if got := firstLine(out); !strings.HasPrefix(got, "abcd bootstrap: installed") {
-		t.Errorf("the success must still lead the first visible line; first line = %q", got)
+	// A new release leads with the update line it swapped in (CJ1b); the
+	// install success follows it on the same line.
+	got := strings.TrimPrefix(firstLine(out), update.UpdatedLine("v9.9.8", bootstrapTag)+". ")
+	if !strings.HasPrefix(got, "abcd bootstrap: installed") {
+		t.Errorf("the success must still lead the first visible line; first line = %q", firstLine(out))
 	}
 	if strings.Count(strings.TrimSpace(out), "\n") != 0 {
 		t.Errorf("the notice must stay one line — only the first line of a hook's stderr reaches the transcript; output %q", out)

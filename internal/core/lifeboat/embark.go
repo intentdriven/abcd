@@ -72,7 +72,7 @@ func EmbarkProbe(lifeboatDir, targetDir string) (EmbarkPlan, error) {
 // having written NOTHING. It judges the plan again under the target's ledger
 // and intent locks, and a conflict found then refuses the same way. Otherwise
 // it writes each ActionCreate file through
-// os.Root containment + independent lexical validation + fsutil.WriteFileAtomic,
+// os.Root containment + independent lexical validation + an exclusive create,
 // skips ActionUnchanged files, ensures the marker last, and returns the summary.
 func EmbarkFrom(lifeboatDir, targetDir string) (EmbarkResult, error) {
 	pr, err := runPlanner(lifeboatDir, targetDir)
@@ -178,7 +178,7 @@ func rejudgeEmbark(targetAbs string, planned []PlannedEmbark) ([]PlannedEmbark, 
 	return out, conflicts
 }
 
-// VerifyManifest re-hashes every non-excluded file in the lifeboat and compares
+// verifyManifest re-hashes every non-excluded file in the lifeboat and compares
 // the result to _provenance.json's manifest_sha256. It enforces the trust
 // boundary during the walk: it refuses a symlink anywhere in the tree, a path
 // that fails validRelPath, a file over maxEmbarkFileBytes, a tree over
@@ -187,7 +187,7 @@ func rejudgeEmbark(targetAbs string, planned []PlannedEmbark) ([]PlannedEmbark, 
 // nil iff the lifeboat is intact. The excluded set (_provenance.json, the
 // post-pack layer-3 graveyard/lessons.json and graveyard/low-confidence/**) is
 // the same set the packer left out of manifest_sha256.
-func VerifyManifest(dir string) error {
+func verifyManifest(dir string) error {
 	abs, err := filepath.Abs(dir)
 	if err != nil {
 		return err
@@ -288,7 +288,7 @@ func runPlanner(lifeboatDir, targetDir string) (plannerResult, error) {
 		return plannerResult{}, update.TooNew("lifeboat",
 			prov.SchemaVersion, SchemaVersion)
 	}
-	if err := VerifyManifest(lifeboatAbs); err != nil {
+	if err := verifyManifest(lifeboatAbs); err != nil {
 		return plannerResult{}, err
 	}
 	// Gate the target: a real directory (a symlinked or absent target is
@@ -410,7 +410,7 @@ func resolveTarget(rel string) (family, targetRel string, disp disposition, deta
 			continue
 		}
 		rest := rel[len(f.LifeboatPrefix):]
-		if f.Buckets == nil {
+		if f.Buckets == nil && f.BucketValid == nil {
 			// Flat family (adrs): <prefix><leaf>.
 			leaf := rest
 			if strings.Contains(leaf, "/") || safeLeaf(leaf) == "" {
@@ -432,11 +432,18 @@ func resolveTarget(rel string) (family, targetRel string, disp disposition, deta
 			return f.Name, f.TargetPrefix + f.DefaultBucket + "/" + leaf, dispPlanned, ""
 		}
 		bucket, leaf := seg[0], seg[1]
-		if !containsStr(f.Buckets, bucket) {
+		known := containsStr(f.Buckets, bucket)
+		if f.BucketValid != nil {
+			known = f.BucketValid(bucket)
+		}
+		if !known {
 			return f.Name, "", dispUnmapped, "unknown " + f.Name + " bucket " + sanitize(bucket)
 		}
 		if strings.Contains(leaf, "/") || safeLeaf(leaf) == "" {
 			return f.Name, "", dispUnmapped, "unsafe leaf under " + f.Name
+		}
+		if f.Leaf != "" && leaf != f.Leaf {
+			return f.Name, "", dispUnmapped, "only " + f.Leaf + " is embarked under " + f.Name
 		}
 		return f.Name, f.TargetPrefix + bucket + "/" + leaf, dispPlanned, ""
 	}
@@ -523,11 +530,12 @@ func checkParents(targetAbs, targetRel, lifeboatRel string) *Conflict {
 }
 
 // writeEmbark performs the no-conflict write set through the two-layer idiom
-// (os.Root containment + independent lexical validation + the canonical
-// fsutil.WriteFileAtomic, reusing writeIntoLifeboat). Per-file atomic; the SET is
+// (os.Root containment + independent lexical validation + an exclusive create
+// through createIntoLifeboat). A file whose write faults is removed; the SET is
 // not transactional, which is acceptable — the conflict gate ran first, unchanged
-// files are skipped, and a re-run is idempotent, so a partial write from an I/O
-// fault re-completes on the next embark.
+// files are skipped, and a re-run is idempotent, so a partial set from an I/O
+// fault re-completes on the next embark. A file a crash leaves half-written is
+// reported by that embark as a conflict, never replaced.
 func writeEmbark(targetAbs string, planned []PlannedEmbark) (written, unchanged, bytesWritten int, families map[string]int, err error) {
 	families = map[string]int{}
 	root, err := os.OpenRoot(targetAbs)
@@ -543,7 +551,13 @@ func writeEmbark(targetAbs string, planned []PlannedEmbark) (written, unchanged,
 		if !validRelPath(p.TargetPath) {
 			return 0, 0, 0, nil, fmt.Errorf("refusing unsafe target path %q", p.TargetPath)
 		}
-		if err := writeIntoLifeboat(root, targetAbs, p.TargetPath, p.Content); err != nil {
+		// Every planned write is a create, so it is an exclusive one: a file that
+		// landed at the target after the rejudge, from a writer that took none of
+		// the locks, fails the write loudly instead of being replaced.
+		if err := createIntoLifeboat(root, p.TargetPath, p.Content); err != nil {
+			if errors.Is(err, os.ErrExist) {
+				return 0, 0, 0, nil, fmt.Errorf("refusing to replace %s: it appeared after the plan judged it absent: %w", p.TargetPath, err)
+			}
 			return 0, 0, 0, nil, err
 		}
 		written++
@@ -793,7 +807,7 @@ func readProvenance(abs string) (Provenance, error) {
 
 // isManifestExcluded reports whether a lifeboat path was left out of
 // manifest_sha256 (the header and the post-pack layer-3 interpretation), so
-// VerifyManifest reproduces the pinned hash exactly.
+// verifyManifest reproduces the pinned hash exactly.
 func isManifestExcluded(rel string) bool {
 	for _, e := range manifestExcludedExact {
 		if rel == e {

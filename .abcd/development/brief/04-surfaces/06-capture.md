@@ -33,6 +33,7 @@ binary.
 | `migrate` | — | shipped |
 | `promote` | — | shipped |
 | `reframe` | — | shipped |
+| `remedy` | — | shipped |
 | `resolve` | — | shipped |
 | `surprise` | — | shipped |
 | `wontfix` | — | shipped |
@@ -62,7 +63,22 @@ with an auto-assigned `iss-N` and writes it to `open/`, and says that the record
 is not committed yet whenever git reports it so, which for a new record is always. Provenance and taxonomy
 are caller-supplied flags. Severity, category, source and the found-during
 context each carry a default, so the fast path stays fast; the location, slug
-and dependency flags have none. The `origin` field is derived from the verb that
+and dependency flags have none. The remedy has no default and is required:
+every new issue names the fix it proposes, one line, because a drain reads that
+field to decide whether the issue needs no decision, and a filing without one is
+refused with nothing written (ruling BX3 of 2026-09-29, recorded in the decision
+log; itd-82 decision 6). This tightens the one-line capture on purpose: a capture
+is one line of text and one line of remedy. A remedy chosen in an autonomous run
+cites its grounds in the record's text, a prior-art or state-of-the-art check
+where the fix depends on outside practice (principle `prefer-sota`). The one
+exception is abcd's own automatic filers, the consistency pass and every
+promoted inbox report: with no fix of a person's to propose they write
+`none (filed automatically)` (ruling H12 of the same day), the record is filed,
+and a drain skips it until a person writes a real remedy through the remedy
+sub-verb, which writes or replaces the field on an open issue. The fast path
+refuses that value from a person, in any case, so it always means a machine
+filed the record. A record filed before the remedy was required carries none; it
+stays readable and valid, and a drain lists it as ineligible. The `origin` field is derived from the verb that
 ran and is carried by no flag at all (itd-178), and a production-mode flag records
 how the text was produced. That last flag is not the fast path's alone:
 promotion stamps the draft it mints with it, and resolving and marking wontfix each
@@ -101,6 +117,19 @@ record unlinked, and the output says which. A person confirms a link by leaving
 it and removes it by deleting its line, which leaves an ordinary record. The
 match proposes no `reverses` and no `supersedes`: the itd-84 discipline keeps a
 reversal advisory and human.
+
+The same match runs on the ledger's two unattended writers, through the same
+core and configuration: a promoted inbox report is compared by its own title
+and prose, and each finding the consistency pass files by its summary and
+explanation. Neither compares the lines every record it files carries (the
+inbox's provenance, the pass's evidence line), on which two unrelated records
+would match, and the consistency pass never compares a record the same pass
+filed. The reading ingest runs it on every stored finding
+([`23-reading.md`](23-reading.md)), and promoting an accepted reading item
+matches the draft it mints on the item's pattern and body, since the pattern
+alone is too short to compare, and links the draft as a quoted-text create is
+linked (ruling DQ2b,
+[adr-2609300821558671](../../decisions/adrs/2609300821558671-a-reading-finding-is-matched-against-the-record-when-it-is.md)).
 
 One flag belongs to one category: the lapse-instant flag carries the RFC 3339
 instant a recorded discipline gave way, for the `lapse` category, and it has no
@@ -185,8 +214,10 @@ keyed reading record. Once an item already carries a standing answer, a new one
 must cite it as superseded: that is the only exit from a hold, and what
 makes the standing disposition the one no sibling supersedes. An item the
 researcher recognises as one that has come round before says so as a recurrence,
-naming the earlier items it recurs from; that is a recorded recognition, never a
-join a machine derived. Two hold-shaping flags are reserved and dormant, and a
+naming the earlier items it recurs from; that is the researcher's confirmed
+recognition. The machine's proposal of the same thing is the `duplicates:` or
+`refines:` link the reading ingest writes onto the item
+([adr-2609300821558671](../../decisions/adrs/2609300821558671-a-reading-finding-is-matched-against-the-record-when-it-is.md)). Two hold-shaping flags are reserved and dormant, and a
 populated value is refused until activation is ruled.
 
 **At the widening position the order is fixed: characterise first, admit
@@ -377,7 +408,7 @@ lapsed_at: <rfc3339>       # on a lapse: the instant the discipline gave way, no
 origin: researcher-authored|extracted-from-record|contributed-by-reading <rdg-N>/<rdi-N>
 production_mode: hand-written|dictated-and-formatted|scribe-transcribed
 details: "<text>"          # optional structured detail
-remedy: "<text>"           # the proposed fix, one line; abcd drain takes no issue without one (itd-82)
+remedy: "<text>"           # the proposed fix, one line; required of every new issue, "none (filed automatically)" from an automatic filer (itd-82)
 suggested_fix: "<text>"    # the older spelling of remedy, read as it where a record carries no remedy
 related_intents: [itd-N, ...]  # an intent naming this issue back in related_issues is the one it was promoted into
 related_specs: [spc-N, ...]
@@ -604,7 +635,7 @@ _Generated from the command tree; a drift test fails `go test` when this appendi
 
 ### `abcd capture`
 
-Sub-verbs: `abcd capture admit`, `abcd capture defer`, `abcd capture disposition`, `abcd capture link`, `abcd capture list`, `abcd capture mentions`, `abcd capture migrate`, `abcd capture promote`, `abcd capture reframe`, `abcd capture resolve`, `abcd capture surprise`, `abcd capture wontfix`.
+Sub-verbs: `abcd capture admit`, `abcd capture defer`, `abcd capture disposition`, `abcd capture link`, `abcd capture list`, `abcd capture mentions`, `abcd capture migrate`, `abcd capture promote`, `abcd capture reframe`, `abcd capture remedy`, `abcd capture resolve`, `abcd capture surprise`, `abcd capture wontfix`.
 
 | Flag | Type |
 |---|---|
@@ -706,6 +737,12 @@ Sub-verbs: none.
 | `--grounds` | string |
 | `--occasioned-by` | string |
 | `--open` | bool |
+
+### `abcd capture remedy`
+
+Sub-verbs: none.
+
+Flags: none.
 
 ### `abcd capture resolve`
 

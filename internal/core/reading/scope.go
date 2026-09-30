@@ -594,7 +594,7 @@ func validPresetName(name string) error {
 	if !presetNameRe.MatchString(name) {
 		return fmt.Errorf("%s: preset %q is not a valid name", PresetConfigPath, name)
 	}
-	for _, k := range Kinds() {
+	for _, k := range allKinds() {
 		if string(k) == name {
 			return fmt.Errorf("%s: preset %q collides with the material kind of the same name; "+
 				"one token may not mean two things", PresetConfigPath, name)
@@ -639,8 +639,8 @@ func refuseDuplicateKeys(raw []byte) error {
 // runs over the version 2 entry set, which a version 1 file has already been
 // read into, so every refusal spc-69 named survives the schema move.
 func validateEntries(pf PresetFile) error {
-	kinds := make(map[Kind]bool, len(Kinds()))
-	for _, k := range Kinds() {
+	kinds := make(map[Kind]bool, len(allKinds()))
+	for _, k := range allKinds() {
 		kinds[k] = true
 	}
 	for _, pos := range sortedPositionKeys(pf) {
@@ -742,7 +742,7 @@ func validPresetPath(raw string) error {
 	return nil
 }
 
-// PresetFor returns the committed entry for one position.
+// presetFor returns the committed entry for one position.
 //
 // It takes no token, because there is none to take: the invocation is a
 // position and a target state, and which entry applies follows from the
@@ -750,7 +750,7 @@ func validPresetPath(raw string) error {
 // position refuses rather than defaulting to everything — a position served the
 // whole corpus because its entry was forgotten is exactly the silent widening
 // the presets exist to close.
-func PresetFor(pf PresetFile, position Position) (PositionEntry, error) {
+func presetFor(pf PresetFile, position Position) (PositionEntry, error) {
 	e, ok := pf.Positions[string(position)]
 	if !ok || len(e.Kinds) == 0 {
 		return PositionEntry{}, fmt.Errorf("%s names no entry for the %s position, so a run there "+
@@ -760,11 +760,11 @@ func PresetFor(pf PresetFile, position Position) (PositionEntry, error) {
 	return e, nil
 }
 
-// PresetWindow returns the declaration the entry for one position carries, or
+// presetWindow returns the declaration the entry for one position carries, or
 // nil where none is declared — which at schema version 2 cannot happen, and at
 // version 1 always does. The size report says which of the two it is looking at
 // rather than rendering a zero.
-func PresetWindow(pf PresetFile, position Position) *Window {
+func presetWindow(pf PresetFile, position Position) *Window {
 	e, ok := pf.Positions[string(position)]
 	if !ok {
 		return nil

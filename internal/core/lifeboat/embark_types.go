@@ -6,10 +6,10 @@ package lifeboat
 // it without diverging:
 //
 //   - Agent A (plan.go): teaches the packer to copy .abcd/development/specs/**
-//     into rescue/specs/<bucket>/<leaf>, adds RecordManifestSHA256 over the
+//     into rescue/specs/<bucket>/<leaf>, adds recordManifestSHA256 over the
 //     record-derived families (isRecordDerived below), and records it in
 //     Provenance as record_manifest_sha256.
-//   - Agent B (embark.go): EmbarkProbe / EmbarkFrom / VerifyManifest and the
+//   - Agent B (embark.go): EmbarkProbe / EmbarkFrom / verifyManifest and the
 //     conflict/marker/coverage machinery, plus ahoy.EnsureMarker in package ahoy.
 //   - Agent C (surface/cli): the `abcd embark probe|from` command tree,
 //     commands/embark.md, and the surface-registry row-3 flip.
@@ -17,7 +17,11 @@ package lifeboat
 // See adr-35 and .abcd/development/plans/2026-07-14-lifeboat-coverage-experiment.md
 // (the "M5 — embark and the round-trip" section) for the ratified contract.
 
-import "errors"
+import (
+	"errors"
+
+	corereflect "github.com/intentdriven/abcd/internal/core/reflect"
+)
 
 // EmbarkSchemaVersion stamps EmbarkPlan and EmbarkResult so a future breaking
 // change to their shape is detectable rather than silently misread.
@@ -284,8 +288,14 @@ type embarkFamily struct {
 	Name           string
 	LifeboatPrefix string   // POSIX, trailing slash
 	TargetPrefix   string   // POSIX, trailing slash
-	Buckets        []string // nil => flat family
+	Buckets        []string // nil => flat family, unless BucketValid is set
 	DefaultBucket  string   // used for a bucket-less file; "" => such a file is Unmapped
+	// BucketValid, when set, admits a bucket by its shape instead of by
+	// membership of Buckets: the retrospective family's buckets are release
+	// tags, an open set, so each is held to the tag shape rather than listed.
+	BucketValid func(string) bool
+	// Leaf, when set, is the one leaf name the family admits in a bucket.
+	Leaf string
 }
 
 // intentEmbarkBuckets mirrors intent.Buckets; specEmbarkBuckets mirrors the spec
@@ -310,7 +320,19 @@ var embarkFamilies = []embarkFamily{
 	{Name: "issues", LifeboatPrefix: "activity/issues/", TargetPrefix: nativeIssuesDir + "/", Buckets: nativeIssueStates, DefaultBucket: ""},
 	{Name: "intents", LifeboatPrefix: "rescue/intents/", TargetPrefix: nativeIntentsDir + "/", Buckets: intentEmbarkBuckets, DefaultBucket: "drafts"},
 	{Name: "specs", LifeboatPrefix: "rescue/specs/", TargetPrefix: nativeSpecsDir + "/", Buckets: specEmbarkBuckets, DefaultBucket: ""},
+	// The release retrospectives (itd-24): retrospectives/<release-tag>/README.md,
+	// one per release, the tag held to the release-tag shape and the leaf to
+	// README.md, so a hostile name can steer no write out of the store.
+	{Name: "retrospectives", LifeboatPrefix: retrospectivesLifeboatDir + "/", TargetPrefix: corereflect.RetrospectivesRelDir + "/",
+		BucketValid: corereflect.IsReleaseTag, Leaf: retrospectiveLeaf},
 }
+
+// retrospectivesLifeboatDir is where a lifeboat carries the retrospectives, and
+// retrospectiveLeaf the one file each release's directory holds.
+const (
+	retrospectivesLifeboatDir = "retrospectives"
+	retrospectiveLeaf         = "README.md"
+)
 
 // ---------------------------------------------------------------------------
 // Closure and exclusion sets.
@@ -319,7 +341,7 @@ var embarkFamilies = []embarkFamily{
 // recordDerivedPrefixes are the lifeboat path prefixes whose bytes derive purely
 // from the repo's RECORD (never from git or the operator's identity), so they
 // must round-trip byte-identically through pack -> embark -> re-pack (closure
-// property P1, decision 1). RecordManifestSHA256 (Agent A) hashes exactly the
+// property P1, decision 1). recordManifestSHA256 (Agent A) hashes exactly the
 // files matching one of these prefixes. A slash-terminated entry matches a whole
 // family; "graveyard/abandoned.json" is deliberately slash-LESS so it matches only
 // itself (the deterministic layer-2 record extraction), not a family.
@@ -333,6 +355,7 @@ var recordDerivedPrefixes = []string{
 	"activity/issues/",
 	"rescue/intents/",
 	"rescue/specs/",
+	retrospectivesLifeboatDir + "/",
 	"graveyard/abandoned.json",
 }
 
@@ -358,7 +381,7 @@ var reportOnlyPrefixes = []string{
 }
 
 // manifestExcludedExact / manifestExcludedPrefixes name the on-disk lifeboat
-// files that are NOT part of manifest_sha256, so VerifyManifest (Agent B) can walk
+// files that are NOT part of manifest_sha256, so verifyManifest (Agent B) can walk
 // the tree and reproduce the pinned hash exactly. _provenance.json cannot hash
 // itself; graveyard/lessons.json and graveyard/low-confidence/** are the mutable,
 // post-pack, host-delegated layer-3 interpretation that IngestLessons writes into
@@ -367,7 +390,7 @@ var reportOnlyPrefixes = []string{
 // review/** verdict artefact) is the same kind of post-pack mutable artifact — written
 // into an already-sealed lifeboat, its integrity the per-entry cite-or-be-dropped
 // rule and the registered-verdict gate, not the manifest seal — so it is excluded
-// here too and VerifyManifest still reproduces the pinned hash after synthesis.
+// here too and verifyManifest still reproduces the pinned hash after synthesis.
 var (
 	manifestExcludedExact    = []string{ProvenanceName, "graveyard/lessons.json", "principles.json", "principles.md", "press-release.json", "press-release.md"}
 	manifestExcludedPrefixes = []string{"graveyard/low-confidence/", "review/", "audit/"}

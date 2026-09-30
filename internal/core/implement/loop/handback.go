@@ -28,7 +28,7 @@ func handBackLane(st *State, lane *Lane, hb HandBack, note string, now time.Time
 		note = handBackSummary(st.Intent, hb)
 	}
 	st.Record = append(st.Record, Entry{At: now, Lane: lane.ID, Stage: string(StageHandedBack), Note: note})
-	if st.Pick != nil {
+	if st.Pick != nil && hb.Kind == "" {
 		st.Record = append(st.Record, Entry{At: now, Lane: lane.ID, Stage: "pick",
 			Note: fmt.Sprintf("the pick of %s is falsified: %s was handed back as %s after %s; the intent's grounds entry is left as it was written",
 				keyOf(*st), lane.ID, hb.Verdict, fixRoundsPhrase(hb.FixRounds))})
@@ -47,6 +47,18 @@ func keyOf(st State) string {
 // with: the intent, the verdict, the cap, and what the last round found.
 func handBackSummary(key string, hb HandBack) string {
 	var b strings.Builder
+	if hb.Kind != "" {
+		fmt.Fprintf(&b, "%s is handed back by its lane as %s: %s", key, hb.Kind, hb.Reason)
+		if hb.Home != "" {
+			fmt.Fprintf(&b, "; its home: %s", hb.Home)
+		}
+		if hb.Discarded != "" {
+			fmt.Fprintf(&b, "; the lane's work at %s is discarded with its worktree and branch", shortSHA(hb.Discarded))
+		} else {
+			b.WriteString("; the lane's work is discarded")
+		}
+		return b.String()
+	}
 	fmt.Fprintf(&b, "%s is handed back as %s: round %d did not pass after %s, the run's cap (%s)",
 		key, hb.Verdict, hb.Round, fixRoundsPhrase(hb.FixRounds), hb.Verdicts)
 	if len(hb.NotMet) > 0 {
@@ -74,5 +86,26 @@ func handedBackRefusal(st State, lane Lane) error {
 		reason = handBackSummary(keyOf(st), *lane.HandBack)
 	}
 	return refuse(string(StageHandedBack), "", lane.ID, reason,
-		"the loop starts nothing further for this lane; "+keyOf(st)+" is the person's to replan from the findings the reason names")
+		"the loop starts nothing further for this lane; "+keyOf(st)+" is the person's to replan from the findings the reason names; "+
+			handedBackWayOut(st))
+}
+
+// handedBackWayOut names the one way past a handed-back run. The run stays
+// live by construction (Complete is false while a lane sits at handed-back, so
+// the run resumes and the pick excludes its intent) until terminal liveness
+// lands with itd-50's move of the intent to drafts/; making it terminal before
+// then would let the pick choose the falsified intent again. No verb clears
+// it, so the run's own directory is named (iss-2609301303434847).
+func handedBackWayOut(st State) string {
+	return "to build it afresh once it is replanned, remove the run's directory, " + RunRelDir + "/" + st.RunID
+}
+
+// handedBack reports whether any lane of the run was handed back.
+func (s State) handedBack() bool {
+	for _, l := range s.Lanes {
+		if l.Stage == StageHandedBack {
+			return true
+		}
+	}
+	return false
 }

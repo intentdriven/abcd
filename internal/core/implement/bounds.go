@@ -11,32 +11,36 @@ import (
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
-// Step is a point in a run where the second session's bounds are checked before
-// the session acts. A lane is opened by a claim (Claim applies the lane bounds
-// itself); Check is for the steps that are not claims, and for a lane whose
-// files are only known once it has been built.
-type Step string
+// Stage is a point in a run where the second session's bounds are checked
+// before the session acts, called a stage like the loop's lane stages (rulings
+// BU1 and CM1: a spec's piece is a step, and nothing else is). A lane is opened
+// by a claim (Claim applies the lane bounds itself); Check is for the stages
+// that are not claims, and for a lane whose files are only known once it has
+// been built.
+type Stage string
 
-// The steps.
+// The stages.
 const (
-	StepLane    Step = "lane"
-	StepRelease Step = "release"
-	StepReview  Step = "review"
-	StepAudit   Step = "audit"
-	StepLand    Step = "land"
+	StageLane    Stage = "lane"
+	StageRelease Stage = "release"
+	StageReview  Stage = "review"
+	StageAudit   Stage = "audit"
+	StageLand    Stage = "land"
 )
 
-// Steps returns the closed step vocabulary.
-func Steps() []Step { return []Step{StepLane, StepRelease, StepReview, StepAudit, StepLand} }
+// Stages returns the closed stage vocabulary.
+func Stages() []Stage {
+	return []Stage{StageLane, StageRelease, StageReview, StageAudit, StageLand}
+}
 
-// ParseStep accepts exactly one of Steps.
-func ParseStep(s string) (Step, error) {
-	for _, st := range Steps() {
+// ParseStage accepts exactly one of Stages.
+func ParseStage(s string) (Stage, error) {
+	for _, st := range Stages() {
 		if string(st) == s {
 			return st, nil
 		}
 	}
-	return "", refusal("unknown step %q (one of: lane, release, review, audit, land)", s)
+	return "", refusal("unknown stage %q (one of: lane, release, review, audit, land)", s)
 }
 
 // ReadingCorpus is what "a lane that touches the reading corpus" means, derived
@@ -120,7 +124,7 @@ func (r *Run) corpusBound(session string, fields map[string]any, paths []string)
 type Verdict struct {
 	Session string `json:"session"`
 	Role    Role   `json:"role"`
-	Step    Step   `json:"step"`
+	Stage   Stage  `json:"stage"`
 	Mode    Mode   `json:"mode,omitempty"`
 	Allowed bool   `json:"allowed"`
 	// Ceiling is the session's own agent ceiling as it joined with it, zero when
@@ -133,18 +137,18 @@ type Verdict struct {
 	AgentsAlive int `json:"agents_alive"`
 }
 
-// Check says whether a session may take a step, and logs the refusal when it may
-// not. The first session may take every step. The second is refused:
+// Check says whether a session may take a stage, and logs the refusal when it
+// may not. The first session may take every stage. The second is refused:
 //
-//   - the release step, always — only the first session cuts a release;
+//   - the release stage, always — only the first session cuts a release;
 //   - a lane in a split-roles window, where the second only reviews, audits and
 //     lands;
 //   - a lane whose paths reach the reading corpus.
 //
 // Review, audit and land are open to both. A refusal is an ErrRefused-classed
-// error and a `refusal` line in the log; an allowed step writes nothing.
-func (r *Run) Check(session string, step Step, paths []string) (Verdict, error) {
-	if _, err := ParseStep(string(step)); err != nil {
+// error and a `refusal` line in the log; an allowed stage writes nothing.
+func (r *Run) Check(session string, stage Stage, paths []string) (Verdict, error) {
+	if _, err := ParseStage(string(stage)); err != nil {
 		return Verdict{}, err
 	}
 	for _, p := range paths {
@@ -158,7 +162,7 @@ func (r *Run) Check(session string, step Step, paths []string) (Verdict, error) 
 		if err != nil {
 			return err
 		}
-		out = Verdict{Session: session, Role: s.Role, Step: step, Allowed: true, Ceiling: s.Ceiling}
+		out = Verdict{Session: session, Role: s.Role, Stage: stage, Allowed: true, Ceiling: s.Ceiling}
 		if out.AgentsAlive, err = r.AgentsAlive(s); err != nil {
 			return err
 		}
@@ -172,18 +176,18 @@ func (r *Run) Check(session string, step Step, paths []string) (Verdict, error) 
 		if s.Role != RoleSecond {
 			return nil
 		}
-		switch step {
-		case StepRelease:
+		switch stage {
+		case StageRelease:
 			out.Allowed = false
-			return r.refuseLogged(session, "second_session_release", map[string]any{"step": string(step)},
-				"only the first session cuts a release; leave the release step to it")
-		case StepLane:
+			return r.refuseLogged(session, "second_session_release", map[string]any{"stage": string(stage)},
+				"only the first session cuts a release; leave the release stage to it")
+		case StageLane:
 			if ok && w.Mode == ModeSplitRoles {
 				out.Allowed = false
-				return r.refuseLogged(session, "split_roles_second_builds_nothing", map[string]any{"step": string(step)},
+				return r.refuseLogged(session, "split_roles_second_builds_nothing", map[string]any{"stage": string(stage)},
 					"in a split-roles window the second session reviews, audits and lands; it opens no lane")
 			}
-			if err := r.corpusBound(session, map[string]any{"step": string(step)}, paths); err != nil {
+			if err := r.corpusBound(session, map[string]any{"stage": string(stage)}, paths); err != nil {
 				out.Allowed = false
 				return err
 			}

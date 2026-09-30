@@ -63,7 +63,7 @@ func TestKindSplitDoesNotMoveAdmission(t *testing.T) {
 	restore := Table
 	t.Cleanup(func() { Table = restore })
 
-	for _, p := range AssemblingPositions() {
+	for _, p := range assemblingPositions() {
 		Table = restore
 		withRow := itemPaths(assembleFixture(t, root, p).Manifest)
 
@@ -93,7 +93,7 @@ func TestTestKindIsReachableAtEveryPosition(t *testing.T) {
 	writeFile(t, root, "widget_test.go", "package main\n\nfunc TestWidget() {}\n")
 	gitCommitAll(t, root)
 
-	for _, p := range AssemblingPositions() {
+	for _, p := range assemblingPositions() {
 		// Not at comparative, and by design rather than by omission: every
 		// shipped-tree row withdraws from that position, whose whole object is
 		// the derived run's candidates and the criteria discipline
@@ -193,7 +193,7 @@ func TestSizeReportRowsFollowTheVocabularyOrder(t *testing.T) {
 	rep := assembleFixture(t, root, PositionWidening).Size
 
 	order := map[Kind]int{}
-	for i, k := range Kinds() {
+	for i, k := range allKinds() {
 		order[k] = i
 	}
 	for i := 1; i < len(rep.ByKind); i++ {
@@ -252,7 +252,7 @@ func TestSizeReportLabelsItsEstimate(t *testing.T) {
 func TestBundleGainsNoFieldFromTheReport(t *testing.T) {
 	root := fixtureRepo(t)
 	res := assembleFixture(t, root, PositionWidening)
-	raw, err := EncodeBundle(res.Bundle)
+	raw, err := encodeBundle(res.Bundle)
 	if err != nil {
 		t.Fatalf("encode: %v", err)
 	}
@@ -317,7 +317,7 @@ func TestBundleGainsNoFieldFromTheReport(t *testing.T) {
 	if err != nil {
 		t.Fatalf("assemble at comparative: %v", err)
 	}
-	cRaw, err := EncodeBundle(comparative.Bundle)
+	cRaw, err := encodeBundle(comparative.Bundle)
 	if err != nil {
 		t.Fatalf("encode the comparative bundle: %v", err)
 	}
@@ -356,7 +356,7 @@ func TestBundleGainsNoFieldFromTheReport(t *testing.T) {
 	// more use for it than it has for the size report. Both sets are pinned in
 	// one test so a field can never be added to the bundle by copying the
 	// manifest's shape.
-	mRaw, err := EncodeManifest(res.Manifest)
+	mRaw, err := encodeManifest(res.Manifest)
 	if err != nil {
 		t.Fatalf("encode manifest: %v", err)
 	}
@@ -391,7 +391,7 @@ func TestBundleGainsNoFieldFromTheReport(t *testing.T) {
 func TestManifestItemRoundTripsKind(t *testing.T) {
 	root := fixtureRepo(t)
 	res := assembleFixture(t, root, PositionWidening)
-	raw, err := EncodeManifest(res.Manifest)
+	raw, err := encodeManifest(res.Manifest)
 	if err != nil {
 		t.Fatalf("encode: %v", err)
 	}
@@ -421,7 +421,7 @@ func TestManifestItemKindIsNotOmitted(t *testing.T) {
 		SchemaVersion: SchemaVersion,
 		Items:         []ManifestItem{{ItemKey: "itm-0001", Path: "a.go", SHA256: "x"}},
 	}
-	raw, err := EncodeManifest(m)
+	raw, err := encodeManifest(m)
 	if err != nil {
 		t.Fatalf("encode: %v", err)
 	}
@@ -440,13 +440,13 @@ func TestRenderCoversKindAndSuffix(t *testing.T) {
 	restore := Table
 	t.Cleanup(func() { Table = restore })
 
-	base := Render()
+	base := renderCharter()
 
 	kindMutated := make([]Row, len(restore))
 	copy(kindMutated, restore)
 	kindMutated[0].Kind = KindConfig
 	Table = kindMutated
-	if Render() == base {
+	if renderCharter() == base {
 		t.Error("reassigning a row's kind did not move the rendering")
 	}
 
@@ -454,7 +454,7 @@ func TestRenderCoversKindAndSuffix(t *testing.T) {
 	copy(suffixMutated, restore)
 	suffixMutated[0].MatchSuffix = append([]string{"_extra.go"}, suffixMutated[0].MatchSuffix...)
 	Table = suffixMutated
-	if Render() == base {
+	if renderCharter() == base {
 		t.Error("adding a match suffix to a row did not move the rendering")
 	}
 
@@ -466,7 +466,7 @@ func TestRenderCoversKindAndSuffix(t *testing.T) {
 	copy(scanMutated, restore)
 	scanMutated[0].Scan = ScanUnscanned
 	Table = scanMutated
-	if Render() == base {
+	if renderCharter() == base {
 		t.Error("reassigning a row's Scan did not move the rendering; the charter must state " +
 			"per row whether the floor parses what it admits")
 	}
@@ -562,7 +562,7 @@ func TestSizeBasisBringsNoParenthesesOfItsOwn(t *testing.T) {
 func TestDecodeManifestRefusesAnItemWithoutAKind(t *testing.T) {
 	root := fixtureRepo(t)
 	res := assembleFixture(t, root, PositionWidening)
-	raw, err := EncodeManifest(res.Manifest)
+	raw, err := encodeManifest(res.Manifest)
 	if err != nil {
 		t.Fatalf("encode: %v", err)
 	}
@@ -664,7 +664,7 @@ func TestTheSizeReportIsCheckableAgainstTheManifest(t *testing.T) {
 // TestRenderCannotForgeARowBoundary closes the collision channel fidelity review
 // found in ac-9's absolute claim.
 //
-// Render() flattens the table into an unescaped pipe-delimited markdown table
+// renderCharter() flattens the table into an unescaped pipe-delimited markdown table
 // and nothing constrained the free-text fields it digests, so a Rule containing
 // a newline and pipes could forge a row boundary and make two structurally
 // different tables render — and therefore stamp — identically. That is the same
@@ -756,7 +756,7 @@ func TestOptedInSourceAndTestsTravelWholeMarkedUnscanned(t *testing.T) {
 // fact about each item, so an item the floor DID parse must not carry it.
 func TestNoParsedItemCarriesTheUnscannedMark(t *testing.T) {
 	root := fixtureRepo(t)
-	for _, p := range AssemblingPositions() {
+	for _, p := range assemblingPositions() {
 		res := assembleFixture(t, root, p)
 		markdown := 0
 		for _, m := range res.Manifest.Items {
@@ -841,7 +841,7 @@ func mutateFirstManifestItem(t *testing.T, f func(item map[string]any)) []byte {
 	t.Helper()
 	root := fixtureRepo(t)
 	res := assembleFixture(t, root, PositionWidening)
-	raw, err := EncodeManifest(res.Manifest)
+	raw, err := encodeManifest(res.Manifest)
 	if err != nil {
 		t.Fatalf("encode: %v", err)
 	}

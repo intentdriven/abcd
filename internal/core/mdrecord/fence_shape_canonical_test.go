@@ -24,7 +24,7 @@ import (
 // through Read.
 var fenceShapeReaders = map[string]fenceWriter{
 	"internal/core/positioning/check.go": {1, "emphasisRe strips inline emphasis and code markers from one tagline candidate, so a bolded tagline still reads as the tagline; it judges one string and tracks no lines"},
-	"internal/core/ideate/render.go":     {2, "blockText escapes a paragraph's first byte when it would open a block (a backtick run, a tilde, a heading or list marker), so the rendered record keeps its text as prose; it judges one string and tracks no lines"},
+	"internal/termsafe/prose.go":         {2, "BlockText escapes a line-leading value's first byte when it would open a block (a backtick run, a tilde, a heading or list marker), so the rendered record keeps its text as prose; it judges one string and tracks no lines"},
 	"internal/core/lifeboat/mdrender.go": {2, "escapeLeadingMarker escapes a value's first byte when it opens a block, a backtick run termsafe judges unbalanced or a tilde among the other markers, so a rendered field stays prose; it judges one string and tracks no lines"},
 }
 

@@ -138,7 +138,7 @@ func TestRemoteApplyRequiresConfirmationNotJustInvocation(t *testing.T) {
 	logPath := ghFake(t, bothDisabled)
 	repo := managedRepoWithOrigin(t, "https://github.com/example-org/example-repo")
 
-	res, err := RemoteApply(repo, RefusingPrompter{})
+	res, err := RemoteApply(repo, RefusingPrompter{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,7 +158,7 @@ func TestRemoteApplyRequiresConfirmationNotJustInvocation(t *testing.T) {
 	}
 	// A nil prompter is the same refusal: a caller that forgot the seam must not
 	// get an unconfirmed write by omission.
-	nilRes, err := RemoteApply(repo, nil)
+	nilRes, err := RemoteApply(repo, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -174,7 +174,7 @@ func TestRemoteApplyDoesNotAskWhenNothingWouldChange(t *testing.T) {
 	ghFake(t, bothEnabled)
 	repo := managedRepoWithOrigin(t, "https://github.com/example-org/example-repo")
 
-	res, err := RemoteApply(repo, RefusingPrompter{})
+	res, err := RemoteApply(repo, RefusingPrompter{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,7 +193,7 @@ func TestRemoteApplyEnablesSecretScanningBeforePushProtection(t *testing.T) {
 	logPath := ghFake(t, bothDisabled)
 	repo := managedRepoWithOrigin(t, "https://github.com/example-org/example-repo.git")
 
-	res, err := RemoteApply(repo, confirmingPrompter{})
+	res, err := RemoteApply(repo, confirmingPrompter{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -228,7 +228,7 @@ func TestRemoteApplyMirrorsTheDesiredState(t *testing.T) {
 	ghFake(t, bothDisabled)
 	repo := managedRepoWithOrigin(t, "git@github.com:example-org/example-repo.git")
 
-	res, err := RemoteApply(repo, confirmingPrompter{})
+	res, err := RemoteApply(repo, confirmingPrompter{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -285,7 +285,7 @@ func TestRemoteApplyIsIdempotent(t *testing.T) {
 
 	// The FIRST run still writes the mirror — the tree does not yet record the
 	// intent — but it changes no toggle, and it must take no remote write at all.
-	res, err := RemoteApply(repo, confirmingPrompter{})
+	res, err := RemoteApply(repo, confirmingPrompter{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -301,7 +301,7 @@ func TestRemoteApplyIsIdempotent(t *testing.T) {
 		}
 	}
 	before := treeHash(t, repo)
-	res2, err := RemoteApply(repo, confirmingPrompter{})
+	res2, err := RemoteApply(repo, confirmingPrompter{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -326,7 +326,7 @@ func TestRemoteApplyHonoursTheOptOut(t *testing.T) {
 	repo := managedRepoWithOrigin(t, "https://github.com/example-org/example-repo")
 	writeNativeScanningOptOut(t, repo)
 
-	res, err := RemoteApply(repo, confirmingPrompter{})
+	res, err := RemoteApply(repo, confirmingPrompter{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -368,7 +368,7 @@ func TestRemoteApplyRefusesRatherThanGuess(t *testing.T) {
 		setupHermetic(t)
 		logPath := ghFake(t, bothDisabled)
 		repo := managedRepoWithOrigin(t, "")
-		res, err := RemoteApply(repo, confirmingPrompter{})
+		res, err := RemoteApply(repo, confirmingPrompter{}, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -384,7 +384,7 @@ func TestRemoteApplyRefusesRatherThanGuess(t *testing.T) {
 		setupHermetic(t)
 		logPath := ghFake(t, bothDisabled)
 		repo := managedRepoWithOrigin(t, "https://gitlab.example.com/example-org/example-repo.git")
-		res, err := RemoteApply(repo, confirmingPrompter{})
+		res, err := RemoteApply(repo, confirmingPrompter{}, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -402,7 +402,7 @@ func TestRemoteApplyRefusesRatherThanGuess(t *testing.T) {
 		// A path segment that traverses would turn `repos/OWNER/REPO` into some other
 		// endpoint entirely — on a verb whose whole job is a privileged write.
 		repo := managedRepoWithOrigin(t, "https://github.com/../../user/repos.git")
-		res, err := RemoteApply(repo, confirmingPrompter{})
+		res, err := RemoteApply(repo, confirmingPrompter{}, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -429,7 +429,7 @@ func TestRemoteApplyRefusesRatherThanGuess(t *testing.T) {
 		if err := os.MkdirAll(sub, 0o755); err != nil {
 			t.Fatal(err)
 		}
-		res, err := RemoteApply(sub, confirmingPrompter{})
+		res, err := RemoteApply(sub, confirmingPrompter{}, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -452,7 +452,7 @@ func TestRemoteApplyRefusesRatherThanGuess(t *testing.T) {
 		if err := os.MkdirAll(sub, 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := RemoteApply(sub, confirmingPrompter{}); err != nil {
+		if _, err := RemoteApply(sub, confirmingPrompter{}, nil); err != nil {
 			t.Fatal(err)
 		}
 		if mirror(t, repo) == "" {
@@ -467,7 +467,7 @@ func TestRemoteApplyRefusesRatherThanGuess(t *testing.T) {
 		setupHermetic(t)
 		logPath := ghFake(t, bothDisabled)
 		repo := t.TempDir()
-		res, err := RemoteApply(repo, confirmingPrompter{})
+		res, err := RemoteApply(repo, confirmingPrompter{}, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -484,7 +484,7 @@ func TestRemoteApplyRefusesRatherThanGuess(t *testing.T) {
 		logPath := ghFake(t, bothDisabled)
 		t.Setenv("GH_FAKE_GET_FAIL", "1")
 		repo := managedRepoWithOrigin(t, "https://github.com/example-org/example-repo")
-		res, err := RemoteApply(repo, confirmingPrompter{})
+		res, err := RemoteApply(repo, confirmingPrompter{}, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -511,7 +511,7 @@ func TestRemoteApplyStopsAtTheFirstFailedWrite(t *testing.T) {
 	t.Setenv("GH_FAKE_PATCH_FAIL", `"secret_scanning":`)
 	repo := managedRepoWithOrigin(t, "https://github.com/example-org/example-repo")
 
-	res, err := RemoteApply(repo, confirmingPrompter{})
+	res, err := RemoteApply(repo, confirmingPrompter{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

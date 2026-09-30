@@ -41,8 +41,8 @@ const (
 	TierNative Tier = "abcd-native"
 )
 
-// Tiers lists every tier from poorest to richest.
-func Tiers() []Tier { return []Tier{TierGit, TierConventions, TierNative} }
+// allTiers lists every tier from poorest to richest.
+func allTiers() []Tier { return []Tier{TierGit, TierConventions, TierNative} }
 
 // Status is the three-valued coverage result for one brief section. A blank is
 // a first-class result — it names a question a human must answer — not a
@@ -234,9 +234,9 @@ const (
 	MarkerEnd   = "<!-- END GENERATED: brief-lifeboat-mapping -->"
 )
 
-// Render returns the mapping table as a Markdown table, exactly as it appears
+// renderMapping returns the mapping table as a Markdown table, exactly as it appears
 // between the markers in the brief's 00-meta.md.
-func Render() string {
+func renderMapping() string {
 	var b strings.Builder
 	b.WriteString("| Brief section | Lifeboat path | Tier 0 git | Tier 1 conventions | Tier 2 abcd-native | Reads |\n")
 	b.WriteString("|---|---|---|---|---|---|\n")

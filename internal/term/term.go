@@ -53,15 +53,29 @@ func ResolveColorMode(getenv func(string) string, noColorFlag bool) ColorMode {
 	return Ansi16
 }
 
-// IsTerminal reports whether f is an interactive character device. This is
-// the one canonical check; call sites that used to hand-roll the Stat/
-// ModeCharDevice test delegate here.
+// IsTerminal reports whether f is a terminal: the kernel answers a termios
+// get on its descriptor, which is how isatty(3) decides. A character-device
+// test is not enough, because /dev/null is a character device, and stdin
+// redirected from it (or a closed fd 0, which the Go runtime reopens on
+// /dev/null) would read as a person at a terminal. This is the one canonical
+// check; no call site hand-rolls a Stat/ModeCharDevice test.
+//
+// The descriptor is reached through SyscallConn rather than Fd, so the file
+// keeps its non-blocking mode. A platform without a termios probe here answers
+// false: a consent gate then declines as having no terminal to ask at.
 func IsTerminal(f *os.File) bool {
 	if f == nil {
 		return false
 	}
-	fi, err := f.Stat()
-	return err == nil && fi.Mode()&os.ModeCharDevice != 0
+	rc, err := f.SyscallConn()
+	if err != nil {
+		return false
+	}
+	isTerm := false
+	if err := rc.Control(func(fd uintptr) { isTerm = isTerminalFd(fd) }); err != nil {
+		return false
+	}
+	return isTerm
 }
 
 // UTF8Locale reports whether the locale advertises UTF-8. Block art (half

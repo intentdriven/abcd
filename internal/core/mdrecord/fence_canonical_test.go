@@ -32,9 +32,10 @@ type fenceWriter struct {
 var fenceWriters = map[string]fenceWriter{
 	"internal/adapter/openaiapi/client.go":          {3, "judges one model answer whole: unfence strips a single fence wrapping the entire answer, and refuses to when another delimiter sits inside; it reads no document and tracks no lines"},
 	"internal/adapter/scanner/scanner.go":           {1, "a comment quoting a regexp quantifier (`{36,}`); no delimiter is written or read"},
-	"internal/core/glossary/index.go":               {2, "a WRITER: RenderLayout wraps the generated layout tree in one fence; it reads no fences"},
+	"internal/core/glossary/index.go":               {2, "a WRITER: renderLayout wraps the generated layout tree in one fence; it reads no fences"},
 	"internal/core/history/reconstruct_render.go":   {1, "a WRITER: writeFenced opens a fence longer than any backtick run in the body, the floor of three; it reads no fences"},
 	"internal/core/implement/loop/brief.go":         {2, "a WRITER: the lane brief shows the receipt's shape inside one json fence, before any record body it quotes; it reads no fences"},
+	"internal/core/implement/loop/issuebrief.go":    {2, "a WRITER: the issue lane brief shows the receipt's shape inside one json fence, before any record body it quotes; it reads no fences"},
 	"internal/core/lifeboat/sources_conventions.go": {3, "judges one line or the whole text: a README prose measure skips a delimiter line, and a presence test asks whether any fence exists; neither tracks which lines a fence covers"},
 	"internal/core/reading/project.go":              {2, "fenceDelimiterRe judges one frontmatter line and refuses it; which lines a fence covers is floorFences, which reads mdrecord"},
 	"internal/core/mdrender/render.go":              {8, "the site renderer: it renders a block Blocks already cut by mdrecord's reading, refuses a fence form it does not render (tilde, four or more backticks), a list line that opens a fence and an indented code block; its patterns name a line's form, whether the line opens a fence is OpensFence's to say, whether a block's last line closes a fence is Read's, and it keeps no fence state of its own"},

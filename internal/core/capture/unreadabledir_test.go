@@ -42,7 +42,7 @@ func TestMatchReportsAnUnreadableStatusDirectoryAsUnread(t *testing.T) {
 	captureText(t, repo, ir, matchFiller1, nil)
 	unreadableStatusDir(t, ir, StateResolved)
 
-	if _, err := Capture(CaptureRequest{
+	if _, err := testCapture(CaptureRequest{
 		RepoRoot: repo, IssuesRoot: ir, Text: plantedDouble, Severity: SeverityMinor,
 		Category: "bug", Source: "user-observation", FoundDuring: "t", Match: bundled(),
 	}); err == nil || !strings.Contains(err.Error(), statusDirName[StateResolved]+"/") {
@@ -52,7 +52,7 @@ func TestMatchReportsAnUnreadableStatusDirectoryAsUnread(t *testing.T) {
 		t.Fatalf("the intent create's candidate set read an unreadable resolved/ as empty: %v", err)
 	}
 	const content = "---\nid: planted\n---\n"
-	got, o := matchAndLink(repo, ir, *bundled(), plantedDouble, content, map[string]any{})
+	got, o := matchAndLink(repo, ir, *bundled(), plantedDouble, nil, content, map[string]any{})
 	if o == nil || !strings.Contains(o.Skipped, "could not be read") {
 		t.Fatalf("an unreadable resolved/ did not read as an unread record set: %+v", o)
 	}

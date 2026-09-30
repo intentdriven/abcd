@@ -87,13 +87,16 @@ None stated.
 
 ## Implementing specs
 
-itd-36 is implemented across multiple specs. The single-valued frontmatter
-`spec_id` records the **primary** delivering spec (spc-38); the remaining spec is
-recorded here because `spec_id` holds one value and would understate scope.
-This section is the canonical multi-spec implementation index:
+itd-36 was implemented across two specs of the predecessor store; those ids are
+preserved below as history. The native spec store reuses both numbers for other
+specs (live spc-38 is itd-136's record explorer, live spc-39 itd-137's
+relationship chart), so each carries the predecessor-store qualifier. The
+frontmatter `spec_id` records the **native** spec, **spc-2609211905174684**, the
+record catch-up that covers the write core and the quality gate together.
+Historical index:
 
-- **spc-38** (primary) — `/abcd:memory` write core (the memory substrate, ingest, registry).
-- **spc-39** — `/abcd:memory lint` quality gate (quotation-budget / licence / provenance lint).
+- **spc-38** (predecessor store; primary) — `/abcd:memory` write core (the memory substrate, ingest, registry).
+- **spc-39** (predecessor store) — `/abcd:memory lint` quality gate (quotation-budget / licence / provenance lint).
 
 ## Ship gate — adversarial worked examples
 

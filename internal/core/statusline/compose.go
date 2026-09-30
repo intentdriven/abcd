@@ -3,10 +3,10 @@ package statusline
 // Compose is the one composition of the row, in core, for both front doors:
 // the status verb the harness invokes and the bare `/abcd` board. It gathers
 // the three inputs spc-70 names — the parsed harness payload, the repository,
-// and the record — into an Input and hands it to Render, so the verb and the
+// and the record — into an Input and hands it to renderRow, so the verb and the
 // board cannot disagree about a single element.
 //
-// It reads, and that is the whole of what separates it from Render: the mode
+// It reads, and that is the whole of what separates it from renderRow: the mode
 // store, git's answer for the branch, and one directory listing for each of
 // the two counts. It writes nothing, and it never touches the network. It also
 // never asks whether the repository is MANAGED: that decision belongs to the
@@ -107,7 +107,7 @@ func Compose(root string, p Payload, set Settings) (Result, error) {
 		set.Elements[KeyIntents] = false
 	}
 
-	return Result{State: state, Row: Render(in, set), Notes: notes}, nil
+	return Result{State: state, Row: renderRow(in, set), Notes: notes}, nil
 }
 
 // branch is the checkout's branch name, the short sha when HEAD is detached,

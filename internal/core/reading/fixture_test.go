@@ -388,12 +388,12 @@ func gitRun(t *testing.T, root string, args ...string) {
 const fixtureScopeName = "everything"
 
 // fixturePresets renders a preset file selecting every kind at every position
-// that assembles. It is generated from Kinds() and AssemblingPositions() rather
+// that assembles. It is generated from allKinds() and assemblingPositions() rather
 // than written out, so a new kind or position cannot leave the fixture quietly
 // narrower than the table it is meant to mirror.
 func fixturePresets() string {
-	kinds := make([]string, 0, len(Kinds()))
-	for _, k := range Kinds() {
+	kinds := make([]string, 0, len(allKinds()))
+	for _, k := range allKinds() {
 		// `candidate` is a material kind and NOT a preset kind: an entry names
 		// repository material, and the candidate set is derived from the record
 		// (adr-2609021016272867). validateEntries refuses it by name, so
@@ -407,8 +407,8 @@ func fixturePresets() string {
 	for _, p := range fixtureTreePaths {
 		paths = append(paths, strconv.Quote(p))
 	}
-	positions := make([]string, 0, len(AssemblingPositions()))
-	for _, p := range AssemblingPositions() {
+	positions := make([]string, 0, len(assemblingPositions()))
+	for _, p := range assemblingPositions() {
 		// The entailment entry declares the admissibility switch, which is how
 		// an entry says "every draft and planned intent" now that those two
 		// rows narrow by the entry's record list always (ruled 2026-09-02;

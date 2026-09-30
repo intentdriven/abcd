@@ -108,56 +108,56 @@ func TestAHandWrittenWindowLineCounts(t *testing.T) {
 	}
 }
 
-// TestCheckHoldsTheSecondSessionsBounds: the release step and a corpus lane are
+// TestCheckHoldsTheSecondSessionsBounds: the release stage and a corpus lane are
 // refused to the second session and logged; review, audit and land are open;
-// the first session may take every step.
+// the first session may take every stage.
 func TestCheckHoldsTheSecondSessionsBounds(t *testing.T) {
 	r, _ := newRun(t)
 	withPresets(t, r)
 	join(t, r, "alpha", RoleFirst)
 	join(t, r, "beta", RoleSecond)
-	for _, st := range Steps() {
+	for _, st := range Stages() {
 		v, err := r.Check("alpha", st, []string{"internal/core/lint/x.go"})
 		if err != nil || !v.Allowed {
 			t.Fatalf("first session, %s: %+v %v", st, v, err)
 		}
 	}
-	for _, st := range []Step{StepReview, StepAudit, StepLand} {
+	for _, st := range []Stage{StageReview, StageAudit, StageLand} {
 		if v, err := r.Check("beta", st, nil); err != nil || !v.Allowed {
 			t.Fatalf("second session, %s: %+v %v", st, v, err)
 		}
 	}
-	if v, err := r.Check("beta", StepLane, []string{"internal/core/implement/x.go"}); err != nil || !v.Allowed {
+	if v, err := r.Check("beta", StageLane, []string{"internal/core/implement/x.go"}); err != nil || !v.Allowed {
 		t.Fatalf("second session, non-corpus lane: %+v %v", v, err)
 	}
 	before := len(eventNames(t, r))
-	if _, err := r.Check("beta", StepRelease, nil); !errors.Is(err, ErrRefused) {
+	if _, err := r.Check("beta", StageRelease, nil); !errors.Is(err, ErrRefused) {
 		t.Fatalf("second session, release = %v; want a refusal", err)
 	}
 	if e := lastEvent(t, r, EventRefusal); e.String("condition") != "second_session_release" || e.Session != "beta" {
 		t.Fatalf("refusal line = %+v", e.Fields)
 	}
-	if _, err := r.Check("beta", StepLane, []string{"commands/capture.md"}); !errors.Is(err, ErrRefused) {
+	if _, err := r.Check("beta", StageLane, []string{"commands/capture.md"}); !errors.Is(err, ErrRefused) {
 		t.Fatalf("second session, corpus lane = %v; want a refusal", err)
 	}
 	if after := len(eventNames(t, r)); after != before+2 {
 		t.Fatalf("two refusals logged %d lines; allowed checks must write nothing", after-before)
 	}
-	if _, err := r.Check("beta", Step("ship"), nil); !errors.Is(err, ErrRefused) {
-		t.Fatalf("unknown step = %v; want a refusal", err)
+	if _, err := r.Check("beta", Stage("ship"), nil); !errors.Is(err, ErrRefused) {
+		t.Fatalf("unknown stage = %v; want a refusal", err)
 	}
 	// In a split-roles window the second session opens no lane, whatever its
 	// paths, and still reviews.
 	if _, err := r.SetMode("alpha", ModeSplitRoles, 3); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := r.Check("beta", StepLane, []string{"internal/core/implement/x.go"}); !errors.Is(err, ErrRefused) {
+	if _, err := r.Check("beta", StageLane, []string{"internal/core/implement/x.go"}); !errors.Is(err, ErrRefused) {
 		t.Fatalf("second session, lane in split-roles = %v; want a refusal", err)
 	}
 	if e := lastEvent(t, r, EventRefusal); e.String("condition") != "split_roles_second_builds_nothing" {
 		t.Fatalf("refusal line = %+v", e.Fields)
 	}
-	if v, err := r.Check("beta", StepReview, nil); err != nil || !v.Allowed || v.Mode != ModeSplitRoles {
+	if v, err := r.Check("beta", StageReview, nil); err != nil || !v.Allowed || v.Mode != ModeSplitRoles {
 		t.Fatalf("second session, review in split-roles: %+v %v", v, err)
 	}
 }
@@ -329,11 +329,11 @@ func TestTheSecondSessionsCeilingIsRecordedAndReported(t *testing.T) {
 	if ss, _ := r.Sessions(); ss[1].Ceiling != 2 {
 		t.Fatalf("sessions = %+v", ss)
 	}
-	v, err := r.Check("beta", StepReview, nil)
+	v, err := r.Check("beta", StageReview, nil)
 	if err != nil || v.Ceiling != 2 {
 		t.Fatalf("check = %+v, %v; want the ceiling reported", v, err)
 	}
-	if v, _ := r.Check("alpha", StepReview, nil); v.Ceiling != 0 {
+	if v, _ := r.Check("alpha", StageReview, nil); v.Ceiling != 0 {
 		t.Fatalf("first session's check = %+v; it recorded no ceiling", v)
 	}
 	if _, err := r.Join("beta", RoleSecond, "", "resume", 3); !errors.Is(err, ErrRefused) {

@@ -64,8 +64,12 @@ It files a capture through the capture verb's own path and redactor, with
 repository" in place of the sender's name, and the report id as its evidence.
 A record id the report names is the sender's, so it is written as one word
 (`iss12`) and cites nothing in abcd's record.
-Tell the user the `capture` id and its `path`, and relay `redacted` or
-`redaction_degraded` when present. The report is kept, marked promoted. A
+The capture runs the capture verb's filing-time match on the report's own
+title and prose, never on the provenance lines every promoted report carries,
+and writes a `duplicates:` or `refines:` link naming each likely double.
+Tell the user the `capture` id and its `path`, relay `redacted` or
+`redaction_degraded` when present, and relay `match`: each link written, for a
+person to confirm by leaving it or remove by deleting its line. The report is kept, marked promoted. A
 refusal exits 2 and writes nothing: a promotion outside a checkout of abcd, an
 unreadable report, one already promoted (the refusal names its capture), an id
 with no report, a capture the ledger refuses (the report still waits), or a

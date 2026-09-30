@@ -102,7 +102,7 @@ iss-61 — a shipped skill silently dropped from the cut artefact, because
 `commands/` is in the release payload and `skills/` never was, and there are no
 skills left to drop.
 
-A later phase introducing a slash-invokable workflow that has no parent command and
+A later intent introducing a slash-invokable workflow that has no parent command and
 is findings-only and idempotent per the criterion above gets: an intent file
 capturing the user moment, a `skills/<name>/` directory holding the executable
 form, an entry in this section, a row in the surfaces registry marked `shipped`,
@@ -116,6 +116,6 @@ directory, which is exactly the condition that dropped a shipped skill from the
 cut artefact before. A skill added without it passes the record gate and is
 missing from the release.
 
-itd-30 (design fictions, a later phase) is a **command extension** rather than a
+itd-30 (design fictions, a draft intent) is a **command extension** rather than a
 new skill: it extends the canonical create `/abcd:intent "<text>"` with a format
 flag.

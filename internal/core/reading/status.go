@@ -79,7 +79,7 @@ func Describe(repoRoot string) (Status, error) {
 	// position or its regime — is a fault reported here rather than an
 	// instrument reported present, and a `cold-reading-*.md` naming no position
 	// is not an instrument at all, because the position set is closed.
-	defs, err := LoadDefinitions(repoRoot)
+	defs, err := loadDefinitions(repoRoot)
 	if err != nil {
 		return Status{}, err
 	}

@@ -368,7 +368,7 @@ func proveContext(req IngestRequest, out Output) (Context, Manifest, error) {
 		return Context{}, Manifest{}, fmt.Errorf("scribe: reading the parked manifest for %s: %w; assemble the "+
 			"session first, and ingest against the context it parked", out.Run, err)
 	}
-	m, err := DecodeManifest(mRaw, req.RepoRoot)
+	m, err := decodeManifest(mRaw, req.RepoRoot)
 	if err != nil {
 		return Context{}, Manifest{}, err
 	}

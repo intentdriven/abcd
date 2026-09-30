@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"regexp"
@@ -22,6 +23,7 @@ import (
 	"github.com/intentdriven/abcd/internal/adapter/hosting/cloudflare/cloudflaretest"
 	"github.com/intentdriven/abcd/internal/core/credential"
 	"github.com/intentdriven/abcd/internal/core/launch/scaffold"
+	"github.com/intentdriven/abcd/internal/core/tools"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
@@ -965,5 +967,66 @@ func TestASiteWithNoDocsBuildLinksNoDocsTree(t *testing.T) {
 	pages = build()
 	if !strings.Contains(pages["index.html"], `href="/docs/"`) || !strings.Contains(pages["index.html"], `href="/docs/how-to/guide/"`) {
 		t.Error("a composition declaring its docs surface lost the header's Docs link or the docs route")
+	}
+}
+
+// ghFreePath leaves git on PATH and nothing else, so neither gh nor a package
+// manager is found and no install step can run from the test.
+func ghFreePath(t *testing.T) {
+	t.Helper()
+	gitBin, err := exec.LookPath("git")
+	if err != nil {
+		t.Skip("git unavailable")
+	}
+	dir := t.TempDir()
+	if err := os.Symlink(gitBin, filepath.Join(dir, "git")); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+	t.Setenv("CI", "")
+	t.Setenv("GITHUB_ACTIONS", "")
+}
+
+// TestSetupOffersAMissingGh is the gh offer at site setup (the DQ3 ruling,
+// itd-63 criterion 2): with gh missing the forge stage puts the install to the
+// question with the registry's explanation. A no runs nothing and the note
+// carries the command; a yes reaches the registry's step (here Homebrew is
+// absent, so the step says so and nothing ran). Either way the forge stage is
+// not reached and says what remains.
+func TestSetupOffersAMissingGh(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		ans  tools.Answer
+		want string
+	}{
+		{"no", tools.Answer{Why: "answered no at the terminal"}, "gh not installed (answered no at the terminal)"},
+		{"yes", tools.Answer{Yes: true}, "Homebrew (brew) is not on PATH, so the step cannot run"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newHarness(t)
+			ghFreePath(t)
+			var seen []string
+			res := h.run(t, func(r *SetupRequest) {
+				r.Forge = nil
+				r.ConfirmTool = func(e tools.Explanation) tools.Answer {
+					seen = append(seen, e.Tool+": "+e.StepText())
+					return tc.ans
+				}
+			})
+			if len(seen) != 1 || seen[0] != "gh: brew install gh" {
+				t.Fatalf("gh was not offered with its step: %v", seen)
+			}
+			notes := strings.Join(res.Notes, "\n")
+			for _, want := range []string{tc.want, "brew install gh"} {
+				if !strings.Contains(notes, want) {
+					t.Errorf("the notes lack %q:\n%s", want, notes)
+				}
+			}
+			for _, env := range res.Environments {
+				if env.Status != RemoteUnreachable {
+					t.Errorf("environment %s = %q with gh missing", env.Name, env.Status)
+				}
+			}
+		})
 	}
 }

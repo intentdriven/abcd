@@ -2,34 +2,39 @@ package oracle
 
 // config.go is the provider configuration of the OpenAI-compatible API adapter
 // (itd-2609081951381895, spc-2609221011153746 scope 1) and the resolver that
-// validates it when it is read (adr-2609221009491186):
+// validates it when it is read (adr-2609221009491186, whose Decision 2
+// adr-2609300107513982 supersedes):
 //
 //   - oracle.api.<provider> is a provider block: base_url (pinned; https, or
 //     http to this machine), key (a credential NAME, resolved through
 //     internal/core/credential; omitted for a server that needs none) and
-//     models (the allowlist: the only models the provider may serve). A block
+//     models (the allowlist: the only models the provider may serve, and
+//     alone what decides which models it serves). A block
 //     is read from the machine's ~/.abcd/config.json alone. A repository
 //     declaring one is refused, because a block names the address a key is sent
 //     to, and a checkout must never be able to aim the person's key at a
 //     server of its choosing.
-//   - oracle.denylist extends the bundled vendor denylist (anthropic/* at
-//     minimum). The repository and the machine add entries; nothing removes a
-//     bundled one, so a listing mistake can never reach a frontier model.
+//   - oracle.denylist is optional and the configuration's own: abcd bundles
+//     no vendor denylist. An entry the repository or the machine writes
+//     refuses a model it matches even when a provider lists it; the layers
+//     are a union, so neither removes the other's entries.
 //   - oracle.roles.<agent> and oracle.judgements.<type> point a role (an agent
 //     in the roster) or a judgement type at <provider>/<model>. The machine
 //     may point at any provider it configures. The repository may point only
 //     at a provider that holds no key, and there its route wins per name; a
-//     repository route to a provider that holds a key is refused, because only
+//     repository route to a provider that holds a key is skipped, because only
 //     a route the person sets on their own machine may spend their paid key
 //     (the product thinker's ruling AA(b) of 2026-09-29, which reverses the
 //     route half of itd-2609081951381895 Decision 8).
 //
 // Every route is checked here, before any call: a repository route to a
-// provider that holds a key is refused naming the machine's file as where to
-// set it, a model its provider does not list is refused naming the list, and a
-// listed model the denylist matches is refused naming the entry, whatever the
-// allowlist says. A route naming a provider this machine has not configured is
-// a diagnostic, not a refusal: the step stays on the host, exactly as it would
+// provider that holds a key is skipped with a diagnostic naming the machine's
+// file as where to set it, as is a repository route that is not
+// <provider>/<model> or whose name is not a plain name (ruling CD2 of
+// 2026-09-29); a model its provider does not list is refused naming the list,
+// and a listed model an oracle.denylist entry matches is refused naming the
+// entry. A route naming a provider this machine has not configured is a
+// diagnostic, not a refusal: the step stays on the host, exactly as it would
 // with nothing configured (adr-25).
 //
 // Like the rest of the package, the resolver never writes, never reaches a
@@ -40,11 +45,13 @@ import (
 	"fmt"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/adapter/openaiapi"
 	"github.com/intentdriven/abcd/internal/core/credential"
 	"github.com/intentdriven/abcd/internal/core/layered"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // The configuration keys, as every refusal names them.
@@ -64,14 +71,6 @@ const (
 	// MaxDenylist bounds the entries one layer adds to the denylist.
 	MaxDenylist = 64
 )
-
-// bundledDenylist is the vendor denylist abcd ships: the frontier vendor whose
-// models the person already pays for through the host (adr-2609221009491186
-// Decision 2). A layer may extend it and never shorten it.
-var bundledDenylist = []string{"anthropic/*"}
-
-// BundledDenylist returns the denylist abcd ships. The slice is a copy.
-func BundledDenylist() []string { return append([]string(nil), bundledDenylist...) }
 
 var (
 	providerNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,31}$`)
@@ -121,9 +120,14 @@ type APIConfig struct {
 	denylist   []DenyEntry
 	roles      map[string]Target
 	judgements map[string]Target
+	// bundled is the providers oracle.bundled_context_providers names
+	// (selfcontained.go), read from the machine layer alone.
+	bundled map[string]bool
 	// Diagnostics are the non-fatal reports the read produced, one line each,
 	// for a front door to print on stderr: a route naming a provider this
-	// machine has not configured, and a role outside the roster.
+	// machine has not configured, a role outside the roster, and a skipped
+	// repository route (one to a provider that holds a key, or one whose name
+	// is not a plain name).
 	Diagnostics []string
 }
 
@@ -149,6 +153,9 @@ func LoadAPI(r layered.Roots) (*APIConfig, error) {
 	if err := c.readProviders(s); err != nil {
 		return nil, err
 	}
+	if err := c.readBundled(s); err != nil {
+		return nil, err
+	}
 	if err := c.readRoutes(s, rolesKey, c.roles); err != nil {
 		return nil, err
 	}
@@ -158,10 +165,10 @@ func LoadAPI(r layered.Roots) (*APIConfig, error) {
 	return c, nil
 }
 
+// readDenylist reads oracle.denylist. abcd bundles no entry
+// (adr-2609300107513982): with none written the list is empty and a provider's
+// allowlist alone decides.
 func (c *APIConfig) readDenylist(s *layered.Stack) error {
-	for _, p := range bundledDenylist {
-		c.denylist = append(c.denylist, DenyEntry{Pattern: p, Origin: "bundled"})
-	}
 	found, err := s.Lookup(denylistKey)
 	if err != nil {
 		return fmt.Errorf("oracle adapter: %w", err)
@@ -290,16 +297,21 @@ func deniedError(model string, e DenyEntry) error {
 
 // denial is the denylist refusal's clause, shared by the read and Admit.
 func denial(e DenyEntry) string {
-	return fmt.Sprintf("which the vendor denylist refuses (%s, from %s); no allowlist entry overrides the denylist, "+
-		"so a frontier model the host serves is never billed or routed through a provider", e.Pattern, e.Origin)
+	return fmt.Sprintf("which %s refuses (%s, from %s); an entry there refuses a model even when a provider lists it, "+
+		"so remove the entry to serve it", denylistKey, e.Pattern, e.Origin)
 }
 
 // readRoutes reads one route family (roles or judgement types) from the repo
-// and machine layers, the higher layer winning per name. A winning route from
-// any layer but the machine's that names a provider holding a key is refused
-// (keyed): only the person's own machine may point a route at their key.
+// and machine layers, the higher layer winning per name. A route from any layer
+// but the machine's that names a provider holding a key is skipped with a
+// diagnostic (skipKeyedRoute), and the machine's own route to the name, if it
+// has one, wins in its place: only the person's own machine may point a route
+// at their key. A repository route that is not <provider>/<model>, and a route
+// name only the repository spells that is not a plain name, are skipped with a
+// diagnostic too; the machine's own are refused.
 func (c *APIConfig) readRoutes(s *layered.Stack, key string, into map[string]Target) error {
 	names := map[string]bool{}
+	onMachine := map[string]bool{}
 	for _, l := range []layered.Layer{layered.Repo, layered.Machine} {
 		ns, err := s.Members(l, key)
 		if err != nil {
@@ -307,6 +319,9 @@ func (c *APIConfig) readRoutes(s *layered.Stack, key string, into map[string]Tar
 		}
 		for _, n := range ns {
 			names[n] = true
+			if l == layered.Machine {
+				onMachine[n] = true
+			}
 		}
 	}
 	sorted := make([]string, 0, len(names))
@@ -320,11 +335,32 @@ func (c *APIConfig) readRoutes(s *layered.Stack, key string, into map[string]Tar
 			re = judgementsRe
 		}
 		if !re.MatchString(name) {
-			return fmt.Errorf("oracle adapter: %s.%s: the name is not a plain lower-case name", key, layered.BoundKey(name))
+			// A malformed name in the machine's file is the person's own
+			// mistake in their own file, and refuses like every other machine
+			// fault, so it is fixed rather than silently dropping a route they
+			// set. One only a repository spells is skipped with a diagnostic
+			// (ruling CD2 of 2026-09-29: a checkout's configuration never takes
+			// the commands that read it down), and the name is never looked up,
+			// since it may not even split into a key.
+			if onMachine[name] {
+				return fmt.Errorf("oracle adapter: %s (machine layer): %s name %s is not a plain lower-case name",
+					layered.Config.MachineOrigin(), key, quoteUntrusted(name))
+			}
+			c.Diagnostics = append(c.Diagnostics, fmt.Sprintf("oracle adapter: %s (repo layer): %s name %s is not a plain lower-case name "+
+				"(lower case letters, digits and -); the route is skipped and the rest of the configuration applies",
+				layered.Config.RepoOrigin(), key, quoteUntrusted(name)))
+			continue
 		}
 		found, err := s.Lookup(key + "." + name)
 		if err != nil {
 			return fmt.Errorf("oracle adapter: %w", err)
+		}
+		// A repository's route that is not <provider>/<model>, or that points
+		// at a provider holding a key, is skipped, and the next layer's route
+		// to the name, the machine's own, applies in its place (ruling CD2 of
+		// 2026-09-29).
+		for len(found) > 0 && (c.skipMalformedRoute(key, name, found[0]) || c.skipKeyedRoute(key, name, found[0])) {
+			found = found[1:]
 		}
 		if len(found) == 0 {
 			continue
@@ -349,18 +385,83 @@ func (c *APIConfig) readRoutes(s *layered.Stack, key string, into map[string]Tar
 				"it runs on the host, as it would with no provider configured", where, layered.BoundKey(provider)))
 			continue
 		}
-		if p := c.providers[provider]; win.Layer != layered.Machine && keyed(p) {
-			return fmt.Errorf("oracle adapter: %s points at %s, a provider that holds a key (its block in %s names the credential %s); "+
-				"only a route set on this machine may spend that key, so a repository's route to it is refused before any call: "+
-				"set %s.%s in %s and remove it from %s, or point it at a provider whose block names no key",
-				where, layered.BoundKey(text), p.Origin, p.Key, key, name, layered.Config.MachineOrigin(), win.Origin)
-		}
 		if err := c.Admit(provider, model); err != nil {
 			return fmt.Errorf("oracle adapter: %s points at %s, %w", where, layered.BoundKey(text), err)
 		}
 		into[name] = Target{Provider: provider, Model: model, Origin: win.Origin}
 	}
 	return nil
+}
+
+// quoteUntrusted renders a route name that failed its pattern, or a route
+// value that failed its shape, for a diagnostic or a refusal. It is
+// file-authored bytes, a repository's among them, so termsafe masks every
+// terminal-attack rune first, and the quoting then spells any other non-ASCII
+// rune as an escape: a lookalike letter (the Cyrillic U+0456 in "scribe") is
+// why such a name fails, and printed as itself it would read as the plain name
+// it imitates.
+func quoteUntrusted(v string) string {
+	return strconv.QuoteToASCII(termsafe.Sanitize(layered.BoundKey(v)))
+}
+
+// skipMalformedRoute reports whether one layer's route to name is a route from
+// any layer but the machine's that is not <provider>/<model>, and says so in a
+// diagnostic when it is. Such a route names no provider, so no key and no
+// denylist entry is in question, and skipping it keeps every command that
+// reads the configuration working (ruling CD2 of 2026-09-29). The machine's
+// own malformed route is left to the refusal below: that file is the person's,
+// and a route they set is never dropped silently.
+func (c *APIConfig) skipMalformedRoute(key, name string, fd layered.Found) bool {
+	if fd.Layer == layered.Machine {
+		return false
+	}
+	what := "is not a string"
+	if text, err := layered.Decode[string](fd.Raw); err == nil {
+		provider, model, ok := strings.Cut(text, "/")
+		if ok && provider != "" && model != "" {
+			return false
+		}
+		what = "is " + quoteUntrusted(text)
+	}
+	c.Diagnostics = append(c.Diagnostics, fmt.Sprintf("oracle adapter: %s (%s layer): %s.%s %s; a route is <provider>/<model>, "+
+		"so this route is skipped and the rest of the configuration applies", fd.Origin, fd.Layer, key, name, what))
+	return true
+}
+
+// skipKeyedRoute reports whether one layer's route to name is a route from any
+// layer but the machine's to a configured provider that holds a key, and says
+// so in a diagnostic when it is. Only a route the person set up on their own
+// machine may spend their paid key (ruling AA(b) of 2026-09-29), and such a
+// route is skipped rather than refusing the whole configuration (ruling CD2 of
+// the same day), so every other route and every command that reads the
+// configuration keeps working. It is judged before the model is checked, so a
+// keyed provider's list is never consulted on a repository's behalf; a route
+// the denylist matches is left to the refusal below, which no layer softens,
+// and a route this reader cannot parse is too.
+func (c *APIConfig) skipKeyedRoute(key, name string, fd layered.Found) bool {
+	if fd.Layer == layered.Machine {
+		return false
+	}
+	text, err := layered.Decode[string](fd.Raw)
+	if err != nil {
+		return false
+	}
+	provider, model, ok := strings.Cut(text, "/")
+	if !ok || provider == "" || model == "" {
+		return false
+	}
+	p, configured := c.providers[provider]
+	if !configured || !keyed(p) {
+		return false
+	}
+	if _, denied := Denied(c.denylist, model); denied {
+		return false
+	}
+	c.Diagnostics = append(c.Diagnostics, fmt.Sprintf("oracle adapter: %s (%s layer): %s.%s points at %s, a provider that holds a key "+
+		"(its block in %s names the credential %s); only a route set on this machine may spend that key, so this route is skipped "+
+		"and the rest of the configuration applies: set %s.%s in %s and remove it from %s, or point it at a provider whose block names no key",
+		fd.Origin, fd.Layer, key, name, layered.BoundKey(text), p.Origin, p.Key, key, name, layered.Config.MachineOrigin(), fd.Origin))
+	return true
 }
 
 // keyed reports whether p holds a key: whether its block names a credential.
@@ -370,8 +471,8 @@ func (c *APIConfig) readRoutes(s *layered.Stack, key string, into map[string]Tar
 func keyed(p Provider) bool { return p.Key != "" }
 
 // Admit is the refusal adr-2609221009491186 names: it returns nil only when
-// provider is configured, model is on its list, and no denylist entry matches
-// the model. It is consulted when the configuration is read and again by any
+// provider is configured, model is on its list, and no oracle.denylist entry
+// the configuration wrote matches the model. It is consulted when the configuration is read and again by any
 // dispatch, so a route never reaches a provider on a stale answer.
 func (c *APIConfig) Admit(provider, model string) error {
 	p, ok := c.providers[provider]
@@ -448,8 +549,8 @@ func (c *APIConfig) Provider(name string) (Provider, bool) {
 	return p, ok
 }
 
-// Denylist returns the denylist in force: the bundled entries, then the
-// machine's, then the repository's.
+// Denylist returns the denylist in force, the entries oracle.denylist holds,
+// lowest layer first; empty when none is written, since abcd bundles none.
 func (c *APIConfig) Denylist() []DenyEntry { return append([]DenyEntry(nil), c.denylist...) }
 
 // Role returns where an agent is pointed, if it is.
@@ -495,7 +596,8 @@ func (c *APIConfig) Routes() []PointedRoute {
 // of Connections this configuration backs. A provider claims no tier: it is
 // reached by a role or a judgement type pointed at it, or by a --route naming
 // it, never by a tier alone, so Serves answers false for every tier and the
-// tier-only steps stay on the harness. Named returns the provider's connection
+// tier-only steps stay on the harness. Pointed returns the connection an
+// agent's role points at. Named returns the provider's connection
 // carrying its allowlist, the settings the adapter accepts, and the model each
 // role pointed at it asks for.
 func (c *APIConfig) Connections() Connections { return apiConnections{c: c} }
@@ -503,6 +605,17 @@ func (c *APIConfig) Connections() Connections { return apiConnections{c: c} }
 type apiConnections struct{ c *APIConfig }
 
 func (apiConnections) Serves(Tier) (Connection, bool) { return Connection{}, false }
+
+// Pointed returns the connection agent's oracle.roles.<agent> points at: a
+// provider is reached by the role pointed at it (Decision 9), so this is how
+// a step with no --route finds its provider.
+func (a apiConnections) Pointed(agent string) (Connection, bool) {
+	t, ok := a.c.roles[agent]
+	if !ok {
+		return Connection{}, false
+	}
+	return a.Named(t.Provider)
+}
 
 func (a apiConnections) Named(name string) (Connection, bool) {
 	p, ok := a.c.providers[name]
@@ -523,5 +636,6 @@ func (a apiConnections) Named(name string) (Connection, bool) {
 		Models:  append([]string(nil), p.Models...),
 		Accepts: openaiapi.AcceptedSettings(),
 		Roles:   roles,
+		Keyed:   keyed(p),
 	}, true
 }

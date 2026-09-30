@@ -1,0 +1,207 @@
+#!/usr/bin/env bash
+# Attribution trailer, written when the message is written — run on every clone
+# via the global ~/.githooks dispatcher (core.hooksPath), or by pointing this
+# clone's hooks at this directory: git config core.hooksPath .githooks
+#
+# The attribution gate (scripts/check-attribution.sh, AGENTS.md § Attribution and
+# acknowledgements) refuses a non-merge commit whose message carries no
+# `Assisted-by:` trailer. Some commands compose the message themselves — `git
+# revert`, `git cherry-pick`, a squash — and none of them writes the trailer, so a
+# plain revert was refused by the gate and could be satisfied only by rewriting
+# history (iss-2609251125591539). This hook writes the trailer at the moment git
+# prepares the message, from ONE place only, the abcd.assistedBy key, set for the
+# one command that needs it:
+#
+#     git -c abcd.assistedBy=<Vendor>:<model-version> revert|cherry-pick <sha>
+#
+# A standing `git config abcd.assistedBy` (the clone's or the user's) also stamps
+# every -m/-F commit, every --amend and every cherry-pick it sees, which is a false
+# disclosure for work no model touched. When that key is unset the hook does NOTHING: which tool
+# assisted a change is a fact only the committer has, and a hook that guessed would
+# manufacture the disclosure the convention exists to obtain. It never writes
+# `Assisted-by: None` either: None is a per-commit declaration that no tool
+# touched the work, and a standing setting that stamped it on every commit would be
+# a false disclosure the first time a tool did. A configured `None` is refused
+# with a notice, as is any value outside the gate's `<Vendor>:<model-version>`
+# shape.
+#
+# WHICH SOURCES (githooks(5): the second argument), checked on git 2.52:
+#
+#   message   -m/-F, and every sequencer commit that does not stop for an editor:
+#             `git revert`, `git revert --no-edit`, `git cherry-pick`.  WRITES.
+#   commit    --amend, -c, -C.                                           WRITES.
+#   squash    `git commit` after `git merge --squash` (a single-parent commit the
+#             gate judges).                                              WRITES.
+#   merge     with MERGE_HEAD: a true merge, whose message the gate exempts
+#             (check-attribution.sh skips a commit with two parents). LEFT ALONE.
+#             without MERGE_HEAD: MERGE_MSG left by `git revert -e` or by a revert
+#             or cherry-pick stopped on a conflict and finished with `git commit`
+#             or `--continue` — a single-parent commit the gate judges. WRITES.
+#   template  -t or commit.template.                                LEFT ALONE.
+#   (none)    a plain `git commit` that opens the editor.          LEFT ALONE.
+#
+# The last two are left alone because a trailer there defeats git's own abort: a
+# message that is empty, or a template left untouched, is refused by git, and an
+# appended `Assisted-by:` line is content, so git records a commit whose whole
+# message is the trailer. Those are the two editor-bound sources the scaffolded
+# managed-repo prompt (internal/core/ahoy/defaults/prepare-commit-msg) handles by
+# asking in a comment; this hook covers the sources that prompt skips.
+#
+# A message that already carries an `Assisted-by:` line anywhere (the gate reads
+# every line, so this does too) is left exactly as it is — that is what makes an
+# amend idempotent, and it keeps an explicit `Assisted-by: None` from gaining a
+# contradicting second trailer. The trailer is placed by `git interpret-trailers`,
+# which knows git's trailer block, comment lines and the scissors line.
+#
+# NOT A GATE. It never refuses a commit: every path that cannot write the trailer
+# says why on stderr and exits 0, and the commit then meets the attribution gate
+# without one, which is where a missing trailer is judged.
+#
+# `set` is dropped before its first use: a shadowed one would leave errexit off for
+# the whole hook. The fixed list below drops it again with the rest.
+#
+# No errexit, deliberately: a non-zero exit from this hook aborts the commit, and
+# a helper that cannot write a trailer must not stop one. Each step checks its own
+# status and says what it skipped.
+unset -f set 2>/dev/null || true
+set -uo pipefail
+# --- environment pin: the FIRST statements, before anything is read or run -------
+# The same pin as .githooks/commit-msg. git starts this hook as a fresh bash with
+# the committer's environment, and this hook writes a disclosure into a message: a
+# `git` function exported into that environment could answer the config read with a
+# value nobody configured, and the hook would stamp it.
+case $- in *x*) set +x ;; esac
+unset -f git mktemp cat rm printf command read echo exit test [ cd pwd trap \
+  declare continue break return local export set true 2>/dev/null || true
+IFS=$' \t\n'
+set -f
+for _fn in $(declare -F); do
+  case "$_fn" in declare | -f | -fx) continue ;; esac
+  unset -f "$_fn" 2>/dev/null || true
+done
+set +f
+unset _fn 2>/dev/null || true
+LC_ALL=C
+export LC_ALL
+PATH=/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
+guard_path=$(git config --local --get abcd.guardPath 2>/dev/null || true)
+if [ -n "$guard_path" ]; then
+  case ":$guard_path:" in
+    *::*)
+      echo "prepare-commit-msg: Assisted-by NOT written — abcd.guardPath contains an empty element," >&2
+      echo "                    which would put the working tree on the hook's PATH." >&2
+      exit 0
+      ;;
+  esac
+  PATH="$PATH:$guard_path"
+fi
+export PATH
+for tool in git mktemp cat rm; do
+  if ! command -v "$tool" >/dev/null 2>&1; then
+    echo "prepare-commit-msg: Assisted-by NOT written — $tool is not on the hook's pinned PATH ($PATH)." >&2
+    exit 0
+  fi
+done
+# --- end environment pin --------------------------------------------------------
+
+msg_file="${1:-}"
+msg_source="${2:-}"
+if [ -z "$msg_file" ] || [ ! -f "$msg_file" ]; then
+  exit 0
+fi
+
+# The one source of the value. Unset is the ordinary case and is silent.
+rc=0
+value="$(git config --get abcd.assistedBy 2>/dev/null)" || rc=$?
+if [ "$rc" -eq 1 ] || { [ "$rc" -eq 0 ] && [ -z "$value" ]; }; then
+  exit 0
+fi
+if [ "$rc" -ne 0 ]; then
+  echo "prepare-commit-msg: Assisted-by NOT written — \`git config --get abcd.assistedBy\` failed (exit $rc)." >&2
+  exit 0
+fi
+
+# The value's shape is the gate's TRAILER_RE, tested with a bash builtin so no tool
+# outside this shell decides it. A `None` is named on its own: it is the one value
+# the gate accepts that this hook must never write.
+if [[ $value =~ ^[Nn][Oo][Nn][Ee]$ ]]; then
+  echo "prepare-commit-msg: Assisted-by NOT written — abcd.assistedBy is 'None', and a standing" >&2
+  echo "                    setting cannot declare that no tool touched a commit. Write" >&2
+  echo "                    'Assisted-by: None' into the message of each commit it is true for." >&2
+  exit 0
+fi
+if ! [[ $value =~ ^[A-Za-z][A-Za-z0-9._-]*:[A-Za-z0-9._-]+(\[[A-Za-z0-9._-]+\])?$ ]]; then
+  echo "prepare-commit-msg: Assisted-by NOT written — abcd.assistedBy is not <Vendor>:<model-version>" >&2
+  echo "                    (for example Claude:claude-opus-5), the shape the attribution gate accepts." >&2
+  exit 0
+fi
+
+case "$msg_source" in
+  message | commit | squash) ;;
+  merge)
+    # A true merge is exempt at the gate; MERGE_MSG without MERGE_HEAD is a revert
+    # or cherry-pick finishing through `git commit`, which is not.
+    if git rev-parse -q --verify MERGE_HEAD >/dev/null 2>&1; then
+      exit 0
+    fi
+    ;;
+  *) exit 0 ;;
+esac
+
+# Already disclosed, on any line: leave the message exactly as it is. The match is
+# case-insensitive on the key, as git's own trailer keys are, and anchored at the
+# line start, as the gate's is.
+key_re='^[Aa][Ss][Ss][Ii][Ss][Tt][Ee][Dd]-[Bb][Yy][[:blank:]]*:'
+while IFS= read -r line || [[ -n $line ]]; do
+  if [[ $line =~ $key_re ]]; then
+    exit 0
+  fi
+done <"$msg_file"
+
+trailer="Assisted-by: $value"
+work="$(mktemp -d "${TMPDIR:-/tmp}/abcd-prepare-commit-msg.XXXXXX")" || {
+  echo "prepare-commit-msg: Assisted-by NOT written — could not create a temporary directory." >&2
+  exit 0
+}
+trap 'rm -rf "$work" || true' EXIT INT TERM HUP
+out="$work/message"
+
+# The trailer.* settings a clone may carry are pinned for this one call, so the
+# trailer lands as one `Assisted-by: <value>` line at the end of the trailer block
+# whatever the clone configured. --no-divider: the input is a commit message, never
+# a patch, so a `---` line in its body is text, not the end of the message.
+rc=0
+git -c trailer.separators=: -c trailer.where=end -c trailer.ifexists=doNothing \
+  -c trailer.ifmissing=add \
+  interpret-trailers --no-divider --where end --if-exists doNothing --if-missing add \
+  --trailer "$trailer" "$msg_file" >"$out" 2>"$work/err" || rc=$?
+if [ "$rc" -ne 0 ]; then
+  echo "prepare-commit-msg: Assisted-by NOT written — git interpret-trailers failed (exit $rc)." >&2
+  exit 0
+fi
+
+# Proof before the swap: the output carries the trailer exactly once, verbatim. A
+# trailer alias a clone configured (trailer.<token>.key) could rename the key, and
+# that is not what this hook was asked to write.
+found=0
+while IFS= read -r line || [[ -n $line ]]; do
+  if [[ $line =~ $key_re ]]; then
+    if [[ $line == "$trailer" ]]; then
+      found=$((found + 1))
+    else
+      found=99
+    fi
+  fi
+done <"$out"
+if [ "$found" -ne 1 ]; then
+  echo "prepare-commit-msg: Assisted-by NOT written — git interpret-trailers did not produce the" >&2
+  echo "                    line '$trailer' exactly once; the message is left as git prepared it." >&2
+  exit 0
+fi
+
+if ! cat "$out" >"$msg_file"; then
+  echo "prepare-commit-msg: Assisted-by NOT written — could not rewrite the message file." >&2
+  exit 0
+fi
+echo "prepare-commit-msg: wrote '$trailer' (git config abcd.assistedBy)" >&2
+exit 0

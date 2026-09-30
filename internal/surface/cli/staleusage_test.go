@@ -101,7 +101,7 @@ func TestUnknownVerbDocumentedByPluginSurfaceNamesStaleBinary(t *testing.T) {
 		// validates the positional, so the failure is `unknown flag: --yes` and
 		// the verb never appears in cobra's own line. The note must still name
 		// the verb, which is what the surface documents and the binary lacks.
-		code, _, stderr := runMain(t, "frobnicate", "--yes", "--json")
+		code, _, stderr := runMain(t, "frobnicate", "--yes")
 		if code != 2 {
 			t.Fatalf("exit code = %d, want 2", code)
 		}
@@ -109,6 +109,22 @@ func TestUnknownVerbDocumentedByPluginSurfaceNamesStaleBinary(t *testing.T) {
 			"abcd: this binary predates the `frobnicate` command its plugin surface documents — " + pluginUpdateRemedy + "\n"
 		if stderr != want {
 			t.Fatalf("stderr =\n%q\nwant\n%q", stderr, want)
+		}
+		// The documented invocation also carries --json, which the parse never
+		// reached; the caller asked for the envelope all the same, and it
+		// carries the note (iss-2609292352131344).
+		code, stdout, stderr := runMain(t, "frobnicate", "--yes", "--json")
+		if code != 2 || stderr != "" {
+			t.Fatalf("under --json: exit %d, stderr %q; want 2 and nothing on stderr", code, stderr)
+		}
+		var env struct {
+			Error string `json:"error"`
+		}
+		if err := json.Unmarshal([]byte(stdout), &env); err != nil {
+			t.Fatalf("stdout is not the JSON error envelope: %v\n%s", err, stdout)
+		}
+		if !strings.HasPrefix(env.Error, "unknown flag: --yes") || !strings.Contains(env.Error, "predates the `frobnicate` command") {
+			t.Fatalf("envelope error = %q", env.Error)
 		}
 	})
 

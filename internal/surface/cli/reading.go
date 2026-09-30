@@ -36,6 +36,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/adapter/openaiapi"
+	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/oracle"
 	"github.com/intentdriven/abcd/internal/core/reading"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -186,6 +188,7 @@ func newReadingCommand(asJSON *bool) *cobra.Command {
 		"write nothing; with --out the two artefacts still land in that directory")
 
 	var readingJSON string
+	var dispatchRun string
 	var readingRoute *routeFlag
 	ingestCmd := &cobra.Command{
 		Use: "ingest --reading-json <path>",
@@ -210,7 +213,11 @@ func newReadingCommand(asJSON *bool) *cobra.Command {
 			"marker the sweep ROLLS THAT RUN'S READING RECORDS OUT OF THE COMMITTED LEDGER, because the\n" +
 			"run never happened; where the marker is there the run stands and only the stage goes. A\n" +
 			"refused run reports the orphans it left in place, and the ids a sweep removed are reported as\n" +
-			"rolled_back_records on every exit, including a failing one.",
+			"rolled_back_records on every exit, including a failing one.\n\n" +
+			"Every stored finding is matched against the record as a capture is: its pattern and body are\n" +
+			"compared with the open and resolved issues, the intents and every earlier reading item, never\n" +
+			"with another item of the same run, and a likely repeat is written onto the reading record as a\n" +
+			"duplicates: or refines: link and shown, printed and as matches in --json.",
 		Example: "  abcd reading ingest --reading-json ./reading-output.json --json",
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) > 0 {
@@ -221,6 +228,14 @@ func newReadingCommand(asJSON *bool) *cobra.Command {
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if dispatchRun != "" && readingJSON != "" {
+				return &exitError{Code: 2, Msg: "reading ingest: --dispatch and --reading-json each name the output to ingest, " +
+					"so give one: --dispatch <run> sends the parked run to the provider its position is pointed at, " +
+					"--reading-json <path> ingests what the host's reader returned"}
+			}
+			if dispatchRun != "" {
+				return runReadingDispatch(cmd, readingRoute, dispatchRun, *asJSON)
+			}
 			if readingJSON == "" {
 				return &exitError{Code: 2, Msg: "reading ingest: --reading-json <path> is required: " +
 					"the JSON the reading returned"}
@@ -253,11 +268,25 @@ func newReadingCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := hostPayloadOnProvider("reading ingest", route,
+				"run `abcd reading ingest --dispatch <run>` on the parked run instead of dispatching the reader"); err != nil {
+				return err
+			}
+			// The filing-time match (ruling DQ2b, adr-2609300821558671),
+			// configured as the capture verb's is and never a refusal.
+			root := captureRoot(cwd)
+			mc, matchRefused := resolveMatch(cmd.ErrOrStderr(), "reading ingest", root)
 			res, err := reading.Ingest(reading.IngestRequest{
-				RepoRoot:   captureRoot(cwd),
+				RepoRoot:   root,
 				OutputPath: resolved,
 				Output:     payload,
+				Match:      mc,
 			})
+			if err == nil && mc == nil && matchRefused != nil {
+				for _, r := range res.Records {
+					res.Matches = append(res.Matches, capture.ReadingMatch{ID: r.ID, Match: matchRefused})
+				}
+			}
 			if err != nil {
 				// A refusal that produced a durable record renders it before it
 				// exits. The record path is the operator's handle on the event,
@@ -288,6 +317,8 @@ func newReadingCommand(asJSON *bool) *cobra.Command {
 	}
 	ingestCmd.Flags().StringVar(&readingJSON, "reading-json", "",
 		"path to the JSON the cold reading returned")
+	ingestCmd.Flags().StringVar(&dispatchRun, "dispatch", "",
+		"send the parked run <rdg-N> to the provider its position is pointed at (oracle.roles.cold-reading-<position>) and ingest the answer")
 	var readingAgents []string
 	for _, p := range reading.Positions() {
 		readingAgents = append(readingAgents, readingAgentPrefix+string(p))
@@ -626,6 +657,12 @@ func renderIngestResult(w io.Writer, res reading.IngestResult) {
 		// elision entry names no item, so neither surface renders it as one.
 		fmt.Fprintf(w, "                 %s\n", r.Render())
 	}
+	// The likely repeats of each stored finding (ruling DQ2b): the links
+	// written onto it, a match past the link cap, or why nothing was compared.
+	for _, m := range res.Matches {
+		fmt.Fprintf(w, "  %s:\n", termsafe.Sanitize(m.ID))
+		renderMatch(w, m.Match)
+	}
 	if len(res.ClearedStages) > 0 {
 		fmt.Fprintf(w, "  cleared:       orphaned stage(s) of %s\n", strings.Join(res.ClearedStages, ", "))
 	}
@@ -676,4 +713,101 @@ func readingIngestRoute(cmd *cobra.Command, rf *routeFlag, payload []byte) (*ora
 		return nil, nil
 	}
 	return rf.resolve(cmd, "reading ingest", agent)
+}
+
+// runReadingDispatch sends a parked run to the provider its position's agent
+// is pointed at and ingests the answer (spc-2609251028149555 AC 3). A
+// cold-reading position is self-contained under ruling DR5 of 2026-09-29: the
+// request carries the position's definition and the parked bundle, and the
+// reader reads no file. A route on the harness is refused, naming the host's
+// path; a provider that could not be reached leaves the step to the host with
+// nothing ingested.
+func runReadingDispatch(cmd *cobra.Command, rf *routeFlag, runID string, asJSON bool) error {
+	const verb = "reading ingest"
+	root := captureRoot(mustCwd())
+	parked, err := reading.ReadParked(root, runID)
+	if err != nil {
+		return readingRefusal(verb, err)
+	}
+	agent := readingAgentPrefix + string(parked.Position)
+	route, err := rf.resolve(cmd, verb, agent)
+	if err != nil {
+		return err
+	}
+	if !route.OnProvider() {
+		return &exitError{Code: 2, Msg: fmt.Sprintf("%s: --dispatch sends a run to the provider its position is pointed at, "+
+			"and %s resolves to the %s: dispatch the reader on the host with the run's bundle and ingest what it returns "+
+			"with --reading-json, or point oracle.roles.%s at <provider>/<model> in ~/.abcd/config.json",
+			verb, agent, oracle.Harness, agent)}
+	}
+	if err := rf.admit(verb, route); err != nil {
+		return err
+	}
+	target, err := rf.api.Admitted(*route)
+	if err != nil {
+		return &exitError{Code: 2, Msg: verb + ": " + termsafe.Sanitize(err.Error())}
+	}
+	def, err := reading.LoadDefinition(root, parked.Position)
+	if err != nil {
+		return readingRefusal(verb, err)
+	}
+	prompt, err := readAgentFile(filepath.Join(root, filepath.Dir(filepath.FromSlash(def.Path))), filepath.Base(def.Path))
+	if err != nil {
+		return readingRefusal(verb, err)
+	}
+	input, err := parked.DispatchInput(def, target.Model)
+	if err != nil {
+		return readingRefusal(verb, err)
+	}
+	// The send says how much of the bundle the exclusion floor never examined
+	// before it leaves under the person's key (review-providerDispatch2 point
+	// 3): the manifest carries the per-item mark, and this is its total.
+	fmt.Fprintf(cmd.ErrOrStderr(), "%s: run %s sends %d item(s) to %s, %d of them unscanned: the exclusion floor never "+
+		"examined those, and they travel whole as the manifest marks them\n",
+		verb, parked.RunID, parked.Items, termsafe.Sanitize(target.Provider), parked.Unscanned)
+	d, route, err := rf.dispatch(cmd, verb, route, openaiapi.Brief{Instructions: prompt, Input: input}, readingContract(parked))
+	if err != nil {
+		return err
+	}
+	if d == nil {
+		return &exitError{Code: 2, Msg: verb + ": nothing was sent and nothing was ingested; dispatch the reader on the host " +
+			"with the run's bundle and ingest what it returns with --reading-json --route " + agent + "=" + string(route.Row.Tier)}
+	}
+	mc, _ := resolveMatch(cmd.ErrOrStderr(), verb, root)
+	res, err := reading.Ingest(reading.IngestRequest{
+		RepoRoot:   root,
+		OutputPath: "provider " + route.ConnectionUsed,
+		Output:     d.payload,
+		Match:      mc,
+	})
+	if err != nil {
+		if res.HasDisclosure() {
+			_ = render(cmd.OutOrStdout(), asJSON, res, func(w io.Writer) { renderIngestResult(w, res) })
+		}
+		return readingRefusal(verb, err)
+	}
+	return render(cmd.OutOrStdout(), asJSON, withDispatchReceipt(res, d), func(w io.Writer) {
+		renderIngestResult(w, res)
+		renderDispatchLine(w, d)
+	})
+}
+
+// readingContract is the output contract a dispatched reading's answer is
+// judged by before it is ingested: one JSON document of the output type,
+// citing the run it was sent. The ingest then validates it whole.
+func readingContract(p reading.Parked) func([]byte) error {
+	return func(b []byte) error {
+		var head struct {
+			Type     string `json:"_type"`
+			RunID    string `json:"run_id"`
+			Position string `json:"position"`
+		}
+		if err := json.Unmarshal(b, &head); err != nil {
+			return fmt.Errorf("the answer is not one JSON document: %w", err)
+		}
+		if head.Type != reading.OutputType || head.RunID != p.RunID || head.Position != string(p.Position) {
+			return fmt.Errorf("the answer is not a %s for run %s at %s", reading.OutputType, p.RunID, p.Position)
+		}
+		return nil
+	}
 }

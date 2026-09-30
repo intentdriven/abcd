@@ -1,6 +1,7 @@
 package recordid
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -57,9 +58,9 @@ func TestResolverFindsEveryFamily(t *testing.T) {
 		"adr-37":  ".abcd/development/decisions/adrs/0037-release-workflow.md",
 	}
 	for id, path := range want {
-		got, ok := r.Lookup(id)
-		if !ok {
-			t.Errorf("Lookup(%q): not resolved", id)
+		got, ok, err := r.Lookup(id)
+		if err != nil || !ok {
+			t.Errorf("Lookup(%q): not resolved (%v)", id, err)
 			continue
 		}
 		if got != path {
@@ -78,7 +79,7 @@ func TestResolverRejectsAbsentAndMalformed(t *testing.T) {
 		t.Fatalf("NewResolver: %v", err)
 	}
 	for _, id := range []string{"itd-9999", "adr-2", "spc-1", "iss-1", "itd-0007", "", "itd", "ITD-7", "itd-7-a-draft"} {
-		if path, ok := r.Lookup(id); ok {
+		if path, ok, _ := r.Lookup(id); ok {
 			t.Errorf("Lookup(%q) resolved to %q; want unresolved", id, path)
 		}
 	}
@@ -117,7 +118,7 @@ func TestResolverIgnoresSymlinkedEntries(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewResolver: %v", err)
 	}
-	if path, ok := r.Lookup("itd-500"); ok {
+	if path, ok, _ := r.Lookup("itd-500"); ok {
 		t.Errorf("a symlinked record resolved to %q; want unresolved", path)
 	}
 }
@@ -165,9 +166,9 @@ func TestResolverAdmitsBothADRVintages(t *testing.T) {
 		"adr-58":               ".abcd/development/decisions/adrs/0058-a-reading-is-commissioned.md",
 		"adr-2609012206053814": ".abcd/development/decisions/adrs/2609012206053814-adrs-mint-timestamp-ids.md",
 	} {
-		got, ok := r.Lookup(id)
-		if !ok {
-			t.Errorf("%s did not resolve", id)
+		got, ok, err := r.Lookup(id)
+		if err != nil || !ok {
+			t.Errorf("%s did not resolve (%v)", id, err)
 			continue
 		}
 		if got != want {
@@ -279,5 +280,67 @@ func TestIssuesLedgerRootIsSpelledOnce(t *testing.T) {
 	}
 	if len(spelled) != 0 {
 		t.Errorf("the ledger root is spelled as a literal outside recordid.IssuesRelDir in %v", spelled)
+	}
+}
+
+// TestLookupRefusesTwoFilesClaimingOneID: when two files in one family answer
+// to one id, the lookup that names a file REFUSES, naming both, rather than
+// keeping whichever sorts first. First-wins let a second ADR `0037-a.md` settle
+// every reader that asked for adr-37 while `0037-x.md` said otherwise. The
+// existence question is unaffected: the id does name a record, and the
+// duplicate itself is record-lint's uniqueness finding.
+func TestLookupRefusesTwoFilesClaimingOneID(t *testing.T) {
+	for _, tc := range []struct {
+		id    string
+		files []string
+	}{
+		{"adr-37", []string{
+			".abcd/development/decisions/adrs/0037-a.md",
+			".abcd/development/decisions/adrs/0037-x.md",
+		}},
+		{"adr-2609012206053814", []string{
+			".abcd/development/decisions/adrs/02609012206053814-padded.md",
+			".abcd/development/decisions/adrs/2609012206053814-minted.md",
+		}},
+		{"itd-7", []string{
+			".abcd/development/intents/planned/itd-7-a.md",
+			".abcd/development/intents/shipped/itd-7-b.md",
+		}},
+	} {
+		t.Run(tc.id, func(t *testing.T) {
+			root := t.TempDir()
+			for _, rel := range tc.files {
+				abs := filepath.Join(root, filepath.FromSlash(rel))
+				if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(abs, []byte("# record\n"), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			rel, ok, err := LookupOne(root, tc.id)
+			if err == nil {
+				t.Fatalf("LookupOne(%s) = %q %v, want an ambiguity refusal", tc.id, rel, ok)
+			}
+			for _, f := range tc.files {
+				if !strings.Contains(err.Error(), f) {
+					t.Errorf("the refusal must name %s: %v", f, err)
+				}
+			}
+			var amb *AmbiguousIDError
+			if !errors.As(err, &amb) || amb.ID != tc.id {
+				t.Errorf("the refusal must be an *AmbiguousIDError for %s: %#v", tc.id, err)
+			}
+			r, err := NewResolver(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !r.Has(tc.id) {
+				t.Errorf("Has(%s) = false; a duplicated id still names a record", tc.id)
+			}
+			if _, _, err := r.Lookup(tc.id); !errors.As(err, &amb) {
+				t.Errorf("Resolver.Lookup(%s) must refuse as LookupOne does: %v", tc.id, err)
+			}
+		})
 	}
 }

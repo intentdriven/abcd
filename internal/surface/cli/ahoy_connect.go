@@ -26,15 +26,19 @@ import (
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/oracle"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/term"
 	"github.com/intentdriven/abcd/internal/termsafe"
 	"github.com/spf13/cobra"
 )
 
-// dispatchPending is the loud-staging line: the adapter is configured and
-// verified, and no delegating verb sends a step through it until provider
-// dispatch lands.
-const dispatchPending = "no delegating verb sends a step to a provider until provider dispatch lands " +
-	"(spc-2609251028149555); until then every delegated step runs on the host"
+// dispatchNote is what a configured provider does to a delegated step: a verb
+// whose agent's role points at it sends the step there itself, and a provider
+// that holds a key takes only the self-contained agents (ruling DR5).
+var dispatchNote = "a delegating verb whose agent's oracle.roles entry points at a provider sends the step there itself " +
+	"and ingests the answer, and every other step runs on the host; a provider whose block names a key takes only " +
+	"self-contained agents (" + strings.Join(oracle.SelfContained(), ", ") + "), under ruling DR5 of 2026-09-29, " +
+	"and oracle.bundled_context_providers in ~/.abcd/config.json is the person's override for file-reading agents " +
+	"whose bundle abcd builds (none yet)"
 
 // providerView is one configured provider as the board shows it: the block,
 // whether its key resolves and the home it resolves from (never the key).
@@ -79,11 +83,14 @@ func runAhoyProviders(cmd *cobra.Command, cwd string, asJSON bool) error {
 		KeyHomes:    oracle.KeyHomesProse,
 		Homes:       oracle.KeyHomes(),
 		Setup:       setupExample,
-		Dispatch:    dispatchPending,
+		Dispatch:    dispatchNote,
 		Diagnostics: append([]string{}, cfg.Diagnostics...),
 	}
 	if b.Routes == nil {
 		b.Routes = []oracle.PointedRoute{}
+	}
+	if b.Denylist == nil {
+		b.Denylist = []oracle.DenyEntry{}
 	}
 	for _, p := range cfg.Providers() {
 		state, home := keyState(roots.Home, p.Key)
@@ -110,7 +117,11 @@ func runAhoyProviders(cmd *cobra.Command, cwd string, asJSON bool) error {
 		for i, e := range b.Denylist {
 			deny[i] = e.Pattern + " (" + e.Origin + ")"
 		}
-		line("vendor denylist, which no allowlist entry overrides: " + strings.Join(deny, ", "))
+		if len(deny) == 0 {
+			line("denylist (oracle.denylist): none written; a provider serves only the models it lists")
+		} else {
+			line("denylist (oracle.denylist), which refuses a model even when a provider lists it: " + strings.Join(deny, ", "))
+		}
 		for _, r := range b.Routes {
 			line(fmt.Sprintf("%s %s -> %s (%s)", r.Kind, r.Name, r.Target, r.Target.Origin))
 		}
@@ -121,6 +132,17 @@ func runAhoyProviders(cmd *cobra.Command, cwd string, asJSON bool) error {
 		line("set one up, the key piped in on stdin and never typed at a prompt: " + b.Setup)
 		line(b.Dispatch + ".")
 	})
+}
+
+// printConfigDiagnostics says the provider configuration read's non-fatal
+// reports (oracle.APIConfig.Diagnostics: a route skipped, and why) on w, one
+// line each. It is the one printer every front door that reads the
+// configuration and is not the board uses, so a skipped route is said the
+// same way wherever it is met.
+func printConfigDiagnostics(w io.Writer, diagnostics []string) {
+	for _, d := range diagnostics {
+		fmt.Fprintf(w, "abcd %s\n", termsafe.Sanitize(fsutil.RedactHome(d)))
+	}
 }
 
 // keyState says whether a named credential resolves through the store, and
@@ -176,7 +198,10 @@ func newAhoyConnectCommand(asJSON *bool) *cobra.Command {
 				msg := openaiapi.Scrub(err.Error(), req.Key)
 				return &exitError{Code: 2, Msg: "abcd ahoy connect: " + termsafe.Sanitize(fsutil.RedactHome(msg))}
 			}
-			return render(cmd.OutOrStdout(), *asJSON, withMember{v: res, key: "dispatch", val: dispatchPending}, func(w io.Writer) {
+			// A route the configuration read skipped (ruling CD2) is said on
+			// stderr, in the text and the JSON form alike, and the setup stands.
+			printConfigDiagnostics(cmd.ErrOrStderr(), res.Diagnostics)
+			return render(cmd.OutOrStdout(), *asJSON, withMember{v: res, key: "dispatch", val: dispatchNote}, func(w io.Writer) {
 				line := func(s string) { fmt.Fprintf(w, "  %s\n", termsafe.Sanitize(s)) }
 				fmt.Fprintf(w, "abcd ahoy connect — %s verified and configured\n", termsafe.Sanitize(res.Provider))
 				line(fmt.Sprintf("verified: asked %s, %s reported %s", res.Verified.ModelAsked, res.Verified.Provider, res.Verified.ModelReported))
@@ -192,7 +217,7 @@ func newAhoyConnectCommand(asJSON *bool) *cobra.Command {
 				}
 				line(fmt.Sprintf("point a role or a judgement type at it with oracle.roles.<agent> or oracle.judgements.<type> = %q in %s",
 					res.Provider+"/"+res.Models[0], where))
-				line(dispatchPending + ".")
+				line(dispatchNote + ".")
 			})
 		},
 	}
@@ -207,11 +232,9 @@ func newAhoyConnectCommand(asJSON *bool) *cobra.Command {
 // readKey reads the key from stdin: refused from a terminal, where it would
 // be echoed as it is typed; one trailing line ending is dropped.
 func readKey(in io.Reader) (string, error) {
-	if f, ok := in.(*os.File); ok {
-		if fi, err := f.Stat(); err == nil && fi.Mode()&os.ModeCharDevice != 0 {
-			return "", errors.New("the key is read from stdin, and stdin is a terminal, where it would be echoed as it is typed; " +
-				"pipe it in from a file or a variable instead (" + setupExample + ")")
-		}
+	if f, ok := in.(*os.File); ok && term.IsTerminal(f) {
+		return "", errors.New("the key is read from stdin, and stdin is a terminal, where it would be echoed as it is typed; " +
+			"pipe it in from a file or a variable instead (" + setupExample + ")")
 	}
 	raw, err := io.ReadAll(io.LimitReader(in, credential.MaxValueBytes+3))
 	if err != nil {

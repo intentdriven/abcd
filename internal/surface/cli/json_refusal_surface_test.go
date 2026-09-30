@@ -106,3 +106,58 @@ func lastJSONDoc(t *testing.T, b []byte, v any) error {
 	}
 	return json.Unmarshal(last, v)
 }
+
+// TestUnknownFlagUnderJSONIsTheEnvelope pins iss-2609292352131344: a flag-parse
+// refusal happens before the persistent --json flag is read when the unknown
+// flag comes first, so the refusal used to be cobra's prose on stderr with an
+// empty stdout. A literal --json the caller typed still asks for the envelope.
+func TestUnknownFlagUnderJSONIsTheEnvelope(t *testing.T) {
+	for _, args := range [][]string{
+		{"ahoy", "--bogus", "--json"},
+		{"ahoy", "--bogus", "--json=true"},
+		{"version", "--check", "--json"},
+		{"capture", "list", "--bogus", "--json"},
+	} {
+		var stdout, stderr bytes.Buffer
+		code := Run(args, &stdout, &stderr)
+		if code != 2 {
+			t.Errorf("%v: want exit 2 for an unknown flag, got %d", args, code)
+		}
+		var env struct {
+			Abcd     string `json:"abcd"`
+			Error    string `json:"error"`
+			ExitCode int    `json:"exit_code"`
+		}
+		if err := json.Unmarshal(stdout.Bytes(), &env); err != nil {
+			t.Errorf("%v: stdout is not one JSON envelope: %v\nstdout: %q\nstderr: %q", args, err, stdout.String(), stderr.String())
+			continue
+		}
+		if env.Abcd != "error" || env.ExitCode != 2 || !strings.Contains(env.Error, "unknown flag") {
+			t.Errorf("%v: want an error envelope naming the unknown flag at exit 2, got %+v", args, env)
+		}
+		if strings.TrimSpace(stderr.String()) != "" {
+			t.Errorf("%v: a --json refusal must write nothing to stderr, got %q", args, stderr.String())
+		}
+	}
+}
+
+// TestUnknownFlagWithoutJSONStaysProse is the other half: only a --json the
+// caller typed (before any -- terminator, and not --json=false) asks for JSON.
+func TestUnknownFlagWithoutJSONStaysProse(t *testing.T) {
+	for _, args := range [][]string{
+		{"ahoy", "--bogus"},
+		{"ahoy", "--bogus", "--json=false"},
+		{"capture", "list", "--bogus", "--", "--json"},
+	} {
+		var stdout, stderr bytes.Buffer
+		if code := Run(args, &stdout, &stderr); code != 2 {
+			t.Errorf("%v: want exit 2, got %d", args, code)
+		}
+		if stdout.Len() != 0 {
+			t.Errorf("%v: no --json was asked for, so stdout stays empty; got %q", args, stdout.String())
+		}
+		if !strings.Contains(stderr.String(), "unknown flag") {
+			t.Errorf("%v: want the prose refusal on stderr, got %q", args, stderr.String())
+		}
+	}
+}

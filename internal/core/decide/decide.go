@@ -21,12 +21,12 @@
 package decide
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
@@ -34,8 +34,9 @@ import (
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
-// ADRsRelDir is the decision store, repo-relative and slash-separated.
-const ADRsRelDir = ".abcd/development/decisions/adrs"
+// ADRsRelDir is the decision store, repo-relative and slash-separated: the
+// resolver's own spelling, so the mint and every lookup name one directory.
+const ADRsRelDir = recordid.ADRsRelDir
 
 // adrFamily is the store's id prefix, the family tag the mint splices into every
 // native adr id.
@@ -85,6 +86,31 @@ type Decision struct {
 // hand-numbered ordinal had exactly the cross-branch collision no convention can
 // close.
 func Create(repoRoot, title string) (Decision, error) {
+	return create(repoRoot, title, renderSkeleton)
+}
+
+// Stated is a decision whose words are already written: a setup offer that
+// states a rule the person accepts at a prompt (the drain eligibility record,
+// ruling BX2) mints it through the same seam as Create, so its id, date and
+// filename come from the one allocator. The person's yes to the offer is the
+// decision, so the record is written accepted.
+type Stated struct {
+	// Title becomes the H1 and the slug, redacted as Create's is.
+	Title string
+	// Frontmatter is extra frontmatter lines, each "key: value\n", written
+	// after the store's nine keys.
+	Frontmatter string
+	// Body is everything below the H1: the four sections the store carries.
+	Body string
+}
+
+// CreateStated mints a decision record for s and writes it accepted. On any
+// refusal nothing is written.
+func CreateStated(repoRoot string, s Stated) (Decision, error) {
+	return create(repoRoot, s.Title, func(d Decision) string { return renderStated(d, s) })
+}
+
+func create(repoRoot, title string, render func(Decision) string) (Decision, error) {
 	trimmed := strings.Join(strings.Fields(title), " ")
 	if trimmed == "" {
 		return Decision{}, fmt.Errorf("decide: refusing to mint a decision with an empty title")
@@ -125,7 +151,7 @@ func Create(repoRoot, title string) (Decision, error) {
 			Date: dateFromStamp(stamp),
 			Path: rel,
 		}
-		body := renderSkeleton(created)
+		body := render(created)
 		if err := fsutil.WriteFileAtomic(filepath.Join(repoRoot, filepath.FromSlash(rel)), []byte(body), 0o644); err != nil {
 			return fmt.Errorf("decide: writing %s: %w", rel, err)
 		}
@@ -204,21 +230,11 @@ func adrPresent(repoRoot, id string) bool {
 // an answer nobody has given yet.
 func renderSkeleton(d Decision) string {
 	var b strings.Builder
-	b.WriteString("---\n")
-	b.WriteString("id: " + d.ID + "\n")
-	b.WriteString("slug: " + d.Slug + "\n")
 	// proposed, not accepted: the binary knows an id and a date, and cannot know
 	// that a decision is in force. The author sets `accepted` in the change that
 	// states the decision.
-	b.WriteString("status: proposed\n")
-	b.WriteString("date: " + d.Date + "\n")
-	b.WriteString("supersedes: null\n")
-	b.WriteString("superseded_by: null\n")
-	b.WriteString("related_intents: []\n")
-	b.WriteString("related_rfcs: []\n")
-	b.WriteString("related_adrs: []\n")
-	b.WriteString("---\n\n")
-	b.WriteString("# ADR-" + strings.TrimPrefix(d.ID, adrFamily+"-") + ": " + d.Title + "\n\n")
+	b.WriteString(renderKeys(d, "proposed"))
+	b.WriteString(renderCloseAndTitle(d))
 	b.WriteString("## Context\n\n")
 	b.WriteString("_What forced the decision? What constraints were already locked?_\n\n")
 	b.WriteString("## Decision\n\n")
@@ -228,6 +244,37 @@ func renderSkeleton(d Decision) string {
 	b.WriteString("## Consequences\n\n")
 	b.WriteString("_What follows — what is now easier, what is now harder, what new obligations this creates._\n")
 	return b.String()
+}
+
+// renderKeys writes the opening delimiter and the store's nine frontmatter
+// keys with the status given, leaving the block open for a caller's extra keys.
+func renderKeys(d Decision, status string) string {
+	var b strings.Builder
+	b.WriteString("---\n")
+	b.WriteString("id: " + d.ID + "\n")
+	b.WriteString("slug: " + d.Slug + "\n")
+	b.WriteString("status: " + status + "\n")
+	b.WriteString("date: " + d.Date + "\n")
+	b.WriteString("supersedes: null\n")
+	b.WriteString("superseded_by: null\n")
+	b.WriteString("related_intents: []\n")
+	b.WriteString("related_rfcs: []\n")
+	b.WriteString("related_adrs: []\n")
+	return b.String()
+}
+
+// renderCloseAndTitle writes the closing delimiter and the `ADR-<id>: <Title>`
+// H1 below it.
+func renderCloseAndTitle(d Decision) string {
+	return "---\n\n# ADR-" + strings.TrimPrefix(d.ID, adrFamily+"-") + ": " + d.Title + "\n\n"
+}
+
+// renderStated lays out a stated record: the store's frontmatter keys with
+// `status: accepted`, the caller's extra keys, the H1, and the caller's body.
+// It is built from the same two pieces as the skeleton, so it never searches
+// the skeleton for a delimiter.
+func renderStated(d Decision, s Stated) string {
+	return renderKeys(d, "accepted") + s.Frontmatter + renderCloseAndTitle(d) + s.Body
 }
 
 // redactDecisionText sanitises the caller's title through the ONE canonical
@@ -248,6 +295,11 @@ func redactDecisionText(repoRoot, text string) (string, error) {
 		return "", fmt.Errorf("decide: refusing to persist text with a degraded scanner: %s", reason)
 	}
 	findings := sc.ScanText(text, "decide")
+	// A repository's opt-in scanner augmenter (gitleaks) runs inside
+	// ScanText, and a run that failed degrades the scanner during it.
+	if unavail, reason := sc.Unavailable(); unavail {
+		return "", fmt.Errorf("decide: refusing to persist text with a degraded scanner: %s", reason)
+	}
 	if len(findings) == 0 {
 		return text, nil
 	}
@@ -261,9 +313,9 @@ func redactDecisionText(repoRoot, text string) (string, error) {
 // — same second, same suffix, one directory — that time and entropy leave to the
 // store to arbitrate (spc-33 ruling 2). It cannot see a sibling checkout and does
 // not need to: the mint reads no maximum, so two checkouts never share the state
-// a lock would have to protect. It flocks the store's own directory file
-// descriptor, so no lock artefact is left in the committed record tree, and
-// O_NOFOLLOW refuses a symlinked store.
+// a lock would have to protect. It locks the store's own directory through
+// fsutil.WithDirLock, so no lock artefact is left in the committed record tree
+// and a symlinked store is refused; fn's own error passes through unchanged.
 func withMintLock(repoRoot string, fn func() error) error {
 	dir := filepath.Join(repoRoot, filepath.FromSlash(ADRsRelDir))
 	// Every level is created and proved real, ancestors included: a leaf
@@ -272,27 +324,16 @@ func withMintLock(repoRoot string, fn func() error) error {
 	if err := fsutil.EnsureRealDirAll(repoRoot, ADRsRelDir, 0o755); err != nil {
 		return fmt.Errorf("decide: creating %s: %w", ADRsRelDir, err)
 	}
-	fd, err := syscall.Open(dir, syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_NOFOLLOW, 0)
-	if err != nil {
-		return fmt.Errorf("decide: opening mint lock on %s: %w", ADRsRelDir, err)
+	ran := false
+	err := fsutil.WithDirLock(dir, mintLockTimeout, func() error {
+		ran = true
+		return fn()
+	})
+	switch {
+	case ran || err == nil:
+		return err
+	case errors.Is(err, fsutil.ErrLockContention):
+		return fmt.Errorf("decide: could not acquire mint lock within %s", mintLockTimeout)
 	}
-	defer syscall.Close(fd)
-
-	deadline := time.Now().Add(mintLockTimeout)
-	for {
-		lockErr := syscall.Flock(fd, syscall.LOCK_EX|syscall.LOCK_NB)
-		if lockErr == nil {
-			break
-		}
-		if lockErr != syscall.EWOULDBLOCK {
-			return fmt.Errorf("decide: acquiring mint lock: %w", lockErr)
-		}
-		if time.Now().After(deadline) {
-			return fmt.Errorf("decide: could not acquire mint lock within %s", mintLockTimeout)
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	defer syscall.Flock(fd, syscall.LOCK_UN)
-
-	return fn()
+	return fmt.Errorf("decide: opening mint lock on %s: %w", ADRsRelDir, err)
 }

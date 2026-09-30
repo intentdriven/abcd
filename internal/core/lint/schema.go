@@ -49,8 +49,10 @@ var (
 	// and bare spellings of one id are the same handle. The alternation covers
 	// every store the rule INDEXES — a prefix indexed but not matched here reads as
 	// "no handle at all", which turns a well-formed link into a false blocker and
-	// leaves its reverse direction unchecked.
-	recordHandleRe = regexp.MustCompile(`(?i)\b(adr|itd|iss|spc)-(\d+)\b`)
+	// leaves its reverse direction unchecked. `rdi` is here because a reading
+	// record's `duplicates:` and `refines:` may name an earlier reading item
+	// (ruling DQ2b, adr-2609300821558671), and that link must resolve too.
+	recordHandleRe = regexp.MustCompile(`(?i)\b(adr|itd|iss|spc|rdi)-(\d+)\b`)
 	// The same handle, anchored: a whole frontmatter id value and nothing else.
 	recordHandleFullRe = regexp.MustCompile(`(?i)^(adr|itd|iss|spc)-(\d+)$`)
 	// A frontmatter id of ANY store, parsed by shape rather than against the
@@ -130,7 +132,11 @@ var (
 	// against the store's allocation high-water mark.
 	// `duplicates` and `refines` are the typed links the filing-time match
 	// writes (itd-2609212137116617), each naming an issue or an intent.
-	recordRefFields = []string{"related_adrs", "related_intents", "builds_on", "blocked_by", "duplicates", "refines"}
+	// `reverses` is the typed link a decision carries against the record whose
+	// ruling it reverses (adr-2609300821558671 against itd-180). Unlike
+	// `supersedes` it retires nothing: the reversed record stays in the corpus,
+	// amended to cite its reversal, so its target must resolve like any other.
+	recordRefFields = []string{"related_adrs", "related_intents", "builds_on", "blocked_by", "duplicates", "refines", "reverses"}
 	// Every field the rule reads handles out of, so the scan parses each once.
 	recordHandleFields = append([]string{"supersedes", "superseded_by"}, recordRefFields...)
 	// recordGraphFields are cross-reference fields the record carries that this

@@ -47,7 +47,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/user"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -219,8 +221,12 @@ func narrowRecordsLeaf(dir string) (string, error) {
 	if named, err := os.Lstat(dir); err != nil || !os.SameFile(held, named) {
 		return "", storeDirFault(dir, fsutil.ErrNotRealDir)
 	}
-	if uid, ok := recordsLeafOwner(held); !ok || uid != uint32(os.Geteuid()) {
-		return "", &StorePathError{Path: dir, Msg: "the records directory is not owned by this account; refusing to write transcripts into it"}
+	uid, ok := recordsLeafOwner(held)
+	if !ok {
+		return "", &StorePathError{Path: dir, Msg: "the owner of the records directory cannot be read; refusing to read or write transcripts in it"}
+	}
+	if uid != uint32(os.Geteuid()) {
+		return "", &StorePathError{Path: dir, Msg: foreignOwnerRefusal(uid)}
 	}
 	perm := held.Mode().Perm()
 	if perm&0o077 == 0 {
@@ -247,6 +253,32 @@ var recordsLeafOwner = func(fi os.FileInfo) (uint32, bool) {
 		return 0, false
 	}
 	return st.Uid, true
+}
+
+// foreignOwnerRefusal words the refusal of a records leaf another account
+// owns. Every verb refuses there, reads included (ruling CB1): the leaf's owner
+// can plant or rewrite records a later session reads back as context, so the
+// store neither reads nor writes it. The wording names that owner and says the
+// store is another account's, because a read verb that reported a refused write
+// would describe an act it never attempted (iss-2609291731336469).
+func foreignOwnerRefusal(uid uint32) string {
+	owner := fmt.Sprintf("uid %d", uid)
+	if name, ok := recordsLeafOwnerName(uid); ok {
+		owner = fmt.Sprintf("%s (uid %d)", name, uid)
+	}
+	return "the records directory is owned by another account, " + owner + ", not by this one; refusing to use a transcript store another account controls"
+}
+
+// recordsLeafOwnerName resolves the account name of the uid that owns a
+// foreign records leaf, reporting false when the platform's account database
+// does not know it (a container's bind mount often carries a uid with no entry).
+// It is a var so a test can name an account without one existing.
+var recordsLeafOwnerName = func(uid uint32) (string, bool) {
+	u, err := user.LookupId(strconv.FormatUint(uint64(uid), 10))
+	if err != nil || u.Username == "" {
+		return "", false
+	}
+	return u.Username, true
 }
 
 // recordPerm is the mode every record is written with, for the same reason as

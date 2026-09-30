@@ -21,7 +21,7 @@ are wiring rather than user-facing surface are listed separately under
 | 6 | `/abcd:capture` | shipped | Get an observation out of your head and into a ledger in one line, and act on it later | [`06-capture.md`](06-capture.md) |
 | 7 | `/abcd:memory` | shipped | Curate what the project knows from outside sources, and query it | [`07-memory.md`](07-memory.md) |
 | 8 | `/abcd` | shipped | Find out where you are, or what one record id is and what to do with it | [`08-abcd.md`](08-abcd.md) |
-| 9 | `/abcd:reflect` | staged | Compose a phase retrospective from its audit receipt (design target, itd-24) | [`09-reflect.md`](09-reflect.md) |
+| 9 | `/abcd:reflect` | shipped | Look back on a cut release in a short interview, and file what it taught as its retrospective | [`09-reflect.md`](09-reflect.md) |
 | 10 | `/abcd:docs` | shipped | Find documentation that has gone stale, and maintain the citation baseline | [`10-docs.md`](10-docs.md) |
 | 11 | `/abcd:history` | shipped | Keep session transcripts as a local, redacted corpus this project can study | [`11-history.md`](11-history.md) |
 | 12 | `/abcd:version` | shipped | Know which abcd this is, how it was installed, and whether it is behind | [`12-version.md`](12-version.md) |
@@ -47,7 +47,7 @@ are wiring rather than user-facing surface are listed separately under
 | 32 | `/abcd:scribe` | shipped | Build the ledger scribe's context from the ledger alone, and ingest what it transcribed without letting it author anything | [`32-scribe.md`](32-scribe.md) |
 | 33 | `/abcd:source` | shipped | Keep the documents you consult in a local corpus, record what each one changed, and ban the confidential ones' names at commit time | [`33-source.md`](33-source.md) |
 | 34 | `/abcd:build` | shipped | Start the loop that takes one READY intent to delivered, refusing while a question is open or a peer holds it | [`34-build.md`](34-build.md) |
-| 35 | `/abcd:drain` | shipped | Preview with `--dry-run` which open issues a machine may fix alone, in what order, and what happens to the rest; the shipped surface is that preview, and bare `drain`, the run itself, refuses to start | [`35-drain.md`](35-drain.md) |
+| 35 | `/abcd:drain` | shipped | Work the open ledger unattended: preview with `--dry-run` which open issues a machine may fix alone and in what order, then run it one lane at a time, routing every hand-back by its kind | [`35-drain.md`](35-drain.md) |
 
 ## How much of this table a machine keeps honest
 
@@ -140,14 +140,14 @@ the command's sentence (the section below).
 | people | records | `build`, `capture`, `decide`, `intent`, `memory`, `source`, `spec` |
 | people | checks | `lint` |
 | people | portability | `disembark`, `embark` |
-| people | release | `launch` |
-| agents and hosts | — | `banlist`, `changelog`, `docs`, `drain`, `guard`, `guard hook`, `history`, `ideate`, `ideate record`, `identity`, `implement`, `inbox`, `intent audit ingest`, `mode`, `peers`, `reading`, `report`, `scribe`, `site`, `statusline` |
+| people | release | `launch`, `reflect` |
+| agents and hosts | — | `banlist`, `changelog`, `docs`, `drain`, `guard`, `guard hook`, `history`, `ideate`, `ideate record`, `identity`, `implement`, `inbox`, `intent audit ingest`, `intent consistency ingest`, `intent prepass`, `lab`, `mode`, `peers`, `reading`, `report`, `scribe`, `site`, `statusline` |
 
 The placement is presentation. No verb is hidden, renamed, moved or nested by
 it, every verb runs the same whichever block lists it, and the group titles
 carry no adr-40 bucket meaning. `version` is the root's `--version` flag
 (itd-2609212130136102), not a verb, so it is in neither block, and the person's
-count is held by a test at fourteen verbs at most. The
+count is held by a test at fifteen verbs at most. The
 product thinker placed the people's verbs
 and nine of the agent entries; the rest are the technical ruling of 2026-09-25 in
 [`DECISIONS.md`](../../../work/DECISIONS.md), which gives each its reason.
@@ -199,8 +199,10 @@ at all: `disembark`, `docs`, `embark`, `guard`, `history`, `ideate`, and `scribe
 because its one operand is the quoted title it mints a record from, and bare
 `abcd build` refuses as a usage error because its one operand is the intent it
 starts a run for; the run's state renders through `abcd implement status`. Bare
-`abcd drain` refuses to start, because bare is the run itself and the run is not
-built; what a drain would do renders through its dry run. Bare
+`abcd reflect` prints its usage, because its one operand is the cut release
+whose retrospective seed it renders. Bare
+`abcd drain` is the run itself, one move per invocation, so it is not a render;
+what a drain would do renders through its dry run. Bare
 `abcd source` renders the corpus under the user-level home rather than anything
 in the repository, so where there is no corpus it refuses naming `abcd source
 init`. Bare `abcd identity` and bare `abcd ahoy remote` list their sub-verbs,
@@ -228,11 +230,61 @@ verb the binary registers apart from the framework's own `help`.
 | Verb | What it is | Delivered by |
 |---|---|---|
 | `changelog` | The deterministic, read-only emit of the next release cut — derived version, record set, guardrail, no prose. Nothing on the plugin surface runs it: `commands/launch.md`'s emit → compose → ingest orchestration runs `launch ship --json`, and names this verb only as the read-only preview of the same cut. `launch ship` is the write half. | itd-73 (derived versioning) and itd-67's changelog slice, both in `intents/planned/`; documented in [`04-launch.md`](04-launch.md) |
-| `rules` | Renders the active rule set; a positional `DOMAIN` scopes to one. Read-only diagnostics over the hook-driven rule injection. | itd-3 (the modular rules loader); the loader it reports on is documented in [`05-internals/03-configuration.md`](../05-internals/03-configuration.md), which names no verb: the verb itself is documented only in the generated CLI reference and the repo's own conventions router |
-| `spec` | The native spec store: bare invocation is a read-only status board, and `spec close` closes a spec and ships its linked intent (`planned/` → `shipped/`) only when no open spec is left naming it — an intent owns one or more specs, and `--remainder <slug>` mints the follow-on for a partial delivery in the same operation, carrying the closing spec's steps not marked landed. | itd-80 / spc-2 (intent lifecycle automation), adr-2609151513118583 (the 1:n relation); documented in [`05-intent.md`](05-intent.md) |
-| `hook` | Hidden from `--help`: five host hook entrypoints, live-wired from `hooks/hooks.json`. `prompt-router` injects the rules a prompt matches and `prompt-router-reset` clears the per-session ledger so they inject again; `session-end` stages the session's own transcript, `subagent-stop` stages a finished sub-agent's transcript with its lineage, and `session-start` files both away and says how many reports wait in the inbox ([`29-report.md`](29-report.md)). The pre-tool-use adapter is `guard hook`, under `guard`. | itd-3 (the prompt router), itd-89 / spc-4 (the transcript clock), itd-103 / spc-16 (the guard hook); the transcript entrypoints are documented in [`11-history.md`](11-history.md), and the rule injection the router drives in [`05-internals/03-configuration.md`](../05-internals/03-configuration.md), which names no entrypoint of its own: the two router entrypoints have no documented home in this brief, and the generated CLI reference omits them by design |
+| `rules` | Renders the active rule set; a positional `DOMAIN` scopes to one. Read-only diagnostics over the hook-driven rule injection. | itd-3 (the modular rules loader); the loader it reports on is documented in [`05-internals/03-configuration.md`](../05-internals/03-configuration.md), and the verb in [The rules verb](#the-rules-verb) below |
+| `spec` | The native spec store: bare invocation is a read-only status board, and `spec close` closes a spec and ships its linked intent (`planned/` → `shipped/`) only when no open spec is left naming it — an intent owns one or more specs, and `--remainder <slug>` mints the follow-on for a partial delivery in the same operation, carrying the closing spec's steps not marked landed. | itd-80 / spc-2 (intent lifecycle automation), adr-2609151513118583 (the 1:n relation); its lifecycle is documented in [`05-intent.md`](05-intent.md), and the verb in [The spec verb](#the-spec-verb) below |
+| `hook` | Hidden from `--help`: five host hook entrypoints, live-wired from `hooks/hooks.json`. `prompt-router` injects the rules a prompt matches and `prompt-router-reset` clears the per-session ledger so they inject again; `session-end` stages the session's own transcript, `subagent-stop` stages a finished sub-agent's transcript with its lineage, and `session-start` files both away and says how many reports wait in the inbox ([`29-report.md`](29-report.md)). The pre-tool-use adapter is `guard hook`, under `guard`. | itd-3 (the prompt router), itd-89 / spc-4 (the transcript clock), itd-103 / spc-16 (the guard hook); the transcript entrypoints are documented in [`11-history.md`](11-history.md), and the rule injection the router drives, with `prompt-router`'s two outputs — the injected block and the `--json` envelope that names the active-domain set for a client that snapshots rules — in [`05-internals/03-configuration.md`](../05-internals/03-configuration.md#the-prompt-routers-output); the generated CLI reference omits both router entrypoints by design |
 | `completion` | The CLI framework's generated per-shell autocompletion scripts. | No record: generated by the CLI framework, not designed here |
 | `statusline` | The harness-invoked status-line render: the harness runs it on every refresh with its payload on stdin, and it prints abcd's row in a managed repository or runs the user's recorded previous status command everywhere else. `ahoy install` wires it; no user invokes it. | itd-200 / spc-70 (the presence badge); the row and the state behind it are documented in [`08-abcd.md`](08-abcd.md) |
+
+### The rules verb
+
+`abcd rules` renders the rule set the prompt router draws on, read-only. It loads
+the bundled default domains, then the machine's `~/.abcd/rules.json`, then the
+checkout's `.abcd/rules.json`, each layer replacing a field wholesale, and reads
+the checkout from the root the loader resolves for the working directory.
+
+- **Bare**, it renders every domain whose state is not dormant, under a
+  `# abcd rules — N domain(s) active` heading, one `## NAME` block per domain. A
+  domain an override names reads `## NAME (user override)` or
+  `## NAME (repo override)`. With the kill switch set it prints one line naming
+  every file that set it, and with no active domain it says so. The JSON form
+  carries `disabled` and the `domains`, each with its `source` (`bundled`,
+  `user` or `repo`), recall keywords and rules.
+- **`abcd rules <DOMAIN>`** renders that one domain, matched case-insensitively,
+  whatever its state and whatever the kill switch, so a dormant domain stays
+  inspectable. An unknown name exits 2.
+- **Diagnostics go to stderr, never stdout**, so the JSON form stays one
+  document: a refused root, a domain skipped for carrying no rules, and each
+  bundled entry of a guardrail domain an override's list leaves out.
+
+### The spec verb
+
+`abcd spec` addresses the spec store under `.abcd/development/specs/`, whose
+lifecycle [`05-intent.md`](05-intent.md) describes. Both forms resolve the
+checkout root first, so they reach the checkout's store from anywhere in the
+tree, and outside a checkout they exit 2 with nothing read and nothing written.
+
+- **`abcd spec`** is the read-only status board. It counts the open and the
+  closed specs and lists each spec's id, status, slug and linked intent; the JSON
+  form carries `open`, `closed` and the `specs` themselves. It takes no operand.
+- **`abcd spec close <spc-N>`** moves the spec from `open/` to `closed/` and,
+  when no open spec is left naming its intent, moves that intent from `planned/`
+  to `shipped/`. A shared bundle spec reconciles every member it names, and the
+  render reports each member's move. `--impact additive|breaking|fix` stamps an
+  intent that declares no impact, and is accepted only at the close that ships
+  it. `--remainder <slug>` mints the follow-on spec for the same intent in the
+  same operation, carrying the steps not marked landed, so the intent stays
+  planned; `--production-mode` stamps that minted remainder and is refused
+  (exit 2, nothing written) without `--remainder`. A close the store refuses
+  exits 2.
+- **The close that ships an intent is gated first.** Unless `--remainder` is
+  given, the close runs the doc-fidelity gate ([`10-docs.md`](10-docs.md)) over
+  every intent it would ship, before anything moves, and a refusal exits 1 and
+  names each reason. It then makes the intent's fidelity review owed: it mints
+  an OWED receipt, parks its marker in the intent's Audit Notes and writes the
+  review request under `.abcd/.work.local/reviews/`. A failed emit is a warning
+  on stderr and the intent ships regardless. A re-run against an intent already
+  shipped reports the receipt's state rather than a fresh obligation.
 
 ## The command files
 
@@ -260,7 +312,7 @@ documents is then an unknown command (iss-161). One file per verb, directly unde
 `abcd`, `ahoy`, `banlist`, `build`, `capture`, `consult`, `decide`, `disembark`, `docs`, `drain`,
 `embark`, `guard`, `history`, `ideate`, `identity`, `implement`, `inbox`,
 `ingest`, `intent`, `lab`, `launch`, `lint`, `memory`, `mode`, `peers`,
-`prepare-this-repo`, `reading`, `report`, `scribe`, `site`, `source`, `update`,
+`prepare-this-repo`, `reading`, `reflect`, `report`, `scribe`, `site`, `source`, `update`,
 `version`.
 <!-- /index -->
 
@@ -291,6 +343,40 @@ skill/command boundary is documented in
 a sub-verb of `/abcd:intent`, since its mid-session glossary writes and
 per-session output are command-shaped, and the `intent` parent ships no `grill`
 sub-verb.
+
+## Agents no verb dispatches
+
+Most plugin agents under [`agents/`](../../../../agents) serve a verb, which
+builds their input or validates what they return, and the chapter of that verb
+documents them. Three serve no verb, and no command page calls on them: the host
+agent invokes each directly, when its `description` says to, and reads the
+report itself. In the binary they are roster entries: the bundled model-tier
+proposal the `oracle-routing` offer of [`01-ahoy.md`](01-ahoy.md) renders places
+the two reviewers at `frontier` and the researcher at `economy`. Each prompt declares `reads_untrusted_input: true`,
+ships an injection canary under `agents/<name>/fixtures/`, and tells the agent
+that everything it reads is data, never instruction.
+
+- **`ruthless-reviewer`** reviews a diff that already builds and passes the
+  project's checks, and stops to report a tree that does not. Its priorities,
+  in order, are correctness, resource handling, error paths, API misuse and dead
+  weight, then the project's own `AGENTS.md` rules. A finding is admissible only
+  with a failure scenario, concrete inputs or state and the wrong result, and
+  the verdict is SHIP or FIX FIRST.
+- **`security-reviewer`** reviews a diff or a design adversarially at a trust
+  boundary, starting from the boundaries `AGENTS.md` declares. A finding is
+  admissible only with an attack path from an untrusted input to its
+  consequence, and the verdict is APPROVE, BLOCK or NEEDS-INPUT, the last for
+  what it could not establish. With no budget stated it reports within about
+  twenty-five tool calls.
+- **`sota-researcher`** researches the state of the art on one question, with
+  web search and fetch among its tools. It anchors the date before it weighs
+  recency, tiers every claim as evidence, consensus, contested, or anecdote and
+  marketing, and cites only what it opened in the run. It returns a ranked list
+  of recommendations, each with its source and tier, and a section on what it
+  rejected.
+
+`docs-currency-reviewer`, the reviewer the release gate runs as a semantic gate,
+is documented in [`10-docs.md`](10-docs.md).
 
 ## Where to find related design
 

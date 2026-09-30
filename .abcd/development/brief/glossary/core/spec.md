@@ -33,20 +33,21 @@ implementation.
 ## When NOT to use
 
 Do not call a spec a "feature" (too generic), "sprint" (carries Scrum cycle
-connotations), or "milestone" (a milestone is the end condition of a
-[phase](phase.md), not an individual work block) or "phase" (a phase bundles many
-specs).
+connotations), or "milestone" or "phase": both are retired as units of the record
+(adr-2609212115255771). A spec's end condition is its intent's acceptance criteria,
+and nothing above the intent groups specs for sequence; the unit below a spec is the
+[step](step.md).
 
 ## Examples
 
-- "Spec `spc-3` implements the grill skill and glossary infrastructure."
+- "Spec `spc-3` is the lifeboat coverage experiment, closed in the native spec store."
 - "Task `spc-3.1` is the first implementation task of that spec."
 
 ## Related terms
 
 - [record families](record-families.md) — the one page that maps the record families and how they relate
 - [intent](intent.md) — the human-authored document that a spec realises
-- [phase](phase.md) — the arc that bundles many specs
+- [phase](phase.md): the retired arc that once bundled many specs
 
 > **Open question (adr-35):** this entry previously related a spec to a *voyage*, glossed as "a full
 > lifecycle that contains many specs". [adr-35](../../../decisions/adrs/0035-lifeboat-as-coverage-experiment.md)

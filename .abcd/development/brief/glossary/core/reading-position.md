@@ -41,7 +41,8 @@ unambiguous.
 **A position is not an agent, and not a surface.** The four definitions live under `agents/`
 because that is where the harness looks, but the position is the question; the agent is one
 host's way of answering it. The [surface](surface.md) is `/abcd:reading`, which assembles the
-input and validates the output — and never runs a reading.
+input and validates the output — and runs a reading only by sending the parked input to a provider
+the person has pointed the position at (`ingest --dispatch`).
 
 ## When to use
 
@@ -52,7 +53,7 @@ answer, or which supply regime its output is checked against.
 
 Do not use it for a review [oracle](oracle.md) or for one of the intent auditor's roles: those
 judge a specific artefact against its own claims. Do not use bare "position" in a document that
-also discusses phases, scope or surfaces.
+also discusses steps, scope or surfaces.
 
 ## Examples
 

@@ -58,7 +58,7 @@ var sentences = map[string]string{
 		"Writes the run's state and the reason as the lane's first commit; refuses when nothing passes the checks.",
 
 	"abcd capture": "File an issue from quoted text, or render the ledger's status bare: " +
-		"Writes one record under open/; refuses a lone word and any folder outside a checkout.",
+		"Writes one record under open/; refuses a missing --remedy, a lone word or no checkout.",
 	"abcd capture admit": "Admit one widening proposal into its run's candidate set: " +
 		"Writes its accepted disposition and an adm-N record; refuses before a committed comparative run.",
 	"abcd capture defer": "Carry an open major or critical issue past one release cut: " +
@@ -73,6 +73,8 @@ var sentences = map[string]string{
 		"Writes nothing; refuses outside a git checkout.",
 	"abcd capture migrate": "Rewrite retired promote back-links as related_intents and related_issues: " +
 		"Writes the records only with --apply; refuses outside a git checkout.",
+	"abcd capture remedy": "Write or replace the fix an open issue proposes: " +
+		"Writes the issue's remedy; refuses an empty text, the automatic filers' value or an issue that is not open.",
 	"abcd capture promote": "Graduate an issue or an accepted reading item into an intent draft: " +
 		"Writes the draft and both back-links; refuses a promoted issue or an unaccepted item.",
 	"abcd capture reframe": "Record a reframe a reading occasioned: " +
@@ -109,22 +111,28 @@ var sentences = map[string]string{
 	"abcd disembark review": "Review a packed lifeboat against its source repository, or validate the host's verdict: " +
 		"Writes the review in the lifeboat; refuses an unregistered verdict.",
 
-	"abcd docs": "Keep the citation baseline that `abcd lint docs` enforces offline: " +
-		"Writes nothing but that baseline; refuses an unknown sub-verb.",
+	"abcd docs": "Keep the citation baseline `abcd lint docs` enforces, and judge the brief against the binary: " +
+		"Writes nothing bare; refuses an unknown sub-verb.",
 	"abcd docs cite": "Keep the citation baseline the docs lint enforces offline: " +
 		"Writes nothing bare, and only that baseline; refuses an unknown sub-verb.",
 	"abcd docs cite confirm": "Record that a person verified a cited URL the fetcher could not read: " +
 		"Writes a dated manual entry in the baseline; refuses a URL the docs do not cite.",
 	"abcd docs cite refresh": "Fetch every cited URL once, the one documentation verb that reaches the network: " +
 		"Writes the citation baseline; refuses an unreadable docs-lint configuration.",
+	"abcd docs fidelity": "Judge the brief against every shipped surface and the saved docs review: " +
+		"Writes drafted edits only with --apply; refuses a surface no chapter names.",
+	"abcd docs fidelity record": "Save a docs review's verdict as the receipt for HEAD: " +
+		"Writes the receipt in the local tier; refuses a verdict naming no judge.",
 
-	"abcd drain": "Sort the open issues by the drain's field rule, eligible first in drain order: " +
-		"Writes nothing; refuses to start without --dry-run, as the run is not built.",
+	"abcd drain": "Fix the issues needing no decision, one lane at a time, and hand the rest back: " +
+		"Writes its state and user-visible drafts; refuses without the rule's record.",
 
 	"abcd embark": "Unpack a verified lifeboat into a target repository, probing first: " +
 		"Writes only its record families and marker block; refuses the whole write on any conflict.",
 	"abcd embark from": "Unpack a lifeboat's record families into a target repository: " +
 		"Writes those families and the marker block; refuses the whole write on any conflict.",
+	"abcd embark lessons": "Rank the lessons a lifeboat's retrospectives carry against the new voyage's brief: " +
+		"Writes nothing; refuses a lifeboat that fails its manifest.",
 	"abcd embark probe": "Report what a lifeboat would write into a target, coverage blanks first: " +
 		"Writes nothing; refuses a lifeboat whose manifest does not verify.",
 
@@ -172,8 +180,8 @@ var sentences = map[string]string{
 
 	"abcd implement": "Share one autonomous run between sessions and drive the implement loop: " +
 		"Writes nothing bare, only the run state its sub-verbs name; refuses an unknown sub-verb.",
-	"abcd implement check": "Ask whether this session may take a step before taking it: " +
-		"Writes a run-log line only on a refusal; refuses a step the second session's bounds forbid.",
+	"abcd implement check": "Ask whether this session may take a stage before taking it: " +
+		"Writes a run-log line only on a refusal; refuses a stage the second session's bounds forbid.",
 	"abcd implement claim": "Claim a record for this session before opening its lane: " +
 		"Writes the claim and a run-log line; refuses a record another session holds.",
 	"abcd implement join": "Join the run with a stated role: " +
@@ -188,6 +196,8 @@ var sentences = map[string]string{
 		"Writes a window_mode line; refuses any session but the first.",
 	"abcd implement receipt": "Hand back the receipt an agent stage of a loop run awaits: " +
 		"Writes the run's state when the receipt verifies; refuses a receipt that does not verify.",
+	"abcd implement record": "Render a loop run's record and capture its transcripts: " +
+		"Writes only with --transcript; refuses it on a run in progress.",
 	"abcd implement release": "Release this session's claim on a record: " +
 		"Writes the release and a claim_released line; refuses a claim another session holds.",
 	"abcd implement report": "Derive the comparison of the division modes from the run log: " +
@@ -195,7 +205,7 @@ var sentences = map[string]string{
 	"abcd implement status": "Render the implement loop's runs in this checkout, lane by lane: " +
 		"Writes nothing; refuses a --run naming no run.",
 	"abcd implement step": "Perform the next stage of an implement loop run's lane and exit: " +
-		"Writes the run's state, the lane's worktree or brief; refuses a stage this abcd does not carry.",
+		"Writes the run's state and the lane's stages; refuses a push with no preflight receipt.",
 
 	"abcd inbox": "List the reports managed repositories filed back to abcd, newest first: " +
 		"Writes nothing; refuses any argument.",
@@ -222,6 +232,8 @@ var sentences = map[string]string{
 		"Writes the intent's spec_id; refuses an intent that is not planned.",
 	"abcd intent plan": "Plan a draft, or several as a named bundle, or stamp a planned one's conditions: " +
 		"Writes the intents and their spec; refuses a held intent or a bundle's blocker.",
+	"abcd intent prepass": "Print a draft's pre-pass input, or write its planning brief from the host's findings: " +
+		"Writes only the brief; refuses a record not on drafts/.",
 	"abcd intent reclassify": "Change an intent's kind, or retire it as superseded by a named successor: " +
 		"Writes the record and its successor together; refuses a shipped intent's kind change.",
 	"abcd intent ready": "Report whether an intent is ready to implement, exiting 1 when not: " +
@@ -289,6 +301,11 @@ var sentences = map[string]string{
 		"Writes both artefacts; refuses a target that is not HEAD or a commit sha.",
 	"abcd reading ingest": "Validate the JSON one cold reading returned: " +
 		"Writes its reading records; refuses output the position's licence does not allow.",
+
+	"abcd reflect": "Render the seed a cut release's retrospective interview opens from: " +
+		"Writes nothing; refuses a release that shipped no intent, or an intent id.",
+	"abcd reflect write": "Write a cut release's retrospective from the interview's answers: " +
+		"Writes its README once; refuses a thin answer or unconfirmed unshipped work.",
 
 	"abcd report": "File a defect report or an enhancement proposal about abcd: " +
 		"Writes it into your account's inbox; refuses a malformed field or a filesystem path.",

@@ -100,13 +100,13 @@ func (i Impact) rank() int {
 	}
 }
 
-// MaxImpact returns the strongest impact in a set — the single comparison in
+// maxImpact returns the strongest impact in a set — the single comparison in
 // this package, so callers never re-derive the ordering. A set with nothing
 // user-facing in it (empty, all-internal, or all-unrecognised) yields
 // ImpactInternal, which reads correctly at the call site as "nothing to
 // release": the result drives no bump and belongs in no changelog. The input is
 // not modified.
-func MaxImpact(impacts []Impact) Impact {
+func maxImpact(impacts []Impact) Impact {
 	best := ImpactInternal
 	for _, i := range impacts {
 		if i.rank() > best.rank() {

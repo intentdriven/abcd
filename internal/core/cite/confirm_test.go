@@ -142,7 +142,7 @@ func TestParseReceiptRoundTrip(t *testing.T) {
     {"url": "https://b.example.org/y"}
   ]
 }`)
-	got, err := ParseReceipt(raw)
+	got, err := parseReceipt(raw)
 	if err != nil {
 		t.Fatalf("ParseReceipt: %v", err)
 	}
@@ -161,7 +161,7 @@ func TestParseReceiptRoundTrip(t *testing.T) {
 // than having the key quietly dropped.
 func TestParseReceiptRefusesAMethodField(t *testing.T) {
 	raw := []byte(`{"schema_version": 1, "confirmed": [{"url": "https://a.example.org/x", "method": "logged in via the library proxy"}]}`)
-	if _, err := ParseReceipt(raw); err == nil {
+	if _, err := parseReceipt(raw); err == nil {
 		t.Fatal("ParseReceipt accepted a method field")
 	}
 }
@@ -169,7 +169,7 @@ func TestParseReceiptRefusesAMethodField(t *testing.T) {
 // TestParseReceiptRefusesAnUnknownSchemaVersion keeps a future producer's record
 // from being best-effort parsed by a build that does not understand it.
 func TestParseReceiptRefusesAnUnknownSchemaVersion(t *testing.T) {
-	if _, err := ParseReceipt([]byte(`{"schema_version": 99, "confirmed": []}`)); err == nil {
+	if _, err := parseReceipt([]byte(`{"schema_version": 99, "confirmed": []}`)); err == nil {
 		t.Fatal("ParseReceipt accepted an unknown schema version")
 	}
 }

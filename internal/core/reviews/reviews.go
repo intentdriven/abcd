@@ -9,8 +9,8 @@
 // so its name is its pin. The package reads both and counts, per pin, the
 // commits the default branch has moved since; it writes nothing.
 //
-// The pin's one reading is Pin. The reviews-charter gate
-// (scripts/check-reviews.sh, RD004) refuses a dated folder whose summary Pin
+// The pin's one reading is summaryPin. The reviews-charter gate
+// (scripts/check-reviews.sh, RD004) refuses a dated folder whose pin summaryPin
 // would not read, so the board and the gate agree about every folder.
 package reviews
 
@@ -117,10 +117,10 @@ func (b Board) StaleCount() int {
 	return n
 }
 
-// Pin reads `review_of_commit` from a summary's leading frontmatter block.
+// summaryPin reads `review_of_commit` from a summary's leading frontmatter block.
 // The value must be a bare full object name in git's lowercase hex; anything
 // else, and a summary with no closed block, is no pin ("").
-func Pin(summary []byte) string {
+func summaryPin(summary []byte) string {
 	lines := strings.Split(string(summary), "\n")
 	f, ok := frontmatter.Fields(lines)["review_of_commit"]
 	if !ok || !pinRe.MatchString(f.Value) {
@@ -129,10 +129,10 @@ func Pin(summary []byte) string {
 	return f.Value
 }
 
-// Read lists the folders under root's reviews tree, sorted by name. A tree
+// readEntries lists the folders under root's reviews tree, sorted by name. A tree
 // that does not exist is no folders and no error. Symlinked entries are not
 // followed: a review folder is committed content, never a pointer elsewhere.
-func Read(root string) ([]Entry, error) {
+func readEntries(root string) ([]Entry, error) {
 	r, err := os.OpenRoot(root)
 	if err != nil {
 		return nil, err
@@ -170,7 +170,7 @@ func Read(root string) ([]Entry, error) {
 		data, err := fsutil.ReadGuardedInRoot(r, filepath.Join(dir, name, summaryFile), maxSummaryBytes)
 		switch {
 		case err == nil:
-			f.ReviewOfCommit = Pin(data)
+			f.ReviewOfCommit = summaryPin(data)
 		case errors.Is(err, fs.ErrNotExist), errors.Is(err, fsutil.ErrNotRegular), errors.Is(err, fsutil.ErrTooBig):
 			// No readable summary is no pin; RD001 refuses the missing
 			// summary, and the board shows the folder unpinned.
@@ -203,7 +203,7 @@ func receiptGates(r *os.Root, rel string) ([]string, error) {
 // first: counted rows by descending count, then the unreachable, then the
 // unpinned, each run by folder name.
 func Staleness(root string) (Board, error) {
-	folders, err := Read(root)
+	folders, err := readEntries(root)
 	if err != nil {
 		return Board{}, err
 	}

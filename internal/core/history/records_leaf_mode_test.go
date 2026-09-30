@@ -2,8 +2,10 @@ package history
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -83,7 +85,7 @@ func TestResolveKeepsTheOwnerBitsOfTheRecordsLeaf(t *testing.T) {
 }
 
 // TestResolveRefusesARecordsLeafAnotherAccountOwns: a leaf this account does not
-// own is never changed, and the store refuses to write into it, because its
+// own is never changed, and the store refuses to use it, because its
 // owner can read it whatever its mode. The owner lookup is stubbed; the test
 // never needs a second account.
 func TestResolveRefusesARecordsLeafAnotherAccountOwns(t *testing.T) {
@@ -139,5 +141,65 @@ func TestNarrowRecordsLeafNeverFollowsASymlink(t *testing.T) {
 	}
 	if got := permOf(t, target); got != 0o755 {
 		t.Errorf("the symlink's target is mode %#o, want 0o755: the narrowing followed the link", got)
+	}
+}
+
+// TestForeignOwnedRecordsLeafRefusalNamesTheOwner: ruling CB1 keeps the refusal
+// of every verb, reads included, over a records leaf another account owns, and
+// rules its wording: it names the foreign owner (the uid, and the account name
+// where it resolves) and says the store belongs to another account, never that
+// the store refuses to write, because history list and show write nothing
+// (iss-2609291731336469). Both lookups are stubbed; no second account is needed.
+func TestForeignOwnedRecordsLeafRefusalNamesTheOwner(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	chain := wideLegacyLayout(t, home)
+	records := chain[len(chain)-1]
+	foreign := uint32(os.Geteuid()) + 1
+
+	restoreOwner, restoreName := recordsLeafOwner, recordsLeafOwnerName
+	defer func() { recordsLeafOwner, recordsLeafOwnerName = restoreOwner, restoreName }()
+	recordsLeafOwner = func(os.FileInfo) (uint32, bool) { return foreign, true }
+
+	verbs := map[string]func() error{
+		"list": func() error { _, err := List(t.TempDir(), testRootSHA); return err },
+		"show": func() error { _, _, err := Read(t.TempDir(), testRootSHA, "any"); return err },
+		"capture": func() error {
+			_, err := Capture(t.TempDir(), testRootSHA, []byte("assistant: hi\n"), CaptureMeta{SessionID: "sess-foreign", Kind: "native"})
+			return err
+		},
+	}
+	uidWord := fmt.Sprintf("uid %d", foreign)
+	for _, tc := range []struct {
+		label    string
+		name     string
+		resolves bool
+	}{
+		{"name resolves", "someone-else", true},
+		{"name does not resolve", "", false},
+	} {
+		recordsLeafOwnerName = func(uid uint32) (string, bool) {
+			if uid != foreign {
+				t.Errorf("owner name looked up for uid %d, want %d", uid, foreign)
+			}
+			return tc.name, tc.resolves
+		}
+		for verb, run := range verbs {
+			err := run()
+			var spe *StorePathError
+			if !errors.As(err, &spe) || spe.Path != records {
+				t.Fatalf("%s (%s): got %v, want a *StorePathError naming %s", verb, tc.label, err, records)
+			}
+			msg := spe.Msg
+			if !strings.Contains(msg, "owned by another account") || !strings.Contains(msg, uidWord) {
+				t.Errorf("%s (%s): %q must say the store is owned by another account and name %q", verb, tc.label, msg, uidWord)
+			}
+			if tc.resolves && !strings.Contains(msg, tc.name) {
+				t.Errorf("%s (%s): %q must name the owning account %q", verb, tc.label, msg, tc.name)
+			}
+			if strings.Contains(msg, "write") {
+				t.Errorf("%s (%s): %q uses write wording; the refusal covers reads too", verb, tc.label, msg)
+			}
+		}
 	}
 }

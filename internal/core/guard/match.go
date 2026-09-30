@@ -557,8 +557,8 @@ type entryMatcher struct {
 // a value (`git -$(x) /tmp push`); a word that may print nothing both is and is
 // not an operand (`git $(true) push`). The subcommands, the count, the prefix
 // and the path are all met by one reading. spelled is the segment's
-// segment.spelled, which only the arg_values clause reads (writtenOperand).
-func newEntryMatcher(p Pattern, tokens []string, spelled map[int]string, glob func(int) bool) entryMatcher {
+// segment.spelled, which only the arg_values clause reads (writtenMatches).
+func newEntryMatcher(p Pattern, tokens []string, spelled map[int][]string, glob func(int) bool) entryMatcher {
 	n := len(tokens)
 	want := operandWant{
 		sub: p.Subcommand, sub2: p.Subcommand2, min: p.MinOperands,
@@ -699,9 +699,9 @@ func argPrefixMatches(prefix string, ops []string) bool {
 	return false
 }
 
-// argValueMatches reports whether an operand, as writtenOperand reads it, is
-// one of the words. Only operands are considered, and a substitution's output
-// is taken as empty, as argPrefixMatches reads a prefix: a word that is wholly
+// argValueMatches reports whether an operand, as writtenMatches reads each
+// text of its written spelling, is one of the words. Only operands are
+// considered, and a substitution's output is taken as empty, as argPrefixMatches reads a prefix: a word that is wholly
 // a substitution is how an everyday delete names its target (`rm -rf
 // "$(mktemp -d)"`), so reading it as every target would refuse them all
 // (unknown.go's operand residual). A variable is compared as the line wrote
@@ -721,6 +721,26 @@ func argValueMatches(values []string, written string) bool {
 			if field == v || clean == v || glob == v {
 				return true
 			}
+		}
+		if lead := strings.TrimLeft(field, "/"); lead != field && absoluteName(lead) && argValueMatches(values, lead) {
+			return true
+		}
+	}
+	return false
+}
+
+// absoluteName reports whether p begins with the home or the working
+// directory written as a variable (`$HOME`, `${HOME}`, `$PWD`, `${PWD}`),
+// whose value is an absolute path: a run of `/` written before it names the
+// same directory, so argValueMatches also reads the field without that run
+// (`rm -rf /$HOME` deletes the home; iss-2609300057462186).
+func absoluteName(p string) bool {
+	for _, name := range []string{"HOME", "PWD"} {
+		if strings.HasPrefix(p, "${"+name+"}") {
+			return true
+		}
+		if strings.HasPrefix(p, "$"+name) && (len(p) == len(name)+1 || !isNameByte(p[len(name)+1])) {
+			return true
 		}
 	}
 	return false

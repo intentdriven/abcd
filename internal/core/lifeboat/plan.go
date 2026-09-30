@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/ahoy"
+	corereflect "github.com/intentdriven/abcd/internal/core/reflect"
 )
 
 // PlannedFile is one file the packer would write into a lifeboat, produced
@@ -69,7 +70,7 @@ type Provenance struct {
 	SourceRootSHA  string `json:"source_root_sha,omitempty"`
 	TiersPresent   []Tier `json:"tiers_present"`
 	ManifestSHA256 string `json:"manifest_sha256"`
-	// RecordManifestSHA256 is the pinned hash over ONLY the record-derived
+	// recordManifestSHA256 is the pinned hash over ONLY the record-derived
 	// families (docs/adrs/**, activity/issues/**, rescue/intents/**,
 	// rescue/specs/**, graveyard/abandoned.json) — the P1 closure seal. It is
 	// byte-identical across pack -> embark -> re-pack of the same records, and is
@@ -103,10 +104,10 @@ const passBReason = "no transcript source was read for this package, so the rati
 
 // transcriptTiers names the source tiers that carry the chat transcripts Pass B
 // mines. It is EMPTY, and that is the fact the exemption rests on: the probe's
-// tiers are git, conventions and abcd-native (Tiers()), none of them a
+// tiers are git, conventions and abcd-native (allTiers()), none of them a
 // transcript store, so no lifeboat this build packs was grounded by a pass that
 // read one. Registering a transcript adapter means adding its tier here as well
-// as to Tiers() and tiersPresent — and if it is added here, the declaration
+// as to allTiers() and tiersPresent — and if it is added here, the declaration
 // stops being written for a pack that tier grounded.
 var transcriptTiers = map[Tier]bool{}
 
@@ -277,7 +278,26 @@ func Plan(repoRoot string, opts ...ProbeOption) (Lifeboat, error) {
 		}
 	}
 
-	// 5b. The graveyard, layers 1 and 2 — deterministic, evidence only. Layer 3
+	// 5b. The release retrospectives (itd-24), verbatim: every
+	//     <release-tag>/README.md in the store, the tag held to the release-tag
+	//     shape, so the whole reflection arc travels and nothing else under the
+	//     store does. Sorted, so the plan is deterministic.
+	if ctx.IsDir(corereflect.RetrospectivesRelDir) {
+		tags := ctx.ListDir(corereflect.RetrospectivesRelDir)
+		sort.Strings(tags)
+		for _, tag := range tags {
+			if !corereflect.IsReleaseTag(tag) || safeLeaf(tag) == "" {
+				continue
+			}
+			src := path.Join(corereflect.RetrospectivesRelDir, tag, retrospectiveLeaf)
+			if !ctx.Exists(src) {
+				continue
+			}
+			pb.copyRecord(ctx, src, path.Join(retrospectivesLifeboatDir, tag, retrospectiveLeaf))
+		}
+	}
+
+	// 5c. The graveyard, layers 1 and 2 — deterministic, evidence only. Layer 3
 	//     (lessons.json) is a later host-delegated step written by
 	//     `abcd disembark graveyard` into the packed lifeboat, never here. Both
 	//     files are always emitted (empty findings when the repo declared
@@ -300,7 +320,7 @@ func Plan(repoRoot string, opts ...ProbeOption) (Lifeboat, error) {
 		SourceRootSHA:        cov.Repo.RootSHA,
 		TiersPresent:         cov.TiersPresent,
 		ManifestSHA256:       ManifestSHA256(files),
-		RecordManifestSHA256: RecordManifestSHA256(files),
+		RecordManifestSHA256: recordManifestSHA256(files),
 		Omissions:            pb.omissions,
 		PassBExemption:       passBExemption(cov.TiersPresent, transcriptTiers),
 	}
@@ -318,7 +338,7 @@ func Plan(repoRoot string, opts ...ProbeOption) (Lifeboat, error) {
 // concatenation of "<sha256>  <path>\n" for every file the keep predicate admits,
 // sorted lexicographically BY PATH — not by the assembled line, whose leading hash
 // would otherwise dominate the ordering. It is deterministic for a given file set
-// and predicate. ManifestSHA256 and RecordManifestSHA256 differ only in which
+// and predicate. ManifestSHA256 and recordManifestSHA256 differ only in which
 // files they keep, so the two hashes cannot drift in their line construction.
 func manifestSHA256Over(files []PlannedFile, keep func(PlannedFile) bool) string {
 	type entry struct {
@@ -348,18 +368,18 @@ func ManifestSHA256(files []PlannedFile) string {
 	return manifestSHA256Over(files, func(f PlannedFile) bool { return f.Path != ProvenanceName })
 }
 
-// RecordManifestSHA256 is the pinned hash over ONLY the record-derived families
+// recordManifestSHA256 is the pinned hash over ONLY the record-derived families
 // (docs/adrs/**, activity/issues/**, rescue/intents/**, rescue/specs/**,
 // graveyard/abandoned.json) — the same construction as ManifestSHA256, restricted
 // to isRecordDerived paths. It is the closure seal (P1): byte-identical across
 // pack -> embark -> re-pack, because those families derive purely from the repo's
 // record and never from git or the operator's identity.
-func RecordManifestSHA256(files []PlannedFile) string {
+func recordManifestSHA256(files []PlannedFile) string {
 	return manifestSHA256Over(files, func(f PlannedFile) bool { return isRecordDerived(f.Path) })
 }
 
 // isRecordDerived reports whether a lifeboat-relative path is one of the
-// record-derived families sealed by RecordManifestSHA256. The set is
+// record-derived families sealed by recordManifestSHA256. The set is
 // recordDerivedPrefixes (embark_types.go), the single source of truth shared with
 // the embarker, so the pack side and the embark side cannot disagree about which
 // bytes must round-trip.

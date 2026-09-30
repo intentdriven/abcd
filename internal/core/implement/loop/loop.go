@@ -84,6 +84,11 @@ type Outcome struct {
 	// stage found, and the loop starts nothing further for it (itd-50,
 	// criterion 2). Set only with no Await.
 	HandBack *HandBack
+	// Stay records a step of a stage that takes several invocations (the
+	// landing): the lane's changes are written and the record gets the note,
+	// and the lane stays at the stage for the next invocation's step. Set only
+	// with no Await and no HandBack.
+	Stay bool
 	// Note is the run record's line for the stage.
 	Note string
 }
@@ -146,15 +151,14 @@ func after(name Stage) Stage {
 // DefaultStages is the lane sequence this build carries, each stage with the
 // spec piece that delivers its body: the worktree (lane.go), the brief
 // (brief.go), the implement stage with its receipt's verifier (receipt.go) and
-// the validators with theirs (validate.go). The landing is a later piece of
-// spc-2609202134338445, and registers its body here.
+// the validators with theirs (validate.go), and the landing (land.go).
 func DefaultStages() Stages {
 	return Stages{
 		{Name: StageWorktree, Piece: 6, Run: worktreeStage},
 		{Name: StageBrief, Piece: 5, Run: briefStage},
 		{Name: StageImplement, Piece: 7, Run: implementStage, Verify: verifyReceipt},
 		{Name: StageValidate, Piece: 8, Run: validateStage, Verify: verifyValidation, Repeats: true},
-		{Name: StageLand, Piece: 9},
+		{Name: StageLand, Piece: 9, Run: landStage},
 	}
 }
 
@@ -304,10 +308,10 @@ func start(repoRoot, key string, o Options, pick *RunPick) (StartResult, error) 
 		}
 		var claim *implement.ClaimResult
 		if shared != nil {
-			c, err := shared.Claim(implement.ClaimRequest{Session: o.Session, Record: chk.Intent, Lane: id, Lease: implement.MaxLease})
+			c, err := shared.Claim(implement.ClaimRequest{Session: o.Session, Record: chk.record(), Lane: id, Lease: implement.MaxLease})
 			if err != nil {
 				_ = root.Remove(runRel(id))
-				return claimRefusal(o.Session, chk.Intent, err)
+				return claimRefusal(o.Session, chk.record(), err)
 			}
 			claim = &c
 		}
@@ -330,7 +334,7 @@ func start(repoRoot, key string, o Options, pick *RunPick) (StartResult, error) 
 		}
 		openNextLane(&st)
 		st.Record = append(st.Record, Entry{At: now, Lane: st.Lanes[0].ID, Stage: "start",
-			Note: fmt.Sprintf("checks passed; %s opened for step %d of %s (%s)", st.Lanes[0].ID, st.Lanes[0].SpecStep, st.Spec, st.Lanes[0].StepTitle)})
+			Note: "checks passed; " + st.Lanes[0].ID + " opened for " + laneWork(st, st.Lanes[0])})
 		st.Record = append(st.Record, Entry{At: now, Stage: StagePace,
 			Note: "pace " + pace.String() + "; the first window opens now"})
 		if pick != nil {
@@ -346,7 +350,7 @@ func start(repoRoot, key string, o Options, pick *RunPick) (StartResult, error) 
 		}
 		if err := writeState(root, st); err != nil {
 			if claim != nil && !claim.Renewed {
-				_, _ = shared.Release(o.Session, chk.Intent)
+				_, _ = shared.Release(o.Session, chk.record())
 			}
 			return err
 		}
@@ -501,6 +505,15 @@ func startResult(st State, checks []CheckRow, resumed bool) StartResult {
 	return res
 }
 
+// laneWork names what a lane builds, for the run record: a spec step, or the
+// issue an issue-keyed run fixes.
+func laneWork(st State, l Lane) string {
+	if st.Issue() != "" {
+		return fmt.Sprintf("%s (%s)", st.Issue(), l.StepTitle)
+	}
+	return fmt.Sprintf("step %d of %s (%s)", l.SpecStep, st.Spec, l.StepTitle)
+}
+
 // openNextLane opens a lane for the first pending spec step. It is state-only:
 // the lane's first stage is what makes anything.
 func openNextLane(st *State) {
@@ -597,6 +610,13 @@ func Advance(repoRoot, runID string, steps Stages, o Options) (StepResult, error
 			st.UpdatedAt = now
 			res = laneResult(*st, lane, "")
 			res.HandBack = lane.HandBack
+			return true, nil
+		}
+		if out.Stay {
+			st.Record = append(st.Record, Entry{At: now, Lane: lane.ID, Stage: string(lane.Stage), Note: out.Note})
+			st.Lanes[i] = lane
+			st.UpdatedAt = now
+			res = laneResult(*st, lane, "")
 			return true, nil
 		}
 		if out.Await != nil {
@@ -701,6 +721,16 @@ func Receipt(repoRoot, runID, receipt string, steps Stages, o Options) (StepResu
 				return false, err
 			}
 			return false, refuse("receipt", "", lane.ID, err.Error(), "correct what the reason names, then hand the receipt back")
+		}
+		if lane.HandBack != nil {
+			// The lane's own receipt handed the work back: the verifier has
+			// discarded it, and the lane ends here, before the validators.
+			handBackLane(st, &lane, *lane.HandBack, "", now)
+			st.Lanes[i] = lane
+			st.UpdatedAt = now
+			res = laneResult(*st, lane, "")
+			res.HandBack = lane.HandBack
+			return true, nil
 		}
 		performed := lane.Stage
 		verified := lane.Awaiting.Receipt
@@ -954,4 +984,24 @@ func StatusLanes(repoRoot string) ([]statusblock.Started, error) {
 		out = append(out, statusblock.Started{Intent: id, Lane: lane})
 	}
 	return out, nil
+}
+
+// StatusPeers is the peers read the status block's head takes (ruling CC1 of
+// 2026-09-29): build next's own peers check, read once for the block and
+// judged per intent, so the board's "next up" passes over exactly the intents
+// another checkout holds that the pick passes over. It judges on behalf of no
+// session, so every live claim is a peer's. A peer the listing cannot read
+// fails closed on each record, as it does for the pick. It is a
+// statusblock.PeerReader.
+func StatusPeers(repoRoot string) (statusblock.HeldBy, error) {
+	snap, err := readPeers(repoRoot)
+	if err != nil {
+		return nil, err
+	}
+	return func(r intent.ReadyResult) string {
+		if row := peersCheck(r.IntentID, r.Bucket, "", snap); !row.OK {
+			return row.Detail
+		}
+		return ""
+	}, nil
 }

@@ -300,3 +300,27 @@ func routerBullet(content, lead string) (string, bool) {
 	}
 	return strings.Join(strings.Fields(strings.Join(lines[start:end], " ")), " "), true
 }
+
+// TestCreateStatedWritesAnAcceptedRecordWithItsFields: a stated decision is
+// minted through the same seam as a skeleton, written accepted, with the extra
+// frontmatter keys inside the block and the body below the H1.
+func TestCreateStatedWritesAnAcceptedRecordWithItsFields(t *testing.T) {
+	root := t.TempDir()
+	d, err := CreateStated(root, Stated{Title: "A stated rule", Frontmatter: "drain_remedy: required\n", Body: "## Context\n\nwords\n"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(filepath.Join(root, d.Path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(raw)
+	head, body, ok := strings.Cut(strings.TrimPrefix(s, "---\n"), "---\n")
+	if !ok || !strings.Contains(head, "\nstatus: accepted\n") || strings.Contains(head, "proposed") ||
+		!strings.HasSuffix(head, "related_adrs: []\ndrain_remedy: required\n") || !strings.HasPrefix(head, "id: "+d.ID+"\n") {
+		t.Fatalf("the frontmatter is not the store's keys, accepted, then the stated ones:\n%s", s)
+	}
+	if !strings.HasPrefix(body, "\n# ADR-"+strings.TrimPrefix(d.ID, "adr-")+": A stated rule\n\n## Context\n\nwords\n") {
+		t.Fatalf("the body is not the H1 then the stated sections:\n%s", s)
+	}
+}

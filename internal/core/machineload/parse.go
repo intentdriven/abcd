@@ -17,12 +17,12 @@ import (
 // tag, so both platforms' parsers are exercised on every platform the tests run
 // on. Only read_darwin.go and read_linux.go touch the real machine.
 
-// ParseLoadavgSysctl reads macOS's `vm.loadavg` sysctl value: the kernel's
+// parseLoadavgSysctl reads macOS's `vm.loadavg` sysctl value: the kernel's
 // struct loadavg, three uint32 fixed-point averages, four bytes of padding, then
 // an int64 scale, little-endian. syscall.Sysctl returns it as a string with one
 // trailing NUL stripped (23 bytes where the struct is 24), so the stripped bytes
 // are restored as zeros before the scale is read.
-func ParseLoadavgSysctl(raw []byte) (l1, l5, l15 float64, err error) {
+func parseLoadavgSysctl(raw []byte) (l1, l5, l15 float64, err error) {
 	const size = 24
 	if len(raw) < 20 || len(raw) > size {
 		return 0, 0, 0, fmt.Errorf("vm.loadavg is %d bytes, not the %d-byte loadavg struct", len(raw), size)

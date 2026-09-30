@@ -142,11 +142,6 @@ func TestHomeSpellingsTheWrittenCompareReads(t *testing.T) {
 		{`rm -rf ${X:+/}x`, bare | sq, VerdictAllow, ""},
 		{`rm -rf $HOME{1..2}`, bare | sq, VerdictAllow, ""},
 		{`rm -rf "$HO"{M..M}E`, bare | sq, VerdictAllow, ""},
-		// With X set this prints X's value; with X unset bash 3.2 and
-		// /bin/sh print the word, the home. The default's word is the
-		// deferred class of iss-2609290426544292, so this allow is a known
-		// residual, not a claim that the form stays off the home.
-		{`rm -rf ${X[0]]-$HOME}`, bare | sq, VerdictAllow, ""},
 		{`rm -rf "${X:+$HOME }"`, bare | sq, VerdictAllow, ""},
 		{`rm -rf ${X:+"$HOME "}`, bare | sq, VerdictAllow, ""},
 		{`rm -rf ${X:+'x /'}`, bare, VerdictAllow, ""},
@@ -190,7 +185,7 @@ func TestHomeSpellingsTheWrittenCompareReads(t *testing.T) {
 
 // TestHomeSpellingsStayLinear holds the spellings above to the cost bar
 // (iss-2609290419119456): an alternative's word is followed at most
-// spellAlternativeDepth deep, a brace group's words carry their variables by
+// spellWordDepth deep, a brace group's words carry their variables by
 // index, and a name read across backslash-newlines is read once.
 func TestHomeSpellingsStayLinear(t *testing.T) {
 	shapes := []struct {

@@ -249,7 +249,7 @@ func maxImpactOf(records []Record) Impact {
 	for _, r := range records {
 		impacts = append(impacts, r.Impact)
 	}
-	return MaxImpact(impacts)
+	return maxImpact(impacts)
 }
 
 // ShippedSince computes the release cut between baseRef (the anchor tag) and

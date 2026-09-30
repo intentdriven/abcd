@@ -238,6 +238,15 @@ func parse(data []byte) (Registry, error) {
 	return r, nil
 }
 
+// maxLessonFieldBytes caps an entry's why and its successor, each. The teaching
+// plane injects both into an agent's context word for word (teach.go), so an
+// unbounded field is an unbounded injection: one 240 KB why pushed every other
+// domain out of the rules loader's 64 KiB budget. The longest bundled why is
+// under 300 bytes and the longest successor under 270, so 1,024 bytes leaves a
+// repository more than three times the room abcd's own entries use while
+// keeping one lesson to a few hundred tokens at most.
+const maxLessonFieldBytes = 1024
+
 // Validate checks the registry schema: the schema version, every entry id, and
 // every entry's tier, pattern command, successor, and why. A per-repo override
 // is validated AFTER merging, so an override can never produce an entry the
@@ -276,6 +285,14 @@ func Validate(r Registry) error {
 		}
 		if strings.TrimSpace(e.Why) == "" {
 			return fmt.Errorf("%w: entry %s has no why", ErrInvalidEntry, id)
+		}
+		// Both are taught word for word, so both are bounded: a file that
+		// teaches past the bound is refused, never truncated in silence.
+		if n := len(e.Why); n > maxLessonFieldBytes {
+			return fmt.Errorf("%w: entry %s has a why of %d bytes, over the %d-byte bound", ErrInvalidEntry, id, n, maxLessonFieldBytes)
+		}
+		if n := len(e.Successor); n > maxLessonFieldBytes {
+			return fmt.Errorf("%w: entry %s has a successor of %d bytes, over the %d-byte bound", ErrInvalidEntry, id, n, maxLessonFieldBytes)
 		}
 		if err := validatePattern(id, e.Pattern); err != nil {
 			return err

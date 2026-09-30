@@ -98,7 +98,7 @@ func TestTheStatusHeadIsTheIntentBuildNextPicks(t *testing.T) {
 		if !ok {
 			t.Fatalf("running=%v: no candidate: %+v", running, set)
 		}
-		b, err := statusblock.Read(repo.Root(), StatusLanes)
+		b, err := statusblock.Read(repo.Root(), StatusLanes, StatusPeers)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -156,7 +156,7 @@ func TestTheStatusHeadPassesOverWhatBuildNextExcludesFromTheRecord(t *testing.T)
 			t.Fatalf("precondition: %s is excluded by %q, got %+v", e.ID, want[e.ID], e)
 		}
 	}
-	b, err := statusblock.Read(repo.Root(), StatusLanes)
+	b, err := statusblock.Read(repo.Root(), StatusLanes, StatusPeers)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,4 +169,79 @@ func TestTheStatusHeadPassesOverWhatBuildNextExcludesFromTheRecord(t *testing.T)
 	if head != pick.Chosen.ID {
 		t.Errorf("the head is %q, build next picks %q", head, pick.Chosen.ID)
 	}
+}
+
+// TestTheStatusHeadPassesOverAnIntentAPeerHolds (ruling CC1): the bare board
+// pays build next's peers read, so "next up" always equals the pick. Another
+// checkout holding the readiest intent in another bucket excludes it from the
+// pick, and the head passes over it exactly as the pick does; a peer the
+// listing names and cannot read fails closed on every record, for the head as
+// for the pick, so neither names an intent.
+func TestTheStatusHeadPassesOverAnIntentAPeerHolds(t *testing.T) {
+	records := map[string][2]string{
+		"20": {pickIntent("20", "", settledQuestions, gwt), pickSpec("20", "")},
+		"21": {pickIntent("21", "", settledQuestions, gwt), pickSpec("21", fpSmall)},
+	}
+	head := func(b statusblock.Block) string {
+		for _, r := range b.Now {
+			if r.NextUp {
+				return r.ID
+			}
+		}
+		return ""
+	}
+
+	t.Run("a branch holds the readiest intent", func(t *testing.T) {
+		repo := pickRepo(t, records)
+		ir, _ := pickRel("21")
+		repo.Git("checkout", "-q", "-b", "lane-alpha")
+		repo.Remove(ir)
+		repo.Write(".abcd/development/intents/shipped/itd-21-i21.md", records["21"][0])
+		repo.Commit("deliver itd-21")
+		repo.Git("checkout", "-q", "main")
+
+		set, err := candidates(repo.Root(), "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		pick, ok := intent.Choose(set.Candidates)
+		if !ok || pick.Chosen.ID != "itd-20" {
+			t.Fatalf("precondition: build next passes over itd-21, which lane-alpha holds, and picks itd-20: %+v", set)
+		}
+		b, err := statusblock.Read(repo.Root(), StatusLanes, StatusPeers)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := head(b); got != pick.Chosen.ID {
+			t.Errorf("the head is %q, build next picks %q: the board must pay the pick's peers read", got, pick.Chosen.ID)
+		}
+	})
+
+	t.Run("a peer cannot be read", func(t *testing.T) {
+		repo := pickRepo(t, records)
+		repo.Git("checkout", "-q", "-b", "lane-beta")
+		beta := "---\nid: itd-30\nslug: beta\n---\n# beta\n"
+		repo.Write(".abcd/development/intents/drafts/itd-30-beta.md", beta)
+		repo.Write(".abcd/development/intents/planned/itd-30-beta.md", beta)
+		repo.Commit("split beta")
+		repo.Git("checkout", "-q", "main")
+
+		set, err := candidates(repo.Root(), "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(set.Candidates) != 0 {
+			t.Fatalf("precondition: an unreadable peer leaves the pick no candidate: %+v", set)
+		}
+		b, err := statusblock.Read(repo.Root(), StatusLanes, StatusPeers)
+		if err != nil {
+			t.Fatalf("an unreadable peer fails closed on each record, never the board: %v", err)
+		}
+		if got := head(b); got != "" {
+			t.Errorf("the head is %q; the pick has no candidate, so nothing is next up", got)
+		}
+		if len(b.Next) != 2 {
+			t.Errorf("Next = %+v, want both READY intents still listed", b.Next)
+		}
+	})
 }

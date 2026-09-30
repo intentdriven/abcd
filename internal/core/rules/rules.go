@@ -4,8 +4,8 @@
 // or knows about a harness event — the front doors under internal/surface and
 // the hook entrypoint marshal these results for their transport.
 //
-// The model is a small set of binary-bundled default domains (embedded below)
-// merged with two optional override layers, in order: the user scope's
+// The model is a small set of binary-bundled default domains (embedded below,
+// plus SHELL, generated from the guard's hazard registry in shell.go) merged with two optional override layers, in order: the user scope's
 // ~/.abcd/rules.json (one per machine, spc-23) and then the per-repo
 // <repoRoot>/.abcd/rules.json, so the repo wins a field both set. Each
 // domain carries recall keywords + aliases and a list of rules; a prompt is
@@ -33,6 +33,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/core/guard"
 	"github.com/intentdriven/abcd/internal/core/jsonstrict"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -95,6 +96,14 @@ type RuleSet struct {
 	// derived from this load, not declared by anyone — and read through
 	// Notes().
 	notes []string
+	// rulesFrom records, per domain name, the display path of the file whose
+	// words the domain's rules list is: the layer file that last set the list,
+	// or the repository's .abcd/guard.json for a SHELL domain rebuilt from its
+	// entries. Absent means the bundled words. It lets a front door that must
+	// blame a file for what the rules cost — the injection budget's trailer —
+	// name the file that wrote them rather than guess. Derived, never declared,
+	// for the same reason as origins.
+	rulesFrom map[string]string
 }
 
 // Notes returns the diagnostics this load produced, in a stable order: a
@@ -170,6 +179,7 @@ func mustParseDefaults() RuleSet {
 	if err := json.Unmarshal(defaultsJSON, &rs); err != nil {
 		panic("rules: bundled defaults are malformed: " + err.Error())
 	}
+	rs = withShellDomain(rs)
 	if err := Validate(rs); err != nil {
 		panic("rules: bundled defaults fail validation: " + err.Error())
 	}
@@ -236,10 +246,13 @@ func Load(repoRoot string) (RuleSet, error) {
 	if err != nil {
 		return RuleSet{}, err
 	}
+	// SHELL is regenerated from the guard registry in force for this
+	// repository before any rules.json layer lands on it (ruling CK1).
+	base := withRepoShellDomain(Defaults(), repoRoot)
 	if !haveUser && !haveRepo {
-		return Defaults(), nil
+		return base, nil
 	}
-	merged := Defaults()
+	merged := base
 	if haveUser {
 		merged = mergeFrom(merged, user, SourceUser)
 		// The user layer is validated on its own before the repo layer lands,
@@ -268,19 +281,20 @@ func Load(repoRoot string) (RuleSet, error) {
 	if haveRepo {
 		layers = append(layers, overrideLayer{SourceRepo, repo})
 	}
-	return noteWithheld(merged, layers), nil
+	return noteWithheld(merged, base, layers), nil
 }
 
 // securityBearingDomains are the bundled domains whose entries are guardrails
 // rather than house style: PII (secrets, local paths and network identifiers
 // leaving the machine), COMMITTING (unasked pushes, bypassed hooks, AI
-// attribution) and LOAD (orphaned load starving a live machine). An override
+// attribution), LOAD (orphaned load starving a live machine) and SHELL (the
+// shell-hazard registry's lessons, generated in shell.go). An override
 // that replaces one of their lists without an entry the binary ships is named
 // on every load (noteWithheld); the other bundled domains are conventions a
 // repo restates in its own words, and a note on each would teach the reader to
 // skip the one that matters. Name-sorted, so the notes come out in a stable
 // order.
-var securityBearingDomains = []string{"COMMITTING", "LOAD", "PII"}
+var securityBearingDomains = []string{"COMMITTING", "LOAD", "PII", ShellDomain}
 
 // overrideLayer is one override file as Load read it, with the label of the
 // layer it came from.
@@ -290,19 +304,23 @@ type overrideLayer struct {
 }
 
 // noteWithheld records one note for every list of a security-bearing domain
-// that an override replaced without some entry the bundled default carries
-// (iss-174). Replacement stays per field — the documented merge, and the one a
+// that an override replaced without some entry the base carries (iss-174):
+// the bundled defaults with SHELL rebuilt from the repository's guard registry,
+// the set Load built before any rules.json layer landed. Replacement stays per field — the documented merge, and the one a
 // repo relies on to say a rule in its own words — so the effective set is not
 // touched; what changes is that the loss is no longer silent. A repo that
 // pinned PII's rules before a later release added one keeps its own list and
 // is told, on every load, which bundled rule it is withholding and from which
 // file, instead of carrying a stale guardrail set that looks current.
 //
-// The comparison is against the bundled list as this binary ships it, so an
-// upgrade that adds an entry is named on the first load after it, with no
-// record of what the override saw when it was written. The file named is the
-// LAST layer that set the field, the one whose list is in force.
-func noteWithheld(rs RuleSet, layers []overrideLayer) RuleSet {
+// The comparison is against the base list — the bundled list as this binary
+// ships it, and for SHELL the lessons of the repository's own .abcd/guard.json
+// entries too — so an upgrade that adds an entry is named on the first load
+// after it, with no record of what the override saw when it was written, and a
+// repository lesson an override leaves out is named like a bundled one. The
+// file named is the LAST layer that set the field, the one whose list is in
+// force.
+func noteWithheld(rs, base RuleSet, layers []overrideLayer) RuleSet {
 	fields := []struct {
 		name string
 		of   func(Domain) []string
@@ -316,7 +334,13 @@ func noteWithheld(rs RuleSet, layers []overrideLayer) RuleSet {
 		if !ok {
 			continue
 		}
-		bundled := defaultRuleSet.Domains[name]
+		bundled := base.Domains[name]
+		// Whose guardrail the list is: abcd's, or for a SHELL rebuilt from the
+		// repository's guard entries, abcd's and the repository's.
+		whose := "abcd ships"
+		if base.rulesFrom[name] == guard.RepoRelPath {
+			whose = "abcd ships or the repository's " + guard.RepoRelPath + " declares"
+		}
 		for _, f := range fields {
 			file := ""
 			for _, l := range layers {
@@ -341,9 +365,9 @@ func noteWithheld(rs RuleSet, layers []overrideLayer) RuleSet {
 				continue
 			}
 			rs.notes = append(rs.notes, fmt.Sprintf(
-				"rules: %s: domain %q replaces the bundled %q list and WITHHOLDS %d of its %d entries, a security guardrail abcd ships that this load does not carry: %s; "+
-					"restate them in the override to keep them, or leave %q out to inherit the bundled list",
-				file, name, f.name, len(withheld), len(f.of(bundled)), strings.Join(withheld, ", "), f.name))
+				"rules: %s: domain %q replaces the %q list it would inherit and WITHHOLDS %d of its %d entries, a security guardrail %s that this load does not carry: %s; "+
+					"restate them in the override to keep them, or leave %q out to inherit the list",
+				file, name, f.name, len(withheld), len(f.of(bundled)), whose, strings.Join(withheld, ", "), f.name))
 		}
 	}
 	return rs
@@ -564,8 +588,19 @@ func mergeFrom(base, over RuleSet, source string) RuleSet {
 	for name, od := range over.Domains {
 		out.Domains[name] = mergeDomain(out.Domains[name], od)
 		out.origins[name] = source
+		if od.Rules != nil {
+			out.setRulesFrom(name, LayerPath(source))
+		}
 	}
 	return out
+}
+
+// setRulesFrom records file as the source of name's rules list.
+func (rs *RuleSet) setRulesFrom(name, file string) {
+	if rs.rulesFrom == nil {
+		rs.rulesFrom = map[string]string{}
+	}
+	rs.rulesFrom[name] = file
 }
 
 // resolved builds the ResolvedDomain for name, carrying its recorded origin; a
@@ -1018,6 +1053,12 @@ func cloneRuleSet(rs RuleSet) RuleSet {
 		out.origins = make(map[string]string, len(rs.origins))
 		for name, src := range rs.origins {
 			out.origins[name] = src
+		}
+	}
+	if rs.rulesFrom != nil {
+		out.rulesFrom = make(map[string]string, len(rs.rulesFrom))
+		for name, file := range rs.rulesFrom {
+			out.rulesFrom[name] = file
 		}
 	}
 	if rs.Domains != nil {

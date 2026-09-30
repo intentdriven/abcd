@@ -1,7 +1,7 @@
 ---
 name: implement
 description: "Share one autonomous run between sessions and drive the implement loop: Writes nothing bare, only the run state its sub-verbs name; refuses an unknown sub-verb."
-argument-hint: "[join|leave|mode|claim|release|check|log|report|load|status|step|receipt] …"
+argument-hint: "[join|leave|mode|claim|release|check|log|report|load|status|step|receipt|record] …"
 block: agents
 ---
 
@@ -107,7 +107,7 @@ The second session is refused at exit 2, and the refusal is logged, when it:
   the committed `.abcd/config/reading-presets.json`, plus that file — those
   lanes are the first's; when the preset file is absent or unreadable, any
   declared `--path` is refused, since nothing can say the lane is clear;
-- reaches the release step — only the first session cuts a release.
+- reaches the release stage — only the first session cuts a release.
 
 It also keeps its own agent ceiling (stated on joining, held against its logged
 `agent_start` lines, reported by `check`).
@@ -118,14 +118,14 @@ unauthenticated role. Two sessions of one account can each write anything
 under that account's home, so the bounds keep two cooperating sessions apart;
 they are not a wall against a session that lies about its role.
 
-Before a step that is not a claim, ask:
+Before a stage that is not a claim, ask:
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/abcd" implement check release|lane|review|audit|land --session <id> [--path <file> …] --json
 ```
 
-An allowed step writes nothing. On a refusal, stop that step and leave it to the
-first session; a stop condition the second session meets stops only itself.
+An allowed stage writes nothing, and the verdict names it in `stage`. On a
+refusal, stop that stage and leave it to the first session; a stop condition the second session meets stops only itself.
 
 ## Log the run's events
 
@@ -195,12 +195,13 @@ Relay any `unparsed` lines; they are counted nowhere.
 `/abcd:build` starts a run of the implement loop in this checkout's local tier,
 `.abcd/.work.local/run/<run-id>/state.json`, separate from the shared run state
 above. Three sub-verbs drive it, each reading the state first and writing it
-last:
+last, and a fourth reads its record at the end:
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/abcd" implement status [--run <run-id>] --json
 "${CLAUDE_PLUGIN_ROOT}/abcd" implement step [--run <run-id>] --json
 "${CLAUDE_PLUGIN_ROOT}/abcd" implement receipt <path> [--run <run-id>] --json
+"${CLAUDE_PLUGIN_ROOT}/abcd" implement record [--run <run-id>] [--transcript <path>]... --json
 ```
 
 `status` renders every run (or the one `--run` names): its pace and the layer
@@ -244,11 +245,27 @@ lane builds and each step before it with what landed it), `implement` (awaits an
 `implementer`'s receipt at `.abcd/.work.local/run/<run-id>/<lane-id>/receipt.json`),
 then `validate` and `land`. An implementer's receipt is one strict JSON object:
 `schema_version`, `run_id`, `lane`, `branch`, `commits` (full object names),
-`definition_of_done` (`command`, `exit_code`, `output`), `report`, and an
-optional `model`, with `output` and `report` paths inside the lane's directory.
+`definition_of_done` (`command`, `exit_code`, `output`), `report`, an optional
+`model`, and an optional `resolves` list naming each capture the lane fixed
+(`issue`, the `commit` of the receipt's that fixed it, `note`, `impact`,
+`grounds`), with `output` and `report` paths inside the lane's directory.
 `receipt` refuses it, naming every gap, unless each commit is on the lane's
 branch past its base, the definition of done's output exists with exit code 0,
-and the report exists; any other field, a verdict included, refuses it.
+the report exists, and each fixed capture names one of the receipt's commits and
+an impact; any other field, a verdict included, refuses it.
+
+An issue-keyed run (`build <iss-N>`, the run `/abcd:drain` starts for each
+eligible issue) has one lane. Its brief is the issue's record read at the lane's
+base, its remedy as the work, and the definition of done a detector watched to
+fail before the fix and pass after. Its receipt must name the issue in
+`resolves`, or `receipt` refuses naming it; its validators take no fidelity
+audit, and `land` resolves the issue and opens one pull request. A receipt may
+instead carry `handback` (`kind`: `user-visible`, `trust-rule`,
+`design-finding` or `second-package`; `reason`; and `home`, required for the
+last two) with no `resolves` and no definition of done: `receipt` then discards
+the lane's worktree and branch, ends the lane at `handed-back` before the
+validators, and the result's `hand_back` names the kind, the reason, the home
+and the `discarded` head. `/abcd:drain` routes it by kind.
 `validate` hands the lane's head to fresh validators one at a time and records
 each verdict from the validator's own return; the fidelity audit passes only
 when every criterion is met, so an undecided (`INCONCLUSIVE`) criterion sends
@@ -256,9 +273,54 @@ the lane to a fresh implementer as a not-met one does. A lane that has taken
 the run's fix rounds (`build --fix-rounds`, bundled 3) and still does not pass
 is handed back: the result's `hand_back` names the verdict `unachievable` and
 the last findings, and every later `step` refuses at the `handed-back` stage.
-This build carries no `land` body: `step` refuses at that stage naming the spec
-piece that delivers it, and the run stays ready to resume. Report the refusal
-as it is.
+The run stays in progress, so `build next` passes over its intent; no verb
+clears it, and the refusal names the way out: once the intent is replanned,
+remove the run's directory, `.abcd/.work.local/run/<run-id>`.
+
+`land` takes one `step` per move, and the lane stays at `land` until the last:
+
+1. It checks the lane's worktree is clean and its branch is at the head the
+   validators judged.
+2. On the lane that closes the spec it runs `spec close` in the lane's worktree
+   and ingests the verdict of the audit that lane took, and for each capture the
+   lane's receipts declared fixed it runs `capture resolve` with that commit. It
+   commits them on the lane's branch with `Delivers:` (when the close ships the
+   intent) and `Resolves:` trailers, and an `Assisted-by:` naming the model the
+   lane's receipts reported, since the records carry that model's prose (a lane
+   whose receipt reports no model is refused). The commit runs the
+   repository's hooks; one that refuses stops the landing, which resumes once
+   what the hook names is settled.
+3. It pushes the lane's branch only once the repository's preflight receipt
+   (`.abcd/.work.local/preflight-receipts/<head>`, in any worktree) names the
+   lane's head. Without one, `step` refuses naming it: run `make preflight` in
+   the lane's worktree, then `step` again. The push runs the pre-push hook and
+   never skips or forces anything.
+4. It opens the pull request through `gh`, with a body written from the run's
+   records and passed through the outbound scrub, then re-reads the body the
+   forge holds and strips a session URL or tool footer the harness appended.
+5. It reads the merge rule from the ruleset mirror (`.abcd/work/rulesets/`) at
+   the lane's base: where a merge queue gates the default branch it arms
+   auto-merge with the queue's method, and elsewhere it leaves the pull request
+   open for a person to merge. Nothing is pushed to the lane after this.
+6. It waits (exit 3) until the pushed head is an ancestor of the default branch
+   on `origin`, then removes the lane's worktree and branch, and the lane is
+   done. A pull request closed without merging, or merged in a way that rewrote
+   the head, is refused and nothing is cleaned up.
+
+Every landing step is recorded as it completes, so a killed `step` repeats the
+move that did not complete and finds what it made rather than making it twice.
+
+`record` renders a run's record: each lane with its receipts and the model each
+runner reported, every verdict the loop recorded, the captures it fixed, its
+pull request and landing, the transcripts captured, and the record's lines.
+Without `--run` it reads the one run in progress, or else the latest run. With
+`--transcript <path>` (repeatable) on a complete run it captures each transcript
+into the history store as `history capture <path>` does, one capture per path,
+and records it; on a run in progress it refuses at the `record` stage. A
+transcript stored without the scanner coverage the repository armed (gitleaks
+configured and not installed) carries `scan_gap` in `--json` and a `scan gap:`
+block in the text, as `history capture` names it; relay it as printed. Report
+every refusal as it is.
 
 ## Check the machine's load
 

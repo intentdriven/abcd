@@ -38,6 +38,9 @@ func runOwedDrain(cmd *cobra.Command, asJSON bool, max int, auditRoute *routeFla
 	if err != nil {
 		return err
 	}
+	if err := auditRoute.admit("abcd intent audit --owed", route); err != nil {
+		return err
+	}
 	var shippedOn intent.ShippedOn
 	if h, herr := site.LoadHistory(repoRoot); herr != nil {
 		// The walk's error carries git's own stderr, which can name an absolute
@@ -60,7 +63,26 @@ func runOwedDrain(cmd *cobra.Command, asJSON bool, max int, auditRoute *routeFla
 		step.Queue[i].EmitError = fsutil.RedactHome(step.Queue[i].EmitError)
 	}
 	view := drainView{ReviewQueue: step.ReviewQueue}
-	if step.Next != nil {
+	// A head routed to a provider is sent there and its verdict ingested, so
+	// this step ran one reviewer and the entry is no longer owed.
+	var ran *dispatched
+	if step.Next != nil && step.Next.RequestWritten && route.OnProvider() {
+		d, fell, err := auditRoute.sendRequest(cmd, "abcd intent audit --owed", route, auditAgent, repoRoot, step.Next.RequestPath)
+		if err != nil {
+			return err
+		}
+		route = fell
+		if d != nil {
+			ing, err := intent.IngestVerdictBytes(repoRoot, d.payload)
+			if err != nil {
+				return &exitError{Code: 2, Msg: "abcd intent audit --owed: the answer from " + termsafe.Sanitize(d.receipt.ConnectionUsed) +
+					": " + termsafe.Sanitize(fsutil.RedactHome(err.Error()))}
+			}
+			ran = d
+			view.Next = withDispatchReceipt(ing, d)
+		}
+	}
+	if step.Next != nil && ran == nil {
 		view.Next = withRequest(*step.Next, route)
 	}
 	return render(cmd.OutOrStdout(), asJSON, view, func(w io.Writer) {
@@ -96,6 +118,10 @@ func runOwedDrain(cmd *cobra.Command, asJSON bool, max int, auditRoute *routeFla
 				fmt.Fprint(w, " (a larger --max reaches the entries behind them)")
 			}
 			fmt.Fprintln(w)
+		} else if ran != nil {
+			fmt.Fprintf(w, "ran: %s (receipt %s) — request: %s\n", step.Next.IntentID, step.Next.ReceiptID, step.Next.RequestPath)
+			renderDispatchLine(w, ran)
+			fmt.Fprintln(w, "  its verdict is ingested; run this again for the next")
 		} else {
 			fmt.Fprintf(w, "next: %s (receipt %s) — request: %s\n", step.Next.IntentID, step.Next.ReceiptID, step.Next.RequestPath)
 			renderRequestLine(w, route)
@@ -103,7 +129,9 @@ func runOwedDrain(cmd *cobra.Command, asJSON bool, max int, auditRoute *routeFla
 				"`abcd intent audit ingest --verdict-json <file>`, then run this again for the next")
 			fmt.Fprintln(w, "  a NOT_MET verdict is captured (`abcd capture`, naming the receipt), never fixed by the drain")
 		}
-		fmt.Fprintln(w, "this command runs no reviewer: every entry stays owed until its verdict is ingested")
+		if ran == nil {
+			fmt.Fprintln(w, "this command runs no reviewer: every entry stays owed until its verdict is ingested")
+		}
 	})
 }
 

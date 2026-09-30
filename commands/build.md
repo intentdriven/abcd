@@ -1,7 +1,7 @@
 ---
 name: build
 description: "Start the loop that takes one READY intent to delivered: Writes the run's state file in the local tier; refuses an open question, a hold or a peer holding it."
-argument-hint: "<itd-N> | next"
+argument-hint: "<itd-N> | <iss-N> | next"
 block: people
 ---
 
@@ -35,6 +35,14 @@ is not counted as a peer's. A session that has not joined is refused at the
 and the result says so (`claim` is null): another checkout cannot see the run
 until its lane shows.
 
+An issue id builds the loop's issue-keyed lane instead: `build <iss-N>` (an
+issue id by shape) checks that the repository's own drain rule takes the issue,
+read as `/abcd:drain --dry-run` reads it, and that no peer holds it, then opens
+one lane whose brief is the issue with its remedy as the work. The receipt must
+name the issue in `resolves`, and the landing resolves it. `/abcd:drain` starts
+these runs one at a time; see `/abcd:implement` for the lane's receipt and its
+hand-back.
+
 For an intent with no run in progress, the checks run first, and every one must
 pass:
 
@@ -49,13 +57,16 @@ pass:
 - `claim_sections` — the `## Mechanism` prompt is answered (or the section
   absent) and the scope conditions are recorded.
 - `hold` — the intent carries no `held:`.
-- `blocked` — nothing the intent names in `blocked_by` is unshipped (an intent
-  not in `shipped/`, or one this checkout does not hold, blocks it). A
-  superseded blocker is followed along `superseded_by` to the intent that
-  replaced it, transitively, and blocks only while that replacement is
-  unshipped; a chain that loops, ends at a record this checkout does not hold
-  or at a decision (`adr-N`), or stops at a superseded record naming no
-  successor blocks, naming the chain.
+- `blocked` — nothing the intent names in `blocked_by` is unsettled. An intent
+  in `shipped/` or `disciplines/` is settled; one anywhere else, or one this
+  checkout does not hold, blocks it. A superseded blocker is followed along
+  `superseded_by` to the record that replaced it, transitively, and blocks only
+  while that replacement is unsettled: an intent settles as above, and a
+  decision (`adr-N`) settles when its status is `accepted`. A decision in any
+  other status or missing from this checkout blocks, as does a chain that
+  loops, ends at an intent this checkout does not hold, or stops at a
+  superseded record naming no successor; the reason names the chain, and a
+  settled chain is named in the passing row.
 - `steps` — the spec's `## Steps` reads, and at least one step is not landed.
 - `peers` — no peer holds the intent: no sibling worktree or local branch holds
   it in another bucket, and no session other than `--session` holds a live
@@ -240,11 +251,47 @@ A lane's stages run in order:
    `fix_rounds` cap, the `findings` returns and the criteria `not_met` or
    `undecided`), the run starts nothing further for it, and every later step is
    refused at the `handed-back` stage. Tell the user the intent is handed back
-   to them with those findings; do not start another fix round.
-5. `land` — not carried in this build: `implement step` refuses at `land`
-   naming the spec piece that delivers it, and the run stays ready to resume in
-   an abcd that carries it. Report that refusal as it is; do not open the pull
-   request or close the spec by hand on the run's behalf.
+   to them with those findings; do not start another fix round. The run stays
+   in progress until its directory, `.abcd/.work.local/run/<run-id>`, is
+   removed, which the refusal names as the way to build the intent afresh once
+   it is replanned.
+5. `land` — one `implement step` per move, the lane staying at `land` until
+   the last. The loop checks the lane's worktree is clean at the judged head;
+   on the lane that closes the spec it runs `spec close` in the lane's worktree
+   and ingests the audit that lane took, and it runs `capture resolve` for each
+   capture the receipts named in `resolves`, with that commit, committing them
+   on the lane's branch with `Delivers:` and `Resolves:` trailers and an
+   `Assisted-by:` naming the model the lane's receipts reported, the
+   repository's hooks running: a lane whose receipt reports no model is
+   refused, and a hook that refuses the commit stops the landing until what it
+   names is settled. It pushes the
+   branch only once the repository's preflight receipt names the lane's head:
+   when `step` refuses for want of one, run `make preflight` in the lane's
+   worktree, then `step` again; never push, skip a hook or mint a receipt by
+   hand. It opens the pull request through `gh`, with a body built from the
+   run's records and passed through the outbound scrub, re-reads the body the
+   forge holds and strips a session URL or tool footer. It arms auto-merge with
+   the merge-queue method the ruleset mirror (`.abcd/work/rulesets/`) names, or
+   leaves the pull request open where no merge queue gates the default branch,
+   and pushes nothing to the lane afterwards. Then `step` exits 3 until the
+   pushed head is an ancestor of the default branch on `origin`; stop driving
+   the run and come back later. Once it is, the loop removes the lane's
+   worktree and branch, the lane is done, and the next pending step opens the
+   next lane. A pull request closed without merging, or merged in a way that
+   rewrote its head, is refused and nothing is cleaned up: report it as it is.
+
+When the run is complete, read its record and capture its transcripts:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" implement record --transcript <path> [--transcript <path>]... --json
+```
+
+The record names every lane, the receipts with the model each runner
+reported, every verdict the loop recorded, the captures fixed, the pull
+requests and what each landing did, and the transcripts captured into the
+history store. Name the transcript of this session and of every agent it
+started; each is captured as `history capture <path>` captures it, one capture
+per path.
 
 **Binary resolution.** Run `"${CLAUDE_PLUGIN_ROOT}/abcd"` — a plugin install
 provisions the binary into the plugin root, so this is the rung that fires for a

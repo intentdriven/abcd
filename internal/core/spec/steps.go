@@ -203,10 +203,10 @@ func Unlanded(steps []Step) []Step {
 	return out
 }
 
-// RenderSteps renders steps as the body of a `## Steps` section, renumbered
+// renderSteps renders steps as the body of a `## Steps` section, renumbered
 // from one, each carrying its title and the lines beneath it as the author
 // wrote them. ParseSteps reads the result back as the same steps.
-func RenderSteps(steps []Step) string {
+func renderSteps(steps []Step) string {
 	var b strings.Builder
 	n := 0
 	for _, s := range steps {

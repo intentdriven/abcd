@@ -1,13 +1,13 @@
-// Package gitleaks is an OPT-IN external-scanner adapter for the transcript
-// redaction path (iss-96). It is off by default and adds nothing — no
+// Package gitleaks is an OPT-IN external-scanner adapter (iss-96), wired into
+// every scanner the core builds as a scanner.Augmenter (augmenter.go,
+// iss-2608291814575788). It is off by default and adds nothing — no
 // dependency invoked, no process spawned, no cost — until a repo asks for it by
 // dropping an enabled .abcd/config/gitleaks.json. This realises abcd's
 // host-delegated boundary (AGENTS.md: "native/CLI/API/MCP oracles are opt-in
 // adapters"): the always-on native scanner (internal/adapter/scanner) stays the
-// default, and a repo that wants deeper coverage over the unstructured prose of
-// a captured transcript arms this adapter, which shells out to a gitleaks binary
-// and folds its findings into the same redaction the native scanner already
-// runs.
+// default, and a repo that wants deeper coverage over unstructured prose arms
+// this adapter, which shells out to a gitleaks binary and appends its findings
+// to the native scanner's in every scan the scanner makes.
 //
 // Reach and cost. The native pattern set is prefix-anchored and misses
 // unanchored, labelled, high-entropy values in prose (iss-96's residue).
@@ -17,11 +17,12 @@
 // audit counters — they never replace it.
 //
 // Fail-closed, never a silent no-op. When a repo has opted in but the gitleaks
-// binary is not found (not on PATH and no valid configured path), Scan returns
-// ErrConfiguredNotFound rather than quietly skipping the deeper scan: a repo
-// that armed the adapter must not believe it is covered when it is not. The
-// history store surfaces that error and refuses the write, exactly as it fails
-// closed on a degraded native scanner.
+// binary is not found (not on PATH and no valid configured path), the adapter
+// returns ErrConfiguredNotFound rather than quietly skipping the deeper scan: a
+// repo that armed the adapter must not believe it is covered when it is not.
+// The scanner carries it as a coverage gap (it matches
+// scanner.ErrAugmenterNotFound): a release refuses on it, and a write path
+// writes on the native scanner and names the gap in its receipt.
 //
 // Binary admission (GHSA-fg9r-3f8g-89m6). The config that names the binary is
 // COMMITTED content, so it is trusted for nothing: a candidate binary — a
@@ -77,14 +78,26 @@ const runTimeout = 30 * time.Second
 // binary could be located. It is deliberately loud: the message names the
 // opt-in so an operator sees "gitleaks configured but not found" rather than a
 // silent skip.
-var ErrConfiguredNotFound = errors.New("gitleaks configured but not found")
+//
+// It matches scanner.ErrAugmenterNotFound under errors.Is, so the scanner
+// carries it as the one coverage-gap state without importing this package.
+var ErrConfiguredNotFound error = notFoundError{}
+
+// notFoundError is ErrConfiguredNotFound's type: a comparable value whose Is
+// names the scanner's sentinel.
+type notFoundError struct{}
+
+func (notFoundError) Error() string { return "gitleaks configured but not found" }
+
+func (notFoundError) Is(target error) bool { return target == scanner.ErrAugmenterNotFound }
 
 // ErrConfiguredPathRefused is returned when a binary WAS located but fails the
 // admission rule (admitBinary): it is relative, lies inside the repository, is
 // reached through a symlink that does, is not a regular file, or is not
 // executable. It is distinct from ErrConfiguredNotFound because the operator's
 // remedy differs — the file exists; it is where it is that is the problem — and
-// it is equally loud: the history store fails closed on it, and the adapter
+// it is equally loud: it degrades the scanner, so every write path fails
+// closed on it and a release refuses, and the adapter
 // never falls back to PATH after refusing a configured path.
 var ErrConfiguredPathRefused = errors.New("gitleaks configured path refused")
 
@@ -92,9 +105,9 @@ var ErrConfiguredPathRefused = errors.New("gitleaks configured path refused")
 // Secret and Match both occur nowhere in the scanned text, so there is no span
 // to redact. It is loud for the reason ErrConfiguredNotFound is: a repo that
 // armed the adapter must not store a transcript the external scanner flagged
-// while the record counts zero findings (GHSA-j7v5-q7x6-v3rp). The history
-// store fails closed on it; the remedy is the rule that reported the value, or
-// enabled:false.
+// while the record counts zero findings (GHSA-j7v5-q7x6-v3rp). It degrades
+// the scanner, so the write fails closed; the remedy is the rule that reported
+// the value, or enabled:false.
 var ErrFindingNotLocated = errors.New("gitleaks finding not located in the text")
 
 // Config is the on-disk opt-in shape (.abcd/config/gitleaks.json). Absent file
@@ -153,17 +166,6 @@ func LoadConfig(repoRoot string) (Config, error) {
 		return Config{}, fmt.Errorf("gitleaks: per-repo config is not valid JSON (%s): %w", configRelPath, err)
 	}
 	return cfg, nil
-}
-
-// Scan is the transcript-path entry point the history store calls. It loads the
-// per-repo config and delegates to the default adapter. When the repo has NOT
-// opted in it returns (nil, nil) having invoked nothing.
-func Scan(repoRoot, text, logical string) ([]scanner.Finding, error) {
-	cfg, err := LoadConfig(repoRoot)
-	if err != nil {
-		return nil, err
-	}
-	return NewDefault().Augment(context.Background(), repoRoot, cfg, text, logical)
 }
 
 // Augment scans text with gitleaks when cfg opts in, returning findings to fold

@@ -18,9 +18,8 @@
 // (itd-2609081951381895, config.go) implements Connections from the machine's
 // provider blocks, each connection carrying its allowlist, the settings its
 // adapter accepts and the model each role pointed at it asks for; the
-// delegating verbs still hand every resolution
-// NoConnections, so every row resolves to the harness until provider dispatch
-// lands (spc-2609251028149555).
+// delegating verbs hand every resolution the machine's connections, and a
+// verb whose step resolves to a provider sends it there (spc-2609251028149555).
 //
 // Staged, loudly (the loud-staging rule): spc-2609180535002478 lands the types,
 // the proposal and its roster test, the store readers, the --route parser,
@@ -31,12 +30,16 @@
 // allowlist lists no model admits no route; the model the agent's
 // oracle.roles.<agent> points at on the connection must be on its allowlist;
 // a leg to a connection the agent's role does not point at names no model and
-// is refused, because the record does not yet decide which model it asks for;
+// is refused, naming the oracle.roles.<agent> setting to add;
 // and a merged setting outside the set the connection's adapter accepts is
-// refused, never dropped. Escalating a tier after a failed fix round and dispatching a
-// step to a provider are still that spec's; until dispatch lands every
-// delegating verb resolves against NoConnections, so every step resolves to
-// the harness and no front door reaches a provider-leg refusal.
+// refused, never dropped. It also adds the dispatch's core (dispatch.go): an
+// agent whose role is pointed at a provider resolves to it with no --route
+// (Connections.Pointed), APIConfig.Dispatch sends the step through it, and
+// Route.FellBack leaves a step whose provider could not be reached to the
+// harness. Escalating a tier after a failed fix round is still that spec's,
+// and so is handing the dispatch to the delegating verbs: until they are
+// wired every delegating verb resolves against NoConnections, so every step
+// resolves to the harness and no front door reaches a provider-leg refusal.
 package oracle
 
 import (

@@ -634,7 +634,7 @@ func TestCandidateProjectionRefusesAForeignRun(t *testing.T) {
 // candidate item's alone, so no other position's bundle carries either.
 func TestCandidateFieldsAreEmptyAtEveryOtherPosition(t *testing.T) {
 	root := fixtureRepo(t)
-	for _, p := range AssemblingPositions() {
+	for _, p := range assemblingPositions() {
 		if p == PositionComparative {
 			continue
 		}

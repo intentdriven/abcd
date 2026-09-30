@@ -21,6 +21,7 @@ import (
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/changelog"
+	"github.com/intentdriven/abcd/internal/core/docfidelity"
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/launch"
 	"github.com/intentdriven/abcd/internal/core/lint"
@@ -111,6 +112,10 @@ const (
 	RefusalDeletedFinding RefusalKind = "deleted-finding"
 	// RefusalEmptyCut: nothing user-facing shipped, so there is no release.
 	RefusalEmptyCut RefusalKind = "empty-cut"
+	// RefusalDocFidelity: an intent shipped since the tag leaves the brief
+	// behind the surface it delivered (itd-60) — or no saved docs review
+	// names the commit being cut.
+	RefusalDocFidelity RefusalKind = "doc-fidelity"
 )
 
 // Refusal is one reason a cut cannot proceed. It always names something
@@ -253,6 +258,29 @@ func Emit(root string, current surface.Snapshot) (Cut, error) {
 	// this whole gate exists to close.
 	if findings.Status != changelog.FindingGuardPassed && len(findings.Unfixed) == 0 && len(findings.Deleted) == 0 {
 		cut.Refusals = append(cut.Refusals, Refusal{Kind: RefusalUnfixedFinding, Reason: findings.Reason})
+	}
+	// The doc-fidelity gate's second enforcement point (itd-60): the same
+	// judgement `spec close` runs for one intent, over every intent shipped
+	// since the tag. The brief is judged against the binary, never the tag, so
+	// a chapter edited ahead of the last cut is current, not drift.
+	var shipped []string
+	for _, e := range cut.Added {
+		if strings.HasPrefix(e.ID, "itd-") {
+			shipped = append(shipped, e.ID)
+		}
+	}
+	if len(shipped) > 0 {
+		fidelity, armed, err := docfidelity.Gate(root, current.Commands, shipped, false)
+		if err != nil {
+			return Cut{}, err
+		}
+		if armed && fidelity.Refuse {
+			cut.Refusals = append(cut.Refusals, Refusal{
+				Kind:    RefusalDocFidelity,
+				Reason:  "the brief lags a surface shipped in this cut: " + strings.Join(fidelity.Reasons, "; "),
+				Records: shipped,
+			})
+		}
 	}
 	if !derivation.Bumped {
 		cut.Refusals = append(cut.Refusals, Refusal{

@@ -143,7 +143,7 @@ func Refresh(req RefreshRequest) (RefreshResult, error) {
 
 	checker := req.Checker
 	if checker == nil {
-		checker = NewHTTPChecker()
+		checker = newShippedHTTPChecker()
 	}
 	parallel := req.Parallel
 	if parallel <= 0 {

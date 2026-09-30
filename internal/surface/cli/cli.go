@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -222,7 +223,12 @@ func NewRootCommand() *cobra.Command {
 			"the next move for its lifecycle state — what is this. N is either a short\n" +
 			"ordinal from before ids were minted or the sixteen-digit stamp minted since;\n" +
 			"both resolve. The bare and the id form are strictly read-only; any other\n" +
-			"positional is refused as an unknown command.",
+			"positional is refused as an unknown command.\n\n" +
+			"`--version` reports the running binary's version, install mode and vintage.\n" +
+			"When that binary sits in a plugin root other than the one this session\n" +
+			"resolves, the report — like bare `abcd ahoy` — adds a `superseded_root` note\n" +
+			"naming both roots by the commit each was installed from; the version, vintage\n" +
+			"and staleness it reports are unchanged.",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		// Bare answers "what can I do"; `abcd <id>` answers "what is this, and
@@ -505,13 +511,16 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(launchCmd)
 
 	root.AddCommand(newChangelogCommand(&asJSON))
+	// `reflect` is the release retrospective (itd-24): the seed a cut release's
+	// interview opens from, and the one write that files it.
+	root.AddCommand(newReflectCommand(&asJSON))
 
 	root.AddCommand(newCaptureCommand(&asJSON))
 	root.AddCommand(newBanlistCommand(&asJSON))
 	root.AddCommand(newSourceCommand(&asJSON))
 	root.AddCommand(newMemoryCommand(&asJSON))
 	root.AddCommand(newRulesCommand(&asJSON))
-	root.AddCommand(newHookCommand())
+	root.AddCommand(newHookCommand(&asJSON))
 	root.AddCommand(newHistoryCommand(&asJSON))
 	root.AddCommand(newDocsCommand(&asJSON))
 	root.AddCommand(newIntentCommand(&asJSON))
@@ -566,8 +575,58 @@ func NewRootCommand() *cobra.Command {
 	// host's instruction to BLOCK, so every usage error a hook can provoke refuses
 	// at exit 1 instead (iss-269).
 	applyHookPlaneFailOpen(root)
+	// Truly last: every flag-error function above is wrapped so Run can tell a
+	// flag-parse refusal from any other, and answer it in JSON when the caller
+	// typed --json (iss-2609292352131344).
+	markFlagParseErrors(root)
 
 	return root
+}
+
+// flagParseError marks a refusal raised while cobra parsed the flags. The parse
+// stops at the first bad flag, so a --json after it is never read and the
+// persistent flag still reads false when Run renders the refusal. It unwraps to
+// the refusal each flag-error function chose, whose exit code and wording stand.
+type flagParseError struct{ err error }
+
+func (e *flagParseError) Error() string { return e.err.Error() }
+func (e *flagParseError) Unwrap() error { return e.err }
+
+// markFlagParseErrors wraps the flag-error function of every command in the
+// tree, whichever function the passes above left there, so the one decision
+// below it (the --json fallback in Run) sees every flag-parse refusal.
+func markFlagParseErrors(c *cobra.Command) {
+	inner := c.FlagErrorFunc()
+	c.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
+		if out := inner(cmd, err); out != nil {
+			return &flagParseError{err: out}
+		}
+		return nil
+	})
+	for _, sub := range c.Commands() {
+		markFlagParseErrors(sub)
+	}
+}
+
+// jsonRequestedIn reports whether the raw arguments carry a --json the caller
+// typed as a flag: a bare --json or --json=<true> before any -- terminator.
+// It is read only for a flag-parse refusal, where the parse never reached the
+// flag (iss-2609292352131344).
+func jsonRequestedIn(args []string) bool {
+	for _, a := range args {
+		if a == "--" {
+			return false
+		}
+		if a == "--json" {
+			return true
+		}
+		if v, ok := strings.CutPrefix(a, "--json="); ok {
+			if b, err := strconv.ParseBool(v); err == nil && b {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // markUsageErrorsExitTwo walks the command tree and tags every cobra usage error
@@ -676,6 +735,9 @@ func newDocsCommand(asJSON *bool) *cobra.Command {
 	// `cite` maintains the baseline `lint docs` enforces: the refresh does the
 	// live fetching the gate refuses to do, and confirm closes the manual queue.
 	docsCmd.AddCommand(newCiteCommand(asJSON))
+	// `fidelity` is the doc-fidelity gate over the brief (itd-60), run on its
+	// own: the judgement `spec close` and `launch ship` enforce.
+	docsCmd.AddCommand(newDocsFidelityCommand(asJSON))
 
 	return docsCmd
 }
@@ -982,6 +1044,13 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 			if bad, reason := sc.Unavailable(); bad {
 				return &exitError{Code: 2, Msg: fmt.Sprintf("disembark pack: secret scanner unavailable, refusing: %s", reason)}
 			}
+			// A lifeboat is written OUT of the repository, as a release is, so the
+			// scanner augmenter the source configured and nobody installed refuses
+			// the pack as it refuses a launch (the 2026-09-25 ruling on
+			// iss-2608291814575788).
+			if gap := sc.AugmenterGap(); gap != "" {
+				return &exitError{Code: 2, Msg: fmt.Sprintf("disembark pack: the scanner augmenter this repository configured is not installed, refusing: %s", gap)}
+			}
 			scan := func(files []lifeboat.PlannedFile) error {
 				hard, first := 0, ""
 				for _, f := range files {
@@ -993,6 +1062,12 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 							}
 						}
 					}
+				}
+				// The augmenter runs inside ScanText, and a run that failed
+				// degrades the scanner during the walk: refuse, never read the
+				// shorter list as clean.
+				if bad, reason := sc.Unavailable(); bad {
+					return fmt.Errorf("secret scanner unavailable, refusing: %s", reason)
 				}
 				if hard > 0 {
 					return fmt.Errorf("%d hard-fail secret(s) in planned content (first: %s); fix at source, not in the lifeboat", hard, first)
@@ -1020,6 +1095,9 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 			}
 			route, err := graveyardRoute.resolve(cmd, "disembark graveyard", graveyardAgent)
 			if err != nil {
+				return err
+			}
+			if err := hostPayloadOnProvider("disembark graveyard", route, disembarkNoDispatch); err != nil {
 				return err
 			}
 			dirAbs, err := filepath.Abs(args[0])
@@ -1063,6 +1141,9 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := hostPayloadOnProvider("disembark principles", route, disembarkNoDispatch); err != nil {
+				return err
+			}
 			dirAbs, err := filepath.Abs(args[0])
 			if err != nil {
 				return err
@@ -1092,6 +1173,9 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			route, err := pressReleaseRoute.resolve(cmd, "disembark press-release", delegatedAgent(pressReleaseJSON, pressReleaseAgent))
 			if err != nil {
+				return err
+			}
+			if err := hostPayloadOnProvider("disembark press-release", route, disembarkNoDispatch); err != nil {
 				return err
 			}
 			dirAbs, err := filepath.Abs(args[0])
@@ -1132,6 +1216,9 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			route, err := reviewRoute.resolve(cmd, "disembark review", delegatedAgent(reviewJSON, reviewAgent))
 			if err != nil {
+				return err
+			}
+			if err := hostPayloadOnProvider("disembark review", route, disembarkNoDispatch); err != nil {
 				return err
 			}
 			dirAbs, err := filepath.Abs(args[0])
@@ -1260,9 +1347,78 @@ func newEmbarkCommand(asJSON *bool) *cobra.Command {
 		},
 	}
 
+	// `lessons` is the predecessor's lessons the press-release interview shows
+	// (itd-24 criterion 6): the retrospectives the lifeboat carries, ranked
+	// against the new voyage's brief, the few first and the rest as a list.
+	var lessonsBrief string
+	lessonsCmd := &cobra.Command{
+		Use:  "lessons <lifeboat-dir> [target-dir]",
+		Args: cobra.RangeArgs(1, 2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			lbAbs, tgtAbs, err := resolveDirs(args)
+			if err != nil {
+				return err
+			}
+			framing, source, err := embarkLessonsFraming(tgtAbs, lessonsBrief)
+			if err != nil {
+				return &exitError{Code: 2, Msg: "embark lessons: " + scrubPaths(err)}
+			}
+			view, err := lifeboat.PredecessorLessons(lbAbs, framing)
+			if err != nil {
+				return &exitError{Code: 2, Msg: "embark lessons: " + scrubPaths(err)}
+			}
+			out := embarkLessonsView{LessonsView: view, FramingSource: source}
+			return render(cmd.OutOrStdout(), *asJSON, out, func(w io.Writer) {
+				if source != "" {
+					fmt.Fprintf(w, "brief: %s\n", termsafe.Sanitize(source))
+				}
+				fmt.Fprint(w, view.Render())
+			})
+		},
+	}
+	lessonsCmd.Flags().StringVar(&lessonsBrief, "brief", "",
+		"rank against this file's text (the press release the interview is writing) instead of the target's framing chapter")
+
 	embarkCmd.AddCommand(probeCmd)
 	embarkCmd.AddCommand(fromCmd)
+	embarkCmd.AddCommand(lessonsCmd)
 	return embarkCmd
+}
+
+// embarkFramingRel is the new voyage's brief framing chapter, the text embark
+// ranks predecessor lessons against (spc-2609211751376504 scope 7).
+const embarkFramingRel = ".abcd/development/brief/01-product/06-framing.md"
+
+// maxEmbarkBriefBytes caps the brief text a ranking reads.
+const maxEmbarkBriefBytes = 256 * 1024
+
+// embarkLessonsView is the lessons view plus where the brief text came from:
+// the --brief file (named "--brief"), the target's framing chapter, or nothing.
+type embarkLessonsView struct {
+	lifeboat.LessonsView
+	FramingSource string `json:"framing_source"`
+}
+
+// embarkLessonsFraming reads the text the lessons are ranked against: the
+// --brief file when one is named, else the target's framing chapter, else none
+// (the lessons are then listed unranked). The reads are guarded: no symlink, a
+// regular file, capped.
+func embarkLessonsFraming(targetAbs, brief string) (text, source string, err error) {
+	if brief != "" {
+		data, err := fsutil.ReadGuarded(brief, maxEmbarkBriefBytes)
+		if err != nil {
+			return "", "", fmt.Errorf("reading --brief: %w", err)
+		}
+		return string(data), "--brief", nil
+	}
+	data, err := fsutil.ReadGuarded(filepath.Join(targetAbs, filepath.FromSlash(embarkFramingRel)), maxEmbarkBriefBytes)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return "", "", nil
+		}
+		return "", "", fmt.Errorf("reading the target's framing chapter: %w", err)
+	}
+	return string(data), embarkFramingRel, nil
 }
 
 // readLessonsPayload reads the untrusted lesson JSON behind the trust guards,
@@ -1388,6 +1544,45 @@ func hookSession(in hookInput) string {
 	return in.SessionID
 }
 
+// routerView is the prompt router's machine-reader envelope, emitted instead
+// of the bare injected block when the hook is invoked with --json (ruling J15,
+// iss-2608261550580260). Text is byte for byte what the plain form writes to
+// the host's context; Injected names the domains whose text it carries; Active
+// is the full set of domain names in force this turn, present on every
+// evaluated prompt and an empty list when nothing is in force, so a client
+// that snapshots injected rules prunes every name it holds that Active omits.
+// Active is absent only when the router could not evaluate the prompt — an
+// unreadable payload or a rules.json that will not load — and Error says why:
+// that is "unknown, change nothing", never "every domain stopped".
+type routerView struct {
+	Text     string    `json:"text"`
+	Injected []string  `json:"injected"`
+	Active   *[]string `json:"active,omitempty"`
+	Error    string    `json:"error,omitempty"`
+}
+
+// routerRefused is the prompt router's fail-open exit when it cannot evaluate
+// a prompt: nothing is injected and the process exits 0 either way, and a
+// machine reader is handed an envelope naming the error with no active set.
+func routerRefused(cmd *cobra.Command, asJSON bool, msg string) error {
+	if !asJSON {
+		return nil
+	}
+	return routerEmit(cmd, routerView{Injected: []string{}, Error: msg})
+}
+
+// routerEmit writes the envelope and fails open like every other hook verb
+// (emitHookResult): an envelope that cannot be written — a host that closed
+// its end of the pipe — is named on stderr and the process still exits 0, as
+// the plain form does when its own write fails. The hook's exit-0 contract
+// outranks its report.
+func routerEmit(cmd *cobra.Command, v routerView) error {
+	if err := render(cmd.OutOrStdout(), true, v, nil); err != nil {
+		fmt.Fprintf(cmd.ErrOrStderr(), "abcd rules: envelope not written (%s)\n", termsafe.Sanitize(err.Error()))
+	}
+	return nil
+}
+
 // newHookCommand builds the operator-internal `hook` sub-tree: the Claude Code
 // prompt-router entrypoints (itd-3). These are NOT a user surface — they are the
 // injection transport, one front door onto internal/core/rules alongside the
@@ -1395,7 +1590,7 @@ func hookSession(in hookInput) string {
 // payload, an unreadable rules.json, or a state error injects nothing, logs a
 // diagnostic to stderr (out-of-band, per D3), and exits 0 so it can never wedge
 // a session.
-func newHookCommand() *cobra.Command {
+func newHookCommand(asJSON *bool) *cobra.Command {
 	hookCmd := &cobra.Command{
 		Use:    "hook",
 		Short:  "Claude Code hook entrypoints (operator-internal)",
@@ -1408,12 +1603,23 @@ func newHookCommand() *cobra.Command {
 	hookCmd.AddCommand(&cobra.Command{
 		Use:   "prompt-router",
 		Short: "UserPromptSubmit: inject the rules matching the prompt",
-		Args:  cobra.NoArgs,
+		Long: `Plain, stdout is the rendered rule block the host injects, and nothing on a
+turn with nothing new. With --json, stdout is one envelope in place of the
+generic machine-reader shape:
+
+  {"text": ..., "injected": [...], "active": [...], "error": ...}
+
+text is byte for byte what the plain form writes; injected names the domains
+text carries; active is the full set of domains in force this turn, so a name
+missing from it has stopped. error is present only when the prompt could not
+be evaluated, and then active is absent: the set is unknown. Every outcome,
+an error included, exits 0, so the hook can never wedge a session.`,
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			in, err := readHookInput(cmd)
 			if err != nil {
 				fmt.Fprintf(cmd.ErrOrStderr(), "abcd rules: unreadable hook payload (%s); injecting nothing\n", termsafe.Sanitize(err.Error()))
-				return nil
+				return routerRefused(cmd, *asJSON, "unreadable hook payload: "+err.Error())
 			}
 			cwd := in.Cwd
 			if cwd == "" {
@@ -1453,7 +1659,7 @@ func newHookCommand() *cobra.Command {
 				// wrap with a bare "abcd" to avoid "abcd rules: rules: …"
 				// (iss-2608261550491547).
 				fmt.Fprintf(cmd.ErrOrStderr(), "abcd %s; injecting nothing\n", termsafe.Sanitize(err.Error()))
-				return nil
+				return routerRefused(cmd, *asJSON, err.Error())
 			}
 			// A domain Load dropped (no rules of its own) is skipped, not
 			// fatal — but silently missing is the shape the drop exists to
@@ -1473,6 +1679,13 @@ func newHookCommand() *cobra.Command {
 			// whose words went into the context (GHSA-22f8-qf5r-gjgq).
 			fmt.Fprintf(cmd.ErrOrStderr(), "abcd rules: turn %d, injected %d domain(s) %v, %d bytes\n",
 				res.State.Count, len(res.Injected), res.Labels(), len(res.Text))
+			if *asJSON {
+				injected := res.Injected
+				if injected == nil {
+					injected = []string{}
+				}
+				return routerEmit(cmd, routerView{Text: res.Text, Injected: injected, Active: &res.Active})
+			}
 			if res.Text != "" {
 				fmt.Fprint(cmd.OutOrStdout(), res.Text)
 			}
@@ -1687,6 +1900,9 @@ func newHookCommand() *cobra.Command {
 						// here and on the live drain both.
 						notices = append(notices, drainFailureNotice(f))
 					}
+					if lines := scanGapLines(dr.ScanGap); len(lines) > 0 {
+						notices = append(notices, "abcd history: "+strings.Join(lines, "\n"))
+					}
 					if dr.Overdue > 0 {
 						// Age is reported, never acted on: an overdue entry is
 						// drained through the same fail-closed path as any
@@ -1737,14 +1953,19 @@ func newHookCommand() *cobra.Command {
 					notices = append(notices, n)
 				}
 			}
-			// itd-111 (AC6): a version transition performed since this repo was
-			// last set up — the running binary differs from the recorded
-			// setup_version. Report only; the fetch that changed it is
-			// provisioning's job. Both values come from disk (config + build info).
-			if from, to, changed := ahoy.VersionTransition(cwd); changed {
-				notices = append(notices, fmt.Sprintf(
-					"abcd: the running binary is version %s, but this repo was last set up with %s — run `/abcd:ahoy install` (or `abcd ahoy install`) to reconcile the recorded version.",
-					termsafe.Sanitize(to), termsafe.Sanitize(from)))
+			// itd-111 (AC6): an update is announced once, by whatever swapped
+			// the binary, when the swap completes (the ruling CJ1b), so session
+			// start shows nothing about it — except the one swap whose output
+			// no one read: the bootstrap salvage the per-prompt, per-command and
+			// pre-compaction hooks run with their output discarded. That one is
+			// shown here once, and its marker is this hook's single write.
+			pluginRoot := os.Getenv("ABCD_PLUGIN_ROOT")
+			if pluginRoot == "" {
+				pluginRoot = os.Getenv("CLAUDE_PLUGIN_ROOT")
+			}
+			if from, to, ok := ahoy.TakeUnseenUpdate(pluginRoot, cwd); ok {
+				notices = append(notices, update.UpdatedLine(termsafe.Sanitize(from), termsafe.Sanitize(to))+
+					" — the update ran while a hook discarded its output, so it is reported here, once.")
 			}
 			// The inbox greeting (itd-2609221656361680): one line saying how
 			// many reports wait and from how many repositories, and nothing
@@ -1902,6 +2123,9 @@ func drainWhileLive(cmd *cobra.Command, cwd string) {
 	if len(dr.Captured) > 0 {
 		fmt.Fprintf(cmd.ErrOrStderr(), "abcd history: redacted and stored %d staged transcript(s) mid-session.\n", len(dr.Captured))
 	}
+	for _, l := range scanGapLines(dr.ScanGap) {
+		fmt.Fprintln(cmd.ErrOrStderr(), "abcd history: "+l)
+	}
 }
 
 // drainFailureNotice renders one DrainFailure as the operator-facing sentence,
@@ -2053,12 +2277,23 @@ block and in the hook's diagnostic, and carries "source": "user" or "repo" in
 --json; the last layer to name a domain labels it. An untouched bundled domain
 renders bare and carries "source": "bundled".
 
-A list an override sets replaces the bundled one, so an override can hold back
-an entry abcd ships. For the guardrail domains (COMMITTING, LOAD, PII), every
-bundled recall keyword, alias or rule that an override's list leaves out is
-named on stderr, with the file that set the list, here and on every hook
+A list an override sets replaces the one it would inherit, so an override can
+hold back an entry abcd ships or, in SHELL, one the repository's
+.abcd/guard.json teaches. For the guardrail domains (COMMITTING, LOAD, PII,
+SHELL), every such recall keyword, alias or rule that an override's list leaves
+out is named on stderr, with the file that set the list, here and on every hook
 prompt. To keep an entry, restate it in the list, or leave the field out to
-inherit the bundled list. Read-only.`,
+inherit the list.
+
+SHELL is generated from the shell-hazard registry that "abcd guard" enforces
+in this repository, the bundled entries and the repository's own
+.abcd/guard.json entries alike: one rule per registry entry, naming the
+command, why it is dangerous and what to run instead, recalled by the commands
+the registry names. A rule in the repository's words is marked "(repo)" after
+its entry id. A guard.json the guard refuses is named on stderr and not taught;
+SHELL then teaches the registry the guard enforces in its place. It teaches
+before shell work what the guard refuses at the moment a command runs.
+Read-only.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cwd, err := os.Getwd()
@@ -2536,6 +2771,7 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 	intentCmd.AddCommand(newIntentAuditCommand(asJSON))
 	intentCmd.AddCommand(newIntentConditionCommand(asJSON))
 	intentCmd.AddCommand(newIntentConsistencyCommand(asJSON))
+	intentCmd.AddCommand(newIntentPrepassCommand(asJSON))
 	return intentCmd
 }
 
@@ -2705,7 +2941,7 @@ func renderConditionStanding(w io.Writer, standing []intent.StandingEntry) {
 // ledgerDecisionRule is the one-line capture-vs-intent decision rule shown in
 // both ledgers' bare-form help (itd-46 AC5), so a user knows which ledger to reach
 // for. It stays host-agnostic (binary command forms, no plugin/tool names).
-const ledgerDecisionRule = "  which ledger? half-formed observation, question, or nitpick -> `abcd capture \"…\"`; a user-facing change you want to ship -> `abcd intent \"…\"`\n"
+const ledgerDecisionRule = "  which ledger? half-formed observation, question, or nitpick -> `abcd capture \"…\" --remedy \"…\"`; a user-facing change you want to ship -> `abcd intent \"…\"`\n"
 
 // ideateRoutingRule sits beside the ledger rule and names the optional third
 // route: a big, unproven idea can go through the admission gauntlet first
@@ -2838,11 +3074,19 @@ func newIntentAuditCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			// A step on a provider is refused before anything is written when
+			// the provider would refuse it (ruling DR5 of 2026-09-29).
+			if err := auditRoute.admit("abcd intent audit", route); err != nil {
+				return err
+			}
 			res, err := intent.ReEmitAuditWith(repoRoot, args[0],
 				intent.AuditEmitOptions{RoutingSection: oracle.RenderRequestSection(route.Request())})
 			if err != nil {
 				return peerHeldRefusal(repoRoot, "abcd intent audit: ", args[0],
 					&exitError{Code: 2, Msg: "abcd intent audit: " + fsutil.RedactHome(err.Error())})
+			}
+			if res.RequestWritten && route.OnProvider() {
+				return dispatchAudit(cmd, auditRoute, route, repoRoot, res, *asJSON)
 			}
 			// Only a receipt still owed has a request for the host to act on; a
 			// terminal one is reported as it stands, with no request block.
@@ -2883,6 +3127,10 @@ func newIntentAuditCommand(asJSON *bool) *cobra.Command {
 			}
 			route, err := ingestRoute.resolve(cmd, "abcd intent audit ingest", auditAgent)
 			if err != nil {
+				return err
+			}
+			if err := hostPayloadOnProvider("abcd intent audit ingest", route,
+				"run `abcd intent audit <itd-N>`, which sends the review there and ingests the answer"); err != nil {
 				return err
 			}
 			// Read once: the ingest validates these bytes and the receipt's
@@ -3142,7 +3390,10 @@ func newSpecCommand(asJSON *bool) *cobra.Command {
 			"The close that ships an intent also makes its fidelity review owed: it mints an OWED receipt (rcp-…), " +
 			"parks an `<!-- abcd-review: OWED receipt=rcp-… -->` marker in the intent's Audit Notes, and writes the " +
 			"review request to `.abcd/.work.local/reviews/<rcp>.request.md`, the input `abcd intent audit ingest` " +
-			"answers. A failed emit is a warning on stderr; the intent ships regardless.",
+			"answers. A failed emit is a warning on stderr; the intent ships regardless.\n\n" +
+			"In the repository whose brief describes the binary, a close that ships an intent first runs the " +
+			"doc-fidelity gate (`abcd docs fidelity`): a surface no brief chapter names, a missing or stale docs " +
+			"review, or a confirmed false sentence refuses the close, and nothing moves.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			repoRoot, err := specStoreRoot(cmd)
@@ -3162,6 +3413,14 @@ func newSpecCommand(asJSON *bool) *cobra.Command {
 					return err
 				}
 				rem.ProductionMode = mode
+			}
+			// The doc-fidelity gate's first enforcement point (itd-60): a
+			// close that ships an intent is refused while the brief lags the
+			// surface it delivered. A --remainder close ships nothing.
+			if closeRemainder == "" {
+				if err := enforceDocFidelity(repoRoot, "abcd spec close", closeShips(repoRoot, args[0])); err != nil {
+					return err
+				}
 			}
 			res, err := intent.Reconcile(repoRoot, args[0], closeImpact, rem)
 			if err != nil {
@@ -3296,7 +3555,12 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 			// source `abcd --version` and the session-start notice read. Computed
 			// once and carried in both the JSON and the text render.
 			vin := ahoy.Vintage(cwd)
-			out := ahoyOutput{DetectionResult: res, Vintage: vin.DisplayVintage(), Staleness: vin.Staleness()}
+			out := ahoyOutput{DetectionResult: res, Vintage: vin.DisplayVintage(), Staleness: vin.Staleness(),
+				// The same note `abcd --version` carries, for the same reason:
+				// this render reports the same comparator's verdict, so a
+				// superseded plugin root answers here just as confidently
+				// (iss-2609020113012227).
+				SupersededRoot: supersededRootNote()}
 			return render(cmd.OutOrStdout(), *asJSON, out, func(w io.Writer) {
 				fmt.Fprintf(w, "abcd ahoy — %s\n", res.FolderKind)
 				fmt.Fprintf(w, "  plugin root: %s\n", res.PluginRootStatus)
@@ -3311,6 +3575,9 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 				}
 				fmt.Fprintf(w, "  vintage:     %s\n", out.Vintage)
 				fmt.Fprintf(w, "  staleness:   %s\n", out.Staleness)
+				if out.SupersededRoot != "" {
+					fmt.Fprintf(w, "  note:        %s\n", out.SupersededRoot)
+				}
 				// The citation baseline's coverage and age, present only in a repo
 				// that has armed the citation gate. The line embeds counts and a
 				// date derived from repo content, so it is sanitised.
@@ -3326,6 +3593,10 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 						fmt.Fprintf(w, "  provider:    none configured (optional); every delegated step runs on the host — `abcd ahoy --providers` explains the adapter\n")
 					case ahoy.ProviderAdapterRefusedGapID:
 						fmt.Fprintf(w, "  provider:    configuration refused — %s\n", termsafe.Sanitize(g.Detail))
+					case ahoy.ProviderAdapterRouteSkippedGapID:
+						for _, d := range strings.Split(g.Detail, "\n") {
+							fmt.Fprintf(w, "  provider:    route skipped — %s\n", termsafe.Sanitize(d))
+						}
 					}
 				}
 				if res.FolderKind != ahoy.UnmanagedFolder {
@@ -3436,16 +3707,27 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 					fmt.Fprintf(w, "  remaining gaps: %s\n", strings.Join(res.Remaining, ", "))
 				}
 				// --yes approves every category but never writes the identity
-				// pin, the status-line wiring or a routing table, so say which optional work it
-				// left, why each needs an answer, and how to apply it.
+				// pin, the status-line wiring, a routing table or the drain
+				// rule, and off a terminal the drain rule is not asked at all,
+				// so say which optional work it left, why each needs an answer,
+				// and how to apply it.
 				if len(res.OptionalSkipped) > 0 {
-					fmt.Fprintf(w, "  optional, not covered by --yes: %s\n", strings.Join(res.OptionalSkipped, ", "))
+					label := "optional, not covered by --yes"
+					if !yes {
+						label = "optional, asked only at a terminal"
+					}
+					fmt.Fprintf(w, "  %s: %s\n", label, strings.Join(res.OptionalSkipped, ", "))
 					for _, id := range res.OptionalSkipped {
 						if why := optionalSkipReason(id); why != "" {
 							fmt.Fprintf(w, "    %s\n", why)
 						}
 					}
-					fmt.Fprint(w, "    run `abcd ahoy install` (no --yes) and answer y at each prompt — non-interactively, `yes | abcd ahoy install`\n")
+					if yes {
+						fmt.Fprint(w, "    run `abcd ahoy install` (no --yes) and answer y at each prompt — non-interactively, `yes | abcd ahoy install`\n")
+					}
+					if slices.Contains(res.OptionalSkipped, ahoy.DrainRuleOfferGapID) {
+						fmt.Fprint(w, "    the drain rule is asked only of a person at a terminal: run `abcd ahoy install` there, without --yes, and answer it\n")
+					}
 				}
 			})
 		},
@@ -3620,11 +3902,17 @@ func newAhoyRemoteCommand(asJSON *bool) *cobra.Command {
 			// adr-44 / invariant 10: the remote write is CONFIRMED as well as
 			// invoked. An unanswered run declines, so a script that pipes nothing
 			// changes nothing; --yes is the explicit way to say yes in advance.
+			//
+			// A missing gh is offered for install only to a person at a
+			// terminal: --yes answers the settings change, never the install
+			// of a program (the DQ3 ruling), so the offer's confirmation is
+			// built from the prompter before --yes replaces it.
 			p := newPrompter(cmd)
+			confirmTool := terminalToolConfirm(p, remoteYes, cmd.ErrOrStderr())
 			if remoteYes {
 				p = alwaysConfirm{}
 			}
-			res, err := ahoy.RemoteApply(cwd, p)
+			res, err := ahoy.RemoteApply(cwd, p, confirmTool)
 			if err != nil {
 				return err
 			}
@@ -3646,7 +3934,7 @@ func newAhoyRemoteCommand(asJSON *bool) *cobra.Command {
 			return nil
 		},
 	}
-	applyCmd.Flags().BoolVar(&remoteYes, "yes", false, "confirm the remote change without being asked; without it an unanswered run declines and changes nothing")
+	applyCmd.Flags().BoolVar(&remoteYes, "yes", false, "confirm the remote change without being asked (never the install of a missing gh); without it an unanswered run declines and changes nothing")
 	remoteCmd.AddCommand(applyCmd)
 	return remoteCmd
 }
@@ -3769,6 +4057,8 @@ func optionalSkipReason(id string) string {
 		return "the status line rewrites a setting of the host harness and takes element choices, so it is only written against an answered prompt"
 	case ahoy.OracleRoutingMachineGapID, ahoy.OracleRoutingRepoGapID:
 		return "a routing table decides which model every delegated step asks for, so abcd's proposal is only accepted against an answered prompt"
+	case ahoy.DrainRuleOfferGapID:
+		return "the drain eligibility record decides what an unattended agent may change in this repository, so it is only added against a prompt answered at a terminal"
 	}
 	return ""
 }
@@ -3799,16 +4089,36 @@ func installToolNames(names []string) (map[string]bool, error) {
 // --install-tool, which is how a host relays the answer its own question tool
 // got. --yes never installs a tool. Every no carries the way to say yes.
 func toolConfirm(p ahoy.Prompter, named map[string]bool, yes bool, w io.Writer) tools.Confirm {
+	ask := askToolAtTerminal(p, yes, w, func(e tools.Explanation) string { return "name it with --install-tool " + e.Tool })
 	return func(e tools.Explanation) tools.Answer {
 		if named[e.Tool] {
 			return tools.Answer{Yes: true, Why: "named with --install-tool"}
 		}
+		return ask(e)
+	}
+}
+
+// terminalToolConfirm is the install question at a verb with no
+// --install-tool: the gh offer at ahoy remote apply (the product thinker's
+// DQ3 ruling, 2026-09-29). Its only yes is one typed at a terminal; --yes, a
+// piped stream and a caller with no terminal each decline, carrying the
+// command the person can run themselves.
+func terminalToolConfirm(p ahoy.Prompter, yes bool, w io.Writer) tools.Confirm {
+	return askToolAtTerminal(p, yes, w, func(e tools.Explanation) string { return "install it yourself with " + e.StepText() })
+}
+
+// askToolAtTerminal asks the install question of a person at a terminal and
+// declines everywhere else. otherwise names the other way to a yes, for every
+// decline to carry. The explanation and the exact step are shown before the
+// question, and the step is announced as it starts.
+func askToolAtTerminal(p ahoy.Prompter, yes bool, w io.Writer, otherwise func(tools.Explanation) string) tools.Confirm {
+	return func(e tools.Explanation) tools.Answer {
 		if yes {
-			return tools.Answer{Why: "--yes never installs a tool; name it with --install-tool " + e.Tool + ", or run without --yes at a terminal"}
+			return tools.Answer{Why: "--yes never installs a tool; " + otherwise(e) + ", or run without --yes at a terminal"}
 		}
 		sp, ok := p.(*stdinPrompter)
 		if !ok || !sp.tty {
-			return tools.Answer{Why: "no terminal to ask at: abcd installs a tool only on an answer typed at a terminal, or with --install-tool " + e.Tool}
+			return tools.Answer{Why: "no terminal to ask at: abcd installs a tool only on an answer typed at a terminal; " + otherwise(e)}
 		}
 		for _, line := range e.Lines() {
 			fmt.Fprintln(w, termsafe.Sanitize(line))
@@ -3877,8 +4187,9 @@ func (p *stdinPrompter) echo(answer string) {
 }
 
 // AtTerminal reports whether a person is answering at a terminal, which makes
-// the prompter an ahoy.TerminalPrompter: the one question abcd asks only of a
-// person (whether to change who commits, itd-131) is never put to a pipe.
+// the prompter an ahoy.TerminalPrompter: the questions abcd asks only of a
+// person (whether to change who commits, itd-131, and whether to record the
+// drain eligibility rule) are never put to a pipe.
 func (p *stdinPrompter) AtTerminal() bool { return p.tty }
 
 func (p *stdinPrompter) Confirm(question string) bool {
@@ -4297,6 +4608,20 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 					"unknown capture subcommand %q (nothing captured — a lone word is read as a sub-verb, never as issue text; issue text must contain a space, so write the whole sentence)",
 					args[0])}
 			}
+			// Every new issue carries a remedy (ruling BX3 of 2026-09-29): the
+			// fix it proposes, one line. The machine value is refused from a
+			// person, so it always means one of abcd's automatic filers wrote
+			// the record (ruling H12). Refused before anything is written.
+			if strings.TrimSpace(remedy) == "" {
+				return &exitError{Code: 2, Msg: fmt.Sprintf(
+					"abcd capture: --remedy is required — every new issue carries the fix it proposes, one line (--remedy \"<fix>\"); "+
+						"%q is written only by abcd's automatic filers (nothing captured)", issueschema.MachineRemedy)}
+			}
+			if issueschema.IsMachineRemedy(remedy) {
+				return &exitError{Code: 2, Msg: fmt.Sprintf(
+					"abcd capture: --remedy %q is the value abcd's automatic filers write when they have no fix, and a drain skips it; "+
+						"name the fix the issue proposes (nothing captured)", issueschema.MachineRemedy)}
+			}
 			// Fast path: append a structured issue from the free-form text.
 			text := strings.Join(args, " ")
 			// The slug is NOT derived here. Deriving it from the raw text before
@@ -4384,9 +4709,10 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 	// No default, deliberately: an unsupplied lapse time would default to the wall
 	// clock at write-up, which is the one value the lapse log exists to rule out.
 	captureCmd.Flags().StringVar(&lapsedAt, "lapsed-at", "", "RFC 3339 instant a discipline gave way (the lapse, not the write-up)")
-	// The field `abcd drain` reads (itd-82 decision 6): optional at capture, and
-	// a record without it is listed as ineligible rather than refused here.
-	captureCmd.Flags().StringVar(&remedy, "remedy", "", "the proposed fix, one line; `abcd drain` takes no issue without one")
+	// The field `abcd drain` reads (itd-82 decision 6): required of every new
+	// issue (ruling BX3 of 2026-09-29). A record filed before the rule carries
+	// none, stays readable, and is listed by a drain as ineligible.
+	captureCmd.Flags().StringVar(&remedy, "remedy", "", "the proposed fix, one line (required); `abcd capture remedy` rewrites it later")
 	// The help names where the field is documented, as the refusal does: the
 	// session behind iss-2609200951237670 found the key's shape by running
 	// strings on the binary, with two documents already carrying it.
@@ -4598,12 +4924,25 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			// A reading item's promotion matches the draft it mints (ruling
+			// DQ2b, adr-2609300821558671), configured as the capture verb's is
+			// and never a refusal. The issue route and link mode mint nothing
+			// the match would compare.
+			var mc *match.Config
+			var matchRefused *match.Outcome
+			readingMint := strings.HasPrefix(args[0], issueschema.ReadingItemFamily+"-") && promoteIntent == ""
+			if readingMint {
+				mc, matchRefused = resolveMatch(cmd.ErrOrStderr(), "capture promote", repoRoot)
+			}
 			res, err := capture.Promote(capture.PromoteRequest{
 				RepoRoot: repoRoot, ID: args[0], LinkIntent: promoteIntent, Grounds: promoteGrounds,
-				ProductionMode: mode,
+				ProductionMode: mode, Match: mc,
 			})
 			if err != nil {
 				return captureRefusal("promote", err)
+			}
+			if readingMint && res.Match == nil {
+				res.Match = matchRefused
 			}
 			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, res, func(w io.Writer) {
 				verb := "minted"
@@ -4621,6 +4960,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 				if res.BackEdgeKept != "" {
 					fmt.Fprintf(w, "back_edge: kept %s\n", termsafe.Sanitize(res.BackEdgeKept))
 				}
+				renderMatch(w, res.Match)
 				emitRedactionNote(w, res.Redacted, res.Degraded)
 			})
 		},
@@ -4725,7 +5065,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 	dispositionCmd.Flags().StringVar(&dispGrounds, "grounds", "", "disposition_grounds: why this answer (free text; required on every state except held)")
 	dispositionCmd.Flags().StringVar(&dispExit, "exit-condition", "", "what would end a held disposition (required on held; a hold exits only through a superseding disposition that cites it)")
 	dispositionCmd.Flags().StringVar(&dispSupersedes, "supersedes", "", "the standing dsp-N this answer replaces; required once an item already carries one")
-	dispositionCmd.Flags().StringVar(&dispRecurs, "recurs", "", "comma-separated prior rdi-ids this item recurs from — the recorded form of a warm recognition, never a mechanical join")
+	dispositionCmd.Flags().StringVar(&dispRecurs, "recurs", "", "comma-separated prior rdi-ids this item recurs from — the researcher's confirmed recognition; the ingest's duplicates/refines link is only a proposal")
 	// The two-axis hold field is RESERVED and dormant. The flags exist so the
 	// reservation is a behaviour a caller meets rather than a comment nobody
 	// reads: a populated value is refused, and the refusal states the grammar.
@@ -4930,6 +5270,36 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 	deferCmd.Flags().StringVar(&deferAfter, "after", "", "the current anchor: the newest vX.Y.Z release tag, which the cut measures from (required)")
 	deferCmd.Flags().StringVar(&deferReason, "reason", "", "why the finding is carried past this cut rather than fixed (required)")
 	captureCmd.AddCommand(deferCmd)
+
+	// remedy — writes or replaces the fix an open issue proposes. It is how a
+	// person answers a record an automatic filer wrote with the machine value
+	// (ruling H12), which a drain skips until then, and how a record filed
+	// before the remedy was required gains one.
+	remedyCmd := &cobra.Command{
+		Use:  "remedy <iss-N> <text>",
+		Args: cobra.MinimumNArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			repoRoot, err := captureLedgerRoot(cmd)
+			if err != nil {
+				return err
+			}
+			res, err := capture.SetRemedy(capture.RemedyRequest{
+				RepoRoot: repoRoot, ID: args[0], Remedy: strings.Join(args[1:], " "),
+			})
+			if err != nil {
+				return captureRefusal("remedy", err)
+			}
+			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, res, func(w io.Writer) {
+				fmt.Fprintf(w, "%s  remedy written (stays %s) — %s\n", res.ID, res.Status, termsafe.Sanitize(res.Path))
+				fmt.Fprintf(w, "  remedy: %s\n", termsafe.Sanitize(res.Remedy))
+				if res.Previous != "" {
+					fmt.Fprintf(w, "  replaced: %s\n", termsafe.Sanitize(res.Previous))
+				}
+				emitRedactionNote(w, res.Redacted, res.Degraded)
+			})
+		},
+	}
+	captureCmd.AddCommand(remedyCmd)
 
 	return captureCmd
 }
@@ -5865,7 +6235,14 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		// machine output must get a JSON envelope, never raw Go text (iss-29) —
 		// and it goes to STDOUT, where a machine-readable consumer reads
 		// (iss-2609100519128005).
-		if asJSON, _ := root.PersistentFlags().GetBool("json"); asJSON {
+		// A flag-parse refusal stops before a later --json is read, so the
+		// caller's own arguments decide there (iss-2609292352131344).
+		asJSON, _ := root.PersistentFlags().GetBool("json")
+		var parseErr *flagParseError
+		if !asJSON && errors.As(err, &parseErr) {
+			asJSON = jsonRequestedIn(args)
+		}
+		if asJSON {
 			enc := json.NewEncoder(stdout)
 			enc.SetIndent("", "  ")
 			_ = enc.Encode(newErrorEnvelope(msg, code))

@@ -13,8 +13,8 @@ import (
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
-// ask.go — deterministic native recall (fn-38 .6). Retrieval (QueryPages) is
-// read-only token-overlap ranking; synthesis defaults to RenderCitedMatches (no
+// ask.go — deterministic native recall (fn-38 .6). Retrieval (queryPages) is
+// read-only token-overlap ranking; synthesis defaults to renderCitedMatches (no
 // LLM). The optional file-back (default OFF) routes through the SAME dedup +
 // WritePages seams as ingest.
 
@@ -46,7 +46,7 @@ type MatchedPage struct {
 	Citations []AskCitation `json:"citations"`
 }
 
-// Synthesizer turns matches into answer prose; nil uses RenderCitedMatches.
+// Synthesizer turns matches into answer prose; nil uses renderCitedMatches.
 type Synthesizer func(question string, matches []MatchedPage) string
 
 // FileBackDecision is consulted after validation and before any write; false
@@ -92,7 +92,7 @@ func Ask(req AskRequest) (AskResult, error) {
 	if topN == 0 {
 		topN = AskTopN
 	}
-	matches, err := QueryPages(root, req.Question, topN)
+	matches, err := queryPages(root, req.Question, topN)
 	if err != nil {
 		return AskResult{}, err
 	}
@@ -100,7 +100,7 @@ func Ask(req AskRequest) (AskResult, error) {
 	// every render and carried in AskResult.Question, the --json field. It is
 	// sanitised ONCE here and that one value feeds both return paths, so the
 	// empty-store branch cannot drift from the matched branch again: the
-	// no-matches render used to take the raw question while RenderCitedMatches
+	// no-matches render used to take the raw question while renderCitedMatches
 	// sanitised its own copy, and a raw ESC/C1/bidi rune reached stdout from
 	// exactly the branch a first-time user hits (GHSA-4fmm-95pf-32c6).
 	// Retrieval above still tokenises the raw question — masking runes to '?'
@@ -110,11 +110,11 @@ func Ask(req AskRequest) (AskResult, error) {
 		if req.FileBackPage != nil {
 			return AskResult{}, newAskError("no matching memory pages — a file-back without cited matches would write an unattributable page; nothing was written")
 		}
-		return AskResult{Question: question, Matches: nil, Answer: RenderNoMatches(question)}, nil
+		return AskResult{Question: question, Matches: nil, Answer: renderNoMatches(question)}, nil
 	}
 	synth := req.Synthesizer
 	if synth == nil {
-		synth = RenderCitedMatches
+		synth = renderCitedMatches
 	}
 	answer := synth(question, matches)
 	if strings.TrimSpace(answer) == "" {
@@ -190,10 +190,10 @@ func citationsFromSource(source map[string]any) []AskCitation {
 	return []AskCitation{one(source)}
 }
 
-// QueryPages is the read-only deterministic retrieval: tokenise the question,
+// queryPages is the read-only deterministic retrieval: tokenise the question,
 // score by token overlap against each page's index-line facts, apply optional
 // class:/domain: filters, rank by overlap (filename tie-break), take top-N.
-func QueryPages(repoRoot, question string, topN int) ([]MatchedPage, error) {
+func queryPages(repoRoot, question string, topN int) ([]MatchedPage, error) {
 	tokens, classFilter, domainFilter := parseQuestion(question)
 	tokenSet := map[string]bool{}
 	for _, t := range tokens {
@@ -297,9 +297,9 @@ func cleanCitationJSON(raw string) string {
 	return termsafe.CleanProse(raw, maxPageValueBytes-len(citationTruncatedMarker)) + citationTruncatedMarker
 }
 
-// RenderCitedMatches is the default deterministic synthesizer — a
+// renderCitedMatches is the default deterministic synthesizer — a
 // citation-renderer, not an LLM. Missing provenance renders as explicit (none).
-func RenderCitedMatches(question string, matches []MatchedPage) string {
+func renderCitedMatches(question string, matches []MatchedPage) string {
 	lines := []string{
 		// Every untrusted field on the answer's markdown lines goes through
 		// CleanProse, not Sanitize alone, which leaves an HTML opener and link
@@ -347,10 +347,10 @@ func RenderCitedMatches(question string, matches []MatchedPage) string {
 	return strings.Join(lines, "\n") + "\n"
 }
 
-// RenderNoMatches is the explicit empty-result render. It cleans the question
-// itself, as RenderCitedMatches does, so a direct caller is covered and the two
+// renderNoMatches is the explicit empty-result render. It cleans the question
+// itself, as renderCitedMatches does, so a direct caller is covered and the two
 // renders cannot disagree on what reaches the terminal.
-func RenderNoMatches(question string) string {
+func renderNoMatches(question string) string {
 	return "# " + AskReportHeading + " — " + cleanPageField(question) + "\n\n" +
 		"No matching memory pages (token overlap found nothing; an empty or absent store matches nothing).\n" +
 		"Try different terms, an explicit class:<source-class> / domain:<domain> filter, or ingest a source first.\n"
@@ -407,7 +407,7 @@ func fileBack(root string, matches []MatchedPage, rawPage map[string]any, decide
 		merged["source"] = src
 		rawPage = merged
 	}
-	page, err := ValidateDistilledPage(root, rawPage)
+	page, err := validateDistilledPage(root, rawPage)
 	if err != nil {
 		return FileBackResult{}, err
 	}
@@ -429,7 +429,7 @@ func fileBack(root string, matches []MatchedPage, rawPage map[string]any, decide
 	if err != nil {
 		return FileBackResult{}, err
 	}
-	plan, err := ResolveDistilledPages(existing, []DistilledPage{page})
+	plan, err := resolveDistilledPages(existing, []DistilledPage{page})
 	if err != nil {
 		return FileBackResult{}, err
 	}

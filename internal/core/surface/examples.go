@@ -28,12 +28,15 @@ var examples = map[string]string{
 	"abcd capture disposition": `abcd capture disposition rdi-2609010000000001 --state accepted --grounds "pursued: the tension is real and the next reading will show it again"`,
 	"abcd capture link":        "abcd capture link iss-2609010000000001 --blocked-by iss-2609010000000002",
 	"abcd capture promote":     "abcd capture promote iss-2609010000000001",
+	"abcd capture remedy":      `abcd capture remedy iss-2609010000000001 "make the map before the first write"`,
 	"abcd capture reframe":     `abcd capture reframe --occasioned-by rdi-2609010000000001 --grounds "the reading showed the construal assumed a single operator" --open`,
 	"abcd capture resolve":     `abcd capture resolve iss-2609010000000001 "fixed by the parser change" --impact fix`,
 	"abcd capture surprise":    `abcd capture surprise --occasioned-by rdi-2609010000000001 "the proposal nobody expected ranked first"`,
 	"abcd capture wontfix":     `abcd capture wontfix iss-2609010000000001 "the behaviour is the documented one"`,
 
 	"abcd decide": `abcd decide "Record ids are minted from a timestamp"`,
+
+	"abcd docs fidelity record": "abcd docs fidelity record --verdict-json verdict.json",
 
 	"abcd disembark coverage":      "abcd disembark coverage probe-report.json",
 	"abcd disembark graveyard":     "abcd disembark graveyard ../lifeboat --lessons-json lessons.json",
@@ -42,8 +45,9 @@ var examples = map[string]string{
 	"abcd disembark principles":    "abcd disembark principles ../lifeboat",
 	"abcd disembark review":        "abcd disembark review ../lifeboat .",
 
-	"abcd embark from":  "abcd embark from ../lifeboat",
-	"abcd embark probe": "abcd embark probe ../lifeboat",
+	"abcd embark from":    "abcd embark from ../lifeboat",
+	"abcd embark lessons": "abcd embark lessons ../lifeboat",
+	"abcd embark probe":   "abcd embark probe ../lifeboat",
 
 	"abcd history discard":     "abcd history discard 0123abcd-session.raw --yes",
 	"abcd history reconstruct": "abcd history reconstruct 0123abcd-session",
@@ -71,6 +75,7 @@ var examples = map[string]string{
 	"abcd intent hold":               `abcd intent hold itd-2609010000000001 --reason "waiting on the product thinker's ruling on scope"`,
 	"abcd intent link":               "abcd intent link itd-2609010000000001 spc-2609010000000002",
 	"abcd intent plan":               "abcd intent plan itd-2609010000000001",
+	"abcd intent prepass":            "abcd intent prepass itd-2609010000000001 --json",
 	"abcd intent ready":              "abcd intent ready itd-2609010000000001",
 	"abcd intent reclassify":         `abcd intent reclassify itd-2609010000000001 --kind superseded --by itd-2609010000000002 --reason "absorbed by the later intent"`,
 	"abcd intent target":             "abcd intent target itd-2609010000000001 v0.11.0",
@@ -90,6 +95,9 @@ var examples = map[string]string{
 
 	"abcd reading assemble": "abcd reading assemble --position widening --target HEAD",
 	"abcd reading ingest":   "abcd reading ingest --reading-json reading.json",
+
+	"abcd reflect":       "abcd reflect v0.11.0",
+	"abcd reflect write": "abcd reflect write v0.11.0 --answers answers.json",
 
 	"abcd scribe assemble": "abcd scribe assemble --run rdg-2609010000000001 --dispositions dispositions.md",
 	"abcd scribe ingest":   "abcd scribe ingest --scribe-json scribe.json --dispositions dispositions.md",

@@ -6,7 +6,7 @@ kind: standalone
 suggested_kind: null
 reclassification_history:
   - { date: 2026-05-07, from: bundle-member, to: standalone, reason: "Originally bundled with itd-27 (grill sub-verb) under `intent-capture-discipline`, but itd-27 and itd-30 are not co-scheduled — bundle members must belong to the same phase. Reclassified to standalone; when this lands, its epic depends on or extends spc-3 (the grill sub-verb's epic) for shared interview/lint/persona-registry plumbing." }
-blocked_by: [itd-27]
+blocked_by: [itd-94]
 builds_on: [itd-1, itd-34]
 severity: minor
 ---

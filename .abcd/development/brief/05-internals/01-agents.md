@@ -13,7 +13,7 @@ assembles the input, states the output contract, and checks what comes back.
 
 ## What ships
 
-Fifteen agent prompts ship in `agents/` today, in four groups:
+Sixteen agent prompts ship in `agents/` today, in four groups:
 
 - **Lifeboat and release synthesis**, each feeding one verb that validates its
   output under a cite-or-be-dropped rule: `principle-distiller`
@@ -22,7 +22,10 @@ Fifteen agent prompts ship in `agents/` today, in four groups:
   (`disembark graveyard`), and `release-changelog-composer` (`launch ship`),
   which writes both documents of a release cut in one payload, the changelog
   lines and the release page, and whose payload is refused whole rather than
-  cite-or-be-dropped.
+  cite-or-be-dropped. `reflection-composer` (`reflect write`) runs a cut
+  release's retrospective interview from the seed `reflect` renders and drafts
+  the answers the writer files, which the writer refuses while an answer is
+  under its floor.
 - **The intent auditor**, `intent-auditor`, which judges a shipped intent's
   promise against delivered reality (below).
 - **Repo-workflow reviewers and researchers**, dispatched by a human rather than
@@ -48,8 +51,8 @@ the real prompt files; iss-110 tracks the mis-registration.
 ## The design roster still to be built
 
 The lifeboat pipeline is drawn around a larger roster than the one that ships.
-The rest are **design targets**, sequenced with
-[Phase 6](../../roadmap/phases/phase-6-lifeboat.md), and none of them exists in
+The rest are **design targets** of the lifeboat pipeline (the retired
+[Phase 6](../../roadmap/phases/phase-6-lifeboat.md) document holds their original plan), and none of them exists in
 `agents/`:
 
 | Agent | Pass | What it would produce |
@@ -65,7 +68,6 @@ The rest are **design targets**, sequenced with
 | `embark-scaffolder` | embark | a scaffold plan for a target repo |
 | `launch-gatekeeper` | launch | a release preflight over scan results and the payload manifest (itd-65, adr-33) |
 | `documentation-auditor` | subagent | a documentation audit over a source or lifeboat `docs/` tree, invoked by other verbs rather than by a user |
-| `reflection-composer` | reflect | the five retrospective sections, from a phase-audit receipt (itd-24) |
 
 ## The cold-reading definitions
 
@@ -271,14 +273,14 @@ source of truth today, PR-to-extend (iss-265).
 
 **Deliberately omitted** from agent frontmatter, as a boundary against scope
 creep: runtime-appended failure modes, per-task-class model history, and
-plan-time capability gating output. Those belong to the later-phase Frontier
+plan-time capability gating output. Those belong to the later Frontier
 Awareness intent.
 
 **Why `capability_scope` rides in itd-5 rather than earning its own discipline:**
 it is the same artefact class as `prompt_version` — agent frontmatter, versioned
 with the prompt, mechanical to write — and its validation stays mechanical. The
 linter never reads `designed_for` prose to judge scope, in either direction.
-Anything fuzzier is the later-phase Frontier Awareness sub-check.
+Anything fuzzier is the later Frontier Awareness sub-check.
 
 **The oracle seam contract is unchanged by it.** Capability-aware routing, when it
 ships, is a pre-dispatch selector layer *above* the seam rather than a

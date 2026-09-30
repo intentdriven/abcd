@@ -71,7 +71,7 @@ func oneLine(s string) bool {
 // Every check runs before the first write, and no refusal quotes a title, alias or
 // author.
 func Add(req AddRequest) (AddResult, error) {
-	c, err := Load(req.Corpus)
+	c, err := loadCorpus(req.Corpus)
 	if err != nil {
 		return AddResult{}, err
 	}
@@ -84,7 +84,7 @@ func Add(req AddRequest) (AddResult, error) {
 		Folder: req.Class + "/" + entry.ID, Files: []string{}}
 	err = withLock(c.Dir, func() error {
 		// Re-read under the lock: a concurrent add of the same key loses here.
-		fresh, err := Load(c.Dir)
+		fresh, err := loadCorpus(c.Dir)
 		if err != nil {
 			return err
 		}
@@ -351,7 +351,7 @@ func copyFile(src, dst string) error {
 // banlist sync drops the key's strings, and its ledger lines become flippable when
 // the permission set here grants citation (citable, the default).
 func Declassify(corpus, key, permission string) (AddResult, error) {
-	c, err := Load(corpus)
+	c, err := loadCorpus(corpus)
 	if err != nil {
 		return AddResult{}, err
 	}
@@ -370,7 +370,7 @@ func Declassify(corpus, key, permission string) (AddResult, error) {
 	}
 	res := AddResult{Key: key, Class: ClassPublic, Permission: permission, Folder: ClassPublic + "/" + key, Files: []string{}}
 	err = withLock(c.Dir, func() error {
-		fresh, err := Load(c.Dir)
+		fresh, err := loadCorpus(c.Dir)
 		if err != nil {
 			return err
 		}

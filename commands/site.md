@@ -107,7 +107,10 @@ sets up the site of a repository abcd manages, in three stages, and emits
   writes is `refused`, the whole run writes nothing, and `--confirm` replaces it.
 - `environments` — the forge's `site-render` and `site` deployment
   environments, each admitting only the default branch and tags `v*`, created
-  through `gh` as you. The default branch is the one the forge names; when the
+  through `gh` as you. When `gh` is missing, setup explains it and offers to
+  install it, running the step only on a yes typed at a terminal; under
+  `--yes` or a piped answer the offer is declined, the environments are not
+  created, and `notes` carries the command to run. The default branch is the one the forge names; when the
   forge cannot answer, the checkout's branch stands in and `notes` says so. An existing environment is never rewritten (the forge's
   write would replace its required reviewers): one on named rules and no rule
   beyond those two gains the rules it lacks, and one that admits more, through

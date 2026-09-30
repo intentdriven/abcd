@@ -35,9 +35,9 @@ For each entry:
 ### Memory unification (idea-1 → itd-36)
 
 - **Chose:** Widen `.abcd/memory/` to multi-upstream curated substrate (session memory + external sources + reviews + notes + dredge synthesis); ship `/abcd:memory` command initially with `ingest`/`ask`/`lint` sub-verbs; default-no-originals + `--keep-original` opt-in; per-page + cumulative quotation lints.
-- **Over:** New separate `.abcd/knowledge/` namespace (initial framing); pushing to a later phase.
+- **Over:** New separate `.abcd/knowledge/` namespace (initial framing); deferring it to a later intent.
 - **Why:** Initial proposal was a new namespace, but RP review revealed that the visibility-rule lock ("no exceptions") forbids per-subdirectory carve-outs, and `.abcd/memory/` already exists as the per-project compounding-curated knowledge layer (just narrowly scoped to session memory). Widening the upstream funnel of an existing namespace is structurally smaller than creating a new one. User reframed at R3; substrate reuse with itd-26 (loot) compressed the initial cost shape further.
-- **Reconsider when:** the worked-example test (3 adversarial walkthroughs across research-shaped, tooling, mixed-licence projects) shows sprawl or licence-gate failure — answer reverts to a later phase with the failed example as primary debug.
+- **Reconsider when:** the worked-example test (3 adversarial walkthroughs across research-shaped, tooling, mixed-licence projects) shows sprawl or licence-gate failure — answer reverts to a later intent with the failed example as primary debug.
 - **Source:** `.abcd/work/idea-assessments/1-llm-wiki.md`; chat `adversarial-review-llm-w-4970CE` (5 rounds).
 
 ### Modification grammar discipline (idea-2 → itd-37); Ripple axis absorbing idea-3
@@ -48,12 +48,12 @@ For each entry:
 - **Reconsider when:** observed evidence shows a `## Ripple` axis wants to be a separate page-class (pre-empted by the collapse) OR a discipline-set audit trigger fires (≥5 disciplines OR observed contradiction).
 - **Source:** `.abcd/work/idea-assessments/3-systems-thinking.md`; chat `idea-3-itd-38-adversaria-31A06A` (2 rounds).
 
-### Jagged frontier — split static (itd-5, current) vs dynamic (Frontier Awareness, a later phase)
+### Jagged frontier — split static (itd-5, current) vs dynamic (Frontier Awareness, a later intent)
 
-- **Chose:** the itd-5 extension adds `capability_scope` static frontmatter (same artefact class as `prompt_version`; cheap one-shot frontmatter addition per agent at v1.0.0 lock); a later-phase standalone Frontier Awareness intent owns `known_failure_modes` runtime events + plan-time semantic check + capability-aware **pre-cascade selector** (layer above the cascade, NOT modification of itd-2/itd-6 contract); `/abcd:frontier` command (bare = render; sub-verbs `flag`/`history`/`explain`).
-- **Over:** Single current-release discipline (itd-5 + dynamic half conflated), or single later-phase standalone (everything dynamic), or modifying the cascade contract directly.
-- **Why:** RP review (idea-4) flagged that conflating static + dynamic in itd-5 silently moves itd-5 from cheap to expensive; that the cascade-considers-capability framing silently reopens itd-2 + itd-6 (which currently say "fixed cascade" in `04-universal-patterns.md § 7`); and that `.abcd/toolchain-state/` was the third namespace-creep proposal in three reviews. Splitting static (cheap, current) vs dynamic (expensive, a later phase) preserves the cost discipline; pre-cascade selector framing preserves the cascade contract.
-- **Reconsider when:** itd-5 ships and the static `capability_scope` data accumulates across 10+ agents, providing the prior for the later-phase Frontier Awareness dynamic check.
+- **Chose:** the itd-5 extension adds `capability_scope` static frontmatter (same artefact class as `prompt_version`; cheap one-shot frontmatter addition per agent at v1.0.0 lock); a later standalone Frontier Awareness intent owns `known_failure_modes` runtime events + plan-time semantic check + capability-aware **pre-cascade selector** (layer above the cascade, NOT modification of itd-2/itd-6 contract); `/abcd:frontier` command (bare = render; sub-verbs `flag`/`history`/`explain`).
+- **Over:** Single current-release discipline (itd-5 + dynamic half conflated), or a single later standalone intent (everything dynamic), or modifying the cascade contract directly.
+- **Why:** RP review (idea-4) flagged that conflating static + dynamic in itd-5 silently moves itd-5 from cheap to expensive; that the cascade-considers-capability framing silently reopens itd-2 + itd-6 (which currently say "fixed cascade" in `04-universal-patterns.md § 7`); and that `.abcd/toolchain-state/` was the third namespace-creep proposal in three reviews. Splitting static (cheap, current) vs dynamic (expensive, a later intent) preserves the cost discipline; pre-cascade selector framing preserves the cascade contract.
+- **Reconsider when:** itd-5 ships and the static `capability_scope` data accumulates across 10+ agents, providing the prior for the later Frontier Awareness dynamic check.
 - **Source:** `.abcd/work/idea-assessments/4-jagged-frontier.md`; chat `idea-4-jagged-frontier-r-33C475` (2 rounds).
 
 ### Bare-command-as-render discipline (sweep)

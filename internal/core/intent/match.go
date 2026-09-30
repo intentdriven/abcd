@@ -90,6 +90,11 @@ func matchTextOf(id, content string) MatchText {
 type Matcher struct {
 	Threshold  float64
 	Candidates func() ([]match.Candidate, error)
+	// Text, when non-empty, is the text the match compares in place of the
+	// draft's title and press release: the source record's own words, for a
+	// draft minted from a record whose title alone is too short to compare
+	// (a promoted reading item's pattern, ruling DQ2b).
+	Text string
 }
 
 // Created is a quoted-text create's result: the draft, and the match's

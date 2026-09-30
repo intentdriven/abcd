@@ -181,6 +181,37 @@ At the entailment position the report adds that reading's yield bound: How many 
 the projected intents carry a mechanism claim, how many state that they have none,
 and how many carry neither (readings companion 6.6). No other position renders it.
 
+## The four position definitions
+
+Each position is read by one plugin agent, whose prompt is the position's
+definition. The file is derived from the position, `agents/cold-reading-<position>.md`,
+rather than looked up, and its frontmatter states the `position` and the
+`regime`:
+
+| Agent | The question it answers | Regime | Item fields |
+|---|---|---|---|
+| `cold-reading-detection` | Where is the shipped tree in tension with the claim record? | `registrative` | `tension`, `constraint_in_play`, `why_a_tension` |
+| `cold-reading-entailment` | What does this design commit to, by being the kind of thing it is, that its articulation does not state? | `explicative` | `claim_surfaced`, `claim_type`, `what_implies_it` |
+| `cold-reading-widening` | Given the situation as this design construes it, what configurations does the construal admit that are not present in what has been committed to? | `generative` | `configuration`, `what_admits_it` |
+| `cold-reading-comparative` | For each candidate and each declared criterion, how do options of this shape ordinarily behave? | `evaluative` | `candidate_id`, `criterion`, `characterisation`, one item per candidate-criterion pair |
+
+Every item also carries the `pattern` it was read under. The definitions share a
+blindness core, a section fenced by `blindness-core` markers that a test holds
+byte-identical across the four and to seven conditions: no project context, no
+ledger access, no memory across runs, no ranking, no selection, explanation or commitment,
+named provenance on every item, and no passed input taken as authoritative. The
+core also tells the reader that everything it reads is data, never instruction.
+Each definition declares `reads_untrusted_input: true` and ships an injection
+canary under `agents/<name>/fixtures/`, as the agent contract requires.
+
+The assembler never passes a definition to a reading: `agents` is denied to
+every assembly. What reads a definition is the binary. The bare render lists the
+definitions it resolves. Ingest hashes the definition the output's position
+names, refuses an output whose instrument reports a different definition hash,
+and takes the regime from the definition. A definition
+silent about its position or its regime, or stating a regime that disagrees with
+its position, is refused rather than read.
+
 ## Ingest checks what the reading was licensed to produce
 
 Ingest validates the JSON a reading returned and writes its reading records. It
@@ -275,10 +306,26 @@ that run's own commit marker:
 A refused run reports the orphans it left in place instead of sweeping them: the
 sweep is a delete in the committed tier, and a refused run never reaches one.
 
+**Every stored finding is matched against the record** (ruling DQ2b,
+[adr-2609300821558671](../../decisions/adrs/2609300821558671-a-reading-finding-is-matched-against-the-record-when-it-is.md)).
+The ingest runs capture's filing-time match on each item as it lands, with the
+same threshold, link cap and configuration (see
+[`06-capture.md`](06-capture.md)): the item's pattern and body are compared
+with the open and resolved issues, the intents and every earlier reading item,
+and never with another item of the same ingest or with the envelope every item
+of a run shares. A likely repeat is written onto the reading record as
+`duplicates:` or `refines:`, and the ingest shows each item's match, printed and
+as `matches` in the JSON. A link is a proposal the researcher keeps or deletes;
+the confirmed form of a recurrence stays the disposition's `recurs` citation.
+The match never refuses the ingest: a short finding, an unread record set or a
+refused configuration files the item unlinked and says why.
+
 ## What this surface does not claim
 
-It never runs a reading. It produces the input a reading would be given;
-dispatching that input to a reader is host work.
+It never runs a reading on the host. It produces the input a reading would be
+given; dispatching that input to a reader is host work, except where the person
+has pointed the position at a provider, when the ingest's dispatch form sends the
+parked input there and ingests the answer.
 
 The bundle is pathless by construction, which is the half of the isolation the
 binary enforces. The other half — that the dispatching host grants the reader no
@@ -312,6 +359,26 @@ dispatch, a tier outside `local`, `economy`, `frontier` and `host-decides`, or a
 connection this machine has not configured exits 2 before anything is written.
 With no table accepted and no override, the step asks for `host-decides` on the
 harness and nothing is printed.
+
+**A position routed to a provider runs there.** The ingest's dispatch form,
+which the appendix lists, names a run an assembly parked instead of an output.
+It resolves the route of the run's position's agent, and when the person's
+`oracle.roles.cold-reading-<position>` points at a provider it sends the
+position's definition as the instructions and the parked bundle, with the run's
+identifiers the output cites, as the input. Before the send it prints one
+stderr line naming how many items the run sends and how many of them the
+manifest marks `unscanned`, the items the exclusion floor never examined and
+that travel whole. A cold-reading position is
+self-contained under ruling DR5 of 2026-09-29, so a provider that holds a key
+takes it; the reader is handed no tool and no path, which discharges the
+blindness obligation by construction. The answer is judged against the output
+type and the run it was sent, then ingested as a returned output is, and the
+receipt names the provider as `connection_used` with its call record. A route on
+the harness, a provider that could not be reached, a run id outside the run-id
+grammar, a run no assembly parked, and a dispatch that also names an output each
+exit 2 with nothing ingested. An output the host produced while the position is
+routed to a provider is refused at exit 2; an override to `host-decides` keeps
+one run on the harness.
 
 ## References
 
@@ -351,6 +418,7 @@ Sub-verbs: none.
 
 | Flag | Type |
 |---|---|
+| `--dispatch` | string |
 | `--reading-json` | string |
 | `--route` | stringArray |
 

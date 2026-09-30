@@ -97,6 +97,11 @@ type Finding struct {
 	// hole where a token crossing the byte cap left a raw prefix in a snippet
 	// built by truncate-then-replace.
 	line string
+
+	// augmented marks a finding an Augmenter reported (augment.go), which a
+	// write path verifies by its bytes (UnsealedAugmented) rather than by the
+	// native re-scan.
+	augmented bool
 }
 
 // MarshalJSON redacts the raw secret material before a Finding reaches any

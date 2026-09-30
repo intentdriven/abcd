@@ -17,7 +17,12 @@ stored record. They are not side-effect-free, because every verb reaches the sto
 through the one seam that creates it when it is absent and moves a legacy
 corpus into it (below). `capture` and `drain` are the write paths, and both
 redact on write — no live secret or absolute home path can survive into a
-record.
+record. In a repository that armed gitleaks in `.abcd/config/gitleaks.json`,
+gitleaks runs over the transcript beside the native scanner and what it finds
+is masked too; a gitleaks run that fails refuses the capture. Armed with no
+gitleaks binary installed, the transcript is still stored, masked by the native
+scanner, and the JSON's `scan_gap` names the missing coverage with the install
+step: relay it.
 
 A repo whose transcripts should stay with the repo instead is an **opt-in
 pull**, declared in the caller's own home — one absolute checkout path per line

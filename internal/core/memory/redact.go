@@ -117,6 +117,13 @@ func (r *storeRedactor) residue(text, label string) []scanner.Finding {
 // survives redaction — the same fail-closed gate history.Capture applies.
 func (r *storeRedactor) redactText(text, label string) (string, int, error) {
 	findings := r.sc.ScanText(text, label)
+	// A repository's opt-in augmenter runs inside ScanText, and a run that
+	// failed degrades the scanner during it: refuse exactly as on a degraded
+	// pii.json (openStoreRedactor), never write with the coverage the
+	// repository asked for silently missing.
+	if bad, why := r.sc.Unavailable(); bad {
+		return "", 0, newIngestError("refusing to write: degraded scanner: %s", why)
+	}
 	redacted, _ := scanner.Redact(text, findings)
 
 	// Deterministic literal $HOME backstop, independent of the scanner
@@ -133,7 +140,12 @@ func (r *storeRedactor) redactText(text, label string) (string, int, error) {
 			return "", 0, newIngestError("refusing to write: the caller's home path survived redaction")
 		}
 	}
-	if resid := scanner.BlockingResidual(r.sc.ScanText(redacted, label)); len(resid) > 0 {
+	// The verification re-scan is the native one; what the augmenter found is
+	// verified by its bytes (scanner.UnsealedAugmented), since re-running it
+	// over redacted text is neither cheap nor deterministic.
+	resid := scanner.BlockingResidual(r.sc.ScanTextNative(redacted, label))
+	resid = append(resid, scanner.UnsealedAugmented(redacted, findings)...)
+	if len(resid) > 0 {
 		kinds := make([]string, 0, len(resid))
 		for _, f := range resid {
 			kinds = append(kinds, f.Kind)

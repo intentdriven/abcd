@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -10,10 +11,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/adapter/openaiapi"
 	"github.com/intentdriven/abcd/internal/core/changelog"
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/launch"
 	"github.com/intentdriven/abcd/internal/core/oracle"
+	"github.com/intentdriven/abcd/internal/core/reflect"
 	"github.com/intentdriven/abcd/internal/core/release"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -72,6 +75,10 @@ type shipResult struct {
 	// whenever the ship renders a payload.
 	Parity    *launch.ParityReport    `json:"parity,omitempty"`
 	DeepSmoke *launch.DeepSmokeReport `json:"deep_smoke,omitempty"`
+	// RetrospectiveOwed is the one line a written cut ends with: a retrospective
+	// for the release is owed, and the command that writes it (itd-24 criterion
+	// 8, decision 1). It is said once, here, and gates nothing.
+	RetrospectiveOwed string `json:"retrospective_owed,omitempty"`
 }
 
 // shipArchive is the archive half of a ship's report: the archive the release
@@ -367,6 +374,12 @@ func newLaunchShipCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if changelogJSON != "" {
+				if err := hostPayloadOnProvider("abcd launch ship", route,
+					"run `abcd launch ship` without --changelog-json, which sends the cut there and ingests the answer"); err != nil {
+					return err
+				}
+			}
 			// The cut is a fact about the repository, not about the directory
 			// the operator stands in (iss-2609251713073532).
 			root, err := gitutil.CheckoutRoot(cwd, "the release record")
@@ -382,7 +395,10 @@ func newLaunchShipCommand(asJSON *bool) *cobra.Command {
 				return &exitError{Code: 2, Msg: "abcd launch ship: " + scrubPaths(err)}
 			}
 			if raw != nil {
-				return runShipIngest(cmd, root, raw, payloadDir, allowDirty, fetchBaseline, *asJSON, route)
+				return runShipIngest(cmd, root, raw, payloadDir, allowDirty, fetchBaseline, *asJSON, route, nil)
+			}
+			if err := shipRoute.admit("abcd launch ship", route); err != nil {
+				return err
 			}
 
 			cut, err := emitCut(root)
@@ -400,6 +416,27 @@ func newLaunchShipCommand(asJSON *bool) *cobra.Command {
 				route = nil
 			}
 			emitted := shipEmit{Cut: cut, ReceiptsProtocol: proto}
+			// A composer routed to a provider is sent the emitted cut, and the
+			// release is ingested from its answer as it would be from the host's.
+			if route != nil && route.OnProvider() {
+				prompt, err := agentPrompt(changelogAgent)
+				if err != nil {
+					return &exitError{Code: 2, Msg: "abcd launch ship: " + scrubPaths(err)}
+				}
+				input, err := json.Marshal(emitted)
+				if err != nil {
+					return err
+				}
+				d, fell, err := shipRoute.dispatch(cmd, "abcd launch ship", route,
+					openaiapi.Brief{Instructions: prompt, Input: string(input)}, jsonContract)
+				if err != nil {
+					return err
+				}
+				if d != nil {
+					return runShipIngest(cmd, root, d.payload, "", false, false, *asJSON, route, d)
+				}
+				route = fell
+			}
 			if rerr := render(cmd.OutOrStdout(), *asJSON, withRequest(emitted, route), func(w io.Writer) {
 				renderCut(w, "abcd launch ship", cut)
 				renderRequestLine(w, route)
@@ -444,7 +481,10 @@ type shipEmit struct {
 // contract alone: only a release workflow that uploads the archive makes the
 // pinned address resolve, and a managed repository's scaffolded workflows
 // upload none, so a catalog pinned there would 404 on every install.
-func runShipIngest(cmd *cobra.Command, cwd string, raw []byte, payloadDir string, allowDirty, fetchBaseline, asJSON bool, route *oracle.Route) error {
+//
+// d is the dispatched step when a provider composed raw, whose receipt the
+// render carries in place of the host's.
+func runShipIngest(cmd *cobra.Command, cwd string, raw []byte, payloadDir string, allowDirty, fetchBaseline, asJSON bool, route *oracle.Route, d *dispatched) error {
 	archive, err := launch.DeclaresPluginArchive(cwd)
 	if err != nil {
 		return &exitError{Code: 2, Msg: "abcd launch ship: " + scrubPaths(err)}
@@ -620,9 +660,23 @@ func runShipIngest(cmd *cobra.Command, cwd string, raw []byte, payloadDir string
 				rollbackCut(cwd, payloadDir, ingested.Undo, saved...)}
 		}
 	}
-	if rerr := render(cmd.OutOrStdout(), asJSON, withReceipt(res, route, raw), func(w io.Writer) {
+	if ingested.Written && ingested.Cut.NextTag != "" {
+		res.RetrospectiveOwed = reflect.Nudge(ingested.Cut.NextTag)
+	}
+	var out any = withReceipt(res, route, raw)
+	if d != nil {
+		out = withDispatchReceipt(res, d)
+	}
+	if rerr := render(cmd.OutOrStdout(), asJSON, out, func(w io.Writer) {
 		renderIngest(w, res)
-		renderReceiptLine(w, route, raw)
+		if d != nil {
+			renderDispatchLine(w, d)
+		} else {
+			renderReceiptLine(w, route, raw)
+		}
+		if res.RetrospectiveOwed != "" {
+			fmt.Fprintf(w, "\n%s\n", res.RetrospectiveOwed)
+		}
 	}); rerr != nil {
 		return rerr
 	}
@@ -765,6 +819,11 @@ func renderIngest(w io.Writer, res shipResult) {
 	fmt.Fprintf(w, "  wrote:      %s\n", res.Path)
 	fmt.Fprintf(w, "    %s\n", res.Heading)
 	fmt.Fprintf(w, "    %d line(s), citing %s\n", res.Lines, termsafe.Sanitize(strings.Join(res.Cited, ", ")))
+	// Every target the cut passed without shipping it, moved to `next` in the
+	// same write and named in the section (itd-2609212103572513 criterion 3).
+	for _, m := range res.Moved {
+		fmt.Fprintf(w, "  moved:      %s targets next (targeted %s)\n", termsafe.Sanitize(m.ID), termsafe.Sanitize(m.From))
+	}
 	if res.Page.Written {
 		fmt.Fprintf(w, "  page:       %s\n", res.Page.Path)
 		fmt.Fprintf(w, "    %s\n", termsafe.Sanitize(res.Page.Heading))

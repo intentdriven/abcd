@@ -31,7 +31,7 @@ func TestRegimeComesFromTheDefinitionNotThePayload(t *testing.T) {
 	legal := f.payload(1)
 	f.mustIngest(legal)
 
-	if err := os.Remove(filepath.Join(f.root, filepath.FromSlash(DefinitionPath("detection")))); err != nil {
+	if err := os.Remove(filepath.Join(f.root, filepath.FromSlash(definitionPath("detection")))); err != nil {
 		t.Fatal(err)
 	}
 	f.parkRun("rdg-2608310000000002", "detection", AssemblerVersion())
@@ -44,7 +44,7 @@ func TestRegimeComesFromTheDefinitionNotThePayload(t *testing.T) {
 		t.Fatal("a run whose definition is absent was accepted; the regime then came from somewhere " +
 			"other than the definition")
 	}
-	if !strings.Contains(err.Error(), DefinitionPath("detection")) {
+	if !strings.Contains(err.Error(), definitionPath("detection")) {
 		t.Errorf("the refusal does not name the definition it could not resolve: %v", err)
 	}
 	// The run's identity was proven before the definition was looked up, so
@@ -75,7 +75,7 @@ func assertUnresolvedDefinitionRecorded(t *testing.T, f *ingestFixture, res Inge
 	if rec.Regime != "" {
 		t.Errorf("the refusal record states the %q regime, which the verb never resolved", rec.Regime)
 	}
-	if !strings.Contains(rec.Reason, DefinitionPath("detection")) {
+	if !strings.Contains(rec.Reason, definitionPath("detection")) {
 		t.Errorf("the recorded reason does not name the definition that did not resolve: %q", rec.Reason)
 	}
 	if strings.HasPrefix(rec.Reason, "reading: ") {
@@ -122,7 +122,7 @@ func TestADriftedDefinitionRefusesTheRunRatherThanChangingTheLicence(t *testing.
 		t.Fatal("a definition stating another position's regime was resolved rather than refused, so " +
 			"the run read under a licence nothing checked")
 	}
-	for _, want := range []string{RegimeEvaluative, RegimeRegistrative, DefinitionPath("detection")} {
+	for _, want := range []string{RegimeEvaluative, RegimeRegistrative, definitionPath("detection")} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("the refusal does not name %q: %v", want, err)
 		}

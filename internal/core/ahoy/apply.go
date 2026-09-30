@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -119,7 +120,7 @@ func install(cwd string, opts InstallOptions, p Prompter) (InstallResult, error)
 	modeForced := modeWouldChange(opts, det, binTargetPath)
 
 	if len(actionable(det.Gaps)) == 0 &&
-		!(!opts.Yes && len(optionalPending(det.Gaps)) > 0) &&
+		!(!opts.Yes && len(optionalAskable(det.Gaps, p)) > 0) &&
 		!overridesWouldChange(abs, opts.ValueOverrides) &&
 		!attributionWouldChange(abs, opts) &&
 		!modeForced {
@@ -136,12 +137,12 @@ func install(cwd string, opts InstallOptions, p Prompter) (InstallResult, error)
 			return InstallResult{
 				Status:          "partial",
 				Notes:           malformedConfigNotes(cfgErr, opts.ValueOverrides),
-				OptionalSkipped: optionalSkipped(opts, det.Gaps),
+				OptionalSkipped: optionalSkipped(opts, det.Gaps, p),
 			}, nil
 		}
 		return InstallResult{
 			Status:          "already_up_to_date",
-			OptionalSkipped: optionalSkipped(opts, det.Gaps),
+			OptionalSkipped: optionalSkipped(opts, det.Gaps, p),
 		}, nil
 	}
 
@@ -186,6 +187,8 @@ func install(cwd string, opts InstallOptions, p Prompter) (InstallResult, error)
 	ac.stepStatusLine()
 	// After the status line, the order the consent questions are asked in.
 	ac.stepOracleRouting()
+	// After the routing offers: the last of the repository consent questions.
+	ac.stepDrainRule()
 	ac.stepRules()
 	ac.stepVersionStamp()
 	// Before the pin: an identity mended here is the one the pin then records.
@@ -221,7 +224,7 @@ func install(cwd string, opts InstallOptions, p Prompter) (InstallResult, error)
 		Remaining:          remaining,
 		DeclinedCategories: declined,
 		Notes:              ac.notes,
-		OptionalSkipped:    optionalSkipped(opts, final.Gaps),
+		OptionalSkipped:    optionalSkipped(opts, final.Gaps, p),
 		writeKinds:         ac.writeKinds,
 	}, nil
 }
@@ -477,7 +480,7 @@ func (a *applyCtx) stepDependencies() {
 		if g.Category != Dependency || g.Tool == nil {
 			continue
 		}
-		if onPath(g.Tool.Tool) {
+		if onPath(a.cwd, g.Tool.Tool) {
 			continue
 		}
 		res := newToolInstaller(a.cwd).Install(g.Tool.Tool, g.Tool.Capability, a.confirmTool)
@@ -595,7 +598,7 @@ func (a *applyCtx) stepConfigValues() *InstallConfig {
 			return nil // no valid oracle backend => partial
 		}
 	}
-	if ic.Visibility == "private" && onPath("trufflehog") && ic.ScanDeep == nil {
+	if ic.Visibility == "private" && onPath(a.cwd, "trufflehog") && ic.ScanDeep == nil {
 		// The prompter returns the typed line verbatim, so the answer is re-checked
 		// against the choice set exactly as the three slots above are. Comparing it
 		// to "true" instead would fold every other spelling into false: a person who
@@ -1780,20 +1783,35 @@ const credentialAtRestGapID = "history.credential_at_rest"
 
 // optionalGapIDs are the advisory gaps install closes only against an answered
 // prompt, never under --yes: the identity pin (see stepIdentityPin), the
-// status-line offer (see stepStatusLine) and the two model-tier routing offers
-// (see stepOracleRouting). In the order they are reported.
-var optionalGapIDs = []string{OptionalPinGapID, StatusLineOfferGapID, OracleRoutingMachineGapID, OracleRoutingRepoGapID}
+// status-line offer (see stepStatusLine), the two model-tier routing offers
+// (see stepOracleRouting) and the drain eligibility record (see
+// stepDrainRule). In the order they are reported.
+var optionalGapIDs = []string{OptionalPinGapID, StatusLineOfferGapID, OracleRoutingMachineGapID, OracleRoutingRepoGapID, DrainRuleOfferGapID}
 
-// optionalSkipped lists the optional gaps a --yes run left un-applied. --yes
-// approves every resolvable category but never adopts the identity pin or
-// wires the status line, so the skip is deliberate — and therefore has to be
-// reported rather than left ambient (iss-166). Outside --yes each is offered
-// as a confirmation, so nothing is skipped silently and the list stays empty.
-func optionalSkipped(opts InstallOptions, gaps []Gap) []string {
-	if !opts.Yes {
+// optionalSkipped lists the optional gaps a run left un-applied without asking.
+// --yes approves every resolvable category but never adopts the identity pin
+// or wires the status line, so the skip is deliberate — and therefore has to
+// be reported rather than left ambient (iss-166). Outside --yes each is offered
+// as a confirmation, except the drain eligibility record off a terminal (see
+// stepDrainRule), so that one is listed and nothing is skipped silently.
+func optionalSkipped(opts InstallOptions, gaps []Gap, p Prompter) []string {
+	if opts.Yes {
+		return optionalPending(gaps)
+	}
+	if atTerminal(p) || !gapIDSet(gaps)[DrainRuleOfferGapID] {
 		return nil
 	}
-	return optionalPending(gaps)
+	return []string{DrainRuleOfferGapID}
+}
+
+// optionalAskable is optionalPending less the offers that will not be asked of
+// p: the drain eligibility record is offered only to a person at a terminal.
+func optionalAskable(gaps []Gap, p Prompter) []string {
+	pending := optionalPending(gaps)
+	if atTerminal(p) {
+		return pending
+	}
+	return slices.DeleteFunc(pending, func(id string) bool { return id == DrainRuleOfferGapID })
 }
 
 // optionalPending reports which of the optional gaps are the remaining work.
@@ -1857,6 +1875,7 @@ var categoryPromptOrder = []GapCategory{
 	ConfigChange,
 	StatusLine,
 	OracleRouting,
+	DrainRule,
 	UserState,
 	PluginOwned,
 }
@@ -1910,6 +1929,13 @@ func resolveApproval(gaps []Gap, opts InstallOptions, p Prompter) (map[GapCatego
 			approved[c] = true
 		}
 	default:
+		// The drain eligibility record is offered only to a person at a
+		// terminal (see stepDrainRule): off one its category is neither asked
+		// nor counted as declined, so a piped answer stream keeps the order it
+		// had before the offer existed.
+		if !atTerminal(p) {
+			delete(present, DrainRule)
+		}
 		for _, c := range presentInPromptOrder(present) {
 			if c == Dependency && opts.ApproveDependency {
 				continue // answered by the named tool; approved below

@@ -10,7 +10,7 @@ import (
 
 // BenchmarkQueryPages measures one `memory ask` question over a synthetic
 // 500-page store — the per-question cost every page's frontmatter handling
-// contributes, since QueryPages reads the whole store each time.
+// contributes, since queryPages reads the whole store each time.
 func BenchmarkQueryPages(b *testing.B) {
 	repo := b.TempDir()
 	mem := Dir(repo)
@@ -30,7 +30,7 @@ func BenchmarkQueryPages(b *testing.B) {
 	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		matches, err := QueryPages(repo, "token rotation", 10)
+		matches, err := queryPages(repo, "token rotation", 10)
 		if err != nil {
 			b.Fatal(err)
 		}

@@ -30,7 +30,7 @@ func TestExcludedFieldsNeverReachTheBundle(t *testing.T) {
 		sentinelDefinition:  "a reading definition and its eval",
 		sentinelLapse:       "the lapse log",
 	}
-	for _, p := range AssemblingPositions() {
+	for _, p := range assemblingPositions() {
 		res := assembleFixture(t, root, p)
 		text := bundleText(res.Bundle)
 		for token, what := range banned {
@@ -52,7 +52,7 @@ func TestDraftBodyIsColdAtEntailmentAndWarmElsewhere(t *testing.T) {
 	// (itd-199). The asymmetry it used to demonstrate here is still held at the
 	// table level for all four positions by
 	// TestWideningExcludesDraftsAndPlannedEntailmentIncludesThem, which tests
-	// Admits rather than an assembly, so nothing is lost by narrowing this one.
+	// admits rather than an assembly, so nothing is lost by narrowing this one.
 	for _, p := range []Position{PositionWidening, PositionDetection} {
 		if text := bundleText(assembleFixture(t, root, p).Bundle); strings.Contains(text, sentinelDraftBody) {
 			t.Errorf("position %s passed the draft body; only entailment sees the candidate set", p)
@@ -70,7 +70,7 @@ func TestNewRecordFamilyIsAbsentWithoutTableChange(t *testing.T) {
 		"---\nid: inv-1\n---\n\n# An invented record\n\n"+invented+"\n")
 	gitCommitAll(t, root)
 
-	for _, p := range AssemblingPositions() {
+	for _, p := range assemblingPositions() {
 		res := assembleFixture(t, root, p)
 		if strings.Contains(bundleText(res.Bundle), invented) {
 			t.Errorf("position %s passed a record family invented after the table was written", p)
@@ -129,7 +129,7 @@ func TestShippedIntentProjectsFiveFieldsOnly(t *testing.T) {
 func TestProjectedFieldsFollowTheDeclaredOrderWithinAPath(t *testing.T) {
 	root := fixtureRepo(t)
 	projected := 0
-	for _, position := range AssemblingPositions() {
+	for _, position := range assemblingPositions() {
 		res := assembleFixture(t, root, position)
 
 		byPath := map[string][]string{}
@@ -217,7 +217,7 @@ func TestBundleCarriesNoRepositoryPath(t *testing.T) {
 		it.Text = ""
 		skeleton.Items = append(skeleton.Items, it)
 	}
-	raw, err := EncodeBundle(skeleton)
+	raw, err := encodeBundle(skeleton)
 	if err != nil {
 		t.Fatalf("encode bundle skeleton: %v", err)
 	}
@@ -260,7 +260,7 @@ func TestBundleCarriesNoRepositoryPath(t *testing.T) {
 		t.Fatal("the comparative bundle carries no candidate item, so this half asserts nothing " +
 			"about the two structural fields the channel adds")
 	}
-	cRaw, err := EncodeBundle(cSkeleton)
+	cRaw, err := encodeBundle(cSkeleton)
 	if err != nil {
 		t.Fatalf("encode the comparative bundle skeleton: %v", err)
 	}
@@ -281,7 +281,7 @@ func TestBundleCarriesNoRepositoryPath(t *testing.T) {
 			t.Errorf("the bundle's candidate id %q is shaped like a record id an entry could name",
 				it.Candidate)
 		}
-		for _, k := range Kinds() {
+		for _, k := range allKinds() {
 			if it.Field == string(k) {
 				t.Errorf("the bundle's field %q collides with the material kind of the same name; "+
 					"one token may not mean two things", it.Field)

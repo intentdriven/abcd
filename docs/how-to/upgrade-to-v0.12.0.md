@@ -21,10 +21,17 @@ that carries a lane's stage says `stage`:
 | the run state file, `.abcd/.work.local/run/<run-id>/state.json`: each lane | `step` | `stage` |
 | the run state file: each line of `record` | `step` | `stage` |
 | the status board, `abcd --json`: a lane under `status.now` | `lane.step` | `lane.stage` |
+| `abcd implement check --json`: the verdict | `step` | `stage` |
+| the run log (`~/.abcd/runs/<root-sha>/<date>.jsonl`): a `refusal` line from `implement check` | `step` | `stage` |
 
 The spec's own fields keep their names: `spec_step`, `step_title` and
 `pending`. The text forms say "stage" for the lane's, as in
 `completed lane-1's worktree stage` and `next stage: brief`.
+
+`abcd implement check` calls what a session asks about a stage too. Its operands
+keep their spellings (`lane`, `release`, `review`, `audit`, `land`), its text
+says `<session> may take the review stage`, and an operand outside them is
+refused as an `unknown stage`.
 
 A run started with an older abcd carries on. Its state file (schema version 1,
 2 or 3) is read as it stands, each `step` taken as the lane's `stage`, and the

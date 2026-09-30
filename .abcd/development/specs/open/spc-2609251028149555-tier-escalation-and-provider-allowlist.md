@@ -89,7 +89,11 @@ all four:
 ## Blocked on
 
 - The implement loop's per-lane state file, for AC 10.
-- Provider dispatch in the delegating verbs, for AC 3. The adapter
-  (itd-2609081951381895) exists and declares the settings it accepts, and
-  `Resolve` refuses a setting outside them (AC 8); no verb yet hands `Resolve`
-  its connections or sends a step through them.
+
+AC 3 is met and blocks nothing: a delegating verb whose route names a provider
+sends the step through that provider's adapter and its receipt names the
+provider as the connection used (`APIConfig.Dispatch`, called by `intent
+audit`, `intent consistency`, `intent audit --owed`, `launch ship`, `spec
+close`'s review re-emit and `reading ingest --dispatch`; the product thinker's
+ruling DR5 of 2026-09-29 admits only self-contained agents to a provider that
+holds a key). The spec stays open for AC 10.

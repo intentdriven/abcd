@@ -63,7 +63,7 @@ func TestStoreHandleReadsOnlyTheDirectoryItOpened(t *testing.T) {
 func TestFileBackRefusesASymlinkedStore(t *testing.T) {
 	repo := t.TempDir()
 	seedAskStore(t, repo)
-	matches, err := QueryPages(repo, "how does token rotation work?", AskTopN)
+	matches, err := queryPages(repo, "how does token rotation work?", AskTopN)
 	if err != nil || len(matches) == 0 {
 		t.Fatalf("fixture: QueryPages = %d matches, %v", len(matches), err)
 	}

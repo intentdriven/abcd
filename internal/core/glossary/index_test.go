@@ -68,9 +68,9 @@ func scan(t *testing.T) Glossary {
 // regenerating the index fails here.
 func TestGlossaryREADMECarriesTheRenderedIndex(t *testing.T) {
 	got := between(t, readREADME(t), IndexMarkerBegin, IndexMarkerEnd)
-	want := strings.TrimSpace(RenderIndex(scan(t)))
+	want := strings.TrimSpace(renderIndex(scan(t)))
 	if got != want {
-		t.Errorf("%s term index has drifted from the term files.\n\n--- README has ---\n%s\n\n--- RenderIndex wants ---\n%s",
+		t.Errorf("%s term index has drifted from the term files.\n\n--- README has ---\n%s\n\n--- renderIndex wants ---\n%s",
 			READMERelPath, got, want)
 	}
 }
@@ -80,9 +80,9 @@ func TestGlossaryREADMECarriesTheRenderedIndex(t *testing.T) {
 // omit a whole bounded context.
 func TestGlossaryREADMECarriesTheRenderedLayout(t *testing.T) {
 	got := between(t, readREADME(t), LayoutMarkerBegin, LayoutMarkerEnd)
-	want := strings.TrimSpace(RenderLayout(scan(t)))
+	want := strings.TrimSpace(renderLayout(scan(t)))
 	if got != want {
-		t.Errorf("%s directory layout has drifted from the glossary directory.\n\n--- README has ---\n%s\n\n--- RenderLayout wants ---\n%s",
+		t.Errorf("%s directory layout has drifted from the glossary directory.\n\n--- README has ---\n%s\n\n--- renderLayout wants ---\n%s",
 			READMERelPath, got, want)
 	}
 }
@@ -134,9 +134,9 @@ func TestRenderIndexEscapesTableCells(t *testing.T) {
 		Files: []string{"widget.md"},
 		Terms: []Term{{Name: "widget", File: "widget.md", Status: "draft", Definition: "a | b"}},
 	}}}
-	row := RenderIndex(g)
+	row := renderIndex(g)
 	if !strings.Contains(row, `a \| b`) {
-		t.Errorf("RenderIndex did not escape the pipe in a definition:\n%s", row)
+		t.Errorf("renderIndex did not escape the pipe in a definition:\n%s", row)
 	}
 }
 

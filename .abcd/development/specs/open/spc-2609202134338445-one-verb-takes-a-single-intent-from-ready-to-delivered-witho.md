@@ -78,9 +78,13 @@ boundary) is minted before either path ships and is a delivery of this spec.
    the lane's commit, the pull request through the forge client the
    repository already uses (`gh`), the merge rule from the repository's
    ruleset, no push after arming, cleanup after the ancestor check.
+   - packages: internal/core/implement/loop, internal/surface/cli
+   - landed: 8ede4810f
 10. **The run record and transcripts**
    Criterion 10: the state file's record rendered at the end, and `history
    capture` per transcript path (one call once `iss-2609202046145653` ships).
+   - packages: internal/core/implement/loop, internal/surface/cli
+   - landed: 8ede4810f
 11. **`--auto-plan`**
    Decision 6: the planning path run by the loop on a draft whose decisions
    are all recorded, with the two adversarial reviews as validator steps and
@@ -180,12 +184,35 @@ spec stays open until the last lane closes it.
   each finding or rejects it in writing in its report, and the next round
   judges the new head afresh; the rounds are counted, and their bound is
   itd-50's.
-- **Remaining: 9 to 11** (the landing, the run record and transcripts,
-  `--auto-plan` with its ADR). Each registers its body in `loop.DefaultStages`.
-  Piece 9's landing consumes the audit the closing lane recorded: after `spec
-  close` parks the OWED receipt, it ingests the verdict the auditor's run names
-  (`abcd intent audit ingest --verdict-json <that path>`) rather than asking for
-  a second audit. The issue key (decision 10)
-  is refused by name at the key check; the lane that admits it adds the
-  `remedy:` field schema, drain's eligibility rule and the `handback:` report
-  field. `--auto-plan` is not a flag yet.
+- **Landed (lane loopLanding): pieces 9 and 10**, the landing and the run
+  record. The land stage takes a validated lane to the default branch one step
+  per invocation, each recorded in the lane's `landing` (state schema 7) so a
+  killed step resumes where it stopped: it checks the worktree is clean at the
+  judged head; on the closing lane it runs `spec close` in the lane's worktree
+  and ingests the verdict the closing lane's audit returned into the receipt the
+  close parks, and for each capture the lane's receipts declared fixed
+  (`resolves`, with the fixing commit) it runs `capture resolve`, committing
+  both on the lane with `Delivers:` and `Resolves:` trailers; it pushes only
+  once a preflight receipt names the head (the pre-push hook runs; nothing is
+  forced or skipped); it opens the pull request through `gh` with a body from
+  the records through the outbound scrub, re-reading and stripping it after
+  creation; it arms auto-merge with the merge-queue method the ruleset mirror
+  at the lane's base names, or leaves the pull request open; it pushes nothing
+  after arming; and it removes the lane's worktree and branch only once the
+  pushed head is an ancestor of the default branch on `origin`. `implement
+  record` renders the run record in text and JSON (lanes, verified receipts
+  with each runner's reported model, every verdict, fixes, landings,
+  transcripts) and, on a complete run, captures each transcript by path through
+  the history capture's own code, one capture per path. Marking a step's
+  `landed:` line in the spec on a non-closing lane is not made by the landing.
+- **Landed (lane drainLoop): the issue key (decision 10).** The key check
+  admits an issue id by shape; its pre-start checks are itd-82's eligibility
+  rule, read as `abcd drain` reads it, and the peers; its run has one lane, whose
+  brief is the record and its remedy with the reproduce-then-fix definition of
+  done; its validators take no fidelity audit; its receipt must declare the
+  issue fixed in `resolves`, and the landing resolves it with that commit. The
+  receipt carries `handback: {kind, reason, home}`, which the loop reads at the
+  receipt, before the validators, discarding the lane's worktree and branch
+  and ending the lane handed back.
+- **Remaining: 11** (`--auto-plan` with its ADR), and piece 3 (the process
+  driver, on the runner). `--auto-plan` is not a flag yet.

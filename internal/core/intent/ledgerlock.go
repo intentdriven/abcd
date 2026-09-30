@@ -50,8 +50,9 @@ func repoLedgerLock(repoRoot string) func(func() error) error {
 // the next attempt. The rest is twice the longest interval a ledger writer
 // sleeps between its polls (fsutil.LockPollCeiling), so a ledger writer polling
 // through a wait wakes inside the window at least once per attempt and finds
-// the lock free; the intent and spec stores' writers poll every 10ms, far
-// inside it. It is derived from the ceiling rather than restated beside it: a
+// the lock free; the intent and spec stores' writers poll on the same fsutil
+// backoff (their locks are fsutil.WithDirLock), so the one ceiling bounds
+// every waiter. It is derived from the ceiling rather than restated beside it: a
 // rest written as a number once sat below the poll's real ceiling
 // (iss-2609262257227538).
 var (

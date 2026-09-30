@@ -28,7 +28,7 @@ func TestStatusPageRendersTheBlockFromTheSameRead(t *testing.T) {
 	}
 	page := outFile(t, out, "record/health/index.html")
 
-	want, err := statusblock.Read(f.Root(), lanes)
+	want, err := statusblock.Read(f.Root(), lanes, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,5 +125,33 @@ func TestStatusPageCarriesNoOrderNote(t *testing.T) {
 	block := (&explorer{c: &composer{ui: ui}, status: &statusblock.Block{Order: statusblock.OrderPick}}).statusSection()
 	if !strings.HasPrefix(block, `<div class="dash reading status-block">`) {
 		t.Errorf("the block does not open on its panels:\n%s", block)
+	}
+}
+
+// TestStatusSectionShowsEachRowsTarget is itd-2609212103572513 criterion 4 on
+// the site's Status page: a row whose intent names a release shows the target
+// after what places it there, under the ui.json label, in Now, Next and
+// Later alike; a row with none shows none.
+func TestStatusSectionShowsEachRowsTarget(t *testing.T) {
+	f := newFixture(t)
+	ui, err := LoadUI(f.Root(), "site-src/ui.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := &explorer{c: &composer{ui: ui}, status: &statusblock.Block{
+		Now:   []statusblock.Row{{ID: "itd-5", Title: "Five", Bucket: "planned", Target: "next", NextUp: true}},
+		Next:  []statusblock.Row{{ID: "itd-5", Title: "Five", Bucket: "planned", Target: "next"}, {ID: "itd-4", Title: "Four", Bucket: "planned"}},
+		Later: []statusblock.Row{{ID: "itd-6", Title: "Six", Bucket: "planned", Target: "v0.11.0", Failing: []string{"spec_link"}}},
+	}}
+	got := e.statusSection()
+	for _, want := range []string{
+		`<span class="id">itd-5</span><span>Five</span><span class="s"><b>next up</b> · target next</span>`,
+		`<span class="id">itd-5</span><span>Five</span><span class="s">target next</span>`,
+		`<span class="id">itd-4</span><span>Four</span></li>`,
+		`<span class="id">itd-6</span><span>Six</span><span class="s">fails spec_link · target v0.11.0</span>`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("the block lacks\n%s\nin\n%s", want, got)
+		}
 	}
 }

@@ -64,7 +64,11 @@ content hash, validates every page, and writes atomically.
 
 Add `--keep-original` to retain the source at
 `.abcd/memory/sources/<sha256>.<ext>` (the lifeboat licence gate — not launch —
-governs its export). Report `status`, `licence`, and the written `pages`. An
+governs its export). Report `status`, `licence`, and the written `pages`, and
+`scan_gap` whenever it is present: the repository armed gitleaks in
+`.abcd/config/gitleaks.json` and the binary is not installed, so the pages were
+redacted by the native scanner alone. A gitleaks run that fails refuses the
+ingest. An
 already-known source re-ingests from the registry with no `--pages-json`.
 
 ## Ask memory

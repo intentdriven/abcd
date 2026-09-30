@@ -13,6 +13,8 @@ package ahoy
 // every delegated step runs on the host.
 
 import (
+	"strings"
+
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/oracle"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -26,6 +28,10 @@ const (
 	// ProviderAdapterRefusedGapID names a provider configuration the adapter
 	// refuses, so it is never silently unused.
 	ProviderAdapterRefusedGapID = "oracle_api.config_refused"
+	// ProviderAdapterRouteSkippedGapID names each route the configuration
+	// read skipped, one diagnostic per line of its Detail, so a skip is never
+	// silent at the bare board.
+	ProviderAdapterRouteSkippedGapID = "oracle_api.route_skipped"
 )
 
 func detectProviderAdapter(cwd string) []Gap {
@@ -40,15 +46,38 @@ func detectProviderAdapter(cwd string) []Gap {
 			Required: false, Resolvable: false,
 		}}
 	}
-	if len(cfg.Providers()) > 0 {
+	var gaps []Gap
+	if len(cfg.Providers()) == 0 {
+		gaps = append(gaps, Gap{
+			ID: ProviderAdapterGapID, Category: UserState, Scope: "machine",
+			Title:  "no OpenAI-compatible provider configured (optional)",
+			Detail: oracle.AdapterExplanation,
+			FixHint: "`abcd ahoy --providers` walks through the setup and where the key can live; `abcd ahoy connect` sets one up. " +
+				"Declining changes nothing: every delegated step runs on the host, the only route.",
+			Required: false, Resolvable: false,
+		})
+	}
+	return append(gaps, skippedRoutes(cfg.Diagnostics)...)
+}
+
+// skippedRoutes is the gap naming each route the configuration read skipped
+// (a role outside the roster, a route to a provider this machine has not
+// configured, a repository's route to a provider that holds a key), one
+// diagnostic per line of its Detail. It is advisory: the rest of the
+// configuration applies, so nothing is required of the person.
+func skippedRoutes(diagnostics []string) []Gap {
+	if len(diagnostics) == 0 {
 		return nil
 	}
+	lines := make([]string, len(diagnostics))
+	for i, d := range diagnostics {
+		lines[i] = termsafe.Sanitize(fsutil.RedactHome(d))
+	}
 	return []Gap{{
-		ID: ProviderAdapterGapID, Category: UserState, Scope: "machine",
-		Title:  "no OpenAI-compatible provider configured (optional)",
-		Detail: oracle.AdapterExplanation,
-		FixHint: "`abcd ahoy --providers` walks through the setup and where the key can live; `abcd ahoy connect` sets one up. " +
-			"Declining changes nothing: every delegated step runs on the host, the only route.",
+		ID: ProviderAdapterRouteSkippedGapID, Category: UserState, Scope: "machine",
+		Title:    "a provider route is skipped",
+		Detail:   strings.Join(lines, "\n"),
+		FixHint:  "Each line names the route, why it is skipped and where to change it; `abcd ahoy --providers` shows the routes in force.",
 		Required: false, Resolvable: false,
 	}}
 }

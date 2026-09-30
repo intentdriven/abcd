@@ -23,9 +23,10 @@ var (
 // for up to timeout, after which ErrLockContention is returned. fn's own error is
 // returned unwrapped.
 //
-// It is the single inter-process load-modify-write lock primitive: capture's
-// ledger allocator and ahoy's ~/.abcd history registry both route through it
-// rather than keep divergent flock loops (the one-canonical-primitive invariant).
+// It is the single inter-process load-modify-write lock primitive for a lock
+// file, as WithDirLock is for a lock on a directory: every flock in the tree
+// goes through one of the two rather than a divergent loop of its own (the
+// one-canonical-primitive invariant, iss-129).
 // The lock is advisory — every writer of the guarded state must take it — and its
 // scope is one lock file; callers that must not deadlock keep their acquisitions
 // unnested.
@@ -109,9 +110,12 @@ func tightenLock(fd int, mode uint32) {
 // openLockFd opens lockPath with O_CREAT|O_RDWR|O_NOFOLLOW and verifies, on the
 // same descriptor, that it is a regular file — refusing a symlinked or
 // non-regular lock path with ErrLockPathUnsafe. The file is created, or
-// narrowed, to lockPerm.
+// narrowed, to lockPerm. The descriptor is close-on-exec: flock holds until
+// every descriptor on the open file closes, so one inherited by a child the
+// holder starts would keep the lock held after the holder is gone
+// (iss-2609300109005165).
 func openLockFd(lockPath string) (int, error) {
-	fd, err := syscall.Open(lockPath, syscall.O_CREAT|syscall.O_RDWR|syscall.O_NOFOLLOW, lockPerm)
+	fd, err := syscall.Open(lockPath, syscall.O_CREAT|syscall.O_RDWR|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, lockPerm)
 	if err != nil {
 		if err == syscall.ELOOP {
 			return -1, fmt.Errorf("%w: lock path is a symlink: %s", ErrLockPathUnsafe, lockPath)
@@ -171,6 +175,56 @@ const lockPollStart = 5 * time.Millisecond
 // nextLockPoll is the interval after b: doubled, and held at LockPollCeiling.
 func nextLockPoll(b time.Duration) time.Duration {
 	return min(2*b, LockPollCeiling)
+}
+
+// WithDirLock acquires an exclusive advisory (flock) lock on the directory dir
+// itself, holds it across fn, and releases it when fn returns. It is
+// WithFileLock's contract for a store that locks its own directory rather than
+// a lock file beside its records, so no lock artefact is left in a committed
+// tree: the same poll and the same timeout, ErrLockContention past it naming
+// the caller's budget, and fn's own error returned unwrapped.
+//
+// The directory is opened O_NOFOLLOW|O_DIRECTORY and never created. A symlink
+// or anything that is not a directory at dir is ErrLockPathUnsafe; an absent
+// dir is the open's own errno, unwrapped as WithFileLock returns its open's
+// (errors.Is fs.ErrNotExist), so a caller can tell a store that is not there
+// from one it may not lock, and wrap it in words of its own. The descriptor is
+// close-on-exec, as openLockFd's is, so a child the holder starts cannot keep
+// the lock past the holder.
+//
+// There is no inode revalidation, unlike WithFileLock: a directory lock is not
+// retired by unlinking it, so a holder must not remove dir inside fn, or a
+// waiter would be granted the lock on the removed inode.
+func WithDirLock(dir string, timeout time.Duration, fn func() error) error {
+	fd, err := openDirLockFd(dir)
+	if err != nil {
+		return err
+	}
+	defer syscall.Close(fd)
+	if err := acquireFlock(fd, time.Now().Add(timeout), timeout); err != nil {
+		return err
+	}
+	defer syscall.Flock(fd, syscall.LOCK_UN)
+	return fn()
+}
+
+// openDirLockFd opens dir read-only as a directory, refusing to follow a
+// symlink. flock needs no write access, so a read-only descriptor holds
+// LOCK_EX. The two refusals are told apart by Lstat rather than by errno,
+// because a symlink under O_NOFOLLOW|O_DIRECTORY is ELOOP on one kernel and
+// ENOTDIR on another.
+func openDirLockFd(dir string) (int, error) {
+	fd, err := syscall.Open(dir, syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0)
+	if err == nil {
+		return fd, nil
+	}
+	if err == syscall.ELOOP || err == syscall.ENOTDIR {
+		if fi, lerr := os.Lstat(dir); lerr == nil && fi.Mode()&os.ModeSymlink != 0 {
+			return -1, fmt.Errorf("%w: lock directory is a symlink: %s", ErrLockPathUnsafe, dir)
+		}
+		return -1, fmt.Errorf("%w: lock path is not a directory: %s", ErrLockPathUnsafe, dir)
+	}
+	return -1, err
 }
 
 // WithFileLockIn is WithFileLock with the lock file resolved INSIDE root: rel is

@@ -7,10 +7,10 @@ package oracle
 // judged by the same output contract, and the call recorded as the provider,
 // the model asked for and the model the provider reported.
 //
-// No delegating verb dispatches through it yet: sending a step whose route
-// names a provider through its connection, instead of handing it to the host,
-// is spc-2609251028149555's (AC 3). Until then the setup's verification call
-// is its one caller from a front door.
+// Dispatch (dispatch.go) sends a step whose route names a provider through
+// it, instead of handing the step to the host (spc-2609251028149555, AC 3).
+// The delegating verbs call Dispatch, and the setup's verification call
+// reaches Call directly.
 
 import (
 	"context"
@@ -52,8 +52,9 @@ type CallRequest struct {
 // target the configuration does not admit (Admit, again, so a target built
 // anywhere but the read is held to the same rule) and a named key that
 // resolves to nothing, because an unauthenticated call is never made. An
-// answer whose reported model the denylist refuses is discarded: the provider
-// substituted a frontier model, and the refusal names what it reported.
+// answer whose reported model an oracle.denylist entry refuses is discarded:
+// the provider substituted a model the configuration refuses, and the refusal
+// names what it reported.
 func (c *APIConfig) Call(ctx context.Context, creds credential.Source, req CallRequest, opts ...openaiapi.Option) ([]byte, CallRecord, error) {
 	t := req.Target
 	if err := c.Admit(t.Provider, t.Model); err != nil {
@@ -92,7 +93,7 @@ func resolveKey(creds credential.Source, p Provider) (string, error) {
 }
 
 // complete is the one place a call is made: the client built on the pinned
-// base URL, the answer read, and the reported model held to the denylist.
+// base URL, the answer read, and the reported model held to oracle.denylist.
 func complete(ctx context.Context, provider, baseURL, key, model string, brief openaiapi.Brief, settings Settings,
 	contract func([]byte) error, denylist []DenyEntry, opts ...openaiapi.Option) ([]byte, CallRecord, error) {
 	client, err := openaiapi.New(baseURL, key, opts...)
@@ -105,7 +106,7 @@ func complete(ctx context.Context, provider, baseURL, key, model string, brief o
 	}
 	if e, denied := Denied(denylist, res.ModelReported); denied {
 		return nil, CallRecord{}, fmt.Errorf("oracle adapter: provider %s was asked for %s and reported answering with %s, "+
-			"which the vendor denylist refuses (%s, from %s); the answer is discarded", provider, model, res.ModelReported, e.Pattern, e.Origin)
+			"which %s refuses (%s, from %s); the answer is discarded", provider, model, res.ModelReported, denylistKey, e.Pattern, e.Origin)
 	}
 	return res.Content, CallRecord{Provider: provider, ModelAsked: res.ModelAsked, ModelReported: res.ModelReported}, nil
 }

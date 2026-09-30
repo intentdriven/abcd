@@ -70,7 +70,13 @@ inbound = outbound statement is the whole of it.
   the check) and the pre-push receipt check: a push of a commit the remote does
   not hold yet needs a passing `make preflight` run on that commit with nothing
   uncommitted beside it, and the hook checks the receipt that run mints rather
-  than running the preflight while the push holds its connection open.
+  than running the preflight while the push holds its connection open. The
+  prepare-commit-msg hook writes the `Assisted-by:` trailer a revert or
+  cherry-pick leaves out, from one command:
+  `git -c abcd.assistedBy=<Vendor>:<model-version> revert|cherry-pick <sha>`.
+  Unset, the key writes nothing; a standing `git config abcd.assistedBy` also
+  stamps every `-m`/`-F` commit, every `--amend` and every cherry-pick, a false
+  disclosure for work no model touched, so set it for the one command only.
 - **Conventional-commit prefixes** (`feat`/`fix`/`docs`/`chore`/`refactor`/`test`/`ci`),
   no scopes; short title, body explains why.
 - A user-facing change **resolves its issue or ships its intent in the same diff**;
@@ -82,6 +88,11 @@ inbound = outbound statement is the whole of it.
   delivered by the last of them. The merge gate refuses either trailer when its
   record does not reach a terminal folder in the same change: for an intent,
   that means `abcd spec close <spc-N>` on every spec still open that names it.
+  A close that ships an intent, and the release cut (`abcd launch ship`), each
+  refuse until a docs review is saved for HEAD with `abcd docs fidelity record`
+  (`commands/docs.md` says how). The review is labelled with the commit it
+  read, so a cut made on `main` needs one recorded for the merge commit: run
+  the reviewer after the merge.
 - **Docs** are Diátaxis (one type per page, present tense); the design record lives
   under `.abcd/`, never in `docs/`. Prose follows the canonical
   [writing style guide](../docs/reference/writing-style.md).

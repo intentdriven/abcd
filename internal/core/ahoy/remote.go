@@ -221,7 +221,14 @@ func RemoteRead(cwd string) (RemoteResult, error) {
 	}
 	observed, merge, err := ghSecurityState(abs, res.Repo)
 	if err != nil {
-		return refuseRemote(res, "could not read "+res.Repo+"'s security settings, so nothing is known about what would change: "+errText(err)), nil
+		res = refuseRemote(res, "could not read "+res.Repo+"'s security settings, so nothing is known about what would change: "+errText(err))
+		// The read installs nothing (looking is never acting); it names the
+		// verb that offers the install.
+		var missing *tools.MissingError
+		if errors.As(err, &missing) && missing.Explanation.Tool == "gh" {
+			res.Notes = append(res.Notes, "abcd ahoy remote apply offers to install it, and runs the step only on a yes typed at a terminal")
+		}
+		return res, nil
 	}
 	res.Observed, res.Merge = observed, merge
 	res.Changes = pendingChanges(observed)
@@ -248,7 +255,7 @@ func RemoteRead(cwd string) (RemoteResult, error) {
 // the default), which is also what lets the confirmation name exactly what would
 // change. Then secret scanning, then push protection: GitHub refuses push protection
 // on a repo whose secret scanning is off.
-func RemoteApply(cwd string, p Prompter) (RemoteResult, error) {
+func RemoteApply(cwd string, p Prompter, confirmTool tools.Confirm) (RemoteResult, error) {
 	if p == nil {
 		p = RefusingPrompter{}
 	}
@@ -256,6 +263,15 @@ func RemoteApply(cwd string, p Prompter) (RemoteResult, error) {
 	if done {
 		return res, nil
 	}
+	// The gh offer comes after the gates, so a verb that would refuse anyway
+	// never asks to install anything, and before the read, which needs gh.
+	offer, ok := OfferGH(abs, confirmTool)
+	if !ok {
+		res = refuseRemote(res, offer[0])
+		res.Notes = append(res.Notes, offer[1:]...)
+		return res, nil
+	}
+	res.Notes = append(res.Notes, offer...)
 	observed, merge, err := ghSecurityState(abs, res.Repo)
 	if err != nil {
 		return refuseRemote(res, "could not read "+res.Repo+"'s security settings; nothing was changed, because a write over an unknown state is a guess: "+errText(err)), nil
@@ -312,6 +328,32 @@ func RemoteApply(cwd string, p Prompter) (RemoteResult, error) {
 		res.Status = "clean"
 	}
 	return res, nil
+}
+
+// OfferGH is the explain-then-install mode for gh at a remote write (itd-63
+// criterion 2; the product thinker's DQ3 ruling, 2026-09-29: offer to install
+// gh on an explicit yes). With gh on PATH it says nothing. Otherwise it hands
+// the registry's explanation to confirm, which the front door answers yes only
+// for a person at a terminal, and runs the registry's step only on that yes.
+//
+// ok is true only when gh was installed AND verified; the notes then say what
+// ran. Every other outcome (a no, no one asked, CI, a failed or unverified
+// step) is ok=false with the reason first, then the explanation with the exact
+// command, so the caller refuses loudly and reaches no gh call on a half-done
+// install.
+func OfferGH(guard string, confirm tools.Confirm) (notes []string, ok bool) {
+	if onPath(guard, "gh") {
+		return nil, true
+	}
+	res := newToolInstaller(guard).Install("gh", tools.GitHubSettings, confirm)
+	if res.Ran && res.Installed && res.Verified {
+		return []string{res.Summary() + "; the install does not sign gh in, so if GitHub refuses the request, run gh auth login"}, true
+	}
+	notes = []string{"the GitHub CLI (gh) is not on PATH: " + res.Summary()}
+	if !res.Ran {
+		notes = append(notes, tools.Explain("gh", tools.GitHubSettings).Lines()...)
+	}
+	return notes, false
 }
 
 // remotePrepare runs the three gates both verbs share and returns done=true when

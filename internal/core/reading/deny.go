@@ -132,9 +132,9 @@ func (r Row) Reaches(rel string) bool {
 	return r.matches(path.Base(rel))
 }
 
-// Admits reports whether any row of the table admits rel at position p. It is
+// admits reports whether any row of the table admits rel at position p. It is
 // the whole of the assembler's answer to "may a reading see this file".
-func Admits(p Position, rel string) bool {
+func admits(p Position, rel string) bool {
 	for _, row := range Table {
 		if row.AdmittedAt(p) && row.Reaches(rel) {
 			return true

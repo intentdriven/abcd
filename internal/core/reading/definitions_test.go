@@ -45,7 +45,7 @@ var blindnessConditions = []string{
 // definitionText reads one definition out of the repository under test.
 func definitionText(t *testing.T, root string, p Position) string {
 	t.Helper()
-	raw, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(DefinitionPath(p))))
+	raw, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(definitionPath(p))))
 	if err != nil {
 		t.Fatalf("read the %s definition: %v", p, err)
 	}
@@ -212,8 +212,8 @@ func TestEveryDefinitionStatesItsRegime(t *testing.T) {
 		if def.SHA256 == "" {
 			t.Errorf("the %s definition resolved to no hash", p)
 		}
-		if def.Path != DefinitionPath(p) {
-			t.Errorf("the %s definition resolved to %q, want %q", p, def.Path, DefinitionPath(p))
+		if def.Path != definitionPath(p) {
+			t.Errorf("the %s definition resolved to %q, want %q", p, def.Path, definitionPath(p))
 		}
 	}
 }
@@ -426,7 +426,7 @@ func TestColdReadingDefinitionsSatisfyTheAgentContract(t *testing.T) {
 // writeDefinition writes a minimal well-formed definition under root.
 func writeDefinition(t *testing.T, root string, p Position, frontmatter string) {
 	t.Helper()
-	rel := DefinitionPath(p)
+	rel := definitionPath(p)
 	if err := os.MkdirAll(filepath.Join(root, filepath.Dir(filepath.FromSlash(rel))), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -518,7 +518,7 @@ func TestLoadDefinitionsSkipsAnAbsentDefinition(t *testing.T) {
 	root := t.TempDir()
 	writeDefinition(t, root, PositionWidening, "position: widening\nregime: generative\n")
 
-	defs, err := LoadDefinitions(root)
+	defs, err := loadDefinitions(root)
 	if err != nil {
 		t.Fatalf("LoadDefinitions: %v", err)
 	}
@@ -527,7 +527,7 @@ func TestLoadDefinitionsSkipsAnAbsentDefinition(t *testing.T) {
 	}
 
 	writeDefinition(t, root, PositionDetection, "position: detection\n")
-	if _, err := LoadDefinitions(root); err == nil {
+	if _, err := loadDefinitions(root); err == nil {
 		t.Fatal("a present-but-malformed definition was skipped rather than reported")
 	}
 }
@@ -617,7 +617,7 @@ func TestLoadDefinitionRefusesARegimeThatDisagreesWithItsPosition(t *testing.T) 
 	// listing three instruments where four were meant is worse than an error.
 	root := t.TempDir()
 	writeDefinition(t, root, PositionWidening, "position: widening\nregime: registrative\n")
-	if _, err := LoadDefinitions(root); err == nil {
+	if _, err := loadDefinitions(root); err == nil {
 		t.Error("LoadDefinitions skipped a definition whose regime disagrees with its position")
 	}
 }

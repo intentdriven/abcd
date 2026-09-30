@@ -8,7 +8,6 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core"
 	"github.com/intentdriven/abcd/internal/core/ahoy"
-	"github.com/intentdriven/abcd/internal/core/update"
 	"github.com/intentdriven/abcd/internal/core/vintage"
 )
 
@@ -32,7 +31,7 @@ func TestOnlyUpdateCheckTouchesTheNetwork(t *testing.T) {
 	newReleaseFetcher = func() vintage.ReleaseFetcher { return recordingFetcher{&calls} }
 	updaters := 0
 	origUpdater := newUpdater
-	newUpdater = func() *update.Updater { updaters++; return origUpdater() }
+	newUpdater = func() updater { updaters++; return origUpdater() }
 	t.Cleanup(func() { newReleaseFetcher = orig; newUpdater = origUpdater })
 
 	// Every implicit path: none may fetch.

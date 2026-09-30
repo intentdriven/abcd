@@ -201,7 +201,7 @@ type PressReleaseResult struct {
 // verdict, the manifest attestation, the packed coverage summary, and findings that
 // each cite packed lifeboat paths (cite-or-be-dropped). Coverage reuses the coverage
 // Summary shape. In deterministic mode the verdict is a mechanical mapping over
-// VerifyManifest + the packed coverage summary; in delegated mode the model's
+// verifyManifest + the packed coverage summary; in delegated mode the model's
 // verdict is membership-validated and its findings are cite-or-dropped.
 // ---------------------------------------------------------------------------
 
@@ -222,7 +222,7 @@ type ReviewFindingDrop struct {
 }
 
 // ReviewArtefact is the on-disk shape of review/review-<manifest12>.json. PromptVersion
-// is omitted in deterministic mode. ManifestVerified is the VerifyManifest outcome —
+// is omitted in deterministic mode. ManifestVerified is the verifyManifest outcome —
 // a false value is a MAJOR_RETHINK verdict input, NOT a fatal error.
 type ReviewArtefact struct {
 	SchemaVersion    int             `json:"schema_version"`

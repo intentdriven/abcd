@@ -1,17 +1,18 @@
 ---
 name: intent
 description: "File a draft intent from quoted text, or render the intent store's status bare: Writes the draft into drafts/; refuses a lone word."
-argument-hint: "[text] [--title \"<title>\"] | ready <itd-N> [--grounds \"<pursued|deferred|declined>: <conjecture>\"] | plan <itd-N> [<itd-N>…] [--bundle <name>] [--impact <additive|breaking|fix>] [--target <vX.Y.Z|next>] | reclassify <itd-N> --kind <standalone|bundle-member --bundle <name>|superseded --by <itd-M|adr-N> --reason \"<why>\"> | hold <itd-N> --reason \"<text>\" | unhold <itd-N> | target <itd-N> <vX.Y.Z|next> | link <itd-N> <spc-N> | audit [<itd-N>] | audit --owed [--max <n>] | audit --issue-drift [--strict] | consistency [<itd-N>] | consistency ingest --findings-json <file> | condition <itd-N> [<cond-id> --disposition <survived|narrowed|falsified|untested> --occasioned-by <rdi-N|itd-N> --grounds \"<why>\" [--narrowing \"<what now holds>\"]]"
+argument-hint: "[text] [--title \"<title>\"] | ready <itd-N> [--grounds \"<pursued|deferred|declined>: <conjecture>\"] | plan <itd-N> [<itd-N>…] [--bundle <name>] [--impact <additive|breaking|fix>] [--target <vX.Y.Z|next>] | reclassify <itd-N> --kind <standalone|bundle-member --bundle <name>|superseded --by <itd-M|adr-N> --reason \"<why>\"> | hold <itd-N> --reason \"<text>\" | unhold <itd-N> | target <itd-N> <vX.Y.Z|next> | link <itd-N> <spc-N> | prepass <itd-N> [--findings-json <file>] | audit [<itd-N>] | audit --owed [--max <n>] | audit --issue-drift [--strict] | consistency [<itd-N>] | consistency ingest --findings-json <file> | condition <itd-N> [<cond-id> --disposition <survived|narrowed|falsified|untested> --occasioned-by <rdi-N|itd-N> --grounds \"<why>\" [--narrowing \"<what now holds>\"]]"
 block: people
 ---
 
 # `/abcd:intent` — intent lifecycle
 
 `abcd --help` lists `intent` in the person's records group. `intent audit
-ingest`, which applies a host-produced audit verdict, and `intent consistency
-ingest`, which files host-produced consistency findings, are in the
-agents-and-hosts block of `abcd --help --agent`, and their lines there name
-this page.
+ingest`, which applies a host-produced audit verdict, `intent consistency
+ingest`, which files host-produced consistency findings, and `intent prepass`,
+which the planning interview runs either side of the host's own judgement, are
+in the agents-and-hosts block of `abcd --help --agent`, and their lines there
+name this page.
 
 The write side of the intent record store under `.abcd/development/intents/`.
 Every intent gets a stable `itd-N` id and directory-as-truth lifecycle state
@@ -46,7 +47,7 @@ the verb names it on stderr and leaves it alone; relay that line, because record
 sitting there reach no gate and no release cut.
 
 **Which ledger?** A half-formed observation, question, or nitpick goes to
-`/abcd:capture "…"`; a user-facing change you want to ship goes to
+`/abcd:capture "…" --remedy "…"` (every new issue names the fix it proposes); a user-facing change you want to ship goes to
 `/abcd:intent "…"`. For a big, unproven idea there is an optional third route:
 `/abcd:ideate` runs the admission gauntlet and records the verdict either way.
 It is a pointer, never a precondition — filing a draft without it is a normal
@@ -332,15 +333,20 @@ null answer, never alternatives made up to fill a set; a decision with one
 defensible answer is not asked, but recorded as a decision line naming the
 answer and why no question was put. What the human is asked to accept, edit
 or strike is quoted in the question itself, never referred to: prose written
-between questions does not reliably reach them, so a question that asks "are
-these yours?" about text they cannot see cannot be answered. A recommendation
-the human asks for is given in prose apart from the question. The next
-question waits for the last answer. The register follows
-the addressee: a product thinker gets outcomes in product terms with no
+between questions is invisible while a question shows, so a question that asks
+"are these yours?" about text they cannot see cannot be answered. For the same
+reason, the example that makes a question answerable goes in the question text,
+and each option's preview carries what choosing that option means, with its own
+concrete example. A recommendation the human asks for is given in prose apart
+from the question. The next question waits for the last answer. The register
+follows the addressee: a product thinker gets outcomes in product terms with no
 record ids or internals; a technical facilitator gets the mechanism and the
 ids. Where the hat is unknown, that is the first question. The mode carries
-the addressee: before each question set `abcd mode product-thinker` or `abcd
-mode facilitator`, and the question names that role.
+the addressee: classify each question's addressee first, and before each
+question set `abcd mode product-thinker` or `abcd mode facilitator` when it
+differs from the current label, then ask, and the question names that role.
+The status line names the person the question on screen is for, so a mixed
+interview re-sets it per question, never once at the start.
 
 **What each register is assumed to know.** The register sets the tone; the
 knowledge floor is what an explanation is measured against. The product
@@ -367,6 +373,47 @@ surviving findings are applied or explicitly rejected — per
 `adversarial-review-scales-with-blast-radius` in the development record's
 principles. An unreviewed draft does not reach the interview; the readiness
 gate that will refuse the move mechanically is a recorded seed until built.
+
+**Opening: the pre-pass (itd-42).** Before the first question, the interview
+is prepared from the record rather than from memory. The binary assembles and
+checks; the judgement is yours, as the host.
+
+- Run `"${CLAUDE_PLUGIN_ROOT}/abcd" intent prepass <itd-N> --json`. It prints
+  the pass's input and writes nothing: the draft, the brief's numbered
+  invariants, each principle's rule, a one-line index of every other intent
+  with its shelf, the four answers an overlap is asked with, the `rules` the
+  findings are held to, and an `input_digest`. It refuses, on exit 2, a record
+  that is not a draft.
+- Judge the input under its `rules`. A conflict names one invariant by its
+  number or one principle by its path, and quotes the anchor's line and the
+  draft's line verbatim. An overlap names a sibling from the index; a
+  recommendation, when there is one, names one answer and its reason. A
+  concern with nothing to anchor it is an `unanchored` question. Never assert
+  a conflict you cannot quote.
+- Write the findings (`_type` `abcd/intent-prepass-findings/v1`, the `intent`,
+  and the `input_digest` copied from the input) to the local tier, at
+  `.abcd/.work.local/scratch/prepass/<itd-N>.findings.json`, then run
+  `"${CLAUDE_PLUGIN_ROOT}/abcd" intent prepass <itd-N> --findings-json
+  .abcd/.work.local/scratch/prepass/<itd-N>.findings.json --json`. It validates
+  them against the input as it stands, and refuses them on exit 2 with nothing
+  written when their shape is wrong or an input moved since the pass (run the
+  first step again). It writes
+  `.abcd/.work.local/scratch/planning-briefs/<itd-N>.md`, the only file the
+  pre-pass writes: a conflict or an overlap it cannot anchor becomes a question
+  marked unanchored, with the reason, and a brief written by hand at that path
+  is never replaced.
+- Open the interview from `planning-briefs/<itd-N>.md`: its summary back and
+  its decomposition feed steps 1 and 2 below, and its `### Qn` questions are
+  asked first, in order, one at a time under the rule above, each quoting the
+  lines the brief quotes. An overlap is asked with its four answers (keep both,
+  bundle, supersede, refine) and the null answer; the brief's lean, when it
+  has one, is said in prose apart from the question, never as a marked option.
+  Record each answer where its `Lands as:` line says before the next question:
+  a decision line in the draft's `## Decisions`, a change to the draft's text,
+  or a typed link through `abcd intent reclassify`. A bundle answer is carried
+  to step 10's bundle form, which is the sign-off act. A question the product
+  thinker defers is recorded as deferred in the draft; skipping it is not a
+  deferral.
 
 1. Read the draft record; summarise it back: the press release, why it
    matters, the current Acceptance Criteria (say explicitly when they are
@@ -517,6 +564,17 @@ but only on the close after which no open spec names it:
 "${CLAUDE_PLUGIN_ROOT}/abcd" spec close <spc-N> --remainder <slug> --json   # partial delivery: close this spec, mint the rest, leave the intent planned
 ```
 
+**A close that ships needs a docs review for HEAD first.** Every close without
+`--remainder` that ships an intent runs the doc-fidelity gate, and refuses
+with "run the docs review first" until one is saved:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" docs fidelity record --verdict-json verdict.json   # the reviewer's verdict, labelled with HEAD
+```
+
+`/abcd:docs` (its `fidelity` section) says how to compose the verdict. A commit
+after the review makes it stale, so review the commit you close on.
+
 **An intent owns one or more specs.** Where the work did not fit one piece of
 scheduled work, the spec that delivered part of it is closed on its own terms
 and a new spec is minted for the remainder and attached to the same intent —
@@ -611,17 +669,25 @@ findings and move to the next item. The planning interview, acceptance-criteria
 authoring, and `abcd intent plan` are human-session-only acts.
 
 An unattended run MAY prepare an interview without performing it: for a
-plannable draft, write a planning brief to the local work tier
-(`.abcd/.work.local/scratch/planning-briefs/`) — the summary-back with per-AC
-provenance (seeded vs human-confirmed), the itd-84 hand-run as an ungraded
-proposal, proposed acceptance criteria and open-question resolutions, and any
-blocks-planning flags. The SOTA fit-challenge runs as a separate, independent
-pass (evaluator outside the loop), filed alongside the brief. The pre-pass
-reads the records the draft touches — a contradiction with a recorded
-invariant is exactly what it exists to catch. It never edits the draft, never
-files the routing, and never runs `plan`; the interview then starts from the
-brief instead of a cold read, and grading into the calibration note still
-happens only when the human confirms the routing.
+plannable draft, it runs the pre-pass the interview opens with — `abcd intent
+prepass <itd-N> --json`, the host's judgement under the input's rules, then
+`abcd intent prepass <itd-N> --findings-json <path>` — which writes the
+planning brief to the local work tier
+(`.abcd/.work.local/scratch/planning-briefs/<itd-N>.md`). The brief holds the
+summary-back, which says which acceptance criteria are seeded and which are
+human-confirmed and carries any proposed criteria and open-question
+resolutions; the itd-84 decomposition as an ungraded proposal; the numbered
+questions, each saying where its answer lands (every conflict with an
+invariant or a principle quoted from both sides, every overlap with a sibling
+asked with the four answers, every concern with no anchor marked unanchored);
+and any blocks-planning flags. The SOTA fit-challenge runs as a separate,
+independent pass (evaluator outside the loop), filed alongside the brief. The
+pre-pass reads the draft, the invariants, the principles and the sibling index
+— a contradiction with a recorded invariant is exactly what it exists to
+catch — and writes only the brief. It never edits the draft, never files the
+routing, and never runs `plan`; the interview then starts from the brief
+instead of a cold read, and grading into the calibration note still happens
+only when the human confirms the routing.
 
 ## Hold
 
@@ -680,7 +746,10 @@ intent only: a bundle is planned without one and each member targeted after);
 Refused with nothing written: a draft, a shipped, superseded or discipline
 record, and a value that is neither shape. A target is a report, never a gate:
 `launch --dry-run` and the release cut (`launch ship`, `abcd changelog`) list
-every targeted intent still planned, and neither refuses on one. Closing the
+every targeted intent still planned, and neither refuses on one. The cut moves
+every target it passes — `next`, or a tag at or below the release it cuts — to
+`next`, whatever the following release is numbered, in the same write as the
+changelog, and the dated section names the move. Closing the
 spec that ships the intent drops the line, as superseding it does, and
 record-lint's `record_schema` rule refuses a `target_release` left on a shipped
 or superseded intent.
@@ -812,6 +881,25 @@ has not configured, or a routing table that cannot be read exits 2 before
 anything is written. With no table accepted and no `--route`, the step asks for
 `host-decides` and nothing is printed.
 
+**A step routed to a provider has already run.** When the person has pointed
+`oracle.roles.intent-auditor` at a provider in `~/.abcd/config.json`, `intent
+audit <itd-N>`, `intent consistency` and `intent audit --owed` (its head) send
+the request they emitted there themselves, ingest the answer, and print the
+ingest's result with a `route` receipt whose `connection_used` names the
+provider and whose `provider_call` names the provider, the model asked for and
+the model it reported. **When `route.connection_used` is not `harness`, the
+step already ran: do not dispatch the intent-auditor and do not ingest
+anything; relay the result.** A provider that holds a key takes only
+self-contained agents (ruling DR5 of 2026-09-29), and the intent-auditor reads
+files, so pointed at one it is refused at exit 2 before anything is written or
+sent, naming the rule and `oracle.bundled_context_providers`; relay the
+refusal. A provider that could not be reached leaves the request to you with one
+stderr line, and the `routing` block then names the harness. An ingest handed a
+verdict or findings you produced while the agent is routed to a provider is
+refused at exit 2; `--route intent-auditor=host-decides` keeps one run on the
+harness. `spec close` sends the review it emits the same way and says so on
+stderr; the close stands whatever the review does.
+
 **Hand the auditor the whole request file.** `intent audit` writes it to the
 reported `request_path`. It states the criteria count, lists every scope
 condition under the `cond-…` identity the verdict disposes it by, and carries a
@@ -858,7 +946,9 @@ the first entry after it that emits, so one bad record never blocks the drain;
 no `next` while `owed` is above zero means no listed entry could be emitted.
 It writes: the emit parks the OWED stub in a markerless intent, a committed
 record, so even a look leaves a diff; bare `intent audit` is the read-only
-listing. It runs no reviewer. Nothing owed is `owed: 0` and no `next`; report it and stop.
+listing. It runs no reviewer on the host's behalf, except that a head routed to
+a provider is sent there and its verdict ingested, and `next` then carries the
+ingest's result with the `route` receipt. Nothing owed is `owed: 0` and no `next`; report it and stop.
 `--max` without `--owed` is refused, as are `--owed` with an intent id or with
 `--issue-drift`.
 
@@ -886,8 +976,11 @@ auditor at a time are what bound the cost:
 3. **A NOT_MET verdict is captured, never fixed.** Every intent the drain
    reaches has already shipped, so a criterion it did not meet is a finding
    against delivered work: file it with
-   `abcd capture "<itd-N> fidelity audit NOT_MET: <criterion> (receipt <rcp-…>)" --category drift --severity <minor|major> --source review-followup`,
-   naming the receipt, and continue the loop. The drain changes no code and
+   `abcd capture "<itd-N> fidelity audit NOT_MET: <criterion> (receipt <rcp-…>)" --category drift --severity <minor|major> --source review-followup --remedy "<the fix the criterion asks for>"`,
+   naming the receipt, and continue the loop. The remedy is required: name the
+   change that would meet the criterion as its text states it, and where that
+   fix depends on outside practice, cite the prior-art or state-of-the-art
+   check it rests on (principle `prefer-sota`) in the capture's text. The drain changes no code and
    re-opens nothing; the fix round belongs to the build that owns the work. A
    `dead_letter` ingest is reported with its reason and is listed apart by
    bare `intent audit` from then on.
@@ -1023,7 +1116,10 @@ A payload that validates is written in two places. Each finding is filed as one
 issue (`inconsistency`, from an `agent-finding`, located at its first end, with
 the report as its evidence) — unless an open record already quotes either end
 and names its document, in which case it is linked to that record and nothing
-is filed. And one dated report lands on the reviews shelf,
+is filed. A finding it files runs the capture verb's filing-time match on its
+summary and explanation, never against a record the same pass filed, and
+carries a `duplicates:` or `refines:` link naming each likely double; each row
+reports it as `match`. And one dated report lands on the reviews shelf,
 `.abcd/work/reviews/<date>-consistency[-<itd-N>]/00-summary.md`, pinned to the
 commit the pass read, listing every finding with both ends quoted and located
 and the record it was filed as or linked to; a second run the same day takes

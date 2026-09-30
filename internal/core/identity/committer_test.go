@@ -30,7 +30,7 @@ func TestEffectiveCommitter_EnvFirst(t *testing.T) {
 	dir := gitRepo(t, "Alex Reppel", "alex@example.com")
 	t.Setenv("GIT_COMMITTER_NAME", "Test User")
 	t.Setenv("GIT_COMMITTER_EMAIL", "test@example.com")
-	eff, err := EffectiveCommitter(dir)
+	eff, err := effectiveCommitter(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +45,7 @@ func TestEffectiveCommitter_RoleConfigThenUser(t *testing.T) {
 	isolateCommitter(t)
 	dir := gitRepo(t, "Alex Reppel", "alex@example.com")
 	runGitT(t, dir, "config", "committer.email", "ci@example.com")
-	eff, err := EffectiveCommitter(dir)
+	eff, err := effectiveCommitter(dir)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -140,13 +140,13 @@ func TestPrincipleProjectsItsStatementOnly(t *testing.T) {
 // alone is handed the knowledge record and nothing else.
 func TestPrincipleIsAScopeToken(t *testing.T) {
 	found := false
-	for _, k := range Kinds() {
+	for _, k := range allKinds() {
 		if k == KindPrinciple && string(k) == "principle" {
 			found = true
 		}
 	}
 	if !found {
-		t.Fatalf("Kinds() = %v, which does not carry %q", Kinds(), "principle")
+		t.Fatalf("Kinds() = %v, which does not carry %q", allKinds(), "principle")
 	}
 
 	root := principleFixture(t, defaultRule)
@@ -173,7 +173,7 @@ func TestPrincipleIsAScopeToken(t *testing.T) {
 // only the given kinds (comparative keeps the discipline its criteria need).
 func presetFileNaming(kinds string) string {
 	var entries []string
-	for _, p := range AssemblingPositions() {
+	for _, p := range assemblingPositions() {
 		k := kinds
 		if p == PositionComparative {
 			k = `"discipline"`
@@ -258,7 +258,7 @@ func TestManifestAtTheOldSchemaVersionIsRefused(t *testing.T) {
 	}
 	root := fixtureRepo(t)
 	res := assembleFixture(t, root, PositionDetection)
-	raw, err := EncodeManifest(res.Manifest)
+	raw, err := encodeManifest(res.Manifest)
 	if err != nil {
 		t.Fatal(err)
 	}
