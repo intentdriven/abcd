@@ -100,7 +100,6 @@ type Inputs struct {
 	Commands   []surface.Command
 	Agents     []string
 	Chapters   map[string]string
-	Baseline   []string
 	Population []string
 	Flags      []Flag
 }
@@ -111,7 +110,6 @@ type Verdict struct {
 	Population []string   `json:"population"`
 	Coverage   []Row      `json:"coverage"`
 	Uncovered  []Surface  `json:"uncovered"`
-	Backlog    []Surface  `json:"backlog"`
 	Review     *Review    `json:"review,omitempty"`
 	False      []Sentence `json:"false_sentences"`
 	Public     []Sentence `json:"public_findings"`
@@ -121,7 +119,7 @@ type Verdict struct {
 	Reasons    []string   `json:"reasons"`
 }
 
-// Key is the surface's baseline key: the command path for a verb or sub-verb,
+// Key is the surface's sort key: the command path for a verb or sub-verb,
 // "agent:<name>" for an agent.
 func (s Surface) Key() string {
 	if s.Kind == KindAgent {
@@ -190,7 +188,7 @@ func Names(text string, s Surface) bool {
 // refuses.
 func Judge(in Inputs, r Reviewer, report bool) Verdict {
 	v := Verdict{Report: report, Population: append([]string(nil), in.Population...),
-		Uncovered: []Surface{}, Backlog: []Surface{}, False: []Sentence{}, Public: []Sentence{},
+		Uncovered: []Surface{}, False: []Sentence{}, Public: []Sentence{},
 		Proposed: []Edit{}, Applied: []Sentence{}, Reasons: []string{}}
 	who := ""
 	if len(in.Population) > 0 {
@@ -201,13 +199,7 @@ func Judge(in Inputs, r Reviewer, report bool) Verdict {
 		chapters = append(chapters, name)
 	}
 	sort.Strings(chapters)
-	baseline := map[string]bool{}
-	for _, b := range in.Baseline {
-		baseline[b] = true
-	}
-	shipped := map[string]bool{}
 	for _, s := range Shipped(in.Commands, in.Agents) {
-		shipped[s.Key()] = true
 		row := Row{Surface: s}
 		for _, name := range chapters {
 			if Names(in.Chapters[name], s) {
@@ -216,22 +208,9 @@ func Judge(in Inputs, r Reviewer, report bool) Verdict {
 			}
 		}
 		v.Coverage = append(v.Coverage, row)
-		switch {
-		case row.Chapter == "" && baseline[s.Key()]:
-			v.Backlog = append(v.Backlog, s)
-		case row.Chapter == "":
+		if row.Chapter == "" {
 			v.Uncovered = append(v.Uncovered, s)
 			v.Reasons = append(v.Reasons, who+"no brief chapter under 04-surfaces/ names the "+string(s.Kind)+" `"+s.Name+"`")
-		case baseline[s.Key()]:
-			v.Reasons = append(v.Reasons, who+"the "+string(s.Kind)+" `"+s.Name+"` is named by "+row.Chapter+
-				" and no longer lags: remove it from the baseline")
-		}
-	}
-	keys := append([]string(nil), in.Baseline...)
-	sort.Strings(keys)
-	for _, b := range keys {
-		if !shipped[b] {
-			v.Reasons = append(v.Reasons, who+"the baseline lists `"+b+"`, which the binary does not ship: remove it from the baseline")
 		}
 	}
 	layerOne := len(v.Reasons) > 0
@@ -251,6 +230,14 @@ func Judge(in Inputs, r Reviewer, report bool) Verdict {
 	at := short(rev.Commit)
 	switch rev.Status {
 	case ReviewMatch:
+		// Record refuses a PROMOTE naming a false brief sentence; a receipt
+		// edited to carry one after it was saved is still not a pass.
+		for _, f := range rev.Findings {
+			if f.Doc != DocPublic {
+				v.Reasons = append(v.Reasons, who+"the doc-fidelity review for "+at+" is PROMOTE yet names a false sentence in "+
+					f.Chapter+": \""+f.Sentence+"\", so it is not a usable verdict: "+RunReviewFirst)
+			}
+		}
 	case ReviewNone:
 		v.Reasons = append(v.Reasons, who+"no saved doc-fidelity review names "+at+": "+RunReviewFirst)
 	case ReviewStale:

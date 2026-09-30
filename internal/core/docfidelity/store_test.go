@@ -64,19 +64,14 @@ func TestUnarmedRepositoryIsNotJudged(t *testing.T) {
 	}
 }
 
-func TestReadInputsReadsChaptersAgentsAndBaseline(t *testing.T) {
+func TestReadInputsReadsChaptersAndAgents(t *testing.T) {
 	root := armedRepo(t)
-	write(t, root, BaselinePath, `{"schema_version": 1, "reason": "pre-gate backlog", "surfaces": ["abcd rules"]}`)
 	in, err := ReadInputs(root, tree, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(in.Chapters) != 2 || len(in.Agents) != 1 || in.Agents[0] != "scribe" || len(in.Baseline) != 1 {
-		t.Fatalf("inputs: %d chapters, agents %v, baseline %v", len(in.Chapters), in.Agents, in.Baseline)
-	}
-	write(t, root, BaselinePath, `{"schema_version": 1, "surfaces": ["abcd rules"], "extra": 1}`)
-	if _, err := ReadInputs(root, tree, nil); err == nil {
-		t.Fatal("a baseline with an unknown field was accepted")
+	if len(in.Chapters) != 2 || len(in.Agents) != 1 || in.Agents[0] != "scribe" {
+		t.Fatalf("inputs: %d chapters, agents %v", len(in.Chapters), in.Agents)
 	}
 }
 
@@ -188,5 +183,64 @@ func TestGateWritesNothing(t *testing.T) {
 	}
 	if after := git(t, root, "status", "--porcelain", "--untracked-files=all", "--ignored"); after != before {
 		t.Fatalf("the gate wrote to the tree:\nbefore %q\nafter  %q", before, after)
+	}
+}
+
+// A PROMOTE is the verdict that lets the change proceed, so it cannot also
+// list a false brief sentence: the receipt would say the brief is current and
+// name the sentence that shows it is not. A sentence or replacement the gate
+// would later write into a chapter is one line of bounded length.
+func TestRecordRefusesAFailOpenPayload(t *testing.T) {
+	long := strings.Repeat("a", maxSentenceBytes+1)
+	for name, payload := range map[string]string{
+		"PROMOTE naming a false brief sentence": `{"verificationResult": "PROMOTE", "judgeModel": "claude-opus-5-5", "tier": "full", "failing": [
+			{"doc": "brief", "chapter": "06-capture.md", "sentence": "capture prints YAML.", "evidence": "cli.go:1 prints JSON", "disposition": "confirmed"}]}`,
+		"sentence spanning lines": `{"verificationResult": "HOLD", "judgeModel": "claude-opus-5-5", "tier": "full", "failing": [
+			{"doc": "brief", "chapter": "06-capture.md", "sentence": "### ` + "`abcd capture`" + `\n\nBody line one.\n", "replacement": "gone", "evidence": "e", "disposition": "confirmed"}]}`,
+		"sentence carrying a carriage return": `{"verificationResult": "HOLD", "judgeModel": "claude-opus-5-5", "tier": "full", "failing": [
+			{"doc": "brief", "chapter": "06-capture.md", "sentence": "one\rtwo", "evidence": "e", "disposition": "confirmed"}]}`,
+		"sentence over the bound": `{"verificationResult": "HOLD", "judgeModel": "claude-opus-5-5", "tier": "full", "failing": [
+			{"doc": "brief", "chapter": "06-capture.md", "sentence": "` + long + `", "evidence": "e", "disposition": "confirmed"}]}`,
+		"replacement over the bound": `{"verificationResult": "HOLD", "judgeModel": "claude-opus-5-5", "tier": "full", "failing": [
+			{"doc": "brief", "chapter": "06-capture.md", "sentence": "capture prints YAML.", "replacement": "` + long + `", "evidence": "e", "disposition": "confirmed"}]}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			root := armedRepo(t)
+			if _, _, err := Record(root, []byte(payload), at); err == nil {
+				t.Fatal("recorded")
+			}
+			if _, err := os.Stat(filepath.Join(root, ReceiptsDir)); !os.IsNotExist(err) {
+				t.Fatalf("a refused payload left a receipt directory: %v", err)
+			}
+		})
+	}
+	t.Run("PROMOTE with a public finding is still recorded", func(t *testing.T) {
+		root := armedRepo(t)
+		_, r, err := Record(root, []byte(`{"verificationResult": "PROMOTE", "judgeModel": "claude-opus-5-5", "tier": "full", "failing": [
+			{"doc": "public", "chapter": "README.md", "sentence": "abcd prints YAML.", "evidence": "cli.go:1 prints JSON", "disposition": "confirmed"}]}`), at)
+		if err != nil || r.Status != ReviewMatch {
+			t.Fatalf("status %s err %v", r.Status, err)
+		}
+		if _, _, err := Record(root, []byte(`{"verificationResult": "HOLD", "judgeModel": "claude-opus-5-5", "tier": "full", "failing": [
+			{"doc": "brief", "chapter": "06-capture.md", "sentence": "`+strings.Repeat("a", maxSentenceBytes)+`", "evidence": "e", "disposition": "confirmed"}]}`), at); err != nil {
+			t.Fatalf("a sentence at the bound was refused: %v", err)
+		}
+	})
+}
+
+// No file admits an undocumented surface: a repository that lists a new verb
+// in a backlog file still has that verb judged uncovered, and layer 1 refuses.
+func TestNoBacklogFileAdmitsAnUndocumentedSurface(t *testing.T) {
+	root := armedRepo(t)
+	write(t, root, ".abcd/development/release/doc-fidelity-backlog.json",
+		`{"schema_version": 1, "reason": "pre-gate backlog", "surfaces": ["abcd newverb"]}`)
+	withNew := append(append([]surface.Command(nil), tree...), surface.Command{Path: "abcd newverb"})
+	v, _, err := Gate(root, withNew, []string{"itd-1"}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !v.Refuse || v.Review != nil || len(v.Uncovered) != 1 || v.Uncovered[0].Name != "abcd newverb" ||
+		!strings.Contains(strings.Join(v.Reasons, "\n"), "verb `abcd newverb`") {
+		t.Fatalf("a backlogged new verb passed layer 1: refuse=%v uncovered=%+v reasons=%v", v.Refuse, v.Uncovered, v.Reasons)
 	}
 }

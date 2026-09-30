@@ -55,8 +55,9 @@ func readFlags(root string) ([]Flag, error) {
 
 // Apply writes each edit into its chapter and records one flag per edit,
 // naming the reviewed commit. Every edit is checked before anything is
-// written: a chapter outside the surfaces directory, or a sentence the chapter
-// does not carry exactly once, refuses the whole apply and writes nothing.
+// written: a chapter outside the surfaces directory, a sentence or replacement
+// that is not one bounded line, or a sentence the chapter does not carry
+// exactly once, refuses the whole apply and writes nothing.
 func Apply(root string, edits []Edit, commit string, at time.Time) ([]Flag, error) {
 	next := map[string]string{}
 	for _, e := range edits {
@@ -65,6 +66,11 @@ func Apply(root string, edits []Edit, commit string, at time.Time) ([]Flag, erro
 		}
 		if e.Sentence == "" || e.Replacement == "" {
 			return nil, fmt.Errorf("the edit to %s carries no sentence or no replacement", e.Chapter)
+		}
+		for what, text := range map[string]string{"sentence": e.Sentence, "replacement": e.Replacement} {
+			if err := checkLine(what, text); err != nil {
+				return nil, fmt.Errorf("the edit to %s: %w", e.Chapter, err)
+			}
 		}
 		text, ok := next[e.Chapter]
 		if !ok {
@@ -125,7 +131,7 @@ type Request struct {
 // VerdictShape is the payload `abcd docs fidelity record` accepts.
 const VerdictShape = `{"verificationResult": "PROMOTE|HOLD|INCONCLUSIVE", "judgeModel": "<pinned model id>", ` +
 	`"tier": "full|shallow", "failing": [{"doc": "brief|public", "chapter": "<04-surfaces file or public doc>", ` +
-	`"sentence": "<the false sentence, verbatim>", "replacement": "<drafted correction, optional>", ` +
+	`"sentence": "<the false sentence, verbatim, from one line>", "replacement": "<drafted correction, optional>", ` +
 	`"evidence": "<file:line showing the divergence>", "disposition": "confirmed"}]}`
 
 // NewRequest composes the reviewer's request for commit.

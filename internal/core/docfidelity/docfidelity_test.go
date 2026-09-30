@@ -114,28 +114,6 @@ func TestHiddenAndMovedSurfacesAreNotShippedSurfaces(t *testing.T) {
 	}
 }
 
-func TestBaselineKeepsPreGateGapsReportedNotRefused(t *testing.T) {
-	in := fixture()
-	in.Commands = append(in.Commands, surface.Command{Path: "abcd rules"})
-	in.Baseline = []string{"abcd rules"}
-	v := Judge(in, promote, false)
-	if v.Refuse {
-		t.Fatalf("a baselined gap refused: %v", v.Reasons)
-	}
-	if len(v.Backlog) != 1 || v.Backlog[0].Name != "abcd rules" {
-		t.Fatalf("the baselined gap is not reported as backlog: %+v", v.Backlog)
-	}
-}
-
-func TestABaselineEntryThatNoLongerLagsRefusesUntilRemoved(t *testing.T) {
-	in := fixture()
-	in.Baseline = []string{"abcd capture list"} // covered by 06-capture.md
-	v := Judge(in, panicReviewer{}, false)
-	if !v.Refuse || !strings.Contains(strings.Join(v.Reasons, "\n"), "remove it from the baseline") {
-		t.Fatalf("a covered baseline entry did not refuse: %+v", v)
-	}
-}
-
 func TestLayerTwoOutcomes(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -151,6 +129,9 @@ func TestLayerTwoOutcomes(t *testing.T) {
 		{"unreadable receipt", Review{Status: ReviewInvalid, Commit: "c1", Problems: []string{"malformed JSON"}}, RunReviewFirst},
 		{"inconclusive verdict", Review{Status: ReviewInconclusive, Commit: "c1", Verdict: "INCONCLUSIVE"}, RunReviewFirst},
 		{"HOLD naming no sentence", Review{Status: ReviewHold, Commit: "c1"}, "names no sentence"},
+		{"PROMOTE carrying a false brief sentence", Review{Status: ReviewMatch, Commit: "c1", Verdict: "PROMOTE", Findings: []Sentence{
+			{Doc: DocBrief, Chapter: "06-capture.md", Sentence: "capture list prints YAML.", Evidence: "cli.go:10 prints JSON"},
+		}}, `"capture list prints YAML."`},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

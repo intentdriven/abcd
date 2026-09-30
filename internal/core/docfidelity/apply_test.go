@@ -102,6 +102,21 @@ func TestApplyRefusesAnAmbiguousOrAbsentSentenceAndWritesNothing(t *testing.T) {
 			}
 		})
 	}
+	t.Run("sentence spanning lines", func(t *testing.T) {
+		root := armedRepo(t)
+		body := "# Capture\n\n### `abcd capture`\n\nBody line one.\nBody line two.\n"
+		write(t, root, ChaptersDir+"/06-capture.md", body)
+		edits := []Edit{{Chapter: "06-capture.md", Sentence: "### `abcd capture`\n\nBody line one.\nBody line two.\n", Replacement: "gone"}}
+		if _, err := Apply(root, edits, "c1", at); err == nil {
+			t.Fatal("applied a sentence spanning lines")
+		}
+		if got, _ := os.ReadFile(filepath.Join(root, ChaptersDir, "06-capture.md")); string(got) != body {
+			t.Fatalf("the chapter changed: %q", got)
+		}
+		if _, err := os.Stat(filepath.Join(root, FlagsPath)); !os.IsNotExist(err) {
+			t.Fatal("a refused apply recorded a flag")
+		}
+	})
 	t.Run("chapter outside the surfaces directory", func(t *testing.T) {
 		root := armedRepo(t)
 		if _, err := Apply(root, []Edit{{Chapter: "../../../README.md", Sentence: "a", Replacement: "b"}}, "c1", at); err == nil {

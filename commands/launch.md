@@ -408,6 +408,21 @@ Exit codes gate the flow:
   something to work around.
 - **2** — a structural fault (the repository could not be read). Relay it and stop.
 
+**The cut needs a docs review for the commit it runs on.** When any intent
+reached `shipped/` since the base tag, the cut runs the doc-fidelity gate over
+all of them and refuses (`doc-fidelity`, "run the docs review first") until a
+review is saved for HEAD:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" docs fidelity record --verdict-json verdict.json
+```
+
+`/abcd:docs` (its `fidelity` section) says how to compose the verdict. The
+review is labelled with the commit it read and kept in the checkout's local
+tier, so a review saved on a feature branch does not carry over: a cut made on
+`main` needs one recorded there for the merge commit, which means running the
+reviewer after the merge.
+
 ### The findings gate
 
 Both renders — `abcd changelog` and `abcd launch ship` — carry two lines about

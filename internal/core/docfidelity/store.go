@@ -38,18 +38,15 @@ const (
 	// SnapshotPath is the committed command-tree snapshot. Its presence arms
 	// the gate: it marks the repository whose binary the brief describes.
 	SnapshotPath = ".abcd/development/release/surface.json"
-	// BaselinePath is the recorded backlog: surfaces that shipped without a
-	// chapter before the gate existed. It is hand-edited configuration, so its
-	// name deliberately avoids the "-baseline.json" suffix the configuration
-	// walk reserves for machine-written baselines. Each is reported on every run and
-	// refuses nothing; an entry that no longer lags refuses until removed, so
-	// the list only shrinks.
-	BaselinePath = ".abcd/development/release/doc-fidelity-backlog.json"
 	// AgentsDir is the plugin's agent prompts, one <name>.md per agent.
 	AgentsDir = "agents"
 
 	maxChapterBytes = 4 << 20
-	maxPayloadBytes = 1 << 20
+	// maxSentenceBytes bounds a reviewed sentence and its drafted replacement:
+	// each is quoted from, or written into, one line of a chapter, and a line
+	// longer than this (a wide table row) is quoted in part.
+	maxSentenceBytes = 2048
+	maxPayloadBytes  = 1 << 20
 )
 
 // Armed reports whether the repository ships the binary the gate judges: it
@@ -64,8 +61,10 @@ func Armed(root string) bool {
 	return true
 }
 
-// ReadInputs reads the chapters, the agent set and the baseline beside the
-// command tree the caller derived from the binary.
+// ReadInputs reads the chapters, the agent set and the review flags beside the
+// command tree the caller derived from the binary. No file exempts a surface
+// from layer 1: every surface the binary ships is named by a chapter or
+// refuses.
 func ReadInputs(root string, commands []surface.Command, population []string) (Inputs, error) {
 	in := Inputs{Commands: commands, Population: population, Chapters: map[string]string{}}
 	names, err := regularMarkdown(root, ChaptersDir)
@@ -85,25 +84,6 @@ func ReadInputs(root string, commands []surface.Command, population []string) (I
 	}
 	for _, a := range agents {
 		in.Agents = append(in.Agents, strings.TrimSuffix(a, ".md"))
-	}
-	data, err := fsutil.ReadGuarded(filepath.Join(root, BaselinePath), maxPayloadBytes)
-	switch {
-	case errors.Is(err, os.ErrNotExist):
-	case err != nil:
-		return Inputs{}, fmt.Errorf("reading %s: %w", BaselinePath, err)
-	default:
-		var b struct {
-			SchemaVersion int      `json:"schema_version"`
-			Reason        string   `json:"reason"`
-			Surfaces      []string `json:"surfaces"`
-		}
-		if err := jsonstrict.Decode(data, &b); err != nil {
-			return Inputs{}, fmt.Errorf("%s: %w", BaselinePath, err)
-		}
-		if b.SchemaVersion != 1 {
-			return Inputs{}, fmt.Errorf("%s: schema_version %d, want 1", BaselinePath, b.SchemaVersion)
-		}
-		in.Baseline = b.Surfaces
 	}
 	flags, err := readFlags(root)
 	if err != nil {
@@ -267,8 +247,14 @@ func Record(root string, raw []byte, at time.Time) (string, Review, error) {
 		if strings.TrimSpace(f.Disposition) == "" {
 			return "", Review{}, fmt.Errorf("failing[%d] carries no disposition", i)
 		}
-		if f.Replacement != "" && (strings.ContainsAny(f.Replacement, "\n\r") || f.Replacement == f.Sentence) {
-			return "", Review{}, fmt.Errorf("failing[%d].replacement must be one line that differs from the sentence", i)
+		if err := checkLine("sentence", f.Sentence); err != nil {
+			return "", Review{}, fmt.Errorf("failing[%d]: %w", i, err)
+		}
+		if err := checkLine("replacement", f.Replacement); err != nil {
+			return "", Review{}, fmt.Errorf("failing[%d]: %w", i, err)
+		}
+		if f.Replacement != "" && f.Replacement == f.Sentence {
+			return "", Review{}, fmt.Errorf("failing[%d].replacement must differ from the sentence", i)
 		}
 		if f.Doc == DocBrief {
 			brief++
@@ -276,6 +262,9 @@ func Record(root string, raw []byte, at time.Time) (string, Review, error) {
 	}
 	if p.VerificationResult == "HOLD" && brief == 0 {
 		return "", Review{}, errors.New("a HOLD names no false brief sentence, so there is nothing to correct: a verdict with no confirmed brief sentence is PROMOTE")
+	}
+	if p.VerificationResult == "PROMOTE" && brief > 0 {
+		return "", Review{}, fmt.Errorf("a PROMOTE names %d false brief sentence(s), so the brief is not current: a verdict with a confirmed brief sentence is HOLD", brief)
 	}
 	head, err := gitutil.ResolveCommit(root, "HEAD")
 	if err != nil {
@@ -317,4 +306,17 @@ func Record(root string, raw []byte, at time.Time) (string, Review, error) {
 		return "", Review{}, err
 	}
 	return filepath.ToSlash(rel), SavedReview{Root: root, Commit: head}.Review(), nil
+}
+
+// checkLine refuses a sentence or replacement the gate would match in, or
+// write into, a chapter unless it is one line of at most maxSentenceBytes: a
+// string spanning lines replaces headings and paragraphs, not a sentence.
+func checkLine(what, text string) error {
+	if strings.ContainsAny(text, "\n\r") {
+		return fmt.Errorf("the %s spans lines: quote it from one line of its chapter", what)
+	}
+	if len(text) > maxSentenceBytes {
+		return fmt.Errorf("the %s is %d bytes, over the %d-byte bound", what, len(text), maxSentenceBytes)
+	}
+	return nil
 }

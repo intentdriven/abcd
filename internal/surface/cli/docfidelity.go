@@ -229,13 +229,10 @@ func renderFidelity(w io.Writer, verb string, out docsFidelityReport) {
 			covered++
 		}
 	}
-	fmt.Fprintf(w, "  layer 1: %d of %d shipped surfaces named by a chapter; %d uncovered; %d in the recorded backlog (%s)\n",
-		covered, len(v.Coverage), len(v.Uncovered), len(v.Backlog), docfidelity.BaselinePath)
+	fmt.Fprintf(w, "  layer 1: %d of %d shipped surfaces named by a chapter; %d uncovered\n",
+		covered, len(v.Coverage), len(v.Uncovered))
 	for _, s := range v.Uncovered {
 		fmt.Fprintf(w, "    uncovered %s `%s`\n", s.Kind, s.Name)
-	}
-	for _, s := range v.Backlog {
-		fmt.Fprintf(w, "    backlog   %s `%s`\n", s.Kind, s.Name)
 	}
 	if v.Review == nil {
 		fmt.Fprintln(w, "  layer 2: not run — layer 1 refused, and an undocumented surface needs no reviewer")

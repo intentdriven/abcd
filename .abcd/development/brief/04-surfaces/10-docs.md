@@ -79,7 +79,10 @@ in a gate, which is what keeps the lint itself deterministic and offline.
   HEAD that is PROMOTE lets the change proceed. A missing receipt, one naming
   another commit, an unreadable one, or an INCONCLUSIVE one refuses with "run the
   docs review first". A HOLD refuses and names each false brief sentence. A false
-  sentence in a public doc is reported and never refuses.
+  sentence in a public doc is reported and never refuses. The record sub-verb
+  refuses a PROMOTE that names a false brief sentence, and a saved PROMOTE that
+  names one refuses as unusable. Each quoted sentence and drafted replacement is
+  one line of at most 2048 bytes, or the verdict is refused.
 - **Where the gate refuses.** The spec close runs it over the intents the close
   would ship, before anything moves, and the release cut runs it over every
   intent shipped since the last tag. A close that mints a remainder ships nothing
@@ -87,13 +90,8 @@ in a gate, which is what keeps the lint itself deterministic and offline.
   the tag, so a chapter edited ahead of the last cut is current rather than
   drift. It is armed only in a repository that carries the command-tree snapshot
   and the brief's `04-surfaces/` chapters, since only that brief describes the
-  binary. The gate also reads an optional backlog,
-  `.abcd/development/release/doc-fidelity-backlog.json`, for surfaces that
-  shipped without a chapter before the gate existed. Each run reports a listed
-  surface and none of them refuses. An entry that a chapter names, or that no
-  longer ships, refuses until it is removed, so the list only shrinks. An absent
-  file lists nothing, and this repository carries none: every shipped surface
-  has a chapter that names it.
+  binary. No file exempts a surface from layer 1: a surface the binary ships
+  that no chapter names refuses, whenever it first shipped.
 - **Draft and apply, review after.** A reviewer may draft the correction of a
   false sentence (`replacement`). The gate proposes that edit and still refuses.
   The gate's apply form replaces the sentence in its chapter (it must occur
@@ -102,10 +100,10 @@ in a gate, which is what keeps the lint itself deterministic and offline.
   then lets the change proceed and lists the edit as awaiting review. It does so
   only while the chapter no longer carries the sentence, does carry the draft,
   and a flag names the edit. The autonomous form applies the drafts for an
-  unattended run and lists each applied edit. When no usable review is saved it
-  also hands the routine the reviewer's request, and it still refuses. The
-  report form is the per-task pass: it states every finding, refuses nothing and
-  exits 0.
+  unattended run and lists each applied edit. Whenever the saved review is not a
+  match for HEAD it also hands the routine the reviewer's request, and it still
+  refuses. The report form is the per-task pass: it states every finding,
+  refuses nothing and exits 0.
 
 Bare `abcd docs` prints command usage rather than a status board; the
 [surfaces index](README.md) carries the one enumeration of where the

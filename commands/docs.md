@@ -95,10 +95,12 @@ the change delivered, check each sentence against the code, and compose:
 ```
 
 A sentence you **confirmed** false goes in `failing` with `"doc": "brief"`, its
-`chapter` file name, the `sentence` verbatim, the `evidence` (file:line), a
-`disposition`, and, where you can, a drafted `replacement`; the verdict is then
-`HOLD`. A false sentence in the public docs takes `"doc": "public"`: it is
-reported and never refuses. Use `INCONCLUSIVE` when you cannot judge; never
+`chapter` file name, the `sentence` verbatim from one line of the chapter (at
+most 2048 bytes; quote the part on one line when it wraps), the `evidence`
+(file:line), a `disposition`, and, where you can, a drafted `replacement`; the
+verdict is then `HOLD`, since the record verb refuses a `PROMOTE` naming one. A
+false sentence in the public docs takes `"doc": "public"`: it is reported and
+never refuses. Use `INCONCLUSIVE` when you cannot judge; never
 `PROMOTE` from absent evidence. Save it:
 
 ```bash

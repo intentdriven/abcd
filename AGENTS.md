@@ -395,7 +395,14 @@ irreversible; guessing downward costs nothing.**
   and there is no default: a record that does not already declare it takes
   `--impact additive|breaking|fix` on the close, and a close with neither is
   refused before anything moves. Same shape as the issue rule above: the step
-  that happens after the merge is the one that gets forgotten. A revert
+  that happens after the merge is the one that gets forgotten. A close that
+  ships an intent (one without `--remainder`) also passes the doc-fidelity
+  gate, and so does `launch ship` for every intent shipped since the last tag:
+  each refuses until `go run ./cmd/abcd docs fidelity record` has saved a docs
+  review for HEAD (`commands/docs.md` says how to run one). The review is
+  labelled with the commit it read and kept in the checkout's local tier, so a
+  cut made on `main` needs a review recorded there for the merge commit: the
+  reviewer runs after the merge, not before it. A revert
   withdraws a `Delivers:` on the same terms, only for an intent its own diff
   takes back out of `shipped/`, an intent the reverted commit itself moved in.
 - **A `resolved_by.commit` stamp names a commit that is actually reachable.**

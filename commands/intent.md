@@ -511,6 +511,17 @@ but only on the close after which no open spec names it:
 "${CLAUDE_PLUGIN_ROOT}/abcd" spec close <spc-N> --remainder <slug> --json   # partial delivery: close this spec, mint the rest, leave the intent planned
 ```
 
+**A close that ships needs a docs review for HEAD first.** Every close without
+`--remainder` that ships an intent runs the doc-fidelity gate, and refuses
+with "run the docs review first" until one is saved:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" docs fidelity record --verdict-json verdict.json   # the reviewer's verdict, labelled with HEAD
+```
+
+`/abcd:docs` (its `fidelity` section) says how to compose the verdict. A commit
+after the review makes it stale, so review the commit you close on.
+
 **An intent owns one or more specs.** Where the work did not fit one piece of
 scheduled work, the spec that delivered part of it is closed on its own terms
 and a new spec is minted for the remainder and attached to the same intent —
