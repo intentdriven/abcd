@@ -253,12 +253,16 @@ func paramText(text string) string { return strings.ReplaceAll(text, "\\\n", "")
 //     message goes to the standard error, never into the word;
 //   - a trimmed prefix or suffix and a pattern replacement (`${HOME%/}`,
 //     `${HOME#x}`, `${HOME/x/y}`): the value when the pattern does not match,
-//     and what a suffix trim leaves otherwise is the path above it. A
-//     replacement whose pattern is only `*` replaces the whole value, so it
-//     also prints its string (`${X/*/$HOME}` is `${X}` and `$HOME`);
-//   - a substring (`${HOME:0}`), whose offset is arithmetic and can be 0,
-//     and which can print the `/` an absolute path begins with
-//     (`${PWD:0:1}` is `${PWD}` and `/`);
+//     and what a suffix trim leaves otherwise is the path above it. What
+//     else it can print is read from its pattern's shape (trimTexts,
+//     replacementTexts): a pattern that can take any remainder of the value
+//     can leave only the `/` an absolute path begins with (`${X%${X#?}}` is
+//     `${X}`, `/` and nothing), or the whole value, which a replacement's
+//     string takes the place of (`${X/*/$HOME}` and `${X/?*/$HOME}` are
+//     `${X}` and `$HOME`; iss-2609292320015665, iss-2609300009581165);
+//   - a substring (`${HOME:0}`), whose offset is arithmetic and can be 0 or
+//     past the end, and which can print the `/` an absolute path begins with
+//     (`${PWD:0:1}` is `${PWD}`, `/` and nothing);
 //   - a case change (`${HOME^^}`, `${HOME@U}`), which names the same directory
 //     on a case-insensitive disk, and `@E` and `@P`, which change no path;
 //   - a subscript (`${HOME[0]}`, `${HOME[x[0]]}`), which can be 0, read to
@@ -266,7 +270,10 @@ func paramText(text string) string { return strings.ReplaceAll(text, "\\\n", "")
 //     over any text after it to the first operator byte
 //     (subscriptOperators): an alternative there prints its word, a default
 //     or an assignment the value or its word (`${X[0]]-$HOME}` is the home
-//     with X unset), and anything else the value (`${HOME[0]]}`,
+//     with X unset), a trim, a replacement or a substring what it prints
+//     after a name and also nothing, which is what bash 3.2 prints for one
+//     after a scalar's subscript (`${X[0]%x}` with X=/a/b;
+//     iss-2609300009506126), and anything else the value (`${HOME[0]]}`,
 //     `${HOME[0]@Q}`). A subscript with no `]` cannot be read further.
 //
 // An alternative (`${X:+w}`, `${X+w}`) prints w or nothing, and is the texts
@@ -360,36 +367,382 @@ func spellParameterAt(body string, depth int, split bool) []string {
 		return orWord(rest[1:])
 	case strings.HasPrefix(rest, ":-") || strings.HasPrefix(rest, ":="):
 		return orWord(rest[2:])
-	case subscript, strings.HasPrefix(rest, ":?"):
+	case strings.HasPrefix(rest, ":?"):
 		return value
+	}
+	var texts []string
+	switch {
 	case rest[0] == ':':
-		// A substring: a part of the value, the whole of it at offset 0, and
-		// the `/` an absolute path begins with.
-		return []string{same, "/"}
+		// A substring: a part of the value, the whole of it at offset 0, the
+		// `/` an absolute path begins with, and nothing at an offset past
+		// its end (`${X:9}`) or a length of 0.
+		texts = []string{same, "/", ""}
 	case rest[0] == '/':
-		// A pattern replacement, `/`, `//`, `/#` or `/%`. A pattern of only
-		// `*` matches the whole value, which its string replaces.
-		p := rest[1:]
-		if p != "" && strings.IndexByte("/#%", p[0]) >= 0 {
-			p = p[1:]
-		}
-		s := 0
-		for s < len(p) && p[s] == '*' {
-			s++
-		}
-		if s > 0 && s < len(p) && p[s] == '/' {
-			return orWord(p[s+1:])
-		}
+		texts = replacementTexts(value, rest[1:], depth, split)
+	case rest[0] == '%' || rest[0] == '#':
+		texts = trimTexts(value, rest)
+	case subscript:
 		return value
-	case strings.IndexByte("?#%^,~", rest[0]) >= 0:
+	case strings.IndexByte("?^,~", rest[0]) >= 0:
 		// Every other operator that can print the value unchanged.
 		return value
 	case rest[0] == '@':
 		if len(rest) == 2 && strings.IndexByte("EPULu", rest[1]) >= 0 {
 			return value
 		}
+		return raw
+	default:
+		return raw
 	}
-	return raw
+	if subscript {
+		// bash 3.2 prints nothing for a trim, a replacement or a substring
+		// after a scalar's subscript: `${X[0]%x}` with X=/a/b.
+		texts = appendText(texts, "")
+	}
+	return texts
+}
+
+// trimTexts is the written spelling of a trim, whose operator and pattern
+// are rest (`%p`, `%%p`, `#p`, `##p`), where value is the variable's own:
+// the value, which the trim leaves where its pattern does not match, and
+// what the pattern's shape (readPattern) lets it leave whatever the value
+// holds (iss-2609292320015665, iss-2609300009506126). The rule, for a value
+// that is an absolute path:
+//
+//   - a suffix trim (`%`, `%%`) can leave only the leading `/` when its
+//     pattern can take a remainder of any length (it holds a `*`, unknown
+//     text or an extglob group) and its first element past any run of `*`
+//     is a glob or unknown text: that element can match the text after the
+//     `/`, and the rest of the pattern the remainder (`${X%${X#?}}`,
+//     `${X%%[!/]*}`, `${X%$Y}`). A prefix trim (`#`, `##`) can leave only a
+//     trailing `/` when the same holds of its last element (`${T#${T%?}}`,
+//     `${T##*[!/]}` with T=/tmp/x/). Either can then also leave nothing.
+//   - a longest trim (`%%`, `##`) can leave nothing when its pattern can
+//     match the whole path: it can take any length, its first element is a
+//     `*`, a glob, unknown text or a literal `/`, and its last a `*`, a glob
+//     or unknown text (`${X%%*}`, `${X%%/*}`, `${X##/*}`).
+//
+// Every other trim is the value alone. A pattern whose element at the
+// anchored end is literal text, or which matches a fixed width, leaves the
+// root or nothing only for a value of one particular content or length, as
+// `rm -rf $X` deletes the root only for X=/: `${DIR%/}`, `${f%.txt}`,
+// `${f%.*}`, `${p##*/}`, `${p%/*}`, `${p#$HOME/}`, `${X%?}` and `${X#?}`.
+// A `*` at that end is stepped over, since it can match nothing, so a
+// shortest trim reads as the element behind it; for a longest trim that
+// over-reads (`${X%%*[!/]*}` leaves nothing, never `/`), which only adds a
+// text. Unknown text is any expansion (`$Y`, `${…}`, `$(…)`, a backtick),
+// quoted or not, `$HOME` included: its text is not in the line, and
+// `${X%${X#?}}` builds it from the value itself.
+func trimTexts(value []string, rest string) []string {
+	suffix := rest[0] == '%'
+	longest := len(rest) > 1 && rest[1] == rest[0]
+	p := rest[1:]
+	if longest {
+		p = rest[2:]
+	}
+	sh := readPattern(p, false)
+	anchored := sh.lastPast
+	if suffix {
+		anchored = sh.firstPast
+	}
+	texts := value
+	if sh.wide && roving(anchored) {
+		texts = appendText(appendText(texts, "/"), "")
+	}
+	if longest && sh.whole() {
+		texts = appendText(texts, "")
+	}
+	return texts
+}
+
+// replacementTexts is the written spelling of a pattern replacement, whose
+// text after the first `/` is rest (`p/s`, `/p/s`, `#p/s`, `%p/s`), where
+// value is the variable's own: the value, and what the pattern's shape
+// (readPattern) lets it print whatever the value holds
+// (iss-2609300009581165). A pattern that can match the whole of an absolute
+// path, by the longest-trim rule of trimTexts, prints the string s in its
+// place (`${X/*/$HOME}`, `${X/\/*/$HOME}`, `${X/?*/$HOME}`, `${X/$Y/~}`),
+// and one that can match all of it after the leading `/`, by the suffix-trim
+// rule and ending in a `*`, a glob or unknown text, prints `/` and s,
+// unless `/#` anchors it at the start (`${X/${X#?}}` and `${X//[!\/]*/}`
+// are `/`). s is read as a default's word is (spellWord), and one that
+// prints nothing the guard reads is the empty text. Every other replacement
+// is the value alone: `${X/foo/$HOME}`, `${DIR/#\~/$HOME}`, and
+// `${name//[^a-z]/}`, whose pattern matches one byte.
+func replacementTexts(value []string, rest string, depth int, split bool) []string {
+	p := rest
+	anchor := byte(0)
+	if p != "" && strings.IndexByte("/#%", p[0]) >= 0 {
+		anchor, p = p[0], p[1:]
+	}
+	sh := readPattern(p, true)
+	whole := sh.whole()
+	tail := anchor != '#' && sh.wide && roving(sh.firstPast) && anyWidth(sh.last)
+	if !whole && !tail {
+		return value
+	}
+	s := ""
+	if sh.end < len(p) {
+		s = p[sh.end+1:]
+	}
+	words := spellWord(s, depth, split)
+	if len(words) == 0 {
+		words = []string{""}
+	}
+	texts := value
+	for _, w := range words {
+		if whole {
+			texts = appendText(texts, w)
+		}
+		if tail {
+			texts = appendText(texts, "/"+w)
+		}
+	}
+	if capped(texts) || len(texts) > maxSpellings {
+		return []string{spellCapped}
+	}
+	return texts
+}
+
+// patElem is one element of a trim's or a replacement's pattern, as far as
+// what it can match decides what the expansion can print (readPattern).
+type patElem uint8
+
+const (
+	// elemNone stands where a pattern has no element: an empty one.
+	elemNone patElem = iota
+	// elemLiteral is a byte the pattern matches as itself: plain, escaped
+	// or quoted, other than `/`.
+	elemLiteral
+	// elemSlash is a literal `/`.
+	elemSlash
+	// elemStar is an unquoted `*`, which matches any text, none included.
+	elemStar
+	// elemOne is a glob of one byte: a `?` or a bracket expression.
+	elemOne
+	// elemAny is text the line does not spell, of any length: an expansion
+	// (`$Y`, `${…}`, `$(…)`, a backtick, an ANSI-C string) or an extglob
+	// group (`@(…)`, `*(…)`), or a quote or an expansion that does not close.
+	elemAny
+)
+
+// roving reports whether an element can match text the line does not spell:
+// a one-byte glob or text of any length.
+func roving(e patElem) bool { return e == elemOne || e == elemAny }
+
+// anyWidth reports whether an element can match whatever byte ends a value:
+// a `*` or a roving element.
+func anyWidth(e patElem) bool { return e == elemStar || roving(e) }
+
+// patternShape is what readPattern records of a pattern: its first and last
+// element, the same past any run of `*` at that end, whether it can take a
+// remainder of any length, and, for a replacement, where the `/` that ends
+// it stands (len of the text where none does).
+type patternShape struct {
+	first, last         patElem
+	firstPast, lastPast patElem
+	wide                bool
+	end                 int
+}
+
+// whole reports whether the pattern can match the whole of an absolute
+// path, whatever it holds: it can take any length, its first element can
+// match the leading `/`, and its last can match whatever byte the path ends
+// with.
+func (sh patternShape) whole() bool {
+	return sh.wide && (sh.first == elemSlash || anyWidth(sh.first)) && anyWidth(sh.last)
+}
+
+// readPattern reads the pattern p of a trim or, with replacement, of a
+// replacement, once and left to right, recording its shape (patternShape).
+// Its quotes and escapes make literal text; an expansion in it is stepped
+// over to its close without being read again, so the cost is p's length.
+// A replacement's pattern ends at its first unescaped `/`, which bash 3.2
+// reads as the end even inside quotes and brackets (`${X/[/]/c}` replaces
+// `[`).
+func readPattern(p string, replacement bool) patternShape {
+	tally(len(p))
+	sh := patternShape{end: len(p)}
+	add := func(e patElem) {
+		if sh.first == elemNone {
+			sh.first = e
+		}
+		if e != elemStar && sh.firstPast == elemNone {
+			sh.firstPast = e
+		}
+		sh.last = e
+		if e != elemStar {
+			sh.lastPast = e
+		}
+		if e == elemStar || e == elemAny {
+			sh.wide = true
+		}
+	}
+	literal := func(c byte) {
+		if c == '/' {
+			add(elemSlash)
+		} else {
+			add(elemLiteral)
+		}
+	}
+	// unread marks the rest of the pattern as text the guard does not read.
+	unread := func() patternShape {
+		add(elemAny)
+		return sh
+	}
+	budget := 4*len(p) + 16
+	dq := false
+	for i := 0; i < len(p); {
+		c := p[i]
+		switch {
+		case replacement && c == '/':
+			sh.end = i
+			return sh
+		case c == '\\':
+			if i+1 < len(p) {
+				literal(p[i+1])
+			} else {
+				literal(c)
+			}
+			i += 2
+		case c == '"':
+			dq = !dq
+			i++
+		case c == '\'' && !dq:
+			k := strings.IndexByte(p[i+1:], '\'')
+			if k < 0 {
+				return unread()
+			}
+			for j := i + 1; j < i+1+k; j++ {
+				if replacement && p[j] == '/' {
+					sh.end = j
+					return sh
+				}
+				literal(p[j])
+			}
+			i += k + 2
+		case c == '$' && i+1 < len(p) && p[i+1] == '{':
+			end := closingDolBrace(p, i+2, &budget)
+			if end < 0 {
+				return unread()
+			}
+			add(elemAny)
+			i = end + 1
+		case c == '$' && i+1 < len(p) && p[i+1] == '(':
+			end := closingParen(p, i+2, &budget)
+			if end < 0 {
+				return unread()
+			}
+			add(elemAny)
+			i = end + 1
+		case c == '`':
+			end := closingBacktick(p, i+1, &budget)
+			if end < 0 {
+				return unread()
+			}
+			add(elemAny)
+			i = end + 1
+		case c == '$' && !dq && i+1 < len(p) && p[i+1] == '\'':
+			k := i + 2
+			for k < len(p) && p[k] != '\'' {
+				if p[k] == '\\' {
+					k++
+				}
+				k++
+			}
+			if k >= len(p) {
+				return unread()
+			}
+			add(elemAny)
+			i = k + 1
+		case c == '$':
+			if end := simpleParamEnd(p, i+1); end > 0 {
+				add(elemAny)
+				i = end
+				continue
+			}
+			literal(c)
+			i++
+		case dq:
+			literal(c)
+			i++
+		case strings.IndexByte("*?+@!", c) >= 0 && i+1 < len(p) && p[i+1] == '(':
+			end := extglobEnd(p, i+1)
+			if end < 0 {
+				return unread()
+			}
+			add(elemAny)
+			i = end + 1
+		case c == '*':
+			add(elemStar)
+			i++
+		case c == '?':
+			add(elemOne)
+			i++
+		case c == '[':
+			if end := bracketEnd(p, i, replacement); end > 0 {
+				add(elemOne)
+				i = end + 1
+				continue
+			}
+			literal(c)
+			i++
+		default:
+			literal(c)
+			i++
+		}
+	}
+	return sh
+}
+
+// bracketEnd returns the index of the `]` that closes the bracket
+// expression opening at p[i], or -1 where none does: a `]` directly after
+// the `[` or its `!` or `^` is a member, and a backslash quotes the next
+// byte. In a replacement's pattern a `/` ends the pattern first
+// (readPattern), and the `[` is then literal.
+func bracketEnd(p string, i int, replacement bool) int {
+	j := i + 1
+	if j < len(p) && (p[j] == '!' || p[j] == '^') {
+		j++
+	}
+	if j < len(p) && p[j] == ']' {
+		j++
+	}
+	for j < len(p) {
+		switch p[j] {
+		case '\\':
+			j += 2
+			continue
+		case ']':
+			return j
+		case '/':
+			if replacement {
+				return -1
+			}
+		}
+		j++
+	}
+	return -1
+}
+
+// extglobEnd returns the index of the `)` that closes the extglob group
+// whose `(` is at p[i], counting the groups nested in it, or -1 where none
+// does.
+func extglobEnd(p string, i int) int {
+	depth := 0
+	for j := i; j < len(p); j++ {
+		switch p[j] {
+		case '\\':
+			j++
+		case '(':
+			depth++
+		case ')':
+			if depth--; depth == 0 {
+				return j
+			}
+		}
+	}
+	return -1
 }
 
 // subscriptOperators are the bytes bash 3.2 stops at in the text after a

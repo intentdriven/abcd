@@ -123,8 +123,11 @@ func TestDefaultWordsTheWrittenCompareReads(t *testing.T) {
 		{`rm -rf ${DIR:?$HOME}`, shellBare | shellSQ, VerdictAllow, ""},
 		{`rm -rf ${DIR?/}`, shellBare | shellSQ, VerdictAllow, ""},
 		{`rm -rf ${X[0]]?$HOME}`, shellBare | shellSQ, VerdictAllow, ""},
-		// A trimmed default is the variable's, not the word's.
-		{`rm -rf ${DIR%$HOME}`, shellBare | shellSQ, VerdictAllow, ""},
+		// A trim's pattern is not a word it prints: the home it names is
+		// taken off the value. (`${DIR%$HOME}` blocks for another reason:
+		// its pattern is unknown text at the end it trims from, which can
+		// leave the root, iss-2609292320015665.)
+		{`rm -rf ${DIR#$HOME/}`, shellBare | shellSQ, VerdictAllow, ""},
 	})
 }
 
