@@ -586,7 +586,7 @@ func stageVerified(target string, b []byte) (string, error) {
 	}
 	_, err = io.Copy(stagingWriter(fp), bytes.NewReader(b))
 	if err == nil {
-		err = fp.Sync()
+		err = fsutil.Flush(fp)
 	}
 	if cerr := fp.Close(); err == nil {
 		err = cerr
