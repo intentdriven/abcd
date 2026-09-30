@@ -230,9 +230,10 @@ abcd banlist remove --private acme-internal
 
 Start the loop that takes one READY intent to delivered: Writes the run's state file in the local tier; refuses an open question, a hold or a peer holding it.
 
-**Usage:** `abcd build <itd-N> [--session <id>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [flags]`
+**Usage:** `abcd build <itd-N|iss-N> [--session <id>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [flags]`
 
 Start the implement loop for one intent, or resume the run already in progress for it.
+An issue id starts the loop's issue-keyed lane instead (below).
 A new run's checks run first, and every one must pass:
 the intent is READY (planned, criteria written, its spec linked and written), asks no
 open question, has no unanswered claim section, is not held, names no unsettled blocker
@@ -271,6 +272,17 @@ handed back: it stops as unachievable with the last round's findings, the run st
 further for it, and `abcd implement step` refuses naming the hand-back.
 
 The run then moves one step per `abcd implement step`, driven by the host session.
+
+An issue id (iss-N, validated by shape) is built as one lane. Its checks are the
+repository's own drain rule, read as `abcd drain` reads it (the issue is open, nothing
+open blocks it, its category and severity are ones the rule takes, it carries a remedy a
+person wrote), and no peer holding it. The brief is the issue's record with its remedy
+as the work and the repository's definition of done (a detector watched to fail before
+the fix and pass after); the validators run without the fidelity audit (an issue has no
+criteria); the implementer's receipt must name the issue in `resolves`, and the landing
+resolves it with the commit named there. A receipt carrying `handback` in its place
+ends the lane: its worktree and branch are discarded and the issue is handed back by
+kind. `abcd drain` starts these runs one at a time.
 
 Exit 2 on a refusal, exit 3 when a peer holds the intent or the run state is locked
 (back off and take other work).
@@ -929,9 +941,9 @@ This is the only abcd verb that reaches the network on behalf of documentation. 
 
 ### `abcd drain`
 
-Sort open issues by this repository's own drain rule, naming each loosened floor: Writes nothing; refuses without the rule's record, or without --dry-run.
+Fix the issues needing no decision, one lane at a time, and hand the rest back: Writes its state and user-visible drafts; refuses without the rule's record.
 
-**Usage:** `abcd drain [flags]`
+**Usage:** `abcd drain [--dry-run] [--max <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [flags]`
 
 Work the open issue ledger unattended: fix the issues that need no decision, and
 hand the rest back by kind. Which issues need no decision is this repository's own
@@ -943,22 +955,50 @@ tech-debt, documentation, inconsistency, drift, bug and ux at nitpick or minor, 
 hands every security issue to a person. A repository's record may loosen those
 floors (major, critical, security), and every floor it loosens is named. An issue
 whose remedy opens "Waits on", or whose deferral past the current release tag is
-live, is always handed back. Every other open issue is handed back, listed as
-ineligible, or skipped naming its blocker, by the rule that excluded it.
+live, or names a release tag this checkout lacks, is always handed back. Every
+other open issue is handed back, listed as ineligible, or skipped naming its
+blocker, by the rule that excluded it.
 
 --dry-run shows every open issue's disposition, the eligible ones first in the
 order a drain takes them (by category, then severity, then oldest first), and
-writes nothing. The host judgement over each eligible remedy does not run in a dry
-run; it can only ever hand an issue back.
+writes nothing. The host judgement over each eligible remedy does not run; it can
+only ever hand an issue back.
+
+Without --dry-run, each invocation performs one move of the drain and exits. It
+hands the next eligible issue, in that order, to the implement loop's issue-keyed
+lane (the run `abcd build <iss-N>` starts), one lane at a time, and names the run to
+drive with `abcd implement step`. Run it again once that lane is handed back or its
+pull request is open, and it routes the lane's outcome and opens the next. A lane
+that finds a decision in its issue hands it back by kind, its work discarded: a
+user-visible change is promoted to an intent draft (`capture promote`, which
+stamps the issue's related_intents and nothing else); a trust or safety rule is
+flagged as needing a decision record, with the question; a design finding or a
+second package is flagged with the home the lane names. Every issue the rule
+hands back is flagged naming the rule. Nothing but the promotion is written to
+the ledger, and every hand-back is in the summary.
+
+The drain is paced as a run is: its window and pause are --pace, --sub-agents and
+--fix-rounds as `abcd build` reads them, set when the drain begins. At the window's
+end the drain's state (.abcd/.work.local/run/drain.json) takes next_eligible_at and
+the call opens nothing; before that time a drain opens nothing, and after it the
+next invocation continues. --max <n> caps the lanes the drain opens (the default
+is all); at the cap, or when nothing eligible is left, the drain reports and ends,
+and the next `abcd drain` begins a new one. A cap or pace named while a drain is in
+progress that differs from the one it began with is refused.
 
 Without the repository's record, the dry run and the run both refuse (exit 2),
-naming how to add it; `abcd ahoy install` offers it. The run itself is not built:
-without --dry-run the verb refuses to start, and exits 2 with nothing written.
+naming how to add it; `abcd ahoy install` offers it. A run that opens nothing or
+merges nothing exits 0 and says why. Exit 2 on a refusal, exit 3 when another
+drain or run holds the state lock.
 
 **Flags:**
 
 ```
-      --dry-run   show every open issue's disposition and the order a drain takes them; writes nothing
+      --dry-run             show every open issue's disposition and the order a drain takes them; writes nothing
+      --fix-rounds string   the fix rounds a lane may take before it is handed back; wins over every configured layer
+      --max int             cap the lanes this drain opens; the default is all
+      --pace string         the drain's working window and pause, <work-minutes>/<pause-minutes>; wins over every configured layer
+      --sub-agents string   the ceiling on lanes and validators alive at once; wins over every configured layer
 ```
 
 **Example:**
@@ -966,6 +1006,8 @@ without --dry-run the verb refuses to start, and exits 2 with nothing written.
 ```
 abcd drain --dry-run
   abcd drain --dry-run --json
+  abcd drain --max 3
+  abcd drain --json
 ```
 
 ### `abcd embark`

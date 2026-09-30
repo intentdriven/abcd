@@ -205,8 +205,14 @@ spec stays open until the last lane closes it.
   transcripts) and, on a complete run, captures each transcript by path through
   the history capture's own code, one capture per path. Marking a step's
   `landed:` line in the spec on a non-closing lane is not made by the landing.
+- **Landed (lane drainLoop): the issue key (decision 10).** The key check
+  admits an issue id by shape; its pre-start checks are itd-82's eligibility
+  rule, read as `abcd drain` reads it, and the peers; its run has one lane, whose
+  brief is the record and its remedy with the reproduce-then-fix definition of
+  done; its validators take no fidelity audit; its receipt must declare the
+  issue fixed in `resolves`, and the landing resolves it with that commit. The
+  receipt carries `handback: {kind, reason, home}`, which the loop reads at the
+  receipt, before the validators, discarding the lane's worktree and branch
+  and ending the lane handed back.
 - **Remaining: 11** (`--auto-plan` with its ADR), and piece 3 (the process
-  driver, on the runner). The issue key (decision 10)
-  is refused by name at the key check; the lane that admits it adds the
-  `remedy:` field schema, drain's eligibility rule and the `handback:` report
-  field. `--auto-plan` is not a flag yet.
+  driver, on the runner). `--auto-plan` is not a flag yet.

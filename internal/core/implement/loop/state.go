@@ -199,8 +199,8 @@ type State struct {
 	SchemaVersion int `json:"schema_version"`
 	// RunID names the run and its directory.
 	RunID string `json:"run_id"`
-	// Key is the record the run was started for: an intent id (an issue id is
-	// decision 10's, which a later piece admits).
+	// Key is the record the run was started for: an intent id, or an issue id
+	// (decision 10), for which Intent and Spec are empty.
 	Key string `json:"key"`
 	// Intent and Spec are the intent the run delivers and the open spec it
 	// builds against, as the readiness gate judged them.
@@ -258,7 +258,7 @@ type PendingStep struct {
 type Lane struct {
 	// ID is the lane's name inside the run: lane-1, lane-2, ….
 	ID string `json:"id"`
-	// Key is the record the lane delivers (itd-N; iss-N once decision 10 lands).
+	// Key is the record the lane delivers: itd-N, or iss-N (decision 10).
 	Key string `json:"key"`
 	// SpecStep is the number of the spec step the lane lands, and StepTitle its
 	// title. An unstepped spec is one implicit step, number 1.
@@ -315,17 +315,25 @@ type ReceiptRecord struct {
 // round found (ruling DR1 on itd-50's criterion 2).
 type HandBack struct {
 	At time.Time `json:"at"`
+	// Kind, Reason and Home are set when the lane's own receipt handed the work
+	// back (itd-82 scope 5): the kind of decision it found, what it found, and
+	// where the decision belongs. Discarded is the lane's head the loop
+	// discarded with its worktree and branch. The fields below are then empty.
+	Kind      string `json:"kind,omitempty"`
+	Reason    string `json:"reason,omitempty"`
+	Home      string `json:"home,omitempty"`
+	Discarded string `json:"discarded,omitempty"`
 	// Verdict is VerdictUnachievable.
-	Verdict string `json:"verdict"`
+	Verdict string `json:"verdict,omitempty"`
 	// Round is the round that did not pass once the cap was reached, and
 	// FixRounds the cap the run held the lane to.
-	Round     int `json:"round"`
-	FixRounds int `json:"fix_rounds"`
+	Round     int `json:"round,omitempty"`
+	FixRounds int `json:"fix_rounds,omitempty"`
 	// Verdicts is the last round's verdicts as the loop recorded them, and
 	// Findings the returns of the validators that did not pass, relative to
 	// the checkout root.
-	Verdicts string   `json:"verdicts"`
-	Findings []string `json:"findings"`
+	Verdicts string   `json:"verdicts,omitempty"`
+	Findings []string `json:"findings,omitempty"`
 	// NotMet and Undecided name the criteria the last audit judged not met and
 	// could not decide, when the lane took the audit.
 	NotMet    []string `json:"not_met,omitempty"`
@@ -483,6 +491,15 @@ func (s State) current() int {
 
 // runRel is a run's directory, relative to the checkout root.
 func runRel(runID string) string { return RunRelDir + "/" + runID }
+
+// Issue is the issue an issue-keyed run fixes (decision 10), or "" for a run
+// that builds an intent.
+func (s State) Issue() string {
+	if validIssueKey(s.Key) {
+		return s.Key
+	}
+	return ""
+}
 
 // StateRelPath is a run's state file, relative to the checkout root.
 func StateRelPath(runID string) string { return runRel(runID) + "/" + StateFileName }

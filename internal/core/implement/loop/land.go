@@ -320,8 +320,12 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 	// audit's verdict ingested into the intent. So it names that model, and
 	// it is made with the repository's hooks running (never through pickGit's
 	// hooks-off configuration), so the commit-msg outbound gate judges it.
+	what := fmt.Sprintf("%s (%s, step %d)", st.Intent, st.Spec, lane.SpecStep)
+	if iss := st.Issue(); iss != "" {
+		what = iss
+	}
 	msg := landSubject(st, *lane) + "\n\n" +
-		fmt.Sprintf("The implement loop's landing for %s (%s, step %d): %s.\n\n", st.Intent, st.Spec, lane.SpecStep, strings.Join(done, "; ")) +
+		fmt.Sprintf("The implement loop's landing for %s: %s.\n\n", what, strings.Join(done, "; ")) +
 		strings.Join(append(trailers, assisted...), "\n") + "\n"
 	if _, err := hookedGit(wt, "commit", "-q", "-m", msg); err != nil {
 		return Outcome{}, refuse(string(StageLand), "", lane.ID,
@@ -534,14 +538,22 @@ func findPR(c Context, lane Lane) (*openPR, error) {
 // prTitle and prBody are the pull request's title and body, built from the run's
 // records.
 func prTitle(st State, lane Lane) string {
+	if iss := st.Issue(); iss != "" {
+		return fmt.Sprintf("fix(%s): %s", iss, lane.StepTitle)
+	}
 	return fmt.Sprintf("build(%s): %s, step %d of %s", st.Intent, lane.StepTitle, lane.SpecStep, st.Spec)
 }
 
 func prBody(st State, lane Lane) string {
 	var b strings.Builder
 	p := func(format string, a ...any) { fmt.Fprintf(&b, format, a...) }
-	p("This pull request lands step %d of %s (%q) for %s. The implement loop built it in run %s as %s, and wrote this text from the run's records.\n\n",
-		lane.SpecStep, st.Spec, lane.StepTitle, st.Intent, st.RunID, lane.ID)
+	if iss := st.Issue(); iss != "" {
+		p("This pull request fixes %s (%q) by its remedy. The implement loop built it in run %s as %s, and wrote this text from the run's records.\n\n",
+			iss, lane.StepTitle, st.RunID, lane.ID)
+	} else {
+		p("This pull request lands step %d of %s (%q) for %s. The implement loop built it in run %s as %s, and wrote this text from the run's records.\n\n",
+			lane.SpecStep, st.Spec, lane.StepTitle, st.Intent, st.RunID, lane.ID)
+	}
 	p("- Branch `%s`, from %s to %s.\n", lane.Branch, shortSHA(lane.BaseSHA), shortSHA(lane.HeadSHA))
 	if n := len(lane.Validation); n > 0 {
 		r := lane.Validation[n-1]

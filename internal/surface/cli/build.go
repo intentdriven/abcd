@@ -88,8 +88,9 @@ func errorsIsNoCheckout(err error) bool { return errors.Is(err, gitutil.ErrNoChe
 func newBuildCommand(asJSON *bool) *cobra.Command {
 	var session, pace, subAgents, fixRounds string
 	cmd := &cobra.Command{
-		Use: "build <itd-N> [--session <id>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>]",
+		Use: "build <itd-N|iss-N> [--session <id>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>]",
 		Long: "Start the implement loop for one intent, or resume the run already in progress for it.\n" +
+			"An issue id starts the loop's issue-keyed lane instead (below).\n" +
 			"A new run's checks run first, and every one must pass:\n" +
 			"the intent is READY (planned, criteria written, its spec linked and written), asks no\n" +
 			"open question, has no unanswered claim section, is not held, names no unsettled blocker\n" +
@@ -124,6 +125,16 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 			"handed back: it stops as unachievable with the last round's findings, the run starts nothing\n" +
 			"further for it, and `abcd implement step` refuses naming the hand-back.\n\n" +
 			"The run then moves one step per `abcd implement step`, driven by the host session.\n\n" +
+			"An issue id (iss-N, validated by shape) is built as one lane. Its checks are the\n" +
+			"repository's own drain rule, read as `abcd drain` reads it (the issue is open, nothing\n" +
+			"open blocks it, its category and severity are ones the rule takes, it carries a remedy a\n" +
+			"person wrote), and no peer holding it. The brief is the issue's record with its remedy\n" +
+			"as the work and the repository's definition of done (a detector watched to fail before\n" +
+			"the fix and pass after); the validators run without the fidelity audit (an issue has no\n" +
+			"criteria); the implementer's receipt must name the issue in `resolves`, and the landing\n" +
+			"resolves it with the commit named there. A receipt carrying `handback` in its place\n" +
+			"ends the lane: its worktree and branch are discarded and the issue is handed back by\n" +
+			"kind. `abcd drain` starts these runs one at a time.\n\n" +
 			"Exit 2 on a refusal, exit 3 when a peer holds the intent or the run state is locked\n" +
 			"(back off and take other work).",
 		Args: cobra.ExactArgs(1),
