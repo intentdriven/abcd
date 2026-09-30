@@ -272,6 +272,32 @@ func TestConnectToALocalServerNeedsNoKey(t *testing.T) {
 	}
 }
 
+// TestConnectCarriesTheConfigurationReadsDiagnostics: the setup reads the
+// configuration in force before it writes, and a route that read skipped (a
+// repository's route to a provider that holds a key, ruling CD2 of 2026-09-29)
+// comes back on the result for the front door to say, never dropped. The JSON
+// form omits it, so a front door says it once, on stderr.
+func TestConnectCarriesTheConfigurationReadsDiagnostics(t *testing.T) {
+	p := newProvFake(t, 200, chat("local-model", "ok"))
+	f := newFx(t)
+	f.machineConfig(`{"oracle":{"api":{` + openrouterBlock + `}}}`)
+	f.repoConfig(`{"oracle":{"roles":{"scribe":"openrouter/typesafe/jev-1.13"}}}`)
+	req := connectReq(f, p.base())
+	req.Provider, req.Home, req.Key = "desk", KeyHomeNone, ""
+	res, err := Connect(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+	if len(res.Diagnostics) != 1 || !strings.Contains(res.Diagnostics[0], "oracle.roles.scribe") ||
+		!strings.Contains(res.Diagnostics[0], "holds a key") {
+		t.Fatalf("diagnostics = %q; want the skipped repository route named", res.Diagnostics)
+	}
+	enc, _ := json.Marshal(res)
+	if strings.Contains(string(enc), "holds a key") {
+		t.Fatalf("the JSON result carries the diagnostic, which the front door prints on stderr:\n%s", enc)
+	}
+}
+
 // TestConcurrentConnectsKeepEveryKeyAndBlock: two setups that overlap must
 // not lose each other's key or provider block while each reports it wrote
 // them. Every connect's key resolves and every block reads back.

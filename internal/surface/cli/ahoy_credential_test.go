@@ -201,3 +201,25 @@ func TestARepositoryRouteToAKeyedProviderIsSkippedWithAWarning(t *testing.T) {
 		}
 	}
 }
+
+// TestAhoyCredentialByNameSaysASkippedRoute: naming a provider's credential
+// reads the provider configuration to find the provider that verifies it, and
+// a route that read skipped (ruling CD2) is said on stderr there too.
+func TestAhoyCredentialByNameSaysASkippedRoute(t *testing.T) {
+	hermeticEnv(t)
+	repoRouteToKeyedProvider(t)
+	root := NewRootCommand()
+	root.SetArgs([]string{"ahoy", "credential", "openrouter"})
+	var so, se bytes.Buffer
+	root.SetOut(&so)
+	root.SetErr(&se)
+	if err := root.Execute(); err != nil {
+		t.Fatalf("ahoy credential openrouter: %v\n%s%s", err, so.String(), se.String())
+	}
+	if n := strings.Count(se.String(), "holds a key"); n != 1 {
+		t.Fatalf("stderr carries %d keyed-route warning(s), want one:\n%s", n, se.String())
+	}
+	if !strings.Contains(se.String(), "oracle.roles.scribe") || strings.Contains(so.String(), "holds a key") {
+		t.Fatalf("stdout:\n%s\nstderr:\n%s", so.String(), se.String())
+	}
+}

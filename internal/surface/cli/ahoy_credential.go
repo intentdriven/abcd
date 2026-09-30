@@ -38,12 +38,15 @@ func pointerFlags(cmd *cobra.Command, p *credential.Pointer) {
 
 // credentialService finds the walkthrough's service for name among the
 // adapters that read a credential: the site setup's hosting providers, then
-// the configured model providers.
-func credentialService(roots layered.Roots, name string) (credential.Service, bool, error) {
+// the configured model providers. Reading the provider configuration says its
+// diagnostics on stderr (a route skipped under ruling CD2).
+func credentialService(stderr io.Writer, roots layered.Roots, name string) (credential.Service, bool, error) {
 	if svc, ok := site.CredentialServiceFor(name); ok {
 		return svc, true, nil
 	}
-	return oracle.CredentialService(roots, name)
+	svc, ok, diagnostics, err := oracle.CredentialService(roots, name)
+	printConfigDiagnostics(stderr, diagnostics)
+	return svc, ok, err
 }
 
 // credentialView is one credential as a surface shows it: presence and home,
@@ -97,7 +100,7 @@ func newAhoyCredentialCommand(asJSON *bool) *cobra.Command {
 			if !credential.ValidName(name) {
 				return fail(errors.New("the name is not a plain credential name"), "")
 			}
-			svc, ok, err := credentialService(roots, name)
+			svc, ok, err := credentialService(cmd.ErrOrStderr(), roots, name)
 			if err != nil {
 				return fail(err, "")
 			}
@@ -160,9 +163,7 @@ func runCredentialList(cmd *cobra.Command, roots layered.Roots, asJSON bool) err
 	}
 	// A route the read skipped (a repository's route to a provider that holds
 	// a key, ruling CD2) is said on stderr, and the listing goes on.
-	for _, d := range cfg.Diagnostics {
-		fmt.Fprintf(cmd.ErrOrStderr(), "abcd %s\n", termsafe.Sanitize(fsutil.RedactHome(d)))
-	}
+	printConfigDiagnostics(cmd.ErrOrStderr(), cfg.Diagnostics)
 	for _, p := range cfg.Providers() {
 		if p.Key != "" {
 			names[p.Key] = true

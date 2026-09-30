@@ -94,3 +94,48 @@ func TestARefusedProviderConfigurationIsNamed(t *testing.T) {
 		t.Fatalf("the gap carries the home path: %s", g.Detail)
 	}
 }
+
+// TestASkippedProviderRouteIsNamed: a route the configuration read skips (a
+// repository's route to a provider that holds a key, ruling CD2 of
+// 2026-09-29) is an optional gap naming the route, never silence at the bare
+// board, and it costs nothing else: the configuration still loads.
+func TestASkippedProviderRouteIsNamed(t *testing.T) {
+	home, _ := setupHermetic(t)
+	repo := installedRepo(t)
+	if err := os.MkdirAll(filepath.Join(home, ".abcd"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	cfg := `{"oracle":{"api":{"openrouter":{"base_url":"https://openrouter.ai/api/v1","key":"openrouter","models":["typesafe/jev-1.13"]}}}}`
+	if err := os.WriteFile(filepath.Join(home, ".abcd", "config.json"), []byte(cfg), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(repo, ".abcd"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	route := `{"oracle":{"roles":{"scribe":"openrouter/typesafe/jev-1.13"}}}`
+	if err := os.WriteFile(filepath.Join(repo, ".abcd", "config.json"), []byte(route), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	det, err := Detect(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := providerGap(det.Gaps, ProviderAdapterRefusedGapID); ok {
+		t.Fatal("one skipped repository route refused the whole configuration")
+	}
+	g, ok := providerGap(det.Gaps, ProviderAdapterRouteSkippedGapID)
+	if !ok {
+		t.Fatalf("no %s gap in %v", ProviderAdapterRouteSkippedGapID, gapIDs(det.Gaps))
+	}
+	if g.Required || g.Resolvable || g.Scope != "machine" {
+		t.Fatalf("gap = %+v; want optional, not resolvable by install, machine-scoped", g)
+	}
+	for _, want := range []string{"oracle.roles.scribe", "openrouter/typesafe/jev-1.13", "holds a key", "skipped"} {
+		if !strings.Contains(g.Detail, want) {
+			t.Errorf("the gap does not name %q:\n%s", want, g.Detail)
+		}
+	}
+	if strings.Contains(g.Detail, home) {
+		t.Fatalf("the gap carries the home path: %s", g.Detail)
+	}
+}

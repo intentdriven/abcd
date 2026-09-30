@@ -78,6 +78,10 @@ type ConnectResult struct {
 	Verified CallRecord `json:"verified"`
 	// Wrote names each file written, in the tilde form.
 	Wrote []string `json:"wrote"`
+	// Diagnostics are the configuration read's non-fatal reports (APIConfig's),
+	// for the front door to print on stderr; the JSON form omits them, so they
+	// are said once and never mixed into what a machine reader parses.
+	Diagnostics []string `json:"-"`
 }
 
 // verifyBrief is the verification call's brief: one short exchange, judged
@@ -112,7 +116,7 @@ func Connect(ctx context.Context, req ConnectRequest) (ConnectResult, error) {
 		opts = append(opts, openaiapi.WithTimeout(req.Timeout))
 	}
 	res := ConnectResult{Provider: req.Provider, BaseURL: req.BaseURL, Models: append([]string(nil), req.Models...),
-		KeyHome: req.Home}
+		KeyHome: req.Home, Diagnostics: append([]string(nil), cfg.Diagnostics...)}
 	svc := providerService(Provider{Name: req.Provider, BaseURL: req.BaseURL, Key: req.KeyName, Models: req.Models},
 		cfg.denylist, &res.Verified, opts...)
 	block := map[string]any{"base_url": req.BaseURL, "models": req.Models}
@@ -352,16 +356,17 @@ func providerService(p Provider, denylist []DenyEntry, rec *CallRecord, opts ...
 // CredentialService is the walkthrough's service for the credential name, when
 // a configured provider names it as its key: the walkthrough then verifies a
 // key with that provider's own call. A name no provider names is not the
-// adapter's.
-func CredentialService(roots layered.Roots, name string) (credential.Service, bool, error) {
+// adapter's. The configuration read's diagnostics come back beside it, for the
+// front door to print on stderr, whether or not a provider names the name.
+func CredentialService(roots layered.Roots, name string) (credential.Service, bool, []string, error) {
 	cfg, err := LoadAPI(roots)
 	if err != nil {
-		return credential.Service{}, false, err
+		return credential.Service{}, false, nil, err
 	}
 	for _, p := range cfg.Providers() {
 		if p.Key == name && len(p.Models) > 0 {
-			return providerService(p, cfg.denylist, nil), true, nil
+			return providerService(p, cfg.denylist, nil), true, cfg.Diagnostics, nil
 		}
 	}
-	return credential.Service{}, false, nil
+	return credential.Service{}, false, cfg.Diagnostics, nil
 }
