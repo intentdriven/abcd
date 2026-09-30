@@ -273,6 +273,9 @@ the lane to a fresh implementer as a not-met one does. A lane that has taken
 the run's fix rounds (`build --fix-rounds`, bundled 3) and still does not pass
 is handed back: the result's `hand_back` names the verdict `unachievable` and
 the last findings, and every later `step` refuses at the `handed-back` stage.
+The run stays in progress, so `build next` passes over its intent; no verb
+clears it, and the refusal names the way out: once the intent is replanned,
+remove the run's directory, `.abcd/.work.local/run/<run-id>`.
 
 `land` takes one `step` per move, and the lane stays at `land` until the last:
 

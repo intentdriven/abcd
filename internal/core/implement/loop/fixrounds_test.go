@@ -177,6 +177,26 @@ func TestALaneThatExhaustsItsFixRoundsIsHandedBack(t *testing.T) {
 	if r := mustRefusal(t, err); r.Stage != string(StageHandedBack) || !strings.Contains(r.Reason, "unachievable") || !strings.Contains(r.Remedy, "itd-10") {
 		t.Fatalf("a handed-back lane starts nothing further, and says why: %+v", r)
 	}
+	// The run stays live by construction until terminal liveness lands with
+	// itd-50's drafts/ move, so both the refusal and the pick's exclusion name
+	// the way out: the run's own directory (iss-2609301303434847).
+	runDir := RunRelDir + "/" + id
+	if r := mustRefusal(t, err); !strings.Contains(r.Remedy, runDir) {
+		t.Fatalf("the refusal names the way out, removing %s: %+v", runDir, r)
+	}
+	set, err := candidates(repo.Root(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var excluded *Excluded
+	for i := range set.Excluded {
+		if set.Excluded[i].ID == "itd-10" {
+			excluded = &set.Excluded[i]
+		}
+	}
+	if excluded == nil || !strings.Contains(excluded.Reason, runDir) || strings.Contains(excluded.Reason, "resume it") {
+		t.Fatalf("the pick excludes the handed-back intent naming the way out, not a step that refuses: %+v", excluded)
+	}
 	if !bytes.Equal(before, stateBytes(t, repo.Root(), id)) {
 		t.Fatal("a step on a handed-back lane changes nothing")
 	}

@@ -86,5 +86,26 @@ func handedBackRefusal(st State, lane Lane) error {
 		reason = handBackSummary(keyOf(st), *lane.HandBack)
 	}
 	return refuse(string(StageHandedBack), "", lane.ID, reason,
-		"the loop starts nothing further for this lane; "+keyOf(st)+" is the person's to replan from the findings the reason names")
+		"the loop starts nothing further for this lane; "+keyOf(st)+" is the person's to replan from the findings the reason names; "+
+			handedBackWayOut(st))
+}
+
+// handedBackWayOut names the one way past a handed-back run. The run stays
+// live by construction (Complete is false while a lane sits at handed-back, so
+// the run resumes and the pick excludes its intent) until terminal liveness
+// lands with itd-50's move of the intent to drafts/; making it terminal before
+// then would let the pick choose the falsified intent again. No verb clears
+// it, so the run's own directory is named (iss-2609301303434847).
+func handedBackWayOut(st State) string {
+	return "to build it afresh once it is replanned, remove the run's directory, " + RunRelDir + "/" + st.RunID
+}
+
+// handedBack reports whether any lane of the run was handed back.
+func (s State) handedBack() bool {
+	for _, l := range s.Lanes {
+		if l.Stage == StageHandedBack {
+			return true
+		}
+	}
+	return false
 }

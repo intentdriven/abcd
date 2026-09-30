@@ -251,7 +251,10 @@ A lane's stages run in order:
    `fix_rounds` cap, the `findings` returns and the criteria `not_met` or
    `undecided`), the run starts nothing further for it, and every later step is
    refused at the `handed-back` stage. Tell the user the intent is handed back
-   to them with those findings; do not start another fix round.
+   to them with those findings; do not start another fix round. The run stays
+   in progress until its directory, `.abcd/.work.local/run/<run-id>`, is
+   removed, which the refusal names as the way to build the intent afresh once
+   it is replanned.
 5. `land` — one `implement step` per move, the lane staying at `land` until
    the last. The loop checks the lane's worktree is clean at the judged head;
    on the lane that closes the spec it runs `spec close` in the lane's worktree
