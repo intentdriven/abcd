@@ -822,8 +822,12 @@ by construction. The listing reads the first marker of every intent in
 `dead_lettered` and `ingested`. The owed set is `OWED` plus `none`: a shipped
 intent with no marker at all owes the review too, and its re-emit mints the
 receipt. A `DEAD_LETTER` review is listed under its own heading, unreviewed,
-with the reason the quarantine recorded, and is not counted as owed; an
-`INGESTED` one is not listed in the text form. Report the owed total and, for
+with the reason the quarantine recorded, and is not counted as owed. An
+`INGESTED` review whose verdict left a check owed carries `audit_owed: true`,
+the `audit_owed_issue` carrying it and its `re_emit`, is counted in
+`audit_owed` (and in `ingested`), and is listed in the text form under its own
+heading with its issue and its re-run command; any other `INGESTED` one is not
+listed in the text form. Report the owed total and, for
 each owed intent, its receipt and its re-emit command. The listing names the
 re-emit, never the request file: the request lives in the gitignored local tier
 and may have been swept. It exits 0 whatever it finds; no gate reads it.

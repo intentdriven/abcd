@@ -3220,7 +3220,8 @@ func renderAuditOwed(w io.Writer, res intent.IngestVerdictResult) {
 // shipped intent's fidelity-review debt, from the intent store's one reader of
 // the review marker (itd-2609150819445595). The owed set is OWED plus no marker;
 // a dead-lettered review is listed under its own heading with its reason and is
-// not counted; an ingested one is not listed. It writes nothing and exits 0,
+// not counted; an ingested one is listed only when its verdict left a check
+// owed (ruling DQ1c), under its own heading. It writes nothing and exits 0,
 // and no gate reads it. It names the re-emit command, never the request file:
 // the request lives in the gitignored local tier and may have been swept.
 func runOwedReviews(cmd *cobra.Command, asJSON bool) error {
@@ -3245,6 +3246,21 @@ func runOwedReviews(cmd *cobra.Command, asJSON bool) error {
 				fmt.Fprintf(w, "  %s  receipt %s — re-emit: %s\n", e.IntentID, e.ReceiptID, e.ReEmit)
 			case e.State == intent.ReviewNone:
 				fmt.Fprintf(w, "  %s  no receipt (one is minted on re-emit) — re-emit: %s\n", e.IntentID, e.ReEmit)
+			}
+		}
+		if l.AuditOwed > 0 {
+			// Ruling DQ1c: an ingested verdict that failed or could not
+			// decide a criterion leaves a check owed, carried by an issue.
+			fmt.Fprintln(w, "audit owed (reviewed, flagged; not counted as owed):")
+			for _, e := range l.Entries {
+				if !e.AuditOwed {
+					continue
+				}
+				carried := "no issue carries it"
+				if e.AuditOwedIssue != "" {
+					carried = "carried by " + e.AuditOwedIssue
+				}
+				fmt.Fprintf(w, "  %s  receipt %s — %s — re-run: %s\n", e.IntentID, e.ReceiptID, carried, e.ReEmit)
 			}
 		}
 		if l.DeadLettered > 0 {

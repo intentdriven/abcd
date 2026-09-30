@@ -46,6 +46,12 @@ type ReviewEntry struct {
 	// ReEmit is the command that (re-)emits the review request, set only where the
 	// review is owed: on a terminal receipt the re-emit changes nothing.
 	ReEmit string `json:"re_emit,omitempty"`
+	// AuditOwed is true on an INGESTED receipt whose verdict left a check owed
+	// (ruling DQ1c): its review is done, its check is not, and its re-emit
+	// rewrites the request for the re-run. AuditOwedIssue is the issue the
+	// flag names as carrying it, empty when none does.
+	AuditOwed      bool   `json:"audit_owed,omitempty"`
+	AuditOwedIssue string `json:"audit_owed_issue,omitempty"`
 }
 
 // IsOwed reports whether the entry is in the owed set: OWED plus none. A
@@ -61,6 +67,9 @@ type ReviewListing struct {
 	Owed         int           `json:"owed"`
 	DeadLettered int           `json:"dead_lettered"`
 	Ingested     int           `json:"ingested"`
+	// AuditOwed counts the ingested receipts whose verdict left a check owed;
+	// they are counted in Ingested too.
+	AuditOwed int `json:"audit_owed"`
 }
 
 // ReEmitCommand is the command that re-emits a shipped intent's review request.
@@ -95,6 +104,9 @@ func reviewsOf(repoRoot string, corpus Corpus) (ReviewListing, error) {
 			l.DeadLettered++
 		case e.State == ReviewIngested:
 			l.Ingested++
+			if e.AuditOwed {
+				l.AuditOwed++
+			}
 		}
 	}
 	return l, nil
@@ -118,6 +130,11 @@ func ReviewOf(repoRoot string, it Intent) (ReviewEntry, error) {
 		e.ReEmit = ReEmitCommand(it.ID)
 	case ReviewDeadLetter:
 		e.Reason = withholdLocalTier(deadLetterReason(content, e.ReceiptID))
+	case ReviewIngested:
+		if hasOwedFlag(content, e.ReceiptID) {
+			e.AuditOwed, e.ReEmit = true, ReEmitCommand(it.ID)
+			e.AuditOwedIssue, _ = flaggedIssue(content, e.ReceiptID)
+		}
 	}
 	return e, nil
 }

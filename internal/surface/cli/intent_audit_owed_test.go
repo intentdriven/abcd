@@ -34,6 +34,10 @@ func TestIntentAuditIngestFlagsAnUndecidedAuditAndCapturesItsCheck(t *testing.T)
 	if !strings.Contains(string(body), "Remedy: re-run the audit. Carried by "+m[1]+".") {
 		t.Fatalf("the Audit Notes must carry the flag naming %s:\n%s", m[1], body)
 	}
+	if text := string(runCLI(t, "intent", "audit")); !strings.Contains(text, "audit owed (reviewed, flagged; not counted as owed):") ||
+		!strings.Contains(text, "itd-10") || !strings.Contains(text, "carried by "+m[1]) {
+		t.Fatalf("the owed-review listing must name the flagged receipt and its issue:\n%s", text)
+	}
 	if text := string(runCLI(t, "intent", "audit", "itd-10")); !strings.Contains(text, "check_owed") ||
 		!strings.Contains(text, "request rewritten for the re-run") {
 		t.Fatalf("a flagged receipt's re-emit must rewrite the request for the re-run:\n%s", text)

@@ -219,3 +219,26 @@ func TestALedgerThatCannotFileRefusesTheIngestWithNothingWritten(t *testing.T) {
 		t.Fatal("a refused ingest writes nothing: the receipt stays OWED")
 	}
 }
+
+// The owed-review reader names a flagged receipt apart: its verdict is
+// ingested, so its review is not owed, but its check is, and its re-emit
+// rewrites the request for the re-run.
+func TestTheReviewListingNamesAFlaggedReceiptApart(t *testing.T) {
+	withFakeAuditLedger(t)
+	root := t.TempDir()
+	rcp := shipOne(t, root)
+	if _, err := IngestVerdict(root, writeVerdict(t, root, verdictWith(t, rcp, "NOT_MET"))); err != nil {
+		t.Fatal(err)
+	}
+	l, err := Reviews(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if l.Owed != 0 || l.Ingested != 1 || l.AuditOwed != 1 || len(l.Entries) != 1 {
+		t.Fatalf("listing = %+v", l)
+	}
+	e := l.Entries[0]
+	if e.State != ReviewIngested || !e.AuditOwed || e.AuditOwedIssue != "iss-2609301200000001" || e.ReEmit != ReEmitCommand("itd-10") {
+		t.Fatalf("a flagged receipt must name its owed check, its issue and its re-emit: %+v", e)
+	}
+}
