@@ -27,6 +27,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"syscall"
@@ -161,6 +162,11 @@ const maxScanEntries = 20000
 // names it through this constant, so a move of the ledger is one edit.
 const IssuesRelDir = ".abcd/work/issues"
 
+// ADRsRelDir is the decision store's root under a repository, repo-relative and
+// slash-separated, spelled once for the resolver and every reader that walks
+// the store the resolver's way.
+const ADRsRelDir = ".abcd/development/decisions/adrs"
+
 // familyRoots names each id-bearing family's store, repo-relative and
 // slash-separated. Written once, in the order a reader expects them.
 var familyRoots = []struct {
@@ -170,14 +176,30 @@ var familyRoots = []struct {
 	{"itd", ".abcd/development/intents"},
 	{"spc", ".abcd/development/specs"},
 	{"iss", IssuesRelDir},
-	{"adr", ".abcd/development/decisions/adrs"},
+	{"adr", ADRsRelDir},
 }
 
 // Resolver is the live record-id set of one repository, read once. It is a
 // snapshot: build it at the start of a validation pass and use it throughout, so
 // every citation in one payload is judged against the same view of the record.
 type Resolver struct {
-	ids map[string]string
+	ids map[string][]string
+}
+
+// AmbiguousIDError is the refusal a lookup gives when two or more files in one
+// family answer to the same id. Every reader that resolves an id to a file
+// wants ONE file; answering with whichever sorts first would let a second
+// claimant (an `0037-a.md` beside `0037-x.md`) speak for the record, so the
+// lookup names every claimant and lets record-lint's uniqueness rules say
+// which one has to go.
+type AmbiguousIDError struct {
+	ID    string
+	Paths []string // repo-relative, slash-separated, in scan order
+}
+
+func (e *AmbiguousIDError) Error() string {
+	return fmt.Sprintf("recordid: %s is claimed by %d files (%s); an id names one record, so remove or renumber all but one",
+		e.ID, len(e.Paths), strings.Join(e.Paths, ", "))
 }
 
 // NewResolver reads repoRoot's record families and returns the resolver over
@@ -189,7 +211,7 @@ type Resolver struct {
 // not be read" would refuse a correct citation, so the scan fails closed and lets
 // the caller say what actually happened.
 func NewResolver(repoRoot string) (*Resolver, error) {
-	r := &Resolver{ids: map[string]string{}}
+	r := &Resolver{ids: map[string][]string{}}
 	budget := maxScanEntries
 	for _, fam := range familyRoots {
 		if err := r.scanFamily(repoRoot, fam.prefix, fam.dir, &budget); err != nil {
@@ -203,7 +225,8 @@ func NewResolver(repoRoot string) (*Resolver, error) {
 // that needs a single record rather than a snapshot of the whole record: it
 // reads one family where NewResolver reads four, so a fault in another family's
 // store is not this lookup's refusal. An id whose prefix names no family
-// resolves to nothing, as Lookup would answer it.
+// resolves to nothing, as Lookup would answer it; an id two files claim is
+// Lookup's *AmbiguousIDError.
 func LookupOne(repoRoot, id string) (string, bool, error) {
 	prefix, _, ok := strings.Cut(id, "-")
 	if !ok {
@@ -213,13 +236,12 @@ func LookupOne(repoRoot, id string) (string, bool, error) {
 		if fam.prefix != prefix {
 			continue
 		}
-		r := &Resolver{ids: map[string]string{}}
+		r := &Resolver{ids: map[string][]string{}}
 		budget := maxScanEntries
 		if err := r.scanFamily(repoRoot, fam.prefix, fam.dir, &budget); err != nil {
 			return "", false, err
 		}
-		p, found := r.Lookup(id)
-		return p, found, nil
+		return r.Lookup(id)
 	}
 	return "", false, nil
 }
@@ -227,10 +249,43 @@ func LookupOne(repoRoot, id string) (string, bool, error) {
 // Lookup returns the repo-relative path of the record id, and whether it exists.
 // A malformed id simply does not resolve — callers that must distinguish
 // "malformed" from "absent" check CitedIDRe first, which they do anyway to bound
-// the string before echoing it.
-func (r *Resolver) Lookup(id string) (string, bool) {
-	p, ok := r.ids[id]
-	return p, ok
+// the string before echoing it. An id two or more files claim is refused with an
+// *AmbiguousIDError naming them all: the caller asked which file IS the record,
+// and no answer but "these, and the record must be repaired" is true.
+func (r *Resolver) Lookup(id string) (string, bool, error) {
+	paths := r.ids[id]
+	switch len(paths) {
+	case 0:
+		return "", false, nil
+	case 1:
+		return paths[0], true, nil
+	}
+	return "", true, &AmbiguousIDError{ID: id, Paths: append([]string(nil), paths...)}
+}
+
+// Has reports whether any file answers to the record id. It is the existence
+// question alone — does a citation name a real record — which a duplicate does
+// not change: the id names a record either way, and the duplicate is
+// record-lint's uniqueness finding, not a missing citation.
+func (r *Resolver) Has(id string) bool { return len(r.ids[id]) > 0 }
+
+// ADRFiles lists every file in the decision store that carries an ADR id,
+// repo-relative and sorted, read exactly as the resolver reads the store: the
+// root and one bucket level, never through a link. It is the one listing
+// record-lint's adr_id_unique judges, so the gate and the lookup it protects
+// cannot disagree about which files claim a decision.
+func ADRFiles(repoRoot string) ([]string, error) {
+	r := &Resolver{ids: map[string][]string{}}
+	budget := maxScanEntries
+	if err := r.scanFamily(repoRoot, "adr", ADRsRelDir, &budget); err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, paths := range r.ids {
+		out = append(out, paths...)
+	}
+	sort.Strings(out)
+	return out, nil
 }
 
 // Len reports how many record ids resolved — the size of the live record.
@@ -275,19 +330,16 @@ func (r *Resolver) scanFamily(repoRoot, prefix, relDir string, budget *int) erro
 	return nil
 }
 
-// record derives name's id for its family and, when it has one, maps it to the
-// file. First writer wins, so a duplicate id across buckets keeps the first path
-// in scan order — the resolver answers "does it exist", and any duplicate is the
-// record-lint uniqueness rules' business, not this one's.
+// record derives name's id for its family and, when it has one, adds the file to
+// the id's claimants. Every claimant is kept, never only the first in scan
+// order: Lookup refuses an id with two, so no reader is handed whichever
+// duplicate happens to sort first.
 func (r *Resolver) record(prefix, relDir, name string) {
 	id := fileID(prefix, name)
 	if id == "" {
 		return
 	}
-	if _, seen := r.ids[id]; seen {
-		return
-	}
-	r.ids[id] = path.Join(relDir, name)
+	r.ids[id] = append(r.ids[id], path.Join(relDir, name))
 }
 
 // fileID derives a record id from a filename within its family. The three

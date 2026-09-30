@@ -301,7 +301,7 @@ func checkProseCitations(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 			continue
 		}
 		reason := "no prose in the record stores cites it any more"
-		if _, ok := resolver.Lookup(id); ok {
+		if resolver.Has(id) {
 			reason = "it now resolves to " + mustLookup(resolver, id)
 		}
 		out = append(out, Finding{
@@ -316,9 +316,16 @@ func checkProseCitations(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 // mustLookup renders a resolved path for a message. The caller has already
 // established the id resolves, so the miss branch is unreachable; it returns a
 // literal rather than panicking, because a gate must not crash on a race between
-// its own two reads.
+// its own two reads. An id two files claim renders as every claimant: the
+// message is about the citation, and the duplicate is the uniqueness rules'
+// blocker, reported on its own.
 func mustLookup(r *recordid.Resolver, id string) string {
-	if p, ok := r.Lookup(id); ok {
+	p, ok, err := r.Lookup(id)
+	var amb *recordid.AmbiguousIDError
+	switch {
+	case errors.As(err, &amb):
+		return "more than one record (" + strings.Join(amb.Paths, ", ") + ")"
+	case ok:
 		return p
 	}
 	return "a record"
@@ -380,7 +387,7 @@ func unresolvedProseCitations(lines []string, skip []bool, resolver *recordid.Re
 				continue
 			}
 			seen[id] = true
-			if _, ok := resolver.Lookup(id); ok {
+			if resolver.Has(id) {
 				continue
 			}
 			if _, carried := baseline[id]; carried {

@@ -34,8 +34,9 @@ import (
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
-// ADRsRelDir is the decision store, repo-relative and slash-separated.
-const ADRsRelDir = ".abcd/development/decisions/adrs"
+// ADRsRelDir is the decision store, repo-relative and slash-separated: the
+// resolver's own spelling, so the mint and every lookup name one directory.
+const ADRsRelDir = recordid.ADRsRelDir
 
 // adrFamily is the store's id prefix, the family tag the mint splices into every
 // native adr id.
