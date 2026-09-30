@@ -447,11 +447,9 @@ message or a branch name is spelled every day; a delete target printed whole by 
 substitution (`rm -rf $(echo /)`), which is read by its known text because that
 is how an everyday delete names what it removes (`rm -rf $(find . -name
 '*.pyc')`); a target spelled any other way than the words above (`rm -rf
-"$DIR"/*` with `DIR` unset, `rm -rf /?*`), a default's own word, which bash
-prints only when the variable is unset (`rm -rf ${DIR:-$HOME}`, and
-`${X[0]]-$HOME}`, which the bash 3.2 of macOS reads as a default after the
-subscript), a `..` after a symlink, which is read past lexically (a link to
-the root under a named directory), or after a segment holding a variable,
+"$DIR"/*` with `DIR` unset, `rm -rf /?*`), a `..` after a symlink, which is
+read past lexically (a link to the root under a named directory), or after
+a segment holding a variable,
 which is not folded (`/tmp/$X/../../*` is the root with `X` unset), a `..`
 past the home followed by a glob other than `*` (`~/../?*`, as `/?*`), a
 relative `..` that stays inside the working directory (`x/../*`, the
