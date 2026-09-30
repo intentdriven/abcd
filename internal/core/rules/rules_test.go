@@ -756,18 +756,19 @@ func TestLoadSkipsARulelessDomainAndKeepsTheRest(t *testing.T) {
 	}
 }
 
-// TestOpinionsPreferSOTARuleNamesAutonomousRemedyGrounds (iss-2609292159470796)
-// holds the OPINIONS pointer at prefer-sota to the clause the product thinker
-// asked for: a remedy an autonomous run chooses cites its grounds, a
-// primary-source state-of-the-art check where the fix depends on outside
-// practice. The pointer stays a pointer; the section lives in the principle.
-func TestOpinionsPreferSOTARuleNamesAutonomousRemedyGrounds(t *testing.T) {
+// TestOpinionsPreferSOTARuleNamesRemedyGrounds (iss-2609292159470796) holds the
+// OPINIONS pointer at prefer-sota to both halves of the product thinker's ask:
+// a remedy proposed for an issue, or chosen in an autonomous run, cites its
+// grounds, a primary-source state-of-the-art check where the fix depends on
+// outside practice. The pointer stays a pointer; the section lives in the
+// principle.
+func TestOpinionsPreferSOTARuleNamesRemedyGrounds(t *testing.T) {
 	op := Defaults().Domains["OPINIONS"]
 	for _, r := range op.Rules {
 		if !strings.Contains(r, "principles/prefer-sota.md") {
 			continue
 		}
-		for _, p := range []string{"autonomous run", "cites its grounds", "primary-source"} {
+		for _, p := range []string{"a remedy proposed for an issue, or chosen in an autonomous run, cites its grounds", "primary-source state-of-the-art check"} {
 			if !strings.Contains(r, p) {
 				t.Errorf("the prefer-sota OPINIONS rule does not say %q: %s", p, r)
 			}

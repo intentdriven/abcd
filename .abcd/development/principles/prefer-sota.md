@@ -45,19 +45,22 @@ against what the repo already believes.
   [verifier-selects-gates-decide](verifier-selects-gates-decide.md): the SOTA
   verdict is a proposal; the human's adoption is the gate.
 
-**Remedies chosen in an autonomous run.** A run with no human in the loop
-still picks remedies: a fix for a captured issue, or one option over another
-when a finding admits several. Each such pick cites its grounds in the record
-that carries it (the issue's remedy line, the resolve note's grounds, the commit
+**Remedies proposed for an issue or chosen in an autonomous run.** Every
+remedy cites its grounds, whoever writes it and whether or not a human is in the
+loop: the remedy a capture proposes for an issue, and the pick a run with no
+human in the loop makes (a fix for a captured issue, or one option over another
+when a finding admits several). The grounds sit in the record that carries the
+remedy (the issue's remedy line, the resolve note's grounds, the commit
 message). Where the fix depends on outside practice (an interface convention, a
 security posture, a tool's documented behaviour), the grounds include a
 primary-source state-of-the-art check: the standard, the vendor's own
 documentation or the practitioner research, named so a reader can open it.
-Where the fix is purely internal, the grounds say so. A remedy picked without
-that check can repeat a known-bad approach, and a run that records no grounds
-leaves nobody able to tell why it beat the alternatives. The check is the short
-form of this principle, not the full adversary pass: it binds every remedy the
-run chooses, while the fit-challenge above binds the genuine forks.
+Where the fix is purely internal, the grounds say so. A remedy suggested or
+picked without that check can repeat a known-bad approach, and a record that
+carries no grounds leaves nobody able to tell why the remedy beat the
+alternatives. The check is the short form of this principle, not the full
+adversary pass: it binds every remedy proposed or chosen, while the
+fit-challenge above binds the genuine forks.
 
 **Scope.** This is a propagated default, not a repo-local habit — it holds for
 every abcd-managed repo, as one of the opinionated conventions abcd installs.
