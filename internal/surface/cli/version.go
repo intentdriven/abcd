@@ -35,10 +35,16 @@ const checkSource = "github.com/intentdriven/abcd releases"
 // session-start notice. Check is populated only by `update --check`.
 type versionOutput struct {
 	core.VersionInfo
-	InstallMode string       `json:"install_mode,omitempty"`
-	Vintage     string       `json:"vintage"`
-	Staleness   string       `json:"staleness"`
-	Check       *checkResult `json:"check,omitempty"`
+	InstallMode string `json:"install_mode,omitempty"`
+	Vintage     string `json:"vintage"`
+	Staleness   string `json:"staleness"`
+	// SupersededRoot is present only when the running binary is served from a
+	// plugin root other than the one this session resolves: the silent shape of
+	// iss-2609020113012227, where a binary path pinned in a command page reaches
+	// a superseded root whose binary answers confidently. The rest of the report
+	// is unchanged: this is a note beside the answer, never a different answer.
+	SupersededRoot string       `json:"superseded_root,omitempty"`
+	Check          *checkResult `json:"check,omitempty"`
 }
 
 // ahoyOutput is `abcd ahoy`'s bare render: the detection envelope plus the
@@ -47,6 +53,10 @@ type ahoyOutput struct {
 	ahoy.DetectionResult
 	Vintage   string `json:"vintage"`
 	Staleness string `json:"staleness"`
+	// SupersededRoot, for the reason versionOutput carries it: this render
+	// reports the same vintage/staleness pair through the same comparator, so a
+	// superseded root produces the same confident wrong answer here.
+	SupersededRoot string `json:"superseded_root,omitempty"`
 }
 
 // checkResult is the explicit network check's outcome, named source and all.
@@ -72,10 +82,11 @@ func runVersion(cmd *cobra.Command, asJSON, check bool) error {
 	v := core.NewVersion()
 	vin := ahoy.Vintage(cwd)
 	out := versionOutput{
-		VersionInfo: v,
-		InstallMode: vin.Mode,
-		Vintage:     vin.DisplayVintage(),
-		Staleness:   vin.Staleness(),
+		VersionInfo:    v,
+		InstallMode:    vin.Mode,
+		Vintage:        vin.DisplayVintage(),
+		Staleness:      vin.Staleness(),
+		SupersededRoot: supersededRootNote(),
 	}
 	// The ONLY network path in itd-111 (adr-38 tier 2): an explicit --check
 	// fetches the latest release once and compares through the same comparator
@@ -90,6 +101,11 @@ func runVersion(cmd *cobra.Command, asJSON, check bool) error {
 		}
 		fmt.Fprintf(w, "  vintage:   %s\n", out.Vintage)
 		fmt.Fprintf(w, "  staleness: %s\n", out.Staleness)
+		// Never --json-only: a field only a machine sees is invisible to the
+		// reader whose question this answers wrongly.
+		if out.SupersededRoot != "" {
+			fmt.Fprintf(w, "  note:      %s\n", out.SupersededRoot)
+		}
 		if out.Check != nil {
 			if out.Check.Latest != "" {
 				fmt.Fprintf(w, "  latest:    %s (source: %s)\n", out.Check.Latest, out.Check.Source)

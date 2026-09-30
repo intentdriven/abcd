@@ -670,12 +670,16 @@ and notes the orphaned-predecessor possibility in the summary.
 
 **Bare `abcd ahoy`** prints the status board: the folder kind, plugin-root
 status, root SHA, install mode where one resolves, vintage and staleness, the
-citation baseline's coverage and age on a repo that has armed the citation gate,
-the gap count, and — on a repo — guard health and the banlist block with its
-reach, closing on a next-step line for the unmanaged kinds. In JSON form the
-same pass renders the detection envelope plus vintage and staleness, and the
-plugin command reads those two from exactly this render, so they are a contract
-with the plugin surface rather than a convenience.
+superseded-root note when the answering binary sits in a plugin root other than
+the one this session resolves, the citation baseline's coverage and age on a
+repo that has armed the citation gate, the gap count, and — on a repo — guard
+health and the banlist block with its reach, closing on a next-step line for the
+unmanaged kinds. In JSON form the same pass renders the detection envelope plus
+vintage and staleness, and `superseded_root` when the note applies; the plugin
+command reads those from exactly this render, so they are a contract with the
+plugin surface rather than a convenience. The note is the one the version flag
+carries, under the same conditions
+([`12-version.md`](12-version.md#a-superseded-plugin-root-names-itself)).
 
 **The dry run** renders the detection envelope as JSON and nothing else, so the
 plugin command can summarise state off the folder kind and the gaps and name

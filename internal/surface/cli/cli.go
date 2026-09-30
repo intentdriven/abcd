@@ -223,7 +223,12 @@ func NewRootCommand() *cobra.Command {
 			"the next move for its lifecycle state — what is this. N is either a short\n" +
 			"ordinal from before ids were minted or the sixteen-digit stamp minted since;\n" +
 			"both resolve. The bare and the id form are strictly read-only; any other\n" +
-			"positional is refused as an unknown command.",
+			"positional is refused as an unknown command.\n\n" +
+			"`--version` reports the running binary's version, install mode and vintage.\n" +
+			"When that binary sits in a plugin root other than the one this session\n" +
+			"resolves, the report — like bare `abcd ahoy` — adds a `superseded_root` note\n" +
+			"naming both roots by the commit each was installed from; the version, vintage\n" +
+			"and staleness it reports are unchanged.",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		// Bare answers "what can I do"; `abcd <id>` answers "what is this, and
@@ -3411,7 +3416,12 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 			// source `abcd --version` and the session-start notice read. Computed
 			// once and carried in both the JSON and the text render.
 			vin := ahoy.Vintage(cwd)
-			out := ahoyOutput{DetectionResult: res, Vintage: vin.DisplayVintage(), Staleness: vin.Staleness()}
+			out := ahoyOutput{DetectionResult: res, Vintage: vin.DisplayVintage(), Staleness: vin.Staleness(),
+				// The same note `abcd --version` carries, for the same reason:
+				// this render reports the same comparator's verdict, so a
+				// superseded plugin root answers here just as confidently
+				// (iss-2609020113012227).
+				SupersededRoot: supersededRootNote()}
 			return render(cmd.OutOrStdout(), *asJSON, out, func(w io.Writer) {
 				fmt.Fprintf(w, "abcd ahoy — %s\n", res.FolderKind)
 				fmt.Fprintf(w, "  plugin root: %s\n", res.PluginRootStatus)
@@ -3426,6 +3436,9 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 				}
 				fmt.Fprintf(w, "  vintage:     %s\n", out.Vintage)
 				fmt.Fprintf(w, "  staleness:   %s\n", out.Staleness)
+				if out.SupersededRoot != "" {
+					fmt.Fprintf(w, "  note:        %s\n", out.SupersededRoot)
+				}
 				// The citation baseline's coverage and age, present only in a repo
 				// that has armed the citation gate. The line embeds counts and a
 				// date derived from repo content, so it is sanitised.
