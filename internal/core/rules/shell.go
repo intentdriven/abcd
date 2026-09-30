@@ -2,6 +2,7 @@ package rules
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/intentdriven/abcd/internal/core/guard"
 )
@@ -99,6 +100,9 @@ func withRepoShellDomain(rs RuleSet, repoRoot string) RuleSet {
 		return rs
 	}
 	if d, ok := shellDomain(ld.Registry, guard.Defaults()); ok {
+		if !slices.Equal(d.Rules, rs.Domains[ShellDomain].Rules) {
+			rs.setRulesFrom(ShellDomain, guard.RepoRelPath)
+		}
 		rs.Domains[ShellDomain] = d
 	}
 	return rs

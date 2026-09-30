@@ -2185,12 +2185,13 @@ block and in the hook's diagnostic, and carries "source": "user" or "repo" in
 --json; the last layer to name a domain labels it. An untouched bundled domain
 renders bare and carries "source": "bundled".
 
-A list an override sets replaces the bundled one, so an override can hold back
-an entry abcd ships. For the guardrail domains (COMMITTING, LOAD, PII, SHELL),
-every bundled recall keyword, alias or rule that an override's list leaves out
-is named on stderr, with the file that set the list, here and on every hook
+A list an override sets replaces the one it would inherit, so an override can
+hold back an entry abcd ships or, in SHELL, one the repository's
+.abcd/guard.json teaches. For the guardrail domains (COMMITTING, LOAD, PII,
+SHELL), every such recall keyword, alias or rule that an override's list leaves
+out is named on stderr, with the file that set the list, here and on every hook
 prompt. To keep an entry, restate it in the list, or leave the field out to
-inherit the bundled list.
+inherit the list.
 
 SHELL is generated from the shell-hazard registry that "abcd guard" enforces
 in this repository, the bundled entries and the repository's own

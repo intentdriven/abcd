@@ -140,7 +140,7 @@ func Inject(rs RuleSet, prompt string, prev SessionState, backstop int) InjectRe
 	// the per-file read cap (iss-2608261551077971). A domain that is truncated
 	// away is deliberately NOT recorded in the ledger, so it is retried next turn
 	// rather than silently dropped for the session.
-	text, kept := renderWithinBudget(fresh)
+	text, kept := renderWithinBudget(fresh, rs.rulesFrom)
 	var injected []string
 	sources := make(map[string]string, len(kept))
 	for _, d := range kept {
@@ -187,7 +187,9 @@ func activeNames(rs RuleSet, matched []ResolvedDomain) map[string]struct{} {
 // notice is appended — whole-block granularity keeps the "## NAME" injection
 // contract intact (never a half-rendered rule). It returns the text and the
 // domains actually kept, so the caller records only those in the dedup ledger.
-func renderWithinBudget(fresh []ResolvedDomain) (string, []ResolvedDomain) {
+// rulesFrom maps a domain to the file its rules came from (RuleSet.rulesFrom);
+// the notice names those files as the likely cause.
+func renderWithinBudget(fresh []ResolvedDomain, rulesFrom map[string]string) (string, []ResolvedDomain) {
 	full := Render(fresh)
 	if len(full) <= injectionBudgetBytes {
 		return full, fresh
@@ -213,9 +215,37 @@ func renderWithinBudget(fresh []ResolvedDomain) (string, []ResolvedDomain) {
 		b.WriteString(renderDomain(d))
 	}
 	fmt.Fprintf(&b,
-		"\n# abcd rules — %s: rendered rule set exceeds the %d-byte per-repo budget; %d of %d matched domain(s) omitted this turn. A bloated or hostile .abcd/rules.json is the likely cause — inspect it with `abcd rules`.\n",
-		injectionTruncatedMarker, injectionBudgetBytes, len(fresh)-len(kept), len(fresh))
+		"\n# abcd rules — %s: rendered rule set exceeds the %d-byte per-repo budget; %d of %d matched domain(s) omitted this turn. %s\n",
+		injectionTruncatedMarker, injectionBudgetBytes, len(fresh)-len(kept), len(fresh), budgetCause(fresh, rulesFrom))
 	return b.String(), kept
+}
+
+// budgetCause names the files whose words filled the budget, largest share
+// first: each matched domain's rendered block is charged to the file its rules
+// came from, and the bundled words are charged to no file. Naming one file
+// always — .abcd/rules.json — sent a reader to the wrong file when the
+// repository's guard.json or the user's rules.json held the bulk.
+func budgetCause(fresh []ResolvedDomain, rulesFrom map[string]string) string {
+	cost := map[string]int{}
+	for _, d := range fresh {
+		if file := rulesFrom[d.Name]; file != "" {
+			cost[file] += len(renderDomain(d))
+		}
+	}
+	if len(cost) == 0 {
+		return "No override file wrote these rules; inspect them with `abcd rules`."
+	}
+	files := make([]string, 0, len(cost))
+	for f := range cost {
+		files = append(files, f)
+	}
+	sort.Slice(files, func(i, j int) bool {
+		if cost[files[i]] != cost[files[j]] {
+			return cost[files[i]] > cost[files[j]]
+		}
+		return files[i] < files[j]
+	})
+	return "A bloated or hostile " + strings.Join(files, " or ") + " is the likely cause — inspect it with `abcd rules`."
 }
 
 // stateDir is the machine-local directory holding per-session ledgers. It is
