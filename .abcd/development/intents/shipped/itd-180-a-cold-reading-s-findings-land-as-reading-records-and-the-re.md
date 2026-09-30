@@ -64,14 +64,22 @@ register and the iss-2608220750029991 triage-route seed.
   (exit condition required; availability at the widening position still
   open). The grounds field is `disposition_grounds`, required on every
   state except `held`; what it must contain varies by state, enforced by
-  lint rather than by four fields. Free text, not enumerations. Nothing
-  meaning "already covered" exists in any position; an undispositioned
-  item is reported as outstanding, not named as a state. The disposition
+  lint rather than by four fields. Free text, not enumerations. No
+  disposition state means "already covered" in any position; an
+  undispositioned item is reported as outstanding, not named as a state.
+  The likely repeat the filing-time match writes onto a stored item
+  (`duplicates:` / `refines:`, below) is a proposal on the item, never a
+  state of its answer. The disposition
   record reads the envelope's position to validate its own state — a
   coupling the schema carries and the lint checks — and the
   admitted-against-declined count at the widening position is the
   ownership evidence, queryable without reading prose.
-- The recurrence link, on the warm side: a disposition may cite prior
+- The recurrence link, in two halves ([adr-2609300821558671](../../decisions/adrs/2609300821558671-a-reading-finding-is-matched-against-the-record-when-it-is.md),
+  ruling DQ2b of 2026-09-30). The mechanical half: `reading ingest`
+  matches each stored finding against the issues, the intents and every
+  earlier reading item with the filing-time match, writes a likely repeat
+  onto the item as `duplicates:` or `refines:`, and shows it; the promote
+  step matches the minted draft again. The warm half: a disposition may cite prior
   item identifiers (`recurs`), and a re-acceptance or re-rejection
   made against evidence of persistence carries that citation — the
   stronger record recurrence-is-signal describes, and the answer to the
@@ -124,11 +132,14 @@ register and the iss-2608220750029991 triage-route seed.
   surprise entry and the disposition are different acts and must be
   distinguishable records; reusing the issue states collapses them and
   misdescribes all three.
-- **Recurrence matching is warm work (per the closing-run ruling):** run-scoped identifiers
-  join nothing mechanically; the researcher recognises a recurrence
-  against the ledger, and the recognition is itself a disposition
-  judgement — the `recurs` citation in scope is that recognition's
-  recorded form.
+- **Recurrence matching is mechanical and confirmed by the researcher
+  (ruling DQ2b, 2026-09-30,
+  [adr-2609300821558671](../../decisions/adrs/2609300821558671-a-reading-finding-is-matched-against-the-record-when-it-is.md),
+  which reverses the closing-run ruling that it is warm work only):** the
+  filing-time match links a stored finding to its likely repeats, among
+  them the earlier reading items, and the link is a proposal a person
+  keeps or deletes; the researcher's recognition of a recurrence is still
+  a disposition judgement, and the `recurs` citation is its recorded form.
 - **Where an accepted item goes (per the acceptance-routing ruling):** acceptance is one
   record; the action is a separate admission and build, joined by the
   item identifier (forward on `promoted_to` (historical), back in `origin` with

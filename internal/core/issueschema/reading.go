@@ -128,7 +128,7 @@ var ReadingRequired = []string{
 }
 
 // ReadingKnown is the reading record's additionalProperties:false allow-list:
-// the envelope, every body field of every position, and the two optional
+// the envelope, every body field of every position, and the optional
 // properties below. A key outside it is refused, exactly as it is on an issue.
 var ReadingKnown = readingKnown()
 
@@ -274,6 +274,12 @@ func readingKnown() map[string]bool {
 		// here (with the item named in the draft's related_issues) is what joins
 		// the two (itd-4 AC3).
 		"related_intents": true,
+		// duplicates and refines are the filing-time match's typed links
+		// (ruling DQ2b, adr-2609300821558671): the likely repeat of an issue,
+		// an intent or an earlier reading item, written when the item is stored
+		// and confirmed or removed by a person.
+		"duplicates": true,
+		"refines":    true,
 	}
 	for _, k := range ReadingRequired {
 		known[k] = true

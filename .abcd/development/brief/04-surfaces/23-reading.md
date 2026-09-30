@@ -275,6 +275,20 @@ that run's own commit marker:
 A refused run reports the orphans it left in place instead of sweeping them: the
 sweep is a delete in the committed tier, and a refused run never reaches one.
 
+**Every stored finding is matched against the record** (ruling DQ2b,
+[adr-2609300821558671](../../decisions/adrs/2609300821558671-a-reading-finding-is-matched-against-the-record-when-it-is.md)).
+The ingest runs capture's filing-time match on each item as it lands, with the
+same threshold, link cap and configuration (see
+[`06-capture.md`](06-capture.md)): the item's pattern and body are compared
+with the open and resolved issues, the intents and every earlier reading item,
+and never with another item of the same ingest or with the envelope every item
+of a run shares. A likely repeat is written onto the reading record as
+`duplicates:` or `refines:`, and the ingest shows each item's match, printed and
+as `matches` in the JSON. A link is a proposal the researcher keeps or deletes;
+the confirmed form of a recurrence stays the disposition's `recurs` citation.
+The match never refuses the ingest: a short finding, an unread record set or a
+refused configuration files the item unlinked and says why.
+
 ## What this surface does not claim
 
 It never runs a reading. It produces the input a reading would be given;

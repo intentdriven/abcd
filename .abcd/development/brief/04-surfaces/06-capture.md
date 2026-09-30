@@ -118,6 +118,19 @@ it and removes it by deleting its line, which leaves an ordinary record. The
 match proposes no `reverses` and no `supersedes`: the itd-84 discipline keeps a
 reversal advisory and human.
 
+The same match runs on the ledger's two unattended writers, through the same
+core and configuration: a promoted inbox report is compared by its own title
+and prose, and each finding the consistency pass files by its summary and
+explanation. Neither compares the lines every record it files carries (the
+inbox's provenance, the pass's evidence line), on which two unrelated records
+would match, and the consistency pass never compares a record the same pass
+filed. The reading ingest runs it on every stored finding
+([`23-reading.md`](23-reading.md)), and promoting an accepted reading item
+matches the draft it mints on the item's pattern and body, since the pattern
+alone is too short to compare, and links the draft as a quoted-text create is
+linked (ruling DQ2b,
+[adr-2609300821558671](../../decisions/adrs/2609300821558671-a-reading-finding-is-matched-against-the-record-when-it-is.md)).
+
 One flag belongs to one category: the lapse-instant flag carries the RFC 3339
 instant a recorded discipline gave way, for the `lapse` category, and it has no
 default.
@@ -201,8 +214,10 @@ keyed reading record. Once an item already carries a standing answer, a new one
 must cite it as superseded: that is the only exit from a hold, and what
 makes the standing disposition the one no sibling supersedes. An item the
 researcher recognises as one that has come round before says so as a recurrence,
-naming the earlier items it recurs from; that is a recorded recognition, never a
-join a machine derived. Two hold-shaping flags are reserved and dormant, and a
+naming the earlier items it recurs from; that is the researcher's confirmed
+recognition. The machine's proposal of the same thing is the `duplicates:` or
+`refines:` link the reading ingest writes onto the item
+([adr-2609300821558671](../../decisions/adrs/2609300821558671-a-reading-finding-is-matched-against-the-record-when-it-is.md)). Two hold-shaping flags are reserved and dormant, and a
 populated value is refused until activation is ruled.
 
 **At the widening position the order is fixed: characterise first, admit

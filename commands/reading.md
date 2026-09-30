@@ -430,7 +430,18 @@ records. The ids a sweep removed are reported however the invocation ends. One
 ingest runs at a time in a checkout: a second waits, and reports contention
 rather than sweeping the first one's records away.
 
-Report from the JSON: `run_id`, `records`, `refused_items`,
+**Each stored finding is matched against the record.** The ingest compares each
+item's pattern and body with the open and resolved issues, the intents and
+every earlier reading item, never with another item of the same run, and writes
+a likely repeat onto the reading record as `duplicates:` ("same as") or
+`refines:` ("builds on"). The JSON's `matches` lists, per record, the links
+written, the matches past the cap, and the near misses with their scores; the
+plain rendering prints them under each record id. The match is a lexical
+heuristic and never refuses the ingest. Relay the likely repeats: the
+researcher keeps a link or deletes its line, and cites a confirmed recurrence
+with `capture disposition --recurs`.
+
+Report from the JSON: `run_id`, `records`, `matches`, `refused_items`,
 `cleared_stages`, `rolled_back_records`, `pending_stages`, and `run_record` —
 or, on a refusal that recorded one, `refusal_record`. A refusal renders the
 JSON whenever it has one of these to disclose, so read it on exit 2 as well.

@@ -36,6 +36,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/oracle"
 	"github.com/intentdriven/abcd/internal/core/reading"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -210,7 +211,11 @@ func newReadingCommand(asJSON *bool) *cobra.Command {
 			"marker the sweep ROLLS THAT RUN'S READING RECORDS OUT OF THE COMMITTED LEDGER, because the\n" +
 			"run never happened; where the marker is there the run stands and only the stage goes. A\n" +
 			"refused run reports the orphans it left in place, and the ids a sweep removed are reported as\n" +
-			"rolled_back_records on every exit, including a failing one.",
+			"rolled_back_records on every exit, including a failing one.\n\n" +
+			"Every stored finding is matched against the record as a capture is: its pattern and body are\n" +
+			"compared with the open and resolved issues, the intents and every earlier reading item, never\n" +
+			"with another item of the same run, and a likely repeat is written onto the reading record as a\n" +
+			"duplicates: or refines: link and shown, printed and as matches in --json.",
 		Example: "  abcd reading ingest --reading-json ./reading-output.json --json",
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) > 0 {
@@ -253,11 +258,21 @@ func newReadingCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			// The filing-time match (ruling DQ2b, adr-2609300821558671),
+			// configured as the capture verb's is and never a refusal.
+			root := captureRoot(cwd)
+			mc, matchRefused := resolveMatch(cmd.ErrOrStderr(), "reading ingest", root)
 			res, err := reading.Ingest(reading.IngestRequest{
-				RepoRoot:   captureRoot(cwd),
+				RepoRoot:   root,
 				OutputPath: resolved,
 				Output:     payload,
+				Match:      mc,
 			})
+			if err == nil && mc == nil && matchRefused != nil {
+				for _, r := range res.Records {
+					res.Matches = append(res.Matches, capture.ReadingMatch{ID: r.ID, Match: matchRefused})
+				}
+			}
 			if err != nil {
 				// A refusal that produced a durable record renders it before it
 				// exits. The record path is the operator's handle on the event,
@@ -625,6 +640,12 @@ func renderIngestResult(w io.Writer, res reading.IngestResult) {
 		// One rule for the list, shared with the refusal record's reason: the
 		// elision entry names no item, so neither surface renders it as one.
 		fmt.Fprintf(w, "                 %s\n", r.Render())
+	}
+	// The likely repeats of each stored finding (ruling DQ2b): the links
+	// written onto it, a match past the link cap, or why nothing was compared.
+	for _, m := range res.Matches {
+		fmt.Fprintf(w, "  %s:\n", termsafe.Sanitize(m.ID))
+		renderMatch(w, m.Match)
 	}
 	if len(res.ClearedStages) > 0 {
 		fmt.Fprintf(w, "  cleared:       orphaned stage(s) of %s\n", strings.Join(res.ClearedStages, ", "))
