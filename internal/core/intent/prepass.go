@@ -18,6 +18,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/intentdriven/abcd/internal/core/frontmatter"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -321,16 +322,12 @@ func readPrepassPrinciples(repoRoot string) ([]PrepassPrinciple, error) {
 }
 
 // prepassTitle is a record's first level-one heading after its frontmatter.
+// The frontmatter is judged by the canonical reader, so a byte-order mark or an
+// indented delimiter reads here as it reads everywhere else.
 func prepassTitle(content string) string {
-	lines := strings.Split(content, "\n")
-	i := 0
-	if len(lines) > 0 && strings.TrimSpace(lines[0]) == "---" {
-		for i = 1; i < len(lines) && strings.TrimSpace(lines[i]) != "---"; i++ {
-		}
-		i++
-	}
-	for ; i < len(lines); i++ {
-		if m := prepassH1Re.FindStringSubmatch(lines[i]); m != nil {
+	_, body := frontmatter.Split(content)
+	for _, line := range strings.Split(body, "\n") {
+		if m := prepassH1Re.FindStringSubmatch(line); m != nil {
 			return strings.TrimSpace(m[1])
 		}
 	}
