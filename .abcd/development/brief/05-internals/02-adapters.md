@@ -90,9 +90,12 @@ route; the model the agent's `oracle.roles.<agent>` points at on the connection
 must be on its allowlist, or the leg is refused naming the agent, the
 connection, the model, the allowlist and the remedy; a leg to a connection the
 agent's role does not point at names no model and is refused, naming the
-`oracle.roles.<agent>` setting to add; and a merged setting outside the
+`oracle.roles.<agent>` setting to add; a merged setting outside the
 accepted set is refused naming the setting, where it was set and what the
-adapter accepts, never dropped. `model` is the adapter's own and is never a setting, so no setting can
+adapter accepts, never dropped; and on a connection that holds a key, a setting
+the repository's routing row names is refused, never dropped, naming it and
+`~/.abcd/oracle-routing.json` as where to move it, because only the person's own
+machine configuration shapes a call that spends their key. `model` is the adapter's own and is never a setting, so no setting can
 choose a model past the allowlist. A provider claims no
 tier: it is reached by a role or a judgement type pointed at it, never by a tier
 alone. An agent whose role is pointed at a provider resolves to that provider with

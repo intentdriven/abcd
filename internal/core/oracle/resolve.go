@@ -32,6 +32,11 @@ type Connection struct {
 	// role is where a provider leg's model is chosen. nil when no role points
 	// here.
 	Roles map[string]string
+	// Keyed reports that the provider holds a key: its block names a
+	// credential, so a call through it spends the person's key. A keyed leg
+	// takes no setting from the repository's routing row: only the person's
+	// own machine configuration shapes a call that spends their key.
+	Keyed bool
 }
 
 // Admits reports whether model is on the connection's allowlist.
@@ -134,8 +139,10 @@ func Resolve(agent string, l *Layered, conns Connections) (Route, error) {
 	var flagText string
 	var base *Row
 	// baseWhere names where the base row came from, for a refusal of one of
-	// its settings; r.Origin is overwritten when a flag governs the step.
+	// its settings, and baseLayer its layer; r.Origin and r.Source are
+	// overwritten when a flag governs the step.
 	var baseWhere string
+	var baseLayer layered.Layer
 	for _, fd := range found {
 		if fd.Layer == layered.Flag {
 			fr, err := layered.Decode[flagRow](fd.Raw)
@@ -151,7 +158,7 @@ func Resolve(agent string, l *Layered, conns Connections) (Route, error) {
 				return Route{}, fmt.Errorf("oracle routing: %s (%s layer): agents.%s: %w", fd.Origin, fd.Layer, agent, err)
 			}
 			base, r.Source, r.Origin = &row, fd.Layer, fd.Origin
-			baseWhere = fmt.Sprintf("%s (%s layer)", fd.Origin, fd.Layer)
+			baseWhere, baseLayer = fmt.Sprintf("%s (%s layer)", fd.Origin, fd.Layer), fd.Layer
 		}
 	}
 	if base == nil {
@@ -181,7 +188,7 @@ func Resolve(agent string, l *Layered, conns Connections) (Route, error) {
 	}
 	r.Row = row
 
-	leg := providerLeg{agent: agent, flagText: flagText, baseWhere: baseWhere, base: base.Settings}
+	leg := providerLeg{agent: agent, flagText: flagText, baseWhere: baseWhere, baseLayer: baseLayer, base: base.Settings}
 	if flag != nil {
 		leg.flag = flag.Settings
 	}
@@ -243,6 +250,7 @@ type providerLeg struct {
 	flagText  string
 	flag      Settings
 	baseWhere string
+	baseLayer layered.Layer
 	base      Settings
 }
 
@@ -256,7 +264,11 @@ type providerLeg struct {
 // to add (AC 11, the product thinker's ruling of 2026-09-29). The merged
 // settings are then held to the set c's adapter accepts: a setting outside it
 // is refused, never dropped (AC 8), and a connection no adapter backs accepts
-// none.
+// none. On a keyed connection, a setting the repository's routing row names is
+// refused too, never dropped: a paid key is spent only through the person's
+// own machine configuration (ruling AA(b) of 2026-09-29), so the repository
+// may not size or shape the call; the refusal names each setting, the
+// repository file and the machine file to move it to.
 func (p providerLeg) take(r *Route, c Connection, rowSettings Settings) error {
 	if len(c.Models) == 0 {
 		return fmt.Errorf("oracle routing: %s resolves to connection %s (%s), whose allowlist lists no model; "+
@@ -279,6 +291,15 @@ func (p providerLeg) take(r *Route, c Connection, rowSettings Settings) error {
 			"at a model the list holds, or route %s to the harness with tier %s",
 			p.agent, c.Name, p.via, p.agent, layered.BoundKey(model), c.Name, listNames(c.Models),
 			layered.BoundKey(model), c.Name, p.agent, p.agent, HostDecides)
+	}
+	if c.Keyed && p.baseLayer == layered.Repo && len(p.base) > 0 {
+		machine := layered.OracleRouting.MachineOrigin()
+		return fmt.Errorf("oracle routing: %s resolves to connection %s (%s), a provider that holds a key, and the repository's "+
+			"routing row sets %s (from %s); only the person's own machine configuration may shape a call that spends their key, "+
+			"so the step is refused rather than sent with those settings or without them: move agents.%s.settings to %s, "+
+			"or remove it from %s",
+			p.agent, c.Name, p.via, strings.Join(sortedKeys(p.base), ", "), p.baseWhere, p.agent, machine,
+			layered.OracleRouting.RepoOrigin())
 	}
 	sent := merge(merge(nil, c.Defaults), rowSettings)
 	var refused []string

@@ -282,6 +282,67 @@ func TestAnUnreachableProviderFallsBackToTheHarness(t *testing.T) {
 	}
 }
 
+// TestARepositoryRowsSettingsNeverShapeAKeyedCall: a paid key is spent only
+// through the person's own machine configuration (keyRoutes' rule), so a
+// repository routing row's settings never reach a call on a keyed leg: the
+// route is refused at read, naming each setting, the repository file and
+// where to move it, and nothing is sent. A row without settings, the
+// machine's own row, and a keyless leg keep the merge.
+func TestARepositoryRowsSettingsNeverShapeAKeyedCall(t *testing.T) {
+	p := newProvFake(t, 200, chat("typesafe/jev-1.13", `{"verdict":"keep"}`))
+
+	t.Run("pointed by the machine, settings from the repository", func(t *testing.T) {
+		f, c := pointed(t, p.base())
+		f.repo(`{"scribe":{"tier":"economy","settings":{"max_tokens":7,"temperature":1.9}}}`)
+		r, err := Resolve("scribe", f.load(), c.Connections())
+		wantAll(t, err, "scribe", "openrouter", "max_tokens", "temperature", ".abcd/config/oracle-routing.json",
+			"~/.abcd/oracle-routing.json", "agents.scribe.settings")
+		if r.OnProvider() || r.SettingsSent != nil {
+			t.Fatalf("a refused route = %+v; want none", r)
+		}
+	})
+
+	t.Run("named by --route, settings from the repository", func(t *testing.T) {
+		f, c := pointed(t, p.base())
+		f.repo(`{"scribe":{"tier":"economy","settings":{"max_tokens":7}}}`)
+		l, conns := f.load(), c.Connections()
+		routes, err := ParseRoutes([]string{"scribe=economy@openrouter"}, []string{"scribe"}, conns)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := l.Apply(routes); err != nil {
+			t.Fatal(err)
+		}
+		_, err = Resolve("scribe", l, conns)
+		wantAll(t, err, "max_tokens", ".abcd/config/oracle-routing.json", "~/.abcd/oracle-routing.json")
+	})
+
+	t.Run("a repository row without settings", func(t *testing.T) {
+		f, c := pointed(t, p.base())
+		f.repo(`{"scribe":{"tier":"economy"}}`)
+		f.machine(`{"scribe":{"tier":"economy","settings":{"temperature":0}}}`)
+		r, err := Resolve("scribe", f.load(), c.Connections())
+		if err != nil || !r.OnProvider() || len(r.SettingsSent) != 0 {
+			t.Fatalf("Resolve = %+v, %v; want the keyed leg with no setting", r, err)
+		}
+	})
+
+	t.Run("a keyless leg keeps the repository's settings", func(t *testing.T) {
+		f := newFx(t)
+		f.machineConfig(`{"oracle":{"api":{"local":{"base_url":"` + p.base() + `","models":["local-model"]}},"roles":{"scribe":"local/local-model"}}}`)
+		f.repo(`{"scribe":{"tier":"economy","settings":{"max_tokens":7}}}`)
+		c := f.loadAPI()
+		r, err := Resolve("scribe", f.load(), c.Connections())
+		if err != nil || r.ConnectionUsed != "local" || string(r.SettingsSent["max_tokens"]) != "7" {
+			t.Fatalf("Resolve = %+v, %v; want the repository's max_tokens sent to the keyless leg", r, err)
+		}
+	})
+
+	if n := p.calls.Load(); n != 0 {
+		t.Fatalf("the provider was called %d time(s); want none", n)
+	}
+}
+
 // TestAnAdmittedAnswerEchoingTheKeyIsDispatchedScrubbed: an answer the
 // contract admits is the payload a verb records, and its model field is the
 // receipt's model_reported, so a provider echoing the key there, literally or

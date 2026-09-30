@@ -135,6 +135,16 @@ rather than skipped:
   never by reading the credential store. A repository's route to a provider
   whose block names no key (a local server) is admitted and wins over the
   machine's per name, and a `--route` the person types is unaffected.
+- **A call that spends a key takes its settings from the machine alone.** A
+  provider leg sends the connection's defaults, then the winning routing row's
+  settings, then the `--route`'s. On a leg to a provider that holds a key, a
+  row from the repository's `.abcd/config/oracle-routing.json` that names
+  settings (`max_tokens`, `temperature`) is refused before the step runs, never
+  dropped, naming each setting, the repository's file, and
+  `agents.<agent>.settings` in `~/.abcd/oracle-routing.json` as where to move
+  them, because the settings size and shape a call the person pays for. A
+  repository row without settings, the machine's own row and a keyless leg
+  keep the merge.
 - **The model a provider reports is held to the denylist too.** An aggregator
   that answers with a model an `oracle.denylist` entry matches has substituted
   a model the configuration refuses; the answer is discarded and the refusal

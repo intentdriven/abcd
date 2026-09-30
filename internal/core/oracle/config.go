@@ -529,5 +529,6 @@ func (a apiConnections) Named(name string) (Connection, bool) {
 		Models:  append([]string(nil), p.Models...),
 		Accepts: openaiapi.AcceptedSettings(),
 		Roles:   roles,
+		Keyed:   keyed(p),
 	}, true
 }
