@@ -96,6 +96,16 @@ func TestTheLandingArmsOnlyWhereTheRulesetRequiresApproval(t *testing.T) {
 			".abcd/work/rulesets/main-review.json": reviewRuleset("active", "0", true)}, false},
 		{"a code-owner review whose CODEOWNERS names nobody", map[string]string{
 			".abcd/work/rulesets/main-review.json": reviewRuleset("active", "0", true), ".github/CODEOWNERS": "# nobody yet\n\n"}, false},
+		{"a code-owner review whose CODEOWNERS gives a bare @", map[string]string{
+			".abcd/work/rulesets/main-review.json": reviewRuleset("active", "0", true), ".github/CODEOWNERS": "* @\n"}, false},
+		{"a code-owner review whose CODEOWNERS gives patterns only", map[string]string{
+			".abcd/work/rulesets/main-review.json": reviewRuleset("active", "0", true), ".github/CODEOWNERS": "/commands/\n*.go # @example\n"}, false},
+		{"a comment-only .github/CODEOWNERS shadows a root one naming an owner", map[string]string{
+			".abcd/work/rulesets/main-review.json": reviewRuleset("active", "0", true), ".github/CODEOWNERS": "# nobody yet\n", "CODEOWNERS": owners}, false},
+		{"a code-owner review whose docs/CODEOWNERS names an e-mail owner", map[string]string{
+			".abcd/work/rulesets/main-review.json": reviewRuleset("active", "0", true), "docs/CODEOWNERS": "*.md docs@example.com\n"}, true},
+		{"a code-owner review whose CODEOWNERS names a team", map[string]string{
+			".abcd/work/rulesets/main-review.json": reviewRuleset("active", "0", true), ".github/CODEOWNERS": "* @example/reviewers\n"}, true},
 		{"a pull-request rule requiring nothing", map[string]string{
 			".abcd/work/rulesets/main-review.json": reviewRuleset("active", "0", false), ".github/CODEOWNERS": owners}, false},
 		{"an approving count in a ruleset only evaluated", map[string]string{

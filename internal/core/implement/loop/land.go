@@ -706,11 +706,14 @@ func (r ruleset) targets(def string) bool {
 // mergeMethods maps a merge queue's method to the forge client's flag.
 var mergeMethods = map[string]string{"MERGE": "--merge", "SQUASH": "--squash", "REBASE": "--rebase"}
 
-// codeOwnersPaths are where the forge reads a CODEOWNERS file from.
+// codeOwnersPaths are where the forge reads a CODEOWNERS file from, in the
+// order it looks: the first file found is the only one it reads.
 var codeOwnersPaths = []string{".github/CODEOWNERS", "CODEOWNERS", "docs/CODEOWNERS"}
 
-// namesCodeOwners reports whether a CODEOWNERS file at the lane's base names
-// at least one owner: a line that is neither blank nor a comment.
+// namesCodeOwners reports whether the CODEOWNERS file the forge reads at the
+// lane's base — the first found in codeOwnersPaths, so a file there shadows
+// the later ones even when it names nobody — names at least one owner: a line
+// whose pattern is followed by an owner token (codeOwner).
 func namesCodeOwners(c Context, lane Lane) bool {
 	for _, p := range codeOwnersPaths {
 		raw, err := gitutil.RunCappedBytes(c.RepoRoot, maxRulesetBytes, "cat-file", "blob", lane.BaseSHA+":"+p)
@@ -718,12 +721,61 @@ func namesCodeOwners(c Context, lane Lane) bool {
 			continue
 		}
 		for _, line := range strings.Split(string(raw), "\n") {
-			if line = strings.TrimSpace(line); line != "" && !strings.HasPrefix(line, "#") {
+			if lineNamesOwner(line) {
 				return true
 			}
 		}
+		return false
 	}
 	return false
+}
+
+// lineNamesOwner reports whether one CODEOWNERS line names an owner: after its
+// pattern, a field before any comment is an owner token. A blank line, a
+// comment and a pattern with no owner name nobody.
+func lineNamesOwner(line string) bool {
+	fields := strings.Fields(line)
+	if len(fields) < 2 || strings.HasPrefix(fields[0], "#") {
+		return false
+	}
+	for _, f := range fields[1:] {
+		if strings.HasPrefix(f, "#") {
+			return false
+		}
+		if codeOwner(f) {
+			return true
+		}
+	}
+	return false
+}
+
+// codeOwner reports whether a token is one the forge takes as an owner:
+// @username, @org/team-name, or an e-mail address.
+func codeOwner(tok string) bool {
+	if name, ok := strings.CutPrefix(tok, "@"); ok {
+		org, team, isTeam := strings.Cut(name, "/")
+		if isTeam {
+			return ownerName(org) && team != "" && !strings.ContainsAny(team, "/@")
+		}
+		return ownerName(name)
+	}
+	local, domain, ok := strings.Cut(tok, "@")
+	return ok && local != "" && strings.Contains(domain, ".") && !strings.HasPrefix(domain, ".") &&
+		!strings.HasSuffix(domain, ".") && !strings.Contains(domain, "@")
+}
+
+// ownerName reports whether s is a forge account name: letters, digits and
+// hyphens, not empty.
+func ownerName(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-') {
+			return false
+		}
+	}
+	return true
 }
 
 // requiresApproval reports whether a pull_request rule's parameters require a

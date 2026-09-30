@@ -558,8 +558,11 @@ until the last step.
    with the queue's method; otherwise it leaves the pull request open for a
    person to merge (ruling AM1). A pull_request rule requires approval when its
    `required_approving_review_count` is one or more, or when
-   `require_code_owner_review` is set and a CODEOWNERS file at the lane's base
-   (`.github/`, the root or `docs/`) names at least one owner: a code-owner
+   `require_code_owner_review` is set and the CODEOWNERS file the forge reads
+   at the lane's base names at least one owner. That file is the first found
+   in `.github/`, the root and `docs/`, so one there shadows the later ones
+   even when it names nobody, and a line names an owner only when its pattern
+   is followed by `@name`, `@org/team` or an e-mail address: a code-owner
    review with nobody to own the change asks no person for anything. A missing
    mirror requires nothing, so the pull request stays open; a mirror file that
    cannot be read or parsed is refused, which also arms nothing. Where a queue
