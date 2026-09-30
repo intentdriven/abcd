@@ -219,3 +219,24 @@ func TestParseGitHubRemote(t *testing.T) {
 		}
 	}
 }
+
+// U+FE52 SMALL FULL STOP folds to '.' under NFKC and UTS 46 maps it to one,
+// exactly as U+FF0E and U+2024 do, so a segment it separates reads as another
+// host and the owner under it stays a finding.
+func TestGithubUsernameSlugExemptionReadsTheSmallFullStopAsADot(t *testing.T) {
+	id := Identity{GitRemoteUsername: "acme"}
+	pats, sev := DefaultPatterns(), DefaultIdentitySeverities()
+	for _, line := range []string{
+		"gitlab﹒example﹒com/acme/tool",
+		"evil﹒example/acme/x",
+		"see evil﹒example/acme/x today",
+	} {
+		f := ScanText(line, id, pats, sev, "f")
+		if !hasKind(f, kindGithubUser) {
+			t.Errorf("the owner under a small-full-stop host was not reported: %q", line)
+		}
+		if red, _ := Redact(line, f); strings.Contains(strings.ToLower(red), "acme") {
+			t.Errorf("the owner survived redaction: %q", line)
+		}
+	}
+}

@@ -407,10 +407,11 @@ const maxRepoNameLen = 100
 //     from the owner to whitespace, a quote, a bracket or the start of the line
 //     (ownerPathVerdict), with '/' and '\\' as segment separators. A segment is
 //     host-shaped when it holds a '.' or a dot lookalike (U+FF0E, U+3002,
-//     U+FF61, U+2024) and is not dots alone; its host is what follows its last
-//     '@', up to a ':' and port. A host-shaped segment ANYWHERE in the token
-//     that is not the forge's host (github.com or a subdomain of it, spelled
-//     with ASCII dots, with or without a port, compared case-insensitively)
+//     U+FF61, U+2024, U+FE52) and is not dots alone; its host is what
+//     follows its last '@', up to a ':' and port. A host-shaped segment
+//     ANYWHERE in the token that is not the forge's host (github.com or a
+//     subdomain of it, spelled with ASCII dots, with or without a port,
+//     compared case-insensitively)
 //     names an account on THAT host ("gitlab.example.com/groups/<owner>/x",
 //     "gitlab.example.com/~<owner>/x"), and sparing the handle there would tie
 //     the two accounts together, so it stays a finding. Where the forge's host
@@ -531,7 +532,7 @@ func isPathTokenBoundary(r rune) bool {
 // isHostShapedSegment reports whether a path segment reads as a hostname: it
 // holds a '.' or a dot lookalike and is not dots alone ("." and "..").
 func isHostShapedSegment(seg string) bool {
-	if strings.ContainsAny(seg, "\uff0e\u3002\uff61\u2024") {
+	if strings.ContainsAny(seg, "\uff0e\u3002\uff61\u2024\ufe52") {
 		return true
 	}
 	return strings.Contains(seg, ".") && strings.Trim(seg, ".") != ""
