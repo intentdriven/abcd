@@ -115,9 +115,9 @@ _None open; decisions 2 to 4 settle the four this record carried._
 
 ## Prior Art
 
-- `spc-52-audit-loop-to-acceptance-modes` — the predecessor implementation delivered this intent (tasks .1–.3); its AC reconciliation below is carried as design input per the brief's delivery-state provenance note. In this repo itd-50 is undelivered (nothing in the Go tree implements the audit loop) and ships only when this intent reaches `shipped/` with its own audit notes.
+- `spc-52-audit-loop-to-acceptance-modes` (predecessor store) — the predecessor implementation delivered this intent (tasks .1–.3); its AC reconciliation below is carried as design input per the brief's delivery-state provenance note. In this repo itd-50 is undelivered (nothing in the Go tree implements the audit loop) and ships only when this intent reaches `shipped/` with its own audit notes.
 
-### Predecessor AC reconciliation (spc-52)
+### Predecessor AC reconciliation (spc-52, predecessor store)
 
 In the predecessor implementation each acceptance criterion above is satisfied and the open questions are resolved at its plan + build time; the table attributes which spc-52 (predecessor store) task owns which behaviour.
 

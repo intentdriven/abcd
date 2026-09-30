@@ -91,7 +91,7 @@ _Populated by intent-fidelity-reviewer when intent moves to shipped/._
   state substrate exists. This is a recorded terminal state, not a shipped
   capability. Adding the substrate is out of scope. Full record in the
   surface doc: [`../../brief/04-surfaces/08-abcd.md`](../../brief/04-surfaces/08-abcd.md).
-- **No spc-17 stub to replace.** spc-17 shipped bare/probe renders for the
+- **No spc-17 (predecessor store) stub to replace.** That spc-17 shipped bare/probe renders for the
   *sub-verb* surfaces only; the top-level `commands/abcd.md` never existed.
   This task creates it fresh — the "stub replacement" premise is
   not-applicable (verified against `git log`).
