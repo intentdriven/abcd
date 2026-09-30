@@ -116,11 +116,18 @@ per-session fast path replace no release and print no such line. The session
 start check does not compare versions and shows nothing about an update, with
 one exception: the bootstrap salvage that the per-prompt, per-command and
 pre-compaction hooks run discards its output, so a swap made there adds
-`transition_unseen=yes` to the cache's `binary-meta`, and the next session start
-shows the line once and writes the release it showed to `cache/update-shown` in
-the plugin data directory. That marker is the session check's single write; a
-data directory failing the shape check every reader of it applies, or a tag
-outside the release-tag alphabet, shows nothing and writes nothing.
+`transition_unseen=yes` to the `binary-meta` it writes, and the next session
+start shows the line once. Once is a claim per release: the session check
+creates `cache/update-shown-<new>` in the plugin data directory, or
+`.update-shown-<new>` in the plugin root when the bootstrap ran in its degraded
+per-root mode and wrote the root's `.binary-meta`, with one exclusive create
+(`O_CREATE|O_EXCL`). Of any number of sessions starting together, the one whose
+create succeeds shows the line; a claim path that already exists, or a create
+that fails for any other reason, shows nothing, so the line never repeats. That
+empty claim file is the session check's single write, and claims for earlier
+releases stay where they are. A directory failing the shape check every reader
+of the data directory applies, or a tag outside the release-tag alphabet, shows
+nothing and writes nothing.
 
 ## The receipt
 
