@@ -504,6 +504,9 @@ replacement is never silent. Report `redacted` whenever it is non-zero. The
 record stays in `open/`. Refused with exit 2 and nothing written: an empty text,
 `none (filed automatically)` in any case (it would leave the record as the drain
 already skips it), a malformed or unknown id, and a record that is not open.
+When a person comes to write the real fix for a record filed with `none (filed
+automatically)`, offer to run a state-of-the-art research pass first (principle
+`prefer-sota`) before they write it, and let them decline.
 
 ## Answer a reading item
 
