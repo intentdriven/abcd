@@ -11,6 +11,7 @@
 package update
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
@@ -520,14 +521,33 @@ func (u *Updater) Apply(target, tag string, progress io.Writer) (Report, error) 
 	if progress != nil {
 		reader = &progressReader{r: body, total: size, out: progress, label: u.assetName + " " + tag}
 	}
-	// selfupdate verifies the stream against the checksum BEFORE the rename
-	// and restores the target on failure — the atomic swap plus the Windows
-	// rename dance, in the one implementation the interview signed off.
-	if err := selfupdate.Apply(reader, selfupdate.Options{TargetPath: target, Checksum: sum}); err != nil {
+	// The whole body is read and verified before any file is created, so a
+	// truncated or tampered download stages nothing.
+	newBytes, err := io.ReadAll(reader)
+	if err != nil {
+		return rep, fmt.Errorf("downloading %s %s: %w", tag, u.assetName, err)
+	}
+	if got := sha256.Sum256(newBytes); !bytes.Equal(got[:], sum) {
+		return rep, fmt.Errorf("verifying %s against the release manifest: the download's sha256 is %x, the manifest names %x", u.assetName, got, sum)
+	}
+	staged, err := stageVerified(target, newBytes)
+	if err != nil {
+		return rep, fmt.Errorf("staging %s beside %s: %w", u.assetName, target, err)
+	}
+	// selfupdate's commit moves the target aside, renames the staged file into
+	// place and restores the target on failure — the atomic swap plus the
+	// Windows rename dance, in the one implementation the interview signed off.
+	if err := selfupdate.CommitBinary(selfupdate.Options{TargetPath: target}); err != nil {
 		if rerr := selfupdate.RollbackError(err); rerr != nil {
-			return rep, fmt.Errorf("swap failed AND rollback failed — the binary at %s may be broken: %v (rollback: %v)", target, err, rerr)
+			// The one failure that keeps the staged file: the target is
+			// gone from its name and the staged file is the verified
+			// release, so it is named for recovery rather than deleted.
+			return rep, fmt.Errorf("swap failed AND rollback failed — the binary at %s may be broken; the verified release is staged at %s: %v (rollback: %v)", target, staged, err, rerr)
 		}
-		return rep, fmt.Errorf("verifying %s against the release manifest: %w", u.assetName, err)
+		// The target is back in place (or never moved), so the staged
+		// file is the only thing this failure leaves: unlink it.
+		_ = os.Remove(staged)
+		return rep, fmt.Errorf("swapping %s into place: %w", u.assetName, err)
 	}
 	if progress != nil {
 		fmt.Fprintln(progress)
@@ -536,6 +556,36 @@ func (u *Updater) Apply(target, tag string, progress io.Writer) (Report, error) 
 	rep.NewVersion = tag
 	rep.Digest = wantHex
 	return rep, nil
+}
+
+// stagingWriter wraps the staging file's writer: the identity as it ships, a
+// test seam through which a write can be made to fail partway.
+var stagingWriter = func(w io.Writer) io.Writer { return w }
+
+// stageVerified writes the verified bytes to the staging file beside target,
+// at the name selfupdate's commit renames into place, and flushes them to disk
+// before the swap. It returns the staging path. On failure the file is gone.
+func stageVerified(target string, b []byte) (string, error) {
+	staged := filepath.Join(filepath.Dir(target), "."+filepath.Base(target)+".new")
+	fp, err := os.OpenFile(staged, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755)
+	if err != nil {
+		return "", err
+	}
+	_, err = io.Copy(stagingWriter(fp), bytes.NewReader(b))
+	if err == nil {
+		err = fp.Sync()
+	}
+	if cerr := fp.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		// The file exists from the open on, so every failure after it
+		// unlinks it: a half-written staging file is never left beside the
+		// target (spc-32 criterion 7).
+		_ = os.Remove(staged)
+		return "", err
+	}
+	return staged, nil
 }
 
 // runsFromTarget reports whether target is the very file this process was
