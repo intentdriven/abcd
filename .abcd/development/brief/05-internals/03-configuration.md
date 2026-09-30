@@ -149,7 +149,9 @@ rather than skipped:
   that answers with a model an `oracle.denylist` entry matches has substituted
   a model the configuration refuses; the answer is discarded and the refusal
   names what it reported. Every call records the provider, the model asked for
-  and the model reported, so any other substitution is visible in the record.
+  and the model reported, so any other substitution is visible in the record,
+  and an answer that reports no model is refused rather than recorded with an
+  empty one.
 
 Unconfigured, nothing changes: no provider block means no connection, and every
 delegated step runs on the host. A role pointed at a configured provider takes its

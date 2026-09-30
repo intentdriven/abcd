@@ -216,6 +216,10 @@ func TestEveryFailureIsRefusedWithoutTheKey(t *testing.T) {
 		{"answer fails the output contract", ok("m", `{"verdict":""}`), "output contract"},
 		{"answer is prose", ok("m", `I think the answer is yes.`), "output contract"},
 		{"answer has an unknown field", ok("m", `{"verdict":"yes","extra":1}`), "output contract"},
+		// iss-2609300805371434: an answer that names no model cannot show what
+		// answered, so it is refused, never recorded with an empty model.
+		{"no model reported", ok("", `{"verdict":"yes"}`), "reported no model"},
+		{"blank model reported", ok(" \t", `{"verdict":"yes"}`), "reported no model"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

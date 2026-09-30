@@ -345,6 +345,12 @@ func (c *Client) decode(raw []byte, asked string, contract func([]byte) error) (
 	if len(cc.Choices) == 0 {
 		return Result{}, c.fail(c.host + " answered with no choice, so there is no answer to read")
 	}
+	// An answer that names no model cannot show what answered: the record would
+	// carry an empty model and no oracle.denylist entry could match it, so it is
+	// a contract failure, refused rather than used (iss-2609300805371434).
+	if strings.TrimSpace(cc.Model) == "" {
+		return Result{}, c.fail(c.host + " reported no model with its answer, so what answered cannot be shown; the answer is refused rather than used")
+	}
 	// The reported model is the provider's own text, recorded and quoted in a
 	// denylist refusal, so it is scrubbed like any other.
 	res := Result{ModelAsked: asked, ModelReported: cleanModel(c.scrub(cc.Model))}
