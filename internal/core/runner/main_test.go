@@ -200,7 +200,7 @@ func (f fakeEnv) launched(harness string) bool {
 
 // validReceipt is the contract's validator the tests hand the dispatcher: the
 // receipt exists and is the JSON the fake writes.
-func validReceipt(req Request, _ Answer) error {
+func validReceipt(_ string, req Request, _ Answer) error {
 	raw, err := os.ReadFile(req.Receipt)
 	if err != nil {
 		return fmt.Errorf("no receipt at the contract's path")

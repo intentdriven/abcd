@@ -18,6 +18,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/recordid"
+	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/core/statusblock"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -205,7 +206,13 @@ type StepResult struct {
 	// HandBack is set when the lane was handed back to the person: this call
 	// stopped it, or it stood stopped when the run was started again.
 	HandBack *HandBack `json:"hand_back,omitempty"`
-	Next     string    `json:"next"`
+	// Route is the route that ran the agent when the process driver started
+	// it through a runner (Drive); absent when the host is to run it.
+	Route *runner.RouteRecord `json:"route,omitempty"`
+	// Fallback is the fallback receipt this call recorded when the runner a
+	// role is routed to did not run it and the host is handed the role.
+	Fallback *runner.FallbackReceipt `json:"fallback,omitempty"`
+	Next     string                  `json:"next"`
 }
 
 // Start resumes the live run for key, or runs the checks and, when every one
@@ -696,7 +703,14 @@ func pausedMove(lane Lane, until time.Time) string {
 // lane awaits one, when the path is not the one the stage named, when this build
 // carries no verifier for the stage, and when the verifier refuses it; in every
 // refusal the lane stays where it was. A verified receipt completes the stage.
-func Receipt(repoRoot, runID, receipt string, steps Stages, o Options) (StepResult, error) {
+func Receipt(repoRoot, runID, receiptPath string, steps Stages, o Options) (StepResult, error) {
+	return receipt(repoRoot, runID, receiptPath, steps, o, nil)
+}
+
+// receipt is Receipt. A route that is not nil is the runner that ran the
+// agent (Drive): it is stamped on what the verifier recorded from the receipt,
+// and the record names it. The host's receipt carries none.
+func receipt(repoRoot, runID, receipt string, steps Stages, o Options, route *runner.RouteRecord) (StepResult, error) {
 	var res StepResult
 	err := mutate(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
 		now := o.now()
@@ -721,6 +735,10 @@ func Receipt(repoRoot, runID, receipt string, steps Stages, o Options) (StepResu
 				return false, err
 			}
 			return false, refuse("receipt", "", lane.ID, err.Error(), "correct what the reason names, then hand the receipt back")
+		}
+		if route != nil {
+			stampRoute(&lane, lane.Awaiting.Receipt, route)
+			st.Record = append(st.Record, Entry{At: now, Lane: lane.ID, Stage: StageRunner, Note: routeNote(lane.Awaiting.Role, *route)})
 		}
 		if lane.HandBack != nil {
 			// The lane's own receipt handed the work back: the verifier has

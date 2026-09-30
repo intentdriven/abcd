@@ -29,8 +29,10 @@ type Dispatcher struct {
 	// role handed back to it.
 	HostSession bool
 	// Validate is the contract's validator: the same check the host sub-agent's
-	// answer passes.
-	Validate func(Request, Answer) error
+	// answer passes. It is handed the runner that ran the role, so a caller
+	// whose validator also records the answer (the loop's receipt verifier)
+	// can name the route that ran.
+	Validate func(runner string, req Request, ans Answer) error
 	// Transcripts is where every runner's transcript lands.
 	Transcripts TranscriptStore
 	// Record appends one fallback receipt to the run's state.
@@ -160,7 +162,7 @@ func (d *Dispatcher) runOn(ctx context.Context, name string, req Request) (Answe
 	if err != nil {
 		return Answer{}, err
 	}
-	if verr := d.Validate(req, ans); verr != nil {
+	if verr := d.Validate(name, req, ans); verr != nil {
 		detail := termsafe.Sanitize(verr.Error())
 		if len(detail) > maxDetail {
 			detail = strings.ToValidUTF8(detail[:maxDetail], "") + "..."
