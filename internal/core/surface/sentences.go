@@ -323,7 +323,7 @@ var sentences = map[string]string{
 	"abcd site": "Report what the website declares and what was built: " +
 		"Writes nothing; refuses any argument.",
 	"abcd site build": "Render the website into the output directory: " +
-		"Writes only inside that directory; refuses a non-empty directory it did not write.",
+		"Writes there, plus a missing label into site-src/ui.json; refuses a non-empty directory it did not write.",
 	"abcd site setup": "Take the website from this checkout to a live address: " +
 		"Writes its files, and the forge and host changes once confirmed; refuses a folder abcd does not manage.",
 

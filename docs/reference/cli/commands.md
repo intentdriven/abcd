@@ -2981,7 +2981,7 @@ Report what the website declares and what was built: Writes nothing; refuses any
 
 #### `abcd site build`
 
-Render the website into the output directory: Writes only inside that directory; refuses a non-empty directory it did not write.
+Render the website into the output directory: Writes there, plus a missing label into site-src/ui.json; refuses a non-empty directory it did not write.
 
 **Usage:** `abcd site build [flags]`
 
