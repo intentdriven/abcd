@@ -49,8 +49,10 @@ var (
 	// and bare spellings of one id are the same handle. The alternation covers
 	// every store the rule INDEXES — a prefix indexed but not matched here reads as
 	// "no handle at all", which turns a well-formed link into a false blocker and
-	// leaves its reverse direction unchecked.
-	recordHandleRe = regexp.MustCompile(`(?i)\b(adr|itd|iss|spc)-(\d+)\b`)
+	// leaves its reverse direction unchecked. `rdi` is here because a reading
+	// record's `duplicates:` and `refines:` may name an earlier reading item
+	// (ruling DQ2b, adr-2609300821558671), and that link must resolve too.
+	recordHandleRe = regexp.MustCompile(`(?i)\b(adr|itd|iss|spc|rdi)-(\d+)\b`)
 	// The same handle, anchored: a whole frontmatter id value and nothing else.
 	recordHandleFullRe = regexp.MustCompile(`(?i)^(adr|itd|iss|spc)-(\d+)$`)
 	// A frontmatter id of ANY store, parsed by shape rather than against the
