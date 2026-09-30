@@ -96,7 +96,6 @@ internal/core/memory.SourceHashes
 internal/core/memory.SourcesIndexPath
 internal/core/memory.WithStoreLock
 internal/core/memory.WritePages
-internal/core/mode.QuestionOpen
 internal/core/mode.SetAt
 internal/core/oracle.BundledDenylist
 internal/core/oracle.Ceiling
