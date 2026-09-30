@@ -894,7 +894,7 @@ abcd disembark review ../lifeboat .
 
 ### `abcd docs`
 
-Keep the citation baseline that `abcd lint docs` enforces offline: Writes nothing but that baseline; refuses an unknown sub-verb.
+Keep the citation baseline `abcd lint docs` enforces, and judge the brief against the binary: Writes nothing bare; refuses an unknown sub-verb.
 
 **Usage:** `abcd docs`
 
@@ -937,6 +937,39 @@ This is the only abcd verb that reaches the network on behalf of documentation. 
 ```
       --config string   path to docs-lint.json (default: <root>/.abcd/docs-lint.json)
       --root string     repo root (default: current working directory)
+```
+
+#### `abcd docs fidelity`
+
+Judge the brief against every shipped surface and the saved docs review: Writes drafted edits only with --apply; refuses a surface no chapter names.
+
+**Usage:** `abcd docs fidelity [flags]`
+
+**Flags:**
+
+```
+      --apply            write the reviewer's drafted corrections into the brief and flag each for review
+      --autonomous       an unattended run: apply the drafted corrections, list every applied edit, and hand the routine the reviewer's request; the refusals stay
+      --intent strings   the intent(s) whose delivery is judged, named in every finding (repeatable)
+      --report           the per-task pass: state every finding, refuse nothing, exit 0
+```
+
+##### `abcd docs fidelity record`
+
+Save a docs review's verdict as the receipt for HEAD: Writes the receipt in the local tier; refuses a verdict naming no judge.
+
+**Usage:** `abcd docs fidelity record --verdict-json <file|-> [flags]`
+
+**Flags:**
+
+```
+      --verdict-json string   the reviewer's verdict JSON (a file, or - for stdin)
+```
+
+**Example:**
+
+```
+abcd docs fidelity record --verdict-json verdict.json
 ```
 
 ### `abcd drain`
@@ -3164,6 +3197,8 @@ Close a spec, and ship its intent when no open spec names it: Writes the moves t
 Moves the spec to closed/ and, when no open spec still names its intent, moves the intent to shipped/.
 
 The close that ships an intent also makes its fidelity review owed: it mints an OWED receipt (rcp-…), parks an `<!-- abcd-review: OWED receipt=rcp-… -->` marker in the intent's Audit Notes, and writes the review request to `.abcd/.work.local/reviews/<rcp>.request.md`, the input `abcd intent audit ingest` answers. A failed emit is a warning on stderr; the intent ships regardless.
+
+In the repository whose brief describes the binary, a close that ships an intent first runs the doc-fidelity gate (`abcd docs fidelity`): a surface no brief chapter names, a missing or stale docs review, or a confirmed false sentence refuses the close, and nothing moves.
 
 **Flags:**
 

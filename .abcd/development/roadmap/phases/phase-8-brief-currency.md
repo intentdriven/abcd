@@ -26,7 +26,7 @@ rather than being smoothed over between cuts.
   spec that delivered it.
 - A spec cannot move to closed while the brief lags the surface it delivered:
   the doc-fidelity pass of
-  [itd-60](../../intents/planned/itd-60-doc-fidelity-anti-drift.md) is a hard
+  [itd-60](../../intents/shipped/itd-60-doc-fidelity-anti-drift.md) is a hard
   gate at spec close and an advisory after each task.
 - The shape claims in the surface chapters are generated from the command
   tree and drift-tested, per
@@ -62,7 +62,7 @@ rather than being smoothed over between cuts.
 
 Intents bundled:
 
-- [itd-60](../../intents/planned/itd-60-doc-fidelity-anti-drift.md) — the
+- [itd-60](../../intents/shipped/itd-60-doc-fidelity-anti-drift.md) — the
   doc-fidelity pass: brief and public docs graded against built reality,
   advisory after each task, a hard gate at spec close.
 - [itd-147](../../intents/shipped/itd-147-the-brief-s-surface-chapters-are-a-generated-reflection-of-t.md)

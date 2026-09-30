@@ -481,7 +481,7 @@ any intent falls back to conventional-commit derivation.
 A cut that cannot proceed is **refused under a named kind**, and the kind is the
 wire format both front doors emit (`internal/core/release/emit.go`). Every one
 is fail-closed: the cut stops rather than deriving a number or a changelog that
-would be wrong. There are eight, and an operator sees them as
+would be wrong. There are nine, and an operator sees them as
 `refused (<kind>)`.
 
 | Kind | Raised when |
@@ -493,6 +493,7 @@ would be wrong. There are eight, and an operator sees them as
 | `surface-guard` | the surface guardrail failed, or could not compare |
 | `unfixed-finding` | a consequential finding this cycle captured is still open, with no recorded decision to defer it |
 | `deleted-finding` | a consequential record the anchor held in `open/` is in no status directory at HEAD: the cut removed the finding instead of answering it |
+| `doc-fidelity` | an intent the cut ships leaves the brief behind the surface it delivered, or no saved docs review names the commit being cut ([`10-docs.md`](10-docs.md), itd-60) |
 | `empty-cut` | nothing user-facing shipped, so there is no release |
 
 `release-in-flight` is the one an operator meets most often outside a release

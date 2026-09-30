@@ -1149,9 +1149,24 @@ type receipt struct {
 	// schema (an informational VSA field); the manifest-era gate now READS it to
 	// require that each finding carries a disposition. Only the disposition is
 	// inspected — the gate never judges a finding's content or severity.
-	Failing []struct {
-		Disposition string `json:"disposition"`
-	} `json:"failing"`
+	Failing []ReceiptFinding `json:"failing"`
+}
+
+// ReceiptFinding is one entry of a receipt's failing list. The release gate
+// reads its Disposition only; the doc-fidelity gate (itd-60) also reads the
+// sentence a reviewer found false, where it stands, and the evidence, so a
+// refusal can name the sentence rather than a count.
+type ReceiptFinding struct {
+	Disposition string `json:"disposition"`
+	// Doc is "brief" or "public": which document the sentence stands in. A
+	// public-doc sentence is reported and never refuses in this rung.
+	Doc      string `json:"doc,omitempty"`
+	Chapter  string `json:"chapter,omitempty"`
+	Sentence string `json:"sentence,omitempty"`
+	Evidence string `json:"evidence,omitempty"`
+	// Replacement is the reviewer's drafted correction of Sentence, which
+	// `abcd docs fidelity --apply` writes into the chapter and flags.
+	Replacement string `json:"replacement,omitempty"`
 }
 
 // checkReceiptGate is the fail-closed, release-time verification of the semantic
@@ -1283,6 +1298,9 @@ func checkReceiptGate(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 		if r.Subject.Digest.GitCommit != cfg.Commit {
 			add(rel, "'"+gate+"' receipt subject '"+r.Subject.Digest.GitCommit+"' does not match the target commit "+cfg.Commit)
 			continue
+		}
+		if cfg.onReceipt != nil {
+			cfg.onReceipt(gate, r.VerificationResult, r.Failing)
 		}
 		if r.VerificationResult != "PROMOTE" {
 			add(rel, "'"+gate+"' receipt verdict is '"+r.VerificationResult+"', not PROMOTE")

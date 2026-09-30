@@ -25,6 +25,8 @@ in a gate, which is what keeps the lint itself deterministic and offline.
 | `cite` | — | shipped |
 | `cite confirm` | — | shipped |
 | `cite refresh` | — | shipped |
+| `fidelity` | gate | shipped |
+| `fidelity record` | — | shipped |
 
 
 - **The lint** is the docs target of the one lint
@@ -61,6 +63,47 @@ in a gate, which is what keeps the lint itself deterministic and offline.
   Both forms write the same dated entry, so when the page arrives it is a second
   producer of one input rather than a second pathway. Only URLs the documentation
   actually cites can be confirmed.
+- **The doc-fidelity gate** (itd-60) judges whether the brief describes every
+  surface that ships. It runs in two layers. Layer 1 is the coverage floor:
+  every verb, sub-verb and agent the binary ships (hidden commands and moved
+  spellings aside) must be named by a chapter under `04-surfaces/`, by a code
+  span of its command path or its agent name, or by the agent's prompt path
+  `agents/<name>.md`. The command tree is the one the CLI reference and
+  `surface.json` are generated from. Layer 1 needs no reviewer, and a surface no
+  chapter names refuses before layer 2 is asked. Layer 2 is the saved docs
+  review. A host-delegated reviewer reads the chapters against the code and hands
+  its verdict to the gate's record sub-verb. That sub-verb saves it as a receipt
+  labelled with the commit the checkout stands at, under
+  `.abcd/.work.local/doc-fidelity/<commit>/`. The receipt has the release gate's
+  shape and is judged by the release gate's own receipt reader. A receipt for
+  HEAD that is PROMOTE lets the change proceed. A missing receipt, one naming
+  another commit, an unreadable one, or an INCONCLUSIVE one refuses with "run the
+  docs review first". A HOLD refuses and names each false brief sentence. A false
+  sentence in a public doc is reported and never refuses. The record sub-verb
+  refuses a PROMOTE that names a false brief sentence, and a saved PROMOTE that
+  names one refuses as unusable. Each quoted sentence and drafted replacement is
+  one line of at most 2048 bytes, or the verdict is refused.
+- **Where the gate refuses.** The spec close runs it over the intents the close
+  would ship, before anything moves, and the release cut runs it over every
+  intent shipped since the last tag. A close that mints a remainder ships nothing
+  and is not gated. The gate judges the brief against the binary, never against
+  the tag, so a chapter edited ahead of the last cut is current rather than
+  drift. It is armed only in a repository that carries the command-tree snapshot
+  and the brief's `04-surfaces/` chapters, since only that brief describes the
+  binary. No file exempts a surface from layer 1: a surface the binary ships
+  that no chapter names refuses, whenever it first shipped.
+- **Draft and apply, review after.** A reviewer may draft the correction of a
+  false sentence (`replacement`). The gate proposes that edit and still refuses.
+  The gate's apply form replaces the sentence in its chapter (it must occur
+  exactly once, or nothing is written) and records a flag in
+  `.abcd/work/brief-review-flags.json` for the product thinker to read. The gate
+  then lets the change proceed and lists the edit as awaiting review. It does so
+  only while the chapter no longer carries the sentence, does carry the draft,
+  and a flag names the edit. The autonomous form applies the drafts for an
+  unattended run and lists each applied edit. Whenever the saved review is not a
+  match for HEAD it also hands the routine the reviewer's request, and it still
+  refuses. The report form is the per-task pass: it states every finding,
+  refuses nothing and exits 0.
 
 Bare `abcd docs` prints command usage rather than a status board; the
 [surfaces index](README.md) carries the one enumeration of where the
@@ -185,7 +228,7 @@ _Generated from the command tree; a drift test fails `go test` when this appendi
 
 ### `abcd docs`
 
-Sub-verbs: `abcd docs cite`.
+Sub-verbs: `abcd docs cite`, `abcd docs fidelity`.
 
 Flags: none.
 
@@ -213,5 +256,24 @@ Sub-verbs: none.
 |---|---|
 | `--config` | string |
 | `--root` | string |
+
+### `abcd docs fidelity`
+
+Sub-verbs: `abcd docs fidelity record`.
+
+| Flag | Type |
+|---|---|
+| `--apply` | bool |
+| `--autonomous` | bool |
+| `--intent` | stringSlice |
+| `--report` | bool |
+
+### `abcd docs fidelity record`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--verdict-json` | string |
 
 <!-- surface-appendix:end -->
