@@ -262,7 +262,7 @@ documents is then an unknown command (iss-161). One file per verb, directly unde
 `abcd`, `ahoy`, `banlist`, `build`, `capture`, `consult`, `decide`, `disembark`, `docs`, `drain`,
 `embark`, `guard`, `history`, `ideate`, `identity`, `implement`, `inbox`,
 `ingest`, `intent`, `lab`, `launch`, `lint`, `memory`, `mode`, `peers`,
-`prepare-this-repo`, `reading`, `report`, `scribe`, `site`, `source`, `update`,
+`prepare-this-repo`, `reading`, `reflect`, `report`, `scribe`, `site`, `source`, `update`,
 `version`.
 <!-- /index -->
 
