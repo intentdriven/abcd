@@ -93,7 +93,9 @@ too, and then refuses, writing nothing:
 
 The answers file is read strictly: an unknown or repeated key is refused rather
 than an answer dropped. Every answer passes the canonical secret scanner before
-it is written, and a degraded or unavailable scanner refuses the write. The file is created exclusively
+it is written, and a degraded or unavailable scanner refuses the write; after
+the redaction every control and bidi byte in an answer is masked with `?`, line
+by line, so the record reads as its bytes say. The file is created exclusively
 inside the retrospective store, every level of which must be a real directory,
 so neither a second run nor a symlinked store can overwrite or escape, and under
 the intent store's lock, the lock a lifeboat embark writes under, so an embark

@@ -12,6 +12,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/jsonstrict"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // Answer is the person's answer to one asked section, and the answer to its
@@ -158,13 +159,15 @@ func redactAnswers(root string, a Answers) (Answers, error) {
 	if unavail, reason := sc.Unavailable(); unavail {
 		return Answers{}, fmt.Errorf("reflect: refusing to write answers with a degraded scanner: %s (nothing written)", reason)
 	}
+	// After the redaction, every control and bidi byte is masked, line by line,
+	// so the committed record reads as its bytes say: an answer comes from a
+	// host-run composer, and an ESC or a U+202E in it would otherwise reach the
+	// record raw.
 	clean := func(text string) string {
-		findings := sc.ScanText(text, "reflect")
-		if len(findings) == 0 {
-			return text
+		if findings := sc.ScanText(text, "reflect"); len(findings) > 0 {
+			text, _ = scanner.Redact(text, findings)
 		}
-		out, _ := scanner.Redact(text, findings)
-		return out
+		return termsafe.SanitizeBlock(text)
 	}
 	for _, p := range []*Answer{&a.WentWell, &a.CouldImprove, &a.Lessons, &a.Decisions} {
 		p.Text = clean(p.Text)
