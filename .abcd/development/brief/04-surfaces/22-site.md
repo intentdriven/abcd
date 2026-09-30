@@ -103,7 +103,8 @@ The status page is the record health page, `/record/health/`. It opens with the
 Now / Next / Later block the bare `abcd` board carries
 ([`08-abcd.md`](08-abcd.md)), rendered from the same read
 (`internal/core/statusblock`): three panels, each row an intent's id linked to
-its record page, its title, and what places it there, with Next and the head
+its record page, its title, what places it there, and the release it targets
+when it names one (the `status.target` label), with Next and the head
 in the pick order the board reads them in. The site build reads the
 implement loop's state file for Now's lane rows through the reader its front
 door hands it, the loop's own, and a build with no state file, as a release

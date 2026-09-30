@@ -58,13 +58,18 @@ type Block struct {
 	Order string `json:"order"`
 }
 
-// Row is one intent on the block: its id and title, the shelf it sits on, and
-// what places it where it is. A field another placement needs (a target
-// release, a score) joins here, omitted when empty.
+// Row is one intent on the block: its id and title, the shelf it sits on, the
+// release it targets, and what places it where it is. A field another
+// placement needs (a score) joins here, omitted when empty.
 type Row struct {
 	ID     string `json:"id"`
 	Title  string `json:"title"`
 	Bucket string `json:"bucket"`
+	// Target is the release a planned intent names as the one it must land by
+	// (`target_release`: `next` or vX.Y.Z, itd-2609212103572513 criterion 4),
+	// empty when it names none. A draft shows none: a target is a promise about
+	// planned work, and the cut reads it off planned intents alone.
+	Target string `json:"target_release,omitempty"`
 	// NextUp marks the pick order's head on Now.
 	NextUp bool `json:"next_up,omitempty"`
 	// Lane is the lane state of a Now row the state file shows.
@@ -121,7 +126,11 @@ func Read(repoRoot string, lanes LaneReader) (Block, error) {
 		if err != nil {
 			return Row{}, err
 		}
-		return Row{ID: it.ID, Title: l.Title, Bucket: it.Bucket}, nil
+		r := Row{ID: it.ID, Title: l.Title, Bucket: it.Bucket}
+		if it.Bucket == intent.BucketPlanned {
+			r.Target = it.TargetRelease
+		}
+		return r, nil
 	}
 
 	// The state file is read first: an intent it shows in a lane is listed

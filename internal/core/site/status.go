@@ -9,7 +9,8 @@ package site
 // door passes the implement loop's; a nil one reads as an absent state file),
 // so the page and the board cannot disagree about what is Now, Next or Later.
 // Every word the block adds is an id, a title, a lane state from the state file,
-// a readiness check's name, or an interface label from `site-src/ui.json`.
+// a readiness check's name, a target release from the record, or an interface
+// label from `site-src/ui.json`.
 
 import (
 	"strconv"
@@ -62,9 +63,24 @@ func (e *explorer) statusRows(rows []statusblock.Row) string {
 	return b.String()
 }
 
-// statusTag is what places a row, as escaped HTML: the lane and its next step,
-// the next-up mark, the gating checks a refused intent fails, or the draft mark.
+// statusTag is what places a row, as escaped HTML — the lane and its next
+// step, the next-up mark, the gating checks a refused intent fails, or the
+// draft mark — then the release the intent targets, when it names one
+// (itd-2609212103572513 criterion 4).
 func (e *explorer) statusTag(r statusblock.Row) string {
+	place := e.statusPlace(r)
+	if r.Target == "" {
+		return place
+	}
+	target := escapeText(e.c.ui.Status.Target) + ` ` + escapeText(r.Target)
+	if place == "" {
+		return target
+	}
+	return place + ` · ` + target
+}
+
+// statusPlace is what places a row, as escaped HTML, or nothing.
+func (e *explorer) statusPlace(r statusblock.Row) string {
 	ui := e.c.ui.Status
 	switch {
 	case r.Lane != nil:

@@ -84,7 +84,9 @@ intent a build run has in a lane (each row's `lane` names the run, the lane,
 its next step and the role it waits on), then the intent marked `next_up`; Next
 is every planned intent the readiness gate reports READY; Later is every
 planned intent the gate refuses, its `failing_checks` named, then the drafts.
-An intent in a lane is listed under Now only, never also under Next or Later.
+A planned intent that names the release it must land by carries it as
+`target_release` on its row, in any list, and its text line shows `target
+<value>` in the brackets. An intent in a lane is listed under Now only, never also under Next or Later.
 Next and the `next_up` intent are read
 in `abcd build next`'s pick order (`order` is `pick`): the readiest first by the
 pick's score, the oldest among equals, and the head passes over an intent that

@@ -426,3 +426,58 @@ func TestTheHeadPassesOverWhatTheBuildRefusesFromTheRecord(t *testing.T) {
 		})
 	}
 }
+
+// TestARowShowsItsTarget is itd-2609212103572513 criterion 4: given the
+// status block, when a targeted intent is listed, then its row shows the
+// target — in Now (a lane row and the head), in Next and in Later alike, and in
+// the JSON as `target_release`. A row with no target carries none, and a draft
+// carrying one by hand shows none: a target is a promise about planned work,
+// and the cut reads it off planned intents alone.
+func TestARowShowsItsTarget(t *testing.T) {
+	root := store(t)
+	w := func(rel, body string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(rel)), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	const in = ".abcd/development/intents/"
+	w(in+"planned/itd-2609010000000001-late.md", readyIntent("itd-2609010000000001", "The stamped one", "spc-2609010000000011", "target_release: v0.11.0\n"))
+	w(in+"planned/itd-7-seven.md", readyIntent("itd-7", "The seventh", "spc-17", "target_release: next\n"))
+	w(in+"planned/itd-5-held.md", readyIntent("itd-5", "The held one", "spc-15", "held: \"awaiting a ruling\"\ntarget_release: v0.12.0\n"))
+	w(in+"planned/itd-8-unlinked.md", readyIntent("itd-8", "The unlinked one", "null", "target_release: next\n"))
+	w(in+"drafts/itd-3-old.md", strings.Replace(draft("itd-3", "An old idea"), "kind: standalone\n", "kind: standalone\ntarget_release: next\n", 1))
+
+	b, err := Read(root, lanesOf(Started{Intent: "itd-2609010000000001", Lane: Lane{Run: "run-1", Step: "implement"}}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	targets := map[string]string{}
+	for _, list := range [][]Row{b.Now, b.Next, b.Later} {
+		for _, r := range list {
+			targets[r.ID] = targets[r.ID] + "|" + r.Target
+		}
+	}
+	for id, want := range map[string]string{
+		"itd-2609010000000001": "|v0.11.0",   // Now, in a lane
+		"itd-7":                "|next|next", // Now as the head, and Next
+		"itd-5":                "|v0.12.0",   // Next
+		"itd-8":                "|next",      // Later, not READY
+		"itd-3":                "|",          // a draft shows none
+		"itd-2609020000000002": "|",          // no target, none shown
+	} {
+		if targets[id] != want {
+			t.Errorf("%s rows carry targets %q, want %q", id, targets[id], want)
+		}
+	}
+	raw, err := json.Marshal(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `"id":"itd-8","title":"The unlinked one","bucket":"planned","target_release":"next"`) {
+		t.Errorf("--json must carry each row's target as target_release:\n%s", raw)
+	}
+	if strings.Count(string(raw), `"target_release"`) != 5 {
+		t.Errorf("a row with no target carries no target_release key:\n%s", raw)
+	}
+}
