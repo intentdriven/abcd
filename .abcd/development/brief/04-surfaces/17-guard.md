@@ -65,14 +65,13 @@ the hook: it is blocked (`command-unparsable`), not let through, because a line
 the guard misreads may be one bash runs, and a pass would carry every hazard in
 it past the guard. On the check it exits 2, like the rest.
 
-The check also speaks JSON (`guard check --json`), and that is the form the
-plugin page uses: a verdict, and with it the entry that fired, its tier, why the
-command is dangerous, and the safe successor. A `matches` list names every entry
-the same line tripped, the one that fired included, so a command hazardous in
-two ways reports both rather than only the first; the rendered form says the
-same thing on an `also matched:` line. The hook answers the host by its exit
-code and its message on stderr alone, and writes nothing on stdout, with or
-without `--json`.
+The check also answers in JSON when asked, and that is the form the plugin page
+uses: a verdict, and with it the entry that fired, its tier, why the command is
+dangerous, and the safe successor. A `matches` list names every entry the same
+line tripped, the one that fired included, so a command hazardous in two ways
+reports both rather than only the first; the rendered form says the same thing
+on an `also matched:` line. The hook answers the host by its exit code and its
+message on stderr alone, and writes nothing on stdout in either output form.
 
 ## Taught before it is refused
 
