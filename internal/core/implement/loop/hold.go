@@ -42,8 +42,10 @@ func handedBackCause(st State) string {
 
 // holdLane holds a lane at its landing after a sibling's hand-back. An armed
 // lane is disarmed through the forge client first; one whose pushed head the
-// default branch already holds had landed before the hand-back, and its
-// landing runs on to record it.
+// default branch already holds, or whose pull request the forge reports merged,
+// had landed before the hand-back, and its landing runs on to record it. The
+// forge is asked because the local tracking ref is not fetched for the hold and
+// may lag the merge.
 func holdLane(c Context, lane *Lane) (Outcome, error) {
 	before := HoldBeforePush
 	if ld := lane.Landing; ld != nil && ld.Pushed != "" {
@@ -56,6 +58,13 @@ func holdLane(c Context, lane *Lane) (Outcome, error) {
 					}
 				}
 				n := strconv.Itoa(lane.PR)
+				state, err := forge(c, *lane, "pr", "view", n, "--json", "state", "--jq", ".state")
+				if err != nil {
+					return Outcome{}, err
+				}
+				if strings.TrimSpace(state) == "MERGED" {
+					return landStage(c, lane)
+				}
 				if _, err := forge(c, *lane, "pr", "merge", n, "--disable-auto"); err != nil {
 					r, _ := AsRefusal(err)
 					why := err.Error()
@@ -150,11 +159,13 @@ func Release(repoRoot, runID, laneID string, o Options) (StepResult, error) {
 }
 
 // Discard does not land a held lane, on the person's word (`implement step
-// --discard <lane>`): its pull request is closed if it opened one, its worktree
-// is removed from the machine store and its branch deleted, and its stage is
-// `discarded`; its step stays unlanded in the spec, so a replanned remainder
-// carries it. It changes nothing when the lane is not held or any lane is still
-// at work.
+// --discard <lane>`): its worktree is removed from the machine store and its
+// branch deleted, then its pull request is closed if it opened one, and its
+// stage is `discarded`; its step stays unlanded in the spec, so a replanned
+// remainder carries it. The local removals come first, so a refused one leaves
+// the pull request open and the lane held, and a retry finds nothing half done:
+// a worktree or branch already gone is passed over. It changes nothing when the
+// lane is not held or any lane is still at work.
 func Discard(repoRoot, runID, laneID string, o Options) (StepResult, error) {
 	var res StepResult
 	err := mutate(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
@@ -166,13 +177,6 @@ func Discard(repoRoot, runID, laneID string, o Options) (StepResult, error) {
 		lane := st.Lanes[i]
 		c := Context{RepoRoot: repoRoot, RunDir: runRel(st.RunID), State: *st, Now: now}
 		did := []string{}
-		if lane.PR > 0 {
-			n := strconv.Itoa(lane.PR)
-			if _, err := forge(c, lane, "pr", "close", n); err != nil {
-				return false, err
-			}
-			did = append(did, "closed pull request #"+n)
-		}
 		if lane.Worktree != "" {
 			if err := removeLaneWorktree(c, lane); err != nil {
 				return false, err
@@ -188,6 +192,13 @@ func Discard(repoRoot, runID, laneID string, o Options) (StepResult, error) {
 				}
 				did = append(did, "deleted its branch "+lane.Branch+" at "+shortSHA(tip))
 			}
+		}
+		if lane.PR > 0 {
+			n := strconv.Itoa(lane.PR)
+			if _, err := forge(c, lane, "pr", "close", n); err != nil {
+				return false, err
+			}
+			did = append(did, "closed pull request #"+n)
 		}
 		lane.Stage = StageDiscarded
 		st.Lanes[i] = lane

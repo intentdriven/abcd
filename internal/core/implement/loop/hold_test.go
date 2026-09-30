@@ -128,3 +128,65 @@ func TestAnArmedSiblingIsDisarmedOrTheStepRefusesNamingItsPullRequest(t *testing
 		t.Fatalf("the forge was asked twice to withdraw the arming:\n%s", f.ghLog(t))
 	}
 }
+
+// DR6c, landed before the hand-back: an armed lane the forge reports merged is
+// recorded as landed, not disarmed, though the local tracking ref, never
+// fetched for the hold, has not caught up.
+func TestAnArmedSiblingTheForgeReportsMergedIsRecordedAsLanded(t *testing.T) {
+	f := armedSibling(t, false)
+	f.handedBack(t)
+	l2 := f.lane(t, "lane-2")
+	stale := strings.TrimSpace(f.repo.Git("rev-parse", "refs/remotes/origin/main"))
+	f.repo.Git("push", "-q", "origin", l2.Landing.Pushed+":refs/heads/main")
+	f.repo.Git("update-ref", "refs/remotes/origin/main", stale)
+	f.touchGH(t, "state", "MERGED\n")
+	f.step(t)
+	l2 = f.lane(t, "lane-2")
+	if l2.Stage != StageDone || l2.Hold != nil || l2.Landing.Merged == "" {
+		t.Fatalf("the merged lane is recorded as landed: %+v", l2)
+	}
+	if log := f.ghLog(t); strings.Contains(log, "--disable-auto") {
+		t.Fatalf("a merged pull request is never disarmed:\n%s", log)
+	}
+}
+
+// A discard removes the lane's worktree and branch before it closes the pull
+// request: a worktree git refuses to remove leaves the pull request open and
+// the lane held, and the retry closes it once.
+func TestADiscardRemovesTheLaneLocallyBeforeItClosesItsPullRequest(t *testing.T) {
+	f := armedSibling(t, false)
+	f.handedBack(t)
+	f.step(t)
+	l2 := f.lane(t, "lane-2")
+	if l2.Stage != StageHeld || l2.PR != 7 {
+		t.Fatalf("lane 2 is held with its pull request open: %+v", l2)
+	}
+	stray := filepath.Join(l2.Worktree, "stray.txt")
+	if err := os.WriteFile(stray, []byte("work\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	before := stateBytes(t, f.repo.Root(), f.runID)
+	_, err := Discard(f.repo.Root(), f.runID, "lane-2", f.opts())
+	if r := mustRefusal(t, err); !strings.Contains(r.Reason, "worktree") {
+		t.Fatalf("a worktree with changes refuses the discard: %+v", r)
+	}
+	if n := strings.Count(f.ghLog(t), "pr close 7"); n != 0 || !bytes.Equal(before, stateBytes(t, f.repo.Root(), f.runID)) {
+		t.Fatalf("a refused discard closes no pull request (%d) and leaves the lane held", n)
+	}
+	if err := os.Remove(stray); err != nil {
+		t.Fatal(err)
+	}
+	res, err := Discard(f.repo.Root(), f.runID, "lane-2", f.opts())
+	if err != nil || res.Stage != StageDiscarded {
+		t.Fatalf("the retry discards the lane: %+v %v", res, err)
+	}
+	if n := strings.Count(f.ghLog(t), "pr close 7"); n != 1 {
+		t.Fatalf("the pull request is closed once: %d\n%s", n, f.ghLog(t))
+	}
+	if _, err := os.Stat(l2.Worktree); !os.IsNotExist(err) {
+		t.Fatalf("the lane's worktree is gone: %v", err)
+	}
+	if gitErr(f.repo, "rev-parse", "--verify", "--quiet", "refs/heads/"+l2.Branch) == nil {
+		t.Fatal("the lane's branch is gone")
+	}
+}
