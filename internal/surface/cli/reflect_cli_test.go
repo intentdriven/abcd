@@ -165,13 +165,22 @@ func TestReflectRefusesAReleaseThatShippedNothing(t *testing.T) {
 }
 
 // TestReflectRefusesAnUnknownOrMalformedTag: a tag the repository does not hold,
-// and a value that is not a release tag at all, are usage refusals.
+// and a value that is not a release tag at all, are usage refusals, each saying
+// which it is: an exit 2 alone is what an unknown verb also returns.
 func TestReflectRefusesAnUnknownOrMalformedTag(t *testing.T) {
 	r := reflectRepo(t)
-	for _, tag := range []string{"v9.9.9", "0.2.0", "v0.2", "../v0.2.0"} {
+	for tag, want := range map[string]string{
+		"v9.9.9":    "no release tag v9.9.9 in this repository",
+		"0.2.0":     `"0.2.0" is not a release tag (want vMAJOR.MINOR.PATCH`,
+		"v0.2":      `"v0.2" is not a release tag (want vMAJOR.MINOR.PATCH`,
+		"../v0.2.0": `"../v0.2.0" is not a release tag (want vMAJOR.MINOR.PATCH`,
+	} {
 		out, err := reflectIn(t, r, tag)
 		if code := exitCodeOf(err); code != 2 {
 			t.Errorf("reflect %s: exit = %d, want 2\n%s", tag, code, out)
+		}
+		if msg := errText(err); !strings.Contains(msg, want) {
+			t.Errorf("reflect %s: refusal = %q, want it to say %q", tag, msg, want)
 		}
 	}
 }
@@ -305,6 +314,14 @@ func TestReflectWriteRefusesAMistypedAnswersKey(t *testing.T) {
 	out, err := reflectIn(t, r, "write", "v0.2.0", "--answers", writeAnswers(t, bad), "--proceed")
 	if code := exitCodeOf(err); code != 2 {
 		t.Fatalf("exit = %d, want 2\n%s", code, out)
+	}
+	// The refusal names the answers and the mistyped key; the key's wording
+	// around it is the standard library's, so it is not pinned.
+	if msg := errText(err); !strings.Contains(msg, "abcd reflect write: reflect: answers:") || !strings.Contains(msg, "lesson") || !strings.Contains(msg, "(nothing written)") {
+		t.Errorf("refusal = %q, want it to name the answers, the mistyped key and that nothing was written", msg)
+	}
+	if _, err := os.Lstat(filepath.Join(r.Root(), ".abcd", "development", "retrospectives")); err == nil {
+		t.Error("a refused answers file created the retrospectives store")
 	}
 }
 
