@@ -17,7 +17,7 @@ import (
 // reported can be attributed to nothing else.
 func TestStatusSkipNamesTheRefusingLayerAndIsCounted(t *testing.T) {
 	repo, ir := ledger(t)
-	if _, err := Capture(CaptureRequest{
+	if _, err := testCapture(CaptureRequest{
 		RepoRoot: repo, IssuesRoot: ir, Text: "a well formed finding", Severity: SeverityMinor,
 		Category: "bug", Source: "manual-test", Slug: "fine", FoundDuring: "t",
 	}); err != nil {

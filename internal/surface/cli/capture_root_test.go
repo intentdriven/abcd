@@ -293,6 +293,19 @@ func TestEveryCaptureVerbAddressesTheCheckoutLedger(t *testing.T) {
 				}
 			},
 		},
+		// The remedy lands on the checkout's record; a subdirectory ledger would
+		// not know the id at all.
+		"remedy": {
+			args: func(ids []string, _ string) []string {
+				return []string{"capture", "remedy", ids[0], "make the map before the first write", "--json"}
+			},
+			check: func(t *testing.T, repo string, ids []string, _ string, out []byte, err error) {
+				if err != nil {
+					t.Fatalf("capture remedy %s from the subdirectory: %v\n%s", ids[0], err, out)
+				}
+				assertRecordIn(t, repo, "open", ids[0])
+			},
+		},
 		// The fixture's item is a detection, so the checkout's ledger answers with
 		// the position refusal; a subdirectory ledger would not know the item.
 		"admit": {

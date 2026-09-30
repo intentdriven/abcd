@@ -158,6 +158,21 @@ func RemedyOf(fm map[string]any) string {
 	return s
 }
 
+// MachineRemedy is the one remedy an automatic filer writes when it has no fix
+// to propose (ruling H12 of 2026-09-29): every new issue carries a remedy
+// (ruling BX3), and a finding a machine files has none yet. A drain skips a
+// record carrying it until a person writes a real remedy (`abcd capture
+// remedy`), and the capture surface refuses it from a person, so the value
+// always means a machine filed the record.
+const MachineRemedy = "none (filed automatically)"
+
+// IsMachineRemedy reports whether a remedy is MachineRemedy, compared trimmed
+// and case-folded, so a hand-typed variant of it is recognised as the same
+// value rather than read as a real remedy.
+func IsMachineRemedy(remedy string) bool {
+	return strings.EqualFold(strings.TrimSpace(remedy), MachineRemedy)
+}
+
 // MigrateHint is the remedy every refusal of a retired key names.
 const MigrateHint = "run `abcd capture migrate --apply` to rewrite it"
 

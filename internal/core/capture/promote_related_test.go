@@ -50,7 +50,7 @@ func TestPromoteKeepsALooseRelatedIntentAndAppends(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateDraft: %v", err)
 	}
-	cres, err := Capture(CaptureRequest{
+	cres, err := testCapture(CaptureRequest{
 		RepoRoot: repo, IssuesRoot: ir, Text: "an observation near an existing intent", Severity: SeverityMinor,
 		Category: "observation", Source: "user-observation", FoundDuring: "t",
 		Slug: "near-an-intent", RelatedIntents: []string{loose.ID},

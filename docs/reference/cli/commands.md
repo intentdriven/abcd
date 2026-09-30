@@ -333,23 +333,23 @@ progress or the run state is locked.
 
 ### `abcd capture`
 
-File an issue from quoted text, or render the ledger's status bare: Writes one record under open/; refuses a lone word and any folder outside a checkout.
+File an issue from quoted text, or render the ledger's status bare: Writes one record under open/; refuses a missing --remedy, a lone word or no checkout.
 
 **Usage:** `abcd capture [text] [flags]`
 
 **Flags:**
 
 ```
-      --blocked-by string        comma-separated iss-N ids this issue is blocked by; each must exist in the ledger — blocked_by is documented in .abcd/work/issues/README.md under "Derived priority" and in commands/capture.md under "Link"
-      --category string          issue category: bug | documentation | drift | inconsistency | tech-debt | security | ux | process | architectural-insight | future-work-seed | observation | lapse (default observation)
-      --found-at string          optional repo-relative path, which must exist in this checkout, or a conceptual location in words
-      --found-during string      session/command context (default manual-capture)
-      --lapsed-at string         RFC 3339 instant a discipline gave way (the lapse, not the write-up)
-      --production-mode string   how this record's text was produced: hand-written|dictated-and-formatted|scribe-transcribed (default: the repo's declared mode, else hand-written)
-      --remedy abcd drain        the proposed fix, one line; abcd drain takes no issue without one
-      --severity string          severity: nitpick | minor | major | critical (default minor)
-      --slug string              override the slug derived from the text
-      --source string            surfacing channel: plan-review | impl-review | manual-test | review-followup | agent-finding | agent-observation | user-observation | drift-detection | memory-curation | managed-repo (default user-observation)
+      --blocked-by string            comma-separated iss-N ids this issue is blocked by; each must exist in the ledger — blocked_by is documented in .abcd/work/issues/README.md under "Derived priority" and in commands/capture.md under "Link"
+      --category string              issue category: bug | documentation | drift | inconsistency | tech-debt | security | ux | process | architectural-insight | future-work-seed | observation | lapse (default observation)
+      --found-at string              optional repo-relative path, which must exist in this checkout, or a conceptual location in words
+      --found-during string          session/command context (default manual-capture)
+      --lapsed-at string             RFC 3339 instant a discipline gave way (the lapse, not the write-up)
+      --production-mode string       how this record's text was produced: hand-written|dictated-and-formatted|scribe-transcribed (default: the repo's declared mode, else hand-written)
+      --remedy abcd capture remedy   the proposed fix, one line (required); abcd capture remedy rewrites it later
+      --severity string              severity: nitpick | minor | major | critical (default minor)
+      --slug string                  override the slug derived from the text
+      --source string                surfacing channel: plan-review | impl-review | manual-test | review-followup | agent-finding | agent-observation | user-observation | drift-detection | memory-curation | managed-repo (default user-observation)
 ```
 
 #### `abcd capture admit`
@@ -510,6 +510,18 @@ Record a reframe a reading occasioned: Writes one rfm-N fingerprinting the frame
 
 ```
 abcd capture reframe --occasioned-by rdi-2609010000000001 --grounds "the reading showed the construal assumed a single operator" --open
+```
+
+#### `abcd capture remedy`
+
+Write or replace the fix an open issue proposes: Writes the issue's remedy; refuses an empty text, the automatic filers' value or an issue that is not open.
+
+**Usage:** `abcd capture remedy <iss-N> <text>`
+
+**Example:**
+
+```
+abcd capture remedy iss-2609010000000001 "make the map before the first write"
 ```
 
 #### `abcd capture resolve`
@@ -911,26 +923,32 @@ This is the only abcd verb that reaches the network on behalf of documentation. 
 
 ### `abcd drain`
 
-Sort the open issues by the drain's field rule, eligible first in drain order: Writes nothing; refuses to start without --dry-run, as the run is not built.
+Sort open issues by this repository's own drain rule, naming each loosened floor: Writes nothing; refuses without the rule's record, or without --dry-run.
 
 **Usage:** `abcd drain [flags]`
 
 Work the open issue ledger unattended: fix the issues that need no decision, and
-hand the rest back by kind. The rule for which issues need no decision is a
-recorded decision, and it reads the record's fields alone: nothing open in
-blocked_by; a category in the fixable set (tech-debt, documentation,
-inconsistency, drift, bug, ux); severity nitpick or minor; and a remedy: field.
-A security issue is always a person's. Every other open issue is handed back,
-listed as ineligible, or skipped naming its blocker, by the rule that excluded it.
+hand the rest back by kind. Which issues need no decision is this repository's own
+recorded decision: an accepted decision record whose frontmatter carries the four
+fields drain_categories, drain_severities, drain_security and drain_remedy. The
+rule reads the record's fields alone: nothing open in blocked_by; a category the
+rule takes; a severity it takes; and a remedy: field. abcd's strict baseline takes
+tech-debt, documentation, inconsistency, drift, bug and ux at nitpick or minor, and
+hands every security issue to a person. A repository's record may loosen those
+floors (major, critical, security), and every floor it loosens is named. An issue
+whose remedy opens "Waits on", or whose deferral past the current release tag is
+live, or names a release tag this checkout lacks, is always handed back. Every
+other open issue is handed back, listed as ineligible, or skipped naming its
+blocker, by the rule that excluded it.
 
 --dry-run shows every open issue's disposition, the eligible ones first in the
-order a drain takes them (category tech-debt, documentation, inconsistency,
-drift, bug, ux; then nitpick before minor; then oldest first), and writes
-nothing. The host judgement over each eligible remedy does not run in a dry
+order a drain takes them (by category, then severity, then oldest first), and
+writes nothing. The host judgement over each eligible remedy does not run in a dry
 run; it can only ever hand an issue back.
 
-The run itself is not built: without --dry-run the verb refuses to start, and
-exits 2 with nothing read or written.
+Without the repository's record, the dry run and the run both refuse (exit 2),
+naming how to add it; `abcd ahoy install` offers it. The run itself is not built:
+without --dry-run the verb refuses to start, and exits 2 with nothing written.
 
 **Flags:**
 

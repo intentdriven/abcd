@@ -38,7 +38,7 @@ func hiddenText(prefix string) string {
 
 func TestCaptureBodyEncodesHiddenRunes(t *testing.T) {
 	repo, ir := ledger(t)
-	res, err := Capture(CaptureRequest{
+	res, err := testCapture(CaptureRequest{
 		RepoRoot: repo, IssuesRoot: ir, Text: hiddenText("a body") + "\nsecond line\n\tindented",
 		Severity: SeverityMinor, Category: "bug", Source: "manual-test", Slug: "hidden", FoundDuring: "t",
 	})
@@ -54,7 +54,7 @@ func TestCaptureBodyEncodesHiddenRunes(t *testing.T) {
 
 func TestWontfixReasonAndDerivedGroundsEncodeHiddenRunes(t *testing.T) {
 	repo, ir := ledger(t)
-	res, err := Capture(CaptureRequest{RepoRoot: repo, IssuesRoot: ir, Text: "a finding",
+	res, err := testCapture(CaptureRequest{RepoRoot: repo, IssuesRoot: ir, Text: "a finding",
 		Severity: SeverityMinor, Category: "bug", Source: "manual-test", Slug: "w", FoundDuring: "t"})
 	if err != nil {
 		t.Fatal(err)
@@ -70,7 +70,7 @@ func TestWontfixReasonAndDerivedGroundsEncodeHiddenRunes(t *testing.T) {
 
 func TestResolveNoteAndGroundsEncodeHiddenRunes(t *testing.T) {
 	repo, ir := ledger(t)
-	res, err := Capture(CaptureRequest{RepoRoot: repo, IssuesRoot: ir, Text: "a finding",
+	res, err := testCapture(CaptureRequest{RepoRoot: repo, IssuesRoot: ir, Text: "a finding",
 		Severity: SeverityMinor, Category: "bug", Source: "manual-test", Slug: "r", FoundDuring: "t"})
 	if err != nil {
 		t.Fatal(err)
@@ -94,7 +94,7 @@ func TestResolveNoteAndGroundsEncodeHiddenRunes(t *testing.T) {
 // for a derived value: a terse reason is still a legal wontfix.
 func TestWontfixDerivedGroundsRefuseAControlCharacter(t *testing.T) {
 	repo, ir := ledger(t)
-	res, err := Capture(CaptureRequest{RepoRoot: repo, IssuesRoot: ir, Text: "a finding",
+	res, err := testCapture(CaptureRequest{RepoRoot: repo, IssuesRoot: ir, Text: "a finding",
 		Severity: SeverityMinor, Category: "bug", Source: "manual-test", Slug: "c", FoundDuring: "t"})
 	if err != nil {
 		t.Fatal(err)

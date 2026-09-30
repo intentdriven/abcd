@@ -48,7 +48,7 @@ func TestCaptureMintsTimestampID(t *testing.T) {
 		Now:     func() time.Time { return time.Date(2026, 8, 20, 11, 42, 7, 0, time.UTC) },
 		Entropy: bytes.NewReader([]byte{0x03, 0x15}), // 789 -> "0789"
 	})
-	res, err := Capture(CaptureRequest{
+	res, err := testCapture(CaptureRequest{
 		RepoRoot: repo, IssuesRoot: ir, Text: "x", Severity: SeverityMinor,
 		Category: "bug", Source: "user-observation", FoundDuring: "t", Slug: "note",
 	})
@@ -76,14 +76,14 @@ func TestCaptureSameInstantSameLedgerRedraws(t *testing.T) {
 		Now:     func() time.Time { return instant },
 		Entropy: bytes.NewReader([]byte{0x00, 0x2A, 0x00, 0x2A, 0x00, 0x07}),
 	})
-	first, err := Capture(CaptureRequest{
+	first, err := testCapture(CaptureRequest{
 		RepoRoot: repo, IssuesRoot: ir, Text: "a", Severity: SeverityMinor,
 		Category: "bug", Source: "user-observation", FoundDuring: "t", Slug: "one",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := Capture(CaptureRequest{
+	second, err := testCapture(CaptureRequest{
 		RepoRoot: repo, IssuesRoot: ir, Text: "b", Severity: SeverityMinor,
 		Category: "bug", Source: "user-observation", FoundDuring: "t", Slug: "two",
 	})
@@ -118,7 +118,7 @@ func TestCaptureConcurrentSameInstantAllDistinct(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			res, err := Capture(CaptureRequest{
+			res, err := testCapture(CaptureRequest{
 				RepoRoot: repo, IssuesRoot: ir, Text: "x", Severity: SeverityMinor,
 				Category: "bug", Source: "user-observation", FoundDuring: "t",
 				Slug: fmt.Sprintf("race-%d", i),
@@ -150,7 +150,7 @@ func TestCaptureMintIgnoresLedgerMaximum(t *testing.T) {
 	repo, ir := ledger(t)
 	// Plant a committed issue whose numeric id is far above the injected clock's
 	// stamp (year 2099).
-	planted, err := Capture(CaptureRequest{
+	planted, err := testCapture(CaptureRequest{
 		RepoRoot: repo, IssuesRoot: ir, Text: "planted", Severity: SeverityMinor,
 		Category: "bug", Source: "user-observation", FoundDuring: "t", Slug: "planted",
 		ForceID: "iss-9912312359590000",
@@ -165,7 +165,7 @@ func TestCaptureMintIgnoresLedgerMaximum(t *testing.T) {
 		Now:     func() time.Time { return time.Date(2026, 8, 20, 11, 42, 7, 0, time.UTC) },
 		Entropy: bytes.NewReader([]byte{0x00, 0x2A}),
 	})
-	res, err := Capture(CaptureRequest{
+	res, err := testCapture(CaptureRequest{
 		RepoRoot: repo, IssuesRoot: ir, Text: "fresh", Severity: SeverityMinor,
 		Category: "bug", Source: "user-observation", FoundDuring: "t", Slug: "fresh",
 	})
@@ -186,7 +186,7 @@ func TestCaptureMintEntropyFailureIsLoud(t *testing.T) {
 		Now:     func() time.Time { return time.Date(2026, 8, 20, 11, 42, 7, 0, time.UTC) },
 		Entropy: bytes.NewReader(nil), // immediate EOF
 	})
-	_, err := Capture(CaptureRequest{
+	_, err := testCapture(CaptureRequest{
 		RepoRoot: repo, IssuesRoot: ir, Text: "x", Severity: SeverityMinor,
 		Category: "bug", Source: "user-observation", FoundDuring: "t", Slug: "note",
 	})

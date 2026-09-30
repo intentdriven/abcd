@@ -108,6 +108,14 @@ until the run itself closes it.
   because the issue-keyed lane is not built. The command page is
   `commands/drain.md`, listed in the agents block until the product thinker
   rules on the person's fourteen-verb ceiling.
+- **Landed (the remedy required, rulings BX3 and H12 of 2026-09-29):**
+  `capture` refuses a new issue without a remedy; the automatic filers (the
+  consistency pass, every promoted inbox report) write the one machine
+  value `none (filed automatically)`, which the capture surface refuses from a
+  person; the dry run lists a record carrying it as ineligible until a person
+  writes a real remedy with `capture remedy`, the verb that writes or replaces
+  the field on an open issue. A record filed before the rule stays readable and
+  is listed as ineligible.
 - **Remaining:** scope 3 (the host judgement), 4 (the issue-keyed lane, which
   needs `implement` to take an `iss-` key), 5 (the hand-back writes), 7 (the
   pace window and `--max`), the run's summary of scope 8, and the id-shape

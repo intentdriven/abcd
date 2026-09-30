@@ -325,7 +325,7 @@ func TestCaptureReaderAcceptsProvenanceKeys(t *testing.T) {
 // defaulted when the caller declares none.
 func TestCommitCaptureStampsProvenance(t *testing.T) {
 	repo, ir := ledger(t)
-	res, err := Capture(CaptureRequest{
+	res, err := testCapture(CaptureRequest{
 		RepoRoot: repo, IssuesRoot: ir, Text: "a finding", Severity: SeverityMinor,
 		Category: "bug", Source: "user-observation", FoundDuring: "t", Slug: "note",
 		ProductionMode: "dictated-and-formatted",
@@ -342,7 +342,7 @@ func TestCommitCaptureStampsProvenance(t *testing.T) {
 	}
 
 	// An unset mode takes the default; both keys are present either way.
-	res2, err := Capture(CaptureRequest{
+	res2, err := testCapture(CaptureRequest{
 		RepoRoot: repo, IssuesRoot: ir, Text: "another finding", Severity: SeverityMinor,
 		Category: "bug", Source: "user-observation", FoundDuring: "t", Slug: "other",
 	})
@@ -355,7 +355,7 @@ func TestCommitCaptureStampsProvenance(t *testing.T) {
 	}
 
 	// An out-of-vocabulary mode is refused before anything is reserved.
-	if _, err := Capture(CaptureRequest{
+	if _, err := testCapture(CaptureRequest{
 		RepoRoot: repo, IssuesRoot: ir, Text: "a third finding", Severity: SeverityMinor,
 		Category: "bug", Source: "user-observation", FoundDuring: "t", Slug: "third",
 		ProductionMode: "typed",

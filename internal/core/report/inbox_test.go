@@ -9,6 +9,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core/capture"
+	"github.com/intentdriven/abcd/internal/core/drainrule"
+	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/lint"
 	"github.com/intentdriven/abcd/internal/gittest"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -758,5 +761,84 @@ func TestAnUnreadableReportStillNamesItsSender(t *testing.T) {
 	}
 	if e.SenderName != "widget-repo" {
 		t.Errorf("Show sender name = %q; want the envelope's", e.SenderName)
+	}
+}
+
+// TestAPromotedReportFilesTheMachineRemedy: every new issue carries a remedy
+// (ruling BX3 of 2026-09-29), and a promoted report's is always the machine
+// value (ruling H12), whatever its sender proposed. Pending the person's
+// ruling CL1, outside text never becomes a drain-eligible remedy without a
+// person naming it: the sender's remedy stays in the body, scrubbed, for a
+// person to adopt with `capture remedy`.
+func TestAPromotedReportFilesTheMachineRemedy(t *testing.T) {
+	r := mustParse(t, filled(t))
+	r.SenderName = "capo"
+	for _, proposed := range []string{"ask Capo, then undo iss-12\n  as before", "  "} {
+		r.Remedy = proposed
+		req := captureRequest("root", "id", r)
+		if req.Remedy != issueschema.MachineRemedy {
+			t.Errorf("a report proposing %q promoted with remedy %q, want %q", proposed, req.Remedy, issueschema.MachineRemedy)
+		}
+	}
+	r.Remedy = "ask Capo, then undo iss-12"
+	if body := captureRequest("root", "id", r).Text; !strings.Contains(body,
+		"Remedy the reporter proposes: ask "+GenericSender+", then undo iss12") {
+		t.Errorf("the body lacks the sender's scrubbed remedy:\n%s", body)
+	}
+}
+
+// TestAPromotedReportIsIneligibleForADrain: a promoted report whose sender
+// proposed a remedy, at a severity and category a drain would otherwise take,
+// is listed ineligible by the drain's dry run until a person writes a remedy;
+// the sender's text is in the body, not in the remedy field.
+func TestAPromotedReportIsIneligibleForADrain(t *testing.T) {
+	sandbox(t, time.Date(2026, 9, 30, 9, 0, 0, 0, time.UTC))
+	ledger := abcdCheckout(t)
+	rep := mustParse(t, filled(t))
+	if rep.Severity != "minor" || rep.Category != "bug" || rep.Remedy == "" {
+		t.Fatalf("the fixture is not a drain-shaped report with a remedy: %+v", rep)
+	}
+	f, err := File(rep, Sender{Key: strings.Repeat("c", 40), Name: "sender"})
+	if err != nil {
+		t.Fatalf("File: %v", err)
+	}
+	p, err := Promote(ledger.Root(), f.ID)
+	if err != nil {
+		t.Fatalf("Promote: %v", err)
+	}
+	body, err := os.ReadFile(filepath.Join(ledger.Root(), filepath.FromSlash(p.Path)))
+	if err != nil {
+		t.Fatalf("read capture: %v", err)
+	}
+	if !strings.Contains(string(body), "Remedy the reporter proposes: accept a leading digit") {
+		t.Errorf("the body lacks the sender's remedy:\n%s", body)
+	}
+	// The drain reads the checkout's own eligibility record (ruling BX2): the
+	// baseline, as the setup offer writes it.
+	adrs := filepath.Join(ledger.Root(), filepath.FromSlash(drainrule.ADRsRelDir))
+	if err := os.MkdirAll(adrs, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	rule := "---\nid: adr-2609300000000003\nslug: drain-rule\nstatus: accepted\ndate: 2026-09-30\n" +
+		drainrule.ProposalFrontmatter() + "---\n\n# ADR\n"
+	if err := os.WriteFile(filepath.Join(adrs, "2609300000000003-drain-rule.md"), []byte(rule), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	plan, err := capture.PlanDrain(capture.DrainPlanRequest{RepoRoot: ledger.Root()})
+	if err != nil {
+		t.Fatalf("PlanDrain: %v", err)
+	}
+	var found bool
+	for _, v := range plan.Dispositions {
+		if v.ID != p.Capture {
+			continue
+		}
+		found = true
+		if v.Outcome != capture.DrainIneligible || v.Rule != capture.RuleRemedy {
+			t.Errorf("the promoted report's disposition = %+v, want ineligible on the remedy rule", v)
+		}
+	}
+	if !found {
+		t.Fatalf("the dry run lists no disposition for %s: %+v", p.Capture, plan.Dispositions)
 	}
 }

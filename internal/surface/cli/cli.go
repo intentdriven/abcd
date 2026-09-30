@@ -2705,7 +2705,7 @@ func renderConditionStanding(w io.Writer, standing []intent.StandingEntry) {
 // ledgerDecisionRule is the one-line capture-vs-intent decision rule shown in
 // both ledgers' bare-form help (itd-46 AC5), so a user knows which ledger to reach
 // for. It stays host-agnostic (binary command forms, no plugin/tool names).
-const ledgerDecisionRule = "  which ledger? half-formed observation, question, or nitpick -> `abcd capture \"…\"`; a user-facing change you want to ship -> `abcd intent \"…\"`\n"
+const ledgerDecisionRule = "  which ledger? half-formed observation, question, or nitpick -> `abcd capture \"…\" --remedy \"…\"`; a user-facing change you want to ship -> `abcd intent \"…\"`\n"
 
 // ideateRoutingRule sits beside the ledger rule and names the optional third
 // route: a big, unproven idea can go through the admission gauntlet first
@@ -3436,16 +3436,27 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 					fmt.Fprintf(w, "  remaining gaps: %s\n", strings.Join(res.Remaining, ", "))
 				}
 				// --yes approves every category but never writes the identity
-				// pin, the status-line wiring or a routing table, so say which optional work it
-				// left, why each needs an answer, and how to apply it.
+				// pin, the status-line wiring, a routing table or the drain
+				// rule, and off a terminal the drain rule is not asked at all,
+				// so say which optional work it left, why each needs an answer,
+				// and how to apply it.
 				if len(res.OptionalSkipped) > 0 {
-					fmt.Fprintf(w, "  optional, not covered by --yes: %s\n", strings.Join(res.OptionalSkipped, ", "))
+					label := "optional, not covered by --yes"
+					if !yes {
+						label = "optional, asked only at a terminal"
+					}
+					fmt.Fprintf(w, "  %s: %s\n", label, strings.Join(res.OptionalSkipped, ", "))
 					for _, id := range res.OptionalSkipped {
 						if why := optionalSkipReason(id); why != "" {
 							fmt.Fprintf(w, "    %s\n", why)
 						}
 					}
-					fmt.Fprint(w, "    run `abcd ahoy install` (no --yes) and answer y at each prompt — non-interactively, `yes | abcd ahoy install`\n")
+					if yes {
+						fmt.Fprint(w, "    run `abcd ahoy install` (no --yes) and answer y at each prompt — non-interactively, `yes | abcd ahoy install`\n")
+					}
+					if slices.Contains(res.OptionalSkipped, ahoy.DrainRuleOfferGapID) {
+						fmt.Fprint(w, "    the drain rule is asked only of a person at a terminal: run `abcd ahoy install` there, without --yes, and answer it\n")
+					}
 				}
 			})
 		},
@@ -3769,6 +3780,8 @@ func optionalSkipReason(id string) string {
 		return "the status line rewrites a setting of the host harness and takes element choices, so it is only written against an answered prompt"
 	case ahoy.OracleRoutingMachineGapID, ahoy.OracleRoutingRepoGapID:
 		return "a routing table decides which model every delegated step asks for, so abcd's proposal is only accepted against an answered prompt"
+	case ahoy.DrainRuleOfferGapID:
+		return "the drain eligibility record decides what an unattended agent may change in this repository, so it is only added against a prompt answered at a terminal"
 	}
 	return ""
 }
@@ -3877,8 +3890,9 @@ func (p *stdinPrompter) echo(answer string) {
 }
 
 // AtTerminal reports whether a person is answering at a terminal, which makes
-// the prompter an ahoy.TerminalPrompter: the one question abcd asks only of a
-// person (whether to change who commits, itd-131) is never put to a pipe.
+// the prompter an ahoy.TerminalPrompter: the questions abcd asks only of a
+// person (whether to change who commits, itd-131, and whether to record the
+// drain eligibility rule) are never put to a pipe.
 func (p *stdinPrompter) AtTerminal() bool { return p.tty }
 
 func (p *stdinPrompter) Confirm(question string) bool {
@@ -4297,6 +4311,20 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 					"unknown capture subcommand %q (nothing captured — a lone word is read as a sub-verb, never as issue text; issue text must contain a space, so write the whole sentence)",
 					args[0])}
 			}
+			// Every new issue carries a remedy (ruling BX3 of 2026-09-29): the
+			// fix it proposes, one line. The machine value is refused from a
+			// person, so it always means one of abcd's automatic filers wrote
+			// the record (ruling H12). Refused before anything is written.
+			if strings.TrimSpace(remedy) == "" {
+				return &exitError{Code: 2, Msg: fmt.Sprintf(
+					"abcd capture: --remedy is required — every new issue carries the fix it proposes, one line (--remedy \"<fix>\"); "+
+						"%q is written only by abcd's automatic filers (nothing captured)", issueschema.MachineRemedy)}
+			}
+			if issueschema.IsMachineRemedy(remedy) {
+				return &exitError{Code: 2, Msg: fmt.Sprintf(
+					"abcd capture: --remedy %q is the value abcd's automatic filers write when they have no fix, and a drain skips it; "+
+						"name the fix the issue proposes (nothing captured)", issueschema.MachineRemedy)}
+			}
 			// Fast path: append a structured issue from the free-form text.
 			text := strings.Join(args, " ")
 			// The slug is NOT derived here. Deriving it from the raw text before
@@ -4384,9 +4412,10 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 	// No default, deliberately: an unsupplied lapse time would default to the wall
 	// clock at write-up, which is the one value the lapse log exists to rule out.
 	captureCmd.Flags().StringVar(&lapsedAt, "lapsed-at", "", "RFC 3339 instant a discipline gave way (the lapse, not the write-up)")
-	// The field `abcd drain` reads (itd-82 decision 6): optional at capture, and
-	// a record without it is listed as ineligible rather than refused here.
-	captureCmd.Flags().StringVar(&remedy, "remedy", "", "the proposed fix, one line; `abcd drain` takes no issue without one")
+	// The field `abcd drain` reads (itd-82 decision 6): required of every new
+	// issue (ruling BX3 of 2026-09-29). A record filed before the rule carries
+	// none, stays readable, and is listed by a drain as ineligible.
+	captureCmd.Flags().StringVar(&remedy, "remedy", "", "the proposed fix, one line (required); `abcd capture remedy` rewrites it later")
 	// The help names where the field is documented, as the refusal does: the
 	// session behind iss-2609200951237670 found the key's shape by running
 	// strings on the binary, with two documents already carrying it.
@@ -4930,6 +4959,36 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 	deferCmd.Flags().StringVar(&deferAfter, "after", "", "the current anchor: the newest vX.Y.Z release tag, which the cut measures from (required)")
 	deferCmd.Flags().StringVar(&deferReason, "reason", "", "why the finding is carried past this cut rather than fixed (required)")
 	captureCmd.AddCommand(deferCmd)
+
+	// remedy — writes or replaces the fix an open issue proposes. It is how a
+	// person answers a record an automatic filer wrote with the machine value
+	// (ruling H12), which a drain skips until then, and how a record filed
+	// before the remedy was required gains one.
+	remedyCmd := &cobra.Command{
+		Use:  "remedy <iss-N> <text>",
+		Args: cobra.MinimumNArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			repoRoot, err := captureLedgerRoot(cmd)
+			if err != nil {
+				return err
+			}
+			res, err := capture.SetRemedy(capture.RemedyRequest{
+				RepoRoot: repoRoot, ID: args[0], Remedy: strings.Join(args[1:], " "),
+			})
+			if err != nil {
+				return captureRefusal("remedy", err)
+			}
+			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, res, func(w io.Writer) {
+				fmt.Fprintf(w, "%s  remedy written (stays %s) — %s\n", res.ID, res.Status, termsafe.Sanitize(res.Path))
+				fmt.Fprintf(w, "  remedy: %s\n", termsafe.Sanitize(res.Remedy))
+				if res.Previous != "" {
+					fmt.Fprintf(w, "  replaced: %s\n", termsafe.Sanitize(res.Previous))
+				}
+				emitRedactionNote(w, res.Redacted, res.Degraded)
+			})
+		},
+	}
+	captureCmd.AddCommand(remedyCmd)
 
 	return captureCmd
 }
