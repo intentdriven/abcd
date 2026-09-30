@@ -183,12 +183,15 @@ func readingFilingCandidates(repoRoot, issuesRoot string, cfg match.Config) ([]m
 		if !recordid.ValidReadingRunID(run.Name()) {
 			continue
 		}
+		// The store's one guard refuses anything at a run's name that is not a
+		// real directory, a stray regular file included, so past it every entry
+		// is a run directory. The refusal is deliberate: the ingest's mint meets
+		// the same guard and refuses the whole ingest, and a matcher that skipped
+		// what the mint refuses would be a second walk disagreeing about what the
+		// ledger holds.
 		runDir := filepath.Join(readingsRoot, run.Name())
 		if err := readingitem.RefuseSymlinkedDir(runDir); err != nil {
 			return nil, wrapLocatorErr(err)
-		}
-		if !run.IsDir() {
-			continue
 		}
 		items, err := os.ReadDir(runDir)
 		if err != nil {
