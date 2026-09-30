@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
+	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/jsonstrict"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
@@ -86,7 +87,8 @@ type WriteResult struct {
 //
 // The file is created exclusively inside the retrospectives tree, every level
 // of which must be a real directory, so neither a second run nor a symlinked
-// store can overwrite or escape.
+// store can overwrite or escape, and under the intent store's lock, so an
+// embark writing the same path is serialised with it.
 func Write(root string, req WriteRequest) (WriteResult, error) {
 	seed, err := BuildSeed(root, req.Tag)
 	if err != nil {
@@ -113,22 +115,34 @@ func Write(root string, req WriteRequest) (WriteResult, error) {
 		return WriteResult{}, err
 	}
 	doc := render(seed, answers, req.Now)
-	dir := path.Dir(seed.Output)
-	if err := fsutil.EnsureRealDirAll(root, dir, 0o755); err != nil {
-		return WriteResult{}, fmt.Errorf("reflect: %w", err)
+	// The file is created under the intent store's lock, the lock a lifeboat
+	// embark holds from its rejudge through its write, so a retrospective and
+	// an embark carrying one for the same tag are serialised: neither lands in
+	// the other's window.
+	if err := intent.WithMintLock(root, func() error { return createRetrospective(root, req.Tag, seed.Output, doc) }); err != nil {
+		return WriteResult{}, err
+	}
+	return WriteResult{Path: seed.Output, Seed: seed}, nil
+}
+
+// createRetrospective creates the file at rel exclusively, every level of its
+// directory a real directory.
+func createRetrospective(root, tag, rel, doc string) error {
+	if err := fsutil.EnsureRealDirAll(root, path.Dir(rel), 0o755); err != nil {
+		return fmt.Errorf("reflect: %w", err)
 	}
 	r, err := os.OpenRoot(root)
 	if err != nil {
-		return WriteResult{}, err
+		return err
 	}
 	defer r.Close()
-	if err := fsutil.CreateExclusiveIn(r, seed.Output, []byte(doc), 0o644); err != nil {
+	if err := fsutil.CreateExclusiveIn(r, rel, []byte(doc), 0o644); err != nil {
 		if errors.Is(err, os.ErrExist) {
-			return WriteResult{}, &ExistsError{Tag: req.Tag, Path: seed.Output}
+			return &ExistsError{Tag: tag, Path: rel}
 		}
-		return WriteResult{}, fmt.Errorf("reflect: %w", err)
+		return fmt.Errorf("reflect: %w", err)
 	}
-	return WriteResult{Path: seed.Output, Seed: seed}, nil
+	return nil
 }
 
 // redactAnswers passes every answer through the one canonical scanner before it
