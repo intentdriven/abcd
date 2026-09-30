@@ -351,7 +351,9 @@ func paramText(text string) string { return strings.ReplaceAll(text, "\\\n", "")
 //     `${X}` and `$HOME`; iss-2609292320015665, iss-2609300009581165);
 //   - a substring (`${HOME:0}`), whose offset is arithmetic and can be 0 or
 //     past the end, and which can print the `/` an absolute path begins with
-//     (`${PWD:0:1}` is `${PWD}`, `/` and nothing);
+//     (`${PWD:0:1}` is `${PWD}`, `/` and nothing); a positional or special
+//     parameter's slice or part (`${@:2}`, `${1:2}`) is what the parameters
+//     hold, as `$2` is;
 //   - a case change (`${HOME^^}`, `${HOME@U}`), which names the same directory
 //     on a case-insensitive disk, and `@E` and `@P`, which change no path,
 //     each also nothing, for a value it maps to nothing (`${X^}/` is `/`);
@@ -494,6 +496,11 @@ func spellParameterAt(body string, depth int, split bool) []string {
 	}
 	var texts []string
 	switch {
+	case rest[0] == ':' && !indirect && !isNameStart(name[0]):
+		// A positional or special parameter's slice (`${@:2}`, `${*:2}`)
+		// or part (`${1:2}`) prints what the parameters hold, or nothing,
+		// as `"$2"` does (reverify-guardSet finding 3).
+		texts = append([]string(nil), value...)
 	case rest[0] == ':':
 		// A substring: a part of the value, the whole of it at offset 0, the
 		// `/` an absolute path begins with, and nothing at an offset past
@@ -1089,6 +1096,12 @@ func spellWord(w string, depth int, split bool) []string {
 		return []string{""}
 	}
 	return spellWritten(word, sites, nil)
+}
+
+// isNameStart reports whether c can begin a shell variable's name, as a
+// positional parameter's digit and a special parameter's byte cannot.
+func isNameStart(c byte) bool {
+	return c == '_' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z'
 }
 
 // isNameByte reports whether c can continue a shell variable's name.

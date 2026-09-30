@@ -329,11 +329,13 @@ as the variable itself — a default, an assignment or an error message
 (`${HOME:-x}`), where the colon forms never print an empty value
 (`${1:-dist}/` is `${1}/` or `dist/`) and an empty word prints the empty text
 (`${X:-}/` is also `/`), a trim or a pattern replacement (`${HOME%/}`, `${HOME#x}`,
-`${HOME/x/y}`), any substring, which also reads as the root and as nothing
-(`${X:1}`, `${PWD:0:1}`), a case change or a transform (`${X^}`, `${X@P}`),
-and a subscript read to its matching `]` with any text after it
-(`${HOME[x[0]]}`, `${HOME[0]]}`, which the bash 3.2 of macOS prints as the
-value), the last two also as nothing (`${A[0]}/` is also `/`); and an alternative, which prints its
+`${HOME/x/y}`), any substring of a variable, which also reads as the root
+and as nothing (`${X:1}`, `${PWD:0:1}`), while a slice of the positional
+parameters or a part of one reads as those parameters (`"${@:2}"` and
+`"${1:2}"` as `"$2"`), a case change or a transform (`${X^}`, `${X@P}`), and
+a subscript read to its matching `]` with any text after it (`${HOME[x[0]]}`,
+`${HOME[0]]}`, which the bash 3.2 of macOS prints as the value), the last
+three also as nothing (`${A[0]}/` is also `/`); and an alternative, which prints its
 word or nothing, reads as that word as written (`${X:+$HOME}`, `${X:+/}`,
 `${X:+$HOME/*}`), including one the bash 3.2 of macOS reads at the first
 operator after a subscript (`${X[0]]:+$HOME}`). Unquoted, the alternative's

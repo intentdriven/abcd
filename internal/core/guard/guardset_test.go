@@ -362,3 +362,23 @@ func TestExpansionsThatCanPrintNothingTheWrittenCompareReads(t *testing.T) {
 		{`IFS=, ; rm -rf ${A[0]}`, shellBare | shellSQ, VerdictAllow, ""},
 	})
 }
+
+// TestPositionalSlicesReadAsTheParameters — reverify-guardSet finding 3.
+// `${@:2}` and `${*:2}` are the arguments from the second on, and
+// `${1:2}` a part of the first: each prints what the parameters hold, as
+// `"$2"` and `"$1"` do, or nothing, which leaves the text beside it
+// (`"${@:2}"/` is `/` with no argument).
+func TestPositionalSlicesReadAsTheParameters(t *testing.T) {
+	const home = "rm-rf-root-or-home"
+	const all = shellBare | shellSQ | shellDQ
+	checkSpellingCases(t, []spellingCase{
+		{`rm -rf "${@:2}"`, all, VerdictAllow, ""},
+		{`rm -rf "${@:1}"`, all, VerdictAllow, ""},
+		{`rm -rf ${@:2}`, all, VerdictAllow, ""},
+		{`rm -rf "${*:2}"`, all, VerdictAllow, ""},
+		{`rm -rf "${1:2}"`, all, VerdictAllow, ""},
+		{`rm -rf "${@:2}"/`, all, VerdictBlock, home},
+		{`rm -rf ${1:2}/`, all, VerdictBlock, home},
+		{`rm -rf ${X:0:1}/`, all, VerdictBlock, home},
+	})
+}
