@@ -87,7 +87,7 @@ and then its intent store's lock, the order every writer holding both takes,
 and every planned write is judged again under them. A record created at a
 planned target between the plan and the write — a capture, an intent minted in
 the target meanwhile — is a conflict like any other, so it refuses the whole
-write rather than being replaced. A retrospective `abcd reflect write` creates
+write rather than being replaced. A retrospective the reflect verb writes
 takes the intent store's lock too, so it cannot land inside that window, and
 every planned write is an exclusive create: a file that lands at its target
 after the rejudge from a writer holding none of the locks fails the embark
