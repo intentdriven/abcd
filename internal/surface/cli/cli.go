@@ -3228,6 +3228,14 @@ func newSpecCommand(asJSON *bool) *cobra.Command {
 				}
 				rem.ProductionMode = mode
 			}
+			// The doc-fidelity gate's first enforcement point (itd-60): a
+			// close that ships an intent is refused while the brief lags the
+			// surface it delivered. A --remainder close ships nothing.
+			if closeRemainder == "" {
+				if err := enforceDocFidelity(repoRoot, "abcd spec close", closeShips(repoRoot, args[0])); err != nil {
+					return err
+				}
+			}
 			res, err := intent.Reconcile(repoRoot, args[0], closeImpact, rem)
 			if err != nil {
 				return &exitError{Code: 2, Msg: "abcd spec close: " + err.Error()}
