@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/surface"
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 var at = time.Date(2026, 9, 30, 9, 0, 0, 0, time.UTC)
@@ -17,6 +18,7 @@ func git(t *testing.T, dir string, args ...string) string {
 	t.Helper()
 	cmd := exec.Command("git", append([]string{"-c", "user.name=T", "-c", "user.email=t@example.com", "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null"}, args...)...)
 	cmd.Dir = dir
+	cmd.Env = gittest.Env(t)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("git %v: %v\n%s", args, err, out)
