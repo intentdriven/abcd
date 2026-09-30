@@ -303,7 +303,7 @@ func ReadDeclaration(path string, limit int64) ([]byte, DeclarationRefusal, erro
 // that must judge a link as itself Lstat's and refuses it before calling, as
 // ReadDeclaration does.
 func CallersAlone(path string, fi os.FileInfo) error {
-	if fi.Mode().Perm()&0o022 != 0 {
+	if WritableByOthers(fi) {
 		return ErrDeclarationWritable
 	}
 	// An unreadable owner is refused too: "I could not learn who owns this" and
@@ -313,6 +313,14 @@ func CallersAlone(path string, fi os.FileInfo) error {
 		return ErrDeclarationForeignOwner
 	}
 	return nil
+}
+
+// WritableByOthers reports whether fi's mode carries a group or other write
+// bit: the one test of "someone else could write this" that CallersAlone
+// applies, exported for a check that judges the mode alone, such as a harness
+// binary a runner is about to start, which root may own.
+func WritableByOthers(fi os.FileInfo) bool {
+	return fi.Mode().Perm()&0o022 != 0
 }
 
 // ReadGuardedInRoot is ReadGuarded resolved inside an os.Root containment

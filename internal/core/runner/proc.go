@@ -6,7 +6,8 @@ package runner
 //   - the argv is a vector handed to exec, never a shell line, and the prompt
 //     travels as one argument behind the end-of-options marker;
 //   - the binary is resolved on PATH by its fixed name and refused when it is
-//     not absolute or resolves inside the repository the role runs in, or the
+//     not absolute, when group or other can write it or its directory, or when
+//     it resolves inside the repository the role runs in, or the
 //     checkout a lane's worktree belongs to, lexically or through a symlink (a
 //     PATH entry into either is repository content, never run);
 //   - the environment is the parent's with every git repository-selection and
@@ -27,6 +28,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"syscall"
@@ -80,6 +82,18 @@ func (l launcher) admit(runner, name string, repos ...string) (string, error) {
 	resolved, err := filepath.EvalSymlinks(p)
 	if err != nil {
 		return "", fail(runner, ReasonAbsent, "%s does not resolve to a file", name)
+	}
+	// Whoever can write the binary, the directory PATH reaches it through, or
+	// the directory it resolves into chooses what runs.
+	for _, c := range []string{resolved, filepath.Dir(resolved), filepath.Dir(filepath.Clean(p))} {
+		fi, err := os.Stat(c)
+		if err != nil {
+			return "", fail(runner, ReasonAbsent, "%s could not be examined before it is run", name)
+		}
+		if fsutil.WritableByOthers(fi) {
+			return "", fail(runner, ReasonAbsent, "%s, or a directory it is reached through, is one group or other can write, "+
+				"so it is never run; chmod go-w it", name)
+		}
 	}
 	var guards []string
 	for _, repo := range repos {

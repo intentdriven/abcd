@@ -92,6 +92,18 @@ func fakeHarness(mode string) int {
 			fmt.Fprintln(os.Stdout, `{"type":"result","subtype":"error_during_execution","is_error":true,"result":"refused","session_id":"fake-session-1"}`)
 		}
 		return 0
+	case "hugemodel", "ctrlmodel", "suffixmodel":
+		// A harness whose init event reports a model: one past any bound,
+		// one carrying control bytes, and a real id's bracketed suffix.
+		model := map[string]string{
+			"hugemodel":   strings.Repeat("m", 5<<20),
+			"ctrlmodel":   "fake\x1b[2Jmodel\r\n",
+			"suffixmodel": "claude-opus-4-6[1m]",
+		}[mode]
+		init, _ := json.Marshal(map[string]string{"type": "system", "subtype": "init", "session_id": "fake-session-1", "model": model})
+		fmt.Fprintln(os.Stdout, string(init))
+		fmt.Fprintln(os.Stdout, `{"type":"result","subtype":"success","is_error":false,"result":"done","session_id":"fake-session-1"}`)
+		return 0
 	case "ok", "noreceipt":
 		if mode == "ok" {
 			if rec := promptField(prompt, "Receipt: "); rec != "" {

@@ -73,7 +73,7 @@ func loopFakeHarness(mode string) int {
 		}
 		return ""
 	}
-	if mode == "ok" {
+	if mode == "ok" || strings.HasPrefix(mode, "model-") {
 		body := "{}\n"
 		if role := field("You are the "); strings.HasPrefix(role, RoleRuthless) {
 			body = reviewReturn
@@ -86,7 +86,15 @@ func loopFakeHarness(mode string) int {
 		fmt.Println(`{"type":"step_finish","sessionID":"ses_fake2","part":{"type":"step-finish"}}`)
 		return 0
 	}
-	fmt.Println(`{"type":"system","subtype":"init","session_id":"fake-session-2","model":"fake-model"}`)
+	model := "fake-model"
+	switch mode {
+	case "model-huge":
+		model = strings.Repeat("m", 5<<20)
+	case "model-ctrl":
+		model = "fake\x1b[2Jmodel\r\n"
+	}
+	init, _ := json.Marshal(map[string]string{"type": "system", "subtype": "init", "session_id": "fake-session-2", "model": model})
+	fmt.Println(string(init))
 	fmt.Println(`{"type":"result","subtype":"success","is_error":false,"result":"done","session_id":"fake-session-2"}`)
 	return 0
 }
@@ -318,6 +326,11 @@ func TestARunnerThatCannotRunTheRoleFallsBackAndIsRecorded(t *testing.T) {
 	}{
 		{"absent", "ok", "opencode", nil, runner.ReasonAbsent},
 		{"invalid", "noreceipt", "claude", []string{"claude"}, runner.ReasonInvalid},
+		// A model past its bound or carrying control bytes is a refusal of
+		// the route, never written into the state: a 5 MiB one there would
+		// push state.json past its read bound and brick the run.
+		{"huge-model", "model-huge", "claude", []string{"claude"}, runner.ReasonUnparsable},
+		{"control-model", "model-ctrl", "claude", []string{"claude"}, runner.ReasonUnparsable},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			root, id, steps, o := startToImplement(t)
@@ -343,6 +356,9 @@ func TestARunnerThatCannotRunTheRoleFallsBackAndIsRecorded(t *testing.T) {
 			}
 			if st.Lanes[0].Awaiting == nil {
 				t.Fatal("the lane still awaits the host's receipt")
+			}
+			if len(st.Lanes[0].Receipts) != 0 {
+				t.Fatalf("a refused route verified no receipt: %+v", st.Lanes[0].Receipts)
 			}
 			rec, err := ReadRecord(root, id)
 			if err != nil {

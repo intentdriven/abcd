@@ -107,6 +107,11 @@ func parseClaude(out []byte) (Answer, error) {
 			return Answer{}, fail(Claude, ReasonUnparsable, "a line of its output is not a stream-json event")
 		}
 		if ev.Type == "system" && ev.Subtype == "init" {
+			if ev.Model != "" && !modelRe.MatchString(ev.Model) {
+				// Refused rather than trimmed: an answer is never recorded
+				// under a model the harness did not report.
+				return Answer{}, fail(Claude, ReasonUnparsable, "its init event reports a model that is not a plain model id of at most 128 characters")
+			}
 			ans.Model = ev.Model
 		}
 		if ans.SessionID == "" && ev.SessionID != "" {

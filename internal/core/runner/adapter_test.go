@@ -137,6 +137,73 @@ func TestFailureKinds(t *testing.T) {
 	}
 }
 
+// TestAModelPastItsShapeIsARefusalOfTheRoute: the model a harness's init
+// event reports is bounded and shaped as a session id is. One past the bound,
+// or one carrying control bytes, fails the route (a fallback, recorded),
+// never an answer that carries it on into the run's state; a real id with a
+// bracketed suffix is an answer.
+func TestAModelPastItsShapeIsARefusalOfTheRoute(t *testing.T) {
+	for _, mode := range []string{"hugemodel", "ctrlmodel"} {
+		t.Run(mode, func(t *testing.T) {
+			f := newFake(t, mode, Claude)
+			ans, _, err := newClaude("").Run(context.Background(), f.request("scribe"))
+			var fl *Failure
+			if !errors.As(err, &fl) || fl.Reason != ReasonUnparsable {
+				t.Fatalf("err = %v, want an unparsable failure", err)
+			}
+			if ans.Model != "" || strings.Contains(fl.Detail, "\x1b") || len(fl.Detail) > 200 {
+				t.Fatalf("the model travelled on: answer %d bytes, detail %q", len(ans.Model), fl.Detail)
+			}
+		})
+	}
+	f := newFake(t, "suffixmodel", Claude)
+	ans, _, err := newClaude("").Run(context.Background(), f.request("scribe"))
+	if err != nil || ans.Model != "claude-opus-4-6[1m]" {
+		t.Fatalf("a real model id is an answer: %+v %v", ans, err)
+	}
+}
+
+// TestAHarnessOthersCanWriteIsRefused: a harness binary, or the directory it
+// is reached through, that group or other can write is refused before launch
+// and named as such: anyone who can write it chooses what runs.
+func TestAHarnessOthersCanWriteIsRefused(t *testing.T) {
+	t.Run("directory", func(t *testing.T) {
+		f := newFake(t, "ok", Claude)
+		if err := os.Chmod(f.bin, 0o777); err != nil {
+			t.Fatal(err)
+		}
+		assertWritableRefused(t, f)
+	})
+	t.Run("binary", func(t *testing.T) {
+		f := newFake(t, "ok")
+		self, _ := os.Executable()
+		raw, err := os.ReadFile(self)
+		if err != nil {
+			t.Fatal(err)
+		}
+		bin := filepath.Join(f.bin, Claude)
+		if err := os.WriteFile(bin, raw, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(bin, 0o772); err != nil {
+			t.Fatal(err)
+		}
+		assertWritableRefused(t, f)
+	})
+}
+
+func assertWritableRefused(t *testing.T, f fakeEnv) {
+	t.Helper()
+	_, _, err := newClaude("").Run(context.Background(), f.request("scribe"))
+	var fl *Failure
+	if !errors.As(err, &fl) || fl.Reason != ReasonAbsent || !strings.Contains(fl.Detail, "group or other can write") {
+		t.Fatalf("err = %v, want the writable harness refused as absent, naming why", err)
+	}
+	if f.launched(Claude) {
+		t.Fatal("a harness others can write was launched")
+	}
+}
+
 // TestAbsentBinaryIsAbsent: a harness that is not on PATH is absent, and
 // nothing runs.
 func TestAbsentBinaryIsAbsent(t *testing.T) {

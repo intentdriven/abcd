@@ -139,6 +139,10 @@ func fail(runner string, reason Reason, format string, args ...any) *Failure {
 var (
 	roleRe    = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,63}$`)
 	sessionRe = regexp.MustCompile(`^[A-Za-z0-9._-]{1,128}$`)
+	// modelRe is a model id as a harness reports it (claude-opus-4-6,
+	// provider/model, a bracketed context suffix): bounded and plain, as a
+	// session id is, since it is written into the run's state and records.
+	modelRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}(\[[A-Za-z0-9._-]{1,16}\])?$`)
 	// toolRe is one tool as a contract names it (Read, Bash(git log:*)). A
 	// comma or a line break would split the one flag the tools travel in.
 	toolRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]*(\([^,\r\n()]{1,120}\))?$`)
