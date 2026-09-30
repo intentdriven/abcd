@@ -7,7 +7,7 @@ import (
 
 // TestAskEmptyStoreSanitisesQuestion is the GHSA-4fmm-95pf-32c6 detector. On
 // an empty store Ask took the no-matches branch and handed the raw argv
-// question to RenderNoMatches, while RenderCitedMatches on the matched branch
+// question to renderNoMatches, while renderCitedMatches on the matched branch
 // sanitised it; both branches also put the raw question into AskResult.Question,
 // the --json field. An ESC, a C1 control, a bidi override or a zero-width rune
 // in the question therefore reached the terminal raw from exactly the branch a
@@ -48,9 +48,9 @@ func TestAskEmptyStoreSanitisesQuestion(t *testing.T) {
 
 // TestRenderNoMatchesSanitisesDirectly pins the exported render on its own, so
 // a caller that reaches it without going through Ask is covered the way
-// RenderCitedMatches already is.
+// renderCitedMatches already is.
 func TestRenderNoMatchesSanitisesDirectly(t *testing.T) {
-	out := RenderNoMatches("q" + string(rune(0x1b)) + string(rune(0x202e)))
+	out := renderNoMatches("q" + string(rune(0x1b)) + string(rune(0x202e)))
 	if strings.ContainsRune(out, 0x1b) || strings.ContainsRune(out, 0x202e) {
 		t.Fatalf("RenderNoMatches echoes attack runes raw: %q", out)
 	}

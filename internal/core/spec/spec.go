@@ -183,7 +183,7 @@ func (s Store) SpecsForIntent(intentID string) []Spec {
 			out = append(out, sp)
 		}
 	}
-	SortByNumber(out)
+	sortByNumber(out)
 	return out
 }
 
@@ -200,13 +200,13 @@ func (s Store) OpenSpecsForIntent(intentID string) []Spec {
 	return out
 }
 
-// SortByNumber orders specs by their spec NUMBER, ascending — the order a
+// sortByNumber orders specs by their spec NUMBER, ascending — the order a
 // reader expects an intent's specs in, because a native id is timestamp-numeric
 // so the number IS the minting order. It sorts in place through the one spec-id
 // number parser, so a legacy variable-width id (spc-9 before spc-10) orders
 // correctly where a string sort would not. A reference carrying no usable
 // number sorts first and keeps its relative order.
-func SortByNumber(specs []Spec) {
+func sortByNumber(specs []Spec) {
 	sort.SliceStable(specs, func(i, j int) bool { return specNum(specs[i].ID) < specNum(specs[j].ID) })
 }
 
@@ -302,7 +302,7 @@ func stubSections(id, intentID string, steps []Step) []stubSection {
 		"it satisfies the intent's Acceptance Criteria. This spec is the design record "+
 		"the fidelity review audits against._", stubMarker, id, intentID)
 	stepsBody := stepsPlaceholder
-	if listed := RenderSteps(steps); listed != "" {
+	if listed := renderSteps(steps); listed != "" {
 		stepsBody = strings.TrimRight(listed, "\n")
 	}
 	return []stubSection{

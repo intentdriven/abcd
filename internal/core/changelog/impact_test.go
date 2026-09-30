@@ -126,7 +126,7 @@ func TestMaxImpactOrdering(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := MaxImpact(tc.in); got != tc.want {
+			if got := maxImpact(tc.in); got != tc.want {
 				t.Errorf("MaxImpact(%v) = %q, want %q", tc.in, got, tc.want)
 			}
 		})
@@ -137,7 +137,7 @@ func TestMaxImpactOrdering(t *testing.T) {
 // passes the cut's impacts around and must not find them reordered.
 func TestMaxImpactDoesNotMutateInput(t *testing.T) {
 	in := []Impact{ImpactFix, ImpactBreaking, ImpactInternal}
-	_ = MaxImpact(in)
+	_ = maxImpact(in)
 	want := []Impact{ImpactFix, ImpactBreaking, ImpactInternal}
 	for i := range want {
 		if in[i] != want[i] {

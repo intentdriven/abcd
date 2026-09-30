@@ -6,10 +6,10 @@ package lifeboat
 // it without diverging:
 //
 //   - Agent A (plan.go): teaches the packer to copy .abcd/development/specs/**
-//     into rescue/specs/<bucket>/<leaf>, adds RecordManifestSHA256 over the
+//     into rescue/specs/<bucket>/<leaf>, adds recordManifestSHA256 over the
 //     record-derived families (isRecordDerived below), and records it in
 //     Provenance as record_manifest_sha256.
-//   - Agent B (embark.go): EmbarkProbe / EmbarkFrom / VerifyManifest and the
+//   - Agent B (embark.go): EmbarkProbe / EmbarkFrom / verifyManifest and the
 //     conflict/marker/coverage machinery, plus ahoy.EnsureMarker in package ahoy.
 //   - Agent C (surface/cli): the `abcd embark probe|from` command tree,
 //     commands/embark.md, and the surface-registry row-3 flip.
@@ -319,7 +319,7 @@ var embarkFamilies = []embarkFamily{
 // recordDerivedPrefixes are the lifeboat path prefixes whose bytes derive purely
 // from the repo's RECORD (never from git or the operator's identity), so they
 // must round-trip byte-identically through pack -> embark -> re-pack (closure
-// property P1, decision 1). RecordManifestSHA256 (Agent A) hashes exactly the
+// property P1, decision 1). recordManifestSHA256 (Agent A) hashes exactly the
 // files matching one of these prefixes. A slash-terminated entry matches a whole
 // family; "graveyard/abandoned.json" is deliberately slash-LESS so it matches only
 // itself (the deterministic layer-2 record extraction), not a family.
@@ -358,7 +358,7 @@ var reportOnlyPrefixes = []string{
 }
 
 // manifestExcludedExact / manifestExcludedPrefixes name the on-disk lifeboat
-// files that are NOT part of manifest_sha256, so VerifyManifest (Agent B) can walk
+// files that are NOT part of manifest_sha256, so verifyManifest (Agent B) can walk
 // the tree and reproduce the pinned hash exactly. _provenance.json cannot hash
 // itself; graveyard/lessons.json and graveyard/low-confidence/** are the mutable,
 // post-pack, host-delegated layer-3 interpretation that IngestLessons writes into
@@ -367,7 +367,7 @@ var reportOnlyPrefixes = []string{
 // review/** verdict artefact) is the same kind of post-pack mutable artifact — written
 // into an already-sealed lifeboat, its integrity the per-entry cite-or-be-dropped
 // rule and the registered-verdict gate, not the manifest seal — so it is excluded
-// here too and VerifyManifest still reproduces the pinned hash after synthesis.
+// here too and verifyManifest still reproduces the pinned hash after synthesis.
 var (
 	manifestExcludedExact    = []string{ProvenanceName, "graveyard/lessons.json", "principles.json", "principles.md", "press-release.json", "press-release.md"}
 	manifestExcludedPrefixes = []string{"graveyard/low-confidence/", "review/", "audit/"}

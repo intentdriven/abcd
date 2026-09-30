@@ -350,13 +350,13 @@ func mustWrite(t *testing.T, path string, data []byte) {
 }
 
 // ---------------------------------------------------------------------------
-// VerifyManifest
+// verifyManifest
 // ---------------------------------------------------------------------------
 
 func TestVerifyManifestIntactLifeboat(t *testing.T) {
 	repo := packFixture(t)
 	dest, _ := packInto(t, repo, okScan)
-	if err := VerifyManifest(dest); err != nil {
+	if err := verifyManifest(dest); err != nil {
 		t.Errorf("intact lifeboat failed verification: %v", err)
 	}
 }
@@ -370,7 +370,7 @@ func TestVerifyManifestCatchesTampering(t *testing.T) {
 		if err := os.WriteFile(adr, append(data, '!'), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		if err := VerifyManifest(dest); err == nil {
+		if err := verifyManifest(dest); err == nil {
 			t.Error("a flipped record byte must fail verification")
 		}
 	})
@@ -381,7 +381,7 @@ func TestVerifyManifestCatchesTampering(t *testing.T) {
 		if err := os.Remove(filepath.Join(dest, "docs/adrs/0001-example.md")); err != nil {
 			t.Fatal(err)
 		}
-		if err := VerifyManifest(dest); err == nil {
+		if err := verifyManifest(dest); err == nil {
 			t.Error("a missing manifest file must fail verification")
 		}
 	})
@@ -392,7 +392,7 @@ func TestVerifyManifestCatchesTampering(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(dest, "docs/adrs/planted.md"), []byte("foreign\n"), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		if err := VerifyManifest(dest); err == nil {
+		if err := verifyManifest(dest); err == nil {
 			t.Error("an extra manifest-relevant file must fail verification")
 		}
 	})
@@ -403,7 +403,7 @@ func TestVerifyManifestCatchesTampering(t *testing.T) {
 		if err := os.Symlink(filepath.Join(dest, "coverage.json"), filepath.Join(dest, "link.json")); err != nil {
 			t.Skipf("cannot symlink: %v", err)
 		}
-		if err := VerifyManifest(dest); err == nil {
+		if err := verifyManifest(dest); err == nil {
 			t.Error("a symlink inside the lifeboat must fail verification")
 		}
 	})
@@ -415,7 +415,7 @@ func TestVerifyManifestCatchesTampering(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(dest, "docs/adrs/huge.md"), big, 0o644); err != nil {
 			t.Fatal(err)
 		}
-		if err := VerifyManifest(dest); err == nil {
+		if err := verifyManifest(dest); err == nil {
 			t.Error("an oversize file must fail verification")
 		}
 	})
@@ -428,7 +428,7 @@ func TestVerifyManifestToleratesLayer3(t *testing.T) {
 	// manifest; its presence must NOT break verification.
 	mustWrite(t, filepath.Join(dest, "graveyard/lessons.json"), []byte(`{"schema_version":1,"lessons":[]}`+"\n"))
 	mustWrite(t, filepath.Join(dest, "graveyard/low-confidence/x.json"), []byte(`{"schema_version":1,"lessons":[]}`+"\n"))
-	if err := VerifyManifest(dest); err != nil {
+	if err := verifyManifest(dest); err != nil {
 		t.Errorf("layer-3 files broke verification: %v", err)
 	}
 }
@@ -639,7 +639,7 @@ func TestEmbarkProbeIgnoredClassification(t *testing.T) {
 	source := embarkableSourceFixture(t)
 	dest := packSource(t, source)
 	// Plant an unknown foreign file and an unknown-bucket issue INTO the lifeboat,
-	// then re-seal so VerifyManifest still passes.
+	// then re-seal so verifyManifest still passes.
 	mustWrite(t, filepath.Join(dest, "foo/bar.md"), []byte("foreign\n"))
 	mustWrite(t, filepath.Join(dest, "activity/issues/bogus/iss-9-x.md"), []byte("bad bucket\n"))
 	reseal(t, dest)
@@ -673,7 +673,7 @@ func TestEmbarkProbeIgnoredClassification(t *testing.T) {
 func TestEmbarkRefusesSymlinkedLifeboatFile(t *testing.T) {
 	source := embarkableSourceFixture(t)
 	dest := packSource(t, source)
-	// Replace a record with a symlink; VerifyManifest (and the walk) must refuse it.
+	// Replace a record with a symlink; verifyManifest (and the walk) must refuse it.
 	adr := filepath.Join(dest, "docs/adrs/0001-record-architecture-decisions.md")
 	if err := os.Remove(adr); err != nil {
 		t.Fatal(err)
@@ -753,8 +753,8 @@ func TestP1RecordManifestClosure(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	h1 := RecordManifestSHA256(l1.Files)
-	h2 := RecordManifestSHA256(l2.Files)
+	h1 := recordManifestSHA256(l1.Files)
+	h2 := recordManifestSHA256(l2.Files)
 	if h1 != h2 {
 		t.Errorf("record manifest hash not closed: L1=%s L2=%s", h1, h2)
 		// Diagnose which record family diverged.
@@ -894,7 +894,7 @@ func bumpProvenanceSchema(t *testing.T, dest string, v int) {
 
 // reseal recomputes manifest_sha256 over the current on-disk (non-excluded) tree
 // and rewrites _provenance.json, so a test that plants files into a packed
-// lifeboat keeps VerifyManifest passing. It mirrors the manifest construction.
+// lifeboat keeps verifyManifest passing. It mirrors the manifest construction.
 func reseal(t *testing.T, dest string) {
 	t.Helper()
 	root, err := os.OpenRoot(dest)

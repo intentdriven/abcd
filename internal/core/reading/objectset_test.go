@@ -205,7 +205,7 @@ func TestTheCommittedEntailmentEntryNamesTheObjectSet(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the committed preset file does not load: %v", err)
 	}
-	entry, err := PresetFor(pf, PositionEntailment)
+	entry, err := presetFor(pf, PositionEntailment)
 	if err != nil {
 		t.Fatalf("the committed file names no entailment entry: %v", err)
 	}

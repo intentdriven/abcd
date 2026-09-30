@@ -188,7 +188,7 @@ addreview "$d" 2026-09-26-no-pin $'# Review summary\n\nNo frontmatter at all.\n'
 expect fail "$d" "RD004 a review summary without review_of_commit" "RD004"
 
 # The key in the body is not the key: only the leading frontmatter block counts,
-# the board's one reading of it (internal/core/reviews.Pin).
+# the board's one reading of it (internal/core/reviews.summaryPin).
 d="$(newrepo rd004-body)"
 addreview "$d" 2026-09-26-in-body "# Review summary
 
@@ -231,11 +231,11 @@ expect pass "$d" "RD004 a receipt directory is exempt"
 
 # --- RD001/RD004: what the board cannot read, the gate refuses ----------------
 #
-# The board reads a summary through a guarded read (internal/core/reviews.Read):
+# The board reads a summary through a guarded read (internal/core/reviews.readEntries):
 # a symlink is no summary, and neither is one past maxSummaryBytes (1 MiB); both
 # show unpinned. `[ -f ]` follows a symlink and the gate's read has no cap, so
 # both were gate-green and board-unpinned. So was a NUL byte in the frontmatter:
-# bash `read` drops it, so the gate saw a clean pin line where reviews.Pin sees
+# bash `read` drops it, so the gate saw a clean pin line where reviews.summaryPin sees
 # none. Each is refused now, and each boundary's clean side is asserted too.
 
 # pinned <file> writes a pinned summary's frontmatter and a short body.
@@ -290,7 +290,7 @@ commitall "$d"
 expect pass "$d" "RD004 a summary of exactly 1 MiB"
 
 # A NUL byte anywhere in the frontmatter block — after the sha, inside the key,
-# or on the closing fence — leaves reviews.Pin with no pin; bash `read` drops it
+# or on the closing fence — leaves reviews.summaryPin with no pin; bash `read` drops it
 # and would have read a clean block. The fixtures are written with printf's own
 # escapes, since a shell variable cannot carry a NUL.
 d="$(newrepo rd004-nul-value)"

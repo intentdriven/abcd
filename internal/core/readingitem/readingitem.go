@@ -116,9 +116,9 @@ func Locate(issuesRoot, item string) (run, path string, err error) {
 	}
 }
 
-// LocateDisposition finds the one disposition record carrying id across every
+// locateDisposition finds the one disposition record carrying id across every
 // item directory under dispositions/, and the item it answers.
-func LocateDisposition(issuesRoot, id string) (item, path string, err error) {
+func locateDisposition(issuesRoot, id string) (item, path string, err error) {
 	if _, ok := issueschema.DispositionFileID(id + ".md"); !ok {
 		return "", "", fmt.Errorf("invalid %s-N identifier: %q", issueschema.DispositionFamily, id)
 	}
@@ -197,13 +197,13 @@ func LocateAdmission(issuesRoot, id string) (run, path string, err error) {
 	}
 }
 
-// LocateSurprise finds the surprise record carrying id. The surprise store is
+// locateSurprise finds the surprise record carrying id. The surprise store is
 // FLAT (surprises/srp-N.md), so the walk is one leaf: the store is refused if it
 // is a symlink, and the leaf is admitted only as a regular file by Lstat, so a
 // symlinked record is never followed. Resolution is by presence in the store,
 // so a surprise written by hand and one the surprise verb wrote resolve alike
 // (spc-2609020626048705).
-func LocateSurprise(issuesRoot, id string) (string, error) {
+func locateSurprise(issuesRoot, id string) (string, error) {
 	if !recordid.ValidSurpriseID(id) {
 		return "", fmt.Errorf("invalid %s-N identifier: %q", issueschema.SurpriseFamily, id)
 	}
@@ -251,13 +251,13 @@ func ResolveOccasion(repoRoot, id string, families ...Family) (string, error) {
 		_, path, err := Locate(issuesRoot, id)
 		return path, err
 	case FamilyDisposition:
-		_, path, err := LocateDisposition(issuesRoot, id)
+		_, path, err := locateDisposition(issuesRoot, id)
 		return path, err
 	case FamilyAdmission:
 		_, path, err := LocateAdmission(issuesRoot, id)
 		return path, err
 	case FamilySurprise:
-		return LocateSurprise(issuesRoot, id)
+		return locateSurprise(issuesRoot, id)
 	case FamilyIntent:
 		return resolveShippedIntent(repoRoot, id)
 	}

@@ -61,7 +61,7 @@ func TestReadingsCharterCarriesTheRenderedIncludeTable(t *testing.T) {
 		t.Fatalf("%s: end marker precedes begin marker", CharterPath)
 	}
 	got := strings.TrimSpace(doc[begin+len(MarkerBegin) : end])
-	want := strings.TrimSpace(Render())
+	want := strings.TrimSpace(renderCharter())
 	if got != want {
 		t.Errorf("%s has drifted from reading.Table.\n\n--- charter has ---\n%s\n\n--- Render() wants ---\n%s",
 			CharterPath, got, want)
@@ -124,7 +124,7 @@ func TestTheAssemblersOwnOutputIsNeverItsInput(t *testing.T) {
 	}
 	for _, p := range Positions() {
 		for _, rel := range own {
-			if Admits(p, rel) {
+			if admits(p, rel) {
 				t.Errorf("position %s admits %s; the assembler's own output, definition, "+
 					"eval and include table must never become its input", p, rel)
 			}
@@ -140,7 +140,7 @@ func TestTheAssemblersOwnOutputIsNeverItsInput(t *testing.T) {
 	// position would be caught by the loop below, and one that vanished would be
 	// caught by the first check.
 	const candidateRecord = ".abcd/work/issues/readings/rdg-2608301200000001/rdi-1.md"
-	if !Admits(PositionComparative, candidateRecord) {
+	if !admits(PositionComparative, candidateRecord) {
 		t.Errorf("the comparative position does not admit %s; the candidate channel is the one "+
 			"exception to the prior-run exhaust, and without it the position has no object",
 			candidateRecord)
@@ -149,7 +149,7 @@ func TestTheAssemblersOwnOutputIsNeverItsInput(t *testing.T) {
 		if p == PositionComparative {
 			continue
 		}
-		if Admits(p, candidateRecord) {
+		if admits(p, candidateRecord) {
 			t.Errorf("position %s admits %s; the exception is the COMPARATIVE position's alone",
 				p, candidateRecord)
 		}
@@ -164,7 +164,7 @@ func TestTheAssemblersOwnOutputIsNeverItsInput(t *testing.T) {
 		".abcd/work/issues/open/iss-1-a-defect.md",
 	} {
 		for _, p := range Positions() {
-			if Admits(p, rel) {
+			if admits(p, rel) {
 				t.Errorf("position %s admits %s; the comparative reading receives candidates and "+
 					"never their fate", p, rel)
 			}
@@ -177,7 +177,7 @@ func TestTheAssemblersOwnOutputIsNeverItsInput(t *testing.T) {
 	// artefacts have to be recognised by what they are. They self-identify: both
 	// carry a top-level `_type`.
 	root := fixtureRepo(t)
-	priorBundle, err := EncodeBundle(Bundle{
+	priorBundle, err := encodeBundle(Bundle{
 		Type: BundleType, SchemaVersion: SchemaVersion, Position: PositionWidening,
 		Items: []BundleItem{{ItemKey: "itm-0001", Kind: KindDoc, Text: "a prior run's passed item"}},
 	})
@@ -237,27 +237,27 @@ func TestWideningExcludesDraftsAndPlannedEntailmentIncludesThem(t *testing.T) {
 		".abcd/development/intents/planned/itd-901-a-planned.md",
 	}
 	for _, rel := range candidates {
-		if Admits(PositionWidening, rel) {
+		if admits(PositionWidening, rel) {
 			t.Errorf("the widening position admits %s; it is the candidate set the reading is asked to widen", rel)
 		}
-		if Admits(PositionDetection, rel) {
+		if admits(PositionDetection, rel) {
 			t.Errorf("the detection position admits %s; only entailment sees the candidate set", rel)
 		}
-		if !Admits(PositionEntailment, rel) {
+		if !admits(PositionEntailment, rel) {
 			t.Errorf("the entailment position excludes %s; articulation precedes selection", rel)
 		}
 	}
 
 	const shipped = ".abcd/development/intents/shipped/itd-902-a-shipped.md"
-	if Admits(PositionWidening, shipped) {
+	if admits(PositionWidening, shipped) {
 		t.Errorf("the widening position admits %s; neither design document lists the shipped "+
 			"intents in the widening object", shipped)
 	}
 	for _, p := range []Position{PositionEntailment, PositionDetection} {
-		if !Admits(p, shipped) {
+		if !admits(p, shipped) {
 			t.Errorf("position %s excludes %s; only widening withdraws from the shipped row", p, shipped)
 		}
-		for _, e := range ExclusionsFor(p) {
+		for _, e := range exclusionsFor(p) {
 			if e.Detail == ".abcd/development/intents/shipped" {
 				t.Errorf("position %s asserts the shipped intents excluded while its rows admit them", p)
 			}
@@ -270,7 +270,7 @@ func TestWideningExcludesDraftsAndPlannedEntailmentIncludesThem(t *testing.T) {
 func TestSupersededIntentsAreNeverAdmitted(t *testing.T) {
 	const superseded = ".abcd/development/intents/superseded/itd-47-a-retired.md"
 	for _, p := range Positions() {
-		if Admits(p, superseded) {
+		if admits(p, superseded) {
 			t.Errorf("position %s admits %s; superseded records are deliberation", p, superseded)
 		}
 	}
@@ -282,13 +282,13 @@ func TestSupersededIntentsAreNeverAdmitted(t *testing.T) {
 func TestBriefEvidenceChapterIsNeverAdmitted(t *testing.T) {
 	const evidence = ".abcd/development/brief/03-evidence/01-open-questions.md"
 	for _, p := range Positions() {
-		if Admits(p, evidence) {
+		if admits(p, evidence) {
 			t.Errorf("position %s admits %s; the evidence chapter is deliberation", p, evidence)
 		}
 	}
 }
 
-// includeTableDigest is the sha256 of Render() at AssemblerVersionCore.
+// includeTableDigest is the sha256 of renderCharter() at AssemblerVersionCore.
 //
 // The digest the manifest carries is COMPUTED, so this literal is not what
 // makes a version honest — TestATableChangeMovesTheStampedVersion holds that,
@@ -312,7 +312,7 @@ const includeTableDigest = "cacc591ff9d463fe20118ddc72b5a12363aaca145d3810c3c022
 // run may legitimately be to restate the digest — and it is not the gate that
 // makes the stamped version trustworthy. Do not read it as one.
 func TestAssemblerVersionCoversTheIncludeTable(t *testing.T) {
-	sum := sha256.Sum256([]byte(Render()))
+	sum := sha256.Sum256([]byte(renderCharter()))
 	got := hex.EncodeToString(sum[:])
 	if got != includeTableDigest {
 		t.Errorf("the include table has changed while AssemblerVersionCore is still %s.\n"+
@@ -331,7 +331,7 @@ func TestAssemblerVersionCoversTheIncludeTable(t *testing.T) {
 // rather than asserting about it. Both are here because a reader who finds only
 // the composition check would reasonably think it was the gate.
 func TestAssemblerVersionCarriesTheTableDigest(t *testing.T) {
-	sum := sha256.Sum256([]byte(Render()))
+	sum := sha256.Sum256([]byte(renderCharter()))
 	want := AssemblerVersionCore + "+" + hex.EncodeToString(sum[:])
 	if got := AssemblerVersion(); got != want {
 		t.Errorf("AssemblerVersion() = %q, want %q — the stamped version must carry the "+
@@ -367,11 +367,11 @@ func TestEveryRowNamesAKnownKindAndPosition(t *testing.T) {
 		t.Fatal("the include table is empty; a reading with no input is not a blind reading")
 	}
 	kinds := map[Kind]bool{}
-	for _, k := range Kinds() {
+	for _, k := range allKinds() {
 		kinds[k] = true
 	}
 	scans := map[Scan]bool{}
-	for _, s := range Scans() {
+	for _, s := range allScans() {
 		scans[s] = true
 	}
 	for _, row := range Table {
@@ -396,7 +396,7 @@ func TestEveryRowNamesAKnownKindAndPosition(t *testing.T) {
 		// and refuses here for the same reason.
 		if !scans[row.Scan] {
 			t.Errorf("row %q declares the scan %q, which is not in the closed vocabulary %v",
-				row.Source, row.Scan, Scans())
+				row.Source, row.Scan, allScans())
 		}
 		// A row must select positively by SOMETHING. Either match form
 		// satisfies that; neither does not. The guard reads both fields
@@ -444,7 +444,7 @@ func TestExclusionFloorNamesEveryRecordedExclusion(t *testing.T) {
 		".abcd/development/intents/shipped",
 	}
 	joined := ""
-	for _, e := range ExclusionsFor(PositionWidening) {
+	for _, e := range exclusionsFor(PositionWidening) {
 		joined += e.Rule + "\x00" + e.Signal + "\x00" + e.Detail + "\n"
 	}
 	for _, w := range want {
@@ -506,7 +506,7 @@ func TestParsedRowsAdmitOnlyMarkdown(t *testing.T) {
 			}
 		default:
 			t.Errorf("row %q declares the scan %q, which is not in the closed vocabulary %v",
-				row.Source, row.Scan, Scans())
+				row.Source, row.Scan, allScans())
 		}
 	}
 }
@@ -532,7 +532,7 @@ func TestBriefChaptersAreAdmittedAsBriefSections(t *testing.T) {
 	const product = ".abcd/development/brief/01-product/06-framing.md"
 	var productPositions []Position
 	for _, p := range Positions() {
-		if Admits(p, product) {
+		if admits(p, product) {
 			productPositions = append(productPositions, p)
 		}
 	}
@@ -588,7 +588,7 @@ func TestBriefChaptersAreAdmittedAsBriefSections(t *testing.T) {
 func TestTheEvidenceChapterIsExcludedAsVerdictMaterial(t *testing.T) {
 	const evidence = ".abcd/development/brief/03-evidence/01-open-questions.md"
 	for _, p := range Positions() {
-		if Admits(p, evidence) {
+		if admits(p, evidence) {
 			t.Errorf("position %s admits %s; the evidence chapter is verdict material", p, evidence)
 		}
 	}

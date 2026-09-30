@@ -158,12 +158,12 @@ func Ingest(req IngestRequest) (IngestResult, error) {
 	if material.title, _, err = redactor.redactText(material.title, "citation.title"); err != nil {
 		return IngestResult{}, err
 	}
-	normalized := NormaliseSourceText(material.text)
+	normalized := normaliseSourceText(material.text)
 	if strings.TrimSpace(normalized) == "" {
 		return IngestResult{}, newIngestError("source has no text content: %s", material.origin)
 	}
-	contentHash := SourceContentHash(material.text)
-	tokenCount := CountSourceTokens(normalized)
+	contentHash := sourceContentHash(material.text)
+	tokenCount := countSourceTokens(normalized)
 
 	registry, err := store.registry()
 	if err != nil {
@@ -257,7 +257,7 @@ func Ingest(req IngestRequest) (IngestResult, error) {
 	repairing := memoryConsumer != nil
 
 	// ---- Licence detect (sourceRoot="": SPDX header + HTTP License:) --------
-	detection := DetectLicence(material.text, "", material.headers)
+	detection := detectLicence(material.text, "", material.headers)
 	// The licence is lifted verbatim from the source's own bytes (an SPDX line)
 	// or from a response header, so it is judged before it is copied into the
 	// source block, the registry event and IngestResult.Licence — the same
@@ -269,7 +269,7 @@ func Ingest(req IngestRequest) (IngestResult, error) {
 		return IngestResult{}, err
 	}
 
-	citation := BuildCitation("knowledge", material.origin, "unknown", material.title, now.Year(), ingestedAt, ingestedBy)
+	citation := buildCitation("knowledge", material.origin, "unknown", material.title, now.Year(), ingestedAt, ingestedBy)
 	sourceBlock, err := buildSingleSource(material.sourceClass, citation, licence, contentHash, ingestedAt)
 	if err != nil {
 		return IngestResult{}, err
@@ -290,7 +290,7 @@ func Ingest(req IngestRequest) (IngestResult, error) {
 			merged["source"] = sourceBlock
 			raw = merged
 		}
-		page, err := ValidateDistilledPage(root, raw)
+		page, err := validateDistilledPage(root, raw)
 		if err != nil {
 			return IngestResult{}, err
 		}
@@ -331,7 +331,7 @@ func Ingest(req IngestRequest) (IngestResult, error) {
 		}
 	}
 
-	plan, err := ResolveDistilledPages(existing, distilled)
+	plan, err := resolveDistilledPages(existing, distilled)
 	if err != nil {
 		return IngestResult{}, err
 	}

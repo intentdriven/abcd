@@ -46,14 +46,14 @@ import (
 // examined, and the digest moves with the rendering by construction
 // (adr-56 as refined 2026-09-02, spc-2609021003136831).
 // It goes 1.5.0 to 1.6.0 with the comparative channel: Table gains the candidate
-// row, Kinds() gains `candidate`, Exclusions gains the comparative position's
+// row, allKinds() gains `candidate`, Exclusions gains the comparative position's
 // derived ledger rows and narrows the `.abcd/work/issues` row to the three other
 // positions, and the bundle item gains `candidate` and `field`. Every one of
 // those moves what a reader and an auditor are PROMISED — a source admitted at
 // one position, a vocabulary member, refusals a reader can now check — which is
 // MINOR by this constant's own rule (adr-2609021016272867,
 // spc-2609020626039834).
-// It goes 1.6.0 to 1.7.0 with the reading of "at the target" DeriveCandidateRun
+// It goes 1.6.0 to 1.7.0 with the reading of "at the target" deriveCandidateRun
 // states: a committed widening run at an ancestor of the target qualifies when
 // only the readings store and the issue ledger changed between the two, the
 // refusal listing gains the run whose object set moved and the path that moved
@@ -80,7 +80,7 @@ import (
 // MINOR by this constant's own rule (adr-2609021016275803,
 // spc-2609020626045177).
 // It goes 1.10.0 to 1.11.0 with the knowledge record as a read object: Table
-// gains the principles row at the three assembling positions, Kinds() gains
+// gains the principles row at the three assembling positions, allKinds() gains
 // `principle`, the projection gains its labelled-paragraph resolution, and
 // Exclusions gains the four claim keys and the citation entry, which a new
 // refusal enforces. A source admitted, a vocabulary member and refusals a
@@ -107,7 +107,7 @@ const AssemblerVersionCore = "1.11.0"
 // is too — brief invariant 16 is the rule that an attestation states no more
 // than its examination establishes, and this function IS an attestation.
 func AssemblerVersion() string {
-	sum := sha256.Sum256([]byte(Render()))
+	sum := sha256.Sum256([]byte(renderCharter()))
 	return AssemblerVersionCore + "+" + hex.EncodeToString(sum[:])
 }
 
@@ -135,7 +135,7 @@ func Positions() []Position {
 	return []Position{PositionWidening, PositionEntailment, PositionComparative, PositionDetection}
 }
 
-// AssemblingPositions lists the positions an assembly can run at.
+// assemblingPositions lists the positions an assembly can run at.
 //
 // It is now every position. It was Positions() minus comparative, whose object
 // is the widening reading's pre-admission output: itd-199 refused that position
@@ -149,7 +149,7 @@ func Positions() []Position {
 // definition, a regime and no assembly is a shape this design has already had
 // once, and a caller asking "which positions assemble" should keep asking that
 // question rather than assuming the answer.
-func AssemblingPositions() []Position {
+func assemblingPositions() []Position {
 	return Positions()
 }
 
@@ -199,8 +199,8 @@ const (
 	KindPrinciple Kind = "principle"
 )
 
-// Kinds lists the closed material-class vocabulary.
-func Kinds() []Kind {
+// allKinds lists the closed material-class vocabulary.
+func allKinds() []Kind {
 	return []Kind{KindBriefSection, KindGlossaryTerm, KindIntentProjection,
 		KindDiscipline, KindSpec, KindSource, KindTest, KindDoc, KindConfig,
 		KindCandidate, KindPrinciple}
@@ -225,8 +225,8 @@ const (
 	ScanUnscanned Scan = "unscanned"
 )
 
-// Scans lists the closed scan vocabulary, in the order the charter renders it.
-func Scans() []Scan {
+// allScans lists the closed scan vocabulary, in the order the charter renders it.
+func allScans() []Scan {
 	return []Scan{ScanParsed, ScanUnscanned}
 }
 
@@ -601,8 +601,8 @@ var Table = []Row{
 		// prior-run exhaust (adr-2609021016272867).
 		//
 		// It is a TABLE ROW rather than a second mechanism, and the rest follows
-		// from that without anything else being written: Admits answers for the
-		// derived run's records at this position and nowhere else, Render carries
+		// from that without anything else being written: admits answers for the
+		// derived run's records at this position and nowhere else, renderCharter carries
 		// the row so the charter names the channel and AssemblerVersion digests
 		// it, the dirty gate refuses an uncommitted candidate because the path is
 		// admitted, and the comparative definition's source list is regenerated
@@ -823,8 +823,8 @@ type Exclusion struct {
 	Positions []Position `json:"-"`
 }
 
-// ExclusionsFor returns the exclusions binding at p, in table order.
-func ExclusionsFor(p Position) []Exclusion {
+// exclusionsFor returns the exclusions binding at p, in table order.
+func exclusionsFor(p Position) []Exclusion {
 	out := []Exclusion{}
 	for _, e := range Exclusions {
 		if len(e.Positions) == 0 {
@@ -850,9 +850,9 @@ const (
 // CharterPath is the readings family's charter, which renders the table.
 const CharterPath = ".abcd/development/readings/README.md"
 
-// Render renders the include table and the exclusion floor as the markdown the
+// renderCharter renders the include table and the exclusion floor as the markdown the
 // charter carries between the markers.
-func Render() string {
+func renderCharter() string {
 	var b strings.Builder
 	b.WriteString("### Include table\n\n")
 	b.WriteString("| Positions | Source | Matches | Suffixes | Fields | Store | Bucket | Kind | Floor | Admitting rule |\n")

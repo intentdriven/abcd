@@ -63,7 +63,7 @@ type SyncOptions struct {
 // strings leave it on the next sync. A corpus whose classes disagree is refused
 // before anything is written, so the block already there keeps banning.
 func SyncBanlist(corpus, repoRoot string, opts SyncOptions) (SyncResult, error) {
-	c, err := Load(corpus)
+	c, err := loadCorpus(corpus)
 	if err != nil {
 		return SyncResult{}, err
 	}
@@ -113,7 +113,7 @@ func (r CiteReport) Clean() bool { return len(r.Findings) == 0 }
 // the private layer's matcher — the engine the pre-commit guard runs — and reports
 // offenders by key, field and position only.
 func CiteCheck(corpus string, text []byte) (CiteReport, error) {
-	c, err := Load(corpus)
+	c, err := loadCorpus(corpus)
 	if err != nil {
 		return CiteReport{}, err
 	}

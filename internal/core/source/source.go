@@ -193,9 +193,9 @@ func present(dir string) error {
 	return nil
 }
 
-// Load reads a corpus. An absent directory is ErrNoCorpus; a directory without a
+// loadCorpus reads a corpus. An absent directory is ErrNoCorpus; a directory without a
 // bibliography or a git repository is ErrCorpusInvalid.
-func Load(dir string) (*Corpus, error) {
+func loadCorpus(dir string) (*Corpus, error) {
 	if err := present(dir); err != nil {
 		return nil, err
 	}
@@ -329,7 +329,7 @@ type LedgerCount struct {
 // Status reports the corpus at dir. An absent corpus is Present false and no error.
 func Status(dir string) (StatusReport, error) {
 	st := StatusReport{Dir: dir, Problems: []Problem{}, Ledgers: []LedgerCount{}}
-	c, err := Load(dir)
+	c, err := loadCorpus(dir)
 	switch {
 	case errors.Is(err, ErrNoCorpus):
 		return st, nil
@@ -393,7 +393,7 @@ func Init(dir string) (StatusReport, error) {
 	}
 	switch err := present(dir); {
 	case err == nil:
-		if _, lerr := Load(dir); lerr == nil {
+		if _, lerr := loadCorpus(dir); lerr == nil {
 			return StatusReport{}, fmt.Errorf("%w: a corpus already exists at the configured location", ErrCorpusInvalid)
 		}
 		if has, _ := fsutil.DirHasEntries(dir); has {

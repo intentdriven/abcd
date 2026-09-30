@@ -54,8 +54,8 @@ func TestMemoryStoreDirSymlinkRefused(t *testing.T) {
 		t.Errorf("Lint wrote %s INTO the symlink target — a write escaped the repo", coverageInTarget)
 	}
 
-	// (b) A read (QueryPages / Ask) must not disclose the out-of-repo page.
-	matches, err := QueryPages(repoRoot, "secret leak", 5)
+	// (b) A read (queryPages / Ask) must not disclose the out-of-repo page.
+	matches, err := queryPages(repoRoot, "secret leak", 5)
 	if err == nil {
 		t.Error("QueryPages followed a symlinked .abcd/memory store; the directory symlink must be refused")
 	}

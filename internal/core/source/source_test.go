@@ -311,7 +311,7 @@ func TestProjectionTitlesAliasesAlwaysAuthorsOnlyOnOptIn(t *testing.T) {
 		corpus := newCorpus(t)
 		addConfidential(t, corpus, ban)
 		addPublic(t, corpus)
-		c, err := Load(corpus)
+		c, err := loadCorpus(corpus)
 		if err != nil {
 			t.Fatal(err)
 		}

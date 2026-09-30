@@ -73,12 +73,12 @@ func TestIngestFromURLSuccessPath(t *testing.T) {
 	if res.Status != "ingested" {
 		t.Fatalf("status = %q, want ingested", res.Status)
 	}
-	if res.ContentHash != SourceContentHash(body) {
+	if res.ContentHash != sourceContentHash(body) {
 		t.Fatalf("content hash = %q, want the hash of the fetched body", res.ContentHash)
 	}
 	// The HTTP License: header is the ONLY licence signal here (the body carries
 	// no SPDX tag), so "unknown" would prove the headers never reached
-	// DetectLicence.
+	// detectLicence.
 	if res.Licence != "MIT" {
 		t.Fatalf("licence = %q, want MIT from the HTTP License: header", res.Licence)
 	}
@@ -495,7 +495,7 @@ func TestIngestPDFFromURL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PDF ingest: %v", err)
 	}
-	if res.ContentHash != SourceContentHash(extracted) {
+	if res.ContentHash != sourceContentHash(extracted) {
 		t.Fatalf("content hash must be taken over the EXTRACTED text, not the PDF bytes")
 	}
 	reg, err := LoadRegistry(SourcesIndexPath(repo))

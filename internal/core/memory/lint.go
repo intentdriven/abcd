@@ -469,7 +469,7 @@ func (l *memoryLinter) checkQuotation() {
 // ---------------------------------------------------------------------------
 
 func runMemoryCoverageLint(repoRoot string, store *storeHandle) ([]Finding, map[string]any, error) {
-	indexPath := CoverageIndexPath(repoRoot)
+	indexPath := coverageIndexPath(repoRoot)
 	report := map[string]any{
 		// Display only, like every path Lint reports (iss-81).
 		"path":            fsutil.RepoRelativePath(repoRoot, indexPath),

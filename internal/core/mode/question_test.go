@@ -62,8 +62,8 @@ func TestMarkQuestionOpenWritesTheMarkerInTheTier(t *testing.T) {
 	if string(data) != "product-thinker\n" {
 		t.Fatalf("marker = %q, want the addressed state", data)
 	}
-	if open, err := mode.QuestionOpen(root); err != nil || !open {
-		t.Fatalf("QuestionOpen = %v, %v; want true, nil", open, err)
+	if open, err := mode.QuestionOpenForTest(root); err != nil || !open {
+		t.Fatalf("QuestionOpenForTest = %v, %v; want true, nil", open, err)
 	}
 }
 
