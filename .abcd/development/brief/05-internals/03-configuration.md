@@ -550,7 +550,9 @@ domain with no second edit, and a test fails the build if the domain and the
 registry ever part. To every other contract it is an ordinary bundled domain:
 a user or repo layer overrides it per field, `dormant` silences it, `*SHELL`
 activates it, the kill switch suppresses it, and dedup and provenance treat it
-like any other. It is built from the bundled registry only: a repo's
+like any other. Its injected block costs about 2k tokens, one rule per registry
+entry, paid once per session per signature: dedup never injects it again while
+its rules are unchanged. It is built from the bundled registry only: a repo's
 `.abcd/guard.json` changes what the guard refuses there, and the two features
 keep independent switches, so a repo that wants its own entries taught states
 them in its `rules.json`.
