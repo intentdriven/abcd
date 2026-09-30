@@ -308,6 +308,7 @@ func routeCloseRequest(cmd *cobra.Command, repoRoot string, res intent.Reconcile
 			}
 			fmt.Fprintf(stderr, "abcd spec close — the fidelity review for %s ran on %s%s: %s (receipt %s)\n",
 				id, termsafe.Sanitize(d.receipt.ConnectionUsed), termsafe.Sanitize(model), termsafe.Sanitize(ing.Status), termsafe.Sanitize(ing.ReceiptID))
+			renderAuditOwed(stderr, ing)
 			return
 		}
 	}
