@@ -423,7 +423,7 @@ directory is folded the same way: a `..` past `$PWD` or `${PWD}`, or past the
 start of a relative path, is the directory above it, so `$PWD/../*`,
 `./../*` and `x/../../*` warn as `../*` does, and `$PWD/x/../*` as `$PWD/*`;
 a relative path whose `..` stays inside the working directory is compared as
-written. A trailing `.` after such a `..` (`../.`) warns too, though rm
+written. A trailing `.` after such a `..` (`./../.`) warns too, though rm
 refuses it. Each target is also read the way its glob can expand: a run of
 `*` is one `*`, which is what every shell without globstar expands `**` to
 (with globstar it matches more), so `/**`, `~/**` and `~/../**` block as
