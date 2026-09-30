@@ -9,13 +9,15 @@ found_during: "rulings interview with the product thinker, 2026-09-29 (abcd-23 [
 origin: researcher-authored
 production_mode: hand-written
 remedy: "Put the context sentence and a concrete example inside every question, and show each option's consequence in its preview; add this to the GRILL rules and to the grill/intent interview command pages, with an eval or lint that flags a question whose options carry no example."
-resolution: "GRILL gains the rule: the example that makes a question answerable goes in the question text and in each option's preview, because prose before the question tool call is invisible while the question shows; the rule is pinned by TestGrillDomainCarriesQuestionVisibilityAndAddresseeRules. The plugin interview pages (commands/intent.md) take the matching line in the lane that holds them; the eval or lint the remedy floats for an option with no example is not built here."
+resolution: "GRILL gains the rule: the example that makes a question answerable goes in the question text and in each option's preview, because prose before the question tool call is invisible while the question shows; the rule is pinned by TestGrillDomainCarriesQuestionVisibilityAndAddresseeRules, and the quoting rule is aligned to the same wording. The planning interview page (commands/intent.md) carries the matching line, pinned by TestIntentInterviewPageCarriesGrillVisibilityAndAddresseeLines. The eval or lint the remedy floats for an option with no example is owned by iss-2609300112146660."
 impact: internal
 resolved_by:
   commit: "5357c4c68128e1d656e0cb105391ea3893bcfb8a"
 ---
 
 When an agent asks the person a question through the interactive question tool, the example that makes the question answerable must be visible IN the question: in the question text and in each option's preview. Prose written before the tool call is not visible while the question shows. On 2026-09-29 the person twice answered 'explain in laypersons terms' / 'show me the example, I can't see it' because the example sat in prose above the question.
+
+Delivered: the GRILL rule in 5357c4c68 (the quoting rule aligned in 3f07017cf); the interview command page line in 66b5512e9 (commands/intent.md is the only interview page; no grill page exists); the eval or lint that flags an option with no example is owned by iss-2609300112146660.
 
 ## Grounds
 

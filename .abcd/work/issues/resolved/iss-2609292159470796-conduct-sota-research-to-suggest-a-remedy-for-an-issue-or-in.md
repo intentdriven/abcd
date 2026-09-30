@@ -10,7 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 remedy: "Add a short section to the prefer-sota principle: a remedy proposed for an issue, or chosen in an autonomous run, cites its grounds, a primary-source state-of-the-art check wherever the fix depends on outside practice, so the record shows why it beat the alternatives; and say so in a clause of the OPINIONS rule that points at prefer-sota."
 resolution: "prefer-sota gains a section: a remedy proposed for an issue, or chosen in an autonomous run, cites its grounds, including a primary-source state-of-the-art check where the fix depends on outside practice; the bundled OPINIONS rule pointing at the principle says so in a clause, pinned by TestOpinionsPreferSOTARuleNamesRemedyGrounds."
-impact: internal
+impact: additive
 resolved_by:
   commit: "0ce47ff89fc668343d8d1c12f890fc2082c9bfd0"
 ---
