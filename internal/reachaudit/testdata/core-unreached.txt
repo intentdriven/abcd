@@ -122,7 +122,6 @@ internal/core/memory.WithStoreLock
 internal/core/memory.WritePages
 internal/core/mode.QuestionOpen
 internal/core/mode.SetAt
-internal/core/oracle.BundledDenylist
 internal/core/oracle.Ceiling
 internal/core/oracle.Denied
 internal/core/oracle.ParseTier

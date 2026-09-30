@@ -252,7 +252,8 @@ Ideas and methodologies that shaped the design — not code abcd depends on.
 - **OpenRouter** — the first aggregator the API adapter reaches, one
   OpenAI-compatible address and one key serving many vendors' models, whose
   reach is the reason adr-2609221009491186 makes every provider default-deny by
-  model under a vendor denylist (itd-2609081951381895).
+  model, its allowlist alone deciding under adr-2609300107513982
+  (itd-2609081951381895).
   <https://openrouter.ai/docs>
 - **PAUL (Plan-Apply-Unify Loop, Christopher Kahler, MIT)** — the
   mandatory-closure loop discipline whose four escalation states itd-1

@@ -4,9 +4,9 @@
 // configuration of this adapter and never code (the intent's Decision 2).
 //
 // The client asks for the model it is given and nothing else: which models a
-// provider may serve, and the vendor denylist above them, are
-// internal/core/oracle's to decide before a Client is ever built
-// (adr-2609221009491186). The adapter's own guarantees are the network path's:
+// provider may serve (its allowlist, and any oracle.denylist entry the
+// configuration writes) is internal/core/oracle's to decide before a Client is
+// ever built (adr-2609221009491186, adr-2609300107513982). The adapter's own guarantees are the network path's:
 //
 //   - the base URL is pinned per provider block, plain HTTP is admitted only to
 //     this machine (a local server), and a redirect is never followed, so a

@@ -2,19 +2,22 @@ package oracle
 
 // config.go is the provider configuration of the OpenAI-compatible API adapter
 // (itd-2609081951381895, spc-2609221011153746 scope 1) and the resolver that
-// validates it when it is read (adr-2609221009491186):
+// validates it when it is read (adr-2609221009491186, whose Decision 2
+// adr-2609300107513982 supersedes):
 //
 //   - oracle.api.<provider> is a provider block: base_url (pinned; https, or
 //     http to this machine), key (a credential NAME, resolved through
 //     internal/core/credential; omitted for a server that needs none) and
-//     models (the allowlist: the only models the provider may serve). A block
+//     models (the allowlist: the only models the provider may serve, and
+//     alone what decides which models it serves). A block
 //     is read from the machine's ~/.abcd/config.json alone. A repository
 //     declaring one is refused, because a block names the address a key is sent
 //     to, and a checkout must never be able to aim the person's key at a
 //     server of its choosing.
-//   - oracle.denylist extends the bundled vendor denylist (anthropic/* at
-//     minimum). The repository and the machine add entries; nothing removes a
-//     bundled one, so a listing mistake can never reach a frontier model.
+//   - oracle.denylist is optional and the configuration's own: abcd bundles
+//     no vendor denylist. An entry the repository or the machine writes
+//     refuses a model it matches even when a provider lists it; the layers
+//     are a union, so neither removes the other's entries.
 //   - oracle.roles.<agent> and oracle.judgements.<type> point a role (an agent
 //     in the roster) or a judgement type at <provider>/<model>. The machine
 //     may point at any provider it configures. The repository may point only
@@ -27,8 +30,7 @@ package oracle
 // Every route is checked here, before any call: a repository route to a
 // provider that holds a key is refused naming the machine's file as where to
 // set it, a model its provider does not list is refused naming the list, and a
-// listed model the denylist matches is refused naming the entry, whatever the
-// allowlist says. A route naming a provider this machine has not configured is
+// listed model an oracle.denylist entry matches is refused naming the entry. A route naming a provider this machine has not configured is
 // a diagnostic, not a refusal: the step stays on the host, exactly as it would
 // with nothing configured (adr-25).
 //
@@ -64,14 +66,6 @@ const (
 	// MaxDenylist bounds the entries one layer adds to the denylist.
 	MaxDenylist = 64
 )
-
-// bundledDenylist is the vendor denylist abcd ships: the frontier vendor whose
-// models the person already pays for through the host (adr-2609221009491186
-// Decision 2). A layer may extend it and never shorten it.
-var bundledDenylist = []string{"anthropic/*"}
-
-// BundledDenylist returns the denylist abcd ships. The slice is a copy.
-func BundledDenylist() []string { return append([]string(nil), bundledDenylist...) }
 
 var (
 	providerNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,31}$`)
@@ -158,10 +152,10 @@ func LoadAPI(r layered.Roots) (*APIConfig, error) {
 	return c, nil
 }
 
+// readDenylist reads oracle.denylist. abcd bundles no entry
+// (adr-2609300107513982): with none written the list is empty and a provider's
+// allowlist alone decides.
 func (c *APIConfig) readDenylist(s *layered.Stack) error {
-	for _, p := range bundledDenylist {
-		c.denylist = append(c.denylist, DenyEntry{Pattern: p, Origin: "bundled"})
-	}
 	found, err := s.Lookup(denylistKey)
 	if err != nil {
 		return fmt.Errorf("oracle adapter: %w", err)
@@ -290,8 +284,8 @@ func deniedError(model string, e DenyEntry) error {
 
 // denial is the denylist refusal's clause, shared by the read and Admit.
 func denial(e DenyEntry) string {
-	return fmt.Sprintf("which the vendor denylist refuses (%s, from %s); no allowlist entry overrides the denylist, "+
-		"so a frontier model the host serves is never billed or routed through a provider", e.Pattern, e.Origin)
+	return fmt.Sprintf("which %s refuses (%s, from %s); an entry there refuses a model even when a provider lists it, "+
+		"so remove the entry to serve it", denylistKey, e.Pattern, e.Origin)
 }
 
 // readRoutes reads one route family (roles or judgement types) from the repo
@@ -370,8 +364,8 @@ func (c *APIConfig) readRoutes(s *layered.Stack, key string, into map[string]Tar
 func keyed(p Provider) bool { return p.Key != "" }
 
 // Admit is the refusal adr-2609221009491186 names: it returns nil only when
-// provider is configured, model is on its list, and no denylist entry matches
-// the model. It is consulted when the configuration is read and again by any
+// provider is configured, model is on its list, and no oracle.denylist entry
+// the configuration wrote matches the model. It is consulted when the configuration is read and again by any
 // dispatch, so a route never reaches a provider on a stale answer.
 func (c *APIConfig) Admit(provider, model string) error {
 	p, ok := c.providers[provider]
@@ -448,8 +442,8 @@ func (c *APIConfig) Provider(name string) (Provider, bool) {
 	return p, ok
 }
 
-// Denylist returns the denylist in force: the bundled entries, then the
-// machine's, then the repository's.
+// Denylist returns the denylist in force, the entries oracle.denylist holds,
+// lowest layer first; empty when none is written, since abcd bundles none.
 func (c *APIConfig) Denylist() []DenyEntry { return append([]DenyEntry(nil), c.denylist...) }
 
 // Role returns where an agent is pointed, if it is.

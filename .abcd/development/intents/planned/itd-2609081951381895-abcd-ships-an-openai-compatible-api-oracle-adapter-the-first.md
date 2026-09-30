@@ -11,7 +11,7 @@ impact: additive
 origin: researcher-authored
 production_mode: hand-written
 related_intents: [itd-2609201916056194, itd-6, itd-2609221009495079]
-related_adrs: [adr-2609221009491186]
+related_adrs: [adr-2609221009491186, adr-2609300107513982]
 ---
 
 # abcd ships an OpenAI-compatible API adapter, and a provider serves only the models it lists
@@ -20,11 +20,11 @@ related_adrs: [adr-2609221009491186]
 
 > **An OpenAI-compatible API adapter reaches a configured provider for the roles and judgements pointed at it, and serves only the models that provider's list allows.**
 >
-> "I wanted one cheap decision model through OpenRouter, and I wanted to be certain nothing else of mine would ever go through it," said a product thinker configuring the first aggregator. "The adapter takes a base URL and a key name, the provider block lists the models it may serve, a bundled denylist keeps the frontier vendors out whatever I list, and the run record shows the model that actually answered."
+> "I wanted one cheap decision model through OpenRouter, and I wanted to be certain nothing else of mine would ever go through it," said a product thinker configuring the first aggregator. "The adapter takes a base URL and a key name, the provider block lists the models it may serve and nothing I left off it goes through, and the run record shows the model that actually answered."
 
 ## Why This Matters
 
-adr-25 names an API oracle backend and nothing implemented it. The first need arrived with Jev (TypeSafe AI, September 2026), a decision model reachable through OpenRouter, which speaks the OpenAI-compatible protocol; the same adapter serves a local OpenAI-compatible server with no key. The product thinker's condition, ruled on 2026-09-22 (adr-2609221009491186), is that an aggregator serves only listed models under a vendor denylist, so a frontier model the person pays for through the host is never billed or routed through a third party unasked.
+adr-25 names an API oracle backend and nothing implemented it. The first need arrived with Jev (TypeSafe AI, September 2026), a decision model reachable through OpenRouter, which speaks the OpenAI-compatible protocol; the same adapter serves a local OpenAI-compatible server with no key. The product thinker's condition, ruled on 2026-09-22 (adr-2609221009491186), is that an aggregator serves only listed models, so a frontier model the person pays for through the host is never billed or routed through a third party unasked; the vendor denylist that ruling put above the list is retired by ruling H9 of 2026-09-29 (adr-2609300107513982), and the list alone decides.
 
 ## Mechanism
 
@@ -38,7 +38,7 @@ We expect a default-deny list per provider to make the aggregator serve only wha
 ## What's In Scope
 
 - **Configuration**: `oracle.api.<provider>` with `base_url`, `key` (a name, resolved from the machine's configuration or the environment), and `models` (the allowlist); roles and judgement types are pointed at `<provider>/<model>`.
-- **The refusal**: a role or judgement configured for a model not on its provider's list is refused when the configuration is read, before any call, naming the list; a listed model matching the bundled vendor denylist (`anthropic/*` at minimum) is refused the same way, and no allowlist entry overrides the denylist.
+- **The refusal**: a role or judgement configured for a model not on its provider's list is refused when the configuration is read, before any call, naming the list; the list alone decides, so abcd bundles no vendor denylist, and a listed model an `oracle.denylist` entry the configuration writes matches is refused the same way, naming the entry.
 - **The call**: the same prompt, inputs and output contract the host sub-agent gets, over the protocol; the transcript captured into the same store.
 - **The record**: provider, model asked for and model reported, per call, in the run record.
 - **Unconfigured**: nothing changes and no network call is attempted (adr-25's default).
@@ -55,7 +55,7 @@ We expect a default-deny list per provider to make the aggregator serve only wha
 
 Ruled by the product thinker on 2026-09-21, in the interview that filed and planned this intent (adr-2609221009491186 records the vocabulary rulings it rests on):
 
-1. Default-deny per provider with a vendor denylist above it (adr-2609221009491186).
+1. Default-deny per provider with a vendor denylist above it (adr-2609221009491186). **Amendment, 2026-09-30:** ruling H9 of 2026-09-29 retires the bundled vendor denylist; the provider's allowlist alone decides, and `oracle.denylist` stays as an optional extension the configuration writes (adr-2609300107513982, which supersedes adr-2609221009491186 and changes its decision 2 only).
 2. OpenRouter is configuration of this adapter, not code.
 3. The first models listed are decision models; frontier models stay on the host.
 4. **The setup is a one-time walkthrough at `ahoy`, and the key's home is the person's choice of three** (ruled 2026-09-22): a setup outside abcd, abcd-only on the machine, or the platform keychain, recommended in prose. Basic by default, the adapter as the optional upgrade.
@@ -66,7 +66,7 @@ Taken in the implementing lane (autonomous run A, 2026-09-26), within the ruling
 6. **The walkthrough is a verb the person runs, with the key on stdin (2026-09-26).** `ahoy` explains the adapter as an optional gap and on `abcd ahoy --providers`, and the setup is `abcd ahoy connect <provider>`, rather than a question the install pass asks: the install prompter echoes every answer into its transcript, a host's question tool would put the key in an agent's context, a flag would leave it in the process listing and the shell history, and a terminal would echo it as it is typed. Declining is not running it, and changes nothing.
 7. **Verify, then write (2026-09-26).** The verification call is made with the key in memory before anything is written, and a failed verification writes nothing, so a wrong key or an unlisted model never leaves a half-configured provider behind.
 8. **A provider block sits on the machine alone (2026-09-26), and so does a route to a provider that holds a key (amended 2026-09-29).** `oracle.api.<provider>` names the address a key is sent to, so a repository's `.abcd/config.json` declaring it is refused; a checkout must never be able to aim the person's key at a server of its choosing. Denylist extensions (`oracle.denylist`) may sit in either layer. A route (`oracle.roles.<agent>`, `oracle.judgements.<type>`) to a provider that holds a key sits on the machine alone: only a route the person set up on their own machine may spend their paid key, so a repository's route to such a provider is refused when the configuration is read, naming the route and `~/.abcd/config.json` as where to set it. A provider holds a key when its block names a `key` credential; that is judged from the block alone, never by reading the credential store, so no secret is read to decide it and a block that names a key counts as keyed before its key is stored. A repository's route to a provider whose block names no key (a local server) is admitted and wins per name, a `--route` the person types is unaffected, and a route naming a provider this machine has not configured stays on the host with a diagnostic. **Amendment, 2026-09-29:** the route half of this decision as ruled on 2026-09-26 said routes "may sit in either layer"; the product thinker's ruling AA(b) of 2026-09-29 reverses that for a provider that holds a key, and this text is the decision as it now stands (adr-2609221009491186 carries the consequence).
-9. **A provider claims no tier (2026-09-26).** A provider is reached by a role or a judgement type pointed at `<provider>/<model>`, or by a `--route` naming it, never by a tier alone, so `Connections.Serves` answers false for every tier. The bundled denylist is `anthropic/*`, the minimum ruled, and a reported model it matches discards the answer.
+9. **A provider claims no tier (2026-09-26).** A provider is reached by a role or a judgement type pointed at `<provider>/<model>`, or by a `--route` naming it, never by a tier alone, so `Connections.Serves` answers false for every tier. The bundled denylist is `anthropic/*`, the minimum ruled, and a reported model it matches discards the answer. **Amendment, 2026-09-30:** no denylist is bundled (ruling H9, adr-2609300107513982); a reported model an `oracle.denylist` entry the configuration writes matches discards the answer.
 
 ## Open Questions
 
@@ -76,7 +76,7 @@ _None open._
 
 - **Given** `oracle.api.openrouter` configured with a base URL, a key name and a model list, **when** a role or judgement pointed at a listed model runs, **then** the call goes over the OpenAI-compatible protocol with the host sub-agent's prompt, inputs and output contract; unconfigured, nothing changes and no call is attempted.
 - **Given** a role or judgement configured for a model not on its provider's list, **when** the configuration is read, **then** it is refused before any call, naming the list.
-- **Given** a listed model whose prefix matches the vendor denylist, **when** the configuration is read, **then** it is refused the same way, and an allowlist entry does not override it.
+- **Given** a model on its provider's list, whichever vendor made it, **when** the configuration is read, **then** it is admitted, because the provider's list alone decides and abcd bundles no vendor denylist; a listed model an `oracle.denylist` entry in the repository's or the machine's configuration matches is refused the same way, naming the entry.
 - **Given** the key, **when** the adapter reads it, **then** it comes from the machine's configuration or the environment by name, and no credential is written into the repository.
 - **Given** a call through the adapter, **when** the run record is read, **then** it names the provider, the model asked for and the model the provider reported.
 - **Given** a repository abcd takes over with no provider configured, **when** `ahoy` runs, **then** it explains the aggregator, its use and what works without it, and offers the walkthrough; declining leaves the host as the only route and says so.
@@ -85,7 +85,7 @@ _None open._
 
 ## Audit Notes
 
-_Empty. Populated by intent-auditor when intent moves to shipped/._
+Changed on 2026-09-30 by the technical facilitator's ruling H9 of 2026-09-29, recorded as iss-2609300110451242: criterion 3 read "**Given** a listed model whose prefix matches the vendor denylist, **when** the configuration is read, **then** it is refused the same way, and an allowlist entry does not override it." H9 retires the bundled `anthropic/*` denylist, so the criterion's reading changes from a vendor refusal to the allowlist alone, and the text above is the criterion as it now stands. adr-2609300107513982 supersedes adr-2609221009491186, whose decision 2 it revises.
 
 ## Grounds
 

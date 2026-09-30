@@ -18,8 +18,8 @@ type Connection struct {
 	Name     string
 	Defaults Settings
 	// Models is the provider's allowlist (adr-2609221009491186): the only
-	// models it may serve, every one already cleared against the vendor
-	// denylist when the configuration was read. nil on a connection no
+	// models it may serve, every one already cleared against oracle.denylist
+	// when the configuration was read. nil on a connection no
 	// provider block backs.
 	Models []string
 	// Accepts is the settings the connection's adapter accepts; a setting

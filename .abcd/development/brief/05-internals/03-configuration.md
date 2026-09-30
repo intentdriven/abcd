@@ -100,7 +100,7 @@ rather than skipped:
         "models": ["typesafe/jev-1.13"]  // the allowlist: the only models it may serve
       }
     },
-    "denylist": ["openai/*"],            // extends the bundled vendor denylist; repo or machine
+    "denylist": ["openai/*"],            // optional, none bundled; repo or machine
     "roles": { "scribe": "openrouter/typesafe/jev-1.13" },            // an agent in the roster; a keyed
     "judgements": { "duplicate-match": "openrouter/typesafe/jev-1.13" } //   provider's routes: machine only
   }
@@ -112,11 +112,13 @@ rather than skipped:
   refused: a checkout must never be able to aim the person's key at a server of
   its choosing. `abcd ahoy connect` writes the block, after one verification
   call, and it is the one write abcd makes to `~/.abcd/config.json`.
-- **The denylist is a union.** The bundled `anthropic/*` comes first, then each
-  layer's entries; an entry is a vendor prefix (`vendor/*`) or one model, and
-  matching ignores case, OpenRouter's `~` alias prefix and a `:variant` suffix.
-  No layer removes an entry, and no allowlist entry overrides one: a block
-  listing a denied model is refused, whatever else it lists.
+- **The allowlist alone decides; the denylist is optional and a union.** abcd
+  bundles no vendor denylist (adr-2609300107513982), so a model a provider lists
+  is served whichever vendor made it. `oracle.denylist` is the configuration's
+  own: each layer's entries apply, an entry is a vendor prefix (`vendor/*`) or
+  one model, and matching ignores case, OpenRouter's `~` alias prefix and a
+  `:variant` suffix. No layer removes another's entry, and a block listing a
+  model an entry matches is refused, naming the entry, whatever else it lists.
 - **A route is `<provider>/<model>`.** A role or a judgement type pointed at a
   model its provider does not list is refused naming the list, and one pointed at
   a provider this machine has not configured is a diagnostic: the step stays on
@@ -134,9 +136,10 @@ rather than skipped:
   whose block names no key (a local server) is admitted and wins over the
   machine's per name, and a `--route` the person types is unaffected.
 - **The model a provider reports is held to the denylist too.** An aggregator
-  that answers with a denied model has substituted a frontier model; the answer
-  is discarded and the refusal names what it reported. Every call records the
-  provider, the model asked for and the model reported.
+  that answers with a model an `oracle.denylist` entry matches has substituted
+  a model the configuration refuses; the answer is discarded and the refusal
+  names what it reported. Every call records the provider, the model asked for
+  and the model reported, so any other substitution is visible in the record.
 
 Unconfigured, nothing changes: no provider block means no connection, and every
 delegated step runs on the host. No delegating verb sends a step to a configured

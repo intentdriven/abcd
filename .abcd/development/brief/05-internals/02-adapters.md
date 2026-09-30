@@ -45,12 +45,14 @@ asymmetric-trust guidance of adr-25 — advice, never a cascade the core imposes
 The `api` oracle plug-in is `internal/adapter/openaiapi`, one client over the
 chat-completions protocol that OpenRouter and a local OpenAI-compatible server
 both speak, so a provider is configuration and never code (itd-2609081951381895).
-The invariant it serves is adr-2609221009491186's: **a provider adapter serves
-only the models it lists, under a vendor denylist no listing overrides, and
-everything else runs on the host.** `internal/core/oracle` enforces it before a
-client is ever built: a route to an unlisted model is refused naming the list, a
-listed model the denylist matches is refused whatever the list says, and a
-reported model the denylist matches discards the answer. The configuration is in
+The invariant it serves is adr-2609300107513982's: **a provider adapter serves
+only the models it lists, its allowlist alone decides, and everything else runs
+on the host.** abcd bundles no vendor denylist. `internal/core/oracle` enforces
+the invariant before a client is ever built: a route to an unlisted model is
+refused naming the list, and a listed model of any vendor is served. The
+optional `oracle.denylist` the configuration writes refuses a listed model it
+matches, naming the entry, and a reported model it matches discards the
+answer. The configuration is in
 [`03-configuration.md`](03-configuration.md#the-provider-adapters-keys).
 
 The client's own guarantees are the network path's. The base URL is pinned per

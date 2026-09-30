@@ -9,11 +9,11 @@ production_mode: hand-written
 
 ## Summary
 
-The design record for itd-2609081951381895: the OpenAI-compatible API adapter with per-provider allowlists and the vendor denylist (adr-2609221009491186).
+The design record for itd-2609081951381895: the OpenAI-compatible API adapter with per-provider allowlists that alone decide which models a provider serves, and the optional `oracle.denylist` the configuration writes (adr-2609221009491186, superseded by adr-2609300107513982, which retires the bundled vendor denylist under ruling H9 of 2026-09-29).
 
 ## Scope
 
-1. **Configuration** (`internal/core/oracle/config.go`): the provider blocks, the bundled denylist, the resolver that validates every role and judgement route at read time and returns the refusal (criteria 1 to 3).
+1. **Configuration** (`internal/core/oracle/config.go`): the provider blocks, the optional `oracle.denylist` (abcd bundles no entry), the resolver that validates every role and judgement route at read time and returns the refusal (criteria 1 to 3).
 2. **The adapter** (`internal/adapter/openaiapi`): one client over the chat completions protocol, the request rendered from the same brief the host gets, the response validated against the same output contract, the transcript captured (criterion 1).
 3. **The credential**: by name from the machine configuration or the environment; a name that resolves to nothing is a refusal (criterion 4).
 4. **The record**: provider, requested and reported model per call in the run record (criterion 5).
@@ -31,7 +31,7 @@ The adapter implements the same validator/runner interface the host path and the
 ## Footprint
 
 - packages: internal/core/oracle, internal/surface/cli, and a new adapter package for the OpenAI-compatible client
-- tests: the resolver's refusals (unlisted, denylisted, no key); the call against a fake server; the record fields
+- tests: the resolver's refusals (unlisted, a configured denylist entry, no key) and a listed model of any vendor admitted; the call against a fake server; the record fields
 
 ## How the criteria are satisfied
 
@@ -39,7 +39,7 @@ The adapter implements the same validator/runner interface the host path and the
 | --- | --- |
 | 1 the call; unconfigured unchanged | scope 2 |
 | 2 unlisted refused at read | scope 1 |
-| 3 denylist wins | scope 1 |
+| 3 the list alone decides; a configured denylist entry refuses | scope 1 |
 | 4 key by name | scope 3 |
 | 5 the record | scope 4 |
 | 7 ahoy explains and offers | scope 5 |
