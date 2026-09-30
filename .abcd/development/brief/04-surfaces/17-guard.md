@@ -326,7 +326,8 @@ variables its text holds, and a name runs on into the letters a list or a
 sequence places after it (`{$HOME,x}`, `$HOME/{.*,}`, `$HO{ME,}`,
 `$HO{M..M}E`); an expansion whose operator can leave the value as it is reads
 as the variable itself — a default, an assignment or an error message
-(`${HOME:-x}`), a trim or a pattern replacement (`${HOME%/}`, `${HOME#x}`,
+(`${HOME:-x}`), where the colon forms never print an empty value
+(`${1:-dist}/` is `${1}/` or `dist/`), a trim or a pattern replacement (`${HOME%/}`, `${HOME#x}`,
 `${HOME/x/y}`), any substring, which also reads as the root and as nothing
 (`${X:1}`, `${PWD:0:1}`), a case change, and a subscript read to its
 matching `]` with any text after it (`${HOME[x[0]]}`, `${HOME[0]]}`, which the

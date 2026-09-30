@@ -288,3 +288,39 @@ func TestIFSNamedThroughAMarkTheWrittenCompareReads(t *testing.T) {
 		{`IFS=, read -ra arr <<< "$x"; rm -rf "${arr[0]}"`, shellBare | shellSQ, VerdictAllow, ""},
 	})
 }
+
+// TestColonDefaultsOfAnEmptyParameterTheWrittenCompareReads —
+// reverify-guardSet finding 2. With the colon, a default, an assignment and
+// an error message treat an empty parameter as unset, so `${1:-dist}` with
+// no argument, or an empty one, prints `dist`, never nothing: bash 3.2,
+// /bin/sh, dash and bash 5.3 hand rm `dist/` for `${1:-dist}/`. Without the
+// colon a set but empty parameter prints its value, nothing (`${1-dist}/` is
+// `/` after `set -- ""`).
+func TestColonDefaultsOfAnEmptyParameterTheWrittenCompareReads(t *testing.T) {
+	const home = "rm-rf-root-or-home"
+	const all = shellBare | shellSQ | shellDQ
+	checkSpellingCases(t, []spellingCase{
+		{`rm -rf "${1:-build}"/*`, shellBare | shellSQ, VerdictAllow, ""},
+		{`rm -rf ${1:-dist}/`, shellBare | shellSQ, VerdictAllow, ""},
+		{`rm -rf "${1:-dist}/"*`, shellBare | shellSQ, VerdictAllow, ""},
+		{`rm -rf ${@:-x}/`, shellBare | shellSQ, VerdictAllow, ""},
+		{`rm -rf ${1:=dist}/`, shellBare | shellSQ, VerdictAllow, ""},
+		{`rm -rf ${1:?}/`, shellBare | shellSQ, VerdictAllow, ""},
+		{`rm -rf ./${1:-dist}`, shellBare | shellSQ, VerdictAllow, ""},
+		// In a string the outer shell expands, `${1:-dist}` hands the inner
+		// shell `${1}`'s text, which it reads as a parameter of its own that
+		// can print nothing: `sh -c "rm -rf ${1:-dist}/"` refuses, a
+		// fail-closed over-read.
+		// The block forms: a default that is the root, an empty or
+		// colonless default, and an error message without the colon.
+		{`rm -rf ${1:-/}`, all, VerdictBlock, home},
+		{`rm -rf ${1-}/`, all, VerdictBlock, home},
+		{`rm -rf ${1-dist}/`, all, VerdictBlock, home},
+		{`rm -rf ${1=dist}/`, all, VerdictBlock, home},
+		{`rm -rf ${@-x}/`, all, VerdictBlock, home},
+		{`rm -rf ${1?}/`, all, VerdictBlock, home},
+		// An indirection past a colon default still reads as every value.
+		{`rm -rf ${!X:-dist}/`, all, VerdictBlock, home},
+		{`rm -rf ${!X:?}/`, all, VerdictBlock, home},
+	})
+}

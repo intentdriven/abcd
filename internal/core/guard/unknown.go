@@ -339,9 +339,13 @@ func paramText(text string) string { return strings.ReplaceAll(text, "\\\n", "")
 //     `${DIR=w}`), prints the value when the variable is set and its word w
 //     when it is not, so the set holds the variable and every text w can
 //     print, through its own expansions (spellWord): `${DIR:-$HOME}` is
-//     `${DIR}` and `$HOME` (iss-2609290426544292);
+//     `${DIR}` and `$HOME` (iss-2609290426544292); with the colon an empty
+//     value counts as unset, so a
+//     parameter that can print nothing (emptyable) does not print it there
+//     (`${1:-dist}` is `${1}` and `dist`);
 //   - an error message (`${HOME:?x}`) prints the value or nothing: the
-//     message goes to the standard error, never into the word;
+//     message goes to the standard error, never into the word, and with the
+//     colon an empty value is an error, as above;
 //   - a trimmed prefix or suffix and a pattern replacement (`${HOME%/}`,
 //     `${HOME#x}`, `${HOME/x/y}`): the value when the pattern does not match,
 //     and what a suffix trim leaves otherwise is the path above it. What
@@ -436,10 +440,14 @@ func spellParameterAt(body string, depth int, split, empty bool) []string {
 	name, rest := body[:n], body[n:]
 	same := "${" + name + "}"
 	value := []string{same}
+	// set is the value as the colon forms read it (`${1:-w}`, `${1:=w}`,
+	// `${1:?}`): an empty parameter counts as unset there, so the
+	// expansion never prints the empty value (reverify-guardSet finding 2).
+	set := value
 	if empty && !indirect && emptyable(name) {
 		// `${!}`, `${@}`, `${1}` can print nothing (emptyable), and every
-		// operator reads that nothing as it reads a value.
-		value = append(value, "")
+		// other operator reads that nothing as it reads a value.
+		value = append([]string{same}, "")
 	}
 	if indirect {
 		// An indirection's value is the value of the variable its name
@@ -451,10 +459,11 @@ func spellParameterAt(body string, depth int, split, empty bool) []string {
 			return raw
 		}
 		value = []string{spellCapped}
+		set = value
 	}
-	// orWord is the value, or the texts the word w can print.
-	orWord := func(w string) []string {
-		texts := value
+	// orWord is the value from, or the texts the word w can print.
+	orWord := func(from []string, w string) []string {
+		texts := append([]string(nil), from...)
 		for _, t := range spellWord(w, depth, split) {
 			texts = appendText(texts, t)
 		}
@@ -500,11 +509,11 @@ func spellParameterAt(body string, depth int, split, empty bool) []string {
 	case strings.HasPrefix(rest, ":+"):
 		return alternative(rest[2:])
 	case rest[0] == '-' || rest[0] == '=':
-		return orWord(rest[1:])
+		return orWord(value, rest[1:])
 	case strings.HasPrefix(rest, ":-") || strings.HasPrefix(rest, ":="):
-		return orWord(rest[2:])
+		return orWord(set, rest[2:])
 	case strings.HasPrefix(rest, ":?"):
-		return value
+		return set
 	}
 	var texts []string
 	switch {
