@@ -64,7 +64,7 @@ func TestDescribeIssueNextMoves(t *testing.T) {
 	repo := t.TempDir()
 	res, err := capture.Capture(capture.CaptureRequest{
 		RepoRoot: repo, Text: "an unpromoted open issue", Severity: capture.SeverityMinor,
-		Category: "observation", Source: "user-observation", FoundDuring: "t", Slug: "open-one",
+		Category: "observation", Source: "user-observation", FoundDuring: "t", Slug: "open-one", Remedy: "a remedy this test does not read",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -117,7 +117,7 @@ func TestDescribeResolvedIssueShowsTrail(t *testing.T) {
 	repo := t.TempDir()
 	res, err := capture.Capture(capture.CaptureRequest{
 		RepoRoot: repo, Text: "will be resolved with a trail", Severity: capture.SeverityMinor,
-		Category: "observation", Source: "user-observation", FoundDuring: "t", Slug: "trail",
+		Category: "observation", Source: "user-observation", FoundDuring: "t", Slug: "trail", Remedy: "a remedy this test does not read",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -583,7 +583,7 @@ func TestDescribeSkippedIssueNamesTheFileAndTheReason(t *testing.T) {
 	repo := t.TempDir()
 	res, err := capture.Capture(capture.CaptureRequest{
 		RepoRoot: repo, Text: "a record the reader will skip", Severity: capture.SeverityMinor,
-		Category: "observation", Source: "user-observation", FoundDuring: "t", Slug: "skipped-one",
+		Category: "observation", Source: "user-observation", FoundDuring: "t", Slug: "skipped-one", Remedy: "a remedy this test does not read",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -643,7 +643,7 @@ func TestDescribeUnmigratedIssueNamesTheMigrateRemedy(t *testing.T) {
 	repo := t.TempDir()
 	res, err := capture.Capture(capture.CaptureRequest{
 		RepoRoot: repo, Text: "a record from before the rename", Severity: capture.SeverityMinor,
-		Category: "observation", Source: "user-observation", FoundDuring: "t", Slug: "unmigrated",
+		Category: "observation", Source: "user-observation", FoundDuring: "t", Slug: "unmigrated", Remedy: "a remedy this test does not read",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -694,7 +694,7 @@ func TestDescribeSkippedIssueMatchesTheRosterByNumber(t *testing.T) {
 		repo = t.TempDir()
 		res, err := capture.Capture(capture.CaptureRequest{
 			RepoRoot: repo, Text: "a record whose file the reader will skip", Severity: capture.SeverityMinor,
-			Category: "observation", Source: "user-observation", FoundDuring: "t", Slug: "renamed",
+			Category: "observation", Source: "user-observation", FoundDuring: "t", Slug: "renamed", Remedy: "a remedy this test does not read",
 		})
 		if err != nil {
 			t.Fatal(err)
@@ -1006,7 +1006,7 @@ func TestDescribeUnparseableIssueIsNotNotFound(t *testing.T) {
 	repo := t.TempDir()
 	res, err := capture.Capture(capture.CaptureRequest{
 		RepoRoot: repo, Text: "a record whose frontmatter will break", Severity: capture.SeverityMinor,
-		Category: "observation", Source: "user-observation", FoundDuring: "t", Slug: "broken-block",
+		Category: "observation", Source: "user-observation", FoundDuring: "t", Slug: "broken-block", Remedy: "a remedy this test does not read",
 	})
 	if err != nil {
 		t.Fatal(err)

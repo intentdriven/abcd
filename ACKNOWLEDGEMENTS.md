@@ -303,6 +303,14 @@ Ideas and methodologies that shaped the design — not code abcd depends on.
   the whole record do not make two unrelated findings look alike. Linear's
   similar-issue detection, advisory and at issue creation (cited in itd-84),
   is the precedent for running the match at filing and never refusing on it.
+- **AGENTS.md (Agentic AI Foundation, under the Linux Foundation,
+  <https://agents.md>)** — the open, host-agnostic format for a repository's
+  instructions to coding agents: one Markdown file at the root that any agent
+  reads. abcd adopts it as its conventions router: the `conventions-router`
+  lint rule (`internal/core/repolint/rule_router.go`) requires one at a
+  repository's root, `abcd ahoy` can write abcd's conventions section into it
+  (`internal/core/ahoy/marker.go`), and a host-named instructions file is kept
+  only as a bridge to it.
 
 ## References & sources
 

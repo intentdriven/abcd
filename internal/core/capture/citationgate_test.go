@@ -110,7 +110,7 @@ func TestIngestReadingRefusesAnUnresolvedCitation(t *testing.T) {
 	t.Run("armed: a resolving citation ingests", func(t *testing.T) {
 		repo, ir := ledger(t)
 		armLedgerProseCitations(t, repo)
-		held, err := Capture(CaptureRequest{RepoRoot: repo, IssuesRoot: ir, Text: "b", Severity: SeverityMinor,
+		held, err := testCapture(CaptureRequest{RepoRoot: repo, IssuesRoot: ir, Text: "b", Severity: SeverityMinor,
 			Category: "bug", Source: "user-observation", FoundDuring: "t"})
 		if err != nil {
 			t.Fatal(err)

@@ -12,6 +12,14 @@
 > (itd-24); delivery state is the intent lifecycle's, not this page's (see the
 > [brief README's provenance note](../README.md)). The prose below records the
 > design contract in present tense as the brief's intents do.
+>
+> **The phase grain below is retired.**
+> [adr-2609212115255771](../../decisions/adrs/2609212115255771-phases-and-milestones-are-retired-sequencing-is-dependencies.md)
+> retires the phase and makes itd-24 a release retrospective, and the intent's
+> title already says so. Restating this design at the release grain (its
+> argument, its seed and its output path) is owed with itd-24; until then the
+> phase-grained contract below is the design as last written, not a live
+> sequencing unit.
 
 Close a phase of work with a retrospective somebody will actually read a year
 later, without starting from a blank page. The command takes a completed

@@ -512,7 +512,7 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newSourceCommand(&asJSON))
 	root.AddCommand(newMemoryCommand(&asJSON))
 	root.AddCommand(newRulesCommand(&asJSON))
-	root.AddCommand(newHookCommand())
+	root.AddCommand(newHookCommand(&asJSON))
 	root.AddCommand(newHistoryCommand(&asJSON))
 	root.AddCommand(newDocsCommand(&asJSON))
 	root.AddCommand(newIntentCommand(&asJSON))
@@ -1390,6 +1390,45 @@ func hookSession(in hookInput) string {
 	return in.SessionID
 }
 
+// routerView is the prompt router's machine-reader envelope, emitted instead
+// of the bare injected block when the hook is invoked with --json (ruling J15,
+// iss-2608261550580260). Text is byte for byte what the plain form writes to
+// the host's context; Injected names the domains whose text it carries; Active
+// is the full set of domain names in force this turn, present on every
+// evaluated prompt and an empty list when nothing is in force, so a client
+// that snapshots injected rules prunes every name it holds that Active omits.
+// Active is absent only when the router could not evaluate the prompt — an
+// unreadable payload or a rules.json that will not load — and Error says why:
+// that is "unknown, change nothing", never "every domain stopped".
+type routerView struct {
+	Text     string    `json:"text"`
+	Injected []string  `json:"injected"`
+	Active   *[]string `json:"active,omitempty"`
+	Error    string    `json:"error,omitempty"`
+}
+
+// routerRefused is the prompt router's fail-open exit when it cannot evaluate
+// a prompt: nothing is injected and the process exits 0 either way, and a
+// machine reader is handed an envelope naming the error with no active set.
+func routerRefused(cmd *cobra.Command, asJSON bool, msg string) error {
+	if !asJSON {
+		return nil
+	}
+	return routerEmit(cmd, routerView{Injected: []string{}, Error: msg})
+}
+
+// routerEmit writes the envelope and fails open like every other hook verb
+// (emitHookResult): an envelope that cannot be written — a host that closed
+// its end of the pipe — is named on stderr and the process still exits 0, as
+// the plain form does when its own write fails. The hook's exit-0 contract
+// outranks its report.
+func routerEmit(cmd *cobra.Command, v routerView) error {
+	if err := render(cmd.OutOrStdout(), true, v, nil); err != nil {
+		fmt.Fprintf(cmd.ErrOrStderr(), "abcd rules: envelope not written (%s)\n", termsafe.Sanitize(err.Error()))
+	}
+	return nil
+}
+
 // newHookCommand builds the operator-internal `hook` sub-tree: the Claude Code
 // prompt-router entrypoints (itd-3). These are NOT a user surface — they are the
 // injection transport, one front door onto internal/core/rules alongside the
@@ -1397,7 +1436,7 @@ func hookSession(in hookInput) string {
 // payload, an unreadable rules.json, or a state error injects nothing, logs a
 // diagnostic to stderr (out-of-band, per D3), and exits 0 so it can never wedge
 // a session.
-func newHookCommand() *cobra.Command {
+func newHookCommand(asJSON *bool) *cobra.Command {
 	hookCmd := &cobra.Command{
 		Use:    "hook",
 		Short:  "Claude Code hook entrypoints (operator-internal)",
@@ -1410,12 +1449,23 @@ func newHookCommand() *cobra.Command {
 	hookCmd.AddCommand(&cobra.Command{
 		Use:   "prompt-router",
 		Short: "UserPromptSubmit: inject the rules matching the prompt",
-		Args:  cobra.NoArgs,
+		Long: `Plain, stdout is the rendered rule block the host injects, and nothing on a
+turn with nothing new. With --json, stdout is one envelope in place of the
+generic machine-reader shape:
+
+  {"text": ..., "injected": [...], "active": [...], "error": ...}
+
+text is byte for byte what the plain form writes; injected names the domains
+text carries; active is the full set of domains in force this turn, so a name
+missing from it has stopped. error is present only when the prompt could not
+be evaluated, and then active is absent: the set is unknown. Every outcome,
+an error included, exits 0, so the hook can never wedge a session.`,
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			in, err := readHookInput(cmd)
 			if err != nil {
 				fmt.Fprintf(cmd.ErrOrStderr(), "abcd rules: unreadable hook payload (%s); injecting nothing\n", termsafe.Sanitize(err.Error()))
-				return nil
+				return routerRefused(cmd, *asJSON, "unreadable hook payload: "+err.Error())
 			}
 			cwd := in.Cwd
 			if cwd == "" {
@@ -1455,7 +1505,7 @@ func newHookCommand() *cobra.Command {
 				// wrap with a bare "abcd" to avoid "abcd rules: rules: …"
 				// (iss-2608261550491547).
 				fmt.Fprintf(cmd.ErrOrStderr(), "abcd %s; injecting nothing\n", termsafe.Sanitize(err.Error()))
-				return nil
+				return routerRefused(cmd, *asJSON, err.Error())
 			}
 			// A domain Load dropped (no rules of its own) is skipped, not
 			// fatal — but silently missing is the shape the drop exists to
@@ -1475,6 +1525,13 @@ func newHookCommand() *cobra.Command {
 			// whose words went into the context (GHSA-22f8-qf5r-gjgq).
 			fmt.Fprintf(cmd.ErrOrStderr(), "abcd rules: turn %d, injected %d domain(s) %v, %d bytes\n",
 				res.State.Count, len(res.Injected), res.Labels(), len(res.Text))
+			if *asJSON {
+				injected := res.Injected
+				if injected == nil {
+					injected = []string{}
+				}
+				return routerEmit(cmd, routerView{Text: res.Text, Injected: injected, Active: &res.Active})
+			}
 			if res.Text != "" {
 				fmt.Fprint(cmd.OutOrStdout(), res.Text)
 			}
@@ -2056,11 +2113,17 @@ block and in the hook's diagnostic, and carries "source": "user" or "repo" in
 renders bare and carries "source": "bundled".
 
 A list an override sets replaces the bundled one, so an override can hold back
-an entry abcd ships. For the guardrail domains (COMMITTING, LOAD, PII), every
-bundled recall keyword, alias or rule that an override's list leaves out is
-named on stderr, with the file that set the list, here and on every hook
+an entry abcd ships. For the guardrail domains (COMMITTING, LOAD, PII, SHELL),
+every bundled recall keyword, alias or rule that an override's list leaves out
+is named on stderr, with the file that set the list, here and on every hook
 prompt. To keep an entry, restate it in the list, or leave the field out to
-inherit the bundled list. Read-only.`,
+inherit the bundled list.
+
+SHELL is generated from the bundled shell-hazard registry that "abcd guard"
+enforces: one rule per registry entry, naming the command, why it is dangerous
+and what to run instead, recalled by the commands the registry names. It
+teaches before shell work what the guard refuses at the moment a command runs.
+Read-only.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cwd, err := os.Getwd()
@@ -2707,7 +2770,7 @@ func renderConditionStanding(w io.Writer, standing []intent.StandingEntry) {
 // ledgerDecisionRule is the one-line capture-vs-intent decision rule shown in
 // both ledgers' bare-form help (itd-46 AC5), so a user knows which ledger to reach
 // for. It stays host-agnostic (binary command forms, no plugin/tool names).
-const ledgerDecisionRule = "  which ledger? half-formed observation, question, or nitpick -> `abcd capture \"…\"`; a user-facing change you want to ship -> `abcd intent \"…\"`\n"
+const ledgerDecisionRule = "  which ledger? half-formed observation, question, or nitpick -> `abcd capture \"…\" --remedy \"…\"`; a user-facing change you want to ship -> `abcd intent \"…\"`\n"
 
 // ideateRoutingRule sits beside the ledger rule and names the optional third
 // route: a big, unproven idea can go through the admission gauntlet first
@@ -4303,6 +4366,20 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 					"unknown capture subcommand %q (nothing captured — a lone word is read as a sub-verb, never as issue text; issue text must contain a space, so write the whole sentence)",
 					args[0])}
 			}
+			// Every new issue carries a remedy (ruling BX3 of 2026-09-29): the
+			// fix it proposes, one line. The machine value is refused from a
+			// person, so it always means one of abcd's automatic filers wrote
+			// the record (ruling H12). Refused before anything is written.
+			if strings.TrimSpace(remedy) == "" {
+				return &exitError{Code: 2, Msg: fmt.Sprintf(
+					"abcd capture: --remedy is required — every new issue carries the fix it proposes, one line (--remedy \"<fix>\"); "+
+						"%q is written only by abcd's automatic filers (nothing captured)", issueschema.MachineRemedy)}
+			}
+			if issueschema.IsMachineRemedy(remedy) {
+				return &exitError{Code: 2, Msg: fmt.Sprintf(
+					"abcd capture: --remedy %q is the value abcd's automatic filers write when they have no fix, and a drain skips it; "+
+						"name the fix the issue proposes (nothing captured)", issueschema.MachineRemedy)}
+			}
 			// Fast path: append a structured issue from the free-form text.
 			text := strings.Join(args, " ")
 			// The slug is NOT derived here. Deriving it from the raw text before
@@ -4390,9 +4467,10 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 	// No default, deliberately: an unsupplied lapse time would default to the wall
 	// clock at write-up, which is the one value the lapse log exists to rule out.
 	captureCmd.Flags().StringVar(&lapsedAt, "lapsed-at", "", "RFC 3339 instant a discipline gave way (the lapse, not the write-up)")
-	// The field `abcd drain` reads (itd-82 decision 6): optional at capture, and
-	// a record without it is listed as ineligible rather than refused here.
-	captureCmd.Flags().StringVar(&remedy, "remedy", "", "the proposed fix, one line; `abcd drain` takes no issue without one")
+	// The field `abcd drain` reads (itd-82 decision 6): required of every new
+	// issue (ruling BX3 of 2026-09-29). A record filed before the rule carries
+	// none, stays readable, and is listed by a drain as ineligible.
+	captureCmd.Flags().StringVar(&remedy, "remedy", "", "the proposed fix, one line (required); `abcd capture remedy` rewrites it later")
 	// The help names where the field is documented, as the refusal does: the
 	// session behind iss-2609200951237670 found the key's shape by running
 	// strings on the binary, with two documents already carrying it.
@@ -4936,6 +5014,36 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 	deferCmd.Flags().StringVar(&deferAfter, "after", "", "the current anchor: the newest vX.Y.Z release tag, which the cut measures from (required)")
 	deferCmd.Flags().StringVar(&deferReason, "reason", "", "why the finding is carried past this cut rather than fixed (required)")
 	captureCmd.AddCommand(deferCmd)
+
+	// remedy — writes or replaces the fix an open issue proposes. It is how a
+	// person answers a record an automatic filer wrote with the machine value
+	// (ruling H12), which a drain skips until then, and how a record filed
+	// before the remedy was required gains one.
+	remedyCmd := &cobra.Command{
+		Use:  "remedy <iss-N> <text>",
+		Args: cobra.MinimumNArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			repoRoot, err := captureLedgerRoot(cmd)
+			if err != nil {
+				return err
+			}
+			res, err := capture.SetRemedy(capture.RemedyRequest{
+				RepoRoot: repoRoot, ID: args[0], Remedy: strings.Join(args[1:], " "),
+			})
+			if err != nil {
+				return captureRefusal("remedy", err)
+			}
+			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, res, func(w io.Writer) {
+				fmt.Fprintf(w, "%s  remedy written (stays %s) — %s\n", res.ID, res.Status, termsafe.Sanitize(res.Path))
+				fmt.Fprintf(w, "  remedy: %s\n", termsafe.Sanitize(res.Remedy))
+				if res.Previous != "" {
+					fmt.Fprintf(w, "  replaced: %s\n", termsafe.Sanitize(res.Previous))
+				}
+				emitRedactionNote(w, res.Redacted, res.Degraded)
+			})
+		},
+	}
+	captureCmd.AddCommand(remedyCmd)
 
 	return captureCmd
 }

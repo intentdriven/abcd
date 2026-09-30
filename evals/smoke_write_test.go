@@ -97,7 +97,7 @@ func TestCaptureWritesARecordTheReaderReadsBack(t *testing.T) {
 	var got struct {
 		ID, Slug, Path, Status string
 	}
-	runJSON(t, repo, home, &got, "capture", text, "--severity", "minor", "--category", "bug")
+	runJSON(t, repo, home, &got, "capture", text, "--severity", "minor", "--category", "bug", "--remedy", "accept the input the widget refuses")
 
 	if got.Status != "open" || !strings.HasPrefix(got.ID, "iss-") {
 		t.Fatalf("capture reported id=%q status=%q, want an iss- id in open", got.ID, got.Status)
@@ -138,7 +138,8 @@ func TestCaptureWritesARecordTheReaderReadsBack(t *testing.T) {
 func TestResolveMovesTheRecordAndWritesItsResolution(t *testing.T) {
 	repo, home := scratchRepo(t)
 	var captured struct{ ID, Path string }
-	runJSON(t, repo, home, &captured, "capture", "the scratch widget refuses every input it is handed", "--severity", "minor")
+	runJSON(t, repo, home, &captured, "capture", "the scratch widget refuses every input it is handed", "--severity", "minor",
+		"--remedy", "accept the input the widget refuses")
 
 	var resolved struct {
 		ID, Path, Status string

@@ -78,7 +78,7 @@ func TestJSONSuccessEnvelopeNoAbsolutePathLeak(t *testing.T) {
 	prepCapture := func(t *testing.T, text string) string {
 		t.Helper()
 		var so, se bytes.Buffer
-		if code := Run([]string{"capture", text, "--slug", "detector-fixture", "--json"}, &so, &se); code != 0 {
+		if code := Run([]string{"capture", text, "--slug", "detector-fixture", "--remedy", cliTestRemedy, "--json"}, &so, &se); code != 0 {
 			t.Fatalf("prep capture failed (code %d): %s", code, se.String())
 		}
 		var res struct {
@@ -126,7 +126,7 @@ func TestJSONSuccessEnvelopeNoAbsolutePathLeak(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			repo := captureLedgerRepo(t)
-			args := tc.args(t)
+			args := withTestRemedy(NewRootCommand(), tc.args(t))
 			var stdout, stderr bytes.Buffer
 			code := Run(args, &stdout, &stderr)
 			if code != 0 {
@@ -309,7 +309,7 @@ func TestCaptureSymlinkErrorNoPathLeak(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"capture", "a defect", "--json"}, &stdout, &stderr)
+	code := Run([]string{"capture", "a defect", "--remedy", cliTestRemedy, "--json"}, &stdout, &stderr)
 	if code == 0 {
 		t.Fatalf("expected a non-zero exit for a symlinked issues/open; stdout=%q stderr=%q", stdout.String(), stderr.String())
 	}

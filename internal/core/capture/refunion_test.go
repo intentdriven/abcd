@@ -38,7 +38,7 @@ func TestCaptureBranchesSameInstantNeverCollide(t *testing.T) {
 	ledger := filepath.Join(r.Root(), LedgerRelPath)
 
 	// Branch A: mint, do NOT commit yet (the uncommitted-mint window).
-	resA, err := Capture(CaptureRequest{
+	resA, err := testCapture(CaptureRequest{
 		RepoRoot: r.Root(), IssuesRoot: ledger, Text: "alpha observation",
 		Severity: SeverityMinor, Category: "bug", Source: "user-observation",
 		FoundDuring: "t", Slug: "alpha",
@@ -52,7 +52,7 @@ func TestCaptureBranchesSameInstantNeverCollide(t *testing.T) {
 	// issue file and, unlike the retired scheme, the mint consults no refs — the
 	// outcome must not depend on whether A has merged (the field test's P2).
 	r.Git("checkout", "-b", "branch-b", "HEAD~1")
-	resB, err := Capture(CaptureRequest{
+	resB, err := testCapture(CaptureRequest{
 		RepoRoot: r.Root(), IssuesRoot: ledger, Text: "beta observation",
 		Severity: SeverityMinor, Category: "bug", Source: "user-observation",
 		FoundDuring: "t", Slug: "beta",
@@ -87,7 +87,7 @@ func TestCaptureBranchesMergeUnionPassesGates(t *testing.T) {
 	trunk := r.Git("rev-parse", "--abbrev-ref", "HEAD")
 	ledger := filepath.Join(r.Root(), LedgerRelPath)
 
-	resA, err := Capture(CaptureRequest{
+	resA, err := testCapture(CaptureRequest{
 		RepoRoot: r.Root(), IssuesRoot: ledger, Text: "alpha observation",
 		Severity: SeverityMinor, Category: "bug", Source: "user-observation",
 		FoundDuring: "t", Slug: "alpha",
@@ -98,7 +98,7 @@ func TestCaptureBranchesMergeUnionPassesGates(t *testing.T) {
 	r.Commit("A: " + resA.ID)
 
 	r.Git("checkout", "-b", "branch-b", "HEAD~1")
-	resB, err := Capture(CaptureRequest{
+	resB, err := testCapture(CaptureRequest{
 		RepoRoot: r.Root(), IssuesRoot: ledger, Text: "beta observation",
 		Severity: SeverityMinor, Category: "bug", Source: "user-observation",
 		FoundDuring: "t", Slug: "beta",
