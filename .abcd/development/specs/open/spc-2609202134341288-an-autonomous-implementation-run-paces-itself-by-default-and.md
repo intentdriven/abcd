@@ -62,7 +62,7 @@ through C1 to C12 below; 7 by piece 4; 8 by piece 5.
 ## Evidence the build must answer
 
 - The pause has never fired. Three Dessau pilots on 2026-09-21 ran the scripted outer loop under a pacing window, and each finished inside its first window, so the gate that refuses an early start and the resume on `next_eligible_at` are untested by a real pause; the abcd pilot of 2026-09-20/21 paced by hand (idle wake-ups from the orchestrator's own scheduler) and broke its second pause on the facilitator's word. The build proves the pause with a test that sets the clock past the window and watches the refusal, and the first real run records whether the pause fired.
-- The ceiling turned reviews into a queue: 40 minutes of a two-hour window with a lane waiting on the two-agent ceiling, 27 minutes for one review (iss-2609211105014235). Reviewers counted separately from implementers, or a ceiling set from the lane shape, is a criterion this spec takes from that record.
+- The ceiling turned reviews into a queue: 40 minutes of a two-hour window with a lane waiting on the two-agent ceiling, 27 minutes for one review (iss-2609211105014235). That record proposed reviewers counted separately from implementers, or a ceiling set from the lane shape; its resolution ruled instead that reviewers take the same slots as implementers, and piece 6 ("The count") holds that ruling. What this spec takes from the record is the queue, not the separate count: the validators of one round run side by side, and an open lane's reviewers take a freed slot before any new lane (piece 6, "The order in which waiting work takes a freed slot", and C5).
 
 ## Concurrent lanes and validators (ruling DR6, 2026-09-29)
 
@@ -76,6 +76,16 @@ changes are the implement verb's (`itd-2609201916151817`: the state file, the
 step interface, the validators and the landing) and the step parser of
 `itd-2609212103565953`; they are specified here because the ceiling is this
 spec's and nothing else needs them.
+
+### What this piece is built on
+
+- **Piece 9 of `spc-2609202134338445`, the landing** (the pull request armed
+  through the forge client, the repository's merge rule, the ancestor check,
+  the cleanup), is a prerequisite. At the base of this amendment
+  (`c5b4305f6`) it is not built: `internal/core/implement/loop` holds no body
+  for the land stage. Every rule of "Two lanes that touch the same files"
+  below, and criteria C8, C9 and C10, presuppose an armed pull request, so
+  they are built after piece 9 lands. C1 to C7, C11 and C12 do not wait on it.
 
 ### The count
 
@@ -154,10 +164,22 @@ hand out the same work.
 - A spec step may carry a `- needs:` line beside its `- packages:` and
   `- tests:` lines: `- needs: none`, or `- needs: 1, 3`, naming earlier steps
   by number.
-- A step without the line needs every step before it. That is the order
-  `itd-2609212103565953` rules (criterion 2: the next step's lane starts only
-  after the previous step has merged), and every stepped spec written so far
-  keeps it unchanged.
+- **Open: DR6b.** What a step without the line needs is the product
+  thinker's to rule, and the build of this section waits on it. The
+  question, as the spec review put it: "When a spec lists steps and says
+  nothing about what depends on what, should the build run the steps one
+  after another (today's rule; a step must say `- needs: none` to run beside
+  earlier ones) or run them side by side up to the limit (a step must say
+  `- needs: 1` to wait for step 1)?" Options: "(a) serial default, opt in
+  per step (the amendment; safest, never changes an existing spec's
+  behaviour); (b) parallel default, opt out per step (DR6 as the new rule,
+  itd-2609212103565953 AC2 rewritten); (c) serial unless the steps'
+  `- packages:` lines are disjoint (no new line, but the loop guesses)."
+  The draft this spec carries until the ruling is option (a): a step without
+  the line needs every step before it, the order `itd-2609212103565953`
+  rules (criterion 2: the next step's lane starts only after the previous
+  step has merged), so every stepped spec written so far keeps it unchanged.
+  C6's first case is written against option (a) and changes with the ruling.
 - A lane opens for a step only when every step it needs has landed: its pull
   request is an ancestor of the default branch, or the spec at the default
   branch marks it `landed:`. Its branch is then cut from the default branch,
@@ -165,6 +187,39 @@ hand out the same work.
 - The parser refuses a `needs` that names the step itself, a later step, or
   a step the spec does not list, naming the line, and the readiness gate
   reports the refusal before a run starts.
+- **A `needs` line across a remainder.** `spec close --remainder` carries the
+  steps not marked landed, in document order, and renumbers them from one
+  (`spec.Unlanded`, `spec.RenderSteps`, and the renumbering the close does
+  before it mints; a step's number is its position, `steps.go`'s `Step`).
+  Every other indented line is carried verbatim, so a `- needs: 1, 3` copied
+  as written would name the wrong step, or one the remainder does not list,
+  and the parser would refuse the remainder the close had just written. The
+  copy therefore rewrites the `needs` line, the one indented line it does
+  not carry verbatim:
+  - a named step that landed is satisfied and leaves the list;
+  - a named step that did not land is carried, and is renamed to its number
+    in the remainder;
+  - a list left empty is written `- needs: none`, never removed, because an
+    absent line means the default (Open: DR6b), not "nothing";
+  - a step without the line stays without it: the earlier steps the
+    remainder lists are exactly the unlanded earlier steps, and the landed
+    ones are satisfied, so the default reads the same over the remainder
+    whichever way DR6b is ruled.
+
+  The close's result names each `needs` line it rewrote, before and after.
+  The rewrite is chosen over dropping the line because it is a total
+  function of the parse the close already holds, with nothing guessed: a
+  step is in the remainder exactly when it has no `landed:` (the predicate
+  `Unlanded` cuts on), so every step a `needs` line names is either landed
+  (satisfied) or carried, and the carried steps keep their order, so the map
+  from old number to new is one-to-one. Dropping the line would turn an
+  explicit list into the default, which runs the step later than declared
+  under DR6b option (a) and earlier than its needs allow under option (b),
+  so what a drop means would hang on the open ruling. Rewriting a satisfied
+  need to its `landed:` marker instead would give the parser a second
+  vocabulary for a need that constrains nothing. The steps spec
+  (`spc-2609212138246060`, scope 4) names this exception to its verbatim
+  copy.
 - The validators of one round always run side by side, stepped spec or not:
   parallel reviewers need no declaration.
 
@@ -172,9 +227,14 @@ hand out the same work.
 
 The state goes to schema version 7:
 
-- `lanes[].awaiting` is a list of awaits, each with its role, brief, receipt
+- `lanes[].awaits` is a list of awaits, each with its role, brief, receipt
   path and `since`. A lane has one entry while its implementer works and one
-  per validator while its round is out.
+  per validator while its round is out. It is a new key, not the version-6
+  `awaiting` with its type changed: the state is decoded strictly (a field
+  the version does not name is refused), and the version is peeked first to
+  pick the shape the decode holds the file to, so a key that read an object
+  in one version and a list in the next would be a second, silent branch
+  inside one key. Version 7 does not write `awaiting`.
 - `waiting` is a list of the work the ceiling holds back, each with its lane,
   its role and `since`, the time the ceiling first held it. It is written when
   a step finds the ceiling reached, and an item leaves it when it takes a
@@ -184,9 +244,20 @@ The state goes to schema version 7:
   caused it, the default branch's sha merged in, whether it conflicted, and
   the head it produced.
 - A version-6 state file reads as a run whose lanes each have zero or one
-  await, and runs on unchanged; the writer writes version 7. A version-7 file
-  is refused by an abcd that knows only version 6, naming the version, as
-  every schema step already is.
+  await (its `awaiting` object becomes a one-entry `awaits`), and runs on
+  unchanged; the writer writes version 7. A version-7 file is refused by an
+  abcd that knows only version 6, naming the version, as every schema step
+  already is.
+- A file that claims a version older than what it carries is refused, in the
+  shape of every earlier step's refusal (`internal/core/implement/loop/state.go:476-483`
+  at `c5b4305f6`: a pace in a version-1 file, a pick in a version-1 or
+  version-2 file, and below them a validation and a fix-round cap): a file
+  of version 6 or lower that carries `awaits`, `waiting` or `syncs` is
+  refused naming its version and what it carries that the version never
+  wrote, with the remedy those refusals give (the loop is the file's only
+  writer; restore it or remove the run directory). A version-7 file that
+  carries `awaiting` is refused the same way, since version 7 never writes
+  it.
 - `implement status` names the slots in use out of the ceiling, and every
   lane alive with its stage and each role it awaits. The status block reports
   one row per lane alive, not only the first.
@@ -219,11 +290,27 @@ The state goes to schema version 7:
 - The lane that closes the spec is synced before it arms whatever it
   touches (a merge that finds the branch already holds the default branch
   changes nothing and needs no round), so its head holds every lane the run
-  landed, and the
-  intent-auditor reads the whole delivery from the base of the run's first
-  lane to that head (ruling AI). A lane is the closing lane when it reaches
-  its landing with no step pending and no other lane open. If its last
-  passing round had no auditor, the sync's fresh round carries one.
+  landed. A lane is the closing lane when it reaches its landing with no step
+  pending, no other lane open, and no lane of the run handed back. If its
+  last passing round had no auditor, the sync's fresh round carries one.
+- After a hand-back, no lane closes the spec. A handed-back lane is neither
+  done nor open, and the delivery lacks its step, so no auditor judges the
+  delivery as whole and no lane runs the close; the spec stays open for the
+  person's replan. What the siblings open at the hand-back do meanwhile is
+  Open: DR6c (below).
+- The intent-auditor reads the whole delivery (ruling AI) as the run's own
+  lanes' changes, never as a sha range from the base of the run's first lane
+  to the closing head: after a sync, that range also holds every commit the
+  default branch gained since the base, work from outside the run included.
+  The delivery is the diff of each of the run's pull requests, lane by lane:
+  a lane's head against the default-branch sha it last merged in (the last
+  entry of its `syncs`), or against its base when it never synced. Each of
+  those shas is an ancestor of the lane's head, so each diff holds that
+  lane's commits and its conflict resolutions and nothing a sibling or an
+  outside change brought in; a landed lane's head stays reachable after its
+  worktree is cleaned up, because piece 9's ancestor check holds it in the
+  default branch. For a run of one lane that never synced, the delivery is
+  the base-to-head range the implement verb's piece 8 reads.
 - Movement of the default branch by anyone outside the run is left to the
   repository's merge rule, as it is for a single lane: the loop syncs only on
   its own siblings' landings.
@@ -241,10 +328,23 @@ The state goes to schema version 7:
 - `--fix-rounds` is a per-run value that each lane spends on its own: a lane
   counts its own fix rounds against the run's cap, and a sibling's rounds
   never count against it.
-- A lane handed back stops only itself. Siblings already open run on to their
-  landing or their own hand-back. No new lane opens after a hand-back,
-  because the run's intent is the person's to replan, and the run then stops
-  and reports the hand-back.
+- **Open: DR6c.** What a hand-back does to the lanes already open beside it
+  is the product thinker's to rule, and the build of this bullet waits on it.
+  The spec review's finding: the draft below "rewrites built behaviour"
+  (`loop.go:556-557` refuses every step once `current()` is handed back, and
+  `handback.go` promises "every later step refuses", DR1's shape, itd-50
+  criterion 2); "The run then stops" is "ambiguous (at once, or once the last
+  sibling lands?)", what `implement step` answers in between is not said, and
+  "the intent goes back to the person to replan while siblings land pull
+  requests from the plan being replanned". Options put to the product
+  thinker: (a) stop all lanes at the hand-back; (b) siblings finish and
+  merge, then the run stops; (c) siblings finish, and their merges are held.
+  The draft this spec carries until the ruling: a lane handed back stops only
+  itself; siblings already open run on to their landing or their own
+  hand-back; no new lane opens after a hand-back, because the run's intent is
+  the person's to replan; the run then stops and reports the hand-back.
+  Whichever option is ruled, no new lane opens after a hand-back and no lane
+  closes the spec (above).
 
 ### Criteria (Given, When, Then)
 
@@ -264,15 +364,18 @@ end-to-end test of the implement verb is the pattern. C2 and C3 are criterion
   it awaits, and writes the held work into `waiting` with the time it was
   first held; a second call before any receipt leaves that time unchanged.
 - **C3, the slot filled and the wait counted (criterion 6).** **Given** C2's
-  run and the clock moved on 14 minutes, **when** one reviewer's receipt is
-  verified and `implement step` is called, **then** the held work takes the
-  freed slot and the run record carries an entry naming its lane, its role
-  and 14 minutes waited.
+  run and the clock moved on 14 minutes from the `implement step` call that
+  first found the ceiling reached (the `since` C2 wrote, not the moment the
+  work became ready), **when** one reviewer's receipt is verified and
+  `implement step` is called, **then** the held work takes the freed slot
+  and the run record carries an entry naming its lane, its role and 14
+  minutes waited.
 - **C4, implementers and reviewers together.** **Given** `--sub-agents 3`,
   lane 1 with both reviewers out and step 2 marked `- needs: none`, **when**
-  `implement step` is called, **then** lane 2 opens in its own worktree and
-  its implementer takes the third slot; the next call finds the ceiling
-  reached. A stage the binary performs itself proceeds at the ceiling.
+  `implement step` is called until lane 2's implementer is handed its brief
+  (the worktree, the brief and the implementer are one move each), **then**
+  lane 2 opens in its own worktree and its implementer takes the third slot;
+  the next call finds the ceiling reached. A stage the binary performs itself proceeds at the ceiling.
 - **C5, the order.** **Given** a full run where lane 2's security reviewer,
   lane 1's fix implementer and a new lane for step 4 all wait, **when** one
   slot frees and `implement step` is called, **then** lane 1's fix implementer
@@ -283,7 +386,12 @@ end-to-end test of the implement verb is the pattern. C2 and C3 are criterion
   is an ancestor of the default branch, even with a slot free. **Given**
   `- needs: none` on step 2, **then** its lane opens at the next free slot.
   **Given** `- needs: 3` on step 2, **then** the parser refuses naming the
-  line.
+  line. (The first case is written against DR6b option (a); Open: DR6b.)
+  **Given** a spec of four steps where steps 1 and 3 are marked `landed:`,
+  step 4 carries `- needs: 1, 2` and step 2 carries `- needs: 1`, **when**
+  `spec close --remainder` runs, **then** the remainder lists old step 2 as
+  step 1 with `- needs: none` and old step 4 as step 2 with `- needs: 1`,
+  the close names both rewritten lines, and the remainder parses.
 - **C7, isolation and the receipt.** **Given** lanes 1 and 2 each awaiting an
   implementer, **when** lane 2's receipt is handed back, **then** lane 2
   advances and lane 1 is unchanged; the two worktrees and branches differ; a
@@ -308,10 +416,14 @@ end-to-end test of the implement verb is the pattern. C2 and C3 are criterion
   starts nothing on either lane, both receipts are still verified, and
   `next_eligible_at` is written once. **Given** `--fix-rounds 1` and lane 1
   failing its second round, **then** lane 1 is handed back, lane 2 runs on to
-  its landing, and no new lane opens.
+  its landing, and no new lane opens (the sibling's part is written against
+  the draft; Open: DR6c); whatever DR6c rules, no lane closes the spec.
 - **C12, the schema.** **Given** a version-6 state file with one lane
   awaiting its implementer, **when** it is read, **then** the lane has one
-  await and the run advances on it; the next write is version 7.
+  await and the run advances on it; the next write is version 7 and carries
+  `awaits`, never `awaiting`. **Given** a version-6 file carrying `awaits`,
+  `waiting` or `syncs`, or a version-7 file carrying `awaiting`, **when** it
+  is read, **then** it is refused naming the version and the key.
 
 ### Where the loop assumes one lane at a time
 
@@ -333,6 +445,10 @@ lane or the single agent in place, and the build replaces or reads past it:
   `current()` only.
 - `internal/core/implement/loop/loop.go:493`, `:743` and `:947`: the start
   result, the next move and the status block each report one lane.
+- `internal/core/implement/loop/loop.go:556-557` and
+  `internal/core/implement/loop/handback.go:3-8`: once `current()` is handed
+  back, every later step refuses, so the whole run stops at a hand-back
+  (DR1's shape, itd-50 criterion 2). What replaces it waits on Open: DR6c.
 - `internal/core/implement/loop/validate.go:3-5` and `:145-154`: the round
   hands out "one fresh agent at a time", returning at the first validator
   without a verdict.
@@ -348,7 +464,15 @@ lane or the single agent in place, and the build replaces or reads past it:
 ### Footprint of this piece
 
 - packages: internal/core/implement/loop, internal/core/spec,
-  internal/surface/cli, internal/core/statusblock
+  internal/core/intent (the remainder's `needs` rewrite),
+  internal/surface/cli, internal/core/statusblock, internal/core/site
+- a shape change, not only new content: `statusblock.Started` carries one
+  `Lane` per run (`loop.go:948-957` at `c5b4305f6` fills it from `current()`
+  alone), and the block reports one row per lane alive, so `Started` carries
+  every lane alive and each reader of it changes with it, the site's status
+  page (`internal/core/site/status.go`) included
+- prerequisite: piece 9 of `spc-2609202134338445`, the landing, before C8 to
+  C10 and the landing rules ("What this piece is built on")
 - tests: C1 to C12 through the step interface with fake agents and a fake
-  forge; the `needs` parser over a stepped spec; a version-6 state file read
-  and advanced
+  forge; the `needs` parser over a stepped spec; the remainder's `needs`
+  rewrite; a version-6 state file read and advanced, and the version refusals
