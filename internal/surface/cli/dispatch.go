@@ -188,6 +188,7 @@ func dispatchAudit(cmd *cobra.Command, rf *routeFlag, route *oracle.Route, repoR
 	}
 	return render(cmd.OutOrStdout(), asJSON, withDispatchReceipt(ing, d), func(w io.Writer) {
 		fmt.Fprintf(w, "abcd intent audit — %s (receipt %s, intent %s)\n", ing.Status, ing.ReceiptID, ing.IntentID)
+		renderAuditOwed(w, ing)
 		renderDispatchLine(w, d)
 	})
 }

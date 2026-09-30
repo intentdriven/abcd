@@ -208,7 +208,7 @@ type verdictGapAudit struct {
 type AuditEmitResult struct {
 	ReceiptID      string `json:"receipt_id"`
 	IntentID       string `json:"intent_id"`
-	Status         string `json:"status"` // owed | already_owed | already_ingested | already_dead_letter
+	Status         string `json:"status"` // owed | already_owed | check_owed | already_ingested | already_dead_letter
 	RequestPath    string `json:"request_path,omitempty"`
 	RequestWritten bool   `json:"request_written"`
 }
@@ -241,6 +241,17 @@ type IngestVerdictResult struct {
 	// occasion in the rationale and ingests again for the same receipt: a
 	// payload that renders differently replaces the ingested block (Replaced).
 	ReadingOccasionedStanding []condition.Disposition `json:"reading_occasioned_standing,omitempty"`
+	// AuditOwed names each criterion the verdict judged NOT_MET or
+	// INCONCLUSIVE ("ac-2 NOT_MET"), the check the flag leaves owed on the
+	// shipped intent (ruling DQ1c); empty on a passing verdict.
+	AuditOwed []string `json:"audit_owed,omitempty"`
+	// OwedIssue is the issue carrying that check, and OwedIssueLinked is true
+	// when it was already open rather than filed by this ingest.
+	OwedIssue       string `json:"owed_issue,omitempty"`
+	OwedIssueLinked bool   `json:"owed_issue_linked,omitempty"`
+	// FlagCleared is the issue a passing re-audit resolved as it cleared the
+	// flag.
+	FlagCleared string `json:"flag_cleared,omitempty"`
 }
 
 // MarshalJSON writes the result the way its outcome reads (iss-2609190337545165).
@@ -276,10 +287,16 @@ func (r IngestVerdictResult) MarshalJSON() ([]byte, error) {
 		Reason                    string                  `json:"reason,omitempty"`
 		Replaced                  bool                    `json:"replaced,omitempty"`
 		ReadingOccasionedStanding []condition.Disposition `json:"reading_occasioned_standing,omitempty"`
+		AuditOwed                 []string                `json:"audit_owed,omitempty"`
+		OwedIssue                 string                  `json:"owed_issue,omitempty"`
+		OwedIssueLinked           bool                    `json:"owed_issue_linked,omitempty"`
+		FlagCleared               string                  `json:"flag_cleared,omitempty"`
 	}{
 		Status: r.Status, ReceiptID: r.ReceiptID, IntentID: r.IntentID,
 		DeadLetterPath: r.DeadLetterPath, Reason: r.Reason, Replaced: r.Replaced,
 		ReadingOccasionedStanding: r.ReadingOccasionedStanding,
+		AuditOwed:                 r.AuditOwed, OwedIssue: r.OwedIssue,
+		OwedIssueLinked: r.OwedIssueLinked, FlagCleared: r.FlagCleared,
 	}
 	switch r.Status {
 	case "ingested":
@@ -375,6 +392,16 @@ func emitLocked(repoRoot string, it Intent, opts AuditEmitOptions) (AuditEmitRes
 		switch state {
 		case "INGESTED":
 			res.Status = "already_ingested"
+			// A verdict that left a check owed (ruling DQ1c) is not terminal:
+			// its re-run needs the request, so it is rewritten.
+			if hasOwedFlag(content, rcp) {
+				res.Status = "check_owed"
+				if err := writeAuditRequest(repoRoot, it, rcp, content, opts); err != nil {
+					return res, err
+				}
+				res.RequestPath = filepath.Join(reviewsRelDir, rcp+".request.md")
+				res.RequestWritten = true
+			}
 		case "DEAD_LETTER":
 			res.Status = "already_dead_letter"
 		default:
@@ -889,22 +916,97 @@ func IngestVerdictBytes(repoRoot string, raw []byte) (IngestVerdictResult, error
 	// holds no receipt to resolve: that refusal is made without the lock, so it
 	// still writes nothing.
 	if _, err := os.Lstat(filepath.Join(repoRoot, IntentsRelDir)); errors.Is(err, fs.ErrNotExist) {
-		return ingestLocked(repoRoot, raw, rcp)
+		return ingestLocked(repoRoot, raw, rcp, auditLedgerOutcome{})
+	}
+	// A verdict that leaves a check owed, or clears one, is answered by the
+	// ledger (ruling DQ1c; audit_owed.go). The ledger's lock precedes this
+	// store's, so the verdict is judged under this lock first, the ledger is
+	// asked with it released, and the write below judges the record afresh.
+	// A ledger that cannot answer refuses the ingest with nothing written, so
+	// the receipt stays as it was and the same verdict can be ingested again.
+	var pv owedPreview
+	if err := withIntentMintLock(repoRoot, func() error {
+		var err error
+		pv, err = previewOwed(repoRoot, raw, rcp)
+		return err
+	}); err != nil {
+		return IngestVerdictResult{}, err
+	}
+	lg, err := askAuditLedger(repoRoot, pv)
+	if err != nil {
+		return IngestVerdictResult{}, err
 	}
 	var res IngestVerdictResult
-	err := withIntentMintLock(repoRoot, func() error {
+	err = withIntentMintLock(repoRoot, func() error {
 		var err error
-		res, err = ingestLocked(repoRoot, raw, rcp)
+		res, err = ingestLocked(repoRoot, raw, rcp, lg)
 		return err
 	})
 	return res, err
+}
+
+// owedPreview is what the first hold of the lock judged: the owed check a
+// valid verdict leaves, or the flag a passing one clears. The zero value asks
+// the ledger for nothing (an unresolvable or invalid payload, which the write
+// refuses or quarantines on its own terms).
+type owedPreview struct {
+	owed      *AuditOwed
+	clearRcp  string
+	clearIss  string
+	clearItd  string
+	clearRoot string
+}
+
+// previewOwed judges the verdict against the record read under the lock and
+// writes nothing.
+func previewOwed(repoRoot string, raw []byte, rcp string) (owedPreview, error) {
+	it, content, _, ok, err := findIntentByReceipt(repoRoot, rcp)
+	if err != nil || !ok {
+		return owedPreview{}, err
+	}
+	if checkIssuedPolicy(repoRoot, raw, it, rcp, content) != nil {
+		return owedPreview{}, nil
+	}
+	v, verr := validateVerdict(raw, rcp, content)
+	if verr != nil {
+		return owedPreview{}, nil
+	}
+	if crit, failed := owedCriteria(v); len(crit) > 0 {
+		return owedPreview{owed: &AuditOwed{RepoRoot: repoRoot, IntentID: it.ID, IntentPath: filepath.ToSlash(it.Path),
+			ReceiptID: rcp, Criteria: crit, Failed: failed}}, nil
+	}
+	if iss, ok := flaggedIssue(content, rcp); ok {
+		return owedPreview{clearRcp: rcp, clearIss: iss, clearItd: it.ID, clearRoot: repoRoot}, nil
+	}
+	return owedPreview{}, nil
+}
+
+// askAuditLedger files the owed check or resolves the cleared one, with the
+// intent store's lock released. With no ledger linked it asks nothing.
+func askAuditLedger(repoRoot string, pv owedPreview) (auditLedgerOutcome, error) {
+	switch {
+	case pv.owed != nil && auditOwedFiler != nil:
+		f, err := auditOwedFiler(*pv.owed)
+		if err != nil {
+			return auditLedgerOutcome{}, fmt.Errorf("intent: the audit of %s leaves a check owed and the ledger could not file it: %w; "+
+				"nothing was written, and ingesting the verdict again retries", pv.owed.IntentID, err)
+		}
+		return auditLedgerOutcome{issue: f.IssueID, linked: f.Linked}, nil
+	case pv.clearIss != "" && auditOwedClearer != nil:
+		if err := auditOwedClearer(AuditCleared{RepoRoot: repoRoot, IntentID: pv.clearItd, ReceiptID: pv.clearRcp, IssueID: pv.clearIss}); err != nil {
+			return auditLedgerOutcome{}, fmt.Errorf("intent: the audit of %s passes and %s, which carries its owed check, could not be resolved: %w; "+
+				"nothing was written, and ingesting the verdict again retries", pv.clearItd, pv.clearIss, err)
+		}
+		return auditLedgerOutcome{cleared: pv.clearIss}, nil
+	}
+	return auditLedgerOutcome{}, nil
 }
 
 // ingestLocked is IngestVerdictBytes's critical section, called under the
 // intent store lock: it resolves rcp to its intent on the bytes read there and
 // applies the verdict to those bytes. reingestVerdict and deadLetter are reached
 // only from here, so they run under the same hold.
-func ingestLocked(repoRoot string, raw []byte, rcp string) (IngestVerdictResult, error) {
+func ingestLocked(repoRoot string, raw []byte, rcp string, lg auditLedgerOutcome) (IngestVerdictResult, error) {
 	it, content, state, ok, err := findIntentByReceipt(repoRoot, rcp)
 	if err != nil {
 		return IngestVerdictResult{}, err
@@ -913,7 +1015,7 @@ func ingestLocked(repoRoot string, raw []byte, rcp string) (IngestVerdictResult,
 		return IngestVerdictResult{}, fmt.Errorf("intent: verdict receipt %s matches no parked review marker (unsolicited); refusing to ingest", rcp)
 	}
 	if state == "INGESTED" {
-		return reingestVerdict(repoRoot, raw, it, rcp, content)
+		return reingestVerdict(repoRoot, raw, it, rcp, content, lg)
 	}
 
 	// The attestation chain must be the pair THIS receipt issued, not merely two
@@ -947,7 +1049,8 @@ func ingestLocked(repoRoot string, raw []byte, rcp string) (IngestVerdictResult,
 	}
 
 	rollup := countVerdicts(v)
-	block := ingestedBlock(rcp, v, rollup, free)
+	owed := owedFor(it, rcp, v)
+	block := ingestedBlock(rcp, v, rollup, free, owed, lg.issue)
 	if err := degraded(); err != nil {
 		return IngestVerdictResult{}, err
 	}
@@ -959,7 +1062,7 @@ func ingestLocked(repoRoot string, raw []byte, rcp string) (IngestVerdictResult,
 		return IngestVerdictResult{}, err
 	}
 	split := countDispositions(v)
-	return IngestVerdictResult{
+	return withOwed(IngestVerdictResult{
 		Status: "ingested", ReceiptID: rcp, IntentID: it.ID, Criteria: len(v.Criteria),
 		Met: rollup["MET"], MetWithConcern: rollup["MET_WITH_CONCERNS"],
 		NotMet: rollup["NOT_MET"], Inconclusive: rollup["INCONCLUSIVE"],
@@ -967,7 +1070,7 @@ func ingestLocked(repoRoot string, raw []byte, rcp string) (IngestVerdictResult,
 		Narrowed: split[dispositionNarrowed], Falsified: split["falsified"],
 		Untested:                  split[dispositionUntested],
 		ReadingOccasionedStanding: occasionedStanding(updated),
-	}, nil
+	}, owed, lg), nil
 }
 
 // reingestVerdict applies a verdict for a receipt already INGESTED. The receipt
@@ -980,7 +1083,7 @@ func ingestLocked(repoRoot string, raw []byte, rcp string) (IngestVerdictResult,
 // nothing written rather than dead-lettered: quarantine is for a receipt still
 // owed a verdict, and a bad re-ingest must never replace a good one. It runs
 // under the store lock ingestLocked holds.
-func reingestVerdict(repoRoot string, raw []byte, it Intent, rcp, content string) (IngestVerdictResult, error) {
+func reingestVerdict(repoRoot string, raw []byte, it Intent, rcp, content string, lg auditLedgerOutcome) (IngestVerdictResult, error) {
 	free, degraded, err := newVerdictProse(repoRoot)
 	if err != nil {
 		return IngestVerdictResult{}, err
@@ -991,12 +1094,24 @@ func reingestVerdict(repoRoot string, raw []byte, it Intent, rcp, content string
 			"an ingested verdict is replaced only by a valid one (nothing written)", rcp, free(verr.Error()))
 	}
 	rollup := countVerdicts(v)
-	block := ingestedBlock(rcp, v, rollup, free)
+	owed := owedFor(it, rcp, v)
+	block := ingestedBlock(rcp, v, rollup, free, owed, lg.issue)
 	if err := degraded(); err != nil {
 		return IngestVerdictResult{}, err
 	}
 	if existing, ok := reviewBlockText(content, rcp); ok && sameReviewBlock(existing, block, rcp) {
-		return IngestVerdictResult{Status: "noop", ReceiptID: rcp, IntentID: it.ID}, nil
+		return withOwed(IngestVerdictResult{Status: "noop", ReceiptID: rcp, IntentID: it.ID}, owed, lg), nil
+	}
+	// A passing re-audit of a flagged receipt clears the flag: the replacement
+	// block carries none, and a dated line below it says when and which issue
+	// was resolved. The line sits outside the block, so a later re-ingest of
+	// the same passing verdict leaves it alone.
+	if owed == nil && hasOwedFlag(content, rcp) {
+		iss, _ := flaggedIssue(content, rcp)
+		if iss == "" {
+			iss = "no issue"
+		}
+		block += "\n\n" + clearedLine(rcp, iss, auditNow())
 	}
 	if err := checkIssuedPolicy(repoRoot, raw, it, rcp, content); err != nil {
 		return IngestVerdictResult{}, err
@@ -1009,7 +1124,7 @@ func reingestVerdict(repoRoot string, raw []byte, it Intent, rcp, content string
 		return IngestVerdictResult{}, err
 	}
 	split := countDispositions(v)
-	return IngestVerdictResult{
+	return withOwed(IngestVerdictResult{
 		Status: "ingested", Replaced: true, ReceiptID: rcp, IntentID: it.ID, Criteria: len(v.Criteria),
 		Met: rollup["MET"], MetWithConcern: rollup["MET_WITH_CONCERNS"],
 		NotMet: rollup["NOT_MET"], Inconclusive: rollup["INCONCLUSIVE"],
@@ -1017,7 +1132,31 @@ func reingestVerdict(repoRoot string, raw []byte, it Intent, rcp, content string
 		Narrowed: split[dispositionNarrowed], Falsified: split["falsified"],
 		Untested:                  split[dispositionUntested],
 		ReadingOccasionedStanding: occasionedStanding(updated),
-	}, nil
+	}, owed, lg), nil
+}
+
+// owedFor is the check v leaves owed on it, or nil when v passes: no
+// criterion NOT_MET and none INCONCLUSIVE (ruling DQ1a: an undecided audit
+// never closes like a pass).
+func owedFor(it Intent, rcp string, v verdict) *AuditOwed {
+	crit, failed := owedCriteria(v)
+	if len(crit) == 0 {
+		return nil
+	}
+	return &AuditOwed{IntentID: it.ID, IntentPath: filepath.ToSlash(it.Path), ReceiptID: rcp, Criteria: crit, Failed: failed}
+}
+
+// withOwed adds the owed check and the ledger's answer to a result.
+func withOwed(r IngestVerdictResult, owed *AuditOwed, lg auditLedgerOutcome) IngestVerdictResult {
+	if owed != nil {
+		for _, c := range owed.Criteria {
+			r.AuditOwed = append(r.AuditOwed, c.ID+" "+c.Verdict)
+		}
+		r.OwedIssue, r.OwedIssueLinked = lg.issue, lg.linked
+		return r
+	}
+	r.FlagCleared = lg.cleared
+	return r
 }
 
 // checkIssuedPolicy compares the verdict's policy hashes against the pair the
@@ -1756,7 +1895,7 @@ func untestedDispositions(intentContent string) []verdictCondition {
 	return out
 }
 
-func ingestedBlock(rcp string, v verdict, rollup map[string]int, free proseField) string {
+func ingestedBlock(rcp string, v verdict, rollup map[string]int, free proseField, owed *AuditOwed, owedIssue string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "<!-- abcd-review: INGESTED receipt=%s -->\n", rcp)
 	fmt.Fprintf(&b, "Fidelity review — receipt %s (verifier %s %s).\n\n",
@@ -1782,6 +1921,12 @@ func ingestedBlock(rcp string, v verdict, rollup map[string]int, free proseField
 	b.WriteString("\n")
 	fmt.Fprintf(&b, "Acceptance rollup: MET %d · MET_WITH_CONCERNS %d · NOT_MET %d · INCONCLUSIVE %d\n\n",
 		rollup["MET"], rollup["MET_WITH_CONCERNS"], rollup["NOT_MET"], rollup["INCONCLUSIVE"])
+	if owed != nil {
+		// The check still owed (ruling DQ1c): the intent stays shipped, and
+		// this line names what is unmet or undecided until a passing re-audit
+		// of the same receipt replaces the block.
+		b.WriteString(owedFlagLine(*owed, owedIssue) + "\n\n")
+	}
 
 	b.WriteString("Per-criterion verdicts:\n")
 	for _, c := range v.Criteria {

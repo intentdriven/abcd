@@ -73,6 +73,15 @@ that is live; ineligible without a remedy or with the automatic filers' value un
 a person writes one; and unreadable when the ledger reader refuses the record. A
 record written before the field existed reads its `suggested_fix:` as its remedy.
 
+One automatic filer writes a real remedy. An after-merge fidelity audit that
+judges a criterion `NOT_MET` or `INCONCLUSIVE` captures one issue carrying the
+check it leaves owed (ruling DQ1c; [`05-intent.md`](05-intent.md)), and its
+remedy is the work that clears it: "fix, then re-run the audit" for a failed
+criterion, "re-run the audit" for an undecided one. The rule judges such a
+record by its fields as it judges any other: a failed audit's record is a
+`major` `bug`, which the baseline hands back on severity, and an undecided
+one's is a `minor` `inconsistency`, which the baseline takes.
+
 Two hand-backs hold whatever the repository's record says, because each marks a
 decision a person still owes. A remedy that opens "Waits on" as words, followed
 by a blank, a colon or nothing (the shape a remedy takes when its fix waits on an

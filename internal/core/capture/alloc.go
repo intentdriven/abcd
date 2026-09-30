@@ -270,6 +270,10 @@ var minter recordid.Minter
 // presence check runs first because the O_EXCL create guards open/ alone; a
 // clash with a resolved or wontfixed id also redraws.
 func reservePath(repoRoot, issuesRoot, slug, forceID string) (string, string, error) {
+	return reservePathWith(withLedgerLock, repoRoot, issuesRoot, slug, forceID)
+}
+
+func reservePathWith(lock ledgerLocker, repoRoot, issuesRoot, slug, forceID string) (string, string, error) {
 	// Validate a caller-supplied ForceID against the iss-N shape BEFORE it is used
 	// to build a path or create a placeholder — a traversal id (../../evil) must
 	// never touch the filesystem outside the ledger, even transiently.
@@ -277,7 +281,7 @@ func reservePath(repoRoot, issuesRoot, slug, forceID string) (string, string, er
 		return "", "", fmt.Errorf("%w: ForceID %q must match ^iss-[0-9]+$", ErrPathUnsafe, forceID)
 	}
 	var resID, resTarget string
-	err := withLedgerLock(repoRoot, issuesRoot, func() error {
+	err := lock(repoRoot, issuesRoot, func() error {
 		if forceID != "" {
 			if present, pErr := issPresent(issuesRoot, forceID); pErr != nil {
 				return pErr
