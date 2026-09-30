@@ -216,7 +216,7 @@ func startToImplement(t *testing.T) (root, id string, steps Stages, o Options) {
 	clock := time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC)
 	o = Options{Now: func() time.Time { return clock }}
 	for range 2 {
-		if _, err := Advance(repo.Root(), start.RunID, steps, o); err != nil {
+		if _, err := advance(repo.Root(), start.RunID, steps, o); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -232,7 +232,7 @@ func TestAnUnsetRouteLeavesTheAwaitAndTheStateByteIdentical(t *testing.T) {
 	path := filepath.Join(root, filepath.FromSlash(StateRelPath(id)))
 	before := stateBytes(t, root, id)
 
-	plain, err := Advance(root, id, steps, o)
+	plain, err := advance(root, id, steps, o)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -277,7 +277,7 @@ func TestARoutedRoleRunsThroughItsRunner(t *testing.T) {
 		t.Fatalf("the result names the route that ran: %+v", res.Route)
 	}
 	argv := strings.Join(env.argv(t, "claude"), "\n")
-	for _, want := range []string{"--bare", "--allowedTools=" + strings.Join(RoleTools(RoleImplementer), ","),
+	for _, want := range []string{"--bare", "--allowedTools=" + strings.Join(toolsFor(RoleImplementer), ","),
 		"Brief: " + filepath.Join(root, filepath.FromSlash(RunRelDir), "brief.md")} {
 		if !strings.Contains(argv, want) {
 			t.Fatalf("the launch carries %q:\n%s", want, argv)
@@ -390,7 +390,7 @@ func TestAReviewThroughARunnerDiffersFromAHostReviewOnlyInItsRoute(t *testing.T)
 			}}
 		o := Options{Now: func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC) }}
 		for range 2 {
-			if _, err := Advance(repo.Root(), start.RunID, steps, o); err != nil {
+			if _, err := advance(repo.Root(), start.RunID, steps, o); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -402,7 +402,7 @@ func TestAReviewThroughARunnerDiffersFromAHostReviewOnlyInItsRoute(t *testing.T)
 				t.Fatalf("the opencode review is verified: %+v %v", res, err)
 			}
 		} else {
-			res, err := Advance(repo.Root(), start.RunID, steps, o)
+			res, err := advance(repo.Root(), start.RunID, steps, o)
 			if err != nil || res.Awaiting == nil {
 				t.Fatalf("the host is handed the review: %+v %v", res, err)
 			}
@@ -479,11 +479,11 @@ func TestRoleToolsFollowTheAgentDefinitions(t *testing.T) {
 			}
 		}
 		want := append(def, "Write")
-		if got := RoleTools(role); !reflect.DeepEqual(got, want) {
+		if got := toolsFor(role); !reflect.DeepEqual(got, want) {
 			t.Fatalf("%s: tools = %v, want its definition's %v plus Write", role, got, def)
 		}
 	}
-	if got := RoleTools("scribe"); got != nil {
+	if got := toolsFor("scribe"); got != nil {
 		t.Fatalf("a role the loop does not start is granted nothing: %v", got)
 	}
 }

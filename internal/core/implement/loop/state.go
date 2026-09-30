@@ -33,10 +33,10 @@
 //
 // and its worktree in the machine-scoped store,
 // ~/.abcd/worktrees/<root-sha>/<run-id>-<lane-id>. The
-// process driver (piece 3, waiting on the runner intent itd-2609201916056194)
-// is the same loop called by a process instead of a host: it starts the agent an
-// Await names through the runner and then calls Receipt, so it needs no seam
-// beyond the two this package exports.
+// process driver (piece 3, drive.go) is the same loop: Drive performs the next
+// stage and, when it hands the lane to a role routed to a command-line runner
+// (itd-2609201916056194), starts that agent through the runner and hands its
+// receipt back through Receipt.
 //
 // Core never writes to stdout; the CLI front door formats what these functions
 // return.

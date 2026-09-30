@@ -1,7 +1,7 @@
 package loop
 
 // loop.go is the step interface (spec piece 2; decision 5's default driver):
-// Start creates a run after the checks, Advance performs the lane's next stage
+// Start creates a run after the checks, advance performs the lane's next stage
 // and exits, Receipt verifies what an agent stage waited on and advances, and
 // Status reads. Each takes the run tier's lock, reads the state first and
 // writes it last; a stage that fails leaves the state exactly as it was.
@@ -188,7 +188,7 @@ type StartResult struct {
 	Next     string    `json:"next"`
 }
 
-// StepResult is what Advance and Receipt return.
+// StepResult is what advance and Receipt return.
 type StepResult struct {
 	RunID string `json:"run_id"`
 	Lane  string `json:"lane,omitempty"`
@@ -557,13 +557,13 @@ func openNextLaneRecorded(st *State, now time.Time) {
 		Note: fmt.Sprintf("%s opened for step %d of %s (%s)", l.ID, l.SpecStep, st.Spec, l.StepTitle)})
 }
 
-// Advance performs the next stage of the run's current lane and returns. A lane
+// advance performs the next stage of the run's current lane and returns. A lane
 // that awaits a receipt performs nothing and re-tells what it awaits; a run
 // that is complete says so; a run paused by its window clock is refused until
 // next_eligible_at. A stage whose body this build does not carry is refused
 // naming the piece that delivers it. The state is written only after a body
 // succeeds, and then once.
-func Advance(repoRoot, runID string, steps Stages, o Options) (StepResult, error) {
+func advance(repoRoot, runID string, steps Stages, o Options) (StepResult, error) {
 	var res StepResult
 	err := mutate(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
 		now := o.now()

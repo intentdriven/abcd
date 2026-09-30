@@ -8,7 +8,7 @@ package loop
 // Receipt a host calls. Nothing else changes:
 //
 //   - a role left on the host (the default) is handed to the host exactly as
-//     Advance hands it, with the same result and the same state, byte for byte
+//     advance hands it, with the same result and the same state, byte for byte
 //     (criterion 2);
 //   - a routed role is run through internal/core/runner's Dispatcher, whose
 //     validator IS the stage's own receipt verifier, run through Receipt under
@@ -24,7 +24,7 @@ package loop
 //     record counts per runner and per role (criterion 4).
 //
 // The runner is started outside the run's lock, which is held only for the
-// Advance before it and the Receipt or the fallback write after it, so a
+// advance before it and the Receipt or the fallback write after it, so a
 // status read or another checkout's step is never kept waiting on a model.
 //
 // A host session always drives this call: the no-host path, where abcd runs
@@ -75,9 +75,9 @@ var roleTools = map[string][]string{
 	RoleAuditor:     {"Read", "Grep", "Glob", "Bash", "Write"},
 }
 
-// RoleTools returns the tools a runner grants role; nil for a role the loop
+// toolsFor returns the tools a runner grants role; nil for a role the loop
 // does not start.
-func RoleTools(role string) []string {
+func toolsFor(role string) []string {
 	t, ok := roleTools[role]
 	if !ok {
 		return nil
@@ -85,14 +85,14 @@ func RoleTools(role string) []string {
 	return append([]string(nil), t...)
 }
 
-// Drive performs the next stage as Advance does and, when the stage hands the
+// Drive performs the next stage as advance does and, when the stage hands the
 // lane to an agent whose role is routed to a runner, starts that agent through
 // the runner and hands its receipt back through Receipt. A step that re-tells
 // an await an earlier call began starts nothing. A role on the host, or a runner
-// that did not run it, returns the await for the host to act on, as Advance
+// that did not run it, returns the await for the host to act on, as advance
 // returns it; the latter also names the fallback it recorded.
 func Drive(ctx context.Context, repoRoot, runID string, steps Stages, o Options, rs Runners) (StepResult, error) {
-	res, err := Advance(repoRoot, runID, steps, o)
+	res, err := advance(repoRoot, runID, steps, o)
 	if err != nil || res.Awaiting == nil || !res.handed || rs.Config == nil {
 		// Nothing awaits, or the await is one an earlier call began: the
 		// host, or the runner that call started, is already on it.
@@ -118,7 +118,7 @@ func Drive(ctx context.Context, repoRoot, runID string, steps Stages, o Options,
 		Brief:     absIn(repoRoot, aw.Brief),
 		Receipt:   absIn(repoRoot, aw.Receipt),
 		Dir:       worktree,
-		Tools:     RoleTools(aw.Role),
+		Tools:     toolsFor(aw.Role),
 		SessionID: fmt.Sprintf("%s-%s-%s-%d", runID, res.Lane, aw.Role, o.now().Unix()),
 		Timeout:   rs.Timeout,
 	}
