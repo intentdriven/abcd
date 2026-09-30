@@ -92,7 +92,17 @@ const lockFileName = ".lock"
 // next mutation writes the file back at version 4, as it does for the versions
 // before. One of them that already says `stage` is not one its version wrote,
 // and is refused.
-const SchemaVersion = 4
+//
+// Version 5 added the validate stage's record (spc-2609202134338445 piece 8): a
+// lane's `validation`, its rounds and the verdicts the loop recorded. Version 4
+// is its strict subset, read as a run no validator has judged yet and written
+// back at version 5; a version-4 file carrying a validation is not one version
+// 4 wrote, and is refused.
+const SchemaVersion = 5
+
+// schemaVersionUnvalidated is the version before the validate stage's record:
+// read, never written.
+const schemaVersionUnvalidated = 4
 
 // schemaVersionUnpaced is the version before the pace: read, never written.
 const schemaVersionUnpaced = 1
@@ -224,6 +234,57 @@ type Lane struct {
 	// pick entry, on the lane a picked run commits it on; the receipt verifier
 	// counts the implementer's commits from after it.
 	PickSHA string `json:"pick_sha,omitempty"`
+	// Validation is the validate stage's record (piece 8): one round per head
+	// the validators judged, the last the current one. Only the loop writes a
+	// verdict into it, parsed from the validator's own return (itd-58).
+	Validation []ValidationRound `json:"validation,omitempty"`
+}
+
+// ValidationRound is one round of the validate stage: the validators it hands
+// the lane's head to, one at a time, and the fresh implementer it hands their
+// findings to when one of them did not pass.
+type ValidationRound struct {
+	Round int `json:"round"`
+	// HeadSHA is the lane's head the round's validators judge.
+	HeadSHA    string         `json:"head_sha"`
+	Validators []ValidatorRun `json:"validators"`
+	// Fix is the verified receipt of the fresh implementer the round's
+	// findings were handed to; once set, the next step opens the next round.
+	Fix string `json:"fix,omitempty"`
+}
+
+// ValidatorRun is one validator of a round: the fresh agent handed the lane,
+// its brief, the return it writes, and the verdict the loop parsed from that
+// return.
+type ValidatorRun struct {
+	Role   string `json:"role"`
+	Brief  string `json:"brief"`
+	Return string `json:"return"`
+	// Verdict is the verdict the loop parsed from the return; empty until the
+	// return is handed back. Pass is whether it lets the lane advance.
+	Verdict string `json:"verdict,omitempty"`
+	Pass    bool   `json:"pass"`
+	// Audit is the fidelity audit's request and reading, on the
+	// intent-auditor's run.
+	Audit *AuditRun `json:"audit,omitempty"`
+}
+
+// AuditRun is the fidelity audit the lane that closes the spec takes, once, over
+// the whole delivery (ruling AI): the receipt the close parks for the same
+// record, the request, the range it reads, and what the loop read from the
+// verdict. The verdict itself is the return the run names; the close consumes
+// it (piece 9).
+type AuditRun struct {
+	ReceiptID string `json:"receipt_id"`
+	Request   string `json:"request"`
+	// BaseSHA..HeadSHA is the whole delivery: from the base of the run's first
+	// lane to this lane's head.
+	BaseSHA string `json:"base_sha"`
+	HeadSHA string `json:"head_sha"`
+	// Worst, NotMet and Inconclusive are read from the verdict.
+	Worst        string   `json:"worst,omitempty"`
+	NotMet       []string `json:"not_met,omitempty"`
+	Inconclusive []string `json:"inconclusive,omitempty"`
 }
 
 // Await is what a lane waits on: the agent a host must start, the brief it is
@@ -271,6 +332,17 @@ func (s State) picked() bool {
 	}
 	for _, l := range s.Lanes {
 		if l.PickSHA != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// validated reports whether the state carries anything only the validate
+// stage writes.
+func (s State) validated() bool {
+	for _, l := range s.Lanes {
+		if len(l.Validation) > 0 {
 			return true
 		}
 	}
@@ -349,9 +421,13 @@ func readStateIn(root *os.Root, runID string) (State, error) {
 	case (st.SchemaVersion == schemaVersionUnpaced || st.SchemaVersion == schemaVersionUnpicked) && st.picked():
 		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries a pick, which version %d never wrote", rel, st.SchemaVersion, st.SchemaVersion),
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
-	case st.SchemaVersion >= schemaVersionUnpaced && st.SchemaVersion <= schemaVersionStepNamed:
+	case st.SchemaVersion <= schemaVersionUnvalidated && st.validated():
+		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries a validation, which version %d never wrote", rel, st.SchemaVersion, st.SchemaVersion),
+			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
+	case st.SchemaVersion >= schemaVersionUnpaced && st.SchemaVersion <= schemaVersionUnvalidated:
 		// Read as the current version, its stages already carried over by
-		// decodeState; the next write carries it, and this read writes nothing.
+		// decodeState when it named them `step`; the next write carries it, and
+		// this read writes nothing.
 		st.SchemaVersion = SchemaVersion
 	case st.SchemaVersion != SchemaVersion:
 		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d; this abcd reads versions %d to %d", rel, st.SchemaVersion, schemaVersionUnpaced, SchemaVersion),

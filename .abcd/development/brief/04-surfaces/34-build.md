@@ -11,9 +11,9 @@ machinery's (decision 8): the stages after the start are driven through the
 This chapter describes the part of the loop that ships: the checks, the pace
 (itd-2609201925079472, spc-2609202134341288), the state file, the step
 interface a host session drives with its window clock, and the lane's first
-three stages (its worktree, its brief and the implementer's receipt). The validators
-and the landing are named in the sequence and delivered by later pieces of the
-spec; until each lands, the loop refuses at it by name.
+four stages (its worktree, its brief, the implementer's receipt and the
+validators). The landing is named in the sequence and delivered by a later piece
+of the spec; until it lands, the loop refuses at it by name.
 
 ## Sub-verbs
 
@@ -267,9 +267,9 @@ reported complete and closes no window.
 
 A stage whose body this build does not carry is refused naming the stage, the
 lane and the spec piece that delivers it, and the run is unchanged, ready to
-resume in a build that carries it. This build carries the worktree, the brief and
-the implement stage with its receipt's verifier; the validate and land stages are
-refused naming pieces 8 and 9. The process driver (piece 3) is the same loop
+resume in a build that carries it. This build carries the worktree, the brief,
+the implement stage with its receipt's verifier and the validate stage with
+its; the land stage is refused naming piece 9. The process driver (piece 3) is the same loop
 called by a process instead of a host, starting the named agent through the
 runner and handing its receipt back.
 
@@ -347,6 +347,41 @@ any of these is refused naming every gap at once, and the lane is not advanced.
 A receipt carrying a verdict is refused by the same strict decode: a verdict is
 the loop's to record (decision 9). A verified receipt moves the lane's head to
 its branch's tip and the lane to its validators.
+
+**The validators** (piece 8; criteria 5 and 12). The validate stage hands the
+lane's head to validators that did not implement it, one fresh agent at a
+time, each with a brief the loop renders into
+`.abcd/.work.local/run/<run-id>/<lane-id>/validate/round-<n>/<role>/`: a
+`ruthless-reviewer`, then a `security-reviewer`, each over the lane's diff from
+its base to its head, and, on the lane whose landing closes the spec, an
+`intent-auditor`. The fidelity audit runs once, on that lane, over the whole
+delivery (ruling AI, 2026-09-29): its request carries the range from the base of
+the run's first lane to the closing lane's head, each lane's own range, and
+every spec step landed before the run by what landed it. A lane that does not
+close the spec takes no audit step, and neither does a closing lane whose close
+leaves the intent planned because another open spec names it: the criteria are
+the intent's, audited once, whole. The request is composed as the close's own
+emit composes it, keyed on the receipt the close parks and written against the
+path the close moves the intent to, so the auditor's verdict is the one the
+landing's close consumes; the delivered range sits after its Provenance block,
+outside the prompt hash. Only the loop writes a verdict (decision 9): each
+validator writes its return, and the loop parses the verdict out of it — a
+reviewer's one `### Verdict` section stating one verdict of its role (`SHIP` or
+`FIX FIRST`; `APPROVE`, `BLOCK` or `NEEDS-INPUT`), the auditor's fidelity
+verdict checked against the request (its receipt, both provenance hashes, every
+criterion and scope condition) — and records it into the state file; a return
+the loop cannot read one verdict from is refused and the lane still awaits it.
+A round whose validators all pass completes the stage, unless a report the
+lane's receipts name states a verdict (`Verdict: SHIP`, or a Verdict heading
+over one), which is refused at the advance naming the report. A round one of
+them did not pass (`FIX FIRST`, `BLOCK`, `NEEDS-INPUT`, a criterion `NOT_MET`)
+goes to a fresh implementer, who applies each finding with a commit or rejects
+it in writing in its report, and hands back a receipt verified as the
+implementer's is; the next round then hands the lane's head to every validator
+again, so no verdict stands over a head it did not read and a rejection is
+judged by the validator it answers. The state records every round with the head
+it judged, each verdict, and the audit's receipt and range; the bound on rounds
+is itd-50's.
 
 ## Exit codes
 

@@ -297,6 +297,18 @@ func renderLaneLine(w io.Writer, l loop.Lane) {
 		fmt.Fprintf(w, "    branch %s (%s..%s), worktree %s\n", termsafe.Sanitize(l.Branch), shortSHA(l.BaseSHA), shortSHA(l.HeadSHA),
 			termsafe.Sanitize(fsutil.RedactHome(l.Worktree)))
 	}
+	if n := len(l.Validation); n > 0 {
+		r := l.Validation[n-1]
+		parts := make([]string, 0, len(r.Validators))
+		for _, v := range r.Validators {
+			verdict := v.Verdict
+			if verdict == "" {
+				verdict = "pending"
+			}
+			parts = append(parts, v.Role+" "+verdict)
+		}
+		fmt.Fprintf(w, "    validation round %d at %s: %s\n", r.Round, shortSHA(r.HeadSHA), termsafe.Sanitize(strings.Join(parts, ", ")))
+	}
 	if l.Awaiting != nil {
 		fmt.Fprintf(w, "    awaiting the %s's receipt at %s (brief %s)\n", termsafe.Sanitize(l.Awaiting.Role),
 			termsafe.Sanitize(fsutil.RedactHome(l.Awaiting.Receipt)), termsafe.Sanitize(fsutil.RedactHome(l.Awaiting.Brief)))
@@ -431,7 +443,15 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			"the spec, the conventions of AGENTS.md, the decisions the intent cites, and the spec\n" +
 			"steps before the lane's with what landed each) into the lane's directory of the run;\n" +
 			"implement hands the lane to a fresh implementer and awaits\n" +
-			"its receipt; validate and land follow.\n\n" +
+			"its receipt; validate hands the lane's head to validators that did not implement it, one\n" +
+			"fresh agent at a time — a ruthless-reviewer, a security-reviewer and, on the lane whose\n" +
+			"landing closes the spec and ships the intent, an intent-auditor over the whole delivery,\n" +
+			"from the base of the run's first lane to that lane's head (a lane that does not close the\n" +
+			"spec takes no audit) — and records each verdict itself, parsed from the validator's own\n" +
+			"return. A round one of them did not pass goes to a fresh implementer, who applies each\n" +
+			"finding or rejects it in writing in its report, and the next round judges the new head\n" +
+			"afresh; a round that passes completes the stage, unless a lane report states a verdict,\n" +
+			"which is refused naming the report. land follows.\n\n" +
 			"A stage whose body this abcd does not carry is refused naming the spec piece that\n" +
 			"delivers it, and the run is unchanged. A stage that fails leaves the state as it was,\n" +
 			"so the next invocation performs it again; a completed stage is never repeated.\n\n" +
@@ -479,6 +499,12 @@ func newImplementReceiptCommand(asJSON *bool) *cobra.Command {
 			"it names is on the lane's branch past its base, the definition of done's output exists\n" +
 			"in the lane's directory with a zero exit code, and the report exists there. A receipt\n" +
 			"that verifies moves the lane's head to its branch's tip.\n\n" +
+			"At the validate stage the receipt is the validator's return: a reviewer's is refused\n" +
+			"unless it has one Verdict section stating one verdict of its role (SHIP or FIX FIRST;\n" +
+			"APPROVE, BLOCK or NEEDS-INPUT), and the intent-auditor's unless it is the fidelity verdict\n" +
+			"the request asked for, echoing its receipt and both provenance hashes. The loop records\n" +
+			"the verdict and the lane stays at validate for the next validator. A fresh implementer's\n" +
+			"receipt after a round is verified as an implementer's is.\n\n" +
 			"--run names the run; without it, the one run in progress in this checkout. Exit 2 on a\n" +
 			"refusal, exit 3 on a locked run state.",
 		Args: cobra.ExactArgs(1),

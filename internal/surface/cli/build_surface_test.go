@@ -279,6 +279,23 @@ func TestTheHostDrivesALaneThroughTheCLI(t *testing.T) {
 	if res := mustStep(t, "implement", "receipt", await.Awaiting.Receipt, "--json"); res.PerformedStage != "implement" || res.Stage != "validate" {
 		t.Fatalf("a verified receipt advances the lane to its validators: %+v", res)
 	}
+
+	// The validate stage (piece 8): a fresh ruthless reviewer is handed the lane,
+	// and its return's verdict is the one the loop records.
+	review := mustStep(t, "implement", "step", "--json")
+	if review.Awaiting == nil || review.Awaiting.Role != "ruthless-reviewer" || review.PerformedStage != "" {
+		t.Fatalf("the validate stage hands the lane to a fresh ruthless reviewer: %+v", review)
+	}
+	ret := filepath.Join(repo.Root(), filepath.FromSlash(review.Awaiting.Receipt))
+	if err := os.WriteFile(ret, []byte("### Verdict\n\n- **SHIP** — nothing survived.\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if res := mustStep(t, "implement", "receipt", review.Awaiting.Receipt, "--json"); res.PerformedStage != "" || res.Stage != "validate" {
+		t.Fatalf("a validator's return leaves the lane at validate: %+v", res)
+	}
+	if status := mustImplement(t, "implement", "status"); !strings.Contains(status, "ruthless-reviewer SHIP") {
+		t.Fatalf("the status names the verdict the loop recorded:\n%s", status)
+	}
 }
 
 // TestImplementStepSaysStageForTheLanesAndStepForTheSpecs: the text form of

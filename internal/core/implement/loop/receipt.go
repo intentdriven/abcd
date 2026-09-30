@@ -93,8 +93,20 @@ func verifyReceipt(c Context, lane *Lane, receiptRel string) error {
 	if err != nil {
 		return err
 	}
-	if receiptRel != dirRel+"/"+ReceiptFileName {
-		return refuse("receipt", "", lane.ID, "the lane's receipt is "+dirRel+"/"+ReceiptFileName+", not "+receiptRel,
+	return verifyLaneReceipt(c, lane, receiptRel, dirRel+"/"+ReceiptFileName)
+}
+
+// verifyLaneReceipt verifies an implementer's receipt the loop awaits at want:
+// the implement stage's, or the one a fresh implementer writes after a
+// validation round (validate.go). The paths it names are read inside the lane's
+// directory either way.
+func verifyLaneReceipt(c Context, lane *Lane, receiptRel, want string) error {
+	dirRel, err := laneRel(c.State.RunID, lane.ID, "receipt")
+	if err != nil {
+		return err
+	}
+	if receiptRel != want {
+		return refuse("receipt", "", lane.ID, "the lane's receipt is "+want+", not "+receiptRel,
 			"restore the run's state file")
 	}
 	root, err := os.OpenRoot(c.RepoRoot)

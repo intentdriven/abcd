@@ -97,11 +97,18 @@ type Verifier func(c Context, lane *Lane, receipt string) error
 
 // StageDef is one stage of the lane sequence: its name, the spec piece that
 // delivers its body, and the body — nil when this build does not carry it.
+//
+// A stage that hands the lane to several agents in turn (the validators, and the
+// fresh implementer their findings go to) sets Repeats: a verified receipt then
+// returns the lane to the stage's body rather than completing the stage, and the
+// body decides, on the next step, whom it hands the lane to next or that the
+// stage is complete.
 type StageDef struct {
-	Name   Stage
-	Piece  int
-	Run    Handler
-	Verify Verifier
+	Name    Stage
+	Piece   int
+	Run     Handler
+	Verify  Verifier
+	Repeats bool
 }
 
 // Stages is the lane sequence with its bodies.
@@ -134,15 +141,15 @@ func after(name Stage) Stage {
 
 // DefaultStages is the lane sequence this build carries, each stage with the
 // spec piece that delivers its body: the worktree (lane.go), the brief
-// (brief.go) and the implement stage with its receipt's verifier (receipt.go).
-// The validators and the landing are later pieces of spc-2609202134338445, and
-// each registers its body here.
+// (brief.go), the implement stage with its receipt's verifier (receipt.go) and
+// the validators with theirs (validate.go). The landing is a later piece of
+// spc-2609202134338445, and registers its body here.
 func DefaultStages() Stages {
 	return Stages{
 		{Name: StageWorktree, Piece: 6, Run: worktreeStage},
 		{Name: StageBrief, Piece: 5, Run: briefStage},
 		{Name: StageImplement, Piece: 7, Run: implementStage, Verify: verifyReceipt},
-		{Name: StageValidate, Piece: 8},
+		{Name: StageValidate, Piece: 8, Run: validateStage, Verify: verifyValidation, Repeats: true},
 		{Name: StageLand, Piece: 9},
 	}
 }
@@ -668,10 +675,23 @@ func Receipt(repoRoot, runID, receipt string, steps Stages, o Options) (StepResu
 			return false, refuse("receipt", "", lane.ID, err.Error(), "correct what the reason names, then hand the receipt back")
 		}
 		performed := lane.Stage
-		lane.Receipt = lane.Awaiting.Receipt
+		verified := lane.Awaiting.Receipt
 		lane.Awaiting = nil
-		st.Record = append(st.Record, Entry{At: now, Lane: lane.ID, Stage: "receipt",
-			Note: "the " + string(performed) + " stage's receipt verified at " + lane.Receipt})
+		note := "the " + string(performed) + " stage's receipt verified at " + verified
+		if def.Repeats {
+			// The stage hands the lane to its next agent, or completes, on the
+			// next step; the lane's own receipt stays the implementer's.
+			if n := validationNote(lane, verified); n != "" {
+				note += "; " + n
+			}
+			st.Record = append(st.Record, Entry{At: now, Lane: lane.ID, Stage: "receipt", Note: note})
+			st.Lanes[i] = lane
+			st.UpdatedAt = now
+			res = laneResult(*st, lane, "")
+			return true, nil
+		}
+		lane.Receipt = verified
+		st.Record = append(st.Record, Entry{At: now, Lane: lane.ID, Stage: "receipt", Note: note})
 		lane.Stage = after(lane.Stage)
 		st.Lanes[i] = lane
 		if lane.Stage == StageDone {

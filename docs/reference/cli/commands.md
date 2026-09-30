@@ -1622,6 +1622,13 @@ it names is on the lane's branch past its base, the definition of done's output 
 in the lane's directory with a zero exit code, and the report exists there. A receipt
 that verifies moves the lane's head to its branch's tip.
 
+At the validate stage the receipt is the validator's return: a reviewer's is refused
+unless it has one Verdict section stating one verdict of its role (SHIP or FIX FIRST;
+APPROVE, BLOCK or NEEDS-INPUT), and the intent-auditor's unless it is the fidelity verdict
+the request asked for, echoing its receipt and both provenance hashes. The loop records
+the verdict and the lane stays at validate for the next validator. A fresh implementer's
+receipt after a round is verified as an implementer's is.
+
 --run names the run; without it, the one run in progress in this checkout. Exit 2 on a
 refusal, exit 3 on a locked run state.
 
@@ -1725,7 +1732,15 @@ cut from the default branch; brief renders the lane's brief from that base (the 
 the spec, the conventions of AGENTS.md, the decisions the intent cites, and the spec
 steps before the lane's with what landed each) into the lane's directory of the run;
 implement hands the lane to a fresh implementer and awaits
-its receipt; validate and land follow.
+its receipt; validate hands the lane's head to validators that did not implement it, one
+fresh agent at a time — a ruthless-reviewer, a security-reviewer and, on the lane whose
+landing closes the spec and ships the intent, an intent-auditor over the whole delivery,
+from the base of the run's first lane to that lane's head (a lane that does not close the
+spec takes no audit) — and records each verdict itself, parsed from the validator's own
+return. A round one of them did not pass goes to a fresh implementer, who applies each
+finding or rejects it in writing in its report, and the next round judges the new head
+afresh; a round that passes completes the stage, unless a lane report states a verdict,
+which is refused naming the report. land follows.
 
 A stage whose body this abcd does not carry is refused naming the spec piece that
 delivers it, and the run is unchanged. A stage that fails leaves the state as it was,
