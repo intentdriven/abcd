@@ -9,8 +9,9 @@ found_during: "phase-boundary-parking"
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/research/notes"
+related_intents: [itd-2609292107351737]
 deferred_after: "v0.11.1"
-deferral_reason: "ruling owed to the product thinker (away; run A 2026-09-25; rulings-owed J): File or reject development token metering (research note 2026-08-30)?"
+deferral_reason: "The product thinker's ruling J3 of 2026-09-29: plan token metering and the spec size classes as one intent. Filed as draft itd-2609292107351737, which also plans iss-2608301856299268 and iss-2608220150157508. Owed: that draft's planning interview (the draft stays in drafts/ until a person plans it)."
 ---
 
 development token metering is parked as a note and owes a file or reject decision at the next phase planning

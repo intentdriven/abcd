@@ -71,3 +71,16 @@ We will make every provider adapter default-deny by model.
 - A person who wants a frontier model through an aggregator edits the
   denylist on their machine, deliberately, and the run record shows it.
 - The brief's adapters chapter gains the invariant.
+- **Consequence added 2026-09-29: a route to a provider that holds a key is
+  the machine's alone.** Decision 4 keeps the key's value out of the
+  repository; the product thinker's ruling AA(b) of 2026-09-29 keeps the
+  repository from spending it too. Only a route the person set up on their own
+  machine may use their paid key, so a role or a judgement type the
+  repository's configuration points at a provider whose block names a key is
+  refused when the configuration is read, naming `~/.abcd/config.json` as where
+  to set it. A repository's route to a provider that holds no key (a local
+  server) and a `--route` the person types are unaffected. This reverses the
+  route half of itd-2609081951381895 Decision 8, which said a route "may sit
+  in either layer"; that decision is amended in the same change. The
+  allowlist and the denylist above still apply to every route that is
+  admitted.

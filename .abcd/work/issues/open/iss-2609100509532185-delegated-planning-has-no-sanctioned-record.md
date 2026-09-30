@@ -11,6 +11,7 @@ production_mode: hand-written
 found_at: "internal (intent plan) / conventions"
 deferred_after: "v0.11.1"
 deferral_reason: "ruling owed to the product thinker (away; run A 2026-09-25; rulings-owed H): Add an intent plan --delegated-by stamp and a gate for delegated planning?"
+remedy: "Waits on ruling (a --delegated-by stamp and its gate): if yes, add intent plan --delegated-by <who> writing delegated_by and the date onto the planned intent, and a gate refusing a plan that carries neither the stamp nor interview answers on the record (the answers half rides iss-2609200830002711), proven by a plan test for each case; if no, wontfix, keeping planning human-only with no delegated path."
 ---
 
 The planning interview is human-only by rule, so an autonomous run has no sanctioned way to record that the human delegated it.
@@ -20,3 +21,7 @@ Observed in an autonomous run that took one intent from filing through planning 
 The asymmetry is the point. Every other authority-bearing act in abcd is recorded as a field on the record it affects, checkable by a gate. Delegated planning is recorded, when it is recorded, as prose.
 
 Wanted: a flag on the planning path — `abcd intent plan --delegated-by <who>` or similar — that stamps the intent with who delegated and when, so a reader of the planned intent can see that a human authorised the agent to plan it, and a gate can require the stamp before accepting a plan that no interview produced. That turns an unverifiable claim in a log into a field on the record it belongs to.
+
+## Remedy grounds (2026-09-29)
+
+Why: every other authority-bearing act is a field on the record it affects, so delegation becomes one too and a gate can read it. Rejected: a decisions-log line alone, which the record shows is indistinguishable from an agent asserting a delegation that never happened.

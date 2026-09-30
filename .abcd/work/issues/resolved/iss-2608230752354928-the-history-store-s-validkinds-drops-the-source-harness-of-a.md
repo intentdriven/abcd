@@ -12,6 +12,10 @@ suggested_fix: "Separate the ingest route from the source harness before the cro
 related_issues: ["iss-217"]
 deferred_after: "v0.11.1"
 deferral_reason: "ruling owed to the product thinker (renewed by run A 2026-09-29 after the v0.10.0 grant lapsed at the v0.11.0 anchor): Is source_kind keyed by harness or by ingest route, decided before second-harness capture ships?"
+resolution: "Applied ruling J13: source_kind carries the route (native | import) and a new source_tool carries the producing tool (open slug, host reserved); neither label can stand in for the other, and pre-split records read under both labels, derived on read without a rewrite."
+impact: additive
+resolved_by:
+  commit: "f29eb7443"
 ---
 
 the history store's validKinds drops the source harness of an imported transcript
@@ -47,3 +51,7 @@ store treated the foreign transcripts as opaque bytes and redacted them end to
 end (twelve sessions stored in one drain), confirming the kind field is the
 sole remaining harness coupling and must be settled before any second-harness
 capture ships.
+
+## Grounds
+
+- pursued: an imported transcript is stored naming its tool and the import route, native captures record host, and a forged label is refused (source_labels_test.go, history_source_labels_test.go); it would be shown wrong by a stored record whose source_tool is a route word, or an old native/specstory-import record that no longer reads

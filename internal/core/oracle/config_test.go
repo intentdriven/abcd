@@ -123,12 +123,107 @@ func TestAnUnlistedModelIsRefusedWhenTheConfigurationIsRead(t *testing.T) {
 			}
 		}
 	}
-	// A route in the repository is held to the machine's list the same way.
+	// A route in the repository is held to the machine's list the same way. The
+	// provider is keyless: a repository's route to a keyed one is refused before
+	// its list is consulted (TestARepositoryRouteToAKeyedProviderIsRefused).
 	f := newFx(t)
-	f.machineConfig(`{"oracle":{"api":{` + openrouterBlock + `}}}`)
-	f.repoConfig(`{"oracle":{"roles":{"scribe":"openrouter/openai/gpt-5"}}}`)
-	if err := f.loadAPIErr(); !strings.Contains(err.Error(), ".abcd/config.json (repo layer)") || !strings.Contains(err.Error(), "typesafe/jev-1.13") {
+	f.machineConfig(`{"oracle":{"api":{` + localBlock + `}}}`)
+	f.repoConfig(`{"oracle":{"roles":{"scribe":"local/openai/gpt-5"}}}`)
+	if err := f.loadAPIErr(); !strings.Contains(err.Error(), ".abcd/config.json (repo layer)") || !strings.Contains(err.Error(), "qwen/qwen3-8b") {
 		t.Fatalf("repo route refusal = %v", err)
+	}
+}
+
+// localBlock is a provider that holds no key: a server on this machine, its
+// block naming no credential.
+const localBlock = `"local":{"base_url":"http://localhost:11434/v1","models":["qwen/qwen3-8b"]}`
+
+// TestARepositoryRouteToAKeyedProviderIsRefused is the product thinker's
+// ruling AA(b) of 2026-09-29: only a route the person set up on their own
+// machine may spend their paid key, so a role or a judgement type the
+// repository's configuration points at a provider that holds a key is refused
+// when the configuration is read, naming the route, the provider and the
+// machine's file as where the route is set. A provider holds a key when its
+// block names one; the credential store is never consulted, so no secret is
+// read to decide it. A machine route to the same name does not rescue the
+// repository's: the repository's is the one that would win, so it is refused.
+func TestARepositoryRouteToAKeyedProviderIsRefused(t *testing.T) {
+	for name, tc := range map[string]struct{ repo, machine, setting string }{
+		"role": {repo: `"roles":{"scribe":"openrouter/typesafe/jev-1.13"}`, setting: "oracle.roles.scribe"},
+		"judgement type": {repo: `"judgements":{"duplicate-match":"openrouter/typesafe/jev-latest"}`,
+			setting: "oracle.judgements.duplicate-match"},
+		"role over a machine route": {repo: `"roles":{"scribe":"openrouter/typesafe/jev-latest"}`,
+			machine: `,"roles":{"scribe":"openrouter/typesafe/jev-1.13"}`, setting: "oracle.roles.scribe"},
+		"unlisted model": {repo: `"roles":{"scribe":"openrouter/openai/gpt-5"}`, setting: "oracle.roles.scribe"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newFx(t)
+			f.machineConfig(`{"oracle":{"api":{` + openrouterBlock + `}` + tc.machine + `}}`)
+			f.repoConfig(`{"oracle":{` + tc.repo + `}}`)
+			err := f.loadAPIErr()
+			for _, want := range []string{".abcd/config.json (repo layer)", tc.setting, "openrouter", "holds a key",
+				"set " + tc.setting + " in ~/.abcd/config.json and remove it from .abcd/config.json,"} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("refusal %q does not name %q", err, want)
+				}
+			}
+		})
+	}
+}
+
+// TestAMachineRouteToAKeyedProviderIsAdmitted: the machine's own route to a
+// provider that holds a key is the person's, and loads as it always did.
+func TestAMachineRouteToAKeyedProviderIsAdmitted(t *testing.T) {
+	f := newFx(t)
+	f.machineConfig(`{"oracle":{"api":{` + openrouterBlock + `},"roles":{"scribe":"openrouter/typesafe/jev-1.13"},
+		"judgements":{"duplicate-match":"openrouter/typesafe/jev-latest"}}}`)
+	f.repoConfig(`{"oracle":{"denylist":["openai/*"]}}`)
+	c := f.loadAPI()
+	if tgt, ok := c.Role("scribe"); !ok || tgt.Provider != "openrouter" || tgt.Origin != "~/.abcd/config.json" {
+		t.Fatalf("role = %+v, %v", tgt, ok)
+	}
+	if tgt, ok := c.Judgement("duplicate-match"); !ok || tgt.Origin != "~/.abcd/config.json" {
+		t.Fatalf("judgement = %+v, %v", tgt, ok)
+	}
+}
+
+// TestARepositoryRouteToAKeylessProviderIsAdmitted: a provider whose block
+// names no key spends no key, so the repository may point at it, and its route
+// wins over the machine's as every repository route does.
+func TestARepositoryRouteToAKeylessProviderIsAdmitted(t *testing.T) {
+	f := newFx(t)
+	f.machineConfig(`{"oracle":{"api":{` + openrouterBlock + `,` + localBlock + `},"roles":{"scribe":"openrouter/typesafe/jev-1.13"}}}`)
+	f.repoConfig(`{"oracle":{"roles":{"scribe":"local/qwen/qwen3-8b"},"judgements":{"duplicate-match":"local/qwen/qwen3-8b"}}}`)
+	c := f.loadAPI()
+	if tgt, ok := c.Role("scribe"); !ok || tgt.Provider != "local" || tgt.Origin != ".abcd/config.json" {
+		t.Fatalf("role = %+v, %v", tgt, ok)
+	}
+	if tgt, ok := c.Judgement("duplicate-match"); !ok || tgt.Provider != "local" {
+		t.Fatalf("judgement = %+v, %v", tgt, ok)
+	}
+}
+
+// TestATypedRouteToAKeyedProviderIsAdmitted: a --route the person types names a
+// keyed connection and resolves to it, the model coming from the machine's
+// role; the repository's refusal does not reach a flag.
+func TestATypedRouteToAKeyedProviderIsAdmitted(t *testing.T) {
+	f := newFx(t)
+	f.machineConfig(`{"oracle":{"api":{` + openrouterBlock + `},"roles":{"scribe":"openrouter/typesafe/jev-1.13"}}}`)
+	conns := f.loadAPI().Connections()
+	l := f.load()
+	routes, err := ParseRoutes([]string{"scribe=economy@openrouter"}, []string{"scribe"}, conns)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := l.Apply(routes); err != nil {
+		t.Fatal(err)
+	}
+	r, err := Resolve("scribe", l, conns)
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if r.ConnectionUsed != "openrouter" || r.Override != "scribe=economy@openrouter" {
+		t.Fatalf("route = %+v", r)
 	}
 }
 

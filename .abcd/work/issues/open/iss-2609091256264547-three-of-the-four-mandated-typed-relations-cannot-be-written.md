@@ -9,6 +9,7 @@ found_during: "adversarial-review"
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/principles/decompose-before-filing.md"
+remedy: "Waits on the remainder's planning question (every family at once, or family by family): add reverses beside duplicates and refines in issueschema.Known, the issuerecord validator and lint.recordRefFields, then carry all three to intent and ADR frontmatter; if at once, in one change with a round-trip test per family; if family by family, issues first, then intents, then ADRs. Prove it with a record-lint rule refusing a body that asserts a typed relation with no matching frontmatter edge."
 deferred_after: v0.11.1
 deferral_reason: "The product thinker's ruling M23 of 2026-09-23: support all four relations as typed fields on every record and every reader. Partly delivered: the filing-time match (itd-2609212137116617, shipped) writes duplicates and refines, and the lint resolves them; reverses exists in no schema, and the other families have not been planned. Owed: planning the remainder, which opens on one question: do the missing relations land on every record family at once, or family by family?"
 ---
@@ -18,3 +19,9 @@ The decomposition discipline requires a cross-record link to be typed with one o
 ## Deferral 2026-09-29
 
 Deferred past v0.11.1: The product thinker's ruling M23 of 2026-09-23: support all four relations as typed fields on every record and every reader. Partly delivered: the filing-time match (itd-2609212137116617, shipped) writes duplicates and refines, and the lint resolves them; reverses exists in no schema, and the other families have not been planned. Owed: planning the remainder, which opens on one question: do the missing relations land on every record family at once, or family by family?
+
+## Remedy grounds (2026-09-29)
+
+- Ruling M23 (2026-09-23, .abcd/work/DECISIONS.md) chose to build all four relations; duplicates and refines are schema-known on issues (internal/core/issueschema/issueschema.go), and reverses appears in no schema.
+- The body-edge lint is the record's own detector and stops the prose-called-typed shape from recurring.
+- Rejected: narrowing the rule to the implemented words, which the ruling declined.

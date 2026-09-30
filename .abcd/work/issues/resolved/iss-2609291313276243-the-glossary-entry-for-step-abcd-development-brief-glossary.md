@@ -9,6 +9,7 @@ found_during: "autonomous run A resumed 2026-09-25"
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/glossary/core/step.md"
+remedy: "Apply ruling BU1: spec pieces keep step, and the lane's stages take the word stage across abcd implement step's state file, its JSON fields (step, refusal.step) and the command pages, recorded with impact breaking for v0.12.0 (H6); correct glossary core/step.md to say so and resolve this issue with that lane, proven by CLI JSON tests that read the renamed fields."
 resolution: "Resolved by the lane-stage rename ruled as BU1 (2026-09-29): spec pieces keep 'step', the implement loop's lane stages are 'stage' in the state file (schema version 4, older versions migrated on read), the step and receipt results (performed_stage, stage), every loop refusal (refusal.stage) and the board's lane; the glossary entry for step now says the word names the spec's piece only."
 impact: breaking
 resolved_by:
@@ -21,3 +22,7 @@ The glossary entry for step (.abcd/development/brief/glossary/core/step.md) says
 ## Grounds
 
 - pursued: with one word for one thing, a reader of the loop's payloads and pages never mistakes a lane stage for a spec step; shown wrong if a loop payload or command page still says step for a lane's stage
+
+## Remedy grounds (2026-09-29)
+
+BU1 (2026-09-29) settles which meaning keeps the word, and H6 approves the breaking release that carries it; BT1 removes the old spellings in the same cut. Rejected: restating itd-2609212103565953 criterion 5, which BU1 did not choose.

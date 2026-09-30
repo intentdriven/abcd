@@ -10,6 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal (ahoy gitignore policy, banlist public layer)"
 related_intents: [itd-2609151516525843]
+remedy: "Apply ruling M27: plan itd-2609151516525843 into draft itd-159 as one intent, and settle the declaration's form in its interview; if it is a switch value, ahoy install reads a committed declaration and writes the narrowed fence and the public store in one pass; if it is an exception to the public fence, the fence carries one un-ignore line for the declared record tiers. Prove either with a test on a fresh public repository with nothing tracked under .abcd/ where banlist add --public succeeds and git check-ignore does not ignore the written config."
 deferred_after: v0.11.1
 deferral_reason: "planning owed (re-deferred at v0.11.1 by run A's major-triage lane): the fix is itd-2609151516525843, which ruling M27 (2026-09-23) folds into draft itd-159 to be planned as one intent; both are still in drafts. That planning interview owes one ruling: is the committed-record declaration a switch value or an exception to the public-visibility fence?"
 ---
@@ -33,3 +34,8 @@ Adjacent to iss-223, which reports the same fence hiding already-committed recor
 ## Deferral 2026-09-29
 
 Deferred past v0.11.1: planning owed (re-deferred at v0.11.1 by run A's major-triage lane): the fix is itd-2609151516525843, which ruling M27 (2026-09-23) folds into draft itd-159 to be planned as one intent; both are still in drafts. That planning interview owes one ruling: is the committed-record declaration a switch value or an exception to the public-visibility fence?
+
+## Remedy grounds (2026-09-29)
+
+- Why: M27 is answered (one intent) and leaves one question for the planning interview, so both of its answers are written with the shared proof; the Grounds section above already names a committed declaration as the evidence that breaks the bootstrap paradox.
+- Rejected: pointing the refusal at the git add -f escape, which documents a way past the tool's own fence instead of closing the gap.

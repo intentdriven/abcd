@@ -9,6 +9,7 @@ found_during: "manual-capture"
 details: "SOTA-researched 2026-07-30, decision recorded (DECISIONS.md 2026-07-30): a cross-agent capture source is the current default SOTA upgrade once cross-harness compatibility becomes a concern, import-only over the native store via the pre-declared specstory-import seam. Candidate tool, target harness, and provider caveats are named in .abcd/development/research/notes/2026-07-30-session-recording-sota.md"
 suggested_fix: "Build the specified-but-unbuilt import path: parse the capture tool's per-session markdown and merge by timestamp/content hash through history.Capture(kind=specstory-import), so the two-stage fail-closed redaction applies to imported material; telemetry opt-out in any wiring, cloud/sharing tiers out of scope, the tool's in-repo history directory never tracked."
 related_issues: ["iss-95", "iss-96", "iss-125", "iss-157"]
+remedy: "Waits on ruling K (keep parked or close): if kept, name the trigger in this record (the first session a second harness produces) and, when it fires, build the import path in `internal/core/history` that parses the tool's per-session markdown and merges by timestamp and content hash through `history.Capture` on the pre-declared import kind, labelling tool and route separately per ruling J13, proven by a test that an imported transcript with a planted secret and home path lands redacted and a second import adds nothing; if closed, wontfix it with that reason and leave the pre-declared seam for a later intent."
 deferred_after: "v0.11.1"
 deferral_reason: "ruling owed to the product thinker (away; run A 2026-09-25; rulings-owed K): Keep the cross-agent capture source parked until a second harness matters, or close it now?"
 ---
@@ -51,3 +52,9 @@ optional to required tool is a sota-per-intent path-1 hard stop.
 
 (Originally captured 2026-07-30 as iss-161 against a stale ledger; re-minted
 as iss-217 after the id collision with main's iss-161.)
+
+## Remedy grounds (2026-09-29)
+
+- The remedy keeps the suggested_fix (kept above) and extends it with the J13 labelling ruling and a named trigger, so the parked record has a condition the ledger can check.
+- SOTA check: the candidate tool's upstream README (https://github.com/specstoryai/getspecstory, read 2026-09-29) lists eleven terminal agent harnesses, writes history inside the project directory and is Apache-2.0, so the research note's adoption shape (import-only, the in-repo history never tracked, telemetry opted out) still fits; the README does not state the telemetry default, so the note's reading stands until re-verified at adoption.
+- Rejected: a second store or a capture path that bypasses `history.Capture` (the one-door rule).

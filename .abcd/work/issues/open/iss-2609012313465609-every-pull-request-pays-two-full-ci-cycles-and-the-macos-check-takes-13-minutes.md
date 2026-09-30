@@ -9,6 +9,7 @@ found_during: "pr-queue-observation-2026-09-02"
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".github/workflows/ci.yml"
+remedy: "Waits on the M19 planning interview (which direction first): if queue batching, raise min_entries_to_merge_wait_minutes above 0 in .abcd/work/rulesets/main-protection.json and apply it; if the full matrix in the queue only, run the macOS, race and smoke jobs on the merge_group event alone in .github/workflows/ci.yml; if caching, profile the macOS job first, since setup-go caches by default; if hooksPath, have ahoy install set core.hooksPath as an owned change. Prove the pick by the CI cycles per landed pull request, measured before and after."
 deferred_after: v0.11.1
 deferral_reason: "The product thinker's ruling M19 of 2026-09-23: planned next cycle as its own intent that chooses among the record's directions, not folded into itd-115. Since filing, the pre-push hook checks a preflight receipt instead of running the preflight (2026-09-25) and the macOS leg's cap rose to 45 minutes (ruling Z, 2026-09-28); neither removes the second CI cycle. Owed: that intent, which opens on one question: which direction first, hooksPath at install, the full matrix in the queue only, caching, or queue batching?"
 ---
@@ -18,3 +19,9 @@ Measured on 2026-09-01 with thirteen auto-merge pull requests in flight: each on
 ## Deferral 2026-09-29
 
 Deferred past v0.11.1: The product thinker's ruling M19 of 2026-09-23: planned next cycle as its own intent that chooses among the record's directions, not folded into itd-115. Since filing, the pre-push hook checks a preflight receipt instead of running the preflight (2026-09-25) and the macOS leg's cap rose to 45 minutes (ruling Z, 2026-09-28); neither removes the second CI cycle. Owed: that intent, which opens on one question: which direction first, hooksPath at install, the full matrix in the queue only, caching, or queue batching?
+
+## Remedy grounds (2026-09-29)
+
+- Each direction is stated so the interview can pick one without further research; the measure is the record's own (two full cycles per pull request).
+- SOTA check: GitHub's merge-queue documentation (https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/managing-a-merge-queue, read 2026-09-29) gives the minimum group size and its wait time for lengthy CI, and says the queue provides the benefits of the up-to-date requirement without the author updating the branch, which bears on direction 5 once the duplicate-id argument is answered; actions/setup-go (https://github.com/actions/setup-go, read 2026-09-29) enables caching by default, so direction 3 is largely in place.
+- Rejected: dropping the strict policy now, which the record defers to the duplicate-id argument.

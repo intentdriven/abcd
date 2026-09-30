@@ -1170,8 +1170,9 @@ Redact and store a session transcript, or a whole session with --all: Writes one
 
 ```
       --all              capture every transcript of the --session named — its main thread and each sub-agent — found under the paths given (default: ingest_roots)
-      --kind string      source kind: native | specstory-import (default native)
+      --kind string      source route: native (abcd's own capture of the host's transcript) | import (another tool's export) (default native)
       --session string   session id for the record (default: transcript filename; required for stdin)
+      --tool string      source tool: the tool that produced the transcript, a lowercase slug (default host on a native capture; required on an import)
 ```
 
 #### `abcd history discard`
@@ -2242,12 +2243,13 @@ Run the release job's semantic-receipt gate locally, before the merge: Writes no
 
 Scaffold the release gate for the declared artefact kind: Writes its workflows and runbook; refuses an undeclared kind, or a hand-edited file without --confirm.
 
-**Usage:** `abcd launch scaffold [--confirm] [flags]`
+**Usage:** `abcd launch scaffold [--confirm] [--dependency-reauthor] [flags]`
 
 **Flags:**
 
 ```
-      --confirm   overwrite a hand-edited scaffolded file with the current machinery
+      --confirm               overwrite a hand-edited scaffolded file with the current machinery
+      --dependency-reauthor   opt in to re-authoring bot-opened dependency bumps as the repository owner (seeds .abcd/config/dependency-reauthor.conf)
 ```
 
 #### `abcd launch ship`
