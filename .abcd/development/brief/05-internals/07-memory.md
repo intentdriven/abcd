@@ -54,7 +54,7 @@ Every memory page declares its source class via typed `source:` frontmatter. The
 | `oracle_review` | Synced from `.abcd/work/reviews/` (RepoPrompt / codex review artefacts) | Immutable post-sync |
 | `work_notes` | Curated from working notes in `.abcd/work/` (shared, committed) | User-mutable upstream |
 | `issue_ledger` | Synthesised entries from the `.abcd/work/issues/` ledger (per itd-4 capture) | Immutable post-create |
-| `dredge_synthesis` | Cross-corpus synthesis output from `/abcd:dredge synth` (per itd-25 — a later phase) | Per-run; durable knowledge |
+| `dredge_synthesis` | Cross-corpus synthesis output from `/abcd:dredge synth` (per itd-25, a draft intent) | Per-run; durable knowledge |
 | `spec_modification_grammar` | Per-spec theory extraction from a spec's `## Modification Grammar` section (per itd-37) at spec completion | Append-only per spec |
 | `modification_grammar` | Compounding-curated cross-spec synthesis on the same domain (per itd-37) | Curator-merged across specs |
 
@@ -153,7 +153,7 @@ total_source_coverage_pct(source_hash) =
 | Vendor session memory | `internal/core/memory` adapter (Claude / opencode) | Distill into `session_memory` pages (existing behaviour, unchanged) |
 | External sources (new at itd-36) | `/abcd:memory ingest` invocations | Distill into typed `external_*` pages with citation frontmatter |
 | `spec_modification_grammar` (new at itd-37) | A spec's `## Modification Grammar` section at spec completion | Append per-spec page; run domain-curator pass to update `modification_grammar_<domain>.md` |
-| `dredge_synthesis` (itd-25, a later phase) | `/abcd:dredge synth` runs | Write synthesised entries to memory with `source.class: dredge_synthesis` |
+| `dredge_synthesis` (itd-25, a draft intent) | `/abcd:dredge synth` runs | Write synthesised entries to memory with `source.class: dredge_synthesis` |
 
 **The agent count stays at 15** (per itd-31 precedent: agent count grows by user-facing responsibility, not by audit subtype). `principle-distiller` gains role responsibilities, not agent peers. Soft-cap risk acknowledged: if the third role ever burst coherence, fork the curator role into a sibling agent.
 
@@ -170,7 +170,7 @@ User-facing surface (per itd-36):
 
 ## 8. Cross-cutting integration
 
-- **itd-26 `/abcd:loot`** uses the same provenance/licence subsystem as memory ingest (see [`09-provenance-substrate.md`](09-provenance-substrate.md)). the later-phase `/abcd:loot` verb sits on top of this substrate; the substrate ships alongside itd-36.
+- **itd-26 `/abcd:loot`** uses the same provenance/licence subsystem as memory ingest (see [`09-provenance-substrate.md`](09-provenance-substrate.md)). the later `/abcd:loot` verb (itd-26, a draft) sits on top of this substrate; the substrate ships alongside itd-36.
 - **itd-25 `/abcd:dredge`** stays a distinct verb (per the dredge-pushback in idea-1 R4: storage vs operation; user-moments differ). Dredge synthesis output writes to `.abcd/memory/<type>_<domain>_<slug>.md` with `source.class: dredge_synthesis`; per-run report stays in the gitignored local-ephemeral tier at `.abcd/.work.local/logs/dredge/<ts>/`, the tier that replaced the retired runtime location (iss-73).
 - **itd-37 modification grammar** extracts per-spec theory into `spec_modification_grammar_<spec_id>.md` (append-only per itd-36 lifecycle taxonomy) and curator-merged per-domain `modification_grammar_<domain>.md` (compounding-curated). See [`02-disembark.md`](../04-surfaces/02-disembark.md) and [`03-embark.md`](../04-surfaces/03-embark.md) for recovery-humility framing.
 
@@ -192,7 +192,7 @@ This is what makes "memory never overflows" an enforced property rather than a h
 
 **Two-scope query, narrower wins.** The hook queries the `index.md` of both memory scopes (repo / user — § 0). It injects keyword-matched, bracket-filtered pages — never the union of both scopes. On a recall-keyword collision across scopes, the **narrower scope wins**: repo overrides user.
 
-**Per-prompt, not sticky.** Consistent with itd-3, recall is independent per prompt — no cross-prompt "pin this page" mode in scope. A session-sticky mode is a later-phase candidate (see itd-39 Open Questions).
+**Per-prompt, not sticky.** Consistent with itd-3, recall is independent per prompt — no cross-prompt "pin this page" mode in scope. A session-sticky mode is a later candidate (see itd-39 Open Questions).
 
 **Diagnostic (a design target; not built).** `abcd memory recall [keyword]` would show which pages a prompt or keyword surfaces and in which bracket — explainability, per the bare-command-as-render discipline. The shipped surface carries `ingest`, `ask` and `lint` and nothing else.
 

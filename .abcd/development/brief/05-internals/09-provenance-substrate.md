@@ -1,15 +1,15 @@
 # Provenance / Licence Substrate
 
-A separable plumbing layer used by both `/abcd:memory ingest` (per itd-36) and `/abcd:loot` (a later phase, per itd-26). Owns: licence detection, citation generation, source-hash registry, the restrictive-licence publish gate (per adr-28 the gate's consumer is the lifeboat `/abcd:disembark`, future/inert at launch — see § 4).
+A separable plumbing layer used by both `/abcd:memory ingest` (per itd-36) and `/abcd:loot` (a draft intent, itd-26). Owns: licence detection, citation generation, source-hash registry, the restrictive-licence publish gate (per adr-28 the gate's consumer is the lifeboat `/abcd:disembark`, future/inert at launch — see § 4).
 
 ## Why it exists as a separate component doc
 
-Without explicit separation, the failure mode is: memory ingest ships with a "temporary" licence layer that itd-26's later verb has to retrofit. The substrate spec is **separable** — designed before either consumer ships, with both consumers calling into the spec'd surface. itd-26 stays in a later phase (verb is the user moment); the substrate is pulled forward alongside itd-36 (because memory ingest needs it).
+Without explicit separation, the failure mode is: memory ingest ships with a "temporary" licence layer that itd-26's later verb has to retrofit. The substrate spec is **separable** — designed before either consumer ships, with both consumers calling into the spec'd surface. itd-26 stays a draft (verb is the user moment); the substrate is pulled forward alongside itd-36 (because memory ingest needs it).
 
 Two consumers, distinct verbs, one substrate (per the surface-vs-substrate principle established in idea-1 R4):
 
 - **`/abcd:memory ingest`** (itd-36) — knowledge upstreams.
-- **`/abcd:loot`** (a later phase, itd-26) — code vendoring.
+- **`/abcd:loot`** (a draft intent, itd-26) — code vendoring.
 
 User moments differ; underlying licence-tracking machinery is the same.
 
@@ -45,7 +45,7 @@ citation:
   ingested_by: "<abcd command + flags>"
 ```
 
-Citation is read-only after creation; updates require a new ingest pass (`/abcd:memory ingest --reingest <path>` or `/abcd:loot --reingest <url>`). A reingest of changed content produces a new hash → a new registry entry; a reingest of identical content is a registry hit (counters bump, see § 3) — neither overwrites the prior citation.
+Citation is read-only after creation; updates require a new ingest pass: `/abcd:memory ingest <path-or-https-url>` run again on the source, which takes no reingest flag (`/abcd:loot`, a draft intent, has no verb). A reingest of changed content produces a new hash → a new registry entry; a reingest of identical content is a registry hit (counters bump, see § 3) — neither overwrites the prior citation.
 
 ## 3. Source-hash registry
 
@@ -80,7 +80,7 @@ Citation is read-only after creation; updates require a new ingest pass (`/abcd:
 
 ## 4. Restrictive-licence publish gate (lifeboat consumer; future/inert at launch)
 
-Per adr-28, the spc-38 restrictive-licence gate is **NOT** the `/abcd:launch` payload's gate. The launch payload manifest (see [`04-launch.md § 2`](../04-surfaces/04-launch.md#2-curated-release-artefact-default-deny)) excludes the entire `.abcd/` namespace — including `.abcd/memory/**` — **wholesale**, so nothing the gate evaluates is ever in the launch publish walk. The gate's real consumer is the **lifeboat** (`/abcd:disembark`), the surface that publishes curated project memory/provenance (adr-35). At launch the gate is **future/inert** against the lifeboat's provenance surface (`02-disembark.md § 5`); `/abcd:launch dry-run` renders its verdicts only as a diagnostic preview, never as enforcement over files launch excludes. The exact verbatim `.abcd/memory/` lifeboat payload (if any) is deferred to the disembark spec that wires the packer.
+Per adr-28, the spc-38 restrictive-licence gate is **NOT** the `/abcd:launch` payload's gate. The launch payload manifest (see [`04-launch.md § 2`](../04-surfaces/04-launch.md#2-curated-release-artefact-default-deny)) excludes the entire `.abcd/` namespace — including `.abcd/memory/**` — **wholesale**, so nothing the gate evaluates is ever in the launch publish walk. The gate's real consumer is the **lifeboat** (`/abcd:disembark`), the surface that publishes curated project memory/provenance (adr-35). At launch the gate is **future/inert** against the lifeboat's provenance surface (`02-disembark.md § 5`); the launch preview (`/abcd:launch --dry-run`) renders no verdict of it, and launch enforces none over files it excludes. The exact verbatim `.abcd/memory/` lifeboat payload (if any) is deferred to the disembark spec that wires the packer.
 
 The gate's substrate integration (consumed by the lifeboat, not launch):
 
@@ -106,7 +106,7 @@ Lint codes referenced below (`ML*`, `MQ*`) ship with spc-39 (the write/lint spli
 
 - **`internal/core/memory` adapter** ([`02-adapters.md`](02-adapters.md)) reads vendor session memory and writes session-memory-class pages. Does NOT consume the provenance substrate (session memory is internal, not external).
 - **`/abcd:memory ingest`** (this substrate's primary consumer) consumes for: licence detection on every external source, citation generation on every page, registry update on every ingest.
-- **`/abcd:loot`** (later-phase consumer) consumes for: licence detection on vendored repos, citation generation in `.abcd/development/loot/<source>.md`, registry update on every vendor pass.
+- **`/abcd:loot`** (the later consumer) consumes for: licence detection on vendored repos, citation generation in `.abcd/development/loot/<source>.md`, registry update on every vendor pass.
 - **`/abcd:disembark` (lifeboat)** is the gate's real consumer (adr-28): it reads the registry for restrictive-licence enforcement over the curated memory/provenance it publishes; does not write to it. At launch the gate is future/inert — `/abcd:launch` excludes `.abcd/` wholesale and is not the gate's consumer (the launch dry-run only renders the gate's verdicts diagnostically).
 
 ## 7. Ship gate
@@ -122,4 +122,4 @@ The substrate ships alongside itd-36. The `ML*`/`MQ*` lint family is NOT part of
 - [`07-memory.md`](07-memory.md) — primary consumer of this substrate
 - [`02-adapters.md`](02-adapters.md) — the adapter seam model (provenance substrate is NOT a seam; it's a flat library used by ingest + loot)
 - [`04-universal-patterns.md § 8`](04-universal-patterns.md#8-artefact-lifecycle-taxonomy) — source-hash registry is regenerable per the lifecycle taxonomy
-- [`itd-26-loot-oss-vendor.md`](../../intents/drafts/itd-26-loot-oss-vendor.md) — later-phase consumer; verb lands in a later phase but substrate ships early
+- [`itd-26-loot-oss-vendor.md`](../../intents/drafts/itd-26-loot-oss-vendor.md) — the later consumer; the verb is a draft intent, and the substrate ships ahead of it

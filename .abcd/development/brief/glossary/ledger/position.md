@@ -22,7 +22,7 @@ Use it for the operand of the assembler and the field on a reading record. Four 
 
 ## When NOT to use
 
-Do not call a position a phase or a step of the record's roadmap; those are delivery vocabulary.
+Do not call a position a phase (the retired sequencing unit) or a step (a landable piece of a spec); those are delivery vocabulary.
 
 ## Related terms
 
