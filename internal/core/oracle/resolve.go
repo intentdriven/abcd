@@ -222,11 +222,12 @@ type providerLeg struct {
 // settings merge: a provider serves only the models it lists
 // (adr-2609221009491186), so a connection that lists none admits no route, and
 // the model the agent's role points at on c must be one it lists (AC 11). A
-// leg to a connection the agent's role does not point at names no model, and
-// the record does not yet decide which model it asks for, so it is refused
-// rather than guessed. The merged settings are then held to the set c's adapter
-// accepts: a setting outside it is refused, never dropped (AC 8), and a
-// connection no adapter backs accepts none.
+// leg to a connection the agent's role does not point at names no model, so
+// it is refused rather than guessed, naming the oracle.roles.<agent> setting
+// to add (AC 11, the product thinker's ruling of 2026-09-29). The merged
+// settings are then held to the set c's adapter accepts: a setting outside it
+// is refused, never dropped (AC 8), and a connection no adapter backs accepts
+// none.
 func (p providerLeg) take(r *Route, c Connection, rowSettings Settings) error {
 	if len(c.Models) == 0 {
 		return fmt.Errorf("oracle routing: %s resolves to connection %s (%s), whose allowlist lists no model; "+
@@ -237,8 +238,8 @@ func (p providerLeg) take(r *Route, c Connection, rowSettings Settings) error {
 	model, pointed := c.Roles[p.agent]
 	if !pointed {
 		return fmt.Errorf("oracle routing: %s resolves to connection %s (%s), but oracle.roles.%s does not point at %s, "+
-			"so the route names no model for %s to serve; which model such a route asks for is not yet decided, "+
-			"so the step is refused rather than sent: point oracle.roles.%s at %s/<model> with a model its allowlist lists (%s), "+
+			"so the route names no model for %s to serve, and a route that names no model is refused rather than sent: "+
+			"point oracle.roles.%s at %s/<model> with a model its allowlist lists (%s), "+
 			"or route %s to the harness with tier %s",
 			p.agent, c.Name, p.via, p.agent, c.Name, c.Name, p.agent, c.Name, listNames(c.Models), p.agent, HostDecides)
 	}

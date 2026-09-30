@@ -84,8 +84,8 @@ the model tier's `Resolve` holds a provider leg to them before the step runs
 route; the model the agent's `oracle.roles.<agent>` points at on the connection
 must be on its allowlist, or the leg is refused naming the agent, the
 connection, the model, the allowlist and the remedy; a leg to a connection the
-agent's role does not point at names no model and is refused, because which
-model it asks for is not yet decided; and a merged setting outside the
+agent's role does not point at names no model and is refused, naming the
+`oracle.roles.<agent>` setting to add; and a merged setting outside the
 accepted set is refused naming the setting, where it was set and what the
 adapter accepts, never dropped. `model` is the adapter's own and is never a setting, so no setting can
 choose a model past the allowlist. A provider claims no

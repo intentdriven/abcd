@@ -6,7 +6,7 @@ import (
 )
 
 // The refusals Resolve makes on a provider leg (spc-2609251028149555, AC 8's
-// adapter half and the allowlist half of AC 11 that no model choice decides):
+// adapter half and AC 11):
 // each is an error before the step runs, never a silent drop, and each names
 // what it refuses, where that came from and the remedy.
 
@@ -19,6 +19,19 @@ func wantAll(t *testing.T, err error, parts ...string) {
 	for _, p := range parts {
 		if !strings.Contains(err.Error(), p) {
 			t.Fatalf("refusal %q does not name %q", err, p)
+		}
+	}
+}
+
+// wantNone fails unless err is non-nil and names none of parts.
+func wantNone(t *testing.T, err error, parts ...string) {
+	t.Helper()
+	if err == nil {
+		t.Fatalf("Resolve returned no error; want a refusal naming none of %q", parts)
+	}
+	for _, p := range parts {
+		if strings.Contains(err.Error(), p) {
+			t.Fatalf("refusal %q still names %q", err, p)
 		}
 	}
 }
@@ -263,16 +276,17 @@ func TestResolveRefusesARoleModelTheAllowlistDoesNotAdmit(t *testing.T) {
 	})
 }
 
-// TestResolveRefusesALegTheAgentsRoleDoesNotPointAt is the case AC 11 leaves
-// open until a ruling:
-// a route to a provider connection for an agent whose oracle.roles.<agent>
-// does not point at that connection names no model, and the record does not
-// say which model it asks for, so Resolve refuses it rather than choose one.
+// TestResolveRefusesALegTheAgentsRoleDoesNotPointAt is AC 11's unpointed
+// route: a route to a provider connection for an agent whose
+// oracle.roles.<agent> does not point at that connection names no model, so
+// Resolve refuses it rather than choose one, naming the role setting to add
+// (the product thinker's ruling BR1 of 2026-09-29). The refusal is the decided
+// behaviour, so it never tells the person a ruling is still to come.
 //
 // Given a connection that lists models and an agent whose role points
 // elsewhere or nowhere,
 // when a --route or the tier sends the agent there,
-// then Resolve refuses, naming the agent, the connection, the ruling and the
+// then Resolve refuses, naming the agent, the connection, the reason and the
 // remedy.
 func TestResolveRefusesALegTheAgentsRoleDoesNotPointAt(t *testing.T) {
 	models := []string{"example/model-1"}
@@ -290,7 +304,9 @@ func TestResolveRefusesALegTheAgentsRoleDoesNotPointAt(t *testing.T) {
 			t.Fatal(err)
 		}
 		_, err = Resolve("scribe", l, s)
-		wantAll(t, err, "scribe", "desk", "--route scribe=economy@desk", "oracle.roles.scribe", "not yet decided", "example/model-1", "host-decides")
+		wantAll(t, err, "scribe", "desk", "--route scribe=economy@desk", "oracle.roles.scribe",
+			"a route that names no model is refused", "point oracle.roles.scribe at desk/<model>", "example/model-1", "host-decides")
+		wantNone(t, err, "not yet decided", "undecided")
 	})
 
 	t.Run("another agent's role points here, proposed by the tier", func(t *testing.T) {
@@ -298,7 +314,8 @@ func TestResolveRefusesALegTheAgentsRoleDoesNotPointAt(t *testing.T) {
 		f.machine(`{"scribe":{"tier":"local"}}`)
 		c := Connection{Name: "desk", Models: models, Roles: map[string]string{"intent-auditor": "example/model-1"}}
 		_, err := Resolve("scribe", f.load(), &spy{serves: map[Tier]Connection{Local: c}})
-		wantAll(t, err, "scribe", "desk", "tier local", "oracle.roles.scribe", "not yet decided")
+		wantAll(t, err, "scribe", "desk", "tier local", "oracle.roles.scribe", "a route that names no model is refused")
+		wantNone(t, err, "not yet decided", "undecided")
 	})
 
 	t.Run("through the machine's configuration", func(t *testing.T) {
@@ -322,8 +339,10 @@ func TestResolveRefusesALegTheAgentsRoleDoesNotPointAt(t *testing.T) {
 			return err
 		}
 		// When --route sends scribe to openrouter, which its role does not point at
-		// Then it is refused, the model undecided
-		wantAll(t, resolve("scribe", "scribe=economy@openrouter"), "scribe", "openrouter", "oracle.roles.scribe", "not yet decided")
+		// Then it is refused, naming the role setting to add
+		err := resolve("scribe", "scribe=economy@openrouter")
+		wantAll(t, err, "scribe", "openrouter", "a route that names no model is refused", "point oracle.roles.scribe at openrouter/<model>")
+		wantNone(t, err, "not yet decided", "undecided")
 		// And the agents whose roles point at the named connection resolve
 		if err := resolve("scribe", "scribe=local@desk"); err != nil {
 			t.Fatal(err)

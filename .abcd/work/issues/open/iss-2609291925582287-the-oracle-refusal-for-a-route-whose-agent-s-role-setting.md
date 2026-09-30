@@ -9,6 +9,7 @@ found_during: "autonomous run A resumed 2026-09-25"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/oracle/resolve.go"
+remedy: "Wording only, per the product thinker's ruling BR1 of 2026-09-29 (refuse and name the one setting to add): drop the not-yet-decided clause from the refusal in providerLeg.take (internal/core/oracle/resolve.go) and from the comments in resolve.go and tier.go and the adapters brief chapter, keep naming the oracle.roles.<agent> setting to add, and pin the decided wording in refusal_test.go with the old clause asserted absent."
 ---
 
 The oracle refusal for a route whose agent's role setting does not point at the routed connection still says which model such a route asks for is not yet decided, and its doc comment says the record does not yet decide it. The product thinker ruled on 2026-09-29 (BR1) that such a route is refused, naming the one setting to add, as built in e1c4e38ad and 35100512e, so the refusal is now the decided behaviour and the words not yet decided tell the person a ruling is still coming when none is. The fix is wording only: drop the not-yet-decided clause from the error in internal/core/oracle/resolve.go (take) and the comments in resolve.go and tier.go, keeping the named setting, and adjust any test that pins the old sentence.
