@@ -234,8 +234,13 @@ passes the build's record-only pre-start checks, read through the one
 statement of them the build runs too (`intent.StartChecksIn`: no open question,
 the claim sections answered, no hold, no unshipped blocker, a step left to
 build), and not one the state file shows in a lane, as the pick passes over an
-intent with a run in progress. The build's peers check is not run: the block
-reads no other checkout, so an intent a peer holds can still be the head. The
+intent with a run in progress. Nor is it one another checkout holds: the
+board pays the build's peers check (`loop.StatusPeers`, the check build next
+runs; ruling CC1 of 2026-09-29), read once and only when a head is in reach,
+so the head is always the intent the pick would choose. A peer the listing
+names and cannot read holds every record for the head as for the pick, so
+neither names one. The site's Status page reads no other checkout: another
+checkout's holdings are this machine's state, never a published page's. The
 block's `order` field names that order (`pick`).
 The text render is a `status:` heading with the three counts, then `Now:` and
 `Next:`, one line per intent: its id, its title, and in brackets its lane state
@@ -247,8 +252,10 @@ carries a `status` object with `now`, `next` and `later` in full, each row
 they apply, and `order`. The block is present in a repository abcd manages and
 absent elsewhere, and a record that cannot be read omits it with the reason on
 stderr. The read is `internal/core/statusblock`, the one the site's Status
-page renders too ([`22-site.md`](22-site.md#the-page-set)); the state file is
-read through the implement loop (`loop.StatusLanes`).
+page renders too ([`22-site.md`](22-site.md#the-page-set)); the state file and
+the peers are read through the implement loop (`loop.StatusLanes`,
+`loop.StatusPeers`), and a fault reading the peers omits the block with the
+reason on stderr, as it refuses build next.
 
 ## The board itself is not built
 

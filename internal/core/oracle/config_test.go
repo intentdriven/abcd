@@ -125,8 +125,8 @@ func TestAnUnlistedModelIsRefusedWhenTheConfigurationIsRead(t *testing.T) {
 		}
 	}
 	// A route in the repository is held to the machine's list the same way. The
-	// provider is keyless: a repository's route to a keyed one is refused before
-	// its list is consulted (TestARepositoryRouteToAKeyedProviderIsRefused).
+	// provider is keyless: a repository's route to a keyed one is skipped before
+	// its list is consulted (TestARepositoryRouteToAKeyedProviderIsSkipped).
 	f := newFx(t)
 	f.machineConfig(`{"oracle":{"api":{` + localBlock + `}}}`)
 	f.repoConfig(`{"oracle":{"roles":{"scribe":"local/openai/gpt-5"}}}`)
@@ -139,36 +139,99 @@ func TestAnUnlistedModelIsRefusedWhenTheConfigurationIsRead(t *testing.T) {
 // block naming no credential.
 const localBlock = `"local":{"base_url":"http://localhost:11434/v1","models":["qwen/qwen3-8b"]}`
 
-// TestARepositoryRouteToAKeyedProviderIsRefused is the product thinker's
-// ruling AA(b) of 2026-09-29: only a route the person set up on their own
-// machine may spend their paid key, so a role or a judgement type the
-// repository's configuration points at a provider that holds a key is refused
-// when the configuration is read, naming the route, the provider and the
-// machine's file as where the route is set. A provider holds a key when its
-// block names one; the credential store is never consulted, so no secret is
-// read to decide it. A machine route to the same name does not rescue the
-// repository's: the repository's is the one that would win, so it is refused.
-func TestARepositoryRouteToAKeyedProviderIsRefused(t *testing.T) {
-	for name, tc := range map[string]struct{ repo, machine, setting string }{
-		"role": {repo: `"roles":{"scribe":"openrouter/typesafe/jev-1.13"}`, setting: "oracle.roles.scribe"},
+// TestARepositoryRouteToAKeyedProviderIsSkipped is the product thinker's
+// ruling AA(b) of 2026-09-29 as ruling CD2 of the same day shapes it: only a
+// route the person set up on their own machine may spend their paid key, so a
+// role or a judgement type the repository's configuration points at a provider
+// that holds a key never reaches it. The route is skipped, with one diagnostic
+// naming the route, the provider and the machine's file as where the route is
+// set, and the rest of the configuration loads: every other route keeps
+// working, and a machine route to the same name is the one that applies. A
+// provider holds a key when its block names one; the credential store is never
+// consulted, so no secret is read to decide it.
+func TestARepositoryRouteToAKeyedProviderIsSkipped(t *testing.T) {
+	for name, tc := range map[string]struct {
+		repo, machine, setting string
+		family, route          string
+		machineModel           string
+	}{
+		"role": {repo: `"roles":{"scribe":"openrouter/typesafe/jev-1.13"}`, setting: "oracle.roles.scribe",
+			family: rolesKey, route: "scribe"},
 		"judgement type": {repo: `"judgements":{"duplicate-match":"openrouter/typesafe/jev-latest"}`,
-			setting: "oracle.judgements.duplicate-match"},
+			setting: "oracle.judgements.duplicate-match", family: judgementsKey, route: "duplicate-match"},
 		"role over a machine route": {repo: `"roles":{"scribe":"openrouter/typesafe/jev-latest"}`,
-			machine: `,"roles":{"scribe":"openrouter/typesafe/jev-1.13"}`, setting: "oracle.roles.scribe"},
-		"unlisted model": {repo: `"roles":{"scribe":"openrouter/openai/gpt-5"}`, setting: "oracle.roles.scribe"},
+			machine: `,"roles":{"scribe":"openrouter/typesafe/jev-1.13"}`, setting: "oracle.roles.scribe",
+			family: rolesKey, route: "scribe", machineModel: "typesafe/jev-1.13"},
+		"unlisted model": {repo: `"roles":{"scribe":"openrouter/openai/gpt-5"}`, setting: "oracle.roles.scribe",
+			family: rolesKey, route: "scribe"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			f := newFx(t)
-			f.machineConfig(`{"oracle":{"api":{` + openrouterBlock + `}` + tc.machine + `}}`)
-			f.repoConfig(`{"oracle":{` + tc.repo + `}}`)
-			err := f.loadAPIErr()
-			for _, want := range []string{".abcd/config.json (repo layer)", tc.setting, "openrouter", "holds a key",
-				"set " + tc.setting + " in ~/.abcd/config.json and remove it from .abcd/config.json,"} {
-				if !strings.Contains(err.Error(), want) {
-					t.Errorf("refusal %q does not name %q", err, want)
+			f.machineConfig(`{"oracle":{"api":{` + openrouterBlock + `,` + localBlock + `}` + tc.machine + `}}`)
+			// A keyless route beside the refused one: the skip costs nothing else.
+			other := `"roles":{"scribe":"local/qwen/qwen3-8b"}`
+			if tc.family == rolesKey {
+				other = `"judgements":{"duplicate-match":"local/qwen/qwen3-8b"}`
+			}
+			f.repoConfig(`{"oracle":{` + tc.repo + `,` + other + `}}`)
+			c, err := LoadAPI(f.roots)
+			if err != nil {
+				t.Fatalf("LoadAPI refused the whole configuration over one repository route: %v", err)
+			}
+			var hits []string
+			for _, d := range c.Diagnostics {
+				if strings.Contains(d, "holds a key") {
+					hits = append(hits, d)
 				}
 			}
+			if len(hits) != 1 {
+				t.Fatalf("diagnostics %q, want exactly one naming the skipped keyed route", c.Diagnostics)
+			}
+			for _, want := range []string{".abcd/config.json (repo layer)", tc.setting, "openrouter", "holds a key", "skipped",
+				"set " + tc.setting + " in ~/.abcd/config.json and remove it from .abcd/config.json,"} {
+				if !strings.Contains(hits[0], want) {
+					t.Errorf("diagnostic %q does not name %q", hits[0], want)
+				}
+			}
+			var got Target
+			var ok bool
+			if tc.family == rolesKey {
+				got, ok = c.Role(tc.route)
+				if tgt, on := c.Judgement("duplicate-match"); !on || tgt.Provider != "local" {
+					t.Errorf("the other route = %+v, %v; want it loaded", tgt, on)
+				}
+			} else {
+				got, ok = c.Judgement(tc.route)
+				if tgt, on := c.Role("scribe"); !on || tgt.Provider != "local" {
+					t.Errorf("the other route = %+v, %v; want it loaded", tgt, on)
+				}
+			}
+			switch {
+			case tc.machineModel != "":
+				if !ok || got.Model != tc.machineModel || got.Origin != "~/.abcd/config.json" {
+					t.Errorf("%s = %+v, %v; want the machine's own route", tc.route, got, ok)
+				}
+			case ok:
+				t.Errorf("%s = %+v; a repository route to a keyed provider must never load", tc.route, got)
+			}
 		})
+	}
+}
+
+// TestADenylistedKeyedRepositoryRouteIsStillRefused: skipping a repository's
+// route to a keyed provider never softens the denylist. A route the denylist
+// matches refuses the configuration from any layer, keyed provider or not.
+// No denylist is bundled (adr-2609300107513982), so the entry is the one the
+// person's configuration writes.
+func TestADenylistedKeyedRepositoryRouteIsStillRefused(t *testing.T) {
+	f := newFx(t)
+	f.machineConfig(`{"oracle":{"denylist":["anthropic/*"],"api":{` + openrouterBlock + `}}}`)
+	f.repoConfig(`{"oracle":{"roles":{"scribe":"openrouter/anthropic/claude-opus-4"}}}`)
+	err := f.loadAPIErr()
+	for _, want := range []string{"anthropic/*", "oracle.denylist", "oracle.roles.scribe"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("refusal %q does not name %q", err, want)
+		}
 	}
 }
 

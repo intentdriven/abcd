@@ -7,8 +7,9 @@ package intent
 // sections, the hold, the blockers and the spec's steps. It is the one
 // statement of them, so the build (loop.Check) and the status board's "next
 // up" (statusblock.Read) exclude the same intents for the same reasons. The
-// check that reads other checkouts, the peers, stays with the build: the board
-// does not consult them.
+// check that reads other checkouts, the peers, stays with the build, and the
+// board reaches it through the build's own reader (loop.StatusPeers, ruling
+// CC1).
 
 import (
 	"fmt"

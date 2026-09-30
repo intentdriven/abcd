@@ -130,6 +130,17 @@ func runAhoyProviders(cmd *cobra.Command, cwd string, asJSON bool) error {
 	})
 }
 
+// printConfigDiagnostics says the provider configuration read's non-fatal
+// reports (oracle.APIConfig.Diagnostics: a route skipped, and why) on w, one
+// line each. It is the one printer every front door that reads the
+// configuration and is not the board uses, so a skipped route is said the
+// same way wherever it is met.
+func printConfigDiagnostics(w io.Writer, diagnostics []string) {
+	for _, d := range diagnostics {
+		fmt.Fprintf(w, "abcd %s\n", termsafe.Sanitize(fsutil.RedactHome(d)))
+	}
+}
+
 // keyState says whether a named credential resolves through the store, and
 // from which home: set, not set, refused (the store is unsafe), or none for a
 // keyless provider. Never the value.
@@ -183,6 +194,9 @@ func newAhoyConnectCommand(asJSON *bool) *cobra.Command {
 				msg := openaiapi.Scrub(err.Error(), req.Key)
 				return &exitError{Code: 2, Msg: "abcd ahoy connect: " + termsafe.Sanitize(fsutil.RedactHome(msg))}
 			}
+			// A route the configuration read skipped (ruling CD2) is said on
+			// stderr, in the text and the JSON form alike, and the setup stands.
+			printConfigDiagnostics(cmd.ErrOrStderr(), res.Diagnostics)
 			return render(cmd.OutOrStdout(), *asJSON, withMember{v: res, key: "dispatch", val: dispatchPending}, func(w io.Writer) {
 				line := func(s string) { fmt.Fprintf(w, "  %s\n", termsafe.Sanitize(s)) }
 				fmt.Fprintf(w, "abcd ahoy connect — %s verified and configured\n", termsafe.Sanitize(res.Provider))

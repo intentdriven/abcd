@@ -3445,6 +3445,10 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 						fmt.Fprintf(w, "  provider:    none configured (optional); every delegated step runs on the host — `abcd ahoy --providers` explains the adapter\n")
 					case ahoy.ProviderAdapterRefusedGapID:
 						fmt.Fprintf(w, "  provider:    configuration refused — %s\n", termsafe.Sanitize(g.Detail))
+					case ahoy.ProviderAdapterRouteSkippedGapID:
+						for _, d := range strings.Split(g.Detail, "\n") {
+							fmt.Fprintf(w, "  provider:    route skipped — %s\n", termsafe.Sanitize(d))
+						}
 					}
 				}
 				if res.FolderKind != ahoy.UnmanagedFolder {

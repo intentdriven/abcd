@@ -28,7 +28,7 @@ func TestStatusPageRendersTheBlockFromTheSameRead(t *testing.T) {
 	}
 	page := outFile(t, out, "record/health/index.html")
 
-	want, err := statusblock.Read(f.Root(), lanes)
+	want, err := statusblock.Read(f.Root(), lanes, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
