@@ -99,3 +99,44 @@ func TestGrillQuotingRuleSaysProseIsInvisibleWhileTheQuestionShows(t *testing.T)
 		t.Error("GRILL carries no rule that quotes what the human is asked to accept IN the question itself")
 	}
 }
+
+// TestIntentInterviewPageCarriesGrillVisibilityAndAddresseeLines holds the
+// planning interview's "How every question is asked" paragraph in
+// commands/intent.md to the two GRILL rules the product thinker's 2026-09-29
+// captures asked for, since that page ships to every repository abcd is
+// installed in and is where an adopter's agent reads how to ask: the example
+// sits in the question text and in each option's preview
+// (iss-2609291925134691), and a mixed interview re-sets the addressee per
+// question (iss-2609291925149138).
+func TestIntentInterviewPageCarriesGrillVisibilityAndAddresseeLines(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join(testRepoRoot(), "commands", "intent.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	page := string(data)
+	start := strings.Index(page, "**How every question is asked")
+	if start < 0 {
+		t.Fatal("commands/intent.md has no \"How every question is asked\" paragraph")
+	}
+	end := strings.Index(page[start:], "\n\n")
+	if end < 0 {
+		end = len(page) - start
+	}
+	para := strings.Join(strings.Fields(page[start:start+end]), " ")
+	for _, want := range []struct {
+		issue, phrase string
+	}{
+		{"iss-2609291925134691", "the example that makes a question answerable goes in the question text"},
+		{"iss-2609291925134691", "each option's preview"},
+		{"iss-2609291925134691", "invisible while a question shows"},
+		{"iss-2609291925149138", "classify each question's addressee first"},
+		{"iss-2609291925149138", "a mixed interview re-sets it per question"},
+	} {
+		if !strings.Contains(para, want.phrase) {
+			t.Errorf("the interview paragraph does not say %q (%s)", want.phrase, want.issue)
+		}
+	}
+	if strings.Contains(para, "does not reliably reach") {
+		t.Error("the interview paragraph still says prose \"does not reliably reach\" the human; GRILL states it as invisible while a question shows")
+	}
+}
