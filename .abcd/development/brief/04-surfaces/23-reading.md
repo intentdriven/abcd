@@ -365,6 +365,7 @@ Sub-verbs: none.
 
 | Flag | Type |
 |---|---|
+| `--dispatch` | string |
 | `--reading-json` | string |
 | `--route` | stringArray |
 

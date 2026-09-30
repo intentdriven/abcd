@@ -2579,6 +2579,7 @@ duplicates: or refines: link and shown, printed and as matches in --json.
 **Flags:**
 
 ```
+      --dispatch string       send the parked run <rdg-N> to the provider its position is pointed at (oracle.roles.cold-reading-<position>) and ingest the answer
       --reading-json string   path to the JSON the cold reading returned
       --route stringArray     route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
 ```

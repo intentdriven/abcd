@@ -44,34 +44,50 @@ func (r Route) OnProvider() bool { return r.ConnectionUsed != "" && r.Connection
 // was sent, and FellBack gives the route that leaves the step to the harness.
 func (c *APIConfig) Dispatch(ctx context.Context, creds credential.Source, r Route, brief openaiapi.Brief,
 	contract func([]byte) error, opts ...openaiapi.Option) ([]byte, ReceiptRoute, error) {
+	t, err := c.Admitted(r)
+	if err != nil {
+		return nil, ReceiptRoute{}, err
+	}
+	agent := termsafe.Sanitize(layered.BoundKey(r.Agent))
+	conn := termsafe.Sanitize(layered.BoundKey(r.ConnectionUsed))
+	payload, rec, err := c.Call(ctx, creds, CallRequest{Target: t, Brief: brief, Settings: r.SettingsSent, Contract: contract}, opts...)
+	if err != nil {
+		return nil, ReceiptRoute{}, fmt.Errorf("oracle dispatch: %s through %s: %w", agent, conn, err)
+	}
+	return payload, r.Receipt(ModelReported(payload)).WithCall(rec), nil
+}
+
+// Admitted returns the target r's step would be sent to, or the refusal
+// Dispatch would make before any call: r is on the harness, this machine does
+// not point oracle.roles.<agent> at r's connection, a provider that holds a
+// key is reached through a route not set on this machine, or the agent is one
+// ruling DR5 keeps off that provider (admitAgent). A front door calls it
+// before it writes anything, so a step that will be refused writes nothing.
+func (c *APIConfig) Admitted(r Route) (Target, error) {
 	agent := termsafe.Sanitize(layered.BoundKey(r.Agent))
 	if !r.OnProvider() {
-		return nil, ReceiptRoute{}, fmt.Errorf("oracle dispatch: %s resolves to the %s, which the host runs, so there is no provider "+
+		return Target{}, fmt.Errorf("oracle dispatch: %s resolves to the %s, which the host runs, so there is no provider "+
 			"to send it to; hand the step to the host, or point oracle.roles.%s at <provider>/<model> in %s to send it to a provider",
 			agent, Harness, agent, layered.Config.MachineOrigin())
 	}
 	conn := termsafe.Sanitize(layered.BoundKey(r.ConnectionUsed))
 	t, ok := c.roles[r.Agent]
 	if !ok || t.Provider != r.ConnectionUsed {
-		return nil, ReceiptRoute{}, fmt.Errorf("oracle dispatch: %s resolves to connection %s, but this machine's configuration "+
+		return Target{}, fmt.Errorf("oracle dispatch: %s resolves to connection %s, but this machine's configuration "+
 			"does not point oracle.roles.%s at %s, so the step names no model there and is refused rather than sent: "+
 			"point oracle.roles.%s at %s/<model> in %s, or route %s to the harness with tier %s",
 			agent, conn, agent, conn, agent, conn, layered.Config.MachineOrigin(), agent, HostDecides)
 	}
 	if p := c.providers[t.Provider]; keyed(p) && t.Origin != layered.Config.MachineOrigin() {
-		return nil, ReceiptRoute{}, fmt.Errorf("oracle dispatch: oracle.roles.%s points at %s, a provider that holds a key "+
+		return Target{}, fmt.Errorf("oracle dispatch: oracle.roles.%s points at %s, a provider that holds a key "+
 			"(its block names the credential %s), and the route comes from %s; only a route set on this machine may spend "+
 			"that key, so the step is refused before any call: set oracle.roles.%s in %s",
 			agent, conn, p.Key, termsafe.Sanitize(t.Origin), agent, layered.Config.MachineOrigin())
 	}
 	if err := c.admitAgent(r.Agent, c.providers[t.Provider]); err != nil {
-		return nil, ReceiptRoute{}, fmt.Errorf("oracle dispatch: %s through %s: %w", agent, conn, err)
+		return Target{}, fmt.Errorf("oracle dispatch: %s through %s: %w", agent, conn, err)
 	}
-	payload, rec, err := c.Call(ctx, creds, CallRequest{Target: t, Brief: brief, Settings: r.SettingsSent, Contract: contract}, opts...)
-	if err != nil {
-		return nil, ReceiptRoute{}, fmt.Errorf("oracle dispatch: %s through %s: %w", agent, conn, err)
-	}
-	return payload, r.Receipt(ModelReported(payload)).WithCall(rec), nil
+	return t, nil
 }
 
 // FellBack returns r moved to the harness when err says its provider could

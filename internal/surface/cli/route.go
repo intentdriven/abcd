@@ -18,6 +18,10 @@ package cli
 // not dispatch, a tier outside the vocabulary, a connection this machine has
 // not configured) exits 2 before any step runs and before anything is
 // written. A fallback to the harness is announced on stderr, one line.
+//
+// The machine's provider configuration (oracle.LoadAPI) is read with the
+// tables, so a route can resolve to a provider this machine configures; a
+// verb whose route does sends the step there itself (dispatch.go).
 
 import (
 	"bytes"
@@ -35,21 +39,20 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// machineConnections is the connections the delegating verbs resolve against.
-// The provider adapter (itd-2609081951381895) implements Connections from the
-// machine's provider blocks (oracle.APIConfig.Connections), and it is not
-// handed to the verbs yet: a route resolved to a provider would name a leg no
-// verb can send a step to until provider dispatch lands
-// (spc-2609251028149555), so every step resolves to the harness until then.
-// It is a variable so a test can hand the verbs a reachable provider without
-// a socket.
-var machineConnections = func() oracle.Connections { return oracle.NoConnections{} }
+// machineAPI reads the machine's provider configuration
+// (itd-2609081951381895): the provider blocks, the routes pointed at them and
+// the override list, which the delegating verbs resolve against and dispatch
+// through. It is a variable so a test can count the reads.
+var machineAPI = oracle.LoadAPI
 
 // routeFlag is one delegating verb's --route values and the agents the verb
 // can dispatch.
 type routeFlag struct {
 	texts  []string
 	agents []string
+	// api is the provider configuration resolve read, which dispatch sends
+	// the step through (dispatch.go).
+	api *oracle.APIConfig
 }
 
 // The agents the delegating verbs dispatch, by the name each carries in
@@ -124,7 +127,19 @@ func (rf *routeFlag) resolve(cmd *cobra.Command, verb, agent string) (*oracle.Ro
 	for _, n := range notes {
 		fmt.Fprintf(stderr, "abcd %s\n", termsafe.Sanitize(fsutil.RedactHome(n)))
 	}
-	conns := machineConnections()
+	// The machine's provider configuration is read before the tables: a
+	// fault in it is refused rather than guessed past, since it decides where
+	// the step is sent and under which key.
+	api, err := machineAPI(roots)
+	if err != nil {
+		return nil, &exitError{Code: 2, Msg: verb + ": " + termsafe.Sanitize(fsutil.RedactHome(err.Error())) +
+			"; the provider configuration decides where this step is sent, so it is refused rather than guessed past — fix or remove the setting"}
+	}
+	for _, d := range api.Diagnostics {
+		fmt.Fprintf(stderr, "%s: %s\n", label, termsafe.Sanitize(fsutil.RedactHome(d)))
+	}
+	rf.api = api
+	conns := api.Connections()
 	l, err := oracle.Load(roots)
 	if err != nil {
 		return nil, &exitError{Code: 2, Msg: verb + ": " + termsafe.Sanitize(fsutil.RedactHome(err.Error())) +
@@ -264,14 +279,40 @@ func routeCloseRequest(cmd *cobra.Command, repoRoot string, res intent.Reconcile
 	}
 	stderr := cmd.ErrOrStderr()
 	id := termsafe.Sanitize(res.Intent.ID)
-	route, err := (&routeFlag{}).resolve(cmd, "abcd spec close", auditAgent)
+	rf := &routeFlag{}
+	route, err := rf.resolve(cmd, "abcd spec close", auditAgent)
+	var emitted intent.AuditEmitResult
 	if err == nil {
-		_, err = intent.ReEmitAuditWith(repoRoot, res.Intent.ID,
+		emitted, err = intent.ReEmitAuditWith(repoRoot, res.Intent.ID,
 			intent.AuditEmitOptions{RoutingSection: oracle.RenderRequestSection(route.Request())})
 	}
 	if err != nil {
 		fmt.Fprintf(stderr, "WARNING: abcd spec close — the fidelity-review request for %s carries no routing section (the close stands): %s; "+
 			"once that is fixed, `abcd intent audit %s` re-emits the request with one\n",
 			id, termsafe.Sanitize(fsutil.RedactHome(strings.TrimPrefix(err.Error(), "abcd spec close: "))), id)
+		return
+	}
+	if !route.OnProvider() || !emitted.RequestWritten {
+		return
+	}
+	// The auditor is routed to a provider, so the review is sent there. The
+	// close is a record move and stands whatever the review does: a refusal or
+	// a failed call leaves the review owed, said on stderr.
+	d, _, err := rf.sendRequest(cmd, "spec close", route, auditAgent, repoRoot, emitted.RequestPath)
+	if err == nil && d != nil {
+		var ing intent.IngestVerdictResult
+		if ing, err = intent.IngestVerdictBytes(repoRoot, d.payload); err == nil {
+			model := ""
+			if d.receipt.ProviderCall != nil {
+				model = ", model reported " + d.receipt.ProviderCall.ModelReported
+			}
+			fmt.Fprintf(stderr, "abcd spec close — the fidelity review for %s ran on %s%s: %s (receipt %s)\n",
+				id, termsafe.Sanitize(d.receipt.ConnectionUsed), termsafe.Sanitize(model), termsafe.Sanitize(ing.Status), termsafe.Sanitize(ing.ReceiptID))
+			return
+		}
+	}
+	if err != nil {
+		fmt.Fprintf(stderr, "WARNING: abcd spec close — the fidelity review for %s was not run (the close stands, the review stays owed): %s\n",
+			id, termsafe.Sanitize(fsutil.RedactHome(strings.TrimPrefix(err.Error(), "spec close: "))))
 	}
 }
