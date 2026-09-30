@@ -76,13 +76,14 @@ This intent is **a precondition for several downstream specs**: any agent spec t
 
 ## Implementing specs
 
-itd-47 is implemented across multiple specs. The single-valued frontmatter
-`spec_id` records the **primary** delivering spec (spc-27); the remaining spec is
-recorded here because `spec_id` holds one value and would understate scope.
-This section is the canonical multi-spec implementation index:
+itd-47 was implemented across two specs of the predecessor store; those ids are
+preserved below as history. The native spec store reuses both numbers for other
+specs, so each carries the predecessor-store qualifier. The frontmatter
+`spec_id` is null: adr-22 supersedes this intent, and no native spec delivers
+it. Historical index:
 
-- **spc-27** (primary) — oracle CLI Codex leg for autonomous mode (the `_build_cli_oracle()` extension + Codex-leg gates).
-- **spc-32** — Phase-3 closeout sweep (the remaining oracle-gate hardening delivered under the closeout).
+- **spc-27** (predecessor store; primary) — oracle CLI Codex leg for autonomous mode (the `_build_cli_oracle()` extension + Codex-leg gates).
+- **spc-32** (predecessor store) — Phase-3 closeout sweep (the remaining oracle-gate hardening delivered under the closeout).
 
 ## Open Questions
 
