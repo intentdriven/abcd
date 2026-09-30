@@ -413,13 +413,21 @@ func spellParameterAt(body string, depth int, split bool) []string {
 	same := "${" + name + "}"
 	value := []string{same}
 	// set is the value as the colon forms read it (`${1:-w}`, `${1:=w}`,
-	// `${1:?}`): an empty parameter counts as unset there, so the
+	// `${1:?}`): a single empty parameter counts as unset there, so the
 	// expansion never prints the empty value (reverify-guardSet finding 2).
 	set := value
 	if !indirect && emptyable(name) {
 		// `${!}`, `${@}`, `${1}` can print nothing (emptyable), and every
 		// other operator reads that nothing as it reads a value.
 		value = append([]string{same}, "")
+		if name == "@" || name == "*" {
+			// `@` and `*` take the colon test on the parameter count, not
+			// on a joined value: after `set -- "" ""`, `${@:-x}` prints
+			// the two empty parameters and `${*:?}` does not stop, so the
+			// colon forms read as the value too (reverify3-guardSet
+			// finding 1).
+			set = value
+		}
 	}
 	// orNothing is the value, or nothing: a subscript naming an element
 	// that is not set (`${A[1]}` of a scalar), and a case change or a

@@ -303,7 +303,6 @@ func TestColonDefaultsOfAnEmptyParameterTheWrittenCompareReads(t *testing.T) {
 		{`rm -rf "${1:-build}"/*`, shellBare | shellSQ, VerdictAllow, ""},
 		{`rm -rf ${1:-dist}/`, shellBare | shellSQ, VerdictAllow, ""},
 		{`rm -rf "${1:-dist}/"*`, shellBare | shellSQ, VerdictAllow, ""},
-		{`rm -rf ${@:-x}/`, shellBare | shellSQ, VerdictAllow, ""},
 		{`rm -rf ${1:=dist}/`, shellBare | shellSQ, VerdictAllow, ""},
 		{`rm -rf ${1:?}/`, shellBare | shellSQ, VerdictAllow, ""},
 		{`rm -rf ./${1:-dist}`, shellBare | shellSQ, VerdictAllow, ""},
@@ -318,6 +317,17 @@ func TestColonDefaultsOfAnEmptyParameterTheWrittenCompareReads(t *testing.T) {
 		{`rm -rf ${1-dist}/`, all, VerdictBlock, home},
 		{`rm -rf ${1=dist}/`, all, VerdictBlock, home},
 		{`rm -rf ${@-x}/`, all, VerdictBlock, home},
+		// `@` and `*` take the colon test on the parameter COUNT, not on a
+		// joined value: with `set -- "" ""` there are two parameters, so
+		// `${@:-x}` prints the two empty ones and `${@:?}` does not stop
+		// (reverify3-guardSet finding 1).
+		{`rm -rf ${@:-x}/`, all, VerdictBlock, home},
+		{`rm -rf ${@:-x}/*`, all, VerdictBlock, home},
+		{`rm -rf ${*:-x}/`, all, VerdictBlock, home},
+		{`rm -rf ${@:?}/`, all, VerdictBlock, home},
+		{`rm -rf ${*:=x}/`, all, VerdictBlock, home},
+		{`rm -rf $HOME${@:-x}`, all, VerdictBlock, home},
+		{`rm -rf $HOME${*:?}`, all, VerdictBlock, home},
 		{`rm -rf ${1?}/`, all, VerdictBlock, home},
 		// An indirection past a colon default still reads as every value.
 		{`rm -rf ${!X:-dist}/`, all, VerdictBlock, home},
