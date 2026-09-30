@@ -54,6 +54,7 @@ Settled on 2026-09-20 with one defensible answer each, on the product thinker's 
 4. **Layering is flag, then repository, then machine, then bundled**, the order the model-tier intent already uses.
 5. **The bundled default is 120 minutes of work, 300 of pause, two lanes**, the product thinker's numbers for this repository's runs on 2026-09-20; a repository that measured otherwise writes its own.
 6. **The budget check and the rate-limit checkpoint come here from `itd-29`**, superseded on 2026-09-20 by the implement verb: A run refuses to start when the estimated cost exceeds the remaining quota where the runner reports one, and a rate-limit response checkpoints the lane and ends the window early.
+7. **A run works in parallel up to its ceiling** (ruling DR6, the product thinker, 2026-09-29, verbatim: "per-run agent limit: WORK IN PARALLEL — a run may build several pieces and run reviewers concurrently up to its limit (new build-loop work; then AC6 is testable)."). The validators of a round run side by side, the lanes of steps that do not need each other run side by side, and implementers and reviewers share the ceiling; criterion 6 is tested through the concurrent loop the spec's piece 6 designs.
 
 ## Open Questions
 
