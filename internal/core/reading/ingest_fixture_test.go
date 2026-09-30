@@ -67,7 +67,7 @@ func (f *ingestFixture) writeDefinition(p Position, regime string) {
 	f.t.Helper()
 	body := "---\nposition: " + string(p) + "\nregime: " + regime + "\n---\n\n# " +
 		definitionPrefix + string(p) + "\n"
-	f.write(DefinitionPath(p), []byte(body))
+	f.write(definitionPath(p), []byte(body))
 }
 
 // parkRun writes one assembled run's manifest into the local-tier run directory,
@@ -108,7 +108,7 @@ func (f *ingestFixture) parkRun(runID string, pos Position, assemblerVersion str
 			}
 		}
 	}
-	raw, err := EncodeManifest(m)
+	raw, err := encodeManifest(m)
 	if err != nil {
 		f.t.Fatalf("encode the parked manifest: %v", err)
 	}
@@ -145,7 +145,7 @@ func (f *ingestFixture) parkComparative(runID, candidateRun string, candidates i
 	if m.Items == nil {
 		m.Items = []ManifestItem{}
 	}
-	raw, err := EncodeManifest(m)
+	raw, err := encodeManifest(m)
 	if err != nil {
 		f.t.Fatalf("encode the parked manifest: %v", err)
 	}

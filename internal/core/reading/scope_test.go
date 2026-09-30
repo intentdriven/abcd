@@ -55,7 +55,7 @@ func TestThePresetNarrowsNeverWidens(t *testing.T) {
 	root := fixtureRepo(t)
 
 	wide := map[Position]map[string]bool{}
-	for _, p := range AssemblingPositions() {
+	for _, p := range assemblingPositions() {
 		set := map[string]bool{}
 		for _, m := range assembleFixture(t, root, p).Manifest.Items {
 			set[m.Path] = true
@@ -66,7 +66,7 @@ func TestThePresetNarrowsNeverWidens(t *testing.T) {
 	writeFile(t, root, ".abcd/config/reading-presets.json", narrowPresets())
 	gitCommitAll(t, root)
 
-	for _, p := range AssemblingPositions() {
+	for _, p := range assemblingPositions() {
 		res, err := Assemble(AssembleRequest{
 			RepoRoot: root, Position: p, Target: "HEAD", DryRun: true,
 		})
@@ -128,7 +128,7 @@ func TestASecondNamedPresetIsRefused(t *testing.T) {
 }
 
 // TestPresetForRefusesAMissingPosition is spc-2609021004075744's rule for the
-// resolver: PresetFor returns the one committed entry for the position and
+// resolver: presetFor returns the one committed entry for the position and
 // refuses when the file holds no entry for it.
 //
 // Refusing beats defaulting. A position served its whole corpus because its
@@ -147,10 +147,10 @@ func TestPresetForRefusesAMissingPosition(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
-	if _, err := PresetFor(pf, PositionWidening); err != nil {
+	if _, err := presetFor(pf, PositionWidening); err != nil {
 		t.Fatalf("the entry the file names was refused: %v", err)
 	}
-	_, err = PresetFor(pf, PositionDetection)
+	_, err = presetFor(pf, PositionDetection)
 	if err == nil {
 		t.Fatal("a position the file names no entry for resolved; a run there would assemble " +
 			"nothing, or everything, and neither is what the position is about")
@@ -189,7 +189,7 @@ func TestComparativePresetIsAdmitted(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadPresets over a file naming a comparative entry: %v", err)
 	}
-	if _, err := PresetFor(presets, PositionComparative); err != nil {
+	if _, err := presetFor(presets, PositionComparative); err != nil {
 		t.Fatalf("PresetFor(comparative): %v", err)
 	}
 }
@@ -232,7 +232,7 @@ func TestThreePositionsCarryDistinctItemSets(t *testing.T) {
 	gitCommitAll(t, root)
 
 	seen := map[string]Position{}
-	for _, p := range AssemblingPositions() {
+	for _, p := range assemblingPositions() {
 		res, err := Assemble(AssembleRequest{
 			RepoRoot: root, Position: p, Target: "HEAD", DryRun: true,
 		})
@@ -256,7 +256,7 @@ func TestThreePositionsCarryDistinctItemSets(t *testing.T) {
 // about the tier it never asked for.
 func TestThePresetCannotReachTheLedgerTier(t *testing.T) {
 	root := fixtureRepo(t)
-	for _, p := range AssemblingPositions() {
+	for _, p := range assemblingPositions() {
 		res, err := Assemble(AssembleRequest{
 			RepoRoot: root, Position: p, Target: "HEAD", DryRun: true,
 		})
@@ -349,7 +349,7 @@ func TestBundleCarriesThePresetAndManifestCarriesItsHash(t *testing.T) {
 
 func mustEncodeBundle(t *testing.T, b Bundle) []byte {
 	t.Helper()
-	raw, err := EncodeBundle(b)
+	raw, err := encodeBundle(b)
 	if err != nil {
 		t.Fatalf("encode: %v", err)
 	}
@@ -505,7 +505,7 @@ func TestBundlePresetCarriesNoRepositoryPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("assemble: %v", err)
 	}
-	raw, err := EncodeBundle(res.Bundle)
+	raw, err := encodeBundle(res.Bundle)
 	if err != nil {
 		t.Fatalf("encode: %v", err)
 	}
@@ -556,7 +556,7 @@ func TestBundlePresetCarriesNoRepositoryPath(t *testing.T) {
 
 func mustEncodeManifest(t *testing.T, m Manifest) string {
 	t.Helper()
-	raw, err := EncodeManifest(m)
+	raw, err := encodeManifest(m)
 	if err != nil {
 		t.Fatalf("encode manifest: %v", err)
 	}
@@ -570,7 +570,7 @@ func mustEncodeManifest(t *testing.T, m Manifest) string {
 func TestNoBundleFieldIsAPresetSelector(t *testing.T) {
 	root := fixtureRepo(t)
 	res := assembleFixture(t, root, PositionWidening)
-	raw, err := EncodeBundle(res.Bundle)
+	raw, err := encodeBundle(res.Bundle)
 	if err != nil {
 		t.Fatalf("encode: %v", err)
 	}
@@ -588,7 +588,7 @@ func TestNoBundleFieldIsAPresetSelector(t *testing.T) {
 		t.Errorf("the bundle's context_stamp %q is not a stamp; anything else a run writes there "+
 			"is a channel a selector could ride", doc.ContextStamp)
 	}
-	for _, k := range Kinds() {
+	for _, k := range allKinds() {
 		if doc.ContextStamp == string(k) {
 			t.Errorf("the bundle's context_stamp is the material kind %q", k)
 		}
@@ -822,12 +822,12 @@ func TestTheShippedPresetFileIsValid(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the committed preset file does not load: %v", err)
 	}
-	if len(pf.Positions) != len(AssemblingPositions()) {
+	if len(pf.Positions) != len(assemblingPositions()) {
 		t.Fatalf("the committed file holds %d position entries; one entry per assembling position "+
-			"means %d", len(pf.Positions), len(AssemblingPositions()))
+			"means %d", len(pf.Positions), len(assemblingPositions()))
 	}
-	for _, p := range AssemblingPositions() {
-		if _, err := PresetFor(pf, p); err != nil {
+	for _, p := range assemblingPositions() {
+		if _, err := presetFor(pf, p); err != nil {
 			t.Errorf("the committed file names no usable entry for %s, so a run there refuses: %v",
 				p, err)
 		}
@@ -845,8 +845,8 @@ func TestTheShippedPresetScopesEveryAssemblingPositionDistinctly(t *testing.T) {
 		t.Fatalf("load: %v", err)
 	}
 	seen := map[string]Position{}
-	for _, p := range AssemblingPositions() {
-		applied, err := PresetFor(pf, p)
+	for _, p := range assemblingPositions() {
+		applied, err := presetFor(pf, p)
 		if err != nil {
 			t.Errorf("the committed file names no entry at %s, so that position cannot "+
 				"assemble at all: %v", p, err)
@@ -937,7 +937,7 @@ func TestARecordSelectorAssemblesThatRecordsMaterial(t *testing.T) {
 // writer happened to have.
 func decodedManifest(t *testing.T, m Manifest) map[string]json.RawMessage {
 	t.Helper()
-	raw, err := EncodeManifest(m)
+	raw, err := encodeManifest(m)
 	if err != nil {
 		t.Fatalf("encode manifest: %v", err)
 	}
@@ -964,7 +964,7 @@ func TestAssemblyAppliesTheCommittedPresetForThePosition(t *testing.T) {
 	// fixture's own preset names every kind, so this IS the table's admission,
 	// and the intersection below is computed against it rather than declared.
 	whole := map[Position][]ManifestItem{}
-	for _, p := range AssemblingPositions() {
+	for _, p := range assemblingPositions() {
 		whole[p] = assembleFixture(t, root, p).Manifest.Items
 	}
 
@@ -976,7 +976,7 @@ func TestAssemblyAppliesTheCommittedPresetForThePosition(t *testing.T) {
 	}
 	entry := pf
 
-	for _, p := range AssemblingPositions() {
+	for _, p := range assemblingPositions() {
 		res, err := Assemble(AssembleRequest{
 			RepoRoot: root, Position: p, Target: "HEAD", DryRun: true,
 		})
@@ -1089,7 +1089,7 @@ func TestRunIsReproducibleFromCommitAndPreset(t *testing.T) {
 	writeFile(t, root, ".abcd/config/reading-presets.json", narrowPresets())
 	gitCommitAll(t, root)
 
-	for _, p := range AssemblingPositions() {
+	for _, p := range assemblingPositions() {
 		first, err := Assemble(AssembleRequest{
 			RepoRoot: root, Position: p, Target: "HEAD", DryRun: true,
 		})
@@ -1160,9 +1160,9 @@ func TestOnlyTheTreePositionsNameSourceOrTest(t *testing.T) {
 	if err := json.Unmarshal(raw, &preset); err != nil {
 		t.Fatalf("decode %s: %v", PresetConfigPath, err)
 	}
-	if len(preset.Positions) != len(AssemblingPositions()) {
+	if len(preset.Positions) != len(assemblingPositions()) {
 		t.Fatalf("%s holds %d position entries; one entry per assembling position means %d",
-			PresetConfigPath, len(preset.Positions), len(AssemblingPositions()))
+			PresetConfigPath, len(preset.Positions), len(assemblingPositions()))
 	}
 
 	names := func(position string, kind Kind) bool {

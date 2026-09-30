@@ -240,7 +240,7 @@ var sizeBasis = fmt.Sprintf("estimated: bytes / %.2f, byte-derived, not a tokeni
 // reported as zero: an absent kind and an empty one are different facts, and
 // the manifest can settle which.
 func sizeReport(cands []candidate, position Position, window *Window) SizeReport {
-	byKind := make(map[Kind]*KindSize, len(Kinds()))
+	byKind := make(map[Kind]*KindSize, len(allKinds()))
 	rep := SizeReport{Basis: sizeBasis}
 	for _, c := range cands {
 		k, ok := byKind[c.kind]
@@ -258,7 +258,7 @@ func sizeReport(cands []candidate, position Position, window *Window) SizeReport
 		}
 	}
 	rep.ByKind = make([]KindSize, 0, len(byKind))
-	for _, kind := range Kinds() {
+	for _, kind := range allKinds() {
 		k, ok := byKind[kind]
 		if !ok {
 			continue
@@ -413,7 +413,7 @@ func Assemble(req AssembleRequest) (AssembleResult, error) {
 	// one refusing and listing the runs.
 	var candidateRun WideningRun
 	if position == PositionComparative {
-		candidateRun, err = DeriveCandidateRun(req.RepoRoot, target)
+		candidateRun, err = deriveCandidateRun(req.RepoRoot, target)
 		if err != nil {
 			return AssembleResult{}, err
 		}
@@ -426,7 +426,7 @@ func Assemble(req AssembleRequest) (AssembleResult, error) {
 	// The entry follows from the POSITION and from what is committed. No
 	// operand names it, so nothing an operator typed can change what this run
 	// is handed (adr-2609021016286571).
-	entry, err := PresetFor(presets, position)
+	entry, err := presetFor(presets, position)
 	if err != nil {
 		return AssembleResult{}, fmt.Errorf("reading: %w", err)
 	}
@@ -440,7 +440,7 @@ func Assemble(req AssembleRequest) (AssembleResult, error) {
 		return AssembleResult{}, err
 	}
 
-	exclusions := ExclusionsFor(position)
+	exclusions := exclusionsFor(position)
 	if err := assertExclusionsHook(cands, exclusions); err != nil {
 		return AssembleResult{}, err
 	}
@@ -625,7 +625,7 @@ func Assemble(req AssembleRequest) (AssembleResult, error) {
 	}
 	bundle.ContextStamp = stamp
 
-	hash, err := ManifestHash(manifest)
+	hash, err := manifestHash(manifest)
 	if err != nil {
 		return AssembleResult{}, err
 	}
@@ -637,7 +637,7 @@ func Assemble(req AssembleRequest) (AssembleResult, error) {
 		ItemCount:        len(bundle.Items),
 		ManifestHash:     hash,
 		Preset:           applied,
-		Size:             sizeReport(cands, position, PresetWindow(presets, position)),
+		Size:             sizeReport(cands, position, presetWindow(presets, position)),
 		CandidateRun:     candidateRun.ID,
 		Candidates:       candidateRun.Items,
 		NotExercised:     notExercised,
@@ -826,11 +826,11 @@ func writeArtefacts(repoRoot, outDir, label string, b Bundle, m Manifest) error 
 	} else if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("reading: creating the run directory: %w", err)
 	}
-	bundleRaw, err := EncodeBundle(b)
+	bundleRaw, err := encodeBundle(b)
 	if err != nil {
 		return err
 	}
-	manifestRaw, err := EncodeManifest(m)
+	manifestRaw, err := encodeManifest(m)
 	if err != nil {
 		return err
 	}
@@ -922,7 +922,7 @@ func RefuseReachableOutDir(repoRoot, outDir, label string, names ...string) erro
 	for _, name := range names {
 		candidate := path.Join(rel, name)
 		for _, p := range Positions() {
-			if Admits(p, candidate) {
+			if admits(p, candidate) {
 				return fmt.Errorf("reading: the output directory %s is inside the include table's reach "+
 					"(%s would be admitted at the %s position), so a committed run would become a later "+
 					"run's input; write outside the repository, or under %s", label, candidate, p, DefaultRunDir)
@@ -1043,7 +1043,7 @@ func refuseDirtyIncludedPaths(repoRoot string, position Position, cands []candid
 			}
 			continue
 		}
-		if included[entry] || Admits(position, entry) {
+		if included[entry] || admits(position, entry) {
 			dirty = append(dirty, entry)
 		}
 	}
@@ -1167,7 +1167,7 @@ func collect(repoRoot string, position Position, candidateRun string) ([]candida
 	claimed := map[string]bool{}
 	var out []candidate
 
-	exclusions := ExclusionsFor(position)
+	exclusions := exclusionsFor(position)
 	for rowIdx, row := range Table {
 		if !row.AdmittedAt(position) {
 			continue
