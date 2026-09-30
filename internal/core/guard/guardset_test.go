@@ -43,7 +43,8 @@ func TestQuotedDefaultWordsTheWrittenCompareReads(t *testing.T) {
 // on the IFS the shell holds when it expands it, and an assignment in a
 // command of its own changes that IFS: `IFS=x; rm -rf ${U:-x/x}` hands rm
 // `""` and `/` on bash 3.2, /bin/sh, dash and bash 5.3. So is an unquoted
-// `$HOME` (`IFS=Uv; rm -rf $HOME/x` hands rm `/` with HOME=/Users/dev). On a
+// `$HOME` (`IFS=Uv; rm -rf $HOME/x` hands rm `/` when HOME is a macOS home
+// whose account name holds a v, the U of Users and that v both splitting). On a
 // line that names IFS such a word refuses: the guard reads the split on the
 // default IFS only. A quoted word is not split, and a variable of unknown
 // value splits into text no more known than its value, so `while IFS= read
