@@ -20,7 +20,9 @@ import (
 // (Image::ExifTool::MakerNotes, MakerNoteCanon, and the Canon tag table
 // Image::ExifTool::Canon::Main, https://exiftool.org/TagNames/Canon.html):
 //
-//   - a MakerNote is Canon's when the IFD0 Make of its TIFF begins "Canon";
+//   - a MakerNote is Canon's when the IFD0 Make of its TIFF begins "Canon"
+//     (a Make on any page of the chain opens the gate, and a later page's
+//     never closes it, since opening it cannot hide a name);
 //   - it starts with an IFD and no header of its own, whose value offsets are
 //     relative to the TIFF header, like the EXIF IFDs around it;
 //   - its byte order is normally the TIFF's, but an editor may rewrite it in
@@ -70,7 +72,7 @@ type makerNote struct {
 	at, size int
 }
 
-// isCanonMake reports whether an IFD0 Make value names Canon ("Canon", or
+// isCanonMake reports whether a Make value names Canon ("Canon", or
 // "Canon Inc." and kin), the condition ExifTool reads a MakerNote as Canon's on.
 func isCanonMake(val []byte) bool {
 	return bytes.HasPrefix(val, []byte("Canon"))

@@ -194,6 +194,32 @@ func TestCanonMakerNoteFindingIsNotDoubled(t *testing.T) {
 	}
 }
 
+// TestCanonGateIsNotClosedByALaterPage pins the drainScan review's MINOR-2:
+// the Canon gate took the Make of the last top-level directory the chain
+// reached, so an IFD1 naming another maker closed the gate IFD0's "Canon"
+// opened and the OwnerName was skipped. A Make on any page opens the gate and
+// no later page closes it.
+func TestCanonGateIsNotClosedByALaterPage(t *testing.T) {
+	b := canonNote{make: "Canon", entries: []exifEntry{ownerName("Zedqx")}}.build()
+	// IFD1, appended after the MakerNote and linked from IFD0's next-IFD
+	// field (IFD0 at 8: count, two entries, link): one Make naming another maker.
+	const ifd0Link = 8 + 2 + 2*12
+	ifd1At := len(b)
+	bo := binary.LittleEndian
+	bo.PutUint32(b[ifd0Link:], uint32(ifd1At))
+	b = bo.AppendUint16(b, 1)
+	b = bo.AppendUint16(b, 0x010f)
+	b = bo.AppendUint16(b, 2)
+	b = bo.AppendUint32(b, 6)
+	b = bo.AppendUint32(b, uint32(ifd1At+2+12+4))
+	b = bo.AppendUint32(b, 0)
+	b = append(b, asciiValue("Nikqx")...)
+	sc := &Scanner{identity: Identity{GitUserName: "Zedqx"}, identSev: DefaultIdentitySeverities()}
+	if !hasKind(sc.scanBytes(jpegWithExif(b), secretPatterns(DefaultPatterns()), "shot.jpg"), kindRealName) {
+		t.Error("an IFD1 Make naming another maker hid IFD0's Canon OwnerName")
+	}
+}
+
 // TestMalformedMakerNoteIsSkipped pins the trust boundary: a MakerNote is
 // untrusted file bytes, and one that is truncated, declares more entries than
 // it holds, names values past the data, or carries a footer pointing anywhere
@@ -264,7 +290,7 @@ func TestMalformedMakerNoteIsSkipped(t *testing.T) {
 func TestCanonDirIsWalkedOnce(t *testing.T) {
 	b := canonNote{make: "Canon", entries: []exifEntry{ownerName("Zedqx"), {0x0006, 2, asciiValue("Canon EOS Qx")}}}.build()
 	const noteAt = 8 + 30 + 18 + 6
-	w := exifWalk{data: b, entries: 100, bytes: len(b), dirs: map[int]bool{}, values: map[int]bool{}, notes: map[int]bool{}, meta: &metadataFields{data: b}}
+	w := exifWalk{data: b, entries: 100, bytes: len(b), dirs: map[[2]int]bool{}, walked: map[int]bool{}, values: map[int]bool{}, notes: map[int]bool{}, meta: &metadataFields{data: b}}
 	for range 3 {
 		w.canonDir([]int{0}, noteAt, len(b), binary.LittleEndian)
 	}

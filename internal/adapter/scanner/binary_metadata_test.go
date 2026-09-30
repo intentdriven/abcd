@@ -231,6 +231,39 @@ func TestEXIFNextIFDIsRead(t *testing.T) {
 	}
 }
 
+// TestEXIFDirIsReadUnderEachHeader pins the drainScan review's MINOR-1: a
+// directory's value offsets are relative to the TIFF header it is reached
+// from, so one directory reached under two headers names two sets of values.
+// The walk marked a directory walked by its raw offset alone, so once header
+// A's next-IFD link had walked directory X, header B, whose IFD0 is X and
+// whose Artist offset resolves under B to a short name, skipped it and the
+// name was dropped as chance.
+func TestEXIFDirIsReadUnderEachHeader(t *testing.T) {
+	bo := binary.LittleEndian
+	b := make([]byte, 256)
+	// Header A at 0: IFD0 at 8, empty, linking on to directory X at 200.
+	copy(b[0:], "II*\x00")
+	bo.PutUint32(b[4:], 8)
+	bo.PutUint16(b[8:], 0)
+	bo.PutUint32(b[10:], 200)
+	// Header B at 100: IFD0 at offset 100, which is X at raw 200.
+	copy(b[100:], "II*\x00")
+	bo.PutUint32(b[104:], 100)
+	// X: one Artist, six ASCII bytes at offset 150 — raw 150 under A (NULs),
+	// raw 250 under B (the name).
+	bo.PutUint16(b[200:], 1)
+	bo.PutUint16(b[202:], 0x013b)
+	bo.PutUint16(b[204:], 2)
+	bo.PutUint32(b[206:], 6)
+	bo.PutUint32(b[210:], 150)
+	bo.PutUint32(b[214:], 0)
+	copy(b[250:], "Zedqx\x00")
+	sc := &Scanner{identity: Identity{GitUserName: "Zedqx"}, identSev: DefaultIdentitySeverities()}
+	if !hasKind(sc.scanBytes(b, secretPatterns(DefaultPatterns()), "scan.tif"), kindRealName) {
+		t.Error("a short Artist in a directory reached under a second header is not reported")
+	}
+}
+
 // TestEXIFFindingIsNotDoubled pins that the IFD view adds only what the raw
 // scan missed: a long name the raw bytes already hold is reported once.
 func TestEXIFFindingIsNotDoubled(t *testing.T) {

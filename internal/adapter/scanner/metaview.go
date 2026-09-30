@@ -100,15 +100,17 @@ const maxIFDEntries = 512
 // byte, and records each person tag's raw value span (identity.go's span, as
 // raw offsets) in meta. The walk reads
 // at most len(data)/12 entries plus a slack of one directory in all, each
-// directory once and each value once, and value bytes to the data's length
-// plus the slack's inline values, so neither headers that share a directory
-// nor entries that name overlapping values cost more than the bytes do.
+// directory once under each header it is reached from and each value once,
+// and value bytes to the data's length plus the slack's inline values, so
+// neither headers that share a directory nor entries that name overlapping
+// values cost more than the bytes do.
 func exifView(data []byte, meta *metadataFields) (decodedView, bool) {
 	w := exifWalk{
 		data:    data,
 		entries: len(data)/12 + maxIFDEntries,
 		bytes:   len(data) + 4*maxIFDEntries,
-		dirs:    map[int]bool{},
+		dirs:    map[[2]int]bool{},
+		walked:  map[int]bool{},
 		values:  map[int]bool{},
 		notes:   map[int]bool{},
 		meta:    meta,
@@ -147,19 +149,24 @@ func exifView(data []byte, meta *metadataFields) (decodedView, bool) {
 }
 
 // exifWalk is one exifView's state: the entry and value-byte budgets left,
-// the directories and values already read, and the view built so far.
+// the directories and values already read, and the view built so far. dirs
+// holds each directory walked as its (header, raw offset) pair, since its
+// value offsets are relative to the header it is reached from; walked holds
+// its raw offset alone, which says whether a walk is a second header's.
 type exifWalk struct {
 	data    []byte
 	entries int
 	bytes   int
-	dirs    map[int]bool
+	dirs    map[[2]int]bool
+	walked  map[int]bool
 	values  map[int]bool
 	notes   map[int]bool
 	meta    *metadataFields
 	text    []byte
 	pos     []int
-	// canon and note are the header being walked: whether its IFD0's Make
-	// names Canon, and the first MakerNote value its directories hold.
+	// canon and note are the header being walked: whether the Make of any
+	// of its top-level directories names Canon, and the first MakerNote
+	// value its directories hold.
 	canon bool
 	note  makerNote
 }
@@ -179,15 +186,26 @@ func (w *exifWalk) offset(base int, off uint32) (int, bool) {
 // following the Exif sub-IFD pointer one level down. For a top-level
 // directory it returns the raw offset of the next one in the chain, and false
 // at the chain's end (a zero link), at a link outside the data, at a
-// directory already walked (so a chain that loops ends), and at a directory
-// cut short. The caller walks the chain iteratively, so a long chain costs no
-// stack; every directory is walked once in all, so a chain costs at most one
-// step per byte of data.
+// directory already walked under this header (so a chain that loops ends),
+// and at a directory cut short. The caller walks the chain iteratively, so a
+// long chain costs no stack. A directory is walked once under each header it
+// is reached from, since its value offsets resolve against that header: the
+// first walk of a raw offset is free, as it costs a step per byte of data,
+// and every later walk of it under another header costs one entry of the
+// shared budget, so all the walks together cost at most one step per byte of
+// data plus the budget.
 func (w *exifWalk) dir(base, at int, bo binary.ByteOrder, top bool) (int, bool) {
-	if at+2 > len(w.data) || w.dirs[at] {
+	key := [2]int{base, at}
+	if at+2 > len(w.data) || w.dirs[key] {
 		return 0, false
 	}
-	w.dirs[at] = true
+	if w.walked[at] {
+		if w.entries <= 0 {
+			return 0, false
+		}
+		w.entries--
+	}
+	w.dirs[key], w.walked[at] = true, true
 	scanMeter.charge(stageEXIF, 6)
 	declared := int(bo.Uint16(w.data[at:]))
 	n := min(declared, maxIFDEntries)
@@ -206,8 +224,12 @@ func (w *exifWalk) dir(base, at int, bo binary.ByteOrder, top bool) (int, bool) 
 			continue
 		}
 		if tag == exifMakeTag && top && typ == 2 {
-			if v, size, ok := w.value(base, e, bo, count); ok {
-				w.canon = isCanonMake(w.data[v : v+size])
+			// Any page's Make opens the Canon gate and no later page closes
+			// it: a gate read from IFD0 alone would miss a Canon page further
+			// down, and the gate only lets OwnerName be read, so opening it
+			// can over-report a name but never hide one.
+			if v, size, ok := w.value(base, e, bo, count); ok && isCanonMake(w.data[v:v+size]) {
+				w.canon = true
 			}
 			continue
 		}
