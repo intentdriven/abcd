@@ -937,14 +937,16 @@ audit-owed flag naming each such criterion, the receipt, the remedy and the
 issue carrying the check. The ingest captures that issue itself — a `major`
 `bug` for a failure, a `minor` `inconsistency` for an undecided verdict, with
 the remedy "fix, then re-run the audit" or "re-run the audit" — and a later
-failed or undecided audit of the same receipt links to it while it is open
+failed or undecided audit of the same receipt links to it while it is open,
+concurrent ingests included; where several open issues carry one receipt's
+check, the oldest is linked and the others are declined as its duplicates
 (`owed_issue`, `owed_issue_linked`, `audit_owed` in the JSON; `audit owed:` and
 `captured`/`carried by` lines in the text). Commit the captured record with the
 intent. To pay the check, fix what failed, run `intent audit <itd-N>` (status
 `check_owed`: the request is rewritten for the re-run), hand the request to the
 auditor, and ingest its verdict: one that judges no criterion `NOT_MET` or
-`INCONCLUSIVE` clears the flag with a dated line and resolves the issue
-(`flag_cleared`). A ledger that cannot file refuses the ingest with nothing
+`INCONCLUSIVE` clears the flag with a dated line and resolves every open issue
+carrying that check (`flag_cleared` names the flagged one). A ledger that cannot file refuses the ingest with nothing
 written; ingest the verdict again once it can.
 
 ## Drain: pay the owed reviews, oldest first
