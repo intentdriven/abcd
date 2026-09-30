@@ -73,6 +73,8 @@ _None open._
 Fidelity review OWED (receipt rcp-47e25ab4498e).
 <!-- abcd-review-end receipt=rcp-47e25ab4498e -->
 
+Changed on 2026-09-30 by the product thinker's ruling TG1 of that day, recorded as adr-2609301720596683: a managed repository's `site-src/ui.json` written before this intent's `status.target` label existed keeps building, because `abcd site setup` and `abcd site build` add each declared label the file lacks with abcd's default words, name it on stderr, and change nothing else in the file. The impact stays `additive`.
+
 ## Grounds
 
 - pursued: milestones are retired today and this is the only place must-land-by survives; we expect the cut's report to be read and the moved target to be acted on; shown wrong if targets are never set or carried past two cuts unremarked
