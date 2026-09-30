@@ -273,7 +273,7 @@ landing waiting for its pull request to merge, is contention at exit 3. The
 record verb reads a run's record back at the end, and on a complete run captures
 the run's transcripts into the history store, one capture per path; a
 transcript stored without the scanner coverage the repository armed carries its
-scan gap on the record, as `history capture` reports it.
+scan gap on the record, as the history verb reports it for a capture.
 
 A run keyed by an issue (decision 10 on itd-2609201916151817, the lane the
 drain opens for each eligible issue) has one lane. Its brief is the issue's
