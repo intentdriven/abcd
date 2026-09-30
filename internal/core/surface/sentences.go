@@ -111,14 +111,18 @@ var sentences = map[string]string{
 	"abcd disembark review": "Review a packed lifeboat against its source repository, or validate the host's verdict: " +
 		"Writes the review in the lifeboat; refuses an unregistered verdict.",
 
-	"abcd docs": "Keep the citation baseline that `abcd lint docs` enforces offline: " +
-		"Writes nothing but that baseline; refuses an unknown sub-verb.",
+	"abcd docs": "Keep the citation baseline `abcd lint docs` enforces, and judge the brief against the binary: " +
+		"Writes nothing bare; refuses an unknown sub-verb.",
 	"abcd docs cite": "Keep the citation baseline the docs lint enforces offline: " +
 		"Writes nothing bare, and only that baseline; refuses an unknown sub-verb.",
 	"abcd docs cite confirm": "Record that a person verified a cited URL the fetcher could not read: " +
 		"Writes a dated manual entry in the baseline; refuses a URL the docs do not cite.",
 	"abcd docs cite refresh": "Fetch every cited URL once, the one documentation verb that reaches the network: " +
 		"Writes the citation baseline; refuses an unreadable docs-lint configuration.",
+	"abcd docs fidelity": "Judge the brief against every shipped surface and the saved docs review: " +
+		"Writes drafted edits only with --apply; refuses a surface no chapter names.",
+	"abcd docs fidelity record": "Save a docs review's verdict as the receipt for HEAD: " +
+		"Writes the receipt in the local tier; refuses a verdict naming no judge.",
 
 	"abcd drain": "Sort the open issues by the drain's field rule, eligible first in drain order: " +
 		"Writes nothing; refuses to start without --dry-run, as the run is not built.",

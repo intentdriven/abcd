@@ -36,6 +36,8 @@ var examples = map[string]string{
 
 	"abcd decide": `abcd decide "Record ids are minted from a timestamp"`,
 
+	"abcd docs fidelity record": "abcd docs fidelity record --verdict-json verdict.json",
+
 	"abcd disembark coverage":      "abcd disembark coverage probe-report.json",
 	"abcd disembark graveyard":     "abcd disembark graveyard ../lifeboat --lessons-json lessons.json",
 	"abcd disembark pack":          "abcd disembark pack . ../lifeboat",

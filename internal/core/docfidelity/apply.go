@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -107,4 +108,33 @@ func Apply(root string, edits []Edit, commit string, at time.Time) ([]Flag, erro
 		return nil, err
 	}
 	return added, nil
+}
+
+// Request is what an unattended routine hands the delegated reviewer, the way
+// `launch ship` hands the changelog composer its request block: the commit to
+// review, the population whose delivery is judged, the chapters to read, and
+// the verb that saves the verdict.
+type Request struct {
+	Commit     string   `json:"commit"`
+	Population []string `json:"population"`
+	Chapters   []string `json:"chapters"`
+	RecordWith string   `json:"record_with"`
+	Shape      string   `json:"verdict_shape"`
+}
+
+// VerdictShape is the payload `abcd docs fidelity record` accepts.
+const VerdictShape = `{"verificationResult": "PROMOTE|HOLD|INCONCLUSIVE", "judgeModel": "<pinned model id>", ` +
+	`"tier": "full|shallow", "failing": [{"doc": "brief|public", "chapter": "<04-surfaces file or public doc>", ` +
+	`"sentence": "<the false sentence, verbatim>", "replacement": "<drafted correction, optional>", ` +
+	`"evidence": "<file:line showing the divergence>", "disposition": "confirmed"}]}`
+
+// NewRequest composes the reviewer's request for commit.
+func NewRequest(commit string, in Inputs) Request {
+	chapters := make([]string, 0, len(in.Chapters))
+	for name := range in.Chapters {
+		chapters = append(chapters, ChaptersDir+"/"+name)
+	}
+	sort.Strings(chapters)
+	return Request{Commit: commit, Population: append([]string{}, in.Population...), Chapters: chapters,
+		RecordWith: "abcd docs fidelity record --verdict-json <file|->", Shape: VerdictShape}
 }

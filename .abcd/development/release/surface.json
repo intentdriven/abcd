@@ -1053,7 +1053,7 @@
       "hidden": false,
       "group": "agents",
       "block": "agents",
-      "sentence": "Keep the citation baseline that `abcd lint docs` enforces offline: Writes nothing but that baseline; refuses an unknown sub-verb.",
+      "sentence": "Keep the citation baseline `abcd lint docs` enforces, and judge the brief against the binary: Writes nothing bare; refuses an unknown sub-verb.",
       "flags": []
     },
     {
@@ -1104,6 +1104,55 @@
         },
         {
           "name": "root",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd docs fidelity",
+      "hidden": false,
+      "sentence": "Judge the brief against every shipped surface and the saved docs review: Writes drafted edits only with --apply; refuses a surface no chapter names.",
+      "flags": [
+        {
+          "name": "apply",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "autonomous",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "intent",
+          "shorthand": "",
+          "type": "stringSlice",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "report",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd docs fidelity record",
+      "hidden": false,
+      "sentence": "Save a docs review's verdict as the receipt for HEAD: Writes the receipt in the local tier; refuses a verdict naming no judge.",
+      "flags": [
+        {
+          "name": "verdict-json",
           "shorthand": "",
           "type": "string",
           "required": false,

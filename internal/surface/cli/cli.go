@@ -678,6 +678,9 @@ func newDocsCommand(asJSON *bool) *cobra.Command {
 	// `cite` maintains the baseline `lint docs` enforces: the refresh does the
 	// live fetching the gate refuses to do, and confirm closes the manual queue.
 	docsCmd.AddCommand(newCiteCommand(asJSON))
+	// `fidelity` is the doc-fidelity gate over the brief (itd-60), run on its
+	// own: the judgement `spec close` and `launch ship` enforce.
+	docsCmd.AddCommand(newDocsFidelityCommand(asJSON))
 
 	return docsCmd
 }
@@ -3207,7 +3210,10 @@ func newSpecCommand(asJSON *bool) *cobra.Command {
 			"The close that ships an intent also makes its fidelity review owed: it mints an OWED receipt (rcp-…), " +
 			"parks an `<!-- abcd-review: OWED receipt=rcp-… -->` marker in the intent's Audit Notes, and writes the " +
 			"review request to `.abcd/.work.local/reviews/<rcp>.request.md`, the input `abcd intent audit ingest` " +
-			"answers. A failed emit is a warning on stderr; the intent ships regardless.",
+			"answers. A failed emit is a warning on stderr; the intent ships regardless.\n\n" +
+			"In the repository whose brief describes the binary, a close that ships an intent first runs the " +
+			"doc-fidelity gate (`abcd docs fidelity`): a surface no brief chapter names, a missing or stale docs " +
+			"review, or a confirmed false sentence refuses the close, and nothing moves.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			repoRoot, err := specStoreRoot(cmd)
