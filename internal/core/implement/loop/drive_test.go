@@ -7,14 +7,19 @@ package loop
 // ABCD_LOOP_FAKE_HARNESS, plays that harness. PATH holds the fake's directory
 // alone, so no real harness on the machine can be reached.
 //
-// The events each fake prints follow the shapes the harnesses document, read
-// on 2026-09-30: the claude CLI's stream-json output in print mode (a
-// system/init event carrying the model and session, then a result event whose
-// subtype is success; code.claude.com/docs/en/headless and
-// code.claude.com/docs/en/cli-reference), and opencode's run mode with
-// --format json (one JSON event per line carrying a sessionID and a part:
-// step_start, text, step_finish; opencode.ai/docs/cli). Only the fields the
-// adapters read are asserted; the live shapes are owed to a person's check.
+// The events each fake prints follow what the harnesses document, read on
+// 2026-09-30. The claude CLI (code.claude.com/docs/en/headless): print mode's
+// stream-json output is one JSON object per line, the system/init event
+// carries the session metadata including the model, and the last line is a
+// result message with the final text and the session; --bare skips hooks,
+// plugins, MCP servers and CLAUDE.md, and never reads OAuth credentials or the
+// keychain; dontAsk denies every call that would otherwise prompt while the
+// --allowedTools entries run. opencode (opencode.ai/docs/cli): `run --format
+// json` prints "raw JSON events", --pure (a global flag) runs "without
+// external plugins", --dir, --file and --model provider/model; the page does
+// NOT document the events' shape, so the step_start/text/step_finish lines
+// with a sessionID and a part are the adapter's assumption, and the live
+// shape is owed to a person's check.
 
 import (
 	"bufio"
@@ -480,5 +485,26 @@ func TestRoleToolsFollowTheAgentDefinitions(t *testing.T) {
 	}
 	if got := RoleTools("scribe"); got != nil {
 		t.Fatalf("a role the loop does not start is granted nothing: %v", got)
+	}
+}
+
+// TestAStepThatReTellsAnAwaitStartsNoRunner: once a runner's fallback has
+// handed the host the role, stepping again re-tells the await; it neither
+// starts the runner again nor records a second fallback.
+func TestAStepThatReTellsAnAwaitStartsNoRunner(t *testing.T) {
+	root, id, steps, o := startToImplement(t)
+	newDriveEnv(t, "ok")
+	cfg := runnerConfig(t, `{"runner":{"opencode":{}}}`, `{"roles":{"implementer":{"runner":"opencode"}}}`)
+	for range 2 {
+		if _, err := Drive(context.Background(), root, id, steps, o, Runners{Config: cfg, Transcripts: &memTranscripts{}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	st, err := ReadState(root, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(st.Fallbacks) != 1 {
+		t.Fatalf("one fallback for one hand-out, got %d", len(st.Fallbacks))
 	}
 }

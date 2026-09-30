@@ -273,6 +273,12 @@ further for it, and `abcd implement step` refuses naming the hand-back.
 
 The run then moves one step per `abcd implement step`, driven by the host session.
 
+The runner configuration is read before the run is created: roles.<role>.runner (host,
+the default, or a runner) and the runners this machine enables under runner.<name> in
+~/.abcd/config.json, each model route admitted against its provider's allowlist. A fault,
+a model route the allowlist does not admit included, is refused at the runner stage and
+nothing is created or launched.
+
 An issue id (iss-N, validated by shape) is built as one lane. Its checks are the
 repository's own drain rule, read as `abcd drain` reads it (the issue is open, nothing
 open blocks it, its category and severity are ones the rule takes, it carries a remedy a
@@ -1726,7 +1732,9 @@ Render a loop run's record and capture its transcripts: Writes only with --trans
 Render a run's record: every lane with its spec step, branch and head, the implementers'
 receipts the loop verified with the model each runner reported, every verdict the loop
 recorded from a validator's return, the captures each lane fixed, its pull request and
-what its landing did, the transcripts captured into the history store, and the record's
+what its landing did, the route that ran each receipt's or return's agent when a runner
+ran it, every fallback from a routed runner to the host with its count per runner and
+per role, the transcripts captured into the history store, and the record's
 lines. Read-only unless --transcript is given.
 
 --transcript <path>, repeatable, captures each transcript into the history store as
@@ -1804,7 +1812,8 @@ Render the implement loop's runs in this checkout, lane by lane: Writes nothing;
 
 Render the runs `abcd build` started in this checkout, or the one --run names: the
 intent and spec, each lane with its spec step and next stage, what an awaiting lane
-waits on, the pending spec steps, and the run record. Read-only: it writes nothing
+waits on, the pending spec steps, the fallbacks from a routed runner to the host counted
+per runner and per role, and the run record. Read-only: it writes nothing
 and creates nothing. Exit 2 when --run names no run.
 
 **Flags:**
@@ -1866,6 +1875,21 @@ worktree and branch and the lane is done. Until then the call exits 3 and waits.
 A stage whose body this abcd does not carry is refused naming the spec piece that
 delivers it, and the run is unchanged. A stage that fails leaves the state as it was,
 so the next invocation performs it again; a completed stage is never repeated.
+
+A role routed to a command-line runner (roles.<role>.runner: claude or opencode, enabled
+under runner.<name> in ~/.abcd/config.json) is started by the step itself when the stage
+hands the lane out: the runner gets the brief and the receipt path the host would get,
+runs in the lane's worktree with the role's tools granted and nothing else asked, its
+transcript is stored in abcd's history store, and its receipt is verified by the stage's
+own verifier, so a verified one completes the stage in the same call and the result and
+the run record name the route that ran it. The claude runner runs in print mode with
+--bare, so the repository's hooks, plugins and configured servers do not run; opencode
+runs in run mode with --pure. A runner that is absent, refuses, fails, runs past its time,
+or writes a receipt the verifier refuses leaves the lane awaiting and the host is handed
+the role as with no runner, and the call records one fallback naming the role, the runner
+asked for, the reason and the route that runs it. A role left unset is the host's, and
+the call is exactly the host-driven step. A step that re-tells an await starts nothing.
+An interrupt kills the runner's process group.
 
 The run's window clock: once the run's working window has elapsed, the call starts
 nothing, writes next_eligible_at (now plus the run's pause) and exits 0 naming it; an

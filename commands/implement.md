@@ -207,7 +207,8 @@ last, and a fourth reads its record at the end:
 `status` renders every run (or the one `--run` names): its pace and the layer
 each number came from, whether it is paused and until when, its lanes, each
 lane's spec step and next stage, what an awaiting lane waits on, the pending spec
-steps and the run record. It writes nothing.
+steps, the run's fallbacks from a routed runner to the host (`fallbacks`, and in
+the text a count per runner and per role) and the run record. It writes nothing.
 
 A spec's **steps** and a lane's **stages** are two things: each spec step lands
 as one lane, and the loop takes the lane through its stages. `step` performs the
@@ -220,6 +221,20 @@ while the lane awaits re-tells the await and moves nothing; a complete run says
 `complete: true`. When a lane is done, the spec's next pending step opens the
 next lane and the run record names it. A stage that fails leaves the state as it
 was, so the next call performs it again, and a completed stage is never repeated.
+
+When the stage hands the lane to a role that `roles.<role>.runner` routes to a
+command-line runner (`claude` or `opencode`, enabled under `runner.<name>` in
+`~/.abcd/config.json`), `step` starts it itself, in the lane's worktree, with
+the same brief and receipt path; the claude runner runs in print mode with
+`--bare`, so the repository's hooks, plugins and configured servers do not run.
+The runner's receipt is verified by the stage's own verifier: a verified one
+completes the stage in the same call, and the result's `route` names the runner
+that ran it. A runner that is absent, refuses, fails, runs past its time or
+writes a receipt that does not verify leaves the lane awaiting, and the result
+names `awaiting` as with no runner plus `fallback` (the role, the runner asked
+for, the reason, the route that runs it); start the agent as for any await. A
+`step` that re-tells an await starts no runner. The runner configuration is read
+on every `step`; a fault is refused at the `runner` stage before anything runs.
 
 `step` keeps the run's window clock, on the pace the run started with
 (`/abcd:build`). Once the window's working minutes have elapsed, `step` starts
@@ -311,8 +326,11 @@ Every landing step is recorded as it completes, so a killed `step` repeats the
 move that did not complete and finds what it made rather than making it twice.
 
 `record` renders a run's record: each lane with its receipts and the model each
-runner reported, every verdict the loop recorded, the captures it fixed, its
-pull request and landing, the transcripts captured, and the record's lines.
+runner reported, every verdict the loop recorded, the route that ran a receipt's
+or a return's agent when a runner ran it, the captures it fixed, its pull
+request and landing, every fallback with its count per runner and per role
+(`fallbacks`, `fallback_counts`), the transcripts captured, and the record's
+lines.
 Without `--run` it reads the one run in progress, or else the latest run. With
 `--transcript <path>` (repeatable) on a complete run it captures each transcript
 into the history store as `history capture <path>` does, one capture per path,

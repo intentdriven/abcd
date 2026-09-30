@@ -1,17 +1,22 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"sort"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/implement/loop"
 	"github.com/intentdriven/abcd/internal/core/layered"
+	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -125,6 +130,11 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 			"handed back: it stops as unachievable with the last round's findings, the run starts nothing\n" +
 			"further for it, and `abcd implement step` refuses naming the hand-back.\n\n" +
 			"The run then moves one step per `abcd implement step`, driven by the host session.\n\n" +
+			"The runner configuration is read before the run is created: roles.<role>.runner (host,\n" +
+			"the default, or a runner) and the runners this machine enables under runner.<name> in\n" +
+			"~/.abcd/config.json, each model route admitted against its provider's allowlist. A fault,\n" +
+			"a model route the allowlist does not admit included, is refused at the runner stage and\n" +
+			"nothing is created or launched.\n\n" +
 			"An issue id (iss-N, validated by shape) is built as one lane. Its checks are the\n" +
 			"repository's own drain rule, read as `abcd drain` reads it (the issue is open, nothing\n" +
 			"open blocks it, its category and severity are ones the rule takes, it carries a remedy a\n" +
@@ -147,6 +157,9 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 			roots, notes := layered.RootsFor(root)
 			for _, n := range notes {
 				fmt.Fprintln(cmd.ErrOrStderr(), termsafe.Sanitize(n))
+			}
+			if _, err := loadRunners(cmd, roots); err != nil {
+				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
 			}
 			o := loop.Options{Session: session, Roots: &roots}
 			if cmd.Flags().Changed("pace") {
@@ -233,6 +246,9 @@ func newBuildNextCommand(asJSON *bool) *cobra.Command {
 			roots, notes := layered.RootsFor(root)
 			for _, n := range notes {
 				fmt.Fprintln(cmd.ErrOrStderr(), termsafe.Sanitize(n))
+			}
+			if _, err := loadRunners(cmd, roots); err != nil {
+				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
 			}
 			o := loop.Options{Session: session, Roots: &roots}
 			if cmd.Flags().Changed("pace") {
@@ -376,7 +392,8 @@ func newImplementStatusCommand(asJSON *bool) *cobra.Command {
 		Use: "status [--run <run-id>]",
 		Long: "Render the runs `abcd build` started in this checkout, or the one --run names: the\n" +
 			"intent and spec, each lane with its spec step and next stage, what an awaiting lane\n" +
-			"waits on, the pending spec steps, and the run record. Read-only: it writes nothing\n" +
+			"waits on, the pending spec steps, the fallbacks from a routed runner to the host counted\n" +
+			"per runner and per role, and the run record. Read-only: it writes nothing\n" +
 			"and creates nothing. Exit 2 when --run names no run.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -426,6 +443,7 @@ func newImplementStatusCommand(asJSON *bool) *cobra.Command {
 						renderLaneLine(w, l)
 					}
 					renderPending(w, st.Pending)
+					renderFallbacks(w, runner.Tally(st.Fallbacks))
 					fmt.Fprintf(w, "  record:  %d line(s)\n", len(st.Record))
 					for _, e := range st.Record {
 						fmt.Fprintf(w, "    %s  %-9s %s  %s\n", e.At.Format("2006-01-02T15:04:05Z"), termsafe.Sanitize(e.Stage),
@@ -454,6 +472,13 @@ func renderStepResult(w io.Writer, verb string, res loop.StepResult) {
 		fmt.Fprintf(w, "  brief:   %s\n  receipt: %s\n", termsafe.Sanitize(res.Awaiting.Brief), termsafe.Sanitize(res.Awaiting.Receipt))
 	case res.Complete:
 		fmt.Fprintf(w, "%s: %s is complete\n", verb, res.RunID)
+	}
+	if r := res.Route; r != nil {
+		fmt.Fprintf(w, "  ran on:  the %s runner (asked %s; model %s)\n", termsafe.Sanitize(r.Ran), termsafe.Sanitize(r.Asked), termsafe.Sanitize(modelOrNone(r.Model)))
+	}
+	if fb := res.Fallback; fb != nil {
+		fmt.Fprintf(w, "  fallback: %s was routed to %s, which was %s (%s); %s runs it\n", termsafe.Sanitize(fb.Role), termsafe.Sanitize(fb.Asked),
+			fb.Reason, termsafe.Sanitize(fsutil.RedactHome(fb.Detail)), termsafe.Sanitize(fb.Ran))
 	}
 	fmt.Fprintf(w, "next: %s\n", termsafe.Sanitize(fsutil.RedactHome(res.Next)))
 }
@@ -507,6 +532,20 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			"A stage whose body this abcd does not carry is refused naming the spec piece that\n" +
 			"delivers it, and the run is unchanged. A stage that fails leaves the state as it was,\n" +
 			"so the next invocation performs it again; a completed stage is never repeated.\n\n" +
+			"A role routed to a command-line runner (roles.<role>.runner: claude or opencode, enabled\n" +
+			"under runner.<name> in ~/.abcd/config.json) is started by the step itself when the stage\n" +
+			"hands the lane out: the runner gets the brief and the receipt path the host would get,\n" +
+			"runs in the lane's worktree with the role's tools granted and nothing else asked, its\n" +
+			"transcript is stored in abcd's history store, and its receipt is verified by the stage's\n" +
+			"own verifier, so a verified one completes the stage in the same call and the result and\n" +
+			"the run record name the route that ran it. The claude runner runs in print mode with\n" +
+			"--bare, so the repository's hooks, plugins and configured servers do not run; opencode\n" +
+			"runs in run mode with --pure. A runner that is absent, refuses, fails, runs past its time,\n" +
+			"or writes a receipt the verifier refuses leaves the lane awaiting and the host is handed\n" +
+			"the role as with no runner, and the call records one fallback naming the role, the runner\n" +
+			"asked for, the reason and the route that runs it. A role left unset is the host's, and\n" +
+			"the call is exactly the host-driven step. A step that re-tells an await starts nothing.\n" +
+			"An interrupt kills the runner's process group.\n\n" +
 			"The run's window clock: once the run's working window has elapsed, the call starts\n" +
 			"nothing, writes next_eligible_at (now plus the run's pause) and exits 0 naming it; an\n" +
 			"agent already started may still hand back its receipt. Before next_eligible_at the call\n" +
@@ -524,11 +563,30 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
 			}
-			res, err := loop.Advance(root, id, loop.DefaultStages(), loop.Options{})
+			roots, notes := layered.RootsFor(root)
+			for _, n := range notes {
+				fmt.Fprintln(cmd.ErrOrStderr(), termsafe.Sanitize(n))
+			}
+			cfg, err := loadRunners(cmd, roots)
+			if err != nil {
+				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
+			}
+			// An interrupt or a termination ends the context, and the runner
+			// kills the process group it started through its own handle: a
+			// harness never outlives the step that started it.
+			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+			defer stop()
+			res, err := loop.Drive(ctx, root, id, loop.DefaultStages(), loop.Options{},
+				loop.Runners{Config: cfg, Transcripts: &lazyHistoryStore{cmd: cmd}})
 			if err != nil {
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
 			}
 			res.Awaiting = redactAwait(res.Awaiting)
+			if res.Fallback != nil {
+				fb := *res.Fallback
+				fb.Detail = fsutil.RedactHome(fb.Detail)
+				res.Fallback = &fb
+			}
 			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) { renderStepResult(w, "step", res) })
 		},
 	}
@@ -599,7 +657,9 @@ func newImplementRecordCommand(asJSON *bool) *cobra.Command {
 		Long: "Render a run's record: every lane with its spec step, branch and head, the implementers'\n" +
 			"receipts the loop verified with the model each runner reported, every verdict the loop\n" +
 			"recorded from a validator's return, the captures each lane fixed, its pull request and\n" +
-			"what its landing did, the transcripts captured into the history store, and the record's\n" +
+			"what its landing did, the route that ran each receipt's or return's agent when a runner\n" +
+			"ran it, every fallback from a routed runner to the host with its count per runner and\n" +
+			"per role, the transcripts captured into the history store, and the record's\n" +
 			"lines. Read-only unless --transcript is given.\n\n" +
 			"--transcript <path>, repeatable, captures each transcript into the history store as\n" +
 			"`abcd history capture <path>` does, one capture per path, and records it in the run's\n" +
@@ -668,10 +728,10 @@ func renderRunRecord(w io.Writer, rec loop.RunRecord) {
 			if model == "" {
 				model = "none reported"
 			}
-			fmt.Fprintf(w, "    receipt %s (%s; model %s)\n", termsafe.Sanitize(r.Receipt), termsafe.Sanitize(r.Role), termsafe.Sanitize(model))
+			fmt.Fprintf(w, "    receipt %s (%s; model %s)%s\n", termsafe.Sanitize(r.Receipt), termsafe.Sanitize(r.Role), termsafe.Sanitize(model), routeSuffix(r.Route))
 		}
 		for _, v := range l.Verdicts {
-			fmt.Fprintf(w, "    round %d at %s: %s %s\n", v.Round, shortSHA(v.HeadSHA), termsafe.Sanitize(v.Role), termsafe.Sanitize(v.Verdict))
+			fmt.Fprintf(w, "    round %d at %s: %s %s%s\n", v.Round, shortSHA(v.HeadSHA), termsafe.Sanitize(v.Role), termsafe.Sanitize(v.Verdict), routeSuffix(v.Route))
 		}
 		if len(l.Resolves) > 0 {
 			fmt.Fprintf(w, "    resolves %s\n", termsafe.Sanitize(strings.Join(l.Resolves, ", ")))
@@ -682,6 +742,11 @@ func renderRunRecord(w io.Writer, rec loop.RunRecord) {
 		}
 	}
 	renderPending(w, rec.Pending)
+	renderFallbacks(w, rec.FallbackCounts)
+	for _, fb := range rec.Fallbacks {
+		fmt.Fprintf(w, "    %s  %s asked %s: %s (%s); %s ran it\n", fb.At.Format("2006-01-02T15:04:05Z"), termsafe.Sanitize(fb.Role),
+			termsafe.Sanitize(fb.Asked), fb.Reason, termsafe.Sanitize(fsutil.RedactHome(fb.Detail)), termsafe.Sanitize(fb.Ran))
+	}
 	fmt.Fprintf(w, "  transcripts: %d captured into the history store\n", len(rec.Transcripts))
 	for _, t := range rec.Transcripts {
 		how := "stored"
@@ -698,6 +763,78 @@ func renderRunRecord(w io.Writer, rec loop.RunRecord) {
 		fmt.Fprintf(w, "    %s  %-10s %s  %s\n", e.At.Format("2006-01-02T15:04:05Z"), termsafe.Sanitize(e.Stage),
 			termsafe.Sanitize(e.Lane), termsafe.Sanitize(fsutil.RedactHome(e.Note)))
 	}
+}
+
+// renderFallbacks renders a run's fallback counts per runner and per role
+// (itd-2609201916056194 criterion 4); a run with none renders nothing.
+func renderFallbacks(w io.Writer, c runner.Counts) {
+	if c.Total == 0 {
+		return
+	}
+	fmt.Fprintf(w, "  fallbacks: %d (by runner: %s; by role: %s)\n", c.Total, countList(c.ByRunner), countList(c.ByRole))
+}
+
+// countList renders a count map as "name n, name n", in name order.
+func countList(m map[string]int) string {
+	names := make([]string, 0, len(m))
+	for n := range m {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	parts := make([]string, 0, len(names))
+	for _, n := range names {
+		parts = append(parts, fmt.Sprintf("%s %d", termsafe.Sanitize(n), m[n]))
+	}
+	return strings.Join(parts, ", ")
+}
+
+// routeSuffix names the runner that ran a receipt's or a return's agent; the
+// host's carry none.
+func routeSuffix(r *runner.RouteRecord) string {
+	if r == nil {
+		return ""
+	}
+	return fmt.Sprintf(" — ran on the %s runner (asked %s; model %s)", termsafe.Sanitize(r.Ran), termsafe.Sanitize(r.Asked), termsafe.Sanitize(modelOrNone(r.Model)))
+}
+
+func modelOrNone(m string) string {
+	if m == "" {
+		return "none reported"
+	}
+	return m
+}
+
+// loadRunners reads the runner configuration a lane starts from and prints its
+// diagnostics on stderr; a fault is the loop's refusal, before anything is
+// created or launched.
+func loadRunners(cmd *cobra.Command, roots layered.Roots) (*runner.Config, error) {
+	cfg, err := loop.LoadRunners(roots)
+	if err != nil {
+		return nil, err
+	}
+	for _, d := range cfg.Diagnostics {
+		fmt.Fprintln(cmd.ErrOrStderr(), termsafe.Sanitize(fsutil.RedactHome(d)))
+	}
+	return cfg, nil
+}
+
+// lazyHistoryStore is the runner's transcript store: the repository's lane of
+// abcd's own history store, keyed on its root commit, resolved on the first
+// transcript so a step that starts no runner resolves nothing.
+type lazyHistoryStore struct {
+	cmd   *cobra.Command
+	store runner.TranscriptStore
+}
+
+func (l *lazyHistoryStore) Store(name string, req runner.Request, ans runner.Answer, raw []byte) error {
+	if l.store == nil {
+		repoRoot, rootSHA, err := historyStore(l.cmd)
+		if err != nil {
+			return err
+		}
+		l.store = runner.HistoryStore{RepoRoot: repoRoot, RootSHA: rootSHA}
+	}
+	return l.store.Store(name, req, ans, raw)
 }
 
 // renderLanding renders what a lane's landing has done so far.

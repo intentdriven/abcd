@@ -122,6 +122,13 @@ Ideas and methodologies that shaped the design — not code abcd depends on.
   outright instead of shipped, and the enforcing control sits at the execution
   layer.
   <https://code.claude.com/docs/en/permissions>
+- **Claude Code's print mode (Anthropic)** — the first command-line runner a
+  delegated role can be routed through (itd-2609201916056194,
+  `internal/core/runner`): print mode with `--bare`, so a target repository's
+  hooks, plugins and configured servers do not run, the stream-json event stream
+  as the transcript, and `--permission-mode dontAsk` with the role's tools
+  allowed, since no one is there to answer a prompt.
+  <https://code.claude.com/docs/en/headless>
 - **Cloudflare Workers and its v4 API (Cloudflare)** — the host the one
   provider behind `abcd site setup`'s hosting seam targets: an assets-only
   Worker deployed by the pinned `wrangler-action`, created, routed and
@@ -240,6 +247,10 @@ Ideas and methodologies that shaped the design — not code abcd depends on.
   audience-by-placement ratification (adr-53) and the guide's
   self-contained-sections rule.
   <https://docs.kapa.ai/improving/writing-best-practices>
+- **opencode (SST)** — the second command-line runner a delegated role can be
+  routed through (itd-2609201916056194, `internal/core/runner`): run mode with
+  JSON events and `--pure`, so no external plugin the repository configures
+  runs. <https://opencode.ai/docs/cli/>
 - **OpenAI's Chat Completions API** — the protocol the OpenAI-compatible API
   adapter speaks (`internal/adapter/openaiapi`): the system and user messages a
   host's brief is rendered into, the sampling fields a row may set, and the

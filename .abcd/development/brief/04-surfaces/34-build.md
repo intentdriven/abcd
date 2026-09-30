@@ -206,15 +206,19 @@ repository abcd manages has one, so a run is managed-only by construction. Each
 run directory is created one level at a time and proved real, the state file is
 replaced atomically inside an `os.Root`, and the reader decodes strictly,
 refusing an unknown field, a schema version it does not know, or a file stored
-under a run id it does not name. The state is schema version 7. Version 7
+under a run id it does not name. The state is schema version 8. Version 8
+added the runner's record (itd-2609201916056194): the run's `fallbacks`, one
+receipt per role a routed runner did not run, and the `route` a verified receipt
+or a validator's recorded return names when a runner ran its agent. Version 7
 added the landing (a lane's `landing`, the implementers' `receipts` it verified
 with the model each runner reported, and the captures its receipts declared
 fixed, `resolves`) and the run's captured `transcripts`. Version 6
 added the fix-round cap (ruling DR1): the pace's `fix_rounds` and a lane's
 `hand_back`. Version 5 added the validate stage's record (a lane's
 `validation`). Each earlier version is the next one's strict subset, read as a
-run that predates the addition (a version-5 run runs on the bundled cap) and
-written back at version 7 by its next mutation; an earlier version carrying what
+run that predates the addition (a version-5 run runs on the bundled cap, a
+version-7 run is one the host ran every agent of) and
+written back at version 8 by its next mutation; an earlier version carrying what
 only a later one writes is refused. Version 4
 renamed the lane's stage (BU1, iss-2609291313276243): a lane's and a record
 line's `step` became `stage`, so "step" names only the spec's steps (`spec_step`,
@@ -289,9 +293,40 @@ reported complete and closes no window.
 A stage whose body this build does not carry is refused naming the stage, the
 lane and the spec piece that delivers it, and the run is unchanged, ready to
 resume in a build that carries it. This build carries every stage of the
-sequence. The process driver (piece 3) is the same loop
-called by a process instead of a host, starting the named agent through the
-runner and handing its receipt back.
+sequence.
+
+**The runner** (piece 3, the process driver's loop half, and itd-2609201916056194).
+A role's route is `roles.<role>.runner` in the layered configuration, the
+repository's or the machine's: `host`, the default, or a runner the machine
+enables under `runner.<name>` (`claude`, `opencode`), with an optional model
+route admitted against its provider's allowlist. The build verb reads the
+configuration before it creates a run, and the step verb before each stage; a
+fault, a model route off the allowlist included, is refused at the `runner`
+stage before anything is created or launched, and its diagnostics (a role no
+agent answers to) go to stderr. When a stage hands the lane to a role that is
+routed to a runner, the step verb starts the runner itself, outside the run's
+lock, in the lane's worktree, with the brief and the receipt path the host would
+be handed and the role's tools granted without a prompt; the runner's
+transcript lands in abcd's history store, keyed on the repository's root
+commit, and its receipt is handed back through the same receipt verb and
+verified by the stage's own verifier, so a verified one completes the stage in
+the same call. The verified receipt, or the validator's recorded return, names
+the route that ran it (asked, ran, the model the runner reported), which is the
+only field a runner-run review's record differs in from a host-run one's; the
+record gains a `runner` line. A runner that is absent, refuses, fails, runs past
+its time, answers unparsably or writes a receipt the verifier refuses leaves the
+lane awaiting: the call records one fallback receipt (the role, the runner asked
+for, the reason and the route that runs it) in the state and the record, and
+hands the host the await as the host-driven step does, naming the fallback. A
+role left unset is the host's, and the call is the host-driven step byte for
+byte. A step that re-tells an await starts nothing. The claude runner runs in
+print mode with the bare flag, so the repository's hooks, plugins and
+configured servers do not run; opencode runs in run mode with `--pure`. An
+interrupt or a termination kills the runner's process group. The status and
+record verbs count the fallbacks per runner and per role. A host session
+always drives this: the no-host path, where a host-routed role goes to the
+machine's `runner.fallback_host`, is the process driver's reversal of the
+host-delegated boundary, and waits on the ADR decision 6 of the intent owes.
 
 ## The lane
 
@@ -488,8 +523,10 @@ until the last step.
 verb reads a run's state back as its record: every lane with its spec step,
 branch and heads, the implementers' receipts the loop verified with the model
 each runner reported (as reported; the binary cannot verify it), every verdict
-the loop recorded, round by round, the captures the lane fixed, its pull request
-and what its landing did, the run's pending steps, the transcripts captured and
+the loop recorded, round by round, the route that ran a receipt's or a return's
+agent when a runner ran it, the captures the lane fixed, its pull request
+and what its landing did, the run's pending steps, every fallback with the
+count per runner and per role, the transcripts captured and
 the record's lines, in text and JSON. On a complete run, the record verb
 captures each transcript it is named into the history store as the history
 verb's capture of one path does, one capture per path, and records it in the
@@ -519,6 +556,8 @@ the remedy as fields.
 - The shared run state and the claim the peers check reads:
   [`27-implement.md`](27-implement.md).
 - The pick: itd-2609211116005482 and its design record, spc-2609212015048113.
+- The runner a routed role goes through: itd-2609201916056194 and its design
+  record, spc-2609221533057881 (`internal/core/runner`).
 - The plugin surface: `commands/build.md`.
 
 <!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->

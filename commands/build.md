@@ -196,7 +196,27 @@ returns hand the receipt back:
 ```
 
 The lane advances only on a receipt that verifies. Running `implement step` while the
-lane awaits a receipt re-tells what it awaits and moves nothing. When a lane is
+lane awaits a receipt re-tells what it awaits and moves nothing.
+
+A role can run through a command-line runner instead of an agent you start.
+`roles.<role>.runner` in the repository's or the machine's `.abcd/config.json`
+names `host` (the default) or a runner, `claude` or `opencode`, that the machine
+enables under `runner.<name>` in `~/.abcd/config.json` (with an optional
+`model` route, `<provider>/<model>`, admitted against that provider's
+allowlist). `build` reads this configuration before it creates the run, and a
+fault, a model route off the allowlist included, is refused at the `runner`
+stage with nothing created. When a stage hands the lane to a routed role,
+`implement step` starts the runner itself with the brief and the receipt path
+you would be handed, in the lane's worktree; its transcript goes to abcd's
+history store and its receipt is verified exactly as yours would be, so a
+verified one completes the stage in the same call, and the payload's `route`
+names the runner that ran it (`asked`, `ran`, `model`). Do not start an agent
+for it. When the runner is absent, refuses, fails, runs past its time or writes
+a receipt that does not verify, the payload still names `awaiting` as usual and
+adds `fallback` (the `role`, the runner `asked` for, the `reason` and the route
+that runs it): start the agent yourself as above. Every fallback is recorded;
+`implement status` and `implement record` count them per runner and per role.
+Tell the user each fallback's reason. When a lane is
 done, the spec's next pending step opens the next lane, and the run record gets
 a line naming it, as the start line names the first.
 

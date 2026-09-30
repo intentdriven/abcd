@@ -213,6 +213,10 @@ type StepResult struct {
 	// role is routed to did not run it and the host is handed the role.
 	Fallback *runner.FallbackReceipt `json:"fallback,omitempty"`
 	Next     string                  `json:"next"`
+	// handed is true when this call handed the lane to an agent, false when
+	// it re-told an await an earlier call began: only the call that hands the
+	// work out may start a runner for it.
+	handed bool
 }
 
 // Start resumes the live run for key, or runs the checks and, when every one
@@ -647,6 +651,7 @@ func Advance(repoRoot, runID string, steps Stages, o Options) (StepResult, error
 		}
 		st.UpdatedAt = now
 		res = laneResult(*st, lane, performed)
+		res.handed = out.Await != nil
 		return true, nil
 	})
 	return res, err

@@ -39,6 +39,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/runner"
 )
 
@@ -84,14 +85,17 @@ func RoleTools(role string) []string {
 	return append([]string(nil), t...)
 }
 
-// Drive performs the next stage as Advance does and, when the stage awaits an
-// agent whose role is routed to a runner, starts that agent through the runner
-// and hands its receipt back through Receipt. A role on the host, or a runner
+// Drive performs the next stage as Advance does and, when the stage hands the
+// lane to an agent whose role is routed to a runner, starts that agent through
+// the runner and hands its receipt back through Receipt. A step that re-tells
+// an await an earlier call began starts nothing. A role on the host, or a runner
 // that did not run it, returns the await for the host to act on, as Advance
 // returns it; the latter also names the fallback it recorded.
 func Drive(ctx context.Context, repoRoot, runID string, steps Stages, o Options, rs Runners) (StepResult, error) {
 	res, err := Advance(repoRoot, runID, steps, o)
-	if err != nil || res.Awaiting == nil || rs.Config == nil {
+	if err != nil || res.Awaiting == nil || !res.handed || rs.Config == nil {
+		// Nothing awaits, or the await is one an earlier call began: the
+		// host, or the runner that call started, is already on it.
 		return res, err
 	}
 	aw := *res.Awaiting
@@ -155,6 +159,20 @@ func Drive(ctx context.Context, repoRoot, runID string, steps Stages, o Options,
 	r := *done
 	r.Route = &out.Receipt.Route
 	return r, nil
+}
+
+// LoadRunners reads the runner configuration (runner.Load) at the roots a lane
+// starts from, and refuses in the loop's refusal shape on any fault, a model
+// route its provider's allowlist does not admit included, before a run is
+// created or a runner launched (itd-2609201916056194 criterion 5). The
+// configuration's diagnostics are the caller's to print.
+func LoadRunners(r layered.Roots) (*runner.Config, error) {
+	c, err := runner.Load(r)
+	if err != nil {
+		return nil, refuse(StageRunner, "", "", err.Error(),
+			"correct the runner configuration the reason names; no runner is launched and nothing is written")
+	}
+	return c, nil
 }
 
 // absIn is p read against the checkout root when it is relative.
