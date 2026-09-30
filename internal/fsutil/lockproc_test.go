@@ -181,3 +181,19 @@ func TestTheLockIsReleasedWhenItsHolderDies(t *testing.T) {
 		}
 	}
 }
+
+// The lock-file primitive judges the file type on the opened descriptor under
+// the S_IFMT mask, so a FIFO at the lock path — which the open itself admits —
+// is refused as ErrLockPathUnsafe. Memory's store lock relied on a mask of its
+// own for this until it moved onto WithFileLock (iss-2608261133210491, iss-129).
+func TestWithFileLockRefusesANonRegularFileOnTheDescriptor(t *testing.T) {
+	lock := filepath.Join(t.TempDir(), "k.lock")
+	if err := syscall.Mkfifo(lock, 0o600); err != nil {
+		t.Skipf("mkfifo unsupported: %v", err)
+	}
+	ran := false
+	err := WithFileLock(lock, 0, func() error { ran = true; return nil })
+	if !errors.Is(err, ErrLockPathUnsafe) || ran {
+		t.Fatalf("a FIFO at the lock path: ran=%v err=%v; want ErrLockPathUnsafe", ran, err)
+	}
+}
