@@ -255,7 +255,9 @@ func (r procResult) transcript() []byte {
 	if len(r.stdout) > 0 && r.stdout[len(r.stdout)-1] != '\n' {
 		b.WriteByte('\n')
 	}
-	b.WriteString("--- abcd runner: the harness's stderr ---\n")
+	// The marker opens with "==", never a "---" run, so no frontmatter reader
+	// takes it for a block delimiter.
+	b.WriteString("== abcd runner: the harness's stderr ==\n")
 	b.Write(r.stderr)
 	return b.Bytes()
 }

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/history"
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // memStore is a transcript store the dispatch tests read back.
@@ -275,7 +276,7 @@ func TestTranscriptLandsInTheHistoryStore(t *testing.T) {
 	t.Setenv("HOME", home)
 	repo := t.TempDir()
 	git := exec.Command("git", "init", "-q", repo)
-	git.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1")
+	git.Env = gittest.Env(t)
 	if out, err := git.CombinedOutput(); err != nil {
 		t.Fatalf("git init: %v %s", err, out)
 	}
