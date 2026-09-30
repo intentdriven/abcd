@@ -927,16 +927,16 @@ func Reconcile(repoRoot, specID, impact string, remainder RemainderRequest) (Rec
 	// (unrecognized-input-never-writes). A close without a remainder never
 	// reads it: the section is the build's, not the close's.
 	var carried []spec.Step
+	var rewrites []spec.NeedsRewrite
 	if remainder.Slug != "" {
 		listed, err := spec.ReadSteps(repoRoot, sp)
 		if err != nil {
 			return ReconcileResult{}, fmt.Errorf("intent: %v; --remainder carries the steps not marked landed, and this section cannot be read as steps; nothing was minted. Fix what it names, then re-run the close", err)
 		}
-		carried = spec.Unlanded(listed)
-		// Numbered as the remainder lists them, so the result and the file agree.
-		for i := range carried {
-			carried[i].Number = i + 1
-		}
+		// Numbered as the remainder lists them, so the result and the file
+		// agree, with each `- needs:` line rewritten against that numbering
+		// (spc-2609202134341288, "A needs line across a remainder").
+		carried, rewrites = spec.CarryUnlanded(listed)
 	}
 
 	// Does any OTHER spec still hold this intent open? Asked before the mint, so
@@ -1008,6 +1008,7 @@ func Reconcile(repoRoot, specID, impact string, remainder RemainderRequest) (Rec
 	res := ReconcileResult{Spec: sp, Intent: it, From: it.Bucket, To: it.Bucket, Remainder: minted, RemainderMinted: mintedHere, OpenSpecs: specIDs(held)}
 	if mintedHere {
 		res.RemainderSteps = carried
+		res.NeedsRewritten = rewrites
 	}
 	// 1. Advance the intent planned/ → shipped/ FIRST — but only when this close
 	// leaves no open spec naming it. Its (kind, spec_id) are already set (Plan
