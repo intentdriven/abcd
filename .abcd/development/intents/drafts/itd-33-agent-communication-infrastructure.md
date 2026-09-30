@@ -6,7 +6,7 @@ kind: standalone
 suggested_kind: null
 reclassification_history: []
 blocked_by: [itd-121]
-builds_on: [itd-2609201916151817, itd-2, itd-22]
+builds_on: [itd-2609201916151817, itd-22]
 severity: major
 ---
 
@@ -114,6 +114,17 @@ The first user to hit (1)–(2) is asked to record the texture in the `.abcd/wor
 ## Audit Notes
 
 _Empty. Populated by intent-fidelity-reviewer when intent moves to shipped/._
+
+### Linkage note (2026-09-30)
+
+`builds_on` named itd-2 (in-session subagent dispatch), which is superseded by
+itd-2609201916056194. The edge is dropped rather than relinked: the successor,
+a delegated agent run through a command-line model runner, does not carry the
+in-session dispatch contract this record built on, and that dispatch is standing
+practice the conventions router (AGENTS.md) states. Ruling CF2 of 2026-09-30
+counts a blocker kept as a discipline as settled; the run's orchestrator read
+the same of a practice the router carries, so the edge has nothing left to
+build on (recorded by the integration lane of autonomous run A).
 
 ## References
 
