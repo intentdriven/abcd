@@ -104,7 +104,9 @@ _Superseded by decisions 4 and 5: the seed is the per-intent audit notes, which 
 
 ## Audit Notes
 
-_Empty. Populated by intent-fidelity-reviewer when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-2215987d5eb7 -->
+Fidelity review OWED (receipt rcp-2215987d5eb7).
+<!-- abcd-review-end receipt=rcp-2215987d5eb7 -->
 
 ### Implementation notes (v1 scope)
 
