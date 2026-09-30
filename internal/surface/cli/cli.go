@@ -357,7 +357,6 @@ func NewRootCommand() *cobra.Command {
 	root.Flags().BoolVar(&showVersion, "version", false,
 		"print abcd's version, install mode, and vintage, from disk alone (the release check is: abcd update --check)")
 
-	root.AddCommand(newVersionCommand())
 	root.AddCommand(newUpdateCommand(&asJSON))
 	root.AddCommand(newModeCommand(&asJSON))
 	root.AddCommand(newPeersCommand(&asJSON))
@@ -667,14 +666,13 @@ func docsLintNothingCheckedWarning(checks, documents int, roots []string, ref st
 
 // newDocsCommand builds the `docs` sub-tree: `cite`, which maintains the
 // citation baseline the docs lint enforces. The lint itself is `abcd lint docs`
-// (itd-2609212130136102); `docs lint` answers with it for one release.
+// (itd-2609212130136102).
 func newDocsCommand(asJSON *bool) *cobra.Command {
 	docsCmd := &cobra.Command{
 		Use:  "docs",
 		Args: cobra.NoArgs,
 		RunE: helpRunE,
 	}
-	docsCmd.AddCommand(movedStub("lint", "abcd lint docs"))
 	// `cite` maintains the baseline `lint docs` enforces: the refresh does the
 	// live fetching the gate refuses to do, and confirm closes the manual queue.
 	docsCmd.AddCommand(newCiteCommand(asJSON))
@@ -3358,7 +3356,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 				return err
 			}
 			// Vintage + staleness from the shared comparator (itd-111): the same
-			// source `abcd version` and the session-start notice read. Computed
+			// source `abcd --version` and the session-start notice read. Computed
 			// once and carried in both the JSON and the text render.
 			vin := ahoy.Vintage(cwd)
 			out := ahoyOutput{DetectionResult: res, Vintage: vin.DisplayVintage(), Staleness: vin.Staleness()}
@@ -3591,9 +3589,6 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 		},
 	})
 
-	// The modes' old sub-verb spellings, one release as stubs.
-	ahoyCmd.AddCommand(movedStub("dry-run", "abcd ahoy --dry-run"))
-	ahoyCmd.AddCommand(movedStub("identity-check", "abcd ahoy --identity"))
 	ahoyCmd.AddCommand(newAhoyRemoteCommand(asJSON))
 	ahoyCmd.AddCommand(newAhoyConnectCommand(asJSON))
 	ahoyCmd.AddCommand(newAhoyCredentialCommand(asJSON))
@@ -3668,15 +3663,14 @@ func runAhoyRemote(cmd *cobra.Command, cwd string, asJSON bool) error {
 // newAhoyRemoteCommand builds `ahoy remote apply` — the write half of abcd's
 // remote config surface for a managed repo (itd-153), and the only thing in abcd
 // that mutates state outside this machine, so it is a verb a person types rather
-// than a step any other command performs. The read half is `ahoy --remote`; the
-// bare `ahoy remote` it moved from answers with that flag for one release
-// (itd-2609212130136102).
+// than a step any other command performs. The read half is `ahoy --remote`
+// (itd-2609212130136102); bare, `ahoy remote` prints its sub-verb.
 func newAhoyRemoteCommand(asJSON *bool) *cobra.Command {
 	remoteCmd := &cobra.Command{
 		Use:  "remote",
 		Args: cobra.NoArgs,
+		RunE: helpRunE,
 	}
-	markMoved(remoteCmd, "abcd ahoy --remote")
 	var remoteYes bool
 	applyCmd := &cobra.Command{
 		Use:  "apply",

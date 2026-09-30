@@ -32,8 +32,8 @@ var bareRenderExceptions = map[string]string{
 		"`history staged`, the shape the naming rule forbids, while bare prints its sub-verbs",
 	"ideate": "the gauntlet runs in the host on a named idea, and the verb keeps no " +
 		"standing state beyond the records it writes, so bare prints its usage and sub-verbs",
-	"identity": "its report moved to `abcd lint identity`; for one release bare names " +
-		"that invocation and exits non-zero, because its init and render sub-verbs stay",
+	"identity": "a parent of its init and render sub-verbs; its report is `abcd lint " +
+		"identity`, so bare prints its sub-verbs",
 	"launch": "its state is the release preview, asked for with --dry-run; bare refuses " +
 		"(exit 1) naming the flag, because publishing is not wired",
 	"report": "it files a report from a file or the editor, so bare opens the editor on " +

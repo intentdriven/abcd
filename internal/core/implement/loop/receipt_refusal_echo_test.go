@@ -58,7 +58,7 @@ func TestReceiptRefusalsDoNotEchoThePayload(t *testing.T) {
 			rc := goodReceipt(t, runID, l, dir, c1)
 			path := writeReceipt(t, dir, tc.edit(t, repo, l, dir, &rc))
 
-			_, err := Receipt(repo.Root(), runID, path, DefaultSteps(), Options{})
+			_, err := Receipt(repo.Root(), runID, path, DefaultStages(), Options{})
 			r := mustRefusal(t, err)
 			for _, leak := range tc.leaks {
 				if leak == "$HOME" {

@@ -29,6 +29,7 @@ repo whose stamp says it is current.
 | `credential` | — | shipped |
 | `doctor` | — | shipped |
 | `install` | — | shipped |
+| `remote` | — | shipped |
 | `remote apply` | gate | shipped |
 | `uninstall` | — | shipped |
 
@@ -37,9 +38,8 @@ Bare `/abcd:ahoy` shows read-only status and mutates nothing. Four read-only
 modes of the same act — the dry run, the identity check, the remote report and
 the provider board — are flags on the bare verb rather than sub-verbs, one at a time, and the
 appendix lists them. A sub-verb is a distinct action, a flag a mode of the same
-one (itd-2609212130136102). For one release each
-mode's retired sub-verb spelling answers with its flag and exits non-zero, and
-the release after removes it. The slash command dispatches every sub-verb and
+one (itd-2609212130136102); the modes' former sub-verb spellings are unknown
+commands. The slash command dispatches every sub-verb and
 mode but the identity check, the write verbs included, and each announces that
 it writes before it runs. The identity check is a plain command-line
 entrypoint, because its exit code is the whole point of it and its home is a
@@ -842,8 +842,6 @@ Sub-verbs: none.
 | `--yes` | bool |
 
 ### `abcd ahoy remote`
-
-Bare, it moved to `abcd ahoy --remote`.
 
 Sub-verbs: `abcd ahoy remote apply`.
 

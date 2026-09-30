@@ -46,9 +46,9 @@ func newImplementCommand(asJSON *bool) *cobra.Command {
 			"a step that is not a claim). `log` appends the run's other events, and `report`\n" +
 			"derives the comparison of the modes from the log.\n\n" +
 			"`status`, `step` and `receipt` drive the implement loop `abcd build` starts, whose state\n" +
-			"lives in this checkout's local tier: `step` performs one step and exits, naming the\n" +
-			"agent, brief and receipt path when a step hands work to an agent, and `receipt`\n" +
-			"completes that step once the receipt verifies.\n\n" +
+			"lives in this checkout's local tier: `step` performs the next stage of the current lane\n" +
+			"and exits, naming the agent, brief and receipt path when a stage hands work to an agent,\n" +
+			"and `receipt` completes that stage once the receipt verifies.\n\n" +
 			"Exit 2 on a refusal (an unrecognised input, a session that has not joined, a bound\n" +
 			"the session's role does not permit), exit 3 on contention (the record is claimed by\n" +
 			"another session, or the run state is locked): back off and take other work.",

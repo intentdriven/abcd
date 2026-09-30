@@ -30,9 +30,10 @@ policy over every committed file through `privacy-hygiene`, and the site
 through `site-gates`. The outbound target alone stays out of the bare run,
 because its subject is text the caller hands it, not the repository. The verbs
 that WRITE stay where they were, under the docs, site and identity verbs: the
-citation baseline, the site render and the recording of the identity block. For
-one release each check's retired spelling answers with its target and exits
-non-zero.
+citation baseline, the site render and the recording of the identity block.
+No check runs under those verbs any more: the docs and site verbs' former check
+sub-verbs are unknown commands, and the identity verb, bare, lists its
+sub-verbs.
 
 ## Sub-verbs
 

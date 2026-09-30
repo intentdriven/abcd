@@ -69,7 +69,7 @@ func (e *explorer) statusTag(r statusblock.Row) string {
 	switch {
 	case r.Lane != nil:
 		parts := []string{}
-		for _, p := range []string{r.Lane.Lane, r.Lane.Step, r.Lane.Awaiting} {
+		for _, p := range []string{r.Lane.Lane, r.Lane.Stage, r.Lane.Awaiting} {
 			if p != "" {
 				parts = append(parts, escapeText(p))
 			}

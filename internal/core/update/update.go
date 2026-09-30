@@ -217,7 +217,7 @@ func Plan(t ahoy.UpdateTarget) *Refusal {
 			detail += ", which resolves to " + resolvedPath + ","
 		}
 		detail += " is not something abcd owns: it is not abcd's dev shim, not a link into a plugin install, not itself a regular file abcd can verify, and no provenance record abcd wrote names it; abcd never clobbers a binary it does not own." +
-			" A version of \"dev\" from `abcd version` is a build label (any locally built binary carries it), not the dev-shim install shape"
+			" A version of \"dev\" from `abcd --version` is a build label (any locally built binary carries it), not the dev-shim install shape"
 		if t.LaterOwned != "" {
 			detail += "; a working abcd install sits shadowed behind it at " + fsutil.RedactHome(t.LaterOwned)
 		}

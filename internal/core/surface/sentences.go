@@ -35,7 +35,7 @@ var sentences = map[string]string{
 	"abcd ahoy install": "Apply the install gaps the detection finds: " +
 		"Writes .abcd/, the name-guard hooks and the PATH entry, and installs a tool only on a yes; refuses a stale binary.",
 	"abcd ahoy remote": "Enable GitHub secret scanning and push protection: " +
-		"Writes nothing bare, only the settings and their mirror; refuses bare, naming `abcd ahoy --remote`.",
+		"Writes nothing bare, only the settings and their mirror through apply; refuses an unknown sub-verb.",
 	"abcd ahoy remote apply": "Enable GitHub secret scanning and push protection on this repository: " +
 		"Writes both settings and their mirror; refuses an unconfirmed run.",
 	"abcd ahoy uninstall": "Remove abcd from this repository, leaving .abcd/ in place: " +
@@ -166,7 +166,7 @@ var sentences = map[string]string{
 		"Writes the dated research record; refuses without an idea slug or --verdict-json.",
 
 	"abcd identity": "Record the identity block and propose drift corrections: " +
-		"Writes nothing bare, only the block and its pointer; refuses bare, naming `abcd lint identity`.",
+		"Writes nothing bare, only the block and its pointer; refuses an unknown sub-verb.",
 	"abcd identity init": "Record this repository's identity block and the pointer to it: " +
 		"Writes the block and the pointer; refuses without --title and --tagline when no block exists.",
 	"abcd identity render": "Print the correction for every drifted surface as a unified diff: " +
@@ -188,7 +188,7 @@ var sentences = map[string]string{
 		"Writes one line; refuses the claim, window, and session events their own verbs write.",
 	"abcd implement mode": "Open a window by logging its division mode: " +
 		"Writes a window_mode line; refuses any session but the first.",
-	"abcd implement receipt": "Hand back the receipt an agent step of a loop run awaits: " +
+	"abcd implement receipt": "Hand back the receipt an agent stage of a loop run awaits: " +
 		"Writes the run's state when the receipt verifies; refuses a receipt that does not verify.",
 	"abcd implement release": "Release this session's claim on a record: " +
 		"Writes the release and a claim_released line; refuses a claim another session holds.",
@@ -196,8 +196,8 @@ var sentences = map[string]string{
 		"Writes nothing; refuses --date and --log together.",
 	"abcd implement status": "Render the implement loop's runs in this checkout, lane by lane: " +
 		"Writes nothing; refuses a --run naming no run.",
-	"abcd implement step": "Perform the next step of an implement loop run and exit: " +
-		"Writes the run's state, the lane's worktree or brief; refuses a step this abcd does not carry.",
+	"abcd implement step": "Perform the next stage of an implement loop run's lane and exit: " +
+		"Writes the run's state, the lane's worktree or brief; refuses a stage this abcd does not carry.",
 
 	"abcd inbox": "List the reports managed repositories filed back to abcd, newest first: " +
 		"Writes nothing; refuses any argument.",

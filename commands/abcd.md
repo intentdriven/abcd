@@ -81,7 +81,7 @@ a `status:` heading with the three counts, one line per intent under `Now:` and
 `Next:`, and a closing `Later: N intents` line that gives Later as a count
 alone: its rows are in the JSON and on the site's Status page. Now is every
 intent a build run has in a lane (each row's `lane` names the run, the lane,
-its next step and the role it waits on), then the intent marked `next_up`; Next
+its next stage and the role it waits on), then the intent marked `next_up`; Next
 is every planned intent the readiness gate reports READY; Later is every
 planned intent the gate refuses, its `failing_checks` named, then the drafts.
 An intent in a lane is listed under Now only, never also under Next or Later.

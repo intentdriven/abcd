@@ -45,7 +45,7 @@ func TestReceiptRefusalsSealAGluedToken(t *testing.T) {
 			rc := goodReceipt(t, runID, l, dir, c1)
 			path := writeReceipt(t, dir, tc.edit(&rc))
 
-			_, err := Receipt(repo.Root(), runID, path, DefaultSteps(), Options{})
+			_, err := Receipt(repo.Root(), runID, path, DefaultStages(), Options{})
 			r := mustRefusal(t, err)
 			for _, s := range []string{err.Error(), r.Reason} {
 				if strings.Contains(s, tc.token) || strings.Contains(s, tc.body) {

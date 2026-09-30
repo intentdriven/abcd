@@ -1,6 +1,6 @@
 ---
 name: identity
-description: "Record the identity block and propose drift corrections: Writes nothing bare, only the block and its pointer; refuses bare, naming `abcd lint identity`."
+description: "Record the identity block and propose drift corrections: Writes nothing bare, only the block and its pointer; refuses an unknown sub-verb."
 argument-hint: "[render|init]"
 block: agents
 ---

@@ -498,6 +498,12 @@ above, and never withholds readiness. The close below reads it too: a
 `--remainder` close carries the steps not marked landed into the spec it mints,
 and refuses, writing nothing, when the section cannot be read as steps.
 
+In the build loop, "step" names this and nothing else: the loop (`/abcd:build`) lands each
+step as one lane and takes the lane through its **stages** — `worktree`,
+`brief`, `implement`, `validate`, `land`; `abcd implement step` performs one
+stage, and its payloads name the lane's stage under `stage` and the spec's step
+under `spec_step`.
+
 ## Ship: close the spec in the change that lands the work
 
 The loop has a last step, and nothing runs it for you. `abcd intent plan` moves
