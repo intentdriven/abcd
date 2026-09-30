@@ -1731,8 +1731,10 @@ Hand back the receipt an agent stage of a loop run awaits: Writes the run's stat
 
 **Usage:** `abcd implement receipt <path> [--run <run-id>] [flags]`
 
-Hand back the receipt the run's awaiting lane named when its stage handed work to an
-agent. The path must be the one the stage named. The stage's verifier checks it; a
+Hand back the receipt a lane of the run named when its stage handed work to an agent.
+The path is looked up among every outstanding await of the run, and the lane it belongs
+to advances; a path no await names is refused, naming the awaits there are, and frees
+nothing. The stage's verifier checks it; a verified receipt frees its slot, and a
 receipt that verifies completes the stage and the lane moves to its next stage, and one
 that does not is refused naming what is missing, with the lane left where it was. A
 stage whose verifier this abcd does not carry is refused naming the spec piece that
@@ -1868,15 +1870,26 @@ and creates nothing. Exit 2 when --run names no run.
 
 Perform the next stage of an implement loop run's lane and exit: Writes the run's state and the lane's stages; refuses a push with no preflight receipt.
 
-**Usage:** `abcd implement step [--run <run-id>] [flags]`
+**Usage:** `abcd implement step [--run <run-id>] [--release <lane-id> | --discard <lane-id>] [flags]`
 
-Perform the next stage of the run's current lane, write the state, and exit. At a stage
-that hands work to an agent, the result names the agent to start, the brief it is handed
-and the path its receipt goes to; the lane then advances only on
-`abcd implement receipt`, and running `implement step` again re-tells the same thing and
-moves nothing. A lane lands one step of the spec; its stages are how it gets there, and
-when a lane is done the spec's next pending step opens the next lane, and the run
-record names it. A complete run says so.
+Perform the run's next move, write the state, and exit. At a stage that hands work to
+an agent, the result names the agent to start, the brief it is handed and the path its
+receipt goes to; that work advances only on `abcd implement receipt`. A lane lands one
+step of the spec; its stages are how it gets there. A complete run says so.
+
+A run works in parallel up to its ceiling (--sub-agents, pace.sub_agents): each agent
+handed work and not yet verified is a slot, implementers and validators alike. Each call
+first performs a stage the binary owns on any lane (the worktree, the brief, a round's
+close, the landing's steps), which takes no slot; then, while a slot is free, it hands
+out the first waiting work: a lane already open before a new one, the lower spec step
+first, a round's validators in order, then a new lane's implementer. A call that finds
+the ceiling reached hands out nothing, exits 0 naming every lane alive with the role and
+receipt it awaits, and records the held work with the time it was first held. A lane
+opens for a spec step once every step it needs has landed: its `- needs:` line, or by
+default every earlier step. Landing is one lane at a time; a lane whose sibling landed
+since its base is synced first (the default branch merged in with a merge commit, never a
+rebase) and judged by a fresh round, and a conflicting sync goes to a fresh implementer;
+a sync counts no fix round.
 
 The lane's stages, in order: worktree makes the lane's worktree in the machine-scoped
 store, ~/.abcd/worktrees/<root-sha>/<run-id>-<lane-id>, on a branch build/<run-id>-<lane-id>
@@ -1884,10 +1897,10 @@ cut from the default branch; brief renders the lane's brief from that base (the 
 the spec, the conventions of AGENTS.md, the decisions the intent cites, and the spec
 steps before the lane's with what landed each) into the lane's directory of the run;
 implement hands the lane to a fresh implementer and awaits
-its receipt; validate hands the lane's head to validators that did not implement it, one
-fresh agent at a time — a ruthless-reviewer, a security-reviewer and, on the lane whose
-landing closes the spec and ships the intent, an intent-auditor over the whole delivery,
-from the base of the run's first lane to that lane's head (a lane that does not close the
+its receipt; validate hands the lane's head to validators that did not implement it, each
+a fresh agent, side by side up to the ceiling — a ruthless-reviewer, a security-reviewer
+and, on the lane whose landing closes the spec and ships the intent, an intent-auditor over
+the whole delivery, each of the run's lanes' own diff (a lane that does not close the
 spec takes no audit) — and records each verdict itself, parsed from the validator's own
 return. A round one of them did not pass goes to a fresh implementer, who applies each
 finding or rejects it in writing in its report, and the next round judges the new head
@@ -1896,8 +1909,14 @@ which is refused naming the report. The audit passes only when every criterion i
 criterion it could not decide (INCONCLUSIVE) fails the round as a not-met one does, and
 goes to the fresh implementer with the finding. A round that does not pass once the lane
 has taken the run's fix rounds (--fix-rounds, bundled 3) hands the lane back instead: it
-stops as unachievable, the result and the run record name the last round's findings, the
-run starts nothing further for it, and every later step is refused naming the hand-back.
+stops as unachievable, the result and the run record name the last round's findings, and
+the run starts nothing further for it. Its sibling lanes finish: no new lane opens, no
+lane closes the spec, and a sibling whose round passes is held before its push, or before
+arming once its pull request is open (an armed one is disarmed); once nothing is left to
+move, a step is refused naming the hand-back and each held lane. --release <lane-id>
+lands a held lane as it is; --discard <lane-id> closes its pull request, removes its
+worktree and branch, and leaves its step unlanded. Either is refused, changing nothing,
+for a lane that is not held or while any lane still has work.
 land follows a passing round, one step per call: it checks the lane's worktree is clean
 at the judged head; on the lane that closes the spec it runs `spec close` in the lane's
 worktree and ingests the audit that lane took, and for every capture the lane's receipts
@@ -1929,7 +1948,9 @@ refusal, exit 3 on a pause or a locked run state.
 **Flags:**
 
 ```
-      --run string   the run to step (run-<16 digits>); the one run in progress when omitted
+      --discard string   discard a held lane (lane-<n>): close its pull request, remove its worktree and branch
+      --release string   land a held lane as it is (lane-<n>), once no lane has work left
+      --run string       the run to step (run-<16 digits>); the one run in progress when omitted
 ```
 
 ### `abcd inbox`

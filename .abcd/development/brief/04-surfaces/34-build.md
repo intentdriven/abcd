@@ -187,9 +187,10 @@ minutes so the window arithmetic stays far inside the clock's range and a typed
 extra digit is refused rather than run. A pause of 0 minutes is a run that does
 not pause.
 
-The ceiling is recorded with the run; this build does not count lanes against
-it (criterion 6), and the budget check and the rate-limit checkpoint (criteria
-7 and 8) wait on a runner that reports its quota.
+The ceiling binds (criterion 6, ruling DR6): the loop counts the agents out
+from the state, implementers and validators together, and starts nothing above
+the ceiling. The budget check and the rate-limit checkpoint (criteria 7 and 8)
+wait on a runner that reports its quota.
 
 ## The state file
 
@@ -206,7 +207,16 @@ repository abcd manages has one, so a run is managed-only by construction. Each
 run directory is created one level at a time and proved real, the state file is
 replaced atomically inside an `os.Root`, and the reader decodes strictly,
 refusing an unknown field, a schema version it does not know, or a file stored
-under a run id it does not name. The state is schema version 7. Version 7
+under a run id it does not name. The state is schema version 8. Version 8
+made a run work in parallel up to its ceiling (ruling DR6): a lane's `awaits`,
+a list replacing the one `awaiting`, the run's `waiting` (the work the ceiling
+holds back, each item with the time first held), a lane's `syncs` (each merge of
+the default branch after a sibling landed) and `hold` (a lane held after a
+sibling's hand-back, ruling DR6c), a pending step's `needs`, and the lane
+stages `held` and `discarded`. A file of version 7 or lower reads as a run
+whose lanes await zero or one agent, its `awaiting` carried over to a one-entry
+`awaits`; one carrying what only version 8 writes is refused, and so is a
+version-8 file carrying `awaiting`. Version 7
 added the landing (a lane's `landing`, the implementers' `receipts` it verified
 with the model each runner reported, and the captures its receipts declared
 fixed, `resolves`) and the run's captured `transcripts`. Version 6
@@ -214,7 +224,7 @@ added the fix-round cap (ruling DR1): the pace's `fix_rounds` and a lane's
 `hand_back`. Version 5 added the validate stage's record (a lane's
 `validation`). Each earlier version is the next one's strict subset, read as a
 run that predates the addition (a version-5 run runs on the bundled cap) and
-written back at version 7 by its next mutation; an earlier version carrying what
+written back at version 8 by its next mutation; an earlier version carrying what
 only a later one writes is refused. Version 4
 renamed the lane's stage (BU1, iss-2609291313276243): a lane's and a record
 line's `step` became `stage`, so "step" names only the spec's steps (`spec_step`,
@@ -254,13 +264,12 @@ the run as its own peer. Only the key's shape is checked before the lookup.
 
 A spec's steps and a lane's stages are two words for two things (BU1,
 iss-2609291313276243): each spec step lands as one lane, and the loop takes the
-lane through its stages. The step verb performs one stage.
+lane through its stages. The step verb performs one move of the run.
 
-A host session drives the loop one stage at a time (decision 5's default). The
+A host session drives the loop one move per call (decision 5's default). A
 lane's stages run in a fixed sequence: the worktree, the brief, the implementer,
 the validators, the landing. Each invocation takes the lock, reads the state,
-performs the current lane's next stage and writes the state once, after the
-stage succeeds. A stage that fails, or a process killed inside one, leaves the
+performs one move and writes the state once, after the move succeeds. A stage that fails, or a process killed inside one, leaves the
 state as it was, so the next invocation performs that stage again; a stage the
 state records as done is never performed twice (criterion 7). A stage's body is
 therefore written to find what it made last time. The result names the stage
@@ -268,10 +277,36 @@ the call completed as `performed_stage` and the lane's next as `stage`.
 
 A stage that hands work to an agent does not complete by itself: the lane then
 awaits, naming the agent's role, the brief it is handed and the path its receipt
-goes to (criterion 8). Asking again re-tells the same thing and moves nothing,
-and the lane advances only when that receipt is handed back at that path and its
-verifier accepts it. When a lane is done, the next pending spec step opens the
-next lane, so the spec's steps land one lane at a time.
+goes to (criterion 8), and the lane advances only when that receipt is handed
+back at that path and its verifier accepts it.
+
+A run works in parallel up to its ceiling (ruling DR6, spc-2609202134341288). A
+slot is one outstanding await on any lane; the count is the awaits in the state
+file. Each move first performs a stage the binary owns on any lane (the
+worktree, the brief, a round's close, a landing step, a sync, a hold), which
+takes no slot; when the move needs an agent it takes the first waiting item: an
+open lane's validators or fix and sync implementers before a new lane, the lower
+spec step first, a round's validators in the order the round lists them, then
+the implementer of a new lane. A move that finds the ceiling reached hands out
+nothing, names every lane alive with what it awaits, and records the held work
+under `waiting`; the move that later serves it records the whole minutes it
+waited. A lane opens for a spec step only once every step it needs has landed:
+its `- needs:` line, or by default every step before it (ruling DR6b), so a spec
+that declares no needs lands its steps one lane at a time. A lane's own landing
+refused (a preflight receipt missing, a pull request not merged) holds only that
+lane; the move goes to another and names the refusal under `blocked`.
+
+Landing is one lane at a time, the lower spec step first. A lane whose sibling
+landed since its base is synced before its landing begins: the default branch is
+merged into its branch with a merge commit, never a rebase, and a fresh round
+judges the merge head. A conflicting merge is aborted with the branch unchanged
+and goes to a fresh implementer with a sync brief; its receipt must carry the
+merged sha as an ancestor of its head. A sync counts no fix round. The closing
+lane reaches its landing with no step pending, no other lane open and none handed
+back; its audit reads each of the run's lanes' own diff. After a hand-back the
+siblings finish, no new lane opens, no lane closes the spec, and a lane whose
+round passes is held before its push or its arming (an armed one is disarmed),
+until the person releases or discards it (ruling DR6c).
 
 The loop keeps the run's window clock (criteria 4 and 5). A new run's first
 window opens at its start. Once the window's working minutes have elapsed, the

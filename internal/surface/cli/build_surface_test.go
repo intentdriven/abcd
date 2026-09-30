@@ -456,3 +456,38 @@ func TestBuildWithoutASessionSaysItHoldsNoClaimInJSON(t *testing.T) {
 		t.Fatalf("build --json without --session: claim = %s; want null", claim)
 	}
 }
+
+// TestImplementStepReleaseAndDiscardAreWired: `implement step --release` and
+// `--discard` reach the loop's decision over a held lane (ruling DR6c): a lane
+// that is not held is refused naming it, with the state unchanged, and the two
+// flags together are refused; status names the slots in use.
+func TestImplementStepReleaseAndDiscardAreWired(t *testing.T) {
+	repo := buildRepo(t)
+	var res struct {
+		State string `json:"state"`
+	}
+	if err := json.Unmarshal([]byte(mustImplement(t, "build", "itd-10", "--json")), &res); err != nil {
+		t.Fatal(err)
+	}
+	statePath := filepath.Join(repo.Root(), filepath.FromSlash(res.State))
+	before, err := os.ReadFile(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, flag := range []string{"--release", "--discard"} {
+		ref := refusalDocs(t, 2, "implement", "step", flag, "lane-1", "--json")
+		if ref["stage"] != "held" || !strings.Contains(ref["reason"].(string), "lane-1 is worktree, not held") {
+			t.Fatalf("%s of a lane that is not held is refused naming it: %v", flag, ref)
+		}
+	}
+	ref := refusalDocs(t, 2, "implement", "step", "--release", "lane-1", "--discard", "lane-1", "--json")
+	if !strings.Contains(ref["reason"].(string), "one decision each") {
+		t.Fatalf("the two flags together are refused: %v", ref)
+	}
+	if after, _ := os.ReadFile(statePath); !bytes.Equal(before, after) {
+		t.Fatal("a refused decision must leave the state unchanged")
+	}
+	if out := mustImplement(t, "implement", "status"); !strings.Contains(out, "slots:   0 of 2 in use") {
+		t.Fatalf("status names the slots in use out of the ceiling:\n%s", out)
+	}
+}

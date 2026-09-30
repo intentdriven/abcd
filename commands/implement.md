@@ -199,27 +199,51 @@ last, and a fourth reads its record at the end:
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/abcd" implement status [--run <run-id>] --json
-"${CLAUDE_PLUGIN_ROOT}/abcd" implement step [--run <run-id>] --json
+"${CLAUDE_PLUGIN_ROOT}/abcd" implement step [--run <run-id>] [--release <lane-id> | --discard <lane-id>] --json
 "${CLAUDE_PLUGIN_ROOT}/abcd" implement receipt <path> [--run <run-id>] --json
 "${CLAUDE_PLUGIN_ROOT}/abcd" implement record [--run <run-id>] [--transcript <path>]... --json
 ```
 
 `status` renders every run (or the one `--run` names): its pace and the layer
-each number came from, whether it is paused and until when, its lanes, each
-lane's spec step and next stage, what an awaiting lane waits on, the pending spec
-steps and the run record. It writes nothing.
+each number came from, the slots in use out of its ceiling and the work the
+ceiling holds back, whether it is paused and until when, its lanes, each lane's
+spec step and next stage, each agent a lane awaits, a held lane with the lane
+whose hand-back caused it, the head judged, the step it stopped before and the
+two flags that decide it, the pending spec steps and the run record. It writes
+nothing.
 
 A spec's **steps** and a lane's **stages** are two things: each spec step lands
 as one lane, and the loop takes the lane through its stages. `step` performs the
-next stage of the current lane and exits; the result names the stage it
-completed under `performed_stage` and the lane's next one under `stage`. When a
-stage hands work to an agent the result's `awaiting` names the `role` to start as a fresh agent,
-the `brief` to hand it and the `receipt` path it writes; the lane then moves
-only when `receipt` is called with that path and the receipt verifies. A `step`
-while the lane awaits re-tells the await and moves nothing; a complete run says
-`complete: true`. When a lane is done, the spec's next pending step opens the
-next lane and the run record names it. A stage that fails leaves the state as it
-was, so the next call performs it again, and a completed stage is never repeated.
+run's next move and exits; the result names the lane, the stage it completed
+under `performed_stage` and the lane's next one under `stage`. When a stage
+hands work to an agent the result's `awaiting` names the `role` to start as a
+fresh agent, the `brief` to hand it and the `receipt` path it writes; that work
+moves only when `receipt` is called with that path and the receipt verifies. A
+complete run says `complete: true`. A stage that fails leaves the state as it
+was, so the next call performs it again, and a completed stage is never
+repeated.
+
+A run works in parallel up to its ceiling, the pace's `sub_agents`: each agent
+handed work and not yet verified is a slot, implementers and validators alike,
+and the result carries `slots`, `ceiling` and `alive` (every lane with anything
+left, its stage and each await). Each `step` first performs a stage the binary
+owns on any lane (the worktree, the brief, a round's close, a landing step, a
+sync, a hold), which takes no slot. Then, while a slot is free, it hands out the
+first waiting work: a lane already open before a new one, the lower spec step
+first, a round's validators in order, then the implementer of a new lane. A
+`step` that finds the ceiling reached hands out nothing, exits 0 with
+`ceiling_reached: true` naming every await, and records the held work under the
+run's `waiting` with the time it was first held; the move that later serves it
+records the minutes it waited. A lane opens for a spec step only once every step
+it needs has landed: the step's `- needs:` line, or by default every step
+before it. A lane whose own landing is refused (no preflight receipt yet, a
+pull request not merged) holds only itself: the call moves another lane and
+names the refusal under `blocked`, and gives the refusal only when nothing else
+moves.
+
+`receipt` looks the path up among every outstanding await of the run and
+advances the lane it belongs to; a path no await names is refused, naming the
+awaits there are, and frees nothing.
 
 `step` keeps the run's window clock, on the pace the run started with
 (`/abcd:build`). Once the window's working minutes have elapsed, `step` starts
@@ -266,18 +290,47 @@ last two) with no `resolves` and no definition of done: `receipt` then discards
 the lane's worktree and branch, ends the lane at `handed-back` before the
 validators, and the result's `hand_back` names the kind, the reason, the home
 and the `discarded` head. `/abcd:drain` routes it by kind.
-`validate` hands the lane's head to fresh validators one at a time and records
-each verdict from the validator's own return; the fidelity audit passes only
+`validate` hands the lane's head to fresh validators, side by side up to the
+ceiling, and writes a fix brief only once every validator of the round has
+returned; it records each verdict from the validator's own return; the fidelity audit passes only
 when every criterion is met, so an undecided (`INCONCLUSIVE`) criterion sends
 the lane to a fresh implementer as a not-met one does. A lane that has taken
 the run's fix rounds (`build --fix-rounds`, bundled 3) and still does not pass
 is handed back: the result's `hand_back` names the verdict `unachievable` and
-the last findings, and every later `step` refuses at the `handed-back` stage.
-The run stays in progress, so `build next` passes over its intent; no verb
-clears it, and the refusal names the way out: once the intent is replanned,
-remove the run's directory, `.abcd/.work.local/run/<run-id>`.
+the last findings, and the loop starts nothing further for it. Its sibling
+lanes finish under the same ceiling, window and fix rounds; no new lane opens,
+pending steps stay pending, and no lane closes the spec. A sibling whose round
+passes is **held**: its stage is `held` and its `hold` names the `cause` (the
+handed-back lane), the `head` its round judged and `before`, the landing step it
+stopped before (`push`, or `arm` once its pull request is open; an armed one is
+disarmed with `gh pr merge <n> --disable-auto`). Once nothing is left to move,
+every `step` refuses at the `handed-back` stage naming the hand-back and each
+held lane. The person decides each held lane, one per invocation, once no lane
+has work left:
 
-`land` takes one `step` per move, and the lane stays at `land` until the last:
+- `step --release <lane-id>` lands it as it is: its stage returns to `land` and
+  its landing resumes at the step it stopped before.
+- `step --discard <lane-id>` does not land it: its pull request is closed if it
+  opened one, its worktree and branch are removed, its stage is `discarded`, and
+  its spec step stays unlanded.
+
+Either is refused, changing nothing, for a lane that is not held or while a lane
+still has work. The run stays in progress, so `build next` passes over its
+intent; no verb clears it, and the refusal names the way out: once the intent
+is replanned, remove the run's directory, `.abcd/.work.local/run/<run-id>`.
+
+`land` takes one `step` per move, and the lane stays at `land` until the last.
+Landing is one lane at a time: a lane waits at its landing, holding no slot,
+while a sibling's landing is under way, the lower spec step landing first.
+Before a lane's landing begins, a sibling of the run that landed since its base
+is merged in (a **sync**): the default branch is merged into the lane's branch
+with a merge commit in its worktree, never a rebase, and a fresh round judges
+the merge head. A merge that conflicts is aborted with the branch unchanged, and
+a fresh implementer is handed a sync brief naming each conflicting path and the
+sibling lanes; its receipt must carry the merged sha as an ancestor of its head.
+A sync counts no fix round. The closing lane, which reaches its landing with no
+step pending, no other lane open and none handed back, takes the fidelity audit
+over each of the run's lanes' own diff.
 
 1. It checks the lane's worktree is clean and its branch is at the head the
    validators judged.

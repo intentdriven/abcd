@@ -144,7 +144,7 @@ func TestTheBriefNamesWhatAnEarlierLaneOfTheRunBuilt(t *testing.T) {
 		if i < 0 {
 			t.Fatal("the run completed before the second lane was briefed")
 		}
-		if a := st.Lanes[i].Awaiting; a != nil {
+		if a := st.Lanes[i].awaiting(); a != nil {
 			if err := os.WriteFile(a.Receipt, []byte("{}\n"), 0o600); err != nil {
 				t.Fatal(err)
 			}

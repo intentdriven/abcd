@@ -23,7 +23,7 @@ func handBackLane(st *State, lane *Lane, hb HandBack, note string, now time.Time
 	hb.At = now
 	lane.HandBack = &hb
 	lane.Stage = StageHandedBack
-	lane.Awaiting = nil
+	lane.Awaits = nil
 	if note == "" {
 		note = handBackSummary(st.Intent, hb)
 	}
@@ -79,15 +79,46 @@ func handBackMove(st State, lane Lane) string {
 		"; " + keyOf(st) + " is the person's to replan from those findings"
 }
 
-// handedBackRefusal is every later step's answer on a handed-back lane.
-func handedBackRefusal(st State, lane Lane) error {
+// handedBackRefusal is a step's answer once a lane of the run was handed back
+// and nothing is left to move but wait for the person (ruling DR6c): it names
+// the hand-back and every held lane with the way out for each.
+func handedBackRefusal(st State) error {
+	var lane Lane
+	for _, l := range st.Lanes {
+		if l.Stage == StageHandedBack {
+			lane = l
+			break
+		}
+	}
 	reason := lane.ID + " was handed back"
 	if lane.HandBack != nil {
 		reason = handBackSummary(keyOf(st), *lane.HandBack)
 	}
+	var held []string
+	for _, l := range st.Lanes {
+		if l.Stage == StageHeld && l.Hold != nil {
+			held = append(held, fmt.Sprintf("%s is held at %s before its %s (%s)", l.ID, shortSHA(l.Hold.Head), l.Hold.Before, heldWayOut(l.ID)))
+		}
+	}
+	if len(held) > 0 {
+		reason += "; " + strings.Join(held, "; ")
+	}
 	return refuse(string(StageHandedBack), "", lane.ID, reason,
 		"the loop starts nothing further for this lane; "+keyOf(st)+" is the person's to replan from the findings the reason names; "+
 			handedBackWayOut(st))
+}
+
+// heldWayOut names the person's two choices over a held lane.
+func heldWayOut(laneID string) string {
+	return "land it as it is with `abcd implement step --release " + laneID + "`, or discard it with `abcd implement step --discard " + laneID + "`"
+}
+
+// heldMove is what the caller is told about a held lane.
+func heldMove(lane Lane) string {
+	if lane.Hold == nil {
+		return lane.ID + " is held"
+	}
+	return fmt.Sprintf("%s is held after %s's hand-back, at %s before its %s: %s", lane.ID, lane.Hold.Cause, shortSHA(lane.Hold.Head), lane.Hold.Before, heldWayOut(lane.ID))
 }
 
 // handedBackWayOut names the one way past a handed-back run. The run stays
