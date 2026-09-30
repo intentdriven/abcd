@@ -38,7 +38,7 @@ None stated.
 
 - **The field**: `target_release: vX.Y.Z` (or `next`) on a planned intent, validated as a version, written by `intent plan --target` or `intent target <itd-N> <version>`; the record lint refuses it on a shipped or superseded intent.
 - **The report**: `launch --dry-run` and the cut list every targeted intent not yet shipped, in text, in the receipt and in `--json`; the cut proceeds.
-- **The move**: at the cut, each unshipped target is rewritten to the next version in the change that rolls the changelog, and the changelog names the move.
+- **The move**: at the cut, each unshipped target the cut passes becomes `next` (whatever the following release is numbered) in the change that rolls the changelog, and the changelog names the move.
 - **The board**: the status block marks a targeted intent with its target in Next and Later.
 
 ## What's Out of Scope
@@ -54,6 +54,7 @@ Ruled by the product thinker on 2026-09-21, in the interview that filed and plan
 1. Report, never refuse (adr-2609212115255771, decision 3).
 2. The target moves forward at the cut, so the field never goes stale.
 3. The field is optional and lives on the intent alone.
+4. A target the cut passes becomes `next`, whatever the following release is numbered, never a version number: the product thinker's ruling BS1 of 2026-09-29 (the dated entry of that day in `.abcd/work/DECISIONS.md`). The version a cut derives is the one it cuts, so a number written at the cut would name a release already out, which decision 2 exists to prevent. A target the cut passes is `next` (it named this release) or a tag at or below the one cut; a tag above it is still ahead and stays. Criterion 3 is worded to the ruling.
 
 ## Open Questions
 
@@ -63,12 +64,14 @@ _None open._
 
 - **Given** a planned intent, **when** `intent target <itd-N> v0.11.0` runs, **then** the record carries `target_release: v0.11.0`, and the same on a shipped or superseded intent is refused by the verb and by the lint.
 - **Given** a targeted intent still planned, **when** `launch --dry-run` or the cut runs, **then** it is listed as targeted and unshipped in text, the receipt and `--json`, and the cut proceeds.
-- **Given** the cut is written, **when** the changelog is rolled, **then** each unshipped target is rewritten to the next version in the same change and the changelog names the move.
+- **Given** the cut is written, **when** the changelog is rolled, **then** each unshipped target the cut passes becomes `next` (whatever the following release is numbered) in the same change, and the changelog names the move.
 - **Given** the status block, **when** a targeted intent is listed, **then** its row shows the target.
 
 ## Audit Notes
 
-_Empty. Populated by intent-auditor when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-47e25ab4498e -->
+Fidelity review OWED (receipt rcp-47e25ab4498e).
+<!-- abcd-review-end receipt=rcp-47e25ab4498e -->
 
 ## Grounds
 

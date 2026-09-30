@@ -223,3 +223,35 @@ func TestBoardRendersLaterAsACount(t *testing.T) {
 		}
 	}
 }
+
+// TestBoardRowShowsItsTarget is itd-2609212103572513 criterion 4 at the text
+// board: a Now or Next row whose intent names a release shows the target in
+// its brackets, after what places it there; a row with none shows none.
+// Later is a count on the text board (ruling BV1), so a Later row's target is
+// in --json and on the site's Status page.
+func TestBoardRowShowsItsTarget(t *testing.T) {
+	var buf bytes.Buffer
+	renderBoardStatus(&buf, &statusblock.Block{
+		Now: []statusblock.Row{
+			{ID: "itd-7", Title: "In a lane", Bucket: "planned", Target: "v0.11.0",
+				Lane: &statusblock.Lane{Run: "run-1", Lane: "lane-1", Stage: "implement"}},
+			{ID: "itd-5", Title: "The head", Bucket: "planned", Target: "next", NextUp: true},
+		},
+		Next: []statusblock.Row{
+			{ID: "itd-5", Title: "The head", Bucket: "planned", Target: "next"},
+			{ID: "itd-6", Title: "Untargeted", Bucket: "planned"},
+		},
+		Later: []statusblock.Row{},
+	})
+	got := buf.String()
+	for _, want := range []string{
+		"      itd-7  In a lane  [lane-1: implement (run-1); target v0.11.0]\n",
+		"      itd-5  The head  [next up; target next]\n",
+		"      itd-5  The head  [target next]\n",
+		"      itd-6  Untargeted\n",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("the board must carry %q:\n%s", want, got)
+		}
+	}
+}

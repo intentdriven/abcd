@@ -244,12 +244,14 @@ checkout's holdings are this machine's state, never a published page's. The
 block's `order` field names that order (`pick`).
 The text render is a `status:` heading with the three counts, then `Now:` and
 `Next:`, one line per intent: its id, its title, and in brackets its lane state
-or `next up`; then `Later: N intents`, Later as a count alone (ruling BV1 of
+or `next up`, then `target <value>` when the intent names the release it must
+land by (itd-2609212103572513 criterion 4); then `Later: N intents`, Later as a count alone (ruling BV1 of
 2026-09-29), its rows left to the JSON and the site's Status page. The JSON
 carries a `status` object with `now`, `next` and `later` in full, each row
 `id`, `title`, `bucket`, and
-`next_up`, `lane` (`run`, `lane`, `stage`, `awaiting`) or `failing_checks` when
-they apply, and `order`. The block is present in a repository abcd manages and
+`next_up`, `lane` (`run`, `lane`, `stage`, `awaiting`), `failing_checks` or
+`target_release` (a planned intent's target, `next` or `vX.Y.Z`) when they
+apply, and `order`. The block is present in a repository abcd manages and
 absent elsewhere, and a record that cannot be read omits it with the reason on
 stderr. The read is `internal/core/statusblock`, the one the site's Status
 page renders too ([`22-site.md`](22-site.md#the-page-set)); the state file and
