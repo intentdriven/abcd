@@ -41,7 +41,8 @@ unambiguous.
 **A position is not an agent, and not a surface.** The four definitions live under `agents/`
 because that is where the harness looks, but the position is the question; the agent is one
 host's way of answering it. The [surface](surface.md) is `/abcd:reading`, which assembles the
-input and validates the output — and never runs a reading.
+input and validates the output — and runs a reading only by sending the parked input to a provider
+the person has pointed the position at (`ingest --dispatch`).
 
 ## When to use
 

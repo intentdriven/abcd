@@ -88,6 +88,11 @@ inbound = outbound statement is the whole of it.
   delivered by the last of them. The merge gate refuses either trailer when its
   record does not reach a terminal folder in the same change: for an intent,
   that means `abcd spec close <spc-N>` on every spec still open that names it.
+  A close that ships an intent, and the release cut (`abcd launch ship`), each
+  refuse until a docs review is saved for HEAD with `abcd docs fidelity record`
+  (`commands/docs.md` says how). The review is labelled with the commit it
+  read, so a cut made on `main` needs one recorded for the merge commit: run
+  the reviewer after the merge.
 - **Docs** are Diátaxis (one type per page, present tense); the design record lives
   under `.abcd/`, never in `docs/`. Prose follows the canonical
   [writing style guide](../docs/reference/writing-style.md).

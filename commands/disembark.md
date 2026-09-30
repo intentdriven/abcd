@@ -44,8 +44,9 @@ markers by reading source files — honours `.gitignore` by default. A file the
 user told git to ignore is out of that scan, because a lifeboat cites its
 evidence by `path:line` and is meant to be shared, so a scan that read ignored
 files could carry a repository's scratch, logs and local notes into the
-artefact. Declared record families (ADRs, issues, intents, specs) are a
-separate path: `pack` copies them verbatim from their canonical locations
+artefact. Declared record families (ADRs, issues, intents, specs, and every
+release retrospective under `.abcd/development/retrospectives/<release-tag>/`,
+packed as `retrospectives/<release-tag>/README.md`) are a separate path: `pack` copies them verbatim from their canonical locations
 whether or not git ignores them, so a gitignored record still travels — keep a
 record you do not want shared out of those locations, not merely in
 `.gitignore`.
@@ -271,6 +272,12 @@ an agent this invocation does not dispatch, a tier outside the set, a connection
 this machine has not configured, or a routing table that cannot be read exits 2
 before anything is written. With no table accepted and no `--route`, the step
 asks for `host-decides` and nothing is printed.
+
+**No lifeboat agent is sent to a provider.** The four agents read the packed
+lifeboat's files, and abcd builds no request carrying them, so a person who
+points one of them at a provider in `~/.abcd/config.json` finds its ingest
+refused at exit 2, naming the setting to remove; `--route <agent>=host-decides`
+keeps one run on the harness. Relay the refusal.
 
 **Binary resolution.** Run `"${CLAUDE_PLUGIN_ROOT}/abcd"` — a plugin install
 provisions the binary into the plugin root, so this is the rung that fires for a

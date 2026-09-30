@@ -894,7 +894,7 @@ abcd disembark review ../lifeboat .
 
 ### `abcd docs`
 
-Keep the citation baseline that `abcd lint docs` enforces offline: Writes nothing but that baseline; refuses an unknown sub-verb.
+Keep the citation baseline `abcd lint docs` enforces, and judge the brief against the binary: Writes nothing bare; refuses an unknown sub-verb.
 
 **Usage:** `abcd docs`
 
@@ -937,6 +937,39 @@ This is the only abcd verb that reaches the network on behalf of documentation. 
 ```
       --config string   path to docs-lint.json (default: <root>/.abcd/docs-lint.json)
       --root string     repo root (default: current working directory)
+```
+
+#### `abcd docs fidelity`
+
+Judge the brief against every shipped surface and the saved docs review: Writes drafted edits only with --apply; refuses a surface no chapter names.
+
+**Usage:** `abcd docs fidelity [flags]`
+
+**Flags:**
+
+```
+      --apply            write the reviewer's drafted corrections into the brief and flag each for review
+      --autonomous       an unattended run: apply the drafted corrections, list every applied edit, and hand the routine the reviewer's request; the refusals stay
+      --intent strings   the intent(s) whose delivery is judged, named in every finding (repeatable)
+      --report           the per-task pass: state every finding, refuse nothing, exit 0
+```
+
+##### `abcd docs fidelity record`
+
+Save a docs review's verdict as the receipt for HEAD: Writes the receipt in the local tier; refuses a verdict naming no judge.
+
+**Usage:** `abcd docs fidelity record --verdict-json <file|-> [flags]`
+
+**Flags:**
+
+```
+      --verdict-json string   the reviewer's verdict JSON (a file, or - for stdin)
+```
+
+**Example:**
+
+```
+abcd docs fidelity record --verdict-json verdict.json
 ```
 
 ### `abcd drain`
@@ -1026,6 +1059,24 @@ Unpack a lifeboat's record families into a target repository: Writes those famil
 
 ```
 abcd embark from ../lifeboat
+```
+
+#### `abcd embark lessons`
+
+Rank the lessons a lifeboat's retrospectives carry against the new voyage's brief: Writes nothing; refuses a lifeboat that fails its manifest.
+
+**Usage:** `abcd embark lessons <lifeboat-dir> [target-dir] [flags]`
+
+**Flags:**
+
+```
+      --brief string   rank against this file's text (the press release the interview is writing) instead of the target's framing chapter
+```
+
+**Example:**
+
+```
+abcd embark lessons ../lifeboat
 ```
 
 #### `abcd embark probe`
@@ -2698,6 +2749,7 @@ duplicates: or refines: link and shown, printed and as matches in --json.
 **Flags:**
 
 ```
+      --dispatch string       send the parked run <rdg-N> to the provider its position is pointed at (oracle.roles.cold-reading-<position>) and ingest the answer
       --reading-json string   path to the JSON the cold reading returned
       --route stringArray     route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
 ```
@@ -2706,6 +2758,51 @@ duplicates: or refines: link and shown, printed and as matches in --json.
 
 ```
 abcd reading ingest --reading-json reading.json
+```
+
+### `abcd reflect`
+
+Render the seed a cut release's retrospective interview opens from: Writes nothing; refuses a release that shipped no intent, or an intent id.
+
+**Usage:** `abcd reflect <release-tag>`
+
+Open the retrospective for a cut release: render the seed the interview opens from —
+the intents the tag shipped, which of them carry audit notes, the intents targeted at
+the release that have not shipped, the changelog section and the computed metrics —
+and write nothing. `reflect write` writes the retrospective from the answers.
+
+The release is the only grain: an intent id is refused, because per-intent
+reflection is the intent audit's (`abcd intent audit <itd-N>`).
+
+**Example:**
+
+```
+abcd reflect v0.11.0
+```
+
+#### `abcd reflect write`
+
+Write a cut release's retrospective from the interview's answers: Writes its README once; refuses a thin answer or unconfirmed unshipped work.
+
+**Usage:** `abcd reflect write <release-tag> --answers <file> [flags]`
+
+Write the retrospective for a cut release from the interview's answers, a JSON
+object with one {"answer", "follow_up"} entry per asked section (went_well,
+could_improve, lessons, decisions). It refuses, writing nothing, while an answer is
+under the floor and its follow-up is unanswered, while intents targeted at the release
+are unshipped and --proceed was not given, and when the retrospective already exists.
+
+**Flags:**
+
+```
+      --answers string   the interview's answers, a JSON file
+      --proceed          write although intents targeted at the release are unshipped (the person's confirmation)
+```
+
+**Example:**
+
+```
+abcd reflect write v0.11.0 --answers answers.json
 ```
 
 ### `abcd report`
@@ -3100,6 +3197,8 @@ Close a spec, and ship its intent when no open spec names it: Writes the moves t
 Moves the spec to closed/ and, when no open spec still names its intent, moves the intent to shipped/.
 
 The close that ships an intent also makes its fidelity review owed: it mints an OWED receipt (rcp-…), parks an `<!-- abcd-review: OWED receipt=rcp-… -->` marker in the intent's Audit Notes, and writes the review request to `.abcd/.work.local/reviews/<rcp>.request.md`, the input `abcd intent audit ingest` answers. A failed emit is a warning on stderr; the intent ships regardless.
+
+In the repository whose brief describes the binary, a close that ships an intent first runs the doc-fidelity gate (`abcd docs fidelity`): a surface no brief chapter names, a missing or stale docs review, or a confirmed false sentence refuses the close, and nothing moves.
 
 **Flags:**
 
