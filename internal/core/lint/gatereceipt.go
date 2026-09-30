@@ -65,4 +65,3 @@ func ReleaseGateManifestHash(repoRoot string) (string, error) {
 	}
 	return hashManifest(data), nil
 }
-
