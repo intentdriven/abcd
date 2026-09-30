@@ -109,9 +109,12 @@ func tightenLock(fd int, mode uint32) {
 // openLockFd opens lockPath with O_CREAT|O_RDWR|O_NOFOLLOW and verifies, on the
 // same descriptor, that it is a regular file — refusing a symlinked or
 // non-regular lock path with ErrLockPathUnsafe. The file is created, or
-// narrowed, to lockPerm.
+// narrowed, to lockPerm. The descriptor is close-on-exec: flock holds until
+// every descriptor on the open file closes, so one inherited by a child the
+// holder starts would keep the lock held after the holder is gone
+// (iss-2609300109005165).
 func openLockFd(lockPath string) (int, error) {
-	fd, err := syscall.Open(lockPath, syscall.O_CREAT|syscall.O_RDWR|syscall.O_NOFOLLOW, lockPerm)
+	fd, err := syscall.Open(lockPath, syscall.O_CREAT|syscall.O_RDWR|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, lockPerm)
 	if err != nil {
 		if err == syscall.ELOOP {
 			return -1, fmt.Errorf("%w: lock path is a symlink: %s", ErrLockPathUnsafe, lockPath)
