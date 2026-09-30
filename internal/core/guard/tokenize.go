@@ -93,8 +93,8 @@ type segment struct {
 	// (iss-2609290321312087). nil when no word holds a variable.
 	spelled map[int][]string
 	// namesIFSInText records that the text a tokenize call read holds the
-	// name IFS or builds a name from an expansion (buildsName), wherever it
-	// stands: an arithmetic body or a subscript leaves no word to read it
+	// name IFS or assigns through a target that holds an expansion
+	// (targetsAnExpansion), wherever it stands: an arithmetic body or a subscript leaves no word to read it
 	// in. It rides on an empty segment of its own, as substitutionUnread
 	// does, and namesIFS reads it.
 	namesIFSInText bool
@@ -1758,7 +1758,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 	if len(pending) > 0 {
 		markHeredocUnterminated(&segs, chain)
 	}
-	if depth == 0 && (unwordedIFS(line, segs) || buildsName(line)) {
+	if depth == 0 && (unwordedIFS(line, segs) || targetsAnExpansion(line)) {
 		// The text of every substitution depth is in the line read at
 		// depth 0, so it is read once, there.
 		segs = append(segs, segment{chain: chain, namesIFSInText: true})

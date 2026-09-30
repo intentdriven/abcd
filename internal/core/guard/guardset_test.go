@@ -291,9 +291,8 @@ func TestIFSNamedThroughAMarkTheWrittenCompareReads(t *testing.T) {
 
 // TestANameBuiltFromAnExpansionTheWrittenCompareReads — reverify3-guardSet
 // finding 2, closed by one rule rather than one more context: a line that
-// builds a name from an expansion anywhere (an expansion touching a name
-// byte or another expansion, or standing where an assignment operator
-// follows) reads its IFS as unknown. Every form sets IFS in bash 3.2,
+// assigns through a target holding an expansion anywhere reads its IFS as
+// unknown (targetsAnExpansion). Every form sets IFS in bash 3.2,
 // /bin/sh and bash 5.3, which then hand rm `""` and `/` for `${U:-1/1}`.
 func TestANameBuiltFromAnExpansionTheWrittenCompareReads(t *testing.T) {
 	const home = "rm-rf-root-or-home"
@@ -344,6 +343,68 @@ func TestANameBuiltFromAnExpansionTheWrittenCompareReads(t *testing.T) {
 		{`[ $a = b ] && rm -rf ${TMPDIR:-/tmp}/x`, shellBare | shellSQ, VerdictAllow, ""},
 		{`git log --$fmt; rm -rf ${U:-x/x}`, shellBare | shellSQ, VerdictAllow, ""},
 		{`rm -rf ${A:-x}${B:-$HOME}/x`, shellBare | shellSQ, VerdictAllow, ""},
+	})
+}
+
+// TestAnAssignmentTargetHoldingAnExpansionTheWrittenCompareReads —
+// reverify4-guardSet finding 1. bash sets IFS from an assignment target's
+// VALUE, so a target the line writes as expansions alone names IFS with no
+// byte of the name written: `a=I; b=FS; (( ${a}${b} = 1 ))` sets IFS to 1,
+// and `rm -rf ${U:-1/1}` then hands rm `""` and `/` on bash 3.2, /bin/sh
+// and bash 5.3. The rule reads the target, not its bytes: a line where any
+// assignment target holds an expansion reads its IFS as unknown.
+func TestAnAssignmentTargetHoldingAnExpansionTheWrittenCompareReads(t *testing.T) {
+	const home = "rm-rf-root-or-home"
+	checkSpellingCases(t, []spellingCase{
+		// The forms the round-4 byte rule let through.
+		{`a=I; b=FS; (( ${a}${b} = 1 )); rm -rf ${U:-1/1}`, shellBare | shellSQ, VerdictBlock, home},
+		{`a=I; b=FS; x=$a$b; (( $x = 1 )); rm -rf ${U:-1/1}`, shellBare | shellSQ, VerdictBlock, home},
+		{`x=ifs; (( ${x^^} = 1 )); rm -rf ${U:-1/1}`, shellBare | shellSQ, VerdictBlock, home},
+		{`(( ${x@P} = 1 )); rm -rf ${U:-1/1}`, shellBare | shellSQ, VerdictBlock, home},
+		{`let "$x=1"; rm -rf ${U:-1/1}`, shellBare | shellSQ, VerdictBlock, home},
+		{`declare -- "$x=1"; rm -rf ${U:-1/1}`, shellBare | shellSQ, VerdictBlock, home},
+		{`printf -v "$x" 1; rm -rf ${U:-1/1}`, shellBare | shellSQ, VerdictBlock, home},
+		{`read -r "$x" <<< 1; rm -rf ${U:-1/1}`, shellBare | shellSQ, VerdictBlock, home},
+		{`export "$x"=1; rm -rf ${U:-1/1}`, shellBare | shellSQ, VerdictBlock, home},
+		// Every other position a target can take: a spaced operator in a
+		// string arithmetic reads (let, an integer's value), a substring
+		// offset, a ternary's arm, a for header, a subscript, a value an
+		// arithmetic reference evaluates, a decrement let reads, an
+		// indirect default, and a nameref, whose value is the name a plain
+		// assignment later sets (bash 5.3).
+		{`let "$x = 1"; rm -rf ${U:-1/1}`, shellBare | shellSQ, VerdictBlock, home},
+		{`declare -i n; n="$y = 1"; rm -rf ${U:-1/1}`, shellBare | shellSQ, VerdictBlock, home},
+		{`: ${X:$y = 1}; rm -rf ${U:-1/1}`, shellBare | shellSQ, VerdictBlock, home},
+		{`(( 1 ? $x = 1 : 0 )); rm -rf ${U:-1/1}`, shellBare | shellSQ, VerdictBlock, home},
+		{`for (( $x = 1; 0; )); do :; done; rm -rf ${U:-1/1}`, shellBare | shellSQ, VerdictBlock, home},
+		{`a["$x = 1"]=y; rm -rf ${U:-1/1}`, shellBare | shellSQ, VerdictBlock, home},
+		{`: $(( a[$x = 1] )); rm -rf ${U:-1/1}`, shellBare | shellSQ, VerdictBlock, home},
+		{`y=$x=1; : $((y)); rm -rf ${U:-1/1}`, shellBare | shellSQ, VerdictBlock, home},
+		{`let --$x; rm -rf ${U:-1/1}`, shellBare | shellSQ, VerdictBlock, home},
+		{`unset "$y"; : ${!x:=1}; rm -rf ${U:-1/1}`, shellBare | shellSQ, VerdictBlock, home},
+		{`declare -n r=$x; r=1; rm -rf ${U:-1/1}`, shellBare | shellSQ, VerdictBlock, home},
+		{`local -n r; r=$x; r=1; rm -rf ${U:-1/1}`, shellBare | shellSQ, VerdictBlock, home},
+		// The over-block the rule keeps: a flag's word read as a target,
+		// and a spaced `=` in a string.
+		{`read -p "$prompt" f; rm -rf ${U:-x/x}`, shellBare | shellSQ, VerdictBlock, home},
+		{`echo "$k = $v"; rm -rf ${U:-x/x}`, shellBare | shellSQ, VerdictBlock, home},
+		{`[ ! $a = b ]; rm -rf ${U:-x/x}`, shellBare | shellSQ, VerdictBlock, home},
+		// The look-alikes: each target is a literal name, the expansion in
+		// the value or the subscript.
+		{`n=$((n+1)); rm -rf ${U:-x/x}`, shellBare | shellSQ, VerdictAllow, ""},
+		{`a[$i]=x; rm -rf ${U:-x/x}`, shellBare | shellSQ, VerdictAllow, ""},
+		{`(( i++ )); rm -rf ${U:-x/x}`, shellBare | shellSQ, VerdictAllow, ""},
+		{`(( n += $k )); rm -rf ${U:-x/x}`, shellBare | shellSQ, VerdictAllow, ""},
+		{`(( a[$i] = 1 )); rm -rf ${U:-x/x}`, shellBare | shellSQ, VerdictAllow, ""},
+		{`IFS= read -r f; rm -rf "$f"`, shellBare | shellSQ, VerdictAllow, ""},
+		{`IFS=, read -ra arr <<< "$x"; rm -rf "${arr[0]}"`, shellBare | shellSQ, VerdictAllow, ""},
+		{`export PATH=$HOME/bin:$PATH; rm -rf ${U:-x/x}`, shellBare | shellSQ, VerdictAllow, ""},
+		{`git log --$fmt; rm -rf ${U:-x/x}`, shellBare | shellSQ, VerdictAllow, ""},
+		{`mkdir ${V}S; rm -rf ${U:-x/x}`, shellBare | shellSQ, VerdictAllow, ""},
+		{`[ $a = b ] && rm -rf ${U:-x/x}`, shellBare | shellSQ, VerdictAllow, ""},
+		{`[ "$a" = "$b" ] && rm -rf ${U:-x/x}`, shellBare | shellSQ, VerdictAllow, ""},
+		{`: ${X:=1}; rm -rf ${U:-x/x}`, shellBare | shellSQ, VerdictAllow, ""},
+		{`declare -n r=arr; rm -rf "$f"`, shellBare | shellSQ, VerdictAllow, ""},
 	})
 }
 

@@ -355,22 +355,31 @@ background, `$@`, `$*` and a positional one with no argument, `$_` after
 (`${PWD%%$!*}` is `${PWD%%*}`); a replacement's pattern is
 read both where bash 3.2 ends it and where bash 5 does, at a quoted `/`
 (`${X/"/"*/$HOME}`); and on a line that names IFS — in any word or
-anywhere in its text (`: $((IFS=1))`), or through a name built from an
-expansion — an unquoted default's or
+anywhere in its text (`: $((IFS=1))`), or through an assignment target
+that holds an expansion — an unquoted default's or
 alternative's word, and an unquoted home, reads as every target, since the
 fields bash splits it into rest on that IFS (`IFS=x; rm -rf ${U:-x/x}`,
-`IFS=Uv; rm -rf $HOME/x`). A name built from an expansion is read by its
-shape in the raw text of each layer, never by its context, since bash
-assigns one in a declaration's or a `read`'s operand, an eval'd
-assignment and every arithmetic context (`$[ ]`, a subscript, a substring
-offset, `[[ -eq ]]`, an integer variable's value, a value an arithmetic
-reference evaluates): an expansion beside an `I`, `F` or `S` byte
-(`export ${I}FS=x`, `a[${I}FS=1]=x`, `eval "I${F:-F}S=x"`), one an
-assignment operator follows (`${N}=x`, `$x += 1`, `$x++`) or `++` comes
-before, and one standing whole as a name a declaration, a `read` or a
-`printf -v` assigns (`printf -v "$n" x`). That shape over-reads on the
-refusing side: `IFS=x rm -rf ${U:-x/x}`, and `read -p "$prompt" f;` or
-`mkdir ${V}S;` before `rm -rf ${U:-x/x}`. A run of `/` written before the home names the
+`IFS=Uv; rm -rf $HOME/x`). bash sets the variable a target's value names,
+so the rule reads whether a target holds an expansion (`$name`, `${…}`
+with its case changes and transforms, `$(…)`, a backtick substitution),
+never which bytes are written beside it: `(( ${a}${b} = 1 ))` names IFS
+with a=I and b=FS. A target is the word before an assignment operator
+(`=` or a compound one, spaced or not) or beside a `++` or `--`, read in
+the raw text of each layer, so it is found in every position bash assigns
+through one: an assignment word's name, a declaration's or `env`'s operand,
+an eval'd string, every arithmetic context (`(( ))`, `$(( ))`, `$[ ]`, a
+`for (( ))` header, a subscript, a substring offset, `[[ -eq ]]`), a string
+an arithmetic context later reads (`let "$x = 1"`, an integer variable's
+value), and `${!x:=1}`, which sets the name x holds. A subscript is not
+the name (`a[$i]=x` names `a`); its body is arithmetic and read as such.
+The builtins that take a name as an operand (`read "$x"`,
+`printf -v "$x" 1`, `mapfile`, `getopts`, `wait -p`) are read over their
+words, and so is a nameref's declaration (`declare -n r=$x`,
+`local -n r`), whose value is the name a later plain assignment sets. The
+rule stays off a test's comparison (`[ $a = b ]`), a word-leading `--`
+(`git log --$fmt`) and the `--` that ends options, and over-reads on the
+refusing side: `IFS=x rm -rf ${U:-x/x}`, and `read -p "$prompt" f;`,
+`echo "$k = $v";` or `[ ! $a = b ];` before `rm -rf ${U:-x/x}`. A run of `/` written before the home names the
 home (`/$HOME`). A trim that leaves the path above the home
 (`${HOME%/*}`) blocks as the home does. Each target is also compared as a path
 with its redundant separators taken out, since the kernel reads a run of
@@ -433,8 +442,10 @@ table does not name; a REST
 path an entry names by its root segment when the host serves that API under a
 prefix; an IFS the shell already holds when the line starts, or gains during the line
 through a name the guard does not read (a sourced file, a nameref set before
-the line, a name made of expansions alone such as `${a}${b}`, or the whole
-value of a variable a command's output set, as in `x=$(cmd); : $((x))`),
+the line, or an operator the line does not write: a value built from
+expansions or a command's output that an arithmetic context evaluates, as in
+`x=$(cmd); : $((x))`, or a decrement written as its own word in such a
+string, as in `n="1 + --$x"` for an integer `n`),
 since every line is read from the default IFS; a pid list a kill reads through a variable or a file, or from a `ps |
 grep` chain;
 a payload inside a non-shell interpreter such as `python -c`, which is

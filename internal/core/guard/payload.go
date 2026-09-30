@@ -495,19 +495,20 @@ func wordFeeds(s segment, keep func(int) bool) []feed {
 // namesIFS reports whether segs name IFS, as splitAfterIFS and
 // capIFSSplits read a naming: any word that holds the name once its quotes
 // are read (`IFS=x`, `declare "I"'FS=x'`, `declare $'\x49FS=x'`), a text
-// the tokenizer read that holds the name or builds a name from an
-// expansion (segment.namesIFSInText, buildsName), and an expansion
-// standing whole as a name a builtin assigns (`printf -v "$n" x`,
+// the tokenizer read that holds the name or assigns through a target
+// holding an expansion (segment.namesIFSInText, targetsAnExpansion), an
+// expansion standing as a name a builtin assigns (`printf -v "$n" x`,
 // `read $v`, `declare $(cmd)=x`): namingCommands' operands, wherever they
-// stand in the command, and the word after `printf -v` or `wait -p`. That
-// last reading refuses on the side of a name: `read -p "$prompt" f`
-// counts too.
+// stand in the command, and the word after `printf -v` or `wait -p`, and a
+// nameref's declaration (`declare -n r=$x`, `local -n r`), whose value is
+// the name any later plain assignment to it sets. The builtin reading
+// refuses on the side of a name: `read -p "$prompt" f` counts too.
 func namesIFS(segs []segment) bool {
 	for _, s := range segs {
 		if s.namesIFSInText {
 			return true
 		}
-		naming, target := false, false
+		naming, target, decl := false, false, false
 		flag := ""
 		for _, tok := range s.tokens {
 			tally(len(tok))
@@ -518,8 +519,11 @@ func namesIFS(segs []segment) bool {
 				return true
 			}
 			target = flag != "" && tok == flag
+			if decl && len(tok) > 1 && tok[0] == '-' && strings.IndexByte(tok, 'n') > 0 {
+				return true
+			}
 			if namingCommands[tok] {
-				naming = true
+				naming, decl = true, declarations[tok]
 			}
 			if f, ok := targetFlags[tok]; ok {
 				flag = f
@@ -537,6 +541,9 @@ var namingCommands = map[string]bool{
 	"read": true, "mapfile": true, "readarray": true, "getopts": true, "let": true,
 }
 
+// declarations are the builtins whose `-n` declares a nameref.
+var declarations = map[string]bool{"declare": true, "typeset": true, "local": true}
+
 // targetFlags names, per builtin, the flag whose word assigns the variable
 // it names: `printf -v NAME`, and bash 5.1's `wait -p NAME`.
 var targetFlags = map[string]string{"printf": "-v", "wait": "-p"}
@@ -551,144 +558,293 @@ func nameMarked(tok string) bool {
 	return strings.IndexByte(tok, unknownMark) >= 0 || strings.IndexByte(tok, varMark) >= 0
 }
 
-// buildsName reports whether text builds a name from an expansion, read
-// lexically over the raw text of one layer, quotes, arithmetic bodies,
-// subscripts and here-documents included (reverify3-guardSet finding 2).
-// bash assigns a name so built in more places than can be listed: a
-// declaration's or a `read`'s operand, an eval'd assignment word, and every
-// arithmetic context (`$(( ))`, `(( ))`, `$[ ]`, `for (( ))`, a subscript,
-// a substring offset, `[[ -eq ]]`, an integer variable's value, and a
-// variable's value an arithmetic reference evaluates). So the rule reads
-// the shape and never the context: an expansion (`$name`, `${…}`, `$(…)`,
-// `$[…]`, a backtick substitution, `$1`, `$@`, `$*`, or a mark a payload
-// carries) that
-//   - touches an I, F or S byte: a name that is IFS and spans an
-//     expansion's edge has a byte of IFS written beside that edge, unless
-//     it is made of expansions alone;
-//   - stands as the target of an assignment: `=` follows it
-//     (`${N}=x`), a compound assignment operator follows it, spaced or not
-//     (`$x += 1`, `$x<<=1`), `++` or `--` follows it, or `++` comes
-//     before it.
+// targetsAnExpansion reports whether text assigns through a target that
+// holds an expansion, read lexically over the raw text of one layer,
+// quotes, arithmetic bodies, subscripts and here-documents included. bash
+// sets the variable a target's VALUE names, so a target holding an
+// expansion (`$name`, `${…}` with its case changes and transforms, `$(…)`,
+// `$((…))`, `$[…]`, a backtick substitution, or a mark a payload carries)
+// can name IFS whatever the line writes beside it: `(( ${a}${b} = 1 ))`
+// with a=I and b=FS sets IFS (reverify4-guardSet finding 1). The rule reads
+// the target, never its bytes.
 //
-// `$#`, `$?`, `$$`, `$!` and `$-` print numbers or option letters and are
-// not read. What it does not read is a name whose text the line does not
-// write: one made of expansions alone (`${a}${b}`), or the whole value of
-// a variable a command's output set (`x=$(cmd); : $((x))`, `--$x`), which is
-// the class of a sourced file's IFS, and a whole expansion a spaced `=`
-// follows (`(( $x = 1 ))`), which reads as a test's comparison does.
-func buildsName(text string) bool {
+// A target is the word that stands before an assignment operator (`=`,
+// `+=`, `-=`, `*=`, `/=`, `%=`, `<<=`, `>>=`, `&=`, `^=`, `|=`, and a
+// parameter expansion's `:=`), or beside a `++` or `--`; its name part
+// leaves out a subscript (`a[$i]=x` names a), while the subscript's own
+// body is read as arithmetic. Every place bash assigns through such an
+// operator is one of these shapes: an assignment word (a declaration's or
+// env's operand included), an eval'd string, every arithmetic body
+// (`((…))`, `$((…))`, `$[…]`, a for header, a subscript, a substring
+// offset, `[[ -eq ]]`), a string an arithmetic context later reads (let's
+// operand, an integer's value, a variable an arithmetic reference
+// evaluates), and `${!x:=…}`, whose target is the name x holds. Arithmetic
+// takes the operator spaced, so a blank between target and operator is
+// read through, except where bash cannot be assigning:
+//   - a lone `=` whose target follows a test's word (`[`, `[[`, `test`,
+//     `-a`, `-o`, `&&`, `||`, `\(`) outside an arithmetic body is the
+//     test's comparison (`[ $a = b ]`); arithmetic refuses an assignment
+//     after any of those words;
+//   - a `--` that begins a word outside an arithmetic body is a flag
+//     (`git log --$fmt`), and a spaced `--` a blank follows there ends a
+//     command's options (`git checkout $b -- f`).
+//
+// The builtins that take a name as a whole operand (`read "$x"`,
+// `printf -v "$x"`, a nameref's declaration) are read over the words
+// (namesIFS). What it does not read is an operator the line does not write:
+// a value built from expansions that an arithmetic context evaluates
+// (`y=$a$b; : $((y))` with b holding `=1`), a command's output
+// (`x=$(cmd); : $((x))`), and, by the second exception, a decrement written
+// as its own word in such a string (`n="1 + --$x"` for an integer n).
+func targetsAnExpansion(text string) bool {
 	tally(len(text))
-	type open struct {
-		closer byte
-		at     int // the expansion's `$` or backtick; -1 for a bracket
+	type level struct {
+		closer  byte // the byte that closes the level; 0 at the top
+		exp     bool // an expansion: closing it adds one to the enclosing target
+		sub     bool // a subscript: closing it leaves the enclosing target as it was
+		arith   bool // an arithmetic body, where an operator takes its target spaced
+		run     bool // a target is being read
+		runExp  bool // its name part holds an expansion
+		prev    bool // a blank ended a target, and nothing else has come since
+		prevExp bool
+		pre     bool // a `++` or `--` stands before the next target
+		chunk   int  // where the blank-delimited word being read began; -1 between words
+		words   [2]string
 	}
-	var stack []open
+	stack := []level{{chunk: -1}}
+	// pending counts the open levels per closer, so a closer none is open
+	// for costs nothing and the scan stays linear.
 	var pending [4]int
-	slot := func(c byte) int {
-		return strings.IndexByte("})]`", c)
+	slot := func(c byte) int { return strings.IndexByte("})]`", c) }
+	push := func(lv level) {
+		lv.chunk = -1
+		stack = append(stack, lv)
+		pending[slot(lv.closer)]++
 	}
-	push := func(c byte, at int) {
-		stack = append(stack, open{c, at})
-		pending[slot(c)]++
+	end := func(l *level) {
+		l.run, l.runExp, l.prev, l.prevExp, l.pre = false, false, false, false, false
 	}
-	// closeAt closes the innermost open c at i, and reports whether the
-	// expansion it closes builds a name.
-	closeAt := func(c byte, i int) bool {
+	word := func(l *level) {
+		if !l.run {
+			l.run, l.runExp, l.prev = true, false, false
+		}
+	}
+	expand := func(l *level) bool {
+		word(l)
+		l.runExp = true
+		return l.pre
+	}
+	// closeAt closes the innermost open c, and reports whether it was open
+	// and whether the expansion it closes completes a target a `++` or `--`
+	// stands before.
+	closeAt := func(c byte) (open, hit bool) {
 		if pending[slot(c)] == 0 {
-			return false
+			return false, false
 		}
-		for {
-			top := stack[len(stack)-1]
-			stack = stack[:len(stack)-1]
-			pending[slot(top.closer)]--
-			if top.closer == c {
-				return top.at >= 0 && nameAt(text, top.at, i+1)
-			}
+		k := len(stack) - 1
+		for stack[k].closer != c {
+			pending[slot(stack[k].closer)]--
+			k--
 		}
+		pending[slot(c)]--
+		lv := stack[k]
+		stack = stack[:k]
+		out := &stack[k-1]
+		switch {
+		case lv.exp:
+			return true, expand(out)
+		case !lv.sub:
+			end(out)
+		}
+		return true, false
 	}
 	for i := 0; i < len(text); i++ {
-		switch c := text[i]; {
+		l := &stack[len(stack)-1]
+		c := text[i]
+		if isBlank(c) {
+			if l.run {
+				l.prev, l.prevExp = true, l.runExp
+				l.run, l.runExp, l.pre = false, false, false
+			}
+			if l.chunk >= 0 {
+				l.words[0], l.words[1] = l.words[1], text[l.chunk:i]
+				l.chunk = -1
+			}
+			continue
+		}
+		if l.chunk < 0 {
+			l.chunk = i
+		}
+		switch {
 		case c == '\\':
+			word(l)
 			i++
+		case c == '"' || c == '\'':
+			// A quote is part of the word it stands in.
 		case c == unknownMark || c == varMark:
-			if nameAt(text, i, i+1) {
+			if expand(l) {
 				return true
 			}
 		case c == '`':
-			if pending[slot('`')] > 0 {
-				if closeAt('`', i) {
-					return true
-				}
-			} else {
-				push('`', i)
+			open, hit := closeAt('`')
+			if hit {
+				return true
+			}
+			if !open {
+				push(level{closer: '`', exp: true})
 			}
 		case c == '$' && i+1 < len(text):
 			switch n := text[i+1]; {
-			case n == '{':
-				push('}', i)
-				i++
+			case n == '(' && i+2 < len(text) && text[i+2] == '(':
+				push(level{closer: ')', exp: true, arith: true})
+				push(level{closer: ')', arith: true})
+				i += 2
 			case n == '(':
-				push(')', i)
+				push(level{closer: ')', exp: true})
+				i++
+			case n == '{':
+				lv := level{closer: '}', exp: true, arith: true}
+				if i+2 < len(text) && text[i+2] == '!' {
+					// `${!x:=1}` assigns the name x holds.
+					lv.run, lv.runExp = true, true
+					i++
+				}
+				push(lv)
 				i++
 			case n == '[':
-				push(']', i)
+				push(level{closer: ']', exp: true, arith: true})
 				i++
-			case isNameStart(n):
-				j := i + 1
-				for j < len(text) && isNameByte(text[j]) {
-					j++
-				}
-				if nameAt(text, i, j) {
-					return true
-				}
-				i = j - 1
-			case n >= '0' && n <= '9' || n == '@' || n == '*':
-				if nameAt(text, i, i+2) {
+			case isNameByte(n) || strings.IndexByte("@*#?$!-", n) >= 0:
+				if expand(l) {
 					return true
 				}
 				i++
+			default:
+				word(l)
 			}
-		case c == '{':
-			push('}', -1)
 		case c == '(':
-			push(')', -1)
-		case c == '}' || c == ')' || c == ']':
-			if closeAt(c, i) {
+			arith := l.arith
+			end(l)
+			if !arith && i+1 < len(text) && text[i+1] == '(' {
+				push(level{closer: ')', arith: true})
+				i++
+				arith = true
+			}
+			push(level{closer: ')', arith: arith})
+		case c == '{':
+			arith := l.arith
+			end(l)
+			push(level{closer: '}', arith: arith})
+		case c == '[':
+			if l.run {
+				push(level{closer: ']', sub: true, arith: true})
+			} else {
+				end(l)
+			}
+		case c == ')' || c == '}' || c == ']':
+			open, hit := closeAt(c)
+			if hit {
 				return true
 			}
+			if !open {
+				end(l)
+			}
+		case isNameByte(c):
+			word(l)
+		case strings.IndexByte("=+-*/%&|^<>!:", c) >= 0:
+			kind, n := operatorAt(text, i)
+			spaced := !l.run && l.prev
+			target := l.run && l.runExp || spaced && l.prevExp
+			switch kind {
+			case opAssign:
+				test := c == '=' && spaced && !l.arith && (i+1 == len(text) || isBlank(text[i+1])) &&
+					testWords[strings.TrimLeft(l.words[0], `$'"\`)]
+				if target && !test {
+					return true
+				}
+				end(l)
+			case opStep:
+				options := !l.arith && c == '-' && spaced && i+2 < len(text) && isBlank(text[i+2])
+				if target && !options {
+					return true
+				}
+				flag := !l.arith && c == '-' && l.chunk == i
+				end(l)
+				l.pre = !flag
+			default:
+				end(l)
+			}
+			i += n - 1
+		default:
+			end(l)
 		}
 	}
 	return false
 }
 
-// nameAt reports whether the expansion text[start:end] builds a name, by
-// buildsName's shapes.
-func nameAt(text string, start, end int) bool {
-	if start > 0 && strings.IndexByte("IFS", text[start-1]) >= 0 {
-		return true
+// testWords are the words a test's comparison can follow (`[ $a = b ]`,
+// `test "$a" = b`, `[[ $a = b && $c = d ]]`), read past the quotes a
+// string that holds the test opens with (`bash -c '[ $a = b ]'`). Arithmetic takes none of them
+// before an assignment: `(( 1 && $x = 1 ))` is an error, while `!` and `(`
+// are not in the set because `(( ! $x = 1 ))` (bash 3.2) and
+// `(( ( $x = 1 ) ))` assign.
+var testWords = map[string]bool{
+	"[": true, "[[": true, "test": true, "-a": true, "-o": true, "&&": true, "||": true, `\(`: true,
+}
+
+// The operator kinds operatorAt reads.
+const (
+	opOther  = iota // no assignment: a comparison, a redirection, a pattern
+	opAssign        // `=` or a compound assignment
+	opStep          // `++` or `--`
+)
+
+// operatorAt reads the operator that begins at text[i], and returns its kind
+// and its length.
+func operatorAt(text string, i int) (kind, n int) {
+	c := text[i]
+	var next byte
+	if i+1 < len(text) {
+		next = text[i+1]
 	}
-	if start >= 2 && text[start-2:start] == "++" {
-		return true
+	switch c {
+	case '=':
+		if next == '=' || next == '~' {
+			return opOther, 2
+		}
+		return opAssign, 1
+	case '<', '>':
+		if next == c {
+			if i+2 < len(text) && text[i+2] == '=' {
+				return opAssign, 3
+			}
+			return opOther, 2
+		}
+		if next == '=' {
+			return opOther, 2
+		}
+	case '+', '-':
+		if next == c {
+			return opStep, 2
+		}
+		if next == '=' {
+			return opAssign, 2
+		}
+	case '!':
+		if next == '=' {
+			return opOther, 2
+		}
+	default: // * / % & | ^ :
+		if next == '=' {
+			return opAssign, 2
+		}
 	}
-	if end >= len(text) {
-		return false
-	}
-	rest := text[end:]
-	switch {
-	case strings.IndexByte("IFS", rest[0]) >= 0:
-		return true
-	case strings.HasPrefix(rest, "++") || strings.HasPrefix(rest, "--"):
-		return true
-	case rest[0] == '=':
-		// `=` counts only against the expansion: spaced, it is also a
-		// test's comparison (`[ $a = b ]`).
-		return !strings.HasPrefix(rest, "==")
-	}
-	rest = strings.TrimLeft(rest, " \t")
-	if strings.HasPrefix(rest, "<<=") || strings.HasPrefix(rest, ">>=") {
-		return true
-	}
-	return len(rest) >= 2 && strings.IndexByte("+-*/%&|^", rest[0]) >= 0 && rest[1] == '='
+	return opOther, 1
+}
+
+// isBlank reports whether c separates the words of a shell line.
+func isBlank(c byte) bool {
+	return c == ' ' || c == '\t' || c == '\n'
 }
 
 // capIFSSplits reads each word of segs whose fields rest on the default IFS
