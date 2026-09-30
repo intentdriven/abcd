@@ -26,7 +26,7 @@ reverses a stated rule it needs this record and a brief invariant.
 The product thinker ruled on 2026-09-22 for route 2 of the capture's three
 shapes (a workflow re-authors the bump before the gate runs; the gate does not
 change) and planned it as
-[itd-2609221842494980](../../intents/planned/itd-2609221842494980-a-dependency-bump-lands-without-a-person-re-authoring-it-a.md),
+[itd-2609221842494980](../../intents/shipped/itd-2609221842494980-a-dependency-bump-lands-without-a-person-re-authoring-it-a.md),
 whose `## Decisions` fix the bound as the diff's shape, the message and the
 opt-in. A ruling on 2026-09-29 settled the credential: a GitHub App the person
 creates and installs pushes the result, and the landed commit's author is the

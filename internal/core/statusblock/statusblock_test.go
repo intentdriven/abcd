@@ -86,7 +86,7 @@ func lanesOf(started ...Started) LaneReader {
 // drafts; every row carries its id and title.
 func TestBlockPlacesEveryIntent(t *testing.T) {
 	root := store(t)
-	lane := Lane{Run: "run-2609290000000001", Lane: "lane-1", Step: "implement", Awaiting: "implementer"}
+	lane := Lane{Run: "run-2609290000000001", Lane: "lane-1", Stage: "implement", Awaiting: "implementer"}
 	b, err := Read(root, lanesOf(Started{Intent: "itd-2609010000000001", Lane: lane}))
 	if err != nil {
 		t.Fatal(err)
@@ -133,7 +133,7 @@ func TestBlockPlacesEveryIntent(t *testing.T) {
 // Next and Later are otherwise exactly what they were.
 func TestBlockWithoutAStateFileKeepsOnlyTheHead(t *testing.T) {
 	root := store(t)
-	with, err := Read(root, lanesOf(Started{Intent: "itd-7", Lane: Lane{Run: "run-1", Lane: "lane-1", Step: "brief"}}))
+	with, err := Read(root, lanesOf(Started{Intent: "itd-7", Lane: Lane{Run: "run-1", Lane: "lane-1", Stage: "brief"}}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -167,7 +167,7 @@ func TestBlockWithoutAStateFileKeepsOnlyTheHead(t *testing.T) {
 // lane, so it stays in Next beside its mark on Now.
 func TestAnIntentInALaneIsOnlyUnderNow(t *testing.T) {
 	root := store(t)
-	lane := Lane{Run: "run-1", Lane: "lane-1", Step: "implement"}
+	lane := Lane{Run: "run-1", Lane: "lane-1", Stage: "implement"}
 	inLane := []string{"itd-7", "itd-8", "itd-3"}
 	var started []Started
 	for _, id := range inLane {
@@ -192,7 +192,7 @@ func TestAnIntentInALaneIsOnlyUnderNow(t *testing.T) {
 // name, each row with its id and title, the lane state and the failing checks.
 func TestBlockJSONCarriesTheThreeLists(t *testing.T) {
 	root := store(t)
-	b, err := Read(root, lanesOf(Started{Intent: "itd-2609010000000001", Lane: Lane{Run: "run-1", Lane: "lane-2", Step: "validate", Awaiting: "validator"}}))
+	b, err := Read(root, lanesOf(Started{Intent: "itd-2609010000000001", Lane: Lane{Run: "run-1", Lane: "lane-2", Stage: "validate", Awaiting: "validator"}}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -203,7 +203,7 @@ func TestBlockJSONCarriesTheThreeLists(t *testing.T) {
 	s := string(data)
 	for _, want := range []string{
 		`"now":[`, `"next":[`, `"later":[`, `"order":"pick"`,
-		`"lane":{"run":"run-1","lane":"lane-2","step":"validate","awaiting":"validator"}`,
+		`"lane":{"run":"run-1","lane":"lane-2","stage":"validate","awaiting":"validator"}`,
 		`"next_up":true`, `"failing_checks":["spec_link"`, `"title":"An old idea"`,
 	} {
 		if !strings.Contains(s, want) {
@@ -344,7 +344,7 @@ func TestTheHeadIsThePicksChoice(t *testing.T) {
 
 	// itd-4 in a lane: the pick would not start it again, so the head is the
 	// runner-up.
-	b, err = Read(root, lanesOf(Started{Intent: "itd-4", Lane: Lane{Run: "run-1", Lane: "lane-1", Step: "implement"}}))
+	b, err = Read(root, lanesOf(Started{Intent: "itd-4", Lane: Lane{Run: "run-1", Lane: "lane-1", Stage: "implement"}}))
 	if err != nil {
 		t.Fatal(err)
 	}

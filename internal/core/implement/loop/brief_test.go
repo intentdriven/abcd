@@ -37,7 +37,7 @@ func briefRepo(t *testing.T, agents string) *gittest.Repo {
 }
 
 // advanceTo steps the run until its current lane's next step is want.
-func advanceTo(t *testing.T, repo *gittest.Repo, runID string, want StepName) StepResult {
+func advanceTo(t *testing.T, repo *gittest.Repo, runID string, want Stage) StepResult {
 	t.Helper()
 	var res StepResult
 	for range len(Sequence) {
@@ -45,10 +45,10 @@ func advanceTo(t *testing.T, repo *gittest.Repo, runID string, want StepName) St
 		if err != nil {
 			t.Fatal(err)
 		}
-		if i := st.current(); i >= 0 && st.Lanes[i].Step == want {
+		if i := st.current(); i >= 0 && st.Lanes[i].Stage == want {
 			return res
 		}
-		if res, err = Advance(repo.Root(), runID, DefaultSteps(), Options{}); err != nil {
+		if res, err = Advance(repo.Root(), runID, DefaultStages(), Options{}); err != nil {
 			t.Fatalf("advancing to %s: %v", want, err)
 		}
 	}
@@ -67,13 +67,13 @@ func TestTheBriefNamesWhatItWasRenderedFrom(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	advanceTo(t, repo, start.RunID, StepBrief)
-	res, err := Advance(repo.Root(), start.RunID, DefaultSteps(), Options{})
+	advanceTo(t, repo, start.RunID, StageBrief)
+	res, err := Advance(repo.Root(), start.RunID, DefaultStages(), Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Performed != StepBrief || res.Step != StepImplement {
-		t.Fatalf("want the brief step performed: %+v", res)
+	if res.PerformedStage != StageBrief || res.Stage != StageImplement {
+		t.Fatalf("want the brief stage performed: %+v", res)
 	}
 	st, err := ReadState(repo.Root(), start.RunID)
 	if err != nil {
@@ -136,7 +136,7 @@ func TestTheBriefCarriesAnUnmarkedAgentsFileWhole(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	advanceTo(t, repo, start.RunID, StepImplement)
+	advanceTo(t, repo, start.RunID, StageImplement)
 	st, _ := ReadState(repo.Root(), start.RunID)
 	raw, err := os.ReadFile(filepath.Join(repo.Root(), filepath.FromSlash(st.Lanes[0].Brief)))
 	if err != nil {
@@ -164,7 +164,7 @@ func TestTheBriefCarriesTheOutboundPolicy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	advanceTo(t, repo, start.RunID, StepImplement)
+	advanceTo(t, repo, start.RunID, StageImplement)
 	st, err := ReadState(repo.Root(), start.RunID)
 	if err != nil {
 		t.Fatal(err)
@@ -198,12 +198,12 @@ func TestTheBriefIsRenderedFromTheLaneBase(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		advanceTo(t, repo, start.RunID, StepBrief)
-		_, err = Advance(repo.Root(), start.RunID, DefaultSteps(), Options{})
-		if r := mustRefusal(t, err); r.Step != string(StepBrief) || !strings.Contains(r.Reason, "AGENTS.md") {
+		advanceTo(t, repo, start.RunID, StageBrief)
+		_, err = Advance(repo.Root(), start.RunID, DefaultStages(), Options{})
+		if r := mustRefusal(t, err); r.Stage != string(StageBrief) || !strings.Contains(r.Reason, "AGENTS.md") {
 			t.Fatalf("want the missing conventions named: %+v", r)
 		}
-		if st, _ := ReadState(repo.Root(), start.RunID); st.Lanes[0].Step != StepBrief || st.Lanes[0].Brief != "" {
+		if st, _ := ReadState(repo.Root(), start.RunID); st.Lanes[0].Stage != StageBrief || st.Lanes[0].Brief != "" {
 			t.Fatalf("the lane stays at its brief: %+v", st.Lanes[0])
 		}
 	})
@@ -219,9 +219,9 @@ func TestTheBriefIsRenderedFromTheLaneBase(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		advanceTo(t, repo, start.RunID, StepBrief)
-		_, err = Advance(repo.Root(), start.RunID, DefaultSteps(), Options{})
-		if r := mustRefusal(t, err); r.Step != string(StepBrief) || !strings.Contains(r.Reason, "not planned") || !strings.Contains(r.Reason, "drafts/") {
+		advanceTo(t, repo, start.RunID, StageBrief)
+		_, err = Advance(repo.Root(), start.RunID, DefaultStages(), Options{})
+		if r := mustRefusal(t, err); r.Stage != string(StageBrief) || !strings.Contains(r.Reason, "not planned") || !strings.Contains(r.Reason, "drafts/") {
 			t.Fatalf("want the base's bucket named: %+v", r)
 		}
 	})
@@ -247,7 +247,7 @@ func TestABriefRenderedAgainRendersTheBaseNotTheWorktree(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	advanceTo(t, repo, start.RunID, StepImplement)
+	advanceTo(t, repo, start.RunID, StageImplement)
 	st, err := ReadState(repo.Root(), start.RunID)
 	if err != nil {
 		t.Fatal(err)
@@ -286,7 +286,7 @@ func TestABriefRenderedAgainRendersTheBaseNotTheWorktree(t *testing.T) {
 	write(DecisionsLogRel, "- 2026-09-27 — IMPLEMENTER'S DECISION on itd-10.\n")
 
 	c := Context{RepoRoot: repo.Root(), RunDir: runRel(st.RunID), State: st}
-	if _, err := briefStep(c, &lane); err != nil {
+	if _, err := briefStage(c, &lane); err != nil {
 		t.Fatalf("the brief renders the base whatever the worktree holds: %v", err)
 	}
 	again, err := os.ReadFile(briefPath)
@@ -314,9 +314,9 @@ func TestABriefSourceTheBaseHoldsAsASymlinkIsRefused(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	advanceTo(t, repo, start.RunID, StepBrief)
-	_, err = Advance(repo.Root(), start.RunID, DefaultSteps(), Options{})
-	if r := mustRefusal(t, err); r.Step != string(StepBrief) || !strings.Contains(r.Reason, "AGENTS.md") {
+	advanceTo(t, repo, start.RunID, StageBrief)
+	_, err = Advance(repo.Root(), start.RunID, DefaultStages(), Options{})
+	if r := mustRefusal(t, err); r.Stage != string(StageBrief) || !strings.Contains(r.Reason, "AGENTS.md") {
 		t.Fatalf("want the linked AGENTS.md refused: %+v", r)
 	}
 }

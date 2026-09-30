@@ -8,8 +8,7 @@ tree disagree, so the reference can never silently go stale. Regenerate it with
 
 Every user-facing command is listed with its sentence (what it does, what it
 writes, and when it refuses), its usage line, and its flags; the
-operator-internal hook entrypoints, and the old spellings of moved commands,
-are omitted.
+operator-internal hook entrypoints are omitted.
 
 ## `abcd`
 
@@ -121,9 +120,9 @@ Apply the install gaps the detection finds: Writes .abcd/, the name-guard hooks 
 
 #### `abcd ahoy remote`
 
-Enable GitHub secret scanning and push protection: Writes nothing bare, only the settings and their mirror; refuses bare, naming `abcd ahoy --remote`.
+Enable GitHub secret scanning and push protection: Writes nothing bare, only the settings and their mirror through apply; refuses an unknown sub-verb.
 
-**Usage:** `abcd ahoy remote [command]` (the bare form's work is `abcd ahoy --remote`)
+**Usage:** `abcd ahoy remote`
 
 ##### `abcd ahoy remote apply`
 
@@ -302,7 +301,7 @@ and the reason then says the tie was broken by age.
 The pick starts the run `abcd build <itd-N>` would start for that intent, with the pick in
 the run's state. The reason is one `pursued:` grounds entry opening `picked by run <run-id>
 on <date>`: every candidate with its score, the rule, the runner-up and why it lost, and the
-falsifier. The lane's worktree step appends it to the intent in the lane's own worktree and
+falsifier. The lane's worktree stage appends it to the intent in the lane's own worktree and
 commits it there as the lane branch's first commit, record-only, before the brief; the
 receipt verifier does not count that commit as the implementer's. The checkout you run this
 in is never written but for the run state. `abcd intent ready` keeps reporting the person's
@@ -1333,9 +1332,9 @@ abcd ideate record widen-the-public-api --verdict-json verdict.json
 
 ### `abcd identity`
 
-Record the identity block and propose drift corrections: Writes nothing bare, only the block and its pointer; refuses bare, naming `abcd lint identity`.
+Record the identity block and propose drift corrections: Writes nothing bare, only the block and its pointer; refuses an unknown sub-verb.
 
-**Usage:** `abcd identity [command]` (the bare form's work is `abcd lint identity`)
+**Usage:** `abcd identity`
 
 #### `abcd identity init`
 
@@ -1379,13 +1378,13 @@ record, taken by an exclusive create, so of two sessions reaching for one record
 exactly one holds it; the claim is a lease, and a lapsed lease is claimable again.
 The second session is bounded: one lane at a time, never the release, never a lane
 that touches the reading corpus, no lane in a split-roles window (`check` asks before
-a step that is not a claim). `log` appends the run's other events, and `report`
+a stage that is not a claim). `log` appends the run's other events, and `report`
 derives the comparison of the modes from the log.
 
 `status`, `step` and `receipt` drive the implement loop `abcd build` starts, whose state
-lives in this checkout's local tier: `step` performs one step and exits, naming the
-agent, brief and receipt path when a step hands work to an agent, and `receipt`
-completes that step once the receipt verifies.
+lives in this checkout's local tier: `step` performs the next stage of the current lane
+and exits, naming the agent, brief and receipt path when a stage hands work to an agent,
+and `receipt` completes that stage once the receipt verifies.
 
 Exit 2 on a refusal (an unrecognised input, a session that has not joined, a bound
 the session's role does not permit), exit 3 on contention (the record is claimed by
@@ -1393,21 +1392,21 @@ another session, or the run state is locked): back off and take other work.
 
 #### `abcd implement check`
 
-Ask whether this session may take a step before taking it: Writes a run-log line only on a refusal; refuses a step the second session's bounds forbid.
+Ask whether this session may take a stage before taking it: Writes a run-log line only on a refusal; refuses a stage the second session's bounds forbid.
 
 **Usage:** `abcd implement check <lane|release|review|audit|land> --session <id> [flags]`
 
-Say whether this session may take a step, before it takes it. The first session may
-take every step. The second is refused the release step always, a lane in a
+Say whether this session may take a stage, before it takes it. The first session may
+take every stage. The second is refused the release stage always, a lane in a
 split-roles window, and a lane whose --path reaches the reading corpus; review,
-audit and land are open to it. A refusal exits 2 and is logged; an allowed step
+audit and land are open to it. A refusal exits 2 and is logged; an allowed stage
 writes nothing. The verdict reports the agent ceiling the session joined with and the
 agents its log lines declare alive (agents_alive).
 
 **Flags:**
 
 ```
-      --path stringArray   a repository-relative file the step touches (repeatable)
+      --path stringArray   a repository-relative file the stage touches (repeatable)
       --session string     this session's id
 ```
 
@@ -1618,15 +1617,15 @@ abcd implement mode single --session s-example
 
 #### `abcd implement receipt`
 
-Hand back the receipt an agent step of a loop run awaits: Writes the run's state when the receipt verifies; refuses a receipt that does not verify.
+Hand back the receipt an agent stage of a loop run awaits: Writes the run's state when the receipt verifies; refuses a receipt that does not verify.
 
 **Usage:** `abcd implement receipt <path> [--run <run-id>] [flags]`
 
-Hand back the receipt the run's awaiting lane named when its step handed work to an
-agent. The path must be the one the step named. The step's verifier checks it; a
-receipt that verifies completes the step and the lane moves to its next step, and one
+Hand back the receipt the run's awaiting lane named when its stage handed work to an
+agent. The path must be the one the stage named. The stage's verifier checks it; a
+receipt that verifies completes the stage and the lane moves to its next stage, and one
 that does not is refused naming what is missing, with the lane left where it was. A
-step whose verifier this abcd does not carry is refused naming the spec piece that
+stage whose verifier this abcd does not carry is refused naming the spec piece that
 delivers it.
 
 An implementer's receipt is read strictly (one JSON object, no field the brief does not
@@ -1708,7 +1707,7 @@ Render the implement loop's runs in this checkout, lane by lane: Writes nothing;
 **Usage:** `abcd implement status [--run <run-id>] [flags]`
 
 Render the runs `abcd build` started in this checkout, or the one --run names: the
-intent and spec, each lane with its spec step and next step, what an awaiting lane
+intent and spec, each lane with its spec step and next stage, what an awaiting lane
 waits on, the pending spec steps, and the run record. Read-only: it writes nothing
 and creates nothing. Exit 2 when --run names no run.
 
@@ -1720,18 +1719,19 @@ and creates nothing. Exit 2 when --run names no run.
 
 #### `abcd implement step`
 
-Perform the next step of an implement loop run and exit: Writes the run's state, the lane's worktree or brief; refuses a step this abcd does not carry.
+Perform the next stage of an implement loop run's lane and exit: Writes the run's state, the lane's worktree or brief; refuses a stage this abcd does not carry.
 
 **Usage:** `abcd implement step [--run <run-id>] [flags]`
 
-Perform one step of the run's current lane, write the state, and exit. At a step that
-hands work to an agent, the result names the agent to start, the brief it is handed
+Perform the next stage of the run's current lane, write the state, and exit. At a stage
+that hands work to an agent, the result names the agent to start, the brief it is handed
 and the path its receipt goes to; the lane then advances only on
-`abcd implement receipt`, and asking for a step again re-tells the same thing and
-moves nothing. When a lane is done the spec's next pending step opens the next lane,
-and the run record names it. A complete run says so.
+`abcd implement receipt`, and running `implement step` again re-tells the same thing and
+moves nothing. A lane lands one step of the spec; its stages are how it gets there, and
+when a lane is done the spec's next pending step opens the next lane, and the run
+record names it. A complete run says so.
 
-The lane's steps, in order: worktree makes the lane's worktree in the machine-scoped
+The lane's stages, in order: worktree makes the lane's worktree in the machine-scoped
 store, ~/.abcd/worktrees/<root-sha>/<run-id>-<lane-id>, on a branch build/<run-id>-<lane-id>
 cut from the default branch; brief renders the lane's brief from that base (the intent,
 the spec, the conventions of AGENTS.md, the decisions the intent cites, and the spec
@@ -1739,13 +1739,13 @@ steps before the lane's with what landed each) into the lane's directory of the 
 implement hands the lane to a fresh implementer and awaits
 its receipt; validate and land follow.
 
-A step whose body this abcd does not carry is refused naming the spec piece that
-delivers it, and the run is unchanged. A step that fails leaves the state as it was,
-so the next invocation performs it again; a completed step is never repeated.
+A stage whose body this abcd does not carry is refused naming the spec piece that
+delivers it, and the run is unchanged. A stage that fails leaves the state as it was,
+so the next invocation performs it again; a completed stage is never repeated.
 
-The run's window clock: once the run's working window has elapsed, the step starts
+The run's window clock: once the run's working window has elapsed, the call starts
 nothing, writes next_eligible_at (now plus the run's pause) and exits 0 naming it; an
-agent already started may still hand back its receipt. Before next_eligible_at the step
+agent already started may still hand back its receipt. Before next_eligible_at the call
 is refused as a pause and nothing changes; at or after it, a new window opens.
 
 --run names the run; without it, the one run in progress in this checkout. Exit 2 on a

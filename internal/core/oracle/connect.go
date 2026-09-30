@@ -47,8 +47,8 @@ func KeyHomes() []string { return append(credential.Homes(), KeyHomeNone) }
 
 // ConnectRequest is one provider's setup.
 type ConnectRequest struct {
-	// Roots are where the configuration in force is read: the denylist a
-	// model is held to, and the provider blocks a name must not repeat. The
+	// Roots are where the configuration in force is read: the oracle.denylist
+	// a model is held to, and the provider blocks a name must not repeat. The
 	// writes land under Roots.Home alone.
 	Roots    layered.Roots
 	Provider string
@@ -319,8 +319,10 @@ func writeProviderBlockLocked(home string, dir *os.Root, name string, block map[
 // ahoy gap, `abcd ahoy --providers` and the plugin page.
 const AdapterExplanation = "An aggregator (OpenRouter, for one) serves many vendors' models behind one " +
 	"OpenAI-compatible address and one key, and a local OpenAI-compatible server is reached the same way. " +
-	"abcd would use one for decision models and cheap judgements pointed at it by name, and never for a frontier " +
-	"model, which the vendor denylist keeps on the host. Everything works without one: with no provider configured, " +
+	"abcd would use one for decision models and cheap judgements pointed at it by name, and only for the models its " +
+	"list names: a model the person does not list, a frontier model included, is never asked for, " +
+	"and the record shows what answered. " +
+	"Everything works without one: with no provider configured, " +
 	"every delegated step runs on the host."
 
 // KeyHomesProse is the prose above the choice of the key's home (criterion 8):

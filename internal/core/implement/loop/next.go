@@ -7,7 +7,7 @@ package loop
 // run for; each is scored from its record (intent.ReadinessIn) and the pick
 // order (intent.PickLess) takes the readiest, the oldest among equals. The
 // pick then starts the run `abcd build <itd-N>` would start for that intent,
-// with the pick and its reason in the state, and the lane's worktree step
+// with the pick and its reason in the state, and the lane's worktree stage
 // commits the reason onto the intent as the lane branch's first commit
 // (lane.go, pickCommit), a record-only commit the receipt verifier does not
 // count as the implementer's (receipt.go).
@@ -28,8 +28,8 @@ import (
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
-// StepPick is the refusal step of a pick that takes nothing.
-const StepPick = "pick"
+// StagePick is the refusal stage of a pick that takes nothing.
+const StagePick = "pick"
 
 // CheckRun is the exclusion of a planned intent this checkout already has a
 // run in progress for: the pick starts a run, never resumes one.
@@ -176,11 +176,11 @@ func Next(repoRoot string, o Options, n NextOptions) (NextResult, error) {
 		if n.UntilEmpty {
 			asked = "--until-empty"
 		}
-		return NextResult{}, refuse(StepPick, "", "", asked+" asks for more than one pick, and picking again under the pace rule (criterion 5 of itd-2609211116005482) is not built in this abcd",
+		return NextResult{}, refuse(StagePick, "", "", asked+" asks for more than one pick, and picking again under the pace rule (criterion 5 of itd-2609211116005482) is not built in this abcd",
 			"run `abcd build next` once per pick; each run picks one intent")
 	}
 	if n.Max < 0 {
-		return NextResult{}, refuse(StepPick, "", "", fmt.Sprintf("--max %d is not a run count", n.Max), "give --max a whole number of picks, 1 or more")
+		return NextResult{}, refuse(StagePick, "", "", fmt.Sprintf("--max %d is not a run count", n.Max), "give --max a whole number of picks, 1 or more")
 	}
 	if err := tierPresent(repoRoot); err != nil {
 		return NextResult{}, err
@@ -191,7 +191,7 @@ func Next(repoRoot string, o Options, n NextOptions) (NextResult, error) {
 	}
 	p, ok := intent.Choose(set.Candidates)
 	if !ok {
-		ref := refuse(StepPick, "", "", noCandidateReason(set.Excluded),
+		ref := refuse(StagePick, "", "", noCandidateReason(set.Excluded),
 			"settle what each exclusion names (`abcd build <itd-N>` shows every check of one), or plan an intent")
 		ref.Excluded = set.Excluded
 		return NextResult{}, ref
@@ -199,7 +199,7 @@ func Next(repoRoot string, o Options, n NextOptions) (NextResult, error) {
 	// The entry's gate, asked of the text as it will be written but for the
 	// run id, which is minted when the run is created and has one shape.
 	if _, err := grounds.New(grounds.Pursued, intent.PickEntryText("run-0000000000000000", o.now(), p)); err != nil {
-		return NextResult{}, refuse(StepPick, "", "", "the pick's reason cannot be written as a grounds entry: "+err.Error(),
+		return NextResult{}, refuse(StagePick, "", "", "the pick's reason cannot be written as a grounds entry: "+err.Error(),
 			"report this: the reason is computed, and a computed reason the writer refuses is a defect")
 	}
 	started, err := start(repoRoot, p.Chosen.ID, o, &RunPick{Pick: p, Excluded: set.Excluded})

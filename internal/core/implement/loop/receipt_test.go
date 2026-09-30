@@ -20,13 +20,13 @@ func awaitingLane(t *testing.T) (*gittest.Repo, string, Lane, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	advanceTo(t, repo, start.RunID, StepImplement)
-	res, err := Advance(repo.Root(), start.RunID, DefaultSteps(), Options{})
+	advanceTo(t, repo, start.RunID, StageImplement)
+	res, err := Advance(repo.Root(), start.RunID, DefaultStages(), Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if res.Awaiting == nil || res.Awaiting.Role != RoleImplementer {
-		t.Fatalf("the implement step awaits an implementer: %+v", res)
+		t.Fatalf("the implement stage awaits an implementer: %+v", res)
 	}
 	st, err := ReadState(repo.Root(), start.RunID)
 	if err != nil {
@@ -87,19 +87,19 @@ func writeReceipt(t *testing.T, dir string, rc any) string {
 
 // TestAVerifiedReceiptAdvancesTheLane is criterion 4's pass: a receipt naming
 // the lane's commits, a passing definition of done's output and the report
-// completes the implement step, and the lane's head moves to its branch's tip.
+// completes the implement stage, and the lane's head moves to its branch's tip.
 func TestAVerifiedReceiptAdvancesTheLane(t *testing.T) {
 	repo, runID, l, dir := awaitingLane(t)
 	c1 := laneCommit(t, repo, l, "one.txt")
 	c2 := laneCommit(t, repo, l, "two.txt")
 	path := writeReceipt(t, dir, goodReceipt(t, runID, l, dir, c1, c2))
 
-	res, err := Receipt(repo.Root(), runID, path, DefaultSteps(), Options{})
+	res, err := Receipt(repo.Root(), runID, path, DefaultStages(), Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Performed != StepImplement || res.Step != StepValidate {
-		t.Fatalf("a verified receipt completes the implement step: %+v", res)
+	if res.PerformedStage != StageImplement || res.Stage != StageValidate {
+		t.Fatalf("a verified receipt completes the implement stage: %+v", res)
 	}
 	st, err := ReadState(repo.Root(), runID)
 	if err != nil {
@@ -219,9 +219,9 @@ func TestAReceiptShortOfItsLaneIsRefusedNamingWhatIsMissing(t *testing.T) {
 			path := writeReceipt(t, dir, tc.edit(t, repo, l, dir, &rc))
 			before := stateBytes(t, repo.Root(), runID)
 
-			_, err := Receipt(repo.Root(), runID, path, DefaultSteps(), Options{})
+			_, err := Receipt(repo.Root(), runID, path, DefaultStages(), Options{})
 			r := mustRefusal(t, err)
-			if r.Step != "receipt" || r.Lane != "lane-1" {
+			if r.Stage != "receipt" || r.Lane != "lane-1" {
 				t.Fatalf("want the receipt refused for the lane: %+v", r)
 			}
 			for _, want := range tc.wants {
@@ -246,7 +246,7 @@ func TestASymlinkedReceiptIsRefused(t *testing.T) {
 	if err := os.Symlink(elsewhere, path); err != nil {
 		t.Fatal(err)
 	}
-	_, err := Receipt(repo.Root(), runID, path, DefaultSteps(), Options{})
+	_, err := Receipt(repo.Root(), runID, path, DefaultStages(), Options{})
 	if r := mustRefusal(t, err); !strings.Contains(r.Reason, "cannot be read as a receipt") {
 		t.Fatalf("want the symlinked receipt refused: %+v", r)
 	}
@@ -256,7 +256,7 @@ func TestASymlinkedReceiptIsRefused(t *testing.T) {
 // and leaves the lane awaiting it.
 func TestNoReceiptYetIsRefused(t *testing.T) {
 	repo, runID, _, dir := awaitingLane(t)
-	_, err := Receipt(repo.Root(), runID, filepath.Join(dir, ReceiptFileName), DefaultSteps(), Options{})
+	_, err := Receipt(repo.Root(), runID, filepath.Join(dir, ReceiptFileName), DefaultStages(), Options{})
 	if r := mustRefusal(t, err); !strings.Contains(r.Reason, "no receipt at") {
 		t.Fatalf("want the absent receipt named: %+v", r)
 	}

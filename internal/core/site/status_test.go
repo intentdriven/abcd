@@ -21,7 +21,7 @@ func TestStatusPageRendersTheBlockFromTheSameRead(t *testing.T) {
 	f.commitAt("2026-03-07T09:00:00+00:00", "feat: a second draft", "None")
 	out := t.TempDir()
 	lanes := func(string) ([]statusblock.Started, error) {
-		return []statusblock.Started{{Intent: "itd-1", Lane: statusblock.Lane{Run: "run-2609290000000001", Lane: "lane-1", Step: "implement"}}}, nil
+		return []statusblock.Started{{Intent: "itd-1", Lane: statusblock.Lane{Run: "run-2609290000000001", Lane: "lane-1", Stage: "implement"}}}, nil
 	}
 	if _, err := Build(Request{RepoRoot: f.Root(), OutDir: out, Stamp: fixtureStamp, Lanes: lanes}); err != nil {
 		t.Fatalf("build: %v", err)

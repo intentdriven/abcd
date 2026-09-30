@@ -3,15 +3,15 @@
 `/abcd:build` is the verb a person types to have abcd build one intent with
 nobody holding the run in their head (itd-2609201916151817,
 spc-2609202134338445). It starts the implement loop: a loop over a state file,
-not a model, where every invocation reads the state, does at most one step,
+not a model, where every invocation reads the state, does at most one stage,
 writes the state and exits. `build` is the person's word and `implement` is the
-machinery's (decision 8): the steps after the start are driven through the
+machinery's (decision 8): the stages after the start are driven through the
 [`/abcd:implement`](27-implement.md) family.
 
 This chapter describes the part of the loop that ships: the checks, the pace
 (itd-2609201925079472, spc-2609202134341288), the state file, the step
 interface a host session drives with its window clock, and the lane's first
-three steps (its worktree, its brief and the implementer's receipt). The validators
+three stages (its worktree, its brief and the implementer's receipt). The validators
 and the landing are named in the sequence and delivered by later pieces of the
 spec; until each lands, the loop refuses at it by name.
 
@@ -93,7 +93,7 @@ same intent from any other checkout of the repository — another worktree or a
 second clone on the machine — meets the claim at its peers check before this
 run's lane has moved or claimed anything (iss-2609252050506863). The session's
 own claim on the intent is its own, not a peer's. A session the shared run does
-not hold is refused at the `claim` step before anything is created; a claim
+not hold is refused at the `claim` stage before anything is created; a claim
 refused under the lock leaves no run behind; a run whose state cannot be written
 releases the claim it took. A build started without a session holds no claim
 and says so, in the text and as a null `claim` in the JSON: until its lane
@@ -120,14 +120,14 @@ readiest is taken and the oldest among equals (decision 2); `intent.PickLess`
 is the order's one statement.
 
 The pick starts the run `abcd build <itd-N>` starts for that intent, with the
-pick in the state file (schema version 3). The reason is computed, never
+pick in the state file (schema version 3 added it). The reason is computed, never
 composed (decision 5): one `pursued:` grounds entry whose text opens `picked by
 run <run-id> on <date>`, then every candidate with its score, the rule, the
-runner-up and why it lost, and the falsifier. The first lane's worktree step
+runner-up and why it lost, and the falsifier. The first lane's worktree stage
 appends it to the intent in the lane's own worktree, through the intent store's
 grounds writer and lock, and commits that one file as the lane branch's first
 commit (decision 6), under the configured git identity, with hooks off and the
-isolated environment less the global-config neutralisers. A worktree step run
+isolated environment less the global-config neutralisers. A worktree stage run
 again adopts a commit already on the branch only when it is that commit byte
 for byte: the pick's subject, the picked intent's record the one path changed,
 and that record the base's with the one entry appended. The lane records the
@@ -165,7 +165,7 @@ it. A later invocation honours the pace the run started on, whatever the files
 say by then; starting again with a flag naming another pace is refused, and one
 naming the same pace resumes.
 
-A malformed pace or ceiling is refused at the `pace` step naming the value and
+A malformed pace or ceiling is refused at the `pace` stage naming the value and
 the accepted form, and nothing is written (criterion 9): the pace flag is two
 runs of digits around one slash, the work window 1 to 10080 minutes and the pause 0
 to 10080, and the ceiling a whole number from 1 to 64; a configured value is
@@ -194,8 +194,14 @@ repository abcd manages has one, so a run is managed-only by construction. Each
 run directory is created one level at a time and proved real, the state file is
 replaced atomically inside an `os.Root`, and the reader decodes strictly,
 refusing an unknown field, a schema version it does not know, or a file stored
-under a run id it does not name. The state is schema version 2, which added the
-pace. Version 1 is its strict subset, so a version-1 file is read as a run
+under a run id it does not name. The state is schema version 4. Version 4
+renamed the lane's stage (BU1, iss-2609291313276243): a lane's and a record
+line's `step` became `stage`, so "step" names only the spec's steps (`spec_step`,
+`step_title`, `pending`). Versions 1 to 3 wrote `step`, and are migrated on
+read: the read carries each `step` over to `stage` and writes nothing, and the
+run's next mutation writes the file back at version 4; one of them that already
+says `stage` is not one its version wrote, and is refused. Version 3 added the
+pick and version 2 the pace. Version 1 is version 2's strict subset, so a version-1 file is read as a run
 started before the loop paced a run: it carries no pace, runs unpaced, and is
 written back at version 2 by its next mutation. A version-1 file carrying a
 pace is not one version 1 wrote, and is refused. A state file or run directory that is a symlink, or that
@@ -205,10 +211,11 @@ the file and the remedy), never followed.
 The state holds the run's key, intent, spec and driver (the host session, by
 default); the run's pace; the window clock (`window_started_at`,
 `next_eligible_at`); the lanes opened so far; the spec steps still pending; and
-the run record, one line per completed step and one per lane opened, naming the
-spec step it builds (the start's line names the first). A lane carries its spec step and
-title, its next step, what it awaits when a step has handed work to an agent,
-and the footprint its steps fill in: branch, base and head, worktree, brief,
+the run record, one line per completed stage and one per lane opened, each
+naming its `stage`, the lane-opening line naming the spec step the lane builds
+(the start's line names the first). A lane carries its spec step and title
+(`spec_step`, `step_title`), its next `stage`, what it awaits when a stage has
+handed work to an agent, and the footprint its stages fill in: branch, base and head, worktree, brief,
 receipt and pull request. The status render names the worktree home-relative,
 or by its directory name outside HOME (iss-2609281329007423); the brief and the
 receipt stay whole paths, home-redacted, because the agent reads the one and
@@ -224,16 +231,21 @@ the run as its own peer. Only the key's shape is checked before the lookup.
 
 ## The step interface
 
-A host session drives the loop one step at a time (decision 5's default). The
-lane's steps run in a fixed sequence: the worktree, the brief, the implementer,
-the validators, the landing. Each invocation takes the lock, reads the state,
-performs the current lane's next step and writes the state once, after the step
-succeeds. A step that fails, or a process killed inside one, leaves the state as
-it was, so the next invocation performs that step again; a step the state
-records as done is never performed twice (criterion 7). A step's body is
-therefore written to find what it made last time.
+A spec's steps and a lane's stages are two words for two things (BU1,
+iss-2609291313276243): each spec step lands as one lane, and the loop takes the
+lane through its stages. The step verb performs one stage.
 
-A step that hands work to an agent does not complete by itself: the lane then
+A host session drives the loop one stage at a time (decision 5's default). The
+lane's stages run in a fixed sequence: the worktree, the brief, the implementer,
+the validators, the landing. Each invocation takes the lock, reads the state,
+performs the current lane's next stage and writes the state once, after the
+stage succeeds. A stage that fails, or a process killed inside one, leaves the
+state as it was, so the next invocation performs that stage again; a stage the
+state records as done is never performed twice (criterion 7). A stage's body is
+therefore written to find what it made last time. The result names the stage
+the call completed as `performed_stage` and the lane's next as `stage`.
+
+A stage that hands work to an agent does not complete by itself: the lane then
 awaits, naming the agent's role, the brief it is handed and the path its receipt
 goes to (criterion 8). Asking again re-tells the same thing and moves nothing,
 and the lane advances only when that receipt is handed back at that path and its
@@ -241,22 +253,22 @@ verifier accepts it. When a lane is done, the next pending spec step opens the
 next lane, so the spec's steps land one lane at a time.
 
 The loop keeps the run's window clock (criteria 4 and 5). A new run's first
-window opens at its start. Once the window's working minutes have elapsed, a
-step starts nothing: it writes `next_eligible_at`, now plus the run's pause,
+window opens at its start. Once the window's working minutes have elapsed, the
+step verb starts nothing: it writes `next_eligible_at`, now plus the run's pause,
 records the pause, and exits 0 naming the time. The pause runs from the moment
 the loop closes the window, not from the window's nominal end, so an invocation
 that comes late never shortens it. An agent the lane already started may still
-hand its receipt back during the pause, so the running lane finishes its step
+hand its receipt back during the pause, so the running lane finishes its stage
 and checkpoints to its branch; the receipt is not gated by the clock. Before
-`next_eligible_at` a step is refused as a pause, naming the time, and nothing
-moves (decision 1: no process sleeps through it); at or after it the next step
-opens a new window, which the record names, and proceeds. A complete run is
+`next_eligible_at` the step verb is refused as a pause, naming the time, and
+nothing moves (decision 1: no process sleeps through it); at or after it the
+next stage opens a new window, which the record names, and proceeds. A complete run is
 reported complete and closes no window.
 
-A step whose body this build does not carry is refused naming the step, the lane
-and the spec piece that delivers it, and the run is unchanged, ready to resume in
-a build that carries it. This build carries the worktree, the brief and the
-implement step with its receipt's verifier; the validate and land steps are
+A stage whose body this build does not carry is refused naming the stage, the
+lane and the spec piece that delivers it, and the run is unchanged, ready to
+resume in a build that carries it. This build carries the worktree, the brief and
+the implement stage with its receipt's verifier; the validate and land stages are
 refused naming pieces 8 and 9. The process driver (piece 3) is the same loop
 called by a process instead of a host, starting the named agent through the
 runner and handing its receipt back.
@@ -279,11 +291,11 @@ compose must be one path segment of letters, digits, `.`, `_` and `-`, not led
 by `-` or `.` and holding no `..`, so no component can leave the store. Every
 level of the store is made one at a time and proved a real directory that is
 the caller's alone (owned by the caller, writable by neither its group nor
-anyone else), and a level the step makes is made `0700`, so a symlink anywhere
-in the chain, or a level another account owns or can write, refuses the step
+anyone else), and a level the stage makes is made `0700`, so a symlink anywhere
+in the chain, or a level another account owns or can write, refuses the stage
 before anything is made inside it; nothing beside the checkout, and nothing outside
 `~/.abcd/worktrees/<root-sha>/`, is created. Git runs in the isolated
-environment, with `--` before the path. Run again after a kill, the step finds
+environment, with `--` before the path. Run again after a kill, the stage finds
 the worktree git lists at the lane's path on the lane's branch and adopts it;
 anything else at that path is refused and left as it is.
 
@@ -318,7 +330,7 @@ the run opened it for: a run does not follow steps reordered mid-run, so a brief
 naming the wrong predecessors is never written.
 The brief is written atomically, mode `0600`.
 
-**The receipt** (piece 7; criterion 4). The implement step hands the lane to a
+**The receipt** (piece 7; criterion 4). The implement stage hands the lane to a
 fresh implementer and awaits its receipt at
 `.abcd/.work.local/run/<run-id>/<lane-id>/receipt.json`. The receipt is the
 implementer's word, read as untrusted input: through the guarded reader inside
@@ -338,11 +350,11 @@ its branch's tip and the lane to its validators.
 
 ## Exit codes
 
-`0` done, including a resumed start, a step that re-tells an await, a step
-that closes an elapsed window, and a complete run; `2` refused, naming the step, the reason and the remedy, with
+`0` done, including a resumed start, a stage that re-tells an await, a call
+that closes an elapsed window, and a complete run; `2` refused, naming the stage, the reason and the remedy, with
 nothing written; `3` contention: a peer holds the intent, the run is paused, or
 the run state is locked by another invocation. A refusal in the JSON form is its
-own document before the error envelope, with the step, the check, the reason and
+own document before the error envelope, with the stage (`refusal.stage`), the check, the reason and
 the remedy as fields.
 
 ## Where this sits

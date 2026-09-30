@@ -11,8 +11,8 @@ is the single write path, and it runs once, at onboarding.
 
 The report — the block and every surface held to it — is the identity target
 of the one lint ([`16-lint.md`](16-lint.md), itd-2609212130136102), because
-looking at whether the surfaces still say the block is a check; for one release
-the bare `abcd identity` answers with it and exits non-zero. Bare `abcd lint` runs the
+looking at whether the surfaces still say the block is a check; the bare
+`abcd identity` lists its sub-verbs. Bare `abcd lint` runs the
 same check as one rule among the working conventions; `identity` keeps the two
 verbs that go beyond a check, the proposed correction and the recording of the
 block.
@@ -138,8 +138,6 @@ the recorded three-variant tagline drift this check exists to catch.
 _Generated from the command tree; a drift test fails `go test` when this appendix and the tree disagree. It lists flags and sub-verbs only. What each flag means is in the [CLI reference](../../../../docs/reference/cli/commands.md), and exit codes, output fields and behaviour are the prose's to state._
 
 ### `abcd identity`
-
-Bare, it moved to `abcd lint identity`.
 
 Sub-verbs: `abcd identity init`, `abcd identity render`.
 

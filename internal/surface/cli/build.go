@@ -37,7 +37,7 @@ func loopRoot() (string, error) {
 }
 
 // loopRefusalDoc is the --json document a refusal renders before the error
-// envelope: the step, the reason and the remedy as fields (criterion 13), and
+// envelope: the stage, the reason and the remedy as fields (criterion 13), and
 // every pre-start check's row when the refusal is a check's.
 type loopRefusalDoc struct {
 	Refusal loop.Refusal `json:"refusal"`
@@ -46,7 +46,7 @@ type loopRefusalDoc struct {
 // loopFail maps an error from the loop to the process outcome. A refusal exits
 // 2, and contention (a peer holds the record, the run is paused or locked) exits
 // 3: back off and take other work, as `abcd implement` does. Under --json the
-// refusal is rendered as its own document first, so a machine reads the step,
+// refusal is rendered as its own document first, so a machine reads the stage,
 // the reason and the remedy as fields; the envelope follows it, last on the
 // stream as every refusal is.
 func loopFail(w io.Writer, asJSON bool, prefix string, err error) error {
@@ -193,7 +193,7 @@ func newBuildNextCommand(asJSON *bool) *cobra.Command {
 			"The pick starts the run `abcd build <itd-N>` would start for that intent, with the pick in\n" +
 			"the run's state. The reason is one `pursued:` grounds entry opening `picked by run <run-id>\n" +
 			"on <date>`: every candidate with its score, the rule, the runner-up and why it lost, and the\n" +
-			"falsifier. The lane's worktree step appends it to the intent in the lane's own worktree and\n" +
+			"falsifier. The lane's worktree stage appends it to the intent in the lane's own worktree and\n" +
 			"commits it there as the lane branch's first commit, record-only, before the brief; the\n" +
 			"receipt verifier does not count that commit as the implementer's. The checkout you run this\n" +
 			"in is never written but for the run state. `abcd intent ready` keeps reporting the person's\n" +
@@ -271,7 +271,7 @@ func renderNext(w io.Writer, res loop.NextResult) {
 		fmt.Fprintf(w, "  runner-up: %s at %d, lost on score\n", p.RunnerUp.ID, p.RunnerUp.Score.Total)
 	}
 	fmt.Fprintf(w, "  entry:   pursued: %s\n", termsafe.Sanitize(res.Entry))
-	fmt.Fprintf(w, "           (the lane's worktree step commits it as %s's first commit)\n", res.Start.Lane.ID)
+	fmt.Fprintf(w, "           (the lane's worktree stage commits it as %s's first commit)\n", res.Start.Lane.ID)
 	fmt.Fprintf(w, "  state:   %s\n", res.Start.State)
 	renderPace(w, res.Start.Pace)
 	renderLaneLine(w, res.Start.Lane)
@@ -289,10 +289,10 @@ func renderPace(w io.Writer, p *loop.Pace) {
 	fmt.Fprintf(w, "  pace:    %s\n", termsafe.Sanitize(p.String()))
 }
 
-// renderLaneLine renders one lane as a line, and its footprint once its steps
+// renderLaneLine renders one lane as a line, and its footprint once its stages
 // have made one.
 func renderLaneLine(w io.Writer, l loop.Lane) {
-	fmt.Fprintf(w, "  %s:  spec step %d, %q — next: %s\n", l.ID, l.SpecStep, termsafe.Sanitize(l.StepTitle), l.Step)
+	fmt.Fprintf(w, "  %s:  spec step %d, %q — next stage: %s\n", l.ID, l.SpecStep, termsafe.Sanitize(l.StepTitle), l.Stage)
 	if l.Branch != "" {
 		fmt.Fprintf(w, "    branch %s (%s..%s), worktree %s\n", termsafe.Sanitize(l.Branch), shortSHA(l.BaseSHA), shortSHA(l.HeadSHA),
 			termsafe.Sanitize(fsutil.RedactHome(l.Worktree)))
@@ -339,7 +339,7 @@ func newImplementStatusCommand(asJSON *bool) *cobra.Command {
 	cmd := &cobra.Command{
 		Use: "status [--run <run-id>]",
 		Long: "Render the runs `abcd build` started in this checkout, or the one --run names: the\n" +
-			"intent and spec, each lane with its spec step and next step, what an awaiting lane\n" +
+			"intent and spec, each lane with its spec step and next stage, what an awaiting lane\n" +
 			"waits on, the pending spec steps, and the run record. Read-only: it writes nothing\n" +
 			"and creates nothing. Exit 2 when --run names no run.",
 		Args: cobra.NoArgs,
@@ -387,7 +387,7 @@ func newImplementStatusCommand(asJSON *bool) *cobra.Command {
 					renderPending(w, st.Pending)
 					fmt.Fprintf(w, "  record:  %d line(s)\n", len(st.Record))
 					for _, e := range st.Record {
-						fmt.Fprintf(w, "    %s  %-9s %s  %s\n", e.At.Format("2006-01-02T15:04:05Z"), termsafe.Sanitize(e.Step),
+						fmt.Fprintf(w, "    %s  %-9s %s  %s\n", e.At.Format("2006-01-02T15:04:05Z"), termsafe.Sanitize(e.Stage),
 							termsafe.Sanitize(e.Lane), termsafe.Sanitize(fsutil.RedactHome(e.Note)))
 					}
 				}
@@ -398,15 +398,15 @@ func newImplementStatusCommand(asJSON *bool) *cobra.Command {
 	return cmd
 }
 
-// renderStepResult is the text form of a step or receipt result.
+// renderStepResult is the text form of an `implement step` or `implement receipt` result.
 func renderStepResult(w io.Writer, verb string, res loop.StepResult) {
 	switch {
 	case res.NextEligibleAt != nil:
 		fmt.Fprintf(w, "%s: %s's window has elapsed; paused until %s\n", verb, res.RunID, res.NextEligibleAt.UTC().Format(time.RFC3339))
-	case res.Performed != "":
-		fmt.Fprintf(w, "%s: %s completed %s's %s step\n", verb, res.RunID, res.Lane, res.Performed)
+	case res.PerformedStage != "":
+		fmt.Fprintf(w, "%s: %s completed %s's %s stage\n", verb, res.RunID, res.Lane, res.PerformedStage)
 	case res.Awaiting != nil:
-		fmt.Fprintf(w, "%s: %s's %s step awaits the %s's receipt\n", verb, res.Lane, res.Step, termsafe.Sanitize(res.Awaiting.Role))
+		fmt.Fprintf(w, "%s: %s's %s stage awaits the %s's receipt\n", verb, res.Lane, res.Stage, termsafe.Sanitize(res.Awaiting.Role))
 		fmt.Fprintf(w, "  brief:   %s\n  receipt: %s\n", termsafe.Sanitize(res.Awaiting.Brief), termsafe.Sanitize(res.Awaiting.Receipt))
 	case res.Complete:
 		fmt.Fprintf(w, "%s: %s is complete\n", verb, res.RunID)
@@ -418,25 +418,26 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 	var runID string
 	cmd := &cobra.Command{
 		Use: "step [--run <run-id>]",
-		Long: "Perform one step of the run's current lane, write the state, and exit. At a step that\n" +
-			"hands work to an agent, the result names the agent to start, the brief it is handed\n" +
+		Long: "Perform the next stage of the run's current lane, write the state, and exit. At a stage\n" +
+			"that hands work to an agent, the result names the agent to start, the brief it is handed\n" +
 			"and the path its receipt goes to; the lane then advances only on\n" +
-			"`abcd implement receipt`, and asking for a step again re-tells the same thing and\n" +
-			"moves nothing. When a lane is done the spec's next pending step opens the next lane,\n" +
-			"and the run record names it. A complete run says so.\n\n" +
-			"The lane's steps, in order: worktree makes the lane's worktree in the machine-scoped\n" +
+			"`abcd implement receipt`, and running `implement step` again re-tells the same thing and\n" +
+			"moves nothing. A lane lands one step of the spec; its stages are how it gets there, and\n" +
+			"when a lane is done the spec's next pending step opens the next lane, and the run\n" +
+			"record names it. A complete run says so.\n\n" +
+			"The lane's stages, in order: worktree makes the lane's worktree in the machine-scoped\n" +
 			"store, ~/.abcd/worktrees/<root-sha>/<run-id>-<lane-id>, on a branch build/<run-id>-<lane-id>\n" +
 			"cut from the default branch; brief renders the lane's brief from that base (the intent,\n" +
 			"the spec, the conventions of AGENTS.md, the decisions the intent cites, and the spec\n" +
 			"steps before the lane's with what landed each) into the lane's directory of the run;\n" +
 			"implement hands the lane to a fresh implementer and awaits\n" +
 			"its receipt; validate and land follow.\n\n" +
-			"A step whose body this abcd does not carry is refused naming the spec piece that\n" +
-			"delivers it, and the run is unchanged. A step that fails leaves the state as it was,\n" +
-			"so the next invocation performs it again; a completed step is never repeated.\n\n" +
-			"The run's window clock: once the run's working window has elapsed, the step starts\n" +
+			"A stage whose body this abcd does not carry is refused naming the spec piece that\n" +
+			"delivers it, and the run is unchanged. A stage that fails leaves the state as it was,\n" +
+			"so the next invocation performs it again; a completed stage is never repeated.\n\n" +
+			"The run's window clock: once the run's working window has elapsed, the call starts\n" +
 			"nothing, writes next_eligible_at (now plus the run's pause) and exits 0 naming it; an\n" +
-			"agent already started may still hand back its receipt. Before next_eligible_at the step\n" +
+			"agent already started may still hand back its receipt. Before next_eligible_at the call\n" +
 			"is refused as a pause and nothing changes; at or after it, a new window opens.\n\n" +
 			"--run names the run; without it, the one run in progress in this checkout. Exit 2 on a\n" +
 			"refusal, exit 3 on a pause or a locked run state.",
@@ -451,7 +452,7 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
 			}
-			res, err := loop.Advance(root, id, loop.DefaultSteps(), loop.Options{})
+			res, err := loop.Advance(root, id, loop.DefaultStages(), loop.Options{})
 			if err != nil {
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
 			}
@@ -467,11 +468,11 @@ func newImplementReceiptCommand(asJSON *bool) *cobra.Command {
 	var runID string
 	cmd := &cobra.Command{
 		Use: "receipt <path> [--run <run-id>]",
-		Long: "Hand back the receipt the run's awaiting lane named when its step handed work to an\n" +
-			"agent. The path must be the one the step named. The step's verifier checks it; a\n" +
-			"receipt that verifies completes the step and the lane moves to its next step, and one\n" +
+		Long: "Hand back the receipt the run's awaiting lane named when its stage handed work to an\n" +
+			"agent. The path must be the one the stage named. The stage's verifier checks it; a\n" +
+			"receipt that verifies completes the stage and the lane moves to its next stage, and one\n" +
 			"that does not is refused naming what is missing, with the lane left where it was. A\n" +
-			"step whose verifier this abcd does not carry is refused naming the spec piece that\n" +
+			"stage whose verifier this abcd does not carry is refused naming the spec piece that\n" +
 			"delivers it.\n\n" +
 			"An implementer's receipt is read strictly (one JSON object, no field the brief does not\n" +
 			"name, within its size cap, never through a symlink) and verifies only when every commit\n" +
@@ -495,7 +496,7 @@ func newImplementReceiptCommand(asJSON *bool) *cobra.Command {
 			if cwd, err := os.Getwd(); err == nil && !filepath.IsAbs(path) {
 				path = filepath.Join(cwd, path)
 			}
-			res, err := loop.Receipt(root, id, path, loop.DefaultSteps(), loop.Options{})
+			res, err := loop.Receipt(root, id, path, loop.DefaultStages(), loop.Options{})
 			if err != nil {
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
 			}

@@ -84,6 +84,7 @@ var pagesWithNoVerb = map[string]string{
 	"consult":           "`consult` has no binary verb — it runs in the host agent; invoke it as /abcd:consult",
 	"ingest":            "`ingest` has no binary verb — it runs in the host agent; invoke it as /abcd:ingest",
 	"prepare-this-repo": "`prepare-this-repo` has no binary verb — it runs in the host agent; invoke it as /abcd:prepare-this-repo",
+	"version":           "`version` is a root flag, not a verb: run `abcd --version` (asking for a newer release is the update verb's --check); /abcd:version runs it",
 }
 
 // maxCommandPageBytes caps a command-page read; the pages are a few KiB.

@@ -333,15 +333,20 @@ null answer, never alternatives made up to fill a set; a decision with one
 defensible answer is not asked, but recorded as a decision line naming the
 answer and why no question was put. What the human is asked to accept, edit
 or strike is quoted in the question itself, never referred to: prose written
-between questions does not reliably reach them, so a question that asks "are
-these yours?" about text they cannot see cannot be answered. A recommendation
-the human asks for is given in prose apart from the question. The next
-question waits for the last answer. The register follows
-the addressee: a product thinker gets outcomes in product terms with no
+between questions is invisible while a question shows, so a question that asks
+"are these yours?" about text they cannot see cannot be answered. For the same
+reason, the example that makes a question answerable goes in the question text,
+and each option's preview carries what choosing that option means, with its own
+concrete example. A recommendation the human asks for is given in prose apart
+from the question. The next question waits for the last answer. The register
+follows the addressee: a product thinker gets outcomes in product terms with no
 record ids or internals; a technical facilitator gets the mechanism and the
 ids. Where the hat is unknown, that is the first question. The mode carries
-the addressee: before each question set `abcd mode product-thinker` or `abcd
-mode facilitator`, and the question names that role.
+the addressee: classify each question's addressee first, and before each
+question set `abcd mode product-thinker` or `abcd mode facilitator` when it
+differs from the current label, then ask, and the question names that role.
+The status line names the person the question on screen is for, so a mixed
+interview re-sets it per question, never once at the start.
 
 **What each register is assumed to know.** The register sets the tone; the
 knowledge floor is what an explanation is measured against. The product
@@ -539,6 +544,12 @@ one step. A section that is not a numbered list is named there with the shape
 above, and never withholds readiness. The close below reads it too: a
 `--remainder` close carries the steps not marked landed into the spec it mints,
 and refuses, writing nothing, when the section cannot be read as steps.
+
+In the build loop, "step" names this and nothing else: the loop (`/abcd:build`) lands each
+step as one lane and takes the lane through its **stages** — `worktree`,
+`brief`, `implement`, `validate`, `land`; `abcd implement step` performs one
+stage, and its payloads name the lane's stage under `stage` and the spec's step
+under `spec_step`.
 
 ## Ship: close the spec in the change that lands the work
 

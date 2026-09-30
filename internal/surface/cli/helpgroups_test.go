@@ -340,10 +340,10 @@ func TestCommandPagesDeclareTheirBlock(t *testing.T) {
 		head, _ := frontmatter.Split(body)
 		field, ok := frontmatter.Fields(strings.Split(head, "\n"))["block"]
 		if cmd.Deprecated != "" {
-			// The verb moved whole (itd-2609212130136102): no block lists its
-			// stub, so a page that says one does is claiming a listing.
+			// A deprecated verb is listed in no block, so a page that says one
+			// does is claiming a listing.
 			if ok {
-				t.Errorf("commands/%s.md says `block: %s`, but `abcd %s` moved to `%s` and no block lists it", verb, field.Value, verb, movedTo(cmd))
+				t.Errorf("commands/%s.md says `block: %s`, but `abcd %s` is deprecated and no block lists it", verb, field.Value, verb)
 			}
 			continue
 		}

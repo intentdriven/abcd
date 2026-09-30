@@ -171,18 +171,6 @@
       "flags": []
     },
     {
-      "path": "abcd ahoy dry-run",
-      "hidden": false,
-      "moved_to": "abcd ahoy --dry-run",
-      "flags": []
-    },
-    {
-      "path": "abcd ahoy identity-check",
-      "hidden": false,
-      "moved_to": "abcd ahoy --identity",
-      "flags": []
-    },
-    {
       "path": "abcd ahoy install",
       "hidden": false,
       "sentence": "Apply the install gaps the detection finds: Writes .abcd/, the name-guard hooks and the PATH entry, and installs a tool only on a yes; refuses a stale binary.",
@@ -276,8 +264,7 @@
     {
       "path": "abcd ahoy remote",
       "hidden": false,
-      "sentence": "Enable GitHub secret scanning and push protection: Writes nothing bare, only the settings and their mirror; refuses bare, naming `abcd ahoy --remote`.",
-      "moved_to": "abcd ahoy --remote",
+      "sentence": "Enable GitHub secret scanning and push protection: Writes nothing bare, only the settings and their mirror through apply; refuses an unknown sub-verb.",
       "flags": []
     },
     {
@@ -1112,12 +1099,6 @@
       ]
     },
     {
-      "path": "abcd docs lint",
-      "hidden": false,
-      "moved_to": "abcd lint docs",
-      "flags": []
-    },
-    {
       "path": "abcd drain",
       "hidden": false,
       "group": "agents",
@@ -1413,8 +1394,7 @@
       "hidden": false,
       "group": "agents",
       "block": "agents",
-      "sentence": "Record the identity block and propose drift corrections: Writes nothing bare, only the block and its pointer; refuses bare, naming `abcd lint identity`.",
-      "moved_to": "abcd lint identity",
+      "sentence": "Record the identity block and propose drift corrections: Writes nothing bare, only the block and its pointer; refuses an unknown sub-verb.",
       "flags": []
     },
     {
@@ -1476,7 +1456,7 @@
     {
       "path": "abcd implement check",
       "hidden": false,
-      "sentence": "Ask whether this session may take a step before taking it: Writes a run-log line only on a refusal; refuses a step the second session's bounds forbid.",
+      "sentence": "Ask whether this session may take a stage before taking it: Writes a run-log line only on a refusal; refuses a stage the second session's bounds forbid.",
       "flags": [
         {
           "name": "path",
@@ -1651,7 +1631,7 @@
     {
       "path": "abcd implement receipt",
       "hidden": false,
-      "sentence": "Hand back the receipt an agent step of a loop run awaits: Writes the run's state when the receipt verifies; refuses a receipt that does not verify.",
+      "sentence": "Hand back the receipt an agent stage of a loop run awaits: Writes the run's state when the receipt verifies; refuses a receipt that does not verify.",
       "flags": [
         {
           "name": "run",
@@ -1714,7 +1694,7 @@
     {
       "path": "abcd implement step",
       "hidden": false,
-      "sentence": "Perform the next step of an implement loop run and exit: Writes the run's state, the lane's worktree or brief; refuses a step this abcd does not carry.",
+      "sentence": "Perform the next stage of an implement loop run's lane and exit: Writes the run's state, the lane's worktree or brief; refuses a stage this abcd does not carry.",
       "flags": [
         {
           "name": "run",
@@ -2636,12 +2616,6 @@
       ]
     },
     {
-      "path": "abcd site check",
-      "hidden": false,
-      "moved_to": "abcd lint site",
-      "flags": []
-    },
-    {
       "path": "abcd site setup",
       "hidden": false,
       "sentence": "Take the website from this checkout to a live address: Writes its files, and the forge and host changes once confirmed; refuses a folder abcd does not manage.",
@@ -2981,20 +2955,6 @@
         },
         {
           "name": "yes",
-          "shorthand": "",
-          "type": "bool",
-          "required": false,
-          "hidden": false
-        }
-      ]
-    },
-    {
-      "path": "abcd version",
-      "hidden": false,
-      "moved_to": "abcd --version",
-      "flags": [
-        {
-          "name": "check",
           "shorthand": "",
           "type": "bool",
           "required": false,

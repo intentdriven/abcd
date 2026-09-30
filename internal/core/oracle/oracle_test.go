@@ -68,7 +68,10 @@ func (f *fx) load() *Layered {
 type spy struct {
 	serves map[Tier]Connection
 	named  map[string]Connection
-	calls  int
+	// pointed is the connection each agent's role is pointed at.
+	pointed map[string]Connection
+	calls   int
+	lookups int
 }
 
 func (s *spy) Serves(t Tier) (Connection, bool) {
@@ -80,6 +83,14 @@ func (s *spy) Serves(t Tier) (Connection, bool) {
 func (s *spy) Named(name string) (Connection, bool) {
 	s.calls++
 	c, ok := s.named[name]
+	return c, ok
+}
+
+// Pointed is a lookup in the machine's own configuration, never a contact
+// with a provider, so it is counted apart from Serves and Named.
+func (s *spy) Pointed(agent string) (Connection, bool) {
+	s.lookups++
+	c, ok := s.pointed[agent]
 	return c, ok
 }
 

@@ -61,25 +61,6 @@ type checkResult struct {
 	NextStep string `json:"next_step,omitempty"`
 }
 
-// newVersionCommand builds the `version` stub. `abcd --version` is where every
-// tool keeps its version and `update --check` is the explicit network check, so
-// the verb that held both answers with them for one release and runs nothing
-// (itd-2609212130136102). It keeps --check so a script passing it is told where
-// the check went, not handed an unknown-flag error.
-func newVersionCommand() *cobra.Command {
-	var check bool
-	cmd := movedStub("version", "abcd --version")
-	cmd.Deprecated = "its report moved to `abcd --version` and its check to `abcd update --check`"
-	cmd.RunE = func(c *cobra.Command, _ []string) error {
-		if check {
-			return movedRefusal("abcd version --check", "abcd update --check")
-		}
-		return movedRefusal("abcd version", "abcd --version")
-	}
-	cmd.Flags().BoolVar(&check, "check", false, "moved to: abcd update --check")
-	return cmd
-}
-
 // runVersion prints abcd's version, install mode and vintage — `abcd
 // --version` — and, when check is set, the explicit network check `abcd update
 // --check` adds to the same report.

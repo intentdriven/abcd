@@ -338,7 +338,7 @@ func TestTheReadingCorpusIsThePresetsObjectPaths(t *testing.T) {
 		"internal/core/lint/rules.go",
 		"commands/reading.md",
 	} {
-		if _, err := r.Check("beta", StepLane, []string{p}); !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), p) {
+		if _, err := r.Check("beta", StageLane, []string{p}); !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), p) {
 			t.Errorf("second session, lane touching %s = %v; want a refusal naming it", p, err)
 		}
 	}
@@ -348,7 +348,7 @@ func TestTheReadingCorpusIsThePresetsObjectPaths(t *testing.T) {
 		"internal/core/implement/bounds.go",
 		"commands/implement.md",
 	} {
-		if v, err := r.Check("beta", StepLane, []string{p}); err != nil || !v.Allowed {
+		if v, err := r.Check("beta", StageLane, []string{p}); err != nil || !v.Allowed {
 			t.Errorf("second session, lane touching %s = %+v, %v; want it allowed", p, v, err)
 		}
 	}
@@ -388,7 +388,7 @@ func TestAnUnreadablePresetFileFailsClosedForTheSecondSession(t *testing.T) {
 			setup(t, r)
 			join(t, r, "alpha", RoleFirst)
 			join(t, r, "beta", RoleSecond)
-			if _, err := r.Check("beta", StepLane, []string{"internal/core/implement/bounds.go"}); !errors.Is(err, ErrRefused) {
+			if _, err := r.Check("beta", StageLane, []string{"internal/core/implement/bounds.go"}); !errors.Is(err, ErrRefused) {
 				t.Fatalf("check with no corpus = %v; want a refusal", err)
 			}
 			if e := lastEvent(t, r, EventRefusal); e.String("condition") != "reading_corpus_unknown" {
@@ -401,7 +401,7 @@ func TestAnUnreadablePresetFileFailsClosedForTheSecondSession(t *testing.T) {
 			if _, err := r.Claim(ClaimRequest{Session: "beta", Record: "itd-1", Lane: "one"}); err != nil {
 				t.Fatalf("claim with no declared paths: %v", err)
 			}
-			if v, err := r.Check("alpha", StepLane, []string{"internal/core/implement/bounds.go"}); err != nil || !v.Allowed {
+			if v, err := r.Check("alpha", StageLane, []string{"internal/core/implement/bounds.go"}); err != nil || !v.Allowed {
 				t.Fatalf("first session with no corpus = %+v, %v", v, err)
 			}
 		})

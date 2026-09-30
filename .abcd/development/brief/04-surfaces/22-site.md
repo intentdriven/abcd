@@ -15,9 +15,8 @@ to remember to update it.
 The bare form is **strictly read-only**: it reports what the repository has
 declared and what the output directory holds. The build is the render, and it writes
 only inside the directory it is given. The check that gates a rendered tree is the site
-target of the one lint ([`16-lint.md`](16-lint.md), itd-2609212130136102; for
-one release the retired spelling under this verb answers with it and exits
-non-zero): it renders first when the directory holds no `index.html` — the one write path
+target of the one lint ([`16-lint.md`](16-lint.md), itd-2609212130136102): it
+renders first when the directory holds no `index.html` — the one write path
 besides the build, confined to the same directory. Bare `abcd lint` runs the
 same gates as its `site` rule, over a render in a temporary directory outside
 the repository.

@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -357,7 +358,6 @@ func NewRootCommand() *cobra.Command {
 	root.Flags().BoolVar(&showVersion, "version", false,
 		"print abcd's version, install mode, and vintage, from disk alone (the release check is: abcd update --check)")
 
-	root.AddCommand(newVersionCommand())
 	root.AddCommand(newUpdateCommand(&asJSON))
 	root.AddCommand(newModeCommand(&asJSON))
 	root.AddCommand(newPeersCommand(&asJSON))
@@ -567,8 +567,58 @@ func NewRootCommand() *cobra.Command {
 	// host's instruction to BLOCK, so every usage error a hook can provoke refuses
 	// at exit 1 instead (iss-269).
 	applyHookPlaneFailOpen(root)
+	// Truly last: every flag-error function above is wrapped so Run can tell a
+	// flag-parse refusal from any other, and answer it in JSON when the caller
+	// typed --json (iss-2609292352131344).
+	markFlagParseErrors(root)
 
 	return root
+}
+
+// flagParseError marks a refusal raised while cobra parsed the flags. The parse
+// stops at the first bad flag, so a --json after it is never read and the
+// persistent flag still reads false when Run renders the refusal. It unwraps to
+// the refusal each flag-error function chose, whose exit code and wording stand.
+type flagParseError struct{ err error }
+
+func (e *flagParseError) Error() string { return e.err.Error() }
+func (e *flagParseError) Unwrap() error { return e.err }
+
+// markFlagParseErrors wraps the flag-error function of every command in the
+// tree, whichever function the passes above left there, so the one decision
+// below it (the --json fallback in Run) sees every flag-parse refusal.
+func markFlagParseErrors(c *cobra.Command) {
+	inner := c.FlagErrorFunc()
+	c.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
+		if out := inner(cmd, err); out != nil {
+			return &flagParseError{err: out}
+		}
+		return nil
+	})
+	for _, sub := range c.Commands() {
+		markFlagParseErrors(sub)
+	}
+}
+
+// jsonRequestedIn reports whether the raw arguments carry a --json the caller
+// typed as a flag: a bare --json or --json=<true> before any -- terminator.
+// It is read only for a flag-parse refusal, where the parse never reached the
+// flag (iss-2609292352131344).
+func jsonRequestedIn(args []string) bool {
+	for _, a := range args {
+		if a == "--" {
+			return false
+		}
+		if a == "--json" {
+			return true
+		}
+		if v, ok := strings.CutPrefix(a, "--json="); ok {
+			if b, err := strconv.ParseBool(v); err == nil && b {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // markUsageErrorsExitTwo walks the command tree and tags every cobra usage error
@@ -667,14 +717,13 @@ func docsLintNothingCheckedWarning(checks, documents int, roots []string, ref st
 
 // newDocsCommand builds the `docs` sub-tree: `cite`, which maintains the
 // citation baseline the docs lint enforces. The lint itself is `abcd lint docs`
-// (itd-2609212130136102); `docs lint` answers with it for one release.
+// (itd-2609212130136102).
 func newDocsCommand(asJSON *bool) *cobra.Command {
 	docsCmd := &cobra.Command{
 		Use:  "docs",
 		Args: cobra.NoArgs,
 		RunE: helpRunE,
 	}
-	docsCmd.AddCommand(movedStub("lint", "abcd lint docs"))
 	// `cite` maintains the baseline `lint docs` enforces: the refresh does the
 	// live fetching the gate refuses to do, and confirm closes the manual queue.
 	docsCmd.AddCommand(newCiteCommand(asJSON))
@@ -3359,7 +3408,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 				return err
 			}
 			// Vintage + staleness from the shared comparator (itd-111): the same
-			// source `abcd version` and the session-start notice read. Computed
+			// source `abcd --version` and the session-start notice read. Computed
 			// once and carried in both the JSON and the text render.
 			vin := ahoy.Vintage(cwd)
 			out := ahoyOutput{DetectionResult: res, Vintage: vin.DisplayVintage(), Staleness: vin.Staleness()}
@@ -3592,9 +3641,6 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 		},
 	})
 
-	// The modes' old sub-verb spellings, one release as stubs.
-	ahoyCmd.AddCommand(movedStub("dry-run", "abcd ahoy --dry-run"))
-	ahoyCmd.AddCommand(movedStub("identity-check", "abcd ahoy --identity"))
 	ahoyCmd.AddCommand(newAhoyRemoteCommand(asJSON))
 	ahoyCmd.AddCommand(newAhoyConnectCommand(asJSON))
 	ahoyCmd.AddCommand(newAhoyCredentialCommand(asJSON))
@@ -3669,15 +3715,14 @@ func runAhoyRemote(cmd *cobra.Command, cwd string, asJSON bool) error {
 // newAhoyRemoteCommand builds `ahoy remote apply` — the write half of abcd's
 // remote config surface for a managed repo (itd-153), and the only thing in abcd
 // that mutates state outside this machine, so it is a verb a person types rather
-// than a step any other command performs. The read half is `ahoy --remote`; the
-// bare `ahoy remote` it moved from answers with that flag for one release
-// (itd-2609212130136102).
+// than a step any other command performs. The read half is `ahoy --remote`
+// (itd-2609212130136102); bare, `ahoy remote` prints its sub-verb.
 func newAhoyRemoteCommand(asJSON *bool) *cobra.Command {
 	remoteCmd := &cobra.Command{
 		Use:  "remote",
 		Args: cobra.NoArgs,
+		RunE: helpRunE,
 	}
-	markMoved(remoteCmd, "abcd ahoy --remote")
 	var remoteYes bool
 	applyCmd := &cobra.Command{
 		Use:  "apply",
@@ -5980,7 +6025,14 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		// machine output must get a JSON envelope, never raw Go text (iss-29) —
 		// and it goes to STDOUT, where a machine-readable consumer reads
 		// (iss-2609100519128005).
-		if asJSON, _ := root.PersistentFlags().GetBool("json"); asJSON {
+		// A flag-parse refusal stops before a later --json is read, so the
+		// caller's own arguments decide there (iss-2609292352131344).
+		asJSON, _ := root.PersistentFlags().GetBool("json")
+		var parseErr *flagParseError
+		if !asJSON && errors.As(err, &parseErr) {
+			asJSON = jsonRequestedIn(args)
+		}
+		if asJSON {
 			enc := json.NewEncoder(stdout)
 			enc.SetIndent("", "  ")
 			_ = enc.Encode(newErrorEnvelope(msg, code))

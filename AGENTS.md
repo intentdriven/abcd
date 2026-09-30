@@ -479,6 +479,16 @@ irreversible; guessing downward costs nothing.**
   declaration is the positive form, and it is the only accepted non-vendor value:
   a free-text escape would reopen the omission it closes. Claiming it for assisted
   work is a false disclosure, which is the thing this convention exists to prevent.
+- **A revert or cherry-pick takes its trailer from one command:**
+  `git -c abcd.assistedBy=<Vendor>:<model-version> revert|cherry-pick <sha>`.
+  `git revert`, `git cherry-pick` and a squash compose their own message and
+  write no `Assisted-by:`, so the gate refuses them; the committed
+  `.githooks/prepare-commit-msg` hook writes the trailer from the
+  `abcd.assistedBy` key and from nowhere else. Unset, it writes nothing, and it
+  never writes `None`. Set the key for the one command, never as a standing
+  `git config abcd.assistedBy`: a standing key also stamps every `-m`/`-F`
+  commit, every `--amend` and every cherry-pick, which is a false disclosure
+  for work no model touched.
 - **Naming a tool is confined to credit.** User-facing prose (`README.md`,
   `docs/`) stays host-agnostic — the `harness/*` docs-lint rules enforce it. The
   one sanctioned place to name a tool is attribution: the README badge and

@@ -19,24 +19,28 @@ import (
 // consolidate_test.go holds itd-2609212130136102: ahoy's three modes become
 // flags, `--version` replaces `abcd version`, `update --check` does what
 // `version --check` did, `intent new` is gone, and the five spellings of "check
-// this repository" become one `lint` with targets. Each old spelling stays one
-// release as a stub that answers with its successor and exits non-zero.
+// this repository" become one `lint` with targets. Each old spelling stayed one
+// release as a stub that answered with its successor; the breaking release
+// after it (BT1, H6: v0.12.0) removes them, so each is now unknown.
 
-// movedSpellings is every stub this intent leaves, with the invocation it
-// answers with. The args carry the flags the old spelling took, so a script
-// passing them meets the answer rather than an unknown-flag error.
-var movedSpellings = []struct {
-	args      []string
-	successor string
-}{
-	{[]string{"ahoy", "dry-run"}, "abcd ahoy --dry-run"},
-	{[]string{"ahoy", "identity-check"}, "abcd ahoy --identity"},
-	{[]string{"ahoy", "remote"}, "abcd ahoy --remote"},
-	{[]string{"version"}, "abcd --version"},
-	{[]string{"version", "--check"}, "abcd update --check"},
-	{[]string{"docs", "lint", "--config", "x.json", "--root", "."}, "abcd lint docs"},
-	{[]string{"site", "check", "--out", "site"}, "abcd lint site"},
-	{[]string{"identity"}, "abcd lint identity"},
+// removedSpellings is every spelling that moved and whose one-release stub is
+// removed (iss-2609251324599468).
+var removedSpellings = [][]string{
+	{"ahoy", "dry-run"},
+	{"ahoy", "identity-check"},
+	{"version"},
+	{"docs", "lint"},
+	{"site", "check"},
+}
+
+// removedSpellingsWithFlags are the same spellings with a flag the old one
+// took: the flag no longer parses, so the refusal is the unknown flag, exit 2,
+// before the command is looked up. (Under --json a flag refusal carries no
+// envelope yet: iss-2609292352131344.)
+var removedSpellingsWithFlags = [][]string{
+	{"version", "--check"},
+	{"docs", "lint", "--config", "x.json", "--root", "."},
+	{"site", "check", "--out", "site"},
 }
 
 // runFrontDoor runs the whole front door (Run, so the exit code and the error
@@ -47,27 +51,27 @@ func runFrontDoor(args ...string) (stdout, stderr string, code int) {
 	return out.String(), errb.String(), code
 }
 
-// TestMovedSpellingsAnswerWithTheirSuccessor is criteria 1 to 3's stub half:
-// each old spelling names its successor and exits non-zero, runs nothing, and
-// keeps stdout clean — empty in text mode, one JSON refusal under --json — so a
-// machine reader never parses a deprecation notice as output.
-func TestMovedSpellingsAnswerWithTheirSuccessor(t *testing.T) {
+// TestRemovedSpellingsAreUnknownCommands is BT1 on the front door: each old
+// spelling a stub answered for one release is refused as an unknown command,
+// exit 2, runs nothing, names no successor, and keeps stdout clean — empty in
+// text mode, one JSON refusal under --json.
+func TestRemovedSpellingsAreUnknownCommands(t *testing.T) {
 	hermeticEnv(t)
 	t.Chdir(t.TempDir())
-	for _, m := range movedSpellings {
-		label := "abcd " + strings.Join(m.args, " ")
-		stdout, stderr, code := runFrontDoor(m.args...)
+	for _, args := range removedSpellings {
+		label := "abcd " + strings.Join(args, " ")
+		stdout, stderr, code := runFrontDoor(args...)
 		if code != 2 {
 			t.Errorf("`%s` exit = %d, want 2", label, code)
 		}
-		if !strings.Contains(stderr, m.successor) {
-			t.Errorf("`%s` does not name `%s` on stderr:\n%s", label, m.successor, stderr)
+		if !strings.Contains(stderr, "unknown command") || strings.Contains(stderr, "moved to") {
+			t.Errorf("`%s` is not refused as an unknown command:\n%s", label, stderr)
 		}
 		if stdout != "" {
 			t.Errorf("`%s` wrote to stdout:\n%s", label, stdout)
 		}
 
-		stdout, _, code = runFrontDoor(append(append([]string{}, m.args...), "--json")...)
+		stdout, _, code = runFrontDoor(append(append([]string{}, args...), "--json")...)
 		if code != 2 {
 			t.Errorf("`%s --json` exit = %d, want 2", label, code)
 		}
@@ -80,40 +84,74 @@ func TestMovedSpellingsAnswerWithTheirSuccessor(t *testing.T) {
 			t.Errorf("`%s --json` stdout is not one JSON refusal (%v):\n%s", label, err, stdout)
 			continue
 		}
-		if env.Abcd != "error" || !strings.Contains(env.Error, m.successor) {
-			t.Errorf("`%s --json` refusal = %+v, want it to name `%s`", label, env, m.successor)
+		if env.Abcd != "error" || !strings.Contains(env.Error, "unknown command") {
+			t.Errorf("`%s --json` refusal = %+v, want an unknown command", label, env)
+		}
+	}
+	for _, args := range removedSpellingsWithFlags {
+		label := "abcd " + strings.Join(args, " ")
+		stdout, stderr, code := runFrontDoor(args...)
+		if code != 2 || stdout != "" {
+			t.Errorf("`%s` exit = %d, stdout %q; want 2 and nothing", label, code, stdout)
+		}
+		if !strings.Contains(stderr, "unknown command") && !strings.Contains(stderr, "unknown flag") {
+			t.Errorf("`%s` is not refused as unknown:\n%s", label, stderr)
+		}
+		if strings.Contains(stderr, "moved to") {
+			t.Errorf("`%s` still names a successor:\n%s", label, stderr)
 		}
 	}
 }
 
-// TestMovedSpellingsAreRecordedWithTheirSuccessor is criterion 4 on the tree:
-// the snapshot records every moved spelling with its successor, and no help
-// lists a stub that moved whole.
-func TestMovedSpellingsAreRecordedWithTheirSuccessor(t *testing.T) {
+// TestBareIdentityAndAhoyRemoteListTheirSubVerbs: the two parents whose bare
+// form moved while their sub-verbs stayed no longer answer with the successor;
+// bare, each prints its sub-verbs and exits 0, as `docs` does.
+func TestBareIdentityAndAhoyRemoteListTheirSubVerbs(t *testing.T) {
+	hermeticEnv(t)
+	t.Chdir(t.TempDir())
+	for _, tc := range []struct {
+		args []string
+		subs []string
+	}{
+		{[]string{"identity"}, []string{"init", "render"}},
+		{[]string{"ahoy", "remote"}, []string{"apply"}},
+	} {
+		label := "abcd " + strings.Join(tc.args, " ")
+		stdout, stderr, code := runFrontDoor(tc.args...)
+		if code != 0 {
+			t.Errorf("`%s` exit = %d, want 0\n%s", label, code, stderr)
+		}
+		if strings.Contains(stdout+stderr, "moved to") {
+			t.Errorf("`%s` still answers with a successor:\n%s%s", label, stdout, stderr)
+		}
+		for _, sub := range tc.subs {
+			if !strings.Contains(stdout, "  "+sub+" ") {
+				t.Errorf("`%s` does not list its sub-verb %q:\n%s", label, sub, stdout)
+			}
+		}
+	}
+}
+
+// TestRemovedSpellingsAreGoneFromTheSurface: the snapshot carries none of the
+// removed spellings and records no successor anywhere, and no help lists them.
+func TestRemovedSpellingsAreGoneFromTheSurface(t *testing.T) {
 	snap, err := SurfaceSnapshot(testRepoRoot())
 	if err != nil {
 		t.Fatalf("SurfaceSnapshot: %v", err)
 	}
-	for _, m := range movedSpellings {
-		if len(m.args) > 1 && strings.HasPrefix(m.args[1], "--") {
-			continue // a flag of a moved spelling, recorded on the spelling itself
-		}
-		path := "abcd " + strings.Join(m.args, " ")
-		if i := strings.Index(path, " --"); i >= 0 {
-			path = path[:i]
-		}
-		cmd, ok := findCommand(snap, path)
-		if !ok {
-			t.Errorf("%q is missing from the snapshot; a stub stays one release", path)
-			continue
-		}
-		if cmd.MovedTo != m.successor {
-			t.Errorf("%q moved_to = %q, want %q", path, cmd.MovedTo, m.successor)
+	for _, path := range []string{"abcd ahoy dry-run", "abcd ahoy identity-check", "abcd version", "abcd docs lint", "abcd site check"} {
+		if _, ok := findCommand(snap, path); ok {
+			t.Errorf("%q is still in the snapshot; its stub is removed", path)
 		}
 	}
-	for _, live := range []string{"abcd lint docs", "abcd ahoy remote apply", "abcd identity init"} {
-		if cmd, ok := findCommand(snap, live); !ok || cmd.MovedTo != "" {
-			t.Errorf("%q must be a live command with no successor recorded", live)
+	for _, c := range snap.Commands {
+		if c.MovedTo != "" {
+			t.Errorf("%q still records a successor (%q)", c.Path, c.MovedTo)
+		}
+	}
+	for _, live := range []string{"abcd lint docs", "abcd ahoy remote apply", "abcd identity init", "abcd identity", "abcd ahoy remote"} {
+		if _, ok := findCommand(snap, live); !ok {
+			t.Errorf("%q must stay a live command", live)
 		}
 	}
 
@@ -478,34 +516,17 @@ func TestReferenceNamesTheNewFormsOnly(t *testing.T) {
 	}
 }
 
-// TestReferenceUsageNeverOffersAMovedBareForm: a command whose bare form moved
-// while its sub-verbs stayed keeps its section, and its Usage line offers the
-// sub-verb form and the bare form's successor, never the bare spelling that
-// only refuses (iss-2609251734069878).
-func TestReferenceUsageNeverOffersAMovedBareForm(t *testing.T) {
+// TestReferenceOffersNoMovedBareForm: with the stubs removed, no command's
+// Usage line in the reference names a bare form's successor, and the parents
+// whose bare form moved are listed as any parent that prints its sub-verbs is.
+func TestReferenceOffersNoMovedBareForm(t *testing.T) {
 	ref := GenerateReference()
-	var moved []*cobra.Command
-	var walk func(c *cobra.Command)
-	walk = func(c *cobra.Command) {
-		if movedTo(c) != "" && c.Deprecated == "" {
-			moved = append(moved, c)
-		}
-		for _, sub := range c.Commands() {
-			walk(sub)
-		}
+	if strings.Contains(ref, "the bare form's work is") {
+		t.Error("the reference still names a moved bare form's successor")
 	}
-	walk(NewRootCommand())
-	if len(moved) < 2 {
-		t.Fatalf("found %d commands whose bare form moved; `ahoy remote` and `identity` are two", len(moved))
-	}
-	for _, c := range moved {
-		path := c.CommandPath()
-		if strings.Contains(ref, "**Usage:** `"+path+"`\n") {
-			t.Errorf("the reference offers the refused bare form as %s's usage", path)
-		}
-		want := "**Usage:** `" + path + " [command]` (the bare form's work is `" + movedTo(c) + "`)"
-		if !strings.Contains(ref, want) {
-			t.Errorf("the reference's usage for %s is not %q", path, want)
+	for _, path := range []string{"abcd identity", "abcd ahoy remote"} {
+		if !strings.Contains(ref, "**Usage:** `"+path+"`\n") {
+			t.Errorf("the reference's usage for %s is not its plain parent form", path)
 		}
 	}
 }

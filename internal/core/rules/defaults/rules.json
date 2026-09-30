@@ -90,7 +90,7 @@
       "recall": ["opinion", "convention", "principle", "approach", "tooling", "adopt", "sota"],
       "aliases": ["best practice", "state of the art", "design decision", "which approach", "how do we", "the opinionated"],
       "rules": [
-        "Prefer SOTA, adversary-filtered: where a choice has a credible state-of-the-art answer that is the presumptive pick, but challenge it for fit against this repo's preferences before adopting — see .abcd/development/principles/prefer-sota.md.",
+        "Prefer SOTA, adversary-filtered: where a choice has a credible state-of-the-art answer that is the presumptive pick, but challenge it for fit against this repo's preferences before adopting; a remedy proposed for an issue, or chosen in an autonomous run, cites its grounds, a primary-source state-of-the-art check where the fix depends on outside practice — see .abcd/development/principles/prefer-sota.md.",
         "One canonical primitive: before adding a generic-smelling primitive, find its canonical home and extend it; never add a third copy — see .abcd/development/principles/one-canonical-primitive.md.",
         "Evaluator outside the loop: the reviewer/challenger is independent of whoever proposed the option — see .abcd/development/principles/evaluator-outside-the-loop.md.",
         "Verifier selects, gates decide: a verdict is a proposal; the human's adoption is the gate — see .abcd/development/principles/verifier-selects-gates-decide.md.",

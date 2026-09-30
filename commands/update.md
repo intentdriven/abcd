@@ -64,7 +64,7 @@ refusal is a named shape with a remedy in `refusal`:
   host.
 - `dev-shim` — the PATH entry is the track-latest dev shim; `abcd ahoy
   install` switches modes first. This names the install shape, not the version
-  string: a binary that `abcd version` reports as `dev` is any locally built
+  string: a binary that `abcd --version` reports as `dev` is any locally built
   one, and a link to such a binary is `foreign`, not `dev-shim`.
 - `owned-dangling` — abcd's own entry points at a binary that is gone (a
   plugin update strands it); `abcd ahoy install` replaces it with a verified
