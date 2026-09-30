@@ -10,9 +10,12 @@ package runner
 //     oracle's routes are.
 //   - runner.<name> enables a shipped runner (claude, opencode) on this
 //     machine, with an optional model route, <provider>/<model>, admitted
-//     against that provider's allowlist and the vendor denylist
-//     (adr-2609221009491186) when the configuration is read, so a route off
-//     the list is refused before any runner can be launched.
+//     against that provider's allowlist when the configuration is read
+//     (adr-2609221009491186; its Decision 2 superseded by adr-2609300107513982,
+//     so abcd bundles no vendor denylist and the allowlist alone decides, and
+//     an oracle.denylist entry the configuration writes still refuses a model
+//     it matches), so a route off the list is refused before any runner can
+//     be launched.
 //   - runner.fallback_host names the enabled runner that runs a role when abcd
 //     runs with no host session (the intent's Decision 2).
 //

@@ -77,10 +77,9 @@ func TestRoleRoutedByRepoToMachineRunner(t *testing.T) {
 // before any runner can be launched, naming the list.
 func TestModelOffTheAllowlistIsRefused(t *testing.T) {
 	for name, model := range map[string]string{
-		"not listed":           "local/llama-3",
-		"provider unknown":     "elsewhere/qwen3-coder",
-		"not provider/model":   "qwen3-coder",
-		"denied vendor prefix": "local/anthropic/claude-opus",
+		"not listed":         "local/llama-3",
+		"provider unknown":   "elsewhere/qwen3-coder",
+		"not provider/model": "qwen3-coder",
 	} {
 		_, err := Load(roots(t, `{`+localProvider+`,"runner":{"opencode":{"model":"`+model+`"}}}`, ""))
 		if err == nil {
@@ -90,6 +89,22 @@ func TestModelOffTheAllowlistIsRefused(t *testing.T) {
 		if !strings.Contains(err.Error(), "runner.opencode.model") {
 			t.Errorf("%s: refusal does not name the key: %v", name, err)
 		}
+	}
+}
+
+// TestAllowlistAloneDecides follows adr-2609300107513982: abcd bundles no
+// vendor denylist, so a vendor-prefixed model a provider lists is admitted,
+// and only an oracle.denylist entry the configuration writes refuses it.
+func TestAllowlistAloneDecides(t *testing.T) {
+	const listed = `"oracle":{"api":{"local":{"base_url":"http://localhost:11434/v1","models":["anthropic/claude-opus"]}}`
+	c := mustLoad(t, `{`+listed+`},"runner":{"opencode":{"model":"local/anthropic/claude-opus"}}}`, "")
+	if rc, ok := c.Runner(OpenCode); !ok || rc.Model != "local/anthropic/claude-opus" {
+		t.Fatalf("runner = %+v, %v; a listed model is admitted by the allowlist alone", rc, ok)
+	}
+	_, err := Load(roots(t,
+		`{`+listed+`,"denylist":["anthropic/*"]},"runner":{"opencode":{"model":"local/anthropic/claude-opus"}}}`, ""))
+	if err == nil || !strings.Contains(err.Error(), "oracle.denylist") {
+		t.Fatalf("err = %v, want the configured denylist entry to refuse the route", err)
 	}
 }
 
