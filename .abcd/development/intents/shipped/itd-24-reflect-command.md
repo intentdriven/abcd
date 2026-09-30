@@ -21,7 +21,7 @@ impact: additive
 
 ## Press Release
 
-> **abcd ships `/abcd:reflect` for release retrospectives.** Run `/abcd:reflect v0.11.0` and abcd walks an interview-driven retrospective: what went well, what could improve, lessons learned, decisions made, metrics. The interview is *seeded* by what the release shipped — the intents whose `shipped_in` names the tag, each with the audit notes the intent auditor wrote on it, and the changelog section the cut composed — so the conversation opens from what actually passed and failed. Output is a structured `.abcd/development/retrospectives/v0.11.0/README.md`, committed as part of the permanent record. Future lifeboats carry the retrospective forward; future intents reference past lessons. Reflection becomes a first-class abcd primitive, not an afterthought.
+> **abcd ships `/abcd:reflect` for release retrospectives.** Run `/abcd:reflect v0.11.0` and abcd walks an interview-driven retrospective: what went well, what could improve, lessons learned, decisions made, metrics. The interview is *seeded* by what the release shipped — the intents the tag shipped, read the way the release cut reads them, each with the audit notes the intent auditor wrote on it, and the changelog section the cut composed — so the conversation opens from what actually passed and failed. Output is a structured `.abcd/development/retrospectives/v0.11.0/README.md`, committed as part of the permanent record. Future lifeboats carry the retrospective forward; future intents reference past lessons. Reflection becomes a first-class abcd primitive, not an afterthought.
 >
 > "abcd's brief and intents captured *what* I'd done," said Henry, a junior-developer persona. "Reflect captures *what I learned* — and because it starts from what the release shipped and how each audit went, it doesn't ask me to re-remember the work, it asks me what the verdicts *mean*. When I started a new voyage six months later, embark surfaced past retrospectives in the lifeboat unpack — the lessons came with the work. I didn't re-make the mistakes."
 
@@ -42,7 +42,7 @@ We expect the value of a retrospective to be in the lifeboat: a new project that
 ## What's In Scope
 
 - **`/abcd:reflect <release-tag>`** — retrospective for a cut release, and the command's *only* argument form. Examples: `/abcd:reflect v0.10.0`, `/abcd:reflect v0.11.1`. Per-intent reflection is out of scope (see below) — `/abcd:reflect` operates at the release grain only.
-- **Seeded from the release** (decision 5). The seed is the intents a tag shipped (`shipped_in` names the tag), with their `## Audit Notes` (per-criterion verdicts, honoured / diverged / missing), their `impact`, and the changelog section the cut composed; the interview opens from them rather than from a blank prompt.
+- **Seeded from the release** (decision 5). The seed is the intents a tag shipped, read the way the release cut reads them (ruling AD): those that reached `shipped/` between the previous release tag and this one, less any whose `shipped_in` names another release, plus any whose `shipped_in` names this one. For each, its `## Audit Notes` (per-criterion verdicts, honoured / diverged / missing) and its `impact`; and the changelog section the cut composed. The interview opens from them rather than from a blank prompt.
 - **Audit-missing handling.** A shipped intent in the release with no audit notes is named, and the command offers `abcd intent audit <itd-N>` for it first; the interview continues either way.
 - **Empty-release refusal.** A tag whose release shipped no intent refuses — there is no delivered work to reflect on.
 - **Interview-driven structure**:
@@ -71,7 +71,7 @@ None stated.
 
 ## Acceptance Criteria
 
-- **Given** an abcd repo with a cut release (`v0.11.0` is tagged and at least one intent's `shipped_in` names it), **when** the persona runs `/abcd:reflect v0.11.0`, **then** the reflection-composer agent runs an interview *seeded by that release's shipped intents and their audit notes* and writes `.abcd/development/retrospectives/v0.11.0/README.md` with all five required sections populated.
+- **Given** an abcd repo with a cut release (`v0.11.0` is tagged and at least one intent reached `shipped/` in it, as the release cut reads membership under ruling AD), **when** the persona runs `/abcd:reflect v0.11.0`, **then** the reflection-composer agent runs an interview *seeded by that release's shipped intents and their audit notes* and writes `.abcd/development/retrospectives/v0.11.0/README.md` with all five required sections populated.
 - **Given** a release one of whose shipped intents carries no audit notes, **when** the persona runs `/abcd:reflect <release-tag>`, **then** the command names that intent and offers `abcd intent audit <itd-N>` before continuing into the retrospective.
 - **Given** a release tag that shipped no intent, **when** the persona runs `/abcd:reflect <release-tag>`, **then** the command refuses with "no intent shipped in `<release-tag>` — nothing shipped to reflect on" and writes no output.
 - **Given** a draft retrospective with thin answers (e.g. "what went well: it worked"), **when** the agent drafts the output, **then** the agent surfaces the thinness as a clarifying question rather than committing the thin answer.
@@ -107,6 +107,8 @@ _Superseded by decisions 4 and 5: the seed is the per-intent audit notes, which 
 <!-- abcd-review: OWED receipt=rcp-2215987d5eb7 -->
 Fidelity review OWED (receipt rcp-2215987d5eb7).
 <!-- abcd-review-end receipt=rcp-2215987d5eb7 -->
+
+- 2026-09-30: the press release, scope item 1 and criterion 1 read release membership the way the release cut reads it, under ruling AD, as spec scope 1 does since its amendment of the same date; `shipped_in` moves a record between releases and does not define membership.
 
 ### Implementation notes (v1 scope)
 
