@@ -339,7 +339,7 @@ func newImplementStatusCommand(asJSON *bool) *cobra.Command {
 	cmd := &cobra.Command{
 		Use: "status [--run <run-id>]",
 		Long: "Render the runs `abcd build` started in this checkout, or the one --run names: the\n" +
-			"intent and spec, each lane with its spec step and next step, what an awaiting lane\n" +
+			"intent and spec, each lane with its spec step and next stage, what an awaiting lane\n" +
 			"waits on, the pending spec steps, and the run record. Read-only: it writes nothing\n" +
 			"and creates nothing. Exit 2 when --run names no run.",
 		Args: cobra.NoArgs,

@@ -295,6 +295,10 @@ func TestImplementStepSaysStageForTheLanesAndStepForTheSpecs(t *testing.T) {
 	if !strings.Contains(status, "spec step 1") || !strings.Contains(status, "next stage: brief") {
 		t.Fatalf("the status names the spec's step and the lane's next stage:\n%s", status)
 	}
+	help := mustImplement(t, "implement", "status", "--help")
+	if !strings.Contains(help, "spec step and next stage") {
+		t.Fatalf("the status help names the lane's next stage as a stage:\n%s", help)
+	}
 }
 
 // TestImplementReceiptNothingAwaitsIsRefused: a receipt no lane awaits is
@@ -315,6 +319,10 @@ func TestImplementReceiptNothingAwaitsIsRefused(t *testing.T) {
 	ref := refusalDocs(t, 2, "implement", "receipt", "receipt.json", "--json")
 	if ref["stage"] != "receipt" || !strings.Contains(ref["reason"].(string), "awaits a receipt") {
 		t.Fatalf("a receipt nothing awaits is refused: %v", ref)
+	}
+	// The remedy names the lane's stage as a stage (BU1, iss-2609291313276243).
+	if remedy := ref["remedy"].(string); !strings.Contains(remedy, "when a stage hands work to an agent") {
+		t.Fatalf("the remedy says a stage hands work to an agent: %q", remedy)
 	}
 	if after, _ := os.ReadFile(statePath); !bytes.Equal(before, after) {
 		t.Fatal("a refused receipt must leave the state unchanged")

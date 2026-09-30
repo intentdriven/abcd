@@ -1694,7 +1694,7 @@ Render the implement loop's runs in this checkout, lane by lane: Writes nothing;
 **Usage:** `abcd implement status [--run <run-id>] [flags]`
 
 Render the runs `abcd build` started in this checkout, or the one --run names: the
-intent and spec, each lane with its spec step and next step, what an awaiting lane
+intent and spec, each lane with its spec step and next stage, what an awaiting lane
 waits on, the pending spec steps, and the run record. Read-only: it writes nothing
 and creates nothing. Exit 2 when --run names no run.
 

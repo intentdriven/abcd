@@ -216,7 +216,7 @@ counted.
 is being built, what is ready, and what waits, computed from the record each
 time and stored nowhere (adr-2609292012006845 decision 2). Now lists every
 intent the build's state file shows in a lane — a run in progress, with the
-lane the loop works on, its next step and the role it waits on, or the step
+lane the loop works on, its next stage and the role it waits on, or the stage
 `pending` between lanes — then the head of the pick order marked `next up`, so
 Now is empty only when no READY intent may start. Next lists every planned intent
 the readiness gate reports READY; Later lists every planned intent it refuses,
@@ -243,7 +243,7 @@ or `next up`; then `Later: N intents`, Later as a count alone (ruling BV1 of
 2026-09-29), its rows left to the JSON and the site's Status page. The JSON
 carries a `status` object with `now`, `next` and `later` in full, each row
 `id`, `title`, `bucket`, and
-`next_up`, `lane` (`run`, `lane`, `step`, `awaiting`) or `failing_checks` when
+`next_up`, `lane` (`run`, `lane`, `stage`, `awaiting`) or `failing_checks` when
 they apply, and `order`. The block is present in a repository abcd manages and
 absent elsewhere, and a record that cannot be read omits it with the reason on
 stderr. The read is `internal/core/statusblock`, the one the site's Status

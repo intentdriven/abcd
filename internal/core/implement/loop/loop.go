@@ -648,7 +648,7 @@ func Receipt(repoRoot, runID, receipt string, steps Stages, o Options) (StepResu
 		i := st.current()
 		if i < 0 || st.Lanes[i].Awaiting == nil {
 			return false, refuse("receipt", "", "", "no lane of "+st.RunID+" awaits a receipt",
-				"run `abcd implement step`; it names the receipt when a step hands work to an agent")
+				"run `abcd implement step`; it names the receipt when a stage hands work to an agent")
 		}
 		lane := st.Lanes[i]
 		if !samePath(repoRoot, receipt, lane.Awaiting.Receipt) {
