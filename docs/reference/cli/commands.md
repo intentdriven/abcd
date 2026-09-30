@@ -1930,7 +1930,8 @@ so the next invocation performs it again; a completed stage is never repeated.
 A role routed to a command-line runner (roles.<role>.runner: claude or opencode, enabled
 under runner.<name> in ~/.abcd/config.json) is started by the step itself when the stage
 hands the lane out: the runner gets the brief and the receipt path the host would get,
-runs in the lane's worktree with the role's tools granted and nothing else asked, its
+runs in the lane's worktree (claude with the role's tools granted and nothing else asked,
+opencode under its own permission configuration), its
 transcript is stored in abcd's history store, and its receipt is verified by the stage's
 own verifier, so a verified one completes the stage in the same call and the result and
 the run record name the route that ran it. The claude runner runs in print mode with

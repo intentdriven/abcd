@@ -535,7 +535,8 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			"A role routed to a command-line runner (roles.<role>.runner: claude or opencode, enabled\n" +
 			"under runner.<name> in ~/.abcd/config.json) is started by the step itself when the stage\n" +
 			"hands the lane out: the runner gets the brief and the receipt path the host would get,\n" +
-			"runs in the lane's worktree with the role's tools granted and nothing else asked, its\n" +
+			"runs in the lane's worktree (claude with the role's tools granted and nothing else asked,\n" +
+			"opencode under its own permission configuration), its\n" +
 			"transcript is stored in abcd's history store, and its receipt is verified by the stage's\n" +
 			"own verifier, so a verified one completes the stage in the same call and the result and\n" +
 			"the run record name the route that ran it. The claude runner runs in print mode with\n" +
