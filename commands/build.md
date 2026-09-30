@@ -207,7 +207,8 @@ implementer, the lower spec step first); several agents may be out at once, so
 start each as it is handed out. A step that finds the ceiling reached hands out
 nothing and exits 0 with `ceiling_reached: true`, naming every agent out and its
 receipt path: hand a receipt back, then step again. When a step's needs have
-landed, its lane opens at the next free slot, and the run record gets a line
+landed, its lane opens whatever the ceiling (its worktree and brief are made,
+and its implementer takes the next free slot), and the run record gets a line
 naming it, as the start line names the first.
 
 The run's window opens when the run starts. Once its working minutes have

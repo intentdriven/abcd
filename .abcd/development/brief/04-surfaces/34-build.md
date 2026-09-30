@@ -284,17 +284,21 @@ A run works in parallel up to its ceiling (ruling DR6, spc-2609202134341288). A
 slot is one outstanding await on any lane; the count is the awaits in the state
 file. Each move first performs a stage the binary owns on any lane (the
 worktree, the brief, a round's close, a landing step, a sync, a hold), which
-takes no slot; when the move needs an agent it takes the first waiting item: an
+takes no slot and is never held by the ceiling; when the move needs an agent it
+takes the first waiting item: an
 open lane's validators or fix and sync implementers before a new lane, the lower
 spec step first, a round's validators in the order the round lists them, then
 the implementer of a new lane. A move that finds the ceiling reached hands out
 nothing, names every lane alive with what it awaits, and records the held work
 under `waiting`; the move that later serves it records the whole minutes it
-waited. A lane opens for a spec step only once every step it needs has landed:
-its `- needs:` line, or by default every step before it (ruling DR6b), so a spec
-that declares no needs lands its steps one lane at a time. A lane's own landing
-refused (a preflight receipt missing, a pull request not merged) holds only that
-lane; the move goes to another and names the refusal under `blocked`.
+waited. A lane opens for a spec step once every step it needs has landed (its
+`- needs:` line, or by default every step before it, ruling DR6b), so a spec
+that declares no needs lands its steps one lane at a time; it opens whatever the
+ceiling, its worktree and brief made, and only its implementer waits for a slot.
+A landing waiting on the forge's merge holds only that lane: the move goes to
+another and names the wait under `blocked` and in its next move. Any other
+refusal of a stage the binary performs, a missing preflight receipt included, is
+the move's answer, and no other lane moves.
 
 Landing is one lane at a time, the lower spec step first. A lane whose sibling
 landed since its base is synced before its landing begins: the default branch is
@@ -305,8 +309,12 @@ merged sha as an ancestor of its head. A sync counts no fix round. The closing
 lane reaches its landing with no step pending, no other lane open and none handed
 back; its audit reads each of the run's lanes' own diff. After a hand-back the
 siblings finish, no new lane opens, no lane closes the spec, and a lane whose
-round passes is held before its push or its arming (an armed one is disarmed),
-until the person releases or discards it (ruling DR6c).
+round passes is held before its push or its arming (an armed one is disarmed;
+where the forge refuses the withdrawal the move refuses naming the pull request,
+and one the forge reports merged is recorded as landed), until the person
+releases or discards it (ruling DR6c). A discard removes the lane's worktree and
+branch before it closes the pull request, so a refused removal leaves nothing
+half done.
 
 The loop keeps the run's window clock (criteria 4 and 5). A new run's first
 window opens at its start. Once the window's working minutes have elapsed, the

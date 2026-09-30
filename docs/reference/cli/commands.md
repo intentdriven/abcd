@@ -1880,13 +1880,17 @@ step of the spec; its stages are how it gets there. A complete run says so.
 A run works in parallel up to its ceiling (--sub-agents, pace.sub_agents): each agent
 handed work and not yet verified is a slot, implementers and validators alike. Each call
 first performs a stage the binary owns on any lane (the worktree, the brief, a round's
-close, the landing's steps), which takes no slot; then, while a slot is free, it hands
-out the first waiting work: a lane already open before a new one, the lower spec step
-first, a round's validators in order, then a new lane's implementer. A call that finds
-the ceiling reached hands out nothing, exits 0 naming every lane alive with the role and
-receipt it awaits, and records the held work with the time it was first held. A lane
-opens for a spec step once every step it needs has landed: its `- needs:` line, or by
-default every earlier step. Landing is one lane at a time; a lane whose sibling landed
+close, the landing's steps), which takes no slot and is never held by the ceiling; then,
+while a slot is free, it hands out the first waiting work: a lane already open before a
+new one, the lower spec step first, a round's validators in order, then a new lane's
+implementer. A call that finds the ceiling reached hands out nothing, exits 0 naming
+every lane alive with the role and receipt it awaits, and records the held work with the
+time it was first held. A lane opens for a spec step once every step it needs has
+landed (its `- needs:` line, or by default every earlier step), whatever the ceiling: its
+worktree and brief are made, and its implementer waits for a slot. A landing waiting on
+the forge's merge holds only its own lane: the call moves another and names the wait
+under blocked:; any other refused stage is the call's answer. Landing is one lane at a
+time; a lane whose sibling landed
 since its base is synced first (the default branch merged in with a merge commit, never a
 rebase) and judged by a fresh round, and a conflicting sync goes to a fresh implementer;
 a sync counts no fix round.
@@ -1912,10 +1916,12 @@ has taken the run's fix rounds (--fix-rounds, bundled 3) hands the lane back ins
 stops as unachievable, the result and the run record name the last round's findings, and
 the run starts nothing further for it. Its sibling lanes finish: no new lane opens, no
 lane closes the spec, and a sibling whose round passes is held before its push, or before
-arming once its pull request is open (an armed one is disarmed); once nothing is left to
-move, a step is refused naming the hand-back and each held lane. --release <lane-id>
-lands a held lane as it is; --discard <lane-id> closes its pull request, removes its
-worktree and branch, and leaves its step unlanded. Either is refused, changing nothing,
+arming once its pull request is open (an armed one is disarmed, and where the forge
+refuses the withdrawal the step is refused naming the pull request; one the forge reports
+merged is recorded as landed); once nothing is left to move, a step is refused naming
+the hand-back and each held lane. --release <lane-id> lands a held lane as it is;
+--discard <lane-id> removes its worktree and branch, then closes its pull request, and
+leaves its step unlanded. Either is refused, changing nothing,
 for a lane that is not held or while any lane still has work.
 land follows a passing round, one step per call: it checks the lane's worktree is clean
 at the judged head; on the lane that closes the spec it runs `spec close` in the lane's

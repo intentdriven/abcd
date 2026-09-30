@@ -228,17 +228,21 @@ handed work and not yet verified is a slot, implementers and validators alike,
 and the result carries `slots`, `ceiling` and `alive` (every lane with anything
 left, its stage and each await). Each `step` first performs a stage the binary
 owns on any lane (the worktree, the brief, a round's close, a landing step, a
-sync, a hold), which takes no slot. Then, while a slot is free, it hands out the
+sync, a hold), which takes no slot and is never held by the ceiling. Then, while
+a slot is free, it hands out the
 first waiting work: a lane already open before a new one, the lower spec step
 first, a round's validators in order, then the implementer of a new lane. A
 `step` that finds the ceiling reached hands out nothing, exits 0 with
 `ceiling_reached: true` naming every await, and records the held work under the
 run's `waiting` with the time it was first held; the move that later serves it
-records the minutes it waited. A lane opens for a spec step only once every step
-it needs has landed: the step's `- needs:` line, or by default every step
-before it. A lane whose own landing is refused (no preflight receipt yet, a
-pull request not merged) holds only itself: the call moves another lane and
-names the refusal under `blocked`, and gives the refusal only when nothing else
+records the minutes it waited. A lane opens for a spec step once every step it
+needs has landed (the step's `- needs:` line, or by default every step before
+it), whatever the ceiling: its worktree and brief are made, and only its
+implementer waits for a slot. A landing waiting on the forge's merge holds only
+its own lane: the call moves another lane, names the wait under `blocked` (a
+`blocked:` line in the text form) and in `next`, and gives the wait (exit 3)
+only when nothing else moves. Any other refusal of a stage the binary performs,
+a missing preflight receipt included, is the call's answer, and no other lane
 moves.
 
 `receipt` looks the path up among every outstanding await of the run and
@@ -303,16 +307,21 @@ pending steps stay pending, and no lane closes the spec. A sibling whose round
 passes is **held**: its stage is `held` and its `hold` names the `cause` (the
 handed-back lane), the `head` its round judged and `before`, the landing step it
 stopped before (`push`, or `arm` once its pull request is open; an armed one is
-disarmed with `gh pr merge <n> --disable-auto`). Once nothing is left to move,
+disarmed with `gh pr merge <n> --disable-auto`). Where the forge refuses the
+withdrawal, `step` refuses naming the pull request, moves no other lane, and the
+person decides it on the forge; an armed pull request the forge reports merged
+had landed before the hand-back and is recorded as landed. Once nothing is left to move,
 every `step` refuses at the `handed-back` stage naming the hand-back and each
 held lane. The person decides each held lane, one per invocation, once no lane
 has work left:
 
 - `step --release <lane-id>` lands it as it is: its stage returns to `land` and
   its landing resumes at the step it stopped before.
-- `step --discard <lane-id>` does not land it: its pull request is closed if it
-  opened one, its worktree and branch are removed, its stage is `discarded`, and
-  its spec step stays unlanded.
+- `step --discard <lane-id>` does not land it: its worktree and branch are
+  removed, then its pull request is closed if it opened one, its stage is
+  `discarded`, and its spec step stays unlanded. A removal git refuses (a
+  worktree with changes) leaves the pull request open and the lane held, so the
+  retry closes it once.
 
 Either is refused, changing nothing, for a lane that is not held or while a lane
 still has work. The run stays in progress, so `build next` passes over its
