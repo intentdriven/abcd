@@ -455,15 +455,24 @@ func TestAStepWithoutANeedsLineWaitsForEveryEarlierStep(t *testing.T) {
 	f.stepUntil(t, "lane-1's implementer is out", func(st State) bool { return len(st.Lanes[0].Awaits) == 1 })
 	f.implement(t, "lane-1", "one.txt")
 	f.roundPassed(t, "lane-1")
-	for range 3 {
-		if st := f.state(t); len(st.Lanes) != 1 || st.SlotsInUse() >= st.Ceiling() {
-			t.Fatalf("no lane opens for step 2 while lane 1 is open, with slots free: %+v", st.Lanes)
-		}
+	// Lane 1's pull request is armed and not merged: nothing is left to move
+	// but the forge, every slot is free, and still no lane opens for step 2.
+	for range 10 {
 		l := f.lane(t, "lane-1")
+		if l.Landing != nil && l.Landing.Merge != "" {
+			break
+		}
 		if l.Landing != nil && l.Landing.RecordsDone && l.Landing.Pushed == "" {
 			preflighted(t, l, l.HeadSHA)
 		}
 		f.step(t)
+	}
+	_, err := Advance(f.repo.Root(), f.runID, f.stages, f.opts())
+	if r := mustRefusal(t, err); !r.Contention {
+		t.Fatalf("the run waits on lane 1's merge: %+v", r)
+	}
+	if st := f.state(t); len(st.Lanes) != 1 || st.SlotsInUse() != 0 {
+		t.Fatalf("no lane opens for step 2 while lane 1's pull request is not merged, with every slot free: %+v", st.Lanes)
 	}
 	f.landed(t, "lane-1")
 	st := f.state(t)
@@ -472,7 +481,7 @@ func TestAStepWithoutANeedsLineWaitsForEveryEarlierStep(t *testing.T) {
 	}
 
 	repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps("1. One\n2. Two\n   - needs: 3\n3. Three\n"))
-	_, err := Start(repo.Root(), "itd-10", Options{})
+	_, err = Start(repo.Root(), "itd-10", Options{})
 	if err == nil || !strings.Contains(err.Error(), "line") || !strings.Contains(err.Error(), "needs") {
 		t.Fatalf("a needs line naming a later step is refused before the run starts, naming the line: %v", err)
 	}
@@ -544,6 +553,12 @@ func TestASiblingLandingSyncsTheLaneBeforeItArms(t *testing.T) {
 			preflighted(t, l1, l1.HeadSHA)
 		}
 		if l1.Landing != nil && l1.Landing.Merge != "" {
+			// Armed and not merged yet: lane 1's landing waits on the forge,
+			// and lane 2 still does not begin its own.
+			_, err := Advance(f.repo.Root(), f.runID, f.stages, f.opts())
+			if r := mustRefusal(t, err); !r.Contention || f.lane(t, "lane-2").Landing != nil || len(f.lane(t, "lane-2").Syncs) != 0 {
+				t.Fatalf("one landing at a time: lane 2 waits while lane 1's pull request is armed: %+v", r)
+			}
 			f.repo.Git("push", "-q", "origin", l1.Landing.Pushed+":refs/heads/main")
 			if err := os.WriteFile(filepath.Join(f.gh, "state"), []byte("MERGED\n"), 0o644); err != nil {
 				t.Fatal(err)
