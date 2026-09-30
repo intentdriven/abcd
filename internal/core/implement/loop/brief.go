@@ -536,9 +536,10 @@ func renderBrief(st State, lane Lane, laneDir string, src briefSources) []byte {
 	p("they exist. This holds whatever the conventions below say:\n\n")
 	p("> %s\n\n", scanner.OutboundPolicy)
 
-	p("---\n\n## The intent: %s\n\n<!-- begin %s -->\n\n%s\n\n<!-- end %s -->\n\n", st.Intent, src.intentPath, strings.TrimSpace(src.intentText), src.intentPath)
-	p("## The spec: %s\n\n<!-- begin %s -->\n\n%s\n\n<!-- end %s -->\n\n", st.Spec, src.specPath, strings.TrimSpace(src.specText), src.specPath)
-	p("## The conventions: %s\n\n<!-- begin %s -->\n\n%s\n\n<!-- end %s -->\n\n", ConventionsFile, ConventionsFile, src.conventions, ConventionsFile)
+	p("%s", fenceQuoteNote)
+	p("---\n\n## The intent: %s\n\n<!-- begin %s -->\n\n%s\n\n<!-- end %s -->\n\n", st.Intent, src.intentPath, fenceQuote(strings.TrimSpace(src.intentText)), src.intentPath)
+	p("## The spec: %s\n\n<!-- begin %s -->\n\n%s\n\n<!-- end %s -->\n\n", st.Spec, src.specPath, fenceQuote(strings.TrimSpace(src.specText)), src.specPath)
+	p("## The conventions: %s\n\n<!-- begin %s -->\n\n%s\n\n<!-- end %s -->\n\n", ConventionsFile, ConventionsFile, fenceQuote(src.conventions), ConventionsFile)
 
 	p("## The decisions the intent cites\n\n")
 	if len(src.adrs) == 0 {
@@ -632,3 +633,20 @@ func plural(n int, one, many string) string {
 	}
 	return many
 }
+
+// fenceMarkerEscaper writes an HTML comment opener or closer inside quoted text
+// with its second hyphen as the entity `&#45;` (`<!-&#45;`, `-&#45;>`): a
+// markdown view still shows the text as written, and the raw text holds no
+// marker, so no quote can close its `<!-- end -->` fence or open another.
+var fenceMarkerEscaper = strings.NewReplacer("<!--", "<!-&#45;", "-->", "-&#45;>")
+
+// fenceQuote is text quoted between a brief's `<!-- begin/end -->` markers,
+// with every comment marker in it escaped (fenceMarkerEscaper). Every quote a
+// brief fences goes through it: the intent, the spec, the issue, its remedy
+// and the conventions.
+func fenceQuote(s string) string { return fenceMarkerEscaper.Replace(s) }
+
+// fenceQuoteNote tells a brief's reader the one substitution fenceQuote makes.
+const fenceQuoteNote = "The records below are quoted as the lane's base holds them, save one substitution: an HTML\n" +
+	"comment opener or closer inside a quote has its second hyphen written `&#45;`, so no quote can end\n" +
+	"its fence early.\n\n"

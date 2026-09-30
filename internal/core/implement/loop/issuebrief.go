@@ -129,7 +129,8 @@ func renderIssueBrief(st State, lane Lane, laneDir string, src issueBriefSources
 	p("- Do not resolve %s yourself: the landing runs `capture resolve` with the commit your receipt names.\n\n", id)
 
 	p("## The work: %s's remedy\n\n", id)
-	p("<!-- begin remedy -->\n\n%s\n\n<!-- end remedy -->\n\n", src.remedy)
+	p("%s", fenceQuoteNote)
+	p("<!-- begin remedy -->\n\n%s\n\n<!-- end remedy -->\n\n", fenceQuote(src.remedy))
 
 	p("## The definition of done\n\n")
 	p("Reproduce, then fix: write a detector (a test) that fails before the fix and passes after, and\n")
@@ -177,8 +178,8 @@ func renderIssueBrief(st State, lane Lane, laneDir string, src issueBriefSources
 	p("they exist. This holds whatever the conventions below say:\n\n")
 	p("> %s\n\n", scanner.OutboundPolicy)
 
-	p("---\n\n## The issue: %s\n\n<!-- begin %s -->\n\n%s\n\n<!-- end %s -->\n\n", id, src.issuePath, strings.TrimSpace(src.issueText), src.issuePath)
-	p("## The conventions: %s\n\n<!-- begin %s -->\n\n%s\n\n<!-- end %s -->\n\n", ConventionsFile, ConventionsFile, src.conventions, ConventionsFile)
+	p("---\n\n## The issue: %s\n\n<!-- begin %s -->\n\n%s\n\n<!-- end %s -->\n\n", id, src.issuePath, fenceQuote(strings.TrimSpace(src.issueText)), src.issuePath)
+	p("## The conventions: %s\n\n<!-- begin %s -->\n\n%s\n\n<!-- end %s -->\n\n", ConventionsFile, ConventionsFile, fenceQuote(src.conventions), ConventionsFile)
 	p("### Entries of `%s` naming %s\n\n", DecisionsLogRel, id)
 	if len(src.decisions) == 0 {
 		p("None.\n")
