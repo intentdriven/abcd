@@ -108,10 +108,46 @@ const varText = "\x01"
 // for a varMark read from a payload's text, whose name the string no longer
 // holds. bare records a name written unquoted and without braces, which the
 // unquoted text a brace group places after it runs on from (spellWritten).
+// split records an expansion written unquoted, whose text bash splits into
+// fields on IFS (ifsSplits).
 type varSite struct {
 	at    int
 	texts []string
 	bare  bool
+	split bool
+}
+
+// ifsSplits reports whether a word's sites include one whose fields rest on
+// the default IFS (review-guardSet MAJOR-2): an unquoted expansion whose
+// text the guard reads — a default's or an alternative's word, a trim's or
+// a replacement's texts, or the home or the working directory it names.
+// Under an IFS a line assigns, bash splits that text on other bytes, and
+// the fields can be the root (`IFS=x; rm -rf ${U:-x/x}` hands rm `""` and
+// `/`; `IFS=Uv; rm -rf $HOME/x` hands it `/`). An unquoted variable of
+// unknown value (`$d`, `${d%/}`) splits into fields no more known than its
+// value, and is not counted.
+func ifsSplits(sites []varSite) bool {
+	for _, s := range sites {
+		if !s.split || len(s.texts) == 0 {
+			continue
+		}
+		if len(s.texts) > 1 {
+			return true
+		}
+		name := strings.TrimPrefix(s.texts[0], "$")
+		if strings.HasPrefix(name, "{") && strings.HasSuffix(name, "}") {
+			name = name[1 : len(name)-1]
+		}
+		if name == "" || name == "HOME" || name == "PWD" || name == s.texts[0] {
+			return true
+		}
+		for i := 0; i < len(name); i++ {
+			if !isNameByte(name[i]) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // A written spelling (segment.spelled) is a SET of texts, one for each thing
@@ -310,16 +346,24 @@ const quotedFieldText = "\x03"
 
 func spellParameterAt(body string, depth int, split bool) []string {
 	raw := []string{"${" + body + "}"}
-	n := 0
-	for n < len(body) && isNameByte(body[n]) {
-		n++
-	}
-	if n == 0 || body[0] >= '0' && body[0] <= '9' {
+	indirect, n := paramNameEnd(body)
+	if n < 0 {
 		return raw
 	}
 	name, rest := body[:n], body[n:]
 	same := "${" + name + "}"
 	value := []string{same}
+	if indirect {
+		// An indirection's value is the value of the variable its name
+		// holds, which the line does not spell: past an operator that can
+		// print it, it reads as every value (review-guardSet MAJOR-4). Alone,
+		// and as a name list (`${!X*}`, `${!A[@]}`), it keeps its text, as a
+		// variable of unknown value does.
+		if rest == "" || rest == "*" || rest == "@" {
+			return raw
+		}
+		value = []string{spellCapped}
+	}
 	// orWord is the value, or the texts the word w can print.
 	orWord := func(w string) []string {
 		texts := value
@@ -351,6 +395,10 @@ func spellParameterAt(body string, depth int, split bool) []string {
 		rest = rest[k+1:]
 		op := strings.IndexAny(rest, subscriptOperators)
 		if op < 0 {
+			if indirect && rest == "" {
+				// `${!A[@]}` lists the array's keys.
+				return raw
+			}
 			return value
 		}
 		rest, subscript = rest[op:], true
@@ -402,6 +450,44 @@ func spellParameterAt(body string, depth int, split bool) []string {
 	return texts
 }
 
+// paramNameEnd reads the parameter a `${…}` body begins with, as bash reads
+// it, and returns where its name ends, or -1 where no parameter begins
+// there. The name is a variable's (`HOME`), a positional parameter's digits
+// (`1`, `10`), or one special parameter's byte (`@`, `*`, `#`, `?`, `-`,
+// `$`, `!`), each of which takes the operators a variable does: with no
+// arguments and no background job, `${1:-/}`, `${@:-/}` and `${!:-/}` print
+// `/`, and `${#:+/}` prints it whatever the count (review-guardSet MAJOR-4).
+// A `!` before a name, a digit, `@`, `*` or `#` is an indirection
+// (`${!X:-/}`), reported by indirect, and the name follows it. A `#` before
+// a name is a length (`${#X}`), whose text after the `#` is read as no
+// operator, so it keeps its text as written.
+func paramNameEnd(body string) (indirect bool, end int) {
+	start := 0
+	if len(body) > 1 && body[0] == '!' && (isNameByte(body[1]) || strings.IndexByte("@*#", body[1]) >= 0) {
+		indirect, start = true, 1
+	}
+	if start >= len(body) {
+		return false, -1
+	}
+	switch c := body[start]; {
+	case c >= '0' && c <= '9':
+		n := start + 1
+		for n < len(body) && body[n] >= '0' && body[n] <= '9' {
+			n++
+		}
+		return indirect, n
+	case isNameByte(c):
+		n := start + 1
+		for n < len(body) && isNameByte(body[n]) {
+			n++
+		}
+		return indirect, n
+	case strings.IndexByte("@*#?-$!", c) >= 0:
+		return indirect, start + 1
+	}
+	return false, -1
+}
+
 // trimTexts is the written spelling of a trim, whose operator and pattern
 // are rest (`%p`, `%%p`, `#p`, `##p`), where value is the variable's own:
 // the value, which the trim leaves where its pattern does not match, and
@@ -440,7 +526,7 @@ func trimTexts(value []string, rest string) []string {
 	if longest {
 		p = rest[2:]
 	}
-	sh := readPattern(p, false)
+	sh := readPattern(p, false, false)
 	anchored := sh.lastPast
 	if suffix {
 		anchored = sh.firstPast
@@ -475,11 +561,32 @@ func replacementTexts(value []string, rest string, depth int, split bool) []stri
 	if p != "" && strings.IndexByte("/#%", p[0]) >= 0 {
 		anchor, p = p[0], p[1:]
 	}
-	sh := readPattern(p, true)
+	// bash 3.2 ends the pattern at a quoted `/` and bash 5 does not, so a
+	// pattern that holds one is read both ways and prints what either
+	// reading prints (review-guardSet MAJOR-3).
+	texts := value
+	var last patternShape
+	for n, quoted := range []bool{false, true} {
+		sh := readPattern(p, true, quoted)
+		if n > 0 && sh == last {
+			break
+		}
+		last = sh
+		texts = replacementShapeTexts(texts, p, sh, anchor, depth, split)
+		if capped(texts) || len(texts) > maxSpellings {
+			return []string{spellCapped}
+		}
+	}
+	return texts
+}
+
+// replacementShapeTexts adds to texts what a replacement whose pattern p
+// reads as sh prints (replacementTexts).
+func replacementShapeTexts(texts []string, p string, sh patternShape, anchor byte, depth int, split bool) []string {
 	whole := sh.whole()
 	tail := anchor != '#' && sh.wide && roving(sh.firstPast) && anyWidth(sh.last)
 	if !whole && !tail {
-		return value
+		return texts
 	}
 	s := ""
 	if sh.end < len(p) {
@@ -489,7 +596,6 @@ func replacementTexts(value []string, rest string, depth int, split bool) []stri
 	if len(words) == 0 {
 		words = []string{""}
 	}
-	texts := value
 	for _, w := range words {
 		if whole {
 			texts = appendText(texts, w)
@@ -497,9 +603,6 @@ func replacementTexts(value []string, rest string, depth int, split bool) []stri
 		if tail {
 			texts = appendText(texts, "/"+w)
 		}
-	}
-	if capped(texts) || len(texts) > maxSpellings {
-		return []string{spellCapped}
 	}
 	return texts
 }
@@ -559,8 +662,12 @@ func (sh patternShape) whole() bool {
 // over to its close without being read again, so the cost is p's length.
 // A replacement's pattern ends at its first unescaped `/`, which bash 3.2
 // reads as the end even inside quotes and brackets (`${X/[/]/c}` replaces
-// `[`).
-func readPattern(p string, replacement bool) patternShape {
+// `[`); with quoted set, a `/` inside quotes is the pattern's own, as bash 5
+// reads it (`${X/"/"*/$HOME}` prints the home on bash 5.3 and the value on
+// bash 3.2), and only one in a bracket or unquoted ends it. A `$"` outside
+// double quotes is the double-quoted string it opens (`${X%%$""*}` is
+// `${X%%*}`).
+func readPattern(p string, replacement, quoted bool) patternShape {
 	tally(len(p))
 	sh := patternShape{end: len(p)}
 	add := func(e patElem) {
@@ -595,7 +702,7 @@ func readPattern(p string, replacement bool) patternShape {
 	for i := 0; i < len(p); {
 		c := p[i]
 		switch {
-		case replacement && c == '/':
+		case replacement && c == '/' && !(quoted && dq):
 			sh.end = i
 			return sh
 		case c == '\\':
@@ -614,7 +721,7 @@ func readPattern(p string, replacement bool) patternShape {
 				return unread()
 			}
 			for j := i + 1; j < i+1+k; j++ {
-				if replacement && p[j] == '/' {
+				if replacement && !quoted && p[j] == '/' {
 					sh.end = j
 					return sh
 				}
@@ -642,6 +749,8 @@ func readPattern(p string, replacement bool) patternShape {
 			}
 			add(elemAny)
 			i = end + 1
+		case c == '$' && !dq && i+1 < len(p) && p[i+1] == '"':
+			i++
 		case c == '$' && !dq && i+1 < len(p) && p[i+1] == '\'':
 			k := i + 2
 			for k < len(p) && p[k] != '\'' {
@@ -777,7 +886,10 @@ func subscriptEnd(s string) int {
 // escapes removed, and each expansion in it a site spelled as a word's own
 // are (spellWritten), `${…}` through spellParameterAt one level deeper.
 // `${X:+$HOME/}` is `$HOME/`, `${X:+/}` is `/` and `${X:+"${HOME%/}"}` is
-// `${HOME}`. A command substitution in it is its unknown output, which
+// `${HOME}`. An ANSI-C string in it is the bytes it decodes to and a locale
+// string the double-quoted string it holds (`${X:-$'\x2f'}` and
+// `${X:-$"/"}` are `/`), and a `$` that opens no expansion is text. A
+// command substitution in it is its unknown output, which
 // spellWritten drops as knownText does (`${X:+$(true)$HOME}` is `$HOME`).
 // Where split is set, each unquoted whitespace run is fieldMark, where bash
 // splits the word (`${X:+$HOME }` is `$HOME`). A word holding a quote or an
@@ -844,10 +956,37 @@ func spellWord(w string, depth int, split bool) []string {
 				word = append(word, mark)
 			}
 			i++
+		case c == '$' && !dq && i+1 < len(w) && w[i+1] == '\'':
+			// An ANSI-C string is the bytes it decodes to, as bash hands
+			// them on: `${X:-$'\x2f'}` prints `/` (review-guardSet MAJOR-1).
+			decoded, _, next, err := readAnsiCQuote(w, i+2)
+			if err != nil {
+				return nil
+			}
+			word = append(word, decoded...)
+			i = next
+		case c == '$' && !dq && i+1 < len(w) && w[i+1] == '"':
+			// A locale string is the double-quoted string it holds:
+			// `${X:-$"/"}` prints `/`. Inside double quotes the `$` is text.
+			i++
+		case c == '$' && i+1 < len(w) && w[i+1] == '!':
+			// `$!` is the last background job's number, or nothing where
+			// none ran, which leaves the text beside it: `${X:-$!/}` is `/`.
+			sites = append(sites, varSite{at: len(word), texts: []string{"$!", ""}})
+			word = append(word, varMark)
+			i += 2
+		case c == '$' && i+1 < len(w) && strings.IndexByte("$?#", w[i+1]) >= 0:
+			// A number, never empty, which no path an entry names can be.
+			word = append(word, w[i:i+2]...)
+			i += 2
 		case c == '$':
 			end := simpleParamEnd(w, i+1)
 			if end < 0 {
-				return nil
+				// A `$` that opens no expansion is the `$` it is (`$/`), and
+				// so is one before a quote inside double quotes (`"$'/'"`).
+				word = append(word, c)
+				i++
+				continue
 			}
 			sites = append(sites, varSite{at: len(word), texts: []string{w[i:end]}})
 			word = append(word, varMark)

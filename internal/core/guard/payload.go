@@ -97,6 +97,14 @@ func expandPayloads(segs []segment) ([]segment, []payloadSignal) {
 		segs  []segment
 		depth int
 	}
+	// A line that names IFS reads every word whose fields rest on the
+	// default IFS as past its bound (capIFSSplits), before any string is
+	// paired with the words it was written from, so the string's words are
+	// read past it too (`IFS=x; eval rm -rf ${U:-x/x}`).
+	ifsNamed := namesIFS(segs)
+	if ifsNamed {
+		capIFSSplits(segs)
+	}
 	queue := []work{{segs: segs, depth: 0}}
 	for len(queue) > 0 {
 		item := queue[0]
@@ -194,6 +202,13 @@ func expandPayloads(segs []segment) ([]segment, []payloadSignal) {
 					s.home.addPayload(s.at, psegs)
 				}
 				out = append(out, psegs...)
+				switch {
+				case ifsNamed:
+					capIFSSplits(psegs)
+				case namesIFS(psegs):
+					ifsNamed = true
+					capIFSSplits(out)
+				}
 				queue = append(queue, work{segs: psegs, depth: item.depth + 1})
 			}
 		}
@@ -470,6 +485,36 @@ func wordFeeds(s segment, keep func(int) bool) []feed {
 		return rest
 	}
 	return append(rest, run)
+}
+
+// namesIFS reports whether any word of segs names IFS, as splitAfterIFS
+// reads a naming: an assignment in a command of its own, an `export`, a
+// `read`, a prefix assignment, or any other word that holds the name.
+func namesIFS(segs []segment) bool {
+	for _, s := range segs {
+		for _, tok := range s.tokens {
+			tally(len(tok))
+			if strings.Contains(tok, "IFS") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// capIFSSplits reads each word of segs whose fields rest on the default IFS
+// (segment.ifsSplit) as a spelling past its bound (spellCapped), which the
+// arg_values compare reads as every value (review-guardSet MAJOR-2). It runs
+// on a line that names IFS anywhere: which assignment reaches which
+// expansion is not modelled, as splitAfterIFS does not model it, so a
+// prefix assignment (`IFS=x rm -rf ${U:-x/x}`), which bash does not apply
+// to its own command's words, refuses too.
+func capIFSSplits(segs []segment) {
+	for _, s := range segs {
+		for i := range s.ifsSplit {
+			s.spelled[i] = []string{spellCapped}
+		}
+	}
 }
 
 // splitAfterIFS reports whether a segment carrying an unquoted fixed output

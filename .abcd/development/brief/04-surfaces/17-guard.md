@@ -327,7 +327,8 @@ sequence places after it (`{$HOME,x}`, `$HOME/{.*,}`, `$HO{ME,}`,
 `$HO{M..M}E`); an expansion whose operator can leave the value as it is reads
 as the variable itself — a default, an assignment or an error message
 (`${HOME:-x}`), a trim or a pattern replacement (`${HOME%/}`, `${HOME#x}`,
-`${HOME/x/y}`), a substring, a case change, and a subscript read to its
+`${HOME/x/y}`), any substring, which also reads as the root and as nothing
+(`${X:1}`, `${PWD:0:1}`), a case change, and a subscript read to its
 matching `]` with any text after it (`${HOME[x[0]]}`, `${HOME[0]]}`, which the
 bash 3.2 of macOS prints as the value); and an alternative, which prints its
 word or nothing, reads as that word as written (`${X:+$HOME}`, `${X:+/}`,
@@ -335,7 +336,17 @@ word or nothing, reads as that word as written (`${X:+$HOME}`, `${X:+/}`,
 operator after a subscript (`${X[0]]:+$HOME}`). Unquoted, the alternative's
 word is split on whitespace and a substitution in it that prints nothing
 drops out, as bash splits and drops them (`${X:+$HOME }`,
-`${X:+$(true)$HOME}`). A trim that leaves the path above the home
+`${X:+$(true)$HOME}`). A word written as an ANSI-C or a locale string reads
+as the text it decodes to (`${X:-$'\x2f'}`, `${X:-$"/"}`); a positional, a
+special or an indirect parameter takes the same operators (`${1:-/}`,
+`${#:+/}`, `${!X:-/}`, the last read as every target past its operator,
+since the variable it names is not in the line); a replacement's pattern is
+read both where bash 3.2 ends it and where bash 5 does, at a quoted `/`
+(`${X/"/"*/$HOME}`); and on a line that names IFS, an unquoted default's or
+alternative's word, and an unquoted home, reads as every target, since the
+fields bash splits it into rest on that IFS (`IFS=x; rm -rf ${U:-x/x}`,
+`IFS=Uv; rm -rf $HOME/x`). A run of `/` written before the home names the
+home (`/$HOME`). A trim that leaves the path above the home
 (`${HOME%/*}`) blocks as the home does. Each target is also compared as a path
 with its redundant separators taken out, since the kernel reads a run of
 slashes as one, a `.` segment as the directory itself and the root as its own

@@ -722,6 +722,26 @@ func argValueMatches(values []string, written string) bool {
 				return true
 			}
 		}
+		if lead := strings.TrimLeft(field, "/"); lead != field && absoluteName(lead) && argValueMatches(values, lead) {
+			return true
+		}
+	}
+	return false
+}
+
+// absoluteName reports whether p begins with the home or the working
+// directory written as a variable (`$HOME`, `${HOME}`, `$PWD`, `${PWD}`),
+// whose value is an absolute path: a run of `/` written before it names the
+// same directory, so argValueMatches also reads the field without that run
+// (`rm -rf /$HOME` deletes the home; iss-2609300057462186).
+func absoluteName(p string) bool {
+	for _, name := range []string{"HOME", "PWD"} {
+		if strings.HasPrefix(p, "${"+name+"}") {
+			return true
+		}
+		if strings.HasPrefix(p, "$"+name) && (len(p) == len(name)+1 || !isNameByte(p[len(name)+1])) {
+			return true
+		}
 	}
 	return false
 }
