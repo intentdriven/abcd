@@ -1209,6 +1209,13 @@
           "type": "string",
           "required": false,
           "hidden": false
+        },
+        {
+          "name": "tool",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
         }
       ]
     },
@@ -2165,6 +2172,13 @@
       "flags": [
         {
           "name": "confirm",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "dependency-reauthor",
           "shorthand": "",
           "type": "bool",
           "required": false,

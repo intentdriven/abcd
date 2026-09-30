@@ -102,10 +102,16 @@ func TestAhoyConnectVerifiesThenWrites(t *testing.T) {
 	if calls.Load() != 1 || auth.Load() != "Bearer "+connectKey {
 		t.Fatalf("verification: %d call(s), auth %v", calls.Load(), auth.Load())
 	}
-	for _, want := range []string{"typesafe/jev-1.13-20260915", "~/.abcd/credentials.json", "~/.abcd/config.json", "spc-2609251028149555"} {
+	for _, want := range []string{"typesafe/jev-1.13-20260915", "~/.abcd/credentials.json", "~/.abcd/config.json", "spc-2609251028149555",
+		`= "openrouter/typesafe/jev-1.13" in ~/.abcd/config.json`} {
 		if !strings.Contains(string(out), want) {
 			t.Errorf("ahoy connect does not say %q:\n%s", want, out)
 		}
+	}
+	// The provider holds a key, so only the machine may route to it (ruling
+	// AA(b) of 2026-09-29): the advice never offers the repository's file.
+	if strings.Contains(string(out), "in .abcd/config.json") {
+		t.Errorf("ahoy connect offers the repository's file for a route to a keyed provider:\n%s", out)
 	}
 	home := os.Getenv("HOME")
 	for _, name := range []string{"config.json", "credentials.json"} {
@@ -124,6 +130,22 @@ func TestAhoyConnectVerifiesThenWrites(t *testing.T) {
 	if !strings.Contains(string(board), "openrouter") || !strings.Contains(string(board), "key openrouter (set, abcd home)") ||
 		strings.Contains(string(board), connectKey) {
 		t.Fatalf("board after connect:\n%s", board)
+	}
+}
+
+// TestAhoyConnectKeylessOffersBothFiles: a provider that takes no key spends
+// no key, so a route to it may sit in the repository's file or the machine's,
+// and the advice names both.
+func TestAhoyConnectKeylessOffersBothFiles(t *testing.T) {
+	hermeticEnv(t)
+	t.Chdir(t.TempDir())
+	base, calls, _ := fakeProvider(t, 200, completionReply("qwen/qwen3-8b"))
+	out, err := runCLIErr(t, "ahoy", "connect", "local", "--base-url", base, "--model", "qwen/qwen3-8b", "--home", "none")
+	if err != nil {
+		t.Fatalf("ahoy connect: %v\n%s", err, out)
+	}
+	if calls.Load() != 1 || !strings.Contains(string(out), `= "local/qwen/qwen3-8b" in .abcd/config.json or ~/.abcd/config.json`) {
+		t.Fatalf("ahoy connect (%d call(s)):\n%s", calls.Load(), out)
 	}
 }
 

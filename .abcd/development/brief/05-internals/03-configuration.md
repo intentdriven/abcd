@@ -101,8 +101,8 @@ rather than skipped:
       }
     },
     "denylist": ["openai/*"],            // extends the bundled vendor denylist; repo or machine
-    "roles": { "scribe": "openrouter/typesafe/jev-1.13" },            // an agent in the roster
-    "judgements": { "duplicate-match": "openrouter/typesafe/jev-1.13" } // a judgement type
+    "roles": { "scribe": "openrouter/typesafe/jev-1.13" },            // an agent in the roster; a keyed
+    "judgements": { "duplicate-match": "openrouter/typesafe/jev-1.13" } //   provider's routes: machine only
   }
 }
 ```
@@ -122,6 +122,17 @@ rather than skipped:
   a provider this machine has not configured is a diagnostic: the step stays on
   the host, as it would with nothing configured (adr-25). A role outside the
   roster is named and skipped, like an orphan routing row.
+- **A route to a provider that holds a key sits on the machine alone.** Only a
+  route the person set up on their own machine may spend their paid key (the
+  product thinker's ruling AA(b) of 2026-09-29), so a repository's
+  `.abcd/config.json` pointing a role or a judgement type at such a provider is
+  refused, naming the route, `~/.abcd/config.json` as where to set it, and the
+  repository's file as where to remove it, since the repository's route wins
+  per name over the machine's. A
+  provider holds a key when its block names `key`, judged from the block and
+  never by reading the credential store. A repository's route to a provider
+  whose block names no key (a local server) is admitted and wins over the
+  machine's per name, and a `--route` the person types is unaffected.
 - **The model a provider reports is held to the denylist too.** An aggregator
   that answers with a denied model has substituted a frontier model; the answer
   is discarded and the refusal names what it reported. Every call records the
@@ -765,7 +776,15 @@ plugin-root binary is missing, throttled by a `.bootstrap.attempt` marker within
 ten-minute window, and then fall back to a PATH-resolved abcd that must be
 absolute, outside the working directory, in a directory and a file that are not
 world-writable, and recorded as this
-machine's own, before failing loudly. `SessionEnd` and `SubagentStop` are the two
+machine's own, before failing loudly. `UserPromptSubmit`, which runs on every
+message, declares a 120-second `timeout`; `PreToolUse` and `PreCompact` declare
+none and take the host's ten-minute default; `SessionStart` declares 240 seconds,
+and the transcript hooks declare none. Every event that runs `bootstrap.sh`
+names a `statusMessage`, the host's spinner text while the hook runs, because the
+salvage sends the script's output nowhere; the text states no duration, since
+those limits differ. A test pins every event's timeout and the message
+(`internal/surface/cli/hooks_timeout_test.go`). `SessionEnd` and
+`SubagentStop` are the two
 exceptions and download nothing at all: each fires where the harness cancels a slow
 hook rather than wait — one as the session exits, the other inside a live session as
 a sub-agent finishes — so a fetch there races that cancellation and loses the

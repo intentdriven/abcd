@@ -16,14 +16,21 @@ package oracle
 //     minimum). The repository and the machine add entries; nothing removes a
 //     bundled one, so a listing mistake can never reach a frontier model.
 //   - oracle.roles.<agent> and oracle.judgements.<type> point a role (an agent
-//     in the roster) or a judgement type at <provider>/<model>. The repository
-//     and the machine may both point; the higher layer wins per name.
+//     in the roster) or a judgement type at <provider>/<model>. The machine
+//     may point at any provider it configures. The repository may point only
+//     at a provider that holds no key, and there its route wins per name; a
+//     repository route to a provider that holds a key is refused, because only
+//     a route the person sets on their own machine may spend their paid key
+//     (the product thinker's ruling AA(b) of 2026-09-29, which reverses the
+//     route half of itd-2609081951381895 Decision 8).
 //
-// Every route is checked here, before any call: a model its provider does not
-// list is refused naming the list, and a listed model the denylist matches is
-// refused naming the entry, whatever the allowlist says. A route naming a
-// provider this machine has not configured is a diagnostic, not a refusal: the
-// step stays on the host, exactly as it would with nothing configured (adr-25).
+// Every route is checked here, before any call: a repository route to a
+// provider that holds a key is refused naming the machine's file as where to
+// set it, a model its provider does not list is refused naming the list, and a
+// listed model the denylist matches is refused naming the entry, whatever the
+// allowlist says. A route naming a provider this machine has not configured is
+// a diagnostic, not a refusal: the step stays on the host, exactly as it would
+// with nothing configured (adr-25).
 //
 // Like the rest of the package, the resolver never writes, never reaches a
 // network and never prints.
@@ -288,7 +295,9 @@ func denial(e DenyEntry) string {
 }
 
 // readRoutes reads one route family (roles or judgement types) from the repo
-// and machine layers, the higher layer winning per name.
+// and machine layers, the higher layer winning per name. A winning route from
+// any layer but the machine's that names a provider holding a key is refused
+// (keyed): only the person's own machine may point a route at their key.
 func (c *APIConfig) readRoutes(s *layered.Stack, key string, into map[string]Target) error {
 	names := map[string]bool{}
 	for _, l := range []layered.Layer{layered.Repo, layered.Machine} {
@@ -340,6 +349,12 @@ func (c *APIConfig) readRoutes(s *layered.Stack, key string, into map[string]Tar
 				"it runs on the host, as it would with no provider configured", where, layered.BoundKey(provider)))
 			continue
 		}
+		if p := c.providers[provider]; win.Layer != layered.Machine && keyed(p) {
+			return fmt.Errorf("oracle adapter: %s points at %s, a provider that holds a key (its block in %s names the credential %s); "+
+				"only a route set on this machine may spend that key, so a repository's route to it is refused before any call: "+
+				"set %s.%s in %s and remove it from %s, or point it at a provider whose block names no key",
+				where, layered.BoundKey(text), p.Origin, p.Key, key, name, layered.Config.MachineOrigin(), win.Origin)
+		}
 		if err := c.Admit(provider, model); err != nil {
 			return fmt.Errorf("oracle adapter: %s points at %s, %w", where, layered.BoundKey(text), err)
 		}
@@ -347,6 +362,12 @@ func (c *APIConfig) readRoutes(s *layered.Stack, key string, into map[string]Tar
 	}
 	return nil
 }
+
+// keyed reports whether p holds a key: whether its block names a credential.
+// It is judged from the block alone and never from the credential store, so no
+// secret is read to answer it, and a key stored or removed later cannot change
+// the answer: a block that names a key is keyed before its key is stored.
+func keyed(p Provider) bool { return p.Key != "" }
 
 // Admit is the refusal adr-2609221009491186 names: it returns nil only when
 // provider is configured, model is on its list, and no denylist entry matches

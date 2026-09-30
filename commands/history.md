@@ -73,8 +73,9 @@ forever, and `discard` is the only thing that removes it.
 "${CLAUDE_PLUGIN_ROOT}/abcd" history list --session <session-id> --json
 ```
 
-Summarise each record newest-first: `captured_at`, `session_id`, `source_kind`,
-and the `redacted_secrets` / `redacted_home_paths` counts. An empty list means
+Summarise each record newest-first: `captured_at`, `session_id`, where the
+transcript came from (`source_kind`, the route, and `source_tool`, the tool that
+produced it), and the `redacted_secrets` / `redacted_home_paths` counts. An empty list means
 no transcripts are stored for this repo yet.
 
 A record produced by a **sub-agent** carries its lineage as well: `agent_id`,
@@ -218,9 +219,18 @@ user what the file is, and let them say the word; the verb refuses without
 Read a raw transcript from a file argument (or stdin with `-`), redact it
 through the scanner in a two-stage fail-closed pass, and store the record. The
 session id defaults to the transcript filename; reading from stdin requires
-`--session`. `--kind` selects the source kind (`native` — the default — or
-`specstory-import`). The write is idempotent on the source's content hash: an
-identical transcript already stored is a no-op. If any hard-fail secret or the
+`--session`. Two separate labels say where the transcript came from. `--kind`
+names the route: `native` (the default) is abcd's own capture of the transcript
+the host harness wrote, and `import` is a transcript another tool exported.
+`--tool` names the tool that produced it, as a lowercase slug: a native capture
+that names none records `host`, and an import must name its tool, which is
+never `host`. A route word is never accepted as a tool, nor a tool as the route.
+A record stored before the two labels were split carries `source_kind` alone and
+reads under both: `native` as `native` from `host`, and `specstory-import` as
+`import` from `specstory`. The fused `specstory-import` names its tool already, so
+`--kind specstory-import` with a `--tool` naming a different tool is refused; name
+the two labels separately (`--kind import --tool <tool>`). The write is idempotent on the source's content hash: an
+identical transcript already stored under the same session and labels is a no-op. If any hard-fail secret or the
 caller's own home path survives redaction, capture refuses to write.
 
 ```bash

@@ -7,7 +7,7 @@ category: "tech-debt"
 source: "impl-review"
 found_during: "itd-114 ship review"
 deferred_after: "v0.11.1"
-deferral_reason: "ruling owed to the product thinker (renewed by run A 2026-09-29 after the v0.10.0 grant lapsed at the v0.11.0 anchor): Give the forge-backed allocator adapter (deferred by adr-45 ruling 4) a planned intent?"
+deferral_reason: "decide later (product thinker, 2026-09-29)"
 ---
 
 The optional forge-backed allocator (itd-114 ac-5) is deferred by recorded ruling — spc-33 names it a later adapter behind the same mint seam, adr-45 ruling 4 fixes its posture (allocates and never stores per itd-129's ledger-canonical line; offline falls back to native loudly) — but no open work item holds the seat, so nothing tracks building it. The fidelity verdict on itd-114 carries the criterion as NOT_MET/deferred-by-ruling; this capture is the deferred work's ledger seat, builds on itd-129's adapter seam when that lands

@@ -1,7 +1,7 @@
 ---
 name: launch
 description: "Preview the public launch bundle, its secret scan, and the release gates: Writes only its pre-flight report, to the local tier; refuses without --dry-run."
-argument-hint: "[--dry-run [--deep-smoke] [--baseline <vX.Y.Z>] [--fetch-baseline]] | ship [--changelog-json <path>] [--payload-dir <dir>] [--allow-dirty] [--fetch-baseline] | archive --out <dir> [--tag <vX.Y.Z>] [--verify] [--repository <owner/name>] | manifests --tree public|dev [--root <dir>] | scaffold"
+argument-hint: "[--dry-run [--deep-smoke] [--baseline <vX.Y.Z>] [--fetch-baseline]] | ship [--changelog-json <path>] [--payload-dir <dir>] [--allow-dirty] [--fetch-baseline] | archive --out <dir> [--tag <vX.Y.Z>] [--verify] [--repository <owner/name>] | manifests --tree public|dev [--root <dir>] | scaffold [--confirm] [--dependency-reauthor]"
 block: people
 ---
 
@@ -937,6 +937,45 @@ A repository with its own `.github/workflows/release.yml` (or `.yaml`) keeps it
 to add to it so it calls the gate before its build step (`call_stanza` in
 `--json`). Relay that stanza verbatim; the scaffold never edits the repository's
 own workflow.
+
+### Dependency-bump re-authoring (opt-in)
+
+`launch scaffold --dependency-reauthor` opts the repository in to re-authoring a
+bot-opened dependency bump as its owner, so the bump passes the attribution gate
+with no person re-authoring it by hand. The opt-in is the declaration it seeds,
+`.abcd/config/dependency-reauthor.conf`: while that file exists, every scaffold
+run keeps the rest current, and a repository without it receives none of this.
+Three files:
+
+- `.abcd/config/dependency-reauthor.conf` — the declaration, the repository's own
+  once written (reported `kept`, never rewritten): `owner_name` and
+  `owner_email`, the person the re-authored commit names as author and
+  committer, both empty until that person sets them; and one `ecosystem=` row per
+  ecosystem, `<bot login> <branch prefix> <directory> <file name>...`, the
+  directory written as the bot's own configuration writes it (`/`, `/docs`).
+- `.github/workflows/dependency-reauthor.yml` — runs on every pull request, from
+  the pull request's base, with a read-only token.
+- `.abcd/development/release-gate/dependency-reauthor.sh` — the bound and the
+  push.
+
+A pull request is re-authored only inside the bound: opened by a declared bot,
+in a run that bot's own event started, from a branch in this repository under
+that bot's prefix for a declared ecosystem, carrying one commit by that bot that
+only modifies the row's files at the row's directory (an added file is never a
+bump). Anything else is left alone and the run names the clause it failed
+(`author`, `actor`, `head-repo`, `branch`, `ecosystem`, `commits`,
+`commit-author`, `diff`). The bound judges which files change, never their
+content, so tell the operator that a manifest's content inside it is
+re-authored unreviewed. An in-bound bump is replayed with the owner as author and committer, a
+message naming the bot and the workflow, and `Assisted-by: None`; a GitHub App
+pushes it under a lease, and the run's summary records the bot, the bump and
+both commits. The App is never an identity on the commit.
+
+Tell the operator what stays theirs: set the owner in the declaration, create a
+GitHub App with `Contents: read and write` on the repository, install it, and
+store its id and private key as the **Dependabot** secrets
+`DEPENDENCY_REAUTHOR_APP_ID` and `DEPENDENCY_REAUTHOR_APP_KEY`. Until all of
+that is done an in-bound bump is refused by name and stays a person's to land.
 
 The check names come from the repo's workflows triggered by `pull_request` or
 `merge_group`; a name only a run knows (a matrix job, an expression-named job, a
