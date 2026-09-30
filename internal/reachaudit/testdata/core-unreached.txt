@@ -20,8 +20,6 @@ internal/core/capture.ConstrualFingerprint
 internal/core/capture.GlossaryFingerprint
 internal/core/capture.ScopeFingerprint
 internal/core/changelog.DeriveNext
-internal/core/changelog.LatestVersionIn
-internal/core/changelog.MaxImpact
 internal/core/cite.NewHTTPChecker
 internal/core/cite.ParseReceipt
 internal/core/credential.KeychainItem
