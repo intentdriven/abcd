@@ -236,9 +236,10 @@ func TestTheValidatorsAreFreshAgentsAndOnlyTheLoopRecordsAVerdict(t *testing.T) 
 	if a == nil || a.BaseSHA != l.BaseSHA || a.HeadSHA != l.HeadSHA || !strings.HasPrefix(a.ReceiptID, "rcp-") || a.Worst != "MET" {
 		t.Fatalf("the audit's receipt and range are the run's, for the close to consume: %+v", a)
 	}
-	_, err = Advance(repo.Root(), id, stages, Options{})
-	if r := mustRefusal(t, err); r.Stage != string(StageLand) || !strings.Contains(r.Reason, "piece 9") {
-		t.Fatalf("the landing is piece 9's: %+v", r)
+	// The landing (piece 9) takes the lane from here, one step at a time.
+	res, err = Advance(repo.Root(), id, stages, Options{})
+	if err != nil || res.Stage != StageLand || res.PerformedStage != "" {
+		t.Fatalf("the landing's first step leaves the lane at land: %+v %v", res, err)
 	}
 }
 
@@ -517,8 +518,19 @@ func downgraded(t *testing.T, data []byte, v int) []byte {
 		t.Fatal(err)
 	}
 	m["schema_version"] = v
-	if p, ok := m["pace"].(map[string]any); ok {
+	if p, ok := m["pace"].(map[string]any); ok && v <= schemaVersionUncapped {
 		delete(p, "fix_rounds")
+	}
+	if v <= schemaVersionUnlanded {
+		delete(m, "transcripts")
+		lanes, _ := m["lanes"].([]any)
+		for _, l := range lanes {
+			if lm, ok := l.(map[string]any); ok {
+				for _, k := range []string{"receipts", "resolves", "landing"} {
+					delete(lm, k)
+				}
+			}
+		}
 	}
 	out, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {

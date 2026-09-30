@@ -241,10 +241,39 @@ A lane's stages run in order:
    `undecided`), the run starts nothing further for it, and every later step is
    refused at the `handed-back` stage. Tell the user the intent is handed back
    to them with those findings; do not start another fix round.
-5. `land` — not carried in this build: `implement step` refuses at `land`
-   naming the spec piece that delivers it, and the run stays ready to resume in
-   an abcd that carries it. Report that refusal as it is; do not open the pull
-   request or close the spec by hand on the run's behalf.
+5. `land` — one `implement step` per move, the lane staying at `land` until
+   the last. The loop checks the lane's worktree is clean at the judged head;
+   on the lane that closes the spec it runs `spec close` in the lane's worktree
+   and ingests the audit that lane took, and it runs `capture resolve` for each
+   capture the receipts named in `resolves`, with that commit, committing them
+   on the lane's branch with `Delivers:` and `Resolves:` trailers. It pushes the
+   branch only once the repository's preflight receipt names the lane's head:
+   when `step` refuses for want of one, run `make preflight` in the lane's
+   worktree, then `step` again; never push, skip a hook or mint a receipt by
+   hand. It opens the pull request through `gh`, with a body built from the
+   run's records and passed through the outbound scrub, re-reads the body the
+   forge holds and strips a session URL or tool footer. It arms auto-merge with
+   the merge-queue method the ruleset mirror (`.abcd/work/rulesets/`) names, or
+   leaves the pull request open where no merge queue gates the default branch,
+   and pushes nothing to the lane afterwards. Then `step` exits 3 until the
+   pushed head is an ancestor of the default branch on `origin`; stop driving
+   the run and come back later. Once it is, the loop removes the lane's
+   worktree and branch, the lane is done, and the next pending step opens the
+   next lane. A pull request closed without merging, or merged in a way that
+   rewrote its head, is refused and nothing is cleaned up: report it as it is.
+
+When the run is complete, read its record and capture its transcripts:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" implement record --transcript <path> [--transcript <path>]... --json
+```
+
+The record names every lane, the receipts with the model each runner
+reported, every verdict the loop recorded, the captures fixed, the pull
+requests and what each landing did, and the transcripts captured into the
+history store. Name the transcript of this session and of every agent it
+started; each is captured as `history capture <path>` captures it, one capture
+per path.
 
 **Binary resolution.** Run `"${CLAUDE_PLUGIN_ROOT}/abcd"` — a plugin install
 provisions the binary into the plugin root, so this is the rung that fires for a

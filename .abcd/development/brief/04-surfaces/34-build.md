@@ -10,10 +10,9 @@ machinery's (decision 8): the stages after the start are driven through the
 
 This chapter describes the part of the loop that ships: the checks, the pace
 (itd-2609201925079472, spc-2609202134341288), the state file, the step
-interface a host session drives with its window clock, and the lane's first
-four stages (its worktree, its brief, the implementer's receipt and the
-validators). The landing is named in the sequence and delivered by a later piece
-of the spec; until it lands, the loop refuses at it by name.
+interface a host session drives with its window clock, the lane's five stages
+(its worktree, its brief, the implementer's receipt, the validators and the
+landing), and the run record read back at the end with the run's transcripts.
 
 ## Sub-verbs
 
@@ -199,12 +198,15 @@ repository abcd manages has one, so a run is managed-only by construction. Each
 run directory is created one level at a time and proved real, the state file is
 replaced atomically inside an `os.Root`, and the reader decodes strictly,
 refusing an unknown field, a schema version it does not know, or a file stored
-under a run id it does not name. The state is schema version 6. Version 6
+under a run id it does not name. The state is schema version 7. Version 7
+added the landing (a lane's `landing`, the implementers' `receipts` it verified
+with the model each runner reported, and the captures its receipts declared
+fixed, `resolves`) and the run's captured `transcripts`. Version 6
 added the fix-round cap (ruling DR1): the pace's `fix_rounds` and a lane's
 `hand_back`. Version 5 added the validate stage's record (a lane's
 `validation`). Each earlier version is the next one's strict subset, read as a
 run that predates the addition (a version-5 run runs on the bundled cap) and
-written back at version 6 by its next mutation; an earlier version carrying what
+written back at version 7 by its next mutation; an earlier version carrying what
 only a later one writes is refused. Version 4
 renamed the lane's stage (BU1, iss-2609291313276243): a lane's and a record
 line's `step` became `stage`, so "step" names only the spec's steps (`spec_step`,
@@ -278,9 +280,8 @@ reported complete and closes no window.
 
 A stage whose body this build does not carry is refused naming the stage, the
 lane and the spec piece that delivers it, and the run is unchanged, ready to
-resume in a build that carries it. This build carries the worktree, the brief,
-the implement stage with its receipt's verifier and the validate stage with
-its; the land stage is refused naming piece 9. The process driver (piece 3) is the same loop
+resume in a build that carries it. This build carries every stage of the
+sequence. The process driver (piece 3) is the same loop
 called by a process instead of a host, starting the named agent through the
 runner and handing its receipt back.
 
@@ -349,11 +350,17 @@ the checkout's `os.Root` (no symlinked leaf, a regular file of at most 64 KiB),
 decoded strictly (one JSON object, no field the schema does not name), with
 every path it names held inside the lane's directory. Its fields are
 `schema_version`, `run_id`, `lane`, `branch`, `commits` (full object names),
-`definition_of_done` (`command`, `exit_code`, `output`), `report` and an
-optional `model`, the model the implementer's harness reported. It verifies
+`definition_of_done` (`command`, `exit_code`, `output`), `report`, an
+optional `model`, the model the implementer's harness reported, and an optional
+`resolves`: each capture the lane fixed, with the `commit` that fixed it, the
+`note`, the `impact` and the `grounds` its resolution records. It verifies
 only when every commit it names is on the lane's branch and not already on the
 default branch at the lane's base, the definition of done's output exists
-non-empty with exit code 0, and the report exists non-empty. A receipt short of
+non-empty with exit code 0, the report exists non-empty, and each fixed capture
+is an issue id named once, with one of the receipt's own commits, an impact from
+the changelog's enum and a note and grounds within their cap. A verified
+receipt is recorded on the lane with its model, and its fixes with it, a later
+fix round's declaration of an issue replacing an earlier one's. A receipt short of
 any of these is refused naming every gap at once, and the lane is not advanced.
 A receipt carrying a verdict is refused by the same strict decode: a verdict is
 the loop's to record (decision 9). A verified receipt moves the lane's head to
@@ -415,12 +422,71 @@ hand-back, and building the intent again resumes the run and says the same.
 Moving the intent to `drafts/` with its replan reason (itd-50, criterion 3) is
 not made by this build.
 
+**The landing** (piece 9; criterion 6). The land stage takes the lane to the
+default branch one step per invocation, each recorded in the lane's `landing`
+as it completes, so a killed invocation repeats the step that did not complete
+and finds what it made rather than making it twice. The lane stays at `land`
+until the last step.
+
+1. It checks the lane's worktree is clean and its branch is at the head the
+   validators judged, and decides whether the landing closes the spec: the
+   lane that took the fidelity audit does.
+2. In the lane's worktree it runs the spec's close (which ships the intent
+   and parks the fidelity receipt) and ingests the verdict of the audit
+   the lane took into that receipt, rather than asking for a second audit; and
+   for every capture the lane's receipts declared fixed it runs the capture
+   store's resolve with the lane's commit that fixed it. It commits them on
+   the lane's branch with a computed message carrying `Delivers:` (when the
+   close ships the intent) and one `Resolves:` per capture, so RS005 and RS001
+   find the records in the change. A lane that neither closes the spec nor
+   fixed a capture records nothing.
+3. It pushes the lane's branch to `origin` only once the repository's
+   preflight receipt (`.abcd/.work.local/preflight-receipts/<head>`, in any
+   worktree git lists) names the lane's head, the gate the pre-push hook
+   checks, read before any connection opens. The push is a plain `git push`
+   from the checkout the run lives in, so the hook runs; nothing is skipped or
+   forced.
+4. It opens the pull request through the forge client the repository already
+   uses (`gh`), with a title and a body written from the run's records (the
+   step, the spec, the intent, the passing round's verdicts, the close, each
+   resolved capture, and the `Delivers:` and `Resolves:` lines) and passed
+   through the outbound scrub. After creating it, the loop re-reads the body the
+   forge holds, and a session URL or tool footer the harness appended is
+   stripped and the body read again; one that survives is refused. A pull
+   request a killed invocation opened is found by the forge's listing of the
+   branch, never opened twice.
+5. It reads the merge rule from the ruleset mirror (`.abcd/work/rulesets/`) at
+   the lane's base, so the lane's own commits cannot change it (decision 3):
+   where an active ruleset gates the default branch through a merge queue, it
+   arms auto-merge with the queue's method; where none does, it leaves the pull
+   request open for a person to merge. Nothing is pushed to the lane after this
+   step.
+6. It fetches the default branch and waits, exiting 3, until the pushed head
+   is an ancestor of it; only then does it remove the lane's worktree (never
+   forced) and delete the lane's branch at a tip the same check proves landed,
+   and the lane is done. A pull request closed without merging, or merged in a
+   way that rewrote the head, is refused and nothing is cleaned up.
+
+**The run record and the transcripts** (piece 10; criterion 10). The record
+verb reads a run's state back as its record: every lane with its spec step,
+branch and heads, the implementers' receipts the loop verified with the model
+each runner reported (as reported; the binary cannot verify it), every verdict
+the loop recorded, round by round, the captures the lane fixed, its pull request
+and what its landing did, the run's pending steps, the transcripts captured and
+the record's lines, in text and JSON. On a complete run, the record verb
+captures each transcript it is named into the history store as the history
+verb's capture of one path does, one capture per path, and records it in the
+state with the session it was stored under; a run in progress is refused, since
+the record's transcripts are the run's, captured at its end. A capture that
+fails stops the call, with the transcripts before it recorded.
+
 ## Exit codes
 
 `0` done, including a resumed start, a stage that re-tells an await, a call
 that closes an elapsed window, and a complete run; `2` refused, naming the stage, the reason and the remedy, with
-nothing written; `3` contention: a peer holds the intent, the run is paused, or
-the run state is locked by another invocation. A refusal in the JSON form is its
+nothing written; `3` contention: a peer holds the intent, the run is paused, the
+run state is locked by another invocation, or a landing waits for its pull
+request to merge. A refusal in the JSON form is its
 own document before the error envelope, with the stage (`refusal.stage`), the check, the reason and
 the remedy as fields.
 

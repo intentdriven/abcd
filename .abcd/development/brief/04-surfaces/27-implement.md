@@ -7,8 +7,8 @@ session inside its bounds, and derives the comparison of the three ways of
 dividing work from the run log (itd-2609221656373558, spc-2609221657588816).
 
 It is also the family the implement loop is driven through (itd-2609201916151817,
-decision 8): `build` is what a person types, and the loop's status, step and
-receipt are sub-verbs of this verb, which a driving session calls. The loop's
+decision 8): `build` is what a person types, and the loop's status, step,
+receipt and record are sub-verbs of this verb, which a driving session calls. The loop's
 own state lives in the checkout's local tier, not in the shared run state below;
 [`34-build.md`](34-build.md) is its chapter. The pacing intent
 (itd-2609201925079472) reads the loop's window clock.
@@ -36,6 +36,7 @@ own state lives in the checkout's local tier, not in the shared run state below;
 | `status` | — | shipped |
 | `step` | — | shipped |
 | `receipt` | — | shipped |
+| `record` | — | shipped |
 
 ## Where the run lives
 
@@ -265,8 +266,10 @@ path is the one named and its verifier accepts it. Without a named run, the step
 and receipt verbs act on the one run in progress in the checkout and refuse naming
 the runs when there are several. Their refusals name the stage, the reason and
 the remedy, and a pause
-before the run's next eligible time, or a lock held by another invocation, is
-contention at exit 3.
+before the run's next eligible time, a lock held by another invocation, or a
+landing waiting for its pull request to merge, is contention at exit 3. The
+record verb reads a run's record back at the end, and on a complete run captures
+the run's transcripts into the history store, one capture per path.
 
 ## Exit codes
 
@@ -285,7 +288,7 @@ _Generated from the command tree; a drift test fails `go test` when this appendi
 
 ### `abcd implement`
 
-Sub-verbs: `abcd implement check`, `abcd implement claim`, `abcd implement join`, `abcd implement leave`, `abcd implement load`, `abcd implement log`, `abcd implement mode`, `abcd implement receipt`, `abcd implement release`, `abcd implement report`, `abcd implement status`, `abcd implement step`.
+Sub-verbs: `abcd implement check`, `abcd implement claim`, `abcd implement join`, `abcd implement leave`, `abcd implement load`, `abcd implement log`, `abcd implement mode`, `abcd implement receipt`, `abcd implement record`, `abcd implement release`, `abcd implement report`, `abcd implement status`, `abcd implement step`.
 
 Flags: none.
 
@@ -363,6 +366,15 @@ Sub-verbs: none.
 | Flag | Type |
 |---|---|
 | `--run` | string |
+
+### `abcd implement record`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--run` | string |
+| `--transcript` | stringArray |
 
 ### `abcd implement release`
 

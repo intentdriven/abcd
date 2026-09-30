@@ -22,7 +22,7 @@ import (
 // (itd-2609201916151817, spc-2609202134338445): `abcd build <itd-N>`, the verb a
 // person types, and the step interface a driving host calls under `implement`
 // (decision 8: `build` for people, `implement` for the machinery) — `implement
-// status`, `implement step` and `implement receipt`.
+// status`, `implement step`, `implement receipt` and `implement record`.
 
 // loopStore is the noun the checkout resolution names in its refusal.
 const loopStore = "the run state file"
@@ -321,6 +321,7 @@ func renderLaneLine(w io.Writer, l loop.Lane) {
 		}
 		fmt.Fprintf(w, "    validation round %d at %s: %s\n", r.Round, shortSHA(r.HeadSHA), termsafe.Sanitize(strings.Join(parts, ", ")))
 	}
+	renderLanding(w, l.PR, l.Landing)
 	if l.Awaiting != nil {
 		fmt.Fprintf(w, "    awaiting the %s's receipt at %s (brief %s)\n", termsafe.Sanitize(l.Awaiting.Role),
 			termsafe.Sanitize(fsutil.RedactHome(l.Awaiting.Receipt)), termsafe.Sanitize(fsutil.RedactHome(l.Awaiting.Brief)))
@@ -477,7 +478,19 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			"has taken the run's fix rounds (--fix-rounds, bundled 3) hands the lane back instead: it\n" +
 			"stops as unachievable, the result and the run record name the last round's findings, the\n" +
 			"run starts nothing further for it, and every later step is refused naming the hand-back.\n" +
-			"land follows a passing round.\n\n" +
+			"land follows a passing round, one step per call: it checks the lane's worktree is clean\n" +
+			"at the judged head; on the lane that closes the spec it runs `spec close` in the lane's\n" +
+			"worktree and ingests the audit that lane took, and for every capture the lane's receipts\n" +
+			"declared fixed it runs `capture resolve` with the lane's commit, committing them on the\n" +
+			"lane's branch with Delivers: and Resolves: trailers; it pushes the branch only once the\n" +
+			"repository's preflight receipt names its head (the pre-push hook runs; nothing is\n" +
+			"skipped or forced); it opens the pull request through gh, with a body built from the\n" +
+			"records and passed through the outbound scrub, then re-reads the body the forge holds and\n" +
+			"strips a session URL or tool footer; it arms auto-merge with the merge-queue method the\n" +
+			"ruleset mirror (.abcd/work/rulesets/) names at the lane's base, or leaves the pull request\n" +
+			"open where no merge queue gates the default branch, and pushes nothing after that; and\n" +
+			"once the pushed head is an ancestor of the default branch on origin it removes the lane's\n" +
+			"worktree and branch and the lane is done. Until then the call exits 3 and waits.\n\n" +
 			"A stage whose body this abcd does not carry is refused naming the spec piece that\n" +
 			"delivers it, and the run is unchanged. A stage that fails leaves the state as it was,\n" +
 			"so the next invocation performs it again; a completed stage is never repeated.\n\n" +
@@ -524,7 +537,9 @@ func newImplementReceiptCommand(asJSON *bool) *cobra.Command {
 			"name, within its size cap, never through a symlink) and verifies only when every commit\n" +
 			"it names is on the lane's branch past its base, the definition of done's output exists\n" +
 			"in the lane's directory with a zero exit code, and the report exists there. A receipt\n" +
-			"that verifies moves the lane's head to its branch's tip.\n\n" +
+			"that verifies moves the lane's head to its branch's tip. Its optional resolves list names\n" +
+			"each capture the lane fixed, with the commit that fixed it (one the receipt names), the\n" +
+			"note, the impact and the grounds; the landing resolves each.\n\n" +
 			"At the validate stage the receipt is the validator's return: a reviewer's is refused\n" +
 			"unless it has one Verdict section stating one verdict of its role (SHIP or FIX FIRST;\n" +
 			"APPROVE, BLOCK or NEEDS-INPUT), and the intent-auditor's unless it is the fidelity verdict\n" +
@@ -558,4 +573,142 @@ func newImplementReceiptCommand(asJSON *bool) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&runID, "run", "", "the run the receipt belongs to (run-<16 digits>); the one run in progress when omitted")
 	return cmd
+}
+
+// newImplementRecordCommand builds `implement record`: the run record read back
+// at the end (spc-2609202134338445 piece 10), and the run's transcripts
+// captured into the history store, one capture per path.
+func newImplementRecordCommand(asJSON *bool) *cobra.Command {
+	var runID string
+	var transcripts []string
+	cmd := &cobra.Command{
+		Use: "record [--run <run-id>] [--transcript <path>]...",
+		Long: "Render a run's record: every lane with its spec step, branch and head, the implementers'\n" +
+			"receipts the loop verified with the model each runner reported, every verdict the loop\n" +
+			"recorded from a validator's return, the captures each lane fixed, its pull request and\n" +
+			"what its landing did, the transcripts captured into the history store, and the record's\n" +
+			"lines. Read-only unless --transcript is given.\n\n" +
+			"--transcript <path>, repeatable, captures each transcript into the history store as\n" +
+			"`abcd history capture <path>` does, one capture per path, and records it in the run's\n" +
+			"state; it is refused on a run that is not complete, since the record's transcripts are\n" +
+			"the run's, captured at its end. A capture that fails stops the call: the transcripts\n" +
+			"before it are recorded, and the refusal names the failure.\n\n" +
+			"--run names the run; without it, the one run in progress, or else the most recently\n" +
+			"started run. Exit 2 on a refusal, exit 3 on a locked run state.",
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			const prefix = "abcd implement record"
+			root, err := loopRoot()
+			if err != nil {
+				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
+			}
+			id := runID
+			if id == "" {
+				if id, err = loop.LatestRun(root); err != nil {
+					return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
+				}
+			}
+			var rec loop.RunRecord
+			if len(transcripts) > 0 {
+				repoRoot, rootSHA, err := historyStore(cmd)
+				if err != nil {
+					return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
+				}
+				capture := func(path string) (loop.Transcript, error) {
+					res, err := captureTranscriptSource(cmd, repoRoot, rootSHA, path, "", "", "")
+					if err != nil {
+						return loop.Transcript{}, errors.New(fsutil.RedactHome(err.Error()))
+					}
+					return loop.Transcript{Path: fsutil.RedactHome(path), Session: res.Record.SessionID, Stored: res.Record.Path, Wrote: res.Wrote}, nil
+				}
+				rec, err = loop.CaptureTranscripts(root, id, transcripts, capture, loop.Options{})
+				if err != nil {
+					return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
+				}
+			} else if rec, err = loop.ReadRecord(root, id); err != nil {
+				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
+			}
+			return render(cmd.OutOrStdout(), *asJSON, rec, func(w io.Writer) { renderRunRecord(w, rec) })
+		},
+	}
+	cmd.Flags().StringVar(&runID, "run", "", "the run to render (run-<16 digits>); the one in progress, else the latest, when omitted")
+	cmd.Flags().StringArrayVar(&transcripts, "transcript", nil, "a transcript to capture into the history store for a complete run (repeatable; one capture per path)")
+	return cmd
+}
+
+// renderRunRecord is the text form of a run's record.
+func renderRunRecord(w io.Writer, rec loop.RunRecord) {
+	state := "in progress"
+	if rec.Complete {
+		state = "complete"
+	}
+	fmt.Fprintf(w, "run %s  %s (%s)  %s, driven by the %s\n", rec.RunID, termsafe.Sanitize(rec.Key), termsafe.Sanitize(rec.Spec), state, rec.Driver)
+	renderPace(w, rec.Pace)
+	for _, l := range rec.Lanes {
+		fmt.Fprintf(w, "  %s:  spec step %d, %q — %s\n", l.ID, l.SpecStep, termsafe.Sanitize(l.StepTitle), l.Stage)
+		if l.Branch != "" {
+			fmt.Fprintf(w, "    branch %s (%s..%s)\n", termsafe.Sanitize(l.Branch), shortSHA(l.BaseSHA), shortSHA(l.HeadSHA))
+		}
+		for _, r := range l.Receipts {
+			model := r.Model
+			if model == "" {
+				model = "none reported"
+			}
+			fmt.Fprintf(w, "    receipt %s (%s; model %s)\n", termsafe.Sanitize(r.Receipt), termsafe.Sanitize(r.Role), termsafe.Sanitize(model))
+		}
+		for _, v := range l.Verdicts {
+			fmt.Fprintf(w, "    round %d at %s: %s %s\n", v.Round, shortSHA(v.HeadSHA), termsafe.Sanitize(v.Role), termsafe.Sanitize(v.Verdict))
+		}
+		if len(l.Resolves) > 0 {
+			fmt.Fprintf(w, "    resolves %s\n", termsafe.Sanitize(strings.Join(l.Resolves, ", ")))
+		}
+		renderLanding(w, l.PR, l.Landing)
+		if l.HandBack != nil {
+			fmt.Fprintf(w, "    handed back as %s after %d fix round(s)\n", termsafe.Sanitize(l.HandBack.Verdict), l.HandBack.FixRounds)
+		}
+	}
+	renderPending(w, rec.Pending)
+	fmt.Fprintf(w, "  transcripts: %d captured into the history store\n", len(rec.Transcripts))
+	for _, t := range rec.Transcripts {
+		how := "stored"
+		if !t.Wrote {
+			how = "already stored"
+		}
+		fmt.Fprintf(w, "    %s -> session %s (%s)\n", termsafe.Sanitize(fsutil.RedactHome(t.Path)), termsafe.Sanitize(t.Session), how)
+	}
+	fmt.Fprintf(w, "  record:  %d line(s)\n", len(rec.Record))
+	for _, e := range rec.Record {
+		fmt.Fprintf(w, "    %s  %-10s %s  %s\n", e.At.Format("2006-01-02T15:04:05Z"), termsafe.Sanitize(e.Stage),
+			termsafe.Sanitize(e.Lane), termsafe.Sanitize(fsutil.RedactHome(e.Note)))
+	}
+}
+
+// renderLanding renders what a lane's landing has done so far.
+func renderLanding(w io.Writer, pr int, ld *loop.Landing) {
+	if ld == nil {
+		return
+	}
+	var parts []string
+	if ld.Closes {
+		parts = append(parts, "closes the spec")
+	}
+	if ld.Records != "" {
+		parts = append(parts, "records "+shortSHA(ld.Records))
+	}
+	if ld.Pushed != "" {
+		parts = append(parts, "pushed "+shortSHA(ld.Pushed))
+	}
+	if pr > 0 {
+		parts = append(parts, fmt.Sprintf("pull request #%d", pr))
+	}
+	if ld.Merge != "" {
+		parts = append(parts, ld.Merge)
+	}
+	if ld.Merged != "" {
+		parts = append(parts, "landed at "+shortSHA(ld.Merged))
+	}
+	if len(parts) == 0 {
+		parts = append(parts, "prepared")
+	}
+	fmt.Fprintf(w, "    landing: %s\n", termsafe.Sanitize(strings.Join(parts, "; ")))
 }
