@@ -87,10 +87,13 @@ in a gate, which is what keeps the lint itself deterministic and offline.
   the tag, so a chapter edited ahead of the last cut is current rather than
   drift. It is armed only in a repository that carries the command-tree snapshot
   and the brief's `04-surfaces/` chapters, since only that brief describes the
-  binary. Surfaces that shipped without a chapter before the gate existed are
-  listed in `.abcd/development/release/doc-fidelity-backlog.json`. Each run
-  reports them and none of them refuses. An entry that a chapter names, or that
-  no longer ships, refuses until it is removed, so the list only shrinks.
+  binary. The gate also reads an optional backlog,
+  `.abcd/development/release/doc-fidelity-backlog.json`, for surfaces that
+  shipped without a chapter before the gate existed. Each run reports a listed
+  surface and none of them refuses. An entry that a chapter names, or that no
+  longer ships, refuses until it is removed, so the list only shrinks. An absent
+  file lists nothing, and this repository carries none: every shipped surface
+  has a chapter that names it.
 - **Draft and apply, review after.** A reviewer may draft the correction of a
   false sentence (`replacement`). The gate proposes that edit and still refuses.
   The gate's apply form replaces the sentence in its chapter (it must occur

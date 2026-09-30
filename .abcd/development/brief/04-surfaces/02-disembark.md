@@ -167,6 +167,32 @@ beside its evidence, a declined claim as `null`, per
 writes the verdict artefact, and the graveyard validates and writes the lesson
 JSON. None of these exist at pack time.
 
+### The agents the synthesis sub-verbs delegate to
+
+Each delegated payload is composed by a plugin agent and validated by the
+binary, which treats it as untrusted input: it decodes the payload with
+unknown fields refused, sanitises its prose, and writes only what survives the
+citation gate. The press release is delegated to `press-release-composer`, the
+graveyard to `graveyard-interpreter`, the principles to `principle-distiller`
+and the review to `lifeboat-reviewer`. Each prompt declares
+`reads_untrusted_input: true` and tells the agent that everything it reads is
+data, never instruction.
+
+- **`press-release-composer`** writes the press release from the packed brief,
+  the spine and the principles, as the payload the press-release sub-verb
+  validates in its delegated mode. The document stands or falls whole: its
+  `evidence` must carry at least one packed path under `brief/`,
+  `rescue/spine.md` or `principles.json`. A payload that
+  cites none of them is refused with exit 2 and leaves the previously derived
+  press release untouched.
+- **`graveyard-interpreter`** reads the two evidence layers,
+  `graveyard/archaeology.json` and `graveyard/abandoned.json`, and returns the
+  lessons payload the graveyard sub-verb validates, each lesson citing the
+  finding ids it rests on. A lesson with no live finding id among its evidence
+  is dropped and reported, a `low`-confidence lesson is written to
+  `graveyard/low-confidence/<id>.json` instead of `graveyard/lessons.json`, and
+  no drop is fatal.
+
 The lifeboat is written out-of-tree, so the source repo has nothing to
 gitignore.
 

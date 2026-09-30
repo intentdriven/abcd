@@ -181,6 +181,37 @@ At the entailment position the report adds that reading's yield bound: How many 
 the projected intents carry a mechanism claim, how many state that they have none,
 and how many carry neither (readings companion 6.6). No other position renders it.
 
+## The four position definitions
+
+Each position is read by one plugin agent, whose prompt is the position's
+definition. The file is derived from the position, `agents/cold-reading-<position>.md`,
+rather than looked up, and its frontmatter states the `position` and the
+`regime`:
+
+| Agent | The question it answers | Regime | Item fields |
+|---|---|---|---|
+| `cold-reading-detection` | Where is the shipped tree in tension with the claim record? | `registrative` | `tension`, `constraint_in_play`, `why_a_tension` |
+| `cold-reading-entailment` | What does this design commit to, by being the kind of thing it is, that its articulation does not state? | `explicative` | `claim_surfaced`, `claim_type`, `what_implies_it` |
+| `cold-reading-widening` | Given the situation as this design construes it, what configurations does the construal admit that are not present in what has been committed to? | `generative` | `configuration`, `what_admits_it` |
+| `cold-reading-comparative` | For each candidate and each declared criterion, how do options of this shape ordinarily behave? | `evaluative` | `candidate_id`, `criterion`, `characterisation`, one item per candidate-criterion pair |
+
+Every item also carries the `pattern` it was read under. The definitions share a
+blindness core, a section fenced by `blindness-core` markers that a test holds
+byte-identical across the four and to seven conditions: no project context, no
+ledger access, no memory across runs, no ranking, no selection, explanation or commitment,
+named provenance on every item, and no passed input taken as authoritative. The
+core also tells the reader that everything it reads is data, never instruction.
+Each definition declares `reads_untrusted_input: true` and ships an injection
+canary under `agents/<name>/fixtures/`, as the agent contract requires.
+
+The assembler never passes a definition to a reading: `agents` is denied to
+every assembly. What reads a definition is the binary. The bare render lists the
+definitions it resolves. Ingest hashes the definition the output's position
+names, refuses an output whose instrument reports a different definition hash,
+and takes the regime from the definition. A definition
+silent about its position or its regime, or stating a regime that disagrees with
+its position, is refused rather than read.
+
 ## Ingest checks what the reading was licensed to produce
 
 Ingest validates the JSON a reading returned and writes its reading records. It
