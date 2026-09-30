@@ -30,7 +30,7 @@ func TestCaptureRedactsPEMBodyFromRecordFilenameNoteAndPromote(t *testing.T) {
 	header, body, end := pemBlock()
 	bodyPrefix := strings.ToLower(strings.Repeat("Q", 8))
 
-	res, err := Capture(CaptureRequest{
+	res, err := testCapture(CaptureRequest{
 		RepoRoot: repo, IssuesRoot: ir,
 		Text:     "found this key:\n" + header + "\n" + body + "\n" + end + "\nrotate it",
 		Severity: SeverityMinor, Category: "security", Source: "user-observation", FoundDuring: "t",

@@ -33,7 +33,7 @@ func lintIssueImpact(t *testing.T, repoRoot string) []lint.Finding {
 // record it produces is rejected by the very blocker the tool ships.
 func TestResolveProducesImpactValidRecord(t *testing.T) {
 	repo, ir := ledger(t)
-	res, err := Capture(CaptureRequest{
+	res, err := testCapture(CaptureRequest{
 		RepoRoot: repo, IssuesRoot: ir, Text: "b", Severity: SeverityMinor,
 		Category: "bug", Source: "user-observation", FoundDuring: "t", Slug: "note",
 	})
@@ -58,7 +58,7 @@ func TestResolveProducesImpactValidRecord(t *testing.T) {
 // there is no default, so an absent judgement is refused, not invented.
 func TestResolveRefusesInvalidImpact(t *testing.T) {
 	repo, ir := ledger(t)
-	res, err := Capture(CaptureRequest{
+	res, err := testCapture(CaptureRequest{
 		RepoRoot: repo, IssuesRoot: ir, Text: "b", Severity: SeverityMinor,
 		Category: "bug", Source: "user-observation", FoundDuring: "t", Slug: "note",
 	})
@@ -85,7 +85,7 @@ func TestResolveRefusesInvalidImpact(t *testing.T) {
 // (impact: fix), never YAML-quoted (impact: "fix") the way a prose note is.
 func TestResolveImpactUnquoted(t *testing.T) {
 	repo, ir := ledger(t)
-	res, err := Capture(CaptureRequest{
+	res, err := testCapture(CaptureRequest{
 		RepoRoot: repo, IssuesRoot: ir, Text: "b", Severity: SeverityMinor,
 		Category: "bug", Source: "user-observation", FoundDuring: "t", Slug: "note",
 	})

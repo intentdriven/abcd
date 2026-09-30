@@ -1,7 +1,7 @@
 ---
 name: capture
-description: "File an issue from quoted text, or render the ledger's status bare: Writes one record under open/; refuses a lone word and any folder outside a checkout."
-argument-hint: "[text] | list --open|--resolved|--wontfix|--all | link <iss-N> [--blocked-by <iss-M,...>] [--unblock <iss-M,...>] | promote <iss-N> --grounds \"<token>: <text>\" [--intent <itd-N>] | promote <rdi-N> [--intent <itd-N>] | resolve <iss-N> <note> --impact <additive|breaking|fix|internal> --grounds \"<token>: <text>\" [--intent <itd-N>] [--spec <spc-N>] [--commit <sha>] | wontfix <iss-N> <reason> [--duplicates <iss-N|itd-N,...>] | defer <iss-N> --after <vX.Y.Z> --reason <text> | disposition <rdi-N> --state <accepted|rejected|declined|held> | admit <rdi-N> --grounds \"<why>\" | surprise --occasioned-by <rdi-N|adm-N|dsp-N> \"<what>\" | reframe --occasioned-by <rdi-N|dsp-N|srp-N> --grounds \"<why>\" [--open] | reframe --complete <rfm-N> | migrate [--apply]"
+description: "File an issue from quoted text, or render the ledger's status bare: Writes one record under open/; refuses a missing --remedy, a lone word or no checkout."
+argument-hint: "[<text> --remedy <fix>] | list --open|--resolved|--wontfix|--all | link <iss-N> [--blocked-by <iss-M,...>] [--unblock <iss-M,...>] | promote <iss-N> --grounds \"<token>: <text>\" [--intent <itd-N>] | promote <rdi-N> [--intent <itd-N>] | resolve <iss-N> <note> --impact <additive|breaking|fix|internal> --grounds \"<token>: <text>\" [--intent <itd-N>] [--spec <spc-N>] [--commit <sha>] | wontfix <iss-N> <reason> [--duplicates <iss-N|itd-N,...>] | defer <iss-N> --after <vX.Y.Z> --reason <text> | remedy <iss-N> <text> | disposition <rdi-N> --state <accepted|rejected|declined|held> | admit <rdi-N> --grounds \"<why>\" | surprise --occasioned-by <rdi-N|adm-N|dsp-N> \"<what>\" | reframe --occasioned-by <rdi-N|dsp-N|srp-N> --grounds \"<why>\" [--open] | reframe --complete <rfm-N> | migrate [--apply]"
 block: people
 ---
 
@@ -61,15 +61,35 @@ exit 1 naming the directory.
 `/abcd:capture "…"`; a user-facing change you want to ship goes to
 `/abcd:intent "…"`. For a big, unproven idea there is an optional third route:
 `/abcd:ideate` runs the admission gauntlet and records the verdict either way.
-It is a pointer, never a precondition — capture friction stays at one line.
+It is a pointer, never a precondition. A capture is one line of text plus one
+line of remedy: every new issue names the fix it proposes, so the filing
+carries the first step towards closing it.
 
 ## Capture an issue
 
 Append a structured issue from free-form text:
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/abcd" capture "<text>" --json
+"${CLAUDE_PLUGIN_ROOT}/abcd" capture "<text>" --remedy "<the fix it proposes>" --json
 ```
+
+`--remedy` is required: every new issue carries the fix it proposes, one line,
+written as the record's `remedy:` field, and `abcd drain` reads it to decide
+whether the issue needs no decision. A capture without it, or with a blank one,
+is refused (exit 2, nothing written) with a message naming the flag. When no
+fix was given, ask the product thinker for it (set `abcd mode product-thinker`
+first); when they have none yet, let them choose the words rather than
+inventing a fix for them. A remedy chosen in an autonomous run cites its
+grounds in the record's text: where the fix depends on outside practice, a
+prior-art or state-of-the-art check (principle `prefer-sota`) names what it
+rests on, so the choice is not a guess repeated from memory. `none (filed automatically)` is the one value abcd's own
+automatic filers write when they have no fix of a person's (the consistency
+pass, and every promoted inbox report, whose sender's proposal stays in its
+text); a drain skips a record carrying it until a
+person writes a real remedy with `capture remedy`, below, and `--remedy` refuses
+it from a person, whatever its case, so the value always means a machine filed
+the record. A record filed before the remedy was required carries none; it
+stays readable and valid, and a drain lists it as ineligible.
 
 Provide provenance and taxonomy through flags when known (each falls back to a
 default): `--severity` (`nitpick|minor|major|critical`, default `minor`),
@@ -79,9 +99,7 @@ default): `--severity` (`nitpick|minor|major|critical`, default `minor`),
 or a conceptual location in words; a path that leaves the checkout or does not
 resolve in it is refused, exit 2, and nothing is written), `--lapsed-at` (RFC 3339 instant in
 UTC at which a recorded discipline gave way — the lapse itself, never the
-write-up), `--remedy` (the proposed fix, one line, written as the record's
-`remedy:` field; optional, and `abcd drain` takes no issue without one, so ask
-for it whenever the fix is known), `--slug` (overrides the slug derived from the text), `--blocked-by`
+write-up), `--slug` (overrides the slug derived from the text), `--blocked-by`
 (comma-separated `iss-N` ids this issue depends on; each must already exist in
 the ledger, and an edge to a record captured later is written afterwards with
 `link`, below), `--production-mode`
@@ -469,6 +487,23 @@ nothing is written: an empty reason, a record that is not open, and a record
 whose severity is neither `major` nor `critical`, since the guard never blocks on
 one. Offer the user the other routes too — fix and resolve it, or `wontfix` it —
 rather than defaulting to a deferral.
+
+## Write the remedy onto an open issue
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" capture remedy <iss-N> "<the fix it proposes>" --json
+```
+
+`remedy` writes or replaces the `remedy:` field of an open issue. It is how a
+person answers a record an automatic filer wrote with `none (filed
+automatically)`, which a drain skips until then, and how a record filed before
+the remedy was required gains one. The text is one line: runs of whitespace,
+line breaks included, are folded to single spaces. Report the `id`, the `remedy`
+written and, when the JSON carries it, the `previous` value it replaced, since a
+replacement is never silent. Report `redacted` whenever it is non-zero. The
+record stays in `open/`. Refused with exit 2 and nothing written: an empty text,
+`none (filed automatically)` in any case (it would leave the record as the drain
+already skips it), a malformed or unknown id, and a record that is not open.
 
 ## Answer a reading item
 

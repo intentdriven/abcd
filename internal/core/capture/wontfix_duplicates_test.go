@@ -13,7 +13,7 @@ import (
 func duplicatesFixture(t *testing.T) (repo, ir, subject, original string) {
 	t.Helper()
 	repo, ir, subject = provenanceFixture(t)
-	res, err := Capture(CaptureRequest{
+	res, err := testCapture(CaptureRequest{
 		RepoRoot: repo, IssuesRoot: ir, Text: "zebra quartz vellum xylophone", Severity: SeverityMinor,
 		Category: "bug", Source: "manual-test", Slug: "the-original", FoundDuring: "t",
 	})
