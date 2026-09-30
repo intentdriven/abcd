@@ -48,6 +48,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/credential"
 	"github.com/intentdriven/abcd/internal/core/launch/scaffold"
 	"github.com/intentdriven/abcd/internal/core/positioning"
+	"github.com/intentdriven/abcd/internal/core/tools"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
@@ -134,6 +135,9 @@ type SetupRequest struct {
 	Asker Asker
 	// Forge is the repository's forge; nil resolves GitHub through gh.
 	Forge Forge
+	// ConfirmTool answers the offer to install a missing gh when Forge is nil
+	// (the DQ3 ruling); nil asks no one, so nothing is installed.
+	ConfirmTool tools.Confirm
 	// Credentials resolves the hosting credential by name; nil is this
 	// machine's store.
 	Credentials credential.Source
@@ -210,18 +214,26 @@ func Setup(req SetupRequest) (SetupResult, error) {
 		adapter = a
 	}
 	s := hosting.Site{Name: hostingBlock.Name, Domain: hostingBlock.Domain}
-	forge, forgeNote := req.Forge, ""
+	forge, forgeNote, offerNote := req.Forge, "", ""
 	if forge == nil {
 		f, ferr := GitHubForge(root)
 		if ferr != nil {
 			forgeNote = "the forge is not reachable from this checkout, so the environments were not created: " + ferr.Error()
+		} else if offer, ok := ahoy.OfferGH(root, req.ConfirmTool); !ok {
+			// gh is missing and was not installed: the forge is unreachable,
+			// and the note carries why and the command to run.
+			forgeNote = "the forge is not reachable from this checkout, so the environments were not created: " + strings.Join(offer, "\n")
 		} else {
 			forge = f
+			offerNote = strings.Join(offer, "\n")
 		}
 	}
 	branch, branchNote := defaultBranch(ctx, root, forge)
 
 	res := SetupResult{Host: HostOutcome{Provider: adapter.Name(), Name: s.Name, Domain: s.Domain, Status: HostNotReached}}
+	if offerNote != "" {
+		res.Notes = append(res.Notes, offerNote)
+	}
 	if branchNote != "" {
 		res.Notes = append(res.Notes, branchNote)
 	}

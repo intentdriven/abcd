@@ -133,7 +133,7 @@ Enable GitHub secret scanning and push protection on this repository: Writes bot
 **Flags:**
 
 ```
-      --yes   confirm the remote change without being asked; without it an unanswered run declines and changes nothing
+      --yes   confirm the remote change without being asked (never the install of a missing gh); without it an unanswered run declines and changes nothing
 ```
 
 #### `abcd ahoy uninstall`
@@ -2790,7 +2790,7 @@ Take the website from this checkout to a live address: Writes its files, and the
       --confirm         replace a workflow or host configuration that differs from what setup writes
       --domain string   custom domain to route to the host when the composition names none
       --name string     host name when the composition names none (default: the repository's name)
-      --yes             confirm the forge and host changes without being asked; without it an unanswered run declines them
+      --yes             confirm the forge and host changes without being asked (never the install of a missing gh); without it an unanswered run declines them
 ```
 
 ### `abcd source`

@@ -3759,11 +3759,17 @@ func newAhoyRemoteCommand(asJSON *bool) *cobra.Command {
 			// adr-44 / invariant 10: the remote write is CONFIRMED as well as
 			// invoked. An unanswered run declines, so a script that pipes nothing
 			// changes nothing; --yes is the explicit way to say yes in advance.
+			//
+			// A missing gh is offered for install only to a person at a
+			// terminal: --yes answers the settings change, never the install
+			// of a program (the DQ3 ruling), so the offer's confirmation is
+			// built from the prompter before --yes replaces it.
 			p := newPrompter(cmd)
+			confirmTool := terminalToolConfirm(p, remoteYes, cmd.ErrOrStderr())
 			if remoteYes {
 				p = alwaysConfirm{}
 			}
-			res, err := ahoy.RemoteApply(cwd, p)
+			res, err := ahoy.RemoteApply(cwd, p, confirmTool)
 			if err != nil {
 				return err
 			}
@@ -3785,7 +3791,7 @@ func newAhoyRemoteCommand(asJSON *bool) *cobra.Command {
 			return nil
 		},
 	}
-	applyCmd.Flags().BoolVar(&remoteYes, "yes", false, "confirm the remote change without being asked; without it an unanswered run declines and changes nothing")
+	applyCmd.Flags().BoolVar(&remoteYes, "yes", false, "confirm the remote change without being asked (never the install of a missing gh); without it an unanswered run declines and changes nothing")
 	remoteCmd.AddCommand(applyCmd)
 	return remoteCmd
 }
@@ -3940,16 +3946,36 @@ func installToolNames(names []string) (map[string]bool, error) {
 // --install-tool, which is how a host relays the answer its own question tool
 // got. --yes never installs a tool. Every no carries the way to say yes.
 func toolConfirm(p ahoy.Prompter, named map[string]bool, yes bool, w io.Writer) tools.Confirm {
+	ask := askToolAtTerminal(p, yes, w, func(e tools.Explanation) string { return "name it with --install-tool " + e.Tool })
 	return func(e tools.Explanation) tools.Answer {
 		if named[e.Tool] {
 			return tools.Answer{Yes: true, Why: "named with --install-tool"}
 		}
+		return ask(e)
+	}
+}
+
+// terminalToolConfirm is the install question at a verb with no
+// --install-tool: the gh offer at ahoy remote apply (the product thinker's
+// DQ3 ruling, 2026-09-29). Its only yes is one typed at a terminal; --yes, a
+// piped stream and a caller with no terminal each decline, carrying the
+// command the person can run themselves.
+func terminalToolConfirm(p ahoy.Prompter, yes bool, w io.Writer) tools.Confirm {
+	return askToolAtTerminal(p, yes, w, func(e tools.Explanation) string { return "install it yourself with " + e.StepText() })
+}
+
+// askToolAtTerminal asks the install question of a person at a terminal and
+// declines everywhere else. otherwise names the other way to a yes, for every
+// decline to carry. The explanation and the exact step are shown before the
+// question, and the step is announced as it starts.
+func askToolAtTerminal(p ahoy.Prompter, yes bool, w io.Writer, otherwise func(tools.Explanation) string) tools.Confirm {
+	return func(e tools.Explanation) tools.Answer {
 		if yes {
-			return tools.Answer{Why: "--yes never installs a tool; name it with --install-tool " + e.Tool + ", or run without --yes at a terminal"}
+			return tools.Answer{Why: "--yes never installs a tool; " + otherwise(e) + ", or run without --yes at a terminal"}
 		}
 		sp, ok := p.(*stdinPrompter)
 		if !ok || !sp.tty {
-			return tools.Answer{Why: "no terminal to ask at: abcd installs a tool only on an answer typed at a terminal, or with --install-tool " + e.Tool}
+			return tools.Answer{Why: "no terminal to ask at: abcd installs a tool only on an answer typed at a terminal; " + otherwise(e)}
 		}
 		for _, line := range e.Lines() {
 			fmt.Fprintln(w, termsafe.Sanitize(line))

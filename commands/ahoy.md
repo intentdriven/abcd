@@ -423,10 +423,15 @@ would send this verb's authenticated write to a machine the origin URL never
 named.
 
 The call goes through the GitHub CLI (`gh`), so the write is made by the user's
-own authenticated identity and abcd never holds a token; if `gh` is absent the
-verb refuses, and the refusal carries the tool registry's explanation of `gh`:
-what it is, that these verbs require it, the exact install step and what that
-install does. Relay it; the step is the user's to run. It is idempotent — a repository already in the desired
+own authenticated identity and abcd never holds a token. If `gh` is absent, the
+verb explains it from the tool registry (what it is, that these verbs require
+it, the exact install step and what that install does) and offers to install
+it, running the step only on a yes typed at a terminal. `--yes` never answers
+that offer, and neither does a piped answer, so through this page the offer is
+declined: the verb refuses, and its notes carry the explanation and the command.
+Relay them; the install is the user's to run, by hand or by running the verb at
+a terminal. `ahoy --remote` never offers the install, since it writes nothing,
+and names this verb as the one that does. It is idempotent — a repository already in the desired
 state takes no write, and a re-run rewrites nothing in the tree — and it stops
 at the first failed step rather than attempting one that cannot succeed. Relay
 `status`, the resolved `repo`, every `change`, and every `note`: a note is a
