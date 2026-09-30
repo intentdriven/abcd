@@ -495,16 +495,87 @@ func wordFeeds(s segment, keep func(int) bool) []feed {
 // namesIFS reports whether any word of segs names IFS, as splitAfterIFS
 // reads a naming: an assignment in a command of its own, an `export`, a
 // `read`, a prefix assignment, or any other word that holds the name.
+//
+// A name can also be built by an expansion the guard does not spell
+// (reverify-guardSet finding 1): with I=I, `export ${I}FS=x`,
+// `read -r ${I}FS`, `printf -v ${I}FS x` and `eval "I${F:-F}S=x"` each set
+// IFS. So a word holding an expansion's mark counts where it can be a name
+// a command assigns: any word after a command that assigns the names it is
+// handed (namingCommands, read wherever it stands in the command), the
+// word after `printf -v` or `wait -p`, and any assignment-shaped word whose
+// name holds the mark (markedAssignment), which an eval or a shell handed
+// the string runs as an assignment. That reading refuses on the side of a
+// name: `read -p "$prompt" f` counts too. An arithmetic expression the
+// tokenizer steps over names IFS through segment.arithmeticAssigns
+// (`: $((IFS=1))`).
 func namesIFS(segs []segment) bool {
 	for _, s := range segs {
+		if s.arithmeticAssigns {
+			return true
+		}
+		naming, target := false, false
+		flag := ""
 		for _, tok := range s.tokens {
 			tally(len(tok))
 			if strings.Contains(tok, "IFS") {
 				return true
 			}
+			if nameMarked(tok) && (naming || target || markedAssignment(tok) || flag != "" && strings.HasPrefix(tok, flag)) {
+				return true
+			}
+			target = flag != "" && tok == flag
+			if namingCommands[tok] {
+				naming = true
+			}
+			if f, ok := targetFlags[tok]; ok {
+				flag = f
+			}
 		}
 	}
 	return false
+}
+
+// namingCommands are the builtins that assign a variable each name they are
+// handed names: a declaration (`export ${I}FS=x`), `read`, `mapfile` and
+// `readarray`, `getopts`'s name, and `let`'s expressions.
+var namingCommands = map[string]bool{
+	"export": true, "declare": true, "typeset": true, "readonly": true, "local": true,
+	"read": true, "mapfile": true, "readarray": true, "getopts": true, "let": true,
+}
+
+// targetFlags names, per builtin, the flag whose word assigns the variable
+// it names: `printf -v NAME`, and bash 5.1's `wait -p NAME`.
+var targetFlags = map[string]string{"printf": "-v", "wait": "-p"}
+
+// nameMarked reports whether the name tok would assign holds an
+// expansion's mark: its text before the first `=`, or all of it where it
+// has none. `PATH=$HOME/bin` names PATH, which the line spells.
+func nameMarked(tok string) bool {
+	if eq := strings.IndexByte(tok, '='); eq >= 0 {
+		tok = tok[:eq]
+	}
+	return strings.IndexByte(tok, unknownMark) >= 0 || strings.IndexByte(tok, varMark) >= 0
+}
+
+// markedAssignment reports whether tok is shaped as an assignment
+// (`NAME=value`, `NAME+=value`) whose name holds an expansion's mark:
+// `I${F:-F}S=x` in the string an eval runs is `IFS=x` there.
+func markedAssignment(tok string) bool {
+	eq := strings.IndexByte(tok, '=')
+	if eq <= 0 {
+		return false
+	}
+	name := strings.TrimSuffix(tok[:eq], "+")
+	marked := false
+	for i := 0; i < len(name); i++ {
+		switch c := name[i]; {
+		case c == unknownMark || c == varMark:
+			marked = true
+		case !isNameByte(c):
+			return false
+		}
+	}
+	return marked
 }
 
 // capIFSSplits reads each word of segs whose fields rest on the default IFS
@@ -554,11 +625,8 @@ func splitAfterIFS(segs []segment) bool {
 		if s.fromFixedOutput || (carriers == 1 && carrying[i]) {
 			continue
 		}
-		for _, tok := range s.tokens {
-			tally(len(tok))
-			if strings.Contains(tok, "IFS") {
-				return true
-			}
+		if namesIFS(segs[i : i+1]) {
+			return true
 		}
 	}
 	return false

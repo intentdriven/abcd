@@ -232,3 +232,59 @@ func TestParametersThatPrintNothingTheWrittenCompareReads(t *testing.T) {
 		{`IFS=, ; rm -rf $_`, shellBare | shellSQ, VerdictAllow, ""},
 	})
 }
+
+// TestIFSNamedThroughAMarkTheWrittenCompareReads — reverify-guardSet finding
+// 1. An IFS can be named through a word that holds an expansion:
+// `export ${I}FS=x`, `declare I${F}FS=x`, `read -r ${I}FS`,
+// `printf -v ${I}FS x`, and `eval "I${F:-F}S=x"`, whose string the eval
+// runs as an assignment. With I=I and F=F each gives IFS the value x, and
+// `rm -rf ${U:-x/x}` then hands rm `""` and `/` on bash 3.2, /bin/sh, dash
+// and bash 5.3. The guard does not spell the name, so a declaration's word,
+// a `read` or `printf -v` target, and an assignment word whose name holds an
+// expansion count as naming IFS, and so does an arithmetic expression that
+// names IFS or assigns through an expansion (`: $((IFS=1))`).
+func TestIFSNamedThroughAMarkTheWrittenCompareReads(t *testing.T) {
+	const home = "rm-rf-root-or-home"
+	checkSpellingCases(t, []spellingCase{
+		{`I=I; export ${I}FS=x; rm -rf ${U:-x/x}`, shellBare | shellSQ, VerdictBlock, home},
+		{`export I${F}FS=x; rm -rf ${U:-x/x}`, shellBare | shellSQ, VerdictBlock, home},
+		{`export "${I}FS"=x; rm -rf ${U:-x/x}`, shellBare | shellSQ, VerdictBlock, home},
+		{`declare ${I}FS=x; rm -rf ${U:-x/x}`, shellBare | shellSQ, VerdictBlock, home},
+		{`declare -x ${I}FS=x; rm -rf ${U:-x/x}`, shellBare | shellSQ, VerdictBlock, home},
+		{`typeset ${I}FS=x; rm -rf ${U:-x/x}`, shellBare | shellSQ, VerdictBlock, home},
+		{`readonly ${I}FS=x; rm -rf ${U:-x/x}`, shellBare | shellSQ, VerdictBlock, home},
+		{`local ${I}FS=x; rm -rf ${U:-x/x}`, shellBare | shellSQ, VerdictBlock, home},
+		{`declare $(echo I)FS=x; rm -rf ${U:-x/x}`, shellBare | shellSQ, VerdictBlock, home},
+		{`read -r ${I}FS <<< x; rm -rf ${U:-x/x}`, shellBare | shellSQ, VerdictBlock, home},
+		{`printf -v ${I}FS x; rm -rf ${U:-x/x}`, shellBare | shellSQ, VerdictBlock, home},
+		{`printf -v "$n" x; rm -rf ${U:-x/x}`, shellBare | shellSQ, VerdictBlock, home},
+		{`eval "I${F:-F}S=x"; rm -rf ${U:-x/x}`, shellBare | shellSQ, VerdictBlock, home},
+		{`eval I${F}FS=x; rm -rf ${U:-x/x}`, shellBare | shellSQ, VerdictBlock, home},
+		{`I${F:-F}S=x; rm -rf ${U:-x/x}`, shellBare | shellSQ, VerdictBlock, home},
+		{`eval "${I}FS=x"; eval rm -rf ${U:-x/x}`, shellBare, VerdictBlock, home},
+		{`let ${I}FS=1; rm -rf ${U:-1/1}`, shellBare | shellSQ, VerdictBlock, home},
+		{`getopts a ${I}FS; rm -rf ${U:-x/x}`, shellBare | shellSQ, VerdictBlock, home},
+		{`mapfile -t ${I}FS < f; rm -rf ${U:-x/x}`, shellBare | shellSQ, VerdictBlock, home},
+		{`wait -p ${I}FS; rm -rf ${U:-x/x}`, shellBare | shellSQ, VerdictBlock, home},
+		// An arithmetic assignment leaves no word to read the name in.
+		{`: $((IFS=1)); rm -rf ${U:-1/1}`, shellBare | shellSQ, VerdictBlock, home},
+		{`(( IFS=1 )); rm -rf ${U:-1/1}`, shellBare | shellSQ, VerdictBlock, home},
+		{`: $((${I}FS=1)); rm -rf ${U:-1/1}`, shellBare | shellSQ, VerdictBlock, home},
+		{`rm -rf ${U:-1/1}; echo "$((IFS=1))"`, shellBare | shellSQ, VerdictBlock, home},
+		{`: $((${I}FS<<=1)); rm -rf ${U:-1/1}`, shellBare | shellSQ, VerdictBlock, home},
+		// The look-alikes: a declaration, a read and a printf whose names are
+		// written, an assignment whose value (not its name) holds an
+		// expansion, and the everyday reads with a quoted operand.
+		{`export PATH=$HOME/bin:$PATH; rm -rf ${U:-x/x}`, shellBare | shellSQ, VerdictAllow, ""},
+		{`declare -a files; rm -rf ${U:-x/x}`, shellBare | shellSQ, VerdictAllow, ""},
+		{`read -r f; rm -rf ${U:-x/x}`, shellBare | shellSQ, VerdictAllow, ""},
+		{`printf '%s\n' "$x"; rm -rf ${U:-x/x}`, shellBare, VerdictAllow, ""},
+		{`printf -v out '%s' "$x"; rm -rf ${U:-x/x}`, shellBare, VerdictAllow, ""},
+		{`OUT=$x; rm -rf ${U:-x/x}`, shellBare | shellSQ, VerdictAllow, ""},
+		{`n=$((n+1)); rm -rf ${U:-x/x}`, shellBare | shellSQ, VerdictAllow, ""},
+		{`(( $n == 1 )) && rm -rf ${U:-x/x}`, shellBare | shellSQ, VerdictAllow, ""},
+		{`: $(($n <= 1)); rm -rf ${U:-x/x}`, shellBare | shellSQ, VerdictAllow, ""},
+		{`IFS= read -r f; rm -rf "$f"`, shellBare | shellSQ, VerdictAllow, ""},
+		{`IFS=, read -ra arr <<< "$x"; rm -rf "${arr[0]}"`, shellBare | shellSQ, VerdictAllow, ""},
+	})
+}

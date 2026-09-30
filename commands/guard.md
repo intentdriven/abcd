@@ -390,7 +390,7 @@ runs, or `pkill` or `killall` as the program a variable names (`$P make`) —
 because reading each would refuse the ordinary commands a variable carries a
 value for, an IFS the shell already holds when
 the line starts or gains during the line through a name the guard does not read
-(`declare $(echo I)FS=x`, a sourced file; every line is read from the default IFS), a hazard inside a non-shell interpreter's payload (`python -c`,
+(a sourced file, a nameref set before the line; every line is read from the default IFS), a hazard inside a non-shell interpreter's payload (`python -c`,
 `perl -e`) — one opaque token the tokenizer cannot read, today a silent allow, not
 a warn (a warn for it is a recorded design target, not yet implemented), or a
 dangerous form no entry describes. Nor does an allow see what a lone substitution

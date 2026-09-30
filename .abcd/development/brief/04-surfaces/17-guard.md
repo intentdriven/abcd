@@ -347,7 +347,10 @@ background, `$@`, `$*` and a positional one with no argument, `$_` after
 `"${1}"/` and `/$!` are `/`), and `$!` in a pattern as text of any length
 (`${PWD%%$!*}` is `${PWD%%*}`); a replacement's pattern is
 read both where bash 3.2 ends it and where bash 5 does, at a quoted `/`
-(`${X/"/"*/$HOME}`); and on a line that names IFS, an unquoted default's or
+(`${X/"/"*/$HOME}`); and on a line that names IFS — in any word, in a
+declaration's, a `read`'s or a `printf -v`'s name or an assignment's name
+built by an expansion (`export ${I}FS=x`, `eval "I${F:-F}S=x"`), or in an
+arithmetic expression (`: $((IFS=1))`) — an unquoted default's or
 alternative's word, and an unquoted home, reads as every target, since the
 fields bash splits it into rest on that IFS (`IFS=x; rm -rf ${U:-x/x}`,
 `IFS=Uv; rm -rf $HOME/x`). A run of `/` written before the home names the
@@ -412,7 +415,8 @@ prints the root (`${PWD:0:1}`), which warns as `$PWD` does; one behind a wrapper
 table does not name; a REST
 path an entry names by its root segment when the host serves that API under a
 prefix; an IFS the shell already holds when the line starts, or gains during the line
-through a name the guard does not read (`declare $(echo I)FS=x`, a sourced file),
+through a name the guard does not read (a sourced file, a nameref set before
+the line),
 since every line is read from the default IFS; a pid list a kill reads through a variable or a file, or from a `ps |
 grep` chain;
 a payload inside a non-shell interpreter such as `python -c`, which is
