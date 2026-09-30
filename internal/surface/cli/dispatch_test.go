@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -8,12 +10,14 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core/credential"
 	"github.com/intentdriven/abcd/internal/core/oracle"
+	"github.com/intentdriven/abcd/internal/core/reading"
 )
 
 // Provider dispatch at the delegating verbs (spc-2609251028149555 AC 3,
@@ -130,6 +134,63 @@ func TestReadingIngestDispatchesAPointedPosition(t *testing.T) {
 	}
 	if err := json.Unmarshal([]byte(stdout), &res); err != nil || res.RunID != runID || len(res.Records) != 1 {
 		t.Fatalf("ingest result = %+v, %v\n%s", res, err, stdout)
+	}
+}
+
+// TestADispatchSaysHowManyItemsTravelUnscanned: before a parked run is sent
+// under the person's key, the send names on stderr how many of the bundle's
+// items the exclusion floor never examined, the count its manifest marks
+// `unscanned`, so a paid send never carries that figure silently
+// (review-providerDispatch2 point 3).
+func TestADispatchSaysHowManyItemsTravelUnscanned(t *testing.T) {
+	srcRoot := repoRootFromTest(t)
+	repo := readingRepo(t)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Chdir(repo)
+	runID, _, def := parkedRunForIngest(t, srcRoot, repo, "detection")
+	manifestPath := filepath.Join(repo, reading.DefaultRunDir, runID, reading.ManifestFileName)
+	raw, err := os.ReadFile(manifestPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The fixture's material is all parsed, so one item is marked unscanned,
+	// as a preset admitting a test or source row would mark it, and the
+	// output cites the manifest as it now stands.
+	raw = []byte(strings.Replace(string(raw), `"scan": "parsed"`, `"scan": "unscanned"`, 1))
+	if err := os.WriteFile(manifestPath, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(raw)
+	manifestHash := hex.EncodeToString(sum[:])
+	m, err := reading.DecodeManifest(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	unscanned := 0
+	for _, it := range m.Items {
+		if it.Scan == reading.ScanUnscanned {
+			unscanned++
+		}
+	}
+	if unscanned != 1 {
+		t.Fatalf("the fixture marks %d item(s) unscanned, want 1", unscanned)
+	}
+	outPath := detectionPayloadFile(t, runID, manifestHash, def.Regime, def)
+	answer, err := os.ReadFile(outPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := newChatFake(t, "typesafe/jev-1.13", func(string) string { return string(answer) })
+	pointMachine(t, home, p.srv.URL, true, "", "cold-reading-detection")
+	_, stderr, err := runCLISplit(t, "reading", "ingest", "--dispatch", runID, "--json")
+	if err != nil {
+		t.Fatalf("%v\n%s", err, stderr)
+	}
+	want := regexp.MustCompile(`(?m)^reading ingest: run ` + runID + ` sends ` + strconv.Itoa(len(m.Items)) +
+		` item\(s\) to openrouter, ` + strconv.Itoa(unscanned) + ` of them unscanned`)
+	if !want.MatchString(stderr) {
+		t.Fatalf("stderr does not name the unscanned count (%d of %d):\n%s", unscanned, len(m.Items), stderr)
 	}
 }
 

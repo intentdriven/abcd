@@ -759,6 +759,12 @@ func runReadingDispatch(cmd *cobra.Command, rf *routeFlag, runID string, asJSON 
 	if err != nil {
 		return readingRefusal(verb, err)
 	}
+	// The send says how much of the bundle the exclusion floor never examined
+	// before it leaves under the person's key (review-providerDispatch2 point
+	// 3): the manifest carries the per-item mark, and this is its total.
+	fmt.Fprintf(cmd.ErrOrStderr(), "%s: run %s sends %d item(s) to %s, %d of them unscanned: the exclusion floor never "+
+		"examined those, and they travel whole as the manifest marks them\n",
+		verb, parked.RunID, parked.Items, termsafe.Sanitize(target.Provider), parked.Unscanned)
 	d, route, err := rf.dispatch(cmd, verb, route, openaiapi.Brief{Instructions: prompt, Input: input}, readingContract(parked))
 	if err != nil {
 		return err

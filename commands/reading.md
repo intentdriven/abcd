@@ -310,7 +310,10 @@ provider in `~/.abcd/config.json`, the reading runs there instead of on the
 host. `--dispatch` takes the `run_id` an assembly parked, sends the provider
 the position's definition as its instructions and the run's bundle as its
 input, with the run's identifiers the output must cite, and ingests the answer
-exactly as `--reading-json` ingests an output. A cold-reading position is
+exactly as `--reading-json` ingests an output. Before it sends, one stderr
+line names how many items the run sends and how many of them the manifest marks
+`unscanned`: those the exclusion floor never examined, which travel whole. A
+cold-reading position is
 self-contained, so a provider that holds a key takes it (ruling DR5 of
 2026-09-29): the request carries every item the reader may see, and the reader
 is handed no file, no tool and no path, which is the host obligation above

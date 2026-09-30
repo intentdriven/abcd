@@ -334,7 +334,10 @@ which the appendix lists, names a run an assembly parked instead of an output.
 It resolves the route of the run's position's agent, and when the person's
 `oracle.roles.cold-reading-<position>` points at a provider it sends the
 position's definition as the instructions and the parked bundle, with the run's
-identifiers the output cites, as the input. A cold-reading position is
+identifiers the output cites, as the input. Before the send it prints one
+stderr line naming how many items the run sends and how many of them the
+manifest marks `unscanned`, the items the exclusion floor never examined and
+that travel whole. A cold-reading position is
 self-contained under ruling DR5 of 2026-09-29, so a provider that holds a key
 takes it; the reader is handed no tool and no path, which discharges the
 blindness obligation by construction. The answer is judged against the output

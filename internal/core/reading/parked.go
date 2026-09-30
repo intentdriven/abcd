@@ -26,6 +26,12 @@ type Parked struct {
 	AssemblerVersion string
 	ManifestSHA256   string
 	Bundle           []byte
+	// Items is how many items the manifest lists, and Unscanned how many of
+	// them it marks `unscanned`: the items the exclusion floor never examined,
+	// which travel whole. A front door that sends the run to a provider names
+	// the count before the send, so a paid send never carries it silently.
+	Items     int
+	Unscanned int
 }
 
 // ReadParked reads the run runID parked under DefaultRunDir in repoRoot,
@@ -69,8 +75,14 @@ func ReadParked(repoRoot, runID string) (Parked, error) {
 	if err := json.Unmarshal(bundle, &head); err != nil || head.Position != m.Position {
 		return Parked{}, fmt.Errorf("reading: the bundle parked for run %s does not state the manifest's position %s", runID, m.Position)
 	}
+	unscanned := 0
+	for _, it := range m.Items {
+		if it.Scan == ScanUnscanned {
+			unscanned++
+		}
+	}
 	return Parked{RunID: runID, Position: m.Position, AssemblerVersion: m.AssemblerVersion,
-		ManifestSHA256: sha256Hex(raw), Bundle: bundle}, nil
+		ManifestSHA256: sha256Hex(raw), Bundle: bundle, Items: len(m.Items), Unscanned: unscanned}, nil
 }
 
 // DispatchInput is the input a provider is sent for p under def: the facts
