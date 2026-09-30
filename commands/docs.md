@@ -94,6 +94,9 @@ the change delivered, check each sentence against the code, and compose:
 {"verificationResult": "PROMOTE", "judgeModel": "<pinned model id>", "tier": "full", "failing": []}
 ```
 
+`judgeModel` is the pinned id of the model that judged, with its version or
+date; the record verb refuses a bare family name and any id naming `latest`.
+
 A sentence you **confirmed** false goes in `failing` with `"doc": "brief"`, its
 `chapter` file name, the `sentence` verbatim from one line of the chapter (at
 most 2048 bytes; quote the part on one line when it wraps), the `evidence`

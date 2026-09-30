@@ -1318,7 +1318,7 @@ func checkReceiptGate(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 			add(rel, "'"+gate+"' receipt pins no judge model; a floating judge is not auditable")
 			continue
 		}
-		if why := floatingJudgeModel(r.JudgeModel); why != "" {
+		if why := FloatingJudgeModel(r.JudgeModel); why != "" {
 			add(rel, "'"+gate+"' receipt judgeModel '"+r.JudgeModel+"' is "+why+", not a pinned snapshot; a floating judge is not auditable")
 			continue
 		}
@@ -1349,7 +1349,7 @@ func checkReceiptGate(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 	return out, nil
 }
 
-// floatingJudgeModel reports why a receipt's judgeModel is a floating alias
+// FloatingJudgeModel reports why a receipt's judgeModel is a floating alias
 // rather than a pinned snapshot, or "" when it is pinned. The runbook's rule is
 // that a receipt names the judge that produced it so the pass can be re-run
 // against the same judge; an id that resolves to whatever the vendor serves
@@ -1359,8 +1359,10 @@ func checkReceiptGate(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 // no digit anywhere (opus, claude-sonnet), and a rolling alias, which names
 // "latest" whether or not a version fragment precedes it (claude-opus-4-latest
 // floats within the 4 line exactly as claude-opus-latest floats across lines).
-// The check is deliberately shape-only — it knows no vendor's catalogue.
-func floatingJudgeModel(model string) string {
+// The check is deliberately shape-only — it knows no vendor's catalogue. The
+// docs review's record applies it too, so it saves no receipt this gate would
+// refuse.
+func FloatingJudgeModel(model string) string {
 	m := strings.ToLower(strings.TrimSpace(model))
 	if strings.Contains(m, "latest") {
 		return "a rolling alias"

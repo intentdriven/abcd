@@ -233,6 +233,10 @@ func Record(root string, raw []byte, at time.Time) (string, Review, error) {
 	if strings.TrimSpace(p.JudgeModel) == "" {
 		return "", Review{}, errors.New("judgeModel is empty: a verdict names the judge that produced it")
 	}
+	if why := lint.FloatingJudgeModel(p.JudgeModel); why != "" {
+		return "", Review{}, fmt.Errorf("judgeModel %q is %s: a verdict names the pinned judge that produced it "+
+			"(a version or date, never latest), so the review can be re-run against the same judge", p.JudgeModel, why)
+	}
 	if p.Tier != "full" && p.Tier != "shallow" {
 		return "", Review{}, fmt.Errorf("tier %q is not full or shallow", p.Tier)
 	}

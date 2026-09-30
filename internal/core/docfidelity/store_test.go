@@ -158,6 +158,12 @@ func TestRecordRefusesAnUnusablePayload(t *testing.T) {
 		"HOLD naming nothing":  `{"verificationResult": "HOLD", "judgeModel": "claude-opus-5-5", "tier": "full", "failing": []}`,
 		"sentence missing":     `{"verificationResult": "HOLD", "judgeModel": "claude-opus-5-5", "tier": "full", "failing": [{"doc": "brief", "chapter": "a.md", "sentence": "", "evidence": "e", "disposition": "confirmed"}]}`,
 		"self-labelled commit": `{"verificationResult": "PROMOTE", "judgeModel": "claude-opus-5-5", "tier": "full", "failing": [], "subject": {}}`,
+		// The saved review's judge refuses a floating judge model, so the
+		// record refuses it first rather than saving a receipt the gate will
+		// read as invalid (df2).
+		"bare family alias":  `{"verificationResult": "PROMOTE", "judgeModel": "m", "tier": "full", "failing": []}`,
+		"family, no version": `{"verificationResult": "PROMOTE", "judgeModel": "claude-opus", "tier": "full", "failing": []}`,
+		"rolling alias":      `{"verificationResult": "PROMOTE", "judgeModel": "claude-opus-4-latest", "tier": "full", "failing": []}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			root := armedRepo(t)

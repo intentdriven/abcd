@@ -82,7 +82,9 @@ in a gate, which is what keeps the lint itself deterministic and offline.
   sentence in a public doc is reported and never refuses. The record sub-verb
   refuses a PROMOTE that names a false brief sentence, and a saved PROMOTE that
   names one refuses as unusable. Each quoted sentence and drafted replacement is
-  one line of at most 2048 bytes, or the verdict is refused.
+  one line of at most 2048 bytes, or the verdict is refused. So is a judge model
+  the receipt reader would refuse as floating: a bare family name with no
+  version or date, or one naming `latest`.
 - **Where the gate refuses.** The spec close runs it over the intents the close
   would ship, before anything moves, and the release cut runs it over every
   intent shipped since the last tag. A close that mints a remainder ships nothing
