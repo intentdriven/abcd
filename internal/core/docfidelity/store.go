@@ -39,10 +39,12 @@ const (
 	// the gate: it marks the repository whose binary the brief describes.
 	SnapshotPath = ".abcd/development/release/surface.json"
 	// BaselinePath is the recorded backlog: surfaces that shipped without a
-	// chapter before the gate existed. Each is reported on every run and
+	// chapter before the gate existed. It is hand-edited configuration, so its
+	// name deliberately avoids the "-baseline.json" suffix the configuration
+	// walk reserves for machine-written baselines. Each is reported on every run and
 	// refuses nothing; an entry that no longer lags refuses until removed, so
 	// the list only shrinks.
-	BaselinePath = ".abcd/development/release/doc-fidelity-baseline.json"
+	BaselinePath = ".abcd/development/release/doc-fidelity-backlog.json"
 	// AgentsDir is the plugin's agent prompts, one <name>.md per agent.
 	AgentsDir = "agents"
 

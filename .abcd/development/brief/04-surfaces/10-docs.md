@@ -88,7 +88,7 @@ in a gate, which is what keeps the lint itself deterministic and offline.
   drift. It is armed only in a repository that carries the command-tree snapshot
   and the brief's `04-surfaces/` chapters, since only that brief describes the
   binary. Surfaces that shipped without a chapter before the gate existed are
-  listed in `.abcd/development/release/doc-fidelity-baseline.json`. Each run
+  listed in `.abcd/development/release/doc-fidelity-backlog.json`. Each run
   reports them and none of them refuses. An entry that a chapter names, or that
   no longer ships, refuses until it is removed, so the list only shrinks.
 - **Draft and apply, review after.** A reviewer may draft the correction of a
