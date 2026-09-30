@@ -119,7 +119,8 @@ on. Do not act on the list: a hand-back is a person's decision.
   twice, an `id` its file name does not give it, or a value the field does not
   take) refuses, naming the record and the field; two accepted records carrying
   the fields refuse, naming both. A decision store or record that cannot be read
-  safely (a symlink, or a record past the size cap) refuses. Every one of these
+  safely (a store or record that is a symlink, wherever it points, or a record
+  past the size cap) refuses. Every one of these
   exits 2 with nothing written, on the dry run and the bare verb alike.
 - Without `--dry-run` the verb refuses to start (exit 2, nothing written): the
   issue-keyed lane a drain hands each issue to is not built. The refusal names

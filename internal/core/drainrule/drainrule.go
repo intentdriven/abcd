@@ -156,16 +156,20 @@ const HowToAdd = "add it: run `abcd ahoy install` at a terminal and accept the d
 // it; and with ErrUnreadable, a store or record that cannot be read safely.
 //
 // The store is read inside an os.Root at the checkout, and each record through
-// the capped trust-boundary reader, so a store that is a symlink leaving the
-// checkout, a record that is a symlink at all, and a record past the size cap
-// are refused, never followed or read whole: the rule is the drained tree's
-// committed history, and a rule from elsewhere is not it.
+// the capped trust-boundary reader, so a store that is a symlink at all (or
+// sits below one), wherever it points, a record that is a symlink at all, and
+// a record past the size cap are refused, never followed or read whole: the
+// rule is the drained tree's committed history at its own path, and a rule
+// reached through a link is not it.
 func Load(repoRoot string) (Rule, error) {
 	root, err := os.OpenRoot(repoRoot)
 	if err != nil {
 		return Rule{}, fmt.Errorf("%w: opening the checkout: %w", ErrUnreadable, err)
 	}
 	defer root.Close()
+	if err := storeIsRegular(root); err != nil {
+		return Rule{}, err
+	}
 	entries, err := fs.ReadDir(root.FS(), ADRsRelDir)
 	if errors.Is(err, fs.ErrNotExist) {
 		return Rule{}, fmt.Errorf("%w: it has no decision store at %s; %s", ErrUnrecorded, ADRsRelDir, HowToAdd)
@@ -254,6 +258,29 @@ func Load(repoRoot string) (Rule, error) {
 	}
 	r.Record, r.Path = c.id, c.rel
 	return r, nil
+}
+
+// storeIsRegular refuses a store that is a link, or sits below one: each
+// directory from the checkout down to the store is examined without following
+// it, the way readRecord refuses a linked record, so a link that resolves
+// inside the checkout is refused as surely as one leaving it. A store that
+// does not exist is left to the read, which names it unrecorded.
+func storeIsRegular(root *os.Root) error {
+	dir := ""
+	for _, part := range strings.Split(ADRsRelDir, "/") {
+		dir = path.Join(dir, part)
+		info, err := root.Lstat(dir)
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("%w: examining %s: %w", ErrUnreadable, dir, err)
+		}
+		if !info.IsDir() {
+			return fmt.Errorf("%w: %s is not a regular directory (a link or another kind of file), and the decision store is never read through one", ErrUnreadable, dir)
+		}
+	}
+	return nil
 }
 
 // readRecord reads one record of the store through the capped trust-boundary

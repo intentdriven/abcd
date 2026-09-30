@@ -135,9 +135,12 @@ so that a later drain takes issues a person would have decided. What guards it:
   is a record whose frontmatter `id` disagrees with the id its file name gives
   it, which would put another record's name on its rule.
 - The store is read inside the checkout and each record through the capped
-  trust-boundary reader, so a store that is a symlink leaving the checkout, a
-  record that is a symlink at all, and a record past the ledger's size cap are
-  refused rather than followed or read whole.
+  trust-boundary reader, so a store that is a symlink or sits below one,
+  wherever it points, a record that is a symlink at all, and a record past the
+  ledger's size cap are refused rather than followed or read whole. The store
+  and its records are held to one rule: the decision record is the one
+  committed at its own path, and one reached through a link, even a link inside
+  the checkout, is not it.
 - The two person-owed hand-backs, a remedy waiting on a ruling and a live
   deferral, hold whatever the record says.
 

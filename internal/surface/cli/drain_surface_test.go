@@ -268,7 +268,7 @@ func TestDrainOnTheStrictRuleNamesNoLoosening(t *testing.T) {
 }
 
 // TestEveryRefusalOfTheRuleExitsTwo: a rule the drain cannot read safely (a
-// store or a record that is a symlink out of the checkout) refuses with exit 2
+// store or a record that is a symlink, inside the checkout or out) refuses with exit 2
 // on the dry run and the bare verb alike, as every other refusal of the rule
 // does, and writes nothing.
 func TestEveryRefusalOfTheRuleExitsTwo(t *testing.T) {
@@ -285,6 +285,20 @@ func TestEveryRefusalOfTheRuleExitsTwo(t *testing.T) {
 				return err
 			}
 			return os.Symlink(outside, filepath.Join(parent, "adrs"))
+		},
+		"store symlinked inside the checkout": func(repo string) error {
+			inside := filepath.Join(repo, "elsewhere")
+			if err := os.MkdirAll(inside, 0o755); err != nil {
+				return err
+			}
+			if err := os.WriteFile(filepath.Join(inside, "2609300000000003-rule.md"), []byte(body), 0o644); err != nil {
+				return err
+			}
+			parent := filepath.Join(repo, ".abcd", "development", "decisions")
+			if err := os.MkdirAll(parent, 0o755); err != nil {
+				return err
+			}
+			return os.Symlink(filepath.FromSlash("../../../elsewhere"), filepath.Join(parent, "adrs"))
 		},
 		"symlinked record": func(repo string) error {
 			dir := filepath.Join(repo, filepath.FromSlash(drainrule.ADRsRelDir))
