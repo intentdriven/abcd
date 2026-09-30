@@ -80,8 +80,9 @@ None stated.
 ## Implementing specs
 
 itd-4 was implemented across multiple specs of the superseded pre-Go record
-system; those ids are preserved below as history (they do not exist in the
-native spec store). The frontmatter `spec_id` records the **native** spec,
+system; those ids are preserved below as history. The native spec store
+reuses each number for another spec, so each carries the predecessor-store
+qualifier. The frontmatter `spec_id` records the **native** spec,
 **spc-6**, the record catch-up that verifies the shipped engine against the
 Acceptance Criteria and carries the open AC3 (promote) gap. Historical index:
 
