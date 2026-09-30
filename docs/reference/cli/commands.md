@@ -230,7 +230,7 @@ abcd banlist remove --private acme-internal
 
 Start the loop that takes one READY intent to delivered: Writes the run's state file in the local tier; refuses an open question, a hold or a peer holding it.
 
-**Usage:** `abcd build <itd-N> [--session <id>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [flags]`
+**Usage:** `abcd build <itd-N> [--session <id>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [flags]`
 
 Start the implement loop for one intent, or resume the run already in progress for it.
 A new run's checks run first, and every one must pass:
@@ -256,16 +256,19 @@ before this run's lane has moved or claimed anything, and the session's own clai
 intent is not counted as a peer's. A session that has not joined is refused. Without it
 the run holds no claim, and the result says so.
 
-A new run is paced: a working window, a pause after it, and a ceiling on the run's lanes
-and validators alive at once. The three numbers are read once, when the run starts:
---pace <work-minutes>/<pause-minutes> and --sub-agents <n> for this run, else pace.work_minutes,
-pace.pause_minutes and pace.sub_agents in the repository's .abcd/config.json, else in
-~/.abcd/config.json, else the bundled 120/300 with 2 sub-agents. The result and the run
+A new run is paced: a working window, a pause after it, a ceiling on the run's lanes and
+validators alive at once, and the fix rounds a lane may take before it is handed back. The
+four numbers are read once, when the run starts: --pace <work-minutes>/<pause-minutes>,
+--sub-agents <n> and --fix-rounds <n> for this run, else pace.work_minutes, pace.pause_minutes,
+pace.sub_agents and pace.fix_rounds in the repository's .abcd/config.json, else in
+~/.abcd/config.json, else the bundled 120/300 with 2 sub-agents and 3 fix rounds. The result and the run
 record name each number's layer. A malformed pace or ceiling, typed or configured, is
 refused naming the value and the accepted form, and writes nothing. Starting again keeps
 the run's pace; a flag naming another is refused. The window and the pause bind through
 `abcd implement step`; the ceiling is recorded with the run, and this build does not
-count lanes against it.
+count lanes against it. A lane whose validators still do not pass after its fix rounds is
+handed back: it stops as unachievable with the last round's findings, the run starts nothing
+further for it, and `abcd implement step` refuses naming the hand-back.
 
 The run then moves one step per `abcd implement step`, driven by the host session.
 
@@ -275,6 +278,7 @@ Exit 2 on a refusal, exit 3 when a peer holds the intent or the run state is loc
 **Flags:**
 
 ```
+      --fix-rounds string   the fix rounds a lane of this run may take before it is handed back, a whole number from 0 (bundled: 3); wins over every configured layer
       --pace string         this run's working window and pause, <work-minutes>/<pause-minutes> (e.g. 90/240); wins over every configured layer
       --session string      the host session's id in the shared run state; a new run claims the intent for it
       --sub-agents string   this run's ceiling on lanes and validators alive at once, a whole number; wins over every configured layer
@@ -290,7 +294,7 @@ abcd build itd-2609010000000001
 
 Pick the readiest planned intent and start its run: Writes the run's state and the reason as the lane's first commit; refuses when nothing passes the checks.
 
-**Usage:** `abcd build next [--session <id>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--max <n>] [--until-empty] [flags]`
+**Usage:** `abcd build next [--session <id>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--max <n>] [--until-empty] [flags]`
 
 Pick the readiest planned intent, write down why, and start its run.
 
@@ -314,8 +318,9 @@ in is never written but for the run state. `abcd intent ready` keeps reporting t
 entry as the most recent conjecture.
 
 One pick per invocation. --max <n> above 1 and --until-empty, which continue under the pace
-rule, are refused: that half of the verb is not built in this abcd. --session, --pace and
---sub-agents are `abcd build`'s own.
+rule, are refused: that half of the verb is not built in this abcd. --session, --pace,
+--sub-agents and --fix-rounds are `abcd build`'s own. A lane handed back after its fix
+rounds falsifies the pick: the run record says so, and the intent's entry is not edited.
 
 No candidate is refused, naming each excluded intent and the check that excluded it, and
 nothing is written. Exit 2 on a refusal, exit 3 when the chosen intent's run is already in
@@ -324,6 +329,7 @@ progress or the run state is locked.
 **Flags:**
 
 ```
+      --fix-rounds string   the fix rounds a lane of the new run may take before it is handed back; wins over every configured layer
       --max int             how many picks to make; only 1 is built, and more is refused
       --pace string         the new run's working window and pause, <work-minutes>/<pause-minutes>; wins over every configured layer
       --session string      the host session's id in the shared run state; the new run claims the picked intent for it
@@ -1645,6 +1651,13 @@ it names is on the lane's branch past its base, the definition of done's output 
 in the lane's directory with a zero exit code, and the report exists there. A receipt
 that verifies moves the lane's head to its branch's tip.
 
+At the validate stage the receipt is the validator's return: a reviewer's is refused
+unless it has one Verdict section stating one verdict of its role (SHIP or FIX FIRST;
+APPROVE, BLOCK or NEEDS-INPUT), and the intent-auditor's unless it is the fidelity verdict
+the request asked for, echoing its receipt and both provenance hashes. The loop records
+the verdict and the lane stays at validate for the next validator. A fresh implementer's
+receipt after a round is verified as an implementer's is.
+
 --run names the run; without it, the one run in progress in this checkout. Exit 2 on a
 refusal, exit 3 on a locked run state.
 
@@ -1748,7 +1761,21 @@ cut from the default branch; brief renders the lane's brief from that base (the 
 the spec, the conventions of AGENTS.md, the decisions the intent cites, and the spec
 steps before the lane's with what landed each) into the lane's directory of the run;
 implement hands the lane to a fresh implementer and awaits
-its receipt; validate and land follow.
+its receipt; validate hands the lane's head to validators that did not implement it, one
+fresh agent at a time — a ruthless-reviewer, a security-reviewer and, on the lane whose
+landing closes the spec and ships the intent, an intent-auditor over the whole delivery,
+from the base of the run's first lane to that lane's head (a lane that does not close the
+spec takes no audit) — and records each verdict itself, parsed from the validator's own
+return. A round one of them did not pass goes to a fresh implementer, who applies each
+finding or rejects it in writing in its report, and the next round judges the new head
+afresh; a round that passes completes the stage, unless a lane report states a verdict,
+which is refused naming the report. The audit passes only when every criterion is met: a
+criterion it could not decide (INCONCLUSIVE) fails the round as a not-met one does, and
+goes to the fresh implementer with the finding. A round that does not pass once the lane
+has taken the run's fix rounds (--fix-rounds, bundled 3) hands the lane back instead: it
+stops as unachievable, the result and the run record name the last round's findings, the
+run starts nothing further for it, and every later step is refused naming the hand-back.
+land follows a passing round.
 
 A stage whose body this abcd does not carry is refused naming the spec piece that
 delivers it, and the run is unchanged. A stage that fails leaves the state as it was,

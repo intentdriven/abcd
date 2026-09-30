@@ -40,8 +40,8 @@ func TestTheStateAndTheResultNameTheLaneStage(t *testing.T) {
 	if err := json.Unmarshal(stateBytes(t, repo.Root(), start.RunID), &state); err != nil {
 		t.Fatal(err)
 	}
-	if state.SchemaVersion != 4 {
-		t.Fatalf("the renamed shape is schema version 4, got %d", state.SchemaVersion)
+	if state.SchemaVersion < 4 || state.SchemaVersion != SchemaVersion {
+		t.Fatalf("the renamed shape is schema version 4 or later, written at the current %d, got %d", SchemaVersion, state.SchemaVersion)
 	}
 	for _, l := range state.Lanes {
 		if string(l["stage"]) != `"brief"` {

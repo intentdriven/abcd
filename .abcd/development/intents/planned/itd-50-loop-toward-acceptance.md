@@ -75,11 +75,11 @@ We expect a bounded fix round after the audit to turn most not-met verdicts into
 
 ## Acceptance Criteria
 
-- **Given** a `build` lane whose fidelity audit returns not-met on any criterion, **when** the verdict is ingested, **then** a fix round starts with a fresh implementer briefed on those criteria, and the audit re-runs after it.
+- **Given** a `build` lane whose fidelity audit returns not-met or undecided (inconclusive) on any criterion, **when** the verdict is recorded, **then** a fix round starts with a fresh implementer briefed on those criteria, and the audit re-runs after it.
 - **Given** the pace rule's fix-round count is exhausted with a criterion still not met, or the auditor judges a criterion unmeetable as written, **when** the loop reaches that point, **then** the lane stops with the verdict unachievable and starts nothing further.
 - **Given** an unachievable verdict, **when** the loop hands back, **then** the intent is moved to `drafts/` carrying `replan_reason` and its audit notes, the spec stays open, and the run's summary lists it for a replan.
 - **Given** every machine-checkable criterion reads met, **when** the lane reaches its landing, **then** the product thinker is offered a hand verification and the answer is recorded as a grounds entry on the intent in their words; a rejection of the criteria themselves reopens the intent as above.
-- **Given** an inconclusive audit (a malformed or unreachable reviewer), **when** the loop processes it, **then** no fix round starts, nothing counts against the budget, and the run names the inconclusive audit in its summary.
+- **Given** an audit that returns no verdict the loop can read (a malformed or unreachable reviewer), **when** the loop processes it, **then** no fix round starts, nothing counts against the budget, and the run names the inconclusive audit in its summary.
 
 ## Resolved (grill 2026-06-02)
 
@@ -99,6 +99,11 @@ Ruled by the product thinker on 2026-09-21, in the interview that gave this inte
 2. **An iteration is a fix round** (fresh implementer plus re-audit), bounded by the pace rule's count; exhaustion, or a criterion judged unmeetable, is unachievable.
 3. **Unachievable reopens the intent to drafts** with the reason and its audit notes.
 4. **Hand verification is a grounds entry** in the product thinker's words, not a separate receipt.
+
+Ruled by the product thinker on 2026-09-29, in autonomous run A's rulings (DQ1a and DR1):
+
+5. **An undecided audit reopens the work** (ruling DQ1a, on iss-2608290820473197): a criterion the audit could not decide fails the round exactly as a not-met one does, so the lane goes back to a fresh implementer with the finding and never lands on it. This supersedes the grill's reading that an inconclusive verdict stays fail-closed with no fix round: criterion 1 now names it, and criterion 5 is the audit that returns no verdict the loop can read, which starts no fix round and counts for nothing.
+6. **The fix-round count is a per-run value set beside the pace** (ruling DR1): `--fix-rounds <n>` on `abcd build`, `pace.fix_rounds` in the configuration layers, bundled 3.
 
 ## Open Questions
 

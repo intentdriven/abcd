@@ -36,10 +36,10 @@ type Options struct {
 	// or claimed anything (iss-2609252050506863). Empty, the run holds no
 	// claim and is invisible to another checkout until its lane shows.
 	Session string
-	// Pace and SubAgents are the --pace and --sub-agents flags as typed; nil
-	// when the flag was not given. They set a new run's pace over every
-	// configured layer.
-	Pace, SubAgents *string
+	// Pace, SubAgents and FixRounds are the --pace, --sub-agents and
+	// --fix-rounds flags as typed; nil when the flag was not given. They set a
+	// new run's pace over every configured layer.
+	Pace, SubAgents, FixRounds *string
 	// Roots are where the pace's configuration layers are read; nil reads
 	// them at layered.RootsFor(repoRoot).
 	Roots *layered.Roots
@@ -80,6 +80,10 @@ type Context struct {
 // completes only when Receipt verifies it.
 type Outcome struct {
 	Await *Await
+	// HandBack stops the lane: it is handed back to the person with what the
+	// stage found, and the loop starts nothing further for it (itd-50,
+	// criterion 2). Set only with no Await.
+	HandBack *HandBack
 	// Note is the run record's line for the stage.
 	Note string
 }
@@ -97,11 +101,18 @@ type Verifier func(c Context, lane *Lane, receipt string) error
 
 // StageDef is one stage of the lane sequence: its name, the spec piece that
 // delivers its body, and the body — nil when this build does not carry it.
+//
+// A stage that hands the lane to several agents in turn (the validators, and the
+// fresh implementer their findings go to) sets Repeats: a verified receipt then
+// returns the lane to the stage's body rather than completing the stage, and the
+// body decides, on the next step, whom it hands the lane to next or that the
+// stage is complete.
 type StageDef struct {
-	Name   Stage
-	Piece  int
-	Run    Handler
-	Verify Verifier
+	Name    Stage
+	Piece   int
+	Run     Handler
+	Verify  Verifier
+	Repeats bool
 }
 
 // Stages is the lane sequence with its bodies.
@@ -134,15 +145,15 @@ func after(name Stage) Stage {
 
 // DefaultStages is the lane sequence this build carries, each stage with the
 // spec piece that delivers its body: the worktree (lane.go), the brief
-// (brief.go) and the implement stage with its receipt's verifier (receipt.go).
-// The validators and the landing are later pieces of spc-2609202134338445, and
-// each registers its body here.
+// (brief.go), the implement stage with its receipt's verifier (receipt.go) and
+// the validators with theirs (validate.go). The landing is a later piece of
+// spc-2609202134338445, and registers its body here.
 func DefaultStages() Stages {
 	return Stages{
 		{Name: StageWorktree, Piece: 6, Run: worktreeStage},
 		{Name: StageBrief, Piece: 5, Run: briefStage},
 		{Name: StageImplement, Piece: 7, Run: implementStage, Verify: verifyReceipt},
-		{Name: StageValidate, Piece: 8},
+		{Name: StageValidate, Piece: 8, Run: validateStage, Verify: verifyValidation, Repeats: true},
 		{Name: StageLand, Piece: 9},
 	}
 }
@@ -166,8 +177,10 @@ type StartResult struct {
 	Claim *implement.ClaimResult `json:"claim"`
 	// Pace is the run's pace, each number with the layer that supplied it.
 	// Null for a run started before the loop paced a run.
-	Pace *Pace  `json:"pace"`
-	Next string `json:"next"`
+	Pace *Pace `json:"pace"`
+	// HandBack is set when the run's lane stands handed back to the person.
+	HandBack *HandBack `json:"hand_back,omitempty"`
+	Next     string    `json:"next"`
 }
 
 // StepResult is what Advance and Receipt return.
@@ -185,7 +198,10 @@ type StepResult struct {
 	// NextEligibleAt is set when this call closed the run's window: nothing
 	// was performed, and no stage is taken before this time.
 	NextEligibleAt *time.Time `json:"next_eligible_at,omitempty"`
-	Next           string     `json:"next"`
+	// HandBack is set when the lane was handed back to the person: this call
+	// stopped it, or it stood stopped when the run was started again.
+	HandBack *HandBack `json:"hand_back,omitempty"`
+	Next     string    `json:"next"`
 }
 
 // Start resumes the live run for key, or runs the checks and, when every one
@@ -223,7 +239,7 @@ func start(repoRoot, key string, o Options, pick *RunPick) (StartResult, error) 
 	if row, ok := keyCheck(key); !ok {
 		return StartResult{}, CheckResult{Key: key, Checks: []CheckRow{row}}.refusal()
 	}
-	flags, err := parsePaceFlags(o.Pace, o.SubAgents)
+	flags, err := parsePaceFlags(o.Pace, o.SubAgents, o.FixRounds)
 	if err != nil {
 		return StartResult{}, err
 	}
@@ -436,6 +452,13 @@ func resumeWithFlags(res StartResult, f paceFlags) error {
 	if f.subs != nil {
 		got.SubAgents.Value = *f.subs
 	}
+	if f.fix != nil {
+		// A run started before the pace carried a cap runs on the bundled one.
+		if want.FixRounds.Layer == "" {
+			want.FixRounds.Value = BundledFixRounds
+		}
+		got.FixRounds.Value = *f.fix
+	}
 	if res.Pace != nil && got.same(want) {
 		return nil
 	}
@@ -443,10 +466,10 @@ func resumeWithFlags(res StartResult, f paceFlags) error {
 	if res.Pace != nil {
 		running = "pace " + res.Pace.String()
 	}
-	typed := strings.TrimSpace(f.paceOrigin + " " + f.subsOrigin)
+	typed := strings.Join(strings.Fields(f.paceOrigin+" "+f.subsOrigin+" "+f.fixOrigin), " ")
 	return refuse(StagePace, "", "", fmt.Sprintf("%s is in progress on %s; %s names another, and a pace is set when a run starts",
 		res.RunID, running, typed),
-		"resume without --pace and --sub-agents; the run keeps the pace it started on")
+		"resume without --pace, --sub-agents and --fix-rounds; the run keeps the pace it started on")
 }
 
 // liveRun returns the run for key that is not complete.
@@ -471,6 +494,7 @@ func startResult(st State, checks []CheckRow, resumed bool) StartResult {
 		res.Lane = st.Lanes[i]
 		res.Next = nextMove(st, st.Lanes[i])
 	}
+	res.HandBack = res.Lane.HandBack
 	if res.Pending == nil {
 		res.Pending = []PendingStep{}
 	}
@@ -529,6 +553,9 @@ func Advance(repoRoot, runID string, steps Stages, o Options) (StepResult, error
 			return false, nil
 		}
 		lane := st.Lanes[i]
+		if lane.Stage == StageHandedBack {
+			return false, handedBackRefusal(*st, lane)
+		}
 		// The window clock (itd-2609201925079472): a pause that has ended
 		// opens the next window; a window that has elapsed closes here, and
 		// the call starts nothing.
@@ -564,6 +591,14 @@ func Advance(repoRoot, runID string, steps Stages, o Options) (StepResult, error
 			return false, err
 		}
 		performed := Stage("")
+		if out.HandBack != nil {
+			handBackLane(st, &lane, *out.HandBack, out.Note, now)
+			st.Lanes[i] = lane
+			st.UpdatedAt = now
+			res = laneResult(*st, lane, "")
+			res.HandBack = lane.HandBack
+			return true, nil
+		}
 		if out.Await != nil {
 			if out.Await.Since.IsZero() {
 				out.Await.Since = now
@@ -668,10 +703,23 @@ func Receipt(repoRoot, runID, receipt string, steps Stages, o Options) (StepResu
 			return false, refuse("receipt", "", lane.ID, err.Error(), "correct what the reason names, then hand the receipt back")
 		}
 		performed := lane.Stage
-		lane.Receipt = lane.Awaiting.Receipt
+		verified := lane.Awaiting.Receipt
 		lane.Awaiting = nil
-		st.Record = append(st.Record, Entry{At: now, Lane: lane.ID, Stage: "receipt",
-			Note: "the " + string(performed) + " stage's receipt verified at " + lane.Receipt})
+		note := "the " + string(performed) + " stage's receipt verified at " + verified
+		if def.Repeats {
+			// The stage hands the lane to its next agent, or completes, on the
+			// next step; the lane's own receipt stays the implementer's.
+			if n := validationNote(lane, verified); n != "" {
+				note += "; " + n
+			}
+			st.Record = append(st.Record, Entry{At: now, Lane: lane.ID, Stage: "receipt", Note: note})
+			st.Lanes[i] = lane
+			st.UpdatedAt = now
+			res = laneResult(*st, lane, "")
+			return true, nil
+		}
+		lane.Receipt = verified
+		st.Record = append(st.Record, Entry{At: now, Lane: lane.ID, Stage: "receipt", Note: note})
 		lane.Stage = after(lane.Stage)
 		st.Lanes[i] = lane
 		if lane.Stage == StageDone {
@@ -700,6 +748,9 @@ func laneResult(st State, lane Lane, performed Stage) StepResult {
 
 // nextMove is the one sentence a caller is told to do next.
 func nextMove(st State, lane Lane) string {
+	if lane.HandBack != nil {
+		return handBackMove(st, lane)
+	}
 	if lane.Awaiting != nil {
 		return fmt.Sprintf("start a fresh %s agent with the brief %s; when it has written its receipt, run `abcd implement receipt %s`",
 			lane.Awaiting.Role, lane.Awaiting.Brief, lane.Awaiting.Receipt)

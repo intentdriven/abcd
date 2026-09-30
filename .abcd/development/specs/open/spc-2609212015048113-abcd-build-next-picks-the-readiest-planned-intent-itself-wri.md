@@ -88,3 +88,16 @@ model-tier intents share.
 | 8 absent footprint reads zero and says so | scope 2 |
 | 9 the page | scope 9 |
 | 10 json | scope 9 |
+
+## Progress
+
+This section records the fix-round bound's share; it does not restate what the
+pick's own lanes landed.
+
+- **Landed: criterion 6, the hand-back half.** A lane of a run `abcd build
+  next` started that is handed back after the run's fix rounds (ruling DR1:
+  `--fix-rounds`, bundled 3) gains a `pick` line in the run record naming the
+  pick falsified, and the intent's grounds entry is not edited
+  (`internal/core/implement/loop/handback.go`). The score table read into the
+  run record at close waits on the run record's rendering
+  (spc-2609202134338445 piece 10).

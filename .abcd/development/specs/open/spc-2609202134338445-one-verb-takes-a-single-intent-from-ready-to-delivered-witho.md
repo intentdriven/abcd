@@ -71,6 +71,8 @@ boundary) is minted before either path ships and is a delivery of this spec.
    each a fresh agent; findings are applied by a fresh implementer or rejected
    in the report; the fidelity request is completed with the delivered range
    from base to head before the auditor runs.
+   - packages: internal/core/implement/loop, internal/core/intent, internal/surface/cli
+   - landed: 1ed950b3a
 9. **The landing**
    Criterion 6: `spec close` and `capture resolve` invoked by the loop with
    the lane's commit, the pull request through the forge client the
@@ -161,14 +163,29 @@ spec stays open until the last lane closes it.
   naming every gap.
 - **Seam left, not built: piece 3**, the process driver. It waits on the runner
   intent (itd-2609201916056194) and calls the same `Advance` and `Receipt`.
-- **Remaining: piece 8** (the validators with the itd-58 verdict invariant) and
-  **9 to 11** (the landing, the run record and transcripts, `--auto-plan` with
-  its ADR). Each registers its body in `loop.DefaultSteps`. Piece 8 carries one
-  question the record does not answer: the fidelity request is emitted today
-  only for a shipped intent, after `spec close` (piece 9's landing), while this
-  step orders the fidelity audit before the landing; whether the auditor runs
-  per lane on the lane's range or once, on the lane that closes the spec, is to
-  be settled before piece 8 is built. The issue key (decision 10)
+- **Landed (lane fidelityOnce): piece 8**, the validators with the itd-58
+  verdict invariant. The validate stage hands the lane's head to a fresh
+  ruthless reviewer and a fresh security reviewer, one at a time, and on the
+  lane whose landing closes the spec (and ships the intent) to the
+  intent-auditor, once, over the whole delivery: from the base of the run's
+  first lane to the closing lane's head, with each lane's range and the steps
+  landed before the run (ruling AI, 2026-09-29, which settles the question this
+  section carried: audit once, on the lane that closes the spec, over the whole
+  delivery). The fidelity request is composed before the close as the close's
+  own emit composes it (`intent.ComposeDeliveryAudit`), keyed on the receipt the
+  close parks, so its verdict is the one the close consumes. The loop parses
+  each verdict from the validator's own return and records it in the state
+  (schema version 5); a lane report stating a verdict is refused at the advance,
+  naming it. A round that does not pass goes to a fresh implementer, who applies
+  each finding or rejects it in writing in its report, and the next round
+  judges the new head afresh; the rounds are counted, and their bound is
+  itd-50's.
+- **Remaining: 9 to 11** (the landing, the run record and transcripts,
+  `--auto-plan` with its ADR). Each registers its body in `loop.DefaultStages`.
+  Piece 9's landing consumes the audit the closing lane recorded: after `spec
+  close` parks the OWED receipt, it ingests the verdict the auditor's run names
+  (`abcd intent audit ingest --verdict-json <that path>`) rather than asking for
+  a second audit. The issue key (decision 10)
   is refused by name at the key check; the lane that admits it adds the
   `remedy:` field schema, drain's eligibility rule and the `handback:` report
   field. `--auto-plan` is not a flag yet.

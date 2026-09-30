@@ -248,10 +248,17 @@ then `validate` and `land`. An implementer's receipt is one strict JSON object:
 optional `model`, with `output` and `report` paths inside the lane's directory.
 `receipt` refuses it, naming every gap, unless each commit is on the lane's
 branch past its base, the definition of done's output exists with exit code 0,
-and the report exists; any other field, a verdict included, refuses it. This
-build carries no `validate` or `land` body: `step` refuses at that stage naming the
-spec piece that delivers it, and the run stays ready to resume. Report the
-refusal as it is.
+and the report exists; any other field, a verdict included, refuses it.
+`validate` hands the lane's head to fresh validators one at a time and records
+each verdict from the validator's own return; the fidelity audit passes only
+when every criterion is met, so an undecided (`INCONCLUSIVE`) criterion sends
+the lane to a fresh implementer as a not-met one does. A lane that has taken
+the run's fix rounds (`build --fix-rounds`, bundled 3) and still does not pass
+is handed back: the result's `hand_back` names the verdict `unachievable` and
+the last findings, and every later `step` refuses at the `handed-back` stage.
+This build carries no `land` body: `step` refuses at that stage naming the spec
+piece that delivers it, and the run stays ready to resume. Report the refusal
+as it is.
 
 ## Check the machine's load
 
