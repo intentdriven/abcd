@@ -33,7 +33,7 @@ abstraction-layer boundary).
 > They do not exist in the tree: the Go rebuild left the grill as *planned,
 > unbuilt* work — [itd-27](../../intents/superseded/itd-27-grill-skill-and-glossary.md),
 > [adr-7](../../decisions/adrs/0007-grill-skill-and-glossary.md), extended by
-> [itd-42](../../intents/planned/itd-42-coherence-aware-grill.md). The harvest
+> [itd-42](../../intents/shipped/itd-42-coherence-aware-grill.md). The harvest
 > disposition below stands; its target is itd-27/itd-42, and the mattpocock
 > attribution is owed when the grill is built, not before.
 
