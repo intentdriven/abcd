@@ -511,6 +511,9 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(launchCmd)
 
 	root.AddCommand(newChangelogCommand(&asJSON))
+	// `reflect` is the release retrospective (itd-24): the seed a cut release's
+	// interview opens from, and the one write that files it.
+	root.AddCommand(newReflectCommand(&asJSON))
 
 	root.AddCommand(newCaptureCommand(&asJSON))
 	root.AddCommand(newBanlistCommand(&asJSON))
@@ -732,6 +735,9 @@ func newDocsCommand(asJSON *bool) *cobra.Command {
 	// `cite` maintains the baseline `lint docs` enforces: the refresh does the
 	// live fetching the gate refuses to do, and confirm closes the manual queue.
 	docsCmd.AddCommand(newCiteCommand(asJSON))
+	// `fidelity` is the doc-fidelity gate over the brief (itd-60), run on its
+	// own: the judgement `spec close` and `launch ship` enforce.
+	docsCmd.AddCommand(newDocsFidelityCommand(asJSON))
 
 	return docsCmd
 }
@@ -1091,6 +1097,9 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := hostPayloadOnProvider("disembark graveyard", route, disembarkNoDispatch); err != nil {
+				return err
+			}
 			dirAbs, err := filepath.Abs(args[0])
 			if err != nil {
 				return err
@@ -1132,6 +1141,9 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := hostPayloadOnProvider("disembark principles", route, disembarkNoDispatch); err != nil {
+				return err
+			}
 			dirAbs, err := filepath.Abs(args[0])
 			if err != nil {
 				return err
@@ -1161,6 +1173,9 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			route, err := pressReleaseRoute.resolve(cmd, "disembark press-release", delegatedAgent(pressReleaseJSON, pressReleaseAgent))
 			if err != nil {
+				return err
+			}
+			if err := hostPayloadOnProvider("disembark press-release", route, disembarkNoDispatch); err != nil {
 				return err
 			}
 			dirAbs, err := filepath.Abs(args[0])
@@ -1201,6 +1216,9 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			route, err := reviewRoute.resolve(cmd, "disembark review", delegatedAgent(reviewJSON, reviewAgent))
 			if err != nil {
+				return err
+			}
+			if err := hostPayloadOnProvider("disembark review", route, disembarkNoDispatch); err != nil {
 				return err
 			}
 			dirAbs, err := filepath.Abs(args[0])
@@ -1329,9 +1347,78 @@ func newEmbarkCommand(asJSON *bool) *cobra.Command {
 		},
 	}
 
+	// `lessons` is the predecessor's lessons the press-release interview shows
+	// (itd-24 criterion 6): the retrospectives the lifeboat carries, ranked
+	// against the new voyage's brief, the few first and the rest as a list.
+	var lessonsBrief string
+	lessonsCmd := &cobra.Command{
+		Use:  "lessons <lifeboat-dir> [target-dir]",
+		Args: cobra.RangeArgs(1, 2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			lbAbs, tgtAbs, err := resolveDirs(args)
+			if err != nil {
+				return err
+			}
+			framing, source, err := embarkLessonsFraming(tgtAbs, lessonsBrief)
+			if err != nil {
+				return &exitError{Code: 2, Msg: "embark lessons: " + scrubPaths(err)}
+			}
+			view, err := lifeboat.PredecessorLessons(lbAbs, framing)
+			if err != nil {
+				return &exitError{Code: 2, Msg: "embark lessons: " + scrubPaths(err)}
+			}
+			out := embarkLessonsView{LessonsView: view, FramingSource: source}
+			return render(cmd.OutOrStdout(), *asJSON, out, func(w io.Writer) {
+				if source != "" {
+					fmt.Fprintf(w, "brief: %s\n", termsafe.Sanitize(source))
+				}
+				fmt.Fprint(w, view.Render())
+			})
+		},
+	}
+	lessonsCmd.Flags().StringVar(&lessonsBrief, "brief", "",
+		"rank against this file's text (the press release the interview is writing) instead of the target's framing chapter")
+
 	embarkCmd.AddCommand(probeCmd)
 	embarkCmd.AddCommand(fromCmd)
+	embarkCmd.AddCommand(lessonsCmd)
 	return embarkCmd
+}
+
+// embarkFramingRel is the new voyage's brief framing chapter, the text embark
+// ranks predecessor lessons against (spc-2609211751376504 scope 7).
+const embarkFramingRel = ".abcd/development/brief/01-product/06-framing.md"
+
+// maxEmbarkBriefBytes caps the brief text a ranking reads.
+const maxEmbarkBriefBytes = 256 * 1024
+
+// embarkLessonsView is the lessons view plus where the brief text came from:
+// the --brief file (named "--brief"), the target's framing chapter, or nothing.
+type embarkLessonsView struct {
+	lifeboat.LessonsView
+	FramingSource string `json:"framing_source"`
+}
+
+// embarkLessonsFraming reads the text the lessons are ranked against: the
+// --brief file when one is named, else the target's framing chapter, else none
+// (the lessons are then listed unranked). The reads are guarded: no symlink, a
+// regular file, capped.
+func embarkLessonsFraming(targetAbs, brief string) (text, source string, err error) {
+	if brief != "" {
+		data, err := fsutil.ReadGuarded(brief, maxEmbarkBriefBytes)
+		if err != nil {
+			return "", "", fmt.Errorf("reading --brief: %w", err)
+		}
+		return string(data), "--brief", nil
+	}
+	data, err := fsutil.ReadGuarded(filepath.Join(targetAbs, filepath.FromSlash(embarkFramingRel)), maxEmbarkBriefBytes)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return "", "", nil
+		}
+		return "", "", fmt.Errorf("reading the target's framing chapter: %w", err)
+	}
+	return string(data), embarkFramingRel, nil
 }
 
 // readLessonsPayload reads the untrusted lesson JSON behind the trust guards,
@@ -2987,11 +3074,19 @@ func newIntentAuditCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			// A step on a provider is refused before anything is written when
+			// the provider would refuse it (ruling DR5 of 2026-09-29).
+			if err := auditRoute.admit("abcd intent audit", route); err != nil {
+				return err
+			}
 			res, err := intent.ReEmitAuditWith(repoRoot, args[0],
 				intent.AuditEmitOptions{RoutingSection: oracle.RenderRequestSection(route.Request())})
 			if err != nil {
 				return peerHeldRefusal(repoRoot, "abcd intent audit: ", args[0],
 					&exitError{Code: 2, Msg: "abcd intent audit: " + fsutil.RedactHome(err.Error())})
+			}
+			if res.RequestWritten && route.OnProvider() {
+				return dispatchAudit(cmd, auditRoute, route, repoRoot, res, *asJSON)
 			}
 			// Only a receipt still owed has a request for the host to act on; a
 			// terminal one is reported as it stands, with no request block.
@@ -3032,6 +3127,10 @@ func newIntentAuditCommand(asJSON *bool) *cobra.Command {
 			}
 			route, err := ingestRoute.resolve(cmd, "abcd intent audit ingest", auditAgent)
 			if err != nil {
+				return err
+			}
+			if err := hostPayloadOnProvider("abcd intent audit ingest", route,
+				"run `abcd intent audit <itd-N>`, which sends the review there and ingests the answer"); err != nil {
 				return err
 			}
 			// Read once: the ingest validates these bytes and the receipt's
@@ -3291,7 +3390,10 @@ func newSpecCommand(asJSON *bool) *cobra.Command {
 			"The close that ships an intent also makes its fidelity review owed: it mints an OWED receipt (rcp-…), " +
 			"parks an `<!-- abcd-review: OWED receipt=rcp-… -->` marker in the intent's Audit Notes, and writes the " +
 			"review request to `.abcd/.work.local/reviews/<rcp>.request.md`, the input `abcd intent audit ingest` " +
-			"answers. A failed emit is a warning on stderr; the intent ships regardless.",
+			"answers. A failed emit is a warning on stderr; the intent ships regardless.\n\n" +
+			"In the repository whose brief describes the binary, a close that ships an intent first runs the " +
+			"doc-fidelity gate (`abcd docs fidelity`): a surface no brief chapter names, a missing or stale docs " +
+			"review, or a confirmed false sentence refuses the close, and nothing moves.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			repoRoot, err := specStoreRoot(cmd)
@@ -3311,6 +3413,14 @@ func newSpecCommand(asJSON *bool) *cobra.Command {
 					return err
 				}
 				rem.ProductionMode = mode
+			}
+			// The doc-fidelity gate's first enforcement point (itd-60): a
+			// close that ships an intent is refused while the brief lags the
+			// surface it delivered. A --remainder close ships nothing.
+			if closeRemainder == "" {
+				if err := enforceDocFidelity(repoRoot, "abcd spec close", closeShips(repoRoot, args[0])); err != nil {
+					return err
+				}
 			}
 			res, err := intent.Reconcile(repoRoot, args[0], closeImpact, rem)
 			if err != nil {

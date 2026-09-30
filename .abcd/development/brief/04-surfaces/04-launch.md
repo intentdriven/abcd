@@ -481,7 +481,7 @@ any intent falls back to conventional-commit derivation.
 A cut that cannot proceed is **refused under a named kind**, and the kind is the
 wire format both front doors emit (`internal/core/release/emit.go`). Every one
 is fail-closed: the cut stops rather than deriving a number or a changelog that
-would be wrong. There are eight, and an operator sees them as
+would be wrong. There are nine, and an operator sees them as
 `refused (<kind>)`.
 
 | Kind | Raised when |
@@ -493,6 +493,7 @@ would be wrong. There are eight, and an operator sees them as
 | `surface-guard` | the surface guardrail failed, or could not compare |
 | `unfixed-finding` | a consequential finding this cycle captured is still open, with no recorded decision to defer it |
 | `deleted-finding` | a consequential record the anchor held in `open/` is in no status directory at HEAD: the cut removed the finding instead of answering it |
+| `doc-fidelity` | an intent the cut ships leaves the brief behind the surface it delivered, or no saved docs review names the commit being cut ([`10-docs.md`](10-docs.md), itd-60) |
 | `empty-cut` | nothing user-facing shipped, so there is no release |
 
 `release-in-flight` is the one an operator meets most often outside a release
@@ -818,6 +819,18 @@ invocation does not dispatch, a tier outside `local`, `economy`, `frontier` and
 `host-decides`, or a connection this machine has not configured exits 2 before
 anything is written. With no table accepted and no override, the step asks for
 `host-decides` on the harness and nothing is printed.
+
+**A composer routed to a provider runs there.** When the person's
+`oracle.roles.release-changelog-composer` points at a provider, the emit step of
+a ready cut sends the emitted cut there with the composer's prompt, ingests the
+answer as the ingest step would, and returns the ingest's result with the
+dispatch's receipt. A provider that holds a key takes only self-contained agents
+under ruling DR5 of 2026-09-29, and the composer reads records at their paths,
+so on such a provider the emit exits 2 before anything is sent. A provider that
+could not be reached leaves the step to the host with one stderr line. A
+changelog payload the host composed while the composer is routed to a provider
+is refused at exit 2; an override to `host-decides` keeps one run on the
+harness. A dispatched cut stages no release payload directory.
 
 <!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
 

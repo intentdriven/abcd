@@ -173,3 +173,61 @@ func TestSiteVerbsReadTheCheckoutFromASubdirectory(t *testing.T) {
 		t.Fatalf("lint site in a subdirectory refused: %v\n%s", err, out)
 	}
 }
+
+// TestSiteVerbsSayWhichLabelsTheyAdded is the TG1 ruling at the CLI: a ui.json
+// lacking a declared label is completed by `site setup` and by `site build`,
+// and each says so on stderr, one line per label, leaving stdout to the result.
+func TestSiteVerbsSayWhichLabelsTheyAdded(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	r := gittest.NewRepo(t)
+	r.Write("AGENTS.md", "# Example\n\n<!-- BEGIN ABCD -->\nmanaged\n<!-- END ABCD -->\n")
+	r.Write(".abcd/positioning.json", `{"schema_version": 1, "block": {"file": ".abcd/development/IDENTITY.md", "heading": "Identity (canonical)"}, "severity": "warn", "surfaces": []}`+"\n")
+	r.Write(".abcd/development/IDENTITY.md", "# Identity\n\n## Identity (canonical)\n\n- **Title:** Example\n- **Tagline:** An example.\n")
+	r.Write("docs/README.md", "# Example\n\nThe example's documentation.\n")
+	r.Commit("the example")
+	t.Chdir(r.Root())
+	if out, err := runCLIErr(t, "site", "setup", "--name", "example-site"); err != nil {
+		t.Fatalf("site setup: %v\n%s", err, out)
+	}
+	uiPath := filepath.Join(r.Root(), "site-src", "ui.json")
+	drop := func(label string) {
+		t.Helper()
+		body, err := os.ReadFile(uiPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// The seeded line, or the last member a completion put back.
+		line := "    \"" + label + "\": \"" + label + "\",\n"
+		if !strings.Contains(string(body), line) {
+			line = ",\n    \"" + label + "\": \"" + label + "\""
+		}
+		if !strings.Contains(string(body), line) {
+			t.Fatalf("ui.json carries no %s label:\n%s", label, body)
+		}
+		if err := os.WriteFile(uiPath, []byte(strings.Replace(string(body), line, "", 1)), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	want := "added the missing label status.target to site-src/ui.json with its default words\n"
+
+	drop("target")
+	out, errOut, err := runCLISplit(t, "site", "setup")
+	if err != nil {
+		t.Fatalf("site setup: %v\n%s%s", err, out, errOut)
+	}
+	if errOut != "abcd site setup: "+want {
+		t.Fatalf("setup stderr = %q", errOut)
+	}
+
+	drop("target")
+	out, errOut, err = runCLISplit(t, "site", "build", "--out", t.TempDir())
+	if err != nil {
+		t.Fatalf("site build: %v\n%s%s", err, out, errOut)
+	}
+	if errOut != "abcd site build: "+want {
+		t.Fatalf("build stderr = %q", errOut)
+	}
+	if strings.Contains(out, "added the missing label") {
+		t.Errorf("the added-label lines reached stdout:\n%s", out)
+	}
+}

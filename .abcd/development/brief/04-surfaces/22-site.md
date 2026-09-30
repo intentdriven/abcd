@@ -55,7 +55,12 @@ copied from abcd's own; a workflow that renders the site from each published
 release with abcd's checksum- and attestation-verified binary and deploys the
 rendered archive from a second job; and the provider's host configuration. The
 composition and the static inputs are the repository's own once they exist, so
-a later run keeps them as they are. The workflow and the host configuration are
+a later run keeps them as they are, with one exception
+([adr-2609301720596683](../../decisions/adrs/2609301720596683-abcd-adds-a-missing-site-label-to-an-existing-ui-json-and.md)):
+an interface-string file that lacks a label the allowlist declares, because it
+was written before the label existed, gains that label with abcd's own words
+for it, and the run names each added label. Nothing the file already says is
+rewritten. The workflow and the host configuration are
 abcd's: a copy that differs refuses the whole run, with nothing written and
 no remote change attempted, unless the run is told to replace it.
 
@@ -133,6 +138,15 @@ block carries a `data-src` attribute naming the file and heading it came from, s
 each block names its own source in the markup. And the interface-string file is
 decoded against a closed struct with unknown fields refused, so a word added there
 which no field reads fails the build rather than reaching a reader unreviewed.
+A label the struct declares and the file leaves blank fails the build by name. A
+label the file does not carry at all, which is how a file written before that
+label existed reads, is added to the file by the build and by setting up, with
+the words abcd's own interface-string file gives it: each added label is named
+on standard error, every byte already in the file stays, and a file carrying a
+key no field reads is left untouched and refused as before. The render the
+site gate makes of an empty output directory writes only inside that directory,
+so it never completes the file and refuses an incomplete one by name
+([adr-2609301720596683](../../decisions/adrs/2609301720596683-abcd-adds-a-missing-site-label-to-an-existing-ui-json-and.md)).
 
 Every picture is a committed asset under `docs/assets/img/`, referenced from a
 docs page like any other image. SVGs are inlined so their colours follow the
@@ -176,7 +190,9 @@ behind the contributors page;
 and `docs/` with its committed assets. It writes the landing page, the record explorer, the machine-readable
 record export, the install script from its committed template, the redirect and
 header maps, the stylesheets and scripts, every referenced raster, and its own
-build marker. Nothing else, nowhere else.
+build marker. The one write outside the output directory is the missing-label
+completion of the interface-string file above, made only when a declared label
+is absent. Nothing else, nowhere else.
 
 One input reaches past the durable record into the working tier, and it is off
 unless a repository asks for it. The composition declaration carries an

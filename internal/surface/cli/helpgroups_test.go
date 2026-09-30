@@ -87,7 +87,7 @@ func TestRootHelpListsThePersonsGroups(t *testing.T) {
 		"Records:":     {"build", "capture", "decide", "intent", "memory", "source", "spec"},
 		"Checks:":      {"lint"},
 		"Portability:": {"disembark", "embark"},
-		"Release:":     {"launch"},
+		"Release:":     {"launch", "reflect"},
 	} {
 		if strings.Join(entries[group], " ") != strings.Join(want, " ") {
 			t.Errorf("%s lists %v, want %v", group, entries[group], want)

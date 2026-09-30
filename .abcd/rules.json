@@ -109,6 +109,7 @@
         "mode",
         "peers",
         "reading",
+        "reflect",
         "report",
         "rules",
         "scribe",

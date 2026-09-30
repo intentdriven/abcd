@@ -96,6 +96,11 @@ func (t BannedToken) skipFences() bool {
 type RuleConfig struct {
 	Enabled  bool   `json:"enabled"`
 	Severity string `json:"severity"`
+	// onReceipt, when set, is handed each receipt the receipt gate parsed whose
+	// subject names the target commit — its verdict and failing list — before
+	// the verdict is judged. It is how CheckGateReceipt reads what a HOLD
+	// receipt found with the gate's own reader; no config file can set it.
+	onReceipt func(gate, verdict string, failing []ReceiptFinding)
 	// Fields is the no_git_metadata banned frontmatter key list.
 	Fields []string `json:"fields"`
 	// Exempt is a glob allowlist of repo-relative paths (filepath.Match, so `*`

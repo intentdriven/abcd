@@ -1054,7 +1054,7 @@
       "hidden": false,
       "group": "agents",
       "block": "agents",
-      "sentence": "Keep the citation baseline that `abcd lint docs` enforces offline: Writes nothing but that baseline; refuses an unknown sub-verb.",
+      "sentence": "Keep the citation baseline `abcd lint docs` enforces, and judge the brief against the binary: Writes nothing bare; refuses an unknown sub-verb.",
       "flags": []
     },
     {
@@ -1105,6 +1105,55 @@
         },
         {
           "name": "root",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd docs fidelity",
+      "hidden": false,
+      "sentence": "Judge the brief against every shipped surface and the saved docs review: Writes drafted edits only with --apply; refuses a surface no chapter names.",
+      "flags": [
+        {
+          "name": "apply",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "autonomous",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "intent",
+          "shorthand": "",
+          "type": "stringSlice",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "report",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd docs fidelity record",
+      "hidden": false,
+      "sentence": "Save a docs review's verdict as the receipt for HEAD: Writes the receipt in the local tier; refuses a verdict naming no judge.",
+      "flags": [
+        {
+          "name": "verdict-json",
           "shorthand": "",
           "type": "string",
           "required": false,
@@ -1169,6 +1218,20 @@
       "hidden": false,
       "sentence": "Unpack a lifeboat's record families into a target repository: Writes those families and the marker block; refuses the whole write on any conflict.",
       "flags": []
+    },
+    {
+      "path": "abcd embark lessons",
+      "hidden": false,
+      "sentence": "Rank the lessons a lifeboat's retrospectives carry against the new voyage's brief: Writes nothing; refuses a lifeboat that fails its manifest.",
+      "flags": [
+        {
+          "name": "brief",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
     },
     {
       "path": "abcd embark probe",
@@ -2510,6 +2573,13 @@
       "sentence": "Validate the JSON one cold reading returned: Writes its reading records; refuses output the position's licence does not allow.",
       "flags": [
         {
+          "name": "dispatch",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "reading-json",
           "shorthand": "",
           "type": "string",
@@ -2520,6 +2590,35 @@
           "name": "route",
           "shorthand": "",
           "type": "stringArray",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd reflect",
+      "hidden": false,
+      "group": "release",
+      "block": "people",
+      "sentence": "Render the seed a cut release's retrospective interview opens from: Writes nothing; refuses a release that shipped no intent, or an intent id.",
+      "flags": []
+    },
+    {
+      "path": "abcd reflect write",
+      "hidden": false,
+      "sentence": "Write a cut release's retrospective from the interview's answers: Writes its README once; refuses a thin answer or unconfirmed unshipped work.",
+      "flags": [
+        {
+          "name": "answers",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "proceed",
+          "shorthand": "",
+          "type": "bool",
           "required": false,
           "hidden": false
         }

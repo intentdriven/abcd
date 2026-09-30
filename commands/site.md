@@ -57,8 +57,16 @@ the root or in `docs/` — and `CITATION.cff` for the footer),
 `.claude-plugin/plugin.json` (the forge URL, licence and author the links and
 footer use) — and writes the landing page, the record
 export, the redirect and header maps, the stylesheet, the two scripts, the
-`install.sh`, and every referenced raster into the output directory, and
-nowhere else. It reaches no network. The default output directory is `site`,
+`install.sh`, and every referenced raster into the output directory. The one
+write outside it is `site-src/ui.json` itself, and only when the file lacks a
+label abcd declares (a file written before that label existed): the build adds
+each such label with abcd's default words, prints one stderr line per label
+(`abcd site build: added the missing label status.target to site-src/ui.json
+with its default words`), lists them in `added_labels`, and changes nothing
+else in the file. A label the file carries keeps its wording, a blank one is
+still refused by name, and a key abcd does not declare is still refused. The
+render `abcd lint site` makes of an empty output directory never completes the
+file, so the gate refuses an incomplete one by name. It reaches no network. The default output directory is `site`,
 which the repository does not track.
 
 The last two are declared deviations from the generic input contract: a repo
@@ -95,7 +103,8 @@ the fix is an edit to the page.
 ```
 
 sets up the site of a repository abcd manages, in three stages, and emits
-`{ "status": …, "files": […], "environments": […], "host": {…}, "remaining": […], "notes": […] }`:
+`{ "status": …, "files": […], "environments": […], "host": {…}, "remaining": […], "notes": […] }`
+(with `added_labels` and `labels_file` when a label was added):
 
 - `files` — the repository half, each `written`, `current`, `kept` or
   `refused`: `.abcd/site.json` (derived from the identity block and
@@ -103,7 +112,10 @@ sets up the site of a repository abcd manages, in three stages, and emits
   `.github/workflows/site.yml` (render on each published release with abcd's
   verified binary, deploy from the rendered archive) and `wrangler.jsonc`. The
   composition and the static inputs are the repository's own once they exist
-  and are `kept`; a workflow or host configuration that differs from what setup
+  and are `kept`, with one exception: a `site-src/ui.json` lacking a label abcd
+  declares gains it with abcd's default words and is `written`, each added
+  label named on stderr and in `added_labels`, and nothing it already says is
+  rewritten; a workflow or host configuration that differs from what setup
   writes is `refused`, the whole run writes nothing, and `--confirm` replaces it.
 - `environments` — the forge's `site-render` and `site` deployment
   environments, each admitting only the default branch and tags `v*`, created

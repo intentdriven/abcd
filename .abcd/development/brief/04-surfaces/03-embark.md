@@ -2,7 +2,8 @@
 
 Start a repository from someone else's record rather than from nothing. Point
 embark at a packed lifeboat and it writes that project's decisions, issues,
-intents and specs into their canonical places in your repo, verbatim, and opens
+intents, specs and release retrospectives into their canonical places in your
+repo, verbatim, and opens
 with the coverage blanks a human still owes the record. What you get is a
 working store on the first day; what you are told, before any of it, is exactly
 what the pack could not ground.
@@ -37,6 +38,7 @@ whose bytes already match is an idempotent skip, so a re-run is a clean no-op.
 | Verb | Bucket | Status |
 |---|---|---|
 | `from` | — | shipped |
+| `lessons` | — | shipped |
 | `probe` | — | shipped |
 
 
@@ -52,6 +54,15 @@ Bare `/abcd:embark` prints dispatcher help and mutates nothing.
   read-only: what would land where, does the lifeboat verify against its
   manifest, is its schema version one this build understands. It writes nothing
   and runs no product audit.
+- **The lessons** take the same two paths and answer what the previous voyage
+  learned (itd-24): every lesson the lifeboat's release retrospectives carry,
+  ranked by term overlap against the new voyage's brief (the target's framing
+  chapter, or the text of a brief file the caller names), the three most like it first and the
+  rest as a list, for the press-release interview to ask which apply. The
+  manifest is verified first, a lesson is attributed to its directory's
+  validated release tag rather than to anything the file says of itself, and
+  each lesson is cleaned to one inert line of at most 600 bytes. It writes
+  nothing.
 
 ## 1. Source lookup
 
@@ -76,7 +87,11 @@ and then its intent store's lock, the order every writer holding both takes,
 and every planned write is judged again under them. A record created at a
 planned target between the plan and the write — a capture, an intent minted in
 the target meanwhile — is a conflict like any other, so it refuses the whole
-write rather than being replaced.
+write rather than being replaced. A retrospective the reflect verb writes
+takes the intent store's lock too, so it cannot land inside that window, and
+every planned write is an exclusive create: a file that lands at its target
+after the rejudge from a writer holding none of the locks fails the embark
+loudly, never replaced.
 
 ## 3. Scaffold steps
 
@@ -84,8 +99,8 @@ Embark is a deterministic Go run: it reads the lifeboat, plans, refuses on any
 conflict, then writes the record families plus the marker block. No interactive
 scaffolder and no model sit in the write path.
 
-0. **Read the lifeboat.** The four record families — ADRs, issues, intents,
-   specs — plus the report-only files that inform the run. The lifeboat is
+0. **Read the lifeboat.** The five record families — ADRs, issues, intents,
+   specs, release retrospectives — plus the report-only files that inform the run. The lifeboat is
    untrusted input: embark verifies its `manifest_sha256` against the on-disk
    tree, over every hashed file, and refuses a symlink or an oversize file
    anywhere inside. Both operands, the lifeboat and the target, are refused
@@ -102,7 +117,10 @@ scaffolder and no model sit in the write path.
 2. **Write the record families verbatim** to their canonical locations, through
    two-layer containment (an `os.Root` boundary plus independent lexical path
    validation), skipping the unchanged. Bucketed families keep their source
-   bucket: issues by state, intents by lifecycle stage, specs by open or closed.
+   bucket: issues by state, intents by lifecycle stage, specs by open or closed,
+   and a retrospective by its release tag, where only a strict
+   `vMAJOR.MINOR.PATCH` directory holding `README.md` maps and anything else in
+   the family is reported unmapped and never written.
    Terminology, docs and the memory store are **not** embark families; they do
    not travel.
 3. **Re-inject the current abcd marker block** into the target `CLAUDE.md`
@@ -287,7 +305,7 @@ _Generated from the command tree; a drift test fails `go test` when this appendi
 
 ### `abcd embark`
 
-Sub-verbs: `abcd embark from`, `abcd embark probe`.
+Sub-verbs: `abcd embark from`, `abcd embark lessons`, `abcd embark probe`.
 
 Flags: none.
 
@@ -296,6 +314,14 @@ Flags: none.
 Sub-verbs: none.
 
 Flags: none.
+
+### `abcd embark lessons`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--brief` | string |
 
 ### `abcd embark probe`
 

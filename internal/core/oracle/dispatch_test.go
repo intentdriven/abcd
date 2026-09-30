@@ -25,7 +25,7 @@ var dispatchKey = "dk-" + strings.Repeat("7c", 16) + "-not-a-real-key"
 var dispatchBrief = openaiapi.Brief{Instructions: "the scribe's own prompt", Input: "the request the verb emitted"}
 
 // pointed writes a machine configuration with a provider at base pointing
-// scribe at its one listed model, stores key under the provider's credential
+// cold-reading-detection at its one listed model, stores key under the provider's credential
 // name, and returns the fixture and the configuration read.
 func pointed(t *testing.T, base string) (*fx, *APIConfig) {
 	t.Helper()
@@ -38,8 +38,8 @@ func pointed(t *testing.T, base string) (*fx, *APIConfig) {
 // tier the routing tables name, and the receipt names it as tried and used.
 func TestAPointedRoleResolvesToItsProvider(t *testing.T) {
 	f, c := pointed(t, "https://provider.example.com/v1")
-	f.machine(`{"scribe":{"tier":"economy","settings":{"temperature":0}}}`)
-	r, err := Resolve("scribe", f.load(), c.Connections())
+	f.machine(`{"cold-reading-detection":{"tier":"economy","settings":{"temperature":0}}}`)
+	r, err := Resolve("cold-reading-detection", f.load(), c.Connections())
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
@@ -67,18 +67,18 @@ func TestARouteWithoutAConnectionKeepsItsOwnLeg(t *testing.T) {
 	f, c := pointed(t, "https://provider.example.com/v1")
 	l := f.load()
 	conns := c.Connections()
-	routes, err := ParseRoutes([]string{"scribe=host-decides"}, []string{"scribe"}, conns)
+	routes, err := ParseRoutes([]string{"cold-reading-detection=host-decides"}, []string{"cold-reading-detection"}, conns)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := l.Apply(routes); err != nil {
 		t.Fatal(err)
 	}
-	r, err := Resolve("scribe", l, conns)
+	r, err := Resolve("cold-reading-detection", l, conns)
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
-	if r.ConnectionUsed != Harness || r.ConnectionTried != "" || r.Override != "scribe=host-decides" {
+	if r.ConnectionUsed != Harness || r.ConnectionTried != "" || r.Override != "cold-reading-detection=host-decides" {
 		t.Fatalf("route = used %q, tried %q, override %q; want the harness under the override", r.ConnectionUsed, r.ConnectionTried, r.Override)
 	}
 }
@@ -90,8 +90,8 @@ func TestARouteWithoutAConnectionKeepsItsOwnLeg(t *testing.T) {
 func TestDispatchSendsTheStepThroughThePointedProvider(t *testing.T) {
 	p := newProvFake(t, 200, chat("typesafe/jev-1.13-20260915", `{"verdict":"keep","model":"typesafe/jev-1.13"}`))
 	f, c := pointed(t, p.base())
-	f.machine(`{"scribe":{"tier":"economy","settings":{"temperature":0}}}`)
-	r, err := Resolve("scribe", f.load(), c.Connections())
+	f.machine(`{"cold-reading-detection":{"tier":"economy","settings":{"temperature":0}}}`)
+	r, err := Resolve("cold-reading-detection", f.load(), c.Connections())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,9 +137,9 @@ func TestARepositoryRouteToAKeylessProviderDispatches(t *testing.T) {
 	p := newProvFake(t, 200, chat("local-model", `{"verdict":"keep"}`))
 	f := newFx(t)
 	f.machineConfig(`{"oracle":{"api":{"local":{"base_url":"` + p.base() + `","models":["local-model"]}}}}`)
-	f.repoConfig(`{"oracle":{"roles":{"scribe":"local/local-model"}}}`)
+	f.repoConfig(`{"oracle":{"roles":{"cold-reading-detection":"local/local-model"}}}`)
 	c := f.loadAPI()
-	r, err := Resolve("scribe", f.load(), c.Connections())
+	r, err := Resolve("cold-reading-detection", f.load(), c.Connections())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -170,34 +170,34 @@ func TestDispatchRefusesBeforeAnyCall(t *testing.T) {
 
 	t.Run("a route resolved against another machine's connections", func(t *testing.T) {
 		// The route names a connection this configuration's roles do not
-		// point scribe at, so no model can be taken from it.
-		r := Route{Agent: "scribe", Row: Row{Tier: Economy, FanOut: 1}, ConnectionTried: "elsewhere", ConnectionUsed: "elsewhere"}
+		// point cold-reading-detection at, so no model can be taken from it.
+		r := Route{Agent: "cold-reading-detection", Row: Row{Tier: Economy, FanOut: 1}, ConnectionTried: "elsewhere", ConnectionUsed: "elsewhere"}
 		_, _, err := c.Dispatch(ctx, creds, r, dispatchBrief, verdictContract)
-		wantAll(t, err, "scribe", "elsewhere", "oracle.roles.scribe", "~/.abcd/config.json")
+		wantAll(t, err, "cold-reading-detection", "elsewhere", "oracle.roles.cold-reading-detection", "~/.abcd/config.json")
 	})
 
 	t.Run("a keyed provider's route from anywhere but the machine", func(t *testing.T) {
 		// The read refuses it (keyRoutes); a route that reached dispatch any
 		// other way is refused again, so only the person's own machine route
 		// spends their key.
-		r, err := Resolve("scribe", f.load(), c.Connections())
+		r, err := Resolve("cold-reading-detection", f.load(), c.Connections())
 		if err != nil {
 			t.Fatal(err)
 		}
-		tgt := c.roles["scribe"]
+		tgt := c.roles["cold-reading-detection"]
 		tgt.Origin = ".abcd/config.json"
-		c.roles["scribe"] = tgt
-		defer func() { tgt.Origin = "~/.abcd/config.json"; c.roles["scribe"] = tgt }()
+		c.roles["cold-reading-detection"] = tgt
+		defer func() { tgt.Origin = "~/.abcd/config.json"; c.roles["cold-reading-detection"] = tgt }()
 		_, _, err = c.Dispatch(ctx, creds, r, dispatchBrief, verdictContract)
-		wantAll(t, err, "oracle.roles.scribe", "~/.abcd/config.json", "openrouter")
+		wantAll(t, err, "oracle.roles.cold-reading-detection", "~/.abcd/config.json", "openrouter")
 	})
 
 	t.Run("a key that is not set", func(t *testing.T) {
 		g := newFx(t)
 		g.machineConfig(`{"oracle":{"api":{"openrouter":{"base_url":"` + p.base() + `","key":"openrouter",
-			"models":["typesafe/jev-1.13"]}},"roles":{"scribe":"openrouter/typesafe/jev-1.13"}}}`)
+			"models":["typesafe/jev-1.13"]}},"roles":{"cold-reading-detection":"openrouter/typesafe/jev-1.13"}}}`)
 		gc := g.loadAPI()
-		r, err := Resolve("scribe", g.load(), gc.Connections())
+		r, err := Resolve("cold-reading-detection", g.load(), gc.Connections())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -226,7 +226,7 @@ func TestDispatchNeverCarriesTheKey(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			p := newProvFake(t, tc.code, tc.reply)
 			f, c := pointed(t, p.base())
-			r, err := Resolve("scribe", f.load(), c.Connections())
+			r, err := Resolve("cold-reading-detection", f.load(), c.Connections())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -250,7 +250,7 @@ func TestAnUnreachableProviderFallsBackToTheHarness(t *testing.T) {
 	base := p.base()
 	p.srv.Close()
 	f, c := pointed(t, base)
-	r, err := Resolve("scribe", f.load(), c.Connections())
+	r, err := Resolve("cold-reading-detection", f.load(), c.Connections())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -268,7 +268,7 @@ func TestAnUnreachableProviderFallsBackToTheHarness(t *testing.T) {
 	if h.ConnectionUsed != Harness || h.ConnectionTried != "openrouter" || h.OnProvider() || h.SettingsSent != nil {
 		t.Fatalf("fallback route = %+v", h)
 	}
-	for _, want := range []string{"openrouter", "could not be reached", "scribe", "harness"} {
+	for _, want := range []string{"openrouter", "could not be reached", "cold-reading-detection", "harness"} {
 		if !strings.Contains(h.Fallback, want) {
 			t.Fatalf("fallback %q does not name %q", h.Fallback, want)
 		}
@@ -295,10 +295,10 @@ func TestARepositoryRowsSettingsNeverShapeAKeyedCall(t *testing.T) {
 
 	t.Run("pointed by the machine, settings from the repository", func(t *testing.T) {
 		f, c := pointed(t, p.base())
-		f.repo(`{"scribe":{"tier":"economy","settings":{"max_tokens":7,"temperature":1.9}}}`)
-		r, err := Resolve("scribe", f.load(), c.Connections())
-		wantAll(t, err, "scribe", "openrouter", "max_tokens", "temperature", ".abcd/config/oracle-routing.json",
-			"~/.abcd/oracle-routing.json", "agents.scribe.settings")
+		f.repo(`{"cold-reading-detection":{"tier":"economy","settings":{"max_tokens":7,"temperature":1.9}}}`)
+		r, err := Resolve("cold-reading-detection", f.load(), c.Connections())
+		wantAll(t, err, "cold-reading-detection", "openrouter", "max_tokens", "temperature", ".abcd/config/oracle-routing.json",
+			"~/.abcd/oracle-routing.json", "agents.cold-reading-detection.settings")
 		if r.OnProvider() || r.SettingsSent != nil {
 			t.Fatalf("a refused route = %+v; want none", r)
 		}
@@ -306,16 +306,16 @@ func TestARepositoryRowsSettingsNeverShapeAKeyedCall(t *testing.T) {
 
 	t.Run("named by --route, settings from the repository", func(t *testing.T) {
 		f, c := pointed(t, p.base())
-		f.repo(`{"scribe":{"tier":"economy","settings":{"max_tokens":7}}}`)
+		f.repo(`{"cold-reading-detection":{"tier":"economy","settings":{"max_tokens":7}}}`)
 		l, conns := f.load(), c.Connections()
-		routes, err := ParseRoutes([]string{"scribe=economy@openrouter"}, []string{"scribe"}, conns)
+		routes, err := ParseRoutes([]string{"cold-reading-detection=economy@openrouter"}, []string{"cold-reading-detection"}, conns)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if err := l.Apply(routes); err != nil {
 			t.Fatal(err)
 		}
-		r, err := Resolve("scribe", l, conns)
+		r, err := Resolve("cold-reading-detection", l, conns)
 		if err != nil || !r.OnProvider() || string(r.SettingsSent["max_tokens"]) != "7" {
 			t.Fatalf("Resolve = %+v, %v; want the typed route on the keyed leg with the repository's max_tokens merged (CD1)", r, err)
 		}
@@ -323,8 +323,8 @@ func TestARepositoryRowsSettingsNeverShapeAKeyedCall(t *testing.T) {
 
 	t.Run("the same row on the untyped pointed leg is refused", func(t *testing.T) {
 		f, c := pointed(t, p.base())
-		f.repo(`{"scribe":{"tier":"economy","settings":{"max_tokens":7}}}`)
-		r, err := Resolve("scribe", f.load(), c.Connections())
+		f.repo(`{"cold-reading-detection":{"tier":"economy","settings":{"max_tokens":7}}}`)
+		r, err := Resolve("cold-reading-detection", f.load(), c.Connections())
 		wantAll(t, err, "max_tokens", ".abcd/config/oracle-routing.json", "~/.abcd/oracle-routing.json")
 		if r.OnProvider() || r.SettingsSent != nil {
 			t.Fatalf("a refused route = %+v; want none", r)
@@ -333,9 +333,9 @@ func TestARepositoryRowsSettingsNeverShapeAKeyedCall(t *testing.T) {
 
 	t.Run("a repository row without settings", func(t *testing.T) {
 		f, c := pointed(t, p.base())
-		f.repo(`{"scribe":{"tier":"economy"}}`)
-		f.machine(`{"scribe":{"tier":"economy","settings":{"temperature":0}}}`)
-		r, err := Resolve("scribe", f.load(), c.Connections())
+		f.repo(`{"cold-reading-detection":{"tier":"economy"}}`)
+		f.machine(`{"cold-reading-detection":{"tier":"economy","settings":{"temperature":0}}}`)
+		r, err := Resolve("cold-reading-detection", f.load(), c.Connections())
 		if err != nil || !r.OnProvider() || len(r.SettingsSent) != 0 {
 			t.Fatalf("Resolve = %+v, %v; want the keyed leg with no setting", r, err)
 		}
@@ -343,10 +343,10 @@ func TestARepositoryRowsSettingsNeverShapeAKeyedCall(t *testing.T) {
 
 	t.Run("a keyless leg keeps the repository's settings", func(t *testing.T) {
 		f := newFx(t)
-		f.machineConfig(`{"oracle":{"api":{"local":{"base_url":"` + p.base() + `","models":["local-model"]}},"roles":{"scribe":"local/local-model"}}}`)
-		f.repo(`{"scribe":{"tier":"economy","settings":{"max_tokens":7}}}`)
+		f.machineConfig(`{"oracle":{"api":{"local":{"base_url":"` + p.base() + `","models":["local-model"]}},"roles":{"cold-reading-detection":"local/local-model"}}}`)
+		f.repo(`{"cold-reading-detection":{"tier":"economy","settings":{"max_tokens":7}}}`)
 		c := f.loadAPI()
-		r, err := Resolve("scribe", f.load(), c.Connections())
+		r, err := Resolve("cold-reading-detection", f.load(), c.Connections())
 		if err != nil || r.ConnectionUsed != "local" || string(r.SettingsSent["max_tokens"]) != "7" {
 			t.Fatalf("Resolve = %+v, %v; want the repository's max_tokens sent to the keyless leg", r, err)
 		}
@@ -370,7 +370,7 @@ func TestAnAdmittedAnswerEchoingTheKeyIsDispatchedScrubbed(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			p := newProvFake(t, 200, chat("typesafe/jev-1.13", content))
 			f, c := pointed(t, p.base())
-			r, err := Resolve("scribe", f.load(), c.Connections())
+			r, err := Resolve("cold-reading-detection", f.load(), c.Connections())
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -23,8 +23,15 @@ and surfaced on embark.
 
 ## Scope
 
-1. **The seed**: the intents in `shipped/` whose `shipped_in` names the tag;
-   for each, the `## Audit Notes` the intent auditor wrote (per-criterion
+1. **The seed**: the intents the tag shipped, read the way the release cut
+   reads them: those that reached `shipped/` between the previous release tag
+   and this one, less any whose `shipped_in` names another release, plus any
+   in `shipped/` now whose `shipped_in` names this one. Amended on 2026-09-30
+   under ruling AD ("seed from A RELEASE (the intents a tag shipped)"): the
+   first wording read membership from `shipped_in` alone, but no cut writes
+   that stamp, so it found nothing for any release cut the ordinary way; the
+   stamp now moves a record between releases rather than defining membership.
+   For each, the `## Audit Notes` the intent auditor wrote (per-criterion
    verdicts, honoured / diverged / missing) and its `impact`; and the
    changelog section the cut composed for the tag. The seed says so when a
    shipped intent carries no audit notes (criteria 1, 2).
@@ -67,7 +74,7 @@ and surfaced on embark.
 ## Approach
 
 `internal/core/reflect` holds the seed builder (reads the tag and the
-intents whose `shipped_in` names it), the metrics, the thin-answer floor and
+intents it shipped, per scope 1), the metrics, the thin-answer floor and
 the writer; the interview itself is host-run from `commands/reflect.md`,
 which renders the seed and the five sections and calls `abcd reflect write
 <release-tag> --answers <file>` with the answers. The nudge is one line in

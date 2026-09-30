@@ -416,6 +416,21 @@ Exit codes gate the flow:
   something to work around.
 - **2** — a structural fault (the repository could not be read). Relay it and stop.
 
+**The cut needs a docs review for the commit it runs on.** When any intent
+reached `shipped/` since the base tag, the cut runs the doc-fidelity gate over
+all of them and refuses (`doc-fidelity`, "run the docs review first") until a
+review is saved for HEAD:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" docs fidelity record --verdict-json verdict.json
+```
+
+`/abcd:docs` (its `fidelity` section) says how to compose the verdict. The
+review is labelled with the commit it read and kept in the checkout's local
+tier, so a review saved on a feature branch does not carry over: a cut made on
+`main` needs one recorded there for the merge commit, which means running the
+reviewer after the merge.
+
 ### The findings gate
 
 Both renders — `abcd changelog` and `abcd launch ship` — carry two lines about
@@ -505,6 +520,21 @@ the tier, one stderr line says the step goes through the harness instead. A
 set, a connection this machine has not configured, or a routing table that
 cannot be read exits 2 before anything is written. With no table accepted and no
 `--route`, the step asks for `host-decides` and nothing is printed.
+
+**A step routed to a provider has already run.** When the person has pointed
+`oracle.roles.release-changelog-composer` at a provider in
+`~/.abcd/config.json`, the emit step sends the emitted cut there itself,
+ingests the answer as the ingest step would, and prints the ingest's result
+with a `route` receipt whose `connection_used` names the provider. **When
+`route.connection_used` is not `harness`, the cut is already ingested: skip
+step 2 and relay the result.** A provider that holds a key takes only
+self-contained agents (ruling DR5 of 2026-09-29); the composer reads records
+at their paths, so pointed at such a provider the emit exits 2 before anything
+is sent, naming the rule and `oracle.bundled_context_providers`. A provider
+that could not be reached leaves the step to you with one stderr line. A
+`--changelog-json` you composed while the composer is routed to a provider is
+refused at exit 2; `--route release-changelog-composer=host-decides` keeps one
+run on the harness. A dispatched cut stages no `--payload-dir`.
 
 ### 2. Compose the prose (host-delegated)
 

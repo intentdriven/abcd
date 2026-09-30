@@ -1,7 +1,7 @@
 ---
 name: docs
-description: "Keep the citation baseline that `abcd lint docs` enforces offline: Writes nothing but that baseline; refuses an unknown sub-verb."
-argument-hint: "[cite refresh | cite confirm <url>...]"
+description: "Keep the citation baseline `abcd lint docs` enforces, and judge the brief against the binary: Writes nothing bare; refuses an unknown sub-verb."
+argument-hint: "[cite refresh | cite confirm <url>... | fidelity [--report|--apply|--autonomous] | fidelity record --verdict-json <file|->]"
 block: agents
 ---
 
@@ -71,6 +71,51 @@ loading rejects unknown keys.
 Set `abcd mode facilitator` first, then confirm on the technical facilitator's
 word that they checked. An agent must never run `confirm` on its own initiative
 to clear a red gate.
+
+## `fidelity` — the brief describes every surface that ships
+
+`spec close` and `launch ship` run this gate themselves; run it directly to see
+what they will say:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" docs fidelity --json
+```
+
+Report `verdict.uncovered` (verbs, sub-verbs and agents no brief chapter names),
+`verdict.review.status` (`match`, `none`, `stale`, `invalid`, `hold`,
+`inconclusive`) and every line of `verdict.reasons`. Exit 1 is a refusal. Use
+`--report` after a task: it states the same findings and refuses nothing.
+
+When the review is `none` or `stale`, run the docs review for HEAD. Read the
+brief chapters under `.abcd/development/brief/04-surfaces/` that describe what
+the change delivered, check each sentence against the code, and compose:
+
+```json
+{"verificationResult": "PROMOTE", "judgeModel": "<pinned model id>", "tier": "full", "failing": []}
+```
+
+`judgeModel` is the pinned id of the model that judged, with its version or
+date; the record verb refuses a bare family name and any id naming `latest`.
+
+A sentence you **confirmed** false goes in `failing` with `"doc": "brief"`, its
+`chapter` file name, the `sentence` verbatim from one line of the chapter (at
+most 2048 bytes; quote the part on one line when it wraps), the `evidence`
+(file:line), a `disposition`, and, where you can, a drafted `replacement`; the
+verdict is then `HOLD`, since the record verb refuses a `PROMOTE` naming one. A
+false sentence in the public docs takes `"doc": "public"`: it is reported and
+never refuses. Use `INCONCLUSIVE` when you cannot judge; never
+`PROMOTE` from absent evidence. Save it:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" docs fidelity record --verdict-json verdict.json
+```
+
+The binary labels the receipt with HEAD; a later commit makes it stale. When a
+HOLD carries drafted replacements, `docs fidelity --apply` writes them into the
+brief and flags each in `.abcd/work/brief-review-flags.json`: tell the user
+which sentences changed, because the brief now carries sentences they did not
+write until they read them. `--autonomous` does the same in an unattended run
+and adds the reviewer's `request` to the JSON.
 
 **Binary resolution.** Run `"${CLAUDE_PLUGIN_ROOT}/abcd"` — a plugin install
 provisions the binary into the plugin root, so this is the rung that fires for a

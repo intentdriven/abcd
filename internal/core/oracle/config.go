@@ -120,6 +120,9 @@ type APIConfig struct {
 	denylist   []DenyEntry
 	roles      map[string]Target
 	judgements map[string]Target
+	// bundled is the providers oracle.bundled_context_providers names
+	// (selfcontained.go), read from the machine layer alone.
+	bundled map[string]bool
 	// Diagnostics are the non-fatal reports the read produced, one line each,
 	// for a front door to print on stderr: a route naming a provider this
 	// machine has not configured, a role outside the roster, and a skipped
@@ -148,6 +151,9 @@ func LoadAPI(r layered.Roots) (*APIConfig, error) {
 		return nil, err
 	}
 	if err := c.readProviders(s); err != nil {
+		return nil, err
+	}
+	if err := c.readBundled(s); err != nil {
 		return nil, err
 	}
 	if err := c.readRoutes(s, rolesKey, c.roles); err != nil {
