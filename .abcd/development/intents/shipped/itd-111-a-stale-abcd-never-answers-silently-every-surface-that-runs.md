@@ -275,3 +275,5 @@ Gap audit:
 <!-- abcd-review-end receipt=rcp-69424cae8106 -->
 
 Surfaces named, recorded on 2026-09-29 as iss-2609292057441479 after the fidelity review above: criterion 3's `abcd version` report is met by `abcd --version` (and by `abcd ahoy`), and criterion 5's `abcd version --check` is met by `abcd update --check`, the spellings itd-2609212130136102 consolidated them into; both old spellings refuse with a notice naming the new one. Design decision 6 and the resolved open question on check naming read the same way. The criterion text above stands as shipped, and adr-38's rule is unchanged, so it is not superseded.
+
+Probe ordering paid, recorded on 2026-09-30: the ac-2 concern above, that under an explicit `--bin-dir` the writability probe created and removed a temp file before the stale-binary refusal fired, is resolved by iss-2609291942529461. The refusal runs before the adoption question and before the install target is resolved, so a stale or unknown-vintage binary refuses before it touches the filesystem, and TestStaleRefusalPrecedesTheBinDirProbe holds that order. The ac-2 verdict above stands as the audit recorded it.
