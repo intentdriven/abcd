@@ -284,10 +284,12 @@ func TestAnUnreachableProviderFallsBackToTheHarness(t *testing.T) {
 
 // TestARepositoryRowsSettingsNeverShapeAKeyedCall: a paid key is spent only
 // through the person's own machine configuration (keyRoutes' rule), so a
-// repository routing row's settings never reach a call on a keyed leg: the
-// route is refused at read, naming each setting, the repository file and
-// where to move it, and nothing is sent. A row without settings, the
-// machine's own row, and a keyless leg keep the merge.
+// repository routing row's settings never reach a call on a keyed leg the
+// person did not type: the route is refused at read, naming each setting, the
+// repository file and where to move it, and nothing is sent. A route the
+// person typed with --route is theirs, so the row's settings merge within the
+// provider's accepted set (ruling CD1, 2026-09-30). A row without settings,
+// the machine's own row, and a keyless leg keep the merge.
 func TestARepositoryRowsSettingsNeverShapeAKeyedCall(t *testing.T) {
 	p := newProvFake(t, 200, chat("typesafe/jev-1.13", `{"verdict":"keep"}`))
 
@@ -313,8 +315,20 @@ func TestARepositoryRowsSettingsNeverShapeAKeyedCall(t *testing.T) {
 		if err := l.Apply(routes); err != nil {
 			t.Fatal(err)
 		}
-		_, err = Resolve("scribe", l, conns)
+		r, err := Resolve("scribe", l, conns)
+		if err != nil || !r.OnProvider() || string(r.SettingsSent["max_tokens"]) != "7" {
+			t.Fatalf("Resolve = %+v, %v; want the typed route on the keyed leg with the repository's max_tokens merged (CD1)", r, err)
+		}
+	})
+
+	t.Run("the same row on the untyped pointed leg is refused", func(t *testing.T) {
+		f, c := pointed(t, p.base())
+		f.repo(`{"scribe":{"tier":"economy","settings":{"max_tokens":7}}}`)
+		r, err := Resolve("scribe", f.load(), c.Connections())
 		wantAll(t, err, "max_tokens", ".abcd/config/oracle-routing.json", "~/.abcd/oracle-routing.json")
+		if r.OnProvider() || r.SettingsSent != nil {
+			t.Fatalf("a refused route = %+v; want none", r)
+		}
 	})
 
 	t.Run("a repository row without settings", func(t *testing.T) {

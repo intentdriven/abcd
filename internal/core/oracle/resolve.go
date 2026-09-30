@@ -190,7 +190,7 @@ func Resolve(agent string, l *Layered, conns Connections) (Route, error) {
 
 	leg := providerLeg{agent: agent, flagText: flagText, baseWhere: baseWhere, baseLayer: baseLayer, base: base.Settings}
 	if flag != nil {
-		leg.flag = flag.Settings
+		leg.flag, leg.typed = flag.Settings, true
 	}
 	switch {
 	case flag != nil && flag.Connection != "":
@@ -244,11 +244,14 @@ func pointedAt(conns Connections, agent string, leg *providerLeg) bool {
 // providerLeg is what a refusal on a provider leg names: the agent, how the
 // leg was reached, and where each layer's settings came from.
 type providerLeg struct {
-	conn      Connection
-	agent     string
-	via       string
-	flagText  string
-	flag      Settings
+	conn     Connection
+	agent    string
+	via      string
+	flagText string
+	flag     Settings
+	// typed is whether the person typed a --route for this agent: a keyed leg
+	// they typed merges the repository row's settings (ruling CD1).
+	typed     bool
 	baseWhere string
 	baseLayer layered.Layer
 	base      Settings
@@ -264,11 +267,14 @@ type providerLeg struct {
 // to add (AC 11, the product thinker's ruling of 2026-09-29). The merged
 // settings are then held to the set c's adapter accepts: a setting outside it
 // is refused, never dropped (AC 8), and a connection no adapter backs accepts
-// none. On a keyed connection, a setting the repository's routing row names is
-// refused too, never dropped: a paid key is spent only through the person's
-// own machine configuration (ruling AA(b) of 2026-09-29), so the repository
-// may not size or shape the call; the refusal names each setting, the
-// repository file and the machine file to move it to.
+// none. On a keyed connection the person did not type with --route, a setting
+// the repository's routing row names is refused too, never dropped: a paid key
+// is spent only through the person's own machine configuration (ruling AA(b)
+// of 2026-09-29), so the repository may not size or shape the call; the
+// refusal names each setting, the repository file and the machine file to
+// move it to. A route the person typed is theirs, so there the row's settings
+// merge within the accepted set like any other layer's (ruling CD1 of
+// 2026-09-30).
 func (p providerLeg) take(r *Route, c Connection, rowSettings Settings) error {
 	if len(c.Models) == 0 {
 		return fmt.Errorf("oracle routing: %s resolves to connection %s (%s), whose allowlist lists no model; "+
@@ -292,7 +298,7 @@ func (p providerLeg) take(r *Route, c Connection, rowSettings Settings) error {
 			p.agent, c.Name, p.via, p.agent, layered.BoundKey(model), c.Name, listNames(c.Models),
 			layered.BoundKey(model), c.Name, p.agent, p.agent, HostDecides)
 	}
-	if c.Keyed && p.baseLayer == layered.Repo && len(p.base) > 0 {
+	if c.Keyed && !p.typed && p.baseLayer == layered.Repo && len(p.base) > 0 {
 		machine := layered.OracleRouting.MachineOrigin()
 		return fmt.Errorf("oracle routing: %s resolves to connection %s (%s), a provider that holds a key, and the repository's "+
 			"routing row sets %s (from %s); only the person's own machine configuration may shape a call that spends their key, "+
