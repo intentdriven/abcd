@@ -282,10 +282,14 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 		}
 		trailers = append(trailers, "Resolves: "+r.Issue)
 	}
-	// The local tier holds the close's review request and the preflight's
-	// receipts; it is never part of the change, ignored or not.
-	if _, err := pickGit(wt, "add", "-A", "--", ".", ":(exclude)"+TierRelDir); err != nil {
+	if _, err := pickGit(wt, "add", "-A", "--", "."); err != nil {
 		return Outcome{}, fmt.Errorf("staging the landing's records: %w", err)
+	}
+	// The local tier holds the close's review request and the preflight's
+	// receipts; it is never part of the change, even in a repository that does
+	// not ignore it. The reset takes back only what the add staged there.
+	if _, err := pickGit(wt, "reset", "-q", "--", TierRelDir); err != nil {
+		return Outcome{}, fmt.Errorf("keeping the local tier out of the landing's records: %w", err)
 	}
 	staged, err := pickGit(wt, "diff", "--cached", "--name-only", "-z")
 	if err != nil {
