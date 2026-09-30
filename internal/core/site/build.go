@@ -288,6 +288,11 @@ type Request struct {
 	// The front door hands in the implement loop's reader, which this package
 	// cannot import.
 	Lanes statusblock.LaneReader
+	// LeaveUI renders without completing the repository's ui.json: the gate's
+	// own render (Check) writes only inside its output directory, so an older
+	// file is refused there by name and completed by `site build` or
+	// `site setup` alone.
+	LeaveUI bool
 }
 
 // Result describes what a build wrote.
@@ -314,6 +319,11 @@ type Result struct {
 	// Version and Commit are what the footer says the site was built from.
 	Version string `json:"version"`
 	Commit  string `json:"commit"`
+	// AddedLabels names each interface label the build added to the
+	// repository's ui.json, LabelsFile, because the file declared none for it
+	// (the TG1 ruling). Both are empty when nothing was added.
+	AddedLabels []string `json:"added_labels,omitempty"`
+	LabelsFile  string   `json:"labels_file,omitempty"`
 }
 
 // ErrNoManifest is returned when the repository declares no composition.
@@ -359,6 +369,15 @@ func Build(req Request) (Result, error) {
 			return Result{}, ErrNoManifest
 		}
 		return Result{}, err
+	}
+	// A ui.json written before a label existed gains that label with its
+	// default words, and nothing else changes (the TG1 ruling); a label the
+	// file carries, blank or not, is still judged by LoadUI.
+	var addedLabels []string
+	if !req.LeaveUI {
+		if addedLabels, err = addMissingLabels(repoRoot, manifest.UIStrings); err != nil {
+			return Result{}, err
+		}
 	}
 	ui, err := LoadUI(repoRoot, manifest.UIStrings)
 	if err != nil {
@@ -480,15 +499,19 @@ func Build(req Request) (Result, error) {
 	}
 
 	res := Result{
-		OutDir:     fsutil.RepoRelativePath(repoRoot, outDir),
-		Records:    len(export.Nodes),
-		Links:      len(export.Edges),
-		Mentions:   len(export.Mentions),
-		Unresolved: len(export.Health.Unresolved),
-		Baseline:   export.Health.BaselineCount,
-		Overlaps:   export.Layout.Overlaps,
-		Version:    stamp.Version,
-		Commit:     stamp.Commit,
+		OutDir:      fsutil.RepoRelativePath(repoRoot, outDir),
+		Records:     len(export.Nodes),
+		Links:       len(export.Edges),
+		Mentions:    len(export.Mentions),
+		Unresolved:  len(export.Health.Unresolved),
+		Baseline:    export.Health.BaselineCount,
+		Overlaps:    export.Layout.Overlaps,
+		Version:     stamp.Version,
+		Commit:      stamp.Commit,
+		AddedLabels: addedLabels,
+	}
+	if len(addedLabels) > 0 {
+		res.LabelsFile = manifest.UIStrings
 	}
 
 	// The output tree is a RENDER of this commit, not an accumulation of every

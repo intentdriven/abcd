@@ -68,6 +68,7 @@ func newSiteCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return &exitError{Code: 2, Msg: "abcd site build: " + scrubPaths(err)}
 			}
+			sayAddedLabels(cmd.ErrOrStderr(), "abcd site build", res.LabelsFile, res.AddedLabels)
 			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
 				renderSiteBuild(w, res)
 			})
@@ -296,6 +297,7 @@ func newSiteSetupCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return &exitError{Code: 2, Msg: "abcd site setup: " + scrubPaths(err)}
 			}
+			sayAddedLabels(cmd.ErrOrStderr(), "abcd site setup", res.LabelsFile, res.AddedLabels)
 			if rerr := render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) {
 				renderSiteSetup(w, res)
 			}); rerr != nil {
@@ -315,6 +317,16 @@ func newSiteSetupCommand(asJSON *bool) *cobra.Command {
 	cmd.Flags().BoolVar(&confirm, "confirm", false, "replace a workflow or host configuration that differs from what setup writes")
 	cmd.Flags().BoolVar(&yes, "yes", false, "confirm the forge and host changes without being asked (never the install of a missing gh); without it an unanswered run declines them")
 	return cmd
+}
+
+// sayAddedLabels tells the person, on stderr and one line per label, which
+// interface labels a verb added to the repository's ui.json (the TG1 ruling):
+// the file is theirs, so a write to it is never silent, and stdout stays the
+// verb's result in both the text and the JSON form.
+func sayAddedLabels(w io.Writer, verb, file string, labels []string) {
+	for _, l := range labels {
+		fmt.Fprintln(w, termsafe.Sanitize(verb+": added the missing label "+l+" to "+file+" with its default words"))
+	}
 }
 
 // renderSiteSetup prints the three stages and what remains.
