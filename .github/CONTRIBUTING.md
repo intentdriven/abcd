@@ -70,7 +70,13 @@ inbound = outbound statement is the whole of it.
   the check) and the pre-push receipt check: a push of a commit the remote does
   not hold yet needs a passing `make preflight` run on that commit with nothing
   uncommitted beside it, and the hook checks the receipt that run mints rather
-  than running the preflight while the push holds its connection open.
+  than running the preflight while the push holds its connection open. The
+  prepare-commit-msg hook writes the `Assisted-by:` trailer a revert or
+  cherry-pick leaves out, from one command:
+  `git -c abcd.assistedBy=<Vendor>:<model-version> revert|cherry-pick <sha>`.
+  Unset, the key writes nothing; a standing `git config abcd.assistedBy` also
+  stamps every `-m`/`-F` commit, every `--amend` and every cherry-pick, a false
+  disclosure for work no model touched, so set it for the one command only.
 - **Conventional-commit prefixes** (`feat`/`fix`/`docs`/`chore`/`refactor`/`test`/`ci`),
   no scopes; short title, body explains why.
 - A user-facing change **resolves its issue or ships its intent in the same diff**;

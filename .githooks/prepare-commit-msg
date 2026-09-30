@@ -9,12 +9,14 @@
 # revert`, `git cherry-pick`, a squash — and none of them writes the trailer, so a
 # plain revert was refused by the gate and could be satisfied only by rewriting
 # history (iss-2609251125591539). This hook writes the trailer at the moment git
-# prepares the message, from ONE place only:
+# prepares the message, from ONE place only, the abcd.assistedBy key, set for the
+# one command that needs it:
 #
-#     git config abcd.assistedBy <Vendor>:<model-version>
+#     git -c abcd.assistedBy=<Vendor>:<model-version> revert|cherry-pick <sha>
 #
-# (any scope: `git -c abcd.assistedBy=… revert <sha>` for one command, the clone's
-# config for a session). When that key is unset the hook does NOTHING: which tool
+# A standing `git config abcd.assistedBy` (the clone's or the user's) also stamps
+# every -m/-F commit, every --amend and every cherry-pick it sees, which is a false
+# disclosure for work no model touched. When that key is unset the hook does NOTHING: which tool
 # assisted a change is a fact only the committer has, and a hook that guessed would
 # manufacture the disclosure the convention exists to obtain. It never writes
 # `Assisted-by: None` either: None is a per-commit declaration that no tool
