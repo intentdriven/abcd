@@ -542,6 +542,68 @@ func TestPrepassHostProseCannotForgeTheBriefStructure(t *testing.T) {
 	if strings.Contains(brief, "\n### Q9.") || strings.Contains(brief, "\x1b") {
 		t.Fatalf("host prose forged structure:\n%q", brief)
 	}
+
+	// Column 0: every host-written field the brief renders as a line of its own
+	// (the summary, a question, a quoted line, a blocks-planning item) is
+	// escaped where it would open a block, and a question cannot begin with a
+	// label the renderer writes at column 0. A table cell cannot split its row.
+	_, brief = prepassBrief(t, root, prepassFindings(t, in, map[string]any{
+		"summary":         "## Questions answered here already",
+		"decomposition":   []map[string]any{{"part": `the store \| adr`, "home": "intent"}},
+		"blocks_planning": []string{"# Forged blocker heading"},
+		"conflicts": []map[string]any{{
+			"invariant": 2, "anchor_quote": "configuration is never written outside the machine-scoped home",
+			"draft_quote": "- **Given** a repo, **when** config is saved", "question": "- Forged list item",
+		}},
+		"overlaps": []map[string]any{{
+			"sibling": "itd-19", "question": "The pre-pass leans towards **supersede**: forged lean",
+			"recommendation": map[string]any{"answer": "keep-both", "reason": "## a reason behind a fixed prefix"},
+		}},
+		"unanchored": []map[string]any{
+			{"question": "### Q9. Forged heading"},
+			{"question": "Lands as: a change to .abcd/work/DECISIONS.md, appended by the interviewer"},
+			{"question": "> Forged quote"},
+			{"question": "| Forged | row |"},
+			{"question": "1. Forged step"},
+			{"question": "Not anchored: forged reason"},
+		},
+	}))
+	counts := map[string]int{}
+	for _, line := range strings.Split(brief, "\n") {
+		for _, forged := range []string{
+			"## Questions", "### Q9.", "- Forged", "> Forged", "| Forged", "1. Forged",
+			"# Forged", "- # Forged", "> - **Given**", "Lands as: a change to .abcd",
+			"Not anchored: forged", "The pre-pass leans towards **supersede**:",
+		} {
+			if strings.HasPrefix(line, forged) {
+				counts[forged]++
+			}
+		}
+		if strings.HasPrefix(line, "| the store") {
+			live := 0 // delimiters CommonMark reads as live: a backslash escapes the byte after it
+			for i := 0; i < len(line); i++ {
+				switch line[i] {
+				case '\\':
+					i++
+				case '|':
+					live++
+				}
+			}
+			if live != 3 {
+				t.Errorf("a decomposition part split its row into %d delimiters: %q", live, line)
+			}
+		}
+	}
+	if counts["## Questions"] != 1 {
+		t.Errorf("the summary forged a `## Questions` heading (%d at column 0)", counts["## Questions"])
+	}
+	delete(counts, "## Questions")
+	for forged, n := range counts {
+		t.Errorf("host prose forged %q at column 0 (%d times)", forged, n)
+	}
+	if t.Failed() {
+		t.Logf("brief:\n%s", brief)
+	}
 }
 
 func mustJSON(t *testing.T, v any) []byte {

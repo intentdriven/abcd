@@ -65,8 +65,8 @@ func mdBlock(s string) string { return escapeLeadingMarker(mdInline(s)) }
 // The bracket is the subtle one: a paragraph shaped like `[label]: <dest>` is
 // consumed as a definition and renders as nothing, and it arms a `[label]`
 // shortcut reference in any other field, which the cleaner leaves alone, as a
-// live link to the attacker's destination (iss-2609262237352137). ideate's
-// blockText escapes it for the same reason.
+// live link to the attacker's destination (iss-2609262237352137).
+// termsafe.BlockText escapes it for the same reason.
 //
 // A leading backtick is escaped only when its run is UNBALANCED, which is the
 // only run that opens a fence: a backtick fence's info string may not contain
@@ -74,7 +74,7 @@ func mdBlock(s string) string { return escapeLeadingMarker(mdInline(s)) }
 // span. The cleaner's HTML-tag rule exempts a span, and that exemption holds
 // only while the value is parsed as the string it was cleaned as; escaping a
 // balanced run's opener kills the span and republishes the tag it sheltered
-// as live HTML (iss-2609262237415400, the defect ideate's blockText was fixed
+// as live HTML (iss-2609262237415400, the defect termsafe.BlockText was fixed
 // for).
 func escapeLeadingMarker(s string) string {
 	if s == "" {

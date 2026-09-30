@@ -689,11 +689,38 @@ func prepassSibling(in PrepassInput, id string) (PrepassIndexEntry, bool) {
 	return PrepassIndexEntry{}, false
 }
 
-// prepassLine and prepassProse clean untrusted text for the brief: one line,
-// no terminal bytes, no markdown that could open structure.
+// prepassLine cleans untrusted text for a field behind a fixed prefix, whose
+// first character cannot open a block; a field on a line of its own takes
+// prepassBlock or prepassAsk.
 func prepassLine(s string) string { return termsafe.CleanProseLine(s, prepassProseCap) }
 
-func prepassQuote(s string) string { return termsafe.CleanProseLine(s, prepassQuoteCap) }
+// prepassBlock cleans a host field written at the start of a line (a paragraph,
+// a quote's or a list item's content) and escapes a leading block marker.
+func prepassBlock(s string, max int) string {
+	return termsafe.BlockText(termsafe.CleanProseLine(s, max))
+}
+
+// prepassLabels are the lines the brief writes at column 0 inside a question:
+// the interview records an answer where "Lands as:" says, reads "Not anchored:"
+// as the binary's reason, and says the lean apart from the question.
+var prepassLabels = []string{"Lands as:", "Not anchored:", "The pre-pass leans towards"}
+
+// prepassAsk renders a question, the one host field written as a bare paragraph
+// between the brief's own labels. Beyond prepassBlock, a question that opens
+// with one of those labels would read as the brief's own line above the genuine
+// one, so its first colon is backslash-escaped: CommonMark renders `\:` as the
+// colon itself, and the line no longer begins with the label.
+func prepassAsk(s string) string {
+	t := prepassBlock(s, prepassProseCap)
+	for _, l := range prepassLabels {
+		if len(t) >= len(l) && strings.EqualFold(t[:len(l)], l) {
+			if i := strings.IndexByte(t, ':'); i >= 0 {
+				return t[:i] + `\` + t[i:]
+			}
+		}
+	}
+	return t
+}
 
 func renderPrepassBrief(in PrepassInput, f prepassReturn, qs []prepassQuestion) string {
 	var b strings.Builder
@@ -709,7 +736,7 @@ func renderPrepassBrief(in PrepassInput, f prepassReturn, qs []prepassQuestion) 
 	if prepassBlank(f.Summary) {
 		b.WriteString("_The pre-pass returned no summary._\n\n")
 	} else {
-		b.WriteString(termsafe.CleanProse(f.Summary, 4*prepassProseCap) + "\n\n")
+		b.WriteString(termsafe.BlockText(termsafe.CleanProse(f.Summary, 4*prepassProseCap)) + "\n\n")
 	}
 
 	b.WriteString("## Decomposition (an ungraded proposal)\n\n")
@@ -718,7 +745,7 @@ func renderPrepassBrief(in PrepassInput, f prepassReturn, qs []prepassQuestion) 
 	} else {
 		b.WriteString("| Part | Home |\n| --- | --- |\n")
 		for _, p := range f.Decomposition {
-			fmt.Fprintf(&b, "| %s | %s |\n", strings.ReplaceAll(prepassLine(p.Part), "|", `\|`), p.Home)
+			fmt.Fprintf(&b, "| %s | %s |\n", termsafe.TableCell(prepassLine(p.Part)), p.Home)
 		}
 		b.WriteString("\n")
 	}
@@ -733,13 +760,13 @@ func renderPrepassBrief(in PrepassInput, f prepassReturn, qs []prepassQuestion) 
 		case "conflict":
 			fmt.Fprintf(&b, "### Q%d. %s\n\n", n, prepassLine(q.heading))
 			for _, qt := range q.quotes {
-				fmt.Fprintf(&b, "%s says:\n\n> %s\n\n", prepassLine(qt[0]), prepassQuote(qt[1]))
+				fmt.Fprintf(&b, "%s says:\n\n> %s\n\n", prepassLine(qt[0]), prepassBlock(qt[1], prepassQuoteCap))
 			}
-			fmt.Fprintf(&b, "%s\n\n", prepassLine(q.question))
+			fmt.Fprintf(&b, "%s\n\n", prepassAsk(q.question))
 			b.WriteString("Lands as: a decision in the draft's `## Decisions` saying which gives, or a change to the draft's text before it is planned.\n\n")
 		case "overlap":
 			fmt.Fprintf(&b, "### Q%d. %s\n\n", n, prepassLine(q.heading))
-			fmt.Fprintf(&b, "%s\n\n", prepassLine(q.question))
+			fmt.Fprintf(&b, "%s\n\n", prepassAsk(q.question))
 			for _, a := range PrepassAnswers {
 				fmt.Fprintf(&b, "- **%s**\n", prepassAnswerLabel[a])
 			}
@@ -759,7 +786,7 @@ func renderPrepassBrief(in PrepassInput, f prepassReturn, qs []prepassQuestion) 
 				"refine, a decision in the draft's `## Decisions` naming what it refines in %[1]s.\n\n", sib, in.Intent)
 		default:
 			fmt.Fprintf(&b, "### Q%d. A question (unanchored)\n\n", n)
-			fmt.Fprintf(&b, "%s\n\n", prepassLine(q.question))
+			fmt.Fprintf(&b, "%s\n\n", prepassAsk(q.question))
 			if q.why != "" {
 				fmt.Fprintf(&b, "Not anchored: %s, so it is asked, not asserted.\n\n", prepassLine(q.why))
 			}
@@ -772,7 +799,7 @@ func renderPrepassBrief(in PrepassInput, f prepassReturn, qs []prepassQuestion) 
 		b.WriteString("_The pre-pass flagged nothing that blocks planning._\n")
 	} else {
 		for _, x := range f.BlocksPlanning {
-			fmt.Fprintf(&b, "- %s\n", prepassLine(x))
+			fmt.Fprintf(&b, "- %s\n", prepassBlock(x, prepassProseCap))
 		}
 	}
 	if len(in.Warnings) > 0 {
