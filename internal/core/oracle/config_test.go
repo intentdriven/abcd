@@ -276,8 +276,8 @@ func TestARepositoryRouteWithAMalformedNameIsSkipped(t *testing.T) {
 					t.Errorf("diagnostic %q carries the rune %U; a repository name reaches the terminal sanitised", d, r)
 				}
 			}
-			if len(c.Denylist()) != 2 {
-				t.Errorf("denylist = %+v; the rest of the repository's configuration must still load", c.Denylist())
+			if dl := c.Denylist(); len(dl) != 1 || dl[0].Pattern != "openai/*" {
+				t.Errorf("denylist = %+v; the rest of the repository's configuration must still load", dl)
 			}
 			if len(c.Providers()) != 2 {
 				t.Errorf("providers = %+v; the machine's blocks must still load", c.Providers())
