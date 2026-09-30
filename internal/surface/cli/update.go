@@ -111,12 +111,11 @@ func newUpdateCommand(asJSON *bool) *cobra.Command {
 	return cmd
 }
 
-// isTTY reports whether f is a character device — the progress/confirmation
-// gate. Piped and hooked invocations are silent except for the receipt.
-// Delegates to the canonical check in internal/term.
-func isTTY(f *os.File) bool {
-	return term.IsTerminal(f)
-}
+// isTTY reports whether f is a terminal — the progress/confirmation gate.
+// Piped and hooked invocations are silent except for the receipt. It delegates
+// to the canonical check in internal/term, and is a package var so a test can
+// stand a file in for a terminal (the repo's package-var seam pattern).
+var isTTY = term.IsTerminal
 
 // progressWriter is the download-progress gate: progress goes to stderr, and
 // only when stderr is a terminal. The gate reads the stream the progress is
