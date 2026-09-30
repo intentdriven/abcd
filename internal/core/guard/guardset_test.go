@@ -324,3 +324,41 @@ func TestColonDefaultsOfAnEmptyParameterTheWrittenCompareReads(t *testing.T) {
 		{`rm -rf ${!X:?}/`, all, VerdictBlock, home},
 	})
 }
+
+// TestExpansionsThatCanPrintNothingTheWrittenCompareReads —
+// reverify-guardSet finding 5. An empty default's word prints the empty
+// text (`${X:-}/` and `${X-}/` are `/` with X unset), a subscript can name
+// an element that is not set (`${A[0]}/`, `${A[@]}/` with A unset or a
+// scalar's `${A[1]}`), and a case change or a transform prints nothing for
+// a value it maps to nothing (`${X^}/`, `${X@P}/` on bash 5.3 with X
+// empty). bash 3.2, /bin/sh and bash 5.3 hand rm `/` for each.
+func TestExpansionsThatCanPrintNothingTheWrittenCompareReads(t *testing.T) {
+	const home = "rm-rf-root-or-home"
+	const all = shellBare | shellSQ | shellDQ
+	checkSpellingCases(t, []spellingCase{
+		{`rm -rf ${X:-}/`, all, VerdictBlock, home},
+		{`rm -rf ${X-}/`, all, VerdictBlock, home},
+		{`rm -rf ${X:=}/`, all, VerdictBlock, home},
+		{`rm -rf ${X:+}/`, all, VerdictBlock, home},
+		{`rm -rf ${X:-""}/`, shellBare | shellSQ, VerdictBlock, home},
+		{`rm -rf ${X:-''}/`, shellBare, VerdictBlock, home},
+		{`rm -rf $HOME${X:-}`, all, VerdictBlock, home},
+		{`rm -rf ${A[0]}/`, all, VerdictBlock, home},
+		{`rm -rf ${A[@]}/`, all, VerdictBlock, home},
+		{`rm -rf "${A[1]}"/*`, shellBare | shellSQ, VerdictBlock, home},
+		{`rm -rf ${X^}/`, all, VerdictBlock, home},
+		{`rm -rf ${X^^}/`, all, VerdictBlock, home},
+		{`rm -rf ${X,,}/`, all, VerdictBlock, home},
+		{`rm -rf ${X@P}/`, all, VerdictBlock, home},
+		{`rm -rf ${X@U}/`, all, VerdictBlock, home},
+		// The look-alikes: text after the empty text, a quoted array, and
+		// an error message.
+		{`rm -rf "${TMPDIR:-}/abcd-x"`, shellBare | shellSQ, VerdictAllow, ""},
+		{`rm -rf "${A[0]}/build"`, shellBare | shellSQ, VerdictAllow, ""},
+		{`rm -rf "${files[@]}"`, shellBare | shellSQ, VerdictAllow, ""},
+		{`rm -rf ${X^^}.txt`, shellBare | shellSQ, VerdictAllow, ""},
+		{`rm -rf "${BUILD_DIR:?}/"*`, shellBare | shellSQ, VerdictAllow, ""},
+		{`while IFS= read -r f; do rm -rf ${f:-}; done`, shellBare | shellSQ, VerdictAllow, ""},
+		{`IFS=, ; rm -rf ${A[0]}`, shellBare | shellSQ, VerdictAllow, ""},
+	})
+}

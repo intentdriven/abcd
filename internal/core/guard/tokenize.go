@@ -641,9 +641,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 	// text is text (`$HOME`, `$1`), with the texts it can print
 	// (paramTexts).
 	addParam := func(text string) {
-		texts := paramTexts(text)
-		addVar(texts...)
-		curVarAt[len(curVarAt)-1].empty = len(texts) > 1
+		addVar(paramTexts(text)...)
 	}
 	// addBang keeps a `$!` in the word as the text it is, which every
 	// reading takes as the job's number (`kill $!`), and records a site on
@@ -1078,7 +1076,6 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		addVar(spellParameter(body, split)...)
 		site := &curVarAt[len(curVarAt)-1]
 		site.split = split
-		site.empty = emptiedParameter(body, split, site.texts)
 		if len(segs) > start {
 			curSub = true
 		}

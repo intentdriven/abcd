@@ -112,10 +112,6 @@ const varText = "\x01"
 // split records an expansion written unquoted, whose text bash splits into
 // fields on IFS (ifsSplits).
 //
-// empty records that the texts hold the empty text only because the
-// parameter can print nothing (emptyable), which splits into no field and
-// so is not counted where ifsSplits reads the site.
-//
 // width is the number of bytes of the word the site stands on where the
 // word keeps the text as written rather than a mark (`$!`, which every
 // other reading takes as the job's number it is, addBang), and 0 for a
@@ -125,7 +121,6 @@ type varSite struct {
 	texts []string
 	bare  bool
 	split bool
-	empty bool
 	width int
 }
 
@@ -166,16 +161,15 @@ func paramTexts(text string) []string {
 // the fields can be the root (`IFS=x; rm -rf ${U:-x/x}` hands rm `""` and
 // `/`; `IFS=Uv; rm -rf $HOME/x` hands it `/`). An unquoted variable of
 // unknown value (`$d`, `${d%/}`) splits into fields no more known than its
-// value, and is not counted.
+// value, and is not counted. The empty text an expansion can print splits
+// into no field under any IFS, and is not read: `${1}`, `${X:-}` and
+// `${A[0]}` count as the variable alone.
 func ifsSplits(sites []varSite) bool {
 	for _, s := range sites {
-		texts := s.texts
-		if s.empty {
-			texts = nil
-			for _, t := range s.texts {
-				if t != "" {
-					texts = append(texts, t)
-				}
+		var texts []string
+		for _, t := range s.texts {
+			if t != "" {
+				texts = append(texts, t)
 			}
 		}
 		if !s.split || len(texts) == 0 {
@@ -339,8 +333,8 @@ func paramText(text string) string { return strings.ReplaceAll(text, "\\\n", "")
 //     `${DIR=w}`), prints the value when the variable is set and its word w
 //     when it is not, so the set holds the variable and every text w can
 //     print, through its own expansions (spellWord): `${DIR:-$HOME}` is
-//     `${DIR}` and `$HOME` (iss-2609290426544292); with the colon an empty
-//     value counts as unset, so a
+//     `${DIR}` and `$HOME` (iss-2609290426544292), and `${DIR:-}` is also
+//     the empty text; with the colon an empty value counts as unset, so a
 //     parameter that can print nothing (emptyable) does not print it there
 //     (`${1:-dist}` is `${1}` and `dist`);
 //   - an error message (`${HOME:?x}`) prints the value or nothing: the
@@ -359,7 +353,8 @@ func paramText(text string) string { return strings.ReplaceAll(text, "\\\n", "")
 //     past the end, and which can print the `/` an absolute path begins with
 //     (`${PWD:0:1}` is `${PWD}`, `/` and nothing);
 //   - a case change (`${HOME^^}`, `${HOME@U}`), which names the same directory
-//     on a case-insensitive disk, and `@E` and `@P`, which change no path;
+//     on a case-insensitive disk, and `@E` and `@P`, which change no path,
+//     each also nothing, for a value it maps to nothing (`${X^}/` is `/`);
 //   - a subscript (`${HOME[0]}`, `${HOME[x[0]]}`), which can be 0, read to
 //     its matching `]`. bash 3.2, the /bin/sh and /bin/bash of macOS, steps
 //     over any text after it to the first operator byte
@@ -369,7 +364,9 @@ func paramText(text string) string { return strings.ReplaceAll(text, "\\\n", "")
 //     after a name and also nothing, which is what bash 3.2 prints for one
 //     after a scalar's subscript (`${X[0]%x}` with X=/a/b;
 //     iss-2609300009506126), and anything else the value (`${HOME[0]]}`,
-//     `${HOME[0]@Q}`). A subscript with no `]` cannot be read further.
+//     `${HOME[0]@Q}`), and alone the value or nothing, since the element
+//     it names need not be set (`${A[0]}/` is `/`). A subscript with no `]`
+//     cannot be read further.
 //
 // An alternative (`${X:+w}`, `${X+w}`) prints w or nothing, and is the texts
 // w can print and the empty text. Every other expansion keeps its text as written and names no
@@ -381,7 +378,7 @@ func paramText(text string) string { return strings.ReplaceAll(text, "\\\n", "")
 // run in it is spelled fieldMark, which the compare splits on
 // (argValueMatches).
 func spellParameter(body string, split bool) []string {
-	return spellParameterAt(paramText(body), 0, split, true)
+	return spellParameterAt(paramText(body), 0, split)
 }
 
 // fieldMark stands in a spelling where bash splits a word into fields: at an
@@ -403,35 +400,8 @@ const quotedFieldMark = '\x03'
 // quotedFieldText is quotedFieldMark as a string.
 const quotedFieldText = "\x03"
 
-// emptiedParameter reports whether texts, the written spelling of the
-// `${…}` whose text between the braces is body, hold the empty text only
-// because its parameter can print nothing (varSite.empty): read without that
-// reading, the expansion prints no empty text.
-func emptiedParameter(body string, split bool, texts []string) bool {
-	body = paramText(body)
-	if indirect, n := paramNameEnd(body); !split || indirect || n < 0 || !emptyable(body[:n]) {
-		// Only a split site is counted, and only an emptyable parameter
-		// adds the empty text.
-		return false
-	}
-	has := false
-	for _, t := range texts {
-		has = has || t == ""
-	}
-	if !has {
-		return false
-	}
-	for _, t := range spellParameterAt(body, 0, split, false) {
-		if t == "" {
-			return false
-		}
-	}
-	return true
-}
-
-// spellParameterAt is spellParameter at depth, with empty reporting whether
-// a parameter that can print nothing (emptyable) is read as printing it.
-func spellParameterAt(body string, depth int, split, empty bool) []string {
+// spellParameterAt is spellParameter at depth.
+func spellParameterAt(body string, depth int, split bool) []string {
 	raw := []string{"${" + body + "}"}
 	indirect, n := paramNameEnd(body)
 	if n < 0 {
@@ -444,10 +414,17 @@ func spellParameterAt(body string, depth int, split, empty bool) []string {
 	// `${1:?}`): an empty parameter counts as unset there, so the
 	// expansion never prints the empty value (reverify-guardSet finding 2).
 	set := value
-	if empty && !indirect && emptyable(name) {
+	if !indirect && emptyable(name) {
 		// `${!}`, `${@}`, `${1}` can print nothing (emptyable), and every
 		// other operator reads that nothing as it reads a value.
 		value = append([]string{same}, "")
+	}
+	// orNothing is the value, or nothing: a subscript naming an element
+	// that is not set (`${A[1]}` of a scalar), and a case change or a
+	// transform that maps the value to nothing (`${X^}`, `${X@P}` with X
+	// empty), leave the text beside them (reverify-guardSet finding 5).
+	orNothing := func() []string {
+		return appendText(append([]string(nil), value...), "")
 	}
 	if indirect {
 		// An indirection's value is the value of the variable its name
@@ -496,7 +473,7 @@ func spellParameterAt(body string, depth int, split, empty bool) []string {
 				// `${!A[@]}` lists the array's keys.
 				return raw
 			}
-			return value
+			return orNothing()
 		}
 		rest, subscript = rest[op:], true
 	}
@@ -527,13 +504,16 @@ func spellParameterAt(body string, depth int, split, empty bool) []string {
 	case rest[0] == '%' || rest[0] == '#':
 		texts = trimTexts(value, rest)
 	case subscript:
+		return orNothing()
+	case rest[0] == '?':
+		// An error message without the colon prints the value.
 		return value
-	case strings.IndexByte("?^,~", rest[0]) >= 0:
-		// Every other operator that can print the value unchanged.
-		return value
+	case strings.IndexByte("^,~", rest[0]) >= 0:
+		// A case change prints the value, changed, or nothing.
+		return orNothing()
 	case rest[0] == '@':
 		if len(rest) == 2 && strings.IndexByte("EPULu", rest[1]) >= 0 {
-			return value
+			return orNothing()
 		}
 		return raw
 	default:
@@ -997,8 +977,8 @@ func subscriptEnd(s string) int {
 // spellWritten drops as knownText does (`${X:+$(true)$HOME}` is `$HOME`).
 // Where split is set, each unquoted whitespace run is fieldMark, where bash
 // splits the word (`${X:+$HOME }` is `$HOME`). A word holding a quote or an
-// expansion that does not close, and a word that spells to nothing, print no
-// text the guard reads, and are nil. A word at spellWordDepth is not read,
+// expansion that does not close prints no text the guard reads, and is nil;
+// an empty word (`${X:-}`, `${X:-""}`) prints the empty text. A word at spellWordDepth is not read,
 // and is spellCapped: the bound refuses, never passes (writtenMatches).
 func spellWord(w string, depth int, split bool) []string {
 	if depth >= spellWordDepth {
@@ -1034,7 +1014,7 @@ func spellWord(w string, depth int, split bool) []string {
 			if end < 0 {
 				return nil
 			}
-			sites = append(sites, varSite{at: len(word), texts: spellParameterAt(w[i+2:end], depth+1, split && !dq, true)})
+			sites = append(sites, varSite{at: len(word), texts: spellParameterAt(w[i+2:end], depth+1, split && !dq)})
 			word = append(word, varMark)
 			i = end + 1
 		case c == '$' && i+1 < len(w) && w[i+1] == '(':
@@ -1100,8 +1080,13 @@ func spellWord(w string, depth int, split bool) []string {
 			i++
 		}
 	}
-	if dq || len(word) == 0 {
+	if dq {
 		return nil
+	}
+	if len(word) == 0 {
+		// An empty word prints the empty text: `${X:-}/` is `/` with X
+		// unset (reverify-guardSet finding 5).
+		return []string{""}
 	}
 	return spellWritten(word, sites, nil)
 }
