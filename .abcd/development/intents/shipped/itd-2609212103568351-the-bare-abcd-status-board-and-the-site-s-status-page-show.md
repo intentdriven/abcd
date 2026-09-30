@@ -77,6 +77,8 @@ Fidelity review OWED (receipt rcp-4d55b6f29ab8).
 
 Changed on 2026-09-29 by the product thinker's rulings BV1 and BV2 of that day (DECISIONS.md entry landing with lane recRulings), recorded as iss-2609292011569133: the text board gives Later as a count alone while `--json` and the site's Status page keep its rows (criterion 1), and an intent in a lane is listed under Now only, never also under Next or Later, so without the state file that intent returns to the list the gate places it in (criteria 1 and 3). The criterion text above stands as shipped; adr-2609292012006845 supersedes adr-2609212115255771 and restates decision 2.
 
+Changed on 2026-09-30 by the product thinker's ruling TG1 of that day, recorded as adr-2609301720596683: a managed repository's `site-src/ui.json` written before this intent's `status.*` labels existed keeps building, because `abcd site setup` and `abcd site build` add each declared label the file lacks with abcd's default words, name it on stderr, and change nothing else in the file. The impact stays `additive`.
+
 ## Grounds
 
 - pursued: phases are retired today and the record needs a place a person looks to see what is next; we expect the computed block to be read where the phase documents were not; shown wrong if Now is found naming an intent neither in a lane nor next

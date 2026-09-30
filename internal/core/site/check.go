@@ -284,7 +284,7 @@ func Check(req CheckRequest) (CheckResult, error) {
 		Findings: []CheckFinding{}, Notes: []CheckFinding{},
 	}
 	if ok, _ := fsutil.Exists(filepath.Join(outDir, "index.html")); !ok {
-		if _, err := Build(Request{RepoRoot: repoRoot, OutDir: outDir, Lanes: req.Lanes}); err != nil {
+		if _, err := Build(Request{RepoRoot: repoRoot, OutDir: outDir, Lanes: req.Lanes, LeaveUI: true}); err != nil {
 			return CheckResult{}, err
 		}
 		res.Built = true

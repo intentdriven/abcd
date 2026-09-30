@@ -175,6 +175,11 @@ type SetupResult struct {
 	Files        []scaffold.FileOutcome `json:"files"`
 	Environments []EnvironmentOutcome   `json:"environments"`
 	Host         HostOutcome            `json:"host"`
+	// AddedLabels names each interface label setup added to a ui.json the
+	// repository already had, LabelsFile (the TG1 ruling). Both are empty when
+	// nothing was added.
+	AddedLabels []string `json:"added_labels,omitempty"`
+	LabelsFile  string   `json:"labels_file,omitempty"`
 	// Remaining are the exact steps left for the person, in order.
 	Remaining []string `json:"remaining,omitempty"`
 	// Notes say what the verb deliberately did not do, and why.
@@ -257,6 +262,29 @@ func Setup(req SetupRequest) (SetupResult, error) {
 			res.Environments = append(res.Environments, EnvironmentOutcome{Name: env, Status: RemoteNotReached})
 		}
 		return res, nil
+	}
+	// The one exception to "a file the repository owns is kept" (the TG1
+	// ruling): a ui.json the repository already had gains each declared label
+	// it lacks, with its default words, and nothing in it is rewritten.
+	added, aerr := addMissingLabels(root, manifest.UIStrings)
+	if aerr != nil {
+		res.Status = StatusRefused
+		res.Notes = append(res.Notes, "the missing interface labels could not be added to "+manifest.UIStrings+
+			", so no remote change was attempted: "+scrubRoot(aerr, root))
+		for _, env := range []string{EnvRender, EnvDeploy} {
+			res.Environments = append(res.Environments, EnvironmentOutcome{Name: env, Status: RemoteNotReached})
+		}
+		return res, nil
+	}
+	if len(added) > 0 {
+		res.AddedLabels, res.LabelsFile = added, manifest.UIStrings
+		for i := range res.Files {
+			if res.Files[i].Path == manifest.UIStrings {
+				res.Files[i].Status = scaffold.StatusWritten
+				res.Files[i].Detail = "added the missing labels " + strings.Join(added, ", ")
+			}
+		}
+		wrote++
 	}
 	changed := wrote > 0
 	declined, refused := false, false
