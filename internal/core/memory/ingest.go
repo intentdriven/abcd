@@ -89,6 +89,12 @@ type IngestResult struct {
 	Linked            [][2]string  `json:"linked"`
 	Contradictions    [][2]string  `json:"contradictions"`
 	WriteReport       *WriteReport `json:"write_report"`
+	// ScanGap names the coverage the repository asked for and did not get: a
+	// scanner augmenter it configured (gitleaks, in .abcd/config/gitleaks.json)
+	// whose tool is not installed. The ingest still writes, redacted by the
+	// native scanner, and this says so (the 2026-09-25 ruling on
+	// iss-2608291814575788). Empty when there is no gap.
+	ScanGap string `json:"scan_gap,omitempty"`
 }
 
 type sourceMaterial struct {
@@ -243,6 +249,7 @@ func Ingest(req IngestRequest) (IngestResult, error) {
 				Status: "registry_only", ContentHash: contentHash, Licence: resultLicence,
 				SourceTokenCount: tokenCount, Pages: recorded, Citation: deepCopyMap(cachedCitation),
 				KeptOriginal: kept, KeepOriginalError: keepErr, WriteReport: &report,
+				ScanGap: redactor.sc.AugmenterGap(),
 			}, nil
 		}
 	}
@@ -393,6 +400,7 @@ func Ingest(req IngestRequest) (IngestResult, error) {
 		KeptOriginal: kept, KeepOriginalError: keepErr,
 		Linked: plan.Linked, Contradictions: plan.Contradictions,
 		WriteReport: &report,
+		ScanGap:     redactor.sc.AugmenterGap(),
 	}, nil
 }
 

@@ -179,7 +179,9 @@ Ideas and methodologies that shaped the design — not code abcd depends on.
   family the launch scanner's AWS rule deliberately narrows (self-declared
   at `internal/adapter/scanner/patterns.go`), and the full-history secret
   scan CI runs as the authoritative backstop behind abcd's own fast
-  pre-push pass. <https://github.com/gitleaks/gitleaks>
+  pre-push pass; and the scanner a repository opts into with
+  `.abcd/config/gitleaks.json`, which abcd runs beside its native scanner in
+  every scan it makes (iss-2608291814575788). <https://github.com/gitleaks/gitleaks>
 - **Homebrew's auto-update-on-use and the `update-notifier` pattern (npm)** — the
   UX grammar itd-111 keeps (cached comparison, a gentle nudge, a one-command
   fix) while rejecting their implicit background network check: abcd implements

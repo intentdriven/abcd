@@ -101,6 +101,9 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 				fmt.Fprintf(w, "abcd history capture — stored %s (%s)\n", res.Record.SessionID, recordSource(res.Record))
 				fmt.Fprintf(w, "  path:     %s\n", termsafe.Sanitize(res.Record.Path))
 				fmt.Fprintf(w, "  redacted: secrets=%d home=%d\n", res.Record.Secrets, res.Record.HomePaths)
+				for _, l := range scanGapLines(res.ScanGap) {
+					fmt.Fprintf(w, "  %s\n", l)
+				}
 			})
 		},
 	}
@@ -384,6 +387,9 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 				for _, f := range res.Failed {
 					fmt.Fprintf(w, "FAILED  %s  %s\n  raw transcript kept (unredacted): %s\n",
 						termsafe.Sanitize(f.SessionID), termsafe.Sanitize(f.Err), termsafe.Sanitize(f.Path))
+				}
+				for _, l := range scanGapLines(res.ScanGap) {
+					fmt.Fprintln(w, l)
 				}
 			})
 			if renderErr != nil {
@@ -669,4 +675,24 @@ func renderBacklogSurvey(cmd *cobra.Command, asJSON bool) error {
 			fmt.Fprintf(w, "%d transcript(s) can never be redacted and will never leave on their own; `abcd history discard` is the only thing that removes them.\n", quarantined)
 		}
 	})
+}
+
+// scanGapLines renders a capture's or a drain's ScanGap: the repository armed
+// gitleaks and the binary is not installed, so the transcripts were stored
+// masked by the native scanner alone. The gap is the tool registry's
+// explanation (what gitleaks is, the install step, the way back), one
+// sanitised line each, under a heading that says what it means. Nothing when
+// there is no gap (iss-2608291814575788).
+func scanGapLines(gap string) []string {
+	gap = strings.TrimSpace(gap)
+	if gap == "" {
+		return nil
+	}
+	out := []string{"scan gap: stored with the native scanner only, without the coverage this repository armed:"}
+	for _, l := range strings.Split(gap, "\n") {
+		if l = strings.TrimSpace(l); l != "" {
+			out = append(out, "  "+termsafe.Sanitize(fsutil.RedactHome(l)))
+		}
+	}
+	return out
 }

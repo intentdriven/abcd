@@ -44,7 +44,10 @@ that bind a run to a plugin follow the kind. For a kind other than `plugin` the
 preview scans the tree the release tag would archive (`git archive`'s view of
 `HEAD`, `export-ignore` honoured, links excluded) minus the record namespace,
 denied by the same rule a plugin payload is held to, unless it declares an
-include set; the report names which tree it scanned. Its lockstep check reads
+include set; the report names which tree it scanned. In a repository that armed
+gitleaks, its findings join the scan's, and an armed gitleaks with no binary
+installed is an unscanned entry and a hard fail, so the preview and the cut
+refuse on it ([dependencies](../02-constraints/02-dependencies.md)). Its lockstep check reads
 the primary and every declared file, reads no plugin manifest, and refuses a
 declared file it cannot read. The rows that judge a plugin payload — the
 installability smoke and its deep tier, hook compliance, the parity diff — report

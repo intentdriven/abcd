@@ -41,8 +41,10 @@ const (
 	// repository that has NOT armed gitleaks: the native scanner covers it.
 	TranscriptScan Capability = "transcript-scan"
 	// TranscriptScanArmed is the same scan in a repository that armed gitleaks
-	// in .abcd/config/gitleaks.json: the history store refuses to store a
-	// transcript with less coverage than the repository asked for.
+	// in .abcd/config/gitleaks.json: without the binary a release refuses,
+	// while the history store still stores the transcript on the native
+	// scanner and names the gap in its receipt (the 2026-09-25 ruling on
+	// iss-2608291814575788).
 	TranscriptScanArmed Capability = "transcript-scan-armed"
 	// GitHubSettings is every verb that reads or changes the repository's
 	// settings on GitHub (ahoy remote, site setup), which abcd does only
@@ -138,11 +140,11 @@ var registry = map[string]Tool{
 				Requirement: Required,
 				Does: "abcd runs gitleaks over each transcript before storing it and masks what it finds, on top of " +
 					"the native scanner, because this repository asked for that coverage",
-				WithoutIt: "nothing is stored: abcd refuses to store this repository's transcripts with less coverage " +
-					"than the repository asked for; setting enabled to false in .abcd/config/gitleaks.json returns it " +
-					"to the native secret scanner",
-				OnDecline: "transcript capture stays refused for this repository until gitleaks is installed or " +
-					".abcd/config/gitleaks.json sets enabled to false",
+				WithoutIt: "transcripts are stored masked by the native secret scanner alone, each capture naming the " +
+					"missing coverage, and a release of this repository refuses; setting enabled to false in " +
+					".abcd/config/gitleaks.json returns it to the native secret scanner",
+				OnDecline: "transcripts stay on the native secret scanner and a release stays refused until gitleaks " +
+					"is installed or .abcd/config/gitleaks.json sets enabled to false",
 			},
 		},
 		Install: map[string]Step{"darwin": homebrew("gitleaks"), "linux": homebrew("gitleaks")},

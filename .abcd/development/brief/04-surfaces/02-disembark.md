@@ -91,6 +91,7 @@ DESTINATION SAFETY GATE
                            ▼
 SECRET SCAN (before any write)
   scan the planned bytes; a hard-fail secret refuses the whole pack — never redact
+  (an armed gitleaks scans them too; armed and not installed, it refuses the pack)
                            │
                            ▼
 WRITE

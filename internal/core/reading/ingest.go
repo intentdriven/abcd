@@ -609,7 +609,9 @@ func ingestUnderLock(root *os.Root, repoRoot string, req IngestRequest, res *Ing
 	// recordable state pay for a scanner that probes the machine identity
 	// (iss-2609022002241168).
 	free, degraded := newPayloadField(repoRoot)
-	noteDegraded(res, degraded)
+	// Noted when the ingest returns, after every payload field was redacted:
+	// a scanner degraded during them is still named (iss-2608291814575788).
+	defer func() { noteDegraded(res, degraded()) }()
 
 	// A definition that does not resolve refuses the run, and the refusal is
 	// RECORDED like every other one from this point on but the prose-citation

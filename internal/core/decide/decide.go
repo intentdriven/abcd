@@ -248,6 +248,11 @@ func redactDecisionText(repoRoot, text string) (string, error) {
 		return "", fmt.Errorf("decide: refusing to persist text with a degraded scanner: %s", reason)
 	}
 	findings := sc.ScanText(text, "decide")
+	// A repository's opt-in scanner augmenter (gitleaks) runs inside
+	// ScanText, and a run that failed degrades the scanner during it.
+	if unavail, reason := sc.Unavailable(); unavail {
+		return "", fmt.Errorf("decide: refusing to persist text with a degraded scanner: %s", reason)
+	}
 	if len(findings) == 0 {
 		return text, nil
 	}

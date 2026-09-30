@@ -32,7 +32,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/intentdriven/abcd/internal/adapter/gitleaks"
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
 	"github.com/intentdriven/abcd/internal/core/sessionkind"
 	"github.com/intentdriven/abcd/internal/core/tools"
@@ -47,16 +46,6 @@ import (
 // record with empty lineage, so everything already stored keeps working and
 // stays readable until a migration touches it.
 const recordSchemaVersion = 3
-
-// scanGitleaks is the OPT-IN gitleaks augmentation seam (iss-96). The default
-// wiring loads the per-repo .abcd/config/gitleaks.json and, ONLY when the repo
-// opted in, shells out to gitleaks over the transcript and returns findings to
-// fold into redaction; a repo that did not opt in gets (nil, nil) and pays
-// nothing — no lookup, no process, no cost. It is a package var so a test can
-// inject a fake without spawning a real binary. When a repo opts in but the
-// binary is absent, the default wiring returns gitleaks.ErrConfiguredNotFound,
-// which Capture surfaces and fails closed on — never a silent skip.
-var scanGitleaks = gitleaks.Scan
 
 // Record is one stored transcript's metadata (its frontmatter). It never
 // carries raw content — the redacted body is fetched separately via Read.
@@ -153,6 +142,13 @@ type CaptureResult struct {
 	// transcript for the same (session, agent) arrived and the stored one was a
 	// byte-prefix of it. Nil whenever nothing was replaced.
 	Superseded *Record `json:"superseded,omitempty"`
+	// ScanGap names the coverage the repository asked for and did not get: it
+	// armed gitleaks in .abcd/config/gitleaks.json and the binary is not
+	// installed. The transcript is still stored, scanned by the native
+	// scanner, and this says so, with what gitleaks is and how to install it
+	// (the 2026-09-25 ruling on iss-2608291814575788). Empty when there is no
+	// gap.
+	ScanGap string `json:"scan_gap,omitempty"`
 }
 
 // RedactionResidualError is returned by Capture when the stage-two re-scan finds
@@ -273,28 +269,20 @@ func captureLocked(repoRoot, rootSHA, tdir string, raw []byte, meta CaptureMeta,
 	if err != nil {
 		return CaptureResult{}, err
 	}
+	// The scanner carries the repository's opt-in gitleaks augmenter (wired at
+	// the composition root), so findings are the native ones plus gitleaks',
+	// deduplicated. A run that failed degrades the scanner, and the capture
+	// refuses exactly as on a degraded pii.json; a binary the repository armed
+	// and nobody installed is a gap, which the capture records and does not
+	// refuse on.
 	findings := sc.ScanText(text, "transcript")
-
-	// Opt-in deeper coverage (iss-96). Off by default: for a repo that has not
-	// armed the gitleaks adapter this returns (nil, nil) and invokes nothing, so
-	// the native path below is byte-for-byte what it was. When armed, the adapter's
-	// findings AUGMENT the native ones — masked by the same Redact discipline and
-	// counted in the same audit buckets. Fail-closed: an armed-but-absent binary
-	// returns an error here and refuses the write, mirroring the degraded-scanner
-	// guard above rather than silently capturing with less coverage than the repo
-	// asked for.
-	extra, err := scanGitleaks(repoRoot, text, "transcript")
-	if err != nil {
-		// A binary the repository asked for and nobody installed is a missing
-		// tool: the refusal stands, and it says what gitleaks is, that this
-		// repository requires it, the install step, and the way back to the
-		// native scanner (itd-63). A refused path is not a missing tool.
-		if errors.Is(err, gitleaks.ErrConfiguredNotFound) {
-			err = tools.Missing(err, "gitleaks", tools.TranscriptScanArmed)
-		}
-		return CaptureResult{}, fmt.Errorf("history: %w", err)
+	if unavail, reason := sc.Unavailable(); unavail {
+		return CaptureResult{}, fmt.Errorf("history: refusing to capture with a degraded scanner: %s", reason)
 	}
-	findings = append(findings, extra...)
+	scanGap := ""
+	if gap := sc.AugmenterGap(); gap != "" {
+		scanGap = tools.Missing(errors.New(gap), "gitleaks", tools.TranscriptScanArmed).Error()
+	}
 
 	redacted, _ := scanner.Redact(text, findings)
 
@@ -320,8 +308,8 @@ func captureLocked(repoRoot, rootSHA, tdir string, raw []byte, meta CaptureMeta,
 	// augmented finding is verified by its bytes instead, and a survivor blocks
 	// the write the same way: verification is symmetric with detection
 	// (GHSA-j7v5-q7x6-v3rp).
-	residual := scanner.BlockingResidual(sc.ScanText(redacted, "transcript"))
-	residual = append(residual, unsealedAugmented(redacted, extra)...)
+	residual := scanner.BlockingResidual(sc.ScanTextNative(redacted, "transcript"))
+	residual = append(residual, scanner.UnsealedAugmented(redacted, findings)...)
 	if len(residual) > 0 {
 		return CaptureResult{Residual: residual}, &RedactionResidualError{Residual: residual}
 	}
@@ -368,7 +356,7 @@ func captureLocked(repoRoot, rootSHA, tdir string, raw []byte, meta CaptureMeta,
 	// price of not keeping raw bytes around to compare.
 	superseded, prior := resolveSupersession(existing, meta, kind, marshalBody(body))
 	if prior != nil {
-		return CaptureResult{Record: *prior, Wrote: false}, nil
+		return CaptureResult{Record: *prior, Wrote: false, ScanGap: scanGap}, nil
 	}
 
 	secrets, homePaths := countBuckets(findings)
@@ -412,12 +400,12 @@ func captureLocked(repoRoot, rootSHA, tdir string, raw []byte, meta CaptureMeta,
 	// same bytes is a no-op, so the state is recoverable.
 	for i := range superseded {
 		if err := os.Remove(superseded[i].Path); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return CaptureResult{Record: rec, Wrote: true, Superseded: &superseded[i]},
+			return CaptureResult{Record: rec, Wrote: true, Superseded: &superseded[i], ScanGap: scanGap},
 				fmt.Errorf("history: stored %s but could not retire the record it superseded: %w",
 					sessionID, err)
 		}
 	}
-	res := CaptureResult{Record: rec, Wrote: true}
+	res := CaptureResult{Record: rec, Wrote: true, ScanGap: scanGap}
 	if len(superseded) > 0 {
 		// Newest first, so the head is the record this one directly replaced; a
 		// tail is a pre-supersession store's leftovers, retired in the same pass.
@@ -627,43 +615,6 @@ func unframeLineage(redacted string) (scalars []string, body string, err error) 
 		return nil, "", errors.New("history: the lineage frame did not survive redaction; refusing to write")
 	}
 	return parts[:n], parts[n+1], nil
-}
-
-// unsealedAugmented returns, for every augmented finding whose reported bytes
-// still occur anywhere in the redacted text, a finding naming its kind and
-// declared position with the bytes withheld (the error it feeds lists kinds
-// only). Presence anywhere is the right test, not the declared span: the
-// adapter locates every occurrence of a value across the whole text and
-// secret kinds are sealed length-preservingly, so after Redact no occurrence
-// of a located value can legitimately remain, while a span compare would drift
-// under the identity placeholders Redact rewrites after the seal (they change
-// line lengths) and would miss a finding whose declared position Redact could
-// not apply at all — the exact case in which the record would otherwise count
-// a redaction it never performed. Re-running gitleaks over the redacted text
-// is the other symmetric shape; it doubles a 30 s-timeout subprocess and is not
-// deterministic across rule sets, so the bytes the adapter reported are what
-// is checked.
-//
-// Presence-anywhere is only safe because the adapter detects at the same scope:
-// it locates every occurrence of every line of a reported value across the
-// whole text, so a line that recurs outside the value is sealed rather than
-// left as a survivor this check would then refuse the write on for good
-// (iss-2609020231145566).
-func unsealedAugmented(redacted string, extra []scanner.Finding) []scanner.Finding {
-	var out []scanner.Finding
-	for _, f := range extra {
-		if f.Matched == "" || !strings.Contains(redacted, f.Matched) {
-			continue
-		}
-		out = append(out, scanner.Finding{
-			File:     f.File,
-			Line:     f.Line,
-			Column:   f.Column,
-			Kind:     f.Kind,
-			Severity: f.Severity,
-		})
-	}
-	return out
 }
 
 // countBuckets rolls the redacted findings into the two audit counters stamped

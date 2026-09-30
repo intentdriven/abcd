@@ -388,11 +388,9 @@ func TestDrainLeavesAReStagedCopyForTheNextPass(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	restore := scanGitleaks
-	t.Cleanup(func() { scanGitleaks = restore })
 	var restaged bool
 	var restageErr error
-	scanGitleaks = func(_, _, _ string) ([]scanner.Finding, error) {
+	setAugmenter(t, func(_, _ string) ([]scanner.Finding, error) {
 		if !restaged {
 			restaged = true
 			if _, err := Stage(repoRoot, testRootSHA, mainStage("sess-middrain"), []byte(newer)); err != nil {
@@ -400,7 +398,7 @@ func TestDrainLeavesAReStagedCopyForTheNextPass(t *testing.T) {
 			}
 		}
 		return nil, nil
-	}
+	})
 
 	res, err := Drain(repoRoot, testRootSHA, DrainBudget{})
 	if err != nil {

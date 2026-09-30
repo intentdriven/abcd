@@ -149,7 +149,8 @@ func Migrate(rootSHA string, opts MigrateOptions) (MigrateResult, error) {
 	// Fail closed on a degraded scanner exactly as Capture does. A migration
 	// that could not redact what it learned would write externally supplied
 	// text into frontmatter with less coverage than the repository asked for.
-	sc, err := scanner.New(opts.RepoRoot)
+	// Built without the augmenter, deliberately: see redactLineage.
+	sc, err := scanner.New(opts.RepoRoot, scanner.WithAugmenter(nil))
 	if err != nil {
 		return MigrateResult{}, fmt.Errorf("history: scanner init: %w", err)
 	}
@@ -401,7 +402,7 @@ func redactLineage(sc *scanner.Scanner, m CaptureMeta) (CaptureMeta, error) {
 	if err != nil {
 		return CaptureMeta{}, err
 	}
-	redacted, _ := scanner.Redact(text, sc.ScanText(text, "transcript"))
+	redacted, _ := scanner.Redact(text, sc.ScanTextNative(text, "transcript"))
 	if home := scanner.CallerHome(); home != "" {
 		redacted = scanner.SweepCallerHome(redacted, home)
 		var resid []scanner.Finding
@@ -410,7 +411,7 @@ func redactLineage(sc *scanner.Scanner, m CaptureMeta) (CaptureMeta, error) {
 			return CaptureMeta{}, &RedactionResidualError{Residual: resid}
 		}
 	}
-	if resid := scanner.BlockingResidual(sc.ScanText(redacted, "transcript")); len(resid) > 0 {
+	if resid := scanner.BlockingResidual(sc.ScanTextNative(redacted, "transcript")); len(resid) > 0 {
 		return CaptureMeta{}, &RedactionResidualError{Residual: resid}
 	}
 	scalars, _, err := unframeLineage(redacted)

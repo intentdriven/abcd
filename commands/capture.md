@@ -91,7 +91,11 @@ are closed sets, and their help names every member; a value outside one is
 refused (exit 2, nothing written) with a message naming the flag and the values
 it accepts, so relay the set and pick from it rather than guessing again. Report the new `id`, `status`, and `path` from the JSON. Report `redacted`
 too whenever it is non-zero: it counts the spans rewritten before the text was
-written, and the user needs to know their wording was changed. When
+written, and the user needs to know their wording was changed. Report
+`redaction_degraded` whenever it is present: it says the text was redacted with
+less than the full scan, including a repository's armed gitleaks
+(`.abcd/config/gitleaks.json`) whose binary is not installed or whose run
+failed. The record is written either way. When
 `uncommitted` is true, say that the record is not in git yet: until it is
 committed no other branch, worktree or gate can see it. When `no_location` is
 true, no `--found-at` was given: the record is written all the same, and the

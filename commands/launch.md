@@ -241,7 +241,13 @@ Then summarise the JSON for the user:
   Each entry names its file relative to the repository, `resolved_path` included.
 - `scan.hard_fails` — secret/PII findings that would block the release.
   `scan.findings` keeps at most 10,000 of them; `scan.findings_omitted`, when
-  present, counts the rest, and `scan.hard_fails` counts every one.
+  present, counts the rest, and `scan.hard_fails` counts every one. In a
+  repository that armed gitleaks in `.abcd/config/gitleaks.json`, gitleaks runs
+  over every text file of the payload beside the native scanner and its
+  findings count here too. Armed with no gitleaks binary installed, the scan
+  lists the gap in `scan.unscanned` (as `(configured scanner augmenter)`, the
+  reason in `scan.unscanned_why`) and counts it as a hard fail, so the release
+  refuses until gitleaks is installed or the config sets `enabled` to `false`.
 - `smoke.ok` — whether the payload would install (a plugin only; for another
   kind the `installability-smoke` row is `not_armed`, as are `hook-compliance`,
   the deep tier and the parity diff, each naming the declared kind): both plugin manifests parse,

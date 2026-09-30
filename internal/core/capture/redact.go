@@ -30,7 +30,7 @@ import (
 // a test replaces it to count constructions, which is how the "one scanner per
 // batch, none inside the ledger lock" property is asserted structurally rather
 // than by timing.
-var newLedgerScanner = scanner.New
+var newLedgerScanner = func(repoRoot string) (*scanner.Scanner, error) { return scanner.New(repoRoot) }
 
 func redactLedgerText(repoRoot, text string) (redacted string, count int, degraded string) {
 	sc, err := newLedgerScanner(repoRoot)
@@ -40,15 +40,30 @@ func redactLedgerText(repoRoot, text string) (redacted string, count int, degrad
 		// close.
 		return text, 0, fmt.Sprintf("scanner unavailable (%v); text written unredacted", err)
 	}
-	if unavail, reason := sc.Unavailable(); unavail {
-		degraded = fmt.Sprintf("scanner degraded (%s); redacted with default patterns only", reason)
-	}
 	findings := sc.ScanText(text, "issue")
+	degraded = scanNote(sc)
 	if len(findings) == 0 {
 		return text, 0, degraded
 	}
 	out, _ := scanner.Redact(text, findings)
 	return out, len(findings), degraded
+}
+
+// scanNote is the loud-degrade note for a scanner that has run: a degraded
+// pattern set (a broken pii.json, or a repository's opt-in augmenter whose run
+// failed), or the gap a configured augmenter that is not installed leaves. It
+// is read AFTER the scan, because a failed augmenter run degrades the scanner
+// during it. The ledger still writes in every case (the posture above); the
+// note is what keeps the write from being silent (the 2026-09-25 ruling on
+// iss-2608291814575788: capture writes and records the gap).
+func scanNote(sc *scanner.Scanner) string {
+	if unavail, reason := sc.Unavailable(); unavail {
+		return fmt.Sprintf("scanner degraded (%s); redacted with default patterns only", reason)
+	}
+	if gap := sc.AugmenterGap(); gap != "" {
+		return fmt.Sprintf("the repository's configured scanner augmenter did not run (%s); redacted with the native scanner only", gap)
+	}
+	return ""
 }
 
 // redactCaptureInputs sanitises the four free-text members of a capture request
@@ -110,11 +125,7 @@ func newLedgerRedactor(repoRoot string) *ledgerRedactor {
 	if err != nil {
 		return &ledgerRedactor{degraded: fmt.Sprintf("scanner unavailable (%v); text written unredacted", err)}
 	}
-	r := &ledgerRedactor{sc: sc}
-	if unavail, reason := sc.Unavailable(); unavail {
-		r.degraded = fmt.Sprintf("scanner degraded (%s); redacted with default patterns only", reason)
-	}
-	return r
+	return &ledgerRedactor{sc: sc}
 }
 
 // redact sanitises one value and reports how many spans it rewrote.
@@ -131,5 +142,10 @@ func (r *ledgerRedactor) redact(text string) (string, int) {
 }
 
 // Degraded is the loud-degrade note, or "" when the scanner ran with its full
-// pattern set.
-func (r *ledgerRedactor) Degraded() string { return r.degraded }
+// pattern set. It is read after the batch's redactions (scanNote).
+func (r *ledgerRedactor) Degraded() string {
+	if r.sc == nil {
+		return r.degraded
+	}
+	return scanNote(r.sc)
+}
