@@ -196,8 +196,13 @@ func TestUpdateReceiptKeepsTheOrdinaryVersionLine(t *testing.T) {
 		Digest:     strings.Repeat("cd", 32),
 	})
 	got := out.String()
-	if !strings.Contains(got, "v0.6.9 -> v0.7.0") {
-		t.Errorf("the ordinary receipt line changed:\n%s", got)
+	// The swap's first line is the one wording every swap shares (CJ1b):
+	// the bootstrap's success notice leads with the same line.
+	if first, _, _ := strings.Cut(got, "\n"); first != update.UpdatedLine("v0.6.9", "v0.7.0") {
+		t.Errorf("the receipt must open with %q; got %q", update.UpdatedLine("v0.6.9", "v0.7.0"), first)
+	}
+	if !strings.Contains(got, "~/.local/bin/abcd") {
+		t.Errorf("the receipt must still name the path it swapped:\n%s", got)
 	}
 	if strings.Contains(got, "unpublished") {
 		t.Errorf("a provable old build must not be reported as unpublished:\n%s", got)

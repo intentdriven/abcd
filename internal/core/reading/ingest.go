@@ -51,6 +51,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
+	"github.com/intentdriven/abcd/internal/core/record/match"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -383,15 +384,22 @@ type IngestRequest struct {
 	// does not read OutputPath again, so what was routed and reported is what
 	// is ingested. Nil means the ingest reads OutputPath itself.
 	Output []byte
+	// Match, when non-nil, runs the filing-time match on every item stored
+	// (ruling DQ2b, adr-2609300821558671); capture.IngestReadingRequest.Match
+	// says what it compares and writes. nil stores the items unmatched.
+	Match *match.Config
 }
 
 // IngestResult is what an ingest did.
 type IngestResult struct {
-	RunID        string                     `json:"run_id"`
-	Position     Position                   `json:"position"`
-	Regime       string                     `json:"regime"`
-	Records      []capture.ReadingRecordRef `json:"records"`
-	RefusedItems []ItemRefusal              `json:"refused_items,omitempty"`
+	RunID    string                     `json:"run_id"`
+	Position Position                   `json:"position"`
+	Regime   string                     `json:"regime"`
+	Records  []capture.ReadingRecordRef `json:"records"`
+	// Matches is the filing-time match's outcome per stored record, when the
+	// request asked for one: the likely repeats the ingest linked and listed.
+	Matches      []capture.ReadingMatch `json:"matches,omitempty"`
+	RefusedItems []ItemRefusal          `json:"refused_items,omitempty"`
 	// RefusedCount is how many items were refused in total. RefusedItems is
 	// capped — the item count is payload-chosen — so the two differ when a run
 	// refused more than the cap, and the count is what nothing truncates.
@@ -691,7 +699,7 @@ func ingestUnderLock(root *os.Root, repoRoot string, req IngestRequest, res *Ing
 		return err
 	}
 
-	return write(root, repoRoot, res, out, manifest, def, free, items)
+	return write(root, repoRoot, res, out, manifest, def, free, items, req.Match)
 }
 
 // leftPending is the orphans found minus the stages that were cleared: what a
@@ -864,7 +872,7 @@ func resolveParkedManifest(root *os.Root, repoRoot string, out Output) (Manifest
 // write is the staged-write protocol. Nothing durable exists for the run until
 // step 1 has already validated everything, and the run metadata is written last.
 func write(root *os.Root, repoRoot string, res *IngestResult, out Output, m Manifest, def Definition,
-	free payloadField, items []capture.ReadingItem) error {
+	free payloadField, items []capture.ReadingItem, mc *match.Config) error {
 	stageRel := IngestStageDir + "/" + out.RunID
 	marker := stageMarker{Type: StageType, RunID: out.RunID, Records: []string{}}
 	if err := writeJSONIn(root, stageRel+"/"+stageFileName, marker); err != nil {
@@ -881,8 +889,10 @@ func write(root *os.Root, repoRoot string, res *IngestResult, out Output, m Mani
 		Position: string(def.Position),
 		Regime:   def.Regime,
 		Items:    items,
+		Match:    mc,
 	})
 	res.Records = written.Records
+	res.Matches = written.Matches
 	res.Redacted = written.Redacted
 	noteDegraded(res, written.Degraded)
 	if err != nil {

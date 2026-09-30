@@ -504,6 +504,9 @@ replacement is never silent. Report `redacted` whenever it is non-zero. The
 record stays in `open/`. Refused with exit 2 and nothing written: an empty text,
 `none (filed automatically)` in any case (it would leave the record as the drain
 already skips it), a malformed or unknown id, and a record that is not open.
+When a person comes to write the real fix for a record filed with `none (filed
+automatically)`, offer to run a state-of-the-art research pass first (principle
+`prefer-sota`) before they write it, and let them decline.
 
 ## Answer a reading item
 
@@ -544,13 +547,16 @@ hand, until exactly one does.
 The standing disposition of an item is the one no sibling supersedes, and the
 superseded record stays in place, because a hold that vanished when it was
 answered would take its own exit condition with it. `--recurs` cites prior item ids — the
-recorded form of a warm recognition that something has come back, never a
-mechanical join and never a state of its own.
+researcher's confirmed recognition that something has come back, never a state
+of its own. The machine's proposal of a repeat is the `duplicates:` or
+`refines:` link `reading ingest` writes onto the item; a recurrence the
+researcher confirms is cited here.
 
 `--hold-frame-location` and `--hold-moscow` are **reserved and dormant**: the
 grammars are stated and a populated value is refused until activation is ruled.
-Nothing means "already covered" — an item nobody has answered is reported as
-outstanding by `abcd lint`, never named as a state.
+No state means "already covered": an item nobody has answered is reported as
+outstanding by `abcd lint`, never named as a state, and a stored link to a
+likely repeat is a proposal on the item, not an answer to it.
 
 **At the widening position, characterise first and admit second.** No
 disposition in any state (`accepted`, `declined` or `held`) and no admission is
@@ -738,6 +744,14 @@ record shows what a reading caused as well as whether a reading occasioned an
 intent. Its Press Release seed names no item ("Seeded by promotion from a reading
 item"): that section is projected to a later reading, and no reading sees
 another's output. The item's own text stays in the reading record.
+
+Promoting a reading item matches the draft it mints against the record, as a
+capture is matched: the item's pattern and body are compared with the open and
+resolved issues and the intents, and each likely double is written onto the
+draft as `duplicates:` or `refines:`. The JSON carries it as `match`, and the
+plain rendering prints each link written, or why nothing was compared. Relay the
+match; a person keeps a link or deletes its line. Link mode mints nothing and
+matches nothing.
 
 For a reading item the JSON's `issue_status` carries the **standing
 disposition's state** (`accepted`), not a status folder: that family's status

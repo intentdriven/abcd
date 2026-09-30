@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -225,5 +226,81 @@ func TestBareAhoyNamesTheProviderAdapter(t *testing.T) {
 	if !strings.Contains(string(out), "provider:    none configured (optional); every delegated step runs on the host") ||
 		!strings.Contains(string(out), "abcd ahoy --providers") {
 		t.Fatalf("bare ahoy does not name the provider adapter:\n%s", out)
+	}
+}
+
+// repoRouteToKeyedProvider sets up a machine provider that holds a key and a
+// repository whose configuration routes a role to it, the route ruling CD2 of
+// 2026-09-29 skips, and changes into the repository.
+func repoRouteToKeyedProvider(t *testing.T) string {
+	t.Helper()
+	providerNamingKey(t, "https://openrouter.ai/api/v1")
+	repo := t.TempDir()
+	if err := os.Mkdir(filepath.Join(repo, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(repo, ".abcd"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, ".abcd", "config.json"),
+		[]byte(`{"oracle":{"roles":{"scribe":"openrouter/typesafe/jev-1.13"}}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(repo)
+	return repo
+}
+
+// TestAhoyConnectSaysASkippedRoute: the setup reads the configuration in
+// force, and a route that read skipped is said once on stderr, in the text
+// form and the JSON form alike, and never in what a machine reader parses.
+func TestAhoyConnectSaysASkippedRoute(t *testing.T) {
+	for _, asJSON := range []bool{false, true} {
+		t.Run(map[bool]string{false: "text", true: "json"}[asJSON], func(t *testing.T) {
+			hermeticEnv(t)
+			repoRouteToKeyedProvider(t)
+			base, calls, _ := fakeProvider(t, 200, completionReply("qwen/qwen3-8b"))
+			args := []string{"ahoy", "connect", "desk", "--base-url", base, "--model", "qwen/qwen3-8b", "--home", "none"}
+			if asJSON {
+				args = append(args, "--json")
+			}
+			root := NewRootCommand()
+			root.SetArgs(args)
+			var so, se bytes.Buffer
+			root.SetOut(&so)
+			root.SetErr(&se)
+			if err := root.Execute(); err != nil || calls.Load() != 1 {
+				t.Fatalf("ahoy connect (%d call(s)): %v\n%s%s", calls.Load(), err, so.String(), se.String())
+			}
+			if n := strings.Count(se.String(), "holds a key"); n != 1 {
+				t.Fatalf("stderr carries %d keyed-route warning(s), want one:\n%s", n, se.String())
+			}
+			for _, want := range []string{"abcd oracle adapter: ", "oracle.roles.scribe", "openrouter/typesafe/jev-1.13", "skipped"} {
+				if !strings.Contains(se.String(), want) {
+					t.Errorf("the warning does not name %q:\n%s", want, se.String())
+				}
+			}
+			if strings.Contains(so.String(), "holds a key") {
+				t.Errorf("stdout carries the warning:\n%s", so.String())
+			}
+			if asJSON && !json.Valid(so.Bytes()) {
+				t.Errorf("stdout is not one JSON document:\n%s", so.String())
+			}
+		})
+	}
+}
+
+// TestBareAhoyNamesASkippedRoute: the bare board names a route the
+// configuration read skipped, where it names the provider adapter.
+func TestBareAhoyNamesASkippedRoute(t *testing.T) {
+	hermeticEnv(t)
+	repoRouteToKeyedProvider(t)
+	out, err := runCLIErr(t, "ahoy")
+	if err != nil {
+		t.Fatalf("ahoy: %v\n%s", err, out)
+	}
+	for _, want := range []string{"provider:    route skipped — oracle adapter: ", "oracle.roles.scribe", "holds a key"} {
+		if !strings.Contains(string(out), want) {
+			t.Errorf("bare ahoy does not say %q:\n%s", want, out)
+		}
 	}
 }

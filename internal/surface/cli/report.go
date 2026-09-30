@@ -346,15 +346,22 @@ func newInboxCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return &exitError{Code: 2, Msg: "abcd inbox promote: " + termsafe.Sanitize(err.Error()) + " (nothing written)"}
 			}
-			p, err := report.Promote(ledger, args[0])
+			// The filing-time match (itd-2609212137116617), configured as the
+			// capture verb's is and never a refusal.
+			mc, matchRefused := resolveMatch(cmd.ErrOrStderr(), "inbox promote", ledger)
+			p, err := report.Promote(ledger, args[0], mc)
 			if err != nil {
 				return reportRefusal("inbox promote", err, "nothing written")
+			}
+			if p.Match == nil && !p.Resumed {
+				p.Match = matchRefused
 			}
 			return render(cmd.OutOrStdout(), *asJSON, p, func(w io.Writer) {
 				fmt.Fprintf(w, "promoted %s to %s — %s\n", p.Report, p.Capture, termsafe.Sanitize(p.Path))
 				if p.Resumed {
 					fmt.Fprintln(w, "  finished an earlier promotion that filed this capture; nothing new was filed")
 				}
+				renderMatch(w, p.Match)
 				fmt.Fprintln(w, "  the report is kept in the inbox, marked promoted")
 				if p.Redacted > 0 {
 					fmt.Fprintf(w, "  redacted %d span(s) before writing (home paths and identifiers are never committed)\n", p.Redacted)

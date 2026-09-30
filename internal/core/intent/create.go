@@ -205,10 +205,11 @@ type DraftOptions struct {
 	// provenance.DefaultMode, so a draft written through a command carries the key
 	// whatever the caller says.
 	ProductionMode string
-	// Match, when non-nil, matches the draft's title and press release against
-	// the record under the mint lock and writes each likely double as a typed
-	// link (match.go). The promote route passes none: its draft is joined to
-	// the record it graduated from already.
+	// Match, when non-nil, matches the draft's title and press release (or the
+	// matcher's own Text) against the record under the mint lock and writes
+	// each likely double as a typed link (match.go). The issue promote route
+	// passes none; the reading-item route passes one on request (ruling DQ2b),
+	// comparing the item's finding.
 	Match *Matcher
 }
 
@@ -230,6 +231,12 @@ var relatedIssueRe = regexp.MustCompile(`^(iss|rdi)-[0-9]+$`)
 func CreateDraft(repoRoot string, opts DraftOptions) (Intent, error) {
 	it, _, err := createDraftMatched(repoRoot, opts)
 	return it, err
+}
+
+// CreateDraftMatched is CreateDraft returning the filing-time match's outcome
+// too, nil when opts asked for none.
+func CreateDraftMatched(repoRoot string, opts DraftOptions) (Intent, *match.Outcome, error) {
+	return createDraftMatched(repoRoot, opts)
 }
 
 // createDraftMatched is CreateDraft returning the filing-time match's outcome too,
@@ -321,7 +328,11 @@ func createDraftMatched(repoRoot string, opts DraftOptions) (Intent, *match.Outc
 		// it reads is the record the draft is written into.
 		var links map[match.Relation][]string
 		if opts.Match != nil {
-			outcome = runMatch(opts.Match, opts.Title+"\n"+opts.PressRelease)
+			text := opts.Title + "\n" + opts.PressRelease
+			if opts.Match.Text != "" {
+				text = opts.Match.Text
+			}
+			outcome = runMatch(opts.Match, text)
 			links = outcome.Links()
 		}
 		content := seedDraft(id, opts, stamp, links)

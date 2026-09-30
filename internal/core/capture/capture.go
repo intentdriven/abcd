@@ -138,6 +138,10 @@ type Issue struct {
 	Status        State       `json:"status"` // derived from folder
 	Path          string      `json:"path"`   // repo-relative locator (iss-81)
 	Body          string      `json:"body"`
+	// deferredAfter is the release-cut waiver's anchor tag (deferred_after),
+	// read for the drain's live-deferral hand-back and not surfaced: the cut
+	// reads the pair from the committed record itself.
+	deferredAfter string
 	// BlockedByOpen is the derived subset of BlockedBy whose targets are still in
 	// open/ (the priority projection populated by List/Status). Not a stored
 	// field: an empty slice means the issue is unblocked.
@@ -186,9 +190,20 @@ type CaptureRequest struct {
 	// lock, and writes a `duplicates:` or `refines:` link naming each likely
 	// double (itd-2609212137116617). It never refuses the capture: a match that
 	// cannot run says why on the result and the record is filed without it.
-	// nil files the record unmatched, as a caller with its own matching (the
-	// inbox drain, the consistency pass) does.
+	// nil files the record unmatched.
 	Match *match.Config
+	// MatchText, when non-empty, is the text the match compares in place of
+	// Text: the finding's own words, for a filer whose record also carries
+	// lines every record it files shares (the inbox's provenance, the
+	// consistency pass's evidence line). Matched on those, two unrelated
+	// records would link each other on the boilerplate alone. Empty compares
+	// Text.
+	MatchText string
+	// MatchExcept names records the match does not compare with: a filer
+	// that files several records in one pass passes the ones it has already
+	// filed, so two findings of one pass are never linked as doubles of each
+	// other.
+	MatchExcept []string
 }
 
 // CaptureResult is the outcome of a successful Capture. The timestamp-numeric

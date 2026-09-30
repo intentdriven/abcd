@@ -149,6 +149,14 @@ None stated.
 - Given provisioning has fetched a new pinned binary (itd-105/108's job),
   when the next session starts, then the session reports the version
   transition performed.
+  _Amended 2026-09-30 by the product thinker's rulings CJ1 and CJ1b of
+  2026-09-29 (recorded in `.abcd/work/DECISIONS.md` under 2026-09-30): the
+  transition is reported once, by the process that performed the swap, when
+  it completes: the bootstrap's success notice and `abcd update`'s receipt
+  open with `abcd updated from X to Y`, and the session start shows it only
+  for a swap made by a hook that discards its output, once. The per-repo
+  setup_version comparison that first met this criterion is removed
+  (iss-2609291942520919)._
 - Given a binary whose vintage cannot be determined (unstamped build, dirty
   `vcs.modified` rebuild), when staleness is evaluated, then the state is
   reported as unknown — never as fresh — and `abcd ahoy install` run through

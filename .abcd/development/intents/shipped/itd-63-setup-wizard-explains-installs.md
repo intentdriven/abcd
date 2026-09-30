@@ -141,6 +141,8 @@ Gap audit:
     evidence: .abcd/development/intents/drafts/itd-62-pluggable-safety-gate.md:1 — "drafts/"
 <!-- abcd-review-end receipt=rcp-3c9fb4ba9770 -->
 
+Criterion 2 read on 2026-09-30 for gh, recorded as iss-2609281911024838 under the product thinker's DQ3 ruling of 2026-09-29 (offer to install gh on an explicit yes) and ruling H10: the install half covers gh as well as gitleaks. `ahoy remote apply` and `site setup` explain a missing gh from the registry and offer the registry's step, and for gh the explicit yes is one typed at a terminal: `--yes`, a piped answer and a run with no terminal each decline, and the refusal carries the command. The read, `ahoy --remote`, writes nothing and never offers the install; it names the apply. `--install-tool` still names gitleaks alone. TestRemoteApplyOffersGhAndRunsTheStepOnYes, TestRemoteApplyGhDeclinedRunsNothingAndShowsTheStep, TestSetupOffersAMissingGh and TestTerminalToolConfirmAsksOnlyAPersonAtATerminal pin it. The criterion text above stands as shipped.
+
 ### Linkage note (spc-83.5)
 
 Ships as one of FOUR intents sharing spec

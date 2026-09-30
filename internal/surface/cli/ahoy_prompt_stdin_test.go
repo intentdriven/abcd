@@ -253,10 +253,15 @@ func TestAhoyInstallYesDisclosesOptionalIdentityPin(t *testing.T) {
 		t.Fatalf("install output not JSON: %v\n%s", err, jsonOut)
 	}
 	// The model-tier routing offers are optional too (itd-2609170822093401): a
-	// table is accepted only on an answer, so --yes names them as well.
-	want := "git_identity.unpinned oracle_routing.machine_offered oracle_routing.repo_offered"
+	// table is accepted only on an answer, so --yes names them as well; and so
+	// is the drain eligibility record (ruling BX2), which decides what an
+	// unattended agent may change.
+	want := "git_identity.unpinned oracle_routing.machine_offered oracle_routing.repo_offered drain_rule.offered"
 	if strings.Join(res.OptionalSkipped, " ") != want {
 		t.Fatalf("optional_skipped = %v, want [%s]\n%s", res.OptionalSkipped, want, jsonOut)
+	}
+	if !strings.Contains(text, "the drain eligibility record decides what an unattended agent may change") {
+		t.Fatalf("the exclusion notice gives no reason for the drain rule offer:\n%s", text)
 	}
 	if !strings.Contains(text, "a routing table decides which model every delegated step asks for") {
 		t.Fatalf("the exclusion notice gives no reason for the routing offers:\n%s", text)

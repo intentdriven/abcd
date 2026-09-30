@@ -184,7 +184,11 @@ func renderUpdateReport(w io.Writer, asJSON bool, rep update.Report) {
 			if rep.OldVersion == "" {
 				old = "an unpublished build"
 			}
-			fmt.Fprintf(w, "updated %s: %s -> %s\n", termsafe.Sanitize(rep.TargetPath), old, termsafe.Sanitize(rep.NewVersion))
+			// The first line is the one wording every swap prints when it
+			// completes (update.UpdatedFormat, the ruling CJ1b); the bootstrap's
+			// success notice leads with the same line.
+			fmt.Fprintln(w, update.UpdatedLine(old, termsafe.Sanitize(rep.NewVersion)))
+			fmt.Fprintf(w, "  path:     %s\n", termsafe.Sanitize(rep.TargetPath))
 			fmt.Fprintf(w, "  origin:   %s\n", rep.Origin)
 			if rep.OldDigest != "" {
 				fmt.Fprintf(w, "  replaced: sha256 %s — in no published release; %s\n", termsafe.Sanitize(rep.OldDigest), rep.Ownership.Prose())

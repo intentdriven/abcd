@@ -120,6 +120,7 @@
     "next_up": "next up",
     "fails": "fails",
     "draft": "draft",
+    "target": "target",
     "none": "None",
     "order_record_id": "READY intents read oldest id first"
   }

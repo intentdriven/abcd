@@ -735,7 +735,10 @@ intent only: a bundle is planned without one and each member targeted after);
 Refused with nothing written: a draft, a shipped, superseded or discipline
 record, and a value that is neither shape. A target is a report, never a gate:
 `launch --dry-run` and the release cut (`launch ship`, `abcd changelog`) list
-every targeted intent still planned, and neither refuses on one. Closing the
+every targeted intent still planned, and neither refuses on one. The cut moves
+every target it passes — `next`, or a tag at or below the release it cuts — to
+`next`, whatever the following release is numbered, in the same write as the
+changelog, and the dated section names the move. Closing the
 spec that ships the intent drops the line, as superseding it does, and
 record-lint's `record_schema` rule refuses a `target_release` left on a shipped
 or superseded intent.
@@ -1081,7 +1084,10 @@ A payload that validates is written in two places. Each finding is filed as one
 issue (`inconsistency`, from an `agent-finding`, located at its first end, with
 the report as its evidence) — unless an open record already quotes either end
 and names its document, in which case it is linked to that record and nothing
-is filed. And one dated report lands on the reviews shelf,
+is filed. A finding it files runs the capture verb's filing-time match on its
+summary and explanation, never against a record the same pass filed, and
+carries a `duplicates:` or `refines:` link naming each likely double; each row
+reports it as `match`. And one dated report lands on the reviews shelf,
 `.abcd/work/reviews/<date>-consistency[-<itd-N>]/00-summary.md`, pinned to the
 commit the pass read, listing every finding with both ends quoted and located
 and the record it was filed as or linked to; a second run the same day takes

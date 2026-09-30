@@ -1845,14 +1845,19 @@ an error included, exits 0, so the hook can never wedge a session.`,
 					notices = append(notices, n)
 				}
 			}
-			// itd-111 (AC6): a version transition performed since this repo was
-			// last set up — the running binary differs from the recorded
-			// setup_version. Report only; the fetch that changed it is
-			// provisioning's job. Both values come from disk (config + build info).
-			if from, to, changed := ahoy.VersionTransition(cwd); changed {
-				notices = append(notices, fmt.Sprintf(
-					"abcd: the running binary is version %s, but this repo was last set up with %s — run `/abcd:ahoy install` (or `abcd ahoy install`) to reconcile the recorded version.",
-					termsafe.Sanitize(to), termsafe.Sanitize(from)))
+			// itd-111 (AC6): an update is announced once, by whatever swapped
+			// the binary, when the swap completes (the ruling CJ1b), so session
+			// start shows nothing about it — except the one swap whose output
+			// no one read: the bootstrap salvage the per-prompt, per-command and
+			// pre-compaction hooks run with their output discarded. That one is
+			// shown here once, and its marker is this hook's single write.
+			pluginRoot := os.Getenv("ABCD_PLUGIN_ROOT")
+			if pluginRoot == "" {
+				pluginRoot = os.Getenv("CLAUDE_PLUGIN_ROOT")
+			}
+			if from, to, ok := ahoy.TakeUnseenUpdate(pluginRoot, cwd); ok {
+				notices = append(notices, update.UpdatedLine(termsafe.Sanitize(from), termsafe.Sanitize(to))+
+					" — the update ran while a hook discarded its output, so it is reported here, once.")
 			}
 			// The inbox greeting (itd-2609221656361680): one line saying how
 			// many reports wait and from how many repositories, and nothing
@@ -2168,10 +2173,14 @@ is named on stderr, with the file that set the list, here and on every hook
 prompt. To keep an entry, restate it in the list, or leave the field out to
 inherit the bundled list.
 
-SHELL is generated from the bundled shell-hazard registry that "abcd guard"
-enforces: one rule per registry entry, naming the command, why it is dangerous
-and what to run instead, recalled by the commands the registry names. It
-teaches before shell work what the guard refuses at the moment a command runs.
+SHELL is generated from the shell-hazard registry that "abcd guard" enforces
+in this repository, the bundled entries and the repository's own
+.abcd/guard.json entries alike: one rule per registry entry, naming the
+command, why it is dangerous and what to run instead, recalled by the commands
+the registry names. A rule in the repository's words is marked "(repo)" after
+its entry id. A guard.json the guard refuses is named on stderr and not taught;
+SHELL then teaches the registry the guard enforces in its place. It teaches
+before shell work what the guard refuses at the moment a command runs.
 Read-only.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -3441,6 +3450,10 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 						fmt.Fprintf(w, "  provider:    none configured (optional); every delegated step runs on the host — `abcd ahoy --providers` explains the adapter\n")
 					case ahoy.ProviderAdapterRefusedGapID:
 						fmt.Fprintf(w, "  provider:    configuration refused — %s\n", termsafe.Sanitize(g.Detail))
+					case ahoy.ProviderAdapterRouteSkippedGapID:
+						for _, d := range strings.Split(g.Detail, "\n") {
+							fmt.Fprintf(w, "  provider:    route skipped — %s\n", termsafe.Sanitize(d))
+						}
 					}
 				}
 				if res.FolderKind != ahoy.UnmanagedFolder {
@@ -3551,16 +3564,27 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 					fmt.Fprintf(w, "  remaining gaps: %s\n", strings.Join(res.Remaining, ", "))
 				}
 				// --yes approves every category but never writes the identity
-				// pin, the status-line wiring or a routing table, so say which optional work it
-				// left, why each needs an answer, and how to apply it.
+				// pin, the status-line wiring, a routing table or the drain
+				// rule, and off a terminal the drain rule is not asked at all,
+				// so say which optional work it left, why each needs an answer,
+				// and how to apply it.
 				if len(res.OptionalSkipped) > 0 {
-					fmt.Fprintf(w, "  optional, not covered by --yes: %s\n", strings.Join(res.OptionalSkipped, ", "))
+					label := "optional, not covered by --yes"
+					if !yes {
+						label = "optional, asked only at a terminal"
+					}
+					fmt.Fprintf(w, "  %s: %s\n", label, strings.Join(res.OptionalSkipped, ", "))
 					for _, id := range res.OptionalSkipped {
 						if why := optionalSkipReason(id); why != "" {
 							fmt.Fprintf(w, "    %s\n", why)
 						}
 					}
-					fmt.Fprint(w, "    run `abcd ahoy install` (no --yes) and answer y at each prompt — non-interactively, `yes | abcd ahoy install`\n")
+					if yes {
+						fmt.Fprint(w, "    run `abcd ahoy install` (no --yes) and answer y at each prompt — non-interactively, `yes | abcd ahoy install`\n")
+					}
+					if slices.Contains(res.OptionalSkipped, ahoy.DrainRuleOfferGapID) {
+						fmt.Fprint(w, "    the drain rule is asked only of a person at a terminal: run `abcd ahoy install` there, without --yes, and answer it\n")
+					}
 				}
 			})
 		},
@@ -3735,11 +3759,17 @@ func newAhoyRemoteCommand(asJSON *bool) *cobra.Command {
 			// adr-44 / invariant 10: the remote write is CONFIRMED as well as
 			// invoked. An unanswered run declines, so a script that pipes nothing
 			// changes nothing; --yes is the explicit way to say yes in advance.
+			//
+			// A missing gh is offered for install only to a person at a
+			// terminal: --yes answers the settings change, never the install
+			// of a program (the DQ3 ruling), so the offer's confirmation is
+			// built from the prompter before --yes replaces it.
 			p := newPrompter(cmd)
+			confirmTool := terminalToolConfirm(p, remoteYes, cmd.ErrOrStderr())
 			if remoteYes {
 				p = alwaysConfirm{}
 			}
-			res, err := ahoy.RemoteApply(cwd, p)
+			res, err := ahoy.RemoteApply(cwd, p, confirmTool)
 			if err != nil {
 				return err
 			}
@@ -3761,7 +3791,7 @@ func newAhoyRemoteCommand(asJSON *bool) *cobra.Command {
 			return nil
 		},
 	}
-	applyCmd.Flags().BoolVar(&remoteYes, "yes", false, "confirm the remote change without being asked; without it an unanswered run declines and changes nothing")
+	applyCmd.Flags().BoolVar(&remoteYes, "yes", false, "confirm the remote change without being asked (never the install of a missing gh); without it an unanswered run declines and changes nothing")
 	remoteCmd.AddCommand(applyCmd)
 	return remoteCmd
 }
@@ -3884,6 +3914,8 @@ func optionalSkipReason(id string) string {
 		return "the status line rewrites a setting of the host harness and takes element choices, so it is only written against an answered prompt"
 	case ahoy.OracleRoutingMachineGapID, ahoy.OracleRoutingRepoGapID:
 		return "a routing table decides which model every delegated step asks for, so abcd's proposal is only accepted against an answered prompt"
+	case ahoy.DrainRuleOfferGapID:
+		return "the drain eligibility record decides what an unattended agent may change in this repository, so it is only added against a prompt answered at a terminal"
 	}
 	return ""
 }
@@ -3914,16 +3946,36 @@ func installToolNames(names []string) (map[string]bool, error) {
 // --install-tool, which is how a host relays the answer its own question tool
 // got. --yes never installs a tool. Every no carries the way to say yes.
 func toolConfirm(p ahoy.Prompter, named map[string]bool, yes bool, w io.Writer) tools.Confirm {
+	ask := askToolAtTerminal(p, yes, w, func(e tools.Explanation) string { return "name it with --install-tool " + e.Tool })
 	return func(e tools.Explanation) tools.Answer {
 		if named[e.Tool] {
 			return tools.Answer{Yes: true, Why: "named with --install-tool"}
 		}
+		return ask(e)
+	}
+}
+
+// terminalToolConfirm is the install question at a verb with no
+// --install-tool: the gh offer at ahoy remote apply (the product thinker's
+// DQ3 ruling, 2026-09-29). Its only yes is one typed at a terminal; --yes, a
+// piped stream and a caller with no terminal each decline, carrying the
+// command the person can run themselves.
+func terminalToolConfirm(p ahoy.Prompter, yes bool, w io.Writer) tools.Confirm {
+	return askToolAtTerminal(p, yes, w, func(e tools.Explanation) string { return "install it yourself with " + e.StepText() })
+}
+
+// askToolAtTerminal asks the install question of a person at a terminal and
+// declines everywhere else. otherwise names the other way to a yes, for every
+// decline to carry. The explanation and the exact step are shown before the
+// question, and the step is announced as it starts.
+func askToolAtTerminal(p ahoy.Prompter, yes bool, w io.Writer, otherwise func(tools.Explanation) string) tools.Confirm {
+	return func(e tools.Explanation) tools.Answer {
 		if yes {
-			return tools.Answer{Why: "--yes never installs a tool; name it with --install-tool " + e.Tool + ", or run without --yes at a terminal"}
+			return tools.Answer{Why: "--yes never installs a tool; " + otherwise(e) + ", or run without --yes at a terminal"}
 		}
 		sp, ok := p.(*stdinPrompter)
 		if !ok || !sp.tty {
-			return tools.Answer{Why: "no terminal to ask at: abcd installs a tool only on an answer typed at a terminal, or with --install-tool " + e.Tool}
+			return tools.Answer{Why: "no terminal to ask at: abcd installs a tool only on an answer typed at a terminal; " + otherwise(e)}
 		}
 		for _, line := range e.Lines() {
 			fmt.Fprintln(w, termsafe.Sanitize(line))
@@ -3992,8 +4044,9 @@ func (p *stdinPrompter) echo(answer string) {
 }
 
 // AtTerminal reports whether a person is answering at a terminal, which makes
-// the prompter an ahoy.TerminalPrompter: the one question abcd asks only of a
-// person (whether to change who commits, itd-131) is never put to a pipe.
+// the prompter an ahoy.TerminalPrompter: the questions abcd asks only of a
+// person (whether to change who commits, itd-131, and whether to record the
+// drain eligibility rule) are never put to a pipe.
 func (p *stdinPrompter) AtTerminal() bool { return p.tty }
 
 func (p *stdinPrompter) Confirm(question string) bool {
@@ -4728,12 +4781,25 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			// A reading item's promotion matches the draft it mints (ruling
+			// DQ2b, adr-2609300821558671), configured as the capture verb's is
+			// and never a refusal. The issue route and link mode mint nothing
+			// the match would compare.
+			var mc *match.Config
+			var matchRefused *match.Outcome
+			readingMint := strings.HasPrefix(args[0], issueschema.ReadingItemFamily+"-") && promoteIntent == ""
+			if readingMint {
+				mc, matchRefused = resolveMatch(cmd.ErrOrStderr(), "capture promote", repoRoot)
+			}
 			res, err := capture.Promote(capture.PromoteRequest{
 				RepoRoot: repoRoot, ID: args[0], LinkIntent: promoteIntent, Grounds: promoteGrounds,
-				ProductionMode: mode,
+				ProductionMode: mode, Match: mc,
 			})
 			if err != nil {
 				return captureRefusal("promote", err)
+			}
+			if readingMint && res.Match == nil {
+				res.Match = matchRefused
 			}
 			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, res, func(w io.Writer) {
 				verb := "minted"
@@ -4751,6 +4817,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 				if res.BackEdgeKept != "" {
 					fmt.Fprintf(w, "back_edge: kept %s\n", termsafe.Sanitize(res.BackEdgeKept))
 				}
+				renderMatch(w, res.Match)
 				emitRedactionNote(w, res.Redacted, res.Degraded)
 			})
 		},
@@ -4855,7 +4922,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 	dispositionCmd.Flags().StringVar(&dispGrounds, "grounds", "", "disposition_grounds: why this answer (free text; required on every state except held)")
 	dispositionCmd.Flags().StringVar(&dispExit, "exit-condition", "", "what would end a held disposition (required on held; a hold exits only through a superseding disposition that cites it)")
 	dispositionCmd.Flags().StringVar(&dispSupersedes, "supersedes", "", "the standing dsp-N this answer replaces; required once an item already carries one")
-	dispositionCmd.Flags().StringVar(&dispRecurs, "recurs", "", "comma-separated prior rdi-ids this item recurs from — the recorded form of a warm recognition, never a mechanical join")
+	dispositionCmd.Flags().StringVar(&dispRecurs, "recurs", "", "comma-separated prior rdi-ids this item recurs from — the researcher's confirmed recognition; the ingest's duplicates/refines link is only a proposal")
 	// The two-axis hold field is RESERVED and dormant. The flags exist so the
 	// reservation is a behaviour a caller meets rather than a comment nobody
 	// reads: a populated value is refused, and the refusal states the grammar.

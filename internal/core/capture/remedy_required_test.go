@@ -74,7 +74,7 @@ func TestCaptureAcceptsTheMachineRemedy(t *testing.T) {
 // filer, so its record carries the machine value.
 func TestConsistencyFilesTheMachineRemedy(t *testing.T) {
 	root := consistencyLedgerRepo(t)
-	if _, err := IngestConsistency(root, consistencyPayload(t, root), "2026-09-26"); err != nil {
+	if _, err := IngestConsistency(root, consistencyPayload(t, root), "2026-09-26", nil); err != nil {
 		t.Fatal(err)
 	}
 	list, err := List(ListRequest{RepoRoot: root, State: StateOpen})

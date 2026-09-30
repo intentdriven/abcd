@@ -82,9 +82,12 @@ the safe successor, recalled by the commands the registry names (`rm`,
 work injects those rules before the agent acts, so a host without hook support is
 still taught the safe form and a host with hooks is taught it before the guard
 would have to refuse. An entry added to the registry is taught and enforced from
-the same release, with no second edit. The domain is built from the bundled
-registry, not from a repo's `.abcd/guard.json`; how the domain is recalled,
-overridden and silenced is the rules loader's
+the same release, with no second edit. The registry taught is the one the guard
+enforces in the repository: an entry the repository adds in its
+`.abcd/guard.json` is taught by the same generator as the bundled ones, its
+rule marked `(repo)` after its entry id, and a guard file the guard refuses is
+named on stderr and never taught. How the domain is recalled, overridden and
+silenced is the rules loader's
 ([`05-internals/03-configuration.md`](../05-internals/03-configuration.md)).
 
 ## The question gate
@@ -341,16 +344,61 @@ variables its text holds, and a name runs on into the letters a list or a
 sequence places after it (`{$HOME,x}`, `$HOME/{.*,}`, `$HO{ME,}`,
 `$HO{M..M}E`); an expansion whose operator can leave the value as it is reads
 as the variable itself — a default, an assignment or an error message
-(`${HOME:-x}`), a trim or a pattern replacement (`${HOME%/}`, `${HOME#x}`,
-`${HOME/x/y}`), a substring, a case change, and a subscript read to its
-matching `]` with any text after it (`${HOME[x[0]]}`, `${HOME[0]]}`, which the
-bash 3.2 of macOS prints as the value); and an alternative, which prints its
+(`${HOME:-x}`), where the colon forms of a single parameter never print an
+empty value (`${1:-dist}/` is `${1}/` or `dist/`), while those of `$@` and
+`$*` test the parameter count and can (`${@:-x}/` is `/` after
+`set -- "" ""`), and an empty word prints the empty text
+(`${X:-}/` is also `/`), a trim or a pattern replacement (`${HOME%/}`, `${HOME#x}`,
+`${HOME/x/y}`), any substring of a variable, which also reads as the root
+and as nothing (`${X:1}`, `${PWD:0:1}`), while a slice of the positional
+parameters or a part of one reads as those parameters (`"${@:2}"` and
+`"${1:2}"` as `"$2"`), a case change or a transform (`${X^}`, `${X@P}`), and
+a subscript read to its matching `]` with any text after it (`${HOME[x[0]]}`,
+`${HOME[0]]}`, which the bash 3.2 of macOS prints as the value), the last
+three also as nothing (`${A[0]}/` is also `/`); and an alternative, which prints its
 word or nothing, reads as that word as written (`${X:+$HOME}`, `${X:+/}`,
 `${X:+$HOME/*}`), including one the bash 3.2 of macOS reads at the first
 operator after a subscript (`${X[0]]:+$HOME}`). Unquoted, the alternative's
 word is split on whitespace and a substitution in it that prints nothing
 drops out, as bash splits and drops them (`${X:+$HOME }`,
-`${X:+$(true)$HOME}`). A trim that leaves the path above the home
+`${X:+$(true)$HOME}`). A word written as an ANSI-C or a locale string reads
+as the text it decodes to (`${X:-$'\x2f'}`, `${X:-$"/"}`); a positional, a
+special or an indirect parameter takes the same operators (`${1:-/}`,
+`${#:+/}`, `${!X:-/}`, the last read as every target past its operator,
+since the variable it names is not in the line); a parameter that can print
+nothing at the top of a fresh shell — `$!` before any job runs in the
+background, `$@`, `$*` and a positional one with no argument, `$_` after
+`x=`, and `$-` under dash — also reads as the text beside it (`$!/`,
+`"${1}"/` and `/$!` are `/`), and `$!` in a pattern as text of any length
+(`${PWD%%$!*}` is `${PWD%%*}`); a replacement's pattern is
+read both where bash 3.2 ends it and where bash 5 does, at a quoted `/`
+(`${X/"/"*/$HOME}`); and on a line that names IFS — in any word or
+anywhere in its text (`: $((IFS=1))`), or through an assignment target
+that holds an expansion — an unquoted default's or
+alternative's word, and an unquoted home, reads as every target, since the
+fields bash splits it into rest on that IFS (`IFS=x; rm -rf ${U:-x/x}`,
+`IFS=Uv; rm -rf $HOME/x`). bash sets the variable a target's value names,
+so the rule reads whether a target holds an expansion (`$name`, `${…}`
+with its case changes and transforms, `$(…)`, a backtick substitution),
+never which bytes are written beside it: `(( ${a}${b} = 1 ))` names IFS
+with a=I and b=FS. A target is the word before an assignment operator
+(`=` or a compound one, spaced or not) or beside a `++` or `--`, read in
+the raw text of each layer, so it is found in every position bash assigns
+through one: an assignment word's name, a declaration's or `env`'s operand,
+an eval'd string, every arithmetic context (`(( ))`, `$(( ))`, `$[ ]`, a
+`for (( ))` header, a subscript, a substring offset, `[[ -eq ]]`), a string
+an arithmetic context later reads (`let "$x = 1"`, an integer variable's
+value), and `${!x:=1}`, which sets the name x holds. A subscript is not
+the name (`a[$i]=x` names `a`); its body is arithmetic and read as such.
+The builtins that take a name as an operand (`read "$x"`,
+`printf -v "$x" 1`, `mapfile`, `getopts`, `wait -p`) are read over their
+words, and so is a nameref's declaration (`declare -n r=$x`,
+`local -n r`), whose value is the name a later plain assignment sets. The
+rule stays off a test's comparison (`[ $a = b ]`), a word-leading `--`
+(`git log --$fmt`) and the `--` that ends options, and over-reads on the
+refusing side: `IFS=x rm -rf ${U:-x/x}`, and `read -p "$prompt" f;`,
+`echo "$k = $v";` or `[ ! $a = b ];` before `rm -rf ${U:-x/x}`. A run of `/` written before the home names the
+home (`/$HOME`). A trim that leaves the path above the home
 (`${HOME%/*}`) blocks as the home does. Each target is also compared as a path
 with its redundant separators taken out, since the kernel reads a run of
 slashes as one, a `.` segment as the directory itself and the root as its own
@@ -411,7 +459,11 @@ prints the root (`${PWD:0:1}`), which warns as `$PWD` does; one behind a wrapper
 table does not name; a REST
 path an entry names by its root segment when the host serves that API under a
 prefix; an IFS the shell already holds when the line starts, or gains during the line
-through a name the guard does not read (`declare $(echo I)FS=x`, a sourced file),
+through a name the guard does not read (a sourced file, a nameref set before
+the line, or an operator the line does not write: a value built from
+expansions or a command's output that an arithmetic context evaluates, as in
+`x=$(cmd); : $((x))`, or a decrement written as its own word in such a
+string, as in `n="1 + --$x"` for an integer `n`),
 since every line is read from the default IFS; a pid list a kill reads through a variable or a file, or from a `ps |
 grep` chain;
 a payload inside a non-shell interpreter such as `python -c`, which is

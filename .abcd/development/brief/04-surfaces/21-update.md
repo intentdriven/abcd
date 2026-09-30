@@ -103,6 +103,32 @@ as somebody else's binary the next time an install shape is judged. The re-stamp
 runs on an already-current outcome too, and it does nothing at all where no record
 names that path.
 
+## An update says so once
+
+Every swap of the abcd binary announces itself once, when it completes, in one
+wording: `abcd updated from <old> to <new>` (`update.UpdatedFormat`, the ruling
+CJ1b of 2026-09-29). `abcd update` opens its receipt with that line, and the
+plugin bootstrap (`hooks/bootstrap.sh`) opens its success notice with it when
+the release it installs replaces an earlier one, and records the replaced
+release as `previous_tag` in the `binary-meta` it writes at the swap (the ruling
+CJ1). A first install, a copy out of the cache at the same release and the
+per-session fast path replace no release and print no such line. The session
+start check does not compare versions and shows nothing about an update, with
+one exception: the bootstrap salvage that the per-prompt, per-command and
+pre-compaction hooks run discards its output, so a swap made there adds
+`transition_unseen=yes` to the `binary-meta` it writes, and the next session
+start shows the line once. Once is a claim per release: the session check
+creates `cache/update-shown-<new>` in the plugin data directory, or
+`.update-shown-<new>` in the plugin root when the bootstrap ran in its degraded
+per-root mode and wrote the root's `.binary-meta`, with one exclusive create
+(`O_CREATE|O_EXCL`). Of any number of sessions starting together, the one whose
+create succeeds shows the line; a claim path that already exists, or a create
+that fails for any other reason, shows nothing, so the line never repeats. That
+empty claim file is the session check's single write, and claims for earlier
+releases stay where they are. A directory failing the shape check every reader
+of the data directory applies, or a tag outside the release-tag alphabet, shows
+nothing and writes nothing.
+
 ## The receipt
 
 Three terminal outcomes ship, and the receipt's `action` field names which one
@@ -110,7 +136,7 @@ happened:
 
 | `action` | What it means |
 |---|---|
-| `swapped` | the file was replaced, and the render reads `updated <path>: <old> -> <tag>` |
+| `swapped` | the file was replaced, and the render opens `abcd updated from <old> to <tag>`, with the path on the line below |
 | `already-current` | the target's digest already equals the release's, so the binary is left untouched |
 | `refused` | a dispatch or ownership refusal, naming its shape and its remedy |
 

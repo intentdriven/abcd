@@ -2,7 +2,9 @@ package release
 
 // write.go — the cut's writes, their order, and their undo.
 //
-// A feature cut makes up to three writes, and they land together or not at all:
+// A feature cut makes up to three writes, and they land together or not at all,
+// after the rewrite of every intent record whose missed target the cut moves to
+// `next` (itd-2609212103572513 criterion 3):
 //
 //  1. the ARCHIVE: the outgoing RELEASE.md's bytes, created under
 //     .abcd/development/releases/<its version>.md, never overwriting;
@@ -23,6 +25,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
@@ -62,6 +65,9 @@ func (o osOps) remove(rel string) error {
 // The ship verb applies it when a step AFTER the ingest refuses (the payload
 // render), so a refused ship leaves no release record behind.
 type UndoPlan struct {
+	// records are the intent records the cut rewrote (a missed target moved to
+	// `next`), each with its bytes before the write.
+	records         []intent.TargetRewrite
 	changelogBefore []byte
 	pageBefore      []byte
 	pageExisted     bool
@@ -114,11 +120,20 @@ func (u UndoPlan) apply(ops fileOps, root string) []string {
 			_ = os.Remove(filepath.Join(root, filepath.FromSlash(path.Dir(u.archived))))
 		}
 	}
+	for i := len(u.records) - 1; i >= 0; i-- {
+		rec := u.records[i]
+		if err := ops.replace(rec.Path, rec.Before); err != nil {
+			failures = append(failures, rec.Path+": "+err.Error())
+		}
+	}
 	return failures
 }
 
 // cutPlan is the validated set of writes, built before any of them runs.
 type cutPlan struct {
+	// records are the intent records rewritten as the cut moves a missed
+	// target to `next`, written first.
+	records   []intent.TargetRewrite
 	changelog []byte
 	page      []byte // nil when no page is written
 	undo      UndoPlan
@@ -164,6 +179,7 @@ func planPage(root string, plan *cutPlan) error {
 // returns the undo that reverses a completed plan.
 func execute(ops fileOps, root string, plan cutPlan) (UndoPlan, error) {
 	done := plan.undo
+	done.records = nil
 	done.archived = ""
 	done.pageWritten = false
 	done.changelogDone = false
@@ -176,6 +192,12 @@ func execute(ops fileOps, root string, plan cutPlan) (UndoPlan, error) {
 		return UndoPlan{}, fmt.Errorf("%s\n  the steps already taken were rolled back; the tree is as it was", msg)
 	}
 
+	for _, rec := range plan.records {
+		if err := ops.replace(rec.Path, rec.After); err != nil {
+			return fail(rec.Path, err)
+		}
+		done.records = append(done.records, rec)
+	}
 	if plan.page != nil && plan.undo.archived != "" {
 		if err := ops.createExclusive(plan.undo.archived, plan.undo.pageBefore); err != nil {
 			// The create may have made the directory before failing.

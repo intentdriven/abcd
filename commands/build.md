@@ -49,13 +49,16 @@ pass:
 - `claim_sections` — the `## Mechanism` prompt is answered (or the section
   absent) and the scope conditions are recorded.
 - `hold` — the intent carries no `held:`.
-- `blocked` — nothing the intent names in `blocked_by` is unshipped (an intent
-  not in `shipped/`, or one this checkout does not hold, blocks it). A
-  superseded blocker is followed along `superseded_by` to the intent that
-  replaced it, transitively, and blocks only while that replacement is
-  unshipped; a chain that loops, ends at a record this checkout does not hold
-  or at a decision (`adr-N`), or stops at a superseded record naming no
-  successor blocks, naming the chain.
+- `blocked` — nothing the intent names in `blocked_by` is unsettled. An intent
+  in `shipped/` or `disciplines/` is settled; one anywhere else, or one this
+  checkout does not hold, blocks it. A superseded blocker is followed along
+  `superseded_by` to the record that replaced it, transitively, and blocks only
+  while that replacement is unsettled: an intent settles as above, and a
+  decision (`adr-N`) settles when its status is `accepted`. A decision in any
+  other status or missing from this checkout blocks, as does a chain that
+  loops, ends at an intent this checkout does not hold, or stops at a
+  superseded record naming no successor; the reason names the chain, and a
+  settled chain is named in the passing row.
 - `steps` — the spec's `## Steps` reads, and at least one step is not landed.
 - `peers` — no peer holds the intent: no sibling worktree or local branch holds
   it in another bucket, and no session other than `--session` holds a live

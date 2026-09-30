@@ -133,7 +133,7 @@ Enable GitHub secret scanning and push protection on this repository: Writes bot
 **Flags:**
 
 ```
-      --yes   confirm the remote change without being asked; without it an unanswered run declines and changes nothing
+      --yes   confirm the remote change without being asked (never the install of a missing gh); without it an unanswered run declines and changes nothing
 ```
 
 #### `abcd ahoy uninstall`
@@ -229,7 +229,7 @@ Start the loop that takes one READY intent to delivered: Writes the run's state 
 Start the implement loop for one intent, or resume the run already in progress for it.
 A new run's checks run first, and every one must pass:
 the intent is READY (planned, criteria written, its spec linked and written), asks no
-open question, has no unanswered claim section, is not held, names no unshipped intent
+open question, has no unanswered claim section, is not held, names no unsettled blocker
 in `blocked_by`, its spec leaves a step to build, and no peer holds it (no sibling
 worktree or local branch holds it in another bucket, and no session holds a live claim
 on it; a peer or claim that cannot be read counts as holding it). A refusal names the
@@ -289,7 +289,7 @@ Pick the readiest planned intent and start its run: Writes the run's state and t
 Pick the readiest planned intent, write down why, and start its run.
 
 The candidates are the planned intents that pass every check `abcd build <itd-N>` runs
-(READY, no open question, no unanswered claim section, not held, no unshipped intent in
+(READY, no open question, no unanswered claim section, not held, no unsettled blocker in
 `blocked_by`, a step left to build, no peer holding it), less one this checkout already has
 a run in progress for. Each is scored from its record, three parts at equal weight, each 0
 to 100: criteria clarity (the share of its acceptance criteria in Given-When-Then form), a
@@ -396,7 +396,7 @@ Answer one reading item with a disposition record: Writes the record keyed to th
       --grounds string               disposition_grounds: why this answer (free text; required on every state except held)
       --hold-frame-location string   RESERVED (dormant): the frame element a hold sits at; a populated value is refused until activation is ruled
       --hold-moscow string           RESERVED (dormant): must | should | could | wont; a populated value is refused until activation is ruled
-      --recurs string                comma-separated prior rdi-ids this item recurs from — the recorded form of a warm recognition, never a mechanical join
+      --recurs string                comma-separated prior rdi-ids this item recurs from — the researcher's confirmed recognition; the ingest's duplicates/refines link is only a proposal
       --state string                 the answer: accepted | rejected | declined | held (availability varies by the item's position)
       --supersedes string            the standing dsp-N this answer replaces; required once an item already carries one
 ```
@@ -917,26 +917,31 @@ This is the only abcd verb that reaches the network on behalf of documentation. 
 
 ### `abcd drain`
 
-Sort the open issues by the drain's field rule, eligible first in drain order: Writes nothing; refuses to start without --dry-run, as the run is not built.
+Sort open issues by this repository's own drain rule, naming each loosened floor: Writes nothing; refuses without the rule's record, or without --dry-run.
 
 **Usage:** `abcd drain [flags]`
 
 Work the open issue ledger unattended: fix the issues that need no decision, and
-hand the rest back by kind. The rule for which issues need no decision is a
-recorded decision, and it reads the record's fields alone: nothing open in
-blocked_by; a category in the fixable set (tech-debt, documentation,
-inconsistency, drift, bug, ux); severity nitpick or minor; and a remedy: field.
-A security issue is always a person's. Every other open issue is handed back,
-listed as ineligible, or skipped naming its blocker, by the rule that excluded it.
+hand the rest back by kind. Which issues need no decision is this repository's own
+recorded decision: an accepted decision record whose frontmatter carries the four
+fields drain_categories, drain_severities, drain_security and drain_remedy. The
+rule reads the record's fields alone: nothing open in blocked_by; a category the
+rule takes; a severity it takes; and a remedy: field. abcd's strict baseline takes
+tech-debt, documentation, inconsistency, drift, bug and ux at nitpick or minor, and
+hands every security issue to a person. A repository's record may loosen those
+floors (major, critical, security), and every floor it loosens is named. An issue
+whose remedy opens "Waits on", or whose deferral past the current release tag is
+live, is always handed back. Every other open issue is handed back, listed as
+ineligible, or skipped naming its blocker, by the rule that excluded it.
 
 --dry-run shows every open issue's disposition, the eligible ones first in the
-order a drain takes them (category tech-debt, documentation, inconsistency,
-drift, bug, ux; then nitpick before minor; then oldest first), and writes
-nothing. The host judgement over each eligible remedy does not run in a dry
+order a drain takes them (by category, then severity, then oldest first), and
+writes nothing. The host judgement over each eligible remedy does not run in a dry
 run; it can only ever hand an issue back.
 
-The run itself is not built: without --dry-run the verb refuses to start, and
-exits 2 with nothing read or written.
+Without the repository's record, the dry run and the run both refuse (exit 2),
+naming how to add it; `abcd ahoy install` offers it. The run itself is not built:
+without --dry-run the verb refuses to start, and exits 2 with nothing written.
 
 **Flags:**
 
@@ -2566,6 +2571,11 @@ run never happened; where the marker is there the run stands and only the stage 
 refused run reports the orphans it left in place, and the ids a sweep removed are reported as
 rolled_back_records on every exit, including a failing one.
 
+Every stored finding is matched against the record as a capture is: its pattern and body are
+compared with the open and resolved issues, the intents and every earlier reading item, never
+with another item of the same run, and a likely repeat is written onto the reading record as a
+duplicates: or refines: link and shown, printed and as matches in --json.
+
 **Flags:**
 
 ```
@@ -2641,10 +2651,14 @@ is named on stderr, with the file that set the list, here and on every hook
 prompt. To keep an entry, restate it in the list, or leave the field out to
 inherit the bundled list.
 
-SHELL is generated from the bundled shell-hazard registry that "abcd guard"
-enforces: one rule per registry entry, naming the command, why it is dangerous
-and what to run instead, recalled by the commands the registry names. It
-teaches before shell work what the guard refuses at the moment a command runs.
+SHELL is generated from the shell-hazard registry that "abcd guard" enforces
+in this repository, the bundled entries and the repository's own
+.abcd/guard.json entries alike: one rule per registry entry, naming the
+command, why it is dangerous and what to run instead, recalled by the commands
+the registry names. A rule in the repository's words is marked "(repo)" after
+its entry id. A guard.json the guard refuses is named on stderr and not taught;
+SHELL then teaches the registry the guard enforces in its place. It teaches
+before shell work what the guard refuses at the moment a command runs.
 Read-only.
 
 ### `abcd scribe`
@@ -2776,7 +2790,7 @@ Take the website from this checkout to a live address: Writes its files, and the
       --confirm         replace a workflow or host configuration that differs from what setup writes
       --domain string   custom domain to route to the host when the composition names none
       --name string     host name when the composition names none (default: the repository's name)
-      --yes             confirm the forge and host changes without being asked; without it an unanswered run declines them
+      --yes             confirm the forge and host changes without being asked (never the install of a missing gh); without it an unanswered run declines them
 ```
 
 ### `abcd source`

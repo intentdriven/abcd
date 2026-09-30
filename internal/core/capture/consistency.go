@@ -2,11 +2,13 @@ package capture
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"unicode"
 
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
+	"github.com/intentdriven/abcd/internal/core/record/match"
 )
 
 // consistency.go is the ledger half of the intent consistency pass (itd-48,
@@ -20,8 +22,12 @@ import (
 
 // IngestConsistency ingests a consistency findings payload with the ledger as
 // its filer. date is the report's date (YYYY-MM-DD; empty is today in UTC).
-func IngestConsistency(repoRoot string, payload []byte, date string) (intent.ConsistencyIngestResult, error) {
+// mc, when non-nil, runs capture's filing-time match on every record the pass
+// files, so a finding that doubles a record in other words is filed with a
+// typed link naming it; nil files unmatched.
+func IngestConsistency(repoRoot string, payload []byte, date string, mc *match.Config) (intent.ConsistencyIngestResult, error) {
 	var open []Issue
+	var filedHere []string
 	loaded := false
 	// The open records are read once, on the first finding, and only records
 	// that were open BEFORE this pass count: two findings of one pass that
@@ -51,6 +57,14 @@ func IngestConsistency(repoRoot string, payload []byte, date string) (intent.Con
 			// H12): the record is filed, and a drain skips it until a person
 			// writes a real remedy.
 			Remedy: issueschema.MachineRemedy,
+			// The filing-time match (itd-2609212137116617) compares the
+			// finding's own words: the ends' paths, the class line and the
+			// evidence line are shared by every finding of a pass. The
+			// records this pass has filed are not compared, for the reason
+			// loadOpen gives.
+			Match:       mc,
+			MatchText:   f.Summary + "\n\n" + f.Explanation,
+			MatchExcept: slices.Clone(filedHere),
 		}
 	}
 	// A finding an open record already holds is linked, and writes nothing, so
@@ -82,7 +96,8 @@ func IngestConsistency(repoRoot string, payload []byte, date string) (intent.Con
 		if err != nil {
 			return intent.ConsistencyFiling{}, err
 		}
-		return intent.ConsistencyFiling{IssueID: res.ID}, nil
+		filedHere = append(filedHere, res.ID)
+		return intent.ConsistencyFiling{IssueID: res.ID, Match: res.Match}, nil
 	}
 	return intent.IngestConsistency(intent.ConsistencyIngestRequest{
 		RepoRoot: repoRoot, Payload: payload, Date: date, File: filer, Check: check,

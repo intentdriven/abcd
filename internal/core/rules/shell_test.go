@@ -2,6 +2,8 @@ package rules
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -62,7 +64,7 @@ func TestShellDomainIsNotHandWritten(t *testing.T) {
 // removing one removes both.
 func TestShellDomainFollowsRegistryEdits(t *testing.T) {
 	reg := guard.Defaults()
-	base, ok := shellDomain(reg)
+	base, ok := shellDomain(reg, reg)
 	if !ok {
 		t.Fatal("the bundled registry generated no domain")
 	}
@@ -75,7 +77,7 @@ func TestShellDomainFollowsRegistryEdits(t *testing.T) {
 		Successor: "Delete the one file you mean with rm.",
 		Why:       "Shredding cannot be undone.",
 	}
-	grown, _ := shellDomain(added)
+	grown, _ := shellDomain(added, added)
 	if len(grown.Rules) != len(base.Rules)+1 {
 		t.Fatalf("adding an entry gave %d rules, want %d", len(grown.Rules), len(base.Rules)+1)
 	}
@@ -88,7 +90,7 @@ func TestShellDomainFollowsRegistryEdits(t *testing.T) {
 
 	removed := guard.Defaults()
 	delete(removed.Entries, "git-clean")
-	shrunk, _ := shellDomain(removed)
+	shrunk, _ := shellDomain(removed, removed)
 	if len(shrunk.Rules) != len(base.Rules)-1 {
 		t.Fatalf("removing an entry gave %d rules, want %d", len(shrunk.Rules), len(base.Rules)-1)
 	}
@@ -102,7 +104,7 @@ func TestShellDomainFollowsRegistryEdits(t *testing.T) {
 	}
 
 	// An empty registry generates no domain at all, never a heading-only one.
-	if _, ok := shellDomain(guard.Registry{SchemaVersion: guard.SchemaVersion}); ok {
+	if _, ok := shellDomain(guard.Registry{SchemaVersion: guard.SchemaVersion}, guard.Defaults()); ok {
 		t.Fatal("an empty registry generated a domain; it would render as a heading with nothing under it")
 	}
 }
@@ -230,4 +232,109 @@ func mustLoad(t *testing.T, dir string) RuleSet {
 		t.Fatal(err)
 	}
 	return rs
+}
+
+// repoGuardEntry is a repository's own hazard, declared in its
+// .abcd/guard.json, and repoGuardLesson the one rule it teaches: the text is
+// pinned here so a change to the generator's wording is a change someone saw.
+const (
+	repoGuardEntry = `{"schema_version":1,"entries":{"deploy-prod":{
+		"tier":"blocker",
+		"pattern":{"command":"make","subcommand":"deploy"},
+		"why":"It deploys to production from a laptop.",
+		"successor":"Open a release pull request; CI deploys it."}}}`
+	repoGuardLesson = "Refused by the guard (deploy-prod) (repo): `make deploy`. It deploys to production from a laptop. Instead: Open a release pull request; CI deploys it."
+)
+
+func writeRepoGuard(t *testing.T, dir, body string) {
+	t.Helper()
+	abcd := filepath.Join(dir, ".abcd")
+	if err := os.MkdirAll(abcd, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(abcd, "guard.json"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestShellDomainTeachesTheRepositorysOwnGuardEntries (ruling CK1): an entry
+// a repository adds in its .abcd/guard.json is taught in SHELL by the same
+// generator as the bundled ones — its lesson in id order among them, marked
+// "(repo)", and its command head a recall term — whether or not the
+// repository also carries a rules.json.
+func TestShellDomainTeachesTheRepositorysOwnGuardEntries(t *testing.T) {
+	bundled := Defaults().Domains[ShellDomain]
+	for _, withRules := range []bool{false, true} {
+		dir := t.TempDir()
+		writeRepoGuard(t, dir, repoGuardEntry)
+		if withRules {
+			writeRepoRules(t, dir, `{"schema_version":1,"domains":{}}`)
+		}
+		rs := mustLoad(t, dir)
+		d, ok := rs.Lookup(ShellDomain)
+		if !ok {
+			t.Fatalf("rules.json=%v: no %s domain", withRules, ShellDomain)
+		}
+		if !holds(d.Rules, repoGuardLesson) {
+			t.Errorf("rules.json=%v: the repository's own entry is not taught as\n %q\namong the %d rules", withRules, repoGuardLesson, len(d.Rules))
+		}
+		if len(d.Rules) != len(bundled.Rules)+1 {
+			t.Errorf("rules.json=%v: %d lessons, want the %d bundled ones plus the repository's", withRules, len(d.Rules), len(bundled.Rules))
+		}
+		for _, l := range bundled.Rules {
+			if !holds(d.Rules, l) {
+				t.Errorf("rules.json=%v: a bundled lesson is missing or marked: %q", withRules, l)
+			}
+		}
+		if !holds(d.Recall, "make deploy") {
+			t.Errorf("rules.json=%v: the entry's command head is not a recall term: %q", withRules, d.Recall)
+		}
+		if !has(rs.Match("make deploy the docs site"), ShellDomain) {
+			t.Errorf("rules.json=%v: a prompt naming the repository's hazard did not recall %s", withRules, ShellDomain)
+		}
+		if d.Source != SourceBundled {
+			t.Errorf("rules.json=%v: source %q; the domain is still the generated one, its repository words marked per lesson", withRules, d.Source)
+		}
+		if n := rs.Notes(); len(n) != 0 {
+			t.Errorf("rules.json=%v: a valid guard.json produced notes: %q", withRules, n)
+		}
+	}
+}
+
+// TestShellDomainRefusesAnInvalidRepoGuardEntryLoudly (ruling CK1): a
+// repository guard.json the guard refuses is refused here too, never taught
+// and never silently skipped. SHELL teaches the registry the guard enforces in
+// its place (the bundled one), the rest of the rule set loads, and a note
+// names the file and the reason on every load.
+func TestShellDomainRefusesAnInvalidRepoGuardEntryLoudly(t *testing.T) {
+	dir := t.TempDir()
+	writeRepoGuard(t, dir, `{"schema_version":1,"entries":{"deploy-prod":{
+		"tier":"blocker",
+		"pattern":{"command":"make","subcommand":"deploy"},
+		"successor":"Open a release pull request; CI deploys it."}}}`)
+	rs := mustLoad(t, dir)
+	d, _ := rs.Lookup(ShellDomain)
+	if want := Defaults().Domains[ShellDomain].Rules; !reflect.DeepEqual(d.Rules, want) {
+		t.Errorf("an invalid repository entry changed what SHELL teaches: %d rules, want the %d bundled ones", len(d.Rules), len(want))
+	}
+	for _, r := range d.Rules {
+		if strings.Contains(r, "deploy-prod") {
+			t.Errorf("the refused entry is taught: %q", r)
+		}
+	}
+	if holds(d.Recall, "make deploy") {
+		t.Errorf("the refused entry's head is a recall term: %q", d.Recall)
+	}
+	if _, ok := rs.Lookup("PII"); !ok {
+		t.Error("a refused guard.json took the rest of the rule set with it")
+	}
+	var note string
+	for _, n := range rs.Notes() {
+		if strings.Contains(n, ShellDomain) && strings.Contains(n, ".abcd/guard.json") {
+			note = n
+		}
+	}
+	if note == "" || !strings.Contains(note, "deploy-prod has no why") || !strings.Contains(note, "refused") {
+		t.Fatalf("the refused guard.json is not named loudly; notes: %q", rs.Notes())
+	}
 }

@@ -1444,6 +1444,8 @@ func (c *composer) auditIsMet(rel string) bool {
 // The fence check comes first, ahead of the dated-heading test, so a fenced
 // heading moves no version cursor either: both failures are silent, rendering a
 // plausible wrong version rather than none (iss-2609090951287232).
+// A cut's move note is passed over too: it names the targeted intents the
+// release did NOT ship (changelog.IsTargetMoveNote).
 func (c *composer) releaseOf(id string) string {
 	data, err := fsutil.ReadGuardedInRoot(c.root, "CHANGELOG.md", changelog.MaxChangelogBytes)
 	if err != nil {
@@ -1462,6 +1464,12 @@ func (c *composer) releaseOf(id string) string {
 				version, _, _ = strings.Cut(after, "]")
 				version = strings.TrimPrefix(version, "v")
 			}
+			continue
+		}
+		// A cut's move note names the targeted intents it passed without
+		// shipping them (itd-2609212103572513 criterion 3): it credits no
+		// record with the release it sits in.
+		if changelog.IsTargetMoveNote(line) {
 			continue
 		}
 		if version != "" && creditsHandle(line, want) {

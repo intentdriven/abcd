@@ -97,6 +97,14 @@ func expandPayloads(segs []segment) ([]segment, []payloadSignal) {
 		segs  []segment
 		depth int
 	}
+	// A line that names IFS reads every word whose fields rest on the
+	// default IFS as past its bound (capIFSSplits), before any string is
+	// paired with the words it was written from, so the string's words are
+	// read past it too (`IFS=x; eval rm -rf ${U:-x/x}`).
+	ifsNamed := namesIFS(segs)
+	if ifsNamed {
+		capIFSSplits(segs)
+	}
 	queue := []work{{segs: segs, depth: 0}}
 	for len(queue) > 0 {
 		item := queue[0]
@@ -194,6 +202,13 @@ func expandPayloads(segs []segment) ([]segment, []payloadSignal) {
 					s.home.addPayload(s.at, psegs)
 				}
 				out = append(out, psegs...)
+				switch {
+				case ifsNamed:
+					capIFSSplits(psegs)
+				case namesIFS(psegs):
+					ifsNamed = true
+					capIFSSplits(out)
+				}
 				queue = append(queue, work{segs: psegs, depth: item.depth + 1})
 			}
 		}
@@ -244,99 +259,141 @@ func payloadView(s segment) segment {
 	return v
 }
 
-// namedPayloads returns, parallel to refs, the text of each string as the
-// line wrote its variables (segment.spelled), "" where it is no other text or
-// cannot be paired: payloadView hands a string the mark of each value the
+// namedPayloads returns, parallel to refs, the texts of each string as the
+// line wrote its variables (segment.spelled), none where it is no other text
+// or cannot be paired: payloadView hands a string the mark of each value the
 // enclosing shell put in it, which reads as an unknown word with no name, so
-// `sh -c "rm -rf $HOME"` holds a mark where `$HOME` was written. Only the
-// arg_values compare reads what spellPayload takes from it; every reading of
-// the string reads the marks (iss-2609290321312087). The words are paired by
-// payloadsOf's own order, and a pair whose kind or family differs is not
-// paired.
-func namedPayloads(s segment, refs []payloadRef) []string {
-	named := make([]string, len(refs))
-	v, ok := spelledView(s)
-	if !ok {
-		return named
+// `sh -c "rm -rf $HOME"` holds a mark where `$HOME` was written. A word's
+// spelling is a set (`${DIR:-$HOME}` is `${DIR}` and `$HOME`), so the string
+// is written out once for each text (spelledViews), and each reading is
+// paired on its own. Only the arg_values compare reads what spellPayload
+// takes from them; every reading of the string reads the marks
+// (iss-2609290321312087). The words are paired by payloadsOf's own order, and
+// a pair whose kind or family differs is not paired.
+func namedPayloads(s segment, refs []payloadRef) [][]string {
+	if len(refs) == 0 {
+		return nil
 	}
-	nrefs := payloadRefsOf(v)
-	if len(nrefs) != len(refs) {
-		return named
-	}
-	for r, ref := range refs {
-		if n := nrefs[r]; n.kind == ref.kind && n.family == ref.family && n.payload != ref.payload {
-			named[r] = n.payload
+	named := make([][]string, len(refs))
+	for _, v := range spelledViews(s) {
+		nrefs := payloadRefsOf(v)
+		if len(nrefs) != len(refs) {
+			continue
+		}
+		for r, ref := range refs {
+			if n := nrefs[r]; n.kind == ref.kind && n.family == ref.family && n.payload != ref.payload {
+				named[r] = appendText(named[r], n.payload)
+			}
 		}
 	}
 	return named
 }
 
-// spelledView is payloadView with each word the line wrote with a known
+// spelledViews is payloadView with each word the line wrote with a known
 // variable spelled as the line wrote it (segment.spelled) instead of with
 // varMark, where payloadView spells it; a variable whose text is not known
-// stays varMark. ok is false when no word changes.
-func spelledView(s segment) (segment, bool) {
+// stays varMark. A word's spelling is a set, so there is one view for each
+// place in the largest set, and view k writes each word's k-th text (its last
+// where it has fewer): every text of every word is written in some view, and
+// the views number at most maxSpellings. nil when no word changes.
+func spelledViews(s segment) []segment {
 	if len(s.spelled) == 0 {
-		return s, false
+		return nil
 	}
 	v := payloadView(s)
-	var toks []string
+	written := map[int][]string{}
+	most := 0
 	for i, text := range s.variable {
 		// payloadView spelled this word with varMark (text); a word it left,
 		// where a command can sit, keeps its unknownMark and is left here too.
-		w, ok := s.spelled[i]
+		ws, ok := s.spelled[i]
 		if !ok || v.tokens[i] != text {
 			continue
 		}
-		w = strings.ReplaceAll(strings.ReplaceAll(w, fieldText, " "), quotedFieldText, fieldText)
-		if w = strings.ReplaceAll(w, unknownText, varText); w == text {
+		var texts []string
+		changed := false
+		for _, w := range ws {
+			w = strings.ReplaceAll(strings.ReplaceAll(w, fieldText, " "), quotedFieldText, fieldText)
+			w = strings.ReplaceAll(w, unknownText, varText)
+			changed = changed || w != text
+			texts = append(texts, w)
+		}
+		if !changed {
 			continue
 		}
-		if toks == nil {
-			toks = append([]string(nil), v.tokens...)
+		written[i] = texts
+		most = max(most, len(texts))
+	}
+	if most == 0 {
+		return nil
+	}
+	views := make([]segment, most)
+	for k := range views {
+		toks := append([]string(nil), v.tokens...)
+		for i, texts := range written {
+			toks[i] = texts[min(k, len(texts)-1)]
 		}
-		toks[i] = w
+		views[k] = v
+		views[k].tokens = toks
 	}
-	if toks == nil {
-		return v, false
-	}
-	v.tokens = toks
-	return v, true
+	return views
 }
 
-// spellPayload reads the string named, the same string as the one psegs
+// spellPayload reads each string named, the same string as the one psegs
 // were read from with its variables written out (namedPayloads), and gives
-// each word of psegs that holds a variable the spelling of the word at the
-// same place of named: its own segment.spelled, or its text where the string
-// quotes the name (`sh -c "rm -rf '$HOME'"`). A word is paired only when
-// both readings have the same segments and words, and the word read from
-// named has the mark-view word's known text in the same order around it
-// (fitsWritten); an unpaired word keeps the spelling it has, which names no
-// variable. Nothing else of psegs is changed.
-func spellPayload(psegs []segment, named string) {
-	if named == "" {
-		return
-	}
-	nsegs, err := tokenize(named)
-	if err != nil || len(nsegs) != len(psegs) {
-		return
-	}
-	for i := range psegs {
-		m, n := psegs[i], nsegs[i]
-		if len(m.spelled) == 0 || len(m.tokens) != len(n.tokens) {
+// each word of psegs that holds a variable the texts of the word at the same
+// place of each: its own segment.spelled, or its text where the string quotes
+// the name (`sh -c "rm -rf '$HOME'"`). A word is paired only when both
+// readings have the same segments and words, and the word read from named has
+// the mark-view word's known text in the same order around it (fitsWritten);
+// a word no reading pairs keeps the spelling it has, which names no variable.
+// A word paired with more than maxSpellings texts, or with a text past a
+// bound, is spellCapped. Nothing else of psegs is changed.
+func spellPayload(psegs []segment, named []string) {
+	paired := make([]map[int][]string, len(psegs))
+	for _, nm := range named {
+		nsegs, err := tokenize(nm)
+		if err != nil || len(nsegs) != len(psegs) {
 			continue
 		}
-		for j := range m.spelled {
-			w, ok := n.spelled[j]
-			if !ok {
-				if isUnknown(n.tokens[j]) {
+		for i := range psegs {
+			m, n := psegs[i], nsegs[i]
+			if len(m.spelled) == 0 || len(m.tokens) != len(n.tokens) {
+				continue
+			}
+			for j := range m.spelled {
+				if !isUnknown(m.tokens[j]) {
+					// A word spelled with no variable's mark (`$!`, addBang)
+					// keeps the spelling its own reading gave it.
 					continue
 				}
-				w = n.tokens[j]
+				ws, ok := n.spelled[j]
+				if !ok {
+					if isUnknown(n.tokens[j]) {
+						continue
+					}
+					ws = []string{n.tokens[j]}
+				}
+				if !fitsWritten(m.tokens[j], n.tokens[j]) {
+					continue
+				}
+				for _, w := range ws {
+					if fitsWritten(m.tokens[j], w) {
+						if paired[i] == nil {
+							paired[i] = map[int][]string{}
+						}
+						paired[i][j] = appendText(paired[i][j], w)
+					}
+				}
 			}
-			if fitsWritten(m.tokens[j], n.tokens[j]) && fitsWritten(m.tokens[j], w) {
-				m.spelled[j] = w
+		}
+	}
+	for i, words := range paired {
+		for j, texts := range words {
+			if capped(texts) || len(texts) > maxSpellings {
+				texts = []string{spellCapped}
 			}
+			psegs[i].spelled[j] = texts
 		}
 	}
 }
@@ -435,6 +492,376 @@ func wordFeeds(s segment, keep func(int) bool) []feed {
 	return append(rest, run)
 }
 
+// namesIFS reports whether segs name IFS, as splitAfterIFS and
+// capIFSSplits read a naming: any word that holds the name once its quotes
+// are read (`IFS=x`, `declare "I"'FS=x'`, `declare $'\x49FS=x'`), a text
+// the tokenizer read that holds the name or assigns through a target
+// holding an expansion (segment.namesIFSInText, targetsAnExpansion), an
+// expansion standing as a name a builtin assigns (`printf -v "$n" x`,
+// `read $v`, `declare $(cmd)=x`): namingCommands' operands, wherever they
+// stand in the command, and the word after `printf -v` or `wait -p`, and a
+// nameref's declaration (`declare -n r=$x`, `local -n r`), whose value is
+// the name any later plain assignment to it sets. The builtin reading
+// refuses on the side of a name: `read -p "$prompt" f` counts too.
+func namesIFS(segs []segment) bool {
+	for _, s := range segs {
+		if s.namesIFSInText {
+			return true
+		}
+		naming, target, decl := false, false, false
+		flag := ""
+		for _, tok := range s.tokens {
+			tally(len(tok))
+			if strings.Contains(tok, "IFS") {
+				return true
+			}
+			if nameMarked(tok) && (naming || target || flag != "" && strings.HasPrefix(tok, flag)) {
+				return true
+			}
+			target = flag != "" && tok == flag
+			if decl && len(tok) > 1 && tok[0] == '-' && strings.IndexByte(tok, 'n') > 0 {
+				return true
+			}
+			if namingCommands[tok] {
+				naming, decl = true, declarations[tok]
+			}
+			if f, ok := targetFlags[tok]; ok {
+				flag = f
+			}
+		}
+	}
+	return false
+}
+
+// namingCommands are the builtins that assign a variable each name they are
+// handed names: a declaration (`export ${I}FS=x`), `read`, `mapfile` and
+// `readarray`, `getopts`'s name, and `let`'s expressions.
+var namingCommands = map[string]bool{
+	"export": true, "declare": true, "typeset": true, "readonly": true, "local": true,
+	"read": true, "mapfile": true, "readarray": true, "getopts": true, "let": true,
+}
+
+// declarations are the builtins whose `-n` declares a nameref.
+var declarations = map[string]bool{"declare": true, "typeset": true, "local": true}
+
+// targetFlags names, per builtin, the flag whose word assigns the variable
+// it names: `printf -v NAME`, and bash 5.1's `wait -p NAME`.
+var targetFlags = map[string]string{"printf": "-v", "wait": "-p"}
+
+// nameMarked reports whether the name tok would assign holds an
+// expansion's mark: its text before the first `=`, or all of it where it
+// has none. `PATH=$HOME/bin` names PATH, which the line spells.
+func nameMarked(tok string) bool {
+	if eq := strings.IndexByte(tok, '='); eq >= 0 {
+		tok = tok[:eq]
+	}
+	return strings.IndexByte(tok, unknownMark) >= 0 || strings.IndexByte(tok, varMark) >= 0
+}
+
+// targetsAnExpansion reports whether text assigns through a target that
+// holds an expansion, read lexically over the raw text of one layer,
+// quotes, arithmetic bodies, subscripts and here-documents included. bash
+// sets the variable a target's VALUE names, so a target holding an
+// expansion (`$name`, `${…}` with its case changes and transforms, `$(…)`,
+// `$((…))`, `$[…]`, a backtick substitution, or a mark a payload carries)
+// can name IFS whatever the line writes beside it: `(( ${a}${b} = 1 ))`
+// with a=I and b=FS sets IFS (reverify4-guardSet finding 1). The rule reads
+// the target, never its bytes.
+//
+// A target is the word that stands before an assignment operator (`=`,
+// `+=`, `-=`, `*=`, `/=`, `%=`, `<<=`, `>>=`, `&=`, `^=`, `|=`, and a
+// parameter expansion's `:=`), or beside a `++` or `--`; its name part
+// leaves out a subscript (`a[$i]=x` names a), while the subscript's own
+// body is read as arithmetic. Every place bash assigns through such an
+// operator is one of these shapes: an assignment word (a declaration's or
+// env's operand included), an eval'd string, every arithmetic body
+// (`((…))`, `$((…))`, `$[…]`, a for header, a subscript, a substring
+// offset, `[[ -eq ]]`), a string an arithmetic context later reads (let's
+// operand, an integer's value, a variable an arithmetic reference
+// evaluates), and `${!x:=…}`, whose target is the name x holds. Arithmetic
+// takes the operator spaced, so a blank between target and operator is
+// read through, except where bash cannot be assigning:
+//   - a lone `=` whose target follows a test's word (`[`, `[[`, `test`,
+//     `-a`, `-o`, `&&`, `||`, `\(`) outside an arithmetic body is the
+//     test's comparison (`[ $a = b ]`); arithmetic refuses an assignment
+//     after any of those words;
+//   - a `--` that begins a word outside an arithmetic body is a flag
+//     (`git log --$fmt`), and a spaced `--` a blank follows there ends a
+//     command's options (`git checkout $b -- f`).
+//
+// The builtins that take a name as a whole operand (`read "$x"`,
+// `printf -v "$x"`, a nameref's declaration) are read over the words
+// (namesIFS). What it does not read is an operator the line does not write:
+// a value built from expansions that an arithmetic context evaluates
+// (`y=$a$b; : $((y))` with b holding `=1`), a command's output
+// (`x=$(cmd); : $((x))`), and, by the second exception, a decrement written
+// as its own word in such a string (`n="1 + --$x"` for an integer n).
+func targetsAnExpansion(text string) bool {
+	tally(len(text))
+	type level struct {
+		closer  byte // the byte that closes the level; 0 at the top
+		exp     bool // an expansion: closing it adds one to the enclosing target
+		sub     bool // a subscript: closing it leaves the enclosing target as it was
+		arith   bool // an arithmetic body, where an operator takes its target spaced
+		run     bool // a target is being read
+		runExp  bool // its name part holds an expansion
+		prev    bool // a blank ended a target, and nothing else has come since
+		prevExp bool
+		pre     bool // a `++` or `--` stands before the next target
+		chunk   int  // where the blank-delimited word being read began; -1 between words
+		words   [2]string
+	}
+	stack := []level{{chunk: -1}}
+	// pending counts the open levels per closer, so a closer none is open
+	// for costs nothing and the scan stays linear.
+	var pending [4]int
+	slot := func(c byte) int { return strings.IndexByte("})]`", c) }
+	push := func(lv level) {
+		lv.chunk = -1
+		stack = append(stack, lv)
+		pending[slot(lv.closer)]++
+	}
+	end := func(l *level) {
+		l.run, l.runExp, l.prev, l.prevExp, l.pre = false, false, false, false, false
+	}
+	word := func(l *level) {
+		if !l.run {
+			l.run, l.runExp, l.prev = true, false, false
+		}
+	}
+	expand := func(l *level) bool {
+		word(l)
+		l.runExp = true
+		return l.pre
+	}
+	// closeAt closes the innermost open c, and reports whether it was open
+	// and whether the expansion it closes completes a target a `++` or `--`
+	// stands before.
+	closeAt := func(c byte) (open, hit bool) {
+		if pending[slot(c)] == 0 {
+			return false, false
+		}
+		k := len(stack) - 1
+		for stack[k].closer != c {
+			pending[slot(stack[k].closer)]--
+			k--
+		}
+		pending[slot(c)]--
+		lv := stack[k]
+		stack = stack[:k]
+		out := &stack[k-1]
+		switch {
+		case lv.exp:
+			return true, expand(out)
+		case !lv.sub:
+			end(out)
+		}
+		return true, false
+	}
+	for i := 0; i < len(text); i++ {
+		l := &stack[len(stack)-1]
+		c := text[i]
+		if isBlank(c) {
+			if l.run {
+				l.prev, l.prevExp = true, l.runExp
+				l.run, l.runExp, l.pre = false, false, false
+			}
+			if l.chunk >= 0 {
+				l.words[0], l.words[1] = l.words[1], text[l.chunk:i]
+				l.chunk = -1
+			}
+			continue
+		}
+		if l.chunk < 0 {
+			l.chunk = i
+		}
+		switch {
+		case c == '\\':
+			word(l)
+			i++
+		case c == '"' || c == '\'':
+			// A quote is part of the word it stands in.
+		case c == unknownMark || c == varMark:
+			if expand(l) {
+				return true
+			}
+		case c == '`':
+			open, hit := closeAt('`')
+			if hit {
+				return true
+			}
+			if !open {
+				push(level{closer: '`', exp: true})
+			}
+		case c == '$' && i+1 < len(text):
+			switch n := text[i+1]; {
+			case n == '(' && i+2 < len(text) && text[i+2] == '(':
+				push(level{closer: ')', exp: true, arith: true})
+				push(level{closer: ')', arith: true})
+				i += 2
+			case n == '(':
+				push(level{closer: ')', exp: true})
+				i++
+			case n == '{':
+				lv := level{closer: '}', exp: true, arith: true}
+				if i+2 < len(text) && text[i+2] == '!' {
+					// `${!x:=1}` assigns the name x holds.
+					lv.run, lv.runExp = true, true
+					i++
+				}
+				push(lv)
+				i++
+			case n == '[':
+				push(level{closer: ']', exp: true, arith: true})
+				i++
+			case isNameByte(n) || strings.IndexByte("@*#?$!-", n) >= 0:
+				if expand(l) {
+					return true
+				}
+				i++
+			default:
+				word(l)
+			}
+		case c == '(':
+			arith := l.arith
+			end(l)
+			if !arith && i+1 < len(text) && text[i+1] == '(' {
+				push(level{closer: ')', arith: true})
+				i++
+				arith = true
+			}
+			push(level{closer: ')', arith: arith})
+		case c == '{':
+			arith := l.arith
+			end(l)
+			push(level{closer: '}', arith: arith})
+		case c == '[':
+			if l.run {
+				push(level{closer: ']', sub: true, arith: true})
+			} else {
+				end(l)
+			}
+		case c == ')' || c == '}' || c == ']':
+			open, hit := closeAt(c)
+			if hit {
+				return true
+			}
+			if !open {
+				end(l)
+			}
+		case isNameByte(c):
+			word(l)
+		case strings.IndexByte("=+-*/%&|^<>!:", c) >= 0:
+			kind, n := operatorAt(text, i)
+			spaced := !l.run && l.prev
+			target := l.run && l.runExp || spaced && l.prevExp
+			switch kind {
+			case opAssign:
+				test := c == '=' && spaced && !l.arith && (i+1 == len(text) || isBlank(text[i+1])) &&
+					testWords[strings.TrimLeft(l.words[0], `$'"\`)]
+				if target && !test {
+					return true
+				}
+				end(l)
+			case opStep:
+				options := !l.arith && c == '-' && spaced && i+2 < len(text) && isBlank(text[i+2])
+				if target && !options {
+					return true
+				}
+				flag := !l.arith && c == '-' && l.chunk == i
+				end(l)
+				l.pre = !flag
+			default:
+				end(l)
+			}
+			i += n - 1
+		default:
+			end(l)
+		}
+	}
+	return false
+}
+
+// testWords are the words a test's comparison can follow (`[ $a = b ]`,
+// `test "$a" = b`, `[[ $a = b && $c = d ]]`), read past the quotes a
+// string that holds the test opens with (`bash -c '[ $a = b ]'`). Arithmetic takes none of them
+// before an assignment: `(( 1 && $x = 1 ))` is an error, while `!` and `(`
+// are not in the set because `(( ! $x = 1 ))` (bash 3.2) and
+// `(( ( $x = 1 ) ))` assign.
+var testWords = map[string]bool{
+	"[": true, "[[": true, "test": true, "-a": true, "-o": true, "&&": true, "||": true, `\(`: true,
+}
+
+// The operator kinds operatorAt reads.
+const (
+	opOther  = iota // no assignment: a comparison, a redirection, a pattern
+	opAssign        // `=` or a compound assignment
+	opStep          // `++` or `--`
+)
+
+// operatorAt reads the operator that begins at text[i], and returns its kind
+// and its length.
+func operatorAt(text string, i int) (kind, n int) {
+	c := text[i]
+	var next byte
+	if i+1 < len(text) {
+		next = text[i+1]
+	}
+	switch c {
+	case '=':
+		if next == '=' || next == '~' {
+			return opOther, 2
+		}
+		return opAssign, 1
+	case '<', '>':
+		if next == c {
+			if i+2 < len(text) && text[i+2] == '=' {
+				return opAssign, 3
+			}
+			return opOther, 2
+		}
+		if next == '=' {
+			return opOther, 2
+		}
+	case '+', '-':
+		if next == c {
+			return opStep, 2
+		}
+		if next == '=' {
+			return opAssign, 2
+		}
+	case '!':
+		if next == '=' {
+			return opOther, 2
+		}
+	default: // * / % & | ^ :
+		if next == '=' {
+			return opAssign, 2
+		}
+	}
+	return opOther, 1
+}
+
+// isBlank reports whether c separates the words of a shell line.
+func isBlank(c byte) bool {
+	return c == ' ' || c == '\t' || c == '\n'
+}
+
+// capIFSSplits reads each word of segs whose fields rest on the default IFS
+// (segment.ifsSplit) as a spelling past its bound (spellCapped), which the
+// arg_values compare reads as every value (review-guardSet MAJOR-2). It runs
+// on a line that names IFS anywhere: which assignment reaches which
+// expansion is not modelled, as splitAfterIFS does not model it, so a
+// prefix assignment (`IFS=x rm -rf ${U:-x/x}`), which bash does not apply
+// to its own command's words, refuses too.
+func capIFSSplits(segs []segment) {
+	for _, s := range segs {
+		for i := range s.ifsSplit {
+			s.spelled[i] = []string{spellCapped}
+		}
+	}
+}
+
 // splitAfterIFS reports whether a segment carrying an unquoted fixed output
 // shares the command line, at any payload layer, with another segment that
 // names IFS (review7-guard finding 2). fixedOutputSegment splits an output on
@@ -467,11 +894,8 @@ func splitAfterIFS(segs []segment) bool {
 		if s.fromFixedOutput || (carriers == 1 && carrying[i]) {
 			continue
 		}
-		for _, tok := range s.tokens {
-			tally(len(tok))
-			if strings.Contains(tok, "IFS") {
-				return true
-			}
+		if namesIFS(segs[i : i+1]) {
+			return true
 		}
 	}
 	return false

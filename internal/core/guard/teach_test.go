@@ -108,3 +108,53 @@ func TestRecallTermsAreTheCommandHeads(t *testing.T) {
 		}
 	}
 }
+
+// TestLessonsOverMarkTheRepositorysOwnWords: a repository's .abcd/guard.json
+// entries are taught by the same generator as the bundled ones (ruling CK1),
+// and every lesson whose words the bundled registry does not teach carries the
+// "(repo)" mark, so whose words these are is never invisible: an entry the
+// repository added, and a bundled entry it reworded. A change the lesson does
+// not show (a fixture) leaves the bundled lesson unmarked.
+func TestLessonsOverMarkTheRepositorysOwnWords(t *testing.T) {
+	bundled := Defaults()
+	if got, want := bundled.LessonsOver(bundled), bundled.Lessons(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("the bundled registry over itself marked a lesson:\n got %q\nwant %q", got, want)
+	}
+
+	repo := Defaults()
+	repo.Entries["deploy-prod"] = Entry{
+		ID:        "deploy-prod",
+		Pattern:   Pattern{Command: "make", Subcommand: "deploy"},
+		Tier:      TierBlocker,
+		Why:       "It deploys to production from a laptop.",
+		Successor: "Open a release pull request; CI deploys it.",
+	}
+	clean := repo.Entries["git-clean"]
+	clean.Why = "Untracked files here hold the fixtures nobody committed."
+	repo.Entries["git-clean"] = clean
+	reset := repo.Entries["git-reset-hard"]
+	reset.Fixtures.KnownGood = append(reset.Fixtures.KnownGood, "git reset --soft HEAD~1")
+	repo.Entries["git-reset-hard"] = reset
+
+	got := map[string]string{}
+	for _, l := range repo.LessonsOver(bundled) {
+		for id := range repo.Entries {
+			if strings.Contains(l, "("+id+")") {
+				got[id] = l
+			}
+		}
+	}
+	if want := "Refused by the guard (deploy-prod) (repo): `make deploy`. It deploys to production from a laptop. Instead: Open a release pull request; CI deploys it."; got["deploy-prod"] != want {
+		t.Errorf("the repository's own entry teaches\n %q\nwant\n %q", got["deploy-prod"], want)
+	}
+	if !strings.HasPrefix(got["git-clean"], "Warned by the guard (git-clean) (repo): `git clean`.") ||
+		!strings.Contains(got["git-clean"], clean.Why) {
+		t.Errorf("a bundled entry the repository reworded is not marked as the repository's: %q", got["git-clean"])
+	}
+	if want := bundled.Entries["git-reset-hard"].Lesson(); got["git-reset-hard"] != want {
+		t.Errorf("a fixture-only change marked the bundled lesson:\n got %q\nwant %q", got["git-reset-hard"], want)
+	}
+	if n := len(repo.LessonsOver(bundled)); n != len(repo.Entries) {
+		t.Errorf("LessonsOver gave %d lessons for %d entries", n, len(repo.Entries))
+	}
+}

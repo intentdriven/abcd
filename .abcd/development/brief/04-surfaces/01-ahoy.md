@@ -119,6 +119,17 @@ the API host explicitly, so an ambient host variable cannot send the write to an
 endpoint the origin never named, and the call goes through the caller's own
 authenticated identity: abcd never holds a token.
 
+That identity is the GitHub CLI's, so a missing `gh` is met with the
+explain-then-install mode (itd-63): after the first three gates and before the
+read, the verb explains `gh` from the tool registry and offers to install it,
+running the registry's step only on a yes typed at a terminal. The pre-given
+yes answers the settings change and never the install of a program, and a
+piped answer is not a person's answer, so both decline the offer; the verb then
+refuses, its notes carrying the explanation and the command. A failed or
+unverified install refuses the same way, before any request leaves the
+machine. The read never offers the install, because looking is never acting;
+it names the apply as the verb that does.
+
 ### The provider setup
 
 The setup takes the provider's name, its base URL, its first allowlist (every
@@ -476,6 +487,7 @@ about, one question per category present, never one per item.
 | `dependency` | a tool a capability uses and cannot find: gitleaks, optional over the native secret scanner and required where the repository armed it in `.abcd/config/gitleaks.json` | the category approval reaches the step; each tool is then explained from the tool registry (what it is, optional or required here, what works without it, the exact install step, what the install does) and its install step runs only on a per-tool yes — typed at a terminal, or relayed by a host as a flag naming the tool — never under the approve-everything flag, a piped answer or CI; a no is reported as what the capability continues on |
 | `status-line` | the offer of abcd's status line in the host harness | an advisory offer asked after its own question, written only on an answered consent; never under the approve-everything flag, and reported as optional work it skipped |
 | `oracle-routing` | the offer of abcd's proposed model-tier routing table (itd-2609170822093401): the machine's `~/.abcd/oracle-routing.json`, then, as a separate question, the repository's `.abcd/config/oracle-routing.json` | the proposal rendered as a table (agent, tier, fan-out) and each file written only on its own answered consent, the machine one owner-only; never under the approve-everything flag, and reported as optional work it skipped; a decline records nothing, so the next install offers again; uninstall leaves both files |
+| `drain-rule` | the offer of the repository's drain eligibility record (ruling BX2, itd-82): abcd's strict baseline as an accepted decision record carrying the four `drain_` fields, minted through the decision store's seam | the rule stated in one question and the record written only on a consent answered at a terminal; never under the approve-everything flag and never off a terminal, where neither its category nor the offer is asked (so a piped answer stream keeps its order), and reported as optional work it skipped; a decline records nothing, so the next install offers again; raised only while no accepted record states the rule, so a record stating it badly is never offered a second; only ever the baseline, never a loosened rule |
 | `user-state` | the registry entry, re-founding, stale or duplicate entries | guided; never auto-edit user-scope state, report extras read-only |
 
 **The artefact kind is a gap until it is declared** (itd-2609150819432059). A

@@ -289,9 +289,11 @@ func denial(e DenyEntry) string {
 }
 
 // readRoutes reads one route family (roles or judgement types) from the repo
-// and machine layers, the higher layer winning per name. A winning route from
-// any layer but the machine's that names a provider holding a key is refused
-// (keyed): only the person's own machine may point a route at their key.
+// and machine layers, the higher layer winning per name. A route from any layer
+// but the machine's that names a provider holding a key is skipped with a
+// diagnostic (skipKeyedRoute), and the machine's own route to the name, if it
+// has one, wins in its place: only the person's own machine may point a route
+// at their key.
 func (c *APIConfig) readRoutes(s *layered.Stack, key string, into map[string]Target) error {
 	names := map[string]bool{}
 	for _, l := range []layered.Layer{layered.Repo, layered.Machine} {
@@ -320,6 +322,12 @@ func (c *APIConfig) readRoutes(s *layered.Stack, key string, into map[string]Tar
 		if err != nil {
 			return fmt.Errorf("oracle adapter: %w", err)
 		}
+		// A repository's route to a provider that holds a key is skipped, and
+		// the next layer's route to the name, the machine's own, applies in its
+		// place (ruling CD2 of 2026-09-29).
+		for len(found) > 0 && c.skipKeyedRoute(key, name, found[0]) {
+			found = found[1:]
+		}
 		if len(found) == 0 {
 			continue
 		}
@@ -343,18 +351,48 @@ func (c *APIConfig) readRoutes(s *layered.Stack, key string, into map[string]Tar
 				"it runs on the host, as it would with no provider configured", where, layered.BoundKey(provider)))
 			continue
 		}
-		if p := c.providers[provider]; win.Layer != layered.Machine && keyed(p) {
-			return fmt.Errorf("oracle adapter: %s points at %s, a provider that holds a key (its block in %s names the credential %s); "+
-				"only a route set on this machine may spend that key, so a repository's route to it is refused before any call: "+
-				"set %s.%s in %s and remove it from %s, or point it at a provider whose block names no key",
-				where, layered.BoundKey(text), p.Origin, p.Key, key, name, layered.Config.MachineOrigin(), win.Origin)
-		}
 		if err := c.Admit(provider, model); err != nil {
 			return fmt.Errorf("oracle adapter: %s points at %s, %w", where, layered.BoundKey(text), err)
 		}
 		into[name] = Target{Provider: provider, Model: model, Origin: win.Origin}
 	}
 	return nil
+}
+
+// skipKeyedRoute reports whether one layer's route to name is a route from any
+// layer but the machine's to a configured provider that holds a key, and says
+// so in a diagnostic when it is. Only a route the person set up on their own
+// machine may spend their paid key (ruling AA(b) of 2026-09-29), and such a
+// route is skipped rather than refusing the whole configuration (ruling CD2 of
+// the same day), so every other route and every command that reads the
+// configuration keeps working. It is judged before the model is checked, so a
+// keyed provider's list is never consulted on a repository's behalf; a route
+// the denylist matches is left to the refusal below, which no layer softens,
+// and a route this reader cannot parse is too.
+func (c *APIConfig) skipKeyedRoute(key, name string, fd layered.Found) bool {
+	if fd.Layer == layered.Machine {
+		return false
+	}
+	text, err := layered.Decode[string](fd.Raw)
+	if err != nil {
+		return false
+	}
+	provider, model, ok := strings.Cut(text, "/")
+	if !ok || provider == "" || model == "" {
+		return false
+	}
+	p, configured := c.providers[provider]
+	if !configured || !keyed(p) {
+		return false
+	}
+	if _, denied := Denied(c.denylist, model); denied {
+		return false
+	}
+	c.Diagnostics = append(c.Diagnostics, fmt.Sprintf("oracle adapter: %s (%s layer): %s.%s points at %s, a provider that holds a key "+
+		"(its block in %s names the credential %s); only a route set on this machine may spend that key, so this route is skipped "+
+		"and the rest of the configuration applies: set %s.%s in %s and remove it from %s, or point it at a provider whose block names no key",
+		fd.Origin, fd.Layer, key, name, layered.BoundKey(text), p.Origin, p.Key, key, name, layered.Config.MachineOrigin(), fd.Origin))
+	return true
 }
 
 // keyed reports whether p holds a key: whether its block names a credential.

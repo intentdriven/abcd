@@ -57,7 +57,6 @@ internal/core/intent.ReEmitAudit
 internal/core/intent.ReEmitCommand
 internal/core/intent.UnmarkedConditionOrdinals
 internal/core/intent.Validate
-internal/core/intent.WithMintLock
 internal/core/issuerecord.ParseBlock
 internal/core/issuerecord.ParseScalarOrList
 internal/core/lab.ValidID

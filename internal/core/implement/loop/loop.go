@@ -904,3 +904,23 @@ func StatusLanes(repoRoot string) ([]statusblock.Started, error) {
 	}
 	return out, nil
 }
+
+// StatusPeers is the peers read the status block's head takes (ruling CC1 of
+// 2026-09-29): build next's own peers check, read once for the block and
+// judged per intent, so the board's "next up" passes over exactly the intents
+// another checkout holds that the pick passes over. It judges on behalf of no
+// session, so every live claim is a peer's. A peer the listing cannot read
+// fails closed on each record, as it does for the pick. It is a
+// statusblock.PeerReader.
+func StatusPeers(repoRoot string) (statusblock.HeldBy, error) {
+	snap, err := readPeers(repoRoot)
+	if err != nil {
+		return nil, err
+	}
+	return func(r intent.ReadyResult) string {
+		if row := peersCheck(r, "", snap); !row.OK {
+			return row.Detail
+		}
+		return ""
+	}, nil
+}

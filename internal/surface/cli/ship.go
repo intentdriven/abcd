@@ -765,6 +765,11 @@ func renderIngest(w io.Writer, res shipResult) {
 	fmt.Fprintf(w, "  wrote:      %s\n", res.Path)
 	fmt.Fprintf(w, "    %s\n", res.Heading)
 	fmt.Fprintf(w, "    %d line(s), citing %s\n", res.Lines, termsafe.Sanitize(strings.Join(res.Cited, ", ")))
+	// Every target the cut passed without shipping it, moved to `next` in the
+	// same write and named in the section (itd-2609212103572513 criterion 3).
+	for _, m := range res.Moved {
+		fmt.Fprintf(w, "  moved:      %s targets next (targeted %s)\n", termsafe.Sanitize(m.ID), termsafe.Sanitize(m.From))
+	}
 	if res.Page.Written {
 		fmt.Fprintf(w, "  page:       %s\n", res.Page.Path)
 		fmt.Fprintf(w, "    %s\n", termsafe.Sanitize(res.Page.Heading))

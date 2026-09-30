@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core/capture"
+	"github.com/intentdriven/abcd/internal/core/drainrule"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
 )
 
@@ -61,7 +62,7 @@ func TestCaptureRefusesTheMachineRemedyFromAPerson(t *testing.T) {
 // remedy` writes the person's fix, says what it replaced, and the dry run then
 // lists the record as eligible.
 func TestCaptureRemedyVerbWritesTheRemedyAndTheDrainTakesIt(t *testing.T) {
-	repo := captureLedgerRepo(t)
+	repo := drainRuleRepo(t, drainrule.ProposalFrontmatter())
 	res, err := capture.Capture(capture.CaptureRequest{
 		RepoRoot: repo, Text: "a nil map is written before it is made", Severity: "minor",
 		Category: "bug", Source: "agent-finding", FoundDuring: "t", Remedy: issueschema.MachineRemedy,

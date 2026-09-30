@@ -468,7 +468,7 @@ func Build(req Request) (Result, error) {
 		return Result{}, err
 	}
 	if ex.pages.status {
-		block, err := statusblock.Read(repoRoot, req.Lanes)
+		block, err := statusblock.Read(repoRoot, req.Lanes, nil)
 		if err != nil {
 			return Result{}, err
 		}

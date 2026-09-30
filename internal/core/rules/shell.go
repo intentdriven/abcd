@@ -1,6 +1,10 @@
 package rules
 
-import "github.com/intentdriven/abcd/internal/core/guard"
+import (
+	"fmt"
+
+	"github.com/intentdriven/abcd/internal/core/guard"
+)
 
 // ShellDomain is the bundled domain that carries itd-103's teaching plane
 // (spc-16, "Two planes, one registry"; iss-151, ruling J10): the shell-hazard
@@ -18,10 +22,14 @@ import "github.com/intentdriven/abcd/internal/core/guard"
 // *SHELL star command, dedup and provenance — and a guardrail domain to
 // noteWithheld.
 //
-// It is built from the BUNDLED registry only. A repo's .abcd/guard.json
-// changes what the guard refuses in that repo, and the two features keep
-// independent switches (spc-16, "Config home"); a repo that wants its own
-// entries taught says so in its rules.json, as for any bundled domain.
+// The bundled defaults carry the domain generated from the bundled registry.
+// Load regenerates it, by the same generator, from the registry the guard
+// enforces in the repository — the bundled entries merged with the
+// repository's own .abcd/guard.json (ruling CK1) — so a repository's own
+// hazards are taught as the bundled ones are, each such lesson marked
+// guard.RepoMark. The switches stay independent (spc-16, "Config home"): the
+// guard file decides what is refused, and rules.json overrides, silences or
+// kills the teaching of it like any bundled domain's.
 const ShellDomain = "SHELL"
 
 // shellAliases is the fixed half of the domain's recall: words that name
@@ -33,11 +41,12 @@ const ShellDomain = "SHELL"
 // the domain alone.
 var shellAliases = []string{"bash", "command line", "force push", "shell", "zsh"}
 
-// shellDomain generates the teaching-plane domain from reg. ok is false when
-// the registry has no entries: a domain with no rules would render as a heading
-// with nothing under it, the shape Validate refuses.
-func shellDomain(reg guard.Registry) (Domain, bool) {
-	lessons := reg.Lessons()
+// shellDomain generates the teaching-plane domain from reg, marking every
+// lesson bundled does not teach word for word as the repository's. ok is false
+// when the registry has no entries: a domain with no rules would render as a
+// heading with nothing under it, the shape Validate refuses.
+func shellDomain(reg, bundled guard.Registry) (Domain, bool) {
+	lessons := reg.LessonsOver(bundled)
 	if len(lessons) == 0 {
 		return Domain{}, false
 	}
@@ -57,10 +66,39 @@ func withShellDomain(rs RuleSet) RuleSet {
 	if _, ok := rs.Domains[ShellDomain]; ok {
 		panic("rules: bundled defaults declare " + ShellDomain + " by hand; it is generated from the guard registry")
 	}
-	if d, ok := shellDomain(guard.Defaults()); ok {
+	if d, ok := shellDomain(guard.Defaults(), guard.Defaults()); ok {
 		if rs.Domains == nil {
 			rs.Domains = map[string]Domain{}
 		}
+		rs.Domains[ShellDomain] = d
+	}
+	return rs
+}
+
+// withRepoShellDomain regenerates the SHELL domain of the bundled set rs from
+// the registry the guard enforces in repoRoot (ruling CK1): the bundled
+// entries merged with the repository's .abcd/guard.json. It runs before any
+// rules.json layer, so the regenerated domain is the base those layers
+// override per field, exactly as they override the bundled one.
+//
+// A guard.json the guard refuses — unreadable, invalid, or an uncommitted
+// edit that weakens it — is refused here too, loudly: the domain teaches the
+// registry the guard falls back to (the bundled one, or HEAD's committed
+// file), never the refused entries, and a note names the file and the reason
+// on every load. Failing the whole rule set instead would take PII, COMMITTING
+// and every other domain down with one broken guard file; skipping it silently
+// would leave a repository believing its own hazard is taught.
+func withRepoShellDomain(rs RuleSet, repoRoot string) RuleSet {
+	ld := guard.LoadRepo(repoRoot)
+	if ld.Err != nil {
+		rs.notes = append(rs.notes, fmt.Sprintf(
+			"rules: %s: the repository's own guard entries are refused and not taught (%v); %s teaches the registry the guard enforces in their place",
+			ShellDomain, ld.Err, ShellDomain))
+	}
+	if ld.Posture == guard.LoadUnavailable {
+		return rs
+	}
+	if d, ok := shellDomain(ld.Registry, guard.Defaults()); ok {
 		rs.Domains[ShellDomain] = d
 	}
 	return rs

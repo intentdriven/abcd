@@ -2,6 +2,7 @@ package statusblock
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -87,7 +88,7 @@ func lanesOf(started ...Started) LaneReader {
 func TestBlockPlacesEveryIntent(t *testing.T) {
 	root := store(t)
 	lane := Lane{Run: "run-2609290000000001", Lane: "lane-1", Stage: "implement", Awaiting: "implementer"}
-	b, err := Read(root, lanesOf(Started{Intent: "itd-2609010000000001", Lane: lane}))
+	b, err := Read(root, lanesOf(Started{Intent: "itd-2609010000000001", Lane: lane}), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,12 +134,12 @@ func TestBlockPlacesEveryIntent(t *testing.T) {
 // Next and Later are otherwise exactly what they were.
 func TestBlockWithoutAStateFileKeepsOnlyTheHead(t *testing.T) {
 	root := store(t)
-	with, err := Read(root, lanesOf(Started{Intent: "itd-7", Lane: Lane{Run: "run-1", Lane: "lane-1", Stage: "brief"}}))
+	with, err := Read(root, lanesOf(Started{Intent: "itd-7", Lane: Lane{Run: "run-1", Lane: "lane-1", Stage: "brief"}}), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for name, reader := range map[string]LaneReader{"nil reader": nil, "no lanes": lanesOf()} {
-		without, err := Read(root, reader)
+		without, err := Read(root, reader, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -173,7 +174,7 @@ func TestAnIntentInALaneIsOnlyUnderNow(t *testing.T) {
 	for _, id := range inLane {
 		started = append(started, Started{Intent: id, Lane: lane})
 	}
-	b, err := Read(root, lanesOf(started...))
+	b, err := Read(root, lanesOf(started...), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -192,7 +193,7 @@ func TestAnIntentInALaneIsOnlyUnderNow(t *testing.T) {
 // name, each row with its id and title, the lane state and the failing checks.
 func TestBlockJSONCarriesTheThreeLists(t *testing.T) {
 	root := store(t)
-	b, err := Read(root, lanesOf(Started{Intent: "itd-2609010000000001", Lane: Lane{Run: "run-1", Lane: "lane-2", Stage: "validate", Awaiting: "validator"}}))
+	b, err := Read(root, lanesOf(Started{Intent: "itd-2609010000000001", Lane: Lane{Run: "run-1", Lane: "lane-2", Stage: "validate", Awaiting: "validator"}}), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -215,7 +216,7 @@ func TestBlockJSONCarriesTheThreeLists(t *testing.T) {
 // TestBlockOnAnEmptyStoreHasEmptyLists: a record with no intents renders three
 // empty lists, never null ones, and no head.
 func TestBlockOnAnEmptyStoreHasEmptyLists(t *testing.T) {
-	b, err := Read(t.TempDir(), nil)
+	b, err := Read(t.TempDir(), nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -249,7 +250,7 @@ func TestTheHeadSkipsAHeldIntent(t *testing.T) {
 	w(in+"itd-3-held.md", readyIntent("itd-3", "The held one", "spc-13", "held: \"awaiting a ruling\"\n"))
 	w(sp+"spc-13-held.md", writtenSpec("spc-13", "itd-3"))
 
-	b, err := Read(root, nil)
+	b, err := Read(root, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -262,7 +263,7 @@ func TestTheHeadSkipsAHeldIntent(t *testing.T) {
 
 	w(in+"itd-4-free.md", readyIntent("itd-4", "The free one", "spc-14", ""))
 	w(sp+"spc-14-free.md", writtenSpec("spc-14", "itd-4"))
-	b, err = Read(root, nil)
+	b, err = Read(root, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -324,7 +325,7 @@ func TestTheHeadIsThePicksChoice(t *testing.T) {
 		t.Fatalf("precondition: the pick takes itd-4 over its tie with itd-9: %+v", pick)
 	}
 
-	b, err := Read(root, nil)
+	b, err := Read(root, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -344,12 +345,71 @@ func TestTheHeadIsThePicksChoice(t *testing.T) {
 
 	// itd-4 in a lane: the pick would not start it again, so the head is the
 	// runner-up.
-	b, err = Read(root, lanesOf(Started{Intent: "itd-4", Lane: Lane{Run: "run-1", Lane: "lane-1", Stage: "implement"}}))
+	b, err = Read(root, lanesOf(Started{Intent: "itd-4", Lane: Lane{Run: "run-1", Lane: "lane-1", Stage: "implement"}}), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got := ids(b.Now); !reflect.DeepEqual(got, []string{"itd-4", "itd-9"}) || b.Now[0].NextUp || !b.Now[1].NextUp {
 		t.Errorf("Now = %+v, want itd-4's lane row then itd-9 marked next up", b.Now)
+	}
+}
+
+// TestTheHeadTakesAnIntentWhoseBlockerASettledRecordReplaced is rulings CF1
+// and CF2 of 2026-09-30 on the board: the "next up" reads the build's own
+// blocked check (intent.StartChecksIn), so an intent whose blocker was
+// superseded by an accepted decision, or reclassified as a discipline, heads
+// the board, and one whose blocker a proposed decision replaced does not.
+func TestTheHeadTakesAnIntentWhoseBlockerASettledRecordReplaced(t *testing.T) {
+	const superseded = "---\nid: itd-27\nslug: s\nkind: standalone\nsuperseded_by: adr-37\nkind_at_supersession: standalone\n---\n# The replaced one\n"
+	cases := []struct {
+		name  string
+		files map[string]string
+		heads bool
+	}{
+		{"superseded by an accepted decision", map[string]string{
+			".abcd/development/intents/superseded/itd-27-s.md": superseded,
+			".abcd/development/decisions/adrs/0037-d.md":       "---\nid: adr-37\nstatus: accepted\n---\n# d\n",
+		}, true},
+		{"reclassified as a discipline", map[string]string{
+			".abcd/development/intents/disciplines/itd-27-s.md": "---\nid: itd-27\nslug: s\nkind: discipline\n---\n# A rule\n",
+		}, true},
+		{"superseded by a proposed decision", map[string]string{
+			".abcd/development/intents/superseded/itd-27-s.md": superseded,
+			".abcd/development/decisions/adrs/0037-d.md":       "---\nid: adr-37\nstatus: proposed\n---\n# d\n",
+		}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			w := func(rel, body string) {
+				t.Helper()
+				p := filepath.Join(root, filepath.FromSlash(rel))
+				if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			w(".abcd/development/intents/planned/itd-4-blocked.md", readyIntent("itd-4", "The blocked one", "spc-14", "blocked_by: [itd-27]\n"))
+			w(".abcd/development/specs/open/spc-14-blocked.md", scoredSpec("spc-14", "itd-4"))
+			for rel, body := range tc.files {
+				w(rel, body)
+			}
+			b, err := Read(root, nil, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := ids(b.Next); !reflect.DeepEqual(got, []string{"itd-4"}) {
+				t.Fatalf("Next = %v, want [itd-4]", got)
+			}
+			switch {
+			case tc.heads && (len(b.Now) != 1 || b.Now[0].ID != "itd-4" || !b.Now[0].NextUp):
+				t.Errorf("Now = %+v, want itd-4 marked next up: its blocker is settled", b.Now)
+			case !tc.heads && len(b.Now) != 0:
+				t.Errorf("Now = %+v, want no head: a proposed decision does not settle the blocker", b.Now)
+			}
+		})
 	}
 }
 
@@ -401,7 +461,7 @@ func TestTheHeadPassesOverWhatTheBuildRefusesFromTheRecord(t *testing.T) {
 			w(in+"itd-4-refused.md", refused)
 			w(sp+"spc-14-refused.md", scoredSpec("spc-14", "itd-4")+tc.specAdd)
 
-			b, err := Read(root, nil)
+			b, err := Read(root, nil, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -414,7 +474,7 @@ func TestTheHeadPassesOverWhatTheBuildRefusesFromTheRecord(t *testing.T) {
 
 			w(in+"itd-9-free.md", readyIntent("itd-9", "The free one", "spc-19", ""))
 			w(sp+"spc-19-free.md", writtenSpec("spc-19", "itd-9"))
-			if b, err = Read(root, nil); err != nil {
+			if b, err = Read(root, nil, nil); err != nil {
 				t.Fatal(err)
 			}
 			if got := ids(b.Next); !reflect.DeepEqual(got, []string{"itd-4", "itd-9"}) {
@@ -424,5 +484,129 @@ func TestTheHeadPassesOverWhatTheBuildRefusesFromTheRecord(t *testing.T) {
 				t.Errorf("Now = %+v, want only itd-9 marked next up: itd-4 fails %s", b.Now, tc.check)
 			}
 		})
+	}
+}
+
+// TestTheHeadPassesOverAnIntentAPeerHolds (ruling CC1): the head is judged by
+// the peers check the caller hands in, read once for the block and only when a
+// head is in reach. An intent it reports held stays in Next and is never the
+// head; a fault reading the peers is the block's fault, as it is the pick's;
+// and a record with nothing to start pays no peers read at all.
+func TestTheHeadPassesOverAnIntentAPeerHolds(t *testing.T) {
+	root := t.TempDir()
+	w := func(rel, body string) {
+		t.Helper()
+		p := filepath.Join(root, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	reads := 0
+	holding := func(held string) PeerReader {
+		return func(string) (HeldBy, error) {
+			reads++
+			return func(r intent.ReadyResult) string {
+				if r.IntentID == held {
+					return "lane-alpha holds it in shipped/"
+				}
+				return ""
+			}, nil
+		}
+	}
+
+	if _, err := Read(root, nil, holding("itd-4")); err != nil || reads != 0 {
+		t.Fatalf("a record with nothing to start: err %v, %d peers read(s), want none", err, reads)
+	}
+
+	const in = ".abcd/development/intents/planned/"
+	const sp = ".abcd/development/specs/open/"
+	w(in+"itd-4-held.md", readyIntent("itd-4", "The held one", "spc-14", ""))
+	w(sp+"spc-14-held.md", scoredSpec("spc-14", "itd-4"))
+	w(in+"itd-9-free.md", readyIntent("itd-9", "The free one", "spc-19", ""))
+	w(sp+"spc-19-free.md", writtenSpec("spc-19", "itd-9"))
+
+	b, err := Read(root, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := ids(b.Now); !reflect.DeepEqual(got, []string{"itd-4"}) {
+		t.Fatalf("precondition: without a peers check itd-4 heads, got Now = %v", got)
+	}
+
+	b, err = Read(root, nil, holding("itd-4"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := ids(b.Next); !reflect.DeepEqual(got, []string{"itd-4", "itd-9"}) {
+		t.Errorf("Next = %v, want [itd-4 itd-9]: a held intent is still READY", got)
+	}
+	if got := ids(b.Now); !reflect.DeepEqual(got, []string{"itd-9"}) || !b.Now[0].NextUp {
+		t.Errorf("Now = %+v, want only itd-9 marked next up: a peer holds itd-4", b.Now)
+	}
+	if reads != 1 {
+		t.Errorf("the peers were read %d times for one block, want once", reads)
+	}
+
+	fault := errors.New("git could not name the common dir")
+	if _, err := Read(root, nil, func(string) (HeldBy, error) { return nil, fault }); !errors.Is(err, fault) {
+		t.Errorf("a fault reading the peers: got %v, want it returned", err)
+	}
+}
+
+// TestARowShowsItsTarget is itd-2609212103572513 criterion 4: given the
+// status block, when a targeted intent is listed, then its row shows the
+// target — in Now (a lane row and the head), in Next and in Later alike, and in
+// the JSON as `target_release`. A row with no target carries none, and a draft
+// carrying one by hand shows none: a target is a promise about planned work,
+// and the cut reads it off planned intents alone.
+func TestARowShowsItsTarget(t *testing.T) {
+	root := store(t)
+	w := func(rel, body string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(rel)), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	const in = ".abcd/development/intents/"
+	w(in+"planned/itd-2609010000000001-late.md", readyIntent("itd-2609010000000001", "The stamped one", "spc-2609010000000011", "target_release: v0.11.0\n"))
+	w(in+"planned/itd-7-seven.md", readyIntent("itd-7", "The seventh", "spc-17", "target_release: next\n"))
+	w(in+"planned/itd-5-held.md", readyIntent("itd-5", "The held one", "spc-15", "held: \"awaiting a ruling\"\ntarget_release: v0.12.0\n"))
+	w(in+"planned/itd-8-unlinked.md", readyIntent("itd-8", "The unlinked one", "null", "target_release: next\n"))
+	w(in+"drafts/itd-3-old.md", strings.Replace(draft("itd-3", "An old idea"), "kind: standalone\n", "kind: standalone\ntarget_release: next\n", 1))
+
+	b, err := Read(root, lanesOf(Started{Intent: "itd-2609010000000001", Lane: Lane{Run: "run-1", Stage: "implement"}}), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	targets := map[string]string{}
+	for _, list := range [][]Row{b.Now, b.Next, b.Later} {
+		for _, r := range list {
+			targets[r.ID] = targets[r.ID] + "|" + r.Target
+		}
+	}
+	for id, want := range map[string]string{
+		"itd-2609010000000001": "|v0.11.0",   // Now, in a lane
+		"itd-7":                "|next|next", // Now as the head, and Next
+		"itd-5":                "|v0.12.0",   // Next
+		"itd-8":                "|next",      // Later, not READY
+		"itd-3":                "|",          // a draft shows none
+		"itd-2609020000000002": "|",          // no target, none shown
+	} {
+		if targets[id] != want {
+			t.Errorf("%s rows carry targets %q, want %q", id, targets[id], want)
+		}
+	}
+	raw, err := json.Marshal(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `"id":"itd-8","title":"The unlinked one","bucket":"planned","target_release":"next"`) {
+		t.Errorf("--json must carry each row's target as target_release:\n%s", raw)
+	}
+	if strings.Count(string(raw), `"target_release"`) != 5 {
+		t.Errorf("a row with no target carries no target_release key:\n%s", raw)
 	}
 }
