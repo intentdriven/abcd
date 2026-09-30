@@ -3090,7 +3090,7 @@ func newIntentAuditCommand(asJSON *bool) *cobra.Command {
 			}
 			// Only a receipt still owed has a request for the host to act on; a
 			// terminal one is reported as it stands, with no request block.
-			if res.Status != "owed" && res.Status != "already_owed" {
+			if res.Status != "owed" && res.Status != "already_owed" && res.Status != "check_owed" {
 				route = nil
 			}
 			return render(cmd.OutOrStdout(), *asJSON, withRequest(res, route), func(w io.Writer) {
@@ -3104,6 +3104,10 @@ func newIntentAuditCommand(asJSON *bool) *cobra.Command {
 						strings.ReplaceAll(strings.TrimPrefix(res.Status, "already_"), "_", "-"))
 				case res.Status == "already_owed":
 					fmt.Fprintf(w, "  request rewritten: %s\n", res.RequestPath)
+				case res.Status == "check_owed":
+					// An ingested verdict that left a check owed (ruling DQ1c)
+					// is re-run from the same receipt.
+					fmt.Fprintf(w, "  request rewritten for the re-run the audit-owed flag asks for: %s\n", res.RequestPath)
 				default:
 					fmt.Fprintf(w, "  request: %s\n", res.RequestPath)
 				}
@@ -3167,6 +3171,7 @@ func newIntentAuditCommand(asJSON *bool) *cobra.Command {
 							res.Conditions, res.Untested)
 					}
 				}
+				renderAuditOwed(w, res)
 				// The condition blocks this verdict did not override: its rationale
 				// named none of their occasions (spc-2609020626046252). A re-ingest
 				// for the same receipt naming one replaces the ingested verdict.
@@ -3188,6 +3193,27 @@ func newIntentAuditCommand(asJSON *bool) *cobra.Command {
 		"drain the owed fidelity reviews: list them oldest shipped first and emit the oldest's request; writes (parks an OWED stub in a markerless intent, a committed record, and rewrites its request); runs no reviewer")
 	auditCmd.Flags().IntVar(&maxOwed, "max", 0, "with --owed: list at most n owed reviews (0: no cap); the summary names how many remain")
 	return auditCmd
+}
+
+// renderAuditOwed prints what an ingest left owed or cleared (ruling DQ1c):
+// the intent stays shipped, the flag names the unmet or undecided criteria,
+// and one issue carries the check until a passing re-audit resolves it.
+func renderAuditOwed(w io.Writer, res intent.IngestVerdictResult) {
+	if len(res.AuditOwed) > 0 {
+		fmt.Fprintf(w, "  audit owed: %s — the intent stays shipped and its Audit Notes carry the flag\n",
+			strings.Join(res.AuditOwed, " · "))
+		switch {
+		case res.OwedIssue == "":
+			fmt.Fprintln(w, "  no issue carries the check: no ledger is linked to file one")
+		case res.OwedIssueLinked:
+			fmt.Fprintf(w, "  carried by %s, already open\n", res.OwedIssue)
+		default:
+			fmt.Fprintf(w, "  captured %s to carry the check; commit it with the record\n", res.OwedIssue)
+		}
+	}
+	if res.FlagCleared != "" {
+		fmt.Fprintf(w, "  audit-owed flag cleared: resolved %s\n", res.FlagCleared)
+	}
 }
 
 // runOwedReviews is bare `abcd intent audit`: the read-only listing of every
