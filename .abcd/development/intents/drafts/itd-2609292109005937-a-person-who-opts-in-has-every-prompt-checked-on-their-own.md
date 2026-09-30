@@ -78,6 +78,12 @@ interview walks each one.
   worth switching off.
 - **Which local runtimes the adapter speaks to**, and whether the scanner-only
   half ships first without a model.
+- **The owed ADR on failing open**: letting a prompt through when the local
+  check is down is a trust posture at a privacy boundary, not a detail of this
+  intent. The decomposition calibration note predicts a SPLIT, this intent plus
+  an ADR on that posture, and flags it for the human; the loud-degradation scope
+  item and the last criterion above hold only once that ADR rules fail-open
+  rather than hold-and-ask.
 
 ## Audit Notes
 
