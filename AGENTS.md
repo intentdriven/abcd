@@ -250,7 +250,7 @@ irreversible; guessing downward costs nothing.**
   is the stance. **The store has no verbs yet.** Aim a plain `git worktree add`
   at the path and create the lane by hand; the store's own `add`, its listing
   and its reclaim are
-  [itd-2609091014076309](.abcd/development/intents/drafts/itd-2609091014076309-session-and-agent-worktrees-live-in-a-machine-scoped-store-t.md),
+  [itd-2609091014076309](.abcd/development/intents/planned/itd-2609091014076309-session-and-agent-worktrees-live-in-a-machine-scoped-store-t.md),
   in `drafts/`, so until it ships nothing enumerates the lane or prunes a spent
   worktree for you, and a worktree in the store is retired with
   `git worktree remove` like any other.
