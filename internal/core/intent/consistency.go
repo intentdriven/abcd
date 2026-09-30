@@ -716,7 +716,7 @@ func IngestConsistency(req ConsistencyIngestRequest) (ConsistencyIngestResult, e
 	}
 	// The free-text renderer is built before anything is written, so a degraded
 	// detector stops the ingest before the first capture.
-	free, err := newVerdictProse(req.RepoRoot)
+	free, degraded, err := newVerdictProse(req.RepoRoot)
 	if err != nil {
 		return ConsistencyIngestResult{}, err
 	}
@@ -757,6 +757,9 @@ func IngestConsistency(req ConsistencyIngestRequest) (ConsistencyIngestResult, e
 			err, orNone(res.Filed), orNone(res.Linked), reportRel)
 	}
 	report := renderConsistencyReport(rv, res.Rows, date, free)
+	if err := degraded(); err != nil {
+		return ConsistencyIngestResult{}, afterFiling(err)
+	}
 	if err := ensureRecordDir(req.RepoRoot, filepath.Join(ReviewsShelfRelDir, dirName)); err != nil {
 		return ConsistencyIngestResult{}, afterFiling(err)
 	}

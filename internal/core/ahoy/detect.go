@@ -215,7 +215,7 @@ var DependencyTools = []string{"gitleaks"}
 // cannot find, with the tool registry's explanation rather than a bare command
 // (itd-63). gitleaks is the one ahoy checks: optional over the native secret
 // scanner, and REQUIRED in a repository that armed it in
-// .abcd/config/gitleaks.json, whose transcript capture refuses without it. An
+// .abcd/config/gitleaks.json, whose release refuses without it. An
 // armed repository that names an existing binary by path has no gap: the
 // adapter judges that path itself, and a refusal there is not a missing tool.
 //

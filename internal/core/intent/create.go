@@ -8,13 +8,13 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/changelog"
 	"github.com/intentdriven/abcd/internal/core/provenance"
 	"github.com/intentdriven/abcd/internal/core/record/match"
 	"github.com/intentdriven/abcd/internal/core/recordid"
+	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
@@ -639,8 +639,8 @@ func titleLine(text string) string {
 // locked read — not the corpus — is what the verb judges.
 var beforeIntentMintLock func()
 
-// onIntentMintLockBusy is a test seam, nil outside tests: called each time an
-// attempt to take the lock finds it already held. A test that proves a writer
+// onIntentMintLockBusy is a test seam, nil outside tests: called once when the
+// first attempt to take the lock finds it already held, before the wait. A test that proves a writer
 // takes the lock has to OBSERVE the writer blocked on it; inferring it from how
 // long the write took measures the machine, and a writer that takes no lock but
 // is slow for its own reasons passes a wait bar (iss-2608301301041887).
@@ -653,9 +653,9 @@ var onIntentMintLockBusy func()
 // same suffix, one directory — that time and entropy leave to the store to
 // arbitrate (spc-33 ruling 2). It cannot see a sibling checkout and does not
 // need to: the mint reads no maximum, so two checkouts never share the state a
-// lock would have to protect. It flocks the intents/ directory file descriptor
-// itself, so no lock artifact is left in the committed record tree (mirroring
-// the spec store's lock). O_NOFOLLOW refuses a symlinked intents/.
+// lock would have to protect. It flocks the intents/ directory itself through
+// fsutil.WithDirLock, so no lock artifact is left in the committed record tree
+// (mirroring the spec store's lock), and a symlinked intents/ is refused.
 func withIntentMintLock(repoRoot string, fn func() error) error {
 	return withIntentMintLockWithin(repoRoot, mintLockTimeout, fn)
 }
@@ -673,32 +673,28 @@ func withIntentMintLockWithin(repoRoot string, timeout time.Duration, fn func() 
 	if err := ensureRecordDir(repoRoot, IntentsRelDir); err != nil {
 		return err
 	}
-	fd, err := syscall.Open(intentsDir, syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_NOFOLLOW, 0)
-	if err != nil {
-		return fmt.Errorf("intent: opening mint lock on %s: %w", IntentsRelDir, err)
+	ran := false
+	locked := func() error {
+		ran = true
+		return fn()
 	}
-	defer syscall.Close(fd)
-
-	deadline := time.Now().Add(timeout)
-	for {
-		lockErr := syscall.Flock(fd, syscall.LOCK_EX|syscall.LOCK_NB)
-		if lockErr == nil {
-			break
-		}
-		if lockErr != syscall.EWOULDBLOCK {
-			return fmt.Errorf("intent: acquiring mint lock: %w", lockErr)
-		}
+	// One attempt that does not wait, then the whole budget: the first refusal
+	// is what the busy seam observes, and the wait that follows is the one the
+	// caller asked for.
+	err := fsutil.WithDirLock(intentsDir, 0, locked)
+	if !ran && errors.Is(err, fsutil.ErrLockContention) {
 		if onIntentMintLockBusy != nil {
 			onIntentMintLockBusy()
 		}
-		if time.Now().After(deadline) {
-			return fmt.Errorf("%w within %s", errIntentLockBusy, timeout)
-		}
-		time.Sleep(10 * time.Millisecond)
+		err = fsutil.WithDirLock(intentsDir, timeout, locked)
 	}
-	defer syscall.Flock(fd, syscall.LOCK_UN)
-
-	return fn()
+	switch {
+	case ran || err == nil:
+		return err
+	case errors.Is(err, fsutil.ErrLockContention):
+		return fmt.Errorf("%w within %s", errIntentLockBusy, timeout)
+	}
+	return fmt.Errorf("intent: opening mint lock on %s: %w", IntentsRelDir, err)
 }
 
 // WithMintLock runs fn while holding the intent store's lock — the one

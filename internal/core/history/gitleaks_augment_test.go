@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,6 +12,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/adapter/gitleaks"
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
+	"github.com/intentdriven/abcd/internal/adapter/scanner/augmenttest"
 	"github.com/intentdriven/abcd/internal/testsecret"
 )
 
@@ -25,8 +26,8 @@ var gitleaksResidueSecret = testsecret.Synthetic(96, 40)
 // TestCaptureDefaultOffStoresResidueVerbatim proves the default-off path is
 // unchanged: with no gitleaks opt-in config in the repo, the residue value the
 // native scanner misses is stored verbatim, exactly as before this adapter
-// existed. scanGitleaks is NOT overridden here — the real Scan runs, finds no
-// config, and returns (nil, nil).
+// existed. No augmenter is installed here, so no scanner.New wires one, as for a
+// repository that did not opt in.
 func TestCaptureDefaultOffStoresResidueVerbatim(t *testing.T) {
 	repoRoot, _ := setupStore(t)
 
@@ -60,9 +61,7 @@ func TestCaptureDefaultOffStoresResidueVerbatim(t *testing.T) {
 func TestCaptureFoldsGitleaksFindings(t *testing.T) {
 	repoRoot, _ := setupStore(t)
 
-	restore := scanGitleaks
-	t.Cleanup(func() { scanGitleaks = restore })
-	scanGitleaks = func(_, text, logical string) ([]scanner.Finding, error) {
+	setAugmenter(t, func(text, logical string) ([]scanner.Finding, error) {
 		// Locate the residue value as the real adapter would and emit a finding.
 		lines := strings.Split(text, "\n")
 		var out []scanner.Finding
@@ -80,7 +79,7 @@ func TestCaptureFoldsGitleaksFindings(t *testing.T) {
 			}
 		}
 		return out, nil
-	}
+	})
 
 	transcript := strings.Join([]string{
 		"user: set the key",
@@ -104,53 +103,45 @@ func TestCaptureFoldsGitleaksFindings(t *testing.T) {
 	}
 }
 
-// TestCaptureGitleaksLoudStagePropagates proves the loud-stage reaches the
-// caller: an opted-in-but-absent binary makes Capture fail closed and write
-// nothing, naming the opt-in.
-func TestCaptureGitleaksLoudStagePropagates(t *testing.T) {
+// TestCaptureRecordsTheGitleaksGap is the 2026-09-25 ruling at the store: a
+// repository that armed gitleaks with no binary installed still has its
+// transcript stored, scanned by the native scanner, and the receipt names the
+// gap and the opt-in (iss-2608291814575788). The augmenter is never asked to
+// scan.
+func TestCaptureRecordsTheGitleaksGap(t *testing.T) {
 	repoRoot, _ := setupStore(t)
+	aug := &augmenttest.Func{
+		Err: fmt.Errorf("%w: not on PATH and no path configured", gitleaks.ErrConfiguredNotFound),
+		F: func(_, _ string) ([]scanner.Finding, error) {
+			t.Error("a not-found augmenter was asked to scan")
+			return nil, nil
+		},
+	}
+	augmenttest.Install(t, aug)
 
-	restore := scanGitleaks
-	t.Cleanup(func() { scanGitleaks = restore })
-	scanGitleaks = func(_, _, _ string) ([]scanner.Finding, error) {
-		return nil, gitleaks.ErrConfiguredNotFound
+	res, err := Capture(repoRoot, testRootSHA, []byte("user: hi\n"), CaptureMeta{SessionID: "sess-gap", Kind: "native"})
+	if err != nil {
+		t.Fatalf("Capture refused on the gap: %v", err)
 	}
-
-	_, err := Capture(repoRoot, testRootSHA, []byte("user: hi\n"), CaptureMeta{SessionID: "sess-loud", Kind: "native"})
-	if err == nil {
-		t.Fatal("expected Capture to fail closed on an armed-but-absent gitleaks")
+	if !res.Wrote {
+		t.Fatal("the transcript was not stored")
 	}
-	if !errors.Is(err, gitleaks.ErrConfiguredNotFound) {
-		t.Fatalf("error is not ErrConfiguredNotFound: %v", err)
-	}
-	if !strings.Contains(err.Error(), "gitleaks configured but not found") {
-		t.Fatalf("error does not name the opt-in: %q", err.Error())
-	}
-	// Nothing was written.
-	recs, lerr := List(repoRoot, testRootSHA)
-	if lerr != nil {
-		t.Fatalf("List: %v", lerr)
-	}
-	for _, r := range recs {
-		if r.SessionID == "sess-loud" {
-			t.Error("a record was written despite the loud-stage failure")
-		}
+	if !strings.Contains(res.ScanGap, "gitleaks configured but not found") {
+		t.Fatalf("the receipt does not name the gap: %q", res.ScanGap)
 	}
 }
 
-// TestCaptureRefusesWhenAugmentedSpanIsNotMasked pins GHSA-j7v5-q7x6-v3rp's
-// asymmetric-verification limb at the store: an augmented finding whose span
-// Redact could not apply (here a line number past the end of the text, which
-// Redact silently skips) must make Capture refuse the write. Without a span-
-// exact verify the record is written with the secret verbatim and its
-// frontmatter counts the finding as redacted — a record asserting cleanliness
-// over bytes it holds.
+// TestCaptureRefusesWhenAugmentedSpanIsNotMasked pins GHSA-j7v5-q7x6-v3rp at
+// the store: an augmented finding whose span Redact could not apply (here a
+// line number past the end of the text, which Redact silently skips) must make
+// Capture refuse the write. The scanner refuses such a report before Redact
+// sees it (it keeps only findings located in the text, and degrades on any
+// other), so the record is never written with the secret verbatim while its
+// frontmatter counts the finding as redacted.
 func TestCaptureRefusesWhenAugmentedSpanIsNotMasked(t *testing.T) {
 	repoRoot, home := setupStore(t)
 
-	restore := scanGitleaks
-	t.Cleanup(func() { scanGitleaks = restore })
-	scanGitleaks = func(_, _, logical string) ([]scanner.Finding, error) {
+	setAugmenter(t, func(_, logical string) ([]scanner.Finding, error) {
 		return []scanner.Finding{{
 			File:     logical,
 			Line:     999, // a span Redact cannot apply
@@ -159,7 +150,7 @@ func TestCaptureRefusesWhenAugmentedSpanIsNotMasked(t *testing.T) {
 			Severity: scanner.SeverityHardFail,
 			Matched:  gitleaksResidueSecret,
 		}}, nil
-	}
+	})
 
 	transcript := strings.Join([]string{
 		"user: set the key",
@@ -168,9 +159,8 @@ func TestCaptureRefusesWhenAugmentedSpanIsNotMasked(t *testing.T) {
 	}, "\n")
 
 	res, err := Capture(repoRoot, testRootSHA, []byte(transcript), CaptureMeta{SessionID: "sess-unsealed", Kind: "native"})
-	var rerr *RedactionResidualError
-	if !errors.As(err, &rerr) {
-		t.Fatalf("Capture = (wrote=%v, err=%v); want a *RedactionResidualError for the unmasked augmented span", res.Wrote, err)
+	if err == nil || !strings.Contains(err.Error(), "not located") {
+		t.Fatalf("Capture = (wrote=%v, err=%v); want a refusal of the unlocated augmented span", res.Wrote, err)
 	}
 	if res.Wrote {
 		t.Error("Capture reported Wrote=true alongside a refusal")
@@ -193,20 +183,18 @@ func TestCaptureRefusesWhenAugmentedSpanIsNotMasked(t *testing.T) {
 
 // TestCaptureFailsClosedOnUnlocatableGitleaksReport is the store-level echo of
 // the adapter's ErrFindingNotLocated: a report the adapter could not place
-// makes Capture refuse and write nothing, exactly as an armed-but-absent binary
-// does (TestCaptureGitleaksLoudStagePropagates). Silently capturing with less
-// coverage than the repo armed is the fail-open this store forbids.
+// degrades the scanner, and Capture refuses and writes nothing, as it does on
+// a degraded pii.json. Silently capturing with less coverage than the repo
+// armed, over a run that failed, is the fail-open this store forbids.
 func TestCaptureFailsClosedOnUnlocatableGitleaksReport(t *testing.T) {
 	repoRoot, _ := setupStore(t)
 
-	restore := scanGitleaks
-	t.Cleanup(func() { scanGitleaks = restore })
-	scanGitleaks = func(_, _, _ string) ([]scanner.Finding, error) {
+	setAugmenter(t, func(_, _ string) ([]scanner.Finding, error) {
 		return nil, gitleaks.ErrFindingNotLocated
-	}
+	})
 
 	_, err := Capture(repoRoot, testRootSHA, []byte("user: hi\n"), CaptureMeta{SessionID: "sess-unlocated", Kind: "native"})
-	if !errors.Is(err, gitleaks.ErrFindingNotLocated) {
+	if err == nil || !strings.Contains(err.Error(), gitleaks.ErrFindingNotLocated.Error()) {
 		t.Fatalf("Capture did not fail closed on an unlocatable gitleaks report: %v", err)
 	}
 	recs, lerr := List(repoRoot, testRootSHA)
@@ -230,10 +218,12 @@ func (c cannedGitleaks) Run(_ context.Context, _, _ string) ([]byte, error) {
 }
 
 // armGitleaks points the store's seam at the real adapter driven by a canned
-// report, the way an opted-in repo with a gitleaks binary reaches it. The
+// report, the way an opted-in repo with a gitleaks binary reaches it: the
+// repository's own .abcd/config/gitleaks.json arms it, and the augmenter the
+// adapter builds from that config is the one every scanner.New wires. The
 // binary is a mode-0755 file outside the repo root, which is all admitBinary
 // asks of it; cannedGitleaks never executes it.
-func armGitleaks(t *testing.T, report string) {
+func armGitleaks(t *testing.T, repoRoot, report string) {
 	t.Helper()
 	bin := filepath.Join(t.TempDir(), "gitleaks")
 	if err := os.WriteFile(bin, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
@@ -243,11 +233,26 @@ func armGitleaks(t *testing.T, report string) {
 		LookPath: func(string) (string, error) { return bin, nil },
 		Runner:   cannedGitleaks{report: report},
 	}
-	restore := scanGitleaks
-	t.Cleanup(func() { scanGitleaks = restore })
-	scanGitleaks = func(repoRoot, text, logical string) ([]scanner.Finding, error) {
-		return a.Augment(context.Background(), repoRoot, gitleaks.Config{Enabled: true}, text, logical)
+	cfgDir := filepath.Join(repoRoot, ".abcd", "config")
+	if err := os.MkdirAll(cfgDir, 0o755); err != nil {
+		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(cfgDir, "gitleaks.json"), []byte(`{"schema_version":1,"enabled":true}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	aug := a.AugmenterFor(repoRoot)
+	if err := aug.Available(); err != nil {
+		t.Fatalf("the armed augmenter is unavailable: %v", err)
+	}
+	augmenttest.Install(t, aug)
+}
+
+// setAugmenter installs an augmenter built from f as the default every
+// scanner.New wires, for the rest of the test: an error f returns is kept and
+// reported as the augmenter's state, as a failed gitleaks run is.
+func setAugmenter(t *testing.T, f func(text, logical string) ([]scanner.Finding, error)) {
+	t.Helper()
+	augmenttest.Install(t, &augmenttest.Func{F: f})
 }
 
 // TestCaptureSealsEveryRecurrenceOfAnAugmentedFragment pins one scope for
@@ -288,7 +293,7 @@ func TestCaptureSealsEveryRecurrenceOfAnAugmentedFragment(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			repoRoot, _ := setupStore(t)
-			armGitleaks(t, string(reported))
+			armGitleaks(t, repoRoot, string(reported))
 
 			lines := []string{"user: here is the key", block, "assistant: stored"}
 			if tc.recurs != "" {
@@ -316,5 +321,29 @@ func TestCaptureSealsEveryRecurrenceOfAnAugmentedFragment(t *testing.T) {
 				t.Errorf("the recurrence of %q outside the value was never sealed:\n%s", tc.recurs, onDisk)
 			}
 		})
+	}
+}
+
+// TestDrainRecordsTheGitleaksGap: the automatic path (SessionStart's drain)
+// stores the staged transcript on the native scanner when the armed gitleaks
+// is not installed, and its receipt carries the gap, so the notice can say so
+// rather than the gap vanishing inside an automatic pass.
+func TestDrainRecordsTheGitleaksGap(t *testing.T) {
+	repoRoot, _ := setupStore(t)
+	augmenttest.Install(t, &augmenttest.Func{
+		Err: fmt.Errorf("%w: not on PATH and no path configured", gitleaks.ErrConfiguredNotFound),
+	})
+	if _, err := Stage(repoRoot, testRootSHA, mainStage("sess-drain-gap"), []byte("user: hi\n")); err != nil {
+		t.Fatal(err)
+	}
+	res, err := Drain(repoRoot, testRootSHA, DrainBudget{})
+	if err != nil {
+		t.Fatalf("Drain: %v", err)
+	}
+	if len(res.Captured) != 1 {
+		t.Fatalf("captured %d, want 1 (failed: %+v)", len(res.Captured), res.Failed)
+	}
+	if !strings.Contains(res.ScanGap, "gitleaks configured but not found") {
+		t.Fatalf("the drain's receipt does not carry the gap: %q", res.ScanGap)
 	}
 }

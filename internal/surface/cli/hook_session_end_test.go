@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/adapter/gitleaks"
+	"github.com/intentdriven/abcd/internal/adapter/scanner"
 	"github.com/intentdriven/abcd/internal/core/history"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
@@ -545,6 +547,9 @@ func TestHookSessionEndRefusesSymlinkedTranscript(t *testing.T) {
 // quotes the configured path, and a $HOME-rooted one (a PATH-lookup result, a
 // ~/.local/bin install) would otherwise print the developer's home directory.
 func TestHookSessionStartDrainNoticeRedactsHomeInError(t *testing.T) {
+	// The composition root (cmd/abcd) wires the gitleaks augmenter; this test
+	// drives cli.Run directly, so it wires the same production factory itself.
+	t.Cleanup(scanner.SetDefaultAugmenter(gitleaks.NewAugmenter))
 	repo, _ := sessionEndRepo(t)
 	home := os.Getenv("HOME")
 	// Present, outside the repo, correctly named, but NOT executable: refused,

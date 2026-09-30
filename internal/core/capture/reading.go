@@ -224,7 +224,6 @@ func IngestReading(req IngestReadingRequest) (IngestReadingResult, error) {
 	// other ledger verb waits on — a large batch failed concurrent work with
 	// allocator contention. Nothing below the lock needs a scanner.
 	redactor := newLedgerRedactor(repoRoot)
-	result.Degraded = redactor.Degraded()
 	manifest, n := redactor.redact(req.Manifest)
 	result.Redacted += n
 	items := make([]ReadingItem, 0, len(req.Items))
@@ -233,6 +232,9 @@ func IngestReading(req IngestReadingRequest) (IngestReadingResult, error) {
 		result.Redacted += n
 		items = append(items, clean)
 	}
+	// Read after the redactions: an augmenter run that failed during them
+	// degrades the scanner, and the note has to say so.
+	result.Degraded = redactor.Degraded()
 
 	runDir := filepath.Join(issuesRoot, issueschema.ReadingsDir, req.Run)
 	err = withLedgerLock(repoRoot, issuesRoot, func() error {

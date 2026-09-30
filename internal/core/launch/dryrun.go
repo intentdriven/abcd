@@ -271,7 +271,11 @@ func scanRefusals(scan scanner.ScanResult) []string {
 	if scan.Unavailable {
 		reasons = append(reasons, "scanner unavailable: "+scan.UnavailableReason)
 	}
-	if scan.HardFails > 0 {
+	// Keyed on the findings kept rather than on HardFails: the augmenter gap
+	// counts as a hard fail with no finding behind it and is refused below
+	// under its own reason. The kept list holds the hard fails first, so it is
+	// non-empty whenever a finding is one.
+	if hardFailFindings(scan) > 0 {
 		reasons = append(reasons, hardFailReason(scan))
 	}
 	// Fail closed on the coverage gap: any include-selected file the scanner
@@ -297,6 +301,15 @@ func scanRefusals(scan scanner.ScanResult) []string {
 	// one rather than folding the two into a single green, and the scan
 	// result carries each unverified path's reason and detected format.
 	for _, p := range scan.Unscanned {
+		// The augmenter the repository configured (gitleaks) did not run over
+		// the payload, its binary not installed: the payload is short of the
+		// coverage the repository asked for, and the release refuses on it
+		// (the 2026-09-25 ruling on iss-2608291814575788).
+		if p == scanner.AugmenterGapPath {
+			reasons = append(reasons, "the scanner augmenter this repository configured did not run over the payload "+
+				"(fail-closed coverage gap): "+scan.UnscannedWhy[p])
+			continue
+		}
 		reason := "unscanned payload file (fail-closed coverage gap): " + p
 		if why := scan.UnscannedWhy[p]; why != "" {
 			reason += " (" + why + ")"
@@ -328,13 +341,18 @@ func wouldRefuseOn(bundle Bundle, scan scanner.ScanResult, lockstep LockstepResu
 }
 
 func hardFailReason(scan scanner.ScanResult) string {
+	return "secret/PII hard-fail findings: " + itoa(hardFailFindings(scan))
+}
+
+// hardFailFindings counts the hard-fail findings the scan kept.
+func hardFailFindings(scan scanner.ScanResult) int {
 	n := 0
 	for _, f := range scan.Findings {
 		if f.Severity == scanner.SeverityHardFail {
 			n++
 		}
 	}
-	return "secret/PII hard-fail findings: " + itoa(n)
+	return n
 }
 
 func scanDetail(scan scanner.ScanResult) string {

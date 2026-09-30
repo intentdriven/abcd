@@ -1033,6 +1033,13 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 			if bad, reason := sc.Unavailable(); bad {
 				return &exitError{Code: 2, Msg: fmt.Sprintf("disembark pack: secret scanner unavailable, refusing: %s", reason)}
 			}
+			// A lifeboat is written OUT of the repository, as a release is, so the
+			// scanner augmenter the source configured and nobody installed refuses
+			// the pack as it refuses a launch (the 2026-09-25 ruling on
+			// iss-2608291814575788).
+			if gap := sc.AugmenterGap(); gap != "" {
+				return &exitError{Code: 2, Msg: fmt.Sprintf("disembark pack: the scanner augmenter this repository configured is not installed, refusing: %s", gap)}
+			}
 			scan := func(files []lifeboat.PlannedFile) error {
 				hard, first := 0, ""
 				for _, f := range files {
@@ -1044,6 +1051,12 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 							}
 						}
 					}
+				}
+				// The augmenter runs inside ScanText, and a run that failed
+				// degrades the scanner during the walk: refuse, never read the
+				// shorter list as clean.
+				if bad, reason := sc.Unavailable(); bad {
+					return fmt.Errorf("secret scanner unavailable, refusing: %s", reason)
 				}
 				if hard > 0 {
 					return fmt.Errorf("%d hard-fail secret(s) in planned content (first: %s); fix at source, not in the lifeboat", hard, first)
@@ -1795,6 +1808,9 @@ an error included, exits 0, so the hook can never wedge a session.`,
 						// here and on the live drain both.
 						notices = append(notices, drainFailureNotice(f))
 					}
+					if lines := scanGapLines(dr.ScanGap); len(lines) > 0 {
+						notices = append(notices, "abcd history: "+strings.Join(lines, "\n"))
+					}
 					if dr.Overdue > 0 {
 						// Age is reported, never acted on: an overdue entry is
 						// drained through the same fail-closed path as any
@@ -2014,6 +2030,9 @@ func drainWhileLive(cmd *cobra.Command, cwd string) {
 	}
 	if len(dr.Captured) > 0 {
 		fmt.Fprintf(cmd.ErrOrStderr(), "abcd history: redacted and stored %d staged transcript(s) mid-session.\n", len(dr.Captured))
+	}
+	for _, l := range scanGapLines(dr.ScanGap) {
+		fmt.Fprintln(cmd.ErrOrStderr(), "abcd history: "+l)
 	}
 }
 

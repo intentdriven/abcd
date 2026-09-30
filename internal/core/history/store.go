@@ -9,7 +9,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/sessionkind"
@@ -234,22 +233,36 @@ func (m CaptureMeta) validateSpawnAttribution() error {
 // out of band is refused rather than read wholly into memory.
 const maxTranscriptBytes = 64 << 20 // 64 MiB
 
-// repoLock takes a per-<rootSHA> advisory lock on records/.lock, disjoint
-// from ahoy's index lock. The lock file is opened O_NOFOLLOW mode 0o600 so a
-// pre-planted lock-file symlink is refused. The returned release closes the fd
-// (which drops the flock). Ports the two-domain lock model from
+// repoLockTimeout bounds how long a writer of one repo's records waits for
+// records/.lock. The holder runs a whole capture — the scanner's two-stage
+// redaction of a transcript up to maxTranscriptBytes — or a whole migration
+// under it, so the budget is minutes rather than the seconds of a single-file
+// lock; what it removes is the wait with no end, behind a holder that never
+// lets go. A var so a test can shorten it.
+var repoLockTimeout = 2 * time.Minute
+
+// withRepoLock runs fn holding the per-<rootSHA> advisory lock on
+// records/.lock, disjoint from ahoy's index lock. The lock is
+// fsutil.WithFileLock, the one inter-process lock-file primitive: the file is
+// opened O_NOFOLLOW at mode 0o600 and proved a regular file on the descriptor,
+// so a pre-planted lock-file symlink is refused (a *StorePathError), and a
+// holder past repoLockTimeout is fsutil.ErrLockContention naming the lock.
+// fn's own error passes through unchanged. Ports the two-domain lock model from
 // history_store.py.
-func repoLock(tdir string) (func(), error) {
+func withRepoLock(tdir string, fn func() error) error {
 	lockPath := filepath.Join(tdir, ".lock")
-	f, err := os.OpenFile(lockPath, os.O_RDWR|os.O_CREATE|syscall.O_NOFOLLOW, 0o600)
-	if err != nil {
-		return nil, &StorePathError{Path: lockPath, Msg: "lock file open refused (symlinked or unwritable): " + err.Error()}
+	ran := false
+	err := fsutil.WithFileLock(lockPath, repoLockTimeout, func() error {
+		ran = true
+		return fn()
+	})
+	switch {
+	case ran || err == nil:
+		return err
+	case errors.Is(err, fsutil.ErrLockContention):
+		return fmt.Errorf("history: acquire lock %s: %w", lockPath, err)
 	}
-	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
-		f.Close()
-		return nil, fmt.Errorf("history: acquire lock %s: %w", lockPath, err)
-	}
-	return func() { f.Close() }, nil
+	return &StorePathError{Path: lockPath, Msg: "lock file open refused (symlinked or unwritable): " + err.Error()}
 }
 
 // recordFilename is <compact-utc>-<session-id>.md for a main-thread record and

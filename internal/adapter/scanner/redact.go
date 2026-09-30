@@ -15,7 +15,19 @@ import (
 // It intentionally exposes the merged config that the package-level ScanText
 // cannot: a caller using the package-level function would bypass the
 // .abcd/config/pii.json override that New folded in.
+//
+// When an augmenter is wired (augment.go), its findings are appended,
+// deduplicated on file, line and span; a caller that wired one consults
+// Unavailable after the call, since a failed augmenter run degrades the scanner.
 func (s *Scanner) ScanText(text, logicalName string) []Finding {
+	native := ScanText(text, s.identity, s.patterns, s.identSev, logicalName)
+	return mergeAugmented(native, s.augment(text, logicalName))
+}
+
+// ScanTextNative is ScanText without the augmenter: the verification re-scan a
+// write path runs over its own redacted text, beside UnsealedAugmented, which
+// checks what the augmenter found by its bytes.
+func (s *Scanner) ScanTextNative(text, logicalName string) []Finding {
 	return ScanText(text, s.identity, s.patterns, s.identSev, logicalName)
 }
 

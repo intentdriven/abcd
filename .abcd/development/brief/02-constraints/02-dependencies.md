@@ -42,6 +42,30 @@ they run behind the same seam and harden the scan; when absent, the native
 default still runs and still gates. Scanning never depends on a tool being
 installed.
 
+gitleaks is the one adapter wired. The scanner declares the seam it plugs into,
+`scanner.Augmenter` (`Available() error` and `Scan(text, file) []Finding`),
+and never imports gitleaks; the composition root (`cmd/abcd`) registers the
+gitleaks augmenter, and every scanner the core builds picks it up for the
+repository it scans. The opt-in is that repository's own
+`.abcd/config/gitleaks.json`: absent or `enabled: false`, nothing is looked up
+and nothing runs. Armed, gitleaks runs over every text the scanner reads —
+the launch payload, transcripts, issue captures, memory pages, the privacy
+lint's tracked files, a lifeboat's planned bytes — and its findings are appended
+to the native ones, deduplicated on file, line and span. Its output is untrusted
+input: a report is bounded in size and count, a finding is kept only when its
+bytes sit at the line and column it names, and the scanner rebuilds every other
+field itself, so a report or record carries the rule's kind and a masked
+fingerprint, never the value in clear. The binary runs in the isolated child
+environment every abcd subprocess gets, its own output discarded.
+
+Armed with no gitleaks binary installed is one state with one consequence per
+consumer. A release (`launch`) and a lifeboat (`disembark pack`) refuse on it,
+the privacy lint reports it as an error, and the write paths — transcript
+capture, issue capture, memory ingest — write with the native scanner and name
+the gap in their receipt. A gitleaks run that fails, a report the scanner cannot
+place, or a configured path the adapter refuses degrades the scanner instead:
+every consumer treats that as it treats a broken `pii.json`.
+
 ## Plugin interop
 
 abcd interoperates with peer tools — notably the companion harness
