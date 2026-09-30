@@ -19,10 +19,16 @@ import (
 // was dropped as chance; the XP* tags are UTF-16LE with no byte-order mark,
 // which no view read at all. exifView walks the directory structurally —
 // every TIFF header in the data (a JPEG APP1 Exif segment, a PNG eXIf chunk,
-// a TIFF file's own head, a WebP or HEIC Exif item), IFD0 and the Exif
-// sub-IFD it points at — and decodes the text tags one value to a line. The
-// person tags (Artist, Copyright, XPAuthor, CameraOwnerName) register their
-// raw value span with metadataFields, which is what keeps a short name there.
+// a TIFF file's own head, a WebP or HEIC Exif item), IFD0 and every
+// directory its next-IFD link chains to (a JPEG's thumbnail IFD1, a TIFF's
+// later pages), the Exif sub-IFD each points at, and a Canon MakerNote under
+// it (makernote.go) — and decodes the text tags one value to a line. The
+// person tags (Artist, Copyright, XPAuthor, CameraOwnerName, Canon's
+// OwnerName) register their raw value span with metadataFields, which is what
+// keeps a short name there. The other pointers a directory can hold are not
+// followed: the GPS (0x8825) and Interoperability (0xa005) sub-IFDs define no
+// person tag, and a TIFF's SubIFDs (0x014a) hold further images of the same
+// file, so a name in any of them is left to the raw scan's long rules.
 // The IPTC-IIM record in a JPEG's APP13 segment has the same shape for a
 // person: its By-line and kin are binary datasets with no key text, so
 // iptcPersonSpans records their value spans too.
@@ -75,6 +81,15 @@ var exifTags = map[uint16]exifTextTag{
 // exifSubIFDTag is IFD0's pointer to the Exif sub-IFD.
 const exifSubIFDTag = 0x8769
 
+// exifMakeTag is IFD0's Make, the camera maker's name, which says whose
+// layout the MakerNote is in; exifMakerNoteTag is the Exif sub-IFD's
+// MakerNote, an UNDEFINED value each vendor lays out its own way (CIPA
+// DC-008, 4.6.5).
+const (
+	exifMakeTag      = 0x010f
+	exifMakerNoteTag = 0x927c
+)
+
 // maxIFDEntries bounds one directory's walk: a camera's IFD0 holds a few
 // dozen entries, and the entry count is a two-byte field a hostile file sets
 // to 65535.
@@ -85,16 +100,19 @@ const maxIFDEntries = 512
 // byte, and records each person tag's raw value span (identity.go's span, as
 // raw offsets) in meta. The walk reads
 // at most len(data)/12 entries plus a slack of one directory in all, each
-// directory once and each value once, and value bytes to the data's length
-// plus the slack's inline values, so neither headers that share a directory
-// nor entries that name overlapping values cost more than the bytes do.
+// directory once under each header it is reached from and each value once,
+// and value bytes to the data's length plus the slack's inline values, so
+// neither headers that share a directory nor entries that name overlapping
+// values cost more than the bytes do.
 func exifView(data []byte, meta *metadataFields) (decodedView, bool) {
 	w := exifWalk{
 		data:    data,
 		entries: len(data)/12 + maxIFDEntries,
 		bytes:   len(data) + 4*maxIFDEntries,
-		dirs:    map[int]bool{},
+		dirs:    map[[2]int]bool{},
+		walked:  map[int]bool{},
 		values:  map[int]bool{},
+		notes:   map[int]bool{},
 		meta:    meta,
 	}
 	for b := 0; b+8 <= len(data); b++ {
@@ -108,8 +126,19 @@ func exifView(data []byte, meta *metadataFields) (decodedView, bool) {
 			continue
 		}
 		scanMeter.charge(stageEXIF, 8)
-		if at, ok := w.offset(b, bo.Uint32(data[b+4:])); ok {
-			w.dir(b, at, bo, true)
+		at, ok := w.offset(b, bo.Uint32(data[b+4:]))
+		if !ok {
+			continue
+		}
+		w.canon, w.note = false, makerNote{}
+		for next, more := at, true; more; {
+			next, more = w.dir(b, next, bo, true)
+		}
+		if w.canon && w.note.size > 0 {
+			w.canonMakerNote(b, bo, w.note)
+		}
+		if b >= 4 && string(data[b-4:b]) == cr3CanonMakerNoteBox {
+			w.canonDir([]int{b}, at, len(data), bo)
 		}
 	}
 	meta.persons = mergeSpans(meta.persons)
@@ -120,16 +149,26 @@ func exifView(data []byte, meta *metadataFields) (decodedView, bool) {
 }
 
 // exifWalk is one exifView's state: the entry and value-byte budgets left,
-// the directories and values already read, and the view built so far.
+// the directories and values already read, and the view built so far. dirs
+// holds each directory walked as its (header, raw offset) pair, since its
+// value offsets are relative to the header it is reached from; walked holds
+// its raw offset alone, which says whether a walk is a second header's.
 type exifWalk struct {
 	data    []byte
 	entries int
 	bytes   int
-	dirs    map[int]bool
+	dirs    map[[2]int]bool
+	walked  map[int]bool
 	values  map[int]bool
+	notes   map[int]bool
 	meta    *metadataFields
 	text    []byte
 	pos     []int
+	// canon and note are the header being walked: whether the Make of any
+	// of its top-level directories names Canon, and the first MakerNote
+	// value its directories hold.
+	canon bool
+	note  makerNote
 }
 
 // offset resolves a TIFF offset, relative to the header at base, to a raw
@@ -143,17 +182,37 @@ func (w *exifWalk) offset(base int, off uint32) (int, bool) {
 }
 
 // dir walks one directory at raw offset at, reading the text tags and, from
-// IFD0 alone, following the Exif sub-IFD pointer one level down.
-func (w *exifWalk) dir(base, at int, bo binary.ByteOrder, top bool) {
-	if at+2 > len(w.data) || w.dirs[at] {
-		return
+// a top-level directory (IFD0 and the ones its next-IFD link chains to),
+// following the Exif sub-IFD pointer one level down. For a top-level
+// directory it returns the raw offset of the next one in the chain, and false
+// at the chain's end (a zero link), at a link outside the data, at a
+// directory already walked under this header (so a chain that loops ends),
+// and at a directory cut short. The caller walks the chain iteratively, so a
+// long chain costs no stack. A directory is walked once under each header it
+// is reached from, since its value offsets resolve against that header: the
+// first walk of a raw offset is free, as it costs a step per byte of data,
+// and every later walk of it under another header costs one entry of the
+// shared budget, so all the walks together cost at most one step per byte of
+// data plus the budget.
+func (w *exifWalk) dir(base, at int, bo binary.ByteOrder, top bool) (int, bool) {
+	key := [2]int{base, at}
+	if at+2 > len(w.data) || w.dirs[key] {
+		return 0, false
 	}
-	w.dirs[at] = true
-	n := min(int(bo.Uint16(w.data[at:])), maxIFDEntries)
+	if w.walked[at] {
+		if w.entries <= 0 {
+			return 0, false
+		}
+		w.entries--
+	}
+	w.dirs[key], w.walked[at] = true, true
+	scanMeter.charge(stageEXIF, 6)
+	declared := int(bo.Uint16(w.data[at:]))
+	n := min(declared, maxIFDEntries)
 	for k := 0; k < n && w.entries > 0; k++ {
 		e := at + 2 + 12*k
 		if e+12 > len(w.data) {
-			return
+			return 0, false
 		}
 		w.entries--
 		scanMeter.charge(stageEXIF, 12)
@@ -161,6 +220,22 @@ func (w *exifWalk) dir(base, at int, bo binary.ByteOrder, top bool) {
 		if tag == exifSubIFDTag && top && (typ == 4 || typ == 13) {
 			if sub, ok := w.offset(base, bo.Uint32(w.data[e+8:])); ok {
 				w.dir(base, sub, bo, false)
+			}
+			continue
+		}
+		if tag == exifMakeTag && top && typ == 2 {
+			// Any page's Make opens the Canon gate and no later page closes
+			// it: a gate read from IFD0 alone would miss a Canon page further
+			// down, and the gate only lets OwnerName be read, so opening it
+			// can over-report a name but never hide one.
+			if v, size, ok := w.value(base, e, bo, count); ok && isCanonMake(w.data[v:v+size]) {
+				w.canon = true
+			}
+			continue
+		}
+		if tag == exifMakerNoteTag && typ == 7 && w.note.size == 0 {
+			if v, size, ok := w.value(base, e, bo, count); ok {
+				w.note = makerNote{at: v, size: size}
 			}
 			continue
 		}
@@ -179,6 +254,15 @@ func (w *exifWalk) dir(base, at int, bo binary.ByteOrder, top bool) {
 			w.meta.persons = append(w.meta.persons, span{v, v + size})
 		}
 	}
+	link := at + 2 + 12*declared
+	if !top || link+4 > len(w.data) {
+		return 0, false
+	}
+	off := bo.Uint32(w.data[link:])
+	if off == 0 {
+		return 0, false
+	}
+	return w.offset(base, off)
 }
 
 // value locates the value of the byte-sized entry at raw offset e: inline in
