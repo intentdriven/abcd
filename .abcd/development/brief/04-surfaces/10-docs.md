@@ -101,9 +101,9 @@ in a gate, which is what keeps the lint itself deterministic and offline.
   only while the chapter no longer carries the sentence, does carry the draft,
   and a flag names the edit. The autonomous form applies the drafts for an
   unattended run and lists each applied edit. Whenever the saved review is not a
-  match for HEAD it also hands the routine the reviewer's request, and it still
-  refuses. The report form is the per-task pass: it states every finding,
-  refuses nothing and exits 0.
+  match for HEAD it also hands the routine the reviewer's request, and, unless
+  every drafted edit was applied, it still refuses. The report form is the
+  per-task pass: it states every finding, refuses nothing and exits 0.
 
 Bare `abcd docs` prints command usage rather than a status board; the
 [surfaces index](README.md) carries the one enumeration of where the
