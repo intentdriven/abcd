@@ -529,6 +529,23 @@ func LintAt(cfg Config, repoRoot string, now time.Time) ([]Finding, error) {
 		findings = append(findings, pc...)
 	}
 
+	// stale_edge and edge_cycle read the intents' dependency edges out of the
+	// same store scan, which straddles cfg.Roots, so they run once here too.
+	if seCfg, ok := cfg.Rules[ruleStaleEdge]; ok && seCfg.Enabled {
+		se, err := checkStaleEdges(repoRoot, cfg, seCfg)
+		if err != nil {
+			return nil, err
+		}
+		findings = append(findings, se...)
+	}
+	if ecCfg, ok := cfg.Rules[ruleEdgeCycle]; ok && ecCfg.Enabled {
+		ec, err := checkEdgeCycles(repoRoot, cfg, ecCfg)
+		if err != nil {
+			return nil, err
+		}
+		findings = append(findings, ec...)
+	}
+
 	// cross_store_id_claim is the other half of the same cross-store question: it
 	// walks the markdown OUTSIDE those stores, which is every tree at once, so it
 	// too runs once here.
