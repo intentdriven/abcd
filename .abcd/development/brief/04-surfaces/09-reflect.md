@@ -1,36 +1,17 @@
-# `/abcd:reflect` — Phase Retrospective
+# `/abcd:reflect` — Release Retrospective
 
-> **Not built yet.** There is no `reflect` verb on the binary, no
-> `commands/reflect.md`, no `reflection-composer` agent under `agents/`, and no
-> `.abcd/retrospectives/` tree in the working tree. Nor does the thing this
-> surface reads: no phase audit runs today and no phase has produced a receipt,
-> so the input the design below treats as available is itself a design target,
-> deferred together with the phase-audit tooling
-> ([adr-9](../../decisions/adrs/0009-phase-as-product-layer.md)). The backing
-> intent sits in
-> [`intents/planned/`](../../intents/planned/itd-24-reflect-command.md)
-> (itd-24); delivery state is the intent lifecycle's, not this page's (see the
-> [brief README's provenance note](../README.md)). The prose below records the
-> design contract in present tense as the brief's intents do.
->
-> **The phase grain below is retired.**
-> [adr-2609212115255771](../../decisions/adrs/2609212115255771-phases-and-milestones-are-retired-sequencing-is-dependencies.md)
-> retires the phase and makes itd-24 a release retrospective, and the intent's
-> title already says so. Restating this design at the release grain (its
-> argument, its seed and its output path) is owed with itd-24; until then the
-> phase-grained contract below is the design as last written, not a live
-> sequencing unit.
-
-Close a phase of work with a retrospective somebody will actually read a year
-later, without starting from a blank page. The command takes a completed
-phase, reads the audit receipt that phase produced, and turns its
-per-item verdicts into a short interview: five seeded questions, one clarifying
-follow-up where an answer is thin. What lands is a five-section README that
-links out to the phase, the audit and the specs rather than copying them, so
+Close a release with a retrospective somebody will actually read a year later,
+without starting from a blank page. The command takes a cut release, reads what
+it shipped and how each shipped intent's audit went, and opens a short interview
+from that: four asked sections, one clarifying follow-up where an answer is thin,
+and a computed fifth. What lands is a five-section README that links out to the
+changelog section and to each intent's audit notes rather than copying them, so
 the retrospective stays a judgement and never becomes a second copy of the
 record.
 
-The grain is the phase, deliberately. Per-intent reflection is the
+The grain is the release, deliberately
+([adr-2609212115255771](../../decisions/adrs/2609212115255771-phases-and-milestones-are-retired-sequencing-is-dependencies.md)
+retired the phase; itd-24 decisions 4 and 5). Per-intent reflection is the
 `intent-auditor`'s job, and a retrospective per intent would be a chore nobody
 finishes.
 
@@ -46,101 +27,133 @@ finishes.
 
 | Verb | Bucket | Status |
 |---|---|---|
-
-The table is empty. The command tree registers no reflect verb, so no row can
-read shipped, and the design below takes a phase id as its only argument, so
-there is no sub-verb to record as staged either.
+| `write` | — | shipped |
 
 ## Argument
 
-The command takes exactly one positional argument: a **phase id**, which is a
-filename stem in [`roadmap/phases/`](../../roadmap/phases/) (`phase-1-ahoy`,
-say). It is not an intent id and not a spec id, and `/abcd:reflect <itd-N>` is
-refused. Bare `/abcd:reflect` renders help and writes nothing.
+`abcd reflect <release-tag>` takes exactly one positional argument, a **release
+tag** the repository holds, in the strict `vMAJOR.MINOR.PATCH` shape
+(`v0.11.0`). It is not an intent id: an intent id is refused, naming the intent
+audit as the per-intent surface. Bare `/abcd:reflect`
+renders help and writes nothing. The person's help lists the verb under
+**Release**, beside `launch` (ruling H13).
 
-## What it does
+## The seed
 
-1. Selects the **latest** phase-audit receipt whose phase matches the argument,
-   read from the local-ephemeral logs tier.
-2. Runs the composer agent as a seeded single-pass interview, its questions
-   drawn from the receipt's per-item acceptance verdicts. A thin answer triggers
-   one clarifying question; a deliberately empty section renders an explicit
-   "none recorded" line rather than being omitted.
-3. Shells a deterministic writer with the collected answers as JSON. The
-   command markdown performs **zero writes**: every write goes through that
-   writer, which renders the README, records the consumed receipt path, and
-   links to the phase doc, the audit report and the member specs.
+`abcd reflect <release-tag>` renders the seed and writes nothing:
 
-The writer is the single dispatch target and the only writer, and it is fully
-testable without the agent: JSON answers in, README out.
+- **The intents the tag shipped**: those that reached `shipped/` between the
+  previous release tag and this one, less any whose `shipped_in` names another
+  release, plus any in `shipped/` now whose `shipped_in` names this one. A cut
+  written the ordinary way stamps no `shipped_in`, so the stamp alone would find
+  nothing; it moves a record between releases, the way a hygiene sweep uses it.
+- For each, its `impact` and its **audit notes** as counts: the acceptance
+  rollup an ingested review writes, and the honoured / diverged / missing gap
+  counts. A placeholder, an owed review and an absent section are not audit
+  notes; a hand-written audit is, with no counts.
+- The shipped intents with **no audit notes**, each with the command that
+  audits it: an offer, never a gate.
+- The planned intents whose `target_release` names the release and which **did
+  not ship**.
+- The **changelog section** the cut composed, found by the heading predicate
+  the cut and the tagger use.
+- The **metrics**: intents shipped, audited and not, the verdict and gap
+  distributions, and the dates of this tag and the previous one.
+- The four questions the interview asks.
 
-## The five-section template
+## The interview
 
-The retrospective always carries these five sections, in this order: what went
-well, what could improve, lessons learned, decisions made, and metrics
-(qualitative plus simple counts, never velocity telemetry).
+`commands/reflect.md` runs it on the host. It offers the audit for each
+unaudited intent first and continues either way; it warns about, lists and asks
+about the unshipped targeted intents; then the `reflection-composer` agent asks
+the four asked sections one question at a time under the GRILL rules. The
+metrics section is computed, never asked.
 
-## Refusals
+**The thin-answer floor.** An answer is thin when it is empty, restates its
+section's heading, or holds fewer than two clauses of at least three words
+each. A thin answer is met with that section's one follow-up question before
+anything is written, and the reply is filed as the section's follow-up. The
+floor is a heuristic, and a cheap one to be wrong about: it costs one question,
+never the refusal of the answer that question brings.
 
-The writer refuses, each refusal naming the phase-audit prerequisite, when: the
-argument is not a phase id; the answers are hollow (a bare `{}` on stdin, all
-"none recorded") and the empty-answers override was not given; no phase-audit receipt
-exists for the named phase; the latest receipt is empty-audited, so nothing
-shipped to reflect on; or a retrospective already exists and the overwrite
-override was not given.
+## The write
 
-It also enforces write-site containment: the resolved target must be inside the
-retrospectives tree, and receipt-supplied spec ids are shape-validated before
-they are rendered into link text.
+The write sub-verb, handed the interview's answers as a JSON file, is the only
+write. It rebuilds the seed, so every refusal the seed makes holds at the write
+too, and then refuses, writing nothing:
 
-## Where the receipt lives
+- while an answer is under the floor with no follow-up, naming each section and
+  its question (`thin_answers`);
+- while unshipped targeted intents are unconfirmed; a proceed flag is the
+  person's confirmation (`unshipped_targets`);
+- when the release shipped no intent: "no intent shipped in `<release-tag>` —
+  nothing shipped to reflect on" (`nothing_shipped`);
+- when the retrospective already exists: it is written once and not edited
+  after (`exists`).
 
-The receipt shape this surface consumes is the predecessor store's phase-audit
-report, and the predecessor wrote it under `.abcd/logbook/`. **That location is
-retired here.** A 2026-07-12 adjudication on iss-56 placed runtime artefacts
-in the gitignored `.abcd/.work.local/logs/` tier instead;
-iss-73 carried out the relocation, and a detector holds it:
-`TestNoRetiredLogbookLocationInSource` fails the build if any non-test Go source
-under `internal/` so much as names `logbook`. A delivered `reflect` therefore
-reads its receipt from `.abcd/.work.local/logs/`; the retired path survives in
-this record as the predecessor's, never as a path to implement against.
+The answers file is read strictly: an unknown or repeated key is refused rather
+than an answer dropped. Every answer passes the canonical secret scanner before
+it is written, and a degraded or unavailable scanner refuses the write. The file
+is created exclusively inside the retrospective store, every level of which must
+be a real directory, so neither a second run nor a symlinked store can
+overwrite or escape.
 
-## Output path is unsettled
+## The output
 
-Output is fixed at `.abcd/retrospectives/<phase-id>/README.md`, committed as
-part of the phase's permanent record. That path is a peer of `.abcd/work/` and
-`.abcd/development/`, and it is **not one of the three tiers** `AGENTS.md`
-fixes. Delivering itd-24 therefore has to place the tree in an existing tier or
-record a decision admitting a fourth; until then the output path is a design
-target's proposal rather than a settled location.
+`.abcd/development/retrospectives/<release-tag>/README.md`, in the durable
+record tier beside the intent store, committed as part of the permanent record:
 
-## Scope of the first version
+- frontmatter naming the release, the previous release, the date, the intents,
+  which were audited and which not, and the audit receipts that fed the seed;
+- a line linking the release's changelog section, and a table linking each
+  intent and its audit notes;
+- the five sections in order: what went well, what could improve, lessons
+  learned, decisions made, and metrics (simple counts, never velocity
+  telemetry).
 
-- A single seeded interview pass. Multi-turn depth is a recorded future
-  extension.
-- No auto-triggering after a phase closes: reflection is deliberately
-  on-demand.
-- A missing audit is refused rather than repaired inline.
-- Links are limited to the phase doc, the audit report and the member specs.
-  The receipt carries no intent ids, so intent links are a recorded future
-  extension.
+## The nudge
 
-## Lifeboat forward requirement
+When the release cut writes a cut, its last line says once that a
+retrospective for the release is owed and names `/abcd:reflect <release-tag>`
+(`retrospective_owed` in its JSON). Nothing repeats it and nothing waits on it.
 
-The lifeboat must pack every phase retrospective a voyage produced, so the full
-reflection arc travels between voyages. Because `/abcd:reflect` is not built and
-produces no retrospectives yet, this is a **documented forward requirement on
-what disembark packs**, recorded here and in the itd-24 acceptance so a later
-reader treats it as a requirement rather than a shipped capability.
+## The lifeboat
+
+A lifeboat pack carries every retrospective the voyage produced, verbatim, as
+`retrospectives/<release-tag>/README.md`, sealed by the record manifest hash with
+the other record families. The embark write puts them back into the new
+voyage's store, admitting only a strict release-tag directory holding
+`README.md`, and the embark lessons view ranks their lessons against the new voyage's brief for the
+press-release interview: the three most like it, then the rest as a list
+([`03-embark.md`](03-embark.md)).
 
 ## Related documentation
 
-- Intent: `itd-24` (`../../intents/planned/itd-24-reflect-command.md`)
+- Intent: [`itd-24`](../../intents/shipped/itd-24-reflect-command.md); spec
+  `spc-2609211751376504`
+- Command page: `commands/reflect.md`; agent: `agents/reflection-composer.md`
 - Naming registration: [`../02-constraints/04-naming.md`](../02-constraints/04-naming.md)
-- The agent catalogue a composer would join: [`../05-internals/01-agents.md`](../05-internals/01-agents.md)
+- The agent catalogue: [`../05-internals/01-agents.md`](../05-internals/01-agents.md)
 
 <!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
 
-There is no shipped surface: the command tree registers no `abcd reflect` verb, so there are no flags and no sub-verbs to list.
+## Appendix: the shipped surface
+
+_Generated from the command tree; a drift test fails `go test` when this appendix and the tree disagree. It lists flags and sub-verbs only. What each flag means is in the [CLI reference](../../../../docs/reference/cli/commands.md), and exit codes, output fields and behaviour are the prose's to state._
+
+### `abcd reflect`
+
+Sub-verbs: `abcd reflect write`.
+
+Flags: none.
+
+### `abcd reflect write`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--answers` | string |
+| `--proceed` | bool |
 
 <!-- surface-appendix:end -->

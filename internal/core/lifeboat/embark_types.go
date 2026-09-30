@@ -17,7 +17,11 @@ package lifeboat
 // See adr-35 and .abcd/development/plans/2026-07-14-lifeboat-coverage-experiment.md
 // (the "M5 — embark and the round-trip" section) for the ratified contract.
 
-import "errors"
+import (
+	"errors"
+
+	corereflect "github.com/intentdriven/abcd/internal/core/reflect"
+)
 
 // EmbarkSchemaVersion stamps EmbarkPlan and EmbarkResult so a future breaking
 // change to their shape is detectable rather than silently misread.
@@ -284,8 +288,14 @@ type embarkFamily struct {
 	Name           string
 	LifeboatPrefix string   // POSIX, trailing slash
 	TargetPrefix   string   // POSIX, trailing slash
-	Buckets        []string // nil => flat family
+	Buckets        []string // nil => flat family, unless BucketValid is set
 	DefaultBucket  string   // used for a bucket-less file; "" => such a file is Unmapped
+	// BucketValid, when set, admits a bucket by its shape instead of by
+	// membership of Buckets: the retrospective family's buckets are release
+	// tags, an open set, so each is held to the tag shape rather than listed.
+	BucketValid func(string) bool
+	// Leaf, when set, is the one leaf name the family admits in a bucket.
+	Leaf string
 }
 
 // intentEmbarkBuckets mirrors intent.Buckets; specEmbarkBuckets mirrors the spec
@@ -310,7 +320,19 @@ var embarkFamilies = []embarkFamily{
 	{Name: "issues", LifeboatPrefix: "activity/issues/", TargetPrefix: nativeIssuesDir + "/", Buckets: nativeIssueStates, DefaultBucket: ""},
 	{Name: "intents", LifeboatPrefix: "rescue/intents/", TargetPrefix: nativeIntentsDir + "/", Buckets: intentEmbarkBuckets, DefaultBucket: "drafts"},
 	{Name: "specs", LifeboatPrefix: "rescue/specs/", TargetPrefix: nativeSpecsDir + "/", Buckets: specEmbarkBuckets, DefaultBucket: ""},
+	// The release retrospectives (itd-24): retrospectives/<release-tag>/README.md,
+	// one per release, the tag held to the release-tag shape and the leaf to
+	// README.md, so a hostile name can steer no write out of the store.
+	{Name: "retrospectives", LifeboatPrefix: retrospectivesLifeboatDir + "/", TargetPrefix: corereflect.RetrospectivesRelDir + "/",
+		BucketValid: corereflect.IsReleaseTag, Leaf: retrospectiveLeaf},
 }
+
+// retrospectivesLifeboatDir is where a lifeboat carries the retrospectives, and
+// retrospectiveLeaf the one file each release's directory holds.
+const (
+	retrospectivesLifeboatDir = "retrospectives"
+	retrospectiveLeaf         = "README.md"
+)
 
 // ---------------------------------------------------------------------------
 // Closure and exclusion sets.
@@ -333,6 +355,7 @@ var recordDerivedPrefixes = []string{
 	"activity/issues/",
 	"rescue/intents/",
 	"rescue/specs/",
+	retrospectivesLifeboatDir + "/",
 	"graveyard/abandoned.json",
 }
 

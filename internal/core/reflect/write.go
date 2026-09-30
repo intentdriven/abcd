@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/adapter/scanner"
 	"github.com/intentdriven/abcd/internal/core/jsonstrict"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
@@ -107,7 +108,11 @@ func Write(root string, req WriteRequest) (WriteResult, error) {
 		return WriteResult{}, &ThinAnswersError{Thin: thin}
 	}
 
-	doc := render(seed, req.Answers, req.Now)
+	answers, err := redactAnswers(root, req.Answers)
+	if err != nil {
+		return WriteResult{}, err
+	}
+	doc := render(seed, answers, req.Now)
 	dir := path.Dir(seed.Output)
 	if err := fsutil.EnsureRealDirAll(root, dir, 0o755); err != nil {
 		return WriteResult{}, fmt.Errorf("reflect: %w", err)
@@ -124,6 +129,34 @@ func Write(root string, req WriteRequest) (WriteResult, error) {
 		return WriteResult{}, fmt.Errorf("reflect: %w", err)
 	}
 	return WriteResult{Path: seed.Output, Seed: seed}, nil
+}
+
+// redactAnswers passes every answer through the one canonical scanner before it
+// reaches the committed record, the stance the decision store takes
+// (internal/core/decide): it fails closed on an unavailable or degraded scanner,
+// because a retrospective is durable committed prose and a broken detector must
+// never let a pasted credential reach it under a false "clean" signal.
+func redactAnswers(root string, a Answers) (Answers, error) {
+	sc, err := scanner.New(root)
+	if err != nil {
+		return Answers{}, fmt.Errorf("reflect: refusing to write answers with an unavailable scanner: %w (nothing written)", err)
+	}
+	if unavail, reason := sc.Unavailable(); unavail {
+		return Answers{}, fmt.Errorf("reflect: refusing to write answers with a degraded scanner: %s (nothing written)", reason)
+	}
+	clean := func(text string) string {
+		findings := sc.ScanText(text, "reflect")
+		if len(findings) == 0 {
+			return text
+		}
+		out, _ := scanner.Redact(text, findings)
+		return out
+	}
+	for _, p := range []*Answer{&a.WentWell, &a.CouldImprove, &a.Lessons, &a.Decisions} {
+		p.Text = clean(p.Text)
+		p.FollowUp = clean(p.FollowUp)
+	}
+	return a, nil
 }
 
 // render is the retrospective's text: frontmatter naming the release, the

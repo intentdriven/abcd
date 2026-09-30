@@ -43,8 +43,9 @@ var examples = map[string]string{
 	"abcd disembark principles":    "abcd disembark principles ../lifeboat",
 	"abcd disembark review":        "abcd disembark review ../lifeboat .",
 
-	"abcd embark from":  "abcd embark from ../lifeboat",
-	"abcd embark probe": "abcd embark probe ../lifeboat",
+	"abcd embark from":    "abcd embark from ../lifeboat",
+	"abcd embark lessons": "abcd embark lessons ../lifeboat",
+	"abcd embark probe":   "abcd embark probe ../lifeboat",
 
 	"abcd history discard":     "abcd history discard 0123abcd-session.raw --yes",
 	"abcd history reconstruct": "abcd history reconstruct 0123abcd-session",
@@ -92,6 +93,9 @@ var examples = map[string]string{
 
 	"abcd reading assemble": "abcd reading assemble --position widening --target HEAD",
 	"abcd reading ingest":   "abcd reading ingest --reading-json reading.json",
+
+	"abcd reflect":       "abcd reflect v0.11.0",
+	"abcd reflect write": "abcd reflect write v0.11.0 --answers answers.json",
 
 	"abcd scribe assemble": "abcd scribe assemble --run rdg-2609010000000001 --dispositions dispositions.md",
 	"abcd scribe ingest":   "abcd scribe ingest --scribe-json scribe.json --dispositions dispositions.md",

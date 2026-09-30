@@ -34,6 +34,7 @@ var proposal = map[string]proposed{
 	"graveyard-interpreter":      {Economy, 1},
 	"principle-distiller":        {Economy, 1},
 	"press-release-composer":     {Economy, 1},
+	"reflection-composer":        {Economy, 1},
 	"scribe":                     {Economy, 1},
 	"sota-researcher":            {Economy, 1},
 }

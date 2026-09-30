@@ -237,3 +237,27 @@ func TestParseAnswersIsStrict(t *testing.T) {
 		t.Error("an unknown section key was accepted")
 	}
 }
+
+// The retrospective is committed prose, so every answer passes the one canonical
+// scanner before it is written: a credential pasted into an answer reaches the
+// record masked, never as itself.
+func TestWriteRedactsASecretInAnAnswer(t *testing.T) {
+	r := releaseRepo(t)
+	token := "AKIA" + strings.Repeat("Q", 16)
+	a := fullAnswers()
+	a.Lessons.Text = "- Never paste a key such as " + token + " into a note, because notes are committed\n- Rotate keys before the cut, since the cut is public"
+	res, err := Write(r.Root(), WriteRequest{Tag: "v0.2.0", Answers: a, ProceedDespiteUnshipped: true, Now: fixedNow})
+	if err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	data, err := os.ReadFile(abs(r, res.Path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), token) {
+		t.Fatalf("the credential reached the retrospective unmasked:\n%s", data)
+	}
+	if !strings.Contains(string(data), "Rotate keys before the cut") {
+		t.Errorf("the rest of the answer was lost:\n%s", data)
+	}
+}

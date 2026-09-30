@@ -12,6 +12,17 @@ over the brief's earlier `1.0.0`-at-close expectation). The four M6 synthesis
 agents below entered at `0.1.0`, wired to their `abcd disembark` verbs and
 unmeasured; `lifeboat-oracle` has since become `lifeboat-reviewer` at `0.1.1`.
 
+## 2026-09-30 (itd-24 — the release retrospective)
+
+### reflection-composer 0.1.0
+
+NEW: the retrospective interview's composer. It reads the seed `abcd reflect
+<release-tag> --json` renders, asks the four asked sections one question at a
+time, meets a thin answer with the section's one follow-up, and emits the
+four-key answers object `abcd reflect write` files. It reads intent records and
+the changelog as untrusted data (injection canary under its fixtures).
+Unmeasured, in the `0.x` band.
+
 ## 2026-09-29 (itd-2609212103572513 — the cut lists targeted intents)
 
 ### release-changelog-composer 0.4.1

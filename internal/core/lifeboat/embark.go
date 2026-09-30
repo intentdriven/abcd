@@ -410,7 +410,7 @@ func resolveTarget(rel string) (family, targetRel string, disp disposition, deta
 			continue
 		}
 		rest := rel[len(f.LifeboatPrefix):]
-		if f.Buckets == nil {
+		if f.Buckets == nil && f.BucketValid == nil {
 			// Flat family (adrs): <prefix><leaf>.
 			leaf := rest
 			if strings.Contains(leaf, "/") || safeLeaf(leaf) == "" {
@@ -432,11 +432,18 @@ func resolveTarget(rel string) (family, targetRel string, disp disposition, deta
 			return f.Name, f.TargetPrefix + f.DefaultBucket + "/" + leaf, dispPlanned, ""
 		}
 		bucket, leaf := seg[0], seg[1]
-		if !containsStr(f.Buckets, bucket) {
+		known := containsStr(f.Buckets, bucket)
+		if f.BucketValid != nil {
+			known = f.BucketValid(bucket)
+		}
+		if !known {
 			return f.Name, "", dispUnmapped, "unknown " + f.Name + " bucket " + sanitize(bucket)
 		}
 		if strings.Contains(leaf, "/") || safeLeaf(leaf) == "" {
 			return f.Name, "", dispUnmapped, "unsafe leaf under " + f.Name
+		}
+		if f.Leaf != "" && leaf != f.Leaf {
+			return f.Name, "", dispUnmapped, "only " + f.Leaf + " is embarked under " + f.Name
 		}
 		return f.Name, f.TargetPrefix + bucket + "/" + leaf, dispPlanned, ""
 	}

@@ -1129,6 +1129,20 @@
       "flags": []
     },
     {
+      "path": "abcd embark lessons",
+      "hidden": false,
+      "sentence": "Rank the lessons a lifeboat's retrospectives carry against the new voyage's brief: Writes nothing; refuses a lifeboat that fails its manifest.",
+      "flags": [
+        {
+          "name": "brief",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd embark probe",
       "hidden": false,
       "sentence": "Report what a lifeboat would write into a target, coverage blanks first: Writes nothing; refuses a lifeboat whose manifest does not verify.",
@@ -2457,6 +2471,35 @@
           "name": "route",
           "shorthand": "",
           "type": "stringArray",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd reflect",
+      "hidden": false,
+      "group": "release",
+      "block": "people",
+      "sentence": "Render the seed a cut release's retrospective interview opens from: Writes nothing; refuses a release that shipped no intent, or an intent id.",
+      "flags": []
+    },
+    {
+      "path": "abcd reflect write",
+      "hidden": false,
+      "sentence": "Write a cut release's retrospective from the interview's answers: Writes its README once; refuses a thin answer or unconfirmed unshipped work.",
+      "flags": [
+        {
+          "name": "answers",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "proceed",
+          "shorthand": "",
+          "type": "bool",
           "required": false,
           "hidden": false
         }

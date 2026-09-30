@@ -21,7 +21,7 @@ are wiring rather than user-facing surface are listed separately under
 | 6 | `/abcd:capture` | shipped | Get an observation out of your head and into a ledger in one line, and act on it later | [`06-capture.md`](06-capture.md) |
 | 7 | `/abcd:memory` | shipped | Curate what the project knows from outside sources, and query it | [`07-memory.md`](07-memory.md) |
 | 8 | `/abcd` | shipped | Find out where you are, or what one record id is and what to do with it | [`08-abcd.md`](08-abcd.md) |
-| 9 | `/abcd:reflect` | staged | Compose a phase retrospective from its audit receipt (design target, itd-24) | [`09-reflect.md`](09-reflect.md) |
+| 9 | `/abcd:reflect` | shipped | Look back on a cut release in a short interview, and file what it taught as its retrospective | [`09-reflect.md`](09-reflect.md) |
 | 10 | `/abcd:docs` | shipped | Find documentation that has gone stale, and maintain the citation baseline | [`10-docs.md`](10-docs.md) |
 | 11 | `/abcd:history` | shipped | Keep session transcripts as a local, redacted corpus this project can study | [`11-history.md`](11-history.md) |
 | 12 | `/abcd:version` | shipped | Know which abcd this is, how it was installed, and whether it is behind | [`12-version.md`](12-version.md) |
@@ -199,6 +199,8 @@ at all: `disembark`, `docs`, `embark`, `guard`, `history`, `ideate`, and `scribe
 because its one operand is the quoted title it mints a record from, and bare
 `abcd build` refuses as a usage error because its one operand is the intent it
 starts a run for; the run's state renders through `abcd implement status`. Bare
+`abcd reflect` prints its usage, because its one operand is the cut release
+whose retrospective seed it renders. Bare
 `abcd drain` refuses to start, because bare is the run itself and the run is not
 built; what a drain would do renders through its dry run. Bare
 `abcd source` renders the corpus under the user-level home rather than anything

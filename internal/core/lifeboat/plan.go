@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/ahoy"
+	corereflect "github.com/intentdriven/abcd/internal/core/reflect"
 )
 
 // PlannedFile is one file the packer would write into a lifeboat, produced
@@ -277,7 +278,26 @@ func Plan(repoRoot string, opts ...ProbeOption) (Lifeboat, error) {
 		}
 	}
 
-	// 5b. The graveyard, layers 1 and 2 — deterministic, evidence only. Layer 3
+	// 5b. The release retrospectives (itd-24), verbatim: every
+	//     <release-tag>/README.md in the store, the tag held to the release-tag
+	//     shape, so the whole reflection arc travels and nothing else under the
+	//     store does. Sorted, so the plan is deterministic.
+	if ctx.IsDir(corereflect.RetrospectivesRelDir) {
+		tags := ctx.ListDir(corereflect.RetrospectivesRelDir)
+		sort.Strings(tags)
+		for _, tag := range tags {
+			if !corereflect.IsReleaseTag(tag) || safeLeaf(tag) == "" {
+				continue
+			}
+			src := path.Join(corereflect.RetrospectivesRelDir, tag, retrospectiveLeaf)
+			if !ctx.Exists(src) {
+				continue
+			}
+			pb.copyRecord(ctx, src, path.Join(retrospectivesLifeboatDir, tag, retrospectiveLeaf))
+		}
+	}
+
+	// 5c. The graveyard, layers 1 and 2 — deterministic, evidence only. Layer 3
 	//     (lessons.json) is a later host-delegated step written by
 	//     `abcd disembark graveyard` into the packed lifeboat, never here. Both
 	//     files are always emitted (empty findings when the repo declared

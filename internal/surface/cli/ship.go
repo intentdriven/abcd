@@ -14,6 +14,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/launch"
 	"github.com/intentdriven/abcd/internal/core/oracle"
+	"github.com/intentdriven/abcd/internal/core/reflect"
 	"github.com/intentdriven/abcd/internal/core/release"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -72,6 +73,10 @@ type shipResult struct {
 	// whenever the ship renders a payload.
 	Parity    *launch.ParityReport    `json:"parity,omitempty"`
 	DeepSmoke *launch.DeepSmokeReport `json:"deep_smoke,omitempty"`
+	// RetrospectiveOwed is the one line a written cut ends with: a retrospective
+	// for the release is owed, and the command that writes it (itd-24 criterion
+	// 8, decision 1). It is said once, here, and gates nothing.
+	RetrospectiveOwed string `json:"retrospective_owed,omitempty"`
 }
 
 // shipArchive is the archive half of a ship's report: the archive the release
@@ -620,9 +625,15 @@ func runShipIngest(cmd *cobra.Command, cwd string, raw []byte, payloadDir string
 				rollbackCut(cwd, payloadDir, ingested.Undo, saved...)}
 		}
 	}
+	if ingested.Written && ingested.Cut.NextTag != "" {
+		res.RetrospectiveOwed = reflect.Nudge(ingested.Cut.NextTag)
+	}
 	if rerr := render(cmd.OutOrStdout(), asJSON, withReceipt(res, route, raw), func(w io.Writer) {
 		renderIngest(w, res)
 		renderReceiptLine(w, route, raw)
+		if res.RetrospectiveOwed != "" {
+			fmt.Fprintf(w, "\n%s\n", res.RetrospectiveOwed)
+		}
 	}); rerr != nil {
 		return rerr
 	}

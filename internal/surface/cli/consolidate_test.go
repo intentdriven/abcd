@@ -465,12 +465,13 @@ func personVerbs(help string) []string {
 	return out
 }
 
-// maxPersonVerbs is criterion 5's ceiling.
-const maxPersonVerbs = 14
+// maxPersonVerbs is criterion 5's ceiling, raised from fourteen to fifteen by
+// the product thinker's ruling H13 (2026-09-29), which lists reflect there.
+const maxPersonVerbs = 15
 
-// TestPersonsListHoldsAtMostFourteenVerbs is criterion 5: after itd-146 and this
-// intent, the person's default list counts at most fourteen verbs.
-func TestPersonsListHoldsAtMostFourteenVerbs(t *testing.T) {
+// TestPersonsListHoldsAtMostFifteenVerbs is criterion 5 under ruling H13: the
+// person's default list counts at most fifteen verbs.
+func TestPersonsListHoldsAtMostFifteenVerbs(t *testing.T) {
 	help, _ := executedHelp(t, "--help")
 	verbs := personVerbs(help)
 	if len(verbs) == 0 {
@@ -481,8 +482,8 @@ func TestPersonsListHoldsAtMostFourteenVerbs(t *testing.T) {
 	}
 }
 
-// TestPersonVerbsCountsEveryListedVerb is the count's negative control: fifteen
-// listed verbs read as fifteen, so the ceiling above can fail, and help and
+// TestPersonVerbsCountsEveryListedVerb is the count's negative control: sixteen
+// listed verbs read as sixteen, so the ceiling above can fail, and help and
 // completion are not among them.
 func TestPersonVerbsCountsEveryListedVerb(t *testing.T) {
 	var b strings.Builder
@@ -491,11 +492,11 @@ func TestPersonVerbsCountsEveryListedVerb(t *testing.T) {
 		b.WriteString("  " + n + "  does a thing\n")
 	}
 	b.WriteString("\n" + peopleGroupTitles[1] + "\n")
-	for _, n := range []string{"india", "juliet", "kilo", "lima", "mike", "november", "oscar"} {
+	for _, n := range []string{"india", "juliet", "kilo", "lima", "mike", "november", "oscar", "papa"} {
 		b.WriteString("  " + n + "  does a thing\n")
 	}
-	if got := personVerbs(b.String()); len(got) != 15 {
-		t.Fatalf("personVerbs read %d verbs, want 15: %v", len(got), got)
+	if got := personVerbs(b.String()); len(got) != 16 {
+		t.Fatalf("personVerbs read %d verbs, want 16: %v", len(got), got)
 	}
 }
 

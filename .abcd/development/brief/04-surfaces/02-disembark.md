@@ -146,6 +146,7 @@ a section of its own.
 │   ├── spine.md                        # commit-history spine, written where no record store exists
 │   ├── intents/{drafts,planned,shipped,superseded,disciplines}/   # intent corpus, verbatim
 │   └── specs/{open,closed}/            # spec store, verbatim
+├── retrospectives/<release-tag>/README.md  # every release retrospective, verbatim (itd-24)
 ├── docs/
 │   └── adrs/                           # ADRs copied verbatim
 └── activity/
@@ -155,7 +156,7 @@ a section of its own.
 `_provenance.json` is what makes the pack checkable by a third party. It carries
 the schema version and generator, the source name and root SHA, the tiers
 present, a `manifest_sha256` over every other file, a `record_manifest_sha256`
-over the record-derived families alone, the omissions, and a `pass_b_exemption`
+over the record-derived families alone (the retrospectives among them), the omissions, and a `pass_b_exemption`
 present only when no transcript tier grounded the package, so an unmarked
 lifeboat marshals as it always has and embark can say which it is.
 

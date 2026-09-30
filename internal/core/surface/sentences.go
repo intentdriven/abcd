@@ -127,6 +127,8 @@ var sentences = map[string]string{
 		"Writes only its record families and marker block; refuses the whole write on any conflict.",
 	"abcd embark from": "Unpack a lifeboat's record families into a target repository: " +
 		"Writes those families and the marker block; refuses the whole write on any conflict.",
+	"abcd embark lessons": "Rank the lessons a lifeboat's retrospectives carry against the new voyage's brief: " +
+		"Writes nothing; refuses a lifeboat that fails its manifest.",
 	"abcd embark probe": "Report what a lifeboat would write into a target, coverage blanks first: " +
 		"Writes nothing; refuses a lifeboat whose manifest does not verify.",
 
@@ -293,6 +295,11 @@ var sentences = map[string]string{
 		"Writes both artefacts; refuses a target that is not HEAD or a commit sha.",
 	"abcd reading ingest": "Validate the JSON one cold reading returned: " +
 		"Writes its reading records; refuses output the position's licence does not allow.",
+
+	"abcd reflect": "Render the seed a cut release's retrospective interview opens from: " +
+		"Writes nothing; refuses a release that shipped no intent, or an intent id.",
+	"abcd reflect write": "Write a cut release's retrospective from the interview's answers: " +
+		"Writes its README once; refuses a thin answer or unconfirmed unshipped work.",
 
 	"abcd report": "File a defect report or an enhancement proposal about abcd: " +
 		"Writes it into your account's inbox; refuses a malformed field or a filesystem path.",

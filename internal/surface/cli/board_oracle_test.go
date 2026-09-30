@@ -63,8 +63,8 @@ func TestBoardOracleLinesShowEveryLayerWithTheWinnerMarked(t *testing.T) {
 		t.Fatalf("board: %v\n%s", err, stderr)
 	}
 	lines := oracleLines(stdout)
-	if len(lines) != 16 {
-		t.Fatalf("want the oracle heading and one line per agent (15), got %d:\n%s", len(lines), stdout)
+	if len(lines) != 17 {
+		t.Fatalf("want the oracle heading and one line per agent (16), got %d:\n%s", len(lines), stdout)
 	}
 	var scribe string
 	for _, l := range lines {
@@ -134,7 +134,7 @@ func TestBoardReportsAnOrphanRowAndAMalformedTableOnStderr(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(stderr, `"ghost-agent"`) || len(oracleLines(stdout)) != 16 {
+	if !strings.Contains(stderr, `"ghost-agent"`) || len(oracleLines(stdout)) != 17 {
 		t.Fatalf("stderr %q / stdout:\n%s", stderr, stdout)
 	}
 

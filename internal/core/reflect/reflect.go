@@ -48,6 +48,13 @@ func validTag(tag string) error {
 	return nil
 }
 
+// IsReleaseTag reports whether tag has the shape a retrospective's directory
+// takes: a leading v and a strict MAJOR.MINOR.PATCH core, no prerelease and no
+// build suffix. The lifeboat's packer and embarker hold the store's directory
+// names to it, so the name a hostile lifeboat carries never reaches a path in
+// any other shape.
+func IsReleaseTag(tag string) bool { return validTag(tag) == nil }
+
 // ErrNothingShipped is the refusal for a tag whose release shipped no intent.
 // NothingShippedError wraps it, so a front door can test for it with errors.Is.
 var ErrNothingShipped = errors.New("nothing shipped to reflect on")
