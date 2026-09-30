@@ -7,6 +7,7 @@ category: "bug"
 source: "impl-review"
 found_during: "intent-implementation-run"
 found_at: "internal/core/intent/audit.go"
+remedy: "Waits on itd-165's planning interview: then branch the ingest in internal/core/intent/audit.go so a verdict whose criteria are all INCONCLUSIVE (or any INCONCLUSIVE, as the interview settles) leaves the receipt OWED in a distinct re-run state rather than INGESTED, re-dispatched with better inputs and escalated to the facilitator, never the product thinker. Prove it with an ingest test that an all-INCONCLUSIVE verdict keeps the OWED marker and that a later valid verdict replaces it through the existing re-ingest path."
 deferred_after: v0.11.1
 deferral_reason: "planning owed (re-deferred at v0.11.1 by run A's major-triage lane): the narrow fix is written down in itd-165, still in drafts with no spec, and the automatic re-dispatch the adr-55 reframe asks for is not built, so branching the ingest now would harden an unplanned draft. Owed: itd-165's planning interview, then a lane."
 ---
@@ -18,3 +19,9 @@ Reframed 2026-08-29 under adr-55: an inconclusive verdict is a stop that needs a
 ## Deferral 2026-09-29
 
 Deferred past v0.11.1: planning owed (re-deferred at v0.11.1 by run A's major-triage lane): the narrow fix is written down in itd-165, still in drafts with no spec, and the automatic re-dispatch the adr-55 reframe asks for is not built, so branching the ingest now would harden an unplanned draft. Owed: itd-165's planning interview, then a lane.
+
+## Remedy grounds (2026-09-29)
+
+- The record's narrow fix is the smallest change that makes a degraded stage loud, and itd-165 already states that an inconclusive verdict mints no record yet must stay visibly outstanding.
+- The re-ingest path (reingestVerdict in internal/core/intent/audit.go) lets a valid verdict replace an ingested block, which gives the re-run a way in; the ingest still writes INGESTED whatever the rollup says, so the defect stands.
+- Rejected: minting a ledger issue per inconclusive verdict, which itd-165 refuses as noise.

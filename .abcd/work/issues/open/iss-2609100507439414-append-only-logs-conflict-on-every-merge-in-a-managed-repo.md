@@ -9,6 +9,7 @@ found_during: "autonomous-run field experiment in a managed repository, 2026-09-
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/work/DECISIONS.md, CHANGELOG.md (in a managed repo)"
+remedy: "Waits on the M28 planning interview for itd-2609151138388536: build the folder of minted decision records with a derived index (adr-2609151138420062) through abcd decide, and for a managed repository's existing log: if convert, ahoy migrates each dated line into a record; if offer, ahoy reports and converts on consent; if new-only, new entries go to the folder and the old file stays as the index's frozen first entry. The changelog half is closed by the derived changelog launch scaffold writes, so no fragment directory is built; prove the shape with a test merging two branches that each mint a decision with no conflict."
 related_intents: [itd-2609151138388536]
 deferred_after: v0.11.1
 deferral_reason: "Promoted to itd-2609151138388536 (draft), and a promoted issue keeps its folder until the intent ships (commands/capture.md, promote). The product thinker's ruling M28 of 2026-09-23 plans it next cycle as its own intent. Owed: that planning interview, which opens on one question: for a managed repository's existing decision log, convert it, offer to convert it, or apply the folder of records to new entries only?"
@@ -54,3 +55,9 @@ append-only `decide line` verb.
 ## Deferral 2026-09-29
 
 Deferred past v0.11.1: Promoted to itd-2609151138388536 (draft), and a promoted issue keeps its folder until the intent ships (commands/capture.md, promote). The product thinker's ruling M28 of 2026-09-23 plans it next cycle as its own intent. Owed: that planning interview, which opens on one question: for a managed repository's existing decision log, convert it, offer to convert it, or apply the folder of records to new entries only?
+
+## Remedy grounds (2026-09-29)
+
+- The 2026-09-15 ruling fixes the shape (one file per decision, as the ledger); only the treatment of an existing log is open.
+- SOTA check: towncrier (https://towncrier.readthedocs.io/en/stable/tutorial.html, read 2026-09-29) keeps one fragment file per change and assembles them at release; abcd's derived changelog (adr-37; itd-2609150819432059 scaffolds the empty Unreleased anchor for managed repositories) is the same idea taken further, since the records are the fragments.
+- Rejected: propagating merge=union, which the forge's merge ignores and which duplicates changelog headings.
