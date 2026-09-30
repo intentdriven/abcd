@@ -103,6 +103,11 @@ func ReadInputs(root string, commands []surface.Command, population []string) (I
 		}
 		in.Baseline = b.Surfaces
 	}
+	flags, err := readFlags(root)
+	if err != nil {
+		return Inputs{}, err
+	}
+	in.Flags = flags
 	return in, nil
 }
 
@@ -144,7 +149,8 @@ func (s SavedReview) Review() Review {
 		return r
 	}
 	for _, f := range got.Failing {
-		r.Findings = append(r.Findings, Sentence{Doc: docOf(f.Doc), Chapter: f.Chapter, Sentence: f.Sentence, Evidence: f.Evidence})
+		r.Findings = append(r.Findings, Sentence{Doc: docOf(f.Doc), Chapter: f.Chapter, Sentence: f.Sentence,
+			Evidence: f.Evidence, Replacement: f.Replacement})
 	}
 	r.Verdict = got.Verdict
 	switch {
@@ -258,6 +264,9 @@ func Record(root string, raw []byte, at time.Time) (string, Review, error) {
 		}
 		if strings.TrimSpace(f.Disposition) == "" {
 			return "", Review{}, fmt.Errorf("failing[%d] carries no disposition", i)
+		}
+		if f.Replacement != "" && (strings.ContainsAny(f.Replacement, "\n\r") || f.Replacement == f.Sentence) {
+			return "", Review{}, fmt.Errorf("failing[%d].replacement must be one line that differs from the sentence", i)
 		}
 		if f.Doc == DocBrief {
 			brief++

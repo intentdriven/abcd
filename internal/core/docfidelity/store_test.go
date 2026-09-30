@@ -175,3 +175,18 @@ func TestRecordRefusesAnUnusablePayload(t *testing.T) {
 		})
 	}
 }
+
+// The boundary: the judgement and its reads write nothing; Record and Apply
+// are the only paths that touch the tree.
+func TestGateWritesNothing(t *testing.T) {
+	root := armedRepo(t)
+	before := git(t, root, "status", "--porcelain", "--untracked-files=all", "--ignored")
+	for _, report := range []bool{false, true} {
+		if _, _, err := Gate(root, tree, []string{"itd-1"}, report); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if after := git(t, root, "status", "--porcelain", "--untracked-files=all", "--ignored"); after != before {
+		t.Fatalf("the gate wrote to the tree:\nbefore %q\nafter  %q", before, after)
+	}
+}

@@ -47,6 +47,27 @@ type Sentence struct {
 	Chapter  string `json:"chapter"`
 	Sentence string `json:"sentence"`
 	Evidence string `json:"evidence"`
+	// Replacement is the reviewer's drafted sentence, "" when none was drafted.
+	Replacement string `json:"replacement,omitempty"`
+}
+
+// Edit is a proposed brief edit: replace Sentence in Chapter by Replacement.
+type Edit struct {
+	Chapter     string `json:"chapter"`
+	Sentence    string `json:"sentence"`
+	Replacement string `json:"replacement"`
+	Evidence    string `json:"evidence"`
+}
+
+// Flag is the review flag an applied edit records: the brief carries a
+// sentence nobody but the reviewer wrote until the product thinker reads it.
+type Flag struct {
+	Chapter     string `json:"chapter"`
+	Sentence    string `json:"sentence"`
+	Replacement string `json:"replacement"`
+	Evidence    string `json:"evidence,omitempty"`
+	Commit      string `json:"commit"`
+	Applied     string `json:"applied"`
 }
 
 // ReviewStatus is what the saved review says about the code under judgement.
@@ -81,6 +102,7 @@ type Inputs struct {
 	Chapters   map[string]string
 	Baseline   []string
 	Population []string
+	Flags      []Flag
 }
 
 // Verdict is the judgement.
@@ -93,6 +115,8 @@ type Verdict struct {
 	Review     *Review    `json:"review,omitempty"`
 	False      []Sentence `json:"false_sentences"`
 	Public     []Sentence `json:"public_findings"`
+	Proposed   []Edit     `json:"proposed_edits"`
+	Applied    []Sentence `json:"applied_edits"`
 	Refuse     bool       `json:"refuse"`
 	Reasons    []string   `json:"reasons"`
 }
@@ -166,7 +190,8 @@ func Names(text string, s Surface) bool {
 // refuses.
 func Judge(in Inputs, r Reviewer, report bool) Verdict {
 	v := Verdict{Report: report, Population: append([]string(nil), in.Population...),
-		Uncovered: []Surface{}, Backlog: []Surface{}, False: []Sentence{}, Public: []Sentence{}, Reasons: []string{}}
+		Uncovered: []Surface{}, Backlog: []Surface{}, False: []Sentence{}, Public: []Sentence{},
+		Proposed: []Edit{}, Applied: []Sentence{}, Reasons: []string{}}
 	who := ""
 	if len(in.Population) > 0 {
 		who = strings.Join(in.Population, ", ") + ": "
@@ -238,8 +263,17 @@ func Judge(in Inputs, r Reviewer, report bool) Verdict {
 				continue
 			}
 			n++
+			if applied(in, f) {
+				v.Applied = append(v.Applied, f)
+				continue
+			}
 			v.False = append(v.False, f)
-			v.Reasons = append(v.Reasons, who+"the docs review confirmed a false sentence in "+f.Chapter+": \""+f.Sentence+"\" ("+f.Evidence+")")
+			reason := who + "the docs review confirmed a false sentence in " + f.Chapter + ": \"" + f.Sentence + "\" (" + f.Evidence + ")"
+			if f.Replacement != "" {
+				v.Proposed = append(v.Proposed, Edit{Chapter: f.Chapter, Sentence: f.Sentence, Replacement: f.Replacement, Evidence: f.Evidence})
+				reason += "; the reviewer drafted its correction — `abcd docs fidelity --apply` applies it and flags it for review"
+			}
+			v.Reasons = append(v.Reasons, reason)
 		}
 		if n == 0 && len(v.Public) == 0 {
 			v.Reasons = append(v.Reasons, who+"the doc-fidelity review for "+at+" is HOLD but names no sentence, so there is nothing to correct: "+RunReviewFirst)
@@ -265,4 +299,25 @@ func short(sha string) string {
 		return "HEAD"
 	}
 	return sha
+}
+
+// applied reports that a confirmed false sentence has been corrected by a
+// drafted edit and flagged for review: its chapter no longer carries the
+// sentence, carries the drafted replacement, and a flag names the edit. All
+// three, so neither a silent hand edit nor a flag over an unedited chapter
+// completes the change with the brief lagging and no flag recorded.
+func applied(in Inputs, f Sentence) bool {
+	if f.Replacement == "" {
+		return false
+	}
+	text, ok := in.Chapters[f.Chapter]
+	if !ok || strings.Contains(text, f.Sentence) || !strings.Contains(text, f.Replacement) {
+		return false
+	}
+	for _, fl := range in.Flags {
+		if fl.Chapter == f.Chapter && fl.Sentence == f.Sentence && fl.Replacement == f.Replacement {
+			return true
+		}
+	}
+	return false
 }

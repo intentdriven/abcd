@@ -1137,6 +1137,9 @@ type ReceiptFinding struct {
 	Chapter  string `json:"chapter,omitempty"`
 	Sentence string `json:"sentence,omitempty"`
 	Evidence string `json:"evidence,omitempty"`
+	// Replacement is the reviewer's drafted correction of Sentence, which
+	// `abcd docs fidelity --apply` writes into the chapter and flags.
+	Replacement string `json:"replacement,omitempty"`
 }
 
 // checkReceiptGate is the fail-closed, release-time verification of the semantic
