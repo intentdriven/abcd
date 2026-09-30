@@ -63,7 +63,9 @@ type AuditFiling struct {
 	Linked  bool
 }
 
-// AuditCleared asks the ledger to resolve the issue a passing re-audit cleared.
+// AuditCleared asks the ledger to resolve the open issues carrying the owed
+// check of a receipt a passing audit judged: IssueID, the one the flag names
+// (empty when the receipt carries no flag), and every other open carrier.
 type AuditCleared struct {
 	RepoRoot  string
 	IntentID  string

@@ -159,24 +159,25 @@ func TestAPassingReAuditClearsTheFlagAndResolvesTheIssue(t *testing.T) {
 	if !strings.Contains(s, cleared) {
 		t.Fatalf("the clearance must leave a dated Audit Notes line %q:\n%s", cleared, s)
 	}
-	// Ingesting the passing verdict again changes nothing and resolves nothing.
+	// Ingesting the passing verdict again changes nothing in the intent; it
+	// sweeps the receipt's open carriers again, naming no flag's issue.
 	if _, err := IngestVerdict(root, writeVerdict(t, root, verdictWith(t, rcp, "MET"))); err != nil {
 		t.Fatal(err)
 	}
-	if len(f.cleared) != 1 || shippedAlpha(t, root) != s {
-		t.Fatalf("a repeated passing ingest must be a noop, cleared %d", len(f.cleared))
+	if len(f.cleared) != 2 || f.cleared[1].IssueID != "" || shippedAlpha(t, root) != s {
+		t.Fatalf("a repeated passing ingest must be a noop on the intent and a flagless sweep, cleared %+v", f.cleared)
 	}
 }
 
-func TestAPassingFirstAuditAsksTheLedgerForNothing(t *testing.T) {
+func TestAPassingFirstAuditFilesNothingAndSweepsItsReceipt(t *testing.T) {
 	f := withFakeAuditLedger(t)
 	root := t.TempDir()
 	rcp := shipOne(t, root)
 	if _, err := IngestVerdict(root, writeVerdict(t, root, verdictWith(t, rcp, "MET_WITH_CONCERNS"))); err != nil {
 		t.Fatal(err)
 	}
-	if len(f.filed) != 0 || len(f.cleared) != 0 {
-		t.Fatalf("a passing audit files and clears nothing: filed %d, cleared %d", len(f.filed), len(f.cleared))
+	if len(f.filed) != 0 || len(f.cleared) != 1 || f.cleared[0].IssueID != "" || f.cleared[0].ReceiptID != rcp || f.cleared[0].IntentID != "itd-10" {
+		t.Fatalf("a passing audit files nothing and asks one sweep of its receipt's carriers, naming no flag's issue: filed %d, cleared %+v", len(f.filed), f.cleared)
 	}
 	if strings.Contains(shippedAlpha(t, root), "Audit owed") {
 		t.Fatal("a passing audit carries no flag")

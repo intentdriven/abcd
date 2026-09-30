@@ -975,10 +975,12 @@ func previewOwed(repoRoot string, raw []byte, rcp string) (owedPreview, error) {
 		return owedPreview{owed: &AuditOwed{RepoRoot: repoRoot, IntentID: it.ID, IntentPath: filepath.ToSlash(it.Path),
 			ReceiptID: rcp, Criteria: crit, Failed: failed}}, nil
 	}
-	if iss, ok := flaggedIssue(content, rcp); ok {
-		return owedPreview{clearRcp: rcp, clearIss: iss, clearItd: it.ID, clearRoot: repoRoot}, nil
-	}
-	return owedPreview{}, nil
+	// A passing verdict clears the flag when the receipt carries one, and
+	// sweeps the open carriers of its check either way: an ingest that filed
+	// a carrier and then failed to write the intent left one on an unflagged
+	// receipt, and it must not outlive the check it carries.
+	iss, _ := flaggedIssue(content, rcp)
+	return owedPreview{clearRcp: rcp, clearIss: iss, clearItd: it.ID, clearRoot: repoRoot}, nil
 }
 
 // askAuditLedger files the owed check or resolves the cleared one, with the
@@ -992,10 +994,14 @@ func askAuditLedger(repoRoot string, pv owedPreview) (auditLedgerOutcome, error)
 				"nothing was written, and ingesting the verdict again retries", pv.owed.IntentID, err)
 		}
 		return auditLedgerOutcome{issue: f.IssueID, linked: f.Linked}, nil
-	case pv.clearIss != "" && auditOwedClearer != nil:
+	case pv.clearRcp != "" && auditOwedClearer != nil:
 		if err := auditOwedClearer(AuditCleared{RepoRoot: repoRoot, IntentID: pv.clearItd, ReceiptID: pv.clearRcp, IssueID: pv.clearIss}); err != nil {
-			return auditLedgerOutcome{}, fmt.Errorf("intent: the audit of %s passes and %s, which carries its owed check, could not be resolved: %w; "+
-				"nothing was written, and ingesting the verdict again retries", pv.clearItd, pv.clearIss, err)
+			what := "an open issue carrying its owed check"
+			if pv.clearIss != "" {
+				what = pv.clearIss + ", which carries its owed check,"
+			}
+			return auditLedgerOutcome{}, fmt.Errorf("intent: the audit of %s passes and %s could not be resolved: %w; "+
+				"nothing was written, and ingesting the verdict again retries", pv.clearItd, what, err)
 		}
 		return auditLedgerOutcome{cleared: pv.clearIss}, nil
 	}

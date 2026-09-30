@@ -107,17 +107,19 @@ func auditOwedRequest(o intent.AuditOwed) CaptureRequest {
 	}
 }
 
-// clearAuditOwed resolves every open issue carrying the owed check a passing
-// re-audit cleared: the one the flag names and any other carrier of the same
-// receipt a race or a failed intent write left open, so none outlives the
-// flag. An issue no longer open (resolved or declined by hand, or by a
-// concurrent re-run) is left as it stands.
+// clearAuditOwed resolves every open issue carrying the owed check of a
+// receipt a passing audit judged: the one the flag names, when the receipt
+// carries a flag, and any other carrier of the same receipt a race or a failed
+// intent write left open, flag or no flag, so none outlives the check it
+// carries. One List of the open ledger finds them. An issue no longer open
+// (resolved or declined by hand, or by a concurrent re-run) is left as it
+// stands.
 func clearAuditOwed(c intent.AuditCleared) error {
 	carriers, err := openOwedCarriers(c.RepoRoot, c.IntentID, c.ReceiptID)
 	if err != nil {
 		return err
 	}
-	if !contains(carriers, c.IssueID) {
+	if c.IssueID != "" && !contains(carriers, c.IssueID) {
 		open, err := isOpenIssue(c.RepoRoot, c.IssueID)
 		if err != nil {
 			return err

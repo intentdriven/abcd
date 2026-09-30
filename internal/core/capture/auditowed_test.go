@@ -287,3 +287,19 @@ func TestAPassingReAuditResolvesEveryOpenCarrier(t *testing.T) {
 		t.Fatalf("a passing re-audit must resolve every open carrier: %+v, open %+v", res, open)
 	}
 }
+
+// TestAPassingAuditResolvesAnOrphanCarrierOfAnUnflaggedReceipt: an ingest whose
+// intent write failed after its filing leaves an open carrier while the
+// receipt carries no flag. A passing audit of that receipt sweeps the open
+// carriers of its check all the same, so the orphan does not outlive it.
+func TestAPassingAuditResolvesAnOrphanCarrierOfAnUnflaggedReceipt(t *testing.T) {
+	root, rcp := auditOwedRepo(t)
+	orphanCarriers(t, root, rcp, "iss-9912312359590001")
+	res, err := intent.IngestVerdictBytes(root, auditVerdict(t, root, rcp, "MET"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if open := openIssues(t, root); len(open) != 0 {
+		t.Fatalf("a passing audit must resolve the orphan carrier of its receipt: %+v, open %+v", res, open)
+	}
+}
