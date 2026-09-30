@@ -26,16 +26,12 @@ internal/core/credential.KeychainItem
 internal/core/credential.Machine
 internal/core/credential.Set
 internal/core/credential.SetMachine
-internal/core/glossary.RenderIndex
-internal/core/glossary.RenderLayout
 internal/core/glossary.Scan
-internal/core/grounds.ParseToken
 internal/core/guard.Defaults
 internal/core/guard.Load
 internal/core/guard.Merge
 internal/core/guard.Validate
 internal/core/history.DefaultConfig
-internal/core/identity.EffectiveCommitter
 internal/core/identity.LoadPin
 internal/core/implement.LoadResultFromEvent
 internal/core/implement.ReadingCorpus
