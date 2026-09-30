@@ -77,8 +77,8 @@ type RecordVerdict struct {
 	Return string `json:"return"`
 }
 
-// RecordOf renders a run's state as its record.
-func RecordOf(st State) RunRecord {
+// recordOf renders a run's state as its record.
+func recordOf(st State) RunRecord {
 	rec := RunRecord{RunID: st.RunID, Key: st.Key, Intent: st.Intent, Spec: st.Spec, Driver: st.Driver,
 		Complete: st.Complete(), CreatedAt: st.CreatedAt, UpdatedAt: st.UpdatedAt, Pace: st.Pace,
 		Lanes: []RecordLane{}, Pending: st.Pending, Transcripts: st.Transcripts, Record: st.Record}
@@ -121,7 +121,7 @@ func ReadRecord(repoRoot, runID string) (RunRecord, error) {
 	if err != nil {
 		return RunRecord{}, err
 	}
-	return RecordOf(st), nil
+	return recordOf(st), nil
 }
 
 // LatestRun names the run a record read addresses when none is named: the one
@@ -206,7 +206,7 @@ func CaptureTranscripts(repoRoot, runID string, paths []string, capture Transcri
 		if changed {
 			st.UpdatedAt = now
 		}
-		rec = RecordOf(*st)
+		rec = recordOf(*st)
 		return changed, nil
 	})
 	if err != nil {

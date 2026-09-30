@@ -48,7 +48,6 @@ internal/core/implement/loop.ValidLaneID
 internal/core/implement/loop.ValidRunID
 internal/core/intent.CreateFromText
 internal/core/intent.DuplicateConditionIDs
-internal/core/intent.IngestVerdict
 internal/core/intent.IsClaimPrompt
 internal/core/intent.MalformedMarkerOrdinals
 internal/core/intent.MultiplyMarkedConditions
