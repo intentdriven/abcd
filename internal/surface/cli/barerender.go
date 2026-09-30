@@ -20,8 +20,8 @@ var bareRenderExceptions = map[string]string{
 	"disembark": "a parent of stage sub-verbs that each act on a named repository or " +
 		"lifeboat; with no operand there is no state to render, so bare prints its sub-verbs",
 	"drain": "bare is the run itself, which is not built, so bare refuses to start " +
-		"(exit 2) naming the missing lane and writes nothing; what a drain would do " +
-		"renders with --dry-run",
+		"(exit 2) naming the missing lane, or the repository's missing eligibility record, " +
+		"and writes nothing; what a drain would do renders with --dry-run",
 	"docs": "a parent holding the citation-baseline writer alone; the documentation's " +
 		"state is `abcd lint docs`, so bare prints its sub-verb",
 	"embark": "a parent whose sub-verbs act on a named lifeboat; with no operand there " +

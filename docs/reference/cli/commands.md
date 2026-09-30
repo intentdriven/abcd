@@ -872,26 +872,31 @@ This is the only abcd verb that reaches the network on behalf of documentation. 
 
 ### `abcd drain`
 
-Sort the open issues by the drain's field rule, eligible first in drain order: Writes nothing; refuses to start without --dry-run, as the run is not built.
+Sort open issues by this repository's own drain rule, naming each loosened floor: Writes nothing; refuses without the rule's record, or without --dry-run.
 
 **Usage:** `abcd drain [flags]`
 
 Work the open issue ledger unattended: fix the issues that need no decision, and
-hand the rest back by kind. The rule for which issues need no decision is a
-recorded decision, and it reads the record's fields alone: nothing open in
-blocked_by; a category in the fixable set (tech-debt, documentation,
-inconsistency, drift, bug, ux); severity nitpick or minor; and a remedy: field.
-A security issue is always a person's. Every other open issue is handed back,
-listed as ineligible, or skipped naming its blocker, by the rule that excluded it.
+hand the rest back by kind. Which issues need no decision is this repository's own
+recorded decision: an accepted decision record whose frontmatter carries the four
+fields drain_categories, drain_severities, drain_security and drain_remedy. The
+rule reads the record's fields alone: nothing open in blocked_by; a category the
+rule takes; a severity it takes; and a remedy: field. abcd's strict baseline takes
+tech-debt, documentation, inconsistency, drift, bug and ux at nitpick or minor, and
+hands every security issue to a person. A repository's record may loosen those
+floors (major, critical, security), and every floor it loosens is named. An issue
+whose remedy opens "Waits on", or whose deferral past the current release tag is
+live, is always handed back. Every other open issue is handed back, listed as
+ineligible, or skipped naming its blocker, by the rule that excluded it.
 
 --dry-run shows every open issue's disposition, the eligible ones first in the
-order a drain takes them (category tech-debt, documentation, inconsistency,
-drift, bug, ux; then nitpick before minor; then oldest first), and writes
-nothing. The host judgement over each eligible remedy does not run in a dry
+order a drain takes them (by category, then severity, then oldest first), and
+writes nothing. The host judgement over each eligible remedy does not run in a dry
 run; it can only ever hand an issue back.
 
-The run itself is not built: without --dry-run the verb refuses to start, and
-exits 2 with nothing read or written.
+Without the repository's record, the dry run and the run both refuse (exit 2),
+naming how to add it; `abcd ahoy install` offers it. The run itself is not built:
+without --dry-run the verb refuses to start, and exits 2 with nothing written.
 
 **Flags:**
 

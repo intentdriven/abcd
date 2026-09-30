@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/capture"
+	"github.com/intentdriven/abcd/internal/core/drainrule"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/lint"
 	"github.com/intentdriven/abcd/internal/gittest"
@@ -811,6 +812,17 @@ func TestAPromotedReportIsIneligibleForADrain(t *testing.T) {
 	}
 	if !strings.Contains(string(body), "Remedy the reporter proposes: accept a leading digit") {
 		t.Errorf("the body lacks the sender's remedy:\n%s", body)
+	}
+	// The drain reads the checkout's own eligibility record (ruling BX2): the
+	// baseline, as the setup offer writes it.
+	adrs := filepath.Join(ledger.Root(), filepath.FromSlash(drainrule.ADRsRelDir))
+	if err := os.MkdirAll(adrs, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	rule := "---\nid: adr-2609300000000003\nslug: drain-rule\nstatus: accepted\ndate: 2026-09-30\n" +
+		drainrule.ProposalFrontmatter() + "---\n\n# ADR\n"
+	if err := os.WriteFile(filepath.Join(adrs, "2609300000000003-drain-rule.md"), []byte(rule), 0o644); err != nil {
+		t.Fatal(err)
 	}
 	plan, err := capture.PlanDrain(capture.DrainPlanRequest{RepoRoot: ledger.Root()})
 	if err != nil {
