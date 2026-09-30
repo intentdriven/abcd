@@ -195,13 +195,15 @@ func TestAHarnessOthersCanWriteIsRefused(t *testing.T) {
 
 // TestAHarnessOnlyTheAdministratorGroupCanWriteIsAdmitted: a directory PATH
 // reaches a harness through that is group-writable, never other-writable, and
-// whose group is the system administrator group (gid 0, or gid 80 "admin" on
-// darwin: the Homebrew /opt/homebrew/bin shape) is admitted, since members of
-// that group can already act as root. Any other group, and any other-writable
-// directory whatever its group, is still refused.
+// whose group is darwin's admin group (gid 80: the Homebrew /opt/homebrew/bin
+// shape) is admitted on darwin, since members of that group can sudo by
+// default. gid 0 is refused on every OS (being in Linux's root group or
+// darwin's wheel does not by itself let a member act as root), gid 80 is
+// refused off darwin, and any other-writable directory is refused whatever
+// its group.
 func TestAHarnessOnlyTheAdministratorGroupCanWriteIsAdmitted(t *testing.T) {
-	admin := []uint32{0}
-	nonAdmin := []uint32{20, 1000}
+	var admin []uint32
+	nonAdmin := []uint32{0, 20, 1000}
 	if runtime.GOOS == "darwin" {
 		admin = append(admin, 80)
 	} else {
@@ -227,6 +229,8 @@ func TestAHarnessOnlyTheAdministratorGroupCanWriteIsAdmitted(t *testing.T) {
 				t.Fatal("the harness was not launched")
 			}
 		})
+	}
+	for _, gid := range []uint32{0, 80} {
 		t.Run("0777 gid "+strconv.Itoa(int(gid))+" refuses", func(t *testing.T) {
 			f := newFake(t, "ok", Claude)
 			if err := os.Chmod(f.bin, 0o777); err != nil {

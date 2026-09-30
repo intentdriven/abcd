@@ -7,10 +7,10 @@ package runner
 //     travels as one argument behind the end-of-options marker;
 //   - the binary is resolved on PATH by its fixed name and refused when it is
 //     not absolute, when other can write it or its directory, when a group
-//     other than the system administrator group can write either, or when
-//     it resolves inside the repository the role runs in, or the
-//     checkout a lane's worktree belongs to, lexically or through a symlink (a
-//     PATH entry into either is repository content, never run);
+//     other than darwin's admin group (gid 80, on darwin only) can write
+//     either, or when it resolves inside the repository the role runs in, or
+//     the checkout a lane's worktree belongs to, lexically or through a
+//     symlink (a PATH entry into either is repository content, never run);
 //   - the environment is the parent's with every git repository-selection and
 //     config-injection variable scrubbed (gitutil.ScrubbedEnv), so an inherited
 //     GIT_DIR cannot aim the role's git at another repository, while the
@@ -120,14 +120,15 @@ func (l launcher) admit(runner, name string, repos ...string) (string, error) {
 }
 
 // adminGroupWritableOnly reports whether fi's only write bit beyond its
-// owner's is the group's, and that group is the system administrator group:
-// gid 0 (root, or wheel on darwin) anywhere, and gid 80 (admin) on darwin.
-// Homebrew installs /opt/homebrew/bin as root- or user-owned, group admin,
-// mode 0775, so a harness installed through it is reached through a
-// group-writable directory. Members of the administrator group can already
-// act as root, so that write grants them nothing they do not hold, and the
-// directory is admitted. Other-writable is never admitted, whatever the
-// group, and neither is any other group, nor a group that cannot be read.
+// owner's is the group's, and that group is darwin's admin group (gid 80),
+// on darwin only. Homebrew installs /opt/homebrew/bin as root- or
+// user-owned, group admin, mode 0775, so a harness installed through it is
+// reached through a group-writable directory. Members of darwin's admin
+// group can sudo by default, so that write grants them nothing they do not
+// hold, and the directory is admitted. gid 0 is never admitted: being in
+// Linux's root group, or darwin's wheel, does not by itself let a member act
+// as root. Other-writable is never admitted, whatever the group, and neither
+// is any other group, gid 80 off darwin, nor a group that cannot be read.
 func adminGroupWritableOnly(fi os.FileInfo) bool {
 	if fi.Mode().Perm()&0o002 != 0 {
 		return false
@@ -136,7 +137,7 @@ func adminGroupWritableOnly(fi os.FileInfo) bool {
 	if !ok {
 		return false
 	}
-	return gid == 0 || (runtime.GOOS == "darwin" && gid == 80)
+	return runtime.GOOS == "darwin" && gid == 80
 }
 
 // fileGroup reads the owning group of a stat result; ok is false when the
