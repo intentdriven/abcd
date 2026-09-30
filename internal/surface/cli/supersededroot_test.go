@@ -120,6 +120,31 @@ func TestVersionSaysNothingWhenTheBinaryIsInNoPluginRoot(t *testing.T) {
 	}
 }
 
+// TestVersionSaysNothingWhenTheExecutableIsUnknown: when the running binary's
+// path cannot be read, there is nothing to compare, so the report says
+// nothing. Whatever path the lookup hands back beside its error is not
+// trusted either: a relative one would be resolved against the working
+// directory, and standing inside another plugin root that walk would name a
+// root the binary does not sit in.
+func TestVersionSaysNothingWhenTheExecutableIsUnknown(t *testing.T) {
+	for label, returned := range map[string]string{
+		"no path":                   "",
+		"a relative path and error": filepath.Join("..", "abcd"),
+	} {
+		t.Run(label, func(t *testing.T) {
+			superseded, _ := twoRoots(t)
+			saved := osExecutable
+			t.Cleanup(func() { osExecutable = saved })
+			osExecutable = func() (string, error) { return returned, os.ErrNotExist }
+			t.Chdir(filepath.Join(superseded, "hooks"))
+			got := decodeVersion(t)
+			if note, ok := got["superseded_root"]; ok {
+				t.Errorf("an unknown executable must say nothing, and never walk from the working directory; got %v", note)
+			}
+		})
+	}
+}
+
 // TestAhoyNamesASupersededPluginRoot is the sibling surface: bare `abcd ahoy` renders
 // the same vintage and staleness pair through the same comparator, so the same
 // superseded root produces the same confident wrong answer there.
