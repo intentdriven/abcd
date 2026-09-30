@@ -137,6 +137,44 @@ func TestStartBlockedRowFollowsASupersededBlockerToItsReplacement(t *testing.T) 
 	}
 }
 
+// TestStartBlockedRowRefusesADecisionIdTwoFilesClaim: a supersession chain
+// ending at a decision whose id two files in the decision store claim is not
+// settled by whichever file the scan reads first. One file says accepted and
+// the other proposed, so the standing of the decision is ambiguous, and the
+// blocked check refuses naming the decision rather than settling the edge on
+// the accepted copy.
+func TestStartBlockedRowRefusesADecisionIdTwoFilesClaim(t *testing.T) {
+	// At this head the store's lookup (recordid.LookupOne) keeps the first file
+	// in scan order, so the accepted copy, which sorts first, settles the edge:
+	// the check settles first-wins rather than refusing. Watched: without this
+	// skip the test fails with OK=true and "itd-27 → adr-37 (accepted)". The
+	// uniqueness of an ADR id is made a refusal by lane adrIdUnique
+	// (fix/lint-adr-id-unique f6cd7b2d7), which lands later; it lifts this skip.
+	t.Skip("first-wins at this head: an ADR id two files claim is refused once lane adrIdUnique (fix/lint-adr-id-unique f6cd7b2d7) lands")
+	root := t.TempDir()
+	writeFile(t, root, filepath.Join(IntentsRelDir, BucketSuperseded, "itd-27-rec-27.md"), blockerRecord("itd-27", "adr-37"))
+	for name, status := range map[string]string{
+		"0037-a-first-copy.md":  "accepted",
+		"0037-b-second-copy.md": "proposed",
+	} {
+		writeFile(t, root, filepath.Join(filepath.FromSlash(decide.ADRsRelDir), name), adrRecord("adr-37", status))
+	}
+	corpus, err := Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	row, err := startBlockedRow(root, corpus, "itd-10", "---\nid: itd-10\nblocked_by: [itd-27]\n---\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row.OK {
+		t.Fatalf("a decision id two files claim must refuse, not settle on the first file read: %+v", row)
+	}
+	if !strings.Contains(row.Detail, "adr-37") {
+		t.Errorf("the refusal must name the decision: %q", row.Detail)
+	}
+}
+
 // TestStartBlockedRowKeepsAPlainUnshippedBlocker holds the unchanged half: a
 // blocker that was not superseded blocks until it ships, and one this checkout
 // does not hold blocks too.
