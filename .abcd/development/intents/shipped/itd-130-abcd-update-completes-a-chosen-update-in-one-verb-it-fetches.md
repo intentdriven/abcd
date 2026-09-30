@@ -377,3 +377,6 @@ Gap audit:
   - The CA-canary assertion spc-32 promised ('asserted via a canary file whose read would be observable') — the tests assert the env is unset, not that a planted CA file is never read
     evidence: .abcd/development/specs/closed/spc-32-abcd-update-completes-a-chosen-update-in-one-verb-it-fetches.md:78 — "asserted via a canary file whose read would be observable"
     evidence: internal/core/update/update_test.go:396 — "fetcher := envRecordingFetcher{onCall: func() {"
+<!-- abcd-review-end receipt=rcp-264f7b144576 -->
+
+Criterion 9 read on 2026-09-30, recorded as iss-2609300015353414 under ruling H10: it is met as stdout carrying only the receipt in every mode, with download progress written to stderr and only when stderr is a terminal, so a piped or hooked run shows no progress. That is the gate the verb shipped with, keyed on the stream the progress is written to, as spc-32 words its test ("stdout carries only the receipt"); TestUpdatePipedPrintsNoProgress pins it. The criterion text above stands as shipped.

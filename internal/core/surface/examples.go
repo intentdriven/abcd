@@ -28,6 +28,7 @@ var examples = map[string]string{
 	"abcd capture disposition": `abcd capture disposition rdi-2609010000000001 --state accepted --grounds "pursued: the tension is real and the next reading will show it again"`,
 	"abcd capture link":        "abcd capture link iss-2609010000000001 --blocked-by iss-2609010000000002",
 	"abcd capture promote":     "abcd capture promote iss-2609010000000001",
+	"abcd capture remedy":      `abcd capture remedy iss-2609010000000001 "make the map before the first write"`,
 	"abcd capture reframe":     `abcd capture reframe --occasioned-by rdi-2609010000000001 --grounds "the reading showed the construal assumed a single operator" --open`,
 	"abcd capture resolve":     `abcd capture resolve iss-2609010000000001 "fixed by the parser change" --impact fix`,
 	"abcd capture surprise":    `abcd capture surprise --occasioned-by rdi-2609010000000001 "the proposal nobody expected ranked first"`,

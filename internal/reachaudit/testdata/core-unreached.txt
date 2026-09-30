@@ -32,7 +32,6 @@ internal/core/glossary.RenderIndex
 internal/core/glossary.RenderLayout
 internal/core/glossary.Scan
 internal/core/grounds.ParseToken
-internal/core/guard.Defaults
 internal/core/guard.Load
 internal/core/guard.Merge
 internal/core/guard.Validate

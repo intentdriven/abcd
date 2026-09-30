@@ -72,6 +72,21 @@ the same line tripped, so a command hazardous in two ways reports both rather
 than only the first; the rendered form says the same thing on an `also matched:`
 line.
 
+## Taught before it is refused
+
+The same registry drives a second plane that needs no hook at all. The rules
+loader bundles a `SHELL` domain generated from the registry: one rule per entry,
+carrying the command it matches, whether the guard refuses or warns, the why and
+the safe successor, recalled by the commands the registry names (`rm`,
+`git push`, `pkill`, …) and by shell work in general. A prompt about shell-heavy
+work injects those rules before the agent acts, so a host without hook support is
+still taught the safe form and a host with hooks is taught it before the guard
+would have to refuse. An entry added to the registry is taught and enforced from
+the same release, with no second edit. The domain is built from the bundled
+registry, not from a repo's `.abcd/guard.json`; how the domain is recalled,
+overridden and silenced is the rules loader's
+([`05-internals/03-configuration.md`](../05-internals/03-configuration.md)).
+
 ## The question gate
 
 The hook also answers for the host's question tool (itd-2609212130146198), and

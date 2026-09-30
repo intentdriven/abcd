@@ -6,7 +6,12 @@ for the major crossings: an intent leaving `drafts/` for `planned/`, an ADR
 moving to `accepted`, a plan before execution begins. Artefacts below that
 line — ledger captures, comments, routine pull requests — are never blocked
 on adversarial review: the friction would cost more than the errors it
-catches, and capture in particular must stay frictionless.
+catches, and capture in particular must stay light. Light is not zero: every
+new issue names the remedy it proposes (ruling BX3 of 2026-09-29, recorded in
+the decision log), which supersedes an earlier reading of this principle as
+"frictionless" — the one line of remedy is required because a machine working
+the ledger reads it, and it is still no review. An automatic filer with no fix
+writes `none (filed automatically)` rather than being refused.
 
 **Why.** Both halves are load-bearing, and both are empirical. The 2026-08-19
 itd-92 extension went to two independent adversarial reviewers before its

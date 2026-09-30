@@ -52,7 +52,7 @@ answer, or which supply regime its output is checked against.
 
 Do not use it for a review [oracle](oracle.md) or for one of the intent auditor's roles: those
 judge a specific artefact against its own claims. Do not use bare "position" in a document that
-also discusses phases, scope or surfaces.
+also discusses steps, scope or surfaces.
 
 ## Examples
 

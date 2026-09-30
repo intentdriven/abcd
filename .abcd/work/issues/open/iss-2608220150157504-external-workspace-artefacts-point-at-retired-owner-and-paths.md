@@ -9,6 +9,11 @@ found_during: "abcdev-site-plan investigation 2026-08-21"
 found_at: "external project workspace assets"
 deferred_after: "v0.11.1"
 deferral_reason: "ruling owed to the product thinker (renewed by run A 2026-09-29 after the v0.10.0 grant lapsed at the v0.11.0 anchor): Will you update the retired owner name and landing asset links in the external workspace, or close as outside this repo?"
+remedy: "Waits on the external-workspace ruling (rulings-owed K): if updated: the person edits the workspace description to the intentdriven owner and repoints the landing asset's links to their current homes (docs/reference/cli/commands.md, and docs/explanation/roles.md for the facilitator page), then resolves citing the edit; if closed: wontfix it as outside this tree, since no in-repo detector can arm on it."
 ---
 
 Two external artefacts point at retired names and paths: the project workspace description names the repository under its pre-transfer owner, and the July landing-page asset links that owner and docs paths that no longer exist (docs/reference/commands.md, docs/reference/facilitator.md). Neither is in this tree, so no in-repo detector can arm; fixing them is a maintainer act in the external workspace
+
+## Remedy grounds (2026-09-29)
+
+Both artefacts live outside the tree, so the only in-repo acts are resolving on a person's edit or closing; the current paths were read at this base. Rejected: a link checker over the external asset, which would read a location the repository does not own.

@@ -9,6 +9,7 @@ found_during: "autonomous-run-2026-09-01"
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/work/issues"
+remedy: "Waits on the M20 interview for itd-2609091034175565: the same-account half is built (abcd implement claim with a lease, and abcd peers), so if the claim's stop may stay within one account's machine-scoped run state, resolve this record against those and move the draft's pushed claim to wontfix; if it must reach other machines, build the pushed claim stamp with a lease after the two-release schema migration the draft names, plus itd-2609091416304128's capture resolve refusal against origin/main. Prove the remote form with a test that a second session's claim of a leased record is refused and a lapsed lease is claimable."
 related_intents: [itd-2609091416295622, itd-2609091416304128, itd-2609091034175565]
 deferred_after: v0.11.1
 deferral_reason: "Promoted to itd-2609091034175565 (draft), and a promoted issue keeps its folder until the intent ships. The product thinker's ruling M20 of 2026-09-23 plans it next cycle; the interview answers the draft's open questions. Owed: that interview, which opens on one question: where does the claim signal's stop sit, and how is an abandoned claim told from a live one?"
@@ -37,3 +38,9 @@ in the same checkout; what it cannot see is a record on another worktree.
 ## Deferral 2026-09-29
 
 Deferred past v0.11.1: Promoted to itd-2609091034175565 (draft), and a promoted issue keeps its folder until the intent ships. The product thinker's ruling M20 of 2026-09-23 plans it next cycle; the interview answers the draft's open questions. Owed: that interview, which opens on one question: where does the claim signal's stop sit, and how is an abandoned claim told from a live one?
+
+## Remedy grounds (2026-09-29)
+
+- itd-2609221656373558 (shipped) answers how an abandoned claim is told from a live one inside one account: a lease that lapses and is logged; itd-2609091416295622 (shipped) is the sibling-worktree listing.
+- The open question is only whether the stop must reach other machines, where the 2026-09-09 ruling in .abcd/work/DECISIONS.md prices the pushed claim at a merge-queue pass per claim.
+- Rejected: a lock file in the tree, which the record refuses as a primitive that rots.

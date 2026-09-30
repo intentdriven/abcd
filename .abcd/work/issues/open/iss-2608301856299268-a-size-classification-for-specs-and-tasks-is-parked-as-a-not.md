@@ -9,8 +9,9 @@ found_during: "phase-boundary-parking"
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/research/notes"
+related_intents: [itd-2609292107351737]
 deferred_after: "v0.11.1"
-deferral_reason: "ruling owed to the product thinker (away; run A 2026-09-25; rulings-owed J): File or reject spec/task size classification, decided with token metering?"
+deferral_reason: "The product thinker's ruling J3 of 2026-09-29: plan the size classes and token metering as one intent. Filed as draft itd-2609292107351737, which also plans iss-2608301744251874 and iss-2608220150157508. Owed: that draft's planning interview (the draft stays in drafts/ until a person plans it)."
 ---
 
 a size classification for specs and tasks is parked as a note and owes a design and filing decision in a future session

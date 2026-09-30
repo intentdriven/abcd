@@ -29,7 +29,7 @@ type backtickScanner struct {
 // changes its count and fails until a reviewer reads the new reason. The
 // default for a file this test names is to pair through PairCodeSpan.
 var backtickScanners = map[string]backtickScanner{
-	"internal/adapter/scanner/identity.go":        {1, "a delimiter set: a backtick is one of the characters that may end an identity token; nothing is paired"},
+	"internal/adapter/scanner/identity.go":        {2, "two delimiter sets: a backtick is one of the characters that may end an identity token, and one of those that bounds the path token an owner slug is judged in; nothing is paired"},
 	"internal/core/capture/promote.go":            {1, "a WRITER: codeSpan measures the longest backtick run to choose a fence the value cannot close; nothing is paired"},
 	"internal/core/guard/tokenize.go":             {23, "the shell tokenizer: a backtick there is command substitution, a shell grammar, not markdown"},
 	"internal/core/guard/unknown.go":              {1, "spellAlternative spells an alternative's shell word: a backtick there opens a command substitution, which leaves the word unspelled; nothing is paired"},

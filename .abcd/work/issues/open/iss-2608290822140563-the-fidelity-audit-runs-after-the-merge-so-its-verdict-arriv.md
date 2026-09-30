@@ -7,6 +7,7 @@ category: "process"
 source: "user-observation"
 found_during: "intent-implementation-run"
 found_at: "internal/core/intent/audit.go"
+remedy: "Waits on itd-165's planning interview: then file the reorder intent so intent audit emit accepts a candidate (a planned intent on its branch) and binds the verdict to a content hash of the tree it judged, the merge gate reads that pre-merge verdict with a human acknowledgement as the gate, and a post-merge step compares the landed tree's hash and reopens the receipt only on a mismatch. Prove it with a test that emit accepts a planned intent, and one that a hash mismatch after the merge reopens the receipt."
 deferred_after: v0.11.1
 deferral_reason: "The direction is settled (adr-2609151528057260: the audit is the stop, so it belongs before the merge), and the work waits on itd-165 (draft): a pre-merge gate tuned before a corpus of real audit verdicts exists would baseline nothing. Owed: itd-165's planning interview, then an intent for the reorder with the post-merge content-hash check; filing both needs the product thinker's adoption."
 ---
@@ -18,3 +19,9 @@ Reframed 2026-08-29 under adr-55: the agents run autonomously and stop only to o
 ## Deferral 2026-09-29
 
 Deferred past v0.11.1: The direction is settled (adr-2609151528057260: the audit is the stop, so it belongs before the merge), and the work waits on itd-165 (draft): a pre-merge gate tuned before a corpus of real audit verdicts exists would baseline nothing. Owed: itd-165's planning interview, then an intent for the reorder with the post-merge content-hash check; filing both needs the product thinker's adoption.
+
+## Remedy grounds (2026-09-29)
+
+- adr-2609151528057260 settles the direction (the audit is the stop, so it sits before the merge); the content-hash check answers the record's own objection that a branch is not the landed tree, at the cost of one comparison.
+- The emit still refuses any intent outside shipped/ (internal/core/intent/audit.go, the not-shipped refusal), so the reorder is unbuilt.
+- Rejected: a model verdict that blocks the merge on its own, which the record rules out.

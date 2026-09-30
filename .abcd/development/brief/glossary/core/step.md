@@ -15,7 +15,7 @@ versions: null
 
 # step
 
-A **step** is the unit below a spec (itd-2609212103565953): the spec's author lists them in order, each with its own footprint, and `abcd build` lands them one at a time, the next starting after the previous has merged. A step that does not fit a cut leaves the rest as the spec's remainder. The loop's own step interface (`abcd implement step`) uses the same word for the same thing: the next piece of the current spec.
+A **step** is the unit below a spec (itd-2609212103565953, planned): the spec's author lists them in order, each with its own footprint, and the build loop (`abcd build`) takes them one lane at a time, the spec's next pending step opening the next lane when a lane is done. A step that does not fit a cut leaves the rest as the spec's remainder. The loop's `abcd implement step` performs one move of the current lane (make its worktree, render its brief, hand it to an implementer; the validators and the landing are later pieces of the loop's own spec, spc-2609202134338445), so the word names both the spec's piece and the lane's move.
 
 ## When to use
 

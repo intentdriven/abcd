@@ -53,7 +53,7 @@ once. Human-paired (the §4 gate is manual by design).
 
 ## Workstream B — intent milestone
 
-- **[itd-111](../intents/planned/itd-111-a-stale-abcd-never-answers-silently-every-surface-that-runs.md)
+- **[itd-111](../intents/shipped/itd-111-a-stale-abcd-never-answers-silently-every-surface-that-runs.md)
   is planned (interview run 2026-08-15, spc-22, `intent ready` exit 0).**
   The interview ran the itd-84 decomposition (SPLIT: network posture →
   adr-38 + brief invariant 7) and the SOTA fit-challenge (path 2 UPHELD);

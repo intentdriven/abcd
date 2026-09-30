@@ -275,7 +275,8 @@ func harvestDoc(e Entry, intention string, findings []Finding, probes map[string
 	writeFindings("4. "+harvestSections[3], func(f Finding) bool { return f.Status != "worked" })
 
 	fmt.Fprintf(&b, "## 5. %s\n\n", harvestSections[4])
-	b.WriteString("Capture candidates (product findings). Each is filed through capture, found\nduring this lab, with the pin in its text; nothing here is filed by the harvest.\n\n")
+	b.WriteString("Capture candidates (product findings). Each is filed through capture, found\nduring this lab, with the pin in its text; nothing here is filed by the harvest.\n" +
+		"Each command needs `--remedy \"<the fix it proposes>\"` added before it runs: every new\nissue carries a remedy, and capture refuses one without it.\n\n")
 	if len(res.Candidates) == 0 {
 		b.WriteString("None.\n")
 	}

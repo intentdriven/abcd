@@ -41,7 +41,7 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 	// argument (or stdin with "-"/no arg), sanitise it through the scanner
 	// (two-stage, fail-closed), and store the record. This is the ONLY path that
 	// writes to the store; list/show never mutate.
-	var session, kind string
+	var session, kind, tool string
 	var captureAll bool
 	captureCmd := &cobra.Command{
 		Use: "capture [<transcript-file> | - | --session <id> --all <path>...]",
@@ -53,7 +53,7 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if captureAll {
-				return captureWholeSession(cmd, *asJSON, session, kind, args)
+				return captureWholeSession(cmd, *asJSON, session, kind, tool, args)
 			}
 			repoRoot, rootSHA, err := historyStore(cmd)
 			if err != nil {
@@ -79,7 +79,7 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 				return fmt.Errorf("history capture: --session <id> is required when reading from stdin")
 			}
 			res, err := history.Capture(repoRoot, rootSHA, raw,
-				history.CaptureMeta{SessionID: sess, Kind: orDefault(kind, "native")})
+				history.CaptureMeta{SessionID: sess, Kind: orDefault(kind, history.RouteNative), Tool: tool})
 			if err != nil {
 				return err
 			}
@@ -98,14 +98,15 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 						res.Record.SessionID, res.Record.Secrets, res.Record.HomePaths)
 					return
 				}
-				fmt.Fprintf(w, "abcd history capture — stored %s (%s)\n", res.Record.SessionID, res.Record.SourceKind)
+				fmt.Fprintf(w, "abcd history capture — stored %s (%s)\n", res.Record.SessionID, recordSource(res.Record))
 				fmt.Fprintf(w, "  path:     %s\n", termsafe.Sanitize(res.Record.Path))
 				fmt.Fprintf(w, "  redacted: secrets=%d home=%d\n", res.Record.Secrets, res.Record.HomePaths)
 			})
 		},
 	}
 	captureCmd.Flags().StringVar(&session, "session", "", "session id for the record (default: transcript filename; required for stdin)")
-	captureCmd.Flags().StringVar(&kind, "kind", "", "source kind: native | specstory-import (default native)")
+	captureCmd.Flags().StringVar(&kind, "kind", "", "source route: native (abcd's own capture of the host's transcript) | import (another tool's export) (default native)")
+	captureCmd.Flags().StringVar(&tool, "tool", "", "source tool: the tool that produced the transcript, a lowercase slug (default host on a native capture; required on an import)")
 	captureCmd.Flags().BoolVar(&captureAll, "all", false,
 		"capture every transcript of the --session named — its main thread and each sub-agent — found under the paths given (default: ingest_roots)")
 	historyCmd.AddCommand(captureCmd)
@@ -159,7 +160,7 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 				}
 				for _, r := range records {
 					fmt.Fprintf(w, "%s  %s  %s  redacted secrets=%d home=%d\n",
-						r.CapturedAt.Format("2006-01-02T15:04:05Z"), recordWho(r), termsafe.Sanitize(r.SourceKind), r.Secrets, r.HomePaths)
+						r.CapturedAt.Format("2006-01-02T15:04:05Z"), recordWho(r), recordSource(r), r.Secrets, r.HomePaths)
 				}
 				if listSession != "" {
 					fmt.Fprintf(w, "\n%d record(s) for session %s — the main thread first, then every sub-agent it spawned.\n",
@@ -445,7 +446,7 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 					fmt.Fprintf(w, "siblings:   abcd history list --session %s\n", termsafe.Sanitize(rec.SessionID))
 				}
 				fmt.Fprintf(w, "captured:   %s\n", rec.CapturedAt.Format("2006-01-02T15:04:05Z"))
-				fmt.Fprintf(w, "source:     %s\n", termsafe.Sanitize(rec.SourceKind))
+				fmt.Fprintf(w, "source:     %s\n", recordSource(rec))
 				fmt.Fprintf(w, "path:       %s\n", termsafe.Sanitize(rec.Path))
 				fmt.Fprintf(w, "redacted:   secrets=%d home=%d\n", rec.Secrets, rec.HomePaths)
 				fmt.Fprintln(w, "---")
@@ -522,12 +523,15 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 // them: the sources are the paths given, or the ingest_roots this repository
 // declares, exactly as for ingest. Placement is ingest's too, so a transcript of
 // the session that some other repository owns is reported, not stored here.
-func captureWholeSession(cmd *cobra.Command, asJSON bool, session, kind string, sources []string) error {
+func captureWholeSession(cmd *cobra.Command, asJSON bool, session, kind, tool string, sources []string) error {
 	if session == "" {
 		return fmt.Errorf("history capture: --all captures one named session; pass --session <id>")
 	}
 	if kind != "" && kind != "native" {
 		return fmt.Errorf("history capture: --all stores native transcripts only; --kind %s cannot apply", termsafe.Sanitize(kind))
+	}
+	if tool != "" {
+		return fmt.Errorf("history capture: --all stores the host's own transcripts; --tool %s cannot apply", termsafe.Sanitize(tool))
 	}
 	repoRoot, rootSHA, err := historyStore(cmd)
 	if err != nil {
@@ -573,6 +577,16 @@ func historyRecords(repoRoot, rootSHA, sessionID string) ([]history.Record, erro
 		return history.ListForSession(repoRoot, rootSHA, sessionID)
 	}
 	return history.List(repoRoot, rootSHA)
+}
+
+// recordSource renders where one record's transcript came from: the route it
+// reached the store by, then the tool that produced it. A record whose
+// frontmatter names no tool renders the route alone.
+func recordSource(r history.Record) string {
+	if r.SourceTool == "" {
+		return termsafe.Sanitize(r.SourceKind)
+	}
+	return termsafe.Sanitize(r.SourceKind) + " (" + termsafe.Sanitize(r.SourceTool) + ")"
 }
 
 // recordWho renders WHO produced one record: the session, and on a sub-agent's

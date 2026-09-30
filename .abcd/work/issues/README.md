@@ -141,9 +141,12 @@ issue's timeline; the ledger does not duplicate it.
 
 ## The capture verb
 
-`abcd capture "<text>"` appends a new issue to `open/`, minting a fresh
-timestamp-numeric `iss-N` (never "the next" one — the mint reads no maximum).
-Flags refine the frontmatter — `--severity`, `--category`, `--source`,
+`abcd capture "<text>" --remedy "<fix>"` appends a new issue to `open/`,
+minting a fresh timestamp-numeric `iss-N` (never "the next" one — the mint
+reads no maximum). `--remedy` is required: every new issue names the fix it
+proposes, and abcd's own automatic filers write `none (filed automatically)`
+when they have none, which a drain skips until a person writes a real one with
+`abcd capture remedy <iss-N> "<fix>"`. Flags refine the frontmatter — `--severity`, `--category`, `--source`,
 `--slug`, `--found-during`, `--found-at`, `--lapsed-at` (for `--category
 lapse`, and never defaulted; its refusal when omitted is parked by
 iss-2609091009111294), and `--blocked-by` (a comma-separated

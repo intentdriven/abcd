@@ -476,7 +476,7 @@
       "hidden": false,
       "group": "records",
       "block": "people",
-      "sentence": "File an issue from quoted text, or render the ledger's status bare: Writes one record under open/; refuses a lone word and any folder outside a checkout.",
+      "sentence": "File an issue from quoted text, or render the ledger's status bare: Writes one record under open/; refuses a missing --remedy, a lone word or no checkout.",
       "flags": [
         {
           "name": "blocked-by",
@@ -787,6 +787,12 @@
           "hidden": false
         }
       ]
+    },
+    {
+      "path": "abcd capture remedy",
+      "hidden": false,
+      "sentence": "Write or replace the fix an open issue proposes: Writes the issue's remedy; refuses an empty text, the automatic filers' value or an issue that is not open.",
+      "flags": []
     },
     {
       "path": "abcd capture resolve",
@@ -1205,6 +1211,13 @@
         },
         {
           "name": "session",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "tool",
           "shorthand": "",
           "type": "string",
           "required": false,
@@ -2165,6 +2178,13 @@
       "flags": [
         {
           "name": "confirm",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "dependency-reauthor",
           "shorthand": "",
           "type": "bool",
           "required": false,

@@ -123,7 +123,7 @@ func TestLedgerAncestorSymlinkRefused(t *testing.T) {
 				before := treeEntries(t, dest)
 				ir := filepath.Join(repo, LedgerRelPath)
 
-				_, err := Capture(CaptureRequest{
+				_, err := testCapture(CaptureRequest{
 					RepoRoot: repo, IssuesRoot: ir, Text: "b", Severity: SeverityMinor,
 					Category: "bug", Source: "manual-test", Slug: "s", FoundDuring: "t",
 				})
@@ -202,7 +202,7 @@ func lockStatusDir(t *testing.T, repo, ir, status string, mode os.FileMode) stri
 	}
 	var ids []string
 	for _, slug := range []string{"kept-open", "then-resolved"} {
-		res, err := Capture(CaptureRequest{RepoRoot: repo, IssuesRoot: ir, Text: "a finding", Severity: SeverityMinor,
+		res, err := testCapture(CaptureRequest{RepoRoot: repo, IssuesRoot: ir, Text: "a finding", Severity: SeverityMinor,
 			Category: "bug", Source: "manual-test", Slug: slug, FoundDuring: "t"})
 		if err != nil {
 			t.Fatal(err)
@@ -279,7 +279,7 @@ func TestAnUnreadableStatusDirectoryIsAFaultNotAnUnknownID(t *testing.T) {
 	t.Run("capture with open/ searchable but unreadable", func(t *testing.T) {
 		repo, ir := ledger(t)
 		lockStatusDir(t, repo, ir, "open", 0o300)
-		if res, err := Capture(CaptureRequest{RepoRoot: repo, IssuesRoot: ir, Text: "another", Severity: SeverityMinor,
+		if res, err := testCapture(CaptureRequest{RepoRoot: repo, IssuesRoot: ir, Text: "another", Severity: SeverityMinor,
 			Category: "bug", Source: "manual-test", Slug: "another", FoundDuring: "t"}); err == nil {
 			t.Fatalf("a capture minted %s into an open/ its sweep and occupancy check could not read", res.ID)
 		}

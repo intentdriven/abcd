@@ -715,6 +715,11 @@ The name-guard refused the merge three times.
 	if !strings.Contains(doc, res.Candidates[0].Command) {
 		t.Error("the harvest does not list the capture candidate's line")
 	}
+	// Every new issue carries a remedy (ruling BX3): the line omits it, since
+	// only the person filing knows the fix, and the harvest says to add it.
+	if !strings.Contains(doc, "--remedy") {
+		t.Error("the harvest does not say a capture candidate needs its --remedy")
+	}
 	if len(res.Amendments) != 1 || !strings.HasPrefix(res.Amendments[0], "F-2") {
 		t.Errorf("amendments = %v, want F-2", res.Amendments)
 	}

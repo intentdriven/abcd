@@ -328,23 +328,23 @@ progress or the run state is locked.
 
 ### `abcd capture`
 
-File an issue from quoted text, or render the ledger's status bare: Writes one record under open/; refuses a lone word and any folder outside a checkout.
+File an issue from quoted text, or render the ledger's status bare: Writes one record under open/; refuses a missing --remedy, a lone word or no checkout.
 
 **Usage:** `abcd capture [text] [flags]`
 
 **Flags:**
 
 ```
-      --blocked-by string        comma-separated iss-N ids this issue is blocked by; each must exist in the ledger — blocked_by is documented in .abcd/work/issues/README.md under "Derived priority" and in commands/capture.md under "Link"
-      --category string          issue category: bug | documentation | drift | inconsistency | tech-debt | security | ux | process | architectural-insight | future-work-seed | observation | lapse (default observation)
-      --found-at string          optional repo-relative path, which must exist in this checkout, or a conceptual location in words
-      --found-during string      session/command context (default manual-capture)
-      --lapsed-at string         RFC 3339 instant a discipline gave way (the lapse, not the write-up)
-      --production-mode string   how this record's text was produced: hand-written|dictated-and-formatted|scribe-transcribed (default: the repo's declared mode, else hand-written)
-      --remedy abcd drain        the proposed fix, one line; abcd drain takes no issue without one
-      --severity string          severity: nitpick | minor | major | critical (default minor)
-      --slug string              override the slug derived from the text
-      --source string            surfacing channel: plan-review | impl-review | manual-test | review-followup | agent-finding | agent-observation | user-observation | drift-detection | memory-curation | managed-repo (default user-observation)
+      --blocked-by string            comma-separated iss-N ids this issue is blocked by; each must exist in the ledger — blocked_by is documented in .abcd/work/issues/README.md under "Derived priority" and in commands/capture.md under "Link"
+      --category string              issue category: bug | documentation | drift | inconsistency | tech-debt | security | ux | process | architectural-insight | future-work-seed | observation | lapse (default observation)
+      --found-at string              optional repo-relative path, which must exist in this checkout, or a conceptual location in words
+      --found-during string          session/command context (default manual-capture)
+      --lapsed-at string             RFC 3339 instant a discipline gave way (the lapse, not the write-up)
+      --production-mode string       how this record's text was produced: hand-written|dictated-and-formatted|scribe-transcribed (default: the repo's declared mode, else hand-written)
+      --remedy abcd capture remedy   the proposed fix, one line (required); abcd capture remedy rewrites it later
+      --severity string              severity: nitpick | minor | major | critical (default minor)
+      --slug string                  override the slug derived from the text
+      --source string                surfacing channel: plan-review | impl-review | manual-test | review-followup | agent-finding | agent-observation | user-observation | drift-detection | memory-curation | managed-repo (default user-observation)
 ```
 
 #### `abcd capture admit`
@@ -505,6 +505,18 @@ Record a reframe a reading occasioned: Writes one rfm-N fingerprinting the frame
 
 ```
 abcd capture reframe --occasioned-by rdi-2609010000000001 --grounds "the reading showed the construal assumed a single operator" --open
+```
+
+#### `abcd capture remedy`
+
+Write or replace the fix an open issue proposes: Writes the issue's remedy; refuses an empty text, the automatic filers' value or an issue that is not open.
+
+**Usage:** `abcd capture remedy <iss-N> <text>`
+
+**Example:**
+
+```
+abcd capture remedy iss-2609010000000001 "make the map before the first write"
 ```
 
 #### `abcd capture resolve`
@@ -1171,8 +1183,9 @@ Redact and store a session transcript, or a whole session with --all: Writes one
 
 ```
       --all              capture every transcript of the --session named — its main thread and each sub-agent — found under the paths given (default: ingest_roots)
-      --kind string      source kind: native | specstory-import (default native)
+      --kind string      source route: native (abcd's own capture of the host's transcript) | import (another tool's export) (default native)
       --session string   session id for the record (default: transcript filename; required for stdin)
+      --tool string      source tool: the tool that produced the transcript, a lowercase slug (default host on a native capture; required on an import)
 ```
 
 #### `abcd history discard`
@@ -2242,12 +2255,13 @@ Run the release job's semantic-receipt gate locally, before the merge: Writes no
 
 Scaffold the release gate for the declared artefact kind: Writes its workflows and runbook; refuses an undeclared kind, or a hand-edited file without --confirm.
 
-**Usage:** `abcd launch scaffold [--confirm] [flags]`
+**Usage:** `abcd launch scaffold [--confirm] [--dependency-reauthor] [flags]`
 
 **Flags:**
 
 ```
-      --confirm   overwrite a hand-edited scaffolded file with the current machinery
+      --confirm               overwrite a hand-edited scaffolded file with the current machinery
+      --dependency-reauthor   opt in to re-authoring bot-opened dependency bumps as the repository owner (seeds .abcd/config/dependency-reauthor.conf)
 ```
 
 #### `abcd launch ship`
@@ -2603,11 +2617,17 @@ block and in the hook's diagnostic, and carries "source": "user" or "repo" in
 renders bare and carries "source": "bundled".
 
 A list an override sets replaces the bundled one, so an override can hold back
-an entry abcd ships. For the guardrail domains (COMMITTING, LOAD, PII), every
-bundled recall keyword, alias or rule that an override's list leaves out is
-named on stderr, with the file that set the list, here and on every hook
+an entry abcd ships. For the guardrail domains (COMMITTING, LOAD, PII, SHELL),
+every bundled recall keyword, alias or rule that an override's list leaves out
+is named on stderr, with the file that set the list, here and on every hook
 prompt. To keep an entry, restate it in the list, or leave the field out to
-inherit the bundled list. Read-only.
+inherit the bundled list.
+
+SHELL is generated from the bundled shell-hazard registry that "abcd guard"
+enforces: one rule per registry entry, naming the command, why it is dangerous
+and what to run instead, recalled by the commands the registry names. It
+teaches before shell work what the guard refuses at the moment a command runs.
+Read-only.
 
 ### `abcd scribe`
 

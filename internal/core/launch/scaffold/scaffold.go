@@ -88,6 +88,9 @@ type Report struct {
 	Refused  int           `json:"refused"`
 	// NoOp is true when every file was already current (the idempotent re-run).
 	NoOp bool `json:"no_op"`
+	// DependencyReauthor reports whether the repository is opted in to the
+	// dependency-bump re-authoring, by the flag or by its declaration.
+	DependencyReauthor bool `json:"dependency_reauthor"`
 }
 
 // Request is the input to a scaffold run.
@@ -97,6 +100,12 @@ type Request struct {
 	// transparent-confirm on a hand-edited workflow). Absent, such a file is
 	// refused and left untouched, and the run reports ErrScaffoldBlocked.
 	Confirm bool
+	// DependencyReauthor opts the repository in to the dependency-bump
+	// re-authoring (itd-2609221842494980): the run seeds the declaration at
+	// ReauthorConfPath when it is absent. A repository whose declaration exists
+	// is opted in whether or not this is set, so a later plain run keeps the
+	// workflow current; one with neither receives none of it.
+	DependencyReauthor bool
 }
 
 // Scaffold writes the changelog-driven release machinery into RepoRoot: a
@@ -172,6 +181,21 @@ func Scaffold(req Request) (Report, error) {
 		planned = append(planned,
 			PlannedFile{Path: RunbookPath, Data: rendered.Runbook},
 			PlannedFile{Path: CheckReviewsPath, Data: rendered.CheckReviews})
+	}
+	// The dependency-bump re-authoring is opt-in per repository: its
+	// declaration's presence, or the flag that seeds it. The declaration is a
+	// seed — the repository's owner and rows once written — while the workflow
+	// and its script are machinery, drift-checked like the release workflows.
+	optedIn := req.DependencyReauthor
+	if _, err := os.Lstat(filepath.Join(req.RepoRoot, ReauthorConfPath)); err == nil {
+		optedIn = true
+	}
+	if optedIn {
+		report.DependencyReauthor = true
+		planned = append(planned,
+			PlannedFile{Path: ReauthorConfPath, Data: rendered.ReauthorConf, Seed: true},
+			PlannedFile{Path: ReauthorYMLPath, Data: rendered.ReauthorYML},
+			PlannedFile{Path: subs.ReauthorScript(), Data: rendered.ReauthorScript})
 	}
 	outcomes, wrote, refused, err := WriteFiles(req.RepoRoot, planned, req.Confirm)
 	report.Files, report.Wrote, report.Refused = append(outcomes, kept...), wrote, refused

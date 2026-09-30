@@ -68,18 +68,27 @@ A prompt that matches no domain injects nothing (zero added tokens).
 ### Default domains
 
 `COMMITTING`, `DOCUMENTATION`, `ROADMAP`, `ISSUES`, `INTENTS`, `LIFEBOAT`, `PII`,
-`OPINIONS`, `LOAD`. Each carries recall keywords and its rules, bundled in the
-abcd binary; a repo overrides them per-field via `.abcd/rules.json`. `OPINIONS`
-points at the canonical conventions under `.abcd/development/principles/` rather
-than copying them. `LOAD` carries the trust rule for load experiments: one owned
-process group killed together through a re-checked handle and never by pattern,
-clean proven by what is running, and explicit consent with a cap below the core
-count on a live development machine.
+`OPINIONS`, `LOAD`, `SHELL`. Each carries recall keywords and its rules, bundled
+in the abcd binary; a repo overrides them per-field via `.abcd/rules.json`.
+`OPINIONS` points at the canonical conventions under
+`.abcd/development/principles/` rather than copying them. `LOAD` carries the
+trust rule for load experiments: one owned process group killed together through
+a re-checked handle and never by pattern, clean proven by what is running, and
+explicit consent with a cap below the core count on a live development machine.
+`SHELL` is the teaching half of the shell-hazard guard: it is generated from the
+same bundled hazard registry `abcd guard` enforces, one rule per entry (the
+command, why it is dangerous, and what to run instead), and recalls on the
+commands the registry names (`rm`, `git push`, `pkill`, …) and on shell work in
+general, so an agent is taught the safe form before a host with hooks would
+refuse the command and a host without hooks still teaches it.
 
 ### Reset triggers
 
 `SessionStart` and `PreCompact` clear the per-session dedup ledger, so a matched
 domain re-injects on the next prompt (the event-driven refresh that recovers
-after compaction). Within a session the hook does not re-inject unchanged rules.
+after compaction). Within a session a domain that stays in force is never
+re-injected unchanged; one that leaves the active set (deleted, renamed, made
+dormant, or a `*<DOMAIN>` activation the next prompt does not repeat) is
+injected again when it returns.
 
 For internals see `.abcd/development/brief/05-internals/03-configuration.md`.

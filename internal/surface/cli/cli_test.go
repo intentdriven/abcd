@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/gittest"
+	"github.com/spf13/cobra"
 )
 
 // TestVersionJSON proves the CLI -> core -> JSON round-trip the Phase 0 exit
@@ -713,6 +714,34 @@ func runCLIErr(t *testing.T, args ...string) ([]byte, error) {
 	return runCLIStdinErr(t, "", args...)
 }
 
+// cliTestRemedy is the remedy a test files with when the remedy is not what it
+// tests. Every new issue carries one (ruling BX3 of 2026-09-29), so the one
+// harness below defaults it rather than every `capture <text>` call naming one.
+const cliTestRemedy = "a remedy this test does not read"
+
+// withTestRemedy appends `--remedy cliTestRemedy` to a `capture <text>` call
+// that names no remedy: args whose first word is capture and whose second is
+// neither a sub-verb nor a help flag. A test of the remedy's own refusal runs
+// the CLI through another harness (runCLISplit), which adds nothing.
+func withTestRemedy(root *cobra.Command, args []string) []string {
+	if len(args) < 2 || args[0] != "capture" {
+		return args
+	}
+	for _, a := range args[1:] {
+		if a == "--remedy" || strings.HasPrefix(a, "--remedy=") || a == "--help" || a == "-h" {
+			return args
+		}
+	}
+	if capCmd, _, err := root.Find([]string{"capture"}); err == nil {
+		for _, sub := range capCmd.Commands() {
+			if sub.Name() == args[1] {
+				return args
+			}
+		}
+	}
+	return append(append([]string{}, args...), "--remedy", cliTestRemedy)
+}
+
 // runCLIStdinErr is the one harness the other three runners delegate to: stdin
 // bound, output captured, error returned rather than fataled. A gate whose
 // payload arrives on "-" needs both halves at once.
@@ -723,7 +752,7 @@ func runCLIStdinErr(t *testing.T, stdin string, args ...string) ([]byte, error) 
 	cmd.SetOut(&out)
 	cmd.SetErr(&out)
 	cmd.SetIn(strings.NewReader(stdin))
-	cmd.SetArgs(args)
+	cmd.SetArgs(withTestRemedy(cmd, args))
 	err := cmd.Execute()
 	return out.Bytes(), err
 }

@@ -9,6 +9,7 @@ found_during: "autonomous run A resumed 2026-09-25: lane drainG3"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/guard/unknown.go"
+remedy: "Waits on ruling AT: in internal/core/guard/unknown.go: if (a), read each of the four carried-value classes as its worst case and block; if (b), emit a Tier 2 warn for each and block none; if (c), block only a pid list a search printed into a variable and warn on the other three; if (d), list the four as named allows in the guard's brief chapter. Prove the choice with one adversarial corpus line per class at its ruled verdict and the 4,315-input false-positive sweep's new block and warn counts recorded against a ceiling test."
 deferred_after: v0.11.1
 deferral_reason: "lane drainG3 (run A, 2026-09-28) built the parameter-expansion reading of iss-2609251824244354 and measured it: reading a variable's carried value as a pid list, a stream path, shell text or a pkill/killall program name refuses ordinary commands (22 program-name and 15 stream blocks in the 4,315-input sweep), and leaving it unread keeps each spelling open; whether each class blocks, warns or allows is a product ruling not yet made, so these four classes, and only they, are carried past v0.11.1. The ruling is still owed: the product thinker has not ruled on any of the four classes since the v0.11.0 deferral, which lapsed when v0.11.1 was cut."
 ---
@@ -22,3 +23,9 @@ Deferred past v0.11.0: lane drainG3 (run A, 2026-09-28) built the parameter-expa
 ## Deferral 2026-09-29
 
 Deferred past v0.11.1: lane drainG3 (run A, 2026-09-28) built the parameter-expansion reading of iss-2609251824244354 and measured it: reading a variable's carried value as a pid list, a stream path, shell text or a pkill/killall program name refuses ordinary commands (22 program-name and 15 stream blocks in the 4,315-input sweep), and leaving it unread keeps each spelling open; whether each class blocks, warns or allows is a product ruling not yet made, so these four classes, and only they, are carried past v0.11.1. The ruling is still owed: the product thinker has not ruled on any of the four classes since the v0.11.0 deferral, which lapsed when v0.11.1 was cut.
+
+## Remedy grounds (2026-09-29)
+
+- Why: ruling AT sets out options (a) to (d) and is unanswered, so the remedy gives the change and proof for each without picking; the sweep counts on this record are the cost evidence the ruling needs.
+- Sources (consulted 2026-09-29): the Claude Code sandboxing documentation calls command rules and operating-system isolation 'complementary layers' (https://code.claude.com/docs/en/sandboxing): a static reading of a command line cannot know a variable's runtime value, so the field bounds what such a reading promises instead of chasing values.
+- Rejected: taint tracking across lines, which the per-line reader cannot do and no shell guard in the field claims to do.

@@ -101,8 +101,8 @@ rather than skipped:
       }
     },
     "denylist": ["openai/*"],            // extends the bundled vendor denylist; repo or machine
-    "roles": { "scribe": "openrouter/typesafe/jev-1.13" },            // an agent in the roster
-    "judgements": { "duplicate-match": "openrouter/typesafe/jev-1.13" } // a judgement type
+    "roles": { "scribe": "openrouter/typesafe/jev-1.13" },            // an agent in the roster; a keyed
+    "judgements": { "duplicate-match": "openrouter/typesafe/jev-1.13" } //   provider's routes: machine only
   }
 }
 ```
@@ -122,6 +122,17 @@ rather than skipped:
   a provider this machine has not configured is a diagnostic: the step stays on
   the host, as it would with nothing configured (adr-25). A role outside the
   roster is named and skipped, like an orphan routing row.
+- **A route to a provider that holds a key sits on the machine alone.** Only a
+  route the person set up on their own machine may spend their paid key (the
+  product thinker's ruling AA(b) of 2026-09-29), so a repository's
+  `.abcd/config.json` pointing a role or a judgement type at such a provider is
+  refused, naming the route, `~/.abcd/config.json` as where to set it, and the
+  repository's file as where to remove it, since the repository's route wins
+  per name over the machine's. A
+  provider holds a key when its block names `key`, judged from the block and
+  never by reading the credential store. A repository's route to a provider
+  whose block names no key (a local server) is admitted and wins over the
+  machine's per name, and a `--route` the person types is unaffected.
 - **The model a provider reports is held to the denylist too.** An aggregator
   that answers with a denied model has substituted a frontier model; the answer
   is discarded and the refusal names what it reported. Every call records the
@@ -516,13 +527,101 @@ memory are all recorded in itd-117 as follow-up questions.
 
 **A withheld guardrail is named.** Because a list replaces the bundled list, an
 override written before a release added an entry keeps withholding that entry.
-For the three guardrail domains — `PII`, `COMMITTING` and `LOAD` — the load
-compares every recall, alias and rule list an override set against the list the
+For the four guardrail domains — `PII`, `COMMITTING`, `LOAD` and `SHELL` — the
+load compares every recall, alias and rule list an override set against the list the
 running binary bundles. It names each bundled entry left out, and the file whose
 list is in force, on stderr from `abcd rules` and from the hook on every prompt.
 The effective set is unchanged. Restating the entry keeps it; leaving the field
 out inherits the bundled list. The other bundled domains are conventions a
 repository restates in its own words, so a replacement there is not reported.
+
+**One bundled domain is generated.** `SHELL` is the teaching plane of the
+shell-hazard guard (itd-103, spc-16 "Two planes, one registry"): its rules and
+recall keywords are built at start-up from the same bundled hazard registry
+`abcd guard` enforces, never written in the bundled `rules.json`. Each registry
+entry becomes one rule — whether the guard refuses or warns, the entry id, the
+command it matches, the plain-language why, and the safe successor — in entry-id
+order. The recall keywords are the command heads the registry matches (`rm`,
+`git push`, `gh repo delete`, `pkill`, …), which carry their subcommands so
+the bare words "push" or "reset" never recall the domain, plus a short fixed
+list for shell work in general (`shell`, `bash`, `zsh`, `command line`,
+`force push`). An entry added to or removed from the registry changes the
+domain with no second edit, and a test fails the build if the domain and the
+registry ever part. To every other contract it is an ordinary bundled domain:
+a user or repo layer overrides it per field, `dormant` silences it, `*SHELL`
+activates it, the kill switch suppresses it, and dedup and provenance treat it
+like any other. Its injected block costs about 2k tokens, one rule per registry
+entry, paid once per session per signature: dedup never injects it again while
+its rules are unchanged. It is built from the bundled registry only: a repo's
+`.abcd/guard.json` changes what the guard refuses there, and the two features
+keep independent switches, so a repo that wants its own entries taught states
+them in its `rules.json`.
+
+## The prompt router's output
+
+`abcd hook prompt-router` is the `UserPromptSubmit` entrypoint the hook manifest
+wires. It reads the host's hook payload on stdin, recall-matches the prompt
+against the loaded set, and exits 0 on every path, so it can never wedge a
+session. It writes to two streams:
+
+| Stream | What it carries | Who reads it |
+|---|---|---|
+| **stdout** | the rendered block of the domains new this turn, and nothing else. A prompt that matches no domain, or matches only domains already injected unchanged this session, writes zero bytes | the host, which adds it to the model's context |
+| **stderr** | one diagnostic line per prompt — the turn, the labels of the injected domains, the byte count — plus the load's notes and refusals | the operator, out of band |
+
+**The machine reader's envelope.** With `--json`, the flag every verb takes for
+a machine reader, stdout carries one JSON document in place of the bare block.
+It is for a client that snapshots injected rules rather than appending them to
+a transcript — a host adaptor that stages them into a system prompt, or a later
+MCP consumer — and it is the protocol's removal signal (ruling J15,
+iss-2608261550580260):
+
+```json
+{
+  "text": "# abcd rules — 1 domain(s) active\n## WIDGETS (repo override)\n- Widgets are counted twice.\n",
+  "injected": ["WIDGETS"],
+  "active": ["COMMITTING", "DOCUMENTATION", "INTENTS", "ISSUES", "LIFEBOAT",
+             "LOAD", "OPINIONS", "PII", "ROADMAP", "SHELL", "WIDGETS"]
+}
+```
+
+That is the bundled set with one repo domain, `WIDGETS`, declared in
+`.abcd/rules.json` and matched by the prompt: the text carries one domain and
+the set names all eleven.
+
+| Field | Meaning |
+|---|---|
+| `text` | byte for byte what the plain form writes to stdout: empty on a turn with nothing new |
+| `injected` | the domains whose text `text` carries; an empty list when it carries none |
+| `active` | the FULL set of domain names in force this turn, sorted, on every evaluated prompt: every domain that is not dormant, plus a dormant one this prompt activated with `*NAME`. An empty list when nothing is in force, as under the kill switch |
+| `error` | present only when the router could not evaluate the prompt — an unreadable payload, or a `rules.json` that will not load |
+
+A client keeps a snapshotted domain while its name is in `active` and prunes it
+the first turn the name is absent: absence is the stop, whether the domain was
+deleted, renamed or made dormant. A renamed domain arrives under its new name
+the next time a prompt matches it. An envelope with `error` carries no `active`
+field at all, which means the set is unknown and the client changes nothing; an
+empty list is a set, and a missing one is not, so a typo in `rules.json` never
+reads as every domain stopping.
+
+**The set never enters the model's context.** The hook manifest invokes the
+plain form, so what the host injects is exactly the block above and the
+zero-token promise holds unchanged: a turn with nothing new adds nothing, and
+the active set is written only to a reader that asked for the envelope.
+
+**A domain that stops is forgotten.** The per-session ledger drops a domain the
+turn it leaves the active set, so if it comes back its text is injected again
+the next time a prompt matches it, even when its rules are unchanged. A client
+that pruned it gets it back, and a host that appends to a transcript pays one
+re-render of that domain for the round trip; a domain that stays in force is
+still never re-injected unchanged within a session. The plain path meets this
+in two cases:
+
+- a domain whose `rules.json` entry is deleted, renamed or made dormant and
+  later restored is rendered again the next time a prompt matches it;
+- a dormant domain activated with `*NAME` is in force for that prompt alone, so
+  a prompt without the prefix drops it from the set, and the next `*NAME`
+  renders it again, with no edit to `rules.json`.
 
 ## The rules root — which `.abcd/` governs a session
 
@@ -765,7 +864,15 @@ plugin-root binary is missing, throttled by a `.bootstrap.attempt` marker within
 ten-minute window, and then fall back to a PATH-resolved abcd that must be
 absolute, outside the working directory, in a directory and a file that are not
 world-writable, and recorded as this
-machine's own, before failing loudly. `SessionEnd` and `SubagentStop` are the two
+machine's own, before failing loudly. `UserPromptSubmit`, which runs on every
+message, declares a 120-second `timeout`; `PreToolUse` and `PreCompact` declare
+none and take the host's ten-minute default; `SessionStart` declares 240 seconds,
+and the transcript hooks declare none. Every event that runs `bootstrap.sh`
+names a `statusMessage`, the host's spinner text while the hook runs, because the
+salvage sends the script's output nowhere; the text states no duration, since
+those limits differ. A test pins every event's timeout and the message
+(`internal/surface/cli/hooks_timeout_test.go`). `SessionEnd` and
+`SubagentStop` are the two
 exceptions and download nothing at all: each fires where the harness cancels a slow
 hook rather than wait — one as the session exits, the other inside a live session as
 a sub-agent finishes — so a fetch there races that cancellation and loses the

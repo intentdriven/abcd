@@ -32,6 +32,7 @@ import (
 )
 
 //go:embed templates/release.yml.tmpl templates/auto-release.yml.tmpl templates/runbook.md.tmpl templates/check-reviews.sh.tmpl
+//go:embed templates/dependency-reauthor.yml.tmpl templates/dependency-reauthor.sh.tmpl templates/dependency-reauthor.conf.tmpl
 var templatesFS embed.FS
 
 // Gate is one named verify-job step: a display name and the shell it runs. The
@@ -111,6 +112,16 @@ func (s Substitutions) ExtraBase() int {
 	return 1
 }
 
+// ReauthorScript is where the dependency-reauthor workflow finds its script:
+// abcd keeps its shell gates under scripts/, and a managed repository receives
+// it beside the runbook, in the release-gate directory the scaffold already owns.
+func (s Substitutions) ReauthorScript() string {
+	if s.Abcd {
+		return AbcdReauthorScriptPath
+	}
+	return ReauthorScriptPath
+}
+
 // Rendered is the file set a scaffold run produces, keyed by repo-relative path.
 type Rendered struct {
 	ReleaseYML     []byte
@@ -118,6 +129,13 @@ type Rendered struct {
 	Runbook        []byte
 	// CheckReviews is the reviews-charter check (RD001) the bare verify job runs.
 	CheckReviews []byte
+	// ReauthorYML, ReauthorScript and ReauthorConf are the opt-in
+	// dependency-bump re-authoring (itd-2609221842494980): the workflow, the
+	// bound-and-push script it runs, and the declaration a repository seeds
+	// once and then owns.
+	ReauthorYML    []byte
+	ReauthorScript []byte
+	ReauthorConf   []byte
 }
 
 // Repo-relative destinations the scaffold writes. Fixed by the GitHub Actions
@@ -131,9 +149,18 @@ const (
 	// release-gate directory the scaffold already owns, rather than in a scripts
 	// directory the managed repository may lay out its own way.
 	CheckReviewsPath = ".abcd/development/release-gate/check-reviews.sh"
+	// ReauthorYMLPath is the dependency-bump re-authoring workflow.
+	ReauthorYMLPath = ".github/workflows/dependency-reauthor.yml"
+	// ReauthorScriptPath is its script in a managed repository, beside the
+	// reviews-charter check; AbcdReauthorScriptPath is abcd's own copy.
+	ReauthorScriptPath     = ".abcd/development/release-gate/dependency-reauthor.sh"
+	AbcdReauthorScriptPath = "scripts/dependency-reauthor.sh"
+	// ReauthorConfPath is the declaration: its presence is the repository's
+	// opt-in, and its owner and ecosystem rows are the repository's to set.
+	ReauthorConfPath = ".abcd/config/dependency-reauthor.conf"
 )
 
-// Render binds the four templates against subs and returns their bytes. A
+// Render binds the templates against subs and returns their bytes. A
 // template parse or execute fault is a programming error in the embedded
 // templates, surfaced as an error rather than a panic.
 func Render(subs Substitutions) (Rendered, error) {
@@ -153,7 +180,20 @@ func Render(subs Substitutions) (Rendered, error) {
 	if err != nil {
 		return Rendered{}, err
 	}
-	return Rendered{ReleaseYML: rel, AutoReleaseYML: auto, Runbook: book, CheckReviews: charter}, nil
+	out := Rendered{ReleaseYML: rel, AutoReleaseYML: auto, Runbook: book, CheckReviews: charter}
+	for _, f := range []struct {
+		name string
+		dst  *[]byte
+	}{
+		{"templates/dependency-reauthor.yml.tmpl", &out.ReauthorYML},
+		{"templates/dependency-reauthor.sh.tmpl", &out.ReauthorScript},
+		{"templates/dependency-reauthor.conf.tmpl", &out.ReauthorConf},
+	} {
+		if *f.dst, err = renderOne(f.name, subs); err != nil {
+			return Rendered{}, err
+		}
+	}
+	return out, nil
 }
 
 // renderOne parses and executes a single embedded template with the `<%`/`%>`

@@ -2045,3 +2045,63 @@ Per hand-run, append:
 - **Notes:** the design review showed the load average cannot separate the incident from the run's normal state
   (one preflight near 7, eight near 42, the incident near 8 to 12 on 16 cores); that finding opened the interview and
   reframed the signal before any threshold was asked.
+
+### Run: the Group J plan rulings, seven drafts minted without a person present (2026-09-29, lane recGroupJ of autonomous run A)
+
+- **Proposal (as received):** the product thinker's Group J rulings of 2026-09-29 said "plan it" for seven
+  records that had no draft (J2, J3 with J4, J5 with J6, J11, J14, J22, J24). The lane minted one draft per
+  ruling, the two joined rulings as one draft each, and hand-ran the table at filing. No person confirmed the
+  routing: every draft stays in `drafts/`, so each entry below is a **prediction with no label yet**. It is
+  graded when the draft's planning interview confirms or edits the routing, and until then it does not count
+  toward the corpus threshold.
+- **J2, the starter (itd-2609292106557115, from iss-377):**
+
+  | Part | Type | Home | Link |
+  | --- | --- | --- | --- |
+  | One starter that fetches only on a machine with no abcd binary, handing over otherwise | capability | intent itd-2609292106557115 | builds on itd-130 |
+  | Hand over only to a binary the person owns | trust rule | already recorded: itd-130's Decisions and adr-46's ownership root | no new ADR proposed |
+  | The frozen release-asset layout | plumbing | the brief's release chapter, at the spec | |
+
+  Predicted verdict: FILE-AS-IS. itd-108 (the curated plugin payload) touches the same bootstrap and is a
+  neighbour, not a double.
+- **J3 and J4, metering and size classes (itd-2609292107351737, from iss-2608301744251874,
+  iss-2608301856299268 and iss-2608220150157508):**
+
+  | Part | Type | Home | Link |
+  | --- | --- | --- | --- |
+  | Token counts kept at capture, and a local report per session, spec and repository | capability | intent itd-2609292107351737 | refines the superseded itd-29's estimator (prose) |
+  | Size classes a spec declares before it is built | capability | the same intent, as ruled (J3) | |
+  | Reading the transcript store for the report | trust rule | brief invariant 15, flagged: its consumer list is enumerated and "a new consumer is a change to this invariant" | flag for the human: inside the custodian door, or an amendment? |
+  | Price table and its explicit refresh | plumbing | spec | adr-38 (no implicit fetch) |
+
+  Predicted verdict: FILE-AS-IS as ruled, with one flag on invariant 15.
+- **J5 and J6, sources verbs and the stub backfill (itd-2609292108089653, from iss-27 and iss-55):**
+
+  | Part | Type | Home | Link |
+  | --- | --- | --- | --- |
+  | A consult verb and a stub refusal at ingest | capability | intent itd-2609292108089653 | builds on itd-76 |
+  | Fetching and converting inside the binary | capability, flagged | open question on the draft | may reverse the ingest page's "abcd fetches and converts nothing": flagged for the human, not classified |
+  | Backfilling six entries in a person's own corpus | an act, not a criterion | open question on the draft | refines iss-55 |
+
+  Predicted verdict: FILE-AS-IS as ruled, with two flagged rows. iss-27 was already resolved by itd-76 for
+  the corpus contract; the draft carries what the ruling adds.
+- **J11, the grill hand-off (itd-2609292108373494, from iss-165):** one capability row (intent) and one stance
+  row already recorded (adr-22, native default with an opt-in external tool). Predicted verdict: FILE-AS-IS.
+- **J14, the prompt sanitiser (itd-2609292109005937, from iss-2608261543489261):**
+
+  | Part | Type | Home | Link |
+  | --- | --- | --- | --- |
+  | An opt-in check at prompt submission, results shown | capability | intent itd-2609292109005937 | adr-22 |
+  | A missing local model passes the prompt through, loudly | trust rule | proposed ADR: fail-open at a privacy boundary is a posture, not a detail | flag for the human |
+
+  Predicted verdict: SPLIT (intent plus an ADR on the fail-open posture), advisory only.
+- **J22, the rules back-end seam (itd-2609292109214516, from iss-64):** capability row (intent, builds on
+  itd-3), stance already recorded (adr-22), plumbing row (the `rules.backend` field, in the configuration
+  chapter of the brief). itd-39 drafts CARL's memory half and is a neighbour. Predicted verdict: FILE-AS-IS.
+- **J24, the scenario suite (itd-2609292109475690, from iss-48):** one row whose type is ambiguous: its user is
+  the technical facilitator, not a person using abcd, so the taxonomy reads it as plumbing (the brief's testing
+  chapter) while the ruling asks for an intent. Predicted verdict: FILE-AS-IS as ruled, the type ambiguity
+  noted for the enum question.
+- **Notes:** filing without the person was the ruling's own instruction (plan it, interview owed), so the
+  table is the lane's prediction only. The metering flag and the sanitiser's ADR row are the two places the
+  prediction most expects the interview to change.

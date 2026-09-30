@@ -122,6 +122,13 @@ gate. That is what keeps "not hand-counted" true after the day it was written.
 - `itd-2609231507251267` — Release pages on the project website, rendered from `RELEASE.md` and the release archive (builds on itd-2609231013154443; next cycle)
 - `itd-2609291923559186` — The consistency pass runs where records are written and names each finding the same way every time: the five itd-48 follow-ups as one intent (from iss-2609260926323349; ruling BT2)
 - `itd-2609291924469783` — Every lint warning rule shares one baseline file that only shrinks, so a new warning fails the change that introduces it (from iss-46; ruling BT3)
+- `itd-2609292106557115` — A fresh machine installs abcd through one small starter that hands over to a trusted abcd binary (from iss-377; ruling J2)
+- `itd-2609292107351737` — A development session's token cost is measured, and set against the size class its spec predicted (from iss-2608301744251874, iss-2608301856299268 and iss-2608220150157508; rulings J3 and J4)
+- `itd-2609292108089653` — Ingesting and consulting sources are abcd verbs, and no corpus entry is a keyword stub (from iss-27 and iss-55; rulings J5 and J6)
+- `itd-2609292108373494` — The grill hands the interview to an installed interviewing skill, and runs its own when there is none (from iss-165; ruling J11)
+- `itd-2609292109005937` — An opt-in local model checks every prompt for secrets and personal data before it leaves the machine (from iss-2608261543489261; ruling J14)
+- `itd-2609292109214516` — Rule injection is a seam: the native loader stays the default, and an opt-in CARL back end can take it over (from iss-64; ruling J22)
+- `itd-2609292109475690` — Every verb family has a behavioural scenario that drives the built binary end to end (from iss-48; ruling J24)
 <!-- /index -->
 
 **Later-phase items with no intent id.** These four were written into the brief

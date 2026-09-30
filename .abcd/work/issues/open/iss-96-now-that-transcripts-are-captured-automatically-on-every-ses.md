@@ -7,6 +7,7 @@ category: "security"
 source: "manual-test"
 found_during: "itd-89-m1"
 found_at: "internal/adapter/scanner/patterns.go"
+remedy: "Waits on ruling AK: if the present posture is kept, leave the 2026-08-28 ruling standing with TestTranscriptPathMissesUnanchoredEntropy and TestCaptureStoresUnanchoredEntropyVerbatim as the alarm; if a transcript-only detector is switched on, add a native keyword-delimiter-entropy rule (a secret keyword, an = or : delimiter, a value at or above 4.5 bits per character, with a stopword and hash-or-uuid allowlist) to the transcript path, which flips the labelled high-entropy rows of both pins by design, and measure its false-positive count on a sample of stored transcripts before it ships. A bare value with no label stays out of reach under either answer, and the record says so."
 deferred_after: "v0.11.1"
 deferral_reason: "ruling owed to the product thinker: the residue past the opt-in external-scanner adapter (ruled 2026-08-28) is a bare value with no key name and a labelled value under the entropy floor, and only an always-on entropy or charset detector reads either; the same ruling rejected that detector for its redaction false-positive cost on transcript prose (hashes, ids, base64 blobs), and a native key-name rule reaches only labelled values the armed adapter already reaches, so where the floor sits, or whether a keyword-delimiter-entropy rule runs natively by default, trades a corrupted record against reach and is not an implementer call (rulings-owed AK)"
 ---
@@ -223,3 +224,9 @@ this path — a prefixed token written straight after a `\n` or `\t` escape in a
 raw transcript line is masked from that change on — and leave the
 unanchored residue exactly where it was: `TestTranscriptPathMissesUnanchoredEntropy`
 and `TestCaptureStoresUnanchoredEntropyVerbatim` both still pass.
+
+## Remedy grounds (2026-09-29)
+
+- Why: ruling AK is unanswered, so both answers are written; the native rule is the transcript-only detector the owed options name, sized to the reach the gitleaks measurement on this record shows, and it keeps the 2026-08-28 rejection of a value-only entropy detector intact.
+- Sources (consulted 2026-09-29): detect-secrets documents default entropy limits of 4.5 for base64 and 3.0 for hex strings and a KeywordDetector for 'non-secret-looking' values (https://github.com/Yelp/detect-secrets); gitleaks' generic-api-key rule combines keyword, delimiter and entropy, and its tracker records false positives on commit hashes and key-like identifiers (https://github.com/gitleaks/gitleaks/issues/1578, https://github.com/gitleaks/gitleaks/issues/1830), the transcript prose cost the ruling weighs.
+- Rejected: an always-on value-only entropy detector, rejected on 2026-08-28 for corrupting records with redacted hashes and ids.

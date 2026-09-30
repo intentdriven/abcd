@@ -128,7 +128,7 @@ abcd — ~/code/your-repo
 
 ### Recording your first issue
 
-Issues are everything you wish to revisit: An idea, a user-facing intent, a bug, a thought. `/abcd:capture "..."` files a half-formed observation to the issue ledger so it survives the session. Revisit it with `/abcd iss-N` to report what that record is, where it lives, and its next move, such as graduating it into an intent, or close it with a note.
+Issues are everything you wish to revisit: An idea, a user-facing intent, a bug, a thought. `/abcd:capture "..." --remedy "..."` files an observation, with the fix you would propose, to the issue ledger so it survives the session. Revisit it with `/abcd iss-N` to report what that record is, where it lives, and its next move, such as graduating it into an intent, or close it with a note.
 
 *(The [verb reference](docs/reference/cli/commands.md) lists the rest.)*
 

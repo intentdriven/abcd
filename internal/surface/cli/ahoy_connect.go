@@ -183,8 +183,15 @@ func newAhoyConnectCommand(asJSON *bool) *cobra.Command {
 				for _, p := range res.Wrote {
 					line("wrote: " + p)
 				}
-				line(fmt.Sprintf("point a role or a judgement type at it with oracle.roles.<agent> or oracle.judgements.<type> = %q in .abcd/config.json or %s",
-					res.Provider+"/"+res.Models[0], layered.Config.MachineOrigin()))
+				// A route to a provider that holds a key is the machine's alone
+				// (the ruling AA(b) of 2026-09-29, enforced by oracle.LoadAPI), so
+				// the repository's file is offered only for a keyless one.
+				where := layered.Config.MachineOrigin()
+				if res.KeyHome == oracle.KeyHomeNone {
+					where = layered.Config.RepoOrigin() + " or " + where
+				}
+				line(fmt.Sprintf("point a role or a judgement type at it with oracle.roles.<agent> or oracle.judgements.<type> = %q in %s",
+					res.Provider+"/"+res.Models[0], where))
 				line(dispatchPending + ".")
 			})
 		},

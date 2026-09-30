@@ -7,6 +7,7 @@ suggested_kind: null
 reclassification_history: []
 blocked_by: [itd-36]
 severity: minor
+related_issues: [iss-2609211905346507]
 builds_on: [itd-25]
 related_rfcs: [rfc-1]
 ---

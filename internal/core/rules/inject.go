@@ -54,9 +54,19 @@ const DefaultRefreshBackstop = 15
 // tokens, per D3). Sources says, per injected name, which layer the domain
 // came from (SourceBundled, SourceUser or SourceRepo): the names alone cannot, and the
 // out-of-band diagnostic must say whose words went into the context.
+//
+// Active is the FULL set of domain names in force this turn, name-sorted and
+// never nil (ruling J15, iss-2608261550580260): every domain that is not
+// dormant, plus a dormant one this prompt activated with *NAME, and nothing at
+// all under the kill switch. Injected names only what changed; Active is the
+// removal signal a client that snapshots injected rules prunes against — a
+// name it holds that Active omits has stopped, whether it was deleted, renamed
+// or made dormant. It is never rendered into Text, so it costs the model's
+// context nothing; a front door hands it to a machine reader out of band.
 type InjectResult struct {
 	Text     string
 	Injected []string
+	Active   []string
 	Sources  map[string]string
 	State    SessionState
 }
@@ -106,8 +116,20 @@ func Inject(rs RuleSet, prompt string, prev SessionState, backstop int) InjectRe
 		ledger = map[string]string{}
 	}
 
+	matched := rs.Match(prompt)
+	active := activeNames(rs, matched)
+	// A domain that has left the active set is forgotten, so that when it comes
+	// back its text is injected again: a snapshotting client pruned it the turn
+	// it left, and deduping its return against the old signature would leave
+	// that client without it for the rest of the session.
+	for name := range ledger {
+		if _, ok := active[name]; !ok {
+			delete(ledger, name)
+		}
+	}
+
 	var fresh []ResolvedDomain
-	for _, d := range rs.Match(prompt) {
+	for _, d := range matched {
 		if ledger[d.Name] == Signature(d) {
 			continue // already injected this session, unchanged
 		}
@@ -128,12 +150,34 @@ func Inject(rs RuleSet, prompt string, prev SessionState, backstop int) InjectRe
 	}
 	sort.Strings(injected)
 
+	names := make([]string, 0, len(active))
+	for name := range active {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
 	return InjectResult{
 		Text:     text,
 		Injected: injected,
+		Active:   names,
 		Sources:  sources,
 		State:    SessionState{Count: count, Ledger: ledger},
 	}
+}
+
+// activeNames is the set of domain names in force this turn: every domain the
+// rule set holds active, plus every matched one — the matched set adds only a
+// dormant domain the prompt activated explicitly, which is in force for the
+// turn that names it. A disabled set matches nothing and has nothing active.
+func activeNames(rs RuleSet, matched []ResolvedDomain) map[string]struct{} {
+	out := map[string]struct{}{}
+	for _, d := range rs.Active() {
+		out[d.Name] = struct{}{}
+	}
+	for _, d := range matched {
+		out[d.Name] = struct{}{}
+	}
+	return out
 }
 
 // renderWithinBudget renders fresh under the per-repo injection budget. When the

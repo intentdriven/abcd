@@ -399,7 +399,17 @@ resolving shim rather than a plain binary call. Four of them self-provision.
 `UserPromptSubmit`, `PreToolUse` and `PreCompact` each attempt
 `hooks/bootstrap.sh` only when the plugin-root binary is missing, recording the
 try in a `.bootstrap.attempt` marker that throttles the next one to a ten-minute
-window. `SessionStart` runs it once at the top of every session instead,
+window. `UserPromptSubmit`, the hook that runs on every message, declares a
+120-second `timeout`, the time a salvage on a slow link has before the host
+cancels it; `PreToolUse` and `PreCompact` declare none and take the host's
+ten-minute default, so a slow first download finishes there. `SessionStart`
+declares 240 seconds, the script's worst case with room to spare, and
+`SessionEnd` and `SubagentStop` declare none. Every event that runs the script,
+`SessionStart` included, names a `statusMessage` the host shows as its spinner
+text while the hook runs, so the wait is never a silent stall: the salvage
+itself sends the script's output nowhere. The message states no duration,
+because the limits of the events that show it differ. `SessionStart` runs the
+script once at the top of every session instead,
 whether or not the binary is already there, and relays whatever it says: with
 the binary in place the script's own fast path costs a file test and does the
 provisioning housekeeping that keeps the next plugin update served from the
@@ -558,7 +568,8 @@ The non-interactive flags pre-answer the prompts: approve every resolvable
 category, decide the adoption question either way, set the marker target, the
 oracle backend, the deep-scan toggle and the repo visibility, select track-latest
 dogfood mode, proceed despite a stale running binary (the default refuses before
-any write and names the rebuild fix), name the directory for the `PATH` entry,
+the adoption question and before any write, the writability probe of a named
+`PATH` directory included, and names the rebuild fix), name the directory for the `PATH` entry,
 and opt the repo into the attribution prompt hook.
 
 **The house-style question.** When the install seeds the docs-lint config, it

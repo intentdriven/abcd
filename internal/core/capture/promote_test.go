@@ -21,7 +21,7 @@ import (
 func promoteFixture(t *testing.T, text string) (repo, ir, issID string) {
 	t.Helper()
 	repo, ir = ledger(t)
-	res, err := Capture(CaptureRequest{
+	res, err := testCapture(CaptureRequest{
 		RepoRoot: repo, IssuesRoot: ir, Text: text, Severity: SeverityMinor,
 		Category: "observation", Source: "user-observation", FoundDuring: "t",
 		Slug: "a-promotable-observation",

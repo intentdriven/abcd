@@ -9,6 +9,7 @@ found_during: "orchestrator-observation"
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development"
+remedy: "Waits on ruling E: if a committed rules line, add a repository domain to `.abcd/rules.json` recalled on cp, copy, restore and scratch copy whose rule reads 'never a bare cp over an existing file: use cat src > dst, command cp or /bin/cp', and cite it from the AGENTS.md bullet that sends a verifier to a copy, proven by `abcd rules <DOMAIN>` rendering it and a loader test matching the recall; if a machine memory, wontfix this record naming the memory as its home."
 deferred_after: "v0.11.1"
 deferral_reason: "ruling owed to the product thinker (away; run A 2026-09-25; rulings-owed E): Is the interactive cp alias a this-machine memory, or a committed rules line now that it has cost three sessions?"
 ---
@@ -46,3 +47,8 @@ Adjacent to iss-2608291444328326, the account-name collision, as the second
 environmental hazard of the same kind: a machine-local property that silently
 breaks an otherwise correct instruction.
 
+## Remedy grounds (2026-09-29)
+
+- The rules loader is the committed home memory-graduates-to-record names for abcd itself, and three stalls in one day meet its twice-recalled promotion signal; an rm alias of the same shape stalls the same way, so the domain can carry both lines.
+- No outside-practice check: the hazard is a property of one machine's shell configuration.
+- Rejected: a guard-registry entry, since the guard refuses destructive commands and a prompt that stalls is not one.

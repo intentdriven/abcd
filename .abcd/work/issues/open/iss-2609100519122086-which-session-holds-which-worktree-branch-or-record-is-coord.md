@@ -12,6 +12,7 @@ found_at: ".abcd/work"
 related_intents: [itd-2609150819440345]
 deferred_after: v0.11.1
 deferral_reason: "Promoted to itd-2609150819440345 (draft), and a promoted issue keeps its folder until the intent ships. abcd peers (itd-2609091416295622, shipped) shows what sibling worktrees hold, not which session holds what. The product thinker's ruling M30 of 2026-09-23 plans it next cycle as its own intent. Owed: that interview, which opens on transport: the code host, a per-machine helper, or both?"
+remedy: "Waits on the M30 planning interview (transport): the per-machine half largely exists as abcd implement's lease-based claims and session records under ~/.abcd/runs/<root-sha>/ (itd-2609221656373558), so if per-machine, add a session's worktree path and branch to its record and have abcd peers name the session holding each sibling worktree, proven by a peers test with two joined sessions; if the code host, mirror the same lease onto the forge with its lapse time; if both, the machine store stays authoritative and the forge copy is a mirror."
 ---
 
 Which session holds which worktree, branch or record is coordinated entirely by conversation, so every new session repeats a handshake that nothing records. A session joining work in progress has no way to ask what is already claimed: it messages the peers it can see, waits for replies, and rebuilds a picture that the sessions before it had already built and did not write down. One measured encounter cost four messages and about fifteen minutes before any work began, and the picture it produced is not durable, so the session after that pays again. The convention that a diff you did not make is a peer's work depends on knowing who the peers are and what they hold, which is precisely the thing no artefact carries. The repository already records this gap for the narrow case of detecting a peer session before mutating git state; the wider case is claim rather than presence, and the two want the same substrate. Whatever holds it should be as cheap to write as it is to read, because a coordination record nobody updates is worse than the chat it replaced.
@@ -27,3 +28,8 @@ The original evidence was a session paying four messages and about fifteen minut
 ## Deferral 2026-09-29
 
 Deferred past v0.11.1: Promoted to itd-2609150819440345 (draft), and a promoted issue keeps its folder until the intent ships. abcd peers (itd-2609091416295622, shipped) shows what sibling worktrees hold, not which session holds what. The product thinker's ruling M30 of 2026-09-23 plans it next cycle as its own intent. Owed: that interview, which opens on transport: the code host, a per-machine helper, or both?
+
+## Remedy grounds (2026-09-29)
+
+- Leases (Gray and Cheriton, SOSP 1989, https://dl.acm.org/doi/10.1145/74851.74870, consulted 2026-09-29) make a holder's failure cost delay rather than correctness, which answers the record's own falsifier (claims going stale faster than sessions release them); the shipped claim already takes that form, so the remedy extends it rather than adding a second register.
+- Rejected: a claim file inside the working tree, which every tree scan walks and which conflicts on merge.

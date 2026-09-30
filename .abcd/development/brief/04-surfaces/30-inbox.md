@@ -74,6 +74,8 @@ The capture carries:
 - `found_during` naming the report id, the words "a managed repository", and the
   sender's root-commit key;
 - `found_at` from the report's surface;
+- `remedy: none (filed automatically)`, whatever the report proposes, so a
+  drain skips the issue until a person writes a real remedy;
 - a body holding the title, the prose, the remedy, the report's provenance, and
   the report id as the first evidence pointer, followed by the reporter's own.
 

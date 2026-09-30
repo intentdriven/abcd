@@ -71,19 +71,28 @@ A prompt that matches no domain injects nothing (zero added tokens).
 ### Default domains
 
 `COMMITTING`, `DOCUMENTATION`, `ROADMAP`, `ISSUES`, `INTENTS`, `LIFEBOAT`, `PII`,
-`OPINIONS`, `LOAD`. Each carries recall keywords and its rules, bundled in the
-abcd binary; a repo overrides them per-field via `.abcd/rules.json`. `OPINIONS`
-points at the canonical conventions under `.abcd/development/principles/` rather
-than copying them. `LOAD` carries the trust rule for load experiments: one owned
-process group killed together through a re-checked handle and never by pattern,
-clean proven by what is running, and explicit consent with a cap below the core
-count on a live development machine.
+`OPINIONS`, `LOAD`, `SHELL`. Each carries recall keywords and its rules, bundled
+in the abcd binary; a repo overrides them per-field via `.abcd/rules.json`.
+`OPINIONS` points at the canonical conventions under
+`.abcd/development/principles/` rather than copying them. `LOAD` carries the
+trust rule for load experiments: one owned process group killed together through
+a re-checked handle and never by pattern, clean proven by what is running, and
+explicit consent with a cap below the core count on a live development machine.
+`SHELL` is the teaching half of the shell-hazard guard: it is generated from the
+same bundled hazard registry `abcd guard` enforces, one rule per entry (the
+command, why it is dangerous, and what to run instead), and recalls on the
+commands the registry names (`rm`, `git push`, `pkill`, …) and on shell work in
+general, so an agent is taught the safe form before a host with hooks would
+refuse the command and a host without hooks still teaches it.
 
 ### Reset triggers
 
 `SessionStart` and `PreCompact` clear the per-session dedup ledger, so a matched
 domain re-injects on the next prompt (the event-driven refresh that recovers
-after compaction). Within a session the hook does not re-inject unchanged rules.
+after compaction). Within a session a domain that stays in force is never
+re-injected unchanged; one that leaves the active set (deleted, renamed, made
+dormant, or a `*<DOMAIN>` activation the next prompt does not repeat) is
+injected again when it returns.
 
 For internals see `.abcd/development/brief/05-internals/03-configuration.md`.
 
@@ -447,7 +456,23 @@ irreversible; guessing downward costs nothing.**
   green: the forge as COMMITTER (`GitHub <noreply@github.com>`) is how every
   web-UI merge and squash is stamped on a human's click, and passes in that role
   alone. **The consequence is deliberate: a dependabot pull request is not
-  mergeable as authored, so a dependency bump is landed by a human.**
+  mergeable as authored.** A bump inside a declared bound is re-authored before
+  the gate runs, and the gate is unchanged: `.github/workflows/dependency-reauthor.yml`
+  replays a pull request that dependabot opened and last pushed from its own
+  branch, carrying one commit by the bot that only modifies a declared
+  ecosystem's manifest and lock files at the directory `.github/dependabot.yml`
+  declares for it (an added file, anywhere, is outside the bound), with the
+  owner named in `.abcd/config/dependency-reauthor.conf` as author AND committer
+  and `Assisted-by: None`, and a GitHub App pushes it (Dependabot secrets
+  `DEPENDENCY_REAUTHOR_APP_ID` and `DEPENDENCY_REAUTHOR_APP_KEY`). The App is
+  never an identity on the commit. The bound judges which files a bump changes,
+  never what it writes in them: a manifest's content inside the bound (a
+  `go.mod` `replace`, `toolchain` or `tool` directive, a `go.sum` line) is
+  re-authored unreviewed, an accepted residual. Every other bot change, an
+  Actions bump included, is landed by a human, and so is an in-bound bump while
+  the owner or either secret is unset: the workflow refuses it by name rather
+  than push it as anybody else. The rule and its residual are
+  [adr-2609292116133348](.abcd/development/decisions/adrs/2609292116133348-a-dependency-bump-inside-the-bound-is-re-authored-as-the.md).
 - **A human-only change declares itself: `Assisted-by: None`.** The convention is
   disclosure, and work no AI touched has nothing to disclose — but silence cannot
   say so, because an absent trailer and a forgotten one are the same bytes. The

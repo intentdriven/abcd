@@ -42,7 +42,7 @@ func TestMatchReportsAnUnreadableStatusDirectoryAsUnread(t *testing.T) {
 	captureText(t, repo, ir, matchFiller1, nil)
 	unreadableStatusDir(t, ir, StateResolved)
 
-	if _, err := Capture(CaptureRequest{
+	if _, err := testCapture(CaptureRequest{
 		RepoRoot: repo, IssuesRoot: ir, Text: plantedDouble, Severity: SeverityMinor,
 		Category: "bug", Source: "user-observation", FoundDuring: "t", Match: bundled(),
 	}); err == nil || !strings.Contains(err.Error(), statusDirName[StateResolved]+"/") {

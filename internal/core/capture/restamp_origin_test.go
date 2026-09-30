@@ -40,7 +40,7 @@ func rewriteDisclosure(t *testing.T, issuesRoot, id, origin string, dropMode boo
 // "the pair is written together or not at all" means literally.
 func TestRestampRefusesAnOriginOutsideTheVocabulary(t *testing.T) {
 	repo, ir := ledger(t)
-	res, err := Capture(CaptureRequest{RepoRoot: repo, IssuesRoot: ir, Text: "b", Severity: SeverityMinor,
+	res, err := testCapture(CaptureRequest{RepoRoot: repo, IssuesRoot: ir, Text: "b", Severity: SeverityMinor,
 		Category: "bug", Source: "user-observation", FoundDuring: "t", Slug: "odd"})
 	if err != nil {
 		t.Fatal(err)
@@ -63,7 +63,7 @@ func TestRestampRefusesAnOriginOutsideTheVocabulary(t *testing.T) {
 // is a legal write — the pair a command writes.
 func TestRestampOfALoneOriginCompletesThePair(t *testing.T) {
 	repo, ir := ledger(t)
-	res, err := Capture(CaptureRequest{RepoRoot: repo, IssuesRoot: ir, Text: "b", Severity: SeverityMinor,
+	res, err := testCapture(CaptureRequest{RepoRoot: repo, IssuesRoot: ir, Text: "b", Severity: SeverityMinor,
 		Category: "bug", Source: "user-observation", FoundDuring: "t", Slug: "lone"})
 	if err != nil {
 		t.Fatal(err)
