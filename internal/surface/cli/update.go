@@ -21,7 +21,15 @@ import (
 // package var like newReleaseFetcher, so a test can prove the dispatch
 // refuses BEFORE anything network-capable exists and that no other verb ever
 // constructs it (the adr-38 seam extended to the update verb, spc-32 AC8).
-var newUpdater = update.NewGitHubUpdater
+var newUpdater = func() updater { return update.NewGitHubUpdater() }
+
+// updater is what the verb asks of the release client: resolve a tag, then
+// apply it. An interface so a test drives the swap path with no network, the
+// way version.go's newReleaseFetcher hands back a vintage.ReleaseFetcher.
+type updater interface {
+	ResolveTag(requested string) (string, error)
+	Apply(target, tag string, progress io.Writer) (update.Report, error)
+}
 
 func newUpdateCommand(asJSON *bool) *cobra.Command {
 	var yes, check bool
@@ -78,11 +86,7 @@ func newUpdateCommand(asJSON *bool) *cobra.Command {
 					return nil
 				}
 			}
-			var progress io.Writer
-			if isTTY(os.Stderr) {
-				progress = cmd.ErrOrStderr()
-			}
-			rep, err := u.Apply(tgt.Path, tag, progress)
+			rep, err := u.Apply(tgt.Path, tag, progressWriter(cmd.ErrOrStderr()))
 			if err != nil {
 				return err
 			}
@@ -112,6 +116,20 @@ func newUpdateCommand(asJSON *bool) *cobra.Command {
 // Delegates to the canonical check in internal/term.
 func isTTY(f *os.File) bool {
 	return term.IsTerminal(f)
+}
+
+// progressWriter is the download-progress gate: progress goes to stderr, and
+// only when stderr is a terminal. The gate reads the stream the progress is
+// written to, so a piped or hooked run, or a stderr redirected to a log, gets
+// none, and stdout — the receipt's stream — never carries a progress byte
+// whatever it is attached to. This is criterion 9's silence as the record
+// reads it (iss-2609300015353414): the progress convention git and curl
+// follow, keyed on the stream that would carry it.
+func progressWriter(stderr io.Writer) io.Writer {
+	if f, ok := stderr.(*os.File); ok && isTTY(f) {
+		return f
+	}
+	return nil
 }
 
 // refusalReport shapes the receipt for a dispatch refusal. The target path is
