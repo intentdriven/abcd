@@ -320,7 +320,8 @@ func writeProviderBlockLocked(home string, dir *os.Root, name string, block map[
 const AdapterExplanation = "An aggregator (OpenRouter, for one) serves many vendors' models behind one " +
 	"OpenAI-compatible address and one key, and a local OpenAI-compatible server is reached the same way. " +
 	"abcd would use one for decision models and cheap judgements pointed at it by name, and only for the models its " +
-	"list names: a model the person does not list, a frontier model included, stays on the host. " +
+	"list names: a model the person does not list, a frontier model included, is never asked for, " +
+	"and the record shows what answered. " +
 	"Everything works without one: with no provider configured, " +
 	"every delegated step runs on the host."
 
