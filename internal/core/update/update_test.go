@@ -753,6 +753,45 @@ func TestApplyFailedSwapLeavesNoNewFile(t *testing.T) {
 	}
 }
 
+// TestApplyNeverWritesThroughAPlantedStagingSymlink: a symlink stands at the
+// staging name, pointing at a file outside the install directory. Staging
+// never opens through it: the file it points at is untouched, and what the
+// swap renames into the target's name is a regular file holding the verified
+// release, never the planted link.
+func TestApplyNeverWritesThroughAPlantedStagingSymlink(t *testing.T) {
+	o := newTestOrigin(t)
+	oldBin := []byte("old-binary-bytes")
+	newBin := []byte("new-binary-bytes")
+	o.addRelease("v0.6.1", testAssetName, oldBin)
+	o.addRelease("v0.6.2", testAssetName, newBin)
+	target := writeTarget(t, oldBin)
+
+	victimBytes := []byte("a file the update was never asked to touch")
+	victim := filepath.Join(t.TempDir(), "victim")
+	if err := os.WriteFile(victim, victimBytes, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	staging := filepath.Join(filepath.Dir(target), "."+filepath.Base(target)+".new")
+	if err := os.Symlink(victim, staging); err != nil {
+		t.Fatal(err)
+	}
+
+	rep, err := testUpdater(t, o).Apply(target, "v0.6.2", nil)
+	if err != nil || rep.Action != ActionSwapped {
+		t.Fatalf("the update must stage past a planted link: err=%v action=%q", err, rep.Action)
+	}
+	if got, rerr := os.ReadFile(victim); rerr != nil || !bytes.Equal(got, victimBytes) {
+		t.Errorf("staging wrote through the planted symlink: the victim now holds %q (err %v)", got, rerr)
+	}
+	fi, lerr := os.Lstat(target)
+	if lerr != nil || !fi.Mode().IsRegular() {
+		t.Fatalf("the swap put a non-regular entry at the target's name: %v (err %v)", fi, lerr)
+	}
+	if got, rerr := os.ReadFile(target); rerr != nil || !bytes.Equal(got, newBin) {
+		t.Errorf("the target does not hold the verified release: %q (err %v)", got, rerr)
+	}
+}
+
 // TestApplyTruncatedDownloadLeavesNoNewFile: the origin declares the whole
 // asset and closes the connection partway through it. The read fails before
 // anything is staged, so no file is created, and the error names the download.

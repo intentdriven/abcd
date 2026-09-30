@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net"
 	"net/http"
 	"net/url"
@@ -28,6 +29,7 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/minio/selfupdate"
@@ -565,9 +567,20 @@ var stagingWriter = func(w io.Writer) io.Writer { return w }
 // stageVerified writes the verified bytes to the staging file beside target,
 // at the name selfupdate's commit renames into place, and flushes them to disk
 // before the swap. It returns the staging path. On failure the file is gone.
+//
+// Whatever stands at the staging name is unlinked first (a leftover from a
+// crashed run, or a symlink planted there), and the file is then created
+// fresh: O_EXCL is what makes the open safe on every platform, because it
+// refuses any entry at the name, a symlink included, so the bytes can never be
+// written through a link into a file elsewhere and the entry the swap renames
+// into place is the regular file this open created. O_NOFOLLOW adds nothing
+// past O_EXCL and is kept as a second statement of the same intent.
 func stageVerified(target string, b []byte) (string, error) {
 	staged := filepath.Join(filepath.Dir(target), "."+filepath.Base(target)+".new")
-	fp, err := os.OpenFile(staged, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755)
+	if err := os.Remove(staged); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return "", fmt.Errorf("clearing the staging name %s: %w", staged, err)
+	}
+	fp, err := os.OpenFile(staged, os.O_CREATE|os.O_EXCL|os.O_WRONLY|syscall.O_NOFOLLOW, 0o755)
 	if err != nil {
 		return "", err
 	}
