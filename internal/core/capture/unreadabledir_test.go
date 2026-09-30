@@ -52,7 +52,7 @@ func TestMatchReportsAnUnreadableStatusDirectoryAsUnread(t *testing.T) {
 		t.Fatalf("the intent create's candidate set read an unreadable resolved/ as empty: %v", err)
 	}
 	const content = "---\nid: planted\n---\n"
-	got, o := matchAndLink(repo, ir, *bundled(), plantedDouble, content, map[string]any{})
+	got, o := matchAndLink(repo, ir, *bundled(), plantedDouble, nil, content, map[string]any{})
 	if o == nil || !strings.Contains(o.Skipped, "could not be read") {
 		t.Fatalf("an unreadable resolved/ did not read as an unread record set: %+v", o)
 	}

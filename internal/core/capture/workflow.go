@@ -290,7 +290,11 @@ func commitCapture(repoRoot, issuesRoot string, req CaptureRequest, issID, slug,
 		// adds links to the content and never fails the write.
 		var matched *match.Outcome
 		if req.Match != nil {
-			content, matched = matchAndLink(repoRoot, issuesRoot, *req.Match, req.Text, content, fm)
+			text := req.Text
+			if req.MatchText != "" {
+				text = req.MatchText
+			}
+			content, matched = matchAndLink(repoRoot, issuesRoot, *req.Match, text, req.MatchExcept, content, fm)
 		}
 		if werr := writeLedgerFile(repoRoot, issuesRoot, placeholder, []byte(content)); werr != nil {
 			return werr

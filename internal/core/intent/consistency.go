@@ -19,6 +19,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/mdrecord"
+	"github.com/intentdriven/abcd/internal/core/record/match"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -621,6 +622,9 @@ type consistencyReview struct {
 type ConsistencyFiling struct {
 	IssueID string `json:"issue_id"`
 	Linked  bool   `json:"linked"`
+	// Match is the filing-time match's outcome (itd-2609212137116617) on a
+	// record the ledger filed, when the ingest asked for one.
+	Match *match.Outcome `json:"match,omitempty"`
 }
 
 // ConsistencyFiler files one finding in the ledger, or names the open record
@@ -650,8 +654,9 @@ type ConsistencyIngestRequest struct {
 // ConsistencyRow is one finding as the report and the result carry it.
 type ConsistencyRow struct {
 	ConsistencyFinding
-	IssueID string `json:"issue_id"`
-	Linked  bool   `json:"linked"`
+	IssueID string         `json:"issue_id"`
+	Linked  bool           `json:"linked"`
+	Match   *match.Outcome `json:"match,omitempty"`
 }
 
 // ConsistencyIngestResult reports one ingest.
@@ -736,7 +741,7 @@ func IngestConsistency(req ConsistencyIngestRequest) (ConsistencyIngestResult, e
 				"no report was written, and ingesting the same findings again links those records rather than filing them twice",
 				f.Number, len(rv.Findings), err, orNone(res.Filed))
 		}
-		res.Rows = append(res.Rows, ConsistencyRow{ConsistencyFinding: f, IssueID: filing.IssueID, Linked: filing.Linked})
+		res.Rows = append(res.Rows, ConsistencyRow{ConsistencyFinding: f, IssueID: filing.IssueID, Linked: filing.Linked, Match: filing.Match})
 		if filing.Linked {
 			res.Linked = append(res.Linked, filing.IssueID)
 		} else {

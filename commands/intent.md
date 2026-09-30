@@ -1020,7 +1020,10 @@ A payload that validates is written in two places. Each finding is filed as one
 issue (`inconsistency`, from an `agent-finding`, located at its first end, with
 the report as its evidence) — unless an open record already quotes either end
 and names its document, in which case it is linked to that record and nothing
-is filed. And one dated report lands on the reviews shelf,
+is filed. A finding it files runs the capture verb's filing-time match on its
+summary and explanation, never against a record the same pass filed, and
+carries a `duplicates:` or `refines:` link naming each likely double; each row
+reports it as `match`. And one dated report lands on the reviews shelf,
 `.abcd/work/reviews/<date>-consistency[-<itd-N>]/00-summary.md`, pinned to the
 commit the pass read, listing every finding with both ends quoted and located
 and the record it was filed as or linked to; a second run the same day takes

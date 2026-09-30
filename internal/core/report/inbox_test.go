@@ -185,7 +185,7 @@ func TestUnknownVersionIsListedUnreadable(t *testing.T) {
 	if tally, _ := Count(); tally.Reports != 1 {
 		t.Errorf("Count = %+v, want the unreadable report counted", tally)
 	}
-	if _, err := Promote(abcdCheckout(t).Root(), list[0].ID); !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "unreadable") {
+	if _, err := Promote(abcdCheckout(t).Root(), list[0].ID, nil); !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "unreadable") {
 		t.Errorf("Promote(unreadable) = %v, want a refusal", err)
 	}
 }
@@ -223,7 +223,7 @@ func TestPromoteFingerprintsAndNeverNamesTheSender(t *testing.T) {
 		t.Fatalf("a report filed itself before anyone acted:\n%s", st)
 	}
 
-	p, err := Promote(ledger.Root(), f.ID)
+	p, err := Promote(ledger.Root(), f.ID, nil)
 	if err != nil {
 		t.Fatalf("Promote: %v", err)
 	}
@@ -270,7 +270,7 @@ func TestPromoteFingerprintsAndNeverNamesTheSender(t *testing.T) {
 	if e.SenderName != name {
 		t.Errorf("the inbox stopped naming the sender: %+v", e)
 	}
-	if _, err := Promote(ledger.Root(), f.ID); !errors.Is(err, ErrRefused) {
+	if _, err := Promote(ledger.Root(), f.ID, nil); !errors.Is(err, ErrRefused) {
 		t.Errorf("a second promote = %v, want a refusal", err)
 	}
 }
@@ -351,7 +351,7 @@ func TestPromoteRetryAfterAFailedMoveFilesOneCapture(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(blocker, "x"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Promote(ledger.Root(), f.ID); err == nil {
+	if _, err := Promote(ledger.Root(), f.ID, nil); err == nil {
 		t.Fatal("Promote succeeded with its destination occupied")
 	}
 	if err := os.RemoveAll(blocker); err != nil {
@@ -366,7 +366,7 @@ func TestPromoteRetryAfterAFailedMoveFilesOneCapture(t *testing.T) {
 		t.Fatalf("the failed promotion filed %d captures, want 1", len(first))
 	}
 
-	p, err := Promote(ledger.Root(), f.ID)
+	p, err := Promote(ledger.Root(), f.ID, nil)
 	if err != nil {
 		t.Fatalf("retry: %v", err)
 	}
@@ -379,7 +379,7 @@ func TestPromoteRetryAfterAFailedMoveFilesOneCapture(t *testing.T) {
 	if e, err := Show(f.ID); err != nil || e.State != StatePromoted || e.PromotedTo != p.Capture {
 		t.Errorf("Show after retry = %+v, %v", e, err)
 	}
-	if _, err := Promote(ledger.Root(), f.ID); !errors.Is(err, ErrRefused) {
+	if _, err := Promote(ledger.Root(), f.ID, nil); !errors.Is(err, ErrRefused) {
 		t.Errorf("a third promote = %v, want a refusal", err)
 	}
 }
@@ -409,7 +409,7 @@ func TestPromoteRefusesOutsideAbcdsOwnCheckout(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = Promote(other.Root(), f.ID)
+	_, err = Promote(other.Root(), f.ID, nil)
 	if !errors.Is(err, ErrRefused) {
 		t.Fatalf("Promote(unrelated repository) = %v, want a refusal", err)
 	}
@@ -429,7 +429,7 @@ func TestPromoteRefusesOutsideAbcdsOwnCheckout(t *testing.T) {
 	}
 
 	abcd := abcdCheckout(t)
-	if p, err := Promote(abcd.Root(), f.ID); err != nil || !strings.HasPrefix(p.Capture, "iss-") {
+	if p, err := Promote(abcd.Root(), f.ID, nil); err != nil || !strings.HasPrefix(p.Capture, "iss-") {
 		t.Fatalf("Promote(abcd's checkout) = %+v, %v", p, err)
 	}
 }
@@ -457,7 +457,7 @@ func TestPromotedCaptureCitesNothingOfTheSenders(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p, err := Promote(ledger.Root(), f.ID)
+	p, err := Promote(ledger.Root(), f.ID, nil)
 	if err != nil {
 		t.Fatalf("Promote: %v", err)
 	}
@@ -502,7 +502,7 @@ func TestACaptureRefusalIsARefusal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Promote(ledger.Root(), f.ID); !errors.Is(err, ErrRefused) {
+	if _, err := Promote(ledger.Root(), f.ID, nil); !errors.Is(err, ErrRefused) {
 		t.Fatalf("Promote(symlinked ledger) = %v, want a refusal", err)
 	}
 	if entries, _ := os.ReadDir(elsewhere); len(entries) != 0 {
@@ -579,7 +579,7 @@ func TestAnInboxPathThatIsNotARealDirectoryIsARefusal(t *testing.T) {
 			if _, err := Show(id); !errors.Is(err, ErrRefused) {
 				t.Errorf("Show = %v, want a refusal", err)
 			}
-			if _, err := Promote(ledger.Root(), id); !errors.Is(err, ErrRefused) {
+			if _, err := Promote(ledger.Root(), id, nil); !errors.Is(err, ErrRefused) {
 				t.Errorf("Promote = %v, want a refusal", err)
 			}
 			if _, err := File(mustParse(t, filled(t)), Sender{Key: strings.Repeat("9", 40), Name: "linked"}); !errors.Is(err, ErrRefused) {
@@ -801,7 +801,7 @@ func TestAPromotedReportIsIneligibleForADrain(t *testing.T) {
 	if err != nil {
 		t.Fatalf("File: %v", err)
 	}
-	p, err := Promote(ledger.Root(), f.ID)
+	p, err := Promote(ledger.Root(), f.ID, nil)
 	if err != nil {
 		t.Fatalf("Promote: %v", err)
 	}

@@ -2,6 +2,7 @@ package capture
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/intent"
@@ -74,8 +75,9 @@ func matchCandidates(repoRoot, issuesRoot string, cfg match.Config) ([]match.Can
 // record's rendered content, validating the frontmatter they join. It runs
 // under the ledger lock, before the write. It never fails the capture: a
 // candidate set that cannot be read, or a link the schema would refuse, comes
-// back as an outcome saying why, with the content unlinked.
-func matchAndLink(repoRoot, issuesRoot string, cfg match.Config, text, content string, fm map[string]any) (string, *match.Outcome) {
+// back as an outcome saying why, with the content unlinked. A candidate named
+// in except is not compared.
+func matchAndLink(repoRoot, issuesRoot string, cfg match.Config, text string, except []string, content string, fm map[string]any) (string, *match.Outcome) {
 	if match.Short(text) {
 		o := match.Rank(text, nil, cfg.Threshold)
 		return content, &o
@@ -84,6 +86,9 @@ func matchAndLink(repoRoot, issuesRoot string, cfg match.Config, text, content s
 	if err != nil {
 		o := match.Unread(cfg.Threshold, err)
 		return content, &o
+	}
+	if len(except) > 0 {
+		cands = slices.DeleteFunc(cands, func(c match.Candidate) bool { return slices.Contains(except, c.ID) })
 	}
 	o := match.Rank(text, cands, cfg.Threshold)
 	links := o.Links()

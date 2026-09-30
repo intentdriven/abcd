@@ -15,6 +15,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
+	"github.com/intentdriven/abcd/internal/core/record/match"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -547,6 +548,10 @@ type Promoted struct {
 	// Resumed says this call completed an earlier promotion that filed its
 	// capture but did not finish moving the report: nothing new was filed.
 	Resumed bool `json:"resumed,omitempty"`
+	// Match is the filing-time match's outcome (itd-2609212137116617) when
+	// the promotion asked for one: the links written onto the capture, the
+	// near misses, or why nothing was compared.
+	Match *match.Outcome `json:"match,omitempty"`
 }
 
 // Source is the capture source a promoted report is filed under.
@@ -564,7 +569,12 @@ const Source = "managed-repo"
 // a move that fails leaves a report still waiting whose capture is already on
 // record. Promoting it again files nothing: it finishes the move and names the
 // capture the first attempt filed (Resumed).
-func Promote(ledgerRoot, id string) (Promoted, error) {
+//
+// mc, when non-nil, runs capture's filing-time match (itd-2609212137116617)
+// on the report's own title and prose, and the capture carries a typed link
+// naming each likely double, exactly as a capture filed by hand does. nil
+// files the capture unmatched.
+func Promote(ledgerRoot, id string, mc *match.Config) (Promoted, error) {
 	m := idRe.FindStringSubmatch(id)
 	if m == nil {
 		return Promoted{}, fmt.Errorf("%w: %q is not a report id (rpt- and sixteen digits)", ErrRefused, id)
@@ -626,6 +636,7 @@ func Promote(ledgerRoot, id string) (Promoted, error) {
 			return move(done.Capture)
 		}
 		req := captureRequest(ledgerRoot, id, *e.Report)
+		req.Match = mc
 		res, err := capture.Capture(req)
 		if err != nil {
 			// Capture writes transactionally and sweeps its reservation on any
@@ -633,7 +644,7 @@ func Promote(ledgerRoot, id string) (Promoted, error) {
 			// promotion is refused (exit 2) whatever the ledger's reason.
 			return fmt.Errorf("%w: the capture was refused, and the report still waits: %w", ErrRefused, err)
 		}
-		out = Promoted{Report: id, Capture: res.ID, Path: res.Path, Redacted: res.Redacted, Degraded: res.Degraded}
+		out = Promoted{Report: id, Capture: res.ID, Path: res.Path, Redacted: res.Redacted, Degraded: res.Degraded, Match: res.Match}
 		line, err := json.Marshal(promotion{Report: id, Capture: res.ID, Path: res.Path, At: now().UTC().Format(time.RFC3339)})
 		if err != nil {
 			return err
@@ -663,10 +674,12 @@ func captureRequest(ledgerRoot, id string, r Report) capture.CaptureRequest {
 		rewrote = rewrote || n > 0
 		return out
 	}
+	// The report's own words, which the filing-time match compares: the
+	// provenance lines below are the same on every promoted report, and
+	// matched on them two unrelated reports would link each other.
+	own := scrub(r.Title) + "\n\n" + scrub(r.Prose)
 	var b strings.Builder
-	b.WriteString(scrub(r.Title))
-	b.WriteString("\n\n")
-	b.WriteString(scrub(r.Prose))
+	b.WriteString(own)
 	b.WriteString("\n")
 	if r.Remedy != "" {
 		fmt.Fprintf(&b, "\nRemedy the reporter proposes: %s\n", scrub(r.Remedy))
@@ -698,6 +711,7 @@ func captureRequest(ledgerRoot, id string, r Report) capture.CaptureRequest {
 		FoundDuring: fmt.Sprintf("abcd inbox report %s from %s (root commit %s)", id, GenericSender, r.SenderKey),
 		FoundAt:     foundAt,
 		Remedy:      issueschema.MachineRemedy,
+		MatchText:   own,
 	}
 }
 

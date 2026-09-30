@@ -118,6 +118,14 @@ it and removes it by deleting its line, which leaves an ordinary record. The
 match proposes no `reverses` and no `supersedes`: the itd-84 discipline keeps a
 reversal advisory and human.
 
+The same match runs on the ledger's two unattended writers, through the same
+core and configuration: a promoted inbox report is compared by its own title
+and prose, and each finding the consistency pass files by its summary and
+explanation. Neither compares the lines every record it files carries (the
+inbox's provenance, the pass's evidence line), on which two unrelated records
+would match, and the consistency pass never compares a record the same pass
+filed.
+
 One flag belongs to one category: the lapse-instant flag carries the RFC 3339
 instant a recorded discipline gave way, for the `lapse` category, and it has no
 default.

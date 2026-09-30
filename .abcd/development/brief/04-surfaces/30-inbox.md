@@ -68,6 +68,14 @@ test holds the constant to the checkout the tests run in. A shallow clone, whose
 first commit is not the root, is refused rather than guessed at; a fork shares
 the root commit and promotes.
 
+The capture runs capture's filing-time match (itd-2609212137116617) on the
+report's own title and prose, and writes a `duplicates:` or `refines:` link
+naming each likely double, exactly as a capture filed by hand does. The
+provenance lines every promoted report carries (the sender's key, the inbox,
+the kind, the version, the surface, the evidence line) are not compared: two
+unrelated reports would otherwise match on them alone. The match never refuses
+the promotion, and the output lists what it found.
+
 The capture carries:
 
 - the report's severity and category, and `source: managed-repo`;

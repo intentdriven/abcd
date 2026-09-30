@@ -165,7 +165,7 @@ func TestConsistencyIngestRefusesAnUnresolvedCitation(t *testing.T) {
 
 	t.Run("armed: refused, nothing written", func(t *testing.T) {
 		root := consistencyArmedRepo(t)
-		_, err := IngestConsistency(root, cite(consistencyPayload(t, root)), "2026-09-26")
+		_, err := IngestConsistency(root, cite(consistencyPayload(t, root)), "2026-09-26", nil)
 		if !errors.Is(err, ErrUnresolvedCitation) || !strings.Contains(err.Error(), dangling) ||
 			!strings.Contains(err.Error(), "consistency finding 1") {
 			t.Fatalf("err = %v, want a refusal naming finding 1 and %s", err, dangling)
@@ -181,7 +181,7 @@ func TestConsistencyIngestRefusesAnUnresolvedCitation(t *testing.T) {
 	})
 	t.Run("armed: a clean finding is filed", func(t *testing.T) {
 		root := consistencyArmedRepo(t)
-		res, err := IngestConsistency(root, consistencyPayload(t, root), "2026-09-26")
+		res, err := IngestConsistency(root, consistencyPayload(t, root), "2026-09-26", nil)
 		if err != nil || len(res.Filed) != 1 {
 			t.Fatalf("ingest = %+v %v, want the finding filed", res, err)
 		}
@@ -189,7 +189,7 @@ func TestConsistencyIngestRefusesAnUnresolvedCitation(t *testing.T) {
 	t.Run("no gate registered: refused", func(t *testing.T) {
 		withNoProseGate(t)
 		root := consistencyLedgerRepo(t)
-		_, err := IngestConsistency(root, consistencyPayload(t, root), "2026-09-26")
+		_, err := IngestConsistency(root, consistencyPayload(t, root), "2026-09-26", nil)
 		if err == nil || !strings.Contains(err.Error(), "no prose-citation gate is registered") {
 			t.Fatalf("err = %v, want the unregistered gate refused", err)
 		}
