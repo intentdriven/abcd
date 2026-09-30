@@ -90,8 +90,9 @@ in `abcd build next`'s pick order (`order` is `pick`): the readiest first by the
 pick's score, the oldest among equals, and the head passes over an intent that
 `abcd build next` refuses from the record alone (an open question, an
 unanswered claim section, a hold, an unshipped blocker, no step left to build)
-or that is already in a lane. The head does not consult other checkouts, so an
-intent a peer holds can still be marked `next_up`. Relay Now first: it is what is being built and
+or that is already in a lane, or that another checkout holds (build next's
+peers check), so `next_up` is always the intent `abcd build next` would pick.
+Relay Now first: it is what is being built and
 what comes next. The block is computed each time and nothing stores it.
 
 ## Record-id dispatch

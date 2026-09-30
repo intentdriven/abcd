@@ -2,6 +2,7 @@ package statusblock
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -87,7 +88,7 @@ func lanesOf(started ...Started) LaneReader {
 func TestBlockPlacesEveryIntent(t *testing.T) {
 	root := store(t)
 	lane := Lane{Run: "run-2609290000000001", Lane: "lane-1", Step: "implement", Awaiting: "implementer"}
-	b, err := Read(root, lanesOf(Started{Intent: "itd-2609010000000001", Lane: lane}))
+	b, err := Read(root, lanesOf(Started{Intent: "itd-2609010000000001", Lane: lane}), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,12 +134,12 @@ func TestBlockPlacesEveryIntent(t *testing.T) {
 // Next and Later are otherwise exactly what they were.
 func TestBlockWithoutAStateFileKeepsOnlyTheHead(t *testing.T) {
 	root := store(t)
-	with, err := Read(root, lanesOf(Started{Intent: "itd-7", Lane: Lane{Run: "run-1", Lane: "lane-1", Step: "brief"}}))
+	with, err := Read(root, lanesOf(Started{Intent: "itd-7", Lane: Lane{Run: "run-1", Lane: "lane-1", Step: "brief"}}), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for name, reader := range map[string]LaneReader{"nil reader": nil, "no lanes": lanesOf()} {
-		without, err := Read(root, reader)
+		without, err := Read(root, reader, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -173,7 +174,7 @@ func TestAnIntentInALaneIsOnlyUnderNow(t *testing.T) {
 	for _, id := range inLane {
 		started = append(started, Started{Intent: id, Lane: lane})
 	}
-	b, err := Read(root, lanesOf(started...))
+	b, err := Read(root, lanesOf(started...), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -192,7 +193,7 @@ func TestAnIntentInALaneIsOnlyUnderNow(t *testing.T) {
 // name, each row with its id and title, the lane state and the failing checks.
 func TestBlockJSONCarriesTheThreeLists(t *testing.T) {
 	root := store(t)
-	b, err := Read(root, lanesOf(Started{Intent: "itd-2609010000000001", Lane: Lane{Run: "run-1", Lane: "lane-2", Step: "validate", Awaiting: "validator"}}))
+	b, err := Read(root, lanesOf(Started{Intent: "itd-2609010000000001", Lane: Lane{Run: "run-1", Lane: "lane-2", Step: "validate", Awaiting: "validator"}}), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -215,7 +216,7 @@ func TestBlockJSONCarriesTheThreeLists(t *testing.T) {
 // TestBlockOnAnEmptyStoreHasEmptyLists: a record with no intents renders three
 // empty lists, never null ones, and no head.
 func TestBlockOnAnEmptyStoreHasEmptyLists(t *testing.T) {
-	b, err := Read(t.TempDir(), nil)
+	b, err := Read(t.TempDir(), nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -249,7 +250,7 @@ func TestTheHeadSkipsAHeldIntent(t *testing.T) {
 	w(in+"itd-3-held.md", readyIntent("itd-3", "The held one", "spc-13", "held: \"awaiting a ruling\"\n"))
 	w(sp+"spc-13-held.md", writtenSpec("spc-13", "itd-3"))
 
-	b, err := Read(root, nil)
+	b, err := Read(root, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -262,7 +263,7 @@ func TestTheHeadSkipsAHeldIntent(t *testing.T) {
 
 	w(in+"itd-4-free.md", readyIntent("itd-4", "The free one", "spc-14", ""))
 	w(sp+"spc-14-free.md", writtenSpec("spc-14", "itd-4"))
-	b, err = Read(root, nil)
+	b, err = Read(root, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -324,7 +325,7 @@ func TestTheHeadIsThePicksChoice(t *testing.T) {
 		t.Fatalf("precondition: the pick takes itd-4 over its tie with itd-9: %+v", pick)
 	}
 
-	b, err := Read(root, nil)
+	b, err := Read(root, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -344,7 +345,7 @@ func TestTheHeadIsThePicksChoice(t *testing.T) {
 
 	// itd-4 in a lane: the pick would not start it again, so the head is the
 	// runner-up.
-	b, err = Read(root, lanesOf(Started{Intent: "itd-4", Lane: Lane{Run: "run-1", Lane: "lane-1", Step: "implement"}}))
+	b, err = Read(root, lanesOf(Started{Intent: "itd-4", Lane: Lane{Run: "run-1", Lane: "lane-1", Step: "implement"}}), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -401,7 +402,7 @@ func TestTheHeadPassesOverWhatTheBuildRefusesFromTheRecord(t *testing.T) {
 			w(in+"itd-4-refused.md", refused)
 			w(sp+"spc-14-refused.md", scoredSpec("spc-14", "itd-4")+tc.specAdd)
 
-			b, err := Read(root, nil)
+			b, err := Read(root, nil, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -414,7 +415,7 @@ func TestTheHeadPassesOverWhatTheBuildRefusesFromTheRecord(t *testing.T) {
 
 			w(in+"itd-9-free.md", readyIntent("itd-9", "The free one", "spc-19", ""))
 			w(sp+"spc-19-free.md", writtenSpec("spc-19", "itd-9"))
-			if b, err = Read(root, nil); err != nil {
+			if b, err = Read(root, nil, nil); err != nil {
 				t.Fatal(err)
 			}
 			if got := ids(b.Next); !reflect.DeepEqual(got, []string{"itd-4", "itd-9"}) {
@@ -424,5 +425,74 @@ func TestTheHeadPassesOverWhatTheBuildRefusesFromTheRecord(t *testing.T) {
 				t.Errorf("Now = %+v, want only itd-9 marked next up: itd-4 fails %s", b.Now, tc.check)
 			}
 		})
+	}
+}
+
+// TestTheHeadPassesOverAnIntentAPeerHolds (ruling CC1): the head is judged by
+// the peers check the caller hands in, read once for the block and only when a
+// head is in reach. An intent it reports held stays in Next and is never the
+// head; a fault reading the peers is the block's fault, as it is the pick's;
+// and a record with nothing to start pays no peers read at all.
+func TestTheHeadPassesOverAnIntentAPeerHolds(t *testing.T) {
+	root := t.TempDir()
+	w := func(rel, body string) {
+		t.Helper()
+		p := filepath.Join(root, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	reads := 0
+	holding := func(held string) PeerReader {
+		return func(string) (HeldBy, error) {
+			reads++
+			return func(r intent.ReadyResult) string {
+				if r.IntentID == held {
+					return "lane-alpha holds it in shipped/"
+				}
+				return ""
+			}, nil
+		}
+	}
+
+	if _, err := Read(root, nil, holding("itd-4")); err != nil || reads != 0 {
+		t.Fatalf("a record with nothing to start: err %v, %d peers read(s), want none", err, reads)
+	}
+
+	const in = ".abcd/development/intents/planned/"
+	const sp = ".abcd/development/specs/open/"
+	w(in+"itd-4-held.md", readyIntent("itd-4", "The held one", "spc-14", ""))
+	w(sp+"spc-14-held.md", scoredSpec("spc-14", "itd-4"))
+	w(in+"itd-9-free.md", readyIntent("itd-9", "The free one", "spc-19", ""))
+	w(sp+"spc-19-free.md", writtenSpec("spc-19", "itd-9"))
+
+	b, err := Read(root, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := ids(b.Now); !reflect.DeepEqual(got, []string{"itd-4"}) {
+		t.Fatalf("precondition: without a peers check itd-4 heads, got Now = %v", got)
+	}
+
+	b, err = Read(root, nil, holding("itd-4"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := ids(b.Next); !reflect.DeepEqual(got, []string{"itd-4", "itd-9"}) {
+		t.Errorf("Next = %v, want [itd-4 itd-9]: a held intent is still READY", got)
+	}
+	if got := ids(b.Now); !reflect.DeepEqual(got, []string{"itd-9"}) || !b.Now[0].NextUp {
+		t.Errorf("Now = %+v, want only itd-9 marked next up: a peer holds itd-4", b.Now)
+	}
+	if reads != 1 {
+		t.Errorf("the peers were read %d times for one block, want once", reads)
+	}
+
+	fault := errors.New("git could not name the common dir")
+	if _, err := Read(root, nil, func(string) (HeldBy, error) { return nil, fault }); !errors.Is(err, fault) {
+		t.Errorf("a fault reading the peers: got %v, want it returned", err)
 	}
 }

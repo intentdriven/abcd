@@ -27,7 +27,7 @@ func boardStatus(cwd string, stderr io.Writer) *statusblock.Block {
 	if err != nil || !ahoy.Managed(root) {
 		return nil
 	}
-	b, err := statusblock.Read(root, loop.StatusLanes)
+	b, err := statusblock.Read(root, loop.StatusLanes, loop.StatusPeers)
 	if err != nil {
 		fmt.Fprintf(stderr, "abcd: the Now / Next / Later block is omitted — %s\n", termsafe.Sanitize(fsutil.RedactHome(err.Error())))
 		return nil

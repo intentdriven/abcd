@@ -107,7 +107,9 @@ its record page, its title, and what places it there, with Next and the head
 in the pick order the board reads them in. The site build reads the
 implement loop's state file for Now's lane rows through the reader its front
 door hands it, the loop's own, and a build with no state file, as a release
-build has, shows Now as the head alone.
+build has, shows Now as the head alone. The site build hands in no peers
+check, so its head, unlike the board's, does not pass over an intent another
+checkout on the building machine holds.
 
 The documentation tree under `/docs/` is not among these pages: the docs build
 writes it beside them. The composition declaration's `docs` block says it is
