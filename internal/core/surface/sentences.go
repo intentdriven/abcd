@@ -159,8 +159,8 @@ var sentences = map[string]string{
 		"Writes a missing store, and the repaired records only with --apply; refuses outside a git checkout.",
 	"abcd history reconstruct": "Render one session and its sub-agents as one artefact plus telemetry: " +
 		"Writes both files into --out; refuses an --out that is not an existing directory.",
-	"abcd history separation": "Report whether any retained transcript held both a reading and the ledger of one run: " +
-		"Writes nothing; never refuses, exiting 1 naming each such transcript.",
+	"abcd history separation": "Report whether a retained transcript held both a reading and one run's ledger: " +
+		"Writes a missing store or a legacy corpus move; refuses outside a git checkout.",
 	"abcd history show": "Show one stored transcript's metadata and redacted body: " +
 		"Writes only a missing store and a legacy corpus moved into it; refuses an id the store does not hold.",
 	"abcd history staged": "List the ended transcripts not yet redacted into the store: " +

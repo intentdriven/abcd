@@ -166,7 +166,11 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 	historyCmd.AddCommand(&cobra.Command{
 		Use:   "separation",
 		Short: "Report whether any retained transcript held both a reading and the ledger of one run",
-		Args:  cobra.NoArgs,
+		Long: "Report whether any retained transcript held both a reading and the ledger of one run, from\n" +
+			"record metadata alone. The store is resolved as every history read resolves it: a missing\n" +
+			"store is created and a legacy corpus moved into it. A transcript that held both is a finding:\n" +
+			"each is named and the verb exits 1. Outside a git checkout with a commit it refuses.",
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			repoRoot, rootSHA, err := historyStore(cmd)
 			if err != nil {

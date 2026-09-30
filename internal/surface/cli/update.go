@@ -106,7 +106,7 @@ func newUpdateCommand(asJSON *bool) *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&yes, "yes", false, "skip the TTY confirmation of a freshly resolved tag")
-	cmd.Flags().BoolVar(&check, "check", false, "fetch the latest release once and compare it with this binary, swapping nothing (the only network touch besides the update itself; abcd never fetches implicitly — adr-38); names its source and the command that takes the update")
+	cmd.Flags().BoolVar(&check, "check", false, "fetch the latest release once and compare it with this binary, swapping nothing (it reaches the network only when invoked; abcd never fetches implicitly — adr-38); names its source and the command that takes the update")
 	cmd.MarkFlagsMutuallyExclusive("check", "yes")
 	return cmd
 }

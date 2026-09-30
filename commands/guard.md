@@ -1,7 +1,7 @@
 ---
 name: guard
 description: "Judge a shell command against the hazard registry before it runs: Writes nothing; refuses a hazard through check or hook, and an unknown sub-verb."
-argument-hint: "[check <command> | hook]"
+argument-hint: "[check [--command <command>] | hook]"
 block: agents
 ---
 
@@ -387,9 +387,8 @@ since rm refuses a last segment `..`. Quoted, `'/**'` and `"~/.?"/*` block as
 What an allow still does not see is a hazard that never reaches command position
 at all: a delete target printed whole by a substitution (`rm -rf $(echo /)`),
 read by its known text the way `rm -rf $(find …)` names its targets every day,
-or spelled any other way than the words above, a default's own word included
-(`rm -rf ${DIR:-$HOME}`), as is a `..` after a symlink, which the path is read
-past lexically, or after a segment holding a variable (`/tmp/$X/../*`) or a
+or spelled any other way than the words above, as is a `..` after a symlink,
+which the path is read past lexically, or after a segment holding a variable (`/tmp/$X/../*`) or a
 `~user` home (`~root/../../*`); one launched through a known wrapper carrying a value-taking flag the
 guard does not name (`sudo -u bob <hazard>` is seen; the bundled short form
 `sudo -Hu bob <hazard>` reaches only the warn, not the entry that names it), one

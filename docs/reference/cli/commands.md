@@ -1387,9 +1387,14 @@ abcd history reconstruct 0123abcd-session
 
 #### `abcd history separation`
 
-Report whether any retained transcript held both a reading and the ledger of one run: Writes nothing; never refuses, exiting 1 naming each such transcript.
+Report whether a retained transcript held both a reading and one run's ledger: Writes a missing store or a legacy corpus move; refuses outside a git checkout.
 
 **Usage:** `abcd history separation`
+
+Report whether any retained transcript held both a reading and the ledger of one run, from
+record metadata alone. The store is resolved as every history read resolves it: a missing
+store is created and a legacy corpus moved into it. A transcript that held both is a finding:
+each is named and the verb exits 1. Outside a git checkout with a commit it refuses.
 
 #### `abcd history show`
 
@@ -3292,6 +3297,6 @@ install's shape, and swaps nothing.
 **Flags:**
 
 ```
-      --check   fetch the latest release once and compare it with this binary, swapping nothing (the only network touch besides the update itself; abcd never fetches implicitly — adr-38); names its source and the command that takes the update
+      --check   fetch the latest release once and compare it with this binary, swapping nothing (it reaches the network only when invoked; abcd never fetches implicitly — adr-38); names its source and the command that takes the update
       --yes     skip the TTY confirmation of a freshly resolved tag
 ```

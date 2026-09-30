@@ -34,10 +34,11 @@ says `<session> may take the review stage`, and an operand outside them is
 refused as an `unknown stage`.
 
 A run started with an older abcd carries on. Its state file (schema version 1,
-2 or 3) is read as it stands, each `step` taken as the lane's `stage`, and the
-read writes nothing; the run's next `abcd implement step` or `receipt` writes
-the file at schema version 4. An older abcd cannot read a version-4 file, so
-finish a run with the abcd that is going to keep driving it.
+the version v0.11.1 writes) is read as it stands, each `step` taken as the
+lane's `stage`, and the read writes nothing; the run's next `abcd implement
+step` or `receipt` writes the file at schema version 8. An older abcd cannot
+read a version-8 file, so finish a run with the abcd that is going to keep
+driving it.
 
 ## Replace the removed command spellings
 
