@@ -230,7 +230,7 @@ Start the loop that takes one READY intent to delivered: Writes the run's state 
 Start the implement loop for one intent, or resume the run already in progress for it.
 A new run's checks run first, and every one must pass:
 the intent is READY (planned, criteria written, its spec linked and written), asks no
-open question, has no unanswered claim section, is not held, names no unshipped intent
+open question, has no unanswered claim section, is not held, names no unsettled blocker
 in `blocked_by`, its spec leaves a step to build, and no peer holds it (no sibling
 worktree or local branch holds it in another bucket, and no session holds a live claim
 on it; a peer or claim that cannot be read counts as holding it). A refusal names the
@@ -290,7 +290,7 @@ Pick the readiest planned intent and start its run: Writes the run's state and t
 Pick the readiest planned intent, write down why, and start its run.
 
 The candidates are the planned intents that pass every check `abcd build <itd-N>` runs
-(READY, no open question, no unanswered claim section, not held, no unshipped intent in
+(READY, no open question, no unanswered claim section, not held, no unsettled blocker in
 `blocked_by`, a step left to build, no peer holding it), less one this checkout already has
 a run in progress for. Each is scored from its record, three parts at equal weight, each 0
 to 100: criteria clarity (the share of its acceptance criteria in Given-When-Then form), a

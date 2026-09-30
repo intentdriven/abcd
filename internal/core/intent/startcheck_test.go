@@ -4,6 +4,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/core/decide"
 )
 
 // blockerRecord is a minimal intent record for the blocked check's corpus: an
@@ -16,52 +18,92 @@ func blockerRecord(id, supersededBy string) string {
 	return s + "---\n# " + id + "\n"
 }
 
+// adrRecord is a minimal decision record: its id and the status line's value.
+func adrRecord(id, status string) string {
+	return "---\nid: " + id + "\nslug: a-decision\nstatus: " + status + "\n---\n# " + id + "\n"
+}
+
 // TestStartBlockedRowFollowsASupersededBlockerToItsReplacement is ruling BZ2
 // of 2026-09-29: a blocker that was superseded is followed along
 // `superseded_by` to the intent that replaced it, transitively, and the intent
-// waits on that replacement. It is blocked exactly when the last intent of the
-// chain has not shipped; a chain that loops, ends at a record this checkout
-// does not hold, names no successor, or ends at a decision rather than an
-// intent refuses naming the chain.
+// waits on that replacement. It is blocked exactly when the last record of the
+// chain is unsettled; a chain that loops, ends at a record this checkout does
+// not hold, or names no successor refuses naming the chain. Rulings CF1 and CF2
+// of 2026-09-30 settle two more endings: a chain ending at a decision settles
+// when that ADR is accepted, and one ending at a discipline settles as a
+// shipped intent does; a decision in any other status, or one this checkout
+// does not hold, still refuses naming it.
 func TestStartBlockedRowFollowsASupersededBlockerToItsReplacement(t *testing.T) {
 	type rec struct{ bucket, id, by string }
 	cases := []struct {
 		name    string
 		records []rec
+		adrs    map[string]string // ADR filename -> its frontmatter
 		ok      bool
 		want    []string
 	}{
 		{"replaced by a shipped intent", []rec{
 			{BucketSuperseded, "itd-27", "itd-94"},
 			{BucketShipped, "itd-94", ""},
-		}, true, []string{"itd-27 → itd-94"}},
+		}, nil, true, []string{"itd-27 → itd-94"}},
 		{"replaced by an unshipped intent", []rec{
 			{BucketSuperseded, "itd-27", "itd-94"},
 			{BucketPlanned, "itd-94", ""},
-		}, false, []string{"itd-27 → itd-94", "planned"}},
+		}, nil, false, []string{"itd-27 → itd-94", "planned"}},
 		{"replaced twice, the last shipped", []rec{
 			{BucketSuperseded, "itd-27", "itd-94"},
 			{BucketSuperseded, "itd-94", "itd-95"},
 			{BucketShipped, "itd-95", ""},
-		}, true, []string{"itd-27 → itd-94 → itd-95"}},
+		}, nil, true, []string{"itd-27 → itd-94 → itd-95"}},
 		{"replaced twice, the last a draft", []rec{
 			{BucketSuperseded, "itd-27", "itd-94"},
 			{BucketSuperseded, "itd-94", "itd-95"},
 			{BucketDrafts, "itd-95", ""},
-		}, false, []string{"itd-27 → itd-94 → itd-95", "drafts"}},
+		}, nil, false, []string{"itd-27 → itd-94 → itd-95", "drafts"}},
 		{"a supersession cycle", []rec{
 			{BucketSuperseded, "itd-27", "itd-94"},
 			{BucketSuperseded, "itd-94", "itd-27"},
-		}, false, []string{"itd-27 → itd-94 → itd-27", "cycle"}},
+		}, nil, false, []string{"itd-27 → itd-94 → itd-27", "cycle"}},
 		{"a replacement this checkout does not hold", []rec{
 			{BucketSuperseded, "itd-27", "itd-94"},
-		}, false, []string{"itd-27 → itd-94", "not in this checkout's intent store"}},
+		}, nil, false, []string{"itd-27 → itd-94", "not in this checkout's intent store"}},
 		{"a superseded record naming no successor", []rec{
 			{BucketSuperseded, "itd-27", "null"},
-		}, false, []string{"itd-27", "names no successor"}},
-		{"replaced by a decision", []rec{
+		}, nil, false, []string{"itd-27", "names no successor"}},
+		{"replaced by an accepted decision", []rec{
 			{BucketSuperseded, "itd-27", "adr-37"},
-		}, false, []string{"itd-27 → adr-37", "not an intent"}},
+		}, map[string]string{"0037-changelog-driven-releases.md": adrRecord("adr-37", "accepted")},
+			true, []string{"itd-27 → adr-37 (accepted)"}},
+		{"replaced by an accepted decision whose status line carries a comment", []rec{
+			{BucketSuperseded, "itd-27", "adr-37"},
+		}, map[string]string{"0037-x.md": adrRecord("adr-37", "accepted                 # proposed | accepted | superseded | deprecated")},
+			true, []string{"itd-27 → adr-37 (accepted)"}},
+		{"replaced by an accepted minted decision, named zero-padded", []rec{
+			{BucketSuperseded, "itd-27", "adr-02609012206053814"},
+		}, map[string]string{"2609012206053814-x.md": adrRecord("adr-2609012206053814", "accepted")},
+			true, []string{"itd-27 → adr-2609012206053814 (accepted)"}},
+		{"replaced by a proposed decision", []rec{
+			{BucketSuperseded, "itd-27", "adr-37"},
+		}, map[string]string{"0037-x.md": adrRecord("adr-37", "proposed")},
+			false, []string{"itd-27 → adr-37", "adr-37 is proposed", "accepted"}},
+		{"replaced by a decision carrying no status", []rec{
+			{BucketSuperseded, "itd-27", "adr-37"},
+		}, map[string]string{"0037-x.md": "---\nid: adr-37\n---\n# adr-37\n"},
+			false, []string{"itd-27 → adr-37", "adr-37 carries no status"}},
+		{"replaced by a decision this checkout does not hold", []rec{
+			{BucketSuperseded, "itd-27", "adr-37"},
+		}, nil, false, []string{"itd-27 → adr-37", "not in this checkout's decision store"}},
+		{"replaced by a decision whose file claims another id", []rec{
+			{BucketSuperseded, "itd-27", "adr-37"},
+		}, map[string]string{"0037-x.md": adrRecord("adr-38", "accepted")},
+			false, []string{"itd-27 → adr-37", "not in this checkout's decision store"}},
+		{"replaced by a discipline", []rec{
+			{BucketSuperseded, "itd-27", "itd-94"},
+			{BucketDisciplines, "itd-94", ""},
+		}, nil, true, []string{"itd-27 → itd-94 (disciplines)"}},
+		{"reclassified as a discipline in place", []rec{
+			{BucketDisciplines, "itd-27", ""},
+		}, nil, true, []string{"names no unsettled blocker"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -69,11 +111,17 @@ func TestStartBlockedRowFollowsASupersededBlockerToItsReplacement(t *testing.T) 
 			for _, r := range tc.records {
 				writeFile(t, root, filepath.Join(IntentsRelDir, r.bucket, r.id+"-"+strings.ReplaceAll(r.id, "itd-", "rec-")+".md"), blockerRecord(r.id, r.by))
 			}
+			for name, body := range tc.adrs {
+				writeFile(t, root, filepath.Join(filepath.FromSlash(decide.ADRsRelDir), name), body)
+			}
 			corpus, err := Load(root)
 			if err != nil {
 				t.Fatal(err)
 			}
-			row := startBlockedRow(corpus, "itd-10", "---\nid: itd-10\nblocked_by: [itd-27]\n---\n")
+			row, err := startBlockedRow(root, corpus, "itd-10", "---\nid: itd-10\nblocked_by: [itd-27]\n---\n")
+			if err != nil {
+				t.Fatal(err)
+			}
 			if row.OK != tc.ok {
 				t.Fatalf("want OK=%v, got %+v", tc.ok, row)
 			}
@@ -99,7 +147,10 @@ func TestStartBlockedRowKeepsAPlainUnshippedBlocker(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	row := startBlockedRow(corpus, "itd-10", "---\nid: itd-10\nblocked_by: [itd-27, itd-99]\n---\n")
+	row, err := startBlockedRow(root, corpus, "itd-10", "---\nid: itd-10\nblocked_by: [itd-27, itd-99]\n---\n")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if row.OK {
 		t.Fatalf("an unshipped blocker blocks: %+v", row)
 	}
