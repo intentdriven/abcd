@@ -165,8 +165,12 @@ const (
 	maxResolutionText = 4096
 )
 
-// issueIDRe is the shape of an issue id a receipt may declare fixed.
-var issueIDRe = regexp.MustCompile(`^iss-[0-9]{1,20}$`)
+// issueIDRe is the shape of an issue id the loop reads: the key a run is built
+// from, a drain lane's issue, a state file's key, and an id a receipt may
+// declare fixed. No leading zero: a padded spelling names the same record as
+// the canonical one (recordid.SameID) but not the same string, so admitted it
+// would become a run's identity and slip every dedupe that compares by `==`.
+var issueIDRe = regexp.MustCompile(`^iss-[1-9][0-9]{0,19}$`)
 
 // resolutionGaps names what is wrong with the captures a receipt declares
 // fixed: a malformed id, an issue named twice, a commit the receipt does not

@@ -104,7 +104,7 @@ func TestAnIssueKeyOpensOneLaneWhoseBriefIsTheRecordAndItsRemedy(t *testing.T) {
 // the repository's rule hands back is refused naming the rule; neither writes.
 func TestAnIssueKeyIsRefusedUnlessItsShapeAndTheRuleAdmitIt(t *testing.T) {
 	repo := issueRepo(t)
-	for _, key := range []string{"iss-../../x", "iss-", "iss-12a", "iss-1/2"} {
+	for _, key := range []string{"iss-../../x", "iss-", "iss-12a", "iss-1/2", "iss-0", "iss-02609292352131344"} {
 		_, err := Start(repo.Root(), key, Options{})
 		r := mustRefusal(t, err)
 		if r.Check != CheckKey {
@@ -300,5 +300,26 @@ func TestAnIssueLaneLandsOnePullRequestThatResolvesItsIssue(t *testing.T) {
 	st, _ := ReadState(repo.Root(), f.runID)
 	if outcome, pr, _ := laneOutcome(st); outcome != DrainLanePullRequest || pr != 7 {
 		t.Fatalf("the drain reads an armed issue lane as its pull request: %s %d", outcome, pr)
+	}
+}
+
+// TestAPaddedIssueIdIsNoIssueKey: a leading zero is not an issue id's shape
+// anywhere the loop reads one (the key, a drain lane's issue, a state file's
+// key, a receipt's resolves), so a padded spelling can never become a run's
+// identity or pass a dedupe the canonical spelling would have caught.
+func TestAPaddedIssueIdIsNoIssueKey(t *testing.T) {
+	for _, key := range []string{"iss-0", "iss-01", "iss-02609292352131344"} {
+		if validIssueKey(key) {
+			t.Errorf("%q is refused as an issue key", key)
+		}
+		gaps := resolutionGaps([]Resolution{{Issue: key, Commit: "c"}}, []string{"c"})
+		if len(gaps) == 0 || !strings.Contains(gaps[0], "an issue id") {
+			t.Errorf("a receipt declaring %q fixed is refused at its id: %v", key, gaps)
+		}
+	}
+	for _, key := range []string{"iss-1", "iss-10", "iss-2609292352131344"} {
+		if !validIssueKey(key) {
+			t.Errorf("%q is an issue key", key)
+		}
 	}
 }
