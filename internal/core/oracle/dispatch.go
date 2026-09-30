@@ -35,7 +35,9 @@ func (r Route) OnProvider() bool { return r.ConnectionUsed != "" && r.Connection
 // oracle.roles.<agent> points at on r's connection, and a provider that holds
 // a key is reached only through a route set on this machine, so only a route
 // the person set up on their own machine spends their key (ruling AA(b) of
-// 2026-09-29, itd-2609081951381895 Decision 8). Call then admits the target
+// 2026-09-29, itd-2609081951381895 Decision 8). A provider that holds a key
+// takes only a self-contained agent, or one the person's override admits
+// (ruling DR5 of 2026-09-29, admitAgent). Call then admits the target
 // against the allowlist and oracle.denylist again and resolves the key by
 // name. Every refusal is made before the provider is contacted and names the
 // setting to change. An error that is openaiapi.ErrUnreachable means nothing
@@ -61,6 +63,9 @@ func (c *APIConfig) Dispatch(ctx context.Context, creds credential.Source, r Rou
 			"(its block names the credential %s), and the route comes from %s; only a route set on this machine may spend "+
 			"that key, so the step is refused before any call: set oracle.roles.%s in %s",
 			agent, conn, p.Key, termsafe.Sanitize(t.Origin), agent, layered.Config.MachineOrigin())
+	}
+	if err := c.admitAgent(r.Agent, c.providers[t.Provider]); err != nil {
+		return nil, ReceiptRoute{}, fmt.Errorf("oracle dispatch: %s through %s: %w", agent, conn, err)
 	}
 	payload, rec, err := c.Call(ctx, creds, CallRequest{Target: t, Brief: brief, Settings: r.SettingsSent, Contract: contract}, opts...)
 	if err != nil {

@@ -53,7 +53,8 @@ func chat(model, content string) string {
 	return string(b)
 }
 
-// configured writes a machine config pointing scribe at a fake provider, and
+// configured writes a machine config pointing scribe and a self-contained
+// agent (DR5) at a fake provider, and
 // stores the key under its name when key is non-empty.
 func configured(t *testing.T, base, key string) (*fx, *APIConfig) {
 	t.Helper()
@@ -66,7 +67,7 @@ func configured(t *testing.T, base, key string) (*fx, *APIConfig) {
 		}
 	}
 	f.machineConfig(`{"oracle":{"api":{"openrouter":{"base_url":"` + base + `",` + keyField +
-		`"models":["typesafe/jev-1.13"]}},"roles":{"scribe":"openrouter/typesafe/jev-1.13"}}}`)
+		`"models":["typesafe/jev-1.13"]}},"roles":{"scribe":"openrouter/typesafe/jev-1.13","cold-reading-detection":"openrouter/typesafe/jev-1.13"}}}`)
 	return f, f.loadAPI()
 }
 
