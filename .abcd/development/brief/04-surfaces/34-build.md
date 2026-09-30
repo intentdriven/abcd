@@ -485,8 +485,8 @@ until the last step.
    mirror requires nothing, so the pull request stays open; a mirror file that
    cannot be read or parsed is refused, which also arms nothing. Where a queue
    exists but nothing requires approval, the step's note, the run record and
-   `implement status` say "left open for a person to merge: the ruleset
-   requires no approval", and no later step arms it. Nothing is pushed to the
+   the run's status say "left open for a person to merge: the ruleset requires
+   no approval", and no later step arms it. Nothing is pushed to the
    lane after this step.
 6. It fetches the default branch and waits, exiting 3, until the pushed head
    is an ancestor of it; only then does it remove the lane's worktree (never
