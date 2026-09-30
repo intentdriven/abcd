@@ -138,7 +138,10 @@ func eligibility(iss Issue, r drainrule.Rule, anchor deferralAnchor) DrainVerdic
 		return decide(DrainHandBack, RuleDeferred, fmt.Sprintf(
 			"deferred past %s, anchor stale: this checkout's newest release tag is %s and it lacks %s (a checkout not fetched since the last cut), so whether the deferral is live cannot be read and it is a person's; `git fetch --tags` and drain again",
 			iss.deferredAfter, anchor.tag, iss.deferredAfter))
-	case anchor.stale == "" && anchor.tag != "" && iss.deferredAfter == anchor.tag:
+	case anchor.tag != "" && iss.deferredAfter == anchor.tag:
+		// Handed back whether or not the anchor is stale: a newer tag named
+		// only in the ledger is not a tag this checkout holds, so the
+		// deferral at the local anchor lapses when that tag is fetched.
 		return decide(DrainHandBack, RuleDeferred, fmt.Sprintf(
 			"deferred past %s, the current anchor: a person carried it past this release, so it is a person's until the deferral lapses", anchor.tag))
 	case strings.TrimSpace(iss.Remedy) == "":
@@ -293,8 +296,9 @@ func PlanDrain(req DrainPlanRequest) (DrainPlan, error) {
 // unknown when an open record carries a deferral and the checkout holds no
 // release tag. stale names the newest tag an open record is deferred past that
 // is newer than the checkout's own, which the checkout therefore lacks; a
-// deferral past the local tag has then lapsed, and one past a tag it lacks is
-// handed back. The zero value is "no deferral to judge".
+// record deferred past a tag it lacks is handed back, and so is one deferred
+// past the local tag, which lapses only when the newer tag is fetched. The
+// zero value is "no deferral to judge".
 type deferralAnchor struct {
 	tag     string
 	local   launch.Semver
@@ -311,8 +315,11 @@ type deferralAnchor struct {
 // deferral, and a deferral past a tag newer than the checkout's own (a
 // checkout not fetched since the last cut) marks the anchor stale, which hands
 // back every record deferred past a tag the checkout lacks. No remote is
-// asked: the record's own tag is the evidence the local anchor is behind. A
-// live deferral is a person's decision.
+// asked: the record's own tag is the evidence the local anchor may be behind.
+// That evidence is a ledger field, not a git tag, so it never lapses a
+// deferral either: a record deferred past the local tag is handed back whether
+// or not the anchor is stale, which keeps this invariant. A live deferral is a
+// person's decision.
 func liveDeferralAnchor(repoRoot string, issues []Issue) (deferralAnchor, error) {
 	if !slices.ContainsFunc(issues, func(iss Issue) bool { return iss.deferredAfter != "" }) {
 		return deferralAnchor{}, nil

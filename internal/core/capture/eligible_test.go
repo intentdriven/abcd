@@ -587,8 +587,9 @@ func TestWaitsOnIsReadAsAWordNotAPrefix(t *testing.T) {
 // the newer one names a tag it lacks. Its deferral is a person's decision this
 // cycle, so the record is handed back as the anchor-unknown path does, naming
 // the stale anchor, the tag and how to fetch it; no remote is asked. A
-// deferral past the local tag has lapsed, since a newer release is named, and
-// a deferral the drain cannot read as a release tag is handed back too.
+// deferral past the local tag is handed back as live at the current anchor,
+// since a newer tag named only in the ledger is not one the checkout holds,
+// and a deferral the drain cannot read as a release tag is handed back too.
 func TestADeferralPastATagTheCheckoutLacksIsHandedBack(t *testing.T) {
 	src := gittest.NewRepo(t)
 	src.Commit("root")
@@ -614,7 +615,7 @@ func TestADeferralPastATagTheCheckoutLacksIsHandedBack(t *testing.T) {
 	}
 	cases := map[string]struct{ want, reason string }{
 		"iss-2": {"handback/deferred", "anchor stale"},
-		"iss-3": {"eligible/fields", ""},
+		"iss-3": {"handback/deferred", "the current anchor"},
 		"iss-4": {"handback/deferred", "not a release tag"},
 		"iss-5": {"eligible/fields", ""},
 	}
@@ -636,7 +637,7 @@ func TestADeferralPastATagTheCheckoutLacksIsHandedBack(t *testing.T) {
 	}
 
 	// Fetching the tag clears it: the deferral past v0.2.0 is live at the
-	// current anchor, and the one past v0.1.0 stays lapsed.
+	// current anchor, and the one past v0.1.0 lapses.
 	src.Git("tag", "v0.2.0")
 	p = f.plan()
 	if p.Anchor != "v0.2.0" || p.AnchorStale != "" {
@@ -647,5 +648,41 @@ func TestADeferralPastATagTheCheckoutLacksIsHandedBack(t *testing.T) {
 	}
 	if v := verdictOf(t, p, "iss-3"); v.Outcome != DrainEligible {
 		t.Errorf("iss-3 at the fetched anchor: %s (%s)", v.Outcome, v.Reason)
+	}
+}
+
+// TestADeferralAtTheLocalAnchorIsNotLapsedByAnotherRecordsTag: a checkout at
+// its true newest tag v0.1.0 holds a record deferred past v0.1.0, a live
+// deferral. A DIFFERENT record naming a tag no release carries (a typo, or a
+// hand-written "v9.9.9") marks the anchor stale, and that must not make the
+// live deferral read as lapsed: a ledger field is not a git tag, so the record
+// deferred past the local anchor is handed back until the newer tag is
+// actually fetched.
+func TestADeferralAtTheLocalAnchorIsNotLapsedByAnotherRecordsTag(t *testing.T) {
+	src := gittest.NewRepo(t)
+	src.Commit("root")
+	src.Git("tag", "v0.1.0")
+	repo := src.Root()
+	ir := filepath.Join(repo, LedgerRelPath)
+	writeRuleRecord(t, repo, loosenedFields)
+	f := drainFixture{t: t, repo: repo, ir: ir}
+	f.file("iss-2", SeverityMajor, "bug", "rewrite the parser")
+	f.file("iss-3", SeverityMajor, "bug", "rewrite the lexer")
+	setDeferral(t, ir, "iss-3", "v0.1.0")
+
+	if v := verdictOf(t, f.plan(), "iss-3"); v.Outcome != DrainHandBack || !strings.Contains(v.Reason, "the current anchor") {
+		t.Fatalf("iss-3 before the other record's deferral: %s (%s)", v.Outcome, v.Reason)
+	}
+
+	setDeferral(t, ir, "iss-2", "v9.9.9")
+	p := f.plan()
+	if p.AnchorStale != "v9.9.9" {
+		t.Errorf("the plan names stale-anchor tag %q, want v9.9.9", p.AnchorStale)
+	}
+	if v := verdictOf(t, p, "iss-3"); v.Outcome != DrainHandBack || v.Rule != RuleDeferred || !strings.Contains(v.Reason, "the current anchor") {
+		t.Errorf("iss-3 with another record deferred past v9.9.9: %s/%s (%s), want handback/deferred at the current anchor", v.Outcome, v.Rule, v.Reason)
+	}
+	if v := verdictOf(t, p, "iss-2"); v.Outcome != DrainHandBack || !strings.Contains(v.Reason, "anchor stale") {
+		t.Errorf("iss-2 deferred past v9.9.9: %s (%s)", v.Outcome, v.Reason)
 	}
 }

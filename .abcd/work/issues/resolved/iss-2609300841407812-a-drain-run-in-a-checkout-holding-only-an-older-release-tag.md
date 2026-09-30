@@ -9,7 +9,7 @@ found_during: "autonomous run 2026-09-23"
 origin: researcher-authored
 production_mode: hand-written
 remedy: "Compare each deferred_after with the local anchor through launch.CoreGreater, the canonical version comparison: one newer than the local tag names a tag the checkout lacks, so hand the record back as 'anchor stale', naming the tag and 'git fetch --tags', the way the anchor-unknown path does, with no remote call; name the stale tag in the dry run and --json; treat a deferral past the local tag as lapsed once a newer one is named; hand back a deferred_after that does not parse as vMAJOR.MINOR.PATCH."
-resolution: "A deferred_after newer than the checkout's newest release tag (launch.CoreGreater) is handed back as anchor stale, naming the tag and git fetch --tags, in the dry run and --json, with no remote call; a deferral past the local tag lapses once a newer one is named; a deferred_after that is not a release tag is handed back."
+resolution: "A deferred_after newer than the checkout's newest release tag (launch.CoreGreater) is handed back as anchor stale, naming the tag and git fetch --tags, in the dry run and --json, with no remote call; a deferral past the local tag is handed back as live whether or not the anchor is stale, and lapses only when the newer tag is fetched, so a tag named only in the ledger never lets a record through; a deferred_after that is not a release tag is handed back."
 impact: fix
 resolved_by:
   commit: "4bc37c6c3"
@@ -19,4 +19,4 @@ A drain run in a checkout holding only an older release tag takes a record a per
 
 ## Grounds
 
-- pursued: a clone tagged v0.1.0 alone hands back a record deferred past v0.2.0 and takes one deferred past v0.1.0 (TestADeferralPastATagTheCheckoutLacksIsHandedBack, TestDrainHandsBackADeferralPastATagTheCheckoutLacks); a record deferred past a tag the checkout lacks reading eligible would show it wrong
+- pursued: a clone tagged v0.1.0 alone hands back a record deferred past v0.2.0 and the one deferred past v0.1.0 as well, and a different record deferred past v9.9.9 leaves the v0.1.0 deferral handed back (TestADeferralPastATagTheCheckoutLacksIsHandedBack, TestADeferralAtTheLocalAnchorIsNotLapsedByAnotherRecordsTag, TestDrainHandsBackADeferralPastATagTheCheckoutLacks); a record deferred past a tag the checkout lacks, or past the local tag while the anchor is stale, reading eligible would show it wrong
