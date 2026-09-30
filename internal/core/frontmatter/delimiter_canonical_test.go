@@ -36,6 +36,7 @@ var delimiterSites = map[string]delimiterSite{
 	"internal/core/source/add.go":           {2, "a WRITER: a source entry's two delimiters"},
 	"internal/core/lab/record.go":           {2, "a WRITER: a probe record's two delimiters"},
 	"internal/core/lab/mint.go":             {1, "a WRITER: the lab entry's block, both delimiters in one format string"},
+	"internal/core/reflect/write.go":        {2, "a WRITER: the retrospective's two delimiters"},
 	"internal/core/memory/schema.go":        {2, "a WRITER: rebuilds a region as a block to hand parseFrontmatter; it judges no delimiter"},
 	"internal/gittest/repo.go":              {2, "a WRITER: a test-fixture record's block's two delimiters"},
 	"internal/surface/cli/history.go":       {1, "a WRITER: a separator line between rendered transcripts; not frontmatter"},
