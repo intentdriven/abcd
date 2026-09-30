@@ -49,6 +49,21 @@ const (
 	ActionRefused Action = "refused"
 )
 
+// UpdatedFormat is the one wording of the line every binary swap prints when it
+// completes: `abcd update`'s receipt and hooks/bootstrap.sh's success notice
+// both lead with it, and the session check uses it for the one swap whose
+// output nobody sees (the ruling CJ1b in .abcd/work/DECISIONS.md). The
+// bootstrap is POSIX sh and cannot import it, so
+// TestBootstrapUpdateLineIsTheSharedWording holds the script's printf literal
+// to this constant.
+const UpdatedFormat = "abcd updated from %s to %s"
+
+// UpdatedLine renders UpdatedFormat. The caller sanitises both tags: they are
+// read off an HTTP response or a record on disk.
+func UpdatedLine(from, to string) string {
+	return fmt.Sprintf(UpdatedFormat, from, to)
+}
+
 // Refusal is a named no: the shape that refused, why, and the remedy. Every
 // refusal is loud and names its way out (the itd-130 dispatch contract).
 type Refusal struct {
@@ -287,8 +302,9 @@ var scrubbedEnv = []string{
 }
 
 // tagShape is the accepted release-tag alphabet; a tag travels into a URL
-// path, so anything path-shaped refuses before any request is built.
-var tagShape = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$`)
+// path, so anything path-shaped refuses before any request is built. It is
+// ahoy's, which holds the session check's unseen-update tags to the same shape.
+var tagShape = ahoy.ReleaseTagShape
 
 const (
 	maxChecksumsBytes = 1 << 20 // 1 MiB: checksums.txt is a few hundred bytes

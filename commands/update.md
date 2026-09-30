@@ -10,10 +10,17 @@ block: people
 Complete a chosen update of the PATH-installed binary. The verb's documented
 meaning IS the fetch: it resolves the latest release (or takes an explicit
 tag), verifies the platform binary against the same release's
-`checksums.txt`, and swaps the PATH copy atomically, printing a receipt with
-the origin, tag, digest, and old→new versions. abcd never checks for or
+`checksums.txt`, and swaps the PATH copy atomically, printing a receipt that
+opens with `abcd updated from <old> to <new>` and names the path, origin and
+digest. abcd never checks for or
 applies updates on its own — this verb is the only command that reaches the
 release origin, and only when invoked.
+
+The same line announces a swap the plugin bootstrap makes. When a hook that
+discards its output made the swap, the next session start shows the line once,
+and claims that release with an empty file: `update-shown-<new>` in the plugin
+data directory's `cache/`, or `.update-shown-<new>` in the plugin root when there
+is no data directory. That claim is the only thing the session start writes.
 
 **Only asking.** When the user wants to know whether a newer release exists
 without taking it, run the check, which fetches the latest release's tag once

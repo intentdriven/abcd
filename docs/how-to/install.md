@@ -170,6 +170,12 @@ scrolled away and you would rather not go looking for the directory, the
 [install](#cli) one-liner below needs no plugin root at all and gets you to
 the same place.
 
+When a plugin update brings a newer release, the bootstrap's success notice
+opens with `abcd updated from <old> to <new>`, once, in the session that
+installs it; `abcd update` opens its receipt with the same line. If the new
+release was installed by a hook that shows no output, the next session start
+prints that line instead, once.
+
 For a stronger root of trust than same-origin checksums, build from source —
 `go build ./cmd/abcd` — and place the binary in the plugin root and on your
 `PATH` yourself. A binary placed there by hand takes the same no-network fast

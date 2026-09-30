@@ -195,8 +195,8 @@ func (v VintageStatus) Staleness() string {
 		// Only the checkout-tip comparison is ancestry-guarded, so only it may
 		// claim a direction. A version/pin comparison is string equality — a
 		// binary newer than its pin is the same inequality read the other way —
-		// so it stays non-directional ("differs from"), the caution skew.go and
-		// VersionTransition already take.
+		// so it stays non-directional ("differs from"), the caution skew.go
+		// already takes.
 		if v.Source == VintageSourceCheckoutTip {
 			return "stale — behind the checkout tip (" + ref + ")"
 		}
@@ -210,43 +210,10 @@ func (v VintageStatus) Staleness() string {
 	}
 }
 
-// VersionTransition reports a version change performed since this repo was last
-// set up: the last-recorded setup_version (written into .abcd/config.json by
-// install) against the running binary's version. It is AC6's report only — the
-// fetch that changed the binary is provisioning's job (itd-105/108), out of this
-// intent. changed is false when either side is undeterminable or they match; the
-// report is direction-neutral, since a repo set up by a newer binary and now run
-// through an older one is the same inequality read backwards.
-func VersionTransition(cwd string) (recorded, running string, changed bool) {
-	return versionTransitionFrom(recordedSetupVersion(cwd), core.Version)
-}
-
-// versionTransitionFrom is the pure comparison, split so the change/no-change
-// branches are testable without a fixture config or a re-stamped core.Version.
-func versionTransitionFrom(recorded, running string) (from, to string, changed bool) {
-	// A dev build on either side is no transition: a dev stamp can never
-	// reconcile against a release, and re-stamping it would flap the tracked
-	// config between dev and release installs (iss-2608241115259170).
-	if isDevOrUnknown(running) || isDevOrUnknown(recorded) {
-		return recorded, running, false
-	}
-	return recorded, running, recorded != running
-}
-
 // isDevOrUnknown reports a version that cannot take part in a comparison: none
-// recorded, or a local dev build's.
+// recorded, or a local dev build's (detect's version.upgrade gap,
+// iss-2608241115259170).
 func isDevOrUnknown(v string) bool { return v == "" || v == "dev" }
-
-// recordedSetupVersion reads meta.setup_version from the repo config, or "" when
-// it is absent or unreadable.
-func recordedSetupVersion(cwd string) string {
-	cfg, err := readConfig(cwd)
-	if err != nil || cfg == nil {
-		return ""
-	}
-	v, _ := subMap(cfg, "meta")["setup_version"].(string)
-	return v
-}
 
 // readPinnedTag reads the release tag the bootstrap's provenance record pins,
 // or "" when no record answers. The root-local .binary-meta wins when present —
