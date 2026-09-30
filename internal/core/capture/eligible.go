@@ -6,6 +6,8 @@ import (
 	"slices"
 	"sort"
 	"strings"
+
+	"github.com/intentdriven/abcd/internal/core/issueschema"
 )
 
 // eligible.go — the drain's field-only eligibility rule (itd-82 decisions 4, 6
@@ -35,7 +37,8 @@ const (
 	DrainEligible DrainOutcome = "eligible"
 	// DrainHandBack: the issue is a person's, by severity or category.
 	DrainHandBack DrainOutcome = "handback"
-	// DrainIneligible: a field the rule reads is missing (the remedy).
+	// DrainIneligible: a field the rule reads is missing (the remedy), or holds
+	// the machine value an automatic filer writes in place of one.
 	DrainIneligible DrainOutcome = "ineligible"
 	// DrainSkipped: an open record blocks it; the blocker is named.
 	DrainSkipped DrainOutcome = "skipped"
@@ -115,7 +118,14 @@ func eligibility(iss Issue) DrainVerdict {
 	case slices.Index(DrainSeverities, iss.Severity) < 0:
 		return decide(DrainHandBack, RuleSeverity, fmt.Sprintf("severity %s is above the drain's (nitpick, minor)", iss.Severity))
 	case strings.TrimSpace(iss.Remedy) == "":
-		return decide(DrainIneligible, RuleRemedy, "no remedy: field; ineligible until someone adds one")
+		return decide(DrainIneligible, RuleRemedy, fmt.Sprintf(
+			"no remedy: field; ineligible until someone adds one with `abcd capture remedy %s \"<fix>\"`", iss.ID))
+	case issueschema.IsMachineRemedy(iss.Remedy):
+		// An automatic filer's record (ruling H12): filed, and skipped until a
+		// person writes the fix it proposes.
+		return decide(DrainIneligible, RuleRemedy, fmt.Sprintf(
+			"remedy is %q, written by an automatic filer; ineligible until a person writes a real remedy with `abcd capture remedy %s \"<fix>\"`",
+			issueschema.MachineRemedy, iss.ID))
 	}
 	return decide(DrainEligible, RuleFields,
 		"every field rule passes on its remedy; the host judgement over the remedy may still hand it back")

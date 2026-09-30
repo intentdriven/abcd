@@ -26,8 +26,11 @@ alone:
 - its category is in the fixable set: `tech-debt`, `documentation`,
   `inconsistency`, `drift`, `bug`, `ux`;
 - its severity is `nitpick` or `minor`;
-- it carries a `remedy:` (captured with `abcd capture --remedy "<fix>"`; a
-  record carrying only the older `suggested_fix:` reads that as its remedy).
+- it carries a `remedy:` (`abcd capture --remedy "<fix>"`, which every new
+  issue carries, or `abcd capture remedy <iss-N> "<fix>"` onto an open one; a
+  record carrying only the older `suggested_fix:` reads that as its remedy),
+  and the remedy is not `none (filed automatically)`, the value abcd's
+  automatic filers write when they have no fix.
 
 The rule is a recorded decision, and the payload's `record` names it. The
 rules are asked in a fixed order, and the first that excludes an issue decides
@@ -39,7 +42,7 @@ its one disposition:
 | `handback` | `security` | category `security` is always a person's |
 | `handback` | `category` | a category outside the fixable set (`process`, `observation`, `architectural-insight`, `future-work-seed`, `lapse`) |
 | `handback` | `severity` | severity `major` or `critical` |
-| `ineligible` | `remedy` | no remedy; ineligible until someone adds one |
+| `ineligible` | `remedy` | no remedy (a record filed before the remedy was required), or `none (filed automatically)` from an automatic filer; ineligible until a person writes one with `abcd capture remedy`, which the reason names |
 | `unreadable` | `unreadable` | the ledger reader refuses the record; the reason names why |
 | `eligible` | `fields` | every field rule passes |
 
@@ -63,8 +66,10 @@ rule. Every other open issue follows, by id.
 checkout and branch read.
 
 Tell the user the counts, then the eligible issues in order, then the others
-grouped by outcome with their reasons. For an `ineligible` issue, say that
-adding a remedy is what makes it a candidate. Do not act on the list: a
+grouped by outcome with their reasons. For an `ineligible` issue, say that a
+person writing a remedy with `abcd capture remedy <iss-N> "<fix>"` is what makes
+it a candidate, and name the ones an automatic filer wrote apart, since their
+reason says so. Do not act on the list: a
 hand-back is a person's decision.
 
 ## Refusals

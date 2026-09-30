@@ -20,13 +20,13 @@ The core is a transport-agnostic Go package ([adr-23](../../decisions/adrs/0023-
 
 ## Embark sources
 
-**Input lifeboats are external by default.** Embark reads from `embark from <path>` — the lifeboat at whatever destination a disembark wrote it to. Embark records source path + manifest hash in `~/.abcd/voyage/<source-root-sha>/embark/provenance.json` (operator level, per adr-35 — never committed, because voyage records absolute source paths). Opt-in `embark from <path> --archive` copies the input lifeboat verbatim into `~/.abcd/voyage/<source-root-sha>/embark/from/<timestamp>/` for the rare case where the source repo will disappear.
+**Input lifeboats are external by default.** Embark reads from `embark from <lifeboat-dir> [target-dir]`: the lifeboat at whatever destination a disembark wrote it to. The unpack takes no modifiers of its own. Two operator-level additions are a design target ([`03-embark.md` § The design-target surface](../04-surfaces/03-embark.md#the-design-target-surface)): an `embark/provenance.json` under `~/.abcd/voyage/<source-root-sha>/` holding the source path and manifest hash (never committed, because voyage records absolute source paths, per adr-35), and an opt-in archive modifier that copies the input lifeboat verbatim into `~/.abcd/voyage/<source-root-sha>/embark/from/<timestamp>/` for the rare case where the source repo will disappear.
 
 **Embark sources, in order (post bare-as-help refactor — see [`04-surfaces/03-embark.md`](../04-surfaces/03-embark.md)):**
 
-1. `embark from <path>` (any explicit path to a lifeboat destination a disembark wrote) — **there is no `home` shorthand**, because there is no in-tree lifeboat home to expand it to (adr-35). The round-trip / self-test case is just `disembark pack <repo> <dest>` followed by `embark from <dest>`.
-2. `embark scan` (or `embark scan --deep`) → discovery sub-verb that walks sibling directories (`../`), lists **lifeboat destinations** — directories carrying a parseable `_provenance.json`, the same marker the destination safety gate keys on — ranked by mtime; does not unpack; pass the chosen path to `embark from <path>`
-3. Free-text path input via the embark interview if `<path>` is omitted on `from`
+1. `embark from <lifeboat-dir>` (any explicit path to a lifeboat destination a disembark wrote) — **there is no `home` shorthand**, because there is no in-tree lifeboat home to expand it to (adr-35). The round-trip / self-test case is just `disembark pack <repo> <dest>` followed by `embark from <dest>`.
+2. *Design target, not built:* an `embark scan` discovery sub-verb, with a deep mode, that walks sibling directories (`../`), lists **lifeboat destinations** — directories carrying a parseable `_provenance.json`, the same marker the destination safety gate keys on — ranked by mtime; does not unpack; pass the chosen path to `embark from <path>`
+3. *Design target, not built:* free-text path input via the embark interview; `from` requires the lifeboat path
 
 > **Open question (adr-35):** where `scan` searches. Walking `../` made sense when a lifeboat lived inside its producing repo, so siblings-of-cwd *were* the candidate set. Destinations are now operator-chosen and need not sit beside the repo being embarked into. Either the sibling walk is kept as a cheap heuristic, or scan is given explicit roots (an argument, a configured search path, or the voyage records under `~/.abcd/voyage/`). adr-35 does not settle this; it must be decided before `scan` is specified.
 
@@ -34,4 +34,4 @@ The core is a transport-agnostic Go package ([adr-23](../../decisions/adrs/0023-
 
 ## Validation corpus
 
-See [`01-product/02-context.md`](../01-product/02-context.md) for the canonical validation-corpus list (SSOT). Summary: `idelphiDev/` (primary), `abcdSubZero/`, `idelphiSubZero/`. Per-phase acceptance runs against the corpus with documented exemptions where a feature genuinely doesn't apply.
+See [`01-product/02-context.md`](../01-product/02-context.md) for the canonical validation-corpus list (SSOT). Summary: `idelphiDev/` (primary), `abcdSubZero/`, `idelphiSubZero/`. Acceptance runs against the corpus with documented exemptions where a feature genuinely doesn't apply.

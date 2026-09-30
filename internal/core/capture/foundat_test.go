@@ -32,7 +32,7 @@ func TestCaptureFoundAtMustResolveInTheTree(t *testing.T) {
 	for _, tc := range refused {
 		t.Run("refused/"+tc.name, func(t *testing.T) {
 			repo, ir := ledger(t)
-			_, err := Capture(CaptureRequest{
+			_, err := testCapture(CaptureRequest{
 				RepoRoot: repo, IssuesRoot: ir, Text: "a finding", Severity: SeverityMinor,
 				Category: "bug", Source: "manual-test", Slug: "finding", FoundDuring: "t",
 				FoundAt: tc.foundAt,
@@ -85,7 +85,7 @@ func TestCaptureFoundAtMustResolveInTheTree(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			res, err := Capture(CaptureRequest{
+			res, err := testCapture(CaptureRequest{
 				RepoRoot: repo, IssuesRoot: ir, Text: "a finding", Severity: SeverityMinor,
 				Category: "bug", Source: "manual-test", Slug: "finding", FoundDuring: "t",
 				FoundAt: tc.foundAt,
@@ -125,7 +125,7 @@ func TestCaptureFoundAtThatCannotBeCheckedIsAFault(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.Chmod(locked, 0o755) })
-	_, err := Capture(CaptureRequest{
+	_, err := testCapture(CaptureRequest{
 		RepoRoot: repo, IssuesRoot: ir, Text: "a finding", Severity: SeverityMinor,
 		Category: "bug", Source: "manual-test", Slug: "finding", FoundDuring: "t",
 		FoundAt: "internal/locked/x.go",

@@ -4,8 +4,8 @@
 // or knows about a harness event — the front doors under internal/surface and
 // the hook entrypoint marshal these results for their transport.
 //
-// The model is a small set of binary-bundled default domains (embedded below)
-// merged with two optional override layers, in order: the user scope's
+// The model is a small set of binary-bundled default domains (embedded below,
+// plus SHELL, generated from the guard's hazard registry in shell.go) merged with two optional override layers, in order: the user scope's
 // ~/.abcd/rules.json (one per machine, spc-23) and then the per-repo
 // <repoRoot>/.abcd/rules.json, so the repo wins a field both set. Each
 // domain carries recall keywords + aliases and a list of rules; a prompt is
@@ -170,6 +170,7 @@ func mustParseDefaults() RuleSet {
 	if err := json.Unmarshal(defaultsJSON, &rs); err != nil {
 		panic("rules: bundled defaults are malformed: " + err.Error())
 	}
+	rs = withShellDomain(rs)
 	if err := Validate(rs); err != nil {
 		panic("rules: bundled defaults fail validation: " + err.Error())
 	}
@@ -274,13 +275,14 @@ func Load(repoRoot string) (RuleSet, error) {
 // securityBearingDomains are the bundled domains whose entries are guardrails
 // rather than house style: PII (secrets, local paths and network identifiers
 // leaving the machine), COMMITTING (unasked pushes, bypassed hooks, AI
-// attribution) and LOAD (orphaned load starving a live machine). An override
+// attribution), LOAD (orphaned load starving a live machine) and SHELL (the
+// shell-hazard registry's lessons, generated in shell.go). An override
 // that replaces one of their lists without an entry the binary ships is named
 // on every load (noteWithheld); the other bundled domains are conventions a
 // repo restates in its own words, and a note on each would teach the reader to
 // skip the one that matters. Name-sorted, so the notes come out in a stable
 // order.
-var securityBearingDomains = []string{"COMMITTING", "LOAD", "PII"}
+var securityBearingDomains = []string{"COMMITTING", "LOAD", "PII", ShellDomain}
 
 // overrideLayer is one override file as Load read it, with the label of the
 // layer it came from.

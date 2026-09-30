@@ -4,9 +4,9 @@
 // configuration of this adapter and never code (the intent's Decision 2).
 //
 // The client asks for the model it is given and nothing else: which models a
-// provider may serve, and the vendor denylist above them, are
-// internal/core/oracle's to decide before a Client is ever built
-// (adr-2609221009491186). The adapter's own guarantees are the network path's:
+// provider may serve (its allowlist, and any oracle.denylist entry the
+// configuration writes) is internal/core/oracle's to decide before a Client is
+// ever built (adr-2609221009491186, adr-2609300107513982). The adapter's own guarantees are the network path's:
 //
 //   - the base URL is pinned per provider block, plain HTTP is admitted only to
 //     this machine (a local server), and a redirect is never followed, so a
@@ -16,10 +16,11 @@
 //     than waited on;
 //   - the key travels only as the Authorization header of a request to the
 //     pinned base URL. No error, result or log line carries it: a provider's
-//     own text (its error and the model it reports) is decoded, bounded,
-//     sanitised and scrubbed of every representation of the key (Scrub)
-//     before it can reach an error or a result, because a provider may echo
-//     what it was sent, in whatever encoding its stack applies;
+//     own text (its error, the model it reports and the answer itself) is
+//     decoded and scrubbed of every representation of the key (Scrub), the
+//     error and the model bounded and sanitised as well, before it can reach
+//     an error or a result, because a provider may echo what it was sent, in
+//     whatever encoding its stack applies;
 //   - a setting the protocol does not take is refused before any call, and the
 //     answer is judged by the caller's output contract, the same one the host
 //     sub-agent's payload is judged by, so an answer that does not satisfy it is
@@ -137,6 +138,20 @@ func WithTimeout(d time.Duration) Option {
 		}
 	}
 }
+
+// ErrUnreachable is what a call's error wraps when the provider could not be
+// reached at all: no connection to it (or to the proxy in front of it) was
+// ever made, so nothing of the request, the key or the brief left this
+// machine. A caller may leave such a step to another leg. A provider that
+// answered, or that took the request and never answered, is not unreachable:
+// the brief may already have been sent.
+var ErrUnreachable = errors.New("openaiapi: the provider could not be reached")
+
+// unreachableError is a scrubbed refusal that is ErrUnreachable.
+type unreachableError struct{ msg string }
+
+func (e *unreachableError) Error() string { return e.msg }
+func (e *unreachableError) Unwrap() error { return ErrUnreachable }
 
 // errRedirect is what the client answers a redirect with.
 var errRedirect = errors.New("redirect refused")
@@ -330,6 +345,12 @@ func (c *Client) decode(raw []byte, asked string, contract func([]byte) error) (
 	if len(cc.Choices) == 0 {
 		return Result{}, c.fail(c.host + " answered with no choice, so there is no answer to read")
 	}
+	// An answer that names no model cannot show what answered: the record would
+	// carry an empty model and no oracle.denylist entry could match it, so it is
+	// a contract failure, refused rather than used (iss-2609300805371434).
+	if strings.TrimSpace(cc.Model) == "" {
+		return Result{}, c.fail(c.host + " reported no model with its answer, so what answered cannot be shown; the answer is refused rather than used")
+	}
 	// The reported model is the provider's own text, recorded and quoted in a
 	// denylist refusal, so it is scrubbed like any other.
 	res := Result{ModelAsked: asked, ModelReported: cleanModel(c.scrub(cc.Model))}
@@ -337,7 +358,9 @@ func (c *Client) decode(raw []byte, asked string, contract func([]byte) error) (
 	if p := cc.Choices[0].Message.Content; p != nil {
 		content = *p
 	}
-	res.Content = []byte(unfence(content))
+	// The answer is the payload a verb records, so it is scrubbed like every
+	// other text the provider sends, before the contract judges it.
+	res.Content = []byte(c.scrubAnswer(unfence(content)))
 	if contract != nil {
 		if err := contract(res.Content); err != nil {
 			return Result{}, c.fail("the answer does not satisfy the output contract, so it is refused rather than used: " +
@@ -345,6 +368,81 @@ func (c *Client) decode(raw []byte, asked string, contract func([]byte) error) (
 		}
 	}
 	return res, nil
+}
+
+// scrubAnswer is an answer with every representation of the key removed,
+// including the ones a reader of the payload would undo: a JSON answer is
+// decoded, and each string in it, field names included, is judged with its
+// HTML character references resolved; any other answer is judged with its
+// JSON escapes undone and its character references resolved. An answer that
+// reveals no key that way keeps the provider's bytes, the literal forms
+// scrubbed; one that does is replaced by its decoded text, scrubbed, a JSON
+// answer rendered again from its decoded values. As in providerSaid, the scrub
+// runs before each decoding step as well as after it.
+func (c *Client) scrubAnswer(s string) string {
+	s = c.scrub(s)
+	if len(c.forms) == 0 {
+		return s
+	}
+	// clean is v as a reader would take it, scrubbed, and whether that
+	// differs from the unscrubbed reading, which is when v carries the key.
+	clean := func(v string) (string, bool) {
+		out := c.scrub(html.UnescapeString(c.scrub(v)))
+		return out, out != html.UnescapeString(v)
+	}
+	dec := json.NewDecoder(strings.NewReader(s))
+	dec.UseNumber()
+	var v any
+	if dec.Decode(&v) != nil || dec.More() {
+		out, revealed := clean(unescapeJSONText(s))
+		if !revealed {
+			return s
+		}
+		return out
+	}
+	var walk func(any) (any, bool)
+	walk = func(v any) (any, bool) {
+		switch t := v.(type) {
+		case string:
+			if out, revealed := clean(t); revealed {
+				return out, true
+			}
+			return t, false
+		case []any:
+			changed := false
+			for i, e := range t {
+				var ch bool
+				t[i], ch = walk(e)
+				changed = changed || ch
+			}
+			return t, changed
+		case map[string]any:
+			out, changed := make(map[string]any, len(t)), false
+			for k, e := range t {
+				nk, kc := clean(k)
+				if !kc {
+					nk = k
+				}
+				ne, ec := walk(e)
+				out[nk] = ne
+				changed = changed || kc || ec
+			}
+			return out, changed
+		}
+		return v, false
+	}
+	w, revealed := walk(v)
+	if !revealed {
+		return s
+	}
+	var b bytes.Buffer
+	enc := json.NewEncoder(&b)
+	enc.SetEscapeHTML(false)
+	if enc.Encode(w) != nil {
+		out, _ := clean(unescapeJSONText(s))
+		return out
+	}
+	return strings.TrimSuffix(b.String(), "\n")
 }
 
 // unfence returns the document inside one surrounding Markdown code fence, or
@@ -514,18 +612,37 @@ func (c *Client) transportError(err error) error {
 	switch {
 	case errors.Is(err, errRedirect):
 		return c.fail(c.host + " answered with a redirect, and abcd never follows one: the base URL is pinned, so the key and the brief go nowhere else")
-	case errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &ne) && ne.Timeout()):
-		return c.fail(fmt.Sprintf("no answer within %s from %s, so the call is abandoned", c.timeout, c.host))
 	case errors.Is(err, context.Canceled):
 		return c.fail("the call to " + c.host + " was cancelled")
+	case neverConnected(err):
+		return &unreachableError{msg: c.reachFailure(err).Error()}
+	case errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &ne) && ne.Timeout()):
+		return c.fail(fmt.Sprintf("no answer within %s from %s, so the call is abandoned", c.timeout, c.host))
 	}
-	// The *url.Error text names the endpoint (no secret) and the transport's
-	// own fault; it is scrubbed and bounded all the same.
+	return c.reachFailure(err)
+}
+
+// reachFailure is a transport fault in the transport's own words. The
+// *url.Error text names the endpoint (no secret) and the fault; it is
+// scrubbed and bounded all the same.
+func (c *Client) reachFailure(err error) error {
 	var ue *url.Error
 	if errors.As(err, &ue) {
 		err = ue.Err
 	}
 	return c.fail("could not reach " + c.host + ": " + termsafe.Sanitize(bound(c.scrub(err.Error()))))
+}
+
+// neverConnected reports whether err is a failure to connect at all: a name
+// that did not resolve, or a dial (to the provider, or to the proxy in front
+// of it) that did not complete, so no byte of the request was sent.
+func neverConnected(err error) bool {
+	var dns *net.DNSError
+	if errors.As(err, &dns) {
+		return true
+	}
+	var op *net.OpError
+	return errors.As(err, &op) && (op.Op == "dial" || op.Op == "proxyconnect")
 }
 
 // fail is every error the client returns: prefixed, and scrubbed of the key a

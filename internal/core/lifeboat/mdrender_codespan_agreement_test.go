@@ -11,7 +11,7 @@ import (
 )
 
 // TestBlockEscaperAgreesWithTheRendererOnCodeSpans runs the shared code-span
-// agreement table (termsafe's testdata, read by ideate's blockText and the site
+// agreement table (termsafe's testdata, read by termsafe.BlockText and the site
 // renderer's own test too) through escapeLeadingMarker and then the site
 // renderer. A value whose leading run is balanced is left as written and
 // renders as that span; an unbalanced one is escaped and renders no leading

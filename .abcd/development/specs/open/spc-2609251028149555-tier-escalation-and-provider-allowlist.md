@@ -91,5 +91,10 @@ all four:
 - The implement loop's per-lane state file, for AC 10.
 - Provider dispatch in the delegating verbs, for AC 3. The adapter
   (itd-2609081951381895) exists and declares the settings it accepts, and
-  `Resolve` refuses a setting outside them (AC 8); no verb yet hands `Resolve`
-  its connections or sends a step through them.
+  `Resolve` refuses a setting outside them (AC 8). The dispatch's core is
+  built: an agent whose `oracle.roles.<agent>` points at a provider resolves
+  to it with no `--route` (`Connections.Pointed`), `APIConfig.Dispatch` sends
+  the step through the adapter and returns the payload and the receipt naming
+  the provider as used, and `Route.FellBack` leaves a step whose provider could
+  not be reached to the harness. No verb yet hands `Resolve` the machine's
+  connections or calls `Dispatch`.

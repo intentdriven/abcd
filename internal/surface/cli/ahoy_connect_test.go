@@ -56,7 +56,7 @@ func TestAhoyProvidersExplainsWithNothingConfigured(t *testing.T) {
 	}
 	for _, want := range []string{
 		"aggregator", "decision models", "every delegated step runs on the host",
-		"none configured", "anthropic/* (bundled)",
+		"none configured", "denylist (oracle.denylist): none written; a provider serves only the models it lists",
 		"The platform keychain is the home abcd recommends", "abcd ahoy connect",
 		"--home abcd",
 	} {
@@ -71,12 +71,16 @@ func TestAhoyProvidersExplainsWithNothingConfigured(t *testing.T) {
 	var v struct {
 		Explanation string            `json:"explanation"`
 		Providers   []json.RawMessage `json:"providers"`
+		Denylist    []json.RawMessage `json:"denylist"`
 		Homes       []string          `json:"homes"`
 	}
 	if err := json.Unmarshal(jout, &v); err != nil {
 		t.Fatalf("--json: %v\n%s", err, jout)
 	}
-	if v.Explanation == "" || v.Providers == nil || len(v.Providers) != 0 || len(v.Homes) != 4 {
+	if strings.Contains(string(out), "bundled") || strings.Contains(string(out), "anthropic/*") {
+		t.Errorf("ahoy --providers names a bundled vendor denylist abcd no longer ships:\n%s", out)
+	}
+	if v.Explanation == "" || v.Providers == nil || len(v.Providers) != 0 || v.Denylist == nil || len(v.Denylist) != 0 || len(v.Homes) != 4 {
 		t.Fatalf("--json = %s", jout)
 	}
 }

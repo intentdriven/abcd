@@ -15,7 +15,7 @@ a command added tomorrow is covered here with no edit.
 - **Every** command and subcommand: `abcd <cmd> --help` exits 0, produces output,
   and never panics. This catches the failure unit tests miss — a command that
   compiles but crashes when actually invoked.
-- **Read-only, no-argument verbs** (`version`, the bare status board) run for real
+- **Read-only, no-argument verbs** (the bare status board) run for real
   to a graceful exit.
 - **Flag hygiene:** an unknown flag is a clean non-zero error, not a panic.
 - **Record-writing verbs** (`smoke_write_test.go`): `capture`, `capture resolve`

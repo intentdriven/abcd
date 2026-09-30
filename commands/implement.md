@@ -107,7 +107,7 @@ The second session is refused at exit 2, and the refusal is logged, when it:
   the committed `.abcd/config/reading-presets.json`, plus that file — those
   lanes are the first's; when the preset file is absent or unreadable, any
   declared `--path` is refused, since nothing can say the lane is clear;
-- reaches the release step — only the first session cuts a release.
+- reaches the release stage — only the first session cuts a release.
 
 It also keeps its own agent ceiling (stated on joining, held against its logged
 `agent_start` lines, reported by `check`).
@@ -118,14 +118,14 @@ unauthenticated role. Two sessions of one account can each write anything
 under that account's home, so the bounds keep two cooperating sessions apart;
 they are not a wall against a session that lies about its role.
 
-Before a step that is not a claim, ask:
+Before a stage that is not a claim, ask:
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/abcd" implement check release|lane|review|audit|land --session <id> [--path <file> …] --json
 ```
 
-An allowed step writes nothing. On a refusal, stop that step and leave it to the
-first session; a stop condition the second session meets stops only itself.
+An allowed stage writes nothing, and the verdict names it in `stage`. On a
+refusal, stop that stage and leave it to the first session; a stop condition the second session meets stops only itself.
 
 ## Log the run's events
 
@@ -205,34 +205,37 @@ last:
 
 `status` renders every run (or the one `--run` names): its pace and the layer
 each number came from, whether it is paused and until when, its lanes, each
-lane's spec step and next step, what an awaiting lane waits on, the pending spec
+lane's spec step and next stage, what an awaiting lane waits on, the pending spec
 steps and the run record. It writes nothing.
 
-`step` performs one step of the current lane and exits. When a step hands work
-to an agent the result's `awaiting` names the `role` to start as a fresh agent,
+A spec's **steps** and a lane's **stages** are two things: each spec step lands
+as one lane, and the loop takes the lane through its stages. `step` performs the
+next stage of the current lane and exits; the result names the stage it
+completed under `performed_stage` and the lane's next one under `stage`. When a
+stage hands work to an agent the result's `awaiting` names the `role` to start as a fresh agent,
 the `brief` to hand it and the `receipt` path it writes; the lane then moves
-only when `receipt` is called with that path and the receipt verifies. A step
+only when `receipt` is called with that path and the receipt verifies. A `step`
 while the lane awaits re-tells the await and moves nothing; a complete run says
 `complete: true`. When a lane is done, the spec's next pending step opens the
-next lane and the run record names it. A step that fails leaves the state as it
-was, so the next call performs it again, and a completed step is never repeated.
+next lane and the run record names it. A stage that fails leaves the state as it
+was, so the next call performs it again, and a completed stage is never repeated.
 
 `step` keeps the run's window clock, on the pace the run started with
 (`/abcd:build`). Once the window's working minutes have elapsed, `step` starts
 nothing, writes `next_eligible_at` (now plus the run's pause), records the
 pause, and exits 0 with `next_eligible_at` in the result and `next` naming the
 time; an agent already started may still hand its receipt back. Before the
-run's `next_eligible_at` the step is refused as a pause (exit 3) naming the
-time, and nothing changes; at or after it a new window opens and the step
+run's `next_eligible_at` a `step` is refused as a pause (exit 3) naming the
+time, and nothing changes; at or after it a new window opens and the stage
 proceeds.
 
 Without `--run`, both act on the one run in progress in this checkout, and are
 refused naming the runs when there are several. A refusal exits 2 (3 on a pause
 or a locked state), writes nothing, and under `--json` comes as its own document
-before the error envelope, naming `refusal.step`, `refusal.reason` and
+before the error envelope, naming `refusal.stage`, `refusal.reason` and
 `refusal.remedy`.
 
-The lane's steps are `worktree` (the lane's worktree in
+The lane's stages are `worktree` (the lane's worktree in
 `~/.abcd/worktrees/<root-sha>/<run-id>-<lane-id>`, on a branch
 `build/<run-id>-<lane-id>` cut from the default branch), `brief` (the lane's
 brief, rendered from that base into
@@ -246,7 +249,7 @@ optional `model`, with `output` and `report` paths inside the lane's directory.
 `receipt` refuses it, naming every gap, unless each commit is on the lane's
 branch past its base, the definition of done's output exists with exit code 0,
 and the report exists; any other field, a verdict included, refuses it. This
-build carries no `validate` or `land` body: `step` refuses there naming the
+build carries no `validate` or `land` body: `step` refuses at that stage naming the
 spec piece that delivers it, and the run stays ready to resume. Report the
 refusal as it is.
 

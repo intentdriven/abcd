@@ -103,7 +103,7 @@ func TestAStartForASessionThatHasNotJoinedWritesNothing(t *testing.T) {
 	sha := repo.Git("rev-list", "--max-parents=0", "HEAD")
 	sharedRun(t, repo.Root(), sha, "host-a")
 	_, err := Start(repo.Root(), "itd-10", Options{Session: "ghost"})
-	if r := mustRefusal(t, err); r.Step != StepClaim || r.Contention || !strings.Contains(r.Reason, "ghost") {
+	if r := mustRefusal(t, err); r.Stage != StageClaim || r.Contention || !strings.Contains(r.Reason, "ghost") {
 		t.Fatalf("a start for an unjoined session = %+v; want the claim step refused naming it", r)
 	}
 	runTierAbsent(t, repo.Root())

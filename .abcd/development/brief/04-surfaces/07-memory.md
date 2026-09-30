@@ -68,14 +68,14 @@ verbatim into a durable artefact. A plaintext `http://` source is refused by
 name, and a redirect that leaves https is refused per hop. A credential the URL
 carries (basic-auth userinfo, or a query key such as `token` or `api_key`) is
 stripped before the fetched address becomes the stored origin, and masked in
-every fetch-failure message. And PDF is a later-phase seam: the binary rejects
+every fetch-failure message. And PDF is a later seam: the binary rejects
 PDF sources with a clear error until a text-extraction dependency is wired.
 
 **The original is not stored by default.** Ingest can opt into keeping
 it under `.abcd/memory/sources/`. The licence gate that would police publishing
 such a file belongs to the lifeboat, not to launch (adr-28): launch excludes
 `.abcd/**` wholesale, so it never publishes the files the gate checks. That gate
-is a later phase, and the shipped ingest classifies restrictive licences without
+is not built, and the shipped ingest classifies restrictive licences without
 ever refusing on them.
 
 **Asking a question** synthesises an answer with per-citation provenance, every

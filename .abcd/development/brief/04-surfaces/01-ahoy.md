@@ -29,6 +29,7 @@ repo whose stamp says it is current.
 | `credential` | — | shipped |
 | `doctor` | — | shipped |
 | `install` | — | shipped |
+| `remote` | — | shipped |
 | `remote apply` | gate | shipped |
 | `uninstall` | — | shipped |
 
@@ -37,9 +38,8 @@ Bare `/abcd:ahoy` shows read-only status and mutates nothing. Four read-only
 modes of the same act — the dry run, the identity check, the remote report and
 the provider board — are flags on the bare verb rather than sub-verbs, one at a time, and the
 appendix lists them. A sub-verb is a distinct action, a flag a mode of the same
-one (itd-2609212130136102). For one release each
-mode's retired sub-verb spelling answers with its flag and exits non-zero, and
-the release after removes it. The slash command dispatches every sub-verb and
+one (itd-2609212130136102); the modes' former sub-verb spellings are unknown
+commands. The slash command dispatches every sub-verb and
 mode but the identity check, the write verbs included, and each announces that
 it writes before it runs. The identity check is a plain command-line
 entrypoint, because its exit code is the whole point of it and its home is a
@@ -85,8 +85,8 @@ the table above is the sub-verb set, and the modes are the bare verb's flags.
   would use one for decision models and cheap judgements pointed at it by name,
   and that everything works without one, because with no provider configured
   every delegated step runs on the host. It lists the providers configured on
-  this machine, whether each one's key resolves (never the key), the vendor
-  denylist in force, the roles and judgement types pointed at a provider, and
+  this machine, whether each one's key resolves (never the key), the
+  `oracle.denylist` entries written (abcd bundles none), the roles and judgement types pointed at a provider, and
   where a key can live, the keychain recommended in the prose and never as a
   marked option. The bare board carries the same explanation as an optional,
   advisory gap while no provider is configured.
@@ -128,7 +128,7 @@ in the home chosen through the credential store's walkthrough and then writes
 the provider block (base URL, the key's name, the models) into
 `~/.abcd/config.json`. A failed verification writes nothing. Nothing reaches the
 repository or the harness's settings. Every fault the configuration read would
-refuse (a denylisted or malformed model, a base URL that is plain HTTP to
+refuse (a model an `oracle.denylist` entry matches, a malformed model, a base URL that is plain HTTP to
 another machine, a provider already configured, a key name already holding a
 different value) is refused before the call, so a setup that cannot finish is
 never billed.
@@ -842,8 +842,6 @@ Sub-verbs: none.
 | `--yes` | bool |
 
 ### `abcd ahoy remote`
-
-Bare, it moved to `abcd ahoy --remote`.
 
 Sub-verbs: `abcd ahoy remote apply`.
 

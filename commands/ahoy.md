@@ -417,11 +417,12 @@ Explains the optional OpenAI-compatible provider adapter and writes nothing. An
 aggregator (OpenRouter, for one) serves many vendors' models behind one address
 and one key, and a local OpenAI-compatible server is reached the same way. abcd
 would use one for decision models and cheap judgements pointed at it by name,
-never for a frontier model, which a bundled vendor denylist (`anthropic/*` at
-minimum) keeps on the host. Everything works without one: with no provider
-configured, every delegated step runs on the host. Relay `explanation`, each of
+and only for the models a provider's list names: a model the person does not
+list, a frontier model included, is never asked for, and the record shows what
+answered; abcd bundles no vendor denylist. Everything works without one: with no provider configured, every
+delegated step runs on the host. Relay `explanation`, each of
 `providers` with its `key_state` (`set`, `not set`, `none`, or a refusal; never
-the key) and `key_home` (the home it resolves from), the `denylist`, the `routes`, every line of `diagnostics`, and the
+the key) and `key_home` (the home it resolves from), the `denylist` (the `oracle.denylist` entries the configuration writes, empty when none is), the `routes`, every line of `diagnostics`, and the
 `key_homes` prose verbatim: it recommends the platform keychain in prose, and
 the choice stays the person's, so never present one home as the marked option.
 Relay `dispatch` too: no delegating verb sends a step to a provider yet, so a

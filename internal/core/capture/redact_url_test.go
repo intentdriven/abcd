@@ -16,7 +16,7 @@ func TestCaptureRedactsHomePathBehindAURLHost(t *testing.T) {
 	home := "/Users/zzhomeuser42" // abcd-audit:allow
 	t.Setenv("HOME", home)
 
-	res, err := Capture(CaptureRequest{
+	res, err := testCapture(CaptureRequest{
 		RepoRoot:    repo,
 		Text:        "the artifact is at https://ci.example.com" + home + "/build.log and it failed",
 		Severity:    SeverityMinor,

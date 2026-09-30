@@ -54,7 +54,11 @@ func TestCaptureRemedyFlagWritesTheField(t *testing.T) {
 func TestDrainDryRunRendersEveryDispositionAndWritesNothing(t *testing.T) {
 	repo := captureLedgerRepo(t)
 	eligible := captureWithRemedy(t, "a nil map is written before it is made", "--category", "bug", "--remedy", "make the map first")
-	bare := captureWithRemedy(t, "a flaky timeout in the parser test", "--category", "bug")
+	// A legacy record: filed before the remedy was required, so it carries
+	// none. capture refuses such a filing now (ruling BX3), so the key is taken
+	// out of a filed record.
+	bare := captureWithRemedy(t, "a flaky timeout in the parser test", "--category", "bug", "--remedy", "raise the timeout")
+	stripRemedyLine(t, repo, bare)
 	major := captureWithRemedy(t, "the parser drops a whole record", "--category", "bug", "--severity", "major", "--remedy", "rewrite it")
 
 	before := ledgerIssueCount(t, repo)
@@ -119,5 +123,28 @@ func TestDrainWithoutDryRunRefusesToStart(t *testing.T) {
 	}
 	if after := ledgerIssueCount(t, repo); after != before {
 		t.Fatalf("a refused drain changed the ledger")
+	}
+}
+
+// stripRemedyLine takes the remedy: line out of one open record, leaving the
+// legacy shape a record filed before the field was required has.
+func stripRemedyLine(t *testing.T, repo, id string) {
+	t.Helper()
+	matches, _ := filepath.Glob(filepath.Join(repo, ".abcd", "work", "issues", "open", id+"-*.md"))
+	if len(matches) != 1 {
+		t.Fatalf("no open record for %s", id)
+	}
+	raw, err := os.ReadFile(matches[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var kept []string
+	for _, ln := range strings.SplitAfter(string(raw), "\n") {
+		if !strings.HasPrefix(ln, "remedy: ") {
+			kept = append(kept, ln)
+		}
+	}
+	if err := os.WriteFile(matches[0], []byte(strings.Join(kept, "")), 0o644); err != nil {
+		t.Fatal(err)
 	}
 }

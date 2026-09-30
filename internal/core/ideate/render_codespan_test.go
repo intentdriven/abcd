@@ -25,7 +25,7 @@ func renderMarkdown(md string) (string, error) {
 //
 // termsafe's HTML-opener rule exempts code spans because a renderer parses no raw
 // HTML inside one — an exemption that is only sound while the field is PARSED as
-// the exact string it was CLEANED as. blockText broke that: it escaped a leading
+// the exact string it was CLEANED as. The block escaper broke that: it escaped a leading
 // backtick unconditionally, which kills the span the cleaner had relied on and
 // republishes its sheltered content as live markup. `<details>` is the sharp
 // case: it renders as a collapsed disclosure widget, so everything after it in the
@@ -39,19 +39,19 @@ func renderMarkdown(md string) (string, error) {
 func TestBlockTextKeepsACleanedCodeSpanIntact(t *testing.T) {
 	const raw = "`<details> everything after this is concealed`"
 	cleaned := termsafe.CleanProse(raw, 4096)
-	got := blockText(cleaned)
+	got := termsafe.BlockText(cleaned)
 
 	html, err := renderMarkdown(got)
 	if err != nil {
-		t.Fatalf("blockText(%q) = %q renders as live markup: %v", cleaned, got, err)
+		t.Fatalf("termsafe.BlockText(%q) = %q renders as live markup: %v", cleaned, got, err)
 	}
 	// The refusal above is the gate; this is the positive form of the same claim.
 	// The tag must land escaped INSIDE the code element the span produces.
 	if !strings.Contains(html, "<code>&lt;details&gt;") {
-		t.Errorf("blockText(%q) = %q rendered as %q; want the tag sheltered inside a code span", cleaned, got, html)
+		t.Errorf("termsafe.BlockText(%q) = %q rendered as %q; want the tag sheltered inside a code span", cleaned, got, html)
 	}
 	if strings.HasPrefix(got, `\`) {
-		t.Errorf("blockText escaped a balanced code span: %q", got)
+		t.Errorf("BlockText escaped a balanced code span: %q", got)
 	}
 }
 
@@ -60,8 +60,8 @@ func TestBlockTextKeepsACleanedCodeSpanIntact(t *testing.T) {
 // fence, and everything after it in the document becomes fenced text.
 func TestBlockTextStillEscapesAnUnbalancedLeadingRun(t *testing.T) {
 	for _, s := range []string{"```go unclosed fence", "`stray opener"} {
-		if got := blockText(s); !strings.HasPrefix(got, `\`) {
-			t.Errorf("blockText(%q) = %q, want the leading run escaped", s, got)
+		if got := termsafe.BlockText(s); !strings.HasPrefix(got, `\`) {
+			t.Errorf("termsafe.BlockText(%q) = %q, want the leading run escaped", s, got)
 		}
 	}
 }
@@ -72,13 +72,13 @@ func TestBlockTextStillEscapesAnUnbalancedLeadingRun(t *testing.T) {
 // backslash, so the escape goes before the delimiter, where it is consumed.
 func TestBlockTextEscapesAnOrderedMarkerFaithfully(t *testing.T) {
 	for _, s := range []string{"1. first", "12) twelve"} {
-		got := blockText(s)
+		got := termsafe.BlockText(s)
 		html, err := renderMarkdown(got)
 		if err != nil {
-			t.Fatalf("blockText(%q) = %q does not render: %v", s, got, err)
+			t.Fatalf("termsafe.BlockText(%q) = %q does not render: %v", s, got, err)
 		}
 		if want := "<p>" + s + "</p>"; !strings.Contains(html, want) {
-			t.Errorf("blockText(%q) = %q rendered as %q; want %q", s, got, html, want)
+			t.Errorf("termsafe.BlockText(%q) = %q rendered as %q; want %q", s, got, html, want)
 		}
 	}
 }
@@ -96,14 +96,14 @@ func TestBlockTextLeavesATripleBacktickSpanAProseLine(t *testing.T) {
 		"``` x ```":     "<code>x</code>",
 		"```` ``` ````": "<code>```</code>",
 	} {
-		got := blockText(s)
+		got := termsafe.BlockText(s)
 		html, err := renderMarkdown(got)
 		if err != nil {
-			t.Errorf("blockText(%q) = %q does not render: %v", s, got, err)
+			t.Errorf("termsafe.BlockText(%q) = %q does not render: %v", s, got, err)
 			continue
 		}
 		if strings.Contains(html, `class="cmd"`) || !strings.Contains(html, "<p>"+text) {
-			t.Errorf("blockText(%q) = %q rendered %q, want a paragraph holding %q", s, got, html, text)
+			t.Errorf("termsafe.BlockText(%q) = %q rendered %q, want a paragraph holding %q", s, got, html, text)
 		}
 	}
 }

@@ -69,7 +69,7 @@ func landsWithin(d time.Duration, fn func() error) (bool, chan error) {
 func issueLinkedFromAnIntent(t *testing.T) (repo, ir, id, name, itdRel string) {
 	t.Helper()
 	repo, ir = ledger(t)
-	res, err := Capture(CaptureRequest{RepoRoot: repo, IssuesRoot: ir, Text: "b", Severity: SeverityMinor,
+	res, err := testCapture(CaptureRequest{RepoRoot: repo, IssuesRoot: ir, Text: "b", Severity: SeverityMinor,
 		Category: "bug", Source: "user-observation", FoundDuring: "t", Slug: "alpha"})
 	if err != nil {
 		t.Fatal(err)
@@ -132,7 +132,7 @@ func TestAWaitingVerbLeavesTheLedgerToOtherWriters(t *testing.T) {
 			go func() { done <- verb() }()
 			time.Sleep(150 * time.Millisecond)
 
-			_, capErr := Capture(CaptureRequest{RepoRoot: repo, IssuesRoot: ir, Text: "a third writer", Severity: SeverityMinor,
+			_, capErr := testCapture(CaptureRequest{RepoRoot: repo, IssuesRoot: ir, Text: "a third writer", Severity: SeverityMinor,
 				Category: "bug", Source: "user-observation", FoundDuring: "t", Slug: "third"})
 			select {
 			case err := <-done:
@@ -162,7 +162,7 @@ func TestAWaitingVerbLeavesTheLedgerToOtherWriters(t *testing.T) {
 // is released.
 func TestAnIntentVerbRepointTakesTheLedgerLock(t *testing.T) {
 	repo, ir := ledger(t)
-	res, err := Capture(CaptureRequest{RepoRoot: repo, IssuesRoot: ir, Text: "b", Severity: SeverityMinor,
+	res, err := testCapture(CaptureRequest{RepoRoot: repo, IssuesRoot: ir, Text: "b", Severity: SeverityMinor,
 		Category: "bug", Source: "user-observation", FoundDuring: "t", Slug: "alpha"})
 	if err != nil {
 		t.Fatal(err)

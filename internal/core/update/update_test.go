@@ -1,9 +1,13 @@
 package update
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"io"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -665,4 +669,183 @@ func TestPlanForeignRefusalJudgesTheLinkNotItsTarget(t *testing.T) {
 	if plain == nil || !strings.Contains(plain.Detail, "the entry at /x/abcd is not") || !strings.Contains(plain.Detail, "not itself a regular file") {
 		t.Errorf("a foreign entry that resolves nowhere else lost its negatives: %+v", plain)
 	}
+}
+
+// --- a failure after the download starts leaves no staging file (spc-32 criterion 7) ---
+
+// failAfter accepts n bytes and then fails, standing in for a disk that fills
+// or an I/O error partway through writing the staging file.
+type failAfter struct {
+	w io.Writer
+	n int
+}
+
+func (f *failAfter) Write(p []byte) (int, error) {
+	if len(p) <= f.n {
+		f.n -= len(p)
+		return f.w.Write(p)
+	}
+	k, _ := f.w.Write(p[:f.n])
+	f.n = 0
+	return k, errors.New("injected: no space left on device")
+}
+
+// assertNoStagingFile fails when the swap left its staging file beside the
+// target, or when the target no longer holds want.
+func assertNoStagingFile(t *testing.T, target string, want []byte) {
+	t.Helper()
+	staging := filepath.Join(filepath.Dir(target), "."+filepath.Base(target)+".new")
+	if _, err := os.Lstat(staging); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("the failed update left %s behind (lstat err %v)", filepath.Base(staging), err)
+	}
+	if got, err := os.ReadFile(target); err != nil || !bytes.Equal(got, want) {
+		t.Errorf("the target changed on a failed update: %q (err %v)", got, err)
+	}
+}
+
+// TestApplyFailedStagingWriteLeavesNoNewFile: the verified bytes are being
+// written into the staging file when the write fails after a few bytes. The
+// update fails loudly, the half-written staging file is unlinked, and the
+// target is untouched (iss-2609012111162089, gap 3).
+func TestApplyFailedStagingWriteLeavesNoNewFile(t *testing.T) {
+	o := newTestOrigin(t)
+	oldBin := []byte("old-binary-bytes")
+	o.addRelease("v0.6.1", testAssetName, oldBin)
+	o.addRelease("v0.6.2", testAssetName, []byte("new-binary-bytes-long-enough-to-fail-partway"))
+	target := writeTarget(t, oldBin)
+
+	orig := stagingWriter
+	stagingWriter = func(w io.Writer) io.Writer { return &failAfter{w: w, n: 8} }
+	t.Cleanup(func() { stagingWriter = orig })
+
+	rep, err := testUpdater(t, o).Apply(target, "v0.6.2", nil)
+	if err == nil || rep.Action == ActionSwapped {
+		t.Fatalf("a failed staging write must fail the update: err=%v action=%q", err, rep.Action)
+	}
+	if !strings.Contains(err.Error(), "injected") {
+		t.Errorf("the error does not carry the write failure: %v", err)
+	}
+	assertNoStagingFile(t, target, oldBin)
+}
+
+// TestApplyFailedSwapLeavesNoNewFile: the staging file is written and verified,
+// and the swap itself then fails — the target cannot be moved aside because a
+// directory stands at the name the move needs. The staging file is unlinked
+// and the target is untouched.
+func TestApplyFailedSwapLeavesNoNewFile(t *testing.T) {
+	o := newTestOrigin(t)
+	oldBin := []byte("old-binary-bytes")
+	o.addRelease("v0.6.1", testAssetName, oldBin)
+	o.addRelease("v0.6.2", testAssetName, []byte("new-binary-bytes"))
+	target := writeTarget(t, oldBin)
+	blocker := filepath.Join(filepath.Dir(target), "."+filepath.Base(target)+".old")
+	if err := os.MkdirAll(filepath.Join(blocker, "occupied"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	rep, err := testUpdater(t, o).Apply(target, "v0.6.2", nil)
+	if err == nil || rep.Action == ActionSwapped {
+		t.Fatalf("a failed swap must fail the update: err=%v action=%q", err, rep.Action)
+	}
+	assertNoStagingFile(t, target, oldBin)
+	if fi, serr := os.Stat(blocker); serr != nil || !fi.IsDir() {
+		t.Errorf("the update touched a directory it did not create: %v %v", fi, serr)
+	}
+}
+
+// TestApplyNeverWritesThroughAPlantedStagingSymlink: a symlink stands at the
+// staging name, pointing at a file outside the install directory. Staging
+// never opens through it: the file it points at is untouched, and what the
+// swap renames into the target's name is a regular file holding the verified
+// release, never the planted link.
+func TestApplyNeverWritesThroughAPlantedStagingSymlink(t *testing.T) {
+	o := newTestOrigin(t)
+	oldBin := []byte("old-binary-bytes")
+	newBin := []byte("new-binary-bytes")
+	o.addRelease("v0.6.1", testAssetName, oldBin)
+	o.addRelease("v0.6.2", testAssetName, newBin)
+	target := writeTarget(t, oldBin)
+
+	victimBytes := []byte("a file the update was never asked to touch")
+	victim := filepath.Join(t.TempDir(), "victim")
+	if err := os.WriteFile(victim, victimBytes, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	staging := filepath.Join(filepath.Dir(target), "."+filepath.Base(target)+".new")
+	if err := os.Symlink(victim, staging); err != nil {
+		t.Fatal(err)
+	}
+
+	rep, err := testUpdater(t, o).Apply(target, "v0.6.2", nil)
+	if err != nil || rep.Action != ActionSwapped {
+		t.Fatalf("the update must stage past a planted link: err=%v action=%q", err, rep.Action)
+	}
+	if got, rerr := os.ReadFile(victim); rerr != nil || !bytes.Equal(got, victimBytes) {
+		t.Errorf("staging wrote through the planted symlink: the victim now holds %q (err %v)", got, rerr)
+	}
+	fi, lerr := os.Lstat(target)
+	if lerr != nil || !fi.Mode().IsRegular() {
+		t.Fatalf("the swap put a non-regular entry at the target's name: %v (err %v)", fi, lerr)
+	}
+	if got, rerr := os.ReadFile(target); rerr != nil || !bytes.Equal(got, newBin) {
+		t.Errorf("the target does not hold the verified release: %q (err %v)", got, rerr)
+	}
+}
+
+// TestApplyTruncatedDownloadLeavesNoNewFile: the origin declares the whole
+// asset and closes the connection partway through it. The read fails before
+// anything is staged, so no file is created, and the error names the download.
+func TestApplyTruncatedDownloadLeavesNoNewFile(t *testing.T) {
+	o := newTestOrigin(t)
+	oldBin := []byte("old-binary-bytes")
+	newBin := []byte("new-binary-bytes-that-never-arrive-whole")
+	o.addRelease("v0.6.1", testAssetName, oldBin)
+	o.addRelease("v0.6.2", testAssetName, newBin)
+	inner := o.srv.Config.Handler
+	o.srv.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/"+testAssetName) && strings.Contains(r.URL.Path, "v0.6.2") {
+			w.Header().Set("Content-Length", fmt.Sprint(len(newBin)))
+			_, _ = w.Write(newBin[:10])
+			if hj, ok := w.(http.Hijacker); ok {
+				if c, _, err := hj.Hijack(); err == nil {
+					_ = c.Close()
+				}
+			}
+			return
+		}
+		inner.ServeHTTP(w, r)
+	})
+	target := writeTarget(t, oldBin)
+
+	_, err := testUpdater(t, o).Apply(target, "v0.6.2", nil)
+	if err == nil || !strings.Contains(err.Error(), "downloading") {
+		t.Fatalf("a truncated download must fail naming the download: %v", err)
+	}
+	assertNoStagingFile(t, target, oldBin)
+}
+
+// TestApplyChecksumMismatchNamesBothDigests pins criterion 2's wording on the
+// verification Apply performs itself: a download whose digest is not the
+// manifest's fails naming both, and stages nothing.
+func TestApplyChecksumMismatchNamesBothDigests(t *testing.T) {
+	o := newTestOrigin(t)
+	oldBin := []byte("old-binary-bytes")
+	promised := []byte("what-the-manifest-says")
+	served := []byte("evil-other-bytes")
+	o.addRelease("v0.6.1", testAssetName, oldBin)
+	o.addRelease("v0.6.2", testAssetName, promised)
+	o.assets["v0.6.2"][testAssetName] = served
+	target := writeTarget(t, oldBin)
+
+	_, err := testUpdater(t, o).Apply(target, "v0.6.2", nil)
+	if err == nil {
+		t.Fatal("a checksum mismatch must fail")
+	}
+	want, got := sha256.Sum256(promised), sha256.Sum256(served)
+	for _, d := range []string{hex.EncodeToString(want[:]), hex.EncodeToString(got[:])} {
+		if !strings.Contains(err.Error(), d) {
+			t.Errorf("the refusal does not name digest %s: %v", d, err)
+		}
+	}
+	assertNoStagingFile(t, target, oldBin)
 }

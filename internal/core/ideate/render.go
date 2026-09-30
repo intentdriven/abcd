@@ -10,7 +10,8 @@ package ideate
 // arrives already line-cleaned (no newline, no HTML comment marker, no terminal
 // escape), so the one hazard left is markdown's own syntax — a pipe inside a table
 // cell would split the cell, and a leading marker would open a list or a heading.
-// cell() closes the first; the line-cleaning and the fixed prefixes close the rest.
+// termsafe.TableCell closes the first; termsafe.BlockText, the line-cleaning and the
+// fixed prefixes close the rest.
 //
 // The prose is British English, because it lands in a document a person reads.
 
@@ -35,7 +36,7 @@ func render(v verdictDoc, at time.Time) string {
 	b.WriteString("re-litigated: it stands whether the idea lived or died.\n\n")
 
 	b.WriteString("## The idea\n\n")
-	fmt.Fprintf(&b, "%s\n\n", blockText(v.idea))
+	fmt.Fprintf(&b, "%s\n\n", termsafe.BlockText(v.idea))
 
 	renderResearch(&b, v)
 	renderGrill(&b, v)
@@ -54,7 +55,7 @@ func renderResearch(b *strings.Builder, v verdictDoc) {
 	b.WriteString("secondary citation.\n\n")
 	b.WriteString("| Claim | Primary source | Finding |\n|---|---|---|\n")
 	for _, c := range v.claims {
-		fmt.Fprintf(b, "| %s | %s | %s |\n", cell(c.Claim), cell(c.PrimarySource), c.Status)
+		fmt.Fprintf(b, "| %s | %s | %s |\n", termsafe.TableCell(c.Claim), termsafe.TableCell(c.PrimarySource), c.Status)
 	}
 	b.WriteString("\n")
 }
@@ -76,7 +77,7 @@ func renderGrill(b *strings.Builder, v verdictDoc) {
 		if note == "" {
 			note = "—"
 		}
-		fmt.Fprintf(b, "| %s | %s | %s |\n", h.Record, h.Relation, cell(note))
+		fmt.Fprintf(b, "| %s | %s | %s |\n", h.Record, h.Relation, termsafe.TableCell(note))
 	}
 	b.WriteString("\n")
 }
@@ -131,68 +132,4 @@ func renderOutcome(b *strings.Builder, v verdictDoc) {
 		b.WriteString("does. Any graduation to a draft intent carries the reframing, not the\n")
 		b.WriteString("original wording.\n")
 	}
-}
-
-// cell escapes a value for a markdown table cell.
-//
-// The BACKSLASH is escaped alongside the pipe, and it is not optional. GFM reads
-// `\|` inside a cell as an escaped delimiter, so escaping the pipe alone turns a
-// prose `\|` into `\\|` — an escaped backslash followed by a LIVE delimiter. That
-// splits the claim into extra columns and pushes the core-owned Finding column off
-// the end of the row, where GFM silently drops it: the record would then show
-// whatever word the prose put in the third position instead of the status the
-// payload declared. One replacer does both in a single pass, so the pipe's own
-// escape can never be re-escaped.
-var cellEscaper = strings.NewReplacer(`\`, `\\`, "|", `\|`)
-
-func cell(s string) string { return cellEscaper.Replace(s) }
-
-// blockText escapes a value that starts a line of its own. Every other untrusted
-// field in this document sits behind a fixed prefix ("| ", "- ", "**"), so its
-// first character cannot begin a block; the idea is the one field rendered as a
-// bare paragraph, where a leading marker WOULD open a heading, a list, a quote, or
-// a code fence. A backslash is markdown's own escape for exactly these.
-//
-// The value arrives already cleaned by termsafe, and the cleaner's code-span
-// exemption rests on the field being parsed as the exact string it was cleaned as
-// (see the invariant note in internal/termsafe/prose.go). Escaping a leading
-// backtick unconditionally broke that: it kills the span the cleaner relied on
-// and republishes its sheltered content as live markup — a quoted `<details>`
-// became a real disclosure widget, concealing every later section of the record.
-// A leading run that opens a BALANCED span opens no block (a backtick fence's
-// info string may not contain backticks, so a run with a matching closer on the
-// same line is an inline span by construction), so only an unbalanced run is
-// escaped — and the cleaner no longer emits one.
-func blockText(s string) string {
-	if s == "" {
-		return s
-	}
-	if s[0] == '`' {
-		if termsafe.OpensBalancedCodeSpan(s) {
-			return s
-		}
-		return `\` + s
-	}
-	switch s[0] {
-	// '[' is here for a subtler reason than the rest: a paragraph shaped like a
-	// link reference definition (`[x]: https://…`) is CONSUMED by CommonMark and
-	// renders as nothing at all — so an idea in that shape would erase the record's
-	// own subject while the verdict and the three legs still read normally.
-	case '#', '-', '*', '+', '>', '|', '~', '=', '_', '[':
-		return `\` + s
-	}
-	// An ordered-list opener ("1. ", "12) ") is the one multi-character marker.
-	// The escape goes before the delimiter: a backslash before a digit is a
-	// literal backslash in CommonMark, and would show in the record
-	// (iss-2609262241109876).
-	for i := 0; i < len(s); i++ {
-		if s[i] >= '0' && s[i] <= '9' {
-			continue
-		}
-		if i > 0 && (s[i] == '.' || s[i] == ')') {
-			return s[:i] + `\` + s[i:]
-		}
-		break
-	}
-	return s
 }

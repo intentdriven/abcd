@@ -78,7 +78,7 @@ func TestARefusedProviderConfigurationIsNamed(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(home, ".abcd"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	cfg := `{"oracle":{"api":{"openrouter":{"base_url":"https://openrouter.ai/api/v1","models":["anthropic/claude-opus-4"]}}}}`
+	cfg := `{"oracle":{"denylist":["anthropic/*"],"api":{"openrouter":{"base_url":"https://openrouter.ai/api/v1","models":["anthropic/claude-opus-4"]}}}}`
 	if err := os.WriteFile(filepath.Join(home, ".abcd", "config.json"), []byte(cfg), 0o600); err != nil {
 		t.Fatal(err)
 	}

@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -357,7 +358,6 @@ func NewRootCommand() *cobra.Command {
 	root.Flags().BoolVar(&showVersion, "version", false,
 		"print abcd's version, install mode, and vintage, from disk alone (the release check is: abcd update --check)")
 
-	root.AddCommand(newVersionCommand())
 	root.AddCommand(newUpdateCommand(&asJSON))
 	root.AddCommand(newModeCommand(&asJSON))
 	root.AddCommand(newPeersCommand(&asJSON))
@@ -512,7 +512,7 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newSourceCommand(&asJSON))
 	root.AddCommand(newMemoryCommand(&asJSON))
 	root.AddCommand(newRulesCommand(&asJSON))
-	root.AddCommand(newHookCommand())
+	root.AddCommand(newHookCommand(&asJSON))
 	root.AddCommand(newHistoryCommand(&asJSON))
 	root.AddCommand(newDocsCommand(&asJSON))
 	root.AddCommand(newIntentCommand(&asJSON))
@@ -567,8 +567,58 @@ func NewRootCommand() *cobra.Command {
 	// host's instruction to BLOCK, so every usage error a hook can provoke refuses
 	// at exit 1 instead (iss-269).
 	applyHookPlaneFailOpen(root)
+	// Truly last: every flag-error function above is wrapped so Run can tell a
+	// flag-parse refusal from any other, and answer it in JSON when the caller
+	// typed --json (iss-2609292352131344).
+	markFlagParseErrors(root)
 
 	return root
+}
+
+// flagParseError marks a refusal raised while cobra parsed the flags. The parse
+// stops at the first bad flag, so a --json after it is never read and the
+// persistent flag still reads false when Run renders the refusal. It unwraps to
+// the refusal each flag-error function chose, whose exit code and wording stand.
+type flagParseError struct{ err error }
+
+func (e *flagParseError) Error() string { return e.err.Error() }
+func (e *flagParseError) Unwrap() error { return e.err }
+
+// markFlagParseErrors wraps the flag-error function of every command in the
+// tree, whichever function the passes above left there, so the one decision
+// below it (the --json fallback in Run) sees every flag-parse refusal.
+func markFlagParseErrors(c *cobra.Command) {
+	inner := c.FlagErrorFunc()
+	c.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
+		if out := inner(cmd, err); out != nil {
+			return &flagParseError{err: out}
+		}
+		return nil
+	})
+	for _, sub := range c.Commands() {
+		markFlagParseErrors(sub)
+	}
+}
+
+// jsonRequestedIn reports whether the raw arguments carry a --json the caller
+// typed as a flag: a bare --json or --json=<true> before any -- terminator.
+// It is read only for a flag-parse refusal, where the parse never reached the
+// flag (iss-2609292352131344).
+func jsonRequestedIn(args []string) bool {
+	for _, a := range args {
+		if a == "--" {
+			return false
+		}
+		if a == "--json" {
+			return true
+		}
+		if v, ok := strings.CutPrefix(a, "--json="); ok {
+			if b, err := strconv.ParseBool(v); err == nil && b {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // markUsageErrorsExitTwo walks the command tree and tags every cobra usage error
@@ -667,14 +717,13 @@ func docsLintNothingCheckedWarning(checks, documents int, roots []string, ref st
 
 // newDocsCommand builds the `docs` sub-tree: `cite`, which maintains the
 // citation baseline the docs lint enforces. The lint itself is `abcd lint docs`
-// (itd-2609212130136102); `docs lint` answers with it for one release.
+// (itd-2609212130136102).
 func newDocsCommand(asJSON *bool) *cobra.Command {
 	docsCmd := &cobra.Command{
 		Use:  "docs",
 		Args: cobra.NoArgs,
 		RunE: helpRunE,
 	}
-	docsCmd.AddCommand(movedStub("lint", "abcd lint docs"))
 	// `cite` maintains the baseline `lint docs` enforces: the refresh does the
 	// live fetching the gate refuses to do, and confirm closes the manual queue.
 	docsCmd.AddCommand(newCiteCommand(asJSON))
@@ -1390,6 +1439,45 @@ func hookSession(in hookInput) string {
 	return in.SessionID
 }
 
+// routerView is the prompt router's machine-reader envelope, emitted instead
+// of the bare injected block when the hook is invoked with --json (ruling J15,
+// iss-2608261550580260). Text is byte for byte what the plain form writes to
+// the host's context; Injected names the domains whose text it carries; Active
+// is the full set of domain names in force this turn, present on every
+// evaluated prompt and an empty list when nothing is in force, so a client
+// that snapshots injected rules prunes every name it holds that Active omits.
+// Active is absent only when the router could not evaluate the prompt — an
+// unreadable payload or a rules.json that will not load — and Error says why:
+// that is "unknown, change nothing", never "every domain stopped".
+type routerView struct {
+	Text     string    `json:"text"`
+	Injected []string  `json:"injected"`
+	Active   *[]string `json:"active,omitempty"`
+	Error    string    `json:"error,omitempty"`
+}
+
+// routerRefused is the prompt router's fail-open exit when it cannot evaluate
+// a prompt: nothing is injected and the process exits 0 either way, and a
+// machine reader is handed an envelope naming the error with no active set.
+func routerRefused(cmd *cobra.Command, asJSON bool, msg string) error {
+	if !asJSON {
+		return nil
+	}
+	return routerEmit(cmd, routerView{Injected: []string{}, Error: msg})
+}
+
+// routerEmit writes the envelope and fails open like every other hook verb
+// (emitHookResult): an envelope that cannot be written — a host that closed
+// its end of the pipe — is named on stderr and the process still exits 0, as
+// the plain form does when its own write fails. The hook's exit-0 contract
+// outranks its report.
+func routerEmit(cmd *cobra.Command, v routerView) error {
+	if err := render(cmd.OutOrStdout(), true, v, nil); err != nil {
+		fmt.Fprintf(cmd.ErrOrStderr(), "abcd rules: envelope not written (%s)\n", termsafe.Sanitize(err.Error()))
+	}
+	return nil
+}
+
 // newHookCommand builds the operator-internal `hook` sub-tree: the Claude Code
 // prompt-router entrypoints (itd-3). These are NOT a user surface — they are the
 // injection transport, one front door onto internal/core/rules alongside the
@@ -1397,7 +1485,7 @@ func hookSession(in hookInput) string {
 // payload, an unreadable rules.json, or a state error injects nothing, logs a
 // diagnostic to stderr (out-of-band, per D3), and exits 0 so it can never wedge
 // a session.
-func newHookCommand() *cobra.Command {
+func newHookCommand(asJSON *bool) *cobra.Command {
 	hookCmd := &cobra.Command{
 		Use:    "hook",
 		Short:  "Claude Code hook entrypoints (operator-internal)",
@@ -1410,12 +1498,23 @@ func newHookCommand() *cobra.Command {
 	hookCmd.AddCommand(&cobra.Command{
 		Use:   "prompt-router",
 		Short: "UserPromptSubmit: inject the rules matching the prompt",
-		Args:  cobra.NoArgs,
+		Long: `Plain, stdout is the rendered rule block the host injects, and nothing on a
+turn with nothing new. With --json, stdout is one envelope in place of the
+generic machine-reader shape:
+
+  {"text": ..., "injected": [...], "active": [...], "error": ...}
+
+text is byte for byte what the plain form writes; injected names the domains
+text carries; active is the full set of domains in force this turn, so a name
+missing from it has stopped. error is present only when the prompt could not
+be evaluated, and then active is absent: the set is unknown. Every outcome,
+an error included, exits 0, so the hook can never wedge a session.`,
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			in, err := readHookInput(cmd)
 			if err != nil {
 				fmt.Fprintf(cmd.ErrOrStderr(), "abcd rules: unreadable hook payload (%s); injecting nothing\n", termsafe.Sanitize(err.Error()))
-				return nil
+				return routerRefused(cmd, *asJSON, "unreadable hook payload: "+err.Error())
 			}
 			cwd := in.Cwd
 			if cwd == "" {
@@ -1455,7 +1554,7 @@ func newHookCommand() *cobra.Command {
 				// wrap with a bare "abcd" to avoid "abcd rules: rules: …"
 				// (iss-2608261550491547).
 				fmt.Fprintf(cmd.ErrOrStderr(), "abcd %s; injecting nothing\n", termsafe.Sanitize(err.Error()))
-				return nil
+				return routerRefused(cmd, *asJSON, err.Error())
 			}
 			// A domain Load dropped (no rules of its own) is skipped, not
 			// fatal — but silently missing is the shape the drop exists to
@@ -1475,6 +1574,13 @@ func newHookCommand() *cobra.Command {
 			// whose words went into the context (GHSA-22f8-qf5r-gjgq).
 			fmt.Fprintf(cmd.ErrOrStderr(), "abcd rules: turn %d, injected %d domain(s) %v, %d bytes\n",
 				res.State.Count, len(res.Injected), res.Labels(), len(res.Text))
+			if *asJSON {
+				injected := res.Injected
+				if injected == nil {
+					injected = []string{}
+				}
+				return routerEmit(cmd, routerView{Text: res.Text, Injected: injected, Active: &res.Active})
+			}
 			if res.Text != "" {
 				fmt.Fprint(cmd.OutOrStdout(), res.Text)
 			}
@@ -2056,11 +2162,17 @@ block and in the hook's diagnostic, and carries "source": "user" or "repo" in
 renders bare and carries "source": "bundled".
 
 A list an override sets replaces the bundled one, so an override can hold back
-an entry abcd ships. For the guardrail domains (COMMITTING, LOAD, PII), every
-bundled recall keyword, alias or rule that an override's list leaves out is
-named on stderr, with the file that set the list, here and on every hook
+an entry abcd ships. For the guardrail domains (COMMITTING, LOAD, PII, SHELL),
+every bundled recall keyword, alias or rule that an override's list leaves out
+is named on stderr, with the file that set the list, here and on every hook
 prompt. To keep an entry, restate it in the list, or leave the field out to
-inherit the bundled list. Read-only.`,
+inherit the bundled list.
+
+SHELL is generated from the bundled shell-hazard registry that "abcd guard"
+enforces: one rule per registry entry, naming the command, why it is dangerous
+and what to run instead, recalled by the commands the registry names. It
+teaches before shell work what the guard refuses at the moment a command runs.
+Read-only.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cwd, err := os.Getwd()
@@ -2538,6 +2650,7 @@ func newIntentCommand(asJSON *bool) *cobra.Command {
 	intentCmd.AddCommand(newIntentAuditCommand(asJSON))
 	intentCmd.AddCommand(newIntentConditionCommand(asJSON))
 	intentCmd.AddCommand(newIntentConsistencyCommand(asJSON))
+	intentCmd.AddCommand(newIntentPrepassCommand(asJSON))
 	return intentCmd
 }
 
@@ -2707,7 +2820,7 @@ func renderConditionStanding(w io.Writer, standing []intent.StandingEntry) {
 // ledgerDecisionRule is the one-line capture-vs-intent decision rule shown in
 // both ledgers' bare-form help (itd-46 AC5), so a user knows which ledger to reach
 // for. It stays host-agnostic (binary command forms, no plugin/tool names).
-const ledgerDecisionRule = "  which ledger? half-formed observation, question, or nitpick -> `abcd capture \"…\"`; a user-facing change you want to ship -> `abcd intent \"…\"`\n"
+const ledgerDecisionRule = "  which ledger? half-formed observation, question, or nitpick -> `abcd capture \"…\" --remedy \"…\"`; a user-facing change you want to ship -> `abcd intent \"…\"`\n"
 
 // ideateRoutingRule sits beside the ledger rule and names the optional third
 // route: a big, unproven idea can go through the admission gauntlet first
@@ -3295,7 +3408,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 				return err
 			}
 			// Vintage + staleness from the shared comparator (itd-111): the same
-			// source `abcd version` and the session-start notice read. Computed
+			// source `abcd --version` and the session-start notice read. Computed
 			// once and carried in both the JSON and the text render.
 			vin := ahoy.Vintage(cwd)
 			out := ahoyOutput{DetectionResult: res, Vintage: vin.DisplayVintage(), Staleness: vin.Staleness()}
@@ -3528,9 +3641,6 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 		},
 	})
 
-	// The modes' old sub-verb spellings, one release as stubs.
-	ahoyCmd.AddCommand(movedStub("dry-run", "abcd ahoy --dry-run"))
-	ahoyCmd.AddCommand(movedStub("identity-check", "abcd ahoy --identity"))
 	ahoyCmd.AddCommand(newAhoyRemoteCommand(asJSON))
 	ahoyCmd.AddCommand(newAhoyConnectCommand(asJSON))
 	ahoyCmd.AddCommand(newAhoyCredentialCommand(asJSON))
@@ -3605,15 +3715,14 @@ func runAhoyRemote(cmd *cobra.Command, cwd string, asJSON bool) error {
 // newAhoyRemoteCommand builds `ahoy remote apply` — the write half of abcd's
 // remote config surface for a managed repo (itd-153), and the only thing in abcd
 // that mutates state outside this machine, so it is a verb a person types rather
-// than a step any other command performs. The read half is `ahoy --remote`; the
-// bare `ahoy remote` it moved from answers with that flag for one release
-// (itd-2609212130136102).
+// than a step any other command performs. The read half is `ahoy --remote`
+// (itd-2609212130136102); bare, `ahoy remote` prints its sub-verb.
 func newAhoyRemoteCommand(asJSON *bool) *cobra.Command {
 	remoteCmd := &cobra.Command{
 		Use:  "remote",
 		Args: cobra.NoArgs,
+		RunE: helpRunE,
 	}
-	markMoved(remoteCmd, "abcd ahoy --remote")
 	var remoteYes bool
 	applyCmd := &cobra.Command{
 		Use:  "apply",
@@ -4303,6 +4412,20 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 					"unknown capture subcommand %q (nothing captured — a lone word is read as a sub-verb, never as issue text; issue text must contain a space, so write the whole sentence)",
 					args[0])}
 			}
+			// Every new issue carries a remedy (ruling BX3 of 2026-09-29): the
+			// fix it proposes, one line. The machine value is refused from a
+			// person, so it always means one of abcd's automatic filers wrote
+			// the record (ruling H12). Refused before anything is written.
+			if strings.TrimSpace(remedy) == "" {
+				return &exitError{Code: 2, Msg: fmt.Sprintf(
+					"abcd capture: --remedy is required — every new issue carries the fix it proposes, one line (--remedy \"<fix>\"); "+
+						"%q is written only by abcd's automatic filers (nothing captured)", issueschema.MachineRemedy)}
+			}
+			if issueschema.IsMachineRemedy(remedy) {
+				return &exitError{Code: 2, Msg: fmt.Sprintf(
+					"abcd capture: --remedy %q is the value abcd's automatic filers write when they have no fix, and a drain skips it; "+
+						"name the fix the issue proposes (nothing captured)", issueschema.MachineRemedy)}
+			}
 			// Fast path: append a structured issue from the free-form text.
 			text := strings.Join(args, " ")
 			// The slug is NOT derived here. Deriving it from the raw text before
@@ -4390,9 +4513,10 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 	// No default, deliberately: an unsupplied lapse time would default to the wall
 	// clock at write-up, which is the one value the lapse log exists to rule out.
 	captureCmd.Flags().StringVar(&lapsedAt, "lapsed-at", "", "RFC 3339 instant a discipline gave way (the lapse, not the write-up)")
-	// The field `abcd drain` reads (itd-82 decision 6): optional at capture, and
-	// a record without it is listed as ineligible rather than refused here.
-	captureCmd.Flags().StringVar(&remedy, "remedy", "", "the proposed fix, one line; `abcd drain` takes no issue without one")
+	// The field `abcd drain` reads (itd-82 decision 6): required of every new
+	// issue (ruling BX3 of 2026-09-29). A record filed before the rule carries
+	// none, stays readable, and is listed by a drain as ineligible.
+	captureCmd.Flags().StringVar(&remedy, "remedy", "", "the proposed fix, one line (required); `abcd capture remedy` rewrites it later")
 	// The help names where the field is documented, as the refusal does: the
 	// session behind iss-2609200951237670 found the key's shape by running
 	// strings on the binary, with two documents already carrying it.
@@ -4936,6 +5060,36 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 	deferCmd.Flags().StringVar(&deferAfter, "after", "", "the current anchor: the newest vX.Y.Z release tag, which the cut measures from (required)")
 	deferCmd.Flags().StringVar(&deferReason, "reason", "", "why the finding is carried past this cut rather than fixed (required)")
 	captureCmd.AddCommand(deferCmd)
+
+	// remedy — writes or replaces the fix an open issue proposes. It is how a
+	// person answers a record an automatic filer wrote with the machine value
+	// (ruling H12), which a drain skips until then, and how a record filed
+	// before the remedy was required gains one.
+	remedyCmd := &cobra.Command{
+		Use:  "remedy <iss-N> <text>",
+		Args: cobra.MinimumNArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			repoRoot, err := captureLedgerRoot(cmd)
+			if err != nil {
+				return err
+			}
+			res, err := capture.SetRemedy(capture.RemedyRequest{
+				RepoRoot: repoRoot, ID: args[0], Remedy: strings.Join(args[1:], " "),
+			})
+			if err != nil {
+				return captureRefusal("remedy", err)
+			}
+			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, res, func(w io.Writer) {
+				fmt.Fprintf(w, "%s  remedy written (stays %s) — %s\n", res.ID, res.Status, termsafe.Sanitize(res.Path))
+				fmt.Fprintf(w, "  remedy: %s\n", termsafe.Sanitize(res.Remedy))
+				if res.Previous != "" {
+					fmt.Fprintf(w, "  replaced: %s\n", termsafe.Sanitize(res.Previous))
+				}
+				emitRedactionNote(w, res.Redacted, res.Degraded)
+			})
+		},
+	}
+	captureCmd.AddCommand(remedyCmd)
 
 	return captureCmd
 }
@@ -5871,7 +6025,14 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		// machine output must get a JSON envelope, never raw Go text (iss-29) —
 		// and it goes to STDOUT, where a machine-readable consumer reads
 		// (iss-2609100519128005).
-		if asJSON, _ := root.PersistentFlags().GetBool("json"); asJSON {
+		// A flag-parse refusal stops before a later --json is read, so the
+		// caller's own arguments decide there (iss-2609292352131344).
+		asJSON, _ := root.PersistentFlags().GetBool("json")
+		var parseErr *flagParseError
+		if !asJSON && errors.As(err, &parseErr) {
+			asJSON = jsonRequestedIn(args)
+		}
+		if asJSON {
 			enc := json.NewEncoder(stdout)
 			enc.SetIndent("", "  ")
 			_ = enc.Encode(newErrorEnvelope(msg, code))

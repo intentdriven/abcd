@@ -17,7 +17,7 @@ func TestCaptureRedactsHomePathOnWrite(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
-	res, err := Capture(CaptureRequest{
+	res, err := testCapture(CaptureRequest{
 		RepoRoot:    repo,
 		Text:        "the PATH entry is " + filepath.Join(home, ".local", "bin", "abcd") + " and it moved",
 		Severity:    SeverityMinor,
@@ -51,7 +51,7 @@ func TestCaptureLeavesCleanTextAlone(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 
 	body := "the enumeration is four items long and misses the artefact class"
-	res, err := Capture(CaptureRequest{
+	res, err := testCapture(CaptureRequest{
 		RepoRoot:    repo,
 		Text:        body,
 		Severity:    SeverityMinor,
@@ -90,7 +90,7 @@ func TestCaptureWithHomePathInDerivedSlugStillFiles(t *testing.T) {
 	t.Setenv("HOME", home)
 
 	body := "the PATH entry is " + filepath.Join(home, ".local", "bin", "abcd") + " and it moved"
-	res, err := Capture(CaptureRequest{
+	res, err := testCapture(CaptureRequest{
 		RepoRoot: repo,
 		Text:     body,
 		// The CLI derives the slug from the text, so the path lands here too.
@@ -125,7 +125,7 @@ func TestResolveRedactsTheNote(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 
-	res, err := Capture(CaptureRequest{
+	res, err := testCapture(CaptureRequest{
 		RepoRoot: repo, Text: "a finding", Slug: "a-finding",
 		Severity: SeverityMinor, Category: "process",
 		Source: "user-observation", FoundDuring: "unit-test",

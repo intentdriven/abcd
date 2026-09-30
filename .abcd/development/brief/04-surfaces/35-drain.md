@@ -29,10 +29,13 @@ The rule is a recorded decision,
 and invariant 19 in
 [`02-constraints/03-invariants.md`](../02-constraints/03-invariants.md). It reads
 the record's fields and nothing else: nothing open in `blocked_by`, a category
-in the fixable set, severity `nitpick` or `minor`, and a `remedy:`. Every open
+in the fixable set, severity `nitpick` or `minor`, and a `remedy:` other than
+`none (filed automatically)`, the value an automatic filer writes when it has
+no fix. Every open
 issue receives exactly one disposition, from the first rule that excludes it:
 skipped when blocked, handed back for `security`, for a category outside the
-fixable set or for a severity above `minor`, ineligible without a remedy, and
+fixable set or for a severity above `minor`, ineligible without a remedy or
+with the automatic filers' value until a person writes one, and
 unreadable when the ledger reader refuses the record. A record written before
 the field existed reads its `suggested_fix:` as its remedy.
 

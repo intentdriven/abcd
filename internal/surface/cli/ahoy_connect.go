@@ -85,6 +85,9 @@ func runAhoyProviders(cmd *cobra.Command, cwd string, asJSON bool) error {
 	if b.Routes == nil {
 		b.Routes = []oracle.PointedRoute{}
 	}
+	if b.Denylist == nil {
+		b.Denylist = []oracle.DenyEntry{}
+	}
 	for _, p := range cfg.Providers() {
 		state, home := keyState(roots.Home, p.Key)
 		b.Providers = append(b.Providers, providerView{Provider: p, KeyState: state, KeyHome: home})
@@ -110,7 +113,11 @@ func runAhoyProviders(cmd *cobra.Command, cwd string, asJSON bool) error {
 		for i, e := range b.Denylist {
 			deny[i] = e.Pattern + " (" + e.Origin + ")"
 		}
-		line("vendor denylist, which no allowlist entry overrides: " + strings.Join(deny, ", "))
+		if len(deny) == 0 {
+			line("denylist (oracle.denylist): none written; a provider serves only the models it lists")
+		} else {
+			line("denylist (oracle.denylist), which refuses a model even when a provider lists it: " + strings.Join(deny, ", "))
+		}
 		for _, r := range b.Routes {
 			line(fmt.Sprintf("%s %s -> %s (%s)", r.Kind, r.Name, r.Target, r.Target.Origin))
 		}

@@ -90,8 +90,11 @@ first named in the receipt itself.
 
 The transport is pinned: no proxy or CA overrides from the environment (set ones
 are ignored and named in the receipt), redirects only onto the release origin's
-own hosts, every hop re-checked. The swap is atomic in the target's directory, so
-a failed download or verification leaves no partial file.
+own hosts, every hop re-checked. The release is verified in full before anything
+is written, then staged beside the target and swapped in atomically, so a failed
+download, verification, staging write or swap leaves no partial file. Download
+progress goes to stderr, and only when stderr is a terminal: stdout carries the
+receipt and nothing else, and a piped or hooked run shows no progress.
 
 The target file is not quite the only thing the verb touches. Where this machine's
 install record names the very entry just refreshed, abcd re-stamps that record

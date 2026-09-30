@@ -1,7 +1,7 @@
 ---
 term: version
 bounded_context: distribution
-definition: A strict-SemVer string stamped into the curated release artifact at cut time and carried as the git tag of the single repo, identifying a published snapshot of abcd for install and update. It is an OUTPUT of publishing, distinct from the internal sequencing unit (phase).
+definition: A strict-SemVer string stamped into the curated release artifact at cut time and carried as the git tag of the single repo, identifying a published snapshot of abcd for install and update. It is an OUTPUT of publishing, derived from the impact of what shipped, and never a unit that sequences the work.
 aliases: ["semver", "plugin version"]
 forbidden_synonyms: []
 status: stable
@@ -23,12 +23,12 @@ update. The working tree stays unversioned; the version lives only in the cut
 artifact and its tag — the dev-unversioned / release-versioned polarity applied
 within one tree.
 
-This is deliberately distinct from [phase](../core/phase.md), which forbids
-"version" as a synonym *in the core context*. That prohibition is correct there:
-abcd organises its internal development work by phase, not by version number. But
-when abcd is PUBLISHED, a semantic version is the precise, correct term — it is
-what "falls out" when a phase (or a routine snapshot) is cut as a release. The
-two coexist: `phase` sequences the work; `version` labels the published result.
+A version never sequences the work: the order of work is dependencies plus the
+lifecycle shelves ([record families](../core/record-families.md),
+adr-2609212115255771), and nothing is planned into a version. When abcd is
+PUBLISHED, a semantic version is the precise, correct term: `launch ship` derives
+it from the impact the shipped records declare (pre-1.0, a breaking change bumps
+the minor), and an all-internal or empty cut derives none.
 
 ## When to use
 
@@ -37,9 +37,10 @@ artifact, the git tag, the marketplace entry, and the changelog.
 
 ## When NOT to use
 
-Do not use "version" for the internal sequencing of development work — that is a
-[phase](../core/phase.md). A version is the output of publishing, never the unit
-that organises what ships together.
+Do not use "version" for the sequencing of development work: that is dependencies
+and the shelves. A version is the output of publishing, never the unit that
+organises what ships together; the delivery grouping is a
+[bundle](../core/bundle.md).
 
 ## Examples
 
@@ -49,5 +50,5 @@ that organises what ships together.
 ## Related terms
 
 - [record families](../core/record-families.md) — the one page that maps the record families and how they relate
-- [phase](../core/phase.md) — the internal sequencing unit; a version is an output of completing one
+- [phase](../core/phase.md): the retired sequencing unit; a version was never one
 - [release](release.md) — the published act that carries a version
