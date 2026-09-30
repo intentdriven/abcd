@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -188,6 +189,71 @@ func TestAHarnessOthersCanWriteIsRefused(t *testing.T) {
 		if err := os.Chmod(bin, 0o772); err != nil {
 			t.Fatal(err)
 		}
+		assertWritableRefused(t, f)
+	})
+}
+
+// TestAHarnessOnlyTheAdministratorGroupCanWriteIsAdmitted: a directory PATH
+// reaches a harness through that is group-writable, never other-writable, and
+// whose group is the system administrator group (gid 0, or gid 80 "admin" on
+// darwin: the Homebrew /opt/homebrew/bin shape) is admitted, since members of
+// that group can already act as root. Any other group, and any other-writable
+// directory whatever its group, is still refused.
+func TestAHarnessOnlyTheAdministratorGroupCanWriteIsAdmitted(t *testing.T) {
+	admin := []uint32{0}
+	nonAdmin := []uint32{20, 1000}
+	if runtime.GOOS == "darwin" {
+		admin = append(admin, 80)
+	} else {
+		nonAdmin = append(nonAdmin, 80)
+	}
+	withGroup := func(t *testing.T, gid uint32) {
+		t.Helper()
+		prev := fileGroup
+		fileGroup = func(os.FileInfo) (uint32, bool) { return gid, true }
+		t.Cleanup(func() { fileGroup = prev })
+	}
+	for _, gid := range admin {
+		t.Run("0775 gid "+strconv.Itoa(int(gid))+" admits", func(t *testing.T) {
+			f := newFake(t, "ok", Claude)
+			if err := os.Chmod(f.bin, 0o775); err != nil {
+				t.Fatal(err)
+			}
+			withGroup(t, gid)
+			if _, _, err := newClaude("").Run(context.Background(), f.request("scribe")); err != nil {
+				t.Fatalf("run: %v, want a harness only the administrator group can write admitted", err)
+			}
+			if !f.launched(Claude) {
+				t.Fatal("the harness was not launched")
+			}
+		})
+		t.Run("0777 gid "+strconv.Itoa(int(gid))+" refuses", func(t *testing.T) {
+			f := newFake(t, "ok", Claude)
+			if err := os.Chmod(f.bin, 0o777); err != nil {
+				t.Fatal(err)
+			}
+			withGroup(t, gid)
+			assertWritableRefused(t, f)
+		})
+	}
+	for _, gid := range nonAdmin {
+		t.Run("0775 gid "+strconv.Itoa(int(gid))+" refuses", func(t *testing.T) {
+			f := newFake(t, "ok", Claude)
+			if err := os.Chmod(f.bin, 0o775); err != nil {
+				t.Fatal(err)
+			}
+			withGroup(t, gid)
+			assertWritableRefused(t, f)
+		})
+	}
+	t.Run("0775 unknown group refuses", func(t *testing.T) {
+		f := newFake(t, "ok", Claude)
+		if err := os.Chmod(f.bin, 0o775); err != nil {
+			t.Fatal(err)
+		}
+		prev := fileGroup
+		fileGroup = func(os.FileInfo) (uint32, bool) { return 0, false }
+		t.Cleanup(func() { fileGroup = prev })
 		assertWritableRefused(t, f)
 	})
 }

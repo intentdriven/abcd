@@ -6,7 +6,8 @@ package runner
 //   - the argv is a vector handed to exec, never a shell line, and the prompt
 //     travels as one argument behind the end-of-options marker;
 //   - the binary is resolved on PATH by its fixed name and refused when it is
-//     not absolute, when group or other can write it or its directory, or when
+//     not absolute, when other can write it or its directory, when a group
+//     other than the system administrator group can write either, or when
 //     it resolves inside the repository the role runs in, or the
 //     checkout a lane's worktree belongs to, lexically or through a symlink (a
 //     PATH entry into either is repository content, never run);
@@ -31,6 +32,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"syscall"
 	"time"
 
@@ -90,7 +92,7 @@ func (l launcher) admit(runner, name string, repos ...string) (string, error) {
 		if err != nil {
 			return "", fail(runner, ReasonAbsent, "%s could not be examined before it is run", name)
 		}
-		if fsutil.WritableByOthers(fi) {
+		if fsutil.WritableByOthers(fi) && !adminGroupWritableOnly(fi) {
 			return "", fail(runner, ReasonAbsent, "%s, or a directory it is reached through, is one group or other can write, "+
 				"so it is never run; chmod go-w it", name)
 		}
@@ -115,6 +117,37 @@ func (l launcher) admit(runner, name string, repos ...string) (string, error) {
 		}
 	}
 	return resolved, nil
+}
+
+// adminGroupWritableOnly reports whether fi's only write bit beyond its
+// owner's is the group's, and that group is the system administrator group:
+// gid 0 (root, or wheel on darwin) anywhere, and gid 80 (admin) on darwin.
+// Homebrew installs /opt/homebrew/bin as root- or user-owned, group admin,
+// mode 0775, so a harness installed through it is reached through a
+// group-writable directory. Members of the administrator group can already
+// act as root, so that write grants them nothing they do not hold, and the
+// directory is admitted. Other-writable is never admitted, whatever the
+// group, and neither is any other group, nor a group that cannot be read.
+func adminGroupWritableOnly(fi os.FileInfo) bool {
+	if fi.Mode().Perm()&0o002 != 0 {
+		return false
+	}
+	gid, ok := fileGroup(fi)
+	if !ok {
+		return false
+	}
+	return gid == 0 || (runtime.GOOS == "darwin" && gid == 80)
+}
+
+// fileGroup reads the owning group of a stat result; ok is false when the
+// platform does not report one. A variable so a test can name a group it
+// cannot chown to.
+var fileGroup = func(fi os.FileInfo) (uint32, bool) {
+	st, ok := fi.Sys().(*syscall.Stat_t)
+	if !ok {
+		return 0, false
+	}
+	return st.Gid, true
 }
 
 // run starts bin with args in dir and waits for it, at most timeout.
