@@ -33,6 +33,7 @@ const (
 	writeCommandEntry            writeKind = "command-entry"
 	writeStatusLine              writeKind = "status-line"
 	writeRouting                 writeKind = "routing"
+	writeDrainRule               writeKind = "drain-rule"
 	writeRules                   writeKind = "rules"
 	writeIdentityPin             writeKind = "identity-pin"
 	writeGitIdentity             writeKind = "git-identity"
@@ -45,7 +46,7 @@ var allWriteKinds = []writeKind{
 	writeSettings, writeGitignore, writeLocalTier, writeNameGuard, writePrivateNames,
 	writeDocsCheck, writeAttributionHook, writeRules, writeConventionsBlock,
 	writeConventionsBlockRemoved, writeGitIdentity, writeIdentityPin, writeArtefactKind, writeCommandEntry, writeSessionStore,
-	writeStatusLine, writeRouting,
+	writeStatusLine, writeRouting, writeDrainRule,
 }
 
 // writeKindHelp is the plain-language explanation of each kind of write.
@@ -135,6 +136,11 @@ var writeKindHelp = map[writeKind]SummaryItem{
 		Why:    "Larger models cost more; the table keeps the expensive ones for the steps that need them.",
 		Action: "Nothing. Edit the saved table if you want a different split.",
 	},
+	writeDrainRule: {
+		What:   "Recorded which open issues abcd drain may fix without asking you, as a decision record in this repository.",
+		Why:    "abcd drain refuses to run in a repository until it records that rule; this one is abcd's strict default.",
+		Action: "Commit the record. Edit its drain_ fields to change the rule; abcd drain names any loosening.",
+	},
 }
 
 // unexplainedWriteHelp is what a write reaches the person as when it carries no
@@ -185,6 +191,11 @@ var declinedCategoryHelp = map[GapCategory]SummaryItem{
 		Why:    "Review steps use whatever model your assistant picks by default.",
 		Action: "Nothing. Run abcd ahoy install again if you want the table.",
 	},
+	DrainRule: {
+		What:   "You declined recording which open issues abcd drain may fix without asking you.",
+		Why:    "abcd drain refuses to run in this repository until the rule is recorded.",
+		Action: "Nothing, unless you want to drain; then run abcd ahoy install again and answer y.",
+	},
 }
 
 // optionalSkippedHelp explains each optional step an unattended run left alone.
@@ -208,6 +219,11 @@ var optionalSkippedHelp = map[string]SummaryItem{
 		What:   "abcd's suggested table of which AI model size each review step uses was not saved for this repository.",
 		Why:    "The table decides which model, and so what cost, each review step asks for, so it needs your own yes.",
 		Action: "Run abcd ahoy install without --yes and answer the question about the table.",
+	},
+	DrainRuleOfferGapID: {
+		What:   "The rule for which open issues abcd drain may fix without asking you was not recorded.",
+		Why:    "The rule decides what an unattended agent may change in this repository, so it needs your own yes; until it is recorded, abcd drain refuses to run here.",
+		Action: "Run abcd ahoy install at a terminal, without --yes, and answer the question about the drain rule.",
 	},
 }
 

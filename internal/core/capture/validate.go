@@ -54,6 +54,7 @@ func issueFromFrontmatter(fm map[string]any, status State, path, body string) Is
 		Status:        status,
 		Path:          path,
 		Body:          body,
+		deferredAfter: asString(fm["deferred_after"]),
 	}
 	iss.RelatedIntents = asStrList(fm["related_intents"])
 	iss.RelatedSpecs = asStrList(fm["related_specs"])

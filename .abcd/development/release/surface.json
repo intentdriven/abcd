@@ -1103,7 +1103,7 @@
       "hidden": false,
       "group": "agents",
       "block": "agents",
-      "sentence": "Sort the open issues by the drain's field rule, eligible first in drain order: Writes nothing; refuses to start without --dry-run, as the run is not built.",
+      "sentence": "Sort open issues by this repository's own drain rule, naming each loosened floor: Writes nothing; refuses without the rule's record, or without --dry-run.",
       "flags": [
         {
           "name": "dry-run",

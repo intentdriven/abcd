@@ -774,10 +774,10 @@ func TestStatusLineCategoryIsOptionalForYes(t *testing.T) {
 		t.Fatal("StatusLine is not in categoryPromptOrder")
 	}
 	gaps := []Gap{{ID: StatusLineOfferGapID, Category: StatusLine, Resolvable: true}}
-	if got := optionalSkipped(InstallOptions{Yes: true}, gaps); strings.Join(got, ",") != StatusLineOfferGapID {
+	if got := optionalSkipped(InstallOptions{Yes: true}, gaps, nil); strings.Join(got, ",") != StatusLineOfferGapID {
 		t.Errorf("optionalSkipped under --yes = %v", got)
 	}
-	if got := optionalSkipped(InstallOptions{}, gaps); len(got) != 0 {
+	if got := optionalSkipped(InstallOptions{}, gaps, nil); len(got) != 0 {
 		t.Errorf("optionalSkipped without --yes = %v, want none (it is offered)", got)
 	}
 }

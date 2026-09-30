@@ -138,6 +138,10 @@ type Issue struct {
 	Status        State       `json:"status"` // derived from folder
 	Path          string      `json:"path"`   // repo-relative locator (iss-81)
 	Body          string      `json:"body"`
+	// deferredAfter is the release-cut waiver's anchor tag (deferred_after),
+	// read for the drain's live-deferral hand-back and not surfaced: the cut
+	// reads the pair from the committed record itself.
+	deferredAfter string
 	// BlockedByOpen is the derived subset of BlockedBy whose targets are still in
 	// open/ (the priority projection populated by List/Status). Not a stored
 	// field: an empty slice means the issue is unblocked.

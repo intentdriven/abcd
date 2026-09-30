@@ -3564,16 +3564,27 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 					fmt.Fprintf(w, "  remaining gaps: %s\n", strings.Join(res.Remaining, ", "))
 				}
 				// --yes approves every category but never writes the identity
-				// pin, the status-line wiring or a routing table, so say which optional work it
-				// left, why each needs an answer, and how to apply it.
+				// pin, the status-line wiring, a routing table or the drain
+				// rule, and off a terminal the drain rule is not asked at all,
+				// so say which optional work it left, why each needs an answer,
+				// and how to apply it.
 				if len(res.OptionalSkipped) > 0 {
-					fmt.Fprintf(w, "  optional, not covered by --yes: %s\n", strings.Join(res.OptionalSkipped, ", "))
+					label := "optional, not covered by --yes"
+					if !yes {
+						label = "optional, asked only at a terminal"
+					}
+					fmt.Fprintf(w, "  %s: %s\n", label, strings.Join(res.OptionalSkipped, ", "))
 					for _, id := range res.OptionalSkipped {
 						if why := optionalSkipReason(id); why != "" {
 							fmt.Fprintf(w, "    %s\n", why)
 						}
 					}
-					fmt.Fprint(w, "    run `abcd ahoy install` (no --yes) and answer y at each prompt — non-interactively, `yes | abcd ahoy install`\n")
+					if yes {
+						fmt.Fprint(w, "    run `abcd ahoy install` (no --yes) and answer y at each prompt — non-interactively, `yes | abcd ahoy install`\n")
+					}
+					if slices.Contains(res.OptionalSkipped, ahoy.DrainRuleOfferGapID) {
+						fmt.Fprint(w, "    the drain rule is asked only of a person at a terminal: run `abcd ahoy install` there, without --yes, and answer it\n")
+					}
 				}
 			})
 		},
@@ -3897,6 +3908,8 @@ func optionalSkipReason(id string) string {
 		return "the status line rewrites a setting of the host harness and takes element choices, so it is only written against an answered prompt"
 	case ahoy.OracleRoutingMachineGapID, ahoy.OracleRoutingRepoGapID:
 		return "a routing table decides which model every delegated step asks for, so abcd's proposal is only accepted against an answered prompt"
+	case ahoy.DrainRuleOfferGapID:
+		return "the drain eligibility record decides what an unattended agent may change in this repository, so it is only added against a prompt answered at a terminal"
 	}
 	return ""
 }
@@ -4005,8 +4018,9 @@ func (p *stdinPrompter) echo(answer string) {
 }
 
 // AtTerminal reports whether a person is answering at a terminal, which makes
-// the prompter an ahoy.TerminalPrompter: the one question abcd asks only of a
-// person (whether to change who commits, itd-131) is never put to a pipe.
+// the prompter an ahoy.TerminalPrompter: the questions abcd asks only of a
+// person (whether to change who commits, itd-131, and whether to record the
+// drain eligibility rule) are never put to a pipe.
 func (p *stdinPrompter) AtTerminal() bool { return p.tty }
 
 func (p *stdinPrompter) Confirm(question string) bool {
