@@ -42,22 +42,36 @@ owns is refused and left untouched (iss-2609291610432030).
 
 
 - **Listing** shows what is stored for this repo, newest first, each record
-  reporting when it was captured, its session id and source kind, and how many
+  reporting when it was captured, its session id, where it came from (the
+  route and the tool), and how many
   secrets and home paths were redacted out of it. An empty list means nothing is
   stored yet.
 - **Showing** prints one record's metadata and its full **redacted** body,
   matched by session id (newest when a session has several records) or by record
   filename.
 - **Capturing** redacts and stores a raw transcript read from a file or stdin.
-  It is fail-closed on redaction and idempotent on the (content hash, session
-  id, kind) triple, so re-capturing identical content under the same session and
-  kind is a no-op while the same content under a different session id writes a
+  It is fail-closed on redaction and idempotent on the content hash, session
+  id and source labels together, so re-capturing identical content under the
+  same session and labels is a no-op while the same content under a different session id writes a
   new record and a second session is never mis-attributed to the first.
   The caller names the session the record belongs to: it defaults to the
   transcript's filename, and it is required when the transcript arrives on
   standard input, where there is no filename to read it from. The caller also
-  says where the transcript came from, a session abcd captured itself or an import of
-  a prior tool's transcripts, and it defaults to the first.
+  says where the transcript came from, as two separate labels (the product
+  thinker's ruling J13, 2026-09-29): the **route** it reached the store by, a
+  session abcd captured itself (`native`, the default) or an import of another
+  tool's export (`import`), and the **tool** that produced it, a lowercase name
+  that defaults to `host` on a native capture and that an import must supply.
+  The route is a closed set and the tool never takes a route's name, so neither
+  label can stand in for the other, and an import never names the host. The
+  tool label passes the redaction scan with the transcript, and a label the scan
+  would change refuses the capture. A record stored before the split carries
+  the route alone and reads under both labels, derived without rewriting it:
+  `native` from `host`, and the fused `specstory-import` as an import from
+  `specstory`. The fused value names its tool already, so a capture that pairs
+  it with a different tool is refused, naming both and the two-label spelling,
+  and a stored record that pairs them is not read; the same tool named twice
+  is accepted.
   Asked for a whole session instead, capture stores the named session's main
   thread and every sub-agent transcript it spawned in one call — the write-side
   twin of listing a session — finding them under the paths given, or the
@@ -107,7 +121,8 @@ owns is refused and left untouched (iss-2609291610432030).
   on every transcript line, and the stored prefix is only the check: a body that
   disagrees leaves the record untouched and is reported. `source_sha256` and the
   filename are not touched, so a migrated record still dedups and every path a
-  reader holds still resolves. It **reports by default and writes only when told
+  reader holds still resolves. A record it rewrites is stamped with both source
+  labels, the route and the tool, in the form a capture writes. It **reports by default and writes only when told
   to apply**, because the store holds the only copy of these records, and a
   second run is a no-op. A sidecar root (or the declared `ingest_roots`) names
   where the harness's per-agent metadata is searched for, by filename; where it
@@ -368,6 +383,7 @@ Sub-verbs: none.
 | `--all` | bool |
 | `--kind` | string |
 | `--session` | string |
+| `--tool` | string |
 
 ### `abcd history discard`
 

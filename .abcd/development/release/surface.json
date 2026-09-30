@@ -1209,6 +1209,13 @@
           "type": "string",
           "required": false,
           "hidden": false
+        },
+        {
+          "name": "tool",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
         }
       ]
     },

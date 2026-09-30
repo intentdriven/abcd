@@ -1,6 +1,7 @@
 package history
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -39,10 +40,95 @@ var sessionIDRe = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
 // have, a record of its own.
 var agentIDRe = sessionIDRe
 
-// validKinds are the accepted source_kind values.
-var validKinds = map[string]struct{}{
-	"native":           {},
-	"specstory-import": {},
+// A record names where its transcript came from with two separate labels
+// (ruling J13 on iss-2608230752354928): the ROUTE it reached the store by, in
+// source_kind, and the TOOL that produced it, in source_tool.
+//
+// The route vocabulary is closed. `native` is abcd's own capture of the
+// transcript the host harness wrote — its hooks, or its capture and ingest
+// verbs reading that transcript. `import` is a transcript another tool
+// exported, brought in through abcd. The tool vocabulary is open: any
+// lowercase slug naming the producing tool, with `host` reserved for the
+// harness abcd is installed in, which is what a native capture that names no
+// tool records.
+const (
+	RouteNative = "native"
+	RouteImport = "import"
+	ToolHost    = "host"
+)
+
+// validRoutes are the accepted source_kind values.
+var validRoutes = map[string]struct{}{
+	RouteNative: {},
+	RouteImport: {},
+}
+
+// legacyKinds are the source_kind values a record written before the split
+// may carry that fused a tool into the route. Each maps to the two labels it
+// always meant; a record carrying one is read under them, never rewritten
+// here.
+var legacyKinds = map[string][2]string{
+	"specstory-import": {RouteImport, "specstory"},
+}
+
+// errToolRedacted refuses a source_tool label the redaction pass rewrote. The
+// label is a name, and a name redaction changed is not the tool's name, so
+// Capture and migrate stop rather than store a record under a masked label.
+var errToolRedacted = errors.New("history: the source tool label was redacted; name the tool with a label the scanner does not match")
+
+// toolRe is the source_tool shape: a lowercase slug, so the label can be
+// neither a sentence nor a second frontmatter line.
+var toolRe = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]{0,63}$`)
+
+// sourceLabels derives a record's two labels from what its frontmatter or its
+// caller supplied. It is the one place the pre-split vintage is read: a legacy
+// fused kind splits into its route and tool, and a native record that names no
+// tool names the host. Anything else passes through for validateSource to
+// judge.
+//
+// A fused kind already names its tool, so a tool that names a different one is
+// a second answer to the same question. It is refused, never resolved in favour
+// of either: the store cannot know which one the caller meant. Naming the same
+// tool twice is one answer and passes.
+func sourceLabels(kind, tool string) (route, sourceTool string, err error) {
+	if pair, ok := legacyKinds[kind]; ok {
+		if tool != "" && tool != pair[1] {
+			return "", "", fmt.Errorf("history: source kind %q already names the tool %q, which conflicts with the tool %q; name the two labels separately: kind %s with tool %s, or kind %s with tool %s",
+				kind, pair[1], tool, pair[0], tool, pair[0], pair[1])
+		}
+		kind, tool = pair[0], pair[1]
+	}
+	if kind == RouteNative && tool == "" {
+		tool = ToolHost
+	}
+	return kind, tool, nil
+}
+
+// validateSource holds the two labels apart. The route is one of the closed
+// set, so a tool name cannot stand in it; the tool is a slug that is not a
+// route word and not a fused `<tool>-import` value, so a route cannot stand in
+// it; and an import names the tool that exported it, which is never the host,
+// because the host's own transcript is what the native route records.
+func validateSource(route, tool string) error {
+	if _, ok := validRoutes[route]; !ok {
+		return fmt.Errorf("history: source route %q is not one of native, import", route)
+	}
+	if !toolRe.MatchString(tool) {
+		if route == RouteImport && tool == "" {
+			return fmt.Errorf("history: an import must name the tool that exported the transcript")
+		}
+		return fmt.Errorf("history: source tool %q must be a lowercase slug matching [a-z0-9][a-z0-9._-]*", tool)
+	}
+	if _, ok := validRoutes[tool]; ok {
+		return fmt.Errorf("history: source tool %q is a route, not a tool", tool)
+	}
+	if _, ok := legacyKinds[tool]; ok || strings.HasSuffix(tool, "-"+RouteImport) {
+		return fmt.Errorf("history: source tool %q fuses a route into the tool; name the tool alone", tool)
+	}
+	if route == RouteImport && tool == ToolHost {
+		return fmt.Errorf("history: an import cannot name the host as its tool; the host's own transcript is a native capture")
+	}
+	return nil
 }
 
 // validLineageSources are the accepted lineage_source values: which rung of the
@@ -83,8 +169,14 @@ func (m CaptureMeta) validate() error {
 	if !sessionIDRe.MatchString(m.SessionID) {
 		return fmt.Errorf("history: sessionID must be non-empty and match [A-Za-z0-9._-]+")
 	}
-	if _, ok := validKinds[m.Kind]; !ok {
-		return fmt.Errorf("history: source kind %q is not one of native, specstory-import", m.Kind)
+	// Judged as they will be stored: staging validates a meta long before
+	// Capture settles its labels, and must accept exactly what Capture will.
+	route, tool, err := sourceLabels(m.Kind, m.Tool)
+	if err != nil {
+		return err
+	}
+	if err := validateSource(route, tool); err != nil {
+		return err
 	}
 	if m.AgentID != "" && !agentIDRe.MatchString(m.AgentID) {
 		return fmt.Errorf("history: agentID must match [A-Za-z0-9._-]+")
@@ -186,6 +278,7 @@ const (
 	fmRootCommit  = "root_commit"
 	fmCapturedAt  = "captured_at"
 	fmSourceKind  = "source_kind"
+	fmSourceTool  = "source_tool"
 	fmSourceSHA   = "source_sha256"
 	fmRedSecrets  = "redacted_secrets"
 	fmRedHomePath = "redacted_home_paths"
@@ -219,6 +312,9 @@ func marshalRecord(r Record, body string) []byte {
 	fmt.Fprintf(&b, "%s: %s\n", fmRootCommit, r.RootCommit)
 	fmt.Fprintf(&b, "%s: %s\n", fmCapturedAt, r.CapturedAt.UTC().Format(time.RFC3339Nano))
 	fmt.Fprintf(&b, "%s: %s\n", fmSourceKind, r.SourceKind)
+	if r.SourceTool != "" {
+		fmt.Fprintf(&b, "%s: %s\n", fmSourceTool, r.SourceTool)
+	}
 	fmt.Fprintf(&b, "%s: %s\n", fmSourceSHA, r.SourceSHA256)
 	fmt.Fprintf(&b, "%s: %d\n", fmRedSecrets, r.Secrets)
 	fmt.Fprintf(&b, "%s: %d\n", fmRedHomePath, r.HomePaths)
@@ -295,7 +391,15 @@ func parseRecord(data []byte) (Record, string, error) {
 	var r Record
 	r.SessionID = fields[fmSessionID]
 	r.RootCommit = fields[fmRootCommit]
-	r.SourceKind = fields[fmSourceKind]
+	// Both vintages read: a record written before the route and the tool were
+	// split carries source_kind alone, and its labels are derived here. No
+	// writer pairs a fused kind with a different tool, so a record that does is
+	// malformed and is not read under either answer.
+	var err error
+	r.SourceKind, r.SourceTool, err = sourceLabels(fields[fmSourceKind], fields[fmSourceTool])
+	if err != nil {
+		return Record{}, "", err
+	}
 	r.SourceSHA256 = fields[fmSourceSHA]
 	if r.SessionID == "" || r.RootCommit == "" || r.SourceSHA256 == "" {
 		return Record{}, "", fmt.Errorf("history: record frontmatter missing a required field")
