@@ -158,3 +158,43 @@ func TestLessonsOverMarkTheRepositorysOwnWords(t *testing.T) {
 		t.Errorf("LessonsOver gave %d lessons for %d entries", n, len(repo.Entries))
 	}
 }
+
+// TestLessonsUnderADisabledRegistrySayTheGuardIsOff: a committed
+// "disabled": true registry refuses and warns about nothing, so a lesson that
+// opened "Refused by the guard" or "Warned by the guard" would teach a false
+// sentence. The hazard is still real and still taught (the switches stay
+// independent, spc-16), under a lead that says the guard is off — for a
+// repository's own entry and for a bundled one alike.
+func TestLessonsUnderADisabledRegistrySayTheGuardIsOff(t *testing.T) {
+	bundled := Defaults()
+	off := Defaults()
+	off.Disabled = true
+	off.Entries["deploy-prod"] = Entry{
+		Pattern:   Pattern{Command: "make", Subcommand: "deploy"},
+		Tier:      TierBlocker,
+		Why:       "It deploys to production from a laptop.",
+		Successor: "Open a release pull request; CI deploys it.",
+	}
+	got := map[string]string{}
+	for _, l := range off.LessonsOver(bundled) {
+		if strings.HasPrefix(l, "Refused by the guard") || strings.HasPrefix(l, "Warned by the guard") {
+			t.Errorf("a disabled registry teaches the guard as enforcing: %q", l)
+		}
+		for _, id := range []string{"deploy-prod", "git-push-force", "git-clean"} {
+			if strings.Contains(l, "("+id+")") {
+				got[id] = l
+			}
+		}
+	}
+	if want := "Hazard (guard off) (deploy-prod) (repo): `make deploy`. It deploys to production from a laptop. Instead: Open a release pull request; CI deploys it."; got["deploy-prod"] != want {
+		t.Errorf("the repository's own entry under a disabled registry teaches\n %q\nwant\n %q", got["deploy-prod"], want)
+	}
+	for _, id := range []string{"git-push-force", "git-clean"} {
+		if !strings.HasPrefix(got[id], "Hazard (guard off) ("+id+"): ") {
+			t.Errorf("the bundled entry %s under a disabled registry teaches %q", id, got[id])
+		}
+	}
+	if n := len(off.Lessons()); n != len(off.Entries) {
+		t.Errorf("a disabled registry taught %d lessons for %d entries: the hazards are still taught", n, len(off.Entries))
+	}
+}

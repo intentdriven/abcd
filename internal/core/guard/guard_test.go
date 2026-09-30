@@ -370,3 +370,49 @@ func TestDefaultsValidate(t *testing.T) {
 		t.Fatalf("bundled schema_version = %d, want %d", Defaults().SchemaVersion, SchemaVersion)
 	}
 }
+
+// TestValidateBoundsWhatAnEntryTeaches: an entry's why and successor are
+// injected into an agent's context word for word by the teaching plane, so
+// each is capped at maxLessonFieldBytes. An entry over the bound is refused at
+// validation, which refuses the whole file loudly, rather than taught at any
+// size: a 240 KB why otherwise pushed every other domain out of the injection
+// budget. The bundled registry sits well inside the bound, so the headroom is
+// real and not a bound the defaults brush against.
+func TestValidateBoundsWhatAnEntryTeaches(t *testing.T) {
+	for _, field := range []string{"why", "successor"} {
+		r := Defaults()
+		e := r.Entries["git-clean"]
+		huge := strings.Repeat("w", 240*1000)
+		if field == "why" {
+			e.Why = huge
+		} else {
+			e.Successor = huge
+		}
+		r.Entries["git-clean"] = e
+		err := Validate(r)
+		if !errors.Is(err, ErrInvalidEntry) {
+			t.Fatalf("a 240 KB %s validated: err = %v, want ErrInvalidEntry", field, err)
+		}
+		if !strings.Contains(err.Error(), field) || !strings.Contains(err.Error(), "git-clean") {
+			t.Errorf("the refusal does not name the entry and the field: %v", err)
+		}
+
+		e.Why, e.Successor = Defaults().Entries["git-clean"].Why, Defaults().Entries["git-clean"].Successor
+		at := strings.Repeat("w", maxLessonFieldBytes)
+		if field == "why" {
+			e.Why = at
+		} else {
+			e.Successor = at
+		}
+		r.Entries["git-clean"] = e
+		if err := Validate(r); err != nil {
+			t.Errorf("a %s of exactly %d bytes is refused: %v", field, maxLessonFieldBytes, err)
+		}
+	}
+	for id, e := range Defaults().Entries {
+		if 3*len(e.Why) > maxLessonFieldBytes || 3*len(e.Successor) > maxLessonFieldBytes {
+			t.Errorf("bundled entry %s (why %d bytes, successor %d bytes) leaves under 3x headroom below the %d-byte bound",
+				id, len(e.Why), len(e.Successor), maxLessonFieldBytes)
+		}
+	}
+}

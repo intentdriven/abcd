@@ -86,7 +86,10 @@ the same release, with no second edit. The registry taught is the one the guard
 enforces in the repository: an entry the repository adds in its
 `.abcd/guard.json` is taught by the same generator as the bundled ones, its
 rule marked `(repo)` after its entry id, and a guard file the guard refuses is
-named on stderr and never taught. How the domain is recalled, overridden and
+named on stderr and never taught. An entry's why and successor are each at most
+1,024 bytes, since both are taught word for word. Under a committed
+`"disabled": true` every rule opens `Hazard (guard off)`, because the guard
+then refuses nothing. How the domain is recalled, overridden and
 silenced is the rules loader's
 ([`05-internals/03-configuration.md`](../05-internals/03-configuration.md)).
 

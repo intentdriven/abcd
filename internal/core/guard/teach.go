@@ -63,7 +63,7 @@ func (r Registry) lessons(repo func(id string, e Entry) bool) []string {
 	for _, id := range ids {
 		e := r.Entries[id]
 		e.ID = id
-		out = append(out, e.lesson(repo(id, e)))
+		out = append(out, e.lesson(repo(id, e), r.Disabled))
 	}
 	return out
 }
@@ -92,13 +92,22 @@ func (r Registry) RecallTerms() []string {
 // Lesson is the one-line rule an entry teaches: whether the guard refuses or
 // warns, the entry id, the command it describes, the plain-language why, and
 // the safe successor.
-func (e Entry) Lesson() string { return e.lesson(false) }
+func (e Entry) Lesson() string { return e.lesson(false, false) }
+
+// guardOffLead opens every lesson of a disabled registry. A committed
+// "disabled": true refuses and warns about nothing, so "Refused by the guard"
+// would be a false sentence; the hazard is still taught, because the teaching
+// switch is rules.json's and independent of the guard's (spc-16).
+const guardOffLead = "Hazard (guard off)"
 
 // lesson is Lesson with the repository's provenance mark after the id when
-// repo is set.
-func (e Entry) lesson(repo bool) string {
+// repo is set, and the guard-off lead when the registry is disabled.
+func (e Entry) lesson(repo, disabled bool) string {
 	lead := "Refused by the guard"
-	if e.Tier == TierWarn {
+	switch {
+	case disabled:
+		lead = guardOffLead
+	case e.Tier == TierWarn:
 		lead = "Warned by the guard"
 	}
 	id := "(" + e.ID + ")"
