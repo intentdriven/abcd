@@ -134,7 +134,8 @@ func TestCallRefusesAnUnsetKeyWithoutACall(t *testing.T) {
 }
 
 // TestCallRefusesAnUnadmittedTargetWithoutACall: a target that did not come
-// from the read (an unlisted or denied model) is refused again at the call.
+// from the read (a model its provider does not list) is refused again at the
+// call.
 func TestCallRefusesAnUnadmittedTargetWithoutACall(t *testing.T) {
 	p := newProvFake(t, 200, chat("m", `{"verdict":"keep"}`))
 	f, c := configured(t, p.base(), callKey)
@@ -150,18 +151,47 @@ func TestCallRefusesAnUnadmittedTargetWithoutACall(t *testing.T) {
 	}
 }
 
+// TestCallServesAListedModelOfAnyVendor: with no vendor denylist bundled
+// (adr-2609300107513982), a model the provider lists is called and its answer
+// used, whichever vendor made it; the record names what was asked and what
+// answered.
+func TestCallServesAListedModelOfAnyVendor(t *testing.T) {
+	p := newProvFake(t, 200, chat("anthropic/claude-opus-4", `{"verdict":"keep"}`))
+	f := newFx(t)
+	if _, err := credential.SetMachine(f.roots.Home, "openrouter", callKey); err != nil {
+		t.Fatal(err)
+	}
+	f.machineConfig(`{"oracle":{"api":{"openrouter":{"base_url":"` + p.base() + `","key":"openrouter",
+		"models":["anthropic/claude-opus-4"]}},"roles":{"scribe":"openrouter/anthropic/claude-opus-4"}}}`)
+	c := f.loadAPI()
+	payload, rec, err := c.Call(context.Background(), credential.Machine(f.roots.Home), CallRequest{
+		Target: Target{Provider: "openrouter", Model: "anthropic/claude-opus-4"}, Contract: verdictContract})
+	if err != nil || string(payload) != `{"verdict":"keep"}` {
+		t.Fatalf("Call = %q, %v; want the listed model's answer", payload, err)
+	}
+	if rec.ModelAsked != "anthropic/claude-opus-4" || rec.ModelReported != "anthropic/claude-opus-4" {
+		t.Fatalf("record = %+v", rec)
+	}
+}
+
 // TestCallRefusesADeniedReportedModel: an aggregator that answers with a model
-// the denylist refuses has substituted a frontier model; the answer is not
-// used, and the refusal names what it reported.
+// the configuration's own denylist refuses has substituted it; the answer is
+// not used, and the refusal names what it reported and the entry.
 func TestCallRefusesADeniedReportedModel(t *testing.T) {
 	p := newProvFake(t, 200, chat("anthropic/claude-opus-4", `{"verdict":"keep"}`))
-	f, c := configured(t, p.base(), callKey)
+	f := newFx(t)
+	if _, err := credential.SetMachine(f.roots.Home, "openrouter", callKey); err != nil {
+		t.Fatal(err)
+	}
+	f.machineConfig(`{"oracle":{"denylist":["anthropic/*"],"api":{"openrouter":{"base_url":"` + p.base() + `","key":"openrouter",
+		"models":["typesafe/jev-1.13"]}}}}`)
+	c := f.loadAPI()
 	payload, _, err := c.Call(context.Background(), credential.Machine(f.roots.Home), CallRequest{
 		Target: Target{Provider: "openrouter", Model: "typesafe/jev-1.13"}, Contract: verdictContract})
 	if err == nil || payload != nil {
 		t.Fatalf("Call = %q, %v; want a refusal", payload, err)
 	}
-	if !strings.Contains(err.Error(), "anthropic/claude-opus-4") || !strings.Contains(err.Error(), "anthropic/*") {
+	if !strings.Contains(err.Error(), "anthropic/claude-opus-4") || !strings.Contains(err.Error(), "(anthropic/*, from ~/.abcd/config.json)") {
 		t.Fatalf("err = %v", err)
 	}
 }

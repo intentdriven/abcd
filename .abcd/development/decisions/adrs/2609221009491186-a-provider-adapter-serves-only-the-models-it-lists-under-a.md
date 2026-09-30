@@ -1,13 +1,13 @@
 ---
 id: adr-2609221009491186
 slug: a-provider-adapter-serves-only-the-models-it-lists-under-a
-status: accepted
+status: superseded
 date: 2026-09-22
 supersedes: null
-superseded_by: null
+superseded_by: adr-2609300107513982
 related_intents: [itd-2609081951381895, itd-2609221009495079, itd-2609170822093401, itd-6]
 related_rfcs: []
-related_adrs: [adr-25]
+related_adrs: [adr-25, adr-2609300107513982]
 ---
 
 # ADR-2609221009491186: A provider adapter serves only the models it lists, under a vendor denylist no listing overrides; everything else runs on the host
@@ -40,6 +40,10 @@ We will make every provider adapter default-deny by model.
    it matches, and no allowlist entry overrides it; the repository or the
    machine may extend the denylist and never shorten it below the bundled
    set.
+   *Superseded 2026-09-30 by adr-2609300107513982 (ruling H9 of 2026-09-29):
+   abcd bundles no vendor denylist and the allowlist alone decides; the
+   decision above is kept as it was taken. Decisions 1, 3, 4 and 5 are
+   carried forward there word for word.*
 3. **Everything else runs on the host.** A model that is neither listed nor
    the host's own is not a route; the host and the person's subscription are
    where frontier models run.

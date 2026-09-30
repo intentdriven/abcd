@@ -45,12 +45,14 @@ asymmetric-trust guidance of adr-25 — advice, never a cascade the core imposes
 The `api` oracle plug-in is `internal/adapter/openaiapi`, one client over the
 chat-completions protocol that OpenRouter and a local OpenAI-compatible server
 both speak, so a provider is configuration and never code (itd-2609081951381895).
-The invariant it serves is adr-2609221009491186's: **a provider adapter serves
-only the models it lists, under a vendor denylist no listing overrides, and
-everything else runs on the host.** `internal/core/oracle` enforces it before a
-client is ever built: a route to an unlisted model is refused naming the list, a
-listed model the denylist matches is refused whatever the list says, and a
-reported model the denylist matches discards the answer. The configuration is in
+The invariant it serves is adr-2609300107513982's: **a provider adapter serves
+only the models it lists, its allowlist alone decides, and everything else runs
+on the host.** abcd bundles no vendor denylist. `internal/core/oracle` enforces
+the invariant before a client is ever built: a route to an unlisted model is
+refused naming the list, and a listed model of any vendor is served. The
+optional `oracle.denylist` the configuration writes refuses a listed model it
+matches, naming the entry, and a reported model it matches discards the
+answer. The configuration is in
 [`03-configuration.md`](03-configuration.md#the-provider-adapters-keys).
 
 The client's own guarantees are the network path's. The base URL is pinned per
@@ -58,10 +60,13 @@ provider block, plain HTTP is admitted only to this machine, and a redirect is
 never followed, so a provider cannot move the key or the brief elsewhere. Every
 response is bounded in size and every call in time. The key travels only as the
 bearer header of a request to the pinned address. A provider's own text, its
-error and the model it reports, is decoded (JSON escapes undone, HTML character
-references resolved), bounded, sanitised and scrubbed of the key in every form an
-encoder gives it (literal, JSON-, HTML- and URL-escaped, quoted) before it
-reaches an error or a record, because a provider may echo what it was sent. A
+error, the model it reports and the answer itself, is decoded (JSON escapes
+undone, HTML character references resolved) and scrubbed of the key in every form
+an encoder gives it (literal, JSON-, HTML- and URL-escaped, quoted) before it
+reaches an error, a payload or a record, because a provider may echo what it was
+sent; the error and the model are bounded and sanitised as well. An answer that
+carries no key keeps the provider's bytes, and one that does is returned with the
+key replaced, a JSON answer rendered again from its decoded values. A
 setting the protocol does not take is refused before the call, and the answer is
 judged by the caller's output contract, the one the host sub-agent's payload is
 judged by. The request is the host's brief in the protocol's two roles: the
@@ -84,15 +89,29 @@ the model tier's `Resolve` holds a provider leg to them before the step runs
 route; the model the agent's `oracle.roles.<agent>` points at on the connection
 must be on its allowlist, or the leg is refused naming the agent, the
 connection, the model, the allowlist and the remedy; a leg to a connection the
-agent's role does not point at names no model and is refused, because which
-model it asks for is not yet decided; and a merged setting outside the
+agent's role does not point at names no model and is refused, naming the
+`oracle.roles.<agent>` setting to add; a merged setting outside the
 accepted set is refused naming the setting, where it was set and what the
-adapter accepts, never dropped. `model` is the adapter's own and is never a setting, so no setting can
+adapter accepts, never dropped; and on a connection that holds a key, a setting
+the repository's routing row names is refused, never dropped, naming it and
+`~/.abcd/oracle-routing.json` as where to move it, because only the person's own
+machine configuration shapes a call that spends their key. `model` is the adapter's own and is never a setting, so no setting can
 choose a model past the allowlist. A provider claims no
 tier: it is reached by a role or a judgement type pointed at it, never by a tier
-alone. No delegating verb dispatches a step through it yet, or hands `Resolve` its
-connection, so none of these refusals reaches a front door until dispatch does, and no
-test reaches a real provider: the client is exercised end to end against a fake on the loopback
+alone. An agent whose role is pointed at a provider resolves to that provider with
+no `--route`, whatever tier the routing tables name; a `--route` governs the step
+over it for that run. The core's dispatch (`APIConfig.Dispatch`) sends a step on a
+provider leg through the adapter with the host's brief and the settings as sent,
+and takes the model and the key's reach from the machine's configuration again,
+never from the route alone: a provider that holds a key is reached only through a
+route set on this machine. Every refusal comes before the provider is contacted and
+names the setting to change. A provider that could not be reached at all, so that
+nothing was sent, leaves the step to the harness, and the route records the
+connection tried and the reason (`Route.FellBack`); a provider that answered, or
+took the brief and did not answer, is a failure, never a fallback. No delegating
+verb calls the dispatch yet, or hands `Resolve` its connection, so none of these
+refusals reaches a front door until the verbs do, and no test reaches a real
+provider: the client is exercised end to end against a fake on the loopback
 address that fails in every way a provider can.
 
 ### RepoPrompt oracle adapter — `dev-sync reviews` harvesting
