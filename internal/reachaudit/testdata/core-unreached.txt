@@ -135,7 +135,6 @@ internal/core/reading.EncodeBundle
 internal/core/reading.EncodeManifest
 internal/core/reading.ExclusionsFor
 internal/core/reading.Kinds
-internal/core/reading.LoadDefinition
 internal/core/reading.LoadDefinitions
 internal/core/reading.ManifestHash
 internal/core/reading.PresetFor
