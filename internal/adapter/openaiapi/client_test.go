@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"io"
 	"net"
 	"net/http"
@@ -501,6 +502,82 @@ func TestTheReportedModelNeverCarriesTheKey(t *testing.T) {
 	if !strings.HasPrefix(res.ModelReported, "vendor/") {
 		t.Fatalf("model reported = %q, want the provider's text around the key kept", res.ModelReported)
 	}
+}
+
+// TestAnAdmittedAnswerNeverCarriesTheKey: an answer the output contract
+// admits is the payload a verb records, so a provider that echoes the key in
+// it, in any encoding a reader of the payload would undo, has it scrubbed
+// like any other text it sends; the rest of the answer is kept.
+func TestAnAdmittedAnswerNeverCarriesTheKey(t *testing.T) {
+	verdict := func(b []byte) error {
+		var v struct {
+			Verdict string `json:"verdict"`
+		}
+		if err := json.Unmarshal(b, &v); err != nil || v.Verdict == "" {
+			return errors.New("not a verdict")
+		}
+		return nil
+	}
+	type answer struct {
+		name, content string
+		contract      func([]byte) error
+	}
+	var answers []answer
+	for i, f := range escapedForms[1:5] {
+		answers = append(answers, answer{fmt.Sprintf("JSON form %d in a field", i+1), `{"verdict":"keep","note":"said ` + f + `"}`, verdict})
+	}
+	answers = append(answers,
+		answer{"every rune \\u-escaped", `{"verdict":"keep","note":"` + jsonEscapeEveryRune(awkwardKey) + `"}`, verdict},
+		answer{"a mixed encoder's escapes", `{"verdict":"keep","note":"` + jsonEscapeMixed(awkwardKey) + `"}`, verdict},
+		answer{"a numeric-entity form in a field", `{"verdict":"keep","note":"` + htmlNumericAll(awkwardKey) + `","other":"a &amp; b"}`, verdict},
+		answer{"the key as a field name", `{"verdict":"keep",` + mustJSON(t, awkwardKey) + `:1}`, verdict},
+		answer{"fenced", "```json\n{\"verdict\":\"keep\",\"note\":" + mustJSON(t, awkwardKey) + "}\n```", verdict},
+		answer{"plain text, no contract", "the key is " + awkwardKey, nil},
+		answer{"plain text, HTML-escaped", "the key is " + escapedForms[5], nil},
+		answer{"plain text, every rune an entity", "the key is " + htmlNumericAll(awkwardKey), nil},
+	)
+	for _, a := range answers {
+		t.Run(a.name, func(t *testing.T) {
+			f := newFake(t, ok("vendor/m", a.content))
+			res, err := mustClient(t, f.base(), awkwardKey).Complete(context.Background(), request(), a.contract)
+			if err != nil {
+				t.Fatalf("Complete: %v", err)
+			}
+			assertNoKeyForm(t, "the answer", string(res.Content))
+			// A reader of the payload decodes it: what it reads carries no
+			// key either.
+			var v any
+			if json.Unmarshal(res.Content, &v) == nil {
+				dec, _ := json.Marshal(v)
+				assertNoKeyForm(t, "the decoded answer", html.UnescapeString(string(dec)))
+				var got struct{ Verdict, Other string }
+				if json.Unmarshal(res.Content, &got) != nil || got.Verdict != "keep" {
+					t.Fatalf("answer = %s, want the verdict kept", res.Content)
+				}
+				if strings.Contains(a.content, `"other"`) && got.Other != "a &amp; b" {
+					t.Fatalf("answer = %s, want a field without the key kept as written", res.Content)
+				}
+			} else if !strings.HasPrefix(string(res.Content), "the key is ") {
+				t.Fatalf("answer = %q, want the text around the key kept", res.Content)
+			}
+		})
+	}
+	// An answer carrying no key is returned exactly as the provider wrote it.
+	const clean = `{"verdict":"keep",  "note":"café &amp; \/"}`
+	f := newFake(t, ok("vendor/m", clean))
+	res, err := mustClient(t, f.base(), awkwardKey).Complete(context.Background(), request(), verdict)
+	if err != nil || string(res.Content) != clean {
+		t.Fatalf("Complete = %q, %v; want the answer untouched", res.Content, err)
+	}
+}
+
+func mustJSON(t *testing.T, s string) string {
+	t.Helper()
+	b, err := json.Marshal(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
 }
 
 // TestScrubKeepsTextWithoutTheKey: the scrub removes the key and nothing

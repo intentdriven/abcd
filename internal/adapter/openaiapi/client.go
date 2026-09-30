@@ -16,10 +16,11 @@
 //     than waited on;
 //   - the key travels only as the Authorization header of a request to the
 //     pinned base URL. No error, result or log line carries it: a provider's
-//     own text (its error and the model it reports) is decoded, bounded,
-//     sanitised and scrubbed of every representation of the key (Scrub)
-//     before it can reach an error or a result, because a provider may echo
-//     what it was sent, in whatever encoding its stack applies;
+//     own text (its error, the model it reports and the answer itself) is
+//     decoded and scrubbed of every representation of the key (Scrub), the
+//     error and the model bounded and sanitised as well, before it can reach
+//     an error or a result, because a provider may echo what it was sent, in
+//     whatever encoding its stack applies;
 //   - a setting the protocol does not take is refused before any call, and the
 //     answer is judged by the caller's output contract, the same one the host
 //     sub-agent's payload is judged by, so an answer that does not satisfy it is
@@ -351,7 +352,9 @@ func (c *Client) decode(raw []byte, asked string, contract func([]byte) error) (
 	if p := cc.Choices[0].Message.Content; p != nil {
 		content = *p
 	}
-	res.Content = []byte(unfence(content))
+	// The answer is the payload a verb records, so it is scrubbed like every
+	// other text the provider sends, before the contract judges it.
+	res.Content = []byte(c.scrubAnswer(unfence(content)))
 	if contract != nil {
 		if err := contract(res.Content); err != nil {
 			return Result{}, c.fail("the answer does not satisfy the output contract, so it is refused rather than used: " +
@@ -359,6 +362,81 @@ func (c *Client) decode(raw []byte, asked string, contract func([]byte) error) (
 		}
 	}
 	return res, nil
+}
+
+// scrubAnswer is an answer with every representation of the key removed,
+// including the ones a reader of the payload would undo: a JSON answer is
+// decoded, and each string in it, field names included, is judged with its
+// HTML character references resolved; any other answer is judged with its
+// JSON escapes undone and its character references resolved. An answer that
+// reveals no key that way keeps the provider's bytes, the literal forms
+// scrubbed; one that does is replaced by its decoded text, scrubbed, a JSON
+// answer rendered again from its decoded values. As in providerSaid, the scrub
+// runs before each decoding step as well as after it.
+func (c *Client) scrubAnswer(s string) string {
+	s = c.scrub(s)
+	if len(c.forms) == 0 {
+		return s
+	}
+	// clean is v as a reader would take it, scrubbed, and whether that
+	// differs from the unscrubbed reading, which is when v carries the key.
+	clean := func(v string) (string, bool) {
+		out := c.scrub(html.UnescapeString(c.scrub(v)))
+		return out, out != html.UnescapeString(v)
+	}
+	dec := json.NewDecoder(strings.NewReader(s))
+	dec.UseNumber()
+	var v any
+	if dec.Decode(&v) != nil || dec.More() {
+		out, revealed := clean(unescapeJSONText(s))
+		if !revealed {
+			return s
+		}
+		return out
+	}
+	var walk func(any) (any, bool)
+	walk = func(v any) (any, bool) {
+		switch t := v.(type) {
+		case string:
+			if out, revealed := clean(t); revealed {
+				return out, true
+			}
+			return t, false
+		case []any:
+			changed := false
+			for i, e := range t {
+				var ch bool
+				t[i], ch = walk(e)
+				changed = changed || ch
+			}
+			return t, changed
+		case map[string]any:
+			out, changed := make(map[string]any, len(t)), false
+			for k, e := range t {
+				nk, kc := clean(k)
+				if !kc {
+					nk = k
+				}
+				ne, ec := walk(e)
+				out[nk] = ne
+				changed = changed || kc || ec
+			}
+			return out, changed
+		}
+		return v, false
+	}
+	w, revealed := walk(v)
+	if !revealed {
+		return s
+	}
+	var b bytes.Buffer
+	enc := json.NewEncoder(&b)
+	enc.SetEscapeHTML(false)
+	if enc.Encode(w) != nil {
+		out, _ := clean(unescapeJSONText(s))
+		return out
+	}
+	return strings.TrimSuffix(b.String(), "\n")
 }
 
 // unfence returns the document inside one surrounding Markdown code fence, or

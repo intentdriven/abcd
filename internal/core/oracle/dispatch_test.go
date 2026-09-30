@@ -281,3 +281,42 @@ func TestAnUnreachableProviderFallsBackToTheHarness(t *testing.T) {
 		t.Fatal("the fallback carries the key")
 	}
 }
+
+// TestAnAdmittedAnswerEchoingTheKeyIsDispatchedScrubbed: an answer the
+// contract admits is the payload a verb records, and its model field is the
+// receipt's model_reported, so a provider echoing the key there, literally or
+// escaped, has it redacted in both, and the step still succeeds.
+func TestAnAdmittedAnswerEchoingTheKeyIsDispatchedScrubbed(t *testing.T) {
+	escaped := strings.ReplaceAll(dispatchKey, "-", `-`)
+	for name, content := range map[string]string{
+		"literally": `{"verdict":"keep","note":"` + dispatchKey + `","model":"` + dispatchKey + `"}`,
+		"escaped":   `{"verdict":"keep","note":"` + escaped + `","model":"` + escaped + `"}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			p := newProvFake(t, 200, chat("typesafe/jev-1.13", content))
+			f, c := pointed(t, p.base())
+			r, err := Resolve("scribe", f.load(), c.Connections())
+			if err != nil {
+				t.Fatal(err)
+			}
+			payload, rc, err := c.Dispatch(context.Background(), credential.Machine(f.roots.Home), r, dispatchBrief, verdictContract)
+			if err != nil {
+				t.Fatalf("Dispatch: %v", err)
+			}
+			var got struct{ Verdict, Note, Model string }
+			if err := json.Unmarshal(payload, &got); err != nil || got.Verdict != "keep" {
+				t.Fatalf("payload = %s, want the admitted verdict", payload)
+			}
+			enc, _ := json.Marshal(rc)
+			for where, s := range map[string]string{"payload": string(payload), "note": got.Note, "model": got.Model,
+				"receipt": string(enc), "receipt model": rc.ModelReported} {
+				if strings.Contains(s, dispatchKey) || strings.Contains(s, escaped) {
+					t.Fatalf("the %s carries the key: %s", where, s)
+				}
+			}
+			if got.Note != "[credential]" || rc.ModelReported != "[credential]" {
+				t.Fatalf("note %q, receipt model %q; want the key redacted", got.Note, rc.ModelReported)
+			}
+		})
+	}
+}
