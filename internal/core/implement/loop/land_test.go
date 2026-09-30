@@ -67,6 +67,8 @@ type landFixture struct {
 	issue  string
 	runID  string
 	stages Stages
+	// model is the model the lane's receipt reports.
+	model string
 }
 
 func newLandFixture(t *testing.T, ruleset string) *landFixture {
@@ -106,7 +108,8 @@ func newLandFixture(t *testing.T, ruleset string) *landFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &landFixture{repo: repo, bare: bare, gh: gh, issue: c.ID, runID: start.RunID, stages: DefaultStages()}
+	return &landFixture{repo: repo, bare: bare, gh: gh, issue: c.ID, runID: start.RunID, stages: DefaultStages(),
+		model: "claude-test-5"}
 }
 
 // validated drives the run's lane through its implement stage, with a receipt
@@ -125,7 +128,7 @@ func (f *landFixture) validated(t *testing.T) Lane {
 	rc := goodReceipt(t, id, l, dir, sha)
 	path := writeReceipt(t, dir, map[string]any{
 		"schema_version": rc.SchemaVersion, "run_id": rc.RunID, "lane": rc.Lane, "branch": rc.Branch,
-		"commits": rc.Commits, "definition_of_done": rc.DefinitionOfDone, "report": rc.Report, "model": rc.Model,
+		"commits": rc.Commits, "definition_of_done": rc.DefinitionOfDone, "report": rc.Report, "model": f.model,
 		"resolves": []map[string]string{{"issue": f.issue, "commit": sha, "note": "a blank name reads as absent",
 			"impact": "fix", "grounds": "pursued: a blank name is accepted; shown wrong if the widget still refuses one"}},
 	})
@@ -216,10 +219,13 @@ func TestTheLandingClosesTheSpecResolvesTheCapturesAndArmsTheMerge(t *testing.T)
 		t.Fatalf("the landing's records are committed on the lane: head still %s", implHead)
 	}
 	msg := f.repo.Git("-C", l.Worktree, "log", "-1", "--format=%B", l.HeadSHA)
-	for _, want := range []string{"Delivers: itd-10", "Resolves: " + f.issue, "Assisted-by: None"} {
+	for _, want := range []string{"Delivers: itd-10", "Resolves: " + f.issue, "Assisted-by: Claude:claude-test-5"} {
 		if !strings.Contains(msg, want) {
 			t.Fatalf("the records commit carries %q:\n%s", want, msg)
 		}
+	}
+	if strings.Contains(msg, "Assisted-by: None") {
+		t.Fatalf("the records commit carries model prose and never claims no assistance:\n%s", msg)
 	}
 	files := f.repo.Git("-C", l.Worktree, "ls-tree", "-r", "--name-only", l.HeadSHA)
 	for _, want := range []string{".abcd/development/specs/closed/spc-1-alpha.md", ".abcd/development/intents/shipped/itd-10-alpha.md"} {

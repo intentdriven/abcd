@@ -14,7 +14,9 @@ package loop
 //     `capture resolve` for every capture the lane's receipts declared fixed,
 //     each with the lane's commit that fixed it. The loop commits them on the
 //     lane's branch with `Delivers:` (when the close ships the intent) and
-//     `Resolves:` trailers, so RS001 and RS005 find the records in the change.
+//     `Resolves:` trailers, so RS001 and RS005 find the records in the change,
+//     and an `Assisted-by:` naming the model the lane's receipts reported (the
+//     records carry its prose), with the repository's hooks running.
 //  3. push: refused unless the repository's preflight receipt names the lane's
 //     head (the pre-push hook's gate, checked before any connection opens), then
 //     a plain `git push` of the lane's branch from the checkout the run lives
@@ -44,6 +46,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -53,6 +57,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // Landing is the land stage's progress on one lane.
@@ -237,6 +242,16 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 		return Outcome{Stay: true, Note: "found the landing's records commit " + shortSHA(tip) + " on " + lane.Branch}, nil
 	}
 
+	// The disclosure is settled before any record is written, so a lane with
+	// no model to disclose is refused with its worktree untouched.
+	assisted, gap := assistedByTrailers(lane.Receipts)
+	if gap != "" {
+		return Outcome{}, refuse(string(StageLand), "", lane.ID,
+			"the landing's records commit carries text the lane's implementer composed, and "+gap+", so its Assisted-by: trailer cannot name the model",
+			"have the implementer's receipt report the model its harness runs (\"model\": \"<vendor>:<model-id>\", or a bare claude-* id), "+
+				"send the lane back through a fix round whose receipt reports it, then run `abcd implement step` again; the loop never claims no assistance for a model's text")
+	}
+
 	wt := lane.Worktree
 	var trailers, done []string
 	if ld.Closes {
@@ -299,12 +314,19 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 		return Outcome{}, refuse(string(StageLand), "", lane.ID, "the landing's records changed nothing on the lane's branch",
 			"the close and the resolutions should move records; check the lane's branch holds them open, then run `abcd implement step` again")
 	}
+	// Unlike the pick commit (pickcommit.go), whose text abcd computes and
+	// which declares `Assisted-by: None`, this commit's diff carries prose a
+	// model composed: the receipt's resolution note and grounds, and the
+	// audit's verdict ingested into the intent. So it names that model, and
+	// it is made with the repository's hooks running (never through pickGit's
+	// hooks-off configuration), so the commit-msg outbound gate judges it.
 	msg := landSubject(st, *lane) + "\n\n" +
 		fmt.Sprintf("The implement loop's landing for %s (%s, step %d): %s.\n\n", st.Intent, st.Spec, lane.SpecStep, strings.Join(done, "; ")) +
-		strings.Join(append(trailers, "Assisted-by: None"), "\n") + "\n"
-	if _, err := pickGit(wt, "commit", "-q", "-m", msg); err != nil {
-		return Outcome{}, refuse(string(StageLand), "", lane.ID, "git could not commit the landing's records (is a git identity configured?): "+fsutil.RedactHome(err.Error()),
-			"settle what git reports, then run `abcd implement step` again")
+		strings.Join(append(trailers, assisted...), "\n") + "\n"
+	if _, err := hookedGit(wt, "commit", "-q", "-m", msg); err != nil {
+		return Outcome{}, refuse(string(StageLand), "", lane.ID,
+			"git could not commit the landing's records (a repository hook refused it, or no git identity is configured): "+fsutil.RedactHome(err.Error()),
+			"settle what git or the hook reports (the records stay staged in the lane's worktree), then run `abcd implement step` again; the loop never skips a hook")
 	}
 	head, err := branchTip(c, *lane)
 	if err != nil {
@@ -312,6 +334,57 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 	}
 	ld.Records, ld.RecordsDone, lane.HeadSHA = head, true, head
 	return Outcome{Stay: true, Note: "committed the landing's records as " + shortSHA(head) + ": " + strings.Join(done, "; ")}, nil
+}
+
+// assistedVendorRe is an Assisted-by: value in the vendor form the attribution
+// gate takes (scripts/check-attribution.sh TRAILER_RE), and bareClaudeRe a bare
+// Claude model id, which takes the Claude vendor prefix.
+var (
+	assistedVendorRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9._-]*:[A-Za-z0-9._-]+(\[[A-Za-z0-9._-]+\])?$`)
+	bareClaudeRe     = regexp.MustCompile(`^claude-[A-Za-z0-9._-]+(\[[A-Za-z0-9._-]+\])?$`)
+)
+
+// assistedByTrailers are the records commit's Assisted-by: trailers, one per
+// distinct model the lane's receipts reported, in the order first reported.
+// Every receipt's runner may have composed text the commit carries, so a
+// receipt that reports no model, or one in no form the trailer takes, is a gap
+// named in the returned description, and no trailers are returned; a lane with
+// no receipt at all is a gap too. The model is the runner's report, which the
+// binary cannot verify: a refused value is described, never quoted.
+func assistedByTrailers(rs []ReceiptRecord) ([]string, string) {
+	if len(rs) == 0 {
+		return nil, "the lane has no implementer's receipt to report a model"
+	}
+	var out []string
+	for i, r := range rs {
+		var v string
+		switch {
+		case r.Model == "":
+			return nil, fmt.Sprintf("receipt %d (%s) reports no model", i+1, r.Receipt)
+		case bareClaudeRe.MatchString(r.Model):
+			v = "Claude:" + r.Model
+		case assistedVendorRe.MatchString(r.Model):
+			v = r.Model
+		default:
+			return nil, fmt.Sprintf("receipt %d (%s) reports a model in no form the trailer takes (%s)", i+1, r.Receipt, termsafe.DescribeRefused(r.Model))
+		}
+		if t := "Assisted-by: " + v; !slices.Contains(out, t) {
+			out = append(out, t)
+		}
+	}
+	return out, ""
+}
+
+// hookedGit runs one git command in the lane's worktree with the repository's
+// hooks running, under the developer's own configuration less any injected
+// GIT_DIR or GIT_CONFIG_* (as netGit), with no terminal prompt.
+func hookedGit(dir string, args ...string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), netTimeout)
+	defer cancel()
+	full := append([]string{"-c", "core.quotePath=false", "-C", dir}, args...)
+	cmd := exec.CommandContext(ctx, "git", full...)
+	cmd.Env = append(gitutil.ScrubbedEnv(), "GIT_TERMINAL_PROMPT=0")
+	return runCapped(cmd, "git "+args[0])
 }
 
 // resolvedIn reports whether issue is already in the worktree's resolved/.

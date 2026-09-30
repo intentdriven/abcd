@@ -246,7 +246,11 @@ A lane's stages run in order:
    on the lane that closes the spec it runs `spec close` in the lane's worktree
    and ingests the audit that lane took, and it runs `capture resolve` for each
    capture the receipts named in `resolves`, with that commit, committing them
-   on the lane's branch with `Delivers:` and `Resolves:` trailers. It pushes the
+   on the lane's branch with `Delivers:` and `Resolves:` trailers and an
+   `Assisted-by:` naming the model the lane's receipts reported, the
+   repository's hooks running: a lane whose receipt reports no model is
+   refused, and a hook that refuses the commit stops the landing until what it
+   names is settled. It pushes the
    branch only once the repository's preflight receipt names the lane's head:
    when `step` refuses for want of one, run `make preflight` in the lane's
    worktree, then `step` again; never push, skip a hook or mint a receipt by

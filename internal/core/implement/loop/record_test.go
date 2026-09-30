@@ -59,7 +59,7 @@ func TestTheRunRecordNamesEveryLaneReceiptVerdictModelAndTranscript(t *testing.T
 		t.Fatalf("the record names the run's lane: %+v", rec)
 	}
 	lane := rec.Lanes[0]
-	if len(lane.Receipts) != 1 || lane.Receipts[0].Model != "a-model" || lane.Receipts[0].Role != RoleImplementer {
+	if len(lane.Receipts) != 1 || lane.Receipts[0].Model != f.model || lane.Receipts[0].Role != RoleImplementer {
 		t.Fatalf("the record names the receipt and the model its runner reported: %+v", lane.Receipts)
 	}
 	var verdicts []string

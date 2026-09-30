@@ -438,8 +438,17 @@ until the last step.
    store's resolve with the lane's commit that fixed it. It commits them on
    the lane's branch with a computed message carrying `Delivers:` (when the
    close ships the intent) and one `Resolves:` per capture, so RS005 and RS001
-   find the records in the change. A lane that neither closes the spec nor
-   fixed a capture records nothing.
+   find the records in the change. Unlike the pick's commit, whose text abcd
+   computes, the records carry prose a model composed (the receipt's
+   resolution note and grounds, the audit's verdict), so the message ends with
+   an `Assisted-by:` per distinct model the lane's receipts reported, a bare
+   `claude-*` id taking the `Claude:` vendor prefix; a lane whose receipts
+   report none, or one in no form the trailer takes, is refused before any
+   record is written. The commit is made with the repository's hooks running,
+   so the commit-msg outbound gate judges it; a hook that refuses stops the
+   landing with the records staged, and the step resumes once what the hook
+   names is settled. A lane that neither closes the spec nor fixed a capture
+   records nothing.
 3. It pushes the lane's branch to `origin` only once the repository's
    preflight receipt (`.abcd/.work.local/preflight-receipts/<head>`, in any
    worktree git lists) names the lane's head, the gate the pre-push hook

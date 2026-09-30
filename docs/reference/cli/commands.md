@@ -1786,7 +1786,9 @@ land follows a passing round, one step per call: it checks the lane's worktree i
 at the judged head; on the lane that closes the spec it runs `spec close` in the lane's
 worktree and ingests the audit that lane took, and for every capture the lane's receipts
 declared fixed it runs `capture resolve` with the lane's commit, committing them on the
-lane's branch with Delivers: and Resolves: trailers; it pushes the branch only once the
+lane's branch with Delivers: and Resolves: trailers and an Assisted-by: naming the model
+the lane's receipts reported (refused when one reported none), the repository's hooks
+running; it pushes the branch only once the
 repository's preflight receipt names its head (the pre-push hook runs; nothing is
 skipped or forced); it opens the pull request through gh, with a body built from the
 records and passed through the outbound scrub, then re-reads the body the forge holds and

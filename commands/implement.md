@@ -269,7 +269,11 @@ the last findings, and every later `step` refuses at the `handed-back` stage.
    and ingests the verdict of the audit that lane took, and for each capture the
    lane's receipts declared fixed it runs `capture resolve` with that commit. It
    commits them on the lane's branch with `Delivers:` (when the close ships the
-   intent) and `Resolves:` trailers.
+   intent) and `Resolves:` trailers, and an `Assisted-by:` naming the model the
+   lane's receipts reported, since the records carry that model's prose (a lane
+   whose receipt reports no model is refused). The commit runs the
+   repository's hooks; one that refuses stops the landing, which resumes once
+   what the hook names is settled.
 3. It pushes the lane's branch only once the repository's preflight receipt
    (`.abcd/.work.local/preflight-receipts/<head>`, in any worktree) names the
    lane's head. Without one, `step` refuses naming it: run `make preflight` in
