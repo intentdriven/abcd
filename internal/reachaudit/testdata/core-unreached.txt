@@ -146,13 +146,7 @@ internal/core/spec.RenderSteps
 internal/core/spec.SortByNumber
 internal/core/spec.Validate
 internal/core/spec.WithStoreLock
-internal/core/statusline.Contrast
-internal/core/statusline.ContrastRGB
-internal/core/statusline.FormatRatio
 internal/core/statusline.LoadFrom
-internal/core/statusline.ParseColor
-internal/core/statusline.Render
-internal/core/statusline.Validate
 internal/core/surface.Chapters
 internal/core/surface.ComposeAppendix
 internal/core/surface.DriftLines

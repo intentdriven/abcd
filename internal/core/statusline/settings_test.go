@@ -57,7 +57,7 @@ func TestDefaultsAreWellFormed(t *testing.T) {
 	if d.Presence.Foreground != "#f0c052" || d.Presence.Background != "#444444" {
 		t.Fatalf("presence pair = %+v, want the house yellow on dark grey", d.Presence)
 	}
-	if err := Validate(d); err != nil {
+	if err := validateSettings(d); err != nil {
 		t.Fatalf("the shipped defaults do not validate: %v", err)
 	}
 }
@@ -130,7 +130,7 @@ func TestLoadOffSwitch(t *testing.T) {
 	if !got.Disabled {
 		t.Fatal("the off switch did not survive the load")
 	}
-	if !Render(Input{State: StateManaged}, got).Empty() {
+	if !renderRow(Input{State: StateManaged}, got).Empty() {
 		t.Fatal("a disabled setting still rendered a row")
 	}
 }
@@ -152,7 +152,7 @@ func TestLoadRefusesAPairBelowTheBar(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			measured, err := Contrast(tc.fg, tc.bg)
+			measured, err := contrast(tc.fg, tc.bg)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -172,10 +172,10 @@ func TestLoadRefusesAPairBelowTheBar(t *testing.T) {
 				t.Fatalf("notes = %v, want exactly one refusal", notes)
 			}
 			note := notes[0]
-			if !strings.Contains(note, FormatRatio(measured)) {
-				t.Fatalf("the refusal does not report the measured ratio %s: %q", FormatRatio(measured), note)
+			if !strings.Contains(note, formatRatio(measured)) {
+				t.Fatalf("the refusal does not report the measured ratio %s: %q", formatRatio(measured), note)
 			}
-			if !strings.Contains(note, FormatRatio(ContrastBar)) {
+			if !strings.Contains(note, formatRatio(ContrastBar)) {
 				t.Fatalf("the refusal does not name the bar: %q", note)
 			}
 			if !strings.Contains(note, SettingsDisplay) {
@@ -194,7 +194,7 @@ func TestLoadAdmitsAPairAtOrAboveTheBar(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadFrom: %v", err)
 	}
-	ratio, err := Contrast("#ffffff", "#767676")
+	ratio, err := contrast("#ffffff", "#767676")
 	if err != nil {
 		t.Fatal(err)
 	}
