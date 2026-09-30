@@ -185,6 +185,8 @@ func install(cwd string, opts InstallOptions, p Prompter) (InstallResult, error)
 	ac.stepStatusLine()
 	// After the status line, the order the consent questions are asked in.
 	ac.stepOracleRouting()
+	// After the routing offers: the last of the repository consent questions.
+	ac.stepDrainRule()
 	ac.stepRules()
 	ac.stepVersionStamp()
 	// Before the pin: an identity mended here is the one the pin then records.
@@ -1777,9 +1779,10 @@ const credentialAtRestGapID = "history.credential_at_rest"
 
 // optionalGapIDs are the advisory gaps install closes only against an answered
 // prompt, never under --yes: the identity pin (see stepIdentityPin), the
-// status-line offer (see stepStatusLine) and the two model-tier routing offers
-// (see stepOracleRouting). In the order they are reported.
-var optionalGapIDs = []string{OptionalPinGapID, StatusLineOfferGapID, OracleRoutingMachineGapID, OracleRoutingRepoGapID}
+// status-line offer (see stepStatusLine), the two model-tier routing offers
+// (see stepOracleRouting) and the drain eligibility record (see
+// stepDrainRule). In the order they are reported.
+var optionalGapIDs = []string{OptionalPinGapID, StatusLineOfferGapID, OracleRoutingMachineGapID, OracleRoutingRepoGapID, DrainRuleOfferGapID}
 
 // optionalSkipped lists the optional gaps a --yes run left un-applied. --yes
 // approves every resolvable category but never adopts the identity pin or
@@ -1854,6 +1857,7 @@ var categoryPromptOrder = []GapCategory{
 	ConfigChange,
 	StatusLine,
 	OracleRouting,
+	DrainRule,
 	UserState,
 	PluginOwned,
 }

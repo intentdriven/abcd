@@ -197,7 +197,7 @@ func TestUninstallLeavesTheRoutingTables(t *testing.T) {
 // TestOracleRoutingIsAskedAfterTheStatusLine pins the consent order the spec
 // names: …, status-line, oracle-routing, user-state, …
 func TestOracleRoutingIsAskedAfterTheStatusLine(t *testing.T) {
-	want := []GapCategory{Dependency, SafeAutocreate, ConfigChange, StatusLine, OracleRouting, UserState, PluginOwned}
+	want := []GapCategory{Dependency, SafeAutocreate, ConfigChange, StatusLine, OracleRouting, DrainRule, UserState, PluginOwned}
 	if !reflect.DeepEqual(categoryPromptOrder, want) {
 		t.Fatalf("categoryPromptOrder = %v, want %v", categoryPromptOrder, want)
 	}

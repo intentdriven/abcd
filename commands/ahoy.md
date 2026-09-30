@@ -147,7 +147,7 @@ category present — often several — and every line after the last one you sup
 reads end-of-input and DECLINES. `yes` is the reliable form because it never
 runs out; a single `printf 'y\n'` answers the first question only and silently
 declines the rest. The questions come in a fixed order (dependency,
-safe-autocreate, config-change, status-line, oracle-routing, user-state, plugin-owned), so a
+safe-autocreate, config-change, status-line, oracle-routing, drain-rule, user-state, plugin-owned), so a
 scripted stream of specific answers lines up with them. Each answer is echoed back, so the
 transcript shows what was asked and what it was answered — read it back rather
 than assuming. Under `set -o pipefail` the pipeline reports 141: `yes` takes
@@ -184,8 +184,10 @@ that must not block and must not prompt, close stdin or pre-answer everything:
 `--yes` approves every resolvable category but never adopts the optional
 git-identity pin, because the pin records whatever git identity is currently
 configured, never wires the status line (below), because that rewrites a
-harness-wide setting, and never accepts a model-tier routing table (below),
-because a table decides which model every delegated step asks for. When the result carries `optional_skipped`, report it and
+harness-wide setting, never accepts a model-tier routing table (below),
+because a table decides which model every delegated step asks for, and never
+adds the drain eligibility record (below), because the record decides what an
+unattended agent may change in the repository. When the result carries `optional_skipped`, report it and
 offer the `yes |` form above as the way to apply it.
 
 **The git identity question is a person's alone.** When the author or committer
@@ -297,6 +299,24 @@ afterwards, and the bare `abcd` board shows which layer each agent's row comes
 from. With no provider configured every step still runs through the harness,
 which is asked for the tier. `ahoy uninstall` leaves both files, because they
 are the user's configuration.
+
+**The drain eligibility record offer.** `abcd drain` takes an open issue alone
+only under a rule the repository records for itself, and refuses to run until an
+accepted decision record in `.abcd/development/decisions/adrs/` states it in
+four frontmatter fields (`drain_categories`, `drain_severities`,
+`drain_security`, `drain_remedy`). While no accepted record carries them, the
+install states abcd's strict baseline in one question (take an issue only when
+its category is `tech-debt`, `documentation`, `inconsistency`, `drift`, `bug` or
+`ux`, its severity is `nitpick` or `minor`, it carries a remedy and nothing open
+blocks it; every security, major and critical issue is a person's); consent
+mints it through the decision store's own seam as an accepted record, which is
+committed with the repository. Relay the user's answer; never answer it for the
+user. Declining writes nothing and records nothing, so the next install offers
+again; `--yes` skips the offer and reports `drain_rule.offered` under
+`optional_skipped`; `yes |` accepts it. The offer only ever writes the baseline:
+loosening a floor is an edit a person makes to the record, and `abcd drain`
+names every floor loosened. A repository whose record states the rule badly is
+not offered a second one; `abcd drain` names what is wrong with the one it has.
 
 `--attribution` is its own approval and works on an already-installed repo (the
 step the adopt phase runs it in). It opts the repo into the committed

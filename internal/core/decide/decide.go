@@ -85,6 +85,31 @@ type Decision struct {
 // hand-numbered ordinal had exactly the cross-branch collision no convention can
 // close.
 func Create(repoRoot, title string) (Decision, error) {
+	return create(repoRoot, title, renderSkeleton)
+}
+
+// Stated is a decision whose words are already written: a setup offer that
+// states a rule the person accepts at a prompt (the drain eligibility record,
+// ruling BX2) mints it through the same seam as Create, so its id, date and
+// filename come from the one allocator. The person's yes to the offer is the
+// decision, so the record is written accepted.
+type Stated struct {
+	// Title becomes the H1 and the slug, redacted as Create's is.
+	Title string
+	// Frontmatter is extra frontmatter lines, each "key: value\n", written
+	// after the store's nine keys.
+	Frontmatter string
+	// Body is everything below the H1: the four sections the store carries.
+	Body string
+}
+
+// CreateStated mints a decision record for s and writes it accepted. On any
+// refusal nothing is written.
+func CreateStated(repoRoot string, s Stated) (Decision, error) {
+	return create(repoRoot, s.Title, func(d Decision) string { return renderStated(d, s) })
+}
+
+func create(repoRoot, title string, render func(Decision) string) (Decision, error) {
 	trimmed := strings.Join(strings.Fields(title), " ")
 	if trimmed == "" {
 		return Decision{}, fmt.Errorf("decide: refusing to mint a decision with an empty title")
@@ -125,7 +150,7 @@ func Create(repoRoot, title string) (Decision, error) {
 			Date: dateFromStamp(stamp),
 			Path: rel,
 		}
-		body := renderSkeleton(created)
+		body := render(created)
 		if err := fsutil.WriteFileAtomic(filepath.Join(repoRoot, filepath.FromSlash(rel)), []byte(body), 0o644); err != nil {
 			return fmt.Errorf("decide: writing %s: %w", rel, err)
 		}
@@ -228,6 +253,15 @@ func renderSkeleton(d Decision) string {
 	b.WriteString("## Consequences\n\n")
 	b.WriteString("_What follows — what is now easier, what is now harder, what new obligations this creates._\n")
 	return b.String()
+}
+
+// renderStated lays out a stated record: the store's frontmatter keys with
+// `status: accepted`, the caller's extra keys, the H1, and the caller's body.
+func renderStated(d Decision, s Stated) string {
+	head := renderSkeleton(d)
+	head = head[:strings.Index(head, "---\n\n")]
+	head = strings.Replace(head, "status: proposed\n", "status: accepted\n", 1)
+	return head + s.Frontmatter + "---\n\n# ADR-" + strings.TrimPrefix(d.ID, adrFamily+"-") + ": " + d.Title + "\n\n" + s.Body
 }
 
 // redactDecisionText sanitises the caller's title through the ONE canonical

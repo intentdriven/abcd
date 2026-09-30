@@ -3775,6 +3775,8 @@ func optionalSkipReason(id string) string {
 		return "the status line rewrites a setting of the host harness and takes element choices, so it is only written against an answered prompt"
 	case ahoy.OracleRoutingMachineGapID, ahoy.OracleRoutingRepoGapID:
 		return "a routing table decides which model every delegated step asks for, so abcd's proposal is only accepted against an answered prompt"
+	case ahoy.DrainRuleOfferGapID:
+		return "the drain eligibility record decides what an unattended agent may change in this repository, so it is only added against an answered prompt"
 	}
 	return ""
 }
