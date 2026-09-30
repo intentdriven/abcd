@@ -190,6 +190,8 @@ var sentences = map[string]string{
 		"Writes a window_mode line; refuses any session but the first.",
 	"abcd implement receipt": "Hand back the receipt an agent stage of a loop run awaits: " +
 		"Writes the run's state when the receipt verifies; refuses a receipt that does not verify.",
+	"abcd implement record": "Render a loop run's record and capture its transcripts: " +
+		"Writes only with --transcript; refuses it on a run in progress.",
 	"abcd implement release": "Release this session's claim on a record: " +
 		"Writes the release and a claim_released line; refuses a claim another session holds.",
 	"abcd implement report": "Derive the comparison of the division modes from the run log: " +
@@ -197,7 +199,7 @@ var sentences = map[string]string{
 	"abcd implement status": "Render the implement loop's runs in this checkout, lane by lane: " +
 		"Writes nothing; refuses a --run naming no run.",
 	"abcd implement step": "Perform the next stage of an implement loop run's lane and exit: " +
-		"Writes the run's state, the lane's worktree or brief; refuses a stage this abcd does not carry.",
+		"Writes the run's state and the lane's stages; refuses a push with no preflight receipt.",
 
 	"abcd inbox": "List the reports managed repositories filed back to abcd, newest first: " +
 		"Writes nothing; refuses any argument.",

@@ -84,6 +84,11 @@ type Outcome struct {
 	// stage found, and the loop starts nothing further for it (itd-50,
 	// criterion 2). Set only with no Await.
 	HandBack *HandBack
+	// Stay records a step of a stage that takes several invocations (the
+	// landing): the lane's changes are written and the record gets the note,
+	// and the lane stays at the stage for the next invocation's step. Set only
+	// with no Await and no HandBack.
+	Stay bool
 	// Note is the run record's line for the stage.
 	Note string
 }
@@ -146,15 +151,14 @@ func after(name Stage) Stage {
 // DefaultStages is the lane sequence this build carries, each stage with the
 // spec piece that delivers its body: the worktree (lane.go), the brief
 // (brief.go), the implement stage with its receipt's verifier (receipt.go) and
-// the validators with theirs (validate.go). The landing is a later piece of
-// spc-2609202134338445, and registers its body here.
+// the validators with theirs (validate.go), and the landing (land.go).
 func DefaultStages() Stages {
 	return Stages{
 		{Name: StageWorktree, Piece: 6, Run: worktreeStage},
 		{Name: StageBrief, Piece: 5, Run: briefStage},
 		{Name: StageImplement, Piece: 7, Run: implementStage, Verify: verifyReceipt},
 		{Name: StageValidate, Piece: 8, Run: validateStage, Verify: verifyValidation, Repeats: true},
-		{Name: StageLand, Piece: 9},
+		{Name: StageLand, Piece: 9, Run: landStage},
 	}
 }
 
@@ -597,6 +601,13 @@ func Advance(repoRoot, runID string, steps Stages, o Options) (StepResult, error
 			st.UpdatedAt = now
 			res = laneResult(*st, lane, "")
 			res.HandBack = lane.HandBack
+			return true, nil
+		}
+		if out.Stay {
+			st.Record = append(st.Record, Entry{At: now, Lane: lane.ID, Stage: string(lane.Stage), Note: out.Note})
+			st.Lanes[i] = lane
+			st.UpdatedAt = now
+			res = laneResult(*st, lane, "")
 			return true, nil
 		}
 		if out.Await != nil {

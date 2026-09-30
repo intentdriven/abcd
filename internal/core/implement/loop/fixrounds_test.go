@@ -3,6 +3,7 @@ package loop
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -249,7 +250,7 @@ func TestAVersion5StateRunsOnTheBundledCap(t *testing.T) {
 	if err != nil || st.SchemaVersion != SchemaVersion || st.FixRoundCap() != BundledFixRounds {
 		t.Fatalf("a version-5 file reads as a run on the bundled cap: %+v %v", st.Pace, err)
 	}
-	carrying := strings.Replace(string(current), `"schema_version": 6,`, `"schema_version": 5,`, 1)
+	carrying := strings.Replace(string(current), fmt.Sprintf(`"schema_version": %d,`, SchemaVersion), `"schema_version": 5,`, 1)
 	if err := os.WriteFile(path, []byte(carrying), 0o600); err != nil {
 		t.Fatal(err)
 	}

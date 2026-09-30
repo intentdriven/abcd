@@ -1657,6 +1657,27 @@
       ]
     },
     {
+      "path": "abcd implement record",
+      "hidden": false,
+      "sentence": "Render a loop run's record and capture its transcripts: Writes only with --transcript; refuses it on a run in progress.",
+      "flags": [
+        {
+          "name": "run",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "transcript",
+          "shorthand": "",
+          "type": "stringArray",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd implement release",
       "hidden": false,
       "sentence": "Release this session's claim on a record: Writes the release and a claim_released line; refuses a claim another session holds.",
@@ -1708,7 +1729,7 @@
     {
       "path": "abcd implement step",
       "hidden": false,
-      "sentence": "Perform the next stage of an implement loop run's lane and exit: Writes the run's state, the lane's worktree or brief; refuses a stage this abcd does not carry.",
+      "sentence": "Perform the next stage of an implement loop run's lane and exit: Writes the run's state and the lane's stages; refuses a push with no preflight receipt.",
       "flags": [
         {
           "name": "run",

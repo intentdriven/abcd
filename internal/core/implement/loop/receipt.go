@@ -20,9 +20,12 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
+	"github.com/intentdriven/abcd/internal/core/changelog"
 	"github.com/intentdriven/abcd/internal/core/jsonstrict"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -59,6 +62,86 @@ type LaneReceipt struct {
 	// Model is the model the implementer's harness reported, as reported: the
 	// binary cannot verify it.
 	Model string `json:"model,omitempty"`
+	// Resolves are the captures the lane fixed, each with the commit of the
+	// lane that fixed it and the judgements a resolution records; the landing
+	// resolves each with `capture resolve` (spec piece 9).
+	Resolves []Resolution `json:"resolves,omitempty"`
+}
+
+// Resolution is one capture a lane fixed: the issue, the lane's commit that
+// fixed it, and what `abcd capture resolve` records — the note, the product
+// impact and the grounds. The loop checks the shape and that the commit is one
+// the receipt names; the capture store judges the rest when the landing
+// resolves it.
+type Resolution struct {
+	Issue   string `json:"issue"`
+	Commit  string `json:"commit"`
+	Note    string `json:"note"`
+	Impact  string `json:"impact"`
+	Grounds string `json:"grounds"`
+}
+
+// maxResolves caps the captures one receipt declares fixed, and
+// maxResolutionText each text a declaration carries.
+const (
+	maxResolves       = 50
+	maxResolutionText = 4096
+)
+
+// issueIDRe is the shape of an issue id a receipt may declare fixed.
+var issueIDRe = regexp.MustCompile(`^iss-[0-9]{1,20}$`)
+
+// resolutionGaps names what is wrong with the captures a receipt declares
+// fixed: a malformed id, an issue named twice, a commit the receipt does not
+// name, an impact outside the changelog's enum, or a note or grounds missing
+// or over its cap. The values are the implementer's, a host payload, so a
+// refused one is described, never quoted.
+func resolutionGaps(rs []Resolution, commits []string) []string {
+	if len(rs) > maxResolves {
+		return []string{fmt.Sprintf("a list of fixed captures within %d (it names %d)", maxResolves, len(rs))}
+	}
+	var gaps []string
+	seen := map[string]bool{}
+	for i, r := range rs {
+		at := fmt.Sprintf("resolves[%d]", i)
+		switch {
+		case !issueIDRe.MatchString(r.Issue):
+			gaps = append(gaps, at+": an issue id (it names "+termsafe.DescribeRefused(r.Issue)+")")
+			continue
+		case seen[r.Issue]:
+			gaps = append(gaps, at+": "+r.Issue+" once (it is named twice)")
+			continue
+		}
+		seen[r.Issue] = true
+		if !slices.Contains(commits, r.Commit) {
+			gaps = append(gaps, at+": the commit that fixed "+r.Issue+", one of the receipt's commits (it names "+termsafe.DescribeRefused(r.Commit)+")")
+		}
+		if _, err := changelog.ParseImpact(r.Impact); err != nil {
+			gaps = append(gaps, at+": "+r.Issue+"'s impact, one of additive, breaking, fix or internal")
+		}
+		for what, v := range map[string]string{"note": r.Note, "grounds": r.Grounds} {
+			if strings.TrimSpace(v) == "" || len(v) > maxResolutionText {
+				gaps = append(gaps, fmt.Sprintf("%s: %s's %s, present and within %d bytes", at, r.Issue, what, maxResolutionText))
+			}
+		}
+	}
+	slices.Sort(gaps)
+	return gaps
+}
+
+// recordReceipt records a verified implementer's receipt on the lane: the
+// receipt and its runner's reported model, and the captures it declared fixed,
+// a later receipt's declaration of an issue replacing an earlier one's.
+func recordReceipt(lane *Lane, receiptRel string, rc LaneReceipt) {
+	lane.Receipts = append(lane.Receipts, ReceiptRecord{Role: RoleImplementer, Receipt: receiptRel, Model: rc.Model})
+	for _, r := range rc.Resolves {
+		i := slices.IndexFunc(lane.Resolves, func(o Resolution) bool { return o.Issue == r.Issue })
+		if i >= 0 {
+			lane.Resolves[i] = r
+			continue
+		}
+		lane.Resolves = append(lane.Resolves, r)
+	}
 }
 
 // DoDRun is one run of the definition of done.
@@ -136,6 +219,7 @@ func verifyLaneReceipt(c Context, lane *Lane, receiptRel, want string) error {
 		return err
 	}
 	missing = append(missing, commitGaps(c.RepoRoot, lane, rc.Commits)...)
+	missing = append(missing, resolutionGaps(rc.Resolves, rc.Commits)...)
 
 	dir, err := root.OpenRoot(dirRel)
 	if err != nil {
@@ -171,6 +255,7 @@ func verifyLaneReceipt(c Context, lane *Lane, receiptRel, want string) error {
 		return fmt.Errorf("resolving the lane branch %s: %v", lane.Branch, err)
 	}
 	lane.HeadSHA = head
+	recordReceipt(lane, receiptRel, rc)
 	return nil
 }
 

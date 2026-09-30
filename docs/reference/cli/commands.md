@@ -1649,7 +1649,9 @@ An implementer's receipt is read strictly (one JSON object, no field the brief d
 name, within its size cap, never through a symlink) and verifies only when every commit
 it names is on the lane's branch past its base, the definition of done's output exists
 in the lane's directory with a zero exit code, and the report exists there. A receipt
-that verifies moves the lane's head to its branch's tip.
+that verifies moves the lane's head to its branch's tip. Its optional resolves list names
+each capture the lane fixed, with the commit that fixed it (one the receipt names), the
+note, the impact and the grounds; the landing resolves each.
 
 At the validate stage the receipt is the validator's return: a reviewer's is refused
 unless it has one Verdict section stating one verdict of its role (SHIP or FIX FIRST;
@@ -1671,6 +1673,34 @@ refusal, exit 3 on a locked run state.
 
 ```
 abcd implement receipt review-receipt.json --run run-2609010000000001
+```
+
+#### `abcd implement record`
+
+Render a loop run's record and capture its transcripts: Writes only with --transcript; refuses it on a run in progress.
+
+**Usage:** `abcd implement record [--run <run-id>] [--transcript <path>]... [flags]`
+
+Render a run's record: every lane with its spec step, branch and head, the implementers'
+receipts the loop verified with the model each runner reported, every verdict the loop
+recorded from a validator's return, the captures each lane fixed, its pull request and
+what its landing did, the transcripts captured into the history store, and the record's
+lines. Read-only unless --transcript is given.
+
+--transcript <path>, repeatable, captures each transcript into the history store as
+`abcd history capture <path>` does, one capture per path, and records it in the run's
+state; it is refused on a run that is not complete, since the record's transcripts are
+the run's, captured at its end. A capture that fails stops the call: the transcripts
+before it are recorded, and the refusal names the failure.
+
+--run names the run; without it, the one run in progress, or else the most recently
+started run. Exit 2 on a refusal, exit 3 on a locked run state.
+
+**Flags:**
+
+```
+      --run string               the run to render (run-<16 digits>); the one in progress, else the latest, when omitted
+      --transcript stringArray   a transcript to capture into the history store for a complete run (repeatable; one capture per path)
 ```
 
 #### `abcd implement release`
@@ -1743,7 +1773,7 @@ and creates nothing. Exit 2 when --run names no run.
 
 #### `abcd implement step`
 
-Perform the next stage of an implement loop run's lane and exit: Writes the run's state, the lane's worktree or brief; refuses a stage this abcd does not carry.
+Perform the next stage of an implement loop run's lane and exit: Writes the run's state and the lane's stages; refuses a push with no preflight receipt.
 
 **Usage:** `abcd implement step [--run <run-id>] [flags]`
 
@@ -1775,7 +1805,21 @@ goes to the fresh implementer with the finding. A round that does not pass once 
 has taken the run's fix rounds (--fix-rounds, bundled 3) hands the lane back instead: it
 stops as unachievable, the result and the run record name the last round's findings, the
 run starts nothing further for it, and every later step is refused naming the hand-back.
-land follows a passing round.
+land follows a passing round, one step per call: it checks the lane's worktree is clean
+at the judged head; on the lane that closes the spec it runs `spec close` in the lane's
+worktree and ingests the audit that lane took, and for every capture the lane's receipts
+declared fixed it runs `capture resolve` with the lane's commit, committing them on the
+lane's branch with Delivers: and Resolves: trailers and an Assisted-by: naming the model
+the lane's receipts reported (refused when one reported none), the repository's hooks
+running; it pushes the branch only once the
+repository's preflight receipt names its head (the pre-push hook runs; nothing is
+skipped or forced); it opens the pull request through gh, with a body built from the
+records and passed through the outbound scrub, then re-reads the body the forge holds and
+strips a session URL or tool footer; it arms auto-merge with the merge-queue method the
+ruleset mirror (.abcd/work/rulesets/) names at the lane's base, or leaves the pull request
+open where no merge queue gates the default branch, and pushes nothing after that; and
+once the pushed head is an ancestor of the default branch on origin it removes the lane's
+worktree and branch and the lane is done. Until then the call exits 3 and waits.
 
 A stage whose body this abcd does not carry is refused naming the spec piece that
 delivers it, and the run is unchanged. A stage that fails leaves the state as it was,
