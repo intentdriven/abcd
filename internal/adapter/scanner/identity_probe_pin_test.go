@@ -24,14 +24,14 @@ import (
 type probeAnswer struct {
 	Name, Email             string
 	OtherNames, OtherEmails []string
-	RemoteUser, RemoteRepo  string
+	RemoteUser              string
 }
 
 func answerOf(id Identity) probeAnswer {
 	return probeAnswer{
 		Name: id.GitUserName, Email: id.GitUserEmail,
 		OtherNames: id.OtherGitUserNames, OtherEmails: id.OtherGitUserEmails,
-		RemoteUser: id.GitRemoteUsername, RemoteRepo: id.GitRemoteRepo,
+		RemoteUser: id.GitRemoteUsername,
 	}
 }
 
@@ -251,7 +251,7 @@ func identityPinCases() []pinCase {
 			global: "[user]\n\tname = Real Name\n[author]\n\tname = Author Key\n[remote \"origin\"]\n\turl = git@github.com:octo/proj.git\n",
 			env:    map[string]string{"GIT_CONFIG_PARAMETERS": `'bogus`, "GIT_AUTHOR_EMAIL": "env@example.com"},
 			want: probeAnswer{Name: "Real Name", OtherEmails: []string{"env@example.com"},
-				RemoteUser: "octo", RemoteRepo: "proj"}},
+				RemoteUser: "octo"}},
 		{name: "a malformed counted -c entry blinds the persona read and nothing else",
 			global: "[user]\n\temail = real@example.com\n[committer]\n\temail = committer@example.com\n",
 			env:    map[string]string{"GIT_CONFIG_COUNT": "2", "GIT_CONFIG_KEY_0": "user.name", "GIT_CONFIG_VALUE_0": "Param Name"},
@@ -262,7 +262,7 @@ func identityPinCases() []pinCase {
 			local:  "[user]\n\tname = Bare Local\n[author]\n\tname = Bare Author\n[remote \"origin\"]\n\turl = https://github.com/octo/bare.git\n",
 			env:    map[string]string{"GIT_CONFIG_PARAMETERS": `'safe.bareRepository'='explicit'`},
 			want: probeAnswer{Name: "Bare Local", OtherNames: []string{"Global Name"},
-				RemoteUser: "octo", RemoteRepo: "bare"}},
+				RemoteUser: "octo"}},
 		{name: "the legacy GIT_CONFIG file is never read",
 			global: "[user]\n\tname = Real Name\n",
 			setup: func(t *testing.T, c *pinCtx) {
@@ -289,13 +289,13 @@ func identityPinCases() []pinCase {
 			want:   probeAnswer{Name: "Global Name"}},
 		{name: "remote: the last url wins, a pushurl and another remote are ignored",
 			local: "[remote \"origin\"]\n\turl = https://github.com/first/one.git\n\turl = https://GitHub.com/Second/two.git\n\tpushurl = https://github.com/push/p\n[remote \"upstream\"]\n\turl = https://github.com/up/u\n",
-			want:  probeAnswer{RemoteUser: "Second", RemoteRepo: "two"}},
+			want:  probeAnswer{RemoteUser: "Second"}},
 		{name: "remote: a subsection spelled in another case is another remote",
 			local: "[remote \"Origin\"]\n\turl = https://github.com/cased/c\n",
 			want:  probeAnswer{}},
 		{name: "remote: read from global config too",
 			global: "[remote \"origin\"]\n\turl = git@github.com:globalowner/g.git\n",
-			want:   probeAnswer{RemoteUser: "globalowner", RemoteRepo: "g"}},
+			want:   probeAnswer{RemoteUser: "globalowner"}},
 		{name: "remote: a last url that is valueless leaves no remote",
 			local: "[remote \"origin\"]\n\turl = https://github.com/first/one\n\turl\n",
 			want:  probeAnswer{}},
@@ -387,7 +387,7 @@ func fmtAnswer(a probeAnswer) string {
 	return strings.Join([]string{
 		"name=" + quote(short(a.Name)), "email=" + quote(a.Email),
 		"otherNames=" + quoteAll(shortAll(a.OtherNames)), "otherEmails=" + quoteAll(a.OtherEmails),
-		"remote=" + quote(a.RemoteUser) + "/" + quote(a.RemoteRepo),
+		"remote=" + quote(a.RemoteUser),
 	}, " ")
 }
 
