@@ -7,10 +7,10 @@ package oracle
 // judged by the same output contract, and the call recorded as the provider,
 // the model asked for and the model the provider reported.
 //
-// No delegating verb dispatches through it yet: sending a step whose route
-// names a provider through its connection, instead of handing it to the host,
-// is spc-2609251028149555's (AC 3). Until then the setup's verification call
-// is its one caller from a front door.
+// Dispatch (dispatch.go) sends a step whose route names a provider through
+// it, instead of handing the step to the host (spc-2609251028149555, AC 3).
+// No delegating verb calls Dispatch yet, so the setup's verification call is
+// its one caller from a front door.
 
 import (
 	"context"

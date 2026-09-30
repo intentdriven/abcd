@@ -489,7 +489,8 @@ func (c *APIConfig) Routes() []PointedRoute {
 // of Connections this configuration backs. A provider claims no tier: it is
 // reached by a role or a judgement type pointed at it, or by a --route naming
 // it, never by a tier alone, so Serves answers false for every tier and the
-// tier-only steps stay on the harness. Named returns the provider's connection
+// tier-only steps stay on the harness. Pointed returns the connection an
+// agent's role points at. Named returns the provider's connection
 // carrying its allowlist, the settings the adapter accepts, and the model each
 // role pointed at it asks for.
 func (c *APIConfig) Connections() Connections { return apiConnections{c: c} }
@@ -497,6 +498,17 @@ func (c *APIConfig) Connections() Connections { return apiConnections{c: c} }
 type apiConnections struct{ c *APIConfig }
 
 func (apiConnections) Serves(Tier) (Connection, bool) { return Connection{}, false }
+
+// Pointed returns the connection agent's oracle.roles.<agent> points at: a
+// provider is reached by the role pointed at it (Decision 9), so this is how
+// a step with no --route finds its provider.
+func (a apiConnections) Pointed(agent string) (Connection, bool) {
+	t, ok := a.c.roles[agent]
+	if !ok {
+		return Connection{}, false
+	}
+	return a.Named(t.Provider)
+}
 
 func (a apiConnections) Named(name string) (Connection, bool) {
 	p, ok := a.c.providers[name]

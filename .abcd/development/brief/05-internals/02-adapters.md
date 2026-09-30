@@ -92,9 +92,20 @@ accepted set is refused naming the setting, where it was set and what the
 adapter accepts, never dropped. `model` is the adapter's own and is never a setting, so no setting can
 choose a model past the allowlist. A provider claims no
 tier: it is reached by a role or a judgement type pointed at it, never by a tier
-alone. No delegating verb dispatches a step through it yet, or hands `Resolve` its
-connection, so none of these refusals reaches a front door until dispatch does, and no
-test reaches a real provider: the client is exercised end to end against a fake on the loopback
+alone. An agent whose role is pointed at a provider resolves to that provider with
+no `--route`, whatever tier the routing tables name; a `--route` governs the step
+over it for that run. The core's dispatch (`APIConfig.Dispatch`) sends a step on a
+provider leg through the adapter with the host's brief and the settings as sent,
+and takes the model and the key's reach from the machine's configuration again,
+never from the route alone: a provider that holds a key is reached only through a
+route set on this machine. Every refusal comes before the provider is contacted and
+names the setting to change. A provider that could not be reached at all, so that
+nothing was sent, leaves the step to the harness, and the route records the
+connection tried and the reason (`Route.FellBack`); a provider that answered, or
+took the brief and did not answer, is a failure, never a fallback. No delegating
+verb calls the dispatch yet, or hands `Resolve` its connection, so none of these
+refusals reaches a front door until the verbs do, and no test reaches a real
+provider: the client is exercised end to end against a fake on the loopback
 address that fails in every way a provider can.
 
 ### RepoPrompt oracle adapter — `dev-sync reviews` harvesting

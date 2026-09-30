@@ -142,8 +142,11 @@ rather than skipped:
   and the model reported, so any other substitution is visible in the record.
 
 Unconfigured, nothing changes: no provider block means no connection, and every
-delegated step runs on the host. No delegating verb sends a step to a configured
-provider yet; that dispatch is spc-2609251028149555's.
+delegated step runs on the host. A role pointed at a configured provider takes its
+agent's steps there whatever tier the routing tables name, and only a `--route`
+overrides it for one run. The core sends such a step through the adapter
+(spc-2609251028149555); no delegating verb calls it yet, so every delegated step
+still runs on the host.
 
 ### Staged config keys
 

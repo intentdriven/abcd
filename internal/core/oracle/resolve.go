@@ -63,6 +63,8 @@ type Connections interface {
 	Serves(t Tier) (Connection, bool)
 	// Named returns the configured connection of that name, if there is one.
 	Named(name string) (Connection, bool)
+	// Pointed returns the connection agent's role is pointed at, if it is.
+	Pointed(agent string) (Connection, bool)
 }
 
 // NoConnections is a machine with no provider configured, and the only
@@ -75,6 +77,9 @@ func (NoConnections) Serves(Tier) (Connection, bool) { return Connection{}, fals
 
 // Named reports that no connection of any name is configured.
 func (NoConnections) Named(string) (Connection, bool) { return Connection{}, false }
+
+// Pointed reports that no role is pointed at any connection.
+func (NoConnections) Pointed(string) (Connection, bool) { return Connection{}, false }
 
 // Route is one agent's resolved routing for one step: what the request block
 // carries and what the receipt records.
@@ -108,8 +113,12 @@ type Route struct {
 
 // Resolve returns agent's route: the flag's row over the repository's over the
 // machine's over the bundled proposal (the last only once a table is
-// accepted), resolved against conns. It consults conns only for a tier that
-// asks for a provider or a connection a --route named.
+// accepted), resolved against conns. The leg is the connection a --route
+// names; else, with no --route, the connection agent's role is pointed at;
+// else the harness for host-decides, and a connection serving the tier for
+// any other. It contacts no provider: Pointed is a lookup in the machine's
+// own configuration, and conns is asked to serve only a tier that asks for a
+// provider or a connection a --route named.
 func Resolve(agent string, l *Layered, conns Connections) (Route, error) {
 	if !inRoster(agent) {
 		return Route{}, notInRoster(agent)
@@ -186,6 +195,10 @@ func Resolve(agent string, l *Layered, conns Connections) (Route, error) {
 		if err := leg.take(&r, c, row.Settings); err != nil {
 			return Route{}, err
 		}
+	case flag == nil && pointedAt(conns, agent, &leg):
+		if err := leg.take(&r, leg.conn, row.Settings); err != nil {
+			return Route{}, err
+		}
 	case row.Tier == HostDecides:
 		r.ConnectionUsed = Harness
 	default:
@@ -206,9 +219,25 @@ func Resolve(agent string, l *Layered, conns Connections) (Route, error) {
 	return r, nil
 }
 
+// pointedAt reports whether agent's role is pointed at a configured
+// connection, and if so gives leg that connection and how it was reached. A
+// provider claims no tier (itd-2609081951381895 Decision 9): it is reached by
+// the role pointed at it, so a pointed role takes the step whatever tier the
+// routing tables name, host-decides included. Only a --route governs the step
+// over it, for that run alone.
+func pointedAt(conns Connections, agent string, leg *providerLeg) bool {
+	c, ok := conns.Pointed(agent)
+	if !ok {
+		return false
+	}
+	leg.conn, leg.via = c, "pointed at by oracle.roles."+agent
+	return true
+}
+
 // providerLeg is what a refusal on a provider leg names: the agent, how the
 // leg was reached, and where each layer's settings came from.
 type providerLeg struct {
+	conn      Connection
 	agent     string
 	via       string
 	flagText  string
