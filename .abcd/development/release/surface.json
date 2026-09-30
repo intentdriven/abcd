@@ -1456,7 +1456,7 @@
     {
       "path": "abcd implement check",
       "hidden": false,
-      "sentence": "Ask whether this session may take a step before taking it: Writes a run-log line only on a refusal; refuses a step the second session's bounds forbid.",
+      "sentence": "Ask whether this session may take a stage before taking it: Writes a run-log line only on a refusal; refuses a stage the second session's bounds forbid.",
       "flags": [
         {
           "name": "path",

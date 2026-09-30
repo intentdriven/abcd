@@ -1378,7 +1378,7 @@ record, taken by an exclusive create, so of two sessions reaching for one record
 exactly one holds it; the claim is a lease, and a lapsed lease is claimable again.
 The second session is bounded: one lane at a time, never the release, never a lane
 that touches the reading corpus, no lane in a split-roles window (`check` asks before
-a step that is not a claim). `log` appends the run's other events, and `report`
+a stage that is not a claim). `log` appends the run's other events, and `report`
 derives the comparison of the modes from the log.
 
 `status`, `step` and `receipt` drive the implement loop `abcd build` starts, whose state
@@ -1392,21 +1392,21 @@ another session, or the run state is locked): back off and take other work.
 
 #### `abcd implement check`
 
-Ask whether this session may take a step before taking it: Writes a run-log line only on a refusal; refuses a step the second session's bounds forbid.
+Ask whether this session may take a stage before taking it: Writes a run-log line only on a refusal; refuses a stage the second session's bounds forbid.
 
 **Usage:** `abcd implement check <lane|release|review|audit|land> --session <id> [flags]`
 
-Say whether this session may take a step, before it takes it. The first session may
-take every step. The second is refused the release step always, a lane in a
+Say whether this session may take a stage, before it takes it. The first session may
+take every stage. The second is refused the release stage always, a lane in a
 split-roles window, and a lane whose --path reaches the reading corpus; review,
-audit and land are open to it. A refusal exits 2 and is logged; an allowed step
+audit and land are open to it. A refusal exits 2 and is logged; an allowed stage
 writes nothing. The verdict reports the agent ceiling the session joined with and the
 agents its log lines declare alive (agents_alive).
 
 **Flags:**
 
 ```
-      --path stringArray   a repository-relative file the step touches (repeatable)
+      --path stringArray   a repository-relative file the stage touches (repeatable)
       --session string     this session's id
 ```
 

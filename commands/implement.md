@@ -107,7 +107,7 @@ The second session is refused at exit 2, and the refusal is logged, when it:
   the committed `.abcd/config/reading-presets.json`, plus that file — those
   lanes are the first's; when the preset file is absent or unreadable, any
   declared `--path` is refused, since nothing can say the lane is clear;
-- reaches the release step — only the first session cuts a release.
+- reaches the release stage — only the first session cuts a release.
 
 It also keeps its own agent ceiling (stated on joining, held against its logged
 `agent_start` lines, reported by `check`).
@@ -118,14 +118,14 @@ unauthenticated role. Two sessions of one account can each write anything
 under that account's home, so the bounds keep two cooperating sessions apart;
 they are not a wall against a session that lies about its role.
 
-Before a step that is not a claim, ask:
+Before a stage that is not a claim, ask:
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/abcd" implement check release|lane|review|audit|land --session <id> [--path <file> …] --json
 ```
 
-An allowed step writes nothing. On a refusal, stop that step and leave it to the
-first session; a stop condition the second session meets stops only itself.
+An allowed stage writes nothing, and the verdict names it in `stage`. On a
+refusal, stop that stage and leave it to the first session; a stop condition the second session meets stops only itself.
 
 ## Log the run's events
 

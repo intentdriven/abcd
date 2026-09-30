@@ -174,8 +174,8 @@ var sentences = map[string]string{
 
 	"abcd implement": "Share one autonomous run between sessions and drive the implement loop: " +
 		"Writes nothing bare, only the run state its sub-verbs name; refuses an unknown sub-verb.",
-	"abcd implement check": "Ask whether this session may take a step before taking it: " +
-		"Writes a run-log line only on a refusal; refuses a step the second session's bounds forbid.",
+	"abcd implement check": "Ask whether this session may take a stage before taking it: " +
+		"Writes a run-log line only on a refusal; refuses a stage the second session's bounds forbid.",
 	"abcd implement claim": "Claim a record for this session before opening its lane: " +
 		"Writes the claim and a run-log line; refuses a record another session holds.",
 	"abcd implement join": "Join the run with a stated role: " +
