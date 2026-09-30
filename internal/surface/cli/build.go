@@ -632,7 +632,8 @@ func newImplementRecordCommand(asJSON *bool) *cobra.Command {
 					if err != nil {
 						return loop.Transcript{}, errors.New(fsutil.RedactHome(err.Error()))
 					}
-					return loop.Transcript{Path: fsutil.RedactHome(path), Session: res.Record.SessionID, Stored: res.Record.Path, Wrote: res.Wrote}, nil
+					return loop.Transcript{Path: fsutil.RedactHome(path), Session: res.Record.SessionID, Stored: res.Record.Path, Wrote: res.Wrote,
+						ScanGap: fsutil.RedactHome(res.ScanGap)}, nil
 				}
 				rec, err = loop.CaptureTranscripts(root, id, transcripts, capture, loop.Options{})
 				if err != nil {
@@ -688,6 +689,9 @@ func renderRunRecord(w io.Writer, rec loop.RunRecord) {
 			how = "already stored"
 		}
 		fmt.Fprintf(w, "    %s -> session %s (%s)\n", termsafe.Sanitize(fsutil.RedactHome(t.Path)), termsafe.Sanitize(t.Session), how)
+		for _, l := range scanGapLines(t.ScanGap) {
+			fmt.Fprintf(w, "      %s\n", l)
+		}
 	}
 	fmt.Fprintf(w, "  record:  %d line(s)\n", len(rec.Record))
 	for _, e := range rec.Record {

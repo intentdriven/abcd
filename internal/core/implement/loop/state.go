@@ -246,6 +246,10 @@ type Transcript struct {
 	Stored  string `json:"stored"`
 	// Wrote is false when the store already held it (an idempotent capture).
 	Wrote bool `json:"wrote"`
+	// ScanGap is the capture's scan gap, home-redacted: the repository armed a
+	// scanner augmenter (gitleaks) that did not run, so the transcript was
+	// stored masked by the native scanner alone. Empty when there is none.
+	ScanGap string `json:"scan_gap,omitempty"`
 }
 
 // PendingStep is a spec step the run will open a lane for.

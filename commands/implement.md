@@ -316,7 +316,10 @@ pull request and landing, the transcripts captured, and the record's lines.
 Without `--run` it reads the one run in progress, or else the latest run. With
 `--transcript <path>` (repeatable) on a complete run it captures each transcript
 into the history store as `history capture <path>` does, one capture per path,
-and records it; on a run in progress it refuses at the `record` stage. Report
+and records it; on a run in progress it refuses at the `record` stage. A
+transcript stored without the scanner coverage the repository armed (gitleaks
+configured and not installed) carries `scan_gap` in `--json` and a `scan gap:`
+block in the text, as `history capture` names it; relay it as printed. Report
 every refusal as it is.
 
 ## Check the machine's load

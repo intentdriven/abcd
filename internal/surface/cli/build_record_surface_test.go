@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/adapter/scanner/augmenttest"
 	"github.com/intentdriven/abcd/internal/core/implement/loop"
 )
 
@@ -82,6 +83,32 @@ func TestImplementRecordRendersTheRunAndCapturesItsTranscripts(t *testing.T) {
 	}
 	if !strings.Contains(mustImplement(t, "history", "list"), "session-one") {
 		t.Fatal("the history store holds the captured transcript")
+	}
+}
+
+// TestImplementRecordRendersATranscriptsScanGap: a repository whose
+// configured scanner augmenter (gitleaks) is not installed still has the run's
+// transcript stored, and the record says what coverage is missing, in text and
+// in --json, as history capture does (iss-2609301307566557).
+func TestImplementRecordRendersATranscriptsScanGap(t *testing.T) {
+	repo := buildRepo(t)
+	id := completedRun(t, repo.Root())
+	augmenttest.Install(t, augmenttest.NotFound())
+	tp := filepath.Join(t.TempDir(), "session-gap.jsonl")
+	if err := os.WriteFile(tp, []byte(`{"role":"user","text":"build it"}`+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out := mustImplement(t, "--json", "implement", "record", "--run", id, "--transcript", tp)
+	var rec loop.RunRecord
+	if err := json.Unmarshal([]byte(out), &rec); err != nil {
+		t.Fatalf("--json is the record: %v\n%s", err, out)
+	}
+	if len(rec.Transcripts) != 1 || !strings.Contains(rec.Transcripts[0].ScanGap, "fake augmenter not on PATH") {
+		t.Fatalf("the recorded transcript names its scan gap: %+v", rec.Transcripts)
+	}
+	if text := mustImplement(t, "implement", "record", "--run", id); !strings.Contains(text, "scan gap") ||
+		!strings.Contains(text, "fake augmenter not on PATH") {
+		t.Fatalf("the text record names the scan gap:\n%s", text)
 	}
 }
 
