@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -10,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/adapter/openaiapi"
 	"github.com/intentdriven/abcd/internal/core/changelog"
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/launch"
@@ -367,6 +369,12 @@ func newLaunchShipCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if changelogJSON != "" {
+				if err := hostPayloadOnProvider("abcd launch ship", route,
+					"run `abcd launch ship` without --changelog-json, which sends the cut there and ingests the answer"); err != nil {
+					return err
+				}
+			}
 			// The cut is a fact about the repository, not about the directory
 			// the operator stands in (iss-2609251713073532).
 			root, err := gitutil.CheckoutRoot(cwd, "the release record")
@@ -382,7 +390,10 @@ func newLaunchShipCommand(asJSON *bool) *cobra.Command {
 				return &exitError{Code: 2, Msg: "abcd launch ship: " + scrubPaths(err)}
 			}
 			if raw != nil {
-				return runShipIngest(cmd, root, raw, payloadDir, allowDirty, fetchBaseline, *asJSON, route)
+				return runShipIngest(cmd, root, raw, payloadDir, allowDirty, fetchBaseline, *asJSON, route, nil)
+			}
+			if err := shipRoute.admit("abcd launch ship", route); err != nil {
+				return err
 			}
 
 			cut, err := emitCut(root)
@@ -400,6 +411,27 @@ func newLaunchShipCommand(asJSON *bool) *cobra.Command {
 				route = nil
 			}
 			emitted := shipEmit{Cut: cut, ReceiptsProtocol: proto}
+			// A composer routed to a provider is sent the emitted cut, and the
+			// release is ingested from its answer as it would be from the host's.
+			if route != nil && route.OnProvider() {
+				prompt, err := agentPrompt(changelogAgent)
+				if err != nil {
+					return &exitError{Code: 2, Msg: "abcd launch ship: " + scrubPaths(err)}
+				}
+				input, err := json.Marshal(emitted)
+				if err != nil {
+					return err
+				}
+				d, fell, err := shipRoute.dispatch(cmd, "abcd launch ship", route,
+					openaiapi.Brief{Instructions: prompt, Input: string(input)}, jsonContract)
+				if err != nil {
+					return err
+				}
+				if d != nil {
+					return runShipIngest(cmd, root, d.payload, "", false, false, *asJSON, route, d)
+				}
+				route = fell
+			}
 			if rerr := render(cmd.OutOrStdout(), *asJSON, withRequest(emitted, route), func(w io.Writer) {
 				renderCut(w, "abcd launch ship", cut)
 				renderRequestLine(w, route)
@@ -444,7 +476,10 @@ type shipEmit struct {
 // contract alone: only a release workflow that uploads the archive makes the
 // pinned address resolve, and a managed repository's scaffolded workflows
 // upload none, so a catalog pinned there would 404 on every install.
-func runShipIngest(cmd *cobra.Command, cwd string, raw []byte, payloadDir string, allowDirty, fetchBaseline, asJSON bool, route *oracle.Route) error {
+//
+// d is the dispatched step when a provider composed raw, whose receipt the
+// render carries in place of the host's.
+func runShipIngest(cmd *cobra.Command, cwd string, raw []byte, payloadDir string, allowDirty, fetchBaseline, asJSON bool, route *oracle.Route, d *dispatched) error {
 	archive, err := launch.DeclaresPluginArchive(cwd)
 	if err != nil {
 		return &exitError{Code: 2, Msg: "abcd launch ship: " + scrubPaths(err)}
@@ -620,8 +655,16 @@ func runShipIngest(cmd *cobra.Command, cwd string, raw []byte, payloadDir string
 				rollbackCut(cwd, payloadDir, ingested.Undo, saved...)}
 		}
 	}
-	if rerr := render(cmd.OutOrStdout(), asJSON, withReceipt(res, route, raw), func(w io.Writer) {
+	var out any = withReceipt(res, route, raw)
+	if d != nil {
+		out = withDispatchReceipt(res, d)
+	}
+	if rerr := render(cmd.OutOrStdout(), asJSON, out, func(w io.Writer) {
 		renderIngest(w, res)
+		if d != nil {
+			renderDispatchLine(w, d)
+			return
+		}
 		renderReceiptLine(w, route, raw)
 	}); rerr != nil {
 		return rerr

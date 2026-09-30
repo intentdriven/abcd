@@ -1,7 +1,7 @@
 ---
 name: reading
 description: "Render the cold-reading assembler's state: Writes nothing; refuses any argument."
-argument-hint: "[] | assemble --position <widening|entailment|comparative|detection> --target <HEAD|sha> [--out <dir>] [--dry-run] | ingest --reading-json <path>"
+argument-hint: "[] | assemble --position <widening|entailment|comparative|detection> --target <HEAD|sha> [--out <dir>] [--dry-run] | ingest --reading-json <path> | ingest --dispatch <rdg-N>"
 block: agents
 ---
 
@@ -14,9 +14,11 @@ what was passed, by path and field, hashed, so a reader can judge contamination
 rather than accept a disclosure on trust. Bare invocation **performs zero
 writes**.
 
-Two things this surface does not do. It never runs a reading: it produces the
-input a reading would be given, and dispatching that input to a reader is host
-work. And it carries no free text at any position — the operator supplies a
+Two things this surface does not do. It never runs a reading on the host: it
+produces the input a reading would be given, and dispatching that input to a
+reader is host work, except where the person has pointed the position at a
+provider, when `ingest --dispatch` sends the parked input there (below). And it
+carries no free text at any position — the operator supplies a
 position and a target state, each in a closed grammar, and the reading's object
 and question come from its definition, so there is no channel through which
 ledger content can travel in the framing of a request.
@@ -296,6 +298,37 @@ an agent this invocation does not dispatch, a tier outside the set, a connection
 this machine has not configured, or a routing table that cannot be read exits 2
 before anything is written. With no table accepted and no `--route`, the step
 asks for `host-decides` and nothing is printed.
+
+### Send a parked run to a provider
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" reading ingest --dispatch <run_id> --json
+```
+
+When the person has pointed `oracle.roles.cold-reading-<position>` at a
+provider in `~/.abcd/config.json`, the reading runs there instead of on the
+host. `--dispatch` takes the `run_id` an assembly parked, sends the provider
+the position's definition as its instructions and the run's bundle as its
+input, with the run's identifiers the output must cite, and ingests the answer
+exactly as `--reading-json` ingests an output. A cold-reading position is
+self-contained, so a provider that holds a key takes it (ruling DR5 of
+2026-09-29): the request carries every item the reader may see, and the reader
+is handed no file, no tool and no path, which is the host obligation above
+discharged by construction. The result carries a `route` receipt whose
+`connection_used` names the provider and whose `provider_call` names the
+provider, the model asked for and the model it reported. **When
+`route.connection_used` is not `harness`, the reading already ran: do not
+dispatch the cold-reading agent; relay the result.**
+
+A position the person has not pointed at a provider resolves to the harness,
+and `--dispatch` refuses at exit 2: dispatch the reader yourself and ingest with
+`--reading-json`. So does a provider that could not be reached, with one stderr
+line, and nothing is ingested. `--dispatch` with `--reading-json` is refused as
+two outputs, and a run id outside the `rdg-<digits>` grammar or a run no
+assembly parked is refused. An output you produced while the position is
+routed to a provider is refused at exit 2, since its receipt would name work the
+provider never did; `--route cold-reading-<position>=host-decides` keeps one run
+on the harness.
 
 ### What the output carries
 

@@ -101,7 +101,6 @@ internal/core/positioning.DefaultConfig
 internal/core/positioning.DefaultSurfaces
 internal/core/reading.AssemblerVersion
 internal/core/reading.DecodeManifest
-internal/core/reading.LoadDefinition
 internal/core/record.RecommendedVerbPaths
 internal/core/record/match.Bundled
 internal/core/record/match.NewWeights

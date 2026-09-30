@@ -464,8 +464,16 @@ delegated step runs on the host. Relay `explanation`, each of
 the key) and `key_home` (the home it resolves from), the `denylist` (the `oracle.denylist` entries the configuration writes, empty when none is), the `routes`, every line of `diagnostics`, and the
 `key_homes` prose verbatim: it recommends the platform keychain in prose, and
 the choice stays the person's, so never present one home as the marked option.
-Relay `dispatch` too: no delegating verb sends a step to a provider yet, so a
-configured provider changes no step until provider dispatch lands.
+Relay `dispatch` too: a delegating verb whose agent's `oracle.roles` entry
+points at a provider sends the step there itself and ingests the answer, and
+every other step runs on the host. A provider whose block names a key takes
+only the self-contained agents, the four cold-reading positions (ruling DR5 of
+2026-09-29); every other agent pointed at one is refused before any call.
+`oracle.bundled_context_providers` in `~/.abcd/config.json` is the person's
+override, naming providers that may take bundled-context requests for
+file-reading agents; it is read from the machine alone, a repository declaring
+it is refused, and it admits an agent only once abcd builds that agent's
+bundle, which none has yet.
 
 The bare board names the same adapter as an optional gap
 (`oracle_api.none_configured`) while none is configured, and a configuration the

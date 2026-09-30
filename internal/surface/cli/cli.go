@@ -1091,6 +1091,9 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := hostPayloadOnProvider("disembark graveyard", route, disembarkNoDispatch); err != nil {
+				return err
+			}
 			dirAbs, err := filepath.Abs(args[0])
 			if err != nil {
 				return err
@@ -1132,6 +1135,9 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := hostPayloadOnProvider("disembark principles", route, disembarkNoDispatch); err != nil {
+				return err
+			}
 			dirAbs, err := filepath.Abs(args[0])
 			if err != nil {
 				return err
@@ -1161,6 +1167,9 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			route, err := pressReleaseRoute.resolve(cmd, "disembark press-release", delegatedAgent(pressReleaseJSON, pressReleaseAgent))
 			if err != nil {
+				return err
+			}
+			if err := hostPayloadOnProvider("disembark press-release", route, disembarkNoDispatch); err != nil {
 				return err
 			}
 			dirAbs, err := filepath.Abs(args[0])
@@ -1201,6 +1210,9 @@ func newDisembarkCommand(asJSON *bool) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			route, err := reviewRoute.resolve(cmd, "disembark review", delegatedAgent(reviewJSON, reviewAgent))
 			if err != nil {
+				return err
+			}
+			if err := hostPayloadOnProvider("disembark review", route, disembarkNoDispatch); err != nil {
 				return err
 			}
 			dirAbs, err := filepath.Abs(args[0])
@@ -2987,11 +2999,19 @@ func newIntentAuditCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			// A step on a provider is refused before anything is written when
+			// the provider would refuse it (ruling DR5 of 2026-09-29).
+			if err := auditRoute.admit("abcd intent audit", route); err != nil {
+				return err
+			}
 			res, err := intent.ReEmitAuditWith(repoRoot, args[0],
 				intent.AuditEmitOptions{RoutingSection: oracle.RenderRequestSection(route.Request())})
 			if err != nil {
 				return peerHeldRefusal(repoRoot, "abcd intent audit: ", args[0],
 					&exitError{Code: 2, Msg: "abcd intent audit: " + fsutil.RedactHome(err.Error())})
+			}
+			if res.RequestWritten && route.OnProvider() {
+				return dispatchAudit(cmd, auditRoute, route, repoRoot, res, *asJSON)
 			}
 			// Only a receipt still owed has a request for the host to act on; a
 			// terminal one is reported as it stands, with no request block.
@@ -3032,6 +3052,10 @@ func newIntentAuditCommand(asJSON *bool) *cobra.Command {
 			}
 			route, err := ingestRoute.resolve(cmd, "abcd intent audit ingest", auditAgent)
 			if err != nil {
+				return err
+			}
+			if err := hostPayloadOnProvider("abcd intent audit ingest", route,
+				"run `abcd intent audit <itd-N>`, which sends the review there and ingests the answer"); err != nil {
 				return err
 			}
 			// Read once: the ingest validates these bytes and the receipt's

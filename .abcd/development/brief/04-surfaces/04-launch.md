@@ -819,6 +819,18 @@ invocation does not dispatch, a tier outside `local`, `economy`, `frontier` and
 anything is written. With no table accepted and no override, the step asks for
 `host-decides` on the harness and nothing is printed.
 
+**A composer routed to a provider runs there.** When the person's
+`oracle.roles.release-changelog-composer` points at a provider, the emit step of
+a ready cut sends the emitted cut there with the composer's prompt, ingests the
+answer as the ingest step would, and returns the ingest's result with the
+dispatch's receipt. A provider that holds a key takes only self-contained agents
+under ruling DR5 of 2026-09-29, and the composer reads records at their paths,
+so on such a provider the emit exits 2 before anything is sent. A provider that
+could not be reached leaves the step to the host with one stderr line. A
+changelog payload the host composed while the composer is routed to a provider
+is refused at exit 2; an override to `host-decides` keeps one run on the
+harness. A dispatched cut stages no release payload directory.
+
 <!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
 
 ## Appendix: the shipped surface

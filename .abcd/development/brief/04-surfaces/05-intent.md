@@ -679,6 +679,21 @@ has not configured exits 2 before anything is written. With no table accepted
 and no override, the step asks for `host-decides` on the harness and nothing is
 printed.
 
+**An auditor routed to a provider runs there.** When the person's
+`oracle.roles.intent-auditor` points at a provider, the audit's emit, the
+consistency pass's emit and the owed drain's head send the request they emitted
+(the consistency pass with its corpus) there with the auditor's prompt, ingest
+the answer, and return the ingest's result with the dispatch's receipt; the
+close that ships an intent sends its review the same way and says so on stderr,
+and the close stands whatever the review does. A provider that holds a key
+takes only self-contained agents under ruling DR5 of 2026-09-29, and the
+auditor reads files, so on such a provider each emit exits 2 before anything is
+written or sent, naming the rule and `oracle.bundled_context_providers`. A
+provider that could not be reached leaves the written request to the host with
+one stderr line. A verdict or findings the host produced while the auditor is
+routed to a provider is refused at exit 2; an override to `host-decides` keeps
+one run on the harness.
+
 <!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
 
 ## Appendix: the shipped surface

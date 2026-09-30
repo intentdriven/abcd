@@ -31,11 +31,14 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// dispatchPending is the loud-staging line: the adapter is configured and
-// verified, and no delegating verb sends a step through it until provider
-// dispatch lands.
-const dispatchPending = "no delegating verb sends a step to a provider until provider dispatch lands " +
-	"(spc-2609251028149555); until then every delegated step runs on the host"
+// dispatchNote is what a configured provider does to a delegated step: a verb
+// whose agent's role points at it sends the step there itself, and a provider
+// that holds a key takes only the self-contained agents (ruling DR5).
+var dispatchNote = "a delegating verb whose agent's oracle.roles entry points at a provider sends the step there itself " +
+	"and ingests the answer, and every other step runs on the host; a provider whose block names a key takes only " +
+	"self-contained agents (" + strings.Join(oracle.SelfContained(), ", ") + "), under ruling DR5 of 2026-09-29, " +
+	"and oracle.bundled_context_providers in ~/.abcd/config.json is the person's override for file-reading agents " +
+	"whose bundle abcd builds (none yet)"
 
 // providerView is one configured provider as the board shows it: the block,
 // whether its key resolves and the home it resolves from (never the key).
@@ -80,7 +83,7 @@ func runAhoyProviders(cmd *cobra.Command, cwd string, asJSON bool) error {
 		KeyHomes:    oracle.KeyHomesProse,
 		Homes:       oracle.KeyHomes(),
 		Setup:       setupExample,
-		Dispatch:    dispatchPending,
+		Dispatch:    dispatchNote,
 		Diagnostics: append([]string{}, cfg.Diagnostics...),
 	}
 	if b.Routes == nil {
@@ -198,7 +201,7 @@ func newAhoyConnectCommand(asJSON *bool) *cobra.Command {
 			// A route the configuration read skipped (ruling CD2) is said on
 			// stderr, in the text and the JSON form alike, and the setup stands.
 			printConfigDiagnostics(cmd.ErrOrStderr(), res.Diagnostics)
-			return render(cmd.OutOrStdout(), *asJSON, withMember{v: res, key: "dispatch", val: dispatchPending}, func(w io.Writer) {
+			return render(cmd.OutOrStdout(), *asJSON, withMember{v: res, key: "dispatch", val: dispatchNote}, func(w io.Writer) {
 				line := func(s string) { fmt.Fprintf(w, "  %s\n", termsafe.Sanitize(s)) }
 				fmt.Fprintf(w, "abcd ahoy connect — %s verified and configured\n", termsafe.Sanitize(res.Provider))
 				line(fmt.Sprintf("verified: asked %s, %s reported %s", res.Verified.ModelAsked, res.Verified.Provider, res.Verified.ModelReported))
@@ -214,7 +217,7 @@ func newAhoyConnectCommand(asJSON *bool) *cobra.Command {
 				}
 				line(fmt.Sprintf("point a role or a judgement type at it with oracle.roles.<agent> or oracle.judgements.<type> = %q in %s",
 					res.Provider+"/"+res.Models[0], where))
-				line(dispatchPending + ".")
+				line(dispatchNote + ".")
 			})
 		},
 	}

@@ -2510,6 +2510,13 @@
       "sentence": "Validate the JSON one cold reading returned: Writes its reading records; refuses output the position's licence does not allow.",
       "flags": [
         {
+          "name": "dispatch",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "reading-json",
           "shorthand": "",
           "type": "string",

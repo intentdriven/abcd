@@ -18,9 +18,8 @@
 // (itd-2609081951381895, config.go) implements Connections from the machine's
 // provider blocks, each connection carrying its allowlist, the settings its
 // adapter accepts and the model each role pointed at it asks for; the
-// delegating verbs still hand every resolution
-// NoConnections, so every row resolves to the harness until provider dispatch
-// lands (spc-2609251028149555).
+// delegating verbs hand every resolution the machine's connections, and a
+// verb whose step resolves to a provider sends it there (spc-2609251028149555).
 //
 // Staged, loudly (the loud-staging rule): spc-2609180535002478 lands the types,
 // the proposal and its roster test, the store readers, the --route parser,

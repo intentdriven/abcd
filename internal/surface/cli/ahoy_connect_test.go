@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -78,7 +79,7 @@ func TestAhoyProvidersExplainsWithNothingConfigured(t *testing.T) {
 	if err := json.Unmarshal(jout, &v); err != nil {
 		t.Fatalf("--json: %v\n%s", err, jout)
 	}
-	if strings.Contains(string(out), "bundled") || strings.Contains(string(out), "anthropic/*") {
+	if regexp.MustCompile(`bundled (vendor )?denylist|bundles a denylist`).MatchString(string(out)) || strings.Contains(string(out), "anthropic/*") {
 		t.Errorf("ahoy --providers names a bundled vendor denylist abcd no longer ships:\n%s", out)
 	}
 	if v.Explanation == "" || v.Providers == nil || len(v.Providers) != 0 || v.Denylist == nil || len(v.Denylist) != 0 || len(v.Homes) != 4 {
@@ -107,7 +108,7 @@ func TestAhoyConnectVerifiesThenWrites(t *testing.T) {
 	if calls.Load() != 1 || auth.Load() != "Bearer "+connectKey {
 		t.Fatalf("verification: %d call(s), auth %v", calls.Load(), auth.Load())
 	}
-	for _, want := range []string{"typesafe/jev-1.13-20260915", "~/.abcd/credentials.json", "~/.abcd/config.json", "spc-2609251028149555",
+	for _, want := range []string{"typesafe/jev-1.13-20260915", "~/.abcd/credentials.json", "~/.abcd/config.json", "DR5",
 		`= "openrouter/typesafe/jev-1.13" in ~/.abcd/config.json`} {
 		if !strings.Contains(string(out), want) {
 			t.Errorf("ahoy connect does not say %q:\n%s", want, out)

@@ -506,6 +506,21 @@ set, a connection this machine has not configured, or a routing table that
 cannot be read exits 2 before anything is written. With no table accepted and no
 `--route`, the step asks for `host-decides` and nothing is printed.
 
+**A step routed to a provider has already run.** When the person has pointed
+`oracle.roles.release-changelog-composer` at a provider in
+`~/.abcd/config.json`, the emit step sends the emitted cut there itself,
+ingests the answer as the ingest step would, and prints the ingest's result
+with a `route` receipt whose `connection_used` names the provider. **When
+`route.connection_used` is not `harness`, the cut is already ingested: skip
+step 2 and relay the result.** A provider that holds a key takes only
+self-contained agents (ruling DR5 of 2026-09-29); the composer reads records
+at their paths, so pointed at such a provider the emit exits 2 before anything
+is sent, naming the rule and `oracle.bundled_context_providers`. A provider
+that could not be reached leaves the step to you with one stderr line. A
+`--changelog-json` you composed while the composer is routed to a provider is
+refused at exit 2; `--route release-changelog-composer=host-decides` keeps one
+run on the harness. A dispatched cut stages no `--payload-dir`.
+
 ### 2. Compose the prose (host-delegated)
 
 Run the **`release-changelog-composer`** agent
