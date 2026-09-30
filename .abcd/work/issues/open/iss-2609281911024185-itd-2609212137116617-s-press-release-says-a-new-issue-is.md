@@ -19,3 +19,7 @@ itd-2609212137116617's press release says a new issue is matched against the rec
 ## Remedy grounds (2026-09-29)
 
 This keeps itd-2609212137116617's shipped promise instead of narrowing it, and the unattended writers are the ones the intent's Grounds name as the reason for the match. Rejected: narrowing the press release to the two verbs, which is the product thinker's text and would leave the doubles unlinked.
+
+## Progress (2026-09-30)
+
+Two of the three routes landed on branch feat/filing-duplicate-every-route: inbox promote and the consistency ingest now run the filing-time match through CaptureRequest.Match, on the report's own title and prose and on the finding's summary and explanation. The reading-ingest route waits on ruling DQ2b, so this record stays open.
