@@ -26,6 +26,12 @@ ordinal from before ids were minted or the sixteen-digit stamp minted since;
 both resolve. The bare and the id form are strictly read-only; any other
 positional is refused as an unknown command.
 
+`--version` reports the running binary's version, install mode and vintage.
+When that binary sits in a plugin root other than the one this session
+resolves, the report — like bare `abcd ahoy` — adds a `superseded_root` note
+naming both roots by the commit each was installed from; the version, vintage
+and staleness it reports are unchanged.
+
 **Flags:**
 
 ```

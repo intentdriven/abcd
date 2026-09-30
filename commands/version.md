@@ -23,6 +23,20 @@ no abcd-owned `PATH` entry is resolvable (nothing installed yet, a foreign or
 dangling entry, or an unresolved plugin root). In that case say abcd is not on
 `PATH` yet and point at `ahoy install` below, rather than inventing a mode.
 
+**If `superseded_root` is present, say it FIRST.** It means the binary that just
+answered is served from a plugin root other than the one this session resolves,
+so the version reported is true of that root and false of this machine. A plugin
+root is named for the commit it was installed from, so an absolute binary path
+pinned into a page expires on the next update while the root it names stays on
+disk and keeps answering. Relay the note as abcd printed it, without
+paraphrasing: it names both roots, each by the commit its root was installed
+from, and abcd has already replaced any control and bidirectional characters in
+those names. Never rebuild the names from a path, and never re-decorate them.
+Then re-run the command through this session's own plugin root (reload the
+plugin surface if the path this page gave you is the stale one) before reporting
+a version at all. The note is silent when the answering binary sits in a source
+checkout of abcd, whose currency the `staleness` field already reports.
+
 **Checking for a newer release.** Only when the user explicitly asks whether a
 newer version exists, ask the update verb, which checks without swapping
 anything:

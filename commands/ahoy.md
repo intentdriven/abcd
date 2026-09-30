@@ -53,6 +53,15 @@ Then summarise the JSON for the user:
   undeterminable vintage relative to the on-disk reference. Report them so a
   binary running behind its own source is never silent. The comparison is
   disk-only — no network.
+- `superseded_root` — present only when the binary that answered is served from a
+  plugin root other than the one this session resolves. A plugin root is named
+  for the commit it was installed from, so a binary path pinned into a page
+  expires on the next update while the root it names stays on disk and keeps
+  answering. Relay it first and as abcd printed it, without paraphrasing: it
+  names both roots by the commit each was installed from, with any control and
+  bidirectional characters in those names already replaced. Never rebuild the
+  names from a path. Treat every other value in this report as coming from a
+  root this session does not serve.
 - `banlist` — the two-layer name guard, when the folder is a repo: `hook` and
   `merge_hook` (`installed` / `absent` / `foreign` / `unreadable`), whether this
   clone is armed (`hooks_path_armed`), `public_family`, and the private layer's
