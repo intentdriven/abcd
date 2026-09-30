@@ -21,11 +21,18 @@ import (
 // and every implementer is out before lane 2's receipt.
 func armedSibling(t *testing.T, third bool) *parFixture {
 	t.Helper()
+	return siblingAtArm(t, third, queueRuleset("MERGE"), func(ld *Landing) bool { return ld.Armed })
+}
+
+// siblingAtArm is armedSibling over the ruleset mirror given, stepping lane 2
+// until its landing satisfies at.
+func siblingAtArm(t *testing.T, third bool, ruleset string, at func(*Landing) bool) *parFixture {
+	t.Helper()
 	steps, lanes := "1. One\n2. Two\n   - needs: none\n", 2
 	if third {
 		steps, lanes = steps+"3. Three\n   - needs: none\n", 3
 	}
-	f := newParFixture(t, steps, Options{SubAgents: strp("5"), FixRounds: strp("1")})
+	f := newParFixtureRuleset(t, steps, Options{SubAgents: strp("5"), FixRounds: strp("1")}, ruleset)
 	f.stepUntil(t, "every implementer is out", func(st State) bool {
 		if len(st.Lanes) != lanes {
 			return false
@@ -41,7 +48,7 @@ func armedSibling(t *testing.T, third bool) *parFixture {
 	f.roundPassed(t, "lane-2")
 	for range 20 {
 		l := f.lane(t, "lane-2")
-		if l.Landing != nil && l.Landing.Armed {
+		if l.Landing != nil && at(l.Landing) {
 			return f
 		}
 		if l.Landing != nil && l.Landing.RecordsDone && l.Landing.Pushed == "" {
@@ -49,13 +56,22 @@ func armedSibling(t *testing.T, third bool) *parFixture {
 		}
 		f.step(t)
 	}
-	t.Fatalf("lane 2 never armed: %+v", f.lane(t, "lane-2"))
+	t.Fatalf("lane 2 never reached its arm: %+v", f.lane(t, "lane-2"))
 	return nil
 }
 
 // handedBack takes lane 1 through its fix round to its hand-back, and stops
 // there: the next step is the first after the hand-back.
 func (f *parFixture) handedBack(t *testing.T) {
+	t.Helper()
+	f.handBackLane1(t)
+	if l := f.lane(t, "lane-2"); l.Stage != StageLand || l.Landing == nil || !l.Landing.Armed {
+		t.Fatalf("lane 2 is still armed at the hand-back: %+v", l)
+	}
+}
+
+// handBackLane1 is handedBack without its check on lane 2.
+func (f *parFixture) handBackLane1(t *testing.T) {
 	t.Helper()
 	f.implement(t, "lane-1", "one.txt")
 	for round := 1; round <= 2; round++ {
@@ -68,9 +84,6 @@ func (f *parFixture) handedBack(t *testing.T) {
 		}
 	}
 	f.stepUntil(t, "lane-1 is handed back", func(st State) bool { return st.Lanes[0].Stage == StageHandedBack })
-	if l := f.lane(t, "lane-2"); l.Stage != StageLand || l.Landing == nil || !l.Landing.Armed {
-		t.Fatalf("lane 2 is still armed at the hand-back: %+v", l)
-	}
 }
 
 func (f *parFixture) touchGH(t *testing.T, name, body string) {

@@ -33,6 +33,12 @@ type parFixture struct {
 
 func newParFixture(t *testing.T, steps string, o Options) *parFixture {
 	t.Helper()
+	return newParFixtureRuleset(t, steps, o, queueRuleset("MERGE"))
+}
+
+// newParFixtureRuleset is newParFixture with the ruleset mirror given.
+func newParFixtureRuleset(t *testing.T, steps string, o Options, ruleset string) *parFixture {
+	t.Helper()
 	repo := loopRepo(t, readyIntent("impact: additive\n", settledQuestions), specWithSteps(steps))
 	for _, k := range []string{"GIT_AUTHOR_NAME", "GIT_COMMITTER_NAME"} {
 		t.Setenv(k, "Pat Example")
@@ -41,7 +47,7 @@ func newParFixture(t *testing.T, steps string, o Options) *parFixture {
 		t.Setenv(k, "pat@example.com")
 	}
 	repo.Write("AGENTS.md", agentsMarked)
-	repo.Write(".abcd/work/rulesets/main-protection.json", queueRuleset("MERGE"))
+	repo.Write(".abcd/work/rulesets/main-protection.json", ruleset)
 	repo.Commit("the record")
 	bare := filepath.Join(t.TempDir(), "origin.git")
 	repo.Git("init", "-q", "--bare", "--initial-branch=main", bare)
