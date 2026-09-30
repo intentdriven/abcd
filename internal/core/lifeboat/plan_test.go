@@ -256,7 +256,7 @@ func bumpRecordFile(t *testing.T, files []PlannedFile, p string) {
 }
 
 // TestRecordManifestSHA256CoversRecordFamiliesOnly pins the P1 closure boundary:
-// RecordManifestSHA256 hashes exactly the record-derived families
+// recordManifestSHA256 hashes exactly the record-derived families
 // (docs/adrs/**, activity/issues/**, rescue/intents/**, rescue/specs/**,
 // graveyard/abandoned.json) and NOTHING else. Changing any record byte moves the
 // hash; changing an identity/git-derived file (coverage.*, brief/**,
@@ -277,9 +277,9 @@ func TestRecordManifestSHA256CoversRecordFamiliesOnly(t *testing.T) {
 		{Path: "rescue/spine.md", Content: []byte("spine")},
 		{Path: ProvenanceName, Content: []byte("prov")},
 	}
-	baseHash := RecordManifestSHA256(base)
+	baseHash := recordManifestSHA256(base)
 	if baseHash == "" {
-		t.Fatal("RecordManifestSHA256 over a record-bearing set is empty")
+		t.Fatal("recordManifestSHA256 over a record-bearing set is empty")
 	}
 
 	records := []string{
@@ -292,8 +292,8 @@ func TestRecordManifestSHA256CoversRecordFamiliesOnly(t *testing.T) {
 	for _, p := range records {
 		m := cloneRecordFiles(base)
 		bumpRecordFile(t, m, p)
-		if RecordManifestSHA256(m) == baseHash {
-			t.Errorf("RecordManifestSHA256 did not move when record %q changed", p)
+		if recordManifestSHA256(m) == baseHash {
+			t.Errorf("recordManifestSHA256 did not move when record %q changed", p)
 		}
 	}
 
@@ -308,14 +308,14 @@ func TestRecordManifestSHA256CoversRecordFamiliesOnly(t *testing.T) {
 	for _, p := range identity {
 		m := cloneRecordFiles(base)
 		bumpRecordFile(t, m, p)
-		if RecordManifestSHA256(m) != baseHash {
-			t.Errorf("RecordManifestSHA256 moved when identity-derived %q changed", p)
+		if recordManifestSHA256(m) != baseHash {
+			t.Errorf("recordManifestSHA256 moved when identity-derived %q changed", p)
 		}
 	}
 }
 
 // TestPlanProvenanceRecordsRecordManifestHash checks the plan writes
-// record_manifest_sha256 into _provenance.json, equal to RecordManifestSHA256 over
+// record_manifest_sha256 into _provenance.json, equal to recordManifestSHA256 over
 // the file set; that adding the field left manifest_sha256 untouched; that
 // isAbcdLifeboat still parses the provenance; and that a re-plan of an unchanged
 // source reproduces the provenance byte-for-byte (no timestamp crept in).
@@ -333,9 +333,9 @@ func TestPlanProvenanceRecordsRecordManifestHash(t *testing.T) {
 	if prov.RecordManifestSHA256 == "" {
 		t.Fatal("provenance carries no record_manifest_sha256")
 	}
-	// _provenance.json is not record-derived, so RecordManifestSHA256(lb.Files)
+	// _provenance.json is not record-derived, so recordManifestSHA256(lb.Files)
 	// equals the value Plan computed over the pre-provenance slice.
-	if want := RecordManifestSHA256(lb.Files); prov.RecordManifestSHA256 != want {
+	if want := recordManifestSHA256(lb.Files); prov.RecordManifestSHA256 != want {
 		t.Errorf("record_manifest_sha256 = %s, recomputed = %s", prov.RecordManifestSHA256, want)
 	}
 	if want := ManifestSHA256(lb.Files); prov.ManifestSHA256 != want {

@@ -80,10 +80,6 @@ internal/core/launch/scaffold.DeriveCIChecks
 internal/core/launch/scaffold.GateSubstitutions
 internal/core/launch/scaffold.Render
 internal/core/lifeboat.ManifestSHA256
-internal/core/lifeboat.RecordManifestSHA256
-internal/core/lifeboat.Render
-internal/core/lifeboat.Tiers
-internal/core/lifeboat.VerifyManifest
 internal/core/lint.CitationAgeSummaryAt
 internal/core/lint.LintAt
 internal/core/lint.PrincipleEvidence
