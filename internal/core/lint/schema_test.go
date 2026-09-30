@@ -2810,3 +2810,32 @@ func TestReadingItemAndDispositionFilenamesAreBareHandles(t *testing.T) {
 		t.Errorf("the bare-handle control must pass: %+v", fs)
 	}
 }
+
+// `reverses` is a typed link (the discipline supersedes / reverses / duplicates /
+// refines, adr-2609300821558671) and a machine-readable claim that the reversed
+// record exists, so record_schema resolves it as a cross-reference field. Before
+// it was one, a dangling `reverses:` was caught only by the prose citation rule,
+// which reads the typed direction as free text.
+func TestRecordSchemaResolvesReverses(t *testing.T) {
+	root := t.TempDir()
+	adrs := "rec/decisions/adrs"
+	writeFile(t, root, "rec/intents/shipped/itd-17-tracking.md", "---\nid: itd-17\nkind: null\nspec_id: null\n---\n# shipped\n")
+	writeFile(t, root, adrs+"/0030-reversal.md", "---\nid: adr-30\nsupersedes: null\nsuperseded_by: null\nreverses: [itd-17]\n---\n# ADR-30\n")
+
+	fs, err := Lint(schemaConfig(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := countRule(fs, ruleRecordSchema); n != 0 {
+		t.Fatalf("a reversal naming a record in the corpus must be clean, got %d finding(s): %+v", n, fs)
+	}
+
+	writeFile(t, root, adrs+"/0031-dangling.md", "---\nid: adr-31\nsupersedes: null\nsuperseded_by: null\nreverses: [itd-999999]\n---\n# ADR-31\n")
+	fs, err = Lint(schemaConfig(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !findingWith(fs, filepath.Join(adrs, "0031-dangling.md"), ruleRecordSchema, "reverses names 'itd-999999'") {
+		t.Fatalf("a reversal naming a record the corpus does not hold must be refused by record_schema: %+v", fs)
+	}
+}

@@ -98,8 +98,11 @@ item is promoted.
 - A reading record may carry `duplicates:` and `refines:`; the writer's
   validator and the committed-tree gate accept them, and the gate resolves
   each named id.
-- `reading ingest` and `capture promote <rdi-N>` read the ledger, the intent
-  store and the reading store under their locks. An unreadable candidate set
-  files the item unlinked and says why.
+- `reading ingest` reads the issue ledger, the intent store and the reading
+  store under the ledger lock it writes the run under. `capture promote
+  <rdi-N>` matches under the intent mint lock only, as `intent create` does:
+  it reads the issue ledger and the reading store without the ledger lock,
+  and takes that lock afterwards only to stamp the promoted item. An
+  unreadable candidate set files the item unlinked and says why.
 - The brief's capture and reading chapters, and the capture and reading
   command pages, state the match on this route.

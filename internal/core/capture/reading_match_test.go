@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core/issueschema"
+	"github.com/intentdriven/abcd/internal/core/readingitem"
 	"github.com/intentdriven/abcd/internal/core/record/match"
 )
 
@@ -211,5 +212,40 @@ func TestPromoteReadingItemWithoutAMatchReportsNone(t *testing.T) {
 	}
 	if p.Match != nil {
 		t.Fatalf("an unmatched promote reported a match: %+v", p.Match)
+	}
+}
+
+// A regular file named like a run id is not a run the matcher skips: the
+// store's one guard (readingitem.RefuseSymlinkedDir) refuses anything at a
+// run's name that is not a real directory, so every reading-ledger walk agrees
+// on what the ledger holds. The ingest's mint meets that guard and refuses the
+// whole ingest, because an id minted against a ledger it could not read in
+// full is an id it cannot prove unique (adr-45); the matcher meets the same
+// guard and reports its candidate set unknown rather than silently short.
+func TestReadingMatchRefusesAStrayFileAtARunName(t *testing.T) {
+	repo, ir := ledger(t)
+	captureText(t, repo, ir, plantedFinding, nil)
+	readings := filepath.Join(ir, issueschema.ReadingsDir)
+	if err := os.MkdirAll(readings, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(readings, "rdg-1"), []byte("stray\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := readingFilingCandidates(repo, ir, *bundled()); !errors.Is(err, ErrPathUnsafe) {
+		t.Fatalf("the matcher must refuse a stray file at a run name as the store's guard does, got %v", err)
+	}
+	if _, err := readingitem.Paths(ir, "rdi-1"); !errors.Is(err, readingitem.ErrPathUnsafe) {
+		t.Fatalf("the locator must refuse the same stray file, got %v", err)
+	}
+	res, err := IngestReading(IngestReadingRequest{
+		RepoRoot: repo, IssuesRoot: ir,
+		Run: "rdg-2609300000000001", Manifest: "sha256:" + strings.Repeat("a", 64),
+		Position: "detection", Regime: issueschema.ReadingRegime("detection"),
+		Items: []ReadingItem{readingDouble}, Match: bundled(),
+	})
+	if !errors.Is(err, ErrPathUnsafe) || len(res.Records) != 0 {
+		t.Fatalf("the ingest over a stray file at a run name must be refused whole, got %v with %d record(s)", err, len(res.Records))
 	}
 }
