@@ -2605,11 +2605,17 @@ block and in the hook's diagnostic, and carries "source": "user" or "repo" in
 renders bare and carries "source": "bundled".
 
 A list an override sets replaces the bundled one, so an override can hold back
-an entry abcd ships. For the guardrail domains (COMMITTING, LOAD, PII), every
-bundled recall keyword, alias or rule that an override's list leaves out is
-named on stderr, with the file that set the list, here and on every hook
+an entry abcd ships. For the guardrail domains (COMMITTING, LOAD, PII, SHELL),
+every bundled recall keyword, alias or rule that an override's list leaves out
+is named on stderr, with the file that set the list, here and on every hook
 prompt. To keep an entry, restate it in the list, or leave the field out to
-inherit the bundled list. Read-only.
+inherit the bundled list.
+
+SHELL is generated from the bundled shell-hazard registry that "abcd guard"
+enforces: one rule per registry entry, naming the command, why it is dangerous
+and what to run instead, recalled by the commands the registry names. It
+teaches before shell work what the guard refuses at the moment a command runs.
+Read-only.
 
 ### `abcd scribe`
 
