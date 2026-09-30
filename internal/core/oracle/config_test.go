@@ -162,7 +162,7 @@ func TestARepositoryRouteToAKeyedProviderIsRefused(t *testing.T) {
 			f.repoConfig(`{"oracle":{` + tc.repo + `}}`)
 			err := f.loadAPIErr()
 			for _, want := range []string{".abcd/config.json (repo layer)", tc.setting, "openrouter", "holds a key",
-				"set " + tc.setting + " in ~/.abcd/config.json"} {
+				"set " + tc.setting + " in ~/.abcd/config.json and remove it from .abcd/config.json,"} {
 				if !strings.Contains(err.Error(), want) {
 					t.Errorf("refusal %q does not name %q", err, want)
 				}

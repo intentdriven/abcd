@@ -352,8 +352,8 @@ func (c *APIConfig) readRoutes(s *layered.Stack, key string, into map[string]Tar
 		if p := c.providers[provider]; win.Layer != layered.Machine && keyed(p) {
 			return fmt.Errorf("oracle adapter: %s points at %s, a provider that holds a key (its block in %s names the credential %s); "+
 				"only a route set on this machine may spend that key, so a repository's route to it is refused before any call: "+
-				"set %s.%s in %s, or point it at a provider whose block names no key",
-				where, layered.BoundKey(text), p.Origin, p.Key, key, name, layered.Config.MachineOrigin())
+				"set %s.%s in %s and remove it from %s, or point it at a provider whose block names no key",
+				where, layered.BoundKey(text), p.Origin, p.Key, key, name, layered.Config.MachineOrigin(), win.Origin)
 		}
 		if err := c.Admit(provider, model); err != nil {
 			return fmt.Errorf("oracle adapter: %s points at %s, %w", where, layered.BoundKey(text), err)
