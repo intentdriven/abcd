@@ -12,8 +12,18 @@ import (
 )
 
 // queueRuleset is a ruleset mirror that gates the default branch through a
-// merge queue merging with method, as .abcd/work/rulesets/ holds it.
+// merge queue merging with method, behind a pull-request rule requiring one
+// approving review, as .abcd/work/rulesets/ holds it.
 func queueRuleset(method string) string {
+	return `{"bypass_actors":[],"conditions":{"ref_name":{"exclude":[],"include":["~DEFAULT_BRANCH"]}},` +
+		`"enforcement":"active","name":"main protection","rules":[{"type":"deletion"},` +
+		`{"parameters":{"required_approving_review_count":1},"type":"pull_request"},` +
+		`{"parameters":{"merge_method":"` + method + `","grouping_strategy":"ALLGREEN"},"type":"merge_queue"}],"target":"branch"}` + "\n"
+}
+
+// unreviewedQueueRuleset gates the default branch through a merge queue with
+// no rule requiring a person's approval.
+func unreviewedQueueRuleset(method string) string {
 	return `{"bypass_actors":[],"conditions":{"ref_name":{"exclude":[],"include":["~DEFAULT_BRANCH"]}},` +
 		`"enforcement":"active","name":"main protection","rules":[{"type":"deletion"},` +
 		`{"parameters":{"merge_method":"` + method + `","grouping_strategy":"ALLGREEN"},"type":"merge_queue"}],"target":"branch"}` + "\n"
@@ -73,6 +83,17 @@ type landFixture struct {
 
 func newLandFixture(t *testing.T, ruleset string) *landFixture {
 	t.Helper()
+	files := map[string]string{}
+	if ruleset != "" {
+		files[".abcd/work/rulesets/main-protection.json"] = ruleset
+	}
+	return newLandFixtureWith(t, files)
+}
+
+// newLandFixtureWith is newLandFixture with the files given (the ruleset
+// mirror, a CODEOWNERS file) committed at the lane's base.
+func newLandFixtureWith(t *testing.T, files map[string]string) *landFixture {
+	t.Helper()
 	repo := loopRepo(t, readyIntent("impact: additive\n", settledQuestions), specWithSteps(""))
 	for _, k := range []string{"GIT_AUTHOR_NAME", "GIT_COMMITTER_NAME"} {
 		t.Setenv(k, "Pat Example")
@@ -81,8 +102,8 @@ func newLandFixture(t *testing.T, ruleset string) *landFixture {
 		t.Setenv(k, "pat@example.com")
 	}
 	repo.Write("AGENTS.md", agentsMarked)
-	if ruleset != "" {
-		repo.Write(".abcd/work/rulesets/main-protection.json", ruleset)
+	for name, body := range files {
+		repo.Write(name, body)
 	}
 	c, err := capture.Capture(capture.CaptureRequest{RepoRoot: repo.Root(), Text: "The widget refuses a blank name.",
 		Severity: "minor", Category: "ux", Source: "agent-observation", FoundDuring: "a landing test",
