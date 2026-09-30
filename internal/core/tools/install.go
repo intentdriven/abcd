@@ -249,20 +249,33 @@ func (in *Installer) admit(name string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("%s resolves to %q, which does not resolve; nothing was run", name, p)
 	}
-	guards := []string{filepath.Clean(in.Guard)}
-	if g, err := filepath.EvalSymlinks(in.Guard); err == nil {
+	if WithinTree(p, resolved, in.Guard) {
+		return "", fmt.Errorf("%s resolves to %q, inside the repository this verb ran from; "+
+			"a program there is repository content and is never run as an install step", name, p)
+	}
+	return resolved, nil
+}
+
+// WithinTree reports whether the program at p, which resolves to resolved
+// after symlinks, lies inside the tree at guard, judged lexically and after
+// symlink resolution on both sides. It is the one in-checkout judgement for a
+// program: the installer refuses to run what it holds, and ahoy's presence
+// check does not count it as installed. Both p and guard are absolute; the
+// caller has already resolved p.
+func WithinTree(p, resolved, guard string) bool {
+	guards := []string{filepath.Clean(guard)}
+	if g, err := filepath.EvalSymlinks(guard); err == nil {
 		guards = append(guards, g)
 	}
 	fold := fsutil.CaseFoldingFS()
 	for _, g := range guards {
 		for _, c := range []string{filepath.Clean(p), resolved} {
 			if fsutil.PathWithin(c, g, fold) {
-				return "", fmt.Errorf("%s resolves to %q, inside the repository this verb ran from; "+
-					"a program there is repository content and is never run as an install step", name, p)
+				return true
 			}
 		}
 	}
-	return resolved, nil
+	return false
 }
 
 // pipeGrace is how long runArgv keeps reading a step's output once the step

@@ -480,7 +480,7 @@ func (a *applyCtx) stepDependencies() {
 		if g.Category != Dependency || g.Tool == nil {
 			continue
 		}
-		if onPath(g.Tool.Tool) {
+		if onPath(a.cwd, g.Tool.Tool) {
 			continue
 		}
 		res := newToolInstaller(a.cwd).Install(g.Tool.Tool, g.Tool.Capability, a.confirmTool)
@@ -598,7 +598,7 @@ func (a *applyCtx) stepConfigValues() *InstallConfig {
 			return nil // no valid oracle backend => partial
 		}
 	}
-	if ic.Visibility == "private" && onPath("trufflehog") && ic.ScanDeep == nil {
+	if ic.Visibility == "private" && onPath(a.cwd, "trufflehog") && ic.ScanDeep == nil {
 		// The prompter returns the typed line verbatim, so the answer is re-checked
 		// against the choice set exactly as the three slots above are. Comparing it
 		// to "true" instead would fold every other spelling into false: a person who

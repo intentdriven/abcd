@@ -342,7 +342,7 @@ func RemoteApply(cwd string, p Prompter, confirmTool tools.Confirm) (RemoteResul
 // command, so the caller refuses loudly and reaches no gh call on a half-done
 // install.
 func OfferGH(guard string, confirm tools.Confirm) (notes []string, ok bool) {
-	if onPath("gh") {
+	if onPath(guard, "gh") {
 		return nil, true
 	}
 	res := newToolInstaller(guard).Install("gh", tools.GitHubSettings, confirm)
