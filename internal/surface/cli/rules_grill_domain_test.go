@@ -63,3 +63,39 @@ func TestGrillDomainCarriesQuestionVisibilityAndAddresseeRules(t *testing.T) {
 		}
 	}
 }
+
+// TestGrillQuotingRuleSaysProseIsInvisibleWhileTheQuestionShows holds the
+// quoting rule (what the human accepts, edits or strikes is quoted in the
+// question) to the same claim the visibility rule makes: prose written between
+// tool calls is invisible while the question shows. A softer "does not
+// reliably reach" beside the firmer claim reads as two rules disagreeing about
+// one fact (review of iss-2609291925134691, MINOR 4).
+func TestGrillQuotingRuleSaysProseIsInvisibleWhileTheQuestionShows(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join(testRepoRoot(), ".abcd", "rules.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rules struct {
+		Domains map[string]struct {
+			Rules []string `json:"rules"`
+		} `json:"domains"`
+	}
+	if err := json.Unmarshal(data, &rules); err != nil {
+		t.Fatalf("parse .abcd/rules.json: %v", err)
+	}
+	found := false
+	for _, r := range rules.Domains["GRILL"].Rules {
+		if strings.Contains(r, "does not reliably reach") {
+			t.Errorf("a GRILL rule still says prose %q; the domain states it as invisible while the question shows: %s", "does not reliably reach", r)
+		}
+		if strings.Contains(r, "quoted IN the question itself") {
+			found = true
+			if !strings.Contains(r, "invisible while the question shows") {
+				t.Errorf("the GRILL quoting rule does not say prose is %q: %s", "invisible while the question shows", r)
+			}
+		}
+	}
+	if !found {
+		t.Error("GRILL carries no rule that quotes what the human is asked to accept IN the question itself")
+	}
+}
