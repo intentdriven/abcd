@@ -2738,7 +2738,7 @@
     {
       "path": "abcd site build",
       "hidden": false,
-      "sentence": "Render the website into the output directory: Writes only inside that directory; refuses a non-empty directory it did not write.",
+      "sentence": "Render the website into the output directory: Writes there, plus a missing label into site-src/ui.json; refuses a non-empty directory it did not write.",
       "flags": [
         {
           "name": "commit",
