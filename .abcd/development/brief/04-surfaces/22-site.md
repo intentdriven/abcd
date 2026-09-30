@@ -143,7 +143,8 @@ A label the struct declares and the file leaves blank fails the build by name. A
 label the file does not carry at all, which is how a file written before that
 label existed reads, is added to the file by the build and by setting up, with
 the words abcd's own interface-string file gives it: each added label is named
-on standard error, every byte already in the file stays, and a file carrying a
+on standard error, before the error when the build then fails, every byte
+already in the file stays, and a file carrying a
 key no field reads is left untouched and refused as before. The render the
 site gate makes of an empty output directory writes only inside that directory,
 so it never completes the file and refuses an incomplete one by name
