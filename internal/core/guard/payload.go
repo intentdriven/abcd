@@ -362,6 +362,11 @@ func spellPayload(psegs []segment, named []string) {
 				continue
 			}
 			for j := range m.spelled {
+				if !isUnknown(m.tokens[j]) {
+					// A word spelled with no variable's mark (`$!`, addBang)
+					// keeps the spelling its own reading gave it.
+					continue
+				}
 				ws, ok := n.spelled[j]
 				if !ok {
 					if isUnknown(n.tokens[j]) {

@@ -18,7 +18,8 @@ import (
 // reader of a token asks this file what the word can be. An arithmetic
 // expansion is not unknown in that sense: its output is a number, which no
 // flag, subcommand or path the registry names can be, and neither are `$$`,
-// `$!`, `$?` and `$#`.
+// `$!`, `$?` and `$#`. `$!` is also nothing before any job runs in the
+// background, which only the written spelling reads (emptyable).
 //
 // The rule is that an unknown word fails closed in every role it could play,
 // and a reader that can read a word more than one way reads it every way — the
@@ -110,11 +111,51 @@ const varText = "\x01"
 // unquoted text a brace group places after it runs on from (spellWritten).
 // split records an expansion written unquoted, whose text bash splits into
 // fields on IFS (ifsSplits).
+//
+// empty records that the texts hold the empty text only because the
+// parameter can print nothing (emptyable), which splits into no field and
+// so is not counted where ifsSplits reads the site.
+//
+// width is the number of bytes of the word the site stands on where the
+// word keeps the text as written rather than a mark (`$!`, which every
+// other reading takes as the job's number it is, addBang), and 0 for a
+// mark, which is one byte.
 type varSite struct {
 	at    int
 	texts []string
 	bare  bool
 	split bool
+	empty bool
+	width int
+}
+
+// emptyable reports whether the parameter named name — the text after its
+// `$`, or between its braces — can print nothing at the top of a fresh
+// shell, where it leaves only the text beside it (iss-2609300057467536): `!`
+// before any job runs in the background, `@`, `*` and a positional
+// parameter's digits with no argument, `_` after `x=` or `true ""`, and `-`,
+// which dash starts with no option letter in. bash 3.2, /bin/sh, dash and
+// bash 5.3 print `/` for `$!/`, `$@/` and `$1/`. `$0` is the shell's name
+// and `$$`, `$?` and `$#` are numbers, never empty.
+func emptyable(name string) bool {
+	switch name {
+	case "!", "@", "*", "-", "_":
+		return true
+	}
+	if name == "" || strings.TrimLeft(name, "0123456789") != "" {
+		return false
+	}
+	return strings.TrimLeft(name, "0") != ""
+}
+
+// paramTexts is the written spelling of a parameter written without braces
+// (`$HOME`, `$1`, `$@`): the parameter itself, and the empty text where it
+// can print nothing (emptyable).
+func paramTexts(text string) []string {
+	if len(text) > 1 && emptyable(text[1:]) {
+		return []string{text, ""}
+	}
+	return []string{text}
 }
 
 // ifsSplits reports whether a word's sites include one whose fields rest on
@@ -128,17 +169,26 @@ type varSite struct {
 // value, and is not counted.
 func ifsSplits(sites []varSite) bool {
 	for _, s := range sites {
-		if !s.split || len(s.texts) == 0 {
+		texts := s.texts
+		if s.empty {
+			texts = nil
+			for _, t := range s.texts {
+				if t != "" {
+					texts = append(texts, t)
+				}
+			}
+		}
+		if !s.split || len(texts) == 0 {
 			continue
 		}
-		if len(s.texts) > 1 {
+		if len(texts) > 1 {
 			return true
 		}
-		name := strings.TrimPrefix(s.texts[0], "$")
+		name := strings.TrimPrefix(texts[0], "$")
 		if strings.HasPrefix(name, "{") && strings.HasSuffix(name, "}") {
 			name = name[1 : len(name)-1]
 		}
-		if name == "" || name == "HOME" || name == "PWD" || name == s.texts[0] {
+		if name == "" || name == "HOME" || name == "PWD" || name == texts[0] {
 			return true
 		}
 		for i := 0; i < len(name); i++ {
@@ -203,6 +253,11 @@ func spellWritten(word []byte, sites []varSite, mask []byte) []string {
 		}
 		site := sites[k]
 		k++
+		if site.width > 1 {
+			// The site keeps its text in the word (`$!`): each text it can
+			// print stands in place of all of it.
+			p += site.width - 1
+		}
 		if len(site.texts) == 0 {
 			add(unknownMark)
 			continue
@@ -322,7 +377,7 @@ func paramText(text string) string { return strings.ReplaceAll(text, "\\\n", "")
 // run in it is spelled fieldMark, which the compare splits on
 // (argValueMatches).
 func spellParameter(body string, split bool) []string {
-	return spellParameterAt(paramText(body), 0, split)
+	return spellParameterAt(paramText(body), 0, split, true)
 }
 
 // fieldMark stands in a spelling where bash splits a word into fields: at an
@@ -344,7 +399,35 @@ const quotedFieldMark = '\x03'
 // quotedFieldText is quotedFieldMark as a string.
 const quotedFieldText = "\x03"
 
-func spellParameterAt(body string, depth int, split bool) []string {
+// emptiedParameter reports whether texts, the written spelling of the
+// `${…}` whose text between the braces is body, hold the empty text only
+// because its parameter can print nothing (varSite.empty): read without that
+// reading, the expansion prints no empty text.
+func emptiedParameter(body string, split bool, texts []string) bool {
+	body = paramText(body)
+	if indirect, n := paramNameEnd(body); !split || indirect || n < 0 || !emptyable(body[:n]) {
+		// Only a split site is counted, and only an emptyable parameter
+		// adds the empty text.
+		return false
+	}
+	has := false
+	for _, t := range texts {
+		has = has || t == ""
+	}
+	if !has {
+		return false
+	}
+	for _, t := range spellParameterAt(body, 0, split, false) {
+		if t == "" {
+			return false
+		}
+	}
+	return true
+}
+
+// spellParameterAt is spellParameter at depth, with empty reporting whether
+// a parameter that can print nothing (emptyable) is read as printing it.
+func spellParameterAt(body string, depth int, split, empty bool) []string {
 	raw := []string{"${" + body + "}"}
 	indirect, n := paramNameEnd(body)
 	if n < 0 {
@@ -353,6 +436,11 @@ func spellParameterAt(body string, depth int, split bool) []string {
 	name, rest := body[:n], body[n:]
 	same := "${" + name + "}"
 	value := []string{same}
+	if empty && !indirect && emptyable(name) {
+		// `${!}`, `${@}`, `${1}` can print nothing (emptyable), and every
+		// operator reads that nothing as it reads a value.
+		value = append(value, "")
+	}
 	if indirect {
 		// An indirection's value is the value of the variable its name
 		// holds, which the line does not spell: past an operator that can
@@ -770,6 +858,13 @@ func readPattern(p string, replacement, quoted bool) patternShape {
 				i = end
 				continue
 			}
+			if i+1 < len(p) && p[i+1] == '!' {
+				// The job's number, or nothing where none ran in the
+				// background (emptyable): `${X%%$!*}` is `${X%%*}`.
+				add(elemAny)
+				i += 2
+				continue
+			}
 			literal(c)
 			i++
 		case dq:
@@ -930,7 +1025,7 @@ func spellWord(w string, depth int, split bool) []string {
 			if end < 0 {
 				return nil
 			}
-			sites = append(sites, varSite{at: len(word), texts: spellParameterAt(w[i+2:end], depth+1, split && !dq)})
+			sites = append(sites, varSite{at: len(word), texts: spellParameterAt(w[i+2:end], depth+1, split && !dq, true)})
 			word = append(word, varMark)
 			i = end + 1
 		case c == '$' && i+1 < len(w) && w[i+1] == '(':
@@ -988,7 +1083,7 @@ func spellWord(w string, depth int, split bool) []string {
 				i++
 				continue
 			}
-			sites = append(sites, varSite{at: len(word), texts: []string{w[i:end]}})
+			sites = append(sites, varSite{at: len(word), texts: paramTexts(w[i:end])})
 			word = append(word, varMark)
 			i = end
 		default:

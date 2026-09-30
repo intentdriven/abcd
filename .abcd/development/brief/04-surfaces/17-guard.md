@@ -340,7 +340,12 @@ drops out, as bash splits and drops them (`${X:+$HOME }`,
 as the text it decodes to (`${X:-$'\x2f'}`, `${X:-$"/"}`); a positional, a
 special or an indirect parameter takes the same operators (`${1:-/}`,
 `${#:+/}`, `${!X:-/}`, the last read as every target past its operator,
-since the variable it names is not in the line); a replacement's pattern is
+since the variable it names is not in the line); a parameter that can print
+nothing at the top of a fresh shell — `$!` before any job runs in the
+background, `$@`, `$*` and a positional one with no argument, `$_` after
+`x=`, and `$-` under dash — also reads as the text beside it (`$!/`,
+`"${1}"/` and `/$!` are `/`), and `$!` in a pattern as text of any length
+(`${PWD%%$!*}` is `${PWD%%*}`); a replacement's pattern is
 read both where bash 3.2 ends it and where bash 5 does, at a quoted `/`
 (`${X/"/"*/$HOME}`); and on a line that names IFS, an unquoted default's or
 alternative's word, and an unquoted home, reads as every target, since the

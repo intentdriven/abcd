@@ -628,6 +628,23 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		addCur([]byte{varMark}, 0)
 		curVarAt[len(curVarAt)-1].texts = texts
 	}
+	// addParam leaves the mark of a parameter written without braces, whose
+	// text is text (`$HOME`, `$1`), with the texts it can print
+	// (paramTexts).
+	addParam := func(text string) {
+		texts := paramTexts(text)
+		addVar(texts...)
+		curVarAt[len(curVarAt)-1].empty = len(texts) > 1
+	}
+	// addBang keeps a `$!` in the word as the text it is, which every
+	// reading takes as the job's number (`kill $!`), and records a site on
+	// it for the written spelling alone: the number, or nothing where no job
+	// ran in the background, which leaves the text beside it, so `$!/` is
+	// also `/` to arg_values (iss-2609300057467536).
+	addBang := func(mask byte) {
+		curVarAt = append(curVarAt, varSite{at: len(cur), texts: paramTexts("$!"), width: 2})
+		addCur([]byte("$!"), mask)
+	}
 	// markIFSSplit files the word being built under segment.ifsSplit when its
 	// sites rest on the default IFS.
 	markIFSSplit := func(sites []varSite) {
@@ -646,7 +663,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 	// unknownFromOpenExpansion rewrote — is filed as unknownText, which no
 	// value names.
 	recordSpelling := func(word string, whole bool) {
-		if !curVar {
+		if len(curVarAt) == 0 {
 			return
 		}
 		if spells == nil {
@@ -665,7 +682,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 	// name the group's unquoted text runs on from is read as bash reads it
 	// after the expansion (`$HO{ME,}` is `$HOME`).
 	recordBraceSpelling := func(word string, w bword) {
-		if !curVar {
+		if len(curVarAt) == 0 {
 			return
 		}
 		var sites []varSite
@@ -1049,7 +1066,9 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		expandedBody(body)
 		feedFrom(start)
 		addVar(spellParameter(body, split)...)
-		curVarAt[len(curVarAt)-1].split = split
+		site := &curVarAt[len(curVarAt)-1]
+		site.split = split
+		site.empty = emptiedParameter(body, split, site.texts)
 		if len(segs) > start {
 			curSub = true
 		}
@@ -1172,8 +1191,13 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 					j += 2
 					continue
 				}
+				if line[j] == '$' && j+1 < len(line) && line[j+1] == '!' {
+					addBang(0)
+					j += 2
+					continue
+				}
 				if k := simpleParamEnd(line, j+1); line[j] == '$' && k >= 0 {
-					addVar(paramText(line[j:k]))
+					addParam(paramText(line[j:k]))
 					j = k
 					continue
 				}
@@ -1492,13 +1516,17 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			parens[len(parens)-1].end = end
 			lastList = false
 			i += 3
+		case c == '$' && i+1 < len(line) && line[i+1] == '!':
+			addBang(wordStruct)
+			lastList = false
+			i += 2
 		case c == '$' && simpleParamEnd(line, i+1) >= 0:
 			// A parameter expansion (iss-2609251824244354): the value it prints
 			// is not in the command line, so the word holds unknownMark where
 			// it goes (unknown.go), and `--$X` is a flag of unknown name as
 			// `--$(x)` is. A `$` that is quoted or escaped never reaches here.
 			end := simpleParamEnd(line, i+1)
-			addVar(paramText(line[i:end]))
+			addParam(paramText(line[i:end]))
 			curVarAt[len(curVarAt)-1].bare = true
 			curVarAt[len(curVarAt)-1].split = true
 			lastList = false
@@ -1976,7 +2004,8 @@ func closingDoubleQuote(line string, i int, budget *int) int {
 // 0), or `$@`, `$*` or `$-`, whose values are any text. It returns -1 where
 // the `$` opens no such expansion. `$$`, `$!`, `$?` and `$#` print a number,
 // which no flag, name or path an entry names can be, as an arithmetic
-// expansion's does, and stay the text they are. A name runs on across a
+// expansion's does, and stay the text they are; `$!` can also print nothing,
+// which its written spelling alone reads (addBang). A name runs on across a
 // backslash-newline, which bash drops before it reads the name, so `$HO\⏎ME`
 // is `$HOME` (iss-2609290419119456); paramText is the name as bash reads it.
 func simpleParamEnd(line string, i int) int {

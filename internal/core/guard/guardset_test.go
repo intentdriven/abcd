@@ -167,3 +167,68 @@ func TestSeparatorsBeforeTheHomeTheWrittenCompareReads(t *testing.T) {
 		{`rm -rf /$HOMEDIR`, shellBare | shellSQ, VerdictAllow, ""},
 	})
 }
+
+// TestParametersThatPrintNothingTheWrittenCompareReads — iss-2609300057467536.
+// A parameter that can print nothing at the top of a fresh shell leaves the
+// text beside it: bash 3.2, /bin/sh, dash and bash 5.3 print `/` for
+// `$!/` (no background job ran), `$@/`, `$*/` and `$1/` (no argument),
+// `$_/` after `x=` or `true ""`, and dash for `$-/` (no option letter),
+// braced or not, quoted or not. A number that is never empty (`$$`, `$?`,
+// `$#`) and the shell's name (`$0`) name no path, and the job's number
+// stays the operand `kill` and `wait` take.
+func TestParametersThatPrintNothingTheWrittenCompareReads(t *testing.T) {
+	const home = "rm-rf-root-or-home"
+	const all = shellBare | shellSQ | shellDQ
+	checkSpellingCases(t, []spellingCase{
+		{`rm -rf $!/`, all, VerdictBlock, home},
+		{`rm -rf "$!"/`, all, VerdictBlock, home},
+		{`rm -rf "$!/"`, all, VerdictBlock, home},
+		{`rm -rf /$!`, all, VerdictBlock, home},
+		{`rm -rf ~$!`, shellBare | shellSQ, VerdictBlock, home},
+		{`rm -rf $!/*`, all, VerdictBlock, home},
+		{`rm -rf $(true)$!/`, shellBare | shellSQ, VerdictBlock, home},
+		{`rm -rf {$!,x}/`, shellBare | shellSQ, VerdictBlock, home},
+		{`rm -rf ${!}/`, all, VerdictBlock, home},
+		{`rm -rf "${!}"/`, all, VerdictBlock, home},
+		{`rm -rf $-/`, all, VerdictBlock, home},
+		{`rm -rf "${-}/"`, all, VerdictBlock, home},
+		{`rm -rf $_/`, all, VerdictBlock, home},
+		{`rm -rf "${_}"/`, all, VerdictBlock, home},
+		{`rm -rf $@/`, all, VerdictBlock, home},
+		{`rm -rf "$@"/`, all, VerdictBlock, home},
+		{`rm -rf "${@}/"`, all, VerdictBlock, home},
+		{`rm -rf $*/`, all, VerdictBlock, home},
+		{`rm -rf "$*/"`, all, VerdictBlock, home},
+		{`rm -rf ${*}/`, all, VerdictBlock, home},
+		{`rm -rf $1/`, all, VerdictBlock, home},
+		{`rm -rf "${1}"/`, all, VerdictBlock, home},
+		{`rm -rf ${10}/`, all, VerdictBlock, home},
+		{`rm -rf ${X:-$@/}`, all, VerdictBlock, home},
+		{`rm -rf ${X:-$_/}`, all, VerdictBlock, home},
+		{`rm -rf ${@%x}/`, all, VerdictBlock, home},
+		// In a pattern too: `$!*` can be `*`, which takes all of PWD.
+		{`rm -rf ${PWD%%$!*}/`, all, VerdictBlock, home},
+		{`rm -rf "${X%%"$!"*}"/`, shellBare | shellSQ, VerdictBlock, home},
+		// The look-alikes: a parameter that is never empty, a name that runs
+		// on past the `_`, and the job's number where it names no path.
+		{`rm -rf $$/`, shellBare | shellSQ, VerdictAllow, ""},
+		{`rm -rf $?/`, shellBare | shellSQ, VerdictAllow, ""},
+		{`rm -rf $#/`, shellBare | shellSQ, VerdictAllow, ""},
+		{`rm -rf $0/`, shellBare | shellSQ, VerdictAllow, ""},
+		{`rm -rf ${0}/`, shellBare | shellSQ, VerdictAllow, ""},
+		{`rm -rf $_x/`, shellBare | shellSQ, VerdictAllow, ""},
+		{`rm -rf $!`, shellBare | shellSQ, VerdictAllow, ""},
+		{`rm -rf "$1"`, shellBare | shellSQ, VerdictAllow, ""},
+		{`rm -f "$tmp.$!"`, shellBare | shellSQ, VerdictAllow, ""},
+		{`rm -rf "$d/$!"`, shellBare | shellSQ, VerdictAllow, ""},
+		{`kill $!`, shellBare | shellSQ, VerdictAllow, ""},
+		{`wait $!`, shellBare | shellSQ, VerdictAllow, ""},
+		{`echo $!`, shellBare | shellSQ, VerdictAllow, ""},
+		// The empty reading splits into no field: a line that names IFS
+		// reads these as it did before it (ifsSplits).
+		{`IFS=, ; rm -rf $1`, shellBare | shellSQ, VerdictAllow, ""},
+		{`IFS=, ; rm -rf ${1}`, shellBare | shellSQ, VerdictAllow, ""},
+		{`IFS=, ; rm -rf ${1%/}`, shellBare | shellSQ, VerdictAllow, ""},
+		{`IFS=, ; rm -rf $_`, shellBare | shellSQ, VerdictAllow, ""},
+	})
+}
