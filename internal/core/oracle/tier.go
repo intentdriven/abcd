@@ -31,7 +31,7 @@
 // allowlist lists no model admits no route; the model the agent's
 // oracle.roles.<agent> points at on the connection must be on its allowlist;
 // a leg to a connection the agent's role does not point at names no model and
-// is refused, because the record does not yet decide which model it asks for;
+// is refused, naming the oracle.roles.<agent> setting to add;
 // and a merged setting outside the set the connection's adapter accepts is
 // refused, never dropped. Escalating a tier after a failed fix round and dispatching a
 // step to a provider are still that spec's; until dispatch lands every
