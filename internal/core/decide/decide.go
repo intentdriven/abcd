@@ -21,12 +21,12 @@
 package decide
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
@@ -261,9 +261,9 @@ func redactDecisionText(repoRoot, text string) (string, error) {
 // — same second, same suffix, one directory — that time and entropy leave to the
 // store to arbitrate (spc-33 ruling 2). It cannot see a sibling checkout and does
 // not need to: the mint reads no maximum, so two checkouts never share the state
-// a lock would have to protect. It flocks the store's own directory file
-// descriptor, so no lock artefact is left in the committed record tree, and
-// O_NOFOLLOW refuses a symlinked store.
+// a lock would have to protect. It locks the store's own directory through
+// fsutil.WithDirLock, so no lock artefact is left in the committed record tree
+// and a symlinked store is refused; fn's own error passes through unchanged.
 func withMintLock(repoRoot string, fn func() error) error {
 	dir := filepath.Join(repoRoot, filepath.FromSlash(ADRsRelDir))
 	// Every level is created and proved real, ancestors included: a leaf
@@ -272,27 +272,16 @@ func withMintLock(repoRoot string, fn func() error) error {
 	if err := fsutil.EnsureRealDirAll(repoRoot, ADRsRelDir, 0o755); err != nil {
 		return fmt.Errorf("decide: creating %s: %w", ADRsRelDir, err)
 	}
-	fd, err := syscall.Open(dir, syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_NOFOLLOW, 0)
-	if err != nil {
-		return fmt.Errorf("decide: opening mint lock on %s: %w", ADRsRelDir, err)
+	ran := false
+	err := fsutil.WithDirLock(dir, mintLockTimeout, func() error {
+		ran = true
+		return fn()
+	})
+	switch {
+	case ran || err == nil:
+		return err
+	case errors.Is(err, fsutil.ErrLockContention):
+		return fmt.Errorf("decide: could not acquire mint lock within %s", mintLockTimeout)
 	}
-	defer syscall.Close(fd)
-
-	deadline := time.Now().Add(mintLockTimeout)
-	for {
-		lockErr := syscall.Flock(fd, syscall.LOCK_EX|syscall.LOCK_NB)
-		if lockErr == nil {
-			break
-		}
-		if lockErr != syscall.EWOULDBLOCK {
-			return fmt.Errorf("decide: acquiring mint lock: %w", lockErr)
-		}
-		if time.Now().After(deadline) {
-			return fmt.Errorf("decide: could not acquire mint lock within %s", mintLockTimeout)
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	defer syscall.Flock(fd, syscall.LOCK_UN)
-
-	return fn()
+	return fmt.Errorf("decide: opening mint lock on %s: %w", ADRsRelDir, err)
 }
