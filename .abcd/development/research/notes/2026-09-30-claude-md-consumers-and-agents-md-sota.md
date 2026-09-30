@@ -128,10 +128,16 @@ load. Removal would need all of the following, each checkable:
 3. **A floor on the harness version** in abcd's own install checks
    (v2.1.281, the version from which every session type the documentation
    names reads `AGENTS.md`), so a session that would load no instructions is
-   refused or warned rather than silent.
+   refused or warned rather than silent. This step couples abcd to one
+   vendor's version string, against the host-agnostic preference the
+   adversary filter above applies elsewhere; its cost is weighed with the
+   other steps.
 4. **A detector for the silent switch-off**: `conventions-router` warns
    when `AGENTS.md` exists beside a `CLAUDE.local.md` and no `CLAUDE.md`, the
-   one state in which the default setting stops reading `AGENTS.md`.
+   one state in which the default setting stops reading `AGENTS.md`. The
+   vendor documentation also names a setting, `claude-md-and-agents-md`,
+   that keeps `CLAUDE.local.md` and `AGENTS.md` loading together; it is the
+   alternative the detector is weighed against.
 5. **Then** remove the committed symlink here, in a change that shows a fresh
    session loading `AGENTS.md` (the harness prints
    `no CLAUDE.md found; AGENTS.md loaded: …`).
