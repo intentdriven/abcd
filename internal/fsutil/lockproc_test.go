@@ -20,6 +20,7 @@ const (
 	lockHelperEnv  = "ABCD_FSUTIL_LOCK_HELPER"
 	lockPathEnv    = "ABCD_FSUTIL_LOCK_PATH"
 	lockSpawnEnv   = "ABCD_FSUTIL_LOCK_SPAWN"
+	lockHelperDir  = "dir"
 	lockHelperFile = "file"
 )
 
@@ -45,6 +46,8 @@ func TestLockHelperProcess(t *testing.T) {
 	}
 	var err error
 	switch kind {
+	case lockHelperDir:
+		err = WithDirLock(path, 5*time.Second, hold)
 	case lockHelperFile:
 		err = WithFileLock(path, 5*time.Second, hold)
 	}
@@ -101,6 +104,9 @@ func startLockHolder(t *testing.T, kind, path string, spawn bool) *lockHolder {
 
 // dirOrFileLock takes the lock kind names on path with timeout.
 func dirOrFileLock(kind, path string, timeout time.Duration, fn func() error) error {
+	if kind == lockHelperDir {
+		return WithDirLock(path, timeout, fn)
+	}
 	return WithFileLock(path, timeout, fn)
 }
 
@@ -108,6 +114,9 @@ func dirOrFileLock(kind, path string, timeout time.Duration, fn func() error) er
 // for a directory lock, a file path (created by the lock) for a file lock.
 func lockTarget(t *testing.T, kind string) string {
 	t.Helper()
+	if kind == lockHelperDir {
+		return t.TempDir()
+	}
 	return filepath.Join(t.TempDir(), "k.lock")
 }
 
@@ -117,7 +126,7 @@ func lockTarget(t *testing.T, kind string) string {
 // held per open file description, and a same-process test cannot tell that
 // apart from a lock that excludes nothing across processes.
 func TestTheLockExcludesAnotherProcess(t *testing.T) {
-	for _, kind := range []string{lockHelperFile} {
+	for _, kind := range []string{lockHelperDir, lockHelperFile} {
 		t.Run(kind, func(t *testing.T) {
 			path := lockTarget(t, kind)
 			h := startLockHolder(t, kind, path, false)
@@ -155,7 +164,7 @@ func TestTheLockExcludesAnotherProcess(t *testing.T) {
 // would hold the lock for as long as the grandchild lives, so the descriptor is
 // close-on-exec.
 func TestTheLockIsReleasedWhenItsHolderDies(t *testing.T) {
-	for _, kind := range []string{lockHelperFile} {
+	for _, kind := range []string{lockHelperDir, lockHelperFile} {
 		for _, spawn := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/grandchild=%v", kind, spawn), func(t *testing.T) {
 				path := lockTarget(t, kind)
