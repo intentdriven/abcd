@@ -1068,3 +1068,24 @@ func TestDescribeReadsAnEmptySupersededByAsNoSuccessor(t *testing.T) {
 		})
 	}
 }
+
+// TestDescribeADRRefusesTwoFilesClaimingOneID: `abcd adr-37` over two files
+// that both answer to adr-37 refuses and names both, rather than rendering
+// whichever sorts first — the accepted twin must not speak for the proposed
+// decision (review-cfSettled finding 2).
+func TestDescribeADRRefusesTwoFilesClaimingOneID(t *testing.T) {
+	repo := t.TempDir()
+	write(t, repo, ".abcd/development/decisions/adrs/0037-x.md",
+		"---\nid: adr-37\nstatus: proposed\n---\n\n# The decision under review\n")
+	write(t, repo, ".abcd/development/decisions/adrs/0037-a.md",
+		"---\nid: adr-37\nstatus: accepted\n---\n\n# A twin\n")
+	d, err := Describe(repo, "adr-37")
+	if err == nil {
+		t.Fatalf("Describe(adr-37) over two claimants rendered %+v, want a refusal", d)
+	}
+	for _, f := range []string{"0037-x.md", "0037-a.md"} {
+		if !strings.Contains(err.Error(), f) {
+			t.Errorf("the refusal must name %s: %v", f, err)
+		}
+	}
+}

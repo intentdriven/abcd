@@ -265,6 +265,10 @@
       "severity": "blocker",
       "issues_dir": ".abcd/work/issues"
     },
+    "adr_id_unique": {
+      "enabled": true,
+      "severity": "blocker"
+    },
     "issue_impact_valid": {
       "enabled": true,
       "severity": "blocker",

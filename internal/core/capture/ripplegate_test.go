@@ -117,7 +117,7 @@ func TestRippleGateConsumersHoldOnMintedIDs(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, id := range []string{legacyOpen.ID, nativeOpen.ID, nativeFixed.ID} {
-		if _, ok := resolver.Lookup(id); !ok {
+		if !resolver.Has(id) {
 			t.Fatalf("resolver does not resolve %s", id)
 		}
 	}

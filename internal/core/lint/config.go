@@ -414,6 +414,7 @@ var knownRules = map[string]bool{
 	"receipt_gate":               true,
 	"gate_lockstep":              true,
 	"issue_id_unique":            true,
+	ruleADRIDUnique:              true,
 	"issue_impact_valid":         true,
 	ruleAgentContract:            true,
 	ruleCitationFootnotes:        true,

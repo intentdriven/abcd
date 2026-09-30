@@ -523,7 +523,7 @@ func resolveCitations(repoRoot string, hits []GrillHit) ([]string, error) {
 			continue
 		}
 		seen[h.Record] = true
-		if _, ok := r.Lookup(h.Record); !ok {
+		if !r.Has(h.Record) {
 			unresolved = append(unresolved, h.Record)
 			continue
 		}
