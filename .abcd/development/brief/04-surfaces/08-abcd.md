@@ -232,7 +232,7 @@ by the pick's one rule (`intent.PickLess`), the readiest first and the oldest
 among equals. The head is the first of them the pick would start: one that
 passes the build's record-only pre-start checks, read through the one
 statement of them the build runs too (`intent.StartChecksIn`: no open question,
-the claim sections answered, no hold, no unshipped blocker, a step left to
+the claim sections answered, no hold, no unsettled blocker, a step left to
 build), and not one the state file shows in a lane, as the pick passes over an
 intent with a run in progress. Nor is it one another checkout holds: the
 board pays the build's peers check (`loop.StatusPeers`, the check build next

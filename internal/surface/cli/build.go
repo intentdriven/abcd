@@ -92,7 +92,7 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 		Long: "Start the implement loop for one intent, or resume the run already in progress for it.\n" +
 			"A new run's checks run first, and every one must pass:\n" +
 			"the intent is READY (planned, criteria written, its spec linked and written), asks no\n" +
-			"open question, has no unanswered claim section, is not held, names no unshipped intent\n" +
+			"open question, has no unanswered claim section, is not held, names no unsettled blocker\n" +
 			"in `blocked_by`, its spec leaves a step to build, and no peer holds it (no sibling\n" +
 			"worktree or local branch holds it in another bucket, and no session holds a live claim\n" +
 			"on it; a peer or claim that cannot be read counts as holding it). A refusal names the\n" +
@@ -182,7 +182,7 @@ func newBuildNextCommand(asJSON *bool) *cobra.Command {
 		Use: "next [--session <id>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--max <n>] [--until-empty]",
 		Long: "Pick the readiest planned intent, write down why, and start its run.\n\n" +
 			"The candidates are the planned intents that pass every check `abcd build <itd-N>` runs\n" +
-			"(READY, no open question, no unanswered claim section, not held, no unshipped intent in\n" +
+			"(READY, no open question, no unanswered claim section, not held, no unsettled blocker in\n" +
 			"`blocked_by`, a step left to build, no peer holding it), less one this checkout already has\n" +
 			"a run in progress for. Each is scored from its record, three parts at equal weight, each 0\n" +
 			"to 100: criteria clarity (the share of its acceptance criteria in Given-When-Then form), a\n" +

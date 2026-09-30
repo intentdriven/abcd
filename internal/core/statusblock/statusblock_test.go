@@ -354,6 +354,65 @@ func TestTheHeadIsThePicksChoice(t *testing.T) {
 	}
 }
 
+// TestTheHeadTakesAnIntentWhoseBlockerASettledRecordReplaced is rulings CF1
+// and CF2 of 2026-09-30 on the board: the "next up" reads the build's own
+// blocked check (intent.StartChecksIn), so an intent whose blocker was
+// superseded by an accepted decision, or reclassified as a discipline, heads
+// the board, and one whose blocker a proposed decision replaced does not.
+func TestTheHeadTakesAnIntentWhoseBlockerASettledRecordReplaced(t *testing.T) {
+	const superseded = "---\nid: itd-27\nslug: s\nkind: standalone\nsuperseded_by: adr-37\nkind_at_supersession: standalone\n---\n# The replaced one\n"
+	cases := []struct {
+		name  string
+		files map[string]string
+		heads bool
+	}{
+		{"superseded by an accepted decision", map[string]string{
+			".abcd/development/intents/superseded/itd-27-s.md": superseded,
+			".abcd/development/decisions/adrs/0037-d.md":       "---\nid: adr-37\nstatus: accepted\n---\n# d\n",
+		}, true},
+		{"reclassified as a discipline", map[string]string{
+			".abcd/development/intents/disciplines/itd-27-s.md": "---\nid: itd-27\nslug: s\nkind: discipline\n---\n# A rule\n",
+		}, true},
+		{"superseded by a proposed decision", map[string]string{
+			".abcd/development/intents/superseded/itd-27-s.md": superseded,
+			".abcd/development/decisions/adrs/0037-d.md":       "---\nid: adr-37\nstatus: proposed\n---\n# d\n",
+		}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			w := func(rel, body string) {
+				t.Helper()
+				p := filepath.Join(root, filepath.FromSlash(rel))
+				if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			w(".abcd/development/intents/planned/itd-4-blocked.md", readyIntent("itd-4", "The blocked one", "spc-14", "blocked_by: [itd-27]\n"))
+			w(".abcd/development/specs/open/spc-14-blocked.md", scoredSpec("spc-14", "itd-4"))
+			for rel, body := range tc.files {
+				w(rel, body)
+			}
+			b, err := Read(root, nil, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := ids(b.Next); !reflect.DeepEqual(got, []string{"itd-4"}) {
+				t.Fatalf("Next = %v, want [itd-4]", got)
+			}
+			switch {
+			case tc.heads && (len(b.Now) != 1 || b.Now[0].ID != "itd-4" || !b.Now[0].NextUp):
+				t.Errorf("Now = %+v, want itd-4 marked next up: its blocker is settled", b.Now)
+			case !tc.heads && len(b.Now) != 0:
+				t.Errorf("Now = %+v, want no head: a proposed decision does not settle the blocker", b.Now)
+			}
+		})
+	}
+}
+
 // TestTheHeadPassesOverWhatTheBuildRefusesFromTheRecord is the head under the
 // build's record-only pre-start checks (iss-2609291803334904): a READY intent
 // with an open question, an unanswered claim section, an unshipped blocker, or
