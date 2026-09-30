@@ -755,3 +755,24 @@ func TestLoadSkipsARulelessDomainAndKeepsTheRest(t *testing.T) {
 		t.Error("a dormant state-only override keeps its domain: dormant is the documented way to silence one")
 	}
 }
+
+// TestOpinionsPreferSOTARuleNamesAutonomousRemedyGrounds (iss-2609292159470796)
+// holds the OPINIONS pointer at prefer-sota to the clause the product thinker
+// asked for: a remedy an autonomous run chooses cites its grounds, a
+// primary-source state-of-the-art check where the fix depends on outside
+// practice. The pointer stays a pointer; the section lives in the principle.
+func TestOpinionsPreferSOTARuleNamesAutonomousRemedyGrounds(t *testing.T) {
+	op := Defaults().Domains["OPINIONS"]
+	for _, r := range op.Rules {
+		if !strings.Contains(r, "principles/prefer-sota.md") {
+			continue
+		}
+		for _, p := range []string{"autonomous run", "cites its grounds", "primary-source"} {
+			if !strings.Contains(r, p) {
+				t.Errorf("the prefer-sota OPINIONS rule does not say %q: %s", p, r)
+			}
+		}
+		return
+	}
+	t.Fatal("OPINIONS carries no rule pointing at principles/prefer-sota.md")
+}
