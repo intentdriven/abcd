@@ -78,7 +78,11 @@ _None open._
 
 ## Audit Notes
 
-_Empty. Populated by intent-auditor when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-7093bbfa22c6 -->
+Fidelity review OWED (receipt rcp-7093bbfa22c6).
+<!-- abcd-review-end receipt=rcp-7093bbfa22c6 -->
+
+- 2026-09-30 — Shipped under the person's ruling DR2 (2026-09-30: "SHIP NOW with the first live bump recorded as owed (after the person creates the App + secrets)"). The first live bump is owed and not yet run: the first acceptance criterion is proven offline only, against a stand-in App API and a local remote, until the person creates and installs the GitHub App, stores its two Dependabot secrets and sets the owner, and one live bump is watched through. iss-2609292030070275 tracks that live run and stays open.
 
 ## Grounds
 

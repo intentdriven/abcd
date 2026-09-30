@@ -189,7 +189,7 @@ with no semantic detector degrades cleanly to the deterministic gates and the
 empty build job.
 
 **Dependency-bump re-authoring is opt-in per repository**
-([itd-2609221842494980](../../intents/planned/itd-2609221842494980-a-dependency-bump-lands-without-a-person-re-authoring-it-a.md)).
+([itd-2609221842494980](../../intents/shipped/itd-2609221842494980-a-dependency-bump-lands-without-a-person-re-authoring-it-a.md)).
 Opting in seeds the declaration, `.abcd/config/dependency-reauthor.conf`, and
 the declaration's presence keeps the repository opted in on every later run;
 without it nothing of this is written. Beside the release workflows the scaffold
