@@ -1,7 +1,6 @@
 package capture
 
 import (
-	"errors"
 	"fmt"
 	"slices"
 	"sort"
@@ -27,8 +26,8 @@ import (
 // a value that is not a release tag).
 //
 // Nothing here writes. The plan is what a drain WOULD do; the run that hands
-// each eligible issue to an issue-keyed lane is not built yet, and DrainStart
-// says so rather than pretending to run.
+// each eligible issue to an issue-keyed lane is the implement loop's
+// (loop.Drain), which reads this plan afresh at every move.
 
 // DrainOutcome is the disposition a drain gives one open issue.
 type DrainOutcome string
@@ -74,8 +73,10 @@ const (
 // DrainVerdict is one open issue's disposition, with the rule that decided it
 // and the reason in words.
 type DrainVerdict struct {
-	ID       string       `json:"id"`
-	Path     string       `json:"path"`
+	ID   string `json:"id"`
+	Path string `json:"path"`
+	// Title is the record's one-line summary: its first non-blank body line.
+	Title    string       `json:"title,omitempty"`
 	Severity Severity     `json:"severity,omitempty"`
 	Category Category     `json:"category,omitempty"`
 	Outcome  DrainOutcome `json:"outcome"`
@@ -102,7 +103,7 @@ type DrainVerdict struct {
 // both. `capture defer` writes a deferral only onto a major or
 // critical record, but a hand-written one on a lighter record is read alike.
 func eligibility(iss Issue, r drainrule.Rule, anchor deferralAnchor) DrainVerdict {
-	v := DrainVerdict{ID: iss.ID, Path: iss.Path, Severity: iss.Severity, Category: iss.Category}
+	v := DrainVerdict{ID: iss.ID, Path: iss.Path, Title: issueTitleLine(iss.Body, iss.Slug), Severity: iss.Severity, Category: iss.Category}
 	decide := func(o DrainOutcome, rule DrainRule, reason string) DrainVerdict {
 		v.Outcome, v.Rule, v.Reason = o, rule, reason
 		return v
@@ -347,28 +348,3 @@ func parseReleaseTag(tag string) (launch.Semver, bool) {
 // ErrDrainRuleUnrecorded is the refusal when the drained repository holds no
 // record of its eligibility rule (itd-82 decision 4, criterion 11; ruling BX2).
 var ErrDrainRuleUnrecorded = drainrule.ErrUnrecorded
-
-// ErrDrainRunUnbuilt is the refusal of the run itself: the issue-keyed lane a
-// drain hands each eligible issue to (itd-2609201916151817 decision 10) is
-// not built, so there is nothing safe to start.
-var ErrDrainRunUnbuilt = errors.New("the drain run is not built")
-
-// DrainStart is the check an unattended drain makes before it starts. It reads
-// the repository's own rule and refuses without it, naming how to add it, or
-// when it is ambiguous or malformed. With the rule it still refuses, because
-// the run has no lane to hand an issue to yet, naming the rule's record and
-// every floor the record loosens (ruling H11). Writes nothing.
-func DrainStart(repoRoot string) error {
-	rule, err := drainrule.Load(repoRoot)
-	if err != nil {
-		return err
-	}
-	loosened := ""
-	if len(rule.Loosened) > 0 {
-		loosened = fmt.Sprintf("; this repository's rule loosens abcd's floors, letting a drain take %s",
-			strings.Join(rule.Loosened, ", "))
-	}
-	return fmt.Errorf("%w: the issue-keyed lane it hands each eligible issue to does not exist yet "+
-		"(itd-2609201916151817 decision 10); `abcd drain --dry-run` shows what it would do under %s%s",
-		ErrDrainRunUnbuilt, rule.Record, loosened)
-}

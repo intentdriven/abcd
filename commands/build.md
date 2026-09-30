@@ -1,7 +1,7 @@
 ---
 name: build
 description: "Start the loop that takes one READY intent to delivered: Writes the run's state file in the local tier; refuses an open question, a hold or a peer holding it."
-argument-hint: "<itd-N> | next"
+argument-hint: "<itd-N> | <iss-N> | next"
 block: people
 ---
 
@@ -34,6 +34,14 @@ is not counted as a peer's. A session that has not joined is refused at the
 `claim` stage with nothing written. Without `--session` the run holds no claim,
 and the result says so (`claim` is null): another checkout cannot see the run
 until its lane shows.
+
+An issue id builds the loop's issue-keyed lane instead: `build <iss-N>` (an
+issue id by shape) checks that the repository's own drain rule takes the issue,
+read as `/abcd:drain --dry-run` reads it, and that no peer holds it, then opens
+one lane whose brief is the issue with its remedy as the work. The receipt must
+name the issue in `resolves`, and the landing resolves it. `/abcd:drain` starts
+these runs one at a time; see `/abcd:implement` for the lane's receipt and its
+hand-back.
 
 For an intent with no run in progress, the checks run first, and every one must
 pass:

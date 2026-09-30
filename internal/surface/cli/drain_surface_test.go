@@ -15,7 +15,7 @@ import (
 // The front doors of the drain's field-only slice (itd-82,
 // spc-2609212015054359): `capture --remedy` writes the field eligibility reads,
 // `drain --dry-run` renders what a drain would do and writes nothing, and a
-// bare `drain` refuses to start.
+// bare `drain` performs one move of the drain run.
 
 // captureWithRemedy files one issue through the CLI and returns its id.
 func captureWithRemedy(t *testing.T, text string, flags ...string) string {
@@ -106,26 +106,54 @@ func TestDrainDryRunRendersEveryDispositionAndWritesNothing(t *testing.T) {
 	}
 }
 
-// TestDrainWithoutDryRunRefusesToStart: the run itself is not built, so a bare
-// `drain` refuses, says why, points at the dry run, and writes nothing.
-func TestDrainWithoutDryRunRefusesToStart(t *testing.T) {
+// TestTheBareDrainOpensALaneAndSaysWhatItDid: without --dry-run the drain
+// performs one move: it opens the first eligible issue's lane through the
+// implement loop, names the run to drive, flags every issue the rule hands
+// back naming the rule, and exits 0; --dry-run refuses --max.
+func TestTheBareDrainOpensALaneAndSaysWhatItDid(t *testing.T) {
 	repo := drainRuleRepo(t, drainrule.ProposalFrontmatter())
-	captureWithRemedy(t, "a nil map is written before it is made", "--category", "bug", "--remedy", "make the map first")
-	before := ledgerIssueCount(t, repo)
+	if err := os.MkdirAll(filepath.Join(repo, ".abcd", ".work.local"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", t.TempDir())
+	id := captureWithRemedy(t, "a nil map is written before it is made", "--category", "bug", "--remedy", "make the map first")
+	major := captureWithRemedy(t, "the parser drops a record", "--category", "bug", "--severity", "major", "--remedy", "rewrite it")
 
 	var stdout, stderr bytes.Buffer
-	code := Run([]string{"drain"}, &stdout, &stderr)
-	if code == 0 {
-		t.Fatalf("a bare drain exited 0:\n%s%s", stdout.String(), stderr.String())
+	if code := Run([]string{"drain", "--max", "1"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("a bare drain exited %d:\n%s%s", code, stdout.String(), stderr.String())
 	}
-	msg := stdout.String() + stderr.String()
-	for _, want := range []string{"not built", "--dry-run"} {
-		if !strings.Contains(msg, want) {
-			t.Errorf("the refusal does not say %q:\n%s", want, msg)
+	for _, want := range []string{"the drain begins", "cap:   --max 1", id, "in-progress", major, "severity", "abcd implement step"} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Errorf("the drain's summary does not carry %q:\n%s", want, stdout.String())
 		}
 	}
-	if after := ledgerIssueCount(t, repo); after != before {
-		t.Fatalf("a refused drain changed the ledger")
+	stdout.Reset()
+	stderr.Reset()
+	if code := Run([]string{"drain", "--json"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("drain --json exited %d:\n%s%s", code, stdout.String(), stderr.String())
+	}
+	var res struct {
+		Started bool `json:"started"`
+		Max     int  `json:"max"`
+		Lane    struct {
+			Issue string `json:"issue"`
+		} `json:"lane"`
+		Flags []struct {
+			Issue string `json:"issue"`
+			Route string `json:"route"`
+		} `json:"flags"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &res); err != nil {
+		t.Fatalf("--json is not JSON: %v\n%s", err, stdout.String())
+	}
+	if res.Started || res.Max != 1 || res.Lane.Issue != id || len(res.Flags) != 1 || res.Flags[0].Issue != major {
+		t.Errorf("the second move continues the drain, waits on its lane, and flags the major issue: %+v", res)
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if code := Run([]string{"drain", "--dry-run", "--max", "2"}, &stdout, &stderr); code != 2 {
+		t.Errorf("--dry-run with --max exited %d, want 2", code)
 	}
 }
 
@@ -198,10 +226,9 @@ func TestDrainRefusesARepositoryWithoutItsOwnRule(t *testing.T) {
 
 // TestDrainNamesEveryLoosenedFloor is ruling H11 at the front door: a project
 // whose record lets a drain take major and security issues has every loosened
-// floor named by the dry run's text, on stderr, in --json, and by the start's
-// refusal.
+// floor named by the dry run's text, on stderr, in --json, and by the run.
 func TestDrainNamesEveryLoosenedFloor(t *testing.T) {
-	drainRuleRepo(t, "drain_categories: [tech-debt, documentation, inconsistency, drift, bug, ux]\n"+
+	repo := drainRuleRepo(t, "drain_categories: [tech-debt, documentation, inconsistency, drift, bug, ux]\n"+
 		"drain_severities: [nitpick, minor, major]\ndrain_security: take\ndrain_remedy: required\n")
 	major := captureWithRemedy(t, "the parser drops a whole record", "--category", "bug", "--severity", "major", "--remedy", "rewrite it")
 
@@ -243,10 +270,14 @@ func TestDrainNamesEveryLoosenedFloor(t *testing.T) {
 
 	stdout.Reset()
 	stderr.Reset()
+	t.Setenv("HOME", t.TempDir())
+	if err := os.MkdirAll(filepath.Join(repo, ".abcd", ".work.local"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	code := Run([]string{"drain"}, &stdout, &stderr)
 	msg := stdout.String() + stderr.String()
-	if code != 2 || !strings.Contains(msg, "loosens abcd's floors") || !strings.Contains(msg, "severity major, security") {
-		t.Errorf("the start (exit %d) does not name the loosened floors:\n%s", code, msg)
+	if code != 0 || !strings.Contains(stdout.String(), "LOOSENED: severity major") || !strings.Contains(msg, "loosens abcd's floors") || !strings.Contains(msg, "severity major, security") {
+		t.Errorf("the run (exit %d) does not name the loosened floors:\n%s", code, msg)
 	}
 }
 

@@ -271,6 +271,16 @@ landing waiting for its pull request to merge, is contention at exit 3. The
 record verb reads a run's record back at the end, and on a complete run captures
 the run's transcripts into the history store, one capture per path.
 
+A run keyed by an issue (decision 10 on itd-2609201916151817, the lane the
+drain opens for each eligible issue) has one lane. Its brief is the issue's
+record with its remedy as the work; its receipt must declare the issue fixed,
+and the landing resolves it with the commit the receipt names. Its receipt may
+instead hand the issue back, naming the kind of decision the lane found, the
+reason and, for a design finding or a second package, the home: the receipt
+verb then discards the lane's worktree and branch, records the discarded head,
+and ends the lane before its validators, and the drain routes the hand-back by
+kind ([`35-drain.md`](35-drain.md)).
+
 ## Exit codes
 
 `0` done, and every status of the load check; `2` refused (an unrecognised input, a session that has not joined, a

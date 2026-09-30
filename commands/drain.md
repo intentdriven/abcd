@@ -1,20 +1,27 @@
 ---
 name: drain
-description: "Sort open issues by this repository's own drain rule, naming each loosened floor: Writes nothing; refuses without the rule's record, or without --dry-run."
+description: "Fix the issues needing no decision, one lane at a time, and hand the rest back: Writes its state and user-visible drafts; refuses without the rule's record."
 block: agents
 ---
 
 # `/abcd:drain`
 
-Show what a drain of the open issue ledger would do: which issues a machine may
-fix alone, in the order it would take them, and what happens to every other
-open issue. The drain run itself is not built yet, so this page covers its dry
-run, which performs **zero writes**.
+Work the open issue ledger: fix, one lane at a time, the issues this
+repository's own rule says need no decision, and hand every other one back by
+kind. The dry run shows what a drain would do and performs **zero writes**; the
+run performs one move per invocation.
 
-Run:
+Show the plan first:
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/abcd" drain --dry-run --json
+```
+
+Then run the drain, one move at a time:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" drain --json            # all eligible issues
+"${CLAUDE_PLUGIN_ROOT}/abcd" drain --max 3 --json    # at most three lanes
 ```
 
 ## The rule
@@ -67,9 +74,9 @@ decides its one disposition:
 | `unreadable` | `unreadable` | the ledger reader refuses the record; the reason names why |
 | `eligible` | `fields` | every field rule passes |
 
-An eligible issue is not yet promised a lane: the host judgement over its
-remedy (a user-visible or trust-boundary change hands it back) does not run in
-a dry run, and it can only ever hand an issue back.
+The host judgement over an eligible remedy (a user-visible or trust-boundary
+change hands it back) is not built: the run opens a lane for every eligible
+issue, and only the lane itself can hand its issue back.
 
 ## The order
 
@@ -101,7 +108,7 @@ an open record carries a deferral and the checkout holds no release tag;
 that is newer than `anchor`, present when the checkout lacks it (every record
 deferred past such a tag is then handed back, and a deferral past `anchor` has
 lapsed); `order` is the ordering rule;
-`dispositions` holds one entry per open issue (`id`, `path`, `severity`,
+`dispositions` holds one entry per open issue (`id`, `path`, `title`, `severity`,
 `category`, `outcome`, `rule`, `reason`, and `blockers` when skipped); `counts`
 totals them by outcome; `ledger` names the checkout and branch read.
 
@@ -112,6 +119,70 @@ order, then the others grouped by outcome with their reasons. For an
 ones an automatic filer wrote apart, since their reason says so. For a
 `waits-on-ruling` or `deferred` hand-back, say which ruling or release it waits
 on. Do not act on the list: a hand-back is a person's decision.
+
+## The run
+
+Each `abcd drain` without `--dry-run` performs one move and exits 0, saying
+what it did in `next`:
+
+- **It opens a lane.** The next eligible issue in the order gets the implement
+  loop's issue-keyed run (the run `abcd build <iss-N>` starts): `start` names
+  the run, and `lane` the issue and run id. Drive it as any run:
+  `abcd implement step --run <run-id>` until it awaits an agent, then start that
+  agent with the brief it names. The brief is the issue with its remedy as the
+  work; the implementer's receipt names the issue in `resolves`, and the landing
+  resolves it and opens one pull request.
+- **It waits.** While that lane is in progress, a drain opens nothing and names
+  the run again. One lane at a time.
+- **It routes.** Once the lane is handed back or its pull request is open, the
+  next drain records the outcome in `lanes`, routes a hand-back (below), and
+  opens the next lane.
+- **It pauses.** At the end of the drain's working window it writes
+  `next_eligible_at` into `.abcd/.work.local/run/drain.json` and opens nothing;
+  before that time a drain opens nothing. Run it again at or after that time.
+- **It ends.** At `--max <n>` lanes (`stopped: "cap"`), or when nothing eligible
+  is left (`stopped: "empty"`), it reports and ends; `complete` is `true`. The
+  next `abcd drain` begins a new drain.
+
+`--pace`, `--sub-agents` and `--fix-rounds` are `abcd build`'s, read when a
+drain begins; `--max` is set then too. Naming another while the drain runs is
+refused.
+
+### The hand-back, by kind
+
+A lane that meets a decision writes `"handback": {"kind", "reason", "home"}` in
+its receipt in place of `resolves`; the loop discards the lane's worktree and
+branch and ends it. The drain routes it:
+
+| `kind` | `route` | Written |
+| --- | --- | --- |
+| `user-visible` | `promoted`: an intent draft seeded from the issue (`capture promote`) | the draft, and the issue's `related_intents`; nothing else |
+| `trust-rule` | `decision-record`: flagged, with the lane's reason as `question` | nothing; no record is minted |
+| `design-finding`, `second-package` | `home`: flagged with the `home` the lane names | nothing |
+| (fix rounds exhausted) | `home`: flagged, the issue staying open | nothing |
+
+Every issue the rule hands back is in `flags` with `route: "rule"` and the
+`rule` that excluded it; `flags` are re-derived at every move and written
+nowhere.
+
+### The run's payload
+
+`state` is the drain's state file; `started` is `true` when this move began a
+drain; `rule`, `loosened` and `order` are the plan's; `max` is the cap (`0`:
+all); `pace` is the drain's pace; `lanes` lists every lane the drain opened
+(`issue`, `run_id`, `opened_at`, `outcome`: `in-progress`, `pull-request`,
+`handed-back` or `done`, and `pr`); `lane` is the one in progress; `start` is
+the run this move started; `routed` are the hand-backs this move routed and
+`hand_backs` every one the drain has (`issue`, `from`, `kind`, `route`, `draft`,
+`question`, `rule`, `home`, `reason`, `wrote`); `flags` are the rule's
+hand-backs; `passed` names an eligible issue this move did not take, with why;
+`dispositions` is the plan; `next_eligible_at`, `stopped` and `complete` say
+whether it paused or ended; `next` is the one move to make.
+
+Tell the user any loosened floors first, then what this move did (the lane
+opened, the hand-back routed, the pause or the end), then every hand-back with
+its route and what it wrote, then `next`. Do not plan a promoted draft or write
+a flagged decision: those are a person's.
 
 ## Refusals
 
@@ -128,9 +199,12 @@ on. Do not act on the list: a hand-back is a person's decision.
   safely (a store or record that is a symlink, wherever it points, or a record
   past the size cap) refuses. Every one of these
   exits 2 with nothing written, on the dry run and the bare verb alike.
-- Without `--dry-run` the verb refuses to start (exit 2, nothing written): the
-  issue-keyed lane a drain hands each issue to is not built. The refusal names
-  the rule's record, every floor it loosens, and the dry run.
+- The run refuses (exit 2, nothing written) a checkout without the local tier,
+  a negative `--max`, and a `--max` or pace other than the one a drain in
+  progress began with; a drain state it cannot read as its own is refused,
+  naming the file. Another drain moving in the checkout exits 3: back off and
+  retry. `--dry-run` refuses `--max`, `--pace`, `--sub-agents` and
+  `--fix-rounds`.
 - Outside a checkout, or on a ledger holding one id in two status folders, it
   refuses (exit 2) as every capture verb does.
 

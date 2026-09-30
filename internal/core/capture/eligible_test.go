@@ -286,10 +286,9 @@ func TestDrainPlanGivesAnUnreadableOpenRecordItsOwnDisposition(t *testing.T) {
 
 // TestADrainRefusesARepositoryWithoutItsOwnRule is criterion 11 under ruling
 // BX2: the repository must hold the eligibility decision in its own record, and
-// until it does both the dry run and the start refuse, naming how to add it.
-// With the record, the start still refuses, because the issue-keyed lane it
-// would hand each issue to is not built, and it says so rather than pretending
-// to run.
+// until it does the plan every drain move reads refuses, naming how to add it
+// and writing nothing. With the record, the plan names it. The run's own
+// refusal is loop.Drain's, tested there.
 func TestADrainRefusesARepositoryWithoutItsOwnRule(t *testing.T) {
 	repo, ir := ledger(t)
 	f := drainFixture{t: t, repo: repo, ir: ir}
@@ -300,24 +299,14 @@ func TestADrainRefusesARepositoryWithoutItsOwnRule(t *testing.T) {
 	} else if !strings.Contains(err.Error(), "ahoy install") || !strings.Contains(err.Error(), drainrule.FieldCategories) {
 		t.Errorf("the refusal does not name how to add the record: %v", err)
 	}
-	err := DrainStart(repo)
-	if !errors.Is(err, ErrDrainRuleUnrecorded) || !strings.Contains(err.Error(), "ahoy install") {
-		t.Fatalf("a start without the repository's rule: got %v, want ErrDrainRuleUnrecorded naming ahoy install", err)
-	}
 	if after := snapshotTree(t, repo); after != before {
 		t.Fatalf("a refused drain wrote:\nbefore %s\nafter  %s", before, after)
 	}
 
 	writeRuleRecord(t, repo, drainrule.ProposalFrontmatter())
-	err = DrainStart(repo)
-	if !errors.Is(err, ErrDrainRunUnbuilt) {
-		t.Fatalf("with the record: got %v, want ErrDrainRunUnbuilt", err)
-	}
-	if !strings.Contains(err.Error(), "--dry-run") || !strings.Contains(err.Error(), strictRuleRecord) {
-		t.Errorf("the refusal does not name the dry run and the rule's record: %v", err)
-	}
-	if strings.Contains(err.Error(), "loosen") {
-		t.Errorf("the strict rule's start names a loosened floor: %v", err)
+	p, err := PlanDrain(DrainPlanRequest{RepoRoot: repo, IssuesRoot: ir})
+	if err != nil || p.Record != strictRuleRecord || len(p.Loosened) != 0 {
+		t.Fatalf("with the record the plan names it and loosens nothing: %+v %v", p, err)
 	}
 }
 
@@ -374,12 +363,6 @@ func TestALoosenedRuleIsLoud(t *testing.T) {
 	if !strings.Contains(p.Order, "ux, security") || !strings.Contains(p.Order, "nitpick before minor before major") {
 		t.Errorf("the order does not state the loosened rule: %s", p.Order)
 	}
-	err := DrainStart(repo)
-	for _, want := range []string{"loosens", "severity major", "security"} {
-		if err == nil || !strings.Contains(err.Error(), want) {
-			t.Errorf("the start's refusal does not name %q: %v", want, err)
-		}
-	}
 }
 
 // TestAMalformedRuleRefusesTheDrain: a partial record refuses the dry run and
@@ -391,9 +374,6 @@ func TestAMalformedRuleRefusesTheDrain(t *testing.T) {
 	f.file("iss-1", SeverityMinor, "bug", "r")
 	if p, err := PlanDrain(DrainPlanRequest{RepoRoot: repo, IssuesRoot: ir}); !errors.Is(err, drainrule.ErrMalformed) {
 		t.Fatalf("a partial record: plan %+v, err %v; want ErrMalformed", p, err)
-	}
-	if err := DrainStart(repo); !errors.Is(err, drainrule.ErrMalformed) || !strings.Contains(err.Error(), drainrule.FieldRemedy) {
-		t.Fatalf("a partial record's start: %v; want ErrMalformed naming %s", err, drainrule.FieldRemedy)
 	}
 }
 

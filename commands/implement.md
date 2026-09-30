@@ -253,6 +253,19 @@ then `validate` and `land`. An implementer's receipt is one strict JSON object:
 branch past its base, the definition of done's output exists with exit code 0,
 the report exists, and each fixed capture names one of the receipt's commits and
 an impact; any other field, a verdict included, refuses it.
+
+An issue-keyed run (`build <iss-N>`, the run `/abcd:drain` starts for each
+eligible issue) has one lane. Its brief is the issue's record read at the lane's
+base, its remedy as the work, and the definition of done a detector watched to
+fail before the fix and pass after. Its receipt must name the issue in
+`resolves`, or `receipt` refuses naming it; its validators take no fidelity
+audit, and `land` resolves the issue and opens one pull request. A receipt may
+instead carry `handback` (`kind`: `user-visible`, `trust-rule`,
+`design-finding` or `second-package`; `reason`; and `home`, required for the
+last two) with no `resolves` and no definition of done: `receipt` then discards
+the lane's worktree and branch, ends the lane at `handed-back` before the
+validators, and the result's `hand_back` names the kind, the reason, the home
+and the `discarded` head. `/abcd:drain` routes it by kind.
 `validate` hands the lane's head to fresh validators one at a time and records
 each verdict from the validator's own return; the fidelity audit passes only
 when every criterion is met, so an undecided (`INCONCLUSIVE`) criterion sends

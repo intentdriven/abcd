@@ -111,16 +111,29 @@ func briefStage(c Context, lane *Lane) (Outcome, error) {
 			"the lane has no worktree the loop made (its state names "+quoteOrNone(fsutil.RedactHome(lane.Worktree))+")",
 			"the worktree stage makes it; restore the run's state file")
 	}
-	src, err := readBriefSources(c.RepoRoot, c.State, lane)
-	if err != nil {
-		return Outcome{}, err
-	}
 	dirRel, err := laneRel(c.State.RunID, lane.ID, StageBrief)
 	if err != nil {
 		return Outcome{}, err
 	}
 	rel := dirRel + "/" + BriefFileName
-	body := renderBrief(c.State, *lane, filepath.Join(c.RepoRoot, filepath.FromSlash(dirRel)), src)
+	laneDir := filepath.Join(c.RepoRoot, filepath.FromSlash(dirRel))
+	var body []byte
+	var from string
+	if c.State.Issue() != "" {
+		src, err := readIssueBriefSources(c.RepoRoot, c.State, lane)
+		if err != nil {
+			return Outcome{}, err
+		}
+		body = renderIssueBrief(c.State, *lane, laneDir, src)
+		from = fmt.Sprintf("%s and %s (%s)", c.State.Issue(), ConventionsFile, src.conventionsFrom)
+	} else {
+		src, err := readBriefSources(c.RepoRoot, c.State, lane)
+		if err != nil {
+			return Outcome{}, err
+		}
+		body = renderBrief(c.State, *lane, laneDir, src)
+		from = fmt.Sprintf("%s, %s, %s (%s) and %d cited decision(s)", c.State.Intent, c.State.Spec, ConventionsFile, src.conventionsFrom, len(src.adrs)+len(src.decisions))
+	}
 	if err := fsutil.EnsureRealDirAll(c.RepoRoot, dirRel, dirPerm); err != nil {
 		return Outcome{}, fmt.Errorf("creating the lane's directory: %w", err)
 	}
@@ -133,8 +146,7 @@ func briefStage(c Context, lane *Lane) (Outcome, error) {
 		return Outcome{}, fmt.Errorf("writing %s: %w", rel, err)
 	}
 	lane.Brief = rel
-	return Outcome{Note: fmt.Sprintf("rendered %s from %s, %s, %s (%s) and %d cited decision(s) at %s",
-		rel, c.State.Intent, c.State.Spec, ConventionsFile, src.conventionsFrom, len(src.adrs)+len(src.decisions), shortSHA(lane.BaseSHA))}, nil
+	return Outcome{Note: fmt.Sprintf("rendered %s from %s at %s", rel, from, shortSHA(lane.BaseSHA))}, nil
 }
 
 // readBriefSources reads what a brief is rendered from out of the lane's base

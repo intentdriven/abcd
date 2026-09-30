@@ -308,10 +308,10 @@ func start(repoRoot, key string, o Options, pick *RunPick) (StartResult, error) 
 		}
 		var claim *implement.ClaimResult
 		if shared != nil {
-			c, err := shared.Claim(implement.ClaimRequest{Session: o.Session, Record: chk.Intent, Lane: id, Lease: implement.MaxLease})
+			c, err := shared.Claim(implement.ClaimRequest{Session: o.Session, Record: chk.record(), Lane: id, Lease: implement.MaxLease})
 			if err != nil {
 				_ = root.Remove(runRel(id))
-				return claimRefusal(o.Session, chk.Intent, err)
+				return claimRefusal(o.Session, chk.record(), err)
 			}
 			claim = &c
 		}
@@ -334,7 +334,7 @@ func start(repoRoot, key string, o Options, pick *RunPick) (StartResult, error) 
 		}
 		openNextLane(&st)
 		st.Record = append(st.Record, Entry{At: now, Lane: st.Lanes[0].ID, Stage: "start",
-			Note: fmt.Sprintf("checks passed; %s opened for step %d of %s (%s)", st.Lanes[0].ID, st.Lanes[0].SpecStep, st.Spec, st.Lanes[0].StepTitle)})
+			Note: "checks passed; " + st.Lanes[0].ID + " opened for " + laneWork(st, st.Lanes[0])})
 		st.Record = append(st.Record, Entry{At: now, Stage: StagePace,
 			Note: "pace " + pace.String() + "; the first window opens now"})
 		if pick != nil {
@@ -350,7 +350,7 @@ func start(repoRoot, key string, o Options, pick *RunPick) (StartResult, error) 
 		}
 		if err := writeState(root, st); err != nil {
 			if claim != nil && !claim.Renewed {
-				_, _ = shared.Release(o.Session, chk.Intent)
+				_, _ = shared.Release(o.Session, chk.record())
 			}
 			return err
 		}
@@ -503,6 +503,15 @@ func startResult(st State, checks []CheckRow, resumed bool) StartResult {
 		res.Pending = []PendingStep{}
 	}
 	return res
+}
+
+// laneWork names what a lane builds, for the run record: a spec step, or the
+// issue an issue-keyed run fixes.
+func laneWork(st State, l Lane) string {
+	if st.Issue() != "" {
+		return fmt.Sprintf("%s (%s)", st.Issue(), l.StepTitle)
+	}
+	return fmt.Sprintf("step %d of %s (%s)", l.SpecStep, st.Spec, l.StepTitle)
 }
 
 // openNextLane opens a lane for the first pending spec step. It is state-only:
@@ -712,6 +721,16 @@ func Receipt(repoRoot, runID, receipt string, steps Stages, o Options) (StepResu
 				return false, err
 			}
 			return false, refuse("receipt", "", lane.ID, err.Error(), "correct what the reason names, then hand the receipt back")
+		}
+		if lane.HandBack != nil {
+			// The lane's own receipt handed the work back: the verifier has
+			// discarded it, and the lane ends here, before the validators.
+			handBackLane(st, &lane, *lane.HandBack, "", now)
+			st.Lanes[i] = lane
+			st.UpdatedAt = now
+			res = laneResult(*st, lane, "")
+			res.HandBack = lane.HandBack
+			return true, nil
 		}
 		performed := lane.Stage
 		verified := lane.Awaiting.Receipt

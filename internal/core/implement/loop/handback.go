@@ -28,7 +28,7 @@ func handBackLane(st *State, lane *Lane, hb HandBack, note string, now time.Time
 		note = handBackSummary(st.Intent, hb)
 	}
 	st.Record = append(st.Record, Entry{At: now, Lane: lane.ID, Stage: string(StageHandedBack), Note: note})
-	if st.Pick != nil {
+	if st.Pick != nil && hb.Kind == "" {
 		st.Record = append(st.Record, Entry{At: now, Lane: lane.ID, Stage: "pick",
 			Note: fmt.Sprintf("the pick of %s is falsified: %s was handed back as %s after %s; the intent's grounds entry is left as it was written",
 				keyOf(*st), lane.ID, hb.Verdict, fixRoundsPhrase(hb.FixRounds))})
@@ -47,6 +47,18 @@ func keyOf(st State) string {
 // with: the intent, the verdict, the cap, and what the last round found.
 func handBackSummary(key string, hb HandBack) string {
 	var b strings.Builder
+	if hb.Kind != "" {
+		fmt.Fprintf(&b, "%s is handed back by its lane as %s: %s", key, hb.Kind, hb.Reason)
+		if hb.Home != "" {
+			fmt.Fprintf(&b, "; its home: %s", hb.Home)
+		}
+		if hb.Discarded != "" {
+			fmt.Fprintf(&b, "; the lane's work at %s is discarded with its worktree and branch", shortSHA(hb.Discarded))
+		} else {
+			b.WriteString("; the lane's work is discarded")
+		}
+		return b.String()
+	}
 	fmt.Fprintf(&b, "%s is handed back as %s: round %d did not pass after %s, the run's cap (%s)",
 		key, hb.Verdict, hb.Round, fixRoundsPhrase(hb.FixRounds), hb.Verdicts)
 	if len(hb.NotMet) > 0 {

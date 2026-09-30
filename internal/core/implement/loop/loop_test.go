@@ -89,7 +89,8 @@ func TestStartRefusesEachFailedCheckAndWritesNoState(t *testing.T) {
 		check     string
 		reason    string
 	}{
-		{"an issue key", "iss-2609010000001234", plannedRel, readyIntent("", settledQuestions), specWithSteps(""), CheckKey, "issue"},
+		{"an issue key without the drain rule", "iss-2609010000001234", plannedRel, readyIntent("", settledQuestions), specWithSteps(""), CheckEligible, "drain eligibility record"},
+		{"a key shaped like no issue", "iss-12/x", plannedRel, readyIntent("", settledQuestions), specWithSteps(""), CheckKey, "iss-12/x"},
 		{"not an id", "itd-x", plannedRel, readyIntent("", settledQuestions), specWithSteps(""), CheckKey, "itd-x"},
 		{"unknown intent", "itd-99", plannedRel, readyIntent("", settledQuestions), specWithSteps(""), CheckReady, "itd-99"},
 		{"a draft", "itd-10", ".abcd/development/intents/drafts/itd-10-alpha.md", readyIntent("", settledQuestions), specWithSteps(""), CheckReady, "draft"},

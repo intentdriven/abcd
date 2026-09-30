@@ -7,9 +7,13 @@ package loop
 // sees the whole picture rather than the first failure.
 
 import (
+	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/core/capture"
+	"github.com/intentdriven/abcd/internal/core/drainrule"
 	"github.com/intentdriven/abcd/internal/core/implement"
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/peers"
@@ -17,6 +21,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/spec"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // Check names, in the fixed order Check reports them.
@@ -29,6 +34,9 @@ const (
 	CheckBlocked       = intent.StartCheckBlocked
 	CheckSteps         = intent.StartCheckSteps
 	CheckPeers         = "peers"
+	// CheckEligible is an issue key's row: the drained repository's own rule
+	// takes the issue (itd-82 scope 2; decision 10 on the parent).
+	CheckEligible = "eligible"
 )
 
 // CheckRow is one pre-start check's verdict.
@@ -51,6 +59,15 @@ type CheckResult struct {
 
 	// steps are the unlanded spec steps a run opens lanes for, in order.
 	steps []PendingStep
+}
+
+// record is the record a run built from the result delivers: the intent, or
+// the issue an issue key names.
+func (r CheckResult) record() string {
+	if r.Intent != "" {
+		return r.Intent
+	}
+	return r.Key
 }
 
 // refusal renders a failed result as the refusal Start returns: the first
@@ -78,8 +95,10 @@ const maxIntentBytes = 256 * 1024
 //
 // The rows, in order:
 //
-//   - key: an intent id. An issue id is decision 10's key, which a later piece
-//     of the spec admits with drain's eligibility rule.
+//   - key: an intent id, or an issue id (decision 10's key). An issue key
+//     takes two rows after it and no others: eligible (the drained
+//     repository's own rule takes the issue, as `abcd drain` reads it) and
+//     peers (no peer holds it out of open/, and no session claims it).
 //   - ready: the implement-readiness gate (intent.Ready) — planned, criteria,
 //     the spec linked and written. Its advisory rows stay advisory here.
 //   - open_questions: no open question under `## Open Questions`
@@ -108,6 +127,9 @@ func check(repoRoot, key, session string, snap *peerSnapshot) (CheckResult, erro
 		return res, nil
 	} else {
 		res.Checks = append(res.Checks, row)
+	}
+	if validIssueKey(key) {
+		return issueCheck(repoRoot, res, session, snap)
 	}
 
 	ready, err := intent.Ready(repoRoot, key)
@@ -147,7 +169,7 @@ func check(repoRoot, key, session string, snap *peerSnapshot) (CheckResult, erro
 			return res, err
 		}
 	}
-	peersRow := peersCheck(ready, session, snap)
+	peersRow := peersCheck(ready.IntentID, ready.Bucket, session, snap)
 	res.Checks = append(res.Checks, peersRow)
 
 	res.OK = true
@@ -159,7 +181,13 @@ func check(repoRoot, key, session string, snap *peerSnapshot) (CheckResult, erro
 	return res, nil
 }
 
-// keyCheck admits an intent id and refuses everything else by name.
+// validIssueKey reports whether key is an issue id by shape (`iss-` and
+// digits): the only issue key a run is built from, so no path is ever made of
+// anything else.
+func validIssueKey(key string) bool { return issueIDRe.MatchString(key) }
+
+// keyCheck admits an intent id or an issue id and refuses everything else by
+// name, quoting the refused key escaped.
 func keyCheck(key string) (CheckRow, bool) {
 	row := CheckRow{Name: CheckKey}
 	switch {
@@ -167,14 +195,90 @@ func keyCheck(key string) (CheckRow, bool) {
 		row.OK = true
 		row.Detail = key + " is an intent"
 		return row, true
-	case strings.HasPrefix(key, "iss-"):
-		row.Detail = key + " is an issue: the issue key (the intent's decision 10) is not built in this abcd yet"
-		row.Remedy = "build an intent with `abcd build <itd-N>`, or fix the issue by hand"
+	case validIssueKey(key):
+		row.OK = true
+		row.Detail = key + " is an issue"
+		return row, true
 	default:
-		row.Detail = fmt.Sprintf("%q is not a record id this verb builds", key)
-		row.Remedy = "name a planned intent: `abcd build <itd-N>`"
+		row.Detail = fmt.Sprintf("%q is not a record id this verb builds (itd-N or iss-N)", key)
+		row.Remedy = "name a planned intent (`abcd build <itd-N>`) or an open issue the drain rule takes (`abcd build <iss-N>`)"
 	}
 	return row, false
+}
+
+// issueCheck is the pre-start checks for an issue key (decision 10 on the
+// parent): the drained repository's own rule, read as the drain reads it, takes
+// the issue, and no peer holds it. The run then has one lane, for the issue.
+func issueCheck(repoRoot string, res CheckResult, session string, snap *peerSnapshot) (CheckResult, error) {
+	row := CheckRow{Name: CheckEligible}
+	plan, err := capture.PlanDrain(capture.DrainPlanRequest{RepoRoot: repoRoot})
+	if err != nil {
+		if !drainRuleRefusal(err) {
+			return res, err
+		}
+		row.Detail = fsutil.RedactHome(err.Error())
+		row.Remedy = "record the repository's drain rule (`abcd ahoy install` offers it); an issue is built only under it"
+		res.Checks = append(res.Checks, row)
+		return res, nil
+	}
+	i := slices.IndexFunc(plan.Dispositions, func(v capture.DrainVerdict) bool { return recordid.SameID(v.ID, res.Key) })
+	switch {
+	case i < 0:
+		row.Detail = res.Key + " is not an open issue in this checkout's ledger"
+		row.Remedy = "name an open issue: `abcd drain --dry-run` lists every one with its disposition"
+	case plan.Dispositions[i].Outcome != capture.DrainEligible:
+		v := plan.Dispositions[i]
+		row.Detail = fmt.Sprintf("%s is %s under %s (%s): %s", v.ID, v.Outcome, plan.Record, v.Rule, v.Reason)
+		row.Remedy = "the issue is a person's; `abcd drain --dry-run` shows where each open issue goes"
+	default:
+		v := plan.Dispositions[i]
+		row.OK = true
+		row.Detail = fmt.Sprintf("%s is eligible under %s: %s", v.ID, plan.Record, v.Reason)
+		res.steps = []PendingStep{{Number: 1, Title: issueStepTitle(v)}}
+	}
+	res.Checks = append(res.Checks, row)
+	if !row.OK {
+		return res, nil
+	}
+	if snap == nil {
+		if snap, err = readPeers(repoRoot); err != nil {
+			return res, err
+		}
+	}
+	res.Checks = append(res.Checks, peersCheck(res.Key, string(capture.StateOpen), session, snap))
+	res.OK = true
+	for _, c := range res.Checks {
+		if !c.OK {
+			res.OK = false
+		}
+	}
+	return res, nil
+}
+
+// maxIssueTitle caps the issue's title a lane carries as its step title.
+const maxIssueTitle = 120
+
+// issueStepTitle is the lane's title for an issue: the record's one-line
+// summary, sanitised and capped, or its id when it has none.
+func issueStepTitle(v capture.DrainVerdict) string {
+	t := strings.Join(strings.Fields(termsafe.Sanitize(v.Title)), " ")
+	if r := []rune(t); len(r) > maxIssueTitle {
+		t = string(r[:maxIssueTitle]) + "…"
+	}
+	if t == "" {
+		return v.ID
+	}
+	return t
+}
+
+// drainRuleRefusal reports whether err is the drain rule's load refusing.
+func drainRuleRefusal(err error) bool {
+	for _, s := range []error{drainrule.ErrUnrecorded, drainrule.ErrMalformed, drainrule.ErrAmbiguous, drainrule.ErrUnreadable} {
+		if errors.Is(err, s) {
+			return true
+		}
+	}
+	return false
 }
 
 // readyRow folds the readiness gate into one row: the first failing gating
@@ -234,11 +338,11 @@ func readPeers(repoRoot string) (*peerSnapshot, error) {
 // a live claim on it). A peer holding the record in the same bucket holds a
 // copy, not the record: every branch cut from the default branch does. A live
 // claim held by session — the one the build is started for — is its own.
-func peersCheck(r intent.ReadyResult, session string, snap *peerSnapshot) CheckRow {
+func peersCheck(id, bucket, session string, snap *peerSnapshot) CheckRow {
 	row := CheckRow{Name: CheckPeers}
 	var holders []string
-	for _, l := range snap.rep.Locate(r.IntentID) {
-		if l.Folder == r.Bucket {
+	for _, l := range snap.rep.Locate(id) {
+		if l.Folder == bucket {
 			continue
 		}
 		holders = append(holders, peerName(l.Source, l.Branch, l.Path)+" holds it in "+l.Folder+"/")
@@ -249,7 +353,7 @@ func peersCheck(r intent.ReadyResult, session string, snap *peerSnapshot) CheckR
 		holders = append(holders, peerName(p.Source, p.Branch, p.Path)+" could not be read, so what it holds is unknown ("+fsutil.DisplayPathsIn(p.NotRead, p.Path)+")")
 	}
 	for _, c := range snap.claims {
-		if (c.Live || c.Unreadable) && recordid.SameID(c.Record, r.IntentID) {
+		if (c.Live || c.Unreadable) && recordid.SameID(c.Record, id) {
 			if session != "" && !c.Unreadable && c.Session == session {
 				continue
 			}
@@ -262,11 +366,11 @@ func peersCheck(r intent.ReadyResult, session string, snap *peerSnapshot) CheckR
 	}
 	if len(holders) == 0 {
 		row.OK = true
-		row.Detail = "no peer holds " + r.IntentID
+		row.Detail = "no peer holds " + id
 		return row
 	}
 	row.contention = true
-	row.Detail = r.IntentID + " is held by a peer: " + strings.Join(holders, "; ")
+	row.Detail = id + " is held by a peer: " + strings.Join(holders, "; ")
 	row.Remedy = "take other work, or coordinate with the peer; `abcd peers` and `abcd implement` show what each holds, and name why a peer is not read"
 	return row
 }

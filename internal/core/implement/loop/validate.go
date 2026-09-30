@@ -273,8 +273,13 @@ func writeValidatorBrief(c Context, lane Lane, r ValidationRound, v *ValidatorRu
 	p("You are a fresh %s agent (agents/%s.md): you did not implement this lane, and\n", v.Role, v.Role)
 	p("nothing its implementer wrote binds your judgement. No one will answer a question about this\n")
 	p("brief; what it does not settle, say so in your return.\n\n")
-	p("- the run: `abcd build %s`, building %s against %s\n", st.Key, st.Intent, st.Spec)
-	p("- the lane: %s, spec step %d, %q\n", lane.ID, lane.SpecStep, lane.StepTitle)
+	if iss := st.Issue(); iss != "" {
+		p("- the run: `abcd build %s`, fixing %s by its remedy (the issue's record is in the lane's brief, `%s`)\n", st.Key, iss, lane.Brief)
+		p("- the lane: %s, %q\n", lane.ID, lane.StepTitle)
+	} else {
+		p("- the run: `abcd build %s`, building %s against %s\n", st.Key, st.Intent, st.Spec)
+		p("- the lane: %s, spec step %d, %q\n", lane.ID, lane.SpecStep, lane.StepTitle)
+	}
 	p("- the worktree: `%s`, branch `%s`\n", lane.Worktree, lane.Branch)
 	p("- the lane's diff: `%s..%s` (`git -C %s diff %s..%s`)\n", lane.BaseSHA, r.HeadSHA, lane.Worktree, lane.BaseSHA, r.HeadSHA)
 	p("- the implementer's report: `%s`\n", reportPathOf(c, lane, lane.Receipt))
