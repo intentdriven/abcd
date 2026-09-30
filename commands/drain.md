@@ -99,8 +99,8 @@ one a live deferral names, present when an open record carries a deferral; `anch
 an open record carries a deferral and the checkout holds no release tag;
 `anchor_stale` names the newest release tag an open record is deferred past
 that is newer than `anchor`, present when the checkout lacks it (every record
-deferred past such a tag is then handed back, and a deferral past `anchor` has
-lapsed); `order` is the ordering rule;
+deferred past such a tag is then handed back, and a deferral past `anchor` is
+still handed back as live, lapsing only when the newer tag is fetched); `order` is the ordering rule;
 `dispositions` holds one entry per open issue (`id`, `path`, `severity`,
 `category`, `outcome`, `rule`, `reason`, and `blockers` when skipped); `counts`
 totals them by outcome; `ledger` names the checkout and branch read.

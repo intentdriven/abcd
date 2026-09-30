@@ -92,8 +92,9 @@ caught the same way without asking a remote: a `deferred_after` newer than the
 checkout's own tag, compared by core version, names a tag the checkout lacks, so
 the anchor is stale. Every record deferred past a tag the checkout lacks is
 handed back as `anchor stale`, naming that tag and `git fetch --tags`, and the
-dry run names the stale anchor above them; a deferral past the local tag has
-then lapsed, since a newer release is named. A `deferred_after` that is not a
+dry run names the stale anchor above them. A deferral past the local tag is
+still handed back as live, since a tag named only in the ledger is not one the
+checkout holds; it lapses when the newer tag is fetched. A `deferred_after` that is not a
 release tag (`vMAJOR.MINOR.PATCH`) cannot be compared, and its record is handed
 back too.
 
