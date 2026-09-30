@@ -65,12 +65,14 @@ the hook: it is blocked (`command-unparsable`), not let through, because a line
 the guard misreads may be one bash runs, and a pass would carry every hazard in
 it past the guard. On the check it exits 2, like the rest.
 
-Either verb also speaks JSON, and that is the form the plugin page uses: a
-verdict, and with it the entry that fired, its tier, why the command is
-dangerous, and the safe successor. A `matches` list carries any further entries
-the same line tripped, so a command hazardous in two ways reports both rather
-than only the first; the rendered form says the same thing on an `also matched:`
-line.
+The check also speaks JSON (`guard check --json`), and that is the form the
+plugin page uses: a verdict, and with it the entry that fired, its tier, why the
+command is dangerous, and the safe successor. A `matches` list names every entry
+the same line tripped, the one that fired included, so a command hazardous in
+two ways reports both rather than only the first; the rendered form says the
+same thing on an `also matched:` line. The hook answers the host by its exit
+code and its message on stderr alone, and writes nothing on stdout, with or
+without `--json`.
 
 ## Taught before it is refused
 
@@ -82,7 +84,11 @@ the safe successor, recalled by the commands the registry names (`rm`,
 work injects those rules before the agent acts, so a host without hook support is
 still taught the safe form and a host with hooks is taught it before the guard
 would have to refuse. An entry added to the registry is taught and enforced from
-the same release, with no second edit. The registry taught is the one the guard
+the same release, with no second edit. A hazard the guard reads in code rather
+than from the registry, such as `git-stash-shared-stack` (a bare `git stash` in
+a checkout with more than one worktree) or `interpreter-reads-stream` (a shell
+handed its script through a pipe, as in `cat x | sh`), is enforced but not
+taught. The registry taught is the one the guard
 enforces in the repository: an entry the repository adds in its
 `.abcd/guard.json` is taught by the same generator as the bundled ones, its
 rule marked `(repo)` after its entry id, and a guard file the guard refuses is
@@ -448,16 +454,13 @@ substitution (`rm -rf $(echo /)`), which is read by its known text because that
 is how an everyday delete names what it removes (`rm -rf $(find . -name
 '*.pyc')`); a target spelled any other way than the words above (`rm -rf
 "$DIR"/*` with `DIR` unset, `rm -rf /?*`), a `..` after a symlink, which is
-read past lexically (a link to the root under a named directory), or after
-a segment holding a variable,
-which is not folded (`/tmp/$X/../../*` is the root with `X` unset), a `..`
-past the home followed by a glob other than `*` (`~/../?*`, as `/?*`), a
-relative `..` that stays inside the working directory (`x/../*`, the
-directory `*` names), a `..` after a `~user` home, whose depth is not known
-(`~root/../../*`), an
-alternative nested more than three deep, and a substring of `$PWD` that
-prints the root (`${PWD:0:1}`), which warns as `$PWD` does; one behind a wrapper flag the per-wrapper
-table does not name; a REST
+read past lexically (a link to the root under a named directory), or after a
+segment holding a variable, which is not folded (`/tmp/$X/../../*` is the root
+with `X` unset), a `..` past the home followed by a glob other than `*`
+(`~/../?*`, as `/?*`), a relative `..` that stays inside the working directory
+(`x/../*`, the directory `*` names), and a `..` after a `~user` home, whose
+depth is not known (`~root/../../*`); one behind a wrapper flag the
+per-wrapper table does not name; a REST
 path an entry names by its root segment when the host serves that API under a
 prefix; an IFS the shell already holds when the line starts, or gains during the line
 through a name the guard does not read (a sourced file, a nameref set before
