@@ -134,6 +134,10 @@ var helpPlacements = map[string]helpPlacement{
 	// Role 2's ingest sits in the agents block beside Role 1's.
 	"intent consistency ingest": {page: "commands/intent.md"},
 
+	// The pre-pass is the host's half of the planning interview (itd-42): the
+	// page runs it either side of its own judgement, so it lists with the agents.
+	"intent prepass": {page: "commands/intent.md"},
+
 	// itd-146 decision 2 files drain under records, but the person's list is at
 	// its fourteen-verb ceiling, and until the run is built the verb's one form
 	// is a dry run an agent reads. Listed here until the product thinker rules.

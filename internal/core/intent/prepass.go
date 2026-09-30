@@ -16,6 +16,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -176,10 +177,10 @@ func AssemblePrepass(repoRoot, intentID string) (PrepassInput, error) {
 	}
 	it, ok := corpus.Lookup(intentID)
 	if !ok {
-		return PrepassInput{}, fmt.Errorf("intent prepass: %s not found in any bucket", intentID)
+		return PrepassInput{}, fmt.Errorf("intent prepass: %s not found in any bucket; `abcd intent` renders the store, and the pre-pass runs on a draft it lists", intentID)
 	}
 	if it.Bucket != BucketDrafts {
-		return PrepassInput{}, fmt.Errorf("intent prepass: %s is on %s/; the pre-pass prepares the interview of a draft, and only a record on drafts/ has one to come", it.ID, it.Bucket)
+		return PrepassInput{}, fmt.Errorf("intent prepass: %s is on %s/; the pre-pass prepares the interview of a draft, and only a record on drafts/ has one to come: run it on a draft `abcd intent` lists", it.ID, it.Bucket)
 	}
 	draft, err := readRepoFile(filepath.Join(repoRoot, it.Path), it.Path)
 	if err != nil {
@@ -465,6 +466,28 @@ func WritePrepassBrief(repoRoot, intentID string, raw []byte) (PrepassBriefResul
 	return res, nil
 }
 
+// ReadPrepassFindings reads the host's findings file for WritePrepassBrief:
+// a regular file, never a symlink or a device, within the findings cap. The
+// bytes stay untrusted until WritePrepassBrief validates them.
+func ReadPrepassFindings(path string) ([]byte, error) {
+	if strings.TrimSpace(path) == "" {
+		return nil, errors.New("intent prepass: --findings-json names no file; pass the path the host wrote its findings to")
+	}
+	data, err := fsutil.ReadGuarded(path, maxPrepassFindingsBytes)
+	switch {
+	case err == nil:
+		return data, nil
+	case errors.Is(err, fsutil.ErrNotRegular) || errors.Is(err, syscall.ELOOP):
+		return nil, fmt.Errorf("intent prepass: the findings %s are not a regular file (a symlink or a device is refused); write them to a plain file", path)
+	case errors.Is(err, fsutil.ErrTooBig):
+		return nil, fmt.Errorf("intent prepass: the findings %s exceed the %d-byte cap", path, maxPrepassFindingsBytes)
+	case errors.Is(err, fs.ErrNotExist):
+		return nil, fmt.Errorf("intent prepass: no findings at %s; write the host's findings there, or pass the path they are at", path)
+	default:
+		return nil, fmt.Errorf("intent prepass: reading the findings %s: %w", path, err)
+	}
+}
+
 func decodePrepassFindings(raw []byte) (prepassReturn, error) {
 	if len(raw) > maxPrepassFindingsBytes {
 		return prepassReturn{}, fmt.Errorf("intent prepass: the findings exceed the %d-byte cap", maxPrepassFindingsBytes)
@@ -735,7 +758,7 @@ func renderPrepassBrief(in PrepassInput, f prepassReturn, qs []prepassQuestion) 
 			fmt.Fprintf(&b, "Lands as: keep both, a decision in the draft's `## Decisions` naming %[1]s and the difference; "+
 				"bundle, the two planned as one bundle (`abcd intent plan %[2]s %[1]s --bundle <name>` while both are drafts, "+
 				"else `abcd intent reclassify <itd-N> --kind bundle-member --bundle <name>`); "+
-				"supersede, `superseded_by` on the record that gives way (`abcd intent reclassify <itd-N> --kind superseded --by <itd-M>`); "+
+				"supersede, `superseded_by` on the record that gives way (`abcd intent reclassify <itd-N> --kind superseded --by <itd-M> --reason \"<why>\"`); "+
 				"refine, a decision in the draft's `## Decisions` naming what it refines in %[1]s.\n\n", sib, in.Intent)
 		default:
 			fmt.Fprintf(&b, "### Q%d. A question (unanchored)\n\n", n)

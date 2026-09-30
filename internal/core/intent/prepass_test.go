@@ -433,7 +433,7 @@ func TestPrepassEveryQuestionSaysWhereItsAnswerLands(t *testing.T) {
 			t.Fatalf("Q%d does not say where its answer lands:\n%s", i+1, rest)
 		}
 	}
-	for _, link := range []string{"superseded_by", "--bundle", "## Decisions"} {
+	for _, link := range []string{"superseded_by", "--bundle", "## Decisions", `--kind superseded --by <itd-M> --reason "<why>"`} {
 		if !strings.Contains(brief, link) {
 			t.Fatalf("the overlap's landing does not name %q:\n%s", link, brief)
 		}

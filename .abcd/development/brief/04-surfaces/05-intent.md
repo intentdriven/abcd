@@ -683,7 +683,7 @@ _Generated from the command tree; a drift test fails `go test` when this appendi
 
 ### `abcd intent`
 
-Sub-verbs: `abcd intent audit`, `abcd intent condition`, `abcd intent consistency`, `abcd intent hold`, `abcd intent link`, `abcd intent plan`, `abcd intent ready`, `abcd intent reclassify`, `abcd intent target`, `abcd intent unhold`.
+Sub-verbs: `abcd intent audit`, `abcd intent condition`, `abcd intent consistency`, `abcd intent hold`, `abcd intent link`, `abcd intent plan`, `abcd intent prepass`, `abcd intent ready`, `abcd intent reclassify`, `abcd intent target`, `abcd intent unhold`.
 
 | Flag | Type |
 |---|---|
@@ -764,6 +764,14 @@ Sub-verbs: none.
 | `--impact` | string |
 | `--production-mode` | string |
 | `--target` | string |
+
+### `abcd intent prepass`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--findings-json` | string |
 
 ### `abcd intent ready`
 
