@@ -165,8 +165,15 @@ spec stays open until the last lane closes it.
   every commit on the lane's branch past its base, a passing definition of
   done's output and the report, each inside the lane's directory, or a refusal
   naming every gap.
-- **Seam left, not built: piece 3**, the process driver. It waits on the runner
-  intent (itd-2609201916056194) and calls the same `Advance` and `Receipt`.
+- **Landed in part (lane runner2): piece 3**, the process driver. `implement
+  step` drives through `loop.Drive`: when a stage hands the lane to a role
+  that `roles.<role>.runner` routes to a command-line runner
+  (itd-2609201916056194), the loop starts the agent itself through the runner
+  and hands its receipt back through `Receipt`, and the run record names the
+  runner that ran it (criterion 9); a role left on the host is handed to the
+  host exactly as before. Not built: the loop driving itself with no host
+  session, which is decision 6's reversal of the host-delegated boundary and
+  waits on the ADR that decision owes.
 - **Landed (lane fidelityOnce): piece 8**, the validators with the itd-58
   verdict invariant. The validate stage hands the lane's head to a fresh
   ruthless reviewer and a fresh security reviewer, one at a time, and on the
@@ -214,5 +221,5 @@ spec stays open until the last lane closes it.
   receipt carries `handback: {kind, reason, home}`, which the loop reads at the
   receipt, before the validators, discarding the lane's worktree and branch
   and ending the lane handed back.
-- **Remaining: 11** (`--auto-plan` with its ADR), and piece 3 (the process
-  driver, on the runner). `--auto-plan` is not a flag yet.
+- **Remaining: 11** (`--auto-plan` with its ADR), and piece 3's no-host
+  driving, behind the same ADR. `--auto-plan` is not a flag yet.
