@@ -38,7 +38,7 @@ intent (2026-09-20).
    hands work to several agents at once, up to its ceiling: the validators
    of one round together, and the lanes of steps that do not need each
    other side by side. The section "Concurrent lanes and validators" below
-   is the design; its criteria C1 to C12 are how criterion 6 is tested.
+   is the design; its criteria C1 to C13 are how criterion 6 is tested.
 
 ## Out of scope
 
@@ -57,7 +57,7 @@ default lives in one constant the run record names.
 ## How the criteria are satisfied
 
 1 to 3 and 9 by piece 1; 4 and 5 by piece 2; 6 by pieces 3 and 6, tested
-through C1 to C12 below; 7 by piece 4; 8 by piece 5.
+through C1 to C13 below; 7 by piece 4; 8 by piece 5.
 
 ## Evidence the build must answer
 
@@ -84,7 +84,7 @@ spec's and nothing else needs them.
   the cleanup), is a prerequisite. At the base of this amendment
   (`c5b4305f6`) it is not built: `internal/core/implement/loop` holds no body
   for the land stage. Every rule of "Two lanes that touch the same files"
-  below, and criteria C8, C9 and C10, presuppose an armed pull request, so
+  below, and criteria C8, C9, C10 and C13, presuppose an armed pull request, so
   they are built after piece 9 lands. C1 to C7, C11 and C12 do not wait on it.
 
 ### The count
@@ -164,22 +164,19 @@ hand out the same work.
 - A spec step may carry a `- needs:` line beside its `- packages:` and
   `- tests:` lines: `- needs: none`, or `- needs: 1, 3`, naming earlier steps
   by number.
-- **Open: DR6b.** What a step without the line needs is the product
-  thinker's to rule, and the build of this section waits on it. The
-  question, as the spec review put it: "When a spec lists steps and says
-  nothing about what depends on what, should the build run the steps one
-  after another (today's rule; a step must say `- needs: none` to run beside
-  earlier ones) or run them side by side up to the limit (a step must say
-  `- needs: 1` to wait for step 1)?" Options: "(a) serial default, opt in
-  per step (the amendment; safest, never changes an existing spec's
-  behaviour); (b) parallel default, opt out per step (DR6 as the new rule,
-  itd-2609212103565953 AC2 rewritten); (c) serial unless the steps'
-  `- packages:` lines are disjoint (no new line, but the loop guesses)."
-  The draft this spec carries until the ruling is option (a): a step without
-  the line needs every step before it, the order `itd-2609212103565953`
-  rules (criterion 2: the next step's lane starts only after the previous
-  step has merged), so every stepped spec written so far keeps it unchanged.
-  C6's first case is written against option (a) and changes with the ruling.
+- **A step without the line (ruling DR6b).** The product thinker ruled,
+  verbatim: "(a) ONE AFTER ANOTHER BY DEFAULT: a step runs alongside earlier
+  ones only if its plan says so; nothing already planned changes; reviews
+  run side by side; the 2026-09-21 wording stands." So the default `needs`
+  of a step is every step before it, and running beside earlier steps is an
+  opt-in the step declares for itself (`- needs: none`, or a list naming
+  only the steps it waits for). The loop never infers independence, from
+  the `- packages:` lines or from anything else. A step without the line
+  keeps the order `itd-2609212103565953` rules (criterion 2: the next step's
+  lane starts only after the previous step has merged), and that intent's
+  wording of 2026-09-21 stands unamended, so every stepped spec written so
+  far builds exactly as it did. The validators of a round run side by side
+  whatever the steps declare (below).
 - A lane opens for a step only when every step it needs has landed: its pull
   request is an ancestor of the default branch, or the spec at the default
   branch marks it `landed:`. Its branch is then cut from the default branch,
@@ -200,11 +197,12 @@ hand out the same work.
   - a named step that did not land is carried, and is renamed to its number
     in the remainder;
   - a list left empty is written `- needs: none`, never removed, because an
-    absent line means the default (Open: DR6b), not "nothing";
+    absent line means the default, every earlier step (ruling DR6b), not
+    "nothing";
   - a step without the line stays without it: the earlier steps the
     remainder lists are exactly the unlanded earlier steps, and the landed
-    ones are satisfied, so the default reads the same over the remainder
-    whichever way DR6b is ruled.
+    ones are satisfied, so the default reads the same over the remainder as
+    over the spec it came from.
 
   The close's result names each `needs` line it rewrote, before and after.
   The rewrite is chosen over dropping the line because it is a total
@@ -213,9 +211,8 @@ hand out the same work.
   `Unlanded` cuts on), so every step a `needs` line names is either landed
   (satisfied) or carried, and the carried steps keep their order, so the map
   from old number to new is one-to-one. Dropping the line would turn an
-  explicit list into the default, which runs the step later than declared
-  under DR6b option (a) and earlier than its needs allow under option (b),
-  so what a drop means would hang on the open ruling. Rewriting a satisfied
+  explicit list into the default, every earlier step (ruling DR6b), which
+  runs the step later than its plan declared. Rewriting a satisfied
   need to its `landed:` marker instead would give the parser a second
   vocabulary for a need that constrains nothing. The steps spec
   (`spc-2609212138246060`, scope 4) names this exception to its verbatim
@@ -243,6 +240,8 @@ The state goes to schema version 7:
 - `lanes[].syncs` records each sync (below): the sibling lanes whose landing
   caused it, the default branch's sha merged in, whether it conflicted, and
   the head it produced.
+- `lanes[].hold` records a held lane (ruling DR6c): `since`, `cause`, `head`
+  and `before`; the lane stages gain `held` and `discarded`.
 - A version-6 state file reads as a run whose lanes each have zero or one
   await (its `awaiting` object becomes a one-entry `awaits`), and runs on
   unchanged; the writer writes version 7. A version-7 file is refused by an
@@ -252,7 +251,8 @@ The state goes to schema version 7:
   shape of every earlier step's refusal (`internal/core/implement/loop/state.go:476-483`
   at `c5b4305f6`: a pace in a version-1 file, a pick in a version-1 or
   version-2 file, and below them a validation and a fix-round cap): a file
-  of version 6 or lower that carries `awaits`, `waiting` or `syncs` is
+  of version 6 or lower that carries `awaits`, `waiting`, `syncs` or `hold`,
+  or a lane stage `held` or `discarded`, is
   refused naming its version and what it carries that the version never
   wrote, with the remedy those refusals give (the loop is the file's only
   writer; restore it or remove the run directory). A version-7 file that
@@ -296,8 +296,9 @@ The state goes to schema version 7:
 - After a hand-back, no lane closes the spec. A handed-back lane is neither
   done nor open, and the delivery lacks its step, so no auditor judges the
   delivery as whole and no lane runs the close; the spec stays open for the
-  person's replan. What the siblings open at the hand-back do meanwhile is
-  Open: DR6c (below).
+  person's replan. The siblings open at the hand-back finish and are held
+  (ruling DR6c, "After a hand-back, the siblings finish and are held",
+  below).
 - The intent-auditor reads the whole delivery (ruling AI) as the run's own
   lanes' changes, never as a sha range from the base of the run's first lane
   to the closing head: after a sync, that range also holds every commit the
@@ -328,23 +329,74 @@ The state goes to schema version 7:
 - `--fix-rounds` is a per-run value that each lane spends on its own: a lane
   counts its own fix rounds against the run's cap, and a sibling's rounds
   never count against it.
-- **Open: DR6c.** What a hand-back does to the lanes already open beside it
-  is the product thinker's to rule, and the build of this bullet waits on it.
-  The spec review's finding: the draft below "rewrites built behaviour"
-  (`loop.go:556-557` refuses every step once `current()` is handed back, and
-  `handback.go` promises "every later step refuses", DR1's shape, itd-50
-  criterion 2); "The run then stops" is "ambiguous (at once, or once the last
-  sibling lands?)", what `implement step` answers in between is not said, and
-  "the intent goes back to the person to replan while siblings land pull
-  requests from the plan being replanned". Options put to the product
-  thinker: (a) stop all lanes at the hand-back; (b) siblings finish and
-  merge, then the run stops; (c) siblings finish, and their merges are held.
-  The draft this spec carries until the ruling: a lane handed back stops only
-  itself; siblings already open run on to their landing or their own
-  hand-back; no new lane opens after a hand-back, because the run's intent is
-  the person's to replan; the run then stops and reports the hand-back.
-  Whichever option is ruled, no new lane opens after a hand-back and no lane
-  closes the spec (above).
+- A lane that exhausts the cap is handed back alone; what that does to the
+  lanes open beside it is the next section.
+
+### After a hand-back, the siblings finish and are held (ruling DR6c)
+
+The product thinker ruled, verbatim: "(c) FINISH, BUT HOLD THEM: when one
+piece is handed back, pieces in flight finish but nothing merges until the
+person re-plans; the person then decides whether the held pieces land as they
+are." The rules it implies:
+
+- **Who finishes.** A hand-back stops only the lane handed back. Every sibling
+  lane open at that moment runs to completion: its implementer, its rounds and
+  its fix rounds go on under the same ceiling, window and cap, and it ends
+  either held (below) or handed back itself. No new lane opens after a
+  hand-back, and pending steps stay pending, because the run's intent is the
+  person's to replan. No lane closes the spec (above).
+- **What `implement step` answers in between.** The single refusal of every
+  step at a hand-back (`loop.go:569-570` at `7f6eb5579`, DR1's shape, itd-50
+  criterion 2) narrows: a step moves any sibling that still has work, and
+  refuses, naming the hand-back and every held lane with the way out below,
+  only once no lane of the run has anything left to do but wait for the
+  person. The handed-back lane itself still starts nothing, as built.
+- **The `held` state.** A sibling whose round passes after a hand-back does
+  not land. It takes the lane stage `held`, beside `handed-back`: it holds
+  no slot, starts nothing, and is never armed. The hold stops the landing
+  before the first of its steps that reaches past the machine or merges: a
+  lane that has not pushed is held before the push, so a discard leaves
+  nothing on the forge; a lane that pushed and opened its pull request is
+  held before arming, its pull request left open and unarmed. A lane already
+  armed when the sibling is handed back (one landing at a time, so at most
+  one) is disarmed through the forge client and held; where the forge
+  refuses the withdrawal, the step refuses naming the pull request and the
+  person decides, and a lane whose pushed head the default branch already
+  holds had landed before the hand-back and is recorded as landed.
+- **What the run records.** `lanes[].hold` carries `since` (the time the lane
+  was held), `cause` (the handed-back lane's id), `head` (the sha its passing
+  round judged) and `before` (the landing step it stopped before: `push`,
+  `arm`). Each hold writes a run-record entry naming the lane, the cause and
+  the head; each release or discard writes one naming the person's choice.
+- **What `implement status` shows.** One row per held lane, beside the rows
+  of the lanes alive: the lane, its step, the stage `held`, the head judged,
+  the lane whose hand-back caused it, the step it stopped before, and the
+  way out (the two flags below). A held lane is not counted among the slots
+  in use.
+- **The person's decision, per held lane.** The run's intent is re-planned
+  outside the loop (itd-50 criterion 3), and the loop cannot read a replan's
+  content, so the person's word on each held lane is what the loop acts on.
+  It is given through the verb that already moves the run, `implement step`,
+  with one of two flags naming one lane per invocation, as every invocation
+  performs one move:
+  - `implement step --release <lane-id>`: the lane lands as it is. Its stage
+    returns to `land` and its landing resumes at the step it stopped before,
+    by the landing rules above: synced first when a sibling landed after its
+    base, with a fresh round over a moved head. It closes the spec only if it
+    is the closing lane, which a run with a hand-back never has.
+  - `implement step --discard <lane-id>`: the lane does not land. The loop
+    closes its pull request if it opened one, removes its worktree from the
+    machine store and deletes its branch, and gives the lane the terminal
+    stage `discarded`; its step stays unlanded in the spec, so a replanned
+    remainder carries it.
+  Either flag is refused, changing nothing, when the lane it names is not
+  `held`, and while any lane of the run still has an agent out or a round to
+  run, naming those lanes, so the person decides over the whole set of held
+  pieces at once. The existing `implement release <record>` is not reused:
+  it removes a session's claim on a record, a different noun.
+- The run stays stopped on its hand-back after every held lane is released
+  or discarded; the way past the handed-back lane is as built
+  (`handedBackWayOut`, iss-2609301303434847).
 
 ### Criteria (Given, When, Then)
 
@@ -386,7 +438,8 @@ end-to-end test of the implement verb is the pattern. C2 and C3 are criterion
   is an ancestor of the default branch, even with a slot free. **Given**
   `- needs: none` on step 2, **then** its lane opens at the next free slot.
   **Given** `- needs: 3` on step 2, **then** the parser refuses naming the
-  line. (The first case is written against DR6b option (a); Open: DR6b.)
+  line. (The first case is ruling DR6b: a step without the line needs every
+  step before it.)
   **Given** a spec of four steps where steps 1 and 3 are marked `landed:`,
   step 4 carries `- needs: 1, 2` and step 2 carries `- needs: 1`, **when**
   `spec close --remainder` runs, **then** the remainder lists old step 2 as
@@ -416,14 +469,32 @@ end-to-end test of the implement verb is the pattern. C2 and C3 are criterion
   starts nothing on either lane, both receipts are still verified, and
   `next_eligible_at` is written once. **Given** `--fix-rounds 1` and lane 1
   failing its second round, **then** lane 1 is handed back, lane 2 runs on to
-  its landing, and no new lane opens (the sibling's part is written against
-  the draft; Open: DR6c); whatever DR6c rules, no lane closes the spec.
+  its passing round and is held, never armed (ruling DR6c), no new lane
+  opens, and no lane closes the spec.
 - **C12, the schema.** **Given** a version-6 state file with one lane
   awaiting its implementer, **when** it is read, **then** the lane has one
   await and the run advances on it; the next write is version 7 and carries
   `awaits`, never `awaiting`. **Given** a version-6 file carrying `awaits`,
   `waiting` or `syncs`, or a version-7 file carrying `awaiting`, **when** it
   is read, **then** it is refused naming the version and the key.
+- **C13, the hold and the person's decision (ruling DR6c).** **Given**
+  `--sub-agents 3`, `--fix-rounds 1`, steps 2 and 3 both marked
+  `- needs: none`, lane 1 handed back while lane 2's implementer is
+  out, **when** lane 2's receipt is verified, its fake validators pass and
+  `implement step` is called until nothing moves, **then** lane 2's stage is
+  `held` with `hold.cause` naming lane 1, `hold.head` its judged head and
+  `hold.before` `push`; the fake forge records no push, no pull request and
+  no arming; no lane opens for step 3; the run record names the hold;
+  `implement status` shows lane 2 held with its cause, head and the two
+  flags, and 0 slots in use; and the next `implement step` refuses naming
+  lane 1's hand-back and lane 2 held. **When** `implement step --release`
+  names lane 1 (handed back, not held), **then** it is refused and the state
+  file is byte-identical. **When** it names lane 2, **then** lane 2's stage
+  is `land`, the run record names the release, and the following steps take
+  it through the landing on the fake forge. **Given** the same held lane in
+  a second run, **when** `implement step --discard` names it, **then** its
+  worktree and branch are gone, its stage is `discarded`, step 2 stays
+  unlanded in the spec, and the fake forge records nothing.
 
 ### Where the loop assumes one lane at a time
 
@@ -448,7 +519,14 @@ lane or the single agent in place, and the build replaces or reads past it:
 - `internal/core/implement/loop/loop.go:556-557` and
   `internal/core/implement/loop/handback.go:3-8`: once `current()` is handed
   back, every later step refuses, so the whole run stops at a hand-back
-  (DR1's shape, itd-50 criterion 2). What replaces it waits on Open: DR6c.
+  (DR1's shape, itd-50 criterion 2). Ruling DR6c replaces it: the siblings
+  in flight finish and are held, and a step refuses only once nothing is
+  left to move ("After a hand-back, the siblings finish and are held").
+- `internal/core/implement/loop/state.go:171-183` at `7f6eb5579`: the lane
+  stages end at `done` and `handed-back`; `held` and `discarded` join them.
+- `internal/core/implement/loop/land.go:28-31` at `7f6eb5579`: the landing
+  arms once the lane's round passes, with no state that stops it before the
+  push or the arming.
 - `internal/core/implement/loop/validate.go:3-5` and `:145-154`: the round
   hands out "one fresh agent at a time", returning at the first validator
   without a verdict.
@@ -472,7 +550,7 @@ lane or the single agent in place, and the build replaces or reads past it:
   every lane alive and each reader of it changes with it, the site's status
   page (`internal/core/site/status.go`) included
 - prerequisite: piece 9 of `spc-2609202134338445`, the landing, before C8 to
-  C10 and the landing rules ("What this piece is built on")
-- tests: C1 to C12 through the step interface with fake agents and a fake
+  C10, C13 and the landing rules ("What this piece is built on")
+- tests: C1 to C13 through the step interface with fake agents and a fake
   forge; the `needs` parser over a stepped spec; the remainder's `needs`
   rewrite; a version-6 state file read and advanced, and the version refusals
