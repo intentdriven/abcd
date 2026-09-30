@@ -209,12 +209,18 @@ func Capture(repoRoot, rootSHA string, raw []byte, meta CaptureMeta) (CaptureRes
 	}
 	tdir := store.Records
 
-	release, err := repoLock(tdir)
-	if err != nil {
-		return CaptureResult{}, err
-	}
-	defer release()
+	var res CaptureResult
+	err = withRepoLock(tdir, func() error {
+		var err error
+		res, err = captureLocked(repoRoot, rootSHA, tdir, raw, meta, sessionID, kind)
+		return err
+	})
+	return res, err
+}
 
+// captureLocked is Capture's work under the records lock: the idempotency
+// check, the two-stage redaction and the write.
+func captureLocked(repoRoot, rootSHA, tdir string, raw []byte, meta CaptureMeta, sessionID, kind string) (CaptureResult, error) {
 	sum := sha256.Sum256(raw)
 	sourceSHA := hex.EncodeToString(sum[:])
 	// The per-run context stamps are read off the RAW transcript, before

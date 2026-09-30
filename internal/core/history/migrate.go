@@ -157,12 +157,18 @@ func Migrate(rootSHA string, opts MigrateOptions) (MigrateResult, error) {
 		return MigrateResult{}, fmt.Errorf("history: refusing to migrate with a degraded scanner: %s", reason)
 	}
 
-	release, err := repoLock(tdir)
-	if err != nil {
-		return MigrateResult{}, err
-	}
-	defer release()
+	var res MigrateResult
+	err = withRepoLock(tdir, func() error {
+		var err error
+		res, err = migrateLocked(sc, opts, tdir)
+		return err
+	})
+	return res, err
+}
 
+// migrateLocked is Migrate's work under the records lock: every composite
+// record repaired, or refused and left untouched.
+func migrateLocked(sc *scanner.Scanner, opts MigrateOptions, tdir string) (MigrateResult, error) {
 	records, err := listRecords(tdir)
 	if err != nil {
 		return MigrateResult{}, err
