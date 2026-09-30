@@ -36,6 +36,9 @@ var bareRenderExceptions = map[string]string{
 		"identity`, so bare prints its sub-verbs",
 	"launch": "its state is the release preview, asked for with --dry-run; bare refuses " +
 		"(exit 1) naming the flag, because publishing is not wired",
+	"reflect": "its one operand is the cut release whose seed it renders, and a " +
+		"retrospective has no standing state apart from a release, so bare prints its " +
+		"usage and its write sub-verb and writes nothing (spc-2609211751376504)",
 	"report": "it files a report from a file or the editor, so bare opens the editor on " +
 		"a terminal and refuses (exit 2) anywhere else",
 	"scribe": "a parent whose sub-verbs act on a named reading run or on a scribe's " +

@@ -13,7 +13,7 @@ assembles the input, states the output contract, and checks what comes back.
 
 ## What ships
 
-Fifteen agent prompts ship in `agents/` today, in four groups:
+Sixteen agent prompts ship in `agents/` today, in four groups:
 
 - **Lifeboat and release synthesis**, each feeding one verb that validates its
   output under a cite-or-be-dropped rule: `principle-distiller`
@@ -22,7 +22,10 @@ Fifteen agent prompts ship in `agents/` today, in four groups:
   (`disembark graveyard`), and `release-changelog-composer` (`launch ship`),
   which writes both documents of a release cut in one payload, the changelog
   lines and the release page, and whose payload is refused whole rather than
-  cite-or-be-dropped.
+  cite-or-be-dropped. `reflection-composer` (`reflect write`) runs a cut
+  release's retrospective interview from the seed `reflect` renders and drafts
+  the answers the writer files, which the writer refuses while an answer is
+  under its floor.
 - **The intent auditor**, `intent-auditor`, which judges a shipped intent's
   promise against delivered reality (below).
 - **Repo-workflow reviewers and researchers**, dispatched by a human rather than
@@ -65,7 +68,6 @@ The rest are **design targets** of the lifeboat pipeline (the retired
 | `embark-scaffolder` | embark | a scaffold plan for a target repo |
 | `launch-gatekeeper` | launch | a release preflight over scan results and the payload manifest (itd-65, adr-33) |
 | `documentation-auditor` | subagent | a documentation audit over a source or lifeboat `docs/` tree, invoked by other verbs rather than by a user |
-| `reflection-composer` | reflect | the five retrospective sections, from a phase-audit receipt (itd-24) |
 
 ## The cold-reading definitions
 

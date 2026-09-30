@@ -103,9 +103,6 @@ internal/core/reading.AssemblerVersion
 internal/core/reading.DecodeManifest
 internal/core/record.RecommendedVerbPaths
 internal/core/record/match.Bundled
-internal/core/record/match.NewWeights
-internal/core/record/match.Overlap
-internal/core/record/match.Terms
 internal/core/report.EnvelopeSender
 internal/core/rules.Defaults
 internal/core/rules.Label

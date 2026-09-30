@@ -264,6 +264,26 @@ func clearLayer3(root *os.Root) error {
 // WriteFileAtomic gap is a benign TOCTOU under the trusted-worktree model, the
 // same note readVerdictFile carries.
 func writeIntoLifeboat(root *os.Root, abs, rel string, data []byte) error {
+	if err := ensureContainedDir(root, rel); err != nil {
+		return err
+	}
+	return fsutil.WriteFileAtomic(filepath.Join(abs, rel), data, 0o644)
+}
+
+// createIntoLifeboat is writeIntoLifeboat for a file that must not exist yet:
+// the same contained directory walk, then an exclusive create, so a file that
+// landed at rel after the caller judged it absent fails the write loudly
+// (os.ErrExist) instead of being replaced by a rename over it.
+func createIntoLifeboat(root *os.Root, rel string, data []byte) error {
+	if err := ensureContainedDir(root, rel); err != nil {
+		return err
+	}
+	return fsutil.CreateExclusiveIn(root, rel, data, 0o644)
+}
+
+// ensureContainedDir asserts that no existing parent component of rel is a
+// symlink and creates the missing ones through the root.
+func ensureContainedDir(root *os.Root, rel string) error {
 	dir := path.Dir(rel)
 	if dir != "." {
 		cur := ""
@@ -288,7 +308,7 @@ func writeIntoLifeboat(root *os.Root, abs, rel string, data []byte) error {
 			return err
 		}
 	}
-	return fsutil.WriteFileAtomic(filepath.Join(abs, rel), data, 0o644)
+	return nil
 }
 
 // marshalLessonsFile renders a LessonsFile deterministically (indented, trailing

@@ -29,7 +29,7 @@ Source: `~/ABCDevelopment/.claude/CLAUDE.md`. Disposition: split into CARL-style
 | 5 | Documentation Structure Standards | **Keep decision tree only** | `DOCUMENTATION` | The work-to-do vs work-done framing survives; the prescriptive directory layout (Diátaxis-flavoured) drops |
 | 6 | Feature-Centric Roadmap Standard | **Drop** | — | Superseded by intent system (`.abcd/development/intents/`) |
 | 7 | No Time Estimates | **Drop** | — | Implicit in press-release intent format; no separate enforcement needed |
-| 8 | Milestone Completion Requirements | **Drop file mandates; reframe** | — | Devlogs become flow-next epic completion records (plan-sync output). Retrospectives land in `/abcd:reflect` (a later phase, see [`itd-24`](../intents/planned/itd-24-reflect-command.md)). Time logs dropped entirely |
+| 8 | Milestone Completion Requirements | **Drop file mandates; reframe** | — | Devlogs become flow-next epic completion records (plan-sync output). Retrospectives land in `/abcd:reflect` (a later phase, see [`itd-24`](../intents/shipped/itd-24-reflect-command.md)). Time logs dropped entirely |
 | 9 | Singular vs Plural Naming | **Keep** | `NAMING` | Low-cost rule; prevents bikeshedding |
 | 10 | Complete Directory Coverage (README per dir) | **Drop** | — | Busywork without enforcement layer |
 | 11 | Cross-Reference Standards | **Drop** | — | Bidirectional linking decays without tooling |
@@ -88,7 +88,7 @@ Source: `~/.claude/templates/` (24 files). Disposition: most drop; transparency-
 |---|---|---|
 | `ai-contributions.md.template` | **Auto-generate, no template** | `dev_sync.py` reads `.abcd/logbook/*.jsonl` and emits `AI-CONTRIBUTIONS.md` at lifeboat-creation time. Always-current, lifeboat-portable |
 | `devlog.md.template` | **Drop file; harvest prompt structure** | Per Pass 1 §8: devlogs become flow-next plan-sync output. Template's narrative/challenges/highlights structure folds into plan-sync's output prompt |
-| `retrospective.md.template` | **Later phase** | Captured as [`itd-24-reflect-command`](../intents/planned/itd-24-reflect-command.md) — `/abcd:reflect` for major-milestone retrospectives. `intent-fidelity-reviewer` also gains retrospective output mode for major shipped intents |
+| `retrospective.md.template` | **Later phase** | Captured as [`itd-24-reflect-command`](../intents/shipped/itd-24-reflect-command.md) — `/abcd:reflect` for major-milestone retrospectives. `intent-fidelity-reviewer` also gains retrospective output mode for major shipped intents |
 | `pre-implementation-checklist.md` | **Drop** | flow-next task structure + intent acceptance criteria (`itd-1`) replace |
 | `post-implementation-checklist.md` | **Drop** | Same |
 | `manual-test-script.md.template` | **Drop** | Not load-bearing now; corpus tests + golden-test fixtures cover plugin's own testing |
@@ -281,6 +281,6 @@ If the first phase starts feeling too heavy, the candidates for moving to a late
 [itd-7]: ../intents/drafts/itd-7-rp-workspace-portability.md "itd-7 — RP workspace portability"
 [itd-17]: ../intents/superseded/itd-17-model-effectiveness-tracking.md "itd-17 — Model effectiveness tracking (a later phase)"
 [itd-23]: ../intents/drafts/itd-23-spec-kit-interop.md "itd-23 — Spec Kit interop (a later phase)"
-[itd-24]: ../intents/planned/itd-24-reflect-command.md "itd-24 — /abcd:reflect command (a later phase)"
+[itd-24]: ../intents/shipped/itd-24-reflect-command.md "itd-24 — /abcd:reflect command (a later phase)"
 [carl]: https://github.com/ChristopherKahler/carl "CARL — Context Augmentation & Reinforcement Layer"
 [paul]: https://github.com/ChristopherKahler/paul "PAUL — Plan-Apply-Unify Loop"

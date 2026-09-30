@@ -44,8 +44,9 @@ markers by reading source files — honours `.gitignore` by default. A file the
 user told git to ignore is out of that scan, because a lifeboat cites its
 evidence by `path:line` and is meant to be shared, so a scan that read ignored
 files could carry a repository's scratch, logs and local notes into the
-artefact. Declared record families (ADRs, issues, intents, specs) are a
-separate path: `pack` copies them verbatim from their canonical locations
+artefact. Declared record families (ADRs, issues, intents, specs, and every
+release retrospective under `.abcd/development/retrospectives/<release-tag>/`,
+packed as `retrospectives/<release-tag>/README.md`) are a separate path: `pack` copies them verbatim from their canonical locations
 whether or not git ignores them, so a gitignored record still travels — keep a
 record you do not want shared out of those locations, not merely in
 `.gitignore`.

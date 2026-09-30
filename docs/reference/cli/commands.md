@@ -1028,6 +1028,24 @@ Unpack a lifeboat's record families into a target repository: Writes those famil
 abcd embark from ../lifeboat
 ```
 
+#### `abcd embark lessons`
+
+Rank the lessons a lifeboat's retrospectives carry against the new voyage's brief: Writes nothing; refuses a lifeboat that fails its manifest.
+
+**Usage:** `abcd embark lessons <lifeboat-dir> [target-dir] [flags]`
+
+**Flags:**
+
+```
+      --brief string   rank against this file's text (the press release the interview is writing) instead of the target's framing chapter
+```
+
+**Example:**
+
+```
+abcd embark lessons ../lifeboat
+```
+
 #### `abcd embark probe`
 
 Report what a lifeboat would write into a target, coverage blanks first: Writes nothing; refuses a lifeboat whose manifest does not verify.
@@ -2707,6 +2725,51 @@ duplicates: or refines: link and shown, printed and as matches in --json.
 
 ```
 abcd reading ingest --reading-json reading.json
+```
+
+### `abcd reflect`
+
+Render the seed a cut release's retrospective interview opens from: Writes nothing; refuses a release that shipped no intent, or an intent id.
+
+**Usage:** `abcd reflect <release-tag>`
+
+Open the retrospective for a cut release: render the seed the interview opens from —
+the intents the tag shipped, which of them carry audit notes, the intents targeted at
+the release that have not shipped, the changelog section and the computed metrics —
+and write nothing. `reflect write` writes the retrospective from the answers.
+
+The release is the only grain: an intent id is refused, because per-intent
+reflection is the intent audit's (`abcd intent audit <itd-N>`).
+
+**Example:**
+
+```
+abcd reflect v0.11.0
+```
+
+#### `abcd reflect write`
+
+Write a cut release's retrospective from the interview's answers: Writes its README once; refuses a thin answer or unconfirmed unshipped work.
+
+**Usage:** `abcd reflect write <release-tag> --answers <file> [flags]`
+
+Write the retrospective for a cut release from the interview's answers, a JSON
+object with one {"answer", "follow_up"} entry per asked section (went_well,
+could_improve, lessons, decisions). It refuses, writing nothing, while an answer is
+under the floor and its follow-up is unanswered, while intents targeted at the release
+are unshipped and --proceed was not given, and when the retrospective already exists.
+
+**Flags:**
+
+```
+      --answers string   the interview's answers, a JSON file
+      --proceed          write although intents targeted at the release are unshipped (the person's confirmation)
+```
+
+**Example:**
+
+```
+abcd reflect write v0.11.0 --answers answers.json
 ```
 
 ### `abcd report`
