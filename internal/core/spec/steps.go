@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"path/filepath"
 	"regexp"
+	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
@@ -30,8 +32,12 @@ const StepsHeading = "## Steps"
 //     - landed: #123
 //
 // `landed:` names what landed the step (a pull request or a commit); a step
-// without one, or with a null value, is not landed. Any other indented line is
-// the author's and is carried verbatim wherever the step is copied.
+// without one, or with a null value, is not landed. `needs:` names the earlier
+// steps a step waits for, or `none` (ruling DR6, spc-2609202134341288); a step
+// without the line needs every step before it (ruling DR6b), so running beside
+// earlier steps is an opt-in the step declares. Any other indented line is the
+// author's and is carried verbatim wherever the step is copied, except the
+// `needs:` line, which a remainder rewrites (CarryUnlanded).
 type Step struct {
 	// Number is the step's 1-based position in document order. The list's own
 	// numerals are not trusted for order: a renderer renumbers them anyway.
@@ -40,6 +46,11 @@ type Step struct {
 	Packages string `json:"packages,omitempty"`
 	Tests    string `json:"tests,omitempty"`
 	Landed   string `json:"landed,omitempty"`
+	// Needs are the earlier steps the step's `- needs:` line names, and
+	// NeedsDeclared whether it has the line at all: a step without it needs
+	// every step before it (Requires).
+	Needs         []int `json:"needs,omitempty"`
+	NeedsDeclared bool  `json:"needs_declared,omitempty"`
 	// Implicit marks the one step of a spec that lists none: the whole spec,
 	// built as one step (the intent's decision 2).
 	Implicit bool `json:"implicit,omitempty"`
@@ -62,7 +73,7 @@ var (
 	// stepItemRe is a top-level numbered list item: `1. Title` or `1) Title`.
 	stepItemRe = regexp.MustCompile(`^([0-9]{1,4})[.)][ \t]+(\S.*)$`)
 	// stepKeyRe is a keyed bullet indented under a step.
-	stepKeyRe = regexp.MustCompile(`^[ \t]+[-*+][ \t]+(?i:(packages|tests|landed))[ \t]*:[ \t]*(.*)$`)
+	stepKeyRe = regexp.MustCompile(`^[ \t]+[-*+][ \t]+(?i:(packages|tests|landed|needs))[ \t]*:[ \t]*(.*)$`)
 	// guidanceRe is a whole-line italic paragraph, the shape of the minted
 	// placeholder; before the first step it is guidance and is skipped.
 	guidanceRe = regexp.MustCompile(`^_.*_$`)
@@ -145,6 +156,9 @@ func ParseSteps(content string) ([]Step, error) {
 
 // setKey records one keyed bullet on a step, refusing a key given twice.
 func (s *Step) setKey(key, value string, line int) error {
+	if key == "needs" {
+		return s.setNeeds(value, line)
+	}
 	var dst *string
 	switch key {
 	case "packages":
@@ -162,6 +176,112 @@ func (s *Step) setKey(key, value string, line int) error {
 	}
 	*dst = value
 	return nil
+}
+
+// setNeeds records a step's `- needs:` line: `none`, or a comma-separated list
+// of earlier steps by number. A need naming the step itself, a later step, or a
+// step the spec does not list is refused naming the line.
+func (s *Step) setNeeds(value string, line int) error {
+	if s.NeedsDeclared {
+		return fmt.Errorf("spec: %s step %d gives `needs:` twice (line %d)", StepsHeading, s.Number, line)
+	}
+	bad := func(why string) error {
+		return fmt.Errorf("spec: %s step %d's `needs:` line (line %d) %s — write `- needs: none`, or the earlier steps it waits for by number (`- needs: 1, 3`)", StepsHeading, s.Number, line, why)
+	}
+	s.NeedsDeclared = true
+	s.Needs = []int{}
+	if strings.EqualFold(strings.TrimSpace(value), "none") {
+		return nil
+	}
+	for _, f := range strings.Split(value, ",") {
+		f = strings.TrimSpace(f)
+		n, err := strconv.Atoi(f)
+		switch {
+		case err != nil || f == "" || f[0] == '+' || f[0] == '-':
+			return bad(fmt.Sprintf("names %q, which is not a step number", f))
+		case n == s.Number:
+			return bad("names the step itself")
+		case n > s.Number:
+			return bad(fmt.Sprintf("names step %d, which comes after it", n))
+		case n < 1:
+			return bad(fmt.Sprintf("names step %d, which the spec does not list", n))
+		case slices.Contains(s.Needs, n):
+			return bad(fmt.Sprintf("names step %d twice", n))
+		}
+		s.Needs = append(s.Needs, n)
+	}
+	return nil
+}
+
+// Requires is the earlier steps a step waits for: the ones its `- needs:` line
+// names, or, without the line, every step before it (ruling DR6b).
+func (s Step) Requires() []int {
+	if s.NeedsDeclared {
+		return append([]int{}, s.Needs...)
+	}
+	out := []int{}
+	for n := 1; n < s.Number; n++ {
+		out = append(out, n)
+	}
+	return out
+}
+
+// NeedsRewrite is one `- needs:` line a remainder copy rewrote: the step as the
+// remainder numbers it, and the line before and after.
+type NeedsRewrite struct {
+	Step   int    `json:"step"`
+	Before string `json:"before"`
+	After  string `json:"after"`
+}
+
+// needsLineRe is a step's `- needs:` line, its indentation and marker kept.
+var needsLineRe = regexp.MustCompile(`^([ \t]+[-*+][ \t]+)(?i:needs)[ \t]*:`)
+
+// CarryUnlanded is the remainder copy's view of a spec's steps: the steps not
+// marked landed, in document order, renumbered from one, every indented line
+// carried verbatim but the `- needs:` line, which is rewritten against the
+// remainder. A named step that landed is satisfied and leaves the list; one
+// that did not is carried and renamed to its number in the remainder; a list
+// left empty is written `- needs: none`, never removed, since an absent line
+// means every earlier step (ruling DR6b). A step without the line stays
+// without it. The rewrites are returned, before and after, in remainder order.
+func CarryUnlanded(steps []Step) ([]Step, []NeedsRewrite) {
+	carried := Unlanded(steps)
+	renum := map[int]int{}
+	for i, s := range carried {
+		renum[s.Number] = i + 1
+	}
+	var rewrites []NeedsRewrite
+	out := make([]Step, 0, len(carried))
+	for i, s := range carried {
+		s.Number = i + 1
+		if s.NeedsDeclared {
+			kept := []int{}
+			for _, n := range s.Needs {
+				if m, ok := renum[n]; ok {
+					kept = append(kept, m)
+				}
+			}
+			s.Needs = kept
+			after := needsValue(kept)
+			body := make([]string, len(s.body))
+			for j, l := range s.body {
+				m := needsLineRe.FindStringSubmatch(l)
+				if m == nil {
+					body[j] = l
+					continue
+				}
+				nl := m[1] + "needs: " + after
+				body[j] = nl
+				if strings.TrimSpace(nl) != strings.TrimSpace(l) {
+					rewrites = append(rewrites, NeedsRewrite{Step: s.Number, Before: strings.TrimSpace(l), After: strings.TrimSpace(nl)})
+				}
+			}
+			s.body = body
+		}
+		out = append(out, s)
+	}
+	return out, rewrites
 }
 
 // Steps is the build's view of a spec: the steps it lists, or — when it lists
@@ -230,8 +350,23 @@ func renderSteps(steps []Step) string {
 				fmt.Fprintf(&b, "   - %s: %s\n", kv[0], kv[1])
 			}
 		}
+		if s.NeedsDeclared {
+			fmt.Fprintf(&b, "   - needs: %s\n", needsValue(s.Needs))
+		}
 	}
 	return b.String()
+}
+
+// needsValue is a needs list as its line writes it.
+func needsValue(needs []int) string {
+	if len(needs) == 0 {
+		return "none"
+	}
+	parts := make([]string, len(needs))
+	for i, n := range needs {
+		parts[i] = strconv.Itoa(n)
+	}
+	return strings.Join(parts, ", ")
 }
 
 // stepsSection finds the `## Steps` section: the body lines [start, end), or

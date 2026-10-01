@@ -30,7 +30,27 @@ import (
 // ledger lock, so the sweep's classify-then-unlink can no longer interleave with
 // a commit's fill and delete a just-committed issue file.
 func mutationPreamble(repoRoot, issuesRoot string) error {
-	if err := withLedgerLock(repoRoot, issuesRoot, func() error {
+	return mutationPreambleWith(withLedgerLock, repoRoot, issuesRoot)
+}
+
+// ledgerLocker runs fn under the ledger lock. withLedgerLock takes it;
+// heldLedgerLock is what a caller already holding it passes, since the flock
+// is not reentrant and a second acquisition in one process waits out its
+// budget and fails.
+type ledgerLocker func(repoRoot, issuesRoot string, fn func() error) error
+
+// heldLedgerLock is the ledgerLocker of a caller that holds the ledger lock
+// already: it asserts the ledger's directories, as withLedgerLock does before
+// it locks, and runs fn in the caller's hold.
+func heldLedgerLock(repoRoot, issuesRoot string, fn func() error) error {
+	if err := ensureLedgerDirs(repoRoot, issuesRoot); err != nil {
+		return err
+	}
+	return fn()
+}
+
+func mutationPreambleWith(lock ledgerLocker, repoRoot, issuesRoot string) error {
+	if err := lock(repoRoot, issuesRoot, func() error {
 		return cleanOrphanPlaceholders(repoRoot, issuesRoot)
 	}); err != nil {
 		return err
@@ -42,6 +62,18 @@ func mutationPreamble(repoRoot, issuesRoot string) error {
 // The write is transactional: a zero-byte placeholder is reserved, and on any
 // failure it is swept. Returns the committed path under open/.
 func Capture(req CaptureRequest) (CaptureResult, error) {
+	return captureWith(withLedgerLock, req)
+}
+
+// captureHeld is Capture for a caller that already holds the ledger lock and
+// needs its own read of the ledger and the filing to be one step: the owed
+// audit filer's "link, never double" scan (auditowed.go). Every hold Capture
+// would take runs in the caller's instead.
+func captureHeld(req CaptureRequest) (CaptureResult, error) {
+	return captureWith(heldLedgerLock, req)
+}
+
+func captureWith(lock ledgerLocker, req CaptureRequest) (CaptureResult, error) {
 	repoRoot, issuesRoot, err := resolveRoots(req.RepoRoot, req.IssuesRoot)
 	if err != nil {
 		return CaptureResult{}, err
@@ -69,7 +101,7 @@ func Capture(req CaptureRequest) (CaptureResult, error) {
 	if err := checkFoundAt(repoRoot, req.FoundAt); err != nil {
 		return CaptureResult{}, err
 	}
-	if err := mutationPreamble(repoRoot, issuesRoot); err != nil {
+	if err := mutationPreambleWith(lock, repoRoot, issuesRoot); err != nil {
 		return CaptureResult{}, err
 	}
 	// The targets go through the ONE blocked_by validator link shares
@@ -140,12 +172,12 @@ func Capture(req CaptureRequest) (CaptureResult, error) {
 	// no maximum, so the refs-union scan the max+1 allocator needed (iss-115,
 	// iss-120) is gone — time orders the ids and entropy separates same-second
 	// minters on branches this working tree cannot see.
-	issID, placeholder, err := reservePath(repoRoot, issuesRoot, slugNorm, req.ForceID)
+	issID, placeholder, err := reservePathWith(lock, repoRoot, issuesRoot, slugNorm, req.ForceID)
 	if err != nil {
 		return CaptureResult{}, err
 	}
 
-	result, err := commitCapture(repoRoot, issuesRoot, req, issID, slugNorm, placeholder)
+	result, err := commitCaptureWith(lock, repoRoot, issuesRoot, req, issID, slugNorm, placeholder)
 	if err != nil {
 		_ = cancelReservation(repoRoot, issuesRoot, placeholder)
 		return CaptureResult{}, err
@@ -180,6 +212,10 @@ func validateRequestEnums(req CaptureRequest) error {
 }
 
 func commitCapture(repoRoot, issuesRoot string, req CaptureRequest, issID, slug, placeholder string) (CaptureResult, error) {
+	return commitCaptureWith(withLedgerLock, repoRoot, issuesRoot, req, issID, slug, placeholder)
+}
+
+func commitCaptureWith(lock ledgerLocker, repoRoot, issuesRoot string, req CaptureRequest, issID, slug, placeholder string) (CaptureResult, error) {
 	// The disclosure pair (itd-178). origin is DERIVED — a capture's text is
 	// written directly rather than derived from another record or a reading
 	// item, so its route is researcher-authored (which names the route, not who
@@ -269,7 +305,7 @@ func commitCapture(repoRoot, issuesRoot string, req CaptureRequest, issID, slug,
 	// just-committed file deleted. If the sweep reclaimed the placeholder first, the
 	// re-read fails and the capture reports an error rather than a false success.
 	var result CaptureResult
-	err = withLedgerLock(repoRoot, issuesRoot, func() error {
+	err = lock(repoRoot, issuesRoot, func() error {
 		// Guard the overwrite: the placeholder must still be the zero-byte file we
 		// reserved (expected_checksum = sha256("")).
 		_, checksum, rerr := readWithChecksum(placeholder)

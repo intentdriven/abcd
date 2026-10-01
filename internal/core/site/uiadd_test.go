@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -249,6 +250,30 @@ func TestBuildAddsAMissingLabelAndSaysSo(t *testing.T) {
 	}
 	if _, err := LoadUI(f.Root(), "site-src/ui.json"); err != nil {
 		t.Fatalf("the file build completed does not load: %v", err)
+	}
+}
+
+// A build that fails after it completed the file carries the labels it added
+// in its error, which unwraps to the cause.
+func TestAFailedBuildNamesTheLabelsItAdded(t *testing.T) {
+	f := newFixture(t)
+	body, err := os.ReadFile(filepath.Join(f.Root(), "site-src", "ui.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cutBody := cut(t, string(body), `"target": "target", `)
+	blanked := regexp.MustCompile(`"now": "[^"]*"`).ReplaceAllString(cutBody, `"now": ""`)
+	if blanked == cutBody {
+		t.Fatal("fixture: ui.json carries no now label")
+	}
+	f.write("site-src/ui.json", blanked)
+	_, err = Build(Request{RepoRoot: f.Root(), OutDir: t.TempDir(), Stamp: fixtureStamp})
+	var added *LabelsAddedError
+	if !errors.As(err, &added) || !reflect.DeepEqual(added.Labels, []string{"status.target"}) || added.File != "site-src/ui.json" {
+		t.Fatalf("the failed build names the label it added: %v", err)
+	}
+	if errors.Unwrap(err) == nil || err.Error() != errors.Unwrap(err).Error() {
+		t.Fatalf("the error unwraps to its cause and reads as it: %v", err)
 	}
 }
 

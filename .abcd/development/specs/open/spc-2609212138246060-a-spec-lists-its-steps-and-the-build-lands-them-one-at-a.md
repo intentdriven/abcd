@@ -16,7 +16,7 @@ The design record for itd-2609212103565953: the `## Steps` section and the loop'
 1. **The template**: `## Steps` seeded empty by `intent plan`; the readiness gate reports the section's shape (a list or empty) as advisory (criterion 1).
 2. **The parser**: `spec.Steps(spec)` returns the ordered list with footprints, or one implicit step (criterion 1).
 3. **The loop**: the lane in the state file gains `step: n/N`; `implement` starts the next step's lane only when the previous lane's pull request is an ancestor of the default branch (criterion 2).
-4. **The remainder**: `spec close --remainder` copies steps not marked landed into the new spec (criterion 3).
+4. **The remainder**: `spec close --remainder` copies steps not marked landed into the new spec (criterion 3). Each step's indented lines are copied verbatim except a `- needs:` line, which is rewritten against the remainder's numbering (spc-2609202134341288, piece 6, "Which steps may run side by side").
 5. **Briefs and the run record**: the brief renderer prints the step and its predecessors; the record lists `step` per lane (criterion 4).
 6. **The page**: `commands/intent.md` and the build page say the word once for both (criterion 5).
 

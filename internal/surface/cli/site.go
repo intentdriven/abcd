@@ -66,6 +66,12 @@ func newSiteCommand(asJSON *bool) *cobra.Command {
 				Lanes: loop.StatusLanes,
 			})
 			if err != nil {
+				// A failure after the build completed ui.json still says what
+				// it added, before the error: the write stands.
+				var added *site.LabelsAddedError
+				if errors.As(err, &added) {
+					sayAddedLabels(cmd.ErrOrStderr(), "abcd site build", added.File, added.Labels)
+				}
 				return &exitError{Code: 2, Msg: "abcd site build: " + scrubPaths(err)}
 			}
 			sayAddedLabels(cmd.ErrOrStderr(), "abcd site build", res.LabelsFile, res.AddedLabels)

@@ -16,8 +16,9 @@ last one stopped.
 Two words, two things. A **step** is a piece of the spec: the spec lists its
 steps under `## Steps`, and each lands as one lane and one pull request. A
 **stage** is what the loop does to a lane on the way: `worktree`, `brief`,
-`implement`, `validate`, `land`. `implement step` performs one stage; the
-payloads name the stage under `stage` and the spec's step under `spec_step`.
+`implement`, `validate`, `land`. `implement step` performs one move of the
+run; the payloads name the stage under `stage` and the spec's step under
+`spec_step`.
 
 ## Start the run
 
@@ -176,12 +177,16 @@ stage with exit 2, naming the value and the accepted form, and nothing is
 written. Starting again keeps the run's pace: a flag naming another pace is
 refused, and one naming the same pace resumes.
 
-The window and the pause bind through `implement step` (below). The ceiling is
-recorded with the run; this build does not count lanes against it.
+The window and the pause bind through `implement step` (below), and so does the
+ceiling: a run hands work to several agents at once, up to `sub_agents`, the
+validators of one round side by side and the lanes of steps that do not need
+each other beside one another. A step runs beside earlier steps only when the
+spec's `- needs:` line under it says so (`- needs: none`, or `- needs: 1, 3`
+naming the steps it waits for); without the line it needs every step before it.
 
 ## Drive it
 
-The host session drives the loop. Take one stage at a time:
+The host session drives the loop, one move per call:
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/abcd" implement step --json
@@ -196,8 +201,16 @@ returns hand the receipt back:
 "${CLAUDE_PLUGIN_ROOT}/abcd" implement receipt <path> --json
 ```
 
-The lane advances only on a receipt that verifies. Running `implement step` while the
-lane awaits a receipt re-tells what it awaits and moves nothing.
+A lane advances only on a receipt that verifies, and the receipt path names the
+lane it belongs to. While a slot is free, `implement step` hands out the next
+waiting work (an open lane's validators or fix implementer before a new lane's
+implementer, the lower spec step first); several agents may be out at once, so
+start each as it is handed out. A step that finds the ceiling reached hands out
+nothing and exits 0 with `ceiling_reached: true`, naming every agent out and its
+receipt path: hand a receipt back, then step again. When a step's needs have
+landed, its lane opens whatever the ceiling (its worktree and brief are made,
+and its implementer takes the next free slot), and the run record gets a line
+naming it, as the start line names the first.
 
 A role can run through a command-line runner instead of an agent you start.
 `roles.<role>.runner` in the repository's or the machine's `.abcd/config.json`
@@ -206,7 +219,7 @@ enables under `runner.<name>` in `~/.abcd/config.json` (with an optional
 `model` route, `<provider>/<model>`, admitted against that provider's
 allowlist). `build` reads this configuration before it creates the run, and a
 fault, a model route off the allowlist included, is refused at the `runner`
-stage with nothing created. When a stage hands the lane to a routed role,
+stage with nothing created. When a step hands work to a routed role,
 `implement step` starts the runner itself with the brief and the receipt path
 you would be handed, in the lane's worktree; its transcript goes to abcd's
 history store and its receipt is verified exactly as yours would be, so a
@@ -217,9 +230,7 @@ a receipt that does not verify, the payload still names `awaiting` as usual and
 adds `fallback` (the `role`, the runner `asked` for, the `reason` and the route
 that runs it): start the agent yourself as above. Every fallback is recorded;
 `implement status` and `implement record` count them per runner and per role.
-Tell the user each fallback's reason. When a lane is
-done, the spec's next pending step opens the next lane, and the run record gets
-a line naming it, as the start line names the first.
+Tell the user each fallback's reason.
 
 The run's window opens when the run starts. Once its working minutes have
 elapsed, `implement step` starts nothing: it writes `next_eligible_at` (now plus
@@ -270,9 +281,15 @@ A lane's stages run in order:
    run's fix rounds, a round that still does not pass hands the lane back: the
    result carries `hand_back` (`verdict` `unachievable`, the last `round`, the
    `fix_rounds` cap, the `findings` returns and the criteria `not_met` or
-   `undecided`), the run starts nothing further for it, and every later step is
-   refused at the `handed-back` stage. Tell the user the intent is handed back
-   to them with those findings; do not start another fix round. The run stays
+   `undecided`), and the run starts nothing further for it. The lanes beside it
+   finish; no new lane opens and no lane closes the spec, and a lane whose round
+   passes is held before it pushes or arms (`/abcd:implement` names the hold).
+   Once nothing is left to move, every step is refused at the `handed-back`
+   stage naming the hand-back and each held lane. Tell the user the intent is
+   handed back to them with those findings, and ask, for each held lane,
+   whether it lands as it is (`implement step --release <lane-id>`) or is
+   discarded (`implement step --discard <lane-id>`); do not start another fix
+   round. The run stays
    in progress until its directory, `.abcd/.work.local/run/<run-id>`, is
    removed, which the refusal names as the way to build the intent afresh once
    it is replanned.
@@ -292,9 +309,14 @@ A lane's stages run in order:
    hand. It opens the pull request through `gh`, with a body built from the
    run's records and passed through the outbound scrub, re-reads the body the
    forge holds and strips a session URL or tool footer. It arms auto-merge with
-   the merge-queue method the ruleset mirror (`.abcd/work/rulesets/`) names, or
-   leaves the pull request open where no merge queue gates the default branch,
-   and pushes nothing to the lane afterwards. Then `step` exits 3 until the
+   the merge-queue method the ruleset mirror (`.abcd/work/rulesets/`) names
+   only where that mirror also requires a person's approval (an approving
+   review count of one or more, or a code-owner review with a CODEOWNERS file
+   naming an owner). Otherwise it leaves the pull request open for a person to
+   merge, says so in the step's note and the run record ("left open for a
+   person to merge: the ruleset requires no approval"), and never arms it on a
+   later step; a missing mirror requires nothing. It pushes nothing to the lane
+   afterwards. Then `step` exits 3 until the
    pushed head is an ancestor of the default branch on `origin`; stop driving
    the run and come back later. Once it is, the loop removes the lane's
    worktree and branch, the lane is done, and the next pending step opens the

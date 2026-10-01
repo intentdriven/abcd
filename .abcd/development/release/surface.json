@@ -1823,6 +1823,20 @@
       "sentence": "Perform the next stage of an implement loop run's lane and exit: Writes the run's state and the lane's stages; refuses a push with no preflight receipt.",
       "flags": [
         {
+          "name": "discard",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "release",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "run",
           "shorthand": "",
           "type": "string",

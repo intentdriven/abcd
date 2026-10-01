@@ -199,28 +199,56 @@ last, and a fourth reads its record at the end:
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/abcd" implement status [--run <run-id>] --json
-"${CLAUDE_PLUGIN_ROOT}/abcd" implement step [--run <run-id>] --json
+"${CLAUDE_PLUGIN_ROOT}/abcd" implement step [--run <run-id>] [--release <lane-id> | --discard <lane-id>] --json
 "${CLAUDE_PLUGIN_ROOT}/abcd" implement receipt <path> [--run <run-id>] --json
 "${CLAUDE_PLUGIN_ROOT}/abcd" implement record [--run <run-id>] [--transcript <path>]... --json
 ```
 
 `status` renders every run (or the one `--run` names): its pace and the layer
-each number came from, whether it is paused and until when, its lanes, each
-lane's spec step and next stage, what an awaiting lane waits on, the pending spec
-steps, the run's fallbacks from a routed runner to the host (`fallbacks`, and in
-the text a count per runner and per role) and the run record. It writes nothing.
+each number came from, the slots in use out of its ceiling and the work the
+ceiling holds back, whether it is paused and until when, its lanes, each lane's
+spec step and next stage, each agent a lane awaits, a held lane with the lane
+whose hand-back caused it, the head judged, the step it stopped before and the
+two flags that decide it, the pending spec steps, the run's fallbacks from a
+routed runner to the host (`fallbacks`, and in the text a count per runner and
+per role) and the run record. It writes nothing.
 
 A spec's **steps** and a lane's **stages** are two things: each spec step lands
 as one lane, and the loop takes the lane through its stages. `step` performs the
-next stage of the current lane and exits; the result names the stage it
-completed under `performed_stage` and the lane's next one under `stage`. When a
-stage hands work to an agent the result's `awaiting` names the `role` to start as a fresh agent,
-the `brief` to hand it and the `receipt` path it writes; the lane then moves
-only when `receipt` is called with that path and the receipt verifies. A `step`
-while the lane awaits re-tells the await and moves nothing; a complete run says
-`complete: true`. When a lane is done, the spec's next pending step opens the
-next lane and the run record names it. A stage that fails leaves the state as it
-was, so the next call performs it again, and a completed stage is never repeated.
+run's next move and exits; the result names the lane, the stage it completed
+under `performed_stage` and the lane's next one under `stage`. When a stage
+hands work to an agent the result's `awaiting` names the `role` to start as a
+fresh agent, the `brief` to hand it and the `receipt` path it writes; that work
+moves only when `receipt` is called with that path and the receipt verifies. A
+complete run says `complete: true`. A stage that fails leaves the state as it
+was, so the next call performs it again, and a completed stage is never
+repeated.
+
+A run works in parallel up to its ceiling, the pace's `sub_agents`: each agent
+handed work and not yet verified is a slot, implementers and validators alike,
+and the result carries `slots`, `ceiling` and `alive` (every lane with anything
+left, its stage and each await). Each `step` first performs a stage the binary
+owns on any lane (the worktree, the brief, a round's close, a landing step, a
+sync, a hold), which takes no slot and is never held by the ceiling. Then, while
+a slot is free, it hands out the
+first waiting work: a lane already open before a new one, the lower spec step
+first, a round's validators in order, then the implementer of a new lane. A
+`step` that finds the ceiling reached hands out nothing, exits 0 with
+`ceiling_reached: true` naming every await, and records the held work under the
+run's `waiting` with the time it was first held; the move that later serves it
+records the minutes it waited. A lane opens for a spec step once every step it
+needs has landed (the step's `- needs:` line, or by default every step before
+it), whatever the ceiling: its worktree and brief are made, and only its
+implementer waits for a slot. A landing waiting on the forge's merge holds only
+its own lane: the call moves another lane, names the wait under `blocked` (a
+`blocked:` line in the text form) and in `next`, and gives the wait (exit 3)
+only when nothing else moves. Any other refusal of a stage the binary performs,
+a missing preflight receipt included, is the call's answer, and no other lane
+moves.
+
+`receipt` looks the path up among every outstanding await of the run and
+advances the lane it belongs to; a path no await names is refused, naming the
+awaits there are, and frees nothing.
 
 When the stage hands the lane to a role that `roles.<role>.runner` routes to a
 command-line runner (`claude` or `opencode`, enabled under `runner.<name>` in
@@ -281,18 +309,52 @@ last two) with no `resolves` and no definition of done: `receipt` then discards
 the lane's worktree and branch, ends the lane at `handed-back` before the
 validators, and the result's `hand_back` names the kind, the reason, the home
 and the `discarded` head. `/abcd:drain` routes it by kind.
-`validate` hands the lane's head to fresh validators one at a time and records
-each verdict from the validator's own return; the fidelity audit passes only
+`validate` hands the lane's head to fresh validators, side by side up to the
+ceiling, and writes a fix brief only once every validator of the round has
+returned; it records each verdict from the validator's own return; the fidelity audit passes only
 when every criterion is met, so an undecided (`INCONCLUSIVE`) criterion sends
 the lane to a fresh implementer as a not-met one does. A lane that has taken
 the run's fix rounds (`build --fix-rounds`, bundled 3) and still does not pass
 is handed back: the result's `hand_back` names the verdict `unachievable` and
-the last findings, and every later `step` refuses at the `handed-back` stage.
-The run stays in progress, so `build next` passes over its intent; no verb
-clears it, and the refusal names the way out: once the intent is replanned,
-remove the run's directory, `.abcd/.work.local/run/<run-id>`.
+the last findings, and the loop starts nothing further for it. Its sibling
+lanes finish under the same ceiling, window and fix rounds; no new lane opens,
+pending steps stay pending, and no lane closes the spec. A sibling whose round
+passes is **held**: its stage is `held` and its `hold` names the `cause` (the
+handed-back lane), the `head` its round judged and `before`, the landing step it
+stopped before (`push`, or `arm` once its pull request is open; an armed one is
+disarmed with `gh pr merge <n> --disable-auto`). Where the forge refuses the
+withdrawal, `step` refuses naming the pull request, moves no other lane, and the
+person decides it on the forge; an armed pull request the forge reports merged
+had landed before the hand-back and is recorded as landed. Once nothing is left to move,
+every `step` refuses at the `handed-back` stage naming the hand-back and each
+held lane. The person decides each held lane, one per invocation, once no lane
+has work left:
 
-`land` takes one `step` per move, and the lane stays at `land` until the last:
+- `step --release <lane-id>` lands it as it is: its stage returns to `land` and
+  its landing resumes at the step it stopped before.
+- `step --discard <lane-id>` does not land it: its worktree and branch are
+  removed, then its pull request is closed if it opened one, its stage is
+  `discarded`, and its spec step stays unlanded. A removal git refuses (a
+  worktree with changes) leaves the pull request open and the lane held, so the
+  retry closes it once.
+
+Either is refused, changing nothing, for a lane that is not held or while a lane
+still has work. The run stays in progress, so `build next` passes over its
+intent; no verb clears it, and the refusal names the way out: once the intent
+is replanned, remove the run's directory, `.abcd/.work.local/run/<run-id>`.
+
+`land` takes one `step` per move, and the lane stays at `land` until the last.
+Landing is one lane at a time: a lane waits at its landing, holding no slot,
+while a sibling's landing is under way, the lower spec step landing first.
+Before a lane's landing begins, a sibling of the run that landed since its base
+is merged in (a **sync**): the default branch is merged into the lane's branch
+with a merge commit in its worktree, never a rebase, and a fresh round judges
+the merge head. A merge that conflicts is aborted with the branch unchanged, and
+a fresh implementer is handed a sync brief naming each conflicting path and the
+sibling lanes; its receipt must carry the merged sha as an ancestor of its head.
+A sync counts no fix round. The closing lane, which reaches its landing with no
+step pending, no other lane open and none handed back, takes the fidelity audit
+over each of the run's lanes' own diff.
 
 1. It checks the lane's worktree is clean and its branch is at the head the
    validators judged.
@@ -314,9 +376,14 @@ remove the run's directory, `.abcd/.work.local/run/<run-id>`.
    records and passed through the outbound scrub, then re-reads the body the
    forge holds and strips a session URL or tool footer the harness appended.
 5. It reads the merge rule from the ruleset mirror (`.abcd/work/rulesets/`) at
-   the lane's base: where a merge queue gates the default branch it arms
-   auto-merge with the queue's method, and elsewhere it leaves the pull request
-   open for a person to merge. Nothing is pushed to the lane after this.
+   the lane's base: where a merge queue gates the default branch AND a ruleset
+   requires a person's approval (an approving review count of one or more, or
+   a code-owner review with a CODEOWNERS file naming an owner) it arms
+   auto-merge with the queue's method. Elsewhere it leaves the pull request
+   open for a person to merge, and `implement status` shows the landing as
+   "left open for a person to merge: the ruleset requires no approval" where a
+   queue exists but nothing requires approval; a later step never arms it, and
+   a missing mirror requires nothing. Nothing is pushed to the lane after this.
 6. It waits (exit 3) until the pushed head is an ancestor of the default branch
    on `origin`, then removes the lane's worktree and branch, and the lane is
    done. A pull request closed without merging, or merged in a way that rewrote

@@ -354,7 +354,7 @@ func TestARunnerThatCannotRunTheRoleFallsBackAndIsRecorded(t *testing.T) {
 			if len(st.Fallbacks) != 1 || st.Fallbacks[0] != *fb {
 				t.Fatalf("the state carries the one fallback receipt: %+v", st.Fallbacks)
 			}
-			if st.Lanes[0].Awaiting == nil {
+			if len(st.Lanes[0].Awaits) == 0 {
 				t.Fatal("the lane still awaits the host's receipt")
 			}
 			if len(st.Lanes[0].Receipts) != 0 {
@@ -401,7 +401,7 @@ func TestAReviewThroughARunnerDiffersFromAHostReviewOnlyInItsRoute(t *testing.T)
 				return Outcome{Await: &Await{Role: RoleRuthless, Brief: briefRel, Receipt: returnRel}}, nil
 			},
 			Verify: func(c Context, l *Lane, receipt string) error {
-				l.Awaiting.Role = RoleRuthless
+				c.Await.Role = RoleRuthless
 				return verifyValidation(c, l, receipt)
 			}}
 		o := Options{Now: func() time.Time { return time.Date(2026, 9, 30, 12, 0, 0, 0, time.UTC) }}

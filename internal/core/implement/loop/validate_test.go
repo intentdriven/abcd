@@ -38,7 +38,7 @@ func stepTo(t *testing.T, repo *gittest.Repo, runID string, stages Stages, want 
 		if err != nil {
 			t.Fatal(err)
 		}
-		if i := st.current(); i >= 0 && st.Lanes[i].Stage == want && st.Lanes[i].Awaiting == nil {
+		if i := st.current(); i >= 0 && st.Lanes[i].Stage == want && st.Lanes[i].awaiting() == nil {
 			return st.Lanes[i]
 		}
 		if _, err := advance(repo.Root(), runID, stages, Options{}); err != nil {
@@ -207,8 +207,13 @@ func TestTheValidatorsAreFreshAgentsAndOnlyTheLoopRecordsAVerdict(t *testing.T) 
 			t.Fatalf("the reviewer's brief names %q:\n%s", want, brief)
 		}
 	}
-	got := handBack(t, repo, id, stages, RoleRuthless, reviewerReturn("SHIP"))
-	if got.PerformedStage != "" || got.Stage != StageValidate || got.Awaiting != nil {
+	// The ruthless reviewer is out; its return is handed back before the next
+	// step, which would otherwise hand the security reviewer out beside it.
+	if err := os.WriteFile(filepath.Join(repo.Root(), filepath.FromSlash(res.Awaiting.Receipt)), []byte(reviewerReturn("SHIP")), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Receipt(repo.Root(), id, filepath.Join(repo.Root(), filepath.FromSlash(res.Awaiting.Receipt)), stages, Options{})
+	if err != nil || got.PerformedStage != "" || got.Stage != StageValidate || got.Awaiting != nil {
 		t.Fatalf("a validator's return leaves the lane at validate for the next: %+v", got)
 	}
 	st, _ := ReadState(repo.Root(), id)
@@ -245,8 +250,10 @@ func TestTheValidatorsAreFreshAgentsAndOnlyTheLoopRecordsAVerdict(t *testing.T) 
 
 // TestTheAuditRunsOnceOnTheClosingLaneOverTheWholeDelivery is ruling AI: a
 // lane whose landing does not close the spec takes no audit step, and the lane
-// whose landing does takes it once, over the whole delivery — from the base of
-// the run's first lane to the closing lane's head, with each lane's own range.
+// whose landing does takes it once, over the whole delivery — the run's own
+// lanes' changes, lane by lane, each lane's head against its base (or the
+// default-branch sha it last merged in), never one range from the first lane's
+// base, which after a sync would carry outside work (spc-2609202134341288).
 func TestTheAuditRunsOnceOnTheClosingLaneOverTheWholeDelivery(t *testing.T) {
 	repo := steppedBriefRepo(t, "1. The parser\n2. The loop\n")
 	start, err := Start(repo.Root(), "itd-10", Options{})
@@ -283,16 +290,18 @@ func TestTheAuditRunsOnceOnTheClosingLaneOverTheWholeDelivery(t *testing.T) {
 		t.Fatal(err)
 	}
 	st, _ = ReadState(repo.Root(), id)
-	whole := st.Lanes[0].BaseSHA + ".." + closing.HeadSHA
-	for _, want := range []string{whole, st.Lanes[0].BaseSHA + ".." + st.Lanes[0].HeadSHA, closing.BaseSHA + ".." + closing.HeadSHA,
+	if whole := st.Lanes[0].BaseSHA + ".." + closing.HeadSHA; strings.Contains(string(req), whole) {
+		t.Fatalf("the delivery is lane by lane, not the range %s:\n%s", whole, req)
+	}
+	for _, want := range []string{st.Lanes[0].BaseSHA + ".." + st.Lanes[0].HeadSHA, closing.BaseSHA + ".." + closing.HeadSHA,
 		"lane-1", "lane-2", "## Acceptance Criteria", "## Provenance"} {
 		if !strings.Contains(string(req), want) {
 			t.Fatalf("the audit request carries %q:\n%s", want, req)
 		}
 	}
 	a := st.Lanes[1].Validation[0].Validators[2].Audit
-	if a == nil || a.BaseSHA != st.Lanes[0].BaseSHA || a.HeadSHA != closing.HeadSHA {
-		t.Fatalf("the audit's range is the whole delivery: %+v", a)
+	if a == nil || a.BaseSHA != closing.BaseSHA || a.HeadSHA != closing.HeadSHA {
+		t.Fatalf("the audit's own range is the closing lane's diff: %+v", a)
 	}
 	if res, err := advance(repo.Root(), id, stages, Options{}); err != nil || res.PerformedStage != StageValidate {
 		t.Fatalf("the closing lane's passing round completes its validation: %+v %v", res, err)
