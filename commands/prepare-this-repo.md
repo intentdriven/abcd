@@ -48,7 +48,8 @@ Read from `$ABCD`, delegating heavy reading to subagents where available:
   constraints, evidence, surfaces, internals, delivery, glossary).
 - `.abcd/development/principles/` — one principle per file, plus the
   three-rung promotion ladder in its README.
-- `.abcd/development/decisions/adrs/` — MADR, sequential `NNNN`. Session
+- `.abcd/development/decisions/adrs/` — MADR, one `<stamp>-<slug>.md` per
+  decision under a timestamp id (`adr-<yymmddHHMMSS><rrrr>`). Session
   decisions live in `work/DECISIONS.md`; architecture-shaping ones graduate.
 - `.abcd/development/intents/` — lifecycle by directory (`drafts/` →
   `planned/` → `shipped/` → `superseded/`).
@@ -208,7 +209,7 @@ the conventions read as the repo's own. Adapt wording to the repo; keep the
 substance:
 
 - Three-tier working state: `.abcd/development/` (durable record: ADRs in
-  `decisions/adrs/` using MADR + `NNNN`, dated plans and research notes),
+  `decisions/adrs/` using MADR under timestamp ids, dated plans and research notes),
   `.abcd/work/` (committed: `CONTEXT.md` orientation, `DECISIONS.md`
   append-only one-line decision log), `.abcd/.work.local/` (gitignored:
   `NEXT.md` handover, `scratch/`, `logs/` — runtime artefacts go here, never

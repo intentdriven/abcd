@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "flags": [
+    {
+      "chapter": "17-guard.md",
+      "sentence": "written. A trailing `.` after such a `..` (`../.`) warns too, though rm",
+      "replacement": "written. A trailing `.` after such a `..` (`./../.`) warns too, though rm",
+      "evidence": "Probes at 4d634c4f0 via guard check on stdin (scratch binary): `rm -rf ../.` ALLOWS (exit 0), and so do `rm -rf ../../.`, `rm -rf ./.`, `rm -rf /.`; while `rm -rf ./../.`, `rm -rf $PWD/../.` and `rm -rf x/../../.` WARN on rm-rf-working-directory (exit 0) and `rm -rf ..`, `rm -rf ../` warn. The chapter's own example `../.` is the one form that allows. internal/core/guard/match.go:883-885 (foldParents comment) claims a trailing `.` is folded, and no test in internal/core/guard/*_test.go names `../.`; the sentence entered the chapter in 4ef5013bd (2026-09-29), an ancestor of a76d7f52b, so it is pre-existing and outside every delta reviewed since. Every other probed claim in the chapter holds: only `guard check` speaks JSON (`guard hook --json` writes nothing on stdout and answers by exit 2/1/0 and stderr), `matches` lists every entry tripped with the fired one first (`[\"git-push-force\",\"git-clean\"]`, rendered `also matched: git-clean`), `git-stash-shared-stack` and `interpreter-reads-stream` fire (stash.go, payload.go) and are absent from `rules SHELL` (17 registry entries, none of those ids), the verdict table, `command-unparsable` on the hook, `git pus? --force`, `r[[:lower:]] -rf /`, `git clea[!n] -fd`, `rm $(true) -rf *`, `mkdir -p foo/{a,b}` (allow), `git push {--force,} origin main`, `${HOME%/*}`, `~/../*/*`, `/**`, `~/.?/*`, `~/.[a-z]/*`, `~/.?` (allow), `'/**'`, `${X:+$HOME}`, `IFS=x; rm -rf ${U:-x/x}`, `IFS=Uv; rm -rf $HOME/x`, `${X:-$'\\x2f'}`, `$!/`, `${PWD:0:1}` (block), `cat x | sh`, `pkill -u`, `kill $(pgrep make)`, `cd /tmp \u0026\u0026 rm -rf x`, `pushd /tmp; rm -rf x`, `core.hooksPath`, a same-line git alias, and the whole unseen list at lines 449-490 (`$(echo /)`, `\"$DIR\"/*`, `/?*`, `/tmp/$X/../../*`, `~/../?*`, `x/../*`, `~root/../../*`, `ps | grep | xargs kill`, `p=$(pgrep make); kill $p`, `python -c`, `$(cat msg.txt)`, `$(date)` all allow).",
+      "commit": "4d634c4f0baf4d23fde0c76b811e0619ee927d48",
+      "applied": "2026-09-30T23:00:13Z"
+    }
+  ]
+}

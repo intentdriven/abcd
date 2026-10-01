@@ -47,8 +47,9 @@ hand-back.
 For an intent with no run in progress, the checks run first, and every one must
 pass:
 
-- `key` — the argument is an intent id. An issue id is refused: the issue key
-  is not built yet.
+- `key` — the argument is an intent id or an issue id (`iss-N`, by shape), and
+  anything else is refused; an issue id is checked as the issue-keyed lane
+  above.
 - `ready` — the intent is READY: planned, its criteria written, its spec linked
   and written (the same gate `/abcd:intent` reports).
 - `open_questions` — no open question under `## Open Questions`: every list
@@ -75,8 +76,8 @@ pass:
   cannot be read (a worktree git will not answer for, a ledger holding one id
   twice) and an unreadable claim count as holding it: what they hold is unknown.
 
-A refusal writes nothing. It exits 2, or 3 when a peer holds the intent (back
-off and take other work). Under `--json` the refusal comes as its own document
+A refusal writes nothing. It exits 2, or 3 when a peer holds the intent or the
+run state is locked (back off and take other work). Under `--json` the refusal comes as its own document
 before the error envelope: `refusal.stage`, `refusal.check`, `refusal.reason`,
 `refusal.remedy` and every check's row in `refusal.checks`. Tell the user the
 check, the reason and the remedy, and do not work around it: an open question

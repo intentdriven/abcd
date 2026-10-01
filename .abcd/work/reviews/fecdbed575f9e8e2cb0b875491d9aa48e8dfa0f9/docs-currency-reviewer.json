@@ -1,0 +1,223 @@
+{
+  "subject": {
+    "digest": {
+      "gitCommit": "fecdbed575f9e8e2cb0b875491d9aa48e8dfa0f9"
+    }
+  },
+  "verifier": {
+    "id": "docs-currency-reviewer@release"
+  },
+  "timeVerified": "2026-09-30T23:15:30Z",
+  "verificationResult": "PROMOTE",
+  "judgeModel": "claude-fable-5-1",
+  "tier": "full",
+  "manifestHash": "sha256:62c165624c1e254075d752cb607b40375040a36eb854f57b635fe16c03106535",
+  "policy": {
+    "detector": "docs-currency-reviewer",
+    "version": "1",
+    "promptHash": "sha256:host-run-agent-harness-review-no-pinned-prompt",
+    "briefVersion": "0.12.0"
+  },
+  "categories": {
+    "false-claim": 8,
+    "stale-record": 4,
+    "stale-count": 1,
+    "incomplete": 8,
+    "criterion-violation": 3
+  },
+  "_reviewProvenance": "Host-run docs-currency-reviewer (Fable 5.1, tier full) read the first roll b89784c4302dc68698714afbc708bb02ad78a52d, which differs from this content commit fecdbed575f9e8e2cb0b875491d9aa48e8dfa0f9 only by 4b8ff2afa (the user-facing pages brought current: README.md, commands/ahoy.md, build.md, drain.md, guard.md, prepare-this-repo.md, update.md, version.md, docs/how-to/upgrade-to-v0.12.0.md, two CLI help sentences and their regenerated docs/reference/cli/commands.md, plus pinning tests), e8d5d0060, 4d634c4f0 and c8ddb0425 (the guard brief chapter 17-guard.md brought current after three docs-review HOLDs; the docs review of c8ddb0425 is PROMOTE), and the re-cut CHANGELOG, whose payload corrects dc-1 and dc-17. It found 24: four major (dc-1, dc-2, dc-5, dc-17), all fixed; eleven fixed in all; the thirteen remaining minors and nitpicks are deferred as one documentation record. Every finding carries its disposition.",
+  "failing": [
+    {
+      "id": "dc-1",
+      "category": "false-claim",
+      "severity": "major",
+      "summary": "CHANGELOG.md:25: The breaking bullet says the run state file 'moves to schema version 4' and is 'rewritten at version 4'; the binary at this commit writes schema version 8 (versions 5-8 added validation, fix-round cap, landing and the runner record after the rename). v0.11.1 wrote version 1, so a v0.11 run is rewritten at 8, not 4.",
+      "disposition": "fixed",
+      "note": "Fixed in the re-cut CHANGELOG of content commit fecdbed575f9e8e2cb0b875491d9aa48e8dfa0f9 (the payload names schema version 8, internal/core/implement/loop/state.go:124); CHANGELOG.md:25."
+    },
+    {
+      "id": "dc-2",
+      "category": "false-claim",
+      "severity": "major",
+      "summary": "docs/how-to/upgrade-to-v0.12.0.md:36-40: Same claim as dc-1 in the upgrade guide: 'the run's next abcd implement step or receipt writes the file at schema version 4' and 'An older abcd cannot read a version-4 file'. The next write is at schema version 8; a reader checking `schema_version` against this page will see 8.",
+      "disposition": "fixed",
+      "note": "Fixed in 4b8ff2afa (docs: bring the user-facing pages current for v0.12.0), an ancestor of content commit fecdbed575f9e8e2cb0b875491d9aa48e8dfa0f9; docs/how-to/upgrade-to-v0.12.0.md:37-41."
+    },
+    {
+      "id": "dc-3",
+      "category": "false-claim",
+      "severity": "nitpick",
+      "summary": "CHANGELOG.md:37: 'docs-lint's banned-token list refuses the word maintainer' (and RELEASE.md:35 'refused by docs-lint'): the ban is a pattern in this repository's own `.abcd/docs-lint.json`, not a bundled docs-lint rule; no Go source carries the token, so a managed repository's `abcd lint docs` does not refuse it.",
+      "disposition": "deferred",
+      "note": "Captured as iss-2609302306281487 in this release's records commit, the one documentation record listing every deferred docs-currency minor and nitpick; fixed in the first lane after the tag."
+    },
+    {
+      "id": "dc-4",
+      "category": "criterion-violation",
+      "severity": "nitpick",
+      "summary": "CHANGELOG.md:21: The section preamble says 'changes to earlier behaviour are not claimed until the composer can see the previous release', yet the two Breaking bullets (removed spellings, renamed JSON fields) are changes to earlier behaviour filed under `### Added`; the section has no `### Removed` or `### Changed` heading for a reader scanning for breakage.",
+      "disposition": "deferred",
+      "note": "Captured as iss-2609302306281487 in this release's records commit, the one documentation record listing every deferred docs-currency minor and nitpick; fixed in the first lane after the tag."
+    },
+    {
+      "id": "dc-5",
+      "category": "false-claim",
+      "severity": "major",
+      "summary": "commands/build.md:49-50: The `key` check says an issue id is refused ('the issue key is not built yet'), contradicting the same page's lines 38-44 and the binary, which builds `build <iss-N>` as an issue-keyed lane.",
+      "disposition": "fixed",
+      "note": "Fixed in 4b8ff2afa (docs: bring the user-facing pages current for v0.12.0), an ancestor of content commit fecdbed575f9e8e2cb0b875491d9aa48e8dfa0f9; commands/build.md:49-51."
+    },
+    {
+      "id": "dc-6",
+      "category": "false-claim",
+      "severity": "nitpick",
+      "summary": "commands/ahoy.md:23-24: Page says a `status` argument is the bare detection pass; the binary has no `status` sub-verb and refuses any positional, so the word is a page-level convention the page does not mark as such.",
+      "disposition": "deferred",
+      "note": "Captured as iss-2609302306281487 in this release's records commit, the one documentation record listing every deferred docs-currency minor and nitpick; fixed in the first lane after the tag."
+    },
+    {
+      "id": "dc-7",
+      "category": "stale-count",
+      "severity": "minor",
+      "summary": "commands/ahoy.md:15-19: 'install, uninstall, remote apply and connect are the four that change something' omits `ahoy credential <name> --home ...`, which the page itself (lines 537-540) and the help say writes the chosen home.",
+      "disposition": "fixed",
+      "note": "Fixed in 4b8ff2afa (docs: bring the user-facing pages current for v0.12.0), an ancestor of content commit fecdbed575f9e8e2cb0b875491d9aa48e8dfa0f9; commands/ahoy.md:16-20."
+    },
+    {
+      "id": "dc-8",
+      "category": "incomplete",
+      "severity": "nitpick",
+      "summary": "commands/ahoy.md:4: argument-hint omits the `credential` sub-verb documented at line 517.",
+      "disposition": "deferred",
+      "note": "Captured as iss-2609302306281487 in this release's records commit, the one documentation record listing every deferred docs-currency minor and nitpick; fixed in the first lane after the tag."
+    },
+    {
+      "id": "dc-9",
+      "category": "incomplete",
+      "severity": "minor",
+      "summary": "commands/build.md:77-78: Exit 3 is described only for a peer holding the intent; the binary also exits 3 when the run state is locked.",
+      "disposition": "fixed",
+      "note": "Fixed in 4b8ff2afa (docs: bring the user-facing pages current for v0.12.0), an ancestor of content commit fecdbed575f9e8e2cb0b875491d9aa48e8dfa0f9; commands/build.md:78-79."
+    },
+    {
+      "id": "dc-10",
+      "category": "incomplete",
+      "severity": "nitpick",
+      "summary": "commands/capture.md:4: argument-hint omits `mentions [--ref <branch>]`, a sub-verb the binary has and the page documents at lines 289-292.",
+      "disposition": "deferred",
+      "note": "Captured as iss-2609302306281487 in this release's records commit, the one documentation record listing every deferred docs-currency minor and nitpick; fixed in the first lane after the tag."
+    },
+    {
+      "id": "dc-11",
+      "category": "incomplete",
+      "severity": "nitpick",
+      "summary": "commands/capture.md:633-635: Says `widening_runs` is a key of the bare board's JSON; the top-level key is `reading_outstanding` (widening_runs sits nested inside it, omitempty).",
+      "disposition": "deferred",
+      "note": "Captured as iss-2609302306281487 in this release's records commit, the one documentation record listing every deferred docs-currency minor and nitpick; fixed in the first lane after the tag."
+    },
+    {
+      "id": "dc-12",
+      "category": "incomplete",
+      "severity": "nitpick",
+      "summary": "commands/docs.md:4,75-118: `docs fidelity` takes a repeatable `--intent <itd-N>` flag that the page and its argument-hint never mention.",
+      "disposition": "deferred",
+      "note": "Captured as iss-2609302306281487 in this release's records commit, the one documentation record listing every deferred docs-currency minor and nitpick; fixed in the first lane after the tag."
+    },
+    {
+      "id": "dc-13",
+      "category": "incomplete",
+      "severity": "nitpick",
+      "summary": "commands/history.md:4: argument-hint spells `ingest [<path>...]` without the required `--into <repo-root>` the page (lines 261-266) and the binary require.",
+      "disposition": "deferred",
+      "note": "Captured as iss-2609302306281487 in this release's records commit, the one documentation record listing every deferred docs-currency minor and nitpick; fixed in the first lane after the tag."
+    },
+    {
+      "id": "dc-14",
+      "category": "incomplete",
+      "severity": "nitpick",
+      "summary": "commands/implement.md:42-54: `implement join` also takes `--model` and `--reason`; the page documents only `--session`, `--role`, `--ceiling`.",
+      "disposition": "deferred",
+      "note": "Captured as iss-2609302306281487 in this release's records commit, the one documentation record listing every deferred docs-currency minor and nitpick; fixed in the first lane after the tag."
+    },
+    {
+      "id": "dc-15",
+      "category": "criterion-violation",
+      "severity": "minor",
+      "summary": "commands/drain.md:1-5,219: The new page has no `argument-hint` in its frontmatter and no `**User input:** $ARGUMENTS` line, unlike every other command page, although the verb takes `--dry-run`, `--max`, `--pace`, `--sub-agents`, `--fix-rounds`.",
+      "disposition": "fixed",
+      "note": "Fixed in 4b8ff2afa (docs: bring the user-facing pages current for v0.12.0), an ancestor of content commit fecdbed575f9e8e2cb0b875491d9aa48e8dfa0f9; commands/drain.md:4,220-221."
+    },
+    {
+      "id": "dc-16",
+      "category": "criterion-violation",
+      "severity": "nitpick",
+      "summary": "commands/ingest.md:4,119: Declares `argument-hint: <url-or-file>` but carries no `**User input:** $ARGUMENTS` line, so the argument is never handed to the page.",
+      "disposition": "deferred",
+      "note": "Captured as iss-2609302306281487 in this release's records commit, the one documentation record listing every deferred docs-currency minor and nitpick; fixed in the first lane after the tag."
+    },
+    {
+      "id": "dc-17",
+      "category": "false-claim",
+      "severity": "major",
+      "summary": "CHANGELOG.md:84: 'every salvage hook entry that runs the bootstrap declares a 120-second timeout and a status message' is false for two of the three: only UserPromptSubmit declares 120; the PreToolUse and PreCompact salvage entries declare no timeout (the host's default) and the repository's own test pins them to none. The status-message half holds. (The resolved record iss-323's `resolution:` field repeats the same false claim.)",
+      "disposition": "fixed",
+      "note": "Fixed in the re-cut CHANGELOG of content commit fecdbed575f9e8e2cb0b875491d9aa48e8dfa0f9 (only UserPromptSubmit declares the 120-second timeout); CHANGELOG.md:84."
+    },
+    {
+      "id": "dc-18",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": "commands/update.md:16-17: Claims `update` is the only command that reaches the release origin; `launch --dry-run --fetch-baseline` / `launch ship --fetch-baseline` fetch the tag's checksums.txt and plugin archive from the same origin, and hooks/bootstrap.sh downloads the release binary at session start.",
+      "disposition": "fixed",
+      "note": "Fixed in 4b8ff2afa (docs: bring the user-facing pages current for v0.12.0), an ancestor of content commit fecdbed575f9e8e2cb0b875491d9aa48e8dfa0f9; commands/update.md:16-19."
+    },
+    {
+      "id": "dc-19",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": "commands/version.md:55-58: Enumerates the network-touching verbs as `update --check`, `update`, `docs cite refresh` and `memory ingest <url>` and says every other path reads only disk; the v0.12 binary also reaches the network on `launch --fetch-baseline`, `reading ingest --dispatch`, `ahoy connect` and `site setup`.",
+      "disposition": "fixed",
+      "note": "Fixed in 4b8ff2afa (docs: bring the user-facing pages current for v0.12.0), an ancestor of content commit fecdbed575f9e8e2cb0b875491d9aa48e8dfa0f9; commands/version.md:55-64."
+    },
+    {
+      "id": "dc-20",
+      "category": "stale-record",
+      "severity": "minor",
+      "summary": "commands/prepare-this-repo.md:51,210-211: Describes the ADR store as 'MADR, sequential NNNN' and tells the target repo to file ADRs 'using MADR + NNNN'; ADRs now mint as `adr-<yymmddHHMMSS><rrrr>` filed as `<stamp>-<slug>.md`, only the legacy 0001-0058 keep ordinals.",
+      "disposition": "fixed",
+      "note": "Fixed in 4b8ff2afa (docs: bring the user-facing pages current for v0.12.0), an ancestor of content commit fecdbed575f9e8e2cb0b875491d9aa48e8dfa0f9; commands/prepare-this-repo.md:51-52,212."
+    },
+    {
+      "id": "dc-21",
+      "category": "incomplete",
+      "severity": "nitpick",
+      "summary": "commands/launch.md:4: argument-hint lists dry-run, ship, archive, manifests and scaffold but omits the `receipts` sub-verb the binary exposes and the page documents at line 834.",
+      "disposition": "deferred",
+      "note": "Captured as iss-2609302306281487 in this release's records commit, the one documentation record listing every deferred docs-currency minor and nitpick; fixed in the first lane after the tag."
+    },
+    {
+      "id": "dc-22",
+      "category": "stale-record",
+      "severity": "nitpick",
+      "summary": "commands/launch.md:1035: Refers to the project as 'abcd-cli'; the plugin manifest, README and every other page name it 'abcd'.",
+      "disposition": "deferred",
+      "note": "Captured as iss-2609302306281487 in this release's records commit, the one documentation record listing every deferred docs-currency minor and nitpick; fixed in the first lane after the tag."
+    },
+    {
+      "id": "dc-23",
+      "category": "stale-record",
+      "severity": "minor",
+      "summary": "README.md:118-125: The sample bare `abcd` board omits the `status:     Now N \u00b7 Next N \u00b7 Later N` line every abcd-managed checkout now renders (the sample shows `presence: abcd-managed ...`, so the line would follow); the example predates the Now/Next/Later block this release ships (itd-2609212103568351).",
+      "disposition": "fixed",
+      "note": "Fixed in 4b8ff2afa (docs: bring the user-facing pages current for v0.12.0), an ancestor of content commit fecdbed575f9e8e2cb0b875491d9aa48e8dfa0f9; README.md:126-131."
+    },
+    {
+      "id": "dc-24",
+      "category": "stale-record",
+      "severity": "minor",
+      "summary": ".abcd/work/issues/resolved/iss-323-hook-salvage-entries-invoke-bootstrap-sh-with-no-timeout-bud.md:12: The resolved record's `resolution:` says every salvage entry (UserPromptSubmit, PreToolUse, PreCompact) declares a 120-second timeout; commit 6a40c898b (ruling CH1) later removed the 120 from PreToolUse and PreCompact, and the changelog line at CHANGELOG.md:84 was derived from this stale text (see dc-17).",
+      "disposition": "deferred",
+      "note": "Captured as iss-2609302306281487 in this release's records commit, the one documentation record listing every deferred docs-currency minor and nitpick; fixed in the first lane after the tag."
+    }
+  ]
+}
