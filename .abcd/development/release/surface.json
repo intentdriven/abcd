@@ -1418,7 +1418,7 @@
     {
       "path": "abcd history separation",
       "hidden": false,
-      "sentence": "Report whether any retained transcript held both a reading and the ledger of one run: Writes nothing; never refuses, exiting 1 naming each such transcript.",
+      "sentence": "Report whether a retained transcript held both a reading and one run's ledger: Writes a missing store or a legacy corpus move; refuses outside a git checkout.",
       "flags": []
     },
     {
