@@ -105,7 +105,7 @@ _None open; decisions 5 to 7 settle the interview's questions, and decisions 8 t
 
 ## Audit Notes
 
-_Empty. Populated by intent-auditor when intent moves to shipped/._
+- 2026-10-02 — Declared mutual pair with itd-2609201916056194 (the technical facilitator's ruling CY1 of 2026-10-02, verbatim: "KEEP BOTH, DECLARED (a declared mutual pair)"). itd-2609201916151817's builds_on itd-2609201916056194 needs the runner a lane goes through: the command-line adapter the loop's process driver calls for each lane (the loop's decision 5). itd-2609201916056194's builds_on itd-2609201916151817 needs the loop's lane, where a role is reached, and its run record, where each fallback receipt and the per-runner and per-role fallback counts are written (the runner's criteria 1 to 4). Both edges stand. The record has no field record-lint's edge_cycle rule reads as a declared pair, so the linter still reports the cycle at warn until it does (iss-2610020836255174). Each piece is read from the two records' own scope, criteria and decisions; the ruling names none. Recorded by lane rd2 of autonomous run A.
 
 ## Grounds
 
