@@ -174,8 +174,8 @@ TRAILER_RE='^Resolves:[[:space:]]+iss-[0-9]+([[:space:]]*,[[:space:]]*iss-[0-9]+
 # close — drop the second id. The VOCABULARY stays closed at two spellings; only
 # the id list widens. `Ref:`, `References:`, `See:` and `Related:` are near-misses, and
 # admitting them would reopen the omission the rule closes — the same argument
-# that makes `Assisted-by: None` the only accepted non-vendor value in
-# check-attribution.sh. A near-miss therefore reads as what it is: an
+# that closes the non-vendor values of `Assisted-by:` at two fixed forms, `None`
+# and `abcd:<version>`, in check-attribution.sh. A near-miss therefore reads as what it is: an
 # undeclared mention, refused with the spelling named in the remedy.
 #
 # It shares TRAILER_RE's id shape rather than restating it, so the two rules

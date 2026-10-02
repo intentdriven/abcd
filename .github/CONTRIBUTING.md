@@ -160,6 +160,14 @@ disclosure, and never an authorship assertion for a tool. The rules:
   rather than being inferred. Never write a vendor trailer for work a model did
   not touch — a false disclosure is worse than none, and the reviewer reading the
   diff is the check on it.
+- **abcd's own commits say so.** A commit abcd composes from record facts — the
+  implement loop's pick commit and its sync merge — carries
+  `Assisted-by: abcd:<version>`: abcd computed the text, no model wrote it, and a
+  person ran the command, so neither a model's trailer nor `None` would be true.
+  That makes three accepted forms, `<Vendor>:<model-version>`, `None` and
+  `abcd:<version>`, each one fixed shape rather than free text. abcd writes the
+  third itself, naming its release version or `dev`; never type it on a commit you
+  or a model wrote.
 - **No tool footer, and quote it in a fence when you need to.** A "generated with
   <tool>" footer names a tool outside the two credit surfaces this project
   sanctions (the README badge and `ACKNOWLEDGEMENTS.md`), so the gate refuses one
