@@ -212,6 +212,7 @@ func (privacyHygiene) Eval(ctx Context) ([]Finding, error) {
 			continue
 		}
 		lines := strings.Split(string(data), "\n")
+		goSource := strings.HasSuffix(rel, ".go")
 		for _, af := range sc.ScanAugmented(string(data), rel) {
 			// A waiver on the line covers what the augmenter found there too.
 			// The finding names the kind, never the value it matched.
@@ -231,7 +232,7 @@ func (privacyHygiene) Eval(ctx Context) ([]Finding, error) {
 			if strings.Contains(line, lintWaiver) || strings.Contains(line, auditWaiver) {
 				continue
 			}
-			msg, fix, sev, leaked := privacyLeak(line, patterns)
+			msg, fix, sev, leaked := privacyLeak(line, patterns, goSource)
 			if !leaked {
 				continue
 			}
@@ -288,20 +289,25 @@ const augmenterConfigRel = ".abcd/config/gitleaks.json"
 // (iss-2609261658553101). Each view keeps every exemption the line has — the
 // waiver is read on the line as written, and the persona, system-root and
 // reserved-value exemptions run on whichever spelling matched.
-func privacyLeak(line string, patterns []scanner.Pattern) (msg, fix string, sev Severity, leaked bool) {
-	if msg, fix, sev, leaked = privacyLeakOn(line, patterns); leaked {
+func privacyLeak(line string, patterns []scanner.Pattern, goSource bool) (msg, fix string, sev Severity, leaked bool) {
+	if msg, fix, sev, leaked = privacyLeakOn(line, patterns, goSource); leaked {
 		return msg, fix, sev, leaked
 	}
 	for _, view := range scanner.DecodedViews(line) {
-		if msg, fix, sev, leaked = privacyLeakOn(view, patterns); leaked {
+		if msg, fix, sev, leaked = privacyLeakOn(view, patterns, goSource); leaked {
 			return msg, fix, sev, leaked
 		}
 	}
 	return "", "", SeverityError, false
 }
 
-// privacyLeakOn is privacyLeak over one spelling of the line.
-func privacyLeakOn(line string, patterns []scanner.Pattern) (msg, fix string, sev Severity, leaked bool) {
+// privacyLeakOn is privacyLeak over one spelling of the line. goSource says the
+// line comes from a tracked .go file, the one case where the rule knows more
+// than the scanner's path-less write paths do: there a Go selector closing a
+// call's argument list (the field local of a value anchor, passed as the last
+// argument) is code, not a LAN host, and scanner.GoSourceSkip spares it. The exemption is applied here and nowhere in
+// the pattern set, so no redactor is widened by it (iss-2610020840196926).
+func privacyLeakOn(line string, patterns []scanner.Pattern, goSource bool) (msg, fix string, sev Severity, leaked bool) {
 	if hasAbsHomePath(line) {
 		return "committed file contains an absolute local path", "", SeverityError, true
 	}
@@ -312,6 +318,9 @@ func privacyLeakOn(line string, patterns []scanner.Pattern) (msg, fix string, se
 				continue
 			}
 			if p.SkipAt != nil && p.SkipAt(line, loc[0], loc[1]) {
+				continue
+			}
+			if goSource && scanner.GoSourceSkip(p.Kind, line, loc[0], loc[1]) {
 				continue
 			}
 			if scanner.IsHarnessLeakKind(p.Kind) {
