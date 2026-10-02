@@ -229,7 +229,7 @@ func (c *Config) readRoles(s *layered.Stack) error {
 		}
 		// found lists the layers that set the key, highest first (flag, repo,
 		// machine): the first route that stands is the role's.
-		for _, f := range found {
+		for i, f := range found {
 			where := fmt.Sprintf("%s (%s layer): %s", f.Origin, f.Layer, key)
 			name, err := layered.Decode[string](f.Raw)
 			if err != nil {
@@ -245,11 +245,37 @@ func (c *Config) readRoles(s *layered.Stack) error {
 					"had not routed it; to run it through %s, set %s in %s", where, name, name, key, layered.Config.MachineOrigin()))
 				continue
 			}
+			if name == Host && !personal(f.Layer) {
+				if d, ok := displacedRunnerRoute(found[i+1:]); ok {
+					c.Diagnostics = append(c.Diagnostics, fmt.Sprintf("runner: %s is %q, which keeps the role on the host "+
+						"over the person's own route %s (%s layer): %s, which names %q; the repository's route stands, "+
+						"because it spends nothing of theirs, so the runner is not launched for this role",
+						where, name, d.Origin, d.Layer, key, d.Runner))
+				}
+			}
 			c.roles[role] = Route{Runner: name, Layer: f.Layer, Origin: f.Origin}
 			break
 		}
 	}
 	return nil
+}
+
+// displacedRunnerRoute returns the first personal route in lower, the layers
+// beneath a repository route to the host, that names a runner: the person's
+// own choice the repository's route displaces. A lower route that does not
+// decode, or names the host, displaces nothing worth saying.
+func displacedRunnerRoute(lower []layered.Found) (Route, bool) {
+	for _, f := range lower {
+		if !personal(f.Layer) {
+			continue
+		}
+		name, err := layered.Decode[string](f.Raw)
+		if err != nil || !isRunnerName(name) {
+			return Route{}, false
+		}
+		return Route{Runner: name, Layer: f.Layer, Origin: f.Origin}, true
+	}
+	return Route{}, false
 }
 
 // personal reports whether a route set in layer l is the person's own, the

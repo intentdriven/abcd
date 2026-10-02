@@ -280,6 +280,8 @@ a model route the allowlist does not admit included, is refused at the runner st
 nothing is created or launched. Only a route in ~/.abcd/config.json hands a role to a
 runner, which spends the person's own key: one the repository's .abcd/config.json sets to
 a runner is skipped with a warning on stderr, and the role runs on the host as if unrouted.
+One it sets to host keeps the role on the host over a runner route in ~/.abcd/config.json,
+since that spends nothing of the person's, with a warning naming both routes.
 
 An issue id (iss-N, validated by shape) is built as one lane. Its checks are the
 repository's own drain rule, read as `abcd drain` reads it (the issue is open, nothing
@@ -1971,7 +1973,9 @@ the run record name the route that ran it. The claude runner runs in print mode 
 runs in run mode with --pure and with its project configuration, its CLAUDE.md reading and
 its external skills switched off, so the repository's instruction files, settings, agents,
 skills and plugins do not reach it. A route the repository's .abcd/config.json sets to a
-runner is skipped with a warning on stderr, and the role is the host's as if unrouted.
+runner is skipped with a warning on stderr, and the role is the host's as if unrouted;
+one it sets to host keeps the role on the host over the machine's runner route, with a
+warning naming both routes.
 A runner that is absent, refuses, fails, runs past its time,
 or writes a receipt the verifier refuses leaves the lane awaiting and the host is handed
 the role as with no runner, and the call records one fallback naming the role, the runner

@@ -347,7 +347,10 @@ invocation, may hand a role to a runner, because a runner spends the person's
 key (rulings RN2 and OC2, 2026-10-02): the repository's file may keep a role on
 the host, and a route there to a runner is skipped with a diagnostic naming the
 file, the key and the machine's file, so the next layer's route, or the host,
-runs the role. The claude runner stays bare, on an API key alone, and a person
+runs the role. A repository route to the host stands over the machine's route to
+a runner, since it spends nothing of the person's, and is reported with a
+diagnostic naming the repository's file, the role and the machine route it
+displaced, so a checkout never cancels the person's choice without a word. The claude runner stays bare, on an API key alone, and a person
 whose account is a subscription runs the role in their own session. The
 opencode runner is sealed against the repository it runs in (ruling OC1): no
 external plugins, and its project configuration, its compatibility reading of

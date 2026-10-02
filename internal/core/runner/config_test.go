@@ -114,15 +114,42 @@ func TestMachineRouteAppliesUnderASkippedRepoRoute(t *testing.T) {
 }
 
 // TestRepoRouteToHostStands: a repository may keep a role on the host, which
-// spends nothing of the person's, over a machine route to a runner.
+// spends nothing of the person's, over a machine route to a runner. The route
+// stands, but not in silence: a checkout that cancels the person's own choice
+// says so, naming the repository's file, the role and the machine route it
+// displaced (sec-runnerSeal, 2026-10-02).
 func TestRepoRouteToHostStands(t *testing.T) {
 	c := mustLoad(t, `{"roles":{"scribe":{"runner":"claude"}},"runner":{"claude":{}}}`,
 		`{"roles":{"scribe":{"runner":"host"}}}`)
 	if r := c.RouteFor("scribe"); r.Runner != Host || r.Layer != layered.Repo {
 		t.Fatalf("route = %+v, want the repository's host route", r)
 	}
-	if len(c.Diagnostics) != 0 {
-		t.Fatalf("diagnostics = %q", c.Diagnostics)
+	if len(c.Diagnostics) != 1 {
+		t.Fatalf("diagnostics = %q, want one naming the displaced machine route", c.Diagnostics)
+	}
+	for _, want := range []string{".abcd/config.json (repo layer)", "roles.scribe.runner", `"host"`,
+		"~/.abcd/config.json (machine layer)", `"claude"`} {
+		if !strings.Contains(c.Diagnostics[0], want) {
+			t.Errorf("diagnostic %q lacks %q", c.Diagnostics[0], want)
+		}
+	}
+}
+
+// TestRepoRouteToHostDisplacingNothingIsSilent: a repository route to the host
+// that displaces no runner route, because the machine sets none or sets the
+// host too, is the default restated and says nothing.
+func TestRepoRouteToHostDisplacingNothingIsSilent(t *testing.T) {
+	for name, machine := range map[string]string{
+		"no machine route":      `{"runner":{"claude":{}}}`,
+		"machine route to host": `{"roles":{"scribe":{"runner":"host"}},"runner":{"claude":{}}}`,
+	} {
+		c := mustLoad(t, machine, `{"roles":{"scribe":{"runner":"host"}}}`)
+		if r := c.RouteFor("scribe"); r.Runner != Host || r.Layer != layered.Repo {
+			t.Errorf("%s: route = %+v, want the repository's host route", name, r)
+		}
+		if len(c.Diagnostics) != 0 {
+			t.Errorf("%s: diagnostics = %q, want none", name, c.Diagnostics)
+		}
 	}
 }
 

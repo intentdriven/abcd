@@ -220,7 +220,10 @@ admitted against that provider's allowlist). Only the person's own file hands a
 role to a runner, because a runner spends their key: the repository's
 `.abcd/config.json` may set a role to `host`, and a route there to a runner is
 skipped with a warning on stderr, so the role runs on the host as if unrouted
-(tell the user, naming the file the warning names). A person whose Claude
+(tell the user, naming the file the warning names). A repository route to
+`host` stands over the person's own route to a runner, because it spends
+nothing of theirs, and says so with a warning on stderr naming the repository's
+file, the role and the machine route it displaced (tell the user that too). A person whose Claude
 account is a subscription, with no API key, runs the role in their own session:
 the claude runner runs bare, on an API key only. `build` reads this configuration before it creates the run, and a
 fault, a model route off the allowlist included, is refused at the `runner`

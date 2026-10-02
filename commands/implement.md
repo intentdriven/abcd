@@ -260,6 +260,9 @@ not run, and opencode runs with `--pure` and its project configuration, its
 instruction files, settings, agents, skills and plugins do not reach it. A route
 the repository's `.abcd/config.json` sets to a runner is skipped with a warning
 on stderr: the role is the host's, as if unrouted, and no fallback is recorded.
+One it sets to `host` keeps the role on the host over the machine's route to a
+runner, with a warning naming the repository's file, the role and the machine
+route it displaced.
 The runner's receipt is verified by the stage's own verifier: a verified one
 completes the stage in the same call, and the result's `route` names the runner
 that ran it. A runner that is absent, refuses, fails, runs past its time or
