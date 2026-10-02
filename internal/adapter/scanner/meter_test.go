@@ -69,6 +69,8 @@ var meterFixtures = []meterFixture{
 	{"public_mac", Identity{}, rep(mac(0x3c, 0x22, 0xfb, 0x01, 0x23, 0x45) + " ")},
 	{"lan_hosts", Identity{}, rep(host("a", "local") + " ")},
 	{"lan_host_selectors", Identity{}, rep("x = " + host("cfg", "local") + " ")},
+	{"lan_host_call_arguments", Identity{}, func(n int) string { return "f(" + strings.Repeat(host("cfg", "local")+", ", n) + ")" }},
+	{"lan_host_nested_calls", Identity{}, rep("f(g(h), " + host("cfg", "local") + ") ")},
 	{"device_hosts", Identity{}, rep("the alice-laptop ")},
 	{"fingerprint_colon_run", Identity{}, rep("ab:")},
 	{"footers", Identity{}, rep("generated with [x](y) ")},
