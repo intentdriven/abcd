@@ -93,6 +93,10 @@ func TestTwoRunsSameTensionMintDistinctIDs(t *testing.T) {
 // force — while a hold that vanished when it was answered would take its own
 // exit condition with it, so the superseded record stays in place.
 func TestSecondDispositionForOneItemRequiresSupersedes(t *testing.T) {
+	// Two dispositions land in one ledger, and the production mint lets two
+	// same-second draws coincide, which the ledger refuses by design; each
+	// mint takes its own second here, so the ids cannot collide.
+	setSeqMinter(t)
 	repo, ir, item := readingFixture(t, "detection")
 	first, err := Disposition(DispositionRequest{
 		RepoRoot: repo, IssuesRoot: ir, Item: item,
