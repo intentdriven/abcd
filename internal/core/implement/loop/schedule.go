@@ -440,9 +440,11 @@ func agentWants(st State) []want {
 	return append(open, fresh...)
 }
 
-// move performs the run's next move and reports what it did. A wait that is
-// the call's answer reports true beside it when the call wrote the time a
-// lane began waiting for its full check, which the caller writes.
+// move performs the run's next move and reports what it did. An error that is
+// the call's answer, a wait or a refusal, reports true beside it when the call
+// wrote the time a lane began waiting for its full check, which the caller
+// writes: the time is when the wait began, so a later refusal in the same call
+// does not let it drift to the next call's.
 func move(repoRoot string, st *State, steps Stages, now time.Time) (StepResult, bool, error) {
 	// A landing waiting on the forge's merge or on its full check (a
 	// contention refusal, ruling DR6d-2) holds only its own lane: the call
@@ -469,7 +471,7 @@ func move(repoRoot string, st *State, steps Stages, now time.Time) (StepResult, 
 		if err != nil {
 			r, ok := AsRefusal(err)
 			if !ok || !r.Contention {
-				return StepResult{}, false, err
+				return StepResult{}, began, err
 			}
 			if beganCheckWait(st, i, r, now) {
 				began = true
@@ -482,9 +484,15 @@ func move(repoRoot string, st *State, steps Stages, now time.Time) (StepResult, 
 		}
 		return moved(res), true, nil
 	}
+	// A refused agent move writes nothing of its own: a lane it opened for a
+	// pending step stays unopened. Every change moveAgent makes before its
+	// stage body succeeds replaces a slice or appends past its length, so the
+	// shallow copy is the state as it was.
+	before := *st
 	res, did, err := moveAgent(repoRoot, st, steps, now)
 	if err != nil {
-		return StepResult{}, false, err
+		*st = before
+		return StepResult{}, began, err
 	}
 	if did {
 		return moved(res), true, nil

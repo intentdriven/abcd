@@ -606,7 +606,8 @@ func advance(repoRoot, runID string, steps Stages, o Options) (StepResult, error
 		r, moved, err := move(repoRoot, st, steps, now)
 		if err != nil {
 			if moved {
-				// The wait is the call's answer, and the time it began is
+				// The wait, or a later lane's refusal, is the call's answer,
+				// and the time a lane began waiting for its full check is
 				// written with it (ruling DR6d-2).
 				wait = err
 				return true, nil
