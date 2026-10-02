@@ -31,11 +31,15 @@ package oracle
 // provider that holds a key is skipped with a diagnostic naming the machine's
 // file as where to set it, as is a repository route that is not
 // <provider>/<model> or whose name is not a plain name (ruling CD2 of
-// 2026-09-29); a model its provider does not list is refused naming the list,
-// and a listed model an oracle.denylist entry matches is refused naming the
-// entry. A route naming a provider this machine has not configured is a
-// diagnostic, not a refusal: the step stays on the host, exactly as it would
-// with nothing configured (adr-25).
+// 2026-09-29), and a repository route to a model a keyless provider does not
+// list (ruling CD3 of 2026-10-02); the machine's own route to a model its
+// provider does not list is refused naming the list, and a model an
+// oracle.denylist entry matches is refused naming the entry, from any layer.
+// A route naming a provider this machine has not configured is a diagnostic,
+// not a refusal: a repository's such route is skipped where the machine routes
+// the same name, so the owner's setting applies (ruling CD4 of 2026-10-02),
+// and otherwise the step stays on the host, exactly as it would with nothing
+// configured (adr-25, amended 2026-10-02).
 //
 // Like the rest of the package, the resolver never writes, never reaches a
 // network and never prints.
@@ -126,8 +130,9 @@ type APIConfig struct {
 	// Diagnostics are the non-fatal reports the read produced, one line each,
 	// for a front door to print on stderr: a route naming a provider this
 	// machine has not configured, a role outside the roster, and a skipped
-	// repository route (one to a provider that holds a key, or one whose name
-	// is not a plain name).
+	// repository route (one to a provider that holds a key, one whose name or
+	// value is malformed, one to a model a keyless provider does not list, and
+	// one to an unconfigured provider where the machine routes the name).
 	Diagnostics []string
 }
 
@@ -308,7 +313,10 @@ func denial(e DenyEntry) string {
 // has one, wins in its place: only the person's own machine may point a route
 // at their key. A repository route that is not <provider>/<model>, and a route
 // name only the repository spells that is not a plain name, are skipped with a
-// diagnostic too; the machine's own are refused.
+// diagnostic too; the machine's own are refused. So is a repository route to a
+// model a keyless provider does not list (skipUnlistedRoute), and one to a
+// provider this machine has not configured where the machine routes the same
+// name (skipUnconfiguredRoute).
 func (c *APIConfig) readRoutes(s *layered.Stack, key string, into map[string]Target) error {
 	names := map[string]bool{}
 	onMachine := map[string]bool{}
@@ -356,10 +364,17 @@ func (c *APIConfig) readRoutes(s *layered.Stack, key string, into map[string]Tar
 			return fmt.Errorf("oracle adapter: %w", err)
 		}
 		// A repository's route that is not <provider>/<model>, or that points
-		// at a provider holding a key, is skipped, and the next layer's route
-		// to the name, the machine's own, applies in its place (ruling CD2 of
-		// 2026-09-29).
-		for len(found) > 0 && (c.skipMalformedRoute(key, name, found[0]) || c.skipKeyedRoute(key, name, found[0])) {
+		// at a provider holding a key (ruling CD2 of 2026-09-29), at a provider
+		// this machine has not configured while the machine routes the name
+		// itself (ruling CD4 of 2026-10-02), or at a model a keyless provider
+		// does not list (ruling CD3 of 2026-10-02), is skipped, and the next
+		// layer's route to the name, the machine's own, applies in its place.
+		// The order matters: skipKeyedRoute is judged before skipUnlistedRoute,
+		// so a keyed provider's list is never consulted on a repository's
+		// behalf, and its route is skipped as one that would spend a key
+		// whatever model it names.
+		for len(found) > 0 && (c.skipMalformedRoute(key, name, found[0]) || c.skipKeyedRoute(key, name, found[0]) ||
+			c.skipUnconfiguredRoute(key, name, found) || c.skipUnlistedRoute(key, name, found[0])) {
 			found = found[1:]
 		}
 		if len(found) == 0 {
@@ -461,6 +476,92 @@ func (c *APIConfig) skipKeyedRoute(key, name string, fd layered.Found) bool {
 		"(its block in %s names the credential %s); only a route set on this machine may spend that key, so this route is skipped "+
 		"and the rest of the configuration applies: set %s.%s in %s and remove it from %s, or point it at a provider whose block names no key",
 		fd.Origin, fd.Layer, key, name, layered.BoundKey(text), p.Origin, p.Key, key, name, layered.Config.MachineOrigin(), fd.Origin))
+	return true
+}
+
+// skipUnconfiguredRoute reports whether the first of found, the layers' routes
+// to name highest first, is a route from any layer but the machine's to a
+// provider this machine has not configured while the machine's own file routes
+// the same name, and says so in a diagnostic when it is. Such a route can
+// reach no provider, and letting it win would displace the person's own
+// setting with a step on the host, so the owner's setting applies (ruling CD4
+// of 2026-10-02). With no machine route to the name it is not skipped, and the
+// read below reports that the step runs on the host, as it would with nothing
+// configured (adr-25).
+func (c *APIConfig) skipUnconfiguredRoute(key, name string, found []layered.Found) bool {
+	fd := found[0]
+	if fd.Layer == layered.Machine {
+		return false
+	}
+	machineRoute := false
+	for _, below := range found[1:] {
+		if below.Layer == layered.Machine {
+			machineRoute = true
+		}
+	}
+	if !machineRoute {
+		return false
+	}
+	text, err := layered.Decode[string](fd.Raw)
+	if err != nil {
+		return false
+	}
+	provider, _, ok := strings.Cut(text, "/")
+	if !ok || provider == "" {
+		return false
+	}
+	if _, configured := c.providers[provider]; configured {
+		return false
+	}
+	c.Diagnostics = append(c.Diagnostics, fmt.Sprintf("oracle adapter: %s (%s layer): %s.%s points at provider %s, which is not configured "+
+		"on this machine, so this route is skipped and the route %s sets for %s.%s applies in its place: "+
+		"configure the provider in %s, or remove the route from %s",
+		fd.Origin, fd.Layer, key, name, quoteUntrusted(provider), layered.Config.MachineOrigin(), key, name,
+		layered.Config.MachineOrigin(), fd.Origin))
+	return true
+}
+
+// skipUnlistedRoute reports whether one layer's route to name is a route from
+// any layer but the machine's to a configured provider that holds no key,
+// naming a model that provider does not list, and says so in a diagnostic
+// when it is. Such a route can never be sent, and skipping it keeps every
+// other route and every command that reads the configuration working (ruling
+// CD3 of 2026-10-02); the machine's own route to the name, if it sets one,
+// applies in its place. A keyed provider's list is never consulted here: its
+// route is skipped by skipKeyedRoute first, and this predicate declines one
+// on its own account too, so reordering the two cannot make it consult that
+// list. The machine's own route to an unlisted model is left to the refusal
+// below, since that file is the person's, and so is a route the denylist
+// matches from any layer, which no layer softens.
+func (c *APIConfig) skipUnlistedRoute(key, name string, fd layered.Found) bool {
+	if fd.Layer == layered.Machine {
+		return false
+	}
+	text, err := layered.Decode[string](fd.Raw)
+	if err != nil {
+		return false
+	}
+	provider, model, ok := strings.Cut(text, "/")
+	if !ok || provider == "" || model == "" {
+		return false
+	}
+	p, configured := c.providers[provider]
+	if !configured || keyed(p) {
+		return false
+	}
+	if _, denied := Denied(c.denylist, model); denied {
+		return false
+	}
+	for _, m := range p.Models {
+		if m == model {
+			return false
+		}
+	}
+	c.Diagnostics = append(c.Diagnostics, fmt.Sprintf("oracle adapter: %s (%s layer): %s.%s points at %s, which is not on %s's list (%s); "+
+		"a provider serves only the models it lists, so this route is skipped and the rest of the configuration applies, "+
+		"the route %s sets for the name, if any, in its place: point it at a model on the list, or add the model to the list in %s",
+		fd.Origin, fd.Layer, key, name, quoteUntrusted(text), provider, listNames(p.Models), layered.Config.MachineOrigin(),
+		layered.Config.MachineOrigin()))
 	return true
 }
 
