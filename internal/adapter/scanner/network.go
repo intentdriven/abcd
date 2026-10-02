@@ -254,6 +254,7 @@ func NetworkPatterns() []Pattern {
 			SkipAt: func(line string, start, end int) bool {
 				return dottedFileOrDirectory(line, start, end) ||
 					selectorExpression(line, start, end) ||
+					callArgumentSelector(line, start, end) ||
 					mixedCaseSelector(line, start, end)
 			},
 			// The suggestion names the exact shape personaDerivedHost accepts,
@@ -687,7 +688,9 @@ func mixedCaseHostSuffix(m string) bool {
 // ("if cfg.local {"), or it is called or indexed ("cfg.local()", "x.lan[0]").
 // A hostname is the OBJECT of a command or the value on the right of a setting,
 // never any of those. The test is deliberately narrow — it costs a finding only
-// where an identifier is plainly being read as a field.
+// where an identifier is plainly being read as a field. A selector passed as a
+// call's argument, followed by ')' or ',', is callArgumentSelector's case:
+// those two close prose and lists too, so it asks more of the line.
 func selectorExpression(line string, start, end int) bool {
 	if end < len(line) && (line[end] == '(' || line[end] == '[') {
 		return true
@@ -698,6 +701,93 @@ func selectorExpression(line string, start, end int) bool {
 	}
 	scanMeter.charge(stageSkipAt, i-end)
 	return i < len(line) && (line[i] == '=' || line[i] == '{')
+}
+
+// maxCallArgumentPrefix bounds the line prefix callArgumentSelector reads. A
+// match further into its line than this is reported: the helper cannot see a
+// comment marker or the call's opening parenthesis beyond the bound, so the
+// bound costs an over-report on a line no Go source carries, never a leak.
+const maxCallArgumentPrefix = 512
+
+// callArgumentSelector reports whether a LAN-suffix match is a Go selector
+// passed as a call's argument — the field `local` of a value `anchor`, joined
+// by a dot and closing a call's argument list or separating it from the next —
+// rather than a host (iss-2610020840196926). It is the closing-punctuation
+// half of selectorExpression, and because ')' and ',' close prose and lists as
+// readily as argument lists, every condition below must hold, each one a shape
+// prose, a URL, a config value or a command line does not take:
+//
+//   - ')' or ',' follows the match directly, as gofmt writes an argument;
+//   - the match is a Go selector chain: every label an identifier (no hyphen,
+//     no leading digit) and the field a lower-case word, so a hyphenated or
+//     capitalised host never qualifies (an exported field is
+//     mixedCaseSelector's to judge);
+//   - '(' or ',' precedes it, so it IS an argument and not the tail of a URL,
+//     a path or a quoted string;
+//   - the innermost unclosed '(' before it opens a CALL: an identifier byte
+//     sits directly before it, where prose puts a space ("the printer (…)")
+//     and markdown a ']' ("[text](…)");
+//   - no comment marker ("//", "/*") precedes it on the line, so a call-shaped
+//     mention of a host in a comment is still reported.
+//
+// The residual is a call-shaped, hyphen-free, lower-case host outside a comment
+// marker in a file that is not Go (a host under .local written as a call's
+// argument in prose): the scanner sees a line, not a file type, and that shape
+// is code wherever it is written.
+func callArgumentSelector(line string, start, end int) bool {
+	if end >= len(line) || (line[end] != ')' && line[end] != ',') {
+		return false
+	}
+	if start > maxCallArgumentPrefix {
+		return false
+	}
+	scanMeter.charge(stageSkipAt, end)
+	if !goSelectorChain(line[start:end]) {
+		return false
+	}
+	prefix := line[:start]
+	if strings.Contains(prefix, "//") || strings.Contains(prefix, "/*") {
+		return false
+	}
+	i := len(prefix)
+	for i > 0 && (prefix[i-1] == ' ' || prefix[i-1] == '\t') {
+		i--
+	}
+	if i == 0 || (prefix[i-1] != '(' && prefix[i-1] != ',') {
+		return false
+	}
+	depth := 0
+	for k := i - 1; k >= 0; k-- {
+		switch prefix[k] {
+		case ')':
+			depth++
+		case '(':
+			if depth == 0 {
+				return k > 0 && isWordByte(prefix[k-1])
+			}
+			depth--
+		}
+	}
+	return false
+}
+
+// goSelectorChain reports whether m is a dotted chain of Go identifiers whose
+// last one is a lower-case word: every label starts with a letter or '_' and
+// carries only letters, digits and '_'.
+func goSelectorChain(m string) bool {
+	labels := strings.Split(m, ".")
+	for _, l := range labels {
+		if l == "" || isASCIIDigit(l[0]) {
+			return false
+		}
+		for j := 0; j < len(l); j++ {
+			if !isWordByte(l[j]) {
+				return false
+			}
+		}
+	}
+	field := labels[len(labels)-1]
+	return field == strings.ToLower(field)
 }
 
 // determiners introduce a COMMON NOUN. A device name is a name; "our build-nas",
