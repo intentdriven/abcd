@@ -516,7 +516,8 @@ func withBlocked(next string, blocked []Refusal) string {
 }
 
 // moveAgent hands the first waiting work an agent when a slot is free, or
-// records the work the ceiling holds back; it reports whether it moved.
+// records the work the ceiling, or the want of a free helper, holds back; it
+// reports whether it moved or wrote.
 func moveAgent(repoRoot string, st *State, steps Stages, now time.Time) (StepResult, bool, error) {
 	wants := agentWants(*st)
 	if len(wants) == 0 {
@@ -529,10 +530,15 @@ func moveAgent(repoRoot string, st *State, steps Stages, now time.Time) (StepRes
 		res.Next = ceilingMove(*st)
 		return res, changed, nil
 	}
-	// A new lane opens only while a helper is free for it (ruling DR6d-1).
+	// A new lane opens only while a helper is free for it (ruling DR6d-1). When
+	// every piece of waiting work is a step no helper is free for (the slots
+	// left are promised to lanes opened, or the step worktrees on disk are at
+	// the ceiling), each waits under `waiting` as `step <n>`, as work the
+	// ceiling holds back does.
 	k := slices.IndexFunc(wants, func(w want) bool { return w.open < 0 || st.helperFree() })
 	if k < 0 {
-		return idleResult(*st), false, nil
+		changed := holdWaiting(st, wants, now)
+		return idleResult(*st), changed, nil
 	}
 	w := wants[k]
 	opened := w.open >= 0

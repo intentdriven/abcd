@@ -6,9 +6,11 @@ package loop
 // worth on disk."
 
 import (
+	"encoding/json"
 	"os"
 	"slices"
 	"testing"
+	"time"
 )
 
 // worktreesOnDisk counts the lanes of the run whose worktree is on disk.
@@ -100,5 +102,92 @@ func TestAStepsWorktreeIsMadeOnlyWhenAHelperIsFree(t *testing.T) {
 	}
 	if st := f.state(t); len(st.Lanes) != 3 || len(st.Pending) != 1 || st.Pending[0].Number != 4 {
 		t.Fatalf("step 4 still waits for a helper: %+v", st.Pending)
+	}
+}
+
+// waitingQueue is the run's waiting list as "<item> <role>" lines.
+func waitingQueue(st State) []string {
+	var queue []string
+	for _, w := range st.Waiting {
+		queue = append(queue, w.Lane+" "+w.Role)
+	}
+	return queue
+}
+
+// A step held back by the worktree cap alone, with a slot free, waits under
+// `waiting` as `step <n>` as one held by the slots does: lane 1 waits at its
+// landing for its full check and lane 2's implementer is out, so one of the two
+// slots is free but both step worktrees are on disk. The call that finds it
+// lists the step, keeping the time it was first held, a second call writes
+// nothing, and the lane that opens once lane 1 lands is served from the list.
+func TestAStepHeldByTheWorktreeCapAloneWaitsUnderItsStep(t *testing.T) {
+	f := newParFixture(t, "1. One\n2. Two\n   - needs: none\n3. Three\n   - needs: none\n", Options{SubAgents: strp("2")})
+	for range 12 {
+		if r := f.cappedStep(t); r.CeilingReached {
+			break
+		}
+	}
+	f.implement(t, "lane-1", "one.txt")
+	f.roundPassed(t, "lane-1")
+	for range 10 {
+		if _, err := advance(f.repo.Root(), f.runID, f.stages, f.opts()); err != nil {
+			mustRefusal(t, err)
+			break
+		}
+	}
+	if f.lane(t, "lane-1").CheckWait() == "" {
+		t.Fatalf("lane 1 waits at its landing for its full check: %+v", f.lane(t, "lane-1").Landing)
+	}
+
+	// The list as the slots left it is cleared, so what the call writes is the
+	// cap's hold alone.
+	path := f.abs(StateRelPath(f.runID))
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(data, &doc); err != nil {
+		t.Fatal(err)
+	}
+	delete(doc, "waiting")
+	out, _ := json.MarshalIndent(doc, "", "  ")
+	if err := os.WriteFile(path, out, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	st := f.state(t)
+	if st.SlotsInUse() != 1 || worktreesOnDisk(t, st) != 2 || len(st.Lanes) != 2 || len(st.Waiting) != 0 {
+		t.Fatalf("one slot is free and both step worktrees are on disk: %d slot(s), %+v", st.SlotsInUse(), st.Lanes)
+	}
+
+	held := f.now.Add(10 * time.Minute)
+	f.now = held
+	res, err := advance(f.repo.Root(), f.runID, f.stages, f.opts())
+	if err != nil {
+		t.Fatalf("the call holding the step answers with the run, not the wait: %v", err)
+	}
+	if res.CeilingReached || len(res.Blocked) != 1 || res.Blocked[0].Lane != "lane-1" {
+		t.Fatalf("the ceiling is not reached, and lane 1's wait is named: %+v", res)
+	}
+	st = f.state(t)
+	if got, want := waitingQueue(st), []string{"step 3 implementer"}; !slices.Equal(got, want) || !st.Waiting[0].Since.Equal(held) {
+		t.Fatalf("step 3 waits for a helper under its step: %v (%+v), want %v since %s", got, st.Waiting, want, held)
+	}
+	if len(st.Lanes) != 2 || worktreesOnDisk(t, st) != 2 {
+		t.Fatalf("no lane opens for it: %+v", st.Lanes)
+	}
+
+	f.now = held.Add(5 * time.Minute)
+	if _, err := advance(f.repo.Root(), f.runID, f.stages, f.opts()); err == nil || !mustRefusal(t, err).Contention {
+		t.Fatalf("a second call writes nothing and answers with lane 1's wait: %v", err)
+	}
+	if st := f.state(t); !st.Waiting[0].Since.Equal(held) {
+		t.Fatalf("the time the step was first held is kept: %+v", st.Waiting)
+	}
+
+	f.landed(t, "lane-1")
+	st = f.state(t)
+	if len(st.Lanes) != 3 || st.Lanes[2].SpecStep != 3 || len(st.Waiting) != 0 {
+		t.Fatalf("lane 1's landing opens step 3's lane and serves its waiting item: %+v %+v", st.Lanes, st.Waiting)
 	}
 }
