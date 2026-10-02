@@ -39,7 +39,7 @@ impact: additive
 > chapter and refuses on a confirmed false sentence, and where the reviewer
 > cannot be reached it fails closed rather than reporting a clean brief. When the
 > gate finds the brief lagging, the pass drafts the brief edit **and applies it**
-> in the shipping change, then flags it for the maintainer to read — so the
+> in the shipping change, then flags it for the product thinker to read — so the
 > change is never held hostage to a paragraph, and the paragraph is never left
 > unread.
 
@@ -78,7 +78,7 @@ changes drawn out — is a separate, paired intent
 
 ## Decisions (grilled 2026-09-01)
 
-The maintainer resolved the open questions at the planning interview; these are
+The product thinker resolved the open questions at the planning interview; these are
 commitments, not options.
 
 - **The gate refuses at both moments.** An intent's move to shipped is refused
@@ -92,8 +92,8 @@ commitments, not options.
 - **Brief only, for Phase 8.** A stale public-doc sentence is reported, never
   refuses; the public docs are a later rung.
 - **Draft and apply, review after.** When drift is found the pass edits the
-  brief in the shipping change and flags it for the maintainer's review; the
-  brief may carry a sentence the maintainer did not write until they read it.
+  brief in the shipping change and flags it for the product thinker's review; the
+  brief may carry a sentence the product thinker did not write until they read it.
 - **Sequenced as Phase 8**, the brief is the shipped state, with itd-147 as the
   other rung; standalone kind, its own spec.
 - **The gate can run fully autonomously (maintainer, 2026-09-02).** A flag
@@ -351,6 +351,8 @@ Gap audit:
     evidence: .abcd/development/brief/04-surfaces/README.md:241 — "`abcd rules` renders the rule set the prompt router draws on, read-only."
     evidence: internal/core/docfidelity/docfidelity.go:211-216 — "for _, name := range chapters { if names(in.Chapters[name], s) { row.Chapter = name; break } }"
 <!-- abcd-review-end receipt=rcp-7a2c62ab0228 -->
+
+- 2026-10-02: the press release's sentence and the two Decisions sites (the opening line and the draft-and-apply bullet) name the product thinker, the role each sentence means, in place of the retired role word, under the product thinker's ruling R5 of that day, recorded as iss-2610021446271464; every other word is unchanged, and the retired word's remaining occurrences elsewhere in this record were outside the ruling.
 
 ## References
 
