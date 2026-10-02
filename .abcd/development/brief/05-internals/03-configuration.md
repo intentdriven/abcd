@@ -373,7 +373,7 @@ apart. Three properties are load-bearing:
 
 ## The worktree store
 
-**Design target (itd-2609091014076309, `intents/drafts/`; unbuilt).** No
+**Design target (itd-2609091014076309, `intents/planned/`; unbuilt).** No
 `worktree` verb exists in the shipped binary, and nothing in it creates or reads
 this store. What follows is the layout the intent commits to, on the rule
 [adr-2609091248200336](../../decisions/adrs/2609091248200336-a-tool-never-creates-directories-in-user-owned-project-space.md)
@@ -405,6 +405,25 @@ Three properties are load-bearing, and each is the intent's to deliver:
 
 Worktrees already sitting beside a checkout are outside the store by definition:
 listed as such, never moved, and retired by the user's own `git worktree remove`.
+
+**One primitive owns the store and its notes archive.** One package under `ahoy`
+derives the lane from the root commit, makes every level of
+`~/.abcd/worktrees/<root-sha>/` and of the notes archive
+`~/.abcd/notes/<root-sha>/` one at a time as a real directory that is the
+caller's alone, and adds, lists and removes worktrees through git. The build
+loop's lanes are made through it, so a worktree enters the store one way. Before
+`prune` removes a worktree it moves the worktree's git-ignored
+`.abcd/.work.local/` into `~/.abcd/notes/<root-sha>/<UTC timestamp>-<name>/`
+beside a manifest, redacted on write by the transcript store's pass; nothing
+reclaims the archive.
+
+**Invariant: the store deletes only what passes its proof of belonging.** A
+directory leaves the lane only when git lists it as a worktree of this
+repository, its real path lies inside this repository's lane, and its own common
+directory is this checkout's; anything else is reported and left in place, and no
+removal is forced. It is the reclaim half of
+[adr-2609091248200336](../../decisions/adrs/2609091248200336-a-tool-never-creates-directories-in-user-owned-project-space.md):
+a tool that must not create in the user's space must not delete there either.
 
 ## The two `.abcd/` scopes
 

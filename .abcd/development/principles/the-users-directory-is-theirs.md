@@ -43,7 +43,7 @@ refuses a configuration root the caller does not own, and only
 `~/.abcd/trusted-roots` re-admits it. The store this rule points at — a
 root-SHA-keyed `~/.abcd/worktrees/` lane, a verb that lists it, a verb that
 reclaims a merged worktree, a line on the status board — is
-[itd-2609091014076309](../intents/drafts/itd-2609091014076309-session-and-agent-worktrees-live-in-a-machine-scoped-store-t.md),
+[itd-2609091014076309](../intents/planned/itd-2609091014076309-session-and-agent-worktrees-live-in-a-machine-scoped-store-t.md),
 in drafts. Until it ships the rule is applied by hand: a session that needs a
 worktree puts it under `~/.abcd/worktrees/<root-sha>/<name>/`, a verifier's
 copy goes to `.abcd/.work.local/scratch/`, and a reviewer who sees a directory
