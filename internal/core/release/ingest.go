@@ -385,7 +385,9 @@ func ingest(root string, current surface.Snapshot, raw []byte, at time.Time, ops
 	heading := datedHeading(cut.NextTag, at)
 	// Each target this cut passes becomes `next` in the same change, and the
 	// section names the move (itd-2609212103572513 criterion 3, ruling BS1).
-	moves := launch.MissedTargets(cut.Targets, cut.NextTag)
+	// The list is the one the emitted cut carries, so the write moves exactly
+	// what the dry run named.
+	moves := cut.Moves
 	section := renderSection(heading, entries, changelog.TargetMoveNote(moves))
 	content, before, err := insertSection(root, section)
 	if err != nil {
