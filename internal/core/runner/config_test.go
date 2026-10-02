@@ -53,15 +53,18 @@ func TestUnsetRoleIsHost(t *testing.T) {
 	}
 }
 
-// TestRoleRoutedByRepoToMachineRunner: the repository names the runner for a
-// role; the machine enables the runner and its model route.
-func TestRoleRoutedByRepoToMachineRunner(t *testing.T) {
+// TestRoleRoutedByMachineToItsRunner: the person's own machine names the
+// runner for a role, enables the runner and sets its model route.
+func TestRoleRoutedByMachineToItsRunner(t *testing.T) {
 	c := mustLoad(t,
-		`{`+localProvider+`,"runner":{"fallback_host":"claude","claude":{},"opencode":{"model":"local/qwen3-coder"}}}`,
-		`{"roles":{"ruthless-reviewer":{"runner":"opencode"}}}`)
+		`{`+localProvider+`,"roles":{"ruthless-reviewer":{"runner":"opencode"}},`+
+			`"runner":{"fallback_host":"claude","claude":{},"opencode":{"model":"local/qwen3-coder"}}}`, "")
 	r := c.RouteFor("ruthless-reviewer")
-	if r.Runner != OpenCode || r.Layer != layered.Repo || r.Origin != ".abcd/config.json" {
+	if r.Runner != OpenCode || r.Layer != layered.Machine || r.Origin != "~/.abcd/config.json" {
 		t.Fatalf("route = %+v", r)
+	}
+	if len(c.Diagnostics) != 0 {
+		t.Fatalf("diagnostics = %q", c.Diagnostics)
 	}
 	rc, ok := c.Runner(OpenCode)
 	if !ok || rc.Model != "local/qwen3-coder" {
@@ -69,6 +72,106 @@ func TestRoleRoutedByRepoToMachineRunner(t *testing.T) {
 	}
 	if c.FallbackHost() != Claude {
 		t.Fatalf("fallback host = %q", c.FallbackHost())
+	}
+}
+
+// TestRepoRouteToARunnerIsSkipped is rulings RN2 and OC2 (2026-10-02): only a
+// personal route may hand a role to a runner, claude or opencode alike. A
+// route the repository commits is skipped with a diagnostic naming its file,
+// its key and the machine's file where the person may set it, and the role
+// runs on the host as if unrouted, even when the machine enables the runner.
+func TestRepoRouteToARunnerIsSkipped(t *testing.T) {
+	for _, name := range runnerNames {
+		c := mustLoad(t, `{"runner":{"claude":{},"opencode":{}}}`,
+			`{"roles":{"ruthless-reviewer":{"runner":"`+name+`"}}}`)
+		if r := c.RouteFor("ruthless-reviewer"); r.Runner != Host || r.Layer != layered.Bundled {
+			t.Errorf("%s: route = %+v, want the bundled host", name, r)
+		}
+		if len(c.Diagnostics) != 1 {
+			t.Fatalf("%s: diagnostics = %q, want one", name, c.Diagnostics)
+		}
+		for _, want := range []string{".abcd/config.json (repo layer)", "roles.ruthless-reviewer.runner",
+			"~/.abcd/config.json", "skipped", name} {
+			if !strings.Contains(c.Diagnostics[0], want) {
+				t.Errorf("%s: diagnostic %q lacks %q", name, c.Diagnostics[0], want)
+			}
+		}
+	}
+}
+
+// TestMachineRouteAppliesUnderASkippedRepoRoute: the skipped repository route
+// falls through to the next layer, so the person's own route for the role
+// applies.
+func TestMachineRouteAppliesUnderASkippedRepoRoute(t *testing.T) {
+	c := mustLoad(t, `{"roles":{"scribe":{"runner":"claude"}},"runner":{"claude":{},"opencode":{}}}`,
+		`{"roles":{"scribe":{"runner":"opencode"}}}`)
+	if r := c.RouteFor("scribe"); r.Runner != Claude || r.Layer != layered.Machine {
+		t.Fatalf("route = %+v, want the machine's claude route", r)
+	}
+	if len(c.Diagnostics) != 1 || !strings.Contains(c.Diagnostics[0], "roles.scribe.runner") {
+		t.Fatalf("diagnostics = %q", c.Diagnostics)
+	}
+}
+
+// TestRepoRouteToHostStands: a repository may keep a role on the host, which
+// spends nothing of the person's, over a machine route to a runner. The route
+// stands, but not in silence: a checkout that cancels the person's own choice
+// says so, naming the repository's file, the role and the machine route it
+// displaced (sec-runnerSeal, 2026-10-02).
+func TestRepoRouteToHostStands(t *testing.T) {
+	c := mustLoad(t, `{"roles":{"scribe":{"runner":"claude"}},"runner":{"claude":{}}}`,
+		`{"roles":{"scribe":{"runner":"host"}}}`)
+	if r := c.RouteFor("scribe"); r.Runner != Host || r.Layer != layered.Repo {
+		t.Fatalf("route = %+v, want the repository's host route", r)
+	}
+	if len(c.Diagnostics) != 1 {
+		t.Fatalf("diagnostics = %q, want one naming the displaced machine route", c.Diagnostics)
+	}
+	for _, want := range []string{".abcd/config.json (repo layer)", "roles.scribe.runner", `"host"`,
+		"~/.abcd/config.json (machine layer)", `"claude"`} {
+		if !strings.Contains(c.Diagnostics[0], want) {
+			t.Errorf("diagnostic %q lacks %q", c.Diagnostics[0], want)
+		}
+	}
+}
+
+// TestRepoRouteToHostDisplacingNothingIsSilent: a repository route to the host
+// that displaces no runner route, because the machine sets none or sets the
+// host too, is the default restated and says nothing.
+func TestRepoRouteToHostDisplacingNothingIsSilent(t *testing.T) {
+	for name, machine := range map[string]string{
+		"no machine route":      `{"runner":{"claude":{}}}`,
+		"machine route to host": `{"roles":{"scribe":{"runner":"host"}},"runner":{"claude":{}}}`,
+	} {
+		c := mustLoad(t, machine, `{"roles":{"scribe":{"runner":"host"}}}`)
+		if r := c.RouteFor("scribe"); r.Runner != Host || r.Layer != layered.Repo {
+			t.Errorf("%s: route = %+v, want the repository's host route", name, r)
+		}
+		if len(c.Diagnostics) != 0 {
+			t.Errorf("%s: diagnostics = %q, want none", name, c.Diagnostics)
+		}
+	}
+}
+
+// TestFlagRouteIsPersonal: the flag layer is the person's own invocation, for
+// one run, so a route there is personal and may hand a role to a runner. No
+// front door sets it for a role today; the rule is held here so a flag added
+// later is not silently treated as the repository's.
+func TestFlagRouteIsPersonal(t *testing.T) {
+	r := roots(t, `{"runner":{"claude":{}}}`, `{"roles":{"scribe":{"runner":"opencode"}}}`)
+	s, err := layered.Load(layered.Config, r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetFlag("roles.scribe.runner", "claude", "--runner scribe=claude"); err != nil {
+		t.Fatal(err)
+	}
+	c := &Config{roles: map[string]Route{}}
+	if err := c.readRoles(s); err != nil {
+		t.Fatal(err)
+	}
+	if got := c.RouteFor("scribe"); got.Runner != Claude || got.Layer != layered.Flag {
+		t.Fatalf("route = %+v, want the flag's claude route", got)
 	}
 }
 
@@ -138,8 +241,7 @@ func TestConfigRefusals(t *testing.T) {
 // TestRoleOutsideTheRosterIsADiagnostic: a role no agent answers to is named
 // and skipped, as the oracle's routes are; the rest apply.
 func TestRoleOutsideTheRosterIsADiagnostic(t *testing.T) {
-	c := mustLoad(t, `{"runner":{"claude":{}}}`,
-		`{"roles":{"not-an-agent":{"runner":"claude"},"implementer":{"runner":"claude"}}}`)
+	c := mustLoad(t, `{"roles":{"not-an-agent":{"runner":"claude"},"implementer":{"runner":"claude"}},"runner":{"claude":{}}}`, "")
 	if len(c.Diagnostics) != 1 || !strings.Contains(c.Diagnostics[0], "not-an-agent") {
 		t.Fatalf("diagnostics = %q", c.Diagnostics)
 	}
