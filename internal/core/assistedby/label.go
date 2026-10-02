@@ -34,11 +34,11 @@ var (
 	namesAbcdRe = regexp.MustCompile(`^(?i:` + Vendor + `):`)
 )
 
-// LabelVersion is the version half of the label for a binary whose version is
+// labelVersion is the version half of the label for a binary whose version is
 // v: the release version when v is one, and DevLabel otherwise (the unstamped
 // "dev" default, or any stamp that is not a release version, which is never
 // copied into a trailer).
-func LabelVersion(v string) string {
+func labelVersion(v string) string {
 	if releaseVersionRe.MatchString(v) {
 		return v
 	}
@@ -47,14 +47,14 @@ func LabelVersion(v string) string {
 
 // ComposedValue is the trailer value a commit abcd composes carries, for a
 // binary whose version is v.
-func ComposedValue(v string) string { return Vendor + ":" + LabelVersion(v) }
+func ComposedValue(v string) string { return Vendor + ":" + labelVersion(v) }
 
-// IsComposed reports whether a trailer value is the label exactly as the gate
+// isComposed reports whether a trailer value is the label exactly as the gate
 // accepts it.
-func IsComposed(value string) bool { return composedValueRe.MatchString(value) }
+func isComposed(value string) bool { return composedValueRe.MatchString(value) }
 
 // NamesAbcd reports whether a trailer value names abcd as its vendor, in any
 // case and whatever follows. The gate refuses every such value that is not
-// IsComposed, but each one claims abcd's provenance, so none is ever read as a
+// isComposed, but each one claims abcd's provenance, so none is ever read as a
 // model's vendor.
 func NamesAbcd(value string) bool { return namesAbcdRe.MatchString(value) }

@@ -23,8 +23,8 @@ func TestLabelVersionIsTheReleaseVersionOrDev(t *testing.T) {
 		{"v1.0.0\nAssisted-by: None", "dev"},
 		{"v1.0.0 extra", "dev"},
 	} {
-		if got := LabelVersion(tc.version); got != tc.want {
-			t.Errorf("LabelVersion(%q) = %q, want %q", tc.version, got, tc.want)
+		if got := labelVersion(tc.version); got != tc.want {
+			t.Errorf("labelVersion(%q) = %q, want %q", tc.version, got, tc.want)
 		}
 		if got, want := ComposedValue(tc.version), "abcd:"+tc.want; got != want {
 			t.Errorf("ComposedValue(%q) = %q, want %q", tc.version, got, want)
@@ -67,15 +67,15 @@ func TestComposedLabelGrammarMatchesTheGate(t *testing.T) {
 		"Claude:claude-opus-5-5", "None", "abcdx:dev", "abcd",
 	} {
 		line := "Assisted-by: " + v
-		if IsComposed(v) != gate.MatchString(line) {
-			t.Errorf("IsComposed(%q) = %v, but the gate's ABCD_RE says %v", v, IsComposed(v), gate.MatchString(line))
+		if isComposed(v) != gate.MatchString(line) {
+			t.Errorf("isComposed(%q) = %v, but the gate's ABCD_RE says %v", v, isComposed(v), gate.MatchString(line))
 		}
 		if NamesAbcd(v) != gateAny.MatchString(line) {
 			t.Errorf("NamesAbcd(%q) = %v, but the gate's ABCD_ANY_RE says %v", v, NamesAbcd(v), gateAny.MatchString(line))
 		}
 	}
 	for _, v := range []string{"dev", "", "v0.12.0", "v1.0.0-rc.1", "v1.2.3+build.5", "latest", "0.12.0"} {
-		if c := ComposedValue(v); !IsComposed(c) || !gate.MatchString("Assisted-by: "+c) {
+		if c := ComposedValue(v); !isComposed(c) || !gate.MatchString("Assisted-by: "+c) {
 			t.Errorf("the gate refuses the composer's own value %q (version %q)", c, v)
 		}
 	}
