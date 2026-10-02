@@ -13,7 +13,7 @@ remedy: "Install setSeqMinter (internal/core/capture/mint_test.go) at the start 
 resolution: "setSeqMinter pins the second-disposition test's mint to one second per record, so the two dispositions cannot share an id; the wider class of unpinned multi-mint reading-ledger tests is named in the record and left unpinned"
 impact: internal
 resolved_by:
-  commit: "a1abdd6a8"
+  commit: "dba340230"
 ---
 
 TestSecondDispositionForOneItemRequiresSupersedes (internal/core/capture/ingest_reading_test.go) mints two dispositions into one ledger through the production minter (real clock, crypto/rand suffix), so when both land in the same UTC second and draw the same four-digit suffix the second write is refused by refuseExistingRecord as a duplicate id and the test fails. It failed this way in the race lane of make preflight on fix/scanner-selector-closing-call at 6aeaea01b (dsp-2610020953467982 minted twice); the refusal is the ledger's designed behaviour, so the defect is the test's unpinned mint.

@@ -13,7 +13,7 @@ remedy: "In selectorExpression (internal/adapter/scanner/network.go), also treat
 resolution: "callArgumentSelector (internal/adapter/scanner/network.go) exempts a lower-case Go selector chain passed as a call argument and followed by ')' or ',', when the innermost unclosed '(' opens a call and no comment marker precedes it; abcd lint conforms on the tree. 2026-10-02: narrowed to Go files after sec-scannerSel: as first wired into the pattern's shared SkipAt the exemption also spared real hosts written call-shaped in logs, diagrams, prose and transcript records on every path-less redactor, so it is now scanner.GoSourceSkip, consulted only by the privacy lint rule for a tracked .go file, every label of the selector must be lower case, and the path-less scanner is back at base behaviour"
 impact: fix
 resolved_by:
-  commit: "d303e2960"
+  commit: "6d7ae00d2"
 ---
 
 abcd lint's privacy-hygiene rule reports a LAN hostname on internal/core/capture/eligible.go:137, where the match is a Go selector, the field `local` of the value `anchor` joined by a dot, which closes a call's argument list and no hostname at all. The net_lan_hostname pattern's selectorExpression skip (internal/adapter/scanner/network.go) treats a match as a selector only when '(' or '[' follows it, or '=' or '{' after spaces, so a selector passed as a call's last or middle argument, followed by ')' or ',', is reported. abcd lint exits 1 on the warning in a clean tree at 7fb52a6b5.
