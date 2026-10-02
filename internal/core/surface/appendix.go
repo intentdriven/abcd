@@ -65,6 +65,12 @@ var (
 	ErrMarkerNotAtEnd    = errors.New("prose follows the surface appendix end marker; the appendix sits at the end of the chapter")
 	ErrChapterWithoutRow = errors.New("a surface chapter has no row in the surfaces register")
 	ErrRowWithoutChapter = errors.New("a surfaces register row names a chapter that does not exist")
+	// ErrShippedWithoutSurface refuses a register row that reads shipped for a
+	// command the tree registers neither as a verb nor as a root flag and the
+	// record-lint host_delegated list does not name: the generator has no true
+	// sentence for it, and labelling it by elimination is how /abcd:version came
+	// to be called host-delegated (iss-2609302306003610).
+	ErrShippedWithoutSurface = errors.New("a surfaces register row reads shipped for a command the tree registers as neither a verb nor a root flag, and the host_delegated list does not name it")
 )
 
 // UnbuiltSentence is the whole appendix of a chapter whose surface the command
@@ -77,13 +83,53 @@ func UnbuiltSentence(path string) string {
 }
 
 // HostDelegatedSentence is the whole appendix of a chapter whose register row
-// reads shipped while the command tree registers no verb for it: a
-// host-delegated command, which ships as a command page the host carries out
-// (iss-2609231931006041). Saying there is no shipped surface there would
-// contradict the register row it pairs with.
+// reads shipped while the command tree registers no verb for it, and which the
+// record-lint host_delegated list names: a host-delegated command, which ships
+// as a command page the host carries out (iss-2609231931006041). Saying there is
+// no shipped surface there would contradict the register row it pairs with.
 func HostDelegatedSentence(path string) string {
 	return "It ships as a host-delegated command page: the command tree registers no `" + path +
 		"` verb, so there are no flags and no sub-verbs to list."
+}
+
+// rootFlagSentence is the whole appendix of a chapter whose surface ships as a
+// flag of the bare root rather than as a verb: /abcd:version runs the root's
+// `--version` (iss-2609302306003610). The flag is listed in the bare command's
+// own appendix, so it is named here and not tabled twice.
+func rootFlagSentence(path, flag string) string {
+	return "It ships as the root flag `--" + flag + "`, listed in the bare `abcd` command's appendix: the command tree registers no `" +
+		path + "` verb, so there are no sub-verbs to list."
+}
+
+// rootFlagFor returns the root flag that is path's surface, when the tree
+// registers no verb at path and the bare root declares a flag named for path's
+// last word, as `abcd version` is the root's `--version`.
+func rootFlagFor(path string, tree []Command) (string, bool) {
+	words := strings.Fields(path)
+	if len(words) != 2 {
+		return "", false
+	}
+	for _, c := range tree {
+		if c.Path != words[0] {
+			continue
+		}
+		for _, f := range c.Flags {
+			if f.Name == words[1] {
+				return f.Name, true
+			}
+		}
+	}
+	return "", false
+}
+
+// unaccountedSentence is what the appendix says of a register row that reads
+// shipped for a command the tree registers neither as a verb nor as a root
+// flag and the host_delegated list does not name. RegenerateChapters refuses
+// such a chapter by name (ErrShippedWithoutSurface), so a committed chapter
+// never carries it; the sentence only keeps Appendix from asserting a surface
+// it cannot see.
+func unaccountedSentence(path string) string {
+	return "The surfaces register reads `" + path + "` shipped, but the command tree registers no such verb or root flag and the host-delegated list does not name it."
 }
 
 // ComposeAppendix renders the generated region for a chapter documenting the
@@ -98,23 +144,52 @@ func HostDelegatedSentence(path string) string {
 // exit code or an output field cannot reach the block until the tree records it
 // somewhere this function is handed.
 func ComposeAppendix(paths []string, tree []Command) string {
-	return composeAppendix(paths, nil, tree)
+	return composeAppendix(paths, nil, nil, tree)
 }
 
 // Appendix renders the chapter's generated region against tree. It is
-// ComposeAppendix with the register's word on each command: a command the tree
-// does not register is host-delegated when its row reads shipped, and unbuilt
-// otherwise.
+// ComposeAppendix with the register's word on each command. A command the tree
+// does not register as a verb is unbuilt when its row does not read shipped;
+// when it does, it is the root flag named for it if the root declares one,
+// host-delegated if the host_delegated list names it, and unaccounted otherwise
+// (which RegenerateChapters refuses).
 func (ch Chapter) Appendix(tree []Command) string {
-	return composeAppendix(ch.Commands, ch.Shipped, tree)
+	return composeAppendix(ch.Commands, ch.Shipped, ch.HostDelegated, tree)
 }
 
-func composeAppendix(paths []string, shippedRow map[string]bool, tree []Command) string {
+// Unaccounted returns the chapter's commands whose register row reads shipped
+// while the tree registers them as neither a verb nor a root flag and the
+// host_delegated list does not name them.
+func (ch Chapter) Unaccounted(tree []Command) []string {
+	registered := map[string]bool{}
+	for _, c := range tree {
+		registered[c.Path] = true
+	}
+	var out []string
+	for _, p := range ch.Commands {
+		if !ch.Shipped[p] || registered[p] || ch.HostDelegated[p] {
+			continue
+		}
+		if _, ok := rootFlagFor(p, tree); ok {
+			continue
+		}
+		out = append(out, p)
+	}
+	return out
+}
+
+func composeAppendix(paths []string, shippedRow, hostDelegated map[string]bool, tree []Command) string {
 	absent := func(p string) string {
-		if shippedRow[p] {
+		switch {
+		case !shippedRow[p]:
+			return UnbuiltSentence(p)
+		case hostDelegated[p]:
 			return HostDelegatedSentence(p)
 		}
-		return UnbuiltSentence(p)
+		if flag, ok := rootFlagFor(p, tree); ok {
+			return rootFlagSentence(p, flag)
+		}
+		return unaccountedSentence(p)
 	}
 	byPath := make(map[string]Command, len(tree))
 	for _, c := range tree {
@@ -630,6 +705,9 @@ type Chapter struct {
 	Commands []string
 	// Shipped holds the commands whose register row reads shipped.
 	Shipped map[string]bool
+	// HostDelegated holds the commands the record-lint surface_coverage
+	// host_delegated list names, as command paths (`abcd consult`).
+	HostDelegated map[string]bool
 }
 
 // Chapters pairs the chapter files with the register's rows. Every chapter file
@@ -697,7 +775,11 @@ type RegeneratedChapter struct {
 // and refused by name, and every other chapter is still returned: the error
 // joins the refusals, and a nil error means every chapter was regenerated. Only
 // an unreadable register or directory stops the whole walk.
-func RegenerateChapters(dir string, tree []Command) ([]RegeneratedChapter, error) {
+//
+// hostDelegated is the record-lint surface_coverage host_delegated list, as verb
+// names (`consult`): the one place a surface is declared host-delegated, so the
+// appendix calls a command that only when the list does.
+func RegenerateChapters(dir string, tree []Command, hostDelegated []string) ([]RegeneratedChapter, error) {
 	register, err := os.ReadFile(filepath.Join(dir, RegisterFile))
 	if err != nil {
 		return nil, err
@@ -715,7 +797,21 @@ func RegenerateChapters(dir string, tree []Command) ([]RegeneratedChapter, error
 	chapters, pairErr := Chapters(ParseRegister(string(register)), files)
 	refusals := []error{pairErr}
 	out := make([]RegeneratedChapter, 0, len(chapters))
+	delegated := map[string]bool{}
+	for _, v := range hostDelegated {
+		delegated["abcd "+v] = true
+	}
 	for _, ch := range chapters {
+		ch.HostDelegated = map[string]bool{}
+		for _, c := range ch.Commands {
+			if delegated[c] {
+				ch.HostDelegated[c] = true
+			}
+		}
+		if un := ch.Unaccounted(tree); len(un) > 0 {
+			refusals = append(refusals, fmt.Errorf("%s (%s): %w; register it, or name it in host_delegated", ch.File, strings.Join(un, ", "), ErrShippedWithoutSurface))
+			continue
+		}
 		text, err := os.ReadFile(filepath.Join(dir, ch.File))
 		if err != nil {
 			return nil, err

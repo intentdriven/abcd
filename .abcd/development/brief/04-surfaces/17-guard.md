@@ -340,10 +340,13 @@ A recursive delete is read by what it deletes. Of the filesystem root or the
 home directory (`/`, `/*`, `~`, `$HOME`, `${HOME}`, each also with a trailing
 `/`, `/*` or `/*/`, and the home's dotfiles `~/.*`, `$HOME/.*`, `${HOME}/.*`,
 each also with a trailing `/`) it is a block wherever it stands, with or without `-f`. Of the directory the shell is
-in or the one above it (`*`, `*/`, `.`, `..`, `./*`, `./*/`, `../*`, `.*`,
-`./.*`, and `$PWD` or `${PWD}`, each also with `/*`) it is a warn, graded like
+in or the one above it (`*`, `*/`, `.`, `..`, `./*`, `./*/`, `../*`, `../*/`, `.*`,
+`./.*`, and `$PWD` or `${PWD}`, each also with `/*` or `/*/`) it is a warn, graded like
 `git clean`, because that directory is usually the repository and emptying a
-build directory the same way is ordinary work. Chained after a `cd` any
+build directory the same way is ordinary work. A chain of parents holds the one
+parent, so a leading run of `..` segments is also read as one `..`: `../..`,
+`../../..`, `../../` and `../../*` warn as `..`, `../` and `../*` do, while
+`../../build` names a directory and is compared as written. Chained after a `cd` any
 recursive forced delete blocks, as above. The target is compared as written,
 before the shell expands it, so `$HOME` and `$PWD` are seen as those words. It
 is first read the way bash reads its text: a backslash-newline inside a name
@@ -422,7 +425,7 @@ directory is folded the same way: a `..` past `$PWD` or `${PWD}`, or past the
 start of a relative path, is the directory above it, so `$PWD/../*`,
 `./../*` and `x/../../*` warn as `../*` does, and `$PWD/x/../*` as `$PWD/*`;
 a relative path whose `..` stays inside the working directory is compared as
-written. A trailing `.` after such a `..` (`./../.`) warns too, though rm
+written. A trailing `.` after such a `..` (`../.`, `./../.`) warns too, though rm
 refuses it. Each target is also read the way its glob can expand: a run of
 `*` is one `*`, which is what every shell without globstar expands `**` to
 (with globstar it matches more), so `/**`, `~/**` and `~/../**` block as

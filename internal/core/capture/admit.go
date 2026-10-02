@@ -77,16 +77,18 @@ func Admit(req AdmitRequest) (AdmitResult, error) {
 	if err != nil {
 		return AdmitResult{}, err
 	}
-	if err := mutationPreamble(repoRoot, issuesRoot); err != nil {
-		return AdmitResult{}, err
-	}
 	// The pre-flight: a request that cannot be an admission refuses before the
-	// lock. Everything that decides the write is read again under it.
+	// lock, and before the preamble provisions the ledger, so an item the ledger
+	// does not hold writes nothing (iss-2609302305500526). Everything that
+	// decides the write is read again under the lock.
 	head, err := readItemHead(issuesRoot, req.Item)
 	if err != nil {
 		return AdmitResult{}, err
 	}
 	if err := requireWidening(head); err != nil {
+		return AdmitResult{}, err
+	}
+	if err := mutationPreamble(repoRoot, issuesRoot); err != nil {
 		return AdmitResult{}, err
 	}
 

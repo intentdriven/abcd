@@ -203,7 +203,7 @@ func plainWord(w string) bool {
 // expansion's default (`${X:-$(echo w)}`). Three spellings are the recorded residuals and are
 // not generated: a wholly-substituted word standing where a flag could be, a
 // `+` refspec whose prefix a substitution prints, and an operand an entry names
-// by its exact word (arg_values) printed whole by a substitution — the last
+// through its arg_values printed whole by a substitution — the last
 // filtered by the caller, which knows the entry.
 func substitutionsOf(w string) []string {
 	glued := `"$(true)"` + w
@@ -253,10 +253,12 @@ func TestEverySubstitutionPositionKeepsTheVerdict(t *testing.T) {
 					continue
 				}
 				subs := substitutionsOf(w)
-				if containsWord(e.Pattern.ArgValues, w) {
+				if len(e.Pattern.ArgValues) > 0 && argValueMatches(e.Pattern.ArgValues, w) {
 					// The arg_values residual: a target word printed whole by a
 					// substitution is read by its known text, so only the glued
-					// spelling keeps the verdict (argValueMatches).
+					// spelling keeps the verdict (argValueMatches). That holds
+					// for a word the entry names through one of its readings
+					// (`../..` is `..`) as it does for one it names exactly.
 					subs = []string{`"$(true)"` + w}
 				}
 				for _, sub := range subs {
@@ -375,15 +377,6 @@ func unknownWrapperPrefixes() []string {
 		}
 	}
 	return out
-}
-
-func containsWord(xs []string, w string) bool {
-	for _, x := range xs {
-		if x == w {
-			return true
-		}
-	}
-	return false
 }
 
 func sortedEntryIDs(r Registry) []string {

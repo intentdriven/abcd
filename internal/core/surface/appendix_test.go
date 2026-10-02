@@ -377,7 +377,7 @@ func TestRegenerateChaptersSkipsAndReportsARefusedChapter(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	got, err := RegenerateChapters(dir, fixtureTree())
+	got, err := RegenerateChapters(dir, fixtureTree(), nil)
 	if !errors.Is(err, ErrMarkerAbsent) || !strings.Contains(err.Error(), "12-version.md") {
 		t.Errorf("err = %v; want the unmarked chapter refused by name", err)
 	}
@@ -411,6 +411,7 @@ func TestChapterAppendixTellsHostDelegatedFromUnbuilt(t *testing.T) {
 	}
 	got := map[string]string{}
 	for _, ch := range chapters {
+		ch.HostDelegated = map[string]bool{"abcd consult": true}
 		got[ch.File] = ch.Appendix(fixtureTree())
 	}
 	if want := "\n" + UnbuiltSentence("abcd reflect") + "\n\n"; got["09-reflect.md"] != want {
@@ -422,5 +423,62 @@ func TestChapterAppendixTellsHostDelegatedFromUnbuilt(t *testing.T) {
 	}
 	if want := "\n" + HostDelegatedSentence("abcd consult") + "\n\n"; consult != want {
 		t.Errorf("host-delegated chapter appendix = %q, want %q", consult, want)
+	}
+}
+
+// iss-2609302306003610: a register row that reads shipped while the tree
+// registers no verb for it was labelled host-delegated by elimination, so the
+// appendix of /abcd:version — the root's --version flag — called it a
+// host-delegated command page with no flags. Host-delegated is now the word of
+// the host_delegated list alone, a surface that is a root flag says so and names
+// the flag, and a shipped row that is neither is refused rather than labelled.
+func TestRegenerateChaptersLabelsAShippedRowWithNoVerbByWhatItIs(t *testing.T) {
+	dir := t.TempDir()
+	register := "# Surfaces\n\n| # | Command | Status | Purpose | File |\n|---|---|---|---|---|\n" +
+		"| 1 | `/abcd:consult` | shipped | x | [`13-consult.md`](13-consult.md) |\n" +
+		"| 2 | `/abcd:version` | shipped | x | [`12-version.md`](12-version.md) |\n" +
+		"| 3 | `/abcd:reflect` | staged | x | [`09-reflect.md`](09-reflect.md) |\n" +
+		"| 4 | `/abcd:mystery` | shipped | x | [`20-mystery.md`](20-mystery.md) |\n"
+	files := map[string]string{
+		RegisterFile:    register,
+		"13-consult.md": chapterText("# Consult\n\n"),
+		"12-version.md": chapterText("# Version\n\n"),
+		"09-reflect.md": chapterText("# Reflect\n\n"),
+		"20-mystery.md": chapterText("# Mystery\n\n"),
+	}
+	for name, body := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	tree := []Command{{Path: "abcd", Flags: []Flag{{Name: "json", Type: "bool"}, {Name: "version", Type: "bool"}}}}
+	got, err := RegenerateChapters(dir, tree, []string{"consult"})
+	if !errors.Is(err, ErrShippedWithoutSurface) || !strings.Contains(err.Error(), "20-mystery.md") {
+		t.Errorf("err = %v; want the shipped row with no verb, no root flag and no host-delegated entry refused by name", err)
+	}
+	want := map[string]string{
+		"13-consult.md": HostDelegatedSentence("abcd consult"),
+		"12-version.md": rootFlagSentence("abcd version", "version"),
+		"09-reflect.md": UnbuiltSentence("abcd reflect"),
+	}
+	seen := map[string]bool{}
+	for _, c := range got {
+		seen[c.File] = true
+		w, ok := want[c.File]
+		if !ok {
+			t.Errorf("%s was regenerated; want it refused", c.File)
+			continue
+		}
+		if !strings.Contains(c.Want, "\n"+w+"\n") {
+			t.Errorf("%s appendix = %q; want the sentence %q", c.File, c.Want, w)
+		}
+	}
+	for f := range want {
+		if !seen[f] {
+			t.Errorf("%s was not regenerated", f)
+		}
+	}
+	if s := rootFlagSentence("abcd version", "version"); !strings.Contains(s, "`--version`") || strings.Contains(s, "host-delegated") {
+		t.Errorf("the root-flag sentence must name the flag and never say host-delegated: %q", s)
 	}
 }

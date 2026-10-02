@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -29,6 +30,28 @@ const FlagsPath = ".abcd/work/brief-review-flags.json"
 
 // chapterNameRe is a chapter's file name: one path component, no traversal.
 var chapterNameRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*\.md$`)
+
+// chapterFile is the one parse of a brief chapter named by a verdict, shared
+// by Record, by Apply and by the gate's reading of a saved review, so a verdict
+// the recorder accepts is one the applier can write (iss-2609302306153318). It
+// admits the chapter's file name (`17-guard.md`), the same name under the
+// surfaces directory (`04-surfaces/17-guard.md`) and under its repo-relative
+// path (ChaptersDir + `/17-guard.md`), and returns the file name; anything
+// else, a traversal or a nested path included, is refused.
+func chapterFile(chapter string) (string, error) {
+	name := chapter
+	for _, dir := range []string{ChaptersDir, path.Base(ChaptersDir)} {
+		if rest, ok := strings.CutPrefix(name, dir+"/"); ok {
+			name = rest
+			break
+		}
+	}
+	if !chapterNameRe.MatchString(name) {
+		return "", fmt.Errorf("the chapter %q is not a chapter file under %s: name it as `17-guard.md` or `%s/17-guard.md`",
+			chapter, ChaptersDir, path.Base(ChaptersDir))
+	}
+	return name, nil
+}
 
 type flagFile struct {
 	SchemaVersion int    `json:"schema_version"`
@@ -60,10 +83,15 @@ func readFlags(root string) ([]Flag, error) {
 // exactly once, refuses the whole apply and writes nothing.
 func Apply(root string, edits []Edit, commit string, at time.Time) ([]Flag, error) {
 	next := map[string]string{}
-	for _, e := range edits {
-		if !chapterNameRe.MatchString(e.Chapter) {
-			return nil, fmt.Errorf("the edit's chapter %q is not a chapter file under %s", e.Chapter, ChaptersDir)
+	edits = append([]Edit(nil), edits...)
+	for i := range edits {
+		name, err := chapterFile(edits[i].Chapter)
+		if err != nil {
+			return nil, fmt.Errorf("the edit's chapter: %w", err)
 		}
+		edits[i].Chapter = name
+	}
+	for _, e := range edits {
 		if e.Sentence == "" || e.Replacement == "" {
 			return nil, fmt.Errorf("the edit to %s carries no sentence or no replacement", e.Chapter)
 		}
