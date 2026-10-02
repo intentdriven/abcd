@@ -10,7 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/adapter/scanner/network.go"
 remedy: "In selectorExpression (internal/adapter/scanner/network.go), also treat a match as a selector when ')' or ',' follows it and the file is Go source (or the left operand is an identifier the line uses as a Go value), with a test pinning such a selector followed by ')' and by ',' as skipped, and a hostname inside prose parentheses still reported; shown wrong if a real LAN hostname in a .go comment followed by ')' is then missed, in which case limit the skip to code outside comments."
-resolution: "callArgumentSelector (internal/adapter/scanner/network.go) exempts a lower-case Go selector chain passed as a call argument and followed by ')' or ',', when the innermost unclosed '(' opens a call and no comment marker precedes it; abcd lint conforms on the tree"
+resolution: "callArgumentSelector (internal/adapter/scanner/network.go) exempts a lower-case Go selector chain passed as a call argument and followed by ')' or ',', when the innermost unclosed '(' opens a call and no comment marker precedes it; abcd lint conforms on the tree. 2026-10-02: narrowed to Go files after sec-scannerSel: as first wired into the pattern's shared SkipAt the exemption also spared real hosts written call-shaped in logs, diagrams, prose and transcript records on every path-less redactor, so it is now scanner.GoSourceSkip, consulted only by the privacy lint rule for a tracked .go file, every label of the selector must be lower case, and the path-less scanner is back at base behaviour"
 impact: fix
 resolved_by:
   commit: "d303e2960"
