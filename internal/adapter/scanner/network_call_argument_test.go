@@ -56,6 +56,10 @@ func TestHostClosingAParenthesisStillFlags(t *testing.T) {
 		"hosts = [" + printer + ", " + nas + "]",
 		"host: " + printer + ",",
 		"HOSTS=(" + printer + ")",
+		// Inside a call's parentheses but not an argument of its own: the tail of
+		// a path or of a user@host.
+		"mount(/srv/" + printer + ")",
+		"ssh(deploy@" + printer + ", now)",
 		// Quoted, in Go source.
 		`conn, err := net.Dial("tcp", "` + printer + `")`,
 		// A call-shaped mention behind a comment marker is prose about a host.
