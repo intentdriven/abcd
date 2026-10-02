@@ -14,37 +14,14 @@ package loop
 // receipt that names abcd as its model is refused there rather than copied.
 
 import (
-	"regexp"
-
 	"github.com/intentdriven/abcd/internal/core"
+	"github.com/intentdriven/abcd/internal/core/assistedby"
 )
-
-// releaseVersionPattern is a release version as the release workflow admits a
-// tag (.github/workflows/release.yml, "Refuse a tag that is not a vX.Y.Z
-// release tag"). TestComposedLabelGrammarMatchesTheGate ties it to the gate's
-// ABCD_RE (scripts/check-attribution.sh).
-const releaseVersionPattern = `v[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?`
-
-var releaseVersionRe = regexp.MustCompile(`^` + releaseVersionPattern + `$`)
-
-// devLabel is the label of a binary built without a release version: a
-// development build, which says so rather than borrowing a release's name.
-const devLabel = "dev"
-
-// composedLabel is the version half of the label for a binary whose version
-// is v: the release version when v is one, and devLabel otherwise (the
-// unstamped "dev" default, or any stamp that is not a release version, which is
-// never copied into a trailer).
-func composedLabel(v string) string {
-	if releaseVersionRe.MatchString(v) {
-		return v
-	}
-	return devLabel
-}
 
 // composedAssistedBy is the trailer line of a commit the loop composes from
 // record facts, naming the running binary's version (what `abcd version`
-// prints).
+// prints). The label's grammar is internal/core/assistedby's, the one Go home
+// the site's authorship tally reads too.
 func composedAssistedBy() string {
-	return "Assisted-by: abcd:" + composedLabel(core.Version)
+	return "Assisted-by: " + assistedby.ComposedValue(core.Version)
 }

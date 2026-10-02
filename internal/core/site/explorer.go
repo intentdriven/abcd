@@ -787,13 +787,16 @@ func (e *explorer) contributorsPage() (string, error) {
 		}
 		bars.WriteString(`</div>`)
 		// The chart tallies OCCURRENCES and its note says what the bars sum to.
-		// The two commit-level facts that are not assistance — the human-only
-		// declaration, and the commits carrying no trailer at all — are stated
+		// The three commit-level facts that are not assistance — the human-only
+		// declaration, the commits abcd composed from record facts (which name
+		// no model), and the commits carrying no trailer at all — are stated
 		// beneath it rather than folded into a chart they would falsify.
 		var foot strings.Builder
 		foot.WriteString(`<p class="small muted trailerfoot">`)
 		foot.WriteString(escapeText(ui.Contributors.DeclaredNone) + ` <b class="tnum">` +
 			strconv.Itoa(a.DeclaredNone) + `</b>`)
+		foot.WriteString(`</p><p class="small muted trailerfoot">` + escapeText(ui.Contributors.ComposedByAbcd) + ` <b class="tnum">` +
+			strconv.Itoa(a.ComposedByAbcd) + `</b>`)
 		foot.WriteString(`</p><p class="small muted trailerfoot">` + escapeText(ui.Contributors.Undeclared) + ` <b class="tnum">` +
 			strconv.Itoa(a.Undeclared) + `</b>`)
 		foot.WriteString(`</p>`)

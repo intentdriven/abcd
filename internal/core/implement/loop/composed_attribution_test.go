@@ -1,14 +1,12 @@
 package loop
 
 import (
-	"os"
-	"path/filepath"
-	"regexp"
 	"slices"
 	"strings"
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core"
+	"github.com/intentdriven/abcd/internal/core/assistedby"
 )
 
 // The commits the loop composes from record facts (the pick's record-only
@@ -16,28 +14,11 @@ import (
 // with the running binary's version: ruling PC1, the third label beside a
 // model's and None. These tests hold each composer to the exact trailer line.
 
-// TestComposedLabelIsTheReleaseVersionOrDev: a release build names its
-// version; anything else is a development build and says so, in a form the
-// attribution gate accepts. A value that is not a release version is never
-// copied into the trailer.
-func TestComposedLabelIsTheReleaseVersionOrDev(t *testing.T) {
-	for _, tc := range []struct{ version, want string }{
-		{"dev", "dev"},
-		{"", "dev"},
-		{"v0.12.0", "v0.12.0"},
-		{"v1.0.0-rc.1", "v1.0.0-rc.1"},
-		{"v1.2.3+build.5", "v1.2.3+build.5"},
-		{"0.12.0", "dev"},
-		{"v1.2", "dev"},
-		{"latest", "dev"},
-		{"v1.0.0\nAssisted-by: None", "dev"},
-		{"v1.0.0 extra", "dev"},
-	} {
-		if got := composedLabel(tc.version); got != tc.want {
-			t.Errorf("composedLabel(%q) = %q, want %q", tc.version, got, tc.want)
-		}
-	}
-	if got, want := composedAssistedBy(), "Assisted-by: abcd:"+composedLabel(core.Version); got != want {
+// TestComposedAssistedByNamesTheRunningBinary: the composer's line is the
+// shared label for the running binary's version (the grammar and its tie to the
+// gate are internal/core/assistedby's).
+func TestComposedAssistedByNamesTheRunningBinary(t *testing.T) {
+	if got, want := composedAssistedBy(), "Assisted-by: "+assistedby.ComposedValue(core.Version); got != want {
 		t.Errorf("composedAssistedBy() = %q, want %q", got, want)
 	}
 }
@@ -69,31 +50,6 @@ func TestTheSyncMessageDeclaresAbcd(t *testing.T) {
 	}
 	if strings.Contains(msg, "Assisted-by: None") {
 		t.Fatalf("the sync message still declares None:\n%s", msg)
-	}
-}
-
-// TestComposedLabelGrammarMatchesTheGate ties the composer's version grammar to
-// the attribution gate's ABCD_RE, the one place the third form is decided: the
-// gate runs in CI without Go, so the two share a test rather than code.
-func TestComposedLabelGrammarMatchesTheGate(t *testing.T) {
-	rel := filepath.Join("..", "..", "..", "..", "scripts", "check-attribution.sh")
-	b, err := os.ReadFile(rel)
-	if err != nil {
-		t.Fatalf("read the gate: %v", err)
-	}
-	m := regexp.MustCompile(`(?m)^ABCD_RE='([^']*)'$`).FindStringSubmatch(string(b))
-	if m == nil {
-		t.Fatal("scripts/check-attribution.sh: no ABCD_RE assignment found; the gate or this parser changed shape")
-	}
-	want := `^Assisted-by: abcd:(dev|` + releaseVersionPattern + `)$`
-	if m[1] != want {
-		t.Fatalf("the gate's ABCD_RE is\n\t%s\nbut the loop's composer reconstructs\n\t%s\none of the two moved alone", m[1], want)
-	}
-	gate := regexp.MustCompile(m[1])
-	for _, v := range []string{"dev", "v0.12.0", "v1.0.0-rc.1", "v1.2.3+build.5", "", "latest", "0.12.0"} {
-		if line := "Assisted-by: abcd:" + composedLabel(v); !gate.MatchString(line) {
-			t.Errorf("the gate refuses the composer's own line %q (version %q)", line, v)
-		}
 	}
 }
 

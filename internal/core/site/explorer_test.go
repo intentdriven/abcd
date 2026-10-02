@@ -412,6 +412,28 @@ func TestFoundationsListsAndLinks(t *testing.T) {
 	}
 }
 
+// TestContributorsStatesTheAbcdLabelApart: a commit abcd composed from record
+// facts (`Assisted-by: abcd:<version>`, iss-2610020727129199) is stated as its
+// own figure beneath the trailer chart, beside the human-only declaration, and
+// never drawn as a model bar under a heading that lists assisting models.
+func TestContributorsStatesTheAbcdLabelApart(t *testing.T) {
+	f := newFixture(t)
+	f.commitAt("2026-03-10T09:00:00+00:00", "chore(implement): pick", "abcd:dev")
+	out := t.TempDir()
+	buildFixture(t, f, out)
+	page := outFile(t, out, "contributors/index.html")
+
+	if want := `composed by abcd from record facts <b class="tnum">1</b>`; !strings.Contains(page, want) {
+		t.Errorf("the contributors page does not state the abcd-composed commits (%q)", want)
+	}
+	if strings.Contains(page, "abcd:dev") {
+		t.Error("the contributors page charts the abcd label as a model")
+	}
+	if !strings.Contains(page, "assistant-model-1") {
+		t.Error("the fixture's declared model is no longer charted")
+	}
+}
+
 // TestContributorsSeparatesAuthorshipFromDisclosure pins the page's whole point:
 // humans are the authors of record, the trailer tallies are disclosure, and the
 // policy that requires them is quoted beside the number.

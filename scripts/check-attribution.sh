@@ -76,8 +76,10 @@ NONE_RE='^Assisted-by: [Nn]one$'
 # them, so a vendor trailer would be false, and a person ran the command that made
 # them, but `None` says no tool touched the text, which is false too. The label
 # names abcd and the version of the binary that composed it, `dev` for a build
-# with no release version (internal/core/implement/loop/composed_attribution.go,
-# whose grammar TestComposedLabelGrammarMatchesTheGate ties to this line).
+# with no release version (internal/core/assistedby, the label's one Go home,
+# which the implement loop writes through and the site's authorship tally reads
+# through, and whose grammar TestComposedLabelGrammarMatchesTheGate ties to this
+# line and to ABCD_ANY_RE).
 #
 # It is ONE fixed form, not a free-text escape: the vendor is the literal `abcd`,
 # and the version is `dev` or a release version exactly as the release workflow

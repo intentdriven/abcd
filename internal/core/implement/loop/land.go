@@ -54,6 +54,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
+	"github.com/intentdriven/abcd/internal/core/assistedby"
 	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -352,9 +353,6 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 var (
 	assistedVendorRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9._-]*:[A-Za-z0-9._-]+(\[[A-Za-z0-9._-]+\])?$`)
 	bareClaudeRe     = regexp.MustCompile(`^claude-[A-Za-z0-9._-]+(\[[A-Za-z0-9._-]+\])?$`)
-	// abcdVendorRe is a value naming abcd as its vendor, in any case: the
-	// gate's ABCD_ANY_RE.
-	abcdVendorRe = regexp.MustCompile(`^(?i:abcd):`)
 )
 
 // assistedByTrailers are the records commit's Assisted-by: trailers, one per
@@ -376,7 +374,7 @@ func assistedByTrailers(rs []ReceiptRecord) ([]string, string) {
 		switch {
 		case r.Model == "":
 			return nil, fmt.Sprintf("receipt %d (%s) reports no model", i+1, r.Receipt)
-		case abcdVendorRe.MatchString(r.Model):
+		case assistedby.NamesAbcd(r.Model):
 			return nil, fmt.Sprintf("receipt %d (%s) reports abcd as its model, a label reserved for text abcd composes from record facts", i+1, r.Receipt)
 		case bareClaudeRe.MatchString(r.Model):
 			v = "Claude:" + r.Model

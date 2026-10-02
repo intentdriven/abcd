@@ -275,7 +275,9 @@ A build that stops and says which line is the only outcome anybody can act on.
 The build derives one machine-readable file holding the record graph: nodes with
 their lifecycle, title, dates and degree; typed links with each mirrored pair
 collapsed once; body mentions deduplicated against those links; counts by store,
-lifecycle and status; releases; authorship and assistance tallies; the unresolved
+lifecycle and status; releases; authorship and assistance tallies, which count a
+commit abcd composed from record facts (`Assisted-by: abcd:<version>`) apart from
+both assistance and a declaration of none, never as a model; the unresolved
 references measured against the committed baseline; the precomputed chart
 arrangements; and a summary of the git walk the dates came from. It is a build
 artefact and is never committed.

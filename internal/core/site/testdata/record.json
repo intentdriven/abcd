@@ -315,6 +315,7 @@
     "assisted": 1,
     "multi_trailer_commits": 0,
     "declared_none": 3,
+    "composed_by_abcd": 0,
     "undeclared": 1,
     "by_model": [
       {
