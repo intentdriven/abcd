@@ -347,13 +347,10 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 	return Outcome{Stay: true, Note: "committed the landing's records as " + shortSHA(head) + ": " + strings.Join(done, "; ")}, nil
 }
 
-// assistedVendorRe is an Assisted-by: value in the vendor form the attribution
-// gate takes (scripts/check-attribution.sh TRAILER_RE), and bareClaudeRe a bare
-// Claude model id, which takes the Claude vendor prefix.
-var (
-	assistedVendorRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9._-]*:[A-Za-z0-9._-]+(\[[A-Za-z0-9._-]+\])?$`)
-	bareClaudeRe     = regexp.MustCompile(`^claude-[A-Za-z0-9._-]+(\[[A-Za-z0-9._-]+\])?$`)
-)
+// bareClaudeRe is a bare Claude model id, which takes the Claude vendor prefix.
+// A value already in the vendor form the attribution gate takes is judged by
+// assistedby.IsModelValue, the gate's TRAILER_RE in its one Go home.
+var bareClaudeRe = regexp.MustCompile(`^claude-[A-Za-z0-9._-]+(\[[A-Za-z0-9._-]+\])?$`)
 
 // assistedByTrailers are the records commit's Assisted-by: trailers, one per
 // distinct model the lane's receipts reported, in the order first reported.
@@ -378,7 +375,7 @@ func assistedByTrailers(rs []ReceiptRecord) ([]string, string) {
 			return nil, fmt.Sprintf("receipt %d (%s) reports abcd as its model, a label reserved for text abcd composes from record facts", i+1, r.Receipt)
 		case bareClaudeRe.MatchString(r.Model):
 			v = "Claude:" + r.Model
-		case assistedVendorRe.MatchString(r.Model):
+		case assistedby.IsModelValue(r.Model):
 			v = r.Model
 		default:
 			return nil, fmt.Sprintf("receipt %d (%s) reports a model in no form the trailer takes (%s)", i+1, r.Receipt, termsafe.DescribeRefused(r.Model))

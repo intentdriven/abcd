@@ -56,26 +56,6 @@ var (
 // that host as a machine signal would demote exactly the contributors the page
 // exists to credit.
 
-// The `Assisted-by:` trailer's grammar, held as the value half alone.
-//
-// `scripts/check-attribution.sh` decides this grammar and carries the reasoning
-// for it; that gate runs in CI without Go and cannot ask this package anything,
-// so the two cannot share code. They share a TEST instead:
-// TestAssistedByGrammarMatchesTheGate reconstructs the gate's whole `TRAILER_RE`
-// from these two constants and fails if either side moved alone. Copying the
-// regexp with no such tie is what would drift — the chart would go on charting a
-// shape the gate had started refusing.
-const (
-	assistedByTrailerKey   = "Assisted-by:"
-	assistedByValuePattern = `[A-Za-z][A-Za-z0-9._-]*:[A-Za-z0-9._-]+(\[[A-Za-z0-9._-]+\])?`
-)
-
-// assistedByValueRe is that grammar anchored at the START of a trailer value
-// only. A value the convention accepts matches the whole of it; a value carrying
-// a conformant declaration followed by free text — "Vendor:model, with edits" —
-// matches its head, and the head is what is charted. See chartableModel.
-var assistedByValueRe = regexp.MustCompile(`^` + assistedByValuePattern)
-
 // chartableModel is the model a trailer value names, or "" when it names none.
 //
 // The chart is an inventory of MODELS, so a value has to name one to earn a bar.
@@ -87,7 +67,10 @@ var assistedByValueRe = regexp.MustCompile(`^` + assistedByValuePattern)
 //
 // A value whose HEAD conforms is CLIPPED to that head rather than dropped: the
 // model was named, and the trailing prose is the part with no place on a chart.
-func chartableModel(v string) string { return assistedByValueRe.FindString(v) }
+//
+// The grammar is the gate's TRAILER_RE, read through internal/core/assistedby,
+// its one Go home and the place it is tied to the gate.
+func chartableModel(v string) string { return assistedby.ModelHead(v) }
 
 // Author is one authorship line.
 //

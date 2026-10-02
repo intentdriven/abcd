@@ -1,9 +1,6 @@
 package site
 
 import (
-	"os"
-	"path/filepath"
-	"regexp"
 	"strings"
 	"testing"
 
@@ -133,38 +130,6 @@ func TestAuthorshipChartsOnlyTrailerShapedValues(t *testing.T) {
 	}
 	if a.Undeclared != 0 {
 		t.Errorf("undeclared commits = %d, want 0", a.Undeclared)
-	}
-}
-
-// TestAssistedByGrammarMatchesTheGate keeps ONE definition of the attribution
-// trailer's grammar honest across the two languages that have to know it.
-//
-// `scripts/check-attribution.sh` is where the grammar is decided — it is the
-// gate that refuses a commit, it carries the reasoning for every character of
-// the pattern (iss-214's bracketed context-window suffix, iss-215's unpinned
-// vendor half), and it runs in CI with no Go available, so it cannot ask this
-// package what the grammar is. The chart has to apply the same rule to decide
-// what is a model name, and a second regexp copied into Go would drift silently
-// — the copy would go on charting what the gate had started refusing.
-//
-// So the Go half is derived by ASSERTION rather than by import: it holds the
-// value half alone, and this test reconstructs the gate's whole line from it and
-// requires the two to be the same string. A change to either without the other
-// fails here, naming both files.
-func TestAssistedByGrammarMatchesTheGate(t *testing.T) {
-	const rel = "scripts/check-attribution.sh"
-	b, err := os.ReadFile(filepath.Join(repoRoot(), filepath.FromSlash(rel)))
-	if err != nil {
-		t.Fatalf("read %s: %v", rel, err)
-	}
-	m := regexp.MustCompile(`(?m)^TRAILER_RE='([^']*)'$`).FindStringSubmatch(string(b))
-	if m == nil {
-		t.Fatalf("%s: no TRAILER_RE assignment found; the gate or this parser changed shape", rel)
-	}
-	want := "^" + assistedByTrailerKey + " " + assistedByValuePattern + "$"
-	if m[1] != want {
-		t.Errorf("%s's TRAILER_RE is\n\t%s\nbut internal/core/site's grammar reconstructs\n\t%s\n"+
-			"one of the two moved; the chart and the gate must read the same trailer", rel, m[1], want)
 	}
 }
 

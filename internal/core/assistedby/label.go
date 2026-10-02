@@ -3,6 +3,9 @@
 // the technical facilitator, 2026-10-02): `Assisted-by: abcd:<version>`, beside
 // a model's `<Vendor>:<model-version>` and `None`.
 //
+// It is also the one Go home of the model form's value grammar (model.go), the
+// gate's TRAILER_RE, which the same two readers need.
+//
 // It is the label's one Go home. The implement loop writes it (the pick's
 // record-only commit and the sync's merge commit) and refuses a receipt that
 // claims it; the site's authorship tally reads it and counts it apart from both

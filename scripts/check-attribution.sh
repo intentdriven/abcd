@@ -53,7 +53,8 @@ set -euo pipefail
 #
 # The vendor half is deliberately NOT pinned to one name. The convention is
 # <Vendor>:<model-version>, with Claude an example rather than the literal
-# (iss-215).
+# (iss-215). Its one Go copy is internal/core/assistedby, tied to this line by
+# TestModelValueGrammarMatchesTheGate.
 TRAILER_RE='^Assisted-by: [A-Za-z][A-Za-z0-9._-]*:[A-Za-z0-9._-]+(\[[A-Za-z0-9._-]+\])?$'
 
 # The human-only declaration. The convention is DISCLOSURE, and a change no AI
