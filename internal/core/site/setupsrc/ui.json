@@ -93,6 +93,7 @@
     "trailers": "Assisted-by trailers",
     "merges_excluded": "merge commits excluded",
     "declared_none": "declared no assistance",
+    "composed_by_abcd": "composed by abcd from record facts",
     "undeclared": "no declaration"
   },
   "more": "more",

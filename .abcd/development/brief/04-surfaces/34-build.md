@@ -134,7 +134,11 @@ runner-up and why it lost, and the falsifier. The first lane's worktree stage
 appends it to the intent in the lane's own worktree, through the intent store's
 grounds writer and lock, and commits that one file as the lane branch's first
 commit (decision 6), under the configured git identity, with hooks off and the
-isolated environment less the global-config neutralisers. A worktree stage run
+isolated environment less the global-config neutralisers. Its message is
+computed too, so it ends with the abcd label, `Assisted-by: abcd:<version>`,
+naming the binary's release version or `dev` for a build with none: abcd
+composed the text from record facts, so neither a model's trailer nor the
+human-only `None` would be true of it. A worktree stage run
 again adopts a commit already on the branch only when it is that commit byte
 for byte: the pick's subject, the picked intent's record the one path changed,
 and that record the base's with the one entry appended. The lane records the
@@ -306,7 +310,8 @@ the move's answer, and no other lane moves.
 
 Landing is one lane at a time, the lower spec step first. A lane whose sibling
 landed since its base is synced before its landing begins: the default branch is
-merged into its branch with a merge commit, never a rebase, and a fresh round
+merged into its branch with a merge commit, never a rebase, whose computed
+message carries the same abcd label as the pick's commit, and a fresh round
 judges the merge head. A conflicting merge is aborted with the branch unchanged
 and goes to a fresh implementer with a sync brief; its receipt must carry the
 merged sha as an ancestor of its head. A sync counts no fix round. The closing

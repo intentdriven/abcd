@@ -189,6 +189,9 @@ func TestNextWritesTheReasonAsTheLaneFirstCommit(t *testing.T) {
 	if files := strings.TrimSpace(repo.Git("diff-tree", "--no-commit-id", "--name-only", "-r", l.PickSHA)); files != ir {
 		t.Fatalf("the commit is record-only, the intent alone: %q", files)
 	}
+	if msg := repo.Git("log", "-1", "--format=%B", l.PickSHA); !strings.Contains("\n"+msg+"\n", "\nAssisted-by: abcd:dev\n") {
+		t.Fatalf("the pick commit, composed by abcd from the run's records, declares abcd (ruling PC1):\n%s", msg)
+	}
 	after := repo.Git("show", l.PickSHA+":"+ir)
 	if !strings.HasPrefix(after+"\n", strings.TrimRight(string(before), "\n")) {
 		t.Fatalf("no existing line of the record changes:\n%s", after)

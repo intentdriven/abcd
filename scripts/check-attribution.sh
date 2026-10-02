@@ -8,6 +8,13 @@
 # and never `Co-Authored-By:` for an AI, and never a tool's own "Generated with
 # <tool>" footer.
 #
+# The trailer has exactly THREE accepted forms, each a closed shape:
+#
+#   Assisted-by: <Vendor>:<model-version>   a model assisted (TRAILER_RE)
+#   Assisted-by: None                       no tool touched the text (NONE_RE)
+#   Assisted-by: abcd:<version>             abcd composed the text from record
+#                                           facts; no model wrote it (ABCD_RE)
+#
 # It also refuses a LIVE AGENT-SESSION URL, and that half is not a regex in this
 # file — it is delegated to `abcd lint outbound`, the front door onto
 # scanner.CheckOutbound. See outbound_checker() below for why it cannot be a regex
@@ -54,13 +61,38 @@ TRAILER_RE='^Assisted-by: [A-Za-z][A-Za-z0-9._-]*:[A-Za-z0-9._-]+(\[[A-Za-z0-9._
 # trailer and a forgotten trailer are the same bytes, which is why the gate
 # refuses a bare omission. `Assisted-by: None` is the positive form, so a
 # human-only artefact states its provenance as explicitly as an assisted one
-# and stays auditable. It is deliberately the ONLY accepted non-vendor value —
-# a free-text escape ("n/a", "human") would reopen the omission it closes.
+# and stays auditable. It is one of only TWO accepted non-vendor values, both
+# closed shapes (the other is the abcd label, ABCD_RE below) — a free-text escape
+# ("n/a", "human") would reopen the omission it closes.
 #
 # It is not a bypass to reach for when a trailer is merely inconvenient:
 # claiming None for assisted work is a false disclosure, the exact failure this
 # gate exists to prevent, and the reviewer reading the diff is the check on it.
 NONE_RE='^Assisted-by: [Nn]one$'
+
+# The third form: text abcd composed from record facts (ruling PC1, the technical
+# facilitator, 2026-10-02). The implement loop's pick commit and sync merge are
+# computed by the abcd binary from the run's state and records: no model wrote
+# them, so a vendor trailer would be false, and a person ran the command that made
+# them, but `None` says no tool touched the text, which is false too. The label
+# names abcd and the version of the binary that composed it, `dev` for a build
+# with no release version (internal/core/assistedby, the label's one Go home,
+# which the implement loop writes through and the site's authorship tally reads
+# through, and whose grammar TestComposedLabelGrammarMatchesTheGate ties to this
+# line and to ABCD_ANY_RE).
+#
+# It is ONE fixed form, not a free-text escape: the vendor is the literal `abcd`,
+# and the version is `dev` or a release version exactly as the release workflow
+# admits a tag. ABCD_ANY_RE finds every trailer that names abcd as its vendor, in
+# any case, and the gate refuses one that is not ABCD_RE (an empty or free-text
+# version, `ABCD:`), although TRAILER_RE's generic <Vendor>:<model-version> shape
+# would otherwise take most of them: a malformed abcd label is an artefact
+# claiming abcd's provenance in a shape abcd never writes.
+#
+# Like None, it is not a bypass: claiming it for text a model or a person wrote is
+# a false disclosure, and the reviewer reading the diff is the check on it.
+ABCD_RE='^Assisted-by: abcd:(dev|v[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?)$'
+ABCD_ANY_RE='^Assisted-by: [Aa][Bb][Cc][Dd]:'
 
 # Footers a tool emits by default. These name a tool outside the two credit
 # surfaces AGENTS.md sanctions (the README badge and ACKNOWLEDGEMENTS.md), which
@@ -504,12 +536,29 @@ check_text() {
 		fail=1
 		return
 	fi
-	if ! grep -Eq "$TRAILER_RE" <<<"$text" && ! grep -Eq "$NONE_RE" <<<"$text"; then
+	# A trailer naming abcd must be the one form abcd writes. Read into a
+	# variable rather than piped into `grep -q`: an early exit there would
+	# SIGPIPE the first grep, and under pipefail the refusal would read as a pass.
+	local bad_abcd
+	bad_abcd="$(grep -E "$ABCD_ANY_RE" <<<"$text" | grep -Ev "$ABCD_RE" || true)"
+	if [ -n "$bad_abcd" ]; then
+		echo "check-attribution: $label has a malformed abcd label" >&2
+		note "The abcd label has one form: Assisted-by: abcd:<version>, where <version>"
+		note "is dev or a release version (v1.2.3). abcd writes it on the commits it"
+		note "composes from record facts; it is not a free-text slot, and a person or"
+		note "a model never claims it for text they wrote."
+		fail=1
+		return
+	fi
+	if ! grep -Eq "$TRAILER_RE" <<<"$text" && ! grep -Eq "$NONE_RE" <<<"$text" &&
+		! grep -Eq "$ABCD_RE" <<<"$text"; then
 		echo "check-attribution: $label has no 'Assisted-by:' trailer" >&2
-		note "Add a final line of the form: Assisted-by: <Vendor>:<model-version>"
-		note "for example  Assisted-by: Claude:claude-opus-5  or  Assisted-by: Claude:claude-opus-5[1m]"
-		note "If no AI assisted this artefact, disclose that positively instead:"
-		note "  Assisted-by: None"
+		note "Add a final line in one of the three accepted forms:"
+		note "  Assisted-by: <Vendor>:<model-version>   a model assisted, for example"
+		note "      Assisted-by: Claude:claude-opus-5  or  Assisted-by: Claude:claude-opus-5[1m]"
+		note "  Assisted-by: None                       no AI assisted this artefact"
+		note "  Assisted-by: abcd:<version>             abcd composed it from record facts"
+		note "      (written by abcd itself on the commits it composes; never typed by hand)"
 		fail=1
 	fi
 }

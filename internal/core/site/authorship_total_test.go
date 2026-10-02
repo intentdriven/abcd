@@ -167,3 +167,71 @@ func TestAssistedByGrammarMatchesTheGate(t *testing.T) {
 			"one of the two moved; the chart and the gate must read the same trailer", rel, m[1], want)
 	}
 }
+
+// TestAuthorshipCountsTheAbcdLabelApart pins the third accepted trailer form
+// (iss-2610020727129199). `Assisted-by: abcd:<version>` says abcd composed the
+// commit's text from record facts and that no model wrote it (ruling PC1), so it
+// is neither assistance nor a declaration of none: it is never a model bar, never
+// adds abcd to the vendor set, never counts toward the disclosure rate's
+// numerator, and is stated as its own commit-level figure beside DeclaredNone.
+//
+// A commit that names a model as well is assisted, whatever else it declares: a
+// model's text is in it. A label naming abcd in a shape the gate refuses
+// (`ABCD:latest`) is still abcd's claimed provenance, never a model.
+func TestAuthorshipCountsTheAbcdLabelApart(t *testing.T) {
+	r := gittest.NewRepo(t)
+	r.Commit("feat: one\n\nAssisted-by: Vendor:model-a")
+	r.Commit("chore(implement): pick\n\nAssisted-by: abcd:dev")
+	r.Commit("chore(implement): pick again\n\nAssisted-by: abcd:v0.12.0")
+	r.Commit("chore: malformed label\n\nAssisted-by: ABCD:latest")
+	r.Commit("feat: both\n\nAssisted-by: abcd:dev\nAssisted-by: Vendor:model-b")
+	r.Commit("chore: human\n\nAssisted-by: None")
+	r.Commit("chore: undeclared")
+
+	a, err := LoadAuthorship(r.Root())
+	if err != nil {
+		t.Fatalf("LoadAuthorship: %v", err)
+	}
+	for _, m := range a.ByModel {
+		if strings.HasPrefix(strings.ToLower(m.Model), "abcd:") {
+			t.Errorf("the abcd label is charted as a model bar: %+v", a.ByModel)
+		}
+	}
+	if len(a.ByModel) != 2 || a.Assisted != 2 {
+		t.Errorf("by_model %+v (assisted %d), want the two vendor models alone", a.ByModel, a.Assisted)
+	}
+	if a.AssistedCommits != 2 {
+		t.Errorf("assisted commits = %d, want 2: an abcd-composed commit discloses no AI assistance", a.AssistedCommits)
+	}
+	if a.ComposedByAbcd != 3 {
+		t.Errorf("abcd-composed commits = %d, want 3", a.ComposedByAbcd)
+	}
+	if a.DeclaredNone != 1 || a.Undeclared != 1 {
+		t.Errorf("declared none %d, undeclared %d, want 1 and 1", a.DeclaredNone, a.Undeclared)
+	}
+	if sum := a.AssistedCommits + a.ComposedByAbcd + a.DeclaredNone + a.Undeclared; sum != a.Authored {
+		t.Errorf("the commit-level figures sum to %d, but %d commits were authored", sum, a.Authored)
+	}
+}
+
+// TestTheAbcdLabelNamesNoVendor: the bots row is derived from the vendors the
+// trailers name together with a machine's address, and abcd is not a vendor. An
+// author named for the label's vendor, at an address no person reads, is not
+// demoted by the label: only a vendor a model trailer names takes part in the
+// conjunction.
+func TestTheAbcdLabelNamesNoVendor(t *testing.T) {
+	r := gittest.NewRepo(t)
+	r.Commit("chore(implement): pick\n\nAssisted-by: abcd:dev")
+	r.Git("-c", "user.name=abcd", "-c", "user.email=noreply@abcd.example.invalid",
+		"commit", "--allow-empty", "-m", "chore: an author named abcd\n\nAssisted-by: None")
+
+	a, err := LoadAuthorship(r.Root())
+	if err != nil {
+		t.Fatalf("LoadAuthorship: %v", err)
+	}
+	for _, b := range a.Bots {
+		if b.Name == "abcd" {
+			t.Fatalf("the abcd label registered abcd as a vendor and demoted its author: bots %+v", a.Bots)
+		}
+	}
+}

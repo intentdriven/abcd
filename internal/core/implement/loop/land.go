@@ -54,6 +54,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
+	"github.com/intentdriven/abcd/internal/core/assistedby"
 	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -321,7 +322,7 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 			"the close and the resolutions should move records; check the lane's branch holds them open, then run `abcd implement step` again")
 	}
 	// Unlike the pick commit (pickcommit.go), whose text abcd computes and
-	// which declares `Assisted-by: None`, this commit's diff carries prose a
+	// which declares `Assisted-by: abcd:<version>`, this commit's diff carries prose a
 	// model composed: the receipt's resolution note and grounds, and the
 	// audit's verdict ingested into the intent. So it names that model, and
 	// it is made with the repository's hooks running (never through pickGit's
@@ -359,7 +360,9 @@ var (
 // Every receipt's runner may have composed text the commit carries, so a
 // receipt that reports no model, or one in no form the trailer takes, is a gap
 // named in the returned description, and no trailers are returned; a lane with
-// no receipt at all is a gap too. The model is the runner's report, which the
+// no receipt at all is a gap too. So is a receipt naming abcd as its model: the
+// abcd label says abcd composed the text from record facts (ruling PC1), which
+// is never true of a runner's prose. The model is the runner's report, which the
 // binary cannot verify: a refused value is described, never quoted.
 func assistedByTrailers(rs []ReceiptRecord) ([]string, string) {
 	if len(rs) == 0 {
@@ -371,6 +374,8 @@ func assistedByTrailers(rs []ReceiptRecord) ([]string, string) {
 		switch {
 		case r.Model == "":
 			return nil, fmt.Sprintf("receipt %d (%s) reports no model", i+1, r.Receipt)
+		case assistedby.NamesAbcd(r.Model):
+			return nil, fmt.Sprintf("receipt %d (%s) reports abcd as its model, a label reserved for text abcd composes from record facts", i+1, r.Receipt)
 		case bareClaudeRe.MatchString(r.Model):
 			v = "Claude:" + r.Model
 		case assistedVendorRe.MatchString(r.Model):

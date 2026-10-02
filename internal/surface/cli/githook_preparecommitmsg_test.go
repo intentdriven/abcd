@@ -333,11 +333,15 @@ func TestPrepareCommitMsgHookWritesNothingWhenUnconfigured(t *testing.T) {
 
 // A configured value the hook must not write is refused out loud, and the commit
 // still goes through for the gate to judge. `None` above all: a standing setting
-// cannot declare that no tool touched a commit.
+// cannot declare that no tool touched a commit. Nor can it claim the abcd label,
+// which abcd writes only on the commits it composes from record facts.
 func TestPrepareCommitMsgHookRefusesAValueItMustNotWrite(t *testing.T) {
 	for name, config := range map[string][]string{
 		"None":                         {"abcd.assistedBy=None"},
 		"none":                         {"abcd.assistedBy=none"},
+		"the abcd label":               {"abcd.assistedBy=abcd:dev"},
+		"the abcd label, release":      {"abcd.assistedBy=abcd:v0.12.0"},
+		"the abcd label, upper case":   {"abcd.assistedBy=ABCD:v0.12.0"},
 		"a vendor with no version":     {"abcd.assistedBy=Vendor"},
 		"a value with a second clause": {"abcd.assistedBy=Vendor:model-1 Co-authored-by: x"},
 		"a trailer alias renaming the key": {

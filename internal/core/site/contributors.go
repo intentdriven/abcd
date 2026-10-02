@@ -7,8 +7,10 @@ package site
 // responsible for the work. WHAT assisted is the `Assisted-by:` trailer, which
 // this repository requires on every AI-assisted commit and requires as an
 // explicit `None` on every human-only one, so that silence is never mistaken for
-// a declaration. Presenting the second as authorship would be exactly the claim
-// the trailer convention exists to refuse.
+// a declaration; a commit abcd composes from record facts declares
+// `abcd:<version>`, which names no model and is counted apart from both.
+// Presenting the second as authorship would be exactly the claim the trailer
+// convention exists to refuse.
 //
 // The bots-and-tools row is derived, not listed. An author is a tool when its
 // name carries the forge's own `[bot]` suffix, or when the repository's own
@@ -32,6 +34,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/core/assistedby"
 	"github.com/intentdriven/abcd/internal/core/identity"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
@@ -127,8 +130,8 @@ type ModelTally struct {
 	Commits int    `json:"commits"`
 }
 
-// Authorship is the whole picture: who authored, what assisted, and the commits
-// that declared no assistance at all.
+// Authorship is the whole picture: who authored, what assisted, the commits abcd
+// composed, and the commits that declared no assistance at all.
 type Authorship struct {
 	// Commits is the total number of commits in the history walked.
 	Commits int `json:"commits"`
@@ -168,6 +171,13 @@ type Authorship struct {
 	// DeclaredNone is the number of AUTHORED commits declaring
 	// `Assisted-by: None` — work no tool touched, saying so.
 	DeclaredNone int `json:"declared_none"`
+	// ComposedByAbcd is the number of AUTHORED commits declaring
+	// `Assisted-by: abcd:<version>` and no model: text abcd composed from record
+	// facts (ruling PC1), which no model wrote and which a tool did touch. It is
+	// neither assistance nor a declaration of none, so it is counted in neither
+	// and never charted, and it is stated beside DeclaredNone. A commit naming a
+	// model as well is assisted: a model's text is in it.
+	ComposedByAbcd int `json:"composed_by_abcd"`
 	// Undeclared is the number of AUTHORED commits carrying no trailer at all.
 	// It is published because an absent trailer and a forgotten one are the
 	// same bytes, and the honest number is the one that says how much of the
@@ -179,8 +189,10 @@ type Authorship struct {
 	ByModel []ModelTally `json:"by_model"`
 }
 
-// noneDeclaration is the trailer value a human-only commit carries. It is the
-// only accepted non-vendor value, so it can be compared for exactly.
+// noneDeclaration is the trailer value a human-only commit carries. It is one of
+// the two accepted non-vendor values, both closed shapes, so it can be compared
+// for exactly; the other is the abcd label, read through internal/core/assistedby
+// (the one Go home of its grammar, tied to the gate's ABCD_RE by test).
 const noneDeclaration = "None"
 
 // LoadAuthorship reads the authorship facts out of git. A directory that is not
@@ -218,7 +230,7 @@ func LoadAuthorship(repoRoot string) (Authorship, error) {
 			continue
 		}
 		a.Authored++
-		declared, assisted, models := false, false, 0
+		declared, assisted, composed, models := false, false, false, 0
 		for _, v := range strings.Split(rest, "\x1f") {
 			v = strings.TrimSpace(v)
 			if v == "" {
@@ -229,6 +241,15 @@ func LoadAuthorship(repoRoot string) (Authorship, error) {
 				// Counted, never charted: a declaration of NO assistance in a
 				// tally of what assisted would make the bars sum past their own
 				// total. It is stated separately, beneath the chart.
+				continue
+			}
+			if assistedby.NamesAbcd(v) {
+				// abcd composed the text and no model wrote it: never a model
+				// bar and never a vendor, whose name would otherwise take part
+				// in the bots-row conjunction below. A label in a shape the gate
+				// refuses (`ABCD:latest`) still claims abcd's provenance, not a
+				// model's, so it is read the same way.
+				composed = true
 				continue
 			}
 			// The commit declares that something assisted, whatever shape the
@@ -250,6 +271,8 @@ func LoadAuthorship(repoRoot string) (Authorship, error) {
 		switch {
 		case assisted:
 			a.AssistedCommits++
+		case composed:
+			a.ComposedByAbcd++
 		case declared:
 			a.DeclaredNone++
 		default:

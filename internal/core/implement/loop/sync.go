@@ -31,6 +31,15 @@ func syncSubject(lane Lane, def string, siblings []string) string {
 	return "merge: sync " + lane.Branch + " with " + def + " after " + strings.Join(siblings, ", ") + " landed"
 }
 
+// syncMessage is the sync's whole merge message. Its text is computed by abcd
+// from the run's state, so its trailer is the abcd label (ruling PC1).
+func syncMessage(lane Lane, runID, def, merged string, siblings []string) string {
+	return syncSubject(lane, def, siblings) + "\n\n" +
+		fmt.Sprintf("The implement loop merges %s at %s into %s of %s, because %s landed since the lane's base; it never rebases, so every judged commit stays reachable.\n\n",
+			def, shortSHA(merged), lane.ID, runID, strings.Join(siblings, ", ")) +
+		composedAssistedBy() + "\n"
+}
+
 // landedSiblings names the run's lanes that landed with a head this lane does
 // not hold.
 func landedSiblings(c Context, lane Lane) ([]string, error) {
@@ -82,10 +91,7 @@ func syncLane(c Context, lane *Lane) (Outcome, bool, error) {
 				"restore the branch to the judged head, then run `abcd implement step` again")
 		}
 	} else {
-		msg := syncSubject(*lane, def, siblings) + "\n\n" +
-			fmt.Sprintf("The implement loop merges %s at %s into %s of %s, because %s landed since the lane's base; it never rebases, so every judged commit stays reachable.\n\n",
-				def, shortSHA(merged), lane.ID, c.State.RunID, strings.Join(siblings, ", ")) +
-			"Assisted-by: None\n"
+		msg := syncMessage(*lane, c.State.RunID, def, merged, siblings)
 		if _, err := pickGit(lane.Worktree, "merge", "--no-ff", "--no-edit", "-m", msg, merged); err != nil {
 			conflicted, _ := pickGit(lane.Worktree, "diff", "--name-only", "--diff-filter=U", "-z")
 			if _, aerr := pickGit(lane.Worktree, "merge", "--abort"); aerr != nil {
