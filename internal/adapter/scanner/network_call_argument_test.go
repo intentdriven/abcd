@@ -86,11 +86,14 @@ func TestHostClosingAParenthesisStillFlags(t *testing.T) {
 // opening parenthesis beyond it — an over-report on a line no Go source
 // carries, never a leak.
 func TestCallArgumentSelectorReadsABoundedPrefix(t *testing.T) {
-	long := "f(" + strings.Repeat("a, ", maxCallArgumentPrefix/3+1) + "anchor.local)"
+	// Assembled: the long line is reported by design, so its literal would be
+	// a finding in this file too.
+	sel := host("anchor", "local")
+	long := "f(" + strings.Repeat("a, ", maxCallArgumentPrefix/3+1) + sel + ")"
 	if got := scanNet(long); !hasKind(got, kindNetLANHost) {
 		t.Errorf("a selector behind a prefix longer than maxCallArgumentPrefix (%d) was spared", maxCallArgumentPrefix)
 	}
-	short := "f(" + strings.Repeat("a, ", 4) + "anchor.local)"
+	short := "f(" + strings.Repeat("a, ", 4) + sel + ")"
 	if got := scanNet(short); hasKind(got, kindNetLANHost) {
 		t.Errorf("a selector behind a short prefix was reported: %+v", got)
 	}
