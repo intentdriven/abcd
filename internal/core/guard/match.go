@@ -833,9 +833,12 @@ func dotGlob(seg string) bool {
 // directory itself (`/./*` is `/*`), and a `..` segment directly under the
 // root is the root, its own parent (`/../*` is `/*`). A trailing `.` or `..`
 // is kept here: rm refuses an operand whose last segment is one. A path's
-// `..` segments are then folded (foldParents).
+// `..` segments are then folded (foldParents), a trailing `.` after one
+// included, so a path ending in `/.` is handed to the fold as well: `../.`
+// holds none of the three marks above, and returning it early left it
+// allowed while `./../.` warned (iss-2609302306019245).
 func cleanSeparators(p string) string {
-	if !strings.Contains(p, "//") && !strings.Contains(p, "/./") && !strings.Contains(p, "/..") {
+	if !strings.Contains(p, "//") && !strings.Contains(p, "/./") && !strings.Contains(p, "/..") && !strings.HasSuffix(p, "/.") {
 		return p
 	}
 	tally(len(p))
@@ -882,7 +885,8 @@ const (
 // matches the home's own name among the rest: `~/../*` and `~/..` are `~`,
 // `~/../*/*` is `~/*`, and `~/../x` stays a sibling. A trailing `.` or `..`
 // is folded as well, since what it names is the root or holds the home,
-// though rm refuses it. A path that begins at the working directory, `$PWD`
+// though rm refuses it: `../.` and `./../.` are `..`, and `../../.` is
+// `../..`. A path that begins at the working directory, `$PWD`
 // or a relative name, is folded the same way (iss-2609290925346181): a `..`
 // past its beginning is the working directory's parent, so `$PWD/../*`,
 // `./../*` and `x/../../*` are `../*`, while a relative path that stays
