@@ -129,6 +129,7 @@ gate. That is what keeps "not hand-counted" true after the day it was written.
 - `itd-2609292109214516` — Rule injection is a seam: the native loader stays the default, and an opt-in CARL back end can take it over (from iss-64; ruling J22)
 - `itd-2609292109475690` — Every verb family has a behavioural scenario that drives the built binary end to end (from iss-48; ruling J24)
 - `itd-2609301020001595` — A pinned-action bump syncs its scaffold template and lands re-authored, the pin half of the dependency re-authoring (builds on itd-2609221842494980; from iss-209; ruling M3)
+- `itd-2609301918174237` — A provider off this machine takes a file-reading agent only as a fixed, blanked, capped bundle (builds on itd-2609081951381895; rulings DR5b-1 to DR5b-4; back to draft for two reviews and a planning interview under ruling DR5c-0)
 <!-- /index -->
 
 **Later-phase items with no intent id.** These four were written into the brief

@@ -253,12 +253,12 @@ func TestAnElapsedWindowStartsNothingAndWritesNextEligibleAt(t *testing.T) {
 	f := &fakeSteps{calls: map[Stage]int{}}
 	steps := f.steps()
 	for i, want := range []Stage{StageWorktree, StageBrief} {
-		res, err := Advance(repo.Root(), id, steps, at(time.Duration(i+1)*time.Minute))
+		res, err := advance(repo.Root(), id, steps, at(time.Duration(i+1)*time.Minute))
 		if err != nil || res.PerformedStage != want {
 			t.Fatalf("inside the window the loop moves: %+v %v", res, err)
 		}
 	}
-	res, err := Advance(repo.Root(), id, steps, at(5*time.Minute))
+	res, err := advance(repo.Root(), id, steps, at(5*time.Minute))
 	if err != nil || res.Awaiting == nil {
 		t.Fatalf("the implementer is started inside the window: %+v %v", res, err)
 	}
@@ -266,7 +266,7 @@ func TestAnElapsedWindowStartsNothingAndWritesNextEligibleAt(t *testing.T) {
 
 	// The window elapses while the implementer works.
 	closed := t0.Add(61 * time.Minute)
-	res, err = Advance(repo.Root(), id, steps, at(61*time.Minute))
+	res, err = advance(repo.Root(), id, steps, at(61*time.Minute))
 	if err != nil {
 		t.Fatalf("closing the window is not a failure: %v", err)
 	}
@@ -294,7 +294,7 @@ func TestAnElapsedWindowStartsNothingAndWritesNextEligibleAt(t *testing.T) {
 
 	// Before next_eligible_at nothing moves and the state is unchanged.
 	before := stateBytes(t, repo.Root(), id)
-	_, err = Advance(repo.Root(), id, steps, at(80*time.Minute))
+	_, err = advance(repo.Root(), id, steps, at(80*time.Minute))
 	r := mustRefusal(t, err)
 	if r.Stage != "pause" || !r.Contention || !strings.Contains(r.Reason, wantNext.Format(time.RFC3339)) {
 		t.Fatalf("a step inside the pause is refused naming the time: %+v", r)
@@ -304,7 +304,7 @@ func TestAnElapsedWindowStartsNothingAndWritesNextEligibleAt(t *testing.T) {
 	}
 
 	// At next_eligible_at a new window opens and the loop moves again.
-	res, err = Advance(repo.Root(), id, steps, at(91*time.Minute))
+	res, err = advance(repo.Root(), id, steps, at(91*time.Minute))
 	if err != nil || res.PerformedStage != StageValidate {
 		t.Fatalf("after the pause the loop moves: %+v %v", res, err)
 	}
@@ -350,7 +350,7 @@ func TestAVersionOneStateIsReadAsAnUnpacedRun(t *testing.T) {
 		t.Fatalf("a version-1 run is unpaced: %+v", st)
 	}
 	f := &fakeSteps{calls: map[Stage]int{}}
-	res, err := Advance(repo.Root(), start.RunID, f.steps(), Options{})
+	res, err := advance(repo.Root(), start.RunID, f.steps(), Options{})
 	if err != nil || res.PerformedStage != StageWorktree {
 		t.Fatalf("a version-1 run steps on, days after it started: %+v %v", res, err)
 	}

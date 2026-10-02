@@ -123,6 +123,12 @@ abcd — ~/code/your-repo
   record:     true
   work tiers: [development work work.local]
   presence:   abcd-managed · your-repo · main · itd 0 · iss 0
+  status:     Now 0 · Next 0 · Later 0
+    Now:
+      (none)
+    Next:
+      (none)
+    Later: 0 intents
 ```
 
 

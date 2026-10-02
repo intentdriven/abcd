@@ -50,7 +50,7 @@ func TestTheWorktreeStepMakesTheLaneInTheStore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	res, err := Advance(repo.Root(), start.RunID, DefaultStages(), Options{})
+	res, err := advance(repo.Root(), start.RunID, DefaultStages(), Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,7 +143,7 @@ func TestTheWorktreeStepRefusesAPathThatCouldEscapeTheStore(t *testing.T) {
 			if err := writeState(root, st); err != nil {
 				t.Fatal(err)
 			}
-			_, err = Advance(repo.Root(), start.RunID, DefaultStages(), Options{})
+			_, err = advance(repo.Root(), start.RunID, DefaultStages(), Options{})
 			r := mustRefusal(t, err)
 			if r.Stage != string(StageWorktree) {
 				t.Fatalf("want the worktree stage to refuse: %+v", r)
@@ -175,7 +175,7 @@ func TestTheWorktreeStepRefusesASymlinkedStore(t *testing.T) {
 	if err := os.Symlink(elsewhere, filepath.Join(os.Getenv("HOME"), ".abcd", "worktrees")); err != nil {
 		t.Fatal(err)
 	}
-	_, err = Advance(repo.Root(), start.RunID, DefaultStages(), Options{})
+	_, err = advance(repo.Root(), start.RunID, DefaultStages(), Options{})
 	if r := mustRefusal(t, err); r.Stage != string(StageWorktree) || !strings.Contains(r.Reason, "real directories") {
 		t.Fatalf("want the symlinked store refused: %+v", r)
 	}
@@ -200,7 +200,7 @@ func TestTheWorktreeStepNeverAdoptsWhatItDidNotMake(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(squat, "mine.txt"), []byte("the user's\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	_, err = Advance(repo.Root(), start.RunID, DefaultStages(), Options{})
+	_, err = advance(repo.Root(), start.RunID, DefaultStages(), Options{})
 	if r := mustRefusal(t, err); r.Stage != string(StageWorktree) || !strings.Contains(r.Reason, "occupied") {
 		t.Fatalf("want the occupied path refused: %+v", r)
 	}
@@ -241,7 +241,7 @@ func TestTheWorktreeStepRefusesAStoreLevelAnyoneElseCanWrite(t *testing.T) {
 			if err := os.Chmod(level, tc.mode); err != nil {
 				t.Fatal(err)
 			}
-			_, err = Advance(repo.Root(), start.RunID, DefaultStages(), Options{})
+			_, err = advance(repo.Root(), start.RunID, DefaultStages(), Options{})
 			r := mustRefusal(t, err)
 			if r.Stage != string(StageWorktree) || !strings.Contains(r.Reason, "writable by its group or by every user") {
 				t.Fatalf("want the writable store level refused: %+v", r)
@@ -267,7 +267,7 @@ func TestTheWorktreeStepMakesTheStoreTheCallersAlone(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Advance(repo.Root(), start.RunID, DefaultStages(), Options{}); err != nil {
+	if _, err := advance(repo.Root(), start.RunID, DefaultStages(), Options{}); err != nil {
 		t.Fatal(err)
 	}
 	home := os.Getenv("HOME")

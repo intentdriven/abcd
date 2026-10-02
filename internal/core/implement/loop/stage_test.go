@@ -27,7 +27,7 @@ func TestTheStateAndTheResultNameTheLaneStage(t *testing.T) {
 		t.Fatal(err)
 	}
 	f := &fakeSteps{calls: map[Stage]int{}}
-	res, err := Advance(repo.Root(), start.RunID, f.steps(), Options{})
+	res, err := advance(repo.Root(), start.RunID, f.steps(), Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +135,7 @@ func TestAVersionThreeStateIsMigratedOnReadAndNeverRewrittenByTheRead(t *testing
 	}
 
 	f := &fakeSteps{calls: map[Stage]int{}}
-	res, err := Advance(repo.Root(), start.RunID, f.steps(), Options{})
+	res, err := advance(repo.Root(), start.RunID, f.steps(), Options{})
 	if err != nil || res.PerformedStage != StageBrief {
 		t.Fatalf("a migrated run steps on from where it stood: %+v %v", res, err)
 	}

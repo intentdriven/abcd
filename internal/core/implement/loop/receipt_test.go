@@ -21,7 +21,7 @@ func awaitingLane(t *testing.T) (*gittest.Repo, string, Lane, string) {
 		t.Fatal(err)
 	}
 	advanceTo(t, repo, start.RunID, StageImplement)
-	res, err := Advance(repo.Root(), start.RunID, DefaultStages(), Options{})
+	res, err := advance(repo.Root(), start.RunID, DefaultStages(), Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,8 +34,8 @@ func awaitingLane(t *testing.T) (*gittest.Repo, string, Lane, string) {
 	}
 	l := st.Lanes[0]
 	wantReceipt := RunRelDir + "/" + start.RunID + "/lane-1/" + ReceiptFileName
-	if l.Awaiting.Receipt != wantReceipt || l.Awaiting.Brief != l.Brief {
-		t.Fatalf("the await names the lane's brief and receipt: %+v", l.Awaiting)
+	if l.awaiting().Receipt != wantReceipt || l.awaiting().Brief != l.Brief {
+		t.Fatalf("the await names the lane's brief and receipt: %+v", l.awaiting())
 	}
 	return repo, start.RunID, l, filepath.Join(repo.Root(), filepath.FromSlash(RunRelDir), start.RunID, "lane-1")
 }
@@ -105,7 +105,7 @@ func TestAVerifiedReceiptAdvancesTheLane(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := st.Lanes[0]; got.HeadSHA != c2 || got.BaseSHA != l.BaseSHA || got.Receipt != l.Awaiting.Receipt || got.Awaiting != nil {
+	if got := st.Lanes[0]; got.HeadSHA != c2 || got.BaseSHA != l.BaseSHA || got.Receipt != l.awaiting().Receipt || got.awaiting() != nil {
 		t.Fatalf("the lane's head is its branch's tip: %+v", got)
 	}
 }

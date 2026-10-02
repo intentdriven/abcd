@@ -62,7 +62,8 @@ write outside it is `site-src/ui.json` itself, and only when the file lacks a
 label abcd declares (a file written before that label existed): the build adds
 each such label with abcd's default words, prints one stderr line per label
 (`abcd site build: added the missing label status.target to site-src/ui.json
-with its default words`), lists them in `added_labels`, and changes nothing
+with its default words`), before the error when the build then fails, lists
+them in `added_labels`, and changes nothing
 else in the file. A label the file carries keeps its wording, a blank one is
 still refused by name, and a key abcd does not declare is still refused. The
 render `abcd lint site` makes of an empty output directory never completes the

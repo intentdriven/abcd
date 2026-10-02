@@ -13,10 +13,11 @@ harness-invoked row that `install` wires, is in the agents-and-hosts block of
 
 Run abcd's install/update engine for the current repo and present the result.
 Bare invocation, its `--dry-run`, `--remote` and `--providers` modes, and the
-`doctor` sub-verb perform **zero writes**; `install`, `uninstall`, `remote apply`
-and `connect` are the four that change something, and each says so before it
-runs — `remote apply` is the only one that changes state outside this machine,
-and it asks before it does.
+`doctor` sub-verb perform **zero writes**; five change something. `install`,
+`uninstall`, `remote apply` and `connect` each say so before they run —
+`remote apply` is the only one that changes state outside this machine, and it
+asks before it does — and `credential --home` writes the chosen home only after
+the credential's verification call succeeds.
 A mode is a flag on the bare verb, one at a time; a distinct action is a
 sub-verb.
 

@@ -187,9 +187,10 @@ minutes so the window arithmetic stays far inside the clock's range and a typed
 extra digit is refused rather than run. A pause of 0 minutes is a run that does
 not pause.
 
-The ceiling is recorded with the run; this build does not count lanes against
-it (criterion 6), and the budget check and the rate-limit checkpoint (criteria
-7 and 8) wait on a runner that reports its quota.
+The ceiling binds (criterion 6, ruling DR6): the loop counts the agents out
+from the state, implementers and validators together, and starts nothing above
+the ceiling. The budget check and the rate-limit checkpoint (criteria 7 and 8)
+wait on a runner that reports its quota.
 
 ## The state file
 
@@ -206,15 +207,28 @@ repository abcd manages has one, so a run is managed-only by construction. Each
 run directory is created one level at a time and proved real, the state file is
 replaced atomically inside an `os.Root`, and the reader decodes strictly,
 refusing an unknown field, a schema version it does not know, or a file stored
-under a run id it does not name. The state is schema version 7. Version 7
+under a run id it does not name. The state is schema version 9. Version 9
+made a run work in parallel up to its ceiling (ruling DR6): a lane's `awaits`,
+a list replacing the one `awaiting`, the run's `waiting` (the work the ceiling
+holds back, each item with the time first held), a lane's `syncs` (each merge of
+the default branch after a sibling landed) and `hold` (a lane held after a
+sibling's hand-back, ruling DR6c), a pending step's `needs`, and the lane
+stages `held` and `discarded`. A file of version 8 or lower reads as a run
+whose lanes await zero or one agent, its `awaiting` carried over to a one-entry
+`awaits`; one carrying what only version 9 writes is refused, and so is a
+version-9 file carrying `awaiting`. Version 8
+added the runner's record (itd-2609201916056194): the run's `fallbacks`, one
+receipt per role a routed runner did not run, and the `route` a verified receipt
+or a validator's recorded return names when a runner ran its agent. Version 7
 added the landing (a lane's `landing`, the implementers' `receipts` it verified
 with the model each runner reported, and the captures its receipts declared
 fixed, `resolves`) and the run's captured `transcripts`. Version 6
 added the fix-round cap (ruling DR1): the pace's `fix_rounds` and a lane's
 `hand_back`. Version 5 added the validate stage's record (a lane's
 `validation`). Each earlier version is the next one's strict subset, read as a
-run that predates the addition (a version-5 run runs on the bundled cap) and
-written back at version 7 by its next mutation; an earlier version carrying what
+run that predates the addition (a version-5 run runs on the bundled cap, a
+version-7 run is one the host ran every agent of) and
+written back at version 9 by its next mutation; an earlier version carrying what
 only a later one writes is refused. Version 4
 renamed the lane's stage (BU1, iss-2609291313276243): a lane's and a record
 line's `step` became `stage`, so "step" names only the spec's steps (`spec_step`,
@@ -254,13 +268,12 @@ the run as its own peer. Only the key's shape is checked before the lookup.
 
 A spec's steps and a lane's stages are two words for two things (BU1,
 iss-2609291313276243): each spec step lands as one lane, and the loop takes the
-lane through its stages. The step verb performs one stage.
+lane through its stages. The step verb performs one move of the run.
 
-A host session drives the loop one stage at a time (decision 5's default). The
+A host session drives the loop one move per call (decision 5's default). A
 lane's stages run in a fixed sequence: the worktree, the brief, the implementer,
 the validators, the landing. Each invocation takes the lock, reads the state,
-performs the current lane's next stage and writes the state once, after the
-stage succeeds. A stage that fails, or a process killed inside one, leaves the
+performs one move and writes the state once, after the move succeeds. A stage that fails, or a process killed inside one, leaves the
 state as it was, so the next invocation performs that stage again; a stage the
 state records as done is never performed twice (criterion 7). A stage's body is
 therefore written to find what it made last time. The result names the stage
@@ -268,10 +281,44 @@ the call completed as `performed_stage` and the lane's next as `stage`.
 
 A stage that hands work to an agent does not complete by itself: the lane then
 awaits, naming the agent's role, the brief it is handed and the path its receipt
-goes to (criterion 8). Asking again re-tells the same thing and moves nothing,
-and the lane advances only when that receipt is handed back at that path and its
-verifier accepts it. When a lane is done, the next pending spec step opens the
-next lane, so the spec's steps land one lane at a time.
+goes to (criterion 8), and the lane advances only when that receipt is handed
+back at that path and its verifier accepts it.
+
+A run works in parallel up to its ceiling (ruling DR6, spc-2609202134341288). A
+slot is one outstanding await on any lane; the count is the awaits in the state
+file. Each move first performs a stage the binary owns on any lane (the
+worktree, the brief, a round's close, a landing step, a sync, a hold), which
+takes no slot and is never held by the ceiling; when the move needs an agent it
+takes the first waiting item: an
+open lane's validators or fix and sync implementers before a new lane, the lower
+spec step first, a round's validators in the order the round lists them, then
+the implementer of a new lane. A move that finds the ceiling reached hands out
+nothing, names every lane alive with what it awaits, and records the held work
+under `waiting`; the move that later serves it records the whole minutes it
+waited. A lane opens for a spec step once every step it needs has landed (its
+`- needs:` line, or by default every step before it, ruling DR6b), so a spec
+that declares no needs lands its steps one lane at a time; it opens whatever the
+ceiling, its worktree and brief made, and only its implementer waits for a slot.
+A landing waiting on the forge's merge holds only that lane: the move goes to
+another and names the wait under `blocked` and in its next move. Any other
+refusal of a stage the binary performs, a missing preflight receipt included, is
+the move's answer, and no other lane moves.
+
+Landing is one lane at a time, the lower spec step first. A lane whose sibling
+landed since its base is synced before its landing begins: the default branch is
+merged into its branch with a merge commit, never a rebase, and a fresh round
+judges the merge head. A conflicting merge is aborted with the branch unchanged
+and goes to a fresh implementer with a sync brief; its receipt must carry the
+merged sha as an ancestor of its head. A sync counts no fix round. The closing
+lane reaches its landing with no step pending, no other lane open and none handed
+back; its audit reads each of the run's lanes' own diff. After a hand-back the
+siblings finish, no new lane opens, no lane closes the spec, and a lane whose
+round passes is held before its push or its arming (an armed one is disarmed;
+where the forge refuses the withdrawal the move refuses naming the pull request,
+and one the forge reports merged is recorded as landed), until the person
+releases or discards it (ruling DR6c). A discard removes the lane's worktree and
+branch before it closes the pull request, so a refused removal leaves nothing
+half done.
 
 The loop keeps the run's window clock (criteria 4 and 5). A new run's first
 window opens at its start. Once the window's working minutes have elapsed, the
@@ -289,9 +336,41 @@ reported complete and closes no window.
 A stage whose body this build does not carry is refused naming the stage, the
 lane and the spec piece that delivers it, and the run is unchanged, ready to
 resume in a build that carries it. This build carries every stage of the
-sequence. The process driver (piece 3) is the same loop
-called by a process instead of a host, starting the named agent through the
-runner and handing its receipt back.
+sequence.
+
+**The runner** (piece 3, the process driver's loop half, and itd-2609201916056194).
+A role's route is `roles.<role>.runner` in the layered configuration, the
+repository's or the machine's: `host`, the default, or a runner the machine
+enables under `runner.<name>` (`claude`, `opencode`), with an optional model
+route admitted against its provider's allowlist. The build verb reads the
+configuration before it creates a run, and the step verb before each stage; a
+fault, a model route off the allowlist included, is refused at the `runner`
+stage before anything is created or launched, and its diagnostics (a role no
+agent answers to) go to stderr. When a stage hands the lane to a role that is
+routed to a runner, the step verb starts the runner itself, outside the run's
+lock, in the lane's worktree, with the brief and the receipt path the host would
+be handed, the claude runner with the role's tools granted without a prompt and
+opencode under the permissions its own configuration sets; the runner's
+transcript lands in abcd's history store, keyed on the repository's root
+commit, and its receipt is handed back through the same receipt verb and
+verified by the stage's own verifier, so a verified one completes the stage in
+the same call. The verified receipt, or the validator's recorded return, names
+the route that ran it (asked, ran, the model the runner reported), which is the
+only field a runner-run review's record differs in from a host-run one's; the
+record's receipt or verdict line names the runner that ran it. A runner that is absent, refuses, fails, runs past
+its time, answers unparsably or writes a receipt the verifier refuses leaves the
+lane awaiting: the call records one fallback receipt (the role, the runner asked
+for, the reason and the route that runs it) in the state and the record, and
+hands the host the await as the host-driven step does, naming the fallback. A
+role left unset is the host's, and the call is the host-driven step byte for
+byte. A step that re-tells an await starts nothing. The claude runner runs in
+print mode with the bare flag, so the repository's hooks, plugins and
+configured servers do not run; opencode runs in run mode with `--pure`. An
+interrupt or a termination kills the runner's process group. The status and
+record verbs count the fallbacks per runner and per role. A host session
+always drives this: the no-host path, where a host-routed role goes to the
+machine's `runner.fallback_host`, is the process driver's reversal of the
+host-delegated boundary, and waits on the ADR decision 6 of the intent owes.
 
 ## The lane
 
@@ -474,10 +553,23 @@ until the last step.
    branch, never opened twice.
 5. It reads the merge rule from the ruleset mirror (`.abcd/work/rulesets/`) at
    the lane's base, so the lane's own commits cannot change it (decision 3):
-   where an active ruleset gates the default branch through a merge queue, it
-   arms auto-merge with the queue's method; where none does, it leaves the pull
-   request open for a person to merge. Nothing is pushed to the lane after this
-   step.
+   where an active ruleset gates the default branch through a merge queue and
+   an active ruleset on it requires a person's approval, it arms auto-merge
+   with the queue's method; otherwise it leaves the pull request open for a
+   person to merge (ruling AM1). A pull_request rule requires approval when its
+   `required_approving_review_count` is one or more, or when
+   `require_code_owner_review` is set and the CODEOWNERS file the forge reads
+   at the lane's base names at least one owner. That file is the first found
+   in `.github/`, the root and `docs/`, so one there shadows the later ones
+   even when it names nobody, and a line names an owner only when its pattern
+   is followed by `@name`, `@org/team` or an e-mail address: a code-owner
+   review with nobody to own the change asks no person for anything. A missing
+   mirror requires nothing, so the pull request stays open; a mirror file that
+   cannot be read or parsed is refused, which also arms nothing. Where a queue
+   exists but nothing requires approval, the step's note, the run record and
+   the run's status say "left open for a person to merge: the ruleset requires
+   no approval", and no later step arms it. Nothing is pushed to the
+   lane after this step.
 6. It fetches the default branch and waits, exiting 3, until the pushed head
    is an ancestor of it; only then does it remove the lane's worktree (never
    forced) and delete the lane's branch at a tip the same check proves landed,
@@ -488,8 +580,10 @@ until the last step.
 verb reads a run's state back as its record: every lane with its spec step,
 branch and heads, the implementers' receipts the loop verified with the model
 each runner reported (as reported; the binary cannot verify it), every verdict
-the loop recorded, round by round, the captures the lane fixed, its pull request
-and what its landing did, the run's pending steps, the transcripts captured and
+the loop recorded, round by round, the route that ran a receipt's or a return's
+agent when a runner ran it, the captures the lane fixed, its pull request
+and what its landing did, the run's pending steps, every fallback with the
+count per runner and per role, the transcripts captured and
 the record's lines, in text and JSON. On a complete run, the record verb
 captures each transcript it is named into the history store as the history
 verb's capture of one path does, one capture per path, and records it in the
@@ -519,6 +613,8 @@ the remedy as fields.
 - The shared run state and the claim the peers check reads:
   [`27-implement.md`](27-implement.md).
 - The pick: itd-2609211116005482 and its design record, spc-2609212015048113.
+- The runner a routed role goes through: itd-2609201916056194 and its design
+  record, spc-2609221533057881 (`internal/core/runner`).
 - The plugin surface: `commands/build.md`.
 
 <!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->

@@ -52,10 +52,16 @@ for a binary the update verb can swap, the host's plugin update for a
 plugin-root binary, or the package manager's own command for a Homebrew
 install — chosen by the same on-disk classification `abcd update` dispatches
 on. Relay it verbatim rather than paraphrasing; it is the one line the user
-types next. abcd never fetches implicitly (adr-38): the network is only ever
-touched by a verb whose documented job is that fetch — `update --check`,
-`update`, `docs cite refresh`, and `memory ingest <url>`; every other path
-reads only what is on disk.
+types next. abcd never fetches implicitly (adr-38): the network is touched
+only when the caller runs a command whose documented job includes a remote
+call. The release origin is reached by `update --check`, `update`, and
+`launch --dry-run --fetch-baseline` or `launch ship --fetch-baseline`; a cited
+source by `docs cite refresh`; a URL by `memory ingest <url>`; a provider's
+verification call by `ahoy connect` and `ahoy credential <name> --home`; a
+model provider by a delegating verb routed to one (`reading ingest --dispatch`
+among them); the site host and GitHub by `site setup`; and GitHub, through `gh`
+or `git`, by `ahoy --remote`, `ahoy remote apply` and the implement loop's
+landing.
 
 **Binary resolution.** Run `"${CLAUDE_PLUGIN_ROOT}/abcd"` — a plugin install
 provisions the binary into the plugin root, so this is the rung that fires for a

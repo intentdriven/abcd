@@ -1,45 +1,43 @@
-# Release 0.11.1 (2026-09-28)
+# Release 0.12.0 (2026-09-30)
 
-abcd makes sure the right person is the author of record before a single commit lands. `abcd ahoy` checks the identity a commit would actually carry, author and committer, whatever git config or environment produced it, against the identity the repository pins; when they diverge it proposes the pinned (or global) identity and asks before writing repo-local config, and with no one to ask it reports and writes nothing. (itd-131)
+Any role can run through a command-line harness the operator names, with the same brief, contract and transcript store as the host's own sub-agent: `roles.<role>.runner` routes a role to the claude CLI or opencode runner the machine enabled, and where the runner is absent or fails the host takes the role, a receipt names the role, the runner, the reason and the route that ran, and the run summary counts fallbacks per runner and per role. The runners are proven against stand-in harnesses so far; no real claude or opencode binary has yet run a role. (itd-2609201916056194)
 
-> "A sandbox `Test User` override authored 54 commits before anyone noticed — we had to rewrite history and force-push to unpick it," said Alice, who maintains the repo. "Now `ahoy` catches a wrong identity before the first commit, and it asks me rather than guessing." (itd-131)
+> "My reviews were the scarcest thing in a run, and a second harness was sitting on the machine doing nothing," said a technical facilitator. (itd-2609201916056194)
 
-A repository abcd manages declares what it ships, and the release flow follows the declaration. A Go application or a macOS app with its own tag-driven workflow declares its artefact kind once, `launch --dry-run` and `launch ship` run against it with the changelog-driven gate, the deferral read and the derived version, and `launch scaffold` lays the gate beside the release workflow the repository already has and leaves that workflow as it was. (itd-2609150819432059)
+An OpenAI-compatible API adapter reaches a configured provider for the roles and judgements pointed at it, and serves only the models that provider's list allows: the adapter takes a base URL and a key name, a model left off the list is refused before any call, abcd bundles no vendor denylist, and the run record shows the model that actually answered. With no provider configured nothing changes. (itd-2609081951381895)
 
-One verb sets up a managed repository's site: `abcd site setup` writes the composition, the render-then-deploy workflow and the environments and prints the step left, and with a hosting credential configured it creates and routes the host and reports the address. The site is abcd's own page set, rendered from that repository's record. (itd-2609061543533170)
+> "I wanted one cheap decision model through OpenRouter, and I wanted to be certain nothing else of mine would ever go through it," said a product thinker configuring the first aggregator. (itd-2609081951381895)
 
-> "The explorer, the graph, the timeline: I had them for abcd and wanted them for every repository abcd manages," said a product thinker looking at the record browser. "Now one verb writes the workflow and the environments, and when I have given abcd a hosting credential it creates and routes the host too. Any managed repo's site looks like abcd's, with its own record in it." (itd-2609061543533170)
+One credential store, three homes, and every adapter reads through it: `abcd ahoy credential <name>` explains what a key unlocks and what works without it, then stores it where `--home` says, as a pointer to another tool's configuration or an environment variable, in the owner-only `~/.abcd/credentials.json`, or in the platform keychain, the home the explanation recommends. The abcd home refuses to write inside a git working tree. (itd-2609221017023290)
 
-A new issue, or a draft intent filed as quoted text, is matched against the record at filing: a likely double is linked and named, and never dropped. (itd-2609212137116617)
+Bare `abcd` and the site's Status page show Now, Next and Later, computed from the record and maintained by nobody: Now is what is in a lane and the head of the pick order, Next is every planned intent the readiness gate reports ready, and Later is the rest, a count on the text board and rows in `--json` and on the site. (itd-2609212103568351)
 
-> "I filed the same finding twice a month apart and nobody noticed until a consistency pass," said a technical facilitator. "Now the capture tells me at filing that it looks like iss-N, writes the link, and leaves it to me to confirm. Nothing is refused: a wrong match is a link I remove, not a finding I lost." (itd-2609212137116617)
+> "The phase documents told me what someone once thought would happen next; this tells me what is next," said a product thinker reading the board after retiring phases. (itd-2609212103568351)
 
-The status-line badge always reads one of three states, `abcd-managed`, `waiting on the product thinker` or `waiting on the technical facilitator`; an agent's question to the human is refused until the mode says who is being asked, and the next human answer resets it. (itd-2609212130146198)
+A change cannot call itself shipped while the brief lags the surface it delivered, and a release cannot be cut while an intent shipped since the last cut leaves its chapter behind: `abcd spec close` and the release cut refuse on a verb, sub-verb or agent no brief chapter names, and on a sentence a host-run reviewer confirms false, failing closed when no reviewer answers. `abcd docs fidelity` runs the same gate and can draft and apply the brief edit, flagged for review. (itd-60)
 
-> "The badge was set by whichever agent remembered," said a product thinker who had watched it read managed while an agent waited on them. "Now an agent cannot ask me anything until it has said which of us it is asking, and the moment I answer the badge goes back. It is the one signal I have that something is waiting; now it is true." (itd-2609212130146198)
+> "I read the verdict, not the source," said a product thinker shipping with abcd. (itd-60)
 
-Consult any source freely and cite only by deliberate human choice: `abcd source` keeps a local-only corpus of material you are not free to name and an append-only ledger of what influenced which decision, citation needs the source's permission and your own flip of the ledger line, and `abcd source cite-check` clears text before it is shared, reporting offenders by key alone. (itd-76)
+A cut release gets a retrospective: `abcd reflect <release-tag>` runs an interview seeded by the intents the tag shipped, their audit notes and the release's changelog section, and writes `.abcd/development/retrospectives/<release-tag>/README.md`, which a packed lifeboat carries with it. (itd-24)
 
-> "I could never let an agent near my working papers before, because one helpful footnote could burn a collaborator's trust," said Alice, a researcher-developer. "Now it reads everything, records what influenced what, and cites nothing. When the paper behind a decision is finally published, I flip one flag — and the whole influence trail is already written." (itd-76)
+> "abcd's brief and intents captured *what* I'd done," said Henry, a junior-developer persona. (itd-24)
 
-Every shipped intent owes a fidelity review, and abcd now says which ones are still owed: bare `abcd intent audit` lists each with its receipt and the command that re-emits the request, `abcd intent` carries the count, and `abcd intent audit --owed` hands a host the owed requests oldest first, leaving them owed when no reviewer is reachable. Nothing refuses on the debt. (itd-2609150819445595, itd-53)
+Before the planning interview, a coherence pre-pass reads a draft against the brief's invariants, the principles and a one-line index of every other intent: `abcd intent prepass <itd-N>` writes the questions into the planning brief, each conflict quoting the invariant, each overlap with its four answers (keep both, bundle, supersede, refine), and any concern it cannot anchor asked as a question, never asserted as a conflict. (itd-42)
 
-> "I asked what was outstanding and got a list of eight, with the command to re-emit each one," said Iris, a technical facilitator paying down a run's review debt. "Last week the same question was a grep through the decision log." (itd-2609150819445595)
+> "I'd grill an intent and it would come out crisp — clear terms, testable acceptance — and still be quietly redundant with something I'd specced two months earlier," said Iris, product lead. (itd-42)
 
-Intents that ship as one piece of work plan as a bundle: one shared spec, both records moving to `planned/` together and shipping together when the spec closes, with `abcd intent reclassify` to change a record's kind or supersede it. One glossary page now maps the record families (intent, spec, step, bundle, issue, release, status) and how each moves, with phase, milestone and roadmap marked superseded. (itd-34, itd-2609211913453478)
+A bot-opened dependency bump whose diff is only a manifest and its lock file can be re-authored as the repository's owner, so it merges on its own: `abcd launch scaffold --dependency-reauthor` writes the workflow, the message names the bot and the workflow with `Assisted-by: None`, the attribution gate is untouched, and everything else is left alone. The workflow is proven offline; its first live bump waits on the repository's GitHub App. (itd-2609221842494980)
 
-> "I kept asking which word to use, and every answer named a different document," said a product thinker who had just approved bundles and wondered whether phases still meant anything. "Now there is one page: intent, spec, step, bundle, issue, release, status. Phase and milestone are on it too, marked superseded, with what replaced them. I read it in five minutes." (itd-2609211913453478)
+> "Every bump sat blocked with auto-merge armed, looking as though it wanted a review no reviewer could give," said a product thinker who had just landed one by hand at the end of a long day. (itd-2609221842494980)
 
-A review names the commit it read, and the bare `abcd` board shows how far the default branch has moved since, flagging one past twenty commits. `abcd intent consistency` checks the brief and the intents against each other and files each contradiction as an issue, quoting both ends. (itd-28, itd-48)
+A live agent-session URL and a tool's generated-with footer are kept out of committed text: `abcd lint`, record-lint and `abcd lint outbound` refuse either shape, and the build loop strips both from the pull-request title and body it posts. Other posts are not scrubbed, so a pull request, issue or comment opened by hand is re-read and stripped after it is created. (itd-152)
 
-When a capability could use a program you have not installed, `abcd ahoy install` explains it first: what the program is, whether this capability needs it, what already works without it and the exact install step. It installs only on an explicit yes, and a no leaves the capability on its native default and says so. (itd-63)
+Every place abcd writes names which of the two people it means, the product thinker or the technical facilitator, and the word maintainer leaves the vocabulary, refused by docs-lint. (itd-2609212137129937)
+
+> "Agents kept asking 'the maintainer' and I never knew if they meant me deciding what to build or me running the gates," said a product thinker. (itd-2609212137129937)
 
 Also in this release:
 
-- An admission and a surprise are written by a verb, and the order the design fixes is a refusal (itd-2609020625400194)
-- A reframe occasioned by a reading is recorded as a reframe, joined to what occasioned it, without carrying the construal it replaced (itd-2609020625402518)
-- The scribe's context is assembled and its output is ingested by a verb, and the record can show that no session held both a reading and the ledger (itd-2609020625402599)
-- A principle carries typed claims, its reference, its comparison and its evidence, its statement is readable cold, and it inherits only what held (itd-2609020625405170)
-- abcd lab mechanises the lab conventions three hand-run experiments proved (itd-2609212137128014)
+- An intent names the release it must land by, and the cut says whether it did (itd-2609212103572513)
 
 The line-by-line record of this release is its section in CHANGELOG.md.

@@ -40,10 +40,10 @@ func handBackLaneOf(t *testing.T, repo *gittest.Repo, runID string, o Options, h
 		if err != nil {
 			t.Fatal(err)
 		}
-		if st.Lanes[0].Awaiting != nil {
+		if st.Lanes[0].awaiting() != nil {
 			break
 		}
-		if _, err := Advance(repo.Root(), runID, DefaultStages(), o); err != nil {
+		if _, err := advance(repo.Root(), runID, DefaultStages(), o); err != nil {
 			t.Fatalf("advancing the drain's lane: %v", err)
 		}
 	}

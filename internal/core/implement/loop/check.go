@@ -161,7 +161,9 @@ func check(repoRoot, key, session string, snap *peerSnapshot) (CheckResult, erro
 		res.Checks = append(res.Checks, CheckRow{Name: r.Name, OK: r.OK, Detail: r.Detail, Remedy: r.Remedy})
 	}
 	for _, st := range record.Steps {
-		res.steps = append(res.steps, PendingStep{Number: st.Number, Title: st.Title})
+		// The step's needs, resolved: its `- needs:` line, or every earlier
+		// step (ruling DR6b).
+		res.steps = append(res.steps, PendingStep{Number: st.Number, Title: st.Title, Needs: st.Requires()})
 	}
 
 	if snap == nil {

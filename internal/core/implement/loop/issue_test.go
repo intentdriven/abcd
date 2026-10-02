@@ -132,7 +132,7 @@ func issueAwaiting(t *testing.T) (*gittest.Repo, string, Lane, string) {
 		t.Fatal(err)
 	}
 	advanceTo(t, repo, start.RunID, StageImplement)
-	if _, err := Advance(repo.Root(), start.RunID, DefaultStages(), Options{}); err != nil {
+	if _, err := advance(repo.Root(), start.RunID, DefaultStages(), Options{}); err != nil {
 		t.Fatal(err)
 	}
 	st, err := ReadState(repo.Root(), start.RunID)
@@ -197,7 +197,7 @@ func TestALaneReportHandBackStopsTheLaneAndDiscardsItsWork(t *testing.T) {
 	if out := repo.Git("branch", "--list", l.Branch); strings.TrimSpace(out) != "" {
 		t.Fatalf("the lane's branch is discarded: %q", out)
 	}
-	if _, err := Advance(repo.Root(), runID, DefaultStages(), Options{}); err == nil {
+	if _, err := advance(repo.Root(), runID, DefaultStages(), Options{}); err == nil {
 		t.Fatal("a handed-back lane refuses every later step")
 	}
 
@@ -260,7 +260,7 @@ func TestAnIssueLaneLandsOnePullRequestThatResolvesItsIssue(t *testing.T) {
 	f := &landFixture{repo: repo, bare: bare, gh: gh, issue: eligibleIssue, runID: start.RunID, stages: DefaultStages()}
 
 	stepTo(t, repo, f.runID, f.stages, StageImplement)
-	if res, err := Advance(repo.Root(), f.runID, f.stages, Options{}); err != nil || res.Awaiting == nil {
+	if res, err := advance(repo.Root(), f.runID, f.stages, Options{}); err != nil || res.Awaiting == nil {
 		t.Fatalf("the implement stage awaits an implementer: %+v %v", res, err)
 	}
 	l := currentLane(t, repo, f.runID)

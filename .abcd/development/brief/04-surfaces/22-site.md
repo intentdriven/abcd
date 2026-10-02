@@ -14,7 +14,8 @@ to remember to update it.
 
 The bare form is **strictly read-only**: it reports what the repository has
 declared and what the output directory holds. The build is the render, and it writes
-only inside the directory it is given. The check that gates a rendered tree is the site
+inside the directory it is given, and outside it only the missing-label completion
+of the interface-string file (below). The check that gates a rendered tree is the site
 target of the one lint ([`16-lint.md`](16-lint.md), itd-2609212130136102): it
 renders first when the directory holds no `index.html` — the one write path
 besides the build, confined to the same directory. Bare `abcd lint` runs the
@@ -142,7 +143,8 @@ A label the struct declares and the file leaves blank fails the build by name. A
 label the file does not carry at all, which is how a file written before that
 label existed reads, is added to the file by the build and by setting up, with
 the words abcd's own interface-string file gives it: each added label is named
-on standard error, every byte already in the file stays, and a file carrying a
+on standard error, before the error when the build then fails, every byte
+already in the file stays, and a file carrying a
 key no field reads is left untouched and refused as before. The render the
 site gate makes of an empty output directory writes only inside that directory,
 so it never completes the file and refuses an incomplete one by name

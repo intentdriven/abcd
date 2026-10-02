@@ -35,7 +35,7 @@ func TestAnUndecidedCriterionReopensTheWorkLikeANotMet(t *testing.T) {
 	if a.Verdict != "INCONCLUSIVE" || a.Pass {
 		t.Fatalf("an undecided audit does not pass the round: %+v", a)
 	}
-	res, err := Advance(repo.Root(), id, stages, Options{})
+	res, err := advance(repo.Root(), id, stages, Options{})
 	if err != nil || res.Awaiting == nil || res.Awaiting.Role != RoleImplementer || res.Stage != StageValidate {
 		t.Fatalf("an undecided audit hands the lane to a fresh implementer, never to its landing: %+v %v", res, err)
 	}
@@ -140,7 +140,7 @@ func TestALaneThatExhaustsItsFixRoundsIsHandedBack(t *testing.T) {
 
 	passRound(t, repo, id, stages, RoleRuthless, RoleSecurity)
 	handBack(t, repo, id, stages, RoleAuditor, "NOT_MET")
-	res, err := Advance(repo.Root(), id, stages, Options{})
+	res, err := advance(repo.Root(), id, stages, Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,7 +173,7 @@ func TestALaneThatExhaustsItsFixRoundsIsHandedBack(t *testing.T) {
 	}
 
 	before := stateBytes(t, repo.Root(), id)
-	_, err = Advance(repo.Root(), id, stages, Options{})
+	_, err = advance(repo.Root(), id, stages, Options{})
 	if r := mustRefusal(t, err); r.Stage != string(StageHandedBack) || !strings.Contains(r.Reason, "unachievable") || !strings.Contains(r.Remedy, "itd-10") {
 		t.Fatalf("a handed-back lane starts nothing further, and says why: %+v", r)
 	}
@@ -235,7 +235,7 @@ func TestAHandedBackPickNamesThePickFalsified(t *testing.T) {
 	}
 	handBack(t, repo, id, stages, RoleRuthless, reviewerReturn("FIX FIRST"))
 	passRound(t, repo, id, stages, RoleSecurity, RoleAuditor)
-	res, err := Advance(repo.Root(), id, stages, Options{})
+	res, err := advance(repo.Root(), id, stages, Options{})
 	if err != nil || res.HandBack == nil {
 		t.Fatalf("with no fix round allowed, the first failing round hands the lane back: %+v %v", res, err)
 	}

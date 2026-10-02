@@ -45,3 +45,36 @@ The runner interface is the same shape the validator stage already defines for r
 | 6 bare flag | scope 2 |
 | 7 receipts differ only in route | scope 1, 2 |
 | 8 security review | scope 6 |
+
+## Progress
+
+The spec stays open: the live proof is owed (iss-2609301519558538) and no
+ruling yet lets the intent close on fake harnesses.
+
+- **Landed: scopes 1 to 5 in the core** (`internal/core/runner`): the runner
+  interface and the one dispatcher, the claude adapter (print mode, `--bare`,
+  stream-json, `--permission-mode dontAsk`, the role's tools allowed) and the
+  opencode adapter (run mode, JSON events, `--pure`), the route through the
+  layered resolver, the fallback with one receipt writer and `Tally`, and the
+  allowlist admitted at the read and again before a launch; a model a
+  provider lists is admitted by its allowlist alone and refused only by a
+  configured `oracle.denylist` entry (adr-2609300107513982).
+- **Landed: the loop wiring** (spc-2609202134338445 piece 3): `implement step`
+  drives through `loop.Drive`, which starts a routed role through the
+  dispatcher with the brief and receipt path the host would get, validates
+  its answer with the stage's own receipt verifier, stores its transcript in
+  abcd's history store, and stamps the verified receipt or recorded return
+  with the route that ran it (criteria 1 and 7, structurally); an unset role
+  leaves the step and the state byte-identical (criterion 2); a fallback is
+  recorded in the state's `fallbacks` and the record (criterion 3) and counted
+  per runner and per role by `implement status` and `implement record`
+  (criterion 4); `build` and `step` refuse a runner configuration fault, a
+  model off its allowlist included, before anything is created or launched
+  (criterion 5). The bare flag is asserted in the launch (criterion 6).
+- **Not built: the no-host path at the surface.** `runner.fallback_host`
+  works in the core, but a surface that runs without a host session is the
+  process driver's reversal of the host-delegated boundary, which waits on
+  itd-2609201916151817's decision-6 ADR.
+- **Owed: the live proof** of criterion 7 and the phase-1 unverified points
+  (iss-2609301519558538), and **criterion 8**, the security review, which
+  the lane's report lists point by point for the reviewer.

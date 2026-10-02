@@ -33,10 +33,10 @@
 //
 // and its worktree in the machine-scoped store,
 // ~/.abcd/worktrees/<root-sha>/<run-id>-<lane-id>. The
-// process driver (piece 3, waiting on the runner intent itd-2609201916056194)
-// is the same loop called by a process instead of a host: it starts the agent an
-// Await names through the runner and then calls Receipt, so it needs no seam
-// beyond the two this package exports.
+// process driver (piece 3, drive.go) is the same loop: Drive performs the next
+// stage and, when it hands the lane to a role routed to a command-line runner
+// (itd-2609201916056194), starts that agent through the runner and hands its
+// receipt back through Receipt.
 //
 // Core never writes to stdout; the CLI front door formats what these functions
 // return.
@@ -53,6 +53,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/jsonstrict"
+	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
@@ -113,7 +114,31 @@ const lockFileName = ".lock"
 // `transcripts`. Version 6 is its strict subset, read as a run nothing has
 // landed yet and written back at version 7; a version-6 file carrying any of
 // them is not one version 6 wrote, and is refused.
-const SchemaVersion = 7
+//
+// Version 8 added the runner's record (itd-2609201916056194, spc-2609202134338445
+// piece 3): the run's `fallbacks`, one receipt per role a runner did not run,
+// and the `route` a verified receipt or a validator's return names when a
+// runner, not the host, ran its agent. Version 7 is its strict subset, read as
+// a run the host ran every agent of and written back at the current version; a
+// version-7 file carrying either is not one version 7 wrote, and is refused.
+//
+// Version 9 made a run work in parallel up to its ceiling (ruling DR6,
+// spc-2609202134341288): a lane's `awaits`, a list replacing the one
+// `awaiting`, the run's `waiting`, a lane's `syncs` and `hold`, a pending
+// step's `needs`, and the lane stages `held` and `discarded`. A file of version
+// 8 or lower reads as a run whose lanes each await zero or one agent (its
+// `awaiting` becomes a one-entry `awaits`) and is written back at version 9;
+// one of them carrying anything only version 9 writes is refused, and so is a
+// version-9 file carrying `awaiting`, which version 9 never writes.
+const SchemaVersion = 9
+
+// schemaVersionSerial is the version before a run worked in parallel: read and
+// migrated, never written.
+const schemaVersionSerial = 8
+
+// schemaVersionUnrouted is the version before the runner's record: read, never
+// written.
+const schemaVersionUnrouted = 7
 
 // schemaVersionUnlanded is the version before the landing: read, never
 // written.
@@ -181,6 +206,13 @@ const (
 	// did not pass (itd-50, criterion 2): the loop starts nothing further for
 	// it, and its intent is the person's to replan.
 	StageHandedBack Stage = "handed-back"
+	// StageHeld is a lane whose round passed after a sibling was handed back
+	// (ruling DR6c): it holds no slot, starts nothing and is never armed until
+	// the person releases it (`implement step --release`) or discards it.
+	StageHeld Stage = "held"
+	// StageDiscarded is a held lane the person discarded: its pull request
+	// closed, its worktree and branch removed, its step left unlanded.
+	StageDiscarded Stage = "discarded"
 )
 
 // VerdictUnachievable is the verdict a lane is handed back with: the run's fix
@@ -223,9 +255,14 @@ type State struct {
 	// candidates, their scores and the grounds entry its first lane commits.
 	// Nil for a run `abcd build <itd-N>` started.
 	Pick *RunPick `json:"pick,omitempty"`
-	// Lanes are the lanes opened so far, one at a time, in order. A lane lands
-	// one step of the spec's `## Steps` (the whole spec when it lists none).
+	// Lanes are the lanes opened so far, in the order they opened; several may
+	// be open at once, up to the ceiling (ruling DR6). A lane lands one step of
+	// the spec's `## Steps` (the whole spec when it lists none).
 	Lanes []Lane `json:"lanes"`
+	// Waiting is the work the ceiling holds back: each item's lane, role and
+	// the time the ceiling first held it. An item leaves it when it takes a
+	// slot, with a record entry naming the minutes it waited.
+	Waiting []Waiting `json:"waiting,omitempty"`
 	// Pending are the spec's unlanded steps no lane has been opened for yet.
 	Pending []PendingStep `json:"pending"`
 	// Record is the run record, accumulated as stages complete.
@@ -233,6 +270,11 @@ type State struct {
 	// Transcripts are the transcripts the run's record captured into the
 	// history store once the run was complete, one capture per path (piece 10).
 	Transcripts []Transcript `json:"transcripts,omitempty"`
+	// Fallbacks are the run's fallback receipts, one per role a runner it was
+	// routed to did not run (itd-2609201916056194 criterion 3): the role, the
+	// runner asked for, the reason and the route that ran instead. The run's
+	// summary counts them per runner and per role (runner.Tally).
+	Fallbacks []runner.FallbackReceipt `json:"fallbacks,omitempty"`
 }
 
 // Transcript is one transcript the run record captured into the history store.
@@ -256,7 +298,56 @@ type Transcript struct {
 type PendingStep struct {
 	Number int    `json:"number"`
 	Title  string `json:"title"`
+	// Needs are the spec steps it waits for, as its `- needs:` line or the
+	// default (every earlier step, ruling DR6b) resolved them; nil in a file
+	// before version 9, which reads as the default.
+	Needs []int `json:"needs"`
 }
+
+// Waiting is one piece of work the ceiling held back.
+type Waiting struct {
+	Lane  string    `json:"lane"`
+	Role  string    `json:"role"`
+	Since time.Time `json:"since"`
+}
+
+// Sync is one merge of the default branch into a lane after a sibling lane of
+// the run landed (spc-2609202134341288, "Two lanes that touch the same
+// files"): the siblings whose landing caused it, the default branch's sha
+// merged in, whether it conflicted, and the head it produced. A conflicting
+// sync goes to a fresh implementer with the brief and receipt named here.
+type Sync struct {
+	At         time.Time `json:"at"`
+	Siblings   []string  `json:"siblings"`
+	Merged     string    `json:"merged"`
+	Conflicted bool      `json:"conflicted"`
+	Paths      []string  `json:"paths,omitempty"`
+	Brief      string    `json:"brief,omitempty"`
+	Receipt    string    `json:"receipt,omitempty"`
+	// Head is the head the sync produced: the merge commit, or the verified
+	// head of the implementer who resolved the conflict; empty until then.
+	Head string `json:"head,omitempty"`
+	// Round is the fresh round that judges Head, once it has opened.
+	Round int `json:"round,omitempty"`
+}
+
+// Hold is a lane held after a sibling's hand-back (ruling DR6c): when, the
+// handed-back lane that caused it, the head its passing round judged, and the
+// landing step it stopped before (HoldBeforePush or HoldBeforeArm). Released is
+// set once the person released it to land as it is.
+type Hold struct {
+	Since    time.Time `json:"since"`
+	Cause    string    `json:"cause"`
+	Head     string    `json:"head"`
+	Before   string    `json:"before"`
+	Released bool      `json:"released,omitempty"`
+}
+
+// The landing steps a hold stops before.
+const (
+	HoldBeforePush = "push"
+	HoldBeforeArm  = "arm"
+)
 
 // Lane is one lane: one spec step, one branch, one pull request.
 type Lane struct {
@@ -271,9 +362,14 @@ type Lane struct {
 	// Stage is the next stage the loop performs for this lane; StageDone when the
 	// lane has nothing left.
 	Stage Stage `json:"stage"`
-	// Awaiting is set while the lane waits on an agent: the stage handed its
-	// work out and advances only on the receipt it names (criterion 8).
-	Awaiting *Await `json:"awaiting,omitempty"`
+	// Awaits are the agents the lane waits on: one while its implementer
+	// works, one per validator while its round is out. Each is a slot of the
+	// run's ceiling until its receipt is verified (criterion 8, ruling DR6).
+	Awaits []Await `json:"awaits,omitempty"`
+	// Syncs are the merges of the default branch into the lane after a sibling
+	// landed; Hold is set while the lane is held after a sibling's hand-back.
+	Syncs []Sync `json:"syncs,omitempty"`
+	Hold  *Hold  `json:"hold,omitempty"`
 	// The lane's footprint, filled by the stages that make it.
 	Branch   string `json:"branch,omitempty"`
 	BaseSHA  string `json:"base_sha,omitempty"`
@@ -313,6 +409,10 @@ type ReceiptRecord struct {
 	// Model is the model the runner reported, as reported; empty when it
 	// reported none. The binary cannot verify it.
 	Model string `json:"model,omitempty"`
+	// Route is the route that ran the agent when a runner ran it: the runner
+	// asked for, the one that ran and the model it reported. Absent when the
+	// host ran it, so a host-run receipt reads as it always has.
+	Route *runner.RouteRecord `json:"route,omitempty"`
 }
 
 // HandBack is a lane stopped and handed back to the person, with what the last
@@ -371,6 +471,10 @@ type ValidatorRun struct {
 	// Audit is the fidelity audit's request and reading, on the
 	// intent-auditor's run.
 	Audit *AuditRun `json:"audit,omitempty"`
+	// Route is the route that ran the validator when a runner ran it; absent
+	// when the host ran it. It is the one field a runner-run review's record
+	// differs in from a host-run one's (itd-2609201916056194 criterion 7).
+	Route *runner.RouteRecord `json:"route,omitempty"`
 }
 
 // AuditRun is the fidelity audit the lane that closes the spec takes, once, over
@@ -471,6 +575,29 @@ func (s State) landed() bool {
 	return false
 }
 
+// routed reports whether the state carries anything only a version-8 run
+// writes: a fallback receipt, or a runner's route on a receipt or a return.
+func (s State) routed() bool {
+	if len(s.Fallbacks) > 0 {
+		return true
+	}
+	for _, l := range s.Lanes {
+		for _, r := range l.Receipts {
+			if r.Route != nil {
+				return true
+			}
+		}
+		for _, v := range l.Validation {
+			for _, vr := range v.Validators {
+				if vr.Route != nil {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
 // validated reports whether the state carries anything only the validate
 // stage writes.
 func (s State) validated() bool {
@@ -482,15 +609,51 @@ func (s State) validated() bool {
 	return false
 }
 
-// current returns the index of the lane the loop works on — the first lane not
-// done — or -1 when every opened lane is done.
+// parallel reports what, in a state, only version 9 writes: the name of the
+// first key or stage found, or "".
+func (s State) parallel() string {
+	if len(s.Waiting) > 0 {
+		return "`waiting`"
+	}
+	for _, p := range s.Pending {
+		if p.Needs != nil {
+			return "`needs` on pending step " + fmt.Sprint(p.Number)
+		}
+	}
+	for _, l := range s.Lanes {
+		switch {
+		case len(l.Awaits) > 0:
+			return "`awaits` on " + l.ID
+		case len(l.Syncs) > 0:
+			return "`syncs` on " + l.ID
+		case l.Hold != nil:
+			return "`hold` on " + l.ID
+		case l.Stage == StageHeld || l.Stage == StageDiscarded:
+			return "the stage `" + string(l.Stage) + "` on " + l.ID
+		}
+	}
+	return ""
+}
+
+// current returns the index of the first lane with anything left — not done
+// and not discarded — or -1 when there is none. It is the lane a result
+// names when a call moved none in particular.
 func (s State) current() int {
 	for i, l := range s.Lanes {
-		if l.Stage != StageDone {
+		if l.Stage != StageDone && l.Stage != StageDiscarded {
 			return i
 		}
 	}
 	return -1
+}
+
+// awaiting is the lane's first await, or nil.
+func (l Lane) awaiting() *Await {
+	if len(l.Awaits) == 0 {
+		return nil
+	}
+	a := l.Awaits[0]
+	return &a
 }
 
 // runRel is a run's directory, relative to the checkout root.
@@ -572,7 +735,10 @@ func readStateIn(root *os.Root, runID string) (State, error) {
 	case st.SchemaVersion <= schemaVersionUnlanded && st.landed():
 		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries a landing, a verified receipt or a captured transcript, which version %d never wrote", rel, st.SchemaVersion, st.SchemaVersion),
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
-	case st.SchemaVersion >= schemaVersionUnpaced && st.SchemaVersion <= schemaVersionUnlanded:
+	case st.SchemaVersion <= schemaVersionUnrouted && st.routed():
+		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries a fallback or a runner's route, which version %d never wrote", rel, st.SchemaVersion, st.SchemaVersion),
+			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
+	case st.SchemaVersion >= schemaVersionUnpaced && st.SchemaVersion <= schemaVersionSerial:
 		// Read as the current version, its stages already carried over by
 		// decodeState when it named them `step`; the next write carries it, and
 		// this read writes nothing.
@@ -601,7 +767,22 @@ type stateStepNamed struct {
 // laneStepNamed is a lane in a file of versions 1 to 3.
 type laneStepNamed struct {
 	Lane
-	Step Stage `json:"step"`
+	Step     Stage  `json:"step"`
+	Awaiting *Await `json:"awaiting,omitempty"`
+}
+
+// stateAwaitNamed is a state file of version 4 or later read in the shape that
+// carries the lane's one `awaiting`: versions 4 to 8 wrote it, and a version-9
+// file carrying it is refused by name rather than as an unknown field.
+type stateAwaitNamed struct {
+	State
+	Lanes []laneAwaitNamed `json:"lanes"`
+}
+
+// laneAwaitNamed is a lane carrying the one `awaiting` of versions up to 8.
+type laneAwaitNamed struct {
+	Lane
+	Awaiting *Await `json:"awaiting,omitempty"`
 }
 
 // entryStepNamed is a record line in a file of versions 1 to 3.
@@ -620,10 +801,36 @@ func decodeState(data []byte) (State, error) {
 	var peek struct {
 		SchemaVersion int `json:"schema_version"`
 	}
-	if err := json.Unmarshal(data, &peek); err != nil || peek.SchemaVersion < schemaVersionUnpaced || peek.SchemaVersion > schemaVersionStepNamed {
+	if err := json.Unmarshal(data, &peek); err != nil || peek.SchemaVersion < schemaVersionUnpaced || peek.SchemaVersion > SchemaVersion {
 		var st State
 		err := jsonstrict.Decode(data, &st)
 		return st, err
+	}
+	if peek.SchemaVersion > schemaVersionStepNamed {
+		var old stateAwaitNamed
+		if err := jsonstrict.Decode(data, &old); err != nil {
+			return State{}, err
+		}
+		st := old.State
+		st.Lanes = nil
+		if old.Lanes != nil {
+			st.Lanes = make([]Lane, 0, len(old.Lanes))
+		}
+		for _, l := range old.Lanes {
+			if l.Awaiting != nil && old.SchemaVersion > schemaVersionSerial {
+				return State{}, refuse("state", "", "", fmt.Sprintf("is schema version %d but lane %s carries `awaiting`, which version %d never wrote", old.SchemaVersion, l.ID, old.SchemaVersion), "")
+			}
+			st.Lanes = append(st.Lanes, l.Lane)
+		}
+		if err := serialCarries(st, old.SchemaVersion); err != nil {
+			return State{}, err
+		}
+		for i, l := range old.Lanes {
+			if l.Awaiting != nil {
+				st.Lanes[i].Awaits = []Await{*l.Awaiting}
+			}
+		}
+		return st, nil
 	}
 	var old stateStepNamed
 	if err := jsonstrict.Decode(data, &old); err != nil {
@@ -645,6 +852,14 @@ func decodeState(data []byte) (State, error) {
 		lane.Stage = l.Step
 		st.Lanes = append(st.Lanes, lane)
 	}
+	if err := serialCarries(st, old.SchemaVersion); err != nil {
+		return State{}, err
+	}
+	for i, l := range old.Lanes {
+		if l.Awaiting != nil {
+			st.Lanes[i].Awaits = []Await{*l.Awaiting}
+		}
+	}
 	st.Record = nil
 	if old.Record != nil {
 		st.Record = make([]Entry, 0, len(old.Record))
@@ -658,6 +873,20 @@ func decodeState(data []byte) (State, error) {
 		st.Record = append(st.Record, entry)
 	}
 	return st, nil
+}
+
+// serialCarries refuses a file of version 8 or lower that carries what only
+// version 9 writes, in the shape of the earlier versions' refusals. It runs
+// before the file's `awaiting` is carried over to `awaits`, so it sees only
+// what the file itself carries.
+func serialCarries(st State, version int) error {
+	if version > schemaVersionSerial {
+		return nil
+	}
+	if what := st.parallel(); what != "" {
+		return refuse("state", "", "", fmt.Sprintf("is schema version %d but carries %s, which version %d never wrote", version, what, version), "")
+	}
+	return nil
 }
 
 // writeState is the state file's one writer: a whole-file atomic replacement

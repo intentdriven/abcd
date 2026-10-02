@@ -142,8 +142,9 @@ var helpPlacements = map[string]helpPlacement{
 	"intent prepass": {page: "commands/intent.md"},
 
 	// itd-146 decision 2 files drain under records, but the person's list is at
-	// its fifteen-verb ceiling, and until the run is built the verb's one form
-	// is a dry run an agent reads. Listed here until the product thinker rules.
+	// its fifteen-verb ceiling, and each run invocation performs one move and
+	// names the run an agent drives with `implement step`, so an agent reads it
+	// either way. Listed here until the product thinker rules.
 	"drain": {group: groupAgents, page: "commands/drain.md"},
 }
 

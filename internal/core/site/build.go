@@ -329,8 +329,39 @@ type Result struct {
 // ErrNoManifest is returned when the repository declares no composition.
 var ErrNoManifest = errors.New("site: this repo declares no site composition (" + ManifestRelPath + " is absent)")
 
-// Build renders the site into req.OutDir.
+// LabelsAddedError is a build that failed after it added missing interface
+// labels to the repository's ui.json (the TG1 ruling): the write stands, so the
+// error names the file and each label added, and unwraps to the failure.
+type LabelsAddedError struct {
+	File   string
+	Labels []string
+	Err    error
+}
+
+func (e *LabelsAddedError) Error() string { return e.Err.Error() }
+func (e *LabelsAddedError) Unwrap() error { return e.Err }
+
+// Build renders the site into req.OutDir. A failure after it completed the
+// repository's ui.json is a *LabelsAddedError, so the change it took is never
+// silent (ADR 2609301720596683).
 func Build(req Request) (Result, error) {
+	var added labelsAdded
+	res, err := build(req, &added)
+	if err != nil && len(added.labels) > 0 {
+		return Result{}, &LabelsAddedError{File: added.file, Labels: added.labels, Err: err}
+	}
+	return res, err
+}
+
+// labelsAdded is what build wrote to the repository's ui.json, recorded as
+// soon as it is written so a later failure can name it.
+type labelsAdded struct {
+	file   string
+	labels []string
+}
+
+// build is Build's body.
+func build(req Request, written *labelsAdded) (Result, error) {
 	repoRoot := req.RepoRoot
 	outDir, err := resolveOutDir(repoRoot, req.OutDir)
 	if err != nil {
@@ -378,6 +409,7 @@ func Build(req Request) (Result, error) {
 		if addedLabels, err = addMissingLabels(repoRoot, manifest.UIStrings); err != nil {
 			return Result{}, err
 		}
+		written.file, written.labels = manifest.UIStrings, addedLabels
 	}
 	ui, err := LoadUI(repoRoot, manifest.UIStrings)
 	if err != nil {

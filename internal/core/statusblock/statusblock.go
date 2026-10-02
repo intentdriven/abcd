@@ -95,14 +95,17 @@ type Lane struct {
 	// Stage is the lane's next stage (worktree, brief, implement, validate,
 	// land), or "pending" while the run waits to open its next lane.
 	Stage string `json:"stage"`
-	// Awaiting is the agent role the lane waits on, when it waits on one.
+	// Awaiting is the agent roles the lane waits on, when it waits on any:
+	// one while its implementer works, one per validator out (ruling DR6).
 	Awaiting string `json:"awaiting,omitempty"`
 }
 
-// Started is one intent the state file shows in a lane.
+// Started is one intent the state file shows in lanes: every lane of its run
+// alive, each reported as its own Now row (ruling DR6, a run works several
+// lanes at once).
 type Started struct {
 	Intent string
-	Lane   Lane
+	Lanes  []Lane
 }
 
 // LaneReader reads the build's state file for the checkout at repoRoot. An
@@ -264,9 +267,12 @@ func Read(repoRoot string, lanes LaneReader, peers PeerReader) (Block, error) {
 				return Block{}, err
 			}
 		}
-		lane := s.Lane
-		r.Lane = &lane
-		b.Now = append(b.Now, r)
+		for _, lane := range s.Lanes {
+			lr := r
+			l := lane
+			lr.Lane = &l
+			b.Now = append(b.Now, lr)
+		}
 	}
 	if head != nil {
 		b.Now = append(b.Now, *head)

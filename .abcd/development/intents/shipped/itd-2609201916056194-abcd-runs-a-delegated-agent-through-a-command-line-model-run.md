@@ -80,7 +80,11 @@ _None open._
 
 ## Audit Notes
 
-_Empty. Populated by intent-auditor when intent moves to shipped/._
+- 2026-09-30 — Closed on the fake-harness tests under the person's ruling RN1 (2026-09-30: "(a) SAME RULE, FINISH ON FAKES: the runner may close on the fake-harness tests with the three live checks (iss-2609301519558538) recorded as owed."). The acceptance criteria are proven against fake harnesses on a pinned PATH (the opencode review-route criterion structurally, and the no-host fallback path in the core only, since its surface waits on the ADR decision 6 owes); no real claude or opencode binary has run a role. The three live checks are owed and not yet run: iss-2609301519558538 tracks them and stays open.
+
+<!-- abcd-review: OWED receipt=rcp-e5eee57c3e2a -->
+Fidelity review OWED (receipt rcp-e5eee57c3e2a).
+<!-- abcd-review-end receipt=rcp-e5eee57c3e2a -->
 
 ## Grounds
 

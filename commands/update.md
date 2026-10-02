@@ -13,8 +13,10 @@ tag), verifies the platform binary against the same release's
 `checksums.txt`, and swaps the PATH copy atomically, printing a receipt that
 opens with `abcd updated from <old> to <new>` and names the path, origin and
 digest. abcd never checks for or
-applies updates on its own — this verb is the only command that reaches the
-release origin, and only when invoked.
+applies updates on its own — this verb reaches the release origin only when
+invoked, as does the one other flag that reaches it, `--fetch-baseline` on
+`launch` and `launch ship`, which downloads a released plugin archive to
+compare against.
 
 The same line announces a swap the plugin bootstrap makes. When a hook that
 discards its output made the swap, the next session start shows the line once,

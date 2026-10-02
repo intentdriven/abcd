@@ -171,7 +171,7 @@ func TestNextWritesTheReasonAsTheLaneFirstCommit(t *testing.T) {
 		t.Fatalf("the pick starts the build's own run: %+v", st)
 	}
 
-	if _, err := Advance(repo.Root(), res.Start.RunID, DefaultStages(), Options{}); err != nil {
+	if _, err := advance(repo.Root(), res.Start.RunID, DefaultStages(), Options{}); err != nil {
 		t.Fatal(err)
 	}
 	st, err = ReadState(repo.Root(), res.Start.RunID)
@@ -213,7 +213,7 @@ func TestNextWritesTheReasonAsTheLaneFirstCommit(t *testing.T) {
 	// The same lane from here: the brief, then the implementer's receipt, which
 	// may not count the pick's commit.
 	advanceTo(t, repo, st.RunID, StageImplement)
-	if _, err := Advance(repo.Root(), st.RunID, DefaultStages(), Options{}); err != nil {
+	if _, err := advance(repo.Root(), st.RunID, DefaultStages(), Options{}); err != nil {
 		t.Fatal(err)
 	}
 	st, _ = ReadState(repo.Root(), st.RunID)
@@ -365,7 +365,7 @@ func TestAReceiptRefusesABranchThatDroppedThePick(t *testing.T) {
 	}
 	runID := res.Start.RunID
 	advanceTo(t, repo, runID, StageImplement)
-	if _, err := Advance(repo.Root(), runID, DefaultStages(), Options{}); err != nil {
+	if _, err := advance(repo.Root(), runID, DefaultStages(), Options{}); err != nil {
 		t.Fatal(err)
 	}
 	st, err := ReadState(repo.Root(), runID)

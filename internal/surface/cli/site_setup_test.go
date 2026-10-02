@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -229,5 +230,27 @@ func TestSiteVerbsSayWhichLabelsTheyAdded(t *testing.T) {
 	}
 	if strings.Contains(out, "added the missing label") {
 		t.Errorf("the added-label lines reached stdout:\n%s", out)
+	}
+
+	// A build that fails after it completed the file still says what it
+	// added, before the error: the write stands, so it is never silent.
+	drop("target")
+	body, err := os.ReadFile(uiPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	blanked := regexp.MustCompile(`"now": "[^"]*"`).ReplaceAllString(string(body), `"now": ""`)
+	if blanked == string(body) {
+		t.Fatalf("ui.json carries no now label:\n%s", body)
+	}
+	if err := os.WriteFile(uiPath, []byte(blanked), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, errOut, err = runCLISplit(t, "site", "build", "--out", t.TempDir())
+	if err == nil {
+		t.Fatalf("site build with a blank label must fail:\n%s%s", out, errOut)
+	}
+	if !strings.HasPrefix(errOut, "abcd site build: "+want) {
+		t.Fatalf("a failed build names the label it added before the error: stderr = %q, err = %v", errOut, err)
 	}
 }

@@ -822,8 +822,12 @@ by construction. The listing reads the first marker of every intent in
 `dead_lettered` and `ingested`. The owed set is `OWED` plus `none`: a shipped
 intent with no marker at all owes the review too, and its re-emit mints the
 receipt. A `DEAD_LETTER` review is listed under its own heading, unreviewed,
-with the reason the quarantine recorded, and is not counted as owed; an
-`INGESTED` one is not listed in the text form. Report the owed total and, for
+with the reason the quarantine recorded, and is not counted as owed. An
+`INGESTED` review whose verdict left a check owed carries `audit_owed: true`,
+the `audit_owed_issue` carrying it and its `re_emit`, is counted in
+`audit_owed` (and in `ingested`), and is listed in the text form under its own
+heading with its issue and its re-run command; any other `INGESTED` one is not
+listed in the text form. Report the owed total and, for
 each owed intent, its receipt and its re-emit command. The listing names the
 re-emit, never the request file: the request lives in the gitignored local tier
 and may have been swept. It exits 0 whatever it finds; no gate reads it.
@@ -907,8 +911,10 @@ condition under the `cond-…` identity the verdict disposes it by, and carries 
 reviewer working from the request alone has the shape to write against. The
 result's `status` names the receipt's state and `request_written` the act: a
 re-emit of an owed receipt rewrites its request (`already_owed`,
-`request_written: true`, text `request rewritten:`), and a re-emit of an
-ingested or dead-lettered receipt writes none and names no `request_path`. Its
+`request_written: true`, text `request rewritten:`), a re-emit of a receipt
+whose ingested verdict left a check owed rewrites it for the re-run
+(`check_owed`), and a re-emit of any other ingested or dead-lettered receipt
+writes none and names no `request_path`. Its
 `## Provenance` block states the `rubric_hash` and `prompt_hash` the host
 computed. The auditor echoes both
 verbatim into `policy`; it never computes either itself. The ingest recomputes
@@ -923,6 +929,25 @@ now holds under. Coverage is exact in both directions — a conditionless intent
 takes an empty block, a conditioned one a full one — so a partial or invented
 disposition quarantines the whole payload rather than applying half of it.
 Report the returned split alongside the acceptance rollup.
+
+**A failed or undecided audit leaves the intent shipped and flagged.** When the
+verdict judges any criterion `NOT_MET` or `INCONCLUSIVE`, the intent stays in
+`shipped/` and its changelog entry stands; its Audit Notes block carries an
+audit-owed flag naming each such criterion, the receipt, the remedy and the
+issue carrying the check. The ingest captures that issue itself — a `major`
+`bug` for a failure, a `minor` `inconsistency` for an undecided verdict, with
+the remedy "fix, then re-run the audit" or "re-run the audit" — and a later
+failed or undecided audit of the same receipt links to it while it is open,
+concurrent ingests included; where several open issues carry one receipt's
+check, the oldest is linked and the others are declined as its duplicates
+(`owed_issue`, `owed_issue_linked`, `audit_owed` in the JSON; `audit owed:` and
+`captured`/`carried by` lines in the text). Commit the captured record with the
+intent. To pay the check, fix what failed, run `intent audit <itd-N>` (status
+`check_owed`: the request is rewritten for the re-run), hand the request to the
+auditor, and ingest its verdict: one that judges no criterion `NOT_MET` or
+`INCONCLUSIVE` clears the flag with a dated line and resolves every open issue
+carrying that check (`flag_cleared` names the flagged one). A ledger that cannot file refuses the ingest with nothing
+written; ingest the verdict again once it can.
 
 ## Drain: pay the owed reviews, oldest first
 
@@ -973,19 +998,17 @@ auditor at a time are what bound the cost:
    as a single audit's does — the Audit Notes block, the receipt, the scope-
    condition dispositions. Report the ingest's status, then take the next
    entry; start the next audit only after this ingest has returned.
-3. **A NOT_MET verdict is captured, never fixed.** Every intent the drain
-   reaches has already shipped, so a criterion it did not meet is a finding
-   against delivered work: file it with
-   `abcd capture "<itd-N> fidelity audit NOT_MET: <criterion> (receipt <rcp-…>)" --category drift --severity <minor|major> --source review-followup --remedy "<the fix the criterion asks for>"`,
-   naming the receipt, and continue the loop. The remedy is required: name the
-   change that would meet the criterion as its text states it, and where that
-   fix depends on outside practice, cite the prior-art or state-of-the-art
-   check it rests on (principle `prefer-sota`) in the capture's text. The drain changes no code and
-   re-opens nothing; the fix round belongs to the build that owns the work. A
+3. **A NOT_MET or INCONCLUSIVE verdict is captured by the ingest, never
+   fixed here.** Every intent the drain reaches has already shipped, so a
+   criterion it did not meet, or could not decide, is a check still owed
+   against delivered work: the ingest flags the intent and captures the one
+   issue carrying it (its `owed_issue`), so file nothing by hand — report the
+   issue id and continue the loop. The drain changes no code and un-ships
+   nothing; the fix round belongs to whoever takes the captured issue. A
    `dead_letter` ingest is reported with its reason and is listed apart by
    bare `intent audit` from then on.
 4. **Summarise:** how many were audited, the ingest outcome of each, the
-   captures filed for NOT_MET (their ids), the entries skipped for an
+   issues the ingests captured or linked for an owed check (their ids), the entries skipped for an
    `emit_error`, how many stay owed — the command's `remaining` plus any entry
    the loop did not reach — and why the loop
    stopped: the queue ran out, the cap was reached, or no auditor was

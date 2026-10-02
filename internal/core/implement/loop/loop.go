@@ -1,7 +1,7 @@
 package loop
 
 // loop.go is the step interface (spec piece 2; decision 5's default driver):
-// Start creates a run after the checks, Advance performs the lane's next stage
+// Start creates a run after the checks, advance performs the lane's next stage
 // and exits, Receipt verifies what an agent stage waited on and advances, and
 // Status reads. Each takes the run tier's lock, reads the state first and
 // writes it last; a stage that fails leaves the state exactly as it was.
@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -18,6 +19,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/recordid"
+	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/core/statusblock"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -73,6 +75,8 @@ type Context struct {
 	RunDir string
 	State  State
 	Now    time.Time
+	// Await is the await a verifier is handed the receipt of; nil for a body.
+	Await *Await
 }
 
 // Outcome is what a stage's body returns. A body that hands its work to an agent
@@ -89,6 +93,9 @@ type Outcome struct {
 	// and the lane stays at the stage for the next invocation's step. Set only
 	// with no Await and no HandBack.
 	Stay bool
+	// Goto sends the lane back to an earlier stage (the landing's sync sends
+	// it to a fresh round); set only with no Await, HandBack or Stay.
+	Goto Stage
 	// Note is the run record's line for the stage.
 	Note string
 }
@@ -187,7 +194,7 @@ type StartResult struct {
 	Next     string    `json:"next"`
 }
 
-// StepResult is what Advance and Receipt return.
+// StepResult is what advance and Receipt return.
 type StepResult struct {
 	RunID string `json:"run_id"`
 	Lane  string `json:"lane,omitempty"`
@@ -205,7 +212,30 @@ type StepResult struct {
 	// HandBack is set when the lane was handed back to the person: this call
 	// stopped it, or it stood stopped when the run was started again.
 	HandBack *HandBack `json:"hand_back,omitempty"`
-	Next     string    `json:"next"`
+	// Slots is the agents the run has out after the call, and Ceiling the most
+	// it may have (the run's pace.sub_agents); CeilingReached is set when this
+	// call found every slot taken and handed nothing out.
+	Slots          int  `json:"slots"`
+	Ceiling        int  `json:"ceiling"`
+	CeilingReached bool `json:"ceiling_reached,omitempty"`
+	// Alive is every lane of the run with anything left, with its stage and
+	// each agent it awaits, the held lanes included.
+	Alive []AliveLane `json:"alive,omitempty"`
+	// Blocked are the landings that waited on the forge's merge this call
+	// while another lane moved: each holds only its own lane. Any other refused
+	// stage is the call's answer, and no lane moves.
+	Blocked []Refusal `json:"blocked,omitempty"`
+	// Route is the route that ran the agent when the process driver started
+	// it through a runner (Drive); absent when the host is to run it.
+	Route *runner.RouteRecord `json:"route,omitempty"`
+	// Fallback is the fallback receipt this call recorded when the runner a
+	// role is routed to did not run it and the host is handed the role.
+	Fallback *runner.FallbackReceipt `json:"fallback,omitempty"`
+	Next     string                  `json:"next"`
+	// handed is true when this call handed the lane to an agent, false when
+	// it re-told an await an earlier call began: only the call that hands the
+	// work out may start a runner for it.
+	handed bool
 }
 
 // Start resumes the live run for key, or runs the checks and, when every one
@@ -517,11 +547,15 @@ func laneWork(st State, l Lane) string {
 // openNextLane opens a lane for the first pending spec step. It is state-only:
 // the lane's first stage is what makes anything.
 func openNextLane(st *State) {
-	if len(st.Pending) == 0 {
-		return
+	if len(st.Pending) > 0 {
+		openLane(st, 0)
 	}
-	p := st.Pending[0]
-	st.Pending = st.Pending[1:]
+}
+
+// openLane opens a lane for the pending step at index k, state-only.
+func openLane(st *State, k int) {
+	p := st.Pending[k]
+	st.Pending = slices.Delete(slices.Clone(st.Pending), k, k+1)
 	st.Lanes = append(st.Lanes, Lane{
 		ID:        fmt.Sprintf("lane-%d", len(st.Lanes)+1),
 		Key:       st.Key,
@@ -531,28 +565,17 @@ func openNextLane(st *State) {
 	})
 }
 
-// openNextLaneRecorded opens the next pending step's lane, when one is
-// pending, and records it: the run record lists the spec's steps as it lists
-// the lanes (itd-2609212103565953, criterion 4), the first at the start and
-// each later one here.
-func openNextLaneRecorded(st *State, now time.Time) {
-	n := len(st.Lanes)
-	openNextLane(st)
-	if len(st.Lanes) == n {
-		return
-	}
-	l := st.Lanes[n]
-	st.Record = append(st.Record, Entry{At: now, Lane: l.ID, Stage: "open",
-		Note: fmt.Sprintf("%s opened for step %d of %s (%s)", l.ID, l.SpecStep, st.Spec, l.StepTitle)})
-}
-
-// Advance performs the next stage of the run's current lane and returns. A lane
-// that awaits a receipt performs nothing and re-tells what it awaits; a run
-// that is complete says so; a run paused by its window clock is refused until
+// advance performs one move of the run and returns (ruling DR6,
+// spc-2609202134341288): a stage the binary performs itself on any lane first,
+// which takes no slot, then, while the run's ceiling has a slot free, the first
+// piece of work that needs an agent, in the order schedule.go gives. A call
+// that finds the ceiling reached hands out nothing, names every lane alive and
+// what it awaits, and writes the held work into the run's `waiting`. A run that
+// is complete says so; a run paused by its window clock is refused until
 // next_eligible_at. A stage whose body this build does not carry is refused
 // naming the piece that delivers it. The state is written only after a body
 // succeeds, and then once.
-func Advance(repoRoot, runID string, steps Stages, o Options) (StepResult, error) {
+func advance(repoRoot, runID string, steps Stages, o Options) (StepResult, error) {
 	var res StepResult
 	err := mutate(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
 		now := o.now()
@@ -560,87 +583,31 @@ func Advance(repoRoot, runID string, steps Stages, o Options) (StepResult, error
 			return false, contend("pause", "", "", "the run is paused until "+st.NextEligibleAt.UTC().Format(time.RFC3339),
 				"run `abcd implement step` again at or after that time")
 		}
-		i := st.current()
-		if i < 0 {
+		if st.Complete() {
 			res = StepResult{RunID: st.RunID, Complete: true, Next: "nothing: every lane of " + st.RunID + " is done"}
 			return false, nil
 		}
-		lane := st.Lanes[i]
-		if lane.Stage == StageHandedBack {
-			return false, handedBackRefusal(*st, lane)
-		}
-		// The window clock (itd-2609201925079472): a pause that has ended
-		// opens the next window; a window that has elapsed closes here, and
-		// the call starts nothing.
-		opened := false
+		// The window clock (itd-2609201925079472) is the run's, one for every
+		// lane: a pause that has ended opens the next window; a window that has
+		// elapsed closes here, and the call starts nothing on any lane.
+		changed := false
 		if st.NextEligibleAt != nil {
 			openWindow(st, now)
-			opened = true
+			changed = true
 		}
 		if until, ok := windowElapsed(*st, now); ok {
 			closeWindow(st, now, until)
-			res = laneResult(*st, lane, "")
+			res = idleResult(*st)
 			res.NextEligibleAt = &until
-			res.Next = pausedMove(lane, until)
+			res.Next = pausedMove(*st, until)
 			return true, nil
 		}
-		if lane.Awaiting != nil {
-			res = laneResult(*st, lane, "")
-			return opened, nil
-		}
-		def, ok := steps.lookup(lane.Stage)
-		if !ok || def.Run == nil {
-			piece := ""
-			if ok {
-				piece = fmt.Sprintf(" (piece %d of %s delivers it)", def.Piece, specOf(*st))
-			}
-			return false, refusef(string(lane.Stage), lane.ID,
-				"use an abcd that carries the stage; the run is unchanged and resumes here",
-				"the %s stage is not built in this abcd%s", lane.Stage, piece)
-		}
-		c := Context{RepoRoot: repoRoot, RunDir: runRel(st.RunID), State: *st, Now: now}
-		out, err := def.Run(c, &lane)
+		r, moved, err := move(repoRoot, st, steps, now)
 		if err != nil {
 			return false, err
 		}
-		performed := Stage("")
-		if out.HandBack != nil {
-			handBackLane(st, &lane, *out.HandBack, out.Note, now)
-			st.Lanes[i] = lane
-			st.UpdatedAt = now
-			res = laneResult(*st, lane, "")
-			res.HandBack = lane.HandBack
-			return true, nil
-		}
-		if out.Stay {
-			st.Record = append(st.Record, Entry{At: now, Lane: lane.ID, Stage: string(lane.Stage), Note: out.Note})
-			st.Lanes[i] = lane
-			st.UpdatedAt = now
-			res = laneResult(*st, lane, "")
-			return true, nil
-		}
-		if out.Await != nil {
-			if out.Await.Since.IsZero() {
-				out.Await.Since = now
-			}
-			lane.Awaiting = out.Await
-			note := out.Note
-			if note == "" {
-				note = "awaiting the " + out.Await.Role + "'s receipt at " + out.Await.Receipt
-			}
-			st.Record = append(st.Record, Entry{At: now, Lane: lane.ID, Stage: string(lane.Stage), Note: note})
-		} else {
-			performed = lane.Stage
-			st.Record = append(st.Record, Entry{At: now, Lane: lane.ID, Stage: string(lane.Stage), Note: out.Note})
-			lane.Stage = after(lane.Stage)
-		}
-		st.Lanes[i] = lane
-		if lane.Stage == StageDone {
-			openNextLaneRecorded(st, now)
-		}
-		st.UpdatedAt = now
-		res = laneResult(*st, lane, performed)
-		return true, nil
+		res = r
+		return changed || moved, nil
 	})
 	return res, err
 }
@@ -683,44 +650,58 @@ func openWindow(st *State, now time.Time) {
 }
 
 // pausedMove is the next move of a run whose window this call closed.
-func pausedMove(lane Lane, until time.Time) string {
+func pausedMove(st State, until time.Time) string {
 	at := until.UTC().Format(time.RFC3339)
-	if lane.Awaiting != nil {
-		return fmt.Sprintf("nothing new before %s: the run's window has elapsed. The %s already started may still hand back its receipt with `abcd implement receipt %s`; run `abcd implement step` at or after %s",
-			at, lane.Awaiting.Role, lane.Awaiting.Receipt, at)
+	if out := st.allAwaits(); len(out) > 0 {
+		parts := make([]string, 0, len(out))
+		for _, a := range out {
+			parts = append(parts, fmt.Sprintf("the %s of %s with `abcd implement receipt %s`", a.Await.Role, a.Lane, a.Await.Receipt))
+		}
+		return fmt.Sprintf("nothing new before %s: the run's window has elapsed. The agents already started may still hand back their receipts (%s); run `abcd implement step` at or after %s",
+			at, strings.Join(parts, "; "), at)
 	}
 	return fmt.Sprintf("nothing before %s: the run's window has elapsed; run `abcd implement step` at or after %s", at, at)
 }
 
-// Receipt hands back the receipt an agent stage waited on. It is refused when no
-// lane awaits one, when the path is not the one the stage named, when this build
-// carries no verifier for the stage, and when the verifier refuses it; in every
-// refusal the lane stays where it was. A verified receipt completes the stage.
-func Receipt(repoRoot, runID, receipt string, steps Stages, o Options) (StepResult, error) {
+// Receipt hands back the receipt an agent stage waited on. The path is looked
+// up among every outstanding await of the run, not only one lane's, and the
+// lane that await belongs to is advanced (ruling DR6): a verified receipt frees
+// its slot, which the next `implement step` fills. It is refused when no await
+// names the path, when this build carries no verifier for the stage, and when
+// the verifier refuses it; in every refusal the run stays where it was and the
+// agent's slot stays taken.
+func Receipt(repoRoot, runID, receiptPath string, steps Stages, o Options) (StepResult, error) {
+	return receipt(repoRoot, runID, receiptPath, steps, o, nil)
+}
+
+// receipt is Receipt. A route that is not nil is the runner that ran the
+// agent (Drive): it is stamped on what the verifier recorded from the receipt,
+// and the record names it. The host's receipt carries none.
+func receipt(repoRoot, runID, receipt string, steps Stages, o Options, route *runner.RouteRecord) (StepResult, error) {
 	var res StepResult
 	err := mutate(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
 		now := o.now()
-		i := st.current()
-		if i < 0 || st.Lanes[i].Awaiting == nil {
-			return false, refuse("receipt", "", "", "no lane of "+st.RunID+" awaits a receipt",
-				"run `abcd implement step`; it names the receipt when a stage hands work to an agent")
+		i, k := st.findAwait(repoRoot, receipt)
+		if i < 0 {
+			return false, unknownReceipt(*st)
 		}
 		lane := st.Lanes[i]
-		if !samePath(repoRoot, receipt, lane.Awaiting.Receipt) {
-			return false, refuse("receipt", "", lane.ID, "the "+string(lane.Stage)+" stage awaits its receipt at "+lane.Awaiting.Receipt+", not at the path given",
-				"hand back `abcd implement receipt "+lane.Awaiting.Receipt+"`")
-		}
+		await := lane.Awaits[k]
 		def, ok := steps.lookup(lane.Stage)
 		if !ok || def.Verify == nil {
 			return false, refusef("receipt", lane.ID, "use an abcd that carries the verifier; the lane still awaits the receipt",
 				"the %s stage's receipt verifier is not built in this abcd (piece %d of %s delivers it)", lane.Stage, def.Piece, specOf(*st))
 		}
-		c := Context{RepoRoot: repoRoot, RunDir: runRel(st.RunID), State: *st, Now: now}
-		if err := def.Verify(c, &lane, lane.Awaiting.Receipt); err != nil {
+		c := Context{RepoRoot: repoRoot, RunDir: runRel(st.RunID), State: *st, Now: now, Await: &await}
+		if err := def.Verify(c, &lane, await.Receipt); err != nil {
 			if _, ok := AsRefusal(err); ok {
 				return false, err
 			}
 			return false, refuse("receipt", "", lane.ID, err.Error(), "correct what the reason names, then hand the receipt back")
+		}
+		if route != nil {
+			stampRoute(&lane, await.Receipt, route)
+			st.Record = append(st.Record, Entry{At: now, Lane: lane.ID, Stage: StageRunner, Note: routeNote(await.Role, *route)})
 		}
 		if lane.HandBack != nil {
 			// The lane's own receipt handed the work back: the verifier has
@@ -728,52 +709,69 @@ func Receipt(repoRoot, runID, receipt string, steps Stages, o Options) (StepResu
 			handBackLane(st, &lane, *lane.HandBack, "", now)
 			st.Lanes[i] = lane
 			st.UpdatedAt = now
-			res = laneResult(*st, lane, "")
+			res = laneResult(*st, lane, "", nil)
 			res.HandBack = lane.HandBack
 			return true, nil
 		}
 		performed := lane.Stage
-		verified := lane.Awaiting.Receipt
-		lane.Awaiting = nil
+		verified := await.Receipt
+		lane.Awaits = slices.Delete(slices.Clone(lane.Awaits), k, k+1)
+		if len(lane.Awaits) == 0 {
+			lane.Awaits = nil
+		}
 		note := "the " + string(performed) + " stage's receipt verified at " + verified
 		if def.Repeats {
-			// The stage hands the lane to its next agent, or completes, on the
-			// next step; the lane's own receipt stays the implementer's.
+			// The stage hands the lane to its next agent, or completes, on a
+			// later step; the lane's own receipt stays the implementer's.
 			if n := validationNote(lane, verified); n != "" {
 				note += "; " + n
 			}
 			st.Record = append(st.Record, Entry{At: now, Lane: lane.ID, Stage: "receipt", Note: note})
 			st.Lanes[i] = lane
 			st.UpdatedAt = now
-			res = laneResult(*st, lane, "")
+			res = laneResult(*st, lane, "", nil)
 			return true, nil
 		}
 		lane.Receipt = verified
 		st.Record = append(st.Record, Entry{At: now, Lane: lane.ID, Stage: "receipt", Note: note})
 		lane.Stage = after(lane.Stage)
 		st.Lanes[i] = lane
-		if lane.Stage == StageDone {
-			openNextLaneRecorded(st, now)
-		}
 		st.UpdatedAt = now
-		res = laneResult(*st, lane, performed)
+		res = laneResult(*st, lane, performed, nil)
 		return true, nil
 	})
 	return res, err
 }
 
-// laneResult reports where a lane stands after a call.
-func laneResult(st State, lane Lane, performed Stage) StepResult {
-	res := StepResult{RunID: st.RunID, Lane: lane.ID, PerformedStage: performed, Stage: lane.Stage, Awaiting: lane.Awaiting}
+// laneResult reports where a lane stands after a call: the await this call
+// handed out when it handed one out, or the lane's first.
+func laneResult(st State, lane Lane, performed Stage, handed *Await) StepResult {
+	res := StepResult{RunID: st.RunID, Lane: lane.ID, PerformedStage: performed, Stage: lane.Stage, Awaiting: handed,
+		Slots: st.slotsInUse(), Ceiling: st.ceiling(), Alive: st.alive(), handed: handed != nil}
+	if res.Awaiting == nil {
+		res.Awaiting = lane.awaiting()
+	}
 	if st.Complete() {
 		res.Complete = true
 		res.Next = "nothing: every lane of " + st.RunID + " is done"
 		return res
 	}
-	if i := st.current(); i >= 0 {
-		res.Next = nextMove(st, st.Lanes[i])
+	switch {
+	case handed != nil:
+		res.Next = handedMove(*handed)
+	case lane.HandBack != nil:
+		res.Next = handBackMove(st, lane)
+	default:
+		res.Next = nextMove(st, lane)
 	}
 	return res
+}
+
+// handedMove is the one sentence a caller is told when a call handed work to
+// an agent.
+func handedMove(a Await) string {
+	return fmt.Sprintf("start a fresh %s agent with the brief %s; when it has written its receipt, run `abcd implement receipt %s`",
+		a.Role, a.Brief, a.Receipt)
 }
 
 // nextMove is the one sentence a caller is told to do next.
@@ -781,9 +779,11 @@ func nextMove(st State, lane Lane) string {
 	if lane.HandBack != nil {
 		return handBackMove(st, lane)
 	}
-	if lane.Awaiting != nil {
-		return fmt.Sprintf("start a fresh %s agent with the brief %s; when it has written its receipt, run `abcd implement receipt %s`",
-			lane.Awaiting.Role, lane.Awaiting.Brief, lane.Awaiting.Receipt)
+	if a := lane.awaiting(); a != nil {
+		return handedMove(*a)
+	}
+	if lane.Stage == StageHeld {
+		return heldMove(lane)
 	}
 	return fmt.Sprintf("run `abcd implement step` to take %s's %s stage", lane.ID, lane.Stage)
 }
@@ -954,11 +954,12 @@ func freeRunID(root *os.Root, m recordid.Minter) (string, error) {
 }
 
 // StatusLanes is the state file read the status block's Now takes
-// (itd-2609212103568351): one row per run in progress, naming its intent and the
-// lane the loop works on — its next stage, and the role it waits on — or, while
-// every opened lane is done and a spec step still waits, the run with its stage
-// "pending". A complete run is not in a lane. An absent tier or run directory
-// holds none. It is a statusblock.LaneReader.
+// (itd-2609212103568351): one entry per run in progress, naming its intent and
+// every lane of it alive (ruling DR6) — each lane's next stage and the roles it
+// waits on, a held lane included — or, while no lane is alive and a spec step
+// still waits, the run with its stage "pending". A complete run is not in a
+// lane. An absent tier or run directory holds none. It is a
+// statusblock.LaneReader.
 func StatusLanes(repoRoot string) ([]statusblock.Started, error) {
 	runs, err := Runs(repoRoot)
 	if err != nil {
@@ -973,15 +974,20 @@ func StatusLanes(repoRoot string) ([]statusblock.Started, error) {
 		if id == "" {
 			id = st.Key
 		}
-		lane := statusblock.Lane{Run: st.RunID, Stage: "pending"}
-		if i := st.current(); i >= 0 {
-			l := st.Lanes[i]
-			lane.Lane, lane.Stage = l.ID, string(l.Stage)
-			if l.Awaiting != nil {
-				lane.Awaiting = l.Awaiting.Role
+		var lanes []statusblock.Lane
+		for _, a := range st.alive() {
+			lane := statusblock.Lane{Run: st.RunID, Lane: a.Lane, Stage: string(a.Stage)}
+			roles := make([]string, 0, len(a.Awaits))
+			for _, aw := range a.Awaits {
+				roles = append(roles, aw.Role)
 			}
+			lane.Awaiting = strings.Join(roles, ", ")
+			lanes = append(lanes, lane)
 		}
-		out = append(out, statusblock.Started{Intent: id, Lane: lane})
+		if len(lanes) == 0 {
+			lanes = []statusblock.Lane{{Run: st.RunID, Stage: "pending"}}
+		}
+		out = append(out, statusblock.Started{Intent: id, Lanes: lanes})
 	}
 	return out, nil
 }

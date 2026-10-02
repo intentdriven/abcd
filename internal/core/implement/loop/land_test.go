@@ -12,8 +12,18 @@ import (
 )
 
 // queueRuleset is a ruleset mirror that gates the default branch through a
-// merge queue merging with method, as .abcd/work/rulesets/ holds it.
+// merge queue merging with method, behind a pull-request rule requiring one
+// approving review, as .abcd/work/rulesets/ holds it.
 func queueRuleset(method string) string {
+	return `{"bypass_actors":[],"conditions":{"ref_name":{"exclude":[],"include":["~DEFAULT_BRANCH"]}},` +
+		`"enforcement":"active","name":"main protection","rules":[{"type":"deletion"},` +
+		`{"parameters":{"required_approving_review_count":1},"type":"pull_request"},` +
+		`{"parameters":{"merge_method":"` + method + `","grouping_strategy":"ALLGREEN"},"type":"merge_queue"}],"target":"branch"}` + "\n"
+}
+
+// unreviewedQueueRuleset gates the default branch through a merge queue with
+// no rule requiring a person's approval.
+func unreviewedQueueRuleset(method string) string {
 	return `{"bypass_actors":[],"conditions":{"ref_name":{"exclude":[],"include":["~DEFAULT_BRANCH"]}},` +
 		`"enforcement":"active","name":"main protection","rules":[{"type":"deletion"},` +
 		`{"parameters":{"merge_method":"` + method + `","grouping_strategy":"ALLGREEN"},"type":"merge_queue"}],"target":"branch"}` + "\n"
@@ -26,7 +36,8 @@ const noQueueRuleset = `{"bypass_actors":[],"conditions":{"ref_name":{"exclude":
 // stubGH is a forge client that records every call in gh.log beside it and
 // answers from files there: pr.json (the open pull requests), body.md (the
 // body the forge holds), state (the pull request's state), footer (a line the
-// "harness" appends to a body at creation). It never reaches a network.
+// "harness" appends to a body at creation), refuse-disarm (present, the forge
+// refuses to withdraw an armed merge). It never reaches a network.
 const stubGH = `#!/bin/sh
 d="$(cd "$(dirname "$0")" && pwd)"
 printf '%s\n' "$*" >> "$d/gh.log"
@@ -52,7 +63,11 @@ case "$1 $2" in
       *) cat "$d/body.md" ;;
     esac ;;
   "pr edit") body_from "$@" ;;
-  "pr merge") : ;;
+  "pr merge")
+    case "$*" in
+      *--disable-auto*) if [ -f "$d/refuse-disarm" ]; then echo "stub gh: the forge refused" >&2; exit 1; fi ;;
+    esac ;;
+  "pr close") : ;;
   *) echo "stub gh: unexpected call: $*" >&2; exit 1 ;;
 esac
 `
@@ -73,6 +88,17 @@ type landFixture struct {
 
 func newLandFixture(t *testing.T, ruleset string) *landFixture {
 	t.Helper()
+	files := map[string]string{}
+	if ruleset != "" {
+		files[".abcd/work/rulesets/main-protection.json"] = ruleset
+	}
+	return newLandFixtureWith(t, files)
+}
+
+// newLandFixtureWith is newLandFixture with the files given (the ruleset
+// mirror, a CODEOWNERS file) committed at the lane's base.
+func newLandFixtureWith(t *testing.T, files map[string]string) *landFixture {
+	t.Helper()
 	repo := loopRepo(t, readyIntent("impact: additive\n", settledQuestions), specWithSteps(""))
 	for _, k := range []string{"GIT_AUTHOR_NAME", "GIT_COMMITTER_NAME"} {
 		t.Setenv(k, "Pat Example")
@@ -81,8 +107,8 @@ func newLandFixture(t *testing.T, ruleset string) *landFixture {
 		t.Setenv(k, "pat@example.com")
 	}
 	repo.Write("AGENTS.md", agentsMarked)
-	if ruleset != "" {
-		repo.Write(".abcd/work/rulesets/main-protection.json", ruleset)
+	for name, body := range files {
+		repo.Write(name, body)
 	}
 	c, err := capture.Capture(capture.CaptureRequest{RepoRoot: repo.Root(), Text: "The widget refuses a blank name.",
 		Severity: "minor", Category: "ux", Source: "agent-observation", FoundDuring: "a landing test",
@@ -118,7 +144,7 @@ func (f *landFixture) validated(t *testing.T) Lane {
 	t.Helper()
 	repo, id := f.repo, f.runID
 	stepTo(t, repo, id, f.stages, StageImplement)
-	res, err := Advance(repo.Root(), id, f.stages, Options{})
+	res, err := advance(repo.Root(), id, f.stages, Options{})
 	if err != nil || res.Awaiting == nil {
 		t.Fatalf("the implement stage awaits an implementer: %+v %v", res, err)
 	}
@@ -142,7 +168,7 @@ func (f *landFixture) validated(t *testing.T) Lane {
 // step advances the run once and fails the test on an error.
 func (f *landFixture) step(t *testing.T) StepResult {
 	t.Helper()
-	res, err := Advance(f.repo.Root(), f.runID, f.stages, Options{})
+	res, err := advance(f.repo.Root(), f.runID, f.stages, Options{})
 	if err != nil {
 		t.Fatalf("landing step: %v", err)
 	}
@@ -246,7 +272,7 @@ func TestTheLandingClosesTheSpecResolvesTheCapturesAndArmsTheMerge(t *testing.T)
 	}
 
 	// No preflight receipt: refused, nothing pushed.
-	_, err := Advance(f.repo.Root(), f.runID, f.stages, Options{})
+	_, err := advance(f.repo.Root(), f.runID, f.stages, Options{})
 	r := mustRefusal(t, err)
 	if r.Stage != string(StageLand) || !strings.Contains(r.Reason, "preflight receipt") || !strings.Contains(r.Remedy, "preflight") {
 		t.Fatalf("a landing without the preflight receipt is refused naming it: %+v", r)
@@ -287,7 +313,7 @@ func TestTheLandingClosesTheSpecResolvesTheCapturesAndArmsTheMerge(t *testing.T)
 	}
 
 	// Not merged yet: the loop waits, and cleans nothing up.
-	_, err = Advance(f.repo.Root(), f.runID, f.stages, Options{})
+	_, err = advance(f.repo.Root(), f.runID, f.stages, Options{})
 	if r := mustRefusal(t, err); !r.Contention || !strings.Contains(r.Reason, "not on") {
 		t.Fatalf("an unmerged lane waits for its merge: %+v", r)
 	}
@@ -348,7 +374,7 @@ func TestNothingIsPushedAfterArming(t *testing.T) {
 	late := laneCommit(t, f.repo, l, "late.txt")
 	preflighted(t, l, late)
 	for range 3 {
-		_, _ = Advance(f.repo.Root(), f.runID, f.stages, Options{})
+		_, _ = advance(f.repo.Root(), f.runID, f.stages, Options{})
 	}
 	if got := f.remoteBranch(t, l.Branch); got != pushed {
 		t.Fatalf("nothing is pushed after arming: the remote moved from %s to %s", pushed, got)
@@ -410,7 +436,7 @@ func TestAClosedPullRequestIsRefusedAndNothingIsCleanedUp(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(f.gh, "state"), []byte("CLOSED\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	_, err := Advance(f.repo.Root(), f.runID, f.stages, Options{})
+	_, err := advance(f.repo.Root(), f.runID, f.stages, Options{})
 	if r := mustRefusal(t, err); r.Contention || !strings.Contains(r.Reason, "closed") {
 		t.Fatalf("a pull request closed without merging is refused, not waited on: %+v", r)
 	}
@@ -447,7 +473,7 @@ func TestAKilledLandingResumesAtTheStepThatDidNotComplete(t *testing.T) {
 	f.validated(t)
 	f.stages = stages
 	f.step(t)
-	if _, err := Advance(f.repo.Root(), f.runID, stages, Options{}); err == nil {
+	if _, err := advance(f.repo.Root(), f.runID, stages, Options{}); err == nil {
 		t.Fatal("the kill surfaces")
 	}
 	f.step(t)
@@ -458,7 +484,7 @@ func TestAKilledLandingResumesAtTheStepThatDidNotComplete(t *testing.T) {
 	}
 	preflighted(t, l, l.HeadSHA)
 	f.step(t)
-	if _, err := Advance(f.repo.Root(), f.runID, stages, Options{}); err == nil {
+	if _, err := advance(f.repo.Root(), f.runID, stages, Options{}); err == nil {
 		t.Fatal("the kill surfaces")
 	}
 	f.step(t)

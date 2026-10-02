@@ -273,6 +273,12 @@ further for it, and `abcd implement step` refuses naming the hand-back.
 
 The run then moves one step per `abcd implement step`, driven by the host session.
 
+The runner configuration is read before the run is created: roles.<role>.runner (host,
+the default, or a runner) and the runners this machine enables under runner.<name> in
+~/.abcd/config.json, each model route admitted against its provider's allowlist. A fault,
+a model route the allowlist does not admit included, is refused at the runner stage and
+nothing is created or launched.
+
 An issue id (iss-N, validated by shape) is built as one lane. Its checks are the
 repository's own drain rule, read as `abcd drain` reads it (the issue is open, nothing
 open blocks it, its category and severity are ones the rule takes, it carries a remedy a
@@ -1381,9 +1387,14 @@ abcd history reconstruct 0123abcd-session
 
 #### `abcd history separation`
 
-Report whether any retained transcript held both a reading and the ledger of one run: Writes nothing; never refuses, exiting 1 naming each such transcript.
+Report whether a retained transcript held both a reading and one run's ledger: Writes a missing store or a legacy corpus move; refuses outside a git checkout.
 
 **Usage:** `abcd history separation`
+
+Report whether any retained transcript held both a reading and the ledger of one run, from
+record metadata alone. The store is resolved as every history read resolves it: a missing
+store is created and a legacy corpus moved into it. A transcript that held both is a finding:
+each is named and the verb exits 1. Outside a git checkout with a commit it refuses.
 
 #### `abcd history show`
 
@@ -1731,8 +1742,10 @@ Hand back the receipt an agent stage of a loop run awaits: Writes the run's stat
 
 **Usage:** `abcd implement receipt <path> [--run <run-id>] [flags]`
 
-Hand back the receipt the run's awaiting lane named when its stage handed work to an
-agent. The path must be the one the stage named. The stage's verifier checks it; a
+Hand back the receipt a lane of the run named when its stage handed work to an agent.
+The path is looked up among every outstanding await of the run, and the lane it belongs
+to advances; a path no await names is refused, naming the awaits there are, and frees
+nothing. The stage's verifier checks it; a verified receipt frees its slot, and a
 receipt that verifies completes the stage and the lane moves to its next stage, and one
 that does not is refused naming what is missing, with the lane left where it was. A
 stage whose verifier this abcd does not carry is refused naming the spec piece that
@@ -1777,7 +1790,9 @@ Render a loop run's record and capture its transcripts: Writes only with --trans
 Render a run's record: every lane with its spec step, branch and head, the implementers'
 receipts the loop verified with the model each runner reported, every verdict the loop
 recorded from a validator's return, the captures each lane fixed, its pull request and
-what its landing did, the transcripts captured into the history store, and the record's
+what its landing did, the route that ran each receipt's or return's agent when a runner
+ran it, every fallback from a routed runner to the host with its count per runner and
+per role, the transcripts captured into the history store, and the record's
 lines. Read-only unless --transcript is given.
 
 --transcript <path>, repeatable, captures each transcript into the history store as
@@ -1855,7 +1870,8 @@ Render the implement loop's runs in this checkout, lane by lane: Writes nothing;
 
 Render the runs `abcd build` started in this checkout, or the one --run names: the
 intent and spec, each lane with its spec step and next stage, what an awaiting lane
-waits on, the pending spec steps, and the run record. Read-only: it writes nothing
+waits on, the pending spec steps, the fallbacks from a routed runner to the host counted
+per runner and per role, and the run record. Read-only: it writes nothing
 and creates nothing. Exit 2 when --run names no run.
 
 **Flags:**
@@ -1868,15 +1884,30 @@ and creates nothing. Exit 2 when --run names no run.
 
 Perform the next stage of an implement loop run's lane and exit: Writes the run's state and the lane's stages; refuses a push with no preflight receipt.
 
-**Usage:** `abcd implement step [--run <run-id>] [flags]`
+**Usage:** `abcd implement step [--run <run-id>] [--release <lane-id> | --discard <lane-id>] [flags]`
 
-Perform the next stage of the run's current lane, write the state, and exit. At a stage
-that hands work to an agent, the result names the agent to start, the brief it is handed
-and the path its receipt goes to; the lane then advances only on
-`abcd implement receipt`, and running `implement step` again re-tells the same thing and
-moves nothing. A lane lands one step of the spec; its stages are how it gets there, and
-when a lane is done the spec's next pending step opens the next lane, and the run
-record names it. A complete run says so.
+Perform the run's next move, write the state, and exit. At a stage that hands work to
+an agent, the result names the agent to start, the brief it is handed and the path its
+receipt goes to; that work advances only on `abcd implement receipt`. A lane lands one
+step of the spec; its stages are how it gets there. A complete run says so.
+
+A run works in parallel up to its ceiling (--sub-agents, pace.sub_agents): each agent
+handed work and not yet verified is a slot, implementers and validators alike. Each call
+first performs a stage the binary owns on any lane (the worktree, the brief, a round's
+close, the landing's steps), which takes no slot and is never held by the ceiling; then,
+while a slot is free, it hands out the first waiting work: a lane already open before a
+new one, the lower spec step first, a round's validators in order, then a new lane's
+implementer. A call that finds the ceiling reached hands out nothing, exits 0 naming
+every lane alive with the role and receipt it awaits, and records the held work with the
+time it was first held. A lane opens for a spec step once every step it needs has
+landed (its `- needs:` line, or by default every earlier step), whatever the ceiling: its
+worktree and brief are made, and its implementer waits for a slot. A landing waiting on
+the forge's merge holds only its own lane: the call moves another and names the wait
+under blocked:; any other refused stage is the call's answer. Landing is one lane at a
+time; a lane whose sibling landed
+since its base is synced first (the default branch merged in with a merge commit, never a
+rebase) and judged by a fresh round, and a conflicting sync goes to a fresh implementer;
+a sync counts no fix round.
 
 The lane's stages, in order: worktree makes the lane's worktree in the machine-scoped
 store, ~/.abcd/worktrees/<root-sha>/<run-id>-<lane-id>, on a branch build/<run-id>-<lane-id>
@@ -1884,10 +1915,10 @@ cut from the default branch; brief renders the lane's brief from that base (the 
 the spec, the conventions of AGENTS.md, the decisions the intent cites, and the spec
 steps before the lane's with what landed each) into the lane's directory of the run;
 implement hands the lane to a fresh implementer and awaits
-its receipt; validate hands the lane's head to validators that did not implement it, one
-fresh agent at a time — a ruthless-reviewer, a security-reviewer and, on the lane whose
-landing closes the spec and ships the intent, an intent-auditor over the whole delivery,
-from the base of the run's first lane to that lane's head (a lane that does not close the
+its receipt; validate hands the lane's head to validators that did not implement it, each
+a fresh agent, side by side up to the ceiling — a ruthless-reviewer, a security-reviewer
+and, on the lane whose landing closes the spec and ships the intent, an intent-auditor over
+the whole delivery, each of the run's lanes' own diff (a lane that does not close the
 spec takes no audit) — and records each verdict itself, parsed from the validator's own
 return. A round one of them did not pass goes to a fresh implementer, who applies each
 finding or rejects it in writing in its report, and the next round judges the new head
@@ -1896,8 +1927,16 @@ which is refused naming the report. The audit passes only when every criterion i
 criterion it could not decide (INCONCLUSIVE) fails the round as a not-met one does, and
 goes to the fresh implementer with the finding. A round that does not pass once the lane
 has taken the run's fix rounds (--fix-rounds, bundled 3) hands the lane back instead: it
-stops as unachievable, the result and the run record name the last round's findings, the
-run starts nothing further for it, and every later step is refused naming the hand-back.
+stops as unachievable, the result and the run record name the last round's findings, and
+the run starts nothing further for it. Its sibling lanes finish: no new lane opens, no
+lane closes the spec, and a sibling whose round passes is held before its push, or before
+arming once its pull request is open (an armed one is disarmed, and where the forge
+refuses the withdrawal the step is refused naming the pull request; one the forge reports
+merged is recorded as landed); once nothing is left to move, a step is refused naming
+the hand-back and each held lane. --release <lane-id> lands a held lane as it is;
+--discard <lane-id> removes its worktree and branch, then closes its pull request, and
+leaves its step unlanded. Either is refused, changing nothing,
+for a lane that is not held or while any lane still has work.
 land follows a passing round, one step per call: it checks the lane's worktree is clean
 at the judged head; on the lane that closes the spec it runs `spec close` in the lane's
 worktree and ingests the audit that lane took, and for every capture the lane's receipts
@@ -1918,6 +1957,22 @@ A stage whose body this abcd does not carry is refused naming the spec piece tha
 delivers it, and the run is unchanged. A stage that fails leaves the state as it was,
 so the next invocation performs it again; a completed stage is never repeated.
 
+A role routed to a command-line runner (roles.<role>.runner: claude or opencode, enabled
+under runner.<name> in ~/.abcd/config.json) is started by the step itself when the stage
+hands the lane out: the runner gets the brief and the receipt path the host would get,
+runs in the lane's worktree (claude with the role's tools granted and nothing else asked,
+opencode under its own permission configuration), its
+transcript is stored in abcd's history store, and its receipt is verified by the stage's
+own verifier, so a verified one completes the stage in the same call and the result and
+the run record name the route that ran it. The claude runner runs in print mode with
+--bare, so the repository's hooks, plugins and configured servers do not run; opencode
+runs in run mode with --pure. A runner that is absent, refuses, fails, runs past its time,
+or writes a receipt the verifier refuses leaves the lane awaiting and the host is handed
+the role as with no runner, and the call records one fallback naming the role, the runner
+asked for, the reason and the route that runs it. A role left unset is the host's, and
+the call is exactly the host-driven step. A step that re-tells an await starts nothing.
+An interrupt kills the runner's process group.
+
 The run's window clock: once the run's working window has elapsed, the call starts
 nothing, writes next_eligible_at (now plus the run's pause) and exits 0 naming it; an
 agent already started may still hand back its receipt. Before next_eligible_at the call
@@ -1929,7 +1984,9 @@ refusal, exit 3 on a pause or a locked run state.
 **Flags:**
 
 ```
-      --run string   the run to step (run-<16 digits>); the one run in progress when omitted
+      --discard string   discard a held lane (lane-<n>): close its pull request, remove its worktree and branch
+      --release string   land a held lane as it is (lane-<n>), once no lane has work left
+      --run string       the run to step (run-<16 digits>); the one run in progress when omitted
 ```
 
 ### `abcd inbox`
@@ -2981,7 +3038,7 @@ Report what the website declares and what was built: Writes nothing; refuses any
 
 #### `abcd site build`
 
-Render the website into the output directory: Writes only inside that directory; refuses a non-empty directory it did not write.
+Render the website into the output directory: Writes there, plus a missing label into site-src/ui.json; refuses a non-empty directory it did not write.
 
 **Usage:** `abcd site build [flags]`
 
@@ -3267,6 +3324,6 @@ install's shape, and swaps nothing.
 **Flags:**
 
 ```
-      --check   fetch the latest release once and compare it with this binary, swapping nothing (the only network touch besides the update itself; abcd never fetches implicitly — adr-38); names its source and the command that takes the update
+      --check   fetch the latest release once and compare it with this binary, swapping nothing (it reaches the network only when invoked; abcd never fetches implicitly — adr-38); names its source and the command that takes the update
       --yes     skip the TTY confirmation of a freshly resolved tag
 ```

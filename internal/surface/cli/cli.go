@@ -3090,7 +3090,7 @@ func newIntentAuditCommand(asJSON *bool) *cobra.Command {
 			}
 			// Only a receipt still owed has a request for the host to act on; a
 			// terminal one is reported as it stands, with no request block.
-			if res.Status != "owed" && res.Status != "already_owed" {
+			if res.Status != "owed" && res.Status != "already_owed" && res.Status != "check_owed" {
 				route = nil
 			}
 			return render(cmd.OutOrStdout(), *asJSON, withRequest(res, route), func(w io.Writer) {
@@ -3104,6 +3104,10 @@ func newIntentAuditCommand(asJSON *bool) *cobra.Command {
 						strings.ReplaceAll(strings.TrimPrefix(res.Status, "already_"), "_", "-"))
 				case res.Status == "already_owed":
 					fmt.Fprintf(w, "  request rewritten: %s\n", res.RequestPath)
+				case res.Status == "check_owed":
+					// An ingested verdict that left a check owed (ruling DQ1c)
+					// is re-run from the same receipt.
+					fmt.Fprintf(w, "  request rewritten for the re-run the audit-owed flag asks for: %s\n", res.RequestPath)
 				default:
 					fmt.Fprintf(w, "  request: %s\n", res.RequestPath)
 				}
@@ -3167,6 +3171,7 @@ func newIntentAuditCommand(asJSON *bool) *cobra.Command {
 							res.Conditions, res.Untested)
 					}
 				}
+				renderAuditOwed(w, res)
 				// The condition blocks this verdict did not override: its rationale
 				// named none of their occasions (spc-2609020626046252). A re-ingest
 				// for the same receipt naming one replaces the ingested verdict.
@@ -3190,11 +3195,33 @@ func newIntentAuditCommand(asJSON *bool) *cobra.Command {
 	return auditCmd
 }
 
+// renderAuditOwed prints what an ingest left owed or cleared (ruling DQ1c):
+// the intent stays shipped, the flag names the unmet or undecided criteria,
+// and one issue carries the check until a passing re-audit resolves it.
+func renderAuditOwed(w io.Writer, res intent.IngestVerdictResult) {
+	if len(res.AuditOwed) > 0 {
+		fmt.Fprintf(w, "  audit owed: %s — the intent stays shipped and its Audit Notes carry the flag\n",
+			strings.Join(res.AuditOwed, " · "))
+		switch {
+		case res.OwedIssue == "":
+			fmt.Fprintln(w, "  no issue carries the check: no ledger is linked to file one")
+		case res.OwedIssueLinked:
+			fmt.Fprintf(w, "  carried by %s, already open\n", res.OwedIssue)
+		default:
+			fmt.Fprintf(w, "  captured %s to carry the check; commit it with the record\n", res.OwedIssue)
+		}
+	}
+	if res.FlagCleared != "" {
+		fmt.Fprintf(w, "  audit-owed flag cleared: resolved %s\n", res.FlagCleared)
+	}
+}
+
 // runOwedReviews is bare `abcd intent audit`: the read-only listing of every
 // shipped intent's fidelity-review debt, from the intent store's one reader of
 // the review marker (itd-2609150819445595). The owed set is OWED plus no marker;
 // a dead-lettered review is listed under its own heading with its reason and is
-// not counted; an ingested one is not listed. It writes nothing and exits 0,
+// not counted; an ingested one is listed only when its verdict left a check
+// owed (ruling DQ1c), under its own heading. It writes nothing and exits 0,
 // and no gate reads it. It names the re-emit command, never the request file:
 // the request lives in the gitignored local tier and may have been swept.
 func runOwedReviews(cmd *cobra.Command, asJSON bool) error {
@@ -3219,6 +3246,21 @@ func runOwedReviews(cmd *cobra.Command, asJSON bool) error {
 				fmt.Fprintf(w, "  %s  receipt %s — re-emit: %s\n", e.IntentID, e.ReceiptID, e.ReEmit)
 			case e.State == intent.ReviewNone:
 				fmt.Fprintf(w, "  %s  no receipt (one is minted on re-emit) — re-emit: %s\n", e.IntentID, e.ReEmit)
+			}
+		}
+		if l.AuditOwed > 0 {
+			// Ruling DQ1c: an ingested verdict that failed or could not
+			// decide a criterion leaves a check owed, carried by an issue.
+			fmt.Fprintln(w, "audit owed (reviewed, flagged; not counted as owed):")
+			for _, e := range l.Entries {
+				if !e.AuditOwed {
+					continue
+				}
+				carried := "no issue carries it"
+				if e.AuditOwedIssue != "" {
+					carried = "carried by " + e.AuditOwedIssue
+				}
+				fmt.Fprintf(w, "  %s  receipt %s — %s — re-run: %s\n", e.IntentID, e.ReceiptID, carried, e.ReEmit)
 			}
 		}
 		if l.DeadLettered > 0 {
@@ -3455,6 +3497,9 @@ func newSpecCommand(asJSON *bool) *cobra.Command {
 						fmt.Fprintf(w, "  carried %d unlanded step(s) into %s:\n", n, res.Remainder.ID)
 						for _, st := range res.RemainderSteps {
 							fmt.Fprintf(w, "    %d. %s\n", st.Number, termsafe.Sanitize(st.Title))
+						}
+						for _, rw := range res.NeedsRewritten {
+							fmt.Fprintf(w, "  rewrote step %d's needs line: %s -> %s\n", rw.Step, termsafe.Sanitize(rw.Before), termsafe.Sanitize(rw.After))
 						}
 					}
 				}
