@@ -956,9 +956,13 @@ func TestASerialStateMigratesItsAwaitAndVersion9IsHeldToItsShape(t *testing.T) {
 			serial(doc, lane)
 			lane["syncs"] = []any{map[string]any{"at": "2026-09-30T09:00:00Z", "siblings": []any{}, "merged": "x", "conflicted": false}}
 		}, "`syncs`"},
-		"v7 held":     {7, func(doc, lane map[string]any) { serial(doc, lane); lane["stage"] = "held" }, "`held`"},
-		"v8 awaits":   {8, func(doc, lane map[string]any) {}, "`awaits`"},
-		"v8 held":     {8, func(doc, lane map[string]any) { serial(doc, lane); lane["stage"] = "held" }, "`held`"},
+		"v7 held":   {7, func(doc, lane map[string]any) { serial(doc, lane); lane["stage"] = "held" }, "`held`"},
+		"v8 awaits": {8, func(doc, lane map[string]any) {}, "`awaits`"},
+		"v8 held":   {8, func(doc, lane map[string]any) { serial(doc, lane); lane["stage"] = "held" }, "`held`"},
+		"v8 check_wait_since": {8, func(doc, lane map[string]any) {
+			serial(doc, lane)
+			lane["landing"] = map[string]any{"check_wait_since": "2026-09-30T09:00:00Z"}
+		}, "`check_wait_since`"},
 		"v9 awaiting": {9, func(doc, lane map[string]any) { lane["awaiting"] = lane["awaits"].([]any)[0] }, "`awaiting`"},
 	} {
 		as(tc.version, tc.edit)
