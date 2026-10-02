@@ -551,7 +551,13 @@ until the last step.
    uses (`gh`), with a title and a body written from the run's records (the
    step, the spec, the intent, the passing round's verdicts, the close, each
    resolved capture, and the `Delivers:` and `Resolves:` lines) and passed
-   through the outbound scrub. After creating it, the loop re-reads the body the
+   through the outbound scrub. The body ends with `Assisted-by: abcd:<version>`,
+   abcd having composed it from record facts (the version as the pick commit
+   names it), then one `Assisted-by:` per distinct model the lane's receipts
+   reported, in the order first reported, since the change it describes carries
+   those models' work and a squash merge may adopt it as the commit message; a
+   lane whose receipts report no model, or name abcd as one, is refused before
+   the forge is called, as the records commit is. After creating it, the loop re-reads the body the
    forge holds, and a session URL or tool footer the harness appended is
    stripped and the body read again; one that survives is refused. A pull
    request a killed invocation opened is found by the forge's listing of the

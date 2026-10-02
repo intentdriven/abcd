@@ -221,7 +221,7 @@ func TestAnIssueLandingNamesTheIssueNotASpec(t *testing.T) {
 	st := State{RunID: "run-1", Key: eligibleIssue}
 	lane := Lane{ID: "lane-1", Key: eligibleIssue, SpecStep: 1, StepTitle: "The renderer panics",
 		Resolves: []Resolution{{Issue: eligibleIssue, Commit: strings.Repeat("a", 40)}}}
-	for name, got := range map[string]string{"title": prTitle(st, lane), "body": prBody(st, lane)} {
+	for name, got := range map[string]string{"title": prTitle(st, lane), "body": prBody(st, lane, nil)} {
 		if !strings.Contains(got, eligibleIssue) || strings.Contains(got, "step 1 of") {
 			t.Errorf("the pull request %s names the issue and no spec step: %q", name, got)
 		}

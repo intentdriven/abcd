@@ -375,6 +375,10 @@ over each of the run's lanes' own diff.
 4. It opens the pull request through `gh`, with a body written from the run's
    records and passed through the outbound scrub, then re-reads the body the
    forge holds and strips a session URL or tool footer the harness appended.
+   The body ends with `Assisted-by: abcd:<version>` (abcd wrote its text) and
+   then one `Assisted-by:` per model the lane's receipts reported (the change
+   carries their work); a lane whose receipt reports no model is refused before
+   the pull request is opened.
 5. It reads the merge rule from the ruleset mirror (`.abcd/work/rulesets/`) at
    the lane's base: where a merge queue gates the default branch AND a ruleset
    requires a person's approval (an approving review count of one or more, or

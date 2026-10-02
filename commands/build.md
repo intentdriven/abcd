@@ -307,8 +307,10 @@ A lane's stages run in order:
    when `step` refuses for want of one, run `make preflight` in the lane's
    worktree, then `step` again; never push, skip a hook or mint a receipt by
    hand. It opens the pull request through `gh`, with a body built from the
-   run's records and passed through the outbound scrub, re-reads the body the
-   forge holds and strips a session URL or tool footer. It arms auto-merge with
+   run's records and passed through the outbound scrub, ending with
+   `Assisted-by: abcd:<version>` and then one `Assisted-by:` per model the
+   lane's receipts reported, re-reads the body the forge holds and strips a
+   session URL or tool footer. It arms auto-merge with
    the merge-queue method the ruleset mirror (`.abcd/work/rulesets/`) names
    only where that mirror also requires a person's approval (an approving
    review count of one or more, or a code-owner review with a CODEOWNERS file

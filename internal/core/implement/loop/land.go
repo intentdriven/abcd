@@ -253,10 +253,7 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 	// no model to disclose is refused with its worktree untouched.
 	assisted, gap := assistedByTrailers(lane.Receipts)
 	if gap != "" {
-		return Outcome{}, refuse(string(StageLand), "", lane.ID,
-			"the landing's records commit carries text the lane's implementer composed, and "+gap+", so its Assisted-by: trailer cannot name the model",
-			"have the implementer's receipt report the model its harness runs (\"model\": \"<vendor>:<model-id>\", or a bare claude-* id), "+
-				"send the lane back through a fix round whose receipt reports it, then run `abcd implement step` again; the loop never claims no assistance for a model's text")
+		return Outcome{}, modelGap(*lane, "the landing's records commit carries text the lane's implementer composed", gap)
 	}
 
 	wt := lane.Worktree
@@ -385,6 +382,16 @@ func assistedByTrailers(rs []ReceiptRecord) ([]string, string) {
 		}
 	}
 	return out, ""
+}
+
+// modelGap is the refusal of a landing step whose text must name the models
+// the lane's receipts reported, when gap (assistedByTrailers') says one cannot
+// be named. what says why the step's text discloses a model.
+func modelGap(lane Lane, what, gap string) error {
+	return refuse(string(StageLand), "", lane.ID,
+		what+", and "+gap+", so its Assisted-by: trailer cannot name the model",
+		"have the implementer's receipt report the model its harness runs (\"model\": \"<vendor>:<model-id>\", or a bare claude-* id), "+
+			"send the lane back through a fix round whose receipt reports it, then run `abcd implement step` again; the loop never claims no assistance for a model's text")
 }
 
 // hookedGit runs one git command in the lane's worktree with the repository's
@@ -544,7 +551,12 @@ func findPR(c Context, lane Lane) (*openPR, error) {
 }
 
 // prTitle and prBody are the pull request's title and body, built from the run's
-// records.
+// records. The body ends with its trailers: the Delivers: and Resolves: lines
+// the records commit carries, then the abcd label (abcd composed the text from
+// record facts, as it does the pick commit's), then assisted, the Assisted-by:
+// lines assistedByTrailers derives from the lane's receipts, since the change
+// the body describes carries those models' work and a squash merge may adopt
+// the body as its message (ruling R4, the technical facilitator, 2026-10-02).
 func prTitle(st State, lane Lane) string {
 	if iss := st.Issue(); iss != "" {
 		return fmt.Sprintf("fix(%s): %s", iss, lane.StepTitle)
@@ -552,7 +564,7 @@ func prTitle(st State, lane Lane) string {
 	return fmt.Sprintf("build(%s): %s, step %d of %s", st.Intent, lane.StepTitle, lane.SpecStep, st.Spec)
 }
 
-func prBody(st State, lane Lane) string {
+func prBody(st State, lane Lane, assisted []string) string {
 	var b strings.Builder
 	p := func(format string, a ...any) { fmt.Fprintf(&b, format, a...) }
 	if iss := st.Issue(); iss != "" {
@@ -576,9 +588,8 @@ func prBody(st State, lane Lane) string {
 		p("- It resolves %s, fixed by %s.\n", r.Issue, shortSHA(r.Commit))
 		trailers = append(trailers, "Resolves: "+r.Issue)
 	}
-	if len(trailers) > 0 {
-		p("\n%s\n", strings.Join(trailers, "\n"))
-	}
+	trailers = append(append(trailers, composedAssistedBy()), assisted...)
+	p("\n%s\n", strings.Join(trailers, "\n"))
 	return b.String()
 }
 
@@ -596,7 +607,14 @@ func landPullRequest(c Context, lane *Lane) (Outcome, error) {
 	}
 	verb := "found"
 	if pr == nil {
-		body, _, err := scanner.ScrubOutbound(c.RepoRoot, prBody(c.State, *lane), "the pull request's body")
+		// The disclosure is settled before the forge is called. The records
+		// commit settled it already on a lane that records something; a lane
+		// that records nothing made no records commit, so it is settled here.
+		assisted, gap := assistedByTrailers(lane.Receipts)
+		if gap != "" {
+			return Outcome{}, modelGap(*lane, "the pull request's body describes a change carrying text the lane's implementer composed", gap)
+		}
+		body, _, err := scanner.ScrubOutbound(c.RepoRoot, prBody(c.State, *lane, assisted), "the pull request's body")
 		if err != nil {
 			return Outcome{}, refuse(string(StageLand), "", lane.ID, fsutil.RedactHome(err.Error()), "settle what the scrub names, then run `abcd implement step` again")
 		}

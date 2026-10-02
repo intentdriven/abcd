@@ -12,6 +12,9 @@ package loop
 // The landing's records commit (land.go) is not one of them: it carries prose
 // a model composed, so it names the models the lane's receipts reported, and a
 // receipt that names abcd as its model is refused there rather than copied.
+// The landing's pull-request body (prBody, land.go) carries both: abcd composed
+// its text, so it declares the label, and the change it describes carries the
+// models' work, so the label is followed by their lines (ruling R4).
 
 import (
 	"github.com/intentdriven/abcd/internal/core"

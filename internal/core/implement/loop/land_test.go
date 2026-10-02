@@ -302,6 +302,9 @@ func TestTheLandingClosesTheSpecResolvesTheCapturesAndArmsTheMerge(t *testing.T)
 			t.Fatalf("the body is built from the records (%q missing):\n%s", want, body)
 		}
 	}
+	if !strings.HasSuffix(string(body), "\n"+composedAssistedBy()+"\nAssisted-by: Claude:claude-test-5\n") {
+		t.Fatalf("the body ends with the abcd label and the receipt's model:\n%s", body)
+	}
 	if l = currentLane(t, f.repo, f.runID); l.PR != 7 {
 		t.Fatalf("the state records the pull request: %+v", l)
 	}
