@@ -56,4 +56,4 @@ This intent closes the loop. Once abcd is mature enough to reliably self-disemba
 
 ## Audit Notes
 
-_Empty. Populated by intent-fidelity-reviewer when intent moves to shipped/._
+- 2026-10-02 — Declared mutual pair with itd-14 (the technical facilitator's ruling CY2 of 2026-10-02, verbatim: "SAME, DECLARED PAIRS — each direction names the piece it needs"). This record's builds_on itd-15 needs the self-dogfooded SOTA audit's per-agent findings, which this record's sixth criterion writes into the affected prompts' changelogs as `audit:` entries. itd-15's builds_on itd-14 needs the structured per-prompt changelog that replaces the `## Last SOTA Audit:` footer, which the audit's low-risk self-applied footer updates write into. Both edges stand. The record has no field record-lint's edge_cycle rule reads as a declared pair, so the linter still reports the cycle at warn until it does (iss-2610020836255174). Each piece is read from the two records' own scope, criteria and decisions; the ruling names none. Recorded by lane rd2 of autonomous run A.

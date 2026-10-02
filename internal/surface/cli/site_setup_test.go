@@ -87,6 +87,65 @@ func TestSiteSetupRefusesAnUnmanagedFolder(t *testing.T) {
 	}
 }
 
+// TestSiteSetupNeverInstallsGhOnAScriptedYes is the end-to-end no at site
+// setup (the DQ3 ruling): with gh missing from a repository whose origin is on
+// the forge, a piped y and --yes each reach the gh offer through the CLI and
+// decline it, so the install step is never attempted (brew's absence would
+// otherwise be the reason), no question is put to the pipe, the notes carry
+// why and the command to run by hand, and the forge stage is not reached.
+func TestSiteSetupNeverInstallsGhOnAScriptedYes(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		args []string
+		why  string
+	}{
+		{"a piped y", []string{"--json", "site", "setup", "--name", "example-site"}, "typed at a terminal"},
+		{"--yes", []string{"--json", "site", "setup", "--name", "example-site", "--yes"}, "--yes never installs a tool"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			r := gittest.NewRepo(t)
+			r.Write("AGENTS.md", "# Example\n\n<!-- BEGIN ABCD -->\nmanaged\n<!-- END ABCD -->\n")
+			r.Write(".abcd/positioning.json", `{"schema_version": 1, "block": {"file": ".abcd/development/IDENTITY.md", "heading": "Identity (canonical)"}, "severity": "warn", "surfaces": []}`+"\n")
+			r.Write(".abcd/development/IDENTITY.md", "# Identity\n\n## Identity (canonical)\n\n- **Title:** Example\n- **Tagline:** An example.\n")
+			r.Write("docs/README.md", "# Example\n\nThe example's documentation.\n")
+			r.Commit("the example")
+			r.Git("remote", "add", "origin", "https://github.com/example-owner/example-site.git")
+			t.Chdir(r.Root())
+			toolFreePath(t)
+
+			out, errOut, err := runCLIPipedStdinSplit(t, "y\ny\ny\n", tc.args...)
+			var res struct {
+				Notes        []string `json:"notes"`
+				Environments []struct {
+					Status string `json:"status"`
+				} `json:"environments"`
+			}
+			if jerr := json.Unmarshal(out, &res); jerr != nil {
+				t.Fatalf("not JSON (err %v): %v\n%s\n%s", err, jerr, out, errOut)
+			}
+			notes := strings.Join(res.Notes, "\n")
+			if !strings.Contains(notes, tc.why) || !strings.Contains(notes, "brew install gh") {
+				t.Errorf("the notes lack %q or the command to run:\n%s", tc.why, notes)
+			}
+			if strings.Contains(notes, "is not on PATH, so the step cannot run") {
+				t.Errorf("a scripted yes reached the install step:\n%s", notes)
+			}
+			if strings.Contains(string(errOut), "[y/N]") {
+				t.Errorf("the install was asked of a pipe:\n%s", errOut)
+			}
+			if len(res.Environments) == 0 {
+				t.Fatalf("no environment reported:\n%s", out)
+			}
+			for _, e := range res.Environments {
+				if e.Status != "unreachable" {
+					t.Errorf("an environment is %q with gh declined:\n%s", e.Status, out)
+				}
+			}
+		})
+	}
+}
+
 // TestSiteSetupTextAlignsEveryStatus renders a result whose statuses differ in
 // length, `unrestricted` among them: every file and environment name starts in
 // one column, and an environment's change lines sit under its name.

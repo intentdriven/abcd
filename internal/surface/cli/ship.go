@@ -756,9 +756,20 @@ func renderCut(w io.Writer, verb string, cut release.Cut) {
 	renderEntries(w, "removed", cut.Removed)
 	renderPageSet(w, cut)
 	// Every planned intent that names a release it must land by, reported and
-	// never refused on (itd-2609212103572513).
+	// never refused on (itd-2609212103572513). A target the cut passes is
+	// marked as moving to next, so the dry run says what the write will do
+	// rather than leaving the comparison with the derived tag to the reader
+	// (iss-2610020718369838); a target past the cut keeps its line unchanged.
+	moving := map[string]bool{}
+	for _, m := range cut.Moves {
+		moving[m.ID+"\x00"+m.Path] = true
+	}
 	for _, tg := range cut.Targets {
-		fmt.Fprintf(w, "  targeted:   %s\n", targetLine(tg))
+		line := targetLine(tg)
+		if moving[tg.ID+"\x00"+tg.Path] {
+			line += "; the cut moves it to " + launch.TargetNext
+		}
+		fmt.Fprintf(w, "  targeted:   %s\n", line)
 	}
 	if cut.TargetsError != "" {
 		fmt.Fprintf(w, "  targeted:   not read — %s\n", termsafe.Sanitize(scrubPaths(errors.New(cut.TargetsError))))

@@ -174,6 +174,13 @@ type Cut struct {
 	// empty when it was. It is reported rather than raised: a report that
 	// failed the cut would make the one field ruled never to refuse a refusal.
 	TargetsError string `json:"targets_error,omitempty"`
+	// Moves is every target in Targets this cut passes without shipping it —
+	// launch.MissedTargets over Targets and NextTag — each of which the ingest
+	// rewrites to `next` and names in the dated section. The dry run carries
+	// it so a reader sees the moves before anything is written
+	// (iss-2610020718369838), and the ingest moves exactly this list, so the
+	// two cannot disagree. A refused cut derives no tag and moves nothing.
+	Moves []launch.TargetMove `json:"target_moves,omitempty"`
 	// Refusals is every reason the cut cannot proceed, in the order they are
 	// checked. All of them are reported, not just the first: an operator fixing
 	// a release should see the whole list in one pass.
@@ -308,6 +315,9 @@ func sealed(cut Cut) Cut {
 		cut.NextTag = ""
 		cut.Bumped = false
 	}
+	// After the tag is settled, never before: a refused cut has none, and
+	// MissedTargets moves nothing without one.
+	cut.Moves = launch.MissedTargets(cut.Targets, cut.NextTag)
 	return cut
 }
 

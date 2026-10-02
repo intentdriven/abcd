@@ -218,10 +218,11 @@ type ContributorsUI struct {
 	// MergesExcluded names what the disclosure rate leaves out, so the
 	// denominator is never a silent choice.
 	MergesExcluded string `json:"merges_excluded"`
-	// DeclaredNone and Undeclared label the two commit-level facts stated
-	// beneath the occurrence chart rather than drawn inside it.
-	DeclaredNone string `json:"declared_none"`
-	Undeclared   string `json:"undeclared"`
+	// DeclaredNone, ComposedByAbcd and Undeclared label the three commit-level
+	// facts stated beneath the occurrence chart rather than drawn inside it.
+	DeclaredNone   string `json:"declared_none"`
+	ComposedByAbcd string `json:"composed_by_abcd"`
+	Undeclared     string `json:"undeclared"`
 }
 
 // Inverse names a directed relation read from the record it points at. An

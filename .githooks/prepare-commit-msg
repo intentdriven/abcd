@@ -22,8 +22,9 @@
 # `Assisted-by: None` either: None is a per-commit declaration that no tool
 # touched the work, and a standing setting that stamped it on every commit would be
 # a false disclosure the first time a tool did. A configured `None` is refused
-# with a notice, as is any value outside the gate's `<Vendor>:<model-version>`
-# shape.
+# with a notice, as is a configured abcd label (`abcd:<version>`, which abcd alone
+# writes, on the commits it composes from record facts) and any value outside the
+# gate's `<Vendor>:<model-version>` shape.
 #
 # WHICH SOURCES (githooks(5): the second argument), checked on git 2.52:
 #
@@ -128,6 +129,16 @@ if [[ $value =~ ^[Nn][Oo][Nn][Ee]$ ]]; then
   echo "prepare-commit-msg: Assisted-by NOT written — abcd.assistedBy is 'None', and a standing" >&2
   echo "                    setting cannot declare that no tool touched a commit. Write" >&2
   echo "                    'Assisted-by: None' into the message of each commit it is true for." >&2
+  exit 0
+fi
+# The abcd label (`abcd:<version>`, the gate's third form) is named on its own too:
+# abcd writes it on the commits it composes from record facts, and a standing
+# setting that stamped it on a person's or a model's commit would claim abcd
+# composed text it did not.
+if [[ $value =~ ^[Aa][Bb][Cc][Dd]: ]]; then
+  echo "prepare-commit-msg: Assisted-by NOT written — abcd.assistedBy names abcd, and the abcd label" >&2
+  echo "                    is written by abcd itself on the commits it composes from record" >&2
+  echo "                    facts; a commit you or a model wrote names that model, or None." >&2
   exit 0
 fi
 if ! [[ $value =~ ^[A-Za-z][A-Za-z0-9._-]*:[A-Za-z0-9._-]+(\[[A-Za-z0-9._-]+\])?$ ]]; then

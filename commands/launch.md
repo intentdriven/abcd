@@ -394,7 +394,13 @@ The cut also lists every planned intent that names a release it must land by
 the intent store could not be read): targeted and not shipped. The list never
 refuses the cut and never changes the exit code; relay it with the report, and
 the ingest in step 3 reports the same list beside what it wrote, and moves
-each target the cut passes to `next` (below).
+each target the cut passes to `next` (below). The cut names those moves before
+anything is written: `target_moves` (`id`, `path`, `from`) lists every target
+the cut passes — `next`, which names this release, or a tag at or below the
+derived `next_tag` — and the render ends each such `targeted:` line with `; the
+cut moves it to next`. A target past the cut keeps its line unmarked, and a
+refused cut derives no version and lists no move. The ingest moves exactly
+this list, so relay it as what the write will change.
 
 The emit render ends with the **receipts protocol**, a numbered checklist the
 binary composes from the committed `release.yml`: commit the roll, run each

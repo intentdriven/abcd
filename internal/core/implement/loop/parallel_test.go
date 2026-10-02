@@ -622,6 +622,9 @@ func TestASiblingLandingSyncsTheLaneBeforeItArms(t *testing.T) {
 	if len(parents) != 3 || parents[1] != judged || parents[2] != l2.Syncs[0].Merged {
 		t.Fatalf("the sync is a merge commit over the judged head, never a rebase: %v", parents)
 	}
+	if msg := f.repo.Git("log", "-1", "--format=%B", l2.HeadSHA); !strings.Contains("\n"+msg+"\n", "\nAssisted-by: abcd:dev\n") {
+		t.Fatalf("the sync's merge commit, composed by abcd from the run's state, declares abcd (ruling PC1):\n%s", msg)
+	}
 	f.roundPassed(t, "lane-2")
 	l2 = f.lane(t, "lane-2")
 	r := l2.Validation[len(l2.Validation)-1]

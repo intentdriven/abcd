@@ -1,9 +1,6 @@
 package site
 
 import (
-	"os"
-	"path/filepath"
-	"regexp"
 	"strings"
 	"testing"
 
@@ -136,34 +133,70 @@ func TestAuthorshipChartsOnlyTrailerShapedValues(t *testing.T) {
 	}
 }
 
-// TestAssistedByGrammarMatchesTheGate keeps ONE definition of the attribution
-// trailer's grammar honest across the two languages that have to know it.
+// TestAuthorshipCountsTheAbcdLabelApart pins the third accepted trailer form
+// (iss-2610020727129199). `Assisted-by: abcd:<version>` says abcd composed the
+// commit's text from record facts and that no model wrote it (ruling PC1), so it
+// is neither assistance nor a declaration of none: it is never a model bar, never
+// adds abcd to the vendor set, never counts toward the disclosure rate's
+// numerator, and is stated as its own commit-level figure beside DeclaredNone.
 //
-// `scripts/check-attribution.sh` is where the grammar is decided — it is the
-// gate that refuses a commit, it carries the reasoning for every character of
-// the pattern (iss-214's bracketed context-window suffix, iss-215's unpinned
-// vendor half), and it runs in CI with no Go available, so it cannot ask this
-// package what the grammar is. The chart has to apply the same rule to decide
-// what is a model name, and a second regexp copied into Go would drift silently
-// — the copy would go on charting what the gate had started refusing.
-//
-// So the Go half is derived by ASSERTION rather than by import: it holds the
-// value half alone, and this test reconstructs the gate's whole line from it and
-// requires the two to be the same string. A change to either without the other
-// fails here, naming both files.
-func TestAssistedByGrammarMatchesTheGate(t *testing.T) {
-	const rel = "scripts/check-attribution.sh"
-	b, err := os.ReadFile(filepath.Join(repoRoot(), filepath.FromSlash(rel)))
+// A commit that names a model as well is assisted, whatever else it declares: a
+// model's text is in it. A label naming abcd in a shape the gate refuses
+// (`ABCD:latest`) is still abcd's claimed provenance, never a model.
+func TestAuthorshipCountsTheAbcdLabelApart(t *testing.T) {
+	r := gittest.NewRepo(t)
+	r.Commit("feat: one\n\nAssisted-by: Vendor:model-a")
+	r.Commit("chore(implement): pick\n\nAssisted-by: abcd:dev")
+	r.Commit("chore(implement): pick again\n\nAssisted-by: abcd:v0.12.0")
+	r.Commit("chore: malformed label\n\nAssisted-by: ABCD:latest")
+	r.Commit("feat: both\n\nAssisted-by: abcd:dev\nAssisted-by: Vendor:model-b")
+	r.Commit("chore: human\n\nAssisted-by: None")
+	r.Commit("chore: undeclared")
+
+	a, err := LoadAuthorship(r.Root())
 	if err != nil {
-		t.Fatalf("read %s: %v", rel, err)
+		t.Fatalf("LoadAuthorship: %v", err)
 	}
-	m := regexp.MustCompile(`(?m)^TRAILER_RE='([^']*)'$`).FindStringSubmatch(string(b))
-	if m == nil {
-		t.Fatalf("%s: no TRAILER_RE assignment found; the gate or this parser changed shape", rel)
+	for _, m := range a.ByModel {
+		if strings.HasPrefix(strings.ToLower(m.Model), "abcd:") {
+			t.Errorf("the abcd label is charted as a model bar: %+v", a.ByModel)
+		}
 	}
-	want := "^" + assistedByTrailerKey + " " + assistedByValuePattern + "$"
-	if m[1] != want {
-		t.Errorf("%s's TRAILER_RE is\n\t%s\nbut internal/core/site's grammar reconstructs\n\t%s\n"+
-			"one of the two moved; the chart and the gate must read the same trailer", rel, m[1], want)
+	if len(a.ByModel) != 2 || a.Assisted != 2 {
+		t.Errorf("by_model %+v (assisted %d), want the two vendor models alone", a.ByModel, a.Assisted)
+	}
+	if a.AssistedCommits != 2 {
+		t.Errorf("assisted commits = %d, want 2: an abcd-composed commit discloses no AI assistance", a.AssistedCommits)
+	}
+	if a.ComposedByAbcd != 3 {
+		t.Errorf("abcd-composed commits = %d, want 3", a.ComposedByAbcd)
+	}
+	if a.DeclaredNone != 1 || a.Undeclared != 1 {
+		t.Errorf("declared none %d, undeclared %d, want 1 and 1", a.DeclaredNone, a.Undeclared)
+	}
+	if sum := a.AssistedCommits + a.ComposedByAbcd + a.DeclaredNone + a.Undeclared; sum != a.Authored {
+		t.Errorf("the commit-level figures sum to %d, but %d commits were authored", sum, a.Authored)
+	}
+}
+
+// TestTheAbcdLabelNamesNoVendor: the bots row is derived from the vendors the
+// trailers name together with a machine's address, and abcd is not a vendor. An
+// author named for the label's vendor, at an address no person reads, is not
+// demoted by the label: only a vendor a model trailer names takes part in the
+// conjunction.
+func TestTheAbcdLabelNamesNoVendor(t *testing.T) {
+	r := gittest.NewRepo(t)
+	r.Commit("chore(implement): pick\n\nAssisted-by: abcd:dev")
+	r.Git("-c", "user.name=abcd", "-c", "user.email=noreply@abcd.example.invalid",
+		"commit", "--allow-empty", "-m", "chore: an author named abcd\n\nAssisted-by: None")
+
+	a, err := LoadAuthorship(r.Root())
+	if err != nil {
+		t.Fatalf("LoadAuthorship: %v", err)
+	}
+	for _, b := range a.Bots {
+		if b.Name == "abcd" {
+			t.Fatalf("the abcd label registered abcd as a vendor and demoted its author: bots %+v", a.Bots)
+		}
 	}
 }

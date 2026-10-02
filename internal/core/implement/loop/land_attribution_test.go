@@ -7,6 +7,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/core"
 )
 
 // The records commit's text carries prose a model composed (the receipt's
@@ -166,11 +168,121 @@ func TestTheLandedRangePassesTheAttributionGate(t *testing.T) {
 	if l.HeadSHA == implHead {
 		t.Fatal("the landing made no records commit")
 	}
-	cmd := exec.Command("bash", filepath.Join(root, "scripts", "check-attribution.sh"), "commits", implHead, l.HeadSHA)
-	cmd.Dir = l.Worktree
-	cmd.Env = append(os.Environ(), "ABCD_OUTBOUND_BIN="+bin)
-	out, err := cmd.CombinedOutput()
-	if err != nil {
+	gate := func(args ...string) ([]byte, error) {
+		cmd := exec.Command("bash", append([]string{filepath.Join(root, "scripts", "check-attribution.sh")}, args...)...)
+		cmd.Dir = l.Worktree
+		cmd.Env = append(os.Environ(), "ABCD_OUTBOUND_BIN="+bin)
+		return cmd.CombinedOutput()
+	}
+	if out, err := gate("commits", implHead, l.HeadSHA); err != nil {
 		t.Fatalf("the attribution gate passes the landed range %s..%s: %v\n%s", shortSHA(implHead), shortSHA(l.HeadSHA), err, out)
+	}
+
+	// The pull request's body, as the forge received it, passes the gate's
+	// body check (iss-2610020727177336), and so does a body naming two models.
+	preflighted(t, l, l.HeadSHA)
+	f.step(t) // push
+	f.step(t) // pull request
+	held := filepath.Join(f.gh, "body.md")
+	if out, err := gate("body", held); err != nil {
+		b, _ := os.ReadFile(held)
+		t.Fatalf("the attribution gate passes the pull request's body: %v\n%s\n%s", err, out, b)
+	}
+	two := filepath.Join(t.TempDir(), "two.md")
+	st, err := ReadState(f.repo.Root(), f.runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := prBody(st, currentLane(t, f.repo, f.runID), []string{"Assisted-by: Claude:claude-a", "Assisted-by: ExampleVendor:model-1"})
+	if err := os.WriteFile(two, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := gate("body", two); err != nil {
+		t.Fatalf("the attribution gate passes a body naming two models: %v\n%s\n%s", err, out, body)
+	}
+}
+
+// TestThePullRequestBodyEndsWithTheLabelAndTheModels is ruling R4 (the
+// technical facilitator, 2026-10-02): the pull request's description ends with
+// the abcd label, abcd having composed it from the run's records, and then one
+// Assisted-by: line per distinct model the lane's receipts name, in the order
+// first reported, since the change it describes carries those models' work and
+// a squash merge may adopt the body as its message.
+func TestThePullRequestBodyEndsWithTheLabelAndTheModels(t *testing.T) {
+	st := State{RunID: "run-1", Intent: "itd-10", Spec: "spc-1"}
+	lane := Lane{ID: "lane-1", SpecStep: 1, StepTitle: "The widget", Branch: "abcd/lane-1",
+		Landing:  &Landing{Closes: true},
+		Resolves: []Resolution{{Issue: "iss-1", Commit: strings.Repeat("a", 40)}}}
+	label := "Assisted-by: abcd:" + core.Version
+	if core.Version != "dev" || composedAssistedBy() != label {
+		t.Fatalf("the test binary is a development build whose label is %q, got %q (version %q)", label, composedAssistedBy(), core.Version)
+	}
+	for _, tc := range []struct {
+		name   string
+		models []string
+		want   []string
+	}{
+		{"zero models", nil, []string{"", "Delivers: itd-10", "Resolves: iss-1", label}},
+		{"one model", []string{"Assisted-by: Claude:claude-a"},
+			[]string{"", "Delivers: itd-10", "Resolves: iss-1", label, "Assisted-by: Claude:claude-a"}},
+		{"two models", []string{"Assisted-by: Claude:claude-a", "Assisted-by: ExampleVendor:model-1"},
+			[]string{"", "Delivers: itd-10", "Resolves: iss-1", label, "Assisted-by: Claude:claude-a", "Assisted-by: ExampleVendor:model-1"}},
+	} {
+		body := prBody(st, lane, tc.models)
+		if !strings.HasSuffix(body, "\n") {
+			t.Errorf("%s: the body ends with a newline: %q", tc.name, body)
+		}
+		lines := strings.Split(strings.TrimSuffix(body, "\n"), "\n")
+		if len(lines) < len(tc.want) || !slices.Equal(lines[len(lines)-len(tc.want):], tc.want) {
+			t.Errorf("%s: the body's trailing lines are %q, want %q:\n%s", tc.name, lines[max(0, len(lines)-len(tc.want)):], tc.want, body)
+		}
+	}
+	// An issue lane, which delivers nothing, still ends with the disclosure.
+	issue := prBody(State{RunID: "run-1", Key: eligibleIssue}, Lane{ID: "lane-1", StepTitle: "The renderer panics"}, []string{"Assisted-by: Claude:claude-a"})
+	if !strings.HasSuffix(issue, "\n\n"+label+"\nAssisted-by: Claude:claude-a\n") {
+		t.Errorf("an issue lane's body ends with the label and the model:\n%s", issue)
+	}
+}
+
+// TestAPullRequestWhoseReceiptsNameNoModelIsNotOpened: the body's disclosure is
+// settled from the lane's receipts before the forge is called, as the records
+// commit's is, so a receipt that names no model, or names abcd, refuses the step
+// and no pull request is opened. The records commit settles this first on a
+// lane that records something; the pull request settles it for itself, because
+// a lane that records nothing makes no records commit.
+func TestAPullRequestWhoseReceiptsNameNoModelIsNotOpened(t *testing.T) {
+	for _, model := range []string{"", "abcd:dev"} {
+		f := newLandFixture(t, queueRuleset("MERGE"))
+		f.validated(t)
+		f.step(t)
+		f.step(t)
+		l := currentLane(t, f.repo, f.runID)
+		preflighted(t, l, l.HeadSHA)
+		f.step(t) // push
+		st, err := ReadState(f.repo.Root(), f.runID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		i := st.current()
+		for j := range st.Lanes[i].Receipts {
+			st.Lanes[i].Receipts[j].Model = model
+		}
+		root, err := os.OpenRoot(f.repo.Root())
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = writeState(root, st)
+		root.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = advance(f.repo.Root(), f.runID, f.stages, Options{})
+		r := mustRefusal(t, err)
+		if r.Stage != string(StageLand) || !strings.Contains(r.Reason, "model") || !strings.Contains(r.Remedy, "model") {
+			t.Fatalf("model %q: the pull request's step is refused naming the model: %+v", model, r)
+		}
+		if strings.Contains(f.ghLog(t), "pr create") {
+			t.Fatalf("model %q: no pull request is opened without a model to disclose:\n%s", model, f.ghLog(t))
+		}
 	}
 }

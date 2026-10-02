@@ -156,6 +156,14 @@ plugin surface, and a future MCP server share one engine.
   subset refuses. It is a leaf apart from `core/site` because the writers of
   append-only record prose (`core/grounds`) ask it before they write, and
   `core/site` imports the record families they belong to.
+- **`core/assistedby/`** — the label abcd declares on a commit it composes from
+  record facts, `Assisted-by: abcd:<version>`, and the one Go home of the
+  trailer's grammar, the model form `<Vendor>:<model-version>` included. It is a leaf because both of its readers need it and one imports the
+  other: the implement loop writes the label and refuses a receipt claiming it,
+  and `core/site`'s authorship tally counts it apart from assistance and `None`.
+  Both also read the model form through it: the loop to judge a receipt's
+  model, the site to chart one. The attribution gate decides the grammar in
+  shell; a test ties the two.
 - **`core/cite/`** — the live half of the citation gate: the bounded fetcher and
   the refresh that writes the committed baseline `core/lint` then enforces with
   zero network. It is the only place abcd dials out on behalf of documentation,

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core/changelog"
+	"github.com/intentdriven/abcd/internal/core/launch"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
@@ -121,5 +122,72 @@ func TestIngestWithNoMissedTargetWritesNoNote(t *testing.T) {
 	}
 	if len(res.Moved) != 0 || strings.Contains(readChangelog(t, r.Root()), "Targeted and not shipped") {
 		t.Errorf("no target reached, no move: %+v", res.Moved)
+	}
+}
+
+// moveIDs renders a move list as id=from pairs, so an assertion reads one line.
+func moveIDs(moves []launch.TargetMove) string {
+	var out []string
+	for _, m := range moves {
+		out = append(out, m.ID+"="+m.From)
+	}
+	return strings.Join(out, ",")
+}
+
+// TestEmitCarriesTheTargetsTheCutMoves is iss-2610020718369838: the dry run
+// says which targets the cut will move before anything is written. The cut
+// value carries launch.MissedTargets over its own targets and derived tag —
+// the target at the release being cut and the `next` target move, the target
+// past the cut stands — and the JSON carries the same list.
+func TestEmitCarriesTheTargetsTheCutMoves(t *testing.T) {
+	cut := emit(t, targetedShippable(t))
+	if !cut.Ready || cut.NextTag != "v0.4.1" {
+		t.Fatalf("the fixture must cut to v0.4.1: ready=%v next=%s refusals=%v", cut.Ready, cut.NextTag, refusalKinds(cut))
+	}
+	if got := moveIDs(cut.Moves); got != "itd-91=v0.4.1,itd-92=next" {
+		t.Fatalf("Moves = %q, want the met-or-passed targets only", got)
+	}
+	if !strings.Contains(mustJSON(t, cut), `"target_moves":[{"id":"itd-91","path":"`+plannedDir+`itd-91-due.md","from":"v0.4.1"}`) {
+		t.Errorf("the cut JSON must carry the moves:\n%s", mustJSON(t, cut))
+	}
+
+	// A cut with no target reached carries no list, and says nothing in JSON.
+	r := shippableRepo(t)
+	r.Write(plannedDir+"itd-93-later.md", "---\nid: itd-93\nimpact: additive\ntarget_release: v0.5.0\n---\n# Later\n")
+	r.Commit("a target past the cut")
+	if later := emit(t, r); len(later.Moves) != 0 || strings.Contains(mustJSON(t, later), `"target_moves"`) {
+		t.Errorf("a target past the cut is not a move: %+v", later.Moves)
+	}
+}
+
+// A refused cut derives no version, so it moves nothing: the list is computed
+// after the seal clears the tag, never from the tag the refusal withdrew.
+func TestARefusedCutCarriesNoMoves(t *testing.T) {
+	cut := sealed(Cut{
+		NextTag:  "v0.4.1",
+		Targets:  []launch.TargetedIntent{{ID: "itd-91", Path: plannedDir + "itd-91-due.md", Target: "v0.4.1"}},
+		Refusals: []Refusal{{Kind: RefusalEmptyCut, Reason: "nothing shipped"}},
+	})
+	if cut.Ready || cut.NextTag != "" || len(cut.Moves) != 0 {
+		t.Errorf("a refused cut must carry no tag and no moves: ready=%v next=%q moves=%+v", cut.Ready, cut.NextTag, cut.Moves)
+	}
+}
+
+// The ingest's behaviour is pinned by the dry run: what it moves and names is
+// exactly the list the emitted cut carried, so the preview cannot promise one
+// set of moves and the write perform another.
+func TestIngestMovesExactlyWhatTheCutCarried(t *testing.T) {
+	r := targetedShippable(t)
+	root := r.Root()
+	before := emit(t, r)
+	res, err := Ingest(root, liveSurface(), marshalPayload(t, "v0.4.1", goodEntries()), cutAt)
+	if err != nil || !res.Written {
+		t.Fatalf("Ingest: %v (written=%v)", err, res.Written)
+	}
+	if got, want := moveIDs(res.Moved), moveIDs(before.Moves); got != want || got != "itd-91=v0.4.1,itd-92=next" {
+		t.Errorf("ingest moved %q; the dry run carried %q", got, want)
+	}
+	if got := moveIDs(res.Cut.Moves); got != moveIDs(res.Moved) {
+		t.Errorf("the ingest's own cut carries %q but it moved %q", got, moveIDs(res.Moved))
 	}
 }
