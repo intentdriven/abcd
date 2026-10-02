@@ -100,8 +100,85 @@ _None open; decisions 2 and 3 settle the three this record carried._
 
 ## Audit Notes
 
-<!-- abcd-review: OWED receipt=rcp-e6bcb27c8050 -->
-Fidelity review OWED (receipt rcp-e6bcb27c8050).
+<!-- abcd-review: INGESTED receipt=rcp-e6bcb27c8050 -->
+Fidelity review — receipt rcp-e6bcb27c8050 (verifier intent-auditor claude-fable-5-1).
+
+Provenance: intent-auditor@claude-fable-5-1 · rubric_hash sha256:effa65b3e9e88ff29433b443ec2be159522a8b0b71cf1434526514aa61edb13e · prompt_hash sha256:88aaf52aee45e546cd9e96b2caf7fce6794983db71693f6234af904a86cbd2c4
+Input attestations: diff:85d0bb8eb..8586edba0 (PR #758 feat/intent-prepass, judged at main 7fb52a6b5)@sha256:7803ef19ee07b3c1d7434610d56d0896cf83557ccee5b610ec78b289bee3ed4b;
+
+Acceptance rollup: MET 3 · MET_WITH_CONCERNS 2 · NOT_MET 0 · INCONCLUSIVE 0
+
+Per-criterion verdicts:
+- ac-1 — MET_WITH_CONCERNS: Every conflict the host returns is written only when its anchor exists and both quotes occur verbatim (anchor's text and draft's), and the brief prints both quotes under the invariant's number and title; the real register parses to 20 numbered invariants. Concern: which invariants the draft conflicts with, and that EVERY one is named, is the host's judgement (adr-25, spec scope 2) — the binary guarantees anchoring and quoting, not completeness, and no test exercises completeness.
+  evidence: internal/core/intent/prepass.go:550-590 — "why = prepassQuoteMiss(c.AnchorQuote, text, prepassAnchorName(c)) ... why = prepassQuoteMiss(c.DraftQuote, in.Draft, "the draft")"
+  evidence: internal/core/intent/prepass.go:761-766 — "fmt.Fprintf(&b, "%s says:\n\n> %s\n\n", prepassLine(qt[0]), prepassBlock(qt[1], prepassQuoteCap))"
+  evidence: internal/core/intent/prepass.go:249-287 — "func parsePrepassInvariants(content string) []PrepassInvariant"
+  evidence: internal/core/intent/prepass_test.go:229 — "func TestPrepassBriefQuotesEveryInvariantConflict"
+  evidence: .abcd/development/specs/closed/spc-2609211918551301-coherence-aware-grill.md:22-25 — "a host-delegated judgement (adr-25) over the draft against each invariant"
+- ac-2 — MET: The index is built fresh from every intent the corpus loader lists across all five shelves (drafts, planned, shipped, disciplines, superseded), an overlap must name a sibling in it or is demoted, the brief lists the four answers as plain bullets, and a recommendation is rendered as a prose sentence after the list, never as a marked option; the test asserts the shape.
+  evidence: internal/core/intent/prepass.go:220-233 — "for _, sib := range corpus.Intents { ... in.Index = append(in.Index, PrepassIndexEntry{ID: sib.ID, Title: title, Shelf: sib.Bucket})"
+  evidence: internal/core/intent/intent.go:54 — "var Buckets = []string{BucketDrafts, BucketPlanned, BucketShipped, BucketDisciplines, BucketSuperseded}"
+  evidence: internal/core/intent/prepass.go:592-618 — "sib, ok := prepassSibling(in, o.Sibling)"
+  evidence: internal/core/intent/prepass.go:768-779 — "fmt.Fprintf(&b, "The pre-pass leans towards **%s**: %s\n\n""
+  evidence: internal/core/intent/prepass_test.go:269 — "func TestPrepassOverlapIsAskedWithTheFourAnswersAndTheRecommendationInProse"
+- ac-3 — MET: AssemblePrepass reads the draft, the invariants register, the principles directory and every sibling (to build the index) and writes nothing; WritePrepassBrief writes one file, the planning brief under the local tier, through an os.Root, and never replaces a brief the pre-pass did not write. The core test diffs the whole tree before and after and finds only the brief added; a run on the real tree against itd-10 left git status empty.
+  evidence: internal/core/intent/prepass.go:171-236 — "func AssemblePrepass(repoRoot, intentID string) (PrepassInput, error)"
+  evidence: internal/core/intent/prepass.go:448-459 — "rel := PlanningBriefsRelDir + "/" + in.Intent + ".md" ... fsutil.WriteFileAtomicInRoot(root, rel, []byte(brief), 0o644)"
+  evidence: internal/core/intent/prepass.go:64 — "const PlanningBriefsRelDir = ".abcd/.work.local/scratch/planning-briefs""
+  evidence: internal/core/intent/prepass_test.go:319 — "func TestPrepassWritesOnlyThePlanningBrief"
+- ac-4 — MET_WITH_CONCERNS: Every question the brief writes ends in a `Lands as:` line naming its landing (a decision in `## Decisions`, a draft change, or a typed link via `abcd intent reclassify` / `plan --bundle`), and the plugin page's interview opens from the brief, asks each `### Qn` in order and records each answer where its `Lands as:` line says before the next. Concern: the asking and the landing are host instruction on the page (the interview is a human-session act, intent decision 1); the only test reads the page's prose, and nothing mechanical records or checks that an answer landed.
+  evidence: internal/core/intent/prepass.go:766 — "Lands as: a decision in the draft's `## Decisions` saying which gives, or a change to the draft's text before it is planned."
+  evidence: internal/core/intent/prepass.go:782-786 — "Lands as: keep both, a decision ... supersede, `superseded_by` on the record that gives way (`abcd intent reclassify <itd-N> --kind superseded --by <itd-M> --reason "<why>"`)"
+  evidence: commands/intent.md:405-415 — "Record each answer where its `Lands as:` line says before the next question: a decision line in the draft's `## Decisions`, a change to the draft's text, or a typed link through `abcd intent reclassify`."
+  evidence: internal/core/intent/prepass_test.go:412 — "func TestPrepassEveryQuestionSaysWhereItsAnswerLands"
+  evidence: internal/surface/cli/intent_prepass_cli_test.go:319 — "func TestIntentPageInterviewOpensFromThePrepass"
+- ac-5 — MET: A concern the host marks unanchored, a conflict whose anchor is absent or whose quotes do not occur, and an overlap naming no sibling in the index are all written as `### Qn. A question (unanchored)` with a `Not anchored:` reason, and are counted as demoted; the test covers both the host-declared and the demoted paths.
+  evidence: internal/core/intent/prepass.go:580-582 — "demoted = append(demoted, prepassQuestion{kind: "unanchored", question: c.Question, why: why})"
+  evidence: internal/core/intent/prepass.go:604-611 — "why := "no intent on any shelf is " + o.Sibling"
+  evidence: internal/core/intent/prepass.go:787-793 — "### Q%d. A question (unanchored) ... Not anchored: %s, so it is asked, not asserted."
+  evidence: internal/core/intent/prepass_test.go:353 — "func TestPrepassUnanchoredConcernIsAQuestionMarkedUnanchored"
+
+Gap audit:
+- honoured:
+  - The record is the pre-pass, run before the interview, and the planning brief under the local tier is the only file it writes (decision 1)
+    evidence: internal/core/intent/prepass.go:420-464 — "func WritePrepassBrief(repoRoot, intentID string, raw []byte)"
+  - Overlaps are asked with the four standard answers and the pre-pass's lean is prose beside the question, never a marked option (decision 2)
+    evidence: internal/core/intent/prepass.go:770-779 — "for _, a := range PrepassAnswers { fmt.Fprintf(&b, "- **%s**\n", prepassAnswerLabel[a]) }"
+  - The loader is the interview's own and reads only the invariants, the principles, the index and the draft (decision 3)
+    evidence: internal/core/intent/prepass.go:52-54 — "The loader is the interview's own (decision 3): it is not shared with the phase negotiator or the fidelity reviewer, and it reads nothing beyond the four inputs"
+  - Grounded where it asserts, Socratic where it questions: an unanchorable conflict is demoted to a question, never refused and never asserted
+    evidence: internal/core/intent/prepass.go:574-582 — "if why != "" { demoted = append(demoted, ...); continue }"
+  - The sibling index is built fresh on every run from every shelf, with no maintained index file
+    evidence: internal/core/intent/prepass.go:220-233 — "for _, sib := range corpus.Intents"
+  - A missing invariants register or principles directory degrades the pass with a warning in the brief rather than aborting
+    evidence: internal/core/intent/prepass.go:202-219 — "case errors.Is(err, fs.ErrNotExist): in.Warnings = append(in.Warnings, ..."
+    evidence: internal/core/intent/prepass_test.go:516 — "func TestPrepassMissingInputsDegradeWithAWarning"
+  - Wired on both front doors: `abcd intent prepass` on the CLI and the opening of the plugin page's planning interview, plus the Autonomous runs paragraph
+    evidence: internal/surface/cli/intent_prepass.go:25 — "Use: "prepass < itd-N> [--findings-json < path>]""
+    evidence: commands/intent.md:377-381 — "**Opening: the pre-pass (itd-42).** ... Run `"${CLAUDE_PLUGIN_ROOT}/abcd" intent prepass <itd-N> --json`"
+    evidence: commands/intent.md:671-676 — "it runs the pre-pass the interview opens with"
+  - The host's findings are untrusted: strict decode, caps, digest match against the input as it stands, and host prose cannot forge the brief's structure
+    evidence: internal/core/intent/prepass.go:439-441 — "if f.InputDigest != in.Digest { return ... an input moved since the pass; re-run the pre-pass"
+    evidence: internal/core/intent/prepass_test.go:536 — "func TestPrepassHostProseCannotForgeTheBriefStructure"
+- diverged:
+  - The press release promises a coherence tier inside the grill with `--with-docs` renamed to `--glossary`, new `--coherence`, `--full`, and lifecycle-defaulted tier selection; none of that exists. The delivery is a separate pre-pass verb before the planning interview, as the 2026-09-21 re-scope paragraph signs off (the grill it named is superseded with itd-27)
+    evidence: .abcd/development/intents/shipped/itd-42-coherence-aware-grill.md:30 — "**Re-scoped on 2026-09-21** by the product thinker: this record is the automated pre-pass the decomposition discipline (itd-84) names as its next rung"
+    evidence: internal/surface/cli/intent_prepass.go:68 — "cmd.Flags().StringVar(&findingsJSON, "findings-json", "", ..."
+  - Tier 2 context promised 03-invariants, 04-naming, 01-product/04-scope, 06-delivery/03-out-of-scope and the matching surface chapter; the delivery reads the invariants register and the principles only, as decision 3 narrows it
+    evidence: internal/core/intent/prepass.go:66-70 — "invariantsRelPath = ".abcd/development/brief/02-constraints/03-invariants.md" principlesRelDir = ".abcd/development/principles""
+    evidence: .abcd/development/intents/shipped/itd-42-coherence-aware-grill.md:92 — "the context is the invariants, the principles, the index and the draft, and nothing else, which is the budget"
+  - A conflict can be anchored only to an invariant by number or a principle by path; the scope clauses the press release named as anchors cannot anchor a conflict, so a scope concern is demoted to an unanchored question
+    evidence: internal/core/intent/prepass.go:386-392 — "type prepassConflict struct { Invariant *int; Principle string; ..."
+    evidence: internal/core/intent/prepass.go:554-555 — "if (c.Invariant == nil) == (c.Principle == "") { return ... names exactly one anchor, an invariant or a principle"
+  - The index line promised ID, slug, the opening headline sentence and lifecycle state; delivered is ID, the first H1 title (slug as fallback) and shelf
+    evidence: internal/core/intent/prepass.go:127-131 — "type PrepassIndexEntry struct { ID string; Title string; Shelf string }"
+    evidence: internal/core/intent/prepass.go:228-231 — "title := prepassTitle(string(content)); if title == "" { title = sib.Slug }"
+  - Coherence findings were promised inside grill-report.{json,md} and the Phase 2 PRD; they land in a new planning-brief artefact under the local tier instead
+    evidence: internal/core/intent/prepass.go:62-64 — "PlanningBriefsRelDir is where a planning brief lives: the local tier"
+- missing:
+  - A verified landing for ac-4: nothing in the binary records that an interview question was asked or that its answer reached the record; the asking and recording are host instruction on the plugin page, and the one test reads the page's prose (settled as the human's act by intent decision 1, so recorded here, not captured)
+    evidence: commands/intent.md:405-415 — "Record each answer where its `Lands as:` line says before the next question"
+    evidence: internal/surface/cli/intent_prepass_cli_test.go:319-354 — "if !strings.Contains(opening, want) { t.Fatalf("the interview's opening, before step 1, does not name %q"
 <!-- abcd-review-end receipt=rcp-e6bcb27c8050 -->
 
 ## References
