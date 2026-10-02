@@ -381,9 +381,8 @@ func needs(st *State, n []int, steps ...int) {
 // reviewers out and step 2 marked `- needs: none`, stepping until lane 2's
 // implementer is handed its brief opens lane 2 in its own worktree, and its
 // implementer takes the third slot; the next call finds the ceiling reached. A
-// stage the binary performs itself proceeds at the ceiling: a step made ready
-// while the ceiling is reached has its lane's worktree and brief made, and only
-// its implementer waits for a slot.
+// step made ready while the ceiling is reached waits for a helper with no
+// worktree made (ruling DR6d-1), as step 3 does.
 func TestAnImplementerAndReviewersShareTheSlots(t *testing.T) {
 	f := newParFixture(t, "1. One\n2. Two\n   - needs: none\n3. Three\n   - needs: none\n4. Four\n   - needs: none\n", Options{SubAgents: strp("3")})
 	// The Given: steps 2 to 4 wait until lane 1's reviewers are out.
@@ -406,33 +405,27 @@ func TestAnImplementerAndReviewersShareTheSlots(t *testing.T) {
 	if r := f.step(t); !r.CeilingReached {
 		t.Fatalf("the next call finds the ceiling reached: %+v", r)
 	}
-	// Step 4 becomes ready at the ceiling: its lane's worktree and brief, the
-	// binary's own stages, are made; its implementer waits for a slot beside
-	// lane 3's.
+	// Step 4 becomes ready at the ceiling: no lane opens and no worktree is
+	// made for it; it waits for a helper beside step 3.
 	f.rewrite(t, func(st *State) { needs(st, []int{}, 4) })
-	if r := f.step(t); r.PerformedStage != StageWorktree || r.Lane != "lane-4" || r.Slots != 3 {
-		t.Fatalf("the ready step's worktree is made at the ceiling: %+v", r)
-	}
-	if r := f.step(t); r.PerformedStage != StageBrief || r.Lane != "lane-4" || r.Slots != 3 {
-		t.Fatalf("the ready step's brief is made at the ceiling: %+v", r)
-	}
 	if r := f.step(t); !r.CeilingReached {
-		t.Fatalf("lane 4's implementer waits for a slot: %+v", r)
+		t.Fatalf("the ready step waits for a helper: %+v", r)
 	}
+	st = f.state(t)
 	var queue []string
-	for _, w := range f.state(t).Waiting {
+	for _, w := range st.Waiting {
 		queue = append(queue, w.Lane+" "+w.Role)
 	}
-	if want := []string{"lane-3 implementer", "lane-4 implementer"}; !slices.Equal(queue, want) {
-		t.Fatalf("the new lanes' implementers wait on the ceiling: %v, want %v", queue, want)
+	if want := []string{"step 3 implementer", "step 4 implementer"}; !slices.Equal(queue, want) || len(st.Lanes) != 2 {
+		t.Fatalf("the new lanes wait on the ceiling with no worktree: %v, want %v; lanes %+v", queue, want, st.Lanes)
 	}
 }
 
 // C5, the order: with lane 2's security reviewer, lane 1's fix implementer and
 // a new lane for step 4 all waiting, the first freed slot goes to lane 1's fix
-// implementer, the next to lane 2's reviewer, and step 4's lane opens last:
-// its worktree and brief, the binary's own stages, are made at the ceiling, and
-// its implementer takes the last slot.
+// implementer, the next to lane 2's reviewer, and step 4's lane opens last,
+// its worktree made only once a helper is free for it and fewer step worktrees
+// than the ceiling are on disk (ruling DR6d-1).
 func TestAFreedSlotGoesToOpenLanesBeforeNewOnes(t *testing.T) {
 	f := newParFixture(t, "1. One\n2. Two\n   - needs: none\n3. Three\n   - needs: none\n4. Four\n   - needs: none\n", Options{SubAgents: strp("3")})
 	f.rewrite(t, func(st *State) { needs(st, []int{1}, 2, 3, 4) })
@@ -454,11 +447,6 @@ func TestAFreedSlotGoesToOpenLanesBeforeNewOnes(t *testing.T) {
 		st.Pace.SubAgents.Value = 1
 		needs(st, []int{}, 4)
 	})
-	for _, stage := range []Stage{StageWorktree, StageBrief} {
-		if r := f.step(t); r.PerformedStage != stage || r.Lane != "lane-3" || r.Slots != 1 {
-			t.Fatalf("step 4's lane makes its %s at the ceiling: %+v", stage, r)
-		}
-	}
 	if r := f.step(t); !r.CeilingReached {
 		t.Fatalf("the run is full: %+v", r)
 	}
@@ -467,7 +455,7 @@ func TestAFreedSlotGoesToOpenLanesBeforeNewOnes(t *testing.T) {
 	for _, w := range st.Waiting {
 		queue = append(queue, w.Lane+" "+w.Role)
 	}
-	if want := []string{"lane-1 implementer", "lane-2 security-reviewer", "lane-3 implementer"}; !slices.Equal(queue, want) {
+	if want := []string{"lane-1 implementer", "lane-2 security-reviewer", "step 4 implementer"}; !slices.Equal(queue, want) {
 		t.Fatalf("the waiting work, in the order a freed slot takes it: %v, want %v", queue, want)
 	}
 	f.rewrite(t, func(st *State) { st.Pace.SubAgents.Value = 2 })
@@ -478,12 +466,20 @@ func TestAFreedSlotGoesToOpenLanesBeforeNewOnes(t *testing.T) {
 	if r := f.step(t); r.Lane != "lane-2" || r.Awaiting == nil || r.Awaiting.Role != RoleSecurity {
 		t.Fatalf("the next freed slot goes to lane 2's security reviewer: %+v", r)
 	}
-	if l3 := f.lane(t, "lane-3"); len(l3.Awaits) != 0 {
-		t.Fatalf("step 4's implementer is not out yet: %+v", l3.Awaits)
+	if n := len(f.state(t).Lanes); n != 2 {
+		t.Fatalf("step 4's lane has not opened yet: %d lanes", n)
 	}
+	// Lane 2's round passes and it lands. While it lands its worktree and lane
+	// 1's are on disk, the ceiling's worth (ruling DR6d-1), so step 4 waits;
+	// its landing frees one, and step 4's lane opens.
 	f.ret(t, "lane-2", RoleSecurity, "APPROVE")
-	f.stepUntil(t, "step 4's implementer is out", func(st State) bool { return len(st.Lanes[2].Awaits) == 1 })
-	if st := f.state(t); st.Lanes[2].SpecStep != 4 || !strings.Contains(recordText(st), "the implementer of lane-3 took a freed slot") {
+	f.stepUntil(t, "lane 2 reaches its landing", func(st State) bool { return st.Lanes[1].Stage == StageLand })
+	if n := len(f.state(t).Lanes); n != 2 {
+		t.Fatalf("step 4's lane waits while two step worktrees are on disk: %d lanes", n)
+	}
+	f.landed(t, "lane-2")
+	f.stepUntil(t, "step 4's lane opens", func(st State) bool { return len(st.Lanes) == 3 })
+	if st := f.state(t); st.Lanes[2].SpecStep != 4 || !strings.Contains(recordText(st), "the implementer of step 4 took a freed slot") {
 		t.Fatalf("step 4's lane opens last, and the record names its wait:\n%s", recordText(st))
 	}
 }
