@@ -1,7 +1,7 @@
 ---
 name: launch
 description: "Preview the public launch bundle, its secret scan, and the release gates: Writes only its pre-flight report, to the local tier; refuses without --dry-run."
-argument-hint: "[--dry-run [--deep-smoke] [--baseline <vX.Y.Z>] [--fetch-baseline]] | ship [--changelog-json <path>] [--payload-dir <dir>] [--allow-dirty] [--fetch-baseline] | archive --out <dir> [--tag <vX.Y.Z>] [--verify] [--repository <owner/name>] | manifests --tree public|dev [--root <dir>] | scaffold [--confirm] [--dependency-reauthor]"
+argument-hint: "[--dry-run [--deep-smoke] [--baseline <vX.Y.Z>] [--fetch-baseline]] | ship [--changelog-json <path>] [--payload-dir <dir>] [--allow-dirty] [--fetch-baseline] | archive --out <dir> [--tag <vX.Y.Z>] [--verify] [--repository <owner/name>] | manifests --tree public|dev [--root <dir>] | receipts | scaffold [--confirm] [--dependency-reauthor]"
 block: people
 ---
 
@@ -1032,7 +1032,7 @@ the operator to require them on the default branch — the scaffold holds no tok
 and sets no branch protection. An empty `ci_checks` means no pull-request CI was
 found, and the runbook says so.
 
-The workflows come from one embedded template that abcd-cli's own release
+The workflows come from one embedded template that abcd's own release
 workflows are regenerated from (self-scaffold parity), so every abcd release
 exercises the exact machinery a managed repo receives. The scaffolded `release.yml`
 carries a `workflow_dispatch` **rehearsal**: run it green once before the first

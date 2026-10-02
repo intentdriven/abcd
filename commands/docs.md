@@ -1,7 +1,7 @@
 ---
 name: docs
 description: "Keep the citation baseline `abcd lint docs` enforces, and judge the brief against the binary: Writes nothing bare; refuses an unknown sub-verb."
-argument-hint: "[cite refresh | cite confirm <url>... | fidelity [--report|--apply|--autonomous] | fidelity record --verdict-json <file|->]"
+argument-hint: "[cite refresh | cite confirm <url>... | fidelity [--report|--apply|--autonomous] [--intent <itd-N>]... | fidelity record --verdict-json <file|->]"
 block: agents
 ---
 
@@ -85,6 +85,8 @@ Report `verdict.uncovered` (verbs, sub-verbs and agents no brief chapter names),
 `verdict.review.status` (`match`, `none`, `stale`, `invalid`, `hold`,
 `inconclusive`) and every line of `verdict.reasons`. Exit 1 is a refusal. Use
 `--report` after a task: it states the same findings and refuses nothing.
+`--intent <itd-N>` (repeatable) names the intents whose delivery is judged:
+each reason opens with them, and `verdict.population` lists them.
 
 When the review is `none` or `stale`, run the docs review for HEAD. Read the
 brief chapters under `.abcd/development/brief/04-surfaces/` that describe what

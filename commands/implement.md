@@ -39,11 +39,12 @@ Every write acts for a joined session, named with `--session` on every call.
 Join first, stating the role:
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/abcd" implement join --session <id> --role first|second [--ceiling <n>] --json
+"${CLAUDE_PLUGIN_ROOT}/abcd" implement join --session <id> --role first|second [--ceiling <n>] [--model <id>] [--reason <text>] --json
 ```
 
-Joining writes the session's record and a `session_open` line, and signals no
-one: the first session learns of a second only by reading the run state, and
+Joining writes the session's record and a `session_open` line, carrying the
+model the session runs (`--model`) and why it opens (`--reason`: run start,
+window, resume) when they are given, and signals no one: the first session learns of a second only by reading the run state, and
 never waits on it. Joining again with the same role is a resume; asking for the
 other role is refused.
 

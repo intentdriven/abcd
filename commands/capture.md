@@ -1,7 +1,7 @@
 ---
 name: capture
 description: "File an issue from quoted text, or render the ledger's status bare: Writes one record under open/; refuses a missing --remedy, a lone word or no checkout."
-argument-hint: "[<text> --remedy <fix>] | list --open|--resolved|--wontfix|--all | link <iss-N> [--blocked-by <iss-M,...>] [--unblock <iss-M,...>] | promote <iss-N> --grounds \"<token>: <text>\" [--intent <itd-N>] | promote <rdi-N> [--intent <itd-N>] | resolve <iss-N> <note> --impact <additive|breaking|fix|internal> --grounds \"<token>: <text>\" [--intent <itd-N>] [--spec <spc-N>] [--commit <sha>] | wontfix <iss-N> <reason> [--duplicates <iss-N|itd-N,...>] | defer <iss-N> --after <vX.Y.Z> --reason <text> | remedy <iss-N> <text> | disposition <rdi-N> --state <accepted|rejected|declined|held> | admit <rdi-N> --grounds \"<why>\" | surprise --occasioned-by <rdi-N|adm-N|dsp-N> \"<what>\" | reframe --occasioned-by <rdi-N|dsp-N|srp-N> --grounds \"<why>\" [--open] | reframe --complete <rfm-N> | migrate [--apply]"
+argument-hint: "[<text> --remedy <fix>] | list --open|--resolved|--wontfix|--all | link <iss-N> [--blocked-by <iss-M,...>] [--unblock <iss-M,...>] | promote <iss-N> --grounds \"<token>: <text>\" [--intent <itd-N>] | promote <rdi-N> [--intent <itd-N>] | resolve <iss-N> <note> --impact <additive|breaking|fix|internal> --grounds \"<token>: <text>\" [--intent <itd-N>] [--spec <spc-N>] [--commit <sha>] | wontfix <iss-N> <reason> [--duplicates <iss-N|itd-N,...>] | defer <iss-N> --after <vX.Y.Z> --reason <text> | remedy <iss-N> <text> | disposition <rdi-N> --state <accepted|rejected|declined|held> | admit <rdi-N> --grounds \"<why>\" | surprise --occasioned-by <rdi-N|adm-N|dsp-N> \"<what>\" | reframe --occasioned-by <rdi-N|dsp-N|srp-N> --grounds \"<why>\" [--open] | reframe --complete <rfm-N> | mentions [--ref <branch>] | migrate [--apply]"
 block: people
 ---
 
@@ -632,7 +632,8 @@ is judged, so it hides none of them.
 
 The bare board and `abcd lint` count each widening run: its proposals, how many
 were admitted, declined and held, and which carry neither an admission nor a
-`declined` or `held` disposition (`widening_runs` in the board's JSON). A
+`declined` or `held` disposition (`reading_outstanding.widening_runs` in the
+board's JSON). A
 widening proposal carrying neither an admission nor a decline is also reported
 on its own line, at `info`.
 

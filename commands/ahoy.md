@@ -1,7 +1,7 @@
 ---
 name: ahoy
 description: "Detect abcd's install state and list its gaps, or report one mode a flag names: Writes nothing; refuses any argument or two modes at once."
-argument-hint: "[install | uninstall | doctor | --dry-run | --remote | remote apply | --providers | connect]"
+argument-hint: "[install | uninstall | doctor | --dry-run | --remote | remote apply | --providers | connect | credential]"
 block: people
 ---
 
@@ -21,8 +21,9 @@ the credential's verification call succeeds.
 A mode is a flag on the bare verb, one at a time; a distinct action is a
 sub-verb.
 
-Read `$ARGUMENTS` for the sub-verb or the mode. No argument, or `status`, is the
-bare read-only detection pass below.
+Read `$ARGUMENTS` for the sub-verb or the mode. No argument is the bare
+read-only detection pass below; the binary refuses any other word, `status`
+included.
 
 ## Bare — read-only detection
 
