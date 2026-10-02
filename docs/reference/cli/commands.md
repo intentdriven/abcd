@@ -277,7 +277,9 @@ The runner configuration is read before the run is created: roles.<role>.runner 
 the default, or a runner) and the runners this machine enables under runner.<name> in
 ~/.abcd/config.json, each model route admitted against its provider's allowlist. A fault,
 a model route the allowlist does not admit included, is refused at the runner stage and
-nothing is created or launched.
+nothing is created or launched. Only a route in ~/.abcd/config.json hands a role to a
+runner, which spends the person's own key: one the repository's .abcd/config.json sets to
+a runner is skipped with a warning on stderr, and the role runs on the host as if unrouted.
 
 An issue id (iss-N, validated by shape) is built as one lane. Its checks are the
 repository's own drain rule, read as `abcd drain` reads it (the issue is open, nothing
@@ -1957,8 +1959,8 @@ A stage whose body this abcd does not carry is refused naming the spec piece tha
 delivers it, and the run is unchanged. A stage that fails leaves the state as it was,
 so the next invocation performs it again; a completed stage is never repeated.
 
-A role routed to a command-line runner (roles.<role>.runner: claude or opencode, enabled
-under runner.<name> in ~/.abcd/config.json) is started by the step itself when the stage
+A role routed to a command-line runner (roles.<role>.runner in ~/.abcd/config.json:
+claude or opencode, enabled under runner.<name> there) is started by the step itself when the stage
 hands the lane out: the runner gets the brief and the receipt path the host would get,
 runs in the lane's worktree (claude with the role's tools granted and nothing else asked,
 opencode under its own permission configuration), its
@@ -1966,7 +1968,11 @@ transcript is stored in abcd's history store, and its receipt is verified by the
 own verifier, so a verified one completes the stage in the same call and the result and
 the run record name the route that ran it. The claude runner runs in print mode with
 --bare, so the repository's hooks, plugins and configured servers do not run; opencode
-runs in run mode with --pure. A runner that is absent, refuses, fails, runs past its time,
+runs in run mode with --pure and with its project configuration, its CLAUDE.md reading and
+its external skills switched off, so the repository's instruction files, settings, agents,
+skills and plugins do not reach it. A route the repository's .abcd/config.json sets to a
+runner is skipped with a warning on stderr, and the role is the host's as if unrouted.
+A runner that is absent, refuses, fails, runs past its time,
 or writes a receipt the verifier refuses leaves the lane awaiting and the host is handed
 the role as with no runner, and the call records one fallback naming the role, the runner
 asked for, the reason and the route that runs it. A role left unset is the host's, and

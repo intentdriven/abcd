@@ -273,7 +273,7 @@ func TestARoutedRoleRunsThroughItsRunner(t *testing.T) {
 	root, id, steps, o := startToImplement(t)
 	env := newDriveEnv(t, "ok", "claude")
 	store := &memTranscripts{}
-	cfg := runnerConfig(t, `{"runner":{"claude":{}}}`, `{"roles":{"implementer":{"runner":"claude"}}}`)
+	cfg := runnerConfig(t, `{"roles":{"implementer":{"runner":"claude"}},"runner":{"claude":{}}}`, "")
 	res, err := Drive(context.Background(), root, id, steps, o, Runners{Config: cfg, Transcripts: store})
 	if err != nil {
 		t.Fatal(err)
@@ -335,7 +335,7 @@ func TestARunnerThatCannotRunTheRoleFallsBackAndIsRecorded(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			root, id, steps, o := startToImplement(t)
 			newDriveEnv(t, tc.mode, tc.harnesses...)
-			cfg := runnerConfig(t, `{"runner":{"claude":{},"opencode":{}}}`, `{"roles":{"implementer":{"runner":"`+tc.route+`"}}}`)
+			cfg := runnerConfig(t, `{"roles":{"implementer":{"runner":"`+tc.route+`"}},"runner":{"claude":{},"opencode":{}}}`, "")
 			res, err := Drive(context.Background(), root, id, steps, o, Runners{Config: cfg, Transcripts: &memTranscripts{}})
 			if err != nil {
 				t.Fatal(err)
@@ -412,7 +412,7 @@ func TestAReviewThroughARunnerDiffersFromAHostReviewOnlyInItsRoute(t *testing.T)
 		}
 		if routed {
 			newDriveEnv(t, "ok", "opencode")
-			cfg := runnerConfig(t, `{"runner":{"opencode":{}}}`, `{"roles":{"ruthless-reviewer":{"runner":"opencode"}}}`)
+			cfg := runnerConfig(t, `{"roles":{"ruthless-reviewer":{"runner":"opencode"}},"runner":{"opencode":{}}}`, "")
 			res, err := Drive(context.Background(), repo.Root(), start.RunID, steps, o, Runners{Config: cfg, Transcripts: &memTranscripts{}})
 			if err != nil || res.PerformedStage != StageImplement {
 				t.Fatalf("the opencode review is verified: %+v %v", res, err)
@@ -510,7 +510,7 @@ func TestRoleToolsFollowTheAgentDefinitions(t *testing.T) {
 func TestAStepThatReTellsAnAwaitStartsNoRunner(t *testing.T) {
 	root, id, steps, o := startToImplement(t)
 	newDriveEnv(t, "ok")
-	cfg := runnerConfig(t, `{"runner":{"opencode":{}}}`, `{"roles":{"implementer":{"runner":"opencode"}}}`)
+	cfg := runnerConfig(t, `{"roles":{"implementer":{"runner":"opencode"}},"runner":{"opencode":{}}}`, "")
 	for range 2 {
 		if _, err := Drive(context.Background(), root, id, steps, o, Runners{Config: cfg, Transcripts: &memTranscripts{}}); err != nil {
 			t.Fatal(err)

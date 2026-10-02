@@ -339,14 +339,26 @@ resume in a build that carries it. This build carries every stage of the
 sequence.
 
 **The runner** (piece 3, the process driver's loop half, and itd-2609201916056194).
-A role's route is `roles.<role>.runner` in the layered configuration, the
-repository's or the machine's: `host`, the default, or a runner the machine
-enables under `runner.<name>` (`claude`, `opencode`), with an optional model
-route admitted against its provider's allowlist. The build verb reads the
+A role's route is `roles.<role>.runner` in the layered configuration: `host`,
+the default, or a runner the machine enables under `runner.<name>` (`claude`,
+`opencode`), with an optional model route admitted against its provider's
+allowlist. Only a personal layer, the machine's file or the person's own
+invocation, may hand a role to a runner, because a runner spends the person's
+key (rulings RN2 and OC2, 2026-10-02): the repository's file may keep a role on
+the host, and a route there to a runner is skipped with a diagnostic naming the
+file, the key and the machine's file, so the next layer's route, or the host,
+runs the role. The claude runner stays bare, on an API key alone, and a person
+whose account is a subscription runs the role in their own session. The
+opencode runner is sealed against the repository it runs in (ruling OC1): no
+external plugins, and its project configuration, its compatibility reading of
+the other harness's instruction files and skills, and its external skills
+switched off, so the repository's instruction files, settings, agents, skills
+and plugins do not reach it; the person's own global configuration, which names
+the model and the server, still applies. The build verb reads the
 configuration before it creates a run, and the step verb before each stage; a
 fault, a model route off the allowlist included, is refused at the `runner`
 stage before anything is created or launched, and its diagnostics (a role no
-agent answers to) go to stderr. When a stage hands the lane to a role that is
+agent answers to, a repository route to a runner) go to stderr. When a stage hands the lane to a role that is
 routed to a runner, the step verb starts the runner itself, outside the run's
 lock, in the lane's worktree, with the brief and the receipt path the host would
 be handed, the claude runner with the role's tools granted without a prompt and

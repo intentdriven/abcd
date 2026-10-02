@@ -250,7 +250,11 @@ Ideas and methodologies that shaped the design — not code abcd depends on.
 - **opencode (SST)** — the second command-line runner a delegated role can be
   routed through (itd-2609201916056194, `internal/core/runner`): run mode with
   JSON events and `--pure`, so no external plugin the repository configures
-  runs. <https://opencode.ai/docs/cli/>
+  runs, and the environment switches that keep the repository's project
+  configuration, `CLAUDE.md` and skills out of the run (ruling OC1); the
+  project-configuration switch is read from its source, which documents what
+  the published pages do not. <https://opencode.ai/docs/cli/>
+  <https://github.com/anomalyco/opencode>
 - **OpenAI's Chat Completions API** — the protocol the OpenAI-compatible API
   adapter speaks (`internal/adapter/openaiapi`): the system and user messages a
   host's brief is rendered into, the sampling fields a row may set, and the

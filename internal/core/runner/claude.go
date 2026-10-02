@@ -71,7 +71,7 @@ func (c *ClaudeCLI) Run(ctx context.Context, req Request) (Answer, []byte, error
 	if err != nil {
 		return Answer{}, nil, err
 	}
-	res, err := c.launch.run(ctx, Claude, bin, c.args(req), req.Dir, req.timeout())
+	res, err := c.launch.run(ctx, Claude, bin, c.args(req), nil, req.Dir, req.timeout())
 	transcript := res.transcript()
 	if err != nil {
 		return Answer{}, transcript, err
