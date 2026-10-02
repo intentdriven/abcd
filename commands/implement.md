@@ -250,11 +250,19 @@ moves.
 advances the lane it belongs to; a path no await names is refused, naming the
 awaits there are, and frees nothing.
 
-When the stage hands the lane to a role that `roles.<role>.runner` routes to a
-command-line runner (`claude` or `opencode`, enabled under `runner.<name>` in
-`~/.abcd/config.json`), `step` starts it itself, in the lane's worktree, with
-the same brief and receipt path; the claude runner runs in print mode with
-`--bare`, so the repository's hooks, plugins and configured servers do not run.
+When the stage hands the lane to a role that `roles.<role>.runner` in
+`~/.abcd/config.json` routes to a command-line runner (`claude` or `opencode`,
+enabled under `runner.<name>` there), `step` starts it itself, in the lane's
+worktree, with the same brief and receipt path; the claude runner runs in print
+mode with `--bare`, so the repository's hooks, plugins and configured servers do
+not run, and opencode runs with `--pure` and its project configuration, its
+`CLAUDE.md` reading and its external skills switched off, so the repository's
+instruction files, settings, agents, skills and plugins do not reach it. A route
+the repository's `.abcd/config.json` sets to a runner is skipped with a warning
+on stderr: the role is the host's, as if unrouted, and no fallback is recorded.
+One it sets to `host` keeps the role on the host over the machine's route to a
+runner, with a warning naming the repository's file, the role and the machine
+route it displaced.
 The runner's receipt is verified by the stage's own verifier: a verified one
 completes the stage in the same call, and the result's `route` names the runner
 that ran it. A runner that is absent, refuses, fails, runs past its time or
