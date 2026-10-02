@@ -377,12 +377,6 @@ func Disposition(req DispositionRequest) (DispositionResult, error) {
 	if err != nil {
 		return DispositionResult{}, err
 	}
-	// The preamble provisions the ledger, so it follows the pre-flight: an item
-	// the ledger does not hold is refused with nothing written
-	// (iss-2609302305500526).
-	if err := mutationPreamble(repoRoot, issuesRoot); err != nil {
-		return DispositionResult{}, err
-	}
 	// Redaction happens outside the lock, as IngestReading's does: a scanner
 	// probes the machine identity and shells out to do it, and nothing under the
 	// lock needs one.
@@ -391,6 +385,14 @@ func Disposition(req DispositionRequest) (DispositionResult, error) {
 	// position, so what it refuses is the caller's input (exit 2 at the surface).
 	if err := prevalidateDisposition(clean, head.position); err != nil {
 		return DispositionResult{}, refused(err)
+	}
+	// The preamble provisions the ledger and opens the allocator lock file, so
+	// it follows every pre-flight: an item the ledger does not hold
+	// (iss-2609302305500526) and a request the schema refuses
+	// (iss-2610021542528976) are refused with nothing written, as admit's
+	// requireWidening is.
+	if err := mutationPreamble(repoRoot, issuesRoot); err != nil {
+		return DispositionResult{}, err
 	}
 
 	var written writtenDisposition
