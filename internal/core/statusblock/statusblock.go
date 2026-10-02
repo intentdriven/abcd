@@ -98,6 +98,9 @@ type Lane struct {
 	// Awaiting is the agent roles the lane waits on, when it waits on any:
 	// one while its implementer works, one per validator out (ruling DR6).
 	Awaiting string `json:"awaiting,omitempty"`
+	// Waiting is what the lane waits for when it is no agent: its full check
+	// before its push, with the time the wait began (ruling DR6d-2).
+	Waiting string `json:"waiting,omitempty"`
 }
 
 // Started is one intent the state file shows in lanes: every lane of its run

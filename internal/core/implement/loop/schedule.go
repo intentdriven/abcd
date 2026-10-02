@@ -44,6 +44,9 @@ type AliveLane struct {
 	Stage    Stage   `json:"stage"`
 	Awaits   []Await `json:"awaits"`
 	Hold     *Hold   `json:"hold,omitempty"`
+	// Waiting is the lane's wait for its full check, with the time it began
+	// (ruling DR6d-2); empty when it waits for none.
+	Waiting string `json:"waiting,omitempty"`
 }
 
 // LaneAwait is one outstanding await with the lane it belongs to.
@@ -90,7 +93,7 @@ func (s State) alive() []AliveLane {
 			continue
 		}
 		aw := append([]Await{}, l.Awaits...)
-		out = append(out, AliveLane{Lane: l.ID, SpecStep: l.SpecStep, Stage: l.Stage, Awaits: aw, Hold: l.Hold})
+		out = append(out, AliveLane{Lane: l.ID, SpecStep: l.SpecStep, Stage: l.Stage, Awaits: aw, Hold: l.Hold, Waiting: l.CheckWait()})
 	}
 	return out
 }
@@ -437,15 +440,21 @@ func agentWants(st State) []want {
 	return append(open, fresh...)
 }
 
-// move performs the run's next move and reports what it did.
+// move performs the run's next move and reports what it did. A wait that is
+// the call's answer reports true beside it when the call wrote the time a
+// lane began waiting for its full check, which the caller writes.
 func move(repoRoot string, st *State, steps Stages, now time.Time) (StepResult, bool, error) {
-	// A landing waiting on the forge's merge (a contention refusal) holds only
-	// its own lane: the call moves the next lane and names the wait beside what
-	// it did; when nothing else moves, the first wait is the call's answer. Any
-	// other refusal of a stage the binary performs is the call's answer, and no
-	// other lane moves: a disarm the forge refuses stops the step.
+	// A landing waiting on the forge's merge or on its full check (a
+	// contention refusal, ruling DR6d-2) holds only its own lane: the call
+	// moves the next lane and names the wait beside what it did; when nothing
+	// else moves, the first wait is the call's answer. The time a lane began
+	// waiting for its full check is written once, so the call that finds it
+	// writes the state even when the wait is its answer. Any other refusal of a
+	// stage the binary performs is the call's answer, and no other lane moves:
+	// a disarm the forge refuses stops the step.
 	var blocked []Refusal
 	var waitErr error
+	began := false
 	moved := func(res StepResult) StepResult {
 		res.Blocked = blocked
 		res.Next = withBlocked(res.Next, blocked)
@@ -461,6 +470,9 @@ func move(repoRoot string, st *State, steps Stages, now time.Time) (StepResult, 
 			r, ok := AsRefusal(err)
 			if !ok || !r.Contention {
 				return StepResult{}, false, err
+			}
+			if beganCheckWait(st, i, r, now) {
+				began = true
 			}
 			if waitErr == nil {
 				waitErr = err
@@ -478,7 +490,7 @@ func move(repoRoot string, st *State, steps Stages, now time.Time) (StepResult, 
 		return moved(res), true, nil
 	}
 	if waitErr != nil {
-		return StepResult{}, false, waitErr
+		return StepResult{}, began, waitErr
 	}
 	if st.slotsInUse() == 0 && st.handedBack() {
 		return StepResult{}, false, handedBackRefusal(*st)
@@ -678,3 +690,37 @@ func (s State) SlotsInUse() int { return s.slotsInUse() }
 
 // Ceiling is the most agents the run may have out at once.
 func (s State) Ceiling() int { return s.ceiling() }
+
+// checkWaitText is a lane's wait for its full check as the status shows it
+// (ruling DR6d-2), the time the wait began in UTC.
+func checkWaitText(since time.Time) string {
+	return "waiting for its full check (since " + since.UTC().Format("15:04") + ")"
+}
+
+// CheckWait is the lane's wait for its full check, as the status shows it, or
+// "" when it waits for none: a landing whose push found no preflight receipt
+// naming its head.
+func (l Lane) CheckWait() string {
+	if l.Stage != StageLand || l.Landing == nil || l.Landing.Pushed != "" || l.Landing.CheckWaitSince == nil {
+		return ""
+	}
+	return checkWaitText(*l.Landing.CheckWaitSince)
+}
+
+// beganCheckWait writes, once, the time lane i began waiting for its full
+// check, with a record entry naming it, and reports whether it wrote.
+func beganCheckWait(st *State, i int, r *Refusal, now time.Time) bool {
+	l := st.Lanes[i]
+	if r.checkWait.IsZero() || l.Landing == nil || l.Landing.CheckWaitSince != nil {
+		return false
+	}
+	ld := *l.Landing
+	since := r.checkWait
+	ld.CheckWaitSince = &since
+	l.Landing = &ld
+	st.Lanes[i] = l
+	st.Record = append(st.Record, Entry{At: now, Lane: l.ID, Stage: string(StageLand),
+		Note: "waiting for its full check: no preflight receipt names the lane's head " + shortSHA(l.HeadSHA)})
+	st.UpdatedAt = now
+	return true
+}

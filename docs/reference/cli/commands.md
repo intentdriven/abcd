@@ -1900,9 +1900,12 @@ new one, the lower spec step first, a round's validators in order, then a new la
 implementer. A call that finds the ceiling reached hands out nothing, exits 0 naming
 every lane alive with the role and receipt it awaits, and records the held work with the
 time it was first held. A lane opens for a spec step once every step it needs has
-landed (its `- needs:` line, or by default every earlier step), whatever the ceiling: its
-worktree and brief are made, and its implementer waits for a slot. A landing waiting on
-the forge's merge holds only its own lane: the call moves another and names the wait
+landed (its `- needs:` line, or by default every earlier step), and only when a helper is
+free to take it: a slot is left for its implementer, and fewer step worktrees than the
+ceiling are on disk; its worktree is made just before its implementer takes the slot, and
+a step waiting for a helper has none. A landing waiting on the forge's merge, or on the
+preflight receipt its push needs (shown as waiting for its full check, since the time
+the wait began), holds only its own lane: the call moves another and names the wait
 under blocked:; any other refused stage is the call's answer. Landing is one lane at a
 time; a lane whose sibling landed
 since its base is synced first (the default branch merged in with a merge commit, never a

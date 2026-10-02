@@ -102,7 +102,8 @@ func (f *parFixture) step(t *testing.T) StepResult {
 }
 
 // preflightPushes mints the preflight receipt of every lane at its push: its
-// absence refuses the step, as the repository's pre-push gate would.
+// absence holds the lane's landing (ruling DR6d-2), as the repository's
+// pre-push gate would refuse its push.
 func (f *parFixture) preflightPushes(t *testing.T) {
 	t.Helper()
 	for _, l := range f.state(t).Lanes {

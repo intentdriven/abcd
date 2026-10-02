@@ -87,6 +87,11 @@ type Landing struct {
 	// Merged is the default branch's tip, as the remote held it, that carried
 	// the pushed head when the landing cleaned the lane up.
 	Merged string `json:"merged,omitempty"`
+	// CheckWaitSince is when the landing began waiting for its full check: the
+	// preflight receipt naming the head it pushes (ruling DR6d-2). It is set
+	// by the first call that finds no receipt, kept until the push, and
+	// cleared by it.
+	CheckWaitSince *time.Time `json:"check_wait_since,omitempty"`
 }
 
 // The landing's fixed names.
@@ -447,18 +452,31 @@ func landPush(c Context, lane *Lane) (Outcome, error) {
 		return Outcome{}, err
 	}
 	if rcp == "" {
-		return Outcome{}, refuse(string(StageLand), "", lane.ID,
-			"no preflight receipt names the lane's head "+lane.HeadSHA+", so the pre-push gate would refuse its push",
+		// The lane waits for its full check as a landing waits on the forge's
+		// merge (ruling DR6d-2): a contention that holds only this lane, from
+		// the time the first call found it.
+		since := c.Now
+		if ld.CheckWaitSince != nil {
+			since = *ld.CheckWaitSince
+		}
+		r := contend(string(StageLand), "", lane.ID,
+			checkWaitText(since)+": no preflight receipt names the lane's head "+lane.HeadSHA+", so the pre-push gate would refuse its push",
 			"run the repository's preflight (`make preflight`) on a clean tree in the lane's worktree "+fsutil.RedactHome(lane.Worktree)+
 				", which mints the receipt, then run `abcd implement step` again; the loop never bypasses the receipt")
+		r.checkWait = since
+		return Outcome{}, r
 	}
 	ref := "refs/heads/" + lane.Branch
 	if _, err := netGit(c.RepoRoot, "push", "--porcelain", Remote, ref+":"+ref); err != nil {
 		return Outcome{}, refuse(string(StageLand), "", lane.ID, "git could not push "+lane.Branch+" to "+Remote+": "+fsutil.RedactHome(err.Error()),
 			"settle what git or the pre-push hook reports, then run `abcd implement step` again")
 	}
-	ld.PreflightReceipt, ld.Pushed = fsutil.RedactHome(rcp), lane.HeadSHA
-	return Outcome{Stay: true, Note: "pushed " + lane.Branch + " at " + shortSHA(lane.HeadSHA) + " to " + Remote + " on its preflight receipt"}, nil
+	note := "pushed " + lane.Branch + " at " + shortSHA(lane.HeadSHA) + " to " + Remote + " on its preflight receipt"
+	if ld.CheckWaitSince != nil {
+		note += fmt.Sprintf(", after waiting %d minute(s) for its full check", int(c.Now.Sub(*ld.CheckWaitSince)/time.Minute))
+	}
+	ld.PreflightReceipt, ld.Pushed, ld.CheckWaitSince = fsutil.RedactHome(rcp), lane.HeadSHA, nil
+	return Outcome{Stay: true, Note: note}, nil
 }
 
 // netGit runs one git command that reaches the remote, from the checkout the

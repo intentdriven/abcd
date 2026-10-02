@@ -128,6 +128,8 @@ const lockFileName = ".lock"
 // step's `needs`, and the lane stages `held` and `discarded`. A file of version
 // 8 or lower reads as a run whose lanes each await zero or one agent (its
 // `awaiting` becomes a one-entry `awaits`) and is written back at version 9;
+// a landing's `check_wait_since` (ruling DR6d-2) is version 9's too, added
+// before any release wrote the version;
 // one of them carrying anything only version 9 writes is refused, and so is a
 // version-9 file carrying `awaiting`, which version 9 never writes.
 const SchemaVersion = 9
@@ -628,6 +630,8 @@ func (s State) parallel() string {
 			return "`syncs` on " + l.ID
 		case l.Hold != nil:
 			return "`hold` on " + l.ID
+		case l.Landing != nil && l.Landing.CheckWaitSince != nil:
+			return "`check_wait_since` on " + l.ID
 		case l.Stage == StageHeld || l.Stage == StageDiscarded:
 			return "the stage `" + string(l.Stage) + "` on " + l.ID
 		}
