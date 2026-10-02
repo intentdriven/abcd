@@ -242,8 +242,114 @@ None stated.
 
 ## Audit Notes
 
-<!-- abcd-review: OWED receipt=rcp-7a2c62ab0228 -->
-Fidelity review OWED (receipt rcp-7a2c62ab0228).
+<!-- abcd-review: INGESTED receipt=rcp-7a2c62ab0228 -->
+Fidelity review — receipt rcp-7a2c62ab0228 (verifier intent-auditor claude-fable-5-1).
+
+Provenance: intent-auditor@claude-fable-5-1 · rubric_hash sha256:effa65b3e9e88ff29433b443ec2be159522a8b0b71cf1434526514aa61edb13e · prompt_hash sha256:1ff0dc6b7d83c46b223640fffda8404d298f6607b181dd32f8a2caef0cab6cba
+Input attestations: diff:commits 5992b3846 02ec15acb 662f9c81a b0510748f 7d50be159 9ddfe9d2b d155841e7 accf61856 cf3d3c9a1 cdd78b03b (PRs #? docFidelity + integ 24c), judged at main 7fb52a6b5@sha256:fa44e8580b3d8be5491d02703fc5ee9cd6a692fa46803d4ab5ead27bc906cd4a;
+
+Acceptance rollup: MET 4 · MET_WITH_CONCERNS 5 · NOT_MET 0 · INCONCLUSIVE 0
+
+Per-criterion verdicts:
+- ac-1 — MET_WITH_CONCERNS: Layer 1 derives every non-hidden, non-moved verb and sub-verb from the live command tree plus every agents/*.md, checks each against the chapter files for a code span of its path, refuses before the reviewer is constructed and names the surface in the reason; the spec-close test proves a matching PROMOTE does not excuse a missing chapter. Concern: the chapter set is every regular *.md under 04-surfaces/, so the index README.md counts as a chapter; at BASE `abcd rules`, `abcd spec`, `abcd spec close` and `sota-researcher` are named by no numbered chapter and pass the floor on the README alone, and a one-row index entry would satisfy the floor for any new surface.
+  evidence: internal/core/docfidelity/docfidelity.go:209-229 — "if layerOne && !report { v.Refuse = true; return v }"
+  evidence: internal/core/docfidelity/docfidelity.go:220 — "no brief chapter under 04-surfaces/ names the "+string(s.Kind)+" `"+s.Name+"`""
+  evidence: internal/core/docfidelity/store.go:68-80 — "names, err := regularMarkdown(root, ChaptersDir) ... in.Chapters[name] = string(data)"
+  evidence: internal/core/docfidelity/docfidelity_test.go:44 — "func TestLayerOneCoverageTable"
+  evidence: internal/surface/cli/docfidelity_close_test.go:81-92 — "Even a matching PROMOTE review does not excuse a missing chapter."
+  evidence: .abcd/development/brief/04-surfaces/README.md:241 — "`abcd rules` renders the rule set the prompt router draws on, read-only."
+- ac-2 — MET_WITH_CONCERNS: `spec close` runs the gate over the intents the close would ship before anything moves, and a saved HOLD review refuses naming each false brief sentence with its evidence; the test asserts the spec stays open and the intent planned. Concern: the semantic layer is not invoked at the close — it is a receipt the host saved earlier with `docs fidelity record`, labelled by HEAD, and it reviews the chapters against the code as a whole, with the population only naming the findings; this shape rests on ruling DR3, which the code cites but the committed decision log does not carry.
+  evidence: internal/surface/cli/cli.go:3463 — "if err := enforceDocFidelity(repoRoot, "abcd spec close", closeShips(repoRoot, args[0])); err != nil {"
+  evidence: internal/core/docfidelity/docfidelity.go:253-271 — "case ReviewHold: ... reason := who + "the docs review confirmed a false sentence in " + f.Chapter + ": \"" + f.Sentence + "\" (" + f.Evidence + ")""
+  evidence: internal/core/docfidelity/store.go:112-127 — "SavedReview is layer 2 as ruled: the review the delegated reviewer saved for Commit, found in Root."
+  evidence: internal/surface/cli/docfidelity_close_test.go:68 — "func TestSpecCloseRefusesOnAConfirmedFalseSentence"
+  evidence: internal/core/docfidelity/store.go:4-5 — "the one writer of that review (ruling DR3)"
+- ac-3 — MET: Every way of not having a usable verdict is a refusing status: no receipt (none), a receipt for another commit (stale), an unreadable or hand-edited one (invalid), a non-PROMOTE non-HOLD verdict (inconclusive), a HOLD naming nothing, and a PROMOTE that names a false brief sentence; the core table, the close tests and the cut tests all assert the refusal, and Record refuses a PROMOTE-with-findings payload before it is saved.
+  evidence: internal/core/docfidelity/docfidelity.go:248-283 — "case ReviewNone: ... case ReviewStale: ... case ReviewInconclusive: ... default: ... is refused"
+  evidence: internal/core/docfidelity/store.go:116-117 — "Every way of not having a usable verdict is a status that refuses; none is a pass."
+  evidence: internal/core/docfidelity/store.go:270-272 — "a PROMOTE names %d false brief sentence(s), so the brief is not current: a verdict with a confirmed brief sentence is HOLD"
+  evidence: internal/core/docfidelity/docfidelity_test.go:117 — "func TestLayerTwoOutcomes"
+  evidence: internal/surface/cli/docfidelity_close_test.go:56 — "func TestSpecCloseRefusesWithNoSavedDocsReview"
+  evidence: internal/core/release/docfidelity_test.go:34 — "func TestEmitRefusesACutWithNoSavedDocsReview"
+- ac-4 — MET_WITH_CONCERNS: The release emit collects every itd- record added since the base tag and runs the same Gate over them; a refusal carries the population and each reason, which name the intent and the lagging sentence; the cut test asserts it. Concern: the gate runs only when at least one intent shipped, so a cut carrying only issue resolutions runs neither layer — including layer 1, which the spec says is cheap enough to run at every enforcement point; a sub-verb added by an issue fix in such a cut meets no coverage floor at the cut.
+  evidence: internal/core/release/emit.go:266-285 — "if len(shipped) > 0 { fidelity, armed, err := docfidelity.Gate(root, current.Commands, shipped, false)"
+  evidence: internal/core/release/emit.go:278-281 — "Kind: RefusalDocFidelity, Reason: "the brief lags a surface shipped in this cut: " + strings.Join(fidelity.Reasons, "; "), Records: shipped,"
+  evidence: internal/core/release/docfidelity_test.go:46 — "func TestEmitRefusesACutWhileAShippedIntentsChapterLags"
+  evidence: internal/core/release/docfidelity_test.go:71 — "func TestEmitWithNoIntentShippedJudgesNoPopulation"
+  evidence: internal/surface/cli/docfidelity.go:55 — "if len(population) == 0 || !docfidelity.Armed(repoRoot) { return nil }"
+- ac-5 — MET_WITH_CONCERNS: A HOLD finding with a reviewer-drafted `replacement` becomes a proposed edit; the gate still refuses and names `--apply`; Apply replaces the sentence (exactly once, one bounded line, or nothing is written) and records a flag in .abcd/work/brief-review-flags.json, which travels in the change's diff; the judge then treats the sentence as applied only when the chapter changed AND a flag names it, so no path completes with the brief lagging and unflagged. Concern: the drafting is the reviewer's optional `replacement`, not the pass's own, and the apply is a separate `docs fidelity --apply` invocation rather than a step of the shipping verb; a HOLD with no drafted replacement is refused with nothing drafted.
+  evidence: internal/core/docfidelity/docfidelity.go:266-269 — "if f.Replacement != "" { v.Proposed = append(v.Proposed, Edit{...}); reason += "; the reviewer drafted its correction — `abcd docs fidelity --apply` applies it and flags it for review" }"
+  evidence: internal/core/docfidelity/apply.go:61-117 — "func Apply(root string, edits []Edit, commit string, at time.Time) ([]Flag, error)"
+  evidence: internal/core/docfidelity/apply.go:28 — "const FlagsPath = ".abcd/work/brief-review-flags.json""
+  evidence: internal/core/docfidelity/docfidelity.go:303-317 — "All three, so neither a silent hand edit nor a flag over an unedited chapter completes the change with the brief lagging and no flag recorded."
+  evidence: internal/core/docfidelity/apply_test.go:51 — "func TestAnEditWithoutAFlagStillRefuses"
+  evidence: internal/surface/cli/docfidelity_verb_test.go:55 — "func TestDocsFidelityApplyAppliesTheDraftAndTheCloseProceeds"
+- ac-6 — MET: A finding with doc "public" is collected into public_findings and skipped by the HOLD loop, so it adds no reason and refuses nothing at either point; Record accepts the public doc kind and requires a HOLD to name a brief sentence, so a public-only review is a PROMOTE that is reported; the core test asserts the finding is present and the verdict allows.
+  evidence: internal/core/docfidelity/docfidelity.go:232-236 — "if f.Doc == DocPublic { v.Public = append(v.Public, f) }"
+  evidence: internal/core/docfidelity/docfidelity.go:255-258 — "if f.Doc == DocPublic { continue }"
+  evidence: internal/core/docfidelity/store.go:267-268 — "a HOLD names no false brief sentence, so there is nothing to correct: a verdict with no confirmed brief sentence is PROMOTE"
+  evidence: internal/core/docfidelity/docfidelity_test.go:160 — "func TestPublicDocSentenceIsReportedAndNeverRefuses"
+- ac-7 — MET: `docs fidelity --report` runs both layers whatever layer 1 found, states every finding with its evidence, sets Refuse false and exits 0; it refuses to combine with --apply or --autonomous so it can write nothing.
+  evidence: internal/core/docfidelity/docfidelity.go:223-229 — "layerOne := len(v.Reasons) > 0; if layerOne && !report {"
+  evidence: internal/core/docfidelity/docfidelity.go:284 — "v.Refuse = !report && len(v.Reasons) > 0"
+  evidence: internal/surface/cli/docfidelity.go:101-103 — "--report blocks nothing and writes nothing, so it takes neither --apply nor --autonomous"
+  evidence: internal/core/docfidelity/docfidelity_test.go:176 — "func TestReportModeReportsTheSameFindingsAndNeverRefuses"
+  evidence: internal/surface/cli/docfidelity_verb_test.go:28 — "func TestDocsFidelityReportModeStatesFindingsAndExitsZero"
+- ac-8 — MET: Both enforcement points derive the command tree from the live binary (SurfaceSnapshot at the close, current.Commands at the cut) and the receipt is keyed on HEAD, so the brief is judged against the binary and never against the tag; the core test pins that a chapter ahead of the tag is not a finding.
+  evidence: internal/core/release/emit.go:262-265 — "The brief is judged against the binary, never the tag, so a chapter edited ahead of the last cut is current, not drift."
+  evidence: internal/surface/cli/docfidelity.go:58-62 — "snap, err := SurfaceSnapshot(repoRoot) ... docfidelity.Gate(repoRoot, snap.Commands, population, false)"
+  evidence: internal/core/docfidelity/docfidelity_test.go:201 — "func TestTheLegitimateLeadIsNotDrift"
+- ac-9 — MET_WITH_CONCERNS: `docs fidelity --autonomous` applies every drafted edit, lists each applied edit and its flag in the output, adds the reviewer's request (commit, population, chapters, record verb, verdict shape) to the JSON, and still exits 1 with no saved review, an undocumented surface or a confirmed false sentence; the test asserts the request and the refusal. Concern: the flag lives on the standalone verb only — `spec close` and `launch ship` have no autonomous form, and the launch page's cut routine names only `docs fidelity record`, never the autonomous verb — so an unattended cut waits for nobody only if its routine runs `docs fidelity --autonomous`, the reviewer and `record` itself before the cut.
+  evidence: internal/surface/cli/docfidelity.go:123-145 — "if (apply || autonomous) && len(v.Proposed) > 0 && v.Review != nil { flags, err := docfidelity.Apply(...) ... if autonomous && (v.Review == nil || v.Review.Status != docfidelity.ReviewMatch) { ... req := docfidelity.NewRequest(head, in)"
+  evidence: internal/surface/cli/docfidelity.go:149-151 — "if v.Refuse { return &exitError{Code: 1} }"
+  evidence: internal/core/docfidelity/apply.go:119-129 — "Request is what an unattended routine hands the delegated reviewer, the way `launch ship` hands the changelog composer its request block"
+  evidence: internal/surface/cli/docfidelity_verb_test.go:79 — "func TestDocsFidelityAutonomous"
+  evidence: commands/launch.md:421-432 — "The cut needs a docs review for the commit it runs on. ... "${CLAUDE_PLUGIN_ROOT}/abcd" docs fidelity record --verdict-json verdict.json"
+
+Gap audit:
+- honoured:
+  - Two layers, one gate: layer 1 refuses on its own with no reviewer constructed, layer 2 is host-delegated and judged by the release gate's own receipt reader
+    evidence: internal/core/docfidelity/docfidelity.go:196-229 — "judge composes the verdict: layer 1 first, and only when it holds, layer 2."
+    evidence: internal/core/docfidelity/store.go:128 — "got, err := lint.CheckGateReceipt(s.Root, ReceiptsDir, s.Commit, GateName)"
+  - Two enforcement points share one entry point with different populations: the intents a close would ship, every intent shipped since the tag
+    evidence: internal/core/docfidelity/store.go:185-189 — "Gate is the one entry point both enforcement points and the per-task report call, with their own population"
+    evidence: internal/surface/cli/docfidelity.go:27-49 — "func closeShips(repoRoot, specID string) []string"
+  - Fail closed: no reviewer, no comparison, no verdict all refuse, and the three fail-open shapes found after the first landing are closed
+    evidence: internal/core/docfidelity/docfidelity.go:239-247 — "a receipt edited to carry one after it was saved is still not a pass"
+    evidence: internal/core/docfidelity/store_test.go:201 — "func TestRecordRefusesAFailOpenPayload"
+  - The judge writes nothing; the writer is a distinct Apply the judge never reaches
+    evidence: internal/core/docfidelity/apply.go:3-8 — "A judge that writes is a judge whose output depends on who ran it, so nothing here is reached by Judge, and nothing in Judge writes."
+    evidence: internal/core/docfidelity/store_test.go:184 — "func TestGateWritesNothing"
+  - Brief only: a public-doc sentence is reported and never refuses
+    evidence: internal/core/docfidelity/docfidelity.go:255-258 — "if f.Doc == DocPublic { continue }"
+  - The legitimate lead is not drift: the brief is judged against the binary, never the tag
+    evidence: internal/core/docfidelity/docfidelity_test.go:201 — "func TestTheLegitimateLeadIsNotDrift"
+  - A remainder close ships nothing and is not gated
+    evidence: internal/surface/cli/docfidelity_close_test.go:106 — "func TestSpecCloseWithARemainderIsNotGated"
+  - No file exempts a surface from layer 1: the backlog file the first landing read was removed
+    evidence: internal/core/docfidelity/store_test.go:241 — "func TestNoBacklogFileAdmitsAnUndocumentedSurface"
+  - Wired on both front doors and documented in the brief's own docs chapter
+    evidence: commands/docs.md:75-120 — "## `fidelity` — the brief describes every surface that ships"
+    evidence: .abcd/development/brief/04-surfaces/10-docs.md:66-100 — "**The doc-fidelity gate** (itd-60) judges whether the brief describes every surface that ships."
+- diverged:
+  - The semantic layer was promised as a review the close and the cut run over what the change delivered; delivered is a receipt the host saves beforehand for HEAD, found automatically, reviewing the chapters against the code as a whole — the shape ruling DR3 chose, which the committed decision log does not carry
+    evidence: internal/core/docfidelity/store.go:3-10 — "the delegated docs review saves a verdict receipt labelled with the commit it reviewed; `spec close` and `launch ship` find it automatically"
+    evidence: .abcd/work/DECISIONS.md:2614 — "The person answered eighteen rulings of autonomous run A on 2026-09-30 (CF1, CF2, CG1, CI1, CI2, CJ1, CK1, CL1, CM1, DR1, DR2, DR4, DR5, DR6, DQ1a, DQ1b, DQ2, DQ3)"
+  - Layer 1 treats every regular *.md under 04-surfaces/ as a chapter, the index README.md included; four surfaces at BASE are covered by the index alone
+    evidence: internal/core/docfidelity/store.go:70 — "names, err := regularMarkdown(root, ChaptersDir)"
+    evidence: .abcd/development/brief/04-surfaces/README.md:262 — "`abcd spec` addresses the spec store under `.abcd/development/specs/`"
+  - The deterministic floor was promised at every enforcement point; both points skip the whole gate when the population is empty, so a cut or close that ships no intent runs no coverage check
+    evidence: internal/core/release/emit.go:272 — "if len(shipped) > 0 {"
+    evidence: internal/surface/cli/docfidelity.go:55 — "if len(population) == 0 || !docfidelity.Armed(repoRoot) {"
+  - The pass was to draft the brief edit itself; delivered, the reviewer drafts an optional replacement and a separate --apply invocation applies it
+    evidence: internal/core/docfidelity/docfidelity.go:50-51 — "Replacement is the reviewer's drafted sentence, "" when none was drafted."
+  - The autonomous flag lives on the standalone verb; the launch page's cut routine does not name it
+    evidence: internal/surface/cli/docfidelity.go:157-158 — "cmd.Flags().BoolVar(&autonomous, "autonomous", false,"
+    evidence: commands/launch.md:421-427 — "refuses (`doc-fidelity`, "run the docs review first") until a review is saved for HEAD"
+- missing:
+  - A chapter of their own for `abcd spec` (and `abcd spec close`), `abcd rules` and `sota-researcher`: no numbered chapter under 04-surfaces/ names them, so their flags appear in no generated appendix, and the gate did not refuse because the index names them
+    evidence: .abcd/development/brief/04-surfaces/README.md:241 — "`abcd rules` renders the rule set the prompt router draws on, read-only."
+    evidence: internal/core/docfidelity/docfidelity.go:211-216 — "for _, name := range chapters { if names(in.Chapters[name], s) { row.Chapter = name; break } }"
 <!-- abcd-review-end receipt=rcp-7a2c62ab0228 -->
 
 ## References
