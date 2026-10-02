@@ -144,6 +144,6 @@ build, not from a literal in the record
 
 <!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
 
-It ships as a host-delegated command page: the command tree registers no `abcd version` verb, so there are no flags and no sub-verbs to list.
+It ships as the root flag `--version`, listed in the bare `abcd` command's appendix: the command tree registers no `abcd version` verb, so there are no sub-verbs to list.
 
 <!-- surface-appendix:end -->
