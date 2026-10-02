@@ -84,7 +84,11 @@ in a gate, which is what keeps the lint itself deterministic and offline.
   names one refuses as unusable. Each quoted sentence and drafted replacement is
   one line of at most 2048 bytes, or the verdict is refused. So is a judge model
   the receipt reader would refuse as floating: a bare family name with no
-  version or date, or one naming `latest`.
+  version or date, or one naming `latest`. A false brief sentence names its
+  chapter by file name, under `04-surfaces/`, or by the repo-relative path the
+  reviewer's request lists; the record sub-verb and the apply form read it
+  through one parse and save the file name, so any other path is refused when
+  the verdict is recorded, never when its edit is applied.
 - **Where the gate refuses.** The spec close runs it over the intents the close
   would ship, before anything moves, and the release cut runs it over every
   intent shipped since the last tag. A close that mints a remainder ships nothing

@@ -98,7 +98,8 @@ the change delivered, check each sentence against the code, and compose:
 date; the record verb refuses a bare family name and any id naming `latest`.
 
 A sentence you **confirmed** false goes in `failing` with `"doc": "brief"`, its
-`chapter` file name, the `sentence` verbatim from one line of the chapter (at
+`chapter` file name (`17-guard.md`; `04-surfaces/17-guard.md` and the path the
+request lists name the same file, and any other path is refused), the `sentence` verbatim from one line of the chapter (at
 most 2048 bytes; quote the part on one line when it wraps), the `evidence`
 (file:line), a `disposition`, and, where you can, a drafted `replacement`; the
 verdict is then `HOLD`, since the record verb refuses a `PROMOTE` naming one. A

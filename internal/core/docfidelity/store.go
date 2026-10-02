@@ -131,7 +131,16 @@ func (s SavedReview) Review() Review {
 		return r
 	}
 	for _, f := range got.Failing {
-		r.Findings = append(r.Findings, Sentence{Doc: docOf(f.Doc), Chapter: f.Chapter, Sentence: f.Sentence,
+		chapter := f.Chapter
+		if docOf(f.Doc) == DocBrief {
+			// A review saved before Record parsed the chapter may name it under
+			// its directory; it is read through the same parse, and a name the
+			// parse refuses is kept as written, for Apply to refuse by name.
+			if name, err := chapterFile(chapter); err == nil {
+				chapter = name
+			}
+		}
+		r.Findings = append(r.Findings, Sentence{Doc: docOf(f.Doc), Chapter: chapter, Sentence: f.Sentence,
 			Evidence: f.Evidence, Replacement: f.Replacement})
 	}
 	r.Verdict = got.Verdict
@@ -247,6 +256,15 @@ func Record(root string, raw []byte, at time.Time) (string, Review, error) {
 		}
 		if strings.TrimSpace(f.Chapter) == "" || strings.TrimSpace(f.Sentence) == "" || strings.TrimSpace(f.Evidence) == "" {
 			return "", Review{}, fmt.Errorf("failing[%d] needs its chapter, the sentence and the evidence", i)
+		}
+		if f.Doc == DocBrief {
+			// The same parse Apply reads the chapter through, so a verdict saved
+			// here is one --apply can write; the receipt keeps the file name.
+			name, err := chapterFile(f.Chapter)
+			if err != nil {
+				return "", Review{}, fmt.Errorf("failing[%d]: %w", i, err)
+			}
+			p.Failing[i].Chapter = name
 		}
 		if strings.TrimSpace(f.Disposition) == "" {
 			return "", Review{}, fmt.Errorf("failing[%d] carries no disposition", i)
