@@ -124,14 +124,122 @@ func TestAnUnlistedModelIsRefusedWhenTheConfigurationIsRead(t *testing.T) {
 			}
 		}
 	}
-	// A route in the repository is held to the machine's list the same way. The
-	// provider is keyless: a repository's route to a keyed one is skipped before
-	// its list is consulted (TestARepositoryRouteToAKeyedProviderIsSkipped).
+	// The machine's own route to a keyless provider is refused the same way: the
+	// person's file is never dropped silently. A repository's route to an
+	// unlisted model is skipped instead
+	// (TestARepositoryRouteToAnUnlistedModelIsSkipped).
 	f := newFx(t)
-	f.machineConfig(`{"oracle":{"api":{` + localBlock + `}}}`)
+	f.machineConfig(`{"oracle":{"api":{` + localBlock + `},"roles":{"scribe":"local/openai/gpt-5"}}}`)
+	if err := f.loadAPIErr(); !strings.Contains(err.Error(), "~/.abcd/config.json (machine layer)") || !strings.Contains(err.Error(), "qwen/qwen3-8b") {
+		t.Fatalf("machine route refusal = %v", err)
+	}
+}
+
+// TestARepositoryRouteToAnUnlistedModelIsSkipped is the technical
+// facilitator's ruling CD3 of 2026-10-02: a repository's route naming a model
+// that a configured provider holding no key does not list is skipped with one
+// diagnostic naming the repository's file, the route and the list, rather
+// than refusing the whole configuration. The machine's own route to the name,
+// if it sets one, applies in its place; every other route still loads.
+func TestARepositoryRouteToAnUnlistedModelIsSkipped(t *testing.T) {
+	for name, tc := range map[string]struct {
+		repo, machine, setting string
+		family, route          string
+		machineModel           string
+	}{
+		"role": {repo: `"roles":{"scribe":"local/openai/gpt-5"}`, setting: "oracle.roles.scribe",
+			family: rolesKey, route: "scribe"},
+		"judgement type": {repo: `"judgements":{"duplicate-match":"local/openai/gpt-5"}`,
+			setting: "oracle.judgements.duplicate-match", family: judgementsKey, route: "duplicate-match"},
+		"role over a machine route": {repo: `"roles":{"scribe":"local/openai/gpt-5"}`,
+			machine: `,"roles":{"scribe":"local/qwen/qwen3-8b"}`, setting: "oracle.roles.scribe",
+			family: rolesKey, route: "scribe", machineModel: "qwen/qwen3-8b"},
+		"judgement type over a machine route": {repo: `"judgements":{"duplicate-match":"local/openai/gpt-5"}`,
+			machine: `,"judgements":{"duplicate-match":"local/qwen/qwen3-8b"}`, setting: "oracle.judgements.duplicate-match",
+			family: judgementsKey, route: "duplicate-match", machineModel: "qwen/qwen3-8b"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newFx(t)
+			f.machineConfig(`{"oracle":{"api":{` + localBlock + `}` + tc.machine + `}}`)
+			other := `"roles":{"scribe":"local/qwen/qwen3-8b"}`
+			if tc.family == rolesKey {
+				other = `"judgements":{"duplicate-match":"local/qwen/qwen3-8b"}`
+			}
+			f.repoConfig(`{"oracle":{` + tc.repo + `,` + other + `}}`)
+			c, err := LoadAPI(f.roots)
+			if err != nil {
+				t.Fatalf("LoadAPI refused the whole configuration over one repository route: %v", err)
+			}
+			if len(c.Diagnostics) != 1 {
+				t.Fatalf("diagnostics %q, want exactly one naming the skipped route", c.Diagnostics)
+			}
+			for _, want := range []string{".abcd/config.json (repo layer)", tc.setting, `"local/openai/gpt-5"`,
+				"not on local's list (qwen/qwen3-8b)", "skipped"} {
+				if !strings.Contains(c.Diagnostics[0], want) {
+					t.Errorf("diagnostic %q does not name %q", c.Diagnostics[0], want)
+				}
+			}
+			var got Target
+			var ok bool
+			if tc.family == rolesKey {
+				got, ok = c.Role(tc.route)
+				if tgt, on := c.Judgement("duplicate-match"); !on || tgt.Provider != "local" {
+					t.Errorf("the other route = %+v, %v; want it loaded", tgt, on)
+				}
+			} else {
+				got, ok = c.Judgement(tc.route)
+				if tgt, on := c.Role("scribe"); !on || tgt.Provider != "local" {
+					t.Errorf("the other route = %+v, %v; want it loaded", tgt, on)
+				}
+			}
+			switch {
+			case tc.machineModel != "":
+				if !ok || got.Model != tc.machineModel || got.Origin != "~/.abcd/config.json" {
+					t.Errorf("%s = %+v, %v; want the machine's own route", tc.route, got, ok)
+				}
+			case ok:
+				t.Errorf("%s = %+v; a repository route to an unlisted model must never load", tc.route, got)
+			}
+		})
+	}
+}
+
+// TestASkippedUnlistedRepositoryRouteLeavesTheMachineRouteJudged: skipping a
+// repository's route under ruling CD3 hands the name to the machine's own
+// route, which is judged exactly as it would be alone: a machine route to an
+// unlisted model still refuses, naming the machine's file.
+func TestASkippedUnlistedRepositoryRouteLeavesTheMachineRouteJudged(t *testing.T) {
+	f := newFx(t)
+	f.machineConfig(`{"oracle":{"api":{` + localBlock + `},"roles":{"scribe":"local/mistral/small"}}}`)
 	f.repoConfig(`{"oracle":{"roles":{"scribe":"local/openai/gpt-5"}}}`)
-	if err := f.loadAPIErr(); !strings.Contains(err.Error(), ".abcd/config.json (repo layer)") || !strings.Contains(err.Error(), "qwen/qwen3-8b") {
-		t.Fatalf("repo route refusal = %v", err)
+	err := f.loadAPIErr()
+	for _, want := range []string{"~/.abcd/config.json (machine layer)", "oracle.roles.scribe", "local/mistral/small", "not on local's list"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("refusal %q does not name %q", err, want)
+		}
+	}
+}
+
+// TestADenylistedKeylessRepositoryRouteIsStillRefused: ruling CD3 skips a
+// repository's route to a model a keyless provider does not list, but never
+// one the denylist matches: no layer softens the denylist, whichever layer
+// wrote the entry.
+func TestADenylistedKeylessRepositoryRouteIsStillRefused(t *testing.T) {
+	for label, tc := range map[string]struct{ machine, repo string }{
+		"the machine's entry":    {machine: `"denylist":["openai/*"],`, repo: `{"oracle":{"roles":{"scribe":"local/openai/gpt-5"}}}`},
+		"the repository's entry": {repo: `{"oracle":{"denylist":["openai/gpt-5"],"roles":{"scribe":"local/openai/gpt-5"}}}`},
+	} {
+		t.Run(label, func(t *testing.T) {
+			f := newFx(t)
+			f.machineConfig(`{"oracle":{` + tc.machine + `"api":{` + localBlock + `},"roles":{"scribe":"local/qwen/qwen3-8b"}}}`)
+			f.repoConfig(tc.repo)
+			err := f.loadAPIErr()
+			for _, want := range []string{"oracle.denylist", "oracle.roles.scribe", ".abcd/config.json (repo layer)"} {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("refusal %q does not name %q", err, want)
+				}
+			}
+		})
 	}
 }
 
@@ -503,6 +611,52 @@ func TestARouteToAnUnconfiguredProviderStaysOnTheHost(t *testing.T) {
 	if len(c.Diagnostics) != 1 || !strings.Contains(c.Diagnostics[0], "not configured on this machine") ||
 		!strings.Contains(c.Diagnostics[0], "host") {
 		t.Fatalf("diagnostics = %v", c.Diagnostics)
+	}
+}
+
+// TestARepositoryRouteToAnUnconfiguredProviderYieldsToTheMachineRoute is the
+// technical facilitator's ruling CD4 of 2026-10-02: a repository's route
+// naming a provider this machine has not configured never displaces the
+// machine's own route to the same name. The repository's route is skipped
+// with one diagnostic naming it, and the owner's setting applies. With no
+// machine route to the name, the step stays on the host
+// (TestARouteToAnUnconfiguredProviderStaysOnTheHost).
+func TestARepositoryRouteToAnUnconfiguredProviderYieldsToTheMachineRoute(t *testing.T) {
+	for name, tc := range map[string]struct {
+		family, route, setting string
+	}{
+		"role":           {family: rolesKey, route: "scribe", setting: "oracle.roles.scribe"},
+		"judgement type": {family: judgementsKey, route: "duplicate-match", setting: "oracle.judgements.duplicate-match"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			fam := strings.TrimPrefix(tc.family, "oracle.")
+			f := newFx(t)
+			f.machineConfig(`{"oracle":{"api":{` + openrouterBlock + `},"` + fam + `":{"` + tc.route + `":"openrouter/typesafe/jev-1.13"}}}`)
+			f.repoConfig(`{"oracle":{"` + fam + `":{"` + tc.route + `":"elsewhere/typesafe/jev-1.13"}}}`)
+			c := f.loadAPI()
+			var got Target
+			var ok bool
+			if tc.family == rolesKey {
+				got, ok = c.Role(tc.route)
+			} else {
+				got, ok = c.Judgement(tc.route)
+			}
+			if !ok || got.Provider != "openrouter" || got.Origin != "~/.abcd/config.json" {
+				t.Fatalf("%s = %+v, %v; want the machine's own route", tc.route, got, ok)
+			}
+			if len(c.Diagnostics) != 1 {
+				t.Fatalf("diagnostics %q, want exactly one naming the skipped route", c.Diagnostics)
+			}
+			for _, want := range []string{".abcd/config.json (repo layer)", tc.setting, `"elsewhere"`,
+				"not configured on this machine", "skipped", "~/.abcd/config.json"} {
+				if !strings.Contains(c.Diagnostics[0], want) {
+					t.Errorf("diagnostic %q does not name %q", c.Diagnostics[0], want)
+				}
+			}
+			if strings.Contains(c.Diagnostics[0], "runs on the host") {
+				t.Errorf("diagnostic %q says the step runs on the host; the machine's route applies", c.Diagnostics[0])
+			}
+		})
 	}
 }
 

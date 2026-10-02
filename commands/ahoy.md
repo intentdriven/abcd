@@ -482,9 +482,12 @@ The bare board names the same adapter as an optional gap
 adapter refuses as `oracle_api.config_refused`, naming the file and the key.
 A route the configuration read skips (a repository's route to a provider that
 holds a key, a repository's route that is not `<provider>/<model>` or whose
-name is not a plain lower-case name, a route to a provider this machine has
-not configured, or a role outside the roster) is the optional gap `oracle_api.route_skipped`, its
-`detail` one line per skipped route; relay each line.
+name is not a plain lower-case name, a repository's route to a model a provider
+holding no key does not list, a route to a provider this machine has not
+configured, or a role outside the roster) is the optional gap `oracle_api.route_skipped`, its
+`detail` one line per skipped route; relay each line. A skipped
+repository route never displaces the machine's: where `~/.abcd/config.json`
+routes the same name, that route applies.
 Declining is not running `connect`, and it changes nothing.
 
 The setup is `abcd ahoy connect <provider> --base-url <url> --model <model>

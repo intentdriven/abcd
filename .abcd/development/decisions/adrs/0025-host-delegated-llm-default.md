@@ -78,3 +78,31 @@ is now whatever adapter is wired, over the native default.
 - Review-artifact capture and its redaction follow whichever adapter runs,
   over the native transcript/redaction default
   ([ADR-29](0029-native-transcript-corpus.md), ADR-6).
+
+## Amendment — 2026-10-02: a repository's route that cannot apply yields to the machine's
+
+The host default above is also where a configured route falls back to when it
+names nothing this machine can reach: the provider configuration reads a route
+naming a provider this machine has not configured as a diagnostic, and the step
+stays on the host, as it would with nothing configured. Read alone, that let a
+repository's committed route displace the person's own route to the same name,
+replacing a step they had pointed at a provider with one on the host. The
+technical facilitator's rulings of 2026-10-02 narrow it. This amendment refines
+how the default applies; it does not reverse it.
+
+- **A route to an unconfigured provider yields to the owner's setting (ruling
+  CD4).** A route in the repository's `.abcd/config.json` naming a provider this
+  machine has not configured, where the machine's `~/.abcd/config.json` routes
+  the same role or judgement type, is skipped with a diagnostic naming the
+  repository's file and the route, and the machine's route applies in its
+  place. Only where the machine sets no route to that name does the step stay
+  on the host, with the diagnostic it always had.
+- **A route to a model a keyless provider does not list is skipped (ruling
+  CD3).** A route in the repository's file naming a model that a configured
+  provider holding no key does not list is skipped with a diagnostic naming the
+  file, the route and the list; the machine's route to the name, if any,
+  applies, and every other route and every command that reads the
+  configuration keeps working. The machine's own route to an unlisted model is
+  still refused, because that file is the person's and a route they set is
+  never dropped silently, and a model an `oracle.denylist` entry matches is
+  still refused from any layer: no layer softens the denylist.

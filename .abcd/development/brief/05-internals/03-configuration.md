@@ -119,10 +119,18 @@ rather than skipped:
   one model, and matching ignores case, OpenRouter's `~` alias prefix and a
   `:variant` suffix. No layer removes another's entry, and a block listing a
   model an entry matches is refused, naming the entry, whatever else it lists.
-- **A route is `<provider>/<model>`.** A role or a judgement type pointed at a
-  model its provider does not list is refused naming the list, and one pointed at
-  a provider this machine has not configured is a diagnostic: the step stays on
-  the host, as it would with nothing configured (adr-25). A role outside the
+- **A route is `<provider>/<model>`.** A role or a judgement type the
+  machine's file points at a model its provider does not list is refused naming
+  the list. The same route in a repository's `.abcd/config.json`, to a provider
+  that holds no key, is skipped with one diagnostic naming the file, the route
+  and the list, and the machine's own route to that name, if it has one,
+  applies in its place (the technical facilitator's ruling CD3 of 2026-10-02);
+  a model the denylist matches is refused from either file. A route pointed at
+  a provider this machine has not configured is a diagnostic, not a refusal: a
+  repository's such route is skipped where `~/.abcd/config.json` routes the
+  same name, so the owner's setting applies (ruling CD4 of 2026-10-02), and
+  otherwise the step stays on the host, as it would with nothing configured
+  (adr-25, amended 2026-10-02). A role outside the
   roster is named and skipped, like an orphan routing row. A route's name is a
   plain lower-case name. A repository route that is not `<provider>/<model>`,
   or whose name only the repository spells otherwise (a lookalike letter from

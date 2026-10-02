@@ -119,3 +119,19 @@ is revised.
   provider that holds no key (a local server) and a `--route` the person
   types are unaffected. The allowlist, and any `oracle.denylist` entry, still
   apply to every route that is admitted.
+
+## Amendment — 2026-10-02: a repository's route to an unlisted model is skipped, not refused
+
+Decision 1 refuses a role or a judgement type configured for a model not on its
+provider's list when the configuration is read. The technical facilitator's
+ruling CD3 of 2026-10-02 narrows the refusal for one layer: a route in a
+repository's `.abcd/config.json` naming a model that a configured provider
+holding no key does not list is skipped with a diagnostic naming the file, the
+route and the list, and the machine's route to the name, if any, applies in its
+place, so a checkout's configuration never takes the commands that read it
+down. The model is still never asked for: the route is not loaded. The
+machine's own route to an unlisted model is refused as decision 1 says, a model
+an `oracle.denylist` entry matches is refused from any layer, and a
+repository's route to a provider that holds a key is skipped before that
+provider's list is consulted, so the list is never read on a repository's
+behalf. adr-25's amendment of the same date records the ruling beside CD4.
