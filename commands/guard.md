@@ -357,7 +357,9 @@ is a **block**
 (`rm-rf-root-or-home`), with or without `-f`; one of the directory the shell is
 in or the one above it (`*`, `*/`, `.`, `..`, `./*`, `./*/`, `../*`, `.*`,
 `./.*`, and `$PWD` or `${PWD}`, each also with `/*`) is a **warn**
-(`rm-rf-working-directory`). The target is compared as written, so `$HOME` and
+(`rm-rf-working-directory`), and so is a chain of parents, which holds the one
+parent: a leading run of `..` segments reads as one `..`, so `../..`,
+`../../..` and `../../*` are a **warn** as `..` and `../*` are. The target is compared as written, so `$HOME` and
 `$PWD` are seen as those words, and read the way bash reads its text first: a
 backslash-newline inside the name is dropped, a brace group's words keep their
 variables (`{$HOME,x}`, `$HO{M..M}E`), an expansion that can leave the value

@@ -89,7 +89,7 @@
         "flags": ["-r|-R|--recursive"],
         "arg_values": ["*", "*/", ".", "./", "./*", "./*/", "./.*", "..", "../", "../*", ".*", "$PWD", "$PWD/*", "${PWD}", "${PWD}/*"]
       },
-      "why": "A recursive delete of `*`, `.`, `..` or `$PWD` removes everything in the directory the shell is in, or the one above it — and the directory the shell is in is usually the repository itself, uncommitted work included.",
+      "why": "A recursive delete of `*`, `.`, `..` (or a chain such as `../..`) or `$PWD` removes everything in the directory the shell is in, or in one above it, which holds it — and the directory the shell is in is usually the repository itself, uncommitted work included.",
       "successor": "Name the directory you mean by its path (`rm -rf -- ./build`), or check where you are first (`pwd`) and delete from the directory's parent by name.",
       "fixtures": {
         "known_bad": [
@@ -104,7 +104,9 @@
           "rm -rf \"$PWD\"",
           "rm -rf ${PWD}/*",
           "rm -rf */",
-          "rm -rf ./.*"
+          "rm -rf ./.*",
+          "rm -rf ../..",
+          "rm -rf \"../../\""
         ],
         "known_good": [
           "rm -rf ./build",
@@ -112,6 +114,7 @@
           "rm -rf node_modules",
           "rm -rf .git",
           "rm -rf \"$PWD/build\"",
+          "rm -rf ../../build",
           "rm -f *.o",
           "rm *",
           "ls -la *",

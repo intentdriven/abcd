@@ -709,7 +709,9 @@ func argPrefixMatches(prefix string, ops []string) bool {
 // not known names nothing. A spelling holding fieldMark is the fields bash
 // splits it into, and each is compared on its own; quotedFieldMark is the
 // space a quoted word keeps. Each field is also compared with its redundant
-// separators taken out (cleanSeparators), as the kernel reads the path.
+// separators taken out (cleanSeparators), as the kernel reads the path, and
+// with a leading run of `..` segments written once (parentRun), since a chain
+// of parents holds the one parent.
 func argValueMatches(values []string, written string) bool {
 	written = strings.ReplaceAll(written, quotedFieldText, " ")
 	for _, field := range strings.Split(written, fieldText) {
@@ -717,8 +719,9 @@ func argValueMatches(values []string, written string) bool {
 			continue
 		}
 		clean, glob := cleanSeparators(field), globReading(field)
+		chain, globChain := parentRun(clean), parentRun(glob)
 		for _, v := range values {
-			if field == v || clean == v || glob == v {
+			if field == v || clean == v || glob == v || chain == v || globChain == v {
 				return true
 			}
 		}
@@ -727,6 +730,24 @@ func argValueMatches(values []string, written string) bool {
 		}
 	}
 	return false
+}
+
+// parentRun is a relative path whose leading run of two or more `..`
+// segments is written as one `..` (iss-2610021542183618): `../..` is `..`,
+// `../../` is `../` and `../../*` is `../*`. A chain climbs above the
+// working directory's parent and holds it, so it deletes at least what the
+// one `..` does, and argValueMatches compares this reading beside the others,
+// so it can only add a hit. It is "" where p does not begin with such a run,
+// which no value is. A segment that only begins with `..` (`..x`) is a name.
+func parentRun(p string) string {
+	rest := p
+	for strings.HasPrefix(rest, "../..") && (len(rest) == len("../..") || rest[len("../..")] == '/') {
+		rest = rest[len("../"):]
+	}
+	if rest == p {
+		return ""
+	}
+	return rest
 }
 
 // absoluteName reports whether p begins with the home or the working

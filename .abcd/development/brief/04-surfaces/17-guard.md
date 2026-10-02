@@ -343,7 +343,10 @@ each also with a trailing `/`) it is a block wherever it stands, with or without
 in or the one above it (`*`, `*/`, `.`, `..`, `./*`, `./*/`, `../*`, `.*`,
 `./.*`, and `$PWD` or `${PWD}`, each also with `/*`) it is a warn, graded like
 `git clean`, because that directory is usually the repository and emptying a
-build directory the same way is ordinary work. Chained after a `cd` any
+build directory the same way is ordinary work. A chain of parents holds the one
+parent, so a leading run of `..` segments is also read as one `..`: `../..`,
+`../../..`, `../../` and `../../*` warn as `..`, `../` and `../*` do, while
+`../../build` names a directory and is compared as written. Chained after a `cd` any
 recursive forced delete blocks, as above. The target is compared as written,
 before the shell expands it, so `$HOME` and `$PWD` are seen as those words. It
 is first read the way bash reads its text: a backslash-newline inside a name
