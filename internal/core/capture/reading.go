@@ -365,10 +365,6 @@ func Disposition(req DispositionRequest) (DispositionResult, error) {
 		return DispositionResult{}, refused(fmt.Errorf("%w: item %q does not match ^%s-[0-9]+$",
 			ErrMalformedFrontmatter, req.Item, issueschema.ReadingItemFamily))
 	}
-	if err := mutationPreamble(repoRoot, issuesRoot); err != nil {
-		return DispositionResult{}, err
-	}
-
 	// The position comes off the KEYED reading record, never from the caller: the
 	// availability rule is a coupling the schema carries, and a caller-supplied
 	// position would let a disposition assert the very rule it must satisfy. An
@@ -379,6 +375,12 @@ func Disposition(req DispositionRequest) (DispositionResult, error) {
 	// lock is taken. Everything that decides the write is read again under it.
 	head, err := readItemHead(issuesRoot, req.Item)
 	if err != nil {
+		return DispositionResult{}, err
+	}
+	// The preamble provisions the ledger, so it follows the pre-flight: an item
+	// the ledger does not hold is refused with nothing written
+	// (iss-2609302305500526).
+	if err := mutationPreamble(repoRoot, issuesRoot); err != nil {
 		return DispositionResult{}, err
 	}
 	// Redaction happens outside the lock, as IngestReading's does: a scanner

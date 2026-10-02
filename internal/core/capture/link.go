@@ -108,9 +108,6 @@ func Link(req LinkRequest) (LinkResult, error) {
 	if err != nil {
 		return LinkResult{}, err
 	}
-	if err := mutationPreamble(repoRoot, issuesRoot); err != nil {
-		return LinkResult{}, err
-	}
 	if !reIssID.MatchString(req.ID) {
 		return LinkResult{}, refused(fmt.Errorf("invalid iss-N identifier: %q", req.ID))
 	}
@@ -134,6 +131,11 @@ func Link(req LinkRequest) (LinkResult, error) {
 			seen[dep] = true
 			remove = append(remove, dep)
 		}
+	}
+	// The preamble provisions the ledger, so it runs only once every refusal
+	// above, all of them reads, has passed (iss-2609302305500526).
+	if err := mutationPreamble(repoRoot, issuesRoot); err != nil {
+		return LinkResult{}, err
 	}
 
 	var result LinkResult

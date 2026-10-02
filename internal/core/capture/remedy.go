@@ -62,6 +62,11 @@ func SetRemedy(req RemedyRequest) (RemedyResult, error) {
 			issueschema.MachineRemedy))
 	}
 	remedy = termsafe.EncodeHiddenRunes(remedy)
+	// An id the ledger does not hold is refused before the preamble provisions
+	// anything (iss-2609302305500526).
+	if err := requireHeld(issuesRoot, req.ID); err != nil {
+		return RemedyResult{}, err
+	}
 	if err := mutationPreamble(repoRoot, issuesRoot); err != nil {
 		return RemedyResult{}, err
 	}

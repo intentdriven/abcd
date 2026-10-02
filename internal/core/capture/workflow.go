@@ -586,14 +586,19 @@ func transition(repoRoot, issuesRoot, issID, verb, field, note string, extra []k
 	if err != nil {
 		return TransitionResult{}, err
 	}
-	if err := mutationPreamble(rr, ir); err != nil {
-		return TransitionResult{}, err
-	}
 	if !reIssID.MatchString(issID) {
 		return TransitionResult{}, refused(fmt.Errorf("invalid iss-N identifier: %q", issID))
 	}
 	if strings.TrimSpace(note) == "" {
 		return TransitionResult{}, refused(fmt.Errorf("%s must be a non-empty string", field))
+	}
+	// Every refusal the request alone can settle is raised before the preamble
+	// provisions anything: an id the ledger does not hold writes nothing.
+	if err := requireHeld(ir, issID); err != nil {
+		return TransitionResult{}, err
+	}
+	if err := mutationPreamble(rr, ir); err != nil {
+		return TransitionResult{}, err
 	}
 
 	// The find→read→move critical section runs under the ledger lock, the SAME

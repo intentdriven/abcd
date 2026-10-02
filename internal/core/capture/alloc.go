@@ -497,6 +497,23 @@ func orphanStillRemovable(cand string, seen os.FileInfo) bool {
 	return true
 }
 
+// requireHeld refuses, reading only, an id the ledger does not hold: an issue
+// (iss-N) in any status directory, or a reading item (rdi-N) in any run. A verb
+// that names an existing record calls it BEFORE mutationPreamble, because the
+// preamble provisions the ledger's directories and opens the allocator lock
+// file, and a refusal raised after it left .abcd/work/issues/.iss-alloc.lock
+// and the directory chain to it in a checkout that had no ledger
+// (iss-2609302305500526). It is a pre-flight only: every verb locates the
+// record again under the lock, which is what decides the write.
+func requireHeld(issuesRoot, id string) error {
+	if recordid.ValidReadingItemID(id) {
+		_, err := findReadingItem(issuesRoot, id)
+		return err
+	}
+	_, _, err := findIssue(issuesRoot, id)
+	return err
+}
+
 // findIssue locates issID across the three status dirs, mirroring find_issue.
 func findIssue(issuesRoot, issID string) (string, State, error) {
 	if !reIssID.MatchString(issID) {
