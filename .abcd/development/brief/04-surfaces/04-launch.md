@@ -685,7 +685,13 @@ is numbered (the product thinker's ruling BS1 of 2026-09-29), rewriting the
 record in the write that rolls the changelog and naming the move in one line
 under the dated section's notice (`changelog.TargetMoveNote`), which the site's
 release stamp passes over because the line names intents the release did not
-ship.
+ship. The cut's emit names those moves before anything is written
+(iss-2610020718369838): its machine-readable cut carries them as
+`target_moves` (`id`, `path`, `from`), and its human render marks each moved
+intent's targeted line as moving to `next`, while a target past the cut keeps
+its line unchanged. The ingest moves exactly the list the cut carries, so the
+dry run and the write cannot disagree, and a refused cut derives no version
+and names no move.
 A refused cut writes its report too, and the refusal names where it landed. The
 preview's JSON carries `report_path`, the cut's `preflight_report`. A detector
 fails the build if any non-test Go source under `internal/` so much as names the
