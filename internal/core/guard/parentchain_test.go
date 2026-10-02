@@ -71,3 +71,25 @@ func TestAParentChainReadsAsOneParent(t *testing.T) {
 		}
 	}
 }
+
+// TestTheTrailingSlashGlobOfEachNamedDirectoryWarns — iss-2610021547096336.
+// `*/` and `./*/` warn on rm-rf-working-directory, since the glob names every
+// directory of the working directory, but the same glob of the parent and of
+// `$PWD` was an allow: the entry named its `/*` form and not its `/*/` form.
+// The parent's glob names the working directory itself among the rest.
+func TestTheTrailingSlashGlobOfEachNamedDirectoryWarns(t *testing.T) {
+	const cwd = "rm-rf-working-directory"
+	for _, cmd := range []string{
+		`rm -rf ../*/`, `rm -r ../*/`, `rm -rf "$PWD"/*/`, `rm -rf $PWD/*/`, `rm -rf ${PWD}/*/`,
+		`rm -rf ../../*/`, `rm -rf ./../*/`, `rm -rf ../**/`,
+	} {
+		if d := verdictOf(t, cmd); d.Verdict != VerdictWarn || d.EntryID != cwd {
+			t.Errorf("Check(%q) = %q via %q, want warn via %q", cmd, d.Verdict, d.EntryID, cwd)
+		}
+	}
+	for _, cmd := range []string{`rm -rf ../build/*/`, `rm -rf $PWD/build/*/`, `rm -f ../*/`} {
+		if d := verdictOf(t, cmd); d.EntryID == cwd {
+			t.Errorf("Check(%q) = %q via %q, want no working-directory verdict", cmd, d.Verdict, d.EntryID)
+		}
+	}
+}

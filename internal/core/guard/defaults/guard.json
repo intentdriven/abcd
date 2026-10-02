@@ -87,7 +87,7 @@
       "pattern": {
         "command": "rm",
         "flags": ["-r|-R|--recursive"],
-        "arg_values": ["*", "*/", ".", "./", "./*", "./*/", "./.*", "..", "../", "../*", ".*", "$PWD", "$PWD/*", "${PWD}", "${PWD}/*"]
+        "arg_values": ["*", "*/", ".", "./", "./*", "./*/", "./.*", "..", "../", "../*", "../*/", ".*", "$PWD", "$PWD/*", "$PWD/*/", "${PWD}", "${PWD}/*", "${PWD}/*/"]
       },
       "why": "A recursive delete of `*`, `.`, `..` (or a chain such as `../..`) or `$PWD` removes everything in the directory the shell is in, or in one above it, which holds it — and the directory the shell is in is usually the repository itself, uncommitted work included.",
       "successor": "Name the directory you mean by its path (`rm -rf -- ./build`), or check where you are first (`pwd`) and delete from the directory's parent by name.",
@@ -106,7 +106,8 @@
           "rm -rf */",
           "rm -rf ./.*",
           "rm -rf ../..",
-          "rm -rf \"../../\""
+          "rm -rf \"../../\"",
+          "rm -rf ../*/"
         ],
         "known_good": [
           "rm -rf ./build",

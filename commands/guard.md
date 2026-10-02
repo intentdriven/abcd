@@ -355,8 +355,8 @@ A recursive delete of the filesystem root or the home directory (`/`, `/*`,
 home's dotfiles `~/.*`, `$HOME/.*`, `${HOME}/.*`, each also with a trailing `/`)
 is a **block**
 (`rm-rf-root-or-home`), with or without `-f`; one of the directory the shell is
-in or the one above it (`*`, `*/`, `.`, `..`, `./*`, `./*/`, `../*`, `.*`,
-`./.*`, and `$PWD` or `${PWD}`, each also with `/*`) is a **warn**
+in or the one above it (`*`, `*/`, `.`, `..`, `./*`, `./*/`, `../*`, `../*/`, `.*`,
+`./.*`, and `$PWD` or `${PWD}`, each also with `/*` or `/*/`) is a **warn**
 (`rm-rf-working-directory`), and so is a chain of parents, which holds the one
 parent: a leading run of `..` segments reads as one `..`, so `../..`,
 `../../..` and `../../*` are a **warn** as `..` and `../*` are. The target is compared as written, so `$HOME` and

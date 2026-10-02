@@ -340,8 +340,8 @@ A recursive delete is read by what it deletes. Of the filesystem root or the
 home directory (`/`, `/*`, `~`, `$HOME`, `${HOME}`, each also with a trailing
 `/`, `/*` or `/*/`, and the home's dotfiles `~/.*`, `$HOME/.*`, `${HOME}/.*`,
 each also with a trailing `/`) it is a block wherever it stands, with or without `-f`. Of the directory the shell is
-in or the one above it (`*`, `*/`, `.`, `..`, `./*`, `./*/`, `../*`, `.*`,
-`./.*`, and `$PWD` or `${PWD}`, each also with `/*`) it is a warn, graded like
+in or the one above it (`*`, `*/`, `.`, `..`, `./*`, `./*/`, `../*`, `../*/`, `.*`,
+`./.*`, and `$PWD` or `${PWD}`, each also with `/*` or `/*/`) it is a warn, graded like
 `git clean`, because that directory is usually the repository and emptying a
 build directory the same way is ordinary work. A chain of parents holds the one
 parent, so a leading run of `..` segments is also read as one `..`: `../..`,
