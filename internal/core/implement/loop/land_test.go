@@ -271,11 +271,12 @@ func TestTheLandingClosesTheSpecResolvesTheCapturesAndArmsTheMerge(t *testing.T)
 		t.Fatalf("the audit the closing lane took is ingested at the close, not owed again:\n%s", shipped)
 	}
 
-	// No preflight receipt: refused, nothing pushed.
+	// No preflight receipt: the lane waits for its full check (ruling DR6d-2),
+	// nothing pushed.
 	_, err := advance(f.repo.Root(), f.runID, f.stages, Options{})
 	r := mustRefusal(t, err)
-	if r.Stage != string(StageLand) || !strings.Contains(r.Reason, "preflight receipt") || !strings.Contains(r.Remedy, "preflight") {
-		t.Fatalf("a landing without the preflight receipt is refused naming it: %+v", r)
+	if r.Stage != string(StageLand) || !r.Contention || !strings.Contains(r.Reason, "preflight receipt") || !strings.Contains(r.Remedy, "preflight") {
+		t.Fatalf("a landing without the preflight receipt waits for it, naming it: %+v", r)
 	}
 	if got := f.remoteBranch(t, l.Branch); got != "" {
 		t.Fatalf("nothing is pushed without the receipt, but the remote has %s", got)

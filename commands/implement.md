@@ -238,13 +238,18 @@ first, a round's validators in order, then the implementer of a new lane. A
 run's `waiting` with the time it was first held; the move that later serves it
 records the minutes it waited. A lane opens for a spec step once every step it
 needs has landed (the step's `- needs:` line, or by default every step before
-it), whatever the ceiling: its worktree and brief are made, and only its
-implementer waits for a slot. A landing waiting on the forge's merge holds only
-its own lane: the call moves another lane, names the wait under `blocked` (a
-`blocked:` line in the text form) and in `next`, and gives the wait (exit 3)
-only when nothing else moves. Any other refusal of a stage the binary performs,
-a missing preflight receipt included, is the call's answer, and no other lane
-moves.
+it), and only when a helper is free to take it: a slot is left for its
+implementer beside every lane opened whose implementer is not out yet, and
+fewer step worktrees than the ceiling are on disk. Its worktree is made just
+before its implementer takes the slot; a step waiting for a helper has none,
+and waits under `waiting` as `step <n>`. A landing waiting on the forge's merge,
+or on the preflight receipt its push needs, holds only its own lane: the call
+moves another lane, names the wait under `blocked` (a `blocked:` line in the
+text form) and in `next`, and gives the wait (exit 3) only when nothing else
+moves. A lane waiting for its receipt reads "waiting for its full check (since
+HH:MM)" in `blocked`, in `status` and in `alive`, the time the wait began (UTC)
+kept on its landing as `check_wait_since` until the push. Any other refusal of
+a stage the binary performs is the call's answer, and no other lane moves.
 
 `receipt` looks the path up among every outstanding await of the run and
 advances the lane it belongs to; a path no await names is refused, naming the
@@ -377,7 +382,8 @@ over each of the run's lanes' own diff.
    what the hook names is settled.
 3. It pushes the lane's branch only once the repository's preflight receipt
    (`.abcd/.work.local/preflight-receipts/<head>`, in any worktree) names the
-   lane's head. Without one, `step` refuses naming it: run `make preflight` in
+   lane's head. Without one, the lane waits for its full check (exit 3 when
+   nothing else moves) and every other lane carries on: run `make preflight` in
    the lane's worktree, then `step` again. The push runs the pre-push hook and
    never skips or forces anything.
 4. It opens the pull request through `gh`, with a body written from the run's

@@ -27,7 +27,44 @@ rate-limit responses (itd-2609201916056194).
 
 The pace, the window clock and the ceiling with its parallel lanes
 (criteria 1 to 6 and 9) are built; spc-2609202134341288's design sections
-remain the record for them.
+remain the record for them, as amended below.
+
+## Amendments to spc-2609202134341288
+
+The closed spec is not reopened; these rulings amend its design and its
+criterion C4 from 2026-10-02, and the loop is built to them.
+
+- **A step's worktree is made only when a helper is free (ruling DR6d-1).**
+  The product thinker, verbatim: "preparing parallel steps' worktrees: ONLY
+  WHEN A HELPER IS FREE — a step's worktree is made just before an agent takes
+  it; at most the agent ceiling's worth on disk." It reverses the eager opening
+  "The count" and C4 carried ("A stage the binary performs itself proceeds at
+  the ceiling", read as a ready step's worktree and brief made whatever the
+  ceiling). A lane opens for a ready spec step only while a slot is left for
+  its implementer beside every lane opened whose implementer is not out yet,
+  and fewer step worktrees than the ceiling are on disk (a lane holds one from
+  its worktree stage until it lands or is discarded); the opening call makes
+  its worktree, and its brief and implementer follow. A step waiting for a
+  helper has no worktree and waits under `waiting` as `step <n>`. C4 reads: a
+  step made ready at the ceiling waits for a helper with no worktree, and its
+  lane opens at the next free slot (as C6 already says of `- needs: none`).
+  The stages the binary performs on a lane already open (its brief, a round's
+  close, a landing step, a sync, a hold) still take no slot and are never held
+  by the ceiling.
+- **A missing preflight receipt holds only its lane (ruling DR6d-2).** The
+  product thinker, verbatim: "missing preflight receipt for one lane: CARRY
+  ON, WAIT SHOWN — other lanes continue; the lane waits for its receipt like
+  the merge wait (contend, not refuse), and the status shows 'waiting for its
+  full check (since HH:MM)'." The landing's push without a receipt naming the
+  lane's head is a contention, as the forge's merge is: the call moves another
+  lane and names the wait under `blocked`, and gives the wait (exit 3) only
+  when nothing else moves. The time the wait began is written once, on the
+  lane's landing as `check_wait_since` (a version-9 field), with a record
+  entry, kept across calls and cleared by the push; the status shows it in
+  UTC. The remedy still names how the receipt is minted. Landing stays one lane
+  at a time: a landing waiting for its full check is a landing under way, so a
+  sibling's landing waits behind it as it waits behind a merge. Who starts the
+  check (ruling DR6d-2b) is a separate intent and is not built here.
 
 ## Footprint
 

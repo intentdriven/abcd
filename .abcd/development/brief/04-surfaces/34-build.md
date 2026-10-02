@@ -297,11 +297,16 @@ nothing, names every lane alive with what it awaits, and records the held work
 under `waiting`; the move that later serves it records the whole minutes it
 waited. A lane opens for a spec step once every step it needs has landed (its
 `- needs:` line, or by default every step before it, ruling DR6b), so a spec
-that declares no needs lands its steps one lane at a time; it opens whatever the
-ceiling, its worktree and brief made, and only its implementer waits for a slot.
-A landing waiting on the forge's merge holds only that lane: the move goes to
-another and names the wait under `blocked` and in its next move. Any other
-refusal of a stage the binary performs, a missing preflight receipt included, is
+that declares no needs lands its steps one lane at a time. It opens only when a
+helper is free to take it (ruling DR6d-1): a slot is left for its implementer
+beside every lane opened whose implementer is not out yet, and fewer step
+worktrees than the ceiling are on disk, so its worktree is made just before its
+implementer takes the slot, and a step waiting for a helper has no worktree. A
+landing waiting on the forge's merge, or on the preflight receipt its push needs
+(ruling DR6d-2), holds only that lane: the move goes to another and names the
+wait under `blocked` and in its next move. The lane waiting for its receipt
+shows "waiting for its full check (since HH:MM)", the time the wait began kept
+on its landing across moves. Any other refusal of a stage the binary performs is
 the move's answer, and no other lane moves.
 
 Landing is one lane at a time, the lower spec step first. A lane whose sibling
@@ -554,9 +559,10 @@ until the last step.
 3. It pushes the lane's branch to `origin` only once the repository's
    preflight receipt (`.abcd/.work.local/preflight-receipts/<head>`, in any
    worktree git lists) names the lane's head, the gate the pre-push hook
-   checks, read before any connection opens. The push is a plain `git push`
-   from the checkout the run lives in, so the hook runs; nothing is skipped or
-   forced.
+   checks, read before any connection opens. Until it exists the lane waits
+   for its full check, as a landing waits on the forge's merge, and every other
+   lane carries on (ruling DR6d-2). The push is a plain `git push` from the
+   checkout the run lives in, so the hook runs; nothing is skipped or forced.
 4. It opens the pull request through the forge client the repository already
    uses (`gh`), with a title and a body written from the run's records (the
    step, the spec, the intent, the passing round's verdicts, the close, each

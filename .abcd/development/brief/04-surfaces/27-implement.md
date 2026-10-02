@@ -267,12 +267,15 @@ stages are worktree, brief, implement, validate and land; the lane as a whole
 lands one of the spec's steps). A run works in parallel up to its ceiling (ruling
 DR6): a stage the binary owns moves on any lane first, then, while a slot is
 free, the first waiting work takes it, an open lane's before a new lane's and
-the lower spec step first; a lane opens for a ready spec step whatever the
-ceiling, and only its implementer waits for a slot; at a stage that hands work
-to an agent it names the agent, the brief and the receipt path, and a step that
-finds the ceiling reached hands out nothing and names every agent out. A landing
-waiting on the forge's merge holds only its own lane; any other refused stage
-the binary performs is the step's answer. The receipt verb looks the path up
+the lower spec step first; a lane opens for a ready spec step only when a helper
+is free to take it, its worktree made just before its implementer takes the
+slot, and never more step worktrees on disk than the ceiling (ruling DR6d-1); at
+a stage that hands work to an agent it names the agent, the brief and the
+receipt path, and a step that finds the ceiling reached hands out nothing and
+names every agent out. A landing waiting on the forge's merge, or on the
+preflight receipt its push needs, holds only its own lane, the latter shown as
+waiting for its full check since the time the wait began (ruling DR6d-2); any
+other refused stage the binary performs is the step's answer. The receipt verb looks the path up
 among every outstanding await of the run, and the stage completes only when a
 lane awaits that path and its verifier accepts it; a verified receipt frees its
 slot. After a hand-back the siblings finish and a lane whose round passes is

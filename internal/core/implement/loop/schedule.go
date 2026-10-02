@@ -9,8 +9,7 @@ package loop
 //
 // Each `implement step` performs one move. It first performs any stage of any
 // lane the binary owns (the worktree, the brief, the landing's steps, a round's
-// close, a sync, a hold), which takes no slot and is never held by the ceiling;
-// then it opens a lane for a ready spec step, whose worktree is such a stage.
+// close, a sync, a hold), which takes no slot and is never held by the ceiling.
 // When the move needs an agent, it takes the first waiting item in this order:
 //
 //  1. work on a lane already open, before any new lane: a round's validators
@@ -22,10 +21,14 @@ package loop
 //
 // The order is a function of the state alone. A lane opens for a spec step once
 // every step it needs has landed (its `- needs:` line, or by default every
-// earlier step, ruling DR6b), whatever the ceiling: only its implementer waits
-// for a slot. No lane opens after a hand-back (ruling DR6c).
-// Landing is one lane at a time: a lane waits at its landing while a sibling's
-// landing is under way, and holds no slot while it waits.
+// earlier step, ruling DR6b), and only when a helper is free to take it (ruling
+// DR6d-1, the product thinker, 2026-10-02: "a step's worktree is made just
+// before an agent takes it; at most the agent ceiling's worth on disk"): a slot
+// is left for its implementer beside every lane opened whose implementer is not
+// out yet, and fewer step worktrees than the ceiling are on disk. A step that
+// waits for a helper has no worktree. No lane opens after a hand-back (ruling
+// DR6c). Landing is one lane at a time: a lane waits at its landing while a
+// sibling's landing is under way, and holds no slot while it waits.
 
 import (
 	"fmt"
@@ -41,6 +44,9 @@ type AliveLane struct {
 	Stage    Stage   `json:"stage"`
 	Awaits   []Await `json:"awaits"`
 	Hold     *Hold   `json:"hold,omitempty"`
+	// Waiting is the lane's wait for its full check, with the time it began
+	// (ruling DR6d-2); empty when it waits for none.
+	Waiting string `json:"waiting,omitempty"`
 }
 
 // LaneAwait is one outstanding await with the lane it belongs to.
@@ -87,7 +93,7 @@ func (s State) alive() []AliveLane {
 			continue
 		}
 		aw := append([]Await{}, l.Awaits...)
-		out = append(out, AliveLane{Lane: l.ID, SpecStep: l.SpecStep, Stage: l.Stage, Awaits: aw, Hold: l.Hold})
+		out = append(out, AliveLane{Lane: l.ID, SpecStep: l.SpecStep, Stage: l.Stage, Awaits: aw, Hold: l.Hold, Waiting: l.CheckWait()})
 	}
 	return out
 }
@@ -193,11 +199,54 @@ func (s State) readyPending() []int {
 	return out
 }
 
+// reserved counts the lanes opened whose first implementer has not been
+// handed out yet: each will take a slot, so a new lane opens only while the
+// slots in use and these leave one free.
+func (s State) reserved() int {
+	n := 0
+	for _, l := range s.Lanes {
+		switch {
+		case l.Stage == StageWorktree, l.Stage == StageBrief:
+			n++
+		case l.Stage == StageImplement && len(l.Awaits) == 0 && l.Receipt == "":
+			n++
+		}
+	}
+	return n
+}
+
+// stepWorktrees counts the lanes that hold a step worktree, or are opened to
+// make one: a lane holds it from its worktree stage until it lands or is
+// discarded. A lane handed back with its worktree discarded holds none.
+func (s State) stepWorktrees() int {
+	n := 0
+	for _, l := range s.Lanes {
+		switch {
+		case l.Stage == StageDone, l.Stage == StageDiscarded:
+		case l.HandBack != nil && l.HandBack.Discarded != "":
+		default:
+			n++
+		}
+	}
+	return n
+}
+
+// helperFree reports whether a new lane may open (ruling DR6d-1): a slot is
+// left for its implementer beside the slots in use and the lanes opened whose
+// implementer is not out yet, and fewer step worktrees than the ceiling are on
+// disk.
+func (s State) helperFree() bool {
+	return s.slotsInUse()+s.reserved() < s.ceiling() && s.stepWorktrees() < s.ceiling()
+}
+
 // openLaneRecorded opens the lane for the pending step at index k and records
 // it: the run record lists the spec's steps as it lists the lanes
-// (itd-2609212103565953, criterion 4).
+// (itd-2609212103565953, criterion 4). The new lane's waiting item, keyed on
+// its spec step, is served by the open.
 func openLaneRecorded(st *State, k int, now time.Time) int {
+	key := stepKey(st.Pending[k].Number)
 	openLane(st, k)
+	tookSlot(st, key, RoleImplementer, now)
 	i := len(st.Lanes) - 1
 	l := st.Lanes[i]
 	st.Record = append(st.Record, Entry{At: now, Lane: l.ID, Stage: "open",
@@ -205,13 +254,26 @@ func openLaneRecorded(st *State, k int, now time.Time) int {
 	return i
 }
 
-// openNext opens, state-only, the lane for the first spec step a landing made
-// ready: the run record lists the next lane beside the landing that let it
-// open. The next call makes its worktree.
+// openNext opens, state-only, the lane a freed helper would take next when that
+// is a new lane: a lane that lands makes its dependants ready and frees its
+// worktree, and the run record lists the next lane beside the landing that let
+// it open. The next call makes its worktree.
 func openNext(st *State, now time.Time) {
-	if ready := st.readyPending(); len(ready) > 0 {
-		openLaneRecorded(st, ready[0], now)
+	if wants := agentWants(*st); len(wants) > 0 && wants[0].open >= 0 && st.helperFree() {
+		openLaneRecorded(st, wants[0].open, now)
 	}
+}
+
+// stepKey names the waiting work of a spec step no lane is open for yet.
+func stepKey(n int) string { return fmt.Sprintf("step %d", n) }
+
+// waitKey names a piece of waiting work: its lane, or the spec step a new lane
+// will open for.
+func waitKey(st State, w want) string {
+	if w.open >= 0 {
+		return stepKey(st.Pending[w.open].Number)
+	}
+	return st.Lanes[w.lane].ID
 }
 
 // The kinds of move a lane wants next.
@@ -225,14 +287,17 @@ const (
 
 // want is one lane's next move: nothing, a stage the binary performs, or an
 // agent in a role. hold marks the binary move that holds the lane (DR6c); new
-// marks the first implementer of a lane not yet handed to one, ordered by its
-// spec step.
+// marks the first implementer of a lane not yet handed to one, or of a lane to
+// open, ordered by its spec step.
 type want struct {
 	lane int
 	kind wantKind
 	role string
 	hold bool
 	new  bool
+	// open is the index of the pending step a new lane opens for, or -1;
+	// step is the spec step a new lane's work is ordered by.
+	open int
 	step int
 }
 
@@ -288,7 +353,7 @@ func (l Lane) fixRoundsTaken() int {
 // laneWant is what lane i wants next, a function of the state alone.
 func laneWant(st State, i int) want {
 	l := st.Lanes[i]
-	w := want{lane: i, step: l.SpecStep}
+	w := want{lane: i, open: -1, step: l.SpecStep}
 	switch l.Stage {
 	case StageWorktree, StageBrief:
 		w.kind = wantBinary
@@ -353,7 +418,8 @@ func laneWant(st State, i int) want {
 
 // agentWants lists the work that needs an agent, in the order a freed slot
 // takes it: open lanes before new ones, each by spec step; a new lane is the
-// first implementer of a lane not yet handed to one.
+// first implementer of a lane not yet handed to one, or a lane to open for a
+// ready pending step, which opens only while a helper is free for it.
 func agentWants(st State) []want {
 	var open, fresh []want
 	for _, i := range st.laneOrder() {
@@ -367,19 +433,30 @@ func agentWants(st State) []want {
 			open = append(open, w)
 		}
 	}
+	for _, k := range st.readyPending() {
+		fresh = append(fresh, want{lane: -1, kind: wantAgent, role: RoleImplementer, new: true, open: k, step: st.Pending[k].Number})
+	}
 	slices.SortStableFunc(fresh, func(a, b want) int { return a.step - b.step })
 	return append(open, fresh...)
 }
 
-// move performs the run's next move and reports what it did.
+// move performs the run's next move and reports what it did. An error that is
+// the call's answer, a wait or a refusal, reports true beside it when the call
+// wrote the time a lane began waiting for its full check, which the caller
+// writes: the time is when the wait began, so a later refusal in the same call
+// does not let it drift to the next call's.
 func move(repoRoot string, st *State, steps Stages, now time.Time) (StepResult, bool, error) {
-	// A landing waiting on the forge's merge (a contention refusal) holds only
-	// its own lane: the call moves the next lane and names the wait beside what
-	// it did; when nothing else moves, the first wait is the call's answer. Any
-	// other refusal of a stage the binary performs is the call's answer, and no
-	// other lane moves: a disarm the forge refuses stops the step.
+	// A landing waiting on the forge's merge or on its full check (a
+	// contention refusal, ruling DR6d-2) holds only its own lane: the call
+	// moves the next lane and names the wait beside what it did; when nothing
+	// else moves, the first wait is the call's answer. The time a lane began
+	// waiting for its full check is written once, so the call that finds it
+	// writes the state even when the wait is its answer. Any other refusal of a
+	// stage the binary performs is the call's answer, and no other lane moves:
+	// a disarm the forge refuses stops the step.
 	var blocked []Refusal
 	var waitErr error
+	began := false
 	moved := func(res StepResult) StepResult {
 		res.Blocked = blocked
 		res.Next = withBlocked(res.Next, blocked)
@@ -394,7 +471,10 @@ func move(repoRoot string, st *State, steps Stages, now time.Time) (StepResult, 
 		if err != nil {
 			r, ok := AsRefusal(err)
 			if !ok || !r.Contention {
-				return StepResult{}, false, err
+				return StepResult{}, began, err
+			}
+			if beganCheckWait(st, i, r, now) {
+				began = true
 			}
 			if waitErr == nil {
 				waitErr = err
@@ -404,26 +484,21 @@ func move(repoRoot string, st *State, steps Stages, now time.Time) (StepResult, 
 		}
 		return moved(res), true, nil
 	}
-	// A ready spec step's lane opens whatever the ceiling: its worktree, like
-	// its brief, is a stage the binary performs, and only its implementer
-	// waits for a slot.
-	if ready := st.readyPending(); len(ready) > 0 {
-		i := openLaneRecorded(st, ready[0], now)
-		res, err := performMove(repoRoot, st, steps, want{lane: i, kind: wantBinary}, now)
-		if err != nil {
-			return StepResult{}, false, err
-		}
-		return moved(res), true, nil
-	}
+	// A refused agent move writes nothing of its own: a lane it opened for a
+	// pending step stays unopened. Every change moveAgent makes before its
+	// stage body succeeds replaces a slice or appends past its length, so the
+	// shallow copy is the state as it was.
+	before := *st
 	res, did, err := moveAgent(repoRoot, st, steps, now)
 	if err != nil {
-		return StepResult{}, false, err
+		*st = before
+		return StepResult{}, began, err
 	}
 	if did {
 		return moved(res), true, nil
 	}
 	if waitErr != nil {
-		return StepResult{}, false, waitErr
+		return StepResult{}, began, waitErr
 	}
 	if st.slotsInUse() == 0 && st.handedBack() {
 		return StepResult{}, false, handedBackRefusal(*st)
@@ -441,7 +516,8 @@ func withBlocked(next string, blocked []Refusal) string {
 }
 
 // moveAgent hands the first waiting work an agent when a slot is free, or
-// records the work the ceiling holds back; it reports whether it moved.
+// records the work the ceiling, or the want of a free helper, holds back; it
+// reports whether it moved or wrote.
 func moveAgent(repoRoot string, st *State, steps Stages, now time.Time) (StepResult, bool, error) {
 	wants := agentWants(*st)
 	if len(wants) == 0 {
@@ -454,12 +530,31 @@ func moveAgent(repoRoot string, st *State, steps Stages, now time.Time) (StepRes
 		res.Next = ceilingMove(*st)
 		return res, changed, nil
 	}
-	w := wants[0]
+	// A new lane opens only while a helper is free for it (ruling DR6d-1). When
+	// every piece of waiting work is a step no helper is free for (the slots
+	// left are promised to lanes opened, or the step worktrees on disk are at
+	// the ceiling), each waits under `waiting` as `step <n>`, as work the
+	// ceiling holds back does.
+	k := slices.IndexFunc(wants, func(w want) bool { return w.open < 0 || st.helperFree() })
+	if k < 0 {
+		changed := holdWaiting(st, wants, now)
+		return idleResult(*st), changed, nil
+	}
+	w := wants[k]
+	opened := w.open >= 0
+	if opened {
+		// A new lane opens, state-only, and its first stage (the worktree,
+		// which the binary performs) is this call's move, just before its
+		// implementer takes the slot left for it.
+		w = want{lane: openLaneRecorded(st, w.open, now), kind: wantBinary, open: -1}
+	}
 	res, err := performMove(repoRoot, st, steps, w, now)
 	if err != nil {
 		return StepResult{}, false, err
 	}
-	tookSlot(st, st.Lanes[w.lane].ID, w.role, now)
+	if !opened {
+		tookSlot(st, st.Lanes[w.lane].ID, w.role, now)
+	}
 	return res, true, nil
 }
 
@@ -534,7 +629,7 @@ func performMove(repoRoot string, st *State, steps Stages, w want, now time.Time
 func holdWaiting(st *State, wants []want, now time.Time) bool {
 	next := make([]Waiting, 0, len(wants))
 	for _, w := range wants {
-		id := st.Lanes[w.lane].ID
+		id := waitKey(*st, w)
 		since := now
 		for _, old := range st.Waiting {
 			if old.Lane == id && old.Role == w.role {
@@ -552,11 +647,16 @@ func holdWaiting(st *State, wants []want, now time.Time) bool {
 }
 
 // tookSlot removes the waiting item a move just served and records how long
-// it waited, in whole minutes.
-func tookSlot(st *State, laneID, role string, now time.Time) {
+// it waited, in whole minutes. A new lane's item is keyed on its spec step and
+// served when the lane opens.
+func tookSlot(st *State, key, role string, now time.Time) {
 	for k, w := range st.Waiting {
-		if w.Lane != laneID || w.Role != role {
+		if w.Lane != key || w.Role != role {
 			continue
+		}
+		laneID := key
+		if !ValidLaneID(key) {
+			laneID = ""
 		}
 		st.Waiting = slices.Delete(slices.Clone(st.Waiting), k, k+1)
 		if len(st.Waiting) == 0 {
@@ -564,7 +664,7 @@ func tookSlot(st *State, laneID, role string, now time.Time) {
 		}
 		mins := int(now.Sub(w.Since) / time.Minute)
 		st.Record = append(st.Record, Entry{At: now, Lane: laneID, Stage: "slot",
-			Note: fmt.Sprintf("the %s of %s took a freed slot after waiting %d minute(s) at the run's ceiling of %d", role, laneID, mins, st.ceiling())})
+			Note: fmt.Sprintf("the %s of %s took a freed slot after waiting %d minute(s) at the run's ceiling of %d", role, key, mins, st.ceiling())})
 		return
 	}
 }
@@ -604,3 +704,37 @@ func (s State) SlotsInUse() int { return s.slotsInUse() }
 
 // Ceiling is the most agents the run may have out at once.
 func (s State) Ceiling() int { return s.ceiling() }
+
+// checkWaitText is a lane's wait for its full check as the status shows it
+// (ruling DR6d-2), the time the wait began in UTC.
+func checkWaitText(since time.Time) string {
+	return "waiting for its full check (since " + since.UTC().Format("15:04") + ")"
+}
+
+// CheckWait is the lane's wait for its full check, as the status shows it, or
+// "" when it waits for none: a landing whose push found no preflight receipt
+// naming its head.
+func (l Lane) CheckWait() string {
+	if l.Stage != StageLand || l.Landing == nil || l.Landing.Pushed != "" || l.Landing.CheckWaitSince == nil {
+		return ""
+	}
+	return checkWaitText(*l.Landing.CheckWaitSince)
+}
+
+// beganCheckWait writes, once, the time lane i began waiting for its full
+// check, with a record entry naming it, and reports whether it wrote.
+func beganCheckWait(st *State, i int, r *Refusal, now time.Time) bool {
+	l := st.Lanes[i]
+	if r.checkWait.IsZero() || l.Landing == nil || l.Landing.CheckWaitSince != nil {
+		return false
+	}
+	ld := *l.Landing
+	since := r.checkWait
+	ld.CheckWaitSince = &since
+	l.Landing = &ld
+	st.Lanes[i] = l
+	st.Record = append(st.Record, Entry{At: now, Lane: l.ID, Stage: string(StageLand),
+		Note: "waiting for its full check: no preflight receipt names the lane's head " + shortSHA(l.HeadSHA)})
+	st.UpdatedAt = now
+	return true
+}

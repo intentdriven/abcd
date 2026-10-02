@@ -577,6 +577,7 @@ func openLane(st *State, k int) {
 // succeeds, and then once.
 func advance(repoRoot, runID string, steps Stages, o Options) (StepResult, error) {
 	var res StepResult
+	var wait error
 	err := mutate(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
 		now := o.now()
 		if st.NextEligibleAt != nil && now.Before(*st.NextEligibleAt) {
@@ -604,11 +605,21 @@ func advance(repoRoot, runID string, steps Stages, o Options) (StepResult, error
 		}
 		r, moved, err := move(repoRoot, st, steps, now)
 		if err != nil {
+			if moved {
+				// The wait, or a later lane's refusal, is the call's answer,
+				// and the time a lane began waiting for its full check is
+				// written with it (ruling DR6d-2).
+				wait = err
+				return true, nil
+			}
 			return false, err
 		}
 		res = r
 		return changed || moved, nil
 	})
+	if err == nil && wait != nil {
+		return StepResult{}, wait
+	}
 	return res, err
 }
 
@@ -976,7 +987,7 @@ func StatusLanes(repoRoot string) ([]statusblock.Started, error) {
 		}
 		var lanes []statusblock.Lane
 		for _, a := range st.alive() {
-			lane := statusblock.Lane{Run: st.RunID, Lane: a.Lane, Stage: string(a.Stage)}
+			lane := statusblock.Lane{Run: st.RunID, Lane: a.Lane, Stage: string(a.Stage), Waiting: a.Waiting}
 			roles := make([]string, 0, len(a.Awaits))
 			for _, aw := range a.Awaits {
 				roles = append(roles, aw.Role)

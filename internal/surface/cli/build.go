@@ -353,6 +353,9 @@ func renderLaneLine(w io.Writer, l loop.Lane) {
 		fmt.Fprintf(w, "    validation round %d at %s: %s\n", r.Round, shortSHA(r.HeadSHA), termsafe.Sanitize(strings.Join(parts, ", ")))
 	}
 	renderLanding(w, l.PR, l.Landing)
+	if cw := l.CheckWait(); cw != "" {
+		fmt.Fprintf(w, "    %s: run the repository's preflight in the lane's worktree, which mints its receipt\n", cw)
+	}
 	for _, a := range l.Awaits {
 		fmt.Fprintf(w, "    awaiting the %s's receipt at %s (brief %s)\n", termsafe.Sanitize(a.Role),
 			termsafe.Sanitize(fsutil.RedactHome(a.Receipt)), termsafe.Sanitize(fsutil.RedactHome(a.Brief)))
@@ -572,9 +575,12 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			"implementer. A call that finds the ceiling reached hands out nothing, exits 0 naming\n" +
 			"every lane alive with the role and receipt it awaits, and records the held work with the\n" +
 			"time it was first held. A lane opens for a spec step once every step it needs has\n" +
-			"landed (its `- needs:` line, or by default every earlier step), whatever the ceiling: its\n" +
-			"worktree and brief are made, and its implementer waits for a slot. A landing waiting on\n" +
-			"the forge's merge holds only its own lane: the call moves another and names the wait\n" +
+			"landed (its `- needs:` line, or by default every earlier step), and only when a helper is\n" +
+			"free to take it: a slot is left for its implementer, and fewer step worktrees than the\n" +
+			"ceiling are on disk; its worktree is made just before its implementer takes the slot, and\n" +
+			"a step waiting for a helper has none. A landing waiting on the forge's merge, or on the\n" +
+			"preflight receipt its push needs (shown as waiting for its full check, since the time\n" +
+			"the wait began), holds only its own lane: the call moves another and names the wait\n" +
 			"under blocked:; any other refused stage is the call's answer. Landing is one lane at a\n" +
 			"time; a lane whose sibling landed\n" +
 			"since its base is synced first (the default branch merged in with a merge commit, never a\n" +
