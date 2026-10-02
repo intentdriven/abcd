@@ -208,9 +208,10 @@ implementer, the lower spec step first); several agents may be out at once, so
 start each as it is handed out. A step that finds the ceiling reached hands out
 nothing and exits 0 with `ceiling_reached: true`, naming every agent out and its
 receipt path: hand a receipt back, then step again. When a step's needs have
-landed, its lane opens whatever the ceiling (its worktree and brief are made,
-and its implementer takes the next free slot), and the run record gets a line
-naming it, as the start line names the first.
+landed, its lane opens only when a helper is free to take it (a slot is left for
+its implementer, and fewer step worktrees than the ceiling are on disk): its
+worktree is made just before its implementer takes the slot, and the run record
+gets a line naming it, as the start line names the first.
 
 A role can run through a command-line runner instead of an agent you start.
 `roles.<role>.runner` in the repository's or the machine's `.abcd/config.json`
@@ -304,7 +305,8 @@ A lane's stages run in order:
    refused, and a hook that refuses the commit stops the landing until what it
    names is settled. It pushes the
    branch only once the repository's preflight receipt names the lane's head:
-   when `step` refuses for want of one, run `make preflight` in the lane's
+   until then the lane is waiting for its full check (since the time the wait
+   began) while the other lanes carry on; run `make preflight` in the lane's
    worktree, then `step` again; never push, skip a hook or mint a receipt by
    hand. It opens the pull request through `gh`, with a body built from the
    run's records and passed through the outbound scrub, re-reads the body the
