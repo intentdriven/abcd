@@ -18,7 +18,7 @@ production_mode: hand-written
 
 > When a person connects a model service from inside Claude Code, abcd works out the details with them instead of asking them to type each one. It asks for the service's address and, on a yes, looks up the models the service offers. It suggests the models the person already uses through their other connections, and finds anything else when they type part of a name. It then shows one command, with every file that command will write, for the person to paste into a terminal: nothing is set up from inside the session. Where a service needs the key before it will list its models, that one terminal step asks for the key with the typing hidden, lists the models, lets the person pick one, checks the pick with a real answer, and only then saves anything. A service that lists no models asks for the name to be typed, and says why.
 
-_Proposed by the facilitator from decisions 1 to 8; to be confirmed by the product thinker._
+_Proposed by the facilitator from decisions 1 to 8; confirmed as written by the product thinker at the planning interview, 2026-10-03 (decision 9)._
 
 Previous wording (superseded at the interview):
 
@@ -42,7 +42,7 @@ Typed links: refines itd-2609081951381895 (its connect verb gains a guided path)
 
 We expect a person to connect a service listing hundreds of models without knowing an exact model name because abcd reads the names from the service's own list and the person only types part of one to narrow it; a person who still has to type a full model name for a service that publishes its list shows the claim wrong.
 
-_Proposed by the facilitator from decisions 1 to 8; to be confirmed by the product thinker._
+_Proposed by the facilitator from decisions 1 to 8; confirmed by the product thinker, 2026-10-03._
 
 ## Scope Conditions
 
@@ -51,20 +51,20 @@ _Proposed by the facilitator from decisions 1 to 8; to be confirmed by the produ
 - Suggestions only for a person with an existing connection; a first-time user sees the search alone (decision 6).
 - A key that reaches abcd through its own hidden input in that terminal step; a key saved by hand in the computer's password store is not adopted (decisions 2 and 7).
 
-_Proposed by the facilitator from decisions 1 to 8; to be confirmed by the product thinker._
+_Proposed by the facilitator from decisions 1 to 8; confirmed by the product thinker, 2026-10-03._
 
 ## Acceptance Criteria
 
 _Proposed by the facilitator from decisions 1 to 8 and the design review's proposed criteria that survive them; each is unconfirmed until walked with its addressee. Review criterion C3 (it let the session run the setup for some homes) is rewritten to decision 1's always-print rule; C5 is rewritten to decision 2's single terminal step, with no listing taken as the test; C8 (a listed model size) is dropped, because decision 8 routes the size question out. How many suggestions a question shows is owed at planning; G2 proposes at most three._
 
-- G1 (technical facilitator; unconfirmed) Given a service address, when the guided path offers to look up its models, then one question first shows the scheme and host, and only on a yes does a request go out, carrying no key, following no redirect, and keeping the adapter's short timeout and size cap (example: a stand-in service that answers with a redirect is refused and never sees a key header); a go test asserts each.
-- G2 (product thinker; unconfirmed) Given a person whose existing connections use two models a service of 300 lists, when the model question is asked, then it suggests those two (at most three) and typing part of a name narrows the full list without a second request, while a first-time user sees no suggestions, only the search (example: typing "coder" narrows 300 names to the few that contain it); a go test asserts both cases.
-- G3 (technical facilitator; unconfirmed) Given any guided connect run inside a session, when it ends, then it has printed exactly one command and written nothing: abcd's settings folder and every key home are byte-identical before and after (example: a run that reaches the end with a keyless local service still only prints the command); a go test asserts it.
-- G4 (product thinker; unconfirmed) Given the values worked out with the person, when the command is printed, then the command and every path it will write are shown in full before the person runs it, and no setting skips that (example: the command is followed by the connection file it writes in abcd's settings folder); a go test asserts the output, and a dated receipt from a Claude Code session shows it on screen.
-- G5 (technical facilitator; unconfirmed) Given a stand-in service that refuses to list its models without the key, when the printed command runs in a terminal, then the key is read from hidden input, the list is fetched with the key held in memory, the person picks a model, a real completion verifies it, and only then are both writes made, while a failed completion writes nothing and no listing counts as the test (example: a stand-in that lists with the key but fails the completion leaves no connection and no stored key); a go test asserts both paths.
-- G6 (technical facilitator; unconfirmed) Given a known key value, when the guided path and its printed command run end to end, then the value appears in no question, answer, printed command, error or record (example: a canary key string is searched for in every output and file written, and found only in the chosen key home); a go test asserts it.
-- G7 (product thinker; unconfirmed) Given a service whose model list request fails or returns nothing usable, when the model question is reached, then the person is asked to type the model name and told the service publishes no list (example: a stand-in answering not found on its model list); a go test asserts the fallback and its reason.
-- G8 (product thinker; unconfirmed) Given a key the person saved by hand in the computer's password store, when the guided path asks where the key lives, then it does not offer that item, and the printed command takes the key again through abcd's hidden input (example: an item named for the service in the password store is not listed as a choice); a go test asserts it.
+- G1 (technical facilitator; CONFIRMED 2026-10-03) Given a service address, when the guided path offers to look up its models, then one question first shows the scheme and host, and only on a yes does a request go out, carrying no key, following no redirect, and keeping the adapter's short timeout and size cap (example: a stand-in service that answers with a redirect is refused and never sees a key header); a go test asserts each.
+- G2 (product thinker; CONFIRMED 2026-10-03) Given a person whose existing connections use two models a service of 300 lists, when the model question is asked, then it suggests those two (at most three) and typing part of a name narrows the full list without a second request, while a first-time user sees no suggestions, only the search (example: typing "coder" narrows 300 names to the few that contain it); a go test asserts both cases.
+- G3 (technical facilitator; CONFIRMED 2026-10-03) Given any guided connect run inside a session, when it ends, then it has printed exactly one command and written nothing: abcd's settings folder and every key home are byte-identical before and after (example: a run that reaches the end with a keyless local service still only prints the command); a go test asserts it.
+- G4 (product thinker; CONFIRMED 2026-10-03) Given the values worked out with the person, when the command is printed, then the command and every path it will write are shown in full before the person runs it, and no setting skips that (example: the command is followed by the connection file it writes in abcd's settings folder); a go test asserts the output, and a dated receipt from a Claude Code session shows it on screen.
+- G5 (technical facilitator; CONFIRMED 2026-10-03) Given a stand-in service that refuses to list its models without the key, when the printed command runs in a terminal, then the key is read from hidden input, the list is fetched with the key held in memory, the person picks a model, a real completion verifies it, and only then are both writes made, while a failed completion writes nothing and no listing counts as the test (example: a stand-in that lists with the key but fails the completion leaves no connection and no stored key); a go test asserts both paths.
+- G6 (technical facilitator; CONFIRMED 2026-10-03) Given a known key value, when the guided path and its printed command run end to end, then the value appears in no question, answer, printed command, error or record (example: a canary key string is searched for in every output and file written, and found only in the chosen key home); a go test asserts it.
+- G7 (product thinker; CONFIRMED 2026-10-03) Given a service whose model list request fails or returns nothing usable, when the model question is reached, then the person is asked to type the model name and told the service publishes no list (example: a stand-in answering not found on its model list); a go test asserts the fallback and its reason.
+- G8 (product thinker; CONFIRMED 2026-10-03) Given a key the person saved by hand in the computer's password store, when the guided path asks where the key lives, then it does not offer that item, and the printed command takes the key again through abcd's hidden input (example: an item named for the service in the password store is not listed as a choice); a go test asserts it.
 
 ## State of the art (2026-10-03; full report in the local tier, reports/sota-guided-connect.md)
 
@@ -106,6 +106,7 @@ Proposed acceptance criteria (agent-seeded, unconfirmed): C1 keyless listing cal
 6. 2026-10-03, the product thinker, asked where suggestions for a long model list come from (the person's own connections; the service's popular list in prose; search only): models the person already uses, from their existing connections; anything else is found by typing part of a name. The product thinker accepted the cost shown: a first-time user sees no suggestions, only the search. No service's ranking appears in or beside the question, so reversal 5(f) does not arise.
 7. 2026-10-03, the product thinker, asked whether abcd may use a key already saved by hand in the computer's password store, by its name: no; the person stores the key again through abcd's own hidden input. The credential store's adoption of a hand-made item stays out of scope.
 8. 2026-10-03, decided without a question (the record review's finding 2, both reviews agreeing): the request-size question is routed out to its own capture, iss-2610030956156354. <!-- record-lint: forward-looking -->
+9. 2026-10-03, the product thinker: the revised press release confirmed as written.
 
 ## Open Questions
 
@@ -114,3 +115,7 @@ None open: the interview of 2026-10-03 answered them (decisions 1 to 8). Owed at
 ## Audit Notes
 
 _Empty. Populated by intent-auditor when intent moves to shipped/._
+
+## Grounds
+
+- pursued: connecting a service with hundreds of models takes one paste, with no hunting for exact model names (the product thinker, 2026-10-03).

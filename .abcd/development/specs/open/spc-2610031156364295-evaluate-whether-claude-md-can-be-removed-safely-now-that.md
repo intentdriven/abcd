@@ -366,8 +366,9 @@ again at any later host version.
 
 ## Open design questions
 
-For the technical facilitator; the records do not settle these. Each names the
-option the design above is written to.
+These were for the technical facilitator. Each was decided on 2026-10-03
+without a question, under the person's ruling that an obvious answer is
+decided rather than asked; the reason is given beneath each.
 
 1. **A1 and the `skip` default.** A default setup writes no conventions file
    (iss-2609110944498549), so "setup writes AGENTS.md" holds where setup writes
@@ -377,11 +378,15 @@ option the design above is written to.
    `agents_md`, so a bare install writes AGENTS.md: it meets the example
    literally, but reverses the ruling that a default install names abcd in no
    committed conventions file, which is the product thinker's to reopen.
+   - Decided: (a). It keeps the product thinker's standing ruling on the
+     default; nothing in this intent's decisions asks to reopen it.
 2. **Embark with no chosen target.** (a) Plant into AGENTS.md (designed to):
    embark plants a block today whatever the target holds, and A2's target,
    holding only AGENTS.md, has no settings file. (b) Follow the `skip` default
    as setup does: consistent with setup, but an unconfigured target receives
    no block and A2 holds only for a target that chose `agents_md`.
+   - Decided: (a). It is today's behaviour pointed at the one file, and A2
+     is written for exactly that target.
 3. **What counts as repeating AGENTS.md.** A4 names a link and a byte-for-byte
    copy. (a) Also the link's checked-out text, a lone `@AGENTS.md` line, and a
    file blank once abcd's block is stripped (designed to): none holds a word
@@ -390,6 +395,12 @@ option the design above is written to.
    "hidden" warning that is untrue, since that file loads AGENTS.md. (b) Only
    the two A4 names: narrower, and the warning misreports those three cases.
    (a) widens the class A4 names, so the product thinker confirms it.
+   - Decided: (a), without a question. The press release the product
+     thinker confirmed (decision 9) says a file that "only repeats or links
+     to AGENTS.md" is offered for removal: a lone `@AGENTS.md` line links, and
+     a file left blank once abcd's block is stripped only repeats. A4's
+     confirmed wording is unchanged; its two named cases are read as examples
+     of that class, and its test covers all five.
 4. **Which tools' files the registry names.** (a) The files the research names
    as read in place of AGENTS.md, each with its tool, as in the table
    (designed to): decision 7 reaches every tool's own file, and the warning
@@ -398,6 +409,8 @@ option the design above is written to.
    tools. (c) Every known tool file, folders included: a rules folder is
    never a copy of one file and Cursor reads AGENTS.md beside it, so it would
    only ever draw a warning that is untrue.
+   - Decided: (a). It is what decision 7 reaches, and it names the tool
+     that loses AGENTS.md.
 5. **How the version warning knows the version.** (a) Ask the `claude` command
    for its version and compare with one floor constant (designed to): it
    names the old host where one is installed, at the cost of one subprocess
@@ -405,12 +418,17 @@ option the design above is written to.
    standing line in every setup that plants into AGENTS.md: no coupling, but
    noise on every run and nothing named. Neither sees an IDE-only host or the
    first session after an upgrade.
+   - Decided: (a). It names the old host where one is installed; the
+     reading is shared with itd-2610031026190632 (the harness-version draft),
+     whose spec takes it over when that draft is planned.
 6. **Whether the canary stays.** (a) Committed for good in the first section
    (designed to): the receipt can be taken again whenever the host changes,
    and the test holds its place against the size work in
    iss-2610031012543135. (b) Planted only for the run: no extra line, but the
    run then mutates a live AGENTS.md or needs a scratch copy, which sits
    inside the checkout and is not "abcd's own checkout".
+   - Decided: (a). A8's receipt can then be retaken whenever the host
+     changes, and the canary's place guards against the size work.
 
 ## Footprint
 
