@@ -11,8 +11,14 @@ Take a packed lifeboat (produced by `/abcd:disembark`) and write its record
 families back into a target repository. This is the inverse of `disembark` and the
 write half of the round-trip (adr-35): ADRs, issues, intents, specs and release
 retrospectives travel back **verbatim**, the current abcd marker block is re-injected into the target
-`CLAUDE.md`, and everything else in the lifeboat informs the report but is never
+`AGENTS.md`, and everything else in the lifeboat informs the report but is never
 written. The target defaults to the working directory when omitted.
+
+The block follows the conventions file the target's own setup chose
+(`docs.target` in its `.abcd/config.json`): `agents_md`, or no choice saved at
+all, plants it in `AGENTS.md`; `skip` plants it nowhere; a retired `claude_md`
+or `both` plants it nowhere and the marker's note names the one setting to
+change. A skipped block never stops the records landing.
 
 ## Probe first (read-only)
 
@@ -36,7 +42,9 @@ file anywhere inside. Then it reports:
   non-regular target, a non-directory parent). A plan with conflicts is still a
   successful probe.
 - `ignored` — lifeboat files not embarked (`report-only`, `unmapped`, `unknown`).
-- `marker` — what would happen to the target `CLAUDE.md` block.
+- `marker` — what would happen to abcd's block: `target` names the file it
+  goes into (`AGENTS.md`), or is empty with the action `skip` when the target
+  chose no file, and `note` says why a block is skipped.
 - `record_manifest_sha256` — the record-derived closure seal.
 
 Surface the coverage blanks to the human before anything else — they are the point
@@ -51,8 +59,8 @@ of the handoff. Then summarise the plan.
 `from` runs the same planner as `probe`, then writes each `create` file into the
 target through two-layer containment (an `os.Root` boundary plus independent
 lexical validation), skipping `unchanged` files, and re-injects the current marker
-block into the target `CLAUDE.md` — **never** foreign prose, only the canonical
-block. Summarise the result: `written` / `unchanged`, the per-`families` counts,
+block into the file the probe named — **never** foreign prose, only the canonical
+block, and never through a link. Summarise the result: `written` / `unchanged`, the per-`families` counts,
 and the `marker` action.
 
 ## Predecessor lessons (the press-release interview)
