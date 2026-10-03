@@ -28,6 +28,21 @@ Two people are named apart, as the role model does: the person who starts the da
 - What the page may change, if anything, is decided at the interview; until it is, the page shows and changes nothing.
 - Nothing the page serves leaves the person's own devices: no third-party scripts, fonts or trackers.
 
+### Requirements the spec carries
+
+_From the security review of 2026-10-03 (Fable 5.1, verdict "block as drafted" until these are carried); each has one defensible answer, so none is put to the product thinker._
+
+- It listens on this computer alone unless an address is chosen on that run; never every address at once, and never an address reachable from the internet without a second, explicit choice. The start line names every address it listens on, and abcd checks that it can reach itself there (a firewall that silently drops the traffic is reported).
+- Letting a device in is its own step. Its link is single-use, expires within ten minutes, is never written where a transcript, a log or a screen-share could keep it, and is in the scanner's pattern set.
+- A device let in holds a session abcd can list and revoke, with a capped lifetime; pages are never cached.
+- A device not let in sees the pairing page and nothing else, and its requests read nothing from the project.
+- Only the expected host names are answered; others are refused before anything is read.
+- Server timeouts, size limits and a cap on live-update connections; one shared reading of the project, however many devices watch.
+- The page is drawn by the record site's one renderer, from records looked up by id; no file is served from a requested path; the content-security policy loads nothing from outside the computer and the page cannot be framed.
+- Nothing is changed through the page over plain HTTP.
+- On the local network it runs in the foreground, stops itself when idle and after a hard limit, and says so; running unattended is allowed only behind Tailscale Serve (never Funnel), where pairing still applies and the Tailscale identity is a label, never a key.
+- The start line says the page is only as private as the network: anyone who can read the Wi-Fi can read it. The person confirms on each run that the network is their own.
+
 ## Alternatives Considered
 
 - Never listen, and publish a static site instead (the superseded itd-139's route), or rebuild the existing record site on change and serve the folder: rejected by the record review of 2026-10-03. The site build needs a composition only `site setup` plants, takes minutes, and rewrites a committed file on every build; it shows the facilitator's tiles and record ids, not what waits on the product thinker; and serving the folder still needs a listener and this rule.
