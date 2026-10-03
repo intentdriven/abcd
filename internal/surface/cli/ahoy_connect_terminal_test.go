@@ -449,3 +449,42 @@ func TestConnectRefusesBeforeTheKeyIsRead(t *testing.T) {
 		}
 	}
 }
+
+// TestConnectPicksOnlyWhenEveryStreamIsATerminal (security review finding
+// 3): picking draws a list, so a run with no --model needs stdin, stdout and
+// stderr all terminals (adr-49). With any one of them not a terminal the run
+// is refused as off a terminal: the key is not asked for, nothing is sent,
+// nothing written.
+func TestConnectPicksOnlyWhenEveryStreamIsATerminal(t *testing.T) {
+	for _, notTerminal := range []string{"stdin", "stdout", "stderr"} {
+		t.Run(notTerminal+" is not a terminal", func(t *testing.T) {
+			hermeticEnv(t)
+			t.Chdir(t.TempDir())
+			svc := newListingService(t, []string{"vendor/coder-large"}, http.StatusOK)
+			fake := atTerminal(t, connectKey, func(ids []string) (string, error) { return ids[0], nil })
+			cmd := NewRootCommand()
+			in := strings.NewReader("")
+			var out, errb bytes.Buffer
+			cmd.SetIn(in)
+			cmd.SetOut(&out)
+			cmd.SetErr(&errb)
+			streams := map[string]any{"stdin": in, "stdout": &out, "stderr": &errb}
+			connectIsTerminal = func(s any) bool { return s != streams[notTerminal] }
+			cmd.SetArgs([]string{"ahoy", "connect", "example", "--base-url", svc.base(), "--home", "abcd"})
+			err := cmd.Execute()
+			var coded interface{ ExitCode() int }
+			if err == nil || !errors.As(err, &coded) || coded.ExitCode() != 2 || !strings.Contains(err.Error(), "run the command in a terminal") {
+				t.Fatalf("ahoy connect with %s not a terminal = %v, want the off-a-terminal refusal", notTerminal, err)
+			}
+			if fake.reads != 0 || len(fake.offered) != 0 {
+				t.Fatalf("the key was read %d time(s), the picker offered %d list(s)", fake.reads, len(fake.offered))
+			}
+			if listAuth, _, chatModel := svc.seen(); len(listAuth)+len(chatModel) != 0 {
+				t.Fatalf("a refused setup sent %d request(s)", len(listAuth)+len(chatModel))
+			}
+			if got := machineWrites(t); len(got) != 0 {
+				t.Fatalf("wrote %q", got)
+			}
+		})
+	}
+}
