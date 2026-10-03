@@ -23,7 +23,12 @@ import (
 // being made.
 //
 // What it holds: no Go source outside this package spells a path into the
-// session-transcript store as a string LITERAL. A package that needs the store
+// session-transcript store as a string LITERAL, nor asks the home resolver
+// (internal/abcdhome) for one. Since spc-2610031309233367's step 2 this
+// package no longer spells the home itself: it takes the store's root from
+// abcdhome.Rel("transcripts") and the declaration from
+// abcdhome.Rel("local-transcript-roots"), so the second door this test now
+// watches is a call into the resolver whose literal leaf begins with either. A package that needs the store
 // calls Resolve, which is the one seam the store's creation, symlink discipline
 // and legacy migration all sit behind; a package that spells the path itself has
 // a second, unjudged door to the same bytes and goes stale in silence when the
@@ -38,13 +43,21 @@ import (
 //   - Non-test files. The invariant governs what production code may reach; a
 //     test builds a hermetic store under its own HOME by design, and holding it
 //     to this rule would refuse the fixtures that prove the store's behaviour.
+//   - The resolver call is recognised by the import path, whatever name the
+//     file imports the package under, and by a string-literal argument whose
+//     value begins "transcripts" or "local-transcript-roots". A leaf held in a
+//     variable or a constant passes unseen; the literal needles above still
+//     catch a constant that spells the whole path.
 //   - `~/.abcd/history` is NOT a needle. That tree is ahoy's registry — index.json
 //     and the per-repo meta.json — and ahoy owns it. Only the corpus moved out,
 //     so the legacy spelling held here is the corpus leaf, `history/transcripts`.
 var storePathNeedles = []string{
 	// The user-level default and its opt-in per-repo pull-in, as location.go
-	// spells them (userStoreRelPath, LocalStoreRelPath, LocalRootsRelPath).
+	// spelled them before the home resolver (userStoreRelPath,
+	// LocalStoreRelPath, LocalRootsRelPath), and the default under the
+	// home's new name (adr-2610031751066232).
 	".abcd/transcripts",
+	".abcd.noindex/transcripts",
 	".work.local/transcripts",
 	".abcd/local-transcript-roots",
 	// The location the corpus was moved OUT of. A file still naming it declares
@@ -66,7 +79,30 @@ var storeBoundaryExceptions = map[string][]string{
 	filepath.Join("internal", "core", "reading", "include.go"): {".abcd/.work.local/transcripts"},
 }
 
-// storePathLiterals returns every string literal in src that names the store.
+// homeResolverPath is the import path of the one package that spells the home.
+const homeResolverPath = "github.com/intentdriven/abcd/internal/abcdhome"
+
+// storeResolverLeaves are the leaves below the home that are the store's: a
+// call into the resolver naming one of them is a door into the store.
+var storeResolverLeaves = []string{"transcripts", "local-transcript-roots"}
+
+// homeResolverName is the name f imports the home resolver under, or "" when
+// it does not import it.
+func homeResolverName(f *ast.File) string {
+	for _, imp := range f.Imports {
+		if p, err := strconv.Unquote(imp.Path.Value); err != nil || p != homeResolverPath {
+			continue
+		}
+		if imp.Name != nil {
+			return imp.Name.Name
+		}
+		return "abcdhome"
+	}
+	return ""
+}
+
+// storePathLiterals returns every string literal in src that names the store,
+// and every call into the home resolver whose literal leaf is the store's.
 func storePathLiterals(t *testing.T, name, src string) []string {
 	t.Helper()
 	fset := token.NewFileSet()
@@ -75,7 +111,34 @@ func storePathLiterals(t *testing.T, name, src string) []string {
 		t.Fatalf("parse %s: %v", name, err)
 	}
 	var out []string
+	resolver := homeResolverName(f)
 	ast.Inspect(f, func(n ast.Node) bool {
+		if call, ok := n.(*ast.CallExpr); ok && resolver != "" && resolver != "_" {
+			sel, ok := call.Fun.(*ast.SelectorExpr)
+			if !ok {
+				return true
+			}
+			if x, ok := sel.X.(*ast.Ident); !ok || x.Name != resolver {
+				return true
+			}
+			for _, a := range call.Args {
+				b, ok := a.(*ast.BasicLit)
+				if !ok || b.Kind != token.STRING {
+					continue
+				}
+				v, err := strconv.Unquote(b.Value)
+				if err != nil {
+					continue
+				}
+				for _, leaf := range storeResolverLeaves {
+					if strings.HasPrefix(v, leaf) {
+						out = append(out, "abcdhome."+sel.Sel.Name+"("+strconv.Quote(v)+")")
+						break
+					}
+				}
+			}
+			return true
+		}
 		lit, ok := n.(*ast.BasicLit)
 		if !ok || lit.Kind != token.STRING {
 			return true
@@ -157,10 +220,11 @@ func TestOnlyTheHistoryPackageNamesTheStorePath(t *testing.T) {
 	for _, f := range files {
 		allowed, declared := storeBoundaryExceptions[f]
 		if !declared {
-			t.Errorf("%s names the session-transcript store's path as a string literal (%s); "+
-				"invariant 15 reserves that path to internal/core/history — reach the store through "+
-				"history.Resolve, or declare the literal in storeBoundaryExceptions with the reason it "+
-				"is not a door into the store", f, strings.Join(seen[f], ", "))
+			t.Errorf("%s names the session-transcript store's path, as a string literal or through "+
+				"the home resolver (%s); invariant 15 reserves that path to internal/core/history — "+
+				"reach the store through history.Resolve, or declare the literal in "+
+				"storeBoundaryExceptions with the reason it is not a door into the store",
+				f, strings.Join(seen[f], ", "))
 			continue
 		}
 		got := append([]string(nil), seen[f]...)
@@ -190,6 +254,20 @@ func TestStorePathBoundaryScannerIsArmed(t *testing.T) {
 		if got := storePathLiterals(t, "hostile.go", src); len(got) != 1 {
 			t.Errorf("the scanner admits the literal %q; it is not armed for that spelling", needle)
 		}
+	}
+	resolverCalls := map[string]string{
+		"Rel of the store":             "import \"" + homeResolverPath + "\"\n\nvar x = abcdhome.Rel(\"transcripts\")\n",
+		"Path of the declaration":      "import \"" + homeResolverPath + "\"\n\nfunc f(home string) string { return abcdhome.Path(home, \"local-transcript-roots\") }\n",
+		"Display under an import name": "import h \"" + homeResolverPath + "\"\n\nvar x = h.Display(\"transcripts/<root-sha>/\")\n",
+	}
+	for label, body := range resolverCalls {
+		if got := storePathLiterals(t, "hostile.go", "package p\n\n"+body); len(got) != 1 {
+			t.Errorf("%s: the scanner reports %q, want one door into the store; it is not armed for that shape", label, got)
+		}
+	}
+	otherLeaf := "package p\n\nimport \"" + homeResolverPath + "\"\n\nvar x = abcdhome.Rel(\"lab\")\n"
+	if got := storePathLiterals(t, "benign.go", otherLeaf); len(got) != 0 {
+		t.Errorf("the scanner reports %q from a resolver call naming another leaf; only the store's leaves are its", got)
 	}
 	commented := "package p\n\n// the store lives at ~/.abcd/transcripts/<root-sha>/records/, laid out\n" +
 		"// by internal/core/history and by nothing else.\nvar x = \"unrelated\"\n"
