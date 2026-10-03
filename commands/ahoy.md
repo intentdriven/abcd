@@ -94,7 +94,11 @@ them. If `folder_kind` is `unmanaged-folder`, note there is nothing to act on
 marker block (into `AGENTS.md` only, and only where `--docs-target agents_md`
 names it; the default, `skip`, names none), the `.abcd/` scaffolding, the owned
 `PATH` entry. A saved `claude_md` or `both` is refused before any write, with
-the one setting to change in the notes; relay that note as it stands. Lead
+the one setting to change in the notes; relay that note as it stands. Before
+anything else, relay each line of the returned `warnings` as it stands: each
+names an agent tool's own conventions file holding the user's words, which that
+tool reads in place of `AGENTS.md` and abcd never edits or removes (the text
+render prints them first too). Then lead
 the report with the returned `headline`, then each `summary` item in its own
 three parts: `what` it is, `why` it matters, and the `action`, if any, the user
 should take. These are abcd's own plain words for the product thinker and the
@@ -160,9 +164,10 @@ category present — often several — and every line after the last one you sup
 reads end-of-input and DECLINES. `yes` is the reliable form because it never
 runs out; a single `printf 'y\n'` answers the first question only and silently
 declines the rest. The questions come in a fixed order (dependency,
-safe-autocreate, config-change, status-line, oracle-routing, drain-rule, user-state, plugin-owned), so a
-scripted stream of specific answers lines up with them. The drain-rule question
-is asked only at a terminal, so a piped stream never meets it. Each answer is echoed back, so the
+safe-autocreate, config-change, status-line, oracle-routing, drain-rule, conventions-file, user-state, plugin-owned), so a
+scripted stream of specific answers lines up with them. The drain-rule and
+conventions-file questions are asked only at a terminal, so a piped stream
+never meets them. Each answer is echoed back, so the
 transcript shows what was asked and what it was answered — read it back rather
 than assuming. Under `set -o pipefail` the pipeline reports 141: `yes` takes
 SIGPIPE when abcd stops reading, by design — judge the run by abcd's own output
@@ -210,8 +215,8 @@ harness-wide setting, never accepts a model-tier routing table (below),
 because a table decides which model every delegated step asks for, and never
 adds the drain eligibility record (below), because the record decides what an
 unattended agent may change in the repository. When the result carries `optional_skipped`, report it and
-offer the `yes |` form above as the way to apply it, except `drain_rule.offered`,
-which only a person at a terminal is asked.
+offer the `yes |` form above as the way to apply it, except `drain_rule.offered`
+and `conventions.retire_offered`, which only a person at a terminal is asked.
 
 **The git identity question is a person's alone.** When the author or committer
 a commit would carry diverges from the identity pin, or is a machine identity
@@ -346,6 +351,25 @@ record; that run, and a `--yes` run, report `drain_rule.offered` under
 loosening a floor is an edit a person makes to the record, and `abcd drain`
 names every floor loosened. A repository whose record states the rule badly is
 not offered a second one; `abcd drain` names what is wrong with the one it has.
+
+**An agent tool's own conventions file.** Some agent tools read a file of their
+own in place of `AGENTS.md` when it exists: `CLAUDE.md` or `.claude/CLAUDE.md`,
+`GEMINI.md`, and `.rules`, `.cursorrules` or `.github/copilot-instructions.md`.
+The install classifies each one at the repository root with one guarded read,
+never through a link. One holding the user's words (or one it cannot read
+whole) is never edited, moved, merged or removed; it raises the warning
+`conventions.owner_file`, reported in `warnings`. One that only repeats
+`AGENTS.md` (a link to it, that link saved as a plain file, an exact copy, a
+lone `@AGENTS.md` line, or a file empty once abcd's block is taken out) raises
+`conventions.retire_offered`, and after the conventions-file approval the
+install asks, one question per file, `retire`, `keep` or `later` (the default).
+Relay each question as it stands and never answer it for the user. On `retire`
+the file is checked again and removed from the working tree only if it still
+only repeats `AGENTS.md`, for the user to commit; a file that changed while the
+question was open is left and named in the notes. `keep` and `later` write and
+record nothing, so the next install asks again. Like the drain rule offer it is
+asked only at a terminal; a piped run and a `--yes` run report
+`conventions.retire_offered` under `optional_skipped`.
 
 `--attribution` is its own approval and works on an already-installed repo (the
 step the adopt phase runs it in). It opts the repo into the committed

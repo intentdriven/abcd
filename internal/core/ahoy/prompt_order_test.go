@@ -37,6 +37,7 @@ func allCategoryGaps() []Gap {
 		{ID: "statusline.f", Category: StatusLine, Resolvable: true},
 		{ID: "oracle_routing.g", Category: OracleRouting, Resolvable: true},
 		{ID: "drain_rule.h", Category: DrainRule, Resolvable: true},
+		{ID: "conventions.i", Category: ConventionsFile, Resolvable: true},
 	}
 }
 
@@ -56,6 +57,7 @@ func TestResolveApprovalPromptsInCanonicalOrder(t *testing.T) {
 		"Apply status-line changes?",
 		"Apply oracle-routing changes?",
 		"Apply drain-rule changes?",
+		"Apply conventions-file changes?",
 		"Apply user-state changes?",
 		"Apply plugin-owned changes?",
 	}
@@ -66,12 +68,13 @@ func TestResolveApprovalPromptsInCanonicalOrder(t *testing.T) {
 			t.Fatalf("run %d asked in a different order:\n got %v\nwant %v", i, p.asked, want)
 		}
 	}
-	// Off a terminal the drain-rule question is not asked (stepDrainRule), and
-	// not counted as declined: the rest keep their order, so a piped stream
-	// written before the offer existed still lines up.
+	// Off a terminal the drain-rule and conventions-file questions are not
+	// asked (stepDrainRule, stepConventionsFiles), and not counted as
+	// declined: the rest keep their order, so a piped stream written before
+	// the offers existed still lines up.
 	offTerminal := make([]string, 0, len(want))
 	for _, q := range want {
-		if q != "Apply drain-rule changes?" {
+		if q != "Apply drain-rule changes?" && q != "Apply conventions-file changes?" {
 			offTerminal = append(offTerminal, q)
 		}
 	}
@@ -81,8 +84,8 @@ func TestResolveApprovalPromptsInCanonicalOrder(t *testing.T) {
 		t.Fatalf("off a terminal:\n got %v\nwant %v", p.asked, offTerminal)
 	}
 	for _, c := range declined {
-		if c == string(DrainRule) {
-			t.Fatalf("off a terminal the unasked drain-rule category is reported declined: %v", declined)
+		if c == string(DrainRule) || c == string(ConventionsFile) {
+			t.Fatalf("off a terminal an unasked terminal-only category is reported declined: %v", declined)
 		}
 	}
 }
@@ -91,7 +94,7 @@ func TestResolveApprovalPromptsInCanonicalOrder(t *testing.T) {
 // a category missing from it would be asked in the sorted-tail fallback, which
 // is still deterministic but no longer the order the apply pass acts in.
 func TestCategoryPromptOrderCoversEveryCategory(t *testing.T) {
-	all := []GapCategory{SafeAutocreate, ConfigChange, PluginOwned, Dependency, UserState, StatusLine, OracleRouting, DrainRule}
+	all := []GapCategory{SafeAutocreate, ConfigChange, PluginOwned, Dependency, UserState, StatusLine, OracleRouting, DrainRule, ConventionsFile}
 	for _, c := range all {
 		found := false
 		for _, oc := range categoryPromptOrder {
@@ -120,10 +123,10 @@ func TestResolveApprovalAsksUnknownCategoriesLast(t *testing.T) {
 	for i := 0; i < 32; i++ {
 		p := &recordingPrompter{confirm: true, terminal: true}
 		resolveApproval(gaps, InstallOptions{}, p)
-		if len(p.asked) != 10 {
-			t.Fatalf("asked %d questions, want 10: %v", len(p.asked), p.asked)
+		if len(p.asked) != 11 {
+			t.Fatalf("asked %d questions, want 11: %v", len(p.asked), p.asked)
 		}
-		tail := strings.Join(p.asked[8:], "|")
+		tail := strings.Join(p.asked[9:], "|")
 		if tail != "Apply alpha changes?|Apply zeta changes?" {
 			t.Fatalf("run %d: unknown categories not asked last and sorted: %v", i, p.asked)
 		}
