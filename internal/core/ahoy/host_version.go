@@ -82,7 +82,8 @@ var (
 )
 
 // readHostVersion asks command, found on PATH, for its version with its
-// --version flag, and returns the first major.minor.patch it prints. project
+// --version flag, and returns the first major.minor.patch it prints on
+// stdout. project
 // is the folder the reading is made for; a command inside it is never run.
 // The error says why no version was read. It is the one reading of an agent
 // tool's installed version: the harness-version check calls it per harness.
@@ -105,7 +106,8 @@ func readHostVersion(command, project string) (hostVersion, error) {
 	case err != nil:
 		return hostVersion{}, errHostNoAnswer
 	}
-	return parseHostVersion(append(out.Stdout, out.Stderr...))
+	// stdout alone: a diagnostic on stderr can carry a dotted number of its own.
+	return parseHostVersion(out.Stdout)
 }
 
 // parseHostVersion is the first major.minor.patch in out.

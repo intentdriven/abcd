@@ -186,8 +186,9 @@ func fakeClaude(t *testing.T, dir, script string) {
 // that reads AGENTS.md on its own raises one warning, naming no version; one
 // at that release, none on PATH, one printing nothing parsable, one that does
 // not answer in time, one inside the project (repository content, never run)
-// and one reached through a folder others can write (the runner's own
-// admission) raise nothing.
+// one reached through a folder others can write (the runner's own
+// admission), and a version printed on stderr alone raise nothing: only
+// stdout is read for the version.
 func TestHostVersionWarning(t *testing.T) {
 	real := func(project string) (hostVersion, error) { return readHostVersion(claudeCommand, project) }
 	for _, tc := range []struct {
@@ -207,6 +208,8 @@ func TestHostVersionWarning(t *testing.T) {
 		{"no answer in time", "sleep 5\necho \"2.1.200\"", false, false, false},
 		{"inside the project", `echo "2.1.200 (Claude Code)"`, true, false, false},
 		{"a folder others can write", `echo "2.1.200 (Claude Code)"`, false, true, false},
+		{"a diagnostic on stderr", `echo "node 1.0.0 is deprecated" >&2; echo "2.1.290 (Claude Code)"`, false, false, false},
+		{"a version on stderr alone", `echo "2.1.200 (Claude Code)" >&2`, false, false, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			home, _ := setupHermetic(t)
