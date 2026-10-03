@@ -129,6 +129,8 @@ gate. That is what keeps "not hand-counted" true after the day it was written.
 - `itd-2609292109475690` — Every verb family has a behavioural scenario that drives the built binary end to end (from iss-48; ruling J24)
 - `itd-2609301020001595` — A pinned-action bump syncs its scaffold template and lands re-authored, the pin half of the dependency re-authoring (builds on itd-2609221842494980; from iss-209; ruling M3)
 - `itd-2609301918174237` — A provider off this machine takes a file-reading agent only as a fixed, blanked, capped bundle (builds on itd-2609081951381895; rulings DR5b-1 to DR5b-4; back to draft for two reviews and a planning interview under ruling DR5c-0)
+- `itd-2610021503208208` — Personal git hooks keep running in abcd-managed repositories (draft)
+- `itd-2610030720038073` — abcd keeps its home folder out of desktop search by default (refines itd-2609091014076309; its rule is adr-2610030720195401; draft, routing confirmed 2026-10-03)
 <!-- /index -->
 
 **Later-phase items with no intent id.** These four were written into the brief
