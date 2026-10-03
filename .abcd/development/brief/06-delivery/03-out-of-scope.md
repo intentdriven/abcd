@@ -128,7 +128,7 @@ gate. That is what keeps "not hand-counted" true after the day it was written.
 - `itd-2609301918174237` — A provider off this machine takes a file-reading agent only as a fixed, blanked, capped bundle (builds on itd-2609081951381895; rulings DR5b-1 to DR5b-4; back to draft for two reviews and a planning interview under ruling DR5c-0)
 - `itd-2610021503208208` — Personal git hooks keep running in abcd-managed repositories (draft)
 - `itd-2610031325050110` — abcd notices a harness update downloaded but not yet running (draft; builds on itd-2610031026190632; filed separately at that draft's interview)
-- `itd-2610031348087517` — setup asks whether abcd keeps parts of the README current, and which (draft; routing confirmed 2026-10-03)
+- `itd-2610031651058674` — abcd's check reports README parts that have gone stale, and writes nothing (draft; builds on itd-2610031348087517)
 - `itd-2610031214560142` — The board shows a product thinker what waits on them and what comes next, in a few plain lines (draft; builds on the width fix iss-2610031207397996)
 - `itd-2610031215002409` — A 'what next?' menu under the board offers the next step, in a Terminal and in a Claude Code session (draft; builds on itd-2610031214560142 and itd-2610030810370060)
 <!-- /index -->
