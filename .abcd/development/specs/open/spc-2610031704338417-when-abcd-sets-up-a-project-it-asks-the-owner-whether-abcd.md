@@ -74,7 +74,7 @@ Builds on and reuses:
 - The question type and its limits check (`question.Question`,
   `question.CheckLimits`) and the setup limits test
   (`TestEverySetupQuestionPassesTheLimits`), which live on the asking branch of
-  [spc-2610030944505997](spc-2610030944505997-asking-and-layout.md) and are not
+  spc-2610030944505997 and are not
   yet at this spec's base; step 4 waits on them.
 - [spc-2610031156364295](spc-2610031156364295-evaluate-whether-claude-md-can-be-removed-safely-now-that.md)
   step 2, which narrows the conventions-file question to AGENTS.md or nothing;
