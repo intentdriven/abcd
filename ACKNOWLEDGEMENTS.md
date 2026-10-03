@@ -75,6 +75,12 @@ Ideas and methodologies that shaped the design — not code abcd depends on.
   That rule is what abcd's colour ladder implements (itd-112,
   `internal/term`), and the precedence test pins the empty-string case that a
   presence-only reading would get wrong.
+- **golang.org/x/term (The Go Authors, BSD-3-Clause)** — the terminal package
+  abcd reads a window's size through (`internal/term`), so a question drawn in
+  a plain Terminal is laid out at the width the person sees
+  (itd-2610030810370060). It is the one runtime dependency named here rather
+  than in `go.mod` alone, because the intent's decision 5 adopted it by name, a
+  sign-off the record keeps.
 - **"20 Must-Know Agentic AI Terms" (Andreas Horn, LinkedIn, 2026)** — the
   practitioner term list whose assessment seeded the terminology crosswalk
   (itd-100, `docs/reference/terminology.md`). Credited as the prompt, not a

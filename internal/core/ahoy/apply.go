@@ -80,6 +80,14 @@ func install(cwd string, opts InstallOptions, p Prompter) (InstallResult, error)
 		}
 	}
 
+	// A docs.target setup no longer writes (claude_md, both) stops the run
+	// before its first write and before the adoption question, unless this run
+	// changes that one setting to a value setup writes: the person is told the
+	// one command, and nothing is half-done (itd-2610030814013772, A6).
+	if reason := retiredDocsTargetRefusal(abs, opts.ValueOverrides); reason != "" {
+		return InstallResult{Status: "refused", Notes: []string{reason}}, nil
+	}
+
 	// Adoption gate for an unmanaged repo.
 	adopted := false
 	if det.FolderKind == UnmanagedRepo {
@@ -551,22 +559,38 @@ func (a *applyCtx) stepConfigValues() *InstallConfig {
 	// shared applyOverride path covers all four config slots, so a re-install with
 	// an explicit flag is never silently dropped; a re-install with NO override
 	// leaves an already-valid value untouched (a silent no-op).
+	// Every effect this step sets ahead of its write — the echoed overrides, the
+	// forced docs target, the retraction — stands only if the write lands. Each
+	// return that saves nothing (a declined category, a value left unanswered, a
+	// failed write) takes them back through this one rollback, so stepMarker
+	// never retracts a block for a target change that was not saved and the
+	// receipt never echoes one. Receipts earlier steps recorded are kept.
+	mark := len(a.changes)
+	landed := false
+	defer func() {
+		if !landed {
+			a.rollbackForced(mark)
+		}
+	}()
 	oldDocsTarget := ic.DocsTarget
 	visForced := a.applyOverride("visibility", visibilityChoices, &ic.Visibility)
-	docsForced := a.applyOverride("docs_target", docsTargetChoices, &ic.DocsTarget)
+	// The saved docs target is read against every value setup ever wrote; an
+	// override may only name one it writes now.
+	docsForced := a.applyOverride("docs_target", docsTargetWritable, &ic.DocsTarget)
 	oracleForced := a.applyOverride("oracle_backend", oracleBackendChoices, &ic.OracleBackend)
 	scanForced := a.applyScanDeepOverride(ic)
 	forced := visForced || docsForced || oracleForced || scanForced
 	a.visibilityForced = visForced  // stepVisibility must refresh .gitignore for a new visibility
 	a.docsTargetForced = docsForced // stepMarker must re-plant markers for a new docs target
 	if docsForced {
-		// Narrowing the target set (e.g. both -> claude_md, or -> skip) leaves the
+		// Narrowing the target set (e.g. both -> agents_md, or -> skip) leaves the
 		// de-selected file's block orphaned; stepMarker retracts it so nothing is
 		// left inconsistent.
 		a.markerRetract = markerFilesDropped(oldDocsTarget, ic.DocsTarget)
 	}
 
 	if !hasConfigGap && !forced {
+		landed = true
 		return ic // all values already valid and no override forced a change
 	}
 	if hasConfigGap && !a.approved[ConfigChange] {
@@ -582,19 +606,32 @@ func (a *applyCtx) stepConfigValues() *InstallConfig {
 		}
 	}
 	if ic.DocsTarget == "" {
-		ic.DocsTarget = a.resolveValue("docs_target", docsTargetChoices, docsTargetDefault)
-		if !inSet(ic.DocsTarget, docsTargetChoices) {
-			return nil // no valid docs target => partial (never persist a typo)
+		ic.DocsTarget = a.resolveValue("docs_target", docsTargetWritable, docsTargetDefault)
+		if !inSet(ic.DocsTarget, docsTargetWritable) {
+			// A retired answer is said, with the one explanation; a typo is
+			// never persisted either way.
+			if why, retired := RetiredDocsTarget(ic.DocsTarget); retired {
+				a.refuse(why)
+			}
+			return nil // no writable docs target => partial
 		}
 		// Choosing the target is the approval to plant into it. At the skip
 		// default detection previews no marker gap, so the plugin-owned category
 		// is never offered, and a first install that names a target would persist
-		// it and plant nothing (iss-2609110944498549). rollbackForced clears this
-		// when the config write does not land.
+		// it and plant nothing (iss-2609110944498549). The rollback above clears
+		// this when the config write does not land.
 		a.docsTargetForced = true
 	}
+	oracleRecorded := false
 	if ic.OracleBackend == "" {
-		ic.OracleBackend = a.resolveValue("oracle_backend", oracleBackendChoices, oracleBackendDefault)
+		if a.overrides["oracle_backend"] == "" && !oracleBackendAsked() {
+			// One answer has an adapter, so there is nothing to ask: record it
+			// and say so once the write lands (iss-2610031236155833).
+			ic.OracleBackend = oracleBackendDefault
+			oracleRecorded = true
+		} else {
+			ic.OracleBackend = a.resolveValue("oracle_backend", oracleBackendChoices, oracleBackendDefault)
+		}
 		if !inSet(ic.OracleBackend, oracleBackendChoices) {
 			return nil // no valid oracle backend => partial
 		}
@@ -636,23 +673,28 @@ func (a *applyCtx) stepConfigValues() *InstallConfig {
 		return writeConfig(a.cwd, cfgMap)
 	})
 	if err != nil {
-		// The write did not land; do not echo a change or let downstream steps
-		// reconcile .gitignore/markers against a config value that was not saved.
-		a.rollbackForced()
+		// The write did not land: the deferred rollback keeps downstream steps
+		// from reconciling .gitignore/markers against a value that was not saved.
 		if errors.Is(err, fsutil.ErrLockContention) || errors.Is(err, fsutil.ErrLockPathUnsafe) {
 			a.refuse("could not save the settings to .abcd/config.json: " + errText(err))
 		}
 		return nil
 	}
+	landed = true
 	a.note(writeSettings, configPath(a.cwd))
+	if oracleRecorded {
+		a.inform(oracleBackendRecordedNote)
+	}
 	return ic
 }
 
 // rollbackForced discards the effects of a forced override whose config write did
 // not land, so the echoed change and the downstream reconciliation steps never
-// claim a change that was not persisted.
-func (a *applyCtx) rollbackForced() {
-	a.changes = nil
+// claim a change that was not persisted. It truncates the change list to mark,
+// its length when stepConfigValues began, so a receipt an earlier step recorded
+// (a dependency installed in this run) is kept (iss-2610031915495759).
+func (a *applyCtx) rollbackForced(mark int) {
+	a.changes = a.changes[:mark]
 	a.visibilityForced = false
 	a.docsTargetForced = false
 	a.markerRetract = nil
@@ -764,7 +806,7 @@ func overridesWouldChange(cwd string, overrides map[string]string) bool {
 		return ok && v != "" && cur != "" && inSet(v, choices) && cur != v
 	}
 	if differs("visibility", visibilityChoices, ic.Visibility) ||
-		differs("docs_target", docsTargetChoices, ic.DocsTarget) ||
+		differs("docs_target", docsTargetWritable, ic.DocsTarget) ||
 		differs("oracle_backend", oracleBackendChoices, ic.OracleBackend) {
 		return true
 	}
@@ -1036,7 +1078,9 @@ func (a *applyCtx) stepMarker(cfg *InstallConfig) {
 			target = v
 		}
 	}
-	for _, name := range markerTargets(target) {
+	// Only a target setup writes plants a block; a retired one was refused
+	// before the first write, and is never planted into here either.
+	for _, name := range writableMarkerTargets(target) {
 		path := filepath.Join(a.cwd, name)
 		wrote, err := installMarkerFile(path)
 		if err != nil {
@@ -1048,7 +1092,7 @@ func (a *applyCtx) stepMarker(cfg *InstallConfig) {
 		}
 	}
 	// Retract the block from files a narrowed docs-target override de-selected,
-	// so a target change (e.g. both -> claude_md, or -> skip) leaves no orphan.
+	// so a target change (e.g. both -> agents_md, or -> skip) leaves no orphan.
 	for _, name := range a.markerRetract {
 		path := filepath.Join(a.cwd, name)
 		wrote, err := removeMarkerFile(path)

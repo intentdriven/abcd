@@ -105,6 +105,7 @@ glossary/
 ├── interview/
 │   ├── README.md
 │   ├── embark.md
+│   ├── knowledge-floor.md
 │   └── session.md
 └── ledger/
     ├── README.md
@@ -246,6 +247,7 @@ The complete write-back protocol is a **design target** of `/abcd:intent grill`'
 | Term | Status | Definition |
 |---|---|---|
 | [embark](interview/embark.md) | stable | The opening move of a grill session in which the oracle reads the target intent, identifies the primary ambiguities, and poses the first round of Socratic questions. |
+| [knowledge-floor](interview/knowledge-floor.md) | stable | What each of the two people abcd addresses is assumed to know, the measure an explanation in an abcd interview is held to, as against the register, which sets only its tone. |
 | [session](interview/session.md) | stable | One complete interactive exchange between a human and the abcd grill sub-verb, spanning all rounds of Socratic questioning through PRD synthesis for a single intent or brief section. |
 
 ### ledger/

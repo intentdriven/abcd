@@ -302,9 +302,14 @@ package-manager install takes the manager's own upgrade.
 
 Running the `install` sub-verb of `abcd ahoy` inside a repository adopts it:
 it lays down the `.abcd/` layout and the commit gates. By default it writes abcd's name into none of the
-repository's conventions files (`CLAUDE.md`, `AGENTS.md`); the managed block
-that documents the rule loader, and names abcd, goes into one only when you ask
-for it with `--docs-target`.
+repository's conventions files; the managed block that documents the rule
+loader, and names abcd, goes into `AGENTS.md`, and only into `AGENTS.md`, when
+you ask for it with `--docs-target agents_md`. abcd writes no other
+conventions file. A repository whose saved setting names `CLAUDE.md`
+(`claude_md` or `both`) is still read as set up and still uninstalls cleanly,
+but setup stops before changing anything and names the one setting to change:
+`--docs-target agents_md` moves the block out of `CLAUDE.md` and into
+`AGENTS.md`, and `--docs-target skip` takes it out of both.
 
 Outside `.abcd/`, a default adoption names abcd in exactly three committed
 files, and nowhere else:

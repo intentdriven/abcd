@@ -12,6 +12,17 @@ over the brief's earlier `1.0.0`-at-close expectation). The four M6 synthesis
 agents below entered at `0.1.0`, wired to their `abcd disembark` verbs and
 unmeasured; `lifeboat-oracle` has since become `lifeboat-reviewer` at `0.1.1`.
 
+## 2026-10-03 (spc-2610030944505997 — every question reads the same way)
+
+### reflection-composer 0.2.0
+
+MINOR: the composer asks under the asking rules the command page points at,
+the block `cmd/asking-sync` generates in `commands/intent.md`, instead of the
+"one sentence of context" the page stated before. Each question shows the thing
+being decided first, quoted in full (a section's earlier answer before "is this
+answer complete?"), with one concrete example of an answer, and the question
+last. The answers object is unchanged. Unmeasured, in the `0.x` band.
+
 ## 2026-09-30 (itd-24 — the release retrospective)
 
 ### reflection-composer 0.1.0

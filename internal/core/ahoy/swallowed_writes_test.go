@@ -77,12 +77,33 @@ func TestMarkerBlockFailureIsNoted(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	a := &applyCtx{cwd: dir, approved: map[GapCategory]bool{PluginOwned: true}, markerRetract: []string{"AGENTS.md"}}
-	a.stepMarker(&InstallConfig{DocsTarget: "claude_md"})
+	a := &applyCtx{cwd: dir, approved: map[GapCategory]bool{PluginOwned: true}, markerRetract: []string{"CLAUDE.md"}}
+	a.stepMarker(&InstallConfig{DocsTarget: "agents_md"})
 	for _, name := range []string{"CLAUDE.md", "AGENTS.md"} {
 		if !notesCarryAll(a.notes, name, "symlink") {
 			t.Errorf("no note says abcd's block in %s was left alone, and why; notes: %v", name, a.notes)
 		}
+	}
+}
+
+// TestMarkerStepPlantsNothingUnderARetiredTarget is the marker step's half of
+// A1: handed a retired docs.target with the plugin-owned category approved, it
+// writes no block, so CLAUDE.md is never created (itd-2610030814013772).
+func TestMarkerStepPlantsNothingUnderARetiredTarget(t *testing.T) {
+	for _, target := range []string{"claude_md", "both"} {
+		t.Run(target, func(t *testing.T) {
+			dir := t.TempDir()
+			a := &applyCtx{cwd: dir, approved: map[GapCategory]bool{PluginOwned: true}}
+			a.stepMarker(&InstallConfig{DocsTarget: target})
+			for _, name := range []string{"CLAUDE.md", "AGENTS.md"} {
+				if _, err := os.Lstat(filepath.Join(dir, name)); !os.IsNotExist(err) {
+					t.Errorf("%s exists after the marker step ran under %s (err=%v)", name, target, err)
+				}
+			}
+			if len(a.writes) != 0 {
+				t.Errorf("the marker step recorded writes %v under %s", a.writes, target)
+			}
+		})
 	}
 }
 

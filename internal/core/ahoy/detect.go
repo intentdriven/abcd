@@ -18,8 +18,14 @@ import (
 
 // Enumerations for config-value validation.
 var (
-	visibilityChoices    = []string{"private", "public"}
+	visibilityChoices = []string{"private", "public"}
+	// docsTargetChoices is the set a saved docs.target is READ against, so a
+	// project set up through claude_md or both still reads as configured and
+	// still uninstalls cleanly. docsTargetWritable is the set setup WRITES:
+	// AGENTS.md is the one conventions file abcd writes (adr-2610030814023326),
+	// and RetiredDocsTarget explains the difference.
 	docsTargetChoices    = []string{"claude_md", "agents_md", "both", "skip"}
+	docsTargetWritable   = []string{"agents_md", "skip"}
 	oracleBackendChoices = []string{"host-delegated", "native", "cli", "api", "mcp"}
 	// scan.deep is a boolean, but it is collected and overridden as a string
 	// through the same choice-set seam as the enums above, so its vocabulary is
@@ -533,7 +539,9 @@ func detectConfigValues(cwd string) []Gap {
 	}
 	if v, ok := stringVal(docs, "target"); !ok || !inSet(v, docsTargetChoices) {
 		gaps = append(gaps, configValueGap("config.docs_target_missing", "docs_target", "docs.target not set",
-			"Which docs file (CLAUDE.md / AGENTS.md / both / skip) hosts the marker block."))
+			"Whether AGENTS.md hosts the marker block (agents_md / skip)."))
+	} else if _, retired := RetiredDocsTarget(v); retired {
+		gaps = append(gaps, docsTargetRetiredGap(v))
 	}
 	if v, ok := stringVal(oracle, "backend"); !ok || !inSet(v, oracleBackendChoices) {
 		gaps = append(gaps, configValueGap("config.oracle_backend_missing", "oracle_backend", "oracle.backend not set",
@@ -570,8 +578,12 @@ func cfgGap(id, title, detail string) Gap {
 // answer in a piped run, so the fix hint says so (iss-2609120447486547).
 func configValueGap(id, key, title, detail string) Gap {
 	g := cfgGap(id, title, detail)
-	if h, ok := HelpFor(key); ok && h.Flag != "" {
+	if h, ok := helpFor(key); ok && h.Flag != "" {
 		g.FixHint = "ahoy install asks for the value; " + h.FlagHint() + "."
+		if key == "oracle_backend" && !oracleBackendAsked() {
+			g.FixHint = "ahoy install records " + oracleBackendDefault + ", the only reviewer abcd ships, without asking; " +
+				"to choose another, pass " + h.Flag + " <value>."
+		}
 	}
 	return g
 }
@@ -596,7 +608,10 @@ func detectMarkerDrift(cwd string) []Gap {
 	}
 	docs := subMap(cfg, "docs")
 	target, _ := stringVal(docs, "target")
-	files := markerTargets(target)
+	// A retired target names its files only for the read side: install refuses
+	// to write under it, so a drift gap would promise a write that never comes.
+	// config.docs_target_retired stands in for them.
+	files := writableMarkerTargets(target)
 	var gaps []Gap
 	for _, name := range files {
 		switch classifyMarker(filepath.Join(cwd, name)) {

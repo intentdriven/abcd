@@ -254,7 +254,7 @@ func TestAhoyInstallWiredAndIdempotent(t *testing.T) {
 	repo := hermeticRepo(t)
 
 	out := runCLI(t, "ahoy", "install", "--yes", "--adopt",
-		"--visibility", "private", "--docs-target", "both",
+		"--visibility", "private", "--docs-target", "agents_md",
 		"--oracle-backend", "host-delegated", "--scan-deep", "false", "--json")
 	var res struct {
 		Status string   `json:"status"`
@@ -267,17 +267,17 @@ func TestAhoyInstallWiredAndIdempotent(t *testing.T) {
 		t.Fatalf("install status = %q, want clean\n%s", res.Status, out)
 	}
 	// The marker block reached disk via the CLI path.
-	body, err := os.ReadFile(filepath.Join(repo, "CLAUDE.md"))
+	body, err := os.ReadFile(filepath.Join(repo, "AGENTS.md"))
 	if err != nil {
-		t.Fatalf("CLAUDE.md not written: %v", err)
+		t.Fatalf("AGENTS.md not written: %v", err)
 	}
 	if !strings.Contains(string(body), "<!-- BEGIN ABCD -->") {
-		t.Fatalf("CLAUDE.md has no marker block:\n%s", body)
+		t.Fatalf("AGENTS.md has no marker block:\n%s", body)
 	}
 
 	// Second run is an exact no-op.
 	out2 := runCLI(t, "ahoy", "install", "--yes", "--adopt",
-		"--visibility", "private", "--docs-target", "both",
+		"--visibility", "private", "--docs-target", "agents_md",
 		"--oracle-backend", "host-delegated", "--scan-deep", "false", "--json")
 	var res2 struct {
 		Status string   `json:"status"`
@@ -303,12 +303,12 @@ func TestAhoyInstallExplicitOverrideAppliesAsUpdate(t *testing.T) {
 
 	// First install pins visibility=private and reaches a clean state.
 	runCLI(t, "ahoy", "install", "--yes", "--adopt",
-		"--visibility", "private", "--docs-target", "both",
+		"--visibility", "private", "--docs-target", "agents_md",
 		"--oracle-backend", "host-delegated", "--scan-deep", "false", "--json")
 
 	// Re-install with an explicit --visibility public: must NOT no-op.
 	out := runCLI(t, "ahoy", "install", "--yes", "--adopt",
-		"--visibility", "public", "--docs-target", "both",
+		"--visibility", "public", "--docs-target", "agents_md",
 		"--oracle-backend", "host-delegated", "--json")
 	var res struct {
 		Status  string   `json:"status"`
@@ -333,21 +333,21 @@ func TestAhoyInstallExplicitOverrideAppliesAsUpdate(t *testing.T) {
 }
 
 // TestAhoyInstallDocsTargetNarrowingRetractsOrphan proves the apply-as-update
-// leaves no orphan: narrowing docs-target from both to claude_md via an explicit
+// leaves no orphan: narrowing docs-target from agents_md to skip via an explicit
 // override removes the now-de-selected AGENTS.md marker block (iss-107).
 func TestAhoyInstallDocsTargetNarrowingRetractsOrphan(t *testing.T) {
 	repo := hermeticRepo(t)
 
 	runCLI(t, "ahoy", "install", "--yes", "--adopt",
-		"--visibility", "private", "--docs-target", "both",
+		"--visibility", "private", "--docs-target", "agents_md",
 		"--oracle-backend", "host-delegated", "--scan-deep", "false", "--json")
 	agents := filepath.Join(repo, "AGENTS.md")
 	if body, err := os.ReadFile(agents); err != nil || !strings.Contains(string(body), "<!-- BEGIN ABCD -->") {
-		t.Fatalf("precondition: AGENTS.md must have a marker block after both-target install (err=%v)", err)
+		t.Fatalf("precondition: AGENTS.md must have a marker block after an agents_md install (err=%v)", err)
 	}
 
 	runCLI(t, "ahoy", "install", "--yes", "--adopt",
-		"--visibility", "private", "--docs-target", "claude_md",
+		"--visibility", "private", "--docs-target", "skip",
 		"--oracle-backend", "host-delegated", "--json")
 
 	body, err := os.ReadFile(agents)
@@ -357,8 +357,8 @@ func TestAhoyInstallDocsTargetNarrowingRetractsOrphan(t *testing.T) {
 	if strings.Contains(string(body), "<!-- BEGIN ABCD -->") {
 		t.Fatalf("orphaned AGENTS.md marker block not retracted after narrowing docs-target:\n%s", body)
 	}
-	if claude, err := os.ReadFile(filepath.Join(repo, "CLAUDE.md")); err != nil || !strings.Contains(string(claude), "<!-- BEGIN ABCD -->") {
-		t.Fatalf("CLAUDE.md marker block must survive the narrowing (err=%v)", err)
+	if _, err := os.Lstat(filepath.Join(repo, "CLAUDE.md")); !os.IsNotExist(err) {
+		t.Fatalf("CLAUDE.md written by an install that never named it (err=%v)", err)
 	}
 }
 
@@ -977,7 +977,7 @@ func TestAhoyInstallBootstrapsAndRegistersByRootSHA(t *testing.T) {
 	}
 
 	runCLI(t, "ahoy", "install", "--yes", "--adopt",
-		"--visibility", "private", "--docs-target", "both",
+		"--visibility", "private", "--docs-target", "agents_md",
 		"--oracle-backend", "host-delegated", "--scan-deep", "false", "--json")
 
 	data, err := os.ReadFile(indexPath)
@@ -1011,7 +1011,7 @@ func TestAhoyInstallBootstrapsAndRegistersByRootSHA(t *testing.T) {
 func TestAhoyDoctorResolvesCentralLocationFromIndex(t *testing.T) {
 	_, _ = hermeticGitRepo(t)
 	runCLI(t, "ahoy", "install", "--yes", "--adopt",
-		"--visibility", "private", "--docs-target", "both",
+		"--visibility", "private", "--docs-target", "agents_md",
 		"--oracle-backend", "host-delegated", "--scan-deep", "false", "--json")
 
 	indexPath := abcdhome.Path(os.Getenv("HOME"), "history", "index.json")
@@ -1075,7 +1075,7 @@ func TestAhoyDoctorResolvesCentralLocationFromIndex(t *testing.T) {
 func TestAhoyDoctorJSONCarriesNoHomePrefix(t *testing.T) {
 	_, _ = hermeticGitRepo(t)
 	runCLI(t, "ahoy", "install", "--yes", "--adopt",
-		"--visibility", "private", "--docs-target", "both",
+		"--visibility", "private", "--docs-target", "agents_md",
 		"--oracle-backend", "host-delegated", "--scan-deep", "false", "--json")
 
 	home := os.Getenv("HOME")
@@ -1136,7 +1136,7 @@ func TestAhoyDoctorJSONCarriesNoHomePrefix(t *testing.T) {
 func TestAhoyDoctorNamesTheDiagnosticsNoInstallCanFix(t *testing.T) {
 	repo, _ := hermeticGitRepo(t)
 	runCLI(t, "ahoy", "install", "--yes", "--adopt",
-		"--visibility", "private", "--docs-target", "both",
+		"--visibility", "private", "--docs-target", "agents_md",
 		"--oracle-backend", "host-delegated", "--scan-deep", "false", "--json")
 
 	cfg := filepath.Join(repo, ".abcd", "config.json")

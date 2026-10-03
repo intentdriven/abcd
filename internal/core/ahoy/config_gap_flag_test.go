@@ -55,9 +55,9 @@ func TestConfigValueGapsNameTheFlagThatAnswersThem(t *testing.T) {
 	}
 	for key, flag := range map[string]string{"visibility": "--visibility", "docs_target": "--docs-target",
 		"oracle_backend": "--oracle-backend", "scan_deep": "--scan-deep"} {
-		h, ok := HelpFor(key)
+		h, ok := helpFor(key)
 		if !ok || h.Flag != flag {
-			t.Errorf("HelpFor(%q).Flag = %q, want %q", key, h.Flag, flag)
+			t.Errorf("helpFor(%q).Flag = %q, want %q", key, h.Flag, flag)
 		}
 	}
 }
