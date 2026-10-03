@@ -2212,3 +2212,5 @@ Addendum (2026-10-03, appended): at the harness draft's interview the product th
 | abcd writes only inside marked parts and never rewrites the owner's text | standing stance | existing principle the-users-directory-is-theirs, reused |
 
 Links: refines itd-3's setup interview. Verdict proposed: SPLIT, offered beside waiting for the research and later. Routing survived confirmation: yes (unchanged). The request ended at "incl."; asked, the product thinker completed it: "title, badges (incl. an abcd-managed badge) etc."
+
+Addendum (2026-10-03, appended): at the README draft's interview the product thinker widened "keeps current" to include a separate check that reports stale parts; filed as itd-2610031651058674 (draft, builds on itd-2610031348087517). The routing row above held for the setup half.
