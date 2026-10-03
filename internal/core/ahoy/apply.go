@@ -47,13 +47,21 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 	if err != nil {
 		return InstallResult{}, err
 	}
+	// What keeps AGENTS.md from the agent tool from outside the project's own
+	// files: a personal file at the root, a file in a folder above it, an old
+	// host (itd-2610030814013772). Install checks only, made once per run and
+	// never by Detect, which the status board and the hooks also call.
+	var hostReach []Gap
+	if det.FolderKind != UnmanagedFolder {
+		hostReach = detectHostReach(abs)
+	}
 	// Every outcome past detection carries the warnings, the early returns
 	// included: a tool's own file holding the owner's words hides AGENTS.md
 	// whether or not this run changed anything. The full apply sets them from
 	// its final detection instead.
 	defer func() {
 		if err == nil && res.Warnings == nil {
-			res.Warnings = installWarnings(det.Gaps)
+			res.Warnings = installWarnings(det.Gaps, hostReach)
 		}
 	}()
 
@@ -240,7 +248,7 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 	}
 	return InstallResult{
 		Status:             status,
-		Warnings:           installWarnings(final.Gaps),
+		Warnings:           installWarnings(final.Gaps, hostReach),
 		Writes:             ac.writes,
 		Changes:            ac.changes,
 		Remaining:          remaining,

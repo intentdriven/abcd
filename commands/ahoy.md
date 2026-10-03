@@ -97,8 +97,11 @@ names it; the default, `skip`, names none), the `.abcd/` scaffolding, the owned
 the one setting to change in the notes; relay that note as it stands. Before
 anything else, relay each line of the returned `warnings` as it stands: each
 names an agent tool's own conventions file holding the user's words, which that
-tool reads in place of `AGENTS.md` and abcd never edits or removes (the text
-render prints them first too). Then lead
+tool reads in place of `AGENTS.md` and abcd never edits or removes, or what
+hides `AGENTS.md` from outside the repository's own files (a personal
+conventions file at the root, one in a folder above the repository, or an
+agent tool older than the release that reads `AGENTS.md` on its own); the text
+render prints them first too. Then lead
 the report with the returned `headline`, then each `summary` item in its own
 three parts: `what` it is, `why` it matters, and the `action`, if any, the user
 should take. These are abcd's own plain words for the product thinker and the
@@ -370,6 +373,16 @@ question was open is left and named in the notes. `keep` and `later` write and
 record nothing, so the next install asks again. Like the drain rule offer it is
 asked only at a terminal; a piped run and a `--yes` run report
 `conventions.retire_offered` under `optional_skipped`.
+
+**What hides `AGENTS.md` from outside the repository.** The install, and only
+the install, also warns about a personal `CLAUDE.local.md` at the root, a
+`CLAUDE.md`, `.claude/CLAUDE.md` or `CLAUDE.local.md` in any folder above the
+repository (not the user-level `.claude/CLAUDE.md` in the home folder), and a
+`claude` command on `PATH` older than the release that reads `AGENTS.md` on its
+own. Each is a warning in `warnings`, never a refusal. The folders above are
+asked only whether a file of that name exists: nothing in them is read, and
+abcd takes no settings from them. Relay each warning as it stands; never offer
+to edit, move or remove one of those files.
 
 `--attribution` is its own approval and works on an already-installed repo (the
 step the adopt phase runs it in). It opts the repo into the committed

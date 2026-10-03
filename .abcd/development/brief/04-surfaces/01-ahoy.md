@@ -565,6 +565,30 @@ holds their words (the `conventions-file` row above). The text render prints
 them before anything else, and every outcome past detection carries them, the
 early returns included.
 
+Install, and install alone, adds the host-reach warnings after them
+(`conventions.host_reach` and `conventions.host_version`, never resolvable and
+never a refusal): neither `Detect`, which the board and the hooks call, nor
+`Managed`, which the status line calls on every refresh, makes them. A
+`CLAUDE.local.md` at the project root is named and never read, classified or
+offered for removal. From the root's parent up to the file-system root, each
+folder is asked with `lstat` alone for `CLAUDE.md`, `.claude/CLAUDE.md` and
+`CLAUDE.local.md`, skipping the user-level `.claude/CLAUDE.md` in the home
+folder but naming a `CLAUDE.md` directly in it; a folder that cannot be
+searched ends the walk quietly. Each path is shown through `fsutil.RedactHome`,
+and each warning carries one fixed sentence: "abcd reads no settings from
+folders above this project. This check only asks whether a file of this name
+exists there; it reads nothing in it and changes nothing abcd does, because the
+agent tool itself reads that folder." The presence check is not a read of
+configuration from above the working tree, which the loader's rule forbids: it
+takes nothing, so the most a hostile file above the tree can cause is a
+warning. The version warning runs the `claude` command on `PATH` once with
+`--version` (`host_version.go`: the command never one resolving inside the
+project, the git-scrubbed environment, a three-second limit that kills the
+process group it leads, output kept up to a bound), reads the first
+`major.minor.patch` it prints, and warns, naming no version, when it is below
+the one floor constant, cited beside it from the 2026-10-03 research note. No
+command, no answer, an error exit or no parsable version raises nothing.
+
 Answers that run out read as end-of-file, and end-of-file declines every confirm
 and takes the default for every prompt, so an unattended run adopts nothing it
 was not told to adopt. The cost is that a stdin held open and silent makes a
