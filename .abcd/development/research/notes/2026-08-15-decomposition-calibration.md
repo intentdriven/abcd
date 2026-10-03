@@ -2149,3 +2149,13 @@ Per hand-run, append:
   file the rest) and a setup question, so a scope row grew without a new record.
 - **Notes:** the defensible-homes column (several options, no recommendation) let the routing question be put
   in plain words with one row at a time.
+
+## 2026-10-03: keep abcd's home out of desktop search (product thinker, routing confirmed)
+
+| part | type | home |
+|---|---|---|
+| abcd's home is skipped by desktop search by default, with a setting to turn indexing back on | capability | intent itd-2610030720038073 (draft) |
+| abcd achieves it only by changing its own folders, never the computer's search settings or administrator rights | trust rule | adr-2610030720195401 (proposed) + a brief invariant owed at ship |
+| method, upgrade path for existing homes | plumbing | the intent's open questions, then its spec |
+
+Links: refines itd-2609091014076309; refines principle the-users-directory-is-theirs. Verdict proposed: SPLIT. Routing survived confirmation: yes (unchanged).
