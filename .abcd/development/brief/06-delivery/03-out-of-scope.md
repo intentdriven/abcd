@@ -127,7 +127,8 @@ gate. That is what keeps "not hand-counted" true after the day it was written.
 - `itd-2609301020001595` — A pinned-action bump syncs its scaffold template and lands re-authored, the pin half of the dependency re-authoring (builds on itd-2609221842494980; from iss-209; ruling M3)
 - `itd-2609301918174237` — A provider off this machine takes a file-reading agent only as a fixed, blanked, capped bundle (builds on itd-2609081951381895; rulings DR5b-1 to DR5b-4; back to draft for two reviews and a planning interview under ruling DR5c-0)
 - `itd-2610021503208208` — Personal git hooks keep running in abcd-managed repositories (draft)
-- `itd-2610031026190632` — abcd's check says when the harness is behind its latest release (draft; builds on itd-111; the network answers only the explicit check)
+- `itd-2610031325050110` — abcd notices a harness update downloaded but not yet running (draft; builds on itd-2610031026190632; filed separately at that draft's interview)
+- `itd-2610031348087517` — setup asks whether abcd keeps parts of the README current, and which (draft; routing confirmed 2026-10-03)
 <!-- /index -->
 
 **Later-phase items with no intent id.** These four were written into the brief
