@@ -2200,3 +2200,5 @@ Links: refines itd-2609081951381895. Verdict proposed: SPLIT (connect here, pick
 Links: builds on itd-111. Verdict proposed: SPLIT, offered beside one draft for everything and later. Routing survived confirmation: yes (unchanged). The reversal flag (a daily check at session start would reverse adr-38) was put as its own question and declined.
 
 Correction (2026-10-03, appended): the desktop-search entry above routes "a setting to turn indexing back on"; the reviews found no such setting exists under that draft's rule, and its interview (decisions 1 and 2) widened the route to the whole home, renamed `~/.abcd.noindex`. The routing row stands as graded at the time; the draft carries the outcome.
+
+Addendum (2026-10-03, appended): at the harness draft's interview the product thinker asked that the newer-version-downloaded signal be filed separately; it is itd-2610031325050110 (draft, builds on itd-2610031026190632). The harness draft itself became offline (its decision 7): the internet row of the entry above no longer applies.
