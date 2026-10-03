@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -12,25 +11,14 @@ import (
 )
 
 // questionCall builds the host's PreToolUse payload for a call to its question
-// tool: the tool name and a question, nothing the gate reads beyond the name
-// and the session's directory.
+// tool: abcd's well-built question (a "Product Q1" chip, within every field
+// limit), so the mode gate is what these tests exercise. The field checks are
+// guard_question_limits_test.go's.
 func questionCall(t *testing.T, cwd string) string {
 	t.Helper()
-	payload := map[string]any{
-		"session_id":      "s1",
-		"cwd":             cwd,
-		"hook_event_name": "PreToolUse",
-		"tool_name":       questionTools[0],
-		"tool_input": map[string]any{"questions": []any{map[string]any{
-			"question": "Ship it?", "header": "Ship", "multiSelect": false,
-			"options": []any{map[string]any{"label": "Yes", "description": "ship"}, map[string]any{"label": "No", "description": "hold"}},
-		}}},
-	}
-	b, err := json.Marshal(payload)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return string(b)
+	q := wellBuilt()
+	q.Header = "Product Q1"
+	return askPayload(t, cwd, q)
 }
 
 func questionMarker(root string) string {

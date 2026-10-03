@@ -1,0 +1,13 @@
+{
+  "about": "The parts the question check must name when it refuses routing-2026-10-03.json with the mode at product-thinker (spc-2610030944505997 criterion A1): no chip header; one block, with no paragraph before the question and no Now: or Change later: line; the meaning of each option only in its preview; no decide-later option.",
+  "findings": [
+    {"tab": 1, "part": "header", "rule": "header"},
+    {"tab": 1, "part": "option 1 description", "rule": "meaning-sentences"},
+    {"tab": 1, "part": "option 2 description", "rule": "meaning-sentences"},
+    {"tab": 1, "part": "option 3 description", "rule": "meaning-sentences"},
+    {"tab": 1, "part": "options", "rule": "decide-later"},
+    {"tab": 1, "part": "question text", "rule": "now-and-change-later"},
+    {"tab": 1, "part": "question text", "rule": "now-and-change-later"},
+    {"tab": 1, "part": "question text", "rule": "thing-first"}
+  ]
+}

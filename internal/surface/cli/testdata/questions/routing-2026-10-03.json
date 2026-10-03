@@ -1,0 +1,26 @@
+{
+  "questions": [
+    {
+      "header": "Routing",
+      "question": "[For you as product thinker; queued R2 of 5. On your last note: you asked for the layout work to travel with the asking work.] I propose three parts: (1) the layout rules go into the universal-patterns chapter, (2) the question check refuses a badly built question, and (3) the interview pages carry the same rules. For example, a criteria walk would show the criterion before asking whether it stands. Do you confirm this routing, or would you route it differently?",
+      "multiSelect": false,
+      "options": [
+        {
+          "label": "Confirm",
+          "description": "",
+          "preview": "Route as proposed: the layout rules, the check and the interview pages travel together as one bundle."
+        },
+        {
+          "label": "Change one part",
+          "description": "",
+          "preview": "Keep the bundle, but move one of the three parts elsewhere; you say which."
+        },
+        {
+          "label": "Route differently",
+          "description": "",
+          "preview": "Route the layout work on its own, apart from the asking work."
+        }
+      ]
+    }
+  ]
+}
