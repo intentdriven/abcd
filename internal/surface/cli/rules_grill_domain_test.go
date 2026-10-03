@@ -125,7 +125,8 @@ func TestGrillQuotingRuleSaysProseIsInvisibleWhileTheQuestionShows(t *testing.T)
 // 2026-09-29 captures asked for, since that page ships to every repository
 // abcd is installed in and is where an adopter's agent reads how to ask: the
 // example sits in the question text and each option's meaning in its
-// description, never in a preview alone (iss-2609291925134691), and a mixed
+// description, and no question carries a side preview, which hides every
+// description (iss-2609291925134691; the layout intent's decision 20), and a mixed
 // interview re-sets the addressee per question (iss-2609291925149138).
 func TestIntentInterviewPageCarriesGrillVisibilityAndAddresseeLines(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join(testRepoRoot(), "commands", "intent.md"))
@@ -151,7 +152,7 @@ func TestIntentInterviewPageCarriesGrillVisibilityAndAddresseeLines(t *testing.T
 	}{
 		{"iss-2609291925134691", "one example of the thing being decided, in the question text"},
 		{"iss-2609291925134691", "each option's description says what choosing that option means"},
-		{"iss-2609291925134691", "never holds it alone"},
+		{"iss-2609291925134691", "carries no side preview"},
 		{"iss-2609291925134691", "invisible while the question shows"},
 		{"iss-2609291925149138", "classify each question's addressee first"},
 		{"iss-2609291925149138", "a mixed interview re-sets the mode per question"},

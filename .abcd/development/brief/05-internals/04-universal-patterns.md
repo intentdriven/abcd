@@ -23,9 +23,11 @@ an abcd question that breaks it, naming the part, the value, and the limit:
   carry items 1 and 3 above into every question, each saying "not
   applicable" where it does not apply; then the one plain question, last.
 - **The options widen rather than recommend.** Each label is a few words and
-  each description says what choosing it means (item 2 above); the last
-  option is the decide-later answer; none is marked, styled, or ordered as
-  recommended.
+  each description says what choosing it means, with its gain and cost (item 2
+  above); the last option is the decide-later answer; none is marked, styled,
+  or ordered as recommended. No option carries a side preview: the host hides
+  every description while a preview shows and cuts the preview to the rows it
+  has, so the check refuses one.
 - **One question fits the narrow window.** Parts of one thing are asked as
   tabs; a question whose answer depends on another is asked alone, after it.
 

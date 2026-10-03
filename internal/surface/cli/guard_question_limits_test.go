@@ -180,6 +180,7 @@ func TestRoutingQuestionOf20261003IsRefused(t *testing.T) {
 	}
 	var want struct {
 		Findings []namedPart `json:"findings"`
+		More     int         `json:"more"`
 	}
 	if err := json.Unmarshal(rawWant, &want); err != nil {
 		t.Fatal(err)
@@ -194,9 +195,12 @@ func TestRoutingQuestionOf20261003IsRefused(t *testing.T) {
 	if stdout != "" {
 		t.Errorf("the refusal belongs on stderr alone, and the input is never rewritten; stdout = %q", stdout)
 	}
-	_, got, _ := refusal(t, stderr)
+	head, got, _ := refusal(t, stderr)
 	if !slices.Equal(got, want.Findings) {
 		t.Errorf("the refusal named\n%v\nwant exactly\n%v\nstderr:\n%s", got, want.Findings, stderr)
+	}
+	if n := strconv.Itoa(len(want.Findings) + want.More); !strings.Contains(head, ": "+n+" part(s)") {
+		t.Errorf("the head line must count %s part(s), the named and the %d more:\n%s", n, want.More, head)
 	}
 	if markedOpen(t, root) {
 		t.Error("a refused question was marked open")

@@ -46,13 +46,13 @@ func AskingRules(l Limits) []string {
 
 		"The thing being decided is quoted in full in the question itself, in paragraphs and lists, never referred to: The criterion before \"does it stand?\", the paragraph before \"confirm or change?\", the open question before \"resolve or defer?\". " +
 			"Prose written between tool calls is invisible while the question shows, so a question about text the person cannot see cannot be answered. " +
-			"Material too long for one question is put one part per question, never into a message before the question or into a preview alone.",
+			"Material too long for one question is put one part per question, never into a message before the question or into a preview.",
 
 		fmt.Sprintf("Every question has one layout, and abcd's question check refuses a question that breaks it, naming the part, the value, and the limit; fix each part and ask again. "+
 			"The header is a chip of at most %s columns naming whom the question is for and which it is: %s, the role one of %s, with a total after the slash only when the interview's length is known. "+
 			"The question text gives the material first, then a line starting %q and a line starting %q (each saying %q where it does not apply), and ends with the question on its own line. "+
 			"It offers %s to %s options, the last %s; each label is at most %s words, and each description at most %s sentences. "+
-			"There is no bold (no ** or __) outside a preview, and one question, or one tab, fits %s rows at %s columns.",
+			"There is no bold (no ** or __) and no side preview, and one question, or one tab, fits %s rows at %s columns.",
 			numberWord(l.HeaderColumns), chipExamples(l.ChipRoles), joinOr(l.ChipRoles, false),
 			l.NowPrefix, l.ChangeLaterPrefix, l.NotApplicable,
 			numberWord(l.OptionsPerQ[0]), numberWord(l.OptionsPerQ[1]), joinOr(l.LaterLabels, true),
@@ -60,10 +60,10 @@ func AskingRules(l Limits) []string {
 			numberWord(l.Rows), numberWord(l.Columns)),
 
 		"Every question carries one example of the thing being decided, in the question text, and each option's description says what choosing that option means in practice. " +
-			"A preview may repeat the example with the trade-off and never holds it alone, because the host can cut a preview off. " +
+			"An abcd question carries no side preview: While a preview shows, the host hides every option's description and cuts the preview to the rows it has, so the meaning goes where it always shows. " +
 			"A question that offers a choice between two forms explains the difference between them, so an answer is never given on wording alone.",
 
-		"Each option names its gain and its cost, never one option's alone, and the previews carry the trade-offs between the options where they can, in the same neutral form.",
+		"Each option's description names its gain and its cost, never one option's alone, so the trade-offs between the options read in the same neutral form.",
 
 		"An option is never marked, styled, or ordered as recommended: No \"(Recommended)\" label, no star, no recommended option first. " +
 			"The host's own instruction for its question tool asks for a recommended first option; abcd's rule reverses it. " +
