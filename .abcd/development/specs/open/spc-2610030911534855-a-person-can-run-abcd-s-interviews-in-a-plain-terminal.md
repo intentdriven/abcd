@@ -335,7 +335,8 @@ The setup interview asks through `ahoy.Prompter`. A new front-door prompter,
 `ahoy.TerminalPrompter` by building an `Ask` and handing it to the answer loop:
 
 - a value question (`Prompt(key, choices, def)`) becomes a question whose id is
-  the key, whose material is `PromptHelp.About`, whose options are
+  the key, whose material is `PromptHelp.About` of the help `ahoy.HelpIn`
+  gives for the install's repository (iss-2610031236155833), whose options are
   `PromptHelp.Choices` with their meanings, whose `change_later` line is
   `PromptHelp.ChangeLaterLine` (the flag hint, or, for a question no flag
   answers, where its answer is changed later, iss-2610031236155833), and whose
@@ -345,7 +346,9 @@ The setup interview asks through `ahoy.Prompter`. A new front-door prompter,
   make the change" and "No, leave it", and `Later` declining, as the refusing
   prompter does;
 - the routing confirmation's two offers become questions whose material is the
-  proposal table, drawn as a list block, from `machineRoutingQuestion` and
+  proposal said in counts (how many agents, how many at each tier, their
+  fan-out bounds; the product thinker's 2026-10-03 ruling on
+  iss-2610031236155833), from `machineRoutingQuestion` and
   `repoRoutingQuestion`.
 
 The chip is "Setup Q<n>", numbered in the fixed prompt order
@@ -553,7 +556,7 @@ beneath each.
 3. The fixed interviews, the answers record and "answered in"
    - criteria: B1, B3, B5 (setup and routing)
    - packages: internal/core/interview, internal/core/ahoy, internal/surface/cli, commands/
-   - tests: TestSetupQuestionDrawsAt80Columns and TestSetupQuestionAnswersByArrowsAndByNumber through `drawnPrompter`; the routing confirmation drawn with its table as a list block; the piped run plain, byte-identical in record and configuration to the drawn run; an unanswered question refused with its id and flag; the host path's answers file marked `Claude Code` differing from the drawn run in `answered_in` alone; the answers file refusing unknown and duplicate keys; the existing piped-install tests unchanged
+   - tests: TestSetupQuestionDrawsAt80Columns and TestSetupQuestionAnswersByArrowsAndByNumber through `drawnPrompter`; the routing confirmation drawn with the proposal in counts; the piped run plain, byte-identical in record and configuration to the drawn run; an unanswered question refused with its id and flag; the host path's answers file marked `Claude Code` differing from the drawn run in `answered_in` alone; the answers file refusing unknown and duplicate keys; the existing piped-install tests unchanged
 4. The AI-written interviews through the person's own route
    - criteria: B5 (retrospective), B7 (runner text), decision 1
    - packages: internal/core/interview, internal/core/runner, internal/core/oracle, internal/core/reflect, agents/, internal/surface/cli, commands/, docs/reference

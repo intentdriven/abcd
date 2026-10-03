@@ -111,6 +111,52 @@ func TestStdinPrompterSaysWhereAFlaglessAnswerIsChangedLater(t *testing.T) {
 	}
 }
 
+// TestAhoyInstallShowsTheTrackedCaveatOnlyWhereItApplies is the visibility
+// question at the front door (iss-2610031236155833): the install hands the
+// prompter its repository, so public's caveat about records git already
+// tracks is printed where .abcd/ holds tracked files and nowhere else. The
+// words are core's (ahoy.HelpIn); the door only renders them.
+func TestAhoyInstallShowsTheTrackedCaveatOnlyWhereItApplies(t *testing.T) {
+	hermeticEnv(t)
+	tracked := gittest.NewRepo(t)
+	tracked.Write(".abcd/work/DECISIONS.md", "- a decision\n")
+	tracked.Commit("record tier")
+	untracked := gittest.NewRepo(t)
+
+	withCaveat, _ := ahoy.HelpIn(tracked.Root(), "visibility")
+	without, _ := ahoy.HelpFor("visibility")
+	if withCaveat.Meaning("public") == without.Meaning("public") {
+		t.Fatal("core shows a repository with tracked records no caveat; nothing to render")
+	}
+	for _, c := range []struct {
+		name string
+		root string
+		want ahoy.PromptHelp
+		not  ahoy.PromptHelp
+	}{
+		{"tracked", tracked.Root(), withCaveat, without},
+		{"untracked", untracked.Root(), without, withCaveat},
+	} {
+		t.Chdir(c.root)
+		out, errOut, err := runCLIPipedStdinSplit(t, "private\n\n", "ahoy", "install", "--yes", "--adopt", "--json")
+		if err != nil {
+			t.Fatalf("%s: install exited non-zero: %v\n%s\n%s", c.name, err, out, errOut)
+		}
+		transcript := string(errOut)
+		q := strings.Index(transcript, "visibility (")
+		if q < 0 {
+			t.Fatalf("%s: visibility was not asked:\n%s", c.name, transcript)
+		}
+		line := "public — " + c.want.Meaning("public") + "\n"
+		if at := strings.Index(transcript, line); at < 0 || at > q {
+			t.Errorf("%s: public's meaning for this repository is not printed above the question:\n%s", c.name, transcript)
+		}
+		if strings.Contains(transcript, "public — "+c.not.Meaning("public")+"\n") {
+			t.Errorf("%s: the other repository's meaning of public is printed:\n%s", c.name, transcript)
+		}
+	}
+}
+
 // TestAhoyInstallTextLeadsWithThePlainSummary is iss-164 at the front door: the
 // text render opens with core's headline and its plain-language items (what,
 // why, what to do) before the exact record of paths, so a person reads what

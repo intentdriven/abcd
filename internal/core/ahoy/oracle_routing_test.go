@@ -1,6 +1,7 @@
 package ahoy
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -35,11 +36,13 @@ func routingPaths(home, repo string) (machine, repoFile string) {
 }
 
 // TestOracleRoutingConsentWritesTheProposal is AC 2's consent half: the install
-// step renders abcd's proposed table, one row per agent with its tier and
-// fan-out bound, and on consent writes it under ~/.abcd/ (owner-only), then
-// offers the repository file in a separate question and writes it on consent.
-// What it writes is exactly the bundled proposal, read back through the
-// resolver every delegating verb uses.
+// step renders abcd's proposal in counts (how many agents, how many at each
+// tier, and their fan-out bounds: the product thinker's 2026-10-03 ruling on
+// iss-2610031236155833, since a row per agent cannot fit one question), and on
+// consent writes the full table under ~/.abcd/ (owner-only), then offers the
+// repository file in a separate question and writes it on consent. What it
+// writes is exactly the bundled proposal, read back through the resolver every
+// delegating verb uses.
 func TestOracleRoutingConsentWritesTheProposal(t *testing.T) {
 	home, _ := setupHermetic(t)
 	repo := installedRepo(t)
@@ -55,10 +58,18 @@ func TestOracleRoutingConsentWritesTheProposal(t *testing.T) {
 	for i, q := range p.asked {
 		if strings.Contains(q, oracleRoutingMachineQuestionTail) {
 			machineQ = i
-			for _, agent := range oracle.Roster() {
-				tier := oracle.Proposal()[agent].Tier
-				if !strings.Contains(q, agent) || !strings.Contains(q, string(tier)) {
-					t.Errorf("the machine offer does not render %s at %s:\n%s", agent, tier, q)
+			roster, proposal := oracle.Roster(), oracle.Proposal()
+			perTier := map[oracle.Tier]int{}
+			for _, agent := range roster {
+				perTier[proposal[agent].Tier]++
+			}
+			want := []string{fmt.Sprintf("%d agents: ", len(roster)), "~/.abcd/oracle-routing.json"}
+			for tier, n := range perTier {
+				want = append(want, fmt.Sprintf("%d %s", n, tier))
+			}
+			for _, w := range want {
+				if !strings.Contains(q, w) {
+					t.Errorf("the machine offer does not say %q:\n%s", w, q)
 				}
 			}
 		}
@@ -228,5 +239,46 @@ func TestOracleRoutingRepoWriteNamesASymlinkLeavingTheRepository(t *testing.T) {
 	}
 	if entries, _ := os.ReadDir(outside); len(entries) != 0 {
 		t.Fatalf("a routing file was written through the symlink: %v", entries)
+	}
+}
+
+// TestProposalCountsSayTheProposalInCounts is the form the machine offer says
+// the proposal in (iss-2610031236155833): the number of agents, the number at
+// each tier with the reason that tier is proposed, strongest tier first, and
+// the fan-out bounds, as one figure where every agent shares it and in counts
+// where they differ, never as a list of agents.
+func TestProposalCountsSayTheProposalInCounts(t *testing.T) {
+	roster := []string{"a", "b", "c", "d"}
+	same := oracle.Table{
+		"a": {Tier: oracle.Economy, FanOut: 1}, "b": {Tier: oracle.Frontier, FanOut: 1},
+		"c": {Tier: oracle.Economy, FanOut: 1}, "d": {Tier: oracle.Economy, FanOut: 1},
+	}
+	if got, want := proposalCounts(roster, same),
+		"4 agents: 1 frontier, "+routingTierReason[oracle.Frontier]+"; 3 economy, "+routingTierReason[oracle.Economy]+"; fan-out 1 each"; got != want {
+		t.Errorf("one shared fan-out:\n got %q\nwant %q", got, want)
+	}
+	differ := oracle.Table{
+		"a": {Tier: oracle.Economy, FanOut: 3}, "b": {Tier: oracle.Economy, FanOut: 1},
+		"c": {Tier: oracle.Economy, FanOut: 1}, "d": {Tier: oracle.Economy, FanOut: 3},
+	}
+	if got, want := proposalCounts(roster, differ),
+		"4 agents: 4 economy, "+routingTierReason[oracle.Economy]+"; fan-out 1 for 2, 3 for 2"; got != want {
+		t.Errorf("fan-outs that differ:\n got %q\nwant %q", got, want)
+	}
+	for _, agent := range roster {
+		if strings.Contains(proposalCounts(roster, differ), agent+" ") {
+			t.Errorf("the counts name the agent %q", agent)
+		}
+	}
+}
+
+// TestEveryProposedTierSaysWhyItIsProposed keeps the counts honest: the offer
+// says why each tier it counts is proposed, so a tier the bundled proposal
+// starts to use fails here until its reason is written.
+func TestEveryProposedTierSaysWhyItIsProposed(t *testing.T) {
+	for agent, r := range oracle.Proposal() {
+		if routingTierReason[r.Tier] == "" {
+			t.Errorf("%s is proposed at %s, which the offer gives no reason for", agent, r.Tier)
+		}
 	}
 }

@@ -3721,6 +3721,9 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 				// --yes answers the category questions and no value question, so
 				// the first value question still asked says so (iss-2609120447486547).
 				sp.yesApproved = yes
+				// The help is the repository's: a caveat that holds only in some
+				// repositories is shown only in those (iss-2610031236155833).
+				sp.cwd = cwd
 			}
 			opts.ConfirmTool = toolConfirm(p, named, yes, cmd.ErrOrStderr())
 			opts.ApproveDependency = len(named) > 0
@@ -4226,6 +4229,10 @@ type stdinPrompter struct {
 	// of change and chooses no value; yesTold that the run has said so, once,
 	// above the first value question it still asks.
 	yesApproved, yesTold bool
+	// cwd is the repository the install runs in, so each question's help is
+	// the one core gives for it (ahoy.HelpIn); empty, the help is the same
+	// in every repository (ahoy.HelpFor).
+	cwd string
 }
 
 // echo reports the answer read off a non-terminal stdin. The bytes come from
@@ -4261,7 +4268,7 @@ func (p *stdinPrompter) Confirm(question string) bool {
 // scripted answer stream and a transcript still line up with it. A key core
 // has no help for is asked bare: the door never writes help of its own.
 func (p *stdinPrompter) Prompt(key string, choices []string, def string) string {
-	if h, ok := ahoy.HelpFor(key); ok {
+	if h, ok := ahoy.HelpIn(p.cwd, key); ok {
 		if h.Flag != "" && p.yesApproved && !p.yesTold {
 			p.yesTold = true
 			fmt.Fprintf(p.w, "\n%s\n", ahoy.YesStillAsksValues)

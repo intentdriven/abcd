@@ -58,7 +58,7 @@ func (h PromptHelp) FlagHint() string {
 	for i, c := range h.Choices {
 		values[i] = c.Value
 	}
-	return "to answer without being asked, pass " + h.Flag + " " + strings.Join(values, "|")
+	return "pass " + h.Flag + " " + strings.Join(values, "|") + " to answer without asking"
 }
 
 // ChangeLaterLine is the question's change-later line: the flag hint where a
@@ -120,14 +120,13 @@ var promptHelp = map[string]PromptHelp{
 	"visibility": {
 		Key:  "visibility",
 		Flag: "--visibility",
-		About: "Whether abcd's records for this repository (its decisions, intents and issues, kept under .abcd/) " +
-			"are committed with your code or kept out of git. It decides what the block abcd writes into .gitignore contains.",
+		About: "Whether abcd's records (decisions, intents and issues, under .abcd/) are committed with your code " +
+			"or kept out of git, by abcd's block in .gitignore.",
 		Choices: []ChoiceHelp{
-			{Value: "private", Meaning: "the records under .abcd/ are committed with your code, so everyone who can see the repository shares them; " +
-				"only abcd's per-machine scratch space, .abcd/.work.local/, is kept out of git. Suits a repository whose code is not published."},
-			{Value: "public", Meaning: "the whole .abcd/ folder is kept out of git, so the records stay on this machine and are not published with your code, " +
-				"and so is a memory/ folder at the top of the repository, the older home of abcd's memory store. " +
-				"If .abcd/ already holds committed records, only its per-machine scratch space is kept out, because git cannot hide a file it already tracks; the memory/ folder is still kept out."},
+			{Value: "private", Meaning: "records committed, shared by all who see the repository; only per-machine scratch, " +
+				".abcd/.work.local/, is ignored. Suits unpublished code."},
+			{Value: "public", Meaning: "all of .abcd/ is ignored, so records stay on this machine, unpublished; " +
+				"so is memory/ at the top, abcd's older memory home."},
 		},
 	},
 	"docs_target": {
@@ -206,9 +205,49 @@ var statusLineElementAbout = map[statusline.ElementKey]string{
 	statusline.KeyIssues:   "how many issues abcd's issue ledger holds for the repository",
 }
 
+// visibilityTrackedCaveat ends public's meaning where .abcd/ already holds
+// tracked files: git cannot hide a file it tracks, so there the public block
+// keeps out only the per-machine scratch space (effectiveVisibilityEntries
+// narrows it). Where nothing under .abcd/ is tracked it would describe a
+// repository the person does not have, so HelpIn adds it only where it applies
+// (iss-2610031236155833).
+const visibilityTrackedCaveat = "Here .abcd/ holds records git tracks and cannot hide, so only its scratch is ignored."
+
+// visibilityHelp is the visibility question's help, with public's caveat about
+// records git already tracks when tracked is true.
+func visibilityHelp(tracked bool) PromptHelp {
+	h := promptHelp["visibility"]
+	if !tracked {
+		return h
+	}
+	h.Choices = append([]ChoiceHelp(nil), h.Choices...)
+	for i := range h.Choices {
+		if h.Choices[i].Value == "public" {
+			h.Choices[i].Meaning += " " + visibilityTrackedCaveat
+		}
+	}
+	return h
+}
+
+// HelpIn returns the help for the value question keyed key as the install asks
+// it in the repository at cwd. It is HelpFor, except where a fact holds only in
+// some repositories: public visibility's caveat is shown only where .abcd/
+// holds tracked files, the same evidence the install narrows the public block
+// on. The words stay core's; a front door passes the repository and renders
+// what comes back (iss-2610031236155833). An empty cwd is HelpFor.
+func HelpIn(cwd, key string) (PromptHelp, bool) {
+	if key != "visibility" || cwd == "" {
+		return HelpFor(key)
+	}
+	_, narrowed := effectiveVisibilityEntries(cwd, "public")
+	return visibilityHelp(narrowed), true
+}
+
 // HelpFor returns the canonical help for the value question keyed key, and
 // false for a key the install does not ask about, so a front door renders
-// nothing rather than a guess.
+// nothing rather than a guess. It is the same in every repository: the
+// visibility help is the one a repository whose .abcd/ holds no tracked files
+// sees, and HelpIn is the help for one repository.
 func HelpFor(key string) (PromptHelp, bool) {
 	if h, ok := promptHelp[key]; ok {
 		return h, true
