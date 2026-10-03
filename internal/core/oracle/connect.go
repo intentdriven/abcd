@@ -156,7 +156,13 @@ func Connect(ctx context.Context, req ConnectRequest) (ConnectResult, error) {
 		}
 		res.KeyName = req.KeyName
 		block["key"] = req.KeyName
-		res.Wrote = append(res.Wrote, walked.Wrote...)
+		// What the key's write touched is named by the store's one list
+		// (credential.WritesFor), the list a guided setup shows before the
+		// command runs, so the two cannot drift apart; nothing, when the same
+		// key was already held there.
+		if walked.Changed {
+			res.Wrote = append(res.Wrote, credential.WritesFor(req.Home, req.KeyName)...)
+		}
 	}
 	if err := writeProviderBlock(req.Roots.Home, req.Provider, block); err != nil {
 		if len(res.Wrote) > 0 {

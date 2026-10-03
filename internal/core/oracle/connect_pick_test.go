@@ -304,3 +304,30 @@ func TestConnectRefusesBeforeListing(t *testing.T) {
 		t.Fatalf("no model and no picker = %v", err)
 	}
 }
+
+// TestConnectReportsOnlyTheWritesItMade: the list of writes is the store's
+// own (credential.WritesFor) when the key is stored, and names no store file
+// when the same key was already held there, since nothing was written to it.
+func TestConnectReportsOnlyTheWritesItMade(t *testing.T) {
+	p := newProvFake(t, 200, chat("typesafe/jev-1.13", "ok"))
+	f := newFx(t)
+	if _, err := credential.SetMachine(f.roots.Home, "shared", callKey); err != nil {
+		t.Fatal(err)
+	}
+	req := connectReq(f, p.base())
+	req.KeyName = "shared"
+	res, err := Connect(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+	if !reflect.DeepEqual(res.Wrote, []string{"~/.abcd/config.json"}) {
+		t.Fatalf("wrote = %q, want only the provider block", res.Wrote)
+	}
+	req.Provider, req.KeyName = "second", "second"
+	if res, err = Connect(context.Background(), req); err != nil {
+		t.Fatalf("Connect: %v", err)
+	}
+	if want := append(credential.WritesFor(KeyHomeABCD, "second"), "~/.abcd/config.json"); !reflect.DeepEqual(res.Wrote, want) {
+		t.Fatalf("wrote = %q, want %q", res.Wrote, want)
+	}
+}
