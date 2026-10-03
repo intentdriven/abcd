@@ -91,19 +91,14 @@ func confirmQuestion(t *testing.T, n int, id, text, tail string) question.Questi
 }
 
 // setupLimitsOwed is every limit a setup question breaks today, as
-// "<question id> <rule>", recorded in iss-2610031236155833: docs_target offers
-// more answers than four options hold, and exceeds the rows under the host
-// figures calibrated on 2026-10-03 (step 5), both of which
-// itd-2610030814013772's retirement of claude_md and both brings inside the
-// limits.
+// "<question id> <rule>". It is empty: iss-2610031236155833's questions all fit
+// since itd-2610030814013772 retired claude_md and both (docs_target) and the
+// 2026-10-03 fit (artefact_kind, visibility, the machine routing offer).
 // oracle_backend is not asked while one answer has an adapter (the 2026-10-03
 // ruling), so it owes nothing while it stays unasked. The list may only shrink: a
 // question that newly breaks a limit fails, and so does a line here that no
 // longer breaks, so the fix deletes its line.
-var setupLimitsOwed = map[string]bool{
-	"docs_target options": true,
-	"docs_target rows":    true,
-}
+var setupLimitsOwed = map[string]bool{}
 
 // TestEverySetupQuestionPassesTheLimits holds every fixed question the install
 // builds, the value questions (every PromptHelp, the status line's elements

@@ -91,8 +91,10 @@ them. If `folder_kind` is `unmanaged-folder`, note there is nothing to act on
 ```
 
 **This writes.** It applies the actionable gaps the detection pass found — the
-marker block (only where `--docs-target` names a conventions file; the
-default, `skip`, names none), the `.abcd/` scaffolding, the owned `PATH` entry. Lead
+marker block (into `AGENTS.md` only, and only where `--docs-target agents_md`
+names it; the default, `skip`, names none), the `.abcd/` scaffolding, the owned
+`PATH` entry. A saved `claude_md` or `both` is refused before any write, with
+the one setting to change in the notes; relay that note as it stands. Lead
 the report with the returned `headline`, then each `summary` item in its own
 three parts: `what` it is, `why` it matters, and the `action`, if any, the user
 should take. These are abcd's own plain words for the product thinker and the

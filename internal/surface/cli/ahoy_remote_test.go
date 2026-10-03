@@ -58,7 +58,7 @@ func TestAhoyRemoteApplyExitsNonZeroWhenItChangesNothing(t *testing.T) {
 	repo.Git("remote", "add", "origin", "https://github.com/example-org/example-repo.git")
 	t.Chdir(repo.Root())
 	if _, err := runCLIErr(t, "ahoy", "install", "--yes", "--adopt",
-		"--visibility", "private", "--docs-target", "both",
+		"--visibility", "private", "--docs-target", "agents_md",
 		"--oracle-backend", "host-delegated", "--scan-deep", "false"); err != nil {
 		t.Fatalf("install: %v", err)
 	}

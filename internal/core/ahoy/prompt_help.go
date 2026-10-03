@@ -132,14 +132,14 @@ var promptHelp = map[string]PromptHelp{
 	"docs_target": {
 		Key:  "docs_target",
 		Flag: "--docs-target",
-		About: "Which conventions file, if any, gets a short block explaining how abcd works in this repository. " +
-			"AI coding assistants read these files at the start of every session; the block names abcd, so it goes only where you choose.",
+		About: "Whether AGENTS.md, which AI coding assistants read at the start of every session, " +
+			"gets a short block on how abcd works here. The block names abcd, so it goes in only if you choose.",
+		// Setup offers only the values it writes (docsTargetWritable): AGENTS.md
+		// is the one conventions file abcd writes (adr-2610030814023326).
 		Choices: []ChoiceHelp{
-			{Value: "claude_md", Meaning: "writes the block into CLAUDE.md, and creates that file if it does not exist."},
-			{Value: "agents_md", Meaning: "writes the block into AGENTS.md, the conventions file many AI coding assistants read, and creates it if it does not exist."},
-			{Value: "both", Meaning: "writes the same block into both CLAUDE.md and AGENTS.md."},
-			{Value: "skip", Meaning: "writes no block: abcd names itself in none of your conventions files. " +
-				"You can choose a file later with abcd ahoy install --docs-target."},
+			{Value: "agents_md", Meaning: "writes the block into AGENTS.md, creating the file if it does not exist."},
+			{Value: "skip", Meaning: "writes no block, so abcd names itself in none of your conventions files; " +
+				"abcd ahoy install --docs-target agents_md adds it later."},
 		},
 	},
 	"oracle_backend": {
