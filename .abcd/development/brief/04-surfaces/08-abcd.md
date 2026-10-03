@@ -122,7 +122,8 @@ sequence restores the default foreground and background and nothing else, so
 the rest of the row keeps whatever styling the host gives it. The two moments
 the badge must change are two moments the hooks already see. The agent sets
 the state with `abcd mode` when it stops to ask, naming whom it addresses; the
-guard hook, on the host's question tool, refuses a question while the state
+guard hook, on the host's question tool, refuses abcd's own question (one
+headed in abcd's chip grammar, [`17-guard.md`](17-guard.md)) while the state
 reads managed, naming `abcd mode product-thinker` and `abcd mode facilitator`,
 and when it admits one it writes a `question_open` marker beside the state in
 `.abcd/.work.local/`. The next human message is the answer: the prompt hook

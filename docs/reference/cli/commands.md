@@ -1270,12 +1270,19 @@ exists. A workdir that is not a string, or holds a NUL byte, a control
 character or invalid UTF-8, or is over 4096 bytes, is refused with the
 blocking status and the reason.
 
-On the host's question tool the hook gates the question on the mode, not
-the registry. In a checkout abcd manages, a question asked while `abcd mode`
-reads managed is refused with the blocking status, naming `abcd mode
-product-thinker` and `abcd mode facilitator`; once the mode names somebody
-the question runs and is marked open in the local tier, and the next human
-message resets the mode to managed. Elsewhere a question runs unchecked.
+On the host's question tool the hook checks abcd's own questions instead of
+consulting the registry. A question is abcd's when a header is in abcd's chip
+grammar (such as Product Q2) or when `abcd mode` names somebody; any other
+question is another tool's and runs unchecked. abcd's question is held to
+the asking rules' field limits wherever the hook runs, and one that breaks
+them is refused with the blocking status: a head line counting the parts,
+then one line per part naming the tab, the part, the value, the limit and
+the remedy. The hook never rewrites a question. In a checkout abcd manages,
+abcd's question asked while `abcd mode` reads managed is also refused,
+naming `abcd mode product-thinker` and `abcd mode facilitator`; once the
+mode names somebody the question runs and is marked open in the local tier,
+and the next human message resets the mode to managed. A questions field
+the hook cannot read lets the question run and warns loudly.
 
 ### `abcd help`
 

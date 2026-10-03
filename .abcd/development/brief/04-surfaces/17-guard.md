@@ -100,22 +100,47 @@ silenced is the rules loader's
 
 ## The question gate
 
-The hook also answers for the host's question tool (itd-2609212130146198), and
-there it consults the waiting-on state rather than the hazard registry. In a
-repository abcd manages, a question to the human asked while `abcd mode` reads
-managed is refused with the blocking status, and the one-line refusal names the
-two settings, `abcd mode product-thinker` and `abcd mode facilitator`, so the
-agent says whom it is asking before it asks and the status-line badge shows
-it. Once the state names somebody the question runs, and the hook writes a
+The hook also answers for the host's question tool (itd-2609212130146198,
+spc-2610030944505997), and there it checks abcd's own questions rather than
+consulting the hazard registry. It decodes the tool's questions into the field
+view of `internal/core/question` (the host's JSON key names stay in the
+surface) and decides whether the question is abcd's: a header in abcd's chip
+grammar, which only abcd's interview pages are taught to write, or a mode
+naming somebody, which only `abcd mode` sets and the prompt hook resets on the
+next human message (itd-201 decision 10). Any other question is another tool's
+and runs, unchecked and unmarked, exit 0, wherever it is asked.
+
+abcd's question is held to the field limits (`question.CheckLimits` over
+`question.Default`) wherever the hook runs, managed or not: the setup interview
+asks before a repository is managed, and the limits need no store. The
+addressee the product thinker's register rule reads is the mode's where a mode
+store exists, and the chip's role word where none does; the binary's verb list
+is read from the command tree and passed in. Every finding refuses at once with
+the blocking status: one head line, "Blocked by the abcd guard (question tool):
+N part(s) of this question break abcd's asking rules; fix each and ask again.",
+then one line per finding naming the tab, the part, the value, the limit and
+the remedy, each line through `termsafe.Sanitize`. The hook refuses and never
+rewrites: the host lets a pre-tool hook replace a tool's input, and a rewritten
+question would put words in the agent's mouth that neither it nor the person
+chose. A questions field the check cannot read is not a decision: the question
+runs and the hook says so on exit 1.
+
+In a repository abcd manages, abcd's question asked while `abcd mode` reads
+managed is also refused with the blocking status. Alone, the refusal is one
+line naming the two settings, `abcd mode product-thinker` and `abcd mode
+facilitator`, so the agent says whom it is asking before it asks and the
+status-line badge shows it; beside field findings, that line follows them. Once
+the state names somebody the question runs, and the hook writes a
 `question_open` marker in `.abcd/.work.local/`; the rules loader's prompt hook
 resets the state to managed on the next human message and clears the marker.
-Where the badge does not show, a question is not the gate's business and runs
-silently. A state file or marker the gate cannot read or write is not a
-decision: the question runs and the hook says so on exit 1, the same
-fail-open-loud contract below. So is a tier `abcd mode` cannot write — a
-read-only mount, a directory the session's user does not own: the refusal's
-remedy could not run there, so the gate probes that the verb could set the
-state before it refuses, and where it could not, the question runs on exit 1.
+Where the badge does not show, the mode gate does not run. A state file or
+marker the gate cannot read or write is not a decision: the question runs and
+the hook says so on exit 1, the same fail-open-loud contract below. So is a
+tier `abcd mode` cannot write — a read-only mount, a directory the session's
+user does not own: the refusal's remedy could not run there, so the gate probes
+that the verb could set the state before it refuses, and where it could not,
+the mode refuses nothing and only field findings, whose remedy is the agent's
+own, can refuse; with none, the question runs on exit 1.
 The probe is a file created in the tier and removed again; one the remove could
 not reach, because the tier turned unwritable in between or the process died,
 is swept by the next probe. The manifest's pre-tool-use matcher names the

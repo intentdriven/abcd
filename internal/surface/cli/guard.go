@@ -248,12 +248,19 @@ func newGuardHookCommand() *cobra.Command {
 			"exists. A workdir that is not a string, or holds a NUL byte, a control\n" +
 			"character or invalid UTF-8, or is over 4096 bytes, is refused with the\n" +
 			"blocking status and the reason.\n\n" +
-			"On the host's question tool the hook gates the question on the mode, not\n" +
-			"the registry. In a checkout abcd manages, a question asked while `abcd mode`\n" +
-			"reads managed is refused with the blocking status, naming `abcd mode\n" +
-			"product-thinker` and `abcd mode facilitator`; once the mode names somebody\n" +
-			"the question runs and is marked open in the local tier, and the next human\n" +
-			"message resets the mode to managed. Elsewhere a question runs unchecked.",
+			"On the host's question tool the hook checks abcd's own questions instead of\n" +
+			"consulting the registry. A question is abcd's when a header is in abcd's chip\n" +
+			"grammar (such as Product Q2) or when `abcd mode` names somebody; any other\n" +
+			"question is another tool's and runs unchecked. abcd's question is held to\n" +
+			"the asking rules' field limits wherever the hook runs, and one that breaks\n" +
+			"them is refused with the blocking status: a head line counting the parts,\n" +
+			"then one line per part naming the tab, the part, the value, the limit and\n" +
+			"the remedy. The hook never rewrites a question. In a checkout abcd manages,\n" +
+			"abcd's question asked while `abcd mode` reads managed is also refused,\n" +
+			"naming `abcd mode product-thinker` and `abcd mode facilitator`; once the\n" +
+			"mode names somebody the question runs and is marked open in the local tier,\n" +
+			"and the next human message resets the mode to managed. A questions field\n" +
+			"the hook cannot read lets the question run and warns loudly.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			// failOpen is the single exit for every non-decision path, so the
@@ -283,10 +290,11 @@ func newGuardHookCommand() *cobra.Command {
 			if err := json.Unmarshal(raw, &in); err != nil {
 				return failOpen("the hook payload is not readable JSON (%v)", err)
 			}
-			// A question to the human is gated on the mode, not the registry
-			// (itd-2609212130146198); guard_question.go holds the whole of it.
+			// A question to the human is checked against abcd's asking rules
+			// and gated on the mode, not the registry (itd-2609212130146198,
+			// spc-2610030944505997); guard_question.go holds the whole of it.
 			if isQuestionTool(in.ToolName) {
-				return questionGate(cmd, in.Cwd)
+				return questionGate(cmd, in.Cwd, in.ToolInput.Questions)
 			}
 			// The manifest scopes this hook to the shell tool and the question
 			// tools, so a different tool name means the wiring is wrong — worth
@@ -425,6 +433,10 @@ type guardHookInput struct {
 		// malformed workdir rather than failing the whole payload open, which
 		// would run the command unchecked.
 		Workdir json.RawMessage `json:"workdir"`
+		// Questions is the question tool's input, kept raw so the question
+		// check decodes it on its own path: a shape it cannot read fails
+		// that check open loudly without touching the shell path.
+		Questions json.RawMessage `json:"questions"`
 	} `json:"tool_input"`
 }
 
