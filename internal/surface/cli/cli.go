@@ -317,16 +317,21 @@ func NewRootCommand() *cobra.Command {
 			// has its own working directory.
 			st.Dir = fsutil.DisplayPath(st.Dir)
 			board := boardOutput{StatusInfo: st, Statusline: boardPresence(cwd, cmd.ErrOrStderr()), Peers: boardPeers(cwd, cmd.ErrOrStderr()), Inbox: boardInbox(cmd.ErrOrStderr()), Oracle: boardOracle(cwd, cmd.ErrOrStderr()), Reviews: boardReviews(cwd, cmd.ErrOrStderr()), Status: boardStatus(cwd, cmd.ErrOrStderr())}
-			return render(cmd.OutOrStdout(), asJSON, board, func(w io.Writer) {
+			width := boardWidth(cmd.OutOrStdout())
+			return render(cmd.OutOrStdout(), asJSON, board, func(out io.Writer) {
+				// Every line is laid at the window's width, a long row
+				// continuing on an indented line (iss-2610031207397996).
+				w := &boardWrapper{w: out, width: width}
+				defer w.Flush()
 				// Sanitised like every other board line: the directory name is the
 				// checkout's own, and a name carrying an ESC sequence or a bidi
 				// control must not reach the terminal raw (iss-2609281736483740).
 				// --json keeps the true name; the encoder escapes a C0 byte; C1 and
 				// bidi runes travel raw, as in every board field.
 				fmt.Fprintf(w, "abcd — %s\n", termsafe.Sanitize(st.Dir))
-				fmt.Fprintf(w, "  git repo:   %v\n", st.IsGitRepo)
-				fmt.Fprintf(w, "  record:     %v\n", st.HasRecord)
-				fmt.Fprintf(w, "  work tiers: %v\n", st.WorkTiers)
+				fmt.Fprintf(w, "  git repo:   %s\n", yesNo(st.IsGitRepo))
+				fmt.Fprintf(w, "  record:     %s\n", yesNo(st.HasRecord))
+				fmt.Fprintf(w, "  work tiers: %s\n", termsafe.Sanitize(tierList(st.WorkTiers)))
 				if board.Statusline != nil {
 					fmt.Fprintf(w, "  presence:   %s\n", board.Statusline.Plain)
 				}
