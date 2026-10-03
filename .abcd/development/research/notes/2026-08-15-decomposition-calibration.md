@@ -2159,3 +2159,32 @@ Per hand-run, append:
 | method, upgrade path for existing homes | plumbing | the intent's open questions, then its spec |
 
 Links: refines itd-2609091014076309; refines principle the-users-directory-is-theirs. Verdict proposed: SPLIT. Routing survived confirmation: yes (unchanged).
+
+## 2026-10-03: one question layout, and interviews in a plain Terminal (product thinker, routing confirmed)
+
+| part | type | home |
+|---|---|---|
+| every question abcd asks reads the same way, fits a narrow window and uses a wide one, in Claude Code with the web and app views as its degradation | capability | intent itd-2610030810350727 (draft; supersedes itd-110) |
+| abcd's interviews run in a plain Terminal with the same layout, drawn by abcd | capability | intent itd-2610030810370060 (draft; builds on the first) |
+| the layout rules themselves | plumbing | the brief's universal-patterns chapter, with the first intent's spec |
+
+Links: supersedes itd-110; refines itd-201 and itd-2609151541116052. Verdict proposed: SPLIT (in two), offered beside one intent, extending itd-110, and later. Routing survived confirmation: yes (unchanged). The filing-time matcher linked the second draft to a resolved status-line issue and as refining the first; both corrected (unrelated; builds_on), one defensible answer each, so no question was put.
+
+## 2026-10-03: retire CLAUDE.md in favour of AGENTS.md (product thinker, routing confirmed)
+
+| part | type | home |
+|---|---|---|
+| abcd's own project and every project it sets up keep only AGENTS.md, and setup offers to retire an existing CLAUDE.md | capability | intent itd-2610030814013772 (draft, promoted from iss-2609291925136841) |
+| AGENTS.md is the one conventions file abcd writes; never a host-specific copy | standing rule | adr-2610030814023326 (proposed) + a brief platform-constraint line owed at ship |
+| the blockers the 2026-09-30 research names (embark target, version floor, CLAUDE.local.md, the import fallback) | plumbing | the intent's build steps |
+
+Links: refines iss-2609291925136841. Verdict proposed: SPLIT. Routing survived confirmation: yes (unchanged).
+
+## 2026-10-03: guided connect from the harness (product thinker, routing confirmed)
+
+| part | type | home |
+|---|---|---|
+| connecting a model service from Claude Code looks up the details (model list, key homes, settings folder), offers choices, then sets it up or prints the command; long lists show suggestions and page through the rest | capability | intent itd-2610030821294016 (draft) |
+| an arrow-key, searchable list for long choices in a plain Terminal (opencode-like), model choice as its first example | capability | folded into itd-2610030810370060 (plain-Terminal interviews) |
+
+Links: refines itd-2609081951381895. Verdict proposed: SPLIT (connect here, picker folded into the existing draft), offered beside two new intents, one, and later. Routing survived confirmation: yes (unchanged).
