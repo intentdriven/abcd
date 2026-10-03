@@ -317,8 +317,9 @@ that tool. Setup looks for each such file at the repository root and never
 changes one that holds your own words: it names it in a warning, printed before
 anything else, which says which tool reads it and that the way to end it is to
 move those words into `AGENTS.md` and remove the file. A file that only repeats
-`AGENTS.md` (a link to it, an exact copy, a single line that loads it, or
-nothing once abcd's block is taken out) is offered for removal, one question
+`AGENTS.md` (a link to it, that link saved as a plain file in a checkout
+without links, an exact copy, a single line that loads it, or nothing once
+abcd's block is taken out) is offered for removal, one question
 per file, with the answers `retire`, `keep` and `later`. The question is asked
 only at a terminal: `--yes` and a piped install never ask it, and list
 `conventions.retire_offered` under `optional_skipped` instead. A removal
