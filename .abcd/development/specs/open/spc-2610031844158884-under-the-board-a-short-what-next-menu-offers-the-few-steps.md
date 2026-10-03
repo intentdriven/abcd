@@ -378,6 +378,7 @@ designed to the marked option, and the reason is given beneath it.
    description (designed to). (b) Raise `LabelWords` to six.
    - (a): B5 holds every label to the limits as they stand, and decision 7
      already puts the item in the description.
+   - Decided: as the spec is designed to, on 2026-10-03, without a question (the person's ruling that an obvious answer is decided; no product choice is involved).
 2. **"Nothing for now" as the decide-later option.** (a) Add it to
    `question.Default.LaterLabels` (designed to). (b) Label the option "Decide
    later".
@@ -385,23 +386,27 @@ designed to the marked option, and the reason is given beneath it.
      needs exactly one decide-later option, last. On #788's branch the asking
      rules text is generated from `LaterLabels`, so its golden changes in the
      same step.
+   - Decided: as the spec is designed to, on 2026-10-03, without a question (the person's ruling that an obvious answer is decided; no product choice is involved).
 3. **What the status reads after the menu, when something was already
    waiting.** (a) Put back what it found, removing only a marker it wrote
    (designed to). (b) Reset to `managed`, as the prompt hook does.
    - (a): the menu did not create the waiting answer, so ending the menu must
      not erase it; B4's fixture starts at `managed`, so (a) meets it exactly.
+   - Decided: as the spec is designed to, on 2026-10-03, without a question (the person's ruling that an obvious answer is decided; no product choice is involved).
 4. **What "Answer what is waiting" does in a Terminal.** (a) Say in plain
    words that the question was asked in the agent session that stopped for
    it, and ask the menu again, changing nothing (designed to). (b) Mark the
    waiting answer as answered. (c) Leave the move out in a Terminal.
    - (a): nothing stores the question's text, so a Terminal cannot show it;
      (b) would clear a stop nobody answered, and (c) contradicts B2.
+   - Decided: as the spec is designed to, on 2026-10-03, without a question (the person's ruling that an obvious answer is decided; no product choice is involved).
 5. **The facilitator's moves and the next actions.** (a) Option 2 is "See the
    next actions", displaced by "Answer what is waiting" as the product
    thinker's is (designed to). (b) The first derived action as its own move.
    (c) The list as rows of the facilitator's view, the moves unchanged.
    - (a): it keeps both views one shape, and decision 5 puts the list in the
      menu, not the board.
+   - Decided: as the spec is designed to, on 2026-10-03, without a question (the person's ruling that an obvious answer is decided; no product choice is involved).
 6. **Where the off setting lives, and how it is set.** (a) `board.menu` in
    `~/.abcd/config.json`, set by hand, a repository key skipped with a warning
    (designed to). (b) A key in `~/.abcd/statusline.json`. (c) A flag on
@@ -409,11 +414,13 @@ designed to the marked option, and the reason is given beneath it.
    - (a): the configuration file already has a machine layer and the
      repository-key refusal; the status-line file is the status line's own.
      (c) can follow if people ask for it.
+   - Decided: as the spec is designed to, on 2026-10-03, without a question (the person's ruling that an obvious answer is decided; no product choice is involved).
 7. **How the session gets the menu.** (a) A `menu` object in `--json` holding
    the host tool's input and the moves (designed to). (b) The page composes
    the question from the status fields.
    - (a): one builder feeds both places, as the research ranks first; (b)
      drifts with the model.
+   - Decided: as the spec is designed to, on 2026-10-03, without a question (the person's ruling that an obvious answer is decided; no product choice is involved).
 
 ## Footprint
 

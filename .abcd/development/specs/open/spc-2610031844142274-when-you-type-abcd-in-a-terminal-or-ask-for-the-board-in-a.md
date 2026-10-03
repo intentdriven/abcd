@@ -348,6 +348,7 @@ designed to the marked option, and the reason is given beneath it.
      "open the view for the facilitator" maps onto one value. (c) is a
      `<verb> view`, which the naming discipline forbids
      (`02-constraints/04-naming.md`).
+   - Decided: as the spec is designed to, on 2026-10-03, without a question (the person's ruling that an obvious answer is decided; no product choice is involved).
 2. **The banner above the board on a Terminal.** (a) Keep it: itd-112's banner
    is drawn first, as today, and the board's first line is the label (designed
    to). (b) Drop it whenever the product thinker's view is drawn, so the label
@@ -364,15 +365,18 @@ designed to the marked option, and the reason is given beneath it.
    - (a): it is the one branch the record ties to the spec; (b) guesses from a
      name, and (c) reports another working copy, which scope condition 2 leaves
      out.
+   - Decided: as the spec is designed to, on 2026-10-03, without a question (the person's ruling that an obvious answer is decided; no product choice is involved).
 4. **How wide a title runs in the product thinker's view.** (a) The window, up
    to 100 columns (designed to). (b) The whole window.
    - (a): the research caps a glance at about 100 columns; a wider window shows
      more of a title, never a wall.
+   - Decided: as the spec is designed to, on 2026-10-03, without a question (the person's ruling that an obvious answer is decided; no product choice is involved).
 5. **One `building:` line per intent, or per lane.** (a) Per intent, however
    many lanes its run has (designed to). (b) Per lane, as the facilitator's
    view lists them.
    - (a): the product thinker asks what is being built, not how many lanes
      build it; the lanes stay in the facilitator's view.
+   - Decided: as the spec is designed to, on 2026-10-03, without a question (the person's ruling that an obvious answer is decided; no product choice is involved).
 
 ## Footprint
 
