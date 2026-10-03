@@ -128,6 +128,8 @@ gate. That is what keeps "not hand-counted" true after the day it was written.
 - `itd-2609301918174237` — A provider off this machine takes a file-reading agent only as a fixed, blanked, capped bundle (builds on itd-2609081951381895; rulings DR5b-1 to DR5b-4; back to draft for two reviews and a planning interview under ruling DR5c-0)
 - `itd-2610021503208208` — Personal git hooks keep running in abcd-managed repositories (draft)
 - `itd-2610031026190632` — abcd's check says when the harness is behind its latest release (draft; builds on itd-111; the network answers only the explicit check)
+- `itd-2610031214560142` — The board shows a product thinker what waits on them and what comes next, in a few plain lines (draft; builds on the width fix iss-2610031207397996)
+- `itd-2610031215002409` — A 'what next?' menu under the board offers the next step, in a Terminal and in a Claude Code session (draft; builds on itd-2610031214560142 and itd-2610030810370060)
 <!-- /index -->
 
 **Later-phase items with no intent id.** These four were written into the brief
