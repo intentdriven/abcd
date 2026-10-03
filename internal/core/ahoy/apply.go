@@ -572,6 +572,7 @@ func (a *applyCtx) stepConfigValues() *InstallConfig {
 		}
 	}()
 	oldDocsTarget := ic.DocsTarget
+	saved := *ic // the values on disk, before any override is applied
 	visForced := a.applyOverride("visibility", visibilityChoices, &ic.Visibility)
 	// The saved docs target is read against every value setup ever wrote; an
 	// override may only name one it writes now.
@@ -593,7 +594,12 @@ func (a *applyCtx) stepConfigValues() *InstallConfig {
 		return ic // all values already valid and no override forced a change
 	}
 	if hasConfigGap && !a.approved[ConfigChange] {
-		// Category declined; a required value is missing.
+		// Category declined; a required value is missing. Nothing is saved, so
+		// every value flag the person typed is dropped, and each is named
+		// rather than left silent (iss-2610032027321900).
+		for _, n := range declinedOverrideNotes(saved, a.overrides) {
+			a.refuse(n)
+		}
 		return nil
 	}
 
@@ -685,6 +691,40 @@ func (a *applyCtx) stepConfigValues() *InstallConfig {
 		a.inform(oracleBackendRecordedNote)
 	}
 	return ic
+}
+
+// valueFlags maps each config value an override can set to the install flag
+// that carries it, in the order the flags are named.
+var valueFlags = []struct{ key, flag string }{
+	{"visibility", "--visibility"},
+	{"docs_target", "--docs-target"},
+	{"oracle_backend", "--oracle-backend"},
+	{"scan_deep", "--scan-deep"},
+}
+
+// declinedOverrideNotes renders one note per explicit value flag a declined
+// settings change dropped: a flag whose value differs from the one saved. A
+// flag that already matched the saved value changed nothing, so it is not
+// named (iss-2610032027321900).
+func declinedOverrideNotes(saved InstallConfig, overrides map[string]string) []string {
+	current := map[string]string{
+		"visibility":     saved.Visibility,
+		"docs_target":    saved.DocsTarget,
+		"oracle_backend": saved.OracleBackend,
+	}
+	if saved.ScanDeep != nil {
+		current["scan_deep"] = fmt.Sprint(*saved.ScanDeep)
+	}
+	var notes []string
+	for _, f := range valueFlags {
+		v := overrides[f.key]
+		if v == "" || v == current[f.key] {
+			continue
+		}
+		notes = append(notes, f.flag+" "+v+" was not applied: the settings change (config-change) was declined, "+
+			"so .abcd/config.json was not written; run abcd ahoy install again with the flag and answer y to the config-change question.")
+	}
+	return notes
 }
 
 // rollbackForced discards the effects of a forced override whose config write did
