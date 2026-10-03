@@ -38,7 +38,10 @@ const (
 // errListTimeout is the cause ListTimeout cancels a listing with.
 var errListTimeout = errors.New("list timeout")
 
-// Listing is what a service lists.
+// Listing is what a service lists. An id is bounded and free of the key and of
+// every rune a terminal acts on, but not of characters a shell acts on (`;`,
+// `$(`, a quote): a caller checks it as a model name (internal/core/oracle's
+// validModel) before offering it or printing it in a command.
 type Listing struct {
 	IDs     []string // in the service's own order, each sanitised and bounded
 	Dropped int      // listed names that were not usable model names
@@ -133,30 +136,43 @@ func (c *Client) decodeListing(raw []byte) (Listing, error) {
 	if len(l.IDs) == 0 {
 		return Listing{}, c.listFail(false, fmt.Sprintf("listed no usable models (%d listed names were not usable model names)", l.Dropped))
 	}
+	// Each kept id is free of the key, but the key split across adjacent ids
+	// passes every id's own check, so the kept ids are read once more as one
+	// run. A service that splits the key so is hostile and gets no list. A key
+	// split across ids that are not adjacent is not reassembled here.
+	if c.carriesKey(strings.Join(l.IDs, "")) {
+		return Listing{}, c.listFail(false, "listed names that together carry the key, so abcd keeps none of them")
+	}
 	return l, nil
 }
 
 // usableID reports whether a listed id may be kept as it is: within the
 // bound, valid UTF-8, not blank, free of every rune the terminal sanitiser
 // masks (a control, an escape, a bidi or zero-width rune), and carrying the
-// key in no reading a reader of it could apply. The readings are the ones
-// providerSaid undoes before its scrub: JSON escapes and HTML character
-// references, alone and together.
+// key in no reading (carriesKey).
 func (c *Client) usableID(id string) bool {
 	if len(id) > maxListedIDBytes || !utf8.ValidString(id) || strings.TrimSpace(id) == "" ||
 		termsafe.Sanitize(id) != id {
 		return false
 	}
+	return !c.carriesKey(id)
+}
+
+// carriesKey reports whether s shows the client's key in any reading a
+// reader of it could apply. The readings are the ones providerSaid undoes
+// before its scrub: JSON escapes and HTML character references, alone and
+// together. A keyless client carries no key.
+func (c *Client) carriesKey(s string) bool {
 	if len(c.forms) == 0 {
-		return true
+		return false
 	}
-	unescaped := unescapeJSONText(id)
-	for _, r := range []string{id, unescaped, html.UnescapeString(id), html.UnescapeString(unescaped)} {
+	unescaped := unescapeJSONText(s)
+	for _, r := range []string{s, unescaped, html.UnescapeString(s), html.UnescapeString(unescaped)} {
 		if c.scrub(r) != r {
-			return false
+			return true
 		}
 	}
-	return true
+	return false
 }
 
 // listCallError is a listing that ended without an answer, each way in its

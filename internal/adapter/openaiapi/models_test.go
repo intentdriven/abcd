@@ -267,6 +267,8 @@ func TestListModelsScrubsTheKey(t *testing.T) {
 		// Short enough to pass the length bound, so only a reading drops them:
 		// one character reference, and one written as a JSON escape.
 		"&#115;"+awkwardKey[1:], "\x5cu0026#115;"+awkwardKey[1:])
+	// Models never reads a non-200 body, so nothing here exercises a scrub:
+	// the loop is a guard that fails if a later change starts quoting it.
 	for _, code := range []int{401, 403, 404, 500} {
 		for i, e := range echoes {
 			for _, body := range []string{`{"error":{"message":"bad key ` + e + `"}}`, `bad key ` + e} {
@@ -307,5 +309,18 @@ func TestListModelsScrubsTheKey(t *testing.T) {
 		if want := []string{"vendor/good", "vendor/also-good"}; fmt.Sprint(got.IDs) != fmt.Sprint(want) || got.Dropped != len(tc.ids)-2 {
 			t.Fatalf("listing = %q, %d dropped; want %v and %d dropped", got.IDs, got.Dropped, want, len(tc.ids)-2)
 		}
+	}
+
+	// The key split across adjacent ids passes each id's own check, so the
+	// listing as a whole is refused: a service that does this is hostile.
+	for _, tc := range []struct{ key, split string }{{testKey, testKey}, {awkwardKey, jsonEscapeAll(awkwardKey)}} {
+		half := len(tc.split) / 2
+		f := newFake(t, lists(t, "vendor/good", "vendor/"+tc.split[:half], tc.split[half:]+"/m", "vendor/also-good"))
+		got, err := mustClient(t, f.base(), tc.key).Models(context.Background())
+		le := listError(t, err)
+		if got.IDs != nil || le.NeedsKey || !strings.Contains(le.Reason, "together") {
+			t.Fatalf("a key split across ids: listing %q, error %+v; want no listing and a reason naming the ids together", got.IDs, le)
+		}
+		assertNoKeyForm(t, "the split-key error", err.Error())
 	}
 }
