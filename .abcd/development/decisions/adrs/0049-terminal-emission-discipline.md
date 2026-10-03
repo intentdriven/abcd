@@ -5,7 +5,7 @@ status: accepted
 date: 2026-08-22
 supersedes: null
 superseded_by: null
-related_intents: [itd-112, itd-110]
+related_intents: [itd-112, itd-2610030810350727]
 related_rfcs: []
 related_adrs: []
 ---
@@ -57,3 +57,7 @@ record, not in one intent's grill notes.
 - Tests for any decorated surface must include the machine-stream
   assertion: captured non-TTY output contains no escape bytes.
 - Brief invariant 13 states the boundary; this ADR carries the rationale.
+
+## Amendment 2026-10-03
+
+itd-110 (the grill interview's styled rendering, named above as the next decorated surface) is superseded by itd-2610030810350727 (one question layout); the decorated plain-Terminal surface is itd-2610030810370060, which builds on itd-112. The related intent is re-pointed; the decision itself is unchanged.
