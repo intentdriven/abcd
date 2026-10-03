@@ -1,0 +1,18 @@
+› Setup Q1
+
+  abcd needs the key your model service gave you. Where it
+  is kept decides who else on this computer can read it.
+
+  - The keychain locks the key with your login.
+  - A file in your home folder is readable by every program you run.
+
+  Where should abcd keep the key?
+
+› 1. In the system keychain  The key is locked with your login. Another
+                             program must ask before it reads the key.
+  2. In a file               The key sits in your home folder. It
+                             works on a machine with no keychain.
+  3. Decide later            Nothing is stored now. abcd asks again at the next setup.
+
+  Now: no key is stored
+  Change later: run the setup again and choose the other place
