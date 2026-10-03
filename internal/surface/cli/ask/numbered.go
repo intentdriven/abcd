@@ -45,7 +45,7 @@ func (t Terminal) numbered(a question.Ask) ([]Answer, error) {
 
 		filter, page := "", 0
 		show := func(note string) {
-			matches := question.Narrow(filter, answers)
+			matches := narrow(filter, answers)
 			pages := max(1, (len(matches)+numberedPage-1)/numberedPage)
 			page = max(0, min(page, pages-1))
 			pad := strings.Repeat(" ", indent)

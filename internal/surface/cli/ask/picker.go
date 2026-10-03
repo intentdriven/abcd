@@ -243,7 +243,7 @@ func (pt *part) refilter(narrowing bool) {
 	if isNumber(filter) {
 		filter = ""
 	}
-	pt.shown = question.Narrow(filter, pt.all)
+	pt.shown = narrow(filter, pt.all)
 	pt.note = ""
 	pt.top = 0
 	if narrowing {
@@ -274,6 +274,18 @@ func (pt *part) scroll(w int) {
 		}
 	}
 	pt.top = max(0, min(pt.top, len(pt.shown)-w))
+}
+
+// narrow returns the indices of the options filter keeps, in order, by the
+// one narrowing rule, question.Matches, which guided connect's session shares.
+func narrow(filter string, opts []question.Option) []int {
+	out := make([]int, 0, len(opts))
+	for i, o := range opts {
+		if question.Matches(filter, o) {
+			out = append(out, i)
+		}
+	}
+	return out
 }
 
 // isNumber reports whether s is a number to choose by: one or more digits.

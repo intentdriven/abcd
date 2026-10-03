@@ -19,6 +19,10 @@ import (
 // pseudo-terminal's terminal end, instead of running the tests.
 const childEnv = "ABCD_ASK_PTY_CHILD"
 
+// childHomeEnv names the empty home the child reads interview.list from, so
+// the person's own ~/.abcd/config.json never decides the child's mode.
+const childHomeEnv = "ABCD_ASK_PTY_HOME"
+
 func TestMain(m *testing.M) {
 	if c := os.Getenv(childEnv); c != "" {
 		os.Exit(ptyChild(c))
@@ -38,7 +42,8 @@ func ptyChild(c string) int {
 			}
 		}
 	}
-	t := Terminal{In: os.Stdin, Out: os.Stderr, Getenv: os.Getenv, Mode: term.Mono, List: layered.InterviewListArrows}
+	t := Terminal{In: os.Stdin, Out: os.Stderr, Getenv: os.Getenv, Mode: term.Mono,
+		Roots: layered.Roots{Home: os.Getenv(childHomeEnv)}}
 	got, err := t.Put(longList(300))
 	switch {
 	case errors.Is(err, ErrInterrupted):
@@ -72,8 +77,8 @@ func startChild(t *testing.T, c string) *child {
 		t.Fatalf("a fresh pseudo-terminal is not in cooked mode: lflag %#x", before.Lflag)
 	}
 	cmd := exec.Command(os.Args[0])
-	cmd.Env = append(os.Environ(), childEnv+"="+c, "TERM=xterm", "LANG=en_US.UTF-8",
-		"ABCD_ACCESSIBLE=", "ACCESSIBLE=")
+	cmd.Env = append(os.Environ(), childEnv+"="+c, childHomeEnv+"="+t.TempDir(), "TERM=xterm",
+		"LANG=en_US.UTF-8", "ABCD_ACCESSIBLE=", "ACCESSIBLE=")
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = p.Terminal, p.Terminal, p.Terminal
 	// Its own process group in this session: a signal sent to it reaches it
 	// alone, and Ctrl-Z's stop is not discarded as an orphaned group's would be.

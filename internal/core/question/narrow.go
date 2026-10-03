@@ -14,14 +14,3 @@ func Matches(filter string, o Option) bool {
 	f := strings.ToLower(filter)
 	return strings.Contains(strings.ToLower(o.Label), f) || strings.Contains(strings.ToLower(o.Value), f)
 }
-
-// Narrow returns the indices of the options filter matches, in order.
-func Narrow(filter string, opts []Option) []int {
-	out := make([]int, 0, len(opts))
-	for i, o := range opts {
-		if Matches(filter, o) {
-			out = append(out, i)
-		}
-	}
-	return out
-}

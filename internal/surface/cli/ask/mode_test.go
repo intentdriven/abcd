@@ -3,6 +3,7 @@ package ask
 import (
 	"bytes"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -53,6 +54,32 @@ func TestNumberedReaderIsSelected(t *testing.T) {
 	}
 }
 
+// roots lays a home whose ~/.abcd/config.json holds machine (none when
+// empty), and a repository whose .abcd/config.json holds repo (none when
+// empty), for Put to read interview.list from.
+func roots(t *testing.T, machine, repo string) layered.Roots {
+	t.Helper()
+	base := t.TempDir()
+	r := layered.Roots{Repo: filepath.Join(base, "repo"), Home: filepath.Join(base, "hm-e8term2")}
+	for _, f := range []struct{ dir, rel, body string }{
+		{r.Home, ".abcd/config.json", machine},
+		{r.Repo, ".abcd/config.json", repo},
+	} {
+		if err := os.MkdirAll(filepath.Join(f.dir, ".abcd"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if f.body == "" {
+			continue
+		}
+		if err := os.WriteFile(filepath.Join(f.dir, f.rel), []byte(f.body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return r
+}
+
+const numberedSetting = `{"interview": {"list": "numbered"}}`
+
 // pipeIn is a non-terminal input holding s: the numbered reader takes whole
 // lines from it, and raw mode is refused on it.
 func pipeIn(t *testing.T, s string) *os.File {
@@ -92,7 +119,7 @@ func TestDumbTerminalAndRefusedRawFallToNumbered(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var out bytes.Buffer
-			tm := Terminal{In: pipeIn(t, "2\n"), Out: &out, Getenv: env("TERM", tc.term), Mode: term.Mono, List: layered.InterviewListArrows}
+			tm := Terminal{In: pipeIn(t, "2\n"), Out: &out, Getenv: env("TERM", tc.term), Mode: term.Mono, Roots: roots(t, "", "")}
 			got, err := tm.Put(fixture(t, "key-home"))
 			if err != nil {
 				t.Fatalf("a fallback failed the interview: %v\n%s", err, out.String())
@@ -122,7 +149,7 @@ func TestNumberedReaderPagesAndNarrows(t *testing.T) {
 	choices := a.Questions[0].List.Choices
 	var out bytes.Buffer
 	in := pipeIn(t, "n\nn\np\nclaude model 4\n999\n\n145\n")
-	tm := Terminal{In: in, Out: &out, Getenv: env("TERM", "xterm"), Mode: term.Mono, List: layered.InterviewListNumbered}
+	tm := Terminal{In: in, Out: &out, Getenv: env("TERM", "xterm"), Mode: term.Mono, Roots: roots(t, numberedSetting, "")}
 	got, err := tm.Put(a)
 	if err != nil {
 		t.Fatalf("%v\n%s", err, out.String())
@@ -163,7 +190,7 @@ func TestNumberedReaderPagesAndNarrows(t *testing.T) {
 // answer is an error, never a default taken silently.
 func TestNumberedReaderRefusesAClosedInput(t *testing.T) {
 	var out bytes.Buffer
-	tm := Terminal{In: pipeIn(t, "zzz\n"), Out: &out, Getenv: env("TERM", "xterm"), Mode: term.Mono, List: layered.InterviewListNumbered}
+	tm := Terminal{In: pipeIn(t, "zzz\n"), Out: &out, Getenv: env("TERM", "xterm"), Mode: term.Mono, Roots: roots(t, numberedSetting, "")}
 	got, err := tm.Put(fixture(t, "key-home"))
 	if err == nil {
 		t.Fatalf("answers %+v from an input that closed unanswered", got)
@@ -171,4 +198,46 @@ func TestNumberedReaderRefusesAClosedInput(t *testing.T) {
 	if !strings.Contains(out.String(), `nothing matches "zzz"`) {
 		t.Errorf("a filter nothing matches is not named:\n%s", out.String())
 	}
+}
+
+// TestPutReadsTheListSetting holds that Put takes interview.list from the
+// layered configuration itself: the machine's numbered selects the numbered
+// reader with no line said (it was asked for), and a setting the reader
+// refuses (a repository that sets it) falls to the numbered reader with one
+// line naming the refusal, never a failed interview.
+func TestPutReadsTheListSetting(t *testing.T) {
+	t.Run("the machine's numbered", func(t *testing.T) {
+		var out bytes.Buffer
+		tm := Terminal{In: pipeIn(t, "1\n"), Out: &out, Getenv: env("TERM", "xterm"), Mode: term.Mono, Roots: roots(t, numberedSetting, "")}
+		got, err := tm.Put(fixture(t, "key-home"))
+		if err != nil {
+			t.Fatalf("%v\n%s", err, out.String())
+		}
+		if len(got) != 1 || got[0].Value != "keychain" {
+			t.Errorf("answers %+v, want keychain by its number", got)
+		}
+		if !strings.Contains(out.String(), NumberedHint) {
+			t.Errorf("the machine's numbered did not select the numbered reader:\n%s", out.String())
+		}
+		if strings.Contains(out.String(), "abcd:") {
+			t.Errorf("a numbered list that was asked for says why:\n%s", out.String())
+		}
+	})
+	t.Run("a refused setting", func(t *testing.T) {
+		var out bytes.Buffer
+		tm := Terminal{In: pipeIn(t, "1\n"), Out: &out, Getenv: env("TERM", "xterm"), Mode: term.Mono, Roots: roots(t, "", numberedSetting)}
+		got, err := tm.Put(fixture(t, "key-home"))
+		if err != nil {
+			t.Fatalf("a refused setting failed the interview: %v\n%s", err, out.String())
+		}
+		if len(got) != 1 || got[0].Value != "keychain" {
+			t.Errorf("answers %+v, want keychain by its number", got)
+		}
+		if n := lineCount(out.String(), "interview.list"); n != 1 {
+			t.Errorf("%d lines name the refused setting, want one:\n%s", n, out.String())
+		}
+		if !strings.Contains(out.String(), NumberedHint) {
+			t.Errorf("a refused setting did not fall to the numbered reader:\n%s", out.String())
+		}
+	})
 }

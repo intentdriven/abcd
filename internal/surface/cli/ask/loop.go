@@ -11,6 +11,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/question"
 	"github.com/intentdriven/abcd/internal/term"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // ErrInterrupted is Ctrl-C at a question: the terminal is restored and a
@@ -37,9 +38,10 @@ type Terminal struct {
 	Mode term.ColorMode
 	// ASCII draws the marks without a UTF-8 locale.
 	ASCII bool
-	// List is the interview.list setting (layered.InterviewList): arrows,
-	// numbered, or "" when it was not read, which is arrows.
-	List string
+	// Roots are where Put reads the interview.list setting from
+	// (layered.InterviewList): the machine's ~/.abcd/config.json under
+	// Roots.Home, a repository's under Roots.Repo refused.
+	Roots layered.Roots
 }
 
 // Mode is how the answer loop takes a choice.
@@ -85,8 +87,10 @@ func SelectMode(getenv func(string) string, list string) (m Mode, why string) {
 var keyHook func(Key)
 
 // Put asks a at the terminal and returns its answers, one per part. It holds
-// a to the structural check first (Prepare), then takes the answer in the
-// mode SelectMode picks; an arrow-key list the terminal cannot take (TERM=dumb,
+// a to the structural check first (Prepare), reads interview.list through
+// layered.InterviewList (a setting it cannot read gives the numbered reader,
+// with one line on Out naming the refusal), then takes the answer in the mode
+// SelectMode picks; an arrow-key list the terminal cannot take (TERM=dumb,
 // or raw mode refused) falls to the numbered reader with one line on Out
 // saying so, never a failed interview. Ctrl-C returns ErrInterrupted.
 func (t Terminal) Put(a question.Ask) ([]Answer, error) {
@@ -96,7 +100,17 @@ func (t Terminal) Put(a question.Ask) ([]Answer, error) {
 	if t.Getenv == nil {
 		t.Getenv = func(string) string { return "" }
 	}
-	m, why := SelectMode(t.Getenv, t.List)
+	list, err := layered.InterviewList(t.Roots)
+	if err != nil {
+		// A setting that cannot be read never fails the interview: the
+		// numbered list is always safe to give, and the refusal is said once,
+		// sanitised: it can echo a key a repository's file holds.
+		if _, werr := fmt.Fprintf(t.Out, "abcd: %s; the list is numbered.\n", termsafe.Sanitize(err.Error())); werr != nil {
+			return nil, werr
+		}
+		list.V = layered.InterviewListNumbered
+	}
+	m, why := SelectMode(t.Getenv, list.V)
 	if m == Numbered {
 		if t.Getenv("TERM") == "dumb" {
 			if _, err := fmt.Fprintf(t.Out, "abcd: %s, so the list is numbered.\n", why); err != nil {
