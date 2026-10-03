@@ -446,11 +446,167 @@ func TestACancelledCallReachesTheServer(t *testing.T) {
 // TestTheDefaultBoundsOutlastTheOldDeadline pins the defaults the record
 // grounds: a reasoning model's answer runs past ten minutes, so the total cap
 // is well beyond it, and the first-byte and idle limits are each long enough
-// for a local server reading a large prompt.
+// for a local server reading a large prompt. The event limit is the gateway
+// window the record observed (about 600 seconds), well inside the total cap,
+// and a failed call's body is waited for briefly.
 func TestTheDefaultBoundsOutlastTheOldDeadline(t *testing.T) {
 	c := mustClient(t, "https://example.com/v1", testKey)
-	got := fmt.Sprintf("%s %s %s", c.firstByte, c.idle, c.timeout)
-	if got != "5m0s 2m0s 30m0s" {
-		t.Fatalf("first-byte, idle and total = %s", got)
+	got := fmt.Sprintf("%s %s %s %s %s", c.firstByte, c.idle, c.events, c.timeout, c.errorWait)
+	if got != "5m0s 2m0s 10m0s 30m0s 30s" {
+		t.Fatalf("first-byte, idle, event, total and error-body = %s", got)
 	}
+}
+
+// keepAlives answers with an event stream that sends the given events and then
+// only keep-alive comments, one every 20ms, until the client goes away, which
+// it reports on gone.
+func keepAlives(gone chan<- struct{}, events ...string) func(http.ResponseWriter, *http.Request, map[string]json.RawMessage) {
+	return func(w http.ResponseWriter, r *http.Request, _ map[string]json.RawMessage) {
+		streamHead(w)
+		emit(w, events...)
+		for {
+			select {
+			case <-time.After(20 * time.Millisecond):
+				emit(w, ": keep-alive")
+			case <-r.Context().Done():
+				close(gone)
+				return
+			}
+		}
+	}
+}
+
+// TestAStreamOfOnlyKeepAlivesHitsTheEventLimit: a server that keeps the
+// connection alive with comments and never sends an event, before its answer
+// begins or in the middle of it, is abandoned at the event limit, long before
+// the total cap, and the refusal says it sent only keep-alives.
+func TestAStreamOfOnlyKeepAlivesHitsTheEventLimit(t *testing.T) {
+	for name, events := range map[string][]string{
+		"before any event": nil,
+		"after an event":   {chunkLine("m", `{"verdict":`, ""), ""},
+	} {
+		t.Run(name, func(t *testing.T) {
+			gone := make(chan struct{})
+			f := newFake(t, keepAlives(gone, events...))
+			c := mustClient(t, f.base(), testKey, WithFirstByteTimeout(time.Minute), WithIdleTimeout(200*time.Millisecond), WithTimeout(time.Minute))
+			c.events = 300 * time.Millisecond
+			_, err, d := completeWithin(t, 10*time.Second, context.Background(), c, jsonObject)
+			if err == nil {
+				t.Fatal("Complete succeeded against a stream of keep-alives")
+			}
+			assertNoKey(t, err)
+			if !strings.Contains(err.Error(), "sent only keep-alives for 300ms") || errors.Is(err, ErrUnreachable) {
+				t.Fatalf("error = %v", err)
+			}
+			if d > 5*time.Second {
+				t.Fatalf("the event limit took %s", d)
+			}
+			select {
+			case <-gone:
+			case <-time.After(5 * time.Second):
+				t.Fatal("the server never saw the client go away after the event limit")
+			}
+		})
+	}
+}
+
+// TestKeepAlivesUntilTheTotalCapAreNamedAsSuch: when the total cap ends a
+// stream that sent only keep-alives, the refusal says so, rather than saying
+// the server was still answering.
+func TestKeepAlivesUntilTheTotalCapAreNamedAsSuch(t *testing.T) {
+	gone := make(chan struct{})
+	f := newFake(t, keepAlives(gone))
+	c := mustClient(t, f.base(), testKey, WithFirstByteTimeout(time.Minute), WithIdleTimeout(200*time.Millisecond), WithTimeout(400*time.Millisecond))
+	c.events = time.Minute
+	_, err, _ := completeWithin(t, 10*time.Second, context.Background(), c, jsonObject)
+	if err == nil {
+		t.Fatal("Complete succeeded against a stream of keep-alives")
+	}
+	if !strings.Contains(err.Error(), "sent only keep-alives for 400ms") || strings.Contains(err.Error(), "still answering") {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+// TestEventsWithKeepAlivesBetweenThemAreReadToTheEnd: keep-alives between
+// events do not count as events, but each event re-arms the event limit, so an
+// answer whose events arrive within it is read to the end however long it runs.
+func TestEventsWithKeepAlivesBetweenThemAreReadToTheEnd(t *testing.T) {
+	const n = 10
+	f := newFake(t, func(w http.ResponseWriter, r *http.Request, _ map[string]json.RawMessage) {
+		streamHead(w)
+		emit(w, chunkLine("m", `{"verdict":"`, ""), "")
+		for i := 0; i < n; i++ {
+			for j := 0; j < 3; j++ {
+				select {
+				case <-time.After(30 * time.Millisecond):
+				case <-r.Context().Done():
+					return
+				}
+				emit(w, ": keep-alive")
+			}
+			emit(w, chunkLine("m", "a", ""), "")
+		}
+		emit(w, chunkLine("m", `"}`, "stop"), "", "data: [DONE]", "")
+	})
+	c := mustClient(t, f.base(), testKey, WithFirstByteTimeout(time.Minute), WithIdleTimeout(time.Minute), WithTimeout(time.Minute))
+	c.events = 300 * time.Millisecond
+	res, err, d := completeWithin(t, 10*time.Second, context.Background(), c, jsonObject)
+	if err != nil {
+		t.Fatalf("Complete after %s: %v", d, err)
+	}
+	if want := `{"verdict":"` + strings.Repeat("a", n) + `"}`; string(res.Content) != want {
+		t.Fatalf("content = %q", res.Content)
+	}
+}
+
+// TestTheCallersOwnDeadlineIsNamedAsTheCallers: a caller's context whose
+// deadline passes before any of the adapter's limits is named as the caller's
+// deadline, never as the adapter's total cap.
+func TestTheCallersOwnDeadlineIsNamedAsTheCallers(t *testing.T) {
+	f := newFake(t, func(w http.ResponseWriter, r *http.Request, _ map[string]json.RawMessage) { <-r.Context().Done() })
+	c := mustClient(t, f.base(), testKey, WithFirstByteTimeout(time.Minute), WithIdleTimeout(time.Minute), WithTimeout(time.Minute))
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	_, err, _ := completeWithin(t, 10*time.Second, ctx, c, jsonObject)
+	if err == nil {
+		t.Fatal("Complete succeeded past the caller's deadline")
+	}
+	assertNoKey(t, err)
+	if !strings.Contains(err.Error(), "caller's deadline") || strings.Contains(err.Error(), "1m0s") || errors.Is(err, ErrUnreachable) {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+// TestAFailedStatusIsReportedWithoutWaitingOutItsBody: a non-200 answer is
+// reported on its status once its body has had a short while to arrive, never
+// after the first-byte limit; a body sent with it is still quoted.
+func TestAFailedStatusIsReportedWithoutWaitingOutItsBody(t *testing.T) {
+	t.Run("a body that never arrives", func(t *testing.T) {
+		f := newFake(t, func(w http.ResponseWriter, r *http.Request, _ map[string]json.RawMessage) {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.(http.Flusher).Flush()
+			<-r.Context().Done()
+		})
+		c := mustClient(t, f.base(), testKey, WithFirstByteTimeout(time.Minute), WithIdleTimeout(time.Minute), WithTimeout(time.Minute))
+		c.errorWait = 200 * time.Millisecond
+		_, err, d := completeWithin(t, 10*time.Second, context.Background(), c, jsonObject)
+		if err == nil || !strings.Contains(err.Error(), "answered HTTP 500") {
+			t.Fatalf("error = %v", err)
+		}
+		if d > 5*time.Second {
+			t.Fatalf("the failed status took %s to report", d)
+		}
+	})
+	t.Run("a body that arrives", func(t *testing.T) {
+		f := newFake(t, func(w http.ResponseWriter, _ *http.Request, _ map[string]json.RawMessage) {
+			w.WriteHeader(http.StatusTooManyRequests)
+			_, _ = io.WriteString(w, `{"error":{"message":"slow down"}}`)
+		})
+		c := mustClient(t, f.base(), testKey)
+		c.errorWait = 200 * time.Millisecond
+		_, err, _ := completeWithin(t, 10*time.Second, context.Background(), c, jsonObject)
+		if err == nil || !strings.Contains(err.Error(), "answered HTTP 429: slow down") {
+			t.Fatalf("error = %v", err)
+		}
+	})
 }

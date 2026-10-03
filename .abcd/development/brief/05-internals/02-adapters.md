@@ -87,9 +87,14 @@ call abandons it while it is still arriving: a first-byte limit (five minutes,
 for a local server reading a long prompt), an idle limit between reads once the
 answer has begun (two minutes; a keep-alive counts as the server being alive),
 and a total cap (thirty minutes), which a caller of the adapter may set for one
-call and no route setting carries. Whichever limit fires, and a cancelled
-caller, closes the connection, so a server still generating sees the client go
-away and can stop. The setup's verification call is one short exchange and
+call and no route setting carries. A stream is also bounded between its events
+(ten minutes, the window the record saw a gateway hold a request that had sent
+nothing): a keep-alive is a read but not an answer, so a server that sends only
+keep-alives is refused at that limit and the refusal says so. A failed status is
+reported on the status, its body waited for half a minute at most, and a
+caller's own earlier deadline is named as the caller's, not as the adapter's
+cap. Whichever limit fires, and a cancelled caller, closes the connection, so a
+server still generating sees the client go away and can stop. The setup's verification call is one short exchange and
 keeps its own two-minute bound.
 
 The key is resolved by name through the credential store

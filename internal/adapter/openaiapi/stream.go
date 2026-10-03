@@ -22,7 +22,11 @@ import (
 var (
 	errFirstByte = errors.New("first-byte limit")
 	errIdle      = errors.New("idle limit")
+	errEvents    = errors.New("event limit")
 	errTotal     = errors.New("total limit")
+	// errErrorBody ends the read of a failed call's body; the status is
+	// reported whatever arrived.
+	errErrorBody = errors.New("error-body limit")
 	// errStreamTooLarge ends a read past maxStreamBytes.
 	errStreamTooLarge = errors.New("stream too large")
 )
@@ -30,8 +34,10 @@ var (
 // limits is one call's bounds, applied through its request's context: the
 // total cap as the context's deadline, and one timer that first waits for the
 // answer's first byte and then, re-armed by every read that returns one,
-// bounds the silence between reads. Whichever fires cancels the request, and
-// net/http then closes the connection, so the server sees the client go.
+// bounds the silence between reads. A stream is bounded besides by the time
+// between two of its events (watchEvents), because a keep-alive comment is a
+// read but not an answer. Whichever fires cancels the request, and net/http
+// then closes the connection, so the server sees the client go.
 type limits struct {
 	parent context.Context
 	ctx    context.Context
@@ -40,6 +46,11 @@ type limits struct {
 	timer  *time.Timer
 	idle   time.Duration
 	begun  atomic.Bool
+	// quiet bounds the time between two events of a stream, and progress
+	// records that one arrived. Both are nil and false outside a stream.
+	quiet    *time.Timer
+	events   time.Duration
+	progress atomic.Bool
 }
 
 func (c *Client) limit(parent context.Context) *limits {
@@ -63,9 +74,35 @@ func (l *limits) alive() {
 	l.timer.Reset(l.idle)
 }
 
+// watchEvents starts the event limit: a stream that sends no event for d, its
+// keep-alive comments not counting, is ended.
+func (l *limits) watchEvents(d time.Duration) {
+	l.events = d
+	l.quiet = time.AfterFunc(d, func() { l.cancel(errEvents) })
+}
+
+// event records that the stream sent an event, and re-arms the event limit.
+func (l *limits) event() {
+	l.progress.Store(true)
+	l.quiet.Reset(l.events)
+}
+
+// ours reports whether cause is one of the call's own limits, rather than the
+// caller's context ending.
+func ours(cause error) bool {
+	switch cause {
+	case errFirstByte, errIdle, errEvents, errTotal, errErrorBody:
+		return true
+	}
+	return false
+}
+
 // stop releases the call's limits, cancelling its request if it is still open.
 func (l *limits) stop() {
 	l.timer.Stop()
+	if l.quiet != nil {
+		l.quiet.Stop()
+	}
 	l.total()
 	l.cancel(nil)
 }
@@ -130,11 +167,12 @@ type chunk struct {
 // readStream assembles an event stream into the answer and admits it. Each
 // data line is one event (the servers that speak the protocol send one chunk
 // per line); a comment (a keep-alive), a blank line and any other field are
-// read past. data: [DONE] ends the answer. A stream that closes before it
-// still holds a complete answer when a chunk gave a finish reason; one with
-// neither was cut off and is refused. One event, the assembled answer and the
-// whole stream are each bounded.
+// read past, and only an event re-arms the event limit. data: [DONE] ends the
+// answer. A stream that closes before it still holds a complete answer when a
+// chunk gave a finish reason; one with neither was cut off and is refused. One
+// event, the assembled answer and the whole stream are each bounded.
 func (c *Client) readStream(l *limits, body io.Reader, asked string, contract func([]byte) error) (Result, error) {
+	l.watchEvents(c.events)
 	sc := bufio.NewScanner(&capped{r: body, left: maxStreamBytes})
 	sc.Buffer(make([]byte, 0, 64<<10), MaxResponseBytes)
 	var (
@@ -160,6 +198,7 @@ func (c *Client) readStream(l *limits, body io.Reader, asked string, contract fu
 		if isError(ch.Error) {
 			return Result{}, c.reportedError([]byte(data))
 		}
+		l.event()
 		switch {
 		case ch.Model == "":
 		case a.model == "":

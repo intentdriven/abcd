@@ -13,10 +13,11 @@
 //     provider cannot move the key or the brief to another host;
 //   - the answer is streamed, every response is bounded (MaxResponseBytes, a
 //     stream's events and its whole length besides) and every call is bounded
-//     in time, by a first-byte limit, an idle limit between reads and a total
-//     cap, so a provider that floods or stalls is refused rather than waited
-//     on, while one still sending is never cut off at an arbitrary age; a call
-//     that ends early closes its connection, so the server sees it go;
+//     in time, by a first-byte limit, an idle limit between reads, an event
+//     limit between a stream's events (a keep-alive comment is not one) and a
+//     total cap, so a provider that floods or stalls is refused rather than
+//     waited on, while one still sending is never cut off at an arbitrary age;
+//     a call that ends early closes its connection, so the server sees it go;
 //   - the key travels only as the Authorization header of a request to the
 //     pinned base URL. No error, result or log line carries it: a provider's
 //     own text (its error, the model it reports and the answer itself) is
@@ -76,6 +77,16 @@ const (
 	// DefaultTotalTimeout caps one call end to end however steadily it
 	// streams: connecting, sending the brief and reading the whole answer.
 	DefaultTotalTimeout = 30 * time.Minute
+	// defaultEventTimeout bounds the time between two events of a stream,
+	// keep-alive comments not counting, so a server that keeps the connection
+	// alive and never answers is refused well inside the total cap. It is the
+	// window the record observed a gateway hold a request that had sent
+	// nothing for (about 600 seconds, iss-2610030931521214), and twice the
+	// first-byte limit's allowance for a long prompt read.
+	defaultEventTimeout = 10 * time.Minute
+	// errorBodyWait bounds the read of a failed call's body: the status is the
+	// answer, and the body only says why, so it is not waited for long.
+	errorBodyWait = 30 * time.Second
 	// MaxResponseBytes bounds a successful answer: a plain body, one event of
 	// a stream, and the answer a stream assembles. A chat completion carrying a
 	// verdict is a few kilobytes; 4 MiB refuses a flood without ever refusing a
@@ -161,6 +172,10 @@ type Client struct {
 	// between two reads of it once it has begun.
 	firstByte time.Duration
 	idle      time.Duration
+	// events bounds the time between two events of a stream, keep-alive
+	// comments not counting; errorWait bounds the read of a failed call's body.
+	events    time.Duration
+	errorWait time.Duration
 	hc        *http.Client
 }
 
@@ -240,6 +255,8 @@ func New(baseURL, key string, opts ...Option) (*Client, error) {
 		timeout:   DefaultTotalTimeout,
 		firstByte: DefaultFirstByteTimeout,
 		idle:      DefaultIdleTimeout,
+		events:    defaultEventTimeout,
+		errorWait: errorBodyWait,
 	}
 	for _, o := range opts {
 		o(c)
@@ -334,12 +351,7 @@ func (c *Client) Complete(ctx context.Context, req Request, contract func([]byte
 	live := &liveBody{r: resp.Body, l: l}
 
 	if resp.StatusCode != http.StatusOK {
-		raw, _ := io.ReadAll(io.LimitReader(live, maxErrorBodyBytes))
-		msg := fmt.Sprintf("%s answered HTTP %d", c.host, resp.StatusCode)
-		if said := c.providerSaid(raw); said != "" {
-			msg += ": " + said
-		}
-		return Result{}, c.fail(msg)
+		return Result{}, c.failedStatus(l, resp)
 	}
 	if eventStream(resp.Header.Get("Content-Type")) {
 		return c.readStream(l, live, req.Model, contract)
@@ -352,6 +364,22 @@ func (c *Client) Complete(ctx context.Context, req Request, contract func([]byte
 		return Result{}, c.fail(fmt.Sprintf("%s answered with a body larger than %d bytes, so it is refused unread", c.host, MaxResponseBytes))
 	}
 	return c.decode(raw, req.Model, contract)
+}
+
+// failedStatus reports a non-200 answer on its status, quoting what its body
+// says when the body arrives within errorWait. The body is read past liveBody,
+// so its bytes re-arm no limit: the first-byte, idle and total limits still
+// run, and whichever ends the read first, the status is reported with whatever
+// arrived.
+func (c *Client) failedStatus(l *limits, resp *http.Response) error {
+	wait := time.AfterFunc(c.errorWait, func() { l.cancel(errErrorBody) })
+	raw, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodyBytes))
+	wait.Stop()
+	msg := fmt.Sprintf("%s answered HTTP %d", c.host, resp.StatusCode)
+	if said := c.providerSaid(raw); said != "" {
+		msg += ": " + said
+	}
+	return c.fail(msg)
 }
 
 // render builds the request body: the adapter's own fields, then the
@@ -732,6 +760,9 @@ func (c *Client) callError(l *limits, err error) error {
 		return c.fail(c.host + " answered with a redirect, and abcd never follows one: the base URL is pinned, so the key and the brief go nowhere else")
 	case errors.Is(l.parent.Err(), context.Canceled):
 		return c.fail("the call to " + c.host + " was cancelled")
+	case errors.Is(l.parent.Err(), context.DeadlineExceeded) && !ours(context.Cause(l.ctx)):
+		// The caller's own deadline, not one of the call's limits.
+		return c.fail("the caller's deadline for the call to " + c.host + " passed, so the call is abandoned")
 	case neverConnected(err):
 		return &unreachableError{msg: c.reachFailure(err).Error()}
 	}
@@ -740,11 +771,22 @@ func (c *Client) callError(l *limits, err error) error {
 		return c.fail(fmt.Sprintf("no answer within %s from %s, so the call is abandoned", c.firstByte, c.host))
 	case errIdle:
 		return c.fail(fmt.Sprintf("%s sent nothing for %s in the middle of its answer, so the call is abandoned", c.host, c.idle))
-	case errTotal:
-		if l.begun.Load() {
-			return c.fail(fmt.Sprintf("%s was still answering at the call's total limit of %s, so the call is abandoned", c.host, c.timeout))
+	case errEvents:
+		switch {
+		case !l.begun.Load():
+			return c.fail(fmt.Sprintf("no answer within %s from %s, so the call is abandoned", l.events, c.host))
+		case l.progress.Load():
+			return c.fail(fmt.Sprintf("%s sent only keep-alives for %s in the middle of its answer, so the call is abandoned", c.host, l.events))
 		}
-		return c.fail(fmt.Sprintf("no answer within %s from %s, so the call is abandoned", c.timeout, c.host))
+		return c.fail(fmt.Sprintf("%s sent only keep-alives for %s and never began its answer, so the call is abandoned", c.host, l.events))
+	case errTotal:
+		switch {
+		case !l.begun.Load():
+			return c.fail(fmt.Sprintf("no answer within %s from %s, so the call is abandoned", c.timeout, c.host))
+		case l.quiet != nil && !l.progress.Load():
+			return c.fail(fmt.Sprintf("%s sent only keep-alives for %s, the call's total limit, and never began its answer, so the call is abandoned", c.host, c.timeout))
+		}
+		return c.fail(fmt.Sprintf("%s was still answering at the call's total limit of %s, so the call is abandoned", c.host, c.timeout))
 	}
 	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) || (errors.As(err, &ne) && ne.Timeout()) {
 		return c.fail(fmt.Sprintf("no answer within %s from %s, so the call is abandoned", c.timeout, c.host))
