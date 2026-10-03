@@ -63,7 +63,7 @@ type ConnectRequest struct {
 	Key string
 	// Pointer is where the key is, for the external home.
 	Pointer credential.Pointer
-	// Timeout bounds the verification call; 0 keeps the adapter's default.
+	// Timeout bounds the verification call; 0 keeps its own short bound.
 	Timeout time.Duration
 }
 
@@ -83,6 +83,12 @@ type ConnectResult struct {
 	// are said once and never mixed into what a machine reader parses.
 	Diagnostics []string `json:"-"`
 }
+
+// verifyTimeout bounds the verification call end to end, its first byte
+// included: one short exchange (sixteen tokens at most) keeps its own short
+// bound, never a dispatched step's, which allows a streamed answer many
+// minutes (iss-2610030931521214). A ConnectRequest's Timeout replaces it.
+var verifyTimeout = 120 * time.Second
 
 // verifyBrief is the verification call's brief: one short exchange, judged
 // only on the provider answering in the protocol's shape.
@@ -113,7 +119,7 @@ func Connect(ctx context.Context, req ConnectRequest) (ConnectResult, error) {
 	}
 	var opts []openaiapi.Option
 	if req.Timeout > 0 {
-		opts = append(opts, openaiapi.WithTimeout(req.Timeout))
+		opts = append(opts, openaiapi.WithTimeout(req.Timeout), openaiapi.WithFirstByteTimeout(req.Timeout))
 	}
 	res := ConnectResult{Provider: req.Provider, BaseURL: req.BaseURL, Models: append([]string(nil), req.Models...),
 		KeyHome: req.Home, Diagnostics: append([]string(nil), cfg.Diagnostics...)}
@@ -344,8 +350,11 @@ func providerService(p Provider, denylist []DenyEntry, rec *CallRecord, opts ...
 		Unlocks:   "calls to the model provider " + p.Name + " at " + p.BaseURL + ", for the models its allowlist names",
 		WithoutIt: "everything: every delegated step runs on the host",
 		Verify: func(ctx context.Context, key string) error {
+			// The verification's own bounds come first, so a caller's option
+			// replaces them.
+			bounded := append([]openaiapi.Option{openaiapi.WithTimeout(verifyTimeout), openaiapi.WithFirstByteTimeout(verifyTimeout)}, opts...)
 			_, r, err := complete(ctx, p.Name, p.BaseURL, key, p.Models[0], verifyBrief,
-				Settings{"max_tokens": json.RawMessage(`16`)}, nil, denylist, opts...)
+				Settings{"max_tokens": json.RawMessage(`16`)}, nil, denylist, bounded...)
 			r.Credential = p.Key
 			if rec != nil {
 				*rec = r

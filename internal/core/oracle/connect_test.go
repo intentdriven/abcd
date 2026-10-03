@@ -534,3 +534,33 @@ func TestTheProviderBlockIsReadWhereItIsWritten(t *testing.T) {
 		t.Errorf("the directory swapped in was changed: err %v, now\n%s", err, after)
 	}
 }
+
+// TestTheVerificationCallKeepsItsOwnShortBound: a dispatched step may stream
+// for many minutes, but the setup's verification call is one short exchange
+// and keeps its own bound, so a provider that takes it and says nothing is
+// refused promptly, and nothing is written.
+func TestTheVerificationCallKeepsItsOwnShortBound(t *testing.T) {
+	old := verifyTimeout
+	verifyTimeout = 300 * time.Millisecond
+	t.Cleanup(func() { verifyTimeout = old })
+	f := newFx(t)
+	stalled := newStalledProvider(t)
+	req := connectReq(f, stalled+"/v1")
+	req.Provider, req.Home, req.Key, req.Timeout = "desk", KeyHomeNone, "", 0
+	done := make(chan error, 1)
+	go func() {
+		_, err := Connect(context.Background(), req)
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err == nil || !strings.Contains(err.Error(), "no answer within 300ms") {
+			t.Fatalf("Connect: %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the verification call was still waiting after 10s")
+	}
+	if _, err := os.Stat(machineFile(f, "config.json")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("a failed verification wrote the configuration: %v", err)
+	}
+}

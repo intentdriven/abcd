@@ -160,7 +160,7 @@ func TestCompleteSendsTheBriefAndValidatesTheAnswer(t *testing.T) {
 		t.Fatalf("messages = %+v", msgs)
 	}
 	if string(got.body["model"]) != `"typesafe/jev-1.13"` || string(got.body["temperature"]) != "0" ||
-		string(got.body["seed"]) != "42" || string(got.body["stream"]) != "false" {
+		string(got.body["seed"]) != "42" || string(got.body["stream"]) != "true" {
 		t.Fatalf("body = %v", got.body)
 	}
 }
