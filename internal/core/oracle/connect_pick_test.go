@@ -374,3 +374,29 @@ func TestConnectRefusesOfferedIdsThatTogetherCarryTheKey(t *testing.T) {
 		})
 	}
 }
+
+// TestCheckConnectNeedsNoKey: the check a front door runs before asking for
+// the key admits a well-formed request that carries no key yet, and refuses
+// what Connect would refuse without one, a provider already configured
+// included.
+func TestCheckConnectNeedsNoKey(t *testing.T) {
+	f := newFx(t)
+	req := connectReq(f, "https://api.example.com/v1")
+	req.Key = ""
+	if err := CheckConnect(req); err != nil {
+		t.Fatalf("CheckConnect of a keyless abcd-home request = %v, want nil", err)
+	}
+	req.Models = nil
+	req.Pick = func(_ context.Context, ids []string) (string, error) { return ids[0], nil }
+	if err := CheckConnect(req); err != nil {
+		t.Fatalf("CheckConnect of a picking request = %v, want nil", err)
+	}
+	f.machineConfig(`{"oracle":{"api":{"openrouter":{"base_url":"https://api.example.com/v1","models":["m"]}}}}`)
+	if err := CheckConnect(req); err == nil || !strings.Contains(err.Error(), "already configured") {
+		t.Fatalf("CheckConnect of a provider already configured = %v", err)
+	}
+	req.Provider = Harness
+	if err := CheckConnect(req); err == nil || !strings.Contains(err.Error(), "reserved") {
+		t.Fatalf("CheckConnect of the reserved name = %v", err)
+	}
+}

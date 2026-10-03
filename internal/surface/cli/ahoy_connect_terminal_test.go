@@ -396,3 +396,56 @@ func TestPickedConnectKeepsTheCanaryInItsHome(t *testing.T) {
 		})
 	}
 }
+
+// TestConnectRefusesBeforeTheKeyIsRead (security review finding 7): a setup
+// that would be refused on what needs no key (the base URL, a reserved or
+// malformed provider name, a provider already configured)
+// is refused before the person is asked to paste the key, so nobody pastes
+// for nothing; nothing is sent and nothing written.
+func TestConnectRefusesBeforeTheKeyIsRead(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		provider string
+		base     func(svc string) string
+		existing bool
+		want     string
+	}{
+		{"a base URL over plain http to another machine", "example", func(string) string { return "http://192.0.2.1/v1" }, false, "plain http to another machine"},
+		{"the reserved provider name", "harness", func(s string) string { return s }, false, "reserved"},
+		{"a malformed provider name", "Not;A-Name", func(s string) string { return s }, false, "is not lower case"},
+		{"a provider already configured", "example", func(s string) string { return s }, true, "already configured"},
+	} {
+		for _, model := range [][]string{{"--model", "vendor/coder-large"}, nil} {
+			t.Run(tc.name+map[bool]string{true: ", --model", false: ", picking"}[model != nil], func(t *testing.T) {
+				hermeticEnv(t)
+				t.Chdir(t.TempDir())
+				if tc.existing {
+					dir := filepath.Join(os.Getenv("HOME"), ".abcd")
+					if err := os.MkdirAll(dir, 0o700); err != nil {
+						t.Fatal(err)
+					}
+					body := `{"oracle":{"api":{"example":{"base_url":"https://api.example.com/v1","models":["m"]}}}}`
+					if err := os.WriteFile(filepath.Join(dir, "config.json"), []byte(body), 0o600); err != nil {
+						t.Fatal(err)
+					}
+				}
+				svc := newListingService(t, []string{"vendor/coder-large"}, http.StatusOK)
+				fake := atTerminal(t, connectKey, func(ids []string) (string, error) { return ids[0], nil })
+				args := append([]string{tc.provider, "--base-url", tc.base(svc.base()), "--home", "abcd"}, model...)
+				_, stderr, err, code := runConnect(t, "", args...)
+				if err == nil || code != 2 || !strings.Contains(err.Error(), tc.want) {
+					t.Fatalf("ahoy connect = %v (exit %d), want exit 2 saying %q", err, code, tc.want)
+				}
+				if fake.reads != 0 || strings.Contains(stderr, "Paste the key") {
+					t.Fatalf("the key was asked for (%d read(s)) before a refusal that needs no key:\n%s", fake.reads, stderr)
+				}
+				if listAuth, _, chatModel := svc.seen(); len(listAuth)+len(chatModel) != 0 {
+					t.Fatalf("a refused setup sent %d request(s)", len(listAuth)+len(chatModel))
+				}
+				if got := machineWrites(t); len(got) != 0 && !(tc.existing && reflect.DeepEqual(got, []string{"config.json"})) {
+					t.Fatalf("wrote %q", got)
+				}
+			})
+		}
+	}
+}

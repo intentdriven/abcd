@@ -114,13 +114,12 @@ func Connect(ctx context.Context, req ConnectRequest) (ConnectResult, error) {
 	if err := checkConnect(&req, picking); err != nil {
 		return ConnectResult{}, err
 	}
-	cfg, err := LoadAPI(req.Roots)
-	if err != nil {
-		return ConnectResult{}, fmt.Errorf("%w; fix the configuration before adding a provider to it", err)
+	if err := checkConnectKey(req); err != nil {
+		return ConnectResult{}, err
 	}
-	if _, exists := cfg.providers[req.Provider]; exists {
-		return ConnectResult{}, fmt.Errorf("oracle adapter: provider %s is already configured in %s; "+
-			"abcd never replaces a block unasked, so edit or remove it there to change it", req.Provider, layered.Config.MachineOrigin())
+	cfg, err := loadForConnect(req)
+	if err != nil {
+		return ConnectResult{}, err
 	}
 	var opts []openaiapi.Option
 	if req.Timeout > 0 {
@@ -175,8 +174,37 @@ func Connect(ctx context.Context, req ConnectRequest) (ConnectResult, error) {
 	return res, nil
 }
 
-// checkConnect refuses a malformed request, never echoing the key. A request
-// that picks its model after a listing (picking) names none yet.
+// CheckConnect refuses, before the key is asked for, a request Connect would
+// refuse on what needs no key: the provider's name, the base URL, the models
+// named, the home and the key's name, the configuration in force, and a
+// provider already configured there. A front door that reads the key from
+// the person runs it first, so nobody pastes a key for a setup that cannot
+// finish. The key itself, absent here, is Connect's to check.
+func CheckConnect(req ConnectRequest) error {
+	if err := checkConnect(&req, len(req.Models) == 0 && req.Pick != nil); err != nil {
+		return err
+	}
+	_, err := loadForConnect(req)
+	return err
+}
+
+// loadForConnect reads the configuration in force for a setup and refuses a
+// provider it already configures.
+func loadForConnect(req ConnectRequest) (*APIConfig, error) {
+	cfg, err := LoadAPI(req.Roots)
+	if err != nil {
+		return nil, fmt.Errorf("%w; fix the configuration before adding a provider to it", err)
+	}
+	if _, exists := cfg.providers[req.Provider]; exists {
+		return nil, fmt.Errorf("oracle adapter: provider %s is already configured in %s; "+
+			"abcd never replaces a block unasked, so edit or remove it there to change it", req.Provider, layered.Config.MachineOrigin())
+	}
+	return cfg, nil
+}
+
+// checkConnect refuses a malformed request on everything but the key's value
+// (checkConnectKey), never echoing the key. A request that picks its model
+// after a listing (picking) names none yet.
 func checkConnect(req *ConnectRequest, picking bool) error {
 	switch {
 	case !providerNameRe.MatchString(req.Provider):
@@ -230,7 +258,13 @@ func checkConnect(req *ConnectRequest, picking bool) error {
 	if !credential.ValidName(req.KeyName) {
 		return fmt.Errorf("oracle adapter: key name %q is not a plain credential name", layered.BoundKey(req.KeyName))
 	}
-	if req.Home == KeyHomeExternal {
+	return nil
+}
+
+// checkConnectKey refuses a request whose home stores a key and that carries
+// none, or one the store would refuse, before any call.
+func checkConnectKey(req ConnectRequest) error {
+	if req.Home != KeyHomeABCD && req.Home != KeyHomeKeychain {
 		return nil
 	}
 	if req.Key == "" {

@@ -202,6 +202,14 @@ func newAhoyConnectCommand(asJSON *bool) *cobra.Command {
 					"or run the command in a terminal to pick one from the models the service lists"}
 			}
 			req := oracle.ConnectRequest{Roots: roots, Provider: args[0], BaseURL: baseURL, Models: models, Home: home, KeyName: keyName, Pointer: ptr}
+			if len(models) == 0 {
+				req.Pick = connectPick(cmd, roots, baseURL)
+			}
+			// What needs no key is refused before the key is asked for, so
+			// nobody pastes a key for a setup that cannot finish.
+			if err := oracle.CheckConnect(req); err != nil {
+				return &exitError{Code: 2, Msg: "abcd ahoy connect: " + termsafe.Sanitize(fsutil.RedactHome(err.Error()))}
+			}
 			if home == oracle.KeyHomeABCD || home == oracle.KeyHomeKeychain {
 				key, err := readConnectKey(cmd, args[0])
 				if errors.Is(err, term.ErrInterrupted) {
@@ -211,9 +219,6 @@ func newAhoyConnectCommand(asJSON *bool) *cobra.Command {
 					return &exitError{Code: 2, Msg: "abcd ahoy connect: " + err.Error()}
 				}
 				req.Key = key
-			}
-			if len(models) == 0 {
-				req.Pick = connectPick(cmd, roots, baseURL)
 			}
 			res, err := oracle.Connect(context.Background(), req)
 			if err != nil {
