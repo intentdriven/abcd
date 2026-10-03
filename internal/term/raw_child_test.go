@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"runtime"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -47,6 +49,37 @@ func rawChild(c string) int {
 		_ = s.Restore()
 		close(release)
 		time.Sleep(500 * time.Millisecond)
+		fmt.Fprintln(os.Stderr, "SURVIVED")
+		return 0
+	case "refused":
+		// Raw mode refused on a pipe leaves no registration behind: a
+		// SIGTERM sent afterwards takes its default action.
+		r, w, err := os.Pipe()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "ERROR", err)
+			return 3
+		}
+		defer r.Close()
+		defer w.Close()
+		if s, err := StartRaw(r, Hooks{}); err == nil {
+			_ = s.Restore()
+			fmt.Fprintln(os.Stderr, "ERROR raw mode on a pipe was granted")
+			return 3
+		}
+		_ = syscall.Kill(os.Getpid(), syscall.SIGTERM)
+		time.Sleep(500 * time.Millisecond)
+		fmt.Fprintln(os.Stderr, "SURVIVED")
+		return 0
+	case "panic-in-hook":
+		// A hook that panics on the signal goroutine restores the terminal
+		// before the panic ends the process.
+		_, err := StartRaw(os.Stdin, Hooks{Resized: func() { panic("forced inside a hook") }})
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "ERROR", err)
+			return 3
+		}
+		_ = syscall.Kill(os.Getpid(), syscall.SIGWINCH)
+		time.Sleep(2 * time.Second)
 		fmt.Fprintln(os.Stderr, "SURVIVED")
 		return 0
 	}
@@ -94,4 +127,57 @@ func TestRawSessionRelaysASignalQueuedAsItEnds(t *testing.T) {
 			t.Fatalf("run %d: the terminal is %+v, want %+v", i+1, after, before)
 		}
 	}
+}
+
+// TestRawSessionLeavesNothingBehind holds the session's two other ways out
+// no other test reaches: raw mode refused leaves no signal registration (a
+// SIGTERM afterwards ends the process), and leaves no goroutine; a hook that
+// panics on the signal goroutine restores the terminal before the panic ends
+// the process.
+func TestRawSessionLeavesNothingBehind(t *testing.T) {
+	t.Run("a refused raw mode leaves no registration", func(t *testing.T) {
+		ws, p, _ := runRawChild(t, "refused")
+		if !ws.Signaled() || ws.Signal() != syscall.SIGTERM {
+			t.Errorf("wait status %v, want killed by SIGTERM; the terminal shows:\n%q", ws, p.Output())
+		}
+	})
+	t.Run("a refused raw mode leaves no goroutine", func(t *testing.T) {
+		r, w, err := os.Pipe()
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer r.Close()
+		defer w.Close()
+		refuse := func() {
+			if s, err := StartRaw(r, Hooks{}); err == nil {
+				s.Restore()
+				t.Fatal("raw mode on a pipe was granted")
+			}
+		}
+		// The first registration starts os/signal's own loop, which stays for
+		// the life of the process; count from after it.
+		refuse()
+		time.Sleep(50 * time.Millisecond)
+		before := runtime.NumGoroutine()
+		refuse()
+		deadline := time.Now().Add(2 * time.Second)
+		for runtime.NumGoroutine() > before {
+			if time.Now().After(deadline) {
+				t.Fatalf("%d goroutines after a refused raw mode, want %d", runtime.NumGoroutine(), before)
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+	})
+	t.Run("a panic in a hook restores the terminal", func(t *testing.T) {
+		ws, p, before := runRawChild(t, "panic-in-hook")
+		if !ws.Exited() || ws.ExitStatus() != 2 {
+			t.Errorf("wait status %v, want the panic's exit 2; the terminal shows:\n%q", ws, p.Output())
+		}
+		if out := p.Output(); !strings.Contains(out, "forced inside a hook") {
+			t.Errorf("the panic did not reach the terminal:\n%q", out)
+		}
+		if after := attrs(t, p.Terminal); !ptytest.Same(after, before) {
+			t.Errorf("after the panic the terminal is %+v, want %+v", after, before)
+		}
+	})
 }
