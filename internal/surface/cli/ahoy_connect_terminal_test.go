@@ -17,6 +17,7 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core/layered"
+	"github.com/intentdriven/abcd/internal/core/question"
 	"github.com/intentdriven/abcd/internal/surface/cli/ask"
 	"github.com/spf13/cobra"
 )
@@ -486,5 +487,25 @@ func TestConnectPicksOnlyWhenEveryStreamIsATerminal(t *testing.T) {
 				t.Fatalf("wrote %q", got)
 			}
 		})
+	}
+}
+
+// TestPickQuestionKeepsOneChoicePerId: a service that lists one id twice
+// still gets a question the list accepts, with each id offered once in the
+// service's order, and the count the question gives is the ids offered.
+func TestPickQuestionKeepsOneChoicePerId(t *testing.T) {
+	a := pickQuestion("api.example.com", []string{"vendor/a", "vendor/b", "vendor/a", "vendor/c", "vendor/b"})
+	if findings := question.Check(a); len(findings) != 0 {
+		t.Fatalf("the pick question fails its check: %v", findings)
+	}
+	var got []string
+	for _, c := range a.Questions[0].List.Choices {
+		got = append(got, c.Value)
+	}
+	if want := []string{"vendor/a", "vendor/b", "vendor/c"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("choices = %q, want %q", got, want)
+	}
+	if text := a.Questions[0].Material[0].Text; !strings.Contains(text, "api.example.com lists 3 models") {
+		t.Fatalf("material = %q, want the host and the 3 ids offered", text)
 	}
 }

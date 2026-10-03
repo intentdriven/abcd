@@ -328,6 +328,33 @@ var (
 	connectPick = terminalPick
 )
 
+// pickQuestion is the model question over the listed ids, each offered once
+// in the service's order: the list refuses two choices with one value, and a
+// service may list an id twice. Which ids sit side by side is judged before
+// this (the adapter's split-key check), so dropping a repeat moves nothing
+// the person has not been cleared to see.
+func pickQuestion(host string, ids []string) question.Ask {
+	seen := make(map[string]bool, len(ids))
+	choices := make([]question.Option, 0, len(ids))
+	for _, id := range ids {
+		if !seen[id] {
+			seen[id] = true
+			choices = append(choices, question.Option{Value: id, Label: id})
+		}
+	}
+	return question.Ask{Questions: []question.Question{{
+		ID:   "model",
+		Chip: "Setup",
+		Material: []question.Block{{Kind: question.KindParagraph,
+			Text: fmt.Sprintf("%s lists %d models. Type part of a name to narrow the list.", host, len(choices))}},
+		Ask:  "Which model should abcd verify and set up?",
+		List: &question.List{Choices: choices},
+		// No listed id can take this value: validModel admits no '#'.
+		Later: question.Option{Value: "#later", Label: "Decide later",
+			Meaning: "Nothing is set up or written; run the command again to pick."},
+	}}}
+}
+
 // terminalPick is the picker the setup offers at a terminal: the
 // plain-Terminal long list over the listed ids, typing to narrow
 // (spc-2610030911534855), drawn on stderr. Ctrl-C is ask.ErrInterrupted;
@@ -342,23 +369,8 @@ func terminalPick(cmd *cobra.Command, roots layered.Roots, baseURL string) func(
 		if u, err := url.Parse(baseURL); err == nil && u.Host != "" {
 			host = u.Host
 		}
-		choices := make([]question.Option, len(ids))
-		for i, id := range ids {
-			choices[i] = question.Option{Value: id, Label: id}
-		}
-		a := question.Ask{Questions: []question.Question{{
-			ID:   "model",
-			Chip: "Setup",
-			Material: []question.Block{{Kind: question.KindParagraph,
-				Text: fmt.Sprintf("%s lists %d models. Type part of a name to narrow the list.", host, len(ids))}},
-			Ask:  "Which model should abcd verify and set up?",
-			List: &question.List{Choices: choices},
-			// No listed id can take this value: validModel admits no '#'.
-			Later: question.Option{Value: "#later", Label: "Decide later",
-				Meaning: "Nothing is set up or written; run the command again to pick."},
-		}}}
 		got, err := ask.Terminal{In: in, Out: cmd.ErrOrStderr(), Getenv: os.Getenv,
-			Mode: term.ResolveColorMode(os.Getenv, false), ASCII: !term.UTF8Locale(os.Getenv), Roots: roots}.Put(a)
+			Mode: term.ResolveColorMode(os.Getenv, false), ASCII: !term.UTF8Locale(os.Getenv), Roots: roots}.Put(pickQuestion(host, ids))
 		switch {
 		case err != nil:
 			return "", err
