@@ -241,3 +241,28 @@ func TestPutReadsTheListSetting(t *testing.T) {
 		}
 	})
 }
+
+// TestNumberedFilterEchoIsSanitised holds that the numbered reader's echo of
+// the typed line passes termsafe.Sanitize, as the arrow-key list's does: a
+// line carrying an erase-screen, a cursor-home, a C1 control and a bare
+// carriage return reaches the screen as visible '?', never as live control
+// bytes that could forge what the person reads.
+func TestNumberedFilterEchoIsSanitised(t *testing.T) {
+	var out bytes.Buffer
+	in := pipeIn(t, "\x1b[2J\x1b[Hforged\u0085\rline\n")
+	tm := Terminal{In: in, Out: &out, Getenv: env("TERM", "xterm"), Mode: term.Mono, Roots: roots(t, numberedSetting, "")}
+	_, _ = tm.Put(fixture(t, "key-home"))
+	s := out.String()
+	if strings.ContainsRune(s, 0x1b) {
+		t.Errorf("the echo wrote an escape byte:\n%q", s)
+	}
+	if strings.ContainsRune(s, 0x85) {
+		t.Errorf("the echo wrote a C1 control:\n%q", s)
+	}
+	if strings.ContainsRune(s, '\r') {
+		t.Errorf("the echo wrote a bare carriage return:\n%q", s)
+	}
+	if !strings.Contains(s, "filter: ?[2J?[Hforged??line") {
+		t.Errorf("the echo does not show the typed line made visible:\n%q", s)
+	}
+}
