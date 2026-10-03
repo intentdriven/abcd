@@ -2201,6 +2201,18 @@ Links: builds on itd-111. Verdict proposed: SPLIT, offered beside one draft for 
 
 Correction (2026-10-03, appended): the desktop-search entry above routes "a setting to turn indexing back on"; the reviews found no such setting exists under that draft's rule, and its interview (decisions 1 and 2) widened the route to the whole home, renamed `~/.abcd.noindex`. The routing row stands as graded at the time; the draft carries the outcome.
 
+Addendum (2026-10-03, appended): at the harness draft's interview the product thinker asked that the newer-version-downloaded signal be filed separately; it is itd-2610031325050110 (draft, builds on itd-2610031026190632). The harness draft itself became offline (its decision 7): the internet row of the entry above no longer applies.
+
+## 2026-10-03: setup asks whether abcd keeps parts of the README current (product thinker, routing confirmed)
+
+| part | type | home |
+|---|---|---|
+| setup asks whether abcd manages parts of the README, and which; abcd keeps those parts current | capability | intent itd-2610031348087517 (draft) |
+| which README elements tools keep current, and how they mark them | research | a state-of-the-art pass, then the draft's reviews |
+| abcd writes only inside marked parts and never rewrites the owner's text | standing stance | existing principle the-users-directory-is-theirs, reused |
+
+Links: refines itd-3's setup interview. Verdict proposed: SPLIT, offered beside waiting for the research and later. Routing survived confirmation: yes (unchanged). The request ended at "incl."; asked, the product thinker completed it: "title, badges (incl. an abcd-managed badge) etc."
+
 ## 2026-10-03: a readable status board for the product thinker (product thinker, routing confirmed)
 
 | part | type | home |
