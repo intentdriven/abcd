@@ -1,0 +1,49 @@
+{
+  "questions": [
+    {
+      "id": "B1",
+      "chip": "Tech Q1",
+      "material": [
+        {"kind": "paragraph", "text": "Criterion B1 reads: the setup questions are drawn in a plain Terminal, each with its options numbered and their meanings beneath them."}
+      ],
+      "ask": "Is B1 right as written?",
+      "options": [
+        {"value": "keep", "label": "Keep it", "meaning": "B1 stands as written. The build is held to it."},
+        {"value": "reword", "label": "Reword it", "meaning": "You give the new wording next. The build waits for it."}
+      ],
+      "later": {"value": "later", "label": "Decide later", "meaning": "B1 stays open. It is asked again at the next review."},
+      "now": "B1 is a draft",
+      "change_later": "edit the criterion in the intent"
+    },
+    {
+      "id": "B2",
+      "chip": "Tech Q2",
+      "material": [
+        {"kind": "paragraph", "text": "Criterion B2 reads: at 160 columns the label and its meaning sit side by side, and no line of prose runs past 80 columns."}
+      ],
+      "ask": "Is B2 right as written?",
+      "options": [
+        {"value": "keep", "label": "Keep it", "meaning": "B2 stands as written. The build is held to it."},
+        {"value": "reword", "label": "Reword it", "meaning": "You give the new wording next. The build waits for it."}
+      ],
+      "later": {"value": "later", "label": "Decide later", "meaning": "B2 stays open. It is asked again at the next review."},
+      "now": "B2 is a draft",
+      "change_later": "edit the criterion in the intent"
+    },
+    {
+      "id": "B3",
+      "chip": "Tech Q3",
+      "material": [
+        {"kind": "paragraph", "text": "Criterion B3 reads: with output piped, every question is written as plain text and answered from a flag or an answers file."}
+      ],
+      "ask": "Is B3 right as written?",
+      "options": [
+        {"value": "keep", "label": "Keep it", "meaning": "B3 stands as written. The build is held to it."},
+        {"value": "reword", "label": "Reword it", "meaning": "You give the new wording next. The build waits for it."}
+      ],
+      "later": {"value": "later", "label": "Decide later", "meaning": "B3 stays open. It is asked again at the next review."},
+      "now": "B3 is a draft",
+      "change_later": "edit the criterion in the intent"
+    }
+  ]
+}

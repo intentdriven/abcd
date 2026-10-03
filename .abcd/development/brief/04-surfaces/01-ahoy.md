@@ -527,13 +527,18 @@ terminal each answer is echoed to the diagnostic stream, so a piped run leaves a
 transcript rather than a column of questions with no visible reply.
 
 **Every value question carries its own explanation** (iss-163). A question that
-picks one of several values (the repo visibility, the docs target, the oracle
-backend, the deep-scan toggle, the house-style question and each status-line
+picks one of several values (the repo visibility, the docs target, the
+deep-scan toggle, the house-style question and each status-line
 element) is rendered with core's canonical help above it: what is being
 decided, then what each answer means, including what it asks of the person in
-keys, tools or cost. The oracle question defines an oracle before asking for
-one, and says plainly that every answer but host-delegated is recorded without
-changing how reviews run, because no other adapter ships. The words live in core, so every
+keys, tools or cost. The oracle backend is not asked while host-delegated is
+the only answer with an adapter, because a question with one defensible answer
+is not put to a person: the install records host-delegated and says in one note
+that other reviewers arrive later, naming the install flag that chooses one then.
+The question returns on its own once a second answer has an adapter, and its
+help, kept for that day, defines an oracle and says plainly that every answer but
+host-delegated is recorded without changing how reviews run
+(iss-2610031236155833). The words live in core, so every
 front door shows the same explanation and none invents its own; the question
 line itself is unchanged, so a piped answer stream lines up with it. The four
 config values' help also carries the install flag that answers the question
@@ -764,7 +769,9 @@ byte-identical to a fresh install save for the setup date.
 - **Given** no oracle adapter is wired, **when** detection resolves the oracle,
   **then** it stays host-delegated: abcd needs no API keys or model config,
   because it emits prompts the host runs (adr-25), and an adapter can be
-  configured later.
+  configured later. A first install records host-delegated without asking and
+  says so in one note naming the install flag that chooses another reviewer;
+  that flag still sets any of the five values.
 - **Given** a repo whose root SHA is absent from the registry while a sibling
   entry matches its name, **when** the install runs, **then** detection flags a
   re-founding candidate, ahoy asks before linking, and on confirmation records

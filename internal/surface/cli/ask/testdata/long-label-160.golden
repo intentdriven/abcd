@@ -1,0 +1,15 @@
+› Setup Q4
+
+  The settings you just changed feed every configuration file
+  abcd derives for this repository. A derived file that is
+  not rebuilt keeps the old settings until the next install.
+
+  Should abcd rebuild the derived files now?
+
+› 1. Rebuild every derived configuration file  Every file abcd derives is written again from the new
+                                               settings. Files you edited by hand are left alone.
+  2. Keep the files unchanged                  Nothing is written now. The files catch up at the next install.
+  3. Decide later                              Nothing changes now. abcd asks again when the settings next change.
+
+  Now: the files hold the old settings
+  Change later: not applicable

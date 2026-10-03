@@ -53,11 +53,13 @@ waits on.
 
 With `abcd mode product-thinker` set, dispatch the `reflection-composer` agent with the seed. It asks the four asked
 sections (what went well, what could improve, lessons learned, decisions made)
-**one question at a time, under the GRILL rules**: through the host's
-interactive question tool, never as a numbered list in prose; one sentence of
-context and a concrete example of what an answer looks like in each question;
-the next question only after the last answer. The metrics section is computed
-from the seed and never asked.
+**one question at a time**, through the host's interactive question tool, the
+next question only after the last answer. Every question it asks follows the
+asking rules in `commands/intent.md` (the block marked
+`generated: asking-rules`): the thing being decided first, quoted in full (a
+section's earlier answer before "is this answer complete?"), with one concrete
+example of what an answer looks like, and the question last. The metrics
+section is computed from the seed and never asked.
 
 A thin answer (empty, a restatement of the heading, or a single clause) is met
 with the section's one follow-up question before anything is written, and the

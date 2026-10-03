@@ -7,26 +7,21 @@ import (
 )
 
 // estimateRows is the rows a question takes in the host's frame at l.Columns
-// (rule 13): one row for the header, the question text wrapped at
-// l.HostTextColumns, each option's label row and its description wrapped
-// beneath it, and l.HostChromeRows for the frame. A preview sits beside the
-// options and is not counted here; it is held to the rows the frame leaves it.
+// (rule 13): l.HostChromeRows for the frame, the chip's row included, the
+// question text wrapped at l.HostTextColumns, and each option's label row and
+// its description wrapped beneath it at l.HostOptionColumns. A preview is
+// refused (rule 14), so its layout is not estimated.
 //
-// The estimate wraps greedily, as a terminal fills a line, and its two host
-// figures are provisional until step 5 of spc-2610030944505997 calibrates them
-// against a dated screenshot.
+// The estimate wraps greedily, as a terminal fills a line. Its three host
+// figures were calibrated on 2026-10-03 against Claude Code's question view at
+// 80 by 24 (step 5 of spc-2610030944505997): the estimate of the screenshot's
+// question equals the 24 rows the host drew.
 func estimateRows(t Tab, l Limits) int {
-	rows := 1 + blockRows(t.Text, l.HostTextColumns) + l.HostChromeRows
+	rows := l.HostChromeRows + blockRows(t.Text, l.HostTextColumns)
 	for _, o := range t.Options {
-		rows += max(1, blockRows(o.Label, l.HostTextColumns)) + blockRows(o.Description, l.HostTextColumns)
+		rows += max(1, blockRows(o.Label, l.HostOptionColumns)) + blockRows(o.Description, l.HostOptionColumns)
 	}
 	return rows
-}
-
-// previewBudget is the rows the frame leaves a preview: the window less the
-// frame, the header and the question text above the options.
-func previewBudget(t Tab, l Limits) int {
-	return l.Rows - l.HostChromeRows - 1 - blockRows(t.Text, l.HostTextColumns)
 }
 
 // blockRows is the rows text takes wrapped at width: each line wrapped on its
