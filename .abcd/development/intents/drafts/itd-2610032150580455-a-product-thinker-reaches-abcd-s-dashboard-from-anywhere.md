@@ -16,7 +16,7 @@ production_mode: hand-written
 
 ## Press Release
 
-> A product thinker reaches abcd's dashboard from anywhere, away from their home network, through their own private Tailscale network, seeing the same page they see at home and nobody else being able to.
+> A product thinker reaches abcd's dashboard from anywhere, away from their home network, through their own private Tailscale network, seeing the same page they see at home, open only to the people they let in.
 
 _Proposed by the facilitator on filing (2026-10-03): the product thinker's request named "Tailscale network later, from anywhere in the future", filed as its own later draft at the routing they confirmed; to be confirmed at its own planning interview._
 
@@ -42,7 +42,12 @@ Typed links: builds on itd-2610032150577708 (the dashboard on the home network).
 
 ## Open Questions
 
-_None recorded yet._
+_From the state-of-the-art pass and the record review of 2026-10-03 (facilitator-written)._
+
+- Who keeps the dashboard running while the person is away, and for how long.
+- Whether being on the person's own private Tailscale network counts as being let in, or a device still pairs.
+- An HTTPS name on Tailscale is published in public certificate logs, so the computer's and the private network's names become public.
+- The sign-in identity Tailscale adds can be trusted only on a dashboard listening to this computer alone, never while it also listens on the local network.
 
 ## Audit Notes
 
