@@ -177,7 +177,11 @@ type Client struct {
 	// comments not counting; errorWait bounds the read of a failed call's body.
 	events    time.Duration
 	errorWait time.Duration
-	hc        *http.Client
+	// models is the model listing's address and listWait its bound
+	// (models.go), ListTimeout whatever the call limits above are.
+	models   string
+	listWait time.Duration
+	hc       *http.Client
 }
 
 // Option configures a Client.
@@ -248,8 +252,11 @@ func New(baseURL, key string, opts ...Option) (*Client, error) {
 	if strings.EqualFold(u.Hostname(), "localhost") {
 		u.Host = strings.ToLower(u.Host)
 	}
+	base := strings.TrimSuffix(u.String(), "/")
 	c := &Client{
-		endpoint:  strings.TrimSuffix(u.String(), "/") + "/chat/completions",
+		endpoint:  base + "/chat/completions",
+		models:    base + "/models",
+		listWait:  ListTimeout,
 		key:       key,
 		forms:     keyForms(key),
 		host:      u.Host,
